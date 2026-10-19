@@ -281,3 +281,11 @@ test('선물함: 소유 교사·총괄 관리자·소유자 없는 학급', asyn
     'studentClaims/OWN1/s3': null
   }));
 });
+
+test('실시간 결투 화면 전달(pvp_live): 학급이 있으면 쓰고 지울 수 있고, 없는 학급에는 못 씀', async () => {
+  await assertSucceeds(db(null).ref('classes/OWN1/pvp_live/pvp_s1/frame').set({ t: 1, u: [[1, 2, 3]] }));
+  await assertSucceeds(db(null).ref('classes/OWN1/pvp_live/pvp_s1/input').set({ k: 'w', ax: 1, ay: 2 }));
+  await assertSucceeds(db(null).ref('classes/OWN1/pvp_live/pvp_s1').remove());
+  await assertFails(db(null).ref('classes/NOPE/pvp_live/pvp_s1/frame').set({ t: 1 }));
+  await assertFails(db(null).ref('classes/OWN1/pvp_livex/pvp_s1').set({ t: 1 }));
+});
