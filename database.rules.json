@@ -9,15 +9,17 @@
         ".read": "$classCode.matches(/^[A-Z0-9_-]+$/) && $classCode.length >= 3 && $classCode.length <= 16",
         ".validate": "$classCode.matches(/^[A-Z0-9_-]+$/) && $classCode.length >= 3 && $classCode.length <= 16",
         "meta": {
-          ".write": "$classCode.matches(/^[A-Z0-9_-]+$/) && $classCode.length >= 3 && $classCode.length <= 16 && newData.exists() && (!data.exists() ? newData.child('classCode').val() === $classCode : (newData.child('teacherKeyHash').val() === data.child('teacherKeyHash').val() && newData.child('createdAt').val() === data.child('createdAt').val()))",
+          ".write": "$classCode.matches(/^[A-Z0-9_-]+$/) && $classCode.length >= 3 && $classCode.length <= 16 && newData.exists() && (!data.exists() ? (auth != null && newData.child('classCode').val() === $classCode && newData.child('ownerUid').val() === auth.uid && newData.child('ownerEmail').val() === auth.token.email) : (newData.child('teacherKeyHash').val() === data.child('teacherKeyHash').val() && newData.child('createdAt').val() === data.child('createdAt').val() && newData.child('ownerUid').val() === data.child('ownerUid').val() && newData.child('ownerEmail').val() === data.child('ownerEmail').val() && (!data.child('ownerUid').exists() || (auth != null && data.child('ownerUid').val() === auth.uid))))",
           "classCode": { ".validate": "newData.val() === $classCode" },
-          "className": { ".validate": "newData.isString() && newData.val().length <= 40" }
+          "className": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "guardianPts": { ".write": "data.parent().exists() && newData.isNumber()" },
+          "updatedAt": { ".write": "data.parent().exists() && newData.isNumber()" }
         },
         "students": {
-          "$studentId": { ".write": "newData.parent().parent().child('meta').exists()" }
+          "$studentId": { ".write": "newData.parent().parent().child('meta').exists() && ((data.exists() && newData.exists()) || !newData.parent().parent().child('meta/ownerUid').exists() || (auth != null && newData.parent().parent().child('meta/ownerUid').val() === auth.uid))" }
         },
         "profiles": {
-          "$studentId": { ".write": "newData.parent().parent().child('meta').exists()" }
+          "$studentId": { ".write": "newData.parent().parent().child('meta').exists() && ((data.exists() && newData.exists()) || !newData.parent().parent().child('meta/ownerUid').exists() || (auth != null && newData.parent().parent().child('meta/ownerUid').val() === auth.uid))" }
         },
         "auctions": { ".write": "newData.parent().child('meta').exists()" },
         "tradeOffers": { ".write": "newData.parent().child('meta').exists()" },
@@ -51,6 +53,22 @@
           }
         },
         "$other": { ".validate": false }
+      }
+    },
+    "teacherClasses": {
+      ".read": "auth != null && auth.token.superAdmin === true",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$classCode": {
+          ".write": "auth != null && (auth.token.superAdmin === true || (auth.uid === $uid && (!newData.exists() || newData.parent().parent().parent().child('classes').child($classCode).child('meta/ownerUid').val() === $uid)))"
+        }
+      }
+    },
+    "teacherProfiles": {
+      ".read": "auth != null && auth.token.superAdmin === true",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid && newData.exists() && newData.child('email').val() === auth.token.email"
       }
     }
   }

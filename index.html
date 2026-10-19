@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MISSION CLASS ARENA : 우리 반 용병단 키우기</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Firebase JS SDK (Compat: App & Realtime Database) -->
+  <!-- Firebase JS SDK (Compat: App & Realtime Database & Auth) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Jua&family=Pretendard:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -2006,6 +2007,11 @@
           </div>
         </div>
         <button onclick="closeTeacherLoginModal()" class="text-slate-400 hover:text-white text-lg font-bold px-2">✕</button>
+      </div>
+
+      <!-- 구글 계정 로그인: 학급 소유자 확인 (renderTeacherAuthBox()가 내용을 그림) -->
+      <div id="teacherGoogleAuthBox" class="bg-slate-950 border-2 border-emerald-500/40 rounded-2xl p-3.5 flex flex-col gap-2 text-xs text-slate-300">
+        구글 로그인 정보를 불러오는 중...
       </div>
 
       <!-- 탭 전환: 현재 학급 관리자 입장 vs 교사 키로 새 학급 페이지 생성 -->
@@ -5666,7 +5672,7 @@
     //   중단되지 않고 정상적으로 작동합니다.
     // =========================================================================
     const FIREBASE_WEB_APP_CONFIG = {
-      apiKey: "AIzaSyBcc4MB3F8Jb-npTUSWW8B1ojDRfF3SGoUE",
+      apiKey: "AIzaSyBcc4MB3F8Jb-npTUSWW8B1ojDRFfSGoUE",
       authDomain: "class-arena-b4ee3.firebaseapp.com",
       databaseURL: "https://class-arena-b4ee3-default-rtdb.firebaseio.com",
       projectId: "class-arena-b4ee3",
@@ -5726,6 +5732,10 @@
           state.pvpServerConfig.firebaseDbUrl = resolvedDbUrl;
           if (hadNoUrlBefore && resolvedDbUrl && (!state.pvpServerConfig.provider || state.pvpServerConfig.provider === 'local_mock')) {
             state.pvpServerConfig.provider = 'firebase';
+          }
+          // 예전 버전에 오타가 있던 API 키가 기기에 저장돼 있으면 올바른 키로 교체 (구글 로그인에 필요)
+          if (state.pvpServerConfig.firebaseApiKey === 'AIzaSyBcc4MB3F8Jb-npTUSWW8B1ojDRfF3SGoUE') {
+            state.pvpServerConfig.firebaseApiKey = FIREBASE_WEB_APP_CONFIG.apiKey;
           }
           if (!state.pvpServerConfig.firebaseApiKey && FIREBASE_WEB_APP_CONFIG.apiKey) {
             state.pvpServerConfig.firebaseApiKey = FIREBASE_WEB_APP_CONFIG.apiKey;
@@ -6335,15 +6345,17 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         ".read": "$classCode.matches(/^[A-Z0-9_-]+$/) && $classCode.length >= 3 && $classCode.length <= 16",
         ".validate": "$classCode.matches(/^[A-Z0-9_-]+$/) && $classCode.length >= 3 && $classCode.length <= 16",
         "meta": {
-          ".write": "$classCode.matches(/^[A-Z0-9_-]+$/) && $classCode.length >= 3 && $classCode.length <= 16 && newData.exists() && (!data.exists() ? newData.child('classCode').val() === $classCode : (newData.child('teacherKeyHash').val() === data.child('teacherKeyHash').val() && newData.child('createdAt').val() === data.child('createdAt').val()))",
+          ".write": "$classCode.matches(/^[A-Z0-9_-]+$/) && $classCode.length >= 3 && $classCode.length <= 16 && newData.exists() && (!data.exists() ? (auth != null && newData.child('classCode').val() === $classCode && newData.child('ownerUid').val() === auth.uid && newData.child('ownerEmail').val() === auth.token.email) : (newData.child('teacherKeyHash').val() === data.child('teacherKeyHash').val() && newData.child('createdAt').val() === data.child('createdAt').val() && newData.child('ownerUid').val() === data.child('ownerUid').val() && newData.child('ownerEmail').val() === data.child('ownerEmail').val() && (!data.child('ownerUid').exists() || (auth != null && data.child('ownerUid').val() === auth.uid))))",
           "classCode": { ".validate": "newData.val() === $classCode" },
-          "className": { ".validate": "newData.isString() && newData.val().length <= 40" }
+          "className": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "guardianPts": { ".write": "data.parent().exists() && newData.isNumber()" },
+          "updatedAt": { ".write": "data.parent().exists() && newData.isNumber()" }
         },
         "students": {
-          "$studentId": { ".write": "newData.parent().parent().child('meta').exists()" }
+          "$studentId": { ".write": "newData.parent().parent().child('meta').exists() && ((data.exists() && newData.exists()) || !newData.parent().parent().child('meta/ownerUid').exists() || (auth != null && newData.parent().parent().child('meta/ownerUid').val() === auth.uid))" }
         },
         "profiles": {
-          "$studentId": { ".write": "newData.parent().parent().child('meta').exists()" }
+          "$studentId": { ".write": "newData.parent().parent().child('meta').exists() && ((data.exists() && newData.exists()) || !newData.parent().parent().child('meta/ownerUid').exists() || (auth != null && newData.parent().parent().child('meta/ownerUid').val() === auth.uid))" }
         },
         "auctions": { ".write": "newData.parent().child('meta').exists()" },
         "tradeOffers": { ".write": "newData.parent().child('meta').exists()" },
@@ -6377,6 +6389,22 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           }
         },
         "$other": { ".validate": false }
+      }
+    },
+    "teacherClasses": {
+      ".read": "auth != null && auth.token.superAdmin === true",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$classCode": {
+          ".write": "auth != null && (auth.token.superAdmin === true || (auth.uid === $uid && (!newData.exists() || newData.parent().parent().parent().child('classes').child($classCode).child('meta/ownerUid').val() === $uid)))"
+        }
+      }
+    },
+    "teacherProfiles": {
+      ".read": "auth != null && auth.token.superAdmin === true",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid && newData.exists() && newData.child('email').val() === auth.token.email"
       }
     }
   }
@@ -10467,6 +10495,18 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           meta.teacherKeyHash = state.teacherKey ? simpleHashString(state.teacherKey) : '';
           meta.teacherKeyMasked = state.teacherKey ? (state.teacherKey.slice(0, 9) + '-****') : '';
           meta.createdAt = Date.now();
+          // 새 학급은 만든 교사의 구글 계정을 소유자로 고정 (DB 규칙상 소유자 없는 학급 생성 불가)
+          const ownerUser = TeacherAuth.user;
+          if (ownerUser && state.ownerUid === ownerUser.uid) {
+            meta.ownerUid = ownerUser.uid;
+            meta.ownerEmail = ownerUser.email || '';
+          }
+        }
+        // 소유자가 있는 학급에서 소유자가 아닌 기기(학생)는 학생 활동으로 바뀌는 칸만 올림
+        // (교사 전용 칸이 섞이면 DB 규칙이 업데이트 전체를 거부함)
+        const manager = creating || canManageCurrentClass();
+        if (!manager) {
+          Object.keys(meta).forEach(k => { if (!STUDENT_WRITABLE_META_FIELDS.includes(k)) delete meta[k]; });
         }
         Object.keys(meta).forEach(k => {
           const sg = syncSig(meta[k]);
@@ -10483,6 +10523,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           localIds.add(s.id);
           const sg = syncSig(s);
           if (sg !== syncCache.students[s.id]) {
+            if (syncCache.students[s.id] === undefined && !manager) return; // 학생 추가는 소유 교사만
             if (syncCache.students[s.id] === undefined) rosterChanged = true;
             updates[`${base}/students/${s.id}`] = toFirebaseValue(s);
             updates[`${base}/profiles/${s.id}`] = {
@@ -10493,7 +10534,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           }
         });
         Object.keys(syncCache.students).forEach(id => {
-          if (!localIds.has(id)) {
+          if (!localIds.has(id) && manager) { // 학생 삭제는 소유 교사만
             updates[`${base}/students/${id}`] = null;
             updates[`${base}/profiles/${id}`] = null;
             pending.removed.push(id);
@@ -10514,8 +10555,18 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         // DB 규칙상 학급 meta.teacherKeyHash와 일치하는 키로만 목록을 쓸 수 있음 (불일치 시 업데이트 전체가 거부되므로 미리 걸러냄)
         const ownKeyHash = state.teacherKey ? simpleHashString(state.teacherKey) : '';
         const teacherOwns = Boolean(ownKeyHash) && ownKeyHash === (creating ? meta.teacherKeyHash : state.teacherKeyHash);
-        if (teacherOwns && (creating || rosterChanged || pending.meta.className)) {
+        if (manager && teacherOwns && (creating || rosterChanged || pending.meta.className)) {
           updates[`teacherKeys/${simpleHashString(state.teacherKey)}/classes/${classCode}`] = {
+            classCode,
+            className: state.className,
+            studentCount: (state.students || []).length,
+            updatedAt: Date.now()
+          };
+        }
+        // (e) 구글 계정별 내 학급 목록 (소유 교사 본인만)
+        const ownerUidNow = creating ? meta.ownerUid : state.ownerUid;
+        if (ownerUidNow && TeacherAuth.user && TeacherAuth.user.uid === ownerUidNow && (creating || rosterChanged || pending.meta.className)) {
+          updates[`teacherClasses/${ownerUidNow}/${classCode}`] = {
             classCode,
             className: state.className,
             studentCount: (state.students || []).length,
@@ -10576,6 +10627,8 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         const prevActiveId = state.activeStudentId;
         state.classCode = code;
         state.teacherKeyHash = data.meta.teacherKeyHash || '';
+        state.ownerUid = data.meta.ownerUid || '';
+        state.ownerEmail = data.meta.ownerEmail || '';
 
         // 1) 학급 정보
         const rm = deepCleanStrings({ ...data.meta });
@@ -12538,6 +12591,22 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         return;
       }
 
+      // 새 학급은 구글 계정 소유로만 만들 수 있음 (로그인 안 했으면 먼저 로그인 창을 띄움)
+      if (!TeacherAuth.user) {
+        try {
+          await TeacherAuth.signIn();
+        } catch (e) {
+          if (fbEl) {
+            fbEl.textContent = `⚠️ 학급을 만들려면 구글 계정 로그인이 필요합니다. (${TeacherAuth.describeError(e)})`;
+            fbEl.className = 'text-xs font-bold text-rose-400';
+            fbEl.classList.remove('hidden');
+          }
+          return;
+        }
+      }
+      const creatorUser = TeacherAuth.user;
+      if (!creatorUser) return;
+
       // 줄바꿈 또는 쉼표 파싱 (1,김민준 형태 및 이름 나열 모두 지원)
       const lines = rawStudents.split(/[\r\n]+/).map(l => l.trim()).filter(Boolean);
       const parsedStudents = [];
@@ -12577,6 +12646,8 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
 
       resetClassSyncCache(classCode, { loaded: true, metaExists: false });
       state.teacherKeyHash = simpleHashString(teacherKey);
+      state.ownerUid = creatorUser.uid;
+      state.ownerEmail = creatorUser.email || '';
       state.teacherPinHash = hashTeacherPin(teacherPin);
       state.teacherKey = teacherKey;
       state.classCode = classCode;
@@ -13015,6 +13086,226 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       document.body.removeChild(ta);
       showRewardBanner(`📋 내 교사 키 [${state.teacherKey}]가 복사되었습니다! 안전한 곳에 메모해두세요.`);
     }
+
+    // ==================== [교사 구글 계정 로그인 & 학급 소유자 보호] ====================
+    // - 새 학급은 만든 교사의 구글 계정(meta.ownerUid)이 소유하며, DB 규칙이 교사 전용 칸을 소유자에게만 허용합니다.
+    // - 소유자가 없는 기존 학급은 총괄 관리자가 관리자 페이지에서 소유자를 지정할 때까지 예전 방식(PIN/교사 키)으로 동작합니다.
+    // - 교실 공용 PC를 고려해 로그인은 브라우저 탭을 닫으면 풀리도록(SESSION) 유지합니다.
+    const STUDENT_WRITABLE_META_FIELDS = ['guardianPts'];
+
+    function teacherAuthEsc(v) {
+      return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    const TeacherAuth = {
+      user: null,
+      isSuperAdmin: false,
+      ready: false,
+      myClasses: null,
+
+      auth() {
+        RealtimePvpService.initFirebaseClientSafe();
+        const app = RealtimePvpService.firebaseApp;
+        return app && typeof app.auth === 'function' ? app.auth() : null;
+      },
+
+      init() {
+        const a = this.auth();
+        if (!a) { this.ready = true; renderTeacherAuthBox(); return; }
+        try { a.setPersistence(window.firebase.auth.Auth.Persistence.SESSION).catch(() => {}); } catch (e) {}
+        a.onAuthStateChanged(async (u) => {
+          this.user = u || null;
+          this.isSuperAdmin = false;
+          this.myClasses = null;
+          if (u) {
+            try { this.isSuperAdmin = (await u.getIdTokenResult()).claims.superAdmin === true; } catch (e) {}
+            this.saveProfile(u);
+            this.loadMyClasses();
+          }
+          this.ready = true;
+          renderTeacherAuthBox();
+        });
+      },
+
+      async signIn() {
+        const a = this.auth();
+        if (!a) throw new Error('Firebase 인증을 불러오지 못했습니다');
+        const provider = new window.firebase.auth.GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        const result = await a.signInWithPopup(provider);
+        this.user = result.user;
+        return result.user;
+      },
+
+      async signOut() {
+        const a = this.auth();
+        if (a) await a.signOut();
+      },
+
+      describeError(e) {
+        const code = e && e.code;
+        const map = {
+          'auth/popup-closed-by-user': '로그인 창이 닫혔습니다',
+          'auth/cancelled-popup-request': '로그인 창이 닫혔습니다',
+          'auth/popup-blocked': '브라우저가 팝업을 막았습니다. 팝업을 허용한 뒤 다시 시도하세요',
+          'auth/operation-not-allowed': 'Firebase 콘솔에서 Google 로그인이 아직 켜져 있지 않습니다',
+          'auth/unauthorized-domain': '이 주소가 Firebase 승인 도메인에 없습니다',
+          'auth/network-request-failed': '네트워크 연결을 확인하세요'
+        };
+        return map[code] || (e && e.message) || '알 수 없는 오류';
+      },
+
+      saveProfile(u) {
+        const db = RealtimePvpService.initFirebaseClientSafe();
+        if (!db || !u.email) return;
+        db.ref(`teacherProfiles/${u.uid}`).set({
+          email: u.email,
+          displayName: u.displayName || '',
+          lastLoginAt: Date.now()
+        }).catch(err => console.warn('[교사 프로필 저장 실패]:', err));
+      },
+
+      async loadMyClasses() {
+        const db = RealtimePvpService.initFirebaseClientSafe();
+        if (!db || !this.user) return;
+        const uid = this.user.uid;
+        try {
+          const snap = await db.ref(`teacherClasses/${uid}`).once('value');
+          if (!this.user || this.user.uid !== uid) return;
+          const val = snap.val() || {};
+          this.myClasses = Object.values(val).filter(item => item && item.classCode);
+        } catch (e) {
+          this.myClasses = [];
+          console.warn('[내 학급 목록 조회 실패]:', e);
+        }
+        renderTeacherAuthBox();
+      }
+    };
+
+    function isCurrentClassOwner() {
+      return Boolean(state.ownerUid && TeacherAuth.user && TeacherAuth.user.uid === state.ownerUid);
+    }
+
+    // 소유자 없는 기존 학급은 누구나(예전 방식), 소유 학급은 소유자·총괄 관리자만 관리 가능
+    function canManageCurrentClass() {
+      return !state.ownerUid || isCurrentClassOwner() || TeacherAuth.isSuperAdmin;
+    }
+
+    async function teacherGoogleSignIn() {
+      try {
+        await TeacherAuth.signIn();
+        showRewardBanner(`🛡️ 구글 계정(${TeacherAuth.user?.email || ''})으로 로그인했습니다!`);
+      } catch (e) {
+        showNotice(`⚠️ 구글 로그인 실패: ${TeacherAuth.describeError(e)}`);
+      }
+      renderTeacherAuthBox();
+    }
+
+    async function teacherGoogleSignOut() {
+      await TeacherAuth.signOut();
+      if (!document.getElementById('teacherViewContainer')?.classList.contains('hidden') && !canManageCurrentClass()) {
+        showMainAppView('student');
+      }
+      showRewardBanner('👋 구글 계정에서 로그아웃했습니다.');
+    }
+
+    function renderTeacherAuthBox() {
+      const box = document.getElementById('teacherGoogleAuthBox');
+      if (!box || !state) return;
+      const u = TeacherAuth.user;
+      let ownerLine = '';
+      if (state.ownerUid) {
+        ownerLine = isCurrentClassOwner()
+          ? `<div class="text-emerald-300 font-bold">🔒 현재 학급(${teacherAuthEsc(state.classCode)})은 내 구글 계정 소유입니다. 비밀번호 없이 바로 관리할 수 있어요.</div>`
+          : `<div class="text-amber-300 font-bold">🔒 현재 학급(${teacherAuthEsc(state.classCode)})은 다른 구글 계정(${teacherAuthEsc(state.ownerEmail || '소유자')})이 관리합니다.${TeacherAuth.isSuperAdmin ? ' (총괄 관리자 권한으로 관리 가능)' : ''}</div>`;
+      } else if (state.classCode) {
+        ownerLine = `<div class="text-slate-400">⚠️ 현재 학급(${teacherAuthEsc(state.classCode)})은 아직 구글 계정에 연결되지 않은 기존 학급입니다. 총괄 관리자에게 소유자 지정을 요청하면 PIN·교사 키 대신 구글 계정으로 보호됩니다.</div>`;
+      }
+
+      if (!TeacherAuth.ready) {
+        box.innerHTML = '구글 로그인 정보를 불러오는 중...';
+        return;
+      }
+      if (!u) {
+        box.innerHTML = `
+          <div class="text-xs font-extrabold text-emerald-300">🛡️ 구글 계정으로 학급 보호 (새 학급은 필수)</div>
+          <p class="text-[11px] text-slate-400">구글로 로그인하면 내가 만든 학급이 내 계정에 연결되어, 교사 키나 PIN이 알려져도 다른 사람이 학급을 관리할 수 없어요. 로그인은 이 브라우저 탭을 닫으면 자동으로 풀립니다.</p>
+          ${ownerLine}
+          <button type="button" onclick="teacherGoogleSignIn()" class="w-full py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-extrabold text-xs shadow flex items-center justify-center gap-2">
+            <span class="font-black text-blue-600">G</span> Google 계정으로 로그인
+          </button>`;
+        return;
+      }
+      const list = TeacherAuth.myClasses;
+      const listHtml = list === null
+        ? '<div class="text-slate-400">내 학급 목록을 불러오는 중...</div>'
+        : (list.length
+          ? list.map(item => `
+            <div class="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl px-3 py-2">
+              <div>
+                <span class="font-extrabold text-white">${teacherAuthEsc(item.className)}</span>
+                <span class="ml-1.5 px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono font-bold text-[11px]">코드: ${teacherAuthEsc(item.classCode)}</span>
+              </div>
+              <button type="button" data-class-code="${teacherAuthEsc(item.classCode)}" onclick="openTeacherClassFromLookup(this.dataset.classCode)"
+                class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-[11px] shadow">
+                이 학급 관리 열기
+              </button>
+            </div>`).join('')
+          : '<div class="text-slate-400">아직 내 구글 계정에 연결된 학급이 없습니다. [새 학급 페이지 생성] 탭에서 만들거나, 기존 학급은 총괄 관리자에게 소유자 지정을 요청하세요.</div>');
+      box.innerHTML = `
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <div class="text-xs font-extrabold text-emerald-300">✅ ${teacherAuthEsc(u.email)} 로그인됨${TeacherAuth.isSuperAdmin ? ' · 총괄 관리자' : ''}</div>
+          <button type="button" onclick="teacherGoogleSignOut()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[11px] border border-slate-700">로그아웃</button>
+        </div>
+        ${ownerLine}
+        <div class="text-[11px] font-extrabold text-cyan-300 mt-1">📚 내 구글 계정의 학급</div>
+        <div class="space-y-1.5 max-h-40 overflow-y-auto">${listHtml}</div>`;
+    }
+
+    // 교사 모달을 열 때마다 구글 로그인 상태와 현재 학급 소유 정보를 다시 그림
+    const _prevOpenTeacherLoginModalForAuth = openTeacherLoginModal;
+    openTeacherLoginModal = function (...args) {
+      _prevOpenTeacherLoginModalForAuth(...args);
+      renderTeacherAuthBox();
+      if (TeacherAuth.user) TeacherAuth.loadMyClasses();
+    };
+
+    // 소유 학급은 PIN·교사 키가 아니라 구글 계정으로만 관리자 입장
+    const TEACHER_LOGIN_ERROR_DEFAULT = '비밀번호 또는 교사 키가 일치하지 않습니다.';
+    const _prevConfirmTeacherForAuth = confirmTeacherLogin;
+    confirmTeacherLogin = function () {
+      const errEl = document.getElementById('teacherLoginError');
+      if (errEl) errEl.textContent = TEACHER_LOGIN_ERROR_DEFAULT;
+      if (state.ownerUid) {
+        if (canManageCurrentClass()) {
+          closeTeacherLoginModal();
+          showMainAppView('teacher');
+          return;
+        }
+        if (errEl) {
+          errEl.textContent = TeacherAuth.user
+            ? `🔒 이 학급은 ${state.ownerEmail || '다른 구글 계정'} 소유입니다. 소유자 계정으로 로그인해야 관리할 수 있어요.`
+            : '🔒 이 학급은 구글 계정으로 보호됩니다. 위의 [Google 계정으로 로그인]으로 소유자 계정에 로그인하세요.';
+          errEl.classList.remove('hidden');
+        }
+        return;
+      }
+      _prevConfirmTeacherForAuth();
+    };
+
+    // 어떤 경로(교사 키 조회, 생성 완료 창 등)로 들어와도 소유 학급의 관리자 화면은 소유자만
+    const _prevShowMainAppViewForAuth = showMainAppView;
+    showMainAppView = function (mode = 'student') {
+      if (mode === 'teacher' && !canManageCurrentClass()) {
+        showNotice(`🔒 이 학급은 ${state.ownerEmail || '소유자'} 구글 계정으로만 관리할 수 있습니다.`);
+        openTeacherLoginModal('login');
+        return;
+      }
+      _prevShowMainAppViewForAuth(mode);
+    };
+
+    // window.onload(loadState)가 끝난 뒤 초기화해야 Firebase 설정(state.pvpServerConfig)을 읽을 수 있음
+    window.addEventListener('load', () => setTimeout(() => TeacherAuth.init(), 0));
 
     window.onload = function () {
       loadState();
