@@ -1928,7 +1928,7 @@
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
-              <label class="text-[11px] font-extrabold text-indigo-300 block mb-1">🔑 새 비밀번호 입력 (2자 이상)</label>
+              <label class="text-[11px] font-extrabold text-indigo-300 block mb-1">🔑 새 비밀번호 입력 (4자 이상)</label>
               <input id="setupPw1" type="password" maxlength="16" placeholder="새 비밀번호 입력 (예: 1234)" class="w-full rounded-xl px-3.5 py-2.5 text-sm outline-none" />
             </div>
             <div>
@@ -1971,7 +1971,7 @@
         <input id="currentPwCheck" type="password" placeholder="현재 비밀번호 입력" class="w-full rounded-xl px-3.5 py-2.5 text-sm outline-none" />
       </div>
       <div>
-        <label class="text-[11px] font-extrabold text-indigo-300 block mb-1">2️⃣ 새 비밀번호 입력 (2글자 이상)</label>
+        <label class="text-[11px] font-extrabold text-indigo-300 block mb-1">2️⃣ 새 비밀번호 입력 (4글자 이상)</label>
         <input id="newPwInput1" type="password" placeholder="새 비밀번호 입력" class="w-full rounded-xl px-3.5 py-2.5 text-sm outline-none" />
       </div>
       <div>
@@ -3095,7 +3095,6 @@
         id: 'stu_' + num + '_' + Math.random().toString(36).substring(2, 6),
         num,
         name,
-        password: '',
         mc: useEmptyStart ? 10000 : 10000,
         tickets: 0,
         freeRefreshDate: getTodayDateString(),
@@ -3174,6 +3173,14 @@
             state.notice = '📢 오늘의 공지: 개성 있는 용병들을 영입하고 전술·스킬 조합으로 아레나를 제패하세요!';
           }
           state.students.forEach(s => {
+            // 예전 버전이 학생 기록에 넣어 둔 비밀번호는 이 기기 전용 칸으로 옮김 (서버 학급을 열면 지워짐)
+            if (typeof s.password === 'string') {
+              if (s.password) {
+                if (!state.localPwHashes) state.localPwHashes = {};
+                if (!state.localPwHashes[s.id]) state.localPwHashes[s.id] = s.password;
+              }
+              delete s.password;
+            }
             if (!s.freeRefreshDate) s.freeRefreshDate = getTodayDateString();
             if (typeof s.freeRefreshUsed !== 'number') s.freeRefreshUsed = 0;
             if (!Array.isArray(s.inventory)) s.inventory = [];
@@ -3545,7 +3552,7 @@
       const grid = document.getElementById('loginStudentSelectGrid');
       grid.innerHTML = state.students.map(s => {
         const isSelected = s.id === pendingLoginStudentId;
-        const hasPw = Boolean(s.password && s.password.trim() !== '');
+        const hasPw = StudentPw.hasPassword(s);
         return `
           <button onclick="selectLoginCandidate('${s.id}')"
             class="p-2.5 rounded-xl border text-left transition flex items-center justify-between ${
@@ -3576,7 +3583,7 @@
 
       titleEl.innerHTML = `선택된 학생: <span class="text-white">${stu.num}번 ${stu.name}</span>`;
 
-      if (!stu.password || stu.password.trim() === '') {
+      if (!StudentPw.hasPassword(stu)) {
         firstForm.classList.remove('hidden');
         existForm.classList.add('hidden');
         document.getElementById('setupPw1').value = '';
@@ -3589,51 +3596,70 @@
       }
     }
 
-    function completeFirstTimePasswordSetup() {
+    let studentPwBusy = false;
+
+    function showLoginError(msg) {
+      const errEl = document.getElementById('loginErrorMsg');
+      errEl.textContent = msg;
+      errEl.classList.remove('hidden');
+    }
+
+    function finishStudentLogin(stu, bannerText) {
+      state.activeStudentId = stu.id;
+      selectedMercId = stu.roster[0]?.id || null;
+      saveState();
+      closeStudentLoginModal();
+      renderAllStudentViews();
+      showRewardBanner(bannerText);
+    }
+
+    async function completeFirstTimePasswordSetup() {
       const stu = state.students.find(s => s.id === pendingLoginStudentId);
-      if (!stu) return;
+      if (!stu || studentPwBusy) return;
       const pw1 = document.getElementById('setupPw1').value.trim();
       const pw2 = document.getElementById('setupPw2').value.trim();
-      const errEl = document.getElementById('loginErrorMsg');
+      document.getElementById('loginErrorMsg').classList.add('hidden');
 
-      if (pw1.length < 2) {
-        errEl.textContent = '⚠️ 비밀번호는 최소 2글자 이상으로 입력해주세요.';
-        errEl.classList.remove('hidden');
+      if (pw1.length < STUDENT_PW_MIN_LEN) {
+        showLoginError(`⚠️ 비밀번호는 ${STUDENT_PW_MIN_LEN}글자 이상으로 정해 주세요.`);
         return;
       }
       if (pw1 !== pw2) {
-        errEl.textContent = '⚠️ 두 번 입력한 비밀번호가 서로 다릅니다. 다시 확인해주세요.';
-        errEl.classList.remove('hidden');
+        showLoginError('⚠️ 두 번 입력한 비밀번호가 서로 다릅니다. 다시 확인해주세요.');
         return;
       }
 
-      stu.password = hashStudentPassword(stu, pw1);
-      state.activeStudentId = stu.id;
-      selectedMercId = stu.roster[0]?.id || null;
-      saveState();
-      closeStudentLoginModal();
-      renderAllStudentViews();
-      showRewardBanner(`🔐 ${stu.name} 학생의 비밀번호가 설정되고 로그인되었습니다!`);
+      studentPwBusy = true;
+      let r;
+      try { r = await StudentPw.setFirst(stu, pw1); } finally { studentPwBusy = false; }
+      if (r.taken) {
+        selectLoginCandidate(stu.id);
+        showLoginError('⚠️ 이미 비밀번호가 설정된 프로필입니다. 설정한 비밀번호로 로그인해주세요!');
+        return;
+      }
+      if (!r.ok) {
+        showLoginError(r.msg);
+        return;
+      }
+      finishStudentLogin(stu, `🔐 ${stu.name} 학생의 비밀번호가 설정되고 로그인되었습니다!`);
     }
 
-    function submitStudentLogin() {
+    async function submitStudentLogin() {
       const stu = state.students.find(s => s.id === pendingLoginStudentId);
-      if (!stu) return;
+      if (!stu || studentPwBusy) return;
       const inputPw = document.getElementById('loginPwInput').value.trim();
-      const errEl = document.getElementById('loginErrorMsg');
+      document.getElementById('loginErrorMsg').classList.add('hidden');
 
-      if (!checkStudentPassword(stu, inputPw)) {
-        errEl.textContent = '❌ 비밀번호가 틀렸습니다! 기억나지 않으면 선생님께 비밀번호 초기화를 요청하세요.';
-        errEl.classList.remove('hidden');
+      studentPwBusy = true;
+      let r;
+      try { r = await StudentPw.login(stu, inputPw); } finally { studentPwBusy = false; }
+      if (!r.ok) {
+        showLoginError(r.wrong
+          ? '❌ 비밀번호가 틀렸습니다! 기억나지 않으면 선생님께 비밀번호 초기화를 요청하세요.'
+          : r.msg);
         return;
       }
-
-      state.activeStudentId = stu.id;
-      selectedMercId = stu.roster[0]?.id || null;
-      saveState();
-      closeStudentLoginModal();
-      renderAllStudentViews();
-      showRewardBanner(`👋 환영합니다, ${stu.name} 용병단장님!`);
+      finishStudentLogin(stu, `👋 환영합니다, ${stu.name} 용병단장님!`);
     }
 
     function openChangePasswordModal() {
@@ -3650,33 +3676,37 @@
       document.getElementById('changePasswordModal').classList.add('hidden');
     }
 
-    function saveNewStudentPassword() {
+    async function saveNewStudentPassword() {
       const stu = getActiveStudent();
+      if (studentPwBusy) return;
       const cur = document.getElementById('currentPwCheck').value.trim();
       const n1 = document.getElementById('newPwInput1').value.trim();
       const n2 = document.getElementById('newPwInput2').value.trim();
       const fb = document.getElementById('changePwFeedback');
+      const showFb = (text, cls) => {
+        fb.textContent = text;
+        fb.className = `text-xs font-bold ${cls}`;
+        fb.classList.remove('hidden');
+      };
 
-      if (stu.password && stu.password !== '' && !checkStudentPassword(stu, cur)) {
-        fb.textContent = '❌ 현재 비밀번호가 일치하지 않습니다.';
-        fb.className = 'text-xs font-bold text-rose-400';
-        fb.classList.remove('hidden');
-        return;
-      }
-      if (n1.length < 2) {
-        fb.textContent = '⚠️ 새 비밀번호는 2글자 이상 입력해주세요.';
-        fb.className = 'text-xs font-bold text-amber-300';
-        fb.classList.remove('hidden');
+      if (n1.length < STUDENT_PW_MIN_LEN) {
+        showFb(`⚠️ 새 비밀번호는 ${STUDENT_PW_MIN_LEN}글자 이상 입력해주세요.`, 'text-amber-300');
         return;
       }
       if (n1 !== n2) {
-        fb.textContent = '⚠️ 새 비밀번호 확인이 일치하지 않습니다.';
-        fb.className = 'text-xs font-bold text-rose-400';
-        fb.classList.remove('hidden');
+        showFb('⚠️ 새 비밀번호 확인이 일치하지 않습니다.', 'text-rose-400');
         return;
       }
 
-      stu.password = hashStudentPassword(stu, n1);
+      studentPwBusy = true;
+      let r;
+      try {
+        r = StudentPw.hasPassword(stu) ? await StudentPw.change(stu, cur, n1) : await StudentPw.setFirst(stu, n1);
+      } finally { studentPwBusy = false; }
+      if (!r.ok) {
+        showFb(r.wrong ? '❌ 현재 비밀번호가 일치하지 않습니다.' : (r.taken ? '⚠️ 이미 비밀번호가 있어요. 현재 비밀번호를 입력해 주세요.' : r.msg), 'text-rose-400');
+        return;
+      }
       saveState();
       closeChangePasswordModal();
       showRewardBanner('🔑 내 비밀번호가 성공적으로 변경되었습니다!');
@@ -9135,7 +9165,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       const grid = document.getElementById('adminStudentGrid');
       grid.innerHTML = state.students.map(s => {
         const checked = adminSelectedIds.has(s.id);
-        const hasPw = Boolean(s.password && s.password.trim() !== '');
+        const hasPw = StudentPw.hasPassword(s);
         const jobs = s.roster.filter(m => m.deployed).map(m => JOB_DEFS[m.job].icon).join('');
 
         return `
@@ -9190,7 +9220,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       document.getElementById('adminEditStuPvp').value = stu.pvpScore || 1000;
       const pwField = document.getElementById('adminEditStuPw');
       pwField.value = '';
-      pwField.placeholder = stu.password ? '설정됨 · 바꿀 때만 새 비번 입력' : '미설정(빈칸)';
+      pwField.placeholder = StudentPw.hasPassword(stu) ? '설정됨 · 바꿀 때만 새 비번 입력' : '미설정(빈칸)';
 
       renderAdminEditMercList();
       document.getElementById('adminStudentEditModal').classList.remove('hidden');
@@ -9345,7 +9375,16 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       stu.towerFloor = Math.max(1, Math.min(50, parseInt(document.getElementById('adminEditStuTower').value, 10) || 1));
       stu.pvpScore = Math.max(0, parseInt(document.getElementById('adminEditStuPvp').value, 10) || 0);
       const newAdminPw = document.getElementById('adminEditStuPw').value.trim();
-      if (newAdminPw) stu.password = hashStudentPassword(stu, newAdminPw);
+      if (newAdminPw && newAdminPw.length < STUDENT_PW_MIN_LEN) {
+        showNotice(`⚠️ 학생 비밀번호는 ${STUDENT_PW_MIN_LEN}글자 이상으로 정해 주세요.`);
+        return;
+      }
+      if (newAdminPw) {
+        StudentPw.teacherSet([stu.id], newAdminPw).then(r => {
+          if (!r.ok) showNotice(`⚠️ 비밀번호 변경 실패: ${r.msg}`);
+          renderAdminStudentGrid();
+        });
+      }
       stu.roster = JSON.parse(JSON.stringify(adminEditingRosterCopy));
 
       saveState();
@@ -9390,19 +9429,19 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
     function resetSingleStudentPassword(stuId) {
       const stu = state.students.find(s => s.id === stuId);
       if (!stu) return;
-      askCustomConfirm(`${stu.num}번 ${stu.name} 학생의 비밀번호를 초기화하시겠습니까?`, () => {
-        stu.password = '';
-        saveState();
+      askCustomConfirm(`${stu.num}번 ${stu.name} 학생의 비밀번호를 초기화하시겠습니까?`, async () => {
+        const r = await StudentPw.teacherSet([stu.id], null);
         renderAdminStudentGrid();
+        if (!r.ok) { showNotice(`⚠️ 비밀번호 초기화 실패: ${r.msg}`); return; }
         showRewardBanner(`🔑 ${stu.name} 학생의 비밀번호가 초기화되었습니다.`);
       });
     }
 
     function resetAllPasswords() {
-      askCustomConfirm('우리 반 모든 학생의 비밀번호를 일괄 초기화하시겠습니까?', () => {
-        state.students.forEach(s => { s.password = ''; });
-        saveState();
+      askCustomConfirm('우리 반 모든 학생의 비밀번호를 일괄 초기화하시겠습니까?', async () => {
+        const r = await StudentPw.teacherSet(state.students.map(s => s.id), null);
         renderAdminStudentGrid();
+        if (!r.ok) { showNotice(`⚠️ 비밀번호 초기화 실패: ${r.msg}`); return; }
         showRewardBanner('🔑 전교생 비밀번호가 초기화되어 다시 설정할 수 있습니다.');
       });
     }
@@ -10349,6 +10388,22 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       } catch (e) {}
     }
 
+    // 예전 버전이 이 기기 백업에 남긴 학생 비밀번호 지우기
+    function scrubLocalRegistryPasswords() {
+      const reg = getLocalClassesRegistry();
+      let changed = false;
+      Object.values(reg).forEach(entry => {
+        ['profiles', 'students'].forEach(k => {
+          const group = entry && entry[k];
+          if (!group || typeof group !== 'object') return;
+          Object.values(group).forEach(item => {
+            if (item && typeof item === 'object' && 'password' in item) { delete item.password; changed = true; }
+          });
+        });
+      });
+      if (changed) saveLocalClassesRegistry(reg);
+    }
+
     function ensureCurrentClassMetadata() {
       if (!state.classCode) {
         state.classCode = localStorage.getItem(SPARK_LAST_CLASS_CODE_KEY) || 'ARENA1';
@@ -10461,15 +10516,269 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
     }
 
     function checkStudentPassword(stu, input) {
-      const stored = String((stu && stu.password) || '');
+      return legacyStudentPasswordMatches(stu, String((stu && state.localPwHashes && state.localPwHashes[stu.id]) || ''), input);
+    }
+
+    // 예전 방식 비밀번호(평문 또는 h: 해시)와 비교
+    function legacyStudentPasswordMatches(stu, stored, input) {
       if (!stored) return false;
       if (stored.startsWith('h:')) return stored === hashStudentPassword(stu, input);
-      if (stored === input) {
-        stu.password = hashStudentPassword(stu, input); // 예전 평문 비밀번호는 로그인 시 자동으로 해시로 전환
-        return true;
-      }
-      return false;
+      return stored === input;
     }
+
+    // ----- 학생 비밀번호 (서버가 확인하는 방식) -----
+    // - 비밀번호는 PBKDF2로 바꾼 값(p_...)만 studentSecrets/{학급}/{학생}/{값} 키로 저장합니다. 이 칸은 아무도 읽을 수 없습니다.
+    // - 로그인 = 이 기기의 Firebase 계정(학생은 익명 계정)을 학생 프로필에 연결(studentClaims)하는 쓰기이고,
+    //   DB 규칙이 비밀번호 값이 맞을 때만 허용합니다. 학생 기록은 연결된 기기(또는 소유 교사)만 바꿀 수 있습니다.
+    // - 예전 비밀번호는 학생이 첫 로그인할 때 옮기고, 평문은 관리 권한이 있는 기기가 학급을 열 때 바로 옮깁니다.
+    // - Firebase가 없는 이 기기 전용 모드에서는 예전처럼 state.localPwHashes로 확인합니다.
+    const STUDENT_PW_MIN_LEN = 4;
+    const STUDENT_PW_ITERATIONS = 100000;
+
+    const StudentPw = {
+      status: {},  // 학생 id → 비밀번호 설정 여부 (profiles.claimed)
+      legacy: {},  // 학생 id → { value, inStudent } 아직 옮기지 않은 예전 비밀번호
+      migrating: false,
+      reloginNoticeShown: false,
+
+      db() {
+        const db = RealtimePvpService.initFirebaseClientSafe();
+        return db && typeof db.ref === 'function' ? db : null;
+      },
+      code() { return String(state.classCode || '').trim().toUpperCase(); },
+      online() { return Boolean(this.db()); },
+      ready() { return this.online() && syncCache.loaded && syncCache.classCode === this.code(); },
+
+      hasPassword(stu) {
+        if (!stu) return false;
+        if (!this.online()) return Boolean(state.localPwHashes && state.localPwHashes[stu.id]);
+        return Boolean(this.status[stu.id]);
+      },
+
+      // 서버에서 받은 학급 데이터로 비밀번호 상태를 갱신 (원본 students 기록 기준)
+      loadFromServer(profiles, remoteStudents) {
+        this.status = {};
+        this.legacy = {};
+        Object.keys(remoteStudents || {}).forEach(id => {
+          const prof = (profiles && profiles[id]) || {};
+          const raw = remoteStudents[id] || {};
+          this.status[id] = prof.claimed === true;
+          const inProfile = typeof prof.password === 'string' ? prof.password : '';
+          const inStudent = typeof raw.password === 'string' ? raw.password : '';
+          if (inProfile || inStudent) this.legacy[id] = { value: inProfile || inStudent, inStudent };
+        });
+      },
+
+      async proof(stuId, pw) {
+        const enc = new TextEncoder();
+        const key = await crypto.subtle.importKey('raw', enc.encode(String(pw)), 'PBKDF2', false, ['deriveBits']);
+        const bits = await crypto.subtle.deriveBits({
+          name: 'PBKDF2', hash: 'SHA-256', iterations: STUDENT_PW_ITERATIONS,
+          salt: enc.encode(`class-arena:${this.code()}:${stuId}`)
+        }, key, 256);
+        return 'p_' + Array.from(new Uint8Array(bits), b => b.toString(16).padStart(2, '0')).join('');
+      },
+
+      // 교사는 구글 계정, 학생은 이 브라우저 탭의 익명 계정
+      async ensureUser() {
+        const a = TeacherAuth.auth();
+        if (!a) throw Object.assign(new Error('no-auth'), { code: 'no-auth' });
+        if (a.currentUser) return a.currentUser;
+        const cred = await a.signInAnonymously();
+        return cred.user;
+      },
+
+      isDenied(e) { return /permission[_ ]denied/i.test(String((e && (e.code || e.message)) || '')); },
+
+      describe(e) {
+        const code = e && e.code;
+        if (code === 'auth/operation-not-allowed' || code === 'auth/admin-restricted-operation') {
+          return '⚠️ 학생 로그인 기능이 아직 켜져 있지 않아요. 선생님께 알려 주세요. (Firebase 익명 로그인)';
+        }
+        if (code === 'auth/network-request-failed' || code === 'no-auth') return '⚠️ 인터넷 연결을 확인하고 다시 해 보세요.';
+        if (this.isDenied(e)) return '⚠️ 저장할 권한이 없어요. 선생님께 문의하세요.';
+        return `⚠️ 잠시 후 다시 해 보세요. (${(e && (e.code || e.message)) || '알 수 없는 오류'})`;
+      },
+
+      notReady() {
+        return { ok: false, msg: '⚠️ 학급 정보를 아직 불러오는 중이에요. 인터넷 연결을 확인하고 잠시 후 다시 해 보세요.' };
+      },
+
+      // 이 기기를 학생에 연결하는 쓰기 (같은 기기에서 쓰던 다른 학생 연결은 풀기)
+      async claimUpdates(stuId, uid, proof) {
+        const c = this.code();
+        const u = {};
+        u[`studentClaims/${c}/${stuId}/${uid}`] = { proof, at: window.firebase.database.ServerValue.TIMESTAMP };
+        u[`classMembers/${c}/${uid}`] = stuId;
+        try {
+          const prev = (await this.db().ref(`classMembers/${c}/${uid}`).once('value')).val();
+          if (typeof prev === 'string' && prev !== stuId) u[`studentClaims/${c}/${prev}/${uid}`] = null;
+        } catch (e) {}
+        return u;
+      },
+
+      migrationUpdates(stuId, proof) {
+        const c = this.code();
+        return {
+          [`studentSecrets/${c}/${stuId}/${proof}`]: true,
+          [`classes/${c}/profiles/${stuId}/claimed`]: true,
+          [`classes/${c}/profiles/${stuId}/password`]: null,
+          [`classes/${c}/students/${stuId}/password`]: null
+        };
+      },
+
+      async login(stu, pw) {
+        if (!this.online()) {
+          return checkStudentPassword(stu, pw) ? { ok: true } : { ok: false, wrong: true };
+        }
+        if (!this.ready()) return this.notReady();
+        if (!pw) return { ok: false, wrong: true };
+        try {
+          const user = await this.ensureUser();
+          const proof = await this.proof(stu.id, pw);
+          const updates = await this.claimUpdates(stu.id, user.uid, proof);
+          try {
+            await this.db().ref().update(updates);
+            this.status[stu.id] = true;
+            this.reloginNoticeShown = false;
+            return { ok: true };
+          } catch (e) {
+            if (!this.isDenied(e)) throw e;
+          }
+          // 아직 옮기지 않은 예전 비밀번호면 새 방식으로 옮기면서 로그인
+          const lg = this.legacy[stu.id];
+          if (lg && legacyStudentPasswordMatches(stu, lg.value, pw)) {
+            await this.db().ref().update({ ...updates, ...this.migrationUpdates(stu.id, proof) });
+            delete this.legacy[stu.id];
+            this.status[stu.id] = true;
+            this.reloginNoticeShown = false;
+            return { ok: true };
+          }
+          await new Promise(r => setTimeout(r, 800)); // 연속으로 마구 시도하기 어렵게
+          return { ok: false, wrong: true };
+        } catch (e) {
+          console.warn('[학생 로그인 실패]:', e);
+          return { ok: false, msg: this.describe(e) };
+        }
+      },
+
+      // 비밀번호가 없는 학생의 첫 비밀번호 설정 (이미 있으면 taken)
+      async setFirst(stu, pw) {
+        if (!this.online()) {
+          if (!state.localPwHashes) state.localPwHashes = {};
+          state.localPwHashes[stu.id] = hashStudentPassword(stu, pw);
+          return { ok: true };
+        }
+        if (!this.ready()) return this.notReady();
+        const c = this.code();
+        try {
+          const user = await this.ensureUser();
+          const proof = await this.proof(stu.id, pw);
+          const updates = await this.claimUpdates(stu.id, user.uid, proof);
+          updates[`studentSecrets/${c}/${stu.id}/${proof}`] = true;
+          updates[`classes/${c}/profiles/${stu.id}/claimed`] = true;
+          updates[`classes/${c}/profiles/${stu.id}/password`] = null; // 예전 버전이 남긴 빈 칸 정리
+          try {
+            await this.db().ref().update(updates);
+          } catch (e) {
+            if (this.isDenied(e)) { this.status[stu.id] = true; return { ok: false, taken: true }; }
+            throw e;
+          }
+          this.status[stu.id] = true;
+          this.reloginNoticeShown = false;
+          return { ok: true };
+        } catch (e) {
+          console.warn('[학생 비밀번호 설정 실패]:', e);
+          return { ok: false, msg: this.describe(e) };
+        }
+      },
+
+      // 학생 스스로 비밀번호 변경 (현재 비밀번호를 서버에서 먼저 확인)
+      async change(stu, cur, next) {
+        if (!this.online()) {
+          if (!checkStudentPassword(stu, cur)) return { ok: false, wrong: true };
+          state.localPwHashes[stu.id] = hashStudentPassword(stu, next);
+          return { ok: true };
+        }
+        const r = await this.login(stu, cur);
+        if (!r.ok) return r;
+        const c = this.code();
+        try {
+          const user = await this.ensureUser();
+          const proof = await this.proof(stu.id, next);
+          await this.db().ref().update({
+            [`studentSecrets/${c}/${stu.id}`]: { [proof]: true },
+            [`studentClaims/${c}/${stu.id}/${user.uid}`]: { proof, at: window.firebase.database.ServerValue.TIMESTAMP }
+          });
+          return { ok: true };
+        } catch (e) {
+          console.warn('[학생 비밀번호 변경 실패]:', e);
+          return { ok: false, msg: this.describe(e) };
+        }
+      },
+
+      // 교사: 비밀번호 새로 지정(pw) 또는 초기화(null). 학생 기기 연결도 모두 풉니다.
+      async teacherSet(stuIds, pw) {
+        if (!canManageCurrentClass()) return { ok: false, msg: '학급 관리 권한이 없어요.' };
+        if (!this.online()) {
+          if (!state.localPwHashes) state.localPwHashes = {};
+          const byId = new Map(state.students.map(s => [s.id, s]));
+          stuIds.forEach(id => {
+            if (pw) state.localPwHashes[id] = hashStudentPassword(byId.get(id), pw);
+            else delete state.localPwHashes[id];
+          });
+          saveState();
+          return { ok: true };
+        }
+        if (!this.ready()) return this.notReady();
+        const c = this.code();
+        try {
+          await this.ensureUser();
+          const updates = {};
+          for (const id of stuIds) {
+            updates[`studentSecrets/${c}/${id}`] = pw ? { [await this.proof(id, pw)]: true } : null;
+            updates[`studentClaims/${c}/${id}`] = null;
+            updates[`classes/${c}/profiles/${id}/claimed`] = Boolean(pw);
+            updates[`classes/${c}/profiles/${id}/password`] = null;
+            updates[`classes/${c}/students/${id}/password`] = null;
+          }
+          await this.db().ref().update(updates);
+          stuIds.forEach(id => { this.status[id] = Boolean(pw); delete this.legacy[id]; });
+          return { ok: true };
+        } catch (e) {
+          console.warn('[교사 비밀번호 변경 실패]:', e);
+          return { ok: false, msg: this.describe(e) };
+        }
+      },
+
+      // 관리 권한이 있는 기기: 서버에 남은 평문 비밀번호를 바로 새 방식으로 옮김
+      // (h: 해시는 원래 비밀번호를 알 수 없으므로 학생이 로그인할 때 옮겨짐)
+      async migratePlaintext() {
+        if (this.migrating || !this.ready() || !canManageCurrentClass()) return;
+        const ids = Object.keys(this.legacy).filter(id => {
+          const v = this.legacy[id].value;
+          return v && !v.startsWith('h:') && state.students.some(s => s.id === id);
+        });
+        if (!ids.length) return;
+        this.migrating = true;
+        const c = this.code();
+        try {
+          await this.ensureUser();
+          const updates = {};
+          for (const id of ids) {
+            Object.assign(updates, this.migrationUpdates(id, await this.proof(id, this.legacy[id].value)));
+          }
+          if (this.code() !== c) return;
+          await this.db().ref().update(updates);
+          ids.forEach(id => { delete this.legacy[id]; this.status[id] = true; });
+          console.info(`[비밀번호 보호] 예전 비밀번호 ${ids.length}개를 새 방식으로 옮겼습니다.`);
+        } catch (e) {
+          console.warn('[예전 비밀번호 옮기기 실패]:', e);
+        } finally {
+          this.migrating = false;
+        }
+      }
+    };
 
     function checkTeacherPin(input) {
       if (state.teacherPinHash) return hashTeacherPin(input) === state.teacherPinHash;
@@ -10496,8 +10805,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       if (!raw || typeof raw !== 'object') return null;
       const s = JSON.parse(JSON.stringify(raw));
       s.id = s.id || id;
-      if (profile && typeof profile.password === 'string') s.password = profile.password;
-      if (typeof s.password !== 'string') s.password = '';
+      delete s.password; // 비밀번호는 학생 기록에 두지 않음 (StudentPw 참고)
       if (!Array.isArray(s.roster)) s.roster = s.roster && typeof s.roster === 'object' ? Object.values(s.roster) : [];
       if (!Array.isArray(s.inventory)) s.inventory = [];
       if (!Array.isArray(s.dailyEquipShop)) s.dailyEquipShop = [];
@@ -10525,8 +10833,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       const profiles = {};
       const studentsMap = {};
       (state.students || []).forEach(s => {
-        const hasPw = Boolean(s.password && String(s.password).trim() !== '');
-        profiles[s.id] = { id: s.id, num: s.num, name: s.name, claimed: hasPw, password: s.password || '' };
+        profiles[s.id] = { id: s.id, num: s.num, name: s.name, claimed: StudentPw.hasPassword(s) };
         studentsMap[s.id] = s;
       });
       const metaFields = buildMetaFields();
@@ -10605,11 +10912,13 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           if (sg !== syncCache.students[s.id]) {
             if (syncCache.students[s.id] === undefined && !manager) return; // 학생 추가는 소유 교사만
             if (syncCache.students[s.id] === undefined) rosterChanged = true;
-            updates[`${base}/students/${s.id}`] = toFirebaseValue(s);
-            updates[`${base}/profiles/${s.id}`] = {
-              id: s.id, num: s.num, name: s.name,
-              claimed: Boolean(s.password), password: s.password || ''
-            };
+            const stuValue = toFirebaseValue(s);
+            const legacyPw = StudentPw.legacy[s.id];
+            if (legacyPw && legacyPw.inStudent) stuValue.password = legacyPw.inStudent; // 옮기기 전 예전 비밀번호를 지우지 않음
+            updates[`${base}/students/${s.id}`] = stuValue;
+            updates[`${base}/profiles/${s.id}/id`] = s.id;
+            updates[`${base}/profiles/${s.id}/num`] = toFirebaseValue(s.num ?? null);
+            updates[`${base}/profiles/${s.id}/name`] = toFirebaseValue(s.name ?? null);
             pending.students[s.id] = sg;
           }
         });
@@ -10617,6 +10926,8 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           if (!localIds.has(id) && manager) { // 학생 삭제는 소유 교사만
             updates[`${base}/students/${id}`] = null;
             updates[`${base}/profiles/${id}`] = null;
+            updates[`studentSecrets/${classCode}/${id}`] = null;
+            updates[`studentClaims/${classCode}/${id}`] = null;
             pending.removed.push(id);
             rosterChanged = true;
           }
@@ -10677,6 +10988,10 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           return true;
         } catch (err) {
           console.warn('[학급 데이터 업로드 실패 - 이 기기에는 저장됨]:', err);
+          if (!manager && StudentPw.isDenied(err) && !StudentPw.reloginNoticeShown) {
+            StudentPw.reloginNoticeShown = true;
+            showNotice('🔑 로그인이 풀렸어요. 내 이름을 다시 눌러 비밀번호로 로그인해 주세요.');
+          }
           const syncBadge = document.getElementById('adminFirebaseSyncBadge');
           if (syncBadge) {
             syncBadge.textContent = '🟡 저장 실패 (이 기기에만 저장됨)';
@@ -10734,6 +11049,10 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         // 2) 학생
         const remoteStudents = (data.students && typeof data.students === 'object') ? data.students : {};
         const profiles = (data.profiles && typeof data.profiles === 'object') ? data.profiles : {};
+        if (StudentPw.online()) {
+          StudentPw.loadFromServer(profiles, remoteStudents);
+          delete state.localPwHashes; // 서버 학급에서는 이 기기에 비밀번호를 두지 않음
+        }
         const localById = new Map((state.students || []).map(s => [s.id, s]));
         const result = [];
         const seen = new Set();
@@ -10802,6 +11121,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       } finally {
         suppressRemoteClassPush = false;
       }
+      setTimeout(() => StudentPw.migratePlaintext(), 0);
       return true;
     }
 
@@ -12543,65 +12863,6 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       _origOpenStudentLoginModal();
     };
 
-    // 학생 최초 비밀번호 설정 시 Firebase에도 즉시 프로필/비밀번호 반영
-    const _origCompleteFirstTimePasswordSetup = completeFirstTimePasswordSetup;
-    completeFirstTimePasswordSetup = async function () {
-      const stu = state.students.find(s => s.id === pendingLoginStudentId);
-      if (!stu) return;
-      const pw1 = document.getElementById('setupPw1').value.trim();
-      const pw2 = document.getElementById('setupPw2').value.trim();
-      const errEl = document.getElementById('loginErrorMsg');
-
-      if (pw1.length < 2) {
-        errEl.textContent = '⚠️ 비밀번호는 최소 2글자 이상으로 입력해주세요.';
-        errEl.classList.remove('hidden');
-        return;
-      }
-      if (pw1 !== pw2) {
-        errEl.textContent = '⚠️ 두 번 입력한 비밀번호가 서로 다릅니다. 다시 확인해주세요.';
-        errEl.classList.remove('hidden');
-        return;
-      }
-
-      // Firebase에 이미 다른 기기에서 비밀번호가 먼저 설정되었는지 확인
-      const db = RealtimePvpService.initFirebaseClientSafe();
-      if (db && typeof db.ref === 'function' && state.classCode) {
-        try {
-          const profSnap = await db.ref(`classes/${state.classCode}/profiles/${stu.id}`).once('value');
-          const remoteProf = profSnap && profSnap.val ? profSnap.val() : null;
-          if (remoteProf && remoteProf.claimed && remoteProf.password && remoteProf.password !== '') {
-            stu.password = remoteProf.password;
-            saveState();
-            selectLoginCandidate(stu.id);
-            errEl.textContent = '⚠️ 이미 비밀번호가 설정된 프로필입니다. 설정한 비밀번호로 로그인해주세요!';
-            errEl.classList.remove('hidden');
-            return;
-          }
-        } catch (e) {}
-      }
-
-      _origCompleteFirstTimePasswordSetup();
-      await pushCurrentClassStateToFirebase(true);
-    };
-
-    // 학생 비밀번호 로그인 시 Firebase 최신 비밀번호 동기화 지원
-    const _origSubmitStudentLogin = submitStudentLogin;
-    submitStudentLogin = async function () {
-      const stu = state.students.find(s => s.id === pendingLoginStudentId);
-      if (!stu) return;
-      const db = RealtimePvpService.initFirebaseClientSafe();
-      if (db && typeof db.ref === 'function' && state.classCode) {
-        try {
-          const profSnap = await db.ref(`classes/${state.classCode}/profiles/${stu.id}`).once('value');
-          const remoteProf = profSnap && profSnap.val ? profSnap.val() : null;
-          if (remoteProf && typeof remoteProf.password === 'string') {
-            stu.password = remoteProf.password;
-          }
-        } catch (e) {}
-      }
-      _origSubmitStudentLogin();
-    };
-
     // 선생님 모달 탭 전환 및 교사 키 발급 / 새 학급 페이지 생성 함수들
     function switchTeacherModalTab(tab) {
       const loginPanel = document.getElementById('teacherModalPanel-login');
@@ -12772,9 +13033,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       state.tradeOffers = [];
       state.notice = `📢 [${className}] 학급 아레나에 오신 것을 환영합니다! (학급 코드: ${classCode})`;
       state.students = parsedStudents.map(item => {
-        const st = createStudent(item.num, item.name, true);
-        st.password = ''; // 학생이 최초 접속 시 직접 비밀번호를 설정하도록 비워둠
-        return st;
+        return createStudent(item.num, item.name, true); // 학생이 최초 접속 시 직접 비밀번호를 설정
       });
       state.activeStudentId = state.students[0].id;
       localStorage.setItem(SPARK_LAST_CLASS_CODE_KEY, classCode);
@@ -12959,7 +13218,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       const grid = document.getElementById('classLobbyStudentGrid');
       if (grid) {
         grid.innerHTML = (state.students || []).map(s => {
-          const hasPw = Boolean(s.password && String(s.password).trim() !== '');
+          const hasPw = StudentPw.hasPassword(s);
           const leadMerc = (s.roster || []).find(m => m.deployed) || (s.roster || [])[0];
           const job = leadMerc ? (JOB_DEFS[leadMerc.job] || JOB_DEFS.warrior) : JOB_DEFS.warrior;
           const totalPower = calcStudentCombatPower(s);
@@ -13227,8 +13486,9 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         const a = this.auth();
         if (!a) { this.ready = true; renderTeacherAuthBox(); return; }
         try { a.setPersistence(window.firebase.auth.Auth.Persistence.SESSION).catch(() => {}); } catch (e) {}
-        a.onAuthStateChanged(async (u) => {
-          this.user = u || null;
+        a.onAuthStateChanged(async (authUser) => {
+          const u = authUser && !authUser.isAnonymous ? authUser : null; // 익명 계정 = 학생 기기
+          this.user = u;
           this.isSuperAdmin = false;
           this.myClasses = null;
           if (u) {
@@ -13238,6 +13498,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           }
           this.ready = true;
           renderTeacherAuthBox();
+          if (u) StudentPw.migratePlaintext();
         });
       },
 
@@ -13423,6 +13684,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
 
     window.onload = function () {
       loadState();
+      scrubLocalRegistryPasswords();
       ensureCurrentClassMetadata();
       updateClassBadgesUI();
       renderAllStudentViews();
