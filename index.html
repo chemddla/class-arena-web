@@ -5947,14 +5947,16 @@
 
         // 3) Firebase Realtime DB 연동 훅 (databaseURL 기반 · 연결 오류 시에도 기존 게임이 중단되지 않도록 예외 처리)
         const effectiveDbUrl = normalizeFirebaseDatabaseUrl(cfg.databaseURL || cfg.firebaseDbUrl);
-        if (cfg.provider === 'firebase' && effectiveDbUrl) {
+        // 스냅샷은 학급 코드 경로(classes/{학급코드}/pvp_squads)에 저장 (프로젝트 ID 경로는 DB 규칙상 거부됨)
+        const squadClassCode = String(state.classCode || '').trim().toUpperCase();
+        if (cfg.provider === 'firebase' && effectiveDbUrl && squadClassCode) {
           try {
             if (this.firebaseDb && typeof this.firebaseDb.ref === 'function') {
               await this.firebaseDb
-                .ref(`classes/${cfg.firebaseProjectId || 'default'}/pvp_squads/${stu.id}`)
+                .ref(`classes/${squadClassCode}/pvp_squads/${stu.id}`)
                 .set(payload);
             } else {
-              const endpoint = `${effectiveDbUrl}/classes/${encodeURIComponent(cfg.firebaseProjectId || 'default')}/pvp_squads/${encodeURIComponent(stu.id)}.json`;
+              const endpoint = `${effectiveDbUrl}/classes/${encodeURIComponent(squadClassCode)}/pvp_squads/${encodeURIComponent(stu.id)}.json`;
               const res = await fetch(endpoint, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -6399,7 +6401,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         if (RealtimePvpService.lastError) {
           showNotice(`⚠️ 외부 서버 업로드 실패(${RealtimePvpService.lastError}) — 로컬 저장소 및 탭 브릿지에는 정상 반영되었습니다.`);
         } else if (cfg.provider === 'firebase' && (cfg.databaseURL || cfg.firebaseDbUrl)) {
-          showRewardBanner(`🔄 [${stu.name}] 용병단 스냅샷을 Firebase(/classes/${cfg.firebaseProjectId}/pvp_squads/${stu.id})에 업로드했습니다!`);
+          showRewardBanner(`🔄 [${stu.name}] 용병단 스냅샷을 Firebase(/classes/${String(state.classCode || '').toUpperCase()}/pvp_squads/${stu.id})에 업로드했습니다!`);
         } else {
           showRewardBanner(`🔄 [${stu.name}] 용병단(총 전투력 ${calcStudentCombatPower(stu).toLocaleString()}) 로컬 브릿지 동기화 완료!`);
         }
