@@ -3606,11 +3606,13 @@
 
     function finishStudentLogin(stu, bannerText) {
       state.activeStudentId = stu.id;
+      markStudentSession(stu);
       selectedMercId = stu.roster[0]?.id || null;
       saveState();
       closeStudentLoginModal();
       renderAllStudentViews();
       showRewardBanner(bannerText);
+      StudentInbox.settle();
     }
 
     async function completeFirstTimePasswordSetup() {
@@ -4509,6 +4511,52 @@
       showRewardBanner(`🔨 [${merc.name}] 용병이 학급 경매장에 출품되었습니다! (시작가 ${startBid.toLocaleString()} MC / 즉시구매 ${buyoutPrice.toLocaleString()} MC)`);
     }
 
+    // ----- 친구에게 MC·용병 보내기 -----
+    // 서버 학급에서는 친구 기록을 직접 바꾸지 않고 학급의 '받을 선물함'(transfers/{친구})에 넣어 둡니다.
+    // 친구가 로그인한 기기가 선물함을 확인해 자기 기록에 더하고 지웁니다. (DB 규칙상 남의 기록은 바꿀 수 없음)
+    function makeTransferId() {
+      return 't_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+    }
+
+    // 받은 선물을 학생 기록에 더함 (merc의 id가 겹치면 새 id로 바꿔서 그 객체를 돌려줌)
+    function applyGiftToStudent(stu, gift) {
+      if (!stu) return null;
+      stu.mc = (Number(stu.mc) || 0) + Math.max(0, Number(gift.mc) || 0);
+      if (!gift.merc || !gift.merc.job) return null;
+      if (!Array.isArray(stu.roster)) stu.roster = [];
+      const m = normalizeMercForSync(deepCleanStrings(JSON.parse(JSON.stringify(gift.merc))));
+      if (stu.roster.some(x => x.id === m.id)) m.id = 'merc_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+      m.deployed = stu.roster.filter(x => x.deployed).length < MAX_DEPLOY;
+      stu.roster.push(m);
+      return m;
+    }
+
+    function sendToStudent(toId, gift) {
+      const to = state.students.find(s => s.id === toId);
+      if (!to) return;
+      const mc = Math.max(0, Math.round(Number(gift.mc) || 0));
+      const merc = gift.merc ? JSON.parse(JSON.stringify(gift.merc)) : null;
+      if (!mc && !merc) return;
+      const me = getActiveStudent();
+      // 나에게 돌려주는 돈이나, 서버 없이 이 기기에서만 쓰는 학급은 바로 반영
+      if ((me && me.id === toId) || !StudentPw.online()) {
+        applyGiftToStudent(to, { mc, merc });
+        return;
+      }
+      if (!Array.isArray(state.outbox)) state.outbox = [];
+      state.outbox.push({
+        id: makeTransferId(),
+        classCode: String(state.classCode || '').toUpperCase(),
+        to: toId,
+        from: me.id,
+        fromName: cleanUserText(`${me.num}번 ${me.name}`),
+        mc,
+        merc,
+        kind: cleanUserText(gift.kind || '', 30),
+        note: cleanUserText(gift.note || '', 120)
+      });
+    }
+
     // 경매 입찰 / 즉시구매 / 낙찰확정 / 회수 함수
     function placeBidOnAuction(auctionId) {
       const stu = getActiveStudent();
@@ -4537,8 +4585,7 @@
 
       // 이전 입찰자가 있었다면 환불 처리
       if (auc.highestBidderId) {
-        const prevBidder = state.students.find(s => s.id === auc.highestBidderId);
-        if (prevBidder) prevBidder.mc += auc.currentBid;
+        sendToStudent(auc.highestBidderId, { mc: auc.currentBid, kind: 'auction_refund', note: `[${auc.merc.name}] 경매에서 더 높은 입찰이 나와 입찰금을 돌려받았어요.` });
       }
       stu.mc -= bidAmount;
       auc.currentBid = bidAmount;
@@ -4568,12 +4615,10 @@
         return;
       }
       if (auc.highestBidderId && auc.highestBidderId !== stu.id) {
-        const prevBidder = state.students.find(s => s.id === auc.highestBidderId);
-        if (prevBidder) prevBidder.mc += auc.currentBid;
+        sendToStudent(auc.highestBidderId, { mc: auc.currentBid, kind: 'auction_refund', note: `[${auc.merc.name}] 경매가 즉시 구매로 끝나 입찰금을 돌려받았어요.` });
       }
       stu.mc -= needMc;
-      const seller = state.students.find(s => s.id === auc.sellerId);
-      if (seller) seller.mc += auc.buyoutPrice;
+      sendToStudent(auc.sellerId, { mc: auc.buyoutPrice, kind: 'auction_sale', note: `[${auc.merc.name}] 용병이 경매에서 즉시 구매로 팔렸어요.` });
 
       const acquiredMerc = { ...auc.merc, deployed: stu.roster.filter(m => m.deployed).length < MAX_DEPLOY };
       stu.roster.push(acquiredMerc);
@@ -4603,12 +4648,12 @@
         return;
       }
       if (seller) seller.mc += auc.currentBid;
-      const acquiredMerc = { ...auc.merc, deployed: winner.roster.filter(m => m.deployed).length < MAX_DEPLOY };
-      winner.roster.push(acquiredMerc);
+      const acquiredMerc = { ...auc.merc, deployed: false };
+      sendToStudent(winner.id, { merc: acquiredMerc, kind: 'auction_win', note: `경매에서 [${acquiredMerc.name}] 용병을 낙찰받았어요.` });
       state.auctions.splice(idx, 1);
       saveState();
       renderAllStudentViews();
-      showRewardBanner(`🔨 경매 낙찰 완료! [${acquiredMerc.name}] 용병이 ${winner.name}에게 낙찰되고 판매대금 ${auc.currentBid.toLocaleString()} MC가 정산되었습니다!`);
+      showRewardBanner(`🔨 경매 낙찰 완료! 판매대금 ${auc.currentBid.toLocaleString()} MC를 받았어요. [${acquiredMerc.name}] 용병은 ${winner.name} 친구가 접속하면 자동으로 전달돼요!`);
     }
 
     function cancelMyAuction(auctionId) {
@@ -4622,8 +4667,7 @@
         return;
       }
       if (auc.highestBidderId) {
-        const prevBidder = state.students.find(s => s.id === auc.highestBidderId);
-        if (prevBidder) prevBidder.mc += auc.currentBid;
+        sendToStudent(auc.highestBidderId, { mc: auc.currentBid, kind: 'auction_refund', note: `[${auc.merc.name}] 경매가 취소되어 입찰금을 돌려받았어요.` });
       }
       const returnedMerc = { ...auc.merc, deployed: stu.roster.filter(m => m.deployed).length < MAX_DEPLOY };
       stu.roster.push(returnedMerc);
@@ -4783,10 +4827,12 @@
         mercId: merc.id,
         mercSnapshot: JSON.parse(JSON.stringify(merc)),
         offerPrice,
+        escrow: true, // 제안 금액은 보낼 때 미리 빠지고, 거절·취소되면 돌려받음
         valuation: calcMercValuation(merc, seller).valuation,
         status: 'pending',
         createdAt: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
       };
+      buyer.mc -= offerPrice;
       state.tradeOffers.unshift(newOffer);
       closeTradeOfferModal();
 
@@ -4800,7 +4846,7 @@
           showNotice(`💬 [${seller.name}] 친구가 제안 금액(${offerPrice.toLocaleString()} MC)이 감정가보다 낮아 고민 중입니다! (최소 ${minAccept.toLocaleString()} MC 이상 제안 시 즉시 수락)`);
         }
       } else {
-        showRewardBanner(`💌 [${seller.name}] 친구의 [${merc.name}] 용병에 ${offerPrice.toLocaleString()} MC 구매 제안을 보냈습니다!`);
+        showRewardBanner(`💌 [${seller.name}] 친구의 [${merc.name}] 용병에 ${offerPrice.toLocaleString()} MC 구매 제안을 보냈습니다! (제안 금액은 미리 맡겨 두고, 거절되거나 취소하면 돌려받아요)`);
       }
       saveState();
       renderMarketTab();
@@ -4817,10 +4863,19 @@
         showNotice('⚠️ 구매 제안은 용병 주인만 수락할 수 있어요.');
         return;
       }
+      if (!offer.escrow) {
+        // 금액을 미리 맡기지 않은 예전 제안은 수락할 수 없음 (구매자 MC를 이 기기에서 뺄 수 없음)
+        showNotice('⚠️ 예전 방식의 제안이라 수락할 수 없어서 정리했어요. 친구에게 다시 제안해 달라고 해 주세요.');
+        state.tradeOffers.splice(idx, 1);
+        saveState();
+        renderMarketTab();
+        return;
+      }
 
       const mercIdx = (seller.roster || []).findIndex(m => m.id === offer.mercId);
       if (mercIdx === -1) {
         showNotice('⚠️ 이미 판매되었거나 존재하지 않는 용병입니다.');
+        refundTradeOffer(offer, '용병이 이미 팔려서');
         state.tradeOffers.splice(idx, 1);
         saveState();
         renderMarketTab();
@@ -4834,31 +4889,43 @@
         showNotice(`⚠️ 구매자(${buyer.name})의 용병단 정원(${MAX_ROSTER}명)이 가득 찼습니다!`);
         return;
       }
-      if (buyer.mc < offer.offerPrice) {
-        showNotice(`⚠️ 구매자(${buyer.name})의 보유 MC가 부족합니다!`);
-        return;
-      }
 
       const [transferredMerc] = seller.roster.splice(mercIdx, 1);
       if (!seller.roster.some(m => m.deployed) && seller.roster.length > 0) {
         seller.roster[0].deployed = true;
       }
-      transferredMerc.deployed = buyer.roster.filter(m => m.deployed).length < MAX_DEPLOY;
-      buyer.mc -= offer.offerPrice;
-      seller.mc += offer.offerPrice;
-      buyer.roster.push(transferredMerc);
+      transferredMerc.deployed = false;
+      seller.mc += offer.offerPrice; // 구매자가 제안할 때 맡긴 금액
+      sendToStudent(buyer.id, { merc: transferredMerc, kind: 'trade_buy', note: `[${seller.name}] 친구가 구매 제안을 수락해 [${transferredMerc.name}] 용병이 왔어요.` });
 
-      // 동일 용병에 대한 다른 대기 제안 정리
+      // 동일 용병에 대한 다른 대기 제안 정리 (맡긴 금액은 돌려줌)
+      state.tradeOffers.filter(o => o.id !== offerId && o.mercId === transferredMerc.id).forEach(o => refundTradeOffer(o, '용병이 다른 친구에게 팔려서'));
       state.tradeOffers = state.tradeOffers.filter(o => o.id !== offerId && o.mercId !== transferredMerc.id);
       saveState();
       renderAllStudentViews();
-      showRewardBanner(`🤝 용병 거래 성사! [${seller.name}]의 [${transferredMerc.name}] 용병이 ${offer.offerPrice.toLocaleString()} MC에 [${buyer.name}] 용병단으로 영입되었습니다!`);
+      showRewardBanner(`🤝 용병 거래 성사! [${transferredMerc.name}] 용병을 ${offer.offerPrice.toLocaleString()} MC에 팔았어요. 용병은 [${buyer.name}] 친구가 접속하면 자동으로 전달돼요!`);
+    }
+
+    // 제안할 때 맡긴 금액을 구매자에게 돌려줌
+    function refundTradeOffer(offer, reason) {
+      if (!offer || !offer.escrow) return;
+      sendToStudent(offer.buyerId, {
+        mc: offer.offerPrice,
+        kind: 'trade_refund',
+        note: `${reason} [${offer.mercSnapshot?.name || '용병'}] 구매 제안 금액을 돌려받았어요.`
+      });
     }
 
     function rejectOrCancelTradeOffer(offerId) {
       const idx = (state.tradeOffers || []).findIndex(o => o.id === offerId);
       if (idx === -1) return;
       const offer = state.tradeOffers[idx];
+      const me = getActiveStudent();
+      if (!me || (me.id !== offer.buyerId && me.id !== offer.sellerId)) {
+        showNotice('⚠️ 거래 제안은 보낸 친구나 받은 친구만 취소·거절할 수 있어요.');
+        return;
+      }
+      refundTradeOffer(offer, me.id === offer.buyerId ? '제안을 취소해서' : '친구가 제안을 거절해서');
       state.tradeOffers.splice(idx, 1);
       saveState();
       renderMarketTab();
@@ -10853,6 +10920,80 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       };
     }
 
+    // 서버에 올리는 학생 기록 (옮기기 전 예전 비밀번호 칸은 지우지 않음: DB 규칙상 지우면 거부됨)
+    function studentCloudValue(s) {
+      const v = toFirebaseValue(s);
+      const legacyPw = StudentPw.legacy[s.id];
+      if (legacyPw && legacyPw.inStudent) v.password = legacyPw.inStudent;
+      return v;
+    }
+
+    // 이 브라우저 탭에서 비밀번호로 로그인한 학생 (익명 로그인과 같이 탭마다 따로)
+    const STUDENT_SESSION_KEY = 'mca_student_session';
+    function markStudentSession(stu) {
+      try { sessionStorage.setItem(STUDENT_SESSION_KEY, `${String(state.classCode || '').toUpperCase()}:${stu.id}`); } catch (e) {}
+    }
+    function isStudentSession(stu) {
+      try { return Boolean(stu) && sessionStorage.getItem(STUDENT_SESSION_KEY) === `${String(state.classCode || '').toUpperCase()}:${stu.id}`; } catch (e) { return false; }
+    }
+
+    // 친구가 보낸 MC·용병(transfers/{나})을 내 기록에 더하고 선물함에서 지움 (내 기기에서만)
+    const StudentInbox = {
+      code: null,
+      items: {},
+      busy: false,
+      again: false,
+
+      onSnapshot(code, val) {
+        this.code = code;
+        this.items = (val && typeof val === 'object') ? val : {};
+        this.settle();
+      },
+
+      async settle() {
+        if (this.busy) { this.again = true; return; }
+        const code = String(state.classCode || '').toUpperCase();
+        const db = StudentPw.db();
+        const me = getActiveStudent();
+        if (!db || !me || this.code !== code || !syncCache.loaded || syncCache.classCode !== code) return;
+        if (isCurrentClassOwner() || TeacherAuth.isSuperAdmin) return; // 선생님 기기는 대신 받지 않음
+        if (!isStudentSession(me)) return;
+        const box = this.items[me.id];
+        const ids = Object.keys(box && typeof box === 'object' ? box : {}).filter(id => box[id] && typeof box[id] === 'object');
+        if (!ids.length) return;
+        this.busy = true;
+        const gifts = ids.map(id => ({ id, ...box[id] })).sort((a, b) => (Number(a.at) || 0) - (Number(b.at) || 0));
+        // 화면의 내 기록에 바로 더하고, 같은 내용을 한 번에 저장 (실패하면 되돌림)
+        const added = gifts.map(g => ({ mc: Math.max(0, Number(g.mc) || 0), merc: applyGiftToStudent(me, g) }));
+        const updates = { [`classes/${code}/students/${me.id}`]: studentCloudValue(me) };
+        ids.forEach(id => { updates[`classes/${code}/transfers/${me.id}/${id}`] = null; });
+        const savedSig = syncSig(me);
+        try {
+          await db.ref().update(updates);
+          syncCache.students[me.id] = savedSig;
+          ids.forEach(id => { if (this.items[me.id]) delete this.items[me.id][id]; });
+          saveState();
+          renderAllStudentViews();
+          const mcSum = added.reduce((s, a) => s + a.mc, 0);
+          const mercNames = added.filter(a => a.merc).map(a => a.merc.name);
+          const parts = [];
+          if (mercNames.length) parts.push(`용병 [${mercNames.join(', ')}]`);
+          if (mcSum > 0) parts.push(`${mcSum.toLocaleString()} MC`);
+          const notes = gifts.map(g => cleanUserText(g.note || '', 120)).filter(Boolean).slice(0, 2).join(' / ');
+          showRewardBanner(`🎁 친구와의 거래로 ${parts.join(' + ')}을(를) 받았어요!${notes ? ` (${notes})` : ''}`);
+        } catch (e) {
+          // 다른 탭이 먼저 받았거나 로그인이 풀림 → 더한 것을 되돌림
+          me.mc = (Number(me.mc) || 0) - added.reduce((s, a) => s + a.mc, 0);
+          const addedIds = added.filter(a => a.merc).map(a => a.merc.id);
+          if (addedIds.length) me.roster = (me.roster || []).filter(m => !addedIds.includes(m.id));
+          console.warn('[받은 선물 정산 실패]:', e);
+        } finally {
+          this.busy = false;
+          if (this.again) { this.again = false; setTimeout(() => this.settle(), 0); }
+        }
+      }
+    };
+
     async function pushCurrentClassStateToFirebase(immediate = false) {
       if (suppressRemoteClassPush) return;
       ensureCurrentClassMetadata();
@@ -10865,6 +11006,10 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       saveLocalClassesRegistry(reg);
 
       const doPush = async () => {
+        if (StudentInbox.busy) { // 선물함 정산 쓰기가 끝난 뒤에 올림 (내 기록을 예전 값으로 덮지 않도록)
+          sparkClassSyncTimer = setTimeout(doPush, 600);
+          return false;
+        }
         const db = RealtimePvpService.initFirebaseClientSafe();
         if (!db || typeof db.ref !== 'function' || !syncCache.loaded || syncCache.classCode !== classCode) {
           setAutoSaveBadgeState('💾 이 기기에 저장됨', false);
@@ -10908,14 +11053,12 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         let rosterChanged = false;
         (state.students || []).forEach(s => {
           localIds.add(s.id);
+          if (!manager && s.id !== state.activeStudentId) return; // 학생 기기는 자기 기록만 올림 (DB 규칙)
           const sg = syncSig(s);
           if (sg !== syncCache.students[s.id]) {
             if (syncCache.students[s.id] === undefined && !manager) return; // 학생 추가는 소유 교사만
             if (syncCache.students[s.id] === undefined) rosterChanged = true;
-            const stuValue = toFirebaseValue(s);
-            const legacyPw = StudentPw.legacy[s.id];
-            if (legacyPw && legacyPw.inStudent) stuValue.password = legacyPw.inStudent; // 옮기기 전 예전 비밀번호를 지우지 않음
-            updates[`${base}/students/${s.id}`] = stuValue;
+            updates[`${base}/students/${s.id}`] = studentCloudValue(s);
             updates[`${base}/profiles/${s.id}/id`] = s.id;
             updates[`${base}/profiles/${s.id}/num`] = toFirebaseValue(s.num ?? null);
             updates[`${base}/profiles/${s.id}/name`] = toFirebaseValue(s.name ?? null);
@@ -10928,6 +11071,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
             updates[`${base}/profiles/${id}`] = null;
             updates[`studentSecrets/${classCode}/${id}`] = null;
             updates[`studentClaims/${classCode}/${id}`] = null;
+            updates[`${base}/transfers/${id}`] = null;
             pending.removed.push(id);
             rosterChanged = true;
           }
@@ -10941,6 +11085,20 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
             pending.lists[k] = sg;
           }
         });
+
+        // (c-2) 친구에게 보내는 MC·용병 (내 기록 변경과 한 번에 올라가야 함)
+        const sentTransfers = [];
+        if (Array.isArray(state.outbox)) {
+          state.outbox = state.outbox.filter(tr => tr && (tr.classCode !== classCode || localIds.has(tr.to))); // 삭제된 친구에게 보낼 것은 버림
+          state.outbox.forEach(tr => {
+            if (tr.classCode !== classCode) return;
+            if (!manager && tr.from !== state.activeStudentId) return; // 다른 학생으로 로그인했을 때 보낸 것은 그 학생이 다시 로그인하면 올림
+            const v = { from: tr.from, fromName: tr.fromName || '', mc: tr.mc || 0, kind: tr.kind || '', note: tr.note || '', at: window.firebase.database.ServerValue.TIMESTAMP };
+            if (tr.merc) v.merc = toFirebaseValue(tr.merc);
+            updates[`${base}/transfers/${tr.to}/${tr.id}`] = v;
+            sentTransfers.push(tr.id);
+          });
+        }
 
         // (d) 교사 키 목록 (선생님 본인 기기에서만)
         // DB 규칙상 학급 meta.teacherKeyHash와 일치하는 키로만 목록을 쓸 수 있음 (불일치 시 업데이트 전체가 거부되므로 미리 걸러냄)
@@ -10973,6 +11131,10 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
 
         try {
           await db.ref().update(updates);
+          if (sentTransfers.length) {
+            state.outbox = state.outbox.filter(tr => !sentTransfers.includes(tr.id));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          }
           Object.assign(syncCache.meta, pending.meta);
           Object.assign(syncCache.students, pending.students);
           pending.removed.forEach(id => { delete syncCache.students[id]; });
@@ -11054,6 +11216,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           delete state.localPwHashes; // 서버 학급에서는 이 기기에 비밀번호를 두지 않음
         }
         const localById = new Map((state.students || []).map(s => [s.id, s]));
+        const ownOnly = !canManageCurrentClass(); // 학생 기기: 친구 기록은 언제나 서버 값을 따름
         const result = [];
         const seen = new Set();
         Object.keys(remoteStudents).forEach(id => {
@@ -11062,7 +11225,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           seen.add(rs.id);
           const remoteSig = syncSig(rs);
           const local = localById.get(rs.id);
-          if (force || !local) {
+          if (force || !local || (ownOnly && rs.id !== state.activeStudentId)) {
             result.push(rs);
             syncCache.students[rs.id] = remoteSig;
             return;
@@ -11136,6 +11299,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       }
       const force = !(syncCache.loaded && syncCache.classCode === cleanCode);
       applyLoadedClassPayload(cleanCode, { ...classRemote }, true, force);
+      if (force) StudentInbox.settle();
 
       // 내게 도착한 신규 거래소 구매 제안 알림 체크
       const myStu = getActiveStudent();
@@ -11208,6 +11372,15 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           });
           classSyncRefs.push(ref);
         });
+
+        const inboxRef = db.ref(`classes/${cleanCode}/transfers`);
+        inboxRef.on('value', (snap) => {
+          if (String(state.classCode || '').toUpperCase() !== cleanCode) return;
+          StudentInbox.onSnapshot(cleanCode, snap && typeof snap.val === 'function' ? snap.val() : null);
+        }, (err) => {
+          console.warn('[받을 선물함 구독 실패 - DB 규칙을 확인하세요]:', err);
+        });
+        classSyncRefs.push(inboxRef);
 
         subscribeToInteractiveChannels(cleanCode, db);
       } catch (e) {

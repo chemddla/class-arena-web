@@ -79,9 +79,12 @@ test('자기 연결 정보만 읽을 수 있음', async () => {
   await assertFails(db('u2').ref('classMembers/OWN1').once('value'));
 });
 
-test('소유 학급: 로그인한 학생만 학생 기록을 바꿀 수 있음 (거래용으로 다른 학생 기록도 허용)', async () => {
+test('소유 학급: 로그인한 학생은 자기 기록만 바꿀 수 있음', async () => {
   await assertSucceeds(db('u1').ref('classes/OWN1/students/s1/mc').set(200));
-  await assertSucceeds(db('u1').ref('classes/OWN1/students/s2/mc').set(300));
+  await assertFails(db('u1').ref('classes/OWN1/students/s2/mc').set(300));
+  await assertFails(db('u1').ref('classes/OWN1/students/s2').set(student('s2', { mc: 0 })));
+  await assertFails(db('u1').ref('classes/OWN1/profiles/s2/name').set('바꿈'));
+  await assertFails(db('u1').ref().update({ 'classes/OWN1/students/s1/mc': 1, 'classes/OWN1/students/s2/mc': 1 }));
   await assertFails(db('u2').ref('classes/OWN1/students/s1/mc').set(999));
   await assertFails(db(null).ref('classes/OWN1/students/s1/mc').set(999));
   await assertFails(db('u1').ref('classes/OWN1/students/s9').set(student('s9'))); // 학생 추가는 교사만
@@ -108,13 +111,13 @@ test('새 비밀번호를 학생 기록이나 프로필에 저장할 수 없음 
   await assertFails(db(null).ref('classes/OLD1/profiles/s1/password').set('1234'));
   await assertSucceeds(db('teacher').ref('classes/OWN1/profiles/s3/password').remove());
   // 예전 값을 그대로 두는 전체 덮어쓰기는 허용
-  await assertSucceeds(db('u1').ref('classes/OWN1/students/s3').set(student('s3', { password: 'h:kh_legacy', mc: 1 })));
+  await assertSucceeds(db('teacher').ref('classes/OWN1/students/s3').set(student('s3', { password: 'h:kh_legacy', mc: 1 })));
 });
 
 test('"비밀번호 있음" 표시는 실제 비밀번호 저장 여부와 같아야 함', async () => {
   await assertFails(db('u1').ref('classes/OWN1/profiles/s1/claimed').set(false));
-  await assertFails(db('u1').ref('classes/OWN1/profiles/s2/claimed').set(true));
-  await assertSucceeds(db('u1').ref('classes/OWN1/profiles/s2/name').set('새이름'));
+  await assertFails(db('teacher').ref('classes/OWN1/profiles/s2/claimed').set(true));
+  await assertSucceeds(db('u1').ref('classes/OWN1/profiles/s1/name').set('새이름'));
 });
 
 test('처음 비밀번호 설정: 비밀번호가 없는 학생만, 한 번에 연결까지', async () => {
@@ -192,4 +195,89 @@ test('기존 보호 유지: 학생은 학급 정보(이름 등)를 바꿀 수 �
   await assertFails(db('u1').ref('classes/OWN1/meta/className').set('해킹'));
   await assertSucceeds(db('u1').ref('classes/OWN1/meta/guardianPts').set(10));
   await assertSucceeds(db('teacher').ref('classes/OWN1/meta/className').set('새 이름'));
+});
+
+// ----- 친구에게 보내는 MC·용병 (받을 선물함: classes/{학급}/transfers/{받는 학생}/{id}) -----
+const gift = (from, extra = {}) => ({ from, fromName: from, mc: 100, kind: 'trade_refund', note: '돌려받음', at: Date.now() - 1000, ...extra });
+const linkS2 = () => env.withSecurityRulesDisabled(async (ctx) => {
+  await ctx.database().ref().update({ 'studentClaims/OWN1/s2/u2': { proof: PROOF_B, at: 1 }, 'classMembers/OWN1/u2': 's2' });
+});
+
+test('선물함: 로그인한 학생은 자기 이름으로만 친구에게 보낼 수 있음', async () => {
+  await assertSucceeds(db('u1').ref('classes/OWN1/transfers/s2/t_abcdef01').set(gift('s1')));
+  await assertSucceeds(db('u1').ref('classes/OWN1/transfers/s2/t_abcdef02').set(gift('s1', { mc: 0, merc: { id: 'merc_1', job: 'warrior', name: '용사', level: 3 } })));
+  await assertFails(db('u1').ref('classes/OWN1/transfers/s3/t_abcdef03').set(gift('s2'))); // 남의 이름으로
+  await assertFails(db('u1').ref('classes/OWN1/transfers/s1/t_abcdef04').set(gift('s1'))); // 나에게
+  await assertFails(db('u2').ref('classes/OWN1/transfers/s2/t_abcdef05').set(gift('s1'))); // 로그인 안 된 기기
+  await assertFails(db(null).ref('classes/OWN1/transfers/s2/t_abcdef06').set(gift('s1')));
+  await assertFails(db('u1').ref('classes/OWN1/transfers/nobody/t_abcdef07').set(gift('s1'))); // 없는 학생
+});
+
+test('선물함: 빼앗는 값이나 이상한 값은 보낼 수 없음', async () => {
+  await assertFails(db('u1').ref('classes/OWN1/transfers/s2/t_bad00001').set(gift('s1', { mc: -500 })));
+  await assertFails(db('u1').ref('classes/OWN1/transfers/s2/t_bad00002').set(gift('s1', { mc: 100001 })));
+  await assertFails(db('u1').ref('classes/OWN1/transfers/s2/t_bad00003').set(gift('s1', { mc: '100' })));
+  await assertFails(db('u1').ref('classes/OWN1/transfers/s2/t_bad00004').set(gift('s1', { tickets: -3 })));
+  await assertFails(db('u1').ref('classes/OWN1/transfers/s2/t_bad00005').set(gift('s1', { at: Date.now() + 60 * 60 * 1000 })));
+  await assertFails(db('u1').ref('classes/OWN1/transfers/s2/t_bad00006').set(gift('s1', { merc: { name: '빈 용병' } })));
+  await assertFails(db('u1').ref('classes/OWN1/transfers/s2/bad-id').set(gift('s1')));
+  const { mc, ...noMc } = gift('s1');
+  await assertFails(db('u1').ref('classes/OWN1/transfers/s2/t_bad00007').set(noMc));
+});
+
+test('선물함: 보낸 것은 고치거나 지울 수 없고, 받는 학생 기기만 받아서 지움', async () => {
+  await assertSucceeds(db('u1').ref('classes/OWN1/transfers/s2/t_keep0001').set(gift('s1')));
+  await assertFails(db('u1').ref('classes/OWN1/transfers/s2/t_keep0001/mc').set(1));
+  await assertFails(db('u1').ref('classes/OWN1/transfers/s2/t_keep0001').set(gift('s1', { mc: 1 })));
+  await assertFails(db('u1').ref('classes/OWN1/transfers/s2/t_keep0001').remove());
+  await assertFails(db('u1').ref('classes/OWN1/transfers/s2').remove());
+  await linkS2();
+  // 받는 학생: 자기 기록에 더하고 선물함에서 지우기를 한 번에
+  await assertSucceeds(db('u2').ref().update({
+    'classes/OWN1/students/s2/mc': 200,
+    'classes/OWN1/transfers/s2/t_keep0001': null
+  }));
+  // 이미 받은 것을 다시 받을 수 없음 (다른 탭이 먼저 받은 경우)
+  await assertFails(db('u2').ref().update({
+    'classes/OWN1/students/s2/mc': 300,
+    'classes/OWN1/transfers/s2/t_keep0001': null
+  }));
+});
+
+test('선물함: 거래 수락처럼 내 기록·거래 목록·친구 선물을 한 번에 저장', async () => {
+  await assertSucceeds(db('u1').ref().update({
+    'classes/OWN1/students/s1/mc': 400,
+    'classes/OWN1/tradeOffers': null,
+    'classes/OWN1/transfers/s2/t_trade001': gift('s1', { mc: 0, kind: 'trade_buy', merc: { id: 'merc_9', job: 'mage' } }),
+    'classes/OWN1/transfers/s3/t_trade002': gift('s1', { mc: 250 })
+  }));
+  // 하나라도 남의 기록을 직접 바꾸면 전체 거부
+  await assertFails(db('u1').ref().update({
+    'classes/OWN1/students/s1/mc': 400,
+    'classes/OWN1/students/s2/mc': 0,
+    'classes/OWN1/transfers/s2/t_trade003': gift('s1')
+  }));
+});
+
+test('선물함: 소유 교사·총괄 관리자·소유자 없는 학급', async () => {
+  await assertSucceeds(db('u1').ref('classes/OWN1/transfers/s2/t_tchr0001').set(gift('s1')));
+  await assertSucceeds(db('teacher').ref('classes/OWN1/transfers/s2').remove());
+  await assertSucceeds(db('teacher').ref('classes/OWN1/students/s2/mc').set(5)); // 교사는 모든 학생 기록 수정 가능
+  await assertSucceeds(db('boss', { superAdmin: true }).ref('classes/OWN1/students/s2/mc').set(6));
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.database().ref('classes/OLD1/students/s2').set(student('s2'));
+  });
+  await assertSucceeds(db(null).ref('classes/OLD1/transfers/s2/t_old00001').set(gift('s1')));
+  await assertSucceeds(db(null).ref('classes/OLD1/transfers/s2/t_old00001').remove());
+  await assertSucceeds(db(null).ref('classes/OLD1/students/s2/mc').set(7)); // 예전 학급은 예전처럼
+  await assertFails(db(null).ref('classes/OLD1/transfers/s2/t_old00002').set(gift('s1', { mc: -1 })));
+  // 교사가 학생을 지우면 그 학생의 선물함도 같이 지움
+  await assertSucceeds(db('u1').ref('classes/OWN1/transfers/s3/t_tchr0002').set(gift('s1')));
+  await assertSucceeds(db('teacher').ref().update({
+    'classes/OWN1/students/s3': null,
+    'classes/OWN1/profiles/s3': null,
+    'classes/OWN1/transfers/s3': null,
+    'studentSecrets/OWN1/s3': null,
+    'studentClaims/OWN1/s3': null
+  }));
 });
