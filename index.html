@@ -3574,7 +3574,7 @@
         return;
       }
 
-      stu.password = pw1;
+      stu.password = hashStudentPassword(stu, pw1);
       state.activeStudentId = stu.id;
       selectedMercId = stu.roster[0]?.id || null;
       saveState();
@@ -3589,7 +3589,7 @@
       const inputPw = document.getElementById('loginPwInput').value.trim();
       const errEl = document.getElementById('loginErrorMsg');
 
-      if (inputPw !== stu.password) {
+      if (!checkStudentPassword(stu, inputPw)) {
         errEl.textContent = '❌ 비밀번호가 틀렸습니다! 기억나지 않으면 선생님께 비밀번호 초기화를 요청하세요.';
         errEl.classList.remove('hidden');
         return;
@@ -3624,7 +3624,7 @@
       const n2 = document.getElementById('newPwInput2').value.trim();
       const fb = document.getElementById('changePwFeedback');
 
-      if (stu.password && stu.password !== '' && cur !== stu.password) {
+      if (stu.password && stu.password !== '' && !checkStudentPassword(stu, cur)) {
         fb.textContent = '❌ 현재 비밀번호가 일치하지 않습니다.';
         fb.className = 'text-xs font-bold text-rose-400';
         fb.classList.remove('hidden');
@@ -3643,7 +3643,7 @@
         return;
       }
 
-      stu.password = n1;
+      stu.password = hashStudentPassword(stu, n1);
       saveState();
       closeChangePasswordModal();
       showRewardBanner('🔑 내 비밀번호가 성공적으로 변경되었습니다!');
@@ -3857,7 +3857,7 @@
         closeRenameMercModal();
         return;
       }
-      const newName = (document.getElementById('renameMercInput').value || '').trim();
+      const newName = cleanUserText(document.getElementById('renameMercInput').value, 10);
       if (!newName) {
         showNotice('⚠️ 변경할 용병 이름을 1글자 이상 입력해주세요!');
         return;
@@ -6324,16 +6324,18 @@ create table if not exists public.pvp_rooms (
 alter publication supabase_realtime add table public.pvp_squads, public.pvp_rooms;`
         : `{
   "rules": {
+    ".read": false,
+    ".write": false,
     "classes": {
       "$classCode": {
-        ".read": true,
-        ".write": true
+        ".read": "$classCode.matches(/^[A-Z0-9_-]+$/) && $classCode.length >= 3 && $classCode.length <= 16",
+        ".write": "$classCode.matches(/^[A-Z0-9_-]+$/) && $classCode.length >= 3 && $classCode.length <= 16"
       }
     },
     "teacherKeys": {
       "$keyHash": {
         ".read": true,
-        ".write": true
+        ".write": "$keyHash.matches(/^kh_[0-9a-f]+$/)"
       }
     }
   }
@@ -8952,7 +8954,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
 
     function confirmTeacherLogin() {
       const val = document.getElementById('teacherPinCheckInput').value.trim();
-      if (val !== state.teacherPin) {
+      if (!checkTeacherPin(val)) {
         document.getElementById('teacherLoginError').classList.remove('hidden');
         return;
       }
@@ -9033,7 +9035,9 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       document.getElementById('adminEditStuMc').value = stu.mc;
       document.getElementById('adminEditStuTower').value = stu.towerFloor || 1;
       document.getElementById('adminEditStuPvp').value = stu.pvpScore || 1000;
-      document.getElementById('adminEditStuPw').value = stu.password || '';
+      const pwField = document.getElementById('adminEditStuPw');
+      pwField.value = '';
+      pwField.placeholder = stu.password ? '설정됨 · 바꿀 때만 새 비번 입력' : '미설정(빈칸)';
 
       renderAdminEditMercList();
       document.getElementById('adminStudentEditModal').classList.remove('hidden');
@@ -9113,7 +9117,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       const m = adminEditingRosterCopy[idx];
       if (!m) return;
       if (field === 'name') {
-        m.name = (val || '').trim() || '아서';
+        m.name = cleanUserText(val, 10) || '아서';
       } else if (field === 'level') {
         m.level = Math.max(1, Math.min(99, parseInt(val, 10) || 1));
       } else if (field === 'job') {
@@ -9183,11 +9187,12 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       if (!stu) return;
 
       stu.num = Math.max(1, parseInt(document.getElementById('adminEditStuNum').value, 10) || stu.num);
-      stu.name = document.getElementById('adminEditStuName').value.trim() || stu.name;
+      stu.name = cleanUserText(document.getElementById('adminEditStuName').value, 12) || stu.name;
       stu.mc = Math.max(0, parseInt(document.getElementById('adminEditStuMc').value, 10) || 0);
       stu.towerFloor = Math.max(1, Math.min(50, parseInt(document.getElementById('adminEditStuTower').value, 10) || 1));
       stu.pvpScore = Math.max(0, parseInt(document.getElementById('adminEditStuPvp').value, 10) || 0);
-      stu.password = document.getElementById('adminEditStuPw').value.trim();
+      const newAdminPw = document.getElementById('adminEditStuPw').value.trim();
+      if (newAdminPw) stu.password = hashStudentPassword(stu, newAdminPw);
       stu.roster = JSON.parse(JSON.stringify(adminEditingRosterCopy));
 
       saveState();
@@ -9255,7 +9260,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         showNotice('⚠️ 등록할 학생 이름들을 쉼표(,)로 구분해 입력해주세요!');
         return;
       }
-      const names = raw.split(/[,|\n]/).map(n => n.trim()).filter(Boolean);
+      const names = raw.split(/[,|\n]/).map(n => cleanUserText(n, 12)).filter(Boolean);
       if (!names.length) return;
 
       if (replaceAll) {
@@ -9287,7 +9292,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
     }
 
     function saveAdminNotice() {
-      const val = document.getElementById('adminNoticeInput').value.trim();
+      const val = cleanUserText(document.getElementById('adminNoticeInput').value, 120);
       if (!val) return;
       state.notice = val;
       saveState();
@@ -9300,7 +9305,8 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         showNotice('⚠️ 새 관리자 비밀번호를 2자리 이상 입력해주세요.');
         return;
       }
-      state.teacherPin = val;
+      state.teacherPinHash = hashTeacherPin(val);
+      delete state.teacherPin;
       document.getElementById('adminNewPinInput').value = '';
       saveState();
       showRewardBanner('🔐 선생님 관리자 비밀번호가 변경되었습니다!');
@@ -10035,7 +10041,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
 
     function submitWordChainTurn() {
       const inp = document.getElementById('wordChainInput');
-      const word = (inp?.value || '').trim();
+      const word = cleanUserText(inp?.value, 10);
       if (word.length < 2) {
         showNotice('⚠️ 2글자 이상의 단어를 입력해주세요!');
         return;
@@ -10202,10 +10208,10 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         state.className = '우리 반 용병단';
       }
       if (!state.teacherKey) {
-        state.teacherKey = localStorage.getItem(SPARK_TEACHER_KEY_STORAGE) || 'TKEY-2026-INIT';
+        state.teacherKey = localStorage.getItem(SPARK_TEACHER_KEY_STORAGE) || '';
       }
       localStorage.setItem(SPARK_LAST_CLASS_CODE_KEY, state.classCode);
-      localStorage.setItem(SPARK_TEACHER_KEY_STORAGE, state.teacherKey);
+      if (state.teacherKey) localStorage.setItem(SPARK_TEACHER_KEY_STORAGE, state.teacherKey);
     }
 
     function updateClassBadgesUI() {
@@ -10224,32 +10230,164 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       if (loginModalLabel) loginModalLabel.textContent = `${state.className} (코드: ${state.classCode})`;
     }
 
+    /* ================================================================
+     * [안전 동기화 엔진 v2]
+     * - 학급 전체를 통째로 덮어쓰던 set() 대신, "바뀐 부분만" update()로 업로드합니다.
+     * - 서버 데이터를 한 번이라도 받은 뒤에만 업로드합니다. (오래된 기기 데이터가 덮어쓰는 문제 방지)
+     * - 결투방·레이드방·미니게임 등 다른 데이터는 건드리지 않습니다.
+     * ================================================================ */
+    const CLASS_SYNC_KEYS = ['meta', 'students', 'profiles', 'auctions', 'tradeOffers'];
+    const META_SYNC_FIELDS = ['className', 'teacherPinHash', 'teacherPin', 'classLocked', 'notice', 'guardianPts'];
+    let syncCache = { classCode: null, loaded: false, metaExists: false, meta: {}, students: {}, auctions: undefined, tradeOffers: undefined };
+    let classSyncRefs = [];
+    let classRemote = {};
+    let classRemoteReceived = new Set();
+    let classApplyTimer = null;
+
+    function resetClassSyncCache(code, opts = {}) {
+      syncCache = {
+        classCode: code ? String(code).toUpperCase() : null,
+        loaded: Boolean(opts.loaded),
+        metaExists: Boolean(opts.metaExists),
+        meta: {},
+        students: {},
+        auctions: undefined,
+        tradeOffers: undefined
+      };
+    }
+
+    // Firebase는 빈 배열/빈 객체/null을 저장하지 않으므로, 비교할 때도 똑같이 제거하고 키를 정렬합니다.
+    function syncCanon(v) {
+      if (v === null || v === undefined) return undefined;
+      if (Array.isArray(v)) {
+        const arr = v.map(x => { const c = syncCanon(x); return c === undefined ? null : c; });
+        return arr.length ? arr : undefined;
+      }
+      if (typeof v === 'object') {
+        const out = {};
+        Object.keys(v).sort().forEach(k => {
+          const c = syncCanon(v[k]);
+          if (c !== undefined) out[k] = c;
+        });
+        return Object.keys(out).length ? out : undefined;
+      }
+      if (typeof v === 'number' && !isFinite(v)) return undefined;
+      return v;
+    }
+
+    function syncSig(v) {
+      const c = syncCanon(v);
+      return JSON.stringify(c === undefined ? null : c);
+    }
+
+    function toFirebaseValue(v) {
+      if (v === undefined) return null;
+      return JSON.parse(JSON.stringify(v));
+    }
+
+    // ----- 입력값 정리 (다른 학생 화면에서 코드가 실행되는 것을 막기 위해 < > " ' ` 제거) -----
+    function cleanUserText(v, maxLen = 40) {
+      return String(v === undefined || v === null ? '' : v).replace(/[<>"'`]/g, '').trim().slice(0, maxLen);
+    }
+
+    function deepCleanStrings(obj, skipKeys = ['password', 'teacherPinHash', 'teacherKeyHash']) {
+      if (typeof obj === 'string') return obj.replace(/[<>"'`]/g, '');
+      if (Array.isArray(obj)) return obj.map(x => deepCleanStrings(x, skipKeys));
+      if (obj && typeof obj === 'object') {
+        Object.keys(obj).forEach(k => {
+          if (skipKeys.includes(k)) return;
+          obj[k] = deepCleanStrings(obj[k], skipKeys);
+        });
+      }
+      return obj;
+    }
+
+    // ----- 비밀번호 / 관리자 PIN 해시 (DB에 원문이 남지 않도록) -----
+    function hashTeacherPin(pin) {
+      return simpleHashString('pin:' + String(pin || ''));
+    }
+
+    function hashStudentPassword(stu, pw) {
+      return 'h:' + simpleHashString('pw:' + (stu && stu.id ? stu.id : '') + ':' + String(pw || ''));
+    }
+
+    function checkStudentPassword(stu, input) {
+      const stored = String((stu && stu.password) || '');
+      if (!stored) return false;
+      if (stored.startsWith('h:')) return stored === hashStudentPassword(stu, input);
+      if (stored === input) {
+        stu.password = hashStudentPassword(stu, input); // 예전 평문 비밀번호는 로그인 시 자동으로 해시로 전환
+        return true;
+      }
+      return false;
+    }
+
+    function checkTeacherPin(input) {
+      if (state.teacherPinHash) return hashTeacherPin(input) === state.teacherPinHash;
+      return input === (state.teacherPin || '1234');
+    }
+
+    // 결투방/레이드방에 올리는 학생 사본에서 비밀번호 제거
+    function publicStudentSnapshot(stu) {
+      const copy = JSON.parse(JSON.stringify(stu || {}));
+      delete copy.password;
+      return copy;
+    }
+
+    function normalizeMercForSync(m) {
+      if (!m || typeof m !== 'object' || !m.job) return m;
+      ensureMercSkillSlots(m);
+      ensureMercVariance(m);
+      if (!m.statPoints) m.statPoints = { hp: 0, atk: 0, def: 0, spd: 0 };
+      if (m.equippedItem === undefined) m.equippedItem = null;
+      return m;
+    }
+
+    function normalizeRemoteStudent(raw, id, profile) {
+      if (!raw || typeof raw !== 'object') return null;
+      const s = JSON.parse(JSON.stringify(raw));
+      s.id = s.id || id;
+      if (profile && typeof profile.password === 'string') s.password = profile.password;
+      if (typeof s.password !== 'string') s.password = '';
+      if (!Array.isArray(s.roster)) s.roster = s.roster && typeof s.roster === 'object' ? Object.values(s.roster) : [];
+      if (!Array.isArray(s.inventory)) s.inventory = [];
+      if (!Array.isArray(s.dailyEquipShop)) s.dailyEquipShop = [];
+      if (!Array.isArray(s.defenseFormation)) s.defenseFormation = [];
+      if (!s.relics || typeof s.relics !== 'object') s.relics = {};
+      s.roster.forEach(normalizeMercForSync);
+      s.defenseFormation.forEach(normalizeMercForSync);
+      deepCleanStrings(s);
+      return s;
+    }
+
+    function buildMetaFields() {
+      return {
+        className: state.className || '우리 반 용병단',
+        teacherPinHash: state.teacherPinHash || hashTeacherPin(state.teacherPin || '1234'),
+        teacherPin: null, // 예전 버전이 저장한 평문 PIN은 서버에서 지웁니다
+        classLocked: Boolean(state.classLocked),
+        notice: state.notice || '',
+        guardianPts: Number(state.guardianPts) || 0
+      };
+    }
+
     function buildClassCloudPayload() {
       ensureCurrentClassMetadata();
       const profiles = {};
       const studentsMap = {};
       (state.students || []).forEach(s => {
         const hasPw = Boolean(s.password && String(s.password).trim() !== '');
-        profiles[s.id] = {
-          id: s.id,
-          num: s.num,
-          name: s.name,
-          claimed: hasPw,
-          password: s.password || '',
-          updatedAt: Date.now()
-        };
+        profiles[s.id] = { id: s.id, num: s.num, name: s.name, claimed: hasPw, password: s.password || '' };
         studentsMap[s.id] = s;
       });
+      const metaFields = buildMetaFields();
+      delete metaFields.teacherPin;
       return {
         meta: {
           classCode: state.classCode,
-          className: state.className,
-          teacherPin: state.teacherPin || '1234',
-          teacherKeyHash: simpleHashString(state.teacherKey || ''),
+          ...metaFields,
+          teacherKeyHash: state.teacherKeyHash || (state.teacherKey ? simpleHashString(state.teacherKey) : ''),
           teacherKeyMasked: state.teacherKey ? (state.teacherKey.slice(0, 9) + '-****') : '',
-          classLocked: Boolean(state.classLocked),
-          notice: state.notice || '',
-          guardianPts: state.guardianPts || 120,
           updatedAt: Date.now()
         },
         profiles,
@@ -10265,97 +10403,216 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       const classCode = String(state.classCode || '').trim().toUpperCase();
       if (!classCode) return;
 
-      // 1) 로컬 학급 레지스트리에 항상 즉시 백업
-      const payload = buildClassCloudPayload();
+      // 1) 이 기기(브라우저)에 백업
       const reg = getLocalClassesRegistry();
-      reg[classCode] = payload;
+      reg[classCode] = buildClassCloudPayload();
       saveLocalClassesRegistry(reg);
 
       const doPush = async () => {
         const db = RealtimePvpService.initFirebaseClientSafe();
-        if (!db || typeof db.ref !== 'function') return false;
-        try {
-          await db.ref(`classes/${classCode}`).set(payload);
-          if (state.teacherKey) {
-            const kHash = simpleHashString(state.teacherKey);
-            await db.ref(`teacherKeys/${kHash}/classes/${classCode}`).set({
-              classCode,
-              className: state.className,
-              studentCount: (state.students || []).length,
-              updatedAt: Date.now()
-            });
+        if (!db || typeof db.ref !== 'function' || !syncCache.loaded || syncCache.classCode !== classCode) {
+          setAutoSaveBadgeState('💾 이 기기에 저장됨', false);
+          return false;
+        }
+        const base = `classes/${classCode}`;
+        const updates = {};
+        const pending = { meta: {}, students: {}, removed: [], lists: {} };
+
+        // (a) 학급 정보: 바뀐 칸만
+        const meta = buildMetaFields();
+        const creating = !syncCache.metaExists;
+        if (creating) {
+          meta.classCode = classCode;
+          meta.teacherKeyHash = state.teacherKey ? simpleHashString(state.teacherKey) : '';
+          meta.teacherKeyMasked = state.teacherKey ? (state.teacherKey.slice(0, 9) + '-****') : '';
+          meta.createdAt = Date.now();
+        }
+        Object.keys(meta).forEach(k => {
+          const sg = syncSig(meta[k]);
+          if (creating || sg !== syncCache.meta[k]) {
+            updates[`${base}/meta/${k}`] = toFirebaseValue(meta[k]);
+            pending.meta[k] = sg;
           }
+        });
+
+        // (b) 학생: 바뀐 학생만
+        const localIds = new Set();
+        let rosterChanged = false;
+        (state.students || []).forEach(s => {
+          localIds.add(s.id);
+          const sg = syncSig(s);
+          if (sg !== syncCache.students[s.id]) {
+            if (syncCache.students[s.id] === undefined) rosterChanged = true;
+            updates[`${base}/students/${s.id}`] = toFirebaseValue(s);
+            updates[`${base}/profiles/${s.id}`] = {
+              id: s.id, num: s.num, name: s.name,
+              claimed: Boolean(s.password), password: s.password || ''
+            };
+            pending.students[s.id] = sg;
+          }
+        });
+        Object.keys(syncCache.students).forEach(id => {
+          if (!localIds.has(id)) {
+            updates[`${base}/students/${id}`] = null;
+            updates[`${base}/profiles/${id}`] = null;
+            pending.removed.push(id);
+            rosterChanged = true;
+          }
+        });
+
+        // (c) 경매장 / 거래 제안
+        ['auctions', 'tradeOffers'].forEach(k => {
+          const sg = syncSig(state[k] || []);
+          if (sg !== syncCache[k]) {
+            updates[`${base}/${k}`] = toFirebaseValue(state[k] || []);
+            pending.lists[k] = sg;
+          }
+        });
+
+        // (d) 교사 키 목록 (선생님 본인 기기에서만)
+        const teacherOwns = state.teacherKey && (!state.teacherKeyHash || simpleHashString(state.teacherKey) === state.teacherKeyHash);
+        if (teacherOwns && (creating || rosterChanged || pending.meta.className)) {
+          updates[`teacherKeys/${simpleHashString(state.teacherKey)}/classes/${classCode}`] = {
+            classCode,
+            className: state.className,
+            studentCount: (state.students || []).length,
+            updatedAt: Date.now()
+          };
+        }
+
+        if (!Object.keys(updates).length) {
+          setAutoSaveBadgeState('🟢 자동저장됨', false);
+          return true;
+        }
+        updates[`${base}/meta/updatedAt`] = Date.now();
+
+        try {
+          await db.ref().update(updates);
+          Object.assign(syncCache.meta, pending.meta);
+          Object.assign(syncCache.students, pending.students);
+          pending.removed.forEach(id => { delete syncCache.students[id]; });
+          Object.keys(pending.lists).forEach(k => { syncCache[k] = pending.lists[k]; });
+          syncCache.metaExists = true;
           const syncBadge = document.getElementById('adminFirebaseSyncBadge');
           if (syncBadge) {
             syncBadge.textContent = '🟢 Firebase 실시간 연동중';
             syncBadge.className = 'px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-extrabold text-[10px]';
           }
+          const nowStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setAutoSaveBadgeState(`🟢 자동저장됨 (${nowStr})`, false);
           return true;
         } catch (err) {
-          console.warn('[Spark 학급 데이터 업로드 예외 - 로컬 저장 유지]:', err);
+          console.warn('[학급 데이터 업로드 실패 - 이 기기에는 저장됨]:', err);
           const syncBadge = document.getElementById('adminFirebaseSyncBadge');
           if (syncBadge) {
             syncBadge.textContent = '🟡 로컬 저장 (DB 규칙 확인 필요)';
             syncBadge.className = 'px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-extrabold text-[10px]';
           }
+          setAutoSaveBadgeState('🟡 서버 저장 실패 (이 기기에만 저장됨)', false);
           return false;
         }
       };
 
+      if (sparkClassSyncTimer) clearTimeout(sparkClassSyncTimer);
       if (immediate) {
-        if (sparkClassSyncTimer) clearTimeout(sparkClassSyncTimer);
         return await doPush();
-      } else {
-        if (sparkClassSyncTimer) clearTimeout(sparkClassSyncTimer);
-        sparkClassSyncTimer = setTimeout(doPush, 600);
       }
+      sparkClassSyncTimer = setTimeout(doPush, 600);
     }
 
-    function applyLoadedClassPayload(classCode, data, keepActiveStudent = true) {
+    // force=true : 서버 데이터를 그대로 받아들임 (처음 접속할 때)
+    // force=false: 내가 아직 업로드하지 않은 변경은 지키고, 나머지만 서버 값으로 갱신
+    function applyLoadedClassPayload(classCode, data, keepActiveStudent = true, force = true) {
       if (!data || !data.meta) return false;
       suppressRemoteClassPush = true;
       try {
+        const code = String(data.meta.classCode || classCode).toUpperCase();
+        if (force) resetClassSyncCache(code, { loaded: true, metaExists: true });
+        syncCache.loaded = true;
+        syncCache.metaExists = true;
         const prevActiveId = state.activeStudentId;
-        state.classCode = String(data.meta.classCode || classCode).toUpperCase();
-        state.className = data.meta.className || '우리 반 용병단';
-        state.teacherPin = data.meta.teacherPin || '1234';
-        state.classLocked = Boolean(data.meta.classLocked);
-        if (data.meta.notice) state.notice = data.meta.notice;
-        if (typeof data.meta.guardianPts === 'number') state.guardianPts = data.meta.guardianPts;
+        state.classCode = code;
+        state.teacherKeyHash = data.meta.teacherKeyHash || '';
 
-        let stuList = [];
-        if (data.students && typeof data.students === 'object') {
-          stuList = Object.values(data.students);
-        }
-        // profiles의 최신 비밀번호/claimed 상태 동기화
-        if (data.profiles && typeof data.profiles === 'object') {
-          stuList.forEach(s => {
-            const p = data.profiles[s.id];
-            if (p && typeof p.password === 'string') {
-              s.password = p.password;
+        // 1) 학급 정보
+        const rm = deepCleanStrings({ ...data.meta });
+        const remoteValues = {
+          className: rm.className || '우리 반 용병단',
+          teacherPinHash: rm.teacherPinHash || hashTeacherPin(rm.teacherPin || '1234'),
+          classLocked: Boolean(rm.classLocked),
+          notice: rm.notice || state.notice || '',
+          guardianPts: typeof rm.guardianPts === 'number' ? rm.guardianPts : (Number(state.guardianPts) || 0)
+        };
+        const localMeta = buildMetaFields();
+        META_SYNC_FIELDS.forEach(k => {
+          const remoteSig = syncSig(data.meta[k]);
+          const localSig = syncSig(localMeta[k]);
+          const isClean = force || localSig === syncCache.meta[k] || localSig === remoteSig;
+          if (isClean) {
+            if (k in remoteValues) state[k] = remoteValues[k];
+            syncCache.meta[k] = remoteSig;
+          }
+        });
+        delete state.teacherPin;
+
+        // 2) 학생
+        const remoteStudents = (data.students && typeof data.students === 'object') ? data.students : {};
+        const profiles = (data.profiles && typeof data.profiles === 'object') ? data.profiles : {};
+        const localById = new Map((state.students || []).map(s => [s.id, s]));
+        const result = [];
+        const seen = new Set();
+        Object.keys(remoteStudents).forEach(id => {
+          const rs = normalizeRemoteStudent(remoteStudents[id], id, profiles[id]);
+          if (!rs) return;
+          seen.add(rs.id);
+          const remoteSig = syncSig(rs);
+          const local = localById.get(rs.id);
+          if (force || !local) {
+            result.push(rs);
+            syncCache.students[rs.id] = remoteSig;
+            return;
+          }
+          const localSig = syncSig(local);
+          if (localSig === remoteSig) {
+            result.push(local);
+            syncCache.students[rs.id] = remoteSig;
+          } else if (localSig === syncCache.students[rs.id]) {
+            result.push(rs);
+            syncCache.students[rs.id] = remoteSig;
+          } else {
+            result.push(local); // 아직 업로드되지 않은 내 변경사항은 유지
+          }
+        });
+        if (!force) {
+          (state.students || []).forEach(local => {
+            if (seen.has(local.id)) return;
+            if (syncCache.students[local.id] !== undefined && syncSig(local) === syncCache.students[local.id]) {
+              delete syncCache.students[local.id]; // 다른 기기(선생님)에서 삭제된 학생
+              return;
             }
+            result.push(local); // 아직 업로드되지 않은 새 학생
           });
         }
-        stuList.sort((a, b) => (Number(a.num) || 0) - (Number(b.num) || 0));
-        if (stuList.length > 0) {
-          stuList.forEach((s, idx) => {
-            if (!Array.isArray(s.roster)) s.roster = [];
-            if (!Array.isArray(s.inventory)) s.inventory = [];
-            if (!Array.isArray(s.dailyEquipShop)) s.dailyEquipShop = [];
-            if (!s.relics) s.relics = {};
-            // 첫 학생 계정(1번)이 이전 기본값(1500 MC + 기본 5인 용병) 상태라면 신규 시작 기준(보유 용병 없음 + 10,000 MC)으로 자동 마이그레이션
-            if ((s.num === 1 || idx === 0) && (s.mc === 1500 || (s.mc === 500 && !s.password))) {
-              s.mc = 10000;
-              s.roster = [];
-              s.defenseFormation = [];
-              s.inventory = [];
-            }
-            s.roster.forEach(m => ensureMercSkillSlots(m));
+        result.sort((a, b) => (Number(a.num) || 0) - (Number(b.num) || 0));
+        if (result.length > 0) state.students = result;
+
+        // 3) 경매장 / 거래 제안
+        ['auctions', 'tradeOffers'].forEach(k => {
+          let remoteArr = data[k];
+          if (remoteArr && !Array.isArray(remoteArr) && typeof remoteArr === 'object') remoteArr = Object.values(remoteArr);
+          if (!Array.isArray(remoteArr)) remoteArr = [];
+          remoteArr = deepCleanStrings(remoteArr.filter(Boolean));
+          remoteArr.forEach(item => {
+            if (item.merc) normalizeMercForSync(item.merc);
+            if (item.mercSnapshot) normalizeMercForSync(item.mercSnapshot);
           });
-          state.students = stuList;
-        }
-        if (Array.isArray(data.auctions)) state.auctions = data.auctions;
-        if (Array.isArray(data.tradeOffers)) state.tradeOffers = data.tradeOffers;
+          const rSig = syncSig(remoteArr);
+          const lSig = syncSig(state[k] || []);
+          if (force || lSig === rSig || lSig === syncCache[k]) {
+            state[k] = remoteArr;
+            syncCache[k] = rSig;
+          }
+        });
 
         if (keepActiveStudent && state.students.some(s => s.id === prevActiveId)) {
           state.activeStudentId = prevActiveId;
@@ -10372,59 +10629,63 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       return true;
     }
 
+    function handleRemoteClassUpdate(cleanCode) {
+      if (String(state.classCode || '').toUpperCase() !== cleanCode) return;
+      if (!classRemote.meta) return; // 서버에 아직 없는 학급
+      const force = !(syncCache.loaded && syncCache.classCode === cleanCode);
+      applyLoadedClassPayload(cleanCode, { ...classRemote }, true, force);
+
+      // 내게 도착한 신규 거래소 구매 제안 알림 체크
+      const myStu = getActiveStudent();
+      if (myStu && Array.isArray(state.tradeOffers)) {
+        const myIncoming = state.tradeOffers.filter(o => o.sellerId === myStu.id);
+        if (lastKnownIncomingOfferCount >= 0 && myIncoming.length > lastKnownIncomingOfferCount) {
+          const latest = myIncoming[0];
+          if (latest) {
+            showRewardBanner(`💌 [실시간 거래소] ${latest.buyerName} 친구가 내 [${latest.mercSnapshot?.name || '용병'}]에 ${Number(latest.offerPrice || 0).toLocaleString()} MC 구매 제안을 보냈습니다!`);
+          }
+        }
+        lastKnownIncomingOfferCount = myIncoming.length;
+      }
+
+      const isTeacherOpen = !document.getElementById('teacherViewContainer').classList.contains('hidden');
+      if (isTeacherOpen) renderAdminStudentGrid();
+      const isLoginOpen = !document.getElementById('studentLoginModal').classList.contains('hidden');
+      if (isLoginOpen) renderLoginStudentGrid();
+      const isLobbyOpen = !document.getElementById('classLobbyPageView')?.classList.contains('hidden');
+      if (isLobbyOpen) renderClassLobbyPage();
+      if (!document.getElementById('studentTab-squad')?.classList.contains('hidden')) {
+        updateSquadPowerDashboard(getActiveStudent());
+      }
+      if (!document.getElementById('studentTab-market')?.classList.contains('hidden')) renderMarketTab();
+      if (!document.getElementById('studentTab-pvp')?.classList.contains('hidden')) renderPvpTab();
+      if (!document.getElementById('studentTab-raid')?.classList.contains('hidden')) renderCoopRaidTab();
+    }
+
     function subscribeToActiveClassRealtime(classCode) {
       const cleanCode = String(classCode || '').trim().toUpperCase();
       if (!cleanCode) return;
       const db = RealtimePvpService.initFirebaseClientSafe();
       if (!db || typeof db.ref !== 'function') return;
       try {
-        if (activeClassCodeRef && typeof activeClassCodeRef.off === 'function') {
-          activeClassCodeRef.off();
-        }
-        activeClassCodeRef = db.ref(`classes/${cleanCode}`);
-        activeClassCodeRef.on('value', (snap) => {
-          const val = snap && typeof snap.val === 'function' ? snap.val() : null;
-          if (!val || !val.meta) return;
-          applyLoadedClassPayload(cleanCode, val, true);
-
-          // 내게 도착한 신규 거래소 구매 제안 알림 체크
-          const myStu = getActiveStudent();
-          if (myStu && Array.isArray(state.tradeOffers)) {
-            const myIncoming = state.tradeOffers.filter(o => o.sellerId === myStu.id);
-            if (lastKnownIncomingOfferCount >= 0 && myIncoming.length > lastKnownIncomingOfferCount) {
-              const latest = myIncoming[0];
-              if (latest) {
-                showRewardBanner(`💌 [실시간 거래소] ${latest.buyerName} 친구가 내 [${latest.mercSnapshot?.name || '용병'}]에 ${Number(latest.offerPrice || 0).toLocaleString()} MC 구매 제안을 보냈습니다!`);
-              }
-            }
-            lastKnownIncomingOfferCount = myIncoming.length;
-          }
-
-          const isTeacherOpen = !document.getElementById('teacherViewContainer').classList.contains('hidden');
-          if (isTeacherOpen) {
-            renderAdminStudentGrid();
-          }
-          const isLoginOpen = !document.getElementById('studentLoginModal').classList.contains('hidden');
-          if (isLoginOpen) {
-            renderLoginStudentGrid();
-          }
-          const isLobbyOpen = !document.getElementById('classLobbyPageView')?.classList.contains('hidden');
-          if (isLobbyOpen) {
-            renderClassLobbyPage();
-          }
-          // 현재 열려 있는 학생 탭 실시간 갱신 (거래소, 결투장, 협동레이드, 홈 대시보드)
-          if (!document.getElementById('studentTab-squad')?.classList.contains('hidden')) {
-            updateSquadPowerDashboard(getActiveStudent());
-          }
-          if (!document.getElementById('studentTab-market')?.classList.contains('hidden')) {
-            renderMarketTab();
-          }
-          if (!document.getElementById('studentTab-pvp')?.classList.contains('hidden')) {
-            renderPvpTab();
-          }
-          if (!document.getElementById('studentTab-raid')?.classList.contains('hidden')) {
-            renderCoopRaidTab();
-          }
+        classSyncRefs.forEach(r => { try { r.off(); } catch (e) {} });
+        classSyncRefs = [];
+        classRemote = {};
+        classRemoteReceived = new Set();
+        // 학급 전체가 아니라 필요한 5개 칸만 구독 (방·미니게임 변화로 화면 전체가 다시 그려지지 않도록)
+        CLASS_SYNC_KEYS.forEach(key => {
+          const ref = db.ref(`classes/${cleanCode}/${key}`);
+          ref.on('value', (snap) => {
+            if (String(state.classCode || '').toUpperCase() !== cleanCode) return;
+            classRemote[key] = snap && typeof snap.val === 'function' ? snap.val() : null;
+            classRemoteReceived.add(key);
+            if (classRemoteReceived.size < CLASS_SYNC_KEYS.length) return;
+            if (classApplyTimer) clearTimeout(classApplyTimer);
+            classApplyTimer = setTimeout(() => handleRemoteClassUpdate(cleanCode), 60);
+          }, (err) => {
+            console.warn(`[학급 ${key} 구독 실패 - DB 규칙을 확인하세요]:`, err);
+          });
+          classSyncRefs.push(ref);
         });
 
         subscribeToInteractiveChannels(cleanCode, db);
@@ -10455,6 +10716,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
     let mgRealtimeSyncEnabled = true;
     let suppressMinigameRemotePush = false;
     let lastKnownIncomingOfferCount = -1;
+    let lastMinigamesSnapshot = {};
 
     const MINIGAME_TYPE_META = {
       yutnori:   { id: 'yutnori',   name: '2:2 실시간 윷놀이', icon: '🥢', maxPlayers: 4, minPlayers: 2 },
@@ -10476,7 +10738,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       // 1) 실시간 PvP 대기 로비방 구독 (/classes/{code}/pvp_rooms)
       activePvpRoomsRef = db.ref(`classes/${cleanCode}/pvp_rooms`);
       activePvpRoomsRef.on('value', (snap) => {
-        livePvpRoomsCache = (snap && typeof snap.val === 'function' ? snap.val() : null) || {};
+        livePvpRoomsCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
         renderLivePvpRoomsList();
         checkAutoStartMatchedPvpRoom();
       });
@@ -10484,7 +10746,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       // 2) 엘리트 몬스터 2인(3+3) 협동 레이드 대기 로비방 구독 (/classes/{code}/raid_rooms)
       activeRaidRoomsRef = db.ref(`classes/${cleanCode}/raid_rooms`);
       activeRaidRoomsRef.on('value', (snap) => {
-        liveRaidRoomsCache = (snap && typeof snap.val === 'function' ? snap.val() : null) || {};
+        liveRaidRoomsCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
         renderLiveRaidRoomsList();
         checkAutoStartMatchedRaidRoom();
       });
@@ -10492,16 +10754,16 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       // 3) 미니게임 대기 로비방 구독 (/classes/{code}/minigame_rooms)
       activeMinigameRoomsRef = db.ref(`classes/${cleanCode}/minigame_rooms`);
       activeMinigameRoomsRef.on('value', (snap) => {
-        liveMinigameRoomsCache = (snap && typeof snap.val === 'function' ? snap.val() : null) || {};
+        liveMinigameRoomsCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
         renderMinigameLobbyAndRoomUI();
       });
 
       // 4) 실시간 미니게임 4종 보드 상태 구독 (/classes/{code}/minigames)
       activeMinigamesRef = db.ref(`classes/${cleanCode}/minigames`);
       activeMinigamesRef.on('value', (snap) => {
-        if (!mgRealtimeSyncEnabled) return;
-        const mgData = (snap && typeof snap.val === 'function' ? snap.val() : null) || {};
-        applyRemoteMinigamesState(mgData);
+        lastMinigamesSnapshot = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
+        if (!mgRealtimeSyncEnabled || !currentJoinedMinigameRoomId) return;
+        applyRemoteMinigamesState(lastMinigamesSnapshot[currentJoinedMinigameRoomId] || {});
       });
 
       // 5) 라이브 전투 중 실시간 대시(Dash) 이벤트 구독 (/classes/{code}/live_battle_events)
@@ -10534,14 +10796,28 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       if (sim.mode !== 'pvp_realtime' && sim.mode !== 'elite_raid') return;
       const evId = 'dash_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
       processedBattleEventIds.add(evId);
-      db.ref(`classes/${classCode}/live_battle_events/${evId}`).set({
+      const evRef = db.ref(`classes/${classCode}/live_battle_events/${evId}`);
+      evRef.set({
         eventId: evId,
         roomId: currentActiveLiveBattleRoomId || 'default_live',
         actorId: myStu.id,
         actorName: myStu.name,
         team: teamColor || 'blue',
         createdAt: Date.now()
+      }).then(() => {
+        try { evRef.onDisconnect().remove(); } catch (e) {}
+        setTimeout(() => { evRef.remove().catch(() => {}); }, 20000);
       }).catch(() => {});
+    }
+
+    // 방장이 브라우저를 닫거나 인터넷이 끊기면 서버가 방을 자동으로 지웁니다 (유령 방 방지)
+    function armHostRoomAutoCleanup(paths) {
+      const db = RealtimePvpService.initFirebaseClientSafe();
+      const classCode = String(state.classCode || '').trim().toUpperCase();
+      if (!db || !classCode) return;
+      paths.forEach(p => {
+        try { db.ref(`classes/${classCode}/${p}`).onDisconnect().remove(); } catch (e) {}
+      });
     }
 
     // ==================== [A. 실시간 PvP 결투장 : 로비방 개설 → 친구 입장 → 준비완료 → 결투 시작] ====================
@@ -10577,7 +10853,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         return;
       }
       const titleInp = document.getElementById('pvpNewRoomTitleInput');
-      const customTitle = (titleInp?.value || '').trim() || `${myStu.name}의 5:5 실시간 결투방`;
+      const customTitle = cleanUserText(titleInp?.value, 24) || `${myStu.name}의 5:5 실시간 결투방`;
       if (titleInp) titleInp.value = '';
       const roomId = 'pvp_' + myStu.id;
       launchedLiveRoomIds.delete(roomId);
@@ -10590,7 +10866,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         hostNum: myStu.num,
         hostName: myStu.name,
         hostPower: calcStudentDeployedPower(myStu),
-        hostStudentSnapshot: JSON.parse(JSON.stringify(myStu)),
+        hostStudentSnapshot: publicStudentSnapshot(myStu),
         guestId: null,
         guestNum: null,
         guestName: null,
@@ -10601,6 +10877,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         createdAt: Date.now()
       };
       await savePvpRoomData(roomId, roomObj);
+      armHostRoomAutoCleanup([`pvp_rooms/${roomId}`]);
       showRewardBanner(`⚡ [${customTitle}] 결투 대기방이 개설되었습니다! 다른 친구가 입장해 [준비완료]를 누르면 시작할 수 있습니다.`);
     };
 
@@ -10621,7 +10898,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       room.guestNum = myStu.num;
       room.guestName = myStu.name;
       room.guestPower = calcStudentDeployedPower(myStu);
-      room.guestStudentSnapshot = JSON.parse(JSON.stringify(myStu));
+      room.guestStudentSnapshot = publicStudentSnapshot(myStu);
       room.guestReady = false;
       await savePvpRoomData(roomId, room);
       showRewardBanner(`🚪 [${room.title}]에 입장했습니다! [✋ 준비완료] 버튼을 눌러주세요.`);
@@ -10647,7 +10924,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       room.guestNum = friend.num;
       room.guestName = friend.name;
       room.guestPower = calcStudentDeployedPower(friend);
-      room.guestStudentSnapshot = JSON.parse(JSON.stringify(friend));
+      room.guestStudentSnapshot = publicStudentSnapshot(friend);
       room.guestReady = true;
       await savePvpRoomData(roomId, room);
       showRewardBanner(`🙋 [${friend.num}번 ${friend.name}] 친구가 결투방에 입장하여 [✅ 준비완료]를 눌렀습니다! 이제 [⚡ 실시간 결투 시작!]을 누르세요.`);
@@ -10920,7 +11197,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       const boss = ELITE_BOSS_DEFS.find(b => b.id === selectedEliteBossId) || ELITE_BOSS_DEFS[0];
       const myPower = myMercs.reduce((s, m) => s + calcMercCombatPower(m, myStu), 0);
       const titleInp = document.getElementById('raidNewRoomTitleInput');
-      const customTitle = (titleInp?.value || '').trim() || `[${boss.name}] ${myStu.name}의 협동 파티`;
+      const customTitle = cleanUserText(titleInp?.value, 24) || `[${boss.name}] ${myStu.name}의 협동 파티`;
       if (titleInp) titleInp.value = '';
 
       const roomId = 'raid_' + myStu.id;
@@ -10937,7 +11214,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         hostName: myStu.name,
         hostPower: myPower,
         hostMercs: JSON.parse(JSON.stringify(myMercs)),
-        hostStudentSnapshot: JSON.parse(JSON.stringify(myStu)),
+        hostStudentSnapshot: publicStudentSnapshot(myStu),
         guestId: null,
         guestNum: null,
         guestName: null,
@@ -10949,6 +11226,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         createdAt: Date.now()
       };
       await saveRaidRoomData(roomId, roomObj);
+      armHostRoomAutoCleanup([`raid_rooms/${roomId}`]);
       showRewardBanner(`🐉 [${customTitle}] 협동 레이드 대기방이 개설되었습니다! 파트너 친구가 입장해 [준비완료]를 누르면 시작할 수 있습니다.`);
     };
 
@@ -10974,7 +11252,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       room.guestName = myStu.name;
       room.guestPower = myPower;
       room.guestMercs = JSON.parse(JSON.stringify(myMercs));
-      room.guestStudentSnapshot = JSON.parse(JSON.stringify(myStu));
+      room.guestStudentSnapshot = publicStudentSnapshot(myStu);
       room.guestReady = false;
       await saveRaidRoomData(roomId, room);
       showRewardBanner(`🚪 [${room.title}] 협동 파티에 입장했습니다! [✋ 준비완료] 버튼을 눌러주세요.`);
@@ -11006,7 +11284,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       room.guestName = friend.name;
       room.guestPower = friendPower;
       room.guestMercs = JSON.parse(JSON.stringify(friendMercs));
-      room.guestStudentSnapshot = JSON.parse(JSON.stringify(friend));
+      room.guestStudentSnapshot = publicStudentSnapshot(friend);
       room.guestReady = true;
       await saveRaidRoomData(roomId, room);
       showRewardBanner(`🤝 [${friend.num}번 ${friend.name}] 친구가 3인 용병과 함께 입장하여 [✅ 준비완료]를 눌렀습니다!`);
@@ -11326,6 +11604,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       if (db && classCode) {
         try {
           await db.ref(`classes/${classCode}/minigame_rooms/${roomId}`).remove();
+          await db.ref(`classes/${classCode}/minigames/${roomId}`).remove();
         } catch (e) {}
       }
     }
@@ -11335,7 +11614,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       if (!myStu) return;
       const meta = MINIGAME_TYPE_META[selectedLobbyMinigameType] || MINIGAME_TYPE_META.yutnori;
       const inp = document.getElementById('mgNewRoomTitleInput');
-      const customTitle = (inp?.value || '').trim() || `${myStu.name}의 ${meta.name} 방`;
+      const customTitle = cleanUserText(inp?.value, 24) || `${myStu.name}의 ${meta.name} 방`;
       if (inp) inp.value = '';
 
       const roomId = 'mg_' + myStu.id + '_' + Date.now().toString(36).slice(-4);
@@ -11359,6 +11638,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         createdAt: Date.now()
       };
       await saveMinigameRoomData(roomId, roomObj);
+      armHostRoomAutoCleanup([`minigame_rooms/${roomId}`, `minigames/${roomId}`]);
       showRewardBanner(`🎲 [${customTitle}] 방이 개설되었습니다! 친구가 입장해 [준비완료]를 누르면 게임을 시작할 수 있습니다.`);
     };
 
@@ -11384,6 +11664,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       currentJoinedMinigameRoomId = roomId;
       mgRealtimeSyncEnabled = true;
       await saveMinigameRoomData(roomId, room);
+      applyRemoteMinigamesState(lastMinigamesSnapshot[roomId] || {});
       showRewardBanner(`🚪 [${room.title}]에 입장했습니다! [✋ 준비완료] 버튼을 눌러주세요.`);
     };
 
@@ -11726,13 +12007,13 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
     };
 
     async function pushMinigameStateToFirebase(gameKey, statePayload) {
-      if (!mgRealtimeSyncEnabled || suppressMinigameRemotePush) return;
+      if (!mgRealtimeSyncEnabled || suppressMinigameRemotePush || !currentJoinedMinigameRoomId) return;
       const db = RealtimePvpService.initFirebaseClientSafe();
       const classCode = String(state.classCode || '').trim().toUpperCase();
       const myStu = getActiveStudent();
       if (!db || !classCode) return;
       try {
-        await db.ref(`classes/${classCode}/minigames/${gameKey}`).set({
+        await db.ref(`classes/${classCode}/minigames/${currentJoinedMinigameRoomId}/${gameKey}`).set({
           ...statePayload,
           roomId: currentJoinedMinigameRoomId || 'class_shared',
           updatedBy: myStu ? `${myStu.num}번 ${myStu.name}` : '플레이어',
@@ -11882,7 +12163,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         return;
       }
       const inp = document.getElementById('wordChainInput');
-      const word = (inp?.value || '').trim();
+      const word = cleanUserText(inp?.value, 10);
       if (word.length < 2) {
         showNotice('⚠️ 2글자 이상의 단어를 입력해주세요!');
         return;
@@ -11941,16 +12222,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       const deployed = (stu.roster || []).filter(m => m.deployed);
       stu.defenseFormation = JSON.parse(JSON.stringify(deployed));
       stu.defenseFormationLabel = deployed.length > 0 ? '실시간 자동저장 3×5 진형' : '미배치 (용병 모집 전)';
-      const db = RealtimePvpService.initFirebaseClientSafe();
-      const classCode = String(state.classCode || '').trim().toUpperCase();
-      if (!db || typeof db.ref !== 'function' || !classCode) return;
-      try {
-        const squadPayload = RealtimePvpService.buildSquadPayload(stu);
-        await db.ref(`classes/${classCode}/pvp_squads/${stu.id}`).set(squadPayload);
-        await db.ref(`classes/${classCode}/students/${stu.id}`).set(stu);
-      } catch (e) {
-        console.warn('[용병단 실시간 자동저장 예외]:', e);
-      }
+      // 학생 데이터 업로드는 pushCurrentClassStateToFirebase()가 변경분만 한 번에 처리합니다.
     }
 
     const _origSaveState = saveState;
@@ -11966,10 +12238,6 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       if (!suppressRemoteClassPush) {
         setAutoSaveBadgeState('🔄 실시간 자동저장 중...', true);
         pushCurrentClassStateToFirebase(false);
-        autoSyncActiveStudentSquadToFirebase().then(() => {
-          const nowStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-          setAutoSaveBadgeState(`🟢 자동저장됨 (${nowStr})`, false);
-        });
       }
     };
 
@@ -11993,14 +12261,18 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
 
       let foundData = null;
       let loadedFromFirebase = false;
+      let firebaseReadOk = false;
 
-      // 1) Firebase Realtime Database에서 /classes/{code} 조회
+      // 1) Firebase Realtime Database에서 필요한 칸만 조회 (방·미니게임 데이터는 받지 않음)
       const db = RealtimePvpService.initFirebaseClientSafe();
       if (db && typeof db.ref === 'function') {
         try {
-          const snap = await db.ref(`classes/${code}`).once('value');
-          if (snap && snap.exists()) {
-            foundData = snap.val();
+          const snaps = await Promise.all(CLASS_SYNC_KEYS.map(k => db.ref(`classes/${code}/${k}`).once('value')));
+          firebaseReadOk = true;
+          const merged = {};
+          CLASS_SYNC_KEYS.forEach((k, i) => { merged[k] = snaps[i].val(); });
+          if (merged.meta) {
+            foundData = merged;
             loadedFromFirebase = true;
           }
         } catch (err) {
@@ -12026,7 +12298,12 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         return false;
       }
 
-      applyLoadedClassPayload(code, foundData, false);
+      applyLoadedClassPayload(code, foundData, false, true);
+      if (!loadedFromFirebase) {
+        // 서버에 없는 학급: 서버 읽기가 성공했을 때만 이 기기 데이터를 서버로 올림 (읽기 실패 시 덮어쓰기 금지)
+        resetClassSyncCache(code, { loaded: firebaseReadOk, metaExists: false });
+        if (firebaseReadOk) pushCurrentClassStateToFirebase(true);
+      }
       subscribeToActiveClassRealtime(code);
       pendingLoginStudentId = state.students[0]?.id || null;
       renderLoginStudentGrid();
@@ -12161,8 +12438,12 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
 
     confirmTeacherLogin = function () {
       const val = document.getElementById('teacherPinCheckInput').value.trim();
-      const isPinMatch = (val === state.teacherPin);
-      const isKeyMatch = (state.teacherKey && val.toUpperCase() === state.teacherKey.toUpperCase());
+      const isPinMatch = checkTeacherPin(val);
+      const keyHash = simpleHashString(val.toUpperCase());
+      const isKeyMatch = state.teacherKeyHash
+        ? (keyHash === state.teacherKeyHash)
+        : Boolean(state.teacherKey && val.toUpperCase() === state.teacherKey.toUpperCase());
+      if (isKeyMatch) state.teacherKey = val.toUpperCase();
       if (!isPinMatch && !isKeyMatch) {
         document.getElementById('teacherLoginError').classList.remove('hidden');
         return;
@@ -12199,7 +12480,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
 
     async function createNewClassPageWithTeacherKey() {
       const teacherKey = (document.getElementById('newClassTeacherKeyInput')?.value || '').trim().toUpperCase() || generateTeacherKeyString();
-      const className = (document.getElementById('newClassNameInput')?.value || '').trim() || '우리 반 용병단';
+      const className = cleanUserText(document.getElementById('newClassNameInput')?.value, 20) || '우리 반 용병단';
       const classCode = ((document.getElementById('newClassCodeInput')?.value || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '')) || generateRandomCode(6);
       const teacherPin = (document.getElementById('newClassPinInput')?.value || '').trim() || '1234';
       const rawStudents = (document.getElementById('newClassStudentsInput')?.value || '').trim();
@@ -12231,12 +12512,36 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       });
 
       if (!parsedStudents.length) return;
+      parsedStudents.forEach(p => { p.name = cleanUserText(p.name, 12) || `학생${p.num}`; });
 
+      // 이미 다른 선생님이 쓰고 있는 학급 코드인지 확인 (남의 학급 덮어쓰기 방지)
+      const dbCheck = RealtimePvpService.initFirebaseClientSafe();
+      if (dbCheck && typeof dbCheck.ref === 'function') {
+        try {
+          const existSnap = await dbCheck.ref(`classes/${classCode}/meta`).once('value');
+          if (existSnap && existSnap.exists()) {
+            if (fbEl) {
+              fbEl.textContent = `⚠️ 학급 코드 [${classCode}]는 이미 사용 중입니다. 🎲 버튼으로 새 코드를 만들어주세요.`;
+              fbEl.className = 'text-xs font-bold text-rose-400';
+              fbEl.classList.remove('hidden');
+            }
+            return;
+          }
+        } catch (e) {
+          console.warn('[학급 코드 중복 확인 실패]:', e);
+        }
+      }
+
+      resetClassSyncCache(classCode, { loaded: true, metaExists: false });
+      state.teacherKeyHash = simpleHashString(teacherKey);
+      state.teacherPinHash = hashTeacherPin(teacherPin);
       state.teacherKey = teacherKey;
       state.classCode = classCode;
       state.className = className;
-      state.teacherPin = teacherPin;
+      delete state.teacherPin;
       state.classLocked = false;
+      state.auctions = [];
+      state.tradeOffers = [];
       state.notice = `📢 [${className}] 학급 아레나에 오신 것을 환영합니다! (학급 코드: ${classCode})`;
       state.students = parsedStudents.map(item => {
         const st = createStudent(item.num, item.name, true);
@@ -12677,9 +12982,8 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       renderClassLobbyPage();
       // 초기 진입 시 missionclass.com과 동일하게 분리된 초기 홈페이지 화면(#landingPageView)을 먼저 표시
       goToLandingPage();
-      pushCurrentClassStateToFirebase(true).finally(() => {
-        subscribeToActiveClassRealtime(state.classCode);
-      });
+      // 서버 데이터를 먼저 받아온 뒤에만 업로드합니다 (오래된 기기 데이터로 덮어쓰기 방지)
+      subscribeToActiveClassRealtime(state.classCode);
       requestAnimationFrame(animationLoop);
     };
   </script>
