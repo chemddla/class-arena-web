@@ -805,6 +805,10 @@
             </div>
           </div>
 
+          <!-- 실시간 결투: 두 친구가 전투 방식을 고를 때까지 기다리는 안내 -->
+          <div id="liveChoiceWaitBanner" class="hidden absolute top-4 left-1/2 -translate-x-1/2 z-10 px-5 py-2.5 rounded-2xl font-extrabold text-sm shadow-xl pointer-events-none"
+            style="background:rgba(15,23,42,0.88);color:#fde68a;border:2px solid #f59e0b"></div>
+
           <!-- 직접 전투: 화면 아래 가운데에 스킬·대시 남은 쿨타임 (조이스틱·터치 버튼 사이) -->
           <div id="manualSkillBar" class="hidden absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none select-none flex items-end gap-2"></div>
 
@@ -7579,6 +7583,7 @@
     function setBattleControlMode(mode, unitId = null, force = false) {
       if (battleControl.locked && !force) return;
       battleControl.locked = true;
+      localBattleInput.controlChosen = true; // 실시간 결투: 상대에게 "골랐어요"를 알림
       Object.keys(sim.controllers).forEach(id => { if (sim.controllers[id] === localBattleInput) delete sim.controllers[id]; });
       localBattleInput.keys = { w: false, a: false, s: false, d: false };
       localBattleInput.attack = false;
@@ -8351,9 +8356,12 @@
       battleControl.mode = 'auto';
       battleControl.unitId = null;
       battleControl.locked = false;
-      Object.assign(localBattleInput, { moveX: 0, moveY: 0, keys: { w: false, a: false, s: false, d: false }, attack: false, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0], teamDash: 0, unitDashN: 0, unitDashId: null, forfeit: 0 });
+      Object.assign(localBattleInput, { moveX: 0, moveY: 0, keys: { w: false, a: false, s: false, d: false }, attack: false, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0], teamDash: 0, unitDashN: 0, unitDashId: null, forfeit: 0, controlChosen: false });
       sim.awaitingControlChoice = false;
-      if (mode !== 'broadcast') openBattleControlChooser(!netRole);
+      // 실시간 결투 방장: 나와 상대가 모두 전투 방식을 고를 때까지 전투를 시작하지 않음
+      sim.waitingForOpponent = netRole === 'host';
+      renderLiveWaitBanner(null);
+      if (mode !== 'broadcast') openBattleControlChooser(true);
       renderBattleControlHud(true);
 
       const statsBadge = document.getElementById('arenaSimStatsBadge');
@@ -9986,6 +9994,7 @@
 
     function finishSimulation(blueTeamWon) {
       if (liveNet.role === 'host') publishLiveBattleResult(blueTeamWon);
+      if (sim.mode === 'pvp_realtime') resetLivePvpRoomAfterBattle();
       // blueWon = 이 화면의 학생이 이겼는지 (실시간 결투 도전자는 레드팀)
       const blueWon = sim.myTeam === 'red' ? !blueTeamWon : blueTeamWon;
       sim.running = false;
@@ -10084,6 +10093,8 @@
 
     function closeBattleResult() {
       sim.running = false;
+      sim.waitingForOpponent = false;
+      renderLiveWaitBanner(null);
       sim.netRole = null;
       sim.myTeam = 'blue';
       document.getElementById('battleResultOverlay').classList.add('hidden');
@@ -10967,6 +10978,8 @@
         // 실시간 결투 상대(도전자): 방장 화면에서 진행된 전투를 받아서 그대로 보여 줌
         applyLiveBattleFrameTick(takeBattleTicks(1));
         if (refreshStatus) renderLiveUnitStatus();
+      } else if (sim.running && sim.waitingForOpponent) {
+        updateLiveChoiceWait();
       } else if (sim.running && !sim.awaitingControlChoice) {
         const ticks = takeBattleTicks(sim.speed);
         for (let s = 0; s < ticks; s++) {
@@ -14427,6 +14440,8 @@
       const myStu = getActiveStudent();
       if (!myStu) return;
       Object.values(livePvpRoomsCache || {}).forEach(r => {
+        // 결투가 끝나 대기 상태로 돌아온 방은 다시 시작할 수 있게
+        if (r && r.status === 'waiting' && r.roomId) launchedLiveRoomIds.delete(r.roomId);
         if (!r || r.status !== 'playing' || !r.roomId) return;
         if (launchedLiveRoomIds.has(r.roomId)) return;
         if (r.hostId === myStu.id || r.guestId === myStu.id) {
@@ -14484,6 +14499,7 @@
         // 서버에 연결되지 않았으면 예전처럼 각자 화면에서 진행
         sim.netRole = null;
         sim.awaitingControlChoice = false;
+        sim.waitingForOpponent = false;
         return;
       }
       Object.assign(liveNet, {
@@ -14491,12 +14507,14 @@
         minAt: (roomStartedAt || Date.now()) - 3000,
         startedAt: Date.now(), initReceived: false, lastFrameAt: Date.now(), targets: {}, finished: false,
         sent: new WeakSet(), pendingLogs: [], remoteCtrl: null, remoteUnitId: null,
-        lastInputSentAt: 0, inputTimer: null, lastAimSent: null
+        lastInputSentAt: 0, inputTimer: null, lastAimSent: null,
+        guestChose: false, started: false, lastStatusAt: 0, hostStatus: null
       });
       if (role === 'host') {
         try { ref.onDisconnect().remove(); } catch (e) {}
         ref.child('result').remove().catch(() => {});
         ref.child('input').remove().catch(() => {});
+        ref.child('status').remove().catch(() => {});
         sim.effects.forEach(x => liveNet.sent.add(x));
         sim.floatTexts.forEach(x => liveNet.sent.add(x));
         const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (k === 'manualAimTarget' ? undefined : v))));
@@ -14508,13 +14526,14 @@
         ref.child('init').on('value', snap => applyLiveInit(snap && snap.val()));
         ref.child('frame').on('value', snap => applyLiveFrame(snap && snap.val()));
         ref.child('result').on('value', snap => applyLiveResult(snap && snap.val()));
+        ref.child('status').on('value', snap => applyLiveChoiceStatus(snap && snap.val()));
         addBattleLog('📡 방장 화면에서 진행되는 전투를 받아오는 중이에요...');
       }
     }
 
     function stopLiveBattleNet() {
       if (liveNet.ref) {
-        ['init', 'frame', 'result', 'input'].forEach(k => { try { liveNet.ref.child(k).off(); } catch (e) {} });
+        ['init', 'frame', 'result', 'input', 'status'].forEach(k => { try { liveNet.ref.child(k).off(); } catch (e) {} });
       }
       clearTimeout(liveNet.inputTimer);
       if (liveNet.remoteUnitId && sim.controllers && sim.controllers[liveNet.remoteUnitId] === liveNet.remoteCtrl) {
@@ -14607,6 +14626,10 @@
       if (!liveNet.remoteCtrl) {
         liveNet.remoteCtrl = { keys: {}, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0], _seenTeamDash: 0, _seenUnitDash: 0 };
       }
+      if (val.chosen === 1 && !liveNet.guestChose) {
+        liveNet.guestChose = true;
+        addBattleLog('✅ 상대 친구가 전투 방식을 골랐어요.');
+      }
       const c = liveNet.remoteCtrl;
       const k = val.keys || {};
       c.keys = { w: Boolean(k.w), a: Boolean(k.a), s: Boolean(k.s), d: Boolean(k.d) };
@@ -14659,7 +14682,8 @@
         unitDashId: c.unitDashId || null,
         mvx: liveR2(c.moveX || 0),
         mvy: liveR2(c.moveY || 0),
-        forfeit: c.forfeit ? 1 : 0
+        forfeit: c.forfeit ? 1 : 0,
+        chosen: c.controlChosen ? 1 : 0
       };
       if (typeof c.aimX === 'number' && typeof c.aimY === 'number') {
         payload.ax = liveR1(c.aimX);
@@ -14802,6 +14826,91 @@
       } else if (liveNet.role !== 'guest' && !liveNet.finished) {
         // 연결 정보가 사라졌는데 도전자 화면으로 남아 있으면 정리
         abortLiveBattle('📡 결투 연결이 종료되었어요.');
+      }
+    }
+
+    // 결투가 끝나면 방을 다시 대기 상태로 ("경기 진행중"으로 남지 않게) — 방장만 고침, 같은 방에서 다시 결투 가능
+    function resetLivePvpRoomAfterBattle() {
+      renderLiveWaitBanner(null);
+      sim.waitingForOpponent = false;
+      const roomId = currentActiveLiveBattleRoomId;
+      currentActiveLiveBattleRoomId = null;
+      const me = getActiveStudent();
+      const room = roomId ? livePvpRoomsCache[roomId] : null;
+      if (!room || !me || room.hostId !== me.id) return;
+      // 도전자 화면이 결과를 받을 시간을 조금 준 뒤 되돌림
+      setTimeout(() => {
+        const r = livePvpRoomsCache[roomId];
+        if (!r || r.status !== 'playing') return;
+        r.status = 'waiting';
+        r.guestReady = false;
+        r.startedAt = null;
+        r.lastFinishedAt = Date.now();
+        savePvpRoomData(roomId, r);
+      }, 1500);
+    }
+
+    // ----- 실시간 결투 시작 전: 두 친구가 모두 전투 방식(자동/직접)을 고를 때까지 기다림 -----
+    const LIVE_CHOICE_TIMEOUT_MS = 20000; // 20초 안에 안 고르면 자동 전투로 시작
+
+    function renderLiveWaitBanner(text) {
+      const el = document.getElementById('liveChoiceWaitBanner');
+      if (!el) return;
+      el.classList.toggle('hidden', !text);
+      if (text) el.textContent = text;
+    }
+
+    // 방장: 1초마다 상태를 올리고(도전자 화면 표시 + 연결 확인용), 둘 다 고르면 시작
+    function updateLiveChoiceWait() {
+      if (liveNet.role !== 'host' || !liveNet.ref) {
+        sim.waitingForOpponent = false;
+        renderLiveWaitBanner(null);
+        return;
+      }
+      const left = Math.max(0, LIVE_CHOICE_TIMEOUT_MS - (Date.now() - liveNet.startedAt));
+      if (left <= 0) {
+        if (sim.awaitingControlChoice) setBattleControlMode('auto', null, true);
+        if (!liveNet.guestChose) {
+          liveNet.guestChose = true;
+          addBattleLog('⏰ 상대 친구가 고르지 않아 자동 전투로 시작해요.');
+        }
+      }
+      const hostChose = !sim.awaitingControlChoice;
+      const ready = hostChose && liveNet.guestChose;
+      if (ready) {
+        sim.waitingForOpponent = false;
+        liveNet.started = true;
+        renderLiveWaitBanner(null);
+        addBattleLog('⚔️ 두 친구 모두 전투 방식을 골랐어요! 결투 시작!');
+      } else {
+        renderLiveWaitBanner(hostChose
+          ? `⏳ 상대 친구가 전투 방식을 고르는 중이에요... (${Math.ceil(left / 1000)}초)`
+          : `🎮 전투 방식을 골라 주세요! (${Math.ceil(left / 1000)}초 뒤 자동 전투)`);
+      }
+      if (ready || Date.now() - liveNet.lastStatusAt > 1000) {
+        liveNet.lastStatusAt = Date.now();
+        liveNet.ref.child('status').set({ at: Date.now(), hostChose, guestChose: liveNet.guestChose, started: ready ? 1 : 0, left }).catch(() => {});
+      }
+    }
+
+    // 도전자: 방장이 보낸 준비 상태 받기
+    function applyLiveChoiceStatus(val) {
+      if (liveNet.role !== 'guest' || !val || liveNum(val.at) < liveNet.minAt) return;
+      liveNet.lastFrameAt = Date.now(); // 기다리는 동안에도 연결된 것으로 봄
+      liveNet.hostStatus = val;
+      if (val.started === 1) {
+        // 시간이 다 돼서 시작했으면 아직 안 고른 경우 자동 전투로
+        if (!localBattleInput.controlChosen) setBattleControlMode('auto', null, true);
+        renderLiveWaitBanner(null);
+        return;
+      }
+      const sec = Math.ceil(liveNum(val.left) / 1000);
+      if (!localBattleInput.controlChosen) {
+        renderLiveWaitBanner(`🎮 전투 방식을 골라 주세요! (${sec}초 뒤 자동 전투)`);
+      } else {
+        renderLiveWaitBanner(val.hostChose ? '⏳ 곧 시작해요...' : `⏳ 상대 친구가 전투 방식을 고르는 중이에요... (${sec}초)`);
+        // 방장이 아직 내 선택을 못 받았으면 다시 보냄
+        if (!val.guestChose) onLocalControlChanged();
       }
     }
 
