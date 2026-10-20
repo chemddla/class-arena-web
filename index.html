@@ -7466,6 +7466,17 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
     //   (실시간 결투에서는 상대 학생의 입력도 여기로 들어와 방장 화면에서 함께 처리됨)
     sim.controllers = {};
     const battleControl = { mode: 'auto', unitId: null };
+    // 실시간 결투 연결 상태 (아래 [실시간 결투 화면 동기화] 참고)
+    const LIVE_FRAME_EVERY_TICKS = 6;
+    const LIVE_GUEST_TIMEOUT_MS = 20000;
+    const LIVE_UNIT_ST_KEYS = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'blessed'];
+    const liveNet = {
+      role: null, roomId: null, ref: null, minAt: 0, startedAt: 0,
+      initReceived: false, lastFrameAt: 0, targets: {}, finished: false,
+      sent: new WeakSet(), pendingLogs: [],
+      remoteCtrl: null, remoteUnitId: null,
+      lastInputSentAt: 0, inputTimer: null, lastAimSent: null
+    };
     const localBattleInput = {
       keys: { w: false, a: false, s: false, d: false },
       aimX: null, aimY: null,
@@ -8002,6 +8013,9 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
     }
 
     function addBattleLog(text) {
+      if (liveNet.role === 'host' && sim.running && liveNet.pendingLogs.length < 30) {
+        liveNet.pendingLogs.push(String(text).replace(/<[^>]*>/g, ''));
+      }
       const box = document.getElementById('battleLogBox');
       const div = document.createElement('div');
       div.className = 'flex items-center gap-1 flex-wrap leading-relaxed';
@@ -8081,7 +8095,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       sim.controllers = {};
       battleControl.mode = 'auto';
       battleControl.unitId = null;
-      Object.assign(localBattleInput, { keys: { w: false, a: false, s: false, d: false }, attack: false, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0] });
+      Object.assign(localBattleInput, { keys: { w: false, a: false, s: false, d: false }, attack: false, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0], teamDash: 0, unitDashN: 0, unitDashId: null });
       sim.awaitingControlChoice = false;
       if (mode !== 'broadcast') openBattleControlChooser(!netRole);
       renderBattleControlHud(true);
@@ -8272,6 +8286,13 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       if (!sim.running) return;
       const u = sim.units.find(x => x.id === unitId && x.alive);
       if (!u) return;
+      if (sim.netRole === 'guest') {
+        if (u.team !== getMyBattleTeam()) return;
+        localBattleInput.unitDashN = (localBattleInput.unitDashN || 0) + 1;
+        localBattleInput.unitDashId = u.id;
+        onLocalControlChanged();
+        return;
+      }
       if (u.dashCooldown > 0) {
         showNotice(`⚠️ [${u.name}] 대시 쿨타임 중입니다! (${(u.dashCooldown / 60).toFixed(1)}초 남음)`);
         return;
@@ -8296,9 +8317,22 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         showNotice('⚠️ 전투 시뮬레이션 진행 중에 사용할 수 있습니다!');
         return;
       }
+      // 실시간 결투 도전자: 방장 화면에 대시 요청만 보냄
+      if (sim.netRole === 'guest') {
+        localBattleInput.teamDash = (localBattleInput.teamDash || 0) + 1;
+        onLocalControlChanged();
+        return;
+      }
+      if (dashTeamUnits(getMyBattleTeam()) === 0) {
+        showNotice('⚠️ 현재 대시 쿨타임이 준비된 아군 용병이 없습니다!');
+      }
+    }
+
+    // 한 팀의 대시 준비된 용병 전원 대시 (대시한 수를 돌려줌)
+    function dashTeamUnits(team) {
       let dashedCount = 0;
-      const blueAlive = sim.units.filter(u => u.alive && u.team === 'blue');
-      const redAlive = sim.units.filter(u => u.alive && u.team === 'red');
+      const blueAlive = sim.units.filter(u => u.alive && u.team === team);
+      const redAlive = sim.units.filter(u => u.alive && u.team !== team);
       blueAlive.forEach(u => {
         if (u.dashCooldown <= 0 && u.statuses.stun <= 0 && u.statuses.freeze <= 0) {
           const target = pickTarget(u, blueAlive, redAlive);
@@ -8312,11 +8346,10 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         }
       });
       if (dashedCount > 0) {
-        addBattleLog(`💨 [일제 대시] 아군 ${dashedCount}명이 동시에 전술 대시를 발동했습니다!`);
+        addBattleLog(`💨 [일제 대시] ${team === 'blue' ? '블루팀' : '레드팀'} ${dashedCount}명이 동시에 전술 대시를 발동했습니다!`);
         renderLiveUnitStatus();
-      } else {
-        showNotice('⚠️ 현재 대시 쿨타임이 준비된 아군 용병이 없습니다!');
       }
+      return dashedCount;
     }
 
     // 전략적 AI 스킬 판단 함수 (Requirement 5 & 7)
@@ -9007,7 +9040,10 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       }
     }
 
-    function finishSimulation(blueWon) {
+    function finishSimulation(blueTeamWon) {
+      if (liveNet.role === 'host') publishLiveBattleResult(blueTeamWon);
+      // blueWon = 이 화면의 학생이 이겼는지 (실시간 결투 도전자는 레드팀)
+      const blueWon = sim.myTeam === 'red' ? !blueTeamWon : blueTeamWon;
       sim.running = false;
       const stu = getActiveStudent();
       const meta = sim.meta || {};
@@ -9052,12 +9088,15 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         showRewardBanner(`⚔️ 전투가 끝났어요! ${blueWon ? '🏆 승리' : '🛡️ 패배'} · ${document.getElementById('battleResultDesc').textContent}`);
       }
 
+      sim.netRole = null;
       saveState();
       renderAllStudentViews();
     }
 
     function closeBattleResult() {
       sim.running = false;
+      sim.netRole = null;
+      sim.myTeam = 'blue';
       document.getElementById('battleResultOverlay').classList.add('hidden');
       const arenaSec = document.getElementById('arenaSection');
       if (arenaSec) arenaSec.classList.add('hidden');
@@ -9091,7 +9130,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         const dashReady = (u.dashCooldown || 0) <= 0;
         const dashBadge = u.monsterType === 'scarecrow'
           ? ''
-          : (u.team === 'blue'
+          : (u.team === (sim.myTeam || 'blue')
               ? `<button onclick="triggerSingleUnitManualDash('${u.id}')" class="px-1.5 py-0.5 rounded text-[9px] font-extrabold ${
                   dashReady ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400' : 'bg-slate-800 text-slate-500'
                 }">${dashReady ? '💨대시' : `💨${(u.dashCooldown / 60).toFixed(1)}s`}</button>`
@@ -12003,6 +12042,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         processedBattleEventIds.add(ev.eventId);
         const myStu = getActiveStudent();
         if (!sim.running || !myStu || ev.actorId === myStu.id) return;
+        if (sim.netRole) return; // 화면 동기화 중인 결투는 대시도 조작 입력으로 전달됨
         if (currentActiveLiveBattleRoomId && ev.roomId === currentActiveLiveBattleRoomId) {
           const targetTeam = ev.team || 'red';
           const units = sim.units.filter(u => u.alive && u.team === targetTeam);
@@ -12023,6 +12063,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       const myStu = getActiveStudent();
       if (!db || !classCode || !myStu || !sim.running) return;
       if (sim.mode !== 'pvp_realtime' && sim.mode !== 'elite_raid') return;
+      if (sim.netRole) return;
       const evId = 'dash_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
       processedBattleEventIds.add(evId);
       const evRef = db.ref(`classes/${classCode}/live_battle_events/${evId}`);
@@ -12129,6 +12170,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       room.guestPower = calcStudentDeployedPower(myStu);
       room.guestStudentSnapshot = publicStudentSnapshot(myStu);
       room.guestReady = false;
+      room.practiceFriend = false;
       await savePvpRoomData(roomId, room);
       showRewardBanner(`🚪 [${room.title}]에 입장했습니다! [✋ 준비완료] 버튼을 눌러주세요.`);
     };
@@ -12155,6 +12197,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       room.guestPower = calcStudentDeployedPower(friend);
       room.guestStudentSnapshot = publicStudentSnapshot(friend);
       room.guestReady = true;
+      room.practiceFriend = true; // 연습 친구는 실제 접속자가 없으므로 방장 화면에서만 진행
       await savePvpRoomData(roomId, room);
       showRewardBanner(`🙋 [${friend.num}번 ${friend.name}] 친구가 결투방에 입장하여 [✅ 준비완료]를 눌렀습니다! 이제 [⚡ 실시간 결투 시작!]을 누르세요.`);
     };
@@ -12375,17 +12418,354 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           const opponentId = r.hostId === myStu.id ? r.guestId : r.hostId;
           const opponentStu = state.students.find(s => s.id === opponentId) || (r.hostId === myStu.id ? r.guestStudentSnapshot : r.hostStudentSnapshot);
           if (opponentStu) {
+            // 방장(블루팀) 화면이 전투를 계산하고, 도전자(레드팀) 화면은 그 화면을 받아서 보여 줌
+            const isHost = r.hostId === myStu.id;
+            const netRole = r.practiceFriend ? null : (isHost ? 'host' : 'guest');
             showRewardBanner(`⚡ [실시간 PvP 결투 시작!] ${r.hostName} vs ${r.guestName} 5:5 라이브 결투가 시작됩니다!`);
             launchSimulation({
               mode: 'pvp_realtime',
-              title: `⚡ 실시간 라이브 결투: ${myStu.name} vs ${opponentStu.name}`,
-              blueStudent: myStu,
-              redStudent: opponentStu,
-              rewardMc: 350
+              title: `⚡ 실시간 라이브 결투: ${r.hostName} vs ${r.guestName}`,
+              blueStudent: isHost ? myStu : opponentStu,
+              redStudent: isHost ? opponentStu : myStu,
+              rewardMc: 350,
+              netRole,
+              myTeam: isHost ? 'blue' : 'red'
             });
+            if (netRole && sim.running) startLiveBattleNet(r.roomId, netRole, r.startedAt);
           }
         }
       });
+    }
+
+    // ==================== [실시간 결투 화면 동기화] ====================
+    // - 방장(블루팀): 평소처럼 전투를 계산하고, 1초에 약 10번 화면 상태를 classes/{코드}/pvp_live/{방}/frame 에 올림
+    // - 도전자(레드팀): 전투를 계산하지 않고 받은 화면을 부드럽게 이어서 그림. 내 조작(WASD·공격·대시·스킬)만 .../input 으로 보냄
+    // - 승패는 방장이 .../result 에 올리고, 두 화면이 각자 자기 보상을 받음
+    function liveRoomRef(roomId) {
+      const db = RealtimePvpService.initFirebaseClientSafe();
+      const classCode = String(state.classCode || '').trim().toUpperCase();
+      if (!db || !classCode || !roomId) return null;
+      return db.ref(`classes/${classCode}/pvp_live/${roomId}`);
+    }
+
+    const liveNum = v => (typeof v === 'number' && isFinite(v) ? v : 0);
+    const liveR1 = v => Math.round(liveNum(v) * 10) / 10;
+    const liveR2 = v => Math.round(liveNum(v) * 100) / 100;
+    const liveBaseId = id => String(id).slice(0, Math.max(0, String(id).lastIndexOf('_')));
+
+    function startLiveBattleNet(roomId, role, roomStartedAt) {
+      stopLiveBattleNet();
+      const ref = liveRoomRef(roomId);
+      if (!ref) {
+        // 서버에 연결되지 않았으면 예전처럼 각자 화면에서 진행
+        sim.netRole = null;
+        sim.awaitingControlChoice = false;
+        return;
+      }
+      Object.assign(liveNet, {
+        role, roomId, ref,
+        minAt: (roomStartedAt || Date.now()) - 3000,
+        startedAt: Date.now(), initReceived: false, lastFrameAt: Date.now(), targets: {}, finished: false,
+        sent: new WeakSet(), pendingLogs: [], remoteCtrl: null, remoteUnitId: null,
+        lastInputSentAt: 0, inputTimer: null, lastAimSent: null
+      });
+      if (role === 'host') {
+        try { ref.onDisconnect().remove(); } catch (e) {}
+        ref.child('result').remove().catch(() => {});
+        ref.child('input').remove().catch(() => {});
+        sim.effects.forEach(x => liveNet.sent.add(x));
+        sim.floatTexts.forEach(x => liveNet.sent.add(x));
+        const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (k === 'manualAimTarget' ? undefined : v))));
+        ref.child('init').set({ at: Date.now(), units }).catch(() => {});
+        ref.child('input').on('value', snap => applyRemoteBattleInput(snap && snap.val()));
+        addBattleLog('📡 상대 친구 화면으로 전투를 실시간 전송하고 있어요.');
+      } else {
+        try { ref.child('input').onDisconnect().remove(); } catch (e) {}
+        ref.child('init').on('value', snap => applyLiveInit(snap && snap.val()));
+        ref.child('frame').on('value', snap => applyLiveFrame(snap && snap.val()));
+        ref.child('result').on('value', snap => applyLiveResult(snap && snap.val()));
+        addBattleLog('📡 방장 화면에서 진행되는 전투를 받아오는 중이에요...');
+      }
+    }
+
+    function stopLiveBattleNet() {
+      if (liveNet.ref) {
+        ['init', 'frame', 'result', 'input'].forEach(k => { try { liveNet.ref.child(k).off(); } catch (e) {} });
+      }
+      clearTimeout(liveNet.inputTimer);
+      if (liveNet.remoteUnitId && sim.controllers && sim.controllers[liveNet.remoteUnitId] === liveNet.remoteCtrl) {
+        delete sim.controllers[liveNet.remoteUnitId];
+      }
+      Object.assign(liveNet, { role: null, roomId: null, ref: null, inputTimer: null, remoteCtrl: null, remoteUnitId: null });
+    }
+
+    // ----- 방장: 화면 상태 보내기 -----
+    function packLiveUnit(u) {
+      return [
+        liveR1(u.x), liveR1(u.y), Math.round(liveNum(u.hp)), Math.round(liveNum(u.shield)), Math.round(liveNum(u.mana)), u.alive ? 1 : 0,
+        u.facingDir === -1 ? -1 : 1, liveR2(u.facingAngle), u.isMoving ? 1 : 0,
+        liveNum(u.attackAnim), liveNum(u.skillAnim), String(u.activeSkillType || ''), liveNum(u.hurtAnim), liveNum(u.dashAnim),
+        liveNum(u.dashCooldown), liveNum(u.castLock),
+        LIVE_UNIT_ST_KEYS.map(k => liveNum(u.statuses && u.statuses[k])),
+        (u.skillSlots || []).map(k => liveNum(u.skillCooldowns && u.skillCooldowns[k]))
+      ];
+    }
+
+    function packLiveProjectile(p) {
+      let vx = 0, vy = 0;
+      if (p.isDirectional) {
+        vx = Math.cos(p.angle || 0) * liveNum(p.speed);
+        vy = Math.sin(p.angle || 0) * liveNum(p.speed);
+      } else if (p.target) {
+        const dx = p.target.x - p.x, dy = p.target.y - p.y, d = Math.hypot(dx, dy) || 1;
+        vx = (dx / d) * liveNum(p.speed);
+        vy = (dy / d) * liveNum(p.speed);
+      }
+      return [liveR1(p.x), liveR1(p.y), liveR2(p.angle), String(p.projType || ''), String(p.color || ''), liveNum(p.radius), liveR2(vx), liveR2(vy)];
+    }
+
+    function publishLiveBattleFrame() {
+      if (liveNet.role !== 'host' || !liveNet.ref || sim.tickCount % LIVE_FRAME_EVERY_TICKS !== 0) return;
+      const fresh = list => {
+        const out = [];
+        list.forEach(x => {
+          if (liveNet.sent.has(x)) return;
+          liveNet.sent.add(x);
+          if (out.length < 40) out.push(x);
+        });
+        return out;
+      };
+      const frame = {
+        at: Date.now(),
+        t: sim.tickCount,
+        u: sim.units.map(packLiveUnit),
+        p: sim.projectiles.slice(0, 80).map(packLiveProjectile),
+        e: fresh(sim.effects),
+        f: fresh(sim.floatTexts),
+        l: liveNet.pendingLogs.splice(0, 10)
+      };
+      // undefined·NaN 값은 서버에 올릴 수 없으므로 JSON으로 한 번 정리
+      liveNet.ref.child('frame').set(JSON.parse(JSON.stringify(frame))).catch(() => {});
+    }
+
+    function publishLiveBattleResult(blueTeamWon) {
+      const ref = liveNet.ref;
+      if (!ref) return;
+      publishLiveBattleFrameNow();
+      ref.child('result').set({
+        at: Date.now(),
+        blueWon: Boolean(blueTeamWon),
+        s: sim.units.map(u => [Math.round(liveNum(u.damageDealt)), Math.round(liveNum(u.healDone)), Math.round(liveNum(u.damageTaken))])
+      }).catch(() => {});
+      stopLiveBattleNet();
+      // 도전자 화면이 결과를 받을 시간을 준 뒤 정리
+      setTimeout(() => { ref.remove().catch(() => {}); }, 20000);
+    }
+
+    function publishLiveBattleFrameNow() {
+      const tick = sim.tickCount;
+      sim.tickCount = Math.ceil(tick / LIVE_FRAME_EVERY_TICKS) * LIVE_FRAME_EVERY_TICKS;
+      publishLiveBattleFrame();
+      sim.tickCount = tick;
+    }
+
+    // ----- 방장: 도전자 조작 받기 (도전자는 레드팀 용병만 조종할 수 있음) -----
+    function applyRemoteBattleInput(val) {
+      if (liveNet.role !== 'host' || !sim.running) return;
+      const unit = val && val.unitId ? sim.units.find(u => u.id === val.unitId && u.team === 'red') : null;
+      const prevId = liveNet.remoteUnitId;
+      if (prevId && (!unit || unit.id !== prevId) && sim.controllers[prevId] === liveNet.remoteCtrl) delete sim.controllers[prevId];
+      liveNet.remoteUnitId = null;
+      if (!val) return;
+      if (!liveNet.remoteCtrl) {
+        liveNet.remoteCtrl = { keys: {}, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0], _seenTeamDash: 0, _seenUnitDash: 0 };
+      }
+      const c = liveNet.remoteCtrl;
+      const k = val.keys || {};
+      c.keys = { w: Boolean(k.w), a: Boolean(k.a), s: Boolean(k.s), d: Boolean(k.d) };
+      c.aimX = typeof val.ax === 'number' ? val.ax : null;
+      c.aimY = typeof val.ay === 'number' ? val.ay : null;
+      c.attack = Boolean(val.atk);
+      c.dashCount = liveNum(val.dash);
+      c.skillCount = [0, 1, 2].map(i => liveNum((val.sk || [])[i]));
+      if (unit) {
+        sim.controllers[unit.id] = c;
+        liveNet.remoteUnitId = unit.id;
+      }
+      if (liveNum(val.teamDash) !== c._seenTeamDash) {
+        c._seenTeamDash = liveNum(val.teamDash);
+        dashTeamUnits('red');
+      }
+      if (liveNum(val.unitDashN) !== c._seenUnitDash) {
+        c._seenUnitDash = liveNum(val.unitDashN);
+        const du = sim.units.find(u => u.id === val.unitDashId && u.team === 'red' && u.alive);
+        if (du && du.dashCooldown <= 0) triggerSingleUnitManualDash(du.id);
+      }
+    }
+
+    // ----- 도전자: 내 조작 보내기 (너무 자주 보내지 않도록 최소 60ms 간격) -----
+    function onLocalControlChanged() {
+      if (sim.netRole !== 'guest' || liveNet.role !== 'guest' || !liveNet.ref) return;
+      const wait = 60 - (Date.now() - liveNet.lastInputSentAt);
+      if (wait > 0) {
+        if (!liveNet.inputTimer) liveNet.inputTimer = setTimeout(() => { liveNet.inputTimer = null; onLocalControlChanged(); }, wait);
+        return;
+      }
+      liveNet.lastInputSentAt = Date.now();
+      const c = localBattleInput;
+      const payload = {
+        at: Date.now(),
+        unitId: battleControl.mode === 'manual' ? battleControl.unitId : null,
+        keys: { w: c.keys.w, a: c.keys.a, s: c.keys.s, d: c.keys.d },
+        atk: Boolean(c.attack),
+        dash: c.dashCount || 0,
+        sk: [...(c.skillCount || [0, 0, 0])],
+        teamDash: c.teamDash || 0,
+        unitDashN: c.unitDashN || 0,
+        unitDashId: c.unitDashId || null
+      };
+      if (typeof c.aimX === 'number' && typeof c.aimY === 'number') {
+        payload.ax = liveR1(c.aimX);
+        payload.ay = liveR1(c.aimY);
+        liveNet.lastAimSent = { x: c.aimX, y: c.aimY };
+      }
+      liveNet.ref.child('input').set(JSON.parse(JSON.stringify(payload))).catch(() => {});
+    }
+
+    // ----- 도전자: 방장 화면 받기 -----
+    function normalizeLiveUnit(u) {
+      u.statuses = Object.assign(Object.fromEntries(LIVE_UNIT_ST_KEYS.map(k => [k, 0])), u.statuses || {});
+      u.skillSlots = Array.isArray(u.skillSlots) ? u.skillSlots : [];
+      u.unlockedSkills = Array.isArray(u.unlockedSkills) ? u.unlockedSkills : [];
+      u.skillCooldowns = u.skillCooldowns && typeof u.skillCooldowns === 'object' ? u.skillCooldowns : {};
+      u.name = cleanUserText(u.name, 30) || '용병';
+      u.team = u.team === 'red' ? 'red' : 'blue';
+      ['x', 'y', 'hp', 'maxHp', 'mana', 'maxMana', 'shield', 'level'].forEach(k => { u[k] = liveNum(u[k]); });
+      u.maxHp = Math.max(1, u.maxHp);
+      u.maxMana = Math.max(1, u.maxMana);
+      u.damageDealt = 0;
+      u.healDone = 0;
+      u.damageTaken = 0;
+      return u;
+    }
+
+    function applyLiveInit(val) {
+      if (liveNet.role !== 'guest' || !val || !Array.isArray(val.units) || liveNum(val.at) < liveNet.minAt) return;
+      const units = deepCleanStrings(val.units).filter(u => u && typeof u === 'object' && u.id).map(normalizeLiveUnit);
+      if (!units.length) return;
+      const prevId = battleControl.mode === 'manual' ? battleControl.unitId : null;
+      sim.units = units;
+      sim.projectiles = [];
+      liveNet.targets = {};
+      liveNet.initReceived = true;
+      liveNet.lastFrameAt = Date.now();
+      // 연결 전에 고른 용병이 있으면 방장 화면의 같은 용병으로 이어서 조종
+      if (prevId) {
+        const match = units.find(u => u.team === getMyBattleTeam() && liveBaseId(u.id) === liveBaseId(prevId));
+        setBattleControlMode(match ? 'manual' : 'auto', match ? match.id : null);
+      } else if (!document.getElementById('battleControlChooser')?.classList.contains('hidden')) {
+        openBattleControlChooser(false);
+      }
+      renderLiveUnitStatus();
+      addBattleLog('📡 방장 화면과 연결됐어요! 같은 전투를 함께 보고 있어요.');
+    }
+
+    function applyLiveFrame(val) {
+      if (liveNet.role !== 'guest' || !liveNet.initReceived || !val || liveNum(val.at) < liveNet.minAt || !Array.isArray(val.u)) return;
+      liveNet.lastFrameAt = Date.now();
+      val.u.forEach((p, i) => {
+        const u = sim.units[i];
+        if (!u || !Array.isArray(p)) return;
+        liveNet.targets[i] = { x: liveNum(p[0]), y: liveNum(p[1]) };
+        u.hp = liveNum(p[2]);
+        u.shield = liveNum(p[3]);
+        u.mana = liveNum(p[4]);
+        u.alive = p[5] === 1;
+        u.facingDir = p[6] === -1 ? -1 : 1;
+        u.facingAngle = liveNum(p[7]);
+        u.isMoving = p[8] === 1;
+        u.attackAnim = liveNum(p[9]);
+        u.skillAnim = liveNum(p[10]);
+        u.activeSkillType = cleanUserText(p[11], 30);
+        u.hurtAnim = liveNum(p[12]);
+        u.dashAnim = liveNum(p[13]);
+        u.dashCooldown = liveNum(p[14]);
+        u.castLock = liveNum(p[15]);
+        const st = Array.isArray(p[16]) ? p[16] : [];
+        LIVE_UNIT_ST_KEYS.forEach((k, j) => { u.statuses[k] = liveNum(st[j]); });
+        const cds = Array.isArray(p[17]) ? p[17] : [];
+        u.skillSlots.forEach((key, j) => { u.skillCooldowns[key] = liveNum(cds[j]); });
+      });
+      sim.projectiles = (Array.isArray(val.p) ? val.p : []).filter(Array.isArray).map(q => ({
+        x: liveNum(q[0]), y: liveNum(q[1]), angle: liveNum(q[2]),
+        projType: cleanUserText(q[3], 30), color: cleanUserText(q[4], 30) || undefined, radius: liveNum(q[5]) || undefined,
+        vx: liveNum(q[6]), vy: liveNum(q[7]), trail: []
+      }));
+      (Array.isArray(val.e) ? deepCleanStrings(val.e) : []).forEach(ef => {
+        if (ef && typeof ef === 'object' && ef.type && liveNum(ef.life) > 0) sim.effects.push(ef);
+      });
+      (Array.isArray(val.f) ? deepCleanStrings(val.f) : []).forEach(ft => {
+        if (ft && typeof ft === 'object' && liveNum(ft.life) > 0) sim.floatTexts.push({ x: liveNum(ft.x), y: liveNum(ft.y), text: String(ft.text || ''), color: String(ft.color || '#64748b'), life: liveNum(ft.life) });
+      });
+      if (sim.effects.length > 300) sim.effects.splice(0, sim.effects.length - 300);
+      if (sim.floatTexts.length > 200) sim.floatTexts.splice(0, sim.floatTexts.length - 200);
+      (Array.isArray(val.l) ? deepCleanStrings(val.l) : []).forEach(t => addBattleLog(String(t)));
+    }
+
+    function applyLiveResult(val) {
+      if (liveNet.role !== 'guest' || liveNet.finished || !val || liveNum(val.at) < liveNet.minAt) return;
+      liveNet.finished = true;
+      (Array.isArray(val.s) ? val.s : []).forEach((s, i) => {
+        const u = sim.units[i];
+        if (!u || !Array.isArray(s)) return;
+        u.damageDealt = liveNum(s[0]);
+        u.healDone = liveNum(s[1]);
+        u.damageTaken = liveNum(s[2]);
+      });
+      stopLiveBattleNet();
+      if (sim.running) finishSimulation(val.blueWon === true);
+    }
+
+    // 도전자 화면의 매 프레임: 받은 위치로 부드럽게 이동 + 투사체 이어서 움직이기 + 연결 끊김 확인
+    function applyLiveBattleFrameTick() {
+      sim.tickCount++;
+      sim.units.forEach((u, i) => {
+        ['attackAnim', 'skillAnim', 'hurtAnim', 'dashAnim', 'dashCooldown', 'castLock'].forEach(k => { if (u[k] > 0) u[k]--; });
+        const t = liveNet.targets[i];
+        if (!t) return;
+        const dx = t.x - u.x, dy = t.y - u.y;
+        if (Math.hypot(dx, dy) > 400) {
+          u.x = t.x;
+          u.y = t.y;
+        } else {
+          u.x += dx * 0.25;
+          u.y += dy * 0.25;
+        }
+        if (u.isMoving) u.walkPhase = (u.walkPhase || 0) + 0.065;
+      });
+      sim.projectiles.forEach(p => { p.x += p.vx || 0; p.y += p.vy || 0; });
+
+      // 직접 조종 중이면 마우스 조준이 바뀐 것도 가끔 보냄
+      if (battleControl.mode === 'manual' && sim.tickCount % 6 === 0 && typeof localBattleInput.aimX === 'number') {
+        const a = liveNet.lastAimSent;
+        if (!a || Math.hypot(a.x - localBattleInput.aimX, a.y - localBattleInput.aimY) > 12) onLocalControlChanged();
+      }
+
+      const silentFor = Date.now() - (liveNet.initReceived ? liveNet.lastFrameAt : liveNet.startedAt);
+      if (liveNet.role === 'guest' && silentFor > LIVE_GUEST_TIMEOUT_MS) {
+        abortLiveBattle('📡 방장 화면과 연결이 끊겨 결투를 멈췄어요. (이번 결투는 보상이 없어요)');
+      } else if (liveNet.role !== 'guest' && !liveNet.finished) {
+        // 연결 정보가 사라졌는데 도전자 화면으로 남아 있으면 정리
+        abortLiveBattle('📡 결투 연결이 종료되었어요.');
+      }
+    }
+
+    function abortLiveBattle(message) {
+      stopLiveBattleNet();
+      sim.running = false;
+      sim.netRole = null;
+      showNotice(message);
+      closeBattleResult();
     }
 
     // ==================== [B. 엘리트 몬스터 2인(3+3) 협동 레이드 : 로비방 개설 → 친구 입장 → 준비완료 → 토벌 시작] ====================
