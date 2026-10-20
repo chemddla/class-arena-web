@@ -221,6 +221,23 @@
   </div>
 
   <!-- 커스텀 확인 모달 (confirm 대체) -->
+  <!-- 교사용 코드 확인: 학생이 학급 생성·관리 화면에 들어가지 못하게 -->
+  <div id="teacherCodeModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-sm w-full p-6 shadow-2xl flex flex-col gap-3 text-center">
+      <div class="text-3xl">🔐</div>
+      <h3 class="font-title text-xl text-white">선생님 확인</h3>
+      <p class="text-xs text-slate-400">학급 생성과 학급 관리는 선생님만 할 수 있어요.<br/>교사용 코드를 입력하세요.</p>
+      <input id="teacherCodeInput" type="password" autocomplete="off" placeholder="교사용 코드"
+        class="w-full rounded-xl px-3.5 py-2.5 text-sm font-bold border text-center tracking-widest"
+        onkeydown="if (event.key === 'Enter') submitTeacherCode()" />
+      <p id="teacherCodeError" class="hidden text-xs font-bold text-rose-500">코드가 맞지 않아요. 다시 확인해 주세요.</p>
+      <div class="grid grid-cols-2 gap-2">
+        <button type="button" onclick="closeTeacherCodeModal()" class="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-sm">취소</button>
+        <button type="button" onclick="submitTeacherCode()" class="py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-sm">확인</button>
+      </div>
+    </div>
+  </div>
+
   <div id="customConfirmModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-sm w-full p-6 shadow-2xl flex flex-col gap-4 text-center">
       <div class="text-3xl">⚠️</div>
@@ -16342,6 +16359,56 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       // 서버 데이터를 먼저 받아온 뒤에만 업로드합니다 (오래된 기기 데이터로 덮어쓰기 방지)
       subscribeToActiveClassRealtime(state.classCode);
       requestAnimationFrame(animationLoop);
+    };
+
+    // ===== 교사용 코드: 학급 생성·관리 화면(교사 모달)을 열기 전에 확인 =====
+    // 코드 원문 대신 SHA-256 값만 둠 (소스 보기로 바로 보이지 않게). 한 번 맞히면 이 브라우저 창을 닫을 때까지 다시 묻지 않음
+    const TEACHER_CODE_SHA256 = '9e18ec1dfe3745c18b9640b4339eb8c070488334279d147f2e5357130b7c2fc4';
+    let teacherCodeMemoryOk = false;
+    let teacherCodePendingArgs = null;
+
+    function teacherCodeVerified() {
+      if (teacherCodeMemoryOk) return true;
+      try { return sessionStorage.getItem('caTeacherCodeOk') === TEACHER_CODE_SHA256; } catch (e) { return false; }
+    }
+
+    async function sha256Hex(text) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    const _openTeacherLoginModalWithoutCode = openTeacherLoginModal;
+    openTeacherLoginModal = function (...args) {
+      if (teacherCodeVerified()) return _openTeacherLoginModalWithoutCode(...args);
+      teacherCodePendingArgs = args;
+      const input = document.getElementById('teacherCodeInput');
+      document.getElementById('teacherCodeError').classList.add('hidden');
+      if (input) input.value = '';
+      document.getElementById('teacherCodeModal').classList.remove('hidden');
+      setTimeout(() => input && input.focus(), 0);
+    };
+
+    window.closeTeacherCodeModal = function () {
+      document.getElementById('teacherCodeModal').classList.add('hidden');
+      teacherCodePendingArgs = null;
+    };
+
+    window.submitTeacherCode = async function () {
+      const input = document.getElementById('teacherCodeInput');
+      const typed = String(input?.value || '').trim().toUpperCase();
+      let ok = false;
+      try { ok = typed.length > 0 && (await sha256Hex(typed)) === TEACHER_CODE_SHA256; } catch (e) { ok = false; }
+      if (!ok) {
+        document.getElementById('teacherCodeError').classList.remove('hidden');
+        if (input) { input.value = ''; input.focus(); }
+        return;
+      }
+      teacherCodeMemoryOk = true;
+      try { sessionStorage.setItem('caTeacherCodeOk', TEACHER_CODE_SHA256); } catch (e) {}
+      const args = teacherCodePendingArgs || [];
+      document.getElementById('teacherCodeModal').classList.add('hidden');
+      teacherCodePendingArgs = null;
+      _openTeacherLoginModalWithoutCode(...args);
     };
   </script>
 </body>
