@@ -2986,7 +2986,7 @@
      ********************************************************************/
     const MERC_SPRITE_DEFS = {
       warrior_0: {
-        src: 'assets/sprites/merc/warrior_0.png',
+        src: 'assets/sprites/merc/warrior_0.webp',
         cellW: 156, cellH: 82, anchorX: 78, anchorY: 81, standH: 81, portraitCX: 77, count: 27,
         anims: {
           idle: [0, 1], walk: [2, 3, 4, 5], attack: [6, 7, 8, 9], skill: [10, 11, 12, 13], hurt: [14], death: [15, 16, 17],
@@ -3002,14 +3002,14 @@
       },
       // 마법사: 투사체는 따로 그리므로 시트에는 시전 자세만 있음. 대기는 걷기 프레임을 같이 씀
       mage_0: {
-        src: 'assets/sprites/merc/mage_0.png',
+        src: 'assets/sprites/merc/mage_0.webp',
         cellW: 118, cellH: 95, anchorX: 46, anchorY: 94, standH: 81, topH: 92, portraitCX: 49, count: 13,
         anims: { idle: [0, 2], walk: [0, 1, 2, 3], attack: [4, 5, 6], skill: [7, 8], hurt: [9], death: [10, 11, 12] },
         skillAnims: {}
       },
       // 궁수: 화살은 이펙트 아틀라스의 arrow 그림으로 따로 날아감
       archer_0: {
-        src: 'assets/sprites/merc/archer_0.png',
+        src: 'assets/sprites/merc/archer_0.webp',
         cellW: 120, cellH: 81, anchorX: 55, anchorY: 80, standH: 81, topH: 80, portraitCX: 51, count: 17,
         anims: { idle: [0, 1], walk: [2, 3, 4, 5], attack: [6, 7, 8, 9], skill: [10, 11, 12], hurt: [13], death: [14, 15, 16] },
         skillAnims: {}
@@ -3024,7 +3024,7 @@
      * - 효과 객체에 spr: '<키>'를 붙이면 기본 도형 대신 이 그림으로 그림 (참가자 화면에도 그대로 전달됨)
      ********************************************************************/
     const FX_SPRITE_SHEET = {
-      src: 'assets/sprites/fx/mage_fx.png',
+      src: 'assets/sprites/fx/mage_fx.webp',
       anims: {
         orb: [[0,0,100,50,77,25],[102,0,107,52,83,26]],
         orb_hit: [[211,0,135,95,68,48],[348,0,154,112,77,56]],
@@ -3168,11 +3168,6 @@
       const slots = ensureMercSkillSlots(merc);
       const count = getUnlockedSkillCount(merc.level || 1);
       return slots.slice(0, count);
-    }
-
-    function getMercUnlockedSkillObjs(merc) {
-      const jobSkills = SKILL_DEFS[merc.job] || SKILL_DEFS.warrior;
-      return getMercUnlockedSkillKeys(merc).map(k => jobSkills[k]).filter(Boolean);
     }
 
     // 대표 스킬: 처음 열린 스킬 (아직 없으면 '무작위 스킬' 안내)
@@ -4290,12 +4285,6 @@
     let formationMovingMercId = null;
     let draggingMercId = null;
 
-    function selectMercForTactic(mercId) {
-      selectedMercId = mercId;
-      formationMovingMercId = null;
-      renderSquadTab();
-    }
-
     let renamingMercId = null;
 
     function openRenameMercModal(mercId) {
@@ -4426,66 +4415,6 @@
       const modal = document.getElementById('mercDetailModal');
       if (modal) modal.classList.add('hidden');
       activeDetailMercId = null;
-    }
-
-    function swapMercSkillSlot(mercId, slotIdx, dir) {
-      const stu = getActiveStudent();
-      const merc = stu.roster.find(m => m.id === mercId);
-      if (!merc) return;
-      const slots = ensureMercSkillSlots(merc);
-      const targetIdx = slotIdx + dir;
-      if (targetIdx < 0 || targetIdx >= slots.length) return;
-      const tmp = slots[slotIdx];
-      slots[slotIdx] = slots[targetIdx];
-      slots[targetIdx] = tmp;
-      merc.skillKey = slots[0];
-      saveState();
-      renderSquadTab();
-      renderMercDetailModal();
-      setupIdlePreviewBattle();
-      showNotice(`🔄 [${merc.name}] 스킬 습득 슬롯 순서가 변경되었습니다!`);
-    }
-
-    function setMercLevelQuickTest(mercId, targetLv) {
-      const stu = getActiveStudent();
-      const merc = stu.roster.find(m => m.id === mercId);
-      if (!merc) return;
-      merc.level = targetLv;
-      saveState();
-      renderSquadTab();
-      renderMercDetailModal();
-      setupIdlePreviewBattle();
-      const unlockedCnt = getUnlockedSkillCount(merc.level);
-      showRewardBanner(`⚡ [${merc.name}] Lv.${targetLv} 설정 완료! (사용 가능 스킬: ${unlockedCnt}개 / 보너스 SP: 총 ${Math.floor(targetLv / 10) * FIXED_SP_PER_10_LEVELS}P)`);
-    }
-
-    function trainMercenaryToNextMilestone(mercId) {
-      const stu = getActiveStudent();
-      const merc = stu.roster.find(m => m.id === mercId);
-      if (!merc) return;
-      const targetLv = Math.min(99, (Math.floor(merc.level / 10) + 1) * 10);
-      const skillWatch = beginSkillUnlockWatch(merc);
-      let levelsGained = 0;
-      while (merc.level < targetLv) {
-        const c = mercLevelUpCost(merc.level);
-        if (stu.mc < c) break;
-        stu.mc -= c;
-        merc.level += 1;
-        levelsGained++;
-      }
-      if (levelsGained === 0) {
-        const nextCost = mercLevelUpCost(merc.level);
-        showNotice(`⚠️ 훈련 비용이 부족합니다! (다음 1레벨 필요: ${nextCost} CA)`);
-        return;
-      }
-      ensureMercSkillSlots(merc);
-      saveState();
-      renderSquadTab();
-      renderMercDetailModal();
-      setupIdlePreviewBattle();
-      const newSkills = skillWatch();
-      const unlockedCnt = getUnlockedSkillCount(merc.level);
-      showRewardBanner(`🎉 [${merc.name}] Lv.${merc.level} 달성!${newSkills.length ? ` 🎲 새 스킬 [${newSkills.map(x => `${x.icon} ${x.name}`).join(', ')}] 획득!` : ''} (보유 스킬 ${unlockedCnt}/3개)`);
     }
 
     function renderMercDetailModal() {
@@ -4769,16 +4698,8 @@
       showRewardBanner(`🎲 스킬 다시 뽑기! [${merc.name}] 용병의 최근 스킬이 [${sk.icon} ${sk.name}](으)로 바뀌었어요!`);
     }
 
-    function changeMercSkill(mercId, newSkillKey) {
-      rerollMercSkill(mercId);
-    }
-
     let sellingMercId = null;
     let activeTradeOfferTarget = null; // { targetStuId, mercId }
-
-    function dismissMercenary(mercId) {
-      openMercSellModal(mercId);
-    }
 
     function openMercSellModal(mercId) {
       const stu = getActiveStudent();
@@ -5723,8 +5644,6 @@
       }
       const job = JOB_DEFS[merc.job];
       const rar = RARITY_DEFS[merc.rarity] || RARITY_DEFS.N;
-      const curSkill = getMercSkillObj(merc);
-      const jobSkillList = Object.values(SKILL_DEFS[merc.job]);
       const spInfo = getMercStatPointInfo(merc);
       const stats = calcMercStats(merc, stu);
       const mercPower = calcMercCombatPower(merc, stu);
@@ -5845,16 +5764,6 @@
       `;
     }
 
-    function toggleMercSkin(mercId) {
-      const stu = getActiveStudent();
-      const merc = stu.roster.find(m => m.id === mercId);
-      if (!merc) return;
-      merc.skinVariant = ((merc.skinVariant || 0) + 1) % 2;
-      saveState();
-      renderSquadTab();
-      setupIdlePreviewBattle();
-    }
-
     function updateMercTactic(mercId, field, value) {
       const stu = getActiveStudent();
       const merc = stu.roster.find(m => m.id === mercId);
@@ -5930,32 +5839,6 @@
       }
       generateRecruitPool(false);
       renderOfficeTab();
-    }
-
-    function hireWithTicket() {
-      const stu = getActiveStudent();
-      if (stu.tickets <= 0) {
-        showNotice('⚠️ 보유한 특급 스카우트 티켓이 없습니다! 선생님 칭찬 보상 등으로 획득할 수 있습니다.');
-        return;
-      }
-      if (stu.roster.length >= MAX_ROSTER) {
-        showNotice(`⚠️ 보유 용병 정원(${MAX_ROSTER}명)이 가득 찼습니다! 기존 용병을 해고한 뒤 고용하세요.`);
-        return;
-      }
-      stu.tickets -= 1;
-      const jobKeys = ['warrior', 'mage', 'healer', 'archer'];
-      const randomJob = jobKeys[Math.floor(Math.random() * jobKeys.length)];
-      const rarity = Math.random() < 0.45 ? 'R' : 'N';
-      const canDeploy = stu.roster.filter(m => m.deployed).length < MAX_DEPLOY;
-      const newMerc = createMercenary(randomJob, rarity, 1, stu.roster.length, canDeploy);
-      const sk = getMercSkillObj(newMerc);
-      const rarObj = RARITY_DEFS[newMerc.rarity];
-      stu.roster.push(newMerc);
-      saveState();
-      renderOfficeTab();
-      renderSquadTab();
-      setupIdlePreviewBattle();
-      showRewardBanner(`🎉 특급 스카우트! [${rarObj.name}] ${newMerc.name} (${JOB_DEFS[randomJob].name}${sk.id ? ` · ${sk.name}` : ""}) 합류!`);
     }
 
     function hireMercFromOffice(index) {
@@ -6545,20 +6428,6 @@
         }
       }
       return `<div class="grid grid-cols-3 gap-0.5 p-1 rounded-lg bg-slate-950 border border-slate-800 shrink-0" title="미리 설정된 3×5 전술 진형 배치">${cells}</div>`;
-    }
-
-    function saveMyDefenseFormationSnapshot() {
-      const stu = getActiveStudent();
-      const deployed = (stu.roster || []).filter(m => m.deployed);
-      if (!deployed.length) {
-        showNotice('⚠️ 먼저 출전 중인 용병을 최소 1명 이상 배치해주세요!');
-        return;
-      }
-      stu.defenseFormation = JSON.parse(JSON.stringify(deployed));
-      stu.defenseFormationLabel = '사용자 지정 3×5 전술 진형';
-      saveState();
-      renderPvpTab();
-      showRewardBanner(`🛡️ [${stu.name}] 용병단의 현재 3×5 전술 진형이 비실시간 방어 진형으로 저장되었습니다!`);
     }
 
     // 랭킹 매칭: 내 점수와 비슷한(±100점부터 점점 넓혀서) 친구의 저장된 방어 진형과 겨룸
@@ -8431,19 +8300,6 @@
         redStudent: enemyStu,
         rewardMc: 300
       });
-    }
-
-    function challengeRandomClassmate(pvpMode = 'pvp_realtime') {
-      const myStu = getActiveStudent();
-      const others = state.students.filter(s => s.id !== myStu.id);
-      if (!others.length) return;
-      const pick = others[Math.floor(Math.random() * others.length)];
-      startStudentPvpBattle(pick.id, pvpMode);
-    }
-
-    // 배속은 쓰지 않음: 모든 전투가 같은 빠르기(1배속 × BATTLE_PACE)
-    function toggleBattleSpeed() {
-      sim.speed = 1;
     }
 
     function pickTarget(unit, allies, enemies) {
@@ -11037,30 +10893,8 @@
       }
     }
 
-    function openTeacherLoginModal() {
-      document.getElementById('teacherPinCheckInput').value = '';
-      document.getElementById('teacherLoginError').classList.add('hidden');
-      document.getElementById('teacherLoginModal').classList.remove('hidden');
-      setTimeout(() => document.getElementById('teacherPinCheckInput').focus(), 50);
-    }
-
     function closeTeacherLoginModal() {
       document.getElementById('teacherLoginModal').classList.add('hidden');
-    }
-
-    function confirmTeacherLogin() {
-      const val = document.getElementById('teacherPinCheckInput').value.trim();
-      if (!checkTeacherPin(val)) {
-        document.getElementById('teacherLoginError').classList.remove('hidden');
-        return;
-      }
-      closeTeacherLoginModal();
-      document.getElementById('studentViewContainer').classList.add('hidden');
-      document.getElementById('teacherViewContainer').classList.remove('hidden');
-      document.getElementById('teacherModeBtnText').textContent = '학생 화면으로';
-      document.getElementById('adminNoticeInput').value = state.notice;
-      renderAdminStudentGrid();
-      updateHeaderUI();
     }
 
     function switchToStudentView() {
@@ -12692,7 +12526,6 @@
     const SPARK_CLASSES_LOCAL_KEY = 'MCA_SPARK_CLASSES_REGISTRY_V1';
     const SPARK_LAST_CLASS_CODE_KEY = 'MCA_SPARK_LAST_CLASS_CODE_V1';
     const SPARK_TEACHER_KEY_STORAGE = 'MCA_SPARK_LAST_TEACHER_KEY_V1';
-    let activeClassCodeRef = null;
     let suppressRemoteClassPush = false;
     let sparkClassSyncTimer = null;
 
@@ -15941,15 +15774,6 @@
       }
     }
 
-    async function autoSyncActiveStudentSquadToFirebase() {
-      if (suppressRemoteClassPush) return;
-      const stu = getActiveStudent();
-      if (!stu) return;
-      stu.defenseFormation = computeDefenseFormation(stu);
-      stu.defenseFormationLabel = defenseFormationLabel(stu);
-      // 학생 데이터 업로드는 pushCurrentClassStateToFirebase()가 변경분만 한 번에 처리합니다.
-    }
-
     const _origSaveState = saveState;
     saveState = function () {
       const stu = getActiveStudent();
@@ -16088,7 +15912,7 @@
       }
     }
 
-    openTeacherLoginModal = function (defaultTab = 'login') {
+    function openTeacherLoginModal(defaultTab = 'login') {
       ensureCurrentClassMetadata();
       updateClassBadgesUI();
       document.getElementById('teacherPinCheckInput').value = '';
@@ -16110,9 +15934,9 @@
       if (defaultTab === 'login') {
         setTimeout(() => document.getElementById('teacherPinCheckInput')?.focus(), 50);
       }
-    };
+    }
 
-    confirmTeacherLogin = function () {
+    function confirmTeacherLogin() {
       const val = document.getElementById('teacherPinCheckInput').value.trim();
       const isPinMatch = checkTeacherPin(val);
       const keyHash = simpleHashString(val.toUpperCase());
@@ -16132,7 +15956,7 @@
       updateClassBadgesUI();
       renderAdminStudentGrid();
       updateHeaderUI();
-    };
+    }
 
     function issueNewTeacherKey() {
       const newKey = generateTeacherKeyString();
