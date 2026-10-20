@@ -805,6 +805,9 @@
             </div>
           </div>
 
+          <!-- 직접 전투: 화면 아래 가운데에 스킬·대시 남은 쿨타임 (조이스틱·터치 버튼 사이) -->
+          <div id="manualSkillBar" class="hidden absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none select-none flex items-end gap-2"></div>
+
           <!-- 전투 방식 고르기 (자동 전투 / 직접 전투) -->
           <div id="battleControlChooser" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
             <div class="bg-slate-900 border-2 border-amber-500/60 rounded-3xl p-5 max-w-2xl w-full flex flex-col gap-4 shadow-2xl">
@@ -2366,7 +2369,7 @@
       warrior: {
         whirlwind: {
           id: 'whirlwind', name: '회전베기', icon: '🌪️', ccTag: '🌪️연속회전',
-          manaCost: 24, cooldownTicks: 390, cooldownSec: 6.5, castSec: 0.4,
+          manaCost: 24, cooldownTicks: 390, cooldownSec: 6.5, castSec: 0,
           desc: '몸을 360도 빠르게 연속 회전하며 양손 대검으로 주변 적들에게 지속적인 광역 다단히트 피해를 입힙니다.'
         },
         stun_strike: {
@@ -7665,7 +7668,10 @@
 
     // 매 화면마다: 조준 위치 갱신 + 카메라 (자동: WASD 이동 / 직접: 내 용병 따라가기)
     function updateBattleControlFrame() {
-      if (!sim.running) return;
+      if (!sim.running) {
+        document.getElementById('manualSkillBar')?.classList.add('hidden');
+        return;
+      }
       const z = sim.camera.zoom || 1.0;
       const ctrlUnit = getControlledUnit();
       if (localBattleInput.autoAim && ctrlUnit && ctrlUnit.alive) {
@@ -7691,12 +7697,60 @@
         const panY = (k.s ? 1 : 0) - (k.w ? 1 : 0);
         if (panX || panY) {
           sim.camera.autoFollow = false;
-          sim.camera.x += panX * 16 / z;
-          sim.camera.y += panY * 16 / z;
+          sim.camera.x += panX * CAMERA_PAN_SPEED / z;
+          sim.camera.y += panY * CAMERA_PAN_SPEED / z;
           clampCamera();
         }
       }
       renderBattleControlHud();
+      if (animationFrameNo % 5 === 0) renderManualSkillBar();
+    }
+
+    // 자동 전투에서 WASD로 화면을 움직이는 속도 (화면 한 번에 몇 px, 예전 16에서 50% 줄임)
+    const CAMERA_PAN_SPEED = 8;
+
+    // 남은 쿨타임(틱)을 실제 시간(초)으로: 전투 빠르기(BATTLE_PACE)와 배속을 반영
+    function ticksToRealSec(ticks) {
+      return ticks / (60 * BATTLE_PACE * Math.max(1, sim.speed || 1));
+    }
+
+    // 직접 전투: 화면 아래 가운데에 스킬 1·2·3과 대시의 남은 쿨타임 표시
+    function renderManualSkillBar() {
+      const bar = document.getElementById('manualSkillBar');
+      if (!bar) return;
+      const u = getControlledUnit();
+      if (!sim.running || !u || !u.alive) {
+        bar.classList.add('hidden');
+        return;
+      }
+      bar.classList.remove('hidden');
+      const jobSkills = SKILL_DEFS[u.job] || SKILL_DEFS.warrior;
+      const slot = (keyLabel, icon, name, cdLeft, cdTotal, state) => {
+        const ready = state === 'ready';
+        const pct = cdTotal > 0 ? Math.max(0, Math.min(100, (cdLeft / cdTotal) * 100)) : 0;
+        const label = state === 'locked' ? '🔒 잠김'
+          : state === 'mana' ? '💧 마나'
+          : cdLeft > 0 ? `${ticksToRealSec(cdLeft).toFixed(1)}초` : '준비!';
+        // 밝은 테마가 색을 덮어쓰지 않도록 색은 style로 직접 지정
+        return `<div class="relative w-[92px] rounded-xl overflow-hidden text-center px-1.5 py-1.5 shadow-lg"
+            style="background:rgba(15,23,42,0.86);border:2px solid ${ready ? '#fbbf24' : '#64748b'};color:#fff">
+          <div class="absolute inset-x-0 bottom-0" style="height:${pct}%;background:rgba(148,163,184,0.35)"></div>
+          <div class="relative flex items-center justify-center gap-1 text-[11px] font-extrabold"><span class="px-1 rounded" style="background:#fbbf24;color:#0f172a">${keyLabel}</span><span class="text-base leading-none">${icon}</span></div>
+          <div class="relative text-[10px] font-bold truncate" style="color:#e2e8f0">${name}</div>
+          <div class="relative text-xs font-black" style="color:${ready ? '#fcd34d' : '#f1f5f9'}">${label}</div>
+        </div>`;
+      };
+      const skillSlots = (u.skillSlots || []).slice(0, 3).map((key, i) => {
+        const sk = jobSkills[key];
+        if (!sk) return '';
+        const cd = u.skillCooldowns?.[key] || 0;
+        const state = !(u.unlockedSkills || []).includes(key) ? 'locked'
+          : cd > 0 ? 'cooldown'
+          : u.mana < (sk.manaCost || 0) ? 'mana' : 'ready';
+        return slot(String(i + 1), sk.icon, sk.name, cd, sk.cooldownTicks || 360, state);
+      }).join('');
+      const dashMax = u.maxDashCooldown || DASH_CONFIG.cooldownTicks;
+      bar.innerHTML = skillSlots + slot('Space', '💨', '대시', u.dashCooldown || 0, dashMax, (u.dashCooldown || 0) > 0 ? 'cooldown' : 'ready');
     }
 
     function findEnemyNearAim(u, enemies, aimX, aimY, maxRange) {
@@ -7774,6 +7828,7 @@
       if ((u.skillCooldowns?.[key] || 0) > 0) { say('⏳ 아직 준비 중'); return; }
       if (u.mana < (sk.manaCost || 0)) { say('💧 마나 부족', '#0284c7'); return; }
       if (u.castLock > 0) return;
+      if (key === 'stun_strike' && !enemies.some(e => Math.hypot(e.x - u.x, e.y - u.y) <= stunStrikeReach(u))) { say('🔨 적에게 더 가까이!'); return; }
       const aimX = c.aimX ?? u.x;
       const aimY = c.aimY ?? u.y;
       u.manualAimTarget = findEnemyNearAim(u, enemies, aimX, aimY, 9999)
@@ -8642,9 +8697,9 @@
               score = 45;
             }
           } else if (skKey === 'stun_strike') {
-            if (distToPrimary <= unit.range + 75) {
+            if (distToPrimary <= stunStrikeReach(unit)) {
               const unstunnedInRange = enemies.filter(e =>
-                Math.hypot(e.x - unit.x, e.y - unit.y) <= unit.range + 85 &&
+                Math.hypot(e.x - unit.x, e.y - unit.y) <= stunStrikeReach(unit) &&
                 e.statuses.stun <= 35 && e.statuses.freeze <= 35
               );
               if (unstunnedInRange.length > 0) {
@@ -8740,10 +8795,10 @@
 
       if (unit.job === 'warrior') {
         if (sk === 'whirlwind') {
-          unit.skillAnim = 160;
-          unit.maxSkillAnim = 160;
-          unit.attackAnim = 160;
-          unit.maxAttackAnim = 160;
+          unit.skillAnim = WHIRLWIND_TICKS;
+          unit.maxSkillAnim = WHIRLWIND_TICKS;
+          unit.attackAnim = WHIRLWIND_TICKS;
+          unit.maxAttackAnim = WHIRLWIND_TICKS;
           sim.effects.push({
             type: 'whirlwind_slash',
             x: unit.x, y: unit.y, r: 120,
@@ -8759,18 +8814,21 @@
           addBattleLog(`🌪️ [전사] ${unit.name}의 폭풍 회전베기! (마나 -${skObj.manaCost}, 쿨타임 ${skObj.cooldownSec}초)`);
 
         } else if (sk === 'stun_strike') {
-          const unstunned = enemies.filter(e =>
-            Math.hypot(e.x - unit.x, e.y - unit.y) <= unit.range + 85 &&
-            e.statuses.stun <= 35 && e.statuses.freeze <= 35
-          );
-          if (unstunned.length > 0) target = unstunned[0];
-          if (!target) return;
+          // 기절공격은 근접 공격 범위(기본 공격이 닿는 거리) 안의 적에게만
+          const reach = stunStrikeReach(unit);
+          const inReach = enemies.filter(e => Math.hypot(e.x - unit.x, e.y - unit.y) <= reach);
+          const unstunned = inReach.filter(e => e.statuses.stun <= 35 && e.statuses.freeze <= 35);
+          target = unstunned[0] || (target && inReach.includes(target) ? target : inReach[0]) || null;
+          if (!target) {
+            sim.floatTexts.push({ x: unit.x, y: unit.y - 52, text: '🔨 빗나감 (너무 멀어요)', color: '#64748b', life: 40 });
+            return;
+          }
           sim.effects.push({
             type: 'stun_shockwave',
             x: target.x, y: target.y, r: 100,
             life: 56, maxLife: 56
           });
-          enemies.forEach(e => {
+          inReach.forEach(e => {
             if (Math.hypot(e.x - target.x, e.y - target.y) <= 80) {
               applyDamage(unit, e, unit.atk * 1.6);
               inflictStatus(unit, e, 'stun', 120);
@@ -9516,9 +9574,25 @@
 
     // ===== 스킬 시전 시간 =====
     // 시전 중에는 제자리에 서서 막대가 차고, 다 차면 스킬이 나감. 기절·동결되면 끊기고 마나·쿨타임은 쓰지 않음
+    // 기절공격이 닿는 거리 = 기본 근접 공격이 닿는 거리
+    function stunStrikeReach(unit) {
+      return (unit.range || 60) + 14;
+    }
+
     function beginSkillCast(unit, key, aim = null) {
       const sk = (SKILL_DEFS[unit.job] || SKILL_DEFS.warrior)[key];
       if (!sk) return;
+      // 시전 시간이 없는 스킬(회전베기 등)은 기다리지 않고 바로 발동
+      if (!(sk.castSec > 0)) {
+        const allies = sim.units.filter(a => a.alive && a.team === unit.team);
+        const enemies = sim.units.filter(e => e.alive && e.team !== unit.team);
+        if (aim && aim.target && aim.target.alive) unit.manualAimTarget = aim.target;
+        if (aim && typeof aim.x === 'number') unit.teleportAim = { x: aim.x, y: aim.y };
+        castMercSkill(unit, allies, enemies, key);
+        unit.teleportAim = null;
+        unit.manualAimTarget = null;
+        return;
+      }
       const total = Math.max(1, Math.round((sk.castSec || 0) * 60));
       unit.casting = { key, left: total, total, icon: sk.icon, aimX: aim?.x ?? null, aimY: aim?.y ?? null, aimTarget: aim?.target || null };
       unit.isMoving = false;
@@ -9550,8 +9624,25 @@
       return true;
     }
 
+    const WHIRLWIND_TICKS = 160; // 회전베기 지속 시간 (틱)
+
     function drawCastBars(ctx) {
       sim.units.forEach(u => {
+        // 회전베기 중: 캐릭터 위에 남은 지속 시간이 줄어드는 막대
+        if (u.alive && !u.casting && u.job === 'warrior' && u.activeSkillType === 'whirlwind' && u.skillAnim > 0) {
+          const ratio = Math.max(0, Math.min(1, u.skillAnim / WHIRLWIND_TICKS));
+          const w = 54, h = 7, x = u.x - w / 2, y = u.y - 78;
+          ctx.save();
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+          ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+          ctx.fillStyle = u.team === 'blue' ? '#f59e0b' : '#fb7185';
+          ctx.fillRect(x, y, w * ratio, h);
+          ctx.font = '14px sans-serif';
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('🌪️', x - 3, y + h / 2);
+          ctx.restore();
+        }
         if (!u.alive || !u.casting) return;
         const c = u.casting;
         const ratio = 1 - c.left / c.total;
