@@ -685,8 +685,8 @@
             <button onclick="toggleBattleSfx()" id="sfxToggleBtn" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-amber-300 border border-slate-700">
               🔊 타격음: ON
             </button>
-            <button onclick="triggerAllBlueDash()" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-extrabold text-white shadow" title="쿨타임이 준비된 아군 용병 전원이 즉시 전술 대시를 발동합니다">
-              💨 아군 일제 대시
+            <button onclick="forfeitBattle()" class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-extrabold text-white shadow" title="전투를 포기하고 패배로 끝내요 (보상 없음)">
+              🏳️ 전투 포기
             </button>
             <button onclick="openBattleControlChooser(!sim.netRole)" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-xs font-extrabold text-slate-950 shadow" title="자동 전투와 직접 전투를 바꿔요">
               🎮 조작 바꾸기
@@ -697,7 +697,7 @@
             <button onclick="startPracticeSim()" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white shadow">
               🔄 연습 전투 다시 하기
             </button>
-            <button onclick="closeBattleResult()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300 hover:text-rose-200 border border-slate-700">
+            <button onclick="closeArenaOrForfeit()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300 hover:text-rose-200 border border-slate-700">
               ✕ 전장 닫기
             </button>
           </div>
@@ -1156,10 +1156,10 @@
               <div class="bg-slate-900 border border-emerald-500/40 rounded-2xl p-4 flex flex-col gap-3">
                 <div class="flex items-center justify-between">
                   <h4 class="font-title text-lg text-emerald-300">🛡️ 나의 방어 진형</h4>
-                  <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold">자동 반영중</span>
+                  <span id="myDefenseFormationBadge" class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold">홈 진형 그대로</span>
                 </div>
                 <p class="text-xs text-slate-400">
-                  <strong>[🏠 홈]</strong> 탭에서 용병을 배치하거나 강화하면 내 방어 진형에도 바로 반영돼요.
+                  친구가 도전하거나 랭킹 매칭에서 만날 때 쓰는 진형이에요. <strong>홈 진형과 따로</strong> 용병과 자리를 정할 수 있어요.
                 </p>
                 <div id="myDefenseFormationPreviewBox" class="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs"></div>
               </div>
@@ -2374,6 +2374,7 @@
      * 0. 커스텀 알림/확인 모달 헬퍼 (alert / confirm 완전 대체)
      ********************************************************************/
     let confirmCallback = null;
+    let defenseEditor = null; // PvP 방어 진형 편집 중이면 { pickedId }
 
     function showNotice(msg) {
       showRewardBanner(msg);
@@ -2422,7 +2423,9 @@
       animTicks: 16
     };
     const CHARGE_SKILL_DISTANCE = GRID_CELL_SIZE * 2; // 전사 돌진 스킬 2칸 (240px)
-    const BATTLE_PROJECTILE_SPEED = 1.4; // 화살·마법구 등 투사체 속도 배율
+    const BATTLE_PROJECTILE_SPEED = 2.8; // 화살·마법구 등 투사체 속도 배율
+    const PROJECTILE_HIT_RADIUS = 30;    // 투사체가 이 거리 안으로 지나가면 맞음
+    const AI_DODGE_CHANCE = 0.45;        // AI가 날아오는 투사체를 알아채고 피하려 할 확률
 
     // 스킬별 개별 쿨타임(cooldownTicks/cooldownSec) 및 마나 소모량(manaCost) 정의 (Requirement 5)
     const SKILL_DEFS = {
@@ -2548,12 +2551,12 @@
     };
 
     const MERC_NAME_POOL = {
-      warrior: ['레오', '가렌', '아서', '카일', '휴고', '볼트', '브론', '타이탄', '그레이', '록', '맥스', '바론', '코난', '드레이크', '라그너', '토르', '브루노', '레녹스', '오스카', '해럴드'],
-      mage:    ['루나', '이그니', '엘사', '제우스', '메리', '솔라', '벨라', '노바', '아스트라', '멀린', '에이라', '셀레네', '오닉스', '프리야', '라이라', '베가', '시엘', '아이리스', '오로라', '이브'],
-      healer:  ['클라라', '에단', '유나', '세라', '미아', '루시', '아리아', '엘린', '소피아', '하나', '노엘', '릴리', '마리', '에덴', '샬롯', '그레이스', '플로라', '벨', '줄리아', '레아'],
-      archer:  ['실바', '로빈', '제트', '카이', '아리', '호크', '린', '에코', '피닉스', '레이븐', '팔콘', '세이지', '윈드', '애쉬', '키라', '타라', '렉스', '이든', '스카이', '울프']
+      warrior: ['레오', '가렌', '아서', '카일', '휴고', '볼트', '브론', '타이탄', '그레이', '록', '맥스', '바론', '코난', '드레이크', '라그너', '토르', '브루노', '레녹스', '오스카', '해럴드', '레온', '다리우스', '켄', '베일', '로크', '에릭', '군터', '발터', '하켄', '지크'],
+      mage:    ['루나', '이그니', '엘사', '제우스', '메리', '솔라', '벨라', '노바', '아스트라', '멀린', '에이라', '셀레네', '오닉스', '프리야', '라이라', '베가', '시엘', '아이리스', '오로라', '이브', '카인', '모르간', '실리아', '네오', '테라', '리안', '에보니', '미르', '세레스', '라엘'],
+      healer:  ['클라라', '에단', '유나', '세라', '미아', '루시', '아리아', '엘린', '소피아', '하나', '노엘', '릴리', '마리', '에덴', '샬롯', '그레이스', '플로라', '벨', '줄리아', '레아', '애니', '로제', '헤라', '이사', '루미', '다나', '엘라', '조이', '메이', '티나'],
+      archer:  ['실바', '로빈', '제트', '카이', '아리', '호크', '린', '에코', '피닉스', '레이븐', '팔콘', '세이지', '윈드', '애쉬', '키라', '타라', '렉스', '이든', '스카이', '울프', '페인', '루크', '나일', '시온', '케이', '바람', '아론', '테오', '리스', '노아']
     };
-    // 이름 앞에 붙는 별명 (직업별 20개 × 이름 20개 = 직업마다 400가지)
+    // 예전에 이름 앞에 붙이던 별명 (지금은 새 이름에 쓰지 않고, 예전 이름에서 떼어 낼 때만 사용)
     const MERC_EPITHET_POOL = {
       warrior: ['강철', '불굴의', '바위', '천둥', '용맹한', '붉은', '거인', '철벽', '폭풍', '사자', '검은', '황금', '대지의', '돌격', '방패', '전장의', '굳센', '은빛', '분노의', '수호'],
       mage:    ['불꽃', '얼음', '별빛', '번개', '신비한', '보랏빛', '푸른', '달빛', '마법의', '지혜로운', '혜성', '그림자', '수정', '황혼', '새벽', '불사조', '안개', '천공', '무지개', '은하'],
@@ -2576,20 +2579,17 @@
       return used;
     }
 
-    // 우리 반 전체(모든 학생의 용병·경매·지원자)에서 겹치지 않는 이름을 만듦
+    // 우리 반 전체(모든 학생의 용병·경매·지원자)에서 겹치지 않는 단순한 이름 (모두 쓰였으면 "레오 2세")
     function generateUniqueMercName(jobKey, extraUsed = null) {
       const bases = MERC_NAME_POOL[jobKey] || MERC_NAME_POOL.warrior;
-      const epithets = MERC_EPITHET_POOL[jobKey] || MERC_EPITHET_POOL.warrior;
       const used = collectUsedMercNames();
       if (extraUsed) extraUsed.forEach(n => used.add(n));
-      const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+      const free = bases.filter(b => !used.has(b));
       let name = '';
-      for (let i = 0; i < 60; i++) {
-        const candidate = `${pick(epithets)} ${pick(bases)}`;
-        if (!used.has(candidate)) { name = candidate; break; }
-      }
-      if (!name) {
-        const base = `${pick(epithets)} ${pick(bases)}`;
+      if (free.length) {
+        name = free[Math.floor(Math.random() * free.length)];
+      } else {
+        const base = bases[Math.floor(Math.random() * bases.length)];
         let n = 2;
         while (used.has(`${base} ${n}세`)) n++;
         name = `${base} ${n}세`;
@@ -2598,7 +2598,14 @@
       return name;
     }
 
-    // 예전에 만들어져 이름이 겹치는 내 용병은 새 이름으로 바꿈 (내 기록만 고칠 수 있으므로 내 용병만)
+    // 예전 별명("강철 레오")을 떼어 낸 이름 ("레오"), 별명이 없으면 null
+    function stripMercEpithet(name, jobKey) {
+      const epithets = [...(MERC_EPITHET_POOL[jobKey] || []), ...Object.values(MERC_EPITHET_POOL).flat()];
+      const hit = epithets.find(e => String(name || '').startsWith(e + ' '));
+      return hit ? String(name).slice(hit.length + 1).trim() || null : null;
+    }
+
+    // 내 용병 이름 정리: 별명 떼기 + 친구 용병과 겹치는 이름 바꾸기 (내 기록만 고칠 수 있으므로 내 용병만)
     function renameDuplicateMercsForStudent(stu) {
       if (!stu || !Array.isArray(stu.roster)) return 0;
       const others = new Set();
@@ -2611,7 +2618,11 @@
       let changed = 0;
       stu.roster.forEach(m => {
         if (!m) return;
-        if (!m.name || others.has(m.name) || mine.has(m.name)) {
+        const plain = stripMercEpithet(m.name, m.job);
+        if (plain) {
+          m.name = (others.has(plain) || mine.has(plain)) ? generateUniqueMercName(m.job, new Set([...others, ...mine])) : plain;
+          changed++;
+        } else if (!m.name || others.has(m.name) || mine.has(m.name)) {
           m.name = generateUniqueMercName(m.job, new Set([...others, ...mine]));
           changed++;
         }
@@ -3496,9 +3507,9 @@
       const def = Math.round(job.baseDef * rarity.mult    * variance.def * lvMult    * (1 + (trait.defBonus || 0) + relicDefBonus + eqDefBonus)) + flatLvBonus + spDefBonus;
       const spd = Math.round(job.baseSpd * rarity.spdMult * variance.spd * spdLvMult * (1 + (trait.spdBonus || 0) + relicSpdBonus + eqSpdBonus)) + flatLvBonus + spSpdBonus;
 
-      // 전투 속도: 이동 1.5배, 공격 주기 약 30% 단축 (2026-10 상향)
-      const moveSpeed = +((1.4 + (spd / 100) * 1.2) * 0.375).toFixed(2);
-      const atkInterval = Math.max(50, Math.round(14600 / spd));
+      // 전투 속도: 처음보다 이동 3배, 공격 주기 약 1/3 (2026-10 두 차례 상향)
+      const moveSpeed = +((1.4 + (spd / 100) * 1.2) * 0.75).toFixed(2);
+      const atkInterval = Math.max(26, Math.round(7300 / spd));
 
       return { hp, atk, def, spd, moveSpeed, range: job.range, atkInterval };
     }
@@ -6422,20 +6433,25 @@
       const sorted = [...state.students].sort((a, b) => b.pvpScore - a.pvpScore || calcStudentCombatPower(b) - calcStudentCombatPower(a));
 
       const myDefBox = document.getElementById('myDefenseFormationPreviewBox');
-      if (myDefBox) {
-        const myDef = getStudentDefenseSquad(myStu);
+      const myDefBadge = document.getElementById('myDefenseFormationBadge');
+      if (myDefBadge) myDefBadge.textContent = defenseFormationLabel(myStu);
+      if (myDefBox && defenseEditor) {
+        myDefBox.innerHTML = renderDefenseEditorHTML(myStu);
+      } else if (myDefBox) {
+        const myDef = computeDefenseFormation(myStu);
         const defPower = myDef.reduce((s, m) => s + calcMercCombatPower(m, myStu), 0);
         myDefBox.innerHTML = `
           <div class="flex items-center gap-3">
             ${buildMiniFormationGridHTML(myDef)}
             <div class="flex-1">
-              <div class="font-extrabold text-white text-xs">${myStu.defenseFormationLabel || '3×5 방어 전술 진형'}</div>
+              <div class="font-extrabold text-white text-xs">${defenseFormationLabel(myStu)}</div>
               <div class="text-[11px] text-rose-400 font-bold mt-0.5">⚔️ 방어 진형 전투력: ${defPower.toLocaleString()}</div>
               <div class="text-[11px] text-slate-400 mt-1 flex flex-wrap gap-1">
                 ${myDef.map(m => `<span class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800">${JOB_DEFS[m.job].icon}${m.name}(Lv.${m.level})</span>`).join('')}
               </div>
             </div>
           </div>
+          <button type="button" onclick="openDefenseEditor()" class="mt-3 w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs">✏️ 방어 진형 편집 (용병 넣기·빼기·자리 바꾸기)</button>
         `;
       }
 
@@ -6443,7 +6459,7 @@
       if (asyncListEl) {
         asyncListEl.innerHTML = sorted.map((s, idx) => {
           const isMe = s.id === myStu.id;
-          const defSquad = getStudentDefenseSquad(s);
+          const defSquad = isMe ? computeDefenseFormation(s) : getStudentDefenseSquad(s);
           const defPower = defSquad.reduce((sum, m) => sum + calcMercCombatPower(m, s), 0);
           const unitBadges = defSquad.map(m => {
             const unlockedCnt = getUnlockedSkillCount(m.level);
@@ -7783,8 +7799,8 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       const aimY = c.aimY ?? (u.y + Math.sin(aimAngle) * 100);
       const target = findEnemyNearAim(u, enemies, aimX, aimY, u.range + 40);
       u.cooldown = interval;
-      u.attackAnim = 42;
-      u.maxAttackAnim = 42;
+      u.attackAnim = Math.min(42, interval);
+      u.maxAttackAnim = u.attackAnim;
       const ox = u.x + Math.cos(aimAngle) * 14;
       const oy = u.y - 8 + Math.sin(aimAngle) * 14;
       const directional = (projType, dmg, extra = {}) => sim.projectiles.push({
@@ -7855,7 +7871,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       if (st.poison > 0) speedMult -= 0.12;
       speedMult = Math.max(0.4, speedMult);
       const curMoveSpeed = u.baseMoveSpeed * speedMult * 1.15;
-      const curAtkInterval = Math.max(40, Math.round(u.baseAtkInterval / speedMult));
+      const curAtkInterval = Math.max(20, Math.round(u.baseAtkInterval / speedMult));
       const keys = c.keys || {};
 
       const mx = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
@@ -8193,9 +8209,10 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
 
       // 전투 방식 고르기: 혼자 하는 전투는 고를 때까지 잠깐 멈춤, 실시간 결투는 멈추지 않음(기본 자동)
       sim.controllers = {};
+      sim.forfeitTeam = null;
       battleControl.mode = 'auto';
       battleControl.unitId = null;
-      Object.assign(localBattleInput, { keys: { w: false, a: false, s: false, d: false }, attack: false, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0], teamDash: 0, unitDashN: 0, unitDashId: null });
+      Object.assign(localBattleInput, { keys: { w: false, a: false, s: false, d: false }, attack: false, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0], teamDash: 0, unitDashN: 0, unitDashId: null, forfeit: 0 });
       sim.awaitingControlChoice = false;
       if (mode !== 'broadcast') openBattleControlChooser(!netRole);
       renderBattleControlHud(true);
@@ -8861,6 +8878,11 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
 
       sim.units.forEach(u => {
         if (!u.alive) return;
+        // 지난 틱 동안 움직인 양 (투사체가 이동 방향을 예측해 겨눌 때 사용)
+        u.vx = u.x - (u.prevX ?? u.x);
+        u.vy = u.y - (u.prevY ?? u.y);
+        u.prevX = u.x;
+        u.prevY = u.y;
         if (u.attackAnim > 0) u.attackAnim--;
         if (u.skillAnim > 0) u.skillAnim--;
         if (u.hurtAnim > 0) u.hurtAnim--;
@@ -8953,7 +8975,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         speedMult = Math.max(0.4, speedMult);
 
         const curMoveSpeed = u.baseMoveSpeed * speedMult;
-        const curAtkInterval = Math.max(40, Math.round(u.baseAtkInterval / speedMult));
+        const curAtkInterval = Math.max(20, Math.round(u.baseAtkInterval / speedMult));
 
         // [Requirement 5 & 7: 전략적 AI 멀티 스킬 선택 및 발동]
         const chosenSkill = selectStrategicSkillToCast(u, allies, enemies, target, dist);
@@ -8962,16 +8984,33 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           return;
         }
 
-        if (dist > u.range) {
-          u.x += Math.cos(u.facingAngle) * curMoveSpeed;
-          u.y += Math.sin(u.facingAngle) * curMoveSpeed;
+        // [AI 이동] ① 날아오는 투사체 피하기 → ② 거리 조절 (다가가기 / 원거리는 물러나기) → ③ 공격 대기 중 좌우로 움직이기
+        const moveBy = (angle, mult, phase) => {
+          u.x += Math.cos(angle) * curMoveSpeed * mult;
+          u.y += Math.sin(angle) * curMoveSpeed * mult;
           u.isMoving = true;
-          u.walkPhase += 0.065 * speedMult;
-        } else if (u.behaviorRule === 'kite' && dist < u.range * 0.45 && u.job !== 'warrior') {
-          u.x -= Math.cos(u.facingAngle) * (curMoveSpeed * 0.65);
-          u.y -= Math.sin(u.facingAngle) * (curMoveSpeed * 0.65);
-          u.isMoving = true;
-          u.walkPhase += 0.055 * speedMult;
+          u.walkPhase += phase * speedMult;
+        };
+        const isRanged = u.range >= 180;
+        const dodgeAngle = (u.monsterType || u.isEliteBoss) ? null : findProjectileDodgeAngle(u);
+        const nearestFoe = enemies.reduce((best, e) => {
+          const d = Math.hypot(e.x - u.x, e.y - u.y);
+          return !best || d < best.d ? { e, d } : best;
+        }, null);
+        if (dodgeAngle !== null) {
+          moveBy(dodgeAngle, 1.2, 0.075);
+        } else if (dist > u.range * (isRanged ? 0.9 : 0.95)) {
+          moveBy(u.facingAngle, 1, 0.065);
+        } else if (isRanged && u.behaviorRule !== 'charge' && nearestFoe && nearestFoe.d < Math.max(120, u.range * 0.55)) {
+          // 적이 너무 가까우면 사거리 끝 쪽으로 물러나며 싸움
+          moveBy(Math.atan2(u.y - nearestFoe.e.y, u.x - nearestFoe.e.x), 0.85, 0.06);
+        } else if (isRanged && u.cooldown > 6) {
+          // 다음 공격을 기다리는 동안 옆으로 조금씩 움직여 맞기 어렵게
+          if (!u.strafeTimer || --u.strafeTimer <= 0) {
+            u.strafeDir = Math.random() < 0.5 ? 1 : -1;
+            u.strafeTimer = 50 + Math.floor(Math.random() * 60);
+          }
+          moveBy(u.facingAngle + (Math.PI / 2) * u.strafeDir, 0.3, 0.04);
         }
 
         u.x = Math.max(200, Math.min(sim.worldW - 200, u.x));
@@ -8982,8 +9021,8 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         } else if (dist <= u.range + 14) {
           u.cooldown = curAtkInterval;
           u.mana = Math.min(u.maxMana, u.mana + 18);
-          u.attackAnim = 42;
-          u.maxAttackAnim = 42;
+          u.attackAnim = Math.min(42, curAtkInterval);
+          u.maxAttackAnim = u.attackAnim;
 
           if (u.job === 'warrior') {
             playCombatSfx('slash');
@@ -9050,33 +9089,39 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         p.trail.push({ x: p.x, y: p.y });
         if (p.trail.length > 8) p.trail.shift();
 
+        // 공격 투사체는 쏜 순간 적이 있던 곳을 향해 곧게 날아감 → 맞아야 피해 (움직이면 피할 수 있음)
+        // 회복 구슬만 아군을 따라감
+        if (!p.isDirectional && !p.isHeal && p.target) {
+          // 상대가 움직이던 방향을 70%만큼 예측해서 겨눔 (방향을 바꾸거나 비켜서면 피할 수 있음)
+          const flight = Math.hypot(p.target.x - p.x, (p.target.y - 12) - p.y) / Math.max(0.1, p.speed * BATTLE_PROJECTILE_SPEED);
+          const tx = p.target.x + (p.target.vx || 0) * flight * 0.7;
+          const ty = p.target.y - 12 + (p.target.vy || 0) * flight * 0.7;
+          const isAoe = p.projType === 'fireball_proj' || p.projType === 'ice_arrow_proj';
+          p.angle = Math.atan2(ty - p.y, tx - p.x);
+          p.isDirectional = true;
+          p.travel = 0;
+          p.maxTravel = Math.hypot(tx - p.x, ty - p.y) + (isAoe ? 0 : 140);
+          p.target = null;
+        }
+
         if (p.isDirectional) {
           const step = p.speed * BATTLE_PROJECTILE_SPEED;
           p.x += Math.cos(p.angle) * step;
           p.y += Math.sin(p.angle) * step;
           p.travel = (p.travel || 0) + step;
-          if (p.maxTravel && p.travel > p.maxTravel) {
-            sim.projectiles.splice(i, 1);
-            continue;
-          }
-          const enemies = sim.units.filter(u => u.alive && u.team !== p.owner.team);
           let hit = null;
-          for (const e of enemies) {
-            if (Math.hypot(e.x - p.x, (e.y - 12) - p.y) < 26) {
+          for (const e of sim.units) {
+            if (!e.alive || e.team === p.owner.team) continue;
+            if (Math.hypot(e.x - p.x, (e.y - 12) - p.y) < PROJECTILE_HIT_RADIUS) {
               hit = e;
               break;
             }
           }
-          if (hit) {
-            playCombatSfx('arrow');
-            applyDamage(p.owner, hit, p.dmg);
-            sim.effects.push({ type: 'arrow_hit', x: hit.x, y: hit.y - 12, angle: p.angle, life: 18, maxLife: 18 });
+          const spent = p.maxTravel && p.travel > p.maxTravel;
+          const outOfWorld = p.x < 15 || p.x > sim.worldW - 15 || p.y < 15 || p.y > sim.worldH - 15;
+          if (hit || spent || outOfWorld) {
+            resolveProjectileImpact(p, hit, hit ? hit.x : p.x, hit ? hit.y : p.y + 12);
             sim.projectiles.splice(i, 1);
-            continue;
-          }
-          if (p.x < 15 || p.x > sim.worldW - 15 || p.y < 15 || p.y > sim.worldH - 15) {
-            sim.projectiles.splice(i, 1);
-            continue;
           }
           continue;
         }
@@ -9141,6 +9186,55 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       }
     }
 
+    // AI 회피: 나를 향해 날아오는 적 투사체가 있으면 그 길에서 비켜설 방향(각도), 없으면 null
+    function findProjectileDodgeAngle(u) {
+      for (const p of sim.projectiles) {
+        if (!p.isDirectional || p.isHeal || !p.owner || p.owner.team === u.team) continue;
+        if (p.dodgeRoll === undefined) p.dodgeRoll = Math.random();
+        if (p.dodgeRoll > AI_DODGE_CHANCE) continue;
+        const dx = Math.cos(p.angle), dy = Math.sin(p.angle);
+        const rx = u.x - p.x, ry = (u.y - 12) - p.y;
+        const along = rx * dx + ry * dy;            // 투사체 진행 방향으로 내가 얼마나 앞에 있는지
+        if (along < 0 || along > 200) continue;
+        const side = rx * dy - ry * dx;             // 투사체가 지나갈 길에서 옆으로 떨어진 거리
+        const isAoe = p.projType === 'fireball_proj' || p.projType === 'ice_arrow_proj';
+        const danger = isAoe ? (p.aoeRadius || 100) + 10 : PROJECTILE_HIT_RADIUS + 14;
+        if (Math.abs(side) > danger) continue;
+        // 이미 서 있는 쪽으로 계속 비켜섬
+        return side >= 0 ? Math.atan2(-dx, dy) : Math.atan2(dx, -dy);
+      }
+      return null;
+    }
+
+    // 투사체가 적에게 닿았거나 날아갈 거리를 다 갔을 때
+    // - 파이어볼·아이스애로우: 맞든 빗나가든 그 자리에서 터져 주변에 범위 피해
+    // - 나머지: 맞았을 때만 피해 (빗나가면 사라짐)
+    function resolveProjectileImpact(p, hit, x, y) {
+      if (p.projType === 'fireball_proj' || p.projType === 'ice_arrow_proj') {
+        const fire = p.projType === 'fireball_proj';
+        const r = p.aoeRadius || (fire ? 110 : 85);
+        playCombatSfx(fire ? 'heavy' : 'magic');
+        sim.effects.push({ type: fire ? 'fire_explosion' : 'ice_shatter', x, y, r, life: 34, maxLife: 34 });
+        sim.units.filter(u => u.alive && u.team !== p.owner.team).forEach(e => {
+          if (Math.hypot(e.x - x, e.y - y) <= r) {
+            applyDamage(p.owner, e, p.dmg, '', fire ? '#ea580c' : '#0284c7');
+            inflictStatus(p.owner, e, fire ? 'burn' : 'freeze', p.statusDur || (fire ? 360 : 240));
+          }
+        });
+        return;
+      }
+      if (!hit) return;
+      applyDamage(p.owner, hit, p.dmg);
+      if (p.statusOnHit) inflictStatus(p.owner, hit, p.statusOnHit, p.statusDur || 360);
+      if (p.projType === 'magic_orb') {
+        playCombatSfx('magic');
+        sim.effects.push({ type: 'magic_burst', x: hit.x, y: hit.y - 12, r: 42, life: 22, maxLife: 22 });
+      } else {
+        playCombatSfx('arrow');
+        sim.effects.push({ type: 'arrow_hit', x: hit.x, y: hit.y - 12, angle: p.angle, life: 18, maxLife: 18 });
+      }
+    }
+
     function finishSimulation(blueTeamWon) {
       if (liveNet.role === 'host') publishLiveBattleResult(blueTeamWon);
       // blueWon = 이 화면의 학생이 이겼는지 (실시간 결투 도전자는 레드팀)
@@ -9154,10 +9248,11 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       const isPvpMode = sim.mode === 'pvp' || sim.mode === 'pvp_async' || sim.mode === 'pvp_realtime' || sim.mode === 'pvp_ranked';
       // 보상 없는 연습 경기: 허수아비 연습 · 방어 진형 도전 · 친구와 실시간 결투 (PvP 보상은 랭킹 매칭만)
       const isPracticeOnly = PRACTICE_ONLY_MODES.includes(sim.mode);
+      const iForfeited = Boolean(sim.forfeitTeam) && sim.forfeitTeam === sim.myTeam;
       const rewardCategory = isPracticeOnly ? null : ({ tower: 'tower', elite_raid: 'raid' }[sim.mode] || (isPvpMode ? 'pvp' : null));
       // 탑은 처음 깨는 층이면 횟수 제한 없이 보상, 이미 깬 층 재도전은 하루 횟수 안에서만 보상
       const isFirstTowerClear = Boolean(blueWon && sim.mode === 'tower' && meta.towerFloorObj && stu.towerFloor === meta.towerFloorObj.floor);
-      const reward = isPracticeOnly
+      const reward = (isPracticeOnly || iForfeited)
         ? 0
         : (isFirstTowerClear
           ? grantDailyReward(stu, null, baseReward)
@@ -9171,7 +9266,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       if (isPvpMode && blueWon && !isPracticeOnly) {
         stu.wins += 1;
         if (reward > 0) pvpScoreDelta = 25; // 랭킹 점수도 보상 받는 경기에서만
-      } else if (sim.mode === 'pvp_ranked' && !blueWon && reward > 0) {
+      } else if (sim.mode === 'pvp_ranked' && !blueWon && (reward > 0 || iForfeited)) {
         pvpScoreDelta = -Math.min(10, stu.pvpScore || 0); // 랭킹 매칭 패배는 -10점 (0점 아래로는 안 내려감)
       }
       if (pvpScoreDelta) stu.pvpScore = (stu.pvpScore || 0) + pvpScoreDelta;
@@ -9181,8 +9276,12 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       const healKing = [...sim.units].sort((a, b) => b.healDone - a.healDone)[0];
 
       document.getElementById('battleResultEmoji').textContent = blueWon ? '🏆' : '🛡️';
-      document.getElementById('battleResultTitle').textContent = blueWon ? '영광스러운 승리!' : (isPracticeOnly ? '아쉬운 패배' : '아쉬운 패배 (격려 보상 지급)');
-      document.getElementById('battleResultDesc').textContent = isPracticeOnly
+      document.getElementById('battleResultTitle').textContent = blueWon
+        ? (sim.forfeitTeam ? '상대가 포기했어요! 승리!' : '영광스러운 승리!')
+        : (iForfeited ? '전투 포기' : (isPracticeOnly ? '아쉬운 패배' : '아쉬운 패배 (격려 보상 지급)'));
+      document.getElementById('battleResultDesc').textContent = iForfeited
+        ? '🏳️ 전투를 포기했어요. 보상은 없어요.'
+        : isPracticeOnly
         ? (sim.mode === 'practice' ? '연습 전투라 보상은 없어요.' : '연습 경기라 보상은 없어요. 보상과 랭킹 점수는 🎯 랭킹 매칭에서 받을 수 있어요.')
         : (reward > 0
           ? `전투 보상으로 💰 ${reward} CA를 받았어요!${rewardCategory ? ` (오늘 남은 ${DAILY_REWARD_LABELS[rewardCategory]} 보상: ${getDailyRewardLeft(stu, rewardCategory)}회)` : ''}`
@@ -9205,6 +9304,32 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       sim.netRole = null;
       saveState();
       renderAllStudentViews();
+    }
+
+    // 🏳️ 전투 포기: 내 팀 패배로 끝내고 보상 없음 (실시간 결투 도전자는 방장 화면에 포기를 알림)
+    function forfeitBattle() {
+      if (!sim.running) return;
+      askCustomConfirm('전투를 포기할까요? 패배로 처리되고 보상은 없어요.', () => {
+        if (!sim.running) return;
+        if (sim.netRole === 'guest') {
+          localBattleInput.forfeit = 1;
+          liveNet.lastInputSentAt = 0;
+          onLocalControlChanged();
+          showNotice('🏳️ 포기했어요. 방장 화면에서 결투를 끝내는 중이에요...');
+          return;
+        }
+        sim.forfeitTeam = getMyBattleTeam();
+        finishSimulation(sim.forfeitTeam !== 'blue');
+      });
+    }
+
+    // 전투 중에 전장을 닫으면 포기로 처리 (닫기로 패배를 피할 수 없게)
+    function closeArenaOrForfeit() {
+      if (sim.running && sim.mode !== 'broadcast') {
+        forfeitBattle();
+        return;
+      }
+      closeBattleResult();
     }
 
     function closeBattleResult() {
@@ -12382,13 +12507,119 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       return Array.isArray(roster) ? roster : (roster && typeof roster === 'object' ? Object.values(roster) : []);
     }
 
-    // 방에 저장된 진형(스냅샷)의 row/col 을 덮어쓴 출전 용병 목록 (원본 용병은 건드리지 않음)
+    // 결투방에 나갈 용병 목록 (원본 용병은 건드리지 않음)
+    // - 결투방에서 진형을 저장했으면(roomFormation) 그때 넣은 용병과 자리
+    // - 아니면 홈 출전 용병 (예전에 저장한 자리만 있으면 그 자리)
     function deployedMercsWithRoomFormation(stu, snap) {
       const saved = snapshotRosterList(snap);
-      return (stu?.roster || []).filter(m => m.deployed).map(m => {
+      const roster = stu?.roster || [];
+      if (snap && snap.roomFormation) {
+        const picked = roster.map(m => {
+          const s = saved.find(x => x && x.id === m.id);
+          return s && s.deployed && typeof s.row === 'number' && typeof s.col === 'number' ? { ...m, deployed: true, row: s.row, col: s.col } : null;
+        }).filter(Boolean);
+        if (picked.length) return picked;
+      }
+      return roster.filter(m => m.deployed).map(m => {
         const s = saved.find(x => x && x.id === m.id);
         return s && typeof s.row === 'number' && typeof s.col === 'number' ? { ...m, row: s.row, col: s.col } : m;
       });
+    }
+
+    // ===== 진형 편집 공통 (PvP 방어 진형 · 결투방 진형) =====
+    // ed = { layout: { 용병id: { row, col } }, pickedId } — layout 에는 들어간 용병만 (최대 MAX_DEPLOY명)
+    function findFreeFormationCell(layout, merc) {
+      const pref = { archer: 0, healer: 0, mage: 1, warrior: 2 }[merc.job] ?? 1;
+      const taken = (r, c) => Object.values(layout).some(p => p.row === r && p.col === c);
+      const colOrder = [pref, 1, 2, 0].filter((c, i, arr) => arr.indexOf(c) === i);
+      for (const c of colOrder) {
+        for (const r of [2, 1, 3, 0, 4]) if (!taken(r, c)) return { row: r, col: c };
+      }
+      return null;
+    }
+
+    // 칸 누르기: 용병 고르기 → 빈칸이면 옮기고, 다른 용병이 있으면 자리 바꾸기
+    function formationEditorClickCell(ed, r, c) {
+      const occupantId = Object.keys(ed.layout).find(id => ed.layout[id].row === r && ed.layout[id].col === c);
+      if (!ed.pickedId) {
+        ed.pickedId = occupantId || null;
+        return false;
+      }
+      if (occupantId === ed.pickedId) {
+        ed.pickedId = null;
+        return false;
+      }
+      const from = ed.layout[ed.pickedId];
+      if (occupantId) ed.layout[occupantId] = { row: from.row, col: from.col };
+      ed.layout[ed.pickedId] = { row: r, col: c };
+      ed.pickedId = null;
+      return true;
+    }
+
+    // 용병 넣기/빼기 (넣을 때는 직업에 맞는 줄의 빈칸에 자동 배치)
+    function formationEditorToggleMerc(ed, merc) {
+      if (!merc) return false;
+      if (ed.layout[merc.id]) {
+        delete ed.layout[merc.id];
+        if (ed.pickedId === merc.id) ed.pickedId = null;
+        return true;
+      }
+      if (Object.keys(ed.layout).length >= MAX_DEPLOY) {
+        showNotice(`⚠️ 최대 ${MAX_DEPLOY}명까지 넣을 수 있어요. 먼저 한 명을 빼 주세요.`);
+        return false;
+      }
+      const cell = findFreeFormationCell(ed.layout, merc);
+      if (!cell) return false;
+      ed.layout[merc.id] = cell;
+      return true;
+    }
+
+    // 편집 화면 (3×5 칸 + 넣고 뺄 수 있는 용병 목록)
+    function formationEditorBodyHTML(ed, roster, { cellFn, toggleFn, mirror = false }) {
+      const placed = roster.filter(m => ed.layout[m.id]);
+      const cols = mirror ? [2, 1, 0] : [0, 1, 2];
+      const colNames = ['후열', '중열', '전열'];
+      let cells = '';
+      for (let r = 0; r < FORMATION_ROWS; r++) {
+        cols.forEach(c => {
+          const occ = placed.find(m => ed.layout[m.id].row === r && ed.layout[m.id].col === c);
+          const picked = occ && occ.id === ed.pickedId;
+          const job = occ ? (JOB_DEFS[occ.job] || JOB_DEFS.warrior) : null;
+          cells += `
+            <button type="button" onclick="${cellFn}(${r}, ${c})" data-formation-cell="${r}-${c}"
+              class="h-12 rounded-xl border-2 flex flex-col items-center justify-center text-[10px] font-bold select-none ${
+                occ
+                  ? (picked ? 'bg-amber-500/25 border-amber-400 ring-2 ring-amber-400' : 'bg-slate-900 border-slate-700 hover:border-indigo-400')
+                  : (ed.pickedId ? 'bg-amber-500/10 border-dashed border-amber-400 hover:bg-amber-500/20' : 'bg-slate-900/40 border-slate-800')
+              }">
+              ${occ
+                ? `<span class="text-base leading-none">${job.icon}</span><span class="text-white truncate max-w-[70px]">${occ.name}</span>`
+                : `<span class="${ed.pickedId ? 'text-amber-300' : 'text-slate-600'}">${ed.pickedId ? '여기로' : '·'}</span>`}
+            </button>`;
+        });
+      }
+      const chips = roster.map(m => {
+        const on = Boolean(ed.layout[m.id]);
+        const job = JOB_DEFS[m.job] || JOB_DEFS.warrior;
+        return `<button type="button" onclick="${toggleFn}('${m.id}')" data-formation-merc="${m.id}"
+          class="px-2 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 ${
+            on ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-indigo-400'
+          }" title="${on ? '눌러서 빼기' : '눌러서 넣기'}">
+          <span>${on ? '✓' : '+'}</span><span>${job.icon}</span><span>${m.name}</span><span class="opacity-70">Lv.${m.level}</span>
+        </button>`;
+      }).join('');
+      return `
+        <div class="max-w-xs w-full mx-auto">
+          <div class="grid grid-cols-3 gap-1.5 mb-1 text-center text-[10px] font-extrabold text-slate-400">
+            ${cols.map(c => `<div>${c === 2 && mirror ? '◀ ' : ''}${colNames[c]}${c === 2 && !mirror ? ' ▶' : ''}</div>`).join('')}
+          </div>
+          <div class="grid grid-cols-3 gap-1.5">${cells}</div>
+          <div class="text-center text-[10px] text-slate-500 mt-1">${mirror ? '왼쪽(전열)이 상대 쪽이에요' : '오른쪽(전열)이 상대 쪽이에요'}</div>
+        </div>
+        <div>
+          <div class="text-[11px] font-extrabold text-slate-300 mb-1">👥 용병 넣고 빼기 <span class="text-slate-400 font-bold">(${placed.length}/${MAX_DEPLOY}명 · 칸의 용병을 누른 뒤 옮길 칸을 누르면 자리 이동)</span></div>
+          <div class="flex flex-wrap gap-1">${chips || '<span class="text-[11px] text-slate-400">보유한 용병이 없어요.</span>'}</div>
+        </div>`;
     }
 
     window.openPvpFormationEditor = function (roomId) {
@@ -12414,19 +12645,15 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
     };
 
     window.clickPvpFormationCell = function (r, c) {
-      const d = pvpFormationDraft;
-      if (!d) return;
-      const occupantId = Object.keys(d.layout).find(id => d.layout[id].row === r && d.layout[id].col === c);
-      if (!d.pickedId) {
-        d.pickedId = occupantId || null;
-      } else if (occupantId === d.pickedId) {
-        d.pickedId = null;
-      } else {
-        const from = d.layout[d.pickedId];
-        if (occupantId) d.layout[occupantId] = { row: from.row, col: from.col };
-        d.layout[d.pickedId] = { row: r, col: c };
-        d.pickedId = null;
-      }
+      if (!pvpFormationDraft) return;
+      formationEditorClickCell(pvpFormationDraft, r, c);
+      renderLivePvpRoomsList();
+    };
+
+    window.togglePvpFormationMerc = function (mercId) {
+      const myStu = getActiveStudent();
+      if (!pvpFormationDraft || !myStu) return;
+      formationEditorToggleMerc(pvpFormationDraft, (myStu.roster || []).find(m => m.id === mercId));
       renderLivePvpRoomsList();
     };
 
@@ -12441,14 +12668,25 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         showNotice('⚠️ 준비완료를 취소한 뒤에 진형을 바꿀 수 있어요.');
         return;
       }
+      if (!Object.keys(d.layout).length) {
+        showNotice('⚠️ 결투에 나갈 용병을 1명 이상 넣어 주세요.');
+        return;
+      }
+      // 결투방 진형은 홈 출전과 따로: 넣은 용병만 출전, 나머지는 이번 결투에서 빠짐
       const snap = publicStudentSnapshot(myStu);
       (snap.roster || []).forEach(m => {
         const pos = d.layout[m.id];
-        if (m.deployed && pos) { m.row = pos.row; m.col = pos.col; }
+        m.deployed = Boolean(pos);
+        if (pos) { m.row = pos.row; m.col = pos.col; }
       });
-      const flagKey = key === 'hostStudentSnapshot' ? 'hostFormationSaved' : 'guestFormationSaved';
+      snap.roomFormation = true;
+      const power = (myStu.roster || []).filter(m => d.layout[m.id]).reduce((sum, m) => sum + calcMercCombatPower(m, myStu), 0);
+      const isHostKey = key === 'hostStudentSnapshot';
+      const flagKey = isHostKey ? 'hostFormationSaved' : 'guestFormationSaved';
+      const powerKey = isHostKey ? 'hostPower' : 'guestPower';
       room[key] = snap;
       room[flagKey] = true;
+      room[powerKey] = power;
       pvpFormationDraft = null;
       renderLivePvpRoomsList();
       // 방 전체를 덮어쓰지 않고 내 칸만 바꿔서, 상대가 동시에 누른 준비완료/시작이 지워지지 않게 함
@@ -12456,55 +12694,128 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       const classCode = String(state.classCode || '').trim().toUpperCase();
       if (db && classCode) {
         try {
-          await db.ref(`classes/${classCode}/pvp_rooms/${d.roomId}`).update({ [key]: snap, [flagKey]: true });
+          await db.ref(`classes/${classCode}/pvp_rooms/${d.roomId}`).update({ [key]: snap, [flagKey]: true, [powerKey]: power });
         } catch (e) {}
       }
-      showNotice('🧩 결투 진형을 저장했어요! 이 배치로 결투가 시작됩니다.');
+      showNotice('🧩 결투 진형을 저장했어요! 이 용병들과 배치로 결투가 시작됩니다.');
     };
 
     function renderPvpFormationEditorHTML(room, isHost) {
       const d = pvpFormationDraft;
       const myStu = getActiveStudent();
       if (!d || d.roomId !== room.roomId || !myStu) return '';
-      const mercs = (myStu.roster || []).filter(m => m.deployed && d.layout[m.id]);
       // 레드팀(도전자)은 전장 오른쪽에 서므로 화면에서 보이는 방향대로 좌우를 뒤집어 보여 줌
-      const cols = isHost ? [0, 1, 2] : [2, 1, 0];
-      const colNames = ['후열', '중열', '전열'];
-      let cells = '';
-      for (let r = 0; r < FORMATION_ROWS; r++) {
-        cols.forEach(c => {
-          const occ = mercs.find(m => d.layout[m.id].row === r && d.layout[m.id].col === c);
-          const picked = occ && occ.id === d.pickedId;
-          const job = occ ? (JOB_DEFS[occ.job] || JOB_DEFS.warrior) : null;
-          cells += `
-            <button type="button" onclick="clickPvpFormationCell(${r}, ${c})" data-pvp-cell="${r}-${c}"
-              class="h-14 rounded-xl border-2 flex flex-col items-center justify-center text-[10px] font-bold select-none ${
-                occ
-                  ? (picked ? 'bg-amber-500/25 border-amber-400 ring-2 ring-amber-400' : 'bg-slate-900 border-slate-700 hover:border-indigo-400')
-                  : (d.pickedId ? 'bg-amber-500/10 border-dashed border-amber-400 hover:bg-amber-500/20' : 'bg-slate-900/40 border-slate-800')
-              }">
-              ${occ
-                ? `<span class="text-lg leading-none">${job.icon}</span><span class="text-white truncate max-w-[70px]">${occ.name.split(' ').pop()}</span>`
-                : `<span class="${d.pickedId ? 'text-amber-300' : 'text-slate-600'}">${d.pickedId ? '여기로' : '·'}</span>`}
-            </button>`;
-        });
-      }
       return `
         <div id="pvpFormationEditor" class="bg-slate-950 border-2 border-indigo-500/50 rounded-2xl p-4 flex flex-col gap-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="text-sm font-extrabold text-indigo-200">🧩 결투 진형 편집 <span class="text-[11px] font-bold text-slate-400">용병을 누른 뒤 옮길 칸을 누르세요 (다른 용병이 있으면 자리를 바꿔요)</span></div>
+            <div class="text-sm font-extrabold text-indigo-200">🧩 결투 진형 편집 <span class="text-[11px] font-bold text-slate-400">홈 진형과 따로 저장돼요</span></div>
             <div class="flex items-center gap-2">
               <button type="button" onclick="closePvpFormationEditor()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300">취소</button>
               <button type="button" onclick="savePvpFormation()" class="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-extrabold text-white">💾 진형 저장</button>
             </div>
           </div>
-          <div class="max-w-xs w-full mx-auto">
-            <div class="grid grid-cols-3 gap-1.5 mb-1 text-center text-[10px] font-extrabold text-slate-400">
-              ${cols.map(c => `<div>${c === 2 && !isHost ? '◀ ' : ''}${colNames[c]}${c === 2 && isHost ? ' ▶' : ''}</div>`).join('')}
-            </div>
-            <div class="grid grid-cols-3 gap-1.5">${cells}</div>
-            <div class="text-center text-[10px] text-slate-500 mt-1">${isHost ? '오른쪽(전열)이 상대 쪽이에요' : '왼쪽(전열)이 상대 쪽이에요'}</div>
+          ${formationEditorBodyHTML(d, myStu.roster || [], { cellFn: 'clickPvpFormationCell', toggleFn: 'togglePvpFormationMerc', mirror: !isHost })}
+        </div>`;
+    }
+
+    // ===== PvP 방어 진형 (홈 진형과 따로) =====
+    // stu.pvpDefenseLayout = { 용병id: { row, col } } — 비어 있으면 홈 출전 진형을 그대로 씀
+    // defenseEditor 는 위쪽(알림 헬퍼 옆)에 선언
+
+    function computeDefenseFormation(stu) {
+      const layout = stu && stu.pvpDefenseLayout;
+      if (layout && typeof layout === 'object') {
+        const list = (stu.roster || []).filter(m => layout[m.id]).map(m => ({
+          ...JSON.parse(JSON.stringify(m)), deployed: true, row: layout[m.id].row, col: layout[m.id].col
+        }));
+        if (list.length) return list;
+      }
+      return JSON.parse(JSON.stringify((stu?.roster || []).filter(m => m.deployed)));
+    }
+
+    function defenseFormationLabel(stu) {
+      const custom = stu && stu.pvpDefenseLayout && (stu.roster || []).some(m => stu.pvpDefenseLayout[m.id]);
+      if (custom) return 'PvP 전용 방어 진형';
+      return (stu?.roster || []).some(m => m.deployed) ? '홈 진형 그대로' : '미배치 (용병 모집 전)';
+    }
+
+    function homeLayoutOf(stu) {
+      const layout = {};
+      (stu.roster || []).filter(m => m.deployed).slice(0, MAX_DEPLOY).forEach(m => {
+        layout[m.id] = { row: m.row ?? 2, col: m.col ?? 1 };
+      });
+      return layout;
+    }
+
+    function saveDefenseLayoutChange() {
+      const stu = getActiveStudent();
+      // 지금 로스터에 없는 용병(판매 등)은 정리
+      Object.keys(stu.pvpDefenseLayout || {}).forEach(id => {
+        if (!(stu.roster || []).some(m => m.id === id)) delete stu.pvpDefenseLayout[id];
+      });
+      saveState();
+      renderPvpTab();
+    }
+
+    window.openDefenseEditor = function () {
+      const stu = getActiveStudent();
+      if (!stu) return;
+      if (!stu.pvpDefenseLayout || !Object.keys(stu.pvpDefenseLayout).length) stu.pvpDefenseLayout = homeLayoutOf(stu);
+      defenseEditor = { pickedId: null };
+      renderPvpTab();
+    };
+
+    window.closeDefenseEditor = function () {
+      defenseEditor = null;
+      renderPvpTab();
+    };
+
+    window.clickDefenseFormationCell = function (r, c) {
+      const stu = getActiveStudent();
+      if (!stu || !defenseEditor) return;
+      const ed = { layout: stu.pvpDefenseLayout || (stu.pvpDefenseLayout = {}), pickedId: defenseEditor.pickedId };
+      const changed = formationEditorClickCell(ed, r, c);
+      defenseEditor.pickedId = ed.pickedId;
+      if (changed) saveDefenseLayoutChange(); else renderPvpTab();
+    };
+
+    window.toggleDefenseFormationMerc = function (mercId) {
+      const stu = getActiveStudent();
+      if (!stu || !defenseEditor) return;
+      const ed = { layout: stu.pvpDefenseLayout || (stu.pvpDefenseLayout = {}), pickedId: defenseEditor.pickedId };
+      if (ed.layout[mercId] && Object.keys(ed.layout).length <= 1) {
+        showNotice('⚠️ 방어 진형에는 용병이 1명 이상 있어야 해요.');
+        return;
+      }
+      const changed = formationEditorToggleMerc(ed, (stu.roster || []).find(m => m.id === mercId));
+      defenseEditor.pickedId = ed.pickedId;
+      if (changed) saveDefenseLayoutChange();
+    };
+
+    window.copyHomeToDefense = function () {
+      const stu = getActiveStudent();
+      if (!stu) return;
+      const layout = homeLayoutOf(stu);
+      if (!Object.keys(layout).length) {
+        showNotice('⚠️ 홈에 출전 중인 용병이 없어요.');
+        return;
+      }
+      stu.pvpDefenseLayout = layout;
+      if (defenseEditor) defenseEditor.pickedId = null;
+      saveDefenseLayoutChange();
+      showNotice('🏠 홈 진형을 방어 진형으로 불러왔어요.');
+    };
+
+    function renderDefenseEditorHTML(stu) {
+      const ed = { layout: stu.pvpDefenseLayout || {}, pickedId: defenseEditor ? defenseEditor.pickedId : null };
+      return `
+        <div class="flex flex-col gap-3">
+          ${formationEditorBodyHTML(ed, stu.roster || [], { cellFn: 'clickDefenseFormationCell', toggleFn: 'toggleDefenseFormationMerc' })}
+          <div class="flex items-center justify-between gap-2">
+            <button type="button" onclick="copyHomeToDefense()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-300">🏠 홈 진형 불러오기</button>
+            <button type="button" onclick="closeDefenseEditor()" class="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-[11px] font-extrabold text-white">✅ 편집 완료</button>
           </div>
+          <div class="text-[10px] text-slate-400">바꿀 때마다 바로 저장돼요. 친구들이 도전하거나 랭킹 매칭에서 상대할 때 이 진형으로 싸워요.</div>
         </div>`;
     }
 
@@ -12841,6 +13152,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       ref.child('result').set({
         at: Date.now(),
         blueWon: Boolean(blueTeamWon),
+        forfeitTeam: sim.forfeitTeam || null,
         s: sim.units.map(u => [Math.round(liveNum(u.damageDealt)), Math.round(liveNum(u.healDone)), Math.round(liveNum(u.damageTaken))])
       }).catch(() => {});
       stopLiveBattleNet();
@@ -12878,6 +13190,11 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         sim.controllers[unit.id] = c;
         liveNet.remoteUnitId = unit.id;
       }
+      if (val.forfeit === 1 && sim.running) {
+        sim.forfeitTeam = 'red';
+        finishSimulation(true);
+        return;
+      }
       if (liveNum(val.teamDash) !== c._seenTeamDash) {
         c._seenTeamDash = liveNum(val.teamDash);
         dashTeamUnits('red');
@@ -12908,7 +13225,8 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         sk: [...(c.skillCount || [0, 0, 0])],
         teamDash: c.teamDash || 0,
         unitDashN: c.unitDashN || 0,
-        unitDashId: c.unitDashId || null
+        unitDashId: c.unitDashId || null,
+        forfeit: c.forfeit ? 1 : 0
       };
       if (typeof c.aimX === 'number' && typeof c.aimY === 'number') {
         payload.ax = liveR1(c.aimX);
@@ -13009,6 +13327,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         u.damageTaken = liveNum(s[2]);
       });
       stopLiveBattleNet();
+      sim.forfeitTeam = val.forfeitTeam === 'red' || val.forfeitTeam === 'blue' ? val.forfeitTeam : null;
       if (sim.running) finishSimulation(val.blueWon === true);
     }
 
@@ -14113,9 +14432,8 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       if (suppressRemoteClassPush) return;
       const stu = getActiveStudent();
       if (!stu) return;
-      const deployed = (stu.roster || []).filter(m => m.deployed);
-      stu.defenseFormation = JSON.parse(JSON.stringify(deployed));
-      stu.defenseFormationLabel = deployed.length > 0 ? '실시간 자동저장 3×5 진형' : '미배치 (용병 모집 전)';
+      stu.defenseFormation = computeDefenseFormation(stu);
+      stu.defenseFormationLabel = defenseFormationLabel(stu);
       // 학생 데이터 업로드는 pushCurrentClassStateToFirebase()가 변경분만 한 번에 처리합니다.
     }
 
@@ -14123,9 +14441,9 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
     saveState = function () {
       const stu = getActiveStudent();
       if (stu) {
-        const deployed = (stu.roster || []).filter(m => m.deployed);
-        stu.defenseFormation = JSON.parse(JSON.stringify(deployed));
-        stu.defenseFormationLabel = deployed.length > 0 ? '실시간 자동저장 3×5 진형' : '미배치 (용병 모집 전)';
+        // PvP 방어 진형은 홈 진형과 따로 (따로 정하지 않았으면 홈 진형 그대로)
+        stu.defenseFormation = computeDefenseFormation(stu);
+        stu.defenseFormationLabel = defenseFormationLabel(stu);
       }
       _origSaveState();
       updateClassBadgesUI();
@@ -14718,7 +15036,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       const changed = renameDuplicateMercsForStudent(stu);
       if (changed > 0) {
         saveState();
-        showNotice(`✏️ 친구 용병과 이름이 같은 내 용병 ${changed}명에게 새 이름을 붙였어요!`);
+        showNotice(`✏️ 내 용병 ${changed}명의 이름을 간단하게 정리했어요!`);
       }
     }
 
