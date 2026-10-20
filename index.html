@@ -2426,11 +2426,13 @@
     const BATTLE_PROJECTILE_SPEED = 2.8; // 화살·마법구 등 투사체 속도 배율
     const PROJECTILE_HIT_RADIUS = 30;    // 투사체가 이 거리 안으로 지나가면 맞음
     const BATTLE_DAMAGE_MULT = 2.2;      // 모든 공격 피해 배율 (회복량은 그대로)
-    const DEFENSE_SCALE = 150;           // 피해 감소율 = 방어력 ÷ (방어력 + 150) → 방어 50이면 25%, 150이면 50%
+    const DEFENSE_SCALE = 300;           // 피해 감소율 = 방어력 ÷ (방어력 + 300) → 방어 50이면 14%, 100이면 25%, 300이면 50%
     function defenseReductionOf(def) {
       const d = Math.max(0, def || 0);
       return d / (d + DEFENSE_SCALE);
     }
+    const KNOCKBACK_POWER = 2.4;         // 피격 시 밀려나는 첫 속도 (매 틱 40%씩 줄어 약 6px 밀림)
+    const PROJECTILE_HOMING_TURN = 0.006; // 투사체가 매 틱 목표 쪽으로 꺾을 수 있는 최대 각도 (라디안, 아주 소폭)
     const AI_DODGE_CHANCE = 0.45;        // AI가 날아오는 투사체를 알아채고 피하려 할 확률
 
     // 스킬별 개별 쿨타임(cooldownTicks/cooldownSec) 및 마나 소모량(manaCost) 정의 (Requirement 5)
@@ -3123,7 +3125,7 @@
       },
       def: {
         title: '방어 (DEF · 피해 경감)',
-        desc: '공격을 받을 때 방어력에 따라 정해진 비율만큼 피해를 줄여 줍니다. 방어력이 높을수록 감소율이 커지지만 피해가 0이 되지는 않아요. (감소율 = 방어력 ÷ (방어력 + 150))',
+        desc: '공격을 받을 때 방어력에 따라 정해진 비율만큼 피해를 줄여 줍니다. 방어력이 높을수록 감소율이 커지지만 피해가 0이 되지는 않아요. (감소율 = 방어력 ÷ (방어력 + 300))',
         spEffect: `10레벨 스탯 포인트 1P 투자 시 방어력 +${SP_BONUS_VALUES.def} 대폭 증가`
       },
       spd: {
@@ -7914,7 +7916,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         const healTarget = hurt.sort((a, b) => Math.hypot(a.x - aimX, a.y - aimY) - Math.hypot(b.x - aimX, b.y - aimY))[0];
         if (healTarget && Math.hypot(healTarget.x - aimX, healTarget.y - aimY) < 140) {
           sim.effects.push({ type: 'heal_beam', sx: u.x, sy: u.y - 10, tx: healTarget.x, ty: healTarget.y - 10, life: 32, maxLife: 32 });
-          sim.projectiles.push({ projType: 'heal_orb', x: ox, y: oy, target: healTarget, owner: u, dmg: u.atk * 1.25, isHeal: true, speed: 3, trail: [] });
+          healAllyNow(u, healTarget, u.atk * 1.25);
         } else if (target) {
           sim.projectiles.push({ projType: 'magic_orb', color: '#ec4899', x: ox, y: oy, target, owner: u, dmg: Math.round(u.atk * 0.85), isHeal: false, speed: 3, trail: [] });
         } else {
@@ -8451,6 +8453,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       defender.hp -= dmg;
       defender.damageTaken += dmg;
       defender.hurtAnim = 10;
+      if (attacker) applyHitKnockback(defender, attacker.x, attacker.y);
       if (attacker) attacker.damageDealt += dmg;
       // 피격 시 마나 충전량 적정 수준(+5)으로 상향
       defender.mana = Math.min(defender.maxMana, defender.mana + 5);
@@ -8990,6 +8993,12 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         u.vy = u.y - (u.prevY ?? u.y);
         u.prevX = u.x;
         u.prevY = u.y;
+        if (u.kbVx || u.kbVy) {
+          u.x = Math.max(200, Math.min(sim.worldW - 200, u.x + (u.kbVx || 0)));
+          u.y = Math.max(260, Math.min(sim.worldH - 220, u.y + (u.kbVy || 0)));
+          u.kbVx = Math.abs(u.kbVx) < 0.05 ? 0 : u.kbVx * 0.6;
+          u.kbVy = Math.abs(u.kbVy) < 0.05 ? 0 : u.kbVy * 0.6;
+        }
         if (u.attackAnim > 0) u.attackAnim--;
         if (u.skillAnim > 0) u.skillAnim--;
         if (u.hurtAnim > 0) u.hurtAnim--;
@@ -9178,12 +9187,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
                 sx: u.x, sy: u.y - 10, tx: healTarget.x, ty: healTarget.y - 10,
                 life: 32, maxLife: 32
               });
-              sim.projectiles.push({
-                projType: 'heal_orb',
-                x: u.x + u.facingDir * 12, y: u.y - 10, target: healTarget, owner: u,
-                dmg: u.atk * 1.25,
-                isHeal: true, speed: 2.6, trail: []
-              });
+              healAllyNow(u, healTarget, u.atk * 1.25);
             } else {
               const enemyTarget = [...enemies].sort((a, b) => Math.hypot(a.x - u.x, a.y - u.y) - Math.hypot(b.x - u.x, b.y - u.y))[0];
               if (enemyTarget && Math.hypot(enemyTarget.x - u.x, enemyTarget.y - u.y) <= u.range + 40) {
@@ -9223,10 +9227,18 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           p.isDirectional = true;
           p.travel = 0;
           p.maxTravel = Math.hypot(tx - p.x, ty - p.y) + (isAoe ? 0 : 140);
+          p.homeTarget = isAoe ? null : p.target;
           p.target = null;
         }
 
         if (p.isDirectional) {
+          if (p.homeTarget && p.homeTarget.alive) {
+            let diff = Math.atan2((p.homeTarget.y - 12) - p.y, p.homeTarget.x - p.x) - p.angle;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            // 이미 지나친 적(뒤쪽)은 쫓지 않음
+            if (Math.abs(diff) < Math.PI / 2) p.angle += Math.max(-PROJECTILE_HOMING_TURN, Math.min(PROJECTILE_HOMING_TURN, diff));
+          }
           const step = p.speed * BATTLE_PROJECTILE_SPEED;
           p.x += Math.cos(p.angle) * step;
           p.y += Math.sin(p.angle) * step;
@@ -9305,6 +9317,31 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           p.x += (dx / d) * p.speed * BATTLE_PROJECTILE_SPEED;
           p.y += (dy / d) * p.speed * BATTLE_PROJECTILE_SPEED;
         }
+      }
+    }
+
+    // 힐러 기본 회복 (초록 선과 함께 바로 회복)
+    function healAllyNow(healer, target, amount) {
+      if (!target || !target.alive) return;
+      playCombatSfx('heal');
+      const healAmt = Math.round(amount);
+      target.hp = Math.min(target.maxHp, target.hp + healAmt);
+      healer.healDone += healAmt;
+      sim.effects.push({ type: 'heal_cross', x: target.x, y: target.y, life: 26, maxLife: 26 });
+      sim.floatTexts.push({ x: target.x, y: target.y - 44, text: `💚+${healAmt}`, color: '#059669', life: 45 });
+    }
+
+    // 피격 밀림: 맞은 방향 반대쪽으로 짧게 밀려남 (몇 틱에 걸쳐 부드럽게 줄어듦)
+    function applyHitKnockback(defender, fromX, fromY, power = KNOCKBACK_POWER) {
+      if (!defender || !defender.alive || defender.isEliteBoss || defender.monsterType === 'scarecrow') return;
+      const ang = Math.atan2(defender.y - fromY, defender.x - fromX);
+      defender.kbVx = (defender.kbVx || 0) + Math.cos(ang) * power;
+      defender.kbVy = (defender.kbVy || 0) + Math.sin(ang) * power;
+      // 연달아 맞아도 너무 멀리 날아가지 않도록 상한
+      const sp = Math.hypot(defender.kbVx, defender.kbVy);
+      if (sp > KNOCKBACK_POWER * 1.5) {
+        defender.kbVx *= (KNOCKBACK_POWER * 1.5) / sp;
+        defender.kbVy *= (KNOCKBACK_POWER * 1.5) / sp;
       }
     }
 
