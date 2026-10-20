@@ -26,6 +26,23 @@
       font-family: 'Jua', sans-serif;
       letter-spacing: 0.02em;
     }
+    /* 알림 토스트: 우측 상단 작은 카드, 살짝 내려오며 나타남 */
+    .ca-toast {
+      position: fixed; top: 16px; right: 16px; z-index: 60;
+      max-width: min(360px, calc(100vw - 32px));
+      padding: 11px 14px;
+      background: #ffffff; color: #1e293b;
+      border: 1px solid #e2e8f0; border-left: 4px solid var(--toast-accent, #6366f1);
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.10);
+      font-size: 13px; font-weight: 600; line-height: 1.5;
+      opacity: 0; transform: translateY(-8px);
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      pointer-events: none; cursor: pointer;
+    }
+    .ca-toast.show { opacity: 1; transform: none; pointer-events: auto; }
+    @media (prefers-reduced-motion: reduce) { .ca-toast { transition: none; } }
+
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: #e2e8f0; }
     ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 9999px; }
@@ -188,9 +205,8 @@
   </div>
 
   <!-- 실시간 알림/보상 토스트 배너 -->
-  <div id="rewardBanner" class="hidden fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-gradient-to-r from-amber-500 via-orange-500 to-pink-500 text-slate-950 font-extrabold px-6 py-3 rounded-2xl shadow-2xl border-2 border-white/60 flex items-center gap-3 animate-bounce">
-    <span class="text-2xl">🎉</span>
-    <span id="rewardBannerText">선생님께서 칭찬 보상을 지급하셨습니다!</span>
+  <div id="rewardBanner" class="ca-toast" role="status" aria-live="polite" onclick="this.classList.remove('show')">
+    <span id="rewardBannerText"></span>
   </div>
 
   <!-- 커스텀 확인 모달 (confirm 대체) -->
@@ -837,11 +853,11 @@
               </div>
               <div id="formationGrid" class="grid grid-cols-3 gap-2"></div>
               <button onclick="startPracticeSim()" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-extrabold text-white shadow flex items-center justify-center gap-1.5 transition">
-                🎯 허수아비와 연습 전투 (보상 하루 3번)
+                🎯 허수아비와 연습 전투
               </button>
             </div>
 
-            <div id="selectedMercTacticBox" class="lg:col-span-6 bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between gap-2.5"></div>
+            <div id="selectedMercTacticBox" class="lg:col-span-6 bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex flex-col gap-2.5"></div>
           </div>
         </div>
 
@@ -1113,16 +1129,13 @@
                   </span>
                 </div>
                 <p class="text-xs text-slate-400 mt-0.5">
-                  친구들이 배치해 둔 용병 진형을 살펴보고 도전해 보세요! 내 배치도 <strong>따로 저장하지 않아도 자동으로</strong> 저장돼요.
+                  친구 진형 도전은 <strong>연습 경기</strong>(보상 없음)예요. 보상과 랭킹 점수는 <strong>🎯 랭킹 매칭</strong>에서 받아요. 내 배치는 자동으로 저장돼요.
                 </p>
               </div>
             </div>
             <div class="flex items-center gap-2 flex-wrap">
               <button onclick="startRankedMatch()" class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow flex items-center gap-1.5" title="내 랭킹 점수와 비슷한 친구의 방어 진형과 겨뤄요 (승리 +25점 · 패배 -10점)">
                 🎯 랭킹 매칭
-              </button>
-              <button onclick="challengeRandomAsyncFormation()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow flex items-center gap-1.5">
-                🎲 랜덤 친구 진형 도전!
               </button>
             </div>
           </div>
@@ -1134,7 +1147,7 @@
                   <h4 class="font-title text-xl text-white">📋 친구들의 방어 진형</h4>
                   <p class="text-xs text-slate-400">친구들의 용병 배치와 스킬을 보고 도전하세요.</p>
                 </div>
-                <span class="text-xs font-bold text-indigo-300">승리 보상: 💰 300 CA & 🏆 랭킹 +25점</span>
+                <span class="text-xs font-bold text-slate-400">연습 경기 · 보상 없음 (보상은 🎯 랭킹 매칭)</span>
               </div>
               <div id="pvpAsyncFormationList" class="space-y-3 max-h-[620px] overflow-y-auto pr-1"></div>
             </div>
@@ -2409,6 +2422,7 @@
       animTicks: 16
     };
     const CHARGE_SKILL_DISTANCE = GRID_CELL_SIZE * 2; // 전사 돌진 스킬 2칸 (240px)
+    const BATTLE_PROJECTILE_SPEED = 1.4; // 화살·마법구 등 투사체 속도 배율
 
     // 스킬별 개별 쿨타임(cooldownTicks/cooldownSec) 및 마나 소모량(manaCost) 정의 (Requirement 5)
     const SKILL_DEFS = {
@@ -3018,6 +3032,8 @@
     }
 
     // ----- 하루 보상 횟수 제한 (같은 활동을 반복해서 CA를 무한히 벌지 못하도록) -----
+    // 보상 없이 연습으로만 하는 전투 모드
+    const PRACTICE_ONLY_MODES = ['practice', 'pvp_async', 'pvp_realtime'];
     const DAILY_REWARD_LIMITS = { quiz: 10, practice: 3, tower: 10, pvp: 10, raid: 5, minigame: 5 };
     const DAILY_REWARD_LABELS = { quiz: '퀴즈', practice: '허수아비 모의전', tower: '모험의 탑 재도전', pvp: '결투장', raid: '엘리트 몬스터', minigame: '미니게임' };
 
@@ -3480,9 +3496,9 @@
       const def = Math.round(job.baseDef * rarity.mult    * variance.def * lvMult    * (1 + (trait.defBonus || 0) + relicDefBonus + eqDefBonus)) + flatLvBonus + spDefBonus;
       const spd = Math.round(job.baseSpd * rarity.spdMult * variance.spd * spdLvMult * (1 + (trait.spdBonus || 0) + relicSpdBonus + eqSpdBonus)) + flatLvBonus + spSpdBonus;
 
-      // 시뮬레이션 속도 유지
-      const moveSpeed = +((1.4 + (spd / 100) * 1.2) * 0.25).toFixed(2);
-      const atkInterval = Math.max(72, Math.round(20800 / spd));
+      // 전투 속도: 이동 1.5배, 공격 주기 약 30% 단축 (2026-10 상향)
+      const moveSpeed = +((1.4 + (spd / 100) * 1.2) * 0.375).toFixed(2);
+      const atkInterval = Math.max(50, Math.round(14600 / spd));
 
       return { hp, atk, def, spd, moveSpeed, range: job.range, atkInterval };
     }
@@ -3634,11 +3650,17 @@
       }
     }
 
+    let rewardBannerTimer = null;
     function showRewardBanner(msg) {
       const banner = document.getElementById('rewardBanner');
-      document.getElementById('rewardBannerText').textContent = msg;
-      banner.classList.remove('hidden');
-      setTimeout(() => banner.classList.add('hidden'), 3600);
+      const text = String(msg || '');
+      // 왼쪽 색 띠: 주의(⚠️)는 주황, 받은 보상(+…CA)은 초록, 나머지는 보라
+      const accent = /^\s*⚠️/.test(text) ? '#f59e0b' : (/\+\s?[\d,]+\s?CA/.test(text) ? '#10b981' : '#6366f1');
+      banner.style.setProperty('--toast-accent', accent);
+      document.getElementById('rewardBannerText').textContent = text;
+      banner.classList.add('show');
+      clearTimeout(rewardBannerTimer);
+      rewardBannerTimer = setTimeout(() => banner.classList.remove('show'), Math.min(6000, 2600 + text.length * 30));
     }
 
     /********************************************************************
@@ -3938,12 +3960,11 @@
                 </button>
               </div>
 
-              <!-- 보유 스킬 요약 (스킬 배치/레벨 해금 표시 없이 보유 스킬만 깔끔하게 표기 - Requirement 1) -->
-              <div class="flex flex-wrap gap-1 mb-1.5">
-                ${(getMercUnlockedSkillKeys(merc).length ? getMercUnlockedSkillKeys(merc) : [ensureMercSkillSlots(merc)[0]]).map(skKey => {
-                  const skObj = SKILL_DEFS[merc.job][skKey];
-                  return `<div class="px-2 py-0.5 rounded text-[10px] font-bold truncate border bg-amber-500/20 border-amber-400 text-amber-300">${skObj.icon} ${skObj.name}</div>`;
-                }).join('')}
+              <!-- 스킬 3칸 (열린 스킬은 색, 잠긴 스킬은 열리는 레벨 표시) -->
+              <div class="grid grid-cols-3 gap-1 mb-1.5">
+                ${getMercSkillSlotInfo(merc).map(r => `<div class="px-1.5 py-0.5 rounded text-[10px] font-bold truncate border ${
+                  r.open ? 'bg-amber-500/20 border-amber-400 text-amber-300' : 'bg-slate-950/70 border-slate-800 text-slate-400'
+                }" title="${r.sk.name}${r.open ? '' : ` (Lv.${r.unlockLv}에 열림)`}">${r.sk.icon} ${r.open ? r.sk.name : `🔒 Lv.${r.unlockLv}`}</div>`).join('')}
               </div>
 
               <div class="flex items-center justify-between text-[10px] text-slate-400 mb-1.5 px-0.5">
@@ -3973,6 +3994,10 @@
                   <span class="text-slate-400 block text-[9px]">속도</span>
                   <span class="${statCmp.cls.spd}">${stats.spd}</span>
                 </div>
+              </div>
+              <div class="flex items-center justify-between gap-2 text-[10px] text-slate-400 mb-2 px-0.5">
+                <span>🎯 사거리 ${stats.range} · ⏱️ 공격 ${(stats.atkInterval / 60).toFixed(2)}초</span>
+                <span class="truncate">📍 ${merc.deployed ? getMercPositionLabel(merc).split(' · ')[0] : '대기'}</span>
               </div>
             </div>
 
@@ -5454,6 +5479,22 @@
       setupIdlePreviewBattle();
     }
 
+    // 용병의 스킬 3칸 (Lv.10 · 20 · 30에 하나씩 해금)
+    function getMercSkillSlotInfo(merc) {
+      const jobSkills = SKILL_DEFS[merc.job] || SKILL_DEFS.warrior;
+      const unlocked = getMercUnlockedSkillKeys(merc);
+      return ensureMercSkillSlots(merc).slice(0, 3)
+        .map((key, i) => ({ key, sk: jobSkills[key], open: unlocked.includes(key), unlockLv: (i + 1) * 10 }))
+        .filter(r => r.sk);
+    }
+
+    // 진형에서의 위치 (가로 0=후열 · 1=중열 · 2=전열)
+    function getMercPositionLabel(merc) {
+      if (!merc.deployed) return '대기 중 (출전 안 함)';
+      const lineName = ['후열', '중열', '전열'][merc.col ?? 1] || '중열';
+      return `${(merc.row ?? 2) + 1}행 ${(merc.col ?? 1) + 1}열 · ${lineName}`;
+    }
+
     function renderSelectedMercTacticBox() {
       const stu = getActiveStudent();
       const merc = stu.roster.find(m => m.id === selectedMercId) || stu.roster[0];
@@ -5500,8 +5541,8 @@
           </button>
         </div>
 
-        <!-- 간소화된 능력치 & 해금 스킬 요약 (이름변경·사거리·대시·스킬리롤·스탯+·판매/경매는 세부정보 창에서 관리) -->
-        <div class="grid grid-cols-4 gap-1.5 text-center text-xs bg-slate-900/90 border border-slate-800 rounded-xl p-2.5">
+        <!-- 능력치 + 실전 수치 (이름변경·스킬리롤·스탯 배분·판매/경매는 세부정보 창에서 관리) -->
+        <div class="grid grid-cols-4 gap-x-1.5 gap-y-2 text-center text-xs bg-slate-900/90 border border-slate-800 rounded-xl p-2.5">
           <div>
             <div class="text-[10px] text-slate-400">체력</div>
             <div class="${statCmp.cls.hp}">${stats.hp}</div>
@@ -5518,26 +5559,53 @@
             <div class="text-[10px] text-slate-400">속도</div>
             <div class="${statCmp.cls.spd}">${stats.spd}</div>
           </div>
+          <div class="col-span-4 border-t border-slate-800"></div>
+          <div title="이 거리 안의 적을 공격해요">
+            <div class="text-[10px] text-slate-400">🎯 사거리</div>
+            <div class="font-bold text-slate-200">${stats.range}</div>
+          </div>
+          <div title="기본 공격 사이의 간격">
+            <div class="text-[10px] text-slate-400">⏱️ 공격 주기</div>
+            <div class="font-bold text-slate-200">${(stats.atkInterval / 60).toFixed(2)}초</div>
+          </div>
+          <div title="전장에서 움직이는 빠르기">
+            <div class="text-[10px] text-slate-400">👟 이동</div>
+            <div class="font-bold text-slate-200">${stats.moveSpeed}</div>
+          </div>
+          <div title="대시를 다시 쓸 수 있을 때까지">
+            <div class="text-[10px] text-slate-400">💨 대시</div>
+            <div class="font-bold text-slate-200">${DASH_CONFIG.cooldownSec}초</div>
+          </div>
         </div>
 
         <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-1.5">
           <div class="flex items-center justify-between text-[11px]">
-            <span class="font-bold text-indigo-300">⚡ 보유 스킬</span>
-            ${spInfo.freeSp > 0 ? `<span class="text-amber-300 font-extrabold">🌟 미배분 스탯P +${spInfo.freeSp} (세부정보에서 투자)</span>` : `<span class="text-slate-400 text-[10px]">상황에 알맞게 AI 자율 발동</span>`}
+            <span class="font-bold text-indigo-300">⚡ 스킬 (Lv.10 · 20 · 30에 하나씩 열려요)</span>
+            <span class="text-slate-400 text-[10px]">AI가 상황에 맞게 사용</span>
           </div>
-          <div class="grid grid-cols-3 gap-1.5">
-            ${(getMercUnlockedSkillKeys(merc).length ? getMercUnlockedSkillKeys(merc) : [ensureMercSkillSlots(merc)[0]]).map(skKey => {
-              const sk = SKILL_DEFS[merc.job][skKey];
-              return `
-                <div class="p-1.5 rounded-xl border text-left bg-amber-500/20 border-amber-400 text-white shadow">
-                  <div class="text-[11px] font-extrabold flex items-center gap-1">
-                    <span>${sk.icon}</span>
-                    <span>${sk.name}</span>
-                  </div>
+          ${getMercSkillSlotInfo(merc).map(r => `
+            <div class="flex items-start gap-2 px-2 py-1.5 rounded-lg border ${r.open ? 'bg-amber-500/10 border-amber-400/60' : 'bg-slate-950 border-slate-800 opacity-70'}">
+              <span class="text-base leading-none mt-0.5">${r.sk.icon}</span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center justify-between gap-2 text-[11px] font-extrabold text-white">
+                  <span class="truncate">${r.sk.name}</span>
+                  <span class="shrink-0 text-[10px] font-bold ${r.open ? 'text-emerald-500' : 'text-slate-400'}">${r.open ? `쿨 ${r.sk.cooldownSec}초 · 마나 ${r.sk.manaCost}` : `🔒 Lv.${r.unlockLv}에 열림`}</span>
                 </div>
-              `;
-            }).join('')}
+                <div class="text-[10px] text-slate-400 leading-snug" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${r.sk.desc || ''}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="grid grid-cols-2 gap-1.5 text-[11px]">
+          <div class="px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 truncate">📍 ${getMercPositionLabel(merc)}</div>
+          <div class="px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 truncate" title="${merc.traitName}">✨ ${merc.traitName}</div>
+          <div class="px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 truncate">
+            ${spInfo.freeSp > 0 ? `<span class="text-amber-500 font-extrabold">🌟 미배분 스탯P +${spInfo.freeSp}</span>` : `🌟 다음 스탯P: Lv.${(Math.floor((merc.level || 1) / 10) + 1) * 10}`}
           </div>
+          <button onclick="trainMercenary('${merc.id}')" class="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold">
+            ⬆️ 레벨업 (${50 + (merc.level - 1) * 15} CA)
+          </button>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-0.5">
@@ -6309,14 +6377,6 @@
       saveState();
       renderPvpTab();
       showRewardBanner(`🛡️ [${stu.name}] 용병단의 현재 3×5 전술 진형이 비실시간 방어 진형으로 저장되었습니다!`);
-    }
-
-    function challengeRandomAsyncFormation() {
-      const myStu = getActiveStudent();
-      const others = state.students.filter(s => s.id !== myStu.id);
-      if (!others.length) return;
-      const pick = others[Math.floor(Math.random() * others.length)];
-      startStudentPvpBattle(pick.id, 'pvp_async');
     }
 
     // 랭킹 매칭: 내 점수와 비슷한(±100점부터 점점 넓혀서) 친구의 저장된 방어 진형과 겨룸
@@ -7795,7 +7855,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       if (st.poison > 0) speedMult -= 0.12;
       speedMult = Math.max(0.4, speedMult);
       const curMoveSpeed = u.baseMoveSpeed * speedMult * 1.15;
-      const curAtkInterval = Math.max(56, Math.round(u.baseAtkInterval / speedMult));
+      const curAtkInterval = Math.max(40, Math.round(u.baseAtkInterval / speedMult));
       const keys = c.keys || {};
 
       const mx = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
@@ -8893,7 +8953,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         speedMult = Math.max(0.4, speedMult);
 
         const curMoveSpeed = u.baseMoveSpeed * speedMult;
-        const curAtkInterval = Math.max(56, Math.round(u.baseAtkInterval / speedMult));
+        const curAtkInterval = Math.max(40, Math.round(u.baseAtkInterval / speedMult));
 
         // [Requirement 5 & 7: 전략적 AI 멀티 스킬 선택 및 발동]
         const chosenSkill = selectStrategicSkillToCast(u, allies, enemies, target, dist);
@@ -8991,9 +9051,10 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         if (p.trail.length > 8) p.trail.shift();
 
         if (p.isDirectional) {
-          p.x += Math.cos(p.angle) * p.speed;
-          p.y += Math.sin(p.angle) * p.speed;
-          p.travel = (p.travel || 0) + p.speed;
+          const step = p.speed * BATTLE_PROJECTILE_SPEED;
+          p.x += Math.cos(p.angle) * step;
+          p.y += Math.sin(p.angle) * step;
+          p.travel = (p.travel || 0) + step;
           if (p.maxTravel && p.travel > p.maxTravel) {
             sim.projectiles.splice(i, 1);
             continue;
@@ -9074,8 +9135,8 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           }
           sim.projectiles.splice(i, 1);
         } else {
-          p.x += (dx / d) * p.speed;
-          p.y += (dy / d) * p.speed;
+          p.x += (dx / d) * p.speed * BATTLE_PROJECTILE_SPEED;
+          p.y += (dy / d) * p.speed * BATTLE_PROJECTILE_SPEED;
         }
       }
     }
@@ -9091,19 +9152,23 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
 
       const baseReward = blueWon ? (meta.rewardMc || 250) : 80;
       const isPvpMode = sim.mode === 'pvp' || sim.mode === 'pvp_async' || sim.mode === 'pvp_realtime' || sim.mode === 'pvp_ranked';
-      const rewardCategory = { practice: 'practice', tower: 'tower', elite_raid: 'raid' }[sim.mode] || (isPvpMode ? 'pvp' : null);
+      // 보상 없는 연습 경기: 허수아비 연습 · 방어 진형 도전 · 친구와 실시간 결투 (PvP 보상은 랭킹 매칭만)
+      const isPracticeOnly = PRACTICE_ONLY_MODES.includes(sim.mode);
+      const rewardCategory = isPracticeOnly ? null : ({ tower: 'tower', elite_raid: 'raid' }[sim.mode] || (isPvpMode ? 'pvp' : null));
       // 탑은 처음 깨는 층이면 횟수 제한 없이 보상, 이미 깬 층 재도전은 하루 횟수 안에서만 보상
       const isFirstTowerClear = Boolean(blueWon && sim.mode === 'tower' && meta.towerFloorObj && stu.towerFloor === meta.towerFloorObj.floor);
-      const reward = isFirstTowerClear
-        ? grantDailyReward(stu, null, baseReward)
-        : grantDailyReward(stu, rewardCategory, baseReward);
+      const reward = isPracticeOnly
+        ? 0
+        : (isFirstTowerClear
+          ? grantDailyReward(stu, null, baseReward)
+          : grantDailyReward(stu, rewardCategory, baseReward));
       if (reward > 0) state.guardianPts += blueWon ? 20 : 8;
 
       if (isFirstTowerClear && stu.towerFloor < 50) {
         stu.towerFloor += 1;
       }
       let pvpScoreDelta = 0;
-      if (isPvpMode && blueWon) {
+      if (isPvpMode && blueWon && !isPracticeOnly) {
         stu.wins += 1;
         if (reward > 0) pvpScoreDelta = 25; // 랭킹 점수도 보상 받는 경기에서만
       } else if (sim.mode === 'pvp_ranked' && !blueWon && reward > 0) {
@@ -9116,10 +9181,12 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       const healKing = [...sim.units].sort((a, b) => b.healDone - a.healDone)[0];
 
       document.getElementById('battleResultEmoji').textContent = blueWon ? '🏆' : '🛡️';
-      document.getElementById('battleResultTitle').textContent = blueWon ? '영광스러운 승리!' : '아쉬운 패배 (격려 보상 지급)';
-      document.getElementById('battleResultDesc').textContent = reward > 0
-        ? `전투 보상으로 💰 ${reward} CA를 받았어요!${rewardCategory ? ` (오늘 남은 ${DAILY_REWARD_LABELS[rewardCategory]} 보상: ${getDailyRewardLeft(stu, rewardCategory)}회)` : ''}`
-        : dailyRewardDoneText(rewardCategory);
+      document.getElementById('battleResultTitle').textContent = blueWon ? '영광스러운 승리!' : (isPracticeOnly ? '아쉬운 패배' : '아쉬운 패배 (격려 보상 지급)');
+      document.getElementById('battleResultDesc').textContent = isPracticeOnly
+        ? (sim.mode === 'practice' ? '연습 전투라 보상은 없어요.' : '연습 경기라 보상은 없어요. 보상과 랭킹 점수는 🎯 랭킹 매칭에서 받을 수 있어요.')
+        : (reward > 0
+          ? `전투 보상으로 💰 ${reward} CA를 받았어요!${rewardCategory ? ` (오늘 남은 ${DAILY_REWARD_LABELS[rewardCategory]} 보상: ${getDailyRewardLeft(stu, rewardCategory)}회)` : ''}`
+          : dailyRewardDoneText(rewardCategory));
       if (pvpScoreDelta) {
         document.getElementById('battleResultDesc').textContent += ` 🏆 랭킹 점수 ${pvpScoreDelta > 0 ? '+' : ''}${pvpScoreDelta}점 (현재 ${stu.pvpScore}점)`;
       }
@@ -12733,12 +12800,12 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
     function packLiveProjectile(p) {
       let vx = 0, vy = 0;
       if (p.isDirectional) {
-        vx = Math.cos(p.angle || 0) * liveNum(p.speed);
-        vy = Math.sin(p.angle || 0) * liveNum(p.speed);
+        vx = Math.cos(p.angle || 0) * liveNum(p.speed) * BATTLE_PROJECTILE_SPEED;
+        vy = Math.sin(p.angle || 0) * liveNum(p.speed) * BATTLE_PROJECTILE_SPEED;
       } else if (p.target) {
         const dx = p.target.x - p.x, dy = p.target.y - p.y, d = Math.hypot(dx, dy) || 1;
-        vx = (dx / d) * liveNum(p.speed);
-        vy = (dy / d) * liveNum(p.speed);
+        vx = (dx / d) * liveNum(p.speed) * BATTLE_PROJECTILE_SPEED;
+        vy = (dy / d) * liveNum(p.speed) * BATTLE_PROJECTILE_SPEED;
       }
       return [liveR1(p.x), liveR1(p.y), liveR2(p.angle), String(p.projType || ''), String(p.color || ''), liveNum(p.radius), liveR2(vx), liveR2(vy)];
     }
