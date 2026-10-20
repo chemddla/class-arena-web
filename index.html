@@ -3569,6 +3569,75 @@
       if (popup) popup.classList.add('hidden');
     }
 
+    // 보유 용병 정보에 마우스를 올리면 설명 팝업 (용병 모집 탭과 같은 팝업 사용)
+    function mercTipAttrs(kind, mercId, key = '') {
+      return `onmouseenter="showMercInfoTip(event, '${kind}', '${mercId}', '${key}')" onmousemove="moveStatTooltip(event)" onmouseleave="hideStatTooltip()"`;
+    }
+
+    function showMercInfoTip(event, kind, mercId, key) {
+      if (kind === 'stat') {
+        showStatTooltip(event, mercId, key, false);
+        return;
+      }
+      const stu = getActiveStudent();
+      const merc = stu?.roster?.find(m => m.id === mercId);
+      const popup = document.getElementById('statTooltipPopup');
+      if (!merc || !popup) return;
+      const pct = v => `${Math.round((v || 0) * 100)}%`;
+      const bonusText = d => [['체력', d.hpBonus], ['공격력', d.atkBonus], ['방어력', d.defBonus], ['속도', d.spdBonus]]
+        .filter(([, v]) => v).map(([n, v]) => `${n} +${pct(v)}`).join(' · ');
+      const st = calcMercStats(merc, stu);
+      let title = '', desc = '', detail = '';
+
+      if (kind === 'skill') {
+        const r = getMercSkillSlotInfo(merc).find(x => x.key === key);
+        if (!r) return;
+        title = `${r.sk.icon} ${r.sk.name}`;
+        desc = r.sk.desc || '';
+        detail = `<div>⏳ 쿨타임 ${r.sk.cooldownSec}초 · 💧 마나 ${r.sk.manaCost}${r.sk.ccTag ? ` · ${r.sk.ccTag}` : ''}</div>`
+          + `<div class="${r.open ? 'text-emerald-300' : 'text-slate-300'}">${r.open ? '✅ 사용할 수 있어요 (AI가 상황에 맞게 사용)' : `🔒 Lv.${r.unlockLv}이 되면 열려요 (지금 Lv.${merc.level})`}</div>`;
+      } else if (kind === 'trait') {
+        const t = TRAIT_POOL.find(x => x.id === merc.traitId) || TRAIT_POOL.find(x => x.name === merc.traitName);
+        title = '✨ 타고난 특성';
+        desc = merc.traitName;
+        detail = t ? `<div>항상 적용: ${bonusText(t) || '보너스 없음'}</div>` : '';
+      } else if (kind === 'equip') {
+        const eq = merc.equippedItem && EQUIP_ITEM_DEFS[merc.equippedItem.itemId];
+        title = '🎒 장착 장비';
+        desc = eq ? `${eq.icon} ${eq.name}` : '아직 장착한 장비가 없어요.';
+        detail = eq ? `<div>${eq.desc || bonusText(eq)}</div>` : '<div>상점에서 산 장비를 [세부정보] 창에서 장착할 수 있어요.</div>';
+      } else if (kind === 'sp') {
+        const sp = getMercStatPointInfo(merc);
+        title = '🌟 미배분 스탯 포인트';
+        desc = `10레벨마다 5P를 받아요. 아직 쓰지 않은 포인트가 ${sp.freeSp}P 있어요.`;
+        detail = `<div>[세부정보] 창에서 체력 +${SP_BONUS_VALUES.hp} · 공격 +${SP_BONUS_VALUES.atk} · 방어 +${SP_BONUS_VALUES.def} · 속도 +${SP_BONUS_VALUES.spd} (1P당)</div>`;
+      } else if (kind === 'combat') {
+        title = '🎯 실전 수치';
+        desc = '전투에서 실제로 쓰이는 값이에요.';
+        detail = `<div>🎯 사거리 ${st.range}: 이 거리 안의 적을 공격해요</div>`
+          + `<div>⏱️ 공격 주기 ${(st.atkInterval / 60).toFixed(2)}초: 기본 공격 사이 간격 (속도가 높을수록 짧아져요)</div>`
+          + `<div>👟 이동 ${st.moveSpeed} · 💨 대시 쿨타임 ${DASH_CONFIG.cooldownSec}초</div>`;
+      } else if (kind === 'pos') {
+        title = '📍 배치 위치';
+        desc = merc.deployed ? getMercPositionLabel(merc) : '출전하지 않는 대기 용병이에요.';
+        detail = merc.deployed
+          ? '<div>오른쪽(전열)일수록 적과 먼저 부딪혀요. 위쪽 진형 칸에서 끌어다 옮길 수 있어요.</div>'
+          : '<div>[대기중] 버튼을 누르면 출전해요 (최대 5명).</div>';
+      } else if (kind === 'power') {
+        title = '⚔️ 전투력';
+        desc = '능력치를 합쳐 계산한 이 용병의 전체 힘이에요.';
+        detail = `<div>체력×0.35 + 공격×4.5 + 방어×2.5 + 속도×2.2 = ${calcMercCombatPower(merc, stu).toLocaleString()}</div>`;
+      } else {
+        return;
+      }
+
+      document.getElementById('statTooltipTitle').textContent = title;
+      document.getElementById('statTooltipDesc').textContent = desc;
+      document.getElementById('statTooltipDetail').innerHTML = detail;
+      popup.classList.remove('hidden');
+      moveStatTooltip(event);
+    }
+
     function calcMercCombatPower(merc, ownerStu) {
       const st = calcMercStats(merc, ownerStu);
       return Math.round(st.hp * 0.35 + st.atk * 4.5 + st.def * 2.5 + st.spd * 2.2);
@@ -3894,6 +3963,7 @@
     }
 
     function renderSquadTab() {
+      hideStatTooltip(); // 다시 그리면 마우스가 올라가 있던 칸이 사라지므로 설명 팝업도 닫음
       const stu = getActiveStudent();
       updateSquadPowerDashboard(stu);
       if (!stu.roster || stu.roster.length === 0) {
@@ -3957,7 +4027,7 @@
                     </div>
                     <div class="text-[11px] text-slate-300 font-semibold flex items-center gap-1.5 mt-0.5 flex-wrap">
                       <span style="color:${job.color}" class="inline-flex items-center gap-1 font-bold">${getJobWeaponIconHTML(merc.job, 13)} ${job.name}</span>
-                      <span class="px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-400 font-extrabold text-[10px] border border-rose-500/30">⚔️ ${mercPower.toLocaleString()}</span>
+                      <span class="px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-400 font-extrabold text-[10px] border border-rose-500/30 cursor-help" ${mercTipAttrs('power', merc.id)}>⚔️ ${mercPower.toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
@@ -3971,44 +4041,47 @@
                 </button>
               </div>
 
-              <!-- 스킬 3칸 (열린 스킬은 색, 잠긴 스킬은 열리는 레벨 표시) -->
-              <div class="grid grid-cols-3 gap-1 mb-1.5">
-                ${getMercSkillSlotInfo(merc).map(r => `<div class="px-1.5 py-0.5 rounded text-[10px] font-bold truncate border ${
+              <!-- 스킬 3칸 (아이콘 + 이름, 잠긴 스킬은 열리는 레벨) · 마우스를 올리면 설명 -->
+              <div class="flex flex-wrap gap-1 mb-1.5">
+                ${getMercSkillSlotInfo(merc).map(r => `<div class="px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-help ${
                   r.open ? 'bg-amber-500/20 border-amber-400 text-amber-300' : 'bg-slate-950/70 border-slate-800 text-slate-400'
-                }" title="${r.sk.name}${r.open ? '' : ` (Lv.${r.unlockLv}에 열림)`}">${r.sk.icon} ${r.open ? r.sk.name : `🔒 Lv.${r.unlockLv}`}</div>`).join('')}
+                }" ${mercTipAttrs('skill', merc.id, r.key)}>${r.sk.icon} ${r.sk.name}${r.open ? '' : ` <span class="opacity-80">🔒Lv.${r.unlockLv}</span>`}</div>`).join('')}
               </div>
 
-              <div class="flex items-center justify-between text-[10px] text-slate-400 mb-1.5 px-0.5">
-                <span class="truncate">🎒 ${
-                  merc.equippedItem && EQUIP_ITEM_DEFS[merc.equippedItem.itemId]
-                    ? `<strong class="text-emerald-300">${EQUIP_ITEM_DEFS[merc.equippedItem.itemId].icon}${EQUIP_ITEM_DEFS[merc.equippedItem.itemId].name}</strong>`
-                    : '장비 미장착'
-                }</span>
-                ${spInfo.freeSp > 0 ? `<span class="px-1.5 py-0.2 rounded bg-amber-500 text-slate-950 font-extrabold text-[10px] animate-pulse">미배분 SP +${spInfo.freeSp}</span>` : `<span>✨ ${merc.traitName.split(' ')[0]}</span>`}
+              <div class="flex flex-col gap-0.5 text-[10px] text-slate-400 mb-1.5 px-0.5">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="cursor-help" ${mercTipAttrs('equip', merc.id)}>🎒 ${
+                    merc.equippedItem && EQUIP_ITEM_DEFS[merc.equippedItem.itemId]
+                      ? `<strong class="text-emerald-300">${EQUIP_ITEM_DEFS[merc.equippedItem.itemId].icon}${EQUIP_ITEM_DEFS[merc.equippedItem.itemId].name}</strong>`
+                      : '장비 미장착'
+                  }</span>
+                  ${spInfo.freeSp > 0 ? `<span class="px-1.5 py-0.2 rounded bg-amber-500 text-slate-950 font-extrabold text-[10px] cursor-help" ${mercTipAttrs('sp', merc.id)}>미배분 SP +${spInfo.freeSp}</span>` : ''}
+                </div>
+                <span class="cursor-help" ${mercTipAttrs('trait', merc.id)}>✨ ${merc.traitName}</span>
               </div>
 
-              <!-- 간소화된 4대 능력치 표시 (스탯 + 배분은 세부정보 창에서 진행) -->
+              <!-- 4대 능력치 (마우스를 올리면 설명 · 스탯 배분은 세부정보 창에서) -->
               <div class="grid grid-cols-4 gap-1 bg-slate-950/70 rounded-xl p-1.5 text-[11px] mb-2 text-center">
-                <div>
+                <div class="cursor-help rounded-lg hover:bg-slate-800/60" ${mercTipAttrs('stat', merc.id, 'hp')}>
                   <span class="text-slate-400 block text-[9px]">체력</span>
                   <span class="${statCmp.cls.hp}">${stats.hp}</span>
                 </div>
-                <div>
+                <div class="cursor-help rounded-lg hover:bg-slate-800/60" ${mercTipAttrs('stat', merc.id, 'atk')}>
                   <span class="text-slate-400 block text-[9px]">공격</span>
                   <span class="${statCmp.cls.atk}">${stats.atk}</span>
                 </div>
-                <div>
+                <div class="cursor-help rounded-lg hover:bg-slate-800/60" ${mercTipAttrs('stat', merc.id, 'def')}>
                   <span class="text-slate-400 block text-[9px]">방어</span>
                   <span class="${statCmp.cls.def}">${stats.def}</span>
                 </div>
-                <div>
+                <div class="cursor-help rounded-lg hover:bg-slate-800/60" ${mercTipAttrs('stat', merc.id, 'spd')}>
                   <span class="text-slate-400 block text-[9px]">속도</span>
                   <span class="${statCmp.cls.spd}">${stats.spd}</span>
                 </div>
               </div>
               <div class="flex items-center justify-between gap-2 text-[10px] text-slate-400 mb-2 px-0.5">
-                <span>🎯 사거리 ${stats.range} · ⏱️ 공격 ${(stats.atkInterval / 60).toFixed(2)}초</span>
-                <span class="truncate">📍 ${merc.deployed ? getMercPositionLabel(merc).split(' · ')[0] : '대기'}</span>
+                <span class="cursor-help" ${mercTipAttrs('combat', merc.id)}>🎯 사거리 ${stats.range} · ⏱️ 공격 ${(stats.atkInterval / 60).toFixed(2)}초</span>
+                <span class="truncate cursor-help" ${mercTipAttrs('pos', merc.id)}>📍 ${merc.deployed ? getMercPositionLabel(merc).split(' · ')[0] : '대기'}</span>
               </div>
             </div>
 
@@ -8323,7 +8396,34 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           return backliners.sort((a, b) => Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y))[0];
         }
       }
-      return [...enemies].sort((a, b) => Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y))[0];
+      return pickSmartEnemyTarget(unit, allies, enemies);
+    }
+
+    // 기본 타겟 고르기: 가까운 적 + 체력이 적은 적(마무리) + 기절·동결된 적 + 아군이 함께 노리는 적(집중 공격)
+    // 대상을 너무 자주 바꾸지 않도록, 지금 노리던 적이 크게 뒤지지 않으면 계속 노림
+    function pickSmartEnemyTarget(unit, allies, enemies) {
+      const focusCount = {};
+      allies.forEach(a => {
+        if (a !== unit && a.lastTargetId) focusCount[a.lastTargetId] = (focusCount[a.lastTargetId] || 0) + 1;
+      });
+      const scoreOf = e => {
+        const d = Math.hypot(e.x - unit.x, e.y - unit.y);
+        let score = d + (e.hp / e.maxHp) * 220;
+        if (d <= unit.range + 20) score -= 70;
+        if (e.statuses.stun > 0 || e.statuses.freeze > 0) score -= 90;
+        score -= Math.min(2, focusCount[e.id] || 0) * 45;
+        return score;
+      };
+      let best = null;
+      let bestScore = Infinity;
+      enemies.forEach(e => {
+        const sc = scoreOf(e);
+        if (sc < bestScore) { bestScore = sc; best = e; }
+      });
+      const prev = unit.lastTargetId && enemies.find(e => e.id === unit.lastTargetId);
+      if (prev && prev !== best && scoreOf(prev) - bestScore < 90) best = prev;
+      unit.lastTargetId = best ? best.id : null;
+      return best;
     }
 
     function applyDamage(attacker, defender, rawDmg, tagText = '', customColor = null) {
@@ -8992,25 +9092,40 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           u.walkPhase += phase * speedMult;
         };
         const isRanged = u.range >= 180;
-        const dodgeAngle = (u.monsterType || u.isEliteBoss) ? null : findProjectileDodgeAngle(u);
+        const canDodge = !(u.monsterType || u.isEliteBoss);
+        const dodgeAngle = canDodge ? findProjectileDodgeAngle(u) : null;
         const nearestFoe = enemies.reduce((best, e) => {
           const d = Math.hypot(e.x - u.x, e.y - u.y);
           return !best || d < best.d ? { e, d } : best;
         }, null);
+        const hpRatio = u.hp / u.maxHp;
+        const healerAlly = allies.find(a => a !== u && a.job === 'healer');
+        if (!u.strafeTimer || --u.strafeTimer <= 0) {
+          u.strafeDir = Math.random() < 0.5 ? 1 : -1;
+          u.strafeTimer = 50 + Math.floor(Math.random() * 60);
+        }
         if (dodgeAngle !== null) {
-          moveBy(dodgeAngle, 1.2, 0.075);
+          // 코앞까지 온 투사체는 대시로 피하고, 아니면 옆으로 비켜섬
+          if (u.dashCooldown <= 0 && (u.dodgeAlong || 999) < 90 && u.statuses.stun <= 0) {
+            triggerUnitDash(u, dodgeAngle, '💨회피');
+          } else {
+            moveBy(dodgeAngle, 1.2, 0.075);
+          }
+        } else if (isRanged && hpRatio < 0.3 && nearestFoe && nearestFoe.d < u.range && u.behaviorRule !== 'charge') {
+          // 체력이 얼마 안 남은 원거리 용병은 힐러 쪽(없으면 적 반대쪽)으로 물러나 버팀
+          const away = healerAlly && Math.hypot(healerAlly.x - u.x, healerAlly.y - u.y) > 60
+            ? Math.atan2(healerAlly.y - u.y, healerAlly.x - u.x)
+            : Math.atan2(u.y - nearestFoe.e.y, u.x - nearestFoe.e.x);
+          moveBy(away, 0.95, 0.065);
         } else if (dist > u.range * (isRanged ? 0.9 : 0.95)) {
-          moveBy(u.facingAngle, 1, 0.065);
+          // 다가갈 때도 일직선이 아니라 살짝 비스듬히 (한 줄로 몰리지 않게)
+          moveBy(u.facingAngle + (isRanged ? 0 : 0.25 * u.strafeDir), 1, 0.065);
         } else if (isRanged && u.behaviorRule !== 'charge' && nearestFoe && nearestFoe.d < Math.max(120, u.range * 0.55)) {
           // 적이 너무 가까우면 사거리 끝 쪽으로 물러나며 싸움
           moveBy(Math.atan2(u.y - nearestFoe.e.y, u.x - nearestFoe.e.x), 0.85, 0.06);
-        } else if (isRanged && u.cooldown > 6) {
-          // 다음 공격을 기다리는 동안 옆으로 조금씩 움직여 맞기 어렵게
-          if (!u.strafeTimer || --u.strafeTimer <= 0) {
-            u.strafeDir = Math.random() < 0.5 ? 1 : -1;
-            u.strafeTimer = 50 + Math.floor(Math.random() * 60);
-          }
-          moveBy(u.facingAngle + (Math.PI / 2) * u.strafeDir, 0.3, 0.04);
+        } else if (u.cooldown > 6) {
+          // 다음 공격을 기다리는 동안: 원거리는 옆으로 움직여 맞기 어렵게, 근접은 상대 주위를 돌며 싸움
+          moveBy(u.facingAngle + (Math.PI / 2) * u.strafeDir, isRanged ? 0.3 : 0.35, 0.04);
         }
 
         u.x = Math.max(200, Math.min(sim.worldW - 200, u.x));
@@ -9200,6 +9315,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         const isAoe = p.projType === 'fireball_proj' || p.projType === 'ice_arrow_proj';
         const danger = isAoe ? (p.aoeRadius || 100) + 10 : PROJECTILE_HIT_RADIUS + 14;
         if (Math.abs(side) > danger) continue;
+        u.dodgeAlong = along;
         // 이미 서 있는 쪽으로 계속 비켜섬
         return side >= 0 ? Math.atan2(-dx, dy) : Math.atan2(dx, -dy);
       }
