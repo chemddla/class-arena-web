@@ -2425,7 +2425,12 @@
     const CHARGE_SKILL_DISTANCE = GRID_CELL_SIZE * 2; // 전사 돌진 스킬 2칸 (240px)
     const BATTLE_PROJECTILE_SPEED = 2.8; // 화살·마법구 등 투사체 속도 배율
     const PROJECTILE_HIT_RADIUS = 30;    // 투사체가 이 거리 안으로 지나가면 맞음
-    const BATTLE_DAMAGE_MULT = 2.2;      // 모든 공격 피해 배율 (방어력을 빼기 전에 곱함 · 회복량은 그대로)
+    const BATTLE_DAMAGE_MULT = 2.2;      // 모든 공격 피해 배율 (회복량은 그대로)
+    const DEFENSE_SCALE = 150;           // 피해 감소율 = 방어력 ÷ (방어력 + 150) → 방어 50이면 25%, 150이면 50%
+    function defenseReductionOf(def) {
+      const d = Math.max(0, def || 0);
+      return d / (d + DEFENSE_SCALE);
+    }
     const AI_DODGE_CHANCE = 0.45;        // AI가 날아오는 투사체를 알아채고 피하려 할 확률
 
     // 스킬별 개별 쿨타임(cooldownTicks/cooldownSec) 및 마나 소모량(manaCost) 정의 (Requirement 5)
@@ -3118,7 +3123,7 @@
       },
       def: {
         title: '방어 (DEF · 피해 경감)',
-        desc: '적에게 물리 및 마법 공격을 받을 때 최종 피해량을 깎아내어 생존력을 크게 높여줍니다.',
+        desc: '공격을 받을 때 방어력에 따라 정해진 비율만큼 피해를 줄여 줍니다. 방어력이 높을수록 감소율이 커지지만 피해가 0이 되지는 않아요. (감소율 = 방어력 ÷ (방어력 + 150))',
         spEffect: `10레벨 스탯 포인트 1P 투자 시 방어력 +${SP_BONUS_VALUES.def} 대폭 증가`
       },
       spd: {
@@ -3545,7 +3550,7 @@
         if (statKey === 'spd') {
           detailHtml += `<div class="text-slate-300">• 현재 실전 효과: 이동속도 ${st.moveSpeed} / 공격주기 ${(st.atkInterval / 60).toFixed(2)}초</div>`;
         } else if (statKey === 'def') {
-          detailHtml += `<div class="text-slate-300">• 현재 실전 효과: 피격 시 피해량 약 ${Math.round(st.def * 0.48)} 경감</div>`;
+          detailHtml += `<div class="text-slate-300">• 현재 실전 효과: 받는 피해 ${Math.round(defenseReductionOf(st.def) * 100)}% 감소</div>`;
         }
       }
       document.getElementById('statTooltipDetail').innerHTML = detailHtml;
@@ -8435,7 +8440,8 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         if (attacker.statuses.poison > 0) modDmg *= 0.80;
       }
       const effDef = defender.statuses.shock > 0 ? defender.def * 0.65 : defender.def;
-      let dmg = Math.max(5, Math.round(modDmg * BATTLE_DAMAGE_MULT - effDef * 0.48));
+      // 방어력은 빼는 값이 아니라 감소 비율: 방어력이 높을수록 받는 피해가 더 많이 줄어듦 (100%는 안 됨)
+      let dmg = Math.max(1, Math.round(modDmg * BATTLE_DAMAGE_MULT * (1 - defenseReductionOf(effDef))));
 
       if (defender.shield > 0) {
         const absorbed = Math.min(defender.shield, dmg);
