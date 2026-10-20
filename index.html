@@ -8434,27 +8434,57 @@
     }
 
     // 자체 쿨타임을 갖는 대시(Dash) 발동 함수 (Requirement 4)
+    // ----- 빠르게 달려가는 이동 (대시·돌진): 순간이동 대신 몇 틱에 걸쳐 목표 지점까지 이동 -----
+    const DASH_MOVE_TICKS = 12;   // 대시 1칸을 달려가는 데 걸리는 틱
+    const CHARGE_MOVE_TICKS = 16; // 전사 돌진 스킬 2칸
+
+    function startUnitRush(unit, tx, ty, ticks, onArrive = null) {
+      unit.rush = {
+        sx: unit.x, sy: unit.y,
+        tx: Math.max(200, Math.min(sim.worldW - 200, tx)),
+        ty: Math.max(260, Math.min(sim.worldH - 220, ty)),
+        t: 0, n: Math.max(1, ticks), onArrive
+      };
+      unit.dashAnim = Math.max(unit.dashAnim || 0, ticks + 6);
+      return unit.rush;
+    }
+
+    // 한 틱 진행: 처음엔 빠르고 도착할 때 살짝 감속
+    function stepUnitRush(u) {
+      const r = u.rush;
+      r.t++;
+      const k = Math.min(1, r.t / r.n);
+      const ease = 1 - (1 - k) * (1 - k);
+      u.x = r.sx + (r.tx - r.sx) * ease;
+      u.y = r.sy + (r.ty - r.sy) * ease;
+      u.isMoving = true;
+      u.walkPhase = (u.walkPhase || 0) + 0.3;
+      if (r.t >= r.n) {
+        u.rush = null;
+        if (r.onArrive) r.onArrive();
+      }
+    }
+
     function triggerUnitDash(unit, dashAngle, reasonLabel = '💨대시') {
       if (!unit || !unit.alive || unit.monsterType === 'scarecrow') return false;
       if (unit.dashCooldown > 0 || unit.statuses.stun > 0 || unit.statuses.freeze > 0) return false;
+      if (unit.rush) return false;
 
       dashAngle = wallAwareAngle(unit, dashAngle);
       const sx = unit.x;
       const sy = unit.y;
       const dist = DASH_CONFIG.distance;
-      unit.x = Math.max(200, Math.min(sim.worldW - 200, sx + Math.cos(dashAngle) * dist));
-      unit.y = Math.max(260, Math.min(sim.worldH - 220, sy + Math.sin(dashAngle) * dist));
+      const r = startUnitRush(unit, sx + Math.cos(dashAngle) * dist, sy + Math.sin(dashAngle) * dist, DASH_MOVE_TICKS);
       unit.dashCooldown = unit.maxDashCooldown || DASH_CONFIG.cooldownTicks;
-      unit.dashAnim = DASH_CONFIG.animTicks;
       if (Math.abs(Math.cos(dashAngle)) > 0.1) {
         unit.facingDir = Math.cos(dashAngle) >= 0 ? 1 : -1;
       }
 
       sim.effects.push({
         type: 'charge_dash',
-        sx, sy, tx: unit.x, ty: unit.y,
+        sx, sy, tx: r.tx, ty: r.ty,
         color: unit.team === 'blue' ? '#10b981' : '#f43f5e',
-        life: 32, maxLife: 32
+        life: DASH_MOVE_TICKS + 20, maxLife: DASH_MOVE_TICKS + 20
       });
       return true;
     }
@@ -8751,19 +8781,20 @@
           const distToTarget = Math.hypot(dashTarget.x - sx, dashTarget.y - sy);
           const angle = Math.atan2(dashTarget.y - sy, dashTarget.x - sx);
           const moveDist = Math.min(CHARGE_SKILL_DISTANCE, Math.max(40, distToTarget - 28));
-          unit.x = Math.max(200, Math.min(sim.worldW - 200, sx + Math.cos(angle) * moveDist));
-          unit.y = Math.max(260, Math.min(sim.worldH - 220, sy + Math.sin(angle) * moveDist));
+          // 순간이동 대신 빠르게 달려가서, 도착하는 순간 강타
+          const r = startUnitRush(unit, sx + Math.cos(angle) * moveDist, sy + Math.sin(angle) * moveDist, CHARGE_MOVE_TICKS, () => {
+            if (unit.alive && dashTarget.alive && Math.hypot(dashTarget.x - unit.x, dashTarget.y - unit.y) <= unit.range + 45) {
+              applyDamage(unit, dashTarget, unit.atk * 3.0);
+            }
+            playCombatSfx('heavy');
+          });
 
           sim.effects.push({
             type: 'charge_dash',
-            sx, sy, tx: unit.x, ty: unit.y,
+            sx, sy, tx: r.tx, ty: r.ty,
             color: unit.team === 'blue' ? '#2563eb' : '#e11d48',
-            life: 48, maxLife: 48
+            life: CHARGE_MOVE_TICKS + 32, maxLife: CHARGE_MOVE_TICKS + 32
           });
-          if (Math.hypot(dashTarget.x - unit.x, dashTarget.y - unit.y) <= unit.range + 45) {
-            applyDamage(unit, dashTarget, unit.atk * 3.0);
-          }
-          playCombatSfx('heavy');
           addBattleLog(`💨 [전사] ${unit.name}의 2칸(${CHARGE_SKILL_DISTANCE}px) 돌진 강타! (${dashTarget.name} · 쿨 ${skObj.cooldownSec}초)`);
         }
       }
@@ -9003,6 +9034,13 @@
 
         if (st.stun > 0 || st.freeze > 0) {
           cancelSkillCast(u);
+          u.rush = null; // 기절·빙결되면 달려가던 것도 멈춤
+          return;
+        }
+
+        // 대시·돌진으로 달려가는 중에는 다른 행동 없이 이동만
+        if (u.rush) {
+          stepUnitRush(u);
           return;
         }
 
@@ -9568,11 +9606,11 @@
         const ang = wallAwareAngle(unit, away);
         const from = { x: unit.x, y: unit.y };
         const to = clampToArena(unit.x + Math.cos(ang) * C * 1.6, unit.y + Math.sin(ang) * C * 1.6);
-        unit.x = to.x;
-        unit.y = to.y;
+        // 순간이동 대신 빠르게 뒤로 물러남 (화살은 물러나기 시작할 때 쏨)
+        startUnitRush(unit, to.x, to.y, 14);
         unit.kbVx = 0;
         unit.kbVy = 0;
-        sim.effects.push({ type: 'charge_dash', sx: from.x, sy: from.y, tx: to.x, ty: to.y, color: teamColor, life: 30, maxLife: 30 });
+        sim.effects.push({ type: 'charge_dash', sx: from.x, sy: from.y, tx: to.x, ty: to.y, color: teamColor, life: 34, maxLife: 34 });
         const aimAt = target || (threat && threat.e);
         if (aimAt) {
           const base = Math.atan2((aimAt.y - 12) - (unit.y - 8), aimAt.x - unit.x);
@@ -10662,7 +10700,7 @@
 
     // 전투 전체 빠르기: 1.0이면 화면 한 번에 1틱, 0.8이면 20% 느리게
     // (이동·공격·스킬·쿨타임·시간 제한이 모두 같은 비율로 느려져서 밸런스는 그대로)
-    const BATTLE_PACE = 0.64; // 0.8에서 한 번 더 20% 느리게 (0.8 × 0.8)
+    const BATTLE_PACE = 0.512; // 처음 대비: 0.8 → 0.64 → 0.512 (매번 20%씩 느리게)
     let battleTickCarry = 0;
 
     // 이번 화면에서 진행할 틱 수 (소수점은 다음 화면으로 넘겨서 평균이 BATTLE_PACE가 되게)
