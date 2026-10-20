@@ -2989,7 +2989,7 @@
       // 마법사: 투사체는 따로 그리므로 시트에는 시전 자세만 있음. 대기는 걷기 프레임을 같이 씀
       mage_0: {
         src: 'assets/sprites/merc/mage_0.png',
-        cellW: 118, cellH: 95, anchorX: 46, anchorY: 94, standH: 81, topH: 92, portraitCX: 60, count: 13,
+        cellW: 118, cellH: 95, anchorX: 46, anchorY: 94, standH: 81, topH: 92, portraitCX: 49, count: 13,
         anims: { idle: [0, 2], walk: [0, 1, 2, 3], attack: [4, 5, 6], skill: [7, 8], hurt: [9], death: [10, 11, 12] },
         skillAnims: {}
       }
@@ -2997,7 +2997,34 @@
     const SPRITE_DRAW_H = 54;       // 전투 화면에서 서 있는 캐릭터의 키(월드 px)
     const SPRITE_DEATH_TICKS = 150; // 쓰러진 뒤 화면에 남아 있는 시간
 
-    Object.values(MERC_SPRITE_DEFS).forEach(def => {
+    /********************************************************************
+     * 투사체·타격 이펙트 아틀라스
+     * - 프레임 = [x, y, w, h, 기준점x, 기준점y]. 투사체는 오른쪽으로 날아가는 그림이고 기준점은 머리 중심
+     * - 효과 객체에 spr: '<키>'를 붙이면 기본 도형 대신 이 그림으로 그림 (참가자 화면에도 그대로 전달됨)
+     ********************************************************************/
+    const FX_SPRITE_SHEET = {
+      src: 'assets/sprites/fx/mage_fx.png',
+      anims: {
+        orb: [[0,0,100,50,77,25],[102,0,107,52,83,26]],
+        orb_hit: [[211,0,135,95,68,48],[348,0,154,112,77,56]],
+        fireball: [[504,0,152,66,126,33]],
+        fire_hit: [[658,0,158,93,79,47],[818,0,177,104,89,52]],
+        ice: [[997,0,125,45,100,23],[1124,0,116,55,84,25]],
+        ice_hit: [[1242,0,167,86,84,43],[1411,0,149,92,75,46]],
+        bolt: [[1562,0,150,55,75,28],[1714,0,130,55,65,28]],
+        bolt_hit: [[1846,0,198,113,99,57]],
+        poison: [[2046,0,136,77,68,39],[2184,0,137,125,69,63],[2323,0,181,134,91,67],[2506,0,195,139,98,70]],
+        teleport: [[2703,0,65,60,33,48],[2770,0,86,78,43,62],[2858,0,127,95,64,76]]
+      }
+    };
+    // 투사체 종류별 그림과 크기(머리 높이, 월드 px). match가 있으면 그 조건을 만족할 때만 (힐러 분홍 구슬 제외)
+    const PROJECTILE_SPRITES = {
+      magic_orb:      { anim: 'orb', h: 26, match: p => !p.color || p.color === '#7c3aed' },
+      fireball_proj:  { anim: 'fireball', h: 34 },
+      ice_arrow_proj: { anim: 'ice', h: 22 }
+    };
+
+    Object.values(MERC_SPRITE_DEFS).concat(FX_SPRITE_SHEET).forEach(def => {
       def.img = new Image();
       def.img.onload = () => { def.ready = true; };
       def.img.src = def.src;
@@ -8918,7 +8945,7 @@
           let prevX = unit.x, prevY = unit.y - 16;
           chainTargets.forEach(ct => {
             sim.effects.push({
-              type: 'lightning_bolt',
+              type: 'lightning_bolt', spr: 'bolt',
               sx: prevX, sy: prevY, tx: ct.x, ty: ct.y,
               life: 50, maxLife: 50
             });
@@ -9370,7 +9397,7 @@
             sim.floatTexts.push({ x: p.target.x, y: p.target.y - 44, text: `💚+${healAmt}`, color: '#059669', life: 45 });
           } else if (p.projType === 'fireball_proj') {
             playCombatSfx('heavy');
-            sim.effects.push({ type: 'fire_explosion', x: p.target.x, y: p.target.y, r: p.aoeRadius || 110, life: 34, maxLife: 34 });
+            sim.effects.push({ type: 'fire_explosion', spr: 'fire_hit', x: p.target.x, y: p.target.y, r: p.aoeRadius || 110, life: 34, maxLife: 34 });
             const enemies = sim.units.filter(u => u.alive && u.team !== p.owner.team);
             enemies.forEach(e => {
               if (Math.hypot(e.x - p.target.x, e.y - p.target.y) <= (p.aoeRadius || 110)) {
@@ -9380,7 +9407,7 @@
             });
           } else if (p.projType === 'ice_arrow_proj') {
             playCombatSfx('magic');
-            sim.effects.push({ type: 'ice_shatter', x: p.target.x, y: p.target.y, r: p.aoeRadius || 85, life: 34, maxLife: 34 });
+            sim.effects.push({ type: 'ice_shatter', spr: 'ice_hit', x: p.target.x, y: p.target.y, r: p.aoeRadius || 85, life: 34, maxLife: 34 });
             const enemies = sim.units.filter(u => u.alive && u.team !== p.owner.team);
             enemies.forEach(e => {
               if (Math.hypot(e.x - p.target.x, e.y - p.target.y) <= (p.aoeRadius || 85)) {
@@ -9396,7 +9423,7 @@
             }
             if (p.projType === 'magic_orb') {
               playCombatSfx('magic');
-              sim.effects.push({ type: 'magic_burst', x: p.target.x, y: p.target.y - 12, r: 42, life: 22, maxLife: 22 });
+              sim.effects.push({ type: 'magic_burst', spr: p.owner?.job === 'mage' ? 'orb_hit' : undefined, x: p.target.x, y: p.target.y - 12, r: 42, life: 22, maxLife: 22 });
             } else {
               playCombatSfx('arrow');
               sim.effects.push({ type: 'arrow_hit', x: p.target.x, y: p.target.y - 12, angle: p.angle, life: 18, maxLife: 18 });
@@ -9504,6 +9531,12 @@
         ctx.beginPath();
         ctx.arc(z.x, z.y, z.r, 0, Math.PI * 2);
         ctx.fill();
+        if (z.kind === 'poison_boom' && FX_SPRITE_SHEET.ready) {
+          // 독 구름이 천천히 부풀었다 줄었다 하며 장판을 덮음
+          const cloud = FX_SPRITE_SHEET.anims.poison[3];
+          const pulse = 1 + Math.sin(sim.tickCount * 0.05) * 0.04;
+          drawFxFrame(ctx, cloud, z.x, z.y, (z.r * 2 * 0.95 * pulse) / cloud[2], 0, 0.6);
+        }
         ctx.strokeStyle = st.color;
         ctx.lineWidth = 3;
         ctx.setLineDash([12, 9]);
@@ -9727,7 +9760,7 @@
         // 포이즌 붐: 2.5칸 원형 피해 + 중독 장판 4초
         if (!target) return true;
         const r = C * 2.5;
-        sim.effects.push({ type: 'aoe_ring', x: target.x, y: target.y, r, color: '#16a34a', life: 36, maxLife: 36 });
+        sim.effects.push({ type: 'aoe_ring', spr: 'poison', x: target.x, y: target.y, r, color: '#16a34a', life: 36, maxLife: 36 });
         near(enemies, target.x, target.y, r).forEach(e => {
           applyDamage(unit, e, unit.atk * 0.6, '', '#16a34a');
           inflictStatus(unit, e, 'poison', 300);
@@ -9740,14 +9773,14 @@
       if (sk === 'teleport') {
         // 텔레포트: 5칸 안으로 순간이동 후 5초간 공격력 +20%
         const dest = chooseTeleportSpot(unit, enemies, target, unit.teleportIntent || 'escape');
-        sim.effects.push({ type: 'cast_circle', x: unit.x, y: unit.y, color: '#7c3aed', life: 30, maxLife: 30 });
+        sim.effects.push({ type: 'cast_circle', spr: 'teleport', x: unit.x, y: unit.y, color: '#7c3aed', life: 30, maxLife: 30 });
         sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y, tx: dest.x, ty: dest.y, color: '#7c3aed', life: 24, maxLife: 24 });
         unit.x = dest.x;
         unit.y = dest.y;
         unit.kbVx = 0;
         unit.kbVy = 0;
         unit.statuses.empower = Math.max(unit.statuses.empower || 0, 300);
-        sim.effects.push({ type: 'magic_burst', x: unit.x, y: unit.y - 12, r: 50, life: 22, maxLife: 22 });
+        sim.effects.push({ type: 'magic_burst', spr: 'teleport', x: unit.x, y: unit.y - 12, r: 50, life: 30, maxLife: 30 });
         unit.teleportIntent = null;
         playCombatSfx('magic');
         addBattleLog(`🔮 [마법사] ${unit.name}의 텔레포트! 공격력 +20% (5초)`);
@@ -9907,7 +9940,7 @@
         const fire = p.projType === 'fireball_proj';
         const r = p.aoeRadius || (fire ? 110 : 85);
         playCombatSfx(fire ? 'heavy' : 'magic');
-        sim.effects.push({ type: fire ? 'fire_explosion' : 'ice_shatter', x, y, r, life: 34, maxLife: 34 });
+        sim.effects.push({ type: fire ? 'fire_explosion' : 'ice_shatter', spr: fire ? 'fire_hit' : 'ice_hit', x, y, r, life: 34, maxLife: 34 });
         sim.units.filter(u => u.alive && u.team !== p.owner.team).forEach(e => {
           if (Math.hypot(e.x - x, e.y - y) <= r) {
             applyDamage(p.owner, e, p.dmg, '', fire ? '#ea580c' : '#0284c7');
@@ -9918,7 +9951,7 @@
       }
       if (p.splashRadius) {
         // 작은 범위 공격: 맞은 적은 전체 피해, 주변 적은 일부 피해 (빗나가도 떨어진 자리에서 터짐)
-        sim.effects.push({ type: 'magic_burst', x, y: y - 12, r: p.splashRadius, life: 22, maxLife: 22 });
+        sim.effects.push({ type: 'magic_burst', spr: p.owner?.job === 'mage' ? 'orb_hit' : undefined, x, y: y - 12, r: p.splashRadius, life: 22, maxLife: 22 });
         if (!hit) playCombatSfx('magic');
         sim.units.forEach(e => {
           if (!e.alive || e === hit || e.team === p.owner.team) return;
@@ -9930,7 +9963,8 @@
       if (p.statusOnHit) inflictStatus(p.owner, hit, p.statusOnHit, p.statusDur || 360);
       if (p.projType === 'magic_orb') {
         playCombatSfx('magic');
-        sim.effects.push({ type: 'magic_burst', x: hit.x, y: hit.y - 12, r: 42, life: 22, maxLife: 22 });
+        // 범위 공격은 위에서 이미 터지는 그림을 그렸으므로 한 번 더 그리지 않음
+        if (!p.splashRadius) sim.effects.push({ type: 'magic_burst', spr: p.owner?.job === 'mage' ? 'orb_hit' : undefined, x: hit.x, y: hit.y - 12, r: 42, life: 22, maxLife: 22 });
       } else {
         playCombatSfx('arrow');
         sim.effects.push({ type: 'arrow_hit', x: hit.x, y: hit.y - 12, angle: p.angle, life: 18, maxLife: 18 });
@@ -10108,6 +10142,95 @@
     /********************************************************************
      * 11. 시스템 검증용 심플 유닛 토큰 & 대형 전술 그리드 렌더러 (도트 그래픽 배제)
      ********************************************************************/
+    // 아틀라스 한 프레임을 (x, y)에 기준점을 맞춰 그리기
+    function drawFxFrame(ctx, fr, x, y, scale, angle = 0, alpha = 1) {
+      const [sx, sy, sw, sh, ax, ay] = fr;
+      ctx.save();
+      ctx.translate(x, y);
+      if (angle) {
+        ctx.rotate(angle);
+        // 왼쪽으로 날아갈 때 그림이 뒤집혀 보이지 않게 위아래 반전
+        if (Math.cos(angle) < 0) ctx.scale(1, -1);
+      }
+      ctx.globalAlpha *= alpha;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(FX_SPRITE_SHEET.img, sx, sy, sw, sh, -ax * scale, -ay * scale, sw * scale, sh * scale);
+      ctx.restore();
+    }
+
+    // 진행도(0~1)에 맞는 프레임. hold = 마지막 프레임에 도달하는 진행도
+    function fxFrameAt(list, progress, hold = 1) {
+      return list[Math.min(list.length - 1, Math.floor(Math.min(1, progress / hold) * list.length))];
+    }
+
+    // 투사체를 그림으로 그리면 true (그림이 없거나 아직 안 불러왔으면 false → 기본 도형)
+    function drawProjectileSprite(ctx, p, tick) {
+      const def = PROJECTILE_SPRITES[p.projType];
+      if (!def || !FX_SPRITE_SHEET.ready || (def.match && !def.match(p))) return false;
+      const list = FX_SPRITE_SHEET.anims[def.anim];
+      const fr = list[Math.floor(tick / 6) % list.length];
+      drawFxFrame(ctx, fr, p.x, p.y, def.h / list[0][3], p.angle || 0);
+      return true;
+    }
+
+    // spr가 붙은 효과를 그림으로 그리면 true
+    function drawSpriteEffect(ctx, ef, progress) {
+      if (!FX_SPRITE_SHEET.ready) return false;
+      const A = FX_SPRITE_SHEET.anims;
+      const fadeOut = Math.min(1, (1 - progress) * 3); // 마지막 1/3 동안 서서히 사라짐
+      switch (ef.spr) {
+        case 'orb_hit':
+        case 'fire_hit':
+        case 'ice_hit': {
+          // 폭발 그림의 폭 = 실제 범위 지름의 약 85%
+          const list = A[ef.spr];
+          const fr = fxFrameAt(list, progress, 0.6);
+          const w = (ef.r || 42) * 1.7 * (0.75 + Math.min(1, progress * 2) * 0.25);
+          drawFxFrame(ctx, fr, ef.x, ef.y, w / fr[2], 0, fadeOut);
+          return true;
+        }
+        case 'bolt': {
+          // 번개 줄기 그림을 시전자→대상 방향으로 이어 붙이고, 대상 위치에 착탄 섬광
+          const dx = ef.tx - ef.sx, dy = ef.ty - ef.sy;
+          const len = Math.hypot(dx, dy) || 1;
+          const ang = Math.atan2(dy, dx);
+          const fr = A.bolt[Math.floor(ef.life / 4) % A.bolt.length];
+          const k = 30 / fr[3];
+          const segW = fr[2] * k;
+          ctx.save();
+          ctx.translate(ef.sx, ef.sy);
+          ctx.rotate(ang);
+          if (Math.cos(ang) < 0) ctx.scale(1, -1);
+          ctx.globalAlpha = fadeOut;
+          ctx.imageSmoothingEnabled = true;
+          ctx.beginPath();
+          ctx.rect(0, -40, len, 80);
+          ctx.clip();
+          for (let x = 0; x < len; x += segW * 0.92) {
+            ctx.drawImage(FX_SPRITE_SHEET.img, fr[0], fr[1], fr[2], fr[3], x, -fr[5] * k, segW, fr[3] * k);
+          }
+          ctx.restore();
+          const hit = A.bolt_hit[0];
+          drawFxFrame(ctx, hit, ef.tx, ef.ty - 12, (74 * (0.8 + 0.2 * Math.sin(progress * Math.PI))) / hit[2], 0, fadeOut);
+          return true;
+        }
+        case 'poison': {
+          // 독 구름이 실제 범위만큼 퍼짐
+          const fr = fxFrameAt(A.poison, progress, 0.7);
+          drawFxFrame(ctx, fr, ef.x, ef.y, (ef.r * 2 * 0.95) / A.poison[3][2], 0, fadeOut);
+          return true;
+        }
+        case 'teleport': {
+          const fr = fxFrameAt(A.teleport, progress, 0.6);
+          // 출발(cast_circle)은 발 위치, 도착(magic_burst)은 발보다 12 위에서 만들어짐 → 둘 다 바닥에 맞춤
+          drawFxFrame(ctx, fr, ef.x, ef.y + (ef.type === 'magic_burst' ? 24 : 12), 70 / A.teleport[2][2], 0, fadeOut);
+          return true;
+        }
+      }
+      return false;
+    }
+
     // 현재 동작에 맞는 시트 프레임 번호 고르기.
     // 공격·스킬 시작 시점은 그리는 쪽에서 직접 기록 (참가자 화면에는 maxAttackAnim 등이 오지 않기 때문)
     function pickSpriteFrame(u, sprite, tick) {
@@ -10502,6 +10625,13 @@
         const progress = 1 - ef.life / (ef.maxLife || 20);
         ctx.save();
 
+        if (ef.spr && drawSpriteEffect(ctx, ef, progress)) {
+          ctx.restore();
+          ef.life--;
+          if (ef.life <= 0) sim.effects.splice(i, 1);
+          continue;
+        }
+
         if (ef.type === 'aoe_ring') {
           // 범위 스킬 퍼져 나가는 원 (r = 실제 범위)
           ctx.globalAlpha = ef.life / ef.maxLife;
@@ -10634,6 +10764,7 @@
 
       // 4) 심플 시스템 투사체 렌더링
       sim.projectiles.forEach(p => {
+        if (drawProjectileSprite(ctx, p, sim.tickCount)) return; // 그림이 있는 투사체는 꼬리까지 그림에 포함
         ctx.save();
         if (p.trail && p.trail.length > 1) {
           ctx.strokeStyle = p.color || '#64748b';
