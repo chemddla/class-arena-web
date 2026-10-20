@@ -23,6 +23,29 @@ jobs:
         run: |
           mkdir -p public
           cp index.html public/index.html
+          cp -r assets public/assets
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 디자인(Tailwind)을 학생 기기에서 매번 계산하지 않도록, 배포할 때 CSS를 미리 만들어 넣음
+      # (개발할 때는 index.html의 CDN 스크립트로 바로 확인하고, 배포본만 미리 만든 CSS를 씀)
+      - name: Build Tailwind CSS into the page
+        run: |
+          printf '@tailwind base;\n@tailwind components;\n@tailwind utilities;\n' > tw.in.css
+          npx --yes tailwindcss@3.4.17 -i tw.in.css -o tw.out.css --content public/index.html --minify
+          node -e "
+            const fs = require('fs');
+            const file = 'public/index.html';
+            const tag = '<script src=\"https://cdn.tailwindcss.com\"></script>';
+            let html = fs.readFileSync(file, 'utf8');
+            if (!html.includes(tag) || !html.includes('</head>')) throw new Error('Tailwind CDN tag or </head> not found');
+            // CDN처럼 다른 스타일보다 뒤(</head> 바로 앞)에 넣어야 화면이 똑같이 나옴
+            html = html.replace(tag, '').replace('</head>', '<style id=\"tailwind-built\">' + fs.readFileSync('tw.out.css', 'utf8') + '</style>\n</head>');
+            fs.writeFileSync(file, html);
+            console.log('Tailwind CSS inlined:', fs.statSync('tw.out.css').size, 'bytes');
+          "
 
       - name: Deploy game site
         uses: FirebaseExtended/action-hosting-deploy@v0
