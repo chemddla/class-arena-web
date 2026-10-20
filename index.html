@@ -3005,18 +3005,45 @@
     }
 
     // 용병의 직업별 3개 스킬 슬롯 순서 배열 보장 (1차: 10레벨, 2차: 20레벨, 3차: 30레벨 해금)
+    // 스킬 3칸: 앞에서부터 skillsRevealed 칸까지만 정해진 스킬이고, 나머지는 아직 정해지지 않음
+    // 10레벨마다 칸이 하나 열릴 때, 아직 없는 직업 스킬 중 하나를 그 자리에서 무작위로 뽑음
     function ensureMercSkillSlots(merc) {
       const allKeys = Object.keys(SKILL_DEFS[merc.job] || SKILL_DEFS.warrior);
-      if (!merc.skillKey || !allKeys.includes(merc.skillKey)) {
-        merc.skillKey = allKeys[0];
+      const slotsValid = Array.isArray(merc.skillSlots) && merc.skillSlots.length === allKeys.length
+        && allKeys.every(k => merc.skillSlots.includes(k));
+      if (!slotsValid) {
+        const first = allKeys.includes(merc.skillKey) ? merc.skillKey : null;
+        merc.skillSlots = first ? [first, ...allKeys.filter(k => k !== first)] : [...allKeys];
       }
-      if (!Array.isArray(merc.skillSlots) || merc.skillSlots.length !== 3 || !merc.skillSlots.every(k => allKeys.includes(k))) {
-        const rest = allKeys.filter(k => k !== merc.skillKey);
-        merc.skillSlots = [merc.skillKey, ...rest];
-      } else {
-        merc.skillKey = merc.skillSlots[0];
+      const unlocked = getUnlockedSkillCount(merc.level || 1);
+      // 예전 용병: 이미 열린 스킬은 그대로 두고, 앞으로 열릴 스킬부터 무작위
+      if (typeof merc.skillsRevealed !== 'number') merc.skillsRevealed = unlocked;
+      if (merc.skillsRevealed > unlocked) merc.skillsRevealed = unlocked;
+      while (merc.skillsRevealed < unlocked) {
+        const i = merc.skillsRevealed;
+        const j = i + Math.floor(Math.random() * (merc.skillSlots.length - i));
+        [merc.skillSlots[i], merc.skillSlots[j]] = [merc.skillSlots[j], merc.skillSlots[i]];
+        merc.skillsRevealed++;
       }
+      merc.skillKey = merc.skillSlots[0];
       return merc.skillSlots;
+    }
+
+    // 레벨을 올리기 전에 부르고, 올린 뒤 돌려받은 함수를 부르면 이번에 새로 열린 스킬 목록을 줌
+    function beginSkillUnlockWatch(merc) {
+      ensureMercSkillSlots(merc);
+      const before = merc.skillsRevealed || 0;
+      return () => {
+        const slots = ensureMercSkillSlots(merc);
+        const jobSkills = SKILL_DEFS[merc.job] || SKILL_DEFS.warrior;
+        return slots.slice(before, merc.skillsRevealed).map(k => jobSkills[k]).filter(Boolean);
+      };
+    }
+
+    // 아직 열리지 않은 스킬 칸 (무엇이 나올지 모름)
+    function lockedSkillInfo(unlockLv) {
+      return { id: null, name: '무작위 스킬', icon: '❔', ccTag: '', manaCost: 0, cooldownSec: 0,
+        desc: `Lv.${unlockLv}이 되면 아직 없는 직업 스킬 중 하나가 무작위로 열려요.` };
     }
 
     // 10레벨마다 스킬 1개씩 해금되어 30레벨 달성 시 3개의 스킬을 모두 사용 (Requirement 5)
@@ -3035,10 +3062,11 @@
       return getMercUnlockedSkillKeys(merc).map(k => jobSkills[k]).filter(Boolean);
     }
 
+    // 대표 스킬: 처음 열린 스킬 (아직 없으면 '무작위 스킬' 안내)
     function getMercSkillObj(merc) {
-      const slots = ensureMercSkillSlots(merc);
       const jobSkills = SKILL_DEFS[merc.job] || SKILL_DEFS.warrior;
-      return jobSkills[slots[0]] || Object.values(jobSkills)[0];
+      const first = getMercUnlockedSkillKeys(merc)[0];
+      return (first && jobSkills[first]) || lockedSkillInfo(10);
     }
 
     const DAILY_FREE_REFRESHES = 5;
@@ -3157,6 +3185,12 @@
     }
 
     function createMercenary(jobKey, rarityCode = 'N', level = 1, slotIndex = 0, deployed = true, fixedSkillKey = null) {
+      const merc = buildNewMercenary(jobKey, rarityCode, level, slotIndex, deployed, fixedSkillKey);
+      ensureMercSkillSlots(merc);
+      return merc;
+    }
+
+    function buildNewMercenary(jobKey, rarityCode, level, slotIndex, deployed, fixedSkillKey) {
       const randomName = generateUniqueMercName(jobKey);
       const trait = TRAIT_POOL[Math.floor(Math.random() * TRAIT_POOL.length)];
       const skillKey = fixedSkillKey || getRandomSkillKey(jobKey);
@@ -3179,6 +3213,7 @@
         job: jobKey,
         skillKey: skillKey,
         skillSlots: [skillKey, ...restSkills],
+        skillsRevealed: fixedSkillKey && level >= 10 ? 1 : 0,
         skinVariant: 0,
         rarity: rarityCode === 'N' ? 'N' : 'R',
         level: level,
@@ -3601,8 +3636,9 @@
         if (!r) return;
         title = `${r.sk.icon} ${r.sk.name}`;
         desc = r.sk.desc || '';
-        detail = `<div>⏳ 쿨타임 ${r.sk.cooldownSec}초 · 💧 마나 ${r.sk.manaCost}${r.sk.ccTag ? ` · ${r.sk.ccTag}` : ''}</div>`
-          + `<div class="${r.open ? 'text-emerald-300' : 'text-slate-300'}">${r.open ? '✅ 사용할 수 있어요 (AI가 상황에 맞게 사용)' : `🔒 Lv.${r.unlockLv}이 되면 열려요 (지금 Lv.${merc.level})`}</div>`;
+        detail = r.open
+          ? `<div>⏳ 쿨타임 ${r.sk.cooldownSec}초 · 💧 마나 ${r.sk.manaCost}${r.sk.ccTag ? ` · ${r.sk.ccTag}` : ''}</div><div class="text-emerald-300">✅ 사용할 수 있어요 (AI가 상황에 맞게 사용)</div>`
+          : `<div class="text-slate-300">🎲 Lv.${r.unlockLv}이 되면 열려요 (지금 Lv.${merc.level}) · 어떤 스킬일지는 그때 정해져요</div>`;
       } else if (kind === 'trait') {
         const t = TRAIT_POOL.find(x => x.id === merc.traitId) || TRAIT_POOL.find(x => x.name === merc.traitName);
         title = '✨ 타고난 특성';
@@ -4287,6 +4323,7 @@
       const merc = stu.roster.find(m => m.id === mercId);
       if (!merc) return;
       const targetLv = Math.min(99, (Math.floor(merc.level / 10) + 1) * 10);
+      const skillWatch = beginSkillUnlockWatch(merc);
       let levelsGained = 0;
       while (merc.level < targetLv) {
         const c = 50 + (merc.level - 1) * 15;
@@ -4300,12 +4337,14 @@
         showNotice(`⚠️ 훈련 비용이 부족합니다! (다음 1레벨 필요: ${nextCost} CA)`);
         return;
       }
+      ensureMercSkillSlots(merc);
       saveState();
       renderSquadTab();
       renderMercDetailModal();
       setupIdlePreviewBattle();
+      const newSkills = skillWatch();
       const unlockedCnt = getUnlockedSkillCount(merc.level);
-      showRewardBanner(`🎉 [${merc.name}] Lv.${merc.level} 달성! (현재 해금 스킬 ${unlockedCnt}/3개)`);
+      showRewardBanner(`🎉 [${merc.name}] Lv.${merc.level} 달성!${newSkills.length ? ` 🎲 새 스킬 [${newSkills.map(x => `${x.icon} ${x.name}`).join(', ')}] 획득!` : ''} (보유 스킬 ${unlockedCnt}/3개)`);
     }
 
     function renderMercDetailModal() {
@@ -4324,7 +4363,8 @@
       const statCmp = getMercInitialStatComparison(merc);
       const spInfo = getMercStatPointInfo(merc);
       const ownedSkillKeys = getMercUnlockedSkillKeys(merc);
-      const displaySkillKeys = ownedSkillKeys.length > 0 ? ownedSkillKeys : [ensureMercSkillSlots(merc)[0]];
+      const displaySkillKeys = ownedSkillKeys;
+      const lockedSlotLvs = [10, 20, 30].slice(ownedSkillKeys.length);
       const levelUpCost = 50 + (merc.level - 1) * 15;
 
       body.innerHTML = `
@@ -4396,11 +4436,13 @@
           <div class="flex items-center justify-between flex-wrap gap-2">
             <div>
               <span class="text-xs font-extrabold text-indigo-300">⚡ 스킬 (보유 스킬)</span>
-              <p class="text-[11px] text-slate-400">전투 상황에 알맞게 AI가 보유 스킬을 자율적으로 판단하여 사용합니다.</p>
+              <p class="text-[11px] text-slate-400">Lv.10 · 20 · 30마다 아직 없는 직업 스킬 중 하나가 무작위로 열려요. 전투에서는 AI가 알맞게 사용해요.</p>
             </div>
-            <button onclick="rerollMercSkill('${merc.id}'); renderMercDetailModal();" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow">
-              🎲 스킬 리롤 (150 CA)
-            </button>
+            ${ownedSkillKeys.length >= 1 && ownedSkillKeys.length < 3
+              ? `<button onclick="rerollMercSkill('${merc.id}'); renderMercDetailModal();" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow" title="가장 최근에 열린 스킬을 아직 없는 다른 스킬로 바꿔요">
+              🎲 최근 스킬 다시 뽑기 (150 CA)
+            </button>`
+              : ''}
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -4419,6 +4461,11 @@
                 </div>
               `;
             }).join('')}
+            ${lockedSlotLvs.map(lv => `
+                <div class="rounded-xl border-2 border-dashed p-2.5 flex flex-col justify-center bg-slate-950 border-slate-700 text-slate-500">
+                  <div class="text-sm font-extrabold flex items-center gap-1">❔ 무작위 스킬</div>
+                  <p class="text-[11px] mt-1.5 leading-snug">Lv.${lv}이 되면 열려요 (지금 Lv.${merc.level})</p>
+                </div>`).join('')}
           </div>
         </div>
 
@@ -4540,13 +4587,15 @@
         return;
       }
       stu.mc -= cost;
+      const skillWatch = beginSkillUnlockWatch(merc);
       merc.level += 1;
+      const newSkills = skillWatch();
       saveState();
       renderSquadTab();
       setupIdlePreviewBattle();
       if (merc.level % 10 === 0) {
-        const unlockedCnt = getUnlockedSkillCount(merc.level);
-        showRewardBanner(`🎉 [${merc.name}] Lv.${merc.level} 달성! 스킬 ${unlockedCnt}/3개 해금 & 보너스 SP +${FIXED_SP_PER_10_LEVELS}P 부여!`);
+        const skillText = newSkills.length ? `새 스킬 [${newSkills.map(x => `${x.icon} ${x.name}`).join(', ')}] 획득` : '스킬 칸 모두 열림';
+        showRewardBanner(`🎉 [${merc.name}] Lv.${merc.level} 달성! 🎲 ${skillText} & 보너스 SP +${FIXED_SP_PER_10_LEVELS}P`);
       } else {
         showNotice(`⬆️ [${merc.name}] Lv.${merc.level} 레벨업 완료!`);
       }
@@ -4561,19 +4610,22 @@
         showNotice(`⚠️ 스킬 랜덤 리롤 비용(${cost} CA)이 부족합니다! (보유: ${stu.mc} CA)`);
         return;
       }
+      const slots = ensureMercSkillSlots(merc);
+      const n = merc.skillsRevealed || 0;
+      if (n < 1 || n >= slots.length) {
+        showNotice(n < 1 ? '⚠️ Lv.10에 첫 스킬이 열린 뒤에 다시 뽑을 수 있어요.' : '⚠️ 스킬 3개를 모두 가지고 있어서 바꿀 스킬이 없어요.');
+        return;
+      }
       stu.mc -= cost;
-      const allKeys = Object.keys(SKILL_DEFS[merc.job] || SKILL_DEFS.warrior);
-      const otherKeys = allKeys.filter(k => k !== merc.skillKey);
-      const pool = otherKeys.length > 0 ? otherKeys : allKeys;
-      const newFirst = pool[Math.floor(Math.random() * pool.length)];
-      const rest = allKeys.filter(k => k !== newFirst).sort(() => Math.random() - 0.5);
-      merc.skillKey = newFirst;
-      merc.skillSlots = [newFirst, ...rest];
-      const sk = getMercSkillObj(merc);
+      // 가장 최근에 열린 칸(n-1)을 아직 안 열린 칸 중 하나와 맞바꿈
+      const j = n + Math.floor(Math.random() * (slots.length - n));
+      [slots[n - 1], slots[j]] = [slots[j], slots[n - 1]];
+      merc.skillKey = slots[0];
+      const sk = (SKILL_DEFS[merc.job] || SKILL_DEFS.warrior)[slots[n - 1]];
       saveState();
       renderSquadTab();
       setupIdlePreviewBattle();
-      showRewardBanner(`🎲 스킬 랜덤 리롤! [${merc.name}] 용병이 [${sk.icon} ${sk.name}] 스킬을 획득했습니다!`);
+      showRewardBanner(`🎲 스킬 다시 뽑기! [${merc.name}] 용병의 최근 스킬이 [${sk.icon} ${sk.name}](으)로 바뀌었어요!`);
     }
 
     function changeMercSkill(mercId, newSkillKey) {
@@ -5438,7 +5490,7 @@
                     ${isMovingOccupant ? `<span class="absolute top-0.5 right-1 px-1 py-0.2 rounded bg-amber-500 text-slate-950 font-extrabold text-[8px] animate-bounce">이동중</span>` : ''}
                     <div class="-mt-0.5 pointer-events-none">${getFormationTileHTML(occupant, 42)}</div>
                     <div class="text-[10px] font-bold text-white truncate max-w-[74px] -mt-0.5 pointer-events-none">${occupant.name.split(' ').pop()}</div>
-                    <div class="text-[9px] px-1 rounded bg-slate-950/90 text-amber-300 pointer-events-none">${sk.icon}${sk.name}</div>
+                    ${sk.id ? `<div class="text-[9px] px-1 rounded bg-slate-950/90 text-amber-300 pointer-events-none">${sk.icon}${sk.name}</div>` : ""}
                   `
                   : `<span class="text-[10px] ${formationMovingMercId ? 'text-amber-300 font-bold' : 'text-slate-500'} pointer-events-none">${formationMovingMercId ? '여기로 이동' : '빈 타일'}</span>`
               }
@@ -5575,7 +5627,12 @@
       const jobSkills = SKILL_DEFS[merc.job] || SKILL_DEFS.warrior;
       const unlocked = getMercUnlockedSkillKeys(merc);
       return ensureMercSkillSlots(merc).slice(0, 3)
-        .map((key, i) => ({ key, sk: jobSkills[key], open: unlocked.includes(key), unlockLv: (i + 1) * 10 }))
+        .map((key, i) => {
+          const open = unlocked.includes(key);
+          return open
+            ? { key, sk: jobSkills[key], open, unlockLv: (i + 1) * 10 }
+            : { key: `locked${i}`, sk: lockedSkillInfo((i + 1) * 10), open, unlockLv: (i + 1) * 10 };
+        })
         .filter(r => r.sk);
     }
 
@@ -5671,7 +5728,7 @@
 
         <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-1.5">
           <div class="flex items-center justify-between text-[11px]">
-            <span class="font-bold text-indigo-300">⚡ 스킬 (Lv.10 · 20 · 30에 하나씩 열려요)</span>
+            <span class="font-bold text-indigo-300">⚡ 스킬 (Lv.10 · 20 · 30마다 하나씩 무작위로 열려요)</span>
             <span class="text-slate-400 text-[10px]">AI가 상황에 맞게 사용</span>
           </div>
           ${getMercSkillSlotInfo(merc).map(r => `
@@ -5680,7 +5737,7 @@
               <div class="min-w-0 flex-1">
                 <div class="flex items-center justify-between gap-2 text-[11px] font-extrabold text-white">
                   <span class="truncate">${r.sk.name}</span>
-                  <span class="shrink-0 text-[10px] font-bold ${r.open ? 'text-emerald-500' : 'text-slate-400'}">${r.open ? `쿨 ${r.sk.cooldownSec}초 · 마나 ${r.sk.manaCost}` : `🔒 Lv.${r.unlockLv}에 열림`}</span>
+                  <span class="shrink-0 text-[10px] font-bold ${r.open ? 'text-emerald-500' : 'text-slate-400'}">${r.open ? `쿨 ${r.sk.cooldownSec}초 · 마나 ${r.sk.manaCost}` : `🎲 Lv.${r.unlockLv}에 열림`}</span>
                 </div>
                 <div class="text-[10px] text-slate-400 leading-snug" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${r.sk.desc || ''}</div>
               </div>
@@ -5833,7 +5890,7 @@
       renderOfficeTab();
       renderSquadTab();
       setupIdlePreviewBattle();
-      showRewardBanner(`🎉 특급 스카우트! [${rarObj.name}] ${newMerc.name} (${JOB_DEFS[randomJob].name} · ${sk.name}) 합류!`);
+      showRewardBanner(`🎉 특급 스카우트! [${rarObj.name}] ${newMerc.name} (${JOB_DEFS[randomJob].name}${sk.id ? ` · ${sk.name}` : ""}) 합류!`);
     }
 
     function hireMercFromOffice(index) {
@@ -5865,7 +5922,7 @@
       renderOfficeTab();
       renderSquadTab();
       setupIdlePreviewBattle();
-      showRewardBanner(`🤝 [${rarObj.name} · ${JOB_DEFS[hiredMerc.job].name}] ${hiredMerc.name} (주특기: ${sk.name}) 용병과 계약을 맺었습니다!`);
+      showRewardBanner(`🤝 [${rarObj.name} · ${JOB_DEFS[hiredMerc.job].name}] ${hiredMerc.name}${sk.id ? ` (보유 스킬: ${sk.name})` : ''} 용병과 계약을 맺었습니다!`);
     }
 
     function renderOfficeTab() {
@@ -5924,8 +5981,8 @@
 
               <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 mb-3">
                 <div class="flex items-center justify-between mb-1">
-                  <span class="text-xs font-extrabold text-amber-300">${sk.icon} 초기 스킬: ${sk.name}</span>
-                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">${sk.ccTag}</span>
+                  <span class="text-xs font-extrabold text-amber-300">${sk.id ? `${sk.icon} 보유 스킬: ${sk.name}` : '🎲 스킬: Lv.10 · 20 · 30마다 무작위로 열려요'}</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">${sk.id ? sk.ccTag : Object.values(SKILL_DEFS[cand.job] || {}).map(x => x.icon).join(' ')}</span>
                 </div>
                 <p class="text-[11px] text-slate-300 leading-snug">${sk.desc}</p>
               </div>
