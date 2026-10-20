@@ -2959,15 +2959,27 @@
 
     /********************************************************************
      * 도트 스프라이트 시트 (한 장에 모든 프레임을 가로로 이어 붙임)
-     * - 프레임은 모두 같은 칸 크기(cellW×cellH), 발 위치 = (anchorX, cellH)
+     * - 프레임은 모두 같은 칸 크기(cellW×cellH), 발 위치 = (anchorX, anchorY)
      * - 오른쪽을 바라보는 그림만 두고, 왼쪽은 좌우 반전으로 그림
      * - 이미지가 없는 직업·스킨은 기존 심볼 토큰으로 표시
+     * - skillAnims: 스킬별 동작. tpf = 프레임당 틱, loop = 반복, dur = 이 틱만큼만 보여 주고 평소 동작으로 복귀
+     *   (목록에 없는 스킬은 기본 skill 동작)
      ********************************************************************/
     const MERC_SPRITE_DEFS = {
       warrior_0: {
         src: 'assets/sprites/merc/warrior_0.png',
-        cellW: 129, cellH: 82, anchorX: 51, standH: 82, count: 18,
-        anims: { idle: [0, 1], walk: [2, 3, 4, 5], attack: [6, 7, 8, 9], skill: [10, 11, 12, 13], hurt: [14], death: [15, 16, 17] }
+        cellW: 156, cellH: 82, anchorX: 78, anchorY: 81, standH: 81, portraitCX: 77, count: 27,
+        anims: {
+          idle: [0, 1], walk: [2, 3, 4, 5], attack: [6, 7, 8, 9], skill: [10, 11, 12, 13], hurt: [14], death: [15, 16, 17],
+          whirl: [18, 19, 20], shout: [21, 22, 23], charge: [24, 25, 26]
+        },
+        skillAnims: {
+          stun_strike: { anim: 'skill', tpf: 8 },
+          whirlwind:   { anim: 'whirl', tpf: 5, loop: true },
+          warcry:      { anim: 'shout', tpf: 12, dur: 44 },
+          roar:        { anim: 'shout', tpf: 12, dur: 44 },
+          charge:      { anim: 'charge', tpf: 6, loop: true, dur: 30 }
+        }
       }
     };
     const SPRITE_DRAW_H = 54;       // 전투 화면에서 서 있는 캐릭터의 키(월드 px)
@@ -2986,7 +2998,7 @@
     // 목록·카드용 초상화: 대기 동작 첫 프레임을 몸통 중심으로 잘라서 표시
     function getSpritePortraitHTML(sprite, size) {
       const k = size / sprite.cellH;
-      const cropX = sprite.anchorX - sprite.cellH * 0.45;
+      const cropX = sprite.portraitCX - sprite.cellH / 2;
       return `<div class="select-none" style="width:${size}px;height:${size}px;background:url('${sprite.src}') no-repeat;background-size:${Math.round(sprite.cellW * sprite.count * k)}px ${size}px;background-position:${-Math.round(cropX * k)}px 0;"></div>`;
     }
 
@@ -9960,7 +9972,7 @@
      ********************************************************************/
     // 현재 동작에 맞는 시트 프레임 번호 고르기.
     // 공격·스킬 시작 시점은 그리는 쪽에서 직접 기록 (참가자 화면에는 maxAttackAnim 등이 오지 않기 때문)
-    function pickSpriteFrame(u, sprite, tick, isWhirlwind) {
+    function pickSpriteFrame(u, sprite, tick) {
       const a = sprite.anims;
       const step = (list, elapsed, ticksPerFrame) => list[Math.min(list.length - 1, Math.max(0, Math.floor(elapsed / ticksPerFrame)))];
       if ((u.attackAnim || 0) > (u._sprLastAtk || 0)) u._sprAtkStart = tick;
@@ -9970,8 +9982,13 @@
 
       if (!u.alive) return step(a.death, tick - (u._deadSince ?? tick), 12);
       if (u.skillAnim > 0) {
-        if (isWhirlwind) return a.skill[1 + Math.floor(tick / 5) % (a.skill.length - 1)];
-        return step(a.skill, tick - (u._sprSkillStart ?? tick), 8);
+        const plan = (sprite.skillAnims && sprite.skillAnims[u.activeSkillType]) || { anim: 'skill', tpf: 8 };
+        const list = a[plan.anim] || a.skill;
+        const elapsed = tick - (u._sprSkillStart ?? tick);
+        if (!plan.dur || elapsed < plan.dur) {
+          return plan.loop ? list[Math.floor(elapsed / plan.tpf) % list.length] : step(list, elapsed, plan.tpf);
+        }
+        // 스킬 동작이 끝난 뒤 남은 시간은 아래의 평소 동작으로
       }
       if (u.attackAnim > 0) return step(a.attack, tick - (u._sprAtkStart ?? tick), 6);
       if (u.hurtAnim > 0) return a.hurt[0];
@@ -9980,11 +9997,10 @@
     }
 
     // 발 위치(0, 12)에 맞춰 스프라이트 한 프레임 그리기
-    function drawUnitSprite(ctx, u, sprite, tick, jumpY = 0, isWhirlwind = false) {
-      const frame = pickSpriteFrame(u, sprite, tick, isWhirlwind);
+    function drawUnitSprite(ctx, u, sprite, tick, jumpY = 0) {
+      const frame = pickSpriteFrame(u, sprite, tick);
       const k = SPRITE_DRAW_H / sprite.standH;
-      let dir = u.facingDir >= 0 ? 1 : -1;
-      if (isWhirlwind && Math.floor(tick / 6) % 2) dir = -dir;
+      const dir = u.facingDir >= 0 ? 1 : -1;
 
       ctx.save();
       ctx.translate(0, 12 + jumpY);
@@ -10002,7 +10018,7 @@
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(sprite.img, frame * sprite.cellW, 0, sprite.cellW, sprite.cellH,
-        -sprite.anchorX * k, -sprite.cellH * k, sprite.cellW * k, sprite.cellH * k);
+        -sprite.anchorX * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
       ctx.restore();
     }
 
@@ -10069,7 +10085,7 @@
       const headTopY = useSprite ? 12 - SPRITE_DRAW_H : -8 - tokenR;
 
       if (useSprite) {
-        drawUnitSprite(ctx, u, sprite, tick, jumpY, isWhirlwind);
+        drawUnitSprite(ctx, u, sprite, tick, jumpY);
       } else {
         ctx.save();
         ctx.translate(u.facingDir * lungeX, jumpY);
@@ -10135,8 +10151,8 @@
         ctx.restore();
       }
 
-      // 회전베기 시 반경 표시 링
-      if (isWhirlwind) {
+      // 회전베기 시 반경 표시 링 (스프라이트는 그림에 회전 고리가 있어서 생략)
+      if (isWhirlwind && !useSprite) {
         ctx.save();
         ctx.translate(0, -4);
         ctx.strokeStyle = isBlue ? '#38bdf8' : '#fb7185';
