@@ -688,9 +688,6 @@
             <button onclick="forfeitBattle()" class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-extrabold text-white shadow" title="전투를 포기하고 패배로 끝내요 (보상 없음)">
               🏳️ 전투 포기
             </button>
-            <button onclick="openBattleControlChooser(!sim.netRole)" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-xs font-extrabold text-slate-950 shadow" title="자동 전투와 직접 전투를 바꿔요">
-              🎮 조작 바꾸기
-            </button>
             <button onclick="toggleBattleSpeed()" id="speedBtn" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-cyan-300 border border-slate-700">
               ⏩ 배속: 1x
             </button>
@@ -702,9 +699,6 @@
             </button>
           </div>
         </div>
-
-        <!-- 전투 조작 상태 (자동 / 직접 조종 중인 용병의 스킬·대시 준비 상태) -->
-        <div id="battleControlHud" class="flex flex-wrap items-center gap-2 text-[11px] bg-slate-950/90 border border-amber-500/40 px-3 py-2 rounded-xl"></div>
 
         <!-- CC기 상태이상 범례 바 -->
         <div class="flex flex-wrap items-center gap-2 text-[11px] bg-slate-950/90 border border-slate-800/80 px-3 py-1.5 rounded-xl">
@@ -721,30 +715,6 @@
         <!-- 광활하게 확장된 전장 월드(2880x1800)를 마우스 드래그로 자유롭게 관찰하는 뷰포트 (1440x960) -->
         <div class="relative rounded-2xl overflow-hidden border-2 border-amber-700/40 bg-amber-50 shadow-2xl">
           <canvas id="arenaCanvas" width="1440" height="960" class="w-full h-[560px] sm:h-[720px] lg:h-[880px] block cursor-grab active:cursor-grabbing"></canvas>
-
-          <!-- 전투 방식 고르기 (자동 전투 / 직접 전투) -->
-          <div id="battleControlChooser" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div class="bg-slate-900 border-2 border-amber-500/60 rounded-3xl p-5 max-w-2xl w-full flex flex-col gap-4 shadow-2xl">
-              <div class="text-center">
-                <h3 class="font-title text-2xl text-amber-300">어떻게 싸울까요?</h3>
-                <p class="text-xs text-slate-400 mt-1">전투 중에도 [🎮 조작 바꾸기]로 언제든 바꿀 수 있어요.</p>
-              </div>
-              <button type="button" onclick="setBattleControlMode('auto')" class="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-base shadow-lg">
-                🤖 자동 전투 <span class="block text-[11px] font-bold text-emerald-100 mt-0.5">용병들이 알아서 싸워요 · WASD로 화면 이동</span>
-              </button>
-              <div class="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex flex-col gap-2.5">
-                <div class="text-sm font-extrabold text-indigo-300">🎮 직접 전투 — 조종할 용병을 고르세요</div>
-                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] text-slate-300">
-                  <span class="px-2 py-1 rounded-lg bg-slate-800">⌨️ WASD 이동</span>
-                  <span class="px-2 py-1 rounded-lg bg-slate-800">🖱️ 좌클릭 공격 (마우스 쪽으로)</span>
-                  <span class="px-2 py-1 rounded-lg bg-slate-800">␣ Space 대시</span>
-                  <span class="px-2 py-1 rounded-lg bg-slate-800">1 · 2 · 3 스킬</span>
-                  <span class="px-2 py-1 rounded-lg bg-slate-800 col-span-2">나머지 용병은 AI가 함께 싸워요</span>
-                </div>
-                <div id="battleControlUnitList" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
-              </div>
-            </div>
-          </div>
 
           <!-- 전투 종료 결과 오버레이 -->
           <div id="battleResultOverlay" class="hidden absolute inset-0 bg-slate-950/85 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
@@ -2433,6 +2403,8 @@
     }
     const KNOCKBACK_POWER = 2.4;         // 피격 시 밀려나는 첫 속도 (매 틱 40%씩 줄어 약 6px 밀림)
     const PROJECTILE_HOMING_TURN = 0.006; // 투사체가 매 틱 목표 쪽으로 꺾을 수 있는 최대 각도 (라디안, 아주 소폭)
+    const MAGE_SPLASH_RADIUS = 60;       // 마법사 기본 공격 범위 (맞은 자리 주변)
+    const MAGE_SPLASH_RATIO = 0.5;       // 주변 적이 받는 피해 비율
     const AI_DODGE_CHANCE = 0.45;        // AI가 날아오는 투사체를 알아채고 피하려 할 확률
 
     // 스킬별 개별 쿨타임(cooldownTicks/cooldownSec) 및 마나 소모량(manaCost) 정의 (Requirement 5)
@@ -8295,7 +8267,6 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       battleControl.unitId = null;
       Object.assign(localBattleInput, { keys: { w: false, a: false, s: false, d: false }, attack: false, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0], teamDash: 0, unitDashN: 0, unitDashId: null, forfeit: 0 });
       sim.awaitingControlChoice = false;
-      if (mode !== 'broadcast') openBattleControlChooser(!netRole);
       renderBattleControlHud(true);
 
       const statsBadge = document.getElementById('arenaSimStatsBadge');
@@ -8482,6 +8453,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       if (!unit || !unit.alive || unit.monsterType === 'scarecrow') return false;
       if (unit.dashCooldown > 0 || unit.statuses.stun > 0 || unit.statuses.freeze > 0) return false;
 
+      dashAngle = wallAwareAngle(unit, dashAngle);
       const sx = unit.x;
       const sy = unit.y;
       const dist = DASH_CONFIG.distance;
@@ -8498,13 +8470,6 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         sx, sy, tx: unit.x, ty: unit.y,
         color: unit.team === 'blue' ? '#10b981' : '#f43f5e',
         life: 32, maxLife: 32
-      });
-      sim.floatTexts.push({
-        x: unit.x,
-        y: unit.y - 38,
-        text: `${reasonLabel}!`,
-        color: '#059669',
-        life: 38
       });
       return true;
     }
@@ -8534,7 +8499,6 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         angle = Math.atan2(target.y - u.y, target.x - u.x);
       }
       if (triggerUnitDash(u, angle, '💨전술대시')) {
-        addBattleLog(`💨 [대시] ${u.name} 용병이 전술 대시를 발동했습니다! (자체 쿨타임 ${DASH_CONFIG.cooldownSec}초)`);
         renderLiveUnitStatus();
       }
     }
@@ -8572,10 +8536,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           if (triggerUnitDash(u, angle, '💨일제대시')) dashedCount++;
         }
       });
-      if (dashedCount > 0) {
-        addBattleLog(`💨 [일제 대시] ${team === 'blue' ? '블루팀' : '레드팀'} ${dashedCount}명이 동시에 전술 대시를 발동했습니다!`);
-        renderLiveUnitStatus();
-      }
+      if (dashedCount > 0) renderLiveUnitStatus();
       return dashedCount;
     }
 
@@ -9101,7 +9062,8 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         }
 
         // [AI 이동] ① 날아오는 투사체 피하기 → ② 거리 조절 (다가가기 / 원거리는 물러나기) → ③ 공격 대기 중 좌우로 움직이기
-        const moveBy = (angle, mult, phase) => {
+        const moveBy = (rawAngle, mult, phase) => {
+          const angle = wallAwareAngle(u, rawAngle);
           u.x += Math.cos(angle) * curMoveSpeed * mult;
           u.y += Math.sin(angle) * curMoveSpeed * mult;
           u.isMoving = true;
@@ -9120,6 +9082,8 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           u.strafeDir = Math.random() < 0.5 ? 1 : -1;
           u.strafeTimer = 50 + Math.floor(Math.random() * 60);
         }
+        const strafeA = u.facingAngle + (Math.PI / 2) * u.strafeDir;
+        if (wallRoom(u.x + Math.cos(strafeA) * 60, u.y + Math.sin(strafeA) * 60) < 30) u.strafeDir *= -1;
         if (dodgeAngle !== null) {
           // 코앞까지 온 투사체는 대시로 피하고, 아니면 옆으로 비켜섬
           if (u.dashCooldown <= 0 && (u.dodgeAlong || 999) < 90 && u.statuses.stun <= 0) {
@@ -9138,7 +9102,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           moveBy(u.facingAngle + (isRanged ? 0 : 0.25 * u.strafeDir), 1, 0.065);
         } else if (isRanged && u.behaviorRule !== 'charge' && nearestFoe && nearestFoe.d < Math.max(120, u.range * 0.55)) {
           // 적이 너무 가까우면 사거리 끝 쪽으로 물러나며 싸움
-          moveBy(Math.atan2(u.y - nearestFoe.e.y, u.x - nearestFoe.e.x), 0.85, 0.06);
+          moveBy(Math.atan2(u.y - nearestFoe.e.y, u.x - nearestFoe.e.x) + (wallRoom(u.x, u.y) < WALL_MARGIN ? 0.6 * u.strafeDir : 0), 0.85, 0.06);
         } else if (u.cooldown > 6) {
           // 다음 공격을 기다리는 동안: 원거리는 옆으로 움직여 맞기 어렵게, 근접은 상대 주위를 돌며 싸움
           moveBy(u.facingAngle + (Math.PI / 2) * u.strafeDir, isRanged ? 0.3 : 0.35, 0.04);
@@ -9175,7 +9139,8 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
             sim.projectiles.push({
               projType: 'magic_orb',
               x: u.x + u.facingDir * 12, y: u.y - 10, target, owner: u,
-              dmg: u.atk, isHeal: false, speed: 2.6, trail: []
+              dmg: u.atk, isHeal: false, speed: 2.6, trail: [],
+              splashRadius: MAGE_SPLASH_RADIUS, splashRatio: MAGE_SPLASH_RATIO // 마법사 기본 공격: 터지는 자리 주변에 작은 범위 피해
             });
 
           } else if (u.job === 'healer') {
@@ -9226,7 +9191,8 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           p.angle = Math.atan2(ty - p.y, tx - p.x);
           p.isDirectional = true;
           p.travel = 0;
-          p.maxTravel = Math.hypot(tx - p.x, ty - p.y) + (isAoe ? 0 : 140);
+          // 범위 공격(마법사 기본 공격 포함)은 겨눈 자리 근처에서 터지고, 나머지는 조금 더 날아감
+          p.maxTravel = Math.hypot(tx - p.x, ty - p.y) + (isAoe ? 0 : (p.splashRadius ? 10 : 140));
           p.homeTarget = isAoe ? null : p.target;
           p.target = null;
         }
@@ -9320,6 +9286,38 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       }
     }
 
+    // 전장은 사방이 막힌 사각형: 벽 쪽으로 가려는 움직임은 줄이고, 막히면 벽을 따라 안쪽으로 미끄러짐
+    const ARENA_BOUNDS = { left: 200, right: WORLD_WIDTH - 200, top: 260, bottom: WORLD_HEIGHT - 220 };
+    const WALL_MARGIN = 150;
+    function wallRoom(x, y) {
+      return Math.min(x - ARENA_BOUNDS.left, ARENA_BOUNDS.right - x, y - ARENA_BOUNDS.top, ARENA_BOUNDS.bottom - y);
+    }
+    function wallAwareAngle(u, angle) {
+      let vx = Math.cos(angle), vy = Math.sin(angle);
+      const left = u.x - ARENA_BOUNDS.left, right = ARENA_BOUNDS.right - u.x;
+      const top = u.y - ARENA_BOUNDS.top, bottom = ARENA_BOUNDS.bottom - u.y;
+      if (left < WALL_MARGIN && vx < 0) vx *= Math.max(0, left) / WALL_MARGIN;
+      if (right < WALL_MARGIN && vx > 0) vx *= Math.max(0, right) / WALL_MARGIN;
+      if (top < WALL_MARGIN && vy < 0) vy *= Math.max(0, top) / WALL_MARGIN;
+      if (bottom < WALL_MARGIN && vy > 0) vy *= Math.max(0, bottom) / WALL_MARGIN;
+      if (Math.hypot(vx, vy) < 0.4) {
+        // 거의 막힘: 원래 방향의 양옆 중 벽에서 더 먼 쪽으로 미끄러짐
+        const options = [angle + Math.PI / 2, angle - Math.PI / 2, angle + Math.PI * 0.75, angle - Math.PI * 0.75];
+        let best = options[0], bestRoom = -Infinity;
+        options.forEach(a => {
+          const room = wallRoom(u.x + Math.cos(a) * 120, u.y + Math.sin(a) * 120);
+          if (room > bestRoom) { bestRoom = room; best = a; }
+        });
+        return best;
+      }
+      // 벽에 바짝 붙었으면 안쪽으로 살짝 떼어 냄
+      if (left < 40) vx += 0.5;
+      if (right < 40) vx -= 0.5;
+      if (top < 40) vy += 0.5;
+      if (bottom < 40) vy -= 0.5;
+      return Math.atan2(vy, vx);
+    }
+
     // 힐러 기본 회복 (초록 선과 함께 바로 회복)
     function healAllyNow(healer, target, amount) {
       if (!target || !target.alive) return;
@@ -9382,6 +9380,15 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           }
         });
         return;
+      }
+      if (p.splashRadius) {
+        // 작은 범위 공격: 맞은 적은 전체 피해, 주변 적은 일부 피해 (빗나가도 떨어진 자리에서 터짐)
+        sim.effects.push({ type: 'magic_burst', x, y: y - 12, r: p.splashRadius, life: 22, maxLife: 22 });
+        if (!hit) playCombatSfx('magic');
+        sim.units.forEach(e => {
+          if (!e.alive || e === hit || e.team === p.owner.team) return;
+          if (Math.hypot(e.x - x, e.y - y) <= p.splashRadius) applyDamage(p.owner, e, p.dmg * (p.splashRatio || 0.5));
+        });
       }
       if (!hit) return;
       applyDamage(p.owner, hit, p.dmg);
@@ -12450,7 +12457,6 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
               triggerUnitDash(u, u.facingAngle || (u.team === 'blue' ? 0 : Math.PI), `💨${ev.actorName || '실시간'}대시`);
             }
           });
-          addBattleLog(`💨 ${ev.actorName || '상대 친구'}님이 대시를 썼어요!`);
           renderLiveUnitStatus();
         }
       });
