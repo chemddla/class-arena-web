@@ -7549,6 +7549,7 @@
     const battleControl = { mode: 'auto', unitId: null, locked: false }; // locked: 이번 전투에서 이미 골랐으면 바꿀 수 없음
     // 실시간 결투 연결 상태 (아래 [실시간 결투 화면 동기화] 참고)
     const LIVE_FRAME_EVERY_TICKS = 6;
+    const LIVE_FRAME_INTERVAL_MS = 100; // 방장이 화면을 보내는 간격 (실제 시간)
     const LIVE_GUEST_TIMEOUT_MS = 20000;
     const LIVE_UNIT_ST_KEYS = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'blessed', 'rally', 'empower', 'immune'];
     const liveNet = {
@@ -9086,6 +9087,8 @@
 
     function stepSimulation() {
       sim.tickCount++;
+      sim.units.forEach(u => { u._ix = u.x; u._iy = u.y; });
+      sim.projectiles.forEach(p => { p._ix = p.x; p._iy = p.y; });
       const blueAlive = sim.units.filter(u => u.alive && u.team === 'blue');
       const redAlive = sim.units.filter(u => u.alive && u.team === 'red');
 
@@ -10966,7 +10969,7 @@
 
     // 전투 전체 빠르기: 1.0이면 화면 한 번에 1틱, 0.8이면 20% 느리게
     // (이동·공격·스킬·쿨타임·시간 제한이 모두 같은 비율로 느려져서 밸런스는 그대로)
-    const BATTLE_PACE = 0.512; // 처음 대비: 0.8 → 0.64 → 0.512 (매번 20%씩 느리게)
+    const BATTLE_PACE = 0.4096; // 처음 대비: 0.8 → 0.64 → 0.512 → 0.4096 (매번 20%씩 느리게)
     let battleTickCarry = 0;
 
     // 이번 화면에서 진행할 틱 수 (소수점은 다음 화면으로 넘겨서 평균이 BATTLE_PACE가 되게)
@@ -10975,6 +10978,26 @@
       const ticks = Math.floor(battleTickCarry);
       battleTickCarry -= ticks;
       return ticks;
+    }
+
+    // 전투는 화면 2~3번에 한 번씩만 계산되므로(BATTLE_PACE), 그릴 때는 지난 틱과 이번 틱 사이 위치로 이어서 그림
+    // → 용병·투사체가 뚝뚝 끊기지 않고 부드럽게 움직임 (그린 뒤 실제 위치로 되돌림)
+    function drawArenaCanvasSmooth() {
+      const interp = sim.running && sim.netRole !== 'guest' && !sim.awaitingControlChoice && !sim.waitingForOpponent;
+      if (!interp) { drawArenaCanvas(); return; }
+      const a = Math.max(0, Math.min(1, battleTickCarry));
+      const saved = [];
+      const shift = o => {
+        if (typeof o._ix !== 'number' || typeof o._iy !== 'number') return;
+        const dx = o.x - o._ix, dy = o.y - o._iy;
+        if (dx * dx + dy * dy > 160 * 160) return; // 텔레포트처럼 크게 움직인 건 그대로
+        saved.push([o, o.x, o.y]);
+        o.x = o._ix + dx * a;
+        o.y = o._iy + dy * a;
+      };
+      sim.units.forEach(shift);
+      sim.projectiles.forEach(shift);
+      try { drawArenaCanvas(); } finally { saved.forEach(([o, x, y]) => { o.x = x; o.y = y; }); }
     }
 
     let animationFrameNo = 0;
@@ -11002,7 +11025,7 @@
       }
       updateBattleControlFrame();
       updateReturnButtons();
-      if (arenaVisible) drawArenaCanvas();
+      if (arenaVisible) drawArenaCanvasSmooth();
       else if (sim.running) decayHiddenBattleVisuals();
       requestAnimationFrame(animationLoop);
     }
@@ -14518,7 +14541,8 @@
         startedAt: Date.now(), initReceived: false, lastFrameAt: Date.now(), targets: {}, finished: false,
         sent: new WeakSet(), pendingLogs: [], remoteCtrl: null, remoteUnitId: null,
         lastInputSentAt: 0, inputTimer: null, lastAimSent: null,
-        guestChose: false, started: false, lastStatusAt: 0, hostStatus: null
+        guestChose: false, started: false, lastStatusAt: 0, hostStatus: null,
+        hist: {}, frameGap: 0, lastFramePublishedAt: 0
       });
       if (role === 'host') {
         try { ref.onDisconnect().remove(); } catch (e) {}
@@ -14579,7 +14603,10 @@
     }
 
     function publishLiveBattleFrame() {
-      if (liveNet.role !== 'host' || !liveNet.ref || sim.tickCount % LIVE_FRAME_EVERY_TICKS !== 0) return;
+      if (liveNet.role !== 'host' || !liveNet.ref) return;
+      const nowMs = Date.now();
+      if (nowMs - (liveNet.lastFramePublishedAt || 0) < LIVE_FRAME_INTERVAL_MS) return;
+      liveNet.lastFramePublishedAt = nowMs;
       const fresh = list => {
         const out = [];
         list.forEach(x => {
@@ -14728,6 +14755,7 @@
       sim.units = units;
       sim.projectiles = [];
       liveNet.targets = {};
+      liveNet.hist = {};
       liveNet.initReceived = true;
       liveNet.lastFrameAt = Date.now();
       // 연결 전에 고른 용병이 있으면 방장 화면의 같은 용병으로 이어서 조종
@@ -14743,11 +14771,18 @@
 
     function applyLiveFrame(val) {
       if (liveNet.role !== 'guest' || !liveNet.initReceived || !val || liveNum(val.at) < liveNet.minAt || !Array.isArray(val.u)) return;
+      // 화면이 들어오는 평균 간격 (부드럽게 이어 그릴 때 기준)
+      const gap = Date.now() - (liveNet.lastFrameAt || Date.now());
+      if (gap > 20 && gap < 1000) liveNet.frameGap = liveNet.frameGap ? liveNet.frameGap * 0.8 + gap * 0.2 : gap;
       liveNet.lastFrameAt = Date.now();
+      if (!liveNet.hist) liveNet.hist = {};
       val.u.forEach((p, i) => {
         const u = sim.units[i];
         if (!u || !Array.isArray(p)) return;
         liveNet.targets[i] = { x: liveNum(p[0]), y: liveNum(p[1]) };
+        const hist = liveNet.hist[i] || (liveNet.hist[i] = []);
+        hist.push({ t: Date.now(), x: liveNum(p[0]), y: liveNum(p[1]) });
+        if (hist.length > 3) hist.shift();
         u.hp = liveNum(p[2]);
         u.shield = liveNum(p[3]);
         u.mana = liveNum(p[4]);
@@ -14806,22 +14841,29 @@
     // 도전자 화면의 매 프레임: 받은 위치로 부드럽게 이동 + 투사체 이어서 움직이기 + 연결 끊김 확인
     function applyLiveBattleFrameTick(ticks = 1) {
       sim.tickCount += ticks; // 방장 화면과 같은 빠르기로 시간이 흐르도록 (BATTLE_PACE)
+      // 받은 화면 두 장 사이를 시간에 맞춰 이어 그림 (한 박자 = 화면 간격만큼 늦게 보여 주는 대신 끊김이 없음)
+      const renderT = Date.now() - (liveNet.frameGap || LIVE_FRAME_INTERVAL_MS);
       sim.units.forEach((u, i) => {
-        ['attackAnim', 'skillAnim', 'hurtAnim', 'dashAnim', 'dashCooldown', 'castLock'].forEach(k => { if (u[k] > 0) u[k]--; });
-        if (u.casting && u.casting.left > 1) u.casting.left--;
-        const t = liveNet.targets[i];
-        if (!t) return;
-        const dx = t.x - u.x, dy = t.y - u.y;
-        if (Math.hypot(dx, dy) > 400) {
-          u.x = t.x;
-          u.y = t.y;
-        } else {
-          u.x += dx * 0.25;
-          u.y += dy * 0.25;
+        ['attackAnim', 'skillAnim', 'hurtAnim', 'dashAnim', 'dashCooldown', 'castLock'].forEach(k => { if (u[k] > 0) u[k] = Math.max(0, u[k] - ticks); });
+        if (u.casting && u.casting.left > 1) u.casting.left = Math.max(1, u.casting.left - ticks);
+        const h = (liveNet.hist || {})[i];
+        if (!h || !h.length) return;
+        let a = h[0], b = h[h.length - 1];
+        for (let j = 0; j < h.length - 1; j++) {
+          if (h[j].t <= renderT && renderT <= h[j + 1].t) { a = h[j]; b = h[j + 1]; break; }
         }
-        if (u.isMoving) u.walkPhase = (u.walkPhase || 0) + 0.065;
+        let tx, ty;
+        if (renderT <= a.t || a === b) { tx = a.x; ty = a.y; }
+        else {
+          const k = Math.min(1, (renderT - a.t) / Math.max(1, b.t - a.t));
+          tx = a.x + (b.x - a.x) * k;
+          ty = a.y + (b.y - a.y) * k;
+        }
+        if (Math.hypot(tx - u.x, ty - u.y) > 400) { u.x = tx; u.y = ty; }
+        else { u.x += (tx - u.x) * 0.6; u.y += (ty - u.y) * 0.6; }
+        if (u.isMoving) u.walkPhase = (u.walkPhase || 0) + 0.065 * ticks;
       });
-      sim.projectiles.forEach(p => { p.x += p.vx || 0; p.y += p.vy || 0; });
+      sim.projectiles.forEach(p => { p.x += (p.vx || 0) * ticks; p.y += (p.vy || 0) * ticks; });
       (sim.zones || []).forEach(z => { if (z.life > 1) z.life--; });
 
       // 직접 조종 중이면 마우스 조준이 바뀐 것도 가끔 보냄
