@@ -10639,6 +10639,19 @@
       }
     }
 
+    // 전투 전체 빠르기: 1.0이면 화면 한 번에 1틱, 0.8이면 20% 느리게
+    // (이동·공격·스킬·쿨타임·시간 제한이 모두 같은 비율로 느려져서 밸런스는 그대로)
+    const BATTLE_PACE = 0.8;
+    let battleTickCarry = 0;
+
+    // 이번 화면에서 진행할 틱 수 (소수점은 다음 화면으로 넘겨서 평균이 BATTLE_PACE가 되게)
+    function takeBattleTicks(speed) {
+      battleTickCarry += speed * BATTLE_PACE;
+      const ticks = Math.floor(battleTickCarry);
+      battleTickCarry -= ticks;
+      return ticks;
+    }
+
     let animationFrameNo = 0;
     function animationLoop() {
       animationFrameNo++;
@@ -10648,14 +10661,15 @@
       const refreshStatus = arenaVisible && animationFrameNo % 6 === 0;
       if (sim.running && sim.netRole === 'guest') {
         // 실시간 결투 상대(도전자): 방장 화면에서 진행된 전투를 받아서 그대로 보여 줌
-        applyLiveBattleFrameTick();
+        applyLiveBattleFrameTick(takeBattleTicks(1));
         if (refreshStatus) renderLiveUnitStatus();
       } else if (sim.running && !sim.awaitingControlChoice) {
-        for (let s = 0; s < sim.speed; s++) {
+        const ticks = takeBattleTicks(sim.speed);
+        for (let s = 0; s < ticks; s++) {
           if (sim.running) stepSimulation();
         }
         if (refreshStatus) renderLiveUnitStatus();
-        if (sim.running && sim.netRole === 'host') publishLiveBattleFrame();
+        if (ticks > 0 && sim.running && sim.netRole === 'host') publishLiveBattleFrame();
       } else if (!sim.running) {
         sim.tickCount++;
       }
@@ -14452,8 +14466,8 @@
     }
 
     // 도전자 화면의 매 프레임: 받은 위치로 부드럽게 이동 + 투사체 이어서 움직이기 + 연결 끊김 확인
-    function applyLiveBattleFrameTick() {
-      sim.tickCount++;
+    function applyLiveBattleFrameTick(ticks = 1) {
+      sim.tickCount += ticks; // 방장 화면과 같은 빠르기로 시간이 흐르도록 (BATTLE_PACE)
       sim.units.forEach((u, i) => {
         ['attackAnim', 'skillAnim', 'hurtAnim', 'dashAnim', 'dashCooldown', 'castLock'].forEach(k => { if (u[k] > 0) u[k]--; });
         if (u.casting && u.casting.left > 1) u.casting.left--;
