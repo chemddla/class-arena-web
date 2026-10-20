@@ -12216,6 +12216,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       room.guestName = myStu.name;
       room.guestPower = calcStudentDeployedPower(myStu);
       room.guestStudentSnapshot = publicStudentSnapshot(myStu);
+      room.guestFormationSaved = false;
       room.guestReady = false;
       room.practiceFriend = false;
       await savePvpRoomData(roomId, room);
@@ -12243,6 +12244,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       room.guestName = friend.name;
       room.guestPower = calcStudentDeployedPower(friend);
       room.guestStudentSnapshot = publicStudentSnapshot(friend);
+      room.guestFormationSaved = false;
       room.guestReady = true;
       room.practiceFriend = true; // 연습 친구는 실제 접속자가 없으므로 방장 화면에서만 진행
       await savePvpRoomData(roomId, room);
@@ -12274,6 +12276,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
       const myStu = getActiveStudent();
       const room = livePvpRoomsCache[roomId];
       currentJoinedPvpRoomId = null;
+      pvpFormationDraft = null;
       if (!room || !myStu) {
         renderLivePvpRoomsList();
         return;
@@ -12287,6 +12290,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
         room.guestName = null;
         room.guestPower = 0;
         room.guestStudentSnapshot = null;
+        room.guestFormationSaved = false;
         room.guestReady = false;
         await savePvpRoomData(roomId, room);
         showNotice('🚪 결투 대기방에서 퇴장했습니다.');
@@ -12454,6 +12458,8 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           const isGuest = myStu && myRoom.guestId === myStu.id;
           const hasGuest = Boolean(myRoom.guestId);
           const canStart = isHost && hasGuest && myRoom.guestReady;
+          const myFormationKey = myStu ? pvpRoomSnapshotKey(myRoom, myStu.id) : null;
+          if (pvpFormationDraft && (pvpFormationDraft.roomId !== myRoom.roomId || (isGuest && myRoom.guestReady))) pvpFormationDraft = null;
 
           waitPanel.classList.remove('hidden');
           waitPanel.innerHTML = `
@@ -12570,6 +12576,7 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
           `;
         } else {
           waitPanel.classList.add('hidden');
+          pvpFormationDraft = null;
         }
       }
 
@@ -12627,11 +12634,18 @@ alter publication supabase_realtime add table public.pvp_squads, public.pvp_room
             const isHost = r.hostId === myStu.id;
             const netRole = r.practiceFriend ? null : (isHost ? 'host' : 'guest');
             showRewardBanner(`⚡ [실시간 PvP 결투 시작!] ${r.hostName} vs ${r.guestName} 5:5 라이브 결투가 시작됩니다!`);
+            const blueStu = isHost ? myStu : opponentStu;
+            const redStu = isHost ? opponentStu : myStu;
+            // 대기실에서 저장한 진형(row/col)으로 양쪽 유닛을 만듦
+            const blueUnits = deployedMercsWithRoomFormation(blueStu, r.hostStudentSnapshot).map(m => createSimUnit(m, blueStu, 'blue', 1.0));
+            const redUnits = deployedMercsWithRoomFormation(redStu, r.guestStudentSnapshot).map(m => createSimUnit(m, redStu, 'red', 1.0));
             launchSimulation({
               mode: 'pvp_realtime',
               title: `⚡ 실시간 라이브 결투: ${r.hostName} vs ${r.guestName}`,
-              blueStudent: isHost ? myStu : opponentStu,
-              redStudent: isHost ? opponentStu : myStu,
+              blueStudent: blueStu,
+              redStudent: redStu,
+              customBlueUnits: blueUnits,
+              customRedUnits: redUnits,
               rewardMc: 350,
               netRole,
               myTeam: isHost ? 'blue' : 'red'
