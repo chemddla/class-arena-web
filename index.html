@@ -2408,8 +2408,8 @@
         },
         stun_strike: {
           id: 'stun_strike', name: '기절공격', icon: '🔨', ccTag: '💫기절',
-          manaCost: 27, cooldownTicks: 450, cooldownSec: 7.5, castSec: 0.6,
-          desc: '높이 점프해 대검으로 대지를 강타하여 160% 피해를 입히고 적을 2초간 [기절]시킵니다.'
+          manaCost: 27, cooldownTicks: 450, cooldownSec: 7.5, castSec: 0,
+          desc: '곧바로 높이 점프해 대검으로 대지를 강타하여 160% 피해를 입히고 적을 2초간 [기절]시킵니다. (내려찍는 동안은 움직일 수 없어요)'
         },
         charge: {
           id: 'charge', name: '돌진', icon: '💨', ccTag: '💨돌격강타',
@@ -2419,7 +2419,7 @@
         roar: {
           id: 'roar', name: '사자후', icon: '🦁', ccTag: '🦁밀쳐내기',
           manaCost: 24, cooldownTicks: 360, cooldownSec: 6.0, castSec: 0.5,
-          desc: '사자처럼 포효해 주변 2칸 범위의 적들에게 190% 피해를 입히고 반 칸 밀쳐냅니다.'
+          desc: '사자처럼 포효해 주변 2칸 범위의 적들에게 190% 피해를 입히고 1칸 넘게 멀리 밀쳐냅니다.'
         },
         warcry: {
           id: 'warcry', name: '함성', icon: '📣', ccTag: '📣공격강화',
@@ -2500,7 +2500,7 @@
         arrow_rain: {
           id: 'arrow_rain', name: '화살비', icon: '🌧️', ccTag: '🌧️지속장판',
           manaCost: 24, cooldownTicks: 480, cooldownSec: 8.0, castSec: 0.8,
-          desc: '하늘로 화살을 쏘아 1칸 원형 범위에 3초간 화살비를 내려 계속 피해를 입힙니다.'
+          desc: '하늘로 화살을 쏘아 1칸 원형 범위에 5초간 화살비를 내려 계속 피해를 입힙니다.'
         },
         evasive_shot: {
           id: 'evasive_shot', name: '회피기동', icon: '🌀', ccTag: '🌀후퇴사격',
@@ -7977,6 +7977,8 @@
       if (u.mana < (sk.manaCost || 0)) { say('💧 마나 부족', '#0284c7'); return; }
       if (u.castLock > 0) return;
       if (u.casting) return;
+      // 부활: 쓰러진 아군이 없으면 쓰지 않음 (마나·쿨타임 30초가 헛되이 사라지지 않게)
+      if (key === 'revive' && !sim.units.some(x => x.team === u.team && !x.alive && x.monsterType !== 'scarecrow')) { say('🌟 쓰러진 아군이 없어요'); return; }
       const aimX = c.aimX ?? (u.x + Math.cos(u.facingAngle || 0) * 100);
       const aimY = c.aimY ?? (u.y + Math.sin(u.facingAngle || 0) * 100);
       const mode = MANUAL_SKILL_AIM[key] || 'point';
@@ -9024,6 +9026,8 @@
             x: target.x, y: target.y, r: 100,
             life: 56, maxLife: 56
           });
+          unit.rootTicks = STUN_STRIKE_ROOT_TICKS; // 점프해서 내려찍는 동안은 제자리 (이동·공격 불가)
+          unit.rush = null;
           inReach.forEach(e => {
             if (Math.hypot(e.x - target.x, e.y - target.y) <= 80) {
               applyDamage(unit, e, unit.atk * 1.6);
@@ -9355,6 +9359,8 @@
         const enemies = u.team === 'blue' ? redAlive : blueAlive;
         // 직접 전투: 학생이 조종하는 용병은 AI 대신 입력대로 움직임
         if (stepSkillCast(u, allies, enemies)) return;
+        // 제자리에 묶인 동안(기절공격 내려찍기 등)은 아무것도 하지 않음
+        if (u.rootTicks > 0) { u.rootTicks--; u.isMoving = false; return; }
         const manualCtrl = sim.controllers && sim.controllers[u.id];
         if (manualCtrl) {
           manualUnitStep(u, allies, enemies, manualCtrl);
@@ -9713,6 +9719,13 @@
       for (let i = zones.length - 1; i >= 0; i--) {
         const z = zones[i];
         z.life--;
+        // 상태이상 장판(포이즌 붐): 피해 주기를 기다리지 않고 닿는 순간 바로 상태이상
+        if (z.status) {
+          sim.units.forEach(e => {
+            if (!e.alive || e.team === z.team || Math.hypot(e.x - z.x, e.y - z.y) > z.r) return;
+            if ((e.statuses[z.status] || 0) < 30) inflictStatus(z.owner, e, z.status, z.statusDur);
+          });
+        }
         if (z.life % z.interval === 0) {
           suppressHitKnockback = true;
           sim.units.forEach(e => {
@@ -9752,7 +9765,7 @@
           // 작게 줄인 화살 그림이 위에서 비스듬히 떨어져 꽂힌 뒤 사라짐 (화살마다 주기를 엇갈려 계속 내리는 느낌)
           const fr = FX_SPRITE_SHEET.anims.arrow[0];
           const scale = 5 / fr[3];                 // 날아가는 화살(촉 높이 8)보다 작게, 길이 약 22px
-          const PERIOD = 42, COUNT = 9, DROP_H = 64, DROP_X = 12;
+          const PERIOD = 42, COUNT = 18, DROP_H = 64, DROP_X = 12;
           const fallAng = Math.atan2(DROP_H, DROP_X);
           for (let k = 0; k < COUNT; k++) {
             const t = sim.tickCount + Math.floor((k * PERIOD) / COUNT);
@@ -9885,6 +9898,7 @@
     }
 
     const WHIRLWIND_TICKS = 160; // 회전베기 지속 시간 (틱)
+    const STUN_STRIKE_ROOT_TICKS = 40; // 기절공격: 내려찍는 동안 못 움직이는 시간 (틱)
 
     function drawCastBars(ctx) {
       sim.units.forEach(u => {
@@ -9927,11 +9941,11 @@
       const near = (list, x, y, r) => list.filter(u => Math.hypot(u.x - x, u.y - y) <= r);
 
       if (sk === 'roar') {
-        // 사자후: 주변 2칸 적에게 피해 + 반 칸 밀쳐냄
+        // 사자후: 주변 2칸 적에게 피해 + 1.2칸 밀쳐냄
         sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: C * 2, color: '#d97706', life: 36, maxLife: 36 });
         near(enemies, unit.x, unit.y, C * 2).forEach(e => {
           applyDamage(unit, e, unit.atk * 1.9);
-          pushUnitAway(e, unit.x, unit.y, C * 0.5);
+          pushUnitAway(e, unit.x, unit.y, C * 1.2);
         });
         playCombatSfx('heavy');
         addBattleLog(`🦁 [전사] ${unit.name}의 사자후! 주변 적을 밀쳐냈어요.`);
@@ -9949,9 +9963,9 @@
         return true;
       }
       if (sk === 'arrow_rain') {
-        // 화살비: 1칸 원형에 3초간 지속 피해
+        // 화살비: 1칸 원형에 5초간 지속 피해 (한 번 맞을 때 피해는 그대로)
         if (!target) return true;
-        spawnZone('arrow_rain', unit, target.x, target.y, C * 1, 180, 20, unit.atk * 0.24);
+        spawnZone('arrow_rain', unit, target.x, target.y, C * 1, 300, 20, unit.atk * 0.24);
         playCombatSfx('arrow');
         addBattleLog(`🌧️ [궁수] ${unit.name}의 화살비!`);
         return true;
