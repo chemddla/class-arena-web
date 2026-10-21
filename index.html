@@ -3080,6 +3080,12 @@
     MERC_SPRITE_DEFS.warrior_3 = { ...MERC_SPRITE_DEFS.warrior_0, src: 'assets/sprites/merc/warrior_3.webp' };
     MERC_SPRITE_DEFS.warrior_4 = { ...MERC_SPRITE_DEFS.warrior_0, src: 'assets/sprites/merc/warrior_4.webp' };
     MERC_SPRITE_DEFS.warrior_5 = { ...MERC_SPRITE_DEFS.warrior_0, src: 'assets/sprites/merc/warrior_5.webp' };
+    // 마법사 외형 1 (은회색 머리·진홍 모자), 2 (민트 머리·보라 모자), 3 (주황 머리·검정 모자), 4 (분홍 머리·청록 모자), 5 (금발·초록 모자): 칸·기준점·동작 구성은 mage_0과 같고 그림만 다름
+    MERC_SPRITE_DEFS.mage_1 = { ...MERC_SPRITE_DEFS.mage_0, src: 'assets/sprites/merc/mage_1.webp' };
+    MERC_SPRITE_DEFS.mage_2 = { ...MERC_SPRITE_DEFS.mage_0, src: 'assets/sprites/merc/mage_2.webp' };
+    MERC_SPRITE_DEFS.mage_3 = { ...MERC_SPRITE_DEFS.mage_0, src: 'assets/sprites/merc/mage_3.webp' };
+    MERC_SPRITE_DEFS.mage_4 = { ...MERC_SPRITE_DEFS.mage_0, src: 'assets/sprites/merc/mage_4.webp' };
+    MERC_SPRITE_DEFS.mage_5 = { ...MERC_SPRITE_DEFS.mage_0, src: 'assets/sprites/merc/mage_5.webp' };
     const SPRITE_DRAW_H = 54;       // 전투 화면에서 서 있는 캐릭터의 키(월드 px)
     const SPRITE_DEATH_TICKS = 150; // 쓰러진 뒤 화면에 남아 있는 시간
 
@@ -3122,16 +3128,20 @@
     });
 
     // 용병 외형(skinVariant) 배정: 직업별 그림 수만큼 무작위.
-    // 기존 용병은 용병 ID로 정해지는 고정값이라, 저장 전이어도 어느 기기에서 보든 같은 외형이 나옴
+    // 기존 용병은 용병 ID로 정해지는 고정값이라, 저장 전이어도 어느 기기에서 보든 같은 외형이 나옴.
+    // skinN = 배정할 때의 외형 수. 나중에 외형이 늘면 아직 기본 외형(0번)인 용병만 다시 뽑고, 이미 받은 외형은 유지
     const MERC_SKIN_VERSION = 1;
     function getMercSkinCount(jobKey) { let n = 0; while (MERC_SPRITE_DEFS[`${jobKey}_${n}`]) n++; return Math.max(1, n); }
     function pickRandomMercSkin(jobKey) { return Math.floor(Math.random() * getMercSkinCount(jobKey)); }
     function ensureMercSkin(m) {
-      if (!m || typeof m !== 'object' || !m.job || m.monsterType || m.skinVer === MERC_SKIN_VERSION) return m;
+      if (!m || typeof m !== 'object' || !m.job || m.monsterType) return m;
+      const n = getMercSkinCount(m.job);
+      if (m.skinVer === MERC_SKIN_VERSION && ((m.skinN || 1) >= n || (m.skinVariant || 0) > 0)) { m.skinN = Math.max(m.skinN || 1, n); return m; }
       const key = String(m.id || m.name || '');
       let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-      m.skinVariant = h % getMercSkinCount(m.job);
+      m.skinVariant = h % n;
       m.skinVer = MERC_SKIN_VERSION;
+      m.skinN = n;
       return m;
     }
 
@@ -3446,6 +3456,7 @@
         skillsRevealed: fixedSkillKey && level >= 10 ? 1 : 0,
         skinVariant: pickRandomMercSkin(jobKey),
         skinVer: MERC_SKIN_VERSION,
+        skinN: getMercSkinCount(jobKey),
         rarity: rarityCode === 'N' ? 'N' : 'R',
         level: level,
         statPoints: { hp: 0, atk: 0, def: 0, spd: 0 },
