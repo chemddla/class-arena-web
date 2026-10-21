@@ -3071,11 +3071,23 @@
     // 모든 직업을 같은 배율(standH가 같음)로 보여 주도록, 높이 PORTRAIT_VIEW_H짜리 창을 발 기준으로 잘라 냄
     // (가장 키가 큰 마법사 모자까지 들어가는 높이)
     const PORTRAIT_VIEW_H = 96;
-    function getSpritePortraitHTML(sprite, size) {
-      const k = size / PORTRAIT_VIEW_H;
-      const cropX = sprite.portraitCX - PORTRAIT_VIEW_H / 2;
-      const cropY = sprite.anchorY + 3 - PORTRAIT_VIEW_H; // 발 아래 3px 여백
-      return `<div class="select-none" style="width:${size}px;height:${size}px;background:url('${sprite.src}') no-repeat;background-size:${Math.round(sprite.cellW * sprite.count * k)}px ${Math.round(sprite.cellH * k)}px;background-position:${-Math.round(cropX * k)}px ${-Math.round(cropY * k)}px;"></div>`;
+    // headOnly: 작은 아이콘용. 머리~상체만 잘라 크게 보여 줌
+    const PORTRAIT_HEAD_VIEW_H = 60;
+    function getSpritePortraitHTML(sprite, size, tag = 'div', extraStyle = '', headOnly = false) {
+      const viewH = headOnly ? PORTRAIT_HEAD_VIEW_H : PORTRAIT_VIEW_H;
+      const k = size / viewH;
+      const cropX = sprite.portraitCX - viewH / 2;
+      const cropY = headOnly
+        ? sprite.anchorY - (sprite.topH || sprite.standH) - 2 // 머리 꼭대기 위 2px부터
+        : sprite.anchorY + 3 - PORTRAIT_VIEW_H;               // 발 아래 3px 여백
+      return `<${tag} class="select-none${tag === 'span' ? ' inline-block align-middle shrink-0' : ''}" style="width:${size}px;height:${size}px;background:url('${sprite.src}') no-repeat;background-size:${Math.round(sprite.cellW * sprite.count * k)}px ${Math.round(sprite.cellH * k)}px;background-position:${-Math.round(cropX * k)}px ${-Math.round(cropY * k)}px;${extraStyle}"></${tag}>`;
+    }
+
+    // 글 속·목록 칸에 들어가는 작은 용병 얼굴 (그림이 없으면 직업 이모지). 26px 이하는 머리~상체만. dark = 흑화 용병처럼 어둡게
+    function getMercIconHTML(jobKey, skinVariant = 0, size = 20, dark = false) {
+      const sprite = getMercSprite(jobKey, skinVariant || 0);
+      if (sprite) return getSpritePortraitHTML(sprite, size, 'span', dark ? 'filter:grayscale(0.5) brightness(0.6);' : '', size <= 26);
+      return `<span>${(JOB_DEFS[jobKey] || JOB_DEFS.warrior).icon}</span>`;
     }
 
     function getUnitPortraitHTML(jobKey, rarity = 'N', skinVariant = 0, size = 48) {
@@ -5268,7 +5280,7 @@
               <div class="bg-slate-950 border border-emerald-500/40 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <div class="text-xs font-extrabold text-white">
-                    🙋 구매 희망자: <span class="text-emerald-300">${o.buyerName}</span> → 내 용병 <span class="text-indigo-300">[${job.icon}${m.name} Lv.${m.level}]</span>
+                    🙋 구매 희망자: <span class="text-emerald-300">${o.buyerName}</span> → 내 용병 <span class="text-indigo-300">[${getMercIconHTML(m.job, m.skinVariant, 18)}${m.name} Lv.${m.level}]</span>
                   </div>
                   <div class="text-[11px] text-slate-400 mt-0.5">
                     제안 금액: <strong class="text-amber-300 text-xs">${o.offerPrice.toLocaleString()} CA</strong> (감정가 ${o.valuation.toLocaleString()} CA)
@@ -5301,7 +5313,7 @@
               <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <div class="text-xs font-extrabold text-white">
-                    🎯 대상: <span class="text-indigo-300">${o.sellerName}</span>의 <span class="text-amber-300">[${job.icon}${m.name} Lv.${m.level}]</span>
+                    🎯 대상: <span class="text-indigo-300">${o.sellerName}</span>의 <span class="text-amber-300">[${getMercIconHTML(m.job, m.skinVariant, 18)}${m.name} Lv.${m.level}]</span>
                   </div>
                   <div class="text-[11px] text-slate-400 mt-0.5">
                     내 제안 금액: <strong class="text-emerald-300">${o.offerPrice.toLocaleString()} CA</strong> (감정가 ${o.valuation.toLocaleString()} CA)
@@ -6431,9 +6443,9 @@
         for (let c = 0; c < FORMATION_COLS; c++) {
           const occ = (mercs || []).find(m => m.row === r && m.col === c);
           const job = occ ? JOB_DEFS[occ.job] : null;
-          cells += `<div class="w-5 h-5 rounded flex items-center justify-center text-[10px] border ${
+          cells += `<div class="w-5 h-5 rounded flex items-center justify-center text-[10px] border overflow-hidden ${
             occ ? 'bg-slate-900 border-indigo-400 font-bold' : 'bg-slate-950/60 border-slate-800 text-slate-600'
-          }" title="${occ ? `${occ.name} (${job.name} Lv.${occ.level})` : `${r+1}행 ${c+1}열 빈칸`}">${occ ? job.icon : '·'}</div>`;
+          }" title="${occ ? `${occ.name} (${job.name} Lv.${occ.level})` : `${r+1}행 ${c+1}열 빈칸`}">${occ ? getMercIconHTML(occ.job, occ.skinVariant, 18) : '·'}</div>`;
         }
       }
       return `<div class="grid grid-cols-3 gap-0.5 p-1 rounded-lg bg-slate-950 border border-slate-800 shrink-0" title="미리 설정된 3×5 전술 진형 배치">${cells}</div>`;
@@ -6496,7 +6508,7 @@
               <div class="font-extrabold text-white text-xs">${defenseFormationLabel(myStu)}</div>
               <div class="text-[11px] text-rose-400 font-bold mt-0.5">⚔️ 방어 진형 전투력: ${defPower.toLocaleString()}</div>
               <div class="text-[11px] text-slate-400 mt-1 flex flex-wrap gap-1">
-                ${myDef.map(m => `<span class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800">${JOB_DEFS[m.job].icon}${m.name}(Lv.${m.level})</span>`).join('')}
+                ${myDef.map(m => `<span class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800">${getMercIconHTML(m.job, m.skinVariant, 18)}${m.name}(Lv.${m.level})</span>`).join('')}
               </div>
             </div>
           </div>
@@ -6512,7 +6524,7 @@
           const defPower = defSquad.reduce((sum, m) => sum + calcMercCombatPower(m, s), 0);
           const unitBadges = defSquad.map(m => {
             const unlockedCnt = getUnlockedSkillCount(m.level);
-            return `<span class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-[11px]">${JOB_DEFS[m.job].icon}${m.name} <strong class="text-indigo-300">Lv.${m.level}</strong>(${unlockedCnt}스킬)</span>`;
+            return `<span class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-[11px]">${getMercIconHTML(m.job, m.skinVariant, 18)}${m.name} <strong class="text-indigo-300">Lv.${m.level}</strong>(${unlockedCnt}스킬)</span>`;
           }).join(' ');
 
           return `
@@ -6582,7 +6594,7 @@
           const deployed = (s.roster || []).filter(m => m.deployed);
           const power5 = calcStudentDeployedPower(s);
           const totalP = calcStudentCombatPower(s);
-          const squadIcons = deployed.map(m => `${JOB_DEFS[m.job].icon}${m.name}(Lv.${m.level})`).join(' · ');
+          const squadIcons = deployed.map(m => `${getMercIconHTML(m.job, m.skinVariant, 18)}${m.name}(Lv.${m.level})`).join(' · ');
           return `
             <div class="rounded-2xl border p-3 flex items-center justify-between gap-2.5 ${
               isMe ? 'bg-indigo-950/40 border-indigo-500/50 ring-1 ring-indigo-400' : 'bg-slate-950 border-slate-800'
@@ -7507,7 +7519,7 @@
         const job = JOB_DEFS[u.job] || JOB_DEFS.warrior;
         return `<button type="button" data-unit-id="${u.id}" onclick="setBattleControlMode('manual', this.dataset.unitId)"
           class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-indigo-600 border border-slate-700 text-left text-xs font-extrabold text-white flex items-center gap-2">
-          <span class="text-lg">${job.icon}</span><span>${u.name}<br/><span class="text-[10px] text-slate-400">${job.name} · Lv.${u.level}</span></span>
+          ${getMercIconHTML(u.job, u.skinVariant, 34)}<span>${u.name}<br/><span class="text-[10px] text-slate-400">${job.name} · Lv.${u.level}</span></span>
         </button>`;
       }).join('') || '<div class="text-xs text-slate-400">조종할 수 있는 용병이 없어요.</div>';
       sim.awaitingControlChoice = Boolean(pauseBattle);
@@ -10002,7 +10014,7 @@
       box.innerHTML = sim.units.map(u => {
         const job = JOB_DEFS[u.job];
         const monObj = u.monsterType ? MONSTER_DEFS[u.monsterType] : null;
-        const unitIconHtml = monObj ? `<span>${monObj.icon}</span>` : (u.isDarkMerc ? `<span>🌑${job.icon}</span>` : `<span>${job.icon}</span>`);
+        const unitIconHtml = monObj ? `<span>${monObj.icon}</span>` : (u.isDarkMerc ? `<span>🌑</span>${getMercIconHTML(u.job, u.skinVariant, 20, true)}` : getMercIconHTML(u.job, u.skinVariant, 20));
         const hpPct = Math.max(0, Math.round((u.hp / u.maxHp) * 100));
         const manaPct = Math.max(0, Math.round((u.mana / u.maxMana) * 100));
         const activeCcIcons = Object.keys(u.statuses)
@@ -10943,7 +10955,7 @@
       grid.innerHTML = state.students.map(s => {
         const checked = adminSelectedIds.has(s.id);
         const hasPw = StudentPw.hasPassword(s);
-        const jobs = s.roster.filter(m => m.deployed).map(m => JOB_DEFS[m.job].icon).join('');
+        const jobs = s.roster.filter(m => m.deployed).map(m => getMercIconHTML(m.job, m.skinVariant, 18)).join('');
 
         return `
           <div onclick="toggleAdminSelectStudent('${s.id}')"
@@ -11019,7 +11031,7 @@
           <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-col gap-2">
             <div class="flex items-center justify-between gap-2">
               <div class="flex items-center gap-2 flex-1">
-                <span class="text-base">${JOB_DEFS[m.job]?.icon || '🗡️'}</span>
+                ${getMercIconHTML(m.job, m.skinVariant, 28)}
                 <input type="text" value="${m.name}" onchange="adminUpdateMercField(${idx}, 'name', this.value)"
                   class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs font-bold text-white w-28" placeholder="용병 이름" />
                 <div class="flex items-center gap-1">
@@ -11438,7 +11450,7 @@
                 isPicked ? 'bg-indigo-600/20 border-indigo-500 shadow' : 'bg-slate-950 border-slate-800 opacity-70 hover:opacity-100'
               }">
               <div class="flex items-center gap-2 truncate">
-                <span class="text-lg">${job.icon}</span>
+                ${getMercIconHTML(m.job, m.skinVariant, 34)}
                 <div class="truncate">
                   <div class="text-xs font-extrabold text-white truncate">${m.name} <span class="text-indigo-300">Lv.${m.level}</span></div>
                   <div class="text-[10px] text-rose-400 font-bold">⚔️ ${pwr.toLocaleString()}</div>
@@ -11473,7 +11485,7 @@
           const pwr = calcMercCombatPower(m, partnerStu);
           return `
             <div class="rounded-xl border border-emerald-500/40 bg-slate-900 p-2.5 flex items-center gap-2">
-              <span class="text-lg">${job.icon}</span>
+              ${getMercIconHTML(m.job, m.skinVariant, 34)}
               <div class="truncate">
                 <div class="text-xs font-bold text-white truncate">${m.name} <span class="text-emerald-300">Lv.${m.level}</span></div>
                 <div class="text-[10px] text-slate-400">${partnerStu.name}의 용병 · ⚔️ ${pwr.toLocaleString()}</div>
@@ -13924,7 +13936,7 @@
                   : (ed.pickedId ? 'bg-amber-500/10 border-dashed border-amber-400 hover:bg-amber-500/20' : 'bg-slate-900/40 border-slate-800')
               }">
               ${occ
-                ? `<span class="text-base leading-none">${job.icon}</span><span class="text-white truncate max-w-[70px]">${occ.name}</span>`
+                ? `${getMercIconHTML(occ.job, occ.skinVariant, 26)}<span class="text-white truncate max-w-[70px]">${occ.name}</span>`
                 : `<span class="${ed.pickedId ? 'text-amber-300' : 'text-slate-600'}">${ed.pickedId ? '여기로' : '·'}</span>`}
             </button>`;
         });
@@ -13936,7 +13948,7 @@
           class="px-2 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 ${
             on ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-indigo-400'
           }" title="${on ? '눌러서 빼기' : '눌러서 넣기'}">
-          <span>${on ? '✓' : '+'}</span><span>${job.icon}</span><span>${m.name}</span><span class="opacity-70">Lv.${m.level}</span>
+          <span>${on ? '✓' : '+'}</span>${getMercIconHTML(m.job, m.skinVariant, 20)}<span>${m.name}</span><span class="opacity-70">Lv.${m.level}</span>
         </button>`;
       }).join('');
       return `
@@ -15052,7 +15064,7 @@
                   <span class="px-3 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-extrabold text-xs">✅ 준비됨</span>
                 </div>
                 <div class="flex flex-wrap gap-1 text-[11px] text-slate-300">
-                  ${(myRoom.hostMercs || []).map(m => `<span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800">${JOB_DEFS[m.job]?.icon || '⚔️'}${m.name}(Lv.${m.level})</span>`).join('')}
+                  ${(myRoom.hostMercs || []).map(m => `<span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800">${getMercIconHTML(m.job, m.skinVariant, 18)}${m.name}(Lv.${m.level})</span>`).join('')}
                 </div>
                 <div class="text-xs font-extrabold text-rose-400">⚔️ 3인 전투력: ${Number(myRoom.hostPower || 0).toLocaleString()}</div>
               </div>
@@ -15074,7 +15086,7 @@
                         </span>
                       </div>
                       <div class="flex flex-wrap gap-1 text-[11px] text-slate-300">
-                        ${(myRoom.guestMercs || []).map(m => `<span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800">${JOB_DEFS[m.job]?.icon || '⚔️'}${m.name}(Lv.${m.level})</span>`).join('')}
+                        ${(myRoom.guestMercs || []).map(m => `<span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800">${getMercIconHTML(m.job, m.skinVariant, 18)}${m.name}(Lv.${m.level})</span>`).join('')}
                       </div>
                       <div class="text-xs font-extrabold text-rose-400">⚔️ 3인 전투력: ${Number(myRoom.guestPower || 0).toLocaleString()}</div>
                     `
@@ -16290,8 +16302,8 @@
               }">
               <div class="flex items-start justify-between gap-2">
                 <div class="flex items-center gap-2.5">
-                  <div class="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-2xl shrink-0">
-                    ${job.icon}
+                  <div class="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-2xl shrink-0 overflow-hidden">
+                    ${leadMerc ? getMercIconHTML(leadMerc.job, leadMerc.skinVariant, 46) : job.icon}
                   </div>
                   <div>
                     <div class="font-title text-lg text-white">${s.name}</div>
