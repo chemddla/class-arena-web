@@ -2308,6 +2308,9 @@
     const PROJECTILE_HIT_RADIUS = 30;    // 투사체가 이 거리 안으로 지나가면 맞음
     const ELITE_BOSS_TOKEN_R = 36 * 3;   // 엘리트 몬스터 몸 크기 (보통 보스 36의 3배)
     const ELITE_BOSS_HIT_RADIUS = ELITE_BOSS_TOKEN_R + 12; // 큰 몸 어디에 맞아도 맞은 것으로
+    // 사거리 판정용 거리: 엘리트 몬스터는 몸이 커서 몸 가장자리까지의 거리로 잼 (때리는 쪽·맞는 쪽 모두)
+    function unitBodyGap(u) { return u && u.isEliteBoss ? ELITE_BOSS_TOKEN_R - 36 : 0; }
+    function unitDist(a, b) { return Math.max(0, Math.hypot(a.x - b.x, a.y - b.y) - unitBodyGap(a) - unitBodyGap(b)); }
     const BATTLE_DAMAGE_MULT = 2.2;      // 모든 공격 피해 배율 (회복량은 그대로)
     const DEFENSE_SCALE = 300;           // 피해 감소율 = 방어력 ÷ (방어력 + 300) → 방어 50이면 14%, 100이면 25%, 300이면 50%
     function defenseReductionOf(def) {
@@ -7879,7 +7882,7 @@
       let best = null;
       let bestScore = Infinity;
       enemies.forEach(e => {
-        const d = Math.hypot(e.x - u.x, e.y - u.y);
+        const d = unitDist(e, u);
         if (d > maxRange) return;
         let diff = Math.abs(Math.atan2(e.y - u.y, e.x - u.x) - aimAngle);
         if (diff > Math.PI) diff = Math.PI * 2 - diff;
@@ -7895,7 +7898,7 @@
       const aimY = c.aimY ?? (u.y + Math.sin(aimAngle) * 100);
       if (u.job === 'healer') {
         // 힐러 일반공격은 치유만: 겨눈 곳 가까운 다친 아군 → 없으면 사거리 안에서 가장 위급한 아군
-        const hurt = allies.filter(a => a.hp < a.maxHp && Math.hypot(a.x - u.x, a.y - u.y) <= u.range + 80);
+        const hurt = allies.filter(a => a.hp < a.maxHp && unitDist(a, u) <= u.range + 80);
         const nearAim = hurt.filter(a => Math.hypot(a.x - aimX, a.y - aimY) < 140)
           .sort((a, b) => Math.hypot(a.x - aimX, a.y - aimY) - Math.hypot(b.x - aimX, b.y - aimY))[0];
         const healTarget = nearAim || hurt.sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
@@ -7931,7 +7934,7 @@
           type: 'sword_slash', x: u.x + Math.cos(aimAngle) * 24, y: u.y - 6 + Math.sin(aimAngle) * 24,
           angle: aimAngle, color: u.team === 'blue' ? '#2563eb' : '#e11d48', life: 32, maxLife: 32
         });
-        if (target && Math.hypot(target.x - u.x, target.y - u.y) <= u.range + 24) {
+        if (target && unitDist(target, u) <= u.range + 24) {
           u.mana = Math.min(u.maxMana, u.mana + 18);
           applyDamage(u, target, u.atk);
         }
@@ -7999,7 +8002,7 @@
       let aimY = c.aimY ?? (u.y + Math.sin(u.facingAngle || 0) * 100);
       if (noMouseAim) {
         // 마우스 없음: 가장 가까운 적에게 스킬 (적이 없으면 바라보는 쪽)
-        const foe = [...enemies].sort((a, b) => Math.hypot(a.x - u.x, a.y - u.y) - Math.hypot(b.x - u.x, b.y - u.y))[0];
+        const foe = [...enemies].sort((a, b) => unitDist(a, u) - unitDist(b, u))[0];
         if (foe) { aimX = foe.x; aimY = foe.y - 14; }
       }
       const mode = MANUAL_SKILL_AIM[key] || 'point';
@@ -8012,7 +8015,7 @@
           .filter(x => x.d <= 110)
           .sort((a, b) => a.d - b.d)[0];
         if (!picked) { say(noMouseAim ? '🎯 가까운 적이 없어요' : '🎯 마우스를 적 위에 올려 주세요'); return; }
-        if (Math.hypot(picked.e.x - u.x, picked.e.y - u.y) > range) {
+        if (unitDist(picked.e, u) > range) {
           say(`🎯 사거리 밖이에요 (${(range / GRID_CELL_SIZE).toFixed(1)}칸)`);
           sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: range, color: '#94a3b8', life: 40, maxLife: 40 });
           return;
@@ -8061,7 +8064,7 @@
 
       if (u.skillAnim > 0 && u.job === 'warrior' && u.activeSkillType === 'whirlwind' && u.skillAnim % 28 === 0) {
         enemies.forEach(e => {
-          if (Math.hypot(e.x - u.x, e.y - u.y) <= 125) {
+          if (unitDist(e, u) <= 125) {
             playCombatSfx('slash');
             applyDamage(u, e, u.atk * 0.5);
           }
@@ -8133,7 +8136,7 @@
       let best = null, bestD = Infinity;
       sim.units.forEach(e => {
         if (!e.alive || e.team === u.team) return;
-        const d = Math.hypot(e.x - u.x, e.y - u.y);
+        const d = unitDist(e, u);
         if (d < bestD) { bestD = d; best = e; }
       });
       return best;
@@ -8604,7 +8607,7 @@
       if (unit.targetRule === 'backline') {
         const backliners = enemies.filter(e => e.job === 'archer' || e.job === 'healer' || e.job === 'mage');
         if (backliners.length > 0) {
-          return backliners.sort((a, b) => Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y))[0];
+          return backliners.sort((a, b) => unitDist(a, unit) - unitDist(b, unit))[0];
         }
       }
       return pickSmartEnemyTarget(unit, allies, enemies);
@@ -8618,7 +8621,7 @@
         if (a !== unit && a.lastTargetId) focusCount[a.lastTargetId] = (focusCount[a.lastTargetId] || 0) + 1;
       });
       const scoreOf = e => {
-        const d = Math.hypot(e.x - unit.x, e.y - unit.y);
+        const d = unitDist(e, unit);
         let score = d + (e.hp / e.maxHp) * 220;
         if (d <= unit.range + 20) score -= 70;
         if (e.statuses.stun > 0 || e.statuses.freeze > 0) score -= 90;
@@ -8690,7 +8693,7 @@
         if (defender.monsterPassives?.includes('explode')) {
           const r = 150;
           sim.effects.push({ type: 'aoe_ring', x: defender.x, y: defender.y, r, color: '#f97316', life: 36, maxLife: 36 });
-          sim.units.filter(e => e.alive && e.team !== defender.team && Math.hypot(e.x - defender.x, e.y - defender.y) <= r)
+          sim.units.filter(e => e.alive && e.team !== defender.team && unitDist(e, defender) <= r)
             .forEach(e => applyDamage(null, e, Math.round(defender.maxHp * 0.15), '💥폭발 ', '#f97316'));
           addBattleLog(`💥 ${defender.name}이(가) 쓰러지며 폭발했어요!`);
         }
@@ -8712,7 +8715,7 @@
       }
       const dp = defender.monsterPassives;
       if (dp && dp.includes('thorns') && attacker.alive && attacker.team !== defender.team
-        && Math.hypot(attacker.x - defender.x, attacker.y - defender.y) <= 170) {
+        && unitDist(attacker, defender) <= 170) {
         applyDamage(null, attacker, Math.max(1, Math.round(dmg * 0.2)), '🌵가시 ', '#16a34a');
       }
     }
@@ -8792,7 +8795,7 @@
       const allies = sim.units.filter(a => a.alive && a.team === u.team);
       const target = pickTarget(u, allies, enemies);
       let angle = u.facingAngle || (u.team === 'blue' ? 0 : Math.PI);
-      if (u.behaviorRule === 'kite' && target && Math.hypot(target.x - u.x, target.y - u.y) < 220) {
+      if (u.behaviorRule === 'kite' && target && unitDist(target, u) < 220) {
         angle = Math.atan2(u.y - target.y, u.x - target.x);
       } else if (target) {
         angle = Math.atan2(target.y - u.y, target.x - u.x);
@@ -8827,7 +8830,7 @@
         if (u.dashCooldown <= 0 && u.statuses.stun <= 0 && u.statuses.freeze <= 0) {
           const target = pickTarget(u, blueAlive, redAlive);
           let angle = u.facingAngle || 0;
-          if (u.behaviorRule === 'kite' && target && Math.hypot(target.x - u.x, target.y - u.y) < 220) {
+          if (u.behaviorRule === 'kite' && target && unitDist(target, u) < 220) {
             angle = Math.atan2(u.y - target.y, u.x - target.x);
           } else if (target) {
             angle = Math.atan2(target.y - u.y, target.x - u.x);
@@ -8880,7 +8883,7 @@
           } else if (skKey === 'blessing') {
             const blessedCount = allies.filter(a => a.statuses.blessed > 120).length;
             const nearestEnemyDist = enemies.length
-              ? Math.min(...enemies.map(e => Math.hypot(e.x - unit.x, e.y - unit.y)))
+              ? Math.min(...enemies.map(e => unitDist(e, unit)))
               : 9999;
             if (blessedCount >= Math.ceil(allies.length * 0.6) || nearestEnemyDist > 850) {
               score = -1;
@@ -8891,7 +8894,7 @@
             const shieldedCount = allies.filter(a => a.shield > a.maxHp * 0.08).length;
             const anyAllyDamaged = allies.some(a => a.hp < a.maxHp * 0.98 || a.damageTaken > 0);
             const nearestEnemyDist = enemies.length
-              ? Math.min(...enemies.map(e => Math.hypot(e.x - unit.x, e.y - unit.y)))
+              ? Math.min(...enemies.map(e => unitDist(e, unit)))
               : 9999;
             if (shieldedCount >= Math.ceil(allies.length * 0.6)) {
               score = -1;
@@ -8906,7 +8909,7 @@
             // 전사 돌진 스킬 사거리: 2칸(240px) + 근접 타격 반경
             const maxChargeReach = CHARGE_SKILL_DISTANCE + unit.range;
             const chargeCandidates = enemies.filter(e => {
-              const d = Math.hypot(e.x - unit.x, e.y - unit.y);
+              const d = unitDist(e, unit);
               return d >= 85 && d <= maxChargeReach;
             });
             if (chargeCandidates.length > 0) {
@@ -8919,7 +8922,7 @@
           } else if (skKey === 'stun_strike') {
             if (distToPrimary <= stunStrikeReach(unit)) {
               const unstunnedInRange = enemies.filter(e =>
-                Math.hypot(e.x - unit.x, e.y - unit.y) <= stunStrikeReach(unit) &&
+                unitDist(e, unit) <= stunStrikeReach(unit) &&
                 e.statuses.stun <= 35 && e.statuses.freeze <= 35
               );
               if (unstunnedInRange.length > 0) {
@@ -8929,7 +8932,7 @@
               }
             }
           } else if (skKey === 'whirlwind') {
-            const nearbyEnemies = enemies.filter(e => Math.hypot(e.x - unit.x, e.y - unit.y) <= 125).length;
+            const nearbyEnemies = enemies.filter(e => unitDist(e, unit) <= 125).length;
             if (nearbyEnemies >= 2) {
               score = 95;
             } else if (nearbyEnemies === 1) {
@@ -8944,7 +8947,7 @@
           if (distToPrimary <= unit.range + 80) {
             if (skKey === 'ice_arrow') {
               const unFrozen = enemies.filter(e =>
-                Math.hypot(e.x - unit.x, e.y - unit.y) <= unit.range + 80 &&
+                unitDist(e, unit) <= unit.range + 80 &&
                 e.statuses.freeze <= 35 && e.statuses.stun <= 35
               );
               score = unFrozen.length > 0 ? 88 : -1;
@@ -8961,7 +8964,7 @@
           if (distToPrimary <= unit.range + 60) {
             if (skKey === 'poison_arrow') {
               const unPoisoned = enemies.filter(e =>
-                Math.hypot(e.x - unit.x, e.y - unit.y) <= unit.range + 60 &&
+                unitDist(e, unit) <= unit.range + 60 &&
                 e.statuses.poison <= 60
               );
               score = unPoisoned.length > 0 ? 87 : 52;
@@ -9033,7 +9036,7 @@
             life: 160, maxLife: 160
           });
           enemies.forEach(e => {
-            if (Math.hypot(e.x - unit.x, e.y - unit.y) <= 125) {
+            if (unitDist(e, unit) <= 125) {
               applyDamage(unit, e, unit.atk * 1.25);
             }
           });
@@ -9043,7 +9046,7 @@
         } else if (sk === 'stun_strike') {
           // 강타는 근접 공격 범위(기본 공격이 닿는 거리) 안의 적에게만
           const reach = stunStrikeReach(unit);
-          const inReach = enemies.filter(e => Math.hypot(e.x - unit.x, e.y - unit.y) <= reach);
+          const inReach = enemies.filter(e => unitDist(e, unit) <= reach);
           const unstunned = inReach.filter(e => e.statuses.stun <= 35 && e.statuses.freeze <= 35);
           target = aimMode === 'target'
             ? (target && inReach.includes(target) ? target : null)
@@ -9063,7 +9066,7 @@
           unit.attackAnim = 0; // 내리친 뒤 공격 자세로 멈춰 있지 않고 바로 원래 자세로
           unit.rush = null;
           inReach.forEach(e => {
-            if (Math.hypot(e.x - target.x, e.y - target.y) <= 80) {
+            if (unitDist(e, target) <= 80) {
               applyDamage(unit, e, unit.atk * 1.6);
               inflictStatus(unit, e, 'stun', 150); // 2.5초
             }
@@ -9076,8 +9079,8 @@
           const angle = Math.atan2(aimPt.y - sy, aimPt.x - sx);
           const moveDist = Math.min(CHARGE_SKILL_DISTANCE, Math.max(40, Math.hypot(aimPt.x - sx, aimPt.y - sy)));
           const r = startUnitRush(unit, sx + Math.cos(angle) * moveDist, sy + Math.sin(angle) * moveDist, CHARGE_MOVE_TICKS, () => {
-            const hitT = enemies.filter(e => e.alive && Math.hypot(e.x - unit.x, e.y - unit.y) <= unit.range + 45)
-              .sort((a, b) => Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y))[0];
+            const hitT = enemies.filter(e => e.alive && unitDist(e, unit) <= unit.range + 45)
+              .sort((a, b) => unitDist(a, unit) - unitDist(b, unit))[0];
             if (unit.alive && hitT) applyDamage(unit, hitT, unit.atk * 3.0);
             playCombatSfx('heavy');
           });
@@ -9090,18 +9093,18 @@
 
         } else if (sk === 'charge') {
           // 전사 돌진 스킬: 최대 2칸(240px) 전방 돌격! (Requirement 1)
-          const inReachEnemies = enemies.filter(e => Math.hypot(e.x - unit.x, e.y - unit.y) <= CHARGE_SKILL_DISTANCE + unit.range);
+          const inReachEnemies = enemies.filter(e => unitDist(e, unit) <= CHARGE_SKILL_DISTANCE + unit.range);
           const dashTarget = inReachEnemies.length > 0
-            ? inReachEnemies.sort((a, b) => Math.hypot(b.x - unit.x, b.y - unit.y) - Math.hypot(a.x - unit.x, a.y - unit.y))[0]
+            ? inReachEnemies.sort((a, b) => unitDist(b, unit) - unitDist(a, unit))[0]
             : target;
           if (!dashTarget) return;
           const sx = unit.x, sy = unit.y;
           const distToTarget = Math.hypot(dashTarget.x - sx, dashTarget.y - sy);
           const angle = Math.atan2(dashTarget.y - sy, dashTarget.x - sx);
-          const moveDist = Math.min(CHARGE_SKILL_DISTANCE, Math.max(40, distToTarget - 28));
+          const moveDist = Math.min(CHARGE_SKILL_DISTANCE, Math.max(40, distToTarget - 28 - unitBodyGap(dashTarget) - unitBodyGap(unit)));
           // 순간이동 대신 빠르게 달려가서, 도착하는 순간 강타
           const r = startUnitRush(unit, sx + Math.cos(angle) * moveDist, sy + Math.sin(angle) * moveDist, CHARGE_MOVE_TICKS, () => {
-            if (unit.alive && dashTarget.alive && Math.hypot(dashTarget.x - unit.x, dashTarget.y - unit.y) <= unit.range + 45) {
+            if (unit.alive && dashTarget.alive && unitDist(dashTarget, unit) <= unit.range + 45) {
               applyDamage(unit, dashTarget, unit.atk * 3.0);
             }
             playCombatSfx('heavy');
@@ -9132,8 +9135,8 @@
           let bestClusterTarget = target;
           let maxCluster = -1;
           enemies.forEach(cand => {
-            if (Math.hypot(cand.x - unit.x, cand.y - unit.y) <= unit.range + 90) {
-              const cnt = enemies.filter(o => Math.hypot(o.x - cand.x, o.y - cand.y) <= 115).length;
+            if (unitDist(cand, unit) <= unit.range + 90) {
+              const cnt = enemies.filter(o => unitDist(o, cand) <= 115).length;
               if (cnt > maxCluster) { maxCluster = cnt; bestClusterTarget = cand; }
             }
           });
@@ -9153,7 +9156,7 @@
 
         } else if (sk === 'ice_arrow') {
           const unFrozen = aimMode === 'target' ? target : (enemies.find(e =>
-            Math.hypot(e.x - unit.x, e.y - unit.y) <= unit.range + 90 &&
+            unitDist(e, unit) <= unit.range + 90 &&
             e.statuses.freeze <= 35 && e.statuses.stun <= 35
           ) || target);
           sim.projectiles.push({
@@ -9172,7 +9175,7 @@
 
         } else if (sk === 'thunderbolt') {
           const chainTargets = [...enemies]
-            .sort((a, b) => Math.hypot(a.x - target.x, a.y - target.y) - Math.hypot(b.x - target.x, b.y - target.y))
+            .sort((a, b) => unitDist(a, target) - unitDist(b, target))
             .slice(0, 3);
 
           let prevX = unit.x, prevY = unit.y - 16;
@@ -9232,7 +9235,7 @@
         if (!target) return;
         if (sk === 'poison_arrow') {
           const poisonTarget = aimMode === 'target' ? target : (enemies.find(e =>
-            Math.hypot(e.x - unit.x, e.y - unit.y) <= unit.range + 60 &&
+            unitDist(e, unit) <= unit.range + 60 &&
             e.statuses.poison <= 60
           ) || target);
           sim.projectiles.push({
@@ -9404,7 +9407,7 @@
         const target = pickTarget(u, allies, enemies);
         if (!target) return;
 
-        const dist = Math.hypot(target.x - u.x, target.y - u.y);
+        const dist = unitDist(target, u);
         u.facingAngle = Math.atan2(target.y - u.y, target.x - u.x);
         if (Math.abs(target.x - u.x) > 4) {
           u.facingDir = target.x >= u.x ? 1 : -1;
@@ -9413,7 +9416,7 @@
         if (u.skillAnim > 0 && u.job === 'warrior' && u.activeSkillType === 'whirlwind') {
           if (u.skillAnim % 28 === 0) {
             enemies.forEach(e => {
-              if (Math.hypot(e.x - u.x, e.y - u.y) <= 125) {
+              if (unitDist(e, u) <= 125) {
                 playCombatSfx('slash');
                 applyDamage(u, e, u.atk * 0.5);
               }
@@ -9423,8 +9426,8 @@
 
         // [Requirement 4: 자체 쿨타임을 갖는 전술 대시(Dash) AI]
         if (u.dashCooldown <= 0 && u.monsterType !== 'scarecrow') {
-          const nearestEnemy = [...enemies].sort((a, b) => Math.hypot(a.x - u.x, a.y - u.y) - Math.hypot(b.x - u.x, b.y - u.y))[0];
-          const nearestEnemyDist = nearestEnemy ? Math.hypot(nearestEnemy.x - u.x, nearestEnemy.y - u.y) : 9999;
+          const nearestEnemy = [...enemies].sort((a, b) => unitDist(a, u) - unitDist(b, u))[0];
+          const nearestEnemyDist = nearestEnemy ? unitDist(nearestEnemy, u) : 9999;
 
           if ((u.job === 'warrior' || u.behaviorRule === 'charge') && dist > u.range + 95) {
             triggerUnitDash(u, u.facingAngle, '💨돌격대시');
@@ -9432,7 +9435,7 @@
             const awayAngle = Math.atan2(u.y - nearestEnemy.y, u.x - nearestEnemy.x);
             triggerUnitDash(u, awayAngle, '💨회피대시');
           } else if (u.job === 'healer') {
-            const urgentAlly = allies.find(a => (a.hp / a.maxHp) < 0.55 && Math.hypot(a.x - u.x, a.y - u.y) > u.range);
+            const urgentAlly = allies.find(a => (a.hp / a.maxHp) < 0.55 && unitDist(a, u) > u.range);
             if (urgentAlly) {
               const allyAngle = Math.atan2(urgentAlly.y - u.y, urgentAlly.x - u.x);
               triggerUnitDash(u, allyAngle, '💨구조대시');
@@ -9468,7 +9471,7 @@
         const canDodge = !(u.monsterType || u.isEliteBoss);
         const dodgeAngle = canDodge ? findProjectileDodgeAngle(u) : null;
         const nearestFoe = enemies.reduce((best, e) => {
-          const d = Math.hypot(e.x - u.x, e.y - u.y);
+          const d = unitDist(e, u);
           return !best || d < best.d ? { e, d } : best;
         }, null);
         const hpRatio = u.hp / u.maxHp;
@@ -9479,11 +9482,11 @@
         }
         const strafeA = u.facingAngle + (Math.PI / 2) * u.strafeDir;
         if (wallRoom(u.x + Math.cos(strafeA) * 60, u.y + Math.sin(strafeA) * 60) < 30) u.strafeDir *= -1;
-        const badZone = canDodge ? (sim.zones || []).find(z => z.team !== u.team && Math.hypot(u.x - z.x, u.y - z.y) < z.r + 12) : null;
+        const badZone = canDodge ? (sim.zones || []).find(z => z.team !== u.team && unitDist(u, z) < z.r + 12) : null;
         if (dodgeAngle === null && badZone) {
           // 적의 장판 안에 서 있으면 장판 밖으로 빠져나감
           // 장판 한가운데면(목표 위치에 생기므로 흔함) 적 반대쪽으로, 아니면 장판 중심 반대쪽으로
-          const zoneAway = Math.hypot(u.x - badZone.x, u.y - badZone.y) < 8
+          const zoneAway = unitDist(u, badZone) < 8
             ? (nearestFoe ? Math.atan2(u.y - nearestFoe.e.y, u.x - nearestFoe.e.x) : Math.random() * Math.PI * 2)
             : Math.atan2(u.y - badZone.y, u.x - badZone.x);
           moveBy(zoneAway, 1.1, 0.07);
@@ -9496,7 +9499,7 @@
           }
         } else if (isRanged && hpRatio < 0.3 && nearestFoe && nearestFoe.d < u.range && u.behaviorRule !== 'charge') {
           // 체력이 얼마 안 남은 원거리 용병은 힐러 쪽(없으면 적 반대쪽)으로 물러나 버팀
-          const away = healerAlly && Math.hypot(healerAlly.x - u.x, healerAlly.y - u.y) > 60
+          const away = healerAlly && unitDist(healerAlly, u) > 60
             ? Math.atan2(healerAlly.y - u.y, healerAlly.x - u.x)
             : Math.atan2(u.y - nearestFoe.e.y, u.x - nearestFoe.e.x);
           moveBy(away, 0.95, 0.065);
@@ -9646,7 +9649,7 @@
             sim.effects.push({ type: 'fire_explosion', spr: 'fire_hit', x: p.target.x, y: p.target.y, r: p.aoeRadius || 110, life: 34, maxLife: 34 });
             const enemies = sim.units.filter(u => u.alive && u.team !== p.owner.team);
             enemies.forEach(e => {
-              if (Math.hypot(e.x - p.target.x, e.y - p.target.y) <= (p.aoeRadius || 110)) {
+              if (unitDist(e, p.target) <= (p.aoeRadius || 110)) {
                 applyDamage(p.owner, e, p.dmg, '', '#ea580c');
                 inflictStatus(p.owner, e, 'burn', p.statusDur || 360);
               }
@@ -9656,7 +9659,7 @@
             sim.effects.push({ type: 'ice_shatter', spr: 'ice_hit', x: p.target.x, y: p.target.y, r: p.aoeRadius || 85, life: 34, maxLife: 34 });
             const enemies = sim.units.filter(u => u.alive && u.team !== p.owner.team);
             enemies.forEach(e => {
-              if (Math.hypot(e.x - p.target.x, e.y - p.target.y) <= (p.aoeRadius || 85)) {
+              if (unitDist(e, p.target) <= (p.aoeRadius || 85)) {
                 applyDamage(p.owner, e, p.dmg, '', '#0284c7');
                 inflictStatus(p.owner, e, 'freeze', p.statusDur || 240);
               }
@@ -9758,14 +9761,14 @@
         // 상태이상 장판(포이즌 붐): 피해 주기를 기다리지 않고 닿는 순간 바로 상태이상
         if (z.status) {
           sim.units.forEach(e => {
-            if (!e.alive || e.team === z.team || Math.hypot(e.x - z.x, e.y - z.y) > z.r) return;
+            if (!e.alive || e.team === z.team || unitDist(e, z) > z.r) return;
             if ((e.statuses[z.status] || 0) < 30) inflictStatus(z.owner, e, z.status, z.statusDur);
           });
         }
         if (z.life % z.interval === 0) {
           suppressHitKnockback = true;
           sim.units.forEach(e => {
-            if (!e.alive || e.team === z.team || Math.hypot(e.x - z.x, e.y - z.y) > z.r) return;
+            if (!e.alive || e.team === z.team || unitDist(e, z) > z.r) return;
             applyDamage(z.owner, e, z.dmg, '', ZONE_STYLES[z.kind]?.color);
             if (z.status) inflictStatus(z.owner, e, z.status, z.statusDur);
           });
@@ -9867,8 +9870,8 @@
         const a = (Math.PI * 2 * i) / 16;
         for (const d of [maxDist * 0.6, maxDist * 0.8, maxDist]) {
           const p = clampToArena(unit.x + Math.cos(a) * d, unit.y + Math.sin(a) * d);
-          const nearest = enemies.reduce((m, e) => Math.min(m, Math.hypot(e.x - p.x, e.y - p.y)), Infinity);
-          const toTarget = target ? Math.hypot(target.x - p.x, target.y - p.y) : 0;
+          const nearest = enemies.reduce((m, e) => Math.min(m, unitDist(e, p)), Infinity);
+          const toTarget = target ? unitDist(target, p) : 0;
           // 적과의 거리는 멀수록, 벽에서는 떨어질수록, 목표가 사거리 안이면 가산점
           const score = Math.min(nearest, 520) + Math.min(wallRoom(p.x, p.y), 160) * 0.6 + (toTarget <= unit.range ? 120 : 0);
           if (score > bestScore) { bestScore = score; best = p; }
@@ -9984,7 +9987,7 @@
     function castNewSkill(unit, allies, enemies, sk, skObj, target, aimPt = null) {
       const C = GRID_CELL_SIZE;
       const teamColor = unit.team === 'blue' ? '#2563eb' : '#e11d48';
-      const near = (list, x, y, r) => list.filter(u => Math.hypot(u.x - x, u.y - y) <= r);
+      const near = (list, x, y, r) => list.filter(u => Math.hypot(u.x - x, u.y - y) - unitBodyGap(u) <= r);
 
       if (sk === 'roar') {
         // 사자후: 주변 2칸 적에게 피해 + 1.2칸 밀쳐냄
@@ -10019,7 +10022,7 @@
       if (sk === 'evasive_shot') {
         // 회피기동: 뒤로 크게 물러나며 3발 방사형 사격
         const threat = enemies.reduce((b, e) => {
-          const d = Math.hypot(e.x - unit.x, e.y - unit.y);
+          const d = unitDist(e, unit);
           return !b || d < b.d ? { e, d } : b;
         }, null);
         const away = aimPt
@@ -10115,8 +10118,8 @@
     // 새 스킬 8종의 AI 사용 판단 점수 (해당 없으면 null)
     function scoreNewSkill(unit, allies, enemies, primaryTarget, distToPrimary, skKey) {
       const C = GRID_CELL_SIZE;
-      const countNear = (list, x, y, r) => list.filter(u => Math.hypot(u.x - x, u.y - y) <= r).length;
-      const nearestEnemyDist = enemies.reduce((m, e) => Math.min(m, Math.hypot(e.x - unit.x, e.y - unit.y)), Infinity);
+      const countNear = (list, x, y, r) => list.filter(u => Math.hypot(u.x - x, u.y - y) - unitBodyGap(u) <= r).length;
+      const nearestEnemyDist = enemies.reduce((m, e) => Math.min(m, unitDist(e, unit)), Infinity);
       const enemyTarget = primaryTarget && primaryTarget.team !== unit.team ? primaryTarget : null;
 
       switch (skKey) {
@@ -10128,7 +10131,7 @@
         }
         case 'warcry': {
           if (nearestEnemyDist > C * 4) return -1;
-          const n = allies.filter(a => Math.hypot(a.x - unit.x, a.y - unit.y) <= C * 3 && (a.statuses.rally || 0) < 120).length;
+          const n = allies.filter(a => unitDist(a, unit) <= C * 3 && (a.statuses.rally || 0) < 120).length;
           return n >= 3 ? 90 : (n >= 2 ? 80 : -1);
         }
         case 'arrow_rain': {
@@ -10154,7 +10157,7 @@
           }
           if (enemyTarget && distToPrimary > unit.range + 220) {
             const spot = chooseTeleportSpot(unit, enemies, enemyTarget, 'approach');
-            const crowdAtSpot = enemies.filter(e => Math.hypot(e.x - spot.x, e.y - spot.y) < 220).length;
+            const crowdAtSpot = enemies.filter(e => unitDist(e, spot) < 220).length;
             if (crowdAtSpot <= 1) {
               unit.teleportIntent = 'approach';
               return 82;
@@ -10163,7 +10166,7 @@
           return -1;
         }
         case 'purify': {
-          const afflicted = allies.filter(a => Math.hypot(a.x - unit.x, a.y - unit.y) <= C * 5 && NEGATIVE_STATUSES.some(k => (a.statuses[k] || 0) > 60));
+          const afflicted = allies.filter(a => unitDist(a, unit) <= C * 5 && NEGATIVE_STATUSES.some(k => (a.statuses[k] || 0) > 60));
           if (afflicted.length >= 2) return 96;
           if (afflicted.some(a => a.statuses.stun > 60 || a.statuses.freeze > 60)) return 90;
           return afflicted.length === 1 ? 72 : -1;
@@ -10231,7 +10234,7 @@
         playCombatSfx(fire ? 'heavy' : 'magic');
         sim.effects.push({ type: fire ? 'fire_explosion' : 'ice_shatter', spr: fire ? 'fire_hit' : 'ice_hit', x, y, r, life: 34, maxLife: 34 });
         sim.units.filter(u => u.alive && u.team !== p.owner.team).forEach(e => {
-          if (Math.hypot(e.x - x, e.y - y) <= r) {
+          if (Math.hypot(e.x - x, e.y - y) - unitBodyGap(e) <= r) {
             applyDamage(p.owner, e, p.dmg, '', fire ? '#ea580c' : '#0284c7');
             inflictStatus(p.owner, e, fire ? 'burn' : 'freeze', p.statusDur || (fire ? 360 : 240));
           }
@@ -10244,7 +10247,7 @@
         if (!hit) playCombatSfx('magic');
         sim.units.forEach(e => {
           if (!e.alive || e === hit || e.team === p.owner.team) return;
-          if (Math.hypot(e.x - x, e.y - y) <= p.splashRadius) applyDamage(p.owner, e, p.dmg * (p.splashRatio || 0.5));
+          if (Math.hypot(e.x - x, e.y - y) - unitBodyGap(e) <= p.splashRadius) applyDamage(p.owner, e, p.dmg * (p.splashRatio || 0.5));
         });
       }
       if (!hit) return;
