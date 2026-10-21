@@ -831,6 +831,20 @@
             </div>
           </div>
 
+          <!-- 엘리트 몬스터 체력 (화면 위 가운데) -->
+          <div id="eliteBossHpBar" class="hidden absolute top-3 left-1/2 -translate-x-1/2 z-10 w-[min(92%,640px)] pointer-events-none select-none
+            rounded-2xl px-4 py-2 shadow-xl" style="background:rgba(15,23,42,0.85);border:2px solid #e11d48">
+            <div class="flex items-center justify-between gap-2 text-white">
+              <span id="eliteBossHpName" class="text-sm sm:text-base font-extrabold truncate" style="color:#fff1f2"></span>
+              <span id="eliteBossHpText" class="text-xs sm:text-sm font-extrabold text-rose-200 shrink-0"></span>
+            </div>
+            <div class="relative mt-1.5 h-4 sm:h-5 rounded-full overflow-hidden" style="background:#3f0d18">
+              <div id="eliteBossHpLag" class="absolute inset-y-0 left-0 rounded-full" style="background:#fbbf24;transition:width .6s ease-out"></div>
+              <div id="eliteBossHpFill" class="absolute inset-y-0 left-0 rounded-full" style="background:linear-gradient(90deg,#e11d48,#f43f5e)"></div>
+              <div id="eliteBossShieldFill" class="absolute inset-y-0 left-0 rounded-full opacity-70" style="background:#e2e8f0"></div>
+            </div>
+          </div>
+
           <!-- 실시간 결투: 두 친구가 전투 방식을 고를 때까지 기다리는 안내 -->
           <div id="liveChoiceWaitBanner" class="hidden absolute top-4 left-1/2 -translate-x-1/2 z-10 px-5 py-2.5 rounded-2xl font-extrabold text-sm shadow-xl pointer-events-none"
             style="background:rgba(15,23,42,0.88);color:#fde68a;border:2px solid #f59e0b"></div>
@@ -11317,6 +11331,24 @@
       try { drawArenaCanvas(); } finally { saved.forEach(([o, x, y]) => { o.x = x; o.y = y; }); }
     }
 
+    // 엘리트 몬스터가 있는 전투면 화면 위에 보스 체력 막대를 보여 줌
+    function updateEliteBossHpBar(arenaVisible) {
+      const bar = document.getElementById('eliteBossHpBar');
+      if (!bar) return;
+      const boss = arenaVisible && sim.units ? sim.units.find(u => u.isEliteBoss) : null;
+      bar.classList.toggle('hidden', !boss);
+      if (!boss) return;
+      const maxHp = Math.max(1, boss.maxHp || 1);
+      const hp = boss.alive ? Math.max(0, Math.round(boss.hp || 0)) : 0;
+      const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
+      const shieldPct = Math.max(0, Math.min(100, ((boss.shield || 0) / maxHp) * 100));
+      document.getElementById('eliteBossHpName').textContent = `👹 ${boss.name}`;
+      document.getElementById('eliteBossHpText').textContent = `${hp.toLocaleString()} / ${Math.round(maxHp).toLocaleString()} (${pct.toFixed(1)}%)`;
+      document.getElementById('eliteBossHpFill').style.width = pct + '%';
+      document.getElementById('eliteBossHpLag').style.width = pct + '%';
+      document.getElementById('eliteBossShieldFill').style.width = shieldPct + '%';
+    }
+
     let animationFrameNo = 0;
     function animationLoop() {
       animationFrameNo++;
@@ -11342,6 +11374,7 @@
         sim.tickCount++;
       }
       updateBattleControlFrame();
+      if (animationFrameNo % 3 === 0) updateEliteBossHpBar(arenaVisible);
       updateReturnButtons();
       if (arenaVisible) drawArenaCanvasSmooth();
       else if (sim.running) decayHiddenBattleVisuals();
