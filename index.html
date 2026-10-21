@@ -1292,15 +1292,19 @@
                     </span>
                   </div>
                   <p class="text-xs text-slate-400 mt-0.5" id="pvpServerStatusDesc">
-                    <strong>결투방을 만들고</strong> 친구가 들어와 <strong>[✋ 준비완료]</strong>를 누르면, 방장이 5:5 결투를 시작해요!
+                    <strong>결투방을 만들고</strong> 친구가 들어와 <strong>[✋ 준비완료]</strong>를 누르면, 방장이 결투를 시작해요!
+                    <strong>🗡️ 1:1 대결방</strong>은 용병 1명씩 골라 <strong>직접 조종</strong>해서 겨뤄요.
                   </p>
                 </div>
               </div>
               <div class="flex items-center gap-2 flex-wrap w-full sm:w-auto">
                 <input id="pvpNewRoomTitleInput" type="text" maxlength="24" placeholder="결투방 제목 (예: 5:5 진검승부 들어오세요!)"
                   class="flex-1 sm:w-64 rounded-xl px-3.5 py-2 text-xs font-bold border" />
-                <button onclick="createPvpLobbyRoom()" class="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs shadow flex items-center gap-1.5 shrink-0">
-                  ➕ 결투방 만들기
+                <button onclick="createPvpLobbyRoom('team')" class="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs shadow flex items-center gap-1.5 shrink-0">
+                  ➕ 5:5 결투방
+                </button>
+                <button onclick="createPvpLobbyRoom('duel1v1')" class="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow flex items-center gap-1.5 shrink-0">
+                  🗡️ 1:1 대결방
                 </button>
               </div>
             </div>
@@ -13801,14 +13805,85 @@
       }
     }
 
-    window.createPvpLobbyRoom = async function () {
+    // ===== 1:1 용병 대결 (mode: 'duel1v1') =====
+    // 방장·도전자가 각자 용병 1명을 고르고(hostPickId / guestPickId), 결투는 그 두 용병만으로 직접 전투(수동)로만 진행
+    const isDuelRoom = room => Boolean(room && room.mode === 'duel1v1');
+
+    // 대결에 나갈 용병 원본 (친구 기록 → 없으면 방에 담긴 스냅샷)
+    function duelPickedMerc(stu, snap, pickId) {
+      if (!pickId) return null;
+      return (stu?.roster || []).find(m => m && m.id === pickId)
+        || snapshotRosterList(snap).find(m => m && m.id === pickId)
+        || null;
+    }
+
+    function duelPickLabel(room, side) {
+      const stu = state.students.find(x => x.id === room[side + 'Id']) || room[side + 'StudentSnapshot'];
+      const m = duelPickedMerc(stu, room[side + 'StudentSnapshot'], room[side + 'PickId']);
+      if (!m) return '<span class="text-slate-400">용병 고르는 중...</span>';
+      const job = JOB_DEFS[m.job] || JOB_DEFS.warrior;
+      return `<span class="text-amber-300">${job.icon} ${m.name} Lv.${m.level}</span> · ⚔️ ${calcMercCombatPower(m, stu).toLocaleString()}`;
+    }
+
+    window.pickDuelMerc = async function (roomId, mercId) {
+      const me = getActiveStudent();
+      const room = livePvpRoomsCache[roomId];
+      if (!room || !me || !isDuelRoom(room) || room.status !== 'waiting') return;
+      const merc = (me.roster || []).find(m => m.id === mercId);
+      if (!merc) return;
+      if (room.hostId === me.id) {
+        room.hostPickId = merc.id;
+        room.hostPower = calcMercCombatPower(merc, me);
+        room.hostStudentSnapshot = publicStudentSnapshot(me);
+      } else if (room.guestId === me.id) {
+        if (room.guestReady) { showNotice('⚠️ 준비완료를 취소해야 용병을 바꿀 수 있어요.'); return; }
+        room.guestPickId = merc.id;
+        room.guestPower = calcMercCombatPower(merc, me);
+        room.guestStudentSnapshot = publicStudentSnapshot(me);
+      } else return;
+      await savePvpRoomData(roomId, room);
+    };
+
+    function renderDuelPickerHTML(room, me, isHost, isGuest) {
+      const myPick = isHost ? room.hostPickId : room.guestPickId;
+      const locked = isGuest && room.guestReady;
+      const roster = [...(me.roster || [])].sort((a, b) => calcMercCombatPower(b, me) - calcMercCombatPower(a, me));
+      const cards = roster.map(m => {
+        const job = JOB_DEFS[m.job] || JOB_DEFS.warrior;
+        const picked = m.id === myPick;
+        return `<button type="button" ${locked ? 'disabled' : ''} onclick="pickDuelMerc('${room.roomId}', '${m.id}')"
+          class="rounded-xl border-2 p-2 flex items-center gap-2 text-left transition ${picked ? 'border-amber-500 bg-amber-500/15 shadow' : 'border-slate-800 bg-slate-900 hover:border-indigo-500'} ${locked && !picked ? 'opacity-40' : ''}">
+          <span class="w-10 h-10 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center overflow-hidden shrink-0">${getMercIconHTML(m.job, m.skinVariant, 38)}</span>
+          <span class="min-w-0">
+            <span class="block text-xs font-extrabold text-white truncate">${picked ? '✅ ' : ''}${m.name}</span>
+            <span class="block text-[10px] text-slate-400">${job.name} · Lv.${m.level} · ⚔️ ${calcMercCombatPower(m, me).toLocaleString()}</span>
+          </span>
+        </button>`;
+      }).join('');
+      return `
+        <div class="bg-slate-950 border border-amber-500/40 rounded-2xl p-4 flex flex-col gap-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="text-sm font-extrabold text-white">🗡️ 대결할 용병 1명 고르기 <span class="text-[11px] text-slate-400 font-bold">· 결투는 직접 조종(수동 전투)으로만 해요</span></div>
+            <div class="text-[11px] font-bold text-slate-300">상대: ${room.guestId || isGuest ? duelPickLabel(room, isHost ? 'guest' : 'host') : '<span class="text-slate-400">입장 대기중</span>'}</div>
+          </div>
+          ${locked ? '<div class="text-[11px] text-slate-500 font-bold">준비완료를 취소하면 용병을 바꿀 수 있어요</div>' : ''}
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 max-h-64 overflow-y-auto pr-1">${cards || '<div class="text-xs text-slate-400">고용한 용병이 없어요.</div>'}</div>
+        </div>`;
+    }
+
+    window.createPvpLobbyRoom = async function (roomMode = 'team') {
       const myStu = getActiveStudent();
-      if (!myStu || !myStu.roster || !myStu.roster.some(m => m.deployed)) {
+      const duel = roomMode === 'duel1v1';
+      if (duel && (!myStu || !(myStu.roster || []).length)) {
+        showNotice('⚠️ 1:1 대결방을 만들려면 먼저 용병을 1명 이상 고용해 주세요!');
+        return;
+      }
+      if (!duel && (!myStu || !myStu.roster || !myStu.roster.some(m => m.deployed))) {
         showNotice('⚠️ 결투방을 개설하려면 먼저 [🏠 홈]에서 출전 용병을 1명 이상 배치해주세요!');
         return;
       }
       const titleInp = document.getElementById('pvpNewRoomTitleInput');
-      const customTitle = cleanUserText(titleInp?.value, 24) || `${myStu.name}의 5:5 실시간 결투방`;
+      const customTitle = cleanUserText(titleInp?.value, 24) || (duel ? `${myStu.name}의 1:1 용병 대결방` : `${myStu.name}의 5:5 실시간 결투방`);
       if (titleInp) titleInp.value = '';
       const roomId = 'pvp_' + myStu.id;
       launchedLiveRoomIds.delete(roomId);
@@ -13828,9 +13903,13 @@
         guestPower: 0,
         guestStudentSnapshot: null,
         guestReady: false,
+        mode: duel ? 'duel1v1' : 'team',
+        hostPickId: null,
+        guestPickId: null,
         status: 'waiting', // 'waiting' | 'playing'
         createdAt: Date.now()
       };
+      if (duel) roomObj.hostPower = 0;
       await savePvpRoomData(roomId, roomObj);
       armHostRoomAutoCleanup([`pvp_rooms/${roomId}`]);
       showRewardBanner(`⚡ [${customTitle}] 결투 대기방이 개설되었습니다! 다른 친구가 입장해 [준비완료]를 누르면 시작할 수 있습니다.`);
@@ -13838,12 +13917,14 @@
 
     window.joinFirebasePvpRoom = async function (roomId) {
       const myStu = getActiveStudent();
-      if (!myStu || !myStu.roster || !myStu.roster.some(m => m.deployed)) {
-        showNotice('⚠️ 결투방에 입장하려면 먼저 [🏠 홈]에서 출전 용병을 1명 이상 배치해주세요!');
-        return;
-      }
       const room = livePvpRoomsCache[roomId];
       if (!room) return;
+      if (isDuelRoom(room) ? !(myStu && (myStu.roster || []).length) : (!myStu || !myStu.roster || !myStu.roster.some(m => m.deployed))) {
+        showNotice(isDuelRoom(room)
+          ? '⚠️ 1:1 대결방에 들어가려면 먼저 용병을 1명 이상 고용해 주세요!'
+          : '⚠️ 결투방에 입장하려면 먼저 [🏠 홈]에서 출전 용병을 1명 이상 배치해주세요!');
+        return;
+      }
       currentJoinedPvpRoomId = roomId;
       if (room.hostId === myStu.id) {
         renderLivePvpRoomsList();
@@ -13857,14 +13938,21 @@
       room.guestFormationSaved = false;
       room.guestReady = false;
       room.practiceFriend = false;
+      if (isDuelRoom(room)) { room.guestPickId = null; room.guestPower = 0; }
       await savePvpRoomData(roomId, room);
-      showRewardBanner(`🚪 [${room.title}]에 입장했습니다! [✋ 준비완료] 버튼을 눌러주세요.`);
+      showRewardBanner(isDuelRoom(room)
+        ? `🚪 [${room.title}]에 입장했습니다! 대결할 용병을 고르고 [✋ 준비완료]를 눌러주세요.`
+        : `🚪 [${room.title}]에 입장했습니다! [✋ 준비완료] 버튼을 눌러주세요.`);
     };
 
     window.togglePvpRoomReady = async function (roomId) {
       const myStu = getActiveStudent();
       const room = livePvpRoomsCache[roomId];
       if (!room || !myStu || room.guestId !== myStu.id) return;
+      if (isDuelRoom(room) && !room.guestReady && !room.guestPickId) {
+        showNotice('⚠️ 먼저 대결할 용병 1명을 골라 주세요!');
+        return;
+      }
       room.guestReady = !room.guestReady;
       await savePvpRoomData(roomId, room);
       showNotice(room.guestReady ? '✅ 준비완료! 방장이 실시간 결투를 시작하기를 기다립니다.' : '⏳ 준비완료를 취소했습니다.');
@@ -13885,6 +13973,12 @@
       room.guestFormationSaved = false;
       room.guestReady = true;
       room.practiceFriend = true; // 연습 친구는 실제 접속자가 없으므로 방장 화면에서만 진행
+      if (isDuelRoom(room)) {
+        // 연습 친구는 가장 센 용병으로 (AI가 조종)
+        const best = [...(friend.roster || [])].sort((a, b) => calcMercCombatPower(b, friend) - calcMercCombatPower(a, friend))[0];
+        room.guestPickId = best ? best.id : null;
+        room.guestPower = best ? calcMercCombatPower(best, friend) : 0;
+      }
       await savePvpRoomData(roomId, room);
       showRewardBanner(`🙋 [${friend.name}] 친구가 결투방에 입장하여 [✅ 준비완료]를 눌렀습니다! 이제 [⚡ 실시간 결투 시작!]을 누르세요.`);
     };
@@ -13903,6 +13997,10 @@
       }
       if (!room.guestReady) {
         showNotice('⚠️ 상대 친구가 아직 [✋ 준비완료]를 누르지 않았습니다!');
+        return;
+      }
+      if (isDuelRoom(room) && !room.hostPickId) {
+        showNotice('⚠️ 먼저 대결할 내 용병 1명을 골라 주세요!');
         return;
       }
       room.status = 'playing';
@@ -13930,6 +14028,7 @@
         room.guestStudentSnapshot = null;
         room.guestFormationSaved = false;
         room.guestReady = false;
+        room.guestPickId = null;
         await savePvpRoomData(roomId, room);
         showNotice('🚪 결투 대기방에서 퇴장했습니다.');
       } else {
@@ -14281,7 +14380,8 @@
           const isHost = myStu && myRoom.hostId === myStu.id;
           const isGuest = myStu && myRoom.guestId === myStu.id;
           const hasGuest = Boolean(myRoom.guestId);
-          const canStart = isHost && hasGuest && myRoom.guestReady;
+          const duel = isDuelRoom(myRoom);
+          const canStart = isHost && hasGuest && myRoom.guestReady && (!duel || Boolean(myRoom.hostPickId));
           const myFormationKey = myStu ? pvpRoomSnapshotKey(myRoom, myStu.id) : null;
           if (pvpFormationDraft && (pvpFormationDraft.roomId !== myRoom.roomId || (isGuest && myRoom.guestReady))) pvpFormationDraft = null;
 
@@ -14289,7 +14389,7 @@
           waitPanel.innerHTML = `
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
               <div class="flex items-center gap-2">
-                <span class="px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 font-extrabold text-xs">⚡ 실시간 PvP 대기실</span>
+                <span class="px-2.5 py-1 rounded-lg ${duel ? 'bg-amber-500/20 text-amber-300' : 'bg-rose-500/20 text-rose-300'} font-extrabold text-xs">${duel ? '🗡️ 1:1 용병 대결 대기실' : '⚡ 실시간 PvP 대기실'}</span>
                 <h4 class="font-title text-xl text-white">${myRoom.title || `${myRoom.hostName}의 결투방`}</h4>
               </div>
               <button onclick="leaveOrClosePvpRoom('${myRoom.roomId}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300">
@@ -14305,7 +14405,7 @@
                   <div>
                     <div class="text-xs font-bold text-indigo-300">방장 (블루팀)</div>
                     <div class="font-title text-lg text-white">${myRoom.hostName}</div>
-                    <div class="text-xs text-rose-400 font-extrabold">⚔️ 출전 전투력 ${Number(myRoom.hostPower || 0).toLocaleString()}</div>
+                    <div class="text-xs text-rose-400 font-extrabold">${duel ? duelPickLabel(myRoom, 'host') : `⚔️ 출전 전투력 ${Number(myRoom.hostPower || 0).toLocaleString()}`}</div>
                   </div>
                 </div>
                 <span class="px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-extrabold text-xs">
@@ -14323,7 +14423,7 @@
                         <div>
                           <div class="text-xs font-bold text-rose-300">도전자 (레드팀)</div>
                           <div class="font-title text-lg text-white">${myRoom.guestName}</div>
-                          <div class="text-xs text-rose-400 font-extrabold">⚔️ 출전 전투력 ${Number(myRoom.guestPower || 0).toLocaleString()}</div>
+                          <div class="text-xs text-rose-400 font-extrabold">${duel ? duelPickLabel(myRoom, 'guest') : `⚔️ 출전 전투력 ${Number(myRoom.guestPower || 0).toLocaleString()}`}</div>
                         </div>
                       </div>
                       <span class="px-3 py-1.5 rounded-xl font-extrabold text-xs ${
@@ -14349,7 +14449,9 @@
             </div>
 
             ${
-              myFormationKey
+              duel
+                ? ((isHost || (isGuest && !myRoom.practiceFriend)) ? renderDuelPickerHTML(myRoom, myStu, isHost, isGuest) : '')
+                : myFormationKey
                 ? (pvpFormationDraft && pvpFormationDraft.roomId === myRoom.roomId
                     ? renderPvpFormationEditorHTML(myRoom, isHost)
                     : `<div class="flex flex-wrap items-center justify-between gap-2 bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3">
@@ -14391,7 +14493,7 @@
                         class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg transition ${
                           canStart ? 'bg-rose-600 hover:bg-rose-500 text-white animate-bounce' : 'bg-slate-800 text-slate-500 cursor-not-allowed'
                         }">
-                        ⚡ 실시간 5:5 결투 시작!
+                        ${duel ? '🗡️ 1:1 대결 시작!' : '⚡ 실시간 5:5 결투 시작!'}
                       </button>`
                     : ''
                 }
@@ -14419,10 +14521,11 @@
                 <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${r.status === 'waiting' ? (hasGuest ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300') : 'bg-rose-500/20 text-rose-300'}">
                   ${r.status === 'waiting' ? (hasGuest ? (r.guestReady ? '✅ 준비완료 (2/2명)' : '⏳ 준비중 (2/2명)') : '🟢 입장 가능 (1/2명)') : '🔥 결투 진행중'}
                 </span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${isDuelRoom(r) ? 'bg-amber-500/20 text-amber-300' : 'bg-indigo-500/20 text-indigo-300'}">${isDuelRoom(r) ? '🗡️ 1:1 대결' : '👥 5:5'}</span>
                 <span class="font-bold text-sm text-white">${r.title || `${r.hostName}의 결투방`}</span>
               </div>
               <div class="text-xs text-slate-400 mt-1">
-                👑 방장: <strong class="text-white">${r.hostName}</strong> (전투력 ${Number(r.hostPower || 0).toLocaleString()})
+                👑 방장: <strong class="text-white">${r.hostName}</strong> ${isDuelRoom(r) ? (r.hostPickId ? `(대결 용병 전투력 ${Number(r.hostPower || 0).toLocaleString()})` : '') : `(전투력 ${Number(r.hostPower || 0).toLocaleString()})`}
                 ${hasGuest ? ` · ⚔️ 도전자: <strong class="text-rose-300">${r.guestName}</strong>` : ' · 도전자 대기중'}
               </div>
             </div>
@@ -14459,15 +14562,34 @@
             // 방장(블루팀) 화면이 전투를 계산하고, 도전자(레드팀) 화면은 그 화면을 받아서 보여 줌
             const isHost = r.hostId === myStu.id;
             const netRole = r.practiceFriend ? null : (isHost ? 'host' : 'guest');
-            showRewardBanner(`⚡ [실시간 PvP 결투 시작!] ${r.hostName} vs ${r.guestName} 5:5 라이브 결투가 시작됩니다!`);
+            showRewardBanner(isDuelRoom(r)
+              ? `🗡️ [1:1 용병 대결 시작!] ${r.hostName} vs ${r.guestName} — 내 용병을 직접 조종하세요!`
+              : `⚡ [실시간 PvP 결투 시작!] ${r.hostName} vs ${r.guestName} 5:5 라이브 결투가 시작됩니다!`);
             const blueStu = isHost ? myStu : opponentStu;
             const redStu = isHost ? opponentStu : myStu;
-            // 대기실에서 저장한 진형(row/col)으로 양쪽 유닛을 만듦
-            const blueUnits = deployedMercsWithRoomFormation(blueStu, r.hostStudentSnapshot).map(m => createSimUnit(m, blueStu, 'blue', 1.0));
-            const redUnits = deployedMercsWithRoomFormation(redStu, r.guestStudentSnapshot).map(m => createSimUnit(m, redStu, 'red', 1.0));
+            const duel = isDuelRoom(r);
+            let blueUnits, redUnits;
+            if (duel) {
+              // 1:1: 고른 용병 1명씩 가운데 줄에서 마주 보고 시작
+              const bm = duelPickedMerc(blueStu, r.hostStudentSnapshot, r.hostPickId);
+              const rm = duelPickedMerc(redStu, r.guestStudentSnapshot, r.guestPickId);
+              if (!bm || !rm) {
+                launchedLiveRoomIds.delete(r.roomId);
+                showNotice('⚠️ 대결할 용병 정보를 찾지 못했어요. 다시 시도해 주세요.');
+                return;
+              }
+              blueUnits = [createSimUnit({ ...bm, row: 2, col: 1 }, blueStu, 'blue', 1.0)];
+              redUnits = [createSimUnit({ ...rm, row: 2, col: 1 }, redStu, 'red', 1.0)];
+            } else {
+              // 대기실에서 저장한 진형(row/col)으로 양쪽 유닛을 만듦
+              blueUnits = deployedMercsWithRoomFormation(blueStu, r.hostStudentSnapshot).map(m => createSimUnit(m, blueStu, 'blue', 1.0));
+              redUnits = deployedMercsWithRoomFormation(redStu, r.guestStudentSnapshot).map(m => createSimUnit(m, redStu, 'red', 1.0));
+            }
             launchSimulation({
               mode: 'pvp_realtime',
-              title: `⚡ 실시간 라이브 결투: ${r.hostName} vs ${r.guestName}`,
+              title: duel
+                ? `🗡️ 1:1 용병 대결: ${r.hostName}의 ${blueUnits[0].name} vs ${r.guestName}의 ${redUnits[0].name}`
+                : `⚡ 실시간 라이브 결투: ${r.hostName} vs ${r.guestName}`,
               blueStudent: blueStu,
               redStudent: redStu,
               customBlueUnits: blueUnits,
@@ -14476,6 +14598,13 @@
               netRole,
               myTeam: isHost ? 'blue' : 'red'
             });
+            if (duel && sim.running) {
+              // 1:1 대결은 직접 전투만: 고를 것 없이 내 용병을 바로 조종 (도중에 자동 전투로 바꿀 수 없음)
+              sim.duel1v1 = true;
+              const mine = sim.units.find(u => u.team === (isHost ? 'blue' : 'red'));
+              if (mine) setBattleControlMode('manual', mine.id, true);
+              addBattleLog('🗡️ [1:1 용병 대결] 내 용병을 직접 조종해서 싸워요! 먼저 쓰러뜨리면 승리!');
+            }
             if (netRole && sim.running) startLiveBattleNet(r.roomId, netRole, r.startedAt);
           }
         }
@@ -14894,7 +15023,7 @@
       }
       const left = Math.max(0, LIVE_CHOICE_TIMEOUT_MS - (Date.now() - liveNet.startedAt));
       if (left <= 0) {
-        if (sim.awaitingControlChoice) setBattleControlMode('auto', null, true);
+        if (sim.awaitingControlChoice && !sim.duel1v1) setBattleControlMode('auto', null, true);
         if (!liveNet.guestChose) {
           liveNet.guestChose = true;
           addBattleLog('⏰ 상대 친구가 고르지 않아 자동 전투로 시작해요.');
@@ -14925,7 +15054,7 @@
       liveNet.hostStatus = val;
       if (val.started === 1) {
         // 시간이 다 돼서 시작했으면 아직 안 고른 경우 자동 전투로
-        if (!localBattleInput.controlChosen) setBattleControlMode('auto', null, true);
+        if (!localBattleInput.controlChosen && !sim.duel1v1) setBattleControlMode('auto', null, true);
         renderLiveWaitBanner(null);
         return;
       }
