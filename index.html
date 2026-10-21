@@ -1034,7 +1034,7 @@
             </div>
             <ul class="text-[11px] text-slate-300 space-y-1">
               <li>🌪️ <strong>회전베기:</strong> 360도 연속 회전베기 (긴 지속시간 다단히트)</li>
-              <li>🔨 <strong>기절공격:</strong> 점프 대지 강타 + <span class="text-yellow-300">💫기절</span></li>
+              <li>🔨 <strong>강타:</strong> 힘껏 내리쳐 강하게 타격 + <span class="text-yellow-300">💫기절</span></li>
               <li>💨 <strong>돌진:</strong> 적진 고속 돌격 (강력한 충돌 피해)</li>
             </ul>
           </div>
@@ -2355,9 +2355,9 @@
           desc: '몸을 360도 빠르게 연속 회전하며 양손 대검으로 주변 적들에게 지속적인 광역 다단히트 피해를 입힙니다.'
         },
         stun_strike: {
-          id: 'stun_strike', name: '기절공격', icon: '🔨', ccTag: '💫기절',
+          id: 'stun_strike', name: '강타', icon: '🔨', ccTag: '💫기절',
           manaCost: 27, cooldownTicks: 450, cooldownSec: 7.5, castSec: 0,
-          desc: '곧바로 높이 점프해 대검으로 대지를 강타하여 160% 피해를 입히고 적을 2.5초간 [기절]시킵니다. (내려찍는 동안은 움직일 수 없어요)'
+          desc: '대검을 힘껏 내리쳐 눈앞의 적을 강하게 타격합니다. 160% 피해를 입히고 2.5초간 [기절]시켜요. (내려치는 동안은 움직일 수 없어요)'
         },
         charge: {
           id: 'charge', name: '돌진', icon: '💨', ccTag: '💨돌격강타',
@@ -8931,7 +8931,7 @@
           addBattleLog(`🌪️ [전사] ${unit.name}의 폭풍 회전베기! (마나 -${skObj.manaCost}, 쿨타임 ${skObj.cooldownSec}초)`);
 
         } else if (sk === 'stun_strike') {
-          // 기절공격은 근접 공격 범위(기본 공격이 닿는 거리) 안의 적에게만
+          // 강타는 근접 공격 범위(기본 공격이 닿는 거리) 안의 적에게만
           const reach = stunStrikeReach(unit);
           const inReach = enemies.filter(e => Math.hypot(e.x - unit.x, e.y - unit.y) <= reach);
           const unstunned = inReach.filter(e => e.statuses.stun <= 35 && e.statuses.freeze <= 35);
@@ -8956,7 +8956,7 @@
             }
           });
           playCombatSfx('heavy');
-          addBattleLog(`🔨 [전사] ${unit.name}의 점프 기절공격! [💫기절] (마나 -${skObj.manaCost}, 쿨 ${skObj.cooldownSec}초)`);
+          addBattleLog(`🔨 [전사] ${unit.name}의 강타! [💫기절] (마나 -${skObj.manaCost}, 쿨 ${skObj.cooldownSec}초)`);
 
         } else if (sk === 'charge' && aimPt) {
           const sx = unit.x, sy = unit.y;
@@ -9280,7 +9280,7 @@
         const enemies = u.team === 'blue' ? redAlive : blueAlive;
         // 직접 전투: 학생이 조종하는 용병은 AI 대신 입력대로 움직임
         if (stepSkillCast(u, allies, enemies)) return;
-        // 제자리에 묶인 동안(기절공격 내려찍기 등)은 아무것도 하지 않음
+        // 제자리에 묶인 동안(강타 내려치기 등)은 아무것도 하지 않음
         if (u.rootTicks > 0) { u.rootTicks--; u.isMoving = false; return; }
         const manualCtrl = sim.controllers && sim.controllers[u.id];
         if (manualCtrl) {
@@ -9766,7 +9766,7 @@
 
     // ===== 스킬 시전 시간 =====
     // 시전 중에는 제자리에 서서 막대가 차고, 다 차면 스킬이 나감. 기절·동결되면 끊기고 마나·쿨타임은 쓰지 않음
-    // 기절공격이 닿는 거리 = 기본 근접 공격이 닿는 거리
+    // 강타가 닿는 거리 = 기본 근접 공격이 닿는 거리
     function stunStrikeReach(unit) {
       return (unit.range || 60) + 14;
     }
@@ -9810,6 +9810,11 @@
       }
       if (--c.left > 0) return true;
       unit.casting = null;
+      // 부활: 시전하는 동안 살릴 아군이 없어졌으면(다른 힐러가 먼저 살림 등) 마나·쿨타임을 쓰지 않고 취소
+      if (c.key === 'revive' && !sim.units.some(x => x.team === unit.team && !x.alive && x.monsterType !== 'scarecrow')) {
+        sim.floatTexts.push({ x: unit.x, y: unit.y - 52, text: '🌟 살릴 아군이 없어 취소', color: '#64748b', life: 40 });
+        return true;
+      }
       if (c.aimX !== null) unit.teleportAim = { x: c.aimX, y: c.aimY };
       if (c.aimTarget && c.aimTarget.alive) unit.manualAimTarget = c.aimTarget;
       castMercSkill(unit, allies, enemies, c.key);
@@ -9819,7 +9824,7 @@
     }
 
     const WHIRLWIND_TICKS = 160; // 회전베기 지속 시간 (틱)
-    const STUN_STRIKE_ROOT_TICKS = 40; // 기절공격: 내려찍는 동안 못 움직이는 시간 (틱)
+    const STUN_STRIKE_ROOT_TICKS = 40; // 강타: 내려치는 동안 못 움직이는 시간 (틱)
 
     function drawCastBars(ctx) {
       sim.units.forEach(u => {
