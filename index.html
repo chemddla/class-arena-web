@@ -866,7 +866,7 @@
                 <div class="text-sm font-extrabold text-indigo-300">🎮 직접 전투 — 조종할 용병을 고르세요</div>
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] text-slate-300">
                   <span class="px-2 py-1 rounded-lg bg-slate-800">⌨️ WASD 이동</span>
-                  <span class="px-2 py-1 rounded-lg bg-slate-800">🖱️ 좌클릭 공격 (마우스 쪽으로)</span>
+                  <span class="px-2 py-1 rounded-lg bg-slate-800">🖱️ 좌클릭 또는 K 공격 (마우스가 없으면 바라보는 쪽 · 스킬은 가까운 적)</span>
                   <span class="px-2 py-1 rounded-lg bg-slate-800">␣ Space 대시</span>
                   <span class="px-2 py-1 rounded-lg bg-slate-800">1 · 2 · 3 스킬</span>
                   <span class="px-2 py-1 rounded-lg bg-slate-800">📱 태블릿: 화면 조이스틱·버튼</span>
@@ -7661,7 +7661,7 @@
       renderBattleControlHud(true);
       const u = getControlledUnit();
       addBattleLog(u
-        ? `🎮 [직접 전투] ${u.name} 용병을 조종해요! (WASD 이동 · 좌클릭 공격 · Space 대시 · 1/2/3 스킬)`
+        ? `🎮 [직접 전투] ${u.name} 용병을 조종해요! (WASD 이동 · 좌클릭/K 공격 · Space 대시 · 1/2/3 스킬)`
         : '🤖 [자동 전투] 용병들이 알아서 싸워요! (WASD로 화면 이동)');
     }
 
@@ -7713,8 +7713,11 @@
         <span class="text-slate-300">❤️ ${Math.max(0, Math.round(u.hp)).toLocaleString()} / ${u.maxHp.toLocaleString()} · 💧 ${Math.round(u.mana)}</span>
         <span class="px-2 py-1 rounded-lg bg-slate-800 text-slate-200 font-extrabold">Space 대시 ${dashTxt}</span>
         ${skillChips}
-        <span class="text-slate-400">WASD 이동 · 좌클릭 공격</span>`;
+        <span class="text-slate-400">WASD 이동 · 좌클릭/K 공격${arenaMouseSeen ? '' : ' · 🖱️ 마우스 없음: 바라보는 쪽 공격, 스킬은 가까운 적'}</span>`;
     }
+
+    // 진짜 마우스를 한 번이라도 움직였는지 (없으면 태블릿처럼 마우스 없이 조종)
+    let arenaMouseSeen = false;
 
     // 키보드: 전투 화면이 보일 때만 반응 (입력칸에 글자를 쓸 때는 무시)
     window.addEventListener('keydown', (e) => {
@@ -7731,11 +7734,22 @@
       } else if (k === '1' || k === '2' || k === '3') {
         if (!e.repeat) localBattleInput.skillCount[Number(k) - 1]++;
         e.preventDefault();
+      } else if (k === 'k' || e.code === 'KeyK') {
+        // K: 공격 (마우스 없이 태블릿 키보드로 할 때) — 누르고 있으면 계속 공격
+        if (battleControl.mode === 'manual') {
+          localBattleInput.attack = true;
+          e.preventDefault();
+        }
       }
       if (typeof onLocalControlChanged === 'function') onLocalControlChanged();
     });
     window.addEventListener('keyup', (e) => {
       const k = (e.key || '').toLowerCase();
+      if ((k === 'k' || e.code === 'KeyK') && localBattleInput.attack) {
+        localBattleInput.attack = false;
+        if (typeof onLocalControlChanged === 'function') onLocalControlChanged();
+        return;
+      }
       if (k in localBattleInput.keys) {
         localBattleInput.keys[k] = false;
         if (typeof onLocalControlChanged === 'function') onLocalControlChanged();
@@ -7766,6 +7780,10 @@
     canvas.addEventListener('mousemove', (e) => {
       arenaMouseCanvas = arenaCanvasPos(e.clientX, e.clientY);
     });
+    // 마우스가 연결돼 있는지 (터치로 생기는 가짜 마우스 움직임은 빼고, 진짜 마우스만)
+    window.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'mouse' && (e.movementX || e.movementY)) arenaMouseSeen = true;
+    }, { passive: true });
     canvas.addEventListener('contextmenu', (e) => {
       if (battleControl.mode === 'manual' && isArenaBattleVisible()) e.preventDefault();
     });
@@ -7778,12 +7796,9 @@
       }
       const z = sim.camera.zoom || 1.0;
       const ctrlUnit = getControlledUnit();
-      if (localBattleInput.autoAim && ctrlUnit && ctrlUnit.alive) {
-        const foe = nearestEnemyOf(ctrlUnit);
-        if (foe) {
-          localBattleInput.aimX = foe.x;
-          localBattleInput.aimY = foe.y;
-        }
+      if (!arenaMouseSeen) {
+        localBattleInput.aimX = null;
+        localBattleInput.aimY = null;
       } else if (arenaMouseCanvas) {
         localBattleInput.aimX = sim.camera.x + arenaMouseCanvas.cx / z;
         localBattleInput.aimY = sim.camera.y + arenaMouseCanvas.cy / z;
@@ -7978,8 +7993,14 @@
       if (u.casting) return;
       // 부활: 쓰러진 아군이 없으면 쓰지 않음 (마나·쿨타임 30초가 헛되이 사라지지 않게)
       if (key === 'revive' && !sim.units.some(x => x.team === u.team && !x.alive && x.monsterType !== 'scarecrow')) { say('🌟 쓰러진 아군이 없어요'); return; }
-      const aimX = c.aimX ?? (u.x + Math.cos(u.facingAngle || 0) * 100);
-      const aimY = c.aimY ?? (u.y + Math.sin(u.facingAngle || 0) * 100);
+      const noMouseAim = typeof c.aimX !== 'number' || typeof c.aimY !== 'number';
+      let aimX = c.aimX ?? (u.x + Math.cos(u.facingAngle || 0) * 100);
+      let aimY = c.aimY ?? (u.y + Math.sin(u.facingAngle || 0) * 100);
+      if (noMouseAim) {
+        // 마우스 없음: 가장 가까운 적에게 스킬 (적이 없으면 바라보는 쪽)
+        const foe = [...enemies].sort((a, b) => Math.hypot(a.x - u.x, a.y - u.y) - Math.hypot(b.x - u.x, b.y - u.y))[0];
+        if (foe) { aimX = foe.x; aimY = foe.y - 14; }
+      }
       const mode = MANUAL_SKILL_AIM[key] || 'point';
       const range = manualSkillRange(u, key);
       let aim = { x: aimX, y: aimY, target: null };
@@ -7989,7 +8010,7 @@
           .map(e => ({ e, d: Math.hypot(e.x - aimX, (e.y - 14) - aimY) }))
           .filter(x => x.d <= 110)
           .sort((a, b) => a.d - b.d)[0];
-        if (!picked) { say('🎯 마우스를 적 위에 올려 주세요'); return; }
+        if (!picked) { say(noMouseAim ? '🎯 가까운 적이 없어요' : '🎯 마우스를 적 위에 올려 주세요'); return; }
         if (Math.hypot(picked.e.x - u.x, picked.e.y - u.y) > range) {
           say(`🎯 사거리 밖이에요 (${(range / GRID_CELL_SIZE).toFixed(1)}칸)`);
           sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: range, color: '#94a3b8', life: 40, maxLife: 40 });
@@ -8032,7 +8053,8 @@
       }
 
       const hasAim = typeof c.aimX === 'number' && typeof c.aimY === 'number';
-      const aimAngle = hasAim ? Math.atan2(c.aimY - u.y, c.aimX - u.x) : (u.facingAngle || 0);
+      // 마우스가 없으면 움직이는 쪽을 바라보고, 멈춰 있으면 마지막으로 바라본 쪽 그대로
+      const aimAngle = hasAim ? Math.atan2(c.aimY - u.y, c.aimX - u.x) : (moving ? Math.atan2(my, mx) : (u.facingAngle || 0));
       u.facingAngle = aimAngle;
       if (Math.abs(Math.cos(aimAngle)) > 0.1) u.facingDir = Math.cos(aimAngle) >= 0 ? 1 : -1;
 
