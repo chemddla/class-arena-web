@@ -2357,7 +2357,7 @@
         stun_strike: {
           id: 'stun_strike', name: '기절공격', icon: '🔨', ccTag: '💫기절',
           manaCost: 27, cooldownTicks: 450, cooldownSec: 7.5, castSec: 0,
-          desc: '곧바로 높이 점프해 대검으로 대지를 강타하여 160% 피해를 입히고 적을 2초간 [기절]시킵니다. (내려찍는 동안은 움직일 수 없어요)'
+          desc: '곧바로 높이 점프해 대검으로 대지를 강타하여 160% 피해를 입히고 적을 2.5초간 [기절]시킵니다. (내려찍는 동안은 움직일 수 없어요)'
         },
         charge: {
           id: 'charge', name: '돌진', icon: '💨', ccTag: '💨돌격강타',
@@ -4345,6 +4345,10 @@
                 class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 font-extrabold text-xs border border-slate-700">
                 🔍 세부정보
               </button>
+              <button onclick="event.stopPropagation(); openMercSellModal('${merc.id}')" title="바로 팔거나 경매에 내놓아요"
+                class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs">
+                💰 판매·경매
+              </button>
             </div>
           </div>
         `;
@@ -4529,8 +4533,6 @@
                 <span class="font-extrabold text-indigo-300">Lv.${merc.level}</span>
                 <span>·</span>
                 <span class="px-2 py-0.5 rounded-lg bg-rose-500/15 text-rose-400 font-extrabold border border-rose-500/30">⚔️ 전투력 ${mercPower.toLocaleString()}</span>
-                <span>·</span>
-                <span class="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-300 font-extrabold border border-amber-500/30">${getMercInitialStatOneLineReview(merc)}</span>
               </div>
             </div>
           </div>
@@ -4577,11 +4579,7 @@
               <span class="text-xs font-extrabold text-indigo-300">⚡ 스킬 (보유 스킬)</span>
               <p class="text-[11px] text-slate-400">Lv.1 · 10 · 20에 아직 없는 직업 스킬 중 하나가 무작위로 열려요. 전투에서는 AI가 알맞게 사용해요.</p>
             </div>
-            ${ownedSkillKeys.length >= 1 && ownedSkillKeys.length < 3
-              ? `<button onclick="rerollMercSkill('${merc.id}'); renderMercDetailModal();" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow" title="가장 최근에 열린 스킬을 아직 없는 다른 스킬로 바꿔요">
-              🎲 최근 스킬 다시 뽑기 (150 CA)
-            </button>`
-              : ''}
+            <span class="text-[11px] font-bold text-amber-300">🎲 칸마다 ${SKILL_REROLL_COST} CA로 다시 뽑을 수 있어요</span>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -4597,6 +4595,10 @@
                     </div>
                     <p class="text-[11px] text-slate-300 mt-1.5 leading-snug">${skObj.desc}</p>
                   </div>
+                  <button onclick="rerollMercSkill('${merc.id}', ${ensureMercSkillSlots(merc).indexOf(skKey)})"
+                    class="mt-2 w-full py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-[11px] shadow">
+                    🎲 이 스킬 다시 뽑기 (${SKILL_REROLL_COST} CA)
+                  </button>
                 </div>
               `;
             }).join('')}
@@ -4742,31 +4744,46 @@
       }
     }
 
-    function rerollMercSkill(mercId) {
+    const SKILL_REROLL_COST = 500;
+
+    // slotIdx: 바꿀 스킬 칸 (0부터, 이미 열린 칸만)
+    function rerollMercSkill(mercId, slotIdx) {
       const stu = getActiveStudent();
       const merc = stu.roster.find(m => m.id === mercId);
       if (!merc) return;
-      const cost = 150;
-      if (stu.mc < cost) {
-        showNotice(`⚠️ 스킬 랜덤 리롤 비용(${cost} CA)이 부족합니다! (보유: ${stu.mc} CA)`);
-        return;
-      }
       const slots = ensureMercSkillSlots(merc);
       const n = merc.skillsRevealed || 0;
-      if (n < 1 || n >= slots.length) {
-        showNotice(n < 1 ? '⚠️ 첫 스킬이 열린 뒤에 다시 뽑을 수 있어요.' : '⚠️ 스킬 3개를 모두 가지고 있어서 바꿀 스킬이 없어요.');
+      const idx = Number(slotIdx);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= n) {
+        showNotice('⚠️ 열려 있는 스킬 칸만 다시 뽑을 수 있어요.');
         return;
       }
-      stu.mc -= cost;
-      // 가장 최근에 열린 칸(n-1)을 아직 안 열린 칸 중 하나와 맞바꿈
-      const j = n + Math.floor(Math.random() * (slots.length - n));
-      [slots[n - 1], slots[j]] = [slots[j], slots[n - 1]];
-      merc.skillKey = slots[0];
-      const sk = (SKILL_DEFS[merc.job] || SKILL_DEFS.warrior)[slots[n - 1]];
-      saveState();
-      renderSquadTab();
-      setupIdlePreviewBattle();
-      showRewardBanner(`🎲 스킬 다시 뽑기! [${merc.name}] 용병의 최근 스킬이 [${sk.icon} ${sk.name}](으)로 바뀌었어요!`);
+      if (n >= slots.length) {
+        showNotice('⚠️ 이 직업의 스킬을 모두 가지고 있어서 바꿀 스킬이 없어요.');
+        return;
+      }
+      if (stu.mc < SKILL_REROLL_COST) {
+        showNotice(`⚠️ 스킬 다시 뽑기 비용(${SKILL_REROLL_COST} CA)이 부족해요! (보유: ${stu.mc.toLocaleString()} CA)`);
+        return;
+      }
+      const jobSkills = SKILL_DEFS[merc.job] || SKILL_DEFS.warrior;
+      const oldSk = jobSkills[slots[idx]];
+      askCustomConfirm(`[${merc.name}]의 [${oldSk ? oldSk.icon + ' ' + oldSk.name : '스킬'}]을(를) ${SKILL_REROLL_COST} CA를 내고 다시 뽑을까요?\n아직 없는 직업 스킬 중 하나가 무작위로 나와요.`, () => {
+        const curSlots = ensureMercSkillSlots(merc);
+        const curN = merc.skillsRevealed || 0;
+        if (idx >= curN || curN >= curSlots.length || stu.mc < SKILL_REROLL_COST) return;
+        stu.mc -= SKILL_REROLL_COST;
+        // 고른 칸을 아직 안 열린(가지고 있지 않은) 스킬 중 하나와 맞바꿈
+        const j = curN + Math.floor(Math.random() * (curSlots.length - curN));
+        [curSlots[idx], curSlots[j]] = [curSlots[j], curSlots[idx]];
+        merc.skillKey = curSlots[0];
+        const sk = jobSkills[curSlots[idx]];
+        saveState();
+        renderSquadTab();
+        if (activeDetailMercId === merc.id) renderMercDetailModal();
+        setupIdlePreviewBattle();
+        showRewardBanner(`🎲 스킬 다시 뽑기! [${merc.name}]의 [${oldSk ? oldSk.name : '스킬'}] → [${sk.icon} ${sk.name}] (으)로 바뀌었어요!`);
+      });
     }
 
     let sellingMercId = null;
@@ -8935,7 +8952,7 @@
           inReach.forEach(e => {
             if (Math.hypot(e.x - target.x, e.y - target.y) <= 80) {
               applyDamage(unit, e, unit.atk * 1.6);
-              inflictStatus(unit, e, 'stun', 120);
+              inflictStatus(unit, e, 'stun', 150); // 2.5초
             }
           });
           playCombatSfx('heavy');
