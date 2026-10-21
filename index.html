@@ -224,25 +224,34 @@
       background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%) !important;
       box-shadow: 0 4px 15px rgba(245, 158, 11, 0.18) !important;
     }
-    /* 레어 용병: 카드 위로 빛이 천천히 지나가고, 초상화 옆에 작은 별이 반짝임 */
-    .merc-rare-shine { position: relative; }
+    /* 레어 용병: 금빛 테두리가 숨 쉬듯 빛나고, 넓은 금빛 광택이 카드 위를 지나가며, 초상화 뒤 후광과 둘레의 별이 반짝임 */
+    .merc-rare-shine { position: relative; animation: mercRareGlow 2.6s ease-in-out infinite; }
     .merc-rare-shine::after {
       content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-      background: linear-gradient(115deg, transparent 45%, rgba(255, 255, 255, 0.45) 50%, transparent 55%);
-      background-size: 260% 100%; background-repeat: no-repeat;
-      animation: mercRareShine 4.2s ease-in-out infinite;
+      background: linear-gradient(115deg, transparent 38%, rgba(255, 236, 160, 0.35) 45%, rgba(255, 255, 255, 0.85) 50%, rgba(255, 236, 160, 0.35) 55%, transparent 62%);
+      background-size: 280% 100%; background-repeat: no-repeat;
+      animation: mercRareShine 3s ease-in-out infinite;
     }
     @keyframes mercRareShine {
-      0% { background-position: 160% 0; }
-      45%, 100% { background-position: -60% 0; }
+      0% { background-position: 170% 0; }
+      50%, 100% { background-position: -70% 0; }
     }
-    .rare-twinkle { position: absolute; pointer-events: none; color: #f59e0b; text-shadow: 0 0 4px rgba(251, 191, 36, 0.9); line-height: 1; animation: rareTwinkle 2.4s ease-in-out infinite; }
+    @keyframes mercRareGlow {
+      0%, 100% { box-shadow: 0 0 6px 1px rgba(251, 191, 36, 0.45), 0 4px 15px rgba(245, 158, 11, 0.2); }
+      50% { box-shadow: 0 0 18px 5px rgba(251, 191, 36, 0.8), 0 0 34px 8px rgba(253, 224, 71, 0.35); }
+    }
+    .rare-aura { position: absolute; inset: 6%; border-radius: 9999px; pointer-events: none;
+      background: radial-gradient(circle, rgba(253, 224, 71, 0.6) 0%, rgba(251, 191, 36, 0.28) 45%, transparent 70%);
+      animation: rareAura 2.2s ease-in-out infinite; }
+    @keyframes rareAura { 0%, 100% { opacity: 0.45; transform: scale(0.88); } 50% { opacity: 1; transform: scale(1.08); } }
+    .rare-twinkle { position: absolute; pointer-events: none; color: #fde047; text-shadow: 0 0 3px #fff, 0 0 7px rgba(251, 191, 36, 1), 0 0 12px rgba(245, 158, 11, 0.8); line-height: 1; animation: rareTwinkle 1.8s ease-in-out infinite; }
     @keyframes rareTwinkle {
-      0%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); }
-      50% { opacity: 1; transform: scale(1) rotate(45deg); }
+      0%, 100% { opacity: 0; transform: scale(0.3) rotate(0deg); }
+      50% { opacity: 1; transform: scale(1.25) rotate(90deg); }
     }
     @media (prefers-reduced-motion: reduce) {
-      .merc-rare-shine::after, .rare-twinkle { animation: none; opacity: 0; }
+      .merc-rare-shine, .merc-rare-shine::after, .rare-twinkle, .rare-aura { animation: none; }
+      .merc-rare-shine::after, .rare-twinkle { opacity: 0; }
     }
     .stat-normal {
       color: #0f172a !important;
@@ -3180,18 +3189,21 @@
       return `<span>${(JOB_DEFS[jobKey] || JOB_DEFS.warrior).icon}</span>`;
     }
 
-    // 레어 용병 초상화 위에 반짝이는 작은 별 2개
+    // 레어 용병 초상화: 뒤에 금빛 후광, 둘레에 엇갈려 반짝이는 별 5개
     function rareTwinkleHTML(rarity) {
       if (!(RARITY_DEFS[rarity] || RARITY_DEFS.N).isRare) return '';
-      return '<span class="rare-twinkle" style="top:2px;right:3px;font-size:11px">✦</span>'
-        + '<span class="rare-twinkle" style="bottom:4px;left:3px;font-size:8px;animation-delay:1.2s">✦</span>';
+      const stars = [['top:1px;right:2px', 13, 0], ['bottom:3px;left:2px', 10, 0.7], ['top:30%;left:0', 8, 1.2], ['bottom:22%;right:0', 9, 0.4], ['top:0;left:30%', 7, 1.5]];
+      return stars.map(([pos, size, delay]) => `<span class="rare-twinkle" style="${pos};font-size:${size}px;animation-delay:${delay}s">✦</span>`).join('');
+    }
+    function rareAuraHTML(rarity) {
+      return (RARITY_DEFS[rarity] || RARITY_DEFS.N).isRare ? '<span class="rare-aura"></span>' : '';
     }
 
     function getUnitPortraitHTML(jobKey, rarity = 'N', skinVariant = 0, size = 48) {
       const job = JOB_DEFS[jobKey] || JOB_DEFS.warrior;
       const sprite = getMercSprite(jobKey, skinVariant);
       if (sprite) {
-        return `<div class="relative flex items-center justify-center w-full h-full">${getSpritePortraitHTML(sprite, size)}${rareTwinkleHTML(rarity)}</div>`;
+        return `<div class="relative flex items-center justify-center w-full h-full">${rareAuraHTML(rarity)}<div class="relative">${getSpritePortraitHTML(sprite, size)}</div>${rareTwinkleHTML(rarity)}</div>`;
       }
       return `
         <div class="flex flex-col items-center justify-center w-full h-full select-none" style="color:${job.color}">
@@ -10293,7 +10305,59 @@
     }
 
     // 발 위치(0, 12)에 맞춰 스프라이트 한 프레임 그리기
-    function drawUnitSprite(ctx, u, sprite, tick, jumpY = 0) {
+    // 레어 용병 전투 이펙트용 4갈래 별
+    function drawRareSparkle(ctx, x, y, r, alpha) {
+      if (alpha <= 0.02) return;
+      ctx.save();
+      ctx.globalAlpha *= alpha;
+      ctx.translate(x, y);
+      ctx.fillStyle = '#fff7c2';
+      ctx.shadowColor = 'rgba(251, 191, 36, 1)';
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.moveTo(0, -r); ctx.quadraticCurveTo(0, 0, r, 0); ctx.quadraticCurveTo(0, 0, 0, r); ctx.quadraticCurveTo(0, 0, -r, 0); ctx.quadraticCurveTo(0, 0, 0, -r);
+      ctx.fill();
+      ctx.restore();
+    }
+    // 레어 용병: 발밑 금빛 후광과 위로 피어오르는 빛 (스프라이트 뒤에 그림)
+    function drawRareAuraBack(ctx, tick) {
+      const p = 0.5 + 0.5 * Math.sin(tick * 0.08);
+      ctx.save();
+      const g = ctx.createRadialGradient(0, 8, 2, 0, 8, 30);
+      g.addColorStop(0, `rgba(253, 224, 71, ${0.45 + p * 0.25})`);
+      g.addColorStop(0.6, `rgba(251, 191, 36, ${0.15 + p * 0.12})`);
+      g.addColorStop(1, 'rgba(251, 191, 36, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(0, 10, 30, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const col = ctx.createLinearGradient(0, 12, 0, -46);
+      col.addColorStop(0, `rgba(253, 224, 71, ${0.22 + p * 0.12})`);
+      col.addColorStop(1, 'rgba(253, 224, 71, 0)');
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.ellipse(0, -16, 18 + p * 3, 30, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    // 레어 용병: 몸 둘레를 도는 별과 위로 떠오르는 빛 알갱이 (스프라이트 앞에 그림)
+    function drawRareAuraFront(ctx, tick, topY) {
+      const midY = (topY + 12) / 2;
+      for (let i = 0; i < 4; i++) {
+        const a = tick * 0.035 + i * Math.PI / 2;
+        const x = Math.cos(a) * 24, y = midY + Math.sin(a) * 9 - 4;
+        const tw = 0.5 + 0.5 * Math.sin(tick * 0.18 + i * 1.7);
+        drawRareSparkle(ctx, x, y, 2.5 + tw * 3.5, 0.35 + tw * 0.65);
+      }
+      for (let i = 0; i < 5; i++) {
+        const t = ((tick * 0.7 + i * 23) % 60) / 60;
+        const x = Math.sin(i * 2.3 + tick * 0.02) * 16;
+        const y = 10 - t * (20 - topY);
+        drawRareSparkle(ctx, x, y, 1.6, Math.sin(t * Math.PI) * 0.9);
+      }
+    }
+
+    function drawUnitSprite(ctx, u, sprite, tick, jumpY = 0, rareGlow = false) {
       const frame = pickSpriteFrame(u, sprite, tick);
       const k = SPRITE_DRAW_H / sprite.standH;
       const dir = u.facingDir >= 0 ? 1 : -1;
@@ -10313,6 +10377,10 @@
       ctx.scale(dir, 1);
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
+      if (rareGlow) { // 실루엣을 따라 금빛이 번짐
+        ctx.shadowColor = 'rgba(251, 191, 36, 0.95)';
+        ctx.shadowBlur = 7 + 5 * (0.5 + 0.5 * Math.sin(tick * 0.08));
+      }
       ctx.drawImage(sprite.img, frame * sprite.cellW, 0, sprite.cellW, sprite.cellH,
         -sprite.anchorX * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
       ctx.restore();
@@ -10380,8 +10448,11 @@
       // 스프라이트는 머리가 토큰보다 높아서 체력바를 그만큼 위로 올림
       const headTopY = useSprite ? 12 - Math.round((sprite.topH || sprite.standH) * SPRITE_DRAW_H / sprite.standH) : -8 - tokenR;
 
+      const rareFx = useSprite && !u.isDarkMerc && (RARITY_DEFS[u.rarity] || RARITY_DEFS.N).isRare;
       if (useSprite) {
-        drawUnitSprite(ctx, u, sprite, tick, jumpY);
+        if (rareFx) drawRareAuraBack(ctx, tick);
+        drawUnitSprite(ctx, u, sprite, tick, jumpY, rareFx);
+        if (rareFx) drawRareAuraFront(ctx, tick, headTopY + jumpY);
       } else {
         ctx.save();
         ctx.translate(u.facingDir * lungeX, jumpY);
