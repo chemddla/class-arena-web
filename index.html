@@ -224,6 +224,26 @@
       background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%) !important;
       box-shadow: 0 4px 15px rgba(245, 158, 11, 0.18) !important;
     }
+    /* 레어 용병: 카드 위로 빛이 천천히 지나가고, 초상화 옆에 작은 별이 반짝임 */
+    .merc-rare-shine { position: relative; }
+    .merc-rare-shine::after {
+      content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+      background: linear-gradient(115deg, transparent 45%, rgba(255, 255, 255, 0.45) 50%, transparent 55%);
+      background-size: 260% 100%; background-repeat: no-repeat;
+      animation: mercRareShine 4.2s ease-in-out infinite;
+    }
+    @keyframes mercRareShine {
+      0% { background-position: 160% 0; }
+      45%, 100% { background-position: -60% 0; }
+    }
+    .rare-twinkle { position: absolute; pointer-events: none; color: #f59e0b; text-shadow: 0 0 4px rgba(251, 191, 36, 0.9); line-height: 1; animation: rareTwinkle 2.4s ease-in-out infinite; }
+    @keyframes rareTwinkle {
+      0%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); }
+      50% { opacity: 1; transform: scale(1) rotate(45deg); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .merc-rare-shine::after, .rare-twinkle { animation: none; opacity: 0; }
+    }
     .stat-normal {
       color: #0f172a !important;
       font-weight: 400 !important;
@@ -2467,7 +2487,7 @@
         arrow_rain: {
           id: 'arrow_rain', name: '화살비', icon: '🌧️', ccTag: '🌧️지속장판',
           manaCost: 24, cooldownTicks: 480, cooldownSec: 8.0, castSec: 0.8,
-          desc: '하늘로 화살을 쏘아 1.5칸 원형 범위에 3초간 화살비를 내려 계속 피해를 입힙니다.'
+          desc: '하늘로 화살을 쏘아 1칸 원형 범위에 3초간 화살비를 내려 계속 피해를 입힙니다.'
         },
         evasive_shot: {
           id: 'evasive_shot', name: '회피기동', icon: '🌀', ccTag: '🌀후퇴사격',
@@ -2591,6 +2611,38 @@
     function stripMercGenerationSuffix(name) {
       const m = String(name || '').match(/^(.+?)\s+\d+세$/);
       return m ? m[1].trim() || null : null;
+    }
+
+    // 반 전체 용병 이름 정리: "레오 2세"·"강철 레오"처럼 숫자나 별명이 붙은 이름을 새 이름으로 (화면 표시용)
+    // 어느 기기에서 계산해도 같은 이름이 나오도록 학생 id 순서와 용병 id로만 정함
+    function hashMercId(str) {
+      let h = 2166136261;
+      for (const ch of String(str || '')) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+      return h >>> 0;
+    }
+
+    function assignPlainMercNamesForClass(students) {
+      const list = [...(students || [])].filter(Boolean).sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      const used = new Set();
+      const needs = [];
+      list.forEach(stu => (stu.roster || []).forEach(m => {
+        if (!m || !m.name) return;
+        const noEpithet = stripMercEpithet(m.name, m.job) || m.name;
+        const plain = stripMercGenerationSuffix(noEpithet) || noEpithet;
+        if (plain === m.name) used.add(m.name); else needs.push({ stu, m, plain });
+      }));
+      needs.forEach(({ stu, m, plain }) => {
+        let name = plain;
+        if (used.has(plain)) {
+          const free = (MERC_NAME_POOL[m.job] || MERC_NAME_POOL.warrior).filter(n => !used.has(n));
+          if (free.length) name = free[hashMercId(m.id || m.name) % free.length];
+        }
+        m.name = name;
+        used.add(name);
+        // 방어 진형에 따로 저장된 같은 용병 이름도 맞춤
+        (stu.defenseFormation || []).forEach(d => { if (d && d.id === m.id) d.name = name; });
+      });
+      return needs.length;
     }
 
     // 내 용병 이름 정리: 별명·숫자 떼기 + 친구 용병과 겹치는 이름 바꾸기 (내 기록만 고칠 수 있으므로 내 용병만)
@@ -3090,11 +3142,18 @@
       return `<span>${(JOB_DEFS[jobKey] || JOB_DEFS.warrior).icon}</span>`;
     }
 
+    // 레어 용병 초상화 위에 반짝이는 작은 별 2개
+    function rareTwinkleHTML(rarity) {
+      if (!(RARITY_DEFS[rarity] || RARITY_DEFS.N).isRare) return '';
+      return '<span class="rare-twinkle" style="top:2px;right:3px;font-size:11px">✦</span>'
+        + '<span class="rare-twinkle" style="bottom:4px;left:3px;font-size:8px;animation-delay:1.2s">✦</span>';
+    }
+
     function getUnitPortraitHTML(jobKey, rarity = 'N', skinVariant = 0, size = 48) {
       const job = JOB_DEFS[jobKey] || JOB_DEFS.warrior;
       const sprite = getMercSprite(jobKey, skinVariant);
       if (sprite) {
-        return `<div class="flex items-center justify-center w-full h-full">${getSpritePortraitHTML(sprite, size)}</div>`;
+        return `<div class="relative flex items-center justify-center w-full h-full">${getSpritePortraitHTML(sprite, size)}${rareTwinkleHTML(rarity)}</div>`;
       }
       return `
         <div class="flex flex-col items-center justify-center w-full h-full select-none" style="color:${job.color}">
@@ -4210,7 +4269,7 @@
           <div onclick="openMercDetailModal('${merc.id}')"
             draggable="true"
             ondragstart="handleFormationDragStart(event, '${merc.id}')"
-            class="cursor-pointer rounded-2xl border-2 p-3 transition flex flex-col justify-between rarity-${merc.rarity} hover:shadow-lg ${
+            class="cursor-pointer rounded-2xl border-2 p-3 transition flex flex-col justify-between rarity-${merc.rarity} ${rar.isRare ? 'merc-rare-shine' : ''} hover:shadow-lg ${
               isSel ? 'ring-2 ring-blue-500 border-blue-500' : ''
             }">
             <div>
@@ -5350,7 +5409,7 @@
             const minNextBid = auc.highestBidderId ? (auc.currentBid + 50) : auc.startBid;
 
             return `
-              <div class="rounded-2xl border-2 p-3.5 flex flex-col justify-between gap-3 rarity-${m.rarity}">
+              <div class="rounded-2xl border-2 p-3.5 flex flex-col justify-between gap-3 rarity-${m.rarity} ${(RARITY_DEFS[m.rarity] || RARITY_DEFS.N).isRare ? 'merc-rare-shine' : ''}">
                 <div>
                   <div class="flex items-center justify-between gap-1 mb-2">
                     <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${rar.badgeClass}">${rar.name}</span>
@@ -5923,7 +5982,7 @@
         const statCmp = getMercInitialStatComparison(cand);
 
         return `
-          <div class="rounded-2xl border-2 p-4 flex flex-col justify-between rarity-${cand.rarity} ${cand.hired ? 'opacity-45' : ''}">
+          <div class="rounded-2xl border-2 p-4 flex flex-col justify-between rarity-${cand.rarity} ${(RARITY_DEFS[cand.rarity] || RARITY_DEFS.N).isRare ? 'merc-rare-shine' : ''} ${cand.hired ? 'opacity-45' : ''}">
             <div>
               <div class="flex items-center justify-between mb-2">
                 <div class="flex items-center gap-1.5">
@@ -9648,9 +9707,9 @@
         return true;
       }
       if (sk === 'arrow_rain') {
-        // 화살비: 1.5칸 원형에 3초간 지속 피해
+        // 화살비: 1칸 원형에 3초간 지속 피해
         if (!target) return true;
-        spawnZone('arrow_rain', unit, target.x, target.y, C * 1.5, 180, 20, unit.atk * 0.24);
+        spawnZone('arrow_rain', unit, target.x, target.y, C * 1, 180, 20, unit.atk * 0.24);
         playCombatSfx('arrow');
         addBattleLog(`🌧️ [궁수] ${unit.name}의 화살비!`);
         return true;
@@ -9770,7 +9829,7 @@
         }
         case 'arrow_rain': {
           if (!enemyTarget || distToPrimary > unit.range + 60) return -1;
-          const n = countNear(enemies, enemyTarget.x, enemyTarget.y, C * 1.5);
+          const n = countNear(enemies, enemyTarget.x, enemyTarget.y, C * 1);
           if (n >= 2) return 91;
           return (enemyTarget.statuses.stun > 60 || enemyTarget.statuses.freeze > 60) ? 85 : 64;
         }
@@ -13376,9 +13435,11 @@
         const ownOnly = !canManageCurrentClass(); // 학생 기기: 친구 기록은 언제나 서버 값을 따름
         const result = [];
         const seen = new Set();
-        Object.keys(remoteStudents).forEach(id => {
-          const rs = normalizeRemoteStudent(remoteStudents[id], id, profiles[id]);
-          if (!rs) return;
+        const normalizedRemote = Object.keys(remoteStudents)
+          .map(id => normalizeRemoteStudent(remoteStudents[id], id, profiles[id]))
+          .filter(Boolean);
+        assignPlainMercNamesForClass(normalizedRemote);
+        normalizedRemote.forEach(rs => {
           seen.add(rs.id);
           const remoteSig = syncSig(rs);
           const local = localById.get(rs.id);
@@ -16290,8 +16351,6 @@
       if (grid) {
         grid.innerHTML = (state.students || []).map(s => {
           const hasPw = StudentPw.hasPassword(s);
-          const leadMerc = (s.roster || []).find(m => m.deployed) || (s.roster || [])[0];
-          const job = leadMerc ? (JOB_DEFS[leadMerc.job] || JOB_DEFS.warrior) : JOB_DEFS.warrior;
           const totalPower = calcStudentCombatPower(s);
           return `
             <div onclick="openLobbyStudentProfileAuth('${s.id}')"
@@ -16302,9 +16361,8 @@
               }">
               <div class="flex items-start justify-between gap-2">
                 <div class="flex items-center gap-2.5">
-                  <div class="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-2xl shrink-0 overflow-hidden">
-                    ${leadMerc ? getMercIconHTML(leadMerc.job, leadMerc.skinVariant, 46) : job.icon}
-                  </div>
+                  <!-- 학생이 직접 꾸민 도트 이미지를 넣을 자리 (지금은 비워 둠) -->
+                  <div data-student-avatar="${s.id}" class="w-12 h-12 rounded-2xl bg-slate-900 border-2 border-dashed border-slate-700 shrink-0 overflow-hidden"></div>
                   <div>
                     <div class="font-title text-lg text-white">${s.name}</div>
                     <div class="text-[11px] text-slate-400 font-semibold">보유 용병 ${(s.roster || []).length}명 · 🏰 ${s.towerFloor || 1}층</div>
