@@ -1289,6 +1289,7 @@
                   <p class="text-xs text-slate-400 mt-0.5" id="pvpServerStatusDesc">
                     <strong>결투방을 만들고</strong> 친구가 들어와 <strong>[✋ 준비완료]</strong>를 누르면, 방장이 결투를 시작해요!
                     <strong>🗡️ 1:1 대결방</strong>은 용병 1명씩 골라 <strong>직접 조종</strong>해서 겨뤄요.
+                    <strong>👥 팀전방</strong>은 친구들이 블루·레드팀으로 나뉘어 각자 용병 1명을 조종해요. (최대 5:5)
                   </p>
                 </div>
               </div>
@@ -1300,6 +1301,9 @@
                 </button>
                 <button onclick="createPvpLobbyRoom('duel1v1')" class="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow flex items-center gap-1.5 shrink-0">
                   🗡️ 1:1 대결방
+                </button>
+                <button onclick="createPvpLobbyRoom('teamLive')" class="px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs shadow flex items-center gap-1.5 shrink-0">
+                  👥 팀전방
                 </button>
               </div>
             </div>
@@ -2355,8 +2359,8 @@
         },
         teleport: {
           id: 'teleport', name: '텔레포트', icon: '🔮', ccTag: '🔮순간이동',
-          manaCost: 18, cooldownTicks: 360, cooldownSec: 6.0, castSec: 0.15,
-          desc: '5칸 안으로 순간이동한 뒤 5초간 공격력 +20%. 적에게서 벗어나거나 멀리 있는 적에게 다가갈 때 사용합니다.'
+          manaCost: 18, cooldownTicks: 252, cooldownSec: 4.2, castSec: 0,
+          desc: '3칸 안으로 순간이동한 뒤 5초간 공격력 +20%. 적에게서 벗어나거나 멀리 있는 적에게 다가갈 때 사용합니다.'
         }
       },
       healer: {
@@ -7936,7 +7940,7 @@
         case 'ice_arrow': case 'thunderbolt': case 'fireball': return u.range + 90;
         case 'poison_boom': return u.range + 80;
         case 'arrow_rain': return u.range + 60;
-        case 'teleport': return GRID_CELL_SIZE * 5;
+        case 'teleport': return GRID_CELL_SIZE * 3;
         default: return u.range + 90;
       }
     }
@@ -8456,6 +8460,7 @@
       sim.controllers = {};
       sim.forfeitTeam = null;
       sim.duel1v1 = false;   // 1:1 대결·관전 표시는 그 전투에만 (다음 전투에 남지 않게)
+      sim.teamLive = false;
       sim.spectator = false;
       battleControl.mode = 'auto';
       battleControl.unitId = null;
@@ -9795,7 +9800,7 @@
 
     // 텔레포트할 곳: 'escape' 는 적에게서 멀고 공격은 닿는 곳, 'approach' 는 목표 적이 사거리 끝에 걸리는 곳
     function chooseTeleportSpot(unit, enemies, target, mode) {
-      const maxDist = GRID_CELL_SIZE * 5;
+      const maxDist = GRID_CELL_SIZE * 3;
       if (unit.teleportAim) {
         const a = Math.atan2(unit.teleportAim.y - unit.y, unit.teleportAim.x - unit.x);
         const d = Math.min(maxDist, Math.hypot(unit.teleportAim.x - unit.x, unit.teleportAim.y - unit.y));
@@ -12110,6 +12115,12 @@
       mgRewardedGames.add(st.gameId);
       const my = mgMySeat(st);
       if (my < 0) return;
+      // 새로고침해도 같은 게임 보상을 또 받지 않게 학생 기록에도 남김 (최근 30판)
+      const stuMg = getActiveStudent();
+      if (!stuMg) return;
+      const doneIds = Array.isArray(stuMg.mgRewardedIds) ? stuMg.mgRewardedIds : [];
+      if (doneIds.includes(st.gameId)) return;
+      stuMg.mgRewardedIds = [...doneIds, st.gameId].slice(-30);
       if (winnerSeats.includes(my)) {
         const got = grantDailyReward(getActiveStudent(), 'minigame', amount);
         saveState();
@@ -14205,8 +14216,337 @@
         </div>`;
     }
 
+    // ===== 실시간 팀전 (mode: 'teamLive') =====
+    // 친구들이 블루·레드팀으로 나뉘어 각자 보유 용병 1명을 골라 직접 조종 (팀마다 최대 5명)
+    // 방 정보: members/{학생id} = { team, pickId, ready, ai, snap(고른 용병만 담은 작은 기록) } — 각자 자기 칸만 고쳐서 동시에 바꿔도 안 겹침
+    const TEAM_LIVE_MAX_PER_SIDE = 5;
+    const isTeamLiveRoom = room => Boolean(room && room.mode === 'teamLive');
+    function teamMembersOf(room) {
+      return Object.values((room && room.members) || {}).filter(m => m && m.id).sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+    }
+    function teamSideMembers(room, side) {
+      return teamMembersOf(room).filter(m => m.team === side);
+    }
+    function isPvpRoomMember(room, stuId) {
+      if (!room || !stuId) return false;
+      return room.hostId === stuId || room.guestId === stuId || Boolean(isTeamLiveRoom(room) && room.members && room.members[stuId]);
+    }
+    function teamMemberSnap(stu, merc) {
+      return { id: stu.id, name: stu.name, num: stu.num || null, roster: merc ? [JSON.parse(JSON.stringify(merc))] : [] };
+    }
+    function makeTeamMember(stu, team, extra = {}) {
+      return { id: stu.id, name: stu.name, num: stu.num || null, team, pickId: null, power: 0, ready: false, ai: false, snap: teamMemberSnap(stu, null), joinedAt: Date.now(), ...extra };
+    }
+    function teamLiveStartState(room) {
+      const members = teamMembersOf(room);
+      const nb = members.filter(m => m.team === 'blue').length;
+      const nr = members.filter(m => m.team === 'red').length;
+      const allPicked = members.length > 0 && members.every(m => m.pickId);
+      const allReady = members.filter(m => m.id !== room.hostId).every(m => m.ready);
+      const bothSides = nb >= 1 && nr >= 1;
+      return { members, nb, nr, allPicked, allReady, bothSides, equal: nb === nr, canStart: allPicked && allReady && bothSides };
+    }
+
+    // 방의 일부 칸만 고침 (예: { 'members/학생id': {...}, status: 'playing' }) — null이면 지움
+    async function saveTeamRoomPatch(roomId, patch) {
+      const room = livePvpRoomsCache[roomId];
+      if (!room) return;
+      Object.entries(patch).forEach(([path, val]) => {
+        const parts = path.split('/');
+        let o = room;
+        for (let i = 0; i < parts.length - 1; i++) { o[parts[i]] = o[parts[i]] || {}; o = o[parts[i]]; }
+        if (val === null) delete o[parts[parts.length - 1]];
+        else o[parts[parts.length - 1]] = val;
+      });
+      renderLivePvpRoomsList();
+      checkAutoStartMatchedPvpRoom();
+      const db = RealtimePvpService.initFirebaseClientSafe();
+      const classCode = String(state.classCode || '').trim().toUpperCase();
+      if (db && classCode) {
+        try { await db.ref(`classes/${classCode}/pvp_rooms/${roomId}`).update(JSON.parse(JSON.stringify(patch))); } catch (e) {}
+      }
+    }
+    function teamMemberRef(roomId, stuId) {
+      const db = RealtimePvpService.initFirebaseClientSafe();
+      const classCode = String(state.classCode || '').trim().toUpperCase();
+      return db && classCode ? db.ref(`classes/${classCode}/pvp_rooms/${roomId}/members/${stuId}`) : null;
+    }
+
+    window.joinTeamLiveRoom = async function (roomId) {
+      const me = getActiveStudent();
+      const room = livePvpRoomsCache[roomId];
+      if (!room || !me || room.status !== 'waiting') return;
+      if (!(me.roster || []).length) { showNotice('⚠️ 팀전에 들어가려면 먼저 용병을 1명 이상 고용해 주세요!'); return; }
+      currentJoinedPvpRoomId = roomId;
+      if (isPvpRoomMember(room, me.id)) { renderLivePvpRoomsList(); return; }
+      const nb = teamSideMembers(room, 'blue').length;
+      const nr = teamSideMembers(room, 'red').length;
+      if (nb >= TEAM_LIVE_MAX_PER_SIDE && nr >= TEAM_LIVE_MAX_PER_SIDE) { showNotice('⚠️ 팀전 방이 꽉 찼어요! (5:5)'); return; }
+      const side = nr < nb ? 'red' : (nb < nr ? 'blue' : 'red');
+      await saveTeamRoomPatch(roomId, { [`members/${me.id}`]: makeTeamMember(me, nr >= TEAM_LIVE_MAX_PER_SIDE ? 'blue' : (nb >= TEAM_LIVE_MAX_PER_SIDE ? 'red' : side)) });
+      // 브라우저를 닫거나 끊기면 내 자리를 자동으로 비움
+      try { teamMemberRef(roomId, me.id)?.onDisconnect().remove(); } catch (e) {}
+      showRewardBanner(`🚪 [${room.title}] 팀전에 들어왔어요! 조종할 용병을 고르고 [✋ 준비완료]를 눌러 주세요.`);
+    };
+
+    window.switchTeamLiveSide = async function (roomId) {
+      const me = getActiveStudent();
+      const room = livePvpRoomsCache[roomId];
+      const mem = room && me && room.members && room.members[me.id];
+      if (!mem || room.status !== 'waiting') return;
+      const other = mem.team === 'blue' ? 'red' : 'blue';
+      if (teamSideMembers(room, other).length >= TEAM_LIVE_MAX_PER_SIDE) { showNotice('⚠️ 그 팀은 이미 5명이에요.'); return; }
+      await saveTeamRoomPatch(roomId, { [`members/${me.id}/team`]: other, [`members/${me.id}/ready`]: room.hostId === me.id });
+    };
+
+    window.pickTeamLiveMerc = async function (roomId, mercId) {
+      const me = getActiveStudent();
+      const room = livePvpRoomsCache[roomId];
+      const mem = room && me && room.members && room.members[me.id];
+      if (!mem || room.status !== 'waiting') return;
+      if (mem.ready && room.hostId !== me.id) { showNotice('⚠️ 준비완료를 취소해야 용병을 바꿀 수 있어요.'); return; }
+      const merc = (me.roster || []).find(m => m.id === mercId);
+      if (!merc) return;
+      await saveTeamRoomPatch(roomId, {
+        [`members/${me.id}/pickId`]: merc.id,
+        [`members/${me.id}/power`]: calcMercCombatPower(merc, me),
+        [`members/${me.id}/snap`]: teamMemberSnap(me, merc)
+      });
+    };
+
+    window.toggleTeamLiveReady = async function (roomId) {
+      const me = getActiveStudent();
+      const room = livePvpRoomsCache[roomId];
+      const mem = room && me && room.members && room.members[me.id];
+      if (!mem || room.status !== 'waiting') return;
+      if (!mem.ready && !mem.pickId) { showNotice('⚠️ 먼저 조종할 용병 1명을 골라 주세요!'); return; }
+      await saveTeamRoomPatch(roomId, { [`members/${me.id}/ready`]: !mem.ready });
+    };
+
+    // 방장: 연습용 AI 친구를 인원이 적은 팀에 넣음 (AI가 조종)
+    window.addTeamLiveAiFriend = async function (roomId) {
+      const me = getActiveStudent();
+      const room = livePvpRoomsCache[roomId];
+      if (!room || !me || room.hostId !== me.id || room.status !== 'waiting') return;
+      const nb = teamSideMembers(room, 'blue').length;
+      const nr = teamSideMembers(room, 'red').length;
+      const side = nr < nb ? 'red' : 'blue';
+      if (teamSideMembers(room, side).length >= TEAM_LIVE_MAX_PER_SIDE) { showNotice('⚠️ 두 팀 모두 꽉 찼어요!'); return; }
+      const others = state.students.filter(st => st.id !== me.id && !isPvpRoomMember(room, st.id) && (st.roster || []).length);
+      const friend = others[Math.floor(Math.random() * others.length)];
+      if (!friend) { showNotice('⚠️ 넣을 수 있는 친구가 없어요.'); return; }
+      const best = [...friend.roster].sort((a, b) => calcMercCombatPower(b, friend) - calcMercCombatPower(a, friend))[0];
+      await saveTeamRoomPatch(roomId, {
+        [`members/${friend.id}`]: makeTeamMember(friend, side, { ai: true, ready: true, pickId: best.id, power: calcMercCombatPower(best, friend), snap: teamMemberSnap(friend, best) })
+      });
+    };
+
+    window.removeTeamLiveAiFriend = async function (roomId, stuId) {
+      const me = getActiveStudent();
+      const room = livePvpRoomsCache[roomId];
+      const mem = room && room.members && room.members[stuId];
+      if (!room || !me || room.hostId !== me.id || !mem || !mem.ai) return;
+      await saveTeamRoomPatch(roomId, { [`members/${stuId}`]: null });
+    };
+
+    // 방장: 시작 (fill = 인원이 적은 팀에 팀원 용병을 무작위로 채워서 시작)
+    window.startTeamLiveBattle = async function (roomId, fill = false) {
+      const me = getActiveStudent();
+      const room = livePvpRoomsCache[roomId];
+      if (!room || !me || room.hostId !== me.id || room.status !== 'waiting') return;
+      const st = teamLiveStartState(room);
+      if (!st.bothSides) { showNotice('⚠️ 블루팀과 레드팀에 1명 이상씩 있어야 해요!'); return; }
+      if (!st.allPicked) { showNotice('⚠️ 아직 용병을 고르지 않은 친구가 있어요!'); return; }
+      if (!st.allReady) { showNotice('⚠️ 아직 [✋ 준비완료]를 누르지 않은 친구가 있어요!'); return; }
+      if (!st.equal && !fill) { showNotice('⚠️ 두 팀 인원이 달라요. [부족한 자리 채우고 시작]을 눌러 주세요.'); return; }
+      await saveTeamRoomPatch(roomId, { status: 'playing', startedAt: Date.now(), fill: !st.equal });
+    };
+
+    function renderTeamLiveRoomHTML(room, me) {
+      const isHost = me && room.hostId === me.id;
+      const mem = me && room.members ? room.members[me.id] : null;
+      const st = teamLiveStartState(room);
+      const pickLabel = m => {
+        const merc = (m.snap && m.snap.roster || []).find(x => x && x.id === m.pickId);
+        if (!merc) return '<span class="text-slate-400">용병 고르는 중...</span>';
+        const job = JOB_DEFS[merc.job] || JOB_DEFS.warrior;
+        return `<span class="text-amber-300">${job.icon} ${merc.name} Lv.${merc.level}</span> · ⚔️ ${Number(m.power || 0).toLocaleString()}`;
+      };
+      const column = side => {
+        const list = teamSideMembers(room, side);
+        const blue = side === 'blue';
+        const rows = list.map(m => `
+          <div class="rounded-xl border-2 ${m.ready || m.id === room.hostId ? 'border-emerald-500/70' : 'border-slate-800'} bg-slate-900 px-3 py-2 flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-sm font-extrabold text-white truncate">${m.id === room.hostId ? '👑 ' : ''}${m.ai ? '🤖 ' : ''}${m.name}${me && m.id === me.id ? ' <span class="text-[10px] px-1.5 rounded bg-indigo-600 text-white">나</span>' : ''}</div>
+              <div class="text-[11px] font-bold">${pickLabel(m)}</div>
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+              <span class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold ${m.ready || m.id === room.hostId ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}">${m.id === room.hostId ? '방장' : (m.ai ? 'AI' : (m.ready ? '✅ 준비' : '⏳ 대기'))}</span>
+              ${isHost && m.ai ? `<button onclick="removeTeamLiveAiFriend('${room.roomId}', '${m.id}')" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px] font-bold">빼기</button>` : ''}
+            </div>
+          </div>`).join('');
+        const empty = Array.from({ length: Math.max(0, TEAM_LIVE_MAX_PER_SIDE - list.length) }).map(() =>
+          '<div class="rounded-xl border-2 border-dashed border-slate-800 px-3 py-2 text-[11px] text-slate-600 font-bold">빈 자리</div>').join('');
+        return `
+          <div class="bg-slate-950 border-2 ${blue ? 'border-sky-500/50' : 'border-rose-500/50'} rounded-2xl p-3 flex flex-col gap-2">
+            <div class="flex items-center justify-between">
+              <span class="font-title text-lg ${blue ? 'text-sky-300' : 'text-rose-300'}">${blue ? '🔵 블루팀' : '🔴 레드팀'}</span>
+              <span class="text-xs font-extrabold text-slate-400">${list.length} / ${TEAM_LIVE_MAX_PER_SIDE}명</span>
+            </div>
+            ${rows}${empty}
+          </div>`;
+      };
+      const locked = mem && mem.ready && !isHost;
+      const roster = me ? [...(me.roster || [])].sort((a, b) => calcMercCombatPower(b, me) - calcMercCombatPower(a, me)) : [];
+      const picker = mem && !mem.ai ? `
+        <div class="bg-slate-950 border border-amber-500/40 rounded-2xl p-4 flex flex-col gap-3">
+          <div class="text-sm font-extrabold text-white">🎮 내가 조종할 용병 1명 고르기 <span class="text-[11px] text-slate-400 font-bold">· 팀전은 직접 조종(수동 전투)으로 해요</span></div>
+          ${locked ? '<div class="text-[11px] text-slate-500 font-bold">준비완료를 취소하면 용병을 바꿀 수 있어요</div>' : ''}
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 max-h-64 overflow-y-auto pr-1">
+            ${roster.map(m => {
+              const job = JOB_DEFS[m.job] || JOB_DEFS.warrior;
+              const picked = m.id === mem.pickId;
+              return `<button type="button" ${locked ? 'disabled' : ''} onclick="pickTeamLiveMerc('${room.roomId}', '${m.id}')"
+                class="rounded-xl border-2 p-2 flex items-center gap-2 text-left transition ${picked ? 'border-amber-500 bg-amber-500/15 shadow' : 'border-slate-800 bg-slate-900 hover:border-indigo-500'} ${locked && !picked ? 'opacity-40' : ''}">
+                <span class="w-10 h-10 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center overflow-hidden shrink-0">${getMercIconHTML(m.job, m.skinVariant, 38)}</span>
+                <span class="min-w-0">
+                  <span class="block text-xs font-extrabold text-white truncate">${picked ? '✅ ' : ''}${m.name}</span>
+                  <span class="block text-[10px] text-slate-400">${job.name} · Lv.${m.level} · ⚔️ ${calcMercCombatPower(m, me).toLocaleString()}</span>
+                </span>
+              </button>`;
+            }).join('') || '<div class="text-xs text-slate-400">고용한 용병이 없어요.</div>'}
+          </div>
+        </div>` : '';
+      const statusText = !st.bothSides
+        ? '📢 블루팀과 레드팀에 1명 이상씩 있어야 시작할 수 있어요.'
+        : !st.allPicked ? '⏳ 아직 용병을 고르지 않은 친구가 있어요.'
+        : !st.allReady ? '⏳ 모두 [✋ 준비완료]를 누르기를 기다리는 중이에요.'
+        : st.equal ? `🎉 모두 준비됐어요! ${st.nb}:${st.nr} 팀전을 시작할 수 있어요.`
+        : `⚖️ 인원이 달라요 (${st.nb}:${st.nr}). 적은 팀은 팀원이 가진 용병이 무작위로 채워져요(AI 조종).`;
+      const myBtns = mem ? `
+        ${!locked ? `<button onclick="switchTeamLiveSide('${room.roomId}')" class="px-4 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-xs">🔄 ${mem.team === 'blue' ? '레드팀으로' : '블루팀으로'} 가기</button>` : ''}
+        ${!isHost ? `<button onclick="toggleTeamLiveReady('${room.roomId}')" class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg transition ${mem.ready ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-emerald-600 hover:bg-emerald-500 text-white animate-pulse'}">${mem.ready ? '↺ 준비완료 취소' : '✋ 준비완료 누르기!'}</button>` : ''}` : '';
+      const hostBtns = isHost ? `
+        <button onclick="addTeamLiveAiFriend('${room.roomId}')" class="px-4 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-extrabold text-xs border border-slate-700">🤖 AI 친구 넣기</button>
+        ${st.canStart && !st.equal
+          ? `<button onclick="startTeamLiveBattle('${room.roomId}', true)" class="px-6 py-3 rounded-2xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-sm shadow-lg animate-bounce">⚖️ 부족한 자리 채우고 시작!</button>`
+          : `<button onclick="startTeamLiveBattle('${room.roomId}')" ${st.canStart ? '' : 'disabled'} class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg transition ${st.canStart ? 'bg-rose-600 hover:bg-rose-500 text-white animate-bounce' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}">👥 팀전 시작!</button>`}` : '';
+      return `
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-1 rounded-lg bg-sky-500/20 text-sky-300 font-extrabold text-xs">👥 실시간 팀전 대기실</span>
+            <h4 class="font-title text-xl text-white">${room.title || `${room.hostName}의 팀전방`}</h4>
+          </div>
+          <button onclick="leaveOrClosePvpRoom('${room.roomId}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300">🚪 ${isHost ? '방 닫기' : '방 나가기'}</button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">${column('blue')}${column('red')}</div>
+        ${picker}
+        <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
+          <div class="text-xs font-bold text-slate-300">${statusText}</div>
+          <div class="flex flex-wrap items-center gap-2">${myBtns}${hostBtns}</div>
+        </div>`;
+    }
+
+    function renderTeamLiveRoomCard(r, myStu) {
+      const isMine = myStu && isPvpRoomMember(r, myStu.id);
+      const st = teamLiveStartState(r);
+      const full = st.nb >= TEAM_LIVE_MAX_PER_SIDE && st.nr >= TEAM_LIVE_MAX_PER_SIDE;
+      const humans = st.members.filter(m => !m.ai && m.id !== r.hostId).length;
+      return `
+        <div class="bg-slate-950 border-2 ${isMine ? 'border-amber-500/60' : 'border-slate-800'} rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${r.status === 'waiting' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">${r.status === 'waiting' ? `🟢 모집 중 (${st.members.length}/10명)` : '🔥 팀전 진행중'}</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-sky-500/20 text-sky-300">👥 팀전 ${st.nb}:${st.nr}</span>
+              <span class="font-bold text-sm text-white">${r.title || `${r.hostName}의 팀전방`}</span>
+            </div>
+            <div class="text-xs text-slate-400 mt-1">👑 방장: <strong class="text-white">${r.hostName}</strong> · 🔵 ${teamSideMembers(r, 'blue').map(m => m.name).join(', ') || '-'} · 🔴 ${teamSideMembers(r, 'red').map(m => m.name).join(', ') || '-'}</div>
+          </div>
+          <div>
+            ${r.status === 'waiting'
+              ? (isMine
+                  ? '<span class="px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 font-extrabold text-xs">참여 중인 방</span>'
+                  : (full
+                      ? '<span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-500 font-bold text-xs">정원 초과 (5:5)</span>'
+                      : `<button onclick="joinTeamLiveRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs shadow">🚪 팀전 들어가기</button>`))
+              : (isMine
+                  ? '<span class="px-3 py-1.5 rounded-xl bg-rose-500/20 text-rose-300 font-bold text-xs">경기 진행중</span>'
+                  : (humans
+                      ? `<button onclick="spectatePvpRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 관전하기</button>`
+                      : '<span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-400 font-bold text-xs">연습 경기 진행중</span>'))}
+          </div>
+        </div>`;
+    }
+
+    // 팀전 유닛 만들기: 각자 고른 용병 1명씩 (팀원 순서대로 위에서부터), 인원이 다르면 적은 팀에 팀원 용병을 무작위로 채움(AI)
+    function buildTeamLiveUnits(r) {
+      const sides = { blue: [], red: [] };
+      const usedIds = new Set();
+      ['blue', 'red'].forEach(side => {
+        teamSideMembers(r, side).slice(0, TEAM_LIVE_MAX_PER_SIDE).forEach(m => {
+          const stu = state.students.find(x => x.id === m.id) || m.snap;
+          const merc = duelPickedMerc(stu, m.snap, m.pickId);
+          if (!merc) return;
+          usedIds.add(merc.id);
+          sides[side].push({ stu, merc, ownerId: m.ai ? null : m.id, label: m.name });
+        });
+      });
+      if (!sides.blue.length || !sides.red.length) return null;
+      if (r.fill && sides.blue.length !== sides.red.length) {
+        const small = sides.blue.length < sides.red.length ? 'blue' : 'red';
+        const want = Math.min(TEAM_LIVE_MAX_PER_SIDE, Math.max(sides.blue.length, sides.red.length));
+        const pool = [];
+        teamSideMembers(r, small).forEach(m => {
+          const stu = state.students.find(x => x.id === m.id) || m.snap;
+          (stu && stu.roster ? (Array.isArray(stu.roster) ? stu.roster : Object.values(stu.roster)) : []).forEach(merc => {
+            if (merc && merc.id && !usedIds.has(merc.id)) pool.push({ stu, merc, ownerId: null, label: `🤖${m.name}` });
+          });
+        });
+        for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+        while (sides[small].length < want && pool.length) {
+          const e = pool.pop();
+          usedIds.add(e.merc.id);
+          sides[small].push(e);
+        }
+      }
+      const toUnits = (side) => sides[side].map((e, idx) => {
+        const u = createSimUnit({ ...e.merc, row: idx, col: raidMercCol(e.merc) }, e.stu, side, 1.0);
+        u.name = `[${e.label}]${e.merc.name}`;
+        if (e.ownerId) u.liveOwnerId = e.ownerId;
+        return u;
+      });
+      return { blueUnits: toUnits('blue'), redUnits: toUnits('red') };
+    }
+
     window.createPvpLobbyRoom = async function (roomMode = 'team') {
       const myStu = getActiveStudent();
+      if (roomMode === 'teamLive') {
+        if (!myStu || !(myStu.roster || []).length) { showNotice('⚠️ 팀전방을 만들려면 먼저 용병을 1명 이상 고용해 주세요!'); return; }
+        const titleInp = document.getElementById('pvpNewRoomTitleInput');
+        const customTitle = cleanUserText(titleInp?.value, 24) || `${myStu.name}의 실시간 팀전방`;
+        if (titleInp) titleInp.value = '';
+        const roomId = 'pvp_' + myStu.id;
+        launchedLiveRoomIds.delete(roomId);
+        currentJoinedPvpRoomId = roomId;
+        await savePvpRoomData(roomId, {
+          roomId,
+          title: customTitle,
+          hostId: myStu.id,
+          hostNum: myStu.num,
+          hostName: myStu.name,
+          hostPower: 0,
+          guestId: null,
+          guestReady: false,
+          mode: 'teamLive',
+          members: { [myStu.id]: makeTeamMember(myStu, 'blue', { ready: true }) },
+          status: 'waiting',
+          createdAt: Date.now()
+        });
+        armHostRoomAutoCleanup([`pvp_rooms/${roomId}`]);
+        showRewardBanner(`👥 [${customTitle}] 팀전방을 만들었어요! 친구들이 들어와 팀을 고르고 준비완료를 누르면 시작할 수 있어요.`);
+        return;
+      }
       const duel = roomMode === 'duel1v1';
       if (duel && (!myStu || !(myStu.roster || []).length)) {
         showNotice('⚠️ 1:1 대결방을 만들려면 먼저 용병을 1명 이상 고용해 주세요!');
@@ -14253,6 +14593,7 @@
       const myStu = getActiveStudent();
       const room = livePvpRoomsCache[roomId];
       if (!room) return;
+      if (isTeamLiveRoom(room)) return joinTeamLiveRoom(roomId);
       if (isDuelRoom(room) ? !(myStu && (myStu.roster || []).length) : (!myStu || !myStu.roster || !myStu.roster.some(m => m.deployed))) {
         showNotice(isDuelRoom(room)
           ? '⚠️ 1:1 대결방에 들어가려면 먼저 용병을 1명 이상 고용해 주세요!'
@@ -14354,6 +14695,10 @@
       if (room.hostId === myStu.id) {
         await removePvpRoomData(roomId);
         showNotice('🚪 개설한 실시간 결투 대기방을 닫았습니다.');
+      } else if (isTeamLiveRoom(room) && room.members && room.members[myStu.id]) {
+        try { teamMemberRef(roomId, myStu.id)?.onDisconnect().cancel(); } catch (e) {}
+        await saveTeamRoomPatch(roomId, { [`members/${myStu.id}`]: null });
+        showNotice('🚪 팀전방에서 나왔어요.');
       } else if (room.guestId === myStu.id) {
         room.guestId = null;
         room.guestNum = null;
@@ -14707,9 +15052,14 @@
       if (badge) badge.textContent = `대기방 ${rooms.length}개`;
 
       // 내가 현재 속해 있는 방 확인
-      const myRoom = rooms.find(r => myStu && (r.roomId === currentJoinedPvpRoomId || r.hostId === myStu.id || r.guestId === myStu.id));
+      const myRoom = rooms.find(r => myStu && (r.roomId === currentJoinedPvpRoomId ? (!isTeamLiveRoom(r) || isPvpRoomMember(r, myStu.id)) : isPvpRoomMember(r, myStu.id)));
       if (waitPanel) {
-        if (myRoom && myRoom.status === 'waiting') {
+        if (myRoom && myRoom.status === 'waiting' && isTeamLiveRoom(myRoom)) {
+          currentJoinedPvpRoomId = myRoom.roomId;
+          pvpFormationDraft = null;
+          waitPanel.classList.remove('hidden');
+          waitPanel.innerHTML = renderTeamLiveRoomHTML(myRoom, myStu);
+        } else if (myRoom && myRoom.status === 'waiting') {
           currentJoinedPvpRoomId = myRoom.roomId;
           const isHost = myStu && myRoom.hostId === myStu.id;
           const isGuest = myStu && myRoom.guestId === myStu.id;
@@ -14846,6 +15196,7 @@
         return;
       }
       box.innerHTML = rooms.map(r => {
+        if (isTeamLiveRoom(r)) return renderTeamLiveRoomCard(r, myStu);
         const isMyRoom = myStu && (r.hostId === myStu.id || r.guestId === myStu.id);
         const hasGuest = Boolean(r.guestId);
         return `
@@ -14885,6 +15236,7 @@
 
     // 결투방의 양쪽 유닛 만들기 (1:1은 고른 용병 1명씩 가운데 줄에서 마주 보고, 5:5는 대기실에서 저장한 진형대로)
     function buildLiveRoomUnits(r, blueStu, redStu) {
+      if (isTeamLiveRoom(r)) return buildTeamLiveUnits(r);
       if (isDuelRoom(r)) {
         const bm = duelPickedMerc(blueStu, r.hostStudentSnapshot, r.hostPickId);
         const rm = duelPickedMerc(redStu, r.guestStudentSnapshot, r.guestPickId);
@@ -14905,16 +15257,18 @@
       const me = getActiveStudent();
       const r = livePvpRoomsCache[roomId];
       if (!r || r.status !== 'playing') { showNotice('⚠️ 지금 진행 중인 결투가 아니에요.'); return; }
-      if (me && (r.hostId === me.id || r.guestId === me.id)) return;
+      if (me && isPvpRoomMember(r, me.id)) return;
       if (r.practiceFriend) { showNotice('⚠️ 연습 친구와 하는 결투는 방장 화면에서만 진행돼서 관전할 수 없어요.'); return; }
       if (sim.running && sim.mode !== 'idle_preview') { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
       const blueStu = state.students.find(x => x.id === r.hostId) || r.hostStudentSnapshot;
       const redStu = state.students.find(x => x.id === r.guestId) || r.guestStudentSnapshot;
-      const built = blueStu && redStu ? buildLiveRoomUnits(r, blueStu, redStu) : null;
+      const built = isTeamLiveRoom(r) ? buildTeamLiveUnits(r) : (blueStu && redStu ? buildLiveRoomUnits(r, blueStu, redStu) : null);
       if (!built) { showNotice('⚠️ 결투 정보를 불러오지 못했어요.'); return; }
       launchSimulation({
         mode: 'pvp_realtime',
-        title: `📺 관전 중: ${r.hostName} vs ${r.guestName}${isDuelRoom(r) ? ' (1:1 용병 대결)' : ' (5:5 결투)'}`,
+        title: isTeamLiveRoom(r)
+          ? `📺 관전 중: ${r.hostName}의 팀전 (${built.blueUnits.length}:${built.redUnits.length})`
+          : `📺 관전 중: ${r.hostName} vs ${r.guestName}${isDuelRoom(r) ? ' (1:1 용병 대결)' : ' (5:5 결투)'}`,
         blueStudent: blueStu,
         redStudent: redStu,
         customBlueUnits: built.blueUnits,
@@ -14933,7 +15287,7 @@
       document.getElementById('battleControlChooser')?.classList.add('hidden');
       renderBattleControlHud(true);
       addBattleLog(`📺 [관전] ${r.hostName} vs ${r.guestName} 결투를 보고 있어요. (WASD·드래그로 화면 이동)`);
-      startLiveBattleNet(roomId, 'guest', r.startedAt, true);
+      startLiveBattleNet(roomId, 'guest', r.startedAt, true, isTeamLiveRoom(r));
     };
 
     function checkAutoStartMatchedPvpRoom() {
@@ -14944,6 +15298,11 @@
         if (r && r.status === 'waiting' && r.roomId) launchedLiveRoomIds.delete(r.roomId);
         if (!r || r.status !== 'playing' || !r.roomId) return;
         if (launchedLiveRoomIds.has(r.roomId)) return;
+        if (isTeamLiveRoom(r)) {
+          if (!isPvpRoomMember(r, myStu.id)) return;
+          launchTeamLiveBattle(r, myStu);
+          return;
+        }
         if (r.hostId === myStu.id || r.guestId === myStu.id) {
           launchedLiveRoomIds.add(r.roomId);
           currentActiveLiveBattleRoomId = r.roomId;
@@ -14992,6 +15351,42 @@
       });
     }
 
+    function launchTeamLiveBattle(r, myStu) {
+      const mem = r.members && r.members[myStu.id];
+      if (!mem) return;
+      launchedLiveRoomIds.add(r.roomId);
+      currentActiveLiveBattleRoomId = r.roomId;
+      const isHost = r.hostId === myStu.id;
+      const humanGuests = teamMembersOf(r).filter(m => m.id !== r.hostId && !m.ai).map(m => m.id);
+      const netRole = humanGuests.length ? (isHost ? 'host' : 'guest') : null;
+      const built = buildTeamLiveUnits(r);
+      if (!built) {
+        launchedLiveRoomIds.delete(r.roomId);
+        showNotice('⚠️ 팀전 용병 정보를 찾지 못했어요. 다시 시도해 주세요.');
+        return;
+      }
+      showRewardBanner(`👥 [실시간 팀전 시작!] 블루팀 ${built.blueUnits.length} vs 레드팀 ${built.redUnits.length} — 내 용병을 직접 조종하세요!`);
+      launchSimulation({
+        mode: 'pvp_realtime',
+        title: `👥 실시간 팀전: 🔵 ${teamSideMembers(r, 'blue').map(m => m.name).join('·')} vs 🔴 ${teamSideMembers(r, 'red').map(m => m.name).join('·')}`,
+        blueStudent: myStu,
+        redStudent: null,
+        customBlueUnits: built.blueUnits,
+        customRedUnits: built.redUnits,
+        rewardMc: 0,
+        netRole,
+        myTeam: mem.team === 'red' ? 'red' : 'blue'
+      });
+      if (!sim.running) return;
+      // 팀전은 직접 전투만: 내가 고른 용병을 바로 조종
+      sim.duel1v1 = true;
+      sim.teamLive = true;
+      const mine = sim.units.find(u => u.liveOwnerId === myStu.id);
+      if (mine) setBattleControlMode('manual', mine.id, true);
+      addBattleLog('👥 [실시간 팀전] 내 용병을 직접 조종해서 팀과 함께 싸워요! 상대 팀을 모두 쓰러뜨리면 승리!');
+      if (netRole) startLiveBattleNet(r.roomId, netRole, r.startedAt, false, true, humanGuests);
+    }
+
     // ==================== [실시간 결투 화면 동기화] ====================
     // - 방장(블루팀): 평소처럼 전투를 계산하고, 1초에 약 10번 화면 상태를 classes/{코드}/pvp_live/{방}/frame 에 올림
     // - 도전자(레드팀): 전투를 계산하지 않고 받은 화면을 부드럽게 이어서 그림. 내 조작(WASD·공격·대시·스킬)만 .../input 으로 보냄
@@ -15008,7 +15403,7 @@
     const liveR2 = v => Math.round(liveNum(v) * 100) / 100;
     const liveBaseId = id => String(id).slice(0, Math.max(0, String(id).lastIndexOf('_')));
 
-    function startLiveBattleNet(roomId, role, roomStartedAt, spectator = false) {
+    function startLiveBattleNet(roomId, role, roomStartedAt, spectator = false, team = false, teamExpect = []) {
       stopLiveBattleNet();
       const ref = liveRoomRef(roomId);
       if (!ref) {
@@ -15025,21 +15420,26 @@
         sent: new WeakSet(), pendingLogs: [], remoteCtrl: null, remoteUnitId: null,
         lastInputSentAt: 0, inputTimer: null, lastAimSent: null,
         guestChose: false, started: false, lastStatusAt: 0, hostStatus: null,
-        hist: {}, frameGap: 0, lastFramePublishedAt: 0, spectator
+        hist: {}, frameGap: 0, lastFramePublishedAt: 0, spectator,
+        team: Boolean(team), teamExpect: teamExpect || [], teamChosen: {}, remoteCtrls: {}, myId: getActiveStudent()?.id || null
       });
       if (role === 'host') {
         try { ref.onDisconnect().remove(); } catch (e) {}
         ref.child('result').remove().catch(() => {});
         ref.child('input').remove().catch(() => {});
+        ref.child('inputs').remove().catch(() => {});
         ref.child('status').remove().catch(() => {});
         sim.effects.forEach(x => liveNet.sent.add(x));
         sim.floatTexts.forEach(x => liveNet.sent.add(x));
         const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (k === 'manualAimTarget' ? undefined : v))));
         ref.child('init').set({ at: Date.now(), units }).catch(() => {});
-        ref.child('input').on('value', snap => applyRemoteBattleInput(snap && snap.val()));
+        if (liveNet.team) ref.child('inputs').on('value', snap => applyTeamRemoteInputs(snap && snap.val()));
+        else ref.child('input').on('value', snap => applyRemoteBattleInput(snap && snap.val()));
         addBattleLog('📡 상대 친구 화면으로 전투를 실시간 전송하고 있어요.');
       } else {
-        if (!spectator) { try { ref.child('input').onDisconnect().remove(); } catch (e) {} }
+        if (!spectator) {
+          try { (liveNet.team ? ref.child('inputs').child(liveNet.myId || 'x') : ref.child('input')).onDisconnect().remove(); } catch (e) {}
+        }
         ref.child('init').on('value', snap => applyLiveInit(snap && snap.val()));
         ref.child('frame').on('value', snap => applyLiveFrame(snap && snap.val()));
         ref.child('result').on('value', snap => applyLiveResult(snap && snap.val()));
@@ -15050,9 +15450,13 @@
 
     function stopLiveBattleNet() {
       if (liveNet.ref) {
-        ['init', 'frame', 'result', 'input', 'status'].forEach(k => { try { liveNet.ref.child(k).off(); } catch (e) {} });
+        ['init', 'frame', 'result', 'input', 'inputs', 'status'].forEach(k => { try { liveNet.ref.child(k).off(); } catch (e) {} });
       }
       clearTimeout(liveNet.inputTimer);
+      Object.values(liveNet.remoteCtrls || {}).forEach(c => {
+        Object.keys(sim.controllers || {}).forEach(id => { if (sim.controllers[id] === c) delete sim.controllers[id]; });
+      });
+      liveNet.remoteCtrls = {};
       if (liveNet.remoteUnitId && sim.controllers && sim.controllers[liveNet.remoteUnitId] === liveNet.remoteCtrl) {
         delete sim.controllers[liveNet.remoteUnitId];
       }
@@ -15180,6 +15584,38 @@
       }
     }
 
+    // ----- 방장(팀전): 팀원마다 inputs/{학생id} 로 보낸 조작을 그 친구가 고른 용병에만 적용 -----
+    function applyTeamRemoteInputs(val) {
+      if (liveNet.role !== 'host' || !sim.running || !liveNet.team) return;
+      const all = val && typeof val === 'object' ? val : {};
+      liveNet.remoteCtrls = liveNet.remoteCtrls || {};
+      Object.entries(all).forEach(([stuId, v]) => {
+        if (!v || typeof v !== 'object' || !(liveNet.teamExpect || []).includes(stuId)) return;
+        const unit = sim.units.find(u => u.liveOwnerId === stuId && u.alive);
+        let c = liveNet.remoteCtrls[stuId];
+        if (!c) c = liveNet.remoteCtrls[stuId] = { keys: {}, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0] };
+        if (v.chosen === 1) liveNet.teamChosen[stuId] = true;
+        const k = v.keys || {};
+        c.keys = { w: Boolean(k.w), a: Boolean(k.a), s: Boolean(k.s), d: Boolean(k.d) };
+        c.aimX = typeof v.ax === 'number' ? v.ax : null;
+        c.aimY = typeof v.ay === 'number' ? v.ay : null;
+        c.attack = Boolean(v.atk);
+        c.moveX = Math.max(-1, Math.min(1, liveNum(v.mvx)));
+        c.moveY = Math.max(-1, Math.min(1, liveNum(v.mvy)));
+        c.dashCount = liveNum(v.dash);
+        c.skillCount = [0, 1, 2].map(i => liveNum((v.sk || [])[i]));
+        // 포기하면 그 친구 용병은 AI가 대신 싸움
+        if (v.forfeit === 1) c.forfeited = true;
+        if (!unit) return;
+        if (c.forfeited) { if (sim.controllers[unit.id] === c) delete sim.controllers[unit.id]; }
+        else sim.controllers[unit.id] = c;
+      });
+      if (!liveNet.guestChose && (liveNet.teamExpect || []).every(id => liveNet.teamChosen[id])) {
+        liveNet.guestChose = true;
+        addBattleLog('✅ 팀전에 참가한 친구들이 모두 연결됐어요.');
+      }
+    }
+
     // ----- 도전자: 내 조작 보내기 (너무 자주 보내지 않도록 최소 60ms 간격) -----
     function onLocalControlChanged() {
       if (sim.netRole !== 'guest' || liveNet.role !== 'guest' || !liveNet.ref || liveNet.spectator) return;
@@ -15210,7 +15646,7 @@
         payload.ay = liveR1(c.aimY);
         liveNet.lastAimSent = { x: c.aimX, y: c.aimY };
       }
-      liveNet.ref.child('input').set(JSON.parse(JSON.stringify(payload))).catch(() => {});
+      (liveNet.team ? liveNet.ref.child('inputs').child(liveNet.myId || 'x') : liveNet.ref.child('input')).set(JSON.parse(JSON.stringify(payload))).catch(() => {});
     }
 
     // ----- 도전자: 방장 화면 받기 -----
@@ -15377,6 +15813,13 @@
       setTimeout(() => {
         const r = livePvpRoomsCache[roomId];
         if (!r || r.status !== 'playing') return;
+        if (isTeamLiveRoom(r)) {
+          // 팀전: 사람 친구들은 다시 준비완료를 눌러야 함 (AI 친구는 그대로 준비)
+          const patch = { status: 'waiting', startedAt: null, fill: null, lastFinishedAt: Date.now() };
+          teamMembersOf(r).forEach(m => { if (m.id !== r.hostId && !m.ai) patch[`members/${m.id}/ready`] = false; });
+          saveTeamRoomPatch(roomId, patch);
+          return;
+        }
         r.status = 'waiting';
         r.guestReady = Boolean(r.practiceFriend); // AI 연습 상대는 바로 다시 준비완료
         r.startedAt = null;
