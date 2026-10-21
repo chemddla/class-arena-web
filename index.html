@@ -3074,6 +3074,12 @@
         skillAnims: {}
       }
     };
+    // 전사 외형 1 (흑발·보라 망토), 2 (남색 머리·파랑 망토), 3 (은발·남색 망토), 4 (갈색 머리·초록 망토), 5 (밝은 갈색 머리·보라 망토): 칸·기준점·동작 구성은 warrior_0과 같고 그림만 다름
+    MERC_SPRITE_DEFS.warrior_1 = { ...MERC_SPRITE_DEFS.warrior_0, src: 'assets/sprites/merc/warrior_1.webp' };
+    MERC_SPRITE_DEFS.warrior_2 = { ...MERC_SPRITE_DEFS.warrior_0, src: 'assets/sprites/merc/warrior_2.webp' };
+    MERC_SPRITE_DEFS.warrior_3 = { ...MERC_SPRITE_DEFS.warrior_0, src: 'assets/sprites/merc/warrior_3.webp' };
+    MERC_SPRITE_DEFS.warrior_4 = { ...MERC_SPRITE_DEFS.warrior_0, src: 'assets/sprites/merc/warrior_4.webp' };
+    MERC_SPRITE_DEFS.warrior_5 = { ...MERC_SPRITE_DEFS.warrior_0, src: 'assets/sprites/merc/warrior_5.webp' };
     const SPRITE_DRAW_H = 54;       // 전투 화면에서 서 있는 캐릭터의 키(월드 px)
     const SPRITE_DEATH_TICKS = 150; // 쓰러진 뒤 화면에 남아 있는 시간
 
@@ -3114,6 +3120,20 @@
       def.img.onload = () => { def.ready = true; };
       def.img.src = def.src;
     });
+
+    // 용병 외형(skinVariant) 배정: 직업별 그림 수만큼 무작위.
+    // 기존 용병은 용병 ID로 정해지는 고정값이라, 저장 전이어도 어느 기기에서 보든 같은 외형이 나옴
+    const MERC_SKIN_VERSION = 1;
+    function getMercSkinCount(jobKey) { let n = 0; while (MERC_SPRITE_DEFS[`${jobKey}_${n}`]) n++; return Math.max(1, n); }
+    function pickRandomMercSkin(jobKey) { return Math.floor(Math.random() * getMercSkinCount(jobKey)); }
+    function ensureMercSkin(m) {
+      if (!m || typeof m !== 'object' || !m.job || m.monsterType || m.skinVer === MERC_SKIN_VERSION) return m;
+      const key = String(m.id || m.name || '');
+      let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+      m.skinVariant = h % getMercSkinCount(m.job);
+      m.skinVer = MERC_SKIN_VERSION;
+      return m;
+    }
 
     function getMercSprite(jobKey, skinVariant = 0) {
       return MERC_SPRITE_DEFS[`${jobKey}_${skinVariant}`] || MERC_SPRITE_DEFS[`${jobKey}_0`] || null;
@@ -3424,7 +3444,8 @@
         skillKey: skillKey,
         skillSlots: [skillKey, ...restSkills],
         skillsRevealed: fixedSkillKey && level >= 10 ? 1 : 0,
-        skinVariant: 0,
+        skinVariant: pickRandomMercSkin(jobKey),
+        skinVer: MERC_SKIN_VERSION,
         rarity: rarityCode === 'N' ? 'N' : 'R',
         level: level,
         statPoints: { hp: 0, atk: 0, def: 0, spd: 0 },
@@ -3583,6 +3604,7 @@
               ensureMercSkillSlots(m);
               if (m.equippedItem === undefined) m.equippedItem = null;
               if (typeof m.skinVariant !== 'number') m.skinVariant = 0;
+              ensureMercSkin(m);
               if (!m.statPoints) m.statPoints = { hp: 0, atk: 0, def: 0, spd: 0 };
               m.row = Math.min(FORMATION_ROWS - 1, Math.max(0, typeof m.row === 'number' ? m.row : 0));
               m.col = Math.min(FORMATION_COLS - 1, Math.max(0, typeof m.col === 'number' ? m.col : 0));
@@ -3590,7 +3612,7 @@
             if (!s.defenseFormation || !s.defenseFormation.length) {
               s.defenseFormation = JSON.parse(JSON.stringify(s.roster.filter(m => m.deployed)));
             } else {
-              s.defenseFormation.forEach(m => ensureMercSkillSlots(m));
+              s.defenseFormation.forEach(m => { ensureMercSkillSlots(m); ensureMercSkin(m); });
             }
             if (!s.defenseFormationLabel) {
               s.defenseFormationLabel = '3×5 방어 전술 진형';
@@ -3620,6 +3642,7 @@
           if (!Array.isArray(state.auctions)) {
             state.auctions = initDefaultState().auctions;
           }
+          state.auctions.forEach(a => a && ensureMercSkin(a.merc));
           if (!Array.isArray(state.tradeOffers)) {
             state.tradeOffers = [];
           }
@@ -5307,6 +5330,7 @@
       const myStu = getActiveStudent();
       if (!Array.isArray(state.auctions)) state.auctions = [];
       if (!Array.isArray(state.tradeOffers)) state.tradeOffers = [];
+      state.auctions.forEach(a => a && ensureMercSkin(a.merc));
 
       // 상단 탭 배지 업데이트
       const incoming = state.tradeOffers.filter(o => o.sellerId === myStu.id);
@@ -5885,6 +5909,7 @@
       let pool = stu && stu.recruitPool;
       if (pool && !Array.isArray(pool) && typeof pool === 'object') pool = Object.values(pool);
       if (Array.isArray(pool) && pool.length) {
+        pool.forEach(ensureMercSkin);
         recruitPool = pool;
         stu.recruitPool = pool;
       } else {
@@ -13082,6 +13107,7 @@
       ensureMercVariance(m);
       if (!m.statPoints) m.statPoints = { hp: 0, atk: 0, def: 0, spd: 0 };
       if (m.equippedItem === undefined) m.equippedItem = null;
+      ensureMercSkin(m);
       return m;
     }
 
