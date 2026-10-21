@@ -1455,7 +1455,7 @@
                 </span>
               </div>
               <p class="text-xs text-slate-400 mt-0.5">
-                내 용병 5명과 보스를 고르고 <strong>사냥 방을 만드세요!</strong> 친구가 들어와 <strong>[✋ 준비완료]</strong>를 누르면 방장이 사냥을 시작해요. (보상 하루 3번)
+                내 용병 5명과 보스를 고르고 <strong>사냥 방을 만드세요!</strong> 친구가 들어와 <strong>[✋ 준비완료]</strong>를 누르면 방장이 사냥을 시작해요. (보상은 보스마다 처음 잡을 때 1번)
               </p>
             </div>
           </div>
@@ -8424,7 +8424,7 @@
       box.prepend(div);
     }
 
-    function launchSimulation({ mode, title, blueStudent, redStudent, towerFloorObj, rewardMc, lossRewardMc, customBlueUnits, customRedUnits, netRole = null, myTeam = 'blue' }) {
+    function launchSimulation({ mode, title, blueStudent, redStudent, towerFloorObj, eliteBossId, rewardMc, lossRewardMc, customBlueUnits, customRedUnits, netRole = null, myTeam = 'blue' }) {
       const blueDeployed = (blueStudent?.roster || []).filter(m => m.deployed);
       if (!customBlueUnits && blueDeployed.length === 0) {
         showNotice('⚠️ 출전 가능한 용병이 없습니다! 먼저 용병 모집에서 용병을 고용하고 출전시켜주세요.');
@@ -8483,7 +8483,7 @@
       sim.tickCount = 0;
       sim.mode = mode;
       sim.title = title;
-      sim.meta = { blueStudent, redStudent, towerFloorObj, rewardMc: rewardMc || 250, lossRewardMc };
+      sim.meta = { blueStudent, redStudent, towerFloorObj, eliteBossId: eliteBossId || null, rewardMc: rewardMc || 250, lossRewardMc };
       sim.running = true;
       sim.netRole = netRole;
       sim.myTeam = myTeam;
@@ -10288,12 +10288,18 @@
       const isFirstTowerClear = Boolean(blueWon && sim.mode === 'tower' && meta.towerFloorObj && stu.towerFloor === meta.towerFloorObj.floor);
       const isTowerReplay = Boolean(sim.mode === 'tower' && meta.towerFloorObj && meta.towerFloorObj.floor < (stu.towerFloor || 1));
       if (isTowerReplay) baseReward = 0;
+      // 엘리트 몬스터는 보스마다 처음 잡았을 때 한 번만 보상 (잡은 뒤 재도전은 이기든 지든 보상 없음)
+      const isEliteReplay = Boolean(sim.mode === 'elite_raid' && meta.eliteBossId && stu.eliteRewardClaimed && stu.eliteRewardClaimed[meta.eliteBossId]);
+      if (isEliteReplay) baseReward = 0;
       const reward = (isPracticeOnly || iForfeited)
         ? 0
         : (isFirstTowerClear
           ? grantDailyReward(stu, null, baseReward)
           : grantDailyReward(stu, rewardCategory, baseReward));
       if (reward > 0) state.guardianPts += blueWon ? 20 : 8;
+      if (blueWon && reward > 0 && sim.mode === 'elite_raid' && meta.eliteBossId) {
+        stu.eliteRewardClaimed = { ...(stu.eliteRewardClaimed || {}), [meta.eliteBossId]: true };
+      }
 
       if (isFirstTowerClear && stu.towerFloor < 50) {
         stu.towerFloor += 1;
@@ -10321,6 +10327,8 @@
         ? (sim.mode === 'practice' ? '연습 전투라 보상은 없어요.' : '연습 경기라 보상은 없어요. 보상과 랭킹 점수는 🎯 랭킹 매칭에서 받을 수 있어요.')
         : isTowerReplay
         ? '이미 깬 층이라 보상은 없어요. 다음 층에 도전해 보세요!'
+        : isEliteReplay
+        ? '이미 보상을 받은 엘리트 몬스터라 보상은 없어요. 다른 엘리트 몬스터에 도전해 보세요!'
         : (reward > 0
           ? `전투 보상으로 💰 ${reward} CA를 받았어요!${rewardCategory && !isFirstTowerClear ? ` (오늘 남은 ${DAILY_REWARD_LABELS[rewardCategory]} 보상: ${getDailyRewardLeft(stu, rewardCategory)}회)` : ''}`
           : dailyRewardDoneText(rewardCategory));
@@ -11977,6 +11985,7 @@
       if (bossListEl) {
         bossListEl.innerHTML = ELITE_BOSS_DEFS.map(b => {
           const isSel = b.id === selectedEliteBossId;
+          const claimed = Boolean(myStu.eliteRewardClaimed && myStu.eliteRewardClaimed[b.id]);
           return `
             <div onclick="selectEliteBossForRaid('${b.id}')"
               class="cursor-pointer rounded-2xl border-2 p-3.5 transition ${
@@ -11984,7 +11993,9 @@
               }">
               <div class="flex items-center justify-between">
                 <span class="font-title text-base text-white">${b.name}</span>
-                <span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-extrabold text-xs">보상 💰 ${b.rewardMc} CA</span>
+                ${claimed
+                  ? `<span class="px-2 py-0.5 rounded bg-slate-700 text-slate-300 font-extrabold text-xs">✅ 보상 받음 (재도전 보상 없음)</span>`
+                  : `<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-extrabold text-xs">보상 💰 ${b.rewardMc} CA (1회)</span>`}
               </div>
               <div class="text-xs font-extrabold text-rose-400 mt-1">❤️ 단일 보스 체력: ${b.hp.toLocaleString()} HP · ⚔️ 공격력 ${b.atk}</div>
               <p class="text-[11px] text-slate-400 mt-1">${b.desc}</p>
@@ -12070,6 +12081,7 @@
         title: `🐉 실시간 2인 협동 레이드: ${myStu.name}(5인) & ${partnerStu.name}(5인) vs ${bossDef.name}`,
         blueStudent: myStu,
         redStudent: null,
+        eliteBossId: bossDef.id,
         rewardMc: bossDef.rewardMc,
         customBlueUnits: blueUnits,
         customRedUnits: [singleEliteBoss]
@@ -16320,6 +16332,7 @@
             title: `🐉 실시간 협동 레이드: ${r.hostName}(5인) & ${r.guestName}(5인) vs ${bossDef.name}`,
             blueStudent: myStu,
             redStudent: null,
+            eliteBossId: bossDef.id,
             rewardMc: bossDef.rewardMc,
             customBlueUnits: blueUnits,
             customRedUnits: [singleEliteBoss]
