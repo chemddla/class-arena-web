@@ -3162,6 +3162,23 @@
       return m;
     }
 
+    /********************************************************************
+     * 전투 배경 맵: 모드별 그림 (월드 2880x1800 전체에 늘려 그림)
+     * - 전투 구역(가로 200~2680, 세로 260~1580)은 평평한 바닥, 장식은 바깥 테두리에
+     ********************************************************************/
+    const BATTLE_MAPS = {
+      practice: { src: 'assets/maps/practice.webp' }, // 연습장
+      pvp:      { src: 'assets/maps/pvp.webp' },      // 결투장 (랭킹·진형 도전·실시간·중계)
+      tower:    { src: 'assets/maps/tower.webp' },    // 모험의 탑
+      elite:    { src: 'assets/maps/elite.webp' }     // 엘리트 몬스터 원정
+    };
+    Object.values(BATTLE_MAPS).forEach(m => { m.img = new Image(); m.img.onload = () => { m.ready = true; }; m.img.src = m.src; });
+    function getBattleMap(mode) {
+      const key = mode === 'practice' ? 'practice' : mode === 'tower' ? 'tower' : mode === 'elite_raid' ? 'elite' : 'pvp';
+      const m = BATTLE_MAPS[key];
+      return m && m.ready ? m : null;
+    }
+
     function getMercSprite(jobKey, skinVariant = 0) {
       return MERC_SPRITE_DEFS[`${jobKey}_${skinVariant}`] || MERC_SPRITE_DEFS[`${jobKey}_0`] || null;
     }
@@ -10014,6 +10031,25 @@
     }
 
     function finishSimulation(blueTeamWon) {
+      if (sim.spectator) {
+        sim.running = false;
+        sim.netRole = null;
+        const meta = sim.meta || {};
+        const winner = blueTeamWon ? meta.blueStudent : meta.redStudent;
+        const atkKing = [...sim.units].sort((a, b) => b.damageDealt - a.damageDealt)[0];
+        const healKing = [...sim.units].sort((a, b) => b.healDone - a.healDone)[0];
+        document.getElementById('battleResultEmoji').textContent = '📺';
+        document.getElementById('battleResultTitle').textContent = `관전 종료 · ${winner?.name || (blueTeamWon ? '블루팀' : '레드팀')} 승리!`;
+        document.getElementById('battleResultDesc').textContent = sim.forfeitTeam
+          ? `${(sim.forfeitTeam === 'blue' ? meta.blueStudent : meta.redStudent)?.name || ''} 친구가 포기했어요.`
+          : '관전한 결투가 끝났어요. (관전은 보상이 없어요)';
+        document.getElementById('battleMvpBox').innerHTML = `
+          <div class="font-bold text-amber-300 mb-1">🌟 이번 결투 MVP</div>
+          <div>⚔️ 최고 공격왕: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
+          <div>💚 다정 치유왕: <strong>${healKing?.name || '-'}</strong> (${healKing?.healDone || 0} 회복·보호)</div>`;
+        document.getElementById('battleResultOverlay').classList.remove('hidden');
+        return;
+      }
       if (liveNet.role === 'host') publishLiveBattleResult(blueTeamWon);
       if (sim.mode === 'pvp_realtime') resetLivePvpRoomAfterBattle();
       // blueWon = 이 화면의 학생이 이겼는지 (실시간 결투 도전자는 레드팀)
@@ -10089,6 +10125,7 @@
     // 🏳️ 전투 포기: 내 팀 패배로 끝내고 보상 없음 (실시간 결투 도전자는 방장 화면에 포기를 알림)
     function forfeitBattle() {
       if (!sim.running) return;
+      if (sim.spectator) { stopLiveBattleNet(); closeBattleResult(); return; }
       askCustomConfirm('전투를 포기할까요? 패배로 처리되고 보상은 없어요.', () => {
         if (!sim.running) return;
         if (sim.netRole === 'guest') {
@@ -10105,6 +10142,7 @@
 
     // 전투 중에 전장을 닫으면 포기로 처리 (닫기로 패배를 피할 수 없게)
     function closeArenaOrForfeit() {
+      if (sim.spectator) { stopLiveBattleNet(); closeBattleResult(); return; }
       if (sim.running && sim.mode !== 'broadcast') {
         forfeitBattle();
         return;
@@ -10113,6 +10151,7 @@
     }
 
     function closeBattleResult() {
+      if (sim.spectator) { sim.spectator = false; stopLiveBattleNet(); }
       sim.running = false;
       sim.waitingForOpponent = false;
       renderLiveWaitBanner(null);
@@ -10640,7 +10679,15 @@
       ctx.scale(z, z);
       ctx.translate(-Math.round(sim.camera.x), -Math.round(sim.camera.y));
 
-      // 1) 깔끔한 시스템 전술 그리드 배경 (그래픽 이미지 배제, 2880x1800 대형 월드)
+      // 1) 배경: 모드별 맵 그림 (불러오기 전에는 깔끔한 전술 격자)
+      const battleMap = getBattleMap(sim.mode);
+      if (battleMap) {
+        ctx.save();
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(battleMap.img, 0, 0, WW, WH);
+        ctx.restore();
+      } else {
       ctx.fillStyle = '#f8fafc';
       ctx.fillRect(0, 0, WW, WH);
 
@@ -10686,6 +10733,7 @@
       ctx.arc(WW / 2, WH / 2 + 20, 145, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
+      } // 맵 그림이 없을 때만 격자·테두리·중앙선
 
       // 가로 3칸 × 세로 5칸 진형 가이드 타일 표시 (좌측 아군 3x5 / 우측 적군 3x5)
       for (let r = 0; r < FORMATION_ROWS; r++) {
@@ -14608,13 +14656,70 @@
                       : (hasGuest
                           ? `<span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-500 font-bold text-xs">정원 초과 (2/2)</span>`
                           : `<button onclick="joinFirebasePvpRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow">🚪 방 입장하기</button>`))
-                  : `<span class="px-3 py-1.5 rounded-xl bg-rose-500/20 text-rose-300 font-bold text-xs">경기 진행중</span>`
+                  : (isMyRoom
+                      ? `<span class="px-3 py-1.5 rounded-xl bg-rose-500/20 text-rose-300 font-bold text-xs">경기 진행중</span>`
+                      : (r.practiceFriend
+                          ? `<span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-400 font-bold text-xs" title="연습 친구와 하는 결투는 관전할 수 없어요">연습 경기 진행중</span>`
+                          : `<button onclick="spectatePvpRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 관전하기</button>`))
               }
             </div>
           </div>
         `;
       }).join('');
     }
+
+    // 결투방의 양쪽 유닛 만들기 (1:1은 고른 용병 1명씩 가운데 줄에서 마주 보고, 5:5는 대기실에서 저장한 진형대로)
+    function buildLiveRoomUnits(r, blueStu, redStu) {
+      if (isDuelRoom(r)) {
+        const bm = duelPickedMerc(blueStu, r.hostStudentSnapshot, r.hostPickId);
+        const rm = duelPickedMerc(redStu, r.guestStudentSnapshot, r.guestPickId);
+        if (!bm || !rm) return null;
+        return {
+          blueUnits: [createSimUnit({ ...bm, row: 2, col: 1 }, blueStu, 'blue', 1.0)],
+          redUnits: [createSimUnit({ ...rm, row: 2, col: 1 }, redStu, 'red', 1.0)]
+        };
+      }
+      return {
+        blueUnits: deployedMercsWithRoomFormation(blueStu, r.hostStudentSnapshot).map(m => createSimUnit(m, blueStu, 'blue', 1.0)),
+        redUnits: deployedMercsWithRoomFormation(redStu, r.guestStudentSnapshot).map(m => createSimUnit(m, redStu, 'red', 1.0))
+      };
+    }
+
+    // 📺 관전: 방장 화면이 올리는 결투 화면을 받아서 보기만 함 (조작을 보내지 않고, 보상·기록도 없음)
+    window.spectatePvpRoom = function (roomId) {
+      const me = getActiveStudent();
+      const r = livePvpRoomsCache[roomId];
+      if (!r || r.status !== 'playing') { showNotice('⚠️ 지금 진행 중인 결투가 아니에요.'); return; }
+      if (me && (r.hostId === me.id || r.guestId === me.id)) return;
+      if (r.practiceFriend) { showNotice('⚠️ 연습 친구와 하는 결투는 방장 화면에서만 진행돼서 관전할 수 없어요.'); return; }
+      if (sim.running && sim.mode !== 'idle_preview') { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      const blueStu = state.students.find(x => x.id === r.hostId) || r.hostStudentSnapshot;
+      const redStu = state.students.find(x => x.id === r.guestId) || r.guestStudentSnapshot;
+      const built = blueStu && redStu ? buildLiveRoomUnits(r, blueStu, redStu) : null;
+      if (!built) { showNotice('⚠️ 결투 정보를 불러오지 못했어요.'); return; }
+      launchSimulation({
+        mode: 'pvp_realtime',
+        title: `📺 관전 중: ${r.hostName} vs ${r.guestName}${isDuelRoom(r) ? ' (1:1 용병 대결)' : ' (5:5 결투)'}`,
+        blueStudent: blueStu,
+        redStudent: redStu,
+        customBlueUnits: built.blueUnits,
+        customRedUnits: built.redUnits,
+        rewardMc: 0,
+        netRole: 'guest',
+        myTeam: 'blue'
+      });
+      if (!sim.running) return;
+      sim.spectator = true;
+      // 고를 것 없이 보기만: 전투 방식 고르기 창을 닫고 자동(화면 이동만)으로 고정
+      battleControl.locked = true;
+      battleControl.mode = 'auto';
+      battleControl.unitId = null;
+      sim.awaitingControlChoice = false;
+      document.getElementById('battleControlChooser')?.classList.add('hidden');
+      renderBattleControlHud(true);
+      addBattleLog(`📺 [관전] ${r.hostName} vs ${r.guestName} 결투를 보고 있어요. (WASD·드래그로 화면 이동)`);
+      startLiveBattleNet(roomId, 'guest', r.startedAt, true);
+    };
 
     function checkAutoStartMatchedPvpRoom() {
       const myStu = getActiveStudent();
@@ -14639,23 +14744,13 @@
             const blueStu = isHost ? myStu : opponentStu;
             const redStu = isHost ? opponentStu : myStu;
             const duel = isDuelRoom(r);
-            let blueUnits, redUnits;
-            if (duel) {
-              // 1:1: 고른 용병 1명씩 가운데 줄에서 마주 보고 시작
-              const bm = duelPickedMerc(blueStu, r.hostStudentSnapshot, r.hostPickId);
-              const rm = duelPickedMerc(redStu, r.guestStudentSnapshot, r.guestPickId);
-              if (!bm || !rm) {
-                launchedLiveRoomIds.delete(r.roomId);
-                showNotice('⚠️ 대결할 용병 정보를 찾지 못했어요. 다시 시도해 주세요.');
-                return;
-              }
-              blueUnits = [createSimUnit({ ...bm, row: 2, col: 1 }, blueStu, 'blue', 1.0)];
-              redUnits = [createSimUnit({ ...rm, row: 2, col: 1 }, redStu, 'red', 1.0)];
-            } else {
-              // 대기실에서 저장한 진형(row/col)으로 양쪽 유닛을 만듦
-              blueUnits = deployedMercsWithRoomFormation(blueStu, r.hostStudentSnapshot).map(m => createSimUnit(m, blueStu, 'blue', 1.0));
-              redUnits = deployedMercsWithRoomFormation(redStu, r.guestStudentSnapshot).map(m => createSimUnit(m, redStu, 'red', 1.0));
+            const built = buildLiveRoomUnits(r, blueStu, redStu);
+            if (!built) {
+              launchedLiveRoomIds.delete(r.roomId);
+              showNotice('⚠️ 대결할 용병 정보를 찾지 못했어요. 다시 시도해 주세요.');
+              return;
             }
+            const { blueUnits, redUnits } = built;
             launchSimulation({
               mode: 'pvp_realtime',
               title: duel
@@ -14698,7 +14793,7 @@
     const liveR2 = v => Math.round(liveNum(v) * 100) / 100;
     const liveBaseId = id => String(id).slice(0, Math.max(0, String(id).lastIndexOf('_')));
 
-    function startLiveBattleNet(roomId, role, roomStartedAt) {
+    function startLiveBattleNet(roomId, role, roomStartedAt, spectator = false) {
       stopLiveBattleNet();
       const ref = liveRoomRef(roomId);
       if (!ref) {
@@ -14715,7 +14810,7 @@
         sent: new WeakSet(), pendingLogs: [], remoteCtrl: null, remoteUnitId: null,
         lastInputSentAt: 0, inputTimer: null, lastAimSent: null,
         guestChose: false, started: false, lastStatusAt: 0, hostStatus: null,
-        hist: {}, frameGap: 0, lastFramePublishedAt: 0
+        hist: {}, frameGap: 0, lastFramePublishedAt: 0, spectator
       });
       if (role === 'host') {
         try { ref.onDisconnect().remove(); } catch (e) {}
@@ -14729,12 +14824,12 @@
         ref.child('input').on('value', snap => applyRemoteBattleInput(snap && snap.val()));
         addBattleLog('📡 상대 친구 화면으로 전투를 실시간 전송하고 있어요.');
       } else {
-        try { ref.child('input').onDisconnect().remove(); } catch (e) {}
+        if (!spectator) { try { ref.child('input').onDisconnect().remove(); } catch (e) {} }
         ref.child('init').on('value', snap => applyLiveInit(snap && snap.val()));
         ref.child('frame').on('value', snap => applyLiveFrame(snap && snap.val()));
         ref.child('result').on('value', snap => applyLiveResult(snap && snap.val()));
         ref.child('status').on('value', snap => applyLiveChoiceStatus(snap && snap.val()));
-        addBattleLog('📡 방장 화면에서 진행되는 전투를 받아오는 중이에요...');
+        addBattleLog(spectator ? '📡 결투 화면을 받아오는 중이에요...' : '📡 방장 화면에서 진행되는 전투를 받아오는 중이에요...');
       }
     }
 
@@ -14746,7 +14841,7 @@
       if (liveNet.remoteUnitId && sim.controllers && sim.controllers[liveNet.remoteUnitId] === liveNet.remoteCtrl) {
         delete sim.controllers[liveNet.remoteUnitId];
       }
-      Object.assign(liveNet, { role: null, roomId: null, ref: null, inputTimer: null, remoteCtrl: null, remoteUnitId: null });
+      Object.assign(liveNet, { role: null, roomId: null, ref: null, inputTimer: null, remoteCtrl: null, remoteUnitId: null, spectator: false });
     }
 
     // ----- 방장: 화면 상태 보내기 -----
@@ -14872,7 +14967,7 @@
 
     // ----- 도전자: 내 조작 보내기 (너무 자주 보내지 않도록 최소 60ms 간격) -----
     function onLocalControlChanged() {
-      if (sim.netRole !== 'guest' || liveNet.role !== 'guest' || !liveNet.ref) return;
+      if (sim.netRole !== 'guest' || liveNet.role !== 'guest' || !liveNet.ref || liveNet.spectator) return;
       const wait = 60 - (Date.now() - liveNet.lastInputSentAt);
       if (wait > 0) {
         if (!liveNet.inputTimer) liveNet.inputTimer = setTimeout(() => { liveNet.inputTimer = null; onLocalControlChanged(); }, wait);
@@ -15123,6 +15218,10 @@
       if (liveNet.role !== 'guest' || !val || liveNum(val.at) < liveNet.minAt) return;
       liveNet.lastFrameAt = Date.now(); // 기다리는 동안에도 연결된 것으로 봄
       liveNet.hostStatus = val;
+      if (liveNet.spectator) {
+        renderLiveWaitBanner(val.started === 1 ? null : '📺 두 친구가 전투 방식을 고르는 중이에요... 곧 시작해요!');
+        return;
+      }
       if (val.started === 1) {
         // 시간이 다 돼서 시작했으면 아직 안 고른 경우 자동 전투로
         if (!localBattleInput.controlChosen && !sim.duel1v1) setBattleControlMode('auto', null, true);
