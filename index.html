@@ -7926,12 +7926,45 @@
       } else if (u.job === 'mage') {
         u.mana = Math.min(u.maxMana, u.mana + 18);
         sim.effects.push({ type: 'cast_circle', x: u.x, y: u.y, color: '#7c3aed', life: 32, maxLife: 32 });
-        if (target) {
-          sim.projectiles.push({ projType: 'magic_orb', x: ox, y: oy, target, owner: u, dmg: u.atk, isHeal: false, speed: 3.2, trail: [] });
-        } else {
-          directional('magic_orb', u.atk, { color: '#7c3aed' });
-        }
+        // 커서 지점(사거리 끝까지)으로 날아가서, 적에게 맞거나 그 자리에 닿으면 작은 범위로 터짐
+        const pt = clampAimPoint(u, aimX, aimY, u.range + 40);
+        const ang = Math.atan2((pt.y - 12) - oy, pt.x - ox);
+        sim.projectiles.push({
+          projType: 'magic_orb', isDirectional: true, angle: ang, x: ox, y: oy, owner: u, dmg: u.atk, color: '#7c3aed',
+          isHeal: false, speed: 3.2, trail: [], maxTravel: Math.max(20, Math.hypot(pt.x - ox, (pt.y - 12) - oy)),
+          splashRadius: MAGE_SPLASH_RADIUS, splashRatio: MAGE_SPLASH_RATIO
+        });
       }
+    }
+
+    // 직접 전투 스킬 조준 방식
+    // - self: 내 주변·아군 전체 (조준 없음)
+    // - point: 커서 지점에 발동 (사거리보다 멀면 사거리 끝으로)
+    // - direction: 커서 방향으로 발동
+    // - target: 커서 가까이 있는 적 하나 — 그 적이 스킬 사거리 안에 있어야 발동
+    const MANUAL_SKILL_AIM = {
+      whirlwind: 'self', roar: 'self', warcry: 'self', heal: 'self', shield: 'self', blessing: 'self', purify: 'self', revive: 'self',
+      fireball: 'point', poison_boom: 'point', arrow_rain: 'point', teleport: 'point',
+      charge: 'direction', triple_arrow: 'direction', rapid_fire: 'direction', evasive_shot: 'direction',
+      stun_strike: 'target', poison_arrow: 'target', ice_arrow: 'target', thunderbolt: 'target'
+    };
+    function manualSkillRange(u, key) {
+      switch (key) {
+        case 'stun_strike': return stunStrikeReach(u);
+        case 'poison_arrow': return u.range + 60;
+        case 'ice_arrow': case 'thunderbolt': case 'fireball': return u.range + 90;
+        case 'poison_boom': return u.range + 80;
+        case 'arrow_rain': return u.range + 60;
+        case 'teleport': return GRID_CELL_SIZE * 5;
+        default: return u.range + 90;
+      }
+    }
+    // 커서 지점을 시전자에게서 maxDist 안으로 당김 (전장 밖으로도 나가지 않게)
+    function clampAimPoint(u, x, y, maxDist) {
+      const dx = x - u.x, dy = y - u.y;
+      const d = Math.hypot(dx, dy);
+      const k = d > maxDist ? maxDist / d : 1;
+      return clampToArena(u.x + dx * k, u.y + dy * k);
     }
 
     function tryManualSkill(u, allies, enemies, slotIdx, c) {
@@ -7943,15 +7976,32 @@
       if ((u.skillCooldowns?.[key] || 0) > 0) { say('⏳ 아직 준비 중'); return; }
       if (u.mana < (sk.manaCost || 0)) { say('💧 마나 부족', '#0284c7'); return; }
       if (u.castLock > 0) return;
-      if (key === 'stun_strike' && !enemies.some(e => Math.hypot(e.x - u.x, e.y - u.y) <= stunStrikeReach(u))) { say('🔨 적에게 더 가까이!'); return; }
-      const aimX = c.aimX ?? u.x;
-      const aimY = c.aimY ?? u.y;
-      u.manualAimTarget = findEnemyNearAim(u, enemies, aimX, aimY, 9999)
-        || [...enemies].sort((a, b) => Math.hypot(a.x - aimX, a.y - aimY) - Math.hypot(b.x - aimX, b.y - aimY))[0]
-        || null;
       if (u.casting) return;
-      beginSkillCast(u, key, { x: aimX, y: aimY, target: u.manualAimTarget });
-      u.manualAimTarget = null;
+      const aimX = c.aimX ?? (u.x + Math.cos(u.facingAngle || 0) * 100);
+      const aimY = c.aimY ?? (u.y + Math.sin(u.facingAngle || 0) * 100);
+      const mode = MANUAL_SKILL_AIM[key] || 'point';
+      const range = manualSkillRange(u, key);
+      let aim = { x: aimX, y: aimY, target: null };
+      if (mode === 'target') {
+        // 커서 가까이(약 1칸) 있는 적 → 그 적이 사거리 안이어야 발동
+        const picked = [...enemies]
+          .map(e => ({ e, d: Math.hypot(e.x - aimX, (e.y - 14) - aimY) }))
+          .filter(x => x.d <= 110)
+          .sort((a, b) => a.d - b.d)[0];
+        if (!picked) { say('🎯 마우스를 적 위에 올려 주세요'); return; }
+        if (Math.hypot(picked.e.x - u.x, picked.e.y - u.y) > range) {
+          say(`🎯 사거리 밖이에요 (${(range / GRID_CELL_SIZE).toFixed(1)}칸)`);
+          sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: range, color: '#94a3b8', life: 40, maxLife: 40 });
+          return;
+        }
+        aim = { x: picked.e.x, y: picked.e.y, target: picked.e };
+      } else if (mode === 'point') {
+        const pt = clampAimPoint(u, aimX, aimY, range);
+        aim = { x: pt.x, y: pt.y, target: null };
+      }
+      // 시전이 끝날 때 쓰는 정보: 조준 방식 (자동 전투 AI의 스킬과 구분)
+      u.manualSkillMode = mode;
+      beginSkillCast(u, key, aim);
     }
 
     // 조종하는 용병의 한 틱 (stepSimulation에서 AI 대신 호출)
@@ -8928,7 +8978,14 @@
 
       let target = pickTarget(unit, allies, enemies) || enemies[0];
       if (target && target.team === unit.team && unit.job !== 'healer') target = enemies[0];
-      if (castNewSkill(unit, allies, enemies, sk, skObj, target && target.team !== unit.team ? target : enemies[0])) return;
+      // 직접 전투로 조준한 스킬: 커서 지점(aimPt)과 조준 방식(aimMode). 자동 전투(AI)면 null
+      const aimPt = unit.teleportAim && unit.manualSkillMode ? unit.teleportAim : null;
+      const aimMode = aimPt ? unit.manualSkillMode : null;
+      unit.manualSkillMode = null;
+      const aimAngleTo = (fx, fy) => Math.atan2(aimPt.y - 12 - fy, aimPt.x - fx);
+      // 지점형 스킬은 커서 지점을 목표처럼 넘김 (화살비·포이즌 붐)
+      const pointTarget = aimMode === 'point' ? { x: aimPt.x, y: aimPt.y, alive: true, team: 'none', statuses: {}, hp: 1, maxHp: 1 } : null;
+      if (castNewSkill(unit, allies, enemies, sk, skObj, pointTarget || (target && target.team !== unit.team ? target : enemies[0]), aimPt)) return;
 
       if (unit.job === 'warrior') {
         if (sk === 'whirlwind') {
@@ -8955,7 +9012,9 @@
           const reach = stunStrikeReach(unit);
           const inReach = enemies.filter(e => Math.hypot(e.x - unit.x, e.y - unit.y) <= reach);
           const unstunned = inReach.filter(e => e.statuses.stun <= 35 && e.statuses.freeze <= 35);
-          target = unstunned[0] || (target && inReach.includes(target) ? target : inReach[0]) || null;
+          target = aimMode === 'target'
+            ? (target && inReach.includes(target) ? target : null)
+            : (unstunned[0] || (target && inReach.includes(target) ? target : inReach[0]) || null);
           if (!target) {
             sim.floatTexts.push({ x: unit.x, y: unit.y - 52, text: '🔨 빗나감 (너무 멀어요)', color: '#64748b', life: 40 });
             return;
@@ -8973,6 +9032,23 @@
           });
           playCombatSfx('heavy');
           addBattleLog(`🔨 [전사] ${unit.name}의 점프 기절공격! [💫기절] (마나 -${skObj.manaCost}, 쿨 ${skObj.cooldownSec}초)`);
+
+        } else if (sk === 'charge' && aimPt) {
+          const sx = unit.x, sy = unit.y;
+          const angle = Math.atan2(aimPt.y - sy, aimPt.x - sx);
+          const moveDist = Math.min(CHARGE_SKILL_DISTANCE, Math.max(40, Math.hypot(aimPt.x - sx, aimPt.y - sy)));
+          const r = startUnitRush(unit, sx + Math.cos(angle) * moveDist, sy + Math.sin(angle) * moveDist, CHARGE_MOVE_TICKS, () => {
+            const hitT = enemies.filter(e => e.alive && Math.hypot(e.x - unit.x, e.y - unit.y) <= unit.range + 45)
+              .sort((a, b) => Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y))[0];
+            if (unit.alive && hitT) applyDamage(unit, hitT, unit.atk * 3.0);
+            playCombatSfx('heavy');
+          });
+          sim.effects.push({
+            type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty,
+            color: unit.team === 'blue' ? '#2563eb' : '#e11d48',
+            life: CHARGE_MOVE_TICKS + 32, maxLife: CHARGE_MOVE_TICKS + 32
+          });
+          addBattleLog(`💨 [전사] ${unit.name}의 돌진! (쿨 ${skObj.cooldownSec}초)`);
 
         } else if (sk === 'charge') {
           // 전사 돌진 스킬: 최대 2칸(240px) 전방 돌격! (Requirement 1)
@@ -9005,7 +9081,16 @@
 
       else if (unit.job === 'mage') {
         if (!target) return;
-        if (sk === 'fireball') {
+        if (sk === 'fireball' && aimPt) {
+          const fx = unit.x, fy = unit.y - 12;
+          sim.projectiles.push({
+            projType: 'fireball_proj', x: fx, y: fy, owner: unit,
+            dmg: unit.atk * 2.4, aoeRadius: 130, statusOnHit: 'burn', statusDur: 560, isSkill: true, speed: 2.8, trail: [],
+            isDirectional: true, angle: aimAngleTo(fx, fy), maxTravel: Math.max(20, Math.hypot(aimPt.x - fx, aimPt.y - 12 - fy))
+          });
+          addBattleLog(`🔥 [마법사] ${unit.name}의 파이어볼! (광역 🔥화상 · 쿨 ${skObj.cooldownSec}초)`);
+
+        } else if (sk === 'fireball') {
           let bestClusterTarget = target;
           let maxCluster = -1;
           enemies.forEach(cand => {
@@ -9029,10 +9114,10 @@
           addBattleLog(`🔥 [마법사] ${unit.name}의 파이어볼! (광역 🔥화상 · 쿨 ${skObj.cooldownSec}초)`);
 
         } else if (sk === 'ice_arrow') {
-          const unFrozen = enemies.find(e =>
+          const unFrozen = aimMode === 'target' ? target : (enemies.find(e =>
             Math.hypot(e.x - unit.x, e.y - unit.y) <= unit.range + 90 &&
             e.statuses.freeze <= 35 && e.statuses.stun <= 35
-          ) || target;
+          ) || target);
           sim.projectiles.push({
             projType: 'ice_arrow_proj',
             x: unit.x, y: unit.y - 12,
@@ -9108,10 +9193,10 @@
       else if (unit.job === 'archer') {
         if (!target) return;
         if (sk === 'poison_arrow') {
-          const poisonTarget = enemies.find(e =>
+          const poisonTarget = aimMode === 'target' ? target : (enemies.find(e =>
             Math.hypot(e.x - unit.x, e.y - unit.y) <= unit.range + 60 &&
             e.statuses.poison <= 60
-          ) || target;
+          ) || target);
           sim.projectiles.push({
             projType: 'poison_arrow',
             x: unit.x, y: unit.y - 8,
@@ -9126,7 +9211,7 @@
           addBattleLog(`☠️ [궁수] ${unit.name}의 초장거리 맹독 화살! (${poisonTarget.name} · 쿨 ${skObj.cooldownSec}초)`);
 
         } else if (sk === 'triple_arrow') {
-          const baseAngle = Math.atan2(target.y - (unit.y - 8), target.x - unit.x);
+          const baseAngle = aimPt ? aimAngleTo(unit.x, unit.y - 8) : Math.atan2(target.y - (unit.y - 8), target.x - unit.x);
           const spreadAngles = [-0.15, 0, 0.15];
           spreadAngles.forEach(offsetAngle => {
             const ang = baseAngle + offsetAngle;
@@ -9144,6 +9229,17 @@
             });
           });
           addBattleLog(`🔱 [궁수] ${unit.name}의 3중 화살 다방향 사격! (쿨 ${skObj.cooldownSec}초)`);
+
+        } else if (sk === 'rapid_fire' && aimPt) {
+          const ang = aimAngleTo(unit.x, unit.y - 8);
+          for (let i = 0; i < 5; i++) {
+            sim.projectiles.push({
+              projType: 'golden_arrow', isDirectional: true, angle: ang + (i - 2) * 0.02,
+              x: unit.x - i * 8 * Math.cos(ang), y: unit.y - 8 + (i - 2) * 4, owner: unit,
+              dmg: unit.atk * 0.85, isSkill: true, speed: 4.1 + i * 0.14, trail: [], maxTravel: unit.range + 160
+            });
+          }
+          addBattleLog(`☄️ [궁수] ${unit.name}의 5연사! (쿨 ${skObj.cooldownSec}초)`);
 
         } else if (sk === 'rapid_fire') {
           for (let i = 0; i < 5; i++) {
@@ -9764,6 +9860,7 @@
     function cancelSkillCast(unit) {
       if (!unit.casting) return;
       unit.casting = null;
+      unit.manualSkillMode = null;
       sim.floatTexts.push({ x: unit.x, y: unit.y - 52, text: '시전 끊김', color: '#64748b', life: 36 });
     }
 
@@ -9771,7 +9868,8 @@
     function stepSkillCast(unit, allies, enemies) {
       const c = unit.casting;
       if (!c) return false;
-      const facing = c.aimTarget && c.aimTarget.alive ? c.aimTarget : pickTarget(unit, allies, enemies);
+      const facing = c.aimTarget && c.aimTarget.alive ? c.aimTarget
+        : (c.aimX !== null ? { x: c.aimX, y: c.aimY } : pickTarget(unit, allies, enemies));
       if (facing && facing !== unit) {
         unit.facingAngle = Math.atan2(facing.y - unit.y, facing.x - unit.x);
         if (Math.abs(facing.x - unit.x) > 4) unit.facingDir = facing.x >= unit.x ? 1 : -1;
@@ -9823,7 +9921,7 @@
     }
 
     // 새 스킬 8종 발동 (처리했으면 true)
-    function castNewSkill(unit, allies, enemies, sk, skObj, target) {
+    function castNewSkill(unit, allies, enemies, sk, skObj, target, aimPt = null) {
       const C = GRID_CELL_SIZE;
       const teamColor = unit.team === 'blue' ? '#2563eb' : '#e11d48';
       const near = (list, x, y, r) => list.filter(u => Math.hypot(u.x - x, u.y - y) <= r);
@@ -9864,7 +9962,9 @@
           const d = Math.hypot(e.x - unit.x, e.y - unit.y);
           return !b || d < b.d ? { e, d } : b;
         }, null);
-        const away = threat ? Math.atan2(unit.y - threat.e.y, unit.x - threat.e.x) : (unit.team === 'blue' ? Math.PI : 0);
+        const away = aimPt
+          ? Math.atan2(unit.y - aimPt.y, unit.x - aimPt.x)
+          : (threat ? Math.atan2(unit.y - threat.e.y, unit.x - threat.e.x) : (unit.team === 'blue' ? Math.PI : 0));
         const ang = wallAwareAngle(unit, away);
         const from = { x: unit.x, y: unit.y };
         const to = clampToArena(unit.x + Math.cos(ang) * C * 1.6, unit.y + Math.sin(ang) * C * 1.6);
@@ -9873,7 +9973,7 @@
         unit.kbVx = 0;
         unit.kbVy = 0;
         sim.effects.push({ type: 'charge_dash', sx: from.x, sy: from.y, tx: to.x, ty: to.y, color: teamColor, life: 34, maxLife: 34 });
-        const aimAt = target || (threat && threat.e);
+        const aimAt = aimPt ? { x: aimPt.x, y: aimPt.y } : (target || (threat && threat.e));
         if (aimAt) {
           const base = Math.atan2((aimAt.y - 12) - (unit.y - 8), aimAt.x - unit.x);
           [-0.26, 0, 0.26].forEach(off => sim.projectiles.push({
