@@ -3850,7 +3850,9 @@
     // 1레벨 일반 용병 평균 전투력이 약 1,000이라 평균 가격은 예전과 같은 약 500 CA
     const RECRUIT_PRICE_PER_POWER = 0.5;
     function getRecruitPrice(merc) {
-      return Math.max(100, Math.round((calcMercCombatPower(merc, null) * RECRUIT_PRICE_PER_POWER) / 10) * 10);
+      const base = Math.max(100, Math.round((calcMercCombatPower(merc, null) * RECRUIT_PRICE_PER_POWER) / 10) * 10);
+      // 내가 판 용병을 다시 고용할 때는 판 값보다 싸지 않게 (팔고 다시 사서 CA 불리기 방지)
+      return merc && merc.soldBack ? Math.max(base, merc.soldPrice || 0) : base;
     }
 
     function calcMercCombatPower(merc, ownerStu) {
@@ -4855,6 +4857,12 @@
         stu.roster[0].deployed = true;
       }
       stu.mc += valInfo.instantSellPrice;
+      // 판 용병은 사라지지 않고 용병 모집 지원자 명단 맨 앞에 나옴 (다음 명단 갱신 때까지)
+      const pool = syncRecruitPoolFromStudent();
+      const soldCand = { ...JSON.parse(JSON.stringify(merc)), deployed: false, hired: false, soldBack: true, soldPrice: valInfo.instantSellPrice };
+      delete soldCand.hireCost;
+      recruitPool = [soldCand, ...pool];
+      stu.recruitPool = recruitPool;
       selectedMercId = stu.roster[0]?.id || null;
       closeMercSellModal();
       saveState();
@@ -5911,6 +5919,8 @@
       const deployedCount = stu.roster.filter(m => m.deployed).length;
       const hiredMerc = { ...cand, deployed: deployedCount < MAX_DEPLOY, hireCost: cost };
       delete hiredMerc.hired;
+      delete hiredMerc.soldBack;
+      delete hiredMerc.soldPrice;
 
       stu.roster.push(hiredMerc);
       const sk = getMercSkillObj(hiredMerc);
@@ -5971,6 +5981,7 @@
                   <h5 class="font-title text-lg text-white flex items-center gap-1.5">
                     <span>${cand.name}</span>
                   </h5>
+                  ${cand.soldBack ? '<p class="text-[10px] font-extrabold text-amber-300 mt-0.5">💰 판매된 용병 · 다시 고용할 수 있어요</p>' : ''}
                   ${rar.isRare ? `<p class="text-[10px] font-bold text-rose-400 mt-0.5">🔥 레어 특전: 기본 능력치 +10% & 레벨업 상승량 증가!</p>` : ''}
                 </div>
               </div>
