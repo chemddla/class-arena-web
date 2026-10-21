@@ -3934,6 +3934,13 @@
       moveStatTooltip(event);
     }
 
+    // 용병 모집 가격: 지원자의 전투력에 비례 (주인의 유물·장비 보너스는 빼고 용병 자체 전투력만)
+    // 1레벨 일반 용병 평균 전투력이 약 1,000이라 평균 가격은 예전과 같은 약 500 CA
+    const RECRUIT_PRICE_PER_POWER = 0.5;
+    function getRecruitPrice(merc) {
+      return Math.max(100, Math.round((calcMercCombatPower(merc, null) * RECRUIT_PRICE_PER_POWER) / 10) * 10);
+    }
+
     function calcMercCombatPower(merc, ownerStu) {
       const st = calcMercStats(merc, ownerStu);
       return Math.round(st.hp * 0.35 + st.atk * 4.5 + st.def * 2.5 + st.spd * 2.2);
@@ -3970,7 +3977,7 @@
       const powerBonus = Math.round(power * 0.12);
 
       const valuation = Math.round((baseVal + lvVal + tierBonus + powerBonus) / 10) * 10;
-      const invested = (rar.cost || 500) + totalLevelCostTo(merc.level || 1);
+      const invested = (merc.hireCost || rar.cost || 500) + totalLevelCostTo(merc.level || 1);
       const instantSellPrice = Math.max(100, Math.min(Math.round((valuation * 0.85) / 10) * 10, Math.round((invested * ECONOMY.sellRefundRatio) / 10) * 10));
       const suggestedStartBid = Math.max(200, Math.round((valuation * 0.80) / 10) * 10);
       const suggestedBuyout = Math.max(350, Math.round((valuation * 1.25) / 10) * 10);
@@ -6028,7 +6035,7 @@
         return;
       }
 
-      const cost = RARITY_DEFS[cand.rarity].cost;
+      const cost = getRecruitPrice(cand);
       if (stu.mc < cost) {
         showNotice(`⚠️ 계약금이 부족합니다! (필요: ${cost} CA / 보유: ${stu.mc} CA)`);
         return;
@@ -6037,7 +6044,7 @@
       stu.mc -= cost;
       cand.hired = true;
       const deployedCount = stu.roster.filter(m => m.deployed).length;
-      const hiredMerc = { ...cand, deployed: deployedCount < MAX_DEPLOY };
+      const hiredMerc = { ...cand, deployed: deployedCount < MAX_DEPLOY, hireCost: cost };
       delete hiredMerc.hired;
 
       stu.roster.push(hiredMerc);
@@ -6150,7 +6157,7 @@
                   ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
                   : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg'
               }">
-              ${cand.hired ? '✅ 고용 완료됨' : `💰 ${rar.cost.toLocaleString()} CA 주고 고용하기`}
+              ${cand.hired ? '✅ 고용 완료됨' : `💰 ${getRecruitPrice(cand).toLocaleString()} CA 주고 고용하기 (⚔️ 전투력 ${calcMercCombatPower(cand, null).toLocaleString()})`}
             </button>
           </div>
         `;
