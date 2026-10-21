@@ -824,6 +824,7 @@
                 <button type="button" data-touch="skill2" class="touch-btn">3</button>
               </div>
               <div class="flex flex-col gap-2 items-center">
+                <button type="button" data-touch="item" class="touch-btn">🎒</button>
                 <button type="button" data-touch="dash" class="touch-btn">💨</button>
                 <button type="button" data-touch="attack" class="touch-btn touch-btn-big">⚔️</button>
               </div>
@@ -1393,10 +1394,21 @@
 
       <!-- [탭 5] 장비 · 유물 상점 (일일 용병 장비 상점 + 아이템 보관함 + 유물 보물상자 분리 - Requirement 3, 4, 5, 6) -->
       <section id="studentTab-shop" class="student-tab-panel hidden flex flex-col gap-4">
-        <div class="bg-slate-900 border-2 border-dashed border-slate-700 rounded-2xl p-6 flex flex-col items-center text-center gap-2">
-          <div class="text-4xl">🔒</div>
-          <div class="font-title text-xl text-white">🛒 새 장비 상점 준비 중</div>
-          <p class="text-xs text-slate-400 max-w-md leading-relaxed">새로운 장비가 곧 나와요! 특수 효과가 붙은 장비와, <strong>Q 키</strong>로 쓰는 장비 스킬을 준비하고 있어요. 예전 장비와 유물은 정리했고, 썼던 CA는 돌려드렸어요.</p>
+        <div class="bg-slate-900 border-2 border-indigo-500/40 rounded-2xl p-5 flex flex-col gap-3 shadow">
+          <div>
+            <span class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-extrabold">🗓️ 매일 3종이 새로 나와요</span>
+            <h3 class="font-title text-2xl text-white mt-1">🛒 오늘의 장비</h3>
+            <p class="text-xs text-slate-400">장비는 하나에 <strong>10,000 CA</strong>예요. 용병 한 명에 <strong>장비 한 개</strong>를 끼울 수 있어요.
+              <strong class="text-violet-300">Q 발동</strong> 장비는 직접 전투에서 <strong>Q 키</strong>(태블릿은 🎒 버튼)로 쓰고, 자동 전투에서는 용병이 알아서 써요.</p>
+          </div>
+          <div id="dailyEquipShopGrid" class="grid grid-cols-1 md:grid-cols-3 gap-2.5"></div>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col gap-3">
+          <h4 class="font-title text-xl text-white flex items-center gap-2">
+            <span>📦</span> 내 장비 보관함
+            <span id="inventoryCountBadge" class="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-extrabold">0개 보관중</span>
+          </h4>
+          <div id="shopInventoryList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-[420px] overflow-y-auto pr-1"></div>
         </div>
       </section>
 
@@ -2625,27 +2637,35 @@
       { id: 'all_up', name: '타고난 영웅 (전 능력치 +10%)', hpBonus: 0.10, atkBonus: 0.10, defBonus: 0.10, spdBonus: 0.10 }
     ];
 
-    // 용병 장착용 장비 아이템 정의 (용병당 1개 장착 가능 · 일일 장비 상점 판매 - Requirement 3 & 4)
+    // ===== 장비 (용병당 1개) =====
+    // kind 'active': 전투 중 Q 키(태블릿은 🎒 버튼)로 쓰는 장비 스킬, AI 용병은 알아서 사용
+    // kind 'passive': 끼우기만 하면 늘 적용
+    const EQUIP_PRICE = 10000;
+    const EQUIP_SHOP_DAILY_COUNT = 3;
     const EQUIP_ITEM_DEFS = {
-      eq_iron_sword:     { id: 'eq_iron_sword',     name: '수련용 강철검',     icon: '🗡️', rarity: 'N', cost: 300, desc: '장착 용병 공격력 +8%',       hpBonus: 0,    atkBonus: 0.08, defBonus: 0,    spdBonus: 0 },
-      eq_iron_armor:     { id: 'eq_iron_armor',     name: '수련용 사슬갑옷',   icon: '🛡️', rarity: 'N', cost: 300, desc: '장착 용병 방어력 +8%',       hpBonus: 0,    atkBonus: 0,    defBonus: 0.08, spdBonus: 0 },
-      eq_vital_belt:     { id: 'eq_vital_belt',     name: '활력의 가죽벨트',   icon: '❤️', rarity: 'N', cost: 300, desc: '장착 용병 최대 체력 +8%',     hpBonus: 0.08, atkBonus: 0,    defBonus: 0,    spdBonus: 0 },
-      eq_wind_boots:     { id: 'eq_wind_boots',     name: '신속의 가죽장화',   icon: '🥾', rarity: 'N', cost: 300, desc: '장착 용병 속도 +8%',         hpBonus: 0,    atkBonus: 0,    defBonus: 0,    spdBonus: 0.08 },
-      eq_mithril_blade:  { id: 'eq_mithril_blade',  name: '명장의 미스릴 대검', icon: '⚔️', rarity: 'R', cost: 600, desc: '장착 용병 공격력 +15%',      hpBonus: 0,    atkBonus: 0.15, defBonus: 0,    spdBonus: 0 },
-      eq_guardian_plate: { id: 'eq_guardian_plate', name: '수호기사의 중갑주', icon: '🦺', rarity: 'R', cost: 600, desc: '장착 용병 방어력 +15%',      hpBonus: 0,    atkBonus: 0,    defBonus: 0.15, spdBonus: 0 },
-      eq_giant_cloak:    { id: 'eq_giant_cloak',    name: '거인의 생명 망토',  icon: '🧣', rarity: 'R', cost: 600, desc: '장착 용병 최대 체력 +15%',    hpBonus: 0.15, atkBonus: 0,    defBonus: 0,    spdBonus: 0 },
-      eq_gale_greaves:   { id: 'eq_gale_greaves',   name: '질풍의 날개부츠',   icon: '⚡', rarity: 'R', cost: 600, desc: '장착 용병 속도 +14%',        hpBonus: 0,    atkBonus: 0,    defBonus: 0,    spdBonus: 0.14 },
-      eq_hero_ring:      { id: 'eq_hero_ring',      name: '영웅의 수호반지',   icon: '💍', rarity: 'R', cost: 750, desc: '장착 용병 모든 능력치 +6%',   hpBonus: 0.06, atkBonus: 0.06, defBonus: 0.06, spdBonus: 0.06 }
+      eq_swift_boots:   { id: 'eq_swift_boots',   name: '신속 신발', icon: '👟', kind: 'active', skill: 'haste',    cdSec: 20, desc: '[Q] 헤이스트: 10초간 이동속도 +20% (쿨타임 20초)' },
+      eq_frenzy_mask:   { id: 'eq_frenzy_mask',   name: '광기 가면', icon: '🎭', kind: 'active', skill: 'frenzy',   cdSec: 30, desc: '[Q] 광폭화: 체력 10%를 쓰고 15초간 공격력 +30% (쿨타임 30초)' },
+      eq_arcane_band:   { id: 'eq_arcane_band',   name: '비전 팔찌', icon: '📿', kind: 'active', skill: 'blink',    cdSec: 15, desc: '[Q] 텔레포트: 3칸 안의 원하는 곳(마우스 위치)으로 순간이동 (쿨타임 15초)' },
+      eq_vamp_ring:     { id: 'eq_vamp_ring',     name: '흡혈 반지', icon: '💍', kind: 'passive', desc: '흡혈 10%: 적에게 준 피해의 10%만큼 체력 회복' },
+      eq_accel_band:    { id: 'eq_accel_band',    name: '가속 팔찌', icon: '⚡', kind: 'passive', desc: '공격이 맞을 때마다 공격속도 +2% (최대 +60%), 쌓인 만큼 ⚡숫자로 표시' },
+      eq_phantom_glass: { id: 'eq_phantom_glass', name: '환영 거울', icon: '🪞', kind: 'active', skill: 'illusion', cdSec: 40, desc: '[Q] 환영: 내 능력치 30%의 분신을 불러 함께 싸움 (분신은 자동 전투, 쿨타임 40초)' },
+      eq_worn_shinai:   { id: 'eq_worn_shinai',   name: '헤진 죽도', icon: '🎋', kind: 'passive', desc: '일반 공격 피해 +20%' },
+      eq_red_orb:       { id: 'eq_red_orb',       name: '붉은 구슬', icon: '🔴', kind: 'passive', desc: '근접 공격 스킬(전사 스킬) 피해 +20%' },
+      eq_blue_orb:      { id: 'eq_blue_orb',      name: '푸른 구슬', icon: '🔵', kind: 'passive', desc: '원거리 공격 스킬(궁수·마법사 스킬) 피해 +20%' },
+      eq_old_cross:     { id: 'eq_old_cross',     name: '낡은 십자가', icon: '✝️', kind: 'passive', desc: '쓰러지면 체력 20%로 한 번 되살아남 (전투당 1번)' }
+    };
+    Object.values(EQUIP_ITEM_DEFS).forEach(d => { d.cost = EQUIP_PRICE; });
+
+    // 예전 장비 가격 (예전 장비를 아직 가진 학생에게 돌려줄 CA 계산용)
+    const LEGACY_EQUIP_PRICES = {
+      eq_iron_sword: 300, eq_iron_armor: 300, eq_vital_belt: 300, eq_wind_boots: 300,
+      eq_mithril_blade: 600, eq_guardian_plate: 600, eq_giant_cloak: 600, eq_gale_greaves: 600, eq_hero_ring: 750
     };
 
-    // 유물 능력치 상승량 추가 축소 & 강화 단계별 총 능력치 상승 병기 지원 (Requirement 2)
-    const RELIC_DEFS = [
-      { id: 'relic_sword',   name: '용기의 황금검',   icon: '⚔️', statLabel: '공격력',          perLvPct: 1.5, desc: '1강당 모든 아군 용병 공격력 +1.5%' },
-      { id: 'relic_armor',   name: '불굴의 수호갑옷', icon: '🛡️', statLabel: '방어력',          perLvPct: 1.5, desc: '1강당 모든 아군 용병 방어력 +1.5%' },
-      { id: 'relic_shield',  name: '생명의 성광방패', icon: '❤️', statLabel: '최대 체력',        perLvPct: 2.0, desc: '1강당 모든 아군 용병 최대 체력 +2%' },
-      { id: 'relic_boots',   name: '질풍의 날개신발', icon: '🪽', statLabel: '속도(공속·이속)',  perLvPct: 1.0, desc: '1강당 모든 아군 용병 속도 +1%' },
-      { id: 'relic_chalice', name: '성스러운 성배',   icon: '🏆', statLabel: '힐러 회복·보호막', perLvPct: 2.0, desc: '1강당 힐러 회복·보호막 효과 +2%' }
-    ];
+    function equipDefOf(itemOrId) {
+      const id = typeof itemOrId === 'string' ? itemOrId : itemOrId && itemOrId.itemId;
+      return (id && EQUIP_ITEM_DEFS[id]) || null;
+    }
 
     // 모험의 탑 난이도별 몬스터 & 훈련용 허수아비 정의 (시스템 기본 심볼 사용)
     // 몬스터 특성: 능력치 배율(hp·atk·def·spd)과 고유 능력(passives). big은 크게 그리는 몬스터(보스급)
@@ -3833,9 +3853,10 @@
         desc = merc.traitName;
         detail = t ? `<div>항상 적용: ${bonusText(t) || '보너스 없음'}</div>` : '';
       } else if (kind === 'equip') {
+        const eq = equipDefOf(merc.equippedItem);
         title = '🎒 장비';
-        desc = '🔒 새 장비 준비 중';
-        detail = '<div>특수 효과 장비와 Q 키 장비 스킬이 곧 추가돼요.</div>';
+        desc = eq ? `${eq.icon} ${eq.name}` : '아직 끼운 장비가 없어요.';
+        detail = eq ? `<div>${eq.desc}</div>` : '<div>[🛒 상점]에서 산 장비를 [세부정보] 창에서 끼울 수 있어요.</div>';
       } else if (kind === 'sp') {
         const sp = getMercStatPointInfo(merc);
         title = '🌟 미배분 스탯 포인트';
@@ -4290,7 +4311,7 @@
 
               <div class="flex flex-col gap-0.5 text-[10px] text-slate-400 mb-1.5 px-0.5">
                 <div class="flex items-center justify-between gap-2">
-                  <span class="cursor-help" ${mercTipAttrs('equip', merc.id)}>🎒 🔒 장비 준비 중</span>
+                  <span class="cursor-help" ${mercTipAttrs('equip', merc.id)}>🎒 ${equipDefOf(merc.equippedItem) ? `<strong class="text-emerald-300">${equipDefOf(merc.equippedItem).icon}${equipDefOf(merc.equippedItem).name}</strong>` : '장비 없음'}</span>
                   ${spInfo.freeSp > 0 ? `<span class="px-1.5 py-0.2 rounded bg-amber-500 text-slate-950 font-extrabold text-[10px] cursor-help" ${mercTipAttrs('sp', merc.id)}>미배분 SP +${spInfo.freeSp}</span>` : ''}
                 </div>
               </div>
@@ -4594,13 +4615,32 @@
           </div>
         </div>
 
-        <!-- 2-B. 장비 칸: 새 장비 업데이트 전까지 잠금 -->
-        <div class="bg-slate-950 border-2 border-dashed border-slate-700 rounded-2xl p-3.5 flex items-center gap-3">
-          <span class="text-2xl">🔒</span>
-          <div>
-            <div class="text-xs font-extrabold text-slate-200">🎒 장비 칸 — 새 장비 준비 중</div>
-            <p class="text-[11px] text-slate-400">특수 효과 장비와 Q 키 장비 스킬이 곧 추가돼요.</p>
+        <!-- 2-B. 장비 칸 (용병당 1개) -->
+        <div class="bg-slate-950 border-2 border-emerald-500/40 rounded-2xl p-3.5 flex flex-col gap-2.5">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <span class="text-xs font-extrabold text-emerald-300">🎒 장비 (용병당 1개)</span>
+            <button onclick="closeMercDetailModal(); switchStudentTab('shop');" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-amber-300 border border-slate-700">🛒 오늘의 장비 보기</button>
           </div>
+          ${(() => {
+            const eq = equipDefOf(merc.equippedItem);
+            const inv = (stu.inventory || []).filter(it => equipDefOf(it));
+            const cur = eq
+              ? `<div class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2.5 min-w-0"><span class="text-2xl">${eq.icon}</span>
+                    <div class="min-w-0"><div class="text-xs font-extrabold text-white flex items-center gap-1 flex-wrap">${eq.name} ${equipKindBadge(eq)}</div>
+                    <div class="text-[11px] text-amber-300 font-bold leading-snug">${eq.desc}</div></div></div>
+                  <button onclick="unequipMercItem('${merc.id}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300 shrink-0">빼기</button>
+                </div>`
+              : '<div class="text-xs text-slate-400 bg-slate-900 border border-slate-800 rounded-xl p-2.5">끼운 장비가 없어요. 아래 보관함에서 골라 끼워 주세요.</div>';
+            const list = inv.length
+              ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-36 overflow-y-auto pr-1">${inv.map(it => {
+                  const d = equipDefOf(it);
+                  return `<button onclick="equipItemFromInventory('${merc.id}', '${it.uid}')" class="text-left rounded-lg border border-slate-800 bg-slate-900 hover:border-emerald-500 p-2 flex items-center gap-2">
+                    <span class="text-xl">${d.icon}</span><span class="min-w-0"><span class="block text-[11px] font-extrabold text-white">${d.name} 끼우기</span><span class="block text-[10px] text-slate-400 truncate">${d.desc}</span></span></button>`;
+                }).join('')}</div>`
+              : '<div class="text-[11px] text-slate-500">📦 보관함에 장비가 없어요.</div>';
+            return cur + list;
+          })()}
         </div>
 
         <!-- 3. 전술 AI & 대시 운용 설정 -->
@@ -5728,7 +5768,7 @@
       const mercPower = calcMercCombatPower(merc, stu);
       const statCmp = getMercInitialStatComparison(merc);
 
-      const eqObj = merc.equippedItem ? EQUIP_ITEM_DEFS[merc.equippedItem.itemId] : null;
+      const eqObj = equipDefOf(merc.equippedItem);
       box.innerHTML = `
         <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
           <div class="flex items-center gap-2.5">
@@ -5743,7 +5783,7 @@
                 <span class="px-2 py-0.5 rounded-lg bg-rose-500/15 text-rose-400 font-extrabold text-[11px] border border-rose-500/30">⚔️ 전투력 ${mercPower.toLocaleString()}</span>
               </div>
               <div class="text-[11px] text-slate-400 mt-0.5">
-                🎒 🔒 장비 준비 중
+                🎒 ${eqObj ? `${eqObj.icon} ${eqObj.name}` : '장비 없음'}
               </div>
             </div>
           </div>
@@ -6735,48 +6775,19 @@
      ********************************************************************/
     function ensureDailyEquipShop(stu) {
       const today = getTodayDateString();
-      if (!Array.isArray(stu.dailyEquipShop) || stu.dailyEquipShop.length === 0 || stu.dailyEquipShopDate !== today) {
-        generateDailyEquipShop(stu);
-      }
+      const stale = !Array.isArray(stu.dailyEquipShop) || stu.dailyEquipShop.length !== EQUIP_SHOP_DAILY_COUNT
+        || stu.dailyEquipShop.some(x => !EQUIP_ITEM_DEFS[x.itemId]);
+      if (stale || stu.dailyEquipShopDate !== today) generateDailyEquipShop(stu);
     }
 
+    // 오늘의 장비: 10종 중 3종 무작위 (학생마다, 날마다 다름)
     function generateDailyEquipShop(stu) {
-      const allItemKeys = Object.keys(EQUIP_ITEM_DEFS);
-      const normalKeys = allItemKeys.filter(k => EQUIP_ITEM_DEFS[k].rarity === 'N');
-      const rareKeys = allItemKeys.filter(k => EQUIP_ITEM_DEFS[k].rarity === 'R');
-      const shopItems = [];
-      // 기본 4종 일반 장비 + 2종 레어 장비로 총 6종 일일 진열
-      normalKeys.forEach(k => {
-        shopItems.push({ slotId: 'shop_' + k + '_' + Math.random().toString(36).slice(2, 6), itemId: k, sold: false });
-      });
-      const shuffledRare = [...rareKeys].sort(() => Math.random() - 0.5).slice(0, 2);
-      shuffledRare.forEach(k => {
-        shopItems.push({ slotId: 'shop_' + k + '_' + Math.random().toString(36).slice(2, 6), itemId: k, sold: false });
-      });
+      const keys = Object.keys(EQUIP_ITEM_DEFS).sort(() => Math.random() - 0.5).slice(0, EQUIP_SHOP_DAILY_COUNT);
       stu.dailyEquipShopDate = getTodayDateString();
-      stu.dailyEquipShop = shopItems;
-    }
-
-    function refreshDailyEquipShop(isFree = false) {
-      showNotice('🔒 새 장비 상점을 준비하고 있어요. 조금만 기다려 주세요!');
-      return;
-      const stu = getActiveStudent();
-      if (!isFree) {
-        if (stu.mc < 100) {
-          showNotice('⚠️ 장비 상점 갱신 비용(100 CA)이 부족합니다!');
-          return;
-        }
-        stu.mc -= 100;
-      }
-      generateDailyEquipShop(stu);
-      saveState();
-      renderShopTab();
-      showNotice('🔄 오늘의 용병 장비 상점 진열 목록이 새롭게 갱신되었습니다!');
+      stu.dailyEquipShop = keys.map(k => ({ slotId: 'shop_' + k + '_' + Math.random().toString(36).slice(2, 6), itemId: k, sold: false }));
     }
 
     function buyDailyEquipItem(slotIdx) {
-      showNotice('🔒 새 장비 상점을 준비하고 있어요. 조금만 기다려 주세요!');
-      return;
       const stu = getActiveStudent();
       ensureDailyEquipShop(stu);
       const slot = stu.dailyEquipShop[slotIdx];
@@ -6784,194 +6795,121 @@
       const itemDef = EQUIP_ITEM_DEFS[slot.itemId];
       if (!itemDef) return;
       if (stu.mc < itemDef.cost) {
-        showNotice(`⚠️ 장비 구매 비용이 부족합니다! (필요: ${itemDef.cost.toLocaleString()} CA / 보유: ${stu.mc.toLocaleString()} CA)`);
+        showNotice(`⚠️ 장비를 사기에 CA가 부족해요! (필요: ${itemDef.cost.toLocaleString()} CA / 보유: ${stu.mc.toLocaleString()} CA)`);
         return;
       }
-      stu.mc -= itemDef.cost;
-      slot.sold = true;
-      if (!Array.isArray(stu.inventory)) stu.inventory = [];
-      stu.inventory.push({
-        uid: 'eq_' + Math.random().toString(36).slice(2, 8) + '_' + Date.now(),
-        itemId: itemDef.id
+      askCustomConfirm(`[${itemDef.icon} ${itemDef.name}]을(를) ${itemDef.cost.toLocaleString()} CA에 살까요?`, () => {
+        if (slot.sold || stu.mc < itemDef.cost) return;
+        stu.mc -= itemDef.cost;
+        slot.sold = true;
+        if (!Array.isArray(stu.inventory)) stu.inventory = [];
+        stu.inventory.push({ uid: 'eq_' + Math.random().toString(36).slice(2, 8) + '_' + Date.now(), itemId: itemDef.id });
+        saveState();
+        renderShopTab();
+        renderSquadTab();
+        showRewardBanner(`🎒 [${itemDef.icon} ${itemDef.name}] 구매 완료! 보관함에서 용병에게 끼워 주세요.`);
       });
-      saveState();
-      renderShopTab();
-      renderSquadTab();
-      showRewardBanner(`🎒 [${itemDef.icon} ${itemDef.name}] 구매 완료! 아이템 보관함에서 용병에게 장착할 수 있습니다.`);
     }
 
     function equipItemFromInventory(mercId, itemUid) {
-      showNotice('🔒 새 장비 상점을 준비하고 있어요. 조금만 기다려 주세요!');
-      return;
       const stu = getActiveStudent();
       const merc = (stu.roster || []).find(m => m.id === mercId);
-      if (!merc) {
-        showNotice('⚠️ 장비를 장착할 용병을 먼저 선택해주세요!');
-        return;
-      }
+      if (!merc) { showNotice('⚠️ 장비를 끼울 용병을 먼저 골라 주세요!'); return; }
       if (!Array.isArray(stu.inventory)) stu.inventory = [];
       const invIdx = stu.inventory.findIndex(x => x.uid === itemUid);
       if (invIdx === -1) return;
       const [pickedItem] = stu.inventory.splice(invIdx, 1);
-
-      if (merc.equippedItem) {
-        stu.inventory.push(merc.equippedItem);
-      }
+      if (merc.equippedItem && equipDefOf(merc.equippedItem)) stu.inventory.push(merc.equippedItem);
       merc.equippedItem = pickedItem;
-      const eqDef = EQUIP_ITEM_DEFS[pickedItem.itemId];
+      const eqDef = equipDefOf(pickedItem);
       saveState();
       renderAllStudentViews();
       if (activeDetailMercId) renderMercDetailModal();
-      showRewardBanner(`⚔️ [${merc.name}] 용병에게 [${eqDef.icon} ${eqDef.name} (${eqDef.desc})] 장비를 장착했습니다!`);
+      showRewardBanner(`⚔️ [${merc.name}]에게 [${eqDef.icon} ${eqDef.name}]을(를) 끼웠어요! (${eqDef.desc})`);
     }
 
     function unequipMercItem(mercId) {
       const stu = getActiveStudent();
       const merc = (stu.roster || []).find(m => m.id === mercId);
       if (!merc || !merc.equippedItem) return;
-      const eqDef = EQUIP_ITEM_DEFS[merc.equippedItem.itemId];
+      const eqDef = equipDefOf(merc.equippedItem);
       if (!Array.isArray(stu.inventory)) stu.inventory = [];
-      stu.inventory.push(merc.equippedItem);
+      if (eqDef) stu.inventory.push(merc.equippedItem);
       merc.equippedItem = null;
       saveState();
       renderAllStudentViews();
       if (activeDetailMercId) renderMercDetailModal();
-      showNotice(`📦 [${merc.name}] 용병의 [${eqDef ? eqDef.name : '장비'}] 장착을 해제하여 보관함으로 이동했습니다.`);
+      showNotice(`📦 [${merc.name}]의 [${eqDef ? eqDef.name : '장비'}]을(를) 빼서 보관함에 넣었어요.`);
+    }
+
+    function equipKindBadge(eq) {
+      return eq.kind === 'active'
+        ? '<span class="px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30 text-[10px] font-extrabold">Q 발동</span>'
+        : '<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-extrabold">항상 적용</span>';
     }
 
     function renderShopTab() {
-      return; // 상점은 새 장비 업데이트 전까지 잠금 (탭에는 안내만 표시)
       const stu = getActiveStudent();
+      if (!stu) return;
       ensureDailyEquipShop(stu);
       if (!Array.isArray(stu.inventory)) stu.inventory = [];
 
-      // 1) 일일 용병 장비 상점 렌더링
       const shopGrid = document.getElementById('dailyEquipShopGrid');
       if (shopGrid) {
         shopGrid.innerHTML = stu.dailyEquipShop.map((slot, idx) => {
           const item = EQUIP_ITEM_DEFS[slot.itemId];
           if (!item) return '';
-          const rar = RARITY_DEFS[item.rarity] || RARITY_DEFS.N;
+          const canBuy = !slot.sold && stu.mc >= item.cost;
           return `
-            <div class="rounded-2xl border-2 p-3.5 flex flex-col justify-between gap-2.5 rarity-${item.rarity} ${slot.sold ? 'opacity-45' : ''}">
-              <div class="flex items-start justify-between gap-2">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-12 h-12 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center text-2xl shrink-0">
-                    ${item.icon}
-                  </div>
-                  <div>
-                    <div class="flex items-center gap-1.5">
-                      <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold ${rar.badgeClass}">${rar.name} 장비</span>
-                      <span class="font-bold text-sm text-white">${item.name}</span>
-                    </div>
-                    <div class="text-xs font-extrabold text-emerald-300 mt-0.5">✨ ${item.desc}</div>
-                  </div>
+            <div class="rounded-2xl border-2 p-3.5 flex flex-col justify-between gap-2.5 bg-slate-950 border-indigo-500/40 ${slot.sold ? 'opacity-45' : ''}">
+              <div class="flex items-start gap-2.5">
+                <div class="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-2xl shrink-0">${item.icon}</div>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5 flex-wrap"><span class="font-bold text-sm text-white">${item.name}</span>${equipKindBadge(item)}</div>
+                  <div class="text-[11px] font-bold text-emerald-300 mt-0.5 leading-snug">${item.desc}</div>
                 </div>
               </div>
               <button onclick="buyDailyEquipItem(${idx})" ${slot.sold ? 'disabled' : ''}
-                class="w-full py-2 rounded-xl font-extrabold text-xs transition ${
-                  slot.sold
-                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                    : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow'
-                }">
-                ${slot.sold ? '✅ 구매 완료 (보관함 이동됨)' : `💰 ${item.cost.toLocaleString()} CA 구매하기`}
+                class="w-full py-2 rounded-xl font-extrabold text-xs transition ${slot.sold ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : (canBuy ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow' : 'bg-slate-800 text-slate-400')}">
+                ${slot.sold ? '✅ 구매 완료 (보관함으로)' : `💰 ${item.cost.toLocaleString()} CA`}
               </button>
-            </div>
-          `;
+            </div>`;
         }).join('');
       }
 
-      // 2) 내 아이템 보관함 렌더링 (보관함에서 바로 용병 선택해 장착 가능)
       const invBadge = document.getElementById('inventoryCountBadge');
       if (invBadge) invBadge.textContent = `${stu.inventory.length}개 보관중`;
       const invList = document.getElementById('shopInventoryList');
       if (invList) {
-        if (stu.inventory.length === 0) {
-          invList.innerHTML = `<div class="col-span-full text-center py-6 text-xs text-slate-400 bg-slate-950 rounded-xl border border-slate-800">현재 보관함에 장비가 없습니다. 위 일일 상점에서 장비를 구매하거나 장착 중인 장비를 해제하면 여기에 보관됩니다.</div>`;
+        const items = stu.inventory.filter(it => equipDefOf(it));
+        if (!items.length) {
+          invList.innerHTML = '<div class="col-span-full text-center py-6 text-xs text-slate-400 bg-slate-950 rounded-xl border border-slate-800">보관함이 비어 있어요. 오늘의 장비를 사거나, 용병이 끼고 있던 장비를 빼면 여기에 들어와요.</div>';
         } else {
           const mercOptions = (stu.roster || []).map(m => {
-            const curEq = m.equippedItem ? EQUIP_ITEM_DEFS[m.equippedItem.itemId] : null;
-            return `<option value="${m.id}">${JOB_DEFS[m.job].icon}${m.name}(Lv.${m.level}${curEq ? ` · 장착:${curEq.name}` : ''})</option>`;
+            const curEq = equipDefOf(m.equippedItem);
+            return `<option value="${m.id}">${JOB_DEFS[m.job].icon}${m.name}(Lv.${m.level}${curEq ? ` · ${curEq.icon}${curEq.name}` : ''})</option>`;
           }).join('');
-          invList.innerHTML = stu.inventory.map(invItem => {
-            const eq = EQUIP_ITEM_DEFS[invItem.itemId];
-            if (!eq) return '';
-            const rar = RARITY_DEFS[eq.rarity] || RARITY_DEFS.N;
+          invList.innerHTML = items.map(invItem => {
+            const eq = equipDefOf(invItem);
             return `
               <div class="rounded-xl border p-3 bg-slate-950 border-slate-800 flex flex-col justify-between gap-2">
                 <div class="flex items-center gap-2.5">
                   <span class="text-2xl">${eq.icon}</span>
-                  <div>
-                    <div class="flex items-center gap-1">
-                      <span class="px-1.5 py-0.2 rounded text-[9px] font-extrabold ${rar.badgeClass}">${rar.name}</span>
-                      <span class="font-bold text-xs text-white">${eq.name}</span>
-                    </div>
-                    <div class="text-[11px] text-emerald-300 font-bold">${eq.desc}</div>
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-1 flex-wrap"><span class="font-bold text-xs text-white">${eq.name}</span>${equipKindBadge(eq)}</div>
+                    <div class="text-[11px] text-emerald-300 font-bold leading-snug">${eq.desc}</div>
                   </div>
                 </div>
                 <div class="flex items-center gap-1.5 pt-1 border-t border-slate-800">
-                  <select id="equipTargetSel_${invItem.uid}" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-white">
+                  <select id="equipTargetSel_${invItem.uid}" class="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-white">
                     ${mercOptions || '<option value="">용병 없음</option>'}
                   </select>
                   <button onclick="equipItemFromInventory(document.getElementById('equipTargetSel_${invItem.uid}')?.value, '${invItem.uid}')"
-                    class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-[11px] shrink-0 shadow">
-                    장착하기
-                  </button>
+                    class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-[11px] shrink-0 shadow">끼우기</button>
                 </div>
-              </div>
-            `;
+              </div>`;
           }).join('');
         }
-      }
-
-      // 3) 유물 도감 렌더링 (1강당 상승량 축소 + 강화에 따른 총 능력치 상승 병기 - Requirement 2)
-      const summaryBox = document.getElementById('relicTotalBonusSummaryBox');
-      if (summaryBox) {
-        const atkTot  = +((stu.relics.relic_sword   || 0) * 1.5).toFixed(1);
-        const defTot  = +((stu.relics.relic_armor   || 0) * 1.5).toFixed(1);
-        const hpTot   = +((stu.relics.relic_shield  || 0) * 2.0).toFixed(1);
-        const spdTot  = +((stu.relics.relic_boots   || 0) * 1.0).toFixed(1);
-        const healTot = +((stu.relics.relic_chalice || 0) * 2.0).toFixed(1);
-        summaryBox.innerHTML = `
-          <div class="font-extrabold text-amber-300 mb-1">📊 현재 강화 누적 유물 총 능력치 상승 효과</div>
-          <div class="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
-            <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800">⚔️ 공격력 총 +${atkTot}%</span>
-            <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800">🛡️ 방어력 총 +${defTot}%</span>
-            <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800">❤️ 최대체력 총 +${hpTot}%</span>
-            <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800">🪽 속도 총 +${spdTot}%</span>
-            <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800">🏆 회복·보호막 총 +${healTot}%</span>
-          </div>
-        `;
-      }
-
-      const rBox = document.getElementById('relicListBox');
-      if (rBox) {
-        rBox.innerHTML = RELIC_DEFS.map(r => {
-          const lv = stu.relics[r.id] || 0;
-          const totalPct = +(lv * (r.perLvPct || 1)).toFixed(1);
-          return `
-            <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2.5">
-                <span class="text-2xl">${r.icon}</span>
-                <div>
-                  <div class="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
-                    <span>${r.name}</span>
-                    <span class="text-amber-300 font-extrabold">+${lv}강 (Lv.${lv})</span>
-                  </div>
-                  <div class="text-[11px] text-slate-400">
-                    ${r.desc} · <strong class="text-emerald-300">현재 총 ${r.statLabel} +${totalPct}% 상승</strong>
-                  </div>
-                </div>
-              </div>
-              <div class="text-right shrink-0">
-                <span class="text-xs font-extrabold block ${lv > 0 ? 'text-emerald-300' : 'text-slate-500'}">
-                  ${lv > 0 ? `총 +${totalPct}%` : '미보유 (0%)'}
-                </span>
-                <span class="text-[10px] text-slate-400">(1강당 +${r.perLvPct}%)</span>
-              </div>
-            </div>
-          `;
-        }).join('');
       }
     }
 
@@ -7374,25 +7312,6 @@
       renderQuizCard();
     }
 
-    function drawRelicGacha() {
-      showNotice('🔒 새 장비 상점을 준비하고 있어요. 조금만 기다려 주세요!');
-      return;
-      const stu = getActiveStudent();
-      if (stu.mc >= 400) {
-        stu.mc -= 400;
-      } else {
-        showNotice('⚠️ 유물 상자를 열기 위한 코인(400 CA)이 부족합니다!');
-        return;
-      }
-
-      const picked = RELIC_DEFS[Math.floor(Math.random() * RELIC_DEFS.length)];
-      stu.relics[picked.id] = (stu.relics[picked.id] || 0) + 1;
-      saveState();
-      renderMissionQuizTab();
-      renderSquadTab();
-      showRewardBanner(`👑 전술 유물 [${picked.icon} ${picked.name}] Lv.${stu.relics[picked.id]} 달성!`);
-    }
-
     /********************************************************************
      * 10. 실시간 와이드 2D 캔버스 시뮬레이션 엔진 (1240x580 광활한 전장)
      ********************************************************************/
@@ -7717,6 +7636,14 @@
         <span class="text-slate-300">❤️ ${Math.max(0, Math.round(u.hp)).toLocaleString()} / ${u.maxHp.toLocaleString()} · 💧 ${Math.round(u.mana)}</span>
         <span class="px-2 py-1 rounded-lg bg-slate-800 text-slate-200 font-extrabold">Space 대시 ${dashTxt}</span>
         ${skillChips}
+        ${(() => {
+          const idef = equipDefOf(u.itemId);
+          if (!idef) return '';
+          const buffs = [u.hasteTicks > 0 ? `👟${(u.hasteTicks / 60).toFixed(0)}s` : '', u.frenzyTicks > 0 ? `🎭${(u.frenzyTicks / 60).toFixed(0)}s` : '', u.atkSpdStacks > 0 ? `⚡${u.atkSpdStacks}` : ''].filter(Boolean).join(' ');
+          if (idef.kind !== 'active') return `<span class="px-2 py-1 rounded-lg bg-slate-800 text-emerald-300 font-extrabold">${idef.icon}${idef.name}${buffs ? ' ' + buffs : ''}</span>`;
+          const ready = u.itemCd <= 0;
+          return `<span class="px-2 py-1 rounded-lg ${ready ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400'} font-extrabold">Q ${idef.icon}${idef.name} ${ready ? '✅' : `⏳${(u.itemCd / 60).toFixed(1)}s`}${buffs ? ' ' + buffs : ''}</span>`;
+        })()}
         <span class="text-slate-400">WASD 이동 · 좌클릭/K 공격${arenaMouseSeen ? '' : ' · 🖱️ 마우스 없음: 바라보는 쪽 공격, 스킬은 가까운 적'}</span>`;
     }
 
@@ -7737,6 +7664,10 @@
         e.preventDefault();
       } else if (k === '1' || k === '2' || k === '3') {
         if (!e.repeat) localBattleInput.skillCount[Number(k) - 1]++;
+        e.preventDefault();
+      } else if (k === 'q' || e.code === 'KeyQ') {
+        // Q: 장비 스킬
+        if (!e.repeat) localBattleInput.itemCount = (localBattleInput.itemCount || 0) + 1;
         e.preventDefault();
       } else if (k === 'k' || e.code === 'KeyK') {
         // K: 공격 (마우스 없이 태블릿 키보드로 할 때) — 누르고 있으면 계속 공격
@@ -7996,7 +7927,7 @@
       if (u.castLock > 0) return;
       if (u.casting) return;
       // 부활: 쓰러진 아군이 없으면 쓰지 않음 (마나·쿨타임 30초가 헛되이 사라지지 않게)
-      if (key === 'revive' && !sim.units.some(x => x.team === u.team && !x.alive && x.monsterType !== 'scarecrow')) { say('🌟 쓰러진 아군이 없어요'); return; }
+      if (key === 'revive' && !sim.units.some(x => x.team === u.team && !x.alive && x.monsterType !== 'scarecrow' && !x.isClone)) { say('🌟 쓰러진 아군이 없어요'); return; }
       const noMouseAim = typeof c.aimX !== 'number' || typeof c.aimY !== 'number';
       let aimX = c.aimX ?? (u.x + Math.cos(u.facingAngle || 0) * 100);
       let aimY = c.aimY ?? (u.y + Math.sin(u.facingAngle || 0) * 100);
@@ -8030,6 +7961,114 @@
       beginSkillCast(u, key, aim);
     }
 
+    // ===== 장비 스킬 (Q 발동형) =====
+    const ITEM_BLINK_RANGE = GRID_CELL_SIZE * 3;
+    let illusionSeq = 0;
+
+    // 실시간 결투 방장: 분신처럼 전투 중에 유닛이 늘면 상대 화면에 유닛 목록을 다시 보냄
+    function republishLiveUnits() {
+      if (liveNet.role !== 'host' || !liveNet.ref) return;
+      const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim']);
+      const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) ? undefined : v))));
+      liveNet.ref.child('init').set({ at: Date.now(), units }).catch(() => {});
+    }
+
+    function spawnIllusion(u) {
+      const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim', 'casting']);
+      const c = JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) ? undefined : v)));
+      const side = u.team === 'blue' ? 1 : -1;
+      const pos = clampToArena(u.x + side * 60, u.y + 50);
+      Object.assign(c, {
+        id: `${u.id}_ill${++illusionSeq}`, name: `${u.name}의 환영`, isClone: true, ownerId: u.id,
+        maxHp: Math.max(1, Math.round(u.maxHp * 0.3)), atk: Math.max(1, Math.round(u.atk * 0.3)), def: Math.round(u.def * 0.3),
+        shield: 0, itemId: null, itemCd: 0, crossUsed: true, hasteTicks: 0, frenzyTicks: 0, atkSpdStacks: 0,
+        x: pos.x, y: pos.y, casting: null, rush: null, castLock: 0, cooldown: 20, alive: true,
+        mana: u.maxMana, damageDealt: 0, damageTaken: 0, healDone: 0, kbVx: 0, kbVy: 0
+      });
+      c.hp = c.maxHp;
+      Object.keys(c.statuses || {}).forEach(k => { c.statuses[k] = 0; });
+      Object.keys(c.skillCooldowns || {}).forEach(k => { c.skillCooldowns[k] = 0; });
+      sim.units.push(c);
+      sim.effects.push({ type: 'magic_burst', spr: 'teleport', x: c.x, y: c.y - 12, r: 50, life: 30, maxLife: 30 });
+      republishLiveUnits();
+      return c;
+    }
+
+    // 장비 스킬 쓰기 (aim: 직접 조종일 때 마우스 지점). 쓰면 true
+    function useItemSkill(u, allies, enemies, aim = null, fromPlayer = false) {
+      const def = equipDefOf(u.itemId);
+      const say = (text, color = '#64748b') => sim.floatTexts.push({ x: u.x, y: u.y - 52, text, color, life: 40 });
+      if (!def) { if (fromPlayer) say('🎒 끼운 장비가 없어요'); return false; }
+      if (def.kind !== 'active') { if (fromPlayer) say(`${def.icon} 이 장비는 늘 자동으로 적용돼요`); return false; }
+      // 기절·빙결 중에는 못 씀 (대시·스킬 시전 중에도 장비 스킬은 쓸 수 있음)
+      if (!u.alive || u.statuses.stun > 0 || u.statuses.freeze > 0) return false;
+      if (u.itemCd > 0) { if (fromPlayer) say(`⏳ ${def.name} ${(u.itemCd / 60).toFixed(1)}초`); return false; }
+      if (def.skill === 'haste') {
+        u.hasteTicks = 600;
+        say('👟 헤이스트! 이동속도 +20%', '#0ea5e9');
+        sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 60, color: '#0ea5e9', life: 30, maxLife: 30 });
+      } else if (def.skill === 'frenzy') {
+        const cost = Math.round(u.maxHp * 0.1);
+        u.hp = Math.max(1, u.hp - cost);
+        u.frenzyTicks = 900;
+        say(`🎭 광폭화! 공격력 +30% (-${cost})`, '#dc2626');
+        sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 70, color: '#dc2626', life: 34, maxLife: 34 });
+      } else if (def.skill === 'blink') {
+        let tx = aim ? aim.x : null, ty = aim ? aim.y : null;
+        if (tx === null) {
+          const t = nearestEnemyOf(u);
+          const ang = t ? Math.atan2(t.y - u.y, t.x - u.x) : (u.facingAngle || 0);
+          tx = u.x + Math.cos(ang) * ITEM_BLINK_RANGE; ty = u.y + Math.sin(ang) * ITEM_BLINK_RANGE;
+        }
+        const dest = clampAimPoint(u, tx, ty, ITEM_BLINK_RANGE);
+        sim.effects.push({ type: 'cast_circle', spr: 'teleport', x: u.x, y: u.y, color: '#7c3aed', life: 30, maxLife: 30 });
+        sim.effects.push({ type: 'charge_dash', sx: u.x, sy: u.y, tx: dest.x, ty: dest.y, color: '#7c3aed', life: 24, maxLife: 24 });
+        u.x = dest.x; u.y = dest.y; u.kbVx = 0; u.kbVy = 0; u.rush = null;
+        sim.effects.push({ type: 'magic_burst', spr: 'teleport', x: u.x, y: u.y - 12, r: 50, life: 30, maxLife: 30 });
+        say('📿 텔레포트!', '#7c3aed');
+      } else if (def.skill === 'illusion') {
+        if (sim.units.some(x => x.isClone && x.ownerId === u.id && x.alive)) { if (fromPlayer) say('🪞 이미 환영이 싸우고 있어요'); return false; }
+        spawnIllusion(u);
+        say('🪞 환영 소환!', '#a855f7');
+        addBattleLog(`🪞 ${u.name}의 환영이 나타났어요!`);
+      } else {
+        return false;
+      }
+      u.itemCd = Math.round(def.cdSec * 60);
+      return true;
+    }
+
+    // AI 용병의 장비 스킬 사용 판단 (쓰면 true → 이번 틱은 끝)
+    function maybeAiUseItem(u, allies, enemies, target, dist) {
+      const def = equipDefOf(u.itemId);
+      if (!def || def.kind !== 'active' || u.isClone || u.castLock > 0) return false;
+      const nearest = nearestEnemyOf(u);
+      const nearD = nearest ? unitDist(nearest, u) : 9999;
+      const hpRatio = u.hp / u.maxHp;
+      const engaged = target && target.team !== u.team;
+      switch (def.skill) {
+        case 'haste':
+          return (engaged && dist > u.range + 150) || (hpRatio < 0.35 && nearD < 200) ? useItemSkill(u, allies, enemies) : false;
+        case 'frenzy':
+          return engaged && hpRatio > 0.5 && dist <= u.range + 60 ? useItemSkill(u, allies, enemies) : false;
+        case 'blink': {
+          if (hpRatio < 0.35 && nearest && nearD < 160) {
+            const away = wallAwareAngle(u, Math.atan2(u.y - nearest.y, u.x - nearest.x));
+            return useItemSkill(u, allies, enemies, { x: u.x + Math.cos(away) * ITEM_BLINK_RANGE, y: u.y + Math.sin(away) * ITEM_BLINK_RANGE });
+          }
+          if (engaged && u.range < 180 && dist > u.range + 160 && dist < ITEM_BLINK_RANGE + u.range) {
+            const ang = Math.atan2(u.y - target.y, u.x - target.x);
+            return useItemSkill(u, allies, enemies, { x: target.x + Math.cos(ang) * u.range * 0.7, y: target.y + Math.sin(ang) * u.range * 0.7 });
+          }
+          return false;
+        }
+        case 'illusion':
+          return nearD < 600 ? useItemSkill(u, allies, enemies) : false;
+        default:
+          return false;
+      }
+    }
+
     // 조종하는 용병의 한 틱 (stepSimulation에서 AI 대신 호출)
     function manualUnitStep(u, allies, enemies, c) {
       const st = u.statuses;
@@ -8038,8 +8077,8 @@
       if (st.shock > 0) speedMult -= 0.35;
       if (st.poison > 0) speedMult -= 0.12;
       speedMult = Math.max(0.4, speedMult);
-      const curMoveSpeed = u.baseMoveSpeed * speedMult * 1.15;
-      const curAtkInterval = Math.max(20, Math.round(u.baseAtkInterval / speedMult));
+      const curMoveSpeed = u.baseMoveSpeed * speedMult * 1.15 * (u.hasteTicks > 0 ? 1.2 : 1);
+      const curAtkInterval = Math.max(12, Math.round(u.baseAtkInterval / speedMult / (1 + (u.atkSpdStacks || 0) * 0.02)));
       const keys = c.keys || {};
 
       let mx = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
@@ -8066,7 +8105,7 @@
         enemies.forEach(e => {
           if (unitDist(e, u) <= 125) {
             playCombatSfx('slash');
-            applyDamage(u, e, u.atk * 0.5);
+            withSkillHit(() => applyDamage(u, e, u.atk * 0.5));
           }
         });
       }
@@ -8082,6 +8121,10 @@
           c._seenSkill[i] = cnt;
           tryManualSkill(u, allies, enemies, i, c);
         }
+      }
+      if ((c.itemCount || 0) !== (c._seenItem || 0)) {
+        c._seenItem = c.itemCount || 0;
+        useItemSkill(u, allies, enemies, hasAim ? { x: c.aimX, y: c.aimY } : null, true);
       }
 
       u.x = Math.max(200, Math.min(sim.worldW - 200, u.x));
@@ -8124,6 +8167,17 @@
         btn.textContent = open ? (cd > 0 ? `${Math.ceil(cd / 60)}` : sk.icon) : '🔒';
         btn.style.opacity = open && cd <= 0 && u.mana >= (sk.manaCost || 0) ? '1' : '0.45';
         btn.title = open ? sk.name : '아직 잠긴 스킬';
+      }
+      const itemBtn = box.querySelector('[data-touch="item"]');
+      if (itemBtn) {
+        const idef = equipDefOf(u.itemId);
+        const act = idef && idef.kind === 'active';
+        itemBtn.classList.toggle('hidden', !act);
+        if (act) {
+          itemBtn.textContent = u.itemCd > 0 ? `${Math.ceil(u.itemCd / 60)}` : idef.icon;
+          itemBtn.style.opacity = u.itemCd > 0 ? '0.45' : '1';
+          itemBtn.title = idef.name;
+        }
       }
       const dashBtn = box.querySelector('[data-touch="dash"]');
       if (dashBtn) {
@@ -8188,6 +8242,7 @@
           btn.classList.add('pressed');
           if (action === 'attack') localBattleInput.attack = true;
           else if (action === 'dash') localBattleInput.dashCount++;
+          else if (action === 'item') localBattleInput.itemCount = (localBattleInput.itemCount || 0) + 1;
           else if (action.startsWith('skill')) localBattleInput.skillCount[Number(action.slice(5))]++;
           onLocalControlChanged();
         });
@@ -8298,6 +8353,9 @@
         unlockedSkills: [...unlockedKeys],
         skillCooldowns,
         castLock: 0,
+        // 장비: 끼운 장비 id · 장비 스킬 쿨타임 · 가속 팔찌 쌓인 수 · 헤이스트/광폭화 남은 시간 · 낡은 십자가 사용 여부
+        itemId: equipDefOf(merc.equippedItem) ? merc.equippedItem.itemId : null,
+        itemCd: 0, atkSpdStacks: 0, hasteTicks: 0, frenzyTicks: 0, crossUsed: false,
         rarity: merc.rarity || 'N',
         level: merc.level || 1,
         team,
@@ -8513,7 +8571,7 @@
       battleControl.mode = 'auto';
       battleControl.unitId = null;
       battleControl.locked = false;
-      Object.assign(localBattleInput, { moveX: 0, moveY: 0, keys: { w: false, a: false, s: false, d: false }, attack: false, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0], teamDash: 0, unitDashN: 0, unitDashId: null, forfeit: 0, controlChosen: false });
+      Object.assign(localBattleInput, { moveX: 0, moveY: 0, keys: { w: false, a: false, s: false, d: false }, attack: false, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0], itemCount: 0, _seenItem: 0, teamDash: 0, unitDashN: 0, unitDashId: null, forfeit: 0, controlChosen: false });
       sim.awaitingControlChoice = false;
       // 실시간 결투 방장: 나와 상대가 모두 전투 방식을 고를 때까지 전투를 시작하지 않음
       sim.waitingForOpponent = netRole === 'host';
@@ -8640,10 +8698,23 @@
       return best;
     }
 
+    // 지금 들어가는 피해가 스킬 피해인지 (장비: 헤진 죽도는 일반 공격, 붉은·푸른 구슬은 스킬 피해에만)
+    let skillHitSource = false;
+    function withSkillHit(fn) {
+      const prev = skillHitSource;
+      skillHitSource = true;
+      try { return fn(); } finally { skillHitSource = prev; }
+    }
+
     function applyDamage(attacker, defender, rawDmg, tagText = '', customColor = null) {
       if (!defender.alive) return;
       let modDmg = rawDmg;
       if (attacker) {
+        if (attacker.frenzyTicks > 0) modDmg *= 1.3; // 광기 가면 광폭화
+        const it = attacker.itemId;
+        if (it === 'eq_worn_shinai' && !skillHitSource) modDmg *= 1.2;
+        if (it === 'eq_red_orb' && skillHitSource && attacker.job === 'warrior') modDmg *= 1.2;
+        if (it === 'eq_blue_orb' && skillHitSource && (attacker.job === 'archer' || attacker.job === 'mage')) modDmg *= 1.2;
         if (attacker.statuses.blessed > 0) modDmg *= 1.15;
         if (attacker.statuses.rally > 0) modDmg *= 1.2;
         if (attacker.statuses.empower > 0) modDmg *= 1.2;
@@ -8670,6 +8741,7 @@
       if (attacker && !suppressHitKnockback) applyHitKnockback(defender, attacker.x, attacker.y);
       if (attacker) attacker.damageDealt += dmg;
       applyMonsterHitPassives(attacker, defender, dmg);
+      applyItemHitPassives(attacker, defender, dmg);
       // 피격 시 마나 충전량 적정 수준(+5)으로 상향
       defender.mana = Math.min(defender.maxMana, defender.mana + 5);
 
@@ -8681,6 +8753,17 @@
         life: 48
       });
 
+      // 낡은 십자가: 쓰러지는 순간 체력 20%로 한 번 되살아남
+      if (defender.hp <= 0 && defender.itemId === 'eq_old_cross' && !defender.crossUsed) {
+        defender.crossUsed = true;
+        defender.hp = Math.max(1, Math.round(defender.maxHp * 0.2));
+        Object.keys(defender.statuses).forEach(k => { defender.statuses[k] = 0; });
+        defender.statuses.immune = 90;
+        sim.effects.push({ type: 'heal_pillar', x: defender.x, y: defender.y, life: 70, maxLife: 70 });
+        sim.floatTexts.push({ x: defender.x, y: defender.y - 52, text: '✝️ 부활!', color: '#d97706', life: 70 });
+        addBattleLog(`✝️ ${defender.name}의 낡은 십자가가 빛나며 다시 일어났어요!`);
+        return;
+      }
       if (defender.hp <= 0) {
         defender.hp = 0;
         defender.alive = false;
@@ -8698,6 +8781,16 @@
           addBattleLog(`💥 ${defender.name}이(가) 쓰러지며 폭발했어요!`);
         }
       }
+    }
+
+    // 장비 효과 (피해가 들어간 뒤): 흡혈 반지 · 가속 팔찌
+    function applyItemHitPassives(attacker, defender, dmg) {
+      if (!attacker || !attacker.itemId || dmg <= 0 || attacker.team === defender.team) return;
+      if (attacker.itemId === 'eq_vamp_ring' && attacker.alive) {
+        const heal = Math.round(dmg * 0.1);
+        if (heal > 0) attacker.hp = Math.min(attacker.maxHp, attacker.hp + heal);
+      }
+      if (attacker.itemId === 'eq_accel_band') attacker.atkSpdStacks = Math.min(30, (attacker.atkSpdStacks || 0) + 1);
     }
 
     // 몬스터 고유 능력 (피해가 들어간 뒤): 흡혈 · 공격 시 상태이상 · 가시
@@ -8748,7 +8841,7 @@
       u.walkPhase = (u.walkPhase || 0) + 0.3;
       if (r.t >= r.n) {
         u.rush = null;
-        if (r.onArrive) r.onArrive();
+        if (r.onArrive) withSkillHit(r.onArrive);
       }
     }
 
@@ -8986,6 +9079,10 @@
     }
 
     function castMercSkill(unit, allies, enemies, forcedSkillKey = null) {
+      return withSkillHit(() => castMercSkillInner(unit, allies, enemies, forcedSkillKey));
+    }
+
+    function castMercSkillInner(unit, allies, enemies, forcedSkillKey = null) {
       const sk = forcedSkillKey || unit.skillKey;
       const jobSkills = SKILL_DEFS[unit.job] || SKILL_DEFS.warrior;
       const skObj = jobSkills[sk];
@@ -9343,6 +9440,9 @@
         if (u.skillAnim > 0) u.skillAnim--;
         if (u.hurtAnim > 0) u.hurtAnim--;
         if (u.castLock > 0) u.castLock--;
+        if (u.itemCd > 0) u.itemCd--;
+        if (u.hasteTicks > 0) u.hasteTicks--;
+        if (u.frenzyTicks > 0) u.frenzyTicks--;
         if (u.dashCooldown > 0) u.dashCooldown--;
         if (u.dashAnim > 0) u.dashAnim--;
         if (u.maxMana > 0 && u.mana < u.maxMana && sim.tickCount - (u.lastSkillTick ?? -9999) > MANA_REGEN_DELAY_TICKS) {
@@ -9418,7 +9518,7 @@
             enemies.forEach(e => {
               if (unitDist(e, u) <= 125) {
                 playCombatSfx('slash');
-                applyDamage(u, e, u.atk * 0.5);
+                withSkillHit(() => applyDamage(u, e, u.atk * 0.5));
               }
             });
           }
@@ -9449,8 +9549,11 @@
         if (st.poison > 0) speedMult -= 0.12;
         speedMult = Math.max(0.4, speedMult);
 
-        const curMoveSpeed = u.baseMoveSpeed * speedMult;
-        const curAtkInterval = Math.max(20, Math.round(u.baseAtkInterval / speedMult));
+        const curMoveSpeed = u.baseMoveSpeed * speedMult * (u.hasteTicks > 0 ? 1.2 : 1);
+        const curAtkInterval = Math.max(12, Math.round(u.baseAtkInterval / speedMult / (1 + (u.atkSpdStacks || 0) * 0.02)));
+
+        // 장비 스킬(Q 발동형): AI 용병은 상황을 보고 알아서 사용
+        if (u.itemId && u.itemCd <= 0 && maybeAiUseItem(u, allies, enemies, target, dist)) return;
 
         // [Requirement 5 & 7: 전략적 AI 멀티 스킬 선택 및 발동]
         const chosenSkill = selectStrategicSkillToCast(u, allies, enemies, target, dist);
@@ -9754,6 +9857,10 @@
     }
 
     function processZones() {
+      return withSkillHit(processZonesInner);
+    }
+
+    function processZonesInner() {
       const zones = sim.zones || [];
       for (let i = zones.length - 1; i >= 0; i--) {
         const z = zones[i];
@@ -9934,7 +10041,7 @@
       if (--c.left > 0) return true;
       unit.casting = null;
       // 부활: 시전하는 동안 살릴 아군이 없어졌으면(다른 힐러가 먼저 살림 등) 마나·쿨타임을 쓰지 않고 취소
-      if (c.key === 'revive' && !sim.units.some(x => x.team === unit.team && !x.alive && x.monsterType !== 'scarecrow')) {
+      if (c.key === 'revive' && !sim.units.some(x => x.team === unit.team && !x.alive && x.monsterType !== 'scarecrow' && !x.isClone)) {
         sim.floatTexts.push({ x: unit.x, y: unit.y - 52, text: '🌟 살릴 아군이 없어 취소', color: '#64748b', life: 40 });
         return true;
       }
@@ -10092,7 +10199,7 @@
       }
       if (sk === 'revive') {
         // 부활: 쓰러진 아군 하나를 체력 20%로 되살림 (가장 강한 아군부터)
-        const fallen = sim.units.filter(u => u.team === unit.team && !u.alive && u.monsterType !== 'scarecrow')
+        const fallen = sim.units.filter(u => u.team === unit.team && !u.alive && u.monsterType !== 'scarecrow' && !u.isClone)
           .sort((a, b) => (b.atk * b.maxHp) - (a.atk * a.maxHp))[0];
         if (!fallen) return true;
         fallen.alive = true;
@@ -10172,7 +10279,7 @@
           return afflicted.length === 1 ? 72 : -1;
         }
         case 'revive':
-          return sim.units.some(u => u.team === unit.team && !u.alive && u.monsterType !== 'scarecrow') ? 99 : -1;
+          return sim.units.some(u => u.team === unit.team && !u.alive && u.monsterType !== 'scarecrow' && !u.isClone) ? 99 : -1;
         default:
           return null;
       }
@@ -10228,6 +10335,7 @@
     // - 파이어볼·아이스애로우: 맞든 빗나가든 그 자리에서 터져 주변에 범위 피해
     // - 나머지: 맞았을 때만 피해 (빗나가면 사라짐)
     function resolveProjectileImpact(p, hit, x, y) {
+      if (p.isSkill && !skillHitSource) return withSkillHit(() => resolveProjectileImpact(p, hit, x, y));
       if (p.projType === 'fireball_proj' || p.projType === 'ice_arrow_proj') {
         const fire = p.projType === 'fireball_proj';
         const r = p.aoeRadius || (fire ? 110 : 85);
@@ -10269,8 +10377,8 @@
         sim.netRole = null;
         const meta = sim.meta || {};
         const winner = blueTeamWon ? meta.blueStudent : meta.redStudent;
-        const atkKing = [...sim.units].sort((a, b) => b.damageDealt - a.damageDealt)[0];
-        const healKing = [...sim.units].sort((a, b) => b.healDone - a.healDone)[0];
+        const atkKing = sim.units.filter(x => !x.isClone).sort((a, b) => b.damageDealt - a.damageDealt)[0];
+        const healKing = sim.units.filter(x => !x.isClone).sort((a, b) => b.healDone - a.healDone)[0];
         document.getElementById('battleResultEmoji').textContent = '📺';
         document.getElementById('battleResultTitle').textContent = `관전 종료 · ${winner?.name || (blueTeamWon ? '블루팀' : '레드팀')} 승리!`;
         document.getElementById('battleResultDesc').textContent = sim.forfeitTeam
@@ -10327,9 +10435,9 @@
       }
       if (pvpScoreDelta) stu.pvpScore = (stu.pvpScore || 0) + pvpScoreDelta;
 
-      const atkKing = [...sim.units].sort((a, b) => b.damageDealt - a.damageDealt)[0];
-      const tankKing = [...sim.units].sort((a, b) => b.damageTaken - a.damageTaken)[0];
-      const healKing = [...sim.units].sort((a, b) => b.healDone - a.healDone)[0];
+      const atkKing = sim.units.filter(x => !x.isClone).sort((a, b) => b.damageDealt - a.damageDealt)[0];
+      const tankKing = sim.units.filter(x => !x.isClone).sort((a, b) => b.damageTaken - a.damageTaken)[0];
+      const healKing = sim.units.filter(x => !x.isClone).sort((a, b) => b.healDone - a.healDone)[0];
 
       document.getElementById('battleResultEmoji').textContent = blueWon ? '🏆' : '🛡️';
       document.getElementById('battleResultTitle').textContent = blueWon
@@ -10702,6 +10810,7 @@
 
       ctx.save();
       ctx.translate(Math.round(u.x), Math.round(u.y));
+      if (u.isClone) ctx.globalAlpha = 0.6; // 환영 분신은 반투명
 
       // 1) 바닥 위치 표시 링
       ctx.fillStyle = isBlue ? 'rgba(37, 99, 235, 0.16)' : 'rgba(225, 29, 72, 0.16)';
@@ -10847,6 +10956,16 @@
         const dashReadyRatio = 1 - Math.min(1, (u.dashCooldown || 0) / (u.maxDashCooldown || DASH_CONFIG.cooldownTicks));
         ctx.fillStyle = dashReadyRatio >= 1 ? '#10b981' : '#64748b';
         ctx.fillRect(bx, by + 7, Math.round(barW * dashReadyRatio), 1.5);
+      }
+
+      // 장비 상태: 가속 팔찌 ⚡쌓인 수 · 헤이스트 👟 · 광폭화 🎭 (체력바 오른쪽)
+      const gearMarks = [u.atkSpdStacks > 0 ? `⚡${u.atkSpdStacks}` : '', u.hasteTicks > 0 ? '👟' : '', u.frenzyTicks > 0 ? '🎭' : ''].filter(Boolean).join('');
+      if (gearMarks) {
+        ctx.font = 'bold 11px Pretendard, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#facc15';
+        ctx.fillText(gearMarks, bx + barW + 4, by + 3);
       }
 
       // 활성 CC 아이콘
@@ -15566,7 +15685,8 @@
         liveNum(u.dashCooldown), liveNum(u.castLock),
         LIVE_UNIT_ST_KEYS.map(k => liveNum(u.statuses && u.statuses[k])),
         (u.skillSlots || []).map(k => liveNum(u.skillCooldowns && u.skillCooldowns[k])),
-        u.casting ? [u.casting.left, u.casting.total, String(u.casting.icon || '')] : 0
+        u.casting ? [u.casting.left, u.casting.total, String(u.casting.icon || '')] : 0,
+        liveNum(u.itemCd), liveNum(u.atkSpdStacks), liveNum(u.hasteTicks), liveNum(u.frenzyTicks)
       ];
     }
 
@@ -15658,6 +15778,7 @@
       c.moveY = Math.max(-1, Math.min(1, liveNum(val.mvy)));
       c.dashCount = liveNum(val.dash);
       c.skillCount = [0, 1, 2].map(i => liveNum((val.sk || [])[i]));
+      c.itemCount = liveNum(val.item);
       if (unit) {
         sim.controllers[unit.id] = c;
         liveNet.remoteUnitId = unit.id;
@@ -15698,6 +15819,7 @@
         c.moveY = Math.max(-1, Math.min(1, liveNum(v.mvy)));
         c.dashCount = liveNum(v.dash);
         c.skillCount = [0, 1, 2].map(i => liveNum((v.sk || [])[i]));
+        c.itemCount = liveNum(v.item);
         // 포기하면 그 친구 용병은 AI가 대신 싸움
         if (v.forfeit === 1) c.forfeited = true;
         if (!unit) return;
@@ -15727,6 +15849,7 @@
         atk: Boolean(c.attack),
         dash: c.dashCount || 0,
         sk: [...(c.skillCount || [0, 0, 0])],
+        item: c.itemCount || 0,
         teamDash: c.teamDash || 0,
         unitDashN: c.unitDashN || 0,
         unitDashId: c.unitDashId || null,
@@ -15815,6 +15938,7 @@
         const cds = Array.isArray(p[17]) ? p[17] : [];
         u.skillSlots.forEach((key, j) => { u.skillCooldowns[key] = liveNum(cds[j]); });
         u.casting = Array.isArray(p[18]) ? { left: liveNum(p[18][0]), total: Math.max(1, liveNum(p[18][1])), icon: cleanUserText(p[18][2], 4) } : null;
+        u.itemCd = liveNum(p[19]); u.atkSpdStacks = liveNum(p[20]); u.hasteTicks = liveNum(p[21]); u.frenzyTicks = liveNum(p[22]);
       });
       sim.projectiles = (Array.isArray(val.p) ? val.p : []).filter(Array.isArray).map(q => ({
         x: liveNum(q[0]), y: liveNum(q[1]), angle: liveNum(q[2]),
@@ -17546,13 +17670,13 @@
       const stu = getActiveStudent();
       if (!stu || stu.legacyItemsRefunded) return;
       const relicCount = Object.values(stu.relics || {}).reduce((a, v) => a + (Number(v) || 0), 0);
-      const itemPrice = it => (it && EQUIP_ITEM_DEFS[it.itemId] && EQUIP_ITEM_DEFS[it.itemId].cost) || 0;
+      const isLegacy = it => Boolean(it && LEGACY_EQUIP_PRICES[it.itemId]);
+      const itemPrice = it => (isLegacy(it) ? LEGACY_EQUIP_PRICES[it.itemId] : 0);
       const owned = [...(stu.inventory || []), ...(stu.roster || []).map(m => m && m.equippedItem).filter(Boolean)];
       const refund = relicCount * LEGACY_RELIC_PRICE + owned.reduce((a, it) => a + itemPrice(it), 0);
       stu.relics = {};
-      stu.inventory = [];
-      stu.dailyEquipShop = [];
-      (stu.roster || []).forEach(m => { if (m) m.equippedItem = null; });
+      stu.inventory = (stu.inventory || []).filter(it => !isLegacy(it));
+      (stu.roster || []).forEach(m => { if (m && isLegacy(m.equippedItem)) m.equippedItem = null; });
       stu.legacyItemsRefunded = true;
       if (refund > 0) {
         stu.mc += refund;
