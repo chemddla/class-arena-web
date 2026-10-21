@@ -1183,7 +1183,7 @@
             <div>
               <h3 class="font-title text-2xl text-white">🏰 모험의 탑 (1층 ~ 50층)</h3>
               <p class="text-xs sm:text-sm text-slate-400">
-                층이 올라갈수록 몬스터가 강해져요! 처음 깨는 층은 언제나 보상을 받고, 이미 깬 층은 처음 보상의 20%를 하루 3번까지 받아요.
+                층이 올라갈수록 몬스터가 강해져요! 보상은 처음 깨는 층에서만 받아요. 이미 깬 층은 연습으로 다시 도전할 수 있어요.
               </p>
             </div>
             <div class="px-4 py-2 rounded-xl bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 font-bold text-sm">
@@ -2796,12 +2796,12 @@
       });
     }
 
-    // 탑 층을 처음 깼을 때 보상 (반복 보상은 ECONOMY.towerRepeatRatio 만큼)
+    // 탑 층을 처음 깼을 때 보상 (재도전은 보상 없음)
     const TOWER_REWARD_MULT = 10;
     function towerFirstClearReward(floor) {
       const isMajorBoss = floor % 10 === 0;
       const isSubBoss = floor % 5 === 0 && !isMajorBoss;
-      // 모험의 탑 보상 10배 (재도전 보상은 이 값의 20%라 함께 10배)
+      // 모험의 탑 보상 10배 (처음 깨는 층만 보상)
       return (Math.round((100 + floor * 30) / 50) * 50 + (isMajorBoss ? 500 : (isSubBoss ? 200 : 0))) * TOWER_REWARD_MULT;
     }
 
@@ -3265,7 +3265,7 @@
       lossReward: 40,           // 보상 있는 전투에서 졌을 때 격려 보상
       minigameReward: 120,      // 미니게임 승리
       minigameBigReward: 150,   // 윷놀이(4명) 승리
-      towerRepeatRatio: 0.2,    // 이미 깬 탑 층을 다시 깼을 때 (처음 보상의 20%)
+      towerRepeatRatio: 0,      // 이미 깬 탑 층 재도전 보상 없음
       levelCostBase: 80,        // 레벨업 비용 = 80 + 45 × (현재 레벨 - 1) · Lv50까지 1명 약 5.7만 CA
       levelCostPerLevel: 45,
       sellRefundRatio: 0.5      // 즉시 판매: 고용비 + 들인 레벨업 비용의 절반
@@ -3279,7 +3279,7 @@
       return sum;
     }
     const DAILY_REWARD_LIMITS = { quiz: 6, practice: 3, tower: 3, pvp: 5, raid: 3, minigame: 3 };
-    const DAILY_REWARD_LABELS = { quiz: '퀴즈', practice: '허수아비 모의전', tower: '모험의 탑 재도전', pvp: '결투장', raid: '엘리트 몬스터', minigame: '미니게임' };
+    const DAILY_REWARD_LABELS = { quiz: '퀴즈', practice: '허수아비 모의전', tower: '모험의 탑', pvp: '결투장', raid: '엘리트 몬스터', minigame: '미니게임' };
 
     function getDailyRewardBook(stu) {
       const today = getTodayDateString();
@@ -6160,7 +6160,7 @@
             </div>
             <button onclick="startTowerBattle(${f.floor})"
               class="px-4 py-2.5 rounded-xl font-extrabold text-xs shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white shadow">
-              ${cleared ? '재도전' : '⚔️ 도전하기'}
+              ${cleared ? '재도전 (보상 없음)' : '⚔️ 도전하기'}
             </button>
           </div>
         `;
@@ -10180,9 +10180,10 @@
       const isPracticeOnly = PRACTICE_ONLY_MODES.includes(sim.mode);
       const iForfeited = Boolean(sim.forfeitTeam) && sim.forfeitTeam === sim.myTeam;
       const rewardCategory = isPracticeOnly ? null : ({ tower: 'tower', elite_raid: 'raid' }[sim.mode] || (isPvpMode ? 'pvp' : null));
-      // 탑은 처음 깨는 층이면 횟수 제한 없이 보상, 이미 깬 층 재도전은 하루 횟수 안에서만 보상
+      // 탑은 처음 깨는 층만 보상 (이미 깬 층 재도전은 이기든 지든 보상 없음)
       const isFirstTowerClear = Boolean(blueWon && sim.mode === 'tower' && meta.towerFloorObj && stu.towerFloor === meta.towerFloorObj.floor);
-      if (blueWon && sim.mode === 'tower' && !isFirstTowerClear) baseReward = Math.max(10, Math.round(baseReward * ECONOMY.towerRepeatRatio / 10) * 10);
+      const isTowerReplay = Boolean(sim.mode === 'tower' && meta.towerFloorObj && meta.towerFloorObj.floor < (stu.towerFloor || 1));
+      if (isTowerReplay) baseReward = 0;
       const reward = (isPracticeOnly || iForfeited)
         ? 0
         : (isFirstTowerClear
@@ -10214,8 +10215,10 @@
         ? '🏳️ 전투를 포기했어요. 보상은 없어요.'
         : isPracticeOnly
         ? (sim.mode === 'practice' ? '연습 전투라 보상은 없어요.' : '연습 경기라 보상은 없어요. 보상과 랭킹 점수는 🎯 랭킹 매칭에서 받을 수 있어요.')
+        : isTowerReplay
+        ? '이미 깬 층이라 보상은 없어요. 다음 층에 도전해 보세요!'
         : (reward > 0
-          ? `전투 보상으로 💰 ${reward} CA를 받았어요!${rewardCategory ? ` (오늘 남은 ${DAILY_REWARD_LABELS[rewardCategory]} 보상: ${getDailyRewardLeft(stu, rewardCategory)}회)` : ''}`
+          ? `전투 보상으로 💰 ${reward} CA를 받았어요!${rewardCategory && !isFirstTowerClear ? ` (오늘 남은 ${DAILY_REWARD_LABELS[rewardCategory]} 보상: ${getDailyRewardLeft(stu, rewardCategory)}회)` : ''}`
           : dailyRewardDoneText(rewardCategory));
       if (pvpScoreDelta) {
         document.getElementById('battleResultDesc').textContent += ` 🏆 랭킹 점수 ${pvpScoreDelta > 0 ? '+' : ''}${pvpScoreDelta}점 (현재 ${stu.pvpScore}점)`;
