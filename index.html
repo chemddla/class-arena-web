@@ -307,7 +307,7 @@
     </div>
   </div>
 
-  <div id="customConfirmModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+  <div id="customConfirmModal" class="hidden fixed inset-0 z-[70] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-sm w-full p-6 shadow-2xl flex flex-col gap-4 text-center">
       <div class="text-3xl">⚠️</div>
       <p id="customConfirmText" class="text-sm text-slate-200 font-semibold leading-relaxed"></p>
@@ -3281,8 +3281,11 @@
       if (merc.skillsRevealed > unlocked) merc.skillsRevealed = unlocked;
       while (merc.skillsRevealed < unlocked) {
         const i = merc.skillsRevealed;
-        const j = i + Math.floor(Math.random() * (merc.skillSlots.length - i));
-        [merc.skillSlots[i], merc.skillSlots[j]] = [merc.skillSlots[j], merc.skillSlots[i]];
+        // 레벨 초기화 전에 이미 열렸던 칸(skillsKept)은 그 스킬 그대로 다시 열림
+        if (i >= (merc.skillsKept || 0)) {
+          const j = i + Math.floor(Math.random() * (merc.skillSlots.length - i));
+          [merc.skillSlots[i], merc.skillSlots[j]] = [merc.skillSlots[j], merc.skillSlots[i]];
+        }
         merc.skillsRevealed++;
       }
       merc.skillKey = merc.skillSlots[0];
@@ -4783,6 +4786,15 @@
               class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow">
               ⬆️ 레벨업 (${levelUpCost} CA)
             </button>
+            ${(() => {
+              const rs = mercLevelLedger(merc, stu, false);
+              return (merc.level || 1) > rs.target
+                ? `<button onclick="resetMercLevel('${merc.id}')" title="이 용병 레벨업에 쓴 CA를 돌려받고 Lv.${rs.target}(으)로 되돌려요"
+                    class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-amber-600 hover:text-white text-amber-300 border border-amber-500/40 font-extrabold text-xs">
+                    ↺ 레벨 초기화 (+${rs.refund.toLocaleString()} CA)
+                  </button>`
+                : '';
+            })()}
           </div>
           <div class="flex items-center gap-1.5">
             <button onclick="const mid='${merc.id}'; closeMercDetailModal(); openMercSellModal(mid);"
@@ -4798,6 +4810,52 @@
       `;
     }
 
+    // ===== 레벨업 장부: 이 학생이 이 용병 레벨업에 쓴 CA (레벨 초기화 때 돌려줌) =====
+    // levelOwner: 장부 주인 · levelBase: 장부를 시작한 레벨 · levelSpent: 그 뒤로 레벨업에 쓴 CA
+    // - 이 기능 전부터 가진 용병(장부 없음)은 Lv.1부터 직접 키운 것으로 봄
+    // - 친구에게서 산·받은 용병은 받은 레벨부터 새로 셈 (산 용병을 초기화해서 CA를 버는 일이 없게)
+    function mercLevelLedger(merc, stu, write = true) {
+      let owner = merc.levelOwner, base = merc.levelBase, spent = merc.levelSpent;
+      if (owner === undefined) { owner = stu.id; base = 1; spent = totalLevelCostTo(merc.level || 1); }
+      else if (owner !== stu.id) { owner = stu.id; base = merc.level || 1; spent = 0; }
+      if (write) Object.assign(merc, { levelOwner: owner, levelBase: base, levelSpent: spent });
+      const target = Math.max(1, Math.min(merc.level || 1, base || 1));
+      // 선생님이 레벨을 바꿨을 수도 있으니, 실제 레벨 차이만큼의 비용을 넘지 않게
+      const refund = Math.max(0, Math.min(spent || 0, totalLevelCostTo(merc.level || 1) - totalLevelCostTo(target)));
+      return { target, refund };
+    }
+
+    function resetMercLevel(mercId) {
+      const stu = getActiveStudent();
+      const merc = (stu.roster || []).find(m => m.id === mercId);
+      if (!merc) return;
+      const preview = mercLevelLedger(merc, stu, false);
+      if ((merc.level || 1) <= preview.target) {
+        showNotice('⚠️ 내가 레벨업한 기록이 없어서 되돌릴 레벨이 없어요.');
+        return;
+      }
+      askCustomConfirm(`[${merc.name}] Lv.${merc.level} → Lv.${preview.target}(으)로 레벨을 초기화할까요? 레벨업에 쓴 💰 ${preview.refund.toLocaleString()} CA를 돌려받아요. 스탯 포인트는 다시 나눌 수 있고, 열렸던 스킬은 다시 레벨을 올리면 그대로 돌아와요.`, () => {
+        const m = (stu.roster || []).find(x => x.id === mercId);
+        if (!m) return;
+        const { target, refund } = mercLevelLedger(m, stu, true);
+        if ((m.level || 1) <= target) return;
+        const fromLv = m.level;
+        ensureMercSkillSlots(m);
+        m.skillsKept = Math.max(m.skillsKept || 0, m.skillsRevealed || 0);
+        m.level = target;
+        m.levelBase = target;
+        m.levelSpent = 0;
+        m.statPoints = { hp: 0, atk: 0, def: 0, spd: 0 }; // 레벨이 내려가 받은 SP가 줄었으니 다시 나누기
+        ensureMercSkillSlots(m);
+        stu.mc += refund;
+        saveState();
+        renderSquadTab();
+        setupIdlePreviewBattle();
+        if (activeDetailMercId === mercId) renderMercDetailModal();
+        showRewardBanner(`↺ [${m.name}] Lv.${fromLv} → Lv.${target} 레벨 초기화! 💰 ${refund.toLocaleString()} CA를 돌려받았어요.`);
+      });
+    }
+
     function trainMercenary(mercId) {
       const stu = getActiveStudent();
       const merc = stu.roster.find(m => m.id === mercId);
@@ -4807,6 +4865,8 @@
         showNotice(`⚠️ 레벨업 비용이 부족합니다! (필요: ${cost} CA / 보유: ${stu.mc} CA)`);
         return;
       }
+      mercLevelLedger(merc, stu, true);
+      merc.levelSpent = (merc.levelSpent || 0) + cost;
       stu.mc -= cost;
       const skillWatch = beginSkillUnlockWatch(merc);
       merc.level += 1;
