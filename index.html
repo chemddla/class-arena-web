@@ -3101,7 +3101,7 @@
     };
     // 투사체 종류별 그림과 크기(머리 높이, 월드 px). match가 있으면 그 조건을 만족할 때만 (힐러 분홍 구슬 제외)
     const PROJECTILE_SPRITES = {
-      magic_orb:      { anim: 'orb', h: 26, match: p => !p.color || p.color === '#7c3aed' },
+      magic_orb:      { anim: 'orb', h: 18.2, match: p => !p.color || p.color === '#7c3aed' }, // 마법사 기본 공격 구슬 (26에서 30% 작게)
       fireball_proj:  { anim: 'fireball', h: 34 },
       ice_arrow_proj: { anim: 'ice', h: 22 },
       arrow:          { anim: 'arrow', h: 8 },
@@ -7778,6 +7778,27 @@
     function manualBasicAttack(u, allies, enemies, aimAngle, c, interval) {
       const aimX = c.aimX ?? (u.x + Math.cos(aimAngle) * 100);
       const aimY = c.aimY ?? (u.y + Math.sin(aimAngle) * 100);
+      if (u.job === 'healer') {
+        // 힐러 일반공격은 치유만: 겨눈 곳 가까운 다친 아군 → 없으면 사거리 안에서 가장 위급한 아군
+        const hurt = allies.filter(a => a.hp < a.maxHp && Math.hypot(a.x - u.x, a.y - u.y) <= u.range + 80);
+        const nearAim = hurt.filter(a => Math.hypot(a.x - aimX, a.y - aimY) < 140)
+          .sort((a, b) => Math.hypot(a.x - aimX, a.y - aimY) - Math.hypot(b.x - aimX, b.y - aimY))[0];
+        const healTarget = nearAim || hurt.sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
+        if (!healTarget) {
+          if ((sim.tickCount || 0) - (u.noHealHintAt ?? -999) > 60) {
+            sim.floatTexts.push({ x: u.x, y: u.y - 52, text: '💚 치유할 아군이 없어요', color: '#059669', life: 40 });
+            u.noHealHintAt = sim.tickCount || 0;
+          }
+          return;
+        }
+        u.cooldown = interval;
+        u.attackAnim = Math.min(42, interval);
+        u.maxAttackAnim = u.attackAnim;
+        u.mana = Math.min(u.maxMana, u.mana + 18);
+        sim.effects.push({ type: 'heal_beam', sx: u.x, sy: u.y - 10, tx: healTarget.x, ty: healTarget.y - 10, life: 32, maxLife: 32 });
+        healAllyNow(u, healTarget, u.atk * 1.25);
+        return;
+      }
       const target = findEnemyNearAim(u, enemies, aimX, aimY, u.range + 40);
       u.cooldown = interval;
       u.attackAnim = Math.min(42, interval);
@@ -7809,18 +7830,6 @@
           sim.projectiles.push({ projType: 'magic_orb', x: ox, y: oy, target, owner: u, dmg: u.atk, isHeal: false, speed: 3.2, trail: [] });
         } else {
           directional('magic_orb', u.atk, { color: '#7c3aed' });
-        }
-      } else if (u.job === 'healer') {
-        u.mana = Math.min(u.maxMana, u.mana + 18);
-        const hurt = allies.filter(a => a.hp < a.maxHp && Math.hypot(a.x - u.x, a.y - u.y) <= u.range + 80);
-        const healTarget = hurt.sort((a, b) => Math.hypot(a.x - aimX, a.y - aimY) - Math.hypot(b.x - aimX, b.y - aimY))[0];
-        if (healTarget && Math.hypot(healTarget.x - aimX, healTarget.y - aimY) < 140) {
-          sim.effects.push({ type: 'heal_beam', sx: u.x, sy: u.y - 10, tx: healTarget.x, ty: healTarget.y - 10, life: 32, maxLife: 32 });
-          healAllyNow(u, healTarget, u.atk * 1.25);
-        } else if (target) {
-          sim.projectiles.push({ projType: 'magic_orb', color: '#ec4899', x: ox, y: oy, target, owner: u, dmg: Math.round(u.atk * 0.85), isHeal: false, speed: 3, trail: [] });
-        } else {
-          directional('magic_orb', Math.round(u.atk * 0.85), { color: '#ec4899' });
         }
       }
     }
@@ -9225,9 +9234,11 @@
         u.x = Math.max(200, Math.min(sim.worldW - 200, u.x));
         u.y = Math.max(260, Math.min(sim.worldH - 220, u.y));
 
+        // 힐러는 일반공격이 곧 치유: 다친 아군이 없으면 공격하지 않고 다음 치유를 위해 대기
+        const healerIdle = u.job === 'healer' && !allies.some(a => a.hp < a.maxHp);
         if (u.cooldown > 0) {
           u.cooldown--;
-        } else if (dist <= u.range + 14) {
+        } else if (dist <= u.range + 14 && !healerIdle) {
           u.cooldown = curAtkInterval;
           u.mana = Math.min(u.maxMana, u.mana + 18);
           u.attackAnim = Math.min(42, curAtkInterval);
@@ -9258,25 +9269,15 @@
             });
 
           } else if (u.job === 'healer') {
-            const hurtAllies = allies.filter(a => a.hp < a.maxHp);
-            if (hurtAllies.length > 0) {
-              const healTarget = hurtAllies.sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
+            // 일반공격 = 가장 위급한 아군 치유 (적은 공격하지 않음)
+            const healTarget = allies.filter(a => a.hp < a.maxHp).sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
+            if (healTarget) {
               sim.effects.push({
                 type: 'heal_beam',
                 sx: u.x, sy: u.y - 10, tx: healTarget.x, ty: healTarget.y - 10,
                 life: 32, maxLife: 32
               });
               healAllyNow(u, healTarget, u.atk * 1.25);
-            } else {
-              const enemyTarget = [...enemies].sort((a, b) => Math.hypot(a.x - u.x, a.y - u.y) - Math.hypot(b.x - u.x, b.y - u.y))[0];
-              if (enemyTarget && Math.hypot(enemyTarget.x - u.x, enemyTarget.y - u.y) <= u.range + 40) {
-                sim.projectiles.push({
-                  projType: 'magic_orb',
-                  color: '#ec4899',
-                  x: u.x + u.facingDir * 12, y: u.y - 10, target: enemyTarget, owner: u,
-                  dmg: Math.round(u.atk * 0.85), isHeal: false, speed: 2.8, trail: []
-                });
-              }
             }
 
           } else if (u.job === 'archer') {
