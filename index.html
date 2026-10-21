@@ -2635,6 +2635,9 @@
       return changed;
     }
 
+    // 타고난 특성은 지금은 쓰지 않음 (추후 다시 추가 예정) — 능력치 보너스 없음, 화면에도 표시 안 함
+    const TRAITS_ENABLED = false;
+    const NO_TRAIT = { id: 'none', name: '', hpBonus: 0, atkBonus: 0, defBonus: 0, spdBonus: 0 };
     const TRAIT_POOL = [
       { id: 'hp_up',  name: '강인한 체력 (체력 +15%)', hpBonus: 0.15, atkBonus: 0,    defBonus: 0,    spdBonus: 0 },
       { id: 'atk_up', name: '예리한 무기 (공격력 +15%)', hpBonus: 0,    atkBonus: 0.15, defBonus: 0,    spdBonus: 0 },
@@ -3222,8 +3225,10 @@
     }
 
     // 10레벨마다 스킬 1개씩 해금되어 30레벨 달성 시 3개의 스킬을 모두 사용 (Requirement 5)
+    // 스킬 칸이 열리는 레벨 (첫 스킬은 1레벨부터)
+    const SKILL_UNLOCK_LEVELS = [1, 10, 20];
     function getUnlockedSkillCount(level) {
-      return Math.min(3, Math.floor((level || 1) / 10));
+      return SKILL_UNLOCK_LEVELS.filter(lv => (level || 1) >= lv).length;
     }
 
     function getMercUnlockedSkillKeys(merc) {
@@ -3240,7 +3245,7 @@
     }
 
     const DAILY_FREE_REFRESHES = 5;
-    const FIXED_SP_PER_10_LEVELS = 5;
+    const FIXED_SP_PER_10_LEVELS = 0; // 레벨 스탯 포인트 기능 제거 (받는 포인트 없음)
 
     function getTodayDateString() {
       const d = new Date();
@@ -3329,7 +3334,7 @@
     }
 
     // 10레벨마다 받는 스탯 포인트 1P당 상승량 (레벨업 3~4번 정도의 가치가 되도록 맞춤)
-    const SP_BONUS_VALUES = { hp: 50, atk: 3, def: 3, spd: 3 };
+    const SP_BONUS_VALUES = { hp: 0, atk: 0, def: 0, spd: 0 }; // 예전에 나눠 둔 포인트도 효과 없음
 
     const STAT_EFFECT_GUIDE = {
       hp: {
@@ -3633,7 +3638,7 @@
     function getMercInitialStatComparison(merc) {
       const job = JOB_DEFS[merc.job] || JOB_DEFS.warrior;
       const rarity = RARITY_DEFS[merc.rarity] || RARITY_DEFS.N;
-      const trait = TRAIT_POOL.find(t => t.id === merc.traitId) || TRAIT_POOL[0];
+      const trait = TRAITS_ENABLED ? (TRAIT_POOL.find(t => t.id === merc.traitId) || TRAIT_POOL[0]) : NO_TRAIT;
       const variance = ensureMercVariance(merc);
 
       // 레벨 1 기준 초기 스탯 (유물 및 레벨업/SP 제외 순수 초기 능력치)
@@ -3712,7 +3717,7 @@
     function calcMercStats(merc, ownerStudent) {
       const job = JOB_DEFS[merc.job] || JOB_DEFS.warrior;
       const rarity = RARITY_DEFS[merc.rarity] || RARITY_DEFS.N;
-      const trait = TRAIT_POOL.find(t => t.id === merc.traitId) || TRAIT_POOL[0];
+      const trait = TRAITS_ENABLED ? (TRAIT_POOL.find(t => t.id === merc.traitId) || TRAIT_POOL[0]) : NO_TRAIT;
       const variance = ensureMercVariance(merc);
       const lvGain = Math.max(0, (merc.level || 1) - 1);
 
@@ -3772,7 +3777,7 @@
       document.getElementById('statTooltipTitle').textContent = `📊 ${guide.title}`;
       document.getElementById('statTooltipDesc').textContent = guide.desc;
 
-      let detailHtml = `<div>✨ ${guide.spEffect}</div>`;
+      let detailHtml = ''; // 레벨 스탯 포인트 기능 제거로 포인트 설명은 표시하지 않음
       if (merc) {
         const cmp = getMercInitialStatComparison(merc);
         const st = calcMercStats(merc, stu);
@@ -4304,7 +4309,6 @@
                   <span class="cursor-help" ${mercTipAttrs('equip', merc.id)}>🎒 🔒 장비 준비 중</span>
                   ${spInfo.freeSp > 0 ? `<span class="px-1.5 py-0.2 rounded bg-amber-500 text-slate-950 font-extrabold text-[10px] cursor-help" ${mercTipAttrs('sp', merc.id)}>미배분 SP +${spInfo.freeSp}</span>` : ''}
                 </div>
-                <span class="cursor-help" ${mercTipAttrs('trait', merc.id)}>✨ ${merc.traitName}</span>
               </div>
 
               <!-- 4대 능력치 (마우스를 올리면 설명 · 스탯 배분은 세부정보 창에서) -->
@@ -4546,9 +4550,8 @@
           <div class="flex items-center justify-between flex-wrap gap-2">
             <div>
               <span class="text-xs font-extrabold text-amber-300">📊 능력치</span>
-              <span class="text-[11px] text-slate-400 ml-2">✨ 특성: ${merc.traitName}</span>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="hidden">
               <span class="text-xs font-extrabold ${spInfo.freeSp > 0 ? 'text-emerald-300' : 'text-slate-400'}">잔여 SP: ${spInfo.freeSp}P</span>
               ${spInfo.usedSp > 0 ? `<button onclick="resetMercStatPoints('${merc.id}'); renderMercDetailModal();" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-300 border border-slate-700">↺ SP 초기화</button>` : ''}
             </div>
@@ -4561,8 +4564,6 @@
                 <div class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 flex flex-col justify-between">
                   <div class="text-[10px] font-bold text-slate-400 text-center">${labelMap[stKey]}</div>
                   <div class="text-base my-1.5 ${statCmp.cls[stKey]}">${stats[stKey].toLocaleString()}</div>
-                  <button onclick="allocateMercStatPoint('${merc.id}', '${stKey}'); renderMercDetailModal();" ${spInfo.freeSp <= 0 ? 'disabled' : ''}
-                    class="w-full py-1 rounded-lg font-extrabold text-xs ${spInfo.freeSp > 0 ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}">+</button>
                 </div>
               `;
             }).join('')}
@@ -4574,7 +4575,7 @@
           <div class="flex items-center justify-between flex-wrap gap-2">
             <div>
               <span class="text-xs font-extrabold text-indigo-300">⚡ 스킬 (보유 스킬)</span>
-              <p class="text-[11px] text-slate-400">Lv.10 · 20 · 30마다 아직 없는 직업 스킬 중 하나가 무작위로 열려요. 전투에서는 AI가 알맞게 사용해요.</p>
+              <p class="text-[11px] text-slate-400">Lv.1 · 10 · 20에 아직 없는 직업 스킬 중 하나가 무작위로 열려요. 전투에서는 AI가 알맞게 사용해요.</p>
             </div>
             ${ownedSkillKeys.length >= 1 && ownedSkillKeys.length < 3
               ? `<button onclick="rerollMercSkill('${merc.id}'); renderMercDetailModal();" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow" title="가장 최근에 열린 스킬을 아직 없는 다른 스킬로 바꿔요">
@@ -4734,9 +4735,8 @@
       saveState();
       renderSquadTab();
       setupIdlePreviewBattle();
-      if (merc.level % 10 === 0) {
-        const skillText = newSkills.length ? `새 스킬 [${newSkills.map(x => `${x.icon} ${x.name}`).join(', ')}] 획득` : '스킬 칸 모두 열림';
-        showRewardBanner(`🎉 [${merc.name}] Lv.${merc.level} 달성! 🎲 ${skillText} & 보너스 SP +${FIXED_SP_PER_10_LEVELS}P`);
+      if (newSkills.length) {
+        showRewardBanner(`🎉 [${merc.name}] Lv.${merc.level} 달성! 🎲 새 스킬 [${newSkills.map(x => `${x.icon} ${x.name}`).join(', ')}] 획득`);
       } else {
         showNotice(`⬆️ [${merc.name}] Lv.${merc.level} 레벨업 완료!`);
       }
@@ -4754,7 +4754,7 @@
       const slots = ensureMercSkillSlots(merc);
       const n = merc.skillsRevealed || 0;
       if (n < 1 || n >= slots.length) {
-        showNotice(n < 1 ? '⚠️ Lv.10에 첫 스킬이 열린 뒤에 다시 뽑을 수 있어요.' : '⚠️ 스킬 3개를 모두 가지고 있어서 바꿀 스킬이 없어요.');
+        showNotice(n < 1 ? '⚠️ 첫 스킬이 열린 뒤에 다시 뽑을 수 있어요.' : '⚠️ 스킬 3개를 모두 가지고 있어서 바꿀 스킬이 없어요.');
         return;
       }
       stu.mc -= cost;
@@ -4809,7 +4809,7 @@
                 <span class="font-bold text-base text-white">${merc.name}</span>
                 <span class="text-xs text-indigo-300 font-extrabold">Lv.${merc.level} (${unlockedCnt}스킬)</span>
               </div>
-              <div class="text-xs text-slate-400 mt-0.5">⚔️ 전투력 ${power.toLocaleString()} · ✨ ${merc.traitName}</div>
+              <div class="text-xs text-slate-400 mt-0.5">⚔️ 전투력 ${power.toLocaleString()}</div>
               <div class="text-[10px] text-amber-300 mt-0.5">📊 가치 산정: ${valInfo.breakdownText}</div>
             </div>
           </div>
@@ -5680,7 +5680,7 @@
       setupIdlePreviewBattle();
     }
 
-    // 용병의 스킬 3칸 (Lv.10 · 20 · 30에 하나씩 해금)
+    // 용병의 스킬 3칸 (Lv.1 · 10 · 20에 하나씩 해금)
     function getMercSkillSlotInfo(merc) {
       const jobSkills = SKILL_DEFS[merc.job] || SKILL_DEFS.warrior;
       const unlocked = getMercUnlockedSkillKeys(merc);
@@ -5688,8 +5688,8 @@
         .map((key, i) => {
           const open = unlocked.includes(key);
           return open
-            ? { key, sk: jobSkills[key], open, unlockLv: (i + 1) * 10 }
-            : { key: `locked${i}`, sk: lockedSkillInfo((i + 1) * 10), open, unlockLv: (i + 1) * 10 };
+            ? { key, sk: jobSkills[key], open, unlockLv: SKILL_UNLOCK_LEVELS[i] }
+            : { key: `locked${i}`, sk: lockedSkillInfo(SKILL_UNLOCK_LEVELS[i]), open, unlockLv: SKILL_UNLOCK_LEVELS[i] };
         })
         .filter(r => r.sk);
     }
@@ -5736,7 +5736,7 @@
                 <span class="px-2 py-0.5 rounded-lg bg-rose-500/15 text-rose-400 font-extrabold text-[11px] border border-rose-500/30">⚔️ 전투력 ${mercPower.toLocaleString()}</span>
               </div>
               <div class="text-[11px] text-slate-400 mt-0.5">
-                ✨ ${merc.traitName} · 🎒 🔒 장비 준비 중
+                🎒 🔒 장비 준비 중
               </div>
             </div>
           </div>
@@ -5784,7 +5784,7 @@
 
         <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-1.5">
           <div class="flex items-center justify-between text-[11px]">
-            <span class="font-bold text-indigo-300">⚡ 스킬 (Lv.10 · 20 · 30마다 하나씩 무작위로 열려요)</span>
+            <span class="font-bold text-indigo-300">⚡ 스킬 (Lv.1 · 10 · 20에 하나씩 무작위로 열려요)</span>
             <span class="text-slate-400 text-[10px]">AI가 상황에 맞게 사용</span>
           </div>
           ${getMercSkillSlotInfo(merc).map(r => `
@@ -5803,9 +5803,8 @@
 
         <div class="grid grid-cols-2 gap-1.5 text-[11px]">
           <div class="px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 truncate">📍 ${getMercPositionLabel(merc)}</div>
-          <div class="px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 truncate" title="${merc.traitName}">✨ ${merc.traitName}</div>
           <div class="px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 truncate">
-            ${spInfo.freeSp > 0 ? `<span class="text-amber-500 font-extrabold">🌟 미배분 스탯P +${spInfo.freeSp}</span>` : `🌟 다음 스탯P: Lv.${(Math.floor((merc.level || 1) / 10) + 1) * 10}`}
+            ⚡ 스킬 ${getUnlockedSkillCount(merc.level || 1)}/3개 열림
           </div>
           <button onclick="trainMercenary('${merc.id}')" class="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold">
             ⬆️ 레벨업 (${mercLevelUpCost(merc.level)} CA)
@@ -5995,14 +5994,13 @@
                   <h5 class="font-title text-lg text-white flex items-center gap-1.5">
                     <span>${cand.name}</span>
                   </h5>
-                  <p class="text-xs text-amber-300 mt-0.5">✨ ${cand.traitName}</p>
                   ${rar.isRare ? `<p class="text-[10px] font-bold text-rose-400 mt-0.5">🔥 레어 특전: 기본 능력치 +10% & 레벨업 상승량 증가!</p>` : ''}
                 </div>
               </div>
 
               <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 mb-3">
                 <div class="flex items-center justify-between mb-1">
-                  <span class="text-xs font-extrabold text-amber-300">${sk.id ? `${sk.icon} 보유 스킬: ${sk.name}` : '🎲 스킬: Lv.10 · 20 · 30마다 무작위로 열려요'}</span>
+                  <span class="text-xs font-extrabold text-amber-300">${sk.id ? `${sk.icon} 보유 스킬: ${sk.name}` : '🎲 스킬: Lv.1 · 10 · 20에 무작위로 열려요'}</span>
                   <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">${sk.id ? sk.ccTag : Object.values(SKILL_DEFS[cand.job] || {}).map(x => x.icon).join(' ')}</span>
                 </div>
                 <p class="text-[11px] text-slate-300 leading-snug">${sk.desc}</p>
@@ -11401,13 +11399,6 @@
                 <select onchange="adminUpdateMercField(${idx}, 'skillKey', this.value)"
                   class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-amber-300 font-bold">
                   ${jobSkills.map(sk => `<option value="${sk.id}" ${m.skillKey === sk.id ? 'selected' : ''}>${sk.icon} ${sk.name}</option>`).join('')}
-                </select>
-              </div>
-              <div>
-                <label class="text-[10px] text-slate-400 block mb-0.5">특성</label>
-                <select onchange="adminUpdateMercField(${idx}, 'traitId', this.value)"
-                  class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-cyan-300">
-                  ${TRAIT_POOL.map(tr => `<option value="${tr.id}" ${m.traitId === tr.id ? 'selected' : ''}>${tr.name}</option>`).join('')}
                 </select>
               </div>
             </div>
