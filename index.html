@@ -7794,8 +7794,9 @@
       if (u && u.alive) {
         const tx = u.x - (canvas.width / z) / 2;
         const ty = u.y - (canvas.height / z) / 2;
-        sim.camera.x += (tx - sim.camera.x) * 0.15;
-        sim.camera.y += (ty - sim.camera.y) * 0.15;
+        const follow = 1 - Math.pow(1 - 0.15, frameTimeScale);
+        sim.camera.x += (tx - sim.camera.x) * follow;
+        sim.camera.y += (ty - sim.camera.y) * follow;
         clampCamera();
       } else if (isArenaBattleVisible()) {
         const k = localBattleInput.keys;
@@ -7803,8 +7804,8 @@
         const panY = (k.s ? 1 : 0) - (k.w ? 1 : 0);
         if (panX || panY) {
           sim.camera.autoFollow = false;
-          sim.camera.x += panX * CAMERA_PAN_SPEED / z;
-          sim.camera.y += panY * CAMERA_PAN_SPEED / z;
+          sim.camera.x += panX * CAMERA_PAN_SPEED * frameTimeScale / z;
+          sim.camera.y += panY * CAMERA_PAN_SPEED * frameTimeScale / z;
           clampCamera();
         }
       }
@@ -7817,7 +7818,7 @@
 
     // 남은 쿨타임(틱)을 실제 시간(초)으로: 전투 빠르기(BATTLE_PACE)와 배속을 반영
     function ticksToRealSec(ticks) {
-      return ticks / (60 * BATTLE_PACE * Math.max(1, sim.speed || 1));
+      return ticks / (BATTLE_TICKS_PER_SEC * Math.max(1, sim.speed || 1));
     }
 
     // 직접 전투: 화면 아래 가운데에 스킬 1·2·3과 대시의 남은 쿨타임 표시
@@ -10843,8 +10844,8 @@
           const avgY = aliveUnits.reduce((acc, u) => acc + u.y, 0) / aliveUnits.length;
           const targetCamX = avgX - (viewW / z) / 2;
           const targetCamY = avgY - (viewH / z) / 2;
-          sim.camera.x += (targetCamX - sim.camera.x) * 0.08;
-          sim.camera.y += (targetCamY - sim.camera.y) * 0.08;
+          sim.camera.x += (targetCamX - sim.camera.x) * (1 - Math.pow(1 - 0.08, frameTimeScale));
+          sim.camera.y += (targetCamY - sim.camera.y) * (1 - Math.pow(1 - 0.08, frameTimeScale));
           clampCamera();
         }
       }
@@ -10964,7 +10965,7 @@
 
         if (ef.spr && drawSpriteEffect(ctx, ef, progress)) {
           ctx.restore();
-          ef.life--;
+          ef.life -= frameTimeScale;
           if (ef.life <= 0) sim.effects.splice(i, 1);
           continue;
         }
@@ -11080,7 +11081,7 @@
         }
 
         ctx.restore();
-        ef.life--;
+        ef.life -= frameTimeScale;
         if (ef.life <= 0) sim.effects.splice(i, 1);
       }
 
@@ -11163,7 +11164,7 @@
         ctx.fillText(ft.text, fx, fy);
         ctx.restore();
         ft.y -= 0.22;
-        ft.life--;
+        ft.life -= frameTimeScale;
         if (ft.life <= 0) sim.floatTexts.splice(i, 1);
       }
 
@@ -11260,21 +11261,38 @@
     // 전투 화면이 숨겨져 있을 때는 그리지 않고, 효과 수명만 줄임 (태블릿 배터리·발열 절약)
     function decayHiddenBattleVisuals() {
       for (let i = sim.effects.length - 1; i >= 0; i--) {
-        if (--sim.effects[i].life <= 0) sim.effects.splice(i, 1);
+        if ((sim.effects[i].life -= frameTimeScale) <= 0) sim.effects.splice(i, 1);
       }
       for (let i = sim.floatTexts.length - 1; i >= 0; i--) {
-        if (--sim.floatTexts[i].life <= 0) sim.floatTexts.splice(i, 1);
+        if ((sim.floatTexts[i].life -= frameTimeScale) <= 0) sim.floatTexts.splice(i, 1);
       }
     }
 
     // 전투 전체 빠르기: 1.0이면 화면 한 번에 1틱, 0.8이면 20% 느리게
     // (이동·공격·스킬·쿨타임·시간 제한이 모두 같은 비율로 느려져서 밸런스는 그대로)
-    const BATTLE_PACE = 0.28672; // 처음 대비: 0.8 → 0.64 → 0.512 → 0.4096 (20%씩) → 0.28672 (30% 더 느리게) → 30%씩 세 번 빠르게(0.63) → 다시 0.28672로 되돌림
+    // 전투 빠르기: 실제 시간 1초에 진행하는 틱 수
+    // (예전에는 '화면 1번에 몇 틱'이라서 화면을 1초에 144번 그리는 모니터에서는 60번 그리는 모니터보다 2.4배 빨랐음)
+    // 40 = 집 PC(144Hz)에서 0.287, 직장 PC(60Hz)에서 0.63으로 각각 맞췄던 빠르기와 거의 같음
+    const BATTLE_TICKS_PER_SEC = 40;
+    const BATTLE_PACE = BATTLE_TICKS_PER_SEC / 60; // 60Hz 화면 기준 화면 1번당 틱 (예전 값과 비교용)
     let battleTickCarry = 0;
+    let lastBattleClockMs = 0;
+    // 화면 1번이 60Hz 기준 몇 배의 시간인지 (효과 지속 시간·카메라 이동을 모니터와 상관없이 같게)
+    let frameTimeScale = 1;
 
-    // 이번 화면에서 진행할 틱 수 (소수점은 다음 화면으로 넘겨서 평균이 BATTLE_PACE가 되게)
+    // 매 화면 처음에 한 번: 지난 화면 이후 흐른 실제 시간
+    function measureFrameTime() {
+      const now = performance.now();
+      const dt = lastBattleClockMs ? Math.min(100, Math.max(0, now - lastBattleClockMs)) : 1000 / 60;
+      lastBattleClockMs = now;
+      frameTimeScale = dt / (1000 / 60);
+      return dt;
+    }
+
+    // 이번 화면에서 진행할 틱 수 (소수점은 다음 화면으로 넘겨서 실제 시간과 맞춤)
+    let lastFrameDtMs = 1000 / 60;
     function takeBattleTicks(speed) {
-      battleTickCarry += speed * BATTLE_PACE;
+      battleTickCarry += speed * BATTLE_TICKS_PER_SEC * (lastFrameDtMs / 1000);
       const ticks = Math.floor(battleTickCarry);
       battleTickCarry -= ticks;
       return ticks;
@@ -11303,6 +11321,7 @@
     let animationFrameNo = 0;
     function animationLoop() {
       animationFrameNo++;
+      lastFrameDtMs = measureFrameTime();
       const arenaVisible = !document.getElementById('arenaSection')?.classList.contains('hidden')
         && !document.getElementById('mainAppShell')?.classList.contains('hidden');
       // 용병 상태 목록은 화면이 보일 때만, 6프레임마다 한 번 갱신 (매 프레임 다시 그리면 화면이 버벅임)
