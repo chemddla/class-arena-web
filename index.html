@@ -3266,8 +3266,8 @@
       minigameBigReward: 200,   // 윷놀이(4명) 승리
       minigameLossReward: 100,  // 미니게임 패배 (격려 보상)
       towerRepeatRatio: 0,      // 이미 깬 탑 층 재도전 보상 없음
-      levelCostBase: 80,        // 레벨업 비용 = 80 + 45 × (현재 레벨 - 1) · Lv50까지 1명 약 5.7만 CA
-      levelCostPerLevel: 45,
+      levelCostBase: 160,       // 레벨업 비용 = 160 + 90 × (현재 레벨 - 1) · Lv50까지 1명 약 11.4만 CA (예전 80 + 45의 2배)
+      levelCostPerLevel: 90,
       sellRefundRatio: 0.5      // 즉시 판매: 고용비 + 들인 레벨업 비용의 절반
     };
     function mercLevelUpCost(level) {
@@ -3277,6 +3277,17 @@
       let sum = 0;
       for (let l = 1; l < (level || 1); l++) sum += mercLevelUpCost(l);
       return sum;
+    }
+    // 레벨업 비용을 2배로 올리기 전(80 + 45 × (레벨 - 1))에 올린 레벨의 값: 그때 낸 만큼만 돌려주거나 판매가에 넣기 위해
+    function legacyLevelCostTo(level) {
+      let sum = 0;
+      for (let l = 1; l < (level || 1); l++) sum += 80 + (l - 1) * 45;
+      return sum;
+    }
+    // 이 용병에 실제로 들어간 레벨업 비용 (장부가 있으면 장부 기준, 장부 전 레벨은 예전 가격)
+    function mercLevelInvested(merc, stu) {
+      if (stu && merc.levelOwner === stu.id) return legacyLevelCostTo(merc.levelBase || 1) + (merc.levelSpent || 0);
+      return legacyLevelCostTo(merc.level || 1);
     }
     const DAILY_REWARD_LIMITS = { quiz: 20, practice: 3, tower: 3, pvp: 5, raid: 3, minigame: 5 };
     const DAILY_REWARD_LABELS = { quiz: '퀴즈', practice: '허수아비 모의전', tower: '모험의 탑', pvp: '랭킹 매칭', raid: '엘리트 몬스터', minigame: '미니게임' };
@@ -3934,7 +3945,7 @@
       const powerBonus = Math.round(power * 0.12);
 
       const valuation = Math.round((baseVal + lvVal + tierBonus + powerBonus) / 10) * 10;
-      const invested = (merc.hireCost || rar.cost || 500) + totalLevelCostTo(merc.level || 1);
+      const invested = (merc.hireCost || rar.cost || 500) + mercLevelInvested(merc, ownerStu || (typeof getActiveStudent === 'function' ? getActiveStudent() : null));
       const instantSellPrice = Math.max(100, Math.min(Math.round((valuation * 0.85) / 10) * 10, Math.round((invested * ECONOMY.sellRefundRatio) / 10) * 10));
       const suggestedStartBid = Math.max(200, Math.round((valuation * 0.80) / 10) * 10);
       const suggestedBuyout = Math.max(350, Math.round((valuation * 1.25) / 10) * 10);
@@ -4703,7 +4714,7 @@
     // - 친구에게서 산·받은 용병은 받은 레벨부터 새로 셈 (산 용병을 초기화해서 CA를 버는 일이 없게)
     function mercLevelLedger(merc, stu, write = true) {
       let owner = merc.levelOwner, base = merc.levelBase, spent = merc.levelSpent;
-      if (owner === undefined) { owner = stu.id; base = 1; spent = totalLevelCostTo(merc.level || 1); }
+      if (owner === undefined) { owner = stu.id; base = 1; spent = legacyLevelCostTo(merc.level || 1); } // 장부 전 레벨은 예전 가격으로 낸 것
       else if (owner !== stu.id) { owner = stu.id; base = merc.level || 1; spent = 0; }
       if (write) Object.assign(merc, { levelOwner: owner, levelBase: base, levelSpent: spent });
       const target = Math.max(1, Math.min(merc.level || 1, base || 1));
