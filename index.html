@@ -12756,9 +12756,8 @@
       const turnTeam = yutTeamOfSeat(st.turnSeat);
       const myTurn = mgCanAct(st);
       const choices = st.phase === 'move' && !st.gameOver ? yutAllChoices(st) : [];
-      // 고를 수 있는 말 무리가 하나뿐이면 미리 골라 둠 (도착 칸은 직접 골라야 함)
+      // 말은 언제나 플레이어가 직접 고름 (고를 수 있는 말이 하나뿐이어도 미리 골라 두지 않음)
       const movableKeys = [...new Set(choices.map(c => c.node))];
-      if (myTurn && st.phase === 'move' && !yutSelected && movableKeys.length === 1) yutSelected = movableKeys[0];
       if (yutSelected && !movableKeys.includes(yutSelected)) yutSelected = null;
 
       const seatsBox = document.getElementById('yutSeatsBox');
@@ -12770,7 +12769,9 @@
         let doNow;
         if (st.phase === 'throw') doNow = st.results.length ? '한 번 더 던지세요! 🥢' : '윷을 던지세요 🥢';
         else if (!myTurn) doNow = '말을 옮기는 중...';
-        else doNow = yutSelected ? '② 도착할 칸(빛나는 점)을 누르세요' : '① 움직일 말을 누르세요';
+        else doNow = yutSelected
+          ? '② 도착할 칸(빛나는 점)을 누르세요'
+          : (movableKeys.includes('home') ? '① 움직일 말을 누르세요 (새 말은 위의 [새 말 놓기])' : '① 움직일 말을 누르세요');
         statusBox.innerHTML = st.gameOver
           ? `<span style="color:${YUT_TEAM_COLOR[st.winnerTeam]}">🏆 ${YUT_TEAM_NAME[st.winnerTeam]} 승리!</span> <span class="text-slate-400">[새 게임]으로 다시 해요</span>`
           : `<span style="color:${YUT_TEAM_COLOR[turnTeam]}">${YUT_TEAM_NAME[turnTeam]} · ${cur.name}</span> 차례${myTurn ? ' 👈 내 차례!' : ''}<div class="mt-1 text-sm font-extrabold text-white">${doNow}</div>`;
@@ -12827,7 +12828,11 @@
           const picked = canPickHome && yutSelected === 'home';
           return `<div class="mg-seat" style="justify-content:space-between;border-color:${YUT_TEAM_COLOR[team]}55">
             <span style="color:${YUT_TEAM_COLOR[team]}">${YUT_TEAM_NAME[team]}${team === myTeam ? ' (우리 팀)' : ''}</span>
-            <span title="대기 중인 말">⏳${'●'.repeat(home) || '-'}</span>
+            <span class="flex items-center gap-1" title="대기 중인 말 (내 차례에 눌러서 새 말을 꺼내요)">⏳${home
+              ? Array.from({ length: home }, () => canPickHome
+                  ? `<button onclick="chooseYutPiece('home')" class="w-5 h-5 rounded-full border-2 ${picked ? 'border-amber-400 ring-2 ring-amber-300' : 'border-white animate-pulse'}" style="background:${YUT_TEAM_COLOR[team]}" title="새 말 놓기"></button>`
+                  : `<span class="inline-block w-4 h-4 rounded-full border-2 border-white" style="background:${YUT_TEAM_COLOR[team]}"></span>`).join('')
+              : '-'}</span>
             <span title="난 말">🏁 ${done}/${YUT_PIECES}</span>
             ${canPickHome ? `<button onclick="chooseYutPiece('home')" class="px-2 py-1 rounded-lg text-white text-[11px] font-extrabold ${picked ? 'ring-2 ring-amber-400' : 'animate-pulse'}" style="background:${YUT_TEAM_COLOR[team]}">${picked ? '✔ 새 말 고름' : '새 말 놓기'}</button>` : ''}
           </div>`;
@@ -16765,6 +16770,7 @@
     window.createMinigameRoom = async function () {
       const myStu = getActiveStudent();
       if (!myStu) return;
+      mgSoloPracticeActive = false;
       const meta = MINIGAME_TYPE_META[selectedLobbyMinigameType] || MINIGAME_TYPE_META.yutnori;
       const inp = document.getElementById('mgNewRoomTitleInput');
       const customTitle = cleanUserText(inp?.value, 24) || `${myStu.name}의 ${meta.name} 방`;
@@ -16799,6 +16805,7 @@
       const myStu = getActiveStudent();
       const room = liveMinigameRoomsCache[roomId];
       if (!myStu || !room) return;
+      mgSoloPracticeActive = false;
       if (!Array.isArray(room.players)) room.players = [];
       const alreadyIn = room.players.some(p => p.id === myStu.id);
       if (!alreadyIn) {
@@ -16900,6 +16907,7 @@
     };
 
     window.leaveMinigameRoom = async function () {
+      mgSoloPracticeActive = false;
       const myStu = getActiveStudent();
       const roomId = currentJoinedMinigameRoomId;
       const room = roomId ? liveMinigameRoomsCache[roomId] : null;
@@ -16918,9 +16926,13 @@
       renderMinigameLobbyAndRoomUI();
     };
 
+    // 혼자 연습 중인지 (이때는 다른 방 소식이나 학급 갱신이 와도 로비로 돌아가지 않음)
+    var mgSoloPracticeActive = false; // var: 스크립트가 다 읽히기 전에 불려도 오류 나지 않게
+
     window.startSoloMinigamePractice = function () {
       currentJoinedMinigameRoomId = null;
       mgRealtimeSyncEnabled = false;
+      mgSoloPracticeActive = true;
       const lobbySec = document.getElementById('minigameLobbySection');
       const waitSec = document.getElementById('minigameWaitingRoomSection');
       const boardSec = document.getElementById('minigameActiveBoardSection');
@@ -17089,6 +17101,15 @@
           }
           return;
         }
+      }
+
+      // 혼자 연습 중이면 게임 화면 그대로 (로비로 튕기지 않게)
+      if (mgSoloPracticeActive) {
+        if (topLeaveBtn) topLeaveBtn.classList.remove('hidden');
+        if (lobbySec) lobbySec.classList.add('hidden');
+        if (waitSec) waitSec.classList.add('hidden');
+        if (boardSec) boardSec.classList.remove('hidden');
+        return;
       }
 
       // 1단계: 기본 미니게임 로비 목록 표시
