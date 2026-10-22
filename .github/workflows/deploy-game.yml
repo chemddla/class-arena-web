@@ -53,9 +53,13 @@ jobs:
           npm install --no-save --no-audit --no-fund html-minifier-terser@7.2.0
           node tools/minify-html.cjs public/index.html
 
+      # 배포: FirebaseExtended 액션 대신 버전을 고정한 firebase-tools로 직접 (2026-10 액션이 원인 모를 npx 오류로 실패해서 교체)
+      # 서비스 계정 키(JSON)를 임시 파일로 두고 GOOGLE_APPLICATION_CREDENTIALS로 로그인
       - name: Deploy game site
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_CLASS_ARENA_B4EE3 }}'
-          projectId: class-arena-b4ee3
-          channelId: live
+        env:
+          FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CLASS_ARENA_B4EE3 }}
+        run: |
+          printf '%s' "$FIREBASE_SA" > "$RUNNER_TEMP/firebase-sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
+          npx --yes firebase-tools@15.34.0 deploy --only hosting:class-arena-b4ee3 --project class-arena-b4ee3 --non-interactive
+          rm -f "$RUNNER_TEMP/firebase-sa.json"
