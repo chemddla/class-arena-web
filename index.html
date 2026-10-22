@@ -7668,10 +7668,10 @@
         ${(() => {
           const idef = equipDefOf(u.itemId);
           if (!idef) return '';
-          const buffs = [u.hasteTicks > 0 ? `👟${(u.hasteTicks / 60).toFixed(0)}s` : '', u.frenzyTicks > 0 ? `🎭${(u.frenzyTicks / 60).toFixed(0)}s` : '', u.atkSpdStacks > 0 ? `⚡${u.atkSpdStacks}` : ''].filter(Boolean).join(' ');
+          const buffs = [u.hasteTicks > 0 ? `👟${ticksToRealSec(u.hasteTicks).toFixed(0)}s` : '', u.frenzyTicks > 0 ? `🎭${ticksToRealSec(u.frenzyTicks).toFixed(0)}s` : '', u.atkSpdStacks > 0 ? `⚡${u.atkSpdStacks}` : ''].filter(Boolean).join(' ');
           if (idef.kind !== 'active') return `<span class="px-2 py-1 rounded-lg bg-slate-800 text-emerald-300 font-extrabold">${idef.icon}${idef.name}${buffs ? ' ' + buffs : ''}</span>`;
           const ready = u.itemCd <= 0;
-          return `<span class="px-2 py-1 rounded-lg ${ready ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400'} font-extrabold">Q ${idef.icon}${idef.name} ${ready ? '✅' : `⏳${(u.itemCd / 60).toFixed(1)}s`}${buffs ? ' ' + buffs : ''}</span>`;
+          return `<span class="px-2 py-1 rounded-lg ${ready ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400'} font-extrabold">Q ${idef.icon}${idef.name} ${ready ? '✅' : `⏳${ticksToRealSec(u.itemCd).toFixed(1)}s`}${buffs ? ' ' + buffs : ''}</span>`;
         })()}
         <span class="text-slate-400">WASD 이동 · 좌클릭/K 공격${arenaMouseSeen ? '' : ' · 🖱️ 마우스 없음: 바라보는 쪽 공격, 스킬은 가까운 적'}</span>`;
     }
@@ -7809,12 +7809,12 @@
       }
       bar.classList.remove('hidden');
       const jobSkills = SKILL_DEFS[u.job] || SKILL_DEFS.warrior;
-      const slot = (keyLabel, icon, name, cdLeft, cdTotal, state) => {
+      const slot = (keyLabel, icon, name, cdLeft, cdTotal, state, labelOverride = null) => {
         const ready = state === 'ready';
         const pct = cdTotal > 0 ? Math.max(0, Math.min(100, (cdLeft / cdTotal) * 100)) : 0;
-        const label = state === 'locked' ? '🔒 잠김'
+        const label = labelOverride || (state === 'locked' ? '🔒 잠김'
           : state === 'mana' ? '💧 마나'
-          : cdLeft > 0 ? `${ticksToRealSec(cdLeft).toFixed(1)}초` : '준비!';
+          : cdLeft > 0 ? `${ticksToRealSec(cdLeft).toFixed(1)}초` : '준비!');
         // 밝은 테마가 색을 덮어쓰지 않도록 색은 style로 직접 지정
         return `<div class="relative w-[92px] rounded-xl overflow-hidden text-center px-1.5 py-1.5 shadow-lg"
             style="background:rgba(15,23,42,0.86);border:2px solid ${ready ? '#fbbf24' : '#64748b'};color:#fff">
@@ -7834,7 +7834,16 @@
         return slot(String(i + 1), sk.icon, sk.name, cd, sk.cooldownTicks || 360, state);
       }).join('');
       const dashMax = u.maxDashCooldown || DASH_CONFIG.cooldownTicks;
-      bar.innerHTML = skillSlots + slot('Space', '💨', '대시', u.dashCooldown || 0, dashMax, (u.dashCooldown || 0) > 0 ? 'cooldown' : 'ready');
+      // 장비 스킬(Q): 발동형 장비를 끼웠을 때만. 효과가 이어지는 동안(헤이스트·광폭화)은 남은 시간도 표시
+      const idef = equipDefOf(u.itemId);
+      let itemSlot = '';
+      if (idef && idef.kind === 'active') {
+        const cd = u.itemCd || 0;
+        const buffLeft = idef.skill === 'haste' ? (u.hasteTicks || 0) : (idef.skill === 'frenzy' ? (u.frenzyTicks || 0) : 0);
+        const label = buffLeft > 0 ? `효과 ${ticksToRealSec(buffLeft).toFixed(0)}초${cd > 0 ? ` · ${ticksToRealSec(cd).toFixed(0)}초` : ''}` : null;
+        itemSlot = slot('Q', idef.icon, idef.name, cd, Math.round((idef.cdSec || 1) * 60), cd > 0 ? 'cooldown' : 'ready', label);
+      }
+      bar.innerHTML = skillSlots + itemSlot + slot('Space', '💨', '대시', u.dashCooldown || 0, dashMax, (u.dashCooldown || 0) > 0 ? 'cooldown' : 'ready');
     }
 
     function findEnemyNearAim(u, enemies, aimX, aimY, maxRange) {
@@ -8031,7 +8040,7 @@
       if (def.kind !== 'active') { if (fromPlayer) say(`${def.icon} 이 장비는 늘 자동으로 적용돼요`); return false; }
       // 기절·빙결 중에는 못 씀 (대시·스킬 시전 중에도 장비 스킬은 쓸 수 있음)
       if (!u.alive || u.statuses.stun > 0 || u.statuses.freeze > 0) return false;
-      if (u.itemCd > 0) { if (fromPlayer) say(`⏳ ${def.name} ${(u.itemCd / 60).toFixed(1)}초`); return false; }
+      if (u.itemCd > 0) { if (fromPlayer) say(`⏳ ${def.name} ${ticksToRealSec(u.itemCd).toFixed(1)}초`); return false; }
       if (def.skill === 'haste') {
         u.hasteTicks = 600;
         say('👟 헤이스트! 이동속도 +20%', '#0ea5e9');
@@ -8203,7 +8212,7 @@
         const act = idef && idef.kind === 'active';
         itemBtn.classList.toggle('hidden', !act);
         if (act) {
-          itemBtn.textContent = u.itemCd > 0 ? `${Math.ceil(u.itemCd / 60)}` : idef.icon;
+          itemBtn.textContent = u.itemCd > 0 ? `${Math.ceil(ticksToRealSec(u.itemCd))}` : idef.icon;
           itemBtn.style.opacity = u.itemCd > 0 ? '0.45' : '1';
           itemBtn.title = idef.name;
         }
