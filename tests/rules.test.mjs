@@ -289,3 +289,86 @@ test('실시간 결투 화면 전달(pvp_live): 학급이 있으면 쓰고 지�
   await assertFails(db(null).ref('classes/NOPE/pvp_live/pvp_s1/frame').set({ t: 1 }));
   await assertFails(db(null).ref('classes/OWN1/pvp_livex/pvp_s1').set({ t: 1 }));
 });
+
+// ----- 교사 PIN·교사 키 증명 (classSecrets): 서버에서 읽어갈 수 없고, 맞는 값인지 확인만 가능 -----
+const S = (c) => 'sh_' + c.repeat(64);
+const [SA, SB, SC] = [S('a'), S('b'), S('c')];
+const seedSecrets = () => env.withSecurityRulesDisabled(async (ctx) => {
+  await ctx.database().ref().update({
+    'classSecrets/OWN1/pin': { [SA]: true },
+    'classSecrets/OWN1/key': { [SB]: true },
+    'classSecrets/OLD1/pin': { [SA]: true }
+  });
+});
+
+test('교사 증명: 목록은 아무도 못 읽고, 맞는 값이 있는지만 확인할 수 있음', async () => {
+  await seedSecrets();
+  await assertFails(db(null).ref('classSecrets').once('value'));
+  await assertFails(db('teacher').ref('classSecrets/OWN1').once('value'));
+  await assertFails(db('teacher').ref('classSecrets/OWN1/pin').once('value'));
+  await assertSucceeds(db(null).ref(`classSecrets/OWN1/pin/${SA}`).once('value'));
+  await assertFails(db(null).ref(`classSecrets/OWN1/pin/${SB}`).once('value')); // 틀린 값
+  await assertSucceeds(db(null).ref(`classSecrets/OWN1/key/${SB}`).once('value'));
+  await assertFails(db(null).ref('classSecrets/OWN1/pin/prev').once('value'));
+});
+
+test('교사 증명: 소유 학급은 소유 교사(와 총괄 관리자)만 쓸 수 있음', async () => {
+  await assertFails(db(null).ref('classSecrets/OWN1/pin').set({ [SC]: true }));
+  await assertFails(db('u1').ref('classSecrets/OWN1/pin').set({ [SC]: true }));
+  await assertSucceeds(db('teacher').ref('classSecrets/OWN1/pin').set({ [SC]: true }));
+  await assertSucceeds(db('teacher').ref('classSecrets/OWN1/key').set({ [SB]: true }));
+  await assertSucceeds(db('admin', { superAdmin: true }).ref('classSecrets/OWN1').remove());
+  await assertFails(db('teacher').ref('classSecrets/NOPE/pin').set({ [SC]: true })); // 없는 학급
+  await assertFails(db('teacher').ref('classSecrets/OWN1/other').set({ [SC]: true })); // pin·key 외 칸
+  await assertFails(db('teacher').ref('classSecrets/OWN1/pin').set({ '1234': true })); // 약한 값
+  await assertFails(db('teacher').ref('classSecrets/OWN1/pin').set({ [SC]: 'yes' }));
+});
+
+test('교사 증명: 소유자 없는 학급은 처음 한 번만 만들고, 바꾸려면 이전 값을 알아야 함', async () => {
+  await assertSucceeds(db(null).ref('classSecrets/OLD1/key').set({ [SB]: true })); // 아직 없음 → 처음 설정
+  await assertFails(db(null).ref('classSecrets/OLD1/key').set({ [SC]: true })); // 이전 값 없이 덮어쓰기
+  await assertFails(db(null).ref('classSecrets/OLD1/key').set({ [SC]: true, prev: SA })); // 틀린 이전 값
+  await assertSucceeds(db(null).ref('classSecrets/OLD1/key').set({ [SC]: true, prev: SB }));
+  await seedSecrets();
+  await assertFails(db(null).ref('classSecrets/OLD1/pin').set({ [SC]: true, prev: 'prev' }));
+  await assertSucceeds(db(null).ref('classSecrets/OLD1/pin').set({ [SC]: true, prev: SA }));
+  await assertSucceeds(db(null).ref('classSecrets/OLD1/pin').set({ [SB]: true, prev: SC })); // 한 번 바꾼 뒤에도 같은 방식
+});
+
+test('교사 키 목록: 강한 키 증명이 있는 학급만 올릴 수 있고, 예전 해시 목록은 해시가 지워지면 정리할 수 있음', async () => {
+  await seedSecrets();
+  const item = (code) => ({ classCode: code, className: 'A', studentCount: 1, updatedAt: 1 });
+  await assertSucceeds(db('teacher').ref(`teacherKeys/${SB}/classes/OWN1`).set(item('OWN1')));
+  await assertFails(db('teacher').ref(`teacherKeys/${SC}/classes/OWN1`).set(item('OWN1'))); // 증명 없는 키
+  await assertFails(db('teacher').ref(`teacherKeys/${SB}/classes/OLD1`).set(item('OLD1'))); // 다른 학급의 키
+  await assertFails(db('teacher').ref(`teacherKeys/${SB}/classes/OWN1`).set(item('OLD1')));
+  await assertSucceeds(db(null).ref(`teacherKeys/${SB}/classes`).once('value'));
+  // 예전 방식 목록은 meta.teacherKeyHash가 있는 동안 유지, 사라진 뒤에는 지울 수 있음
+  await assertSucceeds(db(null).ref('teacherKeys/kh_2/classes/OLD1').set(item('OLD1')));
+  await assertFails(db(null).ref('teacherKeys/kh_2/classes/OLD1').remove());
+  await assertSucceeds(db(null).ref().update({
+    'classes/OLD1/meta/teacherKeyHash': null,
+    'classes/OLD1/meta/teacherPinHash': null,
+    'classes/OLD1/meta/pinV': 2,
+    'classes/OLD1/meta/keyV': 2,
+    'teacherKeys/kh_2/classes/OLD1': null
+  }));
+});
+
+test('학급 정보: 예전 교사 키 해시는 지울 수만 있고 바꿀 수 없음', async () => {
+  await assertFails(db(null).ref('classes/OLD1/meta/teacherKeyHash').set('kh_9'));
+  await assertSucceeds(db(null).ref('classes/OLD1/meta/teacherKeyHash').remove());
+  await assertFails(db('u1').ref('classes/OWN1/meta/teacherKeyHash').remove());
+  await assertSucceeds(db('teacher').ref('classes/OWN1/meta/teacherKeyHash').remove());
+});
+
+test('새 학급 만들기: 학급 정보와 교사 증명, 교사 키 목록을 한 번에 저장', async () => {
+  const t = db('newteacher', { email: 'n@x.com' });
+  await assertSucceeds(t.ref().update({
+    'classes/NEW1/meta': { classCode: 'NEW1', ownerUid: 'newteacher', ownerEmail: 'n@x.com', createdAt: 1, className: 'N', pinV: 2, keyV: 2 },
+    'classSecrets/NEW1/pin': { [SA]: true },
+    'classSecrets/NEW1/key': { [SB]: true },
+    [`teacherKeys/${SB}/classes/NEW1`]: { classCode: 'NEW1', className: 'N', studentCount: 0, updatedAt: 1 }
+  }));
+  await assertFails(db('other').ref('classSecrets/NEW1/pin').set({ [SC]: true }));
+});

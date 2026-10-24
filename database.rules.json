@@ -9,7 +9,7 @@
         ".read": "$classCode.matches(/^[A-Z0-9_-]+$/) && $classCode.length >= 3 && $classCode.length <= 16",
         ".validate": "$classCode.matches(/^[A-Z0-9_-]+$/) && $classCode.length >= 3 && $classCode.length <= 16",
         "meta": {
-          ".write": "$classCode.matches(/^[A-Z0-9_-]+$/) && $classCode.length >= 3 && $classCode.length <= 16 && newData.exists() && (!data.exists() ? (auth != null && newData.child('classCode').val() === $classCode && newData.child('ownerUid').val() === auth.uid && newData.child('ownerEmail').val() === auth.token.email) : (newData.child('teacherKeyHash').val() === data.child('teacherKeyHash').val() && newData.child('createdAt').val() === data.child('createdAt').val() && newData.child('ownerUid').val() === data.child('ownerUid').val() && newData.child('ownerEmail').val() === data.child('ownerEmail').val() && (!data.child('ownerUid').exists() || (auth != null && data.child('ownerUid').val() === auth.uid))))",
+          ".write": "$classCode.matches(/^[A-Z0-9_-]+$/) && $classCode.length >= 3 && $classCode.length <= 16 && newData.exists() && (!data.exists() ? (auth != null && newData.child('classCode').val() === $classCode && newData.child('ownerUid').val() === auth.uid && newData.child('ownerEmail').val() === auth.token.email) : ((newData.child('teacherKeyHash').val() === data.child('teacherKeyHash').val() || !newData.child('teacherKeyHash').exists()) && newData.child('createdAt').val() === data.child('createdAt').val() && newData.child('ownerUid').val() === data.child('ownerUid').val() && newData.child('ownerEmail').val() === data.child('ownerEmail').val() && (!data.child('ownerUid').exists() || (auth != null && data.child('ownerUid').val() === auth.uid))))",
           "classCode": {
             ".validate": "newData.val() === $classCode"
           },
@@ -126,7 +126,7 @@
         ".read": true,
         "classes": {
           "$classCode": {
-            ".write": "(auth != null && auth.token.superAdmin === true && !newData.exists()) || $keyHash.matches(/^kh_[0-9a-f]+$/) && newData.exists() && newData.child('classCode').val() === $classCode && newData.parent().parent().parent().parent().child('classes').child($classCode).child('meta').child('teacherKeyHash').val() === $keyHash"
+            ".write": "(auth != null && auth.token.superAdmin === true && !newData.exists()) || ($keyHash.matches(/^kh_[0-9a-f]+$/) && newData.exists() && newData.child('classCode').val() === $classCode && newData.parent().parent().parent().parent().child('classes').child($classCode).child('meta').child('teacherKeyHash').val() === $keyHash) || ($keyHash.matches(/^sh_[0-9a-f]{64}$/) && newData.exists() && newData.child('classCode').val() === $classCode && newData.parent().parent().parent().parent().child('classSecrets').child($classCode).child('key').child($keyHash).exists()) || (!newData.exists() && $keyHash.matches(/^kh_[0-9a-f]+$/) && !newData.parent().parent().parent().parent().child('classes').child($classCode).child('meta').child('teacherKeyHash').exists())"
           }
         },
         "$other": {
@@ -186,6 +186,19 @@
         "$uid": {
           ".read": "auth != null && auth.uid === $uid",
           ".write": "auth != null && auth.uid === $uid && (!newData.exists() || (newData.isString() && newData.parent().parent().parent().child('studentClaims').child($classCode).child(newData.val()).child($uid).exists()))"
+        }
+      }
+    },
+    "classSecrets": {
+      ".write": "auth != null && auth.token.superAdmin === true",
+      "$classCode": {
+        "$kind": {
+          ".write": "(auth != null && newData.parent().parent().parent().child('classes').child($classCode).child('meta').child('ownerUid').val() === auth.uid) || (newData.parent().parent().parent().child('classes').child($classCode).child('meta').exists() && !newData.parent().parent().parent().child('classes').child($classCode).child('meta').child('ownerUid').exists() && (!data.exists() || data.child(newData.child('prev').val()).exists()))",
+          ".validate": "($kind === 'pin' || $kind === 'key') && newData.parent().parent().parent().child('classes').child($classCode).child('meta').exists()",
+          "$proof": {
+            ".read": "$proof.matches(/^sh_[0-9a-f]{64}$/) && data.exists()",
+            ".validate": "($proof.matches(/^sh_[0-9a-f]{64}$/) && newData.val() === true) || ($proof === 'prev' && newData.isString() && newData.val().matches(/^sh_[0-9a-f]{64}$/))"
+          }
         }
       }
     }

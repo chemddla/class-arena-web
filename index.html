@@ -3552,7 +3552,6 @@
       });
 
       return {
-        teacherPin: '1234',
         classLocked: false,
         notice: '📢 오늘의 공지: 개성 있는 용병들을 영입하고 12종 스킬·전술 조합으로 아레나에서 승리하세요!',
         guardianPts: 120,
@@ -11942,13 +11941,39 @@
       showRewardBanner('📢 학급 공지사항이 업데이트되었습니다!');
     }
 
-    function changeTeacherPin() {
+    async function changeTeacherPin() {
       const val = document.getElementById('adminNewPinInput').value.trim();
       if (val.length < 2) {
         showNotice('⚠️ 새 관리자 비밀번호를 2자리 이상 입력해주세요.');
         return;
       }
-      state.teacherPinHash = hashTeacherPin(val);
+      const code = String(state.classCode || '').toUpperCase();
+      const proof = await teacherPinProof(code, val);
+      if (TeacherSecrets.pinProof[code] !== proof) {
+        const db = RealtimePvpService.initFirebaseClientSafe();
+        if (!db || typeof db.ref !== 'function' || !syncCache.loaded || syncCache.classCode !== code) {
+          showNotice('⚠️ 서버에 연결되지 않아 비밀번호를 바꾸지 못했어요. 연결된 뒤 다시 시도해주세요.');
+          return;
+        }
+        const node = { [proof]: true };
+        const prev = TeacherSecrets.pinProof[code];
+        if (prev) node.prev = prev; // 소유자 없는 학급은 이전 비밀번호를 증명해야 바꿀 수 있음
+        try {
+          await db.ref().update({
+            [`classSecrets/${code}/pin`]: node,
+            [`classes/${code}/meta/pinV`]: 2,
+            [`classes/${code}/meta/teacherPinHash`]: null,
+            [`classes/${code}/meta/teacherPin`]: null
+          });
+        } catch (e) {
+          showNotice('⚠️ 비밀번호를 바꾸지 못했어요. 구글 계정 소유자이거나, 현재 관리자 비밀번호로 입장한 선생님만 바꿀 수 있어요. (교사 키로 입장했다면 비밀번호로 다시 입장해주세요)');
+          return;
+        }
+        TeacherSecrets.pinProof[code] = proof;
+        TeacherSecrets.remember(code, { pin: proof });
+        state.legacyPinHash = '';
+      }
+      delete state.teacherPinHash;
       delete state.teacherPin;
       document.getElementById('adminNewPinInput').value = '';
       saveState();
@@ -13460,7 +13485,7 @@
     }
 
     function generateTeacherKeyString() {
-      return `TKEY-${generateRandomCode(4)}-${generateRandomCode(4)}`;
+      return `TKEY-${generateRandomCode(4)}-${generateRandomCode(4)}-${generateRandomCode(4)}`;
     }
 
     function simpleHashString(str) {
@@ -13475,6 +13500,116 @@
       h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
       return 'kh_' + (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
     }
+
+    // 교사 PIN·교사 키는 서버에서 읽을 수 있는 해시로 두지 않음.
+    // 브라우저에서 PBKDF2로 만든 '증명'(sh_...)만 classSecrets에 저장하고, 서버는 "그 증명이 있는지"만 알려줌
+    const TEACHER_SECRET_ITERATIONS = 100000;
+    const teacherProofCache = new Map();
+    async function teacherSecretProof(scope, secret) {
+      const cacheKey = scope + '\n' + secret;
+      if (teacherProofCache.has(cacheKey)) return teacherProofCache.get(cacheKey);
+      const enc = new TextEncoder();
+      const key = await crypto.subtle.importKey('raw', enc.encode(String(secret)), 'PBKDF2', false, ['deriveBits']);
+      const bits = await crypto.subtle.deriveBits({
+        name: 'PBKDF2', hash: 'SHA-256', iterations: TEACHER_SECRET_ITERATIONS,
+        salt: enc.encode(`class-arena:${scope}`)
+      }, key, 256);
+      const proof = 'sh_' + Array.from(new Uint8Array(bits), b => b.toString(16).padStart(2, '0')).join('');
+      teacherProofCache.set(cacheKey, proof);
+      return proof;
+    }
+    const teacherPinProof = (classCode, pin) => teacherSecretProof('teacher-pin:' + classCode, String(pin || ''));
+    const teacherKeyProof = (teacherKey) => teacherSecretProof('teacher-key', String(teacherKey || '').trim().toUpperCase());
+
+    const TeacherSecrets = {
+      pinProof: {},       // 이번 접속에서 확인된 학급별 PIN 증명 (PIN을 바꿀 때 이전 값을 증명하는 데 씀)
+      keyConfirmed: {},   // 학급별로 내 교사 키가 서버에 등록돼 있다고 확인된 증명
+      keyUnconfirmed: {}, // 서버에 없다고 확인된 증명 (매번 다시 묻지 않기 위함)
+
+      // true/false: 서버가 알려줌, null: 서버에 연결할 수 없음
+      async has(db, path) {
+        try { return (await db.ref(path).once('value')).exists(); }
+        catch (e) { return StudentPw.isDenied(e) ? false : null; }
+      },
+
+      // 오프라인일 때 쓰는, 이 기기에서 전에 확인한 기록
+      remember(code, patch) {
+        try { localStorage.setItem('caTeacherProof:' + code, JSON.stringify({ ...this.recall(code), ...patch })); } catch (e) {}
+      },
+      recall(code) {
+        try { return JSON.parse(localStorage.getItem('caTeacherProof:' + code) || '{}') || {}; } catch (e) { return {}; }
+      },
+
+      async ownsKey(db, code, keyProof) {
+        if (this.keyConfirmed[code] === keyProof) return true;
+        if (this.keyUnconfirmed[code + keyProof]) return false;
+        const ok = await this.has(db, `classSecrets/${code}/key/${keyProof}`);
+        if (ok === true) this.keyConfirmed[code] = keyProof;
+        else if (ok === false) this.keyUnconfirmed[code + keyProof] = true;
+        return ok === true;
+      },
+
+      // 입력값이 이 학급의 교사 PIN / 교사 키인지 확인 → { pin, key }
+      async check(input) {
+        const code = String(state.classCode || '').toUpperCase();
+        const val = String(input || '').trim();
+        const result = { pin: false, key: false };
+        if (!val || !code) return result;
+        const keyVal = val.toUpperCase();
+        const [pp, kp] = await Promise.all([teacherPinProof(code, val), teacherKeyProof(keyVal)]);
+        const db = RealtimePvpService.initFirebaseClientSafe();
+        let answered = false;
+        if (db && typeof db.ref === 'function') {
+          const [p, k] = await Promise.all([
+            this.has(db, `classSecrets/${code}/pin/${pp}`),
+            this.has(db, `classSecrets/${code}/key/${kp}`)
+          ]);
+          if (p !== null && k !== null) { result.pin = p; result.key = k; answered = true; }
+        }
+        if (!answered) { // 서버에 연결 못 함: 이 기기에서 전에 확인한 값만 인정
+          const mine = this.recall(code);
+          result.pin = Boolean(mine.pin) && mine.pin === pp;
+          result.key = Boolean(mine.key) && mine.key === kp;
+        }
+        // 예전 방식(서버 학급 정보의 약한 해시)이 남은 학급: 맞으면 새 방식으로 옮김
+        const legacyPin = !result.pin && Boolean(state.legacyPinHash) && hashTeacherPin(val) === state.legacyPinHash;
+        const legacyKey = !result.key && Boolean(state.legacyKeyHash) && simpleHashString(keyVal) === state.legacyKeyHash;
+        if (legacyPin) result.pin = true;
+        if (legacyKey) result.key = true;
+        if (result.pin) { this.pinProof[code] = pp; this.remember(code, { pin: pp }); }
+        if (result.key) { this.keyConfirmed[code] = kp; this.remember(code, { key: kp }); }
+        if (legacyPin || legacyKey) await this.migrateLegacy(code, { pin: legacyPin ? pp : '', key: legacyKey ? kp : '' });
+        return result;
+      },
+
+      async migrateLegacy(code, proofs) {
+        const db = RealtimePvpService.initFirebaseClientSafe();
+        if (!db || typeof db.ref !== 'function' || !syncCache.loaded || syncCache.classCode !== code) return;
+        const meta = `classes/${code}/meta`;
+        const updates = {};
+        if (proofs.pin) {
+          updates[`classSecrets/${code}/pin`] = { [proofs.pin]: true };
+          updates[`${meta}/pinV`] = 2;
+          updates[`${meta}/teacherPinHash`] = null;
+          updates[`${meta}/teacherPin`] = null;
+        }
+        if (proofs.key) {
+          updates[`classSecrets/${code}/key`] = { [proofs.key]: true };
+          updates[`${meta}/keyV`] = 2;
+          updates[`${meta}/teacherKeyHash`] = null;
+          updates[`teacherKeys/${proofs.key}/classes/${code}`] = { classCode: code, className: state.className, studentCount: (state.students || []).length, updatedAt: Date.now() };
+          if (state.legacyKeyHash) updates[`teacherKeys/${state.legacyKeyHash}/classes/${code}`] = null;
+        }
+        try {
+          await db.ref().update(updates);
+          if (proofs.pin) state.legacyPinHash = '';
+          if (proofs.key) state.legacyKeyHash = '';
+        } catch (e) {
+          console.warn('[교사 비밀번호·키 새 방식으로 옮기기 실패 - 예전 방식으로 계속]:', e);
+        }
+      }
+    };
+    let pendingClassSecrets = null; // 새 학급을 처음 서버에 올릴 때 함께 저장할 교사 PIN·키 증명
 
     function getLocalClassesRegistry() {
       try {
@@ -13544,7 +13679,7 @@
      * - 결투방·레이드방·미니게임 등 다른 데이터는 건드리지 않습니다.
      * ================================================================ */
     const CLASS_SYNC_KEYS = ['meta', 'students', 'profiles', 'auctions', 'tradeOffers'];
-    const META_SYNC_FIELDS = ['className', 'teacherPinHash', 'teacherPin', 'classLocked', 'notice', 'guardianPts'];
+    const META_SYNC_FIELDS = ['className', 'classLocked', 'notice', 'guardianPts'];
     let syncCache = { classCode: null, loaded: false, metaExists: false, meta: {}, students: {}, auctions: undefined, tradeOffers: undefined };
     let classSyncRefs = [];
     let classRemote = {};
@@ -13883,11 +14018,6 @@
       }
     };
 
-    function checkTeacherPin(input) {
-      if (state.teacherPinHash) return hashTeacherPin(input) === state.teacherPinHash;
-      return input === (state.teacherPin || '1234');
-    }
-
     // 결투방/레이드방에 올리는 학생 사본에서 비밀번호 제거
     function publicStudentSnapshot(stu) {
       const copy = JSON.parse(JSON.stringify(stu || {}));
@@ -13924,8 +14054,6 @@
     function buildMetaFields() {
       return {
         className: state.className || '우리 반 용병단',
-        teacherPinHash: state.teacherPinHash || hashTeacherPin(state.teacherPin || '1234'),
-        teacherPin: null, // 예전 버전이 저장한 평문 PIN은 서버에서 지웁니다
         classLocked: Boolean(state.classLocked),
         notice: state.notice || '',
         guardianPts: Number(state.guardianPts) || 0
@@ -13941,12 +14069,14 @@
         studentsMap[s.id] = s;
       });
       const metaFields = buildMetaFields();
-      delete metaFields.teacherPin;
       return {
         meta: {
           classCode: state.classCode,
           ...metaFields,
-          teacherKeyHash: state.teacherKeyHash || (state.teacherKey ? simpleHashString(state.teacherKey) : ''),
+          teacherKeyProof: TeacherSecrets.recall(state.classCode).key || '', // 이 기기 보관용 (서버에 올리지 않음)
+          // 이 기기 보관용: 예전 방식이 남은 학급은 그 해시를 그대로, 옮긴 학급은 표시만 남겨 기본값 1234가 되살아나지 않게 함
+          ...(state.legacyPinHash ? { teacherPinHash: state.legacyPinHash } : { pinV: 2 }),
+          ...(state.legacyKeyHash ? { teacherKeyHash: state.legacyKeyHash } : { keyV: 2 }),
           teacherKeyMasked: state.teacherKey ? (state.teacherKey.slice(0, 9) + '-****') : '',
           updatedAt: Date.now()
         },
@@ -14061,7 +14191,12 @@
         const creating = !syncCache.metaExists;
         if (creating) {
           meta.classCode = classCode;
-          meta.teacherKeyHash = state.teacherKey ? simpleHashString(state.teacherKey) : '';
+          if (pendingClassSecrets && pendingClassSecrets.classCode === classCode) { // PIN·교사 키는 읽을 수 없는 저장소에 증명만 저장
+            meta.pinV = 2;
+            meta.keyV = 2;
+            updates[`classSecrets/${classCode}/pin`] = { [pendingClassSecrets.pin]: true };
+            updates[`classSecrets/${classCode}/key`] = { [pendingClassSecrets.key]: true };
+          }
           meta.teacherKeyMasked = state.teacherKey ? (state.teacherKey.slice(0, 9) + '-****') : '';
           meta.createdAt = Date.now();
           // 새 학급은 만든 교사의 구글 계정을 소유자로 고정 (DB 규칙상 소유자 없는 학급 생성 불가)
@@ -14138,16 +14273,20 @@
         }
 
         // (d) 교사 키 목록 (선생님 본인 기기에서만)
-        // DB 규칙상 학급 meta.teacherKeyHash와 일치하는 키로만 목록을 쓸 수 있음 (불일치 시 업데이트 전체가 거부되므로 미리 걸러냄)
-        const ownKeyHash = state.teacherKey ? simpleHashString(state.teacherKey) : '';
-        const teacherOwns = Boolean(ownKeyHash) && ownKeyHash === (creating ? meta.teacherKeyHash : state.teacherKeyHash);
-        if (manager && teacherOwns && (creating || rosterChanged || pending.meta.className)) {
-          updates[`teacherKeys/${simpleHashString(state.teacherKey)}/classes/${classCode}`] = {
-            classCode,
-            className: state.className,
-            studentCount: (state.students || []).length,
-            updatedAt: Date.now()
-          };
+        // DB 규칙상 서버에 교사 키 증명이 등록된 키로만 목록을 쓸 수 있음 (아니면 업데이트 전체가 거부되므로 미리 걸러냄)
+        if (manager && state.teacherKey && (creating || rosterChanged || pending.meta.className)) {
+          const keyProof = await teacherKeyProof(state.teacherKey);
+          const teacherOwns = creating
+            ? Boolean(pendingClassSecrets && pendingClassSecrets.classCode === classCode && pendingClassSecrets.key === keyProof)
+            : await TeacherSecrets.ownsKey(db, classCode, keyProof);
+          if (teacherOwns) {
+            updates[`teacherKeys/${keyProof}/classes/${classCode}`] = {
+              classCode,
+              className: state.className,
+              studentCount: (state.students || []).length,
+              updatedAt: Date.now()
+            };
+          }
         }
         // (e) 구글 계정별 내 학급 목록 (소유 교사 본인만)
         const ownerUidNow = creating ? meta.ownerUid : state.ownerUid;
@@ -14168,6 +14307,12 @@
 
         try {
           await db.ref().update(updates);
+          if (creating && pendingClassSecrets && pendingClassSecrets.classCode === classCode) {
+            TeacherSecrets.pinProof[classCode] = pendingClassSecrets.pin;
+            TeacherSecrets.keyConfirmed[classCode] = pendingClassSecrets.key;
+            TeacherSecrets.remember(classCode, { pin: pendingClassSecrets.pin, key: pendingClassSecrets.key });
+            pendingClassSecrets = null;
+          }
           if (sentTransfers.length) {
             state.outbox = state.outbox.filter(tr => !sentTransfers.includes(tr.id));
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -14220,7 +14365,11 @@
         syncCache.metaExists = true;
         const prevActiveId = state.activeStudentId;
         state.classCode = code;
-        state.teacherKeyHash = data.meta.teacherKeyHash || '';
+        // 예전 방식으로 저장된 학급만 약한 해시가 남아 있음 (교사가 로그인하면 새 방식으로 옮김)
+        state.legacyKeyHash = data.meta.keyV ? '' : (data.meta.teacherKeyHash || '');
+        state.legacyPinHash = data.meta.pinV ? '' : (data.meta.teacherPinHash || hashTeacherPin(data.meta.teacherPin || '1234'));
+        delete state.teacherKeyHash;
+        delete state.teacherPinHash;
         state.ownerUid = data.meta.ownerUid || '';
         state.ownerEmail = data.meta.ownerEmail || '';
 
@@ -14228,7 +14377,6 @@
         const rm = deepCleanStrings({ ...data.meta });
         const remoteValues = {
           className: rm.className || '우리 반 용병단',
-          teacherPinHash: rm.teacherPinHash || hashTeacherPin(rm.teacherPin || '1234'),
           classLocked: Boolean(rm.classLocked),
           notice: rm.notice || state.notice || '',
           guardianPts: typeof rm.guardianPts === 'number' ? rm.guardianPts : (Number(state.guardianPts) || 0)
@@ -17471,13 +17619,9 @@
       }
     }
 
-    function confirmTeacherLogin() {
+    async function confirmTeacherLogin() {
       const val = document.getElementById('teacherPinCheckInput').value.trim();
-      const isPinMatch = checkTeacherPin(val);
-      const keyHash = simpleHashString(val.toUpperCase());
-      const isKeyMatch = state.teacherKeyHash
-        ? (keyHash === state.teacherKeyHash)
-        : Boolean(state.teacherKey && val.toUpperCase() === state.teacherKey.toUpperCase());
+      const { pin: isPinMatch, key: isKeyMatch } = await TeacherSecrets.check(val);
       if (isKeyMatch) state.teacherKey = val.toUpperCase();
       if (!isPinMatch && !isKeyMatch) {
         document.getElementById('teacherLoginError').classList.remove('hidden');
@@ -17521,6 +17665,14 @@
       const rawStudents = (document.getElementById('newClassStudentsInput')?.value || '').trim();
       const fbEl = document.getElementById('createClassFeedbackMsg');
 
+      if (teacherKey.length < 14) {
+        if (fbEl) {
+          fbEl.textContent = '⚠️ 교사 키는 14자 이상이어야 안전해요. 🔑 버튼으로 새로 발급받아주세요.';
+          fbEl.className = 'text-xs font-bold text-rose-400';
+          fbEl.classList.remove('hidden');
+        }
+        return;
+      }
       if (!rawStudents) {
         if (fbEl) {
           fbEl.textContent = '⚠️ 학생 프로필 명단을 1명 이상 입력해주세요!';
@@ -17584,10 +17736,15 @@
       }
 
       resetClassSyncCache(classCode, { loaded: true, metaExists: false });
-      state.teacherKeyHash = simpleHashString(teacherKey);
+      const [newPinProof, newKeyProof] = await Promise.all([teacherPinProof(classCode, teacherPin), teacherKeyProof(teacherKey)]);
+      pendingClassSecrets = { classCode, pin: newPinProof, key: newKeyProof };
+      TeacherSecrets.remember(classCode, { pin: newPinProof, key: newKeyProof });
+      state.legacyPinHash = '';
+      state.legacyKeyHash = '';
+      delete state.teacherKeyHash;
+      delete state.teacherPinHash;
       state.ownerUid = creatorUser.uid;
       state.ownerEmail = creatorUser.email || '';
-      state.teacherPinHash = hashTeacherPin(teacherPin);
       state.teacherKey = teacherKey;
       state.classCode = classCode;
       state.className = className;
@@ -17852,25 +18009,28 @@
       const db = RealtimePvpService.initFirebaseClientSafe();
       if (db && typeof db.ref === 'function') {
         try {
-          const kHash = simpleHashString(q.toUpperCase());
-          const snap = await db.ref(`teacherKeys/${kHash}/classes`).once('value');
-          const val = snap && snap.val ? snap.val() : null;
-          if (val && typeof val === 'object') {
-            Object.values(val).forEach(item => {
-              if (item && item.classCode) found[item.classCode] = item;
-            });
-          }
+          const keyPaths = [await teacherKeyProof(q), simpleHashString(q.toUpperCase())]; // 새 증명 + 아직 못 옮긴 예전 목록
+          const snaps = await Promise.all(keyPaths.map(h => db.ref(`teacherKeys/${h}/classes`).once('value')));
+          snaps.forEach(snap => {
+            const val = snap && snap.val ? snap.val() : null;
+            if (val && typeof val === 'object') {
+              Object.values(val).forEach(item => {
+                if (item && item.classCode) found[item.classCode] = item;
+              });
+            }
+          });
         } catch (e) {}
       }
 
       // 2) 로컬 레지스트리에서 학급 이름 또는 코드 부분 일치 검색
       const reg = getLocalClassesRegistry();
+      const qKeyProof = await teacherKeyProof(q);
       Object.values(reg).forEach(cPayload => {
         const meta = cPayload?.meta;
         if (!meta) return;
         const matchName = String(meta.className || '').includes(q);
         const matchCode = String(meta.classCode || '').toUpperCase() === q.toUpperCase();
-        const matchKey = meta.teacherKeyHash === simpleHashString(q.toUpperCase());
+        const matchKey = (Boolean(meta.teacherKeyProof) && meta.teacherKeyProof === qKeyProof) || (Boolean(meta.teacherKeyHash) && meta.teacherKeyHash === simpleHashString(q.toUpperCase()));
         if (matchName || matchCode || matchKey) {
           found[meta.classCode] = {
             classCode: meta.classCode,
@@ -17955,8 +18115,8 @@
 
     // 선생님 로그인 확인 시에도 #mainAppShell의 선생님 대시보드 화면이 열리도록 연동
     const _prevConfirmTeacher = confirmTeacherLogin;
-    confirmTeacherLogin = function () {
-      _prevConfirmTeacher();
+    confirmTeacherLogin = async function () {
+      await _prevConfirmTeacher();
       const isTeacherVisible = !document.getElementById('teacherViewContainer')?.classList.contains('hidden');
       if (isTeacherVisible) {
         document.getElementById('landingPageView')?.classList.add('hidden');
@@ -17974,27 +18134,30 @@
         return;
       }
       box.innerHTML = `<div class="text-amber-300">🔎 교사 키로 생성한 학급 목록을 조회 중...</div>`;
-      const kHash = simpleHashString(key);
+      const kHash = simpleHashString(key); // 아직 못 옮긴 예전 목록용
+      const kProof = await teacherKeyProof(key);
       const foundMap = {};
 
       // 1) Firebase에서 조회
       const db = RealtimePvpService.initFirebaseClientSafe();
       if (db && typeof db.ref === 'function') {
         try {
-          const snap = await db.ref(`teacherKeys/${kHash}/classes`).once('value');
-          const val = snap && snap.val ? snap.val() : null;
-          if (val && typeof val === 'object') {
-            Object.values(val).forEach(item => {
-              if (item && item.classCode) foundMap[item.classCode] = item;
-            });
-          }
+          const snaps = await Promise.all([kProof, kHash].map(h => db.ref(`teacherKeys/${h}/classes`).once('value')));
+          snaps.forEach(snap => {
+            const val = snap && snap.val ? snap.val() : null;
+            if (val && typeof val === 'object') {
+              Object.values(val).forEach(item => {
+                if (item && item.classCode) foundMap[item.classCode] = item;
+              });
+            }
+          });
         } catch (e) {}
       }
 
       // 2) 로컬 레지스트리에서도 조회
       const reg = getLocalClassesRegistry();
       Object.values(reg).forEach(cPayload => {
-        if (cPayload?.meta?.teacherKeyHash === kHash) {
+        if ((cPayload?.meta?.teacherKeyProof && cPayload.meta.teacherKeyProof === kProof) || cPayload?.meta?.teacherKeyHash === kHash) {
           foundMap[cPayload.meta.classCode] = {
             classCode: cPayload.meta.classCode,
             className: cPayload.meta.className,
@@ -18244,7 +18407,7 @@
     // 소유 학급은 PIN·교사 키가 아니라 구글 계정으로만 관리자 입장
     const TEACHER_LOGIN_ERROR_DEFAULT = '비밀번호 또는 교사 키가 일치하지 않습니다.';
     const _prevConfirmTeacherForAuth = confirmTeacherLogin;
-    confirmTeacherLogin = function () {
+    confirmTeacherLogin = async function () {
       const errEl = document.getElementById('teacherLoginError');
       if (errEl) errEl.textContent = TEACHER_LOGIN_ERROR_DEFAULT;
       if (state.ownerUid) {
@@ -18261,7 +18424,7 @@
         }
         return;
       }
-      _prevConfirmTeacherForAuth();
+      return _prevConfirmTeacherForAuth();
     };
 
     // 어떤 경로(교사 키 조회, 생성 완료 창 등)로 들어와도 소유 학급의 관리자 화면은 소유자만
