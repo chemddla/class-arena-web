@@ -7040,7 +7040,7 @@
       const enemyPower = getDefensePower(enemyStu);
       const stronger = enemyPower > myPower;
       const rw = stronger ? RANKED_REWARDS.stronger : RANKED_REWARDS.weaker;
-      showRewardBanner(`🎯 랭킹 매칭 완료! ${myStu.name}(${myScore}점) vs ${enemyStu.name}(${enemyScore}점) · ${stronger ? '💪 나보다 강한 상대' : '🙂 나보다 약한 상대'} (승리 ${rw.win} CA · 패배 ${rw.loss} CA)`);
+      // 결과(승패·보상·점수)는 전투가 끝난 뒤 finishSimulation에서만 알려 줌 — 시작할 때는 상대 정보만 전투 기록에
       launchSimulation({
         mode: 'pvp_ranked',
         title: `🎯 랭킹 매칭: ${myStu.name} (${myScore}점) vs ${enemyStu.name} (${enemyScore}점)`,
@@ -7049,6 +7049,9 @@
         rewardMc: rw.win,
         lossRewardMc: rw.loss
       });
+      if (sim.running && sim.mode === 'pvp_ranked') {
+        addBattleLog(`🎯 상대를 찾았어요! ${enemyStu.name}(${enemyScore}점) · ${stronger ? '💪 나보다 강한 상대' : '🙂 나보다 약한 상대'} — 전투가 끝나면 결과가 나와요. (승리 ${rw.win} CA · 패배 ${rw.loss} CA)`);
+      }
     }
 
     function renderPvpTab() {
@@ -8963,7 +8966,11 @@
         return;
       }
       // 한 번에 하나의 컨텐츠만: 방이 아닌 전투(탑·연습·랭킹 등)를 시작하면 들어가 있던 결투방·레이드방·미니게임방에서 나감
-      if (!roomBattle && mode !== 'broadcast') leaveRoomsExcept(null);
+      // (남아 있던 방 전투 표시도 지움 → 그 방 소식이 새 전투를 결과도 없이 끝내지 않게)
+      if (!roomBattle && mode !== 'broadcast') {
+        leaveRoomsExcept(null);
+        currentActiveLiveBattleRoomId = null;
+      }
       // 앞 전투의 실시간 연결이 남아 있으면 끊음 (남은 화면 정보가 새 전투를 덮어쓰지 않게)
       if (liveNet.ref) stopLiveBattleNet();
 
