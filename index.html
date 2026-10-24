@@ -1287,7 +1287,7 @@
               <div class="flex items-center justify-between flex-wrap gap-2">
                 <div>
                   <h4 class="font-title text-2xl text-white">🎯 랭킹 매칭</h4>
-                  <p class="text-xs text-slate-400 mt-0.5">내 랭킹 점수와 비슷한 친구의 방어 진형과 자동으로 겨뤄요. 이기면 랭킹 점수 +25점, 지면 -10점이에요.</p>
+                  <p class="text-xs text-slate-400 mt-0.5">내 랭킹 점수와 비슷한 친구의 방어 진형과 자동으로 겨뤄요. 나보다 점수가 높거나 같은 상대는 이기면 +10점·지면 -5점, 낮은 상대는 이기면 +5점·지면 -10점이에요.</p>
                 </div>
                 <span id="pvpRankedLeftBadge" class="px-3 py-1.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-extrabold">오늘 남은 도전 5/5</span>
               </div>
@@ -4641,7 +4641,8 @@
           <div class="text-[11px] font-extrabold text-slate-400">🎁 보상 (한 판마다)</div>
           <div class="text-slate-300">💪 나보다 강한 상대: 승리 <strong class="text-amber-300">${RANKED_REWARDS.stronger.win.toLocaleString()} CA</strong> · 패배 <strong class="text-amber-300">${RANKED_REWARDS.stronger.loss.toLocaleString()} CA</strong></div>
           <div class="text-slate-300">🙂 나보다 약한 상대: 승리 <strong class="text-amber-300">${RANKED_REWARDS.weaker.win.toLocaleString()} CA</strong> · 패배 <strong class="text-amber-300">${RANKED_REWARDS.weaker.loss.toLocaleString()} CA</strong></div>
-          <div class="text-slate-300">📈 랭킹 점수: 승리 <strong class="text-emerald-400">+25점</strong> · 패배 <strong class="text-rose-400">-10점</strong></div>
+          <div class="text-slate-300">📈 랭킹 점수 (나보다 높거나 같은 상대): 승리 <strong class="text-emerald-400">+10점</strong> · 패배 <strong class="text-rose-400">-5점</strong></div>
+          <div class="text-slate-300">📉 랭킹 점수 (나보다 낮은 상대): 승리 <strong class="text-emerald-400">+5점</strong> · 패배 <strong class="text-rose-400">-10점</strong></div>
         </div>`;
       const goBtn = document.getElementById('rankedPromoGoBtn');
       if (goBtn) goBtn.textContent = left > 0 ? '🎯 랭킹 매칭 바로가기' : '🏆 랭킹 순위 보러 가기';
@@ -10901,11 +10902,14 @@
         stu.towerFloor += 1;
       }
       let pvpScoreDelta = 0;
+      // 랭킹 매칭 점수: 나보다 점수가 높거나 같은 상대 → 승리 +10 · 패배 -5 / 낮은 상대 → 승리 +5 · 패배 -10
+      const enemyRankScore = (meta.redStudent && meta.redStudent.pvpScore) || 1000;
+      const vsHigherOrEqual = enemyRankScore >= (stu.pvpScore || 1000);
       if (isPvpMode && blueWon && !isPracticeOnly) {
         stu.wins += 1;
-        if (reward > 0) pvpScoreDelta = 25; // 랭킹 점수도 보상 받는 경기에서만
+        if (reward > 0) pvpScoreDelta = vsHigherOrEqual ? 10 : 5; // 랭킹 점수도 보상 받는 경기에서만
       } else if (sim.mode === 'pvp_ranked' && !blueWon && (reward > 0 || iForfeited)) {
-        pvpScoreDelta = -Math.min(10, stu.pvpScore || 0); // 랭킹 매칭 패배는 -10점 (0점 아래로는 안 내려감)
+        pvpScoreDelta = -Math.min(vsHigherOrEqual ? 5 : 10, stu.pvpScore || 0); // 0점 아래로는 안 내려감
       }
       if (pvpScoreDelta) stu.pvpScore = (stu.pvpScore || 0) + pvpScoreDelta;
 
