@@ -269,6 +269,21 @@
       color: #dc2626 !important;
       font-weight: 800 !important;
     }
+    /* 우측 랭킹 매칭 순위 패널: 본문(최대 1480px) 바깥 오른쪽 여백에 떠 있음. 여백이 좁은 화면에서는 오른쪽 끝 탭을 눌러 펼침 */
+    .side-rank-panel { position: fixed; z-index: 25; right: 8px; top: 84px; bottom: 16px; display: flex; align-items: flex-start; gap: 6px; pointer-events: none; }
+    .side-rank-panel > * { pointer-events: auto; }
+    .side-rank-body { width: clamp(200px, calc((100vw - 1480px) / 2 - 20px), 280px); max-height: 100%; }
+    .side-rank-tab { display: none; }
+    .side-rank-close { display: none; }
+    @media (max-width: 1899px) {
+      .side-rank-panel { top: 50%; bottom: auto; right: 0; transform: translateY(-50%); max-height: calc(100vh - 120px); }
+      .side-rank-tab { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; border-radius: 12px 0 0 12px; writing-mode: vertical-rl; font-weight: 800; font-size: 12px; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18); }
+      .side-rank-panel .side-rank-body { display: none; width: 260px; max-height: calc(100vh - 120px); margin-right: 8px; }
+      .side-rank-panel.open { top: 120px; bottom: 16px; transform: none; max-height: none; }
+      .side-rank-panel.open .side-rank-body { display: flex; max-height: 100%; }
+      .side-rank-panel.open .side-rank-tab { display: none; }
+      .side-rank-close { display: inline-flex; }
+    }
   </style>
 </head>
 <body class="min-h-screen flex flex-col bg-slate-50 text-slate-900">
@@ -318,6 +333,25 @@
       <div class="flex gap-2">
         <button onclick="closeCustomConfirm(false)" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300">취소</button>
         <button onclick="closeCustomConfirm(true)" class="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-xs font-extrabold text-slate-950">확인</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 로그인 직후 랭킹 매칭 홍보 팝업 -->
+  <div id="rankedPromoModal" class="hidden fixed inset-0 z-[60] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" onclick="if (event.target === this) closeRankedPromoModal()">
+    <div class="bg-slate-900 border-2 border-amber-500/60 rounded-3xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="text-xs font-extrabold text-amber-300">⚔️ 결투장</div>
+          <h3 class="font-title text-2xl text-white">🎯 오늘의 랭킹 매칭</h3>
+          <p class="text-xs text-slate-400 mt-0.5">친구 방어 진형과 겨뤄 CA와 랭킹 점수를 받아요!</p>
+        </div>
+        <button type="button" onclick="closeRankedPromoModal()" class="text-slate-400 hover:text-white font-bold">✕</button>
+      </div>
+      <div id="rankedPromoBody" class="flex flex-col gap-3"></div>
+      <div class="grid grid-cols-3 gap-2">
+        <button type="button" onclick="closeRankedPromoModal()" class="py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs">나중에</button>
+        <button type="button" id="rankedPromoGoBtn" onclick="closeRankedPromoModal(); goToRankedMatch()" class="col-span-2 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-sm shadow-lg">🎯 랭킹 매칭 바로가기</button>
       </div>
     </div>
   </div>
@@ -732,8 +766,8 @@
         <button onclick="switchStudentTab('office')" id="stab-office" class="student-tab-btn py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 text-slate-300 hover:bg-slate-800">
           <span>⛺</span> 용병 모집
         </button>
-        <button onclick="switchStudentTab('shop')" id="stab-shop" class="student-tab-btn py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 text-slate-300 hover:bg-slate-800">
-          <span>🛒</span> 상점
+        <button onclick="switchStudentTab('shop')" id="stab-shop" title="장비·상점은 준비 중이에요 (곧 열려요)" class="student-tab-btn py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 text-slate-300 hover:bg-slate-800 opacity-50">
+          <span>🔒</span> 상점
         </button>
         <button onclick="switchStudentTab('market')" id="stab-market" class="student-tab-btn py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 text-slate-300 hover:bg-slate-800 relative">
           <span>⚖️</span> 거래소
@@ -1448,8 +1482,8 @@
             <button onclick="loadNextQuiz()" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-extrabold text-slate-300">
               ⏭️ 다음 다른 문제 풀기
             </button>
-            <button onclick="switchStudentTab('shop')" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-extrabold text-white shadow">
-              🛒 모은 코인으로 상점 가기
+            <button onclick="switchStudentTab('office')" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-extrabold text-white shadow">
+              ⛺ 모은 코인으로 용병 모집 가기
             </button>
           </div>
         </div>
@@ -1813,10 +1847,27 @@
             <div class="lg:col-span-7 bg-slate-950 border border-slate-800 rounded-2xl p-4 flex flex-col gap-2">
               <div class="text-xs font-extrabold text-slate-400">📜 이어진 낱말</div>
               <div id="wordChainHistoryList" class="flex flex-wrap gap-2 max-h-[320px] overflow-y-auto p-2 bg-slate-900 rounded-xl border border-slate-800"></div>
+              <p class="text-[10px] text-slate-400">낱말 판정: 국립국어원 《표준국어대사전》·《우리말샘》 명사 (CC BY-SA)</p>
             </div>
           </div>
         </div>
       </section>
+
+      <!-- 우측 고정: 결투장 랭킹 매칭 점수 순위 (본문 배치와 별개로 화면 오른쪽에 항상 떠 있음) -->
+      <aside id="sideRankPanel" class="side-rank-panel" aria-label="랭킹 매칭 점수 순위">
+        <button type="button" onclick="toggleSideRankPanel(true)" class="side-rank-tab bg-amber-500 hover:bg-amber-400 text-slate-950" title="랭킹 매칭 순위 펼치기">
+          <span>🏆</span> 랭킹 순위
+        </button>
+        <div class="side-rank-body bg-slate-900 border-2 border-amber-500/40 rounded-2xl p-3 flex flex-col gap-2 shadow-2xl">
+          <div class="flex items-center justify-between gap-2">
+            <h4 class="font-title text-base text-white">🎯 랭킹 매칭 순위</h4>
+            <button type="button" onclick="toggleSideRankPanel(false)" class="side-rank-close text-slate-400 hover:text-white font-bold text-sm" title="접기">✕</button>
+          </div>
+          <div id="sideRankMyBox" class="rounded-xl bg-indigo-500/15 border border-indigo-500/40 px-2.5 py-2 text-[11px] font-bold text-indigo-300"></div>
+          <div id="sideRankList" class="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1"></div>
+          <button type="button" onclick="goToRankedMatch()" class="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow">🎯 랭킹 매칭 하러 가기</button>
+        </div>
+      </aside>
     </div>
 
     <!-- ==================== [선생님 관리자 페이지 화면] ==================== -->
@@ -2655,6 +2706,9 @@
       { id: 'all_up', name: '타고난 영웅 (전 능력치 +10%)', hpBonus: 0.10, atkBonus: 0.10, defBonus: 0.10, spdBonus: 0.10 }
     ];
 
+    // 장비 기능·상점 잠금 (개방할 때 false로)
+    const EQUIP_SHOP_LOCKED = true;
+
     // ===== 장비 (용병당 1개) =====
     // kind 'active': 전투 중 Q 키(태블릿은 🎒 버튼)로 쓰는 장비 스킬, AI 용병은 알아서 사용
     // kind 'passive': 끼우기만 하면 늘 적용
@@ -2680,7 +2734,9 @@
       eq_mithril_blade: 600, eq_guardian_plate: 600, eq_giant_cloak: 600, eq_gale_greaves: 600, eq_hero_ring: 750
     };
 
+    // 잠겨 있는 동안은 모든 장비를 '없는 것'으로 봄 (효과·Q 스킬·표시가 꺼짐 · 산 장비 기록은 그대로 남아서 열면 다시 적용)
     function equipDefOf(itemOrId) {
+      if (EQUIP_SHOP_LOCKED) return null;
       const id = typeof itemOrId === 'string' ? itemOrId : itemOrId && itemOrId.itemId;
       return (id && EQUIP_ITEM_DEFS[id]) || null;
     }
@@ -3113,8 +3169,263 @@
       return m && m.ready ? m : null;
     }
 
+    /********************************************************************
+     * 페이퍼돌 합성기 (시제품) — 규격: docs/paperdoll-base-body-spec.md
+     * - 외형 = 레이어 목록 + 슬롯 색. 레이어를 숨은 캔버스 한 장(31칸 × 160×100)에 미리 합쳐
+     *   MERC_SPRITE_DEFS와 같은 모양의 시트로 만들고, 전투 그리기·초상화 코드는 그대로 씀
+     * - 새 그림이 아직 없어서 기존 24장은 'legacy'(통짜) 레이어로 감싸 새 칸에 1:1로 옮겨 그림
+     * - 주소에 ?paperdoll=1 을 붙였을 때만 켜짐. 합성이 끝나기 전에는 기존 시트를 그대로 씀
+     ********************************************************************/
+    const PAPERDOLL_ENABLED = /[?&]paperdoll=1(&|$)/.test(location.search);
+    const PD_CELL_W = 160, PD_CELL_H = 100, PD_ANCHOR_X = 80, PD_ANCHOR_Y = 96, PD_STAND_H = 81, PD_COUNT = 31;
+    const PD_SHARED_FRAMES = 14; // 0~13번은 세 동작 세트가 같은 그림
+    const PD_ANIMS = {
+      idle: [0, 1, 2, 3], walk: [4, 5, 6, 7], hurt: [8, 9], death: [10, 11, 12, 13],
+      attack: [14, 15, 16, 17], skill: [18, 19, 20, 21], whirl: [22, 23, 24], shout: [25, 26, 27], charge: [28, 29, 30]
+    };
+    const PD_JOB_SET = { warrior: 'melee', mage: 'staff', healer: 'staff', archer: 'bow' };
+    // 뒤에서 앞으로 그리는 순서 [슬롯, 부분]. 부분: 숫자 = frame 시트의 행, 'back'/'front' = 머리 그림의 뒤·앞 또는 주무기 z
+    const PD_LAYER_ORDER = [
+      ['cape', 0], ['hair', 'back'], ['hat', 'back'], ['backItem'], ['offhand'], ['weapon', 'back'],
+      ['body', 0], ['outfit', 0], ['body', 1], ['legs', 0], ['shoes', 0], ['outfit', 1],
+      ['face', 'front'], ['hair', 'front'], ['hat', 'front'], ['cape', 1], ['weapon', 'front'],
+      ['body', 2], ['outfit', 2]
+    ];
+    // 키 색(그릴 때 쓰는 기본색). 어두운 색 → 밝은 색
+    const PD_KEY_RAMPS = {
+      skin:    ['#8a4838', '#e0a088', '#f8d8c0', '#fff0e4'],
+      hair:    ['#401c14', '#603428', '#7a4430', '#a8704c'],
+      eye:     ['#5a2018', '#c04838'],
+      cloth1:  ['#5a1018', '#a01c24', '#d03030', '#f06050'],
+      cloth2:  ['#4c5468', '#8890a8', '#c8d0e0', '#f4f8ff'],
+      accent:  ['#6a4010', '#c08020', '#f8c848'],
+      leather: ['#3a2418', '#6a4428', '#9a6a40']
+    };
+    // 슬롯별 이름 붙은 색 묶음 (외형의 colors에서 이름으로 고름. 배열을 직접 줘도 됨)
+    const PD_RAMPS = Object.fromEntries(Object.entries(PD_KEY_RAMPS).map(([slot, ramp]) => [slot, { key: ramp }]));
+    // 기존 시트 프레임 → 새 31칸 표. null = 빈 칸. 끝 프레임을 한 번 더 넣은 곳은 끝에서 멈추는 동작이라 보이는 결과가 같음
+    const PD_LEGACY_LAYOUT = {
+      warrior: { frames: [0, 1, 0, 1, 2, 3, 4, 5, 14, 14, 15, 16, 17, 17, 6, 7, 8, 9, 10, 11, 12, 13, 18, 19, 20, 21, 22, 23, 24, 25, 26] },
+      mage:    { frames: [0, 2, 0, 2, 0, 1, 2, 3, 9, 9, 10, 11, 12, 12, 4, 5, 6, 6, 7, 8, 8, 8, null, null, null, null, null, null, null, null, null] },
+      // 힐러 스킬은 6칸이라 staff 세트에서 비어 있는 22~23번 칸까지 씀
+      healer:  { frames: [0, 1, 2, 3, 4, 5, 6, 7, 17, 18, 19, 20, 21, 22, 8, 9, 10, 10, 11, 12, 13, 14, 15, 16, null, null, null, null, null, null, null],
+                 anims: { skill: [18, 19, 20, 21, 22, 23] } },
+      archer:  { frames: [0, 1, 0, 1, 2, 3, 4, 5, 13, 13, 14, 15, 16, 16, 6, 7, 8, 9, 10, 11, 12, 12, null, null, null, null, null, null, null, null, null] }
+    };
+
+    let PD_BASE = null;   // 마네킹 정의 (base.json). 새 그림이 들어오면 paperdollRegister로 넣음
+    const PD_ITEMS = {};  // 아이템 정의 (items.json)
+    Object.keys(MERC_SPRITE_DEFS).forEach(key => {
+      const job = key.slice(0, key.lastIndexOf('_'));
+      PD_ITEMS[`legacy_${key}`] = { slot: 'body', kind: 'legacy', job, def: MERC_SPRITE_DEFS[key] };
+    });
+    function paperdollRegister({ base, items, ramps } = {}) {
+      if (base) PD_BASE = base;
+      if (items) Object.assign(PD_ITEMS, items);
+      if (ramps) Object.entries(ramps).forEach(([slot, named]) => { PD_RAMPS[slot] = { ...(PD_RAMPS[slot] || {}), ...named }; });
+      PD_SHEETS.clear();
+      PD_RECOLORED.clear();
+    }
+
+    const PD_IMAGES = new Map();
+    function pdLoadImage(src) {
+      if (!PD_IMAGES.has(src)) {
+        PD_IMAGES.set(src, new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error(`페이퍼돌 그림을 못 불러옴: ${src}`));
+          img.src = src;
+        }));
+      }
+      return PD_IMAGES.get(src);
+    }
+    function pdHexToInt(hex) { return parseInt(hex.slice(1), 16); }
+    function pdResolveRamp(slot, pick) {
+      if (Array.isArray(pick)) return pick;
+      return (PD_RAMPS[slot] && PD_RAMPS[slot][pick]) || null;
+    }
+    // 키 색과 정확히 같은 픽셀만 고른 색으로 바꾼 그림 (아이템·색 조합별로 한 번만 만듦)
+    const PD_RECOLORED = new Map();
+    function pdRecolor(img, src, item, colors) {
+      const map = new Map();
+      (item.palette || Object.keys(PD_KEY_RAMPS)).forEach(slot => {
+        const keys = PD_KEY_RAMPS[slot], to = colors && pdResolveRamp(slot, colors[slot]);
+        if (!keys || !to || to === keys) return;
+        keys.forEach((k, i) => { if (to[i]) map.set(pdHexToInt(k), pdHexToInt(to[i])); });
+      });
+      if (!map.size) return img;
+      const cacheKey = `${src}|${JSON.stringify([...map])}`;
+      if (PD_RECOLORED.has(cacheKey)) return PD_RECOLORED.get(cacheKey);
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const x = c.getContext('2d', { willReadFrequently: true });
+      x.drawImage(img, 0, 0);
+      const data = x.getImageData(0, 0, c.width, c.height);
+      const d = data.data;
+      for (let i = 0; i < d.length; i += 4) {
+        if (!d[i + 3]) continue;
+        const to = map.get((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]);
+        if (to !== undefined) { d[i] = to >> 16; d[i + 1] = (to >> 8) & 255; d[i + 2] = to & 255; }
+      }
+      x.putImageData(data, 0, 0);
+      PD_RECOLORED.set(cacheKey, c);
+      return c;
+    }
+    // frame 종류 시트: 문자열이면 31칸 한 장, 객체면 0~13번은 common, 14번부터는 세트별 시트
+    function pdFrameSheetSrc(item, set, frame) {
+      if (typeof item.src === 'string') return item.src;
+      return frame < PD_SHARED_FRAMES ? (item.src.common || item.src[set]) : item.src[set];
+    }
+    function pdHeadRect(item, variant, pose, part) {
+      const byVariant = (variant && item.poses[variant]) || item.poses.full || item.poses.normal || item.poses;
+      const p = byVariant[pose] || byVariant.N;
+      return p ? p[part] : null;
+    }
+    // 각도별 그림 중 가장 가까운 것 (각도 그림이 없으면 rect 하나)
+    function pdHandRect(item, angle) {
+      if (!item.angles) return item.rect || null;
+      let best = null, bestDiff = Infinity;
+      Object.entries(item.angles).forEach(([deg, rect]) => {
+        const diff = Math.abs(((angle - Number(deg)) % 360 + 540) % 360 - 180);
+        if (diff < bestDiff) { bestDiff = diff; best = rect; }
+      });
+      return best;
+    }
+    function pdDefaultJoint(slot) { return slot === 'offhand' ? 'handB' : slot === 'backItem' ? 'back' : 'handF'; }
+
+    // 외형 → 31칸 시트 한 장. 결과는 MERC_SPRITE_DEFS 항목과 같은 필드를 가짐
+    async function composePaperdollSheet(appearance) {
+      const set = PD_JOB_SET[appearance.job] || 'melee';
+      const colors = appearance.colors || {};
+      const bySlot = {};
+      appearance.layers.forEach(l => { const item = PD_ITEMS[l.item]; if (item) bySlot[item.slot] = item; });
+      // 몸 레이어를 따로 고르지 않았으면 마네킹 시트(base.json)를 씀
+      const baseSrc = PD_BASE && PD_BASE.sets[set] && PD_BASE.sets[set].src;
+      if (!bySlot.body && baseSrc) bySlot.body = { slot: 'body', kind: 'frame', src: baseSrc, palette: ['skin'] };
+      const legacy = Object.values(bySlot).find(item => item.kind === 'legacy');
+      const joints = (PD_BASE && PD_BASE.sets[set] && PD_BASE.sets[set].frames) || [];
+
+      // 필요한 그림을 모두 불러온 뒤 색을 바꿔 둠
+      const sheets = new Map();
+      const need = [];
+      Object.values(bySlot).forEach(item => {
+        if (item.kind === 'legacy') { need.push(pdLoadImage(item.def.src).then(img => sheets.set(item.def.src, img))); return; }
+        const srcs = item.kind === 'frame'
+          ? new Set([pdFrameSheetSrc(item, set, 0), pdFrameSheetSrc(item, set, PD_SHARED_FRAMES)])
+          : [item.src];
+        srcs.forEach(src => { if (src) need.push(pdLoadImage(src).then(img => sheets.set(src, pdRecolor(img, src, item, colors)))); });
+      });
+      await Promise.all(need);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = PD_CELL_W * PD_COUNT;
+      canvas.height = PD_CELL_H;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.imageSmoothingEnabled = false;
+      // 한 칸 안에만 그려서 옆 칸으로 넘치지 않게 함
+      const drawInCell = (frame, img, sx, sy, sw, sh, dx, dy) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(frame * PD_CELL_W, 0, PD_CELL_W, PD_CELL_H);
+        ctx.clip();
+        ctx.drawImage(img, sx, sy, sw, sh, frame * PD_CELL_W + dx, dy, sw, sh);
+        ctx.restore();
+      };
+
+      const hat = bySlot.hat;
+      const hidden = new Set(Object.values(bySlot).flatMap(item => item.hides || []));
+      if (hat && hat.hair === 'hidden') { hidden.add('hair.back'); hidden.add('hair.front'); }
+      const hairVariant = hat && hat.hair === 'capped' ? 'capped' : 'full';
+
+      PD_LAYER_ORDER.forEach(([slot, part]) => {
+        const item = bySlot[slot];
+        if (!item || hidden.has(part === undefined ? slot : `${slot}.${part}`)) return;
+        if (item.kind === 'legacy') {
+          if (part !== 1) return;
+          const def = item.def, img = sheets.get(def.src), layout = PD_LEGACY_LAYOUT[item.job];
+          if (!img || !layout) return;
+          layout.frames.forEach((old, f) => {
+            if (old === null) return;
+            drawInCell(f, img, old * def.cellW, 0, def.cellW, def.cellH, PD_ANCHOR_X - def.anchorX, PD_ANCHOR_Y - def.anchorY);
+          });
+        } else if (item.kind === 'frame') {
+          for (let f = 0; f < PD_COUNT; f++) {
+            const img = sheets.get(pdFrameSheetSrc(item, set, f));
+            if (!img || (part + 1) * PD_CELL_H > img.height) continue;
+            drawInCell(f, img, f * PD_CELL_W, part * PD_CELL_H, PD_CELL_W, PD_CELL_H, 0, 0);
+          }
+        } else if (item.kind === 'head') {
+          const img = sheets.get(item.src);
+          for (let f = 0; f < PD_COUNT; f++) {
+            const j = joints[f] && joints[f].head;
+            if (!img || !j) continue;
+            const variant = slot === 'hair' ? hairVariant : slot === 'face' ? (j.expr || 'normal') : null;
+            const r = pdHeadRect(item, variant, j.pose || 'N', part);
+            if (r) drawInCell(f, img, r[0], r[1], r[2], r[3], j.x - r[4], j.y - r[5]);
+          }
+        } else if (item.kind === 'hand') {
+          const img = sheets.get(item.src), jointKey = item.joint || pdDefaultJoint(slot);
+          for (let f = 0; f < PD_COUNT; f++) {
+            const j = joints[f] && joints[f][jointKey];
+            if (!img || !j) continue;
+            if (slot === 'weapon' && (j.z || 'front') !== part) continue;
+            const r = pdHandRect(item, j.a || 0);
+            if (r) drawInCell(f, img, r[0], r[1], r[2], r[3], j.x - r[4], j.y - r[5]);
+          }
+        }
+      });
+
+      // 체력바·머리 아이콘용 키: 대기 첫 칸에서 가장 위에 칠해진 줄
+      let topH;
+      if (legacy) topH = legacy.def.topH || legacy.def.standH;
+      else {
+        const d = ctx.getImageData(0, 0, PD_CELL_W, PD_CELL_H).data;
+        let top = PD_ANCHOR_Y - PD_STAND_H;
+        for (let i = 3; i < d.length; i += 4) if (d[i]) { top = Math.floor(i / 4 / PD_CELL_W); break; }
+        topH = PD_ANCHOR_Y - top;
+      }
+      const baseSet = PD_BASE && PD_BASE.sets[set];
+      const sheet = {
+        paperdoll: true, img: canvas,
+        cellW: PD_CELL_W, cellH: PD_CELL_H, anchorX: PD_ANCHOR_X, anchorY: PD_ANCHOR_Y, count: PD_COUNT,
+        standH: legacy ? legacy.def.standH : PD_STAND_H, topH,
+        portraitCX: legacy ? PD_ANCHOR_X + legacy.def.portraitCX - legacy.def.anchorX : PD_ANCHOR_X,
+        anims: { ...PD_ANIMS, ...(legacy ? (PD_LEGACY_LAYOUT[legacy.job].anims || {}) : {}) },
+        skillAnims: legacy ? legacy.def.skillAnims : ((baseSet && baseSet.skillAnims) || {})
+      };
+      // 초상화는 CSS 배경으로 그리므로 주소가 필요함
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      sheet.src = URL.createObjectURL(blob);
+      sheet.ready = true;
+      return sheet;
+    }
+
+    // 외형별 합성 결과 캐시. 처음 찾을 때 합성을 시작하고, 끝나기 전에는 ready가 없는 항목을 돌려줌
+    const PD_SHEETS = new Map();
+    function getPaperdollSheet(appearance) {
+      const key = JSON.stringify(appearance);
+      if (!PD_SHEETS.has(key)) {
+        const entry = { ready: false };
+        PD_SHEETS.set(key, entry);
+        composePaperdollSheet(appearance)
+          .then(sheet => { Object.assign(entry, sheet); })
+          .catch(err => { entry.failed = true; console.warn(err); });
+      }
+      return PD_SHEETS.get(key);
+    }
+    // 지금은 외형 번호(skinVariant)만 저장하므로, 번호 → 기존 그림 통짜 레이어 하나짜리 외형
+    function getLegacyAppearance(jobKey, skinVariant = 0) {
+      const key = MERC_SPRITE_DEFS[`${jobKey}_${skinVariant}`] ? `${jobKey}_${skinVariant}` : `${jobKey}_0`;
+      return { job: jobKey, layers: [{ item: `legacy_${key}` }], colors: {} };
+    }
+
     function getMercSprite(jobKey, skinVariant = 0) {
-      return MERC_SPRITE_DEFS[`${jobKey}_${skinVariant}`] || MERC_SPRITE_DEFS[`${jobKey}_0`] || null;
+      const legacy = MERC_SPRITE_DEFS[`${jobKey}_${skinVariant}`] || MERC_SPRITE_DEFS[`${jobKey}_0`] || null;
+      if (PAPERDOLL_ENABLED && legacy) {
+        const sheet = getPaperdollSheet(getLegacyAppearance(jobKey, skinVariant));
+        if (sheet.ready) return sheet;
+      }
+      return legacy;
     }
 
     // 목록·카드용 초상화: 대기 동작 첫 프레임을 몸통 중심으로 잘라서 표시
@@ -4112,6 +4423,7 @@
       renderAllStudentViews();
       showRewardBanner(bannerText);
       StudentInbox.settle();
+      openRankedPromoModal();
     }
 
     async function completeFirstTimePasswordSetup() {
@@ -4218,10 +4530,126 @@
      ********************************************************************/
     function getStudentRankInfo(stu) {
       const byPower5 = [...state.students].sort((a, b) => calcStudentDeployedPower(b) - calcStudentDeployedPower(a) || calcStudentCombatPower(b) - calcStudentCombatPower(a));
-      const byPvp = [...state.students].sort((a, b) => (b.pvpScore || 1000) - (a.pvpScore || 1000) || (b.wins || 0) - (a.wins || 0) || calcStudentDeployedPower(b) - calcStudentDeployedPower(a));
+      const byPvp = sortStudentsByPvp();
       const power5Rank = byPower5.findIndex(s => s.id === stu.id) + 1;
       const pvpRank = byPvp.findIndex(s => s.id === stu.id) + 1;
       return { power5Rank, pvpRank, totalStudents: state.students.length };
+    }
+
+    // 랭킹 매칭 점수 순위 (점수 → 승수 → 5인 전투력)
+    function sortStudentsByPvp() {
+      return [...state.students].sort((a, b) => (b.pvpScore || 1000) - (a.pvpScore || 1000) || (b.wins || 0) - (a.wins || 0) || calcStudentDeployedPower(b) - calcStudentDeployedPower(a));
+    }
+
+    function getPvpTierBadge(score) {
+      if (score >= 1100) return `<span class="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-extrabold">👑 그랜드마스터</span>`;
+      if (score >= 1060) return `<span class="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[10px] font-extrabold">💎 다이아</span>`;
+      if (score >= 1020) return `<span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-extrabold">🥇 골드</span>`;
+      return `<span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-bold">🥈 실버</span>`;
+    }
+
+    function goToRankedMatch() {
+      toggleSideRankPanel(false);
+      if (!document.getElementById('teacherViewContainer')?.classList.contains('hidden')) switchToStudentView();
+      switchStudentTab('pvp');
+      switchPvpSubMode('async');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ----- 우측 랭킹 매칭 순위 패널 -----
+    function toggleSideRankPanel(open) {
+      document.getElementById('sideRankPanel')?.classList.toggle('open', !!open);
+      placeSideRankPanel();
+    }
+
+    // 위 헤더(줄바꿈되면 높이가 달라짐) 바로 아래에 붙임. 좁은 화면에서 접혀 있을 때는 CSS대로 가운데
+    function placeSideRankPanel() {
+      const panel = document.getElementById('sideRankPanel');
+      const header = document.querySelector('#mainAppShell > header');
+      if (!panel) return;
+      const docked = window.innerWidth >= 1900 || panel.classList.contains('open');
+      panel.style.top = docked && header ? `${Math.max(16, header.getBoundingClientRect().bottom + 10)}px` : '';
+    }
+
+    function renderSideRankPanel() {
+      const listEl = document.getElementById('sideRankList');
+      const myBox = document.getElementById('sideRankMyBox');
+      if (!listEl) return;
+      const myStu = getActiveStudent();
+      const sorted = sortStudentsByPvp();
+      const medal = ['🥇', '🥈', '🥉'];
+      listEl.innerHTML = sorted.map((s, idx) => {
+        const isMe = myStu && s.id === myStu.id;
+        return `
+          <div class="flex items-center gap-2 rounded-xl px-2 py-1.5 border ${isMe ? 'bg-indigo-950/40 border-indigo-500/50 ring-1 ring-indigo-400' : 'bg-slate-950 border-slate-800'}">
+            <span class="w-7 shrink-0 text-center font-title text-xs text-slate-300">${medal[idx] || `${idx + 1}위`}</span>
+            <div class="min-w-0 flex-1">
+              <div class="text-xs font-extrabold text-white truncate">${s.name}${isMe ? ' <span class="text-indigo-300">(나)</span>' : ''}</div>
+              <div class="text-[10px] text-slate-400 truncate">${s.wins || 0}승</div>
+            </div>
+            <span class="shrink-0 text-xs font-extrabold text-rose-400">${s.pvpScore || 1000}점</span>
+          </div>`;
+      }).join('') || '<div class="text-xs text-slate-400 text-center py-4">아직 학생이 없어요.</div>';
+      if (myBox) {
+        if (myStu) {
+          const rank = sorted.findIndex(s => s.id === myStu.id) + 1;
+          const left = getDailyRewardLeft(myStu, 'pvp');
+          myBox.innerHTML = `👤 ${myStu.name} · <strong>${rank}위</strong>/${sorted.length}명 · ${myStu.pvpScore || 1000}점<br>⚔️ 오늘 남은 도전 <strong>${left}/${DAILY_REWARD_LIMITS.pvp}</strong>`;
+        } else {
+          myBox.textContent = '로그인하면 내 순위가 보여요.';
+        }
+      }
+      placeSideRankPanel();
+    }
+    window.addEventListener('resize', () => renderSideRankPanel());
+    // 친구 점수가 서버에서 바뀌어도 따라가도록 보이는 동안 5초마다 새로 그림
+    setInterval(() => { if (document.getElementById('sideRankPanel')?.getClientRects().length) renderSideRankPanel(); }, 5000);
+
+    // ----- 로그인 직후 랭킹 매칭 홍보 팝업 -----
+    function openRankedPromoModal() {
+      const myStu = getActiveStudent();
+      const body = document.getElementById('rankedPromoBody');
+      if (!myStu || !body) return;
+      const sorted = sortStudentsByPvp();
+      const rank = sorted.findIndex(s => s.id === myStu.id) + 1;
+      const score = myStu.pvpScore || 1000;
+      const left = getDailyRewardLeft(myStu, 'pvp');
+      const medal = ['🥇', '🥈', '🥉'];
+      const top3 = sorted.slice(0, 3).map((s, i) => `
+        <div class="flex items-center justify-between gap-2 text-xs ${s.id === myStu.id ? 'font-extrabold text-indigo-300' : 'text-slate-300'}">
+          <span class="truncate">${medal[i]} ${s.name}</span><span class="shrink-0 font-extrabold text-rose-400">${s.pvpScore || 1000}점</span>
+        </div>`).join('');
+      body.innerHTML = `
+        <div class="grid grid-cols-2 gap-2">
+          <div class="rounded-2xl bg-slate-950 border border-indigo-500/40 p-3 text-center">
+            <div class="text-[11px] font-bold text-slate-400">내 순위</div>
+            <div class="font-title text-3xl text-white">${rank}<span class="text-base">위</span></div>
+            <div class="text-[11px] text-slate-400">${sorted.length}명 중 · ${score}점</div>
+            <div class="mt-1">${getPvpTierBadge(score)}</div>
+          </div>
+          <div class="rounded-2xl bg-slate-950 border border-amber-500/40 p-3 text-center">
+            <div class="text-[11px] font-bold text-slate-400">오늘 남은 도전</div>
+            <div class="font-title text-3xl ${left > 0 ? 'text-amber-300' : 'text-slate-400'}">${left}<span class="text-base">/${DAILY_REWARD_LIMITS.pvp}</span></div>
+            <div class="text-[11px] text-slate-400">${left > 0 ? '지금 도전할 수 있어요!' : '내일 다시 도전해요'}</div>
+          </div>
+        </div>
+        <div class="rounded-2xl bg-slate-950 border border-slate-800 p-3 flex flex-col gap-1.5">
+          <div class="text-[11px] font-extrabold text-slate-400">🏆 우리 반 TOP 3</div>
+          ${top3 || '<div class="text-xs text-slate-400">아직 순위가 없어요.</div>'}
+        </div>
+        <div class="rounded-2xl bg-slate-950 border border-slate-800 p-3 flex flex-col gap-1.5 text-xs">
+          <div class="text-[11px] font-extrabold text-slate-400">🎁 보상 (한 판마다)</div>
+          <div class="text-slate-300">💪 나보다 강한 상대: 승리 <strong class="text-amber-300">${RANKED_REWARDS.stronger.win.toLocaleString()} CA</strong> · 패배 <strong class="text-amber-300">${RANKED_REWARDS.stronger.loss.toLocaleString()} CA</strong></div>
+          <div class="text-slate-300">🙂 나보다 약한 상대: 승리 <strong class="text-amber-300">${RANKED_REWARDS.weaker.win.toLocaleString()} CA</strong> · 패배 <strong class="text-amber-300">${RANKED_REWARDS.weaker.loss.toLocaleString()} CA</strong></div>
+          <div class="text-slate-300">📈 랭킹 점수: 승리 <strong class="text-emerald-400">+25점</strong> · 패배 <strong class="text-rose-400">-10점</strong></div>
+        </div>`;
+      const goBtn = document.getElementById('rankedPromoGoBtn');
+      if (goBtn) goBtn.textContent = left > 0 ? '🎯 랭킹 매칭 바로가기' : '🏆 랭킹 순위 보러 가기';
+      document.getElementById('rankedPromoModal')?.classList.remove('hidden');
+    }
+
+    function closeRankedPromoModal() {
+      document.getElementById('rankedPromoModal')?.classList.add('hidden');
     }
 
     function openRankingBoardFromSquad() {
@@ -4647,9 +5075,9 @@
         <div class="bg-slate-950 border-2 border-emerald-500/40 rounded-2xl p-3.5 flex flex-col gap-2.5">
           <div class="flex items-center justify-between flex-wrap gap-2">
             <span class="text-xs font-extrabold text-emerald-300">🎒 장비 (용병당 1개)</span>
-            <button onclick="closeMercDetailModal(); switchStudentTab('shop');" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-amber-300 border border-slate-700">🛒 오늘의 장비 보기</button>
+            <button onclick="closeMercDetailModal(); switchStudentTab('shop');" class="${EQUIP_SHOP_LOCKED ? 'hidden ' : ''}px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-amber-300 border border-slate-700">🛒 오늘의 장비 보기</button>
           </div>
-          ${(() => {
+          ${EQUIP_SHOP_LOCKED ? '<div class="text-xs text-slate-400 bg-slate-900 border border-slate-800 rounded-xl p-2.5">🔒 장비 기능은 준비 중이에요. 곧 열릴 예정이에요!</div>' : (() => {
             const eq = equipDefOf(merc.equippedItem);
             const inv = (stu.inventory || []).filter(it => equipDefOf(it));
             const cur = eq
@@ -6625,6 +7053,7 @@
 
     function renderPvpTab() {
       RealtimePvpService.init();
+      renderSideRankPanel();
       const myStu = getActiveStudent();
       const sorted = [...state.students].sort((a, b) => b.pvpScore - a.pvpScore || calcStudentCombatPower(b) - calcStudentCombatPower(a));
 
@@ -6725,13 +7154,6 @@
         return `<span class="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center font-title text-xs text-slate-300 shrink-0">${rankIdx + 1}위</span>`;
       };
 
-      const getPvpTierBadge = (score) => {
-        if (score >= 1100) return `<span class="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-extrabold">👑 그랜드마스터</span>`;
-        if (score >= 1060) return `<span class="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[10px] font-extrabold">💎 다이아</span>`;
-        if (score >= 1020) return `<span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-extrabold">🥇 골드</span>`;
-        return `<span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-bold">🥈 실버</span>`;
-      };
-
       const power5ListEl = document.getElementById('power5RankingList');
       if (power5ListEl) {
         const sortedByPower5 = [...state.students].sort((a, b) => calcStudentDeployedPower(b) - calcStudentDeployedPower(a) || calcStudentCombatPower(b) - calcStudentCombatPower(a));
@@ -6768,7 +7190,7 @@
 
       const pvpRankListEl = document.getElementById('pvpScoreRankingList');
       if (pvpRankListEl) {
-        const sortedByPvp = [...state.students].sort((a, b) => (b.pvpScore || 1000) - (a.pvpScore || 1000) || (b.wins || 0) - (a.wins || 0) || calcStudentDeployedPower(b) - calcStudentDeployedPower(a));
+        const sortedByPvp = sortStudentsByPvp();
         pvpRankListEl.innerHTML = sortedByPvp.map((s, idx) => {
           const isMe = s.id === myStu.id;
           const power5 = calcStudentDeployedPower(s);
@@ -6816,6 +7238,7 @@
     }
 
     function buyDailyEquipItem(slotIdx) {
+      if (EQUIP_SHOP_LOCKED) { showNotice('🔒 장비 기능은 준비 중이에요. 곧 열릴 예정이에요!'); return; }
       const stu = getActiveStudent();
       ensureDailyEquipShop(stu);
       const slot = stu.dailyEquipShop[slotIdx];
@@ -6840,6 +7263,7 @@
     }
 
     function equipItemFromInventory(mercId, itemUid) {
+      if (EQUIP_SHOP_LOCKED) { showNotice('🔒 장비 기능은 준비 중이에요. 곧 열릴 예정이에요!'); return; }
       const stu = getActiveStudent();
       const merc = (stu.roster || []).find(m => m.id === mercId);
       if (!merc) { showNotice('⚠️ 장비를 끼울 용병을 먼저 골라 주세요!'); return; }
@@ -6857,6 +7281,7 @@
     }
 
     function unequipMercItem(mercId) {
+      if (EQUIP_SHOP_LOCKED) { showNotice('🔒 장비 기능은 준비 중이에요. 곧 열릴 예정이에요!'); return; }
       const stu = getActiveStudent();
       const merc = (stu.roster || []).find(m => m.id === mercId);
       if (!merc || !merc.equippedItem) return;
@@ -7547,7 +7972,6 @@
     sim.controllers = {};
     const battleControl = { mode: 'auto', unitId: null, locked: false }; // locked: 이번 전투에서 이미 골랐으면 바꿀 수 없음
     // 실시간 결투 연결 상태 (아래 [실시간 결투 화면 동기화] 참고)
-    const LIVE_FRAME_EVERY_TICKS = 6;
     const LIVE_FRAME_INTERVAL_MS = 100; // 방장이 화면을 보내는 간격 (실제 시간)
     const LIVE_GUEST_TIMEOUT_MS = 20000;
     const LIVE_UNIT_ST_KEYS = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'blessed', 'rally', 'empower', 'immune'];
@@ -8322,9 +8746,10 @@
       const arenaHidden = document.getElementById('arenaSection')?.classList.contains('hidden');
       document.getElementById('returnToBattleBtn')?.classList.toggle('hidden', !(inGame && sim.running && arenaHidden));
       const pvpTabHidden = document.getElementById('studentTab-pvp')?.classList.contains('hidden');
-      const waitingRoom = typeof currentJoinedPvpRoomId !== 'undefined' && currentJoinedPvpRoomId
-        && typeof livePvpRoomsCache !== 'undefined' && livePvpRoomsCache[currentJoinedPvpRoomId]
-        && livePvpRoomsCache[currentJoinedPvpRoomId].status === 'waiting';
+      const roomIdNow = typeof currentJoinedPvpRoomId !== 'undefined' ? (currentJoinedPvpRoomId || currentSpectatingPvpRoomId) : null;
+      const waitingRoom = roomIdNow
+        && typeof livePvpRoomsCache !== 'undefined' && livePvpRoomsCache[roomIdNow]
+        && livePvpRoomsCache[roomIdNow].status === 'waiting';
       document.getElementById('returnToPvpRoomBtn')?.classList.toggle('hidden', !(inGame && waitingRoom && (pvpTabHidden || !arenaHidden) && !sim.running));
     }
 
@@ -8531,12 +8956,16 @@
       box.prepend(div);
     }
 
-    function launchSimulation({ mode, title, blueStudent, redStudent, towerFloorObj, eliteBossId, rewardMc, lossRewardMc, customBlueUnits, customRedUnits, netRole = null, myTeam = 'blue' }) {
+    function launchSimulation({ mode, title, blueStudent, redStudent, towerFloorObj, eliteBossId, rewardMc, lossRewardMc, customBlueUnits, customRedUnits, netRole = null, myTeam = 'blue', roomBattle = false }) {
       const blueDeployed = (blueStudent?.roster || []).filter(m => m.deployed);
       if (!customBlueUnits && blueDeployed.length === 0) {
         showNotice('⚠️ 출전 가능한 용병이 없습니다! 먼저 용병 모집에서 용병을 고용하고 출전시켜주세요.');
         return;
       }
+      // 한 번에 하나의 컨텐츠만: 방이 아닌 전투(탑·연습·랭킹 등)를 시작하면 들어가 있던 결투방·레이드방·미니게임방에서 나감
+      if (!roomBattle && mode !== 'broadcast') leaveRoomsExcept(null);
+      // 앞 전투의 실시간 연결이 남아 있으면 끊음 (남은 화면 정보가 새 전투를 덮어쓰지 않게)
+      if (liveNet.ref) stopLiveBattleNet();
 
       const arenaSec = document.getElementById('arenaSection');
       if (arenaSec) arenaSec.classList.remove('hidden');
@@ -10430,6 +10859,7 @@
       }
       if (liveNet.role === 'host') publishLiveBattleResult(blueTeamWon);
       if (sim.mode === 'pvp_realtime') resetLivePvpRoomAfterBattle();
+      if (sim.mode === 'elite_raid') resetRaidRoomAfterBattle();
       // blueWon = 이 화면의 학생이 이겼는지 (실시간 결투 도전자는 레드팀)
       const blueWon = sim.myTeam === 'red' ? !blueTeamWon : blueTeamWon;
       sim.running = false;
@@ -10514,7 +10944,7 @@
     // 🏳️ 전투 포기: 내 팀 패배로 끝내고 보상 없음 (실시간 결투 도전자는 방장 화면에 포기를 알림)
     function forfeitBattle() {
       if (!sim.running) return;
-      if (sim.spectator) { stopLiveBattleNet(); closeBattleResult(); return; }
+      if (sim.spectator) { stopSpectatingPvpRoom(); return; }
       askCustomConfirm('전투를 포기할까요? 패배로 처리되고 보상은 없어요.', () => {
         if (!sim.running) return;
         if (sim.netRole === 'guest') {
@@ -10524,6 +10954,8 @@
           showNotice('🏳️ 포기했어요. 방장 화면에서 결투를 끝내는 중이에요...');
           return;
         }
+        // 팀전 방장이 포기해도 다른 친구들의 전투는 계속: 전투 계산과 방장을 남은 친구에게 넘김
+        if (sim.teamLive && liveNet.role === 'host') handOffTeamLiveHost();
         sim.forfeitTeam = getMyBattleTeam();
         finishSimulation(sim.forfeitTeam !== 'blue');
       });
@@ -10531,7 +10963,7 @@
 
     // 전투 중에 전장을 닫으면 포기로 처리 (닫기로 패배를 피할 수 없게)
     function closeArenaOrForfeit() {
-      if (sim.spectator) { stopLiveBattleNet(); closeBattleResult(); return; }
+      if (sim.spectator && sim.running) { stopSpectatingPvpRoom(); return; }
       if (sim.running && sim.mode !== 'broadcast') {
         forfeitBattle();
         return;
@@ -11591,6 +12023,37 @@
       requestAnimationFrame(animationLoop);
     }
 
+    // 실시간 결투 방장의 탭이 뒤로 가면(다른 탭·창을 보면) 브라우저가 화면 그리기(requestAnimationFrame)를 멈춰서
+    // 전투 계산과 화면 전송도 멈춤 → 상대·관전자 화면이 뚝 끊김. 그동안은 작업자(Worker) 타이머로 계산·전송만 이어 감
+    // (작업자 타이머는 뒤로 간 탭에서도 거의 느려지지 않음 · 그림은 그리지 않음)
+    let hiddenHostTicker = null;
+    function hiddenHostBattleStep() {
+      if (!document.hidden || !sim.running || sim.netRole !== 'host') return;
+      lastFrameDtMs = measureFrameTime();
+      if (sim.waitingForOpponent) { updateLiveChoiceWait(); return; }
+      if (sim.awaitingControlChoice) return;
+      const ticks = takeBattleTicks(sim.speed);
+      for (let s = 0; s < ticks; s++) {
+        if (sim.running) stepSimulation();
+      }
+      if (ticks > 0 && sim.running && sim.netRole === 'host') publishLiveBattleFrame();
+      decayHiddenBattleVisuals();
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        if (hiddenHostTicker) { hiddenHostTicker.terminate(); hiddenHostTicker = null; }
+        return;
+      }
+      if (hiddenHostTicker) return;
+      try {
+        const src = URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 33);'], { type: 'text/javascript' }));
+        hiddenHostTicker = new Worker(src);
+        hiddenHostTicker.onmessage = hiddenHostBattleStep;
+      } catch (e) {
+        hiddenHostTicker = null;
+      }
+    });
+
     /********************************************************************
      * 12. 선생님 관리자 페이지
      ********************************************************************/
@@ -12415,6 +12878,37 @@
       pushMinigameStateToFirebase(key, JSON.parse(JSON.stringify(st)));
     }
 
+    // AI 자리는 한 화면에서만 둠: 혼자 연습이면 내 화면, 실시간 방이면 방장 화면 (여러 화면이 동시에 두지 않게)
+    function mgDrivesAi() {
+      return !mgCurrentRoom() || mgCanReset();
+    }
+
+    // 게임 도중 친구가 나가면 그 자리를 AI가 이어받아 게임이 멈추지 않게 함
+    const MG_GAME_HOOKS = {
+      yutnori: { state: () => yutState, render: () => renderYutnoriBoard(), ai: () => yutScheduleAi() },
+      omok: { state: () => omokState, render: () => renderOmokBoard(), ai: () => omokScheduleAi() },
+      cardflip: { state: () => cardFlipState, render: () => renderCardFlipBoard(), ai: () => cardFlipScheduleAi() },
+      wordchain: { state: () => wordChainState, render: () => renderWordChainBoard(), ai: () => wordChainScheduleAi() }
+    };
+    function mgSeatsToAi(gameType, stuIds, keepPlaying = true) {
+      const hook = MG_GAME_HOOKS[gameType];
+      const st = hook && hook.state();
+      if (!st || !st.initialized || st.gameOver || !Array.isArray(st.seats)) return;
+      let changed = false;
+      st.seats.forEach(s => {
+        if (s && stuIds.includes(s.id) && !s.ai) {
+          s.ai = true;
+          s.name = `🤖${cleanUserText(s.name, 10) || '친구'}`;
+          changed = true;
+        }
+      });
+      if (!changed) return;
+      mgPush(gameType, st);
+      if (!keepPlaying) return;
+      hook.render();
+      hook.ai();
+    }
+
     function mgSeatChip(st, seat, extraClass = '', color = null, suffix = '') {
       const s = st.seats[seat];
       if (!s) return '';
@@ -12695,7 +13189,7 @@
     function yutScheduleAi() {
       clearTimeout(yutAiTimer);
       const st = yutState;
-      if (!st.initialized || st.gameOver || !mgIsAiSeat(st, st.turnSeat)) return;
+      if (!st.initialized || st.gameOver || !mgIsAiSeat(st, st.turnSeat) || !mgDrivesAi()) return;
       const animWait = yutAnimating ? (yutAnimating.steps || 1) * YUT_STEP_MS + 250 : 0;
       yutAiTimer = setTimeout(() => {
         if (yutState !== st || st.gameOver || !mgIsAiSeat(st, st.turnSeat)) return;
@@ -13016,7 +13510,7 @@
       const st = omokState;
       if (!st.initialized || st.gameOver || st.board[r][c] !== 0) return;
       const isAiTurn = mgIsAiSeat(st, st.turnSeat);
-      if (!mgCanAct(st) && !isAiTurn) return;
+      if (!mgCanAct(st) && !(isAiTurn && mgDrivesAi())) return;
       const color = st.turnSeat === 0 ? 1 : 2;
       if (color === 1) {
         const why = omokForbiddenReason(st.board, r, c);
@@ -13074,7 +13568,7 @@
     function omokScheduleAi() {
       clearTimeout(omokAiTimer);
       const st = omokState;
-      if (!st.initialized || st.gameOver || !mgIsAiSeat(st, st.turnSeat)) return;
+      if (!st.initialized || st.gameOver || !mgIsAiSeat(st, st.turnSeat) || !mgDrivesAi()) return;
       omokAiTimer = setTimeout(() => {
         if (omokState !== st || st.gameOver || !mgIsAiSeat(st, st.turnSeat)) return;
         const b = st.board;
@@ -13166,7 +13660,7 @@
     function clickCardFlipTile(idx) {
       const st = cardFlipState;
       if (!st.initialized || st.gameOver || st.busy) return;
-      if (!mgCanAct(st) && !mgIsAiSeat(st, st.turnSeat)) return;
+      if (!mgCanAct(st) && !(mgIsAiSeat(st, st.turnSeat) && mgDrivesAi())) return;
       const card = st.cards[idx];
       if (!card || card.matched || st.open.includes(idx) || st.open.length >= 2) return;
       st.open.push(idx);
@@ -13202,7 +13696,7 @@
     function cardFlipScheduleAi() {
       clearTimeout(cardFlipAiTimer);
       const st = cardFlipState;
-      if (!st.initialized || st.gameOver || st.busy || !mgIsAiSeat(st, st.turnSeat)) return;
+      if (!st.initialized || st.gameOver || st.busy || !mgIsAiSeat(st, st.turnSeat) || !mgDrivesAi()) return;
       cardFlipAiTimer = setTimeout(() => {
         if (cardFlipState !== st || st.gameOver || st.busy || !mgIsAiSeat(st, st.turnSeat)) return;
         const hidden = st.cards.map((c, i) => i).filter(i => !st.cards[i].matched && !st.open.includes(i));
@@ -13268,6 +13762,42 @@
     ];
     let wordChainState = { initialized: false };
 
+    // 국립국어원 《표준국어대사전》·《우리말샘》 명사 사전 (assets/dict/ko-words.txt, 한 줄에 한 낱말)
+    // 끝말잇기 화면을 열 때 한 번만 받아 둠. 이 사전에 있는 낱말만 인정
+    const WordChainDict = {
+      words: null,      // Set
+      byStart: null,    // 첫 글자 → 낱말 배열 (봇용)
+      loading: null,
+      failed: false,
+      load() {
+        if (this.words) return Promise.resolve(true);
+        if (this.loading) return this.loading;
+        this.failed = false;
+        this.loading = fetch('assets/dict/ko-words.txt')
+          .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); })
+          .then(text => {
+            const list = text.split('\n').map(w => w.trim()).filter(Boolean);
+            const byStart = new Map();
+            list.forEach(w => {
+              const c = w.charAt(0);
+              if (!byStart.has(c)) byStart.set(c, []);
+              byStart.get(c).push(w);
+            });
+            this.words = new Set(list);
+            this.byStart = byStart;
+            return true;
+          })
+          .catch(err => {
+            console.warn('끝말잇기 사전을 불러오지 못했어요:', err);
+            this.failed = true;
+            return false;
+          })
+          .finally(() => { this.loading = null; renderWordChainBoard(); });
+        return this.loading;
+      },
+      has(word) { return !!this.words && this.words.has(word); }
+    };
+
     // 두음법칙: 끝 글자로 시작할 수 있는 글자들 (예: 력→역, 녀→여, 라→나)
     function wordChainAllowedStarts(ch) {
       const code = ch.charCodeAt(0) - 0xAC00;
@@ -13283,6 +13813,7 @@
 
     function resetWordChainGame() {
       if (wordChainState.initialized && !mgCanReset()) { showNotice('⚠️ 새 게임은 방장만 시작할 수 있어요.'); return; }
+      WordChainDict.load();
       const seats = mgBuildSeats(4);
       const first = ['사과', '나무', '구름', '바다', '기차', '학교', '연필'][Math.floor(Math.random() * 7)];
       wordChainState = {
@@ -13319,6 +13850,11 @@
       const allowed = wordChainAllowedStarts(last.charAt(last.length - 1));
       if (!allowed.includes(word.charAt(0))) return `[${allowed.join(' / ')}](으)로 시작해야 해요.`;
       if (st.history.some(h => h.word === word)) return '이미 나온 낱말이에요.';
+      if (!WordChainDict.words) {
+        WordChainDict.load();
+        return WordChainDict.failed ? '낱말 사전을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.' : '낱말 사전을 불러오는 중이에요. 잠시 후 다시 눌러 주세요.';
+      }
+      if (!WordChainDict.has(word)) return `[${word}]은(는) 국립국어원 사전에 없는 낱말이에요.`;
       return '';
     }
 
@@ -13368,10 +13904,18 @@
     function wordChainScheduleAi() {
       clearTimeout(wordChainAiTimer);
       const st = wordChainState;
-      if (!st.initialized || st.gameOver || !mgIsAiSeat(st, st.turnSeat)) return;
+      if (!st.initialized || st.gameOver || !mgIsAiSeat(st, st.turnSeat) || !mgDrivesAi()) return;
       wordChainAiTimer = setTimeout(() => {
         if (wordChainState !== st || st.gameOver || !mgIsAiSeat(st, st.turnSeat)) return;
-        const word = WORD_CHAIN_DICT.filter(w => !wordChainCheck(st, w)).sort(() => Math.random() - 0.5)[0];
+        // 쉬운 낱말 목록에서 먼저 고르고, 없으면 사전에서 짧은(2~3글자) 낱말을 고름
+        let word = WORD_CHAIN_DICT.filter(w => !wordChainCheck(st, w)).sort(() => Math.random() - 0.5)[0];
+        if (!word && WordChainDict.byStart) {
+          const last = st.history[st.history.length - 1].word;
+          const pool = wordChainAllowedStarts(last.charAt(last.length - 1))
+            .flatMap(c => WordChainDict.byStart.get(c) || [])
+            .filter(w => w.length <= 3 && !wordChainCheck(st, w));
+          word = pool[Math.floor(Math.random() * pool.length)];
+        }
         if (word) wordChainCommit(st, word); // 낱말을 못 찾으면 시간 초과로 탈락
       }, 2200 + Math.random() * 3500);
     }
@@ -13386,7 +13930,7 @@
       const secEl = document.getElementById('wordChainSecLeft');
       if (secEl) secEl.textContent = st.gameOver ? '' : `${Math.ceil(left / 1000)}초`;
       if (!st.gameOver && left <= 0) {
-        const judge = mgIsAiSeat(st, 0) || st.seats.some(s => s.ai) ? true : mgCanReset();
+        const judge = mgDrivesAi(); // 혼자 연습이면 내 화면, 실시간 방이면 방장 화면이 시간 초과를 판정
         if (judge && Date.now() - st.deadline > 300) wordChainTimeout(st);
       }
     }, 250);
@@ -13424,6 +13968,11 @@
      * 13. 탭 전환 및 초기 실행
      ********************************************************************/
     function switchStudentTab(tabKey) {
+      // 장비·상점은 새 장비 업데이트 전까지 잠금 (탭을 열지 않고 안내만)
+      if (tabKey === 'shop' && EQUIP_SHOP_LOCKED) {
+        showNotice('🔒 장비·상점은 준비 중이에요. 곧 열릴 예정이에요!');
+        return;
+      }
       // 진행 중인 전투는 멈추지 않고 화면만 숨김 → [⚔️ 진행 중인 전투로 돌아가기]로 다시 볼 수 있음
       const arenaSec = document.getElementById('arenaSection');
       if (arenaSec) arenaSec.classList.add('hidden');
@@ -14593,6 +15142,7 @@
     let currentJoinedPvpRoomId = null;
     let currentJoinedRaidRoomId = null;
     let currentJoinedMinigameRoomId = null;
+    let currentSpectatingPvpRoomId = null; // 플레이어가 아니라 관전자로 들어가 있는 결투방 (대기 중이어도 됨)
     let selectedLobbyMinigameType = 'yutnori';
     let mgRealtimeSyncEnabled = true;
     let suppressMinigameRemotePush = false;
@@ -14620,6 +15170,7 @@
       activePvpRoomsRef = db.ref(`classes/${cleanCode}/pvp_rooms`);
       activePvpRoomsRef.on('value', (snap) => {
         livePvpRoomsCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
+        maintainPvpRooms();
         renderLivePvpRoomsList();
         checkAutoStartMatchedPvpRoom();
       });
@@ -14628,6 +15179,7 @@
       activeRaidRoomsRef = db.ref(`classes/${cleanCode}/raid_rooms`);
       activeRaidRoomsRef.on('value', (snap) => {
         liveRaidRoomsCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
+        maintainRaidRooms();
         renderLiveRaidRoomsList();
         checkAutoStartMatchedRaidRoom();
       });
@@ -14636,6 +15188,7 @@
       activeMinigameRoomsRef = db.ref(`classes/${cleanCode}/minigame_rooms`);
       activeMinigameRoomsRef.on('value', (snap) => {
         liveMinigameRoomsCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
+        maintainMinigameRooms();
         renderMinigameLobbyAndRoomUI();
       });
 
@@ -14692,14 +15245,265 @@
       }).catch(() => {});
     }
 
-    // 방장이 브라우저를 닫거나 인터넷이 끊기면 서버가 방을 자동으로 지웁니다 (유령 방 방지)
-    function armHostRoomAutoCleanup(paths) {
+    // ==================== [방 접속 표시 · 방장 넘기기 · 한 번에 하나의 컨텐츠] ====================
+    // 방장·참가자가 브라우저를 닫거나 인터넷이 끊기면 서버가 그 방에 gone/{학생id} 표시만 남김
+    // (예전처럼 방 전체를 지우면 남은 친구까지 쫓겨남) → 남은 사람이 보고 방장을 넘겨받거나 빈 자리를 정리,
+    // 아무도 안 남은 방은 누가 보든 지움. 팀전방은 members/{학생id} 칸이 사라지는 것으로 같은 일을 함
+    function classRoomRef(path) {
       const db = RealtimePvpService.initFirebaseClientSafe();
       const classCode = String(state.classCode || '').trim().toUpperCase();
-      if (!db || !classCode) return;
-      paths.forEach(p => {
-        try { db.ref(`classes/${classCode}/${p}`).onDisconnect().remove(); } catch (e) {}
+      if (!db || !classCode || typeof db.ref !== 'function') return null;
+      return db.ref(`classes/${classCode}/${path}`);
+    }
+
+    const myRoomPresence = new Map(); // 방 경로 → 내 학생 id
+    let roomPresenceWatchOn = false;
+    function armRoomPresence(path, stuId) {
+      if (!stuId) return;
+      myRoomPresence.set(path, stuId);
+      try { classRoomRef(`${path}/gone/${stuId}`)?.onDisconnect().set(true); } catch (e) {}
+      if (roomPresenceWatchOn) return;
+      // 잠깐 끊겼다 다시 연결되면: 남겨진 내 '나감' 표시를 지우고 다시 걸어 둠 (끊김 예약은 한 번 실행되면 사라짐)
+      try {
+        RealtimePvpService.initFirebaseClientSafe().ref('.info/connected').on('value', snap => {
+          if (!snap || snap.val() !== true) return;
+          myRoomPresence.forEach((id, p) => {
+            try {
+              const ref = classRoomRef(`${p}/gone/${id}`);
+              ref.onDisconnect().set(true);
+              ref.remove().catch(() => {});
+            } catch (e) {}
+          });
+        });
+        roomPresenceWatchOn = true;
+      } catch (e) {}
+    }
+    function disarmRoomPresence(path, stuId) {
+      myRoomPresence.delete(path);
+      if (!stuId) return;
+      try { classRoomRef(`${path}/gone/${stuId}`)?.onDisconnect().cancel(); } catch (e) {}
+    }
+    const roomGone = (room, stuId) => Boolean(stuId && room && room.gone && room.gone[stuId]);
+
+    // 한 번에 하나의 컨텐츠만: keepKind 방(keepRoomId)만 남기고, 들어가 있던 다른 결투방·레이드방·미니게임방(관전 포함)에서 모두 나감
+    function leaveRoomsExcept(keepKind, keepRoomId = null) {
+      const me = getActiveStudent();
+      if (!me) return;
+      const keep = (kind, id) => kind === keepKind && id === keepRoomId;
+      Object.values(livePvpRoomsCache || {}).forEach(r => {
+        if (!r || !r.roomId || keep('pvp', r.roomId)) return;
+        if (isPvpRoomPlayer(r, me.id)) leaveOrClosePvpRoom(r.roomId, true);
+        else if (r.spectators && r.spectators[me.id]) stopSpectatingPvpRoom(true, r.roomId);
       });
+      if (currentSpectatingPvpRoomId && !keep('pvp', currentSpectatingPvpRoomId)) stopSpectatingPvpRoom(true);
+      if (currentJoinedPvpRoomId && !keep('pvp', currentJoinedPvpRoomId)) { currentJoinedPvpRoomId = null; pvpFormationDraft = null; }
+      Object.values(liveRaidRoomsCache || {}).forEach(r => {
+        if (!r || !r.roomId || keep('raid', r.roomId)) return;
+        if (r.hostId === me.id || (r.guestId === me.id && !r.practiceFriend)) cancelFirebaseCoopRaidRoom(r.roomId, true);
+      });
+      if (currentJoinedRaidRoomId && !keep('raid', currentJoinedRaidRoomId)) currentJoinedRaidRoomId = null;
+      Object.values(liveMinigameRoomsCache || {}).forEach(r => {
+        if (!r || !r.roomId || keep('minigame', r.roomId)) return;
+        if ((r.players || []).some(p => p && p.id === me.id && !p.practice)) leaveMinigameRoom(true, r.roomId);
+      });
+      if (currentJoinedMinigameRoomId && !keep('minigame', currentJoinedMinigameRoomId)) currentJoinedMinigameRoomId = null;
+    }
+
+    // 방에서 나갈 때 그 방 전투가 진행 중이면 정리 (나가기 = 포기)
+    // - 팀전 방장: 전투 계산을 남은 친구에게 넘겨서 전투는 계속 (내 용병은 AI가 대신 싸움)
+    // - 도전자·팀원: 포기를 알리고 내 화면만 닫음 / 그 밖(1:1·5:5 방장, 협동 레이드): 포기로 끝냄
+    function quitRoomBattleIfRunning(roomId) {
+      if (!sim.running || !roomId) return;
+      if (sim.spectator) {
+        if (sim.spectateRoomId === roomId) { stopLiveBattleNet(); closeBattleResult(); }
+        return;
+      }
+      if (currentActiveLiveBattleRoomId !== roomId) return;
+      if (sim.netRole === 'guest') {
+        localBattleInput.forfeit = 1;
+        liveNet.lastInputSentAt = 0;
+        onLocalControlChanged();
+        stopLiveBattleNet();
+        currentActiveLiveBattleRoomId = null;
+        closeBattleResult();
+        return;
+      }
+      if (sim.teamLive && liveNet.role === 'host') handOffTeamLiveHost();
+      sim.forfeitTeam = getMyBattleTeam();
+      finishSimulation(sim.forfeitTeam !== 'blue');
+    }
+
+    // 기본 방 이름("철수의 결투방")은 방장이 바뀌면 새 방장 이름으로 (직접 지은 이름은 그대로)
+    function retitleForNewHost(title, oldName, newName) {
+      const t = String(title || '');
+      if (!oldName || !newName || !t.includes(`${oldName}의 `)) return t;
+      return t.replace(`${oldName}의 `, `${newName}의 `);
+    }
+
+    // ----- 결투방(5:5·1:1)·레이드방·미니게임방: 한 명이 빠진 방 (방장이 빠지면 남은 친구가 새 방장) · 아무도 안 남으면 null -----
+    function pvpRoomWithout(room, stuId) {
+      const r = JSON.parse(JSON.stringify(room));
+      if (r.gone) delete r.gone[stuId];
+      const clearGuest = () => Object.assign(r, { guestId: null, guestNum: null, guestName: null, guestPower: 0, guestStudentSnapshot: null, guestFormationSaved: false, guestReady: false, guestPickId: null, practiceFriend: false });
+      if (stuId === r.hostId) {
+        if (!r.guestId || r.practiceFriend || roomGone(r, r.guestId)) return null;
+        r.title = retitleForNewHost(r.title, r.hostName, r.guestName);
+        Object.assign(r, {
+          hostId: r.guestId, hostNum: r.guestNum || null, hostName: r.guestName || '', hostPower: r.guestPower || 0,
+          hostStudentSnapshot: r.guestStudentSnapshot || null, hostFormationSaved: Boolean(r.guestFormationSaved), hostPickId: r.guestPickId || null
+        });
+        clearGuest();
+        r.status = 'waiting';
+        r.startedAt = null;
+      } else if (stuId === r.guestId) {
+        clearGuest();
+      }
+      return r;
+    }
+
+    function raidRoomWithout(room, stuId) {
+      const r = JSON.parse(JSON.stringify(room));
+      if (r.gone) delete r.gone[stuId];
+      if (r.fighting) delete r.fighting[stuId];
+      const clearGuest = () => Object.assign(r, { guestId: null, guestNum: null, guestName: null, guestPower: 0, guestMercs: [], guestStudentSnapshot: null, guestReady: false, practiceFriend: false });
+      if (stuId === r.hostId) {
+        if (!r.guestId || r.practiceFriend || roomGone(r, r.guestId)) return null;
+        r.title = retitleForNewHost(r.title, r.hostName, r.guestName);
+        Object.assign(r, {
+          hostId: r.guestId, hostNum: r.guestNum || null, hostName: r.guestName || '', hostPower: r.guestPower || 0,
+          hostMercs: r.guestMercs || [], hostStudentSnapshot: r.guestStudentSnapshot || null
+        });
+        clearGuest();
+      } else if (stuId === r.guestId) {
+        clearGuest();
+      }
+      return r;
+    }
+
+    function minigameRoomWithout(room, stuId) {
+      const r = JSON.parse(JSON.stringify(room));
+      if (r.gone) delete r.gone[stuId];
+      r.players = (Array.isArray(r.players) ? r.players : []).filter(p => p && p.id !== stuId);
+      const humans = r.players.filter(p => !p.practice && !roomGone(r, p.id));
+      if (!humans.length) return null;
+      if (!r.players.some(p => p.id === r.hostId)) {
+        const h = humans[0];
+        r.players.forEach(p => { p.isHost = p.id === h.id; });
+        h.ready = true;
+        r.title = retitleForNewHost(r.title, r.hostName, h.name);
+        Object.assign(r, { hostId: h.id, hostNum: h.num || null, hostName: h.name || '' });
+      }
+      return r;
+    }
+
+    // 팀전방에서 한 명이 빠질 때 고칠 칸 (방장이면 가장 먼저 들어온 친구가 새 방장) · 사람이 아무도 안 남으면 null
+    function teamRoomLeavePatch(room, stuId) {
+      const rest = teamMembersOf(room).filter(m => m.id !== stuId);
+      const humans = rest.filter(m => !m.ai);
+      if (!humans.length) return null;
+      const patch = { [`members/${stuId}`]: null };
+      if (room.hostId === stuId || !rest.some(m => m.id === room.hostId)) {
+        const h = humans[0];
+        Object.assign(patch, { hostId: h.id, hostName: h.name || '', hostNum: h.num || null, [`members/${h.id}/ready`]: true, title: retitleForNewHost(room.title, room.hostName, h.name) });
+      }
+      return patch;
+    }
+
+    // ----- 방 목록이 바뀔 때마다: 나간 사람 정리 · 방장 넘겨받기 · 결투 중 상대가 나갔는지 확인 -----
+    function maintainPvpRooms() {
+      const me = getActiveStudent();
+      if (!me) return;
+      Object.entries(livePvpRoomsCache || {}).forEach(([key, r]) => {
+        if (!r || typeof r !== 'object' || !r.roomId) { removePvpRoomData(key); return; } // 끊김 표시만 남은 빈 칸
+        if (isTeamLiveRoom(r)) {
+          const humans = teamMembersOf(r).filter(m => !m.ai);
+          if (!humans.length) { removePvpRoomData(r.roomId); return; }
+          if (r.members && r.members[r.hostId]) return;
+          // 방장이 갑자기 나감 → 가장 먼저 들어온 친구가 이어받음 (전투 중이면 전투 계산까지)
+          if (humans[0].id !== me.id) return;
+          if (r.status === 'playing' && sim.running && liveNet.role === 'guest' && liveNet.roomId === r.roomId && !liveNet.spectator) {
+            takeOverLiveBattle(null);
+          } else {
+            saveTeamRoomPatch(r.roomId, {
+              hostId: me.id, hostName: me.name, hostNum: me.num || null, title: retitleForNewHost(r.title, r.hostName, me.name), [`members/${me.id}/ready`]: true,
+              ...(r.status === 'playing' ? { status: 'waiting', startedAt: null, fill: null } : {})
+            });
+            showRewardBanner(`👑 방장이 나가서 [${r.title}] 팀전방의 새 방장이 됐어요!`);
+          }
+          return;
+        }
+        const realGuest = Boolean(r.guestId) && !r.practiceFriend;
+        const hostGone = roomGone(r, r.hostId);
+        const guestGone = realGuest && roomGone(r, r.guestId);
+        // 결투 중 상대가 나갔으면 내 화면에서 바로 끝냄 (상대 포기로 승리)
+        if (sim.running && !sim.spectator && currentActiveLiveBattleRoomId === r.roomId) {
+          if (r.hostId === me.id && (guestGone || !r.guestId)) { sim.forfeitTeam = 'red'; finishSimulation(true); }
+          else if (r.guestId === me.id && hostGone) { stopLiveBattleNet(); sim.forfeitTeam = 'blue'; finishSimulation(false); }
+        }
+        if (hostGone && (!realGuest || guestGone)) { removePvpRoomData(r.roomId); return; }
+        if (hostGone && r.guestId === me.id) {
+          savePvpRoomData(r.roomId, pvpRoomWithout(r, r.hostId));
+          showRewardBanner(`👑 방장이 나가서 [${r.title}] 결투방의 새 방장이 됐어요!`);
+        } else if (guestGone && r.hostId === me.id) {
+          savePvpRoomData(r.roomId, pvpRoomWithout(r, r.guestId));
+        }
+      });
+      // 관전 중인 방 확인 (방이 닫혔으면 관전 끝, 다른 친구의 저장에 내 관전 표시가 지워졌으면 다시 씀)
+      if (currentSpectatingPvpRoomId) {
+        const r = livePvpRoomsCache[currentSpectatingPvpRoomId];
+        if (!r) {
+          currentSpectatingPvpRoomId = null;
+          if (sim.spectator && sim.running) abortLiveBattle('📺 관전하던 결투방이 닫혔어요.');
+        } else if (isPvpRoomPlayer(r, me.id)) {
+          currentSpectatingPvpRoomId = null;
+        } else if (!(r.spectators && r.spectators[me.id])) {
+          writeSpectatorEntry(r, me);
+        }
+      }
+    }
+
+    function maintainRaidRooms() {
+      const me = getActiveStudent();
+      if (!me) return;
+      Object.entries(liveRaidRoomsCache || {}).forEach(([key, r]) => {
+        if (!r || typeof r !== 'object' || !r.roomId) { removeRaidRoomData(key); return; }
+        const realGuest = Boolean(r.guestId) && !r.practiceFriend;
+        const hostGone = roomGone(r, r.hostId);
+        const guestGone = realGuest && roomGone(r, r.guestId);
+        if (hostGone && (!realGuest || guestGone)) { removeRaidRoomData(r.roomId); return; }
+        if (hostGone && r.guestId === me.id) {
+          saveRaidRoomData(r.roomId, raidRoomWithout(r, r.hostId));
+          showRewardBanner(`👑 방장이 나가서 [${r.title}] 레이드방의 새 방장이 됐어요!`);
+        } else if (guestGone && r.hostId === me.id) {
+          saveRaidRoomData(r.roomId, raidRoomWithout(r, r.guestId));
+        } else if (r.status === 'in_battle' && Date.now() - (r.startedAt || 0) > 3000) {
+          maybeReturnRaidRoomToWaiting(r);
+        }
+      });
+    }
+
+    function maintainMinigameRooms() {
+      const me = getActiveStudent();
+      if (!me) return;
+      Object.entries(liveMinigameRoomsCache || {}).forEach(([key, r]) => {
+        if (!r || typeof r !== 'object' || !r.roomId) { removeMinigameRoomData(key); return; }
+        const goneIds = (r.players || []).filter(p => p && roomGone(r, p.id)).map(p => p.id);
+        if (!goneIds.length) return;
+        let next = r;
+        goneIds.forEach(id => { next = next && minigameRoomWithout(next, id); });
+        if (!next) { removeMinigameRoomData(r.roomId); return; }
+        // 정리는 (새) 방장 한 명만 함 → 나간 친구 자리는 AI가 이어서 둠
+        if (next.hostId !== me.id) return;
+        saveMinigameRoomData(r.roomId, next); // 먼저 방장을 바꿔 둬야 내 화면이 AI 자리를 둘 수 있음
+        if (r.status === 'playing' && currentJoinedMinigameRoomId === r.roomId) mgSeatsToAi(r.gameType, goneIds);
+        if (r.hostId !== me.id) showRewardBanner(`👑 방장이 나가서 [${r.title}] 미니게임방의 새 방장이 됐어요!`);
+      });
+      // 방장을 넘겨받은 화면: 지금 차례가 AI 자리면 이어서 둠 (게임 상태가 방 정보보다 먼저 도착했을 때 대비)
+      const room = currentJoinedMinigameRoomId ? liveMinigameRoomsCache[currentJoinedMinigameRoomId] : null;
+      if (room && room.status === 'playing' && room.hostId === me.id && MG_GAME_HOOKS[room.gameType]) {
+        const st = MG_GAME_HOOKS[room.gameType].state();
+        if (st && st.initialized && !st.gameOver && mgIsAiSeat(st, st.turnSeat)) MG_GAME_HOOKS[room.gameType].ai();
+      }
     }
 
     // ==================== [A. 실시간 PvP 결투장 : 로비방 개설 → 친구 입장 → 준비완료 → 결투 시작] ====================
@@ -14809,6 +15613,18 @@
       if (!room || !stuId) return false;
       return room.hostId === stuId || room.guestId === stuId || Boolean(isTeamLiveRoom(room) && room.members && room.members[stuId]);
     }
+    // 실제로 그 방에서 플레이하는 학생인지 (연습 친구·AI 친구로 이름만 빌려 준 학생, 관전자는 아님)
+    function isPvpRoomPlayer(room, stuId) {
+      if (!room || !stuId) return false;
+      if (isTeamLiveRoom(room)) return Boolean(room.members && room.members[stuId] && !room.members[stuId].ai);
+      return room.hostId === stuId || (room.guestId === stuId && !room.practiceFriend);
+    }
+    function pvpRoomHasSeat(room) {
+      if (isTeamLiveRoom(room)) {
+        return teamSideMembers(room, 'blue').length < TEAM_LIVE_MAX_PER_SIDE || teamSideMembers(room, 'red').length < TEAM_LIVE_MAX_PER_SIDE;
+      }
+      return !room.guestId;
+    }
     function teamMemberSnap(stu, merc) {
       return { id: stu.id, name: stu.name, num: stu.num || null, roster: merc ? [JSON.parse(JSON.stringify(merc))] : [] };
     }
@@ -14855,11 +15671,13 @@
       const room = livePvpRoomsCache[roomId];
       if (!room || !me || room.status !== 'waiting') return;
       if (!(me.roster || []).length) { showNotice('⚠️ 팀전에 들어가려면 먼저 용병을 1명 이상 고용해 주세요!'); return; }
-      currentJoinedPvpRoomId = roomId;
-      if (isPvpRoomMember(room, me.id)) { renderLivePvpRoomsList(); return; }
+      if (isPvpRoomPlayer(room, me.id)) { currentJoinedPvpRoomId = roomId; renderLivePvpRoomsList(); return; }
       const nb = teamSideMembers(room, 'blue').length;
       const nr = teamSideMembers(room, 'red').length;
       if (nb >= TEAM_LIVE_MAX_PER_SIDE && nr >= TEAM_LIVE_MAX_PER_SIDE) { showNotice('⚠️ 팀전 방이 꽉 찼어요! (5:5)'); return; }
+      leaveRoomsExcept('pvp', roomId);
+      if (currentSpectatingPvpRoomId === roomId) stopSpectatingPvpRoom(true);
+      currentJoinedPvpRoomId = roomId;
       const side = nr < nb ? 'red' : (nb < nr ? 'blue' : 'red');
       await saveTeamRoomPatch(roomId, { [`members/${me.id}`]: makeTeamMember(me, nr >= TEAM_LIVE_MAX_PER_SIDE ? 'blue' : (nb >= TEAM_LIVE_MAX_PER_SIDE ? 'red' : side)) });
       // 브라우저를 닫거나 끊기면 내 자리를 자동으로 비움
@@ -15015,9 +15833,11 @@
           <div class="flex items-center gap-2">
             <span class="px-2.5 py-1 rounded-lg bg-sky-500/20 text-sky-300 font-extrabold text-xs">👥 실시간 팀전 대기실</span>
             <h4 class="font-title text-xl text-white">${room.title || `${room.hostName}의 팀전방`}</h4>
+            ${!mem ? '<span class="px-2 py-0.5 rounded-lg bg-violet-500/20 text-violet-300 font-extrabold text-[11px]">📺 관전 중</span>' : ''}
           </div>
-          <button onclick="leaveOrClosePvpRoom('${room.roomId}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300">🚪 ${isHost ? '방 닫기' : '방 나가기'}</button>
+          ${pvpRoomLeaveButtonHTML(room, me)}
         </div>
+        ${renderPvpSpectatorBarHTML(room, me, !mem)}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">${column('blue')}${column('red')}</div>
         ${picker}
         <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
@@ -15027,31 +15847,37 @@
     }
 
     function renderTeamLiveRoomCard(r, myStu) {
-      const isMine = myStu && isPvpRoomMember(r, myStu.id);
+      const isMine = myStu && isPvpRoomPlayer(r, myStu.id);
       const st = teamLiveStartState(r);
       const full = st.nb >= TEAM_LIVE_MAX_PER_SIDE && st.nr >= TEAM_LIVE_MAX_PER_SIDE;
       const humans = st.members.filter(m => !m.ai && m.id !== r.hostId).length;
+      const watchingThis = !isMine && currentSpectatingPvpRoomId === r.roomId;
+      const nSpec = pvpSpectatorList(r).length;
+      const watchBtn = `<button onclick="spectatePvpRoom('${r.roomId}')" class="px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 관전하기</button>`;
       return `
         <div class="bg-slate-950 border-2 ${isMine ? 'border-amber-500/60' : 'border-slate-800'} rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div class="flex items-center gap-2">
               <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${r.status === 'waiting' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">${r.status === 'waiting' ? `🟢 모집 중 (${st.members.length}/10명)` : '🔥 팀전 진행중'}</span>
               <span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-sky-500/20 text-sky-300">👥 팀전 ${st.nb}:${st.nr}</span>
+              ${nSpec ? `<span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-violet-500/20 text-violet-300">📺 ${nSpec}명 관전</span>` : ''}
               <span class="font-bold text-sm text-white">${r.title || `${r.hostName}의 팀전방`}</span>
             </div>
             <div class="text-xs text-slate-400 mt-1">👑 방장: <strong class="text-white">${r.hostName}</strong> · 🔵 ${teamSideMembers(r, 'blue').map(m => m.name).join(', ') || '-'} · 🔴 ${teamSideMembers(r, 'red').map(m => m.name).join(', ') || '-'}</div>
           </div>
-          <div>
-            ${r.status === 'waiting'
+          <div class="flex flex-wrap items-center gap-2">
+            ${watchingThis
+              ? '<span class="px-3 py-1.5 rounded-xl bg-violet-500/20 text-violet-300 font-extrabold text-xs">📺 관전 중인 방</span>'
+              : r.status === 'waiting'
               ? (isMine
                   ? '<span class="px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 font-extrabold text-xs">참여 중인 방</span>'
-                  : (full
+                  : `${watchBtn}${full
                       ? '<span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-500 font-bold text-xs">정원 초과 (5:5)</span>'
-                      : `<button onclick="joinTeamLiveRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs shadow">🚪 팀전 들어가기</button>`))
+                      : `<button onclick="joinTeamLiveRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs shadow">🚪 팀전 들어가기</button>`}`)
               : (isMine
                   ? '<span class="px-3 py-1.5 rounded-xl bg-rose-500/20 text-rose-300 font-bold text-xs">경기 진행중</span>'
                   : (humans
-                      ? `<button onclick="spectatePvpRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 관전하기</button>`
+                      ? watchBtn
                       : '<span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-400 font-bold text-xs">연습 경기 진행중</span>'))}
           </div>
         </div>`;
@@ -15104,7 +15930,9 @@
         const titleInp = document.getElementById('pvpNewRoomTitleInput');
         const customTitle = cleanUserText(titleInp?.value, 24) || `${myStu.name}의 실시간 팀전방`;
         if (titleInp) titleInp.value = '';
-        const roomId = 'pvp_' + myStu.id;
+        // 방장이 바뀌어도 방 이름표(roomId)는 그대로라, 새로 만들 때마다 다른 이름표를 씀 (넘겨준 방과 안 겹치게)
+        const roomId = 'pvp_' + myStu.id + '_' + Date.now().toString(36).slice(-5);
+        leaveRoomsExcept('pvp', roomId);
         launchedLiveRoomIds.delete(roomId);
         currentJoinedPvpRoomId = roomId;
         await savePvpRoomData(roomId, {
@@ -15121,7 +15949,7 @@
           status: 'waiting',
           createdAt: Date.now()
         });
-        armHostRoomAutoCleanup([`pvp_rooms/${roomId}`]);
+        try { teamMemberRef(roomId, myStu.id)?.onDisconnect().remove(); } catch (e) {}
         showRewardBanner(`👥 [${customTitle}] 팀전방을 만들었어요! 친구들이 들어와 팀을 고르고 준비완료를 누르면 시작할 수 있어요.`);
         return;
       }
@@ -15137,7 +15965,8 @@
       const titleInp = document.getElementById('pvpNewRoomTitleInput');
       const customTitle = cleanUserText(titleInp?.value, 24) || (duel ? `${myStu.name}의 1:1 용병 대결방` : `${myStu.name}의 5:5 실시간 결투방`);
       if (titleInp) titleInp.value = '';
-      const roomId = 'pvp_' + myStu.id;
+      const roomId = 'pvp_' + myStu.id + '_' + Date.now().toString(36).slice(-5);
+      leaveRoomsExcept('pvp', roomId);
       launchedLiveRoomIds.delete(roomId);
       currentJoinedPvpRoomId = roomId;
 
@@ -15163,7 +15992,7 @@
       };
       if (duel) roomObj.hostPower = 0;
       await savePvpRoomData(roomId, roomObj);
-      armHostRoomAutoCleanup([`pvp_rooms/${roomId}`]);
+      armRoomPresence(`pvp_rooms/${roomId}`, myStu.id);
       showRewardBanner(`⚡ [${customTitle}] 결투 대기방이 개설되었습니다! 다른 친구가 입장해 [준비완료]를 누르면 시작할 수 있습니다.`);
     };
 
@@ -15178,11 +16007,15 @@
           : '⚠️ 결투방에 입장하려면 먼저 [🏠 홈]에서 출전 용병을 1명 이상 배치해주세요!');
         return;
       }
-      currentJoinedPvpRoomId = roomId;
       if (room.hostId === myStu.id) {
+        currentJoinedPvpRoomId = roomId;
         renderLivePvpRoomsList();
         return;
       }
+      if (room.status !== 'waiting' || (room.guestId && room.guestId !== myStu.id)) { showNotice('⚠️ 이미 자리가 찬 결투방이에요.'); return; }
+      leaveRoomsExcept('pvp', roomId);
+      if (currentSpectatingPvpRoomId === roomId) stopSpectatingPvpRoom(true);
+      currentJoinedPvpRoomId = roomId;
       room.guestId = myStu.id;
       room.guestNum = myStu.num;
       room.guestName = myStu.name;
@@ -15192,7 +16025,10 @@
       room.guestReady = false;
       room.practiceFriend = false;
       if (isDuelRoom(room)) { room.guestPickId = null; room.guestPower = 0; }
+      if (room.gone) delete room.gone[myStu.id];
+      if (room.spectators) delete room.spectators[myStu.id];
       await savePvpRoomData(roomId, room);
+      armRoomPresence(`pvp_rooms/${roomId}`, myStu.id);
       showRewardBanner(isDuelRoom(room)
         ? `🚪 [${room.title}]에 입장했습니다! 대결할 용병을 고르고 [✋ 준비완료]를 눌러주세요.`
         : `🚪 [${room.title}]에 입장했습니다! [✋ 준비완료] 버튼을 눌러주세요.`);
@@ -15261,37 +16097,134 @@
       await savePvpRoomData(roomId, room);
     };
 
-    window.leaveOrClosePvpRoom = async function (roomId) {
+    // 방에서 나가기: 방장이 나가도 방은 그대로 두고 남은 친구에게 방장을 넘김 (남은 사람이 없을 때만 방을 닫음)
+    window.leaveOrClosePvpRoom = async function (roomId, quiet = false) {
       const myStu = getActiveStudent();
       const room = livePvpRoomsCache[roomId];
-      currentJoinedPvpRoomId = null;
-      pvpFormationDraft = null;
+      if (roomId === currentJoinedPvpRoomId) {
+        currentJoinedPvpRoomId = null;
+        pvpFormationDraft = null;
+      }
       if (!room || !myStu) {
         renderLivePvpRoomsList();
         return;
       }
-      if (room.hostId === myStu.id) {
-        await removePvpRoomData(roomId);
-        showNotice('🚪 개설한 실시간 결투 대기방을 닫았습니다.');
-      } else if (isTeamLiveRoom(room) && room.members && room.members[myStu.id]) {
+      if (!isPvpRoomPlayer(room, myStu.id)) {
+        if (currentSpectatingPvpRoomId === roomId || (room.spectators && room.spectators[myStu.id])) stopSpectatingPvpRoom(quiet, roomId);
+        else renderLivePvpRoomsList();
+        return;
+      }
+      quitRoomBattleIfRunning(roomId);
+      disarmRoomPresence(`pvp_rooms/${roomId}`, myStu.id);
+      const wasHost = room.hostId === myStu.id;
+      if (isTeamLiveRoom(room)) {
         try { teamMemberRef(roomId, myStu.id)?.onDisconnect().cancel(); } catch (e) {}
-        await saveTeamRoomPatch(roomId, { [`members/${myStu.id}`]: null });
-        showNotice('🚪 팀전방에서 나왔어요.');
-      } else if (room.guestId === myStu.id) {
-        room.guestId = null;
-        room.guestNum = null;
-        room.guestName = null;
-        room.guestPower = 0;
-        room.guestStudentSnapshot = null;
-        room.guestFormationSaved = false;
-        room.guestReady = false;
-        room.guestPickId = null;
-        await savePvpRoomData(roomId, room);
-        showNotice('🚪 결투 대기방에서 퇴장했습니다.');
+        const patch = teamRoomLeavePatch(room, myStu.id);
+        if (!patch) {
+          await removePvpRoomData(roomId);
+          if (!quiet) showNotice('🚪 팀전방을 닫았어요.');
+        } else {
+          await saveTeamRoomPatch(roomId, patch);
+          if (!quiet) showNotice(wasHost && patch.hostId ? `🚪 팀전방에서 나왔어요. 👑 방장은 ${patch.hostName} 친구에게 넘겼어요.` : '🚪 팀전방에서 나왔어요.');
+        }
+        return;
+      }
+      const next = pvpRoomWithout(room, myStu.id);
+      if (!next) {
+        await removePvpRoomData(roomId);
+        if (!quiet) showNotice('🚪 결투 대기방을 닫았어요.');
+        return;
+      }
+      await savePvpRoomData(roomId, next);
+      if (!quiet) showNotice(wasHost ? `🚪 결투방에서 나왔어요. 👑 방장은 ${next.hostName} 친구에게 넘겼어요.` : '🚪 결투 대기방에서 나왔어요.');
+    };
+
+    // ===== 📺 관전자: 대기 중인 방도 관전할 수 있음 (spectators/{학생id}) =====
+    // 대기실을 보기만 하다가 결투가 시작되면 자동으로 관전 화면이 열리고, 끝나면 다시 대기실을 봄
+    function pvpSpectatorList(room) {
+      return Object.values((room && room.spectators) || {}).filter(s => s && s.id).sort((a, b) => (a.at || 0) - (b.at || 0));
+    }
+
+    function writeSpectatorEntry(room, me) {
+      const entry = { id: me.id, name: me.name, num: me.num || null, at: Date.now() };
+      room.spectators = { ...(room.spectators || {}), [me.id]: entry };
+      try {
+        const ref = classRoomRef(`pvp_rooms/${room.roomId}/spectators/${me.id}`);
+        if (ref) {
+          ref.set(entry).catch(() => {});
+          ref.onDisconnect().remove();
+        }
+      } catch (e) {}
+    }
+
+    window.spectatePvpRoom = function (roomId) {
+      const me = getActiveStudent();
+      const r = livePvpRoomsCache[roomId];
+      if (!r || !me) { showNotice('⚠️ 결투방을 찾지 못했어요.'); return; }
+      if (isPvpRoomPlayer(r, me.id)) return;
+      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      leaveRoomsExcept('pvp', roomId);
+      currentSpectatingPvpRoomId = roomId;
+      writeSpectatorEntry(r, me);
+      renderLivePvpRoomsList();
+      if (r.status === 'playing') {
+        if (!launchedLiveRoomIds.has(r.roomId) || !(sim.spectator && sim.running)) launchPvpSpectateBattle(r);
       } else {
-        renderLivePvpRoomsList();
+        showRewardBanner(`📺 [${r.title || '결투방'}] 대기방을 관전해요. 결투가 시작되면 관전 화면이 자동으로 열려요!`);
+        document.getElementById('pvpWaitingRoomPanel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     };
+
+    window.stopSpectatingPvpRoom = function (quiet = false, roomIdArg = null) {
+      const me = getActiveStudent();
+      const roomId = roomIdArg || currentSpectatingPvpRoomId;
+      if (roomId === currentSpectatingPvpRoomId) currentSpectatingPvpRoomId = null;
+      if (sim.spectator && (!roomIdArg || sim.spectateRoomId === roomId)) { stopLiveBattleNet(); closeBattleResult(); }
+      if (me && roomId) {
+        try {
+          const ref = classRoomRef(`pvp_rooms/${roomId}/spectators/${me.id}`);
+          if (ref) {
+            ref.onDisconnect().cancel();
+            ref.remove().catch(() => {});
+          }
+        } catch (e) {}
+        const r = livePvpRoomsCache[roomId];
+        if (r && r.spectators) delete r.spectators[me.id];
+      }
+      renderLivePvpRoomsList();
+      if (!quiet) showNotice('📺 관전을 그만뒀어요.');
+    };
+
+    function renderPvpSpectatorBarHTML(room, me, isSpectator) {
+      const list = pvpSpectatorList(room);
+      const canJoin = isSpectator && room.status === 'waiting' && pvpRoomHasSeat(room);
+      const names = list.map(s => `<span class="${me && s.id === me.id ? 'text-amber-300' : 'text-white'}">${s.name}${me && s.id === me.id ? ' (나)' : ''}</span>`).join(', ');
+      return `
+        <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-950 border border-violet-500/40 rounded-2xl px-4 py-2.5">
+          <div class="text-xs font-bold text-slate-300 min-w-0">
+            <span class="text-violet-300 font-extrabold">📺 관전 중 ${list.length}명</span>
+            ${list.length ? ` · ${names}` : ' · <span class="text-slate-500">아직 관전하는 친구가 없어요</span>'}
+          </div>
+          ${isSpectator ? `
+            <div class="flex items-center gap-2">
+              <span class="text-[11px] text-violet-300 font-bold">결투가 시작되면 관전 화면이 자동으로 열려요</span>
+              ${canJoin ? `<button onclick="${isTeamLiveRoom(room) ? 'joinTeamLiveRoom' : 'joinFirebasePvpRoom'}('${room.roomId}')" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow">🚪 참가하기</button>` : ''}
+            </div>` : ''}
+        </div>`;
+    }
+
+    function pvpRoomLeaveButtonHTML(room, me) {
+      const isSpectator = me && !isPvpRoomPlayer(room, me.id);
+      if (isSpectator) {
+        return `<button onclick="stopSpectatingPvpRoom()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-violet-900/60 text-xs font-bold text-slate-300">📺 관전 그만하기</button>`;
+      }
+      const isHost = me && room.hostId === me.id;
+      const others = isTeamLiveRoom(room)
+        ? teamMembersOf(room).some(m => !m.ai && m.id !== me.id)
+        : Boolean(room.guestId && !room.practiceFriend && room.guestId !== me.id);
+      const label = isHost ? (others ? '방 나가기 (방장 넘기기)' : '방 닫기') : '방 나가기';
+      return `<button onclick="leaveOrClosePvpRoom('${room.roomId}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300">🚪 ${label}</button>`;
+    }
 
     // ==================== [결투 전 진형 편집] ====================
     // 대기실에서 각자 출전 용병의 3×5 위치를 바꿔 저장하면 방의 host/guestStudentSnapshot 에 들어가고,
@@ -15629,16 +16562,36 @@
       const rooms = Object.values(livePvpRoomsCache || {}).filter(r => r && (r.status === 'waiting' || r.status === 'playing') && (Date.now() - (r.createdAt || 0) < 1800000));
       if (badge) badge.textContent = `대기방 ${rooms.length}개`;
 
-      // 내가 현재 속해 있는 방 확인
-      const myRoom = rooms.find(r => myStu && (r.roomId === currentJoinedPvpRoomId ? (!isTeamLiveRoom(r) || isPvpRoomMember(r, myStu.id)) : isPvpRoomMember(r, myStu.id)));
+      // 내가 현재 속해 있는 방 확인 (플레이어로 없으면 관전 중인 방)
+      const playerRoom = myStu ? rooms.find(r => isPvpRoomPlayer(r, myStu.id)) : null;
+      const watchRoom = !playerRoom && currentSpectatingPvpRoomId ? rooms.find(r => r.roomId === currentSpectatingPvpRoomId) : null;
+      const myRoom = playerRoom || watchRoom;
+      const watching = Boolean(watchRoom);
       if (waitPanel) {
-        if (myRoom && myRoom.status === 'waiting' && isTeamLiveRoom(myRoom)) {
-          currentJoinedPvpRoomId = myRoom.roomId;
+        if (watching && myRoom.status !== 'waiting') {
+          // 관전 중인 방이 경기 중: 관전 화면으로 가는 버튼 · 관전자 목록
+          pvpFormationDraft = null;
+          waitPanel.classList.remove('hidden');
+          waitPanel.innerHTML = `
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+              <div class="flex items-center gap-2">
+                <span class="px-2.5 py-1 rounded-lg bg-violet-500/20 text-violet-300 font-extrabold text-xs">📺 관전 중 · 🔥 경기 진행중</span>
+                <h4 class="font-title text-xl text-white">${myRoom.title || `${myRoom.hostName}의 결투방`}</h4>
+              </div>
+              ${pvpRoomLeaveButtonHTML(myRoom, myStu)}
+            </div>
+            ${renderPvpSpectatorBarHTML(myRoom, myStu, true)}
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="text-xs font-bold text-slate-300">${sim.spectator && sim.running ? '📺 결투를 관전하고 있어요.' : '경기가 끝나면 다시 대기실을 볼 수 있어요.'}</div>
+              ${sim.spectator && sim.running ? `<button onclick="returnToBattle()" class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 관전 화면 보기</button>` : ''}
+            </div>`;
+        } else if (myRoom && myRoom.status === 'waiting' && isTeamLiveRoom(myRoom)) {
+          if (!watching) currentJoinedPvpRoomId = myRoom.roomId;
           pvpFormationDraft = null;
           waitPanel.classList.remove('hidden');
           waitPanel.innerHTML = renderTeamLiveRoomHTML(myRoom, myStu);
         } else if (myRoom && myRoom.status === 'waiting') {
-          currentJoinedPvpRoomId = myRoom.roomId;
+          if (!watching) currentJoinedPvpRoomId = myRoom.roomId;
           const isHost = myStu && myRoom.hostId === myStu.id;
           const isGuest = myStu && myRoom.guestId === myStu.id;
           const hasGuest = Boolean(myRoom.guestId);
@@ -15653,11 +16606,11 @@
               <div class="flex items-center gap-2">
                 <span class="px-2.5 py-1 rounded-lg ${duel ? 'bg-amber-500/20 text-amber-300' : 'bg-rose-500/20 text-rose-300'} font-extrabold text-xs">${duel ? '🗡️ 1:1 용병 대결 대기실' : '⚡ 실시간 PvP 대기실'}</span>
                 <h4 class="font-title text-xl text-white">${myRoom.title || `${myRoom.hostName}의 결투방`}</h4>
+                ${watching ? '<span class="px-2 py-0.5 rounded-lg bg-violet-500/20 text-violet-300 font-extrabold text-[11px]">📺 관전 중</span>' : ''}
               </div>
-              <button onclick="leaveOrClosePvpRoom('${myRoom.roomId}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300">
-                🚪 ${isHost ? '방 닫기' : '방 나가기'}
-              </button>
+              ${pvpRoomLeaveButtonHTML(myRoom, myStu)}
             </div>
+            ${renderPvpSpectatorBarHTML(myRoom, myStu, watching)}
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <!-- 방장(Host) 슬롯 -->
@@ -15775,8 +16728,11 @@
       }
       box.innerHTML = rooms.map(r => {
         if (isTeamLiveRoom(r)) return renderTeamLiveRoomCard(r, myStu);
-        const isMyRoom = myStu && (r.hostId === myStu.id || r.guestId === myStu.id);
+        const isMyRoom = myStu && isPvpRoomPlayer(r, myStu.id);
         const hasGuest = Boolean(r.guestId);
+        const watchingThis = !isMyRoom && currentSpectatingPvpRoomId === r.roomId;
+        const nSpec = pvpSpectatorList(r).length;
+        const watchBtn = `<button onclick="spectatePvpRoom('${r.roomId}')" class="px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 관전하기</button>`;
         return `
           <div class="bg-slate-950 border-2 ${isMyRoom ? 'border-amber-500/60' : 'border-slate-800'} rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -15785,6 +16741,7 @@
                   ${r.status === 'waiting' ? (hasGuest ? (r.guestReady ? '✅ 준비완료 (2/2명)' : '⏳ 준비중 (2/2명)') : '🟢 입장 가능 (1/2명)') : '🔥 결투 진행중'}
                 </span>
                 <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${isDuelRoom(r) ? 'bg-amber-500/20 text-amber-300' : 'bg-indigo-500/20 text-indigo-300'}">${isDuelRoom(r) ? '🗡️ 1:1 대결' : '👥 5:5'}</span>
+                ${nSpec ? `<span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-violet-500/20 text-violet-300">📺 ${nSpec}명 관전</span>` : ''}
                 <span class="font-bold text-sm text-white">${r.title || `${r.hostName}의 결투방`}</span>
               </div>
               <div class="text-xs text-slate-400 mt-1">
@@ -15792,19 +16749,21 @@
                 ${hasGuest ? ` · ⚔️ 도전자: <strong class="text-rose-300">${r.guestName}</strong>` : ' · 도전자 대기중'}
               </div>
             </div>
-            <div>
+            <div class="flex flex-wrap items-center gap-2">
               ${
-                r.status === 'waiting'
+                watchingThis
+                  ? `<span class="px-3 py-1.5 rounded-xl bg-violet-500/20 text-violet-300 font-extrabold text-xs">📺 관전 중인 방</span>`
+                  : r.status === 'waiting'
                   ? (isMyRoom
                       ? `<span class="px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 font-extrabold text-xs">참여 중인 방</span>`
-                      : (hasGuest
+                      : `${watchBtn}${hasGuest
                           ? `<span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-500 font-bold text-xs">정원 초과 (2/2)</span>`
-                          : `<button onclick="joinFirebasePvpRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow">🚪 방 입장하기</button>`))
+                          : `<button onclick="joinFirebasePvpRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow">🚪 방 입장하기</button>`}`)
                   : (isMyRoom
                       ? `<span class="px-3 py-1.5 rounded-xl bg-rose-500/20 text-rose-300 font-bold text-xs">경기 진행중</span>`
                       : (r.practiceFriend
                           ? `<span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-400 font-bold text-xs" title="연습 친구와 하는 결투는 관전할 수 없어요">연습 경기 진행중</span>`
-                          : `<button onclick="spectatePvpRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 관전하기</button>`))
+                          : watchBtn))
               }
             </div>
           </div>
@@ -15831,13 +16790,11 @@
     }
 
     // 📺 관전: 방장 화면이 올리는 결투 화면을 받아서 보기만 함 (조작을 보내지 않고, 보상·기록도 없음)
-    window.spectatePvpRoom = function (roomId) {
-      const me = getActiveStudent();
-      const r = livePvpRoomsCache[roomId];
-      if (!r || r.status !== 'playing') { showNotice('⚠️ 지금 진행 중인 결투가 아니에요.'); return; }
-      if (me && isPvpRoomMember(r, me.id)) return;
-      if (r.practiceFriend) { showNotice('⚠️ 연습 친구와 하는 결투는 방장 화면에서만 진행돼서 관전할 수 없어요.'); return; }
-      if (sim.running && sim.mode !== 'idle_preview') { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+    function launchPvpSpectateBattle(r) {
+      launchedLiveRoomIds.add(r.roomId);
+      const practice = r.practiceFriend || (isTeamLiveRoom(r) && !teamMembersOf(r).some(m => !m.ai && m.id !== r.hostId));
+      if (practice) { showNotice('📺 연습 친구·AI와 하는 경기는 방장 화면에서만 진행돼서 관전할 수 없어요. 다음 결투를 기다려 주세요!'); return; }
+      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
       const blueStu = state.students.find(x => x.id === r.hostId) || r.hostStudentSnapshot;
       const redStu = state.students.find(x => x.id === r.guestId) || r.guestStudentSnapshot;
       const built = isTeamLiveRoom(r) ? buildTeamLiveUnits(r) : (blueStu && redStu ? buildLiveRoomUnits(r, blueStu, redStu) : null);
@@ -15852,11 +16809,12 @@
         customBlueUnits: built.blueUnits,
         customRedUnits: built.redUnits,
         rewardMc: 0,
-        netRole: 'guest',
+        netRole: 'guest', roomBattle: true,
         myTeam: 'blue'
       });
       if (!sim.running) return;
       sim.spectator = true;
+      sim.spectateRoomId = r.roomId;
       // 고를 것 없이 보기만: 전투 방식 고르기 창을 닫고 자동(화면 이동만)으로 고정
       battleControl.locked = true;
       battleControl.mode = 'auto';
@@ -15864,9 +16822,11 @@
       sim.awaitingControlChoice = false;
       document.getElementById('battleControlChooser')?.classList.add('hidden');
       renderBattleControlHud(true);
-      addBattleLog(`📺 [관전] ${r.hostName} vs ${r.guestName} 결투를 보고 있어요. (WASD·드래그로 화면 이동)`);
-      startLiveBattleNet(roomId, 'guest', r.startedAt, true, isTeamLiveRoom(r));
-    };
+      addBattleLog(isTeamLiveRoom(r)
+        ? `📺 [관전] ${r.hostName}의 팀전을 보고 있어요. (WASD·드래그로 화면 이동)`
+        : `📺 [관전] ${r.hostName} vs ${r.guestName} 결투를 보고 있어요. (WASD·드래그로 화면 이동)`);
+      startLiveBattleNet(r.roomId, 'guest', r.startedAt, true, isTeamLiveRoom(r));
+    }
 
     function checkAutoStartMatchedPvpRoom() {
       const myStu = getActiveStudent();
@@ -15876,12 +16836,17 @@
         if (r && r.status === 'waiting' && r.roomId) launchedLiveRoomIds.delete(r.roomId);
         if (!r || r.status !== 'playing' || !r.roomId) return;
         if (launchedLiveRoomIds.has(r.roomId)) return;
+        // 대기실부터 관전하던 방이 시작되면 관전 화면을 자동으로 엶
+        if (currentSpectatingPvpRoomId === r.roomId && !isPvpRoomPlayer(r, myStu.id)) {
+          launchPvpSpectateBattle(r);
+          return;
+        }
         if (isTeamLiveRoom(r)) {
-          if (!isPvpRoomMember(r, myStu.id)) return;
+          if (!isPvpRoomPlayer(r, myStu.id)) return;
           launchTeamLiveBattle(r, myStu);
           return;
         }
-        if (r.hostId === myStu.id || r.guestId === myStu.id) {
+        if (isPvpRoomPlayer(r, myStu.id)) {
           launchedLiveRoomIds.add(r.roomId);
           currentActiveLiveBattleRoomId = r.roomId;
           const opponentId = r.hostId === myStu.id ? r.guestId : r.hostId;
@@ -15913,7 +16878,7 @@
               customBlueUnits: blueUnits,
               customRedUnits: redUnits,
               rewardMc: 350,
-              netRole,
+              netRole, roomBattle: true,
               myTeam: isHost ? 'blue' : 'red'
             });
             if (duel && sim.running) {
@@ -15952,7 +16917,7 @@
         customBlueUnits: built.blueUnits,
         customRedUnits: built.redUnits,
         rewardMc: 0,
-        netRole,
+        netRole, roomBattle: true,
         myTeam: mem.team === 'red' ? 'red' : 'blue'
       });
       if (!sim.running) return;
@@ -15981,7 +16946,8 @@
     const liveR2 = v => Math.round(liveNum(v) * 100) / 100;
     const liveBaseId = id => String(id).slice(0, Math.max(0, String(id).lastIndexOf('_')));
 
-    function startLiveBattleNet(roomId, role, roomStartedAt, spectator = false, team = false, teamExpect = []) {
+    // takeover: 전투 도중 방장이 나가서 내가 이어받는 경우 (친구들이 보낸 조작은 지우지 않음)
+    function startLiveBattleNet(roomId, role, roomStartedAt, spectator = false, team = false, teamExpect = [], takeover = false) {
       stopLiveBattleNet();
       const ref = liveRoomRef(roomId);
       if (!ref) {
@@ -15994,19 +16960,23 @@
       Object.assign(liveNet, {
         role, roomId, ref,
         minAt: (roomStartedAt || Date.now()) - 3000,
-        startedAt: Date.now(), initReceived: false, lastFrameAt: Date.now(), targets: {}, finished: false,
+        startedAt: Date.now(), initReceived: false, lastFrameAt: Date.now(), finished: false,
         sent: new WeakSet(), pendingLogs: [], remoteCtrl: null, remoteUnitId: null,
         lastInputSentAt: 0, inputTimer: null, lastAimSent: null,
         guestChose: false, started: false, lastStatusAt: 0, hostStatus: null,
-        hist: {}, frameGap: 0, lastFramePublishedAt: 0, spectator,
+        lastFramePublishedAt: 0, spectator, timeoutExtended: false,
         team: Boolean(team), teamExpect: teamExpect || [], teamChosen: {}, remoteCtrls: {}, myId: getActiveStudent()?.id || null
       });
+      resetLiveFrameBuffer();
       if (role === 'host') {
         try { ref.onDisconnect().remove(); } catch (e) {}
         ref.child('result').remove().catch(() => {});
-        ref.child('input').remove().catch(() => {});
-        ref.child('inputs').remove().catch(() => {});
         ref.child('status').remove().catch(() => {});
+        ref.child('handoff').remove().catch(() => {});
+        if (!takeover) {
+          ref.child('input').remove().catch(() => {});
+          ref.child('inputs').remove().catch(() => {});
+        }
         sim.effects.forEach(x => liveNet.sent.add(x));
         sim.floatTexts.forEach(x => liveNet.sent.add(x));
         const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (k === 'manualAimTarget' ? undefined : v))));
@@ -16022,13 +16992,14 @@
         ref.child('frame').on('value', snap => applyLiveFrame(snap && snap.val()));
         ref.child('result').on('value', snap => applyLiveResult(snap && snap.val()));
         ref.child('status').on('value', snap => applyLiveChoiceStatus(snap && snap.val()));
+        ref.child('handoff').on('value', snap => applyLiveHandoff(snap && snap.val()));
         addBattleLog(spectator ? '📡 결투 화면을 받아오는 중이에요...' : '📡 방장 화면에서 진행되는 전투를 받아오는 중이에요...');
       }
     }
 
     function stopLiveBattleNet() {
       if (liveNet.ref) {
-        ['init', 'frame', 'result', 'input', 'inputs', 'status'].forEach(k => { try { liveNet.ref.child(k).off(); } catch (e) {} });
+        ['init', 'frame', 'result', 'input', 'inputs', 'status', 'handoff'].forEach(k => { try { liveNet.ref.child(k).off(); } catch (e) {} });
       }
       clearTimeout(liveNet.inputTimer);
       Object.values(liveNet.remoteCtrls || {}).forEach(c => {
@@ -16068,10 +17039,10 @@
       return [liveR1(p.x), liveR1(p.y), liveR2(p.angle), String(p.projType || ''), String(p.color || ''), liveNum(p.radius), liveR2(vx), liveR2(vy)];
     }
 
-    function publishLiveBattleFrame() {
+    function publishLiveBattleFrame(force = false) {
       if (liveNet.role !== 'host' || !liveNet.ref) return;
       const nowMs = Date.now();
-      if (nowMs - (liveNet.lastFramePublishedAt || 0) < LIVE_FRAME_INTERVAL_MS) return;
+      if (!force && nowMs - (liveNet.lastFramePublishedAt || 0) < LIVE_FRAME_INTERVAL_MS) return;
       liveNet.lastFramePublishedAt = nowMs;
       const fresh = list => {
         const out = [];
@@ -16112,10 +17083,76 @@
     }
 
     function publishLiveBattleFrameNow() {
-      const tick = sim.tickCount;
-      sim.tickCount = Math.ceil(tick / LIVE_FRAME_EVERY_TICKS) * LIVE_FRAME_EVERY_TICKS;
-      publishLiveBattleFrame();
-      sim.tickCount = tick;
+      publishLiveBattleFrame(true);
+    }
+
+    // ----- 팀전 방장이 나갈 때: 지금 전투 상태를 통째로 남은 친구에게 넘김 (그 친구 화면이 이어서 계산) -----
+    function handOffTeamLiveHost() {
+      const me = getActiveStudent();
+      const ref = liveNet.ref, roomId = liveNet.roomId;
+      const room = roomId ? livePvpRoomsCache[roomId] : null;
+      if (!me || !ref || !room || !isTeamLiveRoom(room)) return false;
+      const present = (liveNet.teamExpect || []).filter(id => id !== me.id && room.members && room.members[id] && !room.members[id].ai);
+      const heirId = present.find(id => !(liveNet.remoteCtrls[id] && liveNet.remoteCtrls[id].forfeited)) || present[0];
+      if (!heirId) return false;
+      const heir = room.members[heirId];
+      publishLiveBattleFrame(true);
+      const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (k === 'manualAimTarget' ? undefined : v))));
+      try { ref.onDisconnect().cancel(); } catch (e) {}
+      ref.child('handoff').set(JSON.parse(JSON.stringify({ at: Date.now(), from: me.id, to: heirId, tick: sim.tickCount, units }))).catch(() => {});
+      saveTeamRoomPatch(roomId, {
+        hostId: heirId, hostName: heir.name || '', hostNum: heir.num || null, title: retitleForNewHost(room.title, room.hostName, heir.name),
+        [`members/${heirId}/ready`]: true, [`members/${me.id}/ready`]: false
+      });
+      stopLiveBattleNet();
+      addBattleLog(`👑 ${heir.name || '친구'}에게 방장을 넘겼어요. 친구들의 전투는 계속 이어져요.`);
+      return true;
+    }
+
+    // ----- 팀원: 방장이 넘겨준 전투를 받아서(또는 방장이 갑자기 끊기면 내 화면 상태로) 이어서 계산 -----
+    function applyLiveHandoff(val) {
+      if (liveNet.role !== 'guest' || liveNet.spectator || !val || liveNum(val.at) < liveNet.minAt) return;
+      if (val.to !== liveNet.myId) return; // 다른 친구가 이어받으면 그 친구가 새로 보내는 화면을 받음
+      takeOverLiveBattle(Array.isArray(val.units) ? val.units : null, val.tick);
+    }
+
+    function takeOverLiveBattle(units, tick) {
+      const me = getActiveStudent();
+      const roomId = liveNet.roomId;
+      const room = roomId ? livePvpRoomsCache[roomId] : null;
+      if (!me || !roomId || !sim.running || !room) return;
+      stopLiveBattleNet();
+      if (units && units.length === sim.units.length) {
+        sim.units = deepCleanStrings(units).map(u => {
+          const kept = [u.damageDealt, u.healDone, u.damageTaken].map(liveNum);
+          normalizeLiveUnit(u);
+          [u.damageDealt, u.healDone, u.damageTaken] = kept;
+          return u;
+        });
+      }
+      if (typeof tick === 'number' && isFinite(tick)) sim.tickCount = tick;
+      // 받은 화면의 투사체·장판은 그림용이라 계산에 쓸 수 없음 (그 순간 날아가던 것만 사라짐)
+      sim.projectiles = [];
+      sim.zones = [];
+      sim.controllers = {};
+      sim.waitingForOpponent = false;
+      sim.awaitingControlChoice = false;
+      const others = teamMembersOf(room).filter(m => !m.ai && m.id !== me.id).map(m => m.id);
+      sim.netRole = others.length ? 'host' : null;
+      const mine = sim.units.find(u => u.liveOwnerId === me.id && u.alive);
+      if (mine) setBattleControlMode('manual', mine.id, true);
+      if (sim.netRole) {
+        startLiveBattleNet(roomId, 'host', Date.now(), false, true, others, true);
+        liveNet.guestChose = true;
+        liveNet.started = true;
+      }
+      currentActiveLiveBattleRoomId = roomId;
+      renderLiveWaitBanner(null);
+      if (room.hostId !== me.id || !(room.members && room.members[me.id] && room.members[me.id].ready)) {
+        saveTeamRoomPatch(roomId, { hostId: me.id, hostName: me.name, hostNum: me.num || null, title: retitleForNewHost(room.title, room.hostName, me.name), [`members/${me.id}/ready`]: true });
+      }
+      addBattleLog('👑 방장이 나가서 내가 이어서 전투를 진행해요! (나간 친구 용병은 AI가 싸워요)');
+      showRewardBanner('👑 방장이 나가서 내가 새 방장이 됐어요! 전투는 그대로 이어져요.');
     }
 
     // ----- 방장: 도전자 조작 받기 (도전자는 레드팀 용병만 조종할 수 있음) -----
@@ -16255,8 +17292,7 @@
       const prevId = battleControl.mode === 'manual' ? battleControl.unitId : null;
       sim.units = units;
       sim.projectiles = [];
-      liveNet.targets = {};
-      liveNet.hist = {};
+      resetLiveFrameBuffer();
       liveNet.initReceived = true;
       liveNet.lastFrameAt = Date.now();
       // 연결 전에 고른 용병이 있으면 방장 화면의 같은 용병으로 이어서 조종
@@ -16270,20 +17306,39 @@
       addBattleLog('📡 방장 화면과 연결됐어요! 같은 전투를 함께 보고 있어요.');
     }
 
+    // 받은 화면은 바로 그리지 않고 잠깐 모아 두었다가(버퍼), 방장 시계 기준으로 조금 늦게 순서대로 다시 재생함
+    // - 예전: 받은 '도착 시각' 기준으로 최근 3장 사이만 이어 그려서, 인터넷이 조금만 들쭉날쭉해도
+    //   다음 화면이 오기 전에 그릴 위치가 바닥나 용병이 멈칫했다가 순간이동하듯 끊겨 보였음
+    // - 지금: 방장이 보낸 시각(at)으로 순서·간격을 맞추고, 도착이 늦어지는 정도(지터)에 맞춰 기다리는 시간을 스스로 조절
+    //   체력·애니메이션·효과도 위치와 같은 시점에 적용해서 맞은 효과와 움직임이 어긋나지 않음
+    function resetLiveFrameBuffer() {
+      Object.assign(liveNet, { frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, lastAimCheckAt: 0 });
+    }
+
     function applyLiveFrame(val) {
       if (liveNet.role !== 'guest' || !liveNet.initReceived || !val || liveNum(val.at) < liveNet.minAt || !Array.isArray(val.u)) return;
-      // 화면이 들어오는 평균 간격 (부드럽게 이어 그릴 때 기준)
-      const gap = Date.now() - (liveNet.lastFrameAt || Date.now());
-      if (gap > 20 && gap < 1000) liveNet.frameGap = liveNet.frameGap ? liveNet.frameGap * 0.8 + gap * 0.2 : gap;
-      liveNet.lastFrameAt = Date.now();
-      if (!liveNet.hist) liveNet.hist = {};
+      const now = Date.now();
+      const at = liveNum(val.at);
+      liveNet.lastFrameAt = now;
+      if (liveNet.curFrame && at <= liveNet.curFrame.at) return; // 이미 지나간 화면
+      // 방장 시계와 내 시계 차이: 최근 화면 중 가장 빨리 도착한 것 기준 (나머지는 '늦게 온 정도' = 지터)
+      const offs = liveNet.clockOffs;
+      offs.push(now - at);
+      if (offs.length > 50) offs.shift();
+      liveNet.clockOff = Math.min(...offs);
+      liveNet.jitter = liveNet.jitter * 0.9 + ((now - at) - liveNet.clockOff) * 0.1;
+      const buf = liveNet.frameBuf;
+      if (buf.some(f => f.at === at)) return;
+      buf.push({ at, val });
+      if (buf.length > 1 && buf[buf.length - 2].at > at) buf.sort((a, b) => a.at - b.at);
+      if (buf.length > 80) buf.splice(0, buf.length - 80);
+    }
+
+    // 버퍼의 화면 한 장을 적용 (위치는 따로 이어 그림) · ageMs = 그 화면이 재생 시점보다 얼마나 앞선 것인지
+    function applyLiveFrameState(val, ageMs) {
       val.u.forEach((p, i) => {
         const u = sim.units[i];
         if (!u || !Array.isArray(p)) return;
-        liveNet.targets[i] = { x: liveNum(p[0]), y: liveNum(p[1]) };
-        const hist = liveNet.hist[i] || (liveNet.hist[i] = []);
-        hist.push({ t: Date.now(), x: liveNum(p[0]), y: liveNum(p[1]) });
-        if (hist.length > 3) hist.shift();
         u.hp = liveNum(p[2]);
         u.shield = liveNum(p[3]);
         u.mana = liveNum(p[4]);
@@ -16305,8 +17360,10 @@
         u.casting = Array.isArray(p[18]) ? { left: liveNum(p[18][0]), total: Math.max(1, liveNum(p[18][1])), icon: cleanUserText(p[18][2], 4) } : null;
         u.itemCd = liveNum(p[19]); u.atkSpdStacks = liveNum(p[20]); u.hasteTicks = liveNum(p[21]); u.frenzyTicks = liveNum(p[22]);
       });
+      // 투사체는 그 화면 이후 흐른 만큼 미리 날아간 자리에서 시작 (다음 화면과 위치가 거의 이어짐)
+      const leadTicks = Math.max(0, ageMs) / 1000 * BATTLE_TICKS_PER_SEC;
       sim.projectiles = (Array.isArray(val.p) ? val.p : []).filter(Array.isArray).map(q => ({
-        x: liveNum(q[0]), y: liveNum(q[1]), angle: liveNum(q[2]),
+        x: liveNum(q[0]) + liveNum(q[6]) * leadTicks, y: liveNum(q[1]) + liveNum(q[7]) * leadTicks, angle: liveNum(q[2]),
         projType: cleanUserText(q[3], 30), color: cleanUserText(q[4], 30) || undefined, radius: liveNum(q[5]) || undefined,
         vx: liveNum(q[6]), vy: liveNum(q[7]), trail: []
       }));
@@ -16328,6 +17385,11 @@
     function applyLiveResult(val) {
       if (liveNet.role !== 'guest' || liveNet.finished || !val || liveNum(val.at) < liveNet.minAt) return;
       liveNet.finished = true;
+      // 아직 재생하지 못한 마지막 화면들까지 적용한 뒤 결과를 보여 줌
+      (liveNet.frameBuf || []).splice(0).forEach(f => {
+        applyLiveFrameState(f.val, 0);
+        f.val.u.forEach((p, i) => { if (sim.units[i] && Array.isArray(p)) { sim.units[i].x = liveNum(p[0]); sim.units[i].y = liveNum(p[1]); } });
+      });
       (Array.isArray(val.s) ? val.s : []).forEach((s, i) => {
         const u = sim.units[i];
         if (!u || !Array.isArray(s)) return;
@@ -16340,43 +17402,65 @@
       if (sim.running) finishSimulation(val.blueWon === true);
     }
 
-    // 도전자 화면의 매 프레임: 받은 위치로 부드럽게 이동 + 투사체 이어서 움직이기 + 연결 끊김 확인
+    // 도전자·관전자 화면의 매 프레임: 버퍼에서 때가 된 화면을 적용하고, 두 화면 사이 위치를 시간에 맞춰 이어 그림
     function applyLiveBattleFrameTick(ticks = 1) {
       sim.tickCount += ticks; // 방장 화면과 같은 빠르기로 시간이 흐르도록 (BATTLE_PACE)
-      // 받은 화면 두 장 사이를 시간에 맞춰 이어 그림 (한 박자 = 화면 간격만큼 늦게 보여 주는 대신 끊김이 없음)
-      const renderT = Date.now() - (liveNet.frameGap || LIVE_FRAME_INTERVAL_MS);
+      const now = Date.now();
+      const buf = liveNet.frameBuf || [];
+      let renderT = null;
+      if (liveNet.clockOff != null) {
+        // 기다리는 시간: 화면 간격 + 지터의 2.5배 (관전은 조종 반응이 필요 없으니 조금 더 넉넉히) · 천천히 바꿔서 재생 속도가 튀지 않게
+        const want = Math.max(110, Math.min(450, LIVE_FRAME_INTERVAL_MS + liveNet.jitter * 2.5 + (liveNet.spectator ? 60 : 20)));
+        liveNet.playDelay += (want - liveNet.playDelay) * Math.min(1, 0.03 * Math.max(1, ticks));
+        renderT = now - liveNet.clockOff - liveNet.playDelay;
+        // 탭을 내렸다 오는 등으로 한참 밀렸으면 최근 화면 근처로 건너뜀
+        if (buf.length && buf[buf.length - 1].at - renderT > 1500) renderT = buf[buf.length - 1].at - liveNet.playDelay;
+        while (buf.length && buf[0].at <= renderT) {
+          const f = buf.shift();
+          applyLiveFrameState(f.val, renderT - f.at);
+          liveNet.prevFrame = liveNet.curFrame;
+          liveNet.curFrame = f;
+        }
+      }
+      const cur = liveNet.curFrame, next = buf[0] || null, prev = liveNet.prevFrame;
       sim.units.forEach((u, i) => {
         ['attackAnim', 'skillAnim', 'hurtAnim', 'dashAnim', 'dashCooldown', 'castLock'].forEach(k => { if (u[k] > 0) u[k] = Math.max(0, u[k] - ticks); });
         if (u.casting && u.casting.left > 1) u.casting.left = Math.max(1, u.casting.left - ticks);
-        const h = (liveNet.hist || {})[i];
-        if (!h || !h.length) return;
-        let a = h[0], b = h[h.length - 1];
-        for (let j = 0; j < h.length - 1; j++) {
-          if (h[j].t <= renderT && renderT <= h[j + 1].t) { a = h[j]; b = h[j + 1]; break; }
-        }
-        let tx, ty;
-        if (renderT <= a.t || a === b) { tx = a.x; ty = a.y; }
-        else {
-          const k = Math.min(1, (renderT - a.t) / Math.max(1, b.t - a.t));
-          tx = a.x + (b.x - a.x) * k;
-          ty = a.y + (b.y - a.y) * k;
-        }
-        if (Math.hypot(tx - u.x, ty - u.y) > 400) { u.x = tx; u.y = ty; }
-        else { u.x += (tx - u.x) * 0.6; u.y += (ty - u.y) * 0.6; }
         if (u.isMoving) u.walkPhase = (u.walkPhase || 0) + 0.065 * ticks;
+        const pa = cur && cur.val.u[i];
+        if (!Array.isArray(pa)) return;
+        let x = liveNum(pa[0]), y = liveNum(pa[1]);
+        const pb = next && next.val.u[i];
+        if (Array.isArray(pb) && next.at > cur.at) {
+          const bx = liveNum(pb[0]), by = liveNum(pb[1]);
+          if (Math.hypot(bx - x, by - y) < 400) { // 순간이동(텔레포트)은 이어 그리지 않음
+            const k = Math.max(0, Math.min(1, (renderT - cur.at) / (next.at - cur.at)));
+            x += (bx - x) * k;
+            y += (by - y) * k;
+          }
+        } else if (prev && Array.isArray(prev.val.u[i]) && cur.at > prev.at && u.alive) {
+          // 다음 화면이 아직 안 왔으면 마지막 움직임대로 아주 잠깐(최대 0.15초)만 이어 가서 멈칫하지 않게
+          const pp = prev.val.u[i];
+          const ahead = Math.min(150, Math.max(0, renderT - cur.at));
+          const vx = (x - liveNum(pp[0])) / (cur.at - prev.at), vy = (y - liveNum(pp[1])) / (cur.at - prev.at);
+          if (Math.hypot(vx, vy) < 2) { x += vx * ahead; y += vy * ahead; }
+        }
+        u.x = x;
+        u.y = y;
       });
       sim.projectiles.forEach(p => { p.x += (p.vx || 0) * ticks; p.y += (p.vy || 0) * ticks; });
-      (sim.zones || []).forEach(z => { if (z.life > 1) z.life--; });
+      (sim.zones || []).forEach(z => { if (z.life > 1) z.life = Math.max(1, z.life - ticks); });
 
-      // 직접 조종 중이면 마우스 조준이 바뀐 것도 가끔 보냄
-      if (battleControl.mode === 'manual' && sim.tickCount % 6 === 0 && typeof localBattleInput.aimX === 'number') {
+      // 직접 조종 중이면 마우스 조준이 바뀐 것도 가끔(0.1초마다) 보냄
+      if (battleControl.mode === 'manual' && typeof localBattleInput.aimX === 'number' && now - (liveNet.lastAimCheckAt || 0) >= 100) {
+        liveNet.lastAimCheckAt = now;
         const a = liveNet.lastAimSent;
         if (!a || Math.hypot(a.x - localBattleInput.aimX, a.y - localBattleInput.aimY) > 12) onLocalControlChanged();
       }
 
-      const silentFor = Date.now() - (liveNet.initReceived ? liveNet.lastFrameAt : liveNet.startedAt);
+      const silentFor = now - (liveNet.initReceived ? liveNet.lastFrameAt : liveNet.startedAt);
       if (liveNet.role === 'guest' && silentFor > LIVE_GUEST_TIMEOUT_MS) {
-        abortLiveBattle('📡 방장 화면과 연결이 끊겨 결투를 멈췄어요. (이번 결투는 보상이 없어요)');
+        if (!handleLiveHostSilence()) abortLiveBattle('📡 방장 화면과 연결이 끊겨 결투를 멈췄어요. (이번 결투는 보상이 없어요)');
       } else if (liveNet.role !== 'guest' && !liveNet.finished) {
         // 연결 정보가 사라졌는데 도전자 화면으로 남아 있으면 정리
         abortLiveBattle('📡 결투 연결이 종료되었어요.');
@@ -16479,6 +17563,20 @@
       }
     }
 
+    // 방장 화면이 한참 조용할 때: 팀전이면 다음 방장이 될 친구가 자기 화면 상태로 전투를 이어받음
+    // (다른 친구·관전자는 새 방장의 화면을 조금 더 기다림) · 처리했으면 true
+    function handleLiveHostSilence() {
+      const me = getActiveStudent();
+      const room = liveNet.roomId ? livePvpRoomsCache[liveNet.roomId] : null;
+      if (!liveNet.team || !room || !me || !liveNet.initReceived) return false;
+      const heir = teamMembersOf(room).find(m => !m.ai && m.id !== room.hostId);
+      if (!liveNet.spectator && heir && heir.id === me.id) { takeOverLiveBattle(null); return true; }
+      if (liveNet.timeoutExtended) return false;
+      liveNet.timeoutExtended = true;
+      liveNet.lastFrameAt = Date.now() - LIVE_GUEST_TIMEOUT_MS + 10000;
+      return true;
+    }
+
     function abortLiveBattle(message) {
       stopLiveBattleNet();
       sim.running = false;
@@ -16528,7 +17626,8 @@
       const customTitle = cleanUserText(titleInp?.value, 24) || `[${boss.name}] ${myStu.name}의 협동 파티`;
       if (titleInp) titleInp.value = '';
 
-      const roomId = 'raid_' + myStu.id;
+      const roomId = 'raid_' + myStu.id + '_' + Date.now().toString(36).slice(-5);
+      leaveRoomsExcept('raid', roomId);
       launchedLiveRoomIds.delete(roomId);
       currentJoinedRaidRoomId = roomId;
 
@@ -16554,7 +17653,7 @@
         createdAt: Date.now()
       };
       await saveRaidRoomData(roomId, roomObj);
-      armHostRoomAutoCleanup([`raid_rooms/${roomId}`]);
+      armRoomPresence(`raid_rooms/${roomId}`, myStu.id);
       showRewardBanner(`🐉 [${customTitle}] 협동 레이드 대기방이 개설되었습니다! 파트너 친구가 입장해 [준비완료]를 누르면 시작할 수 있습니다.`);
     };
 
@@ -16569,11 +17668,14 @@
       }
       const room = liveRaidRoomsCache[roomId];
       if (!room) return;
-      currentJoinedRaidRoomId = roomId;
       if (room.hostId === myStu.id) {
+        currentJoinedRaidRoomId = roomId;
         renderLiveRaidRoomsList();
         return;
       }
+      if (room.status !== 'waiting' || (room.guestId && room.guestId !== myStu.id)) { showNotice('⚠️ 이미 자리가 찬 레이드방이에요.'); return; }
+      leaveRoomsExcept('raid', roomId);
+      currentJoinedRaidRoomId = roomId;
       const myPower = myMercs.reduce((s, m) => s + calcMercCombatPower(m, myStu), 0);
       room.guestId = myStu.id;
       room.guestNum = myStu.num;
@@ -16582,7 +17684,10 @@
       room.guestMercs = JSON.parse(JSON.stringify(myMercs));
       room.guestStudentSnapshot = publicStudentSnapshot(myStu);
       room.guestReady = false;
+      room.practiceFriend = false;
+      if (room.gone) delete room.gone[myStu.id];
       await saveRaidRoomData(roomId, room);
+      armRoomPresence(`raid_rooms/${roomId}`, myStu.id);
       showRewardBanner(`🚪 [${room.title}] 협동 파티에 입장했습니다! [✋ 준비완료] 버튼을 눌러주세요.`);
     };
 
@@ -16614,6 +17719,7 @@
       room.guestMercs = JSON.parse(JSON.stringify(friendMercs));
       room.guestStudentSnapshot = publicStudentSnapshot(friend);
       room.guestReady = true;
+      room.practiceFriend = true; // 실제로 들어온 친구가 아님 (방장이 나가도 방장을 넘겨받지 않음)
       await saveRaidRoomData(roomId, room);
       showRewardBanner(`🤝 [${friend.name}] 친구가 5인 용병과 함께 입장하여 [✅ 준비완료]를 눌렀습니다!`);
     };
@@ -16636,34 +17742,61 @@
       }
       room.status = 'in_battle';
       room.startedAt = Date.now();
+      room.fighting = { [room.hostId]: true, ...(room.practiceFriend ? {} : { [room.guestId]: true }) };
       await saveRaidRoomData(roomId, room);
     };
 
-    window.cancelFirebaseCoopRaidRoom = async function (roomId) {
+    // 레이드방 나가기: 방장이 나가면 파트너가 새 방장 (파트너가 없을 때만 방을 닫음) · 토벌 중이면 내 토벌은 포기
+    window.cancelFirebaseCoopRaidRoom = async function (roomId, quiet = false) {
       const myStu = getActiveStudent();
       const room = liveRaidRoomsCache[roomId];
-      currentJoinedRaidRoomId = null;
-      if (!room || !myStu) {
+      if (roomId === currentJoinedRaidRoomId) currentJoinedRaidRoomId = null;
+      if (!room || !myStu || !(room.hostId === myStu.id || (room.guestId === myStu.id && !room.practiceFriend))) {
         renderLiveRaidRoomsList();
         return;
       }
-      if (room.hostId === myStu.id) {
+      quitRoomBattleIfRunning(roomId);
+      disarmRoomPresence(`raid_rooms/${roomId}`, myStu.id);
+      const wasHost = room.hostId === myStu.id;
+      const next = raidRoomWithout(room, myStu.id);
+      if (!next) {
         await removeRaidRoomData(roomId);
-        showNotice('🚪 협동 레이드 대기방을 닫았습니다.');
-      } else if (room.guestId === myStu.id) {
-        room.guestId = null;
-        room.guestNum = null;
-        room.guestName = null;
-        room.guestPower = 0;
-        room.guestMercs = [];
-        room.guestStudentSnapshot = null;
-        room.guestReady = false;
-        await saveRaidRoomData(roomId, room);
-        showNotice('🚪 협동 레이드 대기방에서 퇴장했습니다.');
-      } else {
-        renderLiveRaidRoomsList();
+        if (!quiet) showNotice('🚪 협동 레이드 대기방을 닫았어요.');
+        return;
       }
+      await saveRaidRoomData(roomId, next);
+      if (!quiet) showNotice(wasHost ? `🚪 레이드방에서 나왔어요. 👑 방장은 ${next.hostName} 친구에게 넘겼어요.` : '🚪 협동 레이드 대기방에서 나왔어요.');
     };
+
+    // 토벌이 끝나면 방을 다시 대기 상태로 → 같은 방에서 다시 출발할 수 있음 ("토벌 진행중"으로 남지 않게)
+    // 두 친구가 각자 화면에서 토벌하므로 fighting/{학생id}로 아직 싸우는 사람을 표시하고, 둘 다 끝나면 방장이 되돌림
+    function resetRaidRoomAfterBattle() {
+      const roomId = currentActiveLiveBattleRoomId;
+      const room = roomId ? liveRaidRoomsCache[roomId] : null;
+      if (!room) return;
+      currentActiveLiveBattleRoomId = null;
+      const me = getActiveStudent();
+      if (!me) return;
+      if (room.fighting) delete room.fighting[me.id];
+      try { classRoomRef(`raid_rooms/${roomId}/fighting/${me.id}`)?.remove().catch(() => {}); } catch (e) {}
+      maybeReturnRaidRoomToWaiting(room);
+    }
+
+    function raidRoomStillFighting(room) {
+      return Object.keys(room.fighting || {}).some(id => id === room.hostId || (id === room.guestId && !room.practiceFriend));
+    }
+
+    function maybeReturnRaidRoomToWaiting(room) {
+      const me = getActiveStudent();
+      if (!me || room.hostId !== me.id || room.status !== 'in_battle' || raidRoomStillFighting(room)) return;
+      if (sim.running && currentActiveLiveBattleRoomId === room.roomId) return;
+      room.status = 'waiting';
+      room.startedAt = null;
+      room.fighting = null;
+      room.guestReady = Boolean(room.practiceFriend);
+      room.lastFinishedAt = Date.now();
+      saveRaidRoomData(room.roomId, room);
+    }
 
     function renderLiveRaidRoomsList() {
       const box = document.getElementById('raidLiveRoomsList');
@@ -16673,7 +17806,7 @@
       const rooms = Object.values(liveRaidRoomsCache || {}).filter(r => r && (r.status === 'waiting' || r.status === 'in_battle') && (Date.now() - (r.createdAt || 0) < 1800000));
       if (badge) badge.textContent = `대기방 ${rooms.length}개`;
 
-      const myRoom = rooms.find(r => myStu && (r.roomId === currentJoinedRaidRoomId || r.hostId === myStu.id || r.guestId === myStu.id));
+      const myRoom = rooms.find(r => myStu && (r.hostId === myStu.id || (r.guestId === myStu.id && !r.practiceFriend)));
       if (waitPanel) {
         if (myRoom && myRoom.status === 'waiting') {
           currentJoinedRaidRoomId = myRoom.roomId;
@@ -16692,7 +17825,7 @@
                 <span class="px-2.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold text-xs">목표 보스: ${myRoom.bossName}</span>
               </div>
               <button onclick="cancelFirebaseCoopRaidRoom('${myRoom.roomId}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300">
-                🚪 ${isHost ? '방 닫기' : '방 나가기'}
+                🚪 ${isHost ? (hasGuest && !myRoom.practiceFriend ? '방 나가기 (방장 넘기기)' : '방 닫기') : '방 나가기'}
               </button>
             </div>
 
@@ -16788,7 +17921,7 @@
         return;
       }
       box.innerHTML = rooms.map(r => {
-        const isMyRoom = myStu && (r.hostId === myStu.id || r.guestId === myStu.id);
+        const isMyRoom = myStu && (r.hostId === myStu.id || (r.guestId === myStu.id && !r.practiceFriend));
         const hasGuest = Boolean(r.guestId);
         return `
           <div class="bg-slate-950 border-2 ${isMyRoom ? 'border-amber-500/60' : 'border-purple-500/40'} rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
@@ -16824,9 +17957,11 @@
       const myStu = getActiveStudent();
       if (!myStu) return;
       Object.values(liveRaidRoomsCache || {}).forEach(r => {
+        // 토벌이 끝나 대기 상태로 돌아온 방은 다시 출발할 수 있게
+        if (r && r.status === 'waiting' && r.roomId && !(sim.running && currentActiveLiveBattleRoomId === r.roomId)) launchedLiveRoomIds.delete(r.roomId);
         if (!r || r.status !== 'in_battle' || !r.roomId) return;
         if (launchedLiveRoomIds.has(r.roomId)) return;
-        if (r.hostId === myStu.id || r.guestId === myStu.id) {
+        if (r.hostId === myStu.id || (r.guestId === myStu.id && !r.practiceFriend)) {
           launchedLiveRoomIds.add(r.roomId);
           currentActiveLiveBattleRoomId = r.roomId;
           const bossDef = ELITE_BOSS_DEFS.find(b => b.id === r.bossId) || ELITE_BOSS_DEFS[0];
@@ -16851,7 +17986,8 @@
             eliteBossId: bossDef.id,
             rewardMc: bossDef.rewardMc,
             customBlueUnits: blueUnits,
-            customRedUnits: [singleEliteBoss]
+            customRedUnits: [singleEliteBoss],
+            roomBattle: true
           });
         }
       });
@@ -16925,6 +18061,7 @@
       if (inp) inp.value = '';
 
       const roomId = 'mg_' + myStu.id + '_' + Date.now().toString(36).slice(-4);
+      leaveRoomsExcept('minigame', roomId);
       currentJoinedMinigameRoomId = roomId;
       mgRealtimeSyncEnabled = true;
 
@@ -16945,7 +18082,7 @@
         createdAt: Date.now()
       };
       await saveMinigameRoomData(roomId, roomObj);
-      armHostRoomAutoCleanup([`minigame_rooms/${roomId}`, `minigames/${roomId}`]);
+      armRoomPresence(`minigame_rooms/${roomId}`, myStu.id);
       showRewardBanner(`🎲 [${customTitle}] 방이 개설되었습니다! 친구가 입장해 [준비완료]를 누르면 게임을 시작할 수 있습니다.`);
     };
 
@@ -16955,12 +18092,17 @@
       if (!myStu || !room) return;
       mgSoloPracticeActive = false;
       if (!Array.isArray(room.players)) room.players = [];
-      const alreadyIn = room.players.some(p => p.id === myStu.id);
+      const alreadyIn = room.players.some(p => p.id === myStu.id && !p.practice);
       if (!alreadyIn) {
         if (room.players.length >= (room.maxPlayers || 2)) {
           showNotice('⚠️ 이미 정원이 가득 찬 미니게임 방입니다!');
           return;
         }
+        if (room.status !== 'waiting') {
+          showNotice('⚠️ 이미 게임이 진행 중인 방이에요. 끝나고 대기실로 돌아오면 들어갈 수 있어요.');
+          return;
+        }
+        leaveRoomsExcept('minigame', roomId);
         room.players.push({
           id: myStu.id,
           num: myStu.num,
@@ -16971,7 +18113,9 @@
       }
       currentJoinedMinigameRoomId = roomId;
       mgRealtimeSyncEnabled = true;
+      if (room.gone) delete room.gone[myStu.id];
       await saveMinigameRoomData(roomId, room);
+      armRoomPresence(`minigame_rooms/${roomId}`, myStu.id);
       applyRemoteMinigamesState(lastMinigamesSnapshot[roomId] || {});
       showRewardBanner(`🚪 [${room.title}]에 입장했습니다! [✋ 준비완료] 버튼을 눌러주세요.`);
     };
@@ -17002,7 +18146,8 @@
           num: candidate.num,
           name: candidate.name,
           isHost: false,
-          ready: true
+          ready: true,
+          practice: true // 실제로 들어온 친구가 아님 (방장을 넘겨받지 않음)
         });
       }
       await saveMinigameRoomData(room.roomId, room);
@@ -17054,21 +18199,27 @@
       showNotice('🔙 방 대기실로 돌아왔습니다. 다시 준비완료를 누르면 재시작할 수 있습니다.');
     };
 
-    window.leaveMinigameRoom = async function () {
+    // 미니게임방 나가기: 방장이 나가도 방과 게임은 그대로, 남은 친구가 새 방장 · 게임 중이면 내 자리는 AI가 이어서 둠
+    window.leaveMinigameRoom = async function (quiet = false, roomIdArg = null) {
       mgSoloPracticeActive = false;
       const myStu = getActiveStudent();
-      const roomId = currentJoinedMinigameRoomId;
+      const roomId = roomIdArg || currentJoinedMinigameRoomId;
       const room = roomId ? liveMinigameRoomsCache[roomId] : null;
-      currentJoinedMinigameRoomId = null;
+      if (room && myStu && room.status === 'playing' && roomId === currentJoinedMinigameRoomId) {
+        mgSeatsToAi(room.gameType, [myStu.id], false);
+      }
+      if (roomId === currentJoinedMinigameRoomId) currentJoinedMinigameRoomId = null;
 
-      if (room && myStu) {
-        if (room.hostId === myStu.id) {
+      if (room && myStu && (room.players || []).some(p => p && p.id === myStu.id && !p.practice)) {
+        disarmRoomPresence(`minigame_rooms/${roomId}`, myStu.id);
+        const wasHost = room.hostId === myStu.id;
+        const next = minigameRoomWithout(room, myStu.id);
+        if (!next) {
           await removeMinigameRoomData(roomId);
-          showNotice('🚪 개설한 미니게임 방을 닫고 로비로 나왔습니다.');
+          if (!quiet) showNotice('🚪 미니게임 방을 닫고 로비로 나왔어요.');
         } else {
-          room.players = (room.players || []).filter(p => p.id !== myStu.id);
-          await saveMinigameRoomData(roomId, room);
-          showNotice('🚪 미니게임 방에서 나와 대기 로비로 이동했습니다.');
+          await saveMinigameRoomData(roomId, next);
+          if (!quiet) showNotice(wasHost ? `🚪 미니게임 방에서 나왔어요. 👑 방장은 ${next.hostName} 친구에게 넘겼어요.` : '🚪 미니게임 방에서 나와 대기 로비로 이동했어요.');
         }
       }
       renderMinigameLobbyAndRoomUI();
@@ -17078,6 +18229,7 @@
     var mgSoloPracticeActive = false; // var: 스크립트가 다 읽히기 전에 불려도 오류 나지 않게
 
     window.startSoloMinigamePractice = function () {
+      leaveRoomsExcept('minigame', null);
       currentJoinedMinigameRoomId = null;
       mgRealtimeSyncEnabled = false;
       mgSoloPracticeActive = true;
@@ -17115,7 +18267,7 @@
       // 내가 현재 참여 중인 미니게임 방 찾기
       let activeRoom = currentJoinedMinigameRoomId ? liveMinigameRoomsCache[currentJoinedMinigameRoomId] : null;
       if (!activeRoom && myStu) {
-        activeRoom = rooms.find(r => Array.isArray(r.players) && r.players.some(p => p.id === myStu.id)) || null;
+        activeRoom = rooms.find(r => Array.isArray(r.players) && r.players.some(p => p && p.id === myStu.id && !p.practice)) || null;
         if (activeRoom) currentJoinedMinigameRoomId = activeRoom.roomId;
       }
 
@@ -17379,6 +18531,7 @@
             log: mgArr(y.log)
           };
           renderYutnoriBoard();
+          yutScheduleAi(); // 나간 친구 자리를 AI가 이어받았으면 (방장 화면에서) 이어서 둠
           note(y);
         }
 
@@ -17394,6 +18547,7 @@
             note: o.note || ''
           };
           renderOmokBoard();
+          omokScheduleAi();
           note(o);
         }
 
@@ -17418,11 +18572,13 @@
             }, 2500);
           }
           renderCardFlipBoard();
+          cardFlipScheduleAi();
           note(cf);
         }
 
         const w = mgData.wordchain;
         if (mgShouldAccept(wordChainState, w)) {
+          WordChainDict.load();
           wordChainState = {
             ...w,
             seats: mgArr(w.seats),
@@ -17431,6 +18587,7 @@
             note: w.note || ''
           };
           renderWordChainBoard();
+          wordChainScheduleAi();
           note(w);
         }
 
