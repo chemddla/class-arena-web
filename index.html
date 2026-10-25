@@ -4487,41 +4487,6 @@
       };
     }
 
-    // 초기 스탯을 바탕으로 한 용병 한줄 평가 생성 함수 (Requirement 7)
-    function getMercInitialStatOneLineReview(merc) {
-      const cmp = getMercInitialStatComparison(merc);
-      const v = ensureMercVariance(merc);
-      const top5Keys = ['hp', 'atk', 'def', 'spd'].filter(k => cmp.tier[k] === 'top5');
-      const top30Keys = ['hp', 'atk', 'def', 'spd'].filter(k => cmp.tier[k] === 'top30');
-
-      if (isSecretRare(merc.rarity)) {
-        return '📝 한줄평: 🔥 모든 초기 능력치가 상위 1%인, 천 명 중 한 명 나올 시크릿 레어!';
-      }
-      if (top5Keys.length >= 2) {
-        return '📝 한줄평: 🌟 천부적인 초기 능력치를 두루 타고난 전설급 핵심 인재!';
-      }
-      if (top5Keys.length === 1) {
-        const k = top5Keys[0];
-        if (k === 'hp')  return '📝 한줄평: 🔥 강철 같은 초기 생명력을 타고난 불사신형 유망주!';
-        if (k === 'atk') return '📝 한줄평: 🔥 압도적인 초기 공격력을 타고난 천부적 화력 에이스!';
-        if (k === 'def') return '📝 한줄평: 🔥 난공불락의 초기 방어력을 지닌 철벽 수호 인재!';
-        if (k === 'spd') return '📝 한줄평: 🔥 눈부신 초기 속도로 전장을 지배할 초고속 유망주!';
-      }
-      if (top30Keys.length >= 2) {
-        return '📝 한줄평: ⭐ 여러 초기 스탯이 고르게 뛰어난 다재다능 우등생 용병!';
-      }
-      if (top30Keys.length === 1) {
-        const k = top30Keys[0];
-        if (k === 'hp')  return '📝 한줄평: 👍 튼튼한 기초 체력을 지녀 안정적인 생존이 기대되는 용병';
-        if (k === 'atk') return '📝 한줄평: 👍 매서운 기초 공격력을 갖추어 화력 성장이 기대되는 용병';
-        if (k === 'def') return '📝 한줄평: 👍 단단한 기초 방어력으로 든든하게 버텨주는 실속형 용병';
-        if (k === 'spd') return '📝 한줄평: 👍 날렵한 기초 속도를 갖추어 빠른 타격이 돋보이는 용병';
-      }
-      const bestKey = ['hp', 'atk', 'def', 'spd'].sort((a, b) => (v[b] || 1) - (v[a] || 1))[0];
-      const bestLabelMap = { hp: '생명력', atk: '공격력', def: '방어력', spd: '기동성' };
-      return `📝 한줄평: ⚖️ 기본기가 고르며 ${bestLabelMap[bestKey]} 잠재력이 안정적인 성실파 용병`;
-    }
-
     // 직업별 공격 속도 배율 (1보다 작으면 느리게 공격)
     const JOB_ATTACK_SPEED_MULT = { archer: 0.7, mage: 0.7, rogue: 1.82, knight: 0.75, lancer: 1.5 };
 
@@ -5876,23 +5841,6 @@
       showRewardBanner(`✏️ 용병 이름이 [${oldName}] → [${merc.name}](으)로 변경되었습니다!`);
     }
 
-    function allocateMercStatPoint(mercId, statKey) {
-      const stu = getActiveStudent();
-      const merc = stu.roster.find(m => m.id === mercId);
-      if (!merc) return;
-      const spInfo = getMercStatPointInfo(merc);
-      if (spInfo.freeSp <= 0) {
-        showNotice('⚠️ 남은 스탯 포인트가 없습니다! (10레벨 달성마다 +5P 고정 지급)');
-        return;
-      }
-      merc.statPoints[statKey] = (merc.statPoints[statKey] || 0) + 1;
-      saveState();
-      renderSquadTab();
-      setupIdlePreviewBattle();
-      const labelMap = { hp: `체력 (+${SP_BONUS_VALUES.hp})`, atk: `공격력 (+${SP_BONUS_VALUES.atk})`, def: `방어력 (+${SP_BONUS_VALUES.def})`, spd: `속도 (+${SP_BONUS_VALUES.spd})` };
-      showNotice(`🌟 [${merc.name}] ${labelMap[statKey]} 스탯 포인트 투자 완료!`);
-    }
-
     function resetMercStatPoints(mercId) {
       const stu = getActiveStudent();
       const merc = stu.roster.find(m => m.id === mercId);
@@ -6326,15 +6274,12 @@
       });
     }
 
-    let sellingMercId = null;
     let activeTradeOfferTarget = null; // { targetStuId, mercId }
 
     function openMercSellModal(mercId) {
       const stu = getActiveStudent();
       const merc = stu.roster.find(m => m.id === mercId);
       if (!merc) return;
-      sellingMercId = mercId;
-      const job = JOB_DEFS[merc.job] || JOB_DEFS.warrior;
       const rar = RARITY_DEFS[merc.rarity] || RARITY_DEFS.N;
       const valInfo = calcMercValuation(merc, stu);
       const power = calcMercCombatPower(merc, stu);
@@ -6411,7 +6356,6 @@
     function closeMercSellModal() {
       const m = document.getElementById('mercSellModal');
       if (m) m.classList.add('hidden');
-      sellingMercId = null;
     }
 
     function confirmInstantSellMerc(mercId) {
@@ -6678,7 +6622,6 @@
 
       activeTradeOfferTarget = { targetStuId, mercId };
       const valInfo = calcMercValuation(merc, seller);
-      const job = JOB_DEFS[merc.job] || JOB_DEFS.warrior;
       const rar = RARITY_DEFS[merc.rarity] || RARITY_DEFS.N;
       const power = calcMercCombatPower(merc, seller);
 
@@ -6903,7 +6846,6 @@
         } else {
           inList.innerHTML = incoming.map(o => {
             const m = o.mercSnapshot;
-            const job = JOB_DEFS[m.job] || JOB_DEFS.warrior;
             return `
               <div class="bg-slate-950 border border-emerald-500/40 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
@@ -6936,7 +6878,6 @@
         } else {
           outList.innerHTML = outgoing.map(o => {
             const m = o.mercSnapshot;
-            const job = JOB_DEFS[m.job] || JOB_DEFS.warrior;
             return `
               <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
@@ -8009,7 +7950,6 @@
         const desc = document.getElementById('pvpServerStatusDesc');
         const sdkCheckEl = document.getElementById('fbSdkRuntimeCheckText');
 
-        const effectiveDbUrl = normalizeFirebaseDatabaseUrl(cfg.databaseURL || cfg.firebaseDbUrl);
         const hasApiKey = Boolean((cfg.firebaseApiKey || FIREBASE_WEB_APP_CONFIG.apiKey || '').trim());
 
         if (sdkCheckEl) {
@@ -8127,11 +8067,8 @@
       }
     };
 
-    let currentPvpSubMode = 'async';
-
     function switchPvpSubMode(mode) {
       if (mode === 'ranking') mode = 'async'; // 랭킹은 랭킹 매칭 화면에 같이 있음
-      currentPvpSubMode = mode;
       const isRanked = mode === 'async';
       document.getElementById('pvpSubPanel-async')?.classList.toggle('hidden', !isRanked);
       document.getElementById('pvpSubPanel-ranking')?.classList.toggle('hidden', !isRanked);
@@ -8820,58 +8757,9 @@
       return qObj.id || String(QUIZ_BANK.indexOf(qObj));
     }
 
-    let currentQuizCategory = 'curriculum'; // 'curriculum' | 'general' | 'nonsense' | 'all'
-    let currentQuizSubject = 'all';         // 'all' | '국어' | '수학' | '사회' | '과학' | '영어'
-    let currentQuizFormat = 'all';          // 'all' | 'mcq' | 'short'
 
     function getFilteredQuizList() {
       return getTodayQuizSet();
-    }
-
-    function setQuizCategory(cat) {
-      currentQuizCategory = cat;
-      currentQuizIndex = 0;
-      ['curriculum', 'general', 'nonsense', 'all'].forEach(k => {
-        const btn = document.getElementById(`qcatBtn-${k}`);
-        if (btn) {
-          btn.className = (k === cat)
-            ? 'py-2.5 px-3 rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 bg-indigo-600 text-white shadow transition'
-            : 'py-2.5 px-3 rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 text-slate-300 hover:bg-slate-800 transition';
-        }
-      });
-      const subBar = document.getElementById('quizSubjectFilterBar');
-      if (subBar) {
-        subBar.classList.toggle('hidden', cat !== 'curriculum');
-      }
-      renderQuizCard();
-    }
-
-    function setQuizSubjectFilter(sub) {
-      currentQuizSubject = sub;
-      currentQuizIndex = 0;
-      ['all', '국어', '수학', '사회', '과학', '영어'].forEach(s => {
-        const btn = document.getElementById(`qsubBtn-${s}`);
-        if (btn) {
-          btn.className = (s === sub)
-            ? 'px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-extrabold shadow'
-            : 'px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold hover:bg-slate-700';
-        }
-      });
-      renderQuizCard();
-    }
-
-    function setQuizFormatFilter(fmt) {
-      currentQuizFormat = fmt;
-      currentQuizIndex = 0;
-      ['all', 'mcq', 'short'].forEach(f => {
-        const btn = document.getElementById(`qfmtBtn-${f}`);
-        if (btn) {
-          btn.className = (f === fmt)
-            ? 'px-2 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-extrabold shadow'
-            : 'px-2 py-1 rounded-lg bg-slate-800 text-slate-300 text-[11px] font-bold hover:bg-slate-700';
-        }
-      });
-      renderQuizCard();
     }
 
     function renderQuizCard() {
@@ -8995,7 +8883,6 @@
     }
 
     function submitShortQuizAnswer() {
-      const stu = getActiveStudent();
       const list = getFilteredQuizList();
       const qObj = list[currentQuizIndex % list.length];
       const inp = document.getElementById('quizShortAnswerInput');
@@ -13272,7 +13159,6 @@
       const box = document.getElementById('liveUnitStatusList');
       if (!box) return;
       box.innerHTML = sim.units.map(u => {
-        const job = JOB_DEFS[u.job];
         const monObj = u.monsterType ? MONSTER_DEFS[u.monsterType] : null;
         const unitIconHtml = monObj ? `<span>${monObj.icon}</span>` : (u.isDarkMerc ? `<span>🌑</span>${getMercIconHTML(u.job, u.skinVariant, 20, true)}` : getMercIconHTML(u.job, u.skinVariant, 20));
         const hpPct = Math.max(0, Math.round((u.hp / u.maxHp) * 100));
@@ -15140,7 +15026,6 @@
       if (myGrid) {
         myGrid.innerHTML = (myStu.roster || []).map(m => {
           const isPicked = selectedRaidMercIds.includes(m.id);
-          const job = JOB_DEFS[m.job] || JOB_DEFS.warrior;
           const pwr = calcMercCombatPower(m, myStu);
           return `
             <div onclick="toggleRaidMercSelection('${m.id}')"
@@ -15179,7 +15064,6 @@
       const partnerPreview = document.getElementById('raidPartnerMercPreview');
       if (partnerPreview) {
         partnerPreview.innerHTML = partnerMercs.map(m => {
-          const job = JOB_DEFS[m.job] || JOB_DEFS.warrior;
           const pwr = calcMercCombatPower(m, partnerStu);
           return `
             <div class="rounded-xl border border-emerald-500/40 bg-slate-900 p-2.5 flex items-center gap-2">
@@ -15678,7 +15562,6 @@
     function yutSettleAfterChange(st) {
       if (st.gameOver || st.phase !== 'move') return;
       const team = yutTeamOfSeat(st.turnSeat);
-      const before = st.results.length;
       const dropped = st.results.filter(r => yutMoveOptions(team, r.steps).length === 0);
       st.results = st.results.filter(r => yutMoveOptions(team, r.steps).length > 0);
       if (dropped.length) st.log.unshift(dropped.every(r => r.steps < 0) ? '↩️ 판 위에 말이 없어서 빽도는 쉬어요.' : `↩️ 움직일 말이 없어 [${dropped.map(r => r.name).join(', ')}]은(는) 쓰지 못했어요.`);
@@ -19398,7 +19281,6 @@
       }
       const chips = roster.map(m => {
         const on = Boolean(ed.layout[m.id]);
-        const job = JOB_DEFS[m.job] || JOB_DEFS.warrior;
         return `<button type="button" onclick="${toggleFn}('${m.id}')" data-formation-merc="${m.id}"
           class="px-2 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 ${
             on ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-indigo-400'
