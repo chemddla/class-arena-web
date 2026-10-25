@@ -2702,6 +2702,7 @@
     const RARE_CHANCE = 1;                     // 지원자 한 명당 레어 확률 (%)
     const RARE_RECRUIT_BONUS = 5000;           // 레어 모집 가격에 더하는 값 (CA)
     const SECRET_VARIANCE_MIN = 1.0688;        // 초기 스탯 편차 0.95~1.07 중 상위 1%
+    const RARE_VARIANCE_MIN = 1.034;           // 초기 스탯 편차 0.95~1.07 중 상위 30% (우수 초기 스탯 기준과 같음)
     const AUCTION_DURATION_DAYS = 3;           // 경매 입찰 기간 (일)
     const AUCTION_DURATION_MS = AUCTION_DURATION_DAYS * 24 * 60 * 60 * 1000;
     function isSecretRare(rarity) { return Boolean((RARITY_DEFS[rarity] || RARITY_DEFS.N).isSecret); }
@@ -3699,9 +3700,12 @@
       const skillKey = fixedSkillKey || getRandomSkillKey(jobKey);
 
       const isSecret = rarityCode === 'SCR';
-      // 시크릿 레어는 네 스탯 모두 상위 1% 초기 스탯
+      const isRare = !isSecret && rarityCode !== 'N';
+      // 시크릿 레어는 네 스탯 모두 상위 1%, 레어는 네 스탯 모두 상위 30% 이상 초기 스탯
       const randVar = isSecret
         ? () => +(SECRET_VARIANCE_MIN + Math.random() * (1.07 - SECRET_VARIANCE_MIN)).toFixed(4)
+        : isRare
+        ? () => +(RARE_VARIANCE_MIN + Math.random() * (1.07 - RARE_VARIANCE_MIN)).toFixed(3)
         : () => +(0.95 + Math.random() * 0.12).toFixed(3);
 
       const defaultPositions = [
@@ -3958,7 +3962,7 @@
 
       const evalTier = (initVal, baseVal, varVal) => {
         if (initVal >= Math.round(baseVal * 1.185) || varVal >= 1.064) return 'top5';
-        if (initVal >= Math.round(baseVal * 1.085) || varVal >= 1.034) return 'top30';
+        if (initVal >= Math.round(baseVal * 1.085) || varVal >= RARE_VARIANCE_MIN) return 'top30';
         return 'normal';
       };
 
