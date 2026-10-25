@@ -3265,6 +3265,8 @@
     function pickRandomMercSkin(jobKey) { return Math.floor(Math.random() * getMercSkinCount(jobKey)); }
     function ensureMercSkin(m) {
       if (!m || typeof m !== 'object' || !m.job || m.monsterType) return m;
+      // 학생이 CA를 내고 직접 고른 외형은 그대로 둠 (그림이 없어졌을 때만 다시 배정)
+      if (m.skinPicked && MERC_SPRITE_DEFS[`${m.job}_${m.skinVariant || 0}`]) return m;
       const n = getMercSkinCount(m.job);
       if (m.skinVer === MERC_SKIN_VERSION && ((m.skinN || 1) >= n || (m.skinVariant || 0) > 0)) { m.skinN = Math.max(m.skinN || 1, n); return m; }
       const key = String(m.id || m.name || '');
@@ -4969,6 +4971,23 @@
           })()}
         </div>
 
+        <!-- 2-C. 외형 변경 -->
+        <div class="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex flex-col gap-2.5">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <span class="text-xs font-extrabold text-fuchsia-300">🎨 외형 변경</span>
+            <span class="text-[11px] font-bold text-amber-300">한 번 바꿀 때마다 ${MERC_SKIN_CHANGE_COST.toLocaleString()} CA</span>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            ${Array.from({ length: getMercSkinCount(merc.job) }, (_, v) => {
+              const isCur = (merc.skinVariant || 0) === v;
+              return `<button ${isCur ? 'disabled' : `onclick="changeMercSkin('${merc.id}', ${v})"`} title="${isCur ? '지금 외형' : `${v + 1}번 외형으로 바꾸기`}"
+                class="w-14 h-14 rounded-xl border-2 flex items-center justify-center bg-slate-900 ${isCur ? 'border-fuchsia-400 shadow cursor-default' : 'border-slate-700 hover:border-fuchsia-400'}">
+                ${getSpritePortraitHTML(getMercSprite(merc.job, v), 48)}
+              </button>`;
+            }).join('')}
+          </div>
+        </div>
+
         <!-- 3. 전술 AI & 대시 운용 설정 -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-slate-950 border border-slate-800 rounded-2xl p-3">
           <div>
@@ -5133,6 +5152,38 @@
         if (activeDetailMercId === merc.id) renderMercDetailModal();
         setupIdlePreviewBattle();
         showRewardBanner(`🎲 스킬 다시 뽑기! [${merc.name}]의 [${oldSk ? oldSk.name : '스킬'}] → [${sk.icon} ${sk.name}] (으)로 바뀌었어요!`);
+      });
+    }
+
+    const MERC_SKIN_CHANGE_COST = 1000;
+
+    // skinVariant: 바꿀 기본 외형 번호 (0 ~ 직업별 외형 수 - 1)
+    function changeMercSkin(mercId, skinVariant) {
+      const stu = getActiveStudent();
+      const merc = stu.roster.find(m => m.id === mercId);
+      if (!merc) return;
+      const v = Number(skinVariant);
+      if (!Number.isInteger(v) || v < 0 || v >= getMercSkinCount(merc.job)) {
+        showNotice('⚠️ 기본 외형 중에서만 고를 수 있어요.');
+        return;
+      }
+      if ((merc.skinVariant || 0) === v) return;
+      if (stu.mc < MERC_SKIN_CHANGE_COST) {
+        showNotice(`⚠️ 외형 변경 비용(${MERC_SKIN_CHANGE_COST.toLocaleString()} CA)이 부족해요! (보유: ${stu.mc.toLocaleString()} CA)`);
+        return;
+      }
+      askCustomConfirm(`[${merc.name}]의 외형을 ${v + 1}번 외형으로 바꿀까요? ${MERC_SKIN_CHANGE_COST.toLocaleString()} CA가 들어요.`, () => {
+        if (stu.mc < MERC_SKIN_CHANGE_COST || (merc.skinVariant || 0) === v) return;
+        stu.mc -= MERC_SKIN_CHANGE_COST;
+        merc.skinVariant = v;
+        merc.skinPicked = true;
+        merc.skinVer = MERC_SKIN_VERSION;
+        merc.skinN = getMercSkinCount(merc.job);
+        saveState();
+        renderSquadTab();
+        if (activeDetailMercId === merc.id) renderMercDetailModal();
+        setupIdlePreviewBattle();
+        showRewardBanner(`🎨 [${merc.name}]의 외형이 바뀌었어요!`);
       });
     }
 
