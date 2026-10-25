@@ -1083,12 +1083,12 @@
               새로운 용병을 영입하세요!
             </h3>
             <p class="text-xs sm:text-sm text-slate-300 mt-1">
-              <strong>전사</strong>, <strong>마법사</strong>, <strong>힐러</strong>, <strong>궁수</strong>가 대기 중입니다! (하루 무료 갱신 5회 · <strong>2% 확률</strong>로 <strong class="text-amber-300">🌟레어 용병</strong> 출현!)
+              <strong>전사</strong>, <strong>마법사</strong>, <strong>힐러</strong>, <strong>궁수</strong>가 대기 중입니다! (지원자 명단은 하루 한 번 갱신 · <strong>1% 확률</strong>로 <strong class="text-amber-300">🌟레어 용병</strong> 출현!)
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <button id="officeRefreshBtn" onclick="refreshRecruitPool(false)" class="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-sm shadow-lg flex items-center gap-1.5">
-              🔄 새로운 지원자 모집 (무료 5/5회)
+              🔄 새로운 지원자 모집 (500 CA)
             </button>
           </div>
         </div>
@@ -2684,6 +2684,8 @@
     };
     const SECRET_RARE_CHANCE = 0.1;            // 지원자 한 명당 시크릿 레어 확률 (%)
     const SECRET_RARE_RECRUIT_BONUS = 10000;   // 모집 가격에 더하는 값 (CA)
+    const RARE_CHANCE = 1;                     // 지원자 한 명당 레어 확률 (%)
+    const RARE_RECRUIT_BONUS = 5000;           // 레어 모집 가격에 더하는 값 (CA)
     const SECRET_VARIANCE_MIN = 1.0688;        // 초기 스탯 편차 0.95~1.07 중 상위 1%
     function isSecretRare(rarity) { return Boolean((RARITY_DEFS[rarity] || RARITY_DEFS.N).isSecret); }
 
@@ -3491,7 +3493,7 @@
       return (first && jobSkills[first]) || lockedSkillInfo(10);
     }
 
-    const DAILY_FREE_REFRESHES = 5;
+    const RECRUIT_REFRESH_COST = 500; // 지원자 명단 직접 다시 모집 비용 (명단은 하루 한 번 저절로 바뀜)
     const FIXED_SP_PER_10_LEVELS = 0; // 레벨 스탯 포인트 기능 제거 (받는 포인트 없음)
 
     function getTodayDateString() {
@@ -3568,16 +3570,6 @@
 
     function dailyRewardDoneText(category) {
       return `오늘 ${DAILY_REWARD_LABELS[category] || '이 활동'} 보상(${DAILY_REWARD_LIMITS[category]}회)을 모두 받았어요. 내일 다시 받을 수 있어요!`;
-    }
-
-    function getRemainingFreeRefreshes(stu) {
-      if (!stu) return 0;
-      const today = getTodayDateString();
-      if (stu.freeRefreshDate !== today) {
-        stu.freeRefreshDate = today;
-        stu.freeRefreshUsed = 0;
-      }
-      return Math.max(0, DAILY_FREE_REFRESHES - (stu.freeRefreshUsed || 0));
     }
 
     function getMercStatPointInfo(merc) {
@@ -4154,13 +4146,12 @@
       moveStatTooltip(event);
     }
 
-    // 용병 모집 가격: 지원자의 전투력에 비례 (주인의 유물·장비 보너스는 빼고 용병 자체 전투력만)
-    // 1레벨 일반 용병 평균 전투력이 약 1,000이라 평균 가격은 예전과 같은 약 500 CA
-    const RECRUIT_PRICE_PER_POWER = 0.5;
+    // 용병 모집 가격: 지원자의 전투력과 같은 CA (주인의 유물·장비 보너스는 빼고 용병 자체 전투력만)
     function getRecruitPrice(merc) {
-      // 시크릿 레어는 값어치에 10,000 CA를 더한 값
-      const base = Math.max(100, Math.round((calcMercCombatPower(merc, null) * RECRUIT_PRICE_PER_POWER) / 10) * 10)
-        + (merc && isSecretRare(merc.rarity) ? SECRET_RARE_RECRUIT_BONUS : 0);
+      // 레어는 +5,000 CA, 시크릿 레어는 +10,000 CA
+      const rar = RARITY_DEFS[merc && merc.rarity] || RARITY_DEFS.N;
+      const base = Math.max(100, calcMercCombatPower(merc, null))
+        + (rar.isSecret ? SECRET_RARE_RECRUIT_BONUS : rar.isRare ? RARE_RECRUIT_BONUS : 0);
       // 내가 판 용병을 다시 고용할 때는 판 값보다 싸지 않게 (팔고 다시 사서 CA 불리기 방지)
       return merc && merc.soldBack ? Math.max(base, merc.soldPrice || 0) : base;
     }
@@ -6328,7 +6319,7 @@
     }
 
     /********************************************************************
-     * 7. 용병 사무소 (하루 무료 갱신 5회 + 낮은 확률로 레어 용병 출현)
+     * 7. 용병 사무소 (명단은 하루 한 번 갱신, 직접 다시 모집은 500 CA + 낮은 확률로 레어 용병 출현)
      ********************************************************************/
     function generateRecruitPool(highTierGuarantee = false) {
       const jobKeys = ['warrior', 'mage', 'healer', 'archer', 'rogue'];
@@ -6336,13 +6327,13 @@
       for (let i = 0; i < 6; i++) {
         const jobKey = i < jobKeys.length ? jobKeys[i] : jobKeys[Math.floor(Math.random() * jobKeys.length)];
         const roll = Math.random() * 100;
-        // 0.1% 확률로 시크릿 레어(SR), 2% 확률로 레어(R) 용병 출현!
+        // 0.1% 확률로 시크릿 레어(SR), 1% 확률로 레어(R) 용병 출현!
         let rarity = 'N';
         if (highTierGuarantee && i === 0) {
           rarity = 'R';
         } else if (roll < SECRET_RARE_CHANCE) {
           rarity = 'SCR';
-        } else if (roll < SECRET_RARE_CHANCE + 2) {
+        } else if (roll < SECRET_RARE_CHANCE + RARE_CHANCE) {
           rarity = 'R';
         }
 
@@ -6353,15 +6344,22 @@
       recruitPool = newPool;
       // 학생별로 저장: 새로고침으로 지원자 명단(레어 용병)을 공짜로 다시 뽑지 못하게
       const stu = getActiveStudent();
-      if (stu) stu.recruitPool = newPool;
+      if (stu) {
+        stu.recruitPool = newPool;
+        stu.recruitPoolDate = getTodayDateString();
+      }
     }
 
-    // 현재 학생의 저장된 지원자 명단을 불러옴 (없으면 새로 만듦)
+    function isRecruitPoolStale(stu) {
+      return Boolean(stu && stu.recruitPoolDate !== getTodayDateString());
+    }
+
+    // 현재 학생의 저장된 지원자 명단을 불러옴 (없거나 날짜가 바뀌었으면 새로 만듦)
     function syncRecruitPoolFromStudent() {
       const stu = getActiveStudent();
       let pool = stu && stu.recruitPool;
       if (pool && !Array.isArray(pool) && typeof pool === 'object') pool = Object.values(pool);
-      if (Array.isArray(pool) && pool.length) {
+      if (Array.isArray(pool) && pool.length && !isRecruitPoolStale(stu)) {
         pool.forEach(ensureMercSkin);
         recruitPool = pool;
         stu.recruitPool = pool;
@@ -6375,24 +6373,15 @@
     function refreshRecruitPool(isFree = false) {
       const stu = getActiveStudent();
       if (!isFree) {
-        const freeLeft = getRemainingFreeRefreshes(stu);
-        if (freeLeft > 0) {
-          stu.freeRefreshUsed = (stu.freeRefreshUsed || 0) + 1;
-          saveState();
-          generateRecruitPool(false);
-          renderOfficeTab();
-          showNotice(`🔄 무료 지원자 갱신 완료! (오늘 남은 무료 갱신: ${freeLeft - 1}/${DAILY_FREE_REFRESHES}회)`);
+        if (stu.mc < RECRUIT_REFRESH_COST) {
+          showNotice(`⚠️ 새로운 지원자 모집 비용(${RECRUIT_REFRESH_COST.toLocaleString()} CA)이 부족합니다! (지원자 명단은 하루에 한 번 저절로 바뀌어요)`);
           return;
         }
-        if (stu.mc < 100) {
-          showNotice('⚠️ 오늘 무료 갱신(5회)을 모두 소진했습니다! 추가 갱신 비용(100 CA)이 부족합니다.');
-          return;
-        }
-        stu.mc -= 100;
-        saveState();
+        stu.mc -= RECRUIT_REFRESH_COST;
         generateRecruitPool(false);
+        saveState();
         renderOfficeTab();
-        showNotice('🔄 100 CA를 사용하여 새로운 지원자 명단을 갱신했습니다!');
+        showNotice(`🔄 ${RECRUIT_REFRESH_COST.toLocaleString()} CA를 사용하여 새로운 지원자 명단을 모집했습니다!`);
         return;
       }
       generateRecruitPool(false);
@@ -6401,6 +6390,12 @@
 
     function hireMercFromOffice(index) {
       const stu = getActiveStudent();
+      // 화면을 띄워둔 사이 날짜가 바뀌어 명단이 새로 나오면, 다른 지원자를 고용하지 않게 화면만 새로 그림
+      if (isRecruitPoolStale(stu)) {
+        renderOfficeTab();
+        showNotice('🌅 날짜가 바뀌어 지원자 명단이 새로 바뀌었어요!');
+        return;
+      }
       const cand = syncRecruitPoolFromStudent()[index];
       if (!cand || cand.hired) return;
 
@@ -6437,15 +6432,8 @@
       const stu = getActiveStudent();
       syncRecruitPoolFromStudent();
 
-      const freeLeft = getRemainingFreeRefreshes(stu);
       const refreshBtn = document.getElementById('officeRefreshBtn');
-      if (refreshBtn) {
-        if (freeLeft > 0) {
-          refreshBtn.innerHTML = `🔄 새로운 지원자 모집 (무료 ${freeLeft}/${DAILY_FREE_REFRESHES}회)`;
-        } else {
-          refreshBtn.innerHTML = `🔄 새로운 지원자 모집 (100 CA)`;
-        }
-      }
+      if (refreshBtn) refreshBtn.innerHTML = `🔄 새로운 지원자 모집 (${RECRUIT_REFRESH_COST.toLocaleString()} CA)`;
 
       ['warrior', 'mage', 'healer', 'archer', 'rogue'].forEach(j => {
         const iconEl = document.getElementById(`bannerWpnIcon_${j}`);
