@@ -3371,12 +3371,23 @@
       poison_arrow:   { anim: 'poison_arrow', h: 8 }
     };
 
+    // 범위 스킬 아틀라스 (프레임 형식은 위와 같음, 기준점 = 효과 중심)
+    // 지진 = 기사 지진, 함성 = 전사 사자후, 도발 = 함성 그림을 붉게 바꾼 것 (기사 도발)
+    const SKILL_FX_SHEET = {
+      src: 'assets/sprites/fx/skill_fx.webp',
+      anims: {
+        quake: [[0,0,183,124,90,66],[185,0,261,173,131,87],[448,0,303,198,152,99]],
+        shout: [[0,200,172,104,87,53],[174,200,274,193,137,92],[450,200,309,233,155,112]],
+        taunt: [[0,435,172,104,87,53],[174,435,274,193,137,92],[450,435,309,233,155,112]]
+      }
+    };
+
     // 도적 표창 (투사체 그림, 회전시켜 그리므로 아틀라스와 따로 둠)
     const ROGUE_SHURIKEN_IMG = new Image();
     ROGUE_SHURIKEN_IMG.onload = () => { ROGUE_SHURIKEN_IMG.ready = true; };
     ROGUE_SHURIKEN_IMG.src = 'assets/sprites/fx/rogue_shuriken.webp';
 
-    Object.values(MERC_SPRITE_DEFS).concat(FX_SPRITE_SHEET).forEach(def => {
+    Object.values(MERC_SPRITE_DEFS).concat(FX_SPRITE_SHEET, SKILL_FX_SHEET).forEach(def => {
       def.img = new Image();
       def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
       def.img.src = def.src;
@@ -10931,7 +10942,7 @@
 
       if (sk === 'roar') {
         // 사자후: 주변 2칸 적에게 피해 + 1.2칸 밀쳐냄
-        sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: C * 2, color: '#d97706', life: 36, maxLife: 36 });
+        sim.effects.push({ type: 'aoe_ring', spr: 'shout', x: unit.x, y: unit.y, r: C * 2, color: '#d97706', life: 36, maxLife: 36 });
         near(enemies, unit.x, unit.y, C * 2).forEach(e => {
           applyDamage(unit, e, unit.atk * 1.9);
           pushUnitAway(e, unit.x, unit.y, C * 1.2);
@@ -11133,7 +11144,7 @@
       }
       if (sk === 'provoke') {
         // 도발: 주변 2칸 적 5초간 도발 (기사만 기본 공격, 스킬 사용 불가 · 시전 중이던 스킬은 끊김)
-        sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: C * 2, color: '#ea580c', life: 40, maxLife: 40 });
+        sim.effects.push({ type: 'aoe_ring', spr: 'taunt', x: unit.x, y: unit.y, r: C * 2, color: '#ea580c', life: 40, maxLife: 40 });
         let n = 0;
         near(enemies, unit.x, unit.y, C * 2).forEach(e => {
           inflictStatus(unit, e, 'taunt', KNIGHT_TAUNT_TICKS);
@@ -11192,7 +11203,7 @@
       if (sk === 'earthquake') {
         // 지진: 2.5칸 안 적에게 다단히트, 맞을 때마다 기사 쪽으로 끌려옴 (stepKnightEffects에서 진행)
         unit.quake = { hits: KNIGHT_QUAKE_HITS, timer: 0 };
-        sim.effects.push({ type: 'stun_shockwave', x: unit.x, y: unit.y, r: KNIGHT_QUAKE_RADIUS, life: 56, maxLife: 56 });
+        sim.effects.push({ type: 'stun_shockwave', spr: 'quake', x: unit.x, y: unit.y, r: KNIGHT_QUAKE_RADIUS, life: 96, maxLife: 96 }); // 다단히트(15틱 × 6)가 끝날 때까지
         addBattleLog(`🌋 [기사] ${unit.name}의 지진! 주변 적을 끌어당겨요`);
         return true;
       }
@@ -11735,7 +11746,7 @@
      * 11. 시스템 검증용 심플 유닛 토큰 & 대형 전술 그리드 렌더러 (도트 그래픽 배제)
      ********************************************************************/
     // 아틀라스 한 프레임을 (x, y)에 기준점을 맞춰 그리기
-    function drawFxFrame(ctx, fr, x, y, scale, angle = 0, alpha = 1) {
+    function drawFxFrame(ctx, fr, x, y, scale, angle = 0, alpha = 1, img = FX_SPRITE_SHEET.img) {
       const [sx, sy, sw, sh, ax, ay] = fr;
       ctx.save();
       ctx.translate(x, y);
@@ -11747,7 +11758,7 @@
       ctx.globalAlpha *= alpha;
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(FX_SPRITE_SHEET.img, sx, sy, sw, sh, -ax * scale, -ay * scale, sw * scale, sh * scale);
+      ctx.drawImage(img, sx, sy, sw, sh, -ax * scale, -ay * scale, sw * scale, sh * scale);
       ctx.restore();
     }
 
@@ -11768,9 +11779,25 @@
 
     // spr가 붙은 효과를 그림으로 그리면 true
     function drawSpriteEffect(ctx, ef, progress) {
+      const fadeOut = Math.min(1, (1 - progress) * 3); // 마지막 1/3 동안 서서히 사라짐
+      if (SKILL_FX_SHEET.anims[ef.spr]) {
+        if (!SKILL_FX_SHEET.ready) return false;
+        const list = SKILL_FX_SHEET.anims[ef.spr];
+        const last = list[list.length - 1];
+        if (ef.spr === 'quake') {
+          // 갈라진 땅: 앞쪽 1/4 동안 커지고 다단히트가 끝날 때까지 남음. 폭 = 범위 지름의 약 85%
+          const fr = fxFrameAt(list, progress, 0.25);
+          drawFxFrame(ctx, fr, ef.x, ef.y, (ef.r * 2 * 0.85) / last[2], 0, Math.min(1, (1 - progress) * 5), SKILL_FX_SHEET.img);
+        } else {
+          // 함성(사자후)·도발: 퍼져 나가는 고리. 마지막 그림의 고리 지름 ≈ 실제 범위 지름
+          const fr = fxFrameAt(list, progress, 0.6);
+          const w = ef.r * 2 * 1.5 * (0.7 + Math.min(1, progress * 1.7) * 0.3);
+          drawFxFrame(ctx, fr, ef.x, ef.y, w / last[2], 0, fadeOut, SKILL_FX_SHEET.img);
+        }
+        return true;
+      }
       if (!FX_SPRITE_SHEET.ready) return false;
       const A = FX_SPRITE_SHEET.anims;
-      const fadeOut = Math.min(1, (1 - progress) * 3); // 마지막 1/3 동안 서서히 사라짐
       switch (ef.spr) {
         case 'orb_hit':
         case 'fire_hit':
