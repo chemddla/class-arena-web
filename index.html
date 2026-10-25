@@ -253,6 +253,22 @@
       0%, 100% { opacity: 0; transform: scale(0.3) rotate(0deg); }
       50% { opacity: 1; transform: scale(1.25) rotate(90deg); }
     }
+    /* 시크릿 레어(SR) 용병: 레어와 같은 연출을 붉은 빛으로 */
+    .rarity-SCR {
+      border-color: #dc2626 !important;
+      background: linear-gradient(135deg, #fff1f2 0%, #fecaca 100%) !important;
+      box-shadow: 0 4px 15px rgba(220, 38, 38, 0.25) !important;
+    }
+    .rarity-SCR.merc-rare-shine { animation-name: mercSecretGlow; }
+    .rarity-SCR.merc-rare-shine::after {
+      background-image: linear-gradient(115deg, transparent 38%, rgba(254, 160, 160, 0.4) 45%, rgba(255, 240, 240, 0.9) 50%, rgba(254, 160, 160, 0.4) 55%, transparent 62%);
+    }
+    @keyframes mercSecretGlow {
+      0%, 100% { box-shadow: 0 0 6px 1px rgba(239, 68, 68, 0.5), 0 4px 15px rgba(220, 38, 38, 0.25); }
+      50% { box-shadow: 0 0 20px 6px rgba(239, 68, 68, 0.85), 0 0 38px 10px rgba(248, 113, 113, 0.4); }
+    }
+    .rare-aura.secret { background: radial-gradient(circle, rgba(248, 113, 113, 0.65) 0%, rgba(220, 38, 38, 0.3) 45%, transparent 70%); }
+    .rare-twinkle.secret { color: #fca5a5; text-shadow: 0 0 3px #fff, 0 0 7px rgba(239, 68, 68, 1), 0 0 12px rgba(185, 28, 28, 0.85); }
     @media (prefers-reduced-motion: reduce) {
       .merc-rare-shine, .merc-rare-shine::after, .rare-twinkle, .rare-aura { animation: none; }
       .merc-rare-shine::after, .rare-twinkle { opacity: 0; }
@@ -2662,8 +2678,14 @@
       N:   { code: 'N',   name: '일반',   isRare: false, mult: 1.0,  spdMult: 1.0,  lvGrowth: 0.012, spdLvGrowth: 0.004, cost: 500, badgeClass: 'bg-slate-200 text-slate-700 border border-slate-300' },
       R:   { code: 'R',   name: '🌟레어', isRare: true,  mult: 1.10, spdMult: 1.04, lvGrowth: 0.015, spdLvGrowth: 0.005, cost: 500, badgeClass: 'bg-amber-400/30 text-amber-900 border border-amber-500' },
       SR:  { code: 'SR',  name: '🌟레어', isRare: true,  mult: 1.10, spdMult: 1.04, lvGrowth: 0.015, spdLvGrowth: 0.005, cost: 500, badgeClass: 'bg-amber-400/30 text-amber-900 border border-amber-500' },
-      SSR: { code: 'SSR', name: '🌟레어', isRare: true,  mult: 1.10, spdMult: 1.04, lvGrowth: 0.015, spdLvGrowth: 0.005, cost: 500, badgeClass: 'bg-amber-400/30 text-amber-900 border border-amber-500' }
+      SSR: { code: 'SSR', name: '🌟레어', isRare: true,  mult: 1.10, spdMult: 1.04, lvGrowth: 0.015, spdLvGrowth: 0.005, cost: 500, badgeClass: 'bg-amber-400/30 text-amber-900 border border-amber-500' },
+      // 시크릿 레어(SR). 예전 저장값 'SR'은 레어로 보이므로 코드는 'SCR'을 씀
+      SCR: { code: 'SCR', name: '🔥시크릿 레어', isRare: true, isSecret: true, mult: 1.10, spdMult: 1.04, lvGrowth: 0.015, spdLvGrowth: 0.005, cost: 500, badgeClass: 'bg-red-500/30 text-red-900 border border-red-600' }
     };
+    const SECRET_RARE_CHANCE = 0.1;            // 지원자 한 명당 시크릿 레어 확률 (%)
+    const SECRET_RARE_RECRUIT_BONUS = 10000;   // 모집 가격에 더하는 값 (CA)
+    const SECRET_VARIANCE_MIN = 1.0688;        // 초기 스탯 편차 0.95~1.07 중 상위 1%
+    function isSecretRare(rarity) { return Boolean((RARITY_DEFS[rarity] || RARITY_DEFS.N).isSecret); }
 
     const MERC_NAME_POOL = {
       warrior: ['레오', '가렌', '아서', '카일', '휴고', '볼트', '브론', '타이탄', '그레이', '록', '맥스', '바론', '코난', '드레이크', '라그너', '토르', '브루노', '레녹스', '오스카', '해럴드', '레온', '다리우스', '켄', '베일', '로크', '에릭', '군터', '발터', '하켄', '지크', '아이언', '가드', '브랜드', '라이언', '모건', '리처드', '윌리엄', '에드워드', '헨리', '루이스', '프레드', '하워드', '조지', '칼', '마커스', '빅터', '로이', '잭', '데릭', '브록', '그랜트', '스톤', '해머', '블레이드', '사무엘', '에이든', '오웬', '카터', '헌터', '라이더', '덱스터', '놀란', '레비', '테런스', '마일로', '앨런', '데이먼', '이반', '니코', '펠릭스', '고든', '로간', '라일', '트리스탄', '아틀라스', '헥터', '아킬레스', '쿠퍼', '맥스웰', '바스티안'],
@@ -3211,6 +3233,15 @@
     };
     // 도적 외형 1 (잿빛 후드), 2 (보라 후드), 3 (남색 후드), 4 (초록 후드), 5 (진홍 후드): 칸·기준점·동작 구성은 rogue_0과 같고 그림만 다름
     [1, 2, 3, 4, 5].forEach(v => { MERC_SPRITE_DEFS[`rogue_${v}`] = { ...MERC_SPRITE_DEFS.rogue_0, src: `assets/sprites/merc/rogue_${v}.webp` }; });
+    // 시크릿 레어 전용 외형: 파일 assets/sprites/merc/<직업>_sr<번호>.webp, 칸 순서·동작 구성은 그 직업의 0번 외형과 같음
+    // skinVariant = SECRET_SKIN_BASE + 번호라 일반 외형 무작위 뽑기(0번부터 이어진 번호만 셈)에는 나오지 않음
+    const SECRET_SKIN_BASE = 100;
+    const SECRET_MERC_SKINS = { warrior: [1], mage: [1], healer: [], archer: [1], rogue: [1] };
+    // 0번 외형과 칸 크기가 다른 시트. 전사 SR 1: 높이 든 칼·함성 번개가 잘리지 않게 칸을 위로 30px 늘림
+    const SECRET_SKIN_SHEETS = { warrior_sr1: { cellH: 112, anchorY: 111 } };
+    Object.entries(SECRET_MERC_SKINS).forEach(([job, nums]) => nums.forEach(n => {
+      MERC_SPRITE_DEFS[`${job}_${SECRET_SKIN_BASE + n}`] = { ...MERC_SPRITE_DEFS[`${job}_0`], ...SECRET_SKIN_SHEETS[`${job}_sr${n}`], src: `assets/sprites/merc/${job}_sr${n}.webp` };
+    }));
     const SPRITE_DRAW_H = 54;       // 전투 화면에서 서 있는 캐릭터의 키(월드 px)
     const SPRITE_DEATH_TICKS = 150; // 쓰러진 뒤 화면에 남아 있는 시간
 
@@ -3263,10 +3294,24 @@
     const MERC_SKIN_VERSION = 1;
     function getMercSkinCount(jobKey) { let n = 0; while (MERC_SPRITE_DEFS[`${jobKey}_${n}`]) n++; return Math.max(1, n); }
     function pickRandomMercSkin(jobKey) { return Math.floor(Math.random() * getMercSkinCount(jobKey)); }
+    // 시크릿 레어 외형 하나 (그 직업 전용 그림이 아직 없으면 null → 일반 외형)
+    function pickSecretMercSkin(jobKey, seed = null) {
+      const nums = SECRET_MERC_SKINS[jobKey] || [];
+      if (!nums.length) return null;
+      const i = seed === null ? Math.floor(Math.random() * nums.length) : seed % nums.length;
+      return SECRET_SKIN_BASE + nums[i];
+    }
     function ensureMercSkin(m) {
       if (!m || typeof m !== 'object' || !m.job || m.monsterType) return m;
       // 학생이 CA를 내고 직접 고른 외형은 그대로 둠 (그림이 없어졌을 때만 다시 배정)
       if (m.skinPicked && MERC_SPRITE_DEFS[`${m.job}_${m.skinVariant || 0}`]) return m;
+      // 시크릿 레어인데 전용 외형이 아니면(그림이 나중에 추가된 경우) 용병 ID로 정해지는 전용 외형으로 바꿈
+      if (isSecretRare(m.rarity) && !((m.skinVariant || 0) >= SECRET_SKIN_BASE && MERC_SPRITE_DEFS[`${m.job}_${m.skinVariant}`])) {
+        const key = String(m.id || m.name || '');
+        let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+        const sv = pickSecretMercSkin(m.job, h);
+        if (sv !== null) { m.skinVariant = sv; m.skinVer = MERC_SKIN_VERSION; m.skinN = getMercSkinCount(m.job); return m; }
+      }
       const n = getMercSkinCount(m.job);
       if (m.skinVer === MERC_SKIN_VERSION && ((m.skinN || 1) >= n || (m.skinVariant || 0) > 0)) { m.skinN = Math.max(m.skinN || 1, n); return m; }
       const key = String(m.id || m.name || '');
@@ -3321,14 +3366,16 @@
       return `<span>${(JOB_DEFS[jobKey] || JOB_DEFS.warrior).icon}</span>`;
     }
 
-    // 레어 용병 초상화: 뒤에 금빛 후광, 둘레에 엇갈려 반짝이는 별 5개
+    // 레어 용병 초상화: 뒤에 금빛 후광, 둘레에 엇갈려 반짝이는 별 5개 (시크릿 레어는 붉은 빛)
     function rareTwinkleHTML(rarity) {
       if (!(RARITY_DEFS[rarity] || RARITY_DEFS.N).isRare) return '';
       const stars = [['top:1px;right:2px', 13, 0], ['bottom:3px;left:2px', 10, 0.7], ['top:30%;left:0', 8, 1.2], ['bottom:22%;right:0', 9, 0.4], ['top:0;left:30%', 7, 1.5]];
-      return stars.map(([pos, size, delay]) => `<span class="rare-twinkle" style="${pos};font-size:${size}px;animation-delay:${delay}s">✦</span>`).join('');
+      const cls = isSecretRare(rarity) ? 'rare-twinkle secret' : 'rare-twinkle';
+      return stars.map(([pos, size, delay]) => `<span class="${cls}" style="${pos};font-size:${size}px;animation-delay:${delay}s">✦</span>`).join('');
     }
     function rareAuraHTML(rarity) {
-      return (RARITY_DEFS[rarity] || RARITY_DEFS.N).isRare ? '<span class="rare-aura"></span>' : '';
+      if (!(RARITY_DEFS[rarity] || RARITY_DEFS.N).isRare) return '';
+      return isSecretRare(rarity) ? '<span class="rare-aura secret"></span>' : '<span class="rare-aura"></span>';
     }
 
     function getUnitPortraitHTML(jobKey, rarity = 'N', skinVariant = 0, size = 48) {
@@ -3604,7 +3651,11 @@
       const trait = TRAIT_POOL[Math.floor(Math.random() * TRAIT_POOL.length)];
       const skillKey = fixedSkillKey || getRandomSkillKey(jobKey);
 
-      const randVar = () => +(0.95 + Math.random() * 0.12).toFixed(3);
+      const isSecret = rarityCode === 'SCR';
+      // 시크릿 레어는 네 스탯 모두 상위 1% 초기 스탯
+      const randVar = isSecret
+        ? () => +(SECRET_VARIANCE_MIN + Math.random() * (1.07 - SECRET_VARIANCE_MIN)).toFixed(4)
+        : () => +(0.95 + Math.random() * 0.12).toFixed(3);
 
       const defaultPositions = [
         { row: 1, col: 2 },
@@ -3623,10 +3674,10 @@
         skillKey: skillKey,
         skillSlots: [skillKey, ...restSkills],
         skillsRevealed: fixedSkillKey && level >= 10 ? 1 : 0,
-        skinVariant: pickRandomMercSkin(jobKey),
+        skinVariant: (isSecret ? pickSecretMercSkin(jobKey) : null) ?? pickRandomMercSkin(jobKey),
         skinVer: MERC_SKIN_VERSION,
         skinN: getMercSkinCount(jobKey),
-        rarity: rarityCode === 'N' ? 'N' : 'R',
+        rarity: isSecret ? 'SCR' : (rarityCode === 'N' ? 'N' : 'R'),
         level: level,
         statPoints: { hp: 0, atk: 0, def: 0, spd: 0 },
         statVariance: { hp: randVar(), atk: randVar(), def: randVar(), spd: randVar() },
@@ -3897,6 +3948,9 @@
       const top5Keys = ['hp', 'atk', 'def', 'spd'].filter(k => cmp.tier[k] === 'top5');
       const top30Keys = ['hp', 'atk', 'def', 'spd'].filter(k => cmp.tier[k] === 'top30');
 
+      if (isSecretRare(merc.rarity)) {
+        return '📝 한줄평: 🔥 모든 초기 능력치가 상위 1%인, 천 명 중 한 명 나올 시크릿 레어!';
+      }
       if (top5Keys.length >= 2) {
         return '📝 한줄평: 🌟 천부적인 초기 능력치를 두루 타고난 전설급 핵심 인재!';
       }
@@ -3995,7 +4049,9 @@
         const t = cmp.tier[statKey];
         const initVal = cmp.init[statKey];
         const avgVal = cmp.avg[statKey];
-        const tierBadge = t === 'top5'
+        const tierBadge = ensureMercVariance(merc)[statKey] >= SECRET_VARIANCE_MIN
+          ? '🔥 상위 1% 최상급 초기 스탯 (붉은색 굵게)'
+          : t === 'top5'
           ? '🔥 상위 5% 최상급 초기 스탯 (붉은색 굵게)'
           : (t === 'top30' ? '⭐ 상위 30% 우수 초기 스탯 (검정색 굵게)' : '(일반 범위 초기 스탯)');
         const tierColor = t === 'top5' ? 'stat-top5-red' : (t === 'top30' ? 'stat-top30-bold' : 'text-slate-300');
@@ -4102,7 +4158,9 @@
     // 1레벨 일반 용병 평균 전투력이 약 1,000이라 평균 가격은 예전과 같은 약 500 CA
     const RECRUIT_PRICE_PER_POWER = 0.5;
     function getRecruitPrice(merc) {
-      const base = Math.max(100, Math.round((calcMercCombatPower(merc, null) * RECRUIT_PRICE_PER_POWER) / 10) * 10);
+      // 시크릿 레어는 값어치에 10,000 CA를 더한 값
+      const base = Math.max(100, Math.round((calcMercCombatPower(merc, null) * RECRUIT_PRICE_PER_POWER) / 10) * 10)
+        + (merc && isSecretRare(merc.rarity) ? SECRET_RARE_RECRUIT_BONUS : 0);
       // 내가 판 용병을 다시 고용할 때는 판 값보다 싸지 않게 (팔고 다시 사서 CA 불리기 방지)
       return merc && merc.soldBack ? Math.max(base, merc.soldPrice || 0) : base;
     }
@@ -4971,7 +5029,7 @@
           })()}
         </div>
 
-        <!-- 2-C. 외형 변경 -->
+        <!-- 2-C. 외형 변경 (기본 외형만, 시크릿 레어 전용 외형은 고를 수 없음) -->
         <div class="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex flex-col gap-2.5">
           <div class="flex items-center justify-between flex-wrap gap-2">
             <span class="text-xs font-extrabold text-fuchsia-300">🎨 외형 변경</span>
@@ -4986,6 +5044,7 @@
               </button>`;
             }).join('')}
           </div>
+          ${(merc.skinVariant || 0) >= SECRET_SKIN_BASE ? '<p class="text-[11px] text-rose-300">🔥 지금은 시크릿 레어 전용 외형이에요. 기본 외형으로 바꾸면 전용 외형으로 다시 돌아올 수 없어요.</p>' : ''}
         </div>
 
         <!-- 3. 전술 AI & 대시 운용 설정 -->
@@ -5157,7 +5216,7 @@
 
     const MERC_SKIN_CHANGE_COST = 1000;
 
-    // skinVariant: 바꿀 기본 외형 번호 (0 ~ 직업별 외형 수 - 1)
+    // skinVariant: 바꿀 기본 외형 번호 (0 ~ 직업별 외형 수 - 1, 시크릿 레어 전용 외형은 안 됨)
     function changeMercSkin(mercId, skinVariant) {
       const stu = getActiveStudent();
       const merc = stu.roster.find(m => m.id === mercId);
@@ -5172,7 +5231,8 @@
         showNotice(`⚠️ 외형 변경 비용(${MERC_SKIN_CHANGE_COST.toLocaleString()} CA)이 부족해요! (보유: ${stu.mc.toLocaleString()} CA)`);
         return;
       }
-      askCustomConfirm(`[${merc.name}]의 외형을 ${v + 1}번 외형으로 바꿀까요? ${MERC_SKIN_CHANGE_COST.toLocaleString()} CA가 들어요.`, () => {
+      const lostSecret = (merc.skinVariant || 0) >= SECRET_SKIN_BASE;
+      askCustomConfirm(`[${merc.name}]의 외형을 ${v + 1}번 외형으로 바꿀까요? ${MERC_SKIN_CHANGE_COST.toLocaleString()} CA가 들어요.${lostSecret ? '\n🔥 시크릿 레어 전용 외형은 다시 고를 수 없어요.' : ''}`, () => {
         if (stu.mc < MERC_SKIN_CHANGE_COST || (merc.skinVariant || 0) === v) return;
         stu.mc -= MERC_SKIN_CHANGE_COST;
         merc.skinVariant = v;
@@ -6276,11 +6336,13 @@
       for (let i = 0; i < 6; i++) {
         const jobKey = i < jobKeys.length ? jobKeys[i] : jobKeys[Math.floor(Math.random() * jobKeys.length)];
         const roll = Math.random() * 100;
-        // 2% 확률로 레어(R) 용병 출현!
+        // 0.1% 확률로 시크릿 레어(SR), 2% 확률로 레어(R) 용병 출현!
         let rarity = 'N';
         if (highTierGuarantee && i === 0) {
           rarity = 'R';
-        } else if (roll < 2) {
+        } else if (roll < SECRET_RARE_CHANCE) {
+          rarity = 'SCR';
+        } else if (roll < SECRET_RARE_CHANCE + 2) {
           rarity = 'R';
         }
 
@@ -6421,7 +6483,8 @@
                     <span>${cand.name}</span>
                   </h5>
                   ${cand.soldBack ? '<p class="text-[10px] font-extrabold text-amber-300 mt-0.5">💰 판매된 용병 · 다시 고용할 수 있어요</p>' : ''}
-                  ${rar.isRare ? `<p class="text-[10px] font-bold text-rose-400 mt-0.5">🔥 레어 특전: 기본 능력치 +10% & 레벨업 상승량 증가!</p>` : ''}
+                  ${rar.isSecret ? `<p class="text-[10px] font-bold text-red-400 mt-0.5">🔥 시크릿 레어 특전: 레어 특전 + 모든 초기 스탯 상위 1%!</p>`
+                    : rar.isRare ? `<p class="text-[10px] font-bold text-rose-400 mt-0.5">🔥 레어 특전: 기본 능력치 +10% & 레벨업 상승량 증가!</p>` : ''}
                 </div>
               </div>
 
@@ -11290,13 +11353,15 @@
 
     // 발 위치(0, 12)에 맞춰 스프라이트 한 프레임 그리기
     // 레어 용병 전투 이펙트용 4갈래 별
-    function drawRareSparkle(ctx, x, y, r, alpha) {
+    // 레어는 금빛, 시크릿 레어는 붉은 빛 ([밝은 색 RGB, 진한 색 RGB, 별 안쪽 색])
+    const RARE_FX_COLORS = { gold: ['253, 224, 71', '251, 191, 36', '#fff7c2'], red: ['248, 113, 113', '220, 38, 38', '#ffe4e4'] };
+    function drawRareSparkle(ctx, x, y, r, alpha, pal = RARE_FX_COLORS.gold) {
       if (alpha <= 0.02) return;
       ctx.save();
       ctx.globalAlpha *= alpha;
       ctx.translate(x, y);
-      ctx.fillStyle = '#fff7c2';
-      ctx.shadowColor = 'rgba(251, 191, 36, 1)';
+      ctx.fillStyle = pal[2];
+      ctx.shadowColor = `rgba(${pal[1]}, 1)`;
       ctx.shadowBlur = 6;
       ctx.beginPath();
       ctx.moveTo(0, -r); ctx.quadraticCurveTo(0, 0, r, 0); ctx.quadraticCurveTo(0, 0, 0, r); ctx.quadraticCurveTo(0, 0, -r, 0); ctx.quadraticCurveTo(0, 0, 0, -r);
@@ -11304,20 +11369,20 @@
       ctx.restore();
     }
     // 레어 용병: 발밑 금빛 후광과 위로 피어오르는 빛 (스프라이트 뒤에 그림)
-    function drawRareAuraBack(ctx, tick) {
+    function drawRareAuraBack(ctx, tick, pal = RARE_FX_COLORS.gold) {
       const p = 0.5 + 0.5 * Math.sin(tick * 0.08);
       ctx.save();
       const g = ctx.createRadialGradient(0, 8, 2, 0, 8, 30);
-      g.addColorStop(0, `rgba(253, 224, 71, ${0.45 + p * 0.25})`);
-      g.addColorStop(0.6, `rgba(251, 191, 36, ${0.15 + p * 0.12})`);
-      g.addColorStop(1, 'rgba(251, 191, 36, 0)');
+      g.addColorStop(0, `rgba(${pal[0]}, ${0.45 + p * 0.25})`);
+      g.addColorStop(0.6, `rgba(${pal[1]}, ${0.15 + p * 0.12})`);
+      g.addColorStop(1, `rgba(${pal[1]}, 0)`);
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.ellipse(0, 10, 30, 12, 0, 0, Math.PI * 2);
       ctx.fill();
       const col = ctx.createLinearGradient(0, 12, 0, -46);
-      col.addColorStop(0, `rgba(253, 224, 71, ${0.22 + p * 0.12})`);
-      col.addColorStop(1, 'rgba(253, 224, 71, 0)');
+      col.addColorStop(0, `rgba(${pal[0]}, ${0.22 + p * 0.12})`);
+      col.addColorStop(1, `rgba(${pal[0]}, 0)`);
       ctx.fillStyle = col;
       ctx.beginPath();
       ctx.ellipse(0, -16, 18 + p * 3, 30, 0, 0, Math.PI * 2);
@@ -11325,19 +11390,19 @@
       ctx.restore();
     }
     // 레어 용병: 몸 둘레를 도는 별과 위로 떠오르는 빛 알갱이 (스프라이트 앞에 그림)
-    function drawRareAuraFront(ctx, tick, topY) {
+    function drawRareAuraFront(ctx, tick, topY, pal = RARE_FX_COLORS.gold) {
       const midY = (topY + 12) / 2;
       for (let i = 0; i < 4; i++) {
         const a = tick * 0.035 + i * Math.PI / 2;
         const x = Math.cos(a) * 24, y = midY + Math.sin(a) * 9 - 4;
         const tw = 0.5 + 0.5 * Math.sin(tick * 0.18 + i * 1.7);
-        drawRareSparkle(ctx, x, y, 2.5 + tw * 3.5, 0.35 + tw * 0.65);
+        drawRareSparkle(ctx, x, y, 2.5 + tw * 3.5, 0.35 + tw * 0.65, pal);
       }
       for (let i = 0; i < 5; i++) {
         const t = ((tick * 0.7 + i * 23) % 60) / 60;
         const x = Math.sin(i * 2.3 + tick * 0.02) * 16;
         const y = 10 - t * (20 - topY);
-        drawRareSparkle(ctx, x, y, 1.6, Math.sin(t * Math.PI) * 0.9);
+        drawRareSparkle(ctx, x, y, 1.6, Math.sin(t * Math.PI) * 0.9, pal);
       }
     }
 
@@ -11362,8 +11427,8 @@
       ctx.scale(dir, 1);
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      if (rareGlow) { // 실루엣을 따라 금빛이 번짐
-        ctx.shadowColor = 'rgba(251, 191, 36, 0.95)';
+      if (rareGlow) { // 실루엣을 따라 금빛(시크릿 레어는 붉은 빛)이 번짐 (rareGlow = RARE_FX_COLORS 색 묶음)
+        ctx.shadowColor = `rgba(${(Array.isArray(rareGlow) ? rareGlow : RARE_FX_COLORS.gold)[1]}, 0.95)`;
         ctx.shadowBlur = 7 + 5 * (0.5 + 0.5 * Math.sin(tick * 0.08));
       }
       ctx.drawImage(sprite.img, frame * sprite.cellW, 0, sprite.cellW, sprite.cellH,
@@ -11436,9 +11501,10 @@
 
       const rareFx = useSprite && !u.isDarkMerc && (RARITY_DEFS[u.rarity] || RARITY_DEFS.N).isRare;
       if (useSprite) {
-        if (rareFx) drawRareAuraBack(ctx, tick);
-        drawUnitSprite(ctx, u, sprite, tick, jumpY, rareFx);
-        if (rareFx) drawRareAuraFront(ctx, tick, headTopY + jumpY);
+        const rarePal = isSecretRare(u.rarity) ? RARE_FX_COLORS.red : RARE_FX_COLORS.gold;
+        if (rareFx) drawRareAuraBack(ctx, tick, rarePal);
+        drawUnitSprite(ctx, u, sprite, tick, jumpY, rareFx && rarePal);
+        if (rareFx) drawRareAuraFront(ctx, tick, headTopY + jumpY, rarePal);
       } else {
         ctx.save();
         ctx.translate(u.facingDir * lungeX, jumpY);
