@@ -14432,6 +14432,8 @@
 
     // ==================== [4] 끝말잇기 (번갈아 · 제한시간) ====================
     const WORD_TURN_SEC = 15;
+    // 제한시간이 이만큼 넘게 지난 판은 버려진 판으로 봄 (백그라운드 탭은 타이머가 최대 1분까지 늦어질 수 있어 넉넉히)
+    const WORD_STALE_MS = 90 * 1000;
     const WORD_CHAIN_DICT = [
       '사과', '과자', '자전거', '거북이', '이슬', '슬기', '기차', '차표', '표범', '범고래', '래프팅', '팅커벨', '벨소리', '리본', '본부', '부채', '채소', '소나무', '무지개', '개구리',
       '나무', '무궁화', '화분', '분수', '수박', '박수', '수영', '영화', '화가', '가방', '방울', '울타리', '리듬', '듬뿍', '구름', '음악', '악기', '기린', '인형', '형제',
@@ -14615,7 +14617,15 @@
       if (secEl) secEl.textContent = st.gameOver ? '' : `${Math.ceil(left / 1000)}초`;
       if (!st.gameOver && left <= 0) {
         const judge = mgDrivesAi(); // 혼자 연습이면 내 화면, 실시간 방이면 방장 화면이 시간 초과를 판정
-        if (judge && Date.now() - st.deadline > 300) wordChainTimeout(st);
+        // 제한시간이 한참 지난 판은 하다 만 예전 판(로그인 때 불러옴) — 알림·보상 없이 조용히 끝냄
+        if (judge && Date.now() - st.deadline > WORD_STALE_MS) {
+          mgRewardedGames.add(st.gameId);
+          st.gameOver = true;
+          st.winnerSeat = -1;
+          st.note = '오래 멈춰 있던 판이라 끝났어요.';
+          renderWordChainBoard();
+          mgPush('wordchain', st);
+        } else if (judge && Date.now() - st.deadline > 300) wordChainTimeout(st);
       }
     }, 250);
 
