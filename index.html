@@ -3286,7 +3286,7 @@
 
     Object.values(MERC_SPRITE_DEFS).concat(FX_SPRITE_SHEET).forEach(def => {
       def.img = new Image();
-      def.img.onload = () => { def.ready = true; };
+      def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
       def.img.src = def.src;
     });
 
@@ -3351,14 +3351,41 @@
     const PORTRAIT_VIEW_H = 96;
     // headOnly: 작은 아이콘용. 머리~상체만 잘라 크게 보여 줌
     const PORTRAIT_HEAD_VIEW_H = 60;
-    function getSpritePortraitHTML(sprite, size, tag = 'div', extraStyle = '', headOnly = false) {
+    function getPortraitCrop(sprite, headOnly) {
       const viewH = (headOnly ? PORTRAIT_HEAD_VIEW_H : PORTRAIT_VIEW_H) * (sprite.portraitZoomOut || 1);
-      const k = size / viewH;
       const cropX = sprite.portraitCX - viewH / 2;
       const cropY = headOnly
         ? sprite.anchorY - (sprite.topH || sprite.standH) - 2 // 머리 꼭대기 위 2px부터
         : sprite.anchorY + 3 - viewH;                         // 발 아래 3px 여백
-      return `<${tag} class="select-none${tag === 'span' ? ' inline-block align-middle shrink-0' : ''}" style="width:${size}px;height:${size}px;background:url('${sprite.src}') no-repeat;background-size:${Math.round(sprite.cellW * sprite.count * k)}px ${Math.round(sprite.cellH * k)}px;background-position:${-Math.round(cropX * k)}px ${-Math.round(cropY * k)}px;${sprite.filter ? `filter:${sprite.filter};` : ''}${extraStyle}"></${tag}>`;
+      return { viewH, cropX, cropY };
+    }
+    // 시트를 다 받으면 초상화 칸만 작은 그림으로 잘라 둠 (전신·머리 두 가지).
+    // 초상화가 큰 시트를 그대로 쓰면 디코딩 크기 1MB가 넘는 시트(도적 3300×99 등)는 브라우저가 화면을 먼저 그린 뒤
+    // 따로 디코딩해서, 모집 명단을 갱신할 때마다 그림이 늦게 나타남
+    function buildSpritePortraits(sprite) {
+      sprite.portraits = {};
+      [false, true].forEach(headOnly => {
+        const { viewH, cropX, cropY } = getPortraitCrop(sprite, headOnly);
+        const x0 = Math.floor(cropX), y0 = Math.floor(cropY);
+        const cv = document.createElement('canvas');
+        cv.width = Math.ceil(cropX + viewH) - x0;
+        cv.height = Math.ceil(cropY + viewH) - y0;
+        cv.getContext('2d').drawImage(sprite.img, -x0, -y0);
+        try {
+          cv.toBlob(blob => {
+            if (blob) sprite.portraits[headOnly ? 'head' : 'full'] = { url: URL.createObjectURL(blob), x0, y0, w: cv.width, h: cv.height };
+          });
+        } catch (e) {} // file://로 열면 캔버스를 읽을 수 없음 → 시트를 그대로 씀
+      });
+    }
+    function getSpritePortraitHTML(sprite, size, tag = 'div', extraStyle = '', headOnly = false) {
+      const { viewH, cropX, cropY } = getPortraitCrop(sprite, headOnly);
+      const k = size / viewH;
+      const p = sprite.portraits && sprite.portraits[headOnly ? 'head' : 'full'];
+      const bg = p
+        ? `background:url('${p.url}') no-repeat;background-size:${Math.round(p.w * k)}px ${Math.round(p.h * k)}px;background-position:${-Math.round((cropX - p.x0) * k)}px ${-Math.round((cropY - p.y0) * k)}px;`
+        : `background:url('${sprite.src}') no-repeat;background-size:${Math.round(sprite.cellW * sprite.count * k)}px ${Math.round(sprite.cellH * k)}px;background-position:${-Math.round(cropX * k)}px ${-Math.round(cropY * k)}px;`;
+      return `<${tag} class="select-none${tag === 'span' ? ' inline-block align-middle shrink-0' : ''}" style="width:${size}px;height:${size}px;${bg}${sprite.filter ? `filter:${sprite.filter};` : ''}${extraStyle}"></${tag}>`;
     }
 
     // 글 속·목록 칸에 들어가는 작은 용병 얼굴 (그림이 없으면 직업 이모지). 26px 이하는 머리~상체만. dark = 흑화 용병처럼 어둡게
