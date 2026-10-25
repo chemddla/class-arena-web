@@ -11715,6 +11715,10 @@
         } else if (isRanged && u.behaviorRule !== 'charge' && nearestFoe && nearestFoe.d < Math.max(120, u.range * 0.55)) {
           // 적이 너무 가까우면 사거리 끝 쪽으로 물러나며 싸움
           moveBy(Math.atan2(u.y - nearestFoe.e.y, u.x - nearestFoe.e.x) + (wallRoom(u.x, u.y) < WALL_MARGIN ? 0.6 * u.strafeDir : 0), 0.85, 0.06);
+        } else if (u.job === 'lancer' && u.lanceMode === 'thrust' && !lancerBusy(u) && nearestFoe && nearestFoe.d < LANCER_KEEP_DIST
+          && !seenEnemies.some(e => e !== nearestFoe.e && unitDist(e, u) < LANCER_SWEEP_RANGE + 50)) {
+          // 창병 찌르기: 한 명이 바짝 붙으면 긴 창 사거리만큼 뒤로 물러나며 싸움 (벽 쪽이면 옆으로 비껴서)
+          moveBy(Math.atan2(u.y - nearestFoe.e.y, u.x - nearestFoe.e.x) + (wallRoom(u.x, u.y) < WALL_MARGIN ? 0.6 * u.strafeDir : 0), 0.8, 0.06);
         } else if (flank && flank.behind) {
           // 도적: 등 뒤를 잡았으면 자리를 지키며 계속 백어택
         } else if (guardAlly) {
@@ -11742,7 +11746,13 @@
           u.maxAttackAnim = u.attackAnim;
 
           if (u.job === 'lancer') {
-            lancerBasicAttack(u, u.facingAngle);
+            // 휘두르기는 가장 많이 맞는 쪽으로, 찌르기는 목표를 꿰는 직선 중 가장 많이 맞는 쪽으로
+            const atkAngle = u.lanceMode === 'sweep'
+              ? lancerBestArcAngle(u, seenEnemies, u.facingAngle)
+              : lancerBestLine(u, seenEnemies, LANCER_THRUST_RANGE + 10, LANCER_THRUST_HALF_W, target).angle;
+            u.facingAngle = atkAngle;
+            if (Math.abs(Math.cos(atkAngle)) > 0.1) u.facingDir = Math.cos(atkAngle) >= 0 ? 1 : -1;
+            lancerBasicAttack(u, atkAngle);
           } else if (u.job === 'warrior' || u.job === 'rogue' || u.job === 'knight') {
             playCombatSfx('slash');
             withHitKind('melee', () => applyDamage(u, target, u.atk));
@@ -12466,7 +12476,9 @@
       }
       if (sk === 'piercing') {
         // 피어싱: 바라보는 쪽 3칸 좁은 직선 안의 적 모두 200% + 출혈 5초
-        const angle = lancerAimAngle(unit, target, aimPt);
+        // AI는 직선에 가장 많은 적이 꿰이는 쪽으로
+        const angle = aimPt ? lancerAimAngle(unit, target, aimPt)
+          : lancerBestLine(unit, enemies.filter(e => !isStealthed(e)), LANCER_PIERCE_LENGTH, LANCER_PIERCE_HALF_W, target && target.alive ? target : null).angle;
         sim.effects.push({ type: 'pierce_fx', x: unit.x, y: unit.y - 6, angle, r: LANCER_PIERCE_LENGTH, life: 26, maxLife: 26 });
         playCombatSfx('slash');
         lancerLineHits(unit, angle, LANCER_PIERCE_LENGTH, LANCER_PIERCE_HALF_W).forEach(e => {
@@ -12514,7 +12526,9 @@
       }
       if (sk === 'spear_charge') {
         // 창돌격: 바라보는 쪽 4칸 (전사 돌진보다 느리게). 부딪힌 적은 창끝에 꽂혀 끌려가며 기절
-        const angle = lancerAimAngle(unit, target, aimPt);
+        // AI는 돌격 직선에 가장 많은 적이 꿰이는 쪽으로 (0.5초 시전이 끝난 지금 위치로 다시 계산)
+        const angle = aimPt ? lancerAimAngle(unit, target, aimPt)
+          : lancerBestLine(unit, enemies.filter(e => !isStealthed(e)), LANCER_CHARGE_REACH, LANCER_CHARGE_HALF_W, target && target.alive ? target : null).angle;
         startDragRush(unit, enemies, angle, LANCER_CHARGE_DISTANCE, LANCER_CHARGE_TICKS, 1.5, '#b45309', 34);
         playCombatSfx('heavy');
         addBattleLog(`🏇 [창병] ${unit.name}의 창돌격!`);
@@ -12705,15 +12719,63 @@
       return hits.length;
     }
 
-    // AI 공격 방식 고르기: 여럿이 둘레에 붙어 있으면 휘두르기, 한 줄로 서 있거나 멀면 찌르기
+    // AI 공격 방식 고르기: 가까이에 적이 여럿이면 휘두르기, 한 명뿐이거나 멀면 찌르기
+    // (휘두르기로 바꿀 때는 사거리+20 안에 2명, 찌르기로 돌아갈 때는 사거리+50 안에 1명 이하 → 경계에서 왔다 갔다 하지 않게)
     function lancerChooseMode(u, target, enemies) {
-      const angle = Math.atan2(target.y - u.y, target.x - u.x);
-      const sweepN = lancerArcHits(u, angle, LANCER_SWEEP_RANGE + 10, LANCER_SWEEP_HALF_ANGLE, enemies).length;
-      const thrustN = lancerLineHits(u, angle, LANCER_THRUST_RANGE + 10, LANCER_THRUST_HALF_W, enemies).length;
-      if (sweepN >= 2 && sweepN > thrustN) return 'sweep';
-      if (thrustN >= 2 && thrustN >= sweepN) return 'thrust';
-      if (unitDist(target, u) > LANCER_SWEEP_RANGE) return 'thrust'; // 휘두르기가 안 닿는 거리
-      return sweepN > thrustN ? 'sweep' : 'thrust'; // 한 명뿐이면 피해가 큰 찌르기
+      const near = r => enemies.filter(e => e.alive && unitDist(e, u) <= r).length;
+      if (u.lanceMode === 'sweep') return near(LANCER_SWEEP_RANGE + 50) >= 2 ? 'sweep' : 'thrust';
+      return near(LANCER_SWEEP_RANGE + 20) >= 2 ? 'sweep' : 'thrust';
+    }
+    const LANCER_KEEP_DIST = 170; // 찌르기로 한 명과 싸울 때 이보다 가까이 붙으면 뒤로 물러나 거리를 벌림
+
+    // 부채꼴(휘두르기)로 가장 많이 맞히는 방향 (같으면 fallback 쪽)
+    function lancerBestArcAngle(u, enemies, fallback) {
+      let best = { angle: fallback, n: lancerArcHits(u, fallback, LANCER_SWEEP_RANGE + 10, LANCER_SWEEP_HALF_ANGLE, enemies).length };
+      enemies.forEach(e => {
+        if (!e.alive || unitDist(e, u) > LANCER_SWEEP_RANGE + 10) return;
+        const a = Math.atan2(e.y - u.y, e.x - u.x);
+        const n = lancerArcHits(u, a, LANCER_SWEEP_RANGE + 10, LANCER_SWEEP_HALF_ANGLE, enemies).length;
+        if (n > best.n) best = { angle: a, n };
+      });
+      return best.angle;
+    }
+    // 직선(찌르기·피어싱·창돌격)으로 가장 많이 꿰는 방향: 사거리 안 적마다 그 적 쪽 직선을 따져 봄
+    // prefer가 있으면 맞히는 수가 같을 때 그 적 쪽을 고름
+    function lancerBestLine(u, enemies, length, halfW, prefer = null) {
+      let best = { angle: prefer ? Math.atan2(prefer.y - u.y, prefer.x - u.x) : (u.facingAngle || 0), n: 0, hits: [] };
+      if (prefer) { best.hits = lancerLineHits(u, best.angle, length, halfW, enemies); best.n = best.hits.length; }
+      enemies.forEach(e => {
+        if (!e.alive || unitDist(e, u) > length) return;
+        const a = Math.atan2(e.y - u.y, e.x - u.x);
+        const hits = lancerLineHits(u, a, length, halfW, enemies);
+        if (hits.length > best.n) best = { angle: a, n: hits.length, hits };
+      });
+      return best;
+    }
+    const LANCER_CHARGE_REACH = LANCER_CHARGE_DISTANCE + 80; // 창돌격이 꿰는 범위 (돌격 거리 + 창끝)
+    const LANCER_CHARGE_HALF_W = 50;
+
+    // 회전으로 막아야 할 위험한 투사체가 날아오는지: 스킬 투사체·터지는 투사체, 한꺼번에 2발 이상, 또는 맞으면 체력 12% 넘게 깎일 공격
+    function lancerProjectileThreat(u) {
+      let count = 0, dmg = 0, danger = false;
+      sim.projectiles.forEach(p => {
+        if (p.isHeal || !p.owner || p.owner.team === u.team) return;
+        let ang;
+        if (p.isDirectional) ang = p.angle;
+        else if (p.target === u) ang = Math.atan2((u.y - 12) - p.y, u.x - p.x);
+        else return;
+        const dx = Math.cos(ang), dy = Math.sin(ang);
+        const rx = u.x - p.x, ry = (u.y - 12) - p.y;
+        const along = rx * dx + ry * dy;            // 앞으로 얼마나 더 날아와야 닿는지
+        if (along < -10 || along > 300) return;
+        const isAoe = p.projType === 'fireball_proj' || p.projType === 'ice_arrow_proj';
+        const hitR = (isAoe ? (p.aoeRadius || 100) : PROJECTILE_HIT_RADIUS) + 18 + unitBodyGap(u);
+        if (Math.abs(rx * dy - ry * dx) > hitR) return; // 비켜 가는 투사체
+        count++;
+        dmg += p.dmg || 0;
+        if (p.isSkill || isAoe) danger = true;
+      });
+      return danger || count >= 2 || dmg >= u.hp * 0.12;
     }
 
     function lancerSpinHit(u) {
@@ -12926,22 +12988,16 @@
           return n >= 3 ? 80 : -1;
         }
         case 'piercing': {
-          // 목표가 3칸 직선 안이면 바로 (쿨타임이 짧음). 한 줄에 여럿이면 더 먼저
-          if (!enemyTarget || distToPrimary > LANCER_PIERCE_LENGTH - 20) return -1;
-          const ang = Math.atan2(enemyTarget.y - unit.y, enemyTarget.x - unit.x);
-          const n = lancerLineHits(unit, ang, LANCER_PIERCE_LENGTH, LANCER_PIERCE_HALF_W, enemies).length;
-          if (n >= 2) return 90;
-          return (enemyTarget.statuses.bleed || 0) > 120 ? 66 : 82;
+          // 3칸 직선에 가장 많이 꿰이는 쪽 기준. 여럿이면 먼저, 한 명이면 출혈이 거의 끝났을 때
+          const best = lancerBestLine(unit, enemies, LANCER_PIERCE_LENGTH, LANCER_PIERCE_HALF_W, enemyTarget);
+          if (best.n >= 3) return 94;
+          if (best.n === 2) return 90;
+          if (best.n === 1) return best.hits.some(e => (e.statuses.bleed || 0) < 120) ? 80 : 62;
+          return -1;
         }
-        case 'spear_spin': {
-          // 날아오는 투사체를 막을 때. 아니면 적에게 둘러싸였을 때만
-          const incoming = sim.projectiles.filter(p => p.isDirectional && !p.isHeal && p.owner && p.owner.team !== unit.team
-            && Math.hypot(p.x - unit.x, p.y - (unit.y - 12)) < 320
-            && Math.cos(Math.atan2(unit.y - 12 - p.y, unit.x - p.x) - p.angle) > 0.85).length;
-          if (incoming >= 2) return 95;
-          if (incoming === 1) return unit.hp / unit.maxHp < 0.6 ? 90 : 78;
-          return countNear(enemies, unit.x, unit.y, LANCER_SPIN_RADIUS) >= 3 ? 70 : -1;
-        }
+        case 'spear_spin':
+          // 위험한 투사체가 이쪽으로 날아올 때만 (평범한 화살 한 발에는 아껴둠)
+          return lancerProjectileThreat(unit) ? 98 : -1;
         case 'javelin': {
           // 조금 떨어진 적을 기절시킬 때 (이미 기절·빙결된 적은 아껴둠)
           if (!enemyTarget || distToPrimary > LANCER_JAVELIN_RANGE - 60) return -1;
@@ -12949,14 +13005,22 @@
           return distToPrimary > C * 1.2 ? 88 : 76;
         }
         case 'spear_rampage': {
-          const n = countNear(enemies, unit.x, unit.y, LANCER_RAMPAGE_RADIUS);
-          if (n >= 2) return 93;
-          return n === 1 && distToPrimary <= C ? 70 : -1;
+          // 3초 동안 제자리라, 범위 가장자리보다 안쪽(30px)에 들어온 적 수로 판단. 여럿일수록 먼저
+          const inside = enemies.filter(e => unitDist(e, unit) <= LANCER_RAMPAGE_RADIUS - 30);
+          const held = inside.filter(e => (e.statuses.stun || 0) > 60 || (e.statuses.freeze || 0) > 60 || e.draggedBy).length;
+          if (inside.length >= 3) return 96;
+          if (inside.length === 2) return held ? 94 : 90;
+          // 한 명뿐이면 도망가지 못할 때(기절·빙결·끌려옴)만
+          return inside.length === 1 && held ? 74 : -1;
         }
         case 'spear_charge': {
-          // 목표가 1.2~4칸 사이에 있을 때 꿰어서 끌고 오기
-          if (!enemyTarget || distToPrimary < C * 1.2 || distToPrimary > LANCER_CHARGE_DISTANCE - 20) return -1;
-          return canKnightMove(enemyTarget) ? 89 : 72;
+          // 돌격 직선에 가장 많이 꿰이는 쪽 기준. 둘 이상이면 먼저, 한 명이면 1.2칸보다 멀 때만 끌고 오기
+          const best = lancerBestLine(unit, enemies, LANCER_CHARGE_REACH, LANCER_CHARGE_HALF_W, enemyTarget);
+          if (best.n >= 3) return 95;
+          if (best.n === 2) return 91;
+          const only = best.hits[0];
+          if (best.n === 1 && only && unitDist(only, unit) >= C * 1.2) return canKnightMove(only) ? 84 : 68;
+          return -1;
         }
         default:
           return null;
