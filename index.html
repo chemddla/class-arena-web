@@ -755,6 +755,7 @@
         <div id="activeStudentBar" class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-xl flex-wrap">
           <!-- 저장 상태: 평소에는 안 보이고, 저장에 실패했을 때만 경고 -->
           <span id="autoSaveStatusBadge" class="hidden"></span>
+          <button id="headerStudentAvatar" onclick="openAvatarEditor()" title="🎨 프로필 꾸미기" class="shrink-0 rounded-lg hover:ring-2 hover:ring-indigo-400 transition"></button>
           <span class="text-sm font-bold text-emerald-300" id="headerStudentName">로그인 필요</span>
           <span class="text-xs px-2.5 py-0.5 rounded-lg bg-rose-500/20 text-rose-300 font-extrabold border border-rose-500/30" title="보유한 용병단 전체의 전투능력을 합산한 총 전투력">
             ⚔️ 용병단 전투력 <span id="headerStudentPower">0</span>
@@ -789,13 +790,16 @@
 
     <!-- ==================== [학생 모드 화면] ==================== -->
     <div id="studentViewContainer" class="flex flex-col gap-4">
-      <!-- 학생 내비게이션 탭 (순서: 홈, 용병 모집, 상점, 거래소, 모험의 탑, 엘리트 몬스터, 결투장, 퀴즈, 미니게임 - Requirements 4, 5, 6) -->
-      <nav class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-1.5 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800">
+      <!-- 학생 내비게이션 탭 (순서: 홈, 용병 모집, 도감, 상점, 거래소, 모험의 탑, 엘리트 몬스터, 결투장, 퀴즈, 미니게임 - Requirements 4, 5, 6) -->
+      <nav class="grid grid-cols-2 sm:grid-cols-5 xl:grid-cols-10 gap-1.5 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800">
         <button onclick="switchStudentTab('squad')" id="stab-squad" class="student-tab-btn py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 bg-indigo-600 text-white shadow">
           <span>🏠</span> 홈
         </button>
         <button onclick="switchStudentTab('office')" id="stab-office" class="student-tab-btn py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 text-slate-300 hover:bg-slate-800">
           <span>⛺</span> 용병 모집
+        </button>
+        <button onclick="switchStudentTab('codex')" id="stab-codex" class="student-tab-btn py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 text-slate-300 hover:bg-slate-800">
+          <span>📖</span> 도감
         </button>
         <button onclick="switchStudentTab('shop')" id="stab-shop" title="장비·상점은 준비 중이에요 (곧 열려요)" class="student-tab-btn py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 text-slate-300 hover:bg-slate-800 opacity-50">
           <span>🔒</span> 상점
@@ -1098,7 +1102,8 @@
               새로운 용병을 영입하세요!
             </h3>
             <p class="text-xs sm:text-sm text-slate-300 mt-1">
-              <strong>전사</strong>, <strong>마법사</strong>, <strong>성녀</strong>, <strong>궁수</strong>가 대기 중입니다! (명단은 하루 한 번 자동 갱신 · 하루 무료 갱신 5회, 이후 500 CA · <strong>1% 확률</strong>로 <strong class="text-amber-300">🌟레어 용병</strong>, <strong>0.1% 확률</strong>로 <strong class="text-red-600">🔥시크릿 레어 용병</strong> 출현!)
+              명단은 하루 한 번 자동 갱신 · 하루 무료 갱신 5회, 이후 500 CA · <strong>낮은 확률</strong>로 <strong class="text-amber-300">🌟레어 용병</strong>, <strong>매우 낮은 확률</strong>로 <strong class="text-red-600">🔥시크릿 레어 용병</strong> 출현!
+              <button onclick="switchStudentTab('codex')" class="ml-1 text-indigo-300 hover:text-indigo-200 underline font-bold">📖 직업·스킬 설명은 도감에서</button>
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
@@ -1108,8 +1113,25 @@
           </div>
         </div>
 
-        <!-- 5대 직업 × 세부 스킬 가이드 배너 (맨 위 줄은 직업 패시브) -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3" id="officeJobSkillBanners">
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="font-title text-lg text-amber-300">📋 지금 고용할 수 있는 용병</h4>
+            <span class="text-xs text-slate-400">최대 10명까지 보유할 수 있으며, 전장에는 5명까지 출전합니다.</span>
+          </div>
+          <div id="officeRecruitGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+        </div>
+      </section>
+
+      <!-- [탭 2-A] 도감: 직업별 특성과 스킬 설명 -->
+      <section id="studentTab-codex" class="student-tab-panel hidden flex flex-col gap-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+          <span class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs font-bold">📖 도감</span>
+          <h3 class="font-title text-2xl sm:text-3xl text-white mt-1">직업과 스킬 알아보기</h3>
+          <p class="text-xs sm:text-sm text-slate-300 mt-1">직업마다 패시브(늘 켜져 있는 특성)와 스킬 5가지가 있어요. 용병은 Lv.1 · 10 · 20에 직업 스킬 중 하나씩 무작위로 배워요.</p>
+        </div>
+
+        <!-- 직업별 한눈에 보기 (맨 위 줄은 직업 패시브) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3" id="codexJobSkillBanners">
           <div class="bg-slate-900/90 border border-rose-500/30 rounded-xl p-3 flex flex-col gap-1.5">
             <div class="flex items-center gap-2">
               <span id="bannerWpnIcon_warrior" class="w-6 h-7 flex items-center justify-center shrink-0"></span>
@@ -1120,6 +1142,8 @@
               <li>🌪️ <strong>회전베기:</strong> 360도 연속 회전베기 (긴 지속시간 다단히트)</li>
               <li>🔨 <strong>강타:</strong> 힘껏 내리쳐 강하게 타격 + <span class="text-yellow-300">💫기절</span></li>
               <li>💨 <strong>돌진:</strong> 적진 고속 돌격 (강력한 충돌 피해)</li>
+              <li>🦁 <strong>사자후:</strong> 주변 2칸 190% 피해 + <span class="text-orange-400">🦁밀쳐내기</span></li>
+              <li>📣 <strong>함성:</strong> 주변 3칸 아군 10초 <span class="text-amber-300">⚔️공격력 +20%</span></li>
             </ul>
           </div>
 
@@ -1133,6 +1157,8 @@
               <li>🔥 <strong>파이어볼:</strong> 화염구 폭발 + <span class="text-orange-400">🔥화상</span></li>
               <li>❄️ <strong>아이스애로우:</strong> 냉기 화살 + <span class="text-cyan-300">❄️동결</span></li>
               <li>⚡ <strong>썬더볼트:</strong> 3인 연쇄 낙뢰 + <span class="text-blue-400">⚡감전</span></li>
+              <li>🧪 <strong>포이즌 붐:</strong> 1.5칸 독 폭발 + 6초 <span class="text-purple-400">☠️중독장판</span></li>
+              <li>🔮 <strong>텔레포트:</strong> 3칸 순간이동 + 5초 공격력 +20%</li>
             </ul>
           </div>
 
@@ -1146,6 +1172,8 @@
               <li>💚 <strong>다수회복:</strong> 아군 전원 대량 치유</li>
               <li>🛡️ <strong>보호막:</strong> 성역 결계 생성 + <span class="text-cyan-300">🛡️전체보호막</span></li>
               <li>✨ <strong>축복:</strong> 천상의 기도 + <span class="text-amber-300">⚔️축복</span></li>
+              <li>🕊️ <strong>정화:</strong> 주변 5칸 아군 상태이상 해제 + 10초 <span class="text-cyan-300">🕊️면역</span></li>
+              <li>🌟 <strong>부활:</strong> 쓰러진 아군 하나를 체력 20%로 되살림</li>
             </ul>
           </div>
 
@@ -1159,6 +1187,8 @@
               <li>☠️ <strong>독화살:</strong> 치명적인 맹독 화살 + <span class="text-purple-400">☠️중독</span></li>
               <li>🔱 <strong>3중 화살:</strong> 3발 다방향 부채꼴 사격</li>
               <li>☄️ <strong>연사:</strong> 고속 5연속 속사</li>
+              <li>🌧️ <strong>화살비:</strong> 1칸 원형에 5초간 <span class="text-sky-300">🌧️지속 피해</span></li>
+              <li>🌀 <strong>회피기동:</strong> 뒤로 크게 물러나며 3발 부채꼴 사격</li>
             </ul>
           </div>
 
@@ -1193,12 +1223,16 @@
           </div>
         </div>
 
-        <div>
-          <div class="flex items-center justify-between mb-2">
-            <h4 class="font-title text-lg text-amber-300">📋 지금 고용할 수 있는 용병</h4>
-            <span class="text-xs text-slate-400">최대 10명까지 보유할 수 있으며, 전장에는 5명까지 출전합니다.</span>
-          </div>
-          <div id="officeRecruitGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+        <!-- 직업 고르기 + 자세한 설명 (renderCodexTab) -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
+          <div id="codexJobPicker" class="flex flex-wrap gap-1.5"></div>
+          <div id="codexJobDetail" class="flex flex-col gap-3"></div>
+        </div>
+
+        <!-- 상태 이상·강화 효과 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-2">
+          <h4 class="font-title text-lg text-amber-300">🌀 상태 효과</h4>
+          <div id="codexStatusList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div>
         </div>
       </section>
 
@@ -1293,14 +1327,14 @@
         </div>
       </section>
 
-      <!-- [탭 3] 모험의 탑 (1층 ~ 50층) -->
+      <!-- [탭 3] 모험의 탑 (1층 ~ 100층) -->
       <section id="studentTab-tower" class="student-tab-panel hidden flex flex-col gap-4">
         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 class="font-title text-2xl text-white">🏰 모험의 탑 (1층 ~ 50층)</h3>
+              <h3 class="font-title text-2xl text-white">🏰 모험의 탑 (1층 ~ 100층)</h3>
               <p class="text-xs sm:text-sm text-slate-400">
-                층이 올라갈수록 몬스터가 강해져요! 보상은 처음 깨는 층에서만 받아요. 이미 깬 층은 연습으로 다시 도전할 수 있어요.
+                층이 올라갈수록 몬스터가 강해지고 수도 많아져요! 보상은 처음 깨는 층에서만 받아요. 이미 깬 층은 연습으로 다시 도전할 수 있어요.
               </p>
             </div>
             <div class="px-4 py-2 rounded-xl bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 font-bold text-sm">
@@ -1308,16 +1342,25 @@
             </div>
           </div>
 
-          <!-- 1~50층 구간 필터 버튼 바 -->
+          <!-- 1~100층 구간 필터 버튼 바 -->
           <div class="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-800">
             <span class="text-xs font-bold text-slate-400 mr-1">📑 층수 구간 보기:</span>
-            <button onclick="setTowerFloorFilter('all')" id="tfilter-all" class="px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold">전체 (1~50층)</button>
-            <button onclick="setTowerFloorFilter('1-10')" id="tfilter-1-10" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold">1~10층 (초급)</button>
-            <button onclick="setTowerFloorFilter('11-20')" id="tfilter-11-20" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold">11~20층 (중급)</button>
-            <button onclick="setTowerFloorFilter('21-30')" id="tfilter-21-30" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold">21~30층 (상급)</button>
-            <button onclick="setTowerFloorFilter('31-40')" id="tfilter-31-40" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold">31~40층 (영웅)</button>
-            <button onclick="setTowerFloorFilter('41-50')" id="tfilter-41-50" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold">41~50층 (전설·신화)</button>
+            <button onclick="setTowerFloorFilter('all')" id="tfilter-all" class="px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold">전체 (1~100층)</button>
+            <button onclick="setTowerFloorFilter('1-20')" id="tfilter-1-20" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold">1~20층 (초급)</button>
+            <button onclick="setTowerFloorFilter('21-40')" id="tfilter-21-40" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold">21~40층 (중급)</button>
+            <button onclick="setTowerFloorFilter('41-60')" id="tfilter-41-60" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold">41~60층 (상급)</button>
+            <button onclick="setTowerFloorFilter('61-80')" id="tfilter-61-80" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold">61~80층 (영웅)</button>
+            <button onclick="setTowerFloorFilter('81-100')" id="tfilter-81-100" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold">81~100층 (전설·신화)</button>
           </div>
+        </div>
+
+        <!-- 📺 지금 탑에 도전 중인 친구 (renderTowerLiveList) -->
+        <div class="bg-slate-900 border border-violet-500/40 rounded-2xl p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h4 class="font-title text-lg text-violet-300">📺 지금 탑에 도전 중인 친구</h4>
+            <span class="text-[11px] text-slate-400">친구의 탑 도전을 실시간으로 볼 수 있어요. (관전은 보상이 없어요)</span>
+          </div>
+          <div id="towerLiveList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div>
         </div>
 
         <div id="towerFloorGrid" class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[680px] overflow-y-auto pr-1"></div>
@@ -1525,7 +1568,7 @@
                   <span>🧠</span> 퀴즈 풀고 CA 받기
                 </h3>
                 <p class="text-xs text-slate-400 mt-0.5">
-                  <strong>상식 퀴즈</strong>, <strong>넌센스 퀴즈</strong>, <strong>3학년 교과 내용 퀴즈(국·수·사·과·영)</strong>가 객관식과 주관식으로 다양하게 출제됩니다!
+                  <strong>상식 퀴즈</strong>, <strong>넌센스 퀴즈</strong>, <strong>교과 심화 퀴즈(국·수·사·과·영)</strong>가 객관식과 주관식으로 출제됩니다! 힌트 없이 도전해 보세요.
                 </p>
               </div>
               <span class="text-xs px-3 py-1.5 rounded-full bg-cyan-500/20 text-cyan-300 font-extrabold border border-cyan-500/30">
@@ -1943,7 +1986,7 @@
                 <h4 class="font-title text-xl text-white">🔤 초성 게임</h4>
                 <span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-extrabold">승리 +200 · 패배 +100 CA</span>
               </div>
-              <p class="text-xs text-slate-400">차례가 오면 <strong>30초 안에</strong> 초성에 맞는 두 글자 낱말을 입력해요 (예: ㄱㅅ → 가수). 이미 나온 낱말은 안 돼요. 시간이 지나면 ❤️ 하나를 잃고 새 초성! 하트 5개를 다 잃으면 탈락, 마지막까지 남으면 승리.</p>
+              <p class="text-xs text-slate-400">차례가 오면 <strong>30초 안에</strong> 초성에 맞는 두 글자 낱말을 입력해요 (예: ㄱㅅ → 가수). 한 판 내내 <strong>초성은 하나</strong>로 고정되고, 이미 나온 낱말은 안 돼요. 시간이 지나면 ❤️ 하나를 잃어요! 하트 5개를 다 잃으면 탈락, 마지막까지 남으면 승리.</p>
               <div id="chosungSeatsBox" class="flex flex-wrap gap-2 text-xs"></div>
               <div id="chosungPromptBox" class="bg-slate-900 border-2 border-indigo-500/40 rounded-xl p-4 text-center"></div>
               <div class="mg-timer"><div id="chosungTimerBar" class="mg-timer-bar"></div></div>
@@ -2237,6 +2280,37 @@
   </div>
 
   <!-- ==================== [모달 2: 학생 스스로 비밀번호 변경] ==================== -->
+  <!-- 프로필 꾸미기: 16×16 픽셀 도트 그림판 (학급 명단·헤더에서 이름 왼쪽에 보임) -->
+  <div id="avatarEditorModal" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border-2 border-indigo-500 rounded-3xl max-w-xl w-full p-5 shadow-2xl flex flex-col gap-3 max-h-[95vh] overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <h3 class="font-title text-xl text-white">🎨 내 프로필 꾸미기</h3>
+        <button onclick="closeAvatarEditor()" class="text-slate-400 hover:text-white font-bold px-2">✕</button>
+      </div>
+      <p class="text-xs text-slate-400">칸을 눌러(끌어서) 색칠해 나만의 도트 프로필을 만들어요. 학급 명단에서 이름 왼쪽에 보여요.</p>
+      <div class="flex flex-col sm:flex-row gap-3 items-center sm:items-start">
+        <div id="avatarEditorGrid" class="grid shrink-0 select-none touch-none" style="grid-template-columns:repeat(16,1fr);width:min(320px,80vw);aspect-ratio:1;border:2px solid #475569;background-image:linear-gradient(45deg,#cbd5e1 25%,transparent 25%,transparent 75%,#cbd5e1 75%),linear-gradient(45deg,#cbd5e1 25%,#f8fafc 25%,#f8fafc 75%,#cbd5e1 75%);background-size:20px 20px;background-position:0 0,10px 10px"></div>
+        <div class="flex flex-col gap-2 w-full">
+          <div id="avatarEditorPalette" class="grid grid-cols-8 gap-1"></div>
+          <div class="grid grid-cols-3 gap-1.5 text-xs font-extrabold whitespace-nowrap">
+            <button id="avatarToolPen" onclick="setAvatarTool('pen')" class="py-1.5 rounded-lg">✏️ 펜</button>
+            <button id="avatarToolFill" onclick="setAvatarTool('fill')" class="py-1.5 rounded-lg">🪣 채우기</button>
+            <button id="avatarToolErase" onclick="setAvatarTool('erase')" class="py-1.5 rounded-lg">🧽 지우개</button>
+          </div>
+          <div class="grid grid-cols-2 gap-1.5 text-xs font-extrabold whitespace-nowrap">
+            <button onclick="clearAvatarEditor()" class="py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200">🗑️ 모두 지우기</button>
+            <button onclick="undoAvatarEditor()" class="py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200">↩️ 되돌리기</button>
+          </div>
+          <div class="flex items-center gap-2 text-xs text-slate-400">미리보기 <span id="avatarEditorPreview"></span></div>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="closeAvatarEditor()" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-sm">취소</button>
+        <button onclick="saveAvatarEditor()" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-sm">💾 저장하기</button>
+      </div>
+    </div>
+  </div>
+
   <div id="changePasswordModal" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="bg-slate-900 border-2 border-amber-500 rounded-3xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-3.5">
       <div class="flex items-center justify-between">
@@ -2419,8 +2493,8 @@
             <input id="adminEditStuMc" type="number" min="0" step="100" class="w-full bg-slate-900 border border-amber-500/50 rounded-xl px-2.5 py-1.5 text-xs text-amber-300 font-bold" />
           </div>
           <div>
-            <label class="text-[11px] font-bold text-indigo-300 block mb-1">🏰 탑 층수(1~50)</label>
-            <input id="adminEditStuTower" type="number" min="1" max="50" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold" />
+            <label class="text-[11px] font-bold text-indigo-300 block mb-1">🏰 탑 층수(1~100)</label>
+            <input id="adminEditStuTower" type="number" min="1" max="100" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold" />
           </div>
           <div>
             <label class="text-[11px] font-bold text-cyan-300 block mb-1">🏆 PvP 점수</label>
@@ -2712,6 +2786,15 @@
         }
       }
     };
+
+    // 스킬 키 → 그 스킬을 가진 직업 (스킬 키는 직업끼리 겹치지 않음). 엘리트 몬스터처럼 여러 직업 스킬을 섞어 쓰는 유닛용
+    const SKILL_JOB_OF = {};
+    Object.entries(SKILL_DEFS).forEach(([job, defs]) => Object.keys(defs).forEach(k => { SKILL_JOB_OF[k] = job; }));
+    function skillJobOf(key) { return SKILL_JOB_OF[key] || null; }
+    // 이 유닛이 쓸 수 있는 스킬 정의 (보통은 직업 스킬, 엘리트 몬스터는 보스 전용 스킬 세트 skillBook)
+    function unitSkillBook(u) {
+      return (u && u.skillBook) || SKILL_DEFS[u && u.job] || SKILL_DEFS.warrior;
+    }
 
     const JOB_ICONS = {
       warrior: '⚔️',
@@ -3073,7 +3156,58 @@
       wyvern:         { id: 'wyvern',         name: '와이번',       icon: '🐲', color: '#16a34a', trait: { hp: 0.9, spd: 1.1 }, passives: ['poison'] },
       drake:          { id: 'drake',          name: '드레이크',     icon: '🦖', color: '#ca8a04', trait: { hp: 0.95 }, passives: ['burn'] },
       dragonkin:      { id: 'dragonkin',      name: '용인족 기사',  icon: '🦕', color: '#4338ca', trait: { hp: 0.9, def: 1.1 }, passives: ['lifesteal'] },
-      dark_dragon:    { id: 'dark_dragon',    name: '심연마룡',     icon: '🐉', color: '#7e22ce', big: true, passives: ['burn', 'lifesteal'] }
+      dark_dragon:    { id: 'dark_dragon',    name: '심연마룡',     icon: '🐉', color: '#7e22ce', big: true, passives: ['burn', 'lifesteal'] },
+      // ===== 51~100층 =====
+      // 정령족
+      wind_spirit:    { id: 'wind_spirit',    name: '바람정령',     icon: '🌪️', color: '#5eead4', trait: { hp: 0.85, spd: 1.15 }, passives: ['evade'] },
+      water_spirit:   { id: 'water_spirit',   name: '물정령',       icon: '💧', color: '#38bdf8', trait: { hp: 1.05, atk: 0.9 }, passives: ['regen'] },
+      storm_spirit:   { id: 'storm_spirit',   name: '번개정령',     icon: '🌩️', color: '#facc15', trait: { hp: 0.85, atk: 1.1 }, passives: ['shock'] },
+      elemental_lord: { id: 'elemental_lord', name: '원소 군주',    icon: '🌈', color: '#14b8a6', big: true, passives: ['regen', 'shock', 'burn'] },
+      // 기계족
+      clockwork:      { id: 'clockwork',      name: '태엽 병정',    icon: '🤖', color: '#a1a1aa', trait: { def: 1.2, spd: 0.9 }, passives: ['thorns'] },
+      steel_spider:   { id: 'steel_spider',   name: '강철 거미',    icon: '🕸️', color: '#52525b', trait: { hp: 0.9, spd: 1.1 }, passives: ['poison'] },
+      steam_golem:    { id: 'steam_golem',    name: '증기 골렘',    icon: '⚙️', color: '#78716c', trait: { hp: 1.1, def: 1.2, spd: 0.85 }, passives: ['explode'] },
+      mech_colossus:  { id: 'mech_colossus',  name: '기계 거신',    icon: '🦾', color: '#3f3f46', big: true, trait: { def: 1.15, spd: 0.9 }, passives: ['thorns', 'explode'] },
+      // 사막족
+      scorpion:       { id: 'scorpion',       name: '사막 전갈',    icon: '🦂', color: '#b45309', trait: { def: 1.15 }, passives: ['poison'] },
+      sandworm:       { id: 'sandworm',       name: '모래 벌레',    icon: '🪱', color: '#d6a35c', trait: { hp: 1.15, spd: 0.9 }, passives: ['lifesteal'] },
+      sand_raider:    { id: 'sand_raider',    name: '모래 약탈자',  icon: '🏜️', color: '#c2410c', trait: { hp: 0.9, atk: 1.1, spd: 1.05 }, passives: ['bleed'] },
+      sphinx:         { id: 'sphinx',         name: '스핑크스',     icon: '🦁', color: '#ca8a04', big: true, passives: ['evade', 'enrage'] },
+      // 타락 요정족
+      thorn_treant:   { id: 'thorn_treant',   name: '가시 나무정령', icon: '🌳', color: '#166534', trait: { hp: 1.15, spd: 0.85 }, passives: ['thorns', 'regen'] },
+      dark_fairy:     { id: 'dark_fairy',     name: '타락 요정',    icon: '🧚', color: '#a21caf', trait: { hp: 0.8, spd: 1.15 }, passives: ['evade', 'poison'] },
+      venom_moth:     { id: 'venom_moth',     name: '독가루 나방',  icon: '🦋', color: '#7c3aed', trait: { hp: 0.85 }, passives: ['poison'] },
+      ancient_treant: { id: 'ancient_treant', name: '고대 나무군주', icon: '🌲', color: '#14532d', big: true, trait: { spd: 0.9 }, passives: ['regen', 'thorns'] },
+      // 마계족
+      hell_knight:    { id: 'hell_knight',    name: '마계 기사',    icon: '⚔️', color: '#7f1d1d', trait: { hp: 1.05, def: 1.15 }, passives: ['enrage'] },
+      warlock:        { id: 'warlock',        name: '마계 술사',    icon: '🔯', color: '#9333ea', trait: { hp: 0.85, atk: 1.1 }, passives: ['burn', 'lifesteal'] },
+      pumpkin_fiend:  { id: 'pumpkin_fiend',  name: '호박 마귀',    icon: '🎃', color: '#ea580c', trait: { hp: 0.9 }, passives: ['explode', 'burn'] },
+      demon_king:     { id: 'demon_king',     name: '마왕',         icon: '🔱', color: '#450a0a', big: true, passives: ['burn', 'lifesteal', 'enrage'] },
+      // 천공족
+      griffin:        { id: 'griffin',        name: '그리폰',       icon: '🦅', color: '#d97706', trait: { hp: 0.95, spd: 1.15 }, passives: ['bleed'] },
+      thunderbird:    { id: 'thunderbird',    name: '천둥새',       icon: '🐦', color: '#2563eb', trait: { hp: 0.85, atk: 1.1 }, passives: ['shock'] },
+      sky_knight:     { id: 'sky_knight',     name: '하늘 기사',    icon: '🪽', color: '#e0f2fe', trait: { def: 1.15 }, passives: ['lifesteal'] },
+      storm_roc:      { id: 'storm_roc',      name: '폭풍 대붕',    icon: '🌀', color: '#1d4ed8', big: true, trait: { spd: 1.1 }, passives: ['shock', 'evade'] },
+      // 수정족
+      crystal_golem:  { id: 'crystal_golem',  name: '수정 골렘',    icon: '💎', color: '#67e8f9', trait: { atk: 0.9, def: 1.35, spd: 0.8 }, passives: ['thorns'] },
+      gem_lizard:     { id: 'gem_lizard',     name: '보석 도마뱀',  icon: '🦎', color: '#10b981', trait: { hp: 0.95, spd: 1.1 }, passives: ['evade'] },
+      light_wisp:     { id: 'light_wisp',     name: '빛의 정령',    icon: '✨', color: '#fde68a', trait: { hp: 0.8, atk: 1.1 }, passives: ['burn'] },
+      crystal_queen:  { id: 'crystal_queen',  name: '수정 여왕',    icon: '👸', color: '#22d3ee', big: true, trait: { def: 1.15 }, passives: ['thorns', 'regen', 'shock'] },
+      // 그림자족
+      shadow_assassin:{ id: 'shadow_assassin',name: '그림자 자객',  icon: '🥷', color: '#1e1b4b', trait: { hp: 0.85, atk: 1.15, spd: 1.15 }, passives: ['bleed', 'evade'] },
+      wraith_knight:  { id: 'wraith_knight',  name: '망령 기사',    icon: '🛡️', color: '#334155', trait: { def: 1.2 }, passives: ['lifesteal'] },
+      nightmare:      { id: 'nightmare',      name: '악몽마',       icon: '🐴', color: '#4c1d95', trait: { spd: 1.15 }, passives: ['enrage'] },
+      shadow_lord:    { id: 'shadow_lord',    name: '그림자 군주',  icon: '🌑', color: '#0f172a', big: true, passives: ['lifesteal', 'evade', 'enrage'] },
+      // 신화 수호자
+      minotaur:       { id: 'minotaur',       name: '미노타우로스', icon: '🐂', color: '#7c2d12', trait: { hp: 1.1, atk: 1.1, spd: 0.9 }, passives: ['enrage'] },
+      medusa:         { id: 'medusa',         name: '메두사',       icon: '🐍', color: '#15803d', trait: { hp: 0.9 }, passives: ['shock', 'poison'] },
+      chimera:        { id: 'chimera',        name: '키메라',       icon: '🐲', color: '#b91c1c', trait: { hp: 0.95, atk: 1.05 }, passives: ['burn', 'bleed'] },
+      cerberus:       { id: 'cerberus',       name: '케르베로스',   icon: '🐕‍🦺', color: '#991b1b', big: true, trait: { spd: 1.05 }, passives: ['burn', 'bleed', 'enrage'] },
+      // 혼돈족
+      chaos_eye:      { id: 'chaos_eye',      name: '혼돈의 눈',    icon: '🧿', color: '#6d28d9', trait: { hp: 0.85, atk: 1.15 }, passives: ['shock', 'burn'] },
+      void_tentacle:  { id: 'void_tentacle',  name: '공허 촉수',    icon: '🦑', color: '#312e81', trait: { hp: 1.1, spd: 0.9 }, passives: ['lifesteal', 'thorns'] },
+      fallen_angel:   { id: 'fallen_angel',   name: '타락 천사',    icon: '😇', color: '#e2e8f0', trait: { def: 1.1, spd: 1.05 }, passives: ['regen', 'evade'] },
+      chaos_god:      { id: 'chaos_god',      name: '혼돈의 신',    icon: '🌌', color: '#581c87', big: true, passives: ['lifesteal', 'enrage', 'thorns', 'burn'] }
     };
 
     // 모험의 탑 종족: 5층마다 바뀜 (1~5층 고블린족, 6~10층 언데드 ...). 각 종족의 마지막 층에는 종족 보스가 나옴
@@ -3087,8 +3221,20 @@
       { name: '화염족',   zone: '불타는 화산',     members: ['imp', 'hellhound', 'fire_elemental'],  boss: 'ifrit',       desc: '화상을 입히는 불꽃 괴물들! 쓰러질 때 터지는 불꽃정령을 조심하세요.', bossFloorScale: 1.03, bossHp: 1.4 },
       { name: '거인족',   zone: '거인의 요새',     members: ['golem', 'cyclops', 'ogre'],            boss: 'titan',       desc: '단단한 골렘과 괴력의 거인들이 버티는 요새입니다.', bossFloorScale: 1, bossHp: 1.3 },
       { name: '심해족',   zone: '가라앉은 신전',   members: ['crab', 'merfolk', 'octopus'],          boss: 'kraken',      desc: '단단한 집게 기사와 먹물을 뿜는 문어가 깊은 바다를 지킵니다.', bossFloorScale: 1, bossHp: 1.1 },
-      { name: '용족',     zone: '심연의 용 둥지',  members: ['dragonkin', 'wyvern', 'drake'],        boss: 'dark_dragon', desc: '탑의 꼭대기, 용과 용인족이 모인 마지막 둥지입니다.', bossFloorScale: 1, bossHp: 1.15 }
+      { name: '용족',     zone: '심연의 용 둥지',  members: ['dragonkin', 'wyvern', 'drake'],        boss: 'dark_dragon', desc: '탑의 중턱, 용과 용인족이 모인 둥지입니다.', bossFloorScale: 1, bossHp: 1.15 },
+      // 51~100층
+      { name: '정령족',   zone: '원소의 회랑',     members: ['wind_spirit', 'water_spirit', 'storm_spirit'],    boss: 'elemental_lord', desc: '바람·물·번개 정령이 소용돌이치는 회랑입니다.', bossFloorScale: 1.04, bossHp: 1.3 },
+      { name: '기계족',   zone: '멈춘 시계탑',     members: ['clockwork', 'steel_spider', 'steam_golem'],      boss: 'mech_colossus',  desc: '단단한 기계 병정들! 쓰러질 때 터지는 증기 골렘을 조심하세요.', bossFloorScale: 1.04, bossHp: 1.3 },
+      { name: '사막족',   zone: '끝없는 모래 사원', members: ['scorpion', 'sandworm', 'sand_raider'],           boss: 'sphinx',         desc: '독침 전갈과 피를 빠는 모래 벌레가 사원을 지킵니다.', bossFloorScale: 1.04, bossHp: 1.3 },
+      { name: '타락 요정족', zone: '시든 요정 숲', members: ['thorn_treant', 'dark_fairy', 'venom_moth'],       boss: 'ancient_treant', desc: '가시 돋친 나무정령과 독가루를 뿌리는 요정들이 숲을 뒤덮었습니다.', bossFloorScale: 1.04, bossHp: 1.3 },
+      { name: '마계족',   zone: '불타는 마계 성문', members: ['hell_knight', 'warlock', 'pumpkin_fiend'],      boss: 'demon_king',     desc: '마계의 문이 열렸습니다! 터지는 호박 마귀와 피를 빠는 마계 술사를 조심하세요.', bossFloorScale: 1.04, bossHp: 1.3 },
+      { name: '천공족',   zone: '구름 위 성채',    members: ['griffin', 'thunderbird', 'sky_knight'],          boss: 'storm_roc',      desc: '하늘을 나는 괴수들이 번개와 함께 내려꽂힙니다.', bossFloorScale: 1.04, bossHp: 1.3 },
+      { name: '수정족',   zone: '빛나는 수정 동굴', members: ['crystal_golem', 'gem_lizard', 'light_wisp'],     boss: 'crystal_queen',  desc: '때릴수록 아픈 수정 골렘과 재빠른 보석 도마뱀이 기다립니다.', bossFloorScale: 1.04, bossHp: 1.3 },
+      { name: '그림자족', zone: '빛이 사라진 성',  members: ['shadow_assassin', 'wraith_knight', 'nightmare'], boss: 'shadow_lord',    desc: '어둠 속에서 뒤를 노리는 자객과 망령 기사들의 성입니다.', bossFloorScale: 1.04, bossHp: 1.3 },
+      { name: '신화 수호자', zone: '신들의 미궁',  members: ['minotaur', 'medusa', 'chimera'],                 boss: 'cerberus',       desc: '전설 속 괴물들이 미궁의 길목마다 버티고 섰습니다.', bossFloorScale: 1.04, bossHp: 1.3 },
+      { name: '혼돈족',   zone: '혼돈의 균열',     members: ['chaos_eye', 'void_tentacle', 'fallen_angel'],    boss: 'chaos_god',      desc: '탑의 꼭대기, 세상의 끝에서 혼돈이 쏟아져 나옵니다.', bossFloorScale: 1.05, bossHp: 1.35 }
     ];
+    const TOWER_MAX_FLOOR = TOWER_RACES.length * 5; // 100층 (10층 2구역 · 종족 20개)
 
     function towerRaceOfFloor(floor) {
       return TOWER_RACES[Math.min(TOWER_RACES.length - 1, Math.floor((Math.max(1, floor) - 1) / 5))];
@@ -3113,27 +3259,51 @@
         roles: ['', '친위대장', '대술사', '대사제', '저격수'] }
     ];
 
+    // 5마리 부대 뒤에 붙는 졸개 몬스터: 층이 오를수록 늘어남 (11층부터 1마리, 100층 7마리 → 최대 12마리)
+    // 졸개는 능력치가 낮고(TOWER_MINION_MULT), 그만큼 본대 능력치를 조금 낮춰(coreScale) 층 난이도는 그대로 둠
+    const TOWER_MINION_MULT = { hp: 0.5, atk: 0.5 };
+    const TOWER_MINION_SCALE_LOSS = 0.07; // 졸개 1마리마다 본대 능력치 -7% (tests/tower-sim.js로 졸개 없던 때 승률과 맞춤)
+    const TOWER_MINION_JOBS = [
+      { job: 'warrior', skill: 'charge' }, { job: 'archer', skill: 'triple_arrow' }, { job: 'mage', skill: 'fireball' },
+      { job: 'warrior', skill: 'roar' }, { job: 'archer', skill: 'arrow_rain' }, { job: 'mage', skill: 'thunderbolt' },
+      { job: 'warrior', skill: 'whirlwind' }
+    ];
+    // 본대 5마리 자리를 뺀 빈 칸 (적 진형 가로 3 × 세로 5): 졸개가 앞줄부터 채움
+    const TOWER_MINION_CELLS = [
+      { row: 2, col: 2 }, { row: 0, col: 2 }, { row: 4, col: 2 }, { row: 1, col: 1 }, { row: 3, col: 1 }, { row: 0, col: 1 }, { row: 4, col: 1 }
+    ];
+    function towerMinionCount(floor) {
+      return floor <= 10 ? 0 : Math.min(TOWER_MINION_CELLS.length, Math.ceil((floor - 10) / 13));
+    }
+
     const TOWER_FLOORS = [];
-    for (let fl = 1; fl <= 50; fl++) {
+    for (let fl = 1; fl <= TOWER_MAX_FLOOR; fl++) {
       const race = towerRaceOfFloor(fl);
       const pos = (fl - 1) % 5;            // 종족 구역 안에서 몇 번째 층인지 (4 = 마지막 층)
       const p = TOWER_SQUAD_PRESETS[pos];
       const isRaceBoss = pos === 4;
-      const monsters = p.comp.map((job, idx) => (isRaceBoss && idx === 0 ? race.boss : race.members[(idx + pos) % race.members.length]));
+      const minions = towerMinionCount(fl);
+      const minionDefs = Array.from({ length: minions }, (_, i) => TOWER_MINION_JOBS[(i + pos) % TOWER_MINION_JOBS.length]);
+      const monsters = [
+        ...p.comp.map((job, idx) => (isRaceBoss && idx === 0 ? race.boss : race.members[(idx + pos) % race.members.length])),
+        ...minionDefs.map((_, i) => race.members[(i + fl) % race.members.length])
+      ];
       const bossName = MONSTER_DEFS[race.boss].name;
       TOWER_FLOORS.push({
         floor: fl,
         race: race.name,
         isRaceBoss,
         name: isRaceBoss
-          ? `${fl}층 · [${fl === 50 ? '최종 보스' : '종족 보스'}] ${bossName}의 ${race.zone}`
+          ? `${fl}층 · [${fl === TOWER_MAX_FLOOR ? '최종 보스' : '종족 보스'}] ${bossName}의 ${race.zone}`
           : `${fl}층 · ${race.zone} ${p.title}`,
-        desc: `[${race.name}] ${race.desc} ${p.desc}`,
+        desc: `[${race.name}] ${race.desc} ${p.desc}${minions ? ` 졸개 ${minions}마리가 함께 몰려와요!` : ''}`,
         rewardMc: 0,
-        comp: [...p.comp],
-        skills: [...p.skills],
+        comp: [...p.comp, ...minionDefs.map(d => d.job)],
+        skills: [...p.skills, ...minionDefs.map(d => d.skill)],
         monsters,
-        unitNames: monsters.map((k, idx) => (isRaceBoss && idx === 0 ? MONSTER_DEFS[k].name : `${MONSTER_DEFS[k].name} ${p.roles[idx]}`))
+        minionFrom: p.comp.length,   // 이 번호부터는 졸개
+        coreScale: +(1 - minions * TOWER_MINION_SCALE_LOSS).toFixed(3),
+        unitNames: monsters.map((k, idx) => (isRaceBoss && idx === 0 ? MONSTER_DEFS[k].name : `${MONSTER_DEFS[k].name} ${idx < p.comp.length ? p.roles[idx] : '졸개'}`))
       });
     }
 
@@ -3152,7 +3322,9 @@
       const isRaceBoss = floor % 5 === 0;
       // 낮은 층은 조금 약하게 시작해서 층이 오를수록 서서히 강해짐 (등급이 갑자기 바뀌면 벽이 생겨서 등급은 일반으로 고정)
       // 25층부터는 학생들이 모은 스탯 포인트가 많아지므로 조금 더 가파르게
-      const base = 0.92 + Math.min(floor, 50) * 0.005 + Math.max(0, Math.min(floor, 50) - 25) * 0.006;
+      // 51층부터는 레벨이 따라 오르므로 기울기를 조금 줄임
+      const f = Math.min(floor, TOWER_MAX_FLOOR);
+      const base = 0.92 + Math.min(f, 50) * 0.005 + Math.max(0, Math.min(f, 50) - 25) * 0.006 + Math.max(0, f - 50) * 0.006;
       return {
         level: Math.max(1, Math.round(1 + floor * 0.95)),
         rarity: 'N',
@@ -3377,7 +3549,8 @@
         shadow_step:  { anim: 'dash', tpf: 5, dur: 16 },   // 숙였다가 뛰어드는 자세로 이동
         stealth:      { anim: 'seal', tpf: 30, dur: 30 },
         shadow_clone: { anim: 'seal', tpf: 30, dur: 30 }
-      }
+      },
+      castFrames: { stealth: 19 } // 은신 2초 시전 동안에도 분신과 같은 인을 맺는 자세
     };
     // 도적 외형 1 (잿빛 후드), 2 (보라 후드), 3 (남색 후드), 4 (초록 후드), 5 (진홍 후드): 칸·기준점·동작 구성은 rogue_0과 같고 그림만 다름
     [1, 2, 3, 4, 5].forEach(v => { MERC_SPRITE_DEFS[`rogue_${v}`] = { ...MERC_SPRITE_DEFS.rogue_0, src: `assets/sprites/merc/rogue_${v}.webp` }; });
@@ -3711,7 +3884,7 @@
     // 보상 없이 연습으로만 하는 전투 모드
     const PRACTICE_ONLY_MODES = ['practice', 'pvp_async', 'pvp_realtime'];
     // ===== 경제 설정: 1년 동안 점심시간 30분(약 150회) 기준 =====
-    // 하루 약 2,000~2,500 CA를 벌고, 1년이면 주력 용병 5명이 Lv50 안팎, 탑 50층을 연말쯤 깨는 속도
+    // 하루 약 2,000~2,500 CA를 벌고, 1년이면 주력 용병 5명이 Lv50 안팎, 탑 50층을 연말쯤 깨는 속도 (51~100층은 그 뒤 도전)
     const ECONOMY = {
       quizReward: 100,          // 퀴즈 정답
       rankedWinReward: 500,     // 랭킹 매칭 승리 (실제 보상은 RANKED_REWARDS)
@@ -4386,16 +4559,16 @@
         const rar = RARITY_DEFS[code] || RARITY_DEFS.N;
         title = `${rar.name} 등급`;
         if (rar.isSecret) {
-          desc = `지원자 한 명당 ${SECRET_RARE_CHANCE}% 확률로만 나오는 최고 등급 용병이에요.`;
+          desc = '아주 드물게, 매우 낮은 확률로만 나오는 최고 등급 용병이에요.';
           detail = `<div>🔥 시크릿 레어 특전: ${rarityPerkText(rar)}</div>`
             + `<div class="text-slate-300">• 속도 +${Math.round((rar.spdMult - 1) * 100)}% · 붉은 빛 연출과 전용 외형</div>`;
         } else if (rar.isRare) {
-          desc = `지원자 한 명당 ${RARE_CHANCE}% 확률로 나오는 귀한 용병이에요.`;
+          desc = '낮은 확률로 나오는 귀한 용병이에요.';
           detail = `<div>🔥 레어 특전: ${rarityPerkText(rar)}</div>`
             + `<div class="text-slate-300">• 속도 +${Math.round((rar.spdMult - 1) * 100)}% · 금빛 연출</div>`;
         } else {
           desc = '평범한 일반 등급 용병이에요.';
-          detail = '<div class="text-slate-300">특전 없음 · 레어(1%)·시크릿 레어(0.1%) 용병은 기본 능력치가 더 높아요.</div>';
+          detail = '<div class="text-slate-300">특전 없음 · 레어(낮은 확률)·시크릿 레어(매우 낮은 확률) 용병은 기본 능력치가 더 높아요.</div>';
         }
       } else if (kind === 'job') {
         const job = JOB_DEFS[code];
@@ -4482,6 +4655,8 @@
       document.getElementById('noticeTicker').textContent = state.notice;
       const totalSquadPower = calcStudentCombatPower(stu);
       document.getElementById('headerStudentName').textContent = `${stu.name}`;
+      const avBtn = document.getElementById('headerStudentAvatar');
+      if (avBtn) avBtn.innerHTML = studentAvatarHTML(stu, 28);
       const powerEl = document.getElementById('headerStudentPower');
       if (powerEl) powerEl.textContent = totalSquadPower.toLocaleString();
       document.getElementById('headerStudentCoin').textContent = stu.mc.toLocaleString();
@@ -4533,6 +4708,157 @@
     /********************************************************************
      * 5. 학생 개별 비밀번호 로그인 & 비밀번호 변경 시스템
      ********************************************************************/
+    // ===== 학생 프로필 (16×16 픽셀 도트) =====
+    // stu.avatar: 256글자 문자열, 한 글자가 한 칸의 색 번호(0~f, 0은 투명). 왼쪽 위부터 한 줄씩
+    const AVATAR_SIZE = 16;
+    const AVATAR_PALETTE = ['', '#000000', '#ffffff', '#9ca3af', '#ef4444', '#f97316', '#facc15', '#22c55e',
+      '#14b8a6', '#3b82f6', '#6366f1', '#a855f7', '#ec4899', '#fcd5b5', '#c08457', '#7c2d12'];
+    const AVATAR_EMPTY = '0'.repeat(AVATAR_SIZE * AVATAR_SIZE);
+    function validAvatar(str) {
+      return typeof str === 'string' && /^[0-9a-f]{256}$/.test(str) && str !== AVATAR_EMPTY ? str : null;
+    }
+    const avatarUrlCache = new Map();
+    function avatarDataUrl(str) {
+      if (avatarUrlCache.has(str)) return avatarUrlCache.get(str);
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = AVATAR_SIZE;
+      const cx = cv.getContext('2d');
+      [...str].forEach((ch, i) => {
+        const col = AVATAR_PALETTE[parseInt(ch, 16)];
+        if (!col) return;
+        cx.fillStyle = col;
+        cx.fillRect(i % AVATAR_SIZE, Math.floor(i / AVATAR_SIZE), 1, 1);
+      });
+      const url = cv.toDataURL();
+      avatarUrlCache.set(str, url);
+      return url;
+    }
+    // 이름 왼쪽에 붙이는 프로필 그림 (안 꾸몄으면 빈 점선 칸)
+    function studentAvatarHTML(stu, size = 48) {
+      const av = validAvatar(stu && stu.avatar);
+      const radius = Math.round(size / 4);
+      if (!av) {
+        return `<span class="inline-block shrink-0 bg-slate-900 border-2 border-dashed border-slate-700 align-middle" style="width:${size}px;height:${size}px;border-radius:${radius}px"></span>`;
+      }
+      return `<img src="${avatarDataUrl(av)}" alt="" class="inline-block shrink-0 bg-white border-2 border-slate-700 align-middle" style="width:${size}px;height:${size}px;border-radius:${radius}px;image-rendering:pixelated" />`;
+    }
+
+    let avatarEditor = { cells: [], color: 1, tool: 'pen', history: [], painting: false };
+    function openAvatarEditor() {
+      const stu = getActiveStudent();
+      if (!stu) return;
+      const cur = validAvatar(stu.avatar) || AVATAR_EMPTY;
+      avatarEditor = { cells: [...cur], color: avatarEditor.color || 1, tool: 'pen', history: [], painting: false };
+      const grid = document.getElementById('avatarEditorGrid');
+      grid.innerHTML = avatarEditor.cells.map((_, i) => `<div data-i="${i}" style="border:1px solid rgba(100,116,139,0.25)"></div>`).join('');
+      if (!grid.dataset.bound) {
+        grid.dataset.bound = '1';
+        const cellAt = e => {
+          const el = document.elementFromPoint(e.clientX, e.clientY);
+          return el && el.parentElement === grid ? Number(el.dataset.i) : -1;
+        };
+        grid.addEventListener('pointerdown', e => {
+          const i = cellAt(e);
+          if (i < 0) return;
+          e.preventDefault();
+          avatarEditor.history.push(avatarEditor.cells.join(''));
+          if (avatarEditor.history.length > 30) avatarEditor.history.shift();
+          if (avatarEditor.tool === 'fill') { avatarFill(i); return; }
+          avatarEditor.painting = true;
+          avatarEditor.last = i;
+          avatarPaint(i);
+        });
+        // 빠르게 끌어도 끊기지 않게 지난 칸에서 지금 칸까지 선으로 이어 칠함
+        grid.addEventListener('pointermove', e => {
+          if (!avatarEditor.painting) return;
+          const i = cellAt(e);
+          if (i < 0 || i === avatarEditor.last) return;
+          const a = avatarEditor.last ?? i;
+          const x0 = a % AVATAR_SIZE, y0 = Math.floor(a / AVATAR_SIZE), x1 = i % AVATAR_SIZE, y1 = Math.floor(i / AVATAR_SIZE);
+          const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+          for (let k = 1; k <= steps; k++) avatarPaint(Math.round(y0 + (y1 - y0) * k / steps) * AVATAR_SIZE + Math.round(x0 + (x1 - x0) * k / steps));
+          avatarEditor.last = i;
+        });
+        window.addEventListener('pointerup', () => { avatarEditor.painting = false; });
+      }
+      document.getElementById('avatarEditorPalette').innerHTML = AVATAR_PALETTE.map((c, k) => k === 0 ? '' :
+        `<button onclick="setAvatarColor(${k})" data-color="${k}" class="aspect-square rounded-md" style="background:${c};border:2px solid #475569"></button>`).join('');
+      refreshAvatarEditor();
+      document.getElementById('avatarEditorModal').classList.remove('hidden');
+    }
+    function closeAvatarEditor() {
+      avatarEditor.painting = false;
+      document.getElementById('avatarEditorModal').classList.add('hidden');
+    }
+    function avatarPaint(i) {
+      const v = avatarEditor.tool === 'erase' ? '0' : avatarEditor.color.toString(16);
+      if (avatarEditor.cells[i] === v) return;
+      avatarEditor.cells[i] = v;
+      refreshAvatarEditor();
+    }
+    function avatarFill(start) {
+      const from = avatarEditor.cells[start];
+      const to = avatarEditor.color.toString(16);
+      if (from === to) return;
+      const stack = [start];
+      while (stack.length) {
+        const i = stack.pop();
+        if (avatarEditor.cells[i] !== from) continue;
+        avatarEditor.cells[i] = to;
+        const x = i % AVATAR_SIZE, y = Math.floor(i / AVATAR_SIZE);
+        if (x > 0) stack.push(i - 1);
+        if (x < AVATAR_SIZE - 1) stack.push(i + 1);
+        if (y > 0) stack.push(i - AVATAR_SIZE);
+        if (y < AVATAR_SIZE - 1) stack.push(i + AVATAR_SIZE);
+      }
+      refreshAvatarEditor();
+    }
+    function setAvatarColor(k) {
+      avatarEditor.color = k;
+      if (avatarEditor.tool === 'erase') avatarEditor.tool = 'pen';
+      refreshAvatarEditor();
+    }
+    function setAvatarTool(tool) {
+      avatarEditor.tool = tool;
+      refreshAvatarEditor();
+    }
+    function clearAvatarEditor() {
+      avatarEditor.history.push(avatarEditor.cells.join(''));
+      avatarEditor.cells = [...AVATAR_EMPTY];
+      refreshAvatarEditor();
+    }
+    function undoAvatarEditor() {
+      const prev = avatarEditor.history.pop();
+      if (!prev) return;
+      avatarEditor.cells = [...prev];
+      refreshAvatarEditor();
+    }
+    function refreshAvatarEditor() {
+      const grid = document.getElementById('avatarEditorGrid');
+      [...grid.children].forEach((el, i) => { el.style.background = AVATAR_PALETTE[parseInt(avatarEditor.cells[i], 16)] || 'transparent'; });
+      document.querySelectorAll('#avatarEditorPalette [data-color]').forEach(b => {
+        const on = Number(b.dataset.color) === avatarEditor.color && avatarEditor.tool !== 'erase';
+        b.style.borderColor = on ? '#fbbf24' : '#475569';
+        b.style.transform = on ? 'scale(1.12)' : '';
+      });
+      [['pen', 'avatarToolPen'], ['fill', 'avatarToolFill'], ['erase', 'avatarToolErase']].forEach(([t, id]) => {
+        const b = document.getElementById(id);
+        if (b) b.className = `py-1.5 rounded-lg ${avatarEditor.tool === t ? 'bg-indigo-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'}`;
+      });
+      document.getElementById('avatarEditorPreview').innerHTML = studentAvatarHTML({ avatar: avatarEditor.cells.join('') }, 40);
+    }
+    function saveAvatarEditor() {
+      const stu = getActiveStudent();
+      if (!stu) return;
+      const str = avatarEditor.cells.join('');
+      stu.avatar = validAvatar(str) || null;
+      saveState();
+      closeAvatarEditor();
+      updateHeaderUI();
+      if (typeof renderClassLobbyPage === 'function') renderClassLobbyPage();
+      showRewardBanner('🎨 프로필을 저장했어요!');
+    }
+
     function openStudentLoginModal() {
       pendingLoginStudentId = state.activeStudentId;
       document.getElementById('loginErrorMsg').classList.add('hidden');
@@ -4557,7 +4883,7 @@
                 ? 'bg-indigo-600/30 border-indigo-400 text-white shadow'
                 : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
             }">
-            <div class="text-xs font-extrabold">${s.name}</div>
+            <div class="text-xs font-extrabold flex items-center gap-1.5">${studentAvatarHTML(s, 22)}${s.name}</div>
             <span class="text-xs" title="${hasPw ? '비밀번호 설정됨' : '첫 로그인 비밀번호 설정 필요'}">
               ${hasPw ? '🔒' : '🆕'}
             </span>
@@ -5229,7 +5555,10 @@
               <span class="text-xs font-extrabold text-indigo-300">⚡ 스킬 (보유 스킬)</span>
               <p class="text-[11px] text-slate-400">Lv.1 · 10 · 20에 아직 없는 직업 스킬 중 하나가 무작위로 열려요. 전투에서는 AI가 알맞게 사용해요.</p>
             </div>
-            <span class="text-[11px] font-bold text-amber-300">🎲 칸마다 ${SKILL_REROLL_COST} CA로 다시 뽑을 수 있어요</span>
+            ${(merc.skillsRevealed || 0) > 0 && (merc.skillsRevealed || 0) < ensureMercSkillSlots(merc).length ? `<button onclick="rerollMercSkill('${merc.id}')"
+              class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-[11px] shadow">
+              🎲 스킬 전체 다시 뽑기 (${SKILL_REROLL_COST} CA)
+            </button>` : ''}
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -5245,10 +5574,6 @@
                     </div>
                     <p class="text-[11px] text-slate-300 mt-1.5 leading-snug">${skObj.desc}</p>
                   </div>
-                  <button onclick="rerollMercSkill('${merc.id}', ${ensureMercSkillSlots(merc).indexOf(skKey)})"
-                    class="mt-2 w-full py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-[11px] shadow">
-                    🎲 이 스킬 다시 뽑기 (${SKILL_REROLL_COST} CA)
-                  </button>
                 </div>
               `;
             }).join('')}
@@ -5433,16 +5758,15 @@
 
     const SKILL_REROLL_COST = 500;
 
-    // slotIdx: 바꿀 스킬 칸 (0부터, 이미 열린 칸만)
-    function rerollMercSkill(mercId, slotIdx) {
+    // 열린 스킬 칸 전체를 직업 스킬 전체에서 무작위로 다시 뽑음
+    function rerollMercSkill(mercId) {
       const stu = getActiveStudent();
       const merc = stu.roster.find(m => m.id === mercId);
       if (!merc) return;
       const slots = ensureMercSkillSlots(merc);
       const n = merc.skillsRevealed || 0;
-      const idx = Number(slotIdx);
-      if (!Number.isInteger(idx) || idx < 0 || idx >= n) {
-        showNotice('⚠️ 열려 있는 스킬 칸만 다시 뽑을 수 있어요.');
+      if (n <= 0) {
+        showNotice('⚠️ 아직 열린 스킬이 없어요.');
         return;
       }
       if (n >= slots.length) {
@@ -5454,22 +5778,26 @@
         return;
       }
       const jobSkills = SKILL_DEFS[merc.job] || SKILL_DEFS.warrior;
-      const oldSk = jobSkills[slots[idx]];
-      askCustomConfirm(`[${merc.name}]의 [${oldSk ? oldSk.icon + ' ' + oldSk.name : '스킬'}]을(를) ${SKILL_REROLL_COST} CA를 내고 다시 뽑을까요?\n아직 없는 직업 스킬 중 하나가 무작위로 나와요.`, () => {
+      const skLabel = keys => keys.map(k => jobSkills[k]).filter(Boolean).map(sk => `${sk.icon} ${sk.name}`).join(', ');
+      askCustomConfirm(`[${merc.name}]의 스킬 ${n}개 [${skLabel(slots.slice(0, n))}]을(를) ${SKILL_REROLL_COST} CA를 내고 모두 다시 뽑을까요?\n직업 스킬 전체 중에서 무작위로 ${n}개가 새로 나와요.`, () => {
         const curSlots = ensureMercSkillSlots(merc);
         const curN = merc.skillsRevealed || 0;
-        if (idx >= curN || curN >= curSlots.length || stu.mc < SKILL_REROLL_COST) return;
+        if (curN <= 0 || curN >= curSlots.length || stu.mc < SKILL_REROLL_COST) return;
         stu.mc -= SKILL_REROLL_COST;
-        // 고른 칸을 아직 안 열린(가지고 있지 않은) 스킬 중 하나와 맞바꿈
-        const j = curN + Math.floor(Math.random() * (curSlots.length - curN));
-        [curSlots[idx], curSlots[j]] = [curSlots[j], curSlots[idx]];
+        const before = curSlots.slice(0, curN);
+        // 모든 칸을 섞되, 뽑힌 스킬 묶음이 지금과 똑같으면 다시 섞음
+        do {
+          for (let i = curSlots.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [curSlots[i], curSlots[j]] = [curSlots[j], curSlots[i]];
+          }
+        } while (curSlots.slice(0, curN).every(k => before.includes(k)));
         merc.skillKey = curSlots[0];
-        const sk = jobSkills[curSlots[idx]];
         saveState();
         renderSquadTab();
         if (activeDetailMercId === merc.id) renderMercDetailModal();
         setupIdlePreviewBattle();
-        showRewardBanner(`🎲 스킬 다시 뽑기! [${merc.name}]의 [${oldSk ? oldSk.name : '스킬'}] → [${sk.icon} ${sk.name}] (으)로 바뀌었어요!`);
+        showRewardBanner(`🎲 스킬 전체 다시 뽑기! [${merc.name}]의 스킬이 [${skLabel(curSlots.slice(0, curN))}] (으)로 바뀌었어요!`);
       });
     }
 
@@ -6720,6 +7048,89 @@
       showRewardBanner(`🤝 [${rarObj.name} · ${JOB_DEFS[hiredMerc.job].name}] ${hiredMerc.name}${sk.id ? ` (보유 스킬: ${sk.name})` : ''} 용병과 계약을 맺었습니다!`);
     }
 
+    // 도감: 직업별 패시브·기본 능력치·스킬 설명 (직업 고르기 버튼으로 하나씩 자세히)
+    const CODEX_JOBS = ['warrior', 'mage', 'healer', 'archer', 'rogue', 'knight'];
+    let codexJob = 'warrior';
+
+    function selectCodexJob(jobKey) {
+      if (!JOB_DEFS[jobKey]) return;
+      codexJob = jobKey;
+      renderCodexTab();
+    }
+
+    function renderCodexTab() {
+      CODEX_JOBS.forEach(j => {
+        const iconEl = document.getElementById(`bannerWpnIcon_${j}`);
+        if (iconEl) iconEl.innerHTML = getJobWeaponIconHTML(j, 22);
+      });
+
+      const picker = document.getElementById('codexJobPicker');
+      const detail = document.getElementById('codexJobDetail');
+      if (picker) {
+        picker.innerHTML = CODEX_JOBS.map(j => {
+          const jd = JOB_DEFS[j];
+          const on = j === codexJob;
+          return `<button onclick="selectCodexJob('${j}')" class="px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 border ${on ? 'bg-indigo-600 border-indigo-400 text-white shadow' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}">
+            <span class="w-5 h-6 flex items-center justify-center">${getJobWeaponIconHTML(j, 18)}</span>${jd.name}
+          </button>`;
+        }).join('');
+      }
+      if (detail) {
+        const jd = JOB_DEFS[codexJob];
+        const skills = Object.values(SKILL_DEFS[codexJob] || {});
+        const cells = (jd.range / GRID_CELL_SIZE).toFixed(1).replace(/\.0$/, '');
+        const stat = (label, val) => `<div class="bg-slate-950 border border-slate-800 rounded-xl p-2 text-center">
+            <div class="text-[10px] font-bold text-slate-400">${label}</div>
+            <div class="text-sm font-extrabold text-white mt-0.5">${val}</div>
+          </div>`;
+        detail.innerHTML = `
+          <div class="flex items-center gap-3 flex-wrap">
+            <span class="w-10 h-12 flex items-center justify-center rounded-xl bg-slate-950 border border-slate-800">${getJobWeaponIconHTML(codexJob, 30)}</span>
+            <div>
+              <div class="font-title text-xl text-white">${jd.icon} ${jd.name}</div>
+              <div class="text-xs text-slate-400">${jd.roleDesc}</div>
+            </div>
+          </div>
+          <div class="rounded-xl border border-violet-500/40 bg-violet-500/10 p-3">
+            <div class="text-xs font-extrabold text-violet-300">✨ 패시브 · ${jd.passiveName}</div>
+            <div class="text-sm text-slate-200 mt-0.5">${jd.passiveDesc}</div>
+          </div>
+          <div>
+            <div class="text-xs font-extrabold text-amber-300 mb-1.5">📊 기본 능력치 (Lv.1 일반 등급 기준)</div>
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              ${stat('❤️ 체력', jd.baseHp.toLocaleString())}${stat('⚔️ 공격', jd.baseAtk)}${stat('🛡️ 방어', jd.baseDef)}${stat('⚡ 속도', jd.baseSpd)}${stat('🎯 사거리', `${cells}칸`)}
+            </div>
+          </div>
+          <div>
+            <div class="text-xs font-extrabold text-indigo-300 mb-1.5">⚡ 직업 스킬 (${skills.length}가지)</div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+              ${skills.map(sk => `
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between gap-2 flex-wrap">
+                    <span class="text-sm font-extrabold text-white">${sk.icon} ${sk.name}</span>
+                    ${sk.ccTag ? `<span class="px-2 py-0.5 rounded-full bg-slate-800 text-[10px] font-bold text-amber-300">${sk.ccTag}</span>` : ''}
+                  </div>
+                  <p class="text-xs text-slate-300 leading-snug">${sk.desc}</p>
+                  <div class="flex flex-wrap gap-1 text-[10px] font-bold text-slate-400">
+                    <span class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800">⏱️ 쿨타임 ${sk.cooldownSec}초</span>
+                    <span class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800">💧 마나 ${sk.manaCost}</span>
+                    <span class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800">${sk.castSec > 0 ? `⏳ 시전 ${sk.castSec}초` : '⚡ 바로 사용'}</span>
+                  </div>
+                </div>`).join('')}
+            </div>
+          </div>`;
+      }
+      const stList = document.getElementById('codexStatusList');
+      if (stList) {
+        stList.innerHTML = Object.values(STATUS_DEFS).map(st => `
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex items-start gap-2">
+            <span class="text-lg leading-none">${st.icon}</span>
+            <div><div class="text-xs font-extrabold" style="color:${st.color}">${st.name}</div>
+            <div class="text-[11px] text-slate-300 leading-snug">${st.desc}</div></div>
+          </div>`).join('');
+      }
+    }
+
     function renderOfficeTab() {
       const stu = getActiveStudent();
       syncRecruitPoolFromStudent();
@@ -6731,11 +7142,6 @@
           ? `🔄 새로운 지원자 모집 (무료 ${freeLeft}/${DAILY_FREE_REFRESHES}회)`
           : `🔄 새로운 지원자 모집 (${RECRUIT_REFRESH_COST.toLocaleString()} CA)`;
       }
-
-      ['warrior', 'mage', 'healer', 'archer', 'rogue', 'knight'].forEach(j => {
-        const iconEl = document.getElementById(`bannerWpnIcon_${j}`);
-        if (iconEl) iconEl.innerHTML = getJobWeaponIconHTML(j, 22);
-      });
 
       const grid = document.getElementById('officeRecruitGrid');
       grid.innerHTML = recruitPool.map((cand, idx) => {
@@ -6833,7 +7239,7 @@
 
     function setTowerFloorFilter(rangeKey) {
       currentTowerFloorFilter = rangeKey;
-      ['all', '1-10', '11-20', '21-30', '31-40', '41-50'].forEach(k => {
+      ['all', '1-20', '21-40', '41-60', '61-80', '81-100'].forEach(k => {
         const btn = document.getElementById(`tfilter-${k}`);
         if (btn) {
           btn.className = (k === rangeKey)
@@ -6847,6 +7253,7 @@
     function renderTowerTab() {
       const stu = getActiveStudent();
       document.getElementById('myTowerProgressText').textContent = `${stu.towerFloor}층 도전 가능 (상위 층 비공개)`;
+      renderTowerLiveList();
 
       let filteredFloors = TOWER_FLOORS;
       if (currentTowerFloorFilter !== 'all') {
@@ -7643,127 +8050,197 @@
       renderShopTab();
     }
 
-    // [Requirements 1 & 2]: 상식 퀴즈 / 넌센스 퀴즈 / 3학년 교과 내용 퀴즈(국·수·사·과·영) 분할 및 객관식(mcq)·주관식(short) 혼합 문제 은행
+    // [Requirements 1 & 2]: 상식 퀴즈 / 넌센스 퀴즈 / 교과 심화 퀴즈(국·수·사·과·영) 분할 및 객관식(mcq)·주관식(short) 혼합 문제 은행
+    // 정답을 알려 주는 힌트는 넣지 않음 (넌센스만 말놀이 실마리를 줌). 객관식 오답은 헷갈리게
     const QUIZ_BANK = [
-      // ==================== 1. 3학년 수준 교과 내용 퀴즈 (국어, 수학, 사회, 과학, 영어) ====================
-      // [국어 - 객관식 & 주관식]
+      // ==================== 1. 교과 심화 퀴즈 (국어, 수학, 사회, 과학, 영어) ====================
+      // [국어]
       { id: 'c_kor_1', category: 'curriculum', subject: '국어', type: 'mcq',
-        q: '속담 "가는 말이 고와야 ( ? ) 말이 곱다"에서 빈칸에 들어갈 알맞은 말은 무엇일까요?',
-        opts: ['오는', '가는', '뛰는', '나는'], ans: 0 },
-      { id: 'c_kor_2', category: 'curriculum', subject: '국어', type: 'short',
-        q: '"사각사각", "보들보들", "새콤달콤"처럼 눈·귀·코·혀·피부로 느낀 것을 생생하게 나타낸 표현을 무엇이라고 할까요? (힌트: ㄱㄱㅈ 표현)',
-        answers: ['감각적 표현', '감각적표현', '감각적'], hint: '초성 힌트: ㄱㄱㅈ 표현' },
-      { id: 'c_kor_3', category: 'curriculum', subject: '국어', type: 'mcq',
-        q: '다음 중 문장 부호인 큰따옴표(" ")를 써야 하는 경우는 언제일까요?',
-        opts: ['문장이 끝났을 때', '인물이 한 말을 그대로 적을 때', '신기하거나 놀랐을 때', '쉼이 필요할 때'], ans: 1 },
-      { id: 'c_kor_4', category: 'curriculum', subject: '국어', type: 'short',
-        q: '한 문단에서 글쓴이가 가장 말하고 싶은 핵심 내용을 담은 문장을 "( ? ) 문장"이라고 합니다. 빈칸에 들어갈 두 글자는?',
-        answers: ['중심', '중심문장', '중심 문장'], hint: '뒷받침 문장과 짝을 이루는 ㅈㅅ 문장!' },
-      { id: 'c_kor_5', category: 'curriculum', subject: '국어', type: 'mcq',
-        q: '윗사람에게 무언가를 줄 때 "드리다"라고 표현하듯, 듣는 사람이나 대상을 높여서 말하는 방법을 무엇이라고 하나요?',
-        opts: ['낮춤말', '높임말', '줄임말', '꾸밈말'], ans: 1 },
+        q: '다음 중 맞춤법이 바르게 쓰인 문장은 무엇일까요?',
+        opts: ['어제 숙제를 안 해서 혼났다.', '오늘은 왠지 기분이 좋데.', '문을 잘 잠궈야 해.', '금새 비가 그쳤다.'], ans: 0 },
+      { id: 'c_kor_2', category: 'curriculum', subject: '국어', type: 'mcq',
+        q: '"발 없는 말이 천 리 간다"는 속담의 뜻으로 가장 알맞은 것은?',
+        opts: ['말은 아주 빨리 달린다.', '말은 순식간에 멀리 퍼지니 말을 조심해야 한다.', '먼 길은 걸어서 가야 한다.', '말을 많이 하면 힘이 든다.'], ans: 1 },
+      { id: 'c_kor_3', category: 'curriculum', subject: '국어', type: 'short',
+        q: '"얼굴이 홍당무가 되었다", "내 마음은 호수요"처럼 어떤 대상을 다른 대상에 빗대어 나타내는 표현 방법을 무엇이라고 할까요? (두 글자)',
+        answers: ['비유', '비유법'] },
+      { id: 'c_kor_4', category: 'curriculum', subject: '국어', type: 'mcq',
+        q: '다음 중 높임 표현이 바르지 않은 문장은?',
+        opts: ['할머니께서 진지를 잡수신다.', '선생님, 여쭈어볼 것이 있어요.', '아버지께서 댁에 계신다.', '선생님 말씀이 계시겠습니다.'], ans: 3 },
+      { id: 'c_kor_5', category: 'curriculum', subject: '국어', type: 'short',
+        q: '"반짝반짝", "졸졸", "깡충깡충"처럼 모양이나 움직임을 흉내 내는 말을 "( ? )말"이라고 합니다. 빈칸에 들어갈 두 글자는?',
+        answers: ['흉내', '흉내말', '흉내내는말', '의태어'] },
+      { id: 'c_kor_6', category: 'curriculum', subject: '국어', type: 'mcq',
+        q: '"사과 한 ( )", "연필 한 ( )", "양말 한 ( )"에 차례로 들어갈 알맞은 단위는?',
+        opts: ['개 - 자루 - 켤레', '송이 - 권 - 벌', '마리 - 자루 - 쌍', '개 - 장 - 벌'], ans: 0 },
+      { id: 'c_kor_7', category: 'curriculum', subject: '국어', type: 'short',
+        q: '"크다"와 "작다", "높다"와 "낮다"처럼 서로 반대되는 뜻을 가진 낱말을 무엇이라고 할까요? (세 글자 또는 네 글자)',
+        answers: ['반대말', '반의어', '반대어'] },
+      { id: 'c_kor_8', category: 'curriculum', subject: '국어', type: 'mcq',
+        q: '다음 중 띄어쓰기가 바른 것은?',
+        opts: ['나는 학교에 간다.', '나는학교에 간다.', '나 는 학교 에 간다.', '나는 학교에간다.'], ans: 0 },
 
-      // [수학 - 객관식 & 주관식 (3학년 수준)]
+      // [수학]
       { id: 'c_math_1', category: 'curriculum', subject: '수학', type: 'short',
-        q: '초등 3학년 수학: 세 자리 수 덧셈 [ 325 + 175 ]의 계산 결과는 얼마일까요? (숫자만 입력)',
-        answers: ['500', '오백'], hint: '325 + 175 = ?' },
+        q: '어떤 수에 7을 곱했더니 91이 되었어요. 어떤 수는 얼마일까요? (숫자만)',
+        answers: ['13'] },
       { id: 'c_math_2', category: 'curriculum', subject: '수학', type: 'mcq',
-        q: '사탕 24개를 6명의 친구에게 똑같이 나누어 주려고 합니다. 한 명당 몇 개씩 받을 수 있을까요? (24 ÷ 6)',
-        opts: ['3개', '4개', '5개', '6개'], ans: 1 },
+        q: '구슬 50개를 한 명에게 7개씩 나누어 주면 몇 명에게 줄 수 있고, 몇 개가 남을까요?',
+        opts: ['7명, 1개', '7명, 3개', '6명, 8개', '8명, 1개'], ans: 0 },
       { id: 'c_math_3', category: 'curriculum', subject: '수학', type: 'short',
-        q: '직사각형에는 직각(90도)이 모두 몇 개 있을까요? (숫자만 입력)',
-        answers: ['4', '4개', '네개', '네 개'], hint: '네 모서리가 모두 직각이에요!' },
+        q: '한 변의 길이가 9cm인 정사각형의 네 변의 길이를 모두 더하면 몇 cm일까요? (숫자만)',
+        answers: ['36', '36cm'] },
       { id: 'c_math_4', category: 'curriculum', subject: '수학', type: 'mcq',
-        q: '1km(킬로미터)는 몇 m(미터)와 같을까요?',
-        opts: ['10m', '100m', '1000m', '10000m'], ans: 2 },
+        q: '다음 중 가장 큰 분수는 무엇일까요?',
+        opts: ['3/8', '5/8', '1/2', '4/9'], ans: 1 },
       { id: 'c_math_5', category: 'curriculum', subject: '수학', type: 'short',
-        q: '초등 3학년 곱셈: [ 40 × 3 ]의 값은 얼마일까요? (숫자만 입력)',
-        answers: ['120', '백이십'], hint: '4 × 3 = 12에 0을 붙여보세요!' },
+        q: '2L 300mL에서 900mL를 덜어 내면 몇 mL가 남을까요? (숫자만)',
+        answers: ['1400', '1400ml'] },
       { id: 'c_math_6', category: 'curriculum', subject: '수학', type: 'mcq',
-        q: '시계의 초바늘이 한 바퀴(60칸)를 완전히 돌면 몇 분이 지난 것일까요?',
-        opts: ['1분', '5분', '10분', '60분'], ans: 0 },
+        q: '오전 10시 45분에 출발해서 1시간 35분 동안 갔어요. 도착한 시각은?',
+        opts: ['오후 12시 10분', '오전 11시 80분', '오후 12시 20분', '오전 11시 20분'], ans: 2 },
+      { id: 'c_math_7', category: 'curriculum', subject: '수학', type: 'short',
+        q: '원의 반지름이 6cm일 때, 이 원의 지름은 몇 cm일까요? (숫자만)',
+        answers: ['12', '12cm'] },
+      { id: 'c_math_8', category: 'curriculum', subject: '수학', type: 'mcq',
+        q: '0.1이 23개인 수는 무엇일까요?',
+        opts: ['0.23', '2.3', '23', '230'], ans: 1 },
+      { id: 'c_math_9', category: 'curriculum', subject: '수학', type: 'short',
+        q: '□ × 8 + 5 = 61 일 때, □에 알맞은 수는? (숫자만)',
+        answers: ['7'] },
+      { id: 'c_math_10', category: 'curriculum', subject: '수학', type: 'mcq',
+        q: '1부터 30까지의 수 중에서 3으로도 나누어떨어지고 5로도 나누어떨어지는 수는 모두 몇 개일까요?',
+        opts: ['1개', '2개', '3개', '6개'], ans: 1 },
 
-      // [사회 - 객관식 & 주관식 (3학년 수준)]
+      // [사회]
       { id: 'c_soc_1', category: 'curriculum', subject: '사회', type: 'mcq',
-        q: '지도에서 특별한 표시가 없을 때, 방위표의 위쪽(↑)은 어느 방향을 나타내나요?',
-        opts: ['동쪽', '서쪽', '남쪽', '북쪽'], ans: 3 },
+        q: '지도에서 땅의 높낮이를 나타내기 위해 높이가 같은 곳을 이어 그린 선을 무엇이라고 할까요?',
+        opts: ['위도선', '등고선', '경계선', '해안선'], ans: 1 },
       { id: 'c_soc_2', category: 'curriculum', subject: '사회', type: 'short',
-        q: '우리 고장의 산, 강, 도로, 건물 등의 모습을 일정한 비율로 줄여서 기호와 방위를 사용해 나타낸 그림을 무엇이라고 할까요? (두 글자)',
-        answers: ['지도'], hint: '초성 힌트: ㅈㄷ' },
+        q: '실제 거리를 지도에 얼마나 줄였는지 나타낸 것을 무엇이라고 할까요? (두 글자)',
+        answers: ['축척'] },
       { id: 'c_soc_3', category: 'curriculum', subject: '사회', type: 'mcq',
-        q: '옛날 사람들이 멀리 있는 곳에 소식을 전하기 위해 산꼭대기에서 연기와 불을 피워 알리던 통신 수단은?',
-        opts: ['봉수', '파발', '전보', '우체통'], ans: 0 },
-      { id: 'c_soc_4', category: 'curriculum', subject: '사회', type: 'short',
-        q: '고장의 모습을 자세히 살펴보기 위해 윤곽선만 그려 놓은 하얀 지도를 "( ? )지도"라고 합니다. 빈칸에 들어갈 한 글자는?',
-        answers: ['백', '백지도'], hint: '하얀 지도를 뜻하는 ㅂ지도!' },
+        q: '조선 시대에 급한 소식을 말을 타거나 달려서 전하던 통신 수단은?',
+        opts: ['봉수', '파발', '서찰', '방'], ans: 1 },
+      { id: 'c_soc_4', category: 'curriculum', subject: '사회', type: 'mcq',
+        q: '다음 중 우리 고장의 문제를 해결하기 위해 주민이 직접 의견을 내는 방법으로 알맞지 않은 것은?',
+        opts: ['주민 회의에 참여한다.', '시청 누리집에 의견을 쓴다.', '혼자 몰래 시설을 고친다.', '서명 운동을 한다.'], ans: 2 },
+      { id: 'c_soc_5', category: 'curriculum', subject: '사회', type: 'short',
+        q: '물건을 만들거나 기르는 활동을 "생산"이라고 합니다. 생산한 물건을 사서 쓰는 활동은 무엇이라고 할까요? (두 글자)',
+        answers: ['소비'] },
+      { id: 'c_soc_6', category: 'curriculum', subject: '사회', type: 'mcq',
+        q: '우리나라에서 면적이 가장 넓은 도(道)는 어디일까요?',
+        opts: ['강원도', '경상북도', '전라남도', '경기도'], ans: 1 },
+      { id: 'c_soc_7', category: 'curriculum', subject: '사회', type: 'short',
+        q: '음력 1월 15일, 부럼을 깨물고 오곡밥을 먹는 우리 세시 풍속의 날은? (네 글자)',
+        answers: ['정월대보름', '대보름'] },
 
-      // [과학 - 객관식 & 주관식 (3학년 수준)]
-      { id: 'c_sci_1', category: 'curriculum', subject: '과학', type: 'short',
-        q: '배추흰나비의 한살이 순서는 [ ( ? ) → 애벌레 → 번데기 → 어른벌레 ]입니다. 맨 처음 단계인 ( ? )에 들어갈 한 글자는?',
-        answers: ['알'], hint: '나비가 잎 뒷면에 낳는 작은 ㅇ!' },
+      // [과학]
+      { id: 'c_sci_1', category: 'curriculum', subject: '과학', type: 'mcq',
+        q: '배추흰나비처럼 "알 → 애벌레 → 번데기 → 어른벌레"를 거치는 것을 완전 탈바꿈이라고 해요. 다음 중 번데기 단계가 없는 곤충은?',
+        opts: ['나비', '사슴벌레', '잠자리', '파리'], ans: 2 },
       { id: 'c_sci_2', category: 'curriculum', subject: '과학', type: 'mcq',
-        q: '자석의 N극과 N극처럼 서로 같은 극끼리 가까이 가져가면 어떻게 될까요?',
-        opts: ['서로 끌어당긴다', '서로 밀어낸다', '아무 변화가 없다', '자석이 녹는다'], ans: 1 },
-      { id: 'c_sci_3', category: 'curriculum', subject: '과학', type: 'mcq',
-        q: '다음 물체 중 자석에 잘 달라붙는 물체는 무엇일까요?',
-        opts: ['고무지우개', '나무젓가락', '철 클립', '플라스틱 자'], ans: 2 },
-      { id: 'c_sci_4', category: 'curriculum', subject: '과학', type: 'short',
-        q: '물이나 주스처럼 담는 그릇에 따라 모양이 변하지만 부피는 변하지 않고 흐르는 성질이 있는 물질의 상태를 무엇이라고 할까요? (두 글자)',
-        answers: ['액체'], hint: '고체, ㅇㅊ, 기체 중 하나!' },
+        q: '막대자석을 반으로 자르면 어떻게 될까요?',
+        opts: ['N극 조각과 S극 조각으로 나뉜다.', '두 조각 모두 N극과 S극을 가진다.', '자석의 성질이 사라진다.', '두 조각 모두 N극만 가진다.'], ans: 1 },
+      { id: 'c_sci_3', category: 'curriculum', subject: '과학', type: 'short',
+        q: '물이 끓을 때 물속에서 기포가 생기며 물이 기체로 변하는 현상을 무엇이라고 할까요? (두 글자)',
+        answers: ['끓음', '비등'] },
+      { id: 'c_sci_4', category: 'curriculum', subject: '과학', type: 'mcq',
+        q: '차가운 컵 바깥쪽에 물방울이 맺히는 까닭은?',
+        opts: ['컵 속의 물이 새어 나와서', '공기 중의 수증기가 차가워져 물이 되어서', '컵이 녹아서', '햇빛 때문에'], ans: 1 },
+      { id: 'c_sci_5', category: 'curriculum', subject: '과학', type: 'short',
+        q: '지구 표면의 약 70%를 덮고 있는 것은 육지와 바다 중 무엇일까요?',
+        answers: ['바다', '바닷물', '물'] },
+      { id: 'c_sci_6', category: 'curriculum', subject: '과학', type: 'mcq',
+        q: '다음 중 소리가 전달되지 않는 곳은?',
+        opts: ['물속', '철봉', '우주 공간(진공)', '나무 책상'], ans: 2 },
+      { id: 'c_sci_7', category: 'curriculum', subject: '과학', type: 'mcq',
+        q: '다음 동물 중 알을 낳는 포유류는?',
+        opts: ['고래', '오리너구리', '박쥐', '캥거루'], ans: 1 },
+      { id: 'c_sci_8', category: 'curriculum', subject: '과학', type: 'short',
+        q: '식물이 햇빛을 받아 이산화 탄소와 물로 양분을 만드는 작용을 무엇이라고 할까요? (세 글자)',
+        answers: ['광합성'] },
 
-      // [영어 - 객관식 & 주관식 (3학년 수준)]
+      // [영어]
       { id: 'c_eng_1', category: 'curriculum', subject: '영어', type: 'short',
-        q: '초등 3학년 영어: 빨갛고 맛있는 과일 "사과"를 영어로 쓰거나, 영어 단어 "apple"의 우리말 뜻을 적어보세요!',
-        answers: ['apple', '사과', '애플'], hint: 'a-p-p-l-e 또는 사과' },
+        q: '요일 영어: 월요일 Monday, 화요일 Tuesday 다음, 수요일은 영어로 무엇일까요?',
+        answers: ['wednesday'] },
       { id: 'c_eng_2', category: 'curriculum', subject: '영어', type: 'mcq',
-        q: '친구가 나에게 선물을 주었을 때 고마운 마음을 담아 하는 영어 인사말은 무엇일까요?',
-        opts: ['I am sorry.', 'Thank you.', 'See you later.', 'Good night.'], ans: 1 },
+        q: '"How many apples do you have?"에 알맞은 대답은?',
+        opts: ['I like apples.', 'I have three apples.', 'It is red.', 'Yes, I do.'], ans: 1 },
       { id: 'c_eng_3', category: 'curriculum', subject: '영어', type: 'short',
-        q: '영어 숫자 세기: one(1), two(2), three(3), four(4), five(5) 중 "three"는 숫자 몇을 뜻할까요? (숫자 입력)',
-        answers: ['3', '3번', '삼', '셋'], hint: 'one, two, three!' },
+        q: '"twelve"는 숫자 몇일까요? (숫자로)',
+        answers: ['12', '열둘', '십이'] },
       { id: 'c_eng_4', category: 'curriculum', subject: '영어', type: 'mcq',
-        q: '"What color is it?"이라는 질문에 "빨간색이야"라고 대답할 때 알맞은 영어 표현은?',
-        opts: ['It is blue.', 'It is red.', 'It is yellow.', 'It is green.'], ans: 1 },
+        q: '다음 중 철자가 바른 단어는?',
+        opts: ['beautifull', 'beautiful', 'beutiful', 'beatiful'], ans: 1 },
+      { id: 'c_eng_5', category: 'curriculum', subject: '영어', type: 'short',
+        q: '"elephant"의 우리말 뜻은 무엇일까요?',
+        answers: ['코끼리'] },
+      { id: 'c_eng_6', category: 'curriculum', subject: '영어', type: 'mcq',
+        q: '"What time is it?"에 대한 대답으로 알맞은 것은?',
+        opts: ["It's sunny.", "It's Monday.", "It's seven o'clock.", "It's my bag."], ans: 2 },
+      { id: 'c_eng_7', category: 'curriculum', subject: '영어', type: 'short',
+        q: '"Spring, Summer, Fall, ( ? )" 사계절 중 빈칸에 들어갈 "겨울"을 영어로 쓰세요.',
+        answers: ['winter'] },
 
-      // ==================== 2. 상식 퀴즈 (객관식 & 주관식) ====================
+      // ==================== 2. 상식 퀴즈 ====================
       { id: 'g_1', category: 'general', subject: '상식', type: 'short',
-        q: '조선 시대에 백성들이 쉽게 글을 배우고 쓸 수 있도록 "훈민정음(한글)"을 창제하신 왕의 이름은 누구일까요?',
-        answers: ['세종대왕', '세종', '이도'], hint: '만원권 지폐에 계신 ㅅㅈ대왕님!' },
+        q: '거북선을 이끌고 한산도 대첩에서 크게 이긴 조선의 장군은 누구일까요?',
+        answers: ['이순신', '이순신장군', '충무공'] },
       { id: 'g_2', category: 'general', subject: '상식', type: 'mcq',
-        q: '우리나라의 가장 동쪽에 위치한 아름다운 섬으로, 동도와 서도로 이루어진 이 섬의 이름은?',
-        opts: ['마라도', '울릉도', '독도', '강화도'], ans: 2 },
+        q: '태양계 행성 중 가장 큰 행성은?',
+        opts: ['토성', '지구', '목성', '해왕성'], ans: 2 },
       { id: 'g_3', category: 'general', subject: '상식', type: 'short',
-        q: '불이 났을 때나 응급 환자가 생겼을 때 소방서에 도움을 요청하는 전화번호 세 자리는 몇 번일까요?',
-        answers: ['119', '119번'], hint: '숫자 세 자리 (1-1-?)' },
+        q: '바다에서 사고가 났을 때 해양 경찰에 신고하는 전화번호 세 자리는? (숫자만)',
+        answers: ['122'] },
       { id: 'g_4', category: 'general', subject: '상식', type: 'mcq',
-        q: '태극기의 네 모서리에 있는 검은색 작대기 묶음(4괘)의 이름이 아닌 것은 무엇일까요?',
-        opts: ['건(乾)', '곤(坤)', '감(坎)', '산(山)'], ans: 3 },
+        q: '태극기 가운데 원(태극)의 위쪽 빨간색과 아래쪽 파란색이 뜻하는 것은?',
+        opts: ['하늘과 땅', '양과 음', '불과 물', '낮과 밤'], ans: 1 },
       { id: 'g_5', category: 'general', subject: '상식', type: 'short',
-        q: '하루는 24시간입니다. 그렇다면 1년은 보통 몇 개월(달)로 이루어져 있을까요? (숫자만 입력)',
-        answers: ['12', '12개월', '12달', '열두달'], hint: '1월부터 몇 월까지 있을까요?' },
+        q: '윤년의 2월은 며칠까지 있을까요? (숫자만)',
+        answers: ['29', '29일'] },
       { id: 'g_6', category: 'general', subject: '상식', type: 'mcq',
-        q: '문어 다리는 8개입니다. 그렇다면 오징어의 다리는 모두 몇 개일까요?',
-        opts: ['6개', '8개', '10개', '12개'], ans: 2 },
+        q: '세계에서 가장 넓은 바다(대양)는?',
+        opts: ['대서양', '인도양', '태평양', '북극해'], ans: 2 },
+      { id: 'g_7', category: 'general', subject: '상식', type: 'short',
+        q: '우리나라의 국화(나라꽃)는 무엇일까요? (세 글자)',
+        answers: ['무궁화'] },
+      { id: 'g_8', category: 'general', subject: '상식', type: 'mcq',
+        q: '다음 중 오천 원권 지폐의 앞면에 그려진 인물은?',
+        opts: ['이황', '이이(율곡)', '신사임당', '세종대왕'], ans: 1 },
+      { id: 'g_9', category: 'general', subject: '상식', type: 'mcq',
+        q: '물은 몇 도(℃)에서 끓을까요? (1기압 기준)',
+        opts: ['50℃', '80℃', '100℃', '120℃'], ans: 2 },
+      { id: 'g_10', category: 'general', subject: '상식', type: 'short',
+        q: '올림픽 오륜기에 그려진 고리는 모두 몇 개일까요? (숫자만)',
+        answers: ['5', '5개', '다섯개'] },
 
-      // ==================== 3. 넌센스 퀴즈 (객관식 & 주관식) ====================
+      // ==================== 3. 넌센스 퀴즈 (말놀이라 실마리만 줌) ====================
       { id: 'n_1', category: 'nonsense', subject: '넌센스', type: 'short',
-        q: '[넌센스] 왕이 길을 가다가 넘어지면 무엇이 될까요? (두 글자)',
-        answers: ['킹콩'], hint: '왕은 영어로 King(킹) + 넘어지면 콩!' },
+        q: '[넌센스] 왕이 넘어지면? (두 글자)',
+        answers: ['킹콩'], hint: '왕은 영어로?' },
       { id: 'n_2', category: 'nonsense', subject: '넌센스', type: 'mcq',
-        q: '[넌센스] 세상에서 가장 지루한 중학교는 어디일까요?',
+        q: '[넌센스] 세상에서 가장 지루한 중학교는?',
         opts: ['공부중', '로딩중', '수업중', '고민중'], ans: 1 },
       { id: 'n_3', category: 'nonsense', subject: '넌센스', type: 'short',
-        q: '[넌센스] 오리가 추운 겨울에 꽁꽁 얼어붙으면 무엇이 될까요? (두 글자)',
-        answers: ['언덕'], hint: '얼은 오리(Duck) = ㅇㄷ!' },
-      { id: 'n_4', category: 'nonsense', subject: '넌센스', type: 'mcq',
-        q: '[넌센스] 바나나가 웃으면 무엇이 될까요?',
-        opts: ['바나나우유', '바나나킥', '바나나껍질', '델몬트'], ans: 1 },
-      { id: 'n_5', category: 'nonsense', subject: '넌센스', type: 'short',
-        q: '[넌센스] 세상에서 가장 가난한 왕(임금)은 누구일까요? (네 글자)',
-        answers: ['최저임금', '최저 임금'], hint: '아르바이트할 때 받는 ㅊㅈ임금!' },
-      { id: 'n_6', category: 'nonsense', subject: '넌센스', type: 'mcq',
-        q: '[넌센스] 소가 계단을 한 칸씩 올라가면 무엇이 될까요?',
-        opts: ['소고기', '소오름', '소나무', '소풍'], ans: 1 }
+        q: '[넌센스] 오리가 얼면? (두 글자)',
+        answers: ['언덕'], hint: '오리는 영어로?' },
+      { id: 'n_4', category: 'nonsense', subject: '넌센스', type: 'short',
+        q: '[넌센스] 세상에서 가장 가난한 왕은? (네 글자)',
+        answers: ['최저임금'] },
+      { id: 'n_5', category: 'nonsense', subject: '넌센스', type: 'mcq',
+        q: '[넌센스] 소가 웃으면?',
+        opts: ['소웃음', '우하하', '소비', '소오름'], ans: 1 },
+      { id: 'n_6', category: 'nonsense', subject: '넌센스', type: 'short',
+        q: '[넌센스] 아몬드가 죽으면? (세 글자)',
+        answers: ['다이아몬드'], hint: '죽다는 영어로?' },
+      { id: 'n_7', category: 'nonsense', subject: '넌센스', type: 'mcq',
+        q: '[넌센스] 세상에서 가장 빠른 닭은?',
+        opts: ['후다닥', '치킨', '번개닭', '쏜살닭'], ans: 0 },
+      { id: 'n_8', category: 'nonsense', subject: '넌센스', type: 'short',
+        q: '[넌센스] 자동차를 발로 차면? (세 글자)',
+        answers: ['카놀라'], hint: '자동차는 영어로? 차면 놀라겠죠' }
     ];
 
     // ----- 오늘의 퀴즈: 날짜로 정해지는 20문제 (문제 은행에서 12개 + 새로 만든 수학 문제 8개) -----
@@ -7800,27 +8277,32 @@
       const opts = quizShuffle([...set], rng);
       return { opts: opts.map(String), ans: opts.indexOf(answer) };
     }
-    // 3학년 수학 문제를 날짜마다 새로 만듦
+    // 심화 수학 문제를 날짜마다 새로 만듦 (두 자리 곱셈, 혼합 계산, 나머지, 단위 바꾸기, 거꾸로 풀기)
     function generateDailyMathQuizzes(dateStr, count) {
       const rng = quizSeedRng('math-' + dateStr);
       const R = (lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
       const makers = [
-        () => { const a = R(12, 49), b = R(2, 9); return { q: `${a} × ${b} 는 얼마일까요?`, n: a * b, spread: 12 }; },
-        () => { const b = R(2, 9), c = R(3, 12); return { q: `${b * c} ÷ ${b} 는 얼마일까요?`, n: c, spread: 3 }; },
-        () => { const a = R(120, 680), b = R(105, 299); return { q: `${a} + ${b} 는 얼마일까요?`, n: a + b, spread: 30 }; },
-        () => { const a = R(400, 900), b = R(105, 390); return { q: `${a} - ${b} 는 얼마일까요?`, n: a - b, spread: 30 }; },
-        () => { const km = R(1, 6), m = R(1, 9) * 100; return { q: `${km} km ${m} m 는 모두 몇 m일까요?`, n: km * 1000 + m, spread: 9, step: 100 }; },
-        () => { const h = R(1, 3), mm = R(10, 50); return { q: `${h}시간 ${mm}분은 모두 몇 분일까요?`, n: h * 60 + mm, spread: 15 }; },
-        () => { const cm = R(2, 9), mm = R(1, 9); return { q: `${cm} cm ${mm} mm 는 모두 몇 mm일까요?`, n: cm * 10 + mm, spread: 8 }; },
-        () => { const per = R(3, 9), boxes = R(4, 9); return { q: `사탕이 한 봉지에 ${per}개씩 ${boxes}봉지 있어요. 사탕은 모두 몇 개일까요?`, n: per * boxes, spread: 8 }; },
-        () => { const b = R(3, 8), c = R(4, 9); return { q: `색종이 ${b * c}장을 ${b}명이 똑같이 나누면 한 명이 몇 장씩 가질까요?`, n: c, spread: 3 }; }
+        () => { const a = R(23, 89), b = R(12, 39); return { q: `${a} × ${b} 는 얼마일까요?`, n: a * b, spread: 40 }; },
+        () => { const a = R(213, 789), b = R(4, 9); return { q: `${a} × ${b} 는 얼마일까요?`, n: a * b, spread: 30 }; },
+        () => { const b = R(4, 9), c = R(12, 45); return { q: `${b * c} ÷ ${b} 는 얼마일까요?`, n: c, spread: 4 }; },
+        () => { const b = R(4, 9), c = R(6, 15), r = R(1, b - 1); return { q: `${b * c + r} ÷ ${b} 의 나머지는 얼마일까요?`, n: r, spread: 3 }; },
+        () => { const a = R(1203, 4870), b = R(1580, 3999); return { q: `${a} + ${b} 는 얼마일까요?`, n: a + b, spread: 100 }; },
+        () => { const a = R(3001, 8000), b = R(1258, 2990); return { q: `${a} - ${b} 는 얼마일까요?`, n: a - b, spread: 100 }; },
+        () => { const a = R(12, 40), b = R(3, 9), c = R(2, 9); return { q: `${a} + ${b} × ${c} 는 얼마일까요? (곱셈 먼저!)`, n: a + b * c, spread: 15 }; },
+        () => { const b = R(3, 9), c = R(4, 12), d = R(5, 30); return { q: `${b * c} ÷ ${b} + ${d} 는 얼마일까요?`, n: c + d, spread: 6 }; },
+        () => { const x = R(6, 19), b = R(3, 9), c = R(2, 30); return { q: `□ × ${b} + ${c} = ${x * b + c} 일 때, □는 얼마일까요?`, n: x, spread: 3 }; },
+        () => { const km = R(2, 8), m = R(105, 950); return { q: `${km} km ${m} m 는 모두 몇 m일까요?`, n: km * 1000 + m, spread: 9, step: 1 }; },
+        () => { const l = R(2, 7), ml = R(150, 900); return { q: `${l} L ${ml} mL 는 모두 몇 mL일까요?`, n: l * 1000 + ml, spread: 90 }; },
+        () => { const h = R(2, 5), mm = R(5, 55); return { q: `${h * 60 + mm}분은 몇 시간 몇 분일까요? 시간을 빼고 남은 "분"만 쓰세요.`, n: mm, spread: 10 }; },
+        () => { const per = R(12, 36), boxes = R(6, 15), eat = R(5, 20); return { q: `구슬이 한 상자에 ${per}개씩 ${boxes}상자 있어요. 그중 ${eat}개를 친구에게 주면 몇 개가 남을까요?`, n: per * boxes - eat, spread: 20 }; },
+        () => { const n = R(3, 9), side = R(4, 15); return { q: `한 변이 ${side}cm인 정사각형 ${n}개를 겹치지 않게 한 줄로 이어 붙였어요. 큰 직사각형의 둘레는 몇 cm일까요?`, n: 2 * (n * side + side), spread: 12 }; }
       ];
       const out = [];
       for (let i = 0; i < count; i++) {
         const made = makers[Math.floor(rng() * makers.length)]();
         const id = `m_${dateStr}_${i}`;
-        if (rng() < 0.5) {
-          out.push({ id, category: 'curriculum', subject: '수학', type: 'short', q: made.q, answers: [String(made.n)], hint: '숫자만 써 주세요.' });
+        if (rng() < 0.6) {
+          out.push({ id, category: 'curriculum', subject: '수학', type: 'short', q: made.q, answers: [String(made.n)] });
         } else {
           const step = made.step || 1;
           const { opts, ans } = quizNumberOptions(made.n / step, rng, made.spread);
@@ -7921,7 +8403,7 @@
       }
       const qObj = list[currentQuizIndex % list.length];
       const catLabelMap = {
-        curriculum: `📚 3학년 교과 (${qObj.subject})`,
+        curriculum: `📚 교과 심화 (${qObj.subject})`,
         general: '💡 상식 퀴즈',
         nonsense: '🤪 넌센스 퀴즈'
       };
@@ -8344,7 +8826,7 @@
         hud.innerHTML = `<span class="font-extrabold text-rose-300">💀 ${u.name} 쓰러짐</span><span class="text-slate-400">남은 용병들은 AI가 이어서 싸워요.</span>`;
         return;
       }
-      const jobSkills = SKILL_DEFS[u.job] || SKILL_DEFS.warrior;
+      const jobSkills = unitSkillBook(u);
       const skillChips = (u.skillSlots || []).slice(0, 3).map((key, i) => {
         const sk = jobSkills[key];
         if (!sk) return '';
@@ -8503,7 +8985,7 @@
         return;
       }
       bar.classList.remove('hidden');
-      const jobSkills = SKILL_DEFS[u.job] || SKILL_DEFS.warrior;
+      const jobSkills = unitSkillBook(u);
       const slot = (keyLabel, icon, name, cdLeft, cdTotal, state, labelOverride = null) => {
         const ready = state === 'ready';
         const pct = cdTotal > 0 ? Math.max(0, Math.min(100, (cdLeft / cdTotal) * 100)) : 0;
@@ -8661,7 +9143,7 @@
 
     function tryManualSkill(u, allies, enemies, slotIdx, c) {
       const key = (u.skillSlots || [])[slotIdx];
-      const sk = (SKILL_DEFS[u.job] || SKILL_DEFS.warrior)[key];
+      const sk = unitSkillBook(u)[key];
       const say = (text, color = '#64748b') => sim.floatTexts.push({ x: u.x, y: u.y - 52, text, color, life: 40 });
       if (!key || !sk) return;
       if (!(u.unlockedSkills || []).includes(key)) { say('🔒 아직 잠긴 스킬'); return; }
@@ -8857,7 +9339,7 @@
       u.facingAngle = aimAngle;
       if (Math.abs(Math.cos(aimAngle)) > 0.1) u.facingDir = Math.cos(aimAngle) >= 0 ? 1 : -1;
 
-      if (u.skillAnim > 0 && u.job === 'warrior' && u.activeSkillType === 'whirlwind' && u.skillAnim % 28 === 0) {
+      if (u.skillAnim > 0 && u.activeSkillType === 'whirlwind' && u.skillAnim % 28 === 0) {
         enemies.forEach(e => {
           if (unitDist(e, u) <= 125) {
             playCombatSfx('slash');
@@ -8919,7 +9401,7 @@
       box.classList.toggle('hidden', !show);
       localBattleInput.autoAim = show;
       if (!show) return;
-      const jobSkills = SKILL_DEFS[u.job] || SKILL_DEFS.warrior;
+      const jobSkills = unitSkillBook(u);
       for (let i = 0; i < 3; i++) {
         const btn = box.querySelector(`[data-touch="skill${i}"]`);
         if (!btn) continue;
@@ -9305,8 +9787,16 @@
           if (towerFloorObj.unitNames?.[idx]) {
             m.name = towerFloorObj.unitNames[idx];
           }
-          const unit = createSimUnit(m, null, 'red', setup.scale);
-          return monKey ? applyMonsterTraits(unit, monKey, Boolean(towerFloorObj.isRaceBoss && idx === 0), towerFloorObj.floor) : unit;
+          const isMinion = idx >= (towerFloorObj.minionFrom ?? Infinity);
+          if (isMinion) Object.assign(m, TOWER_MINION_CELLS[idx - towerFloorObj.minionFrom] || {});
+          const unit = createSimUnit(m, null, 'red', setup.scale * (towerFloorObj.coreScale || 1));
+          if (monKey) applyMonsterTraits(unit, monKey, Boolean(towerFloorObj.isRaceBoss && idx === 0), towerFloorObj.floor);
+          if (isMinion) {
+            unit.isMinion = true;
+            unit.maxHp = unit.hp = Math.round(unit.maxHp * TOWER_MINION_MULT.hp);
+            unit.atk = Math.round(unit.atk * TOWER_MINION_MULT.atk);
+          }
+          return unit;
         });
       } else if (redStudent) {
         const sourceList = ((mode === 'pvp_async' || mode === 'pvp_ranked') && redStudent.defenseFormation && redStudent.defenseFormation.length)
@@ -9346,6 +9836,7 @@
       sim.duel1v1 = false;   // 1:1 대결·관전 표시는 그 전투에만 (다음 전투에 남지 않게)
       sim.teamLive = false;
       sim.spectator = false;
+      sim.towerWatch = null;
       battleControl.mode = 'auto';
       battleControl.unitId = null;
       battleControl.locked = false;
@@ -9397,7 +9888,168 @@
         towerFloorObj: floorObj,
         rewardMc: floorObj.rewardMc
       });
+      startTowerLiveBroadcast(stu, floorObj);
     }
+
+    // ===== 📺 모험의 탑 관전 =====
+    // 탑에 도전하는 화면을 결투 관전과 같은 방식으로 pvp_live/tower_{학생id}에 올리고,
+    // 누가 도전 중인지는 pvp_live/tower_index/{학생id}에 적어 둠 (관전자는 그 아래 watchers/{학생id})
+    // 화면(frame)은 보는 친구가 있을 때만 보냄
+    const TOWER_LIVE_INDEX = 'tower_index';
+    const TOWER_LIVE_MAX_AGE_MS = 30 * 60 * 1000; // 이보다 오래된 목록은 끊긴 것으로 보고 숨김
+
+    function towerLiveIndexRef(stuId) {
+      const ref = liveRoomRef(TOWER_LIVE_INDEX);
+      return ref && stuId ? ref.child(stuId) : null;
+    }
+
+    function startTowerLiveBroadcast(stu, floorObj) {
+      if (!sim.running || sim.mode !== 'tower' || !stu) return;
+      const roomId = `tower_${stu.id}`;
+      const ref = liveRoomRef(roomId);
+      const idxRef = towerLiveIndexRef(stu.id);
+      if (!ref || !idxRef) return;
+      Object.assign(liveNet, {
+        role: 'host', roomId, ref, startedAt: Date.now(), finished: false,
+        sent: new WeakSet(), pendingLogs: [], lastFramePublishedAt: 0, spectator: false,
+        team: false, remoteCtrls: {}, myId: stu.id, towerCast: true, towerWatchers: 0
+      });
+      sim.effects.forEach(x => liveNet.sent.add(x));
+      sim.floatTexts.forEach(x => liveNet.sent.add(x));
+      try { ref.onDisconnect().remove(); idxRef.onDisconnect().remove(); } catch (e) {}
+      ref.child('result').remove().catch(() => {});
+      ref.child('frame').remove().catch(() => {});
+      republishLiveUnits();
+      idxRef.set({
+        id: stu.id, name: cleanUserText(stu.name, 30) || '친구', floor: floorObj.floor,
+        title: cleanUserText(floorObj.name, 60) || `${floorObj.floor}층`,
+        replay: floorObj.floor < (stu.towerFloor || 1), at: Date.now()
+      }).catch(() => {});
+      idxRef.child('watchers').on('value', snap => {
+        const val = snap && snap.val();
+        liveNet.towerWatchers = val && typeof val === 'object' ? Object.keys(val).length : 0;
+      });
+    }
+
+    // stopLiveBattleNet에서 부름: 탑 도전 목록·관전자 표시 정리
+    function stopTowerLiveNet() {
+      if (liveNet.towerCast) {
+        const idxRef = towerLiveIndexRef(liveNet.myId);
+        if (idxRef) {
+          try { idxRef.child('watchers').off(); idxRef.onDisconnect().cancel(); } catch (e) {}
+          idxRef.remove().catch(() => {});
+        }
+      }
+      if (liveNet.towerWatchOf) {
+        const me = getActiveStudent();
+        const wRef = me ? towerLiveIndexRef(liveNet.towerWatchOf)?.child('watchers').child(me.id) : null;
+        if (wRef) {
+          try { wRef.onDisconnect().cancel(); } catch (e) {}
+          wRef.remove().catch(() => {});
+        }
+      }
+      liveNet.towerCast = false;
+      liveNet.towerWatchOf = null;
+      liveNet.towerWatchers = 0;
+    }
+
+    function liveTowerRuns() {
+      const me = getActiveStudent();
+      const now = Date.now();
+      return Object.values(towerLiveCache || {})
+        .filter(r => r && r.id && r.name && liveNum(r.at) > now - TOWER_LIVE_MAX_AGE_MS && (!me || r.id !== me.id))
+        .sort((a, b) => liveNum(b.floor) - liveNum(a.floor));
+    }
+
+    function renderTowerLiveList() {
+      const box = document.getElementById('towerLiveList');
+      if (!box) return;
+      const runs = liveTowerRuns();
+      if (!runs.length) {
+        box.innerHTML = '<div class="text-xs text-slate-400 bg-slate-950 border border-slate-800 rounded-xl p-3 sm:col-span-2 lg:col-span-3">지금 탑에 도전 중인 친구가 없어요.</div>';
+        return;
+      }
+      const watchingId = sim.spectator && sim.running && sim.towerWatch ? sim.towerWatch.stuId : null;
+      box.innerHTML = runs.map(r => {
+        const watchers = r.watchers && typeof r.watchers === 'object' ? Object.keys(r.watchers).length : 0;
+        const watching = watchingId === r.id;
+        return `
+          <div class="bg-slate-950 border ${watching ? 'border-violet-400' : 'border-slate-800'} rounded-xl p-3 flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-sm font-extrabold text-white truncate">${r.name}</div>
+              <div class="text-[11px] text-slate-300 truncate">🏰 ${r.title || `${liveNum(r.floor)}층`}${r.replay ? ' (연습)' : ''}</div>
+              ${watchers ? `<div class="text-[10px] text-violet-300 font-bold">👀 ${watchers}명 관전 중</div>` : ''}
+            </div>
+            ${watching
+              ? `<button onclick="returnToBattle()" class="px-3 py-2 rounded-xl bg-violet-700 hover:bg-violet-600 text-white font-extrabold text-xs shadow shrink-0">📺 보는 중</button>`
+              : `<button onclick="spectateTowerRun('${r.id}')" class="px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow shrink-0">📺 관전하기</button>`}
+          </div>`;
+      }).join('');
+    }
+
+    // 탑 도전 목록이 바뀔 때: 보던 친구가 목록에서 사라졌는데 결과가 안 오면 잠시 뒤 관전을 끝냄
+    function onTowerLiveIndexChanged() {
+      renderTowerLiveList();
+      const tw = sim.towerWatch;
+      if (!tw || !sim.spectator || !sim.running || (towerLiveCache && towerLiveCache[tw.stuId] && towerLiveCache[tw.stuId].name)) return;
+      setTimeout(() => {
+        if (sim.towerWatch === tw && sim.spectator && sim.running && !liveNet.finished) {
+          abortLiveBattle(`📺 ${tw.name} 친구가 탑 도전을 그만뒀어요.`);
+        }
+      }, 4000);
+    }
+
+    window.spectateTowerRun = async function (stuId) {
+      const me = getActiveStudent();
+      const info = towerLiveCache && towerLiveCache[stuId];
+      if (!me || !info || !info.name) { showNotice('⚠️ 탑 도전을 찾지 못했어요. 이미 끝났을 수 있어요.'); return; }
+      if (stuId === me.id) return;
+      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      const roomId = `tower_${stuId}`;
+      const ref = liveRoomRef(roomId);
+      if (!ref) { showNotice('⚠️ 서버에 연결되어 있지 않아 관전할 수 없어요.'); return; }
+      let init = null;
+      try { init = (await ref.child('init').once('value')).val(); } catch (e) {}
+      const units = init && Array.isArray(init.units)
+        ? deepCleanStrings(init.units).filter(u => u && typeof u === 'object' && u.id).map(normalizeLiveUnit)
+        : [];
+      const blueUnits = units.filter(u => u.team === 'blue');
+      const redUnits = units.filter(u => u.team === 'red');
+      if (!blueUnits.length || !redUnits.length) { showNotice('⚠️ 탑 전투 화면을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.'); return; }
+      if (sim.spectator) { stopLiveBattleNet(); closeBattleResult(); }
+      const owner = state.students.find(s => s.id === stuId) || { id: stuId, name: info.name, roster: [] };
+      const floor = liveNum(info.floor);
+      launchSimulation({
+        mode: 'tower',
+        title: `📺 관전 중: ${info.name}의 ${info.title || `${floor}층`}`,
+        blueStudent: owner,
+        customBlueUnits: blueUnits,
+        customRedUnits: redUnits,
+        rewardMc: 0,
+        netRole: 'guest',
+        myTeam: 'blue'
+      });
+      if (!sim.running) return;
+      sim.spectator = true;
+      sim.spectateRoomId = null;
+      sim.towerWatch = { stuId, name: info.name, floor };
+      // 고를 것 없이 보기만: 전투 방식 고르기 창을 닫고 자동(화면 이동만)으로 고정
+      battleControl.locked = true;
+      battleControl.mode = 'auto';
+      battleControl.unitId = null;
+      sim.awaitingControlChoice = false;
+      document.getElementById('battleControlChooser')?.classList.add('hidden');
+      renderBattleControlHud(true);
+      addBattleLog(`📺 [관전] ${info.name}의 모험의 탑 ${floor}층 도전을 보고 있어요. (WASD·드래그로 화면 이동)`);
+      startLiveBattleNet(roomId, 'guest', liveNum(init.at), true, false);
+      liveNet.towerWatchOf = stuId;
+      const wRef = towerLiveIndexRef(stuId)?.child('watchers').child(me.id);
+      if (wRef) {
+        try { wRef.onDisconnect().remove(); } catch (e) {}
+        wRef.set({ id: me.id, name: cleanUserText(me.name, 30) || '친구', at: Date.now() }).catch(() => {});
+      }
+      renderTowerLiveList();
+    };
 
     function startStudentPvpBattle(enemyStuId, pvpMode = 'pvp_async') {
       const myStu = getActiveStudent();
@@ -9801,7 +10453,7 @@
       if (unit.castLock > 0) return null;
       if (tauntSourceOf(unit)) return null; // 도발당하면 스킬을 못 씀
 
-      const jobSkills = SKILL_DEFS[unit.job] || SKILL_DEFS.warrior;
+      const jobSkills = unitSkillBook(unit);
       const readySkills = unit.unlockedSkills.filter(skKey => {
         const skObj = jobSkills[skKey];
         if (!skObj) return false;
@@ -9821,7 +10473,7 @@
 
         if (newSkillScore !== null) {
           score = newSkillScore;
-        } else if (unit.job === 'healer') {
+        } else if (skillJobOf(skKey) === 'healer') {
           if (skKey === 'heal') {
             // 아군들의 체력이 가득 차 있거나 경미한 피해만 입었을 때는 다수회복 스킬을 절대 쓰지 않음!
             const injuredAllies = allies.filter(a => (a.hp / a.maxHp) <= 0.84);
@@ -9858,7 +10510,7 @@
           }
         }
 
-        else if (unit.job === 'warrior') {
+        else if (skillJobOf(skKey) === 'warrior') {
           if (skKey === 'charge') {
             // 전사 돌진 스킬 사거리: 2칸(240px) + 근접 타격 반경
             const maxChargeReach = CHARGE_SKILL_DISTANCE + unit.range;
@@ -9897,7 +10549,7 @@
           }
         }
 
-        else if (unit.job === 'mage') {
+        else if (skillJobOf(skKey) === 'mage') {
           if (distToPrimary <= unit.range + 80) {
             if (skKey === 'ice_arrow') {
               const unFrozen = enemies.filter(e =>
@@ -9914,7 +10566,7 @@
           }
         }
 
-        else if (unit.job === 'archer') {
+        else if (skillJobOf(skKey) === 'archer') {
           if (distToPrimary <= unit.range + 60) {
             if (skKey === 'poison_arrow') {
               const unPoisoned = enemies.filter(e =>
@@ -9945,7 +10597,7 @@
 
     function castMercSkillInner(unit, allies, enemies, forcedSkillKey = null) {
       const sk = forcedSkillKey || unit.skillKey;
-      const jobSkills = SKILL_DEFS[unit.job] || SKILL_DEFS.warrior;
+      const jobSkills = unitSkillBook(unit);
       const skObj = jobSkills[sk];
       if (!skObj) return;
 
@@ -9981,7 +10633,7 @@
       const pointTarget = aimMode === 'point' ? { x: aimPt.x, y: aimPt.y, alive: true, team: 'none', statuses: {}, hp: 1, maxHp: 1 } : null;
       if (castNewSkill(unit, allies, enemies, sk, skObj, pointTarget || (target && target.team !== unit.team ? target : enemies[0]), aimPt)) return;
 
-      if (unit.job === 'warrior') {
+      if (skillJobOf(sk) === 'warrior') {
         if (sk === 'whirlwind') {
           unit.skillAnim = WHIRLWIND_TICKS;
           unit.maxSkillAnim = WHIRLWIND_TICKS;
@@ -10078,13 +10730,13 @@
         }
       }
 
-      else if (unit.job === 'mage') {
+      else if (skillJobOf(sk) === 'mage') {
         if (!target) return;
         if (sk === 'fireball' && aimPt) {
           const fx = unit.x, fy = unit.y - 12;
           sim.projectiles.push({
             projType: 'fireball_proj', x: fx, y: fy, owner: unit,
-            dmg: unit.atk * 2.4, aoeRadius: 130, statusOnHit: 'burn', statusDur: 560, isSkill: true, speed: 2.8, trail: [],
+            dmg: unit.atk * 2.4, aoeRadius: 170, statusOnHit: 'burn', statusDur: 560, isSkill: true, speed: 2.8, trail: [],
             isDirectional: true, angle: aimAngleTo(fx, fy), maxTravel: Math.max(20, Math.hypot(aimPt.x - fx, aimPt.y - 12 - fy))
           });
           addBattleLog(`🔥 [마법사] ${unit.name}의 파이어볼! (광역 🔥화상 · 쿨 ${skObj.cooldownSec}초)`);
@@ -10094,7 +10746,7 @@
           let maxCluster = -1;
           enemies.forEach(cand => {
             if (unitDist(cand, unit) <= unit.range + 90) {
-              const cnt = enemies.filter(o => unitDist(o, cand) <= 115).length;
+              const cnt = enemies.filter(o => unitDist(o, cand) <= 155).length;
               if (cnt > maxCluster) { maxCluster = cnt; bestClusterTarget = cand; }
             }
           });
@@ -10103,7 +10755,7 @@
             x: unit.x, y: unit.y - 12,
             target: bestClusterTarget, owner: unit,
             dmg: unit.atk * 2.4,
-            aoeRadius: 130,
+            aoeRadius: 170,
             statusOnHit: 'burn',
             statusDur: 560,
             isSkill: true,
@@ -10152,7 +10804,7 @@
         }
       }
 
-      else if (unit.job === 'healer') {
+      else if (skillJobOf(sk) === 'healer') {
         if (sk === 'heal') {
           allies.forEach(a => {
             const healAmt = Math.round(unit.atk * 2.8 * healPowerMult(unit));
@@ -10189,7 +10841,7 @@
         }
       }
 
-      else if (unit.job === 'archer') {
+      else if (skillJobOf(sk) === 'archer') {
         if (!target) return;
         if (sk === 'poison_arrow') {
           const poisonTarget = aimMode === 'target' ? target : (enemies.find(e =>
@@ -10404,7 +11056,7 @@
           u.facingDir = target.x >= u.x ? 1 : -1;
         }
 
-        if (u.skillAnim > 0 && u.job === 'warrior' && u.activeSkillType === 'whirlwind') {
+        if (u.skillAnim > 0 && u.activeSkillType === 'whirlwind') {
           if (u.skillAnim % 28 === 0) {
             enemies.forEach(e => {
               if (unitDist(e, u) <= 125) {
@@ -10921,7 +11573,7 @@
     }
 
     function beginSkillCast(unit, key, aim = null) {
-      const sk = (SKILL_DEFS[unit.job] || SKILL_DEFS.warrior)[key];
+      const sk = unitSkillBook(unit)[key];
       if (!sk) return;
       // 시전 시간이 없는 스킬(회전베기 등)은 기다리지 않고 바로 발동
       if (!(sk.castSec > 0)) {
@@ -10978,7 +11630,7 @@
     function drawCastBars(ctx) {
       sim.units.forEach(u => {
         // 회전베기 중: 캐릭터 위에 남은 지속 시간이 줄어드는 막대
-        if (u.alive && !u.casting && u.job === 'warrior' && u.activeSkillType === 'whirlwind' && u.skillAnim > 0) {
+        if (u.alive && !u.casting && u.activeSkillType === 'whirlwind' && u.skillAnim > 0) {
           const ratio = Math.max(0, Math.min(1, u.skillAnim / WHIRLWIND_TICKS));
           const w = 54, h = 7, x = u.x - w / 2, y = u.y - 78;
           ctx.save();
@@ -11013,7 +11665,8 @@
     function castNewSkill(unit, allies, enemies, sk, skObj, target, aimPt = null) {
       const C = GRID_CELL_SIZE;
       const teamColor = unit.team === 'blue' ? '#2563eb' : '#e11d48';
-      const near = (list, x, y, r) => list.filter(u => Math.hypot(u.x - x, u.y - y) - unitBodyGap(u) <= r);
+      // 시전자 자리에서 재는 범위는 시전자 몸 가장자리부터 (엘리트 몬스터처럼 몸이 큰 유닛)
+      const near = (list, x, y, r) => list.filter(u => Math.hypot(u.x - x, u.y - y) - unitBodyGap(u) - (x === unit.x && y === unit.y ? unitBodyGap(unit) : 0) <= r);
 
       if (sk === 'roar') {
         // 사자후: 주변 2칸 적에게 피해 + 1.2칸 밀쳐냄
@@ -11141,7 +11794,7 @@
       if (sk === 'stealth') {
         // 은신: 10초간 투명화
         unit.statuses.stealth = Math.max(unit.statuses.stealth || 0, ROGUE_STEALTH_TICKS);
-        sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: 70, color: '#64748b', life: 34, maxLife: 34 });
+        sim.effects.push({ type: 'magic_burst', spr: 'teleport', x: unit.x, y: unit.y - 12, r: 50, life: 30, maxLife: 30 }); // 분신이 나타날 때와 같은 연기
         playCombatSfx('magic');
         addBattleLog(`🌫️ [도적] ${unit.name}이(가) 어둠 속으로 사라졌어요! (10초)`);
         return true;
@@ -11615,13 +12268,16 @@
         const winner = blueTeamWon ? meta.blueStudent : meta.redStudent;
         const atkKing = sim.units.filter(x => !x.isClone).sort((a, b) => b.damageDealt - a.damageDealt)[0];
         const healKing = sim.units.filter(x => !x.isClone).sort((a, b) => b.healDone - a.healDone)[0];
+        const tw = sim.towerWatch;
         document.getElementById('battleResultEmoji').textContent = '📺';
-        document.getElementById('battleResultTitle').textContent = `관전 종료 · ${winner?.name || (blueTeamWon ? '블루팀' : '레드팀')} 승리!`;
+        document.getElementById('battleResultTitle').textContent = tw
+          ? `관전 종료 · ${tw.name} ${blueTeamWon ? `🏆 ${tw.floor}층 돌파!` : '🛡️ 도전 실패'}`
+          : `관전 종료 · ${winner?.name || (blueTeamWon ? '블루팀' : '레드팀')} 승리!`;
         document.getElementById('battleResultDesc').textContent = sim.forfeitTeam
           ? `${(sim.forfeitTeam === 'blue' ? meta.blueStudent : meta.redStudent)?.name || ''} 친구가 포기했어요.`
-          : '관전한 결투가 끝났어요. (관전은 보상이 없어요)';
+          : (tw ? '관전한 탑 도전이 끝났어요. (관전은 보상이 없어요)' : '관전한 결투가 끝났어요. (관전은 보상이 없어요)');
         document.getElementById('battleMvpBox').innerHTML = `
-          <div class="font-bold text-amber-300 mb-1">🌟 이번 결투 MVP</div>
+          <div class="font-bold text-amber-300 mb-1">🌟 이번 ${tw ? '도전' : '결투'} MVP</div>
           <div>⚔️ 최고 공격왕: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
           <div>💚 다정 치유왕: <strong>${healKing?.name || '-'}</strong> (${healKing?.healDone || 0} 회복·보호)</div>`;
         document.getElementById('battleResultOverlay').classList.remove('hidden');
@@ -11660,7 +12316,7 @@
         stu.eliteRewardClaimed = { ...(stu.eliteRewardClaimed || {}), [meta.eliteBossId]: true };
       }
 
-      if (isFirstTowerClear && stu.towerFloor < 50) {
+      if (isFirstTowerClear && stu.towerFloor < TOWER_MAX_FLOOR) {
         stu.towerFloor += 1;
       }
       let pvpScoreDelta = 0;
@@ -11771,7 +12427,7 @@
           .map(k => STATUS_DEFS[k]?.icon || '')
           .join('');
 
-        const jobSkills = SKILL_DEFS[u.job] || SKILL_DEFS.warrior;
+        const jobSkills = unitSkillBook(u);
         const skillBadges = (u.unlockedSkills || []).map(skKey => {
           const skObj = jobSkills[skKey];
           const cd = u.skillCooldowns?.[skKey] || 0;
@@ -12069,7 +12725,7 @@
       }
       // 강타는 점프 없이 제자리에서 바로 내리침
 
-      const isWhirlwind = u.skillAnim > 0 && u.job === 'warrior' && u.activeSkillType === 'whirlwind';
+      const isWhirlwind = u.skillAnim > 0 && u.activeSkillType === 'whirlwind';
       const spinAngle = isWhirlwind ? skillP * Math.PI * 8 : 0;
 
       ctx.save();
@@ -12097,7 +12753,7 @@
       // 2) 심플 시스템 유닛 토큰 (원형 노드 + 방향 지시자 + 직업/몬스터 심볼)
       const isEliteBoss = Boolean(u.isEliteBoss);
       const isBossMon = isEliteBoss || Boolean(monObj && monObj.big) || u.isRaceBoss;
-      const tokenR = isEliteBoss ? ELITE_BOSS_TOKEN_R : (u.isRaceBoss ? 27 : (u.monsterType === 'dark_dragon' ? 24 : (isBossMon ? 21 : 18)));
+      const tokenR = isEliteBoss ? ELITE_BOSS_TOKEN_R : (u.isRaceBoss ? 27 : (u.monsterType === 'dark_dragon' ? 24 : (isBossMon ? 21 : (u.isMinion ? 15 : 18))));
       const sprite = !u.monsterType ? getMercSprite(u.job, u.skinVariant || 0) : null;
       const useSprite = Boolean(sprite && sprite.ready);
       // 스프라이트는 머리가 토큰보다 높아서 체력바를 그만큼 위로 올림
@@ -12852,10 +13508,12 @@
           if (sim.running) stepSimulation();
         }
         if (refreshStatus) renderLiveUnitStatus();
-        if (ticks > 0 && sim.running && sim.netRole === 'host') publishLiveBattleFrame();
+        if (ticks > 0 && sim.running && (sim.netRole === 'host' || liveNet.towerCast)) publishLiveBattleFrame();
       } else if (!sim.running) {
         sim.tickCount++;
       }
+      // 탑 도전 중 전투 방식을 고르느라 멈춰 있어도, 보는 친구 화면이 끊기지 않게 가끔 화면을 보냄
+      if (sim.running && liveNet.towerCast && liveNet.towerWatchers && Date.now() - (liveNet.lastFramePublishedAt || 0) > 3000) publishLiveBattleFrame(true);
       updateBattleControlFrame();
       if (animationFrameNo % 3 === 0) updateEliteBossHpBar(arenaVisible);
       updateReturnButtons();
@@ -13128,7 +13786,7 @@
       stu.num = Math.max(1, parseInt(document.getElementById('adminEditStuNum').value, 10) || stu.num);
       stu.name = cleanUserText(document.getElementById('adminEditStuName').value, 12) || stu.name;
       stu.mc = Math.max(0, parseInt(document.getElementById('adminEditStuMc').value, 10) || 0);
-      stu.towerFloor = Math.max(1, Math.min(50, parseInt(document.getElementById('adminEditStuTower').value, 10) || 1));
+      stu.towerFloor = Math.max(1, Math.min(TOWER_MAX_FLOOR, parseInt(document.getElementById('adminEditStuTower').value, 10) || 1));
       stu.pvpScore = Math.max(0, parseInt(document.getElementById('adminEditStuPvp').value, 10) || 0);
       const newAdminPw = document.getElementById('adminEditStuPw').value.trim();
       if (newAdminPw && newAdminPw.length < STUDENT_PW_MIN_LEN) {
@@ -13332,6 +13990,29 @@
       { id: 'elite_chaos_dragon', stage: 10, name: '🐉 종말의 마룡 카오스드래곤', monsterType: 'dark_dragon', job: 'mage', hp: 450000, atk: 185, def: 95, spd: 118, rewardMc: 450,
         desc: '450,000의 초거대 체력을 지닌 최강의 단일 엘리트 마룡입니다! 두 플레이어의 5+5 정예 용병 협동이 필수입니다.' }
     ];
+    // 엘리트 몬스터 전용 스킬: 여러 직업의 스킬 동작을 빌려 와 보스에 어울리는 이름·아이콘으로 씀 [스킬 키, 이름, 아이콘]
+    const ELITE_BOSS_SKILLS = {
+      elite_goblin_king:  [['stun_strike', '황금 철퇴 내려찍기', '🔨'], ['charge', '고블린 대돌격', '💨'], ['roar', '대왕의 호통', '📢'], ['whirlwind', '철퇴 휘두르기', '🌪️']],
+      elite_dire_wolf:    [['shadow_step', '달그림자 도약', '🌙'], ['rend', '찢어발기기', '🩸'], ['roar', '달빛 하울링', '🐺'], ['charge', '사냥 돌진', '💨']],
+      elite_golem:        [['earthquake', '대지 붕괴', '🌋'], ['stun_strike', '바위 주먹', '🪨'], ['shield_rush', '암석 굴러가기', '🪨'], ['provoke', '거신의 위압', '😤']],
+      elite_swamp_hydra:  [['poison_arrow', '독액 뿜기', '🐍'], ['triple_arrow', '세 머리 독침', '🔱'], ['poison_boom', '독늪 폭발', '🧪'], ['arrow_rain', '산성비', '🌧️']],
+      elite_leviathan:    [['ice_arrow', '빙결의 창', '❄️'], ['thunderbolt', '폭풍 번개', '⚡'], ['earthquake', '해일 진동', '🌊'], ['arrow_rain', '우박 폭풍', '🧊']],
+      elite_orc_warlord:  [['whirlwind', '피의 회오리', '🪓'], ['charge', '전쟁 돌격', '💨'], ['roar', '전쟁의 함성', '📯'], ['rend', '도끼 난도질', '🩸'], ['stun_strike', '대족장의 일격', '🔨']],
+      elite_lich:         [['poison_boom', '역병 폭탄', '☣️'], ['thunderbolt', '죽음의 번개', '⚡'], ['ice_arrow', '영혼 서리', '❄️'], ['teleport', '망령 이동', '👻'], ['purify', '불사의 의식', '💀']],
+      elite_ifrit:        [['fireball', '겁화구', '🔥'], ['arrow_rain', '불비', '☄️'], ['roar', '화염 폭발', '💥'], ['earthquake', '용암 분출', '🌋']],
+      elite_kraken:       [['earthquake', '심해 소용돌이', '🌀'], ['shield_rush', '촉수 휩쓸기', '🦑'], ['whirlwind', '촉수 회오리', '🌪️'], ['stun_strike', '심해 압착', '🫧']],
+      elite_chaos_dragon: [['fireball', '종말의 브레스', '🐉'], ['thunderbolt', '혼돈의 낙뢰', '⚡'], ['arrow_rain', '운석 낙하', '☄️'], ['roar', '마룡의 포효', '🔊'], ['earthquake', '대지 진동', '🌋']]
+    };
+    // 보스 전용 스킬 정의 (동작·쿨타임·마나는 원래 스킬 그대로, 이름·아이콘만 바꿈)
+    function eliteBossSkillBook(bossId) {
+      const book = {};
+      (ELITE_BOSS_SKILLS[bossId] || []).forEach(([key, name, icon]) => {
+        const base = (SKILL_DEFS[skillJobOf(key)] || {})[key];
+        if (base) book[key] = { ...base, name, icon };
+      });
+      return book;
+    }
+
     // 엘리트 몬스터 보상 50배 (보스마다 정해 둔 기본 보상 × 50)
     const ELITE_REWARD_MULT = 50;
     ELITE_BOSS_DEFS.forEach(b => { b.rewardMc = Math.round(b.rewardMc * ELITE_REWARD_MULT); });
@@ -13533,6 +14214,8 @@
               </div>
               <div class="text-xs font-extrabold text-rose-400 mt-1">❤️ 단일 보스 체력: ${b.hp.toLocaleString()} HP · ⚔️ 공격력 ${b.atk}</div>
               <p class="text-[11px] text-slate-400 mt-1">${b.desc}</p>
+              <div class="flex flex-wrap gap-1 mt-1.5">${Object.values(eliteBossSkillBook(b.id)).map(sk =>
+                `<span class="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 text-[10px] font-bold" title="${sk.desc}">${sk.icon} ${sk.name}</span>`).join('')}</div>
             </div>
           `;
         }).join('');
@@ -13584,7 +14267,17 @@
       boss.isEliteBoss = true;
       boss.x = Math.round(sim.worldW / 2); // 맵 가운데
       boss.y = Math.round(sim.worldH / 2);
-      boss.unlockedSkills = Object.keys(SKILL_DEFS[bossDef.job] || SKILL_DEFS.warrior);
+      const book = eliteBossSkillBook(bossDef.id);
+      if (Object.keys(book).length) {
+        boss.skillBook = book;
+        boss.skillSlots = Object.keys(book);
+        boss.skillCooldowns = {};
+        boss.skillSlots.forEach(k => { boss.skillCooldowns[k] = 0; });
+        boss.skillKey = boss.skillSlots[0];
+        boss.skillName = book[boss.skillKey].name;
+        boss.skillIcon = book[boss.skillKey].icon;
+      }
+      boss.unlockedSkills = Object.keys(unitSkillBook(boss));
       return boss;
     }
 
@@ -14862,8 +15555,8 @@
     }
 
     // ==================== [5] 초성 게임 (번갈아 · 30초 · 하트 5개) ====================
-    // 차례가 오면 초성(예: ㄱㅅ)에 맞는 두 글자 낱말을 말함. 같은 초성이 이어지다가 누가 시간을 넘기면
-    // 하트 하나를 잃고 새 초성. 하트를 다 잃으면 탈락, 마지막 한 명이 승리. 낱말 판정은 끝말잇기 사전(WordChainDict)
+    // 차례가 오면 초성(예: ㄱㅅ)에 맞는 두 글자 낱말을 말함. 한 판 내내 초성은 하나로 고정되고, 누가 시간을 넘기면
+    // 하트 하나를 잃음. 하트를 다 잃으면 탈락, 마지막 한 명이 승리. 낱말 판정은 끝말잇기 사전(WordChainDict)
     const CHOSUNG_TURN_SEC = 30;
     const CHOSUNG_HEARTS = 5;
     const CHO_LETTERS = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
@@ -14905,7 +15598,7 @@
         deadline: Date.now() + CHOSUNG_TURN_SEC * 1000,
         gameOver: false,
         winnerSeat: -1,
-        note: `첫 초성 [${cho}]!`
+        note: `이번 판 초성은 [${cho}]!`
       };
       const msg = document.getElementById('chosungMsg');
       if (msg) msg.textContent = '';
@@ -14962,15 +15655,14 @@
       chosungCommit(st, word);
     }
 
-    // 시간 초과(또는 AI가 낱말을 못 찾음): 하트 -1, 새 초성. 혼자 연습이면 내 화면이, 실시간 방이면 방장 화면이 판정
+    // 시간 초과(또는 AI가 낱말을 못 찾음): 하트 -1, 초성은 그대로. 혼자 연습이면 내 화면이, 실시간 방이면 방장 화면이 판정
     function chosungTimeout(st, gaveUp = false) {
       const out = st.turnSeat;
       st.hearts[out] = Math.max(0, st.hearts[out] - 1);
       const name = st.seats[out].name;
-      st.cho = chosungPickPrompt(st.cho);
       st.note = st.hearts[out] > 0
-        ? `${gaveUp ? '😵' : '⏰'} ${name} ${gaveUp ? '낱말을 못 찾았어요' : '시간 초과'}! ❤️ -1 (남은 하트 ${st.hearts[out]}개) · 새 초성 [${st.cho}]`
-        : `💔 ${name} 하트를 모두 잃어 탈락! · 새 초성 [${st.cho}]`;
+        ? `${gaveUp ? '😵' : '⏰'} ${name} ${gaveUp ? '낱말을 못 찾았어요' : '시간 초과'}! ❤️ -1 (남은 하트 ${st.hearts[out]}개)`
+        : `💔 ${name} 하트를 모두 잃어 탈락!`;
       const left = st.hearts.map((h, i) => (h > 0 ? i : -1)).filter(i => i >= 0);
       if (left.length <= 1) {
         st.gameOver = true;
@@ -14992,9 +15684,9 @@
       if (!st.initialized || st.gameOver || !mgIsAiSeat(st, st.turnSeat) || !mgDrivesAi()) return;
       chosungAiTimer = setTimeout(() => {
         if (chosungState !== st || st.gameOver || !mgIsAiSeat(st, st.turnSeat)) return;
-        // 같은 초성으로 낱말이 많이 나올수록 AI도 자주 막힘
+        // 낱말이 많이 나올수록 AI도 자주 막힘 (한 판 내내 같은 초성이라 오르는 폭은 작게)
         const usedHere = st.used.filter(u => u.cho === st.cho).length;
-        if (Math.random() < Math.min(0.5, 0.08 + usedHere * 0.04)) { chosungTimeout(st, true); return; }
+        if (Math.random() < Math.min(0.5, 0.06 + usedHere * 0.02)) { chosungTimeout(st, true); return; }
         if (!chosungIndex && WordChainDict.words) {
           chosungIndex = new Map();
           WordChainDict.words.forEach(w => {
@@ -15062,7 +15754,7 @@
       const hList = document.getElementById('chosungHistoryList');
       if (hList) {
         hList.innerHTML = st.used.length
-          ? [...st.used].reverse().map(u => `<span class="px-2.5 py-1 rounded-xl text-xs font-bold border ${u.cho === st.cho && !st.gameOver ? 'ring-2 ring-amber-400 ' : ''}${u.seat === mgMySeat(st) ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-white text-slate-700 border-slate-300'}" title="${st.seats[u.seat]?.name || ''} · ${u.cho}">${u.word}</span>`).join('')
+          ? [...st.used].reverse().map((u, k) => `<span class="px-2.5 py-1 rounded-xl text-xs font-bold border ${k === 0 && !st.gameOver ? 'ring-2 ring-amber-400 ' : ''}${u.seat === mgMySeat(st) ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-white text-slate-700 border-slate-300'}" title="${st.seats[u.seat]?.name || ''} · ${u.cho}">${u.word}</span>`).join('')
           : '<span class="text-xs text-slate-400">아직 나온 낱말이 없어요.</span>';
       }
       if (st.gameOver && st.winnerSeat >= 0) mgFinish(st, [st.winnerSeat], ECONOMY.minigameReward, '🔤 초성 게임 승리!');
@@ -15304,6 +15996,7 @@
 
       if (tabKey === 'squad') renderSquadTab();
       if (tabKey === 'office') renderOfficeTab();
+      if (tabKey === 'codex') renderCodexTab();
       if (tabKey === 'market') renderMarketTab();
       if (tabKey === 'tower') renderTowerTab();
       if (tabKey === 'raid') renderCoopRaidTab();
@@ -15317,6 +16010,7 @@
       updateHeaderUI();
       renderSquadTab();
       renderOfficeTab();
+      renderCodexTab();
       renderMarketTab();
       renderTowerTab();
       renderCoopRaidTab();
@@ -16451,6 +17145,8 @@
     let activeMinigameRoomsRef = null;
     let activeMinigamesRef = null;
     let activeBattleEventsRef = null;
+    let activeTowerLiveRef = null;
+    let towerLiveCache = {};
     let currentSubscribedSubCode = null;
     let currentActiveLiveBattleRoomId = null;
 
@@ -16482,6 +17178,14 @@
       if (activeMinigameRoomsRef && typeof activeMinigameRoomsRef.off === 'function') activeMinigameRoomsRef.off();
       if (activeMinigamesRef && typeof activeMinigamesRef.off === 'function') activeMinigamesRef.off();
       if (activeBattleEventsRef && typeof activeBattleEventsRef.off === 'function') activeBattleEventsRef.off();
+      if (activeTowerLiveRef && typeof activeTowerLiveRef.off === 'function') activeTowerLiveRef.off();
+
+      // 0) 모험의 탑에 도전 중인 친구 목록 (관전용, /classes/{code}/pvp_live/tower_index)
+      activeTowerLiveRef = db.ref(`classes/${cleanCode}/pvp_live/${TOWER_LIVE_INDEX}`);
+      activeTowerLiveRef.on('value', (snap) => {
+        towerLiveCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
+        onTowerLiveIndexChanged();
+      });
 
       // 1) 실시간 PvP 대기 로비방 구독 (/classes/{code}/pvp_rooms)
       activePvpRoomsRef = db.ref(`classes/${cleanCode}/pvp_rooms`);
@@ -18315,6 +19019,7 @@
     }
 
     function stopLiveBattleNet() {
+      stopTowerLiveNet();
       if (liveNet.ref) {
         ['init', 'frame', 'result', 'input', 'inputs', 'status', 'handoff'].forEach(k => { try { liveNet.ref.child(k).off(); } catch (e) {} });
       }
@@ -18360,6 +19065,8 @@
       if (liveNet.role !== 'host' || !liveNet.ref) return;
       const nowMs = Date.now();
       if (!force && nowMs - (liveNet.lastFramePublishedAt || 0) < LIVE_FRAME_INTERVAL_MS) return;
+      // 탑 도전: 보는 친구가 없으면 화면을 보내지 않음 (결과를 보낼 때만 마지막 화면 한 장)
+      if (liveNet.towerCast && !liveNet.towerWatchers && !force) return;
       liveNet.lastFramePublishedAt = nowMs;
       const fresh = list => {
         const out = [];
@@ -18394,9 +19101,13 @@
         forfeitTeam: sim.forfeitTeam || null,
         s: sim.units.map(u => [Math.round(liveNum(u.damageDealt)), Math.round(liveNum(u.healDone)), Math.round(liveNum(u.damageTaken))])
       }).catch(() => {});
+      const roomId = liveNet.roomId;
       stopLiveBattleNet();
-      // 도전자 화면이 결과를 받을 시간을 준 뒤 정리
-      setTimeout(() => { ref.remove().catch(() => {}); }, 20000);
+      // 도전자 화면이 결과를 받을 시간을 준 뒤 정리 (그 사이 같은 자리로 다음 전투를 보내고 있으면 지우지 않음)
+      setTimeout(() => {
+        if (liveNet.role === 'host' && liveNet.roomId === roomId) return;
+        ref.remove().catch(() => {});
+      }, 20000);
     }
 
     function publishLiveBattleFrameNow() {
@@ -20441,7 +21152,7 @@
             <div class="grid grid-cols-3 gap-2">
               ${byPower5.map((s, idx) => `
                 <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-center">
-                  <div class="text-sm font-extrabold text-white">${medals[idx]} ${s.name}</div>
+                  <div class="text-sm font-extrabold text-white flex items-center justify-center gap-1">${medals[idx]} ${studentAvatarHTML(s, 20)}${s.name}</div>
                   <div class="text-[11px] font-bold text-indigo-300 mt-0.5">⚔️ ${calcStudentDeployedPower(s).toLocaleString()}</div>
                 </div>
               `).join('')}
@@ -20455,7 +21166,7 @@
             <div class="grid grid-cols-3 gap-2">
               ${byPvp.map((s, idx) => `
                 <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-center">
-                  <div class="text-sm font-extrabold text-white">${medals[idx]} ${s.name}</div>
+                  <div class="text-sm font-extrabold text-white flex items-center justify-center gap-1">${medals[idx]} ${studentAvatarHTML(s, 20)}${s.name}</div>
                   <div class="text-[11px] font-bold text-rose-400 mt-0.5">🏆 ${s.pvpScore}점 (${s.wins}승)</div>
                 </div>
               `).join('')}
@@ -20479,8 +21190,8 @@
               }">
               <div class="flex items-start justify-between gap-2">
                 <div class="flex items-center gap-2.5">
-                  <!-- 학생이 직접 꾸민 도트 이미지를 넣을 자리 (지금은 비워 둠) -->
-                  <div data-student-avatar="${s.id}" class="w-12 h-12 rounded-2xl bg-slate-900 border-2 border-dashed border-slate-700 shrink-0 overflow-hidden"></div>
+                  <!-- 학생이 직접 꾸민 도트 프로필 (헤더의 프로필 칸을 눌러 꾸밈) -->
+                  ${studentAvatarHTML(s, 48)}
                   <div>
                     <div class="font-title text-lg text-white">${s.name}</div>
                     <div class="text-[11px] text-slate-400 font-semibold">보유 용병 ${(s.roster || []).length}명 · 🏰 ${s.towerFloor || 1}층</div>
