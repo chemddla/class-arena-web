@@ -2405,6 +2405,7 @@
       distance: GRID_CELL_SIZE * 1, // 1칸 (120px)
       animTicks: 16
     };
+    const JOB_DASH_DISTANCE_MULT = { rogue: 1.2 }; // 직업별 대시 거리 배율 (도적 1.2칸)
     const CHARGE_SKILL_DISTANCE = GRID_CELL_SIZE * 2; // 전사 돌진 스킬 2칸 (240px)
     const BATTLE_PROJECTILE_SPEED = 2.8; // 화살·마법구 등 투사체 속도 배율
     const PROJECTILE_HIT_RADIUS = 30;    // 투사체가 이 거리 안으로 지나가면 맞음
@@ -2545,7 +2546,7 @@
         },
         shadow_step: {
           id: 'shadow_step', name: '순보', icon: '👣', ccTag: '👣후방이동',
-          manaCost: 21, cooldownTicks: 900, cooldownSec: 15.0, castSec: 0,
+          manaCost: 21, cooldownTicks: 630, cooldownSec: 10.5, castSec: 0,
           desc: '가까운 적(4칸 안)의 등 뒤로 순식간에 이동하고 5초간 이동 속도 +50%.'
         },
         rend: {
@@ -2555,12 +2556,12 @@
         },
         shuriken: {
           id: 'shuriken', name: '표창', icon: '✴️', ccTag: '☠️중독',
-          manaCost: 24, cooldownTicks: 600, cooldownSec: 10.0, castSec: 0,
+          manaCost: 24, cooldownTicks: 420, cooldownSec: 7.0, castSec: 0,
           desc: '바라보는 쪽으로 표창을 던져 처음 맞은 적에게 200% 피해와 5초간 [중독].'
         },
         shadow_clone: {
           id: 'shadow_clone', name: '분신', icon: '👥', ccTag: '👥분신소환',
-          manaCost: 30, cooldownTicks: 1800, cooldownSec: 30.0, castSec: 0,
+          manaCost: 30, cooldownTicks: 1260, cooldownSec: 21.0, castSec: 0,
           desc: '능력치 50%의 반투명한 분신을 20초간 불러냅니다. 분신은 AI로 알아서 싸워요.'
         }
       }
@@ -3195,6 +3196,7 @@
     MERC_SPRITE_DEFS.rogue_0 = {
       src: 'assets/sprites/merc/rogue_0.webp',
       cellW: 150, cellH: 99, anchorX: 72, anchorY: 96, standH: 91, portraitCX: 72, count: 22,
+      portraitZoomOut: 1.2, // 그림이 다른 직업보다 커서 초상화 창을 넓혀 같은 크기로 보이게 함
       anims: {
         idle: [0], walk: [1, 2, 3, 4], attack: [5, 6, 7], skill: [8, 9], hurt: [10, 11, 12], death: [13, 14, 15, 16, 17],
         rend: [8, 9], throw: [18], seal: [19], dash: [20, 21]
@@ -3207,9 +3209,8 @@
         shadow_clone: { anim: 'seal', tpf: 30, dur: 30 }
       }
     };
-    // 외형 1 (잿빛 후드), 2 (짙은 자주 후드): 같은 시트를 물들여 씀 (filter = 캔버스·초상화에 같이 적용)
-    MERC_SPRITE_DEFS.rogue_1 = { ...MERC_SPRITE_DEFS.rogue_0, filter: 'saturate(0.15) brightness(0.95) contrast(1.05)' };
-    MERC_SPRITE_DEFS.rogue_2 = { ...MERC_SPRITE_DEFS.rogue_0, filter: 'hue-rotate(260deg) saturate(0.9) brightness(0.85)' };
+    // 도적 외형 1 (잿빛 후드), 2 (보라 후드), 3 (남색 후드), 4 (초록 후드), 5 (진홍 후드): 칸·기준점·동작 구성은 rogue_0과 같고 그림만 다름
+    [1, 2, 3, 4, 5].forEach(v => { MERC_SPRITE_DEFS[`rogue_${v}`] = { ...MERC_SPRITE_DEFS.rogue_0, src: `assets/sprites/merc/rogue_${v}.webp` }; });
     const SPRITE_DRAW_H = 54;       // 전투 화면에서 서 있는 캐릭터의 키(월드 px)
     const SPRITE_DEATH_TICKS = 150; // 쓰러진 뒤 화면에 남아 있는 시간
 
@@ -3302,12 +3303,12 @@
     // headOnly: 작은 아이콘용. 머리~상체만 잘라 크게 보여 줌
     const PORTRAIT_HEAD_VIEW_H = 60;
     function getSpritePortraitHTML(sprite, size, tag = 'div', extraStyle = '', headOnly = false) {
-      const viewH = headOnly ? PORTRAIT_HEAD_VIEW_H : PORTRAIT_VIEW_H;
+      const viewH = (headOnly ? PORTRAIT_HEAD_VIEW_H : PORTRAIT_VIEW_H) * (sprite.portraitZoomOut || 1);
       const k = size / viewH;
       const cropX = sprite.portraitCX - viewH / 2;
       const cropY = headOnly
         ? sprite.anchorY - (sprite.topH || sprite.standH) - 2 // 머리 꼭대기 위 2px부터
-        : sprite.anchorY + 3 - PORTRAIT_VIEW_H;               // 발 아래 3px 여백
+        : sprite.anchorY + 3 - viewH;                         // 발 아래 3px 여백
       return `<${tag} class="select-none${tag === 'span' ? ' inline-block align-middle shrink-0' : ''}" style="width:${size}px;height:${size}px;background:url('${sprite.src}') no-repeat;background-size:${Math.round(sprite.cellW * sprite.count * k)}px ${Math.round(sprite.cellH * k)}px;background-position:${-Math.round(cropX * k)}px ${-Math.round(cropY * k)}px;${sprite.filter ? `filter:${sprite.filter};` : ''}${extraStyle}"></${tag}>`;
     }
 
@@ -3920,7 +3921,7 @@
     }
 
     // 직업별 공격 속도 배율 (1보다 작으면 느리게 공격)
-    const JOB_ATTACK_SPEED_MULT = { archer: 0.7, mage: 0.7, rogue: 1.4 };
+    const JOB_ATTACK_SPEED_MULT = { archer: 0.7, mage: 0.7, rogue: 1.82 };
 
     function calcMercStats(merc, ownerStudent) {
       const job = JOB_DEFS[merc.job] || JOB_DEFS.warrior;
@@ -9231,7 +9232,7 @@
       dashAngle = wallAwareAngle(unit, dashAngle);
       const sx = unit.x;
       const sy = unit.y;
-      const dist = DASH_CONFIG.distance;
+      const dist = DASH_CONFIG.distance * (JOB_DASH_DISTANCE_MULT[unit.job] || 1);
       const r = startUnitRush(unit, sx + Math.cos(dashAngle) * dist, sy + Math.sin(dashAngle) * dist, DASH_MOVE_TICKS);
       unit.dashCooldown = unit.maxDashCooldown || DASH_CONFIG.cooldownTicks;
       if (Math.abs(Math.cos(dashAngle)) > 0.1) {
