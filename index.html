@@ -9365,7 +9365,56 @@
           return backliners.sort((a, b) => unitDist(a, unit) - unitDist(b, unit))[0];
         }
       }
+      if (unit.job === 'knight' && unit.targetRule === 'nearest') return pickTankTarget(unit, allies, enemies);
       return pickSmartEnemyTarget(unit, allies, enemies);
+    }
+
+    // 지켜야 할 아군: 기사·전사를 뺀 아군 (궁수·마법사·성녀·도적 등)
+    function tankProtectees(unit, allies) {
+      return allies.filter(a => a !== unit && a.alive && a.job !== 'knight' && a.job !== 'warrior');
+    }
+    // 기사(탱커) 타겟: 아군 후열에 가까이 붙은 적, 아군을 노리는 적부터 막아섬 (지킬 아군이 없으면 기본 타겟)
+    function pickTankTarget(unit, allies, enemies) {
+      const guarded = tankProtectees(unit, allies);
+      if (!guarded.length) return pickSmartEnemyTarget(unit, allies, enemies);
+      const guardedIds = new Set(guarded.map(a => a.id));
+      const scoreOf = e => {
+        const toAlly = Math.min(...guarded.map(a => unitDist(e, a)));
+        let score = unitDist(e, unit) * 0.6 + toAlly;
+        if (e.lastTargetId && guardedIds.has(e.lastTargetId)) score -= 90; // 아군 후열을 노리는 중
+        if (e.lastTargetId === unit.id) score += 40;                       // 이미 나를 노리면 덜 급함
+        return score;
+      };
+      let best = null;
+      let bestScore = Infinity;
+      enemies.forEach(e => {
+        const sc = scoreOf(e);
+        if (sc < bestScore) { bestScore = sc; best = e; }
+      });
+      const prev = unit.lastTargetId && enemies.find(e => e.id === unit.lastTargetId);
+      if (prev && prev !== best && scoreOf(prev) - bestScore < 80) best = prev;
+      unit.lastTargetId = best ? best.id : null;
+      return best;
+    }
+    // 도적: 대상의 등 뒤로 돌아갈 지점 (대상이 나만 보고 있거나 너무 멀면 null → 평소처럼 싸움)
+    function rogueFlankPoint(u, target) {
+      if (u.job !== 'rogue' || target.monsterType === 'scarecrow') return null;
+      const d = unitDist(target, u);
+      if (d > u.range + 140) return null;
+      const fa = typeof target.facingAngle === 'number' ? target.facingAngle : (target.facingDir >= 0 ? 0 : Math.PI);
+      const toMe = Math.atan2(u.y - target.y, u.x - target.x);
+      // 대상이 나를 노리며 정면으로 보고 있으면 돌아가도 따라 돌아서므로 그냥 싸움
+      if (target.lastTargetId === u.id && Math.cos(toMe - fa) > 0.7) return null;
+      const R = u.range * 0.7 + unitBodyGap(u) + unitBodyGap(target);
+      if (isBehind(u, target)) {
+        return d <= u.range ? { x: u.x, y: u.y, behind: true } : { x: target.x + Math.cos(toMe) * R, y: target.y + Math.sin(toMe) * R, behind: true };
+      }
+      // 대상 주위를 돌아 등 뒤(바라보는 반대쪽)로 조금씩 이동 (정면을 가로지르지 않게)
+      let diff = (fa + Math.PI) - toMe;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      const a = toMe + Math.max(-0.7, Math.min(0.7, diff));
+      return { x: target.x + Math.cos(a) * R, y: target.y + Math.sin(a) * R, behind: false };
     }
 
     // 기본 타겟 고르기: 가까운 적 + 체력이 적은 적(마무리) + 기절·동결된 적 + 아군이 함께 노리는 적(집중 공격)
@@ -10281,13 +10330,18 @@
         }
 
         // [Requirement 4: 자체 쿨타임을 갖는 전술 대시(Dash) AI]
+        // 도발당한 AI는 도발한 기사에게 다가가며 기본 공격만 함 (성녀는 치유만 하므로 제외)
+        const taunter = u.job !== 'healer' ? tauntSourceOf(u) : null;
+        const flank = !taunter ? rogueFlankPoint(u, target) : null;
         if (u.dashCooldown <= 0 && u.monsterType !== 'scarecrow') {
           const nearestEnemy = [...seenEnemies].sort((a, b) => unitDist(a, u) - unitDist(b, u))[0];
           const nearestEnemyDist = nearestEnemy ? unitDist(nearestEnemy, u) : 9999;
 
           if ((u.job === 'warrior' || u.behaviorRule === 'charge') && dist > u.range + 95) {
             triggerUnitDash(u, u.facingAngle, '💨돌격대시');
-          } else if (u.job !== 'warrior' && nearestEnemy && nearestEnemyDist < 140) {
+          } else if (flank && !flank.behind && unitDist(u, flank) > 70) {
+            triggerUnitDash(u, Math.atan2(flank.y - u.y, flank.x - u.x), '💨배후대시');
+          } else if (u.job !== 'warrior' && u.job !== 'knight' && u.job !== 'rogue' && !taunter && nearestEnemy && nearestEnemyDist < 140) {
             const awayAngle = Math.atan2(u.y - nearestEnemy.y, u.x - nearestEnemy.x);
             triggerUnitDash(u, awayAngle, '💨회피대시');
           } else if (u.job === 'healer') {
@@ -10327,8 +10381,10 @@
           u.walkPhase += phase * speedMult;
         };
         const isRanged = u.range >= 180;
+        // 몬스터·보스는 피하지 않음. 기사는 탱커라 투사체를 피하지 않고 버팀
         const canDodge = !(u.monsterType || u.isEliteBoss);
-        const dodgeAngle = canDodge ? findProjectileDodgeAngle(u) : null;
+        const canDodgeShots = canDodge && u.job !== 'knight';
+        const dodgeAngle = canDodgeShots && !taunter ? findProjectileDodgeAngle(u) : null;
         const nearestFoe = seenEnemies.reduce((best, e) => {
           const d = unitDist(e, u);
           return !best || d < best.d ? { e, d } : best;
@@ -10341,8 +10397,15 @@
         }
         const strafeA = u.facingAngle + (Math.PI / 2) * u.strafeDir;
         if (wallRoom(u.x + Math.cos(strafeA) * 60, u.y + Math.sin(strafeA) * 60) < 30) u.strafeDir *= -1;
-        const badZone = canDodge ? (sim.zones || []).find(z => z.team !== u.team && unitDist(u, z) < z.r + 12) : null;
-        if (dodgeAngle === null && badZone) {
+        const badZone = canDodge && !taunter ? (sim.zones || []).find(z => z.team !== u.team && unitDist(u, z) < z.r + 12) : null;
+        // 기사: 지킬 아군이 있으면 그 아군과 적 사이(적 쪽)에 서서 막아섬
+        const guardAlly = u.job === 'knight' && !taunter
+          ? tankProtectees(u, allies).sort((a, b) => unitDist(a, target) - unitDist(b, target))[0]
+          : null;
+        if (taunter) {
+          // 도발: 도발한 기사에게 곧장 다가감 (근접 거리까지). 공격은 아래에서 사거리에 들면 그대로 함
+          if (dist > 24) moveBy(Math.atan2(taunter.y - u.y, taunter.x - u.x), 1, 0.065);
+        } else if (dodgeAngle === null && badZone) {
           // 적의 장판 안에 서 있으면 장판 밖으로 빠져나감
           // 장판 한가운데면(목표 위치에 생기므로 흔함) 적 반대쪽으로, 아니면 장판 중심 반대쪽으로
           const zoneAway = unitDist(u, badZone) < 8
@@ -10362,12 +10425,25 @@
             ? Math.atan2(healerAlly.y - u.y, healerAlly.x - u.x)
             : Math.atan2(u.y - nearestFoe.e.y, u.x - nearestFoe.e.x);
           moveBy(away, 0.95, 0.065);
+        } else if (flank && !flank.behind) {
+          // 도적: 대상 주위를 돌아 등 뒤로 (돌아가는 중에도 사거리에 들면 공격)
+          moveBy(Math.atan2(flank.y - u.y, flank.x - u.x), 1.05, 0.07);
+        } else if (flank && flank.behind && dist > u.range * 0.95) {
+          moveBy(Math.atan2(flank.y - u.y, flank.x - u.x), 1, 0.065);
         } else if (dist > u.range * (isRanged ? 0.9 : 0.95)) {
           // 다가갈 때도 일직선이 아니라 살짝 비스듬히 (한 줄로 몰리지 않게)
           moveBy(u.facingAngle + (isRanged ? 0 : 0.25 * u.strafeDir), 1, 0.065);
         } else if (isRanged && u.behaviorRule !== 'charge' && nearestFoe && nearestFoe.d < Math.max(120, u.range * 0.55)) {
           // 적이 너무 가까우면 사거리 끝 쪽으로 물러나며 싸움
           moveBy(Math.atan2(u.y - nearestFoe.e.y, u.x - nearestFoe.e.x) + (wallRoom(u.x, u.y) < WALL_MARGIN ? 0.6 * u.strafeDir : 0), 0.85, 0.06);
+        } else if (flank && flank.behind) {
+          // 도적: 등 뒤를 잡았으면 자리를 지키며 계속 백어택
+        } else if (guardAlly) {
+          // 기사: 대상 주위를 돌지 않고, 대상과 지킬 아군 사이로 자리를 옮겨 막아섬
+          const ga = Math.atan2(guardAlly.y - target.y, guardAlly.x - target.x);
+          const R = u.range * 0.75 + unitBodyGap(target);
+          const gx = target.x + Math.cos(ga) * R, gy = target.y + Math.sin(ga) * R;
+          if (Math.hypot(gx - u.x, gy - u.y) > 12) moveBy(Math.atan2(gy - u.y, gx - u.x), 0.5, 0.045);
         } else if (u.cooldown > 6) {
           // 다음 공격을 기다리는 동안: 원거리는 옆으로 움직여 맞기 어렵게, 근접은 상대 주위를 돌며 싸움
           moveBy(u.facingAngle + (Math.PI / 2) * u.strafeDir, isRanged ? 0.3 : 0.35, 0.04);
