@@ -1233,7 +1233,7 @@
               <li>📌 <strong>피어싱:</strong> 전방 3칸 200% + <span class="text-rose-400">🩸출혈</span></li>
               <li>🌀 <strong>회전:</strong> 3초 주변 다단히트·투사체 막기 (느리게 이동만)</li>
               <li>🎯 <strong>투창:</strong> 300% 투척 + <span class="text-yellow-300">💫기절</span> 5초</li>
-              <li>💥 <strong>난무:</strong> 주변 2칸 3초 다단히트</li>
+              <li>💥 <strong>난무:</strong> 주변 2칸 3초 다단히트 (이동 불가)</li>
               <li>🏇 <strong>창돌격:</strong> 전방 4칸 돌격, 적을 꽂아 끌고 감 + <span class="text-yellow-300">💫기절</span></li>
             </ul>
           </div>
@@ -2605,7 +2605,7 @@
       taunt:   { id: 'taunt',   name: '도발', icon: '😤', color: '#ea580c', desc: '도발한 기사만 기본 공격할 수 있고 스킬을 쓸 수 없음' },
       guard:   { id: 'guard',   name: '방어 태세', icon: '🏰', color: '#0284c7', desc: '받는 피해 70% 감소·상태이상 면역 (이동·공격 불가)' },
       spin:    { id: 'spin',    name: '창 회전', icon: '🌀', color: '#b45309', desc: '창을 돌려 주변에 다단히트·날아오는 투사체를 막음 (공격·스킬 불가, 느리게 이동)' },
-      rampage: { id: 'rampage', name: '난무', icon: '💥', color: '#c2410c', desc: '주변 2칸을 마구 휘둘러 다단히트 (기본 공격·스킬 불가)' }
+      rampage: { id: 'rampage', name: '난무', icon: '💥', color: '#c2410c', desc: '주변 2칸을 마구 휘둘러 다단히트 (이동·기본 공격·스킬 불가)' }
     };
 
     // 전술 그리드 1칸 크기(120px) 기준: 대시 1칸(120px), 전사 돌진 스킬 2칸(240px) (Requirement 1)
@@ -2822,7 +2822,7 @@
         spear_rampage: {
           id: 'spear_rampage', name: '난무', icon: '💥', ccTag: '💥다단히트',
           manaCost: 27, cooldownTicks: 600, cooldownSec: 10.0, castSec: 0,
-          desc: '3초간 창을 마구 휘둘러 주변 2칸 안의 적에게 0.3초마다 30% 피해를 입혀요. 그동안 기본 공격·스킬은 못 써요.'
+          desc: '3초간 창을 마구 휘둘러 주변 2칸 안의 적에게 0.3초마다 30% 피해를 입혀요. 그동안 움직이거나 기본 공격·스킬을 쓸 수 없어요.'
         },
         spear_charge: {
           id: 'spear_charge', name: '창돌격', icon: '🏇', ccTag: '💫끌고가기',
@@ -3639,7 +3639,8 @@
       src: 'assets/sprites/merc/lancer_0.webp',
       cellW: 164, cellH: 94, anchorX: 80, anchorY: 92, standH: 80, portraitCX: 80, count: 32,
       anims: {
-        idle: [0, 1], walk: [2, 3, 4, 5], attack: [6, 7, 8, 9], thrust: [10, 11, 12, 13], skill: [14, 15, 16], hurt: [29], death: [29, 30, 31],
+        // 9·13(공격 끝에 수그리는 자세)은 어색해서 안 씀
+        idle: [0, 1], walk: [2, 3, 4, 5], attack: [6, 7, 8], thrust: [10, 11, 12], skill: [14, 15, 16], hurt: [29], death: [29, 30, 31],
         pierce: [14, 15, 16], spin: [17, 18, 19], javelin: [21, 22, 22], rampage: [23, 24, 25], charge: [26, 27, 28]
       },
       skillAnims: {
@@ -3723,7 +3724,7 @@
     const LANCER_PIERCE_IMG = new Image();
     LANCER_PIERCE_IMG.onload = () => { LANCER_PIERCE_IMG.ready = true; };
     LANCER_PIERCE_IMG.src = 'assets/sprites/fx/lancer_pierce.webp';
-    // 창병 기본 공격 이펙트: 휘두르기 = 오른쪽으로 볼록한 초승달 (223×263, 바깥 원 중심 (92.6, 130.7)·반지름 130.6)
+    // 창병 기본 공격 이펙트: 휘두르기 = 오른쪽으로 볼록한 초승달 (223×263, 바깥 원 중심 (93.8, 131.6)·반지름 129.5)
     //                       찌르기 = 오른쪽을 향한 화살 모양 창 바람 (208×43, 촉 끝 = (207, 21))
     const LANCER_SWEEP_IMG = new Image();
     LANCER_SWEEP_IMG.onload = () => { LANCER_SWEEP_IMG.ready = true; };
@@ -9432,7 +9433,7 @@
       if (st.shock > 0) speedMult -= 0.35;
       if (st.poison > 0) speedMult -= 0.12;
       speedMult = Math.max(0.4, speedMult);
-      const curMoveSpeed = u.baseMoveSpeed * speedMult * 1.15 * (u.hasteTicks > 0 ? 1.2 : 1) * (st.swift > 0 ? 1.5 : 1) * ((st.spin || 0) > 0 ? LANCER_SPIN_MOVE_MULT : 1);
+      const curMoveSpeed = u.baseMoveSpeed * speedMult * 1.15 * (u.hasteTicks > 0 ? 1.2 : 1) * (st.swift > 0 ? 1.5 : 1) * lancerMoveMult(u);
       const curAtkInterval = Math.max(12, Math.round(u.baseAtkInterval / speedMult / (1 + (u.atkSpdStacks || 0) * 0.02)));
       const keys = c.keys || {};
       // 창병 E키: 휘두르기 ↔ 찌르기 (쿨타임·시전 없음)
@@ -10498,7 +10499,7 @@
 
     function triggerUnitDash(unit, dashAngle, reasonLabel = '💨대시') {
       if (!unit || !unit.alive || unit.monsterType === 'scarecrow') return false;
-      if (unit.dashCooldown > 0 || unit.statuses.stun > 0 || unit.statuses.freeze > 0 || (unit.statuses.guard || 0) > 0 || (unit.statuses.spin || 0) > 0) return false;
+      if (unit.dashCooldown > 0 || unit.statuses.stun > 0 || unit.statuses.freeze > 0 || (unit.statuses.guard || 0) > 0 || lancerBusy(unit)) return false;
       if (unit.rush) return false;
 
       dashAngle = wallAwareAngle(unit, dashAngle);
@@ -10750,7 +10751,8 @@
       unit.skillAnim = 72;
       unit.maxSkillAnim = 72;
       unit.activeSkillType = sk;
-      unit.attackAnim = 52;
+      // 창병은 스킬 동작이 끝난 뒤 기본 공격 동작(수그리는 끝 자세)이 이어지지 않게
+      unit.attackAnim = unit.job === 'lancer' ? 0 : 52;
       unit.maxAttackAnim = 52;
 
       // [Requirement 2]: 스킬 사용 시 피격된 적 위가 아니라 스킬 사용자(시전자) 머리 위에 스킬 이름이 뜨도록 표시!
@@ -11243,7 +11245,7 @@
         if (st.poison > 0) speedMult -= 0.12;
         speedMult = Math.max(0.4, speedMult);
 
-        const curMoveSpeed = u.baseMoveSpeed * speedMult * (u.hasteTicks > 0 ? 1.2 : 1) * (st.swift > 0 ? 1.5 : 1) * ((st.spin || 0) > 0 ? LANCER_SPIN_MOVE_MULT : 1);
+        const curMoveSpeed = u.baseMoveSpeed * speedMult * (u.hasteTicks > 0 ? 1.2 : 1) * (st.swift > 0 ? 1.5 : 1) * lancerMoveMult(u);
         const curAtkInterval = Math.max(12, Math.round(u.baseAtkInterval / speedMult / (1 + (u.atkSpdStacks || 0) * 0.02)));
 
         // 장비 스킬(Q 발동형): AI 용병은 상황을 보고 알아서 사용
@@ -12247,7 +12249,7 @@
     const LANCER_SPIN_RADIUS = 125;       // 회전 범위 (약 1칸)
     const LANCER_SPIN_DMG = 0.15;         // 회전 1타 15% (막기용이라 약하게)
     const LANCER_SPIN_BLOCK_R = 72;       // 이 안으로 날아온 투사체를 막음
-    const LANCER_SPIN_MOVE_MULT = 0.45;   // 회전 중 이동 속도
+    const LANCER_SPIN_MOVE_MULT = 0.45;   // 회전 중 이동 속도 (난무 중에는 이동 불가)
     const LANCER_RAMPAGE_TICKS = 180;     // 난무 3초 (10타)
     const LANCER_RAMPAGE_RADIUS = GRID_CELL_SIZE * 2; // 난무 2칸
     const LANCER_RAMPAGE_DMG = 0.3;       // 난무 1타 30%
@@ -12259,6 +12261,11 @@
       if (!u || u.job !== 'lancer') return;
       u.lanceMode = mode === 'thrust' ? 'thrust' : 'sweep';
       u.range = u.lanceMode === 'thrust' ? LANCER_THRUST_RANGE : LANCER_SWEEP_RANGE;
+    }
+    // 회전 중에는 느리게, 난무 중에는 못 움직임
+    function lancerMoveMult(u) {
+      const st = u.statuses || {};
+      return (st.rampage || 0) > 0 ? 0 : ((st.spin || 0) > 0 ? LANCER_SPIN_MOVE_MULT : 1);
     }
     // 회전·난무 중 (기본 공격·스킬 불가)
     function lancerBusy(u) {
@@ -13541,12 +13548,12 @@
 
         } else if (ef.type === 'lance_sweep' && LANCER_SWEEP_IMG.ready) {
           // 창병 휘두르기 그림: 초승달 바깥 끝이 사거리(ef.r)에 오게, 위에서 아래로 살짝 쓸어 내리며 사라짐
-          const k = ef.r / 130.6;
+          const k = ef.r / 129.5;
           ctx.translate(ef.x, ef.y);
           ctx.rotate(ef.angle + (Math.cos(ef.angle) < 0 ? 1 : -1) * (0.35 - progress * 0.5));
-          ctx.globalAlpha = Math.min(1, (ef.life / ef.maxLife) * 1.6) * 0.5; // 자주 나오는 큰 그림이라 반투명하게
+          ctx.globalAlpha = Math.min(1, (ef.life / ef.maxLife) * 1.6) * 0.32; // 자주 나오는 큰 그림이라 흐리게
           ctx.imageSmoothingEnabled = true;
-          ctx.drawImage(LANCER_SWEEP_IMG, -92.6 * k, -130.7 * k, 223 * k, 263 * k);
+          ctx.drawImage(LANCER_SWEEP_IMG, -93.8 * k, -131.6 * k, 223 * k, 263 * k);
 
         } else if (ef.type === 'lance_thrust' && LANCER_THRUST_IMG.ready) {
           // 창병 찌르기 그림: 창 바람이 사거리 끝까지 뻗어 나감
@@ -13555,7 +13562,7 @@
           if (Math.cos(ef.angle) < 0) ctx.scale(1, -1);
           const len = ef.r * Math.min(1, 0.4 + progress * 2.2);
           const h = 40;
-          ctx.globalAlpha = Math.min(1, (ef.life / ef.maxLife) * 1.6) * 0.6;
+          ctx.globalAlpha = Math.min(1, (ef.life / ef.maxLife) * 1.6) * 0.4;
           ctx.imageSmoothingEnabled = true;
           ctx.drawImage(LANCER_THRUST_IMG, 10 + ef.r - len, -h * (21 / 43), len, h);
 
