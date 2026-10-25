@@ -1,0 +1,198 @@
+name: Deploy Class Arena
+
+# main에 push하면 바뀐 부분만 골라서 배포
+#   게임 사이트   ← index.html, assets/, tools/minify-html.cjs
+#   관리자 사이트 ← admin/
+#   DB 보안 규칙  ← database.rules.json (tests/의 규칙 테스트를 통과해야만 배포)
+# Actions 탭에서 직접 실행(workflow_dispatch)하면 고른 대상을 바뀐 것과 상관없이 배포
+on:
+  push:
+    branches:
+      - "main"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "배포할 대상"
+        type: choice
+        options: [all, game, admin, rules]
+        default: all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arena-game-live
+  cancel-in-progress: false
+
+env:
+  FIREBASE_PROJECT: class-arena-b4ee3
+  FIREBASE_TOOLS: firebase-tools@15.34.0
+
+jobs:
+  # 이번 push에서 어느 부분이 바뀌었는지 확인
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      game: ${{ steps.pick.outputs.game }}
+      admin: ${{ steps.pick.outputs.admin }}
+      rules: ${{ steps.pick.outputs.rules }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          TARGET: ${{ github.event.inputs.target }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            for t in game admin rules; do
+              if [ "$TARGET" = "all" ] || [ "$TARGET" = "$t" ]; then echo "$t=true"; else echo "$t=false"; fi
+            done >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # 처음 push(이전 커밋 없음)거나 이전 커밋을 못 찾으면 모두 배포
+          if [ -z "$BEFORE" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            printf 'game=true\nadmin=true\nrules=true\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only "$BEFORE" "$GITHUB_SHA")
+          echo "바뀐 파일:"; echo "$files"
+          has() { echo "$files" | grep -qE "$1" && echo true || echo false; }
+          wf='^\.github/workflows/deploy\.yml$'
+          echo "game=$(has "^index\.html$|^assets/|^tools/minify-html\.cjs$|$wf")" >> "$GITHUB_OUTPUT"
+          echo "admin=$(has "^admin/|$wf")" >> "$GITHUB_OUTPUT"
+          echo "rules=$(has "^database\.rules\.json$|^tests/|$wf")" >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+  deploy-game:
+    needs: changes
+    if: needs.changes.outputs.game == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # 최신 firebase-tools는 Node 20을 지원하지 않음 (2026-10 배포 실패 원인)
+
+      # 게임 스크립트에 문법 오류가 있으면 배포하지 않음 (학생 화면이 통째로 멈추는 것 방지)
+      - name: Check game script syntax
+        run: |
+          node -e "
+            const html = require('fs').readFileSync('index.html', 'utf8');
+            const re = /<script>([\s\S]*?)<\/script>/g;
+            let m, n = 0;
+            while ((m = re.exec(html))) { new Function(m[1]); n++; }
+            if (!n) throw new Error('index.html에서 <script>를 찾지 못함');
+            console.log('스크립트', n, '개 문법 확인 완료');
+          "
+
+      - name: Prepare game HTML
+        run: |
+          mkdir -p public
+          cp index.html public/index.html
+          cp -r assets public/assets
+
+      # 디자인(Tailwind)을 학생 기기에서 매번 계산하지 않도록, 배포할 때 CSS를 미리 만들어 넣음
+      # (개발할 때는 index.html의 CDN 스크립트로 바로 확인하고, 배포본만 미리 만든 CSS를 씀)
+      - name: Build Tailwind CSS into the page
+        run: |
+          printf '@tailwind base;\n@tailwind components;\n@tailwind utilities;\n' > tw.in.css
+          npx --yes tailwindcss@3.4.17 -i tw.in.css -o tw.out.css --content public/index.html --minify
+          node -e "
+            const fs = require('fs');
+            const file = 'public/index.html';
+            const tag = '<script src=\"https://cdn.tailwindcss.com\"></script>';
+            let html = fs.readFileSync(file, 'utf8');
+            if (!html.includes(tag) || !html.includes('</head>')) throw new Error('Tailwind CDN tag or </head> not found');
+            // CDN처럼 다른 스타일보다 뒤(</head> 바로 앞)에 넣어야 화면이 똑같이 나옴
+            html = html.replace(tag, '').replace('</head>', '<style id=\"tailwind-built\">' + fs.readFileSync('tw.out.css', 'utf8') + '</style>\n</head>');
+            fs.writeFileSync(file, html);
+            console.log('Tailwind CSS inlined:', fs.statSync('tw.out.css').size, 'bytes');
+          "
+
+      # 배포본만 압축(주석·들여쓰기 제거, JS·CSS 줄이기). 원본 index.html은 읽기 쉬운 그대로 둠
+      - name: Minify game HTML
+        run: |
+          npm install --no-save --no-audit --no-fund html-minifier-terser@7.2.0
+          node tools/minify-html.cjs public/index.html
+
+      # 어느 커밋이 실제로 올라가 있는지 누구나 확인할 수 있게: https://class-arena-b4ee3.web.app/version.json
+      - name: Write version file
+        run: printf '{"commit":"%s","deployedAt":"%s"}\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > public/version.json
+
+      # 배포: FirebaseExtended 액션 대신 버전을 고정한 firebase-tools로 직접 (2026-10 액션이 원인 모를 npx 오류로 실패해서 교체)
+      # 서비스 계정 키(JSON)를 임시 파일로 두고 GOOGLE_APPLICATION_CREDENTIALS로 로그인
+      - name: Deploy game site
+        env:
+          FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CLASS_ARENA_B4EE3 }}
+        run: |
+          printf '%s' "$FIREBASE_SA" > "$RUNNER_TEMP/firebase-sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
+          npx --yes $FIREBASE_TOOLS deploy --only hosting:class-arena-b4ee3 --project $FIREBASE_PROJECT --non-interactive
+          rm -f "$RUNNER_TEMP/firebase-sa.json"
+
+  deploy-admin:
+    needs: changes
+    if: needs.changes.outputs.admin == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Deploy admin site
+        env:
+          FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CLASS_ARENA_B4EE3 }}
+        run: |
+          printf '%s' "$FIREBASE_SA" > "$RUNNER_TEMP/firebase-sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
+          npx --yes $FIREBASE_TOOLS deploy --only hosting:class-arena-b4ee3-admin --project $FIREBASE_PROJECT --non-interactive
+          rm -f "$RUNNER_TEMP/firebase-sa.json"
+
+  # DB 보안 규칙은 잘못 올라가면 학생 데이터가 바로 열리거나 막히므로, 에뮬레이터 테스트를 먼저 통과해야 함
+  test-rules:
+    needs: changes
+    if: needs.changes.outputs.rules == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4 # Firebase 에뮬레이터에 필요
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Run rules tests on the emulator
+        working-directory: tests
+        run: |
+          npm ci --no-audit --no-fund
+          npx --yes $FIREBASE_TOOLS emulators:exec --only database --project demo-class-arena --config ../firebase.json "node --test rules.test.mjs teacher-secrets.test.mjs"
+
+  deploy-rules:
+    needs: test-rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # 서비스 계정에 'Firebase Realtime Database 관리자' 역할이 있어야 함 (없으면 이 단계만 403으로 실패)
+      - name: Deploy database rules
+        env:
+          FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CLASS_ARENA_B4EE3 }}
+        run: |
+          printf '%s' "$FIREBASE_SA" > "$RUNNER_TEMP/firebase-sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
+          npx --yes $FIREBASE_TOOLS deploy --only database --project $FIREBASE_PROJECT --non-interactive
+          rm -f "$RUNNER_TEMP/firebase-sa.json"
