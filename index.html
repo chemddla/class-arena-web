@@ -1083,12 +1083,12 @@
               새로운 용병을 영입하세요!
             </h3>
             <p class="text-xs sm:text-sm text-slate-300 mt-1">
-              <strong>전사</strong>, <strong>마법사</strong>, <strong>힐러</strong>, <strong>궁수</strong>가 대기 중입니다! (지원자 명단은 하루 한 번 갱신 · <strong>1% 확률</strong>로 <strong class="text-amber-300">🌟레어 용병</strong> 출현!)
+              <strong>전사</strong>, <strong>마법사</strong>, <strong>힐러</strong>, <strong>궁수</strong>가 대기 중입니다! (명단은 하루 한 번 자동 갱신 · 하루 무료 갱신 5회, 이후 500 CA · <strong>1% 확률</strong>로 <strong class="text-amber-300">🌟레어 용병</strong> 출현!)
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <button id="officeRefreshBtn" onclick="refreshRecruitPool(false)" class="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-sm shadow-lg flex items-center gap-1.5">
-              🔄 새로운 지원자 모집 (500 CA)
+              🔄 새로운 지원자 모집 (무료 5/5회)
             </button>
           </div>
         </div>
@@ -3493,7 +3493,8 @@
       return (first && jobSkills[first]) || lockedSkillInfo(10);
     }
 
-    const RECRUIT_REFRESH_COST = 500; // 지원자 명단 직접 다시 모집 비용 (명단은 하루 한 번 저절로 바뀜)
+    const DAILY_FREE_REFRESHES = 5;
+    const RECRUIT_REFRESH_COST = 500; // 무료 갱신을 다 쓴 뒤 추가 갱신 비용 (명단은 하루 한 번 저절로 바뀜)
     const FIXED_SP_PER_10_LEVELS = 0; // 레벨 스탯 포인트 기능 제거 (받는 포인트 없음)
 
     function getTodayDateString() {
@@ -3570,6 +3571,16 @@
 
     function dailyRewardDoneText(category) {
       return `오늘 ${DAILY_REWARD_LABELS[category] || '이 활동'} 보상(${DAILY_REWARD_LIMITS[category]}회)을 모두 받았어요. 내일 다시 받을 수 있어요!`;
+    }
+
+    function getRemainingFreeRefreshes(stu) {
+      if (!stu) return 0;
+      const today = getTodayDateString();
+      if (stu.freeRefreshDate !== today) {
+        stu.freeRefreshDate = today;
+        stu.freeRefreshUsed = 0;
+      }
+      return Math.max(0, DAILY_FREE_REFRESHES - (stu.freeRefreshUsed || 0));
     }
 
     function getMercStatPointInfo(merc) {
@@ -6319,7 +6330,7 @@
     }
 
     /********************************************************************
-     * 7. 용병 사무소 (명단은 하루 한 번 갱신, 직접 다시 모집은 500 CA + 낮은 확률로 레어 용병 출현)
+     * 7. 용병 사무소 (명단은 하루 한 번 갱신 + 하루 무료 갱신 5회, 이후 500 CA + 낮은 확률로 레어 용병 출현)
      ********************************************************************/
     function generateRecruitPool(highTierGuarantee = false) {
       const jobKeys = ['warrior', 'mage', 'healer', 'archer', 'rogue'];
@@ -6373,15 +6384,24 @@
     function refreshRecruitPool(isFree = false) {
       const stu = getActiveStudent();
       if (!isFree) {
+        const freeLeft = getRemainingFreeRefreshes(stu);
+        if (freeLeft > 0) {
+          stu.freeRefreshUsed = (stu.freeRefreshUsed || 0) + 1;
+          generateRecruitPool(false);
+          saveState();
+          renderOfficeTab();
+          showNotice(`🔄 무료 지원자 갱신 완료! (오늘 남은 무료 갱신: ${freeLeft - 1}/${DAILY_FREE_REFRESHES}회)`);
+          return;
+        }
         if (stu.mc < RECRUIT_REFRESH_COST) {
-          showNotice(`⚠️ 새로운 지원자 모집 비용(${RECRUIT_REFRESH_COST.toLocaleString()} CA)이 부족합니다! (지원자 명단은 하루에 한 번 저절로 바뀌어요)`);
+          showNotice(`⚠️ 오늘 무료 갱신(${DAILY_FREE_REFRESHES}회)을 모두 사용했습니다! 추가 갱신 비용(${RECRUIT_REFRESH_COST.toLocaleString()} CA)이 부족합니다.`);
           return;
         }
         stu.mc -= RECRUIT_REFRESH_COST;
         generateRecruitPool(false);
         saveState();
         renderOfficeTab();
-        showNotice(`🔄 ${RECRUIT_REFRESH_COST.toLocaleString()} CA를 사용하여 새로운 지원자 명단을 모집했습니다!`);
+        showNotice(`🔄 ${RECRUIT_REFRESH_COST.toLocaleString()} CA를 사용하여 새로운 지원자 명단을 갱신했습니다!`);
         return;
       }
       generateRecruitPool(false);
@@ -6433,7 +6453,12 @@
       syncRecruitPoolFromStudent();
 
       const refreshBtn = document.getElementById('officeRefreshBtn');
-      if (refreshBtn) refreshBtn.innerHTML = `🔄 새로운 지원자 모집 (${RECRUIT_REFRESH_COST.toLocaleString()} CA)`;
+      if (refreshBtn) {
+        const freeLeft = getRemainingFreeRefreshes(stu);
+        refreshBtn.innerHTML = freeLeft > 0
+          ? `🔄 새로운 지원자 모집 (무료 ${freeLeft}/${DAILY_FREE_REFRESHES}회)`
+          : `🔄 새로운 지원자 모집 (${RECRUIT_REFRESH_COST.toLocaleString()} CA)`;
+      }
 
       ['warrior', 'mage', 'healer', 'archer', 'rogue'].forEach(j => {
         const iconEl = document.getElementById(`bannerWpnIcon_${j}`);
