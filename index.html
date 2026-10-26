@@ -790,8 +790,8 @@
 
     <!-- ==================== [학생 모드 화면] ==================== -->
     <div id="studentViewContainer" class="flex flex-col gap-4">
-      <!-- 학생 내비게이션 탭 (순서: 홈, 용병 모집, 도감, 상점, 거래소, 모험의 탑, 엘리트 몬스터, 결투장, 퀴즈, 미니게임 - Requirements 4, 5, 6) -->
-      <nav class="grid grid-cols-2 sm:grid-cols-5 xl:grid-cols-10 gap-1.5 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800">
+      <!-- 학생 내비게이션 탭 (순서: 홈, 용병 모집, 도감, 스킨 제작소, 상점, 거래소, 모험의 탑, 엘리트 몬스터, 결투장, 퀴즈, 미니게임 - Requirements 4, 5, 6) -->
+      <nav class="grid grid-cols-2 sm:grid-cols-6 xl:grid-cols-11 gap-1.5 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800">
         <button onclick="switchStudentTab('squad')" id="stab-squad" class="student-tab-btn py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 bg-indigo-600 text-white shadow">
           <span>🏠</span> 홈
         </button>
@@ -800,6 +800,9 @@
         </button>
         <button onclick="switchStudentTab('codex')" id="stab-codex" class="student-tab-btn py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 text-slate-300 hover:bg-slate-800">
           <span>📖</span> 도감
+        </button>
+        <button onclick="switchStudentTab('skinlab')" id="stab-skinlab" class="student-tab-btn py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 text-slate-300 hover:bg-slate-800">
+          <span>🎨</span> 스킨 제작소
         </button>
         <button onclick="switchStudentTab('shop')" id="stab-shop" title="장비·상점은 준비 중이에요 (곧 열려요)" class="student-tab-btn py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 text-slate-300 hover:bg-slate-800 opacity-50">
           <span>🔒</span> 상점
@@ -1275,9 +1278,25 @@
 
         <!-- 시크릿 레어 도감 (renderCodexSecrets) -->
         <div id="codexSecretView" class="hidden flex flex-col gap-4"></div>
+      </section>
 
-        <!-- 학급 디자인: 외형 디자인 내기 + 출시된 우리 반 디자인 (renderCodexDesigns) -->
-        <div id="codexDesignView" class="hidden flex flex-col gap-4"></div>
+      <!-- [탭] 스킨 제작소: 직접 그리거나 그림을 올려 선생님께 외형 디자인 제출 + 승인된 우리 반 디자인 (renderSkinWorkshop) -->
+      <section id="studentTab-skinlab" class="student-tab-panel hidden flex flex-col gap-4">
+        <div class="bg-slate-900 border border-fuchsia-500/40 rounded-2xl p-5 flex flex-col gap-3">
+          <div>
+            <span class="px-2.5 py-0.5 rounded-full bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/40 text-xs font-bold">🎨 스킨 제작소</span>
+            <h3 class="font-title text-2xl sm:text-3xl text-white mt-1">내가 디자인한 용병 외형 만들기</h3>
+            <p class="text-xs sm:text-sm text-slate-300 mt-1">직업을 고르고 그림을 그리거나 올려서 선생님께 내요. 선생님이 게임 그림체에 맞게 다듬고 움직이는 동작까지 만들어 검토해요.</p>
+            <p class="text-[11px] sm:text-xs text-amber-300 mt-1">✅ 승인되면 10,000 CA를 내고 내 용병에게 입힐 수 있고, 친구에게 값을 받고 공유할 수도 있어요.</p>
+          </div>
+          <div id="skinWorkshopEditor"></div>
+          <div id="skinDesignMine" class="flex flex-col gap-2"></div>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
+          <h4 class="font-title text-lg text-white">✨ 승인된 우리 반 디자인</h4>
+          <p class="text-[11px] text-slate-400">친구가 디자인한 외형은 그 외형을 가진 친구가 공유를 열면, 정한 CA를 주고 공유받을 수 있어요.</p>
+          <div id="skinWorkshopGallery" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2"></div>
+        </div>
       </section>
 
       <!-- [탭 2-B] 용병 거래소 · 경매장 (친구 간 용병 매매 제안 & 경매 시스템 - Requirement 3 & 4) -->
@@ -4081,8 +4100,8 @@
     }
     // 외형 그림·목록이 바뀌면 보고 있는 화면만 다시 그림
     function refreshSkinViews() {
-      const codexBox = document.getElementById('codexDesignView');
-      if (codexBox && !codexBox.classList.contains('hidden')) renderCodexDesigns(getActiveStudent());
+      const lab = document.getElementById('studentTab-skinlab');
+      if (lab && !lab.classList.contains('hidden')) renderSkinWorkshop();
       if (activeDetailMercId) renderMercDetailModal();
       const review = document.getElementById('teacherSkinReview');
       if (review && review.offsetParent) renderTeacherSkinReview();
@@ -8404,7 +8423,7 @@
     // 도감: 직업별 패시브·기본 능력치·스킬 설명 (직업 고르기 버튼으로 하나씩 자세히)
     const CODEX_JOBS = ['warrior', 'mage', 'healer', 'archer', 'rogue', 'knight', 'lancer', 'sniper'];
     let codexJob = 'warrior';
-    let codexView = 'merc'; // 'merc' = 직업·스킬, 'monster' = 몬스터, 'secret' = 시크릿 레어, 'design' = 학급 디자인
+    let codexView = 'merc'; // 'merc' = 직업·스킬, 'monster' = 몬스터, 'secret' = 시크릿 레어
 
     function selectCodexJob(jobKey) {
       if (!JOB_DEFS[jobKey]) return;
@@ -8412,7 +8431,7 @@
       renderCodexTab();
     }
     function selectCodexView(view) {
-      codexView = ['monster', 'secret', 'design'].includes(view) ? view : 'merc';
+      codexView = ['monster', 'secret'].includes(view) ? view : 'merc';
       renderCodexTab();
     }
 
@@ -8432,8 +8451,7 @@
         const tabBtn = (view, label) => `<button onclick="selectCodexView('${view}')" class="px-3 py-1.5 rounded-xl text-xs sm:text-sm font-extrabold border ${codexView === view ? 'bg-indigo-600 border-indigo-400 text-white shadow' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}">${label}</button>`;
         tabs.innerHTML = tabBtn('merc', `🧙 용병 도감 <span class="text-[11px] opacity-80">스킬 ${skillOpen}/${skillTotal}</span>`)
           + tabBtn('monster', `👾 몬스터 도감 <span class="text-[11px] opacity-80">${monOpen}/${monTotal}</span>`)
-          + tabBtn('secret', `🔥 시크릿 레어 도감 <span class="text-[11px] opacity-80">${secretOpen}/${secretList.length}</span>`)
-          + tabBtn('design', '🎨 학급 디자인');
+          + tabBtn('secret', `🔥 시크릿 레어 도감 <span class="text-[11px] opacity-80">${secretOpen}/${secretList.length}</span>`);
       }
       const mercView = document.getElementById('codexMercView');
       const monView = document.getElementById('codexMonsterView');
@@ -8441,11 +8459,8 @@
       const secretView = document.getElementById('codexSecretView');
       if (monView) monView.classList.toggle('hidden', codexView !== 'monster');
       if (secretView) secretView.classList.toggle('hidden', codexView !== 'secret');
-      const designView = document.getElementById('codexDesignView');
-      if (designView) designView.classList.toggle('hidden', codexView !== 'design');
       if (codexView === 'monster') { renderCodexMonsters(stu); return; }
       if (codexView === 'secret') { renderCodexSecrets(stu); return; }
-      if (codexView === 'design') { renderCodexDesigns(stu); return; }
 
       CODEX_JOBS.forEach(j => {
         const iconEl = document.getElementById(`bannerWpnIcon_${j}`);
@@ -8580,7 +8595,7 @@
     // 학생은 제미나이를 직접 쓰지 않음
     const SKIN_DESIGN_MAX_PENDING = 3;       // 한 학생이 검토를 기다리게 둘 수 있는 디자인 수
     const SKIN_DESIGN_IMAGE_MAX = 400000;    // 그림(data URL) 최대 길이. DB 규칙과 같은 값
-    const SkinDesignBox = { key: '', items: {}, loading: false, draft: null };
+    const SkinDesignBox = { key: '', items: {}, loading: false };
 
     async function loadMySkinDesigns(force = false) {
       const db = StudentPw.db();
@@ -8603,33 +8618,15 @@
       renderMySkinDesigns();
     }
 
-    // 고른 그림을 긴 변 512px 이하로 줄여 data URL로 (용량을 줄여 DB에 바로 저장)
+    // 그림 파일을 그림판에 불러옴 (불러온 그림 위에 더 그려서 고칠 수 있음)
     function readSkinDesignImage(input) {
       const file = input && input.files && input.files[0];
+      if (input) input.value = '';
       if (!file) return;
-      if (!/^image\//.test(file.type)) { showNotice('⚠️ 그림 파일만 낼 수 있어요.'); return; }
+      if (!/^image\//.test(file.type)) { showNotice('⚠️ 그림 파일만 올릴 수 있어요.'); return; }
       const img = new Image();
       const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const k = Math.min(1, 512 / Math.max(img.width, img.height));
-        const cv = document.createElement('canvas');
-        cv.width = Math.max(1, Math.round(img.width * k));
-        cv.height = Math.max(1, Math.round(img.height * k));
-        const ctx = cv.getContext('2d');
-        ctx.fillStyle = '#ffffff'; // 투명한 부분은 흰 바탕으로
-        ctx.fillRect(0, 0, cv.width, cv.height);
-        ctx.drawImage(img, 0, 0, cv.width, cv.height);
-        let data = '';
-        for (const q of [0.85, 0.7, 0.5]) {
-          data = cv.toDataURL('image/jpeg', q);
-          if (data.length <= SKIN_DESIGN_IMAGE_MAX) break;
-        }
-        if (data.length > SKIN_DESIGN_IMAGE_MAX) { showNotice('⚠️ 그림이 너무 커요. 더 작은 그림으로 골라 주세요.'); return; }
-        SkinDesignBox.draft = data;
-        const pv = document.getElementById('skinDesignPreview');
-        if (pv) pv.innerHTML = `<img src="${data}" alt="" class="w-16 h-16 object-contain rounded-lg bg-white">`;
-      };
+      img.onload = () => { URL.revokeObjectURL(url); SkinPad.drawImage(img); };
       img.onerror = () => { URL.revokeObjectURL(url); showNotice('⚠️ 그림을 열 수 없어요.'); };
       img.src = url;
     }
@@ -8644,16 +8641,18 @@
       const note = cleanUserText((document.getElementById('skinDesignNote') || {}).value, 120);
       if (!JOB_DEFS[job] || !CODEX_JOBS.includes(job)) { showNotice('⚠️ 직업을 골라 주세요.'); return; }
       if (!title) { showNotice('⚠️ 외형 이름을 적어 주세요.'); return; }
-      if (!SkinDesignBox.draft) { showNotice('⚠️ 디자인 그림을 골라 주세요.'); return; }
       const pending = Object.entries(SkinDesignBox.items).filter(([id, d]) => !ClassSkins.list[id] && d.status !== 'rejected').length;
       if (pending >= SKIN_DESIGN_MAX_PENDING) { showNotice(`⚠️ 검토를 기다리는 디자인은 ${SKIN_DESIGN_MAX_PENDING}개까지예요. 하나를 지우고 다시 내 주세요.`); return; }
+      const image = SkinPad.exportImage();
+      if (!image) { showNotice('⚠️ 그림판에 그림을 그리거나 그림 파일을 올려 주세요.'); return; }
       const id = 'd_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
-      const entry = { job, title, note, image: SkinDesignBox.draft, name: cleanUserText(me.name), at: window.firebase.database.ServerValue.TIMESTAMP };
+      const entry = { job, title, note, image, name: cleanUserText(me.name), at: window.firebase.database.ServerValue.TIMESTAMP };
       try {
         await db.ref(`classes/${code}/skinDesigns/${me.id}/${id}`).set(entry);
         SkinDesignBox.items[id] = { ...entry, at: Date.now() };
-        SkinDesignBox.draft = null;
-        renderCodexDesigns(me);
+        SkinPad.clear(false);
+        ['skinDesignTitle', 'skinDesignNote'].forEach(k => { const el = document.getElementById(k); if (el) el.value = ''; });
+        renderSkinWorkshop(me);
         showRewardBanner(`🎨 '${title}' 디자인을 냈어요! 선생님이 다듬어서 검토한 뒤 승인해 주실 거예요.`);
       } catch (e) {
         console.warn(e);
@@ -8692,7 +8691,7 @@
         me.ownedSkins = { ...(me.ownedSkins || {}), [id]: true };
         saveState();
         updateHeaderUI();
-        renderCodexDesigns(me);
+        renderSkinWorkshop(me);
         showRewardBanner(`🎉 '${cleanUserText(e.title, 20)}' 외형을 갖게 됐어요! 용병 상세 → 외형 변경에서 입혀 보세요. (-${STUDENT_SKIN_PRICE.toLocaleString()} CA)`);
       });
     }
@@ -8705,7 +8704,7 @@
       if (price < SKIN_SHARE_PRICE_MIN || price > SKIN_SHARE_PRICE_MAX) { showNotice(`⚠️ 공유 값은 ${SKIN_SHARE_PRICE_MIN.toLocaleString()}~${SKIN_SHARE_PRICE_MAX.toLocaleString()} CA로 정해 주세요.`); return; }
       me.skinShares = { ...(me.skinShares || {}), [id]: price };
       saveState();
-      renderCodexDesigns(me);
+      renderSkinWorkshop(me);
       showRewardBanner(`🤝 ${price.toLocaleString()} CA에 공유를 열었어요! 친구가 공유받으면 CA가 들어와요.`);
     }
     function stopSkinShare(id) {
@@ -8715,7 +8714,7 @@
       delete next[id];
       me.skinShares = next;
       saveState();
-      renderCodexDesigns(me);
+      renderSkinWorkshop(me);
     }
 
     // 이 외형을 공유하는 친구들 (싼 값부터). 보유하고 있고 값이 맞는 친구만
@@ -8732,7 +8731,7 @@
       const me = getActiveStudent();
       const e = designSkinEntries().find(x => x.id === id);
       const offer = e && skinShareOffers(id, me).find(o => o.seller.id === sellerId);
-      if (!me || !e || !offer) { showNotice('⚠️ 친구가 공유를 그만뒀어요.'); renderCodexDesigns(me); return; }
+      if (!me || !e || !offer) { showNotice('⚠️ 친구가 공유를 그만뒀어요.'); renderSkinWorkshop(me); return; }
       if (ownsDesignSkin(me, id)) return;
       if ((me.mc || 0) < offer.price) { showNotice(`⚠️ CA가 부족해요! (필요: ${offer.price.toLocaleString()} CA)`); return; }
       const title = cleanUserText(e.title, 20);
@@ -8743,7 +8742,7 @@
         sendToStudent(offer.seller.id, { mc: offer.price, kind: `skin_share:${id}`, note: `'${title}' 외형을 ${cleanUserText(me.name)}에게 공유했어요.` });
         saveState();
         updateHeaderUI();
-        renderCodexDesigns(me);
+        renderSkinWorkshop(me);
         renderSideRankPanel();
         showRewardBanner(`🎨 '${title}' 외형을 공유받았어요! 용병 상세 → 외형 변경에서 입혀 보세요. (-${offer.price.toLocaleString()} CA)`);
       });
@@ -8799,14 +8798,227 @@
       }).join('');
     }
 
-    function renderCodexDesigns(stu) {
-      const box = document.getElementById('codexDesignView');
-      if (!box) return;
+    // ----- 스킨 제작소 그림판 -----
+    // 512×512 그림판(투명) 아래에 고른 직업의 실루엣을 옅게 깔아 따라 그릴 수 있게 함 (안내 그림은 내는 그림에 안 들어감)
+    // 그림 파일을 올리면 그림판에 불러와서 그 위에 더 그려 고칠 수 있음. 낼 때는 흰 바탕에 합쳐 JPEG로
+    const SKIN_PAD_SIZE = 512;
+    const SKIN_PAD_COLORS = ['#111827', '#ffffff', '#9ca3af', '#7f1d1d', '#dc2626', '#f97316', '#facc15', '#84cc16', '#16a34a', '#06b6d4', '#2563eb', '#7c3aed', '#db2777', '#f9a8d4', '#fcd9b6', '#92400e'];
+    const SKIN_PAD_SIZES = [['가늘게', 4], ['보통', 10], ['굵게', 22]];
+    const SkinPad = {
+      canvas: null, ctx: null, tool: 'pen', color: '#111827', size: 10, guide: true,
+      undo: [], drawing: false, last: null,
+      init() {
+        const cv = document.getElementById('skinPadCanvas');
+        if (!cv || cv === this.canvas) return;
+        this.canvas = cv;
+        this.ctx = cv.getContext('2d', { willReadFrequently: true });
+        this.undo = [];
+        cv.addEventListener('pointerdown', e => this.down(e));
+        cv.addEventListener('pointermove', e => this.move(e));
+        cv.addEventListener('pointerup', e => { if (this.drawing) this.stroke(this.last, this.pos(e)); this.drawing = false; });
+        ['pointercancel', 'lostpointercapture'].forEach(t => cv.addEventListener(t, () => { this.drawing = false; }));
+        this.drawGuide();
+        this.syncTools();
+      },
+      pos(e) {
+        const r = this.canvas.getBoundingClientRect();
+        return { x: (e.clientX - r.left) * SKIN_PAD_SIZE / r.width, y: (e.clientY - r.top) * SKIN_PAD_SIZE / r.height };
+      },
+      snapshot() {
+        this.undo.push(this.ctx.getImageData(0, 0, SKIN_PAD_SIZE, SKIN_PAD_SIZE));
+        if (this.undo.length > 30) this.undo.shift();
+      },
+      down(e) {
+        e.preventDefault();
+        try { this.canvas.setPointerCapture(e.pointerId); } catch (err) {}
+        const p = this.pos(e);
+        this.snapshot();
+        if (this.tool === 'fill') { this.fill(Math.floor(p.x), Math.floor(p.y)); return; }
+        this.drawing = true;
+        this.last = p;
+        this.stroke(p, p);
+      },
+      move(e) {
+        if (!this.drawing) return;
+        e.preventDefault();
+        const p = this.pos(e);
+        this.stroke(this.last, p);
+        this.last = p;
+      },
+      stroke(a, b) {
+        const c = this.ctx;
+        c.save();
+        c.globalCompositeOperation = this.tool === 'eraser' ? 'destination-out' : 'source-over';
+        c.strokeStyle = this.color;
+        c.lineWidth = this.tool === 'eraser' ? this.size * 2 : this.size;
+        c.lineCap = 'round';
+        c.lineJoin = 'round';
+        c.beginPath();
+        c.moveTo(a.x, a.y);
+        c.lineTo(b.x + 0.01, b.y);
+        c.stroke();
+        c.restore();
+      },
+      // 누른 곳과 비슷한 색으로 이어진 곳을 지금 색으로 채움 (빈 곳을 누르면 빈 곳 전체)
+      fill(x, y) {
+        if (x < 0 || y < 0 || x >= SKIN_PAD_SIZE || y >= SKIN_PAD_SIZE) return;
+        const img = this.ctx.getImageData(0, 0, SKIN_PAD_SIZE, SKIN_PAD_SIZE);
+        const d = img.data;
+        const at = (x + y * SKIN_PAD_SIZE) * 4;
+        const start = [d[at], d[at + 1], d[at + 2], d[at + 3]];
+        const fc = [1, 3, 5].map(i => parseInt(this.color.slice(i, i + 2), 16));
+        const same = i => (start[3] < 40 ? d[i + 3] < 40 : d[i + 3] >= 40 && Math.abs(d[i] - start[0]) + Math.abs(d[i + 1] - start[1]) + Math.abs(d[i + 2] - start[2]) < 60);
+        if (start[3] >= 40 && Math.abs(start[0] - fc[0]) + Math.abs(start[1] - fc[1]) + Math.abs(start[2] - fc[2]) < 10) return;
+        const seen = new Uint8Array(SKIN_PAD_SIZE * SKIN_PAD_SIZE);
+        const stack = [x + y * SKIN_PAD_SIZE];
+        seen[stack[0]] = 1;
+        while (stack.length) {
+          const p = stack.pop(), i = p * 4, px = p % SKIN_PAD_SIZE;
+          d[i] = fc[0]; d[i + 1] = fc[1]; d[i + 2] = fc[2]; d[i + 3] = 255;
+          [px > 0 ? p - 1 : -1, px < SKIN_PAD_SIZE - 1 ? p + 1 : -1, p - SKIN_PAD_SIZE, p + SKIN_PAD_SIZE].forEach(q => {
+            if (q >= 0 && q < seen.length && !seen[q] && same(q * 4)) { seen[q] = 1; stack.push(q); }
+          });
+        }
+        this.ctx.putImageData(img, 0, 0);
+      },
+      undoLast() {
+        const s = this.undo.pop();
+        if (s) this.ctx.putImageData(s, 0, 0);
+      },
+      clear(ask = true) {
+        const go = () => { this.snapshot(); this.ctx.clearRect(0, 0, SKIN_PAD_SIZE, SKIN_PAD_SIZE); };
+        if (!this.canvas) return;
+        if (!ask) { this.ctx.clearRect(0, 0, SKIN_PAD_SIZE, SKIN_PAD_SIZE); this.undo = []; return; }
+        if (!this.isEmpty()) askCustomConfirm('그림을 모두 지울까요? (되돌리기로 다시 살릴 수 있어요)', go);
+      },
+      // 올린 그림 파일을 그림판 가운데에 맞춰 불러옴
+      drawImage(img) {
+        if (!this.canvas) return;
+        this.snapshot();
+        const k = Math.min(SKIN_PAD_SIZE / img.width, SKIN_PAD_SIZE / img.height);
+        const w = img.width * k, h = img.height * k;
+        this.ctx.clearRect(0, 0, SKIN_PAD_SIZE, SKIN_PAD_SIZE);
+        this.ctx.drawImage(img, (SKIN_PAD_SIZE - w) / 2, (SKIN_PAD_SIZE - h) / 2, w, h);
+      },
+      isEmpty() {
+        if (!this.ctx) return true;
+        const d = this.ctx.getImageData(0, 0, SKIN_PAD_SIZE, SKIN_PAD_SIZE).data;
+        for (let i = 3; i < d.length; i += 16) if (d[i] > 0) return false;
+        return true;
+      },
+      // 흰 바탕에 합쳐 DB 크기 제한 안의 JPEG data URL로
+      exportImage() {
+        if (this.isEmpty()) return '';
+        const cv = document.createElement('canvas');
+        cv.width = cv.height = SKIN_PAD_SIZE;
+        const c = cv.getContext('2d');
+        c.fillStyle = '#ffffff';
+        c.fillRect(0, 0, SKIN_PAD_SIZE, SKIN_PAD_SIZE);
+        c.drawImage(this.canvas, 0, 0);
+        let data = '';
+        for (const q of [0.88, 0.75, 0.6, 0.45]) {
+          data = cv.toDataURL('image/jpeg', q);
+          if (data.length <= SKIN_DESIGN_IMAGE_MAX) return data;
+        }
+        return '';
+      },
+      // 고른 직업의 0번 외형 대기 자세를 크게, 옅게 깔아 줌
+      drawGuide() {
+        const g = document.getElementById('skinPadGuide');
+        if (!g) return;
+        const c = g.getContext('2d');
+        c.clearRect(0, 0, g.width, g.height);
+        const job = (document.getElementById('skinDesignJob') || {}).value;
+        const def = MERC_SPRITE_DEFS[`${job}_0`];
+        if (!this.guide || !def || !def.ready) return;
+        const fr = (def.anims.idle || def.anims.walk)[0];
+        const k = 380 / def.standH;
+        c.globalAlpha = 0.18;
+        c.imageSmoothingEnabled = false;
+        c.drawImage(def.img, fr * def.cellW, 0, def.cellW, def.cellH, 256 - def.anchorX * k, 480 - def.anchorY * k, def.cellW * k, def.cellH * k);
+      },
+      setTool(t) { this.tool = t; this.syncTools(); },
+      setColor(c) { this.color = c; if (this.tool === 'eraser') this.tool = 'pen'; this.syncTools(); },
+      setSize(s) { this.size = s; this.syncTools(); },
+      toggleGuide() { this.guide = !this.guide; this.drawGuide(); this.syncTools(); },
+      syncTools() {
+        const on = (el, yes) => { el.classList.toggle('ring-2', yes); el.classList.toggle('ring-fuchsia-400', yes); };
+        document.querySelectorAll('[data-pad-tool]').forEach(b => on(b, b.dataset.padTool === this.tool));
+        document.querySelectorAll('[data-pad-color]').forEach(b => on(b, b.dataset.padColor === this.color && this.tool !== 'eraser'));
+        document.querySelectorAll('[data-pad-size]').forEach(b => on(b, Number(b.dataset.padSize) === this.size));
+        const gb = document.getElementById('skinPadGuideBtn');
+        if (gb) gb.textContent = this.guide ? '👤 실루엣 숨기기' : '👤 실루엣 보기';
+        const pick = document.getElementById('skinPadColorPick');
+        if (pick && pick.value !== this.color) pick.value = this.color;
+      }
+    };
+
+    // 그림판·입력칸은 처음 한 번만 만들고 (그리던 그림이 지워지지 않게), 목록만 다시 그림
+    function buildSkinWorkshopEditor() {
+      const box = document.getElementById('skinWorkshopEditor');
+      if (!box || box.dataset.built) return;
+      box.dataset.built = '1';
+      const tool = (t, label) => `<button type="button" data-pad-tool="${t}" onclick="SkinPad.setTool('${t}')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200">${label}</button>`;
+      box.innerHTML = `
+        <div class="flex flex-col lg:flex-row gap-4">
+          <div class="flex flex-col gap-2 w-full lg:w-[420px] shrink-0">
+            <div class="relative w-full max-w-[420px] aspect-square rounded-xl overflow-hidden border-2 border-slate-700 bg-white">
+              <canvas id="skinPadGuide" width="${SKIN_PAD_SIZE}" height="${SKIN_PAD_SIZE}" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+              <canvas id="skinPadCanvas" width="${SKIN_PAD_SIZE}" height="${SKIN_PAD_SIZE}" class="absolute inset-0 w-full h-full cursor-crosshair" style="touch-action:none"></canvas>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              ${tool('pen', '✏️ 펜')}${tool('eraser', '🧽 지우개')}${tool('fill', '🪣 채우기')}
+              <button type="button" onclick="SkinPad.undoLast()" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200">↩️ 되돌리기</button>
+              <button type="button" onclick="SkinPad.clear()" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-200">🗑️ 모두 지우기</button>
+            </div>
+            <div class="flex flex-wrap items-center gap-1">
+              ${SKIN_PAD_COLORS.map(c => `<button type="button" data-pad-color="${c}" onclick="SkinPad.setColor('${c}')" title="${c}" class="w-6 h-6 rounded-md border border-slate-600" style="background:${c}"></button>`).join('')}
+              <input id="skinPadColorPick" type="color" value="#111827" oninput="SkinPad.setColor(this.value)" title="다른 색 고르기" class="w-7 h-7 rounded-md bg-transparent cursor-pointer">
+            </div>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="text-[11px] text-slate-400">굵기</span>
+              ${SKIN_PAD_SIZES.map(([l, s]) => `<button type="button" data-pad-size="${s}" onclick="SkinPad.setSize(${s})" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-200">${l}</button>`).join('')}
+              <button type="button" id="skinPadGuideBtn" onclick="SkinPad.toggleGuide()" class="ml-auto px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-200">👤 실루엣 숨기기</button>
+            </div>
+          </div>
+          <div class="flex flex-col gap-2.5 flex-1 min-w-0">
+            <label class="text-[11px] font-bold text-slate-300">① 직업 고르기
+              <select id="skinDesignJob" onchange="SkinPad.drawGuide()" class="mt-1 w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-white">
+                ${CODEX_JOBS.map(j => `<option value="${j}">${JOB_DEFS[j].icon} ${JOB_DEFS[j].name}</option>`).join('')}
+              </select>
+            </label>
+            <div class="text-[11px] font-bold text-slate-300">② 그림 그리기 또는 그림 파일 올리기</div>
+            <p class="text-[11px] text-slate-400">왼쪽 그림판에 직접 그려도 되고, 종이에 그린 그림을 사진으로 찍어 올려도 돼요. 올린 그림 위에 더 그려서 고칠 수도 있어요. 옅은 실루엣은 크기를 맞추는 안내선이라 제출할 때는 빠져요.</p>
+            <label class="self-start px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 cursor-pointer">🖼️ 그림 파일 올리기
+              <input type="file" accept="image/*" class="hidden" onchange="readSkinDesignImage(this)">
+            </label>
+            <label class="text-[11px] font-bold text-slate-300">③ 외형 이름 (20자)
+              <input id="skinDesignTitle" maxlength="20" placeholder="예: 용암 기사" class="mt-1 w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-white">
+            </label>
+            <label class="text-[11px] font-bold text-slate-300">④ 설명 (색깔·무기·특징, 120자)
+              <textarea id="skinDesignNote" maxlength="120" rows="3" placeholder="예: 빨간 갑옷에 불꽃 무늬, 검은 망토, 큰 도끼" class="mt-1 w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-white"></textarea>
+            </label>
+            <div id="skinWorkshopSubmitRow" class="flex items-center gap-2 flex-wrap"></div>
+          </div>
+        </div>`;
+      SkinPad.init();
+    }
+
+    function renderSkinWorkshop(stu = getActiveStudent()) {
+      const panel = document.getElementById('studentTab-skinlab');
+      if (!panel) return;
+      buildSkinWorkshopEditor();
+      SkinPad.drawGuide(); // 직업 그림을 늦게 받았을 때도 실루엣이 나오게
       const code = StudentPw.code();
       const online = StudentPw.online() && Boolean(stu);
       if (online && SkinDesignBox.key !== `${code}:${stu.id}`) loadMySkinDesigns();
+      const row = document.getElementById('skinWorkshopSubmitRow');
+      if (row) row.innerHTML = online
+        ? `<button onclick="submitSkinDesign()" class="px-5 py-2 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 text-sm font-extrabold text-white">📮 선생님께 제출하기</button><span class="text-[11px] text-slate-400">검토를 기다리는 디자인은 ${SKIN_DESIGN_MAX_PENDING}개까지 낼 수 있어요.</span>`
+        : '<span class="text-xs text-amber-300">학급 서버에 접속한 학생만 제출할 수 있어요. (그림은 그려 볼 수 있어요)</span>';
       const approved = designSkinEntries();
-      const gallery = approved.length
+      const gallery = document.getElementById('skinWorkshopGallery');
+      if (gallery) gallery.innerHTML = approved.length
         ? approved.map(e => {
             const sprite = MERC_SPRITE_DEFS[`${e.job}_${e.variant}`];
             const jd = JOB_DEFS[e.job];
@@ -8819,41 +9031,6 @@
             </div>`;
           }).join('')
         : '<div class="col-span-full text-xs text-slate-500">아직 승인된 우리 반 디자인이 없어요. 첫 번째 디자이너가 되어 보세요!</div>';
-      const draft = SkinDesignBox.draft;
-      const form = online ? `
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <label class="text-[11px] font-bold text-slate-300">① 직업 고르기
-            <select id="skinDesignJob" class="mt-1 w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-white">
-              ${CODEX_JOBS.map(j => `<option value="${j}">${JOB_DEFS[j].icon} ${JOB_DEFS[j].name}</option>`).join('')}
-            </select>
-          </label>
-          <label class="text-[11px] font-bold text-slate-300">② 외형 이름 (20자)
-            <input id="skinDesignTitle" maxlength="20" placeholder="예: 용암 기사" class="mt-1 w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-white">
-          </label>
-        </div>
-        <label class="text-[11px] font-bold text-slate-300">③ 설명 (색깔·무기·특징, 120자)
-          <textarea id="skinDesignNote" maxlength="120" rows="2" placeholder="예: 빨간 갑옷에 불꽃 무늬, 검은 망토, 큰 도끼" class="mt-1 w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-white"></textarea>
-        </label>
-        <div class="flex items-center gap-3 flex-wrap">
-          <label class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 cursor-pointer">🖼️ ④ 디자인 그림 고르기
-            <input type="file" accept="image/*" class="hidden" onchange="readSkinDesignImage(this)">
-          </label>
-          <span id="skinDesignPreview">${draft ? `<img src="${draft}" alt="" class="w-16 h-16 object-contain rounded-lg bg-white">` : '<span class="text-[11px] text-slate-500">종이에 그린 그림을 사진으로 찍어도 돼요.</span>'}</span>
-          <button onclick="submitSkinDesign()" class="ml-auto px-4 py-1.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 text-sm font-extrabold text-white">디자인 내기</button>
-        </div>`
-        : '<p class="text-xs text-slate-400">학급 서버에 접속한 학생만 디자인을 낼 수 있어요.</p>';
-      box.innerHTML = `
-        <div class="bg-slate-900 border border-fuchsia-500/40 rounded-2xl p-4 flex flex-col gap-3">
-          <h4 class="font-title text-lg text-fuchsia-300">🎨 용병 외형 디자인 내기</h4>
-          <p class="text-[11px] text-slate-400">직업을 고르고 내가 디자인한 용병 그림을 내면, 선생님이 게임 그림체에 맞게 다듬고 움직이는 동작까지 만들어 검토해요. 승인되면 ${STUDENT_SKIN_PRICE.toLocaleString()} CA를 내고 내 용병에게 입힐 수 있고, 친구에게 값을 받고 공유할 수도 있어요.</p>
-          ${form}
-          <div id="skinDesignMine" class="flex flex-col gap-2"></div>
-        </div>
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
-          <h4 class="font-title text-lg text-white">✨ 승인된 우리 반 디자인</h4>
-          <p class="text-[11px] text-slate-400">친구가 디자인한 외형은 그 외형을 가진 친구가 공유를 열면, 정한 CA를 주고 공유받을 수 있어요.</p>
-          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">${gallery}</div>
-        </div>`;
       renderMySkinDesigns();
     }
 
@@ -19756,6 +19933,7 @@
       if (tabKey === 'squad') renderSquadTab();
       if (tabKey === 'office') renderOfficeTab();
       if (tabKey === 'codex') renderCodexTab();
+      if (tabKey === 'skinlab') renderSkinWorkshop();
       if (tabKey === 'market') renderMarketTab();
       if (tabKey === 'tower') renderTowerTab();
       if (tabKey === 'raid') renderCoopRaidTab();
@@ -19770,6 +19948,7 @@
       renderSquadTab();
       renderOfficeTab();
       renderCodexTab();
+      renderSkinWorkshop();
       renderMarketTab();
       renderTowerTab();
       renderCoopRaidTab();
