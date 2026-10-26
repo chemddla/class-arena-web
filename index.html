@@ -4008,6 +4008,21 @@
         roar:        { anim: 'shout', tpf: 12, dur: 44 }
       }
     };
+    // 해골 궁수 (두건·화살통·활): 칸 순서 = 대기, 걷기 A·B, 시위 당기기, 쏘기, 피격, 쓰러짐 2장
+    // (샘플 쏘기 칸은 시위를 놓았는데도 화살이 활에 걸려 있고 시위도 당겨진 채라, 걸린 화살·날아가는 화살을 지우고
+    //  시위를 곧게 다시 그림. 피격 칸의 붉은 핏방울은 해골이라 뼛가루 빛으로 바꿈. 활과 시위 사이 배경도 투명하게)
+    // 해골 병사와 같은 배율이 되게 standH를 맞춤. 3중 화살·독화살·연사는 쏘는 동작, 화살비는 조금 길게 당겼다 쏨
+    MONSTER_SPRITE_DEFS.skeleton_archer = {
+      src: 'assets/sprites/monster/skeleton_archer.webp',
+      cellW: 132, cellH: 114, anchorX: 66, anchorY: 108, standH: 97, topH: 96, count: 8,
+      anims: { idle: [0], walk: [1, 0, 2, 0], attack: [3, 4, 4], skill: [3, 3, 4, 4], hurt: [5], death: [6, 7] },
+      skillAnims: {
+        triple_arrow: { anim: 'attack', tpf: 5, dur: 15 },
+        poison_arrow: { anim: 'attack', tpf: 5, dur: 15 },
+        rapid_fire:   { anim: 'attack', tpf: 5, dur: 15 },
+        arrow_rain:   { anim: 'skill', tpf: 8, dur: 32 }
+      }
+    };
     // 찾는 순서: '<몬스터>_<직업>_<대표 스킬>' → '<몬스터>_<직업>' → '<몬스터>'
     function getUnitSprite(u) {
       if (!u.monsterType) return getMercSprite(u.job, u.skinVariant || 0);
@@ -4057,14 +4072,24 @@
         flame_hit: [[1064,0,124,105,62,53],[1190,0,185,174,93,87]]
       }
     };
+    // 마법사 파이어볼·아이스애로우·썬더볼트 (원본 샘플: assets/sprites/fx/samples/mage_spell_white.png)
+    // 셋 다 오른쪽으로 날아가게 돌려 놓은 그림. 기준점 = 불덩이 중심·얼음 촉·번개 끝
+    const MAGE_SPELL_FX = {
+      src: 'assets/sprites/fx/mage_spell_fx.webp',
+      anims: {
+        fireball: [[0,0,237,130,178,68]],
+        ice: [[239,0,313,107,286,55]],
+        bolt: [[554,0,340,99,323,63]]
+      }
+    };
     // 투사체 종류별 그림과 크기(첫 프레임 높이, 월드 px). match가 있으면 그 조건을 만족할 때만 (성녀 분홍 구슬 제외)
     // 투사체에 spr가 붙어 있으면 그 키를 먼저 찾음 (sheet = 다른 아틀라스, hit = 터질 때 그릴 효과 그림)
     const PROJECTILE_SPRITES = {
       bomb:            { anim: 'bomb', h: 37, sheet: GOBLIN_BOMB_FX, hit: 'bomb_hit' },          // 폭탄 지름 약 16
       goblin_fireball: { anim: 'fireball', h: 36, sheet: GOBLIN_BOMB_FX, hit: 'flame_hit' },
       magic_orb:      { anim: 'orb', h: 18.2, match: p => !p.color || p.color === '#7c3aed' }, // 마법사 기본 공격 구슬 (26에서 30% 작게)
-      fireball_proj:  { anim: 'fireball', h: 34 },
-      ice_arrow_proj: { anim: 'ice', h: 22 },
+      fireball_proj:  { anim: 'fireball', h: 34, sheet: MAGE_SPELL_FX },
+      ice_arrow_proj: { anim: 'ice', h: 22, sheet: MAGE_SPELL_FX },
       arrow:          { anim: 'arrow', h: 8 },
       golden_arrow:   { anim: 'arrow', h: 8 },
       poison_arrow:   { anim: 'poison_arrow', h: 8 }
@@ -4122,7 +4147,7 @@
     LANCER_JAVELIN_FX.onload = () => { LANCER_JAVELIN_FX.ready = true; };
     LANCER_JAVELIN_FX.src = 'assets/sprites/fx/lancer_javelin_fx.webp';
 
-    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX).forEach(def => {
+    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX).forEach(def => {
       def.img = new Image();
       def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
       def.img.src = def.src;
@@ -13671,6 +13696,22 @@
           const dx = ef.tx - ef.sx, dy = ef.ty - ef.sy;
           const len = Math.hypot(dx, dy) || 1;
           const ang = Math.atan2(dy, dx);
+          if (MAGE_SPELL_FX.ready) {
+            // 번개 한 줄기를 시전자→대상 길이로 늘림. 4틱마다 위아래를 뒤집어 번쩍임
+            const fr = MAGE_SPELL_FX.anims.bolt[0];
+            const ky = 30 / fr[3];
+            ctx.save();
+            ctx.translate(ef.sx, ef.sy);
+            ctx.rotate(ang);
+            if (Math.floor(ef.life / 4) % 2) ctx.scale(1, -1);
+            ctx.globalAlpha = fadeOut;
+            ctx.imageSmoothingEnabled = true;
+            ctx.drawImage(MAGE_SPELL_FX.img, fr[0], fr[1], fr[2], fr[3], 0, -fr[3] / 2 * ky, len, fr[3] * ky);
+            ctx.restore();
+            const hit = A.bolt_hit[0];
+            drawFxFrame(ctx, hit, ef.tx, ef.ty - 12, (74 * (0.8 + 0.2 * Math.sin(progress * Math.PI))) / hit[2], 0, fadeOut);
+            return true;
+          }
           const fr = A.bolt[Math.floor(ef.life / 4) % A.bolt.length];
           const k = 30 / fr[3];        // 줄기 조각 길이 배율
           const ky = 16 / fr[3];       // 줄기 굵기 배율 (길이는 그대로 두고 굵기만 얇게)
