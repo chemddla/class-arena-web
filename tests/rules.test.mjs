@@ -290,6 +290,35 @@ test('실시간 결투 화면 전달(pvp_live): 학급이 있으면 쓰고 지�
   await assertFails(db(null).ref('classes/OWN1/pvp_livex/pvp_s1').set({ t: 1 }));
 });
 
+// ----- 학생 외형 디자인 (classes/{학급}/skinDesigns/{학생}/{id}) -----
+const design = (extra = {}) => ({ job: 'knight', title: '용암 기사', note: '빨간 갑옷', name: 's1', image: 'data:image/jpeg;base64,AAAA', at: Date.now() - 1000, ...extra });
+
+test('학생 디자인: 로그인한 학생은 자기 칸에만 내고 지울 수 있음', async () => {
+  await assertSucceeds(db('u1').ref('classes/OWN1/skinDesigns/s1/d_abc123').set(design()));
+  await assertSucceeds(db('u1').ref('classes/OWN1/skinDesigns/s1/d_abc123').remove());
+  await assertFails(db('u1').ref('classes/OWN1/skinDesigns/s2/d_abc124').set(design())); // 남의 칸
+  await assertFails(db('u2').ref('classes/OWN1/skinDesigns/s1/d_abc125').set(design())); // 로그인 안 된 기기
+  await assertFails(db(null).ref('classes/OWN1/skinDesigns/s1/d_abc126').set(design()));
+  await assertFails(db('u1').ref('classes/OWN1/skinDesigns/nobody/d_abc127').set(design())); // 없는 학생
+  await assertSucceeds(db('teacher').ref('classes/OWN1/skinDesigns/s2/d_tch001').set(design()));
+  await assertSucceeds(db('teacher').ref('classes/OWN1/skinDesigns/s2').remove());
+  await assertSucceeds(db(null).ref('classes/OLD1/skinDesigns/s1/d_old001').set(design())); // 소유자 없는 예전 학급
+});
+
+test('학생 디자인: 이상한 값은 낼 수 없음', async () => {
+  const put = (id, d) => db('u1').ref(`classes/OWN1/skinDesigns/s1/${id}`).set(d);
+  await assertFails(put('d_bad001', design({ job: 'dragon' })));
+  await assertFails(put('d_bad002', design({ title: '' })));
+  await assertFails(put('d_bad003', design({ title: 'x'.repeat(21) })));
+  await assertFails(put('d_bad004', design({ image: 'javascript:alert(1)' })));
+  await assertFails(put('d_bad005', design({ image: 'data:image/png;base64,' + 'A'.repeat(400000) })));
+  await assertFails(put('d_bad006', design({ extra: 1 })));
+  await assertFails(put('d_bad007', design({ at: Date.now() + 60000 })));
+  await assertFails(put('bad_id01', design()));
+  const { image, ...noImage } = design();
+  await assertFails(put('d_bad008', noImage));
+});
+
 // ----- 교사 PIN·교사 키 증명 (classSecrets): 서버에서 읽어갈 수 없고, 맞는 값인지 확인만 가능 -----
 const S = (c) => 'sh_' + c.repeat(64);
 const [SA, SB, SC] = [S('a'), S('b'), S('c')];

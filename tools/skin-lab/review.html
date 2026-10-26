@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>디자인 검토실</title>
+<style>
+  :root { --bg: #0f172a; --panel: #1e293b; --line: #334155; --text: #e2e8f0; --dim: #94a3b8; --accent: #d946ef; --ok: #34d399; --warn: #fbbf24; --bad: #fb7185; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, 'Malgun Gothic', sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: #020617ee; border-bottom: 1px solid var(--line); padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  h1 { font-size: 18px; margin: 0 12px 0 0; }
+  main { padding: 16px; display: flex; flex-direction: column; gap: 16px; max-width: 1400px; margin: 0 auto; }
+  input, select, textarea { background: #020617; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
+  button { background: #334155; color: var(--text); border: 0; border-radius: 8px; padding: 6px 12px; font: inherit; font-weight: 700; cursor: pointer; }
+  button:hover:not(:disabled) { background: #475569; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.main { background: var(--accent); color: #fff; }
+  button.go { background: #059669; color: #fff; }
+  button.danger { background: #9f1239; color: #fff; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: #334155; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; grid-template-columns: 220px 220px 1fr; gap: 14px; }
+  .card.rejected { opacity: .55; }
+  .card.released { border-color: var(--ok); }
+  @media (max-width: 900px) { .card { grid-template-columns: 1fr; } }
+  .art { width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: 10px; background: #fff; }
+  .checker { background: repeating-conic-gradient(#cbd5e1 0% 25%, #f8fafc 0% 50%) 50% / 16px 16px; }
+  .dim { color: var(--dim); font-size: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .anims { display: flex; flex-wrap: wrap; gap: 8px; }
+  .anim { background: #020617; border: 1px solid var(--line); border-radius: 10px; padding: 6px; text-align: center; font-size: 11px; color: var(--dim); }
+  .anim canvas { display: block; image-rendering: pixelated; }
+  .groups { display: flex; flex-wrap: wrap; gap: 6px; }
+  .group { background: #020617; border: 1px solid var(--line); border-radius: 8px; padding: 4px; font-size: 11px; display: flex; flex-direction: column; gap: 4px; align-items: center; width: 132px; }
+  .group img { width: 124px; height: 56px; object-fit: contain; }
+  .log { font-size: 11px; color: var(--dim); max-height: 90px; overflow: auto; white-space: pre-wrap; background: #020617; border-radius: 8px; padding: 6px; }
+  .warn { color: var(--warn); font-size: 12px; }
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+  .empty { color: var(--dim); text-align: center; padding: 40px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎨 학생 외형 디자인 검토실</h1>
+  <span id="keyState" class="pill">…</span>
+  <span class="row">
+    <input id="classCode" placeholder="학급 코드" size="10">
+    <button class="main" onclick="fetchClass()">학생 디자인 받아오기</button>
+  </span>
+  <span class="row">
+    <label class="dim">보기 <select id="filter" onchange="render()">
+      <option value="todo">검토할 것</option><option value="all">전부</option><option value="released">출시됨</option><option value="rejected">반려</option>
+    </select></label>
+  </span>
+</header>
+<main>
+  <details>
+    <summary>📎 그림 파일로 직접 추가 (종이 그림 사진 등)</summary>
+    <div class="row" style="margin-top:8px">
+      <select id="impJob"></select>
+      <input id="impTitle" placeholder="외형 이름" maxlength="20">
+      <input id="impDesigner" placeholder="디자인한 학생 이름" maxlength="40">
+      <input id="impClass" placeholder="학급 코드" size="10">
+      <input id="impNote" placeholder="설명 (색깔·무기·특징)" maxlength="120" size="30">
+      <input id="impFile" type="file" accept="image/*">
+      <button onclick="importFile()">추가</button>
+    </div>
+  </details>
+  <div id="list"></div>
+</main>
+<script>
+let designs = [], hasKey = false, jobs = {};
+const imgCache = {};
+const STATUS = { new: ['새 디자인', '#64748b'], refined: ['다듬기 끝', '#7c3aed'], made: ['시트 완성 · 검토', '#d97706'], released: ['출시됨', '#059669'], rejected: ['반려', '#9f1239'] };
+
+async function api(path, body) {
+  const res = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Skin-Lab': '1' }, body: JSON.stringify(body) });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error || res.status);
+  return j;
+}
+async function load() {
+  const j = await api('/api/designs');
+  designs = j.designs; hasKey = j.hasKey; jobs = j.jobs;
+  const ks = document.getElementById('keyState');
+  ks.textContent = hasKey ? '제미나이 키 ✓' : '제미나이 키 없음';
+  ks.style.background = hasKey ? '#065f46' : '#9f1239';
+  const sel = document.getElementById('impJob');
+  if (!sel.options.length) sel.innerHTML = Object.entries(jobs).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('');
+  render();
+  clearTimeout(load.t);
+  load.t = setTimeout(load, designs.some(d => d.busy) ? 2000 : 15000);
+}
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function render() {
+  const f = document.getElementById('filter').value;
+  const shown = designs.filter(d => f === 'all' || (f === 'todo' ? !['released', 'rejected'].includes(d.status) : d.status === f));
+  const box = document.getElementById('list');
+  // 입력 중이 아니면 다시 그림 (애니메이션 캔버스는 아래에서 다시 연결)
+  box.innerHTML = shown.length ? shown.map(card).join('') : '<div class="empty">보여 줄 디자인이 없어요. 학급 코드를 넣고 [학생 디자인 받아오기]를 눌러 주세요.</div>';
+  shown.forEach(d => attachAnims(d));
+}
+
+function card(d) {
+  const [label, color] = STATUS[d.status] || [d.status, '#64748b'];
+  const dis = d.busy || !hasKey ? 'disabled' : '';
+  const t = d.files;
+  const work = f => `/work/${encodeURIComponent(d.id)}/${f}`;
+  const groups = d.groups.map(g => `
+    <div class="group">
+      <b>${esc(g.key)}</b><span class="dim">칸 ${g.frames.join(', ')}</span>
+      ${g.done ? `<img class="checker" src="${work(`motion_${g.key}.png`)}?v=${t.sheet}" alt="">` : '<span class="dim" style="height:56px;display:flex;align-items:center">아직 없음</span>'}
+      <button ${dis} onclick="act('motion', '${d.id}', ['${g.key}'])">${g.done ? '다시' : '그리기'}</button>
+    </div>`).join('');
+  return `
+  <section class="card ${d.status}">
+    <div>
+      <img class="art" src="${work(d.designFile)}?v=${t.design}" alt="">
+      <div style="margin-top:6px"><b>${esc(d.title) || '(이름 없음)'}</b> <span class="pill">${esc(jobs[d.job]?.name || d.job)}</span></div>
+      <div class="dim">디자인: ${esc(d.designer)} · 학급 ${esc(d.classCode)}</div>
+      ${d.note ? `<div class="dim">“${esc(d.note)}”</div>` : ''}
+      <div style="margin-top:4px"><span class="pill" style="background:${color}">${label}</span> ${d.busy ? `<span class="pill" style="background:#1d4ed8">⏳ ${esc(d.busy)}</span>` : ''}</div>
+    </div>
+    <div>
+      ${t.refined ? `<img class="art checker" src="${work('refined.png')}?v=${t.refined}" alt="">` : '<div class="art" style="background:#020617;display:flex;align-items:center;justify-content:center;color:#64748b">① 다듬기 전</div>'}
+      <div class="row" style="margin-top:6px">
+        <button class="main" ${dis} onclick="act('refine', '${d.id}')">${t.refined ? '① 다시 다듬기' : '① 제미나이로 다듬기'}</button>
+      </div>
+      <div class="dim">다듬은 그림이 학생 디자인을 잘 살렸는지 먼저 보고 ②로 넘어가세요.</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+      <div class="row">
+        <button class="main" ${dis || (t.refined ? '' : 'disabled')} onclick="act('motion', '${d.id}')">② 동작 전부 그리기 (${d.groups.length}번 요청)</button>
+        <button ${d.busy ? 'disabled' : ''} ${d.groups.some(g => g.done) ? '' : 'disabled'} onclick="act('assemble', '${d.id}')">시트 다시 조립</button>
+        <span style="flex:1"></span>
+        ${d.status === 'rejected'
+          ? `<button onclick="act('reject', '${d.id}', null, true)">반려 취소</button>`
+          : d.status === 'released' ? `<span class="pill" style="background:#059669">${esc(d.released?.file || '')}</span>`
+          : `<button class="danger" ${d.busy ? 'disabled' : ''} onclick="act('reject', '${d.id}')">반려</button>
+             <button class="go" ${d.busy || !t.sheet ? 'disabled' : ''} onclick="releaseDesign('${d.id}')">③ 출시</button>`}
+      </div>
+      ${t.sheet ? `<div class="anims" id="anims_${d.id}"></div>` : '<div class="dim">동작을 그리면 여기에서 움직임을 미리 볼 수 있어요. (위: 새 외형, 아래: 기존 0번 외형)</div>'}
+      ${(d.warnings || []).length ? `<div class="warn">⚠️ ${d.warnings.map(esc).join(' · ')}</div>` : ''}
+      <div class="groups">${groups}</div>
+      <div class="log">${(d.log || []).slice().reverse().map(esc).join('\n')}</div>
+    </div>
+  </section>`;
+}
+
+// 동작별 미리보기: 새 시트(위)와 0번 외형(아래)을 같은 속도로
+function sheetImg(src) {
+  if (!imgCache[src]) { const im = new Image(); im.src = src; imgCache[src] = im; }
+  return imgCache[src];
+}
+function attachAnims(d) {
+  const box = document.getElementById(`anims_${d.id}`);
+  if (!box) return;
+  const def = d.def, k = 1;
+  const mine = sheetImg(`/work/${encodeURIComponent(d.id)}/sheet.webp?v=${d.files.sheet}`);
+  const base = sheetImg(`/assets/sprites/merc/${d.job}_0.webp`);
+  Object.entries(def.anims).forEach(([name, frames]) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'anim';
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(def.cellW * k); cv.height = Math.round(def.cellH * k * 2);
+    wrap.append(cv, Object.assign(document.createElement('div'), { textContent: `${name} (${frames.join(',')})` }));
+    box.append(wrap);
+    const ctx = cv.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    let i = 0;
+    const draw = () => {
+      if (!cv.isConnected) return;
+      const f = frames[i++ % frames.length];
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(0, def.anchorY * k, cv.width, 1);
+      ctx.fillRect(0, (def.cellH + def.anchorY) * k, cv.width, 1);
+      [mine, base].forEach((im, row) => {
+        if (im.complete && im.naturalWidth) ctx.drawImage(im, f * def.cellW, 0, def.cellW, def.cellH, 0, row * def.cellH * k, def.cellW * k, def.cellH * k);
+      });
+      setTimeout(draw, 180);
+    };
+    draw();
+  });
+}
+
+async function act(kind, id, keys, undo) {
+  try {
+    if (kind === 'motion' && !keys && !confirm('동작 묶음마다 제미나이에 한 번씩 요청해요. 몇 분 걸릴 수 있어요. 시작할까요?')) return;
+    await api(`/api/${kind}`, { id, keys, undo });
+    load();
+  } catch (e) { alert(e.message); }
+}
+async function releaseDesign(id) {
+  const d = designs.find(x => x.id === id);
+  if (!confirm(`'${d.title}' (디자인: ${d.designer})을(를) 학급 ${d.classCode}에 출시할까요?\n그림 파일과 index.html 목록에 추가돼요. 커밋·푸시하면 배포돼요.`)) return;
+  try {
+    const r = await api('/api/release', { id });
+    alert(`출시 준비 완료: ${r.file}\n\n이제 커밋하고 푸시하면 게임에 반영돼요.`);
+    load();
+  } catch (e) { alert(e.message); }
+}
+async function fetchClass() {
+  const code = document.getElementById('classCode').value.trim();
+  try { const r = await api('/api/fetch', { classCode: code }); alert(`새 디자인 ${r.added}개를 받아 왔어요.`); localStorage.setItem('skinLabClass', code); load(); }
+  catch (e) { alert(e.message); }
+}
+function importFile() {
+  const file = document.getElementById('impFile').files[0];
+  if (!file) return alert('그림 파일을 골라 주세요.');
+  const r = new FileReader();
+  r.onload = async () => {
+    try {
+      await api('/api/import', {
+        job: impJob.value, title: impTitle.value, designer: impDesigner.value, classCode: impClass.value, note: impNote.value, image: r.result
+      });
+      load();
+    } catch (e) { alert(e.message); }
+  };
+  r.readAsDataURL(file);
+}
+try { document.getElementById('classCode').value = localStorage.getItem('skinLabClass') || ''; } catch (e) {}
+load();
+</script>
+</body>
+</html>
