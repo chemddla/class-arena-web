@@ -319,6 +319,44 @@ test('학생 디자인: 이상한 값은 낼 수 없음', async () => {
   await assertFails(put('d_bad008', noImage));
 });
 
+test('학생 디자인: 선생님은 반려 표시와 이유를 남길 수 있음', async () => {
+  await assertSucceeds(db('u1').ref('classes/OWN1/skinDesigns/s1/d_rej001').set(design()));
+  await assertSucceeds(db('teacher').ref('classes/OWN1/skinDesigns/s1/d_rej001').update({ status: 'rejected', reason: '무기가 안 보여요' }));
+  await assertSucceeds(db('teacher').ref('classes/OWN1/skinDesigns/s1/d_rej001').update({ status: null, reason: null }));
+  await assertFails(db('teacher').ref('classes/OWN1/skinDesigns/s1/d_rej001').update({ status: 'approved' }));
+  await assertFails(db('teacher').ref('classes/OWN1/skinDesigns/s1/d_rej001').update({ reason: 'x'.repeat(101) }));
+});
+
+// ----- 승인된 학생 디자인 외형 (classes/{학급}/skins/{id}, skinSheets/{id}): 소유 교사만 씀 -----
+const skin = (extra = {}) => ({ job: 'knight', n: 1, title: '불꽃 기사', designer: 's1', designerId: 's1', at: Date.now() - 1000, ...extra });
+const SHEET = 'data:image/webp;base64,UklGRg==';
+
+test('승인 외형: 소유 교사만 올리고, 학생·남은 못 씀', async () => {
+  await assertSucceeds(db('teacher').ref().update({ 'classes/OWN1/skins/d_abc123': skin(), 'classes/OWN1/skinSheets/d_abc123': SHEET }));
+  await assertFails(db('u1').ref('classes/OWN1/skins/d_abc124').set(skin()));
+  await assertFails(db('u1').ref('classes/OWN1/skinSheets/d_abc123').set(SHEET));
+  await assertFails(db(null).ref('classes/OWN1/skins/d_abc125').set(skin()));
+  await assertFails(db('stranger').ref('classes/OWN1/skins/d_abc126').set(skin()));
+  await assertSucceeds(db('teacher').ref('classes/OWN1/skins/d_abc123').remove());
+  await assertSucceeds(db(null).ref('classes/OLD1/skins/d_old123').set(skin())); // 소유자 없는 예전 학급
+  await assertSucceeds(db(null).ref('classes/OLD1/skinSheets/d_old123').set(SHEET));
+});
+
+test('승인 외형: 이상한 값은 못 올림', async () => {
+  const put = (id, v) => db('teacher').ref(`classes/OWN1/skins/${id}`).set(v);
+  await assertFails(put('d_bad101', skin({ job: 'dragon' })));
+  await assertFails(put('d_bad102', skin({ n: 0 })));
+  await assertFails(put('d_bad103', skin({ title: '' })));
+  await assertFails(put('d_bad104', skin({ extra: 1 })));
+  const { designerId, ...noDesigner } = skin();
+  await assertFails(put('d_bad105', noDesigner));
+  const sheet = (id, v) => db('teacher').ref(`classes/OWN1/skinSheets/${id}`).set(v);
+  await assertFails(sheet('d_bad201', 'javascript:alert(1)'));
+  await assertFails(sheet('d_bad202', 'data:image/svg+xml;base64,AAAA'));
+  await assertFails(sheet('d_bad203', 'data:image/webp;base64,' + 'A'.repeat(1000000)));
+  await assertFails(sheet('bad_id02', SHEET));
+});
+
 // ----- 교사 PIN·교사 키 증명 (classSecrets): 서버에서 읽어갈 수 없고, 맞는 값인지 확인만 가능 -----
 const S = (c) => 'sh_' + c.repeat(64);
 const [SA, SB, SC] = [S('a'), S('b'), S('c')];
