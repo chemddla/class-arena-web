@@ -3303,6 +3303,7 @@
       yeti:           { id: 'yeti',           name: '설인',         icon: '⛄', color: '#7dd3fc', trait: { hp: 1.1, spd: 0.9 }, passives: ['shock'] },
       ice_harpy:      { id: 'ice_harpy',      name: '눈보라 하피',  icon: '🦅', color: '#38bdf8', trait: { hp: 0.85, spd: 1.15 }, passives: ['evade'] },
       frost_giant:    { id: 'frost_giant',    name: '서리 거인',    icon: '🏔️', color: '#0369a1', big: true, trait: { spd: 0.9 }, passives: ['shock', 'thorns'] },
+      leviathan:      { id: 'leviathan',      name: '혹한 리바이어던', icon: '🧊', color: '#0e7490', big: true }, // 엘리트 5단계 전용 (탑 종족에는 없음)
       // 화염족
       imp:            { id: 'imp',            name: '임프',         icon: '😈', color: '#ea580c', trait: { hp: 0.85 }, passives: ['burn'] },
       fire_elemental: { id: 'fire_elemental', name: '불꽃정령',     icon: '🔥', color: '#f97316', trait: { hp: 0.85 }, passives: ['burn', 'explode'] },
@@ -4225,6 +4226,33 @@
       },
       castFrames: { stun_strike: 8, earthquake: 10, arrow_rain: 10, shield_rush: 12, provoke: 14, iron_stance: 10 }
     };
+    // 심연의 혹한 리바이어던 (엘리트 5단계, 얼음 비늘·청록 룬 바다뱀): 칸 순서 = 대기, 걷기, 공격 준비·입김, 피격, 쓰러짐 2장,
+    //   빙결의 창, 폭풍 번개, 해일 진동, 우박 폭풍, 혹한의 포효
+    // (샘플 2장에서 골라 붙임. 샘플 대기는 몸 둘레 빛무리·별가루가 배경에 번져 있고 몸 모양도 달라서 빼고 걷기 1을 대기로 씀.
+    //  대기·걷기는 공격 칸보다 몸이 작게 그려져 있어서 1.07배, 스킬 샘플은 1.6배로 키워 머리 크기를 맞춤. 라벨은 빼고 몸 바닥을 한 줄에 맞춤.
+    //  입김 칸의 얼음창·입김은 기본 공격 투사체로 따로 날리므로 지움. 피격 칸 둘레에 떠 있던 얼음 조각은 지움.
+    //  배경에 번진 빛(빙결의 창 마법진, 폭풍 번개 전기, 우박 폭풍 머리 위 불꽃, 포효 입 앞 구슬, 쓰러짐 2 안개)은 반투명으로 되돌림)
+    // fxSkin = 해일 진동·폭풍 번개·우박 폭풍·포효·심해 잠행 이펙트를 LEVIATHAN_FX 그림으로. 얼음 갑주(보호막) = 빙결의 창 자세
+    MONSTER_SPRITE_DEFS.leviathan = {
+      src: 'assets/sprites/monster/leviathan.webp',
+      cellW: 371, cellH: 239, anchorX: 188.7, anchorY: 230.2, standH: 198, topH: 200, count: 12, eliteScale: 3.2,
+      fxSkin: 'leviathan', fxColors: { teleport: '#38bdf8' },
+      projFx: { magic_orb: 'frost_breath', ice_arrow_proj: 'glacial_spear' },
+      anims: {
+        idle: [0], walk: [0, 1], attack: [2, 3, 3], skill: [7], hurt: [4], death: [5, 6],
+        spear: [7], storm: [8], tidal: [9], hail: [10], roar: [11]
+      },
+      skillAnims: {
+        ice_arrow:   { anim: 'spear', tpf: 8, dur: 30 },
+        thunderbolt: { anim: 'storm', tpf: 8, dur: 36 },
+        earthquake:  { anim: 'tidal', tpf: 10, dur: 44 },
+        arrow_rain:  { anim: 'hail', tpf: 8, dur: 36 },
+        roar:        { anim: 'roar', tpf: 8, dur: 36 },
+        shield:      { anim: 'spear', tpf: 8, dur: 30 },
+        teleport:    { anim: 'tidal', tpf: 8, dur: 24 }
+      },
+      castFrames: { ice_arrow: 7, thunderbolt: 8, earthquake: 9, arrow_rain: 10, roar: 11, shield: 7, teleport: 9 }
+    };
     // 찾는 순서: '<몬스터>_<직업>_<대표 스킬>' → '<몬스터>_<직업>' → '<몬스터>'
     function getUnitSprite(u) {
       if (!u.monsterType) return getMercSprite(u.job, u.skinVariant || 0);
@@ -4318,6 +4346,22 @@
         beam: [[0,305,1016,143,0,72],[1018,305,996,95,0,48]]                                 // 굵은 번개 → 사그라드는 잔상
       }
     };
+    // 리바이어던 이펙트 (원본 샘플의 스킬 이펙트 칸 + 입김 칸의 얼음창, unitFxSpr로 'leviathan_<키>')
+    // spear = 빙결의 창 투사체 2장(기준점 = 창끝), breath = 기본 공격 얼음창, bolt = 먹구름·내리꽂는 번개(기준점 = 번개가 꽂히는 바닥),
+    // quake = 물보라·얼음 파도(기준점 = 바닥 가운데), arrow_rain = 우박 구름·떨어지는 얼음덩이·부서지는 얼음,
+    // shout = 사자후 고리를 얼음빛으로 (AOE_FX와 같은 칸), teleport = 마법사 텔레포트 연기를 푸른 물빛으로
+    const LEVIATHAN_FX = {
+      src: 'assets/sprites/fx/leviathan_fx.webp',
+      anims: {
+        spear: [[0,0,199,74,196,37],[201,0,189,116,186,58]],
+        breath: [[392,0,186,121,180,67]],
+        bolt: [[580,0,183,84,92,42],[765,0,192,170,96,146]],
+        quake: [[959,0,204,104,102,98],[1165,0,211,137,106,131]],
+        arrow_rain: [[1378,0,186,129,93,39],[1566,0,36,88,18,74],[1604,0,209,157,105,135]],
+        shout: [[1815,0,151,151,76,76],[1968,0,258,256,129,128],[2228,0,246,249,123,125]],
+        teleport: [[2476,0,65,60,33,48],[2543,0,86,78,43,62],[2631,0,127,95,64,76]]
+      }
+    };
     // 투사체 종류별 그림과 크기(첫 프레임 높이, 월드 px). match가 있으면 그 조건을 만족할 때만 (성녀 분홍 구슬 제외)
     // 투사체에 spr가 붙어 있으면 그 키를 먼저 찾음 (sheet = 다른 아틀라스, hit = 터질 때 그릴 효과 그림)
     const PROJECTILE_SPRITES = {
@@ -4328,7 +4372,9 @@
       ice_arrow_proj: { anim: 'ice', h: 22, sheet: MAGE_SPELL_FX },
       arrow:          { anim: 'arrow', h: 8 },
       golden_arrow:   { anim: 'arrow', h: 8 },
-      poison_arrow:   { anim: 'poison_arrow', h: 8 }
+      poison_arrow:   { anim: 'poison_arrow', h: 8 },
+      glacial_spear:  { anim: 'spear', h: 40, sheet: LEVIATHAN_FX, hit: 'ice_hit' }, // 리바이어던 빙결의 창 (길이 약 110)
+      frost_breath:   { anim: 'breath', h: 36, sheet: LEVIATHAN_FX, hit: 'ice_hit' } // 리바이어던 기본 공격 얼음창 (길이 약 55)
     };
 
     // 범위 스킬 아틀라스 (프레임 형식은 위와 같음, 기준점 = 효과 중심)
@@ -4352,7 +4398,7 @@
         taunt: [[0,458,151,151,76,76],[153,458,258,256,129,128],[413,458,246,249,123,125]]
       }
     };
-    const FX_SKINS = { golem: GOLEM_FX };
+    const FX_SKINS = { golem: GOLEM_FX, leviathan: LEVIATHAN_FX };
 
     // 성녀 지원 이펙트 (원본 샘플: assets/sprites/fx/samples/support_fx_white.png). 캐릭터 위에 겹쳐 그림
     // 회복 = 초록 불꽃(기준점 = 발밑 고리), 축복 = 금빛 빛기둥(기준점 = 발밑), 보호막 = 푸른 구체(기준점 = 구 중심)
@@ -4395,7 +4441,7 @@
     LANCER_JAVELIN_FX.onload = () => { LANCER_JAVELIN_FX.ready = true; };
     LANCER_JAVELIN_FX.src = 'assets/sprites/fx/lancer_javelin_fx.webp';
 
-    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX).forEach(def => {
+    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX).forEach(def => {
       def.img = new Image();
       def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
       def.img.src = def.src;
@@ -12066,7 +12112,7 @@
             e.statuses.freeze <= 35 && e.statuses.stun <= 35
           ) || target);
           sim.projectiles.push({
-            projType: 'ice_arrow_proj',
+            projType: 'ice_arrow_proj', spr: unitProjFx(unit, 'ice_arrow_proj'),
             x: unit.x, y: unit.y - 12,
             target: unFrozen, owner: unit,
             dmg: unit.atk * 1.85,
@@ -12087,7 +12133,7 @@
           let prevX = unit.x, prevY = unit.y - 16;
           chainTargets.forEach(ct => {
             sim.effects.push({
-              type: 'lightning_bolt', spr: 'bolt',
+              type: 'lightning_bolt', spr: unitFxSpr(unit, 'bolt'), // 리바이어던 = 적마다 먹구름에서 내리꽂는 번개
               sx: prevX, sy: prevY, tx: ct.x, ty: ct.y,
               life: 50, maxLife: 50
             });
@@ -12732,7 +12778,8 @@
     const CC_STATUSES = ['stun', 'freeze', 'shock']; // 엘리트 몬스터가 면역인 군중제어
     const ZONE_STYLES = {
       arrow_rain:  { color: '#ca8a04', fill: 'rgba(234, 179, 8, 0.22)', icon: '🌧️' },
-      poison_boom: { color: '#16a34a', fill: 'rgba(34, 197, 94, 0.22)', icon: '☠️' }
+      poison_boom: { color: '#16a34a', fill: 'rgba(34, 197, 94, 0.22)', icon: '☠️' },
+      leviathan_arrow_rain: { color: '#0ea5e9', fill: 'rgba(56, 189, 248, 0.22)', icon: '🧊' } // 리바이어던 우박 폭풍
     };
     let suppressHitKnockback = false; // 장판 피해처럼 공격자가 멀리 있을 때는 밀리지 않게
 
@@ -12813,7 +12860,9 @@
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.globalAlpha = fade;
-        if (z.kind === 'arrow_rain' && FX_SPRITE_SHEET.ready) {
+        if (z.kind === 'leviathan_arrow_rain') {
+          if (LEVIATHAN_FX.ready) drawHailZone(ctx, z);
+        } else if (z.kind === 'arrow_rain' && FX_SPRITE_SHEET.ready) {
           // 작게 줄인 화살 그림이 위에서 비스듬히 떨어져 꽂힌 뒤 사라짐 (화살마다 주기를 엇갈려 계속 내리는 느낌)
           const fr = FX_SPRITE_SHEET.anims.arrow[0];
           const scale = 5 / fr[3];                 // 날아가는 화살(촉 높이 8)보다 작게, 길이 약 22px
@@ -13027,7 +13076,7 @@
       if (sk === 'arrow_rain') {
         // 화살비: 1칸 원형에 5초간 지속 피해 (한 번 맞을 때 피해는 그대로)
         if (!target) return true;
-        spawnZone('arrow_rain', unit, target.x, target.y, A * 1, 300, 20, unit.atk * 0.24);
+        spawnZone(unitFxSpr(unit, 'arrow_rain'), unit, target.x, target.y, A * 1, 300, 20, unit.atk * 0.24); // 리바이어던 = 우박 장판
         playCombatSfx('arrow');
         addBattleLog(`🌧️ [궁수] ${unit.name}의 화살비!`);
         return true;
@@ -13078,14 +13127,14 @@
       if (sk === 'teleport') {
         // 텔레포트: 5칸 안으로 순간이동 후 5초간 공격력 +20%
         const dest = chooseTeleportSpot(unit, enemies, target, unit.teleportIntent || 'escape');
-        sim.effects.push({ type: 'cast_circle', spr: 'teleport', x: unit.x, y: unit.y, color: '#7c3aed', life: 30, maxLife: 30 });
-        sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y, tx: dest.x, ty: dest.y, color: '#7c3aed', life: 24, maxLife: 24 });
+        sim.effects.push({ type: 'cast_circle', spr: unitFxSpr(unit, 'teleport'), x: unit.x, y: unit.y, color: '#7c3aed', life: 30, maxLife: 30 });
+        sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y, tx: dest.x, ty: dest.y, color: unitFxColor(unit, 'teleport', '#7c3aed'), life: 24, maxLife: 24 });
         unit.x = dest.x;
         unit.y = dest.y;
         unit.kbVx = 0;
         unit.kbVy = 0;
         unit.statuses.empower = Math.max(unit.statuses.empower || 0, 300);
-        sim.effects.push({ type: 'magic_burst', spr: 'teleport', x: unit.x, y: unit.y - 12, r: 50, life: 30, maxLife: 30 });
+        sim.effects.push({ type: 'magic_burst', spr: unitFxSpr(unit, 'teleport'), x: unit.x, y: unit.y - 12, r: 50, life: 30, maxLife: 30 });
         unit.teleportIntent = null;
         playCombatSfx('magic');
         addBattleLog(`🔮 [마법사] ${unit.name}의 텔레포트! 공격력 +20% (5초)`);
@@ -14187,6 +14236,8 @@
         }
         return true;
       }
+      // 리바이어던 해일 진동·폭풍 번개·심해 잠행은 그림 모양이 달라서 따로 (포효 고리는 아래 AOE 방식 그대로)
+      if (ef.spr.startsWith('leviathan_') && ef.spr !== 'leviathan_shout') return drawLeviathanFx(ctx, ef, ef.spr.slice(10), progress, fadeOut);
       // 몬스터 색 이펙트('golem_quake' 등)는 그 스킨 아틀라스에서 원래 키의 그림을 같은 방식으로 그림
       const skinAt = ef.spr.indexOf('_');
       const skin = skinAt > 0 && FX_SKINS[ef.spr.slice(0, skinAt)];
@@ -14308,6 +14359,84 @@
         }
       }
       return false;
+    }
+
+    // 리바이어던 이펙트 (LEVIATHAN_FX). 그리면 true
+    function drawLeviathanFx(ctx, ef, key, progress, fadeOut) {
+      const L = LEVIATHAN_FX;
+      if (!L.ready || !L.anims[key]) return false;
+      const A = L.anims;
+      if (key === 'quake') {
+        // 해일 진동: 범위 둘레 8곳에서 물보라가 튀고 얼음 파도가 솟았다 꺼지기를 다단히트가 끝날 때까지 되풀이.
+        // 파도 머리는 리바이어던 쪽(안쪽)으로 말리게 오른쪽 자리는 좌우를 뒤집고, 뒤쪽(위) 파도부터 그림
+        const t = ef.maxLife - ef.life;
+        const fade = Math.min(1, ef.life / 20, t / 8);
+        const N = 8, PERIOD = 45, waveW = ef.r * 0.46;
+        const waves = [];
+        for (let i = 0; i < N; i++) {
+          const a = (i / N) * Math.PI * 2 + 0.3;
+          const rr = ef.r * (0.6 + 0.25 * ((i * 37) % 10) / 10);
+          waves.push({ x: ef.x + Math.cos(a) * rr, y: ef.y + Math.sin(a) * rr * 0.72, a, p: ((t + i * 17) % PERIOD) / PERIOD });
+        }
+        waves.sort((m, n) => m.y - n.y).forEach(w => {
+          const splash = w.p < 0.3; // 앞 30% = 물보라, 뒤 = 파도
+          const fr = A.quake[splash ? 0 : 1];
+          const grow = splash ? 0.6 + (w.p / 0.3) * 0.4 : Math.min(1, 0.7 + (w.p - 0.3) * 1.5);
+          const alpha = 0.85 * fade * (w.p < 0.08 ? w.p / 0.08 : w.p > 0.8 ? (1 - w.p) / 0.2 : 1);
+          ctx.save();
+          ctx.translate(w.x, w.y);
+          if (Math.cos(w.a) > 0) ctx.scale(-1, 1);
+          drawFxFrame(ctx, fr, 0, 0, (waveW * grow) / fr[2], 0, alpha, L.img);
+          ctx.restore();
+        });
+        return true;
+      }
+      if (key === 'bolt') {
+        // 폭풍 번개: 맞은 적 머리 위에 먹구름이 끼고(처음 20%) 번개가 내리꽂힘. 4틱마다 좌우를 뒤집어 번쩍임
+        const W = 190; // 번개 높이 ≈ 용병 키의 3배
+        if (progress < 0.2) {
+          const fr = A.bolt[0];
+          drawFxFrame(ctx, fr, ef.tx, ef.ty - 105, W / fr[2], 0, 0.3 + (progress / 0.2) * 0.7, L.img);
+        } else {
+          const fr = A.bolt[1];
+          ctx.save();
+          ctx.translate(ef.tx, ef.ty + 12);
+          if (Math.floor(ef.life / 4) % 2) ctx.scale(-1, 1);
+          drawFxFrame(ctx, fr, 0, 0, W / fr[2], 0, fadeOut * (Math.floor(ef.life / 2) % 3 ? 1 : 0.7), L.img);
+          ctx.restore();
+        }
+        return true;
+      }
+      if (key === 'teleport') {
+        // 심해 잠행: 텔레포트 연기를 푸른 물빛으로, 거대한 몸에 맞게 크게 (바닥 맞춤은 마법사 텔레포트와 같음)
+        const fr = fxFrameAt(A.teleport, progress, 0.6);
+        drawFxFrame(ctx, fr, ef.x, ef.y + (ef.type === 'magic_burst' ? 24 : 12), 190 / A.teleport[2][2], 0, fadeOut, L.img);
+        return true;
+      }
+      return false;
+    }
+    // 리바이어던 우박 폭풍 장판: 장판 위에 우박 구름이 떠 있고, 얼음덩이가 떨어져 부딪히면 얼음 파편이 튐 (화살비와 같은 엇갈린 주기)
+    function drawHailZone(ctx, z) {
+      const [cloud, stone, burst] = LEVIATHAN_FX.anims.arrow_rain;
+      const img = LEVIATHAN_FX.img;
+      const PERIOD = 40, COUNT = 10, DROP_H = 110, FALL = 0.4;
+      for (let k = 0; k < COUNT; k++) {
+        const t = sim.tickCount + Math.floor((k * PERIOD) / COUNT);
+        const cycle = Math.floor(t / PERIOD), p = (t % PERIOD) / PERIOD;
+        const h1 = Math.abs(Math.sin((k + 1) * 12.9898 + cycle * 78.233) * 43758.5453) % 1;
+        const h2 = Math.abs(Math.sin((k + 1) * 39.3468 + cycle * 11.135) * 24634.6345) % 1;
+        const rr = z.r * 0.8 * Math.sqrt(h1), a = h2 * Math.PI * 2;
+        const lx = z.x + Math.cos(a) * rr, ly = z.y + Math.sin(a) * rr * 0.8;
+        if (p < FALL) {
+          const f = p / FALL;
+          drawFxFrame(ctx, stone, lx, ly - DROP_H * (1 - f), 34 / stone[3], 0, Math.min(1, f / 0.15), img);
+        } else {
+          const q = (p - FALL) / (1 - FALL);
+          drawFxFrame(ctx, burst, lx, ly + 6, (z.r * 0.5 * (0.6 + 0.4 * Math.min(1, q * 3))) / burst[2], 0, 1 - q, img);
+        }
+      }
+      const bob = Math.sin(sim.tickCount * 0.05) * 3;
+      drawFxFrame(ctx, cloud, z.x, z.y - DROP_H - 8 + bob, (z.r * 2.1) / cloud[2], 0, 0.9, img);
     }
 
     // 현재 동작에 맞는 시트 프레임 번호 고르기.
@@ -15862,7 +15991,7 @@
         desc: '단 한 마리만 출현하는 거대 암석 괴수입니다! 120,000의 막대한 체력과 바위 주먹과 대지 붕괴로 땅을 뒤흔듭니다.' },
       { id: 'elite_swamp_hydra', stage: 4, name: '🐍 독늪의 히드라', monsterType: 'swamp_hydra', job: 'archer', hp: 175000, atk: 115, def: 62, spd: 98, rewardMc: 250,
         desc: '175,000의 체력을 지닌 머리 여럿 달린 늪지의 괴수! 멀리서 독을 내뿜어 원정대를 괴롭힙니다.' },
-      { id: 'elite_leviathan', stage: 5, name: '🧊 심연의 혹한 리바이어던', monsterType: 'troll', job: 'mage', hp: 240000, atk: 135, def: 70, spd: 105, rewardMc: 300,
+      { id: 'elite_leviathan', stage: 5, name: '🧊 심연의 혹한 리바이어던', monsterType: 'leviathan', job: 'mage', hp: 240000, atk: 135, def: 70, spd: 105, rewardMc: 300,
         desc: '240,000의 체력을 지닌 빙결 엘리트 보스입니다! 아이스애로우와 연쇄 썬더볼트로 협동 원정대를 압박합니다.' },
       { id: 'elite_orc_warlord', stage: 6, name: '🪓 피의 오크 대족장', monsterType: 'orc_warlord', job: 'warrior', hp: 290000, atk: 148, def: 76, spd: 108, rewardMc: 330,
         desc: '290,000의 체력으로 전장을 돌진하는 오크 대족장! 회전베기와 강타로 앞줄을 무너뜨립니다.' },
