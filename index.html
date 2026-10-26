@@ -2898,6 +2898,29 @@
     function unitSkillBook(u) {
       return (u && u.skillBook) || SKILL_DEFS[u && u.job] || SKILL_DEFS.warrior;
     }
+    // [스킬 키, 이름?, 아이콘?] 목록 → 스킬 정의 묶음 (다른 직업 스킬도 가능, 이름·아이콘만 바꿀 수 있음)
+    function buildSkillBook(entries) {
+      const book = {};
+      entries.forEach(e => {
+        const [key, name, icon] = Array.isArray(e) ? e : [e];
+        const base = (SKILL_DEFS[skillJobOf(key)] || {})[key];
+        if (base) book[key] = { ...base, name: name || base.name, icon: icon || base.icon };
+      });
+      return book;
+    }
+    // 몬스터 유닛에 정해 둔 스킬 묶음만 쓰게 함 (모두 해금)
+    function applyUnitSkillBook(unit, book) {
+      const keys = Object.keys(book);
+      if (!keys.length) return;
+      unit.skillBook = book;
+      unit.skillSlots = keys;
+      unit.skillCooldowns = {};
+      keys.forEach(k => { unit.skillCooldowns[k] = 0; });
+      unit.skillKey = keys[0];
+      unit.skillName = book[keys[0]].name;
+      unit.skillIcon = book[keys[0]].icon;
+      unit.unlockedSkills = [...keys];
+    }
 
     const JOB_ICONS = {
       warrior: '⚔️',
@@ -3351,110 +3374,117 @@
       { name: '신화 수호자', zone: '신들의 미궁',  boss: 'cerberus',       desc: '전설 속 괴물들이 미궁의 길목마다 버티고 섰습니다.', bossFloorScale: 1.04, bossHp: 1.3 },
       { name: '혼돈족',   zone: '혼돈의 균열',     boss: 'chaos_god',      desc: '탑의 꼭대기, 세상의 끝에서 혼돈이 쏟아져 나옵니다.', bossFloorScale: 1.05, bossHp: 1.35 }
     ];
-    // 종족별 직업 편성: 직업마다 [몬스터, 스킬, 이름] 후보. 층의 분대 프리셋이 직업 칸을 정하면 여기서 몬스터·스킬·이름을 고름
-    // (같은 직업이 여러 칸이면 후보를 차례로 씀). boss: 종족 보스의 스킬 (보스는 전사 칸)
+    // 종족별 직업 편성: 직업마다 [몬스터, 이름, 스킬 목록] 후보. 층의 분대 프리셋이 직업 칸을 정하면 여기서 고름
+    // (같은 직업이 여러 칸이면 후보를 차례로 씀). 스킬은 앞에서부터 층에 따라 열림 (towerUnitSkillCount)
+    // 첫 스킬이 대표 스킬 (몬스터 그림 '<몬스터>_<직업>_<스킬>'도 이 스킬로 찾음)
+    // boss: 종족 보스의 스킬 목록 (보스는 전사 칸이지만 다른 직업 스킬도 씀, towerBossSkillCount만큼 열림)
     const TOWER_RACE_SQUADS = {
-      '고블린족': { boss: 'charge',
-        warrior: [['goblin_rider', 'charge', '멧돼지 돌격기수'], ['goblin', 'stun_strike', '고블린 몽둥이꾼'], ['goblin', 'whirlwind', '고블린 쌍도끼병']],
-        archer:  [['goblin', 'poison_arrow', '고블린 저격수'], ['goblin', 'triple_arrow', '고블린 난사꾼'], ['goblin_rider', 'rapid_fire', '멧돼지 궁기병']],
-        mage:    [['goblin', 'fireball', '고블린 폭탄꾼'], ['goblin', 'poison_boom', '고블린 독약쟁이'], ['goblin', 'thunderbolt', '고블린 번개술사']],
-        healer:  [['goblin', 'heal', '고블린 주술사'], ['goblin', 'blessing', '고블린 전쟁북잡이']] },
-      '언데드': { boss: 'roar',
-        warrior: [['skeleton', 'stun_strike', '해골 철퇴병'], ['skeleton', 'whirlwind', '해골 검투사'], ['mummy', 'roar', '울부짖는 미라']],
-        archer:  [['skeleton', 'triple_arrow', '해골 궁수'], ['skeleton', 'rapid_fire', '해골 속사수'], ['skeleton', 'poison_arrow', '해골 독화살수']],
-        mage:    [['ghost', 'ice_arrow', '냉기 유령'], ['mummy', 'poison_boom', '역병 미라'], ['ghost', 'thunderbolt', '저주 유령']],
-        healer:  [['skeleton', 'revive', '해골 강령술사'], ['mummy', 'shield', '미라 방부사제']] },
-      '야수족': { boss: 'charge',
-        warrior: [['wolf', 'charge', '굶주린 늑대'], ['spider', 'stun_strike', '마비 독거미'], ['wolf', 'roar', '울부짖는 늑대']],
-        archer:  [['spider', 'poison_arrow', '독침 거미'], ['spider', 'triple_arrow', '거미줄 사냥꾼'], ['bat', 'rapid_fire', '박쥐 떼']],
-        mage:    [['spider', 'poison_boom', '독주머니 거미'], ['bat', 'thunderbolt', '초음파 박쥐'], ['bat', 'ice_arrow', '최면 박쥐']],
-        healer:  [['wolf', 'blessing', '우두머리 늑대'], ['bat', 'heal', '흡혈 박쥐 어미']] },
-      '늪지족': { boss: 'whirlwind',
-        warrior: [['lizard', 'charge', '리자드맨 창병'], ['slime', 'stun_strike', '거대 슬라임'], ['lizard', 'whirlwind', '리자드맨 꼬리전사']],
-        archer:  [['lizard', 'poison_arrow', '리자드맨 독침수'], ['lizard', 'rapid_fire', '리자드맨 바람총잡이'], ['mushroom', 'arrow_rain', '포자비 버섯']],
-        mage:    [['mushroom', 'poison_boom', '독포자 버섯'], ['slime', 'ice_arrow', '끈적이 슬라임'], ['lizard', 'thunderbolt', '리자드맨 번개술사']],
-        healer:  [['slime', 'heal', '치유 슬라임'], ['mushroom', 'blessing', '환각 버섯']] },
-      '오크족': { boss: 'stun_strike',
-        warrior: [['orc', 'charge', '오크 돌격대'], ['orc_berserker', 'whirlwind', '오크 쌍도끼 광전사'], ['orc', 'stun_strike', '오크 분쇄자'], ['orc', 'warcry', '오크 함성꾼']],
-        archer:  [['orc', 'triple_arrow', '오크 도끼투척병'], ['orc', 'poison_arrow', '오크 사냥꾼'], ['orc', 'rapid_fire', '오크 석궁병']],
-        mage:    [['orc', 'fireball', '오크 화염술사'], ['orc', 'thunderbolt', '오크 폭풍술사'], ['orc', 'poison_boom', '오크 역병술사']],
-        healer:  [['orc', 'blessing', '오크 전쟁 주술사'], ['orc', 'heal', '오크 피의 주술사']] },
-      '설원족': { boss: 'stun_strike',
-        warrior: [['troll', 'stun_strike', '서리트롤 몽둥이꾼'], ['yeti', 'roar', '포효하는 설인'], ['troll', 'charge', '서리트롤 돌격병']],
-        archer:  [['ice_harpy', 'rapid_fire', '하피 깃털사수'], ['ice_harpy', 'arrow_rain', '우박 하피'], ['ice_harpy', 'triple_arrow', '하피 칼깃사수']],
-        mage:    [['troll', 'ice_arrow', '서리트롤 빙결술사'], ['ice_harpy', 'ice_arrow', '서리 깃털 하피'], ['ice_harpy', 'thunderbolt', '폭풍 하피']],
-        healer:  [['troll', 'heal', '서리트롤 치유사'], ['yeti', 'shield', '얼음장막 설인']] },
-      '화염족': { boss: 'whirlwind',
-        warrior: [['hellhound', 'charge', '돌진 지옥견'], ['imp', 'stun_strike', '임프 쇠스랑병'], ['fire_elemental', 'roar', '열풍 불꽃정령']],
-        archer:  [['imp', 'rapid_fire', '임프 불화살수'], ['imp', 'triple_arrow', '임프 불씨사수'], ['fire_elemental', 'arrow_rain', '불비 정령']],
-        mage:    [['fire_elemental', 'fireball', '작열 불꽃정령'], ['imp', 'fireball', '임프 화염술사'], ['imp', 'thunderbolt', '불벼락 임프']],
-        healer:  [['imp', 'blessing', '임프 광신자'], ['fire_elemental', 'heal', '불씨 정령']] },
-      '거인족': { boss: 'stun_strike',
-        warrior: [['ogre', 'stun_strike', '오우거 몽둥이꾼'], ['cyclops', 'roar', '포효하는 사이클롭스'], ['golem', 'whirlwind', '바위팔 골렘']],
-        archer:  [['cyclops', 'poison_arrow', '외눈 저격수'], ['ogre', 'rapid_fire', '오우거 투석꾼'], ['golem', 'arrow_rain', '낙석 골렘']],
-        mage:    [['cyclops', 'thunderbolt', '번개 사이클롭스'], ['golem', 'ice_arrow', '석화 골렘'], ['ogre', 'fireball', '오우거 마도사']],
-        healer:  [['golem', 'shield', '수호 골렘'], ['ogre', 'heal', '오우거 주술사']] },
-      '심해족': { boss: 'whirlwind',
-        warrior: [['crab', 'stun_strike', '집게 분쇄기사'], ['merfolk', 'charge', '인어 창기병'], ['crab', 'whirlwind', '회전집게 기사']],
-        archer:  [['merfolk', 'triple_arrow', '인어 작살수'], ['merfolk', 'rapid_fire', '인어 투창수'], ['octopus', 'poison_arrow', '먹물 저격 문어']],
-        mage:    [['octopus', 'poison_boom', '먹물폭탄 문어'], ['merfolk', 'ice_arrow', '심해 냉기술사'], ['merfolk', 'thunderbolt', '인어 해류술사']],
-        healer:  [['merfolk', 'heal', '인어 노래꾼'], ['merfolk', 'shield', '진주 수호 인어']] },
-      '용족': { boss: 'charge',
-        warrior: [['dragonkin', 'charge', '용인족 창기사'], ['dragonkin', 'stun_strike', '용인족 도끼기사'], ['drake', 'roar', '포효하는 드레이크']],
-        archer:  [['wyvern', 'poison_arrow', '독꼬리 와이번'], ['dragonkin', 'rapid_fire', '용인족 석궁병'], ['wyvern', 'triple_arrow', '가시꼬리 와이번']],
-        mage:    [['drake', 'fireball', '화염 드레이크'], ['dragonkin', 'thunderbolt', '용인족 뇌전술사'], ['wyvern', 'poison_boom', '독안개 와이번']],
-        healer:  [['dragonkin', 'blessing', '용인족 용사제'], ['dragonkin', 'heal', '용인족 치유사']] },
-      '정령족': { boss: 'whirlwind',
-        warrior: [['wind_spirit', 'whirlwind', '회오리 바람정령'], ['storm_spirit', 'charge', '질풍 번개정령'], ['water_spirit', 'roar', '파도 물정령']],
-        archer:  [['wind_spirit', 'triple_arrow', '바람칼날 정령'], ['wind_spirit', 'rapid_fire', '돌풍 바람정령'], ['storm_spirit', 'arrow_rain', '뇌우 번개정령']],
-        mage:    [['storm_spirit', 'thunderbolt', '뇌전 번개정령'], ['water_spirit', 'ice_arrow', '빙결 물정령'], ['storm_spirit', 'thunderbolt', '낙뢰 번개정령']],
-        healer:  [['water_spirit', 'heal', '샘물 정령'], ['wind_spirit', 'blessing', '순풍 바람정령']] },
-      '기계족': { boss: 'stun_strike',
-        warrior: [['clockwork', 'charge', '태엽 돌격병'], ['steam_golem', 'stun_strike', '증기망치 골렘'], ['clockwork', 'whirlwind', '회전톱 병정']],
-        archer:  [['clockwork', 'rapid_fire', '태엽 연발총병'], ['steel_spider', 'poison_arrow', '산성침 거미'], ['clockwork', 'arrow_rain', '태엽 박격포병']],
-        mage:    [['steam_golem', 'fireball', '증기포 골렘'], ['clockwork', 'thunderbolt', '전격 병정'], ['steel_spider', 'poison_boom', '산성폭탄 거미']],
-        healer:  [['clockwork', 'heal', '태엽 수리병'], ['clockwork', 'shield', '태엽 방벽병']] },
-      '사막족': { boss: 'roar',
-        warrior: [['sand_raider', 'charge', '약탈자 돌격대'], ['scorpion', 'stun_strike', '집게 전갈'], ['sand_raider', 'whirlwind', '쌍곡도 약탈자'], ['sandworm', 'roar', '모래폭풍 벌레']],
-        archer:  [['scorpion', 'poison_arrow', '독침 전갈'], ['sand_raider', 'triple_arrow', '단검투척 약탈자'], ['sand_raider', 'rapid_fire', '약탈자 속사수']],
-        mage:    [['sand_raider', 'fireball', '사막 화염술사'], ['scorpion', 'poison_boom', '독액 전갈'], ['sandworm', 'ice_arrow', '모래늪 벌레']],
-        healer:  [['sand_raider', 'heal', '사막 무당'], ['sand_raider', 'blessing', '사막 점술가']] },
-      '타락 요정족': { boss: 'stun_strike',
-        warrior: [['thorn_treant', 'stun_strike', '뿌리감기 나무정령'], ['dark_fairy', 'charge', '가시창 요정'], ['thorn_treant', 'whirlwind', '가시채찍 나무정령']],
-        archer:  [['dark_fairy', 'rapid_fire', '가시탄 요정'], ['venom_moth', 'arrow_rain', '독가루비 나방'], ['dark_fairy', 'poison_arrow', '독침 요정']],
-        mage:    [['venom_moth', 'poison_boom', '독포자 나방'], ['dark_fairy', 'ice_arrow', '저주 요정'], ['dark_fairy', 'thunderbolt', '번개 요정']],
-        healer:  [['thorn_treant', 'heal', '수액 나무정령'], ['dark_fairy', 'blessing', '어둠의 축복 요정']] },
-      '마계족': { boss: 'whirlwind',
-        warrior: [['hell_knight', 'charge', '마계 돌격기사'], ['hell_knight', 'stun_strike', '마계 처형기사'], ['pumpkin_fiend', 'whirlwind', '호박 낫잡이']],
-        archer:  [['pumpkin_fiend', 'rapid_fire', '호박씨 사수'], ['hell_knight', 'triple_arrow', '마계 석궁기사'], ['pumpkin_fiend', 'arrow_rain', '불씨비 호박마귀']],
-        mage:    [['warlock', 'fireball', '마계 화염술사'], ['warlock', 'poison_boom', '마계 저주술사'], ['warlock', 'thunderbolt', '마계 흑뢰술사']],
-        healer:  [['warlock', 'revive', '마계 사령술사'], ['warlock', 'blessing', '마계 광신자']] },
-      '천공족': { boss: 'whirlwind',
-        warrior: [['sky_knight', 'charge', '하늘 창기사'], ['griffin', 'stun_strike', '급강하 그리폰'], ['griffin', 'whirlwind', '회오리발톱 그리폰']],
-        archer:  [['sky_knight', 'rapid_fire', '하늘 궁기사'], ['thunderbird', 'triple_arrow', '깃털탄 천둥새'], ['sky_knight', 'arrow_rain', '구름 궁수']],
-        mage:    [['thunderbird', 'thunderbolt', '번개 천둥새'], ['sky_knight', 'ice_arrow', '구름 빙결술사'], ['thunderbird', 'thunderbolt', '폭풍 천둥새']],
-        healer:  [['sky_knight', 'shield', '하늘 수호기사'], ['sky_knight', 'heal', '천상 치유사']] },
-      '수정족': { boss: 'roar',
-        warrior: [['crystal_golem', 'stun_strike', '수정망치 골렘'], ['gem_lizard', 'charge', '돌진 보석 도마뱀'], ['crystal_golem', 'whirlwind', '수정칼날 골렘']],
-        archer:  [['gem_lizard', 'rapid_fire', '보석가시 도마뱀'], ['light_wisp', 'triple_arrow', '분광 정령'], ['gem_lizard', 'poison_arrow', '수정침 도마뱀']],
-        mage:    [['light_wisp', 'thunderbolt', '빛줄기 정령'], ['light_wisp', 'ice_arrow', '수정화 정령'], ['light_wisp', 'fireball', '태양빛 정령']],
-        healer:  [['light_wisp', 'heal', '치유의 빛 정령'], ['crystal_golem', 'shield', '수정방벽 골렘']] },
-      '그림자족': { boss: 'whirlwind',
-        warrior: [['nightmare', 'charge', '돌진 악몽마'], ['wraith_knight', 'stun_strike', '망령 처형기사'], ['shadow_assassin', 'whirlwind', '칼춤 자객']],
-        archer:  [['shadow_assassin', 'poison_arrow', '독침 자객'], ['shadow_assassin', 'triple_arrow', '표창 자객'], ['wraith_knight', 'rapid_fire', '망령 석궁기사']],
-        mage:    [['nightmare', 'ice_arrow', '공포의 악몽마'], ['shadow_assassin', 'poison_boom', '연막 자객'], ['nightmare', 'thunderbolt', '검은 번개 악몽마']],
-        healer:  [['wraith_knight', 'revive', '망령 사령기사'], ['wraith_knight', 'shield', '망령 방패기사']] },
-      '신화 수호자': { boss: 'charge',
-        warrior: [['minotaur', 'charge', '돌진 미노타우로스'], ['minotaur', 'whirlwind', '도끼 미노타우로스'], ['chimera', 'roar', '포효하는 키메라']],
-        archer:  [['medusa', 'poison_arrow', '독사 궁수 메두사'], ['medusa', 'rapid_fire', '뱀머리 메두사'], ['chimera', 'triple_arrow', '가시꼬리 키메라']],
-        mage:    [['medusa', 'ice_arrow', '석화의 메두사'], ['chimera', 'fireball', '화염 키메라'], ['chimera', 'thunderbolt', '뇌전 키메라']],
-        healer:  [['medusa', 'blessing', '메두사 무녀'], ['medusa', 'heal', '치유뱀 메두사']] },
-      '혼돈족': { boss: 'whirlwind',
-        warrior: [['void_tentacle', 'whirlwind', '휘감는 공허 촉수'], ['fallen_angel', 'charge', '타락 천사 검사'], ['void_tentacle', 'stun_strike', '내려치는 공허 촉수']],
-        archer:  [['fallen_angel', 'rapid_fire', '타락 천사 궁수'], ['chaos_eye', 'triple_arrow', '광선 혼돈안'], ['fallen_angel', 'arrow_rain', '깃털비 타락 천사']],
-        mage:    [['chaos_eye', 'thunderbolt', '번개 혼돈안'], ['chaos_eye', 'fireball', '화염 혼돈안'], ['chaos_eye', 'ice_arrow', '석화 혼돈안']],
-        healer:  [['fallen_angel', 'heal', '타락 천사 사제'], ['fallen_angel', 'shield', '타락 천사 수호자']] }
+      '고블린족': { boss: ['charge', 'stun_strike', 'warcry', 'whirlwind', 'roar'],
+        warrior: [['goblin', '고블린 전사', ['whirlwind', 'stun_strike', 'warcry', 'charge']], ['goblin_rider', '멧돼지 기수', ['charge', 'stun_strike', 'roar', 'whirlwind']]],
+        archer:  [['goblin', '고블린 궁수', ['poison_arrow', 'rapid_fire', 'triple_arrow', 'evasive_shot']], ['goblin_rider', '멧돼지 궁기병', ['rapid_fire', 'triple_arrow', 'evasive_shot', 'arrow_rain']]],
+        mage:    [['goblin', '고블린 주술사', ['fireball', 'poison_boom', 'thunderbolt', 'teleport']]],
+        healer:  [['goblin', '고블린 사제', ['blessing', 'heal', 'shield', 'purify']]] },
+      '언데드': { boss: ['roar', 'poison_boom', 'ice_arrow', 'stun_strike', 'teleport'],
+        warrior: [['skeleton', '해골 병사', ['stun_strike', 'whirlwind', 'charge', 'warcry']], ['mummy', '미라 파수꾼', ['roar', 'stun_strike', 'whirlwind', 'charge']]],
+        archer:  [['skeleton', '해골 궁수', ['triple_arrow', 'poison_arrow', 'rapid_fire', 'arrow_rain']]],
+        mage:    [['ghost', '유령 마법사', ['ice_arrow', 'thunderbolt', 'teleport', 'poison_boom']], ['mummy', '역병 미라', ['poison_boom', 'ice_arrow', 'thunderbolt', 'teleport']]],
+        healer:  [['skeleton', '해골 강령술사', ['revive', 'shield', 'purify', 'heal']]] },
+      '야수족': { boss: ['charge', 'rend', 'roar', 'shadow_step', 'whirlwind'],
+        warrior: [['wolf', '사냥 늑대', ['charge', 'roar', 'whirlwind', 'stun_strike']], ['spider', '거대 독거미', ['stun_strike', 'whirlwind', 'charge', 'roar']]],
+        archer:  [['spider', '독침 거미', ['poison_arrow', 'triple_arrow', 'rapid_fire', 'evasive_shot']], ['bat', '박쥐 떼', ['rapid_fire', 'triple_arrow', 'evasive_shot', 'arrow_rain']]],
+        mage:    [['bat', '초음파 박쥐', ['thunderbolt', 'ice_arrow', 'teleport', 'poison_boom']], ['spider', '독주머니 거미', ['poison_boom', 'ice_arrow', 'thunderbolt', 'teleport']]],
+        healer:  [['wolf', '우두머리 늑대', ['blessing', 'heal', 'purify', 'shield']]] },
+      '늪지족': { boss: ['whirlwind', 'poison_boom', 'stun_strike', 'roar', 'poison_arrow'],
+        warrior: [['lizard', '리자드맨 전사', ['charge', 'whirlwind', 'stun_strike', 'roar']], ['slime', '거대 슬라임', ['stun_strike', 'roar', 'whirlwind', 'charge']]],
+        archer:  [['lizard', '리자드맨 사냥꾼', ['poison_arrow', 'rapid_fire', 'triple_arrow', 'evasive_shot']], ['mushroom', '포자 버섯', ['arrow_rain', 'poison_arrow', 'triple_arrow', 'rapid_fire']]],
+        mage:    [['lizard', '리자드맨 주술사', ['thunderbolt', 'poison_boom', 'ice_arrow', 'teleport']], ['mushroom', '독포자 버섯', ['poison_boom', 'ice_arrow', 'thunderbolt', 'teleport']]],
+        healer:  [['slime', '치유 슬라임', ['heal', 'blessing', 'purify', 'revive']]] },
+      '오크족': { boss: ['stun_strike', 'warcry', 'charge', 'whirlwind', 'rend'],
+        warrior: [['orc', '오크 전사', ['charge', 'stun_strike', 'warcry', 'whirlwind']], ['orc_berserker', '오크 광전사', ['whirlwind', 'charge', 'roar', 'stun_strike']]],
+        archer:  [['orc', '오크 투척병', ['triple_arrow', 'rapid_fire', 'poison_arrow', 'arrow_rain']]],
+        mage:    [['orc', '오크 주술사', ['fireball', 'thunderbolt', 'poison_boom', 'ice_arrow']]],
+        healer:  [['orc', '오크 무당', ['blessing', 'heal', 'shield', 'revive']]] },
+      '설원족': { boss: ['stun_strike', 'ice_arrow', 'earthquake', 'roar', 'iron_stance'],
+        warrior: [['troll', '서리트롤 전사', ['stun_strike', 'charge', 'whirlwind', 'warcry']], ['yeti', '성난 설인', ['roar', 'stun_strike', 'charge', 'whirlwind']]],
+        archer:  [['ice_harpy', '하피 궁수', ['rapid_fire', 'arrow_rain', 'triple_arrow', 'evasive_shot']]],
+        mage:    [['troll', '서리트롤 주술사', ['ice_arrow', 'thunderbolt', 'teleport', 'poison_boom']], ['ice_harpy', '폭풍 하피', ['thunderbolt', 'ice_arrow', 'teleport', 'poison_boom']]],
+        healer:  [['yeti', '얼음장막 설인', ['shield', 'heal', 'purify', 'blessing']]] },
+      '화염족': { boss: ['whirlwind', 'fireball', 'roar', 'arrow_rain', 'teleport'],
+        warrior: [['hellhound', '돌진 지옥견', ['charge', 'whirlwind', 'roar', 'stun_strike']], ['imp', '임프 전사', ['stun_strike', 'whirlwind', 'charge', 'warcry']]],
+        archer:  [['imp', '임프 궁수', ['rapid_fire', 'triple_arrow', 'arrow_rain', 'poison_arrow']]],
+        mage:    [['fire_elemental', '작열 불꽃정령', ['fireball', 'thunderbolt', 'teleport', 'poison_boom']], ['imp', '임프 주술사', ['fireball', 'thunderbolt', 'poison_boom', 'teleport']]],
+        healer:  [['fire_elemental', '불씨 정령', ['heal', 'revive', 'blessing', 'shield']]] },
+      '거인족': { boss: ['stun_strike', 'earthquake', 'roar', 'shield_rush', 'iron_stance'],
+        warrior: [['ogre', '오우거 전사', ['stun_strike', 'roar', 'whirlwind', 'charge']], ['golem', '바위 골렘', ['whirlwind', 'stun_strike', 'roar', 'warcry']]],
+        archer:  [['cyclops', '외눈 투석꾼', ['poison_arrow', 'rapid_fire', 'arrow_rain', 'triple_arrow']]],
+        mage:    [['cyclops', '번개 사이클롭스', ['thunderbolt', 'fireball', 'ice_arrow', 'teleport']]],
+        healer:  [['golem', '수호 골렘', ['shield', 'heal', 'blessing', 'purify']]] },
+      '심해족': { boss: ['whirlwind', 'earthquake', 'stun_strike', 'poison_boom', 'roar'],
+        warrior: [['crab', '집게 전사', ['stun_strike', 'whirlwind', 'charge', 'roar']], ['merfolk', '인어 창기병', ['charge', 'whirlwind', 'stun_strike', 'warcry']]],
+        archer:  [['merfolk', '인어 작살수', ['triple_arrow', 'rapid_fire', 'poison_arrow', 'arrow_rain']], ['octopus', '먹물 저격 문어', ['poison_arrow', 'rapid_fire', 'triple_arrow', 'evasive_shot']]],
+        mage:    [['octopus', '먹물폭탄 문어', ['poison_boom', 'ice_arrow', 'thunderbolt', 'teleport']], ['merfolk', '인어 주술사', ['ice_arrow', 'thunderbolt', 'poison_boom', 'teleport']]],
+        healer:  [['merfolk', '인어 사제', ['heal', 'shield', 'purify', 'blessing']]] },
+      '용족': { boss: ['charge', 'fireball', 'roar', 'arrow_rain', 'thunderbolt'],
+        warrior: [['dragonkin', '용인족 전사', ['charge', 'stun_strike', 'whirlwind', 'warcry']], ['drake', '성난 드레이크', ['roar', 'charge', 'whirlwind', 'stun_strike']]],
+        archer:  [['wyvern', '독꼬리 와이번', ['poison_arrow', 'triple_arrow', 'rapid_fire', 'arrow_rain']], ['dragonkin', '용인족 궁수', ['rapid_fire', 'triple_arrow', 'poison_arrow', 'evasive_shot']]],
+        mage:    [['drake', '화염 드레이크', ['fireball', 'thunderbolt', 'poison_boom', 'teleport']], ['dragonkin', '용인족 주술사', ['thunderbolt', 'fireball', 'ice_arrow', 'teleport']]],
+        healer:  [['dragonkin', '용인족 사제', ['blessing', 'heal', 'shield', 'purify']]] },
+      '정령족': { boss: ['whirlwind', 'thunderbolt', 'fireball', 'ice_arrow', 'heal'],
+        warrior: [['wind_spirit', '회오리 정령', ['whirlwind', 'charge', 'roar', 'stun_strike']], ['water_spirit', '파도 정령', ['roar', 'stun_strike', 'whirlwind', 'charge']]],
+        archer:  [['wind_spirit', '바람칼날 정령', ['triple_arrow', 'rapid_fire', 'arrow_rain', 'evasive_shot']], ['storm_spirit', '뇌우 정령', ['arrow_rain', 'rapid_fire', 'triple_arrow', 'poison_arrow']]],
+        mage:    [['storm_spirit', '뇌전 정령', ['thunderbolt', 'ice_arrow', 'teleport', 'fireball']], ['water_spirit', '빙결 정령', ['ice_arrow', 'thunderbolt', 'teleport', 'poison_boom']]],
+        healer:  [['water_spirit', '샘물 정령', ['heal', 'blessing', 'purify', 'shield']]] },
+      '기계족': { boss: ['stun_strike', 'shield_rush', 'earthquake', 'iron_stance', 'arrow_rain'],
+        warrior: [['clockwork', '태엽 병사', ['charge', 'whirlwind', 'stun_strike', 'warcry']], ['steam_golem', '증기망치 골렘', ['stun_strike', 'roar', 'whirlwind', 'charge']]],
+        archer:  [['clockwork', '태엽 총병', ['rapid_fire', 'arrow_rain', 'triple_arrow', 'evasive_shot']], ['steel_spider', '산성침 거미', ['poison_arrow', 'triple_arrow', 'rapid_fire', 'evasive_shot']]],
+        mage:    [['steam_golem', '증기포 골렘', ['fireball', 'thunderbolt', 'poison_boom', 'ice_arrow']], ['steel_spider', '산성폭탄 거미', ['poison_boom', 'thunderbolt', 'ice_arrow', 'teleport']]],
+        healer:  [['clockwork', '태엽 수리병', ['heal', 'shield', 'purify', 'blessing']]] },
+      '사막족': { boss: ['roar', 'stun_strike', 'thunderbolt', 'provoke', 'teleport'],
+        warrior: [['sand_raider', '약탈자 검사', ['whirlwind', 'charge', 'stun_strike', 'warcry']], ['scorpion', '집게 전갈', ['stun_strike', 'charge', 'whirlwind', 'roar']]],
+        archer:  [['scorpion', '독침 전갈', ['poison_arrow', 'triple_arrow', 'rapid_fire', 'arrow_rain']], ['sand_raider', '약탈자 궁수', ['rapid_fire', 'triple_arrow', 'evasive_shot', 'poison_arrow']]],
+        mage:    [['sand_raider', '사막 주술사', ['fireball', 'ice_arrow', 'thunderbolt', 'teleport']], ['sandworm', '모래늪 벌레', ['ice_arrow', 'poison_boom', 'thunderbolt', 'teleport']]],
+        healer:  [['sand_raider', '사막 사제', ['heal', 'blessing', 'purify', 'shield']]] },
+      '타락 요정족': { boss: ['stun_strike', 'earthquake', 'heal', 'whirlwind', 'poison_boom'],
+        warrior: [['thorn_treant', '가시채찍 나무정령', ['whirlwind', 'stun_strike', 'roar', 'charge']], ['dark_fairy', '가시창 요정', ['charge', 'whirlwind', 'stun_strike', 'warcry']]],
+        archer:  [['dark_fairy', '요정 궁수', ['rapid_fire', 'poison_arrow', 'triple_arrow', 'evasive_shot']], ['venom_moth', '독가루비 나방', ['arrow_rain', 'poison_arrow', 'triple_arrow', 'rapid_fire']]],
+        mage:    [['dark_fairy', '저주 요정', ['ice_arrow', 'thunderbolt', 'poison_boom', 'teleport']], ['venom_moth', '독포자 나방', ['poison_boom', 'ice_arrow', 'thunderbolt', 'teleport']]],
+        healer:  [['thorn_treant', '수액 나무정령', ['heal', 'blessing', 'purify', 'shield']]] },
+      '마계족': { boss: ['whirlwind', 'fireball', 'warcry', 'rend', 'poison_boom'],
+        warrior: [['hell_knight', '마계 돌격기사', ['charge', 'stun_strike', 'whirlwind', 'warcry']], ['pumpkin_fiend', '호박 낫잡이', ['whirlwind', 'charge', 'roar', 'stun_strike']]],
+        archer:  [['hell_knight', '마계 석궁기사', ['triple_arrow', 'rapid_fire', 'poison_arrow', 'arrow_rain']], ['pumpkin_fiend', '호박씨 사수', ['rapid_fire', 'arrow_rain', 'triple_arrow', 'evasive_shot']]],
+        mage:    [['warlock', '마계 흑마법사', ['fireball', 'poison_boom', 'thunderbolt', 'teleport']]],
+        healer:  [['warlock', '마계 사령술사', ['revive', 'blessing', 'shield', 'heal']]] },
+      '천공족': { boss: ['whirlwind', 'thunderbolt', 'charge', 'arrow_rain', 'shadow_step'],
+        warrior: [['sky_knight', '하늘 창기사', ['charge', 'stun_strike', 'whirlwind', 'warcry']], ['griffin', '급강하 그리폰', ['stun_strike', 'whirlwind', 'charge', 'roar']]],
+        archer:  [['sky_knight', '하늘 궁기사', ['rapid_fire', 'arrow_rain', 'triple_arrow', 'evasive_shot']], ['thunderbird', '깃털탄 천둥새', ['triple_arrow', 'rapid_fire', 'arrow_rain', 'poison_arrow']]],
+        mage:    [['thunderbird', '폭풍 천둥새', ['thunderbolt', 'ice_arrow', 'teleport', 'fireball']]],
+        healer:  [['sky_knight', '천상 사제', ['shield', 'heal', 'blessing', 'purify']]] },
+      '수정족': { boss: ['roar', 'ice_arrow', 'shield', 'thunderbolt', 'iron_stance'],
+        warrior: [['crystal_golem', '수정망치 골렘', ['stun_strike', 'whirlwind', 'roar', 'charge']], ['gem_lizard', '보석 도마뱀 전사', ['charge', 'whirlwind', 'stun_strike', 'warcry']]],
+        archer:  [['gem_lizard', '보석가시 도마뱀', ['rapid_fire', 'poison_arrow', 'triple_arrow', 'arrow_rain']], ['light_wisp', '분광 정령', ['triple_arrow', 'rapid_fire', 'arrow_rain', 'evasive_shot']]],
+        mage:    [['light_wisp', '섬광 정령', ['thunderbolt', 'ice_arrow', 'fireball', 'teleport']]],
+        healer:  [['light_wisp', '치유의 빛 정령', ['heal', 'shield', 'purify', 'blessing']]] },
+      '그림자족': { boss: ['whirlwind', 'shadow_step', 'rend', 'shuriken', 'poison_boom'],
+        warrior: [['wraith_knight', '망령 처형기사', ['stun_strike', 'whirlwind', 'charge', 'warcry']], ['nightmare', '돌진 악몽마', ['charge', 'roar', 'whirlwind', 'stun_strike']]],
+        archer:  [['shadow_assassin', '그림자 저격수', ['poison_arrow', 'triple_arrow', 'rapid_fire', 'evasive_shot']]],
+        mage:    [['shadow_assassin', '그림자 술사', ['poison_boom', 'ice_arrow', 'thunderbolt', 'teleport']], ['nightmare', '공포의 악몽마', ['ice_arrow', 'thunderbolt', 'poison_boom', 'teleport']]],
+        healer:  [['wraith_knight', '망령 사령기사', ['revive', 'shield', 'heal', 'purify']]] },
+      '신화 수호자': { boss: ['charge', 'fireball', 'rend', 'roar', 'whirlwind'],
+        warrior: [['minotaur', '미노타우로스 전사', ['charge', 'whirlwind', 'stun_strike', 'roar']], ['chimera', '포효하는 키메라', ['roar', 'charge', 'whirlwind', 'stun_strike']]],
+        archer:  [['medusa', '메두사 궁수', ['poison_arrow', 'rapid_fire', 'triple_arrow', 'arrow_rain']]],
+        mage:    [['medusa', '석화의 메두사', ['ice_arrow', 'poison_boom', 'thunderbolt', 'teleport']], ['chimera', '화염 키메라', ['fireball', 'thunderbolt', 'ice_arrow', 'poison_boom']]],
+        healer:  [['medusa', '메두사 무녀', ['blessing', 'heal', 'shield', 'purify']]] },
+      '혼돈족': { boss: ['whirlwind', 'thunderbolt', 'fireball', 'earthquake', 'rend'],
+        warrior: [['void_tentacle', '휘감는 공허 촉수', ['whirlwind', 'stun_strike', 'roar', 'charge']], ['fallen_angel', '타락 천사 검사', ['charge', 'whirlwind', 'stun_strike', 'warcry']]],
+        archer:  [['fallen_angel', '타락 천사 궁수', ['rapid_fire', 'arrow_rain', 'triple_arrow', 'poison_arrow']], ['chaos_eye', '광선 혼돈안', ['triple_arrow', 'rapid_fire', 'poison_arrow', 'evasive_shot']]],
+        mage:    [['chaos_eye', '마력의 혼돈안', ['thunderbolt', 'fireball', 'ice_arrow', 'poison_boom']]],
+        healer:  [['fallen_angel', '타락 천사 사제', ['heal', 'shield', 'revive', 'blessing']]] }
     };
+    // 층에 따라 쓰는 스킬 수: 일반 몬스터 1~10층 2개 · 11~40층 3개 · 41층부터 4개 (졸개는 1개 적게)
+    function towerUnitSkillCount(floor) { return floor <= 10 ? 2 : floor <= 40 ? 3 : 4; }
+    // 종족 보스: 5·10층 3개 · 15~50층 4개 · 55층부터 5개
+    function towerBossSkillCount(floor) { return floor <= 10 ? 3 : floor <= 50 ? 4 : 5; }
+    const TOWER_EXTRA_SKILL_LOSS = 0.2; // 스킬 1개 더 쓸 때마다 체력·공격력 -20% (tests/tower-sim.js로 예전 승률과 맞춤)
     const TOWER_MAX_FLOOR = TOWER_RACES.length * 5; // 100층 (10층 2구역 · 종족 20개)
 
     function towerRaceOfFloor(floor) {
@@ -3499,16 +3529,17 @@
       const squad = TOWER_RACE_SQUADS[race.name];
       const jobSeen = {};
       // 본대: 같은 직업 칸은 종족 후보를 차례로 (층마다 시작점을 밀어 구성이 겹치지 않게)
+      const skillN = towerUnitSkillCount(fl);
       const units = p.comp.map((job, idx) => {
-        if (isRaceBoss && idx === 0) return { job, monster: race.boss, skill: squad.boss, name: MONSTER_DEFS[race.boss].name };
+        if (isRaceBoss && idx === 0) return { job, monster: race.boss, skills: squad.boss.slice(0, towerBossSkillCount(fl)), name: MONSTER_DEFS[race.boss].name };
         const k = jobSeen[job] = (jobSeen[job] ?? -1) + 1;
-        const [monster, skill, name] = squad[job][(k + pos) % squad[job].length];
-        return { job, monster, skill, name };
+        const [monster, name, skills] = squad[job][(k + pos) % squad[job].length];
+        return { job, monster, skills: skills.slice(0, skillN), name };
       });
       for (let i = 0; i < minions; i++) {
         const job = TOWER_MINION_JOBS[(i + pos) % TOWER_MINION_JOBS.length];
-        const [monster, skill] = squad[job][(i + fl) % squad[job].length];
-        units.push({ job, monster, skill, name: `${MONSTER_DEFS[monster].name} 졸개` });
+        const [monster, , skills] = squad[job][(i + fl) % squad[job].length];
+        units.push({ job, monster, skills: skills.slice(0, Math.max(1, skillN - 1)), name: `${MONSTER_DEFS[monster].name} 졸개` });
       }
       const bossName = MONSTER_DEFS[race.boss].name;
       TOWER_FLOORS.push({
@@ -3521,7 +3552,8 @@
         desc: `[${race.name}] ${race.desc} ${p.desc}${minions ? ` 졸개 ${minions}마리가 함께 몰려와요!` : ''}`,
         rewardMc: 0,
         comp: units.map(u => u.job),
-        skills: units.map(u => u.skill),
+        skills: units.map(u => u.skills[0]),   // 대표 스킬
+        unitSkills: units.map(u => u.skills), // 유닛마다 쓰는 스킬 전부
         monsters: units.map(u => u.monster),
         minionFrom: p.comp.length,   // 이 번호부터는 졸개
         coreScale: +(1 - minions * TOWER_MINION_SCALE_LOSS).toFixed(3),
@@ -3858,10 +3890,41 @@
         rapid_fire:   { anim: 'attack', tpf: 5, dur: 15 }
       }
     };
+    // 같은 몬스터·직업이라도 스킬마다 그림이 다르면 '<몬스터>_<직업>_<스킬>' 키 (가장 먼저 찾음)
+    // 고블린 쌍도끼병 (회전베기, 몽둥이꾼은 제외): 칸 순서 = 대기, 걷기 A·B, 도끼 들기·휘두르기, 쌍도끼 펼침, 회전, 회전 좌우반전, 피격, 쓰러짐 2장
+    // (샘플 바닥 그림자는 지움. 쓰러짐 B 얼굴 위에 겹친 회색 마름모 얼룩은 지우고 턱·도끼 자루를 이어 그림.
+    //  회전 그림은 한 장뿐이라 좌우를 뒤집은 칸을 번갈아 써서 도는 느낌을 냄. spinFx = 회전 타격마다 창병 난무 소용돌이 이펙트)
+    MONSTER_SPRITE_DEFS.goblin_warrior_whirlwind = {
+      src: 'assets/sprites/monster/goblin.webp',
+      cellW: 122, cellH: 107, anchorX: 61, anchorY: 101, standH: 94, topH: 84, count: 11, spinFx: true,
+      anims: { idle: [0], walk: [1, 0, 2, 0], attack: [3, 4, 4], skill: [5, 6], hurt: [8], death: [9, 10], whirl: [6, 7] },
+      skillAnims: { whirlwind: { anim: 'whirl', tpf: 4, loop: true } }
+    };
+    // 고블린 폭탄꾼 (파이어볼, 독약쟁이·번개술사는 제외): 칸 순서 = 대기, 걷기 2장, 폭탄 쥐기·던지기, 머리 위 불덩이·내던지기, 피격, 쓰러짐 2장
+    // (샘플 바닥 그림자는 지움. 던지기 칸에 그려진 날아가는 폭탄과 내던지기 칸의 파이어볼은 투사체로 따로 날아가므로 지움)
+    // projFx = 이 몬스터가 쏘는 투사체를 GOBLIN_BOMB_FX 그림으로 바꿈 (기본 공격 = 불붙은 폭탄, 스킬 = 불꽃 파이어볼)
+    MONSTER_SPRITE_DEFS.goblin_mage_fireball = {
+      src: 'assets/sprites/monster/goblin_bomber.webp',
+      cellW: 89, cellH: 92, anchorX: 43.5, anchorY: 88, standH: 52, topH: 74, count: 10,
+      anims: { idle: [0], walk: [1, 0, 2, 0], attack: [3, 4, 4], skill: [5, 6, 6], hurt: [7], death: [8, 9] },
+      skillAnims: { fireball: { anim: 'skill', tpf: 7, dur: 28 } },
+      castFrames: { fireball: 5 },
+      projFx: { magic_orb: 'bomb', fireball_proj: 'goblin_fireball' }
+    };
     function getUnitSprite(u) {
       if (!u.monsterType) return getMercSprite(u.job, u.skinVariant || 0);
-      const def = MONSTER_SPRITE_DEFS[`${u.monsterType}_${u.job}`] || MONSTER_SPRITE_DEFS[u.monsterType];
+      const def = MONSTER_SPRITE_DEFS[`${u.monsterType}_${u.job}_${u.skillKey}`] || MONSTER_SPRITE_DEFS[`${u.monsterType}_${u.job}`] || MONSTER_SPRITE_DEFS[u.monsterType];
       return def && (!def.jobs || def.jobs.includes(u.job)) ? def : null;
+    }
+    // 이 유닛이 쏘는 투사체의 그림 바꾸기 (PROJECTILE_SPRITES 키, 없으면 undefined = 기본 그림)
+    function unitProjFx(u, projType) {
+      const def = getUnitSprite(u);
+      return (def && def.projFx && def.projFx[projType]) || undefined;
+    }
+    // 투사체가 터질 때 그릴 효과 그림 (투사체 그림에 hit가 있으면 그것, 없으면 fallback)
+    function projHitSpr(p, fallback) {
+      const def = p.spr && PROJECTILE_SPRITES[p.spr];
+      return (def && def.hit) || fallback;
     }
 
     /********************************************************************
@@ -3886,8 +3949,21 @@
         poison_arrow: [[3078,0,87,20,83,10]] // arrow와 같은 그림에 촉만 보라색
       }
     };
-    // 투사체 종류별 그림과 크기(머리 높이, 월드 px). match가 있으면 그 조건을 만족할 때만 (성녀 분홍 구슬 제외)
+    // 고블린 폭탄꾼 이펙트 (원본 샘플: assets/sprites/fx/samples/goblin_bomber_fx.webp). 투사체 기준점 = 폭탄·불덩이 중심
+    const GOBLIN_BOMB_FX = {
+      src: 'assets/sprites/fx/goblin_bomb_fx.webp',
+      anims: {
+        bomb: [[0,0,122,111,96,55],[124,0,134,150,104,55]],
+        bomb_hit: [[260,0,141,126,71,63],[403,0,176,144,88,72]],
+        fireball: [[581,0,156,81,130,40],[739,0,171,84,145,48],[912,0,150,98,124,51]],
+        flame_hit: [[1064,0,124,105,62,53],[1190,0,185,174,93,87]]
+      }
+    };
+    // 투사체 종류별 그림과 크기(첫 프레임 높이, 월드 px). match가 있으면 그 조건을 만족할 때만 (성녀 분홍 구슬 제외)
+    // 투사체에 spr가 붙어 있으면 그 키를 먼저 찾음 (sheet = 다른 아틀라스, hit = 터질 때 그릴 효과 그림)
     const PROJECTILE_SPRITES = {
+      bomb:            { anim: 'bomb', h: 37, sheet: GOBLIN_BOMB_FX, hit: 'bomb_hit' },          // 폭탄 지름 약 16
+      goblin_fireball: { anim: 'fireball', h: 36, sheet: GOBLIN_BOMB_FX, hit: 'flame_hit' },
       magic_orb:      { anim: 'orb', h: 18.2, match: p => !p.color || p.color === '#7c3aed' }, // 마법사 기본 공격 구슬 (26에서 30% 작게)
       fireball_proj:  { anim: 'fireball', h: 34 },
       ice_arrow_proj: { anim: 'ice', h: 22 },
@@ -3936,7 +4012,7 @@
     LANCER_JAVELIN_FX.onload = () => { LANCER_JAVELIN_FX.ready = true; };
     LANCER_JAVELIN_FX.src = 'assets/sprites/fx/lancer_javelin_fx.webp';
 
-    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET).forEach(def => {
+    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX).forEach(def => {
       def.img = new Image();
       def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
       def.img.src = def.src;
@@ -4358,7 +4434,7 @@
         job: jobKey,
         skillKey: skillKey,
         skillSlots: [skillKey, ...restSkills],
-        skillsRevealed: fixedSkillKey && level >= 10 ? 1 : 0,
+        skillsRevealed: fixedSkillKey ? 1 : 0, // 정해 준 스킬은 1레벨에 열리는 첫 칸에 그대로 (무작위로 바뀌지 않게)
         skinVariant: (isSecret ? pickSecretMercSkin(jobKey) : null) ?? pickRandomMercSkin(jobKey),
         skinVer: MERC_SKIN_VERSION,
         skinN: getMercSkinCount(jobKey),
@@ -7864,12 +7940,12 @@
 
         const compIcons = f.comp.map((j, i) => {
           const skKey = f.skills?.[i];
-          const skObj = SKILL_DEFS[j]?.[skKey];
           const monKey = f.monsters?.[i];
           const monObj = monKey ? MONSTER_DEFS[monKey] : null;
           const unitLabel = monObj ? `${monObj.icon}${f.unitNames?.[i] || monObj.name}` : `🌑흑화${JOB_DEFS[j].name}`;
           const traits = monKey ? monsterPassivesText(monKey) : '';
-          return `<span title="${skObj ? `${skObj.icon} ${skObj.name}` : JOB_DEFS[j].name}">${unitLabel}</span>${traits ? `(${traits})` : ''}`;
+          const skillText = Object.values(buildSkillBook(f.unitSkills?.[i] || [skKey])).map(sk => sk.name).join(', ');
+          return `${unitLabel}(${skillText || JOB_DEFS[j].name}${traits ? ' · ' + traits : ''})`;
         }).join(' · ');
         const traitHelp = [...new Set(f.monsters.flatMap(k => (MONSTER_DEFS[k] || {}).passives || []))]
           .map(k => `${MONSTER_PASSIVES[k].icon}${MONSTER_PASSIVES[k].name}: ${MONSTER_PASSIVES[k].desc}`).join('\n');
@@ -10350,6 +10426,15 @@
           if (isMinion) Object.assign(m, TOWER_MINION_CELLS[idx - towerFloorObj.minionFrom] || {});
           const unit = createSimUnit(m, null, 'red', setup.scale * (towerFloorObj.coreScale || 1));
           if (monKey) applyMonsterTraits(unit, monKey, Boolean(towerFloorObj.isRaceBoss && idx === 0), towerFloorObj.floor);
+          // 층마다 정해 둔 스킬 묶음 (레벨로 열리는 직업 스킬 대신)
+          if (towerFloorObj.unitSkills?.[idx]) {
+            applyUnitSkillBook(unit, buildSkillBook(towerFloorObj.unitSkills[idx]));
+            // 레벨로 열리던 스킬 수보다 많이 쓰는 만큼 능력치를 낮춰 층 난이도는 그대로 둠
+            const extra = Math.max(0, unit.unlockedSkills.length - getUnlockedSkillCount(setup.level));
+            const k = Math.max(0.4, 1 - extra * TOWER_EXTRA_SKILL_LOSS);
+            unit.maxHp = unit.hp = Math.round(unit.maxHp * k);
+            unit.atk = Math.round(unit.atk * k);
+          }
           if (isMinion) {
             unit.isMinion = true;
             unit.maxHp = unit.hp = Math.round(unit.maxHp * TOWER_MINION_MULT.hp);
@@ -11296,7 +11381,7 @@
         if (sk === 'fireball' && aimPt) {
           const fx = unit.x, fy = unit.y - 12;
           sim.projectiles.push({
-            projType: 'fireball_proj', x: fx, y: fy, owner: unit,
+            projType: 'fireball_proj', spr: unitProjFx(unit, 'fireball_proj'), x: fx, y: fy, owner: unit,
             dmg: unit.atk * 2.4, aoeRadius: 170, statusOnHit: 'burn', statusDur: 560, isSkill: true, speed: 2.8, trail: [],
             isDirectional: true, angle: aimAngleTo(fx, fy), maxTravel: Math.max(20, Math.hypot(aimPt.x - fx, aimPt.y - 12 - fy))
           });
@@ -11312,7 +11397,7 @@
             }
           });
           sim.projectiles.push({
-            projType: 'fireball_proj',
+            projType: 'fireball_proj', spr: unitProjFx(unit, 'fireball_proj'),
             x: unit.x, y: unit.y - 12,
             target: bestClusterTarget, owner: unit,
             dmg: unit.atk * 2.4,
@@ -11625,6 +11710,12 @@
 
         if (u.skillAnim > 0 && u.activeSkillType === 'whirlwind') {
           if (u.skillAnim % 28 === 0) {
+            // 회전 그림이 있는 몬스터(고블린 쌍도끼병)는 타격마다 창병 난무 소용돌이를 번갈아 뒤집어 그림
+            const spr = getUnitSprite(u);
+            if (spr && spr.spinFx) {
+              const hitNo = Math.round(u.skillAnim / 28);
+              sim.effects.push({ type: 'rampage_fx', f: 2 + (hitNo % 2), x: u.x, y: u.y - 14, w: 250, flip: hitNo % 4 >= 2, life: 22, maxLife: 22 });
+            }
             enemies.forEach(e => {
               if (unitDist(e, u) <= 125) {
                 playCombatSfx('slash');
@@ -11792,12 +11883,13 @@
             });
 
           } else if (u.job === 'mage') {
-            sim.effects.push({
+            const orbSpr = unitProjFx(u, 'magic_orb');
+            if (!orbSpr) sim.effects.push({ // 폭탄을 던지는 몬스터는 마법진 없이
               type: 'cast_circle',
               x: u.x, y: u.y, color: '#7c3aed', life: 32, maxLife: 32
             });
             sim.projectiles.push({
-              projType: 'magic_orb',
+              projType: 'magic_orb', spr: orbSpr,
               x: u.x + u.facingDir * 12, y: u.y - 10, target, owner: u,
               dmg: u.atk, isHeal: false, speed: 2.6, trail: [],
               splashRadius: MAGE_SPLASH_RADIUS, splashRatio: MAGE_SPLASH_RATIO // 마법사 기본 공격: 터지는 자리 주변에 작은 범위 피해
@@ -11903,7 +11995,7 @@
             sim.floatTexts.push({ x: p.target.x, y: p.target.y - 44, text: `💚+${healAmt}`, color: '#059669', life: 45 });
           } else if (p.projType === 'fireball_proj') {
             playCombatSfx('heavy');
-            sim.effects.push({ type: 'fire_explosion', spr: 'fire_hit', x: p.target.x, y: p.target.y, r: p.aoeRadius || 110, life: 34, maxLife: 34 });
+            sim.effects.push({ type: 'fire_explosion', spr: projHitSpr(p, 'fire_hit'), x: p.target.x, y: p.target.y, r: p.aoeRadius || 110, life: 34, maxLife: 34 });
             const enemies = sim.units.filter(u => u.alive && u.team !== p.owner.team);
             enemies.forEach(e => {
               if (unitDist(e, p.target) <= (p.aoeRadius || 110)) {
@@ -11929,7 +12021,7 @@
             }
             if (p.projType === 'magic_orb') {
               playCombatSfx('magic');
-              sim.effects.push({ type: 'magic_burst', spr: p.owner?.job === 'mage' ? 'orb_hit' : undefined, x: p.target.x, y: p.target.y - 12, r: 42, life: 22, maxLife: 22 });
+              sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : undefined), x: p.target.x, y: p.target.y - 12, r: 42, life: 22, maxLife: 22 });
             } else {
               playCombatSfx('arrow');
               sim.effects.push({ type: 'arrow_hit', x: p.target.x, y: p.target.y - 12, angle: p.angle, life: 18, maxLife: 18 });
@@ -13110,7 +13202,7 @@
         const fire = p.projType === 'fireball_proj';
         const r = p.aoeRadius || (fire ? 110 : 85);
         playCombatSfx(fire ? 'heavy' : 'magic');
-        sim.effects.push({ type: fire ? 'fire_explosion' : 'ice_shatter', spr: fire ? 'fire_hit' : 'ice_hit', x, y, r, life: 34, maxLife: 34 });
+        sim.effects.push({ type: fire ? 'fire_explosion' : 'ice_shatter', spr: fire ? projHitSpr(p, 'fire_hit') : 'ice_hit', x, y, r, life: 34, maxLife: 34 });
         sim.units.filter(u => u.alive && u.team !== p.owner.team).forEach(e => {
           if (Math.hypot(e.x - x, e.y - y) - unitBodyGap(e) <= r) {
             applyDamage(p.owner, e, p.dmg, '', fire ? '#ea580c' : '#0284c7');
@@ -13121,7 +13213,7 @@
       }
       if (p.splashRadius) {
         // 작은 범위 공격: 맞은 적은 전체 피해, 주변 적은 일부 피해 (빗나가도 떨어진 자리에서 터짐)
-        sim.effects.push({ type: 'magic_burst', spr: p.owner?.job === 'mage' ? 'orb_hit' : undefined, x, y: y - 12, r: p.splashRadius, life: 22, maxLife: 22 });
+        sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : undefined), x, y: y - 12, r: p.splashRadius, life: 22, maxLife: 22 });
         if (!hit) playCombatSfx('magic');
         sim.units.forEach(e => {
           if (!e.alive || e === hit || e.team === p.owner.team) return;
@@ -13134,7 +13226,7 @@
       if (p.projType === 'magic_orb') {
         playCombatSfx('magic');
         // 범위 공격은 위에서 이미 터지는 그림을 그렸으므로 한 번 더 그리지 않음
-        if (!p.splashRadius) sim.effects.push({ type: 'magic_burst', spr: p.owner?.job === 'mage' ? 'orb_hit' : undefined, x: hit.x, y: hit.y - 12, r: 42, life: 22, maxLife: 22 });
+        if (!p.splashRadius) sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : undefined), x: hit.x, y: hit.y - 12, r: 42, life: 22, maxLife: 22 });
       } else {
         playCombatSfx('arrow');
         sim.effects.push({ type: 'arrow_hit', x: hit.x, y: hit.y - 12, angle: p.angle, life: 18, maxLife: 18 });
@@ -13380,17 +13472,33 @@
 
     // 투사체를 그림으로 그리면 true (그림이 없거나 아직 안 불러왔으면 false → 기본 도형)
     function drawProjectileSprite(ctx, p, tick) {
-      const def = PROJECTILE_SPRITES[p.projType];
-      if (!def || !FX_SPRITE_SHEET.ready || (def.match && !def.match(p))) return false;
-      const list = FX_SPRITE_SHEET.anims[def.anim];
+      const def = (p.spr && PROJECTILE_SPRITES[p.spr]) || PROJECTILE_SPRITES[p.projType];
+      const sheet = (def && def.sheet) || FX_SPRITE_SHEET;
+      if (!def || !sheet.ready || (def.match && !def.match(p))) return false;
+      const list = sheet.anims[def.anim];
       const fr = list[Math.floor(tick / 6) % list.length];
-      drawFxFrame(ctx, fr, p.x, p.y, def.h / list[0][3], p.angle || 0);
+      drawFxFrame(ctx, fr, p.x, p.y, def.h / list[0][3], p.angle || 0, 1, sheet.img);
       return true;
     }
 
     // spr가 붙은 효과를 그림으로 그리면 true
     function drawSpriteEffect(ctx, ef, progress) {
       const fadeOut = Math.min(1, (1 - progress) * 3); // 마지막 1/3 동안 서서히 사라짐
+      if (GOBLIN_BOMB_FX.anims[ef.spr]) {
+        if (!GOBLIN_BOMB_FX.ready) return false;
+        const list = GOBLIN_BOMB_FX.anims[ef.spr];
+        const fr = fxFrameAt(list, progress, 0.5);
+        if (ef.spr === 'flame_hit') {
+          // 불기둥: 바닥(터진 자리)에서 솟아오름. 그림이 위로 길어서 폭은 범위 지름의 약 60%만
+          const w = (ef.r || 110) * 1.2 * (0.7 + Math.min(1, progress * 2) * 0.3);
+          drawFxFrame(ctx, [fr[0], fr[1], fr[2], fr[3], fr[4], fr[3] * 0.82], ef.x, ef.y, w / fr[2], 0, fadeOut, GOBLIN_BOMB_FX.img);
+        } else {
+          // 폭탄 폭발: 폭 = 범위 지름의 약 85%
+          const w = (ef.r || 42) * 1.7 * (0.75 + Math.min(1, progress * 2) * 0.25);
+          drawFxFrame(ctx, fr, ef.x, ef.y, w / fr[2], 0, fadeOut, GOBLIN_BOMB_FX.img);
+        }
+        return true;
+      }
       if (SKILL_FX_SHEET.anims[ef.spr]) {
         if (!SKILL_FX_SHEET.ready) return false;
         const list = SKILL_FX_SHEET.anims[ef.spr];
@@ -15009,7 +15117,7 @@
       { id: 'elite_dire_wolf', stage: 2, name: '🐺 달그림자 늑대왕', monsterType: 'dire_wolf', job: 'warrior', hp: 90000, atk: 82, def: 46, spd: 112, rewardMc: 160,
         desc: '90,000의 체력과 빠른 몸놀림으로 원정대 사이를 누비며 물어뜯는 거대 늑대왕입니다.' },
       { id: 'elite_golem', stage: 3, name: '🪨 태고의 거신 골렘', monsterType: 'ogre', job: 'warrior', hp: 120000, atk: 95, def: 55, spd: 92, rewardMc: 200,
-        desc: '단 한 마리만 출현하는 거대 암석 괴수입니다! 120,000의 막대한 체력과 대지 강타(기절·회전베기)를 구사합니다.' },
+        desc: '단 한 마리만 출현하는 거대 암석 괴수입니다! 120,000의 막대한 체력과 바위 주먹과 대지 붕괴로 땅을 뒤흔듭니다.' },
       { id: 'elite_swamp_hydra', stage: 4, name: '🐍 독늪의 히드라', monsterType: 'swamp_hydra', job: 'archer', hp: 175000, atk: 115, def: 62, spd: 98, rewardMc: 250,
         desc: '175,000의 체력을 지닌 머리 여럿 달린 늪지의 괴수! 멀리서 독을 내뿜어 원정대를 괴롭힙니다.' },
       { id: 'elite_leviathan', stage: 5, name: '🧊 심연의 혹한 리바이어던', monsterType: 'troll', job: 'mage', hp: 240000, atk: 135, def: 70, spd: 105, rewardMc: 300,
@@ -15026,26 +15134,24 @@
         desc: '450,000의 초거대 체력을 지닌 최강의 단일 엘리트 마룡입니다! 두 플레이어의 5+5 정예 용병 협동이 필수입니다.' }
     ];
     // 엘리트 몬스터 전용 스킬: 여러 직업의 스킬 동작을 빌려 와 보스에 어울리는 이름·아이콘으로 씀 [스킬 키, 이름, 아이콘]
+    // 앞에서부터 단계에 따라 열림 (eliteBossSkillCount: 1~2단계 3개 → 9~10단계 7개)
     const ELITE_BOSS_SKILLS = {
-      elite_goblin_king:  [['stun_strike', '황금 철퇴 내려찍기', '🔨'], ['charge', '고블린 대돌격', '💨'], ['roar', '대왕의 호통', '📢'], ['whirlwind', '철퇴 휘두르기', '🌪️']],
-      elite_dire_wolf:    [['shadow_step', '달그림자 도약', '🌙'], ['rend', '찢어발기기', '🩸'], ['roar', '달빛 하울링', '🐺'], ['charge', '사냥 돌진', '💨']],
-      elite_golem:        [['earthquake', '대지 붕괴', '🌋'], ['stun_strike', '바위 주먹', '🪨'], ['shield_rush', '암석 굴러가기', '🪨'], ['provoke', '거신의 위압', '😤']],
-      elite_swamp_hydra:  [['poison_arrow', '독액 뿜기', '🐍'], ['triple_arrow', '세 머리 독침', '🔱'], ['poison_boom', '독늪 폭발', '🧪'], ['arrow_rain', '산성비', '🌧️']],
-      elite_leviathan:    [['ice_arrow', '빙결의 창', '❄️'], ['thunderbolt', '폭풍 번개', '⚡'], ['earthquake', '해일 진동', '🌊'], ['arrow_rain', '우박 폭풍', '🧊']],
-      elite_orc_warlord:  [['whirlwind', '피의 회오리', '🪓'], ['charge', '전쟁 돌격', '💨'], ['roar', '전쟁의 함성', '📯'], ['rend', '도끼 난도질', '🩸'], ['stun_strike', '대족장의 일격', '🔨']],
-      elite_lich:         [['poison_boom', '역병 폭탄', '☣️'], ['thunderbolt', '죽음의 번개', '⚡'], ['ice_arrow', '영혼 서리', '❄️'], ['teleport', '망령 이동', '👻'], ['purify', '불사의 의식', '💀']],
-      elite_ifrit:        [['fireball', '겁화구', '🔥'], ['arrow_rain', '불비', '☄️'], ['roar', '화염 폭발', '💥'], ['earthquake', '용암 분출', '🌋']],
-      elite_kraken:       [['earthquake', '심해 소용돌이', '🌀'], ['shield_rush', '촉수 휩쓸기', '🦑'], ['whirlwind', '촉수 회오리', '🌪️'], ['stun_strike', '심해 압착', '🫧']],
-      elite_chaos_dragon: [['fireball', '종말의 브레스', '🐉'], ['thunderbolt', '혼돈의 낙뢰', '⚡'], ['arrow_rain', '운석 낙하', '☄️'], ['roar', '마룡의 포효', '🔊'], ['earthquake', '대지 진동', '🌋']]
+      elite_goblin_king:  [['stun_strike', '황금 철퇴 내려찍기', '🔨'], ['charge', '고블린 대돌격', '💨'], ['whirlwind', '철퇴 휘두르기', '🌪️'], ['roar', '대왕의 호통', '📢'], ['warcry', '대왕의 호령', '📣'], ['shuriken', '황금 동전 뿌리기', '🪙'], ['poison_boom', '고블린 독약 투척', '🧪']],
+      elite_dire_wolf:    [['rend', '찢어발기기', '🩸'], ['charge', '사냥 돌진', '💨'], ['shadow_step', '달그림자 도약', '🌙'], ['roar', '달빛 하울링', '🐺'], ['whirlwind', '광란의 발톱', '🌪️'], ['warcry', '무리의 울부짖음', '📣'], ['stun_strike', '목덜미 물기', '🦷']],
+      elite_golem:        [['stun_strike', '바위 주먹', '🪨'], ['earthquake', '대지 붕괴', '🌋'], ['shield_rush', '암석 굴러가기', '🪨'], ['provoke', '거신의 위압', '😤'], ['iron_stance', '암석 피부', '🗿'], ['roar', '바위 포효', '📢'], ['arrow_rain', '낙석 세례', '☄️']],
+      elite_swamp_hydra:  [['poison_arrow', '독액 뿜기', '🐍'], ['triple_arrow', '세 머리 독침', '🔱'], ['poison_boom', '독늪 폭발', '🧪'], ['arrow_rain', '산성비', '🌧️'], ['rapid_fire', '연속 독침', '☄️'], ['evasive_shot', '늪 속 잠수', '🌀'], ['purify', '허물 벗기', '✨']],
+      elite_leviathan:    [['ice_arrow', '빙결의 창', '❄️'], ['thunderbolt', '폭풍 번개', '⚡'], ['earthquake', '해일 진동', '🌊'], ['arrow_rain', '우박 폭풍', '🧊'], ['roar', '혹한의 포효', '🌬️'], ['shield', '얼음 갑주', '🛡️'], ['teleport', '심해 잠행', '🌀']],
+      elite_orc_warlord:  [['whirlwind', '피의 회오리', '🪓'], ['charge', '전쟁 돌격', '💨'], ['stun_strike', '대족장의 일격', '🔨'], ['roar', '전쟁의 함성', '📯'], ['rend', '도끼 난도질', '🩸'], ['warcry', '피의 맹세', '📣'], ['shield_rush', '방패 밀치기', '🐎']],
+      elite_lich:         [['ice_arrow', '영혼 서리', '❄️'], ['poison_boom', '역병 폭탄', '☣️'], ['thunderbolt', '죽음의 번개', '⚡'], ['teleport', '망령 이동', '👻'], ['purify', '불사의 의식', '💀'], ['shield', '뼈 방벽', '🦴'], ['earthquake', '무덤 진동', '🪦']],
+      elite_ifrit:        [['fireball', '겁화구', '🔥'], ['roar', '화염 폭발', '💥'], ['arrow_rain', '불비', '☄️'], ['earthquake', '용암 분출', '🌋'], ['teleport', '불꽃 순간이동', '✨'], ['warcry', '불꽃 분노', '📣'], ['thunderbolt', '열뢰', '🌩️']],
+      elite_kraken:       [['earthquake', '심해 소용돌이', '🌀'], ['shield_rush', '촉수 휩쓸기', '🦑'], ['whirlwind', '촉수 회오리', '🌪️'], ['stun_strike', '심해 압착', '🫧'], ['poison_boom', '먹물 폭탄', '🖤'], ['roar', '해일 포효', '🌊'], ['provoke', '촉수 휘감기', '🐙']],
+      elite_chaos_dragon: [['fireball', '종말의 브레스', '🐉'], ['thunderbolt', '혼돈의 낙뢰', '⚡'], ['arrow_rain', '운석 낙하', '☄️'], ['roar', '마룡의 포효', '🔊'], ['earthquake', '대지 진동', '🌋'], ['warcry', '용의 분노', '📣'], ['teleport', '차원 비행', '🌀']]
     };
+    function eliteBossSkillCount(stage) { return Math.min(7, 2 + Math.ceil(stage / 2)); }
     // 보스 전용 스킬 정의 (동작·쿨타임·마나는 원래 스킬 그대로, 이름·아이콘만 바꿈)
     function eliteBossSkillBook(bossId) {
-      const book = {};
-      (ELITE_BOSS_SKILLS[bossId] || []).forEach(([key, name, icon]) => {
-        const base = (SKILL_DEFS[skillJobOf(key)] || {})[key];
-        if (base) book[key] = { ...base, name, icon };
-      });
-      return book;
+      const def = ELITE_BOSS_DEFS.find(b => b.id === bossId);
+      return buildSkillBook((ELITE_BOSS_SKILLS[bossId] || []).slice(0, eliteBossSkillCount(def ? def.stage : 1)));
     }
 
     // 엘리트 몬스터 보상 50배 (보스마다 정해 둔 기본 보상 × 50)
@@ -15300,17 +15406,7 @@
       boss.isEliteBoss = true;
       boss.x = Math.round(sim.worldW / 2); // 맵 가운데
       boss.y = Math.round(sim.worldH / 2);
-      const book = eliteBossSkillBook(bossDef.id);
-      if (Object.keys(book).length) {
-        boss.skillBook = book;
-        boss.skillSlots = Object.keys(book);
-        boss.skillCooldowns = {};
-        boss.skillSlots.forEach(k => { boss.skillCooldowns[k] = 0; });
-        boss.skillKey = boss.skillSlots[0];
-        boss.skillName = book[boss.skillKey].name;
-        boss.skillIcon = book[boss.skillKey].icon;
-      }
-      boss.unlockedSkills = Object.keys(unitSkillBook(boss));
+      applyUnitSkillBook(boss, eliteBossSkillBook(bossDef.id));
       return boss;
     }
 
@@ -20122,7 +20218,7 @@
         vx = (dx / d) * liveNum(p.speed) * BATTLE_PROJECTILE_SPEED;
         vy = (dy / d) * liveNum(p.speed) * BATTLE_PROJECTILE_SPEED;
       }
-      return [liveR1(p.x), liveR1(p.y), liveR2(p.angle), String(p.projType || ''), String(p.color || ''), liveNum(p.radius), liveR2(vx), liveR2(vy)];
+      return [liveR1(p.x), liveR1(p.y), liveR2(p.angle), String(p.projType || ''), String(p.color || ''), liveNum(p.radius), liveR2(vx), liveR2(vy), String(p.spr || '')];
     }
 
     function publishLiveBattleFrame(force = false) {
@@ -20461,7 +20557,7 @@
       sim.projectiles = (Array.isArray(val.p) ? val.p : []).filter(Array.isArray).map(q => ({
         x: liveNum(q[0]) + liveNum(q[6]) * leadTicks, y: liveNum(q[1]) + liveNum(q[7]) * leadTicks, angle: liveNum(q[2]),
         projType: cleanUserText(q[3], 30), color: cleanUserText(q[4], 30) || undefined, radius: liveNum(q[5]) || undefined,
-        vx: liveNum(q[6]), vy: liveNum(q[7]), trail: []
+        vx: liveNum(q[6]), vy: liveNum(q[7]), spr: cleanUserText(q[8], 30) || undefined, trail: []
       }));
       (Array.isArray(val.e) ? deepCleanStrings(val.e) : []).forEach(ef => {
         if (ef && typeof ef === 'object' && ef.type && liveNum(ef.life) > 0) sim.effects.push(ef);
