@@ -4126,6 +4126,17 @@
     };
     // 불·얼음·번개 맞는 효과와 연쇄 번개 줄기 (원본 샘플: assets/sprites/fx/samples/spell_hit_*_white.png, lightning_beam_white.png)
     // 맞는 효과 기준점 = 그림 중심, 번개 줄기 기준점 = 왼쪽 끝 가운데 (오른쪽으로 뻗음)
+    // 사자후·도발 충격파 고리 + 포이즌 붐 독 구름 (원본 샘플: assets/sprites/fx/samples/roar_poison_white.png)
+    // 위에서 내려다본 원 그림(그릴 때 세로로 눌러 바닥 원근에 맞춤). 기준점 = 원 중심. 도발 = 고리를 붉게 칠한 것
+    // 같은 키(shout·taunt·poison)가 있으면 예전 아틀라스(SKILL_FX_SHEET·FX_SPRITE_SHEET)보다 먼저 씀
+    const AOE_FX = {
+      src: 'assets/sprites/fx/aoe_fx.webp',
+      anims: {
+        shout: [[0,0,151,151,76,76],[153,0,258,256,129,128],[413,0,246,249,123,125]],
+        taunt: [[0,258,151,151,76,76],[153,258,258,256,129,128],[413,258,246,249,123,125]],
+        poison: [[0,516,152,146,76,73],[154,516,256,247,128,124],[412,516,208,194,104,97]]
+      }
+    };
     const SPELL_HIT_FX = {
       src: 'assets/sprites/fx/spell_hit_fx.webp',
       anims: {
@@ -4168,17 +4179,6 @@
         heal_pillar:   { fr: [0, 0, 198, 292, 99, 250], w: 64, dy: 12 },
         blessing_aura: { fr: [200, 0, 206, 380, 103, 340], w: 56, dy: 12 },
         shield_dome:   { fr: [408, 0, 295, 283, 147, 141], w: 76, dy: -15 }
-    // 사자후·도발 충격파 고리 + 포이즌 붐 독 구름 (원본 샘플: assets/sprites/fx/samples/roar_poison_white.png)
-    // 위에서 내려다본 원 그림(그릴 때 세로로 눌러 바닥 원근에 맞춤). 기준점 = 원 중심. 도발 = 고리를 붉게 칠한 것
-    // 같은 키(shout·taunt·poison)가 있으면 예전 아틀라스(SKILL_FX_SHEET·FX_SPRITE_SHEET)보다 먼저 씀
-    const AOE_FX = {
-      src: 'assets/sprites/fx/aoe_fx.webp',
-      anims: {
-        shout: [[0,0,151,151,76,76],[153,0,258,256,129,128],[413,0,246,249,123,125]],
-        taunt: [[0,258,151,151,76,76],[153,258,258,256,129,128],[413,258,246,249,123,125]],
-        poison: [[0,516,152,146,76,73],[154,516,256,247,128,124],[412,516,208,194,104,97]]
-      }
-    };
       }
     };
 
@@ -13726,6 +13726,25 @@
         }
         return true;
       }
+      if (AOE_FX.ready && AOE_FX.anims[ef.spr]) {
+        // 위에서 내려다본 원 그림이라 바닥 원근에 맞게 세로로 눌러 그림
+        const list = AOE_FX.anims[ef.spr];
+        ctx.save();
+        ctx.translate(ef.x, ef.y);
+        ctx.scale(1, 0.72);
+        if (ef.spr === 'poison') {
+          // 포이즌 붐: 소용돌이 → 독 구름 → 흩어짐. 구름(가운데 프레임) 폭 = 범위 지름의 약 95%
+          const fr = fxFrameAt(list, progress, 0.75);
+          drawFxFrame(ctx, fr, 0, 0, (ef.r * 2 * 0.95) / list[1][2], 0, fadeOut, AOE_FX.img);
+        } else {
+          // 사자후·도발: 퍼져 나가는 충격파 고리. 마지막 그림의 바깥 고리 지름 ≈ 실제 범위 지름
+          const fr = fxFrameAt(list, progress, 0.6);
+          const w = ef.r * 2 * 1.05 * (0.7 + Math.min(1, progress * 1.7) * 0.3);
+          drawFxFrame(ctx, fr, 0, 0, w / list[2][2], 0, fadeOut, AOE_FX.img);
+        }
+        ctx.restore();
+        return true;
+      }
       if (SKILL_FX_SHEET.anims[ef.spr]) {
         if (!SKILL_FX_SHEET.ready) return false;
         const list = SKILL_FX_SHEET.anims[ef.spr];
@@ -13771,25 +13790,6 @@
       }
       if (!FX_SPRITE_SHEET.ready) return false;
       const A = FX_SPRITE_SHEET.anims;
-      if (AOE_FX.ready && AOE_FX.anims[ef.spr]) {
-        // 위에서 내려다본 원 그림이라 바닥 원근에 맞게 세로로 눌러 그림
-        const list = AOE_FX.anims[ef.spr];
-        ctx.save();
-        ctx.translate(ef.x, ef.y);
-        ctx.scale(1, 0.72);
-        if (ef.spr === 'poison') {
-          // 포이즌 붐: 소용돌이 → 독 구름 → 흩어짐. 구름(가운데 프레임) 폭 = 범위 지름의 약 95%
-          const fr = fxFrameAt(list, progress, 0.75);
-          drawFxFrame(ctx, fr, 0, 0, (ef.r * 2 * 0.95) / list[1][2], 0, fadeOut, AOE_FX.img);
-        } else {
-          // 사자후·도발: 퍼져 나가는 충격파 고리. 마지막 그림의 바깥 고리 지름 ≈ 실제 범위 지름
-          const fr = fxFrameAt(list, progress, 0.6);
-          const w = ef.r * 2 * 1.05 * (0.7 + Math.min(1, progress * 1.7) * 0.3);
-          drawFxFrame(ctx, fr, 0, 0, w / list[2][2], 0, fadeOut, AOE_FX.img);
-        }
-        ctx.restore();
-        return true;
-      }
       switch (ef.spr) {
         case 'orb_hit':
         case 'fire_hit':
