@@ -3988,7 +3988,7 @@
       cellW: 160, cellH: 92, anchorX: 48, anchorY: 90, standH: 84, topH: 84, portraitCX: 40, count: 21,
       anims: {
         idle: [0], walk: [1, 2, 3, 4], attack: [6, 6, 6, 5, 5], skill: [14, 15], hurt: [7], death: [8, 9],
-        seal: [11], dodge: [12, 13], power: [15, 15, 14], buck: [17, 17, 16], finish: [19, 20, 20]
+        seal: [11], dodge: [12, 13], power: [15, 15, 14], buck: [17, 17, 16], finish: [19, 20, 20], overheat: [20]
       },
       skillAnims: {
         sniper_stealth: { anim: 'seal', tpf: 30, dur: 30 },
@@ -13641,6 +13641,24 @@
         ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(me.range, 0); ctx.stroke();
         ctx.restore();
       }
+      // 강화 사격이 쌓여 있는 저격수: 다음 사격까지 몸에서 노란 빛이 이글거림 (쌓인 수만큼 진하게)
+      sim.units.forEach(u => {
+        if (!u.alive || u.job !== 'sniper' || !(u.powerStacks > 0) || (isStealthed(u) && !canViewerSeeStealthed(u))) return;
+        const pulse = 0.5 + 0.5 * Math.sin(sim.tickCount * 0.2);
+        const strength = Math.min(1, 0.45 + u.powerStacks * 0.14);
+        ctx.save();
+        const g = ctx.createRadialGradient(u.x, u.y - 26, 4, u.x, u.y - 26, 46);
+        g.addColorStop(0, `rgba(253, 224, 71, ${(0.35 + pulse * 0.2) * strength})`);
+        g.addColorStop(0.6, `rgba(250, 204, 21, ${0.18 * strength})`);
+        g.addColorStop(1, 'rgba(250, 204, 21, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.ellipse(u.x, u.y - 26, 40, 50, 0, 0, Math.PI * 2); ctx.fill();
+        for (let i = 0; i < 3; i++) {
+          const t = ((sim.tickCount * 0.8 + i * 20) % 60) / 60;
+          drawRareSparkle(ctx, u.x + Math.sin(i * 2.1 + sim.tickCount * 0.03) * 16, u.y + 4 - t * 62, 2.5, Math.sin(t * Math.PI), RARE_FX_COLORS.gold);
+        }
+        ctx.restore();
+      });
       sim.units.forEach(u => {
         if (!u.alive || u.job !== 'sniper' || (isStealthed(u) && !canViewerSeeStealthed(u))) return;
         if (!(sim.spectator || u.team === getMyBattleTeam())) return;
@@ -13878,7 +13896,8 @@
         }
         unit.ammo -= used;
         unit.powerStacks = (unit.powerStacks || 0) + used;
-        sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: 54, color: '#f97316', life: 30, maxLife: 30 });
+        sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: 60, color: '#facc15', life: 34, maxLife: 34 });
+        sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: 36, color: '#fde047', life: 24, maxLife: 24 });
         playCombatSfx('heavy');
         addBattleLog(`🔴 [저격수] ${unit.name}의 강화 사격! 다음 저격 피해 +${used * Math.round(SNIPER_POWER_PER_BULLET * 100)}%`);
         return true;
@@ -13914,7 +13933,7 @@
         unit.reloadLeft = 0;
         unit.overheat = SNIPER_OVERHEAT_TICKS;
         unit.powerStacks = 0;
-        sim.effects.push({ type: 'sniper_line', x: unit.x, y: unit.y - 10, angle, r: SNIPER_INFINITE, w: 9, color: '#dc2626', life: 34, maxLife: 34 });
+        sim.effects.push({ type: 'sniper_line', x: unit.x, y: unit.y - 10, angle, r: SNIPER_INFINITE, w: 12.6, color: '#dc2626', life: 34, maxLife: 34 });
         sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: 60, color: '#dc2626', life: 30, maxLife: 30 });
         playCombatSfx('heavy');
         lancerLineHits(unit, angle, SNIPER_INFINITE, SNIPER_FINISH_HALF_W).forEach(e => applyDamage(unit, e, unit.atk * SNIPER_FINISH_DMG_PER_BULLET * n));
@@ -14408,7 +14427,7 @@
     const SNIPER_BUCK_HALF_ANGLE = 0.5;   // 산탄 부채꼴 (약 ±29°)
     const SNIPER_BUCK_DMG_PER_BULLET = 0.8; // 산탄: 소비한 총알 1발마다 80%
     const SNIPER_FINISH_DMG_PER_BULLET = 1.0; // 필살 사격: 소비한 총알 1발마다 100%
-    const SNIPER_FINISH_HALF_W = 26;
+    const SNIPER_FINISH_HALF_W = 34;   // 필살 사격 폭의 절반 (처음 26에서 30% 굵게)
     const SNIPER_INFINITE = 6000;         // 사거리 무한 (전장 어디든 닿는 길이)
     const SNIPER_ROLL_DISTANCE = GRID_CELL_SIZE * 3; // 회피 3칸
     const SNIPER_ROLL_TICKS = 14;
@@ -15373,6 +15392,8 @@
 
       if (!u.alive) return step(a.death, tick - (u._deadSince ?? tick), 12);
       // 기사 방어 태세: 태세가 끝날 때까지 방벽 동작을 반복
+      // 저격수 총열 과열: 과열이 풀릴 때까지 얼굴이 붉어지고 연기가 나는 모습 유지
+      if (a.overheat && u.overheat > 0) return a.overheat[0];
       if (a.defense && u.statuses && u.statuses.guard > 0) return a.defense[Math.floor(tick / 10) % a.defense.length];
       if (u.skillAnim > 0) {
         const plan = (sprite.skillAnims && sprite.skillAnims[u.activeSkillType]) || { anim: 'skill', tpf: 8 };
