@@ -1129,7 +1129,7 @@
           <span class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs font-bold">📖 도감</span>
           <h3 class="font-title text-2xl sm:text-3xl text-white mt-1">직업·스킬·몬스터 알아보기</h3>
           <p class="text-xs sm:text-sm text-slate-300 mt-1">직업마다 패시브(늘 켜져 있는 특성)와 스킬 5가지가 있어요. 용병은 Lv.1 · 10 · 20에 직업 스킬 중 하나씩 무작위로 배워요.</p>
-          <p class="text-[11px] sm:text-xs text-amber-300 mt-1">🔒 직업 설명은 그 직업 용병을 한 번이라도 데리고 있으면, 스킬 설명은 그 스킬을 한 번이라도 배우면, 몬스터 설명은 한 번이라도 처치하면 열려요.</p>
+          <p class="text-[11px] sm:text-xs text-amber-300 mt-1">🔒 직업 설명은 그 직업 용병을 한 번이라도 데리고 있으면, 스킬 설명은 그 스킬을 한 번이라도 배우면, 몬스터 설명은 한 번이라도 처치하면, 시크릿 레어 외형은 그 용병을 한 번이라도 데리고 있으면 열려요.</p>
           <div id="codexViewTabs" class="flex flex-wrap gap-1.5 mt-3"></div>
         </div>
 
@@ -1257,6 +1257,9 @@
 
         <!-- 몬스터 도감 (renderCodexMonsters) -->
         <div id="codexMonsterView" class="hidden flex flex-col gap-4"></div>
+
+        <!-- 시크릿 레어 도감 (renderCodexSecrets) -->
+        <div id="codexSecretView" class="hidden flex flex-col gap-4"></div>
       </section>
 
       <!-- [탭 2-B] 용병 거래소 · 경매장 (친구 간 용병 매매 제안 & 경매 시스템 - Requirement 3 & 4) -->
@@ -8079,10 +8082,11 @@
     }
 
     // ===== 도감 기록: 한 번이라도 데리고 있던 직업 · 배운 스킬 · 처치한 몬스터 (학생 기록 stu.codex에 저장) =====
-    // { jobs: { warrior: true }, skills: { warrior: { whirlwind: true } }, monsters: { goblin: true }, elites: { elite_lich: true } }
+    // { jobs: { warrior: true }, skills: { warrior: { whirlwind: true } }, monsters: { goblin: true }, elites: { elite_lich: true },
+    //   secrets: { warrior_sr1: true } }  ← 시크릿 레어 전용 외형 (<직업>_sr<번호>)
     function ensureCodexBook(stu) {
       if (!stu.codex || typeof stu.codex !== 'object') stu.codex = {};
-      ['jobs', 'skills', 'monsters', 'elites'].forEach(k => {
+      ['jobs', 'skills', 'monsters', 'elites', 'secrets'].forEach(k => {
         if (!stu.codex[k] || typeof stu.codex[k] !== 'object') stu.codex[k] = {};
       });
       return stu.codex;
@@ -8096,6 +8100,8 @@
         book.jobs[m.job] = true;
         const seen = book.skills[m.job] && typeof book.skills[m.job] === 'object' ? book.skills[m.job] : (book.skills[m.job] = {});
         getMercUnlockedSkillKeys(m).forEach(k => { if (k) seen[k] = true; });
+        // 시크릿 레어 용병은 그 전용 외형을 도감에 남김
+        if (isSecretRare(m.rarity) && (m.skinVariant || 0) >= SECRET_SKIN_BASE) book.secrets[`${m.job}_sr${m.skinVariant - SECRET_SKIN_BASE}`] = true;
       });
     }
     // 전투가 끝날 때 쓰러진 적 몬스터를 도감에 남김 (허수아비·분신은 빼고, 엘리트 몬스터는 따로)
@@ -8118,7 +8124,7 @@
     // 도감: 직업별 패시브·기본 능력치·스킬 설명 (직업 고르기 버튼으로 하나씩 자세히)
     const CODEX_JOBS = ['warrior', 'mage', 'healer', 'archer', 'rogue', 'knight', 'lancer'];
     let codexJob = 'warrior';
-    let codexView = 'merc'; // 'merc' = 직업·스킬, 'monster' = 몬스터
+    let codexView = 'merc'; // 'merc' = 직업·스킬, 'monster' = 몬스터, 'secret' = 시크릿 레어
 
     function selectCodexJob(jobKey) {
       if (!JOB_DEFS[jobKey]) return;
@@ -8126,7 +8132,7 @@
       renderCodexTab();
     }
     function selectCodexView(view) {
-      codexView = view === 'monster' ? 'monster' : 'merc';
+      codexView = ['monster', 'secret'].includes(view) ? view : 'merc';
       renderCodexTab();
     }
 
@@ -8138,18 +8144,24 @@
       const skillOpen = CODEX_JOBS.reduce((n, j) => n + Object.keys(SKILL_DEFS[j] || {}).filter(k => codexSkillOpen(stu, j, k)).length, 0);
       const monTotal = codexMonsterIds().length + ELITE_BOSS_DEFS.length;
       const monOpen = codexMonsterIds().filter(id => book.monsters[id]).length + ELITE_BOSS_DEFS.filter(b => book.elites[b.id]).length;
+      const secretList = codexSecretSkinList();
+      const secretOpen = secretList.filter(e => book.secrets[e.key]).length;
 
       const tabs = document.getElementById('codexViewTabs');
       if (tabs) {
         const tabBtn = (view, label) => `<button onclick="selectCodexView('${view}')" class="px-3 py-1.5 rounded-xl text-xs sm:text-sm font-extrabold border ${codexView === view ? 'bg-indigo-600 border-indigo-400 text-white shadow' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}">${label}</button>`;
         tabs.innerHTML = tabBtn('merc', `🧙 용병 도감 <span class="text-[11px] opacity-80">스킬 ${skillOpen}/${skillTotal}</span>`)
-          + tabBtn('monster', `👾 몬스터 도감 <span class="text-[11px] opacity-80">${monOpen}/${monTotal}</span>`);
+          + tabBtn('monster', `👾 몬스터 도감 <span class="text-[11px] opacity-80">${monOpen}/${monTotal}</span>`)
+          + tabBtn('secret', `🔥 시크릿 레어 도감 <span class="text-[11px] opacity-80">${secretOpen}/${secretList.length}</span>`);
       }
       const mercView = document.getElementById('codexMercView');
       const monView = document.getElementById('codexMonsterView');
       if (mercView) mercView.classList.toggle('hidden', codexView !== 'merc');
+      const secretView = document.getElementById('codexSecretView');
       if (monView) monView.classList.toggle('hidden', codexView !== 'monster');
+      if (secretView) secretView.classList.toggle('hidden', codexView !== 'secret');
       if (codexView === 'monster') { renderCodexMonsters(stu); return; }
+      if (codexView === 'secret') { renderCodexSecrets(stu); return; }
 
       CODEX_JOBS.forEach(j => {
         const iconEl = document.getElementById(`bannerWpnIcon_${j}`);
@@ -8241,6 +8253,40 @@
             <div class="text-[11px] text-slate-300 leading-snug">${st.desc}</div></div>
           </div>`).join('');
       }
+    }
+
+    // ----- 시크릿 레어 도감: 직업별 시크릿 레어 전용 외형 (SECRET_MERC_SKINS) -----
+    function codexSecretSkinList() {
+      return CODEX_JOBS.flatMap(job => (SECRET_MERC_SKINS[job] || []).map(n => ({ job, n, key: `${job}_sr${n}`, skin: SECRET_SKIN_BASE + n })));
+    }
+    function renderCodexSecrets(stu) {
+      const box = document.getElementById('codexSecretView');
+      if (!box) return;
+      const book = ensureCodexBook(stu);
+      const list = codexSecretSkinList();
+      const rar = RARITY_DEFS.SCR;
+      const cards = list.map(e => {
+        const jd = JOB_DEFS[e.job];
+        const sprite = getMercSprite(e.job, e.skin);
+        const open = Boolean(book.secrets[e.key]);
+        // 잠긴 외형은 검은 실루엣으로만 보여 줌
+        const art = sprite ? getSpritePortraitHTML(sprite, 88, 'div', open ? '' : 'filter:brightness(0) opacity(0.35);') : `<span class="text-4xl">${jd.icon}</span>`;
+        return `
+          <div class="${open ? 'rarity-SCR merc-rare-shine' : 'bg-slate-950/60 border-dashed border-slate-700'} border rounded-xl p-3 flex flex-col items-center gap-1.5 text-center">
+            <div class="relative w-24 h-24 flex items-center justify-center">${open ? rareAuraHTML('SCR') : ''}<div class="relative">${art}</div>${open ? rareTwinkleHTML('SCR') : ''}</div>
+            <div class="text-sm font-extrabold ${open ? 'text-red-700' : 'text-slate-500'}">${open ? `🔥 ${jd.name} 시크릿 레어 #${e.n}` : `🔒 ${jd.name} · ???`}</div>
+            <div class="text-[11px] ${open ? 'text-slate-700' : 'text-slate-500'} leading-snug">${open ? `전용 외형 · ${rarityPerkText(rar)}` : `시크릿 레어 ${jd.name} 용병을 한 번이라도 데리고 있으면 열려요.`}</div>
+          </div>`;
+      }).join('');
+      box.innerHTML = `
+        <div class="bg-slate-900 border border-red-500/40 rounded-2xl p-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <h4 class="font-title text-lg text-red-400">🔥 시크릿 레어 용병</h4>
+            <span class="text-[11px] font-bold text-slate-400">${list.filter(e => book.secrets[e.key]).length}/${list.length}</span>
+          </div>
+          <p class="text-[11px] text-slate-400">용병 모집 지원자 한 명당 ${SECRET_RARE_CHANCE}% 확률로만 나타나는 용병이에요. 직업마다 시크릿 레어에게만 있는 전용 외형이 있어요.</p>
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">${cards}</div>
+        </div>`;
     }
 
     // ----- 몬스터 도감 -----
