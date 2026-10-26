@@ -4074,12 +4074,24 @@
     };
     // 마법사 파이어볼·아이스애로우·썬더볼트 (원본 샘플: assets/sprites/fx/samples/mage_spell_white.png)
     // 셋 다 오른쪽으로 날아가게 돌려 놓은 그림. 기준점 = 불덩이 중심·얼음 촉·번개 끝
+    // (bolt는 지금 안 씀: 연쇄 번개는 SPELL_HIT_FX의 beam으로 그림)
     const MAGE_SPELL_FX = {
       src: 'assets/sprites/fx/mage_spell_fx.webp',
       anims: {
         fireball: [[0,0,237,130,178,68]],
         ice: [[239,0,313,107,286,55]],
         bolt: [[554,0,340,99,323,63]]
+      }
+    };
+    // 불·얼음·번개 맞는 효과와 연쇄 번개 줄기 (원본 샘플: assets/sprites/fx/samples/spell_hit_*_white.png, lightning_beam_white.png)
+    // 맞는 효과 기준점 = 그림 중심, 번개 줄기 기준점 = 왼쪽 끝 가운데 (오른쪽으로 뻗음)
+    const SPELL_HIT_FX = {
+      src: 'assets/sprites/fx/spell_hit_fx.webp',
+      anims: {
+        fire_hit: [[272,0,205,211,103,106],[0,0,270,275,135,138],[479,0,198,206,99,103]],   // 터짐 → 불덩이 폭발 → 흩어짐
+        ice_hit: [[993,0,215,215,108,108],[679,0,312,303,156,152],[1210,0,219,203,110,102]], // 얼음 터짐 → 얼음 가시 → 파편
+        bolt_hit: [[1431,0,214,223,107,112],[1647,0,206,198,103,99]],                        // 섬광 → 흩어지는 전기
+        beam: [[0,305,1016,143,0,72],[1018,305,996,95,0,48]]                                 // 굵은 번개 → 사그라드는 잔상
       }
     };
     // 투사체 종류별 그림과 크기(첫 프레임 높이, 월드 px). match가 있으면 그 조건을 만족할 때만 (성녀 분홍 구슬 제외)
@@ -4147,7 +4159,7 @@
     LANCER_JAVELIN_FX.onload = () => { LANCER_JAVELIN_FX.ready = true; };
     LANCER_JAVELIN_FX.src = 'assets/sprites/fx/lancer_javelin_fx.webp';
 
-    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX).forEach(def => {
+    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX).forEach(def => {
       def.img = new Image();
       def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
       def.img.src = def.src;
@@ -13678,6 +13690,33 @@
         }
         return true;
       }
+      if (SPELL_HIT_FX.ready && (ef.spr === 'fire_hit' || ef.spr === 'ice_hit')) {
+        // 폭발: 가장 큰 그림(가운데 프레임)의 폭 = 실제 범위 지름의 약 85%, 프레임끼리 크기 비율은 그대로
+        const list = SPELL_HIT_FX.anims[ef.spr];
+        const fr = fxFrameAt(list, progress, 0.75);
+        const w = (ef.r || 42) * 1.7 * (0.75 + Math.min(1, progress * 2) * 0.25);
+        drawFxFrame(ctx, fr, ef.x, ef.y, w / list[1][2], 0, fadeOut, SPELL_HIT_FX.img);
+        return true;
+      }
+      if (SPELL_HIT_FX.ready && ef.spr === 'bolt') {
+        // 연쇄 번개: 줄기 그림을 시전자→대상 길이로 늘림 (앞 55%는 굵은 번개, 뒤는 잔상). 4틱마다 위아래를 뒤집어 번쩍임
+        const B = SPELL_HIT_FX.anims;
+        const dx = ef.tx - ef.sx, dy = ef.ty - ef.sy;
+        const len = Math.hypot(dx, dy) || 1;
+        const fr = B.beam[progress < 0.55 ? 0 : 1];
+        const ky = 34 / B.beam[0][3];  // 굵은 번개 높이 = 34
+        ctx.save();
+        ctx.translate(ef.sx, ef.sy);
+        ctx.rotate(Math.atan2(dy, dx));
+        if (Math.floor(ef.life / 4) % 2) ctx.scale(1, -1);
+        ctx.globalAlpha = fadeOut;
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(SPELL_HIT_FX.img, fr[0], fr[1], fr[2], fr[3], 0, -fr[5] * ky, len, fr[3] * ky);
+        ctx.restore();
+        const hit = fxFrameAt(B.bolt_hit, progress, 0.6);
+        drawFxFrame(ctx, hit, ef.tx, ef.ty - 12, (70 * (0.8 + 0.2 * Math.sin(progress * Math.PI))) / B.bolt_hit[0][2], 0, fadeOut, SPELL_HIT_FX.img);
+        return true;
+      }
       if (!FX_SPRITE_SHEET.ready) return false;
       const A = FX_SPRITE_SHEET.anims;
       switch (ef.spr) {
@@ -13696,22 +13735,6 @@
           const dx = ef.tx - ef.sx, dy = ef.ty - ef.sy;
           const len = Math.hypot(dx, dy) || 1;
           const ang = Math.atan2(dy, dx);
-          if (MAGE_SPELL_FX.ready) {
-            // 번개 한 줄기를 시전자→대상 길이로 늘림. 4틱마다 위아래를 뒤집어 번쩍임
-            const fr = MAGE_SPELL_FX.anims.bolt[0];
-            const ky = 30 / fr[3];
-            ctx.save();
-            ctx.translate(ef.sx, ef.sy);
-            ctx.rotate(ang);
-            if (Math.floor(ef.life / 4) % 2) ctx.scale(1, -1);
-            ctx.globalAlpha = fadeOut;
-            ctx.imageSmoothingEnabled = true;
-            ctx.drawImage(MAGE_SPELL_FX.img, fr[0], fr[1], fr[2], fr[3], 0, -fr[3] / 2 * ky, len, fr[3] * ky);
-            ctx.restore();
-            const hit = A.bolt_hit[0];
-            drawFxFrame(ctx, hit, ef.tx, ef.ty - 12, (74 * (0.8 + 0.2 * Math.sin(progress * Math.PI))) / hit[2], 0, fadeOut);
-            return true;
-          }
           const fr = A.bolt[Math.floor(ef.life / 4) % A.bolt.length];
           const k = 30 / fr[3];        // 줄기 조각 길이 배율
           const ky = 16 / fr[3];       // 줄기 굵기 배율 (길이는 그대로 두고 굵기만 얇게)
