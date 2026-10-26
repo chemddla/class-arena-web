@@ -134,6 +134,10 @@ jobs:
           npx --yes $FIREBASE_TOOLS deploy --only hosting:class-arena-b4ee3 --project $FIREBASE_PROJECT --non-interactive
           rm -f "$RUNNER_TEMP/firebase-sa.json"
 
+      # 라이브 사이트의 version.json이 이번 커밋인지 확인 (아니면 실패로 표시, 결과는 Summary에)
+      - name: Verify live game site
+        run: bash tools/verify-deploy.sh https://class-arena-b4ee3.web.app "게임 사이트"
+
   deploy-admin:
     needs: changes
     if: needs.changes.outputs.admin == 'true'
@@ -145,6 +149,10 @@ jobs:
         with:
           node-version: 22
 
+      # 게임 사이트처럼 어느 커밋이 올라가 있는지 확인용: https://class-arena-b4ee3-admin.web.app/version.json
+      - name: Write version file
+        run: printf '{"commit":"%s","deployedAt":"%s"}\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > admin/version.json
+
       - name: Deploy admin site
         env:
           FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CLASS_ARENA_B4EE3 }}
@@ -153,6 +161,9 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
           npx --yes $FIREBASE_TOOLS deploy --only hosting:class-arena-b4ee3-admin --project $FIREBASE_PROJECT --non-interactive
           rm -f "$RUNNER_TEMP/firebase-sa.json"
+
+      - name: Verify live admin site
+        run: bash tools/verify-deploy.sh https://class-arena-b4ee3-admin.web.app "관리자 사이트"
 
   # DB 보안 규칙은 잘못 올라가면 학생 데이터가 바로 열리거나 막히므로, 에뮬레이터 테스트를 먼저 통과해야 함
   test-rules:
@@ -196,3 +207,5 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
           npx --yes $FIREBASE_TOOLS deploy --only database --project $FIREBASE_PROJECT --non-interactive
           rm -f "$RUNNER_TEMP/firebase-sa.json"
+          # 규칙은 공개 확인 주소가 없어서 배포 성공만 Summary에 남김
+          printf '| 대상 | 주소 | 커밋 | 결과 |\n|---|---|---|---|\n| DB 보안 규칙 | - | `%s` | ✅ 배포됨 (규칙 테스트 통과) |\n' "${GITHUB_SHA:0:7}" >> "$GITHUB_STEP_SUMMARY"
