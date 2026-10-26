@@ -4195,11 +4195,49 @@
         stun_strike: { anim: 'attack', tpf: 5, dur: 20 }
       }
     };
+    // 태고의 거신 골렘 (엘리트 3단계, 이끼 낀 바위·초록 룬. 거인족 바위 골렘 전사도 같은 그림): 칸 순서 = 대기, 걷기 A·B, 주먹 치켜들기, 내리찍기, 피격,
+    //   쓰러짐 2장, 바위 주먹 2장, 대지 붕괴 2장 (초록 기운 모으기, 땅 찍기), 암석 굴러가기 2장, 거신의 위압 2장 (버티기, 포효)
+    // (샘플 2장에서 잘라 붙임. 스킬 샘플은 그림이 1.1배 커서 0.9배로 줄임. 바닥 그림자 고리·라벨은 지우고 발끝을 한 줄에 맞춤.
+    //  쓰러짐 B 어깨와 포효 주먹 위에 겹친 ✦ 워터마크는 덮인 흰색을 되돌려 원래 바위 색으로. 대지 붕괴 1의 짙은 초록 원은 반투명 기운으로)
+    // 수호 골렘(치유사)은 주먹질하는 그림이 어색해서 토큰 그대로. fxSkin = 지진·사자후·도발 이펙트를 흙빛·룬 초록 그림(GOLEM_FX)으로
+    // 회전베기 = 암석 굴러가기, 함성·사자후 = 포효, 낙석 세례(화살비) = 땅 찍기, 방어 태세(암석 피부) 동안은 초록 기운 자세
+    MONSTER_SPRITE_DEFS.golem_warrior = {
+      src: 'assets/sprites/monster/golem.webp',
+      cellW: 317, cellH: 237, anchorX: 160, anchorY: 210, standH: 179, topH: 180, count: 16, spinFx: true, eliteScale: 3.4,
+      fxSkin: 'golem', fxColors: { shield_rush: '#65a30d', iron_stance: '#4d7c0f' },
+      anims: {
+        idle: [0], walk: [1, 0, 2, 0], attack: [3, 4, 4], skill: [10, 11, 11], hurt: [5], death: [6, 7],
+        fist: [8, 9, 9], quake: [10, 11, 11], roll: [12, 13], roar: [14, 15, 15], glow: [10], defense: [10]
+      },
+      skillAnims: {
+        stun_strike: { anim: 'fist', tpf: 6, dur: 22 },
+        earthquake:  { anim: 'quake', tpf: 10, dur: 40 },
+        arrow_rain:  { anim: 'quake', tpf: 8, dur: 30 },
+        shield_rush: { anim: 'roll', tpf: 4, loop: true, dur: 44 },
+        whirlwind:   { anim: 'roll', tpf: 4, loop: true },
+        provoke:     { anim: 'roar', tpf: 12, dur: 44 },
+        roar:        { anim: 'roar', tpf: 8, dur: 30 },
+        warcry:      { anim: 'roar', tpf: 12, dur: 44 },
+        iron_stance: { anim: 'glow', tpf: 10, dur: 36 }
+      },
+      castFrames: { stun_strike: 8, earthquake: 10, arrow_rain: 10, shield_rush: 12, provoke: 14, iron_stance: 10 }
+    };
     // 찾는 순서: '<몬스터>_<직업>_<대표 스킬>' → '<몬스터>_<직업>' → '<몬스터>'
     function getUnitSprite(u) {
       if (!u.monsterType) return getMercSprite(u.job, u.skinVariant || 0);
       const def = MONSTER_SPRITE_DEFS[`${u.monsterType}_${u.job}_${u.skillKey}`] || MONSTER_SPRITE_DEFS[`${u.monsterType}_${u.job}`] || MONSTER_SPRITE_DEFS[u.monsterType];
       return def && (!def.jobs || def.jobs.includes(u.job)) ? def : null;
+    }
+    // 몬스터 색 이펙트: 그림에 fxSkin이 있으면 '<스킨>_<키>' (예: golem_quake, FX_SKINS 아틀라스), 없으면 원래 키
+    function unitFxSpr(u, key) {
+      const def = getUnitSprite(u);
+      const skin = def && def.fxSkin && FX_SKINS[def.fxSkin];
+      return skin && skin.anims[key] ? `${def.fxSkin}_${key}` : key;
+    }
+    // 몬스터마다 바꾼 도형 이펙트 색 (돌격 줄·방어 태세 고리 등)
+    function unitFxColor(u, key, fallback) {
+      const def = getUnitSprite(u);
+      return (def && def.fxColors && def.fxColors[key]) || fallback;
     }
     // 이 유닛이 쏘는 투사체의 그림 바꾸기 (PROJECTILE_SPRITES 키, 없으면 undefined = 기본 그림)
     function unitProjFx(u, projType) {
@@ -4300,6 +4338,18 @@
         taunt: [[0,435,172,104,87,53],[174,435,274,193,137,92],[450,435,309,233,155,112]]
       }
     };
+    // 골렘 색 이펙트 (태고의 거신 골렘·바위 골렘, unitFxSpr로 'golem_<키>'). 모양·칸 배치는 원래 그림 그대로 색만 바꿈
+    // quake = 기사 지진의 노란 땅 조각을 흙빛 바위로, 빛나는 둘레를 룬 초록으로 / shout = 사자후 고리를 흙빛으로 / taunt = 도발 고리를 룬 초록으로
+    // 그리는 방식은 원래 키와 같음 (quake = SKILL_FX_SHEET, shout·taunt = AOE_FX)
+    const GOLEM_FX = {
+      src: 'assets/sprites/fx/golem_fx.webp',
+      anims: {
+        quake: SKILL_FX_SHEET.anims.quake,
+        shout: [[0,200,151,151,76,76],[153,200,258,256,129,128],[413,200,246,249,123,125]],
+        taunt: [[0,458,151,151,76,76],[153,458,258,256,129,128],[413,458,246,249,123,125]]
+      }
+    };
+    const FX_SKINS = { golem: GOLEM_FX };
 
     // 성녀 지원 이펙트 (원본 샘플: assets/sprites/fx/samples/support_fx_white.png). 캐릭터 위에 겹쳐 그림
     // 회복 = 초록 불꽃(기준점 = 발밑 고리), 축복 = 금빛 빛기둥(기준점 = 발밑), 보호막 = 푸른 구체(기준점 = 구 중심)
@@ -4342,7 +4392,7 @@
     LANCER_JAVELIN_FX.onload = () => { LANCER_JAVELIN_FX.ready = true; };
     LANCER_JAVELIN_FX.src = 'assets/sprites/fx/lancer_javelin_fx.webp';
 
-    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX).forEach(def => {
+    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX).forEach(def => {
       def.img = new Image();
       def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
       def.img.src = def.src;
@@ -11859,8 +11909,10 @@
             sim.floatTexts.push({ x: unit.x, y: unit.y - 52, text: '🔨 빗나감 (너무 멀어요)', color: '#64748b', life: 40 });
             return;
           }
+          // 골렘처럼 색 이펙트가 있는 몬스터는 내리친 자리에 갈라진 땅 그림 (없으면 기본 노란 고리)
+          const strikeSpr = unitFxSpr(unit, 'quake');
           sim.effects.push({
-            type: 'stun_shockwave',
+            type: 'stun_shockwave', spr: strikeSpr === 'quake' ? undefined : strikeSpr,
             x: target.x, y: target.y, r: 100 * unitAreaScale(unit),
             life: 56, maxLife: 56
           });
@@ -12906,7 +12958,7 @@
 
       if (sk === 'roar') {
         // 사자후: 주변 2칸 적에게 피해 + 1.8칸 밀쳐냄
-        sim.effects.push({ type: 'aoe_ring', spr: 'shout', x: unit.x, y: unit.y, r: A * 2, color: '#d97706', life: 36, maxLife: 36 });
+        sim.effects.push({ type: 'aoe_ring', spr: unitFxSpr(unit, 'shout'), x: unit.x, y: unit.y, r: A * 2, color: '#d97706', life: 36, maxLife: 36 });
         near(enemies, unit.x, unit.y, A * 2).forEach(e => {
           applyDamage(unit, e, unit.atk * 1.9);
           pushUnitAway(e, unit.x, unit.y, C * 1.8);
@@ -13108,7 +13160,7 @@
       }
       if (sk === 'provoke') {
         // 도발: 주변 2칸 적 5초간 도발 (기사만 기본 공격, 스킬 사용 불가 · 시전 중이던 스킬은 끊김)
-        sim.effects.push({ type: 'aoe_ring', spr: 'taunt', x: unit.x, y: unit.y, r: A * 2, color: '#ea580c', life: 40, maxLife: 40 });
+        sim.effects.push({ type: 'aoe_ring', spr: unitFxSpr(unit, 'taunt'), x: unit.x, y: unit.y, r: A * 2, color: '#ea580c', life: 40, maxLife: 40 });
         let n = 0;
         near(enemies, unit.x, unit.y, A * 2).forEach(e => {
           inflictStatus(unit, e, 'taunt', KNIGHT_TAUNT_TICKS);
@@ -13127,7 +13179,7 @@
           : (target ? Math.atan2(target.y - unit.y, target.x - unit.x) : (unit.facingAngle || 0));
         unit.facingAngle = angle;
         if (Math.abs(Math.cos(angle)) > 0.1) unit.facingDir = Math.cos(angle) >= 0 ? 1 : -1;
-        startDragRush(unit, enemies, angle, KNIGHT_RUSH_DISTANCE, KNIGHT_RUSH_TICKS, 1.0, '#0ea5e9');
+        startDragRush(unit, enemies, angle, KNIGHT_RUSH_DISTANCE, KNIGHT_RUSH_TICKS, 1.0, unitFxColor(unit, 'shield_rush', '#0ea5e9'));
         playCombatSfx('heavy');
         addBattleLog(`🐎 [기사] ${unit.name}의 돌격!`);
         return true;
@@ -13135,7 +13187,7 @@
       if (sk === 'earthquake') {
         // 지진: 2.5칸 안 적에게 다단히트, 맞을 때마다 기사 쪽으로 끌려옴 (stepKnightEffects에서 진행)
         unit.quake = { hits: KNIGHT_QUAKE_HITS, timer: 0 };
-        sim.effects.push({ type: 'stun_shockwave', spr: 'quake', x: unit.x, y: unit.y, r: KNIGHT_QUAKE_RADIUS * unitAreaScale(unit), life: KNIGHT_QUAKE_HITS * 15 + 6, maxLife: KNIGHT_QUAKE_HITS * 15 + 6 }); // 다단히트(15틱 × 18)가 끝날 때까지
+        sim.effects.push({ type: 'stun_shockwave', spr: unitFxSpr(unit, 'quake'), x: unit.x, y: unit.y, r: KNIGHT_QUAKE_RADIUS * unitAreaScale(unit), life: KNIGHT_QUAKE_HITS * 15 + 6, maxLife: KNIGHT_QUAKE_HITS * 15 + 6 }); // 다단히트(15틱 × 18)가 끝날 때까지
         addBattleLog(`🌋 [기사] ${unit.name}의 지진! 주변 적을 끌어당겨요`);
         return true;
       }
@@ -13146,7 +13198,7 @@
         unit.rush = null;
         unit.kbVx = 0;
         unit.kbVy = 0;
-        sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: 70, color: '#0284c7', life: 36, maxLife: 36 });
+        sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: 70, color: unitFxColor(unit, 'iron_stance', '#0284c7'), life: 36, maxLife: 36 });
         playCombatSfx('heavy');
         addBattleLog(`🏰 [기사] ${unit.name}의 방어 태세! 받는 피해 -70% (10초)`);
         return true;
@@ -14089,38 +14141,44 @@
         }
         return true;
       }
-      if (AOE_FX.ready && AOE_FX.anims[ef.spr]) {
+      // 몬스터 색 이펙트('golem_quake' 등)는 그 스킨 아틀라스에서 원래 키의 그림을 같은 방식으로 그림
+      const skinAt = ef.spr.indexOf('_');
+      const skin = skinAt > 0 && FX_SKINS[ef.spr.slice(0, skinAt)];
+      const key = skin ? ef.spr.slice(skinAt + 1) : ef.spr;
+      const aoeSheet = skin ? (key !== 'quake' && skin) : AOE_FX;
+      const skillSheet = skin ? (key === 'quake' && skin) : SKILL_FX_SHEET;
+      if (aoeSheet && aoeSheet.ready && aoeSheet.anims[key]) {
         // 위에서 내려다본 원 그림이라 바닥 원근에 맞게 세로로 눌러 그림
-        const list = AOE_FX.anims[ef.spr];
+        const list = aoeSheet.anims[key];
         ctx.save();
         ctx.translate(ef.x, ef.y);
         ctx.scale(1, 0.72);
-        if (ef.spr === 'poison') {
+        if (key === 'poison') {
           // 포이즌 붐: 소용돌이 → 독 구름 → 흩어짐. 구름(가운데 프레임) 폭 = 범위 지름의 약 95%
           const fr = fxFrameAt(list, progress, 0.75);
-          drawFxFrame(ctx, fr, 0, 0, (ef.r * 2 * 0.95) / list[1][2], 0, fadeOut, AOE_FX.img);
+          drawFxFrame(ctx, fr, 0, 0, (ef.r * 2 * 0.95) / list[1][2], 0, fadeOut, aoeSheet.img);
         } else {
           // 사자후·도발: 퍼져 나가는 충격파 고리. 마지막 그림의 바깥 고리 지름 ≈ 실제 범위 지름
           const fr = fxFrameAt(list, progress, 0.6);
           const w = ef.r * 2 * 1.05 * (0.7 + Math.min(1, progress * 1.7) * 0.3);
-          drawFxFrame(ctx, fr, 0, 0, w / list[2][2], 0, fadeOut, AOE_FX.img);
+          drawFxFrame(ctx, fr, 0, 0, w / list[2][2], 0, fadeOut, aoeSheet.img);
         }
         ctx.restore();
         return true;
       }
-      if (SKILL_FX_SHEET.anims[ef.spr]) {
-        if (!SKILL_FX_SHEET.ready) return false;
-        const list = SKILL_FX_SHEET.anims[ef.spr];
+      if (skillSheet && skillSheet.anims[key]) {
+        if (!skillSheet.ready) return false;
+        const list = skillSheet.anims[key];
         const last = list[list.length - 1];
-        if (ef.spr === 'quake') {
+        if (key === 'quake') {
           // 갈라진 땅: 처음 24틱 동안 커지고 다단히트가 끝날 때까지 남음 (마지막 20틱 동안 사라짐). 폭 = 범위 지름의 약 85%
           const fr = fxFrameAt(list, progress, Math.min(0.25, 24 / ef.maxLife));
-          drawFxFrame(ctx, fr, ef.x, ef.y, (ef.r * 2 * 0.85) / last[2], 0, Math.min(1, (1 - progress) * ef.maxLife / 20), SKILL_FX_SHEET.img);
+          drawFxFrame(ctx, fr, ef.x, ef.y, (ef.r * 2 * 0.85) / last[2], 0, Math.min(1, (1 - progress) * ef.maxLife / 20), skillSheet.img);
         } else {
           // 함성(사자후)·도발: 퍼져 나가는 고리. 마지막 그림의 고리 지름 ≈ 실제 범위 지름
           const fr = fxFrameAt(list, progress, 0.6);
           const w = ef.r * 2 * 1.5 * (0.7 + Math.min(1, progress * 1.7) * 0.3);
-          drawFxFrame(ctx, fr, ef.x, ef.y, w / last[2], 0, fadeOut, SKILL_FX_SHEET.img);
+          drawFxFrame(ctx, fr, ef.x, ef.y, w / last[2], 0, fadeOut, skillSheet.img);
         }
         return true;
       }
@@ -15754,7 +15812,7 @@
         desc: '엘리트 사냥의 첫 관문! 60,000의 체력으로 황금 철퇴를 휘두르는 고블린들의 대왕입니다.' },
       { id: 'elite_dire_wolf', stage: 2, name: '🐺 달그림자 늑대왕', monsterType: 'dire_wolf', job: 'warrior', hp: 90000, atk: 82, def: 46, spd: 112, rewardMc: 160,
         desc: '90,000의 체력과 빠른 몸놀림으로 원정대 사이를 누비며 물어뜯는 거대 늑대왕입니다.' },
-      { id: 'elite_golem', stage: 3, name: '🪨 태고의 거신 골렘', monsterType: 'ogre', job: 'warrior', hp: 120000, atk: 95, def: 55, spd: 92, rewardMc: 200,
+      { id: 'elite_golem', stage: 3, name: '🪨 태고의 거신 골렘', monsterType: 'golem', job: 'warrior', hp: 120000, atk: 95, def: 55, spd: 92, rewardMc: 200,
         desc: '단 한 마리만 출현하는 거대 암석 괴수입니다! 120,000의 막대한 체력과 바위 주먹과 대지 붕괴로 땅을 뒤흔듭니다.' },
       { id: 'elite_swamp_hydra', stage: 4, name: '🐍 독늪의 히드라', monsterType: 'swamp_hydra', job: 'archer', hp: 175000, atk: 115, def: 62, spd: 98, rewardMc: 250,
         desc: '175,000의 체력을 지닌 머리 여럿 달린 늪지의 괴수! 멀리서 독을 내뿜어 원정대를 괴롭힙니다.' },
