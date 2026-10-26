@@ -2680,8 +2680,20 @@
     const PROJECTILE_HIT_RADIUS = 30;    // 투사체가 이 거리 안으로 지나가면 맞음
     const ELITE_BOSS_TOKEN_R = 36 * 3;   // 엘리트 몬스터 몸 크기 (보통 보스 36의 3배)
     const ELITE_BOSS_HIT_RADIUS = ELITE_BOSS_TOKEN_R + 12; // 큰 몸 어디에 맞아도 맞은 것으로
-    // 사거리 판정용 거리: 엘리트 몬스터는 몸이 커서 몸 가장자리까지의 거리로 잼 (때리는 쪽·맞는 쪽 모두)
-    function unitBodyGap(u) { return u && u.isEliteBoss ? ELITE_BOSS_TOKEN_R - 36 : 0; }
+    // 몸 크기 배율 sizeScale (용병 = 1): 탑 몬스터는 MONSTER_DEFS의 size. 엘리트 몬스터는 따로 (토큰이 보통 보스의 3배)
+    const BODY_HALF_W = 20; // 용병 몸 반폭 (몸이 s배면 가장자리가 BODY_HALF_W × (s - 1)만큼 바깥)
+    // 사거리 판정용 거리: 몸이 큰 유닛은 몸 가장자리까지의 거리로 잼 (때리는 쪽·맞는 쪽 모두)
+    function unitBodyGap(u) { return !u ? 0 : (u.isEliteBoss ? ELITE_BOSS_TOKEN_R - 36 : BODY_HALF_W * ((u.sizeScale || 1) - 1)); }
+    // 시전자 크기에 따라 커지는 스킬 범위 배율 = √몸 크기 (2.5배 보스 → 1.6배). 몸 크기 그대로 키우면 보스 사자후·지진이
+    //   전장을 거의 다 덮어서 근접 용병이 붙지 못함 (tests/tower-sim.js). 엘리트 몬스터 스킬은 원래 크기에 맞춰 짜여 있어서 1
+    function unitAreaScale(u) { return !u || u.isEliteBoss ? 1 : Math.sqrt(u.sizeScale || 1); }
+    // 몸 크기를 정하면서 근접 기본 공격 사거리도 같은 배율로 (원거리는 몸 가장자리만큼만 늘어남)
+    const MELEE_RANGE_MAX = 150;
+    function setUnitBodySize(unit, s) {
+      if (unit.baseRangeForSize === undefined) unit.baseRangeForSize = unit.range;
+      unit.sizeScale = s;
+      if (unit.baseRangeForSize < MELEE_RANGE_MAX) unit.range = Math.round(unit.baseRangeForSize * s);
+    }
     function unitDist(a, b) { return Math.max(0, Math.hypot(a.x - b.x, a.y - b.y) - unitBodyGap(a) - unitBodyGap(b)); }
     const BATTLE_DAMAGE_MULT = 2.2;      // 모든 공격 피해 배율 (회복량은 그대로)
     const DEFENSE_SCALE = 300;           // 피해 감소율 = 방어력 ÷ (방어력 + 300) → 방어 50이면 14%, 100이면 25%, 300이면 50%
@@ -3353,6 +3365,34 @@
       fallen_angel:   { id: 'fallen_angel',   name: '타락 천사',    icon: '😇', color: '#e2e8f0', trait: { def: 1.1, spd: 1.05 }, passives: ['regen', 'evade'] },
       chaos_god:      { id: 'chaos_god',      name: '혼돈의 신',    icon: '🌌', color: '#581c87', big: true, passives: ['lifesteal', 'enrage', 'thorns', 'burn'] }
     };
+    // 몬스터 몸 크기 (용병 = 1): 용병 키에 맞추지 않고 몬스터 특성대로. 그림·토큰 크기, 맞는 범위(몸 가장자리),
+    // 근접 사거리, 스킬 범위가 모두 이 배율을 따름 (unitBodyGap·unitAreaScale). 졸개는 TOWER_MINION_SIZE배
+    // 작은 것(임프·요정·박쥐 0.7~0.85) / 사람만 한 것(1) / 덩치 큰 것(오크·트롤·골렘 1.15~1.5) / 종족 보스(big)는 거대하게 2~2.6
+    // 새 몬스터를 넣을 때 여기에 크기를 적음 (없으면 보스 2.2, 나머지 1). 스프라이트 standH는 크기 1일 때 용병과 같은 키가 되게 잡음
+    const MONSTER_BODY_SIZE = {
+      scarecrow: 1,
+      goblin: 0.85, goblin_rider: 1.1, goblin_king: 2.2,
+      skeleton: 1, ghost: 1, mummy: 1.05, lich: 2.3,
+      wolf: 0.95, bat: 0.75, spider: 0.9, dire_wolf: 2.3,
+      slime: 0.9, lizard: 1.05, mushroom: 0.8, swamp_hydra: 2.4,
+      orc: 1.15, orc_berserker: 1.2, orc_warlord: 2.3,
+      troll: 1.25, yeti: 1.3, ice_harpy: 0.95, frost_giant: 2.5,
+      imp: 0.75, fire_elemental: 1, hellhound: 1, ifrit: 2.4,
+      ogre: 1.5, golem: 1.35, cyclops: 1.5, titan: 2.6,
+      merfolk: 1, crab: 0.95, octopus: 0.95, kraken: 2.5,
+      wyvern: 1.2, drake: 1.15, dragonkin: 1.1, dark_dragon: 2.6,
+      wind_spirit: 0.9, water_spirit: 0.95, storm_spirit: 0.9, elemental_lord: 2.3,
+      clockwork: 1, steel_spider: 0.95, steam_golem: 1.35, mech_colossus: 2.5,
+      scorpion: 0.95, sandworm: 1.2, sand_raider: 1, sphinx: 2.4,
+      thorn_treant: 1.3, dark_fairy: 0.7, venom_moth: 0.75, ancient_treant: 2.5,
+      hell_knight: 1.15, warlock: 1, pumpkin_fiend: 0.85, demon_king: 2.5,
+      griffin: 1.2, thunderbird: 1, sky_knight: 1.05, storm_roc: 2.4,
+      crystal_golem: 1.35, gem_lizard: 0.85, light_wisp: 0.7, crystal_queen: 2.2,
+      shadow_assassin: 0.95, wraith_knight: 1.1, nightmare: 1.2, shadow_lord: 2.4,
+      minotaur: 1.4, medusa: 1.05, chimera: 1.3, cerberus: 2.4,
+      chaos_eye: 0.9, void_tentacle: 1.2, fallen_angel: 1.1, chaos_god: 2.6
+    };
+    Object.values(MONSTER_DEFS).forEach(m => { m.size = MONSTER_BODY_SIZE[m.id] ?? (m.big ? 2.2 : 1); });
 
     // 모험의 탑 종족: 5층마다 바뀜 (1~5층 고블린족, 6~10층 언데드 ...). 각 종족의 마지막 층에는 종족 보스가 나옴
     const TOWER_RACES = [
@@ -3513,6 +3553,7 @@
     // 5마리 부대 뒤에 붙는 졸개 몬스터: 층이 오를수록 늘어남 (11층부터 1마리, 100층 7마리 → 최대 12마리)
     // 졸개는 능력치가 낮고(TOWER_MINION_MULT), 그만큼 본대 능력치를 조금 낮춰(coreScale) 층 난이도는 그대로 둠
     const TOWER_MINION_MULT = { hp: 0.5, atk: 0.5 };
+    const TOWER_MINION_SIZE = 0.85; // 졸개는 같은 몬스터보다 몸이 조금 작음
     const TOWER_MINION_SCALE_LOSS = 0.07; // 졸개 1마리마다 본대 능력치 -7% (tests/tower-sim.js로 졸개 없던 때 승률과 맞춤)
     const TOWER_MINION_JOBS = ['warrior', 'archer', 'mage', 'warrior', 'archer', 'mage', 'warrior'];
     // 본대 5마리 자리를 뺀 빈 칸 (적 진형 가로 3 × 세로 5): 졸개가 앞줄부터 채움
@@ -3592,7 +3633,9 @@
     // 종족 마지막 층: 부대 전체 능력치(bossFloorScale) · 보스 본인 체력 배율(bossHp)
     // 보스마다 고유 능력(가시·광폭화·흡혈 등) 세기가 달라서 종족별로 시뮬레이션해 맞춤 (같은 레벨대 용병단 승률 약 60~70%, 50층은 조금 더 어렵게)
     function towerRaceBossFloorScale(floor) { return towerRaceOfFloor(floor).bossFloorScale || 1.04; }
-    function towerBossUnitMult(floor) { return { hp: towerRaceOfFloor(floor).bossHp || 1.4, atk: 1.05 }; }
+    // 종족 보스는 몸이 거대해서(MONSTER_BODY_SIZE) 사거리·스킬 범위가 넓은 만큼 체력·공격력을 TOWER_BOSS_BODY_COMP배로 (tests/tower-sim.js로 맞춤)
+    const TOWER_BOSS_BODY_COMP = 0.65;
+    function towerBossUnitMult(floor) { return { hp: (towerRaceOfFloor(floor).bossHp || 1.4) * TOWER_BOSS_BODY_COMP, atk: 1.05 * TOWER_BOSS_BODY_COMP }; }
 
     // 몬스터 특성(능력치 배율·고유 능력)을 전투 유닛에 입힘
     function applyMonsterTraits(unit, monKey, isBoss = false, floor = 1) {
@@ -3608,6 +3651,7 @@
       unit.baseMoveSpeed = unit.baseMoveSpeed * (t.spd || 1);
       unit.monsterPassives = [...(mon.passives || [])];
       unit.isRaceBoss = Boolean(isBoss);
+      setUnitBodySize(unit, mon.size || 1);
       return unit;
     }
 
@@ -3864,8 +3908,8 @@
       MERC_SPRITE_DEFS[`${job}_${SECRET_SKIN_BASE + n}`] = { ...MERC_SPRITE_DEFS[`${job}_0`], ...SECRET_SKIN_SHEETS[`${job}_sr${n}`], src: `assets/sprites/merc/${job}_sr${n}.webp` };
     }));
     const SPRITE_DRAW_H = 54;       // 전투 화면에서 서 있는 캐릭터의 키(월드 px)
-    // 엘리트 보스는 몸(토큰)이 보통 보스의 3배라 그림도 eliteScale만큼 크게
-    const spriteDrawH = (u, sprite) => SPRITE_DRAW_H * (u.isEliteBoss && sprite.eliteScale || 1);
+    // 탑 몬스터는 몸 크기(sizeScale)만큼. 엘리트 보스는 몸(토큰)이 보통 보스의 3배라 그림도 eliteScale만큼 크게
+    const spriteDrawH = (u, sprite) => SPRITE_DRAW_H * (u.isEliteBoss ? (sprite.eliteScale || 1) : (u.sizeScale || 1));
     const SPRITE_DEATH_TICKS = 150; // 쓰러진 뒤 화면에 남아 있는 시간
 
     // 몬스터 스프라이트: 칸·동작 형식은 용병과 같음. jobs가 있으면 그 직업으로 나온 몬스터만 그림 (나머지는 기존 토큰)
@@ -3975,10 +4019,10 @@
     //   돌진, 강타, 함성, 회전베기, 회전베기 좌우반전, 사자후
     // (기본 샘플과 스킬 샘플 두 장에서 잘라 붙임. 스킬 샘플은 그림이 작아서 1.55배로 키우고, 금관을 기본 샘플의 뼈 왕관 색으로 바꿈.
     //  바닥 그림자는 지움. 쓰러짐 B 얼굴 위 ✦ 워터마크는 주변 색으로 메움. 회전베기는 한 장뿐이라 좌우반전 칸과 번갈아 씀)
-    // 보스라 다른 고블린보다 1.3배쯤 크게 (standH를 작게). 엘리트 보스로 나오면 eliteScale만큼 더 키움
+    // standH는 다른 고블린과 같은 배율 (보스 크기는 MONSTER_BODY_SIZE). 엘리트 보스로 나오면 eliteScale만큼 키움
     MONSTER_SPRITE_DEFS.goblin_king = {
       src: 'assets/sprites/monster/goblin_king.webp',
-      cellW: 159, cellH: 117, anchorX: 82, anchorY: 104.5, standH: 66, topH: 99, count: 14, spinFx: true, eliteScale: 2.6,
+      cellW: 159, cellH: 117, anchorX: 82, anchorY: 104.5, standH: 86, topH: 99, count: 14, spinFx: true, eliteScale: 3.4,
       anims: {
         idle: [0], walk: [1, 0, 2, 0], attack: [3, 4, 4], skill: [3, 4, 4], hurt: [5], death: [6, 7],
         charge: [8], smash: [3, 9, 9], shout: [10], whirl: [11, 12], roar: [13]
@@ -10636,6 +10680,7 @@
           }
           if (isMinion) {
             unit.isMinion = true;
+            setUnitBodySize(unit, (unit.sizeScale || 1) * TOWER_MINION_SIZE);
             unit.maxHp = unit.hp = Math.round(unit.maxHp * TOWER_MINION_MULT.hp);
             unit.atk = Math.round(unit.atk * TOWER_MINION_MULT.atk);
           }
@@ -11382,7 +11427,7 @@
               }
             }
           } else if (skKey === 'whirlwind') {
-            const nearbyEnemies = enemies.filter(e => unitDist(e, unit) <= 125).length;
+            const nearbyEnemies = enemies.filter(e => unitDist(e, unit) <= 125 * unitAreaScale(unit)).length;
             if (nearbyEnemies >= 2) {
               score = 95;
             } else if (nearbyEnemies === 1) {
@@ -11486,12 +11531,12 @@
           unit.maxAttackAnim = WHIRLWIND_TICKS;
           sim.effects.push({
             type: 'whirlwind_slash',
-            x: unit.x, y: unit.y, r: 120,
+            x: unit.x, y: unit.y, r: 120 * unitAreaScale(unit),
             color: unit.team === 'blue' ? '#2563eb' : '#e11d48',
             life: 160, maxLife: 160
           });
           enemies.forEach(e => {
-            if (unitDist(e, unit) <= 125) {
+            if (unitDist(e, unit) <= 125 * unitAreaScale(unit)) {
               applyDamage(unit, e, unit.atk * 1.25);
             }
           });
@@ -11512,7 +11557,7 @@
           }
           sim.effects.push({
             type: 'stun_shockwave',
-            x: target.x, y: target.y, r: 100,
+            x: target.x, y: target.y, r: 100 * unitAreaScale(unit),
             life: 56, maxLife: 56
           });
           unit.rootTicks = STUN_STRIKE_ROOT_TICKS; // 내리치는 동안만 제자리 (이동·공격 불가)
@@ -11521,7 +11566,7 @@
           unit.attackAnim = 0; // 내리친 뒤 공격 자세로 멈춰 있지 않고 바로 원래 자세로
           unit.rush = null;
           inReach.forEach(e => {
-            if (unitDist(e, target) <= 80) {
+            if (unitDist(e, target) <= 80 * unitAreaScale(unit)) {
               applyDamage(unit, e, unit.atk * 1.6);
               inflictStatus(unit, e, 'stun', 150); // 2.5초
             }
@@ -12160,7 +12205,7 @@
           let hit = null;
           for (const e of sim.units) {
             if (!e.alive || e.team === p.owner.team) continue;
-            if (Math.hypot(e.x - p.x, (e.y - 12) - p.y) < (e.isEliteBoss ? ELITE_BOSS_HIT_RADIUS : PROJECTILE_HIT_RADIUS)) {
+            if (Math.hypot(e.x - p.x, (e.y - 12) - p.y) < (e.isEliteBoss ? ELITE_BOSS_HIT_RADIUS : PROJECTILE_HIT_RADIUS + unitBodyGap(e))) {
               hit = e;
               break;
             }
@@ -12194,20 +12239,20 @@
             sim.floatTexts.push({ x: p.target.x, y: p.target.y - 44, text: `💚+${healAmt}`, color: '#059669', life: 45 });
           } else if (p.projType === 'fireball_proj') {
             playCombatSfx('heavy');
-            sim.effects.push({ type: 'fire_explosion', spr: projHitSpr(p, 'fire_hit'), x: p.target.x, y: p.target.y, r: p.aoeRadius || 110, life: 34, maxLife: 34 });
+            sim.effects.push({ type: 'fire_explosion', spr: projHitSpr(p, 'fire_hit'), x: p.target.x, y: p.target.y, r: (p.aoeRadius || 110) * unitAreaScale(p.owner), life: 34, maxLife: 34 });
             const enemies = sim.units.filter(u => u.alive && u.team !== p.owner.team);
             enemies.forEach(e => {
-              if (unitDist(e, p.target) <= (p.aoeRadius || 110)) {
+              if (unitDist(e, p.target) <= (p.aoeRadius || 110) * unitAreaScale(p.owner)) {
                 applyDamage(p.owner, e, p.dmg, '', '#ea580c');
                 inflictStatus(p.owner, e, 'burn', p.statusDur || 360);
               }
             });
           } else if (p.projType === 'ice_arrow_proj') {
             playCombatSfx('magic');
-            sim.effects.push({ type: 'ice_shatter', spr: 'ice_hit', x: p.target.x, y: p.target.y, r: p.aoeRadius || 85, life: 34, maxLife: 34 });
+            sim.effects.push({ type: 'ice_shatter', spr: 'ice_hit', x: p.target.x, y: p.target.y, r: (p.aoeRadius || 85) * unitAreaScale(p.owner), life: 34, maxLife: 34 });
             const enemies = sim.units.filter(u => u.alive && u.team !== p.owner.team);
             enemies.forEach(e => {
-              if (unitDist(e, p.target) <= (p.aoeRadius || 85)) {
+              if (unitDist(e, p.target) <= (p.aoeRadius || 85) * unitAreaScale(p.owner)) {
                 applyDamage(p.owner, e, p.dmg, '', '#0284c7');
                 inflictStatus(p.owner, e, 'freeze', p.statusDur || 240);
               }
@@ -12540,14 +12585,15 @@
     // 새 스킬 8종 발동 (처리했으면 true)
     function castNewSkill(unit, allies, enemies, sk, skObj, target, aimPt = null) {
       const C = GRID_CELL_SIZE;
+      const A = C * unitAreaScale(unit); // 스킬 범위(칸)는 시전자 몸 크기에 따라 (밀쳐내기·이동 거리는 C 그대로)
       const teamColor = unit.team === 'blue' ? '#2563eb' : '#e11d48';
       // 시전자 자리에서 재는 범위는 시전자 몸 가장자리부터 (엘리트 몬스터처럼 몸이 큰 유닛)
       const near = (list, x, y, r) => list.filter(u => Math.hypot(u.x - x, u.y - y) - unitBodyGap(u) - (x === unit.x && y === unit.y ? unitBodyGap(unit) : 0) <= r);
 
       if (sk === 'roar') {
         // 사자후: 주변 2칸 적에게 피해 + 1.2칸 밀쳐냄
-        sim.effects.push({ type: 'aoe_ring', spr: 'shout', x: unit.x, y: unit.y, r: C * 2, color: '#d97706', life: 36, maxLife: 36 });
-        near(enemies, unit.x, unit.y, C * 2).forEach(e => {
+        sim.effects.push({ type: 'aoe_ring', spr: 'shout', x: unit.x, y: unit.y, r: A * 2, color: '#d97706', life: 36, maxLife: 36 });
+        near(enemies, unit.x, unit.y, A * 2).forEach(e => {
           applyDamage(unit, e, unit.atk * 1.9);
           pushUnitAway(e, unit.x, unit.y, C * 1.2);
         });
@@ -12557,8 +12603,8 @@
       }
       if (sk === 'warcry') {
         // 함성: 주변 3칸 아군 10초간 공격력 +15%
-        sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: C * 3, color: '#dc2626', life: 40, maxLife: 40 });
-        near(allies, unit.x, unit.y, C * 3).forEach(a => {
+        sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: A * 3, color: '#dc2626', life: 40, maxLife: 40 });
+        near(allies, unit.x, unit.y, A * 3).forEach(a => {
           a.statuses.rally = Math.max(a.statuses.rally || 0, 600);
           sim.effects.push({ type: 'blessing_aura', x: a.x, y: a.y, life: 50, maxLife: 50 });
         });
@@ -12569,7 +12615,7 @@
       if (sk === 'arrow_rain') {
         // 화살비: 1칸 원형에 5초간 지속 피해 (한 번 맞을 때 피해는 그대로)
         if (!target) return true;
-        spawnZone('arrow_rain', unit, target.x, target.y, C * 1, 300, 20, unit.atk * 0.24);
+        spawnZone('arrow_rain', unit, target.x, target.y, A * 1, 300, 20, unit.atk * 0.24);
         playCombatSfx('arrow');
         addBattleLog(`🌧️ [궁수] ${unit.name}의 화살비!`);
         return true;
@@ -12606,7 +12652,7 @@
       if (sk === 'poison_boom') {
         // 포이즌 붐: 1.5칸 원형 피해 + 중독 장판 6초
         if (!target) return true;
-        const r = C * 1.5;
+        const r = A * 1.5;
         sim.effects.push({ type: 'aoe_ring', spr: 'poison', x: target.x, y: target.y, r, color: '#16a34a', life: 36, maxLife: 36 });
         near(enemies, target.x, target.y, r).forEach(e => {
           applyDamage(unit, e, unit.atk * 0.6, '', '#16a34a');
@@ -12635,8 +12681,8 @@
       }
       if (sk === 'purify') {
         // 정화: 주변 5칸 아군 상태이상 제거 + 10초 면역
-        sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: C * 5, color: '#0ea5e9', life: 40, maxLife: 40 });
-        near(allies, unit.x, unit.y, C * 5).forEach(a => {
+        sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: A * 5, color: '#0ea5e9', life: 40, maxLife: 40 });
+        near(allies, unit.x, unit.y, A * 5).forEach(a => {
           NEGATIVE_STATUSES.forEach(k => { a.statuses[k] = 0; });
           a.statuses.immune = Math.max(a.statuses.immune || 0, 600);
           sim.effects.push({ type: 'shield_dome', x: a.x, y: a.y, life: 50, maxLife: 50 });
@@ -12748,9 +12794,9 @@
       }
       if (sk === 'provoke') {
         // 도발: 주변 2칸 적 5초간 도발 (기사만 기본 공격, 스킬 사용 불가 · 시전 중이던 스킬은 끊김)
-        sim.effects.push({ type: 'aoe_ring', spr: 'taunt', x: unit.x, y: unit.y, r: C * 2, color: '#ea580c', life: 40, maxLife: 40 });
+        sim.effects.push({ type: 'aoe_ring', spr: 'taunt', x: unit.x, y: unit.y, r: A * 2, color: '#ea580c', life: 40, maxLife: 40 });
         let n = 0;
-        near(enemies, unit.x, unit.y, C * 2).forEach(e => {
+        near(enemies, unit.x, unit.y, A * 2).forEach(e => {
           inflictStatus(unit, e, 'taunt', KNIGHT_TAUNT_TICKS);
           if (!(e.statuses.taunt > 0)) return; // 면역
           e.tauntBy = unit.id;
@@ -12775,7 +12821,7 @@
       if (sk === 'earthquake') {
         // 지진: 2.5칸 안 적에게 다단히트, 맞을 때마다 기사 쪽으로 끌려옴 (stepKnightEffects에서 진행)
         unit.quake = { hits: KNIGHT_QUAKE_HITS, timer: 0 };
-        sim.effects.push({ type: 'stun_shockwave', spr: 'quake', x: unit.x, y: unit.y, r: KNIGHT_QUAKE_RADIUS, life: KNIGHT_QUAKE_HITS * 15 + 6, maxLife: KNIGHT_QUAKE_HITS * 15 + 6 }); // 다단히트(15틱 × 18)가 끝날 때까지
+        sim.effects.push({ type: 'stun_shockwave', spr: 'quake', x: unit.x, y: unit.y, r: KNIGHT_QUAKE_RADIUS * unitAreaScale(unit), life: KNIGHT_QUAKE_HITS * 15 + 6, maxLife: KNIGHT_QUAKE_HITS * 15 + 6 }); // 다단히트(15틱 × 18)가 끝날 때까지
         addBattleLog(`🌋 [기사] ${unit.name}의 지진! 주변 적을 끌어당겨요`);
         return true;
       }
@@ -12896,10 +12942,10 @@
       if (u.quake && --u.quake.timer <= 0) {
         u.quake.timer = 15;
         u.quake.hits--;
-        sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: KNIGHT_QUAKE_RADIUS, color: '#a16207', life: 24, maxLife: 24 });
+        sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: KNIGHT_QUAKE_RADIUS * unitAreaScale(u), color: '#a16207', life: 24, maxLife: 24 });
         playCombatSfx('heavy');
         withSkillHit(() => sim.units.forEach(e => {
-          if (!e.alive || e.team === u.team || unitDist(e, u) > KNIGHT_QUAKE_RADIUS) return;
+          if (!e.alive || e.team === u.team || unitDist(e, u) > KNIGHT_QUAKE_RADIUS * unitAreaScale(u)) return;
           suppressHitKnockback = true; // 밀려나지 않고 끌려오게
           try { applyDamage(u, e, u.atk * 0.45); } finally { suppressHitKnockback = false; }
           if (!canKnightMove(e)) return;
@@ -13194,7 +13240,7 @@
 
     // 새 스킬 8종의 AI 사용 판단 점수 (해당 없으면 null)
     function scoreNewSkill(unit, allies, enemies, primaryTarget, distToPrimary, skKey) {
-      const C = GRID_CELL_SIZE;
+      const C = GRID_CELL_SIZE * unitAreaScale(unit); // 스킬 범위와 같은 배율로 판단
       const countNear = (list, x, y, r) => list.filter(u => Math.hypot(u.x - x, u.y - y) - unitBodyGap(u) <= r).length;
       const nearestEnemyDist = enemies.reduce((m, e) => Math.min(m, unitDist(e, unit)), Infinity);
       const enemyTarget = primaryTarget && primaryTarget.team !== unit.team ? primaryTarget : null;
@@ -13293,7 +13339,7 @@
           return canKnightMove(enemyTarget) ? 88 : 70;
         }
         case 'earthquake': {
-          const n = countNear(enemies, unit.x, unit.y, KNIGHT_QUAKE_RADIUS);
+          const n = countNear(enemies, unit.x, unit.y, KNIGHT_QUAKE_RADIUS * unitAreaScale(unit));
           if (n >= 2) return 89;
           return n === 1 && distToPrimary <= C * 1.2 ? 64 : -1;
         }
@@ -13399,7 +13445,7 @@
       if (!p.isSkill && basicHitKind !== 'ranged') return withHitKind('ranged', () => resolveProjectileImpact(p, hit, x, y));
       if (p.projType === 'fireball_proj' || p.projType === 'ice_arrow_proj') {
         const fire = p.projType === 'fireball_proj';
-        const r = p.aoeRadius || (fire ? 110 : 85);
+        const r = (p.aoeRadius || (fire ? 110 : 85)) * unitAreaScale(p.owner);
         playCombatSfx(fire ? 'heavy' : 'magic');
         sim.effects.push({ type: fire ? 'fire_explosion' : 'ice_shatter', spr: fire ? projHitSpr(p, 'fire_hit') : 'ice_hit', x, y, r, life: 34, maxLife: 34 });
         sim.units.filter(u => u.alive && u.team !== p.owner.team).forEach(e => {
@@ -13411,12 +13457,13 @@
         return;
       }
       if (p.splashRadius) {
-        // 작은 범위 공격: 맞은 적은 전체 피해, 주변 적은 일부 피해 (빗나가도 떨어진 자리에서 터짐)
-        sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : undefined), x, y: y - 12, r: p.splashRadius, life: 22, maxLife: 22 });
+        // 작은 범위 공격: 맞은 적은 전체 피해, 주변 적은 일부 피해 (빗나가도 떨어진 자리에서 터짐). 범위는 쏜 유닛 크기에 비례
+        const splashR = p.splashRadius * unitAreaScale(p.owner);
+        sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : undefined), x, y: y - 12, r: splashR, life: 22, maxLife: 22 });
         if (!hit) playCombatSfx('magic');
         sim.units.forEach(e => {
           if (!e.alive || e === hit || e.team === p.owner.team) return;
-          if (Math.hypot(e.x - x, e.y - y) - unitBodyGap(e) <= p.splashRadius) applyDamage(p.owner, e, p.dmg * (p.splashRatio || 0.5));
+          if (Math.hypot(e.x - x, e.y - y) - unitBodyGap(e) <= splashR) applyDamage(p.owner, e, p.dmg * (p.splashRatio || 0.5));
         });
       }
       if (!hit) return;
@@ -14014,7 +14061,7 @@
       // 2) 심플 시스템 유닛 토큰 (원형 노드 + 방향 지시자 + 직업/몬스터 심볼)
       const isEliteBoss = Boolean(u.isEliteBoss);
       const isBossMon = isEliteBoss || Boolean(monObj && monObj.big) || u.isRaceBoss;
-      const tokenR = isEliteBoss ? ELITE_BOSS_TOKEN_R : (u.isRaceBoss ? 27 : (u.monsterType === 'dark_dragon' ? 24 : (isBossMon ? 21 : (u.isMinion ? 15 : 18))));
+      const tokenR = isEliteBoss ? ELITE_BOSS_TOKEN_R : (u.sizeScale ? 18 * u.sizeScale : (isBossMon ? 21 : 18));
       const sprite = getUnitSprite(u);
       const useSprite = Boolean(sprite && sprite.ready);
       // 스프라이트는 머리가 토큰보다 높아서 체력바를 그만큼 위로 올림
@@ -14072,7 +14119,7 @@
 
         // 유닛 중앙 심볼
         const centerSymbol = monObj ? monObj.icon : job.icon;
-        ctx.font = `${isEliteBoss ? 54 : (isBossMon ? 18 : 15)}px Pretendard, sans-serif`;
+        ctx.font = `${isEliteBoss ? 54 : (u.sizeScale ? Math.round(15 * u.sizeScale) : (isBossMon ? 18 : 15))}px Pretendard, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = (u.monsterType && u.monsterType !== 'scarecrow') || u.isDarkMerc ? '#ffffff' : '#0f172a';
