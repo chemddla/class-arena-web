@@ -3988,7 +3988,7 @@
       cellW: 160, cellH: 92, anchorX: 48, anchorY: 90, standH: 84, topH: 84, portraitCX: 40, count: 21,
       anims: {
         idle: [0], walk: [1, 2, 3, 4], attack: [6, 6, 6, 5, 5], skill: [14, 15], hurt: [7], death: [8, 9],
-        seal: [11], dodge: [12, 13], power: [15, 15, 14], buck: [17, 17, 16], finish: [19, 20, 20], overheat: [20]
+        seal: [11], dodge: [12, 13], power: [15], buck: [17, 17, 16], finish: [19, 20, 20], overheat: [20], powered: [15], charged: [15]
       },
       skillAnims: {
         sniper_stealth: { anim: 'seal', tpf: 30, dur: 30 },
@@ -3997,7 +3997,7 @@
         buckshot:       { anim: 'buck', tpf: 6, dur: 24 },
         finisher:       { anim: 'finish', tpf: 12, dur: 48 }
       },
-      castFrames: { sniper_stealth: 10, power_shot: 14, finisher: 18 }
+      castFrames: { sniper_stealth: 10, power_shot: 15, finisher: 18 } // 강화 사격은 시전부터 금빛 자세 (쏠 때까지 charged로 유지)
     };
     // 저격수 외형 1 (사막), 2 (설원), 3 (청록), 4 (자주), 5 (적갈): 위장 색만 바꾼 것. 칸·동작 구성은 sniper_0과 같음
     [1, 2, 3, 4, 5].forEach(v => { MERC_SPRITE_DEFS[`sniper_${v}`] = { ...MERC_SPRITE_DEFS.sniper_0, src: `assets/sprites/merc/sniper_${v}.webp` }; });
@@ -4659,6 +4659,9 @@
     const SNIPER_HEAT_IMG = new Image(); // 총열 과열 표시 (39×36)
     SNIPER_HEAT_IMG.onload = () => { SNIPER_HEAT_IMG.ready = true; };
     SNIPER_HEAT_IMG.src = 'assets/sprites/fx/sniper_overheat.png';
+    const SNIPER_AIM_IMG = new Image(); // 조준선 (181×5)
+    SNIPER_AIM_IMG.onload = () => { SNIPER_AIM_IMG.ready = true; };
+    SNIPER_AIM_IMG.src = 'assets/sprites/fx/sniper_aim.webp';
     const SNIPER_BULLET_IMG = new Image(); // 남은 총알 표시용 (18×64)
     SNIPER_BULLET_IMG.onload = () => { SNIPER_BULLET_IMG.ready = true; };
     SNIPER_BULLET_IMG.src = 'assets/sprites/fx/sniper_bullet.webp';
@@ -13635,10 +13638,15 @@
         ctx.strokeStyle = '#ef4444';
         ctx.lineWidth = SNIPER_SHOT_HALF_W * 2;
         ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(me.range, 0); ctx.stroke();
-        ctx.globalAlpha = pulse;
-        ctx.lineWidth = 2;
-        ctx.setLineDash([14, 8]);
-        ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(me.range, 0); ctx.stroke();
+        ctx.globalAlpha = 0.75 + 0.25 * Math.sin(sim.tickCount * 0.25);
+        if (SNIPER_AIM_IMG.ready) {
+          ctx.drawImage(SNIPER_AIM_IMG, 16, -2.5, me.range - 16, 5);
+        } else {
+          ctx.globalAlpha = pulse;
+          ctx.lineWidth = 2;
+          ctx.setLineDash([14, 8]);
+          ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(me.range, 0); ctx.stroke();
+        }
         ctx.restore();
       }
       // 강화 사격이 쌓여 있는 저격수: 다음 사격까지 몸에서 노란 빛이 이글거림 (쌓인 수만큼 진하게)
@@ -13933,6 +13941,7 @@
         unit.reloadLeft = 0;
         unit.overheat = SNIPER_OVERHEAT_TICKS;
         unit.powerStacks = 0;
+        sniperRecoil(unit, angle, SNIPER_RECOIL_FINISH);
         sim.effects.push({ type: 'sniper_line', x: unit.x, y: unit.y - 10, angle, r: SNIPER_INFINITE, w: 12.6, color: '#dc2626', life: 34, maxLife: 34 });
         sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: 60, color: '#dc2626', life: 30, maxLife: 30 });
         playCombatSfx('heavy');
@@ -14460,6 +14469,12 @@
         sniperStartReload(u);
       }
     }
+    // 반동: 쏜 반대쪽으로 px만큼 밀림 (kb 속도는 매 틱 0.6배로 줄어 합계 약 2.5배)
+    const SNIPER_RECOIL_BASIC = 16, SNIPER_RECOIL_POWER = 32, SNIPER_RECOIL_FINISH = 64;
+    function sniperRecoil(u, angle, px) {
+      u.kbVx = (u.kbVx || 0) - Math.cos(angle) * px / 2.5;
+      u.kbVy = (u.kbVy || 0) - Math.sin(angle) * px / 2.5;
+    }
     function sniperFace(u, angle) {
       u.facingAngle = angle;
       if (Math.abs(Math.cos(angle)) > 0.1) u.facingDir = Math.cos(angle) >= 0 ? 1 : -1;
@@ -14475,6 +14490,7 @@
       const hits = lancerLineHits(u, angle, length, SNIPER_SHOT_HALF_W);
       sim.effects.push({ type: 'sniper_line', x: u.x, y: u.y - 10, angle, r: length, w: stacks > 0 ? 5 : 2.5, color: stacks > 0 ? '#f97316' : '#ef4444', life: 16, maxLife: 16 });
       playCombatSfx('heavy');
+      sniperRecoil(u, angle, stacks > 0 ? SNIPER_RECOIL_POWER : SNIPER_RECOIL_BASIC);
       const mult = SNIPER_SHOT_DMG * (1 + stacks * SNIPER_POWER_PER_BULLET);
       hits.forEach(e => withHitKind('ranged', () => applyDamage(u, e, u.atk * mult)));
       if (stacks > 0) sim.floatTexts.push({ x: u.x, y: u.y - 52, text: `🔴 강화 사격 ×${(1 + stacks * SNIPER_POWER_PER_BULLET).toFixed(1)}`, color: '#ea580c', life: 44 });
@@ -15407,6 +15423,10 @@
       if (u.casting) return (sprite.castFrames && sprite.castFrames[u.casting.key]) ?? a.skill[0]; // 시전 바가 차는 동안은 지팡이를 든 자세
       if (u.attackAnim > 0) return step((u.lanceMode === 'thrust' && a.thrust) || a.attack, tick - (u._sprAtkStart ?? tick), 6); // 창병 찌르기는 따로
       if (u.hurtAnim > 0) return step(a.hurt, 10 - u.hurtAnim, 10 / a.hurt.length); // hurtAnim은 10에서 줄어듦
+      // 저격수 강화 사격이 쌓여 있으면 다음 사격까지 금빛 오라 자세 유지 (쏘면 powerStacks가 0이 되어 원래 모습)
+      if (a.charged && u.powerStacks > 0) return a.charged[0];
+      // 저격수 강화 사격 준비 중: 움직여도 금빛으로 달아오른 자세 유지 (다음 사격 때까지)
+      if (a.powered && u.powerStacks > 0) return a.powered[0];
       if (u.isMoving || u.dashAnim > 0) return a.walk[Math.floor(tick / 8) % a.walk.length];
       return a.idle[Math.floor(tick / 30) % a.idle.length];
     }
