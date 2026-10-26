@@ -4030,6 +4030,18 @@
       }
     };
 
+    // 성녀 지원 이펙트 (원본 샘플: assets/sprites/fx/samples/support_fx_white.png). 캐릭터 위에 겹쳐 그림
+    // 회복 = 초록 불꽃(기준점 = 발밑 고리), 축복 = 금빛 빛기둥(기준점 = 발밑), 보호막 = 푸른 구체(기준점 = 구 중심)
+    // w = 월드 폭, dy = 기준점을 놓을 높이(유닛 y 기준, 발 = +12)
+    const SUPPORT_FX = {
+      src: 'assets/sprites/fx/support_fx.webp',
+      anims: {
+        heal_pillar:   { fr: [0, 0, 198, 292, 99, 250], w: 64, dy: 12 },
+        blessing_aura: { fr: [200, 0, 206, 380, 103, 340], w: 56, dy: 12 },
+        shield_dome:   { fr: [408, 0, 295, 283, 147, 141], w: 76, dy: -15 }
+      }
+    };
+
     // 도적 표창 (투사체 그림, 회전시켜 그리므로 아틀라스와 따로 둠)
     const ROGUE_SHURIKEN_IMG = new Image();
     ROGUE_SHURIKEN_IMG.onload = () => { ROGUE_SHURIKEN_IMG.ready = true; };
@@ -4059,7 +4071,7 @@
     LANCER_JAVELIN_FX.onload = () => { LANCER_JAVELIN_FX.ready = true; };
     LANCER_JAVELIN_FX.src = 'assets/sprites/fx/lancer_javelin_fx.webp';
 
-    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX).forEach(def => {
+    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX).forEach(def => {
       def.img = new Image();
       def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
       def.img.src = def.src;
@@ -13517,6 +13529,34 @@
       return list[Math.min(list.length - 1, Math.floor(Math.min(1, progress / hold) * list.length))];
     }
 
+    // 회복·축복·보호막 그림 (수명은 효과 루프에서 줄어듦)
+    function drawSupportEffects(ctx) {
+      if (!SUPPORT_FX.ready) return;
+      sim.effects.forEach(ef => {
+        const def = SUPPORT_FX.anims[ef.type];
+        if (!def) return;
+        const progress = 1 - ef.life / (ef.maxLife || 20);
+        const grow = Math.min(1, progress / 0.18);           // 처음 18% 동안 나타남
+        const fade = Math.min(1, (1 - progress) / 0.4);      // 마지막 40% 동안 사라짐
+        const s = def.w / def.fr[2];
+        ctx.save();
+        if (ef.type === 'shield_dome') {
+          // 보호막: 툭 부풀었다가 제자리
+          const pop = 0.75 + grow * 0.25 + Math.sin(grow * Math.PI) * 0.1;
+          drawFxFrame(ctx, def.fr, ef.x, ef.y + def.dy, s * pop, 0, grow * fade * 0.9, SUPPORT_FX.img);
+        } else if (ef.type === 'blessing_aura') {
+          // 축복: 빛기둥이 위로 뻗어 오름
+          ctx.translate(ef.x, ef.y + def.dy);
+          ctx.scale(1, 0.4 + grow * 0.6);
+          drawFxFrame(ctx, def.fr, 0, 0, s, 0, grow * fade * 0.75, SUPPORT_FX.img);
+        } else {
+          // 회복: 발밑에서 피어오르며 살짝 떠오름
+          drawFxFrame(ctx, def.fr, ef.x, ef.y + def.dy - progress * 6, s * (0.85 + grow * 0.15), 0, grow * fade, SUPPORT_FX.img);
+        }
+        ctx.restore();
+      });
+    }
+
     // 투사체를 그림으로 그리면 true (그림이 없거나 아직 안 불러왔으면 false → 기본 도형)
     function drawProjectileSprite(ctx, p, tick) {
       const def = (p.spr && PROJECTILE_SPRITES[p.spr]) || PROJECTILE_SPRITES[p.projType];
@@ -14116,7 +14156,8 @@
         const progress = 1 - ef.life / (ef.maxLife || 20);
         ctx.save();
 
-        if (ef.spr && drawSpriteEffect(ctx, ef, progress)) {
+        // 회복·축복·보호막 그림은 캐릭터를 다 그린 뒤 위에 겹쳐 그림 (drawSupportEffects)
+        if ((ef.spr && drawSpriteEffect(ctx, ef, progress)) || (SUPPORT_FX.ready && SUPPORT_FX.anims[ef.type])) {
           ctx.restore();
           ef.life -= frameTimeScale;
           if (ef.life <= 0) sim.effects.splice(i, 1);
@@ -14349,6 +14390,7 @@
       sortedUnits.forEach(u => {
         drawUnitToken(ctx, u, sim.tickCount);
       });
+      drawSupportEffects(ctx);
       drawControlledUnitMarker(ctx);
       drawCastBars(ctx);
 
