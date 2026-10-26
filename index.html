@@ -2964,7 +2964,7 @@
         power_shot: {
           id: 'power_shot', name: '강화 사격', icon: '🔴', ccTag: '🔴저격강화',
           manaCost: 21, cooldownTicks: 600, cooldownSec: 10.0, castSec: 1,
-          desc: '1초 동안 집중해 장전된 총알을 1발만 남기고 모두 소진합니다. 소진한 총알 1발마다 다음 기본 공격이 +60%씩 강해져요. (총알이 2발 이상 있어야 해요)'
+          desc: '1초 동안 집중해 장전된 총알을 1발만 남기고 모두 소진합니다. 소진한 총알 1발마다 다음 기본 공격이 +90%씩 강해져요. (총알이 2발 이상 있어야 해요)'
         },
         buckshot: {
           id: 'buckshot', name: '산탄', icon: '💥', ccTag: '💥산탄',
@@ -2974,7 +2974,7 @@
         finisher: {
           id: 'finisher', name: '필살 사격', icon: '☄️', ccTag: '☄️관통저격',
           manaCost: 30, cooldownTicks: 1200, cooldownSec: 20.0, castSec: 2,
-          desc: '2초 동안 조준한 뒤 장전된 총알을 모두 소비해 사거리 무한의 필살 사격을 쏩니다. 소비한 총알 1발마다 피해 100%가 쌓이고, 쏜 뒤 총열이 달아올라 5초간 재장전할 수 없어요.'
+          desc: '2초 동안 조준한 뒤 장전된 총알을 모두 소비해 사거리 무한의 필살 사격을 쏩니다. 소비한 총알 1발마다 피해 150%가 쌓이고, 쏜 뒤 총열이 달아올라 5초간 재장전할 수 없어요.'
         }
       }
     };
@@ -13813,14 +13813,26 @@
         ctx.translate(me.x, me.y - 10);
         ctx.rotate(ang);
         ctx.lineCap = 'round';
-        ctx.globalAlpha = 0.16;
-        ctx.strokeStyle = '#ef4444';
+        // 총구 쪽(시작 부분)은 희미하게, 멀어질수록 또렷하게 이어지도록 페이드인
+        const fadeLen = Math.min(110, (me.range - 16) * 0.6);
+        const fade = ctx.createLinearGradient(16, 0, 16 + fadeLen, 0);
+        fade.addColorStop(0, 'rgba(239, 68, 68, 0)');
+        fade.addColorStop(1, 'rgba(239, 68, 68, 0.16)');
+        ctx.strokeStyle = fade;
         ctx.lineWidth = SNIPER_SHOT_HALF_W * 2;
         ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(me.range, 0); ctx.stroke();
-        ctx.globalAlpha = 0.75 + 0.25 * Math.sin(sim.tickCount * 0.25);
+        const baseAlpha = 0.75 + 0.25 * Math.sin(sim.tickCount * 0.25);
         if (SNIPER_AIM_IMG.ready) {
-          ctx.drawImage(SNIPER_AIM_IMG, 16, -2.5, me.range - 16, 5);
+          const len = me.range - 16, slices = 14, sw = SNIPER_AIM_IMG.width, sh = SNIPER_AIM_IMG.height;
+          for (let i = 0; i < slices; i++) {
+            const a0 = i / slices * fadeLen, a1 = (i + 1) / slices * fadeLen;
+            ctx.globalAlpha = baseAlpha * (i + 0.5) / slices;
+            ctx.drawImage(SNIPER_AIM_IMG, a0 / len * sw, 0, (a1 - a0) / len * sw, sh, 16 + a0, -2.5, a1 - a0 + 0.5, 5);
+          }
+          ctx.globalAlpha = baseAlpha;
+          ctx.drawImage(SNIPER_AIM_IMG, fadeLen / len * sw, 0, sw - fadeLen / len * sw, sh, 16 + fadeLen, -2.5, len - fadeLen, 5);
         } else {
+          ctx.strokeStyle = '#ef4444';
           ctx.globalAlpha = pulse;
           ctx.lineWidth = 2;
           ctx.setLineDash([14, 8]);
@@ -13870,11 +13882,26 @@
           ctx.globalAlpha = 1;
         }
         if (u.reloadLeft > 0 || u.overheat > 0) {
-          const w = 46, ratio = u.reloadLeft > 0 ? 1 - u.reloadLeft / SNIPER_RELOAD_TICKS : u.overheat / SNIPER_OVERHEAT_TICKS;
-          ctx.fillStyle = 'rgba(15,23,42,0.75)';
-          ctx.fillRect(u.x - w / 2 - 1, y + 6, w + 2, 5);
-          ctx.fillStyle = u.reloadLeft > 0 ? '#38bdf8' : '#f97316';
-          ctx.fillRect(u.x - w / 2, y + 7, w * Math.max(0, Math.min(1, ratio)), 3);
+          const w = 56, ratio = u.reloadLeft > 0 ? 1 - u.reloadLeft / SNIPER_RELOAD_TICKS : u.overheat / SNIPER_OVERHEAT_TICKS;
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(u.x - w / 2 - 2, y + 6, w + 4, 9);
+          ctx.fillStyle = '#334155';
+          ctx.fillRect(u.x - w / 2, y + 8, w, 5);
+          ctx.fillStyle = u.reloadLeft > 0 ? '#22d3ee' : '#f97316';
+          ctx.fillRect(u.x - w / 2, y + 8, w * Math.max(0, Math.min(1, ratio)), 5);
+          ctx.strokeStyle = '#f8fafc';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(u.x - w / 2 - 1.5, y + 6.5, w + 3, 8);
+          if (u.overheat > 0 && !(u.reloadLeft > 0)) {
+            ctx.font = 'bold 10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = 'rgba(15,23,42,0.85)';
+            ctx.fillStyle = '#fb923c';
+            ctx.strokeText('🔥 총열 과열', u.x, y + 28);
+            ctx.fillText('🔥 총열 과열', u.x, y + 28);
+          }
         }
         ctx.restore();
       });
@@ -14610,11 +14637,11 @@
     const SNIPER_OVERHEAT_TICKS = 300;    // 필살 사격 뒤 총열 과열: 5초간 장전 불가
     const SNIPER_SHOT_HALF_W = 16;        // 저격선 폭의 절반
     const SNIPER_SHOT_DMG = 1.0;          // 저격 1발 피해
-    const SNIPER_POWER_PER_BULLET = 0.6;  // 강화 사격: 소진한 총알 1발마다 다음 기본 공격 +60%
+    const SNIPER_POWER_PER_BULLET = 0.9;  // 강화 사격: 소진한 총알 1발마다 다음 기본 공격 +90%
     const SNIPER_BUCK_REACH = GRID_CELL_SIZE * 3.5;  // 산탄 사거리
     const SNIPER_BUCK_HALF_ANGLE = 0.5;   // 산탄 부채꼴 (약 ±29°)
     const SNIPER_BUCK_DMG_PER_BULLET = 0.8; // 산탄: 소비한 총알 1발마다 80%
-    const SNIPER_FINISH_DMG_PER_BULLET = 1.0; // 필살 사격: 소비한 총알 1발마다 100%
+    const SNIPER_FINISH_DMG_PER_BULLET = 1.5; // 필살 사격: 소비한 총알 1발마다 150%
     const SNIPER_FINISH_HALF_W = 34;   // 필살 사격 폭의 절반 (처음 26에서 30% 굵게)
     const SNIPER_INFINITE = 6000;         // 사거리 무한 (전장 어디든 닿는 길이)
     const SNIPER_ROLL_DISTANCE = GRID_CELL_SIZE * 3; // 회피 3칸
