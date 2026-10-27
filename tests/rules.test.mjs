@@ -282,6 +282,24 @@ test('선물함: 소유 교사·총괄 관리자·소유자 없는 학급', asyn
   }));
 });
 
+// ----- 접속 표시 (presence/{학급}/{학생}/{이 탭의 계정}) -----
+test('접속 표시: 로그인한 학생은 자기 칸에만 켜고 끌 수 있고, 학급 코드를 알면 누구나 봄', async () => {
+  const at = Date.now() - 1000;
+  await assertSucceeds(db('u1').ref('presence/OWN1/s1/u1').set(at));
+  await assertSucceeds(db(null).ref('presence/OWN1').once('value'));
+  await assertFails(db('u1').ref('presence/OWN1/s2/u1').set(at)); // 남의 칸
+  await assertFails(db('u1').ref('presence/OWN1/s1/u9').set(at)); // 다른 기기 계정 칸
+  await assertFails(db('u2').ref('presence/OWN1/s1/u2').set(at)); // 로그인(연결) 안 된 기기
+  await assertFails(db(null).ref('presence/OWN1/s1/u1').set(at));
+  await assertFails(db('u1').ref('presence/OWN1/s1/u1').set('켜짐')); // 숫자(시각)만
+  await assertFails(db('u1').ref('presence/OWN1/s1/u1').set(Date.now() + 3600000)); // 미래 시각
+  await assertFails(db('u1').ref('presence/OWN1/s1').set({ u1: at, u9: at }));
+  await assertSucceeds(db('u1').ref('presence/OWN1/s1/u1').remove());
+  await assertSucceeds(db('u2').ref('presence/OWN1/s1/u2').remove()); // 자기 칸 끄기는 늘 가능
+  await assertFails(db('teacher').ref('presence/OWN1').remove());
+  await assertSucceeds(db('admin', { superAdmin: true }).ref('presence/OWN1').remove());
+});
+
 test('실시간 결투 화면 전달(pvp_live): 학급이 있으면 쓰고 지울 수 있고, 없는 학급에는 못 씀', async () => {
   await assertSucceeds(db(null).ref('classes/OWN1/pvp_live/pvp_s1/frame').set({ t: 1, u: [[1, 2, 3]] }));
   await assertSucceeds(db(null).ref('classes/OWN1/pvp_live/pvp_s1/input').set({ k: 'w', ax: 1, ay: 2 }));

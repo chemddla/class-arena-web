@@ -6488,6 +6488,7 @@
     function finishStudentLogin(stu, bannerText) {
       state.activeStudentId = stu.id;
       markStudentSession(stu);
+      Presence.sync();
       selectedMercId = stu.roster[0]?.id || null;
       saveState();
       closeStudentLoginModal();
@@ -6643,19 +6644,91 @@
       panel.style.top = docked && header ? `${Math.max(16, header.getBoundingClientRect().bottom + 10)}px` : '';
     }
 
+    // 지금 접속 중인 학생 (presence/{학급}/{학생}/{탭 계정} = 켠 시각). 비밀번호로 로그인한 탭만 켜고,
+    // 탭을 닫거나 인터넷이 끊기면 서버가 지움. 한 학생이 여러 탭·기기에 있으면 칸이 여럿 → 하나라도 있으면 접속 중
+    const Presence = {
+      online: new Set(),
+      watchCode: null,
+      watchRef: null,
+      mine: null,     // { path } 지금 켜 둔 내 칸
+      connWatch: false,
+      connected: false,
+
+      isOnline(stuId) { return this.online.has(stuId); },
+
+      sync() {
+        try { this.syncNow(); } catch (e) { console.warn('[접속 표시 실패]:', e); }
+      },
+
+      syncNow() {
+        const db = StudentPw.db();
+        if (!db) return;
+        const code = String(state.classCode || '').toUpperCase();
+        this.watch(db, code);
+        const me = getActiveStudent();
+        const uid = TeacherAuth.auth()?.currentUser?.uid;
+        const want = code && me && uid && isStudentSession(me) ? `presence/${code}/${me.id}/${uid}` : null;
+        if ((this.mine && this.mine.path) === want) return;
+        if (this.mine) {
+          const old = db.ref(this.mine.path);
+          try { old.onDisconnect().cancel(); } catch (e) {}
+          old.remove().catch(() => {});
+        }
+        this.mine = want ? { path: want } : null;
+        if (!this.connWatch) {
+          // 잠깐 끊겼다 다시 연결되면 내 칸을 다시 켬 (끊김 예약은 한 번 실행되면 사라짐)
+          this.connWatch = true;
+          db.ref('.info/connected').on('value', snap => {
+            this.connected = Boolean(snap && snap.val() === true);
+            if (this.connected) this.arm(db);
+          });
+        } else if (this.connected) this.arm(db);
+      },
+
+      arm(db) {
+        if (!this.mine) return;
+        const path = this.mine.path;
+        const ref = db.ref(path);
+        ref.onDisconnect().remove()
+          .then(() => (this.mine && this.mine.path === path ? ref.set(window.firebase.database.ServerValue.TIMESTAMP) : null))
+          .catch(e => console.warn('[접속 표시 실패]:', e));
+      },
+
+      watch(db, code) {
+        if (this.watchCode === code) return;
+        if (this.watchRef) this.watchRef.off();
+        this.watchCode = code;
+        this.online = new Set();
+        this.watchRef = code ? db.ref(`presence/${code}`) : null;
+        if (!this.watchRef) return;
+        this.watchRef.on('value', snap => {
+          const v = snap.val() || {};
+          const next = new Set(Object.keys(v).filter(id => v[id] && typeof v[id] === 'object' && Object.keys(v[id]).length));
+          const same = next.size === this.online.size && [...next].every(id => this.online.has(id));
+          this.online = next;
+          if (!same) renderSideRankPanel();
+        }, e => {
+          console.warn('[접속 표시 구독 실패]:', e);
+          setTimeout(() => { if (this.watchCode === code) this.watchCode = null; }, 60000); // 1분 뒤 다시 구독
+        });
+      }
+    };
+
     function renderSideRankPanel() {
       const listEl = document.getElementById('sideRankList');
       const myBox = document.getElementById('sideRankMyBox');
       if (!listEl) return;
       const myStu = getActiveStudent();
+      Presence.sync();
       const sorted = sortStudentsByPvp();
       const medal = ['🥇', '🥈', '🥉'];
       listEl.innerHTML = sorted.map((s, idx) => {
         const isMe = myStu && s.id === myStu.id;
+        const on = Presence.isOnline(s.id);
         return `
           <div class="flex items-center gap-2 rounded-xl px-2 py-1.5 border ${isMe ? 'bg-indigo-950/40 border-indigo-500/50 ring-1 ring-indigo-400' : 'bg-slate-950 border-slate-800'}">
             <span class="w-7 shrink-0 text-center font-title text-xs text-slate-300">${medal[idx] || `${idx + 1}위`}</span>
-            ${studentAvatarHTML(s, 24)}
+            <span class="relative shrink-0 inline-flex">${studentAvatarHTML(s, 24)}<span class="absolute -right-0.5 -bottom-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-950 ${on ? 'shadow-[0_0_6px_rgba(52,211,153,0.9)]' : ''}" style="background:${on ? '#34d399' : '#94a3b8'}" title="${on ? '지금 접속 중' : '접속 안 함'}" aria-label="${on ? '접속 중' : '접속 안 함'}"></span></span>
             <div class="min-w-0 flex-1">
               <div class="text-xs font-extrabold text-white truncate">${s.name}${isMe ? ' <span class="text-indigo-300">(나)</span>' : ''}</div>
               <div class="text-[10px] text-slate-400 truncate">${s.wins || 0}승</div>
