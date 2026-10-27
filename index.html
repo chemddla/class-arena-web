@@ -12113,13 +12113,17 @@
       // 기사 방어 태세 중에도 상태이상 면역
       if ((targetUnit.statuses.guard || 0) > 0 && NEGATIVE_STATUSES.includes(statusType)) return;
       // 엘리트 몬스터는 군중제어(기절·동결·감전)에 걸리지 않음 · 지속 피해(화상·출혈·중독)는 걸림
-      if (targetUnit.isEliteBoss && CC_STATUSES.includes(statusType)) {
+      // 그 밖의 상태이상도 한 번에 하나만 (같은 종류 갱신도 안 됨) · 풀린 뒤 10초는 면역 (자기 버프는 상관없음)
+      const eliteDebuff = targetUnit.isEliteBoss && sourceUnit !== targetUnit && NEGATIVE_STATUSES.includes(statusType);
+      if (targetUnit.isEliteBoss && (CC_STATUSES.includes(statusType)
+        || (eliteDebuff && (targetUnit.eliteDebuff || sim.tickCount < (targetUnit.eliteDebuffImmuneUntil || 0))))) {
         if (sim.tickCount - (targetUnit.ccImmuneTextAt ?? -999) > 30) {
           targetUnit.ccImmuneTextAt = sim.tickCount;
           sim.floatTexts.push({ x: targetUnit.x, y: targetUnit.y - 36, text: '🛡️면역!', color: '#e2e8f0', life: 40 });
         }
         return;
       }
+      if (eliteDebuff) targetUnit.eliteDebuff = statusType;
       targetUnit.statuses[statusType] = Math.max(targetUnit.statuses[statusType] || 0, durationFrames);
       const stDef = STATUS_DEFS[statusType];
       if (stDef) {
@@ -13459,6 +13463,11 @@
         Object.keys(st).forEach(k => {
           if (st[k] > 0) st[k]--;
         });
+        // 엘리트 몬스터: 걸려 있던 상태이상이 끝나면(정화로 풀려도) 10초간 상태이상 면역
+        if (u.eliteDebuff && !(st[u.eliteDebuff] > 0)) {
+          u.eliteDebuff = '';
+          u.eliteDebuffImmuneUntil = sim.tickCount + ELITE_DEBUFF_IMMUNE_SEC * BATTLE_TICKS_PER_SEC;
+        }
 
         if (sim.tickCount % 160 === 0) {
           if (st.burn > 0 && u.alive) {
@@ -13927,6 +13936,7 @@
     // ===== 새 스킬용 공통 장치 (장판 · 밀쳐내기 · 텔레포트 위치 · 상태이상 면역) =====
     const NEGATIVE_STATUSES = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'taunt'];
     const CC_STATUSES = ['stun', 'freeze', 'shock']; // 엘리트 몬스터가 면역인 군중제어
+    const ELITE_DEBUFF_IMMUNE_SEC = 10; // 엘리트 몬스터의 상태이상이 끝난 뒤 면역 시간
     const ZONE_STYLES = {
       arrow_rain:  { color: '#ca8a04', fill: 'rgba(234, 179, 8, 0.22)', icon: '🌧️' },
       poison_boom: { color: '#16a34a', fill: 'rgba(34, 197, 94, 0.22)', icon: '☠️' },
@@ -18275,26 +18285,26 @@
      ********************************************************************/
     // 엘리트 몬스터 10단계: 앞 단계를 처음 잡아야 다음 단계 정보가 열림 (eliteRewardClaimed로 판단)
     const ELITE_BOSS_DEFS = [
-      { id: 'elite_goblin_king', stage: 1, name: '👑 황금 고블린 대왕', monsterType: 'goblin_king', job: 'warrior', hp: 60000, atk: 70, def: 40, spd: 90, rewardMc: 120,
-        desc: '엘리트 사냥의 첫 관문! 60,000의 체력으로 황금 철퇴를 휘두르는 고블린들의 대왕입니다.' },
-      { id: 'elite_dire_wolf', stage: 2, name: '🐺 달그림자 늑대왕', monsterType: 'dire_wolf', job: 'warrior', hp: 90000, atk: 82, def: 46, spd: 112, rewardMc: 160,
-        desc: '90,000의 체력과 빠른 몸놀림으로 원정대 사이를 누비며 물어뜯는 거대 늑대왕입니다.' },
-      { id: 'elite_golem', stage: 3, name: '🪨 태고의 거신 골렘', monsterType: 'golem', job: 'warrior', hp: 120000, atk: 95, def: 55, spd: 92, rewardMc: 200,
-        desc: '단 한 마리만 출현하는 거대 암석 괴수입니다! 120,000의 막대한 체력과 바위 주먹과 대지 붕괴로 땅을 뒤흔듭니다.' },
-      { id: 'elite_swamp_hydra', stage: 4, name: '🐍 독늪의 히드라', monsterType: 'swamp_hydra', job: 'archer', hp: 175000, atk: 115, def: 62, spd: 98, rewardMc: 250,
-        desc: '175,000의 체력을 지닌 머리 여럿 달린 늪지의 괴수! 멀리서 독을 내뿜어 원정대를 괴롭힙니다.' },
-      { id: 'elite_leviathan', stage: 5, name: '🧊 심연의 혹한 리바이어던', monsterType: 'leviathan', job: 'mage', hp: 240000, atk: 135, def: 70, spd: 105, rewardMc: 300,
-        desc: '240,000의 체력을 지닌 빙결 엘리트 보스입니다! 아이스애로우와 연쇄 썬더볼트로 협동 원정대를 압박합니다.' },
-      { id: 'elite_orc_warlord', stage: 6, name: '🪓 피의 오크 대족장', monsterType: 'orc_warlord', job: 'warrior', hp: 290000, atk: 148, def: 76, spd: 108, rewardMc: 330,
-        desc: '290,000의 체력으로 전장을 돌진하는 오크 대족장! 회전베기와 강타로 앞줄을 무너뜨립니다.' },
-      { id: 'elite_lich', stage: 7, name: '☠️ 망자의 군주 리치', monsterType: 'lich', job: 'mage', hp: 335000, atk: 160, def: 82, spd: 108, rewardMc: 360,
-        desc: '335,000의 체력을 지닌 불사의 마법사! 강력한 원소 마법으로 뒷줄까지 노립니다.' },
-      { id: 'elite_ifrit', stage: 8, name: '🔥 겁화의 이프리트', monsterType: 'ifrit', job: 'mage', hp: 380000, atk: 170, def: 88, spd: 112, rewardMc: 390,
-        desc: '380,000의 체력을 지닌 불꽃의 마신! 거대한 화염구로 원정대 전체를 불태웁니다.' },
-      { id: 'elite_kraken', stage: 9, name: '🦑 심해의 폭군 크라켄', monsterType: 'kraken', job: 'warrior', hp: 415000, atk: 178, def: 92, spd: 104, rewardMc: 420,
-        desc: '415,000의 체력을 지닌 바다의 폭군! 거대한 촉수로 휩쓸며 원정대를 짓누릅니다.' },
-      { id: 'elite_chaos_dragon', stage: 10, name: '🐉 종말의 마룡 카오스드래곤', monsterType: 'dark_dragon', job: 'mage', hp: 450000, atk: 185, def: 95, spd: 118, rewardMc: 450,
-        desc: '450,000의 초거대 체력을 지닌 최강의 단일 엘리트 마룡입니다! 두 플레이어의 5+5 정예 용병 협동이 필수입니다.' }
+      { id: 'elite_goblin_king', stage: 1, name: '👑 황금 고블린 대왕', monsterType: 'goblin_king', job: 'warrior', hp: 90000, atk: 70, def: 40, spd: 90, rewardMc: 120,
+        desc: '엘리트 사냥의 첫 관문! 90,000의 체력으로 황금 철퇴를 휘두르는 고블린들의 대왕입니다.' },
+      { id: 'elite_dire_wolf', stage: 2, name: '🐺 달그림자 늑대왕', monsterType: 'dire_wolf', job: 'warrior', hp: 135000, atk: 82, def: 46, spd: 112, rewardMc: 160,
+        desc: '135,000의 체력과 빠른 몸놀림으로 원정대 사이를 누비며 물어뜯는 거대 늑대왕입니다.' },
+      { id: 'elite_golem', stage: 3, name: '🪨 태고의 거신 골렘', monsterType: 'golem', job: 'warrior', hp: 180000, atk: 95, def: 55, spd: 92, rewardMc: 200,
+        desc: '단 한 마리만 출현하는 거대 암석 괴수입니다! 180,000의 막대한 체력과 바위 주먹과 대지 붕괴로 땅을 뒤흔듭니다.' },
+      { id: 'elite_swamp_hydra', stage: 4, name: '🐍 독늪의 히드라', monsterType: 'swamp_hydra', job: 'archer', hp: 262500, atk: 115, def: 62, spd: 98, rewardMc: 250,
+        desc: '262,500의 체력을 지닌 머리 여럿 달린 늪지의 괴수! 멀리서 독을 내뿜어 원정대를 괴롭힙니다.' },
+      { id: 'elite_leviathan', stage: 5, name: '🧊 심연의 혹한 리바이어던', monsterType: 'leviathan', job: 'mage', hp: 360000, atk: 135, def: 70, spd: 105, rewardMc: 300,
+        desc: '360,000의 체력을 지닌 빙결 엘리트 보스입니다! 아이스애로우와 연쇄 썬더볼트로 협동 원정대를 압박합니다.' },
+      { id: 'elite_orc_warlord', stage: 6, name: '🪓 피의 오크 대족장', monsterType: 'orc_warlord', job: 'warrior', hp: 435000, atk: 148, def: 76, spd: 108, rewardMc: 330,
+        desc: '435,000의 체력으로 전장을 돌진하는 오크 대족장! 회전베기와 강타로 앞줄을 무너뜨립니다.' },
+      { id: 'elite_lich', stage: 7, name: '☠️ 망자의 군주 리치', monsterType: 'lich', job: 'mage', hp: 502500, atk: 160, def: 82, spd: 108, rewardMc: 360,
+        desc: '502,500의 체력을 지닌 불사의 마법사! 강력한 원소 마법으로 뒷줄까지 노립니다.' },
+      { id: 'elite_ifrit', stage: 8, name: '🔥 겁화의 이프리트', monsterType: 'ifrit', job: 'mage', hp: 570000, atk: 170, def: 88, spd: 112, rewardMc: 390,
+        desc: '570,000의 체력을 지닌 불꽃의 마신! 거대한 화염구로 원정대 전체를 불태웁니다.' },
+      { id: 'elite_kraken', stage: 9, name: '🦑 심해의 폭군 크라켄', monsterType: 'kraken', job: 'warrior', hp: 622500, atk: 178, def: 92, spd: 104, rewardMc: 420,
+        desc: '622,500의 체력을 지닌 바다의 폭군! 거대한 촉수로 휩쓸며 원정대를 짓누릅니다.' },
+      { id: 'elite_chaos_dragon', stage: 10, name: '🐉 종말의 마룡 카오스드래곤', monsterType: 'dark_dragon', job: 'mage', hp: 675000, atk: 185, def: 95, spd: 118, rewardMc: 450,
+        desc: '675,000의 초거대 체력을 지닌 최강의 단일 엘리트 마룡입니다! 두 플레이어의 5+5 정예 용병 협동이 필수입니다.' }
     ];
     // 엘리트 몬스터 전용 스킬: 여러 직업의 스킬 동작을 빌려 와 보스에 어울리는 이름·아이콘으로 씀 [스킬 키, 이름, 아이콘]
     // 앞에서부터 단계에 따라 열림 (eliteBossSkillCount: 1~2단계 3개 → 9~10단계 7개)
