@@ -22826,7 +22826,11 @@
       const room = currentJoinedMinigameRoomId ? liveMinigameRoomsCache[currentJoinedMinigameRoomId] : null;
       if (room && room.status === 'playing' && room.hostId === me.id && MG_GAME_HOOKS[room.gameType]) {
         const st = MG_GAME_HOOKS[room.gameType].state();
-        if (st && st.initialized && !st.gameOver && mgIsAiSeat(st, st.turnSeat)) MG_GAME_HOOKS[room.gameType].ai();
+        // 방에서 빠진 친구 자리가 아직 사람 자리면 AI로 (나간 친구가 보낸 AI 전환이 내 수와 겹쳐 묻혔을 때 — 그 자리 차례에서 게임이 멈추지 않게)
+        const inRoom = new Set((room.players || []).map(p => p && p.id));
+        const leftIds = st && st.initialized && !st.gameOver ? (st.seats || []).filter(s => s && !s.ai && !inRoom.has(s.id)).map(s => s.id) : [];
+        if (leftIds.length) mgSeatsToAi(room.gameType, leftIds);
+        else if (st && st.initialized && !st.gameOver && mgIsAiSeat(st, st.turnSeat)) MG_GAME_HOOKS[room.gameType].ai();
       }
     }
 
@@ -25708,6 +25712,12 @@
         leaveMinigameRoom();
         return;
       }
+      // 방 전체를 대기실로 돌리는 건 방장만 (참가자가 누르면 진행 중인 판이 모두에게서 끝나 버림)
+      const myStu = getActiveStudent();
+      if (room.status === 'playing' && (!myStu || room.hostId !== myStu.id)) {
+        showNotice('⚠️ 방 전체를 대기실로 돌리는 건 방장만 할 수 있어요. 그만하려면 [🚪 방 나가기]를 눌러 주세요. (내 자리는 AI가 이어서 둬요)');
+        return;
+      }
       room.status = 'waiting';
       (room.players || []).forEach(p => {
         if (!p.isHost) p.ready = false;
@@ -25821,6 +25831,13 @@
 
       // 내가 현재 참여 중인 미니게임 방 찾기
       let activeRoom = currentJoinedMinigameRoomId ? liveMinigameRoomsCache[currentJoinedMinigameRoomId] : null;
+      // 잠깐 끊긴 사이 방에서 빠졌으면(남은 친구가 내 자리를 정리함) 방 밖 사람으로 판을 계속 보지 않게 로비로
+      if (activeRoom && myStu && !(activeRoom.players || []).some(p => p && p.id === myStu.id && !p.practice)) {
+        disarmRoomPresence(`minigame_rooms/${currentJoinedMinigameRoomId}`, myStu.id);
+        activeRoom = null;
+        currentJoinedMinigameRoomId = null;
+        showNotice('📡 연결이 잠깐 끊긴 사이 미니게임 방에서 나와졌어요. 로비에서 다시 들어가 주세요.');
+      }
       if (!activeRoom && myStu) {
         activeRoom = rooms.find(r => Array.isArray(r.players) && r.players.some(p => p && p.id === myStu.id && !p.practice)) || null;
         if (activeRoom) currentJoinedMinigameRoomId = activeRoom.roomId;
