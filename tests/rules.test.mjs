@@ -479,5 +479,6 @@ test('방 초대: 로그인한 학생은 자기 이름으로만 보내고, 받�
   await linkS2();
   await assertSucceeds(db('u2').ref('classes/OWN1/invites/s2/i_abcdef01').remove()); // 받은 학생이 수락·거절
   await assertSucceeds(db('teacher').ref('classes/OWN1/invites/s2/i_abcdef09').set(invite('s1')));
+  await env.withSecurityRulesDisabled(async (ctx) => { await ctx.database().ref('classes/OLD1/students/s2').set(student('s2')); });
   await assertSucceeds(db(null).ref('classes/OLD1/invites/s1/i_abcdef10').set(invite('s2'))); // 소유자 없는 학급은 학생 확인 없음
 });
