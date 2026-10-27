@@ -4924,7 +4924,10 @@
     const BATTLE_MAPS = {
       practice: { src: 'assets/maps/practice.webp' }, // 연습장
       pvp:      { src: 'assets/maps/pvp.webp' },      // 결투장 (랭킹·진형 도전·실시간·중계)
-      tower:    { src: 'assets/maps/tower.webp' },    // 모험의 탑
+      tower:    { src: 'assets/maps/tower.webp' },    // 모험의 탑 (전용 맵이 없는 종족)
+      tower_goblin: { src: 'assets/maps/tower_goblin.webp' }, // 모험의 탑 고블린족 (1~10층)
+      tower_undead: { src: 'assets/maps/tower_undead.webp' }, // 모험의 탑 언데드 (11~20층)
+      tower_beast:  { src: 'assets/maps/tower_beast.webp' },  // 모험의 탑 야수족 (21~30층)
       elite:    { src: 'assets/maps/elite.webp' },    // 엘리트 몬스터 원정 (전용 맵이 없는 보스)
       elite_goblin_king: { src: 'assets/maps/elite_goblin_king.webp' }, // 황금 고블린 대왕 (황금 왕좌·용암처럼 흐르는 금)
       elite_dire_wolf:   { src: 'assets/maps/elite_dire_wolf.webp' },   // 달그림자 늑대왕 (푸른 달빛 왕좌·초승달 늑대 문장)
@@ -4937,9 +4940,15 @@
       elite_goblin_king: 'elite_goblin_king', elite_dire_wolf: 'elite_dire_wolf', elite_golem: 'elite_golem',
       elite_swamp_hydra: 'elite_swamp_hydra', elite_leviathan: 'elite_leviathan'
     };
+    // 모험의 탑 종족별 맵 (없으면 공통 tower 맵)
+    const TOWER_RACE_MAPS = { '고블린족': 'tower_goblin', '언데드': 'tower_undead', '야수족': 'tower_beast' };
     Object.values(BATTLE_MAPS).forEach(m => { m.img = new Image(); m.img.onload = () => { m.ready = true; }; m.img.src = m.src; });
-    function getBattleMap(mode, eliteBossId) {
+    function getBattleMap(mode, towerFloor, eliteBossId) {
       let key = mode === 'practice' ? 'practice' : mode === 'tower' ? 'tower' : mode === 'elite_raid' ? 'elite' : 'pvp';
+      if (key === 'tower' && towerFloor) {
+        const raceKey = TOWER_RACE_MAPS[towerRaceOfFloor(towerFloor).name];
+        if (raceKey && BATTLE_MAPS[raceKey].ready) key = raceKey;
+      }
       if (key === 'elite' && eliteBossId) {
         const bossKey = ELITE_BOSS_MAPS[eliteBossId];
         if (bossKey && BATTLE_MAPS[bossKey].ready) key = bossKey;
@@ -16220,7 +16229,7 @@
       ctx.translate(-Math.round(sim.camera.x), -Math.round(sim.camera.y));
 
       // 1) 배경: 모드별 맵 그림 (불러오기 전에는 깔끔한 전술 격자)
-      const battleMap = getBattleMap(sim.mode, sim.meta?.eliteBossId);
+      const battleMap = getBattleMap(sim.mode, sim.meta?.towerFloorObj?.floor, sim.meta?.eliteBossId);
       if (battleMap) {
         ctx.save();
         ctx.imageSmoothingEnabled = true;
