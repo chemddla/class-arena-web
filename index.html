@@ -1255,7 +1255,7 @@
             </div>
             <ul class="text-[11px] text-slate-300 space-y-1">
               <li class="text-violet-700 font-bold">🗡️ 패시브 백어택: 등 뒤 공격 +50%</li>
-              <li>🌫️ <strong>은신:</strong> 10초간 투명화 (AI가 노리지 못함)</li>
+              <li>🌫️ <strong>은신:</strong> 5초간 투명화 (AI가 노리지 못함)</li>
               <li>👣 <strong>그림자 이동:</strong> 가까운 적 등 뒤로 이동 + 속도 +50%</li>
               <li>🗡️ <strong>찢기:</strong> 150% 2타 + <span class="text-rose-400">🩸출혈</span></li>
               <li>✴️ <strong>표창:</strong> 200% 투척 + <span class="text-purple-400">☠️중독</span></li>
@@ -3067,7 +3067,7 @@
         stealth: {
           id: 'stealth', name: '은신', icon: '🌫️', ccTag: '🌫️투명화',
           manaCost: 30, cooldownTicks: 1800, cooldownSec: 30.0, castSec: 2,
-          desc: '2초 동안 숨을 고른 뒤 10초간 투명해집니다. 적에게 보이지 않고 AI도 노리지 못하지만, 투사체·범위 공격에는 맞아요.'
+          desc: '2초 동안 숨을 고른 뒤 5초간 투명해집니다. 적에게 보이지 않고 AI도 노리지 못하지만, 투사체·범위 공격에는 맞아요.'
         },
         shadow_step: {
           id: 'shadow_step', name: '그림자 이동', icon: '👣', ccTag: '👣후방이동',
@@ -3338,6 +3338,22 @@
       if (Math.abs(Math.cos(angle)) > 0.2) u.facingDir = Math.cos(angle) >= 0 ? 1 : -1;
       u.isMoving = true;
       u.walkPhase += 0.04;
+    }
+    // 보이는 적이 없는 AI: 이리저리 걸으며 가끔 아무 방향으로나 일반 공격을 휘두름 (근처에 숨은 적이 있으면 운 좋게 맞을 수 있음)
+    function blindWander(u, allies, enemies) {
+      if (u.monsterType === 'scarecrow') return;
+      darknessWander(u);
+      if (u.cooldown > 0) { u.cooldown--; return; }
+      if (u.job === 'healer' || (u.job === 'sniper' && !sniperCanFire(u)) || (u.job === 'lancer' && lancerBusy(u))) return;
+      if (Math.random() > 0.05) return;
+      const ang = Math.random() * Math.PI * 2;
+      const reach = Math.max(40, u.range * (0.5 + Math.random() * 0.5));
+      const c = { aimX: u.x + Math.cos(ang) * reach, aimY: u.y + Math.sin(ang) * reach, sniperAim: true };
+      u.facingAngle = ang;
+      if (Math.abs(Math.cos(ang)) > 0.2) u.facingDir = Math.cos(ang) >= 0 ? 1 : -1;
+      u.blindSwing = true;
+      try { manualBasicAttack(u, allies, enemies, ang, c, Math.max(12, u.baseAtkInterval)); }
+      finally { u.blindSwing = false; }
     }
     // 지금 화면을 보는 사람이 이 은신 유닛을 볼 수 있는지 (같은 편·관전자만)
     function canViewerSeeStealthed(u) {
@@ -11751,7 +11767,7 @@
       let best = null;
       let bestScore = Infinity;
       enemies.forEach(e => {
-        if (isStealthed(e)) return;
+        if (isStealthed(e) && !u.blindSwing) return; // 아무 데나 휘두를 때는 숨은 적도 맞을 수 있음
         const d = unitDist(e, u);
         if (d > maxRange) return;
         let diff = Math.abs(Math.atan2(e.y - u.y, e.x - u.x) - aimAngle);
@@ -13957,7 +13973,8 @@
         const seenEnemies = enemies.filter(e => !isStealthed(e) && !hiddenByDarkness(u, e));
         const target = pickTarget(u, allies, seenEnemies);
         if (!target) {
-          if (st.darkness > 0) darknessWander(u);
+          // 은신·암흑으로 적이 안 보여도 멈춰 서지 않고 걸어 다니며 아무 데나 공격을 휘두름
+          if (st.darkness > 0 || enemies.some(e => e.alive)) blindWander(u, allies, enemies);
           return;
         }
 
@@ -14868,11 +14885,11 @@
         return true;
       }
       if (sk === 'stealth' || sk === 'sniper_stealth') {
-        // 은신: 10초간 투명화
-        unit.statuses.stealth = Math.max(unit.statuses.stealth || 0, ROGUE_STEALTH_TICKS);
+        // 은신: 도적 5초, 저격수 10초간 투명화
+        unit.statuses.stealth = Math.max(unit.statuses.stealth || 0, sk === 'stealth' ? ROGUE_STEALTH_TICKS : SNIPER_STEALTH_TICKS);
         sim.effects.push({ type: 'magic_burst', spr: 'teleport', x: unit.x, y: unit.y - 12, r: 50, life: 30, maxLife: 30 }); // 분신이 나타날 때와 같은 연기
         playCombatSfx('magic');
-        addBattleLog(`🌫️ [${sk === 'stealth' ? '도적' : '저격수'}] ${unit.name}이(가) 어둠 속으로 사라졌어요! (10초)`);
+        addBattleLog(`🌫️ [${sk === 'stealth' ? '도적' : '저격수'}] ${unit.name}이(가) 어둠 속으로 사라졌어요! (${sk === 'stealth' ? 5 : 10}초)`);
         return true;
       }
       if (sk === 'back_roll') {
@@ -15514,7 +15531,8 @@
     }
 
     // ===== 도적 스킬 공통 =====
-    const ROGUE_STEALTH_TICKS = 600;      // 은신 10초
+    const ROGUE_STEALTH_TICKS = 300;      // 은신 5초
+    const SNIPER_STEALTH_TICKS = 600;     // 저격수 은신 10초
     const ROGUE_CLONE_TICKS = 1200;       // 분신 20초
     const ROGUE_SHADOW_STEP_RANGE = GRID_CELL_SIZE * 4; // 그림자 이동: 4칸 안의 적
     const ROGUE_SHURIKEN_RANGE = 560;     // 표창이 날아가는 거리
