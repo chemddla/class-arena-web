@@ -6850,7 +6850,7 @@
         const isMe = myStu && s.id === myStu.id;
         const on = Presence.isOnline(s.id);
         return `
-          <div class="flex items-center gap-2 rounded-xl px-2 py-1.5 border ${isMe ? 'bg-indigo-950/40 border-indigo-500/50 ring-1 ring-indigo-400' : 'bg-slate-950 border-slate-800'}">
+          <button type="button" onclick="openFriendProfile('${s.id}')" title="프로필 보기" class="w-full text-left flex items-center gap-2 rounded-xl px-2 py-1.5 border transition hover:border-amber-400/70 ${isMe ? 'bg-indigo-950/40 border-indigo-500/50 ring-1 ring-indigo-400' : 'bg-slate-950 border-slate-800 hover:bg-slate-900'}">
             <span class="w-7 shrink-0 text-center font-title text-xs text-slate-300">${medal[idx] || `${idx + 1}위`}</span>
             <span class="relative shrink-0 inline-flex">${studentAvatarHTML(s, 24)}<span class="absolute -right-0.5 -bottom-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-950 ${on ? 'shadow-[0_0_6px_rgba(52,211,153,0.9)]' : ''}" style="background:${on ? '#34d399' : '#94a3b8'}" title="${on ? '지금 접속 중' : '접속 안 함'}" aria-label="${on ? '접속 중' : '접속 안 함'}"></span></span>
             <div class="min-w-0 flex-1">
@@ -6858,7 +6858,7 @@
               <div class="text-[10px] text-slate-400 truncate">${s.wins || 0}승</div>
             </div>
             <span class="shrink-0 text-xs font-extrabold text-rose-400">${s.pvpScore || 1000}점</span>
-          </div>`;
+          </button>`;
       }).join('') || '<div class="text-xs text-slate-400 text-center py-4">아직 학생이 없어요.</div>';
       if (myBox) {
         if (myStu) {
@@ -6919,6 +6919,96 @@
       switchStudentTab(tabKey);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+    // ----- 친구 프로필: 우측 랭킹 목록에서 친구를 누르면 용병·펫·탑·엘리트 진행을 보여 줌 (보기만 가능) -----
+    function openFriendProfile(stuId) {
+      const s = (state.students || []).find(x => x.id === stuId);
+      if (!s) { showNotice('⚠️ 친구 정보를 찾을 수 없어요.'); return; }
+      const esc = v => PetSystem.esc(v);
+      const myStu = getActiveStudent();
+      const isMe = myStu && myStu.id === s.id;
+      const on = Presence.isOnline(s.id);
+      const rank = sortStudentsByPvp().findIndex(x => x.id === s.id) + 1;
+      const roster = [...(s.roster || [])].sort((a, b) => (b.deployed ? 1 : 0) - (a.deployed ? 1 : 0) || calcMercCombatPower(b, s) - calcMercCombatPower(a, s));
+      const pets = PetSystem.ownedPets(s);
+      const claimed = eliteClaimsOf(s);
+      const eliteCleared = ELITE_BOSS_DEFS.filter(b => claimed[b.id]);
+      const eliteTop = eliteCleared.length ? Math.max(...eliteCleared.map(b => b.stage)) : 0;
+      const towerFloor = Math.min(TOWER_MAX_FLOOR, s.towerFloor || 1);
+      const stat = (icon, label, value, sub, cls) => `
+        <div class="rounded-xl bg-slate-950 border border-slate-800 px-3 py-2">
+          <div class="text-[10px] font-bold text-slate-400">${icon} ${label}</div>
+          <div class="text-base font-extrabold ${cls}">${value}</div>
+          <div class="text-[10px] text-slate-500">${sub}</div>
+        </div>`;
+      const mercHTML = roster.map(m => {
+        const job = JOB_DEFS[m.job] || JOB_DEFS.warrior;
+        const rar = RARITY_DEFS[m.rarity] || RARITY_DEFS.N;
+        return `
+          <div class="rounded-xl border p-2 flex items-center gap-2 bg-slate-950 ${m.deployed ? 'border-emerald-500/50' : 'border-slate-800'}">
+            <div class="w-11 h-11 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center shrink-0">${getUnitPortraitHTML(m.job, m.rarity, m.skinVariant || 0, 40)}</div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1 text-xs font-bold text-white"><span class="truncate">${esc(m.name)}</span><span class="text-[10px] text-indigo-300 font-extrabold shrink-0">Lv.${m.level}</span></div>
+              <div class="text-[10px] text-slate-400 truncate">${job.icon} ${job.name} · ⚔️ ${calcMercCombatPower(m, s).toLocaleString()}</div>
+              <div class="flex items-center gap-1 mt-0.5">
+                <span class="px-1 py-px rounded text-[9px] font-extrabold ${rar.badgeClass}">${rar.name}</span>
+                ${m.deployed ? '<span class="px-1 py-px rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-extrabold">출전</span>' : ''}
+              </div>
+            </div>
+          </div>`;
+      }).join('') || '<div class="col-span-full text-xs text-slate-400 text-center py-4">아직 용병이 없어요.</div>';
+      const petHTML = pets.map(p => {
+        const d = PET_DEFS[p.type];
+        const active = p === s.pet;
+        return `
+          <div class="rounded-xl border p-2 flex flex-col items-center gap-0.5 bg-slate-950 ${active ? 'border-emerald-500/60' : 'border-slate-800'}">
+            <img src="${d.icon}" alt="" class="h-12 w-auto object-contain" draggable="false">
+            <span class="text-[11px] font-extrabold text-slate-200 truncate max-w-full">${esc(p.name)}</span>
+            <span class="text-[9px] font-bold text-slate-500 truncate max-w-full">${d.name}</span>
+            ${active ? '<span class="px-1 rounded bg-emerald-600 text-white text-[9px] font-extrabold">활성</span>' : ''}
+          </div>`;
+      }).join('') || '<div class="col-span-full text-xs text-slate-400 text-center py-4">아직 펫이 없어요.</div>';
+      const eliteHTML = ELITE_BOSS_DEFS.map(b => `
+        <span title="${esc(b.name)}" class="px-1.5 py-0.5 rounded text-[10px] font-extrabold ${claimed[b.id] ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'bg-slate-900 text-slate-600 border border-slate-800'}">${claimed[b.id] ? '✔' : '🔒'} ${b.stage}단계</span>`).join('');
+
+      let m = document.getElementById('friendProfileModal');
+      if (!m) {
+        m = document.createElement('div');
+        m.id = 'friendProfileModal';
+        m.className = 'fixed inset-0 z-[55] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4';
+        m.addEventListener('pointerdown', e => { if (e.target === m) closeFriendProfile(); });
+        document.body.appendChild(m);
+      }
+      m.innerHTML = `
+        <div class="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-slate-900 border-2 border-amber-500/40 rounded-2xl p-4 flex flex-col gap-3 shadow-2xl">
+          <div class="flex items-center gap-3">
+            <span class="relative shrink-0 inline-flex">${studentAvatarHTML(s, 56)}<span class="absolute -right-0.5 -bottom-0.5 w-3.5 h-3.5 rounded-full border-2 border-slate-900" style="background:${on ? '#34d399' : '#94a3b8'}"></span></span>
+            <div class="min-w-0 flex-1">
+              <div class="font-title text-lg text-white truncate">${esc(s.name)}${isMe ? ' <span class="text-indigo-300 text-sm">(나)</span>' : ''}</div>
+              <div class="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">${getPvpTierBadge(s.pvpScore || 1000)}<span>${on ? '🟢 지금 접속 중' : '⚪ 접속 안 함'}</span></div>
+            </div>
+            <button type="button" onclick="closeFriendProfile()" class="shrink-0 w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold" title="닫기">✕</button>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            ${stat('🎯', '랭킹 매칭', `${s.pvpScore || 1000}점`, `${rank}위 · ${s.wins || 0}승`, 'text-rose-400')}
+            ${stat('🏰', '모험의 탑', `${towerFloor}층`, `도전 중 / ${TOWER_MAX_FLOOR}층`, 'text-amber-300')}
+            ${stat('👑', '엘리트 몬스터', eliteTop ? `${eliteTop}단계` : '아직 없음', `처치 ${eliteCleared.length}/${ELITE_BOSS_DEFS.length}단계`, 'text-rose-300')}
+            ${stat('⚔️', '용병단 전투력', calcStudentCombatPower(s).toLocaleString(), `출전 ${calcStudentDeployedPower(s).toLocaleString()}`, 'text-indigo-300')}
+          </div>
+          <div class="flex flex-wrap gap-1">${eliteHTML}</div>
+          <div>
+            <h5 class="text-sm font-extrabold text-white mb-1.5">🛡️ 보유 용병 <span class="text-slate-400 text-xs">${roster.length}명</span></h5>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">${mercHTML}</div>
+          </div>
+          <div>
+            <h5 class="text-sm font-extrabold text-white mb-1.5">🐾 보유 펫 <span class="text-slate-400 text-xs">${pets.length}마리</span></h5>
+            <div class="grid grid-cols-3 sm:grid-cols-5 gap-1.5">${petHTML}</div>
+          </div>
+        </div>`;
+      m.classList.remove('hidden');
+    }
+    function closeFriendProfile() { document.getElementById('friendProfileModal')?.classList.add('hidden'); }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeFriendProfile(); });
+
     window.addEventListener('resize', () => renderSideRankPanel());
     // 친구 점수가 서버에서 바뀌어도 따라가도록 보이는 동안 5초마다 새로 그림
     setInterval(() => { if (document.getElementById('sideRankPanel')?.getClientRects().length) renderSideRankPanel(); }, 5000);
