@@ -1,0 +1,34 @@
+# 가구 그림 맞춤 도구 (`tools/furniture-fit.cjs`)
+
+AI가 만든 가구 그림(흰 배경, 1024px 안팎)을 방 꾸미기 도트 규격([assets/furniture/README.md](../assets/furniture/README.md))에 맞춰 `assets/furniture/<id>.webp`로 만들어 줍니다. 설치된 `sharp`만 씁니다. `index.html`은 건드리지 않습니다.
+
+## 사용법
+
+```bash
+# 앞모습 한 장
+node tools/furniture-fit.cjs 앞모습.png --id chair --w 1 --d 1 --h 1.5
+
+# 앞·뒤 두 장 (→ bed_single.webp, bed_single_b.webp)
+node tools/furniture-fit.cjs 앞.png 뒤.png --id bed_single --w 2 --d 3 --h 1.5
+#   같은 뜻: node tools/furniture-fit.cjs 앞.png --back 뒤.png --id ...
+```
+
+- `--w` 가로 칸 · `--d` 세로 칸 · `--h` 높이 층(0.5 단위, 러그는 0)
+- 결과 webp → `assets/furniture/`, 5배 확대 확인용 PNG → `tools/furniture-fit-out/<id>_x5.png` (빨간 선 = 규격 상자, 파란 점 = 앵커)
+- 옵션: `--out`, `--preview`(폴더), `--colors 26`, `--tol 10`(배경색 허용 오차), `--stretch`, `--clear-holes`, `--no-guide`, `--dry`(파일 안 쓰고 보고만), `--help`
+
+## 하는 일
+
+1. **배경 제거**: 가장자리와 이어진 흰색만 투명 처리. 가구 안의 흰색·옅은 색은 지우지 않음. 흰 부분이 배경과 이어져 파인 것 같으면 경고.
+2. **상자에 맞추기**: 가구 영역을 잘라 가로 `(w+d)×32`도트로 조정(바닥 앞꼭짓점 `w×32`, 맨 아래). 원본 바닥 가장자리 기울기·앞꼭짓점 위치·높이를 재어 규격과 15% 넘게 다르면 어느 쪽이 어긋났는지 경고(납작/가파름, w:d 비율, 키 큼). 자동 보정은 `--stretch`를 줄 때만.
+3. **도트 격자**: lanczos로 정수 도트로 줄이고, 알파는 0/255, 색은 26색(디더 없음).
+4. **앞/뒤 점검**: 실루엣 겹침·높이·너비·앞꼭짓점 x를 비교해 어긋나면 경고. 높이는 아래 기준으로 맞춰 저장.
+5. **요약 출력**: 최종 크기, 앵커, 색 수, 경고, 그리고 `HOME_CATALOG`에 넣을 `art: true, back: true` 한 줄.
+
+## 알아둘 것
+
+- 배경은 **순백(#fff)** 이어야 함. 가구의 흰 부분은 #f0f0f8처럼 살짝 다르게 요청([PROMPTS.md](../assets/furniture/PROMPTS.md)). 옅은 색이 지워지면 `--tol`을 줄이세요.
+- 바닥 그림자(회색 번짐)는 지우지 못함 — 그림 생성 때 "그림자 없음"으로 요청.
+- 의자 다리 사이처럼 가구 안에 갇힌 진짜 빈 공간은 기본으로 남김 → 필요하면 `--clear-holes`.
+- 경고가 있으면 `_x5.png`를 눈으로 확인한 뒤, 이상하면 그림을 다시 만들거나 `--stretch`.
+- `tools/furniture-fit-out/`은 확인용이라 커밋하지 않아도 됩니다.
