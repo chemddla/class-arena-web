@@ -12277,6 +12277,7 @@
       sim.teamLive = false;
       sim.spectator = false;
       sim.towerWatch = null;
+      sim.raidWatch = null;
       battleControl.mode = 'auto';
       battleControl.unitId = null;
       battleControl.locked = false;
@@ -12373,7 +12374,18 @@
 
     // stopLiveBattleNet에서 부름: 탑 도전 목록·관전자 표시 정리
     function stopTowerLiveNet() {
-      if (liveNet.towerCast) {
+      // 엘리트 레이드 중계·관전 (아래 📺 엘리트 몬스터 토벌 관전)
+      if (liveNet.raidCast && liveNet.ref) {
+        try { liveNet.ref.child('watchers').off(); } catch (e) {}
+      }
+      if (liveNet.raidWatchRef) {
+        try { liveNet.raidWatchRef.onDisconnect().cancel(); } catch (e) {}
+        liveNet.raidWatchRef.remove().catch(() => {});
+      }
+      const raidCast = liveNet.raidCast;
+      liveNet.raidCast = false;
+      liveNet.raidWatchRef = null;
+      if (liveNet.towerCast && !raidCast) {
         const idxRef = towerLiveIndexRef(liveNet.myId);
         if (idxRef) {
           try { idxRef.child('watchers').off(); idxRef.onDisconnect().cancel(); } catch (e) {}
@@ -15387,13 +15399,18 @@
         const atkKing = sim.units.filter(x => !x.isClone).sort((a, b) => b.damageDealt - a.damageDealt)[0];
         const healKing = sim.units.filter(x => !x.isClone).sort((a, b) => b.healDone - a.healDone)[0];
         const tw = sim.towerWatch;
+        const rw = sim.raidWatch;
         document.getElementById('battleResultEmoji').textContent = '📺';
         document.getElementById('battleResultTitle').textContent = tw
           ? `관전 종료 · ${tw.name} ${blueTeamWon ? `🏆 ${tw.floor}층 돌파!` : '🛡️ 도전 실패'}`
-          : `관전 종료 · ${winner?.name || (blueTeamWon ? '블루팀' : '레드팀')} 승리!`;
-        document.getElementById('battleResultDesc').textContent = sim.forfeitTeam
-          ? `${(sim.forfeitTeam === 'blue' ? meta.blueStudent : meta.redStudent)?.name || ''} 친구가 포기했어요.`
-          : (tw ? '관전한 탑 도전이 끝났어요. (관전은 보상이 없어요)' : '관전한 결투가 끝났어요. (관전은 보상이 없어요)');
+          : rw
+            ? `관전 종료 · ${rw.bossName} ${blueTeamWon ? '🏆 토벌 성공!' : '🛡️ 토벌 실패'}`
+            : `관전 종료 · ${winner?.name || (blueTeamWon ? '블루팀' : '레드팀')} 승리!`;
+        document.getElementById('battleResultDesc').textContent = rw
+          ? '관전한 엘리트 몬스터 토벌이 끝났어요. (관전은 보상이 없어요)'
+          : sim.forfeitTeam
+            ? `${(sim.forfeitTeam === 'blue' ? meta.blueStudent : meta.redStudent)?.name || ''} 친구가 포기했어요.`
+            : (tw ? '관전한 탑 도전이 끝났어요. (관전은 보상이 없어요)' : '관전한 결투가 끝났어요. (관전은 보상이 없어요)');
         document.getElementById('battleMvpBox').innerHTML = `
           <div class="font-bold text-amber-300 mb-1">🌟 이번 ${tw ? '도전' : '결투'} MVP</div>
           <div>⚔️ 최고 공격왕: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
@@ -21527,6 +21544,7 @@
         maintainRaidRooms();
         renderLiveRaidRoomsList();
         checkAutoStartMatchedRaidRoom();
+        checkSpectatedRaidRoom();
       });
 
       // 3) 미니게임 대기 로비방 구독 (/classes/{code}/minigame_rooms)
@@ -22563,6 +22581,7 @@
         if (r && r.spectators) delete r.spectators[me.id];
       }
       renderLivePvpRoomsList();
+      renderLiveRaidRoomsList();
       if (!quiet) showNotice('📺 관전을 그만뒀어요.');
     };
 
@@ -23724,6 +23743,8 @@
 
     // 버퍼의 화면 한 장을 적용 (위치는 따로 이어 그림) · ageMs = 그 화면이 재생 시점보다 얼마나 앞선 것인지
     function applyLiveFrameState(val, ageMs) {
+      // 토벌 도중에 들어온 관전자: 남은 시간이 방장 화면과 같게
+      if (sim.raidWatch && liveNum(val.t) > 0) sim.tickCount = liveNum(val.t);
       val.u.forEach((p, i) => {
         const u = sim.units[i];
         if (!u || !Array.isArray(p)) return;
@@ -24342,7 +24363,11 @@
                       : (isFull
                           ? `<span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-500 font-bold text-xs">정원 초과 (${RAID_MAX_PLAYERS}/${RAID_MAX_PLAYERS})</span>`
                           : `<button onclick="joinFirebaseCoopRaidRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs shadow">🚪 방 입장하기</button>`))
-                  : `<span class="px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 font-bold text-xs">토벌 진행중</span>`
+                  : (isMyRoom
+                      ? `<span class="px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 font-bold text-xs">토벌 진행중</span>`
+                      : (sim.spectator && sim.running && sim.raidWatch && sim.raidWatch.roomId === r.roomId
+                          ? `<button onclick="returnToBattle()" class="px-4 py-2 rounded-xl bg-violet-700 hover:bg-violet-600 text-white font-extrabold text-xs shadow">📺 보는 중</button>`
+                          : `<button onclick="spectateRaidRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 관전하기</button>`))
               }
             </div>
           </div>
@@ -24383,8 +24408,101 @@
             customRedUnits: [singleEliteBoss],
             roomBattle: true
           });
+          if (r.hostId === myStu.id) startRaidLiveBroadcast(r);
         }
       });
+    }
+
+    // ===== 📺 엘리트 몬스터 토벌 관전 =====
+    // 파티원마다 각자 화면에서 토벌하므로, 관전은 방장 화면을 탑 관전과 같은 방식으로 pvp_live/raidcast_{방}에 올려서 봄
+    // 보는 친구는 그 아래 watchers/{학생id}에 적고, 방장 화면은 보는 친구가 있을 때만 화면(frame)을 보냄 · 관전자는 레이드방에 아무것도 쓰지 않음
+    const raidCastId = roomId => `raidcast_${roomId}`;
+
+    function startRaidLiveBroadcast(room) {
+      const me = getActiveStudent();
+      if (!sim.running || sim.mode !== 'elite_raid' || !me || !room) return;
+      const ref = liveRoomRef(raidCastId(room.roomId));
+      if (!ref) return;
+      Object.assign(liveNet, {
+        role: 'host', roomId: raidCastId(room.roomId), ref, startedAt: Date.now(), finished: false,
+        sent: new WeakSet(), pendingLogs: [], lastFramePublishedAt: 0, spectator: false,
+        team: false, remoteCtrls: {}, myId: me.id, towerCast: true, towerWatchers: 0, raidCast: true
+      });
+      sim.effects.forEach(x => liveNet.sent.add(x));
+      sim.floatTexts.forEach(x => liveNet.sent.add(x));
+      try { ref.onDisconnect().remove(); } catch (e) {}
+      ref.child('result').remove().catch(() => {});
+      ref.child('frame').remove().catch(() => {});
+      republishLiveUnits();
+      ref.child('watchers').on('value', snap => {
+        const val = snap && snap.val();
+        liveNet.towerWatchers = val && typeof val === 'object' ? Object.keys(val).length : 0;
+      });
+    }
+
+    window.spectateRaidRoom = async function (roomId) {
+      const me = getActiveStudent();
+      const r = liveRaidRoomsCache && liveRaidRoomsCache[roomId];
+      if (!me || !r || r.status !== 'in_battle') { showNotice('⚠️ 토벌을 찾지 못했어요. 이미 끝났을 수 있어요.'); return; }
+      if (raidSlotOf(r, me.id)) return;
+      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      const ref = liveRoomRef(raidCastId(roomId));
+      if (!ref) { showNotice('⚠️ 서버에 연결되어 있지 않아 관전할 수 없어요.'); return; }
+      let init = null;
+      try { init = (await ref.child('init').once('value')).val(); } catch (e) {}
+      const units = init && Array.isArray(init.units)
+        ? deepCleanStrings(init.units).filter(u => u && typeof u === 'object' && u.id).map(normalizeLiveUnit)
+        : [];
+      const blueUnits = units.filter(u => u.team === 'blue');
+      const redUnits = units.filter(u => u.team === 'red');
+      if (!blueUnits.length || !redUnits.length) { showNotice('⚠️ 토벌 화면을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.'); return; }
+      if (sim.spectator) { stopLiveBattleNet(); closeBattleResult(); }
+      const bossDef = ELITE_BOSS_DEFS.find(b => b.id === r.bossId) || ELITE_BOSS_DEFS[0];
+      const owner = state.students.find(s => s.id === r.hostId) || r.hostStudentSnapshot || { id: r.hostId, name: r.hostName, roster: [] };
+      const names = raidFilledSlots(r).map(s => r[s + 'Name']).join(' & ');
+      launchSimulation({
+        mode: 'elite_raid',
+        title: `📺 관전 중: ${names} vs ${bossDef.name}`,
+        blueStudent: owner,
+        redStudent: null,
+        eliteBossId: bossDef.id,
+        customBlueUnits: blueUnits,
+        customRedUnits: redUnits,
+        rewardMc: 0,
+        netRole: 'guest',
+        myTeam: 'blue'
+      });
+      if (!sim.running) return;
+      sim.spectator = true;
+      sim.spectateRoomId = null;
+      sim.raidWatch = { roomId, hostId: r.hostId, hostName: r.hostName, bossName: bossDef.name };
+      // 고를 것 없이 보기만: 전투 방식 고르기 창을 닫고 자동(화면 이동만)으로 고정
+      battleControl.locked = true;
+      battleControl.mode = 'auto';
+      battleControl.unitId = null;
+      sim.awaitingControlChoice = false;
+      document.getElementById('battleControlChooser')?.classList.add('hidden');
+      renderBattleControlHud(true);
+      addBattleLog(`📺 [관전] ${r.hostName} 친구 화면의 [${bossDef.name}] 토벌을 보고 있어요. (WASD·드래그로 화면 이동)`);
+      startLiveBattleNet(raidCastId(roomId), 'guest', liveNum(init.at), true, false);
+      const wRef = ref.child('watchers').child(me.id);
+      liveNet.raidWatchRef = wRef;
+      try { wRef.onDisconnect().remove(); } catch (e) {}
+      wRef.set({ id: me.id, name: cleanUserText(me.name, 30) || '친구', at: Date.now() }).catch(() => {});
+      renderLiveRaidRoomsList();
+    };
+
+    // 레이드방 목록이 바뀔 때: 보던 토벌의 방이 닫혔거나 방장이 바뀌었는데 결과가 안 오면 잠시 뒤 관전을 끝냄
+    function checkSpectatedRaidRoom() {
+      const rw = sim.raidWatch;
+      if (!rw || !sim.spectator || !sim.running) return;
+      const r = liveRaidRoomsCache && liveRaidRoomsCache[rw.roomId];
+      if (r && r.status === 'in_battle' && r.hostId === rw.hostId) return;
+      setTimeout(() => {
+        if (sim.raidWatch === rw && sim.spectator && sim.running && !liveNet.finished) {
+          abortLiveBattle(`📺 ${rw.hostName} 친구가 토벌을 그만뒀어요.`);
+        }
+      }, 4000);
     }
 
     broadcastCoopRaidInvite = window.createRaidLobbyRoom;
