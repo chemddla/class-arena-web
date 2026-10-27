@@ -906,6 +906,7 @@
           <span class="px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30">🩸출혈(지속물리피해)</span>
           <span class="px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30">☠️중독(지속독피해·공격감소)</span>
           <span class="px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30">⚡감전(마비·방어감소)</span>
+          <span class="px-2 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/30">🌑암흑(시야 좁아짐)</span>
           <span class="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">⚔️축복(공격·속도강화)</span>
         </div>
 
@@ -2772,7 +2773,8 @@
       taunt:   { id: 'taunt',   name: '도발', icon: '😤', color: '#ea580c', desc: '도발한 기사에게 강제로 다가가 기본 공격만 함 (스킬 사용 불가)' },
       guard:   { id: 'guard',   name: '방어 태세', icon: '🏰', color: '#0284c7', desc: '받는 피해 70% 감소·상태이상 면역 (느리게 이동 가능·공격 불가)' },
       spin:    { id: 'spin',    name: '창 회전', icon: '🌀', color: '#b45309', desc: '창을 돌려 주변에 다단히트·날아오는 투사체를 막음 (공격·스킬 불가, 느리게 이동)' },
-      rampage: { id: 'rampage', name: '난무', icon: '💥', color: '#c2410c', desc: '주변 2칸을 마구 휘둘러 다단히트 (이동·기본 공격·스킬 불가)' }
+      rampage: { id: 'rampage', name: '난무', icon: '💥', color: '#c2410c', desc: '주변 2칸을 마구 휘둘러 다단히트 (이동·기본 공격·스킬 불가)' },
+      darkness: { id: 'darkness', name: '암흑', icon: '🌑', color: '#7c3aed', desc: '시야가 좁아져 둘레 밖의 적을 알아보지 못함 (직접 전투는 캐릭터 둘레 밖 화면이 어두워짐)' }
     };
 
     // 전술 그리드 1칸 크기(120px) 기준: 대시 1칸(120px), 전사 돌진 스킬 2칸(240px) (Requirement 1)
@@ -3183,6 +3185,26 @@
     // 은신 중인 유닛: 적 화면에 안 보이고 AI·조준이 노리지 못함 (투사체·범위 공격에는 맞음)
     function isStealthed(u) {
       return Boolean(u && u.alive && u.statuses && u.statuses.stealth > 0);
+    }
+    // 암흑: 걸린 유닛은 둘레 DARKNESS_SIGHT_R 밖의 적을 알아보지 못함 (AI 표적에서 빠짐)
+    const DARKNESS_SIGHT_R = 170;
+    function hiddenByDarkness(viewer, e) {
+      return Boolean(viewer && viewer.statuses && viewer.statuses.darkness > 0 && unitDist(e, viewer) > DARKNESS_SIGHT_R);
+    }
+    // 암흑으로 적이 하나도 안 보이는 AI는 제자리에 서 있지 않고 더듬더듬 이리저리 걸어 다님 (1.5초마다 방향 바꿈)
+    function darknessWander(u) {
+      if (!(u.wanderUntil > sim.tickCount)) {
+        u.wanderAngle = Math.random() * Math.PI * 2;
+        u.wanderUntil = sim.tickCount + Math.round(BATTLE_TICKS_PER_SEC * 1.5);
+      }
+      const angle = wallAwareAngle(u, u.wanderAngle);
+      const sp = u.baseMoveSpeed * 0.55;
+      u.x = Math.max(200, Math.min(sim.worldW - 200, u.x + Math.cos(angle) * sp));
+      u.y = Math.max(260, Math.min(sim.worldH - 220, u.y + Math.sin(angle) * sp));
+      u.facingAngle = angle;
+      if (Math.abs(Math.cos(angle)) > 0.2) u.facingDir = Math.cos(angle) >= 0 ? 1 : -1;
+      u.isMoving = true;
+      u.walkPhase += 0.04;
     }
     // 지금 화면을 보는 사람이 이 은신 유닛을 볼 수 있는지 (같은 편·관전자만)
     function canViewerSeeStealthed(u) {
@@ -3942,6 +3964,33 @@
           gain.connect(ctxAudio.destination);
           osc.start(now);
           osc.stop(now + 0.17);
+        } else if (type === 'countdown' || type === 'countdown_go') {
+          // 엘리트 몬스터 등장 카운트다운 삑 (마지막은 높게)
+          const osc = ctxAudio.createOscillator();
+          const gain = ctxAudio.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(type === 'countdown_go' ? 880 : 520, now);
+          gain.gain.setValueAtTime(0.16, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+          osc.connect(gain);
+          gain.connect(ctxAudio.destination);
+          osc.start(now);
+          osc.stop(now + 0.23);
+        } else if (type === 'boss_land') {
+          // 엘리트 몬스터 낙하: 땅이 울리는 낮고 긴 굉음
+          [[90, 22, 0.32, 'sawtooth'], [55, 18, 0.28, 'square']].forEach(([f0, f1, vol, wave]) => {
+            const osc = ctxAudio.createOscillator();
+            const gain = ctxAudio.createGain();
+            osc.type = wave;
+            osc.frequency.setValueAtTime(f0, now);
+            osc.frequency.exponentialRampToValueAtTime(f1, now + 0.9);
+            gain.gain.setValueAtTime(vol, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+            osc.connect(gain);
+            gain.connect(ctxAudio.destination);
+            osc.start(now);
+            osc.stop(now + 1.02);
+          });
         }
       } catch (e) {}
     }
@@ -11051,7 +11100,7 @@
     // 실시간 결투 연결 상태 (아래 [실시간 결투 화면 동기화] 참고)
     const LIVE_FRAME_INTERVAL_MS = 100; // 방장이 화면을 보내는 간격 (실제 시간)
     const LIVE_GUEST_TIMEOUT_MS = 20000;
-    const LIVE_UNIT_ST_KEYS = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'blessed', 'rally', 'empower', 'immune', 'stealth', 'swift', 'taunt', 'guard', 'spin', 'rampage'];
+    const LIVE_UNIT_ST_KEYS = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'blessed', 'rally', 'empower', 'immune', 'stealth', 'swift', 'taunt', 'guard', 'spin', 'rampage', 'darkness'];
     const liveNet = {
       role: null, roomId: null, ref: null, minAt: 0, startedAt: 0,
       initReceived: false, lastFrameAt: 0, targets: {}, finished: false,
@@ -12103,7 +12152,8 @@
           taunt: 0,
           guard: 0,
           spin: 0,
-          rampage: 0
+          rampage: 0,
+          darkness: 0
         },
         damageDealt: 0,
         healDone: 0,
@@ -12295,6 +12345,7 @@
       sim.speed = 1;
       battleTickCarry = 0;
       resetArenaCamera('center');
+      startEliteIntro();
 
       // 전투 방식 고르기: 혼자 하는 전투는 고를 때까지 잠깐 멈춤, 실시간 결투는 멈추지 않음(기본 자동)
       sim.controllers = {};
@@ -13416,6 +13467,18 @@
       sim.tickCount++;
       sim.units.forEach(u => { u._ix = u.x; u._iy = u.y; });
       sim.projectiles.forEach(p => { p._ix = p.x; p._iy = p.y; });
+      // 엘리트 몬스터 등장 연출(카운트다운·낙하·착지) 동안은 아무도 움직이지 않음 (착지 충격에 밀려나는 것만)
+      if (sim.eliteIntro && stepEliteIntro()) {
+        sim.units.forEach(u => {
+          if (!u.alive || !(u.kbVx || u.kbVy)) return;
+          u.x = Math.max(200, Math.min(sim.worldW - 200, u.x + (u.kbVx || 0)));
+          u.y = Math.max(260, Math.min(sim.worldH - 220, u.y + (u.kbVy || 0)));
+          u.kbVx = Math.abs(u.kbVx) < 0.05 ? 0 : u.kbVx * 0.82;
+          u.kbVy = Math.abs(u.kbVy) < 0.05 ? 0 : u.kbVy * 0.82;
+          if (u.hurtAnim > 0) u.hurtAnim--;
+        });
+        return;
+      }
       const blueAlive = sim.units.filter(u => u.alive && u.team === 'blue');
       const redAlive = sim.units.filter(u => u.alive && u.team === 'red');
 
@@ -13557,10 +13620,13 @@
           if (guardFor > 120 && !enemies.some(e => !isStealthed(e) && unitDist(e, u) <= GRID_CELL_SIZE * 3)) endIronStance(u);
           return;
         }
-        // AI가 알아챌 수 있는 적 (은신한 적은 빼고 판단. 범위 피해는 아래에서 enemies 전체에 들어감)
-        const seenEnemies = enemies.filter(e => !isStealthed(e));
+        // AI가 알아챌 수 있는 적 (은신한 적·암흑 시야 밖의 적은 빼고 판단. 범위 피해는 아래에서 enemies 전체에 들어감)
+        const seenEnemies = enemies.filter(e => !isStealthed(e) && !hiddenByDarkness(u, e));
         const target = pickTarget(u, allies, seenEnemies);
-        if (!target) return;
+        if (!target) {
+          if (st.darkness > 0) darknessWander(u);
+          return;
+        }
 
         const dist = unitDist(target, u);
         u.facingAngle = Math.atan2(target.y - u.y, target.x - u.x);
@@ -13948,7 +14014,7 @@
     }
 
     // ===== 새 스킬용 공통 장치 (장판 · 밀쳐내기 · 텔레포트 위치 · 상태이상 면역) =====
-    const NEGATIVE_STATUSES = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'taunt'];
+    const NEGATIVE_STATUSES = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'taunt', 'darkness'];
     const CC_STATUSES = ['stun', 'freeze', 'shock']; // 엘리트 몬스터가 면역인 군중제어
     const ELITE_DEBUFF_IMMUNE_SEC = 10; // 엘리트 몬스터의 상태이상이 끝난 뒤 면역 시간
     const ZONE_STYLES = {
@@ -16370,6 +16436,154 @@
       ctx.restore();
     }
 
+    // 엘리트 몬스터 등장 연출의 지금 틱 (화면 사이 부드럽게 이어서)
+    function eliteIntroTick() {
+      return sim.eliteIntro ? sim.eliteIntro.t + Math.max(0, Math.min(1, battleTickCarry)) : 0;
+    }
+
+    // 등장 연출 중인 엘리트 몬스터: 카운트다운 동안은 착지할 자리에 경고 원과 점점 커지는 그림자만,
+    // 낙하 때는 하늘에서 바람 줄기를 끌며 떨어짐 (처음엔 느리게, 땅에 가까울수록 빠르게)
+    function drawEliteBossDrop(ctx, u) {
+      const { countTicks, fallTicks, dropH } = ELITE_INTRO;
+      const t = eliteIntroTick();
+      const land = countTicks + fallTicks;
+      if (t >= land) { drawUnitToken(ctx, u, sim.tickCount); return; }
+      const ent = eliteEntranceOf(sim.meta && sim.meta.eliteBossId);
+      const shadowR = ELITE_BOSS_TOKEN_R * 1.5;
+      const growFrom = countTicks - 2 * BATTLE_TICKS_PER_SEC;
+      const p = Math.max(0, Math.min(1, (t - growFrom) / (land - growFrom)));
+      ctx.save();
+      const pulse = 0.5 + 0.5 * Math.sin(t * 0.3);
+      ctx.globalAlpha = 0.35 + pulse * 0.4;
+      ctx.strokeStyle = ent.color;
+      ctx.lineWidth = 6;
+      ctx.setLineDash([18, 12]);
+      ctx.beginPath();
+      ctx.ellipse(u.x, u.y + 10, shadowR * 1.3, shadowR * 1.3 * 0.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 0.12 + p * 0.5;
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.ellipse(u.x, u.y + 10, shadowR * (0.25 + 0.75 * p), shadowR * (0.25 + 0.75 * p) * 0.45, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      if (t < countTicks) return;
+      const f = (t - countTicks) / fallTicks;
+      const off = dropH * (1 - f * f);
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      ctx.strokeStyle = ent.color;
+      ctx.lineCap = 'round';
+      for (let i = 0; i < 9; i++) {
+        const lx = u.x + (i - 4) * 30;
+        ctx.lineWidth = i % 2 ? 4 : 7;
+        ctx.beginPath();
+        ctx.moveTo(lx, u.y - off - 520 - (i % 3) * 140);
+        ctx.lineTo(lx, u.y - off - 150 - (i % 2) * 70);
+        ctx.stroke();
+      }
+      ctx.restore();
+      const y0 = u.y;
+      u.y -= off;
+      try { drawUnitToken(ctx, u, sim.tickCount); } finally { u.y = y0; }
+    }
+
+    // 암흑에 걸린 유닛: 머리 위에 검보랏빛 연기가 맴돎
+    function drawDarknessAuras(ctx) {
+      const a0 = sim.tickCount * 0.08;
+      sim.units.forEach(u => {
+        if (!u.alive || !(u.statuses && u.statuses.darkness > 0)) return;
+        if (isStealthed(u) && !canViewerSeeStealthed(u)) return;
+        ctx.save();
+        ctx.globalAlpha = 0.55 * Math.min(1, u.statuses.darkness / 20);
+        ctx.fillStyle = '#1e1b4b';
+        for (let k = 0; k < 4; k++) {
+          const a = a0 + k * (Math.PI / 2);
+          ctx.beginPath();
+          ctx.arc(u.x + Math.cos(a) * 17, u.y - 62 + Math.sin(a) * 5, 8 + (k % 2) * 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      });
+    }
+
+    // 직접 전투로 내가 조종하는 용병이 암흑에 걸렸으면 그 용병 (화면을 어둡게 할 기준)
+    function darknessViewer() {
+      if (sim.spectator) return null;
+      const u = getControlledUnit();
+      return u && u.alive && u.statuses && u.statuses.darkness > 0 ? u : null;
+    }
+
+    // 암흑 화면: 조종하는 용병 둘레만 보이고 나머지는 거의 까맣게 (풀리기 직전 0.5초 동안 서서히 밝아짐)
+    function drawDarknessScreen(ctx, viewW, viewH, z) {
+      const v = darknessViewer();
+      if (!v) return;
+      const sx = (v.x - sim.camera.x) * z;
+      const sy = (v.y - 20 - sim.camera.y) * z;
+      const r = (DARKNESS_SIGHT_R + 40) * z;
+      const a = Math.min(1, v.statuses.darkness / 20) * 0.95;
+      const g = ctx.createRadialGradient(sx, sy, r * 0.5, sx, sy, r);
+      g.addColorStop(0, 'rgba(6, 4, 18, 0)');
+      g.addColorStop(1, `rgba(6, 4, 18, ${a})`);
+      ctx.save();
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, viewW, viewH);
+      ctx.restore();
+    }
+
+    // 착지 섬광 + 등장 카운트다운(3·2·1) + 착지 뒤 충격 이름
+    function drawEliteIntroScreen(ctx, viewW, viewH) {
+      if (sim.flash) {
+        ctx.save();
+        ctx.globalAlpha = 0.6 * Math.max(0, sim.flash.life / sim.flash.maxLife);
+        ctx.fillStyle = sim.flash.color;
+        ctx.fillRect(0, 0, viewW, viewH);
+        ctx.restore();
+        if ((sim.flash.life -= frameTimeScale) <= 0) sim.flash = null;
+      }
+      if (!sim.eliteIntro) return;
+      const { countTicks, fallTicks, afterTicks } = ELITE_INTRO;
+      const t = eliteIntroTick();
+      const boss = sim.units.find(u => u.isEliteBoss);
+      const ent = eliteEntranceOf(sim.meta && sim.meta.eliteBossId);
+      const cx = viewW / 2, cy = viewH / 2;
+      const text = (str, y, size, color, alpha = 1) => {
+        ctx.globalAlpha = alpha;
+        ctx.font = `900 ${size}px Pretendard, -apple-system, sans-serif`;
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = Math.max(4, size / 9);
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.92)';
+        ctx.strokeText(str, cx, y);
+        ctx.fillStyle = color;
+        ctx.fillText(str, cx, y);
+      };
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      if (t < countTicks) {
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.28)';
+        ctx.fillRect(0, 0, viewW, viewH);
+        const n = 3 - Math.floor(t / BATTLE_TICKS_PER_SEC);
+        const q = (t % BATTLE_TICKS_PER_SEC) / BATTLE_TICKS_PER_SEC;
+        text(`⚠️ ${boss ? boss.name : '엘리트 몬스터'} 출현!`, cy - 120, 30, '#fecaca');
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.scale(1.7 - Math.min(1, q * 3) * 0.7, 1.7 - Math.min(1, q * 3) * 0.7);
+        ctx.translate(-cx, -cy);
+        text(String(n), cy, 140, ent.color, q > 0.75 ? (1 - q) / 0.25 : 1);
+        ctx.restore();
+        text('하늘에서 떨어지는 충격에 대비하세요!', cy + 112, 20, '#e2e8f0', 0.95);
+      } else if (t >= countTicks + fallTicks) {
+        const q = (t - countTicks - fallTicks) / afterTicks;
+        const alpha = q > 0.6 ? Math.max(0, (1 - q) / 0.4) : 1;
+        const names = ent.debuffs.map(([st]) => STATUS_DEFS[st] ? `${STATUS_DEFS[st].icon}${STATUS_DEFS[st].name}` : st).join('  ');
+        text(`💥 ${ent.name}!`, cy - 40, 64, ent.color, alpha);
+        text(`원정대 전원 ${names}`, cy + 26, 24, '#f8fafc', alpha);
+      }
+      ctx.restore();
+    }
+
     function drawArenaCanvas() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const viewW = canvas.width;
@@ -16405,7 +16619,15 @@
       // ===== 월드 카메라 변환 시작 (마우스 휠 줌 & 드래그 이동 적용) =====
       ctx.save();
       ctx.scale(z, z);
-      ctx.translate(-Math.round(sim.camera.x), -Math.round(sim.camera.y));
+      // 화면 진동 (엘리트 몬스터 착지 등): 남은 시간에 따라 점점 약해짐
+      let shakeX = 0, shakeY = 0;
+      if (sim.shake) {
+        const k = sim.shake.power * Math.max(0, sim.shake.life / sim.shake.maxLife);
+        shakeX = (Math.random() * 2 - 1) * k;
+        shakeY = (Math.random() * 2 - 1) * k * 0.7;
+        if ((sim.shake.life -= frameTimeScale) <= 0) sim.shake = null;
+      }
+      ctx.translate(-Math.round(sim.camera.x) + shakeX, -Math.round(sim.camera.y) + shakeY);
 
       // 1) 배경: 모드별 맵 그림 (불러오기 전에는 깔끔한 전술 격자)
       const battleMap = getBattleMap(sim.mode, sim.meta?.towerFloorObj?.floor, sim.meta?.eliteBossId);
@@ -16813,8 +17035,10 @@
         .filter(u => u.alive || (getUnitSprite(u) && sim.tickCount - u._deadSince < SPRITE_DEATH_TICKS))
         .sort((a, b) => a.y - b.y);
       sortedUnits.forEach(u => {
+        if (u.isEliteBoss && sim.eliteIntro) { drawEliteBossDrop(ctx, u); return; }
         drawUnitToken(ctx, u, sim.tickCount);
       });
+      drawDarknessAuras(ctx);
       drawSupportEffects(ctx);
       drawControlledUnitMarker(ctx);
       drawCastBars(ctx);
@@ -16949,6 +17173,10 @@
       // ===== 월드 카메라 변환 종료 =====
       ctx.restore();
 
+      // 5-2) 암흑(직접 전투로 조종하는 용병) · 착지 섬광 · 등장 카운트다운
+      drawDarknessScreen(ctx, viewW, viewH, z);
+      drawEliteIntroScreen(ctx, viewW, viewH);
+
       // 6) 화면 고정 HUD: 좌측 상단 드래그 안내 배지 & 우측 상단 전장 전체 미니맵(Minimap)
       ctx.save();
       ctx.fillStyle = 'rgba(15, 23, 42, 0.80)';
@@ -16987,8 +17215,11 @@
       ctx.stroke();
 
       // 미니맵 유닛 점 표시
+      const darkViewer = darknessViewer();
       sim.units.forEach(u => {
         if (!u.alive || (isStealthed(u) && !canViewerSeeStealthed(u))) return;
+        if (u.isEliteBoss && sim.eliteIntro && sim.eliteIntro.t < ELITE_INTRO.countTicks + ELITE_INTRO.fallTicks) return; // 아직 하늘에 있음
+        if (darkViewer && u.team !== darkViewer.team && hiddenByDarkness(darkViewer, u)) return; // 암흑: 시야 밖 적은 미니맵에도 안 보임
         const ux = mmX + (u.x / WW) * mmW;
         const uy = mmY + (u.y / WH) * mmH;
         ctx.fillStyle = u.team === 'blue' ? '#38bdf8' : '#fb7185';
@@ -17019,7 +17250,8 @@
     const BATTLE_TIME_LIMIT = { practiceTicks: 60 * 60, battleTicks: 60 * 180 };
     // 엘리트 몬스터: 실제 시간 3분 안에 잡아야 함 (전투는 1초에 BATTLE_TICKS_PER_SEC 틱씩 진행)
     const ELITE_RAID_TIME_LIMIT_SEC = 180;
-    function eliteRaidTimeLimitTicks() { return ELITE_RAID_TIME_LIMIT_SEC * BATTLE_TICKS_PER_SEC; }
+    // (등장 연출 시간은 빼고 셈)
+    function eliteRaidTimeLimitTicks() { return ELITE_RAID_TIME_LIMIT_SEC * BATTLE_TICKS_PER_SEC + (sim.introTicks || 0); }
 
     // 시간이 다 되면: 연습 전투는 완료 처리, 다른 전투는 남은 체력 비율이 높은 팀이 승리
     function finishBattleByTimeLimit(blueAlive, redAlive) {
@@ -17115,7 +17347,7 @@
       const hp = boss.alive ? Math.max(0, Math.round(boss.hp || 0)) : 0;
       const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
       const shieldPct = Math.max(0, Math.min(100, ((boss.shield || 0) / maxHp) * 100));
-      const leftSec = sim.mode === 'elite_raid' ? Math.max(0, Math.ceil((eliteRaidTimeLimitTicks() - (sim.tickCount || 0)) / BATTLE_TICKS_PER_SEC)) : null;
+      const leftSec = sim.mode === 'elite_raid' ? Math.max(0, Math.min(ELITE_RAID_TIME_LIMIT_SEC, Math.ceil((eliteRaidTimeLimitTicks() - (sim.tickCount || 0)) / BATTLE_TICKS_PER_SEC))) : null;
       const timeText = leftSec == null ? '' : ` · ⏰ ${Math.floor(leftSec / 60)}:${String(leftSec % 60).padStart(2, '0')}`;
       document.getElementById('eliteBossHpName').textContent = `👹 ${boss.name}${timeText}`;
       document.getElementById('eliteBossHpText').textContent = `${hp.toLocaleString()} / ${Math.round(maxHp).toLocaleString()} (${pct.toFixed(1)}%)`;
@@ -18339,6 +18571,144 @@
     function eliteBossSkillBook(bossId) {
       const def = ELITE_BOSS_DEFS.find(b => b.id === bossId);
       return buildSkillBook((ELITE_BOSS_SKILLS[bossId] || []).slice(0, eliteBossSkillCount(def ? def.stage : 1)));
+    }
+
+    // ===== 엘리트 몬스터 등장 연출 =====
+    // 3초 카운트다운 → 보스가 하늘에서 떨어짐 → 착지 충격(큰 진동)으로 맵 전체 용병에게 보스별 상태이상
+    // debuffs = [상태이상, 초] (실제 시간, 전투가 시작된 뒤부터 줄어듦) · fx = 착지 자리에 더할 이펙트 · color = 낙하 바람·경고 원 색
+    const ELITE_INTRO = { countTicks: 3 * 40, fallTicks: 28, afterTicks: 44, dropH: 950 };
+    const ELITE_ENTRANCE = {
+      elite_goblin_king:  { name: '황금 충격파',   color: '#facc15', debuffs: [['stun', 2]],                                fx: 'gold' },
+      elite_dire_wolf:    { name: '달그림자 장막', color: '#818cf8', debuffs: [['darkness', 7]],                            fx: 'shadow' },
+      elite_golem:        { name: '대지 붕괴',     color: '#a3e635', debuffs: [['stun', 2], ['shock', 5]],                  fx: 'rock' },
+      elite_swamp_hydra:  { name: '독늪 포자',     color: '#a855f7', debuffs: [['poison', 10]],                             fx: 'venom' },
+      elite_leviathan:    { name: '혹한의 해일',   color: '#38bdf8', debuffs: [['freeze', 2.5]],                            fx: 'ice' },
+      elite_orc_warlord:  { name: '피의 지진',     color: '#ef4444', debuffs: [['bleed', 8], ['stun', 1]],                  fx: 'blood' },
+      elite_lich:         { name: '망자의 장막',   color: '#22c55e', debuffs: [['darkness', 6], ['poison', 8]],             fx: 'plague' },
+      elite_ifrit:        { name: '겁화 낙진',     color: '#f97316', debuffs: [['burn', 10]],                               fx: 'fire' },
+      elite_kraken:       { name: '심해 먹물',     color: '#0ea5e9', debuffs: [['darkness', 8], ['shock', 5]],              fx: 'ink' },
+      elite_chaos_dragon: { name: '종말의 낙하',   color: '#c026d3', debuffs: [['darkness', 6], ['burn', 8], ['stun', 1.5]], fx: 'doom' }
+    };
+    function eliteEntranceOf(bossId) {
+      return ELITE_ENTRANCE[bossId] || { name: '착지 충격', color: '#f43f5e', debuffs: [['stun', 1.5]], fx: 'gold' };
+    }
+    function eliteIntroTotalTicks() { return ELITE_INTRO.countTicks + ELITE_INTRO.fallTicks + ELITE_INTRO.afterTicks; }
+
+    // 엘리트 레이드 시작 시 (관전 화면은 방장 화면을 받으므로 제외)
+    function startEliteIntro() {
+      sim.eliteIntro = null;
+      sim.introTicks = 0;
+      sim.shake = null;
+      sim.flash = null;
+      if (sim.mode !== 'elite_raid' || sim.netRole === 'guest' || !sim.units.some(u => u.isEliteBoss)) return;
+      sim.eliteIntro = { t: 0 };
+      sim.introTicks = eliteIntroTotalTicks();
+    }
+
+    // 등장 연출 중이면 한 틱 진행하고 true (그동안 유닛은 움직이지 않음)
+    function stepEliteIntro() {
+      const it = sim.eliteIntro;
+      const boss = sim.units.find(u => u.isEliteBoss && u.alive);
+      if (!it || !boss) { sim.eliteIntro = null; return false; }
+      it.t++;
+      const { countTicks, fallTicks } = ELITE_INTRO;
+      if (it.t === 1) addBattleLog(`⚠️ 하늘에서 거대한 그림자가 다가옵니다... [${boss.name}] 3초 뒤 출현!`);
+      if (it.t <= countTicks && (it.t - 1) % BATTLE_TICKS_PER_SEC === 0) playCombatSfx('countdown');
+      if (it.t === countTicks) playCombatSfx('countdown_go');
+      if (it.t === countTicks + fallTicks) eliteBossLanding(boss);
+      if (it.t >= eliteIntroTotalTicks()) {
+        sim.eliteIntro = null;
+        addBattleLog(`⚔️ [${boss.name}] 토벌 시작!`);
+        return false;
+      }
+      return true;
+    }
+
+    // 착지: 큰 진동·섬광·보스별 이펙트, 원정대를 밀쳐 내고 상태이상
+    function eliteBossLanding(boss) {
+      const ent = eliteEntranceOf(sim.meta && sim.meta.eliteBossId);
+      const { x, y } = boss;
+      sim.shake = { power: 30, life: 70, maxLife: 70 };
+      sim.flash = { color: ent.color, life: 26, maxLife: 26 };
+      playCombatSfx('boss_land');
+      // 공통: 갈라지는 땅 + 맵 끝까지 퍼지는 충격파 고리 (골렘·리바이어던은 각자 색 그림)
+      sim.effects.push({ type: 'stun_shockwave', spr: unitFxSpr(boss, 'quake'), x, y, r: 380, life: 110, maxLife: 110 });
+      sim.effects.push({ type: 'aoe_ring', spr: unitFxSpr(boss, 'shout'), x, y, r: 820, color: ent.color, life: 56, maxLife: 56 });
+      sim.effects.push({ type: 'aoe_ring', x, y, r: 1500, color: ent.color, life: 44, maxLife: 44 });
+      eliteLandingFx(ent.fx, boss).forEach(ef => sim.effects.push(ef));
+      // 착지 충격에 원정대가 바깥으로 밀려남 (가까울수록 세게)
+      sim.units.forEach(u => {
+        if (!u.alive || u.team === boss.team) return;
+        const d = Math.max(1, Math.hypot(u.x - x, u.y - y));
+        const k = Math.max(4, 22 - d / 50);
+        u.kbVx = ((u.x - x) / d) * k;
+        u.kbVy = ((u.y - y) / d) * k;
+        u.hurtAnim = 14;
+        ent.debuffs.forEach(([st, sec], i) => {
+          inflictStatus(boss, u, st, Math.round(sec * BATTLE_TICKS_PER_SEC));
+          const ft = sim.floatTexts[sim.floatTexts.length - 1];
+          if (ft && i > 0) ft.y -= 18 * i; // 상태이상이 여럿이면 글자가 겹치지 않게 위로
+        });
+      });
+      const names = ent.debuffs.map(([st]) => STATUS_DEFS[st] ? `${STATUS_DEFS[st].icon}${STATUS_DEFS[st].name}` : st).join('·');
+      addBattleLog(`💥 [${boss.name}] 낙하! <b>${ent.name}</b>의 충격으로 원정대 전원이 ${names} 상태가 되었어요!`);
+    }
+
+    // 보스마다 착지 자리에 더하는 이펙트 (이미 있는 스킬 이펙트 그림을 씀)
+    function eliteLandingFx(kind, boss) {
+      const { x, y } = boss;
+      const out = [];
+      const ring = (n, r, make) => {
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 2 + 0.4;
+          make(x + Math.cos(a) * r, y + Math.sin(a) * r * 0.72, i);
+        }
+      };
+      if (kind === 'gold') {
+        // 황금 고블린 대왕: 황금 파편이 사방에서 터짐 + 금빛 회오리
+        ring(8, 300, (px, py, i) => out.push({ type: 'fire_explosion', spr: 'bomb_hit', x: px, y: py, r: 70, life: 30 + i * 3, maxLife: 30 + i * 3 }));
+        out.push({ type: 'rampage_fx', f: 2, x, y: y - 14, w: 560, tint: 'gold', life: 34, maxLife: 34 });
+      } else if (kind === 'shadow') {
+        // 달그림자 늑대왕: 달그림자 연기가 원정대 쪽으로 번짐
+        out.push({ type: 'magic_burst', x, y, r: 700, life: 60, maxLife: 60 });
+        ring(10, 360, (px, py, i) => out.push({ type: 'cast_circle', spr: 'teleport', x: px, y: py, life: 36 + i * 2, maxLife: 36 + i * 2 }));
+      } else if (kind === 'rock') {
+        // 태고의 거신 골렘: 둘레 네 곳의 땅도 함께 갈라짐 + 룬 초록 고리
+        ring(4, 380, (px, py) => out.push({ type: 'stun_shockwave', spr: unitFxSpr(boss, 'quake'), x: px, y: py, r: 170, life: 80, maxLife: 80 }));
+        out.push({ type: 'aoe_ring', spr: unitFxSpr(boss, 'taunt'), x, y, r: 560, color: '#65a30d', life: 50, maxLife: 50 });
+      } else if (kind === 'venom') {
+        // 독늪의 히드라: 독늪이 솟구치고 독액이 튐
+        out.push({ type: 'aoe_ring', spr: 'hydra_poison', x, y, r: 300, color: '#16a34a', life: 50, maxLife: 50 });
+        ring(10, 340, (px, py, i) => out.push({ type: 'arrow_hit', spr: 'hydra_splash', x: px, y: py, life: 30 + i * 2, maxLife: 30 + i * 2 }));
+        out.push({ type: 'aoe_ring', spr: 'poison', x, y, r: 520, color: '#16a34a', life: 60, maxLife: 60 });
+      } else if (kind === 'ice') {
+        // 심연의 혹한 리바이어던: 해일 파도 + 얼음 가시가 사방에서 솟음
+        ring(8, 320, (px, py, i) => out.push({ type: 'ice_shatter', spr: 'ice_hit', x: px, y: py, r: 90, life: 34 + i * 2, maxLife: 34 + i * 2 }));
+      } else if (kind === 'blood') {
+        // 피의 오크 대족장: 붉은 회오리 + 붉은 도발 고리
+        out.push({ type: 'rampage_fx', f: 3, x, y: y - 14, w: 620, life: 34, maxLife: 34 });
+        out.push({ type: 'aoe_ring', spr: 'taunt', x, y, r: 600, color: '#dc2626', life: 50, maxLife: 50 });
+      } else if (kind === 'plague') {
+        // 망자의 군주 리치: 역병 구름이 퍼지고 영혼 서리가 맺힘
+        out.push({ type: 'aoe_ring', spr: 'poison', x, y, r: 620, color: '#16a34a', life: 70, maxLife: 70 });
+        ring(6, 300, (px, py, i) => out.push({ type: 'ice_shatter', spr: 'ice_hit', x: px, y: py, r: 70, life: 30 + i * 3, maxLife: 30 + i * 3 }));
+        out.push({ type: 'magic_burst', x, y, r: 520, life: 50, maxLife: 50 });
+      } else if (kind === 'fire') {
+        // 겁화의 이프리트: 거대한 화염 폭발 + 사방에 불기둥
+        out.push({ type: 'fire_explosion', spr: 'fire_hit', x, y, r: 320, life: 40, maxLife: 40 });
+        ring(10, 380, (px, py, i) => out.push({ type: 'fire_explosion', spr: 'flame_hit', x: px, y: py, r: 90, life: 34 + i * 2, maxLife: 34 + i * 2 }));
+      } else if (kind === 'ink') {
+        // 심해의 폭군 크라켄: 해일 물보라 + 먹물 연기
+        out.push({ type: 'stun_shockwave', spr: 'leviathan_quake', x, y, r: 420, life: 100, maxLife: 100 });
+        ring(8, 340, (px, py, i) => out.push({ type: 'magic_burst', spr: 'leviathan_teleport', x: px, y: py - 12, r: 60, life: 36 + i * 2, maxLife: 36 + i * 2 }));
+      } else if (kind === 'doom') {
+        // 종말의 마룡: 화염 폭발 + 불기둥 + 혼돈의 낙뢰
+        out.push({ type: 'fire_explosion', spr: 'fire_hit', x, y, r: 340, life: 40, maxLife: 40 });
+        ring(8, 400, (px, py, i) => out.push({ type: 'fire_explosion', spr: 'flame_hit', x: px, y: py, r: 90, life: 34 + i * 2, maxLife: 34 + i * 2 }));
+        ring(6, 560, (px, py, i) => out.push({ type: 'lightning_bolt', spr: 'leviathan_bolt', sx: px, sy: py - 400, tx: px, ty: py, life: 30 + i * 4, maxLife: 30 + i * 4 }));
+        out.push({ type: 'magic_burst', x, y, r: 640, life: 54, maxLife: 54 });
+      }
+      return out;
     }
 
     // 엘리트 몬스터 보상 50배 (보스마다 정해 둔 기본 보상 × 50)
