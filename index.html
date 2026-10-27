@@ -17734,19 +17734,21 @@
     let hiddenHostTicker = null;
     function hiddenHostBattleStep() {
       if (!document.hidden || !sim.running) return;
-      // 탑·토벌 중계: 내 전투는 탭이 보일 때만 진행하지만(혼자 하는 전투), 보는 친구 화면이 '끊김'으로 닫히지 않게 가끔 지금 화면을 보냄
-      if (sim.netRole !== 'host') {
-        if (liveNet.towerCast && liveNet.towerWatchers && Date.now() - (liveNet.lastFramePublishedAt || 0) > 2000) publishLiveBattleFrame(true);
-        return;
-      }
+      // 탑·토벌(혼자 하는 전투)은 탭이 보일 때만 진행 · 단, 보는 친구가 있으면 다른 화면을 봐도 계속 진행해서 관전이 멈추지 않게
+      const watchedCast = sim.netRole !== 'host' && liveNet.towerCast && liveNet.towerWatchers > 0;
+      if (sim.netRole !== 'host' && !watchedCast) return;
       lastFrameDtMs = measureFrameTime();
       if (sim.waitingForOpponent) { updateLiveChoiceWait(); return; }
-      if (sim.awaitingControlChoice) return;
+      if (sim.awaitingControlChoice) {
+        // 전투 방식을 고르는 중: 보는 친구 화면이 '끊김'으로 닫히지 않게 가끔 지금 화면을 보냄
+        if (watchedCast && Date.now() - (liveNet.lastFramePublishedAt || 0) > 2000) publishLiveBattleFrame(true);
+        return;
+      }
       const ticks = takeBattleTicks(sim.speed);
       for (let s = 0; s < ticks; s++) {
         if (sim.running) stepSimulation();
       }
-      if (ticks > 0 && sim.running && sim.netRole === 'host') publishLiveBattleFrame();
+      if (ticks > 0 && sim.running && (sim.netRole === 'host' || liveNet.towerCast)) publishLiveBattleFrame();
       decayHiddenBattleVisuals();
     }
     document.addEventListener('visibilitychange', () => {
@@ -25128,9 +25130,8 @@
       };
       // 엘리트 보스 등장 연출(하늘에서 떨어지는 중인 시점)·화면 흔들림·섬광도 같이 보냄 (흔들림·섬광은 새로 생긴 것만 한 번)
       if (sim.eliteIntro) frame.it = sim.eliteIntro.t;
-      // 전투가 멈춰 있는 까닭 (관전자 화면에 안내): 전투 방식을 고르는 중 · 탑·토벌인데 탭이 뒤로 감(혼자 하는 전투라 멈춤)
+      // 전투가 멈춰 있는 까닭 (관전자 화면에 안내): 전투 방식을 고르는 중
       if (sim.awaitingControlChoice) frame.ps = 'choose';
-      else if (document.hidden && liveNet.towerCast) frame.ps = 'away';
       if (sim.shake && !liveNet.sent.has(sim.shake)) { liveNet.sent.add(sim.shake); frame.sk = [sim.shake.power, sim.shake.life, sim.shake.maxLife]; }
       if (sim.flash && !liveNet.sent.has(sim.flash)) { liveNet.sent.add(sim.flash); frame.fl = [String(sim.flash.color || '#ffffff'), sim.flash.life, sim.flash.maxLife]; }
       // undefined·NaN 값은 서버에 올릴 수 없으므로 JSON으로 한 번 정리
@@ -25427,7 +25428,7 @@
     function applyLiveFrameState(val, ageMs) {
       // 토벌 도중에 들어온 관전자: 남은 시간이 방장 화면과 같게
       if (sim.raidWatch && liveNum(val.t) > 0) sim.tickCount = liveNum(val.t);
-      liveNet.hostPause = val.ps === 'choose' || val.ps === 'away' ? val.ps : null;
+      liveNet.hostPause = val.ps === 'choose' ? val.ps : null;
       if (sim.mode === 'elite_raid') sim.eliteIntro = liveNum(val.it) > 0 ? { t: liveNum(val.it) } : null;
       if (Array.isArray(val.sk)) sim.shake = { power: Math.min(60, liveNum(val.sk[0])), life: liveNum(val.sk[1]), maxLife: Math.max(1, liveNum(val.sk[2])) };
       if (Array.isArray(val.fl)) sim.flash = { color: cleanUserText(val.fl[0], 30) || '#ffffff', life: liveNum(val.fl[1]), maxLife: Math.max(1, liveNum(val.fl[2])) };
@@ -25603,7 +25604,6 @@
       let text = null;
       if (sim.spectator && sim.running && liveNet.role === 'guest' && !liveNet.finished) {
         if (liveNet.hostPause === 'choose') text = `⏳ ${name}가 전투 방식(자동·직접)을 고르고 있어요. 고르면 바로 시작돼요!`;
-        else if (liveNet.hostPause === 'away') text = `⏸️ ${name}가 잠시 다른 화면을 보고 있어서 전투가 멈춰 있어요.`;
         else if (Date.now() - (liveNet.lastFrameAt || 0) > 4000) text = `📡 ${name} 화면을 기다리는 중이에요...`;
       }
       if (text) { renderLiveWaitBanner(text); liveNet.pauseBannerShown = true; }
