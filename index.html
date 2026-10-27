@@ -315,6 +315,33 @@
       .side-rank-panel.open .side-rank-tab { display: none; }
       .side-rank-close { display: inline-flex; }
     }
+    /* 펫: 화면 위를 돌아다니는 학생 펫 (모달 z-50 아래) */
+    .pet-actor { position: fixed; left: 0; top: 0; z-index: 48; pointer-events: none; will-change: transform; }
+    .pet-actor .pet-body { pointer-events: auto; cursor: grab; position: relative; transform-origin: 50% 100%; }
+    .pet-actor.dragging .pet-body { cursor: grabbing; }
+    .pet-actor .pet-sprite { background-repeat: no-repeat; transform-origin: 50% 100%; }
+    .pet-actor.pop .pet-body { animation: petPop 0.55s ease-out; }
+    @keyframes petPop { 0% { transform: scale(0.2) translateY(20px); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
+    .pet-bubble { position: absolute; left: 50%; bottom: 100%; transform: translate(-50%, -6px); white-space: nowrap; background: #fff; color: #1e293b; font-size: 12px; font-weight: 800; padding: 4px 9px; border-radius: 10px; box-shadow: 0 3px 10px rgba(0,0,0,0.25); pointer-events: none; animation: mgPop 0.25s ease-out; }
+    .pet-bubble::after { content: ''; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: #fff; }
+    .pet-fx { position: absolute; left: 50%; bottom: 60%; font-size: 16px; pointer-events: none; animation: petFloat 1.1s ease-out forwards; }
+    @keyframes petFloat { 0% { opacity: 0; transform: translate(-50%, 0) scale(0.6); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(calc(-50% + var(--dx, 0px)), -46px) scale(1.1); } }
+    .pet-menu { position: fixed; z-index: 49; width: 236px; background: rgba(15,23,42,0.96); border: 1px solid #334155; border-radius: 14px; padding: 10px; color: #e2e8f0; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+    .pet-menu .pet-bar { height: 7px; border-radius: 9px; background: #1e293b; overflow: hidden; }
+    .pet-menu .pet-bar > div { height: 100%; border-radius: 9px; }
+    .pet-menu .pet-menu-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .pet-menu .pet-menu-name { color: #fff; font-size: 14px; font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pet-menu .pet-menu-kind { color: #94a3b8; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+    .pet-menu .pet-menu-love { color: #f9a8d4; font-size: 10px; font-weight: 800; margin-top: 2px; }
+    .pet-menu .pet-menu-stat { display: flex; justify-content: space-between; color: #cbd5e1; font-size: 10px; font-weight: 700; margin: 7px 0 3px; }
+    .pet-menu .pet-menu-btns { display: flex; gap: 6px; margin-top: 10px; }
+    .pet-menu button { flex: 1; padding: 6px 4px; border-radius: 9px; font-size: 11px; font-weight: 800; color: #f1f5f9; white-space: nowrap; background: #1e293b; border: 1px solid #334155; }
+    .pet-menu .pet-menu-size { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: #cbd5e1; font-size: 10px; font-weight: 700; }
+    .pet-menu .pet-menu-size input { flex: 1; min-width: 0; accent-color: #f59e0b; }
+    .pet-menu .pet-size-val { width: 32px; text-align: right; color: #fde68a; }
+    .pet-menu button.pet-menu-home { flex: 0 0 30px; padding: 4px 0; }
+    .pet-menu button:hover { background: #334155; }
+    @media (prefers-reduced-motion: reduce) { .pet-actor.pop .pet-body, .pet-fx, .pet-bubble { animation: none; } }
   </style>
 </head>
 <body class="min-h-screen flex flex-col bg-slate-50 text-slate-900">
@@ -766,6 +793,7 @@
           <button id="headerChangePwBtn" onclick="openChangePasswordModal()" title="내 비밀번호 변경" class="text-xs px-2.5 py-1 rounded-lg bg-amber-300 hover:bg-amber-400 text-slate-950 font-extrabold border-2 border-amber-600 shadow-sm transition">
             🔑 비번변경
           </button>
+          <button id="headerPetToggleBtn" onclick="PetSystem.toggle()" title="화면에 펫 보이기 켜기/끄기" class="hidden text-xs px-2.5 py-1 rounded-lg font-extrabold border-2 shadow-sm transition"></button>
           <button onclick="goToClassLobbyPage()" class="text-xs px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold transition shadow-sm" title="우리 반 학급 페이지(전체 학생 명단)로 이동">
             🏫 학급 페이지
           </button>
@@ -1365,6 +1393,23 @@
             </div>
           </div>
           <div id="marketAuctionGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+        </div>
+
+        <!-- 2-A. 펫 입양소: CA로 펫을 입양 (학생당 한 마리) -->
+        <div class="bg-slate-900 border-2 border-amber-500/40 rounded-2xl p-4 flex flex-col gap-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h4 class="font-title text-xl text-white flex items-center gap-2">
+                <span>🐾</span> 펫 입양소
+                <span id="petShopMine" class="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">아직 펫이 없어요</span>
+              </h4>
+              <p class="text-xs text-slate-400 mt-0.5">
+                입양한 펫은 로그인하면 화면을 자유롭게 돌아다녀요. <strong>클릭</strong>하면 쓰다듬기·먹이·츄르·크기 조절을 할 수 있어요. 위쪽 <strong>🐾 펫</strong> 버튼으로 켜고 끌 수 있어요. (한 마리만 키울 수 있어요)
+              </p>
+            </div>
+          </div>
+          <button id="petShopToggleBtn" type="button" onclick="PetSystem.toggle()" class="hidden self-start px-3 py-1.5 rounded-xl text-xs font-extrabold border-2 transition"></button>
+          <div id="petShopGrid" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3"></div>
         </div>
 
         <!-- 2-B. 프로필 도트 상점: 친구가 그린 프로필 그림을 즉시 구매가로 사고팔기 -->
@@ -5888,6 +5933,7 @@
       document.getElementById('headerStudentName').textContent = `${stu.name}`;
       const avBtn = document.getElementById('headerStudentAvatar');
       if (avBtn) avBtn.innerHTML = studentAvatarHTML(stu, 28);
+      if (window.PetSystem) PetSystem.renderToggle();
       const powerEl = document.getElementById('headerStudentPower');
       if (powerEl) powerEl.textContent = totalSquadPower.toLocaleString();
       document.getElementById('headerStudentCoin').textContent = stu.mc.toLocaleString();
@@ -6449,6 +6495,7 @@
       showRewardBanner(bannerText);
       StudentInbox.settle();
       openRankedPromoModal();
+      PetSystem.onLogin(stu);
     }
 
     async function completeFirstTimePasswordSetup() {
@@ -7928,6 +7975,7 @@
       if (!Array.isArray(state.tradeOffers)) state.tradeOffers = [];
       state.auctions.forEach(a => a && ensureMercSkin(a.merc));
       renderProfileMarket();
+      PetSystem.renderShop();
 
       // 상단 탭 배지 업데이트
       const incoming = state.tradeOffers.filter(o => o.sellerId === myStu.id);
@@ -25957,6 +26005,7 @@
       // 초기 진입 시 missionclass.com과 동일하게 분리된 초기 홈페이지 화면(#landingPageView)을 먼저 표시
       goToLandingPage();
       applyLocalDevEntry();
+      PetSystem.refresh();
       // 서버 데이터를 먼저 받아온 뒤에만 업로드합니다 (오래된 기기 데이터로 덮어쓰기 방지)
       subscribeToActiveClassRealtime(state.classCode);
       requestAnimationFrame(animationLoop);
@@ -26011,6 +26060,530 @@
       teacherCodePendingArgs = null;
       _openTeacherLoginModalWithoutCode(...args);
     };
+
+    /********************************************************************
+     * 펫: 로그인한 학생의 펫이 화면 위를 돌아다님 (바탕화면 펫 키우기 느낌)
+     * - 거래소 펫 입양소에서 CA로 입양 (학생당 한 마리)
+     * - 클릭하면 메뉴(쓰다듬기·먹이·츄르·크기·쉬게 하기), 마우스로 문지르면 쓰다듬기, 끌어서 옮기기
+     * - 위아래로 갈 때는 깡충 뛰면서 이동 (올라갈 땐 뒷모습)
+     * - 기록은 학생 기록(stu.pet)에 둠: { type, name, love, full, fullAt, snackAt, size, adoptedAt }
+     * - 배부름(full)은 시간이 지나면 줄어듦 (fullAt 기준으로 그때그때 계산)
+     ********************************************************************/
+    const PET_DEFS = {
+      ginger:     { name: '치즈 고양이',    kind: 'cat', icon: 'assets/sprites/pet/ginger.webp',
+                    sheet: { src: 'assets/sprites/pet/ginger_sheet.webp', cellW: 152, cellH: 157, anchorX: 76, anchorY: 155, count: 37, scale: 0.6,
+                             anims: { idle: [0], walk: [1, 2, 3, 4], play: [5, 6, 7, 8], jump: [9, 10, 11, 12], eat: [13, 14, 15, 16],
+                                      sleep: [17, 18], yawn: [19, 20], groom: [21, 22, 23, 24], climb: [25, 26, 27, 28],
+                                      snack: [29, 30, 31, 32], like: [33, 34, 35, 36] } } },
+      // 아래 펫은 동작 시트가 오면 sheet를 붙여서 입양 가능하게 함
+      calico:     { name: '삼색 고양이',    kind: 'cat', icon: 'assets/sprites/pet/calico.webp' },
+      black:      { name: '검은 고양이',    kind: 'cat', icon: 'assets/sprites/pet/black.webp' },
+      siberian:   { name: '시베리안 고양이', kind: 'cat', icon: 'assets/sprites/pet/siberian.webp' },
+      shiba:      { name: '시바견',         kind: 'dog', icon: 'assets/sprites/pet/shiba.webp' },
+      pomeranian: { name: '포메라니안',      kind: 'dog', icon: 'assets/sprites/pet/pomeranian.webp' },
+      bulldog:    { name: '불독',           kind: 'dog', icon: 'assets/sprites/pet/bulldog.webp' },
+      collie:     { name: '보더콜리',        kind: 'dog', icon: 'assets/sprites/pet/collie.webp' },
+    };
+    const PET_PRICE = 10000;
+    // 동작별 프레임 속도(초당)
+    const PET_ANIM_FPS = { idle: 1, walk: 8, play: 5, jump: 9, eat: 6, sleep: 1.2, yawn: 2.5, groom: 5, snack: 4, like: 5 };
+    const PET_HOP_SEC = 0.55;      // 위아래 이동 때 한 번 뛰는 시간
+    const PET_HOP_LIFT = 16;       // 뛸 때 떠오르는 높이(px, 크기 1 기준)
+    const PET_SIZE_MIN = 0.6, PET_SIZE_MAX = 1.6;
+    const PET_FULL_DECAY_PER_HOUR = 4; // 하루쯤 지나면 배고파짐
+    const PET_FEED_FULL = 30;
+    const PET_SNACK_COOLDOWN_MS = 60000;
+    const PET_PAT_COOLDOWN_MS = 8000; // 쓰다듬기로 애정이 오르는 간격
+    const PET_LINES = {
+      cat: { idle: ['냐옹~', '골골골...', '심심하다냥', '주인님 최고냥!', '꾹꾹이 하고 싶다냥'], greet: '주인님 왔다냥!', hungry: '배고프다냥...', full: '배불러냥~', pat: ['골골골~', '거기 좋다냥!', '냐아~♡'], eat: '냠냠 맛있다냥!', snack: '츄르 최고냥!♡', snackWait: '아까 먹었다냥~ 조금 이따 줘!' },
+      dog: { idle: ['멍멍!', '산책 가자!', '꼬리 살랑살랑~', '주인님 최고멍!'], greet: '주인님 왔다멍!', hungry: '배고파요 멍...', full: '배불러요 멍~', pat: ['헥헥 좋아요!', '멍멍♡', '더 쓰다듬어 줘요!'], eat: '냠냠 맛있다멍!', snack: '간식 최고멍!♡', snackWait: '아까 먹었어요 멍~' },
+    };
+
+    function petLoveLabel(love) {
+      if (love >= 80) return '💞 소울메이트';
+      if (love >= 50) return '💗 단짝';
+      if (love >= 20) return '💛 친구';
+      return '🤍 낯가림';
+    }
+
+    const PetSystem = {
+      stuId: null, el: null, body: null, sprite: null, bubbleEl: null, menuEl: null,
+      x: 0, y: 0, tx: 0, ty: 0, dir: 1, hopT: 0, hopping: false,
+      mode: 'idle', modeUntil: 0, next: null, animT: 0, last: 0, raf: 0,
+      drag: null, rubDist: 0, rubAt: 0, patCdAt: 0, bubbleUntil: 0, saveTimer: 0, mouse: null, adoptType: null,
+
+      student() {
+        const stu = getActiveStudent();
+        return stu && isStudentSession(stu) ? stu : null;
+      },
+      data() { const s = this.student(); return s && s.pet && PET_DEFS[s.pet.type] ? s.pet : null; },
+      def() { const p = this.data(); return p ? PET_DEFS[p.type] : null; },
+      lines() { const d = this.def(); return PET_LINES[d ? d.kind : 'cat']; },
+      size() { const p = this.data(); return Math.max(PET_SIZE_MIN, Math.min(PET_SIZE_MAX, Number(p && p.size) || 1)); },
+      scale() { const d = this.def(); return d ? d.sheet.scale * this.size() : 0.6; },
+      fullNow(p = this.data()) {
+        if (!p) return 0;
+        const hours = (Date.now() - (p.fullAt || Date.now())) / 3600000;
+        return Math.max(0, Math.min(100, (p.full ?? 60) - hours * PET_FULL_DECAY_PER_HOUR));
+      },
+      hiddenKey() { return `mca_pet_hidden:${this.stuId}`; },
+      isHidden() { try { return localStorage.getItem(this.hiddenKey()) === '1'; } catch (e) { return false; } },
+      setHidden(v) { try { v ? localStorage.setItem(this.hiddenKey(), '1') : localStorage.removeItem(this.hiddenKey()); } catch (e) {} },
+
+      // 로그인 직후: 펫이 있으면 인사하며 등장
+      onLogin(stu) {
+        this.despawn();
+        this.stuId = stu.id;
+        if (stu.pet && PET_DEFS[stu.pet.type] && !this.isHidden()) this.spawn(true);
+        this.renderToggle();
+      },
+
+      // 새로고침 등: 로그인 상태면 조용히 다시 등장
+      refresh() {
+        const stu = this.student();
+        if (!stu || stu.id !== this.stuId) this.despawn();
+        if (!stu) { this.renderToggle(); return; }
+        this.stuId = stu.id;
+        if (this.data() && !this.isHidden()) { if (!this.el) this.spawn(false); }
+        this.renderToggle();
+      },
+
+      // 거래소 > 펫 입양소
+      renderShop() {
+        const grid = document.getElementById('petShopGrid');
+        if (!grid) return;
+        const stu = this.student();
+        const mine = stu && stu.pet && PET_DEFS[stu.pet.type] ? stu.pet : null;
+        const myEl = document.getElementById('petShopMine');
+        if (myEl) {
+          myEl.textContent = mine ? `내 펫: ${mine.name} (${PET_DEFS[mine.type].name})` : '아직 펫이 없어요';
+        }
+        grid.innerHTML = Object.entries(PET_DEFS).map(([type, d]) => {
+          const ready = Boolean(d.sheet);
+          const isMine = mine && mine.type === type;
+          let btn;
+          if (!ready) btn = `<span class="text-[11px] font-bold text-slate-500">준비 중</span>`;
+          else if (isMine) btn = `<button type="button" onclick="PetSystem.callBack()" class="w-full py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-extrabold">🐾 함께하는 중</button>`;
+          else if (mine) btn = `<span class="text-[11px] font-bold text-slate-500">한 마리만 키울 수 있어요</span>`;
+          else btn = `<button type="button" onclick="PetSystem.openAdopt('${type}')" class="w-full py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-[11px] font-extrabold">${PET_PRICE.toLocaleString()} CA 입양</button>`;
+          return `<div class="bg-slate-950 border ${isMine ? 'border-emerald-500/60' : 'border-slate-800'} rounded-xl p-2.5 flex flex-col items-center gap-1.5 ${ready ? '' : 'opacity-50'}">
+              <img src="${d.icon}" alt="" class="h-16 w-auto object-contain" draggable="false">
+              <span class="text-xs font-extrabold text-slate-200">${d.name}</span>
+              ${btn}
+            </div>`;
+        }).join('');
+      },
+
+      openAdopt(type) {
+        const def = PET_DEFS[type];
+        if (!def || !def.sheet) return;
+        const stu = this.student();
+        if (!stu) { showNotice('⚠️ 학생 로그인을 한 뒤에 입양할 수 있어요.'); return; }
+        if (stu.pet) { showNotice('⚠️ 펫은 한 마리만 키울 수 있어요.'); return; }
+        this.adoptType = type;
+        let modal = document.getElementById('petAdoptModal');
+        if (!modal) {
+          modal = document.createElement('div');
+          modal.id = 'petAdoptModal';
+          modal.className = 'fixed inset-0 z-[55] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4';
+          document.body.appendChild(modal);
+        }
+        const lack = (stu.mc || 0) < PET_PRICE;
+        modal.innerHTML = `
+          <div class="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-5 shadow-2xl flex flex-col items-center text-center">
+            <img src="${def.icon}" alt="" class="h-24 w-auto object-contain" draggable="false">
+            <div class="text-lg font-black text-white mt-2">🐾 ${def.name} 입양</div>
+            <div class="text-xs text-slate-400 mt-1">펫은 화면을 돌아다녀요. 클릭하면 쓰다듬거나 먹이를 줄 수 있어요.</div>
+            <input id="petAdoptName" maxlength="8" placeholder="펫 이름 (8글자까지, 예: ${type === 'ginger' ? '치즈' : def.name})" class="mt-4 w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white font-bold outline-none focus:border-amber-400 text-center">
+            <div class="mt-2 text-xs font-bold ${lack ? 'text-rose-400' : 'text-slate-400'}">입양비 ${PET_PRICE.toLocaleString()} CA · 내 CA ${(stu.mc || 0).toLocaleString()}</div>
+            <div class="mt-4 w-full flex gap-2">
+              <button type="button" onclick="PetSystem.closeAdopt()" class="flex-1 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold">취소</button>
+              <button type="button" onclick="PetSystem.confirmAdopt()" ${lack ? 'disabled' : ''} class="flex-1 py-2 rounded-lg text-sm font-black ${lack ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-400 text-slate-950'}">${lack ? 'CA가 부족해요' : `${PET_PRICE.toLocaleString()} CA로 입양`}</button>
+            </div>
+          </div>`;
+        modal.classList.remove('hidden');
+        setTimeout(() => document.getElementById('petAdoptName')?.focus(), 50);
+      },
+      closeAdopt() { document.getElementById('petAdoptModal')?.classList.add('hidden'); },
+      confirmAdopt() {
+        const stu = this.student();
+        const type = this.adoptType;
+        const def = PET_DEFS[type];
+        if (!stu || !def || !def.sheet || stu.pet) { this.closeAdopt(); return; }
+        if ((stu.mc || 0) < PET_PRICE) { showNotice('⚠️ CA가 부족해요.'); return; }
+        const name = cleanUserText((document.getElementById('petAdoptName')?.value || '').trim(), 8) || (type === 'ginger' ? '치즈' : def.name);
+        stu.mc -= PET_PRICE;
+        stu.pet = { type, name, love: 0, full: 70, fullAt: Date.now(), size: 1, adoptedAt: Date.now() };
+        saveState();
+        this.closeAdopt();
+        this.stuId = stu.id;
+        this.setHidden(false);
+        this.spawn(true);
+        this.renderShop();
+        showRewardBanner(`🐾 ${name}(이)가 가족이 되었어요! (-${PET_PRICE.toLocaleString()} CA) 클릭해서 쓰다듬어 주세요.`);
+      },
+
+      spawn(greet) {
+        const p = this.data();
+        const def = this.def();
+        if (!p || !def) return;
+        this.despawn();
+        const el = document.createElement('div');
+        el.className = 'pet-actor pop';
+        el.innerHTML = `<div class="pet-body"><div class="pet-sprite"></div></div>`;
+        document.body.appendChild(el);
+        this.el = el;
+        this.body = el.querySelector('.pet-body');
+        this.sprite = el.querySelector('.pet-sprite');
+        this.sprite.style.backgroundImage = `url('${def.sheet.src}')`;
+        this.applySize();
+        this.x = window.innerWidth * (0.3 + Math.random() * 0.4);
+        this.y = window.innerHeight - 30;
+        this.setMode(greet ? 'like' : 'idle', greet ? 1.6 : 2);
+        if (greet) setTimeout(() => this.say(`${p.name}: ${this.lines().greet}`, 2600), 300);
+        setTimeout(() => el.classList.remove('pop'), 600);
+        this.bindInput();
+        this.last = performance.now();
+        cancelAnimationFrame(this.raf);
+        this.raf = requestAnimationFrame(t => this.loop(t));
+        this.renderToggle();
+      },
+      applySize() {
+        const def = this.def();
+        if (!def || !this.sprite) return;
+        const sh = def.sheet, s = this.scale();
+        const w = sh.cellW * s, h = sh.cellH * s;
+        this.body.style.width = `${w}px`;
+        this.body.style.height = `${h}px`;
+        Object.assign(this.sprite.style, { width: `${w}px`, height: `${h}px`, backgroundSize: `${sh.cellW * sh.count * s}px ${h}px` });
+      },
+      setSize(v) {
+        const p = this.data();
+        if (!p) return;
+        p.size = Math.max(PET_SIZE_MIN, Math.min(PET_SIZE_MAX, Math.round(Number(v) * 10) / 10));
+        this.applySize();
+        const label = this.menuEl && this.menuEl.querySelector('.pet-size-val');
+        if (label) label.textContent = `${Math.round(p.size * 100)}%`;
+        this.saveSoon();
+      },
+      despawn() {
+        cancelAnimationFrame(this.raf);
+        this.raf = 0;
+        this.closeMenu();
+        if (this.el) this.el.remove();
+        this.el = this.body = this.sprite = this.bubbleEl = null;
+        this.drag = null;
+      },
+
+      // 펫이 다닐 수 있는 범위 (발 기준)
+      bounds() {
+        const def = this.def();
+        const h = def ? def.sheet.cellH * this.scale() : 70;
+        return { x0: 50, x1: window.innerWidth - 50, y0: Math.min(window.innerHeight - 20, 90 + h), y1: window.innerHeight - 12 };
+      },
+      clampPos() {
+        const b = this.bounds();
+        this.x = Math.max(b.x0, Math.min(b.x1, this.x));
+        this.y = Math.max(b.y0, Math.min(b.y1, this.y));
+      },
+      setMode(mode, sec, next = null) {
+        this.mode = mode;
+        this.animT = 0;
+        this.modeUntil = performance.now() + sec * 1000;
+        this.next = next;
+      },
+      // 할 일이 끝났을 때 다음 행동 고르기
+      decide() {
+        if (this.next) { const n = this.next; this.next = null; this.setMode(n[0], n[1], n[2] || null); return; }
+        const b = this.bounds();
+        const hungry = this.fullNow() < 25;
+        const r = Math.random();
+        if (hungry && r < 0.25) { this.say(this.lines().hungry, 2500); this.setMode('idle', 2.5); return; }
+        if (r < 0.5) {
+          const toMouse = this.mouse && Math.random() < 0.3;
+          this.tx = toMouse ? this.mouse.x : b.x0 + Math.random() * (b.x1 - b.x0);
+          this.ty = toMouse ? this.mouse.y + 30 : b.y0 + Math.random() * (b.y1 - b.y0);
+          this.hopT = 0;
+          this.setMode('walk', 30);
+        } else if (r < 0.62) this.setMode('groom', 2.4);
+        else if (r < 0.7) this.setMode('jump', 0.9);
+        else if (r < 0.78 && !hungry) this.setMode('yawn', 1.6, ['sleep', 8 + Math.random() * 10]);
+        else if (r < 0.86) { this.say(this.pick(this.lines().idle), 2200); this.setMode('idle', 2.5); }
+        else this.setMode('idle', 1.5 + Math.random() * 2.5);
+      },
+      pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; },
+
+      loop(t) {
+        if (!this.el) return;
+        const dt = Math.min(0.05, (t - this.last) / 1000);
+        this.last = t;
+        this.animT += dt;
+        const def = this.def();
+        if (!def) { this.despawn(); return; }
+        this.hopping = false;
+        if (this.drag && this.drag.moved) {
+          this.mode = 'drag';
+        } else if (this.mode === 'walk') {
+          const dx = this.tx - this.x, dy = this.ty - this.y;
+          const dist = Math.hypot(dx, dy);
+          // 위아래 비중이 크면 깡충깡충 뛰어서 이동 (한 번 뛰는 중에는 계속 뜀)
+          const vertical = Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx) * 0.6;
+          if (vertical || this.hopT > 0) {
+            this.hopping = true;
+            this.hopUp = vertical ? dy < 0 : this.hopUp;
+            this.hopT += dt;
+            if (this.hopT >= PET_HOP_SEC) this.hopT = vertical ? this.hopT - PET_HOP_SEC : 0;
+          }
+          const speed = (this.fullNow() < 25 ? 35 : 60) * (this.hopping ? 1.3 : 1) * Math.sqrt(this.size());
+          if (dist < 3 || t > this.modeUntil) { this.hopT = 0; this.hopping = false; this.setMode('idle', 1 + Math.random() * 2.5); }
+          else {
+            const step = Math.min(dist, speed * dt);
+            this.x += dx / dist * step;
+            this.y += dy / dist * step;
+            if (Math.abs(dx) > 2) this.dir = dx < 0 ? -1 : 1;
+          }
+        } else if (this.mode !== 'drag' && t > this.modeUntil) {
+          this.decide();
+        }
+        if (this.mode === 'drag' && !this.drag) this.setMode('jump', 0.7);
+        this.clampPos();
+        this.render(def.sheet, t);
+        if (this.bubbleEl && performance.now() > this.bubbleUntil) { this.bubbleEl.remove(); this.bubbleEl = null; }
+        if (this.mode === 'sleep' && Math.random() < dt * 0.7) this.fx('💤', 0);
+        this.placeMenu();
+        this.raf = requestAnimationFrame(tt => this.loop(tt));
+      },
+      render(sh, t) {
+        const s = this.scale();
+        let f, lift = 0;
+        if (this.hopping) {
+          // 올라갈 땐 뒷모습(climb), 내려갈 땐 점프 동작. 한 번 뛰는 동안 4프레임
+          const phase = this.hopT / PET_HOP_SEC;
+          const frames = sh.anims[this.hopUp ? 'climb' : 'jump'];
+          f = frames[Math.min(frames.length - 1, Math.floor(phase * frames.length))];
+          lift = Math.sin(phase * Math.PI) * PET_HOP_LIFT * this.size();
+        } else {
+          const animKey = this.mode === 'drag' ? 'jump' : this.mode;
+          const frames = sh.anims[animKey] || sh.anims.idle;
+          const fps = PET_ANIM_FPS[animKey] || 4;
+          // 하품은 끝 프레임에서 멈춤, 나머지는 반복
+          let i = Math.floor(this.animT * fps);
+          i = (animKey === 'yawn') ? Math.min(i, frames.length - 1) : i % frames.length;
+          f = this.mode === 'drag' ? frames[2] : frames[i];
+        }
+        this.sprite.style.backgroundPosition = `${-f * sh.cellW * s}px 0`;
+        const breathe = (this.mode === 'idle' || this.mode === 'sleep') ? 1 + Math.sin(t / 420) * 0.015 : 1;
+        const tilt = this.mode === 'drag' ? Math.sin(t / 140) * 6 : 0;
+        this.sprite.style.transform = `scaleX(${this.dir}) scaleY(${breathe})`;
+        this.body.style.transform = `rotate(${tilt}deg)`;
+        this.el.style.transform = `translate(${Math.round(this.x - sh.anchorX * s)}px, ${Math.round(this.y - lift - sh.anchorY * s)}px)`;
+        this.el.classList.toggle('dragging', this.mode === 'drag');
+      },
+
+      say(text, ms = 2200) {
+        if (!this.body) return;
+        if (this.bubbleEl) this.bubbleEl.remove();
+        const b = document.createElement('div');
+        b.className = 'pet-bubble';
+        b.textContent = text;
+        this.body.appendChild(b);
+        this.bubbleEl = b;
+        this.bubbleUntil = performance.now() + ms;
+      },
+      fx(emoji, spread = 24) {
+        if (!this.body) return;
+        const s = document.createElement('div');
+        s.className = 'pet-fx';
+        s.textContent = emoji;
+        s.style.setProperty('--dx', `${(Math.random() - 0.5) * spread}px`);
+        this.body.appendChild(s);
+        setTimeout(() => s.remove(), 1200);
+      },
+      saveSoon() {
+        clearTimeout(this.saveTimer);
+        this.saveTimer = setTimeout(() => saveState(), 1500);
+      },
+
+      // 쓰다듬기: 하트 + 재롱/좋아하기. 애정은 일정 간격으로만 오름
+      pat() {
+        const p = this.data();
+        if (!p) return;
+        const now = Date.now();
+        for (let i = 0; i < 3; i++) setTimeout(() => this.fx('💗'), i * 140);
+        this.hopT = 0;
+        this.setMode(Math.random() < 0.5 ? 'play' : 'like', 2.4);
+        this.say(this.pick(this.lines().pat), 1800);
+        if (now >= this.patCdAt) {
+          this.patCdAt = now + PET_PAT_COOLDOWN_MS;
+          p.love = Math.min(100, (p.love || 0) + 1);
+          this.saveSoon();
+        }
+        this.renderMenu();
+      },
+      feed() {
+        const p = this.data();
+        if (!p) return;
+        const full = this.fullNow(p);
+        this.hopT = 0;
+        if (full >= 95) { this.say(this.lines().full, 1800); this.setMode('groom', 2); return; }
+        p.full = Math.min(100, full + PET_FEED_FULL);
+        p.fullAt = Date.now();
+        p.love = Math.min(100, (p.love || 0) + 2);
+        saveState();
+        this.setMode('eat', 3, ['like', 1.6]);
+        this.say(this.lines().eat, 2200);
+        for (let i = 0; i < 2; i++) setTimeout(() => this.fx('✨'), 600 + i * 500);
+        this.renderMenu();
+      },
+      // 츄르: 애정이 더 오르지만 1분에 한 번
+      snack() {
+        const p = this.data();
+        if (!p) return;
+        const now = Date.now();
+        this.hopT = 0;
+        if (now - (p.snackAt || 0) < PET_SNACK_COOLDOWN_MS) { this.say(this.lines().snackWait, 1800); this.setMode('groom', 2); return; }
+        const full = this.fullNow(p);
+        p.full = Math.min(100, full + 8);
+        p.fullAt = now;
+        p.snackAt = now;
+        p.love = Math.min(100, (p.love || 0) + 3);
+        saveState();
+        this.setMode('snack', 3.2, ['like', 1.6]);
+        this.say(this.lines().snack, 2400);
+        for (let i = 0; i < 3; i++) setTimeout(() => this.fx(i === 1 ? '🎵' : '💗'), 500 + i * 450);
+        this.renderMenu();
+      },
+      // 펫 출현 끄기/켜기 (기기마다 학생별로 기억)
+      rest() {
+        this.setHidden(true);
+        this.despawn();
+        this.renderToggle();
+      },
+      callBack() {
+        if (!this.data()) return;
+        this.setHidden(false);
+        if (!this.el) this.spawn(true);
+      },
+      toggle() {
+        if (!this.data()) return;
+        this.el ? this.rest() : this.callBack();
+      },
+
+      bindInput() {
+        const body = this.body;
+        body.addEventListener('pointerdown', e => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          body.setPointerCapture(e.pointerId);
+          this.drag = { sx: e.clientX, sy: e.clientY, ox: this.x - e.clientX, oy: this.y - e.clientY, moved: false };
+        });
+        body.addEventListener('pointermove', e => {
+          if (this.drag) {
+            if (!this.drag.moved && Math.hypot(e.clientX - this.drag.sx, e.clientY - this.drag.sy) > 6) { this.drag.moved = true; this.hopT = 0; this.closeMenu(); }
+            if (this.drag.moved) { this.x = e.clientX + this.drag.ox; this.y = e.clientY + this.drag.oy; }
+            return;
+          }
+          // 버튼 없이 문지르면 쓰다듬기
+          const now = performance.now();
+          if (now - this.rubAt > 400) this.rubDist = 0;
+          this.rubAt = now;
+          this.rubDist += Math.hypot(e.movementX || 0, e.movementY || 0);
+          if (this.rubDist > 260) { this.rubDist = 0; this.pat(); }
+        });
+        const end = e => {
+          if (!this.drag) return;
+          const moved = this.drag.moved;
+          this.drag = null;
+          if (moved) { this.setMode('jump', 0.7); this.say('으앗!', 1000); }
+          else if (e.type === 'pointerup') this.toggleMenu();
+        };
+        body.addEventListener('pointerup', end);
+        body.addEventListener('pointercancel', end);
+      },
+
+      toggleMenu() { this.menuEl ? this.closeMenu() : this.openMenu(); },
+      openMenu() {
+        if (!this.el) return;
+        if (this.mode === 'sleep') { this.setMode('yawn', 1.4); this.say('하암... 깼다!', 1500); }
+        else if (this.mode === 'walk') { this.hopT = 0; this.setMode('idle', 6); }
+        const m = document.createElement('div');
+        m.className = 'pet-menu';
+        document.body.appendChild(m);
+        this.menuEl = m;
+        this.renderMenu();
+        this.placeMenu();
+        setTimeout(() => document.addEventListener('pointerdown', this.outside), 0);
+      },
+      outside: e => {
+        const self = PetSystem;
+        if (!self.menuEl) return;
+        if (self.menuEl.contains(e.target) || (self.body && self.body.contains(e.target))) return;
+        self.closeMenu();
+      },
+      closeMenu() {
+        if (this.menuEl) this.menuEl.remove();
+        this.menuEl = null;
+        document.removeEventListener('pointerdown', this.outside);
+      },
+      renderMenu() {
+        const m = this.menuEl, p = this.data(), def = this.def();
+        if (!m || !p || !def) return;
+        const full = Math.round(this.fullNow(p));
+        const love = p.love || 0;
+        const size = this.size();
+        m.innerHTML = `
+          <div class="pet-menu-head"><span class="pet-menu-name"></span><span class="pet-menu-kind">${def.name}</span></div>
+          <div class="pet-menu-love">${petLoveLabel(love)}</div>
+          <div class="pet-menu-stat"><span>💗 애정</span><span>${love}/100</span></div>
+          <div class="pet-bar"><div style="width:${love}%;background:#f472b6"></div></div>
+          <div class="pet-menu-stat"><span>🍖 배부름</span><span>${full}/100</span></div>
+          <div class="pet-bar"><div style="width:${full}%;background:${full < 25 ? '#f87171' : '#fbbf24'}"></div></div>
+          <div class="pet-menu-btns">
+            <button type="button" onclick="PetSystem.pat()">🤚 쓰다듬기</button>
+            <button type="button" onclick="PetSystem.feed()">🍖 먹이</button>
+            <button type="button" onclick="PetSystem.snack()">🐟 츄르</button>
+          </div>
+          <div class="pet-menu-size">
+            <span>📏 크기</span>
+            <input type="range" min="${PET_SIZE_MIN}" max="${PET_SIZE_MAX}" step="0.1" value="${size}" oninput="PetSystem.setSize(this.value)">
+            <span class="pet-size-val">${Math.round(size * 100)}%</span>
+            <button type="button" class="pet-menu-home" onclick="PetSystem.rest()" title="펫 끄기 (위쪽 🐾 펫 버튼으로 다시 켜요)">🏠</button>
+          </div>`;
+        m.querySelector('.pet-menu-name').textContent = p.name;
+      },
+      placeMenu() {
+        if (!this.menuEl || !this.el) return;
+        const def = this.def();
+        const h = def.sheet.cellH * this.scale();
+        const mw = 236, mh = this.menuEl.offsetHeight || 170;
+        let left = this.x - mw / 2, top = this.y - h - mh - 40; // 말풍선 자리 비움
+        if (top < 8) top = this.y + 10;
+        left = Math.max(8, Math.min(window.innerWidth - mw - 8, left));
+        top = Math.max(8, Math.min(window.innerHeight - mh - 8, top));
+        this.menuEl.style.left = `${left}px`;
+        this.menuEl.style.top = `${top}px`;
+      },
+
+      // 헤더·거래소의 펫 켜기/끄기 버튼
+      renderToggle() {
+        const has = Boolean(this.data());
+        const on = Boolean(this.el);
+        const paint = (btn, onCls, offCls) => {
+          if (!btn) return;
+          btn.classList.toggle('hidden', !has);
+          if (!has) return;
+          btn.textContent = on ? '🐾 펫 ON' : '🐾 펫 OFF';
+          btn.className = btn.className.split(' ').filter(c => !onCls.concat(offCls).includes(c)).join(' ') + ' ' + (on ? onCls : offCls).join(' ');
+        };
+        const onCls = ['bg-emerald-300', 'hover:bg-emerald-400', 'text-slate-950', 'border-emerald-600'];
+        const offCls = ['bg-slate-200', 'hover:bg-slate-300', 'text-slate-600', 'border-slate-400'];
+        paint(document.getElementById('headerPetToggleBtn'), onCls, offCls);
+        paint(document.getElementById('petShopToggleBtn'), onCls, offCls);
+      },
+    };
+    window.PetSystem = PetSystem;
+    window.addEventListener('pointermove', e => { PetSystem.mouse = { x: e.clientX, y: e.clientY }; }, { passive: true });
+    window.addEventListener('resize', () => PetSystem.clampPos());
   </script>
 </body>
 </html>
