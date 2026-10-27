@@ -21770,6 +21770,7 @@
         showNotice('🔒 장비·상점은 준비 중이에요. 곧 열릴 예정이에요!');
         return;
       }
+      try { sessionStorage.setItem('mca_student_tab', tabKey); } catch (e) {}
       // 진행 중인 전투는 멈추지 않고 화면만 숨김 → [⚔️ 진행 중인 전투로 돌아가기]로 다시 볼 수 있음
       const arenaSec = document.getElementById('arenaSection');
       if (arenaSec) arenaSec.classList.add('hidden');
@@ -22451,6 +22452,22 @@
     const STUDENT_SESSION_KEY = 'mca_student_session';
     function markStudentSession(stu) {
       try { sessionStorage.setItem(STUDENT_SESSION_KEY, `${String(state.classCode || '').toUpperCase()}:${stu.id}`); } catch (e) {}
+    }
+    // 학생 화면에 있는지 이 탭에 적어 둠: 새로고침하면 입장 코드 화면 대신 그 학생 화면으로 되돌림
+    const STUDENT_VIEW_KEY = 'mca_student_view';
+    function rememberStudentView(inStudentView) {
+      try { if (inStudentView) sessionStorage.setItem(STUDENT_VIEW_KEY, '1'); else sessionStorage.removeItem(STUDENT_VIEW_KEY); } catch (e) {}
+    }
+    function restoreStudentViewOnLoad() {
+      try {
+        if (sessionStorage.getItem(STUDENT_VIEW_KEY) !== '1') return;
+        const stu = state.students.find(s => isStudentSession(s));
+        if (!stu) return;
+        state.activeStudentId = stu.id;
+        showMainAppView('student');
+        const tab = sessionStorage.getItem('mca_student_tab');
+        if (tab && document.getElementById(`studentTab-${tab}`)) switchStudentTab(tab);
+      } catch (e) {}
     }
     function isStudentSession(stu) {
       try { return Boolean(stu) && sessionStorage.getItem(STUDENT_SESSION_KEY) === `${String(state.classCode || '').toUpperCase()}:${stu.id}`; } catch (e) { return false; }
@@ -27767,6 +27784,7 @@
     // ==================== 3단계 페이지 전환 라우터 (초기화면 / 학급 페이지 / 개인 게임 화면) ====================
     function goToLandingPage() {
       sim.running = false;
+      rememberStudentView(false);
       document.getElementById('landingPageView')?.classList.remove('hidden');
       document.getElementById('classLobbyPageView')?.classList.add('hidden');
       document.getElementById('mainAppShell')?.classList.add('hidden');
@@ -27784,6 +27802,7 @@
 
     function goToClassLobbyPage() {
       sim.running = false;
+      rememberStudentView(false);
       document.getElementById('landingPageView')?.classList.add('hidden');
       document.getElementById('mainAppShell')?.classList.add('hidden');
       document.getElementById('classLobbyPageView')?.classList.remove('hidden');
@@ -27805,6 +27824,7 @@
         renderTeacherSkinReview();
         updateHeaderUI();
       } else {
+        rememberStudentView(true);
         document.getElementById('teacherViewContainer')?.classList.add('hidden');
         document.getElementById('studentViewContainer')?.classList.remove('hidden');
         document.getElementById('teacherModeBtnText').textContent = '선생님 관리자';
@@ -28442,6 +28462,7 @@
       // 초기 진입 시 missionclass.com과 동일하게 분리된 초기 홈페이지 화면(#landingPageView)을 먼저 표시
       goToLandingPage();
       applyLocalDevEntry();
+      restoreStudentViewOnLoad();
       PetSystem.refresh();
       // 서버 데이터를 먼저 받아온 뒤에만 업로드합니다 (오래된 기기 데이터로 덮어쓰기 방지)
       subscribeToActiveClassRealtime(state.classCode);
