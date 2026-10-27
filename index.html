@@ -415,6 +415,25 @@
     </div>
   </div>
 
+  <!-- 로그인 직후 프로필이 비어 있을 때 안내 팝업 -->
+  <div id="emptyProfileModal" class="hidden fixed inset-0 z-[70] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" onclick="if (event.target === this) closeEmptyProfileModal()">
+    <div class="bg-slate-900 border-2 border-pink-500/60 rounded-3xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="text-xs font-extrabold text-pink-300">🎨 프로필</div>
+          <h3 class="font-title text-2xl text-white">프로필이 비어 있어요!</h3>
+        </div>
+        <button type="button" onclick="closeEmptyProfileModal()" class="text-slate-400 hover:text-white font-bold">✕</button>
+      </div>
+      <p class="text-sm text-slate-300">나만의 프로필을 직접 꾸미거나, 거래소의 프로필 도트 상점에서 다른 친구의 프로필을 구매해 보세요.</p>
+      <div class="grid grid-cols-2 gap-2">
+        <button type="button" onclick="closeEmptyProfileModal(); openAvatarEditor()" class="py-3 rounded-2xl bg-pink-500 hover:bg-pink-400 text-white font-extrabold text-sm shadow-lg">🎨 프로필 꾸미기</button>
+        <button type="button" onclick="closeEmptyProfileModal(); goToStudentTab('market')" class="py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-sm shadow-lg">🛒 프로필 구매하기</button>
+      </div>
+      <button type="button" onclick="closeEmptyProfileModal()" class="py-2 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs">나중에</button>
+    </div>
+  </div>
+
   <!-- 로그인 직후 랭킹 매칭 홍보 팝업 -->
   <div id="rankedPromoModal" class="hidden fixed inset-0 z-[60] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" onclick="if (event.target === this) closeRankedPromoModal()">
     <div class="bg-slate-900 border-2 border-amber-500/60 rounded-3xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
@@ -5444,6 +5463,13 @@
     const DAILY_REWARD_LIMITS = { quiz: 20, practice: 3, tower: 3, pvp: 5, raid: 3, minigame: 5 };
     const DAILY_REWARD_LABELS = { quiz: '퀴즈', practice: '허수아비 모의전', tower: '모험의 탑', pvp: '랭킹 매칭', raid: '엘리트 몬스터', minigame: '미니게임' };
 
+    // 모험의 탑 하루 도전 횟수 (보상과 상관없이 도전을 시작할 때마다 1회)
+    const TOWER_DAILY_TRIES = 10;
+    function getTowerTriesLeft(stu) {
+      if (!stu) return 0;
+      return Math.max(0, TOWER_DAILY_TRIES - (getDailyRewardBook(stu).towerTries || 0));
+    }
+
     function getDailyRewardBook(stu) {
       const today = getTodayDateString();
       if (!stu.dailyRewards || stu.dailyRewards.date !== today) stu.dailyRewards = { date: today };
@@ -6712,6 +6738,11 @@
       StudentInbox.settle();
       openRankedPromoModal();
       PetSystem.onLogin(stu);
+      if (!avatarCells(stu.avatar)) document.getElementById('emptyProfileModal')?.classList.remove('hidden');
+    }
+
+    function closeEmptyProfileModal() {
+      document.getElementById('emptyProfileModal')?.classList.add('hidden');
     }
 
     async function completeFirstTimePasswordSetup() {
@@ -10013,7 +10044,7 @@
 
     function renderTowerTab() {
       const stu = getActiveStudent();
-      document.getElementById('myTowerProgressText').textContent = `${stu.towerFloor}층 도전 가능 (상위 층 비공개)`;
+      document.getElementById('myTowerProgressText').textContent = `${stu.towerFloor}층 도전 가능 (상위 층 비공개) · 오늘 남은 도전 ${getTowerTriesLeft(stu)}/${TOWER_DAILY_TRIES}회`;
       renderTowerLiveList();
 
       let filteredFloors = TOWER_FLOORS;
@@ -12752,6 +12783,10 @@
       const stu = getActiveStudent();
       const floorObj = TOWER_FLOORS.find(f => f.floor === floorNum);
       if (!floorObj) return;
+      if (getTowerTriesLeft(stu) <= 0) {
+        showNotice(`오늘 모험의 탑 도전 횟수(${TOWER_DAILY_TRIES}회)를 모두 썼어요. 내일 다시 도전할 수 있어요!`);
+        return;
+      }
       launchSimulation({
         mode: 'tower',
         title: `${floorObj.name}`,
@@ -12759,6 +12794,9 @@
         towerFloorObj: floorObj,
         rewardMc: floorObj.rewardMc
       });
+      if (!sim.running || sim.mode !== 'tower') return;
+      getDailyRewardBook(stu).towerTries = (getDailyRewardBook(stu).towerTries || 0) + 1;
+      if (typeof saveState === 'function') saveState();
       startTowerLiveBroadcast(stu, floorObj);
     }
 
@@ -12920,6 +12958,7 @@
       renderBattleControlHud(true);
       addBattleLog(`📺 [관전] ${info.name}의 모험의 탑 ${floor}층 도전을 보고 있어요. (WASD·드래그로 화면 이동)`);
       startLiveBattleNet(roomId, 'guest', liveNum(init.at), true, false);
+      liveNet.bid = typeof init.b === 'number' ? init.b : null; liveNet.ep = liveNum(init.ep); // 탑·레이드 관전은 방 시작 시각이 없어 받은 화면의 전투 표를 따라감
       liveNet.towerWatchOf = stuId;
       const wRef = towerLiveIndexRef(stuId)?.child('watchers').child(me.id);
       if (wRef) {
@@ -19552,8 +19591,8 @@
       }
       return Date.now() + mgServerOffset;
     }
-    function mgLocalDeadline(remote) {
-      const deadline = Number(remote.deadline) || 0;
+    function mgLocalDeadline(remote, field = 'deadline') {
+      const deadline = Number(remote[field]) || 0;
       const sentAt = Number(remote.sentAt) || 0;
       if (!sentAt || !remote.updatedAt) return deadline;
       const leftAtSend = deadline - Number(remote.updatedAt);   // 보낸 화면의 시계로 잰 남은 시간
@@ -19561,8 +19600,10 @@
       return Date.now() + leftAtSend - age;
     }
 
+    const mgNonce = () => Math.random().toString(36).slice(2, 8);
     function mgPush(key, st) {
       st.seq = (st.seq || 0) + 1;
+      st.nonce = mgNonce(); // 같은 순간 두 화면이 같은 번호(seq)로 올렸을 때, 서버에 남은 쪽이 어느 것인지 가리는 표
       if (st.seq === 1) mgSeenFromStart.add(st.gameId);
       pushMinigameStateToFirebase(key, JSON.parse(JSON.stringify(st)));
     }
@@ -20970,6 +21011,8 @@
         cur.seq = (cur.seq || 0) + 1;
         cur.updatedBy = me ? me.name : '플레이어';
         cur.updatedAt = Date.now();
+        cur.sentAt = mgServerNow();
+        cur.nonce = mgNonce();
         return cur;
       }).then(res => {
         if (res && !res.committed && seat === mgMySeat(mathDuelState)) {
@@ -23127,6 +23170,104 @@
     let livePvpRoomsCache = {};
     let liveRaidRoomsCache = {};
     let liveMinigameRoomsCache = {};
+    // 서버에서 마지막으로 받은 방 원본 (캐시는 화면에서 직접 고쳐 쓰므로 따로 보관) — 방을 저장할 때 '내가 바꾼 칸'만 골라 합치는 기준
+    const roomServerBase = { pvp_rooms: {}, raid_rooms: {}, minigame_rooms: {} };
+    const ROOM_CLAIM_KEYS = ['guestId', 'guest2Id']; // 먼저 차지한 사람이 이기는 자리
+    const ROOM_MAP_KEYS = new Set(['gone', 'spectators', 'fighting', 'members']); // 학생 id별로 따로 합치는 칸
+    const roomJson = v => JSON.stringify(v === undefined ? null : v);
+    const roomIsObj = v => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+    const roomPlayerList = a => (Array.isArray(a) ? a : (a && typeof a === 'object' ? Object.values(a) : [])).filter(p => p && p.id);
+    function mergeRoomPlayers(b, m, c, max) {
+      const B = roomPlayerList(b), M = roomPlayerList(m);
+      const mIds = new Set(M.map(p => p.id));
+      const bIds = new Set(B.map(p => p.id));
+      const res = roomPlayerList(c).filter(p => !(bIds.has(p.id) && !mIds.has(p.id))); // 내가 뺀 사람만 빼고 서버 명단을 이어받음
+      let added = 0;
+      M.forEach(p => {
+        const bp = B.find(x => x.id === p.id);
+        const i = res.findIndex(x => x.id === p.id);
+        if (!bp) { if (i < 0) { res.push(p); added++; } }
+        else if (i >= 0 && roomJson(bp) !== roomJson(p)) res[i] = p;
+      });
+      if (added && res.length > (max || 2)) return null; // 그 사이 정원이 찼음
+      return res;
+    }
+    // 서버 현재 방(cur)에 '기준(base)에서 내(mine)가 바꾼 칸'만 얹음 · 같은 자리를 먼저 차지한 사람이 있거나 방이 사라졌으면 undefined(포기)
+    function mergeRoomState(base, mine, cur) {
+      if (!roomIsObj(cur)) return undefined;
+      const out = JSON.parse(JSON.stringify(cur));
+      const keys = new Set([...Object.keys(base || {}), ...Object.keys(mine || {})]);
+      for (const k of keys) {
+        const b = base ? base[k] : undefined, m = mine ? mine[k] : undefined;
+        if (roomJson(b) === roomJson(m)) continue;
+        if (ROOM_CLAIM_KEYS.includes(k) && b == null && m != null && cur[k] != null && roomJson(cur[k]) !== roomJson(m)) return undefined;
+        if (k === 'players') {
+          const merged = mergeRoomPlayers(b, m, cur.players, mine.maxPlayers || cur.maxPlayers);
+          if (!merged) return undefined;
+          out.players = merged;
+          continue;
+        }
+        if (ROOM_MAP_KEYS.has(k) && (b == null || roomIsObj(b)) && (m == null || roomIsObj(m))) {
+          const o = roomIsObj(out[k]) ? out[k] : {};
+          new Set([...Object.keys(b || {}), ...Object.keys(m || {})]).forEach(id => {
+            if (roomJson((b || {})[id]) === roomJson((m || {})[id])) return;
+            if (m && m[id] != null) o[id] = m[id]; else delete o[id];
+          });
+          if (Object.keys(o).length) out[k] = o; else delete out[k];
+          continue;
+        }
+        if (m == null) delete out[k]; else out[k] = m;
+      }
+      return out;
+    }
+    // 방 통째로 덮어쓰지 않고 트랜잭션으로 합쳐 저장 → 동시에 일어난 입장·준비·관전·나감이 서로 지워지지 않음
+    // 반환: { ok, value } · ok=false면 value가 서버의 현재 방(없으면 null)
+    async function mergeWriteRoom(kind, roomId, roomObj) {
+      const db = RealtimePvpService.initFirebaseClientSafe();
+      const classCode = String(state.classCode || '').trim().toUpperCase();
+      if (!db || !classCode) return { ok: true };
+      const ref = db.ref(`classes/${classCode}/${kind}/${roomId}`);
+      const mine = JSON.parse(JSON.stringify(roomObj));
+      const base = roomServerBase[kind][roomId] || null;
+      try {
+        if (!base || typeof ref.transaction !== 'function') { await ref.set(mine); return { ok: true }; }
+        const res = await ref.transaction(cur => mergeRoomState(base, mine, cur));
+        if (res && res.committed === false) return { ok: false, value: res.snapshot && typeof res.snapshot.val === 'function' ? res.snapshot.val() : null };
+        return { ok: true };
+      } catch (e) {
+        return { ok: true };
+      }
+    }
+    function adoptRoomAfterFailedWrite(cache, roomId, value) {
+      if (value) cache[roomId] = deepCleanStrings(value); else delete cache[roomId];
+    }
+    // 잠깐 끊겼다 돌아온 친구를 바로 '나감' 처리하지 않도록, 끊긴 표시(gone)는 서버 시각으로 남기고 이만큼 지나야 나간 것으로 봄
+    const ROOM_GONE_GRACE_MS = 8000;
+    const goneStamp = () => {
+      try { return window.firebase.database.ServerValue.TIMESTAMP; } catch (e) { return true; }
+    };
+    let goneRecheckTimer = null;
+    function armGoneRecheck() {
+      let wait = Infinity;
+      [livePvpRoomsCache, liveRaidRoomsCache, liveMinigameRoomsCache].forEach(cache => {
+        Object.values(cache || {}).forEach(r => {
+          if (!r || !r.gone) return;
+          Object.values(r.gone).forEach(g => {
+            if (typeof g !== 'number') return;
+            const left = ROOM_GONE_GRACE_MS - (mgServerNow() - g);
+            if (left > 0) wait = Math.min(wait, left);
+          });
+        });
+      });
+      clearTimeout(goneRecheckTimer);
+      goneRecheckTimer = null;
+      if (wait === Infinity) return;
+      goneRecheckTimer = setTimeout(() => {
+        goneRecheckTimer = null;
+        try { maintainPvpRooms(); maintainRaidRooms(); maintainMinigameRooms(); } catch (e) { console.warn('[방 정리 재확인 예외]:', e); }
+        armGoneRecheck();
+      }, wait + 250);
+    }
     let launchedLiveRoomIds = new Set();
     let processedBattleEventIds = new Set();
 
@@ -23186,18 +23327,21 @@
       activePvpRoomsRef = db.ref(`classes/${cleanCode}/pvp_rooms`);
       activePvpRoomsRef.on('value', (snap) => {
         livePvpRoomsCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
+        roomServerBase.pvp_rooms = JSON.parse(JSON.stringify(livePvpRoomsCache));
         maintainPvpRooms();
         renderLivePvpRoomsList();
         checkAutoStartMatchedPvpRoom();
         renderSideWatchPanel();
         RoomInvites.render();
         if (RoomInvites.modal) RoomInvites.renderModal();
+        armGoneRecheck();
       });
 
       // 2) 엘리트 몬스터 2인(5+5) 협동 레이드 대기 로비방 구독 (/classes/{code}/raid_rooms)
       activeRaidRoomsRef = db.ref(`classes/${cleanCode}/raid_rooms`);
       activeRaidRoomsRef.on('value', (snap) => {
         liveRaidRoomsCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
+        roomServerBase.raid_rooms = JSON.parse(JSON.stringify(liveRaidRoomsCache));
         maintainRaidRooms();
         renderLiveRaidRoomsList();
         checkAutoStartMatchedRaidRoom();
@@ -23205,17 +23349,20 @@
         renderSideWatchPanel();
         RoomInvites.render();
         if (RoomInvites.modal) RoomInvites.renderModal();
+        armGoneRecheck();
       });
 
       // 3) 미니게임 대기 로비방 구독 (/classes/{code}/minigame_rooms)
       activeMinigameRoomsRef = db.ref(`classes/${cleanCode}/minigame_rooms`);
       activeMinigameRoomsRef.on('value', (snap) => {
         liveMinigameRoomsCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
+        roomServerBase.minigame_rooms = JSON.parse(JSON.stringify(liveMinigameRoomsCache));
         maintainMinigameRooms();
         renderMinigameLobbyAndRoomUI();
         renderSideWatchPanel();
         RoomInvites.render();
         if (RoomInvites.modal) RoomInvites.renderModal();
+        armGoneRecheck();
       });
 
       // 3-1) 실시간 방 초대 구독 (/classes/{code}/invites)
@@ -23294,7 +23441,7 @@
     function armRoomPresence(path, stuId) {
       if (!stuId) return;
       myRoomPresence.set(path, stuId);
-      try { classRoomRef(`${path}/gone/${stuId}`)?.onDisconnect().set(true); } catch (e) {}
+      try { classRoomRef(`${path}/gone/${stuId}`)?.onDisconnect().set(goneStamp()); } catch (e) {}
       if (roomPresenceWatchOn) return;
       // 잠깐 끊겼다 다시 연결되면: 남겨진 내 '나감' 표시를 지우고 다시 걸어 둠 (끊김 예약은 한 번 실행되면 사라짐)
       try {
@@ -23303,7 +23450,7 @@
           myRoomPresence.forEach((id, p) => {
             try {
               const ref = classRoomRef(`${p}/gone/${id}`);
-              ref.onDisconnect().set(true);
+              ref.onDisconnect().set(goneStamp());
               ref.remove().catch(() => {});
             } catch (e) {}
           });
@@ -23316,7 +23463,13 @@
       if (!stuId) return;
       try { classRoomRef(`${path}/gone/${stuId}`)?.onDisconnect().cancel(); } catch (e) {}
     }
-    const roomGone = (room, stuId) => Boolean(stuId && room && room.gone && room.gone[stuId]);
+    // 숫자(서버 시각)로 남은 표시는 유예 시간이 지나야 '나감' (true는 예전 방식이라 바로 나감)
+    const roomGone = (room, stuId) => {
+      const g = stuId && room && room.gone ? room.gone[stuId] : null;
+      if (!g) return false;
+      if (typeof g !== 'number') return true;
+      return mgServerNow() - g >= ROOM_GONE_GRACE_MS;
+    };
 
     // 한 번에 하나의 컨텐츠만: keepKind 방(keepRoomId)만 남기고, 들어가 있던 다른 결투방·레이드방·미니게임방(관전 포함)에서 모두 나감
     function leaveRoomsExcept(keepKind, keepRoomId = null) {
@@ -23576,13 +23729,13 @@
       livePvpRoomsCache[roomId] = roomObj;
       renderLivePvpRoomsList();
       checkAutoStartMatchedPvpRoom();
-      const db = RealtimePvpService.initFirebaseClientSafe();
-      const classCode = String(state.classCode || '').trim().toUpperCase();
-      if (db && classCode) {
-        try {
-          await db.ref(`classes/${classCode}/pvp_rooms/${roomId}`).set(roomObj);
-        } catch (e) {}
+      const res = await mergeWriteRoom('pvp_rooms', roomId, roomObj);
+      if (!res.ok) {
+        adoptRoomAfterFailedWrite(livePvpRoomsCache, roomId, res.value);
+        renderLivePvpRoomsList();
+        return false;
       }
+      return true;
     }
 
     async function removePvpRoomData(roomId) {
@@ -24093,7 +24246,12 @@
       if (isDuelRoom(room)) { room.guestPickId = null; room.guestPower = 0; }
       if (room.gone) delete room.gone[myStu.id];
       if (room.spectators) delete room.spectators[myStu.id];
-      await savePvpRoomData(roomId, room);
+      if ((await savePvpRoomData(roomId, room)) === false) {
+        currentJoinedPvpRoomId = null;
+        renderLivePvpRoomsList();
+        showNotice('⚠️ 그 사이 다른 친구가 먼저 들어갔거나 방이 사라졌어요. 다른 방을 골라 주세요.');
+        return;
+      }
       armRoomPresence(`pvp_rooms/${roomId}`, myStu.id);
       showRewardBanner(isDuelRoom(room)
         ? `🚪 [${room.title}]에 입장했습니다! 대결할 용병을 고르고 [✋ 준비완료]를 눌러주세요.`
@@ -25042,6 +25200,7 @@
 
     // takeover: 전투 도중 방장이 나가서 내가 이어받는 경우 (친구들이 보낸 조작은 지우지 않음)
     function startLiveBattleNet(roomId, role, roomStartedAt, spectator = false, team = false, teamExpect = [], takeover = false) {
+      const prevEp = liveNet.ep || 0, prevBid = liveNet.bid;
       stopLiveBattleNet();
       const ref = liveRoomRef(roomId);
       if (!ref) {
@@ -25054,6 +25213,8 @@
       Object.assign(liveNet, {
         role, roomId, ref,
         minAt: (roomStartedAt || Date.now()) - 3000,
+        // bid: 이번 전투 표(방 시작 시각) · ep: 방장이 바뀔 때마다 1씩 커지는 번호 → 기기 시계가 달라도 '지난 전투의 화면'과 '새 방장의 화면'을 구분함
+        bid: takeover && typeof prevBid === 'number' ? prevBid : (roomStartedAt || Date.now()), ep: takeover ? prevEp + 1 : 0,
         startedAt: Date.now(), initReceived: false, lastFrameAt: Date.now(), finished: false,
         sent: new WeakSet(), pendingLogs: [], remoteCtrl: null, remoteUnitId: null,
         lastInputSentAt: 0, inputTimer: null, lastAimSent: null,
@@ -25074,7 +25235,7 @@
         sim.effects.forEach(x => liveNet.sent.add(x));
         sim.floatTexts.forEach(x => liveNet.sent.add(x));
         const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (k === 'manualAimTarget' ? undefined : v))));
-        ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, units }).catch(() => {});
+        ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, b: liveNet.bid, ep: liveNet.ep, units }).catch(() => {});
         if (liveNet.team) ref.child('inputs').on('value', snap => applyTeamRemoteInputs(snap && snap.val()));
         else ref.child('input').on('value', snap => applyRemoteBattleInput(snap && snap.val()));
         addBattleLog('📡 상대 친구 화면으로 전투를 실시간 전송하고 있어요.');
@@ -25089,6 +25250,61 @@
         ref.child('handoff').on('value', snap => applyLiveHandoff(snap && snap.val()));
         addBattleLog(spectator ? '📡 결투 화면을 받아오는 중이에요...' : '📡 방장 화면에서 진행되는 전투를 받아오는 중이에요...');
       }
+      liveWatchConnection();
+    }
+
+    // 인터넷이 잠깐 끊겼다 돌아오면: 서버에 걸어 둔 '끊기면 지우기'는 한 번 쓰이면 사라지고, 그 사이 전투 정보(init)·내 조작이 지워졌을 수 있어 다시 걸고 채워 넣음
+    let liveConnWatchOn = false, liveConnWasDown = false;
+    function liveWatchConnection() {
+      if (liveConnWatchOn) return;
+      try {
+        RealtimePvpService.initFirebaseClientSafe().ref('.info/connected').on('value', snap => {
+          if (!snap) return;
+          if (snap.val() !== true) { liveConnWasDown = true; return; }
+          if (!liveConnWasDown) return;
+          liveConnWasDown = false;
+          onLiveReconnected();
+        });
+        liveConnWatchOn = true;
+      } catch (e) {}
+    }
+    function onLiveReconnected() {
+      const ref = liveNet.ref;
+      if (!ref || !liveNet.role) return;
+      liveNet.lastFrameAt = Date.now(); // 끊겨 있던 동안의 조용함은 내 쪽 문제 → 시간 제한을 다시 셈
+      try {
+        if (liveNet.role === 'host') {
+          ref.onDisconnect().remove();
+          if (liveNet.towerCast || !sim.running) return;
+          ref.child('init').once('value').then(snap => {
+            if (liveNet.ref !== ref || liveNet.role !== 'host' || !sim.running || (snap && snap.val())) return;
+            const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (k === 'manualAimTarget' ? undefined : v))));
+            ref.child('init').set(JSON.parse(JSON.stringify({ at: Date.now(), b: liveNet.bid, ep: liveNet.ep, units }))).catch(() => {});
+          }).catch(() => {});
+          liveNet.lastFramePublishedAt = 0;
+        } else if (!liveNet.spectator) {
+          (liveNet.team ? ref.child('inputs').child(liveNet.myId || 'x') : ref.child('input')).onDisconnect().remove();
+          liveNet.lastInputSentAt = 0;
+          onLocalControlChanged();
+        }
+      } catch (e) {}
+    }
+
+    // 받은 전투 정보가 지금 보고 있는 전투의 것인지: 전투 표(b)가 있으면 표·번호(ep)로, 없는 예전 방식(탑 관전)은 시각으로 가름
+    function liveAcceptPayload(val) {
+      if (typeof val.b === 'number' && typeof liveNet.bid === 'number') {
+        if (val.b !== liveNet.bid) return false;
+        const ep = liveNum(val.ep);
+        if (ep < liveNet.ep) return false; // 방장을 넘기기 전 예전 방장의 화면
+        if (ep > liveNet.ep) { // 새 방장의 첫 화면: 시계·순서 기준을 새로 잡음
+          liveNet.ep = ep;
+          liveNet.minAt = 0;
+          resetLiveFrameBuffer();
+          liveNet.lastFrameAt = Date.now();
+        }
+        return true;
+      }
+      return liveNum(val.at) >= liveNet.minAt;
     }
 
     function stopLiveBattleNet() {
@@ -25154,6 +25370,7 @@
       };
       const frame = {
         at: Date.now(),
+        ...(liveNet.towerCast || typeof liveNet.bid !== 'number' ? {} : { b: liveNet.bid, ep: liveNet.ep || 0 }),
         t: sim.tickCount,
         u: sim.units.map(packLiveUnit),
         p: sim.projectiles.slice(0, 80).map(packLiveProjectile),
@@ -25178,6 +25395,7 @@
       publishLiveBattleFrameNow();
       ref.child('result').set({
         at: Date.now(),
+        ...(liveNet.towerCast || typeof liveNet.bid !== 'number' ? {} : { b: liveNet.bid, ep: liveNet.ep || 0 }),
         blueWon: Boolean(blueTeamWon),
         forfeitTeam: sim.forfeitTeam || null,
         s: sim.units.map(u => [Math.round(liveNum(u.damageDealt)), Math.round(liveNum(u.healDone)), Math.round(liveNum(u.damageTaken))])
@@ -25416,7 +25634,7 @@
     }
 
     function applyLiveInit(val) {
-      if (liveNet.role !== 'guest' || !val || !Array.isArray(val.units) || liveNum(val.at) < liveNet.minAt) return;
+      if (liveNet.role !== 'guest' || !val || !Array.isArray(val.units) || !liveAcceptPayload(val)) return;
       const units = deepCleanStrings(val.units).filter(u => u && typeof u === 'object' && u.id).map(normalizeLiveUnit);
       if (!units.length) return;
       const prevId = battleControl.mode === 'manual' ? battleControl.unitId : null;
@@ -25452,7 +25670,7 @@
     }
 
     function applyLiveFrame(val) {
-      if (liveNet.role !== 'guest' || !liveNet.initReceived || !val || liveNum(val.at) < liveNet.minAt || !Array.isArray(val.u)) return;
+      if (liveNet.role !== 'guest' || !liveNet.initReceived || !val || !Array.isArray(val.u) || !liveAcceptPayload(val)) return;
       const now = Date.now();
       const at = liveNum(val.at);
       liveNet.lastFrameAt = now;
@@ -25531,7 +25749,7 @@
     }
 
     function applyLiveResult(val) {
-      if (liveNet.role !== 'guest' || liveNet.finished || !val || liveNum(val.at) < liveNet.minAt) return;
+      if (liveNet.role !== 'guest' || liveNet.finished || !val || !liveAcceptPayload(val)) return;
       liveNet.finished = true;
       // 아직 재생하지 못한 마지막 화면들까지 적용한 뒤 결과를 보여 줌
       (liveNet.frameBuf || []).splice(0).forEach(f => {
@@ -25600,6 +25818,8 @@
       (sim.zones || []).forEach(z => { if (z.life > 1) z.life = Math.max(1, z.life - ticks); });
       if (sim.eliteIntro) sim.eliteIntro.t += ticks; // 다음 화면이 올 때까지 보스가 떨어지는 연출도 이어 그림
 
+      // 직접 조종 중이면 조작 상태를 1.5초마다 한 번 더 보냄: 방장이 잠깐 끊겼다 오면 서버가 내 조작 기록을 지워서, 키를 계속 누르고 있어도 멈춘 것처럼 되는 것을 막음
+      if (battleControl.mode === 'manual' && !liveNet.spectator && liveNet.role === 'guest' && now - (liveNet.lastInputSentAt || 0) > 1500) onLocalControlChanged();
       // 직접 조종 중이면 마우스 조준이 바뀐 것도 가끔(0.1초마다) 보냄
       if (battleControl.mode === 'manual' && typeof localBattleInput.aimX === 'number' && now - (liveNet.lastAimCheckAt || 0) >= 100) {
         liveNet.lastAimCheckAt = now;
@@ -25753,13 +25973,13 @@
       liveRaidRoomsCache[roomId] = roomObj;
       renderLiveRaidRoomsList();
       checkAutoStartMatchedRaidRoom();
-      const db = RealtimePvpService.initFirebaseClientSafe();
-      const classCode = String(state.classCode || '').trim().toUpperCase();
-      if (db && classCode) {
-        try {
-          await db.ref(`classes/${classCode}/raid_rooms/${roomId}`).set(roomObj);
-        } catch (e) {}
+      const res = await mergeWriteRoom('raid_rooms', roomId, roomObj);
+      if (!res.ok) {
+        adoptRoomAfterFailedWrite(liveRaidRoomsCache, roomId, res.value);
+        renderLiveRaidRoomsList();
+        return false;
       }
+      return true;
     }
 
     async function removeRaidRoomData(roomId) {
@@ -25830,31 +26050,38 @@
         showNotice('⚠️ 협동 레이드 방에 입장하려면 먼저 내 용병을 최소 1명 이상 보유·선택해야 합니다!');
         return;
       }
-      const room = liveRaidRoomsCache[roomId];
-      if (!room) return;
-      if (room.hostId === myStu.id) {
+      const myPower = myMercs.reduce((s, m) => s + calcMercCombatPower(m, myStu), 0);
+      // 같은 순간에 다른 친구가 같은 칸에 먼저 앉으면 서버가 내 저장을 물리므로, 최신 방을 다시 보고 남은 칸에 앉아 봄 (최대 3번)
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const room = liveRaidRoomsCache[roomId];
+        if (!room) return;
+        if (room.hostId === myStu.id) {
+          currentJoinedRaidRoomId = roomId;
+          renderLiveRaidRoomsList();
+          return;
+        }
+        const freeSlot = RAID_GUEST_SLOTS.find(s => !room[s + 'Id']);
+        if (room.status !== 'waiting' || (!freeSlot && !raidSlotOf(room, myStu.id))) { currentJoinedRaidRoomId = currentJoinedRaidRoomId === roomId ? null : currentJoinedRaidRoomId; showNotice('⚠️ 이미 자리가 찬 레이드방이에요.'); return; }
+        if (attempt === 0) leaveRoomsExcept('raid', roomId);
         currentJoinedRaidRoomId = roomId;
-        renderLiveRaidRoomsList();
+        if (raidSlotOf(room, myStu.id)) { renderLiveRaidRoomsList(); return; }
+        room[freeSlot + 'Id'] = myStu.id;
+        room[freeSlot + 'Num'] = myStu.num;
+        room[freeSlot + 'Name'] = myStu.name;
+        room[freeSlot + 'Power'] = myPower;
+        room[freeSlot + 'Mercs'] = JSON.parse(JSON.stringify(myMercs));
+        room[freeSlot + 'StudentSnapshot'] = publicStudentSnapshot(myStu);
+        room[freeSlot + 'Ready'] = false;
+        room[raidPracticeKey(freeSlot)] = false;
+        if (room.gone) delete room.gone[myStu.id];
+        if ((await saveRaidRoomData(roomId, room)) === false) continue;
+        armRoomPresence(`raid_rooms/${roomId}`, myStu.id);
+        showRewardBanner(`🚪 [${room.title}] 협동 파티에 입장했습니다! [✋ 준비완료] 버튼을 눌러주세요.`);
         return;
       }
-      const freeSlot = RAID_GUEST_SLOTS.find(s => !room[s + 'Id']);
-      if (room.status !== 'waiting' || (!freeSlot && !raidSlotOf(room, myStu.id))) { showNotice('⚠️ 이미 자리가 찬 레이드방이에요.'); return; }
-      leaveRoomsExcept('raid', roomId);
-      currentJoinedRaidRoomId = roomId;
-      if (raidSlotOf(room, myStu.id)) { renderLiveRaidRoomsList(); return; }
-      const myPower = myMercs.reduce((s, m) => s + calcMercCombatPower(m, myStu), 0);
-      room[freeSlot + 'Id'] = myStu.id;
-      room[freeSlot + 'Num'] = myStu.num;
-      room[freeSlot + 'Name'] = myStu.name;
-      room[freeSlot + 'Power'] = myPower;
-      room[freeSlot + 'Mercs'] = JSON.parse(JSON.stringify(myMercs));
-      room[freeSlot + 'StudentSnapshot'] = publicStudentSnapshot(myStu);
-      room[freeSlot + 'Ready'] = false;
-      room[raidPracticeKey(freeSlot)] = false;
-      if (room.gone) delete room.gone[myStu.id];
-      await saveRaidRoomData(roomId, room);
-      armRoomPresence(`raid_rooms/${roomId}`, myStu.id);
-      showRewardBanner(`🚪 [${room.title}] 협동 파티에 입장했습니다! [✋ 준비완료] 버튼을 눌러주세요.`);
+      if (currentJoinedRaidRoomId === roomId) currentJoinedRaidRoomId = null;
+      renderLiveRaidRoomsList();
+      showNotice('⚠️ 그 사이 자리가 찼거나 방이 사라졌어요. 다른 방을 골라 주세요.');
     };
 
     window.toggleRaidRoomReady = async function (roomId) {
@@ -26217,6 +26444,7 @@
       const asHost = me && hostId === me.id;
       startLiveBattleNet(raidCastId(rl.roomId, hostId), asHost ? 'host' : 'guest', startedAt, false, true, asHost ? guests : [], takeover);
       if (!liveNet.ref) return; // 서버에 연결되지 않았으면 각자 화면에서 진행
+      if (!asHost) liveNet.bid = null; // 레이드는 계산 담당이 바뀔 때마다 새 화면 줄을 따로 쓰므로 예전처럼 시각으로 가름
       liveNet.raidCast = true;
       if (asHost && takeover) {
         liveNet.guestChose = true;
@@ -26369,6 +26597,7 @@
       renderBattleControlHud(true);
       addBattleLog(`📺 [관전] ${pick.name} 친구 화면의 [${bossDef.name}] 토벌을 보고 있어요. (WASD·드래그로 화면 이동)`);
       startLiveBattleNet(pick.castId, 'guest', liveNum(init.at), true, false);
+      liveNet.bid = typeof init.b === 'number' ? init.b : null; liveNet.ep = liveNum(init.ep);
       const wRef = liveRoomRef(pick.castId).child('watchers').child(me.id);
       liveNet.raidWatchRef = wRef;
       try { wRef.onDisconnect().remove(); } catch (e) {}
@@ -26436,13 +26665,13 @@
     async function saveMinigameRoomData(roomId, roomObj) {
       liveMinigameRoomsCache[roomId] = roomObj;
       renderMinigameLobbyAndRoomUI();
-      const db = RealtimePvpService.initFirebaseClientSafe();
-      const classCode = String(state.classCode || '').trim().toUpperCase();
-      if (db && classCode) {
-        try {
-          await db.ref(`classes/${classCode}/minigame_rooms/${roomId}`).set(roomObj);
-        } catch (e) {}
+      const res = await mergeWriteRoom('minigame_rooms', roomId, roomObj);
+      if (!res.ok) {
+        adoptRoomAfterFailedWrite(liveMinigameRoomsCache, roomId, res.value);
+        renderMinigameLobbyAndRoomUI();
+        return false;
       }
+      return true;
     }
 
     async function removeMinigameRoomData(roomId) {
@@ -26521,7 +26750,12 @@
       currentJoinedMinigameRoomId = roomId;
       mgRealtimeSyncEnabled = true;
       if (room.gone) delete room.gone[myStu.id];
-      await saveMinigameRoomData(roomId, room);
+      if ((await saveMinigameRoomData(roomId, room)) === false) {
+        if (currentJoinedMinigameRoomId === roomId) currentJoinedMinigameRoomId = null;
+        renderMinigameLobbyAndRoomUI();
+        showNotice('⚠️ 그 사이 정원이 찼거나 방이 사라졌어요. 다른 방을 골라 주세요.');
+        return;
+      }
       armRoomPresence(`minigame_rooms/${roomId}`, myStu.id);
       applyRemoteMinigamesState(lastMinigamesSnapshot[roomId] || {});
       showRewardBanner(`🚪 [${room.title}]에 입장했습니다! [✋ 준비완료] 버튼을 눌러주세요.`);
@@ -26997,7 +27231,11 @@
     // 새 게임(gameId가 다름)이거나 더 최근 차례(seq가 큼)일 때만 받아들임 — 내가 보낸 값이 되돌아와도 무시됨
     function mgShouldAccept(local, remote) {
       if (!remote || !remote.initialized || !remote.gameId) return false;
-      return !local.initialized || remote.gameId !== local.gameId || (remote.seq || 0) > (local.seq || 0);
+      if (!local.initialized || remote.gameId !== local.gameId) return true;
+      const rs = remote.seq || 0, ls = local.seq || 0;
+      if (rs !== ls) return rs > ls;
+      // 같은 번호인데 올린 사람이 다르면(동시에 둔 경우) 서버에 마지막으로 남은 쪽을 따라가야 모든 화면이 같아짐 — 내가 올린 것의 메아리(같은 표)는 무시
+      return Boolean(remote.nonce) && remote.nonce !== local.nonce;
     }
 
     // 처음 받은 게임이 이미 끝나 있으면(로그인·방 입장 때 예전 판을 불러온 경우) 승패 알림·보상을 건너뜀
@@ -27118,6 +27356,7 @@
           mathDuelState = {
             ...md,
             qIdx: Number(md.qIdx) || 0,
+            qStartAt: mgLocalDeadline(md, 'qStartAt'), // 다음 문제 공개 시각도 기기 시계 차이를 맞춰 내 시계로 옮김
             seats: mgArr(md.seats),
             scores: mgArr(md.scores).map(Number),
             last: md.last || null
