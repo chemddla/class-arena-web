@@ -315,6 +315,23 @@
       .side-rank-panel.open .side-rank-tab { display: none; }
       .side-rank-close { display: inline-flex; }
     }
+    /* 좌측 관전하기 패널: 랭킹 패널과 같은 방식으로 본문 바깥 왼쪽 여백에 떠 있음. 좁은 화면에서는 왼쪽 끝 탭을 눌러 펼침 */
+    .side-watch-panel { position: fixed; z-index: 25; left: 8px; top: 84px; bottom: 16px; display: flex; align-items: flex-start; gap: 6px; pointer-events: none; }
+    .side-watch-panel > * { pointer-events: auto; }
+    .side-watch-body { width: clamp(200px, calc((100vw - 1480px) / 2 - 20px), 280px); max-height: 100%; }
+    .side-watch-tab { display: none; }
+    .side-watch-close { display: none; }
+    @media (max-width: 1899px) {
+      .side-watch-panel { top: 50%; bottom: auto; left: 0; transform: translateY(-50%); max-height: calc(100vh - 120px); }
+      .side-watch-tab { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; border-radius: 0 12px 12px 0; writing-mode: vertical-rl; font-weight: 800; font-size: 12px; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18); }
+      .side-watch-panel .side-watch-body { display: none; width: 260px; max-height: calc(100vh - 120px); margin-left: 8px; }
+      .side-watch-panel.open { top: 120px; bottom: 16px; transform: none; max-height: none; }
+      .side-watch-panel.open .side-watch-body { display: flex; max-height: 100%; }
+      .side-watch-panel.open .side-watch-tab { display: none; }
+      .side-watch-close { display: inline-flex; }
+    }
+    /* 미니게임 관전: 판은 보기만 (누르거나 입력할 수 없음) */
+    #minigameActiveBoardSection.mg-spectating [id^="mgPanel-"] { pointer-events: none; user-select: none; }
     /* 펫: 화면 위를 돌아다니는 학생 펫 (모달 z-50 아래) */
     .pet-actor { position: fixed; left: 0; top: 0; z-index: 48; pointer-events: none; will-change: transform; }
     .pet-actor .pet-body { pointer-events: auto; cursor: grab; position: relative; transform-origin: 50% 100%; }
@@ -2002,7 +2019,14 @@
                 </div>
               </div>
             </div>
-            <div class="flex items-center gap-2">
+            <div id="mgBoardWatchBtns" class="hidden flex items-center gap-2">
+              <span class="px-2.5 py-1 rounded-lg bg-violet-500/20 text-violet-300 font-extrabold text-xs">📺 관전 중 · 보기만 해요</span>
+              <button type="button" onclick="stopWatchingMinigameRoom()"
+                class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-violet-900/60 text-slate-200 font-extrabold text-xs border border-slate-700">
+                📺 관전 그만하기
+              </button>
+            </div>
+            <div id="mgBoardPlayerBtns" class="flex items-center gap-2">
               <button type="button" onclick="returnMinigameRoomToWaiting()"
                 class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-extrabold text-xs border border-slate-700">
                 🔙 방 대기실로 돌아가기
@@ -2188,6 +2212,22 @@
           <div id="sideEarnBox" class="rounded-xl bg-slate-950 border border-emerald-500/40 px-2 py-1.5 flex flex-col gap-1"></div>
           <div id="sideRankList" class="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1"></div>
           <button type="button" onclick="goToRankedMatch()" class="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow">🎯 랭킹 매칭 하러 가기</button>
+        </div>
+      </aside>
+
+      <!-- 좌측 고정: 지금 친구들이 하고 있는 실시간 컨텐츠 (탑·결투·레이드 관전, 미니게임 진행 표시) -->
+      <aside id="sideWatchPanel" class="side-watch-panel" aria-label="친구들이 진행 중인 컨텐츠 관전하기">
+        <button type="button" onclick="toggleSideWatchPanel(true)" class="side-watch-tab bg-violet-600 hover:bg-violet-500 text-white" title="관전하기 펼치기">
+          <span>📺</span> 관전하기 <span id="sideWatchTabCount" class="hidden px-1 rounded-full bg-white text-violet-700 text-[10px]" style="writing-mode:horizontal-tb"></span>
+        </button>
+        <div class="side-watch-body bg-slate-900 border-2 border-violet-500/40 rounded-2xl p-3 flex flex-col gap-2 shadow-2xl">
+          <div class="flex items-center justify-between gap-2">
+            <h4 class="font-title text-base text-white">📺 관전하기</h4>
+            <span id="sideWatchCount" class="ml-auto px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 text-[10px] font-extrabold"></span>
+            <button type="button" onclick="toggleSideWatchPanel(false)" class="side-watch-close text-slate-400 hover:text-white font-bold text-sm" title="접기">✕</button>
+          </div>
+          <div class="text-[10px] text-slate-400">친구들이 지금 하고 있는 컨텐츠예요. (관전은 보상이 없어요)</div>
+          <div id="sideWatchList" class="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1"></div>
         </div>
       </aside>
     </div>
@@ -6882,6 +6922,112 @@
     window.addEventListener('resize', () => renderSideRankPanel());
     // 친구 점수가 서버에서 바뀌어도 따라가도록 보이는 동안 5초마다 새로 그림
     setInterval(() => { if (document.getElementById('sideRankPanel')?.getClientRects().length) renderSideRankPanel(); }, 5000);
+
+    // ----- 좌측 관전하기 패널: 친구들이 지금 하고 있는 탑·결투·레이드·미니게임 -----
+    function toggleSideWatchPanel(open) {
+      document.getElementById('sideWatchPanel')?.classList.toggle('open', !!open);
+      placeSideWatchPanel();
+    }
+
+    function placeSideWatchPanel() {
+      const panel = document.getElementById('sideWatchPanel');
+      const header = document.querySelector('#mainAppShell > header');
+      if (!panel) return;
+      const docked = window.innerWidth >= 1900 || panel.classList.contains('open');
+      panel.style.top = docked && header ? `${Math.max(16, header.getBoundingClientRect().bottom + 10)}px` : '';
+    }
+
+    // 지금 진행 중인 컨텐츠 (내가 하고 있는 건 빼고) · watching: 내가 보고 있는 것
+    function liveWatchItems() {
+      const me = getActiveStudent();
+      const myId = me ? me.id : null;
+      const watchingBattle = sim.spectator && sim.running;
+      const items = [];
+      liveTowerRuns().forEach(r => items.push({
+        kind: 'tower', id: r.id, icon: '🏰', names: r.name,
+        detail: `모험의 탑 · ${r.title || `${liveNum(r.floor)}층`}${r.replay ? ' (연습)' : ''}`,
+        watchers: r.watchers && typeof r.watchers === 'object' ? Object.keys(r.watchers).length : 0,
+        watching: watchingBattle && sim.towerWatch && sim.towerWatch.stuId === r.id
+      }));
+      Object.values(livePvpRoomsCache || {}).forEach(r => {
+        if (!r || !r.roomId || r.status !== 'playing' || (myId && isPvpRoomPlayer(r, myId))) return;
+        const team = isTeamLiveRoom(r);
+        items.push({
+          kind: 'pvp', id: r.roomId, icon: '⚔️',
+          names: team ? `${r.hostName}의 팀전` : `${r.hostName} vs ${r.guestName || '?'}`,
+          detail: team ? '실시간 팀전' : (isDuelRoom(r) ? '1:1 용병 대결' : '5:5 실시간 결투'),
+          watchers: pvpSpectatorList(r).length,
+          watching: watchingBattle && sim.spectateRoomId === r.roomId,
+          locked: r.practiceFriend || (team && !teamMembersOf(r).some(m => !m.ai && m.id !== r.hostId)) ? '연습 경기' : ''
+        });
+      });
+      Object.values(liveRaidRoomsCache || {}).forEach(r => {
+        if (!r || !r.roomId || r.status !== 'in_battle' || (myId && raidSlotOf(r, myId))) return;
+        items.push({
+          kind: 'raid', id: r.roomId, icon: '🐉',
+          names: RAID_SLOTS.filter(s => r[s + 'Id'] && !raidIsPractice(r, s)).map(s => r[s + 'Name'] || '친구').join(', '),
+          detail: `엘리트 토벌 · ${r.bossName || '보스'}`, watchers: 0,
+          watching: watchingBattle && sim.raidWatch && sim.raidWatch.roomId === r.roomId
+        });
+      });
+      Object.values(liveMinigameRoomsCache || {}).forEach(r => {
+        if (!r || !r.roomId || r.status !== 'playing' || Date.now() - (r.createdAt || 0) >= 3600000) return;
+        const players = (r.players || []).filter(Boolean);
+        if (myId && players.some(p => p.id === myId && !p.practice)) return;
+        items.push({
+          kind: 'minigame', id: r.roomId, icon: r.gameIcon || '🎲',
+          names: players.map(p => p.name).join(' vs '), detail: `미니게임 · ${r.gameName || ''}`, watchers: 0,
+          watching: mgWatchRoomId === r.roomId
+        });
+      });
+      return items;
+    }
+
+    function renderSideWatchPanel() {
+      const listEl = document.getElementById('sideWatchList');
+      if (!listEl) return;
+      const items = liveWatchItems();
+      const countEl = document.getElementById('sideWatchCount');
+      if (countEl) countEl.textContent = items.length ? `${items.length}개 진행 중` : '';
+      const tabCount = document.getElementById('sideWatchTabCount');
+      if (tabCount) { tabCount.textContent = items.length; tabCount.classList.toggle('hidden', !items.length); }
+      listEl.innerHTML = items.map(it => `
+        <div class="rounded-xl px-2 py-1.5 border ${it.watching ? 'bg-violet-950/40 border-violet-400 ring-1 ring-violet-400' : 'bg-slate-950 border-slate-800'} flex items-center gap-2">
+          <span class="w-7 shrink-0 text-center text-lg">${it.icon}</span>
+          <div class="min-w-0 flex-1">
+            <div class="text-xs font-extrabold text-white truncate" title="${it.names}">${it.names}</div>
+            <div class="text-[10px] text-slate-400 truncate">${it.detail}</div>
+            ${it.watchers ? `<div class="text-[10px] text-violet-300 font-bold">👀 ${it.watchers}명 관전 중</div>` : ''}
+          </div>
+          ${it.locked
+            ? `<span class="shrink-0 px-2 py-1 rounded-lg bg-slate-800 text-slate-400 font-bold text-[10px]" title="연습 친구·AI와 하는 경기는 관전할 수 없어요">${it.locked}</span>`
+            : `<button type="button" onclick="sideWatchGo('${it.kind}', '${it.id}')" class="shrink-0 px-2 py-1.5 rounded-lg ${it.watching ? 'bg-violet-800 hover:bg-violet-700' : 'bg-violet-600 hover:bg-violet-500'} text-white font-extrabold text-[11px] shadow">${it.watching ? '보는 중' : '관전'}</button>`}
+        </div>`).join('') || '<div class="text-xs text-slate-400 text-center py-4">지금 진행 중인 컨텐츠가 없어요.</div>';
+      placeSideWatchPanel();
+    }
+
+    window.sideWatchGo = async function (kind, id) {
+      if (!getActiveStudent()) { showNotice('⚠️ 로그인하면 친구들의 컨텐츠를 관전할 수 있어요.'); return; }
+      const it = liveWatchItems().find(x => x.kind === kind && x.id === id);
+      if (!it) { showNotice('⚠️ 이미 끝난 컨텐츠예요.'); renderSideWatchPanel(); return; }
+      toggleSideWatchPanel(false);
+      if (it.watching) { if (kind === 'minigame') goToStudentTab('minigame'); else returnToBattle(); return; }
+      if (kind === 'minigame') { spectateMinigameRoom(id); return; }
+      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      // 보던 것은 그만보고 새로 봄
+      if (mgWatchRoomId) stopWatchingMinigameRoom(true);
+      if (kind === 'pvp') spectatePvpRoom(id);
+      else {
+        if (currentSpectatingPvpRoomId) stopSpectatingPvpRoom(true);
+        else if (sim.spectator && sim.running) { stopLiveBattleNet(); closeBattleResult(); }
+        if (kind === 'tower') await spectateTowerRun(id);
+        else await spectateRaidRoom(id);
+      }
+      if (sim.spectator && sim.running) returnToBattle();
+      renderSideWatchPanel();
+    };
+    window.addEventListener('resize', () => placeSideWatchPanel());
+    setInterval(() => { if (document.getElementById('sideWatchPanel')?.getClientRects().length) renderSideWatchPanel(); }, 5000);
 
     // ----- 로그인 직후 랭킹 매칭 홍보 팝업 -----
     function openRankedPromoModal() {
@@ -19130,9 +19276,11 @@
       return 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     }
 
+    // 관전 중인 방도 실시간 방으로 봄 → 내 자리가 없어서 둘 수 없고, AI·시간 초과 판정은 방장 화면만 함
     function mgCurrentRoom() {
-      if (!mgRealtimeSyncEnabled || !currentJoinedMinigameRoomId) return null;
-      return liveMinigameRoomsCache[currentJoinedMinigameRoomId] || null;
+      const roomId = currentJoinedMinigameRoomId || mgWatchRoomId;
+      if (!mgRealtimeSyncEnabled || !roomId) return null;
+      return liveMinigameRoomsCache[roomId] || null;
     }
 
     function mgBuildSeats(maxSeats) {
@@ -22205,6 +22353,7 @@
       activeTowerLiveRef.on('value', (snap) => {
         towerLiveCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
         onTowerLiveIndexChanged();
+        renderSideWatchPanel();
       });
 
       // 1) 실시간 PvP 대기 로비방 구독 (/classes/{code}/pvp_rooms)
@@ -22214,6 +22363,7 @@
         maintainPvpRooms();
         renderLivePvpRoomsList();
         checkAutoStartMatchedPvpRoom();
+        renderSideWatchPanel();
         RoomInvites.render();
         if (RoomInvites.modal) RoomInvites.renderModal();
       });
@@ -22226,6 +22376,7 @@
         renderLiveRaidRoomsList();
         checkAutoStartMatchedRaidRoom();
         checkSpectatedRaidRoom();
+        renderSideWatchPanel();
         RoomInvites.render();
         if (RoomInvites.modal) RoomInvites.renderModal();
       });
@@ -22236,6 +22387,7 @@
         liveMinigameRoomsCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
         maintainMinigameRooms();
         renderMinigameLobbyAndRoomUI();
+        renderSideWatchPanel();
         RoomInvites.render();
         if (RoomInvites.modal) RoomInvites.renderModal();
       });
@@ -22250,8 +22402,9 @@
       activeMinigamesRef = db.ref(`classes/${cleanCode}/minigames`);
       activeMinigamesRef.on('value', (snap) => {
         lastMinigamesSnapshot = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
-        if (!mgRealtimeSyncEnabled || !currentJoinedMinigameRoomId) return;
-        applyRemoteMinigamesState(lastMinigamesSnapshot[currentJoinedMinigameRoomId] || {});
+        const mgRoomId = currentJoinedMinigameRoomId || mgWatchRoomId;
+        if (!mgRealtimeSyncEnabled || !mgRoomId) return;
+        applyRemoteMinigamesState(lastMinigamesSnapshot[mgRoomId] || {});
       });
 
       // 5) 라이브 전투 중 실시간 대시(Dash) 이벤트 구독 (/classes/{code}/live_battle_events)
@@ -22361,6 +22514,7 @@
         if ((r.players || []).some(p => p && p.id === me.id && !p.practice)) leaveMinigameRoom(true, r.roomId);
       });
       if (currentJoinedMinigameRoomId && !keep('minigame', currentJoinedMinigameRoomId)) currentJoinedMinigameRoomId = null;
+      if (mgWatchRoomId && !keep('minigame', mgWatchRoomId)) stopWatchingMinigameRoom(true);
     }
 
     // 방에서 나갈 때 그 방 전투가 진행 중이면 정리 (나가기 = 포기)
@@ -25474,6 +25628,7 @@
 
     // 미니게임방 나가기: 방장이 나가도 방과 게임은 그대로, 남은 친구가 새 방장 · 게임 중이면 내 자리는 AI가 이어서 둠
     window.leaveMinigameRoom = async function (quiet = false, roomIdArg = null) {
+      if (!roomIdArg && !currentJoinedMinigameRoomId && mgWatchRoomId) { stopWatchingMinigameRoom(quiet); return; }
       mgSoloPracticeActive = false;
       const myStu = getActiveStudent();
       const roomId = roomIdArg || currentJoinedMinigameRoomId;
@@ -25500,6 +25655,40 @@
 
     // 혼자 연습 중인지 (이때는 다른 방 소식이나 학급 갱신이 와도 로비로 돌아가지 않음)
     var mgSoloPracticeActive = false; // var: 스크립트가 다 읽히기 전에 불려도 오류 나지 않게
+
+    // 📺 미니게임 관전: 방에 들어가지 않고(방 데이터에 아무것도 쓰지 않음) 그 방의 판(minigames/{방})만 받아서 보여 줌
+    // 판을 서버로 올리는 건 currentJoinedMinigameRoomId가 있을 때만이라 관전자는 판을 바꿀 수 없음
+    var mgWatchRoomId = null;
+
+    window.spectateMinigameRoom = function (roomId) {
+      const me = getActiveStudent();
+      const r = liveMinigameRoomsCache && liveMinigameRoomsCache[roomId];
+      if (!me || !r || r.status !== 'playing') { showNotice('⚠️ 미니게임을 찾지 못했어요. 이미 끝났을 수 있어요.'); return; }
+      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      if (sim.spectator && sim.running) { stopLiveBattleNet(); closeBattleResult(); }
+      const isPlayer = (r.players || []).some(p => p && p.id === me.id && !p.practice);
+      if (!isPlayer) {
+        if (currentJoinedMinigameRoomId) { showNotice('⚠️ 들어가 있는 미니게임 방에서 먼저 나와 주세요.'); return; }
+        leaveRoomsExcept('minigame', null);
+        mgSoloPracticeActive = false;
+        if (mgWatchRoomId !== roomId) mgStopLocalGames();
+        mgWatchRoomId = roomId;
+        mgRealtimeSyncEnabled = true;
+        applyRemoteMinigamesState(lastMinigamesSnapshot[roomId] || {});
+      }
+      goToStudentTab('minigame');
+      renderMinigameLobbyAndRoomUI();
+      renderSideWatchPanel();
+    };
+
+    window.stopWatchingMinigameRoom = function (quiet = false) {
+      if (!mgWatchRoomId) return;
+      mgWatchRoomId = null;
+      mgStopLocalGames();
+      renderMinigameLobbyAndRoomUI();
+      renderSideWatchPanel();
+      if (!quiet) showNotice('📺 관전을 그만뒀어요.');
+    };
 
     window.startSoloMinigamePractice = function () {
       leaveRoomsExcept('minigame', null);
@@ -25546,6 +25735,21 @@
         activeRoom = rooms.find(r => Array.isArray(r.players) && r.players.some(p => p && p.id === myStu.id && !p.practice)) || null;
         if (activeRoom) currentJoinedMinigameRoomId = activeRoom.roomId;
       }
+      // 관전 중인 방: 경기가 끝나 대기실로 돌아가거나 방이 닫히면 관전도 끝
+      if (activeRoom && mgWatchRoomId) mgWatchRoomId = null;
+      let watching = false;
+      if (!activeRoom && mgWatchRoomId) {
+        const w = liveMinigameRoomsCache[mgWatchRoomId];
+        if (w && w.status === 'playing') { activeRoom = w; watching = true; }
+        else {
+          mgWatchRoomId = null;
+          mgStopLocalGames();
+          showNotice('📺 관전하던 미니게임이 끝났어요. (관전은 보상이 없어요)');
+        }
+      }
+      if (boardSec) boardSec.classList.toggle('mg-spectating', watching);
+      document.getElementById('mgBoardPlayerBtns')?.classList.toggle('hidden', watching);
+      document.getElementById('mgBoardWatchBtns')?.classList.toggle('hidden', !watching);
 
       // 게임 화면에서 대기실·로비로 나오면 내 화면의 판을 치움 (대기실에 처음 들어올 때는 그대로 — 방장이 막 시작한 판이 먼저 도착할 수 있음)
       const mgViewNow = activeRoom ? `${activeRoom.roomId}:${activeRoom.status}` : (mgSoloPracticeActive ? 'solo' : 'lobby');
@@ -25677,7 +25881,9 @@
           const statusTxt = document.getElementById('mgRealtimeRoomStatusText');
           const playerNames = (activeRoom.players || []).map(p => `${p.name}`).join(' vs ');
           if (statusTxt) {
-            statusTxt.textContent = `🔥 [${activeRoom.title}] ${activeRoom.gameName} 진행 중 (${playerNames})`;
+            statusTxt.textContent = watching
+              ? `📺 관전 중: [${activeRoom.title}] ${activeRoom.gameName} (${playerNames})`
+              : `🔥 [${activeRoom.title}] ${activeRoom.gameName} 진행 중 (${playerNames})`;
           }
           if (currentMinigameTab !== activeRoom.gameType) {
             switchMinigameSubTab(activeRoom.gameType);
@@ -25748,7 +25954,7 @@
                   ? (isFull
                       ? `<button onclick="joinMinigameRoom('${r.roomId}')" class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs">🚪 방 보기 (${players.length}/${r.maxPlayers || 2})</button>`
                       : `<button onclick="joinMinigameRoom('${r.roomId}')" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow-lg">🚪 이 방에 입장하기</button>`)
-                  : `<span class="block w-full text-center py-2 rounded-xl bg-rose-500/15 text-rose-300 font-bold text-xs">🔥 실시간 경기 진행중</span>`
+                  : `<button onclick="spectateMinigameRoom('${r.roomId}')" class="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow-lg">📺 경기 진행중 · 관전하기</button>`
               }
             </div>
           </div>
