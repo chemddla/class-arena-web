@@ -320,6 +320,9 @@
     .pet-actor .pet-body { pointer-events: auto; cursor: grab; position: relative; transform-origin: 50% 100%; }
     .pet-actor.dragging .pet-body { cursor: grabbing; }
     .pet-actor .pet-sprite { background-repeat: no-repeat; transform-origin: 50% 100%; }
+    .pet-draw-egg { animation: petEggShake 0.35s ease-in-out infinite; }
+    @keyframes petEggShake { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-14deg); } 75% { transform: rotate(14deg); } }
+    .pet-draw-reveal { animation: petPop 0.55s ease-out; }
     .pet-actor.pop .pet-body { animation: petPop 0.55s ease-out; }
     @keyframes petPop { 0% { transform: scale(0.2) translateY(20px); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
     .pet-bubble { position: absolute; left: 50%; bottom: 100%; transform: translate(-50%, -6px); white-space: nowrap; background: #fff; color: #1e293b; font-size: 12px; font-weight: 800; padding: 4px 9px; border-radius: 10px; box-shadow: 0 3px 10px rgba(0,0,0,0.25); pointer-events: none; animation: mgPop 0.25s ease-out; }
@@ -1396,17 +1399,22 @@
           <div id="marketAuctionGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
         </div>
 
-        <!-- 2-A. 펫 입양소: CA로 펫을 입양 (학생당 한 마리) -->
+        <!-- 2-A. 펫 뽑기 & 보관함: CA로 랜덤 뽑기, 여러 마리를 모아 한 마리만 활성화 -->
         <div class="bg-slate-900 border-2 border-amber-500/40 rounded-2xl p-4 flex flex-col gap-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h4 class="font-title text-xl text-white flex items-center gap-2">
-                <span>🐾</span> 펫 입양소
+                <span>🐾</span> 펫 뽑기 & 보관함
                 <span id="petShopMine" class="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">아직 펫이 없어요</span>
               </h4>
               <p class="text-xs text-slate-400 mt-0.5">
-                입양한 펫은 로그인하면 화면을 자유롭게 돌아다녀요. <strong>클릭</strong>하면 쓰다듬기·먹이·츄르·크기 조절을 할 수 있어요. 위쪽 <strong>🐾 펫</strong> 버튼으로 켜고 끌 수 있어요. (한 마리만 키울 수 있어요)
+                <strong>펫 뽑기</strong>로 8종 중 한 마리를 랜덤으로 만나요. 이미 있는 펫이 나오면 <strong>1,000 CA</strong>를 돌려받아요.
+                여러 마리를 모을 수 있지만 <strong>전투 효과는 활성화한 펫 한 마리</strong>만 받아요. 위쪽 <strong>🐾 펫</strong> 버튼으로 화면에 띄우고 끌 수 있어요.
               </p>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <button type="button" onclick="PetSystem.openDex()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-xs">📖 펫 도감</button>
+              <button type="button" onclick="PetSystem.draw()" class="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow">🎲 펫 뽑기 (5,000 CA)</button>
             </div>
           </div>
           <button id="petShopToggleBtn" type="button" onclick="PetSystem.toggle()" class="hidden self-start px-3 py-1.5 rounded-xl text-xs font-extrabold border-2 transition"></button>
@@ -22010,6 +22018,7 @@
       const force = !(syncCache.loaded && syncCache.classCode === cleanCode);
       applyLoadedClassPayload(cleanCode, { ...classRemote }, true, force);
       if (force) StudentInbox.settle();
+      PetSystem.migrateLegacy();
 
       // 내게 도착한 신규 거래소 구매 제안 알림 체크
       const myStu = getActiveStudent();
@@ -26962,7 +26971,9 @@
                                       sleep: [17, 18], yawn: [19, 20], groom: [21, 22, 23, 24], climb: [25, 26, 27, 28],
                                       snack: [29, 30, 31, 32], like: [33, 34, 35, 36] } } },
     };
-    const PET_PRICE = 10000;
+    const PET_DRAW_PRICE = 5000;     // 펫 뽑기 1회
+    const PET_DUP_REFUND = 1000;     // 이미 있는 펫이 나오면 돌려줌
+    const PET_LEGACY_REFUND = 10000; // 예전 입양(1마리 10,000 CA) 회수 때 돌려줌
     // 동작별 프레임 속도(초당)
     const PET_ANIM_FPS = { idle: 1, walk: 8, play: 5, jump: 9, eat: 6, sleep: 1.2, yawn: 2.5, groom: 5, snack: 4, like: 5 };
     const PET_HOP_SEC = 0.55;      // 위아래 이동 때 한 번 뛰는 시간
@@ -26988,7 +26999,7 @@
       stuId: null, el: null, body: null, sprite: null, bubbleEl: null, menuEl: null,
       x: 0, y: 0, tx: 0, ty: 0, dir: 1, hopT: 0, hopping: false,
       mode: 'idle', modeUntil: 0, next: null, animT: 0, last: 0, raf: 0,
-      drag: null, rubDist: 0, rubAt: 0, patCdAt: 0, bubbleUntil: 0, saveTimer: 0, mouse: null, adoptType: null,
+      drag: null, rubDist: 0, rubAt: 0, patCdAt: 0, bubbleUntil: 0, saveTimer: 0, mouse: null, drawBusy: false,
 
       student() {
         const stu = getActiveStudent();
@@ -27012,6 +27023,7 @@
       onLogin(stu) {
         this.despawn();
         this.stuId = stu.id;
+        this.migrateLegacy();
         if (stu.pet && PET_DEFS[stu.pet.type] && !this.isHidden()) this.spawn(true);
         this.renderToggle();
       },
@@ -27026,82 +27038,205 @@
         this.renderToggle();
       },
 
-      // 거래소 > 펫 입양소
+      // 내가 가진 펫: 활성 펫(stu.pet) + 보관함(stu.petBox)
+      ownedPets(stu = this.student()) {
+        if (!stu) return [];
+        const box = Array.isArray(stu.petBox) ? stu.petBox.filter(p => p && PET_DEFS[p.type]) : [];
+        return (stu.pet && PET_DEFS[stu.pet.type] ? [stu.pet] : []).concat(box);
+      },
+      defaultName(type) { return type === 'ginger' ? '치즈' : PET_DEFS[type].name; },
+      esc(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); },
+      afterPetChange() {
+        saveState();
+        this.renderShop();
+        this.renderToggle();
+        if (typeof renderSquadTab === 'function') renderSquadTab();
+      },
+
+      // 거래소 > 펫 보관함
       renderShop() {
         const grid = document.getElementById('petShopGrid');
         if (!grid) return;
         const stu = this.student();
-        const mine = stu && stu.pet && PET_DEFS[stu.pet.type] ? stu.pet : null;
+        const owned = this.ownedPets(stu);
+        const active = stu && stu.pet && PET_DEFS[stu.pet.type] ? stu.pet : null;
         const myEl = document.getElementById('petShopMine');
         if (myEl) {
-          myEl.textContent = mine ? `내 펫: ${mine.name} (${PET_DEFS[mine.type].name})` : '아직 펫이 없어요';
+          myEl.textContent = active ? `활성: ${active.name} · 보유 ${owned.length}마리` : (owned.length ? `보유 ${owned.length}마리` : '아직 펫이 없어요');
         }
-        grid.innerHTML = Object.entries(PET_DEFS).map(([type, d]) => {
-          const ready = Boolean(d.sheet);
-          const isMine = mine && mine.type === type;
-          let btn;
-          if (!ready) btn = `<span class="text-[11px] font-bold text-slate-500">준비 중</span>`;
-          else if (isMine) btn = `<button type="button" onclick="PetSystem.callBack()" class="w-full py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-extrabold">🐾 함께하는 중</button>
-              <button type="button" onclick="PetSystem.release()" class="w-full py-1 rounded-lg bg-slate-800 hover:bg-rose-600 hover:text-white text-slate-400 text-[10px] font-bold">파양하기</button>`;
-          else if (mine) btn = `<span class="text-[11px] font-bold text-slate-500 text-center">파양 후 입양 가능</span>`;
-          else btn = `<button type="button" onclick="PetSystem.openAdopt('${type}')" class="w-full py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-[11px] font-extrabold">${PET_PRICE.toLocaleString()} CA 입양</button>`;
-          return `<div class="bg-slate-950 border ${isMine ? 'border-emerald-500/60' : 'border-slate-800'} rounded-xl p-2.5 flex flex-col items-center gap-1.5 ${ready ? '' : 'opacity-50'}">
+        if (!stu) { grid.innerHTML = `<div class="col-span-full text-xs text-slate-400 py-6 text-center bg-slate-950 rounded-xl border border-slate-800">학생 로그인을 하면 펫을 뽑고 모을 수 있어요.</div>`; return; }
+        if (!owned.length) { grid.innerHTML = `<div class="col-span-full text-xs text-slate-400 py-6 text-center bg-slate-950 rounded-xl border border-slate-800">아직 펫이 없어요. 🎲 펫 뽑기로 첫 친구를 만나 보세요!</div>`; return; }
+        grid.innerHTML = owned.map(p => {
+          const d = PET_DEFS[p.type];
+          const isActive = p === active;
+          const btn = isActive
+            ? `<span class="w-full py-1.5 rounded-lg bg-emerald-600 text-white text-[11px] font-extrabold text-center">✅ 활성화 중</span>`
+            : `<button type="button" onclick="PetSystem.activate('${this.esc(p.id)}')" class="w-full py-1.5 rounded-lg bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 text-[11px] font-extrabold">활성화</button>`;
+          return `<div class="bg-slate-950 border ${isActive ? 'border-emerald-500/60' : 'border-slate-800'} rounded-xl p-2.5 flex flex-col items-center gap-1.5">
               <img src="${d.icon}" alt="" class="h-16 w-auto object-contain" draggable="false">
-              <span class="text-xs font-extrabold text-slate-200">${d.name}</span>
+              <span class="text-xs font-extrabold text-slate-200 truncate max-w-full">${this.esc(p.name)}</span>
+              <span class="text-[10px] font-bold text-slate-500">${d.name}</span>
               ${d.effect ? `<span class="text-[10px] font-bold text-amber-300 text-center leading-tight">⚔️ ${d.effect}</span>` : ''}
               ${btn}
             </div>`;
         }).join('');
       },
 
-      openAdopt(type) {
-        const def = PET_DEFS[type];
-        if (!def || !def.sheet) return;
-        const stu = this.student();
-        if (!stu) { showNotice('⚠️ 학생 로그인을 한 뒤에 입양할 수 있어요.'); return; }
-        if (stu.pet) { showNotice('⚠️ 펫은 한 마리만 키울 수 있어요.'); return; }
-        this.adoptType = type;
-        let modal = document.getElementById('petAdoptModal');
-        if (!modal) {
-          modal = document.createElement('div');
-          modal.id = 'petAdoptModal';
-          modal.className = 'fixed inset-0 z-[55] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4';
-          document.body.appendChild(modal);
+      modal(html) {
+        let m = document.getElementById('petAdoptModal');
+        if (!m) {
+          m = document.createElement('div');
+          m.id = 'petAdoptModal';
+          m.className = 'fixed inset-0 z-[55] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4';
+          m.addEventListener('pointerdown', e => { if (e.target === m && !this.drawBusy) this.closeModal(); });
+          document.body.appendChild(m);
         }
-        const lack = (stu.mc || 0) < PET_PRICE;
-        modal.innerHTML = `
-          <div class="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-5 shadow-2xl flex flex-col items-center text-center">
-            <img src="${def.icon}" alt="" class="h-24 w-auto object-contain" draggable="false">
-            <div class="text-lg font-black text-white mt-2">🐾 ${def.name} 입양</div>
-            <div class="text-xs text-slate-400 mt-1">펫은 화면을 돌아다녀요. 클릭하면 쓰다듬거나 먹이를 줄 수 있어요.</div>
-            ${def.effect ? `<div class="text-xs font-bold text-amber-300 mt-1">⚔️ 전투 효과: 내 용병 ${def.effect}</div>` : ''}
-            <input id="petAdoptName" maxlength="8" placeholder="펫 이름 (8글자까지, 예: ${type === 'ginger' ? '치즈' : def.name})" class="mt-4 w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white font-bold outline-none focus:border-amber-400 text-center">
-            <div class="mt-2 text-xs font-bold ${lack ? 'text-rose-400' : 'text-slate-400'}">입양비 ${PET_PRICE.toLocaleString()} CA · 내 CA ${(stu.mc || 0).toLocaleString()}</div>
-            <div class="mt-4 w-full flex gap-2">
-              <button type="button" onclick="PetSystem.closeAdopt()" class="flex-1 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold">취소</button>
-              <button type="button" onclick="PetSystem.confirmAdopt()" ${lack ? 'disabled' : ''} class="flex-1 py-2 rounded-lg text-sm font-black ${lack ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-400 text-slate-950'}">${lack ? 'CA가 부족해요' : `${PET_PRICE.toLocaleString()} CA로 입양`}</button>
-            </div>
-          </div>`;
-        modal.classList.remove('hidden');
-        setTimeout(() => document.getElementById('petAdoptName')?.focus(), 50);
+        m.innerHTML = html;
+        m.classList.remove('hidden');
+        return m;
       },
-      closeAdopt() { document.getElementById('petAdoptModal')?.classList.add('hidden'); },
-      confirmAdopt() {
+      closeModal() { document.getElementById('petAdoptModal')?.classList.add('hidden'); },
+
+      // 펫 뽑기: 8종 균등 확률, 이미 있으면 1,000 CA 돌려줌
+      draw() {
         const stu = this.student();
-        const type = this.adoptType;
+        if (!stu) { showNotice('⚠️ 학생 로그인을 한 뒤에 펫을 뽑을 수 있어요.'); return; }
+        if (this.drawBusy) return;
+        if ((stu.mc || 0) < PET_DRAW_PRICE) { showNotice(`⚠️ CA가 부족해요. (펫 뽑기 ${PET_DRAW_PRICE.toLocaleString()} CA)`); return; }
+        const types = Object.keys(PET_DEFS).filter(t => PET_DEFS[t].sheet);
+        const type = types[Math.floor(Math.random() * types.length)];
         const def = PET_DEFS[type];
-        if (!stu || !def || !def.sheet || stu.pet) { this.closeAdopt(); return; }
-        if ((stu.mc || 0) < PET_PRICE) { showNotice('⚠️ CA가 부족해요.'); return; }
-        const name = cleanUserText((document.getElementById('petAdoptName')?.value || '').trim(), 8) || (type === 'ginger' ? '치즈' : def.name);
-        stu.mc -= PET_PRICE;
-        stu.pet = { type, name, love: 0, full: 70, fullAt: Date.now(), size: 1, adoptedAt: Date.now() };
-        saveState();
-        this.closeAdopt();
-        this.stuId = stu.id;
-        this.setHidden(false);
-        this.spawn(true);
-        this.renderShop();
-        showRewardBanner(`🐾 ${name}(이)가 가족이 되었어요! (-${PET_PRICE.toLocaleString()} CA) 클릭해서 쓰다듬어 주세요.`);
+        const dup = this.ownedPets(stu).some(p => p.type === type);
+        stu.mc -= PET_DRAW_PRICE;
+        let pet = null;
+        if (dup) {
+          stu.mc += PET_DUP_REFUND;
+        } else {
+          pet = { id: `pet_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, type, name: this.defaultName(type), love: 0, full: 70, fullAt: Date.now(), size: 1, adoptedAt: Date.now() };
+          if (!stu.pet) stu.pet = pet;
+          else stu.petBox = (Array.isArray(stu.petBox) ? stu.petBox : []).concat(pet);
+        }
+        stu.petDex = Object.assign({}, stu.petDex || {}, { [type]: (stu.petDex && stu.petDex[type]) || Date.now() });
+        stu.petV = 2;
+        this.drawBusy = true;
+        this.afterPetChange();
+        this.modal(`
+          <div class="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-6 shadow-2xl flex flex-col items-center text-center">
+            <div class="text-6xl pet-draw-egg">🥚</div>
+            <div class="text-sm font-black text-slate-300 mt-3">두근두근... 어떤 펫이 나올까?</div>
+          </div>`);
+        setTimeout(() => {
+          this.drawBusy = false;
+          const isActive = pet && stu.pet === pet;
+          if (isActive) { this.setHidden(false); if (!this.el) this.spawn(true); }
+          this.modal(`
+            <div class="w-full max-w-sm bg-slate-900 border ${dup ? 'border-slate-700' : 'border-amber-400'} rounded-2xl p-5 shadow-2xl flex flex-col items-center text-center">
+              <div class="text-xs font-black ${dup ? 'text-slate-400' : 'text-amber-300'}">${dup ? '🔁 이미 있는 펫이에요' : '✨ NEW! 새 펫을 만났어요'}</div>
+              <img src="${def.icon}" alt="" class="h-24 w-auto object-contain mt-2 pet-draw-reveal" draggable="false">
+              <div class="text-lg font-black text-white mt-2">${def.name}</div>
+              ${def.effect ? `<div class="text-xs font-bold text-amber-300 mt-1">⚔️ 전투 효과: 내 용병 ${def.effect}</div>` : ''}
+              ${dup
+                ? `<div class="text-sm font-extrabold text-emerald-300 mt-3">+${PET_DUP_REFUND.toLocaleString()} CA 돌려받았어요</div>`
+                : `<input id="petAdoptName" maxlength="8" value="${this.esc(pet.name)}" placeholder="펫 이름 (8글자까지)" class="mt-4 w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white font-bold outline-none focus:border-amber-400 text-center">
+                   <div class="text-[11px] font-bold text-slate-400 mt-1">${isActive ? '첫 펫이라 바로 활성화했어요!' : '보관함에 넣었어요. 거래소 펫 보관함에서 활성화할 수 있어요.'}</div>`}
+              <div class="mt-4 w-full flex gap-2">
+                <button type="button" onclick="PetSystem.closeDraw('${pet ? this.esc(pet.id) : ''}', false)" class="flex-1 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold">확인</button>
+                ${pet && !isActive ? `<button type="button" onclick="PetSystem.closeDraw('${this.esc(pet.id)}', true)" class="flex-1 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-black">지금 활성화</button>` : ''}
+                <button type="button" onclick="PetSystem.closeDraw('${pet ? this.esc(pet.id) : ''}', false, true)" class="flex-1 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-black">한 번 더</button>
+              </div>
+              <div class="text-[11px] font-bold text-slate-500 mt-2">내 CA ${(stu.mc || 0).toLocaleString()} · 뽑기 ${PET_DRAW_PRICE.toLocaleString()} CA</div>
+            </div>`);
+        }, 1100);
+      },
+      // 뽑기 결과 닫기: 새 펫 이름 저장, 원하면 바로 활성화하거나 한 번 더 뽑기
+      closeDraw(id, activateNow, again) {
+        const stu = this.student();
+        if (stu && id) {
+          const p = this.ownedPets(stu).find(x => x.id === id);
+          const input = document.getElementById('petAdoptName');
+          const name = input ? cleanUserText(input.value.trim(), 8) : '';
+          if (p && name && name !== p.name) {
+            p.name = name;
+            if (this.menuEl) this.renderMenu();
+            saveState();
+            this.renderShop();
+          }
+          if (activateNow) this.activate(id);
+        }
+        this.closeModal();
+        if (again) this.draw();
+      },
+      // 보관함의 펫을 활성 펫으로 (지금 활성 펫은 보관함으로)
+      activate(id) {
+        const stu = this.student();
+        if (!stu) return;
+        const box = Array.isArray(stu.petBox) ? stu.petBox : [];
+        const idx = box.findIndex(p => p && p.id === id);
+        if (idx < 0) return;
+        const next = box[idx];
+        const rest = box.filter((_, i) => i !== idx);
+        if (stu.pet && PET_DEFS[stu.pet.type]) rest.unshift(stu.pet);
+        stu.pet = next;
+        stu.petBox = rest;
+        const shown = !this.isHidden();
+        this.despawn();
+        this.afterPetChange();
+        if (shown) this.spawn(true);
+        showRewardBanner(`🐾 ${next.name}(이)가 활성 펫이 되었어요! (${PET_DEFS[next.type].effect || ''})`);
+      },
+
+      // 펫 도감: 모은 펫은 그림·이름·효과, 못 만난 펫은 실루엣
+      openDex() {
+        const stu = this.student();
+        const owned = new Set(this.ownedPets(stu).map(p => p.type));
+        Object.keys((stu && stu.petDex) || {}).forEach(t => owned.add(t));
+        const all = Object.keys(PET_DEFS);
+        const cards = all.map((type, i) => {
+          const d = PET_DEFS[type];
+          const got = owned.has(type);
+          return `<div class="bg-slate-950 border ${got ? 'border-amber-500/50' : 'border-slate-800'} rounded-xl p-2.5 flex flex-col items-center gap-1">
+              <span class="self-start text-[10px] font-bold text-slate-500">No.${String(i + 1).padStart(2, '0')}</span>
+              <img src="${d.icon}" alt="" class="h-16 w-auto object-contain" draggable="false" style="${got ? '' : 'filter: brightness(0); opacity: 0.35;'}">
+              <span class="text-xs font-extrabold ${got ? 'text-slate-100' : 'text-slate-500'}">${got ? d.name : '???'}</span>
+              <span class="text-[10px] font-bold text-amber-300 text-center leading-tight">${got ? `⚔️ ${d.effect || ''}` : '아직 만나지 못했어요'}</span>
+            </div>`;
+        }).join('');
+        this.modal(`
+          <div class="w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-2xl p-5 shadow-2xl">
+            <div class="flex items-center justify-between gap-2">
+              <div class="text-lg font-black text-white">📖 펫 도감 <span class="text-sm text-amber-300">${owned.size} / ${all.length}</span></div>
+              <button type="button" onclick="PetSystem.closeModal()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold">닫기</button>
+            </div>
+            <div class="text-xs text-slate-400 mt-1">펫 뽑기에서는 ${all.length}종이 모두 같은 확률로 나와요.</div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">${cards}</div>
+          </div>`);
+      },
+
+      // 예전 입양(한 마리 10,000 CA) 펫 회수 + 입양비 환불. 학생 기록마다 한 번만 (petV = 2)
+      // 교사 기기는 학급 전체, 학생 기기는 로그인한 자기 기록만 고침 (DB 규칙상 쓸 수 있는 기록만)
+      migrateLegacy() {
+        let manager = false;
+        try { manager = typeof canManageCurrentClass === 'function' && canManageCurrentClass(); } catch (e) {}
+        const me = this.student();
+        const list = manager ? (state.students || []) : (me ? [me] : []);
+        let changed = false;
+        list.forEach(stu => {
+          if (!stu || !stu.pet || stu.petV === 2) return;
+          stu.mc = (stu.mc || 0) + PET_LEGACY_REFUND;
+          stu.petRefund = (stu.petRefund || 0) + PET_LEGACY_REFUND;
+          delete stu.pet;
+          delete stu.petBox;
+          stu.petV = 2;
+          changed = true;
+        });
+        if (me && me.petRefund) {
+          showRewardBanner(`🐾 펫 입양이 뽑기로 바뀌어 예전 펫을 회수하고 입양비 ${Number(me.petRefund).toLocaleString()} CA를 돌려드렸어요!`);
+          delete me.petRefund;
+          changed = true;
+        }
+        if (!changed) return;
+        if (!this.data()) this.despawn();
+        this.afterPetChange();
       },
 
       spawn(greet) {
@@ -27349,24 +27484,6 @@
         if (!this.data()) return;
         this.el ? this.rest() : this.callBack();
       },
-      // 파양: 펫 기록을 지움 (환불 없음). 다시 입양하거나 다른 펫을 데려오려면 입양비를 새로 냄
-      release() {
-        const stu = this.student();
-        const p = this.data();
-        if (!stu || !p) return;
-        const name = p.name;
-        askCustomConfirm(`정말 ${name}(을)를 파양할까요? 애정·배부름 기록이 모두 사라지고 CA는 돌려받지 못해요. 다시 입양하려면 ${PET_PRICE.toLocaleString()} CA가 들어요.`, () => {
-          if (!stu.pet) return;
-          this.despawn();
-          delete stu.pet;
-          this.setHidden(false);
-          saveState();
-          this.renderShop();
-          this.renderToggle();
-          showRewardBanner(`👋 ${name}(이)가 새 가족을 찾아 떠났어요.`);
-        });
-      },
-
       bindInput() {
         const body = this.body;
         body.addEventListener('pointerdown', e => {
