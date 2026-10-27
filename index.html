@@ -22458,9 +22458,12 @@
     function rememberStudentView(inStudentView) {
       try { if (inStudentView) sessionStorage.setItem(STUDENT_VIEW_KEY, '1'); else sessionStorage.removeItem(STUDENT_VIEW_KEY); } catch (e) {}
     }
-    function restoreStudentViewOnLoad() {
+    function wasInStudentView() {
+      try { return sessionStorage.getItem(STUDENT_VIEW_KEY) === '1'; } catch (e) { return false; }
+    }
+    function restoreStudentViewOnLoad(wasInView) {
       try {
-        if (sessionStorage.getItem(STUDENT_VIEW_KEY) !== '1') return;
+        if (!wasInView) return;
         const stu = state.students.find(s => isStudentSession(s));
         if (!stu) return;
         state.activeStudentId = stu.id;
@@ -28453,6 +28456,7 @@
     window.addEventListener('load', () => setTimeout(() => TeacherAuth.init(), 0));
 
     window.onload = function () {
+      const reopenStudentView = wasInStudentView(); // goToLandingPage가 기록을 지우기 전에 읽어 둠
       loadState();
       scrubLocalRegistryPasswords();
       ensureCurrentClassMetadata();
@@ -28462,7 +28466,7 @@
       // 초기 진입 시 missionclass.com과 동일하게 분리된 초기 홈페이지 화면(#landingPageView)을 먼저 표시
       goToLandingPage();
       applyLocalDevEntry();
-      restoreStudentViewOnLoad();
+      restoreStudentViewOnLoad(reopenStudentView);
       PetSystem.refresh();
       // 서버 데이터를 먼저 받아온 뒤에만 업로드합니다 (오래된 기기 데이터로 덮어쓰기 방지)
       subscribeToActiveClassRealtime(state.classCode);
