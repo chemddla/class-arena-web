@@ -2797,15 +2797,17 @@
     const CHARGE_SKILL_DISTANCE = GRID_CELL_SIZE * 2; // 전사 돌진 스킬 2칸 (240px)
     const BATTLE_PROJECTILE_SPEED = 2.8; // 화살·마법구 등 투사체 속도 배율
     const PROJECTILE_HIT_RADIUS = 30;    // 투사체가 이 거리 안으로 지나가면 맞음
-    const ELITE_BOSS_TOKEN_R = 36 * 3;   // 엘리트 몬스터 몸 크기 (보통 보스 36의 3배)
+    const ELITE_SIZE_MULT = 1.3;         // 엘리트 몬스터 상향: 몸·그림 크기와 공격 범위(기본 공격 사거리·스킬 범위) 30% 크게
+    const ELITE_BOSS_TOKEN_R = Math.round(36 * 3 * ELITE_SIZE_MULT); // 엘리트 몬스터 몸 크기 (보통 보스 36의 3배 × 1.3)
     const ELITE_BOSS_HIT_RADIUS = ELITE_BOSS_TOKEN_R + 12; // 큰 몸 어디에 맞아도 맞은 것으로
     // 몸 크기 배율 sizeScale (용병 = 1): 탑 몬스터는 MONSTER_DEFS의 size. 엘리트 몬스터는 따로 (토큰이 보통 보스의 3배)
     const BODY_HALF_W = 20; // 용병 몸 반폭 (몸이 s배면 가장자리가 BODY_HALF_W × (s - 1)만큼 바깥)
     // 사거리 판정용 거리: 몸이 큰 유닛은 몸 가장자리까지의 거리로 잼 (때리는 쪽·맞는 쪽 모두)
     function unitBodyGap(u) { return !u ? 0 : (u.isEliteBoss ? ELITE_BOSS_TOKEN_R - 36 : BODY_HALF_W * ((u.sizeScale || 1) - 1)); }
     // 시전자 크기에 따라 커지는 스킬 범위 배율 = √몸 크기 (2.5배 보스 → 1.6배). 몸 크기 그대로 키우면 보스 사자후·지진이
-    //   전장을 거의 다 덮어서 근접 용병이 붙지 못함 (tests/tower-sim.js). 엘리트 몬스터 스킬은 원래 크기에 맞춰 짜여 있어서 1
-    function unitAreaScale(u) { return !u || u.isEliteBoss ? 1 : Math.sqrt(u.sizeScale || 1); }
+    //   전장을 거의 다 덮어서 근접 용병이 붙지 못함 (tests/tower-sim.js). 엘리트 몬스터 스킬은 원래 크기에 맞춰 짜여 있어서
+    //   몸을 키운 만큼(ELITE_SIZE_MULT)만
+    function unitAreaScale(u) { return !u ? 1 : (u.isEliteBoss ? ELITE_SIZE_MULT : Math.sqrt(u.sizeScale || 1)); }
     // 몸 크기를 정하면서 근접 기본 공격 사거리도 같은 배율로 (원거리는 몸 가장자리만큼만 늘어남)
     const MELEE_RANGE_MAX = 150;
     function setUnitBodySize(unit, s) {
@@ -4238,7 +4240,7 @@
     }
     const SPRITE_DRAW_H = 54;       // 전투 화면에서 서 있는 캐릭터의 키(월드 px)
     // 탑 몬스터는 몸 크기(sizeScale)만큼. 엘리트 보스는 몸(토큰)이 보통 보스의 3배라 그림도 eliteScale만큼 크게
-    const spriteDrawH = (u, sprite) => SPRITE_DRAW_H * (u.isEliteBoss ? (sprite.eliteScale || 1) : (u.sizeScale || 1));
+    const spriteDrawH = (u, sprite) => SPRITE_DRAW_H * (u.isEliteBoss ? (sprite.eliteScale || 1) * ELITE_SIZE_MULT : (u.sizeScale || 1));
     const SPRITE_DEATH_TICKS = 150; // 쓰러진 뒤 화면에 남아 있는 시간
 
     // 몬스터 스프라이트: 칸·동작 형식은 용병과 같음. jobs가 있으면 그 직업으로 나온 몬스터만 그림 (나머지는 기존 토큰)
@@ -15505,14 +15507,21 @@
       }
     }
 
+    // MVP 후보: 분신·몬스터(탑 몬스터·엘리트 몬스터·허수아비)는 빼고 용병만.
+    // 모험의 탑·엘리트 몬스터 토벌은 상대가 모두 적(어둠의 용병 포함)이라 우리 원정대(블루팀)만
+    function mvpCandidates() {
+      const pveOnly = sim.mode === 'tower' || sim.mode === 'elite_raid';
+      return sim.units.filter(x => !x.isClone && !x.monsterType && !x.isEliteBoss && (!pveOnly || x.team === 'blue'));
+    }
+
     function finishSimulation(blueTeamWon) {
       if (sim.spectator) {
         sim.running = false;
         sim.netRole = null;
         const meta = sim.meta || {};
         const winner = blueTeamWon ? meta.blueStudent : meta.redStudent;
-        const atkKing = sim.units.filter(x => !x.isClone).sort((a, b) => b.damageDealt - a.damageDealt)[0];
-        const healKing = sim.units.filter(x => !x.isClone).sort((a, b) => b.healDone - a.healDone)[0];
+        const atkKing = mvpCandidates().sort((a, b) => b.damageDealt - a.damageDealt)[0];
+        const healKing = mvpCandidates().sort((a, b) => b.healDone - a.healDone)[0];
         const tw = sim.towerWatch;
         const rw = sim.raidWatch;
         document.getElementById('battleResultEmoji').textContent = '📺';
@@ -15527,7 +15536,7 @@
             ? `${(sim.forfeitTeam === 'blue' ? meta.blueStudent : meta.redStudent)?.name || ''} 친구가 포기했어요.`
             : (tw ? '관전한 탑 도전이 끝났어요. (관전은 보상이 없어요)' : '관전한 결투가 끝났어요. (관전은 보상이 없어요)');
         document.getElementById('battleMvpBox').innerHTML = `
-          <div class="font-bold text-amber-300 mb-1">🌟 이번 ${tw ? '도전' : '결투'} MVP</div>
+          <div class="font-bold text-amber-300 mb-1">🌟 이번 ${tw ? '도전' : rw ? '토벌' : '결투'} MVP</div>
           <div>⚔️ 최고 공격왕: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
           <div>💚 다정 치유왕: <strong>${healKing?.name || '-'}</strong> (${healKing?.healDone || 0} 회복·보호)</div>`;
         document.getElementById('battleResultOverlay').classList.remove('hidden');
@@ -15555,7 +15564,7 @@
       const isTowerReplay = Boolean(sim.mode === 'tower' && meta.towerFloorObj && meta.towerFloorObj.floor < (stu.towerFloor || 1));
       if (isTowerReplay) baseReward = 0;
       // 엘리트 몬스터는 보스마다 처음 잡았을 때 한 번만 보상 (잡은 뒤 재도전은 이기든 지든 보상 없음)
-      const isEliteReplay = Boolean(sim.mode === 'elite_raid' && meta.eliteBossId && stu.eliteRewardClaimed && stu.eliteRewardClaimed[meta.eliteBossId]);
+      const isEliteReplay = Boolean(sim.mode === 'elite_raid' && meta.eliteBossId && eliteClaimsOf(stu)[meta.eliteBossId]);
       if (isEliteReplay) baseReward = 0;
       const reward = (isPracticeOnly || iForfeited)
         ? 0
@@ -15564,7 +15573,8 @@
           : grantDailyReward(stu, rewardCategory, baseReward));
       if (reward > 0) state.guardianPts += blueWon ? 20 : 8;
       if (blueWon && reward > 0 && sim.mode === 'elite_raid' && meta.eliteBossId) {
-        stu.eliteRewardClaimed = { ...(stu.eliteRewardClaimed || {}), [meta.eliteBossId]: true };
+        stu.eliteRewardClaimed = { ...eliteClaimsOf(stu), [meta.eliteBossId]: true };
+        stu.eliteSeason = ELITE_SEASON;
       }
 
       if (isFirstTowerClear && stu.towerFloor < TOWER_MAX_FLOOR) {
@@ -15582,9 +15592,9 @@
       }
       if (pvpScoreDelta) stu.pvpScore = (stu.pvpScore || 0) + pvpScoreDelta;
 
-      const atkKing = sim.units.filter(x => !x.isClone).sort((a, b) => b.damageDealt - a.damageDealt)[0];
-      const tankKing = sim.units.filter(x => !x.isClone).sort((a, b) => b.damageTaken - a.damageTaken)[0];
-      const healKing = sim.units.filter(x => !x.isClone).sort((a, b) => b.healDone - a.healDone)[0];
+      const atkKing = mvpCandidates().sort((a, b) => b.damageDealt - a.damageDealt)[0];
+      const tankKing = mvpCandidates().sort((a, b) => b.damageTaken - a.damageTaken)[0];
+      const healKing = mvpCandidates().sort((a, b) => b.healDone - a.healDone)[0];
 
       document.getElementById('battleResultEmoji').textContent = blueWon ? '🏆' : '🛡️';
       document.getElementById('battleResultTitle').textContent = blueWon
@@ -16310,7 +16320,7 @@
 
         // 유닛 중앙 심볼
         const centerSymbol = monObj ? monObj.icon : job.icon;
-        ctx.font = `${isEliteBoss ? 54 : (u.sizeScale ? Math.round(15 * u.sizeScale) : (isBossMon ? 18 : 15))}px Pretendard, sans-serif`;
+        ctx.font = `${isEliteBoss ? Math.round(54 * ELITE_SIZE_MULT) : (u.sizeScale ? Math.round(15 * u.sizeScale) : (isBossMon ? 18 : 15))}px Pretendard, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = (u.monsterType && u.monsterType !== 'scarecrow') || u.isDarkMerc ? '#ffffff' : '#0f172a';
@@ -18539,26 +18549,26 @@
      ********************************************************************/
     // 엘리트 몬스터 10단계: 앞 단계를 처음 잡아야 다음 단계 정보가 열림 (eliteRewardClaimed로 판단)
     const ELITE_BOSS_DEFS = [
-      { id: 'elite_goblin_king', stage: 1, name: '👑 황금 고블린 대왕', monsterType: 'goblin_king', job: 'warrior', hp: 90000, atk: 70, def: 40, spd: 90, rewardMc: 120,
-        desc: '엘리트 사냥의 첫 관문! 90,000의 체력으로 황금 철퇴를 휘두르는 고블린들의 대왕입니다.' },
-      { id: 'elite_dire_wolf', stage: 2, name: '🐺 달그림자 늑대왕', monsterType: 'dire_wolf', job: 'warrior', hp: 135000, atk: 82, def: 46, spd: 112, rewardMc: 160,
-        desc: '135,000의 체력과 빠른 몸놀림으로 원정대 사이를 누비며 물어뜯는 거대 늑대왕입니다.' },
-      { id: 'elite_golem', stage: 3, name: '🪨 태고의 거신 골렘', monsterType: 'golem', job: 'warrior', hp: 180000, atk: 95, def: 55, spd: 92, rewardMc: 200,
-        desc: '단 한 마리만 출현하는 거대 암석 괴수입니다! 180,000의 막대한 체력과 바위 주먹과 대지 붕괴로 땅을 뒤흔듭니다.' },
-      { id: 'elite_swamp_hydra', stage: 4, name: '🐍 독늪의 히드라', monsterType: 'swamp_hydra', job: 'archer', hp: 262500, atk: 115, def: 62, spd: 98, rewardMc: 250,
-        desc: '262,500의 체력을 지닌 머리 여럿 달린 늪지의 괴수! 멀리서 독을 내뿜어 원정대를 괴롭힙니다.' },
-      { id: 'elite_leviathan', stage: 5, name: '🧊 심연의 혹한 리바이어던', monsterType: 'leviathan', job: 'mage', hp: 360000, atk: 135, def: 70, spd: 105, rewardMc: 300,
-        desc: '360,000의 체력을 지닌 빙결 엘리트 보스입니다! 아이스애로우와 연쇄 썬더볼트로 협동 원정대를 압박합니다.' },
-      { id: 'elite_orc_warlord', stage: 6, name: '🪓 피의 오크 대족장', monsterType: 'orc_warlord', job: 'warrior', hp: 435000, atk: 148, def: 76, spd: 108, rewardMc: 330,
-        desc: '435,000의 체력으로 전장을 돌진하는 오크 대족장! 회전베기와 강타로 앞줄을 무너뜨립니다.' },
-      { id: 'elite_lich', stage: 7, name: '☠️ 망자의 군주 리치', monsterType: 'lich', job: 'mage', hp: 502500, atk: 160, def: 82, spd: 108, rewardMc: 360,
-        desc: '502,500의 체력을 지닌 불사의 마법사! 강력한 원소 마법으로 뒷줄까지 노립니다.' },
-      { id: 'elite_ifrit', stage: 8, name: '🔥 겁화의 이프리트', monsterType: 'ifrit', job: 'mage', hp: 570000, atk: 170, def: 88, spd: 112, rewardMc: 390,
-        desc: '570,000의 체력을 지닌 불꽃의 마신! 거대한 화염구로 원정대 전체를 불태웁니다.' },
-      { id: 'elite_kraken', stage: 9, name: '🦑 심해의 폭군 크라켄', monsterType: 'kraken', job: 'warrior', hp: 622500, atk: 178, def: 92, spd: 104, rewardMc: 420,
-        desc: '622,500의 체력을 지닌 바다의 폭군! 거대한 촉수로 휩쓸며 원정대를 짓누릅니다.' },
-      { id: 'elite_chaos_dragon', stage: 10, name: '🐉 종말의 마룡 카오스드래곤', monsterType: 'dark_dragon', job: 'mage', hp: 675000, atk: 185, def: 95, spd: 118, rewardMc: 450,
-        desc: '675,000의 초거대 체력을 지닌 최강의 단일 엘리트 마룡입니다! 두 플레이어의 5+5 정예 용병 협동이 필수입니다.' }
+      { id: 'elite_goblin_king', stage: 1, name: '👑 황금 고블린 대왕', monsterType: 'goblin_king', job: 'warrior', hp: 135000, atk: 70, def: 40, spd: 90, rewardMc: 120,
+        desc: '엘리트 사냥의 첫 관문! 135,000의 체력으로 황금 철퇴를 휘두르는 고블린들의 대왕입니다.' },
+      { id: 'elite_dire_wolf', stage: 2, name: '🐺 달그림자 늑대왕', monsterType: 'dire_wolf', job: 'warrior', hp: 202500, atk: 82, def: 46, spd: 112, rewardMc: 160,
+        desc: '202,500의 체력과 빠른 몸놀림으로 원정대 사이를 누비며 물어뜯는 거대 늑대왕입니다.' },
+      { id: 'elite_golem', stage: 3, name: '🪨 태고의 거신 골렘', monsterType: 'golem', job: 'warrior', hp: 270000, atk: 95, def: 55, spd: 92, rewardMc: 200,
+        desc: '단 한 마리만 출현하는 거대 암석 괴수입니다! 270,000의 막대한 체력과 바위 주먹과 대지 붕괴로 땅을 뒤흔듭니다.' },
+      { id: 'elite_swamp_hydra', stage: 4, name: '🐍 독늪의 히드라', monsterType: 'swamp_hydra', job: 'archer', hp: 393750, atk: 115, def: 62, spd: 98, rewardMc: 250,
+        desc: '393,750의 체력을 지닌 머리 여럿 달린 늪지의 괴수! 멀리서 독을 내뿜어 원정대를 괴롭힙니다.' },
+      { id: 'elite_leviathan', stage: 5, name: '🧊 심연의 혹한 리바이어던', monsterType: 'leviathan', job: 'mage', hp: 540000, atk: 135, def: 70, spd: 105, rewardMc: 300,
+        desc: '540,000의 체력을 지닌 빙결 엘리트 보스입니다! 아이스애로우와 연쇄 썬더볼트로 협동 원정대를 압박합니다.' },
+      { id: 'elite_orc_warlord', stage: 6, name: '🪓 피의 오크 대족장', monsterType: 'orc_warlord', job: 'warrior', hp: 652500, atk: 148, def: 76, spd: 108, rewardMc: 330,
+        desc: '652,500의 체력으로 전장을 돌진하는 오크 대족장! 회전베기와 강타로 앞줄을 무너뜨립니다.' },
+      { id: 'elite_lich', stage: 7, name: '☠️ 망자의 군주 리치', monsterType: 'lich', job: 'mage', hp: 753750, atk: 160, def: 82, spd: 108, rewardMc: 360,
+        desc: '753,750의 체력을 지닌 불사의 마법사! 강력한 원소 마법으로 뒷줄까지 노립니다.' },
+      { id: 'elite_ifrit', stage: 8, name: '🔥 겁화의 이프리트', monsterType: 'ifrit', job: 'mage', hp: 855000, atk: 170, def: 88, spd: 112, rewardMc: 390,
+        desc: '855,000의 체력을 지닌 불꽃의 마신! 거대한 화염구로 원정대 전체를 불태웁니다.' },
+      { id: 'elite_kraken', stage: 9, name: '🦑 심해의 폭군 크라켄', monsterType: 'kraken', job: 'warrior', hp: 933750, atk: 178, def: 92, spd: 104, rewardMc: 420,
+        desc: '933,750의 체력을 지닌 바다의 폭군! 거대한 촉수로 휩쓸며 원정대를 짓누릅니다.' },
+      { id: 'elite_chaos_dragon', stage: 10, name: '🐉 종말의 마룡 카오스드래곤', monsterType: 'dark_dragon', job: 'mage', hp: 1012500, atk: 185, def: 95, spd: 118, rewardMc: 450,
+        desc: '1,012,500의 초거대 체력을 지닌 최강의 단일 엘리트 마룡입니다! 두 플레이어의 5+5 정예 용병 협동이 필수입니다.' }
     ];
     // 엘리트 몬스터 전용 스킬: 여러 직업의 스킬 동작을 빌려 와 보스에 어울리는 이름·아이콘으로 씀 [스킬 키, 이름, 아이콘]
     // 앞에서부터 단계에 따라 열림 (eliteBossSkillCount: 1~2단계 3개 → 9~10단계 7개)
@@ -18730,10 +18740,18 @@
     let selectedRaidMercIds = [];
     let selectedEliteBossId = ELITE_BOSS_DEFS[0].id;
 
+    // 엘리트 몬스터 진행 시즌: 숫자를 올리면 모든 학생이 1단계(황금 고블린 대왕)부터 다시 시작 (잡은 기록·첫 처치 보상도 새로)
+    // 학생 기록(eliteRewardClaimed)은 그대로 두고, eliteSeason이 지금 시즌과 다르면 없는 것으로 봄
+    //   2 = 엘리트 몬스터 상향(크기 30%·체력 50%)과 함께 다시 시작 (2026-10-27)
+    const ELITE_SEASON = 2;
+    function eliteClaimsOf(stu) {
+      return (stu && stu.eliteSeason === ELITE_SEASON && stu.eliteRewardClaimed) || {};
+    }
+
     // 1단계는 처음부터 열림. 그 뒤 단계는 바로 앞 단계(또는 더 높은 단계)를 잡은 기록이 있으면 열림
     function isEliteBossUnlocked(stu, idx) {
       if (idx <= 0) return true;
-      const claimed = (stu && stu.eliteRewardClaimed) || {};
+      const claimed = eliteClaimsOf(stu);
       return ELITE_BOSS_DEFS.slice(idx - 1).some(b => claimed[b.id]);
     }
     function isEliteBossIdUnlocked(stu, bossId) {
@@ -18917,7 +18935,7 @@
           `;
           }
           const isSel = b.id === selectedEliteBossId;
-          const claimed = Boolean(myStu.eliteRewardClaimed && myStu.eliteRewardClaimed[b.id]);
+          const claimed = Boolean(eliteClaimsOf(myStu)[b.id]);
           return `
             <div onclick="selectEliteBossForRaid('${b.id}')"
               class="cursor-pointer rounded-2xl border-2 p-3.5 transition ${
@@ -18992,6 +19010,7 @@
       bossTemplate.overrideDef = bossDef.def;
       const boss = createSimUnit(bossTemplate, null, 'red', 1.0);
       boss.isEliteBoss = true;
+      boss.range = Math.round(boss.range * ELITE_SIZE_MULT); // 몸을 키운 만큼 기본 공격 사거리도
       boss.x = Math.round(sim.worldW / 2); // 맵 가운데
       boss.y = Math.round(sim.worldH / 2);
       applyUnitSkillBook(boss, eliteBossSkillBook(bossDef.id));
