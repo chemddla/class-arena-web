@@ -457,3 +457,27 @@ test('새 학급 만들기: 학급 정보와 교사 증명, 교사 키 목록을
   }));
   await assertFails(db('other').ref('classSecrets/NEW1/pin').set({ [SC]: true }));
 });
+
+// ----- 실시간 방 초대 (classes/{학급}/invites/{받는 학생}/{id}) -----
+const invite = (from, extra = {}) => ({ from, fromName: from, kind: 'pvp', roomId: 'pvp_s1_abc', title: '결투방', at: Date.now() - 1000, ...extra });
+
+test('방 초대: 로그인한 학생은 자기 이름으로만 보내고, 받는 학생·보낸 학생만 지움', async () => {
+  await assertSucceeds(db('u1').ref('classes/OWN1/invites/s2/i_abcdef01').set(invite('s1')));
+  await assertSucceeds(db('u1').ref('classes/OWN1/invites/s2/i_abcdef02').set(invite('s1', { kind: 'minigame' })));
+  await assertFails(db('u1').ref('classes/OWN1/invites/s3/i_abcdef03').set(invite('s2'))); // 남의 이름으로
+  await assertFails(db('u1').ref('classes/OWN1/invites/s1/i_abcdef04').set(invite('s1'))); // 나에게
+  await assertFails(db('u2').ref('classes/OWN1/invites/s2/i_abcdef05').set(invite('s1'))); // 로그인 안 된 기기
+  await assertFails(db(null).ref('classes/OWN1/invites/s2/i_abcdef06').set(invite('s1')));
+  await assertFails(db('u1').ref('classes/OWN1/invites/nobody/i_abcdef07').set(invite('s1'))); // 없는 학생
+  await assertFails(db('u1').ref('classes/OWN1/invites/s2/i_bad00001').set(invite('s1', { kind: 'shop' })));
+  await assertFails(db('u1').ref('classes/OWN1/invites/s2/i_bad00002').set(invite('s1', { mc: 100 })));
+  await assertFails(db('u1').ref('classes/OWN1/invites/s2/i_bad00003').set(invite('s1', { at: Date.now() + 3600000 })));
+  await assertFails(db('u1').ref('classes/OWN1/invites/s2/bad-id').set(invite('s1')));
+  await assertFails(db('u1').ref('classes/OWN1/invites/s2/i_abcdef01').set(invite('s1', { title: '바꿈' }))); // 고치기 불가
+  await assertSucceeds(db('u1').ref('classes/OWN1/invites/s2/i_abcdef02').remove()); // 보낸 학생이 취소
+  await assertFails(db('u3').ref('classes/OWN1/invites/s2/i_abcdef01').remove());
+  await linkS2();
+  await assertSucceeds(db('u2').ref('classes/OWN1/invites/s2/i_abcdef01').remove()); // 받은 학생이 수락·거절
+  await assertSucceeds(db('teacher').ref('classes/OWN1/invites/s2/i_abcdef09').set(invite('s1')));
+  await assertSucceeds(db(null).ref('classes/OLD1/invites/s1/i_abcdef10').set(invite('s2'))); // 소유자 없는 학급은 학생 확인 없음
+});

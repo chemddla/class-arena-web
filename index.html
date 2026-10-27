@@ -2311,6 +2311,8 @@
 
   <!-- 다른 메뉴를 보는 동안 진행 중인 전투·결투방으로 돌아가는 버튼 -->
   <div class="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2">
+    <!-- 친구가 보낸 실시간 방 초대 (수락·거절) -->
+    <div id="roomInviteStack" class="flex flex-col items-end gap-2" aria-live="polite"></div>
     <button type="button" id="returnToPvpRoomBtn" onclick="returnToPvpRoom()" class="hidden px-4 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-sm shadow-2xl">
       🚪 결투방으로 돌아가기
     </button>
@@ -2319,6 +2321,21 @@
     </button>
   </div>
   </div><!-- /#mainAppShell 종료 -->
+
+  <!-- 방장이 친구를 실시간 방에 초대하는 창 -->
+  <div id="roomInviteModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" onclick="if (event.target === this) closeRoomInviteModal()">
+    <div class="bg-slate-900 border-2 border-indigo-500/40 rounded-3xl max-w-md w-full p-5 shadow-2xl flex flex-col gap-3 max-h-[85vh]">
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <h3 class="font-title text-xl text-white">📨 친구 초대</h3>
+          <div id="roomInviteRoomTitle" class="text-[11px] text-slate-400 truncate"></div>
+        </div>
+        <button type="button" onclick="closeRoomInviteModal()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs shrink-0">닫기</button>
+      </div>
+      <p class="text-[11px] text-slate-400">전투 중인 친구에게도 초대가 화면 오른쪽 아래에 떠요. 친구가 [수락]을 누르면 바로 이 방에 들어와요.</p>
+      <div id="roomInviteList" class="flex flex-col gap-1.5 overflow-y-auto pr-1"></div>
+    </div>
+  </div>
 
   <!-- ==================== [모달 1: 학급 페이지 코드 접속 & 학생 프로필 로그인 / 최초 비밀번호 설정] ==================== -->
   <div id="studentLoginModal" class="hidden fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
@@ -21050,6 +21067,229 @@
       }
     };
 
+    // 실시간 방 초대 (classes/{학급}/invites/{받는 학생}/{id}): 방장이 친구에게 보내면 받은 친구 화면 오른쪽 아래에 [수락]/[거절]이 뜸
+    // 전투(실시간·시뮬레이션) 중에도 뜨고, 받은 친구 기기가 수락·거절하면서 지움. 오래된 초대는 받은 쪽에서 지움
+    const ROOM_INVITE_TTL_MS = 5 * 60 * 1000;
+    const ROOM_INVITE_KINDS = {
+      pvp: { label: '⚡ 실시간 결투방', cache: () => livePvpRoomsCache },
+      raid: { label: '🐉 협동 레이드방', cache: () => liveRaidRoomsCache },
+      minigame: { label: '🎲 미니게임방', cache: () => liveMinigameRoomsCache }
+    };
+    const RoomInvites = {
+      all: {},            // invites 전체 {받는 학생: {id: 초대}}
+      sent: new Map(),    // 이 화면에서 보낸 초대 id → { to, toName, kind, roomId, at } (거절 알림용)
+      handled: new Set(), // 수락·거절을 누른 초대 (지우기가 끝나기 전에 다시 뜨지 않게)
+      modal: null,        // 열어 둔 초대 창 { kind, roomId }
+      ticker: null,
+
+      onSnapshot(val) {
+        this.all = (val && typeof val === 'object') ? val : {};
+        // 내가 보낸 초대가 사라졌는데 친구가 방에 없으면 거절한 것
+        this.sent.forEach((s, id) => {
+          if (this.all[s.to] && this.all[s.to][id]) return;
+          this.sent.delete(id);
+          if (Date.now() - s.at >= ROOM_INVITE_TTL_MS - 5000) return;
+          const room = this.room(s.kind, s.roomId);
+          if (room && !this.inRoom(s.kind, room, s.to)) showRewardBanner(`🙅 [${s.toName}] 친구가 초대를 거절했어요.`);
+        });
+        this.render();
+        if (this.modal) this.renderModal();
+        if (!this.ticker) this.ticker = setInterval(() => this.render(), 5000);
+      },
+
+      room(kind, roomId) {
+        const k = ROOM_INVITE_KINDS[kind];
+        return k ? (k.cache() || {})[roomId] || null : null;
+      },
+
+      inRoom(kind, room, stuId) {
+        if (!room || !stuId) return false;
+        if (kind === 'pvp') return isPvpRoomPlayer(room, stuId);
+        if (kind === 'raid') return Boolean(raidSlotOf(room, stuId));
+        return (room.players || []).some(p => p && p.id === stuId && !p.practice);
+      },
+
+      // 친구가 지금 하고 있는 실시간 컨텐츠 (초대 창에 표시)
+      activityOf(stuId) {
+        const pvp = Object.values(livePvpRoomsCache || {}).find(r => r && isPvpRoomPlayer(r, stuId));
+        if (pvp) return pvp.status === 'playing' ? '⚔️ 결투 중' : '🚪 결투방 대기';
+        const raid = Object.values(liveRaidRoomsCache || {}).find(r => r && raidSlotOf(r, stuId));
+        if (raid) return raid.status === 'waiting' ? '🚪 레이드방 대기' : '🐉 레이드 중';
+        const mg = Object.values(liveMinigameRoomsCache || {}).find(r => r && this.inRoom('minigame', r, stuId));
+        if (mg) return mg.status === 'playing' ? '🎲 미니게임 중' : '🚪 미니게임방 대기';
+        return '';
+      },
+
+      myBox() {
+        const me = getActiveStudent();
+        if (!me || isCurrentClassOwner() || TeacherAuth.isSuperAdmin) return { me: null, box: {} };
+        const box = this.all[me.id];
+        return { me, box: box && typeof box === 'object' ? box : {} };
+      },
+
+      // 내게 온 초대 팝업 (오른쪽 아래)
+      render() {
+        const el = document.getElementById('roomInviteStack');
+        if (!el) return;
+        const { me, box } = this.myBox();
+        const now = Date.now();
+        const shown = [];
+        Object.keys(box).forEach(id => {
+          const inv = box[id];
+          if (!inv || typeof inv !== 'object' || this.handled.has(id) || !ROOM_INVITE_KINDS[inv.kind]) return;
+          const room = this.room(inv.kind, inv.roomId);
+          const expired = now - (Number(inv.at) || 0) > ROOM_INVITE_TTL_MS;
+          if (expired || (room && this.inRoom(inv.kind, room, me.id))) { this.remove(me.id, id); return; }
+          if (!room || room.status !== 'waiting') return; // 방이 아직 안 왔거나 이미 시작한 방
+          shown.push({ id, ...inv });
+        });
+        shown.sort((a, b) => (Number(b.at) || 0) - (Number(a.at) || 0));
+        el.innerHTML = shown.slice(0, 3).map(inv => {
+          const from = state.students.find(s => s.id === inv.from);
+          const name = cleanUserText(inv.fromName || (from && from.name) || '친구', 40);
+          return `
+            <div class="w-[300px] max-w-[calc(100vw-40px)] bg-slate-900 border-2 border-indigo-500/70 rounded-2xl shadow-2xl p-3 flex flex-col gap-2.5" role="alertdialog" aria-label="${name} 친구의 초대">
+              <div class="flex items-center gap-2.5">
+                ${from ? studentAvatarHTML(from, 36) : '<span class="text-2xl">📨</span>'}
+                <div class="min-w-0 flex-1">
+                  <div class="text-xs font-extrabold text-white truncate">📨 ${name} 친구의 초대</div>
+                  <div class="text-[11px] text-slate-300 truncate">${ROOM_INVITE_KINDS[inv.kind].label} · ${cleanUserText(inv.title || '', 60)}</div>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <button onclick="acceptRoomInvite('${inv.id}')" class="py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow">✅ 수락</button>
+                <button onclick="declineRoomInvite('${inv.id}')" class="py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-xs border border-slate-700">✖ 거절</button>
+              </div>
+            </div>`;
+        }).join('');
+      },
+
+      remove(toId, id) {
+        const db = RealtimePvpService.initFirebaseClientSafe();
+        const code = String(state.classCode || '').trim().toUpperCase();
+        if (this.all[toId]) delete this.all[toId][id];
+        if (db && code) db.ref(`classes/${code}/invites/${toId}/${id}`).remove().catch(e => console.warn('[초대 지우기 실패]:', e));
+      },
+
+      pendingTo(stuId, roomId) {
+        const box = this.all[stuId];
+        const me = getActiveStudent();
+        if (!me || !box || typeof box !== 'object') return false;
+        return Object.values(box).some(inv => inv && inv.from === me.id && inv.roomId === roomId && Date.now() - (Number(inv.at) || 0) <= ROOM_INVITE_TTL_MS);
+      },
+
+      // 방장이 여는 친구 초대 창
+      renderModal() {
+        const box = document.getElementById('roomInviteList');
+        const me = getActiveStudent();
+        const room = this.modal && this.room(this.modal.kind, this.modal.roomId);
+        if (!box || !me || !room || room.hostId !== me.id || room.status !== 'waiting') { closeRoomInviteModal(); return; }
+        const online = id => typeof Presence !== 'undefined' && Presence.isOnline(id);
+        const friends = state.students.filter(s => s && s.id !== me.id)
+          .sort((a, b) => (online(b.id) - online(a.id)) || ((Number(a.num) || 0) - (Number(b.num) || 0)));
+        document.getElementById('roomInviteRoomTitle').textContent = `${ROOM_INVITE_KINDS[this.modal.kind].label} · ${room.title || ''}`;
+        box.innerHTML = friends.map(s => {
+          const on = online(s.id);
+          const act = this.activityOf(s.id);
+          const joined = this.inRoom(this.modal.kind, room, s.id);
+          const pending = !joined && this.pendingTo(s.id, room.roomId);
+          const btn = joined
+            ? '<span class="px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-extrabold text-[11px]">🚪 입장함</span>'
+            : pending
+              ? '<span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 font-extrabold text-[11px]">⏳ 초대 보냄</span>'
+              : `<button onclick="sendRoomInvite('${s.id}')" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-[11px] shadow">📨 초대</button>`;
+          return `
+            <div class="flex items-center gap-2 rounded-xl px-2.5 py-2 border bg-slate-950 border-slate-800">
+              <span class="relative shrink-0 inline-flex">${studentAvatarHTML(s, 28)}<span class="absolute -right-0.5 -bottom-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-950 ${on ? 'bg-emerald-400' : 'bg-slate-600'}"></span></span>
+              <div class="min-w-0 flex-1">
+                <div class="text-xs font-extrabold text-white truncate">${s.num ? `${s.num}번 ` : ''}${s.name}</div>
+                <div class="text-[10px] truncate ${act ? 'text-amber-300' : 'text-slate-400'}">${act || (on ? '접속 중' : '접속 안 함')}</div>
+              </div>
+              ${btn}
+            </div>`;
+        }).join('') || '<div class="text-center py-6 text-xs text-slate-400">초대할 친구가 없어요.</div>';
+      }
+    };
+
+    // 방장 화면의 [📨 친구 초대] 버튼
+    function roomInviteBtnHTML(kind, roomId) {
+      return `<button onclick="openRoomInviteModal('${kind}', '${roomId}')" class="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-[11px] shadow shrink-0">📨 친구 초대</button>`;
+    }
+
+    window.openRoomInviteModal = function (kind, roomId) {
+      if (!RealtimePvpService.initFirebaseClientSafe()) { showNotice('⚠️ 서버에 연결된 학급에서만 친구를 초대할 수 있어요.'); return; }
+      RoomInvites.modal = { kind, roomId };
+      document.getElementById('roomInviteModal').classList.remove('hidden');
+      RoomInvites.renderModal();
+    };
+
+    window.closeRoomInviteModal = function () {
+      RoomInvites.modal = null;
+      document.getElementById('roomInviteModal')?.classList.add('hidden');
+    };
+
+    window.sendRoomInvite = async function (toId) {
+      const me = getActiveStudent();
+      const m = RoomInvites.modal;
+      const room = m && RoomInvites.room(m.kind, m.roomId);
+      const friend = state.students.find(s => s.id === toId);
+      const db = RealtimePvpService.initFirebaseClientSafe();
+      const code = String(state.classCode || '').trim().toUpperCase();
+      if (!me || !room || !friend || room.hostId !== me.id || !db || !code) return;
+      if (RoomInvites.pendingTo(toId, room.roomId)) return;
+      const id = 'i_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      const inv = { from: me.id, fromName: cleanUserText(me.name, 40), kind: m.kind, roomId: room.roomId, title: cleanUserText(room.title || '', 60), at: Date.now() };
+      if (!RoomInvites.all[toId]) RoomInvites.all[toId] = {};
+      RoomInvites.all[toId][id] = inv;
+      RoomInvites.sent.set(id, { to: toId, toName: friend.name, kind: m.kind, roomId: room.roomId, at: inv.at });
+      RoomInvites.renderModal();
+      try {
+        await db.ref(`classes/${code}/invites/${toId}/${id}`).set(inv);
+        showNotice(`📨 [${friend.name}] 친구에게 초대를 보냈어요!`);
+      } catch (e) {
+        delete RoomInvites.all[toId][id];
+        RoomInvites.sent.delete(id);
+        RoomInvites.renderModal();
+        console.warn('[초대 보내기 실패]:', e);
+        showNotice('⚠️ 초대를 보내지 못했어요. 로그인 상태를 확인해 주세요.');
+      }
+    };
+
+    window.acceptRoomInvite = async function (id) {
+      const { me, box } = RoomInvites.myBox();
+      const inv = box[id];
+      if (!me || !inv) return;
+      const room = RoomInvites.room(inv.kind, inv.roomId);
+      if (!room || room.status !== 'waiting') {
+        RoomInvites.handled.add(id);
+        RoomInvites.remove(me.id, id);
+        RoomInvites.render();
+        showNotice('⚠️ 이미 시작했거나 사라진 방이에요.');
+        return;
+      }
+      // 실시간 방 전투 중에 다른 방에 들어가면 지금 전투는 포기가 됨
+      if (sim.running && !sim.spectator && currentActiveLiveBattleRoomId
+        && !confirm('지금 친구와 하고 있는 실시간 전투가 있어요.\n초대를 수락하면 지금 전투는 포기하게 돼요. 수락할까요?')) return;
+      RoomInvites.handled.add(id);
+      RoomInvites.render();
+      // 방에 먼저 들어간 뒤 초대를 지움 → 방장 화면이 거절로 착각하지 않음
+      try {
+        if (inv.kind === 'pvp') { switchStudentTab('pvp'); switchPvpSubMode('realtime'); await joinFirebasePvpRoom(inv.roomId); }
+        else if (inv.kind === 'raid') { switchStudentTab('raid'); await joinFirebaseCoopRaidRoom(inv.roomId); }
+        else { switchStudentTab('minigame'); await joinMinigameRoom(inv.roomId); }
+      } finally {
+        RoomInvites.remove(me.id, id);
+      }
+    };
+
+    window.declineRoomInvite = function (id) {
+      const { me, box } = RoomInvites.myBox();
+      if (!me || !box[id]) return;
+      RoomInvites.handled.add(id);
+      RoomInvites.remove(me.id, id);
+      RoomInvites.render();
+    };
+
     async function pushCurrentClassStateToFirebase(immediate = false) {
       if (suppressRemoteClassPush) return;
       ensureCurrentClassMetadata();
@@ -21484,6 +21724,7 @@
     let activePvpRoomsRef = null;
     let activeRaidRoomsRef = null;
     let activeMinigameRoomsRef = null;
+    let activeRoomInvitesRef = null;
     let activeMinigamesRef = null;
     let activeBattleEventsRef = null;
     let activeTowerLiveRef = null;
@@ -21517,6 +21758,7 @@
       if (activePvpRoomsRef && typeof activePvpRoomsRef.off === 'function') activePvpRoomsRef.off();
       if (activeRaidRoomsRef && typeof activeRaidRoomsRef.off === 'function') activeRaidRoomsRef.off();
       if (activeMinigameRoomsRef && typeof activeMinigameRoomsRef.off === 'function') activeMinigameRoomsRef.off();
+      if (activeRoomInvitesRef && typeof activeRoomInvitesRef.off === 'function') activeRoomInvitesRef.off();
       if (activeMinigamesRef && typeof activeMinigamesRef.off === 'function') activeMinigamesRef.off();
       if (activeBattleEventsRef && typeof activeBattleEventsRef.off === 'function') activeBattleEventsRef.off();
       if (activeTowerLiveRef && typeof activeTowerLiveRef.off === 'function') activeTowerLiveRef.off();
@@ -21535,6 +21777,8 @@
         maintainPvpRooms();
         renderLivePvpRoomsList();
         checkAutoStartMatchedPvpRoom();
+        RoomInvites.render();
+        if (RoomInvites.modal) RoomInvites.renderModal();
       });
 
       // 2) 엘리트 몬스터 2인(5+5) 협동 레이드 대기 로비방 구독 (/classes/{code}/raid_rooms)
@@ -21545,6 +21789,8 @@
         renderLiveRaidRoomsList();
         checkAutoStartMatchedRaidRoom();
         checkSpectatedRaidRoom();
+        RoomInvites.render();
+        if (RoomInvites.modal) RoomInvites.renderModal();
       });
 
       // 3) 미니게임 대기 로비방 구독 (/classes/{code}/minigame_rooms)
@@ -21553,7 +21799,15 @@
         liveMinigameRoomsCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
         maintainMinigameRooms();
         renderMinigameLobbyAndRoomUI();
+        RoomInvites.render();
+        if (RoomInvites.modal) RoomInvites.renderModal();
       });
+
+      // 3-1) 실시간 방 초대 구독 (/classes/{code}/invites)
+      activeRoomInvitesRef = db.ref(`classes/${cleanCode}/invites`);
+      activeRoomInvitesRef.on('value', (snap) => {
+        RoomInvites.onSnapshot(deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {}));
+      }, (err) => console.warn('[방 초대 구독 실패 - DB 규칙을 확인하세요]:', err));
 
       // 4) 실시간 미니게임 4종 보드 상태 구독 (/classes/{code}/minigames)
       activeMinigamesRef = db.ref(`classes/${cleanCode}/minigames`);
@@ -22213,6 +22467,7 @@
         ${!locked ? `<button onclick="switchTeamLiveSide('${room.roomId}')" class="px-4 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-xs">🔄 ${mem.team === 'blue' ? '레드팀으로' : '블루팀으로'} 가기</button>` : ''}
         ${!isHost ? `<button onclick="toggleTeamLiveReady('${room.roomId}')" class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg transition ${mem.ready ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-emerald-600 hover:bg-emerald-500 text-white animate-pulse'}">${mem.ready ? '↺ 준비완료 취소' : '✋ 준비완료 누르기!'}</button>` : ''}` : '';
       const hostBtns = isHost ? `
+        ${room.status === 'waiting' ? roomInviteBtnHTML('pvp', room.roomId) : ''}
         <button onclick="addTeamLiveAiFriend('${room.roomId}')" class="px-4 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-extrabold text-xs border border-slate-700">🤖 AI 친구 넣기</button>
         ${st.canStart && !st.equal
           ? `<button onclick="startTeamLiveBattle('${room.roomId}', true)" class="px-6 py-3 rounded-2xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-sm shadow-lg animate-bounce">⚖️ 부족한 자리 채우고 시작!</button>`
@@ -23046,6 +23301,7 @@
                           <div class="text-[11px] text-slate-400">다른 친구가 로비에서 이 방에 입장하면 여기에 표시됩니다.</div>
                         </div>
                       </div>
+                      ${isHost ? roomInviteBtnHTML('pvp', myRoom.roomId) : ''}
                       ${isHost ? `<button onclick="simulateFriendJoinAndReadyPvpRoom('${myRoom.roomId}')" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-extrabold text-[11px] border border-slate-700 shrink-0">🤖 연습 친구 입장+준비완료</button>` : ''}
                     `
                 }
@@ -24291,7 +24547,7 @@
             </div>
             <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
               <span>🔄 아래 [내 용병 배치]에서 출전 용병을 바꾸면 이 방에 바로 반영돼요 (파티원은 준비완료가 풀려요).</span>
-              ${practiceBtn}
+              <span class="flex flex-wrap gap-2">${isHost && guestSlots.length < RAID_GUEST_SLOTS.length && myRoom.status === 'waiting' ? roomInviteBtnHTML('raid', myRoom.roomId) : ''}${practiceBtn}</span>
             </div>
 
             <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
@@ -24845,6 +25101,7 @@
                         <div class="text-[11px] text-slate-400">로비에서 친구가 [🚪 방 입장하기]를 누르면 합류합니다.</div>
                       </div>
                     </div>
+                    ${isHost && idx === players.length && activeRoom.status === 'waiting' ? roomInviteBtnHTML('minigame', activeRoom.roomId) : ''}
                     ${isHost && idx === 1 && guests.length === 0 ? `<button onclick="simulateFriendJoinAndReadyMinigameRoom()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-extrabold text-[11px] border border-slate-700 shrink-0">🤖 연습 친구 입장+준비완료</button>` : ''}
                   </div>
                 `;
