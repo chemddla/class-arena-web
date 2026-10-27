@@ -11676,7 +11676,7 @@
       if (liveNet.role !== 'host' || !liveNet.ref) return;
       const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim']);
       const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) ? undefined : v))));
-      liveNet.ref.child('init').set({ at: Date.now(), units }).catch(() => {});
+      liveNet.ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, units }).catch(() => {});
     }
 
     // 분신 만들기: 장비 '환영' (능력치 30%, 시간 제한 없음) · 도적 스킬 '분신' (능력치 50%, 20초)
@@ -12559,14 +12559,10 @@
       const roomId = `tower_${stuId}`;
       const ref = liveRoomRef(roomId);
       if (!ref) { showNotice('⚠️ 서버에 연결되어 있지 않아 관전할 수 없어요.'); return; }
-      let init = null;
-      try { init = (await ref.child('init').once('value')).val(); } catch (e) {}
-      const units = init && Array.isArray(init.units)
-        ? deepCleanStrings(init.units).filter(u => u && typeof u === 'object' && u.id).map(normalizeLiveUnit)
-        : [];
-      const blueUnits = units.filter(u => u.team === 'blue');
-      const redUnits = units.filter(u => u.team === 'red');
-      if (!blueUnits.length || !redUnits.length) { showNotice('⚠️ 탑 전투 화면을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.'); return; }
+      const got = await waitLiveInit(ref);
+      if (!got) { showNotice('⚠️ 탑 전투 화면을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.'); return; }
+      const { init, blueUnits, redUnits } = got;
+      if (sim.running && !sim.spectator) return; // 기다리는 사이 내 전투를 시작했으면 그만둠
       if (sim.spectator) { stopLiveBattleNet(); closeBattleResult(); }
       const owner = state.students.find(s => s.id === stuId) || { id: stuId, name: info.name, roster: [] };
       const floor = liveNum(info.floor);
@@ -17425,7 +17421,12 @@
     // (작업자 타이머는 뒤로 간 탭에서도 거의 느려지지 않음 · 그림은 그리지 않음)
     let hiddenHostTicker = null;
     function hiddenHostBattleStep() {
-      if (!document.hidden || !sim.running || sim.netRole !== 'host') return;
+      if (!document.hidden || !sim.running) return;
+      // 탑·토벌 중계: 내 전투는 탭이 보일 때만 진행하지만(혼자 하는 전투), 보는 친구 화면이 '끊김'으로 닫히지 않게 가끔 지금 화면을 보냄
+      if (sim.netRole !== 'host') {
+        if (liveNet.towerCast && liveNet.towerWatchers && Date.now() - (liveNet.lastFramePublishedAt || 0) > 2000) publishLiveBattleFrame(true);
+        return;
+      }
       lastFrameDtMs = measureFrameTime();
       if (sim.waitingForOpponent) { updateLiveChoiceWait(); return; }
       if (sim.awaitingControlChoice) return;
@@ -24022,6 +24023,33 @@
       return db.ref(`classes/${classCode}/pvp_live/${roomId}`);
     }
 
+    // 관전 시작: 중계 화면의 유닛 목록(init)을 받아 옴 · 아직 안 올라왔으면 한 번 읽고 포기하지 않고 잠시(최대 waitMs) 기다림
+    // 양 팀 유닛이 모두 있으면 { init, blueUnits, redUnits }, 끝내 없으면 null
+    function waitLiveInit(ref, waitMs = 5000) {
+      const parse = init => {
+        const units = init && Array.isArray(init.units)
+          ? deepCleanStrings(init.units).filter(u => u && typeof u === 'object' && u.id).map(normalizeLiveUnit)
+          : [];
+        const blueUnits = units.filter(u => u.team === 'blue');
+        const redUnits = units.filter(u => u.team === 'red');
+        return blueUnits.length && redUnits.length ? { init, blueUnits, redUnits } : null;
+      };
+      return new Promise(resolve => {
+        let done = false, timer = null;
+        const initRef = ref.child('init');
+        const finish = v => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          try { initRef.off('value', onVal); } catch (e) {}
+          resolve(v);
+        };
+        const onVal = snap => { const got = parse(snap && snap.val()); if (got) finish(got); };
+        timer = setTimeout(() => finish(null), waitMs);
+        try { initRef.on('value', onVal, () => finish(null)); } catch (e) { finish(null); }
+      });
+    }
+
     const liveNum = v => (typeof v === 'number' && isFinite(v) ? v : 0);
     const liveR1 = v => Math.round(liveNum(v) * 10) / 10;
     const liveR2 = v => Math.round(liveNum(v) * 100) / 100;
@@ -24061,7 +24089,7 @@
         sim.effects.forEach(x => liveNet.sent.add(x));
         sim.floatTexts.forEach(x => liveNet.sent.add(x));
         const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (k === 'manualAimTarget' ? undefined : v))));
-        ref.child('init').set({ at: Date.now(), units }).catch(() => {});
+        ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, units }).catch(() => {});
         if (liveNet.team) ref.child('inputs').on('value', snap => applyTeamRemoteInputs(snap && snap.val()));
         else ref.child('input').on('value', snap => applyRemoteBattleInput(snap && snap.val()));
         addBattleLog('📡 상대 친구 화면으로 전투를 실시간 전송하고 있어요.');
@@ -24149,6 +24177,10 @@
         l: liveNet.pendingLogs.splice(0, 10),
         zn: (sim.zones || []).map(z => [liveR1(z.x), liveR1(z.y), z.r, z.life, z.kind])
       };
+      // 엘리트 보스 등장 연출(하늘에서 떨어지는 중인 시점)·화면 흔들림·섬광도 같이 보냄 (흔들림·섬광은 새로 생긴 것만 한 번)
+      if (sim.eliteIntro) frame.it = sim.eliteIntro.t;
+      if (sim.shake && !liveNet.sent.has(sim.shake)) { liveNet.sent.add(sim.shake); frame.sk = [sim.shake.power, sim.shake.life, sim.shake.maxLife]; }
+      if (sim.flash && !liveNet.sent.has(sim.flash)) { liveNet.sent.add(sim.flash); frame.fl = [String(sim.flash.color || '#ffffff'), sim.flash.life, sim.flash.maxLife]; }
       // undefined·NaN 값은 서버에 올릴 수 없으므로 JSON으로 한 번 정리
       liveNet.ref.child('frame').set(JSON.parse(JSON.stringify(frame))).catch(() => {});
     }
@@ -24389,9 +24421,15 @@
       const units = deepCleanStrings(val.units).filter(u => u && typeof u === 'object' && u.id).map(normalizeLiveUnit);
       if (!units.length) return;
       const prevId = battleControl.mode === 'manual' ? battleControl.unitId : null;
+      // 같은 방장이 전투 도중 유닛 목록만 다시 보낸 것(분신 등장 등)이면 받아 둔 화면·시계를 그대로 이어 씀
+      // (예전엔 매번 버퍼를 비워서, 분신이 나올 때마다 관전·도전자 화면이 잠깐 멈칫했음)
+      const sameHost = liveNet.initReceived && val.by && val.by === liveNet.initBy;
+      liveNet.initBy = val.by || null;
       sim.units = units;
-      sim.projectiles = [];
-      resetLiveFrameBuffer();
+      if (!sameHost) {
+        sim.projectiles = [];
+        resetLiveFrameBuffer();
+      }
       liveNet.initReceived = true;
       liveNet.lastFrameAt = Date.now();
       // 연결 전에 고른 용병이 있으면 방장 화면의 같은 용병으로 이어서 조종
@@ -24437,6 +24475,9 @@
     function applyLiveFrameState(val, ageMs) {
       // 토벌 도중에 들어온 관전자: 남은 시간이 방장 화면과 같게
       if (sim.raidWatch && liveNum(val.t) > 0) sim.tickCount = liveNum(val.t);
+      if (sim.mode === 'elite_raid') sim.eliteIntro = liveNum(val.it) > 0 ? { t: liveNum(val.it) } : null;
+      if (Array.isArray(val.sk)) sim.shake = { power: Math.min(60, liveNum(val.sk[0])), life: liveNum(val.sk[1]), maxLife: Math.max(1, liveNum(val.sk[2])) };
+      if (Array.isArray(val.fl)) sim.flash = { color: cleanUserText(val.fl[0], 30) || '#ffffff', life: liveNum(val.fl[1]), maxLife: Math.max(1, liveNum(val.fl[2])) };
       val.u.forEach((p, i) => {
         const u = sim.units[i];
         if (!u || !Array.isArray(p)) return;
@@ -24553,6 +24594,7 @@
       });
       sim.projectiles.forEach(p => { p.x += (p.vx || 0) * ticks; p.y += (p.vy || 0) * ticks; });
       (sim.zones || []).forEach(z => { if (z.life > 1) z.life = Math.max(1, z.life - ticks); });
+      if (sim.eliteIntro) sim.eliteIntro.t += ticks; // 다음 화면이 올 때까지 보스가 떨어지는 연출도 이어 그림
 
       // 직접 조종 중이면 마우스 조준이 바뀐 것도 가끔(0.1초마다) 보냄
       if (battleControl.mode === 'manual' && typeof localBattleInput.aimX === 'number' && now - (liveNet.lastAimCheckAt || 0) >= 100) {
@@ -25100,23 +25142,25 @@
             customRedUnits: [singleEliteBoss],
             roomBattle: true
           });
-          if (r.hostId === myStu.id) startRaidLiveBroadcast(r);
+          startRaidLiveBroadcast(r);
         }
       });
     }
 
     // ===== 📺 엘리트 몬스터 토벌 관전 =====
-    // 파티원마다 각자 화면에서 토벌하므로, 관전은 방장 화면을 탑 관전과 같은 방식으로 pvp_live/raidcast_{방}에 올려서 봄
-    // 보는 친구는 그 아래 watchers/{학생id}에 적고, 방장 화면은 보는 친구가 있을 때만 화면(frame)을 보냄 · 관전자는 레이드방에 아무것도 쓰지 않음
-    const raidCastId = roomId => `raidcast_${roomId}`;
+    // 파티원마다 각자 화면에서 토벌하므로, 토벌 중인 파티원 모두가 자기 화면을 탑 관전과 같은 방식으로 pvp_live/raidcast_{방}_{학생id}에 올림
+    // (예전엔 방장 화면만 올려서, 방장이 먼저 끝나거나 나가면 방은 "토벌 진행중"인데 볼 화면이 없었음)
+    // 보는 친구는 그 아래 watchers/{학생id}에 적고, 화면(frame)은 보는 친구가 있을 때만 보냄 · 관전자는 레이드방에 아무것도 쓰지 않음
+    const raidCastId = (roomId, stuId) => (stuId ? `raidcast_${roomId}_${stuId}` : `raidcast_${roomId}`);
 
     function startRaidLiveBroadcast(room) {
       const me = getActiveStudent();
       if (!sim.running || sim.mode !== 'elite_raid' || !me || !room) return;
-      const ref = liveRoomRef(raidCastId(room.roomId));
+      const castId = raidCastId(room.roomId, me.id);
+      const ref = liveRoomRef(castId);
       if (!ref) return;
       Object.assign(liveNet, {
-        role: 'host', roomId: raidCastId(room.roomId), ref, startedAt: Date.now(), finished: false,
+        role: 'host', roomId: castId, ref, startedAt: Date.now(), finished: false,
         sent: new WeakSet(), pendingLogs: [], lastFramePublishedAt: 0, spectator: false,
         team: false, remoteCtrls: {}, myId: me.id, towerCast: true, towerWatchers: 0, raidCast: true
       });
@@ -25132,29 +25176,41 @@
       });
     }
 
-    window.spectateRaidRoom = async function (roomId) {
+    // 아직 토벌 중인 파티원 (방장 먼저) · 볼 화면 후보
+    function raidFightingMembers(r) {
+      return RAID_SLOTS
+        .filter(s => r[s + 'Id'] && !raidIsPractice(r, s) && (!r.fighting || r.fighting[r[s + 'Id']]))
+        .map(s => ({ id: r[s + 'Id'], name: r[s + 'Name'] || '친구' }));
+    }
+
+    // skipId: 이 친구 화면은 빼고 찾음 (보던 친구가 나갔을 때 다른 친구 화면으로 넘어가기) · 관전을 시작했으면 true
+    window.spectateRaidRoom = async function (roomId, { skipId = null, quiet = false } = {}) {
       const me = getActiveStudent();
       const r = liveRaidRoomsCache && liveRaidRoomsCache[roomId];
-      if (!me || !r || r.status !== 'in_battle') { showNotice('⚠️ 토벌을 찾지 못했어요. 이미 끝났을 수 있어요.'); return; }
-      if (raidSlotOf(r, me.id)) return;
-      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
-      const ref = liveRoomRef(raidCastId(roomId));
-      if (!ref) { showNotice('⚠️ 서버에 연결되어 있지 않아 관전할 수 없어요.'); return; }
-      let init = null;
-      try { init = (await ref.child('init').once('value')).val(); } catch (e) {}
-      const units = init && Array.isArray(init.units)
-        ? deepCleanStrings(init.units).filter(u => u && typeof u === 'object' && u.id).map(normalizeLiveUnit)
-        : [];
-      const blueUnits = units.filter(u => u.team === 'blue');
-      const redUnits = units.filter(u => u.team === 'red');
-      if (!blueUnits.length || !redUnits.length) { showNotice('⚠️ 토벌 화면을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.'); return; }
+      if (!me || !r || r.status !== 'in_battle') { if (!quiet) showNotice('⚠️ 토벌을 찾지 못했어요. 이미 끝났을 수 있어요.'); return false; }
+      if (raidSlotOf(r, me.id)) return false;
+      if (sim.running && !sim.spectator) { if (!quiet) showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return false; }
+      if (!liveRoomRef(raidCastId(roomId))) { if (!quiet) showNotice('⚠️ 서버에 연결되어 있지 않아 관전할 수 없어요.'); return false; }
+      const tries = raidFightingMembers(r).filter(m => m.id !== skipId).map(m => ({ ...m, castId: raidCastId(roomId, m.id) }));
+      // 예전 방식(방장 화면 하나만 올리는) 친구 화면도 마지막으로 찾아봄
+      if (r.hostId !== skipId) tries.push({ id: r.hostId, name: r.hostName || '친구', castId: raidCastId(roomId) });
+      let got = null, pick = null;
+      for (const t of tries) {
+        // 첫 후보는 조금 더 기다림 (방금 출발해서 아직 화면을 올리는 중일 수 있음)
+        got = await waitLiveInit(liveRoomRef(t.castId), t === tries[0] ? 4000 : 1500);
+        if (got) { pick = t; break; }
+      }
+      if (!got) { if (!quiet) showNotice('⚠️ 토벌 화면을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.'); return false; }
+      if (sim.running && !sim.spectator) return false; // 기다리는 사이 내 전투를 시작했으면 그만둠
+      const { init, blueUnits, redUnits } = got;
       if (sim.spectator) { stopLiveBattleNet(); closeBattleResult(); }
-      const bossDef = ELITE_BOSS_DEFS.find(b => b.id === r.bossId) || ELITE_BOSS_DEFS[0];
-      const owner = state.students.find(s => s.id === r.hostId) || r.hostStudentSnapshot || { id: r.hostId, name: r.hostName, roster: [] };
-      const names = raidFilledSlots(r).map(s => r[s + 'Name']).join(' & ');
+      const room = liveRaidRoomsCache[roomId] || r;
+      const bossDef = ELITE_BOSS_DEFS.find(b => b.id === room.bossId) || ELITE_BOSS_DEFS[0];
+      const owner = state.students.find(s => s.id === pick.id) || { id: pick.id, name: pick.name, roster: [] };
+      const names = raidFilledSlots(room).map(s => room[s + 'Name']).join(' & ');
       launchSimulation({
         mode: 'elite_raid',
-        title: `📺 관전 중: ${names} vs ${bossDef.name}`,
+        title: `📺 관전 중: ${names} vs ${bossDef.name} (${pick.name} 화면)`,
         blueStudent: owner,
         redStudent: null,
         eliteBossId: bossDef.id,
@@ -25164,10 +25220,10 @@
         netRole: 'guest',
         myTeam: 'blue'
       });
-      if (!sim.running) return;
+      if (!sim.running) return false;
       sim.spectator = true;
       sim.spectateRoomId = null;
-      sim.raidWatch = { roomId, hostId: r.hostId, hostName: r.hostName, bossName: bossDef.name };
+      sim.raidWatch = { roomId, castId: pick.castId, stuId: pick.id, hostName: pick.name, bossName: bossDef.name };
       // 고를 것 없이 보기만: 전투 방식 고르기 창을 닫고 자동(화면 이동만)으로 고정
       battleControl.locked = true;
       battleControl.mode = 'auto';
@@ -25175,22 +25231,33 @@
       sim.awaitingControlChoice = false;
       document.getElementById('battleControlChooser')?.classList.add('hidden');
       renderBattleControlHud(true);
-      addBattleLog(`📺 [관전] ${r.hostName} 친구 화면의 [${bossDef.name}] 토벌을 보고 있어요. (WASD·드래그로 화면 이동)`);
-      startLiveBattleNet(raidCastId(roomId), 'guest', liveNum(init.at), true, false);
-      const wRef = ref.child('watchers').child(me.id);
+      addBattleLog(`📺 [관전] ${pick.name} 친구 화면의 [${bossDef.name}] 토벌을 보고 있어요. (WASD·드래그로 화면 이동)`);
+      startLiveBattleNet(pick.castId, 'guest', liveNum(init.at), true, false);
+      const wRef = liveRoomRef(pick.castId).child('watchers').child(me.id);
       liveNet.raidWatchRef = wRef;
       try { wRef.onDisconnect().remove(); } catch (e) {}
       wRef.set({ id: me.id, name: cleanUserText(me.name, 30) || '친구', at: Date.now() }).catch(() => {});
       renderLiveRaidRoomsList();
+      return true;
     };
 
-    // 레이드방 목록이 바뀔 때: 보던 토벌의 방이 닫혔거나 방장이 바뀌었는데 결과가 안 오면 잠시 뒤 관전을 끝냄
+    // 레이드방 목록이 바뀔 때: 보던 친구가 결과 없이 토벌에서 빠졌으면(나감·끊김) 잠시 뒤 아직 싸우는 다른 친구 화면으로 넘어감
+    // (다른 친구도 없으면 관전을 끝냄)
     function checkSpectatedRaidRoom() {
       const rw = sim.raidWatch;
-      if (!rw || !sim.spectator || !sim.running) return;
-      const r = liveRaidRoomsCache && liveRaidRoomsCache[rw.roomId];
-      if (r && r.status === 'in_battle' && r.hostId === rw.hostId) return;
-      setTimeout(() => {
+      if (!rw || !sim.spectator || !sim.running || rw.checking) return;
+      const stillOn = r => r && r.status === 'in_battle' && raidFightingMembers(r).some(m => m.id === rw.stuId);
+      if (stillOn(liveRaidRoomsCache && liveRaidRoomsCache[rw.roomId])) return;
+      rw.checking = true;
+      setTimeout(async () => {
+        rw.checking = false;
+        if (sim.raidWatch !== rw || !sim.spectator || !sim.running || liveNet.finished) return;
+        const r = liveRaidRoomsCache && liveRaidRoomsCache[rw.roomId];
+        if (stillOn(r)) return;
+        if (r && r.status === 'in_battle' && raidFightingMembers(r).some(m => m.id !== rw.stuId)) {
+          addBattleLog(`📺 ${rw.hostName} 친구가 토벌에서 빠져서, 아직 싸우는 친구 화면으로 넘어가요...`);
+          if (await spectateRaidRoom(rw.roomId, { skipId: rw.stuId, quiet: true })) return;
+        }
         if (sim.raidWatch === rw && sim.spectator && sim.running && !liveNet.finished) {
           abortLiveBattle(`📺 ${rw.hostName} 친구가 토벌을 그만뒀어요.`);
         }
