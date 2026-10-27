@@ -11506,7 +11506,10 @@
       const list = document.getElementById('battleControlUnitList');
       if (!box || !list) return;
       const myTeam = getMyBattleTeam();
-      const mine = sim.units.filter(u => u.team === myTeam && u.alive && u.monsterType !== 'scarecrow');
+      // 협동 레이드: 다른 친구가 조종할 수 있는 그 친구 용병은 고를 수 없음 (연습 친구 용병은 고를 수 있음)
+      const meId = getActiveStudent()?.id;
+      const othersOwn = u => Boolean(sim.raidLive && u.liveOwnerId && u.liveOwnerId !== meId && sim.raidLive.humans.includes(u.liveOwnerId));
+      const mine = sim.units.filter(u => u.team === myTeam && u.alive && u.monsterType !== 'scarecrow' && !othersOwn(u));
       list.innerHTML = mine.map(u => {
         const job = JOB_DEFS[u.job] || JOB_DEFS.warrior;
         return `<button type="button" data-unit-id="${u.id}" onclick="setBattleControlMode('manual', this.dataset.unitId)"
@@ -12688,6 +12691,7 @@
       sim.spectator = false;
       sim.towerWatch = null;
       sim.raidWatch = null;
+      sim.raidLive = null;
       battleControl.mode = 'auto';
       battleControl.unitId = null;
       battleControl.locked = false;
@@ -15960,11 +15964,20 @@
           localBattleInput.forfeit = 1;
           liveNet.lastInputSentAt = 0;
           onLocalControlChanged();
+          if (sim.mode === 'elite_raid') {
+            // 협동 레이드 파티원: 내 용병은 AI가 이어서 싸우고, 나만 패배(보상 없음)로 끝냄
+            stopLiveBattleNet();
+            sim.netRole = null;
+            sim.forfeitTeam = getMyBattleTeam();
+            finishSimulation(false);
+            return;
+          }
           showNotice('🏳️ 포기했어요. 방장 화면에서 결투를 끝내는 중이에요...');
           return;
         }
         // 팀전 방장이 포기해도 다른 친구들의 전투는 계속: 전투 계산과 방장을 남은 친구에게 넘김
         if (sim.teamLive && liveNet.role === 'host') handOffTeamLiveHost();
+        if (sim.raidLive && liveNet.role === 'host') handOffRaidHost();
         sim.forfeitTeam = getMyBattleTeam();
         finishSimulation(sim.forfeitTeam !== 'blue');
       });
@@ -19308,6 +19321,7 @@
           const clone = { ...m, row: idx, col };
           const u = createSimUnit(clone, stu, 'blue', 1.0);
           u.name = `[${label}]${m.name}`;
+          u.liveOwnerId = stu?.id || null; // 실시간 협동 레이드: 이 친구가 보낸 조작만 이 용병에 적용
           if (sideIdx === 1) {
             // 오른쪽 진형: 좌우를 뒤집어 보스(가운데)를 바라보게
             u.x = sim.worldW - u.x;
@@ -23330,6 +23344,7 @@
         return;
       }
       if (sim.teamLive && liveNet.role === 'host') handOffTeamLiveHost();
+      if (sim.raidLive && liveNet.role === 'host') handOffRaidHost();
       sim.forfeitTeam = getMyBattleTeam();
       finishSimulation(sim.forfeitTeam !== 'blue');
     }
@@ -25187,6 +25202,7 @@
     // ----- 팀원: 방장이 넘겨준 전투를 받아서(또는 방장이 갑자기 끊기면 내 화면 상태로) 이어서 계산 -----
     function applyLiveHandoff(val) {
       if (liveNet.role !== 'guest' || liveNet.spectator || !val || liveNum(val.at) < liveNet.minAt) return;
+      if (sim.mode === 'elite_raid') { applyRaidHandoff(val); return; }
       if (val.to !== liveNet.myId) return; // 다른 친구가 이어받으면 그 친구가 새로 보내는 화면을 받음
       takeOverLiveBattle(Array.isArray(val.units) ? val.units : null, val.tick);
     }
@@ -25286,9 +25302,20 @@
       liveNet.remoteCtrls = liveNet.remoteCtrls || {};
       Object.entries(all).forEach(([stuId, v]) => {
         if (!v || typeof v !== 'object' || !(liveNet.teamExpect || []).includes(stuId)) return;
-        const unit = sim.units.find(u => u.liveOwnerId === stuId && u.alive);
+        // 협동 레이드: 친구마다 용병이 여럿 → 그 친구가 고른 자기 용병만 (자동 전투면 조종 없음)
+        const raid = sim.mode === 'elite_raid';
+        const unit = raid
+          ? (v.unitId ? sim.units.find(u => u.id === v.unitId && u.liveOwnerId === stuId && u.alive) : null)
+          : sim.units.find(u => u.liveOwnerId === stuId && u.alive);
         let c = liveNet.remoteCtrls[stuId];
-        if (!c) c = liveNet.remoteCtrls[stuId] = { keys: {}, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0] };
+        if (!c) c = liveNet.remoteCtrls[stuId] = { keys: {}, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0], _seenUnitDash: liveNum(v.unitDashN) };
+        // 다른 용병으로 바꿨거나 자동 전투로 돌아갔으면 예전 용병은 AI에게
+        Object.keys(sim.controllers).forEach(id => { if (sim.controllers[id] === c && (!unit || id !== unit.id)) delete sim.controllers[id]; });
+        if (raid && liveNum(v.unitDashN) !== c._seenUnitDash) {
+          c._seenUnitDash = liveNum(v.unitDashN);
+          const du = sim.units.find(u => u.id === v.unitDashId && u.liveOwnerId === stuId && u.alive);
+          if (du && du.dashCooldown <= 0) triggerSingleUnitManualDash(du.id);
+        }
         if (v.chosen === 1) liveNet.teamChosen[stuId] = true;
         const k = v.keys || {};
         c.keys = { w: Boolean(k.w), a: Boolean(k.a), s: Boolean(k.s), d: Boolean(k.d) };
@@ -25678,6 +25705,7 @@
     // 방장 화면이 한참 조용할 때: 팀전이면 다음 방장이 될 친구가 자기 화면 상태로 전투를 이어받음
     // (다른 친구·관전자는 새 방장의 화면을 조금 더 기다림) · 처리했으면 true
     function handleLiveHostSilence() {
+      if (sim.mode === 'elite_raid') return handleRaidHostSilence();
       const me = getActiveStudent();
       const room = liveNet.roomId ? livePvpRoomsCache[liveNet.roomId] : null;
       if (!liveNet.team || !room || !me || !liveNet.initReceived) return false;
@@ -26097,6 +26125,12 @@
           const singleEliteBoss = buildCenterEliteBoss(bossDef, sides.length);
           const names = sides.map(s => `${s.label}`).join(' & ');
 
+          // 방장 화면 하나만 전투를 계산하고, 파티원 화면은 그 화면을 받아 보며 자기 용병 조작만 보냄
+          // (예전엔 파티원마다 각자 계산해서 무작위 값·직접 조종이 달라, 한 친구는 성공·다른 친구는 실패처럼 결과가 갈렸음)
+          const humans = [r.hostId, ...raidRealGuestSlots(r).map(s => r[s + 'Id'])];
+          const isHost = r.hostId === myStu.id;
+          const netRole = humans.length > 1 ? (isHost ? 'host' : 'guest') : null;
+
           showRewardBanner(`🐉 [실시간 협동 레이드 출발!] ${names} 연합군이 [${bossDef.name}] 토벌을 시작합니다!`);
           launchSimulation({
             mode: 'elite_raid',
@@ -26107,9 +26141,15 @@
             rewardMc: bossDef.rewardMc,
             customBlueUnits: blueUnits,
             customRedUnits: [singleEliteBoss],
+            netRole,
             roomBattle: true
           });
-          startRaidLiveBroadcast(r);
+          if (!sim.running) return;
+          sim.raidLive = { roomId: r.roomId, hostId: r.hostId, humans, tried: [] };
+          // 고르기 창을 다시 그려서 다른 친구의 용병은 빼고 내 용병만 보이게
+          if (!document.getElementById('battleControlChooser')?.classList.contains('hidden')) openBattleControlChooser(true);
+          if (netRole) connectRaidLiveNet(r.hostId, r.startedAt, isHost ? humans.filter(id => id !== myStu.id) : []);
+          else startRaidLiveBroadcast(r);
         }
       });
     }
@@ -26141,6 +26181,112 @@
         const val = snap && snap.val();
         liveNet.towerWatchers = val && typeof val === 'object' ? Object.keys(val).length : 0;
       });
+    }
+
+    // ----- 실시간 협동 레이드: 한 화면(계산 담당)만 전투를 계산 → 모든 파티원이 같은 전투·같은 결과 -----
+    // 계산 담당 화면은 pvp_live/raidcast_{방}_{학생id}에 화면을 올리고(관전자도 같은 화면을 봄), 파티원은 inputs/{학생id}로 조작만 보냄
+    // guests: 계산 담당일 때 조작을 받을 친구들 (파티원이면 빈 배열)
+    function connectRaidLiveNet(hostId, startedAt, guests, takeover = false) {
+      const rl = sim.raidLive;
+      if (!rl) return;
+      const me = getActiveStudent();
+      rl.hostId = hostId;
+      const asHost = me && hostId === me.id;
+      startLiveBattleNet(raidCastId(rl.roomId, hostId), asHost ? 'host' : 'guest', startedAt, false, true, asHost ? guests : [], takeover);
+      if (!liveNet.ref) return; // 서버에 연결되지 않았으면 각자 화면에서 진행
+      liveNet.raidCast = true;
+      if (asHost && takeover) {
+        liveNet.guestChose = true;
+        liveNet.started = true;
+      }
+      if (!asHost) {
+        // 이미 골라 둔 전투 방식·조종 용병을 새 계산 담당 화면에도 바로 알림
+        liveNet.lastInputSentAt = 0;
+        if (localBattleInput.controlChosen) onLocalControlChanged();
+      }
+    }
+
+    // 다음 계산 담당: 아직 토벌 중인 사람 친구 (방장·첫 파티원·둘째 파티원 순) 중 빠진 친구를 뺀 첫 번째
+    function raidFightingHumans(skipIds) {
+      const rl = sim.raidLive;
+      const room = rl && liveRaidRoomsCache[rl.roomId];
+      const fighting = room && room.status === 'in_battle' ? raidFightingMembers(room).map(m => m.id) : [];
+      return rl ? rl.humans.filter(id => fighting.includes(id) && !skipIds.includes(id)) : [];
+    }
+    const nextRaidCalcHost = skipIds => raidFightingHumans(skipIds)[0] || null;
+
+    // 계산 담당이 포기·방 나가기: 지금 전투 상태를 통째로 다음 친구에게 넘김 (넘겼으면 true)
+    function handOffRaidHost() {
+      const me = getActiveStudent();
+      const rl = sim.raidLive, ref = liveNet.ref;
+      if (!me || !rl || !ref || liveNet.role !== 'host') return false;
+      const heirId = (liveNet.teamExpect || []).find(id => id !== me.id && !(liveNet.remoteCtrls[id] && liveNet.remoteCtrls[id].forfeited));
+      if (!heirId) return false;
+      publishLiveBattleFrame(true);
+      const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (k === 'manualAimTarget' ? undefined : v))));
+      try { ref.onDisconnect().cancel(); } catch (e) {}
+      ref.child('handoff').set(JSON.parse(JSON.stringify({ at: Date.now(), from: me.id, to: heirId, tick: sim.tickCount, units }))).catch(() => {});
+      stopLiveBattleNet();
+      setTimeout(() => { if (liveNet.ref !== ref) ref.remove().catch(() => {}); }, 20000);
+      addBattleLog('👑 남은 친구에게 토벌 계산을 넘겼어요. 친구들의 토벌은 계속 이어져요.');
+      return true;
+    }
+
+    // 파티원: 계산 담당이 전투를 넘겼다는 소식 → 내가 받았으면 이어서 계산, 아니면 새 계산 담당 화면으로 옮겨 감
+    function applyRaidHandoff(val) {
+      const rl = sim.raidLive;
+      if (!rl || !val.to) return;
+      if (val.from && !rl.tried.includes(val.from)) rl.tried.push(val.from);
+      if (val.to === liveNet.myId) takeOverRaidBattle(Array.isArray(val.units) ? val.units : null, val.tick);
+      else connectRaidLiveNet(val.to, Date.now() - 3000, []);
+    }
+
+    // 파티원: 계산 담당 화면이 한참 조용함(갑자기 끊김) → 다음 친구가 자기 화면 상태로 이어서 계산 · 처리했으면 true
+    function handleRaidHostSilence() {
+      const rl = sim.raidLive;
+      const me = getActiveStudent();
+      // (화면을 한 번도 못 받았어도 내 화면의 처음 배치 그대로 이어서 계산하면 됨)
+      if (!rl || !me || liveNet.spectator) return false;
+      if (!rl.tried.includes(rl.hostId)) rl.tried.push(rl.hostId);
+      const heirId = nextRaidCalcHost(rl.tried);
+      if (!heirId) return false;
+      if (heirId === me.id) takeOverRaidBattle(null);
+      else connectRaidLiveNet(heirId, Date.now() - 3000, []);
+      return true;
+    }
+
+    function takeOverRaidBattle(units, tick) {
+      const me = getActiveStudent();
+      const rl = sim.raidLive;
+      if (!me || !rl || !sim.running) return;
+      const prevId = battleControl.mode === 'manual' ? battleControl.unitId : null;
+      stopLiveBattleNet();
+      if (units && units.length === sim.units.length) {
+        sim.units = deepCleanStrings(units).map(u => {
+          const kept = [u.damageDealt, u.healDone, u.damageTaken].map(liveNum);
+          normalizeLiveUnit(u);
+          [u.damageDealt, u.healDone, u.damageTaken] = kept;
+          return u;
+        });
+      }
+      if (typeof tick === 'number' && isFinite(tick)) sim.tickCount = tick;
+      // 받은 화면의 투사체·장판은 그림용이라 계산에 쓸 수 없음 (그 순간 날아가던 것만 사라짐)
+      sim.projectiles = [];
+      sim.zones = [];
+      sim.controllers = {};
+      sim.waitingForOpponent = false;
+      sim.awaitingControlChoice = false;
+      document.getElementById('battleControlChooser')?.classList.add('hidden');
+      const mine = prevId && sim.units.find(u => u.id === prevId && u.alive);
+      setBattleControlMode(mine ? 'manual' : 'auto', mine ? mine.id : null, true);
+      const others = raidFightingHumans([...rl.tried, me.id]);
+      sim.netRole = others.length ? 'host' : null;
+      if (others.length) connectRaidLiveNet(me.id, Date.now(), others, true);
+      else {
+        rl.hostId = me.id;
+        startRaidLiveBroadcast(liveRaidRoomsCache[rl.roomId] || { roomId: rl.roomId });
+      }
+      addBattleLog('👑 계산하던 친구가 빠져서 내 화면이 이어서 토벌을 계산해요! (빠진 친구 용병은 AI가 싸워요)');
     }
 
     // 아직 토벌 중인 파티원 (방장 먼저) · 볼 화면 후보
