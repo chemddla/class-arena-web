@@ -3044,13 +3044,14 @@
     // 시전자 크기에 따라 커지는 스킬 범위 배율 = √몸 크기 (2.5배 보스 → 1.6배). 몸 크기 그대로 키우면 보스 사자후·지진이
     //   전장을 거의 다 덮어서 근접 용병이 붙지 못함 (tests/tower-sim.js). 엘리트 보스 스킬은 원래 크기에 맞춰 짜여 있어서
     //   몸을 키운 만큼(ELITE_SIZE_MULT)만
-    function unitAreaScale(u) { return !u ? 1 : (u.isEliteBoss ? ELITE_SIZE_MULT : Math.sqrt(u.sizeScale || 1)); }
+    //   탑 종족 보스는 크기 2배에 맞춰 범위도 크기에 비례
+    function unitAreaScale(u) { return !u ? 1 : (u.isEliteBoss ? ELITE_SIZE_MULT : (u.isRaceBoss ? (u.sizeScale || 1) : Math.sqrt(u.sizeScale || 1))); }
     // 몸 크기를 정하면서 근접 기본 공격 사거리도 같은 배율로 (원거리는 몸 가장자리만큼만 늘어남)
     const MELEE_RANGE_MAX = 150;
     function setUnitBodySize(unit, s) {
       if (unit.baseRangeForSize === undefined) unit.baseRangeForSize = unit.range;
       unit.sizeScale = s;
-      if (unit.baseRangeForSize < MELEE_RANGE_MAX) unit.range = Math.round(unit.baseRangeForSize * s);
+      if (unit.baseRangeForSize < MELEE_RANGE_MAX || unit.isRaceBoss) unit.range = Math.round(unit.baseRangeForSize * s);
     }
     function unitDist(a, b) { return Math.max(0, Math.hypot(a.x - b.x, a.y - b.y) - unitBodyGap(a) - unitBodyGap(b)); }
     const BATTLE_DAMAGE_MULT = 2.2;      // 모든 공격 피해 배율 (회복량은 그대로)
@@ -4291,6 +4292,8 @@
     function towerRaceBossFloorScale(floor) { return towerRaceOfFloor(floor).bossFloorScale || 1.04; }
     // 종족 보스는 몸이 거대해서(MONSTER_BODY_SIZE) 사거리·스킬 범위가 넓은 만큼 체력·공격력을 TOWER_BOSS_BODY_COMP배로 (tests/tower-sim.js로 맞춤)
     const TOWER_BOSS_BODY_COMP = 0.6;
+    const TOWER_BOSS_HP_MULT = 2;   // 모험의 탑 종족 보스 체력 2배
+    const TOWER_BOSS_SIZE_MULT = 2; // 모험의 탑 종족 보스 크기 2배 (공격 사거리·스킬 범위도 크기에 비례)
     function towerBossUnitMult(floor) { return { hp: (towerRaceOfFloor(floor).bossHp || 1.4) * TOWER_BOSS_BODY_COMP, atk: 1.05 * TOWER_BOSS_BODY_COMP }; }
 
     // 몬스터 특성(능력치 배율·고유 능력)을 전투 유닛에 입힘
@@ -4299,7 +4302,7 @@
       if (!mon) return unit;
       const t = mon.trait || {};
       const bossMult = isBoss ? towerBossUnitMult(floor) : { hp: 1, atk: 1 };
-      const hpMult = (t.hp || 1) * bossMult.hp;
+      const hpMult = (t.hp || 1) * bossMult.hp * (isBoss ? TOWER_BOSS_HP_MULT : 1);
       unit.maxHp = Math.round(unit.maxHp * hpMult);
       unit.hp = unit.maxHp;
       unit.atk = Math.round(unit.atk * (t.atk || 1) * bossMult.atk);
@@ -4307,7 +4310,7 @@
       unit.baseMoveSpeed = unit.baseMoveSpeed * (t.spd || 1);
       unit.monsterPassives = [...(mon.passives || [])];
       unit.isRaceBoss = Boolean(isBoss);
-      setUnitBodySize(unit, mon.size || 1);
+      setUnitBodySize(unit, (mon.size || 1) * (isBoss ? TOWER_BOSS_SIZE_MULT : 1));
       return unit;
     }
 
