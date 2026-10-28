@@ -143,3 +143,7 @@
 원본: 1024×572, 어두운 배경(56,59,69) + ✦ — 외형별 시전 3칸(서 있음 · 시위 당김 두 칸). 배경은 가장자리와 이어진 같은 색만 지움, ✦ 워터마크 제거.
 
 **게임 적용 현황**: `fx/archer_storm_cast_<1~5|sr1>.webp`(393×111, 131×111 3칸, 0.33배, 기준점·standH는 기본 외형 시트와 같음) — 외형 번호별(`ARCHER_STORM_FX.casts[skinVariant]`)로 시전 자세를 바꿔 그림. 시크릿 레어 sr1(얼음 궁수)은 전용 `fx/storm_arrow_sr1.webp`(1005×291, 앞쪽 고리 중심 ≈ (630,145))와 `fx/archer_storm_wind_sr1.webp`(3칸, 얼음 바람)를 씀(`archerStormSr`).
+
+## 전사 엑스칼리버 외형별 시전 그림
+
+`fx/warrior_excalibur_cast_{1..5,sr1}.webp` (196×88, 98×88 2칸, 기준점 (43,84), 머리 위치를 맞춤) — 외형 2~6번(skinVariant 1~5)과 시크릿 레어 sr1이 시전할 때 쓰는 검 치켜듦 → 내림 자세. 원본은 회색 배경 샘플(좌·우 두 자세)이고 `tools/warrior_excalibur_cast_build.py <샘플 폴더>`로 배경 제거·축소해서 만듦.
