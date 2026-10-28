@@ -7490,34 +7490,41 @@
         watchers: r.watchers && typeof r.watchers === 'object' ? Object.keys(r.watchers).length : 0,
         watching: watchingBattle && sim.towerWatch && sim.towerWatch.stuId === r.id
       }));
+      // 대기 중인 방도 넣음 (대기실부터 관전 · 시작하면 관전 화면이 자동으로 열림)
+      const waitTag = ' · ⏳ 대기실';
       Object.values(livePvpRoomsCache || {}).forEach(r => {
-        if (!r || !r.roomId || r.status !== 'playing' || (myId && isPvpRoomPlayer(r, myId))) return;
+        if (!r || !r.roomId || (r.status !== 'playing' && r.status !== 'waiting') || (myId && isPvpRoomPlayer(r, myId))) return;
+        if (Date.now() - (r.createdAt || 0) >= 1800000) return;
         const team = isTeamLiveRoom(r);
+        const waiting = r.status === 'waiting';
         items.push({
-          kind: 'pvp', id: r.roomId, icon: '⚔️',
+          kind: 'pvp', id: r.roomId, icon: '⚔️', waiting,
           names: team ? `${r.hostName}의 팀전` : `${r.hostName} vs ${r.guestName || '?'}`,
-          detail: team ? '실시간 팀전' : (isDuelRoom(r) ? '1:1 용병 대결' : '5:5 실시간 결투'),
+          detail: (team ? '실시간 팀전' : (isDuelRoom(r) ? '1:1 용병 대결' : '5:5 실시간 결투')) + (waiting ? waitTag : ''),
           watchers: pvpSpectatorList(r).length,
-          watching: watchingBattle && sim.spectateRoomId === r.roomId,
-          locked: r.practiceFriend || (team && !teamMembersOf(r).some(m => !m.ai && m.id !== r.hostId)) ? '연습 경기' : ''
+          watching: currentSpectatingPvpRoomId === r.roomId || (watchingBattle && sim.spectateRoomId === r.roomId),
+          locked: !waiting && (r.practiceFriend || (team && !teamMembersOf(r).some(m => !m.ai && m.id !== r.hostId))) ? '연습 경기' : ''
         });
       });
       Object.values(liveRaidRoomsCache || {}).forEach(r => {
-        if (!r || !r.roomId || r.status !== 'in_battle' || (myId && raidSlotOf(r, myId))) return;
+        if (!r || !r.roomId || (r.status !== 'in_battle' && r.status !== 'waiting') || (myId && raidSlotOf(r, myId))) return;
+        if (Date.now() - (r.createdAt || 0) >= 1800000) return;
+        const waiting = r.status === 'waiting';
         items.push({
-          kind: 'raid', id: r.roomId, icon: '🐉',
+          kind: 'raid', id: r.roomId, icon: '🐉', waiting,
           names: RAID_SLOTS.filter(s => r[s + 'Id'] && !raidIsPractice(r, s)).map(s => r[s + 'Name'] || '친구').join(', '),
-          detail: `엘리트 토벌 · ${r.bossName || '보스'}`, watchers: 0,
-          watching: watchingBattle && sim.raidWatch && sim.raidWatch.roomId === r.roomId
+          detail: `엘리트 토벌 · ${r.bossName || '보스'}${waiting ? waitTag : ''}`, watchers: 0,
+          watching: currentSpectatingRaidRoomId === r.roomId || (watchingBattle && sim.raidWatch && sim.raidWatch.roomId === r.roomId)
         });
       });
       Object.values(liveMinigameRoomsCache || {}).forEach(r => {
-        if (!r || !r.roomId || r.status !== 'playing' || Date.now() - (r.createdAt || 0) >= 3600000) return;
+        if (!r || !r.roomId || (r.status !== 'playing' && r.status !== 'waiting') || Date.now() - (r.createdAt || 0) >= 3600000) return;
         const players = (r.players || []).filter(Boolean);
         if (myId && players.some(p => p.id === myId && !p.practice)) return;
+        const waiting = r.status === 'waiting';
         items.push({
-          kind: 'minigame', id: r.roomId, icon: r.gameIcon || '🎲',
-          names: players.map(p => p.name).join(' vs '), detail: `미니게임 · ${r.gameName || ''}`, watchers: 0,
+          kind: 'minigame', id: r.roomId, icon: r.gameIcon || '🎲', waiting,
+          names: players.map(p => p.name).join(' vs '), detail: `미니게임 · ${r.gameName || ''}${waiting ? waitTag : ''}`, watchers: 0,
           watching: mgWatchRoomId === r.roomId
         });
       });
@@ -7529,7 +7536,8 @@
       if (!listEl) return;
       const items = liveWatchItems();
       const countEl = document.getElementById('sideWatchCount');
-      if (countEl) countEl.textContent = items.length ? `${items.length}개 진행 중` : '';
+      const nWait = items.filter(it => it.waiting).length;
+      if (countEl) countEl.textContent = items.length ? [items.length - nWait ? `${items.length - nWait}개 진행 중` : '', nWait ? `${nWait}개 대기` : ''].filter(Boolean).join(' · ') : '';
       const tabCount = document.getElementById('sideWatchTabCount');
       if (tabCount) { tabCount.textContent = items.length; tabCount.classList.toggle('hidden', !items.length); }
       listEl.innerHTML = items.map(it => `
@@ -7552,7 +7560,18 @@
       const it = liveWatchItems().find(x => x.kind === kind && x.id === id);
       if (!it) { showNotice('⚠️ 이미 끝난 컨텐츠예요.'); renderSideWatchPanel(); return; }
       toggleSideWatchPanel(false);
-      if (it.watching) { if (kind === 'minigame') goToStudentTab('minigame'); else returnToBattle(); return; }
+      // 대기실 관전: 그 방 대기실 화면으로 이동
+      const showWaitingRoom = () => {
+        goToStudentTab(kind);
+        if (kind === 'pvp') switchPvpSubMode('realtime');
+        setTimeout(() => document.getElementById(kind === 'pvp' ? 'pvpWaitingRoomPanel' : 'raidWaitingRoomPanel')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+      };
+      if (it.watching) {
+        if (kind === 'minigame') goToStudentTab('minigame');
+        else if (sim.spectator && sim.running) returnToBattle();
+        else showWaitingRoom();
+        return;
+      }
       if (kind === 'minigame') { spectateMinigameRoom(id); return; }
       if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
       // 보던 것은 그만보고 새로 봄
@@ -7561,10 +7580,11 @@
       else {
         if (currentSpectatingPvpRoomId) stopSpectatingPvpRoom(true);
         else if (sim.spectator && sim.running) { stopLiveBattleNet(); closeBattleResult(); }
-        if (kind === 'tower') await spectateTowerRun(id);
+        if (kind === 'tower') { if (currentSpectatingRaidRoomId) stopSpectatingRaidRoom(true); await spectateTowerRun(id); }
         else await spectateRaidRoom(id);
       }
       if (sim.spectator && sim.running) returnToBattle();
+      else if (it.waiting) showWaitingRoom();
       renderSideWatchPanel();
     };
     window.addEventListener('resize', () => placeSideWatchPanel());
@@ -23472,14 +23492,24 @@
         && !confirm('지금 친구와 하고 있는 실시간 전투가 있어요.\n초대를 수락하면 지금 전투는 포기하게 돼요. 수락할까요?')) return;
       RoomInvites.handled.add(id);
       RoomInvites.render();
+      // 보던 관전·탑 관전 화면, 열려 있던 창은 닫고 그 방 화면으로 바로 이동
+      if (sim.spectator && sim.running) { stopLiveBattleNet(); closeBattleResult(); }
+      closeRoomInviteModal();
+      closeFriendProfile();
+      goToStudentTab(inv.kind === 'pvp' ? 'pvp' : inv.kind === 'raid' ? 'raid' : 'minigame');
       // 방에 먼저 들어간 뒤 초대를 지움 → 방장 화면이 거절로 착각하지 않음
       try {
-        if (inv.kind === 'pvp') { switchStudentTab('pvp'); switchPvpSubMode('realtime'); await joinFirebasePvpRoom(inv.roomId); }
-        else if (inv.kind === 'raid') { switchStudentTab('raid'); await joinFirebaseCoopRaidRoom(inv.roomId); }
-        else { switchStudentTab('minigame'); await joinMinigameRoom(inv.roomId); }
+        if (inv.kind === 'pvp') { switchPvpSubMode('realtime'); await joinFirebasePvpRoom(inv.roomId); }
+        else if (inv.kind === 'raid') await joinFirebaseCoopRaidRoom(inv.roomId);
+        else await joinMinigameRoom(inv.roomId);
       } finally {
         RoomInvites.remove(me.id, id);
       }
+      const panelId = inv.kind === 'pvp' ? 'pvpWaitingRoomPanel' : inv.kind === 'raid' ? 'raidWaitingRoomPanel' : 'minigameWaitingRoomSection';
+      setTimeout(() => {
+        const panel = document.getElementById(panelId);
+        if (panel && !panel.classList.contains('hidden')) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 80);
     };
 
     window.declineRoomInvite = function (id) {
@@ -24034,6 +24064,7 @@
 
     let currentJoinedPvpRoomId = null;
     let currentJoinedRaidRoomId = null;
+    let currentSpectatingRaidRoomId = null; // 관전자로 보고 있는 레이드방 (대기 중이어도 됨 · 방 데이터에는 아무것도 쓰지 않음)
     let currentJoinedMinigameRoomId = null;
     let currentSpectatingPvpRoomId = null; // 플레이어가 아니라 관전자로 들어가 있는 결투방 (대기 중이어도 됨)
     let selectedLobbyMinigameType = 'yutnori';
@@ -24238,6 +24269,7 @@
         if (raidSlotOf(r, me.id)) cancelFirebaseCoopRaidRoom(r.roomId, true);
       });
       if (currentJoinedRaidRoomId && !keep('raid', currentJoinedRaidRoomId)) currentJoinedRaidRoomId = null;
+      if (currentSpectatingRaidRoomId && !keep('raid', currentSpectatingRaidRoomId)) stopSpectatingRaidRoom(true);
       Object.values(liveMinigameRoomsCache || {}).forEach(r => {
         if (!r || !r.roomId || keep('minigame', r.roomId)) return;
         if ((r.players || []).some(p => p && p.id === me.id && !p.practice)) leaveMinigameRoom(true, r.roomId);
@@ -25153,6 +25185,7 @@
       const me = getActiveStudent();
       const roomId = roomIdArg || currentSpectatingPvpRoomId;
       if (roomId === currentSpectatingPvpRoomId) currentSpectatingPvpRoomId = null;
+      if (!roomIdArg) currentSpectatingRaidRoomId = null; // 관전 화면을 닫으면 레이드 대기실 관전도 끝
       if (sim.spectator && (!roomIdArg || sim.spectateRoomId === roomId)) { stopLiveBattleNet(); closeBattleResult(); }
       if (me && roomId) {
         try {
@@ -26955,12 +26988,35 @@
       const rooms = Object.values(liveRaidRoomsCache || {}).filter(r => r && (r.status === 'waiting' || r.status === 'in_battle') && (Date.now() - (r.createdAt || 0) < 1800000));
       if (badge) badge.textContent = `대기방 ${rooms.length}개`;
 
-      const myRoom = rooms.find(r => myStu && raidSlotOf(r, myStu.id));
+      // 내가 들어가 있는 방 (플레이어로 없으면 관전 중인 방)
+      const playerRoom = rooms.find(r => myStu && raidSlotOf(r, myStu.id));
+      if (playerRoom) currentSpectatingRaidRoomId = null;
+      const watchRoom = !playerRoom && currentSpectatingRaidRoomId ? rooms.find(r => r.roomId === currentSpectatingRaidRoomId) : null;
+      const myRoom = playerRoom || watchRoom;
+      const watching = Boolean(watchRoom);
       if (waitPanel) {
-        if (myRoom && myRoom.status === 'waiting') {
-          currentJoinedRaidRoomId = myRoom.roomId;
-          const isHost = myStu && myRoom.hostId === myStu.id;
-          const isGuest = !isHost;
+        if (watching && myRoom.status !== 'waiting') {
+          // 관전 중인 방이 토벌 중: 관전 화면으로 가는 버튼
+          const onScreen = sim.spectator && sim.running && sim.raidWatch && sim.raidWatch.roomId === myRoom.roomId;
+          waitPanel.classList.remove('hidden');
+          waitPanel.innerHTML = `
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="px-2.5 py-1 rounded-lg bg-violet-500/20 text-violet-300 font-extrabold text-xs">📺 관전 중 · 🔥 토벌 진행중</span>
+                <h4 class="font-title text-xl text-white">${myRoom.title || `${myRoom.hostName}의 파티`}</h4>
+              </div>
+              <button onclick="stopSpectatingRaidRoom()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-violet-900/60 text-xs font-bold text-slate-300">📺 관전 그만하기</button>
+            </div>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="text-xs font-bold text-slate-300">${onScreen ? '📺 토벌을 관전하고 있어요.' : '토벌이 끝나면 다시 대기실을 볼 수 있어요.'}</div>
+              ${onScreen
+                ? `<button onclick="returnToBattle()" class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 관전 화면 보기</button>`
+                : `<button onclick="spectateRaidRoom('${myRoom.roomId}')" class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 토벌 화면 보기</button>`}
+            </div>`;
+        } else if (myRoom && myRoom.status === 'waiting') {
+          if (!watching) currentJoinedRaidRoomId = myRoom.roomId;
+          const isHost = !watching && myStu && myRoom.hostId === myStu.id;
+          const isGuest = !watching && !isHost;
           const guestSlots = RAID_GUEST_SLOTS.filter(s => myRoom[s + 'Id']);
           const hasGuest = guestSlots.length > 0;
           const myReady = isGuest && Boolean(myRoom[raidSlotOf(myRoom, myStu.id) + 'Ready']);
@@ -27007,19 +27063,22 @@
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 font-extrabold text-xs">🐉 협동 레이드 대기실</span>
+                ${watching ? '<span class="px-2.5 py-1 rounded-lg bg-violet-500/20 text-violet-300 font-extrabold text-xs">📺 관전 중</span>' : ''}
                 <h4 class="font-title text-xl text-white">${myRoom.title || `${myRoom.hostName}의 파티`}</h4>
                 <span class="px-2.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold text-xs">목표 보스: ${myRoom.bossName}</span>
               </div>
-              <button onclick="cancelFirebaseCoopRaidRoom('${myRoom.roomId}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300">
+              ${watching
+                ? `<button onclick="stopSpectatingRaidRoom()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-violet-900/60 text-xs font-bold text-slate-300">📺 관전 그만하기</button>`
+                : `<button onclick="cancelFirebaseCoopRaidRoom('${myRoom.roomId}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300">
                 🚪 ${isHost ? (raidRealGuestSlots(myRoom).length ? '방 나가기 (방장 넘기기)' : '방 닫기') : '방 나가기'}
-              </button>
+              </button>`}
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
               ${RAID_SLOTS.map(slotCard).join('')}
             </div>
             <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
-              <span>🔄 아래 [내 용병 배치]에서 출전 용병을 바꾸면 이 방에 바로 반영돼요 (파티원은 준비완료가 풀려요).</span>
+              <span>${watching ? '📺 대기실을 관전하고 있어요. 토벌이 시작되면 관전 화면이 자동으로 열려요.' : '🔄 아래 [내 용병 배치]에서 출전 용병을 바꾸면 이 방에 바로 반영돼요 (파티원은 준비완료가 풀려요).'}</span>
               <span class="flex flex-wrap gap-2">${isHost && guestSlots.length < RAID_GUEST_SLOTS.length && myRoom.status === 'waiting' ? roomInviteBtnHTML('raid', myRoom.roomId) : ''}${practiceBtn}</span>
             </div>
 
@@ -27032,6 +27091,11 @@
                 }${hpMult > 1 ? ` · <span class="text-rose-300">3인 입장: 보스 체력 ×${hpMult}</span>` : ''}
               </div>
               <div class="flex items-center gap-2">
+                ${
+                  watching && guestSlots.length < RAID_GUEST_SLOTS.length
+                    ? `<button onclick="joinFirebaseCoopRaidRoom('${myRoom.roomId}')" class="px-5 py-3 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-sm shadow-lg">🚪 참가하기</button>`
+                    : ''
+                }
                 ${
                   isGuest
                     ? `<button onclick="toggleRaidRoomReady('${myRoom.roomId}')" class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg transition ${
@@ -27084,12 +27148,15 @@
                 ${hasGuest ? ` · 🤝 파티원: <strong class="text-emerald-300">${RAID_GUEST_SLOTS.filter(s => r[s + 'Id']).map(s => r[s + 'Name']).join(', ')}</strong>` : ''}
               </div>
             </div>
-            <div>
+            <div class="flex flex-wrap items-center gap-2">
               ${
                 r.status === 'waiting'
                   ? (isMyRoom
                       ? `<span class="px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 font-extrabold text-xs">참여 중인 파티</span>`
-                      : (isFull
+                      : (currentSpectatingRaidRoomId === r.roomId
+                          ? `<span class="px-3 py-1.5 rounded-xl bg-violet-500/20 text-violet-300 font-extrabold text-xs">📺 관전 중인 방</span>`
+                          : `<button onclick="spectateRaidRoom('${r.roomId}')" class="px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 관전하기</button>`)
+                        + (isFull
                           ? `<span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-500 font-bold text-xs">정원 초과 (${RAID_MAX_PLAYERS}/${RAID_MAX_PLAYERS})</span>`
                           : `<button onclick="joinFirebaseCoopRaidRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs shadow">🚪 방 입장하기</button>`))
                   : (isMyRoom
@@ -27301,9 +27368,25 @@
     window.spectateRaidRoom = async function (roomId, { skipId = null, quiet = false } = {}) {
       const me = getActiveStudent();
       const r = liveRaidRoomsCache && liveRaidRoomsCache[roomId];
-      if (!me || !r || r.status !== 'in_battle') { if (!quiet) showNotice('⚠️ 토벌을 찾지 못했어요. 이미 끝났을 수 있어요.'); return false; }
+      if (!me || !r || (r.status !== 'in_battle' && r.status !== 'waiting')) { if (!quiet) showNotice('⚠️ 토벌을 찾지 못했어요. 이미 끝났을 수 있어요.'); return false; }
       if (raidSlotOf(r, me.id)) return false;
       if (sim.running && !sim.spectator) { if (!quiet) showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return false; }
+      if (!skipId && currentSpectatingRaidRoomId !== roomId) {
+        leaveRoomsExcept('raid', roomId);
+        currentSpectatingRaidRoomId = roomId;
+      }
+      // 대기 중인 방: 대기실을 보기만 하다가 토벌이 시작되면 관전 화면이 자동으로 열림 (checkSpectatedRaidRoom)
+      if (r.status === 'waiting') {
+        if (sim.spectator && sim.running) { stopLiveBattleNet(); closeBattleResult(); }
+        renderLiveRaidRoomsList();
+        renderSideWatchPanel();
+        if (!quiet) {
+          showRewardBanner(`📺 [${r.title || '레이드방'}] 대기실을 관전해요. 토벌이 시작되면 관전 화면이 자동으로 열려요!`);
+          document.getElementById('raidWaitingRoomPanel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return true;
+      }
+      raidWatchAutoKey = `${roomId}:${r.startedAt || ''}`;
       if (!liveRoomRef(raidCastId(roomId))) { if (!quiet) showNotice('⚠️ 서버에 연결되어 있지 않아 관전할 수 없어요.'); return false; }
       const tries = raidFightingMembers(r).filter(m => m.id !== skipId).map(m => ({ ...m, castId: raidCastId(roomId, m.id) }));
       // 예전 방식(방장 화면 하나만 올리는) 친구 화면도 마지막으로 찾아봄
@@ -27356,9 +27439,40 @@
       return true;
     };
 
+    window.stopSpectatingRaidRoom = function (quiet = false) {
+      const roomId = currentSpectatingRaidRoomId;
+      currentSpectatingRaidRoomId = null;
+      if (sim.spectator && sim.raidWatch && (!roomId || sim.raidWatch.roomId === roomId)) { stopLiveBattleNet(); closeBattleResult(); }
+      renderLiveRaidRoomsList();
+      renderSideWatchPanel();
+      if (!quiet) showNotice('📺 관전을 그만뒀어요.');
+    };
+
+    let raidWatchAutoKey = '';    // 관전 화면을 이미 연 토벌 (방:시작 시각) — 끝난 뒤 다시 열지 않게
+    let raidWatchLaunching = false;
+
     // 레이드방 목록이 바뀔 때: 보던 친구가 결과 없이 토벌에서 빠졌으면(나감·끊김) 잠시 뒤 아직 싸우는 다른 친구 화면으로 넘어감
     // (다른 친구도 없으면 관전을 끝냄)
     function checkSpectatedRaidRoom() {
+      // 대기실부터 관전하던 방: 방이 사라지면 관전 끝, 토벌이 시작되면 관전 화면을 자동으로 엶
+      const me = getActiveStudent();
+      const sr = currentSpectatingRaidRoomId ? liveRaidRoomsCache && liveRaidRoomsCache[currentSpectatingRaidRoomId] : null;
+      if (currentSpectatingRaidRoomId && !sr) {
+        currentSpectatingRaidRoomId = null;
+        if (!(sim.spectator && sim.running)) showNotice('📺 관전하던 레이드방이 닫혔어요.');
+        renderLiveRaidRoomsList();
+      } else if (sr && me && raidSlotOf(sr, me.id)) {
+        currentSpectatingRaidRoomId = null;
+      } else if (sr && sr.status === 'in_battle' && !raidWatchLaunching && !sim.running && raidWatchAutoKey !== `${sr.roomId}:${sr.startedAt || ''}`) {
+        raidWatchAutoKey = `${sr.roomId}:${sr.startedAt || ''}`;
+        raidWatchLaunching = true;
+        // 파티원이 막 출발해서 화면을 올리는 중일 수 있어 조금 기다렸다 엶
+        setTimeout(async () => {
+          try {
+            if (currentSpectatingRaidRoomId === sr.roomId && !sim.running && await spectateRaidRoom(sr.roomId, { quiet: true })) returnToBattle();
+          } finally { raidWatchLaunching = false; }
+        }, 800);
+      }
       const rw = sim.raidWatch;
       if (!rw || !sim.spectator || !sim.running || rw.checking) return;
       const stillOn = r => r && r.status === 'in_battle' && raidFightingMembers(r).some(m => m.id === rw.stuId);
@@ -27637,7 +27751,7 @@
     window.spectateMinigameRoom = function (roomId) {
       const me = getActiveStudent();
       const r = liveMinigameRoomsCache && liveMinigameRoomsCache[roomId];
-      if (!me || !r || r.status !== 'playing') { showNotice('⚠️ 미니게임을 찾지 못했어요. 이미 끝났을 수 있어요.'); return; }
+      if (!me || !r || (r.status !== 'playing' && r.status !== 'waiting')) { showNotice('⚠️ 미니게임을 찾지 못했어요. 이미 끝났을 수 있어요.'); return; }
       if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
       if (sim.spectator && sim.running) { stopLiveBattleNet(); closeBattleResult(); }
       const isPlayer = (r.players || []).some(p => p && p.id === me.id && !p.practice);
@@ -27649,6 +27763,7 @@
         mgWatchRoomId = roomId;
         mgRealtimeSyncEnabled = true;
         applyRemoteMinigamesState(lastMinigamesSnapshot[roomId] || {});
+        if (r.status === 'waiting') showRewardBanner(`📺 [${r.title || '미니게임 방'}] 대기실을 관전해요. 게임이 시작되면 관전 화면이 자동으로 열려요!`);
       }
       goToStudentTab('minigame');
       renderMinigameLobbyAndRoomUI();
@@ -27718,16 +27833,16 @@
         activeRoom = rooms.find(r => Array.isArray(r.players) && r.players.some(p => p && p.id === myStu.id && !p.practice)) || null;
         if (activeRoom) currentJoinedMinigameRoomId = activeRoom.roomId;
       }
-      // 관전 중인 방: 경기가 끝나 대기실로 돌아가거나 방이 닫히면 관전도 끝
+      // 관전 중인 방: 대기실부터 보다가 게임이 시작되면 판을 보고, 끝나면 다시 대기실 · 방이 닫히면 관전도 끝
       if (activeRoom && mgWatchRoomId) mgWatchRoomId = null;
       let watching = false;
       if (!activeRoom && mgWatchRoomId) {
         const w = liveMinigameRoomsCache[mgWatchRoomId];
-        if (w && w.status === 'playing') { activeRoom = w; watching = true; }
+        if (w && (w.status === 'playing' || w.status === 'waiting')) { activeRoom = w; watching = true; }
         else {
           mgWatchRoomId = null;
           mgStopLocalGames();
-          showNotice('📺 관전하던 미니게임이 끝났어요. (관전은 보상이 없어요)');
+          showNotice('📺 관전하던 미니게임 방이 닫혔어요. (관전은 보상이 없어요)');
         }
       }
       if (boardSec) boardSec.classList.toggle('mg-spectating', watching);
@@ -27751,7 +27866,7 @@
           const isHost = myStu && activeRoom.hostId === myStu.id;
           const players = activeRoom.players || [];
           const guests = players.filter(p => !p.isHost);
-          const myPlayerObj = players.find(p => myStu && p.id === myStu.id);
+          const myPlayerObj = watching ? null : players.find(p => myStu && p.id === myStu.id);
           const allGuestsReady = guests.length > 0 && guests.every(p => p.ready);
           const canStart = isHost && allGuestsReady;
 
@@ -27808,10 +27923,13 @@
                   <span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-extrabold text-xs">
                     👥 ${players.length} / ${activeRoom.maxPlayers || 2}명 입장
                   </span>
+                  ${watching ? '<span class="px-2.5 py-1 rounded-lg bg-violet-500/20 text-violet-300 font-extrabold text-xs">📺 관전 중</span>' : ''}
                 </div>
-                <button onclick="leaveMinigameRoom()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-extrabold text-slate-200 border border-slate-700">
+                ${watching
+                  ? `<button onclick="stopWatchingMinigameRoom()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-violet-900/60 text-xs font-extrabold text-slate-200 border border-slate-700">📺 관전 그만하기</button>`
+                  : `<button onclick="leaveMinigameRoom()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-extrabold text-slate-200 border border-slate-700">
                   🚪 방 나가기 (로비로)
-                </button>
+                </button>`}
               </div>
 
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -27820,6 +27938,7 @@
 
               <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800">
                 <div class="text-xs font-bold text-slate-300">
+                  ${watching ? '<div class="text-violet-300 mb-1">📺 대기실을 관전하고 있어요. 게임이 시작되면 관전 화면이 자동으로 열려요.</div>' : ''}
                   ${
                     guests.length === 0
                       ? '📢 로비에서 다른 친구가 이 방에 입장하기를 기다리고 있습니다!'
@@ -27829,6 +27948,11 @@
                   }
                 </div>
                 <div class="flex items-center gap-2">
+                  ${
+                    watching && players.length < (activeRoom.maxPlayers || 2)
+                      ? `<button onclick="joinMinigameRoom('${activeRoom.roomId}')" class="px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-sm shadow-lg">🚪 참가하기</button>`
+                      : ''
+                  }
                   ${
                     myPlayerObj && !myPlayerObj.isHost
                       ? `<button onclick="toggleMinigameRoomReady()" class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg transition ${
@@ -27935,8 +28059,11 @@
               ${
                 r.status === 'waiting'
                   ? (isFull
-                      ? `<button onclick="joinMinigameRoom('${r.roomId}')" class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs">🚪 방 보기 (${players.length}/${r.maxPlayers || 2})</button>`
-                      : `<button onclick="joinMinigameRoom('${r.roomId}')" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow-lg">🚪 이 방에 입장하기</button>`)
+                      ? `<button onclick="spectateMinigameRoom('${r.roomId}')" class="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow-lg">📺 정원 마감 · 대기실 관전하기 (${players.length}/${r.maxPlayers || 2})</button>`
+                      : `<div class="flex gap-2">
+                          <button onclick="joinMinigameRoom('${r.roomId}')" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow-lg">🚪 이 방에 입장하기</button>
+                          <button onclick="spectateMinigameRoom('${r.roomId}')" class="px-3 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow-lg">📺 관전</button>
+                        </div>`)
                   : `<button onclick="spectateMinigameRoom('${r.roomId}')" class="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow-lg">📺 경기 진행중 · 관전하기</button>`
               }
             </div>
