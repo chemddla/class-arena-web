@@ -6793,6 +6793,7 @@
       if (typeof renderClassLobbyPage === 'function') renderClassLobbyPage();
       renderSideRankPanel();
       showRewardBanner('🎨 프로필을 저장했어요!');
+      DailyMission.progress('avatarDraw', 1, stu);
     }
 
     // ----- 내 도트 보관함 (그린 그림 저장 · 산 그림) -----
@@ -6982,6 +6983,7 @@
         renderProfileMarket();
         renderSideRankPanel();
         showRewardBanner(`🎨 [${title}] 그림을 샀어요! 내 프로필로 바꿨어요. (-${l.price.toLocaleString()} CA)`);
+        DailyMission.progress('profileBuy', 1, me);
       });
     }
 
@@ -7641,7 +7643,19 @@
     // ----- 오늘의 미션: 날마다 3개를 뽑고, 하나 깰 때마다 1,000 CA · 3개 모두 깨면 1,000 CA 더 -----
     // 학생 기록 stu.dailyMission = { date, ids: [3개], prog: { id: 횟수 }, done: { id: true }, bonus: true }
     const DAILY_MISSION_REWARD = 1000;
+    const SPECTATE_MISSION_MIN_MS = 30000;
     const DAILY_MISSION_BONUS = 1000;
+    // 미니게임별 미션: 결과 문구(mgFinish의 winText)에 게임 이름이 들어 있어 그걸로 어떤 게임인지 앎
+    const DAILY_MISSION_MINIGAMES = [
+      { tab: 'yutnori', icon: '🥢', name: '윷놀이' },
+      { tab: 'omok', icon: '⚫', name: '오목' },
+      { tab: 'cardflip', icon: '🃏', name: '카드 뒤집기' },
+      { tab: 'wordchain', icon: '💬', name: '끝말잇기' },
+      { tab: 'chosung', icon: '🔤', name: '초성 게임' },
+      { tab: 'mathduel', icon: '➗', name: '연산 대결' },
+      { tab: 'baduk', icon: '⚪', name: '바둑' },
+      { tab: 'chess', icon: '♟️', name: '체스' }
+    ];
     const DAILY_MISSION_DEFS = [
       { id: 'tower', icon: '🗼', label: '모험의 탑 도전하기', goal: 1, go: () => goToStudentTab('tower') },
       { id: 'raid3', icon: '🐉', label: '엘리트 보스 3명이서 도전하기', goal: 1, go: () => goToStudentTab('raid') },
@@ -7651,7 +7665,44 @@
       { id: 'profileSell', icon: '🏷️', label: '프로필 판매 등록하기', goal: 1, go: () => goToStudentTab('market'), need: stu => Boolean(avatarCells(stu.avatar)) },
       { id: 'petLove', icon: '💗', label: '펫 애정도 올리기', goal: 1, go: () => goToStudentTab('pet'), need: stu => Boolean(stu.pet && PET_DEFS[stu.pet.type] && (stu.pet.love || 0) < 100) },
       { id: 'ranked', icon: '🎯', label: '랭킹 매칭 도전하기', goal: 1, go: () => goToRankedMatch() },
-      { id: 'levelup', icon: '⬆️', label: '용병 레벨업하기', goal: 1, go: () => goToStudentTab('squad') }
+      { id: 'levelup', icon: '⬆️', label: '용병 레벨업하기', goal: 1, go: () => goToStudentTab('squad') },
+      { id: 'spectate', icon: '📺', label: '친구 전투 끝까지 관전하기', goal: 1, go: () => toggleSideWatchPanel(true) },
+      { id: 'auction', icon: '🔨', label: '용병 경매장에 올리기', goal: 1, go: () => goToStudentTab('market'), need: stu => (stu.roster || []).length >= 2 },
+      { id: 'roomVisit', icon: '🏠', label: '친구 방 구경하기', goal: 1, go: () => toggleSideRankPanel(true), need: () => (state.students || []).length >= 2 },
+      { id: 'raid2', icon: '🐲', label: '엘리트 보스 2명이서 도전하기', goal: 1, go: () => goToStudentTab('raid') },
+      { id: 'realtimePvp', icon: '⚡', label: '실시간 PvP 대결하기', goal: 1, go: () => { goToStudentTab('pvp'); switchPvpSubMode('realtime'); } },
+      { id: 'towerClear', icon: '🧗', label: '모험의 탑 새 층 돌파하기', goal: 1, go: () => goToStudentTab('tower'), need: stu => (stu.towerFloor || 1) < TOWER_MAX_FLOOR },
+      { id: 'raidWin', icon: '⚔️', label: '엘리트 보스 토벌 성공하기', goal: 1, go: () => goToStudentTab('raid') },
+      { id: 'rankedWin', icon: '🏆', label: '랭킹 매칭 승리하기', goal: 1, go: () => goToRankedMatch() },
+      { id: 'practice', icon: '🪆', label: '허수아비 모의전 하기', goal: 1, go: () => goToStudentTab('squad') },
+      { id: 'auctionBid', icon: '🙋', label: '용병 경매에 입찰하기', goal: 1, go: () => goToStudentTab('market') },
+      { id: 'reroll', icon: '🎰', label: '용병 스킬 다시 뽑기', goal: 1, go: () => goToStudentTab('squad') },
+      { id: 'homeDecor', icon: '🛋️', label: '내 방에 가구 놓기', goal: 1, go: () => goToStudentTab('home') },
+      { id: 'petFeed', icon: '🍖', label: '펫 밥 주기', goal: 1, go: () => goToStudentTab('pet'), need: stu => Boolean(stu.pet && PET_DEFS[stu.pet.type]) },
+      { id: 'profileBuy', icon: '🖼️', label: '친구 프로필 그림 사기', goal: 1, go: () => goToStudentTab('market'), need: stu => (state.students || []).some(s => s.id !== stu.id && (s.avatarShop || []).length) },
+      { id: 'tower3', icon: '🗼', label: '모험의 탑 3번 도전하기', goal: 3, go: () => goToStudentTab('tower') },
+      { id: 'ranked3', icon: '🎯', label: '랭킹 매칭 3번 도전하기', goal: 3, go: () => goToRankedMatch() },
+      { id: 'minigame3', icon: '🎲', label: '미니게임 3판 하기', goal: 3, go: () => goToStudentTab('minigame') },
+      { id: 'minigameWin', icon: '🥇', label: '미니게임에서 이기기', goal: 1, go: () => goToStudentTab('minigame') },
+      { id: 'quizCorrect', icon: '💯', label: '퀴즈 5문제 맞히기', goal: 5, go: () => goToStudentTab('mission') },
+      { id: 'avatarDraw', icon: '🎨', label: '프로필 그림 그려서 저장하기', goal: 1, go: () => openAvatarEditor() },
+      { id: 'rename', icon: '✏️', label: '용병 이름 바꾸기', goal: 1, go: () => goToStudentTab('squad') },
+      { id: 'mercSkin', icon: '👕', label: '용병 외형 바꾸기', goal: 1, go: () => goToStudentTab('squad') },
+      { id: 'deploy', icon: '🔁', label: '출전 용병 바꾸기', goal: 1, go: () => goToStudentTab('squad') },
+      { id: 'formation', icon: '🧩', label: '진형 바꾸기', goal: 1, go: () => goToStudentTab('squad') },
+      { id: 'defense', icon: '🛡️', label: '결투장 방어 진형 바꾸기', goal: 1, go: () => goToStudentTab('pvp') },
+      { id: 'instantSell', icon: '💰', label: '용병 즉시 판매하기', goal: 1, go: () => goToStudentTab('squad'), need: stu => (stu.roster || []).length >= 2 },
+      { id: 'tradeOffer', icon: '💌', label: '친구 용병에 구매 제안하기', goal: 1, go: () => goToStudentTab('market'), need: () => (state.students || []).length >= 2 },
+      { id: 'equipBuy', icon: '🎒', label: '장비 상점에서 장비 사기', goal: 1, go: () => goToStudentTab('squad') },
+      { id: 'equip', icon: '🗡️', label: '용병에게 장비 끼우기', goal: 1, go: () => goToStudentTab('squad') },
+      { id: 'recruitRefresh', icon: '🔄', label: '모집 지원자 명단 새로고침하기', goal: 1, go: () => goToStudentTab('office') },
+      { id: 'skinDesign', icon: '🖌️', label: '스킨 제작소에 디자인 내기', goal: 1, go: () => goToStudentTab('skinlab') },
+      { id: 'skinBuy', icon: '🧥', label: '스킨 제작소에서 외형 사기', goal: 1, go: () => goToStudentTab('skinlab') },
+      { id: 'furnitureBuy', icon: '🪑', label: '방 꾸미기 가구 사기', goal: 1, go: () => goToStudentTab('home') },
+      { id: 'homeSkin', icon: '🧱', label: '방 벽지·바닥 바꾸기', goal: 1, go: () => goToStudentTab('home') },
+      { id: 'petPat', icon: '🤚', label: '펫 쓰다듬기', goal: 1, go: () => goToStudentTab('pet'), need: stu => Boolean(stu.pet && PET_DEFS[stu.pet.type]) },
+      { id: 'petSnack', icon: '🍬', label: '펫 간식 주기', goal: 1, go: () => goToStudentTab('pet'), need: stu => Boolean(stu.pet && PET_DEFS[stu.pet.type]) },
+      ...DAILY_MISSION_MINIGAMES.map(g => ({ id: `mg_${g.tab}`, icon: g.icon, label: `${g.name} 한 판 하기`, goal: 1, go: () => { goToStudentTab('minigame'); switchMinigameSubTab(g.tab); } }))
     ];
 
     const DailyMission = {
@@ -7675,6 +7726,23 @@
       },
 
       doneCount(b) { return b.ids.filter(id => b.done[id]).length; },
+
+      // 미니게임 한 판이 끝났을 때: 판 수 · 승리 · 게임별 미션을 한꺼번에
+      minigameDone(winText, won, stu) {
+        this.progress('minigame', 1, stu);
+        this.progress('minigame3', 1, stu);
+        if (won) this.progress('minigameWin', 1, stu);
+        const g = DAILY_MISSION_MINIGAMES.find(x => String(winText).includes(x.name));
+        if (g) this.progress(`mg_${g.tab}`, 1, stu);
+      },
+
+      // 미션 완료 알림: 활동 자체의 알림이 먼저 보이게 조금 늦게, 여러 개면 차례로
+      bannerAt: 0,
+      announce(msg) {
+        const at = Math.max(Date.now() + 1800, this.bannerAt + 2600);
+        this.bannerAt = at;
+        setTimeout(() => showRewardBanner(msg), at - Date.now());
+      },
 
       // 미션 활동을 했을 때: 오늘 미션이면 횟수를 올리고, 다 채우면 바로 보상
       progress(id, n = 1, stu = getActiveStudent()) {
@@ -7700,8 +7768,7 @@
         saveState();
         this.refresh(stu);
         updateHeaderUI();
-        // 활동 자체의 보상 안내가 먼저 보이고, 그 뒤에 미션 완료를 알림
-        setTimeout(() => showRewardBanner(msg), 1800);
+        this.announce(msg);
       },
 
       renderBadge(stu = getActiveStudent()) {
@@ -8082,6 +8149,7 @@
       if (activeDetailMercId) renderMercDetailModal();
       setupIdlePreviewBattle();
       showRewardBanner(`✏️ 용병 이름이 [${oldName}] → [${merc.name}](으)로 변경되었습니다!`);
+      DailyMission.progress('rename', 1, stu);
     }
 
     function resetMercStatPoints(mercId) {
@@ -8131,6 +8199,7 @@
       saveState();
       renderSquadTab();
       setupIdlePreviewBattle();
+      DailyMission.progress('deploy', 1, stu);
     }
 
     let activeDetailMercId = null;
@@ -8485,6 +8554,7 @@
         if (activeDetailMercId === merc.id) renderMercDetailModal();
         setupIdlePreviewBattle();
         showRewardBanner(`🎲 스킬 전체 다시 뽑기! [${merc.name}]의 스킬이 [${skLabel(curSlots.slice(0, curN))}] (으)로 바뀌었어요!`);
+        DailyMission.progress('reroll', 1, stu);
       });
     }
 
@@ -8520,6 +8590,7 @@
         if (activeDetailMercId === merc.id) renderMercDetailModal();
         setupIdlePreviewBattle();
         showRewardBanner(`🎨 [${merc.name}]의 외형이 바뀌었어요!`);
+        DailyMission.progress('mercSkin', 1, stu);
       });
     }
 
@@ -8633,6 +8704,7 @@
       saveState();
       renderAllStudentViews();
       showRewardBanner(`💰 [${merc.name}] 용병을 즉시 판매하여 +${valInfo.instantSellPrice.toLocaleString()} CA를 획득했습니다!`);
+      DailyMission.progress('instantSell', 1, stu);
     }
 
     function registerMercToAuction(mercId) {
@@ -8678,6 +8750,7 @@
       renderAllStudentViews();
       switchStudentTab('market');
       showRewardBanner(`🔨 [${merc.name}] 용병이 학급 경매장에 출품되었습니다! (시작가 ${startBid.toLocaleString()} CA · 입찰 기간 ${AUCTION_DURATION_DAYS}일)`);
+      DailyMission.progress('auction', 1, stu);
     }
 
     // ----- 친구에게 CA·용병 보내기 -----
@@ -8772,6 +8845,7 @@
       saveState();
       renderMarketTab();
       showRewardBanner(`🙋 [${auc.merc.name}] 경매에 ${bidAmount.toLocaleString()} CA로 최고가 입찰 완료! (마감 때까지 최고가면 내 용병이 돼요)`);
+      DailyMission.progress('auctionBid');
     }
 
     // 경매 입찰 기간: 출품 후 3일. 마감 때 최고 입찰자에게 낙찰, 입찰이 없으면 유찰되어 판매자에게 돌아감
@@ -8993,6 +9067,7 @@
 
       showRewardBanner(`💌 [${seller.name}] 친구의 [${merc.name}] 용병에 ${offerPrice.toLocaleString()} CA 구매 제안을 보냈어요! 친구가 수락하면 내 용병이 돼요. (제안 금액은 미리 맡겨 두고, 거절되거나 취소하면 돌려받아요)`);
       saveState();
+      DailyMission.progress('tradeOffer', 1, buyer);
       renderMarketTab();
     }
 
@@ -9458,6 +9533,7 @@
       saveState();
       renderSquadTab();
       setupIdlePreviewBattle();
+      DailyMission.progress('formation', 1, stu);
     }
 
     // 용병의 스킬 3칸 (Lv.1 · 10 · 20에 하나씩 해금)
@@ -9690,6 +9766,7 @@
           saveState();
           renderOfficeTab();
           showNotice(`🔄 무료 지원자 갱신 완료! (오늘 남은 무료 갱신: ${freeLeft - 1}/${DAILY_FREE_REFRESHES}회)`);
+          DailyMission.progress('recruitRefresh', 1, stu);
           return;
         }
         if (stu.mc < RECRUIT_REFRESH_COST) {
@@ -9701,6 +9778,7 @@
         saveState();
         renderOfficeTab();
         showNotice(`🔄 ${RECRUIT_REFRESH_COST.toLocaleString()} CA를 사용하여 새로운 지원자 명단을 갱신했습니다!`);
+        DailyMission.progress('recruitRefresh', 1, stu);
         return;
       }
       generateRecruitPool(false);
@@ -10027,6 +10105,7 @@
         ['skinDesignTitle', 'skinDesignNote'].forEach(k => { const el = document.getElementById(k); if (el) el.value = ''; });
         renderSkinWorkshop(me);
         showRewardBanner(`🎨 '${title}' 디자인을 냈어요! 선생님이 다듬어서 검토한 뒤 승인해 주실 거예요.`);
+        DailyMission.progress('skinDesign', 1, me);
       } catch (e) {
         console.warn(e);
         showNotice('⚠️ 디자인을 내지 못했어요. 로그인 상태를 확인하고 다시 해 주세요.');
@@ -10066,6 +10145,7 @@
         updateHeaderUI();
         renderSkinWorkshop(me);
         showRewardBanner(`🎉 '${cleanUserText(e.title, 20)}' 외형을 갖게 됐어요! 용병 상세 → 외형 변경에서 입혀 보세요. (-${STUDENT_SKIN_PRICE.toLocaleString()} CA)`);
+        DailyMission.progress('skinBuy', 1, me);
       });
     }
 
@@ -10118,6 +10198,7 @@
         renderSkinWorkshop(me);
         renderSideRankPanel();
         showRewardBanner(`🎨 '${title}' 외형을 공유받았어요! 용병 상세 → 외형 변경에서 입혀 보세요. (-${offer.price.toLocaleString()} CA)`);
+        DailyMission.progress('skinBuy', 1, me);
       });
     }
 
@@ -11348,6 +11429,7 @@
         renderShopTab();
         renderSquadTab();
         showRewardBanner(`🎒 [${itemDef.icon} ${itemDef.name}] 구매 완료! 보관함에서 용병에게 끼워 주세요.`);
+        DailyMission.progress('equipBuy', 1, stu);
       });
     }
 
@@ -11367,6 +11449,7 @@
       renderAllStudentViews();
       if (activeDetailMercId) renderMercDetailModal();
       showRewardBanner(`⚔️ [${merc.name}]에게 [${eqDef.icon} ${eqDef.name}]을(를) 끼웠어요! (${eqDef.desc})`);
+      DailyMission.progress('equip', 1, stu);
     }
 
     function unequipMercItem(mercId) {
@@ -11844,6 +11927,7 @@
         showNotice('⭕ 정답이에요! (오늘 이미 풀어 본 문제라 보상은 없어요)');
         return;
       }
+      DailyMission.progress('quizCorrect', 1, stu);
       const got = grantDailyReward(stu, 'quiz', ECONOMY.quizReward);
       if (got > 0) state.guardianPts += 10;
       saveState();
@@ -13572,6 +13656,7 @@
       });
       if (!sim.running) return;
       sim.spectator = true;
+      sim.spectateFrom = Date.now();
       sim.spectateRoomId = null;
       sim.towerWatch = { stuId, name: info.name, floor };
       // 고를 것 없이 보기만: 전투 방식 고르기 창을 닫고 자동(화면 이동만)으로 고정
@@ -16606,6 +16691,8 @@
           <div>⚔️ 최고 공격왕: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
           <div>💚 다정 치유왕: <strong>${healKing?.name || '-'}</strong> (${healKing?.healDone || 0} 회복·보호)</div>`;
         document.getElementById('battleResultOverlay').classList.remove('hidden');
+        // 오늘의 미션: 중간에 나가지 않고 끝까지 본 관전만 (끝나기 직전에 잠깐 들어온 건 빼려고 30초 이상)
+        if (sim.spectateFrom && Date.now() - sim.spectateFrom >= SPECTATE_MISSION_MIN_MS) DailyMission.progress('spectate');
         return;
       }
       if (liveNet.role === 'host') publishLiveBattleResult(blueTeamWon);
@@ -16665,10 +16752,16 @@
       }
       if (pvpScoreDelta) stu.pvpScore = (stu.pvpScore || 0) + pvpScoreDelta;
       if (!iForfeited) {
-        if (sim.mode === 'tower') DailyMission.progress('tower', 1, stu);
-        if (sim.mode === 'pvp_ranked') DailyMission.progress('ranked', 1, stu);
+        if (sim.mode === 'tower') { DailyMission.progress('tower', 1, stu); DailyMission.progress('tower3', 1, stu); }
+        if (sim.mode === 'pvp_ranked') { DailyMission.progress('ranked', 1, stu); DailyMission.progress('ranked3', 1, stu); }
         // 엘리트 보스 3명이서: 실제 친구(연습용 빈자리 제외) 3명 이상이 함께한 협동 레이드
         if (sim.mode === 'elite_raid' && sim.raidLive && sim.raidLive.humans.length >= 3) DailyMission.progress('raid3', 1, stu);
+        if (sim.mode === 'elite_raid' && sim.raidLive && sim.raidLive.humans.length >= 2) DailyMission.progress('raid2', 1, stu);
+        if (sim.mode === 'pvp_realtime') DailyMission.progress('realtimePvp', 1, stu);
+        if (sim.mode === 'practice') DailyMission.progress('practice', 1, stu);
+        if (isFirstTowerClear) DailyMission.progress('towerClear', 1, stu);
+        if (blueWon && sim.mode === 'elite_raid') DailyMission.progress('raidWin', 1, stu);
+        if (blueWon && sim.mode === 'pvp_ranked') DailyMission.progress('rankedWin', 1, stu);
       }
 
       const atkKing = mvpCandidates().sort((a, b) => b.damageDealt - a.damageDealt)[0];
@@ -20312,7 +20405,7 @@
       const doneIds = Array.isArray(stuMg.mgRewardedIds) ? stuMg.mgRewardedIds : [];
       if (doneIds.includes(st.gameId)) return;
       stuMg.mgRewardedIds = [...doneIds, st.gameId].slice(-30);
-      DailyMission.progress('minigame', 1, stuMg);
+      DailyMission.minigameDone(winText, winnerSeats.includes(my), stuMg);
       if (winnerSeats.includes(my)) {
         const got = grantDailyReward(getActiveStudent(), 'minigame', amount);
         saveState();
@@ -25497,6 +25590,7 @@
       });
       saveState();
       renderPvpTab();
+      DailyMission.progress('defense', 1, stu);
     }
 
     window.openDefenseEditor = function () {
@@ -25822,6 +25916,7 @@
       });
       if (!sim.running) return;
       sim.spectator = true;
+      sim.spectateFrom = Date.now();
       sim.spectateRoomId = r.roomId;
       // 고를 것 없이 보기만: 전투 방식 고르기 창을 닫고 자동(화면 이동만)으로 고정
       battleControl.locked = true;
@@ -27419,6 +27514,7 @@
       });
       if (!sim.running) return false;
       sim.spectator = true;
+      sim.spectateFrom = Date.now();
       sim.spectateRoomId = null;
       sim.raidWatch = { roomId, castId: pick.castId, stuId: pick.id, hostName: pick.name, bossName: bossDef.name };
       // 고를 것 없이 보기만: 전투 방식 고르기 창을 닫고 자동(화면 이동만)으로 고정
@@ -30053,6 +30149,7 @@
         this.hopT = 0;
         this.setMode(Math.random() < 0.5 ? 'play' : 'like', 2.4);
         this.say(this.pick(this.lines().pat), 1800);
+        DailyMission.progress('petPat', 1, this.student());
         if (now >= this.patCdAt) {
           this.patCdAt = now + PET_PAT_COOLDOWN_MS;
           if (this.addLove(p, 1)) this.saveSoon();
@@ -30070,6 +30167,7 @@
         p.fullAt = Date.now();
         this.addLove(p, 2);
         saveState();
+        DailyMission.progress('petFeed', 1, this.student());
         this.setMode('eat', 3, ['like', 1.6]);
         this.say(this.lines().eat, 2200);
         for (let i = 0; i < 2; i++) setTimeout(() => this.fx('✨'), 600 + i * 500);
@@ -30089,6 +30187,7 @@
         p.snackAt = now;
         this.addLove(p, 3);
         saveState();
+        DailyMission.progress('petSnack', 1, this.student());
         this.setMode('snack', 3.2, ['like', 1.6]);
         this.say(this.lines().snack, 2400);
         for (let i = 0; i < 3; i++) setTimeout(() => this.fx(i === 1 ? '🎵' : '💗'), 500 + i * 450);
@@ -30403,6 +30502,7 @@
         switchStudentTab('home');
         if (me && me.id === stuId) return;
         this.visitId = stuId;
+        DailyMission.progress('roomVisit', 1, me);
         this.ghost = null;
         this.sel = null;
         this.zoom = 1;
@@ -31154,6 +31254,7 @@
         stu.mc -= s.price;
         home.skins.push(`${part}:${id}`);
         showNotice(`🧱 ${s.name}을(를) 샀어요! 방에 바로 깔았어요.`);
+        DailyMission.progress('homeSkin', 1, stu);
         this.useSkin(part, id);
       },
       useSkin(part, id) {
@@ -31176,6 +31277,7 @@
         this.home(stu).items.push({ u, id, x: 0, y: 0, r: 0, p: 0 });
         saveState();
         showNotice(`🛋️ ${def.name}을(를) 샀어요! 방에 놓아 보세요.`);
+        DailyMission.progress('furnitureBuy', 1, stu);
         this.startPlace(id, u);
       },
       startPlace(id, u) {
@@ -31239,10 +31341,12 @@
         }
         const it = this.home(stu).items.find(x => x.u === g.u);
         if (!it) { this.cancel(); return; }
+        const placedNew = !it.p;
         Object.assign(it, { x: g.x, y: g.y, r: g.r, p: 1 });
         this.ghost = null;
         this.sel = it.u;
         saveState();
+        if (placedNew) DailyMission.progress('homeDecor', 1, stu);
         this.render();
       },
       cancel() {
