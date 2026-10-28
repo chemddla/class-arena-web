@@ -5929,7 +5929,11 @@
         tornado: [419, 0, 134, 132, 67, 125], dome: [557, 0, 172, 149, 86, 132]
       }
     };
-    [['cast', 'knight_giant_cast'], ['fx', 'knight_giant_fx']].forEach(([k, file]) => {
+    // 거인 상태 동작 17칸(218×133, 발 기준점 (109,123)): 0 서기 · 1 망치 휘두름 · 2 방패 듦 · 3 외침 · 4 외침(충격파 고리) · 5·6 피격 · 7~9 쓰러짐 · 10 망치 듦 · 11 내리찍기 · 12 도발(망치) · 13 도발(붉은 불꽃) · 14 돌진(미사용) · 15 돌진 · 16 방어 태세
+    // GIANT_MOTION_CELL[기본 기사 시트 칸 번호] = 거인 동작 칸 (idle 0-1 · walk 2-5 · attack 6-9 · skill 10-13 · hurt 14-15 · death 16-18 · quake 19-21 · taunt 22-24 · charge 25-27 · defense 28-30)
+    KNIGHT_GIANT_FX.motionCell = { w: 218, h: 133, anchorX: 109, anchorY: 123, standH: 92 };
+    const GIANT_MOTION_CELL = [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 2, 2, 2, 5, 6, 7, 8, 9, 10, 10, 11, 12, 4, 13, 0, 15, 15, 0, 16, 16];
+    [['cast', 'knight_giant_cast'], ['motion', 'knight_giant_motion'], ['fx', 'knight_giant_fx']].forEach(([k, file]) => {
       const img = new Image();
       img.onload = () => { img.ready = true; };
       img.src = `assets/sprites/fx/${file}.webp`;
@@ -13222,7 +13226,7 @@
       if (u.job === 'warrior' || u.job === 'rogue' || u.job === 'knight') {
         const rogue = u.job === 'rogue';
         playCombatSfx('slash');
-        sim.effects.push({
+        if (u.job !== 'warrior') sim.effects.push({
           type: 'sword_slash', x: u.x + Math.cos(aimAngle) * (rogue ? 18 : 24), y: u.y - 6 + Math.sin(aimAngle) * (rogue ? 18 : 24),
           angle: aimAngle, color: rogue ? '#a78bfa' : (u.job === 'knight' ? '#0ea5e9' : (u.team === 'blue' ? '#2563eb' : '#e11d48')), life: rogue ? 20 : 32, maxLife: rogue ? 20 : 32
         });
@@ -15588,7 +15592,7 @@
           } else if (u.job === 'warrior' || u.job === 'rogue' || u.job === 'knight') {
             playCombatSfx('slash');
             withHitKind('melee', () => applyDamage(u, target, u.atk));
-            sim.effects.push({
+            if (u.job !== 'warrior') sim.effects.push({
               type: 'sword_slash',
               x: u.x + Math.cos(u.facingAngle) * (u.job === 'rogue' ? 18 : 24),
               y: u.y - 6 + Math.sin(u.facingAngle) * (u.job === 'rogue' ? 18 : 24),
@@ -16583,7 +16587,7 @@
     // ===== 히든 스킬 전투 (엑스칼리버 · 원소 융합 · 기적 · 폭풍 · 암살 · 거인화 · 무쌍난무 · 마지막 한 발) =====
     // 날아가는 검기·돌풍·융합 장판의 판정은 sim.hiddenFx (방장·혼자 전투만), 그림은 sim.effects의 hidden_* (관전 화면에도 그대로 감)
     const HIDDEN_BEAM_SPEED = 12;          // 엑스칼리버 검기: 틱마다 나아가는 거리
-    const HIDDEN_BEAM_HALF_W = 80;         // 검기 높이의 절반
+    const HIDDEN_BEAM_HALF_W = 104;        // 검기 높이의 절반
     const HIDDEN_STORM_SPEED = 3.4;        // 폭풍 돌풍 화살: 느리게 나아감
     const HIDDEN_STORM_R = 95;             // 돌풍 반지름
     const HIDDEN_STORM_HIT_TICKS = 20;     // 한 적이 돌풍에 다시 맞기까지
@@ -17144,8 +17148,29 @@
           const sc = w * 2.3 / WARRIOR_EXCALIBUR_FX.frames.beam[3];
           ctx.globalAlpha = Math.min(1, ef.life / 8, (ef.maxLife - ef.life) / 3 + 0.3);
           ctx.globalCompositeOperation = 'lighter';
-          ctx.scale(1, 1 + 0.05 * Math.sin(t * 0.7));
           drawExcaliburFrame(ctx, 'beam', sc);
+          // 검기 둘레 효과: 초승달 가장자리를 따라 반짝이는 빛 알갱이 + 뒤로 흩날리는 금빛 불똥
+          const A = ctx.globalAlpha, age = ef.maxLife - ef.life;
+          for (let k = 0; k < 10; k++) {
+            const ph = (age * 0.09 + k * 0.1) % 1; // 0→1: 생겼다 사라짐
+            const side = k % 2 ? 1 : -1;
+            const ex = -10 - ph * 130 - (k % 3) * 8; // 뒤쪽으로 흘러감
+            const ey = side * (w * (0.35 + 0.6 * ((k * 37) % 10) / 10)) * (1 - ph * 0.35);
+            ctx.globalAlpha = A * (1 - ph) * 0.85;
+            ctx.fillStyle = k % 3 ? '#fde047' : '#ffffff';
+            ctx.beginPath();
+            ctx.arc(ex, ey, (3.2 - 2 * ph) * (1.1 + (k % 3) * 0.3), 0, Math.PI * 2);
+            ctx.fill();
+          }
+          for (let k = 0; k < 4; k++) { // 초승달 끝자락에서 깜빡이는 별빛
+            const a = (k / 4) * Math.PI * 2 + age * 0.12, blink = 0.5 + 0.5 * Math.sin(age * 0.5 + k * 1.7);
+            ctx.globalAlpha = A * blink * 0.9;
+            ctx.save();
+            ctx.translate(Math.cos(a) * w * 0.25 + w * 0.45, Math.sin(a) * w * 0.95);
+            ctx.rotate(a);
+            drawExcaliburFrame(ctx, 'spark', 0.32 + 0.12 * blink);
+            ctx.restore();
+          }
           return;
         }
         const tail = ctx.createLinearGradient(-200, 0, 0, 0);
@@ -19099,6 +19124,14 @@
           fi = since < 10 ? 1 : (since < 22 ? 2 : 3);
           const q = Math.min(1, since / 32);
           grow = 1 / HIDDEN_GIANT_SCALE + (1 - 1 / HIDDEN_GIANT_SCALE) * (1 - (1 - q) * (1 - q)); // 보통 크기에서 3배로 커짐
+        } else if (isGiant && g.motion.ready) {
+          // 거인 상태: 하던 동작(공격·스킬·피격·돌진·방어 태세)에 맞는 거인 그림. 걸을 땐 서 있는 그림이 쿵쿵 뜀
+          const m = g.motionCell, cell = GIANT_MOTION_CELL[frame] ?? 0;
+          const ms = spriteDrawH(u, sprite) / m.standH;
+          const walkBob = frame >= 2 && frame <= 5 ? -Math.abs(Math.sin(tick * 0.2)) * 3 * ms : 0;
+          ctx.drawImage(g.motion, cell * m.w, 0, m.w, m.h, -m.anchorX * ms, -m.anchorY * ms + walkBob, m.w * ms, m.h * ms);
+          ctx.restore();
+          return;
         } else if (isGiant) fi = 4;
         if (fi >= 0) {
           const ks = spriteDrawH(u, sprite) / g.standH * grow;
