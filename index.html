@@ -4071,7 +4071,7 @@
 
     // 🔥 하드모드: 종족 보스 층을 깨면 그 종족 10개 층을 하드모드로 도전 가능
     // 몬스터 능력치(체력·공격력·방어력) 2배 · 몸 1.5배 · 붉은 빛 · 보스는 나쁜 상태이상 면역 · 처음 깨면 원래 보상의 2배
-    const TOWER_HARD = { stat: 2, size: 1.5, reward: 2 };
+    const TOWER_HARD = { stat: 2, size: 1.5, reward: 2, cost: 1000 }; // cost: 하드모드 한 번 도전할 때마다 내는 CA
     function towerHardClearsOf(stu) { return (stu && stu.towerHardCleared) || {}; }
     function isTowerHardUnlocked(stu, floor) {
       const bossFloor = Math.ceil(floor / TOWER_RACE_FLOORS) * TOWER_RACE_FLOORS;
@@ -10809,9 +10809,10 @@
                 ${cleared ? '재도전 (보상 없음)' : '⚔️ 도전하기'}
               </button>
               ${hardOpen
-                ? `<button onclick="startTowerBattle(${f.floor}, true)" title="몬스터 능력치 2배 · 크기 1.5배 · 보스는 상태이상 면역"
+                ? `<button onclick="startTowerBattle(${f.floor}, true)" title="도전비용 ${TOWER_HARD.cost.toLocaleString()} CA · 몬스터 능력치 2배 · 크기 1.5배 · 보스는 상태이상 면역"
                     class="px-4 py-2 rounded-xl font-extrabold text-xs bg-red-700 hover:bg-red-600 text-white shadow shadow-red-900/60">
                     ${hardCleared ? '🔥 하드 재도전 (보상 없음)' : `🔥 하드모드 (💰 ${(f.rewardMc * TOWER_HARD.reward).toLocaleString()})`}
+                    <span class="block text-[10px] font-bold text-red-200">도전비용 ${TOWER_HARD.cost.toLocaleString()} CA</span>
                   </button>`
                 : `<button disabled title="${Math.ceil(f.floor / TOWER_RACE_FLOORS) * TOWER_RACE_FLOORS}층 종족 보스를 깨면 열려요"
                     class="px-4 py-2 rounded-xl font-extrabold text-[11px] bg-slate-800 text-slate-500 cursor-not-allowed">
@@ -13496,6 +13497,10 @@
         showNotice(`오늘 모험의 탑 도전 횟수(${TOWER_DAILY_TRIES}회, 실패 포함)를 모두 썼어요. 내일 다시 도전할 수 있어요!`);
         return;
       }
+      if (hard && (stu.mc || 0) < TOWER_HARD.cost) {
+        showNotice(`⚠️ 하드모드 도전비용(${TOWER_HARD.cost.toLocaleString()} CA)이 부족해요. (보유: ${(stu.mc || 0).toLocaleString()} CA)`);
+        return;
+      }
       launchSimulation({
         mode: 'tower',
         title: `${floorObj.name}`,
@@ -13505,6 +13510,7 @@
       });
       if (!sim.running || sim.mode !== 'tower') return;
       getDailyRewardBook(stu).towerTries = (getDailyRewardBook(stu).towerTries || 0) + 1;
+      if (hard) stu.mc = (stu.mc || 0) - TOWER_HARD.cost;
       if (typeof saveState === 'function') saveState();
       startTowerLiveBroadcast(stu, floorObj);
     }
