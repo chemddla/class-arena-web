@@ -77,27 +77,102 @@ const pt = s => { const [x, y] = s.split(',').map(Number); return { x, y }; };
       if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y;
     }
     // --side left|right: 한쪽 벽 무늬로 양쪽 벽을 칠함 (샘플 양쪽 벽지가 다르면 하나씩 따로 만듦)
+    // 벽 좌표: 열 x는 왼쪽 끝→모서리→오른쪽 끝으로 이어지는 벽 길이 방향, h는 바닥선에서 위로 잰 높이(도트)
+    //  · 걸레받이(h < HB)·몰딩(h ≥ HT)은 원본 쪽 벽에서 높이별 대표색(중앙값)으로 반듯하게 다시 그림 → 끊김 없음
+    //  · 벽지 면은 원본 쪽 벽에서 무늬 반복 간격 P를 재서 P씩 옮겨 붙임 → 모서리를 지나 반대쪽 벽까지 무늬가 그대로 이어짐
+    //  · 벽 끝 단면은 원본 쪽 것을 반대쪽에 좌우 대칭으로, 모서리에는 얇은 그늘선
     if (part === 'wall' && opt.side) {
-      const src = Buffer.from(buf), S = opt.side, lenOf = s => (s === 'left' ? ROOM_Y : ROOM_X);
+      const src = Buffer.from(buf), S = opt.side;
       const SHADE = Number(opt.shade || 0.94); // 왼쪽 벽은 그늘: 샘플에서 같은 벽지의 왼쪽/오른쪽 밝기 비
+      const HB = Number(opt.hb || 21), HT = Number(opt.ht || 318); // 빈 방 틀의 걸레받이 위·몰딩 아래 높이
+      const yf = x => backEdge(x); // 그 열의 첫 바닥 줄
+      const px = (x, y) => (x < 0 || y < 0 || x >= CANVAS_W || y >= CANVAS_H) ? null : (o => src[o + 3] ? [src[o], src[o + 1], src[o + 2]] : null)((y * CANVAS_W + x) * 4);
+      const tex = (x, h) => px(x, yf(x) - h);
+      // 원본 쪽 벽에서 쓸 열 (끝 단면·모서리선 몇 도트 제외, 오른쪽 벽은 끝에 다른 판이 있을 수 있어 모서리에서 6칸까지)
+      const s0 = S === 'left' ? Lr.x + 4 : Or.x + 4, s1 = S === 'left' ? Or.x - 4 : Or.x + ROOM_Y * CW - 4;
+      // 높이별 대표색 (걸레받이·몰딩용)
+      const prof = [];
+      for (let h = 0; h <= 400; h++) {
+        const cs = [[], [], []]; let n = 0, tot = 0;
+        for (let x = s0; x < s1; x++) { tot++; const c = tex(x, h); if (c) { n++; c.forEach((v, i) => cs[i].push(v)); } }
+        prof[h] = n > tot / 2 ? cs.map(a => a.sort((p, q) => p - q)[a.length >> 1]) : null;
+      }
+      const diff = (a, b) => (a && b ? Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]) : 999);
+      // 무늬 반복 간격 P (짝수: 2:1 계단이라 P/2줄 위아래로 정확히 옮겨짐). 규칙 없는 무늬면 가장 덜 어긋나는 간격
+      const OV = 20; // 이음매 찾는 폭 (양쪽 OV도트)
+      let best = [], minE = Infinity;
+      for (let P = 16; P <= Math.min(360, s1 - s0 - 2 * OV - 8); P += 2) {
+        let e = 0, n = 0;
+        for (let x = s0; x + P < s1; x += 2) for (let h = HB + 10; h < HT - 10; h += 4) { const d = diff(tex(x, h), tex(x + P, h)); if (d < 999) { e += d; n++; } }
+        e = n ? e / n : Infinity; best.push([P, e]); minE = Math.min(minE, e);
+      }
+      const P = best.find(([, e]) => e <= minE * 1.15 + 2)[0];
+      // 조각 k = 원본 열을 kP만큼 옮겨 붙인 것 (k=0은 원본 그대로). 조각 사이 이음매는 줄마다 무늬 차이가 가장 작은 곳을
+      // 따라 구불구불 지나가게 함(이미지 퀼팅) → 규칙 없는 꽃무늬도 잘린 티가 덜 남
+      // 촘촘하게 반복되는 무늬(간격 64도트 이하)는 패널 이음선 같은 튀는 줄이 없는 깨끗한 구간 하나(간격의 배수)로 벽 전체를 채움
+      const periodic = P <= 64;
+      const Pe = P * Math.max(1, Math.floor(160 / P));
+      let a0 = s0;
+      if (periodic) {
+        const colErr = [];
+        for (let x = s0; x < s1; x++) { let e = 0, n = 0; for (let h = HB + 6; h < HT - 6; h += 3) { const d = diff(tex(x, h), tex(x + P < s1 ? x + P : x - P, h)); if (d < 999) { e += d; n++; } } colErr[x] = n ? e / n : 999; }
+        let bestA = Infinity;
+        for (let a = s0; a + Pe <= s1; a += 2) { let e = 0; for (let x = a; x < a + Pe; x++) e = Math.max(e, colErr[x]); if (e < bestA) { bestA = e; a0 = a; } }
+      }
+      const tile = (k, x, h) => { const xs = x - k * P; return xs >= s0 && xs < s1 ? tex(xs, h) : null; };
+      const seams = []; // { k: 왼쪽 조각, x0: 찾는 범위 시작, cut[h] }
+      const addSeam = (k, xn) => {
+        const x0 = xn - OV, W = 2 * OV + 1, H = HT - HB;
+        const cost = (i, j) => diff(tile(k, x0 + i, HB + j), tile(k + 1, x0 + i, HB + j));
+        let acc = Array.from({ length: W }, (_, i) => cost(i, 0)); const from = [];
+        for (let j = 1; j < H; j++) {
+          const nx = [], fr = [];
+          for (let i = 0; i < W; i++) { let m = i; for (const t of [i - 1, i + 1]) if (t >= 0 && t < W && acc[t] < acc[m]) m = t; nx[i] = acc[m] + cost(i, j); fr[i] = m; }
+          acc = nx; from[j] = fr;
+        }
+        const cut = new Array(H); let i = acc.indexOf(Math.min(...acc));
+        for (let j = H - 1; j >= 0; j--) { cut[j] = x0 + i; if (j) i = from[j][i]; }
+        seams.push({ k, cut, x0 });
+      };
+      // 원본 쪽 벽 끝(모서리 쪽)에서부터 오른쪽으로, 원본 시작에서부터 왼쪽으로 조각을 이어 붙임
+      if (!periodic) for (let k = 0, xn = s1 - OV - 2; xn - OV < Rr.x; k++, xn += P) addSeam(k, xn);
+      if (!periodic && Lr.x < s0 - 4) for (let k = -1, xn = s0 + OV + 1; xn + OV > Lr.x; k--, xn -= P) addSeam(k, xn);
+      const tileAt = (x, h) => {
+        let k = 0;
+        for (const sm of seams) { const c = sm.cut[h - HB]; if (sm.k >= 0 ? x >= c && sm.k + 1 > k : x < c && sm.k < k) k = sm.k >= 0 ? sm.k + 1 : sm.k; }
+        return k;
+      };
+      console.log(`  ${opt.id}: 무늬 반복 간격 ${P}도트 (어긋남 ${minE.toFixed(1)}), ${periodic ? `깨끗한 구간 ${a0}~${a0 + Pe}로 채움` : `이음매 ${seams.length}곳`}`);
       buf.fill(0);
       for (let y = 0; y < CANVAS_H; y++) for (let x = 0; x < CANVAS_W; x++) {
         if (which(x, y) !== 'wall') continue;
-        const d = (x + 0.5 - Or.x) / CW, T = d < 0 ? 'left' : 'right', a = Math.abs(d), lenT = lenOf(T);
-        // 모서리에서 떨어진 거리 a를 원본 쪽 거리로: 6칸까지는 그대로, 오른쪽 벽 6~8칸은 거울처럼 되접음, 벽 끝 단면은 원본 벽 끝으로
-        const a2 = a > lenT ? lenOf(S) + (a - lenT) : a <= ROOM_Y ? a : 2 * ROOM_Y - a;
-        const sx = Math.floor(Or.x + (S === 'left' ? -a2 : a2) * CW), sy = Math.round(y + (a2 - a) * CH); // 바닥선에서 같은 높이
-        if (sx < 0 || sx >= CANVAS_W || sy < 0 || sy >= CANVAS_H) continue;
-        const so = (sy * CANVAS_W + sx) * 4, o = (y * CANVAS_W + x) * 4;
-        if (!src[so + 3]) continue;
-        const k = T === S ? 1 : T === 'left' ? SHADE : 1 / SHADE;
-        for (let c = 0; c < 3; c++) buf[o + c] = Math.min(255, Math.round(src[so + c] * k));
+        const o = (y * CANVAS_W + x) * 4, T = x < Or.x ? 'left' : 'right';
+        let c = null, k = T === S ? 1 : T === 'left' ? SHADE : 1 / SHADE;
+        if (x < Lr.x || x >= Rr.x) {
+          // 벽 끝 단면: 원본 쪽 단면을 그대로/좌우 대칭으로 (바닥선 높이 차이만큼 위아래로)
+          const own = (x < Lr.x) === (S === 'left');
+          if (own) c = px(x, y);
+          else if (x >= Rr.x) c = px(Lr.x - 1 - (x - Rr.x), y - (Rr.y - Lr.y));
+          else c = px(Rr.x + (Lr.x - 1 - x), y + (Rr.y - Lr.y));
+          k = 1;
+        } else {
+          const h = yf(x) - y;
+          if (h < HB || h >= HT) c = prof[h];
+          else {
+            if (periodic) c = tex(a0 + (((x - a0) % Pe) + Pe) % Pe, h);
+            else { const t = tileAt(x, h); for (const kk of [t, t - 1, t + 1]) if ((c = tile(kk, x, h))) break; }
+            if (!c) c = prof[h];
+            if (x === Or.x - 1) k *= 0.86; else if (x === Or.x) k *= 0.93; // 모서리 그늘선
+          }
+        }
+        if (!c) continue;
+        for (let i = 0; i < 3; i++) buf[o + i] = Math.min(255, Math.round(c[i] * k));
         buf[o + 3] = 255;
       }
     }
     // 색 수를 줄여 압축 번짐을 정리 (투명은 그대로)
     const png = await sharp(buf, { raw: { width: CANVAS_W, height: CANVAS_H, channels: 4 } })
-      .png({ palette: true, colours: Number(opt.colors), dither: 0 }).toBuffer();
+      .png(part === 'wall' && opt.side ? {} : { palette: true, colours: Number(opt.colors), dither: 0 }).toBuffer();
     const file = path.join(opt.out, `${part}_${opt.id}.webp`);
     await sharp(png).webp({ lossless: true }).toFile(file);
     // 목록용 작은 그림: 벽은 안쪽 모서리 둘레, 바닥은 가운데
