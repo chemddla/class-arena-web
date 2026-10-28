@@ -5962,6 +5962,16 @@
       const art = MAGE_FUSION_FX.fx, f = MAGE_FUSION_FX.frames[name];
       ctx.drawImage(art, f[0], f[1], f[2], f[3], -f[4] * scaleX, -f[5] * scaleY, f[2] * scaleX, f[3] * scaleY);
     }
+    // 돌진·회전베기·순간이동 이펙트 그림 (fx/samples/README.md의 dash_burst · spin_slash · purple_tornado)
+    const DASH_FX = { frames: [[0, 0, 200, 144, 172], [200, 0, 260, 144, 245], [465, 0, 202, 144, 180]] }; // [x, y, w, h, 머리끝 x]
+    const SPIN_FX = { frames: [[0, 0, 315, 200], [315, 0, 315, 200], [630, 0, 315, 200]] };
+    const TORNADO_FX = { w: 127, h: 246, anchorX: 63, anchorY: 240 };
+    [[DASH_FX, 'dash_burst_fx'], [SPIN_FX, 'spin_slash_fx'], [TORNADO_FX, 'purple_tornado_fx']].forEach(([o, file]) => {
+      const img = new Image();
+      img.onload = () => { img.ready = true; };
+      img.src = `assets/sprites/fx/${file}.webp`;
+      o.img = img;
+    });
     function drawExcaliburFrame(ctx, name, scale) { // 기준점이 (0,0)에 오게 그림
       const art = WARRIOR_EXCALIBUR_FX.fx, f = WARRIOR_EXCALIBUR_FX.frames[name];
       ctx.drawImage(art, f[0], f[1], f[2], f[3], -f[4] * scale, -f[5] * scale, f[2] * scale, f[3] * scale);
@@ -13424,7 +13434,7 @@
         }
         const dest = clampAimPoint(u, tx, ty, ITEM_BLINK_RANGE);
         sim.effects.push({ type: 'cast_circle', spr: 'teleport', x: u.x, y: u.y, color: '#7c3aed', life: 30, maxLife: 30 });
-        sim.effects.push({ type: 'charge_dash', sx: u.x, sy: u.y, tx: dest.x, ty: dest.y, color: '#7c3aed', life: 24, maxLife: 24 });
+        sim.effects.push({ type: 'charge_dash', sx: u.x, sy: u.y, tx: dest.x, ty: dest.y, color: '#7c3aed', life: 24, maxLife: 24, warp: true });
         u.x = dest.x; u.y = dest.y; u.kbVx = 0; u.kbVy = 0; u.rush = null;
         sim.effects.push({ type: 'magic_burst', spr: 'teleport', x: u.x, y: u.y - 12, r: 50, life: 30, maxLife: 30 });
         say('📿 텔레포트!', '#7c3aed');
@@ -16277,7 +16287,7 @@
         // 텔레포트: 5칸 안으로 순간이동 후 5초간 공격력 +20%
         const dest = chooseTeleportSpot(unit, enemies, target, unit.teleportIntent || 'escape');
         sim.effects.push({ type: 'cast_circle', spr: unitFxSpr(unit, 'teleport'), x: unit.x, y: unit.y, color: '#7c3aed', life: 30, maxLife: 30 });
-        sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y, tx: dest.x, ty: dest.y, color: unitFxColor(unit, 'teleport', '#7c3aed'), life: 24, maxLife: 24 });
+        sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y, tx: dest.x, ty: dest.y, color: unitFxColor(unit, 'teleport', '#7c3aed'), life: 24, maxLife: 24, warp: true });
         unit.x = dest.x;
         unit.y = dest.y;
         unit.kbVx = 0;
@@ -16415,7 +16425,7 @@
         const back = typeof foe.facingAngle === 'number' ? foe.facingAngle + Math.PI : Math.atan2(unit.y - foe.y, unit.x - foe.x);
         const gap = 46 + unitBodyGap(foe);
         const dest = clampToArena(foe.x + Math.cos(back) * gap, foe.y + Math.sin(back) * gap);
-        sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y, tx: dest.x, ty: dest.y, color: '#475569', life: 24, maxLife: 24 });
+        sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y, tx: dest.x, ty: dest.y, color: '#475569', life: 24, maxLife: 24, warp: true });
         unit.x = dest.x;
         unit.y = dest.y;
         unit.kbVx = 0;
@@ -16591,7 +16601,7 @@
     const HIDDEN_STORM_SPEED = 3.4;        // 폭풍 돌풍 화살: 느리게 나아감
     const HIDDEN_STORM_R = 95;             // 돌풍 반지름
     const HIDDEN_STORM_HIT_TICKS = 20;     // 한 적이 돌풍에 다시 맞기까지
-    const HIDDEN_FUSION_PULL_TICKS = 45;   // 원소 융합: 가운데로 빨아들인 뒤 폭발
+    const HIDDEN_FUSION_PULL_TICKS = 68;  // 원소 융합: 가운데로 빨아들인 뒤 폭발
     const HIDDEN_FUSION_STATUS_TICKS = 300; // 원소 융합 상태이상 5초
     const HIDDEN_GIANT_TICKS = 1200;       // 거인화 20초
     const HIDDEN_GIANT_SCALE = 3;          // 거인화 몸 크기·체력·방어 배율
@@ -16669,7 +16679,7 @@
         if (!aimPt) pt = bestAoePoint(unit, enemies, unit.range + C * 2, r, tgt) || tgt;
         if (!pt) return true;
         const p = clampToArena(pt.x, pt.y);
-        const life = HIDDEN_FUSION_PULL_TICKS + 40;
+        const life = HIDDEN_FUSION_PULL_TICKS + 70; // 폭발 뒤 잔상 0.5초 더 유지
         sim.effects.push({ type: 'hidden_fusion', x: p.x, y: p.y, r, pull: HIDDEN_FUSION_PULL_TICKS, life, maxLife: life });
         sim.hiddenFx.push({ kind: 'fusion', owner: unit, x: p.x, y: p.y, r, left: HIDDEN_FUSION_PULL_TICKS, dmg: unit.atk * 15 });
         playCombatSfx('magic');
@@ -16726,7 +16736,7 @@
         const gap = 46 + unitBodyGap(foe);
         const dest = clampToArena(foe.x + Math.cos(back) * gap, foe.y + Math.sin(back) * gap);
         sim.effects.push({ type: 'magic_burst', spr: 'teleport', x: unit.x, y: unit.y - 12, r: 50, life: 30, maxLife: 30 });
-        sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y, tx: dest.x, ty: dest.y, color: '#7c3aed', life: 24, maxLife: 24 });
+        sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y, tx: dest.x, ty: dest.y, color: '#7c3aed', life: 24, maxLife: 24, warp: true });
         sim.effects.push({ type: 'hidden_assassin_smoke', x: unit.x, y: unit.y + 8, life: 40, maxLife: 40 });
         sim.effects.push({ type: 'hidden_assassin_smoke', x: dest.x, y: dest.y + 8, life: 40, maxLife: 40 });
         const strikeDir = foe.x >= dest.x ? 1 : -1;
@@ -17148,13 +17158,16 @@
           const sc = w * 2.3 / WARRIOR_EXCALIBUR_FX.frames.beam[3];
           ctx.globalAlpha = Math.min(1, ef.life / 8, (ef.maxLife - ef.life) / 3 + 0.3);
           ctx.globalCompositeOperation = 'lighter';
+          ctx.save();
+          ctx.scale(1.5, 1); // 진행 방향 길이 +50%
           drawExcaliburFrame(ctx, 'beam', sc);
+          ctx.restore();
           // 검기 둘레 효과: 초승달 가장자리를 따라 반짝이는 빛 알갱이 + 뒤로 흩날리는 금빛 불똥
           const A = ctx.globalAlpha, age = ef.maxLife - ef.life;
           for (let k = 0; k < 10; k++) {
             const ph = (age * 0.09 + k * 0.1) % 1; // 0→1: 생겼다 사라짐
             const side = k % 2 ? 1 : -1;
-            const ex = -10 - ph * 130 - (k % 3) * 8; // 뒤쪽으로 흘러감
+            const ex = -10 - ph * 195 - (k % 3) * 12; // 뒤쪽으로 흘러감
             const ey = side * (w * (0.35 + 0.6 * ((k * 37) % 10) / 10)) * (1 - ph * 0.35);
             ctx.globalAlpha = A * (1 - ph) * 0.85;
             ctx.fillStyle = k % 3 ? '#fde047' : '#ffffff';
@@ -19980,6 +19993,18 @@
             ctx.stroke();
           }
 
+        } else if (ef.type === 'whirlwind_slash' && SPIN_FX.img.ready) {
+          // 굵은 회오리 고리 → 가장 크게 퍼지는 칼바람 → 흩어지는 잔상 (바닥 원근에 맞춰 세로를 눌러 그림)
+          const fi = Math.min(2, Math.floor(progress * 3)), fr = SPIN_FX.frames[fi];
+          const k = (ef.r * 2.2) / fr[2];
+          ctx.translate(ef.x, ef.y + 6);
+          ctx.scale(1, 0.72);
+          ctx.rotate(progress * 1.2);
+          ctx.globalAlpha = Math.min(1, ef.life / ef.maxLife * 2.2);
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.imageSmoothingEnabled = true;
+          ctx.drawImage(SPIN_FX.img, fr[0], fr[1], fr[2], fr[3], -fr[2] * k / 2, -fr[3] * k / 2, fr[2] * k, fr[3] * k);
+
         } else if (ef.type === 'whirlwind_slash') {
           ctx.translate(ef.x, ef.y);
           ctx.globalAlpha = ef.life / ef.maxLife;
@@ -19996,6 +20021,44 @@
           ctx.beginPath();
           ctx.arc(ef.x, ef.y, (ef.r * 0.65) * (0.3 + progress * 0.7), 0, Math.PI * 2);
           ctx.stroke();
+
+        } else if (ef.type === 'charge_dash' && ef.warp && TORNADO_FX.img.ready) {
+          // 순간이동·그림자 이동: 떠난 자리에서 보랏빛 회오리가 걷히고 도착한 자리에서 솟아오름
+          const drawTornado = (x, y, grow, alpha) => {
+            ctx.save();
+            ctx.translate(x, y + 8);
+            ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+            ctx.globalCompositeOperation = 'lighter';
+            const k = 0.5 * grow;
+            ctx.drawImage(TORNADO_FX.img, -TORNADO_FX.anchorX * k, -TORNADO_FX.anchorY * k, TORNADO_FX.w * k, TORNADO_FX.h * k);
+            ctx.restore();
+          };
+          drawTornado(ef.sx, ef.sy, 1.1 - 0.5 * progress, 1 - progress * 1.3);
+          drawTornado(ef.tx, ef.ty, 0.6 + 0.5 * Math.min(1, progress * 1.6), 1.4 - progress * 1.3);
+
+        } else if (ef.type === 'charge_dash' && DASH_FX.img.ready) {
+          // 돌진: 출발점에서 먼지와 충격파가 터지고 → 기류가 길게 뻗다 → 도착점에서 흩어짐
+          const ang = Math.atan2(ef.ty - ef.sy, ef.tx - ef.sx), dist = Math.hypot(ef.tx - ef.sx, ef.ty - ef.sy);
+          const flip = Math.cos(ang) < 0;
+          const part = (fi, x, y, lenW, h, alpha) => {
+            const fr = DASH_FX.frames[fi];
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(flip ? ang + Math.PI : ang);
+            if (flip) ctx.scale(1, -1);
+            ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.imageSmoothingEnabled = true;
+            ctx.drawImage(DASH_FX.img, fr[0], fr[1], fr[2], fr[3], -fr[4] * lenW, -fr[3] * h / 2 - 0, fr[2] * lenW, fr[3] * h);
+            ctx.restore();
+          };
+          const h = 0.8;
+          part(0, ef.sx, ef.sy, h, h, 1 - progress * 2.4);
+          const headT = Math.min(1, progress * 1.7);
+          const hx = ef.sx + Math.cos(ang) * dist * headT, hy = ef.sy + Math.sin(ang) * dist * headT;
+          const lenW = Math.max(0.6, Math.min(2.2, (dist * Math.min(1, headT + 0.25)) / 220));
+          part(1, hx, hy, lenW, h, 1.3 - progress * 1.3);
+          if (progress > 0.45) part(2, ef.tx, ef.ty, h, h, (1 - progress) * 1.8);
 
         } else if (ef.type === 'charge_dash') {
           ctx.globalAlpha = ef.life / ef.maxLife;
