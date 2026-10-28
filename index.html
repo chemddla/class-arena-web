@@ -4442,7 +4442,12 @@
     const SPRITE_DRAW_H = 54;       // 전투 화면에서 서 있는 캐릭터의 키(월드 px)
     // 탑 몬스터는 몸 크기(sizeScale)만큼. 엘리트 보스는 몸(토큰)이 보통 보스의 3배라 그림도 eliteScale만큼 크게
     const spriteDrawH = (u, sprite) => SPRITE_DRAW_H * (u.isEliteBoss ? (sprite.eliteScale || 1) * ELITE_SIZE_MULT : (u.sizeScale || 1));
-    const SPRITE_DEATH_TICKS = 150; // 쓰러진 뒤 화면에 남아 있는 시간
+    const SPRITE_DEATH_TICKS = 150; // 쓰러진 뒤 화면에 남아 있는 시간 (되살릴 수 없는 유닛)
+    const CORPSE_ALPHA = 0.55; // 되살릴 수 있는 시체가 남아 있는 진하기
+    // 부활로 다시 일어날 수 있는 시체인지 (허수아비·분신은 부활 대상이 아님)
+    function isRevivableCorpse(u) {
+      return !u.alive && u.monsterType !== 'scarecrow' && !u.isClone;
+    }
 
     // 몬스터 스프라이트: 칸·동작 형식은 용병과 같음. jobs가 있으면 그 직업으로 나온 몬스터만 그림 (나머지는 기존 토큰)
     // 멧돼지 돌격기수: 창을 든 고블린이 멧돼지를 탄 그림이라 전사(돌진)로 나올 때만. 궁기병(궁수)은 goblin_rider_archer
@@ -17000,7 +17005,10 @@
       } else if (u.alive && u.hitFlash > 2) ctx.filter = 'brightness(1.8)';
       if (!u.alive) {
         const since = tick - (u._deadSince ?? tick);
-        ctx.globalAlpha *= Math.max(0, Math.min(1, (SPRITE_DEATH_TICKS - since) / 50));
+        const fade = Math.max(0, Math.min(1, (SPRITE_DEATH_TICKS - since) / 50));
+        // 되살릴 수 있는 시체는 사라지지 않고 흐릿하게 남음
+        ctx.globalAlpha *= isRevivableCorpse(u) ? CORPSE_ALPHA + (1 - CORPSE_ALPHA) * fade : fade;
+        if (isRevivableCorpse(u) && since >= SPRITE_DEATH_TICKS - 50) ctx.filter = 'grayscale(0.6) brightness(0.8)';
       } else if (u.isDarkMerc) {
         ctx.filter = 'grayscale(0.5) brightness(0.6)';
       }
@@ -17023,6 +17031,18 @@
           ctx.save();
           ctx.translate(Math.round(u.x), Math.round(u.y));
           drawUnitSprite(ctx, u, deadSprite, tick);
+          ctx.restore();
+        } else if (isRevivableCorpse(u)) { // 그림이 없는 유닛의 시체는 해골 표시
+          ctx.save();
+          ctx.globalAlpha = CORPSE_ALPHA;
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.35)';
+          ctx.beginPath();
+          ctx.ellipse(u.x, u.y + 10, 16, 6, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.font = '20px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('💀', u.x, u.y);
           ctx.restore();
         }
         return;
@@ -17860,9 +17880,10 @@
         if (u.alive) u._deadSince = null;
         else if (u._deadSince == null) u._deadSince = sim.tickCount;
       });
+      // 되살릴 수 있는 시체는 부활할 때까지 남김. 시체는 살아 있는 유닛보다 먼저(아래에) 그림
       const sortedUnits = [...sim.units]
-        .filter(u => u.alive || (getUnitSprite(u) && sim.tickCount - u._deadSince < SPRITE_DEATH_TICKS))
-        .sort((a, b) => a.y - b.y);
+        .filter(u => u.alive || isRevivableCorpse(u) || (getUnitSprite(u) && sim.tickCount - u._deadSince < SPRITE_DEATH_TICKS))
+        .sort((a, b) => (a.alive - b.alive) || (a.y - b.y));
       sortedUnits.forEach(u => {
         if (u.isEliteBoss && sim.eliteIntro) { drawEliteBossDrop(ctx, u); return; }
         drawUnitToken(ctx, u, sim.tickCount);
