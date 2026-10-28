@@ -16792,6 +16792,10 @@
         // 전방 크게 베기 2100% + 맵 끝까지 날아가는 검기 525% (검기는 닿는 적마다 한 번씩)
         const angle = hiddenAimAngle(unit, tgt, aimPt);
         sniperFace(unit, angle);
+        // 시전 뒤에 일반 스킬·공격 자세가 이어지지 않게: 엑스칼리버 그림 1·2번만 쓰고, 베는 동안 2번(내린 자세)을 유지
+        unit.skillAnim = 0;
+        unit.attackAnim = 0;
+        unit.excalHoldUntil = sim.tickCount + 28;
         const reach = (Math.max(unit.range, 90) + C * 0.8) * 1.5; // 이펙트 +50%에 맞춰 판정도 +50%
         sim.effects.push({ type: 'hidden_slash', x: unit.x, y: unit.y - 14, angle, r: reach, life: 28, maxLife: 28 });
         lancerArcHits(unit, angle, reach, 1.15).forEach(e => applyDamage(unit, e, unit.atk * 21, '', '#facc15'));
@@ -19374,12 +19378,15 @@
       // 전사 히든 스킬 [엑스칼리버] 시전: 기본 외형은 검을 치켜들고 있다가 베기 직전 검을 내리는 자세
       const excalSkin = (u.skinVariant || 0) === 0 ? null : WARRIOR_EXCALIBUR_FX.casts[u.skinVariant];
       const excalImg = (u.skinVariant || 0) === 0 ? WARRIOR_EXCALIBUR_FX.cast : excalSkin;
-      const excal = u.alive && u.casting && u.casting.key === 'excalibur' && u.job === 'warrior' && !u.monsterType && excalImg && excalImg.ready ? WARRIOR_EXCALIBUR_FX : null;
+      const excalCasting = u.casting && u.casting.key === 'excalibur';
+      const excalHold = !u.casting && (u.excalHoldUntil || 0) > sim.tickCount; // 베고 난 직후: 내린 자세 그대로
+      const excal = u.alive && (excalCasting || excalHold) && u.job === 'warrior' && !u.monsterType && excalImg && excalImg.ready ? WARRIOR_EXCALIBUR_FX : null;
       if (excal) {
         const c = u.casting, cell = excalSkin ? excal.skinCell : excal;
         const ks = spriteDrawH(u, sprite) / excal.standH;
-        const shake = c.left > 20 ? Math.sin(tick * 1.3) * 0.8 * ks : 0; // 기를 모으는 동안 몸이 잘게 떨림
-        ctx.drawImage(excalImg, (c.left > 20 ? 0 : 1) * cell.cellW, 0, cell.cellW, cell.cellH,
+        const raised = excalCasting && c.left > 20;
+        const shake = raised ? Math.sin(tick * 1.3) * 0.8 * ks : 0; // 기를 모으는 동안 몸이 잘게 떨림
+        ctx.drawImage(excalImg, (raised ? 0 : 1) * cell.cellW, 0, cell.cellW, cell.cellH,
           -cell.anchorX * ks + shake, -cell.anchorY * ks, cell.cellW * ks, cell.cellH * ks);
         ctx.restore();
         return;
