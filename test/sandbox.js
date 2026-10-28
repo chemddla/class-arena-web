@@ -172,7 +172,13 @@
   const selOpts = (list, cur) => list.map(([v, l]) => `<option value="${v}"${String(v) === String(cur) ? ' selected' : ''}>${esc(l)}</option>`).join('');
   const monOpts = cur => SB.monList.map(g => `<optgroup label="${esc(g.race)}">${g.items.map(it =>
     `<option value="${it.key}"${it.key === cur ? ' selected' : ''}>${esc(it.name)} (${esc(JOB_DEFS[it.job].name)})</option>`).join('')}</optgroup>`).join('');
-  const skinOpts = (job, cur) => Array.from({ length: getMercSkinCount(job) }, (_, i) => [i, `외형 ${i + 1}`]);
+  const skinOpts = (job, cur) => Array.from({ length: getMercSkinCount(job) }, (_, i) => [i, `외형 ${i + 1}`])
+    .concat((SECRET_MERC_SKINS[job] || []).map(n => [SECRET_SKIN_BASE + n, `🔥 시크릿 ${n}`]));
+  // 등급이 시크릿 레어면 시크릿 외형으로, 아니면 시크릿 외형을 일반 외형으로 되돌림
+  const syncSkin = o => {
+    if (isSecretRare(o.rarity)) { const sv = pickSecretMercSkin(o.job); if (sv !== null) o.skin = sv; }
+    else if (isSecretSkinVariant(o.skin)) o.skin = 0;
+  };
   const cls = {
     in: 'bg-slate-800 border border-slate-600 rounded px-1.5 py-1 text-slate-100 text-xs w-full',
     btn: 'px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-100 text-xs font-bold',
@@ -329,6 +335,7 @@
     form(k, v) {
       form[k] = v;
       if (k === 'job') form.skin = 0;
+      if (k === 'job' || k === 'rarity') syncSkin(form);
       render();
     },
     add() {
@@ -344,6 +351,7 @@
       const sp = byId(id); if (!sp) return;
       sp[k] = v;
       if (k === 'job') sp.skin = 0;
+      if (k === 'job' || k === 'rarity') syncSkin(sp);
       const moved = k === 'col' || k === 'row';
       if (moved) { sp.x = sp.y = null; sp.col = Math.max(0, Math.min(2, sp.col)); sp.row = Math.max(0, Math.min(4, sp.row)); }
       rebuildOne(sp, !moved);
