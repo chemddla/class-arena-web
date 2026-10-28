@@ -13833,7 +13833,8 @@
             if (nearbyEnemies >= 2) {
               score = 95;
             } else if (nearbyEnemies === 1) {
-              score = 74;
+              // 바로 바깥에 적이 더 다가오고 있으면 한꺼번에 휩쓸도록 조금 기다림
+              score = aoeWorthWaiting(unit, enemies, WHIRLWIND_RADIUS * unitAreaScale(unit)) ? -1 : 74;
             } else {
               score = -1;
             }
@@ -13849,7 +13850,8 @@
               );
               score = unFrozen.length > 0 ? 88 : -1;
             } else if (skKey === 'fireball') {
-              score = enemies.length >= 2 ? 91 : 78;
+              const n = bestAoePoint(unit, enemies, unit.range + 90, 170 * unitAreaScale(unit), primaryTarget)?.n || 0;
+              score = n >= 3 ? 95 : (n >= 2 ? 91 : 78);
             } else if (skKey === 'thunderbolt') {
               const unShocked = enemies.filter(e => e.statuses.shock <= 60).length;
               score = (enemies.length >= 2 || unShocked > 0) ? 86 : 65;
@@ -14040,14 +14042,21 @@
           addBattleLog(`🔥 [마법사] ${unit.name}의 파이어볼! (광역 🔥화상 · 쿨 ${skObj.cooldownSec}초)`);
 
         } else if (sk === 'fireball') {
-          let bestClusterTarget = target;
-          let maxCluster = -1;
-          enemies.forEach(cand => {
-            if (unitDist(cand, unit) <= unit.range + 90) {
-              const cnt = enemies.filter(o => unitDist(o, cand) <= 155).length;
-              if (cnt > maxCluster) { maxCluster = cnt; bestClusterTarget = cand; }
-            }
-          });
+          // 터질 자리 = 사거리 안에서 적이 가장 많이 모인 곳. 적 한가운데(빈자리)면 그 지점으로 곧게 날려 보냄
+          const spot = bestAoePoint(unit, enemies, unit.range + 90, 170 * unitAreaScale(unit), target);
+          const onEnemy = spot && spot.hits.find(e => Math.hypot(e.x - spot.x, e.y - spot.y) < 24);
+          if (spot && !onEnemy) {
+            const fx = unit.x, fy = unit.y - 12;
+            const angle = Math.atan2(spot.y - 12 - fy, spot.x - fx);
+            sim.projectiles.push({
+              projType: 'fireball_proj', spr: unitProjFx(unit, 'fireball_proj'), x: fx, y: fy, owner: unit,
+              dmg: unit.atk * 2.4, aoeRadius: 170, statusOnHit: 'burn', statusDur: 560, isSkill: true, speed: 2.8, trail: [],
+              isDirectional: true, angle, maxTravel: Math.max(20, Math.hypot(spot.x - fx, spot.y - 12 - fy))
+            });
+            addBattleLog(`🔥 [마법사] ${unit.name}의 파이어볼! (광역 🔥화상 · 쿨 ${skObj.cooldownSec}초)`);
+            return;
+          }
+          const bestClusterTarget = onEnemy || target;
           sim.projectiles.push({
             projType: 'fireball_proj', spr: unitProjFx(unit, 'fireball_proj'),
             x: unit.x, y: unit.y - 12,
@@ -14063,10 +14072,13 @@
           addBattleLog(`🔥 [마법사] ${unit.name}의 파이어볼! (광역 🔥화상 · 쿨 ${skObj.cooldownSec}초)`);
 
         } else if (sk === 'ice_arrow') {
-          const unFrozen = aimMode === 'target' ? target : (enemies.find(e =>
-            unitDist(e, unit) <= unit.range + 90 &&
-            e.statuses.freeze <= 35 && e.statuses.stun <= 35
-          ) || target);
+          // 얼릴 수 있는 적 중, 터지는 범위에 얼릴 수 있는 적이 가장 많이 함께 들어오는 적
+          const freezable = enemies.filter(e => e.statuses.freeze <= 35 && e.statuses.stun <= 35);
+          const iceR = 88 * unitAreaScale(unit);
+          const unFrozen = aimMode === 'target' ? target : (freezable
+            .filter(e => unitDist(e, unit) <= unit.range + 90)
+            .map(e => ({ e, n: freezable.filter(o => Math.hypot(o.x - e.x, o.y - e.y) - unitBodyGap(o) <= iceR * 0.85).length + (e === target ? 0.5 : 0) }))
+            .sort((a, b) => b.n - a.n)[0]?.e || target);
           sim.projectiles.push({
             projType: 'ice_arrow_proj', spr: unitProjFx(unit, 'ice_arrow_proj'),
             x: unit.x, y: unit.y - 12,
@@ -15185,6 +15197,8 @@
       if (sk === 'arrow_rain') {
         // 화살비: 1칸 원형에 5초간 지속 피해 (한 번 맞을 때 피해는 그대로)
         if (!target) return true;
+        // 자동 전투(AI)는 사거리 안에서 적이 가장 많이 모인 자리에 떨굼
+        if (!aimPt) target = bestAoePoint(unit, enemies, unit.range + 60, A * 1, target) || target;
         spawnZone(unitFxSpr(unit, 'arrow_rain'), unit, target.x, target.y, A * 1, 300, 20, unit.atk * 0.24); // 리바이어던 = 우박 장판
         playCombatSfx('arrow');
         addBattleLog(`🌧️ [궁수] ${unit.name}의 화살비!`);
@@ -15224,6 +15238,7 @@
         // 포이즌 붐: 1.5칸 원형 피해 + 중독 장판 6초
         if (!target) return true;
         const r = A * 1.5;
+        if (!aimPt) target = bestAoePoint(unit, enemies, unit.range + 80, r, target) || target;
         sim.effects.push({ type: 'aoe_ring', spr: unitFxSpr(unit, 'poison'), x: target.x, y: target.y, r, color: '#16a34a', life: 36, maxLife: 36 }); // 히드라 = 독늪 폭발
         near(enemies, target.x, target.y, r).forEach(e => {
           applyDamage(unit, e, unit.atk * 0.6, '', '#16a34a');
@@ -15762,6 +15777,46 @@
       });
       return best;
     }
+    // AI 지점형 광역 조준: 시전자에게서 reach 안의 지점 중 반경 r 원에 적이 가장 많이 들어가는 곳
+    // 후보 = 적 자리 · 두 적 사이 가운데 · 그 원에 든 적들의 한가운데. 가장자리에 걸친 적은 빠져나가기 쉬워 r을 조금 좁혀 셈
+    // 수가 같으면 prefer(현재 목표)가 든 쪽, 그다음 적들이 더 촘촘히 모인 쪽. 사거리 안에 후보가 없으면 null
+    function bestAoePoint(u, enemies, reach, r, prefer = null) {
+      const live = enemies.filter(e => e.alive && !isStealthed(e));
+      const rr = r * 0.85;
+      const hitsAt = (x, y) => live.filter(e => Math.hypot(e.x - x, e.y - y) - unitBodyGap(e) <= rr);
+      const rate = (x, y) => {
+        if (Math.hypot(x - u.x, y - u.y) > reach) return null;
+        const hits = hitsAt(x, y);
+        if (!hits.length) return null;
+        const spread = hits.reduce((s, e) => s + Math.hypot(e.x - x, e.y - y), 0) / hits.length;
+        const score = hits.length + (prefer && hits.includes(prefer) ? 0.5 : 0) - spread / r * 0.3;
+        return { x, y, n: hits.length, hits, score };
+      };
+      let best = null;
+      const consider = (x, y) => {
+        const c = rate(x, y);
+        if (c && (!best || c.score > best.score)) best = c;
+      };
+      live.forEach((a, i) => {
+        consider(a.x, a.y);
+        for (let j = i + 1; j < live.length; j++) {
+          const b = live[j];
+          if (Math.hypot(a.x - b.x, a.y - b.y) <= rr * 2) consider((a.x + b.x) / 2, (a.y + b.y) / 2);
+        }
+      });
+      if (best && best.n >= 2) {
+        const cx = best.hits.reduce((s, e) => s + e.x, 0) / best.n;
+        const cy = best.hits.reduce((s, e) => s + e.y, 0) / best.n;
+        consider(cx, cy);
+      }
+      return best;
+    }
+    // 시전자 둘레 광역기: 지금은 한 명뿐인데 조금만 기다리면 여럿이 들어올 때 (반경 바로 바깥에 적이 더 있음)
+    function aoeWorthWaiting(u, enemies, r) {
+      const inside = enemies.filter(e => unitDist(e, u) <= r).length;
+      const soon = enemies.filter(e => unitDist(e, u) <= r + GRID_CELL_SIZE * 0.8).length;
+      return soon > inside && soon >= 2;
+    }
     const LANCER_CHARGE_REACH = LANCER_CHARGE_DISTANCE + 80; // 창돌격이 꿰는 범위 (돌격 거리 + 창끝)
     const LANCER_CHARGE_HALF_W = 50;
 
@@ -15988,7 +16043,8 @@
         case 'roar': {
           const n = countNear(enemies, unit.x, unit.y, C * 2);
           if (n >= 2) return 93;
-          if (n === 1) return unit.hp / unit.maxHp < 0.5 ? 86 : 70;
+          if (n === 1 && unit.hp / unit.maxHp < 0.5) return 86;
+          if (n === 1) return aoeWorthWaiting(unit, enemies, C * 2) ? -1 : 70;
           return -1;
         }
         case 'warcry': {
@@ -15998,7 +16054,9 @@
         }
         case 'arrow_rain': {
           if (!enemyTarget || distToPrimary > unit.range + 60) return -1;
-          const n = countNear(enemies, enemyTarget.x, enemyTarget.y, C * 1);
+          // 실제로 떨굴 자리 = 사거리 안에서 적이 가장 많이 모인 곳
+          const n = bestAoePoint(unit, enemies, unit.range + 60, C * 1, enemyTarget)?.n || 0;
+          if (n >= 3) return 95;
           if (n >= 2) return 91;
           return (enemyTarget.statuses.stun > 60 || enemyTarget.statuses.freeze > 60) ? 85 : 64;
         }
@@ -16007,7 +16065,8 @@
           return nearestEnemyDist < 170 ? 96 : -1;
         case 'poison_boom': {
           if (!enemyTarget || distToPrimary > unit.range + 80) return -1;
-          const n = countNear(enemies, enemyTarget.x, enemyTarget.y, C * 1.5);
+          const n = bestAoePoint(unit, enemies, unit.range + 80, C * 1.5, enemyTarget)?.n || 0;
+          if (n >= 3) return 96;
           return n >= 2 ? 92 : ((enemyTarget.statuses.poison || 0) < 60 ? 70 : -1);
         }
         case 'teleport': {
@@ -16078,9 +16137,11 @@
           return canKnightMove(enemyTarget) ? 88 : 70;
         }
         case 'earthquake': {
-          const n = countNear(enemies, unit.x, unit.y, KNIGHT_QUAKE_RADIUS * unitAreaScale(unit));
+          const quakeR = KNIGHT_QUAKE_RADIUS * unitAreaScale(unit);
+          const n = countNear(enemies, unit.x, unit.y, quakeR);
+          if (n >= 3) return 93;
           if (n >= 2) return 89;
-          return n === 1 && distToPrimary <= C * 1.2 ? 64 : -1;
+          return n === 1 && distToPrimary <= C * 1.2 && !aoeWorthWaiting(unit, enemies, quakeR) ? 64 : -1;
         }
         case 'iron_stance': {
           // 체력이 많이 줄었고 적이 가까이 있을 때 버티기
