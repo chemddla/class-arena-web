@@ -3491,6 +3491,7 @@
     const RARE_VARIANCE_MIN = 1.034;           // 초기 스탯 편차 0.95~1.07 중 상위 30% (우수 초기 스탯 기준과 같음)
     const AUCTION_DURATION_DAYS = 3;           // 경매 입찰 기간 (일)
     const AUCTION_DURATION_MS = AUCTION_DURATION_DAYS * 24 * 60 * 60 * 1000;
+    const AUCTION_MAX_BID = 100000000;         // 경매 시작가·입찰가 상한 (1억 CA)
     function isSecretRare(rarity) { return Boolean((RARITY_DEFS[rarity] || RARITY_DEFS.N).isSecret); }
 
     const MERC_NAME_POOL = {
@@ -8556,7 +8557,7 @@
           </div>
           <div>
             <label class="text-[11px] font-bold text-slate-400 block mb-1">경매 시작가 (CA)</label>
-            <input id="auctionStartBidInput" type="number" min="100" step="50" value="${valInfo.suggestedStartBid}" class="w-full rounded-xl px-3 py-2 text-xs font-extrabold border" />
+            <input id="auctionStartBidInput" type="number" min="100" max="${AUCTION_MAX_BID}" step="50" value="${Math.min(AUCTION_MAX_BID, valInfo.suggestedStartBid)}" class="w-full rounded-xl px-3 py-2 text-xs font-extrabold border" />
           </div>
           <button onclick="registerMercToAuction('${merc.id}')" class="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow">
             🔨 학급 경매장에 용병 출품하기
@@ -8607,7 +8608,12 @@
       }
       const merc = stu.roster.find(m => m.id === mercId);
       if (!merc) return;
-      const startBid = Math.max(50, parseInt(document.getElementById('auctionStartBidInput')?.value, 10) || 200);
+      const startBidRaw = parseInt(document.getElementById('auctionStartBidInput')?.value, 10) || 200;
+      if (startBidRaw > AUCTION_MAX_BID) {
+        showNotice(`⚠️ 경매 시작가는 ${AUCTION_MAX_BID.toLocaleString()} CA(1억)를 넘을 수 없어요.`);
+        return;
+      }
+      const startBid = Math.max(50, startBidRaw);
       const valInfo = calcMercValuation(merc, stu);
 
       stu.roster = stu.roster.filter(m => m.id !== mercId);
@@ -8705,7 +8711,15 @@
       }
       const inp = document.getElementById(`bidInput_${auctionId}`);
       const minNextBid = auc.highestBidderId ? (auc.currentBid + 50) : auc.startBid;
+      if (minNextBid > AUCTION_MAX_BID) {
+        showNotice(`⚠️ 이미 입찰 상한가(${AUCTION_MAX_BID.toLocaleString()} CA)에 도달한 경매예요.`);
+        return;
+      }
       const bidAmount = Math.max(minNextBid, parseInt(inp?.value, 10) || minNextBid);
+      if (bidAmount > AUCTION_MAX_BID) {
+        showNotice(`⚠️ 입찰 금액은 ${AUCTION_MAX_BID.toLocaleString()} CA(1억)를 넘을 수 없어요.`);
+        return;
+      }
 
       if (stu.mc < bidAmount) {
         showNotice(`⚠️ 입찰할 보유 코인(CA)이 부족합니다! (필요: ${bidAmount.toLocaleString()} CA / 보유: ${stu.mc.toLocaleString()} CA)`);
@@ -9180,10 +9194,12 @@
                     : `
                       <div class="flex flex-col gap-1.5">
                         <div class="flex gap-1.5">
-                          <input id="bidInput_${auc.id}" type="number" min="${minNextBid}" step="50" value="${minNextBid}" class="w-24 rounded-xl px-2 py-1.5 text-xs font-extrabold border" />
+                          ${minNextBid > AUCTION_MAX_BID
+                            ? `<span class="flex-1 py-1.5 rounded-xl bg-slate-800 text-slate-400 font-extrabold text-xs text-center">🔒 입찰 상한가(1억 CA) 도달</span>`
+                            : `<input id="bidInput_${auc.id}" type="number" min="${minNextBid}" max="${AUCTION_MAX_BID}" step="50" value="${minNextBid}" class="w-24 rounded-xl px-2 py-1.5 text-xs font-extrabold border" />
                           <button onclick="placeBidOnAuction('${auc.id}')" class="flex-1 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow">
                             🙋 입찰하기
-                          </button>
+                          </button>`}
                           ${isMyTopBid ? `<span class="px-2 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 font-extrabold text-[11px]" title="마감 때까지 최고가면 내 용병이 돼요">🙋 내가 최고가</span>` : ''}
                         </div>
                       </div>
