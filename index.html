@@ -14738,6 +14738,7 @@
     function selectStrategicSkillToCast(unit, allies, enemies, primaryTarget, distToPrimary) {
       if (!unit.unlockedSkills || unit.unlockedSkills.length === 0) return null;
       if (unit.castLock > 0) return null;
+      if (unit.sbNoSkill) return null; // 테스트 전장: 이 유닛은 스킬을 자동으로 쓰지 않음
       if (tauntSourceOf(unit)) return null; // 도발당하면 스킬을 못 씀
       if (lancerBusy(unit)) return null; // 창병 회전·난무 중에는 스킬을 못 씀
 
@@ -14745,6 +14746,7 @@
       const readySkills = unit.unlockedSkills.filter(skKey => {
         const skObj = jobSkills[skKey];
         if (!skObj) return false;
+        if (unit.sbBlockSkills && unit.sbBlockSkills[skKey]) return false; // 테스트 전장: 자동 사용을 막은 스킬
         const cdLeft = unit.skillCooldowns?.[skKey] || 0;
         return cdLeft <= 0 && unit.mana >= skObj.manaCost;
       });
@@ -15237,12 +15239,13 @@
         });
         return;
       }
+      if (sim.sandbox) sandboxPreTick(); // 테스트 전장(test/sandbox.js): 쿨타임 끄기·행동 제한
       const blueAlive = sim.units.filter(u => u.alive && u.team === 'blue');
       const redAlive = sim.units.filter(u => u.alive && u.team === 'red');
 
       // 분신만 남은 팀은 진 것으로 (분신은 머릿수에 넣지 않음)
       const blueReal = blueAlive.some(u => !u.isClone);
-      if (!blueReal || !redAlive.some(u => !u.isClone)) {
+      if (!sim.sandbox && (!blueReal || !redAlive.some(u => !u.isClone))) {
         finishSimulation(blueReal);
         return;
       }
@@ -15250,7 +15253,7 @@
       // 시간 제한: 끝나지 않는 전투(서로 회복만 하거나, 체력이 아주 많은 허수아비)가 계속되지 않도록
       const timeLimit = sim.mode === 'practice' ? BATTLE_TIME_LIMIT.practiceTicks
         : (sim.mode === 'elite_raid' ? eliteRaidTimeLimitTicks() : BATTLE_TIME_LIMIT.battleTicks);
-      if (sim.tickCount >= timeLimit) {
+      if (!sim.sandbox && sim.tickCount >= timeLimit) {
         finishBattleByTimeLimit(blueAlive, redAlive);
         return;
       }
@@ -31186,6 +31189,13 @@
       const q = new URLSearchParams(location.search);
       const dev = q.get('dev');
       if (dev === 'lobby') { goToClassLobbyPage(); return; }
+      // 테스트 전장: 주소 /test (test/index.html이 이 화면을 감싸 보여 줌). 패널 코드는 test/sandbox.js
+      if (dev === 'sandbox') {
+        const s = document.createElement('script');
+        s.src = 'test/sandbox.js';
+        document.head.appendChild(s);
+        return;
+      }
       if (dev !== 'student') return;
       const num = Number(q.get('stu'));
       const stu = (num && state.students.find(s => s.num === num)) || state.students[0];
