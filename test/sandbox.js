@@ -425,6 +425,7 @@
     controllers: {}, awaitingControlChoice: false, waitingForOpponent: false, meta: {}, eliteIntro: null, forfeitTeam: null,
     spectator: false, duel1v1: false, teamLive: false, towerWatch: null, raidWatch: null, raidLive: null });
   battleControl.mode = 'auto'; battleControl.unitId = null; battleControl.locked = true;
-  window.SBUI.preset5();
+  rebuildAll(); // 처음에는 아무도 없는 빈 전장 (기본 5:5는 버튼으로)
+  render();
   resetArenaCamera('center');
 })();
