@@ -15117,7 +15117,7 @@
             playCombatSfx('heavy');
           });
           sim.effects.push({
-            type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, trail: true, runTicks: r.n,
+            type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, trail: true, runTicks: r.n, ownerId: unit.id,
             color: unit.team === 'blue' ? '#2563eb' : '#e11d48',
             life: CHARGE_MOVE_TICKS + 32, maxLife: CHARGE_MOVE_TICKS + 32
           });
@@ -15145,7 +15145,7 @@
 
           sim.effects.push({
             type: 'charge_dash',
-            sx, sy, tx: r.tx, ty: r.ty, trail: true, runTicks: r.n,
+            sx, sy, tx: r.tx, ty: r.ty, trail: true, runTicks: r.n, ownerId: unit.id,
             color: unit.team === 'blue' ? '#2563eb' : '#e11d48',
             life: CHARGE_MOVE_TICKS + 32, maxLife: CHARGE_MOVE_TICKS + 32
           });
@@ -17888,7 +17888,7 @@
           e.x = p.x; e.y = p.y; e.kbVx = 0; e.kbVy = 0;
         });
       };
-      sim.effects.push({ type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, color, trail: true, runTicks: r.n, life: ticks + 24, maxLife: ticks + 24 });
+      sim.effects.push({ type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, color, trail: true, runTicks: r.n, ownerId: unit.id, life: ticks + 24, maxLife: ticks + 24 });
       return r;
     }
 
@@ -20337,9 +20337,13 @@
             headT = 1 - (1 - k) * (1 - k);
             arrived = Math.max(0, Math.min(1, (age - ef.runTicks) / Math.max(1, ef.maxLife - ef.runTicks)));
           } else { headT = Math.min(1, progress * 1.7); arrived = Math.max(0, (progress - 0.59) / 0.41); }
+          // 달리는 몸의 실제 위치를 매 프레임 따라감 (틱 시간 계산과 한 칸 어긋나도 바람이 몸 앞으로 나가지 않게)
+          const ou = ef.runTicks && ef.ownerId != null && dist > 0 ? sim.units.find(q => q.id === ef.ownerId) : null;
+          if (ou) headT = Math.max(0, Math.min(1, ((ou.x - ef.sx) * Math.cos(ang) + (ou.y - ef.sy) * Math.sin(ang)) / dist));
           const hx = ef.sx + Math.cos(ang) * dist * headT, hy = ef.sy + Math.sin(ang) * dist * headT;
           const tl = TRAIL_FX.tail, dr = TRAIL_FX.dirt, fadeW = TRAIL_FX.fade;
-          const windFull = Math.max(tl[2], dist * headT / s - 30);
+          // 꼬리 끝은 출발점, 앞끝은 몸 바로 뒤 — 달린 거리만큼만 길어짐 (출발 직후엔 짧게)
+          const windFull = Math.max(0, dist * headT / s - TRAIL_FX.frontPad);
           // 도착하면 몸에서 먼 뒤쪽 끝부터 몸 쪽으로 걷히며 사라짐 (먼지도 먼 것부터 사라짐)
           const windW = windFull * (1 - arrived);
           ctx.save();
