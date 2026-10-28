@@ -3002,7 +3002,9 @@
       guard:   { id: 'guard',   name: '방어 태세', icon: '🏰', color: '#0284c7', desc: '받는 피해 70% 감소·상태이상 면역 (느리게 이동 가능·공격 불가)' },
       spin:    { id: 'spin',    name: '창 회전', icon: '🌀', color: '#b45309', desc: '창을 돌려 주변에 다단히트·날아오는 투사체를 막음 (공격·스킬 불가, 느리게 이동)' },
       rampage: { id: 'rampage', name: '난무', icon: '💥', color: '#c2410c', desc: '주변 2칸을 마구 휘둘러 다단히트 (이동·기본 공격·스킬 불가)' },
-      darkness: { id: 'darkness', name: '암흑', icon: '🌑', color: '#7c3aed', desc: '시야가 좁아져 둘레 밖의 적을 알아보지 못함 (직접 전투는 캐릭터 둘레 밖 화면이 어두워짐)' }
+      darkness: { id: 'darkness', name: '암흑', icon: '🌑', color: '#7c3aed', desc: '시야가 좁아져 둘레 밖의 적을 알아보지 못함 (직접 전투는 캐릭터 둘레 밖 화면이 어두워짐)' },
+      fear:    { id: 'fear',    name: '공포', icon: '😱', color: '#6366f1', desc: '전의를 잃고 자기 진영 뒤쪽으로 후퇴 (기본 공격·스킬 사용 불가, 직접 조종도 안 됨)' },
+      confuse: { id: 'confuse', name: '혼란', icon: '😵‍💫', color: '#db2777', desc: '대상을 정하지 못하고 비틀거리며 아무 방향으로나 기본 공격·스킬을 마구 씀 (직접 조종도 안 됨)' }
     };
 
     // 전술 그리드 1칸 크기(120px) 기준: 대시 1칸(120px), 전사 돌진 스킬 2칸(240px) (Requirement 1)
@@ -3460,6 +3462,97 @@
       try { manualBasicAttack(u, allies, enemies, ang, c, Math.max(12, u.baseAtkInterval)); }
       finally { u.blindSwing = false; }
     }
+    function isFeared(u) { return Boolean(u && u.statuses && u.statuses.fear > 0); }
+    function isConfused(u) { return Boolean(u && u.statuses && u.statuses.confuse > 0); }
+    // 공포: 자기 진영 뒤쪽(파랑=왼쪽, 빨강=오른쪽)으로 달아남. 3칸 안에 적이 있으면 그 적에게서도 멀어지는 쪽으로
+    // 뒤쪽 끝에 닿으면 제자리에서 덜덜 떪 (기본 공격·스킬·대시·장비 스킬 없음)
+    function fearFleeStep(u, enemies) {
+      if (u.cooldown > 0) u.cooldown--;
+      if (u.monsterType === 'scarecrow') return;
+      const rearX = u.team === 'blue' ? 200 : sim.worldW - 200;
+      let ax = rearX - u.x, ay = 0;
+      const foe = enemies.reduce((best, e) => {
+        const d = unitDist(e, u);
+        return !hiddenFrom(u, e) && (!best || d < best.d) ? { e, d } : best;
+      }, null);
+      if (foe && foe.d < GRID_CELL_SIZE * 3) {
+        const d = Math.max(1, foe.d);
+        ax += ((u.x - foe.e.x) / d) * 240;
+        ay += ((u.y - foe.e.y) / d) * 240;
+      }
+      if (Math.hypot(ax, ay) < 24) {
+        u.isMoving = false;
+        if (sim.tickCount % 8 === 0) u.facingDir *= -1; // 구석에서 두리번거리며 떪
+        return;
+      }
+      const st = u.statuses;
+      const speedMult = Math.max(0.4, 1 - (st.shock > 0 ? 0.35 : 0) - (st.poison > 0 ? 0.12 : 0));
+      const angle = wallAwareAngle(u, Math.atan2(ay, ax));
+      const sp = u.baseMoveSpeed * 0.95 * speedMult * (st.swift > 0 ? 1.5 : 1);
+      u.x = Math.max(200, Math.min(sim.worldW - 200, u.x + Math.cos(angle) * sp));
+      u.y = Math.max(260, Math.min(sim.worldH - 220, u.y + Math.sin(angle) * sp));
+      u.facingAngle = angle;
+      if (Math.abs(Math.cos(angle)) > 0.2) u.facingDir = Math.cos(angle) >= 0 ? 1 : -1;
+      u.isMoving = true;
+      u.walkPhase += 0.07 * speedMult;
+    }
+    // 혼란: 비틀비틀 걸으며 아무 방향으로나 기본 공격(성녀는 아무 아군이나 치유), 가끔 아무 스킬을 아무 곳에 씀
+    const CONFUSE_SKIP_SKILLS = ['revive', 'shadow_step', 'shadow_clone'];
+    function confusedStep(u, allies, enemies) {
+      if (u.monsterType === 'scarecrow') return;
+      darknessWander(u);
+      if (u.cooldown > 0) u.cooldown--;
+      else if (Math.random() < 0.06) {
+        if (u.job === 'healer') {
+          const near = allies.filter(a => unitDist(a, u) <= u.range + 80);
+          const t = near[Math.floor(Math.random() * near.length)];
+          if (t) {
+            u.cooldown = Math.max(12, u.baseAtkInterval);
+            u.attackAnim = Math.min(42, u.cooldown);
+            u.maxAttackAnim = u.attackAnim;
+            sim.effects.push({ type: 'heal_beam', sx: u.x, sy: u.y - 10, tx: t.x, ty: t.y - 10, life: 32, maxLife: 32 });
+            healAllyNow(u, t, u.atk * 1.25);
+          }
+        } else if (!(u.job === 'sniper' && !sniperCanFire(u)) && !(u.job === 'lancer' && lancerBusy(u))) {
+          const ang = Math.random() * Math.PI * 2;
+          const reach = Math.max(40, u.range * (0.5 + Math.random() * 0.5));
+          const c = { aimX: u.x + Math.cos(ang) * reach, aimY: u.y + Math.sin(ang) * reach, sniperAim: true };
+          u.facingAngle = ang;
+          if (Math.abs(Math.cos(ang)) > 0.2) u.facingDir = Math.cos(ang) >= 0 ? 1 : -1;
+          u.blindSwing = true;
+          try { manualBasicAttack(u, allies, enemies, ang, c, Math.max(12, u.baseAtkInterval)); }
+          finally { u.blindSwing = false; }
+        }
+      }
+      if (!u.casting && !(u.castLock > 0) && Math.random() < 0.012) confusedRandomSkill(u, enemies);
+    }
+    function confusedRandomSkill(u, enemies) {
+      if (lancerBusy(u) || (u.statuses.guard || 0) > 0) return;
+      const book = unitSkillBook(u);
+      const ammo = u.ammo || 0;
+      const ready = (u.unlockedSkills || []).filter(k => book[k] && !CONFUSE_SKIP_SKILLS.includes(k)
+        && !((u.skillCooldowns?.[k] || 0) > 0) && u.mana >= (book[k].manaCost || 0)
+        && !(u.job === 'sniper' && ((k === 'power_shot' && ammo < 2) || ((k === 'buckshot' || k === 'finisher') && ammo < 1))));
+      if (!ready.length) return;
+      const key = ready[Math.floor(Math.random() * ready.length)];
+      const mode = MANUAL_SKILL_AIM[key] || 'point';
+      const range = manualSkillRange(u, key);
+      let aim;
+      if (mode === 'target') {
+        // 대상형 스킬은 사거리 안의 아무 적에게나
+        const near = enemies.filter(e => e.alive && unitDist(e, u) <= range);
+        if (!near.length) return;
+        const t = near[Math.floor(Math.random() * near.length)];
+        aim = { x: t.x, y: t.y, target: t };
+      } else {
+        const ang = Math.random() * Math.PI * 2;
+        const r = Math.min(range, GRID_CELL_SIZE * 6) * (0.3 + Math.random() * 0.7);
+        const pt = clampAimPoint(u, u.x + Math.cos(ang) * r, u.y + Math.sin(ang) * r, range);
+        aim = { x: pt.x, y: pt.y, target: null };
+      }
+      u.manualSkillMode = mode;
+      beginSkillCast(u, key, aim);
+    }
     // 지금 화면을 보는 사람이 이 은신 유닛을 볼 수 있는지 (같은 편·관전자만)
     function canViewerSeeStealthed(u) {
       return Boolean(sim.spectator) || u.team === getMyBattleTeam();
@@ -3686,7 +3779,9 @@
       burn:      { icon: '🔥', name: '불꽃',     desc: '공격할 때 30% 확률로 [화상]' },
       poison:    { icon: '☠️', name: '맹독',     desc: '공격할 때 30% 확률로 [중독]' },
       bleed:     { icon: '🩸', name: '물어뜯기', desc: '공격할 때 30% 확률로 [출혈]' },
-      shock:     { icon: '❄️', name: '냉기',     desc: '공격할 때 30% 확률로 [감전] (느려지고 방어력 감소)' }
+      shock:     { icon: '❄️', name: '냉기',     desc: '공격할 때 30% 확률로 [감전] (느려지고 방어력 감소)' },
+      fear:      { icon: '😱', name: '공포',     desc: '공격할 때 10% 확률로 [공포] (진영 뒤쪽으로 후퇴·공격 불가)' },
+      confuse:   { icon: '😵‍💫', name: '혼란',     desc: '공격할 때 10% 확률로 [혼란] (아무 데나 공격·스킬)' }
     };
 
     const MONSTER_DEFS = {
@@ -3697,9 +3792,9 @@
       goblin_king:    { id: 'goblin_king',    name: '고블린 왕',    icon: '👑', color: '#ca8a04', big: true, passives: ['enrage'] },
       // 언데드
       skeleton:       { id: 'skeleton',       name: '해골병사',     icon: '💀', color: '#94a3b8', trait: { hp: 0.9, def: 1.15 } },
-      ghost:          { id: 'ghost',          name: '유령',         icon: '👻', color: '#cbd5e1', trait: { hp: 0.8 }, passives: ['evade'] },
+      ghost:          { id: 'ghost',          name: '유령',         icon: '👻', color: '#cbd5e1', trait: { hp: 0.8 }, passives: ['evade', 'fear'] },
       mummy:          { id: 'mummy',          name: '미라',         icon: '🧟', color: '#a8a29e', trait: { hp: 0.9, def: 1.1 }, passives: ['enrage'] },
-      lich:           { id: 'lich',           name: '리치',         icon: '☠️', color: '#6d28d9', big: true, trait: { hp: 0.9 }, passives: ['lifesteal', 'poison'] },
+      lich:           { id: 'lich',           name: '리치',         icon: '☠️', color: '#6d28d9', big: true, trait: { hp: 0.9 }, passives: ['lifesteal', 'poison', 'fear'] },
       // 야수족
       wolf:           { id: 'wolf',           name: '늑대',         icon: '🐺', color: '#64748b', trait: { hp: 0.9, spd: 1.15 }, passives: ['bleed'] },
       bat:            { id: 'bat',            name: '흡혈박쥐',     icon: '🦇', color: '#4c1d95', trait: { hp: 0.85, spd: 1.15 }, passives: ['lifesteal'] },
@@ -3755,17 +3850,17 @@
       scorpion:       { id: 'scorpion',       name: '사막 전갈',    icon: '🦂', color: '#b45309', trait: { def: 1.15 }, passives: ['poison'] },
       sandworm:       { id: 'sandworm',       name: '모래 벌레',    icon: '🪱', color: '#d6a35c', trait: { hp: 1.15, spd: 0.9 }, passives: ['lifesteal'] },
       sand_raider:    { id: 'sand_raider',    name: '모래 약탈자',  icon: '🏜️', color: '#c2410c', trait: { hp: 0.9, atk: 1.1, spd: 1.05 }, passives: ['bleed'] },
-      sphinx:         { id: 'sphinx',         name: '스핑크스',     icon: '🦁', color: '#ca8a04', big: true, passives: ['evade', 'enrage'] },
+      sphinx:         { id: 'sphinx',         name: '스핑크스',     icon: '🦁', color: '#ca8a04', big: true, passives: ['evade', 'enrage', 'confuse'] },
       // 타락 요정족
       thorn_treant:   { id: 'thorn_treant',   name: '가시 나무정령', icon: '🌳', color: '#166534', trait: { hp: 1.15, spd: 0.85 }, passives: ['thorns', 'regen'] },
-      dark_fairy:     { id: 'dark_fairy',     name: '타락 요정',    icon: '🧚', color: '#a21caf', trait: { hp: 0.8, spd: 1.15 }, passives: ['evade', 'poison'] },
-      venom_moth:     { id: 'venom_moth',     name: '독가루 나방',  icon: '🦋', color: '#7c3aed', trait: { hp: 0.85 }, passives: ['poison'] },
+      dark_fairy:     { id: 'dark_fairy',     name: '타락 요정',    icon: '🧚', color: '#a21caf', trait: { hp: 0.8, spd: 1.15 }, passives: ['evade', 'poison', 'confuse'] },
+      venom_moth:     { id: 'venom_moth',     name: '독가루 나방',  icon: '🦋', color: '#7c3aed', trait: { hp: 0.85 }, passives: ['poison', 'confuse'] },
       ancient_treant: { id: 'ancient_treant', name: '고대 나무군주', icon: '🌲', color: '#14532d', big: true, trait: { spd: 0.9 }, passives: ['regen', 'thorns'] },
       // 마계족
       hell_knight:    { id: 'hell_knight',    name: '마계 기사',    icon: '⚔️', color: '#7f1d1d', trait: { hp: 1.05, def: 1.15 }, passives: ['enrage'] },
       warlock:        { id: 'warlock',        name: '마계 술사',    icon: '🔯', color: '#9333ea', trait: { hp: 0.85, atk: 1.1 }, passives: ['burn', 'lifesteal'] },
       pumpkin_fiend:  { id: 'pumpkin_fiend',  name: '호박 마귀',    icon: '🎃', color: '#ea580c', trait: { hp: 0.9 }, passives: ['explode', 'burn'] },
-      demon_king:     { id: 'demon_king',     name: '마왕',         icon: '🔱', color: '#450a0a', big: true, passives: ['burn', 'lifesteal', 'enrage'] },
+      demon_king:     { id: 'demon_king',     name: '마왕',         icon: '🔱', color: '#450a0a', big: true, passives: ['burn', 'lifesteal', 'enrage', 'fear'] },
       // 천공족
       griffin:        { id: 'griffin',        name: '그리폰',       icon: '🦅', color: '#d97706', trait: { hp: 0.95, spd: 1.15 }, passives: ['bleed'] },
       thunderbird:    { id: 'thunderbird',    name: '천둥새',       icon: '🐦', color: '#2563eb', trait: { hp: 0.85, atk: 1.1 }, passives: ['shock'] },
@@ -3779,18 +3874,18 @@
       // 그림자족
       shadow_assassin:{ id: 'shadow_assassin',name: '그림자 자객',  icon: '🥷', color: '#1e1b4b', trait: { hp: 0.85, atk: 1.15, spd: 1.15 }, passives: ['bleed', 'evade'] },
       wraith_knight:  { id: 'wraith_knight',  name: '망령 기사',    icon: '🛡️', color: '#334155', trait: { def: 1.2 }, passives: ['lifesteal'] },
-      nightmare:      { id: 'nightmare',      name: '악몽마',       icon: '🐴', color: '#4c1d95', trait: { spd: 1.15 }, passives: ['enrage'] },
-      shadow_lord:    { id: 'shadow_lord',    name: '그림자 군주',  icon: '🌑', color: '#0f172a', big: true, passives: ['lifesteal', 'evade', 'enrage'] },
+      nightmare:      { id: 'nightmare',      name: '악몽마',       icon: '🐴', color: '#4c1d95', trait: { spd: 1.15 }, passives: ['enrage', 'fear'] },
+      shadow_lord:    { id: 'shadow_lord',    name: '그림자 군주',  icon: '🌑', color: '#0f172a', big: true, passives: ['lifesteal', 'evade', 'enrage', 'fear'] },
       // 신화 수호자
       minotaur:       { id: 'minotaur',       name: '미노타우로스', icon: '🐂', color: '#7c2d12', trait: { hp: 1.1, atk: 1.1, spd: 0.9 }, passives: ['enrage'] },
       medusa:         { id: 'medusa',         name: '메두사',       icon: '🐍', color: '#15803d', trait: { hp: 0.9 }, passives: ['shock', 'poison'] },
       chimera:        { id: 'chimera',        name: '키메라',       icon: '🐲', color: '#b91c1c', trait: { hp: 0.95, atk: 1.05 }, passives: ['burn', 'bleed'] },
       cerberus:       { id: 'cerberus',       name: '케르베로스',   icon: '🐕‍🦺', color: '#991b1b', big: true, trait: { spd: 1.05 }, passives: ['burn', 'bleed', 'enrage'] },
       // 혼돈족
-      chaos_eye:      { id: 'chaos_eye',      name: '혼돈의 눈',    icon: '🧿', color: '#6d28d9', trait: { hp: 0.85, atk: 1.15 }, passives: ['shock', 'burn'] },
+      chaos_eye:      { id: 'chaos_eye',      name: '혼돈의 눈',    icon: '🧿', color: '#6d28d9', trait: { hp: 0.85, atk: 1.15 }, passives: ['shock', 'burn', 'confuse'] },
       void_tentacle:  { id: 'void_tentacle',  name: '공허 촉수',    icon: '🦑', color: '#312e81', trait: { hp: 1.1, spd: 0.9 }, passives: ['lifesteal', 'thorns'] },
       fallen_angel:   { id: 'fallen_angel',   name: '타락 천사',    icon: '😇', color: '#e2e8f0', trait: { def: 1.1, spd: 1.05 }, passives: ['regen', 'evade'] },
-      chaos_god:      { id: 'chaos_god',      name: '혼돈의 신',    icon: '🌌', color: '#581c87', big: true, passives: ['lifesteal', 'enrage', 'thorns', 'burn'] }
+      chaos_god:      { id: 'chaos_god',      name: '혼돈의 신',    icon: '🌌', color: '#581c87', big: true, passives: ['lifesteal', 'enrage', 'thorns', 'burn', 'confuse'] }
     };
     // 몬스터 몸 크기 (용병 = 1): 용병 키에 맞추지 않고 몬스터 특성대로. 그림·토큰 크기, 맞는 범위(몸 가장자리),
     // 근접 사거리, 스킬 범위가 모두 이 배율을 따름 (unitBodyGap·unitAreaScale)
@@ -12391,7 +12486,7 @@
     // 실시간 결투 연결 상태 (아래 [실시간 결투 화면 동기화] 참고)
     const LIVE_FRAME_INTERVAL_MS = 100; // 방장이 화면을 보내는 간격 (실제 시간)
     const LIVE_GUEST_TIMEOUT_MS = 20000;
-    const LIVE_UNIT_ST_KEYS = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'blessed', 'rally', 'empower', 'immune', 'stealth', 'swift', 'taunt', 'guard', 'spin', 'rampage', 'darkness'];
+    const LIVE_UNIT_ST_KEYS = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'blessed', 'rally', 'empower', 'immune', 'stealth', 'swift', 'taunt', 'guard', 'spin', 'rampage', 'darkness', 'fear', 'confuse'];
     const liveNet = {
       role: null, roomId: null, ref: null, minAt: 0, startedAt: 0,
       initReceived: false, lastFrameAt: 0, targets: {}, finished: false,
@@ -13447,7 +13542,9 @@
           guard: 0,
           spin: 0,
           rampage: 0,
-          darkness: 0
+          darkness: 0,
+          fear: 0,
+          confuse: 0
         },
         damageDealt: 0,
         healDone: 0,
@@ -13923,6 +14020,8 @@
       if (unit.manualAimTarget && unit.manualAimTarget.alive && unit.manualAimTarget.team !== unit.team) {
         return unit.manualAimTarget;
       }
+      // 혼란: 대상을 정하지 못하고 아무 적이나
+      if (isConfused(unit) && enemies.length) return enemies[Math.floor(Math.random() * enemies.length)];
       // AI는 은신한 적을 알아채지 못함 (엘리트·보스 몬스터는 알아봄)
       enemies = enemies.filter(e => !hiddenFrom(unit, e));
       if (unit.job === 'healer') {
@@ -14174,6 +14273,9 @@
         ['burn', 'poison', 'bleed', 'shock'].forEach(k => {
           if (ap.includes(k) && defender.alive && Math.random() < 0.3) inflictStatus(attacker, defender, k, 180);
         });
+        // 공포·혼란은 행동을 막는 강한 상태이상이라 확률을 낮게
+        if (ap.includes('fear') && defender.alive && Math.random() < 0.1) inflictStatus(attacker, defender, 'fear', 150);
+        if (ap.includes('confuse') && defender.alive && Math.random() < 0.1) inflictStatus(attacker, defender, 'confuse', 180);
       }
       const dp = defender.monsterPassives;
       if (dp && dp.includes('thorns') && attacker.alive && attacker.team !== defender.team
@@ -14934,10 +15036,21 @@
 
         const allies = u.team === 'blue' ? blueAlive : redAlive;
         const enemies = u.team === 'blue' ? redAlive : blueAlive;
+        // 공포: 시전을 끊고 진영 뒤쪽으로 달아남 (직접 조종 중이어도 마음대로 못 움직임)
+        if (st.fear > 0) {
+          cancelSkillCast(u);
+          fearFleeStep(u, enemies);
+          return;
+        }
         // 직접 전투: 학생이 조종하는 용병은 AI 대신 입력대로 움직임
         if (stepSkillCast(u, allies, enemies)) return;
         // 제자리에 묶인 동안(강타 내려치기 등)은 아무것도 하지 않음
         if (u.rootTicks > 0) { u.rootTicks--; u.isMoving = false; return; }
+        // 혼란: 조종·AI 판단 대신 비틀거리며 아무 데나 공격·스킬
+        if (st.confuse > 0) {
+          confusedStep(u, allies, enemies);
+          return;
+        }
         const manualCtrl = sim.controllers && sim.controllers[u.id];
         if (manualCtrl) {
           manualUnitStep(u, allies, enemies, manualCtrl);
@@ -15345,8 +15458,8 @@
     }
 
     // ===== 새 스킬용 공통 장치 (장판 · 밀쳐내기 · 텔레포트 위치 · 상태이상 면역) =====
-    const NEGATIVE_STATUSES = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'taunt', 'darkness'];
-    const CC_STATUSES = ['stun', 'freeze', 'shock']; // 엘리트 보스가 면역인 군중제어
+    const NEGATIVE_STATUSES = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'taunt', 'darkness', 'fear', 'confuse'];
+    const CC_STATUSES = ['stun', 'freeze', 'shock', 'fear', 'confuse']; // 엘리트 보스가 면역인 군중제어
     const ELITE_DEBUFF_IMMUNE_SEC = 10; // 엘리트 보스의 상태이상이 끝난 뒤 면역 시간
     const ZONE_STYLES = {
       arrow_rain:  { color: '#ca8a04', fill: 'rgba(234, 179, 8, 0.22)', icon: '🌧️' },
