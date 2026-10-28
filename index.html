@@ -5981,6 +5981,19 @@
           g.globalCompositeOperation = 'destination-in';
           g.drawImage(img, 0, 0);
           o.green = c;
+          const r = document.createElement('canvas'); // 암살 순간이동용 검붉은 사본
+          r.width = img.width; r.height = img.height;
+          const rg = r.getContext('2d');
+          rg.drawImage(img, 0, 0);
+          rg.globalCompositeOperation = 'color';
+          rg.fillStyle = '#b91c1c';
+          rg.fillRect(0, 0, r.width, r.height);
+          rg.globalCompositeOperation = 'multiply';
+          rg.fillStyle = '#9a6a6a';
+          rg.fillRect(0, 0, r.width, r.height);
+          rg.globalCompositeOperation = 'destination-in';
+          rg.drawImage(img, 0, 0);
+          o.crimson = r;
         }
       };
       img.src = `assets/sprites/fx/${file}.webp`;
@@ -16011,7 +16024,7 @@
     const ASSASSIN_STRIKE_DELAY = 24; // 암살: 등 뒤에 나타난 뒤 찌르기까지 (0.4초)
     function assassinStrike(unit, foe, strikeDir) {
       if (!foe || !foe.alive) return;
-      sim.effects.push({ type: 'hidden_assassin', x: foe.x, y: foe.y - 20, dir: strikeDir, life: 34, maxLife: 34 });
+      sim.effects.push({ type: 'hidden_assassin', x: foe.x, y: foe.y - 20, dir: strikeDir, life: 51, maxLife: 51 }); // 잔상 +50%
       applyDamage(unit, foe, unit.atk * 15, '', '#a855f7');
       if (foe.alive) {
         foe.permBleed = true;
@@ -16767,8 +16780,7 @@
         const back = typeof foe.facingAngle === 'number' ? foe.facingAngle + Math.PI : Math.atan2(unit.y - foe.y, unit.x - foe.x);
         const gap = 46 + unitBodyGap(foe);
         const dest = clampToArena(foe.x + Math.cos(back) * gap, foe.y + Math.sin(back) * gap);
-        sim.effects.push({ type: 'magic_burst', spr: 'teleport', x: unit.x, y: unit.y - 12, r: 50, life: 30, maxLife: 30 });
-        sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y, tx: dest.x, ty: dest.y, color: '#7c3aed', life: 24, maxLife: 24, warp: true });
+        sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y, tx: dest.x, ty: dest.y, color: '#7f1d1d', life: 24, maxLife: 24, warp: true, tint: 'crimson' });
         sim.effects.push({ type: 'hidden_assassin_smoke', x: unit.x, y: unit.y + 8, life: 40, maxLife: 40 });
         sim.effects.push({ type: 'hidden_assassin_smoke', x: dest.x, y: dest.y + 8, life: 40, maxLife: 40 });
         const strikeDir = foe.x >= dest.x ? 1 : -1;
@@ -17567,19 +17579,19 @@
         ctx.save();
         ctx.scale(ef.dir >= 0 ? 1 : -1, 1);
         ctx.globalAlpha = Math.min(1, fade * 2.2);
-        const sc = 0.55 + 0.45 * grow + 0.12 * progress;
+        const sc = (0.55 + 0.45 * grow + 0.12 * progress) * 1.45;
         drawAssassinFrame(ctx, 'slash', sc);
         ctx.restore();
-        ctx.translate(0, 34);
+        ctx.translate(0, 44);
         ctx.globalAlpha = Math.min(1, fade * 1.8) * Math.min(1, progress * 8);
-        drawAssassinFrame(ctx, 'blood', 0.7 + 0.3 * Math.min(1, progress * 3));
+        drawAssassinFrame(ctx, 'blood', (0.7 + 0.3 * Math.min(1, progress * 3)) * 1.45);
         return;
       }
       if (ef.type === 'hidden_assassin') {
         // 암살: 보랏빛 X자 베기
         ctx.translate(ef.x, ef.y);
         ctx.globalAlpha = fade;
-        const L = 50 + progress * 30;
+        const L = (50 + progress * 30) * 1.45;
         [[-1, -1, 1, 1], [1, -1, -1, 1]].forEach(([a, b, c2, d]) => {
           ctx.strokeStyle = '#7c3aed'; ctx.lineWidth = 12;
           ctx.beginPath(); ctx.moveTo(a * L, b * L); ctx.lineTo(c2 * L, d * L); ctx.stroke();
@@ -20080,14 +20092,15 @@
           ctx.stroke();
 
         } else if (ef.type === 'charge_dash' && ef.warp && TORNADO_FX.img.ready) {
-          // 순간이동·그림자 이동: 떠난 자리에서 보랏빛 회오리가 걷히고 도착한 자리에서 솟아오름
+          // 순간이동·그림자 이동: 떠난 자리에서 보랏빛 회오리가 걷히고 도착한 자리에서 솟아오름 (암살은 검붉은 색)
+          const crimson = ef.tint === 'crimson' && TORNADO_FX.crimson;
           const drawTornado = (x, y, grow, alpha) => {
             ctx.save();
             ctx.translate(x, y + 8);
             ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-            ctx.globalCompositeOperation = 'lighter';
+            if (!crimson) ctx.globalCompositeOperation = 'lighter';
             const k = 0.5 * grow;
-            ctx.drawImage(TORNADO_FX.img, -TORNADO_FX.anchorX * k, -TORNADO_FX.anchorY * k, TORNADO_FX.w * k, TORNADO_FX.h * k);
+            ctx.drawImage(crimson || TORNADO_FX.img, -TORNADO_FX.anchorX * k, -TORNADO_FX.anchorY * k, TORNADO_FX.w * k, TORNADO_FX.h * k);
             ctx.restore();
           };
           drawTornado(ef.sx, ef.sy, 1.1 - 0.5 * progress, 1 - progress * 1.3);
