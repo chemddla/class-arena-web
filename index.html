@@ -360,6 +360,9 @@
     .pet-menu .pet-menu-size input { flex: 1; min-width: 0; accent-color: #f59e0b; }
     .pet-menu .pet-size-val { width: 32px; text-align: right; color: #fde68a; }
     .pet-menu button.pet-menu-home { flex: 0 0 30px; padding: 4px 0; }
+    .pet-menu button.pet-menu-follow { width: 100%; margin-top: 8px; }
+    .pet-menu button.pet-menu-follow.on { background: #065f46; border-color: #10b981; color: #d1fae5; }
+    .pet-menu .pet-menu-today { margin-top: 3px; color: #94a3b8; font-size: 10px; font-weight: 700; }
     .pet-menu button:hover { background: #334155; }
     @media (prefers-reduced-motion: reduce) { .pet-actor.pop .pet-body, .pet-fx, .pet-bubble { animation: none; } }
   </style>
@@ -1160,6 +1163,13 @@
                 ⛺ 용병 모집
               </button>
             </div>
+          </div>
+
+          <!-- 정렬 (누르면 그 순서로 저장) · 카드를 끌어 다른 카드 위에 놓거나 ◀▶로 직접 순서 변경 -->
+          <div class="flex items-center gap-1.5 flex-wrap text-xs">
+            <span class="text-slate-400 font-bold">정렬</span>
+            <div id="rosterSortBar" class="flex items-center gap-1 flex-wrap"></div>
+            <span class="text-[10px] text-slate-500">· 카드를 끌어 다른 카드 위에 놓거나 ◀▶ 버튼으로 순서를 바꿀 수 있어요</span>
           </div>
 
           <div id="myMercList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
@@ -6012,6 +6022,7 @@
             if (!Array.isArray(s.roster)) {
               s.roster = [];
             }
+            ensureRosterGotAt(s.roster);
             s.roster.forEach(m => {
               if (m.name && m.name.includes(' ')) {
                 m.name = m.name.split(' ').pop();
@@ -7566,10 +7577,97 @@
       if (dummyEl) dummyEl.textContent = `허수아비 개체당 ❤️ ${dummyHpEach.toLocaleString()}`;
     }
 
+    // 용병을 얻은 순서(최신 정렬용) · 기록이 없던 예전 용병은 지금 목록 순서대로 1, 2, 3…
+    function ensureRosterGotAt(roster) {
+      (roster || []).forEach((m, i) => {
+        if (m && typeof m.gotAt !== 'number') m.gotAt = i + 1;
+      });
+    }
+
+    const ROSTER_SORTS = [
+      { key: 'level', label: '레벨' },
+      { key: 'recent', label: '최신' },
+      { key: 'power', label: '전투력' },
+      { key: 'job', label: '직업' }
+    ];
+
+    // 정렬 버튼: 누른 순서대로 보유 용병단 배열 자체를 다시 저장 (이후 직접 순서 변경 가능)
+    function sortRoster(key) {
+      const stu = getActiveStudent();
+      if (!stu || !Array.isArray(stu.roster)) return;
+      ensureRosterGotAt(stu.roster);
+      const jobOrder = Object.keys(JOB_DEFS);
+      const power = new Map(stu.roster.map(m => [m.id, calcMercCombatPower(m, stu)]));
+      const byPower = (a, b) => power.get(b.id) - power.get(a.id);
+      const cmp = {
+        level: (a, b) => (b.level || 0) - (a.level || 0) || byPower(a, b),
+        recent: (a, b) => b.gotAt - a.gotAt,
+        power: byPower,
+        job: (a, b) => jobOrder.indexOf(a.job) - jobOrder.indexOf(b.job) || (b.level || 0) - (a.level || 0) || byPower(a, b)
+      }[key];
+      if (!cmp) return;
+      stu.roster.sort(cmp);
+      stu.rosterSort = key;
+      saveState();
+      renderSquadTab();
+    }
+
+    // ◀▶ 버튼: 한 칸 앞/뒤로
+    function moveRosterMerc(mercId, dir) {
+      const stu = getActiveStudent();
+      const i = stu.roster.findIndex(m => m.id === mercId);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= stu.roster.length) return;
+      [stu.roster[i], stu.roster[j]] = [stu.roster[j], stu.roster[i]];
+      stu.rosterSort = null;
+      saveState();
+      renderSquadTab();
+    }
+
+    // 카드를 끌어 다른 카드 위에 놓으면 그 자리로 옮김
+    function handleRosterCardDragOver(event) {
+      if (!draggingMercId) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+      event.currentTarget.classList.add('ring-2', 'ring-amber-400');
+    }
+
+    function handleRosterCardDragLeave(event) {
+      event.currentTarget.classList.remove('ring-2', 'ring-amber-400');
+    }
+
+    function handleRosterCardDrop(event, targetId) {
+      event.preventDefault();
+      event.currentTarget.classList.remove('ring-2', 'ring-amber-400');
+      const stu = getActiveStudent();
+      const fromId = draggingMercId || (event.dataTransfer ? event.dataTransfer.getData('text/plain') : null);
+      draggingMercId = null;
+      const from = stu.roster.findIndex(m => m.id === fromId);
+      const to = stu.roster.findIndex(m => m.id === targetId);
+      if (from < 0 || to < 0 || from === to) return;
+      const [merc] = stu.roster.splice(from, 1);
+      stu.roster.splice(to, 0, merc);
+      stu.rosterSort = null;
+      saveState();
+      renderSquadTab();
+    }
+
+    function renderRosterSortBar(stu) {
+      const bar = document.getElementById('rosterSortBar');
+      if (!bar) return;
+      bar.innerHTML = ROSTER_SORTS.map(s => `<button onclick="sortRoster('${s.key}')"
+        class="px-2.5 py-1 rounded-lg font-bold border transition ${
+          stu && stu.rosterSort === s.key
+            ? 'bg-indigo-500 border-indigo-400 text-white'
+            : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+        }">${s.label}</button>`).join('');
+    }
+
     function renderSquadTab() {
       hideStatTooltip(); // 다시 그리면 마우스가 올라가 있던 칸이 사라지므로 설명 팝업도 닫음
       const stu = getActiveStudent();
       updateSquadPowerDashboard(stu);
+      renderRosterSortBar(stu);
       if (!stu.roster || stu.roster.length === 0) {
         selectedMercId = null;
         document.getElementById('rosterCountBadge').textContent = `보유 0/${MAX_ROSTER}명 · 출전 0/${MAX_DEPLOY}명 · 용병단 전투력 0`;
@@ -7599,7 +7697,7 @@
       document.getElementById('rosterCountBadge').textContent = `보유 ${stu.roster.length}/${MAX_ROSTER}명 · 출전 ${deployedCount}/${MAX_DEPLOY}명 · ⚔️ 용병단 전투력 ${totalSquadPower.toLocaleString()}`;
 
       const listEl = document.getElementById('myMercList');
-      listEl.innerHTML = stu.roster.map(merc => {
+      listEl.innerHTML = stu.roster.map((merc, idx) => {
         const job = JOB_DEFS[merc.job];
         const rar = RARITY_DEFS[merc.rarity] || RARITY_DEFS.N;
         const skill = getMercSkillObj(merc);
@@ -7614,6 +7712,10 @@
           <div onclick="openMercDetailModal('${merc.id}')"
             draggable="true"
             ondragstart="handleFormationDragStart(event, '${merc.id}')"
+            ondragend="draggingMercId = null"
+            ondragover="handleRosterCardDragOver(event)"
+            ondragleave="handleRosterCardDragLeave(event)"
+            ondrop="handleRosterCardDrop(event, '${merc.id}')"
             class="cursor-pointer rounded-2xl border-2 p-3 transition flex flex-col justify-between rarity-${merc.rarity} ${rar.isRare ? 'merc-rare-shine' : ''} hover:shadow-lg ${
               isSel ? 'ring-2 ring-blue-500 border-blue-500' : ''
             }">
@@ -7635,6 +7737,13 @@
                     </div>
                   </div>
                 </div>
+                <div class="flex items-center gap-1 shrink-0">
+                <div class="flex flex-col gap-0.5">
+                  <button onclick="event.stopPropagation(); moveRosterMerc('${merc.id}', -1)" title="앞으로" ${idx === 0 ? 'disabled' : ''}
+                    class="w-5 h-4 leading-none rounded bg-slate-800 border border-slate-700 text-[9px] text-slate-300 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-default">◀</button>
+                  <button onclick="event.stopPropagation(); moveRosterMerc('${merc.id}', 1)" title="뒤로" ${idx === stu.roster.length - 1 ? 'disabled' : ''}
+                    class="w-5 h-4 leading-none rounded bg-slate-800 border border-slate-700 text-[9px] text-slate-300 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-default">▶</button>
+                </div>
                 <button onclick="event.stopPropagation(); toggleMercDeploy('${merc.id}')"
                   class="px-2.5 py-1 rounded-xl text-xs font-extrabold transition ${
                     merc.deployed
@@ -7643,6 +7752,7 @@
                   }">
                   ${merc.deployed ? '✅ 출전중' : '대기중'}
                 </button>
+                </div>
               </div>
 
               <!-- 스킬 3칸 (아이콘 + 이름, 잠긴 스킬은 열리는 레벨) · 마우스를 올리면 설명 -->
@@ -8363,6 +8473,7 @@
       const m = normalizeMercForSync(deepCleanStrings(JSON.parse(JSON.stringify(gift.merc))));
       if (stu.roster.some(x => x.id === m.id)) m.id = 'merc_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
       m.deployed = stu.roster.filter(x => x.deployed).length < MAX_DEPLOY;
+      m.gotAt = Date.now();
       stu.roster.push(m);
       return m;
     }
@@ -9388,7 +9499,7 @@
       stu.mc -= cost;
       cand.hired = true;
       const deployedCount = stu.roster.filter(m => m.deployed).length;
-      const hiredMerc = { ...cand, deployed: deployedCount < MAX_DEPLOY, hireCost: cost };
+      const hiredMerc = { ...cand, deployed: deployedCount < MAX_DEPLOY, hireCost: cost, gotAt: Date.now() };
       delete hiredMerc.hired;
       delete hiredMerc.soldBack;
       delete hiredMerc.soldPrice;
@@ -22651,6 +22762,7 @@
       if (!Array.isArray(s.defenseFormation)) s.defenseFormation = [];
       if (!s.relics || typeof s.relics !== 'object') s.relics = {};
       s.roster.forEach(normalizeMercForSync);
+      ensureRosterGotAt(s.roster);
       s.defenseFormation.forEach(normalizeMercForSync);
       deepCleanStrings(s);
       return s;
@@ -28779,9 +28891,11 @@
     /********************************************************************
      * 펫: 로그인한 학생의 펫이 화면 위를 돌아다님 (바탕화면 펫 키우기 느낌)
      * - 거래소 펫 입양소에서 CA로 입양 (학생당 한 마리)
-     * - 클릭하면 메뉴(쓰다듬기·먹이·츄르·크기·쉬게 하기), 마우스로 문지르면 쓰다듬기, 끌어서 옮기기
+     * - 클릭하면 메뉴(쓰다듬기·먹이·간식·크기·마우스 따라오기·쉬게 하기), 마우스로 문지르면 쓰다듬기, 끌어서 옮기기
+     * - 애정은 하루에 10까지만 오름. 배부름이 0%면 1시간마다 애정 -1 (하루 10까지)
      * - 위아래로 갈 때는 깡충 뛰면서 이동 (올라갈 땐 뒷모습)
-     * - 기록은 학생 기록(stu.pet)에 둠: { type, name, love, full, fullAt, snackAt, size, adoptedAt }
+     * - 기록은 학생 기록(stu.pet)에 둠: { type, name, love, full, fullAt, snackAt, size, adoptedAt,
+     *   loveDay, loveGain, loveLossDay, loveLoss, starveAt }
      * - 배부름(full)은 시간이 지나면 줄어듦 (fullAt 기준으로 그때그때 계산)
      ********************************************************************/
     const PET_DEFS = {
@@ -28847,8 +28961,15 @@
     const PET_FEED_FULL = 30;
     const PET_SNACK_COOLDOWN_MS = 60000;
     const PET_PAT_COOLDOWN_MS = 8000; // 쓰다듬기로 애정이 오르는 간격
+    const PET_LOVE_GAIN_PER_DAY = 10; // 하루에 오를 수 있는 애정
+    const PET_LOVE_LOSS_PER_DAY = 10; // 굶어서 하루에 떨어질 수 있는 애정
+    const PET_FOLLOW_GAP = 60;        // 마우스 따라오기: 커서 옆에 서는 거리(px)
+    function petDayKey(ts) {
+      const d = new Date(ts);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
     const PET_LINES = {
-      cat: { idle: ['냐옹~', '골골골...', '심심하다냥', '주인님 최고냥!', '꾹꾹이 하고 싶다냥'], greet: '주인님 왔다냥!', hungry: '배고프다냥...', full: '배불러냥~', pat: ['골골골~', '거기 좋다냥!', '냐아~♡'], eat: '냠냠 맛있다냥!', snack: '츄르 최고냥!♡', snackWait: '아까 먹었다냥~ 조금 이따 줘!' },
+      cat: { idle: ['냐옹~', '골골골...', '심심하다냥', '주인님 최고냥!', '꾹꾹이 하고 싶다냥'], greet: '주인님 왔다냥!', hungry: '배고프다냥...', full: '배불러냥~', pat: ['골골골~', '거기 좋다냥!', '냐아~♡'], eat: '냠냠 맛있다냥!', snack: '간식 최고냥!♡', snackWait: '아까 먹었다냥~ 조금 이따 줘!' },
       dog: { idle: ['멍멍!', '산책 가자!', '꼬리 살랑살랑~', '주인님 최고멍!'], greet: '주인님 왔다멍!', hungry: '배고파요 멍...', full: '배불러요 멍~', pat: ['헥헥 좋아요!', '멍멍♡', '더 쓰다듬어 줘요!'], eat: '냠냠 맛있다멍!', snack: '간식 최고멍!♡', snackWait: '아까 먹었어요 멍~' },
     };
 
@@ -28882,6 +29003,51 @@
       hiddenKey() { return `mca_pet_hidden:${this.stuId}`; },
       isHidden() { try { return localStorage.getItem(this.hiddenKey()) === '1'; } catch (e) { return false; } },
       setHidden(v) { try { v ? localStorage.setItem(this.hiddenKey(), '1') : localStorage.removeItem(this.hiddenKey()); } catch (e) {} },
+      // 마우스 따라오기 켜기/끄기 (기기마다 학생별로 기억)
+      followKey() { return `mca_pet_follow:${this.stuId}`; },
+      isFollowing() { try { return localStorage.getItem(this.followKey()) === '1'; } catch (e) { return false; } },
+      toggleFollow() {
+        const on = !this.isFollowing();
+        try { on ? localStorage.setItem(this.followKey(), '1') : localStorage.removeItem(this.followKey()); } catch (e) {}
+        const p = this.data();
+        if (p) this.say(on ? `${p.name}: 따라갈게요!` : `${p.name}: 자유롭게 놀래요~`, 1600);
+        if (!on && this.mode === 'walk') { this.hopT = 0; this.setMode('idle', 1.5); }
+        this.renderMenu();
+      },
+
+      // 애정 올리기: 하루 PET_LOVE_GAIN_PER_DAY까지. 실제로 오른 양을 돌려줌
+      addLove(p, n) {
+        const today = getTodayDateString();
+        if (p.loveDay !== today) { p.loveDay = today; p.loveGain = 0; }
+        const room = Math.max(0, PET_LOVE_GAIN_PER_DAY - (p.loveGain || 0));
+        const add = Math.min(n, room, 100 - (p.love || 0));
+        if (add <= 0) return 0;
+        p.love = (p.love || 0) + add;
+        p.loveGain = (p.loveGain || 0) + add;
+        return add;
+      },
+      todayLoveGain(p) { return p && p.loveDay === getTodayDateString() ? (p.loveGain || 0) : 0; },
+      // 배부름 0%로 지낸 시간만큼 애정 -1/시간 (하루 PET_LOVE_LOSS_PER_DAY까지). 지난 시간도 한 시간씩 따져 계산
+      applyStarve(p = this.data()) {
+        if (!p || !p.fullAt) return;
+        const H = 3600000;
+        const now = Date.now();
+        const zeroAt = p.fullAt + Math.max(0, p.full ?? 60) / PET_FULL_DECAY_PER_HOUR * H;
+        let t = Math.max(zeroAt, p.starveAt || 0);
+        let changed = false;
+        for (let i = 0; t + H <= now && i < 24 * 60; i++) {
+          t += H;
+          const day = petDayKey(t);
+          if (p.loveLossDay !== day) { p.loveLossDay = day; p.loveLoss = 0; }
+          if ((p.loveLoss || 0) < PET_LOVE_LOSS_PER_DAY && (p.love || 0) > 0) {
+            p.love -= 1;
+            p.loveLoss = (p.loveLoss || 0) + 1;
+          }
+          changed = true;
+        }
+        if (t + H <= now) t = now - ((now - t) % H); // 아주 오래 비운 경우 나머지는 건너뜀
+        if (changed || p.starveAt !== t && t > zeroAt) { p.starveAt = t; this.saveSoon(); }
+      },
 
       // 로그인 직후: 펫이 있으면 인사하며 등장
       onLogin(stu) {
@@ -29522,13 +29688,20 @@
     const HOME_RETIRED = { chair_blue: 500, chair_dark: 500 };
     // 벽지·바닥 (tools/room-skin.cjs로 만든 assets/room/<part>_<id>.webp: 방 캔버스와 같은 크기, 그 부분만 그려짐)
     const HOME_SKINS = [
-      { part: 'wall',  id: 'patch',         name: '파스텔 패널 벽지',   price: 600 },
-      { part: 'wall',  id: 'check_mint',    name: '체크·민트 도트 벽지', price: 600 },
-      { part: 'wall',  id: 'flower_stripe', name: '꽃무늬·민트 체크 벽지', price: 700 },
-      { part: 'wall',  id: 'cream_lime',    name: '크림·연두 벽지',     price: 400 },
-      { part: 'wall',  id: 'blue_gray',     name: '회청색 벽지',        price: 400 },
-      { part: 'wall',  id: 'ivory',         name: '아이보리 벽지',      price: 400 },
-      { part: 'wall',  id: 'olive_mint',    name: '올리브·민트 벽지',   price: 400 },
+      // 벽지는 양쪽 벽이 같은 무늬 (샘플 양쪽이 다르면 하나씩 따로: room-skin.cjs --side left|right)
+      { part: 'wall',  id: 'floral_pink',   name: '분홍 꽃무늬 벽지',   price: 600 },
+      { part: 'wall',  id: 'plaid_mint',    name: '민트 체크 벽지',     price: 600 },
+      { part: 'wall',  id: 'gingham_peach', name: '복숭아 깅엄 벽지',   price: 500 },
+      { part: 'wall',  id: 'check_beige',   name: '베이지 격자 벽지',   price: 500 },
+      { part: 'wall',  id: 'dot_mint',      name: '민트 도트 벽지',     price: 500 },
+      { part: 'wall',  id: 'dot_sage',      name: '세이지 도트 패널 벽지', price: 500 },
+      { part: 'wall',  id: 'cream',         name: '크림 벽지',          price: 300 },
+      { part: 'wall',  id: 'lime',          name: '연두 벽지',          price: 300 },
+      { part: 'wall',  id: 'ivory',         name: '아이보리 벽지',      price: 300 },
+      { part: 'wall',  id: 'sage_gray',     name: '연회색 벽지',        price: 300 },
+      { part: 'wall',  id: 'slate_blue',    name: '회청색 벽지',        price: 300 },
+      { part: 'wall',  id: 'olive',         name: '올리브 벽지',        price: 300 },
+      { part: 'wall',  id: 'mint',          name: '민트 벽지',          price: 300 },
       { part: 'floor', id: 'terracotta',    name: '테라코타 모로코 타일', price: 900 },
       { part: 'floor', id: 'mustard',       name: '머스터드 모로코 타일', price: 900 },
       { part: 'floor', id: 'wood',          name: '나무 마루',          price: 800 },
@@ -29538,6 +29711,11 @@
       { part: 'floor', id: 'gray',          name: '회색 타일',          price: 500 },
     ];
     const HOME_SKIN = Object.fromEntries(HOME_SKINS.map(s => [`${s.part}:${s.id}`, s]));
+    // 예전 양쪽이 다른 벽지 → 나눈 벽지 둘 다 줌 (첫째가 지금 쓰는 벽지가 됨)
+    const HOME_SKIN_SPLIT = {
+      patch: ['check_beige', 'dot_sage'], check_mint: ['gingham_peach', 'dot_mint'], flower_stripe: ['floral_pink', 'plaid_mint'],
+      cream_lime: ['cream', 'lime'], blue_gray: ['sage_gray', 'slate_blue'], olive_mint: ['olive', 'mint'],
+    };
     // 색 바꾸기 견본 (가구의 색 묶음마다 하나를 고르면 명암은 그대로 두고 색만 바뀜)
     const HOME_SWATCHES = ['#d94c4c', '#e8873a', '#e8c43a', '#8cc84b', '#3f9a5a', '#4fb8b0', '#5bb4e0', '#3f6fc8', '#2f3f86', '#8a5cc8', '#e87aa8', '#9a6438', '#c9a27a', '#3a3a40', '#f2f0f4'];
     function homeHsl(r, g, b) {
@@ -29582,7 +29760,11 @@
         stu.home.items = stu.home.items.filter(it => it && HOME_DEF[it.id]);
         // 산 벽지·바닥 ('wall:<id>' / 'floor:<id>'), 지금 쓰는 것 wall·floor (없으면 기본 방)
         if (!Array.isArray(stu.home.skins)) stu.home.skins = Object.values(stu.home.skins || {});
-        stu.home.skins = stu.home.skins.filter(k => HOME_SKIN[k]);
+        stu.home.skins = [...new Set(stu.home.skins.flatMap(k => {
+          const [p, id] = String(k).split(':');
+          return p === 'wall' && HOME_SKIN_SPLIT[id] ? HOME_SKIN_SPLIT[id].map(n => `wall:${n}`) : [k];
+        }))].filter(k => HOME_SKIN[k]);
+        if (HOME_SKIN_SPLIT[stu.home.wall]) stu.home.wall = HOME_SKIN_SPLIT[stu.home.wall][0];
         ['wall', 'floor'].forEach(p => { if (stu.home[p] && !HOME_SKIN[`${p}:${stu.home[p]}`]) delete stu.home[p]; });
         return stu.home;
       },
