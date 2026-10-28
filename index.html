@@ -15117,7 +15117,7 @@
             playCombatSfx('heavy');
           });
           sim.effects.push({
-            type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, trail: true,
+            type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, trail: true, runTicks: r.n,
             color: unit.team === 'blue' ? '#2563eb' : '#e11d48',
             life: CHARGE_MOVE_TICKS + 32, maxLife: CHARGE_MOVE_TICKS + 32
           });
@@ -15145,7 +15145,7 @@
 
           sim.effects.push({
             type: 'charge_dash',
-            sx, sy, tx: r.tx, ty: r.ty, trail: true,
+            sx, sy, tx: r.tx, ty: r.ty, trail: true, runTicks: r.n,
             color: unit.team === 'blue' ? '#2563eb' : '#e11d48',
             life: CHARGE_MOVE_TICKS + 32, maxLife: CHARGE_MOVE_TICKS + 32
           });
@@ -17882,7 +17882,7 @@
           e.x = p.x; e.y = p.y; e.kbVx = 0; e.kbVy = 0;
         });
       };
-      sim.effects.push({ type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, color, trail: true, life: ticks + 24, maxLife: ticks + 24 });
+      sim.effects.push({ type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, color, trail: true, runTicks: r.n, life: ticks + 24, maxLife: ticks + 24 });
       return r;
     }
 
@@ -20320,13 +20320,19 @@
           // 돌진·돌격: 달려가는 몸 뒤에 바람 잔상 + 흙먼지가 따라붙음. 달린 거리만큼 바람 부분이 길어지고, 도착하면 줄어들며 사라짐
           const ang = Math.atan2(ef.ty - ef.sy, ef.tx - ef.sx), dist = Math.hypot(ef.tx - ef.sx, ef.ty - ef.sy);
           const flip = Math.cos(ang) < 0, s = 0.85;
-          const headT = Math.min(1, progress * 1.7), arrived = Math.max(0, (progress - 0.59) / 0.41);
+          // 앞머리는 실제 달리는 몸(같은 감속 곡선)에 딱 붙어 가고, 꼬리 끝은 출발점에 그대로 둠
+          let headT, arrived;
+          if (ef.runTicks) {
+            const age = progress * ef.maxLife, k = Math.min(1, age / ef.runTicks);
+            headT = 1 - (1 - k) * (1 - k);
+            arrived = Math.max(0, Math.min(1, (age - ef.runTicks) / Math.max(1, ef.maxLife - ef.runTicks)));
+          } else { headT = Math.min(1, progress * 1.7); arrived = Math.max(0, (progress - 0.59) / 0.41); }
           const hx = ef.sx + Math.cos(ang) * dist * headT, hy = ef.sy + Math.sin(ang) * dist * headT;
           const tl = TRAIL_FX.tail, dr = TRAIL_FX.dirt, fadeW = TRAIL_FX.fade;
           const windW = Math.max(tl[2], dist * headT / s - 30) * (1 - arrived * 0.7);
           ctx.save();
           ctx.translate(hx, hy + 8);
-          ctx.rotate(flip ? ang + Math.PI : ang);
+          ctx.rotate(ang); // 왼쪽으로 가면 위아래만 뒤집어 그림이 거꾸로 서지 않게 함
           if (flip) ctx.scale(1, -1);
           ctx.scale(s, s);
           ctx.globalAlpha = Math.max(0, Math.min(1, (1 - progress) * 2.2));
@@ -20364,7 +20370,7 @@
             const fr = DASH_FX.frames[fi];
             ctx.save();
             ctx.translate(x, y);
-            ctx.rotate(flip ? ang + Math.PI : ang);
+            ctx.rotate(ang);
             if (flip) ctx.scale(1, -1);
             ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
             ctx.globalCompositeOperation = 'lighter';
