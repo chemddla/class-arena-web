@@ -2923,6 +2923,15 @@
           </div>
         </div>
 
+        <!-- 오늘 도전 기회 초기화 -->
+        <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex flex-col gap-2">
+          <div>
+            <h4 class="font-title text-lg text-white">🔁 오늘 도전 기회 초기화</h4>
+            <p class="text-[11px] text-slate-400">눌러 주는 즉시 이 학생의 오늘 사용 횟수가 0으로 돌아갑니다. (위 항목의 저장 버튼과 상관없이 바로 적용)</p>
+          </div>
+          <div id="adminEditTriesBox" class="flex flex-wrap gap-1.5"></div>
+        </div>
+
         <!-- 보유 용병단 편집 섹션 -->
         <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
@@ -21465,7 +21474,46 @@
       pwField.placeholder = StudentPw.hasPassword(stu) ? '설정됨 · 바꿀 때만 새 비번 입력' : '미설정(빈칸)';
 
       renderAdminEditMercList();
+      renderAdminEditTriesBox();
       document.getElementById('adminStudentEditModal').classList.remove('hidden');
+    }
+
+    // 선생님이 학생의 오늘 도전 기회를 콘텐츠별로 되돌림 (category: 'tower' | 'raid' | 'pvp' | 'quiz' | 'practice' | 'minigame' | 'all')
+    function renderAdminEditTriesBox() {
+      const stu = state.students.find(s => s.id === adminEditingStudentId);
+      const box = document.getElementById('adminEditTriesBox');
+      if (!stu || !box) return;
+      const book = getDailyRewardBook(stu);
+      const btn = (cat, label, used, max) => `
+        <button onclick="adminResetStudentTries('${cat}')"
+          class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-emerald-700 text-[11px] text-white font-bold border border-slate-700">
+          ${label} <span class="text-amber-300">${used}/${max}</span> → 초기화
+        </button>`;
+      box.innerHTML = [
+        btn('tower', '🏰 모험의 탑', book.towerTries || 0, TOWER_DAILY_TRIES),
+        btn('raid', '🐉 엘리트 보스', book.raid || 0, DAILY_REWARD_LIMITS.raid),
+        btn('pvp', '🏆 랭킹 매칭', book.pvp || 0, DAILY_REWARD_LIMITS.pvp),
+        btn('quiz', '❓ 퀴즈', book.quiz || 0, DAILY_REWARD_LIMITS.quiz),
+        btn('practice', '🎯 허수아비', book.practice || 0, DAILY_REWARD_LIMITS.practice),
+        btn('minigame', '🎲 미니게임', book.minigame || 0, DAILY_REWARD_LIMITS.minigame),
+        `<button onclick="adminResetStudentTries('all')" class="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-[11px] text-white font-bold">전부 초기화</button>`
+      ].join('');
+    }
+
+    function adminResetStudentTries(category) {
+      const stu = state.students.find(s => s.id === adminEditingStudentId);
+      if (!stu) return;
+      const book = getDailyRewardBook(stu);
+      const cats = category === 'all' ? ['tower', 'raid', 'pvp', 'quiz', 'practice', 'minigame'] : [category];
+      cats.forEach(c => {
+        book[c] = 0;
+        if (c === 'tower') book.towerTries = 0;
+      });
+      saveState();
+      renderAdminEditTriesBox();
+      renderAllStudentViews();
+      const label = category === 'all' ? '모든 콘텐츠' : (DAILY_REWARD_LABELS[category] || category);
+      showRewardBanner(`🔁 ${stu.name} 학생의 오늘 ${label} 도전 기회를 초기화했어요!`);
     }
 
     function closeAdminStudentEditModal() {
