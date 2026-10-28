@@ -79,8 +79,8 @@ const pt = s => { const [x, y] = s.split(',').map(Number); return { x, y }; };
     // --side left|right: 한쪽 벽 무늬로 양쪽 벽을 칠함 (샘플 양쪽 벽지가 다르면 하나씩 따로 만듦)
     // 벽 좌표: 열 x는 왼쪽 끝→모서리→오른쪽 끝으로 이어지는 벽 길이 방향, h는 바닥선에서 위로 잰 높이(도트)
     //  · 걸레받이(h < HB)·몰딩(h ≥ HT)은 원본 쪽 벽에서 높이별 대표색(중앙값)으로 반듯하게 다시 그림 → 끊김 없음
-    //  · 벽지 면은 원본 쪽 벽에서 무늬 반복 간격 P를 재서 P씩 옮겨 붙임 → 모서리를 지나 반대쪽 벽까지 무늬가 그대로 이어짐
-    //  · 벽 끝 단면은 원본 쪽 것을 반대쪽에 좌우 대칭으로, 모서리에는 얇은 그늘선
+    //  · 벽지 면: 반대쪽 벽은 모서리 기준 거울 대칭(모서리에서 무늬가 V자로 만남), 모자라는 부분은 무늬 반복 간격 P로 이어 붙임
+    //  · 벽 끝 단면은 원본 쪽 단면 열별 대표색으로 양쪽 똑같이 다시 그림, 모서리에는 얇은 그늘선
     if (part === 'wall' && opt.side) {
       const src = Buffer.from(buf), S = opt.side;
       const SHADE = Number(opt.shade || 0.94); // 왼쪽 벽은 그늘: 샘플에서 같은 벽지의 왼쪽/오른쪽 밝기 비
@@ -134,33 +134,44 @@ const pt = s => { const [x, y] = s.split(',').map(Number); return { x, y }; };
         for (let j = H - 1; j >= 0; j--) { cut[j] = x0 + i; if (j) i = from[j][i]; }
         seams.push({ k, cut, x0 });
       };
-      // 원본 쪽 벽 끝(모서리 쪽)에서부터 오른쪽으로, 원본 시작에서부터 왼쪽으로 조각을 이어 붙임
-      if (!periodic) for (let k = 0, xn = s1 - OV - 2; xn - OV < Rr.x; k++, xn += P) addSeam(k, xn);
-      if (!periodic && Lr.x < s0 - 4) for (let k = -1, xn = s0 + OV + 1; xn + OV > Lr.x; k--, xn -= P) addSeam(k, xn);
+      // 반대쪽 벽은 모서리 기준 거울 대칭(열 O.x-1 ↔ O.x)으로 원본 쪽 열 v에 대응 → 모서리에서 무늬가 V자로 정확히 만남.
+      // 대칭으로 모자라는 부분(왼쪽 벽 무늬로 칠할 때 오른쪽 벽 6~8칸 등)만 반복 간격으로 이어 붙임
+      const vOf = x => ((x < Or.x) === (S === 'left') ? x : 2 * Or.x - 1 - x);
+      let vmin = Infinity, vmax = -Infinity;
+      for (let x = Lr.x; x < Rr.x; x++) { const v = vOf(x); vmin = Math.min(vmin, v); vmax = Math.max(vmax, v); }
+      if (!periodic && vmax >= s1) for (let k = 0, xn = s1 - OV - 2; xn - OV <= vmax; k++, xn += P) addSeam(k, xn);
+      if (!periodic && vmin < s0) for (let k = -1, xn = s0 + OV + 1; xn + OV >= vmin; k--, xn -= P) addSeam(k, xn);
       const tileAt = (x, h) => {
         let k = 0;
         for (const sm of seams) { const c = sm.cut[h - HB]; if (sm.k >= 0 ? x >= c && sm.k + 1 > k : x < c && sm.k < k) k = sm.k >= 0 ? sm.k + 1 : sm.k; }
         return k;
       };
-      console.log(`  ${opt.id}: 무늬 반복 간격 ${P}도트 (어긋남 ${minE.toFixed(1)}), ${periodic ? `깨끗한 구간 ${a0}~${a0 + Pe}로 채움` : `이음매 ${seams.length}곳`}`);
+      // 벽 끝 단면: 원본 쪽 단면의 열별 대표색으로 반듯한 기둥을 다시 그리고, 위는 몰딩이 덮음 (양쪽 같은 모양)
+      const capCols = [];
+      { const ex = S === 'left' ? Lr.x : Rr.x, Ey = S === 'left' ? Lr.y : Rr.y;
+        for (let i = 0; i < CAP; i++) {
+          const x = S === 'left' ? ex - 1 - i : ex + i, cs = [[], [], []]; let n = 0, tot = 0;
+          for (let y = Ey - 280; y < Ey - 40; y++) { tot++; const c = px(x, y); if (c) { n++; c.forEach((v, j) => cs[j].push(v)); } }
+          if (n < tot * 0.8) break;
+          capCols.push(cs.map(a => a.sort((p, q) => p - q)[a.length >> 1]));
+        } }
+      console.log(`  ${opt.id}: 무늬 반복 간격 ${P}도트 (어긋남 ${minE.toFixed(1)}), ${periodic ? `깨끗한 구간 ${a0}~${a0 + Pe}로 채움` : `이음매 ${seams.length}곳`}, 벽 끝 단면 ${capCols.length}도트`);
       buf.fill(0);
       for (let y = 0; y < CANVAS_H; y++) for (let x = 0; x < CANVAS_W; x++) {
         if (which(x, y) !== 'wall') continue;
         const o = (y * CANVAS_W + x) * 4, T = x < Or.x ? 'left' : 'right';
         let c = null, k = T === S ? 1 : T === 'left' ? SHADE : 1 / SHADE;
         if (x < Lr.x || x >= Rr.x) {
-          // 벽 끝 단면: 원본 쪽 단면을 그대로/좌우 대칭으로 (바닥선 높이 차이만큼 위아래로)
-          const own = (x < Lr.x) === (S === 'left');
-          if (own) c = px(x, y);
-          else if (x >= Rr.x) c = px(Lr.x - 1 - (x - Rr.x), y - (Rr.y - Lr.y));
-          else c = px(Rr.x + (Lr.x - 1 - x), y + (Rr.y - Lr.y));
+          const i = x < Lr.x ? Lr.x - 1 - x : x - Rr.x, Ey = x < Lr.x ? Lr.y : Rr.y, h = Ey - y;
+          if (i >= capCols.length || y >= Ey + THICK) continue;
+          c = h >= HT ? prof[h] : capCols[i];
           k = 1;
         } else {
-          const h = yf(x) - y;
+          const h = yf(x) - y, v = vOf(x);
           if (h < HB || h >= HT) c = prof[h];
           else {
-            if (periodic) c = tex(a0 + (((x - a0) % Pe) + Pe) % Pe, h);
-            else { const t = tileAt(x, h); for (const kk of [t, t - 1, t + 1]) if ((c = tile(kk, x, h))) break; }
+            if (periodic) c = tex(a0 + (((v - a0) % Pe) + Pe) % Pe, h);
+            else { const t = tileAt(v, h); for (const kk of [t, t - 1, t + 1]) if ((c = tile(kk, v, h))) break; }
             if (!c) c = prof[h];
             if (x === Or.x - 1) k *= 0.86; else if (x === Or.x) k *= 0.93; // 모서리 그늘선
           }
