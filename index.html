@@ -5932,7 +5932,7 @@
     // 거인 상태 동작 17칸(222×145, 발 기준점 (111,135)): 0 서기 · 1 망치 휘두름 · 2 방패 듦 · 3 외침 · 4 외침(충격파 고리) · 5·6 피격 · 7~9 쓰러짐 · 10 망치 듦 · 11 내리찍기 · 12 도발(망치) · 13 도발(붉은 불꽃) · 14 돌진(미사용) · 15 돌진 · 16 방어 태세
     // GIANT_MOTION_CELL[기본 기사 시트 칸 번호] = 거인 동작 칸 (idle 0-1 · walk 2-5 · attack 6-9 · skill 10-13 · hurt 14-15 · death 16-18 · quake 19-21 · taunt 22-24 · charge 25-27 · defense 28-30)
     KNIGHT_GIANT_FX.motionCell = { w: 222, h: 145, anchorX: 111, anchorY: 135, standH: 92 };
-    const GIANT_MOTION_CELL = [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 2, 2, 2, 5, 6, 7, 8, 9, 10, 10, 11, 12, 4, 13, 0, 15, 15, 0, 16, 16];
+    const GIANT_MOTION_CELL = [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 2, 2, 2, 5, 6, 7, 8, 9, 10, 10, 11, 12, 4, 13, 15, 15, 15, 16, 16, 16]; // 돌진·방어 태세는 서 있는 칸으로 돌아가지 않고 계속 그 자세 (번쩍거림 방지)
     [['cast', 'knight_giant_cast'], ['motion', 'knight_giant_motion'], ['fx', 'knight_giant_fx']].forEach(([k, file]) => {
       const img = new Image();
       img.onload = () => { img.ready = true; };
@@ -17011,6 +17011,15 @@
     }
 
     // ----- 그리기 -----
+    // 테두리가 번지는 부드러운 구슬 (가운데는 진하고 가장자리는 투명하게 퍼짐). color = [r, g, b]
+    function drawSoftOrb(ctx, x, y, r, rgb, alpha) {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`);
+      g.addColorStop(0.45, `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha * 0.55})`);
+      g.addColorStop(1, `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    }
     // 시전 중인 히든 스킬: 무지갯빛 기운이 모여듦 · 마지막 한 발은 목표까지 붉은 조준선 · 거인화 발밑 고리 · 거인화·무쌍난무 남은 시간
     function drawHiddenSkillOverlay(ctx) {
       const t = sim.tickCount;
@@ -17114,9 +17123,8 @@
             ctx.globalCompositeOperation = 'lighter';
             for (let i = 0; i < 12; i++) { // 사방에서 총구로 빨려드는 붉은 알갱이
               const q = (t * 0.03 + i / 12) % 1, a = i * 2.4 + t * 0.01, r = (110 - 105 * q) * (0.5 + 0.5 * p);
-              ctx.globalAlpha = Math.min(1, q * 2) * (0.35 + 0.5 * p);
-              ctx.fillStyle = i % 3 ? '#ef4444' : '#fecaca';
-              ctx.beginPath(); ctx.arc(mx + Math.cos(a) * r, my + Math.sin(a) * r * 0.75, 1.5 + 2 * q, 0, Math.PI * 2); ctx.fill();
+              ctx.globalAlpha = 1;
+              drawSoftOrb(ctx, mx + Math.cos(a) * r, my + Math.sin(a) * r * 0.75, 4 + 5 * q, i % 3 ? [239, 68, 68] : [254, 202, 202], Math.min(1, q * 2) * (0.45 + 0.5 * p));
             }
             ctx.restore();
             if (f) {
@@ -17153,9 +17161,8 @@
           for (let i = 0; i < 6; i++) {
             const a = t * 0.08 + i * Math.PI / 3;
             const rr = R * (1 - ((t * 0.02 + i / 6) % 1) * 0.6);
-            ctx.globalAlpha = 0.5 + 0.4 * p;
-            ctx.fillStyle = ['#f0abfc', '#a78bfa', '#67e8f9', '#fde68a', '#f472b6', '#86efac'][i];
-            ctx.beginPath(); ctx.arc(u.x + Math.cos(a) * rr, u.y - 24 + Math.sin(a) * rr * 0.6, 4 + p * 3, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = 1;
+            drawSoftOrb(ctx, u.x + Math.cos(a) * rr, u.y - 24 + Math.sin(a) * rr * 0.6, 9 + p * 6, [[240, 171, 252], [167, 139, 250], [103, 232, 249], [253, 230, 138], [244, 114, 182], [134, 239, 172]][i], 0.55 + 0.4 * p);
           }
           const g = ctx.createRadialGradient(u.x, u.y - 24, 4, u.x, u.y - 24, 60 + p * 30);
           g.addColorStop(0, `rgba(253, 244, 255, ${0.25 + p * 0.35})`);
