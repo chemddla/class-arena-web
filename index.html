@@ -8983,12 +8983,17 @@
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            ${displaySkillKeys.map(skKey => {
+            ${displaySkillKeys.map((skKey, skIdx) => {
               const skObj = mercSkillBook(merc)[skKey];
               if (!skObj) return '';
+              const moveBtn = (dir, label) => `<button onclick="moveMercSkill('${merc.id}', ${skIdx}, ${dir})" class="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-extrabold border border-slate-600">${label}</button>`;
               return `
                 <div class="rounded-xl border-2 p-2.5 flex flex-col justify-between shadow ${skObj.hidden ? 'hidden-skill-card' : 'bg-amber-500/15 border-amber-400'}">
                   <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-[10px] font-extrabold text-slate-400">${skIdx + 1}번 스킬</span>
+                      <span class="flex gap-1">${skIdx > 0 ? moveBtn(-1, '◀') : ''}${skIdx < displaySkillKeys.length - 1 ? moveBtn(1, '▶') : ''}</span>
+                    </div>
                     <div class="text-sm font-extrabold text-white flex items-center gap-1 flex-wrap">
                       <span>${skObj.icon}</span>
                       <span>${skObj.name}</span>
@@ -9184,6 +9189,28 @@
     }
 
     const SKILL_REROLL_COST = 500;
+
+    // 열린 스킬 두 칸의 순서를 서로 바꿈 (비용 없음 · 히든 스킬 칸도 같이 따라감)
+    function moveMercSkill(mercId, idx, dir) {
+      const stu = getActiveStudent();
+      const merc = stu.roster.find(m => m.id === mercId);
+      if (!merc) return;
+      const slots = ensureMercSkillSlots(merc);
+      const n = merc.skillsRevealed || 0;
+      const to = idx + dir;
+      if (idx < 0 || to < 0 || idx >= n || to >= n || Math.abs(dir) !== 1) return;
+      [slots[idx], slots[to]] = [slots[to], slots[idx]];
+      if (mercHasHiddenSkill(merc)) {
+        if (merc.hiddenSkillSlot === idx) merc.hiddenSkillSlot = to;
+        else if (merc.hiddenSkillSlot === to) merc.hiddenSkillSlot = idx;
+      }
+      merc.skillKey = slots[0];
+      merc.skillsKept = Math.max(merc.skillsKept || 0, n); // 레벨이 초기화돼도 정한 순서 유지
+      saveState();
+      renderSquadTab();
+      if (activeDetailMercId === merc.id) renderMercDetailModal();
+      setupIdlePreviewBattle();
+    }
 
     // 열린 스킬 칸 전체를 직업 스킬 전체에서 무작위로 다시 뽑음
     function rerollMercSkill(mercId) {
