@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // 방 샘플 그림(빈 방 틀 1024×876)에서 벽지·바닥을 떼어내 방 꾸미기 캔버스(960×856) 자리에 맞춘 그림으로 저장.
-//   node tools/room-skin.cjs <샘플> --id <이름> [--part wall|floor|both] [--out assets/room] [--colors 48]
+//   node tools/room-skin.cjs <샘플> --id <이름> [--part wall|floor|both] [--side left|right] [--out assets/room] [--colors 48]
+//   --side: 벽지를 그쪽 벽 무늬 하나로 양쪽에 칠함 (벽지는 항상 양쪽 같은 무늬)
 // 결과: <out>/wall_<id>.webp, <out>/floor_<id>.webp (캔버스와 같은 크기, 나머지는 투명) + 목록용 작은 그림 *_t.webp
 // 샘플 방은 우리 방과 같은 8×6칸 모양이라, 바닥 세 꼭짓점(뒤·왼쪽·앞)으로 구한 1차 변환 하나로 그대로 옮김(비율 유지).
 // 벽은 샘플의 몰딩·걸레받이·벽 끝 단면까지 통째로, 바닥은 바닥 판 두께(앞 옆면)까지 통째로 가져옴.
@@ -74,6 +75,25 @@ const pt = s => { const [x, y] = s.split(',').map(Number); return { x, y }; };
       for (let c = 0; c < 3; c++) buf[o + c] = Math.round(bil(s.x, s.y, c));
       buf[o + 3] = 255;
       if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y;
+    }
+    // --side left|right: 한쪽 벽 무늬로 양쪽 벽을 칠함 (샘플 양쪽 벽지가 다르면 하나씩 따로 만듦)
+    if (part === 'wall' && opt.side) {
+      const src = Buffer.from(buf), S = opt.side, lenOf = s => (s === 'left' ? ROOM_Y : ROOM_X);
+      const SHADE = Number(opt.shade || 0.94); // 왼쪽 벽은 그늘: 샘플에서 같은 벽지의 왼쪽/오른쪽 밝기 비
+      buf.fill(0);
+      for (let y = 0; y < CANVAS_H; y++) for (let x = 0; x < CANVAS_W; x++) {
+        if (which(x, y) !== 'wall') continue;
+        const d = (x + 0.5 - Or.x) / CW, T = d < 0 ? 'left' : 'right', a = Math.abs(d), lenT = lenOf(T);
+        // 모서리에서 떨어진 거리 a를 원본 쪽 거리로: 6칸까지는 그대로, 오른쪽 벽 6~8칸은 거울처럼 되접음, 벽 끝 단면은 원본 벽 끝으로
+        const a2 = a > lenT ? lenOf(S) + (a - lenT) : a <= ROOM_Y ? a : 2 * ROOM_Y - a;
+        const sx = Math.floor(Or.x + (S === 'left' ? -a2 : a2) * CW), sy = Math.round(y + (a2 - a) * CH); // 바닥선에서 같은 높이
+        if (sx < 0 || sx >= CANVAS_W || sy < 0 || sy >= CANVAS_H) continue;
+        const so = (sy * CANVAS_W + sx) * 4, o = (y * CANVAS_W + x) * 4;
+        if (!src[so + 3]) continue;
+        const k = T === S ? 1 : T === 'left' ? SHADE : 1 / SHADE;
+        for (let c = 0; c < 3; c++) buf[o + c] = Math.min(255, Math.round(src[so + c] * k));
+        buf[o + 3] = 255;
+      }
     }
     // 색 수를 줄여 압축 번짐을 정리 (투명은 그대로)
     const png = await sharp(buf, { raw: { width: CANVAS_W, height: CANVAS_H, channels: 4 } })

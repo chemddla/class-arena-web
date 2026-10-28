@@ -171,15 +171,16 @@ AI 그림 생성에 쓸 요청문은 [PROMPTS.md](PROMPTS.md)에 있습니다.
 - 빈 방 틀(1024×876, 8×6칸) 그대로 칠한 방 그림을 받으면 `tools/room-skin.cjs`가 벽과 바닥을 떼어 `assets/room/wall_<id>.webp` · `floor_<id>.webp`(방 캔버스 960×856과 같은 크기, 그 부분만 그려짐)와 목록용 `*_t.webp`를 만듭니다.
   `node tools/room-skin.cjs <방 그림> --id <이름> --part wall|floor`
 - 바닥 세 꼭짓점(뒤·왼쪽·앞)으로 한 번에 옮기므로 비율은 그대로입니다. 벽 그림에는 몰딩·걸레받이·벽 끝 단면이, 바닥 그림에는 바닥 판 두께가 같이 들어 있어 벽지와 바닥을 서로 다른 샘플끼리 섞어도 됩니다.
+- **벽지는 양쪽 벽을 같은 무늬로**: `--side left|right`로 한쪽 벽 무늬를 양쪽에 칠함(모서리 기준 대칭, 오른쪽 벽 6~8칸은 되접음, 왼쪽 벽은 0.94배 그늘). 샘플 양쪽 벽지가 다르면 둘로 나눠 만듦.
 - 등록은 `HOME_SKINS`에 한 줄. 산 것은 `stu.home.skins`('wall:<id>'), 지금 쓰는 것은 `stu.home.wall` · `stu.home.floor`에 저장됩니다.
 
 | part | id | 이름 | 샘플 |
 |---|---|---|---|
-| wall | patch | 파스텔 패널 벽지 | 모로코 타일 방 |
-| wall | check_mint | 체크·민트 도트 벽지 | 머스터드 타일 방 |
-| wall | flower_stripe | 꽃무늬·민트 체크 벽지 | 꽃무늬 방 |
-| wall | cream_lime | 크림·연두 벽지 | 기본 타일 방 |
-| wall | blue_gray | 회청색 벽지 | 회색 타일 방 |
-| wall | ivory | 아이보리 벽지 | 나무 마루 방 |
-| wall | olive_mint | 올리브·민트 벽지 | 돌바닥 방 |
+| wall | floral_pink / plaid_mint | 분홍 꽃무늬 · 민트 체크 | 꽃무늬 방 왼쪽 / 오른쪽 |
+| wall | gingham_peach / dot_mint | 복숭아 깅엄 · 민트 도트 | 머스터드 타일 방 왼쪽 / 오른쪽 |
+| wall | check_beige / dot_sage | 베이지 격자 · 세이지 도트 패널 | 모로코 타일 방 왼쪽 / 오른쪽 |
+| wall | cream / lime | 크림 · 연두 | 기본 타일 방 왼쪽 / 오른쪽 |
+| wall | sage_gray / slate_blue | 연회색 · 회청색 | 회색 타일 방 왼쪽 / 오른쪽 |
+| wall | ivory | 아이보리 | 나무 마루 방 (양쪽 같음) |
+| wall | olive / mint | 올리브 · 민트 | 돌바닥 방 왼쪽 / 오른쪽 |
 | floor | terracotta / mustard / wood / stone / beige / sand / gray | 테라코타·머스터드 모로코 타일, 나무 마루, 돌바닥, 베이지·모카·회색 타일 | 위 방들 |
