@@ -106,11 +106,13 @@ const pt = s => { const [x, y] = s.split(',').map(Number); return { x, y }; };
         for (let x = s0; x + P < s1; x += 2) for (let h = HB + 10; h < HT - 10; h += 4) { const d = diff(tex(x, h), tex(x + P, h)); if (d < 999) { e += d; n++; } }
         e = n ? e / n : Infinity; best.push([P, e]); minE = Math.min(minE, e);
       }
-      const P = best.find(([, e]) => e <= minE * 1.15 + 2)[0];
+      let P = best.find(([, e]) => e <= minE * 1.15 + 2)[0];
+      // 규칙 없는 큰 무늬(꽃·다마스크)는 큰 조각으로 이어 붙여야 이음매가 적음: 120도트 이상 중 가장 덜 어긋나는 간격
+      if (!(P <= 64 && minE < 30)) { const big = best.filter(([p]) => p >= 120).sort((x, y) => x[1] - y[1])[0]; if (big) P = big[0]; }
       // 조각 k = 원본 열을 kP만큼 옮겨 붙인 것 (k=0은 원본 그대로). 조각 사이 이음매는 줄마다 무늬 차이가 가장 작은 곳을
       // 따라 구불구불 지나가게 함(이미지 퀼팅) → 규칙 없는 꽃무늬도 잘린 티가 덜 남
       // 촘촘하게 반복되는 무늬(간격 64도트 이하)는 패널 이음선 같은 튀는 줄이 없는 깨끗한 구간 하나(간격의 배수)로 벽 전체를 채움
-      const periodic = P <= 64;
+      const periodic = P <= 64 && minE < 30; // 어긋남이 크면(큰 다마스크 등) 촘촘한 반복이 아님
       const Pe = P * Math.max(1, Math.floor(160 / P));
       let a0 = s0;
       if (periodic) {
