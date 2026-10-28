@@ -28963,7 +28963,7 @@
     const PET_PAT_COOLDOWN_MS = 8000; // 쓰다듬기로 애정이 오르는 간격
     const PET_LOVE_GAIN_PER_DAY = 10; // 하루에 오를 수 있는 애정
     const PET_LOVE_LOSS_PER_DAY = 10; // 굶어서 하루에 떨어질 수 있는 애정
-    const PET_FOLLOW_GAP = 60;        // 마우스 따라오기: 커서 옆에 서는 거리(px)
+    const PET_FOLLOW_GAP = 16;        // 마우스 따라오기: 몸 옆선과 커서 사이 거리(px)
     function petDayKey(ts) {
       const d = new Date(ts);
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -28971,6 +28971,42 @@
     const PET_LINES = {
       cat: { idle: ['냐옹~', '골골골...', '심심하다냥', '주인님 최고냥!', '꾹꾹이 하고 싶다냥'], greet: '주인님 왔다냥!', hungry: '배고프다냥...', full: '배불러냥~', pat: ['골골골~', '거기 좋다냥!', '냐아~♡'], eat: '냠냠 맛있다냥!', snack: '간식 최고냥!♡', snackWait: '아까 먹었다냥~ 조금 이따 줘!' },
       dog: { idle: ['멍멍!', '산책 가자!', '꼬리 살랑살랑~', '주인님 최고멍!'], greet: '주인님 왔다멍!', hungry: '배고파요 멍...', full: '배불러요 멍~', pat: ['헥헥 좋아요!', '멍멍♡', '더 쓰다듬어 줘요!'], eat: '냠냠 맛있다멍!', snack: '간식 최고멍!♡', snackWait: '아까 먹었어요 멍~' },
+    };
+
+    // 펫 종류별 말투 (없는 줄은 위 PET_LINES 고양이/강아지 공통 대사를 씀). hungry = 배부름 50% 미만일 때 밥 조르기
+    const PET_TYPE_LINES = {
+      // 치즈 고양이: 먹보, 느긋하고 다정함
+      ginger: { idle: ['냐옹~ 햇볕 좋다냥', '골골골... 행복하다냥', '다음 밥은 언제냥?', '주인님 무릎 따뜻하다냥~'], greet: '주인님 왔다냥! 밥도 같이 왔냥?',
+                hungry: ['배에서 꼬르륵 소리 난다냥...', '주인님~ 밥 줘라냥! 🍖', '밥그릇이 텅 비었다냥... 힝', '치즈는 밥이 제일 좋다냥~ 밥 줘냥!'],
+                pat: ['골골골~ 거기다냥!', '냐아~♡ 더 해줘냥', '행복해서 녹는다냥~'], eat: '냠냠! 역시 밥이 최고다냥!', snack: '간식이다냥!! 최고다냥♡', full: '배 빵빵하다냥~ 이제 낮잠 잘래냥' },
+      // 삼색 고양이: 새침하고 도도함
+      calico: { idle: ['흥, 심심한 건 아니다냥', '내 털 무늬 예쁘지? 당연하다냥', '나를 봐도 좋다냥. 특별히다냥', '...딱히 기다린 거 아니다냥'], greet: '흥, 이제 왔냥? ...반갑긴 하다냥',
+                hungry: ['배고픈 거 아니다냥... 아니, 사실 배고프다냥', '흥, 밥 주면 놀아줄 수도 있다냥', '밥 시간 지났다냥. 기억 안 났냥?', '...밥. 지금 당장이다냥!'],
+                pat: ['흥, 조금만 더 해도 된다냥', '나쁘지 않다냥...♡', '거, 거기는... 좋다냥'], eat: '흥, 먹어 줄게냥. ...맛있다냥!', snack: '간식? ...고맙다냥. 특별히다냥♡', snackWait: '흥, 아까 먹었다냥. 나중에 다시 줘라냥', full: '이제 됐다냥. 배부르다냥' },
+      // 검은 고양이: 시크하고 신비로움
+      black: { idle: ['...밤이 기다려진다냥', '어둠 속에서 너를 지켜본다냥', '...별일 없다냥', '그림자 속이 편하다냥'], greet: '...왔구나. 기다렸다냥',
+               hungry: ['...어둠도 배고픔은 못 숨긴다냥', '밥. 조용히 기다리고 있다냥', '...배가 비어 힘이 안 난다냥', '밥을 바친다면 행운을 주겠다냥'],
+               pat: ['...나쁘지 않다냥', '...조금 더. 조용히다냥', '...골골...♡'], eat: '...맛있다냥. 고맙다', snack: '...간식이라. 좋다냥♡', snackWait: '...아까 먹었다냥. 서두르지 마라', full: '...충분하다냥' },
+      // 시베리안 고양이: 의젓하고 점잖음
+      siberian: { idle: ['오늘도 평화롭구나냥', '털 손질은 기품의 시작이다냥', '천천히 쉬어 가자냥', '주인, 오늘 하루도 수고했다냥'], greet: '어서 오게, 주인. 기다리고 있었다냥',
+                  hungry: ['주인, 식사 시간이 된 듯하다냥', '배가 출출하구나냥. 밥을 부탁하네', '체면이 있지만... 밥이 필요하다냥', '든든한 식사가 그립구나냥'],
+                  pat: ['음, 손길이 훌륭하다냥', '흐음~ 아주 좋구나냥♡', '고맙네, 주인냥'], eat: '음, 훌륭한 식사로구나냥!', snack: '이런 귀한 간식을! 고맙네냥♡', snackWait: '아까 먹었으니 조금 기다리겠네냥', full: '배가 든든하구나냥' },
+      // 시바견: 무뚝뚝한 척하는 츤데레
+      shiba: { idle: ['...멍.', '산책이라면 가 줄 수 있다멍', '꼬리가 멋대로 흔들린다멍', '별로 안 심심하다멍'], greet: '...왔냐멍. 꼬리는 신경 쓰지 마라멍',
+               hungry: ['...배고프다멍. 밥 줘라멍', '밥 안 주면 삐질 거다멍', '밥그릇 비었다멍. 보이지?', '...꼬르륵. 못 들은 걸로 해라멍'],
+               pat: ['...좋다고는 안 했다멍', '헥... 계속해도 된다멍', '...멍♡'], eat: '...맛있다멍. 고맙다멍', snack: '간식! ...아, 아무것도 아니다멍♡', snackWait: '아까 먹었다멍. 나중에 줘라멍', full: '배부르다멍. 됐다멍' },
+      // 포메라니안: 애교 많고 발랄함
+      pomeranian: { idle: ['멍멍! 놀아줘요~!', '히히 나 귀엽죠? 멍!', '빙글빙글~ 멍멍!', '주인님 사랑해요 멍♡'], greet: '주인님이다!! 멍멍멍! 보고 싶었어요!',
+                    hungry: ['히잉... 배고파요 멍! 밥 주세요~', '밥! 밥! 밥 주세요 멍멍!', '배꼽시계가 울려요 멍~ 히잉', '주인님~ 맘마 주세요 멍♡'],
+                    pat: ['꺄~ 좋아요 멍멍!', '더더더! 쓰담쓰담 멍♡', '헤헤 행복해요 멍!'], eat: '냠냠냠! 너무 맛있어요 멍멍!', snack: '간식이다!! 주인님 최고 멍♡', snackWait: '아까 먹었어요 멍~ 이따 또 주세요!', full: '배 빵빵해요 멍~ 헤헤' },
+      // 불독: 느긋하고 털털함
+      bulldog: { idle: ['으음... 졸리다 컹', '푸후... 편하다 컹', '천천히 가자 컹', '드르렁... 아, 안 잤다 컹'], greet: '오오, 왔구나 컹. 반갑다 컹',
+                 hungry: ['으음... 배고프다 컹', '밥 냄새 안 나나 컹? 배고픈데...', '푸후... 밥 먹고 싶다 컹', '밥 주면 힘낼 수 있다 컹'],
+                 pat: ['푸후~ 좋다 컹', '으음~ 거기 시원하다 컹♡', '컹... 행복하다'], eat: '우걱우걱! 맛있다 컹!', snack: '간식이다 컹! 고맙다♡', snackWait: '아까 먹었다 컹. 이따 또 줘', full: '배부르다 컹... 이제 낮잠' },
+      // 보더콜리: 똑똑한 모범생
+      collie: { idle: ['오늘 할 일 다 했어요 멍!', '공 던져 주시면 바로 가져올게요!', '주인님, 다음 임무는요? 멍', '집중! 준비 완료입니다 멍!'], greet: '주인님 오셨군요! 기다리고 있었습니다 멍!',
+                hungry: ['주인님, 식사 시간입니다 멍!', '보고드립니다! 배가 고픕니다 멍', '밥을 먹어야 더 잘 뛸 수 있어요 멍!', '에너지 부족! 밥 부탁드려요 멍'],
+                pat: ['감사합니다 멍!', '칭찬받으니 힘이 나요 멍♡', '헥헥, 기분 최고예요 멍!'], eat: '잘 먹겠습니다! 맛있어요 멍!', snack: '간식 감사합니다! 최고예요 멍♡', snackWait: '아까 먹었어요 멍! 조금 뒤에 주세요', full: '배불러요! 충전 완료 멍!' },
     };
 
     function petLoveLabel(love) {
@@ -28992,7 +29028,10 @@
       },
       data() { const s = this.student(); return s && s.pet && PET_DEFS[s.pet.type] ? s.pet : null; },
       def() { const p = this.data(); return p ? PET_DEFS[p.type] : null; },
-      lines() { const d = this.def(); return PET_LINES[d ? d.kind : 'cat']; },
+      lines() {
+        const p = this.data(), d = this.def();
+        return Object.assign({}, PET_LINES[d ? d.kind : 'cat'], (p && PET_TYPE_LINES[p.type]) || {});
+      },
       size() { const p = this.data(); return Math.max(PET_SIZE_MIN, Math.min(PET_SIZE_MAX, Number(p && p.size) || 1)); },
       scale() { const d = this.def(); return d ? d.sheet.scale * this.size() : 0.6; },
       fullNow(p = this.data()) {
@@ -29005,10 +29044,20 @@
       setHidden(v) { try { v ? localStorage.setItem(this.hiddenKey(), '1') : localStorage.removeItem(this.hiddenKey()); } catch (e) {} },
       // 마우스 따라오기 켜기/끄기 (기기마다 학생별로 기억)
       followKey() { return `mca_pet_follow:${this.stuId}`; },
-      isFollowing() { try { return localStorage.getItem(this.followKey()) === '1'; } catch (e) { return false; } },
+      followCache: null, // 매 프레임 읽으므로 { key, on }으로 기억
+      isFollowing() {
+        const key = this.followKey();
+        if (!this.followCache || this.followCache.key !== key) {
+          let on = false;
+          try { on = localStorage.getItem(key) === '1'; } catch (e) {}
+          this.followCache = { key, on };
+        }
+        return this.followCache.on;
+      },
       toggleFollow() {
         const on = !this.isFollowing();
         try { on ? localStorage.setItem(this.followKey(), '1') : localStorage.removeItem(this.followKey()); } catch (e) {}
+        this.followCache = { key: this.followKey(), on };
         const p = this.data();
         if (p) this.say(on ? `${p.name}: 따라갈게요!` : `${p.name}: 자유롭게 놀래요~`, 1600);
         if (!on && this.mode === 'walk') { this.hopT = 0; this.setMode('idle', 1.5); }
@@ -29046,7 +29095,7 @@
           changed = true;
         }
         if (t + H <= now) t = now - ((now - t) % H); // 아주 오래 비운 경우 나머지는 건너뜀
-        if (changed || p.starveAt !== t && t > zeroAt) { p.starveAt = t; this.saveSoon(); }
+        if (changed) { p.starveAt = t; this.saveSoon(); }
       },
 
       // 로그인 직후: 펫이 있으면 인사하며 등장
@@ -29207,6 +29256,7 @@
         const next = box[idx];
         const rest = box.filter((_, i) => i !== idx);
         if (stu.pet && PET_DEFS[stu.pet.type]) rest.unshift(stu.pet);
+        next.starveAt = Date.now(); // 보관함에 있던 동안은 굶은 시간으로 치지 않음
         stu.pet = next;
         stu.petBox = rest;
         const shown = !this.isHidden();
@@ -29351,10 +29401,13 @@
       // 할 일이 끝났을 때 다음 행동 고르기
       decide() {
         if (this.next) { const n = this.next; this.next = null; this.setMode(n[0], n[1], n[2] || null); return; }
+        this.applyStarve();
         const b = this.bounds();
-        const hungry = this.fullNow() < 25;
+        const fullNow = this.fullNow();
+        const hungry = fullNow < 25;
         const r = Math.random();
-        if (hungry && r < 0.25) { this.say(this.lines().hungry, 2500); this.setMode('idle', 2.5); return; }
+        // 배부름 50% 미만이면 밥 달라고 조름 (배고플수록 자주)
+        if (fullNow < 50 && r < (hungry ? 0.3 : 0.18)) { this.say(this.pick(this.lines().hungry), 2600); this.setMode('idle', 2.5); return; }
         if (r < 0.5) {
           const toMouse = this.mouse && Math.random() < 0.3;
           this.tx = toMouse ? this.mouse.x : b.x0 + Math.random() * (b.x1 - b.x0);
@@ -29367,7 +29420,20 @@
         else if (r < 0.86) { this.say(this.pick(this.lines().idle), 2200); this.setMode('idle', 2.5); }
         else this.setMode('idle', 1.5 + Math.random() * 2.5);
       },
-      pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; },
+      pick(arr) { return Array.isArray(arr) ? arr[Math.floor(Math.random() * arr.length)] : arr; },
+      // 마우스 따라오기 중이면 커서 옆(발 위치)을 돌려줌. 메뉴가 열렸거나 먹는 중이면 따라가지 않음
+      followTarget() {
+        if (!this.mouse || this.drag || this.menuEl || !this.isFollowing()) return null;
+        if (['eat', 'snack', 'like', 'play'].includes(this.mode)) return null;
+        const b = this.bounds();
+        const def = this.def();
+        const side = this.mouse.x >= this.x ? -1 : 1;
+        const gap = (def ? def.sheet.cellW * this.scale() / 2 : 45) + PET_FOLLOW_GAP; // 커서가 몸에 닿지 않게(문지르기로 안 치게)
+        return {
+          x: Math.max(b.x0, Math.min(b.x1, this.mouse.x + side * gap)),
+          y: Math.max(b.y0, Math.min(b.y1, this.mouse.y + 20))
+        };
+      },
 
       loop(t) {
         if (!this.el) return;
@@ -29377,6 +29443,12 @@
         const def = this.def();
         if (!def) { this.despawn(); return; }
         this.hopping = false;
+        const follow = this.followTarget();
+        if (follow && this.mode !== 'walk' && Math.hypot(follow.x - this.x, follow.y - this.y) > 40) {
+          this.tx = follow.x; this.ty = follow.y; this.hopT = 0;
+          this.setMode('walk', 30);
+        }
+        if (follow && this.mode === 'walk') { this.tx = follow.x; this.ty = follow.y; }
         if (this.drag && this.drag.moved) {
           this.mode = 'drag';
         } else if (this.mode === 'walk') {
@@ -29390,8 +29462,11 @@
             this.hopT += dt;
             if (this.hopT >= PET_HOP_SEC) this.hopT = vertical ? this.hopT - PET_HOP_SEC : 0;
           }
-          const speed = (this.fullNow() < 25 ? 35 : 60) * (this.hopping ? 1.3 : 1) * Math.sqrt(this.size());
-          if (dist < 3 || t > this.modeUntil) { this.hopT = 0; this.hopping = false; this.setMode('idle', 1 + Math.random() * 2.5); }
+          const speed = (this.fullNow() < 25 ? 35 : 60) * (this.hopping ? 1.3 : 1) * (follow ? 2.2 : 1) * Math.sqrt(this.size());
+          if (dist < 3 || t > this.modeUntil) {
+            this.hopT = 0; this.hopping = false; this.setMode('idle', 1 + Math.random() * 2.5);
+            if (follow) this.dir = this.mouse.x < this.x ? -1 : 1; // 다 오면 커서 쪽을 봄
+          }
           else {
             const step = Math.min(dist, speed * dt);
             this.x += dx / dist * step;
@@ -29471,38 +29546,39 @@
         this.say(this.pick(this.lines().pat), 1800);
         if (now >= this.patCdAt) {
           this.patCdAt = now + PET_PAT_COOLDOWN_MS;
-          p.love = Math.min(100, (p.love || 0) + 1);
-          this.saveSoon();
+          if (this.addLove(p, 1)) this.saveSoon();
         }
         this.renderMenu();
       },
       feed() {
         const p = this.data();
         if (!p) return;
+        this.applyStarve(p);
         const full = this.fullNow(p);
         this.hopT = 0;
         if (full >= 95) { this.say(this.lines().full, 1800); this.setMode('groom', 2); return; }
         p.full = Math.min(100, full + PET_FEED_FULL);
         p.fullAt = Date.now();
-        p.love = Math.min(100, (p.love || 0) + 2);
+        this.addLove(p, 2);
         saveState();
         this.setMode('eat', 3, ['like', 1.6]);
         this.say(this.lines().eat, 2200);
         for (let i = 0; i < 2; i++) setTimeout(() => this.fx('✨'), 600 + i * 500);
         this.renderMenu();
       },
-      // 츄르: 애정이 더 오르지만 1분에 한 번
+      // 간식: 애정이 더 오르지만 1분에 한 번
       snack() {
         const p = this.data();
         if (!p) return;
         const now = Date.now();
         this.hopT = 0;
         if (now - (p.snackAt || 0) < PET_SNACK_COOLDOWN_MS) { this.say(this.lines().snackWait, 1800); this.setMode('groom', 2); return; }
+        this.applyStarve(p);
         const full = this.fullNow(p);
         p.full = Math.min(100, full + 8);
         p.fullAt = now;
         p.snackAt = now;
-        p.love = Math.min(100, (p.love || 0) + 3);
+        this.addLove(p, 3);
         saveState();
         this.setMode('snack', 3.2, ['like', 1.6]);
         this.say(this.lines().snack, 2400);
@@ -29583,21 +29659,26 @@
       renderMenu() {
         const m = this.menuEl, p = this.data(), def = this.def();
         if (!m || !p || !def) return;
+        this.applyStarve(p);
         const full = Math.round(this.fullNow(p));
         const love = p.love || 0;
         const size = this.size();
+        const gain = this.todayLoveGain(p);
+        const following = this.isFollowing();
         m.innerHTML = `
           <div class="pet-menu-head"><span class="pet-menu-name"></span><span class="pet-menu-kind">${def.name}</span></div>
           <div class="pet-menu-love">${petLoveLabel(love)}</div>
           <div class="pet-menu-stat"><span>💗 애정</span><span>${love}/100</span></div>
           <div class="pet-bar"><div style="width:${love}%;background:#f472b6"></div></div>
+          <div class="pet-menu-today">오늘 오른 애정 ${gain}/${PET_LOVE_GAIN_PER_DAY}${full <= 0 ? ' · ⚠️ 굶으면 1시간마다 애정 -1' : ''}</div>
           <div class="pet-menu-stat"><span>🍖 배부름</span><span>${full}/100</span></div>
           <div class="pet-bar"><div style="width:${full}%;background:${full < 25 ? '#f87171' : '#fbbf24'}"></div></div>
           <div class="pet-menu-btns">
             <button type="button" onclick="PetSystem.pat()">🤚 쓰다듬기</button>
             <button type="button" onclick="PetSystem.feed()">🍖 먹이</button>
-            <button type="button" onclick="PetSystem.snack()">🐟 츄르</button>
+            <button type="button" onclick="PetSystem.snack()">🍪 간식</button>
           </div>
+          <button type="button" class="pet-menu-follow ${following ? 'on' : ''}" onclick="PetSystem.toggleFollow()">🖱️ 마우스 따라오기 ${following ? 'ON' : 'OFF'}</button>
           <div class="pet-menu-size">
             <span>📏 크기</span>
             <input type="range" min="${PET_SIZE_MIN}" max="${PET_SIZE_MAX}" step="0.1" value="${size}" oninput="PetSystem.setSize(this.value)">
