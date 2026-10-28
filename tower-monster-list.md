@@ -1,16 +1,16 @@
 # 모험의 탑 몬스터 종류표
 
-샘플 이미지 기준: 이름 1개 = 이미지 1장 · 총 146장 (그림 키 = `<몬스터>_<직업>_<대표 스킬>`, 게임이 이 키로 그림을 찾음)
-졸개는 같은 종족·직업 이미지를 그대로 씁니다.
+샘플 이미지 기준: 이름 1개 = 이미지 1장 · 총 195장 (그림 키 = `<몬스터>_<직업>_<대표 스킬>`, 게임이 이 키로 그림을 찾음)
+71층(거인족)부터는 도적·기사·창병·저격수 몬스터도 나옵니다.
 
 **층별로 쓰는 스킬 수** (표의 스킬을 앞에서부터 사용)
 
-| 층 | 일반 몬스터 | 졸개 | 종족 보스 |
-|---|---|---|---|
-| 1~10층 | 2개 | 1개 | 3개 |
-| 11~40층 | 3개 | 2개 | 4개 |
-| 41~50층 | 4개 | 3개 | 4개 |
-| 51~200층 | 4개 | 3개 | 5개 |
+| 층 | 일반 몬스터 | 종족 보스 |
+|---|---|---|
+| 1~10층 | 2개 | 3개 |
+| 11~40층 | 3개 | 4개 |
+| 41~50층 | 4개 | 4개 |
+| 51~200층 | 4개 | 5개 |
 
 ### 1~10층 · 고블린족 (7장)
 | 이름 | 몬스터 | 직업 | 스킬 (열리는 순서) | 그림 키 |
@@ -90,7 +90,7 @@
 | 불씨 정령 | 🔥 불꽃정령 | 힐러 | 다수회복 → 부활 → 축복 → 보호막 | `fire_elemental_healer_heal` |
 | 👑 이프리트 (보스) | 👿 이프리트 | 전사 | 회전베기 → 파이어볼 → 사자후 → 화살비 → 텔레포트 | `ifrit_warrior_whirlwind` |
 
-### 71~80층 · 거인족 (6장)
+### 71~80층 · 거인족 (10장)
 | 이름 | 몬스터 | 직업 | 스킬 (열리는 순서) | 그림 키 |
 |---|---|---|---|---|
 | 오우거 전사 | 🪨 중갑오우거 | 전사 | 강타 → 사자후 → 회전베기 → 돌진 | `ogre_warrior_stun_strike` |
@@ -98,21 +98,28 @@
 | 외눈 투석꾼 | 👁️ 사이클롭스 | 궁수 | 독화살 → 연사 → 화살비 → 3중 화살 | `cyclops_archer_poison_arrow` |
 | 번개 사이클롭스 | 👁️ 사이클롭스 | 마법사 | 썬더볼트 → 파이어볼 → 아이스애로우 → 텔레포트 | `cyclops_mage_thunderbolt` |
 | 수호 골렘 | 🗿 바위골렘 | 힐러 | 보호막 → 다수회복 → 축복 → 정화 | `golem_healer_shield` |
+| 오우거 약탈자 | 🪨 중갑오우거 | 도적 | 찢기 → 그림자 이동 → 표창 → 은신 | `ogre_rogue_rend` |
+| 바위 방패 골렘 | 🗿 바위골렘 | 기사 | 방패 → 도발 → 지진 → 방어 태세 | `golem_knight_shield_wall` |
+| 오우거 창잡이 | 🪨 중갑오우거 | 창병 | 난무 → 투창 → 피어싱 → 회전 | `ogre_lancer_spear_rampage` |
+| 외눈 저격수 | 👁️ 사이클롭스 | 저격수 | 강화 사격 → 산탄 → 회피 → 필살 사격 | `cyclops_sniper_power_shot` |
 | 👑 타이탄 (보스) | ⛰️ 타이탄 | 전사 | 강타 → 지진 → 사자후 → 돌격 → 방어 태세 | `titan_warrior_stun_strike` |
 
-### 81~90층 · 심해족 (8장)
+### 81~90층 · 심해족 (11장)
 | 이름 | 몬스터 | 직업 | 스킬 (열리는 순서) | 그림 키 |
 |---|---|---|---|---|
 | 집게 전사 | 🦀 집게 기사 | 전사 | 강타 → 회전베기 → 돌진 → 사자후 | `crab_warrior_stun_strike` |
-| 인어 창기병 | 🧜 인어 전사 | 전사 | 돌진 → 회전베기 → 강타 → 함성 | `merfolk_warrior_charge` |
 | 인어 작살수 | 🧜 인어 전사 | 궁수 | 3중 화살 → 연사 → 독화살 → 화살비 | `merfolk_archer_triple_arrow` |
 | 먹물 저격 문어 | 🐙 먹물 문어 | 궁수 | 독화살 → 연사 → 3중 화살 → 회피기동 | `octopus_archer_poison_arrow` |
 | 먹물폭탄 문어 | 🐙 먹물 문어 | 마법사 | 포이즌 붐 → 아이스애로우 → 썬더볼트 → 텔레포트 | `octopus_mage_poison_boom` |
 | 인어 주술사 | 🧜 인어 전사 | 마법사 | 아이스애로우 → 썬더볼트 → 포이즌 붐 → 텔레포트 | `merfolk_mage_ice_arrow` |
 | 인어 사제 | 🧜 인어 전사 | 힐러 | 다수회복 → 보호막 → 정화 → 축복 | `merfolk_healer_heal` |
+| 먹물 암살 문어 | 🐙 먹물 문어 | 도적 | 은신 → 찢기 → 표창 → 그림자 이동 | `octopus_rogue_stealth` |
+| 집게 방패기사 | 🦀 집게 기사 | 기사 | 방패 → 돌격 → 도발 → 방어 태세 | `crab_knight_shield_wall` |
+| 인어 창기병 | 🧜 인어 전사 | 창병 | 창돌격 → 피어싱 → 회전 → 투창 | `merfolk_lancer_spear_charge` |
+| 인어 작살 저격수 | 🧜 인어 전사 | 저격수 | 강화 사격 → 회피 → 산탄 → 필살 사격 | `merfolk_sniper_power_shot` |
 | 👑 크라켄 (보스) | 🦑 크라켄 | 전사 | 회전베기 → 지진 → 강타 → 포이즌 붐 → 사자후 | `kraken_warrior_whirlwind` |
 
-### 91~100층 · 용족 (8장)
+### 91~100층 · 용족 (12장)
 | 이름 | 몬스터 | 직업 | 스킬 (열리는 순서) | 그림 키 |
 |---|---|---|---|---|
 | 용인족 전사 | 🦕 용인족 기사 | 전사 | 돌진 → 강타 → 회전베기 → 함성 | `dragonkin_warrior_charge` |
@@ -122,9 +129,13 @@
 | 화염 드레이크 | 🦖 드레이크 | 마법사 | 파이어볼 → 썬더볼트 → 포이즌 붐 → 텔레포트 | `drake_mage_fireball` |
 | 용인족 주술사 | 🦕 용인족 기사 | 마법사 | 썬더볼트 → 파이어볼 → 아이스애로우 → 텔레포트 | `dragonkin_mage_thunderbolt` |
 | 용인족 사제 | 🦕 용인족 기사 | 힐러 | 축복 → 다수회복 → 보호막 → 정화 | `dragonkin_healer_blessing` |
+| 급습 와이번 | 🐲 와이번 | 도적 | 그림자 이동 → 찢기 → 표창 → 은신 | `wyvern_rogue_shadow_step` |
+| 용비늘 기사 | 🦕 용인족 기사 | 기사 | 돌격 → 방패 → 도발 → 방어 태세 | `dragonkin_knight_shield_rush` |
+| 용인족 창기사 | 🦕 용인족 기사 | 창병 | 피어싱 → 창돌격 → 난무 → 투창 | `dragonkin_lancer_piercing` |
+| 화염포 드레이크 | 🦖 드레이크 | 저격수 | 산탄 → 강화 사격 → 회피 → 필살 사격 | `drake_sniper_buckshot` |
 | 👑 심연마룡 (보스) | 🐉 심연마룡 | 전사 | 돌진 → 파이어볼 → 사자후 → 화살비 → 썬더볼트 | `dark_dragon_warrior_charge` |
 
-### 101~110층 · 정령족 (8장)
+### 101~110층 · 정령족 (12장)
 | 이름 | 몬스터 | 직업 | 스킬 (열리는 순서) | 그림 키 |
 |---|---|---|---|---|
 | 회오리 정령 | 🌪️ 바람정령 | 전사 | 회전베기 → 돌진 → 사자후 → 강타 | `wind_spirit_warrior_whirlwind` |
@@ -134,9 +145,13 @@
 | 뇌전 정령 | 🌩️ 번개정령 | 마법사 | 썬더볼트 → 아이스애로우 → 텔레포트 → 파이어볼 | `storm_spirit_mage_thunderbolt` |
 | 빙결 정령 | 💧 물정령 | 마법사 | 아이스애로우 → 썬더볼트 → 텔레포트 → 포이즌 붐 | `water_spirit_mage_ice_arrow` |
 | 샘물 정령 | 💧 물정령 | 힐러 | 다수회복 → 축복 → 정화 → 보호막 | `water_spirit_healer_heal` |
+| 칼바람 정령 | 🌪️ 바람정령 | 도적 | 그림자 이동 → 표창 → 찢기 → 분신 | `wind_spirit_rogue_shadow_step` |
+| 얼음방패 정령 | 💧 물정령 | 기사 | 방패 → 방어 태세 → 도발 → 지진 | `water_spirit_knight_shield_wall` |
+| 번개창 정령 | 🌩️ 번개정령 | 창병 | 투창 → 피어싱 → 회전 → 난무 | `storm_spirit_lancer_javelin` |
+| 뇌격 저격 정령 | 🌩️ 번개정령 | 저격수 | 강화 사격 → 필살 사격 → 회피 → 산탄 | `storm_spirit_sniper_power_shot` |
 | 👑 원소 군주 (보스) | 🌈 원소 군주 | 전사 | 회전베기 → 썬더볼트 → 파이어볼 → 아이스애로우 → 다수회복 | `elemental_lord_warrior_whirlwind` |
 
-### 111~120층 · 기계족 (8장)
+### 111~120층 · 기계족 (12장)
 | 이름 | 몬스터 | 직업 | 스킬 (열리는 순서) | 그림 키 |
 |---|---|---|---|---|
 | 태엽 병사 | 🤖 태엽 병정 | 전사 | 돌진 → 회전베기 → 강타 → 함성 | `clockwork_warrior_charge` |
@@ -146,9 +161,13 @@
 | 증기포 골렘 | ⚙️ 증기 골렘 | 마법사 | 파이어볼 → 썬더볼트 → 포이즌 붐 → 아이스애로우 | `steam_golem_mage_fireball` |
 | 산성폭탄 거미 | 🕸️ 강철 거미 | 마법사 | 포이즌 붐 → 썬더볼트 → 아이스애로우 → 텔레포트 | `steel_spider_mage_poison_boom` |
 | 태엽 수리병 | 🤖 태엽 병정 | 힐러 | 다수회복 → 보호막 → 정화 → 축복 | `clockwork_healer_heal` |
+| 칼날 거미 | 🕸️ 강철 거미 | 도적 | 찢기 → 은신 → 그림자 이동 → 표창 | `steel_spider_rogue_rend` |
+| 태엽 방패병 | 🤖 태엽 병정 | 기사 | 방패 → 돌격 → 방어 태세 → 도발 | `clockwork_knight_shield_wall` |
+| 태엽 창병 | 🤖 태엽 병정 | 창병 | 피어싱 → 회전 → 투창 → 창돌격 | `clockwork_lancer_piercing` |
+| 증기 대포 골렘 | ⚙️ 증기 골렘 | 저격수 | 산탄 → 강화 사격 → 회피 → 필살 사격 | `steam_golem_sniper_buckshot` |
 | 👑 기계 거신 (보스) | 🦾 기계 거신 | 전사 | 강타 → 돌격 → 지진 → 방어 태세 → 화살비 | `mech_colossus_warrior_stun_strike` |
 
-### 121~130층 · 사막족 (8장)
+### 121~130층 · 사막족 (12장)
 | 이름 | 몬스터 | 직업 | 스킬 (열리는 순서) | 그림 키 |
 |---|---|---|---|---|
 | 약탈자 검사 | 🏜️ 모래 약탈자 | 전사 | 회전베기 → 돌진 → 강타 → 함성 | `sand_raider_warrior_whirlwind` |
@@ -158,21 +177,28 @@
 | 사막 주술사 | 🏜️ 모래 약탈자 | 마법사 | 파이어볼 → 아이스애로우 → 썬더볼트 → 텔레포트 | `sand_raider_mage_fireball` |
 | 모래늪 벌레 | 🪱 모래 벌레 | 마법사 | 아이스애로우 → 포이즌 붐 → 썬더볼트 → 텔레포트 | `sandworm_mage_ice_arrow` |
 | 사막 사제 | 🏜️ 모래 약탈자 | 힐러 | 다수회복 → 축복 → 정화 → 보호막 | `sand_raider_healer_heal` |
+| 모래 자객 | 🏜️ 모래 약탈자 | 도적 | 은신 → 찢기 → 그림자 이동 → 표창 | `sand_raider_rogue_stealth` |
+| 갑각 방패 전갈 | 🦂 사막 전갈 | 기사 | 방패 → 도발 → 돌격 → 방어 태세 | `scorpion_knight_shield_wall` |
+| 약탈자 창병 | 🏜️ 모래 약탈자 | 창병 | 창돌격 → 피어싱 → 난무 → 투창 | `sand_raider_lancer_spear_charge` |
+| 사막 저격수 | 🏜️ 모래 약탈자 | 저격수 | 강화 사격 → 회피 → 산탄 → 필살 사격 | `sand_raider_sniper_power_shot` |
 | 👑 스핑크스 (보스) | 🦁 스핑크스 | 전사 | 사자후 → 강타 → 썬더볼트 → 도발 → 텔레포트 | `sphinx_warrior_roar` |
 
-### 131~140층 · 타락 요정족 (8장)
+### 131~140층 · 타락 요정족 (11장)
 | 이름 | 몬스터 | 직업 | 스킬 (열리는 순서) | 그림 키 |
 |---|---|---|---|---|
 | 가시채찍 나무정령 | 🌳 가시 나무정령 | 전사 | 회전베기 → 강타 → 사자후 → 돌진 | `thorn_treant_warrior_whirlwind` |
-| 가시창 요정 | 🧚 타락 요정 | 전사 | 돌진 → 회전베기 → 강타 → 함성 | `dark_fairy_warrior_charge` |
 | 요정 궁수 | 🧚 타락 요정 | 궁수 | 연사 → 독화살 → 3중 화살 → 회피기동 | `dark_fairy_archer_rapid_fire` |
 | 독가루비 나방 | 🦋 독가루 나방 | 궁수 | 화살비 → 독화살 → 3중 화살 → 연사 | `venom_moth_archer_arrow_rain` |
 | 저주 요정 | 🧚 타락 요정 | 마법사 | 아이스애로우 → 썬더볼트 → 포이즌 붐 → 텔레포트 | `dark_fairy_mage_ice_arrow` |
 | 독포자 나방 | 🦋 독가루 나방 | 마법사 | 포이즌 붐 → 아이스애로우 → 썬더볼트 → 텔레포트 | `venom_moth_mage_poison_boom` |
 | 수액 나무정령 | 🌳 가시 나무정령 | 힐러 | 다수회복 → 축복 → 정화 → 보호막 | `thorn_treant_healer_heal` |
+| 그림자 요정 | 🧚 타락 요정 | 도적 | 분신 → 은신 → 찢기 → 그림자 이동 | `dark_fairy_rogue_shadow_clone` |
+| 가시방패 나무정령 | 🌳 가시 나무정령 | 기사 | 방패 → 지진 → 도발 → 방어 태세 | `thorn_treant_knight_shield_wall` |
+| 가시창 요정 | 🧚 타락 요정 | 창병 | 피어싱 → 회전 → 투창 → 창돌격 | `dark_fairy_lancer_piercing` |
+| 독침 저격 나방 | 🦋 독가루 나방 | 저격수 | 강화 사격 → 회피 → 산탄 → 필살 사격 | `venom_moth_sniper_power_shot` |
 | 👑 고대 나무군주 (보스) | 🌲 고대 나무군주 | 전사 | 강타 → 지진 → 다수회복 → 회전베기 → 포이즌 붐 | `ancient_treant_warrior_stun_strike` |
 
-### 141~150층 · 마계족 (7장)
+### 141~150층 · 마계족 (11장)
 | 이름 | 몬스터 | 직업 | 스킬 (열리는 순서) | 그림 키 |
 |---|---|---|---|---|
 | 마계 돌격기사 | ⚔️ 마계 기사 | 전사 | 돌진 → 강타 → 회전베기 → 함성 | `hell_knight_warrior_charge` |
@@ -181,20 +207,27 @@
 | 호박씨 사수 | 🎃 호박 마귀 | 궁수 | 연사 → 화살비 → 3중 화살 → 회피기동 | `pumpkin_fiend_archer_rapid_fire` |
 | 마계 흑마법사 | 🔯 마계 술사 | 마법사 | 파이어볼 → 포이즌 붐 → 썬더볼트 → 텔레포트 | `warlock_mage_fireball` |
 | 마계 사령술사 | 🔯 마계 술사 | 힐러 | 부활 → 축복 → 보호막 → 다수회복 | `warlock_healer_revive` |
+| 마계 암살자 | 🔯 마계 술사 | 도적 | 그림자 이동 → 찢기 → 분신 → 은신 | `warlock_rogue_shadow_step` |
+| 마계 방패기사 | ⚔️ 마계 기사 | 기사 | 돌격 → 도발 → 방패 → 방어 태세 | `hell_knight_knight_shield_rush` |
+| 쇠스랑 호박 마귀 | 🎃 호박 마귀 | 창병 | 난무 → 피어싱 → 투창 → 회전 | `pumpkin_fiend_lancer_spear_rampage` |
+| 마탄 사수 | 🔯 마계 술사 | 저격수 | 강화 사격 → 필살 사격 → 회피 → 산탄 | `warlock_sniper_power_shot` |
 | 👑 마왕 (보스) | 🔱 마왕 | 전사 | 회전베기 → 파이어볼 → 함성 → 찢기 → 포이즌 붐 | `demon_king_warrior_whirlwind` |
 
-### 151~160층 · 천공족 (7장)
+### 151~160층 · 천공족 (10장)
 | 이름 | 몬스터 | 직업 | 스킬 (열리는 순서) | 그림 키 |
 |---|---|---|---|---|
-| 하늘 창기사 | 🪽 하늘 기사 | 전사 | 돌진 → 강타 → 회전베기 → 함성 | `sky_knight_warrior_charge` |
 | 급강하 그리폰 | 🦅 그리폰 | 전사 | 강타 → 회전베기 → 돌진 → 사자후 | `griffin_warrior_stun_strike` |
 | 하늘 궁기사 | 🪽 하늘 기사 | 궁수 | 연사 → 화살비 → 3중 화살 → 회피기동 | `sky_knight_archer_rapid_fire` |
 | 깃털탄 천둥새 | 🐦 천둥새 | 궁수 | 3중 화살 → 연사 → 화살비 → 독화살 | `thunderbird_archer_triple_arrow` |
 | 폭풍 천둥새 | 🐦 천둥새 | 마법사 | 썬더볼트 → 아이스애로우 → 텔레포트 → 파이어볼 | `thunderbird_mage_thunderbolt` |
 | 천상 사제 | 🪽 하늘 기사 | 힐러 | 보호막 → 다수회복 → 축복 → 정화 | `sky_knight_healer_shield` |
+| 발톱 그리폰 | 🦅 그리폰 | 도적 | 찢기 → 그림자 이동 → 은신 → 표창 | `griffin_rogue_rend` |
+| 하늘 방패기사 | 🪽 하늘 기사 | 기사 | 방패 → 돌격 → 방어 태세 → 도발 | `sky_knight_knight_shield_wall` |
+| 하늘 창기사 | 🪽 하늘 기사 | 창병 | 창돌격 → 피어싱 → 회전 → 투창 | `sky_knight_lancer_spear_charge` |
+| 번개 저격 천둥새 | 🐦 천둥새 | 저격수 | 강화 사격 → 회피 → 필살 사격 → 산탄 | `thunderbird_sniper_power_shot` |
 | 👑 폭풍 대붕 (보스) | 🌀 폭풍 대붕 | 전사 | 회전베기 → 썬더볼트 → 돌진 → 화살비 → 그림자 이동 | `storm_roc_warrior_whirlwind` |
 
-### 161~170층 · 수정족 (7장)
+### 161~170층 · 수정족 (11장)
 | 이름 | 몬스터 | 직업 | 스킬 (열리는 순서) | 그림 키 |
 |---|---|---|---|---|
 | 수정망치 골렘 | 💎 수정 골렘 | 전사 | 강타 → 회전베기 → 사자후 → 돌진 | `crystal_golem_warrior_stun_strike` |
@@ -203,20 +236,28 @@
 | 분광 정령 | ✨ 빛의 정령 | 궁수 | 3중 화살 → 연사 → 화살비 → 회피기동 | `light_wisp_archer_triple_arrow` |
 | 섬광 정령 | ✨ 빛의 정령 | 마법사 | 썬더볼트 → 아이스애로우 → 파이어볼 → 텔레포트 | `light_wisp_mage_thunderbolt` |
 | 치유의 빛 정령 | ✨ 빛의 정령 | 힐러 | 다수회복 → 보호막 → 정화 → 축복 | `light_wisp_healer_heal` |
+| 보석 도둑 도마뱀 | 🦎 보석 도마뱀 | 도적 | 은신 → 표창 → 그림자 이동 → 찢기 | `gem_lizard_rogue_stealth` |
+| 수정 방패 골렘 | 💎 수정 골렘 | 기사 | 방패 → 방어 태세 → 지진 → 도발 | `crystal_golem_knight_shield_wall` |
+| 수정창 도마뱀 | 🦎 보석 도마뱀 | 창병 | 피어싱 → 투창 → 회전 → 난무 | `gem_lizard_lancer_piercing` |
+| 광선 저격 정령 | ✨ 빛의 정령 | 저격수 | 필살 사격 → 강화 사격 → 회피 → 산탄 | `light_wisp_sniper_finisher` |
 | 👑 수정 여왕 (보스) | 👸 수정 여왕 | 전사 | 사자후 → 아이스애로우 → 보호막 → 썬더볼트 → 방어 태세 | `crystal_queen_warrior_roar` |
 
-### 171~180층 · 그림자족 (7장)
+### 171~180층 · 그림자족 (11장)
 | 이름 | 몬스터 | 직업 | 스킬 (열리는 순서) | 그림 키 |
 |---|---|---|---|---|
 | 망령 처형기사 | 🛡️ 망령 기사 | 전사 | 강타 → 회전베기 → 돌진 → 함성 | `wraith_knight_warrior_stun_strike` |
 | 돌진 악몽마 | 🐴 악몽마 | 전사 | 돌진 → 사자후 → 회전베기 → 강타 | `nightmare_warrior_charge` |
-| 그림자 저격수 | 🥷 그림자 자객 | 궁수 | 독화살 → 3중 화살 → 연사 → 회피기동 | `shadow_assassin_archer_poison_arrow` |
+| 그림자 궁수 | 🥷 그림자 자객 | 궁수 | 독화살 → 3중 화살 → 연사 → 회피기동 | `shadow_assassin_archer_poison_arrow` |
 | 그림자 술사 | 🥷 그림자 자객 | 마법사 | 포이즌 붐 → 아이스애로우 → 썬더볼트 → 텔레포트 | `shadow_assassin_mage_poison_boom` |
 | 공포의 악몽마 | 🐴 악몽마 | 마법사 | 아이스애로우 → 썬더볼트 → 포이즌 붐 → 텔레포트 | `nightmare_mage_ice_arrow` |
 | 망령 사령기사 | 🛡️ 망령 기사 | 힐러 | 부활 → 보호막 → 다수회복 → 정화 | `wraith_knight_healer_revive` |
+| 그림자 암살자 | 🥷 그림자 자객 | 도적 | 분신 → 은신 → 찢기 → 그림자 이동 | `shadow_assassin_rogue_shadow_clone` |
+| 망령 방패기사 | 🛡️ 망령 기사 | 기사 | 도발 → 방패 → 돌격 → 방어 태세 | `wraith_knight_knight_provoke` |
+| 악몽 창기병 | 🐴 악몽마 | 창병 | 창돌격 → 난무 → 피어싱 → 투창 | `nightmare_lancer_spear_charge` |
+| 그림자 저격수 | 🥷 그림자 자객 | 저격수 | 강화 사격 → 회피 → 필살 사격 → 산탄 | `shadow_assassin_sniper_power_shot` |
 | 👑 그림자 군주 (보스) | 🌑 그림자 군주 | 전사 | 회전베기 → 그림자 이동 → 찢기 → 표창 → 포이즌 붐 | `shadow_lord_warrior_whirlwind` |
 
-### 181~190층 · 신화 수호자 (7장)
+### 181~190층 · 신화 수호자 (11장)
 | 이름 | 몬스터 | 직업 | 스킬 (열리는 순서) | 그림 키 |
 |---|---|---|---|---|
 | 미노타우로스 전사 | 🐂 미노타우로스 | 전사 | 돌진 → 회전베기 → 강타 → 사자후 | `minotaur_warrior_charge` |
@@ -225,9 +266,13 @@
 | 석화의 메두사 | 🐍 메두사 | 마법사 | 아이스애로우 → 포이즌 붐 → 썬더볼트 → 텔레포트 | `medusa_mage_ice_arrow` |
 | 화염 키메라 | 🐲 키메라 | 마법사 | 파이어볼 → 썬더볼트 → 아이스애로우 → 포이즌 붐 | `chimera_mage_fireball` |
 | 메두사 무녀 | 🐍 메두사 | 힐러 | 축복 → 다수회복 → 보호막 → 정화 | `medusa_healer_blessing` |
+| 기습 키메라 | 🐲 키메라 | 도적 | 그림자 이동 → 찢기 → 표창 → 은신 | `chimera_rogue_shadow_step` |
+| 미궁 수문장 | 🐂 미노타우로스 | 기사 | 돌격 → 지진 → 도발 → 방어 태세 | `minotaur_knight_shield_rush` |
+| 미노타우로스 창병 | 🐂 미노타우로스 | 창병 | 난무 → 창돌격 → 피어싱 → 투창 | `minotaur_lancer_spear_rampage` |
+| 석화 저격 메두사 | 🐍 메두사 | 저격수 | 강화 사격 → 회피 → 필살 사격 → 산탄 | `medusa_sniper_power_shot` |
 | 👑 케르베로스 (보스) | 🐕‍🦺 케르베로스 | 전사 | 돌진 → 파이어볼 → 찢기 → 사자후 → 회전베기 | `cerberus_warrior_charge` |
 
-### 191~200층 · 혼돈족 (7장)
+### 191~200층 · 혼돈족 (11장)
 | 이름 | 몬스터 | 직업 | 스킬 (열리는 순서) | 그림 키 |
 |---|---|---|---|---|
 | 휘감는 공허 촉수 | 🦑 공허 촉수 | 전사 | 회전베기 → 강타 → 사자후 → 돌진 | `void_tentacle_warrior_whirlwind` |
@@ -236,4 +281,8 @@
 | 광선 혼돈안 | 🧿 혼돈의 눈 | 궁수 | 3중 화살 → 연사 → 독화살 → 회피기동 | `chaos_eye_archer_triple_arrow` |
 | 마력의 혼돈안 | 🧿 혼돈의 눈 | 마법사 | 썬더볼트 → 파이어볼 → 아이스애로우 → 포이즌 붐 | `chaos_eye_mage_thunderbolt` |
 | 타락 천사 사제 | 😇 타락 천사 | 힐러 | 다수회복 → 보호막 → 부활 → 축복 | `fallen_angel_healer_heal` |
+| 타락 천사 자객 | 😇 타락 천사 | 도적 | 분신 → 그림자 이동 → 찢기 → 은신 | `fallen_angel_rogue_shadow_clone` |
+| 타락 천사 기사 | 😇 타락 천사 | 기사 | 방패 → 도발 → 돌격 → 방어 태세 | `fallen_angel_knight_shield_wall` |
+| 꿰뚫는 공허 촉수 | 🦑 공허 촉수 | 창병 | 피어싱 → 투창 → 난무 → 회전 | `void_tentacle_lancer_piercing` |
+| 파멸의 혼돈안 | 🧿 혼돈의 눈 | 저격수 | 필살 사격 → 강화 사격 → 산탄 → 회피 | `chaos_eye_sniper_finisher` |
 | 👑 혼돈의 신 (보스) | 🌌 혼돈의 신 | 전사 | 회전베기 → 썬더볼트 → 파이어볼 → 지진 → 찢기 | `chaos_god_warrior_whirlwind` |
