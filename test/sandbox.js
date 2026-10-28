@@ -17,7 +17,7 @@
     ['noskill', '스킬 없이', { move: 1, attack: 1, skill: 0, dash: 1 }]
   ];
 
-  const SB = window.SB = { specs: [], sel: null, cd: true, seq: 0, placing: null, monList: [], mons: {} };
+  const SB = window.SB = { specs: [], sel: null, cd: true, seq: 0, placing: null, manual: null, monList: [], mons: {} };
 
   // ----- 몬스터 목록: 모험의 탑 종족 편성에서 (몬스터, 직업, 이름, 스킬) -----
   TOWER_RACES.forEach(race => {
@@ -86,6 +86,14 @@
   }
   const unitOf = id => sim.units.find(u => u.sbId === id);
 
+  // ----- 수동 전투: 엔진의 직접 조종(WASD 이동 · 좌클릭/K 공격 · Space 대시 · 1~4 스킬)을 유닛 하나에 붙임 -----
+  function setManual(id) {
+    const u = id != null ? unitOf(id) : null;
+    SB.manual = u ? id : null;
+    if (u) setBattleControlMode('manual', u.id, true);
+    else setBattleControlMode('auto', null, true);
+  }
+
   function rebuildOne(sp, keepPos = true) {
     const old = unitOf(sp.id);
     let pos = null;
@@ -95,8 +103,10 @@
     }
     sim.units.push(buildUnit(sp, pos));
     renderLiveUnitStatus();
+    if (SB.manual === sp.id) setManual(sp.id); // 새로 만든 유닛에 조종을 다시 붙임
   }
   function rebuildAll() {
+    if (SB.manual != null) setManual(null);
     sim.units = [];
     sim.projectiles = []; sim.effects = []; sim.zones = []; sim.floatTexts = [];
     SB.specs.forEach(sp => sim.units.push(buildUnit(sp, null)));
@@ -212,6 +222,7 @@
       </div>
       <div class="flex gap-1.5 mt-2 flex-wrap">
         <button class="${cls.btn} ${SB.placing === sp.id ? 'bg-amber-600' : ''}" onclick="SBUI.place(${sp.id})">${SB.placing === sp.id ? '전장을 클릭하세요…' : '📍 전장 클릭으로 배치'}</button>
+        <button class="${cls.btn} ${SB.manual === sp.id ? 'bg-indigo-600' : ''}" onclick="SBUI.manual(${sp.id})">${SB.manual === sp.id ? '🎮 조종 중 (끄기)' : '🎮 수동 조종'}</button>
         <button class="${cls.btn}" onclick="SBUI.dup(${sp.id})">복제</button>
         <button class="${cls.btn} bg-rose-700 hover:bg-rose-600" onclick="SBUI.del(${sp.id})">삭제</button>
       </div>
@@ -249,6 +260,7 @@
       <div class="${cls.box}"><div class="${cls.h}">⚙️ 전투</div>
         <div class="flex items-center gap-2 flex-wrap">
           <label class="flex items-center gap-1 text-xs text-slate-200"><input type="checkbox" ${SB.cd ? 'checked' : ''} onchange="SBUI.cdToggle(this.checked)">쿨타임·마나 적용</label>
+          <label class="flex items-center gap-1 text-xs text-slate-200"><input type="checkbox" ${SB.manual != null ? 'checked' : ''} onchange="SBUI.manualToggle(this.checked)">🎮 수동 전투${SB.manual != null && byId(SB.manual) ? ` (${esc(specTitle(byId(SB.manual)))})` : ''}</label>
           <select class="${cls.in} !w-auto" onchange="sim.speed=+this.value">${selOpts([[0, '⏸ 일시정지'], [0.5, '0.5배'], [1, '1배'], [2, '2배'], [3, '3배']], sim.speed)}</select>
         </div>
         <div class="flex gap-1.5 flex-wrap mt-2">
@@ -266,7 +278,7 @@
       <div class="${cls.box}"><div class="flex items-center justify-between mb-1.5"><div class="${cls.h} !mb-0">📋 배치된 유닛 (${SB.specs.length})</div>
         <div class="flex gap-1"><button class="${cls.btn}" onclick="SBUI.preset5()">기본 5:5 허수아비</button><button class="${cls.btn} bg-rose-700 hover:bg-rose-600" onclick="SBUI.clearAll()">모두 비우기</button></div></div>
         ${SB.specs.map(row).join('') || '<div class="text-xs text-slate-500">유닛이 없어요. 위에서 추가하세요.</div>'}</div>
-      <div class="text-[10px] text-slate-500 leading-relaxed">• 전투는 끝나지 않아요. 쓰러진 유닛은 ‘처음 위치로 다시 시작’이나 편집으로 되살려요.<br>• 마우스 드래그로 시점 이동, 휠로 확대·축소.</div>`;
+      <div class="text-[10px] text-slate-500 leading-relaxed">• 전투는 끝나지 않아요. 쓰러진 유닛은 ‘처음 위치로 다시 시작’이나 편집으로 되살려요.<br>• 수동 전투: WASD 이동 · 좌클릭/K 공격 · Space 대시 · 1~4 스킬 · 마우스로 조준.<br>• 마우스 드래그로 시점 이동, 휠로 확대·축소.</div>`;
     el.scrollTop = scroll;
   }
 
@@ -315,6 +327,7 @@
       render();
     },
     del(id) {
+      if (SB.manual === id) setManual(null);
       const old = unitOf(id);
       if (old) sim.units = sim.units.filter(u => u !== old && u.ownerId !== old.id);
       SB.specs = SB.specs.filter(s => s.id !== id);
@@ -343,6 +356,15 @@
       render();
     },
     cast(id, key) { castSkill(id, key); },
+    manual(id) { setManual(SB.manual === id ? null : id); render(); },
+    manualToggle(on) {
+      if (!on) setManual(null);
+      else {
+        const pick = byId(SB.sel) || SB.specs.find(s => s.team === 'blue' && unitOf(s.id));
+        if (pick) setManual(pick.id);
+      }
+      render();
+    },
     cdToggle(on) { SB.cd = on; },
     healAll() {
       sim.units.forEach(u => {
@@ -391,7 +413,6 @@
   ['forfeitBattle', 'startPracticeSim', 'closeArenaOrForfeit'].forEach(fn => {
     const b = arena.querySelector(`[onclick^="${fn}"]`); if (b) b.style.display = 'none';
   });
-  const hud = document.getElementById('battleControlHud'); if (hud) hud.style.display = 'none';
   document.getElementById('arenaModeBadge').textContent = '🧪 테스트 전장';
   document.getElementById('arenaMatchTitle').textContent = '용병·몬스터·허수아비 마음대로 시험하기';
   document.getElementById('battleResultOverlay').classList.add('hidden');
