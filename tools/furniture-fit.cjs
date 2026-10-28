@@ -7,7 +7,7 @@ const path = require('path');
 const sharp = require('sharp');
 
 const ROOT = path.resolve(__dirname, '..');
-const CELL_W = 32, CELL_H = 16, FLOOR_H = 40; // 1칸 = 64×32 마름모, 1층 = 40도트
+const CELL_W = 64, CELL_H = 32, FLOOR_H = 80; // 1칸 = 128×64 마름모, 1층 = 80도트 (2026-10 도트 2배로 세분화)
 
 const HELP = `
 가구 그림 → 방 꾸미기 도트 규격 변환
@@ -376,13 +376,13 @@ async function writePreview(img, spec, file, guide) {
   const layers = [{ input: up, left: 0, top: ch - H * Z }];
   if (guide) {
     const P = (x, y) => `${(x * Z).toFixed(1)},${((canvasH - y) * Z).toFixed(1)}`; // y는 아래에서 위로
-    const fl = [[w * 32, 0], [0, w * 16], [d * 32, (w + d) * 16], [W, d * 16]], up2 = fl.map(([x, y]) => [x, y + h * 40]);
+    const fl = [[w * CELL_W, 0], [0, w * CELL_H], [d * CELL_W, (w + d) * CELL_H], [W, d * CELL_H]], up2 = fl.map(([x, y]) => [x, y + h * FLOOR_H]);
     // 앞→왼→뒤→오른 순서로 이어야 마름모가 됨
     const poly = pts => pts.map(p => P(p[0], p[1])).join(' ');
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch}"><g fill="none" stroke="#e5484d" stroke-width="2" opacity="0.8">`
       + `<polygon points="${poly(fl)}"/><polygon points="${poly(up2)}"/>`
       + [0, 1, 3].map(i => `<line x1="${fl[i][0] * Z}" y1="${(canvasH - fl[i][1]) * Z}" x2="${up2[i][0] * Z}" y2="${(canvasH - up2[i][1]) * Z}"/>`).join('')
-      + `</g><circle cx="${w * 32 * Z}" cy="${bot}" r="7" fill="#2f6df6"/></svg>`;
+      + `</g><circle cx="${w * CELL_W * Z}" cy="${bot}" r="7" fill="#2f6df6"/></svg>`;
     layers.push({ input: Buffer.from(svg), left: 0, top: 0 });
   }
   const bg = await sharp({ create: { width: cw, height: ch, channels: 3, background: { r: 226, g: 232, b: 224 } } }).png().toBuffer();
