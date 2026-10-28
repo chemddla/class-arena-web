@@ -1527,9 +1527,10 @@
               <div id="homeRoomColors" class="hidden flex flex-col gap-2 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs"></div>
             </div>
             <div class="lg:col-span-3 flex flex-col gap-2">
-              <div class="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+              <div class="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
                 <button type="button" id="homeRoomTab-inv" onclick="HomeRoom.setPanel('inv')" class="py-1.5 rounded-lg text-xs font-extrabold">📦 내 가구</button>
                 <button type="button" id="homeRoomTab-shop" onclick="HomeRoom.setPanel('shop')" class="py-1.5 rounded-lg text-xs font-extrabold">🛒 가구 상점</button>
+                <button type="button" id="homeRoomTab-skin" onclick="HomeRoom.setPanel('skin')" class="py-1.5 rounded-lg text-xs font-extrabold">🧱 벽지·바닥</button>
               </div>
               <div id="homeRoomList" class="grid grid-cols-2 gap-2 max-h-[460px] overflow-y-auto pr-1"></div>
             </div>
@@ -29513,8 +29514,30 @@
       { id: 'cafe_cabinet', name: '홈카페 수납장', cat: 'floor', w: 2, d: 1, h: 2.5, price: 1400, color: '#24503a', emoji: '☕', art: true, back: true },
       { id: 'fireplace',  name: '벽난로',      cat: 'floor', w: 2, d: 1, h: 2,   price: 1800, color: '#8a3a28', emoji: '🔥', art: true, back: true },
       { id: 'treadmill',  name: '러닝머신',    cat: 'floor', w: 1, d: 2, h: 1.5, price: 1600, color: '#2c4f9a', emoji: '🏃', art: true, back: true },
+      { id: 'aquarium',   name: '어항',        cat: 'floor', w: 2, d: 1, h: 2.5, price: 1600, color: '#3fa0c8', emoji: '🐠', art: true, back: true },
+      { id: 'plant_stand', name: '화분 진열대', cat: 'floor', w: 2, d: 1, h: 2.5, price: 1200, color: '#8a5a30', emoji: '🪴', art: true, back: true },
+      { id: 'sewing_desk', name: '재봉틀 책상', cat: 'floor', w: 3, d: 1, h: 2,  price: 1500, color: '#2f8f8a', emoji: '🧵', art: true, back: true },
+      { id: 'pool',       name: '미니 수영장', cat: 'floor', w: 2, d: 2, h: 1,   price: 1800, color: '#f28a1a', emoji: '🏊', art: true, back: true },
     ];
     const HOME_DEF = Object.fromEntries(HOME_CATALOG.map(d => [d.id, d]));
+    // 벽지·바닥 (tools/room-skin.cjs로 만든 assets/room/<part>_<id>.webp: 방 캔버스와 같은 크기, 그 부분만 그려짐)
+    const HOME_SKINS = [
+      { part: 'wall',  id: 'patch',         name: '파스텔 패널 벽지',   price: 600 },
+      { part: 'wall',  id: 'check_mint',    name: '체크·민트 도트 벽지', price: 600 },
+      { part: 'wall',  id: 'flower_stripe', name: '꽃무늬·민트 체크 벽지', price: 700 },
+      { part: 'wall',  id: 'cream_lime',    name: '크림·연두 벽지',     price: 400 },
+      { part: 'wall',  id: 'blue_gray',     name: '회청색 벽지',        price: 400 },
+      { part: 'wall',  id: 'ivory',         name: '아이보리 벽지',      price: 400 },
+      { part: 'wall',  id: 'olive_mint',    name: '올리브·민트 벽지',   price: 400 },
+      { part: 'floor', id: 'terracotta',    name: '테라코타 모로코 타일', price: 900 },
+      { part: 'floor', id: 'mustard',       name: '머스터드 모로코 타일', price: 900 },
+      { part: 'floor', id: 'wood',          name: '나무 마루',          price: 800 },
+      { part: 'floor', id: 'stone',         name: '돌바닥',             price: 800 },
+      { part: 'floor', id: 'beige',         name: '베이지 타일',        price: 500 },
+      { part: 'floor', id: 'sand',          name: '모카 타일',          price: 500 },
+      { part: 'floor', id: 'gray',          name: '회색 타일',          price: 500 },
+    ];
+    const HOME_SKIN = Object.fromEntries(HOME_SKINS.map(s => [`${s.part}:${s.id}`, s]));
     // 색 바꾸기 견본 (가구의 색 묶음마다 하나를 고르면 명암은 그대로 두고 색만 바뀜)
     const HOME_SWATCHES = ['#d94c4c', '#e8873a', '#e8c43a', '#8cc84b', '#3f9a5a', '#4fb8b0', '#5bb4e0', '#3f6fc8', '#2f3f86', '#8a5cc8', '#e87aa8', '#9a6438', '#c9a27a', '#3a3a40', '#f2f0f4'];
     function homeHsl(r, g, b) {
@@ -29555,6 +29578,10 @@
         if (!stu.home || typeof stu.home !== 'object') stu.home = { items: [] };
         if (!Array.isArray(stu.home.items)) stu.home.items = Object.values(stu.home.items || {});
         stu.home.items = stu.home.items.filter(it => it && HOME_DEF[it.id]);
+        // 산 벽지·바닥 ('wall:<id>' / 'floor:<id>'), 지금 쓰는 것 wall·floor (없으면 기본 방)
+        if (!Array.isArray(stu.home.skins)) stu.home.skins = Object.values(stu.home.skins || {});
+        stu.home.skins = stu.home.skins.filter(k => HOME_SKIN[k]);
+        ['wall', 'floor'].forEach(p => { if (stu.home[p] && !HOME_SKIN[`${p}:${stu.home[p]}`]) delete stu.home[p]; });
         return stu.home;
       },
       esc(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); },
@@ -29622,10 +29649,11 @@
         return (this.groups[def.id] = groups);
       },
       colorLabel(g) {
-        if (g.key === 'w') return '흰 부분';
+        if (g.key === 'w') return g.l < 0.6 ? '회색 부분' : '흰 부분';
         const h = g.h;
         if (h >= 15 && h < 45 && g.s < 0.7 && g.l < 0.62) return '나무색';
-        if ((h >= 290 || h < 15) && g.l < 0.4) return '자주 부분';
+        if (h < 15 && g.s < 0.45 && g.l < 0.4) return '나무색'; // 붉은 기 도는 진한 원목
+        if (h >= 290 && g.l < 0.4) return '자주 부분';
         if ((h >= 320 || h < 20) && g.l > 0.68) return '분홍 부분';
         if (h >= 20 && h < 65 && g.l > 0.72) return '크림색';
         if (h < 15 || h >= 345) return '빨간 부분';
@@ -29714,9 +29742,12 @@
       drawRoom() {
         const O = homeIso(0, 0), L = homeIso(0, HOME_ROOM_Y), R = homeIso(HOME_ROOM_X, 0), F = homeIso(HOME_ROOM_X, HOME_ROOM_Y);
         const Z = HOME_ROOM_Z, mz = HOME_MOLD / HOME_FH, bz = HOME_BASE / HOME_FH, px = 2 / HOME_FH; // 테두리 선 2도트
+        // 고른 벽지·바닥 그림 (몰딩·걸레받이·벽 끝 단면 / 바닥 판 두께까지 들어 있음)
+        const h = this.home(), wallIm = h && h.wall ? this.img(`assets/room/wall_${h.wall}.webp`) : null;
+        const floorIm = h && h.floor ? this.img(`assets/room/floor_${h.floor}.webp`) : null;
         // 벽 (왼쪽 그늘, 오른쪽 밝음)
-        this.vface(L, O, 0, Z, '#e9e6ec');
-        this.vface(O, R, 0, Z, '#f6f4fc');
+        if (wallIm) this.ctx.drawImage(wallIm, 0, 0);
+        else { this.vface(L, O, 0, Z, '#e9e6ec'); this.vface(O, R, 0, Z, '#f6f4fc'); }
         // 3D 칸 격자는 가구를 놓거나 옮길 때만: 벽은 칸 세로선 + 층 가로선
         const grid = !!this.ghost, ctx = this.ctx;
         if (grid) {
@@ -29729,31 +29760,39 @@
           }
         }
         // 윗몰딩
-        [[0, mz, '#cba690'], [mz * 0.35, mz * 0.7, '#e3c1a8'], [mz * 0.7, mz - px, '#d9b49d'], [mz - px, mz, '#7b614e'], [0, px, '#eddfd6']].forEach(([a, b, c]) => {
-          this.vface(L, O, Z - b, Z - a, c);
-          this.vface(O, R, Z - b, Z - a, c);
-        });
-        this.vface(L, O, Z, Z + 2 * px, '#7b614e');
-        this.vface(O, R, Z, Z + 2 * px, '#7b614e');
+        if (!wallIm) {
+          [[0, mz, '#cba690'], [mz * 0.35, mz * 0.7, '#e3c1a8'], [mz * 0.7, mz - px, '#d9b49d'], [mz - px, mz, '#7b614e'], [0, px, '#eddfd6']].forEach(([a, b, c]) => {
+            this.vface(L, O, Z - b, Z - a, c);
+            this.vface(O, R, Z - b, Z - a, c);
+          });
+          this.vface(L, O, Z, Z + 2 * px, '#7b614e');
+          this.vface(O, R, Z, Z + 2 * px, '#7b614e');
+        }
         // 바닥
-        this.diamond(0, 0, HOME_ROOM_X, HOME_ROOM_Y, 0, '#f6f4fc');
+        if (floorIm) ctx.drawImage(floorIm, 0, 0);
+        else this.diamond(0, 0, HOME_ROOM_X, HOME_ROOM_Y, 0, '#f6f4fc');
         if (grid) {
           for (let x = 1; x < HOME_ROOM_X; x++) this.isoLine(homeIso(x, 0), homeIso(x, HOME_ROOM_Y), '#b4b2c0');
           for (let y = 1; y < HOME_ROOM_Y; y++) this.isoLine(homeIso(0, y), homeIso(HOME_ROOM_X, y), '#b4b2c0');
         }
-        // 걸레받이
-        [[0, bz, '#cdaa94'], [bz - px, bz, '#7b614e'], [0, px, '#695046']].forEach(([a, b, c]) => {
-          this.vface(L, O, a, b, c);
-          this.vface(O, R, a, b, c);
-        });
-        // 안쪽 모서리 선, 벽 끝 단면, 바닥 앞 두께
-        ctx.fillStyle = '#aaa7b2'; ctx.fillRect(O.x - 1, O.y - Z * HOME_FH, 2, Z * HOME_FH);
-        ctx.fillStyle = '#d6d4de'; ctx.fillRect(L.x - 8, L.y - Z * HOME_FH - 4, 8, Z * HOME_FH + 4 + HOME_THICK); ctx.fillRect(R.x, R.y - Z * HOME_FH - 4, 8, Z * HOME_FH + 4 + HOME_THICK);
-        const t = HOME_THICK / HOME_FH;
-        this.vface(L, F, -t, 0, '#c5c3cf');
-        this.vface(F, R, -t, 0, '#b9b7c4');
-        this.isoLine({ x: L.x, y: L.y + HOME_THICK }, { x: F.x, y: F.y + HOME_THICK }, '#a69896');
-        this.isoLine({ x: F.x, y: F.y + HOME_THICK }, { x: R.x, y: R.y + HOME_THICK }, '#a69896');
+        if (!wallIm) {
+          // 걸레받이
+          [[0, bz, '#cdaa94'], [bz - px, bz, '#7b614e'], [0, px, '#695046']].forEach(([a, b, c]) => {
+            this.vface(L, O, a, b, c);
+            this.vface(O, R, a, b, c);
+          });
+          // 안쪽 모서리 선, 벽 끝 단면
+          ctx.fillStyle = '#aaa7b2'; ctx.fillRect(O.x - 1, O.y - Z * HOME_FH, 2, Z * HOME_FH);
+          ctx.fillStyle = '#d6d4de'; ctx.fillRect(L.x - 8, L.y - Z * HOME_FH - 4, 8, Z * HOME_FH + 4 + HOME_THICK); ctx.fillRect(R.x, R.y - Z * HOME_FH - 4, 8, Z * HOME_FH + 4 + HOME_THICK);
+        }
+        // 바닥 앞 두께
+        if (!floorIm) {
+          const t = HOME_THICK / HOME_FH;
+          this.vface(L, F, -t, 0, '#c5c3cf');
+          this.vface(F, R, -t, 0, '#b9b7c4');
+          this.isoLine({ x: L.x, y: L.y + HOME_THICK }, { x: F.x, y: F.y + HOME_THICK }, '#a69896');
+          this.isoLine({ x: F.x, y: F.y + HOME_THICK }, { x: R.x, y: R.y + HOME_THICK }, '#a69896');
+        }
       },
 
       // 가구 하나 (그림이 없으면 색 상자 + 이모지)
@@ -29871,7 +29910,7 @@
       renderList() {
         const box = document.getElementById('homeRoomList');
         if (!box) return;
-        ['inv', 'shop'].forEach(k => {
+        ['inv', 'shop', 'skin'].forEach(k => {
           const b = document.getElementById(`homeRoomTab-${k}`);
           if (b) b.className = `py-1.5 rounded-lg text-xs font-extrabold ${this.panel === k ? 'bg-pink-500 text-white' : 'text-slate-300 hover:bg-slate-800'}`;
         });
@@ -29881,6 +29920,30 @@
           ? `<img src="assets/furniture/${def.id}.webp" alt="" class="h-14 w-auto object-contain" style="image-rendering:pixelated" draggable="false">`
           : `<div class="h-14 flex items-center justify-center text-3xl">${def.emoji}</div>`;
         const size = def => def.cat === 'rug' ? `러그 ${def.w}×${def.d}` : `${def.w}×${def.d}×${def.h}`;
+        if (this.panel === 'skin') {
+          // 벽지·바닥: 산 것은 눌러서 바로 바꾸고, 안 산 것은 사면 바로 깔림. 맨 앞은 기본 방
+          const home = this.home(stu), owned = new Set(home.skins);
+          const card = (part, s) => {
+            const on = (home[part] || null) === (s ? s.id : null), have = !s || owned.has(`${part}:${s.id}`);
+            const img = s
+              ? `<img src="assets/room/${part}_${s.id}_t.webp" alt="" class="h-14 w-full object-cover rounded-md" draggable="false">`
+              : `<div class="h-14 w-full rounded-md flex items-center justify-center text-[11px] font-bold text-slate-500 bg-slate-100">${part === 'wall' ? '기본 벽' : '기본 바닥'}</div>`;
+            const act = on
+              ? `<span class="w-full py-1.5 rounded-lg bg-slate-800 text-pink-300 text-[11px] font-extrabold text-center">✓ 쓰는 중</span>`
+              : have
+                ? `<button type="button" onclick="HomeRoom.useSkin('${part}', ${s ? `'${s.id}'` : 'null'})" class="w-full py-1.5 rounded-lg bg-pink-500 hover:bg-pink-400 text-white text-[11px] font-extrabold">바꾸기</button>`
+                : `<button type="button" onclick="HomeRoom.buySkin('${part}', '${s.id}')" class="w-full py-1.5 rounded-lg ${(stu.mc || 0) >= s.price ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-500'} text-[11px] font-extrabold">${s.price.toLocaleString()} CA</button>`;
+            return `<div class="bg-slate-950 border ${on ? 'border-pink-400/60' : 'border-slate-800'} rounded-xl p-2 flex flex-col items-center gap-1">
+                ${img}
+                <span class="text-xs font-extrabold text-slate-200 text-center leading-tight">${s ? s.name : '기본'}</span>
+                ${act}
+              </div>`;
+          };
+          const head = t => `<div class="col-span-full text-xs font-extrabold text-slate-300 pt-1">${t}</div>`;
+          box.innerHTML = head('🧱 벽지') + [null, ...HOME_SKINS.filter(s => s.part === 'wall')].map(s => card('wall', s)).join('')
+            + head('🟫 바닥') + [null, ...HOME_SKINS.filter(s => s.part === 'floor')].map(s => card('floor', s)).join('');
+          return;
+        }
         if (this.panel === 'shop') {
           box.innerHTML = HOME_CATALOG.map(def => `
             <div class="bg-slate-950 border border-slate-800 rounded-xl p-2 flex flex-col items-center gap-1">
@@ -29964,6 +30027,28 @@
         saveState();
         this.renderToolbar();
         this.draw();
+      },
+
+      // ───── 벽지·바닥 ─────
+      buySkin(part, id) {
+        const stu = this.student(), s = HOME_SKIN[`${part}:${id}`];
+        if (!stu || !s) { showNotice('⚠️ 학생 로그인을 한 뒤에 살 수 있어요.'); return; }
+        const home = this.home(stu);
+        if (home.skins.includes(`${part}:${id}`)) { this.useSkin(part, id); return; }
+        if ((stu.mc || 0) < s.price) { showNotice(`⚠️ CA가 부족해요. (${s.name} ${s.price.toLocaleString()} CA)`); return; }
+        stu.mc -= s.price;
+        home.skins.push(`${part}:${id}`);
+        showNotice(`🧱 ${s.name}을(를) 샀어요! 방에 바로 깔았어요.`);
+        this.useSkin(part, id);
+      },
+      useSkin(part, id) {
+        const stu = this.student();
+        if (!stu) return;
+        const home = this.home(stu);
+        if (id && !home.skins.includes(`${part}:${id}`)) return;
+        if (id) home[part] = id; else delete home[part];
+        saveState();
+        this.render();
       },
 
       // ───── 사기·놓기·옮기기 ─────
