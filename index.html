@@ -16600,6 +16600,8 @@
     const HIDDEN_BEAM_HALF_W = 104;        // 검기 높이의 절반
     const HIDDEN_STORM_SPEED = 3.4;        // 폭풍 돌풍 화살: 느리게 나아감
     const HIDDEN_STORM_R = 95;             // 돌풍 반지름
+    // 돌풍 화살 판정: 그림 화살(고리 중심 기준)을 따라 길쭉한 모양. [진행 방향 구간 시작, 끝, 반폭] (그림 픽셀 단위, ×HIDDEN_STORM_R/고리 반지름)
+    const HIDDEN_STORM_SHAPE = [[-410, -120, 85], [-120, 120, 125], [120, 250, 40]];
     const HIDDEN_STORM_HIT_TICKS = 20;     // 한 적이 돌풍에 다시 맞기까지
     const HIDDEN_FUSION_PULL_TICKS = 68;  // 원소 융합: 가운데로 빨아들인 뒤 폭발
     const HIDDEN_FUSION_STATUS_TICKS = 300; // 원소 융합 상태이상 5초
@@ -16888,7 +16890,8 @@
               return;
             }
             // 돌풍: 닿아 있는 동안 20틱마다 다시 맞음
-            if (Math.hypot(dx, dy) - gap > HIDDEN_STORM_R || sim.tickCount - (fx.last.get(e) ?? -999) < HIDDEN_STORM_HIT_TICKS) return;
+            const sc = HIDDEN_STORM_R / ARCHER_STORM_FX.arrowRingR, al = (dx * c + dy * s) / sc, pe = Math.abs(-dx * s + dy * c) / sc;
+            if (!HIDDEN_STORM_SHAPE.some(([a0, a1, hw]) => al >= a0 - gap / sc && al <= a1 + gap / sc && pe <= hw + gap / sc) || sim.tickCount - (fx.last.get(e) ?? -999) < HIDDEN_STORM_HIT_TICKS) return;
             fx.last.set(e, sim.tickCount);
             suppressHitKnockback = true;
             try { withSkillHit(() => applyDamage(o, e, fx.dmg, '', '#22d3ee')); } finally { suppressHitKnockback = false; }
@@ -17079,6 +17082,7 @@
             ctx.restore();
             return;
           }
+          if (c.key === 'storm') { ctx.restore(); return; } // 폭풍: 시전 그림(바람)만 쓰고 모이는 원은 생략
           const R = 70 + 40 * (1 - p);
           for (let i = 0; i < 6; i++) {
             const a = t * 0.08 + i * Math.PI / 3;
@@ -17409,15 +17413,9 @@
         if (art.ready) {
           // 그림 화살: 앞쪽 큰 고리가 돌풍 판정 자리. 위아래로 뒤집은 그림을 번갈아 비춰 나선이 도는 것처럼
           const sc = ef.r / ARCHER_STORM_FX.arrowRingR;
-          const spin = Math.sin(t * 0.22);
           ctx.rotate(ef.angle);
           ctx.globalAlpha = Math.min(1, fade * 6);
-          ctx.save();
-          ctx.scale(sc, sc * (0.9 + 0.1 * Math.abs(spin)));
-          ctx.drawImage(art, -ARCHER_STORM_FX.arrowCX, -ARCHER_STORM_FX.arrowCY);
-          ctx.restore();
-          ctx.globalAlpha = Math.min(1, fade * 6) * 0.45 * (0.5 + 0.5 * spin);
-          ctx.scale(sc, -sc);
+          ctx.scale(sc, sc); // 모양이 일렁이지 않게 그대로 날아감
           ctx.drawImage(art, -ARCHER_STORM_FX.arrowCX, -ARCHER_STORM_FX.arrowCY);
           return;
         }
