@@ -1514,7 +1514,7 @@
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h4 class="font-title text-xl text-white flex items-center gap-2"><span>🛋️</span> 내 방 꾸미기</h4>
-              <p class="text-xs text-slate-400 mt-0.5">가구를 사서 방에 놓아 보세요. 놓을 때 <strong>R</strong> 또는 <strong>↻</strong>로 돌리고, 놓인 가구를 누르면 옮기거나 보관함에 넣을 수 있어요.</p>
+              <p class="text-xs text-slate-400 mt-0.5">가구를 사서 방에 놓아 보세요. 놓을 때 <strong>R</strong> 또는 <strong>↻</strong>로 돌리고, 놓인 가구는 <strong>누른 채 끌어서</strong> 옮길 수 있어요.</p>
             </div>
             <span id="homeRoomCa" class="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-extrabold"></span>
           </div>
@@ -29709,7 +29709,7 @@
             + dirs() + btn('↻ 돌리기', 'rotate()') + btn('✋ 옮기기', 'startMove()') + btn('📦 보관함에 넣기', 'store()') + btn('닫기', 'deselect()');
           return;
         }
-        bar.innerHTML = `<span class="text-slate-500">놓인 가구를 누르면 돌리거나 옮길 수 있어요.</span>`;
+        bar.innerHTML = `<span class="text-slate-500">놓인 가구를 누른 채 끌면 옮겨지고, 그냥 누르면 돌리기·보관 메뉴가 나와요.</span>`;
       },
 
       // ───── 사기·놓기·옮기기 ─────
@@ -29744,8 +29744,11 @@
         const g = this.ghost;
         if (!g) return;
         const s = this.dims(HOME_DEF[g.id], g.r);
-        g.x = Math.max(0, Math.min(HOME_ROOM_X - s.X, Math.round(p.X - s.X / 2)));
-        g.y = Math.max(0, Math.min(HOME_ROOM_Y - s.Y, Math.round(p.Y - s.Y / 2)));
+        // 끌어서 옮길 때는 처음 잡은 자리 그대로, 아니면 가구 가운데가 손끝에 오게
+        const gx = g.grab ? Math.round(p.X - g.grab.dx) : Math.round(p.X - s.X / 2);
+        const gy = g.grab ? Math.round(p.Y - g.grab.dy) : Math.round(p.Y - s.Y / 2);
+        g.x = Math.max(0, Math.min(HOME_ROOM_X - s.X, gx));
+        g.y = Math.max(0, Math.min(HOME_ROOM_Y - s.Y, gy));
       },
       // 지금 다루는 가구(놓는 중이거나 고른 것)의 회전값
       curDir() {
@@ -29775,7 +29778,11 @@
       commit() {
         const g = this.ghost, stu = this.student();
         if (!g || !stu) return;
-        if (!this.fits(g, g.u)) { showNotice('⚠️ 여기에는 놓을 수 없어요.'); return; }
+        if (!this.fits(g, g.u)) {
+          showNotice('⚠️ 여기에는 놓을 수 없어요.');
+          if (g.dragged) { this.ghost = null; this.sel = g.u; this.render(); } // 끌어 옮기다 막히면 원래 자리로
+          return;
+        }
         const it = this.home(stu).items.find(x => x.u === g.u);
         if (!it) { this.cancel(); return; }
         Object.assign(it, { x: g.x, y: g.y, r: g.r, p: 1 });
@@ -29823,18 +29830,34 @@
         cv.addEventListener('pointermove', e => {
           const p = this.toRoom(e);
           this.hoverXY = p;
+          // 놓인 가구를 누른 채 조금 움직이면 그대로 끌어서 옮기기 시작
+          const pr = this.press;
+          if (pr && !this.ghost && Math.hypot(e.clientX - pr.cx, e.clientY - pr.cy) > 5) {
+            const it = this.placed().find(x => x.u === pr.u);
+            if (it) this.ghost = { u: it.u, id: it.id, r: it.r || 0, x: it.x, y: it.y, down: true, dragged: true, grab: { dx: pr.X - it.x, dy: pr.Y - it.y } };
+            this.press = null;
+            this.sel = null;
+            this.renderToolbar();
+          }
           if (this.ghost) { this.moveGhostTo(p); this.draw(); }
         });
         cv.addEventListener('pointerdown', e => {
+          if (e.button !== 0) return;
           const p = this.toRoom(e);
           this.hoverXY = p;
+          try { cv.setPointerCapture(e.pointerId); } catch (err) {}
           if (this.ghost) { this.moveGhostTo(p); this.ghost.down = true; this.draw(); return; }
           const it = this.pick(p);
           this.sel = it ? it.u : null;
+          this.press = it ? { u: it.u, cx: e.clientX, cy: e.clientY, X: p.X, Y: p.Y } : null;
           this.render();
         });
-        // 누른 채 끌어서 위치를 맞추고 손을 떼면 놓임 (마우스는 그냥 클릭)
-        cv.addEventListener('pointerup', () => { if (this.ghost && this.ghost.down) { this.ghost.down = false; this.commit(); } });
+        // 누른 채 끌어서 위치를 맞추고 손을 떼면 놓임 (마우스는 그냥 클릭). 끌지 않고 떼면 고르기만
+        cv.addEventListener('pointerup', () => {
+          this.press = null;
+          if (this.ghost && this.ghost.down) { this.ghost.down = false; this.commit(); }
+        });
+        cv.addEventListener('pointercancel', () => { this.press = null; });
         window.addEventListener('keydown', e => {
           if (document.getElementById('studentTab-home')?.classList.contains('hidden')) return;
           if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
