@@ -17,7 +17,7 @@
     ['noskill', '스킬 없이', { move: 1, attack: 1, skill: 0, dash: 1 }]
   ];
 
-  const SB = window.SB = { specs: [], sel: null, cd: true, seq: 0, placing: null, manual: null, monList: [], mons: {} };
+  const SB = window.SB = { specs: [], sel: null, cd: true, seq: 0, placing: null, manual: null, mana: true, monList: [], mons: {} };
 
   // ----- 몬스터 목록: 모험의 탑 종족 편성에서 (몬스터, 직업, 이름, 스킬) -----
   TOWER_RACES.forEach(race => {
@@ -119,10 +119,10 @@
       if (!u.alive) return;
       if (!SB.cd) {
         if (u.skillCooldowns) Object.keys(u.skillCooldowns).forEach(k => { u.skillCooldowns[k] = 0; });
-        u.mana = u.maxMana;
         u.itemCd = 0;
         u.castLock = 0;
       }
+      if (!SB.mana) u.mana = u.maxMana;
       const b = u.sbBeh;
       if (!b) return;
       if (u._sbMove === undefined) u._sbMove = u.baseMoveSpeed;
@@ -140,8 +140,9 @@
     if (!u || !u.alive) return;
     if (!SB.cd) {
       Object.keys(u.skillCooldowns).forEach(k => { u.skillCooldowns[k] = 0; });
-      u.mana = u.maxMana; u.castLock = 0;
+      u.castLock = 0;
     }
+    if (!SB.mana) u.mana = u.maxMana;
     const allies = sim.units.filter(a => a.alive && a.team === u.team);
     const enemies = sim.units.filter(e => e.alive && e.team !== u.team);
     tryManualSkill(u, allies, enemies, u.skillSlots.indexOf(key), {});
@@ -259,7 +260,8 @@
       <div class="text-sm font-extrabold text-white mb-2">🧪 테스트 전장 <span class="text-[10px] text-slate-500 font-normal">/test</span></div>
       <div class="${cls.box}"><div class="${cls.h}">⚙️ 전투</div>
         <div class="flex items-center gap-2 flex-wrap">
-          <label class="flex items-center gap-1 text-xs text-slate-200"><input type="checkbox" ${SB.cd ? 'checked' : ''} onchange="SBUI.cdToggle(this.checked)">쿨타임·마나 적용</label>
+          <label class="flex items-center gap-1 text-xs text-slate-200"><input type="checkbox" ${SB.cd ? 'checked' : ''} onchange="SBUI.cdToggle(this.checked)">⏳ 쿨타임 적용</label>
+          <label class="flex items-center gap-1 text-xs text-slate-200"><input type="checkbox" ${SB.mana ? 'checked' : ''} onchange="SBUI.manaToggle(this.checked)">💧 마나 소모 적용</label>
           <label class="flex items-center gap-1 text-xs text-slate-200"><input type="checkbox" ${SB.manual != null ? 'checked' : ''} onchange="SBUI.manualToggle(this.checked)">🎮 수동 전투${SB.manual != null && byId(SB.manual) ? ` (${esc(specTitle(byId(SB.manual)))})` : ''}</label>
           <select class="${cls.in} !w-auto" onchange="sim.speed=+this.value">${selOpts([[0, '⏸ 일시정지'], [0.5, '0.5배'], [1, '1배'], [2, '2배'], [3, '3배']], sim.speed)}</select>
         </div>
@@ -366,6 +368,7 @@
       render();
     },
     cdToggle(on) { SB.cd = on; },
+    manaToggle(on) { SB.mana = on; },
     healAll() {
       sim.units.forEach(u => {
         if (!u.alive) return;
