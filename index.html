@@ -6004,6 +6004,11 @@
     DUST_FX.img = new Image();
     DUST_FX.img.onload = () => { DUST_FX.img.ready = true; };
     DUST_FX.img.src = 'assets/sprites/fx/dash_dust_fx.webp';
+    // 돌진·돌격 꼬리: 바람 줄기(tail, 오른쪽 34px는 서서히 투명 = 몸에 붙는 쪽) + 뒤쪽 흙먼지(dirt). 오른쪽이 앞. 거리가 길면 바람 줄기만 늘림
+    const TRAIL_FX = { tail: [0, 0, 94, 67], dirt: [96, 0, 138, 47], fade: 34, dirtOverlap: 92 };
+    TRAIL_FX.img = new Image();
+    TRAIL_FX.img.onload = () => { TRAIL_FX.img.ready = true; };
+    TRAIL_FX.img.src = 'assets/sprites/fx/charge_trail_fx.webp';
     const SPIN_FX = { frames: [[0, 0, 315, 200], [315, 0, 315, 200], [630, 0, 315, 200]] };
     const TORNADO_FX = { w: 127, h: 246, anchorX: 63, anchorY: 240 };
     [[DASH_FX, 'dash_burst_fx'], [SPIN_FX, 'spin_slash_fx'], [TORNADO_FX, 'purple_tornado_fx']].forEach(([o, file]) => {
@@ -15081,7 +15086,7 @@
           sim.effects.push({
             type: 'stun_shockwave', spr: strikeSpr === 'quake' ? undefined : strikeSpr,
             x: target.x, y: target.y, r: 100 * unitAreaScale(unit),
-            angle: strikeSpr === 'quake' ? Math.atan2(target.y - unit.y, target.x - unit.x) : undefined,
+            angle: strikeSpr === 'quake' ? Math.atan2(target.y - unit.y, target.x - unit.x) : undefined, ux: unit.x, uy: unit.y,
             life: 56, maxLife: 56
           });
           unit.rootTicks = STUN_STRIKE_ROOT_TICKS; // 내리치는 동안만 제자리 (이동·공격 불가)
@@ -15112,7 +15117,7 @@
             playCombatSfx('heavy');
           });
           sim.effects.push({
-            type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty,
+            type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, trail: true,
             color: unit.team === 'blue' ? '#2563eb' : '#e11d48',
             life: CHARGE_MOVE_TICKS + 32, maxLife: CHARGE_MOVE_TICKS + 32
           });
@@ -15140,7 +15145,7 @@
 
           sim.effects.push({
             type: 'charge_dash',
-            sx, sy, tx: r.tx, ty: r.ty,
+            sx, sy, tx: r.tx, ty: r.ty, trail: true,
             color: unit.team === 'blue' ? '#2563eb' : '#e11d48',
             life: CHARGE_MOVE_TICKS + 32, maxLife: CHARGE_MOVE_TICKS + 32
           });
@@ -17877,7 +17882,7 @@
           e.x = p.x; e.y = p.y; e.kbVx = 0; e.kbVy = 0;
         });
       };
-      sim.effects.push({ type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, color, life: ticks + 24, maxLife: ticks + 24 });
+      sim.effects.push({ type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, color, trail: true, life: ticks + 24, maxLife: ticks + 24 });
       return r;
     }
 
@@ -20270,11 +20275,12 @@
 
         } else if (ef.type === 'stun_shockwave' && ef.angle != null && WARRIOR_EXCALIBUR_FX.fx.ready) {
           // 강타: 엑스칼리버 초승달1을 작게 — 내리친 방향으로 번쩍 커졌다 흩어짐
-          ctx.translate(ef.x, ef.y - 14);
+          // 시전자와 적 사이, 시전자 쪽으로 치우친 자리에서 시작
+          ctx.translate(ef.ux + (ef.x - ef.ux) * 0.3, ef.uy + (ef.y - ef.uy) * 0.3 - 14);
           ctx.rotate(ef.angle);
           ctx.globalCompositeOperation = 'lighter';
           ctx.globalAlpha = Math.max(0, Math.min(1, (1 - progress) * 1.8));
-          drawExcaliburFrame(ctx, 'crescent1', 0.34 + 0.14 * Math.min(1, progress * 3));
+          drawExcaliburFrame(ctx, 'crescent1', 0.6 + 0.2 * Math.min(1, progress * 3));
 
         } else if (ef.type === 'stun_shockwave') {
           ctx.globalAlpha = ef.life / ef.maxLife;
@@ -20298,6 +20304,29 @@
           };
           drawTornado(ef.sx, ef.sy, 1.1 - 0.5 * progress, 1 - progress * 1.3);
           drawTornado(ef.tx, ef.ty, 0.6 + 0.5 * Math.min(1, progress * 1.6), 1.4 - progress * 1.3);
+
+        } else if (ef.type === 'charge_dash' && ef.trail && TRAIL_FX.img.ready) {
+          // 돌진·돌격: 달려가는 몸 뒤에 바람 잔상 + 흙먼지가 따라붙음. 달린 거리만큼 바람 부분이 길어지고, 도착하면 줄어들며 사라짐
+          const ang = Math.atan2(ef.ty - ef.sy, ef.tx - ef.sx), dist = Math.hypot(ef.tx - ef.sx, ef.ty - ef.sy);
+          const flip = Math.cos(ang) < 0, s = 0.85;
+          const headT = Math.min(1, progress * 1.7), arrived = Math.max(0, (progress - 0.59) / 0.41);
+          const hx = ef.sx + Math.cos(ang) * dist * headT, hy = ef.sy + Math.sin(ang) * dist * headT;
+          const tl = TRAIL_FX.tail, dr = TRAIL_FX.dirt, fadeW = TRAIL_FX.fade;
+          const windW = Math.max(tl[2], dist * headT / s - 30) * (1 - arrived * 0.7);
+          ctx.save();
+          ctx.translate(hx, hy + 8);
+          ctx.rotate(flip ? ang + Math.PI : ang);
+          if (flip) ctx.scale(1, -1);
+          ctx.scale(s, s);
+          ctx.globalAlpha = Math.max(0, Math.min(1, (1 - progress) * 2.2));
+          ctx.imageSmoothingEnabled = false;
+          const bottom = 10, img = TRAIL_FX.img;
+          // 흙먼지: 바람 줄기 맨 뒤쪽 아래에 깔림
+          ctx.drawImage(img, dr[0], dr[1], dr[2], dr[3], -windW + TRAIL_FX.dirtOverlap - dr[2], bottom - dr[3], dr[2], dr[3]);
+          // 바람 줄기: 앞쪽 fade 구간은 그대로, 나머지는 가로로 늘림
+          ctx.drawImage(img, tl[0], tl[1], tl[2] - fadeW, tl[3], -windW, bottom - tl[3], windW - fadeW, tl[3]);
+          ctx.drawImage(img, tl[0] + tl[2] - fadeW, tl[1], fadeW, tl[3], -fadeW, bottom - tl[3], fadeW, tl[3]);
+          ctx.restore();
 
         } else if (ef.type === 'charge_dash' && ef.dust && DUST_FX.img.ready) {
           // 대시: 달리는 동안 지나온 자리에 흙먼지가 차례로 일어났다 가라앉음 (뒤쪽으로 퍼지게 좌우 방향에 맞춰 뒤집음)
