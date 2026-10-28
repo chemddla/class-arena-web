@@ -3320,7 +3320,7 @@
       },
       knight: {
         giant: {
-          id: 'giant', name: '거인화', icon: '🗿', ccTag: '✨히든 · 거대화', hidden: true,
+          id: 'giant', name: '거인화', icon: '💪', ccTag: '✨히든 · 거대화', hidden: true,
           manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 3,
           desc: '3초간 힘을 모은 뒤 20초 동안 몸이 3배로 커집니다. 체력·방어 3배, 받는 피해 30% 감소, 상태이상 면역이 되고, 주변 1칸 안의 적을 계속 끌어당겨요.'
         }
@@ -5913,7 +5913,7 @@
       bulletW: 240, bulletH: 61, muzzleX: 62, muzzleY: -8,
       LOCK_TICKS: 60, FIRE_TICKS: 16 // 발사 뒤 1초간 제자리에서 못 움직임 (앞 16틱은 발사 자세, 나머지는 반동 자세)
     };
-    [['cast', 'sniper_lastshot_cast'], ['bullet', 'sniper_lastshot_bullet']].forEach(([k, file]) => {
+    [['cast', 'sniper_lastshot_cast'], ['bullet', 'sniper_lastshot_bullet'], ['orb', 'sniper_lastshot_orb']].forEach(([k, file]) => {
       const img = new Image();
       img.onload = () => { img.ready = true; };
       img.src = `assets/sprites/fx/${file}.webp`;
@@ -16054,7 +16054,7 @@
       unit.casting = { key, left: total, total, icon: sk.icon, aimX: aim?.x ?? null, aimY: aim?.y ?? null, aimTarget: aim?.target || null };
       if (key === 'last_shot') hiddenLastShotLock(unit);
       unit.isMoving = false;
-      if (key !== 'musou') sim.effects.push({ type: 'cast_circle', x: unit.x, y: unit.y, color: '#9333ea', life: Math.min(60, total), maxLife: Math.min(60, total) });
+      if (key !== 'musou' && key !== 'last_shot') sim.effects.push({ type: 'cast_circle', x: unit.x, y: unit.y, color: '#9333ea', life: Math.min(60, total), maxLife: Math.min(60, total) });
     }
 
     function cancelSkillCast(unit) {
@@ -16691,7 +16691,8 @@
       if (!foe) return;
       c.aimTarget = foe;
       inflictStatus(unit, foe, 'darkness', c.total);
-      sim.floatTexts.push({ x: foe.x, y: foe.y - 60, text: '🎯 조준당함!', color: '#ef4444', life: 70 });
+      // 암흑에 걸렸을 때만 함께 표시 (사격 순간에는 띄우지 않음)
+      if (foe.statuses.darkness > 0) sim.floatTexts.push({ x: foe.x, y: foe.y - 60, text: '🎯 조준당함!', color: '#ef4444', life: 70 });
     }
 
     // 히든 스킬 발동 (처리했으면 true)
@@ -16817,10 +16818,10 @@
         const oldAura = sim.effects.find(e => e.type === 'hidden_giant_aura' && e.owner === unit);
         if (oldAura) oldAura.life = oldAura.maxLife;
         else sim.effects.push({ type: 'hidden_giant_aura', x: unit.x, y: unit.y, owner: unit, life: HIDDEN_GIANT_TICKS, maxLife: HIDDEN_GIANT_TICKS });
-        sim.floatTexts.push({ x: unit.x, y: unit.y - 120, text: '🗿 거인화!', color: '#f59e0b', life: 80 });
+        sim.floatTexts.push({ x: unit.x, y: unit.y - 120, text: '💪 거인화!', color: '#f59e0b', life: 80 });
         hiddenImpact(28, '#fef3c7');
         playCombatSfx('heavy');
-        addBattleLog(`🗿 [기사] ${unit.name}의 히든 스킬 거인화! 20초간 몸이 3배로 커졌어요!`);
+        addBattleLog(`💪 [기사] ${unit.name}의 히든 스킬 거인화! 20초간 몸이 3배로 커졌어요!`);
         return true;
       }
       if (sk === 'musou') {
@@ -16868,7 +16869,7 @@
       u.def = g.def;
       if (u.alive) u.hp = Math.max(1, Math.round(u.maxHp * ratio));
       u.giant = null;
-      if (u.alive) sim.floatTexts.push({ x: u.x, y: u.y - 50, text: '🗿 거인화 끝', color: '#94a3b8', life: 50 });
+      if (u.alive) sim.floatTexts.push({ x: u.x, y: u.y - 50, text: '💪 거인화 끝', color: '#94a3b8', life: 50 });
     }
 
     // 매 틱 (방장·혼자 전투): 검기·돌풍·융합 장판 판정, 거인화·무쌍난무 시간, 풀리지 않는 출혈
@@ -17107,6 +17108,45 @@
             ctx.restore();
             return;
           }
+          if (c.key === 'last_shot') {
+            // 마지막 한 발: 오색 구슬 대신, 총구로 붉은 기운이 모여 소용돌이 구체로 커짐 (표적에는 조준 표시만)
+            const f = c.aimTarget && c.aimTarget.alive ? c.aimTarget : null;
+            const ang = f ? Math.atan2(f.y - 10 - (u.y - 10), f.x - u.x) : (u.facingAngle || 0);
+            const mx = u.x + Math.cos(ang) * SNIPER_LASTSHOT_FX.muzzleX, my = u.y - 10 + Math.sin(ang) * SNIPER_LASTSHOT_FX.muzzleX;
+            ctx.globalCompositeOperation = 'lighter';
+            for (let i = 0; i < 12; i++) { // 사방에서 총구로 빨려드는 붉은 알갱이
+              const q = (t * 0.03 + i / 12) % 1, a = i * 2.4 + t * 0.01, r = (110 - 105 * q) * (0.5 + 0.5 * p);
+              ctx.globalAlpha = Math.min(1, q * 2) * (0.35 + 0.5 * p);
+              ctx.fillStyle = i % 3 ? '#ef4444' : '#fecaca';
+              ctx.beginPath(); ctx.arc(mx + Math.cos(a) * r, my + Math.sin(a) * r * 0.75, 1.5 + 2 * q, 0, Math.PI * 2); ctx.fill();
+            }
+            const orb = SNIPER_LASTSHOT_FX.orb;
+            if (orb.ready) {
+              const k = (0.12 + 0.34 * p) * (1 + 0.06 * Math.sin(t * 0.4));
+              ctx.translate(mx, my);
+              ctx.rotate(t * 0.18);
+              ctx.globalAlpha = 0.35 + 0.55 * p;
+              ctx.drawImage(orb, -118 * k, -76 * k, 176 * k, 162 * k);
+            }
+            ctx.restore();
+            if (f) {
+              ctx.save();
+              const cr = 34 - p * 12;
+              ctx.globalAlpha = 0.35 + 0.45 * p + 0.15 * Math.sin(t * 0.4);
+              ctx.strokeStyle = '#ef4444';
+              ctx.lineWidth = 2.5;
+              ctx.beginPath(); ctx.arc(f.x, f.y - 20, cr, 0, Math.PI * 2); ctx.stroke();
+              [0, 1, 2, 3].forEach(k => {
+                const a = k * Math.PI / 2;
+                ctx.beginPath();
+                ctx.moveTo(f.x + Math.cos(a) * (cr - 10), f.y - 20 + Math.sin(a) * (cr - 10));
+                ctx.lineTo(f.x + Math.cos(a) * (cr + 10), f.y - 20 + Math.sin(a) * (cr + 10));
+                ctx.stroke();
+              });
+              ctx.restore();
+            }
+            return;
+          }
           const R = 70 + 40 * (1 - p);
           for (let i = 0; i < 6; i++) {
             const a = t * 0.08 + i * Math.PI / 3;
@@ -17126,9 +17166,6 @@
             ctx.globalAlpha = 0.35 + 0.45 * p + 0.15 * Math.sin(t * 0.4);
             ctx.strokeStyle = '#ef4444';
             ctx.lineWidth = 1.5 + p * 2.5;
-            ctx.setLineDash([16, 10]);
-            ctx.beginPath(); ctx.moveTo(u.x, u.y - 10); ctx.lineTo(f.x, f.y - 20); ctx.stroke();
-            ctx.setLineDash([]);
             const cr = 34 - p * 12;
             ctx.lineWidth = 2.5;
             ctx.beginPath(); ctx.arc(f.x, f.y - 20, cr, 0, Math.PI * 2); ctx.stroke();
@@ -17154,7 +17191,7 @@
           ctx.beginPath(); ctx.ellipse(u.x, u.y + 10, r, r * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
           ctx.restore();
         }
-        const lasting = u.giant ? [u.giant.left, HIDDEN_GIANT_TICKS, '🗿'] : (u.musou ? [u.musou.left, HIDDEN_MUSOU_TICKS, '⚡'] : null);
+        const lasting = u.giant ? [u.giant.left, HIDDEN_GIANT_TICKS, '💪'] : (u.musou ? [u.musou.left, HIDDEN_MUSOU_TICKS, '⚡'] : null);
         if (lasting && !u.casting) {
           const w = 54, h = 7, x = u.x - w / 2, y = u.y - 80 - unitBodyGap(u) * 2.4;
           ctx.save();
@@ -19179,7 +19216,7 @@
           return;
         } else if (isGiant) fi = 4;
         if (fi >= 0) {
-          const ks = spriteDrawH(u, sprite) / g.standH * grow;
+          const ks = spriteDrawH(u, sprite) / g.standH * grow * (fi === 3 ? 0.86 : 1); // 불꽃 터짐 그림은 몸이 거인 자세보다 커서 살짝 줄여 크기가 튀지 않게
           ctx.drawImage(g.cast, fi * g.cellW, 0, g.cellW, g.cellH,
             -g.anchorX * ks + shake * ks, -g.anchorY * ks, g.cellW * ks, g.cellH * ks);
           ctx.restore();
