@@ -32,6 +32,9 @@ const HELP = `
   --stretch         비율이 규격과 다를 때 자동으로 늘리기/줄이기 (기본은 보고만 함)
   --legs            다리 끝 기준 맞춤: 비율은 그대로, 왼·오른 다리 끝을 칸 꼭짓점에 맞추고 어긋난 다리 길이만 고침.
                     다리 밖으로 나온 부분(이불·헤드보드)은 양옆 여백으로 남김 (권장)
+  --refine          도트 세분화: 샘플의 원래 도트 크기를 재서 그 해상도로 되돌리고 Scale2x로 4배 다듬은 뒤 맞춤.
+                    샘플마다 다른 도트 굵기를 같은 촘촘한 수준으로 통일 (권장)
+  --dot <픽셀>      --refine에서 원래 도트 크기를 직접 지정 (자동 추정이 틀릴 때)
   --align <lr|lf|fr|box> --legs에서 칸 꼭짓점에 맞출 두 다리 (기본 lr=왼·오른, lf=왼·앞, fr=앞·오른).
                     box = 그림 전체 폭을 칸 폭에 맞추고 다리는 고치지 않음(앞에 의자·사다리가 붙은 가구용)
                     원본 앞면:옆면 비율이 w:d와 달라 다리가 칸 밖으로 내려오면 lf/fr로
@@ -60,6 +63,8 @@ function parseArgs(argv) {
     else if (a === '--tol') o.tol = Number(val());
     else if (a === '--stretch') o.stretch = true;
     else if (a === '--legs') o.legs = true;
+    else if (a === '--refine') o.refine = true;
+    else if (a === '--dot') { o.dot = Number(val()); o.refine = true; }
     else if (a === '--align') o.align = val();
     else if (a === '--clear-holes') o.clearHoles = true;
     else if (a === '--no-guide') o.guide = false;
@@ -147,6 +152,65 @@ function bboxOf(mask, W, H) {
 async function loadRGBA(file) {
   const { data, info } = await sharp(file).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   return { rgba: data, W: info.width, H: info.height };
+}
+
+// ───────── 0단계(--refine): 도트 세분화 ─────────
+// 샘플마다 도트 크기가 달라(AI 그림은 한 도트가 3~6픽셀) 칸에 맞추면 굵기가 제각각이 됨.
+// 원래 도트 크기를 재서 그 해상도로 되돌린 뒤, 픽셀아트 확대법(Scale2x)을 두 번 써서 4배로 다듬음
+// → 계단이 잘게 갈라져 어떤 샘플이든 같은 촘촘한 수준이 됨
+function estimateDot(img) {
+  const { rgba, W, H } = img;
+  const at = (x, y) => (y * W + x) * 4;
+  const bg = o => rgba[o] > 235 && rgba[o + 1] > 235 && rgba[o + 2] > 235;
+  const diff = (a, b) => Math.abs(rgba[a] - rgba[b]) + Math.abs(rgba[a + 1] - rgba[b + 1]) + Math.abs(rgba[a + 2] - rgba[b + 2]);
+  const hist = new Array(48).fill(0);
+  const scan = (len, idx) => {
+    let last = -1;
+    for (let i = 1; i < len; i++) {
+      const a = idx(i - 1), b = idx(i);
+      if (bg(a) && bg(b)) { last = -1; continue; }
+      if (diff(a, b) > 60) { if (last >= 0 && i - last < 48) hist[i - last]++; last = i; }
+    }
+  };
+  for (let y = 0; y < H; y += 2) scan(W, x => at(x, y));
+  for (let x = 0; x < W; x += 2) scan(H, y => at(x, y));
+  // 1~2픽셀 간격은 번짐이라 빼고, 3~8 중 배수 자리까지 합친 점수가 가장 큰 주기
+  let best = 1, bestScore = 0;
+  for (let p = 3; p <= 8; p++) {
+    let sc = 0, n = 0;
+    for (let k = 1; k * p < 46; k++, n++) sc += hist[k * p] + 0.5 * (hist[k * p - 1] + hist[k * p + 1]);
+    sc /= Math.sqrt(n);
+    if (sc > bestScore) { bestScore = sc; best = p; }
+  }
+  return best;
+}
+function scale2x(src, W, H) { // EPX: 대각선 계단을 반 도트씩 갈라 줌
+  const out = Buffer.alloc(W * 2 * H * 2 * 4), W2 = W * 2;
+  const same = (a, b) => src.readUInt32LE(a) === src.readUInt32LE(b);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const P = (y * W + x) * 4;
+    const A = y > 0 ? P - W * 4 : P, D = y < H - 1 ? P + W * 4 : P, Cc = x > 0 ? P - 4 : P, B = x < W - 1 ? P + 4 : P;
+    let e0 = P, e1 = P, e2 = P, e3 = P;
+    if (same(Cc, A) && !same(Cc, D) && !same(A, B)) e0 = A;
+    if (same(A, B) && !same(A, Cc) && !same(B, D)) e1 = B;
+    if (same(D, Cc) && !same(D, B) && !same(Cc, A)) e2 = Cc;
+    if (same(B, D) && !same(B, A) && !same(D, Cc)) e3 = D;
+    const o = ((y * 2) * W2 + x * 2) * 4;
+    src.copy(out, o, e0, e0 + 4); src.copy(out, o + 4, e1, e1 + 4);
+    src.copy(out, o + W2 * 4, e2, e2 + 4); src.copy(out, o + W2 * 4 + 4, e3, e3 + 4);
+  }
+  return out;
+}
+// 배경을 지운(투명) 가구 조각을 원래 도트 해상도로 되돌린 뒤 Scale2x 두 번. 투명 배경이라 테두리에 흰 번짐이 안 생김
+async function refineCrop(crop, w, h, p, colors) {
+  const nw = Math.max(1, Math.round(w / p)), nh = Math.max(1, Math.round(h / p));
+  const small = await sharp(crop, { raw: { width: w, height: h, channels: 4 } })
+    .resize(nw, nh, { kernel: 'cubic' }).png({ palette: true, colours: Math.max(colors, 32), dither: 0 }).toBuffer();
+  let { data } = await sharp(small).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (let i = 3; i < data.length; i += 4) data[i] = data[i] >= 128 ? 255 : 0; // 반투명 없이
+  let W = nw, H = nh;
+  for (let t = 0; t < 2; t++) { data = scale2x(data, W, H); W *= 2; H *= 2; }
+  return { buf: data, w: W, h: H, nw, nh };
 }
 
 function removeBackground(img, opt, warnings, notes) {
@@ -400,7 +464,13 @@ async function fitByLegs(fgres, spec, opt, warnings, notes, label) {
     if (fg[p]) { crop[q] = rgb[p * 3]; crop[q + 1] = rgb[p * 3 + 1]; crop[q + 2] = rgb[p * 3 + 2]; crop[q + 3] = 255; }
   }
   const sw = Math.max(1, Math.round(bb.w * s)), sh = Math.max(1, Math.round(bb.h * s));
-  const scaled = await sharp(crop, { raw: { width: bb.w, height: bb.h, channels: 4 } })
+  // --refine: 원래 도트로 되돌려 Scale2x로 다듬은 그림에서 줄임 (샘플마다 다른 도트 굵기 → 같은 촘촘한 수준)
+  let src = { buf: crop, w: bb.w, h: bb.h };
+  if (fgres.dotP >= 2) {
+    src = await refineCrop(crop, bb.w, bb.h, fgres.dotP, opt.colors);
+    notes.push(`${tag}도트 세분화: 원래 도트 약 ${fgres.dotP}픽셀 → ${src.nw}×${src.nh}도트로 되돌린 뒤 Scale2x 두 번`);
+  }
+  const scaled = await sharp(src.buf, { raw: { width: src.w, height: src.h, channels: 4 } })
     .resize(sw, sh, { fit: 'fill', kernel: 'lanczos3' }).raw().toBuffer();
   const pad = Math.max(0, Math.ceil(cL), Math.ceil(sw - (cL + boxW)));
   const outW = boxW + 2 * pad, ox = Math.round(pad - cL);
@@ -551,6 +621,7 @@ async function processOne(file, spec, opt, label) {
   const warnings = [], notes = [];
   const img = await loadRGBA(file);
   const fgres = removeBackground(img, opt, warnings, notes);
+  if (opt.refine) fgres.dotP = opt.dot || estimateDot(img); // 원래 도트 크기 (세분화용)
   const fit = await (opt.legs ? fitByLegs : fitToBox)(fgres, spec, opt, warnings, notes, label);
   const dot = await dotify(fit, opt.colors);
   if (opt.legs) { dot.pad = fit.pad; fixLegs(dot, fit.legs, notes, label ? `[${label}] ` : ''); }
