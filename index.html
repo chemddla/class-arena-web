@@ -15048,6 +15048,7 @@
             type: 'whirlwind_slash',
             x: unit.x, y: unit.y, r: (WHIRLWIND_RADIUS - 5) * unitAreaScale(unit),
             color: unit.team === 'blue' ? '#2563eb' : '#e11d48',
+            seq: true,
             life: 160, maxLife: 160
           });
           enemies.forEach(e => {
@@ -18051,7 +18052,8 @@
     }
 
     function lancerSpinHit(u) {
-      sim.effects.push({ type: 'whirlwind_slash', x: u.x, y: u.y, r: LANCER_SPIN_RADIUS + 40, color: '#b45309', life: 20, maxLife: 20 });
+      const hitNo = Math.round((LANCER_SPIN_TICKS - u.statuses.spin) / LANCER_HIT_INTERVAL);
+      sim.effects.push({ type: 'whirlwind_slash', x: u.x, y: u.y, r: LANCER_SPIN_RADIUS + 40, color: '#b45309', f: hitNo % 2, ang: hitNo * 2.1, end: u.statuses.spin <= LANCER_HIT_INTERVAL, life: 20, maxLife: 20 });
       playCombatSfx('slash');
       withSkillHit(() => sim.units.forEach(e => {
         if (!e.alive || e.team === u.team || unitDist(e, u) > LANCER_SPIN_RADIUS) return;
@@ -20225,12 +20227,30 @@
 
         } else if (ef.type === 'whirlwind_slash' && SPIN_FX.img.ready) {
           // 굵은 회오리 고리 → 가장 크게 퍼지는 칼바람 → 흩어지는 잔상 (바닥 원근에 맞춰 세로를 눌러 그림)
-          const fi = Math.min(2, Math.floor(progress * 3)), fr = SPIN_FX.frames[fi];
+          // ef.seq(전사 회전베기): 굵은 고리·칼바람 두 장을 8틱마다 각도를 바꿔 번갈아 그리다 끝 20틱에 잔상 고리
+          // ef.f(창병 회전 타격): 0·1 번갈아(타마다 각도 변경), ef.end면 마지막 타라 잔상 고리
+          const elapsed = ef.maxLife - ef.life;
+          let fi, ang, alpha;
+          if (ef.seq) {
+            const n = Math.floor(elapsed / 8);
+            fi = ef.life <= 20 ? 2 : n % 2;
+            ang = n * 2.1 + (elapsed % 8) * 0.04;
+            alpha = Math.min(1, ef.life / 12);
+          } else if (ef.f != null) {
+            fi = ef.end ? 2 : ef.f;
+            ang = ef.ang + progress * 0.4;
+            alpha = Math.min(1, ef.life / ef.maxLife * 2.2);
+          } else {
+            fi = Math.min(2, Math.floor(progress * 3));
+            ang = progress * 1.2;
+            alpha = Math.min(1, ef.life / ef.maxLife * 2.2);
+          }
+          const fr = SPIN_FX.frames[fi];
           const k = (ef.r * 2.2) / fr[2];
           ctx.translate(ef.x, ef.y + 6);
           ctx.scale(1, 0.72);
-          ctx.rotate(progress * 1.2);
-          ctx.globalAlpha = Math.min(1, ef.life / ef.maxLife * 2.2);
+          ctx.rotate(ang);
+          ctx.globalAlpha = alpha;
           ctx.globalCompositeOperation = 'lighter';
           ctx.imageSmoothingEnabled = true;
           ctx.drawImage(SPIN_FX.img, fr[0], fr[1], fr[2], fr[3], -fr[2] * k / 2, -fr[3] * k / 2, fr[2] * k, fr[3] * k);
