@@ -6000,6 +6000,10 @@
     }
     // 돌진·회전베기·순간이동 이펙트 그림 (fx/samples/README.md의 dash_burst · spin_slash · purple_tornado)
     const DASH_FX = { frames: [[0, 0, 200, 144, 172], [200, 0, 260, 144, 245], [465, 0, 202, 144, 180]] }; // [x, y, w, h, 머리끝 x]
+    const DUST_FX = { w: 87, h: 25 }; // 대시 흙먼지: dash_burst 첫 칸에서 먼지만 딴 것 (오른쪽이 앞, 왼쪽이 뒤로 퍼지는 쪽)
+    DUST_FX.img = new Image();
+    DUST_FX.img.onload = () => { DUST_FX.img.ready = true; };
+    DUST_FX.img.src = 'assets/sprites/fx/dash_dust_fx.webp';
     const SPIN_FX = { frames: [[0, 0, 315, 200], [315, 0, 315, 200], [630, 0, 315, 200]] };
     const TORNADO_FX = { w: 127, h: 246, anchorX: 63, anchorY: 240 };
     [[DASH_FX, 'dash_burst_fx'], [SPIN_FX, 'spin_slash_fx'], [TORNADO_FX, 'purple_tornado_fx']].forEach(([o, file]) => {
@@ -14775,6 +14779,7 @@
         type: 'charge_dash',
         sx, sy, tx: r.tx, ty: r.ty,
         color: unit.team === 'blue' ? '#10b981' : '#f43f5e',
+        dust: true,
         life: DASH_MOVE_TICKS + 20, maxLife: DASH_MOVE_TICKS + 20
       });
       return true;
@@ -20286,6 +20291,23 @@
           };
           drawTornado(ef.sx, ef.sy, 1.1 - 0.5 * progress, 1 - progress * 1.3);
           drawTornado(ef.tx, ef.ty, 0.6 + 0.5 * Math.min(1, progress * 1.6), 1.4 - progress * 1.3);
+
+        } else if (ef.type === 'charge_dash' && ef.dust && DUST_FX.img.ready) {
+          // 대시: 달리는 동안 지나온 자리에 흙먼지가 차례로 일어났다 가라앉음 (뒤쪽으로 퍼지게 좌우 방향에 맞춰 뒤집음)
+          const dx = ef.tx - ef.sx, dy = ef.ty - ef.sy, dir = dx >= 0 ? 1 : -1;
+          const runT = DASH_MOVE_TICKS / ef.maxLife;
+          ctx.imageSmoothingEnabled = false;
+          for (let i = 0; i < 4; i++) {
+            const t0 = i / 4 * runT, age = (progress - t0) / 0.6;
+            if (age < 0 || age > 1) continue;
+            const s = 0.7 + age * 0.5;
+            ctx.save();
+            ctx.translate(ef.sx + dx * (i / 4) * 0.9, ef.sy + dy * (i / 4) * 0.9 + 4 - age * 6);
+            ctx.scale(dir * s, s * (1 - age * 0.25));
+            ctx.globalAlpha = Math.min(1, (1 - age) * 1.6);
+            ctx.drawImage(DUST_FX.img, -DUST_FX.w, -DUST_FX.h, DUST_FX.w, DUST_FX.h);
+            ctx.restore();
+          }
 
         } else if (ef.type === 'charge_dash' && DASH_FX.img.ready) {
           // 돌진: 출발점에서 먼지와 충격파가 터지고 → 기류가 길게 뻗다 → 도착점에서 흩어짐
