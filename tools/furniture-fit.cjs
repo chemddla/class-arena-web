@@ -30,6 +30,8 @@ const HELP = `
   --colors <수>     색 수 (기본 26, 24~28 권장)
   --tol <수>        배경색 허용 오차 0~255 (기본 10). 가구의 흰 부분이 #f0f0f8처럼 옅으면 작게
   --stretch         비율이 규격과 다를 때 자동으로 늘리기/줄이기 (기본은 보고만 함)
+  --legs            다리 끝 기준 맞춤: 비율은 그대로, 왼·오른 다리 끝을 칸 꼭짓점에 맞추고 어긋난 다리 길이만 고침.
+                    다리 밖으로 나온 부분(이불·헤드보드)은 양옆 여백으로 남김 (권장)
   --clear-holes     가구 안쪽에 갇힌 배경색 영역(의자 다리 사이 등)도 투명하게
   --no-guide        확인용 PNG에 규격 상자 선을 그리지 않음
   --dry             파일을 쓰지 않고 보고만
@@ -54,6 +56,7 @@ function parseArgs(argv) {
     else if (a === '--colors') o.colors = Number(val());
     else if (a === '--tol') o.tol = Number(val());
     else if (a === '--stretch') o.stretch = true;
+    else if (a === '--legs') o.legs = true;
     else if (a === '--clear-holes') o.clearHoles = true;
     else if (a === '--no-guide') o.guide = false;
     else if (a === '--dry') o.dry = true;
@@ -318,6 +321,132 @@ async function fitToBox(fgres, spec, opt, warnings, notes, label) {
   return { rgba: out, W: boxW, H: outH, boxH, srcBB: bb, scale: s, frontX: m.x0 * (leftW / splitX) };
 }
 
+// ───────── 3단계(--legs): 다리 끝 기준 맞춤 ─────────
+// 비율은 그대로(가로·세로 같은 배율). 왼·오른 다리 끝 사이를 (w+d)칸 폭에 맞추고,
+// 다리 밖으로 나온 부분은 양옆 같은 여백(pad)으로 둠. 엔진은 (그림 폭 − (w+d)×CELL_W)/2 를 여백으로 읽음.
+function findLegs(fg, W, bb) {
+  const bot = new Int32Array(bb.w).fill(-1);
+  for (let x = 0; x < bb.w; x++) for (let y = bb.y1; y >= bb.y0; y--) if (fg[y * W + bb.x0 + x]) { bot[x] = y; break; }
+  const yF = bb.y1;
+  const fx = []; for (let x = 0; x < bb.w; x++) if (bot[x] >= yF - 1) fx.push(x);
+  const xF = fx.reduce((a, b) => a + b, 0) / fx.length;
+  // 다리 = 아래로 튀어나온 곳: 좌우 k칸 안에서 가장 낮고, 좌우 3k칸 주변보다 충분히 아래인 열
+  const k = Math.max(4, Math.round(bb.w * 0.04)), prom = Math.max(3, Math.round(bb.h * 0.02));
+  const isFoot = x => {
+    if (bot[x] < 0) return false;
+    let lo = Infinity;
+    for (let t = x - 3 * k; t <= x + 3 * k; t++) {
+      if (t < 0 || t >= bb.w) continue;
+      if (Math.abs(t - x) <= k && bot[t] > bot[x]) return false;
+      lo = Math.min(lo, bot[t] < 0 ? -Infinity : bot[t]);
+    }
+    return bot[x] - lo >= prom;
+  };
+  // 다리 끝(가장 낮은 곳)과 다리 바깥 모서리: 바닥이 갑자기 올라가는 곳(틀·가로대) 전까지가 다리
+  const jump = Math.max(3, Math.round(bb.h * 0.006));
+  const tip = x => {
+    let a = x, b = x;
+    while (a > 0 && bot[a - 1] === bot[x]) a--;
+    while (b < bb.w - 1 && bot[b + 1] === bot[x]) b++;
+    let lo = a, hi = b;
+    while (lo > 0 && bot[lo - 1] >= 0 && bot[lo] - bot[lo - 1] <= jump) lo--;
+    while (hi < bb.w - 1 && bot[hi + 1] >= 0 && bot[hi] - bot[hi + 1] <= jump) hi++;
+    return { x: (a + b) / 2, y: bot[x], lo, hi };
+  };
+  let L = null, R = null;
+  for (let x = 0; x < xF - k && !L; x++) if (isFoot(x)) L = tip(x);
+  for (let x = bb.w - 1; x > xF + k && !R; x--) if (isFoot(x)) R = tip(x);
+  return { xF, yF, L, R };
+}
+
+async function fitByLegs(fgres, spec, opt, warnings, notes, label) {
+  const { fg, rgb, W, bb } = fgres;
+  const { w, d, h } = spec;
+  const tag = label ? `[${label}] ` : '';
+  const boxW = (w + d) * CELL_W, boxH = (w + d) * CELL_H + h * FLOOR_H;
+  const g = findLegs(fg, W, bb);
+  if (!g.L || !g.R) throw new Error(`${tag}왼쪽·오른쪽 다리 끝을 찾지 못했어요. --legs 없이 (또는 --stretch로) 변환해 주세요`);
+  const s = boxW / (g.R.hi - g.L.lo); // 다리 바깥 모서리 사이 = (w+d)칸 폭
+  // 앞 다리가 w:d 자리에 오는지 확인 (비율 유지라 맞추지는 않음)
+  const fOff = (g.xF - g.L.x) * s - w * CELL_W;
+  if (Math.abs(fOff) > CELL_W * 0.25) warnings.push(`${tag}앞 다리가 규격 자리에서 ${fOff > 0 ? '오른' : '왼'}쪽으로 ${Math.abs(fOff).toFixed(0)}도트 벗어나요 — 칸 수(w:d)를 바꿔 보세요`);
+
+  const crop = Buffer.alloc(bb.w * bb.h * 4);
+  for (let y = 0; y < bb.h; y++) for (let x = 0; x < bb.w; x++) {
+    const p = (bb.y0 + y) * W + bb.x0 + x, q = (y * bb.w + x) * 4;
+    if (fg[p]) { crop[q] = rgb[p * 3]; crop[q + 1] = rgb[p * 3 + 1]; crop[q + 2] = rgb[p * 3 + 2]; crop[q + 3] = 255; }
+  }
+  const sw = Math.max(1, Math.round(bb.w * s)), sh = Math.max(1, Math.round(bb.h * s));
+  const scaled = await sharp(crop, { raw: { width: bb.w, height: bb.h, channels: 4 } })
+    .resize(sw, sh, { fit: 'fill', kernel: 'lanczos3' }).raw().toBuffer();
+  const xL = g.L.lo * s, xR = (g.R.hi + 1) * s;
+  const pad = Math.max(0, Math.ceil(xL), Math.ceil(sw - xR));
+  const outW = boxW + 2 * pad, ox = Math.round(pad - xL);
+  const out = Buffer.alloc(outW * sh * 4);
+  for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) {
+    const tx = x + ox; if (tx < 0 || tx >= outW) continue;
+    scaled.copy(out, (y * outW + tx) * 4, (y * sw + x) * 4, (y * sw + x + 1) * 4);
+  }
+  const legs = [
+    // 다리 끝이 닿을 높이 = 바닥 가장자리 선 (꼭짓점에서 앞쪽으로 2:1로 내려감)
+    { x: Math.round(g.L.x * s + ox), targetY: Math.round(sh - 1 - w * CELL_H + (g.L.x - g.L.lo) * s * CELL_H / CELL_W) },
+    { x: Math.round(g.R.x * s + ox), targetY: Math.round(sh - 1 - d * CELL_H + (g.R.hi - g.R.x) * s * CELL_H / CELL_W) },
+  ];
+  if (pad) notes.push(`${tag}다리 밖으로 나온 부분 때문에 양옆에 ${pad}도트씩 여백을 둠`);
+  return { rgba: out, W: outW, H: sh, boxH, srcBB: bb, scale: s, frontX: g.xF * s + ox, pad, legs };
+}
+
+// 도트로 만든 뒤 왼·오른 다리 길이를 고쳐 다리 끝이 칸 꼭짓점 높이에 닿게 함
+function fixLegs(dot, legs, notes, tag) {
+  const { W, H, rgba } = dot;
+  const opaque = (x, y) => rgba[(y * W + x) * 4 + 3] > 0;
+  const bottom = x => { for (let y = H - 1; y >= 0; y--) if (opaque(x, y)) return y; return -1; };
+  const FOOT = 3;
+  for (const leg of legs) {
+    let tipY = -1;
+    for (let x = leg.x - 4; x <= leg.x + 4; x++) if (x >= 0 && x < W) tipY = Math.max(tipY, bottom(x));
+    if (tipY < 0) continue;
+    const delta = leg.targetY - tipY;
+    if (Math.abs(delta) <= 1) continue;
+    // 다리 열: 다리 끝에서 양옆으로, 바닥이 갑자기 올라가면(틀·가로대) 멈춤
+    const cols = [], maxHalf = Math.max(4, Math.round(W * 0.06));
+    let tx = leg.x; for (let x = leg.x - 4; x <= leg.x + 4; x++) if (x >= 0 && x < W && bottom(x) === tipY) { tx = x; break; }
+    for (const dir of [-1, 1]) {
+      let prev = bottom(tx);
+      for (let x = tx + (dir > 0 ? 1 : 0); x >= 0 && x < W && Math.abs(x - tx) <= maxHalf; x += dir) {
+        const b = bottom(x);
+        if (b < 0 || prev - b > 2) break;
+        cols.push(x); prev = b;
+      }
+    }
+    for (const x of cols) {
+      const b = bottom(x), col = [];
+      for (let y = 0; y < H; y++) col.push(rgba.subarray((y * W + x) * 4, (y * W + x + 1) * 4).slice());
+      const put = (y, px) => { if (y >= 0 && y < H) px.copy(rgba, (y * W + x) * 4); };
+      const clear = y => { if (y >= 0 && y < H) rgba.fill(0, (y * W + x) * 4, (y * W + x + 1) * 4); };
+      const shaft = col[Math.max(0, b - FOOT)];
+      if (delta > 0) { // 늘이기: 발끝을 내리고 사이를 다리 몸통 색으로 채움
+        for (let y = b; y > b - FOOT; y--) put(y + delta, col[y]);
+        for (let y = b - FOOT + 1; y <= b - FOOT + delta; y++) put(y, shaft);
+      } else { // 줄이기: 발끝을 올리고 아래를 비움
+        for (let y = b - FOOT + 1; y <= b; y++) put(y + delta, col[y]);
+        for (let y = b + delta + 1; y <= b; y++) clear(y);
+      }
+    }
+    notes.push(`${tag}다리 x=${leg.x}: ${delta > 0 ? delta + '도트 늘임' : -delta + '도트 줄임'} (열 ${cols.length}개)`);
+  }
+  return dot;
+}
+
+// 좌우 여백을 늘려 폭을 맞춤 (가운데 기준, 앞·뒤 그림 여백 통일용)
+function padSides(img, newPad) {
+  const add = newPad - (img.pad || 0);
+  if (add <= 0) return img;
+  const W = img.W + 2 * add, out = Buffer.alloc(W * img.H * 4);
+  for (let y = 0; y < img.H; y++) img.rgba.copy(out, (y * W + add) * 4, y * img.W * 4, (y + 1) * img.W * 4);
+  return { ...img, rgba: out, W, pad: newPad };
+}
+
 // ───────── 4단계: 도트 격자 (이진 알파 + 팔레트) ─────────
 async function dotify(fit, colors) {
   const { rgba, W, H } = fit;
@@ -369,6 +498,7 @@ function compareFrontBack(f, b, spec, warnings) {
 // ───────── 확인용 5배 PNG ─────────
 async function writePreview(img, spec, file, guide) {
   const Z = 5, { W, H } = img, { w, d, h } = spec;
+  const pad = (W - (w + d) * CELL_W) / 2; // --legs 여백
   const boxH = (w + d) * CELL_H + h * FLOOR_H, canvasH = Math.max(H, boxH) + 2;
   const up = await sharp(img.rgba, { raw: { width: W, height: H, channels: 4 } })
     .resize(W * Z, H * Z, { kernel: 'nearest' }).png().toBuffer();
@@ -376,13 +506,13 @@ async function writePreview(img, spec, file, guide) {
   const layers = [{ input: up, left: 0, top: ch - H * Z }];
   if (guide) {
     const P = (x, y) => `${(x * Z).toFixed(1)},${((canvasH - y) * Z).toFixed(1)}`; // y는 아래에서 위로
-    const fl = [[w * CELL_W, 0], [0, w * CELL_H], [d * CELL_W, (w + d) * CELL_H], [W, d * CELL_H]], up2 = fl.map(([x, y]) => [x, y + h * FLOOR_H]);
+    const fl = [[pad + w * CELL_W, 0], [pad, w * CELL_H], [pad + d * CELL_W, (w + d) * CELL_H], [W - pad, d * CELL_H]], up2 = fl.map(([x, y]) => [x, y + h * FLOOR_H]);
     // 앞→왼→뒤→오른 순서로 이어야 마름모가 됨
     const poly = pts => pts.map(p => P(p[0], p[1])).join(' ');
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch}"><g fill="none" stroke="#e5484d" stroke-width="2" opacity="0.8">`
       + `<polygon points="${poly(fl)}"/><polygon points="${poly(up2)}"/>`
       + [0, 1, 3].map(i => `<line x1="${fl[i][0] * Z}" y1="${(canvasH - fl[i][1]) * Z}" x2="${up2[i][0] * Z}" y2="${(canvasH - up2[i][1]) * Z}"/>`).join('')
-      + `</g><circle cx="${w * CELL_W * Z}" cy="${bot}" r="7" fill="#2f6df6"/></svg>`;
+      + `</g><circle cx="${(pad + w * CELL_W) * Z}" cy="${bot}" r="7" fill="#2f6df6"/></svg>`;
     layers.push({ input: Buffer.from(svg), left: 0, top: 0 });
   }
   const bg = await sharp({ create: { width: cw, height: ch, channels: 3, background: { r: 226, g: 232, b: 224 } } }).png().toBuffer();
@@ -395,8 +525,9 @@ async function processOne(file, spec, opt, label) {
   const warnings = [], notes = [];
   const img = await loadRGBA(file);
   const fgres = removeBackground(img, opt, warnings, notes);
-  const fit = await fitToBox(fgres, spec, opt, warnings, notes, label);
+  const fit = await (opt.legs ? fitByLegs : fitToBox)(fgres, spec, opt, warnings, notes, label);
   const dot = await dotify(fit, opt.colors);
+  if (opt.legs) { dot.pad = fit.pad; fixLegs(dot, fit.legs, notes, label ? `[${label}] ` : ''); }
   return { file, src: img, bb: fgres.bb, fit, dot, warnings, notes };
 }
 
@@ -414,6 +545,10 @@ async function main() {
   // 앞뒤 높이 맞추기 (아래 기준, 위쪽 투명 채움)
   const warnings = results.flatMap(r => r.warnings), notes = results.flatMap(r => r.notes);
   let cmp = null;
+  if (hasBack && o.legs) { // 앞·뒤 여백을 같게
+    const P = Math.max(results[0].dot.pad || 0, results[1].dot.pad || 0);
+    results.forEach(r => { const add = P - (r.dot.pad || 0); r.dot = padSides(r.dot, P); r.fit.frontX += add; });
+  }
   if (hasBack) {
     cmp = compareFrontBack(results[0].dot, results[1].dot, spec, warnings);
     const H = Math.max(results[0].dot.H, results[1].dot.H);
@@ -444,8 +579,8 @@ async function main() {
   console.log(`\n=== ${o.id}  ${o.w}×${o.d}×${fmt(o.h)} (캔버스 너비 ${boxW}, 상자 높이 ${boxH}) ===`);
   results.forEach((r, i) => {
     const name = hasBack ? (i ? '뒷모습' : '앞모습') : '그림';
-    const anchorX = Math.round(r.fit.frontX);
-    console.log(`${name}: 원본 ${r.src.W}×${r.src.H} → 가구 ${r.bb.w}×${r.bb.h} → 최종 ${r.dot.W}×${r.dot.H}도트 (배율 ${r.fit.scale.toFixed(3)}${o.stretch ? ', 늘리기 적용' : ''})`);
+    const anchorX = Math.round(r.fit.frontX) - (r.dot.pad || 0); // 여백 뺀 위치
+    console.log(`${name}: 원본 ${r.src.W}×${r.src.H} → 가구 ${r.bb.w}×${r.bb.h} → 최종 ${r.dot.W}×${r.dot.H}도트 (배율 ${r.fit.scale.toFixed(3)}${o.stretch ? ', 늘리기 적용' : ''}${o.legs ? ', 다리 기준 · 양옆 여백 ' + (r.dot.pad || 0) : ''})`);
     console.log(`  앵커(바닥 앞꼭짓점): x=${anchorX}, 맨 아래 (규격 x=${o.w * CELL_W}, 차이 ${anchorX - o.w * CELL_W >= 0 ? '+' : ''}${anchorX - o.w * CELL_W})  /  색 ${r.dot.colorCount}개  /  반투명 도트 0`);
   });
   if (cmp) console.log(`앞/뒤 점검: 실루엣 겹침 ${(cmp.iou * 100).toFixed(0)}%` + (cmp.ax != null && cmp.bx != null ? `, 앞꼭짓점 x ${cmp.ax.toFixed(0)} / ${cmp.bx.toFixed(0)}` : ''));

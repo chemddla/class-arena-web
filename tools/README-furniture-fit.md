@@ -5,8 +5,8 @@ AI가 만든 가구 그림(흰 배경, 1024px 안팎)을 방 꾸미기 도트 �
 ## 사용법
 
 ```bash
-# 앞모습 한 장
-node tools/furniture-fit.cjs 앞모습.png --id chair --w 1 --d 1 --h 1.5
+# 앞모습 한 장 (권장: --legs — 원본 비율 그대로, 다리 끝만 칸 꼭짓점에 맞춤)
+node tools/furniture-fit.cjs 앞모습.png --id chair --w 1 --d 1 --h 1.5 --legs
 
 # 앞·뒤 두 장 (→ bed_single.webp, bed_single_b.webp)
 node tools/furniture-fit.cjs 앞.png 뒤.png --id bed_single --w 2 --d 3 --h 1.5
@@ -15,7 +15,7 @@ node tools/furniture-fit.cjs 앞.png 뒤.png --id bed_single --w 2 --d 3 --h 1.5
 
 - `--w` 가로 칸 · `--d` 세로 칸 · `--h` 높이 층(0.5 단위, 러그는 0)
 - 결과 webp → `assets/furniture/`, 5배 확대 확인용 PNG → `tools/furniture-fit-out/<id>_x5.png` (빨간 선 = 규격 상자, 파란 점 = 앵커)
-- 옵션: `--out`, `--preview`(폴더), `--colors 26`, `--tol 10`(배경색 허용 오차), `--stretch`, `--clear-holes`, `--no-guide`, `--dry`(파일 안 쓰고 보고만), `--help`
+- 옵션: `--legs`(다리 기준 맞춤, 권장), `--out`, `--preview`(폴더), `--colors 26`, `--tol 10`(배경색 허용 오차), `--stretch`(세로를 늘리고 줄여 비율이 바뀜 — 쓰지 않기), `--clear-holes`, `--no-guide`, `--dry`(파일 안 쓰고 보고만), `--help`
 
 ## 하는 일
 
