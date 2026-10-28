@@ -21247,7 +21247,7 @@
               </div>
             </div>
 
-            <div class="grid grid-cols-3 gap-1.5 text-xs">
+            <div class="grid grid-cols-2 gap-1.5 text-xs">
               <div>
                 <label class="text-[10px] text-slate-400 block mb-0.5">직군</label>
                 <select onchange="adminUpdateMercField(${idx}, 'job', this.value)"
@@ -21263,13 +21263,6 @@
                 </select>
               </div>
               <div>
-                <label class="text-[10px] text-slate-400 block mb-0.5">전문 스킬</label>
-                <select onchange="adminUpdateMercField(${idx}, 'skillKey', this.value)"
-                  class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-amber-300 font-bold">
-                  ${jobSkills.map(sk => `<option value="${sk.id}" ${m.skillKey === sk.id ? 'selected' : ''}>${sk.icon} ${sk.name}</option>`).join('')}
-                </select>
-              </div>
-              <div>
                 <label class="text-[10px] text-slate-400 block mb-0.5">등급</label>
                 <select onchange="adminUpdateMercField(${idx}, 'rarity', this.value)"
                   class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-bold">
@@ -21279,9 +21272,61 @@
                 </select>
               </div>
             </div>
+
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-0.5">스킬 설정 <span class="text-slate-500">(고른 스킬은 다른 칸과 자리가 바뀝니다)</span></label>
+              <div class="grid grid-cols-2 gap-1.5">
+                ${adminMercSkillSlotsHTML(m, idx, jobSkills)}
+              </div>
+            </div>
           </div>
         `;
       }).join('');
+    }
+
+    // 스킬 4칸 선택창 (해금 레벨 표시 포함, 히든 스킬이 있는 직업은 히든도 고를 수 있음)
+    function adminMercSkillSlotsHTML(m, idx, jobSkills) {
+      const slots = mercSkillSlots(m);
+      const hid = hiddenSkillOf(m.job);
+      const lv = m.level || 1;
+      return SKILL_UNLOCK_LEVELS.map((unlockLv, i) => {
+        const isHidden = mercHasHiddenSkill(m) && m.hiddenSkillSlot === i;
+        const cur = isHidden ? '__hidden' : slots[i];
+        const opts = jobSkills.map(sk => `<option value="${sk.id}" ${cur === sk.id ? 'selected' : ''}>${sk.icon} ${sk.name}</option>`).join('')
+          + (hid ? `<option value="__hidden" ${isHidden ? 'selected' : ''}>🌟 ${hid.name} (히든)</option>` : '');
+        const lockTag = lv >= unlockLv ? '' : ` · Lv.${unlockLv}에 열림`;
+        return `
+          <div>
+            <div class="text-[10px] text-slate-500 mb-0.5">${i + 1}번 칸${lockTag}</div>
+            <select onchange="adminSetMercSkillSlot(${idx}, ${i}, this.value)"
+              class="w-full bg-slate-950 border ${isHidden ? 'border-fuchsia-500/60' : 'border-slate-700'} rounded-lg px-2 py-1 text-xs text-amber-300 font-bold ${lv >= unlockLv ? '' : 'opacity-60'}">
+              ${opts}
+            </select>
+          </div>`;
+      }).join('');
+    }
+
+    function adminSetMercSkillSlot(idx, slot, val) {
+      const m = adminEditingRosterCopy[idx];
+      if (!m) return;
+      m.skillsKept = SKILL_UNLOCK_LEVELS.length; // 선생님이 정한 순서는 레벨이 올라도 다시 무작위로 섞이지 않게
+      const slots = ensureMercSkillSlots(m);
+      if (val === '__hidden') {
+        const hid = hiddenSkillOf(m.job);
+        if (!hid) return;
+        m.hiddenSkillKey = hid.id;
+        m.hiddenSkillSlot = slot;
+      } else {
+        if (mercHasHiddenSkill(m) && m.hiddenSkillSlot === slot) {
+          delete m.hiddenSkillKey;
+          delete m.hiddenSkillSlot;
+        }
+        const from = slots.indexOf(val);
+        if (from < 0) return;
+        [slots[slot], slots[from]] = [slots[from], slots[slot]];
+      }
+      m.skillKey = slots[0];
+      renderAdminEditMercList();
     }
 
     function adminUpdateMercField(idx, field, val) {
@@ -21291,12 +21336,17 @@
         m.name = cleanUserText(val, 10) || '아서';
       } else if (field === 'level') {
         m.level = Math.max(1, Math.min(99, parseInt(val, 10) || 1));
+        m.skillsKept = SKILL_UNLOCK_LEVELS.length;
+        renderAdminEditMercList();
       } else if (field === 'job') {
         m.job = val;
-        m.skillKey = Object.keys(SKILL_DEFS[val])[0];
+        m.skillSlots = Object.keys(SKILL_DEFS[val]);
+        m.skillKey = m.skillSlots[0];
+        m.skillsKept = SKILL_UNLOCK_LEVELS.length;
+        delete m.skillsRevealed;
+        delete m.hiddenSkillKey;
+        delete m.hiddenSkillSlot;
         renderAdminEditMercList();
-      } else if (field === 'skillKey') {
-        m.skillKey = val;
       } else if (field === 'rarity') {
         // 새로 뽑은 같은 등급 용병과 같게: 초기 스탯 편차와 외형(시크릿 레어 전용 외형)을 등급에 맞춰 다시 정함
         const fresh = buildNewMercenary(m.job, val, m.level, 0, false, m.skillKey);
