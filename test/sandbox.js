@@ -141,6 +141,7 @@
         if (u.skillCooldowns) Object.keys(u.skillCooldowns).forEach(k => { u.skillCooldowns[k] = 0; });
         u.itemCd = 0;
         u.castLock = 0;
+        u.dashCooldown = 0;
       }
       if (!SB.mana) u.mana = u.maxMana;
       const b = u.sbBeh;
