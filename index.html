@@ -2996,7 +2996,7 @@
       rally:   { id: 'rally',   name: '함성', icon: '📣', color: '#dc2626', desc: '공격력 +20% · 공격 속도 +30% 강화' },
       empower: { id: 'empower', name: '증폭', icon: '🔮', color: '#7c3aed', desc: '공격력 +20% 강화' },
       immune:  { id: 'immune',  name: '면역', icon: '🕊️', color: '#0ea5e9', desc: '상태이상에 걸리지 않음' },
-      stealth: { id: 'stealth', name: '은신', icon: '🌫️', color: '#64748b', desc: '적에게 보이지 않음 (투사체·범위 공격에는 맞음, AI는 노리지 못함)' },
+      stealth: { id: 'stealth', name: '은신', icon: '🌫️', color: '#64748b', desc: '적에게 보이지 않음 (투사체·범위 공격에는 맞음, AI는 노리지 못함. 엘리트·보스 몬스터는 알아봄)' },
       swift:   { id: 'swift',   name: '신속', icon: '👣', color: '#0d9488', desc: '이동 속도 +50%' },
       taunt:   { id: 'taunt',   name: '도발', icon: '😤', color: '#ea580c', desc: '도발한 기사에게 강제로 다가가 기본 공격만 함 (스킬 사용 불가)' },
       guard:   { id: 'guard',   name: '방어 태세', icon: '🏰', color: '#0284c7', desc: '받는 피해 70% 감소·상태이상 면역 (느리게 이동 가능·공격 불가)' },
@@ -3415,6 +3415,14 @@
     // 은신 중인 유닛: 적 화면에 안 보이고 AI·조준이 노리지 못함 (투사체·범위 공격에는 맞음)
     function isStealthed(u) {
       return Boolean(u && u.alive && u.statuses && u.statuses.stealth > 0);
+    }
+    // 엘리트 몬스터·보스 몬스터는 은신한 적도 알아봄
+    function seesStealth(viewer) {
+      return Boolean(viewer && (viewer.isEliteBoss || viewer.isRaceBoss));
+    }
+    // viewer(AI·조준하는 유닛)에게 e가 은신으로 안 보이는지
+    function hiddenFrom(viewer, e) {
+      return isStealthed(e) && !seesStealth(viewer);
     }
     // 암흑: 걸린 유닛은 둘레 DARKNESS_SIGHT_R 밖의 적을 알아보지 못함 (AI 표적에서 빠짐)
     const DARKNESS_SIGHT_R = 170;
@@ -10580,7 +10588,7 @@
 
     function renderTowerTab() {
       const stu = getActiveStudent();
-      document.getElementById('myTowerProgressText').textContent = `${stu.towerFloor}층 도전 가능 (상위 층 비공개) · 오늘 남은 도전 ${getTowerTriesLeft(stu)}/${TOWER_DAILY_TRIES}회`;
+      document.getElementById('myTowerProgressText').textContent = `${stu.towerFloor}층 도전 가능 (상위 층 비공개) · 오늘 남은 도전 ${getTowerTriesLeft(stu)}/${TOWER_DAILY_TRIES}회 (실패도 1회)`;
       renderTowerLiveList();
 
       let filteredFloors = TOWER_FLOORS;
@@ -12335,7 +12343,7 @@
       let best = null;
       let bestScore = Infinity;
       enemies.forEach(e => {
-        if (isStealthed(e) && !u.blindSwing) return; // 아무 데나 휘두를 때는 숨은 적도 맞을 수 있음
+        if (hiddenFrom(u, e) && !u.blindSwing) return; // 아무 데나 휘두를 때는 숨은 적도 맞을 수 있음
         const d = unitDist(e, u);
         if (d > maxRange) return;
         let diff = Math.abs(Math.atan2(e.y - u.y, e.x - u.x) - aimAngle);
@@ -12409,7 +12417,7 @@
           }
           return;
         }
-        const angle = hasMouse ? aimAngle : sniperBestAngle(u, enemies.filter(e => !isStealthed(e)), nearestEnemyOf(u), u.range + 14, SNIPER_SHOT_HALF_W);
+        const angle = hasMouse ? aimAngle : sniperBestAngle(u, enemies.filter(e => !hiddenFrom(u, e)), nearestEnemyOf(u), u.range + 14, SNIPER_SHOT_HALF_W);
         u.cooldown = interval;
         u.attackAnim = Math.min(42, interval);
         u.maxAttackAnim = u.attackAnim;
@@ -12537,7 +12545,7 @@
       let aimY = c.aimY ?? (u.y + Math.sin(u.facingAngle || 0) * 100);
       if (noMouseAim) {
         // 마우스 없음: 가장 가까운 적에게 스킬 (적이 없으면 바라보는 쪽)
-        const foe = enemies.filter(e => !isStealthed(e)).sort((a, b) => unitDist(a, u) - unitDist(b, u))[0];
+        const foe = enemies.filter(e => !hiddenFrom(u, e)).sort((a, b) => unitDist(a, u) - unitDist(b, u))[0];
         if (foe) { aimX = foe.x; aimY = foe.y - 14; }
       }
       const mode = MANUAL_SKILL_AIM[key] || 'point';
@@ -12545,7 +12553,7 @@
       let aim = { x: aimX, y: aimY, target: null };
       if (mode === 'target') {
         // 커서 가까이(약 1칸) 있는 적 → 그 적이 사거리 안이어야 발동
-        const picked = enemies.filter(e => !isStealthed(e))
+        const picked = enemies.filter(e => !hiddenFrom(u, e))
           .map(e => ({ e, d: Math.hypot(e.x - aimX, (e.y - 14) - aimY) }))
           .filter(x => x.d <= 110)
           .sort((a, b) => a.d - b.d)[0];
@@ -12839,7 +12847,7 @@
     function nearestEnemyOf(u) {
       let best = null, bestD = Infinity;
       sim.units.forEach(e => {
-        if (!e.alive || e.team === u.team || isStealthed(e)) return;
+        if (!e.alive || e.team === u.team || hiddenFrom(u, e)) return;
         const d = unitDist(e, u);
         if (d < bestD) { bestD = d; best = e; }
       });
@@ -13321,7 +13329,7 @@
       const floorObj = TOWER_FLOORS.find(f => f.floor === floorNum);
       if (!floorObj) return;
       if (getTowerTriesLeft(stu) <= 0) {
-        showNotice(`오늘 모험의 탑 도전 횟수(${TOWER_DAILY_TRIES}회)를 모두 썼어요. 내일 다시 도전할 수 있어요!`);
+        showNotice(`오늘 모험의 탑 도전 횟수(${TOWER_DAILY_TRIES}회, 실패 포함)를 모두 썼어요. 내일 다시 도전할 수 있어요!`);
         return;
       }
       launchSimulation({
@@ -13530,8 +13538,8 @@
       if (unit.manualAimTarget && unit.manualAimTarget.alive && unit.manualAimTarget.team !== unit.team) {
         return unit.manualAimTarget;
       }
-      // AI는 은신한 적을 알아채지 못함
-      enemies = enemies.filter(e => !isStealthed(e));
+      // AI는 은신한 적을 알아채지 못함 (엘리트·보스 몬스터는 알아봄)
+      enemies = enemies.filter(e => !hiddenFrom(unit, e));
       if (unit.job === 'healer') {
         const hurtAllies = allies.filter(a => a.hp < a.maxHp);
         if (hurtAllies.length > 0) {
@@ -14554,11 +14562,11 @@
         if (st.guard > 0) {
           u.isMoving = false;
           const guardFor = KNIGHT_GUARD_TICKS - st.guard;
-          if (guardFor > 120 && !enemies.some(e => !isStealthed(e) && unitDist(e, u) <= GRID_CELL_SIZE * 3)) endIronStance(u);
+          if (guardFor > 120 && !enemies.some(e => !hiddenFrom(u, e) && unitDist(e, u) <= GRID_CELL_SIZE * 3)) endIronStance(u);
           return;
         }
         // AI가 알아챌 수 있는 적 (은신한 적·암흑 시야 밖의 적은 빼고 판단. 범위 피해는 아래에서 enemies 전체에 들어감)
-        const seenEnemies = enemies.filter(e => !isStealthed(e) && !hiddenByDarkness(u, e));
+        const seenEnemies = enemies.filter(e => !hiddenFrom(u, e) && !hiddenByDarkness(u, e));
         const target = pickTarget(u, allies, seenEnemies);
         if (!target) {
           // 은신·암흑으로 적이 안 보여도 멈춰 서지 않고 걸어 다니며 아무 데나 공격을 휘두름
@@ -15485,7 +15493,7 @@
       }
       if (sk === 'back_roll') {
         // 회피: 바라보는 쪽(조준한 쪽) 반대로 3칸 빠르게 굴러 물러남. AI는 가장 가까운 적 반대쪽으로
-        const threat = enemies.filter(e => !isStealthed(e)).reduce((b, e) => {
+        const threat = enemies.filter(e => !hiddenFrom(unit, e)).reduce((b, e) => {
           const d = unitDist(e, unit);
           return !b || d < b.d ? { e, d } : b;
         }, null);
@@ -15525,7 +15533,7 @@
           return true;
         }
         const angle = aimPt ? Math.atan2(aimPt.y - unit.y, aimPt.x - unit.x)
-          : sniperBuckAngle(unit, enemies.filter(e => !isStealthed(e)), target && target.alive ? target : null);
+          : sniperBuckAngle(unit, enemies.filter(e => !hiddenFrom(unit, e)), target && target.alive ? target : null);
         sniperFace(unit, angle);
         unit.ammo = 0;
         sim.effects.push({ type: 'sniper_spread', x: unit.x, y: unit.y - 10, angle, r: SNIPER_BUCK_REACH, half: SNIPER_BUCK_HALF_ANGLE, n, life: 22, maxLife: 22 });
@@ -15542,7 +15550,7 @@
           return true;
         }
         const angle = aimPt ? Math.atan2(aimPt.y - unit.y, aimPt.x - unit.x)
-          : sniperBestAngle(unit, enemies.filter(e => !isStealthed(e)), target && target.alive ? target : null, SNIPER_INFINITE, SNIPER_FINISH_HALF_W);
+          : sniperBestAngle(unit, enemies.filter(e => !hiddenFrom(unit, e)), target && target.alive ? target : null, SNIPER_INFINITE, SNIPER_FINISH_HALF_W);
         sniperFace(unit, angle);
         unit.ammo = 0;
         unit.reloadLeft = 0;
@@ -15677,7 +15685,7 @@
         // 피어싱: 바라보는 쪽 3칸 좁은 직선 안의 적 모두 200% + 출혈 5초
         // AI는 직선에 가장 많은 적이 꿰이는 쪽으로
         const angle = aimPt ? lancerAimAngle(unit, target, aimPt)
-          : lancerBestLine(unit, enemies.filter(e => !isStealthed(e)), LANCER_PIERCE_LENGTH, LANCER_PIERCE_HALF_W, target && target.alive ? target : null).angle;
+          : lancerBestLine(unit, enemies.filter(e => !hiddenFrom(unit, e)), LANCER_PIERCE_LENGTH, LANCER_PIERCE_HALF_W, target && target.alive ? target : null).angle;
         sim.effects.push({ type: 'pierce_fx', x: unit.x, y: unit.y - 6, angle, r: LANCER_PIERCE_LENGTH, life: 26, maxLife: 26 });
         playCombatSfx('slash');
         lancerLineHits(unit, angle, LANCER_PIERCE_LENGTH, LANCER_PIERCE_HALF_W).forEach(e => {
@@ -15727,7 +15735,7 @@
         // 창돌격: 바라보는 쪽 4칸 (전사 돌진보다 느리게). 부딪힌 적은 창끝에 꽂혀 끌려가며 기절
         // AI는 돌격 직선에 가장 많은 적이 꿰이는 쪽으로 (0.5초 시전이 끝난 지금 위치로 다시 계산)
         const angle = aimPt ? lancerAimAngle(unit, target, aimPt)
-          : lancerBestLine(unit, enemies.filter(e => !isStealthed(e)), LANCER_CHARGE_REACH, LANCER_CHARGE_HALF_W, target && target.alive ? target : null).angle;
+          : lancerBestLine(unit, enemies.filter(e => !hiddenFrom(unit, e)), LANCER_CHARGE_REACH, LANCER_CHARGE_HALF_W, target && target.alive ? target : null).angle;
         startDragRush(unit, enemies, angle, LANCER_CHARGE_DISTANCE, LANCER_CHARGE_TICKS, 1.5, '#b45309', 34);
         playCombatSfx('heavy');
         addBattleLog(`🏇 [창병] ${unit.name}의 창돌격!`);
@@ -15957,7 +15965,7 @@
     // 후보 = 적 자리 · 두 적 사이 가운데 · 그 원에 든 적들의 한가운데. 가장자리에 걸친 적은 빠져나가기 쉬워 r을 조금 좁혀 셈
     // 수가 같으면 prefer(현재 목표)가 든 쪽, 그다음 적들이 더 촘촘히 모인 쪽. 사거리 안에 후보가 없으면 null
     function bestAoePoint(u, enemies, reach, r, prefer = null) {
-      const live = enemies.filter(e => e.alive && !isStealthed(e));
+      const live = enemies.filter(e => e.alive && !hiddenFrom(u, e));
       const rr = r * 0.85;
       const hitsAt = (x, y) => live.filter(e => Math.hypot(e.x - x, e.y - y) - unitBodyGap(e) <= rr);
       const rate = (x, y) => {
@@ -16173,7 +16181,7 @@
 
     // 그림자 이동 대상: 직접 조종이면 커서에 가까운 적, 아니면 가장 가까운 적 (4칸 안, 은신한 적은 못 봄)
     function pickShadowStepTarget(unit, enemies, aimPt = null) {
-      const inRange = enemies.filter(e => e.alive && !isStealthed(e) && unitDist(e, unit) <= ROGUE_SHADOW_STEP_RANGE);
+      const inRange = enemies.filter(e => e.alive && !hiddenFrom(unit, e) && unitDist(e, unit) <= ROGUE_SHADOW_STEP_RANGE);
       const from = aimPt || unit;
       return inRange.sort((a, b) => Math.hypot(a.x - from.x, a.y - from.y) - Math.hypot(b.x - from.x, b.y - from.y))[0] || null;
     }
