@@ -35,6 +35,26 @@
   });
   const firstMon = SB.monList[0].items[0].key;
 
+  // ----- 새로고침해도 배치·설정 유지 (이 브라우저의 localStorage) -----
+  const STORE_KEY = 'caSandboxV1';
+  function saveState() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({ specs: SB.specs, cd: SB.cd, mana: SB.mana, form, sel: SB.sel }));
+    } catch (e) {}
+  }
+  function loadState() {
+    try {
+      const d = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+      if (!d || !Array.isArray(d.specs)) return;
+      SB.specs = d.specs.filter(sp => sp && JOB_DEFS[sp.job] && (sp.kind !== 'monster' || SB.mons[sp.mon]));
+      SB.seq = SB.specs.reduce((m, sp) => Math.max(m, sp.id || 0), 0);
+      if (typeof d.cd === 'boolean') SB.cd = d.cd;
+      if (typeof d.mana === 'boolean') SB.mana = d.mana;
+      if (d.form) Object.assign(form, d.form);
+      SB.sel = SB.specs.some(sp => sp.id === d.sel) ? d.sel : null;
+    } catch (e) {}
+  }
+
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const defBeh = () => ({ move: 1, attack: 1, skill: 1, dash: 1, block: {} });
   const form = { team: 'blue', kind: 'merc', job: 'warrior', rarity: 'N', level: 40, skin: 0, mon: firstMon, floor: 20, hp: 50000, atk: 4, def: 10, allSkills: 0 };
@@ -248,6 +268,7 @@
   function render() {
     const el = document.getElementById('sbPanel');
     if (!el) return;
+    saveState();
     const scroll = el.scrollTop;
     const row = sp => `<div class="rounded-lg border ${SB.sel === sp.id ? 'border-amber-400 bg-slate-800' : 'border-slate-700 bg-slate-900'} p-1.5 mb-1">
       <div class="flex items-center gap-1.5 cursor-pointer" onclick="SBUI.select(${sp.id})">
@@ -345,8 +366,8 @@
       renderLiveUnitStatus(); render();
     },
     place(id) { SB.placing = SB.placing === id ? null : id; render(); },
-    beh(id, k, v) { byId(id).beh[k] = v ? 1 : 0; },
-    block(id, k, allowed) { const b = byId(id).beh.block; if (allowed) delete b[k]; else b[k] = true; },
+    beh(id, k, v) { byId(id).beh[k] = v ? 1 : 0; saveState(); },
+    block(id, k, allowed) { const b = byId(id).beh.block; if (allowed) delete b[k]; else b[k] = true; saveState(); },
     preset(id, name) {
       const sp = byId(id), p = PRESETS.find(x => x[0] === name);
       if (sp && p) Object.assign(sp.beh, p[2]);
@@ -367,8 +388,8 @@
       }
       render();
     },
-    cdToggle(on) { SB.cd = on; },
-    manaToggle(on) { SB.mana = on; },
+    cdToggle(on) { SB.cd = on; saveState(); },
+    manaToggle(on) { SB.mana = on; saveState(); },
     healAll() {
       sim.units.forEach(u => {
         if (!u.alive) return;
@@ -425,7 +446,8 @@
     controllers: {}, awaitingControlChoice: false, waitingForOpponent: false, meta: {}, eliteIntro: null, forfeitTeam: null,
     spectator: false, duel1v1: false, teamLive: false, towerWatch: null, raidWatch: null, raidLive: null });
   battleControl.mode = 'auto'; battleControl.unitId = null; battleControl.locked = true;
-  rebuildAll(); // 처음에는 아무도 없는 빈 전장 (기본 5:5는 버튼으로)
+  loadState(); // 저장된 게 없으면 아무도 없는 빈 전장 (기본 5:5는 버튼으로)
+  rebuildAll();
   render();
   resetArenaCamera('center');
 })();
