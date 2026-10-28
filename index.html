@@ -5888,6 +5888,21 @@
       img.src = `assets/sprites/fx/${k === 'arrow' ? 'storm_arrow' : `archer_storm_${k}`}.webp`;
       ARCHER_STORM_FX[k] = img;
     });
+    // 외형별 시전 그림(같은 칸 규격): 1~5번 외형 · 시크릿 레어 sr1(얼음 바람 — 전용 돌풍 화살·바람 포함). 키 = skinVariant
+    ARCHER_STORM_FX.casts = {};
+    [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5'], [SECRET_SKIN_BASE + 1, 'sr1']].forEach(([v, n]) => {
+      const img = new Image();
+      img.onload = () => { img.ready = true; };
+      img.src = `assets/sprites/fx/archer_storm_cast_${n}.webp`;
+      ARCHER_STORM_FX.casts[v] = img;
+    });
+    ARCHER_STORM_FX.sr = { arrowCX: 630, arrowCY: 145, arrow: new Image(), wind: new Image() };
+    [['arrow', 'storm_arrow_sr1'], ['wind', 'archer_storm_wind_sr1']].forEach(([k, f]) => {
+      const img = ARCHER_STORM_FX.sr[k];
+      img.onload = () => { img.ready = true; };
+      img.src = `assets/sprites/fx/${f}.webp`;
+    });
+    const archerStormSr = v => (v || 0) === SECRET_SKIN_BASE + 1 ? ARCHER_STORM_FX.sr : null; // 시크릿 레어 전용 이펙트
 
     // 전사 히든 스킬 [엑스칼리버] 그림 (fx/samples/README.md)
     // - cast: 기본 외형(warrior_0)이 검을 치켜드는 자세(0칸) → 검을 내리는 자세(1칸) · fx: 기를 모으는 고리 둘 · 베기 초승달 둘 · 날아가는 검기 · 발밑 반짝임
@@ -16766,7 +16781,7 @@
           : (tgt ? lancerBestLine(unit, enemies.filter(e => !hiddenFrom(unit, e)), C * 12, HIDDEN_STORM_R, tgt).angle : (unit.facingAngle || 0));
         sniperFace(unit, angle);
         const ticks = Math.max(1, Math.round(distToArenaEdge(shot.x, shot.y, angle) / HIDDEN_STORM_SPEED));
-        sim.effects.push({ type: 'hidden_storm', x: shot.x, y: shot.y, angle, speed: HIDDEN_STORM_SPEED, r: HIDDEN_STORM_R, life: ticks, maxLife: ticks });
+        sim.effects.push({ type: 'hidden_storm', x: shot.x, y: shot.y, angle, speed: HIDDEN_STORM_SPEED, r: HIDDEN_STORM_R, life: ticks, maxLife: ticks, sr: !!archerStormSr(unit.skinVariant) });
         sim.hiddenFx.push({ kind: 'storm', owner: unit, x: shot.x, y: shot.y + 12, angle, left: ticks, dmg: unit.atk * 4.5, last: new Map() });
         playCombatSfx('arrow');
         addBattleLog(`🌬️ [궁수] ${unit.name}의 히든 스킬 폭풍! 돌풍 화살이 전장을 가로질러요!`);
@@ -17093,7 +17108,8 @@
           if (c.key === 'musou') { ctx.restore(); return; } // 무쌍난무: 시전 중엔 잔상 이펙트(자세 그림)만 씀
           if (c.key === 'storm') {
             // 폭풍: 모이는 원 대신, 시전 그림에서 뽑은 초록·청록 바람줄기와 잎이 몸 둘레에서 일렁이며 점점 커짐
-            const wind = ARCHER_STORM_FX.wind;
+            const srw = archerStormSr(u.skinVariant);
+            const wind = srw ? srw.wind : ARCHER_STORM_FX.wind;
             if (wind.ready) {
               const W = ARCHER_STORM_FX.cellW, H = ARCHER_STORM_FX.cellH;
               ctx.globalCompositeOperation = 'lighter';
@@ -17504,15 +17520,16 @@
         // 폭풍: 화살촉을 감싼 나선형 바람이 돌면서 느리게 나아감
         const travel = (ef.maxLife - ef.life) * ef.speed;
         ctx.translate(ef.x + Math.cos(ef.angle) * travel, ef.y + Math.sin(ef.angle) * travel);
-        const art = ARCHER_STORM_FX.arrow;
+        const srFx = ef.sr && ARCHER_STORM_FX.sr.arrow.ready ? ARCHER_STORM_FX.sr : null;
+        const art = srFx ? srFx.arrow : ARCHER_STORM_FX.arrow;
         if (art.ready) {
           // 그림 화살: 앞쪽 큰 고리가 돌풍 판정 자리. 위아래로 뒤집은 그림을 번갈아 비춰 나선이 도는 것처럼
           const sc = ef.r / ARCHER_STORM_FX.arrowRingR;
           ctx.rotate(ef.angle);
           ctx.globalAlpha = Math.min(1, fade * 6);
           ctx.scale(sc, sc); // 모양이 일렁이지 않게 그대로 날아감
-          ctx.drawImage(art, -ARCHER_STORM_FX.arrowCX, -ARCHER_STORM_FX.arrowCY);
-          const wind = ARCHER_STORM_FX.wind;
+          ctx.drawImage(art, -(srFx || ARCHER_STORM_FX).arrowCX, -(srFx || ARCHER_STORM_FX).arrowCY);
+          const wind = srFx && srFx.wind.ready ? srFx.wind : ARCHER_STORM_FX.wind;
           if (wind.ready) {
             // 간단한 바람 한 겹: 고리 둘레에서 초록 바람줄기가 은은하게 일렁임
             const age = ef.maxLife - ef.life, W = ARCHER_STORM_FX.cellW, H = ARCHER_STORM_FX.cellH, n = Math.floor(age / 5) % 3;
@@ -19182,8 +19199,9 @@
         const ks = spriteDrawH(u, sprite) / storm.standH;
         const drawStorm = img => ctx.drawImage(img, fi * storm.cellW, 0, storm.cellW, storm.cellH,
           -storm.anchorX * ks, -storm.anchorY * ks, storm.cellW * ks, storm.cellH * ks);
-        if ((u.skinVariant || 0) === 0 && storm.cast.ready) {
-          drawStorm(storm.cast);
+        const stormCast = (u.skinVariant || 0) === 0 ? storm.cast : storm.casts[u.skinVariant];
+        if (stormCast && stormCast.ready) {
+          drawStorm(stormCast);
           ctx.restore();
           return;
         }
