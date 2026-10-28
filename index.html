@@ -3308,7 +3308,7 @@
         storm: {
           id: 'storm', name: '폭풍', icon: '🌬️', ccTag: '✨히든 · 관통 다단히트', hidden: true,
           manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 3,
-          desc: '3초간 활을 당긴 뒤, 맵 끝까지 적을 꿰뚫으며 느리게 나아가는 나선형 돌풍 화살을 쏩니다. 돌풍에 닿아 있는 적은 계속해서 300% 다단히트 피해를 받아요.'
+          desc: '3초간 활을 당긴 뒤, 맵 끝까지 적을 꿰뚫으며 나아가는 나선형 돌풍 화살을 쏩니다. 돌풍에 닿아 있는 적은 계속해서 450% 다단히트 피해를 받아요.'
         }
       },
       rogue: {
@@ -16612,7 +16612,7 @@
     // 날아가는 검기·돌풍·융합 장판의 판정은 sim.hiddenFx (방장·혼자 전투만), 그림은 sim.effects의 hidden_* (관전 화면에도 그대로 감)
     const HIDDEN_BEAM_SPEED = 12;          // 엑스칼리버 검기: 틱마다 나아가는 거리
     const HIDDEN_BEAM_HALF_W = 104;        // 검기 높이의 절반
-    const HIDDEN_STORM_SPEED = 3.4;        // 폭풍 돌풍 화살: 느리게 나아감
+    const HIDDEN_STORM_SPEED = 4.42;       // 폭풍 돌풍 화살: 속도 +30%
     const HIDDEN_STORM_R = 95;             // 돌풍 반지름
     // 돌풍 화살 판정: 그림 화살(고리 중심 기준)을 따라 길쭉한 모양. [진행 방향 구간 시작, 끝, 반폭] (그림 픽셀 단위, ×HIDDEN_STORM_R/고리 반지름)
     const HIDDEN_STORM_SHAPE = [[-410, -120, 85], [-120, 120, 125], [120, 250, 40]];
@@ -16732,14 +16732,14 @@
         return true;
       }
       if (sk === 'storm') {
-        // 맵 끝까지 느리게 나아가는 나선형 돌풍 화살: 닿아 있는 적에게 300% 다단히트 (관통)
+        // 맵 끝까지 느리게 나아가는 나선형 돌풍 화살: 닿아 있는 적에게 450% 다단히트 (관통)
         const shot = unitShotOrigin(unit);
         const angle = aimPt ? Math.atan2(aimPt.y - 12 - shot.y, aimPt.x - shot.x)
           : (tgt ? lancerBestLine(unit, enemies.filter(e => !hiddenFrom(unit, e)), C * 12, HIDDEN_STORM_R, tgt).angle : (unit.facingAngle || 0));
         sniperFace(unit, angle);
         const ticks = Math.max(1, Math.round(distToArenaEdge(shot.x, shot.y, angle) / HIDDEN_STORM_SPEED));
         sim.effects.push({ type: 'hidden_storm', x: shot.x, y: shot.y, angle, speed: HIDDEN_STORM_SPEED, r: HIDDEN_STORM_R, life: ticks, maxLife: ticks });
-        sim.hiddenFx.push({ kind: 'storm', owner: unit, x: shot.x, y: shot.y + 12, angle, left: ticks, dmg: unit.atk * 3, last: new Map() });
+        sim.hiddenFx.push({ kind: 'storm', owner: unit, x: shot.x, y: shot.y + 12, angle, left: ticks, dmg: unit.atk * 4.5, last: new Map() });
         playCombatSfx('arrow');
         addBattleLog(`🌬️ [궁수] ${unit.name}의 히든 스킬 폭풍! 돌풍 화살이 전장을 가로질러요!`);
         return true;
@@ -17450,33 +17450,14 @@
           ctx.globalAlpha = Math.min(1, fade * 6);
           ctx.scale(sc, sc); // 모양이 일렁이지 않게 그대로 날아감
           ctx.drawImage(art, -ARCHER_STORM_FX.arrowCX, -ARCHER_STORM_FX.arrowCY);
-          if (TORNADO_FX.green) {
-            // 휘몰아치는 회오리: 보라 회오리 샘플을 초록으로 물들여 화살대 방향으로 눕혀 감쌈. 번갈아 뒤집어 소용돌이가 도는 듯
-            const age = ef.maxLife - ef.life, flip = Math.floor(age / 5) % 2 ? -1 : 1;
-            ctx.save();
-            ctx.globalCompositeOperation = 'lighter';
-            ctx.translate(-70, 0);
-            ctx.rotate(Math.PI / 2);
-            ctx.scale(flip, 1);
-            ctx.globalAlpha = ctx.globalAlpha * (0.6 + 0.15 * Math.sin(age * 0.4));
-            const k = 2.6;
-            ctx.drawImage(TORNADO_FX.green, -TORNADO_FX.w * k / 2, -TORNADO_FX.h * k / 2, TORNADO_FX.w * k, TORNADO_FX.h * k);
-            ctx.restore();
-          }
           const wind = ARCHER_STORM_FX.wind;
           if (wind.ready) {
-            // 시전 그림에서 뽑은 초록·청록 바람줄기와 잎: 고리 둘레와 꼬리 쪽에서 프레임을 바꿔 가며 일렁임
-            const age = ef.maxLife - ef.life, A = ctx.globalAlpha, W = ARCHER_STORM_FX.cellW, H = ARCHER_STORM_FX.cellH;
+            // 간단한 바람 한 겹: 고리 둘레에서 초록 바람줄기가 은은하게 일렁임
+            const age = ef.maxLife - ef.life, W = ARCHER_STORM_FX.cellW, H = ARCHER_STORM_FX.cellH, n = Math.floor(age / 5) % 3;
             ctx.globalCompositeOperation = 'lighter';
-            [[0, 0, 1.9, 0.8, 0], [-230, 0, 1.5, 0.55, 2], [-430, 0, 1.1, 0.4, 5]].forEach(([ox, oy, k, al, ph]) => {
-              const fi = Math.floor(age / 4 + ph) % 3;
-              ctx.save();
-              ctx.translate(ox, oy);
-              ctx.rotate(((age / 4 + ph) | 0) * 2.1 + Math.sin(age * 0.1 + ph) * 0.25);
-              ctx.globalAlpha = A * al * (0.75 + 0.25 * Math.sin(age * 0.35 + ph * 2));
-              ctx.drawImage(wind, fi * W, 0, W, H, -W * k / 2, -H * k / 2, W * k, H * k);
-              ctx.restore();
-            });
+            ctx.rotate(n * 2.1);
+            ctx.globalAlpha *= 0.5;
+            ctx.drawImage(wind, n * W, 0, W, H, -W * 1.9 / 2, -H * 1.9 / 2, W * 1.9, H * 1.9);
           }
           return;
         }
