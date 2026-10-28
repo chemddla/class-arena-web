@@ -16008,6 +16008,21 @@
       return (unit.range || 60) + 14;
     }
 
+    const ASSASSIN_STRIKE_DELAY = 24; // 암살: 등 뒤에 나타난 뒤 찌르기까지 (0.4초)
+    function assassinStrike(unit, foe, strikeDir) {
+      if (!foe || !foe.alive) return;
+      sim.effects.push({ type: 'hidden_assassin', x: foe.x, y: foe.y - 20, dir: strikeDir, life: 34, maxLife: 34 });
+      applyDamage(unit, foe, unit.atk * 15, '', '#a855f7');
+      if (foe.alive) {
+        foe.permBleed = true;
+        foe.statuses.bleed = Math.max(foe.statuses.bleed || 0, 160);
+        sim.floatTexts.push({ x: foe.x, y: foe.y - 60, text: '🩸 풀리지 않는 출혈!', color: '#e11d48', life: 70 });
+      }
+      hiddenImpact(14, '#ede9fe');
+      playCombatSfx('slash');
+      addBattleLog(`🔪 [도적] ${unit.name}의 히든 스킬 암살! ${foe.name}의 등 뒤를 찔렀어요!`);
+    }
+
     function beginSkillCast(unit, key, aim = null) {
       const sk = unitSkillBook(unit)[key];
       if (!sk) return;
@@ -16053,6 +16068,7 @@
       }
       if (--c.left > 0) return true;
       unit.casting = null;
+      if (c.key === 'assassin_strike') { assassinStrike(unit, c.aimTarget, c.strikeDir); return true; }
       // 부활: 시전하는 동안 살릴 아군이 없어졌으면(다른 성녀가 먼저 살림 등) 마나·쿨타임을 쓰지 않고 취소
       if (c.key === 'revive' && !sim.units.some(x => x.team === unit.team && !x.alive && x.monsterType !== 'scarecrow' && !x.isClone)) {
         sim.floatTexts.push({ x: unit.x, y: unit.y - 52, text: '🌟 살릴 아군이 없어 취소', color: '#64748b', life: 40 });
@@ -16756,24 +16772,17 @@
         sim.effects.push({ type: 'hidden_assassin_smoke', x: unit.x, y: unit.y + 8, life: 40, maxLife: 40 });
         sim.effects.push({ type: 'hidden_assassin_smoke', x: dest.x, y: dest.y + 8, life: 40, maxLife: 40 });
         const strikeDir = foe.x >= dest.x ? 1 : -1;
-        unit.assassinPose = { start: sim.tickCount }; // 도착한 뒤 단검을 내지르는 자세를 잠깐 보여 줌
+        unit.assassinPose = { start: sim.tickCount }; // 도착해서 연기를 두른 자세를 보여 준 뒤 단검을 내지르고 거둠
         unit.x = dest.x;
         unit.y = dest.y;
         unit.kbVx = 0;
         unit.kbVy = 0;
         unit.rush = null;
         sniperFace(unit, Math.atan2(foe.y - unit.y, foe.x - unit.x));
-        sim.effects.push({ type: 'hidden_assassin', x: foe.x, y: foe.y - 20, dir: strikeDir, life: 34, maxLife: 34 });
-        applyDamage(unit, foe, unit.atk * 15, '', '#a855f7');
-        if (foe.alive) {
-          foe.permBleed = true;
-          foe.statuses.bleed = Math.max(foe.statuses.bleed || 0, 160);
-          sim.floatTexts.push({ x: foe.x, y: foe.y - 60, text: '🩸 풀리지 않는 출혈!', color: '#e11d48', life: 70 });
-        }
+        // 등 뒤에 선 채 잠깐 자세를 잡은 뒤에 찌름 (stepSkillCast의 assassin_strike)
+        unit.casting = { key: 'assassin_strike', left: ASSASSIN_STRIKE_DELAY, total: ASSASSIN_STRIKE_DELAY, icon: '🔪', aimX: null, aimY: null, aimTarget: foe, strikeDir };
+        unit.isMoving = false;
         unit.cooldown = Math.min(unit.cooldown || 0, 6);
-        hiddenImpact(14, '#ede9fe');
-        playCombatSfx('slash');
-        addBattleLog(`🔪 [도적] ${unit.name}의 히든 스킬 암살! ${foe.name}의 등 뒤를 찔렀어요!`);
         return true;
       }
       if (sk === 'giant') {
@@ -19143,17 +19152,22 @@
       // 도적 히든 스킬 [암살]: 시전 중엔 불꽃 → 그림자 → 연기를 두른 자세, 등 뒤에 나타난 직후엔 단검을 내지르다 거두는 자세 (기본 외형만)
       const assassinCast = u.alive && u.job === 'rogue' && !u.monsterType && (u.skinVariant || 0) === 0 && ROGUE_ASSASSINATE_FX.cast.ready && u.casting && u.casting.key === 'assassinate';
       const assassinSince = u.alive && u.assassinPose && u.job === 'rogue' && !u.monsterType && (u.skinVariant || 0) === 0 && ROGUE_ASSASSINATE_FX.cast.ready ? sim.tickCount - u.assassinPose.start : 99;
-      if (assassinCast || (assassinSince >= 0 && assassinSince < 36)) {
+      if (assassinCast || (assassinSince >= 0 && assassinSince < 24 + 32)) {
         const as = ROGUE_ASSASSINATE_FX;
         const ks = spriteDrawH(u, sprite) / as.standH;
-        let fi, shake = 0;
+        let fi, shake = 0, fade = 0;
         if (assassinCast) {
           const p = 1 - u.casting.left / u.casting.total;
-          fi = p < 0.3 ? 0 : (p < 0.85 ? (tick % 14 < 3 ? 0 : 1) : 2);
-          if (fi === 1) shake = Math.sin(tick * 1.2) * 0.8 * ks;
-        } else fi = assassinSince < 16 ? 3 : 4;
+          fi = 0; // 불꽃 자세 위에 어둠 자세를 서서히 덧입혀 검게 변함
+          fade = Math.max(0, Math.min(1, (p - 0.2) / 0.7));
+        } else fi = assassinSince < 24 ? 2 : (assassinSince < 40 ? 3 : 4); // 등 뒤에서 연기 자세 → 찌름 → 거둠
         ctx.drawImage(as.cast, fi * as.cellW, 0, as.cellW, as.cellH,
           -as.anchorX * ks + shake, -as.anchorY * ks, as.cellW * ks, as.cellH * ks);
+        if (fade > 0) {
+          ctx.globalAlpha *= fade;
+          ctx.drawImage(as.cast, as.cellW, 0, as.cellW, as.cellH,
+            -as.anchorX * ks, -as.anchorY * ks, as.cellW * ks, as.cellH * ks);
+        }
         ctx.restore();
         return;
       }
