@@ -30101,6 +30101,29 @@
       patch: ['check_beige', 'dot_sage'], check_mint: ['gingham_peach', 'dot_mint'], flower_stripe: ['floral_pink', 'plaid_mint'],
       cream_lime: ['cream', 'lime'], blue_gray: ['sage_gray', 'slate_blue'], olive_mint: ['olive', 'mint'],
     };
+    // 방에 데려온 펫이 올라가 쉬는 자리. z: 바닥에서 높이(층, 그림의 앉는 면 가운데를 재서 맞춤)
+    // pose: sit 앉아 쉬기 · sleep 누워 자기 · walk 제자리 걷기(러닝머신) · play 물놀이
+    // cells: 그림 왼쪽부터 몇 번째 칸만 (없으면 가구 칸 전부)
+    const HOME_PERCH = {
+      bed_single:  [{ z: 0.6, pose: 'sleep' }],
+      bunk_bed:    [{ z: 1.3, pose: 'sleep' }],
+      sofa:        [{ z: 0.55, pose: 'sit' }],
+      armchair:    [{ z: 0.6, pose: 'sit' }],
+      chair:       [{ z: 0.6, pose: 'sit' }],
+      chair_wood:  [{ z: 0.55, pose: 'sit' }],
+      desk:        [{ z: 0.95, pose: 'sit' }],
+      desk_study:  [{ z: 0.9, pose: 'sit' }],
+      dresser:     [{ z: 1.45, pose: 'sit' }],
+      piano:       [{ z: 1.95, pose: 'sit' }],
+      cat_tower:   [{ z: 0.55, pose: 'sit' }, { z: 1.15, pose: 'sit' }, { z: 2.0, pose: 'sleep' }],
+      sewing_desk: [{ z: 1.0, pose: 'sit', cells: [0, 1] }, { z: 0.55, pose: 'sit', cells: [2] }],
+      tv_stand:    [{ z: 0.75, pose: 'sit', cells: [0, 2] }],
+      treadmill:   [{ z: 0.25, pose: 'walk' }],
+      pool:        [{ z: 0.3, pose: 'play' }],
+    };
+    const HOME_PET_SCALE = 0.7;  // 펫 그림 배율 (방 도트 기준: 고양이가 의자 앉는 면을 거의 채우는 크기)
+    const HOME_PET_SPEED = 1.4;  // 칸/초
+    const HOME_PET_HOP = 0.6;    // 가구에 오르내릴 때 한 번 뛰는 시간(초)
     // 색 바꾸기 견본 (가구의 색 묶음마다 하나를 고르면 명암은 그대로 두고 색만 바뀜)
     const HOME_SWATCHES = ['#d94c4c', '#e8873a', '#e8c43a', '#8cc84b', '#3f9a5a', '#4fb8b0', '#5bb4e0', '#3f6fc8', '#2f3f86', '#8a5cc8', '#e87aa8', '#9a6438', '#c9a27a', '#3a3a40', '#f2f0f4'];
     function homeHsl(r, g, b) {
@@ -30151,6 +30174,9 @@
         }))].filter(k => HOME_SKIN[k]);
         if (HOME_SKIN_SPLIT[stu.home.wall]) stu.home.wall = HOME_SKIN_SPLIT[stu.home.wall][0];
         ['wall', 'floor'].forEach(p => { if (stu.home[p] && !HOME_SKIN[`${p}:${stu.home[p]}`]) delete stu.home[p]; });
+        // 방에 데려온 펫 (펫 id 목록)
+        if (!Array.isArray(stu.home.pets)) stu.home.pets = Object.values(stu.home.pets || {});
+        stu.home.pets = stu.home.pets.filter(id => typeof id === 'string');
         return stu.home;
       },
       // ───── 친구 방 구경 (읽기 전용: 친구 기록은 바꾸지 않고 사본만 그림) ─────
@@ -30291,6 +30317,7 @@
         return (this.tinted[ck] = { canvas: cv, naturalWidth: cv.width, naturalHeight: cv.height });
       },
       rect(it) {
+        if (it._rect) return it._rect; // 방 안의 펫 (칸 가운데 둘레)
         const def = HOME_DEF[it.id], s = this.dims(def, it.r || 0);
         return { x0: it.x, y0: it.y, x1: it.x + s.X, y1: it.y + s.Y, def };
       },
@@ -30469,8 +30496,245 @@
         const selIt = this.sel && items.find(it => it.u === this.sel);
         if (selIt) this.outline(selIt, '#f59e0b');
         if (g) this.outline(g, ghostOk ? '#22c55e' : '#ef4444');
-        const list = floor.concat(g && HOME_DEF[g.id].cat !== 'rug' ? [g] : []);
-        this.order(list).forEach(it => this.drawItem(it, it === g ? 0.75 : 1));
+        // 펫: 바닥에 있으면 칸 가운데 둘레로 가구와 앞뒤를 가리고, 가구 위에 있으면 그 가구 바로 다음에 그림
+        const pets = Object.values(this.petRt || {}), drawn = new Set();
+        const floorPets = pets.filter(s => !s.drawHost).map(s => ({ pet: s, _rect: { x0: s.X - 0.3, x1: s.X + 0.3, y0: s.Y - 0.3, y1: s.Y + 0.3 } }));
+        const list = floor.concat(g && HOME_DEF[g.id].cat !== 'rug' ? [g] : []).concat(floorPets);
+        this.order(list).forEach(it => {
+          if (it.pet) { this.drawPet(it.pet); drawn.add(it.pet); return; }
+          this.drawItem(it, it === g ? 0.75 : 1);
+          pets.filter(s => s.drawHost === it.u && it !== g).forEach(s => { this.drawPet(s); drawn.add(s); });
+        });
+        pets.filter(s => !drawn.has(s)).forEach(s => this.drawPet(s));
+      },
+
+      // ───── 방 안의 펫: 칸을 따라 걷고, 가구는 피하거나 올라가 앉음 ─────
+      // 방 주인(내 방 또는 구경 중인 친구)의 펫 중 방에 데려온 것
+      petOwner() { return this.visitId ? this.visitor() : this.student(); },
+      petList() {
+        const o = this.petOwner(), ids = o && o.home && o.home.pets ? Object.values(o.home.pets) : [];
+        const owned = o ? PetSystem.ownedPets(o) : [];
+        return ids.map(id => owned.find(p => p.id === id)).filter(Boolean);
+      },
+      // 칸 → 그 칸을 차지한 가구 (러그는 밟고 지나감)
+      cellMap() {
+        const m = {};
+        this.placed().forEach(it => {
+          if (HOME_DEF[it.id].cat === 'rug') return;
+          const r = this.rect(it);
+          for (let x = r.x0; x < r.x1; x++) for (let y = r.y0; y < r.y1; y++) m[`${x},${y}`] = it;
+        });
+        return m;
+      },
+      // 펫이 올라갈 수 있는 자리 [{ X, Y, z, pose, u }]
+      perches() {
+        const out = [];
+        this.placed().forEach(it => {
+          const list = HOME_PERCH[it.id];
+          if (!list) return;
+          const def = HOME_DEF[it.id], r = it.r || 0;
+          list.forEach(p => {
+            for (let lx = 0; lx < def.w; lx++) for (let ly = 0; ly < def.d; ly++) {
+              if (p.cells && !p.cells.includes(lx)) continue;
+              // 그림 왼쪽→오른쪽 칸: 회전이 짝수면 X 방향, 홀수면(좌우 반전된 그림) Y 방향 (look()과 맞춤)
+              out.push({ X: it.x + (r % 2 ? ly : lx), Y: it.y + (r % 2 ? lx : ly), z: p.z, pose: p.pose, u: it.u });
+            }
+          });
+        });
+        return out;
+      },
+      freeCell(X, Y, cm) { return X >= 0 && Y >= 0 && X < HOME_ROOM_X && Y < HOME_ROOM_Y && !cm[`${X},${Y}`]; },
+      nbrs(c) { return [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ X: c.X + dx, Y: c.Y + dy })); },
+      // 바닥 빈칸 너비 우선 탐색 (칸 격자를 따라 4방향)
+      bfs(from, cm) {
+        const prev = { [`${from.X},${from.Y}`]: null }, q = [from], cells = [from];
+        while (q.length) {
+          const c = q.shift();
+          this.nbrs(c).forEach(n => {
+            const k = `${n.X},${n.Y}`;
+            if (k in prev || !this.freeCell(n.X, n.Y, cm)) return;
+            prev[k] = c; q.push(n); cells.push(n);
+          });
+        }
+        return { prev, cells };
+      },
+      // 탐색 결과로 to까지 칸 가운데를 하나씩 밟는 길 (출발 칸 제외)
+      walkPath(prev, to) {
+        const path = [];
+        for (let c = to; prev[`${c.X},${c.Y}`]; c = prev[`${c.X},${c.Y}`]) path.unshift({ X: c.X + 0.5, Y: c.Y + 0.5, z: 0 });
+        return path;
+      },
+      // 데려온 펫과 화면 위 상태를 맞춤 (처음엔 빈 바닥 아무 데나)
+      syncPets() {
+        const owner = this.petOwner();
+        if (this.petOwnerId !== (owner && owner.id)) { this.petRt = {}; this.petOwnerId = owner && owner.id; }
+        this.petRt = this.petRt || {};
+        const list = this.petList(), cm = this.cellMap();
+        Object.keys(this.petRt).forEach(id => { if (!list.some(p => p.id === id)) delete this.petRt[id]; });
+        list.forEach(p => {
+          if (this.petRt[p.id]) return;
+          const free = [];
+          for (let X = 0; X < HOME_ROOM_X; X++) for (let Y = 0; Y < HOME_ROOM_Y; Y++) if (this.freeCell(X, Y, cm)) free.push({ X, Y });
+          const c = free[Math.floor(Math.random() * free.length)] || { X: 0, Y: HOME_ROOM_Y - 1 };
+          this.petRt[p.id] = { id: p.id, type: p.type, X: c.X + 0.5, Y: c.Y + 0.5, z: 0, lift: 0, path: [], hop: null, host: null, drawHost: null,
+            pose: null, mode: 'idle', until: performance.now() + 800 + Math.random() * 1500, dir: Math.random() < 0.5 ? -1 : 1, animT: 0, heartUntil: 0 };
+        });
+      },
+      // 다 와서 쉬기: 앉은 자리 특색에 따라 (침대는 자고, 러닝머신은 걷고, 수영장은 물놀이)
+      petRest(s, now) {
+        const pick = a => a[Math.floor(Math.random() * a.length)];
+        let mode = 'idle', sec = 1.5 + Math.random() * 2;
+        if (s.pose === 'sleep') { mode = Math.random() < 0.8 ? 'sleep' : 'groom'; sec = 7 + Math.random() * 8; }
+        else if (s.pose === 'sit') { mode = Math.random() < 0.2 ? 'sleep' : pick(['idle', 'idle', 'groom', 'yawn']); sec = 4 + Math.random() * 5; }
+        else if (s.pose === 'walk') { mode = 'walk'; sec = 5 + Math.random() * 4; }
+        else if (s.pose === 'play') { mode = 'play'; sec = 4 + Math.random() * 4; }
+        else if (Math.random() < 0.35) { mode = pick(['groom', 'yawn', 'play']); sec = 2 + Math.random() * 2; }
+        s.mode = mode; s.until = now + sec * 1000; s.animT = 0;
+      },
+      // 다음 할 일: 바닥 돌아다니기 / 가구 위로 올라가기 / 앉은 가구 옆자리로 / 뛰어내리기
+      petDecide(s, now) {
+        const pick = a => a[Math.floor(Math.random() * a.length)];
+        const cm = this.cellMap(), perches = this.perches(), cur = { X: Math.floor(s.X), Y: Math.floor(s.Y) };
+        const r = Math.random();
+        if (s.host) {
+          // 러닝머신은 한 번 달리면 대개 내려옴
+          if (r < (s.pose === 'walk' ? 0.1 : 0.3)) return this.petRest(s, now);
+          if (r < 0.5 && s.pose !== 'walk') {
+            const side = perches.filter(p => p.u === s.host && p.z === s.z && Math.abs(p.X - cur.X) + Math.abs(p.Y - cur.Y) === 1);
+            if (side.length) { const p = pick(side); s.path = [{ X: p.X + 0.5, Y: p.Y + 0.5, z: p.z, host: p.u, pose: p.pose }]; return; }
+          }
+          const down = this.nbrs(cur).filter(c => this.freeCell(c.X, c.Y, cm));
+          if (down.length) { const c = pick(down); s.path = [{ X: c.X + 0.5, Y: c.Y + 0.5, z: 0 }]; return; }
+          return this.petRest(s, now);
+        }
+        const { prev, cells } = this.bfs(cur, cm);
+        if (r < 0.5) {
+          // 길이 닿는 가구 자리로: 그 자리 옆 빈칸까지 걸어간 뒤 깡충 올라감
+          const cands = perches.map(p => ({ p, from: this.nbrs(p).filter(c => `${c.X},${c.Y}` in prev) })).filter(o => o.from.length);
+          if (cands.length) {
+            const o = pick(cands), c = pick(o.from);
+            s.path = this.walkPath(prev, c).concat([{ X: o.p.X + 0.5, Y: o.p.Y + 0.5, z: o.p.z, host: o.p.u, pose: o.p.pose }]);
+            return;
+          }
+        }
+        if (r < 0.85 && cells.length > 1) { s.path = this.walkPath(prev, pick(cells.slice(1))); if (s.path.length) return; }
+        this.petRest(s, now);
+      },
+      tickPets(dt, now) {
+        const cm = this.cellMap(), perches = this.perches();
+        Object.values(this.petRt || {}).forEach(s => {
+          s.animT += dt;
+          const cur = { X: Math.floor(s.X), Y: Math.floor(s.Y) };
+          // 앉아 있던 가구가 치워졌거나 서 있던 바닥 칸에 가구가 놓이면 가까운 빈 바닥으로 뛰어내림
+          if (!s.path.length && !s.hop) {
+            const onPerch = s.host && perches.some(p => p.u === s.host && p.X === cur.X && p.Y === cur.Y && p.z === s.z);
+            if ((s.host && !onPerch) || (!s.host && cm[`${cur.X},${cur.Y}`])) {
+              let best = null;
+              for (let X = 0; X < HOME_ROOM_X; X++) for (let Y = 0; Y < HOME_ROOM_Y; Y++) {
+                if (!this.freeCell(X, Y, cm)) continue;
+                const d = Math.abs(X - cur.X) + Math.abs(Y - cur.Y);
+                if (!best || d < best.d) best = { X, Y, d };
+              }
+              s.host = null;
+              if (best) s.path = [{ X: best.X + 0.5, Y: best.Y + 0.5, z: 0, jump: true }];
+            }
+          }
+          if (s.path.length) {
+            const n = s.path[0];
+            // 가는 길에 가구가 놓이면 다시 생각
+            if (!n.host && !n.jump && !s.hop && n.z === 0 && cm[`${Math.floor(n.X)},${Math.floor(n.Y)}`]) { s.path = []; s.until = 0; return; }
+            const dx = n.X - s.X, dy = n.Y - s.Y, dist = Math.hypot(dx, dy);
+            const sx = (dx - dy) * HOME_CW; // 화면 가로 방향으로 고개를 돌림
+            if (Math.abs(sx) > 1) s.dir = sx < 0 ? -1 : 1;
+            if (s.hop || n.z !== s.z || n.jump) {
+              // 오르내릴 땐 깡충 (올라갈 땐 뒷모습 climb, 내려갈 땐 jump)
+              if (!s.hop) s.hop = { fx: s.X, fy: s.Y, fz: s.z, t: 0, up: n.z > s.z, host: s.host || n.host || null };
+              s.hop.t = Math.min(1, s.hop.t + dt / HOME_PET_HOP);
+              const k = s.hop.t;
+              s.X = s.hop.fx + (n.X - s.hop.fx) * k; s.Y = s.hop.fy + (n.Y - s.hop.fy) * k; s.z = s.hop.fz + (n.z - s.hop.fz) * k;
+              s.lift = Math.sin(k * Math.PI) * 0.35;
+              s.drawHost = s.hop.host;
+              if (k >= 1) { s.hop = null; s.lift = 0; this.petArrive(s, n, now); }
+            } else {
+              const step = HOME_PET_SPEED * dt;
+              if (dist <= step) { s.X = n.X; s.Y = n.Y; this.petArrive(s, n, now); }
+              else { s.X += dx / dist * step; s.Y += dy / dist * step; }
+            }
+            if (s.path.length || s.hop) s.mode = 'walk';
+          } else if (now > s.until) this.petDecide(s, now);
+        });
+      },
+      petArrive(s, n, now) {
+        s.path.shift();
+        s.z = n.z; s.host = n.host || null; s.pose = n.pose || null; s.drawHost = s.host;
+        if (!s.path.length) this.petRest(s, now);
+      },
+      petBox(s) {
+        const sh = PET_DEFS[s.type].sheet, p = homeIso(s.X, s.Y, s.z + s.lift), S = HOME_PET_SCALE;
+        return { x0: p.x - sh.anchorX * S, x1: p.x + (sh.cellW - sh.anchorX) * S, y0: p.y - sh.anchorY * S, y1: p.y, p };
+      },
+      drawPet(s) {
+        const def = PET_DEFS[s.type], sh = def && def.sheet, im = sh && this.img(sh.src);
+        if (!im) return;
+        const ctx = this.ctx, S = HOME_PET_SCALE, b = this.petBox(s);
+        let f;
+        if (s.hop) {
+          const frames = sh.anims[s.hop.up ? 'climb' : 'jump'];
+          f = frames[Math.min(frames.length - 1, Math.floor(s.hop.t * frames.length))];
+        } else {
+          const frames = sh.anims[s.mode] || sh.anims.idle, fps = PET_ANIM_FPS[s.mode] || 4;
+          let i = Math.floor(s.animT * fps);
+          i = s.mode === 'yawn' ? Math.min(i, frames.length - 1) : i % frames.length;
+          f = frames[i];
+        }
+        // 발밑 그림자 (뛸 때는 앉을 면에 남음)
+        const g = homeIso(s.X, s.Y, s.z);
+        ctx.save();
+        ctx.fillStyle = 'rgba(40,20,40,0.18)';
+        ctx.beginPath(); ctx.ellipse(g.x, g.y, 46 * S, 18 * S, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.translate(Math.round(b.p.x), Math.round(b.p.y));
+        if (s.dir < 0) ctx.scale(-1, 1);
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(im, f * sh.cellW, 0, sh.cellW, sh.cellH, -sh.anchorX * S, -sh.anchorY * S, sh.cellW * S, sh.cellH * S);
+        ctx.restore();
+        const now = performance.now(), mark = s.heartUntil > now ? '💗' : s.mode === 'sleep' && !s.hop ? '💤' : '';
+        if (mark) {
+          ctx.save();
+          ctx.globalAlpha = mark === '💤' ? 0.55 + 0.35 * Math.sin(now / 400) : 1;
+          ctx.font = '26px "Segoe UI Emoji","Apple Color Emoji",sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(mark, b.p.x + 18, b.y0 + 10 - (mark === '💗' ? (1 - (s.heartUntil - now) / 1600) * 18 : 0));
+          ctx.restore();
+        }
+      },
+      pickPet(p) {
+        return Object.values(this.petRt || {}).reverse().find(s => { const b = this.petBox(s); return p.sx >= b.x0 && p.sx < b.x1 && p.sy >= b.y0 && p.sy < b.y1; });
+      },
+      // 펫을 누르면 좋아함 (가던 길은 멈춤)
+      patPet(s) {
+        const now = performance.now();
+        if (!s.hop) { s.path = []; s.mode = 'like'; s.animT = 0; s.until = now + 1600; }
+        s.heartUntil = now + 1600;
+      },
+      startPets() {
+        this.syncPets();
+        if (!this.petRaf && Object.keys(this.petRt).length) { this.petLast = 0; this.petRaf = requestAnimationFrame(t => this.petLoop(t)); }
+      },
+      petLoop(t) {
+        this.petRaf = 0;
+        if (document.getElementById('studentTab-home')?.classList.contains('hidden') || !Object.keys(this.petRt || {}).length) return;
+        const dt = this.petLast ? Math.min(0.1, (t - this.petLast) / 1000) : 0;
+        this.petLast = t;
+        this.tickPets(dt, performance.now());
+        this.draw();
+        this.petRaf = requestAnimationFrame(tt => this.petLoop(tt));
+      },
+      togglePet(id) {
+        const stu = this.student(), h = this.home(stu);
+        if (!h || !PetSystem.ownedPets(stu).some(p => p.id === id)) return;
+        h.pets = h.pets.includes(id) ? h.pets.filter(x => x !== id) : h.pets.concat(id);
+        saveState();
+        this.render();
       },
       // 화면 픽셀(devicePixelRatio 반영) 기준 정수 배율이면 도트 그대로, 칸이 좁으면 부드럽게 줄임
       // zoom: 칸에 꼭 맞는 크기(1) 기준 배율. 1보다 크면 방 화면 안에서 스크롤·빈 곳 끌기로 둘러봄
@@ -30527,7 +30791,9 @@
         document.getElementById('homeRoomTabs')?.classList.toggle('hidden', !!guest);
         this.renderList();
         this.renderToolbar();
+        this.syncPets();
         this.draw();
+        this.startPets();
       },
       setPanel(p) { this.panel = p; this.renderList(); },
       renderList() {
@@ -30588,8 +30854,15 @@
         const counts = {};
         stored.forEach(it => { counts[it.id] = (counts[it.id] || 0) + 1; });
         const ids = Object.keys(counts);
-        if (!ids.length) { box.innerHTML = `<div class="col-span-full text-xs text-slate-400 py-6 text-center bg-slate-950 rounded-xl border border-slate-800">보관함이 비었어요. 🛒 가구 상점에서 가구를 사 보세요!</div>`; return; }
-        box.innerHTML = ids.map(id => {
+        const head = t => `<div class="col-span-full text-xs font-extrabold text-slate-300 pt-1">${t}</div>`;
+        const myPets = PetSystem.ownedPets(stu), inRoom = new Set(this.home(stu).pets);
+        const petHtml = myPets.length ? head('🐾 내 펫 <span class="text-slate-500 font-bold">· 방에서 돌아다니고 가구에 올라가 쉬어요</span>') + myPets.map(p => `<div class="bg-slate-950 border ${inRoom.has(p.id) ? 'border-pink-400/60' : 'border-slate-800'} rounded-xl p-2 flex flex-col items-center gap-1">
+              <img src="${PET_DEFS[p.type].icon}" alt="" class="h-14 w-auto object-contain" draggable="false">
+              <span class="text-xs font-extrabold text-slate-200">${this.esc(p.name)}</span>
+              <button type="button" onclick="HomeRoom.togglePet('${p.id}')" class="w-full py-1.5 rounded-lg ${inRoom.has(p.id) ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-pink-500 hover:bg-pink-400 text-white'} text-[11px] font-extrabold">${inRoom.has(p.id) ? '🏠 내보내기' : '🐾 데려오기'}</button>
+            </div>`).join('') + head('🪑 보관한 가구') : '';
+        if (!ids.length) { box.innerHTML = petHtml + `<div class="col-span-full text-xs text-slate-400 py-6 text-center bg-slate-950 rounded-xl border border-slate-800">보관함이 비었어요. 🛒 가구 상점에서 가구를 사 보세요!</div>`; return; }
+        box.innerHTML = petHtml + ids.map(id => {
           const def = HOME_DEF[id];
           return `<div class="bg-slate-950 border border-slate-800 rounded-xl p-2 flex flex-col items-center gap-1">
               ${thumb(def)}
@@ -30829,6 +31102,8 @@
           this.hoverXY = p;
           try { cv.setPointerCapture(e.pointerId); } catch (err) {}
           if (this.ghost) { this.moveGhostTo(p); this.ghost.down = true; this.draw(); return; }
+          const pet = this.pickPet(p);
+          if (pet) { this.patPet(pet); return; }
           const it = this.visitId ? null : this.pick(p); // 친구 방에서는 가구를 고르지 않고 둘러보기만
           this.sel = it ? it.u : null;
           this.press = it ? { u: it.u, cx: e.clientX, cy: e.clientY, X: p.X, Y: p.Y } : null;
