@@ -6851,6 +6851,9 @@
     // 직업별 공격 속도 배율 (1보다 작으면 느리게 공격)
     const JOB_ATTACK_SPEED_MULT = { archer: 0.7, mage: 0.7, rogue: 1.82, knight: 0.75, lancer: 1.3, sniper: 0.571 }; // 저격수: 공격 주기 ÷ 0.571 (처음 0.4배에서 주기 30% 단축)
 
+    // 레벨당 스탯 상승량 배율 (비율 상승 · 고정 상승 · 고정 체력 모두 ×1.5)
+    const LEVEL_STAT_GROWTH_MULT = 1.5;
+
     function calcMercStats(merc, ownerStudent) {
       const job = JOB_DEFS[merc.job] || JOB_DEFS.warrior;
       const rarity = RARITY_DEFS[merc.rarity] || RARITY_DEFS.N;
@@ -6861,9 +6864,9 @@
       // 레벨업당 자동 상승폭은 아주 작게 줄이고, 10레벨마다 부여되는 스탯포인트(SP) 상승량을 대폭 강화!
       const growthRate = rarity.lvGrowth || 0.012;
       const spdGrowthRate = rarity.spdLvGrowth || 0.004;
-      const lvMult = 1 + lvGain * growthRate;
-      const spdLvMult = 1 + lvGain * spdGrowthRate;
-      const flatLvBonus = rarity.isSecret ? Math.floor(lvGain * 0.8) : Math.floor(lvGain * 0.5); // 레벨업 상승량 증가는 시크릿 레어만
+      const lvMult = 1 + lvGain * growthRate * LEVEL_STAT_GROWTH_MULT;
+      const spdLvMult = 1 + lvGain * spdGrowthRate * LEVEL_STAT_GROWTH_MULT;
+      const flatLvBonus = Math.floor(lvGain * (rarity.isSecret ? 0.8 : 0.5) * LEVEL_STAT_GROWTH_MULT); // 레벨업 상승량 증가는 시크릿 레어만
 
       const relics = {}; // 유물 기능 삭제: 보너스 없음
       // 추가 축소된 유물 능력치 상승량 반영 (공격 +1.5%, 방어 +1.5%, 체력 +2%, 속도 +1% - Requirement 2)
@@ -6885,7 +6888,7 @@
       const spDefBonus = (alloc.def || 0) * SP_BONUS_VALUES.def;
       const spSpdBonus = (alloc.spd || 0) * SP_BONUS_VALUES.spd;
 
-      const hp  = Math.round(job.baseHp  * rarity.mult    * variance.hp  * lvMult    * (1 + (trait.hpBonus  || 0) + relicHpBonus  + eqHpBonus))  + lvGain * 6  + spHpBonus; // 레벨당 고정 체력 +6 (예전 +4에서 50% 상향)
+      const hp  = Math.round(job.baseHp  * rarity.mult    * variance.hp  * lvMult    * (1 + (trait.hpBonus  || 0) + relicHpBonus  + eqHpBonus))  + Math.floor(lvGain * 6 * LEVEL_STAT_GROWTH_MULT) + spHpBonus; // 레벨당 고정 체력 +6 (예전 +4에서 50% 상향)
       const atk = Math.round(job.baseAtk * rarity.mult    * variance.atk * lvMult    * (1 + (trait.atkBonus || 0) + relicAtkBonus + eqAtkBonus)) + flatLvBonus + spAtkBonus;
       const def = Math.round(job.baseDef * rarity.mult    * variance.def * lvMult    * (1 + (trait.defBonus || 0) + relicDefBonus + eqDefBonus)) + flatLvBonus + spDefBonus;
       const spd = Math.round(job.baseSpd * rarity.spdMult * variance.spd * spdLvMult * (1 + (trait.spdBonus || 0) + relicSpdBonus + eqSpdBonus)) + flatLvBonus + spSpdBonus;
