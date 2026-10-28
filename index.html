@@ -4077,6 +4077,16 @@
       const bossFloor = Math.ceil(floor / TOWER_RACE_FLOORS) * TOWER_RACE_FLOORS;
       return Boolean(stu) && ((stu.towerFloor || 1) > bossFloor || (bossFloor === TOWER_MAX_FLOOR && stu.towerTopCleared));
     }
+    // 하드모드는 한 층씩: 바로 아래 층 하드모드를 깨야 도전 가능 (1층은 바로)
+    function isTowerHardPrevCleared(stu, floor) {
+      return floor <= 1 || Boolean(towerHardClearsOf(stu)[floor - 1]);
+    }
+    // 하드모드에 못 들어가는 이유 (들어갈 수 있으면 '')
+    function towerHardLockReason(stu, floor) {
+      if (!isTowerHardUnlocked(stu, floor)) return `${Math.ceil(floor / TOWER_RACE_FLOORS) * TOWER_RACE_FLOORS}층 보스 클리어`;
+      if (!isTowerHardPrevCleared(stu, floor)) return `${floor - 1}층 하드 클리어`;
+      return '';
+    }
     function towerHardFloorObj(f) {
       return { ...f, hard: true, name: `🔥하드 ${f.name}`, rewardMc: f.rewardMc * TOWER_HARD.reward };
     }
@@ -10734,7 +10744,8 @@
       grid.innerHTML = filteredFloors.map(f => {
         const cleared = stu.towerFloor > f.floor;
         const unlocked = stu.towerFloor >= f.floor;
-        const hardOpen = isTowerHardUnlocked(stu, f.floor);
+        const hardLock = towerHardLockReason(stu, f.floor);
+        const hardOpen = !hardLock;
         const hardCleared = Boolean(towerHardClearsOf(stu)[f.floor]);
 
         if (!unlocked) {
@@ -10814,9 +10825,9 @@
                     ${hardCleared ? '🔥 하드 재도전 (보상 없음)' : `🔥 하드모드 (💰 ${(f.rewardMc * TOWER_HARD.reward).toLocaleString()})`}
                     <span class="block text-[10px] font-bold text-red-200">도전비용 ${TOWER_HARD.cost.toLocaleString()} CA</span>
                   </button>`
-                : `<button disabled title="${Math.ceil(f.floor / TOWER_RACE_FLOORS) * TOWER_RACE_FLOORS}층 종족 보스를 깨면 열려요"
+                : `<button disabled title="${hardLock}하면 열려요"
                     class="px-4 py-2 rounded-xl font-extrabold text-[11px] bg-slate-800 text-slate-500 cursor-not-allowed">
-                    🔒 하드모드 (${Math.ceil(f.floor / TOWER_RACE_FLOORS) * TOWER_RACE_FLOORS}층 보스 클리어)
+                    🔒 하드모드 (${hardLock})
                   </button>`}
             </div>
           </div>
@@ -13490,6 +13501,10 @@
       if (!baseFloor) return;
       if (hard && !isTowerHardUnlocked(stu, floorNum)) {
         showNotice(`🔒 하드모드는 ${Math.ceil(floorNum / TOWER_RACE_FLOORS) * TOWER_RACE_FLOORS}층 종족 보스를 깨야 열려요.`);
+        return;
+      }
+      if (hard && !isTowerHardPrevCleared(stu, floorNum)) {
+        showNotice(`🔒 ${floorNum}층 하드모드는 ${floorNum - 1}층 하드모드를 먼저 깨야 열려요.`);
         return;
       }
       const floorObj = hard ? towerHardFloorObj(baseFloor) : baseFloor;
