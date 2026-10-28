@@ -32,6 +32,9 @@ const HELP = `
   --stretch         비율이 규격과 다를 때 자동으로 늘리기/줄이기 (기본은 보고만 함)
   --legs            다리 끝 기준 맞춤: 비율은 그대로, 왼·오른 다리 끝을 칸 꼭짓점에 맞추고 어긋난 다리 길이만 고침.
                     다리 밖으로 나온 부분(이불·헤드보드)은 양옆 여백으로 남김 (권장)
+  --align <lr|lf|fr|box> --legs에서 칸 꼭짓점에 맞출 두 다리 (기본 lr=왼·오른, lf=왼·앞, fr=앞·오른).
+                    box = 그림 전체 폭을 칸 폭에 맞추고 다리는 고치지 않음(앞에 의자·사다리가 붙은 가구용)
+                    원본 앞면:옆면 비율이 w:d와 달라 다리가 칸 밖으로 내려오면 lf/fr로
   --clear-holes     가구 안쪽에 갇힌 배경색 영역(의자 다리 사이 등)도 투명하게
   --no-guide        확인용 PNG에 규격 상자 선을 그리지 않음
   --dry             파일을 쓰지 않고 보고만
@@ -57,6 +60,7 @@ function parseArgs(argv) {
     else if (a === '--tol') o.tol = Number(val());
     else if (a === '--stretch') o.stretch = true;
     else if (a === '--legs') o.legs = true;
+    else if (a === '--align') o.align = val();
     else if (a === '--clear-holes') o.clearHoles = true;
     else if (a === '--no-guide') o.guide = false;
     else if (a === '--dry') o.dry = true;
@@ -193,12 +197,22 @@ function removeBackground(img, opt, warnings, notes) {
   const holes = components(bgLike, W, H);
   const fgArea0 = fg.reduce((a, b) => a + b, 0);
   const bigHoles = [];
-  for (let id = 1; id < holes.areas.length; id++) if (holes.areas[id] >= Math.max(30, fgArea0 * 0.002)) bigHoles.push(id);
+  // --clear-holes 면 등받이 살 사이 같은 작은 틈도 비움
+  const minHole = opt.clearHoles ? 4 : Math.max(30, fgArea0 * 0.002);
+  for (let id = 1; id < holes.areas.length; id++) if (holes.areas[id] >= minHole) bigHoles.push(id);
   if (bigHoles.length) {
     const total = bigHoles.reduce((a, id) => a + holes.areas[id], 0);
     if (opt.clearHoles) {
       const set = new Set(bigHoles);
       for (let p = 0; p < N; p++) if (set.has(holes.label[p])) { fg[p] = 0; removed[p] = 1; }
+      // 비운 틈 가장자리의 옅은 번짐도 한 겹 걷어 냄
+      const edge = [];
+      for (let p = 0; p < N; p++) {
+        if (!fg[p] || dist(p) > fringeTol) continue;
+        const x = p % W;
+        if ((x > 0 && set.has(holes.label[p - 1])) || (x < W - 1 && set.has(holes.label[p + 1])) || (p >= W && set.has(holes.label[p - W])) || (p + W < N && set.has(holes.label[p + W]))) edge.push(p);
+      }
+      for (const p of edge) { fg[p] = 0; removed[p] = 1; }
       notes.push(`안쪽에 갇힌 배경색 영역 ${bigHoles.length}곳(가구의 ${(total / fgArea0 * 100).toFixed(1)}%)을 투명하게 했어요 (--clear-holes)`);
     } else {
       notes.push(`가구 안쪽에 배경색(흰색) 영역 ${bigHoles.length}곳(가구의 ${(total / fgArea0 * 100).toFixed(1)}%)이 있어 그대로 두었어요. 의자 다리 사이처럼 진짜 빈 공간이면 --clear-holes`);
@@ -356,6 +370,10 @@ function findLegs(fg, W, bb) {
   let L = null, R = null;
   for (let x = 0; x < xF - k && !L; x++) if (isFoot(x)) L = tip(x);
   for (let x = bb.w - 1; x > xF + k && !R; x--) if (isFoot(x)) R = tip(x);
+  // 다리가 따로 없는 통짜 받침(세면대·피아노 뒤판 등): 맨 왼쪽·오른쪽 끝 열을 다리 끝으로
+  const edge = (from, to, dir) => { let bx = -1; for (let x = from; x !== to; x += dir) if (bot[x] >= 0) { bx = x; break; } return bx < 0 ? null : { x: bx, y: bot[bx], lo: bx, hi: bx }; };
+  if (!L) L = edge(0, bb.w, 1);
+  if (!R) R = edge(bb.w - 1, -1, -1);
   return { xF, yF, L, R };
 }
 
@@ -365,11 +383,16 @@ async function fitByLegs(fgres, spec, opt, warnings, notes, label) {
   const tag = label ? `[${label}] ` : '';
   const boxW = (w + d) * CELL_W, boxH = (w + d) * CELL_H + h * FLOOR_H;
   const g = findLegs(fg, W, bb);
-  if (!g.L || !g.R) throw new Error(`${tag}왼쪽·오른쪽 다리 끝을 찾지 못했어요. --legs 없이 (또는 --stretch로) 변환해 주세요`);
-  const s = boxW / (g.R.hi - g.L.lo); // 다리 바깥 모서리 사이 = (w+d)칸 폭
+  if ((!g.L || !g.R) && opt.align !== 'box') throw new Error(`${tag}왼쪽·오른쪽 다리 끝을 찾지 못했어요. --legs 없이 (또는 --stretch로) 변환해 주세요`);
+  // 어느 두 다리를 칸 꼭짓점에 맞출지: lr(왼·오른, 기본) · lf(왼·앞) · fr(앞·오른). 원본의 앞면:옆면 비율이 w:d와 다르면 lf/fr이 나음
+  const align = opt.align || 'lr';
+  // box: 의자·사다리처럼 앞에 붙은 것 때문에 다리를 못 믿을 때 — 그림 전체 폭 = 칸 폭, 다리는 고치지 않음
+  const s = align === 'box' ? boxW / bb.w : align === 'lf' ? w * CELL_W / (g.xF - g.L.lo) : align === 'fr' ? d * CELL_W / (g.R.hi + 1 - g.xF) : boxW / (g.R.hi + 1 - g.L.lo);
+  // 왼쪽 꼭짓점의 위치(늘린 그림 좌표)
+  const cL = align === 'box' ? 0 : align === 'fr' ? g.xF * s - w * CELL_W : g.L.lo * s;
   // 앞 다리가 w:d 자리에 오는지 확인 (비율 유지라 맞추지는 않음)
-  const fOff = (g.xF - g.L.x) * s - w * CELL_W;
-  if (Math.abs(fOff) > CELL_W * 0.25) warnings.push(`${tag}앞 다리가 규격 자리에서 ${fOff > 0 ? '오른' : '왼'}쪽으로 ${Math.abs(fOff).toFixed(0)}도트 벗어나요 — 칸 수(w:d)를 바꿔 보세요`);
+  const fOff = g.xF * s - cL - w * CELL_W;
+  if ((align === 'lr' || align === 'box') && Math.abs(fOff) > CELL_W * 0.25) warnings.push(`${tag}앞 다리가 규격 자리에서 ${fOff > 0 ? '오른' : '왼'}쪽으로 ${Math.abs(fOff).toFixed(0)}도트 벗어나요 — 칸 수(w:d)를 바꿔 보세요`);
 
   const crop = Buffer.alloc(bb.w * bb.h * 4);
   for (let y = 0; y < bb.h; y++) for (let x = 0; x < bb.w; x++) {
@@ -379,18 +402,17 @@ async function fitByLegs(fgres, spec, opt, warnings, notes, label) {
   const sw = Math.max(1, Math.round(bb.w * s)), sh = Math.max(1, Math.round(bb.h * s));
   const scaled = await sharp(crop, { raw: { width: bb.w, height: bb.h, channels: 4 } })
     .resize(sw, sh, { fit: 'fill', kernel: 'lanczos3' }).raw().toBuffer();
-  const xL = g.L.lo * s, xR = (g.R.hi + 1) * s;
-  const pad = Math.max(0, Math.ceil(xL), Math.ceil(sw - xR));
-  const outW = boxW + 2 * pad, ox = Math.round(pad - xL);
+  const pad = Math.max(0, Math.ceil(cL), Math.ceil(sw - (cL + boxW)));
+  const outW = boxW + 2 * pad, ox = Math.round(pad - cL);
   const out = Buffer.alloc(outW * sh * 4);
   for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) {
     const tx = x + ox; if (tx < 0 || tx >= outW) continue;
     scaled.copy(out, (y * outW + tx) * 4, (y * sw + x) * 4, (y * sw + x + 1) * 4);
   }
-  const legs = [
-    // 다리 끝이 닿을 높이 = 바닥 가장자리 선 (꼭짓점에서 앞쪽으로 2:1로 내려감)
-    { x: Math.round(g.L.x * s + ox), targetY: Math.round(sh - 1 - w * CELL_H + (g.L.x - g.L.lo) * s * CELL_H / CELL_W) },
-    { x: Math.round(g.R.x * s + ox), targetY: Math.round(sh - 1 - d * CELL_H + (g.R.hi - g.R.x) * s * CELL_H / CELL_W) },
+  const legs = align === 'box' ? [] : [
+    // 다리 끝이 닿을 높이 = 그 x에서의 바닥 가장자리 선 (왼쪽 꼭짓점→앞, 앞→오른쪽 꼭짓점이 2:1)
+    { x: Math.round(g.L.x * s + ox), targetY: Math.round(sh - 1 - (pad + w * CELL_W - (g.L.x * s + ox)) * CELL_H / CELL_W) },
+    { x: Math.round(g.R.x * s + ox), targetY: Math.round(sh - 1 - ((g.R.x * s + ox) - (pad + w * CELL_W)) * CELL_H / CELL_W) },
   ];
   if (pad) notes.push(`${tag}다리 밖으로 나온 부분 때문에 양옆에 ${pad}도트씩 여백을 둠`);
   return { rgba: out, W: outW, H: sh, boxH, srcBB: bb, scale: s, frontX: g.xF * s + ox, pad, legs };
@@ -408,6 +430,10 @@ function fixLegs(dot, legs, notes, tag) {
     if (tipY < 0) continue;
     const delta = leg.targetY - tipY;
     if (Math.abs(delta) <= 1) continue;
+    // 많이 줄이면 판자형 다리(서랍장 옆판 등)에 홈이 파이므로 3도트까지만. 조금 아래로 내려온 다리는 앞으로 나와 보일 뿐 어색하지 않음
+    // 12도트 넘게 늘여야 하면 다리를 잘못 찾은 것(받침 윗부분 등) — 건드리지 않음
+    if (delta > 12) { notes.push(`${tag}다리 x=${leg.x}: ${delta}도트 늘여야 해서 다리 인식이 미덥지 않아 그대로 둠`); continue; }
+    if (delta < -3) { notes.push(`${tag}다리 x=${leg.x}: ${-delta}도트 아래로 내려와 있지만 줄이지 않음 (3도트 넘게 줄이면 모양이 깨짐)`); continue; }
     // 다리 열: 다리 끝에서 양옆으로, 바닥이 갑자기 올라가면(틀·가로대) 멈춤
     const cols = [], maxHalf = Math.max(4, Math.round(W * 0.06));
     let tx = leg.x; for (let x = leg.x - 4; x <= leg.x + 4; x++) if (x >= 0 && x < W && bottom(x) === tipY) { tx = x; break; }
