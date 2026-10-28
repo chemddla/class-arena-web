@@ -20336,25 +20336,38 @@
           } else { headT = Math.min(1, progress * 1.7); arrived = Math.max(0, (progress - 0.59) / 0.41); }
           const hx = ef.sx + Math.cos(ang) * dist * headT, hy = ef.sy + Math.sin(ang) * dist * headT;
           const tl = TRAIL_FX.tail, dr = TRAIL_FX.dirt, fadeW = TRAIL_FX.fade;
-          const windW = Math.max(tl[2], dist * headT / s - 30) * (1 - arrived * 0.7);
+          const windFull = Math.max(tl[2], dist * headT / s - 30);
+          // 도착하면 몸에서 먼 뒤쪽 끝부터 몸 쪽으로 걷히며 사라짐 (먼지도 먼 것부터 사라짐)
+          const windW = windFull * (1 - arrived);
           ctx.save();
           ctx.translate(hx, hy + 8);
           ctx.rotate(ang); // 왼쪽으로 가면 위아래만 뒤집어 그림이 거꾸로 서지 않게 함
           if (flip) ctx.scale(1, -1);
           ctx.scale(s, s);
-          ctx.globalAlpha = Math.max(0, Math.min(1, (1 - progress) * 2.2));
+          ctx.globalAlpha = ef.runTicks ? 1 : Math.max(0, Math.min(1, (1 - progress) * 2.2));
           ctx.imageSmoothingEnabled = false;
           const bottom = 10, img = TRAIL_FX.img;
-          // 몸 앞으로 바람이 삐져나가지 않게 앞끝을 몸 중심보다 살짝 뒤로 물림
-          ctx.translate(-TRAIL_FX.frontPad, 0);
-          // 흙먼지: 늘어나지 않고 같은 크기 그림을 뒤쪽부터 앞으로 이어 붙여 반복 (앞끝 fade 구간 앞에서 멈춤)
-          const dirtX0 = -windW + TRAIL_FX.dirtOverlap - dr[2], dirtStep = dr[2] * 0.7;
-          for (let x = dirtX0; x + dr[2] <= -fadeW * 0.5 || x === dirtX0; x += dirtStep) {
-            ctx.drawImage(img, dr[0], dr[1], dr[2], dr[3], x, bottom - dr[3], dr[2], dr[3]);
+          if (windW > 0.5) {
+            // 몸 앞으로 바람이 삐져나가지 않게 앞끝을 몸 중심보다 살짝 뒤로 물림
+            ctx.translate(-TRAIL_FX.frontPad, 0);
+            // 흙먼지: 늘어나지 않고 같은 크기 그림을 뒤쪽부터 앞으로 이어 붙여 반복 (앞끝 fade 구간 앞에서 멈춤)
+            // 걷히는 뒤쪽 끝 바깥은 잘라내서 먼 먼지부터 사라지게 함
+            const backExtra = (dr[2] - TRAIL_FX.dirtOverlap) * (1 - arrived);
+            ctx.beginPath();
+            ctx.rect(-windW - backExtra, -200, windW + backExtra + 200, 400);
+            ctx.clip();
+            const dirtX0 = -windFull + TRAIL_FX.dirtOverlap - dr[2], dirtStep = dr[2] * 0.7;
+            for (let x = dirtX0; x + dr[2] <= -fadeW * 0.5 || x === dirtX0; x += dirtStep) {
+              ctx.drawImage(img, dr[0], dr[1], dr[2], dr[3], x, bottom - dr[3], dr[2], dr[3]);
+            }
+            // 바람 줄기: 앞쪽 fade 구간은 그대로, 나머지는 가로로 늘림
+            if (windW > fadeW) {
+              ctx.drawImage(img, tl[0], tl[1], tl[2] - fadeW, tl[3], -windW, bottom - tl[3], windW - fadeW, tl[3]);
+              ctx.drawImage(img, tl[0] + tl[2] - fadeW, tl[1], fadeW, tl[3], -fadeW, bottom - tl[3], fadeW, tl[3]);
+            } else {
+              ctx.drawImage(img, tl[0] + tl[2] - windW, tl[1], windW, tl[3], -windW, bottom - tl[3], windW, tl[3]);
+            }
           }
-          // 바람 줄기: 앞쪽 fade 구간은 그대로, 나머지는 가로로 늘림
-          ctx.drawImage(img, tl[0], tl[1], tl[2] - fadeW, tl[3], -windW, bottom - tl[3], windW - fadeW, tl[3]);
-          ctx.drawImage(img, tl[0] + tl[2] - fadeW, tl[1], fadeW, tl[3], -fadeW, bottom - tl[3], fadeW, tl[3]);
           ctx.restore();
 
         } else if (ef.type === 'charge_dash' && ef.dust && DUST_FX.img.ready) {
