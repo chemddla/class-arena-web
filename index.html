@@ -1523,8 +1523,8 @@
         <div class="bg-slate-900 border-2 border-pink-400/40 rounded-2xl p-4 flex flex-col gap-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h4 class="font-title text-xl text-white flex items-center gap-2"><span>🛋️</span> 내 방 꾸미기</h4>
-              <p class="text-xs text-slate-400 mt-0.5">가구를 사서 방에 놓아 보세요. 놓을 때 <strong>R</strong> 또는 <strong>↻</strong>로 돌리고, 놓인 가구는 <strong>누른 채 끌어서</strong> 옮길 수 있어요. 오른쪽 위 <strong>＋ －</strong>(또는 Ctrl+휠)로 확대·축소해요.</p>
+              <h4 id="homeRoomTitle" class="font-title text-xl text-white flex items-center gap-2"><span>🛋️</span> 내 방 꾸미기</h4>
+              <p id="homeRoomHelp" class="text-xs text-slate-400 mt-0.5">가구를 사서 방에 놓아 보세요. 놓을 때 <strong>R</strong> 또는 <strong>↻</strong>로 돌리고, 놓인 가구는 <strong>누른 채 끌어서</strong> 옮길 수 있어요. 오른쪽 위 <strong>＋ －</strong>(또는 Ctrl+휠)로 확대·축소해요.</p>
             </div>
             <span id="homeRoomCa" class="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-extrabold"></span>
           </div>
@@ -1545,7 +1545,7 @@
               <div id="homeRoomColors" class="hidden flex flex-col gap-2 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs"></div>
             </div>
             <div class="lg:col-span-3 flex flex-col gap-2">
-              <div class="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+              <div id="homeRoomTabs" class="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
                 <button type="button" id="homeRoomTab-inv" onclick="HomeRoom.setPanel('inv')" class="py-1.5 rounded-lg text-xs font-extrabold">📦 내 가구</button>
                 <button type="button" id="homeRoomTab-shop" onclick="HomeRoom.setPanel('shop')" class="py-1.5 rounded-lg text-xs font-extrabold">🛒 가구 상점</button>
                 <button type="button" id="homeRoomTab-skin" onclick="HomeRoom.setPanel('skin')" class="py-1.5 rounded-lg text-xs font-extrabold">🧱 벽지·바닥</button>
@@ -2457,6 +2457,14 @@
             <button onclick="giveTeacherReward(300, 0, '과제 및 역할 완수!')" class="px-3 py-1.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-indigo-300 text-xs font-bold">
               🌟 역할 완수 (+300 CA)
             </button>
+            <div class="flex items-center gap-1">
+              <input id="adminCustomCaInput" type="number" min="1" max="1000000" step="1" placeholder="금액"
+                onkeydown="if (event.key === 'Enter') giveTeacherCustomCa()"
+                class="w-24 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white">
+              <button onclick="giveTeacherCustomCa()" class="px-3 py-1.5 rounded-lg bg-amber-500/30 hover:bg-amber-500/50 border border-amber-400/50 text-amber-300 text-xs font-bold">
+                💰 CA 지급
+              </button>
+            </div>
 
             <button onclick="resetAllPasswords()" class="ml-auto px-3 py-1.5 rounded-lg bg-rose-950 hover:bg-rose-900 border border-rose-700 text-rose-300 text-xs font-bold">
               🔑 전체 비번 초기화
@@ -7382,6 +7390,7 @@
               <div class="font-title text-lg text-white truncate">${esc(s.name)}${isMe ? ' <span class="text-indigo-300 text-sm">(나)</span>' : ''}</div>
               <div class="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">${getPvpTierBadge(s.pvpScore || 1000)}<span>${on ? '🟢 지금 접속 중' : '⚪ 접속 안 함'}</span></div>
             </div>
+            <button type="button" onclick="closeFriendProfile(); HomeRoom.visit('${s.id}')" class="shrink-0 px-3 h-8 rounded-lg bg-pink-500 hover:bg-pink-400 text-white text-xs font-extrabold">🏠 ${isMe ? '내 방 가기' : '방 구경하기'}</button>
             <button type="button" onclick="closeFriendProfile()" class="shrink-0 w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold" title="닫기">✕</button>
           </div>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -19269,6 +19278,24 @@
       showRewardBanner(`🎁 선생님께서 ${adminSelectedIds.size}명의 학생에게 [${reasonText}] 보상을 지급하셨습니다!`);
     }
 
+    // 선생님이 직접 정한 금액만큼 선택 학생에게 CA 지급
+    function giveTeacherCustomCa() {
+      const input = document.getElementById('adminCustomCaInput');
+      const amount = Math.floor(Number(input?.value));
+      if (!Number.isFinite(amount) || amount < 1 || amount > 1000000) {
+        showNotice('⚠️ 지급할 CA를 1 ~ 1,000,000 사이로 입력해주세요.');
+        return;
+      }
+      if (adminSelectedIds.size === 0) {
+        showNotice('⚠️ 먼저 보상을 지급할 학생을 선택해주세요!');
+        return;
+      }
+      askCustomConfirm(`선택한 학생 ${adminSelectedIds.size}명에게 각각 ${amount.toLocaleString()} CA를 지급할까요?`, () => {
+        giveTeacherReward(amount, 0, `${amount.toLocaleString()} CA`);
+        if (input) input.value = '';
+      });
+    }
+
     function resetSingleStudentPassword(stuId) {
       const stu = state.students.find(s => s.id === stuId);
       if (!stu) return;
@@ -22242,6 +22269,7 @@
       if (tabKey === 'skinlab') renderSkinWorkshop();
       if (tabKey === 'market') renderMarketTab();
       if (tabKey === 'pet') PetSystem.renderShop();
+      if (window.HomeRoom) HomeRoom.visitId = null; // 탭을 새로 열면 늘 내 방 (친구 방 구경은 HomeRoom.visit이 다시 켬)
       if (tabKey === 'home') window.HomeRoom?.render();
       else window.HomeRoom?.cancel();
       if (tabKey === 'tower') renderTowerTab();
@@ -28707,6 +28735,7 @@
             try { this.isSuperAdmin = (await u.getIdTokenResult()).claims.superAdmin === true; } catch (e) {}
             this.saveProfile(u);
             this.loadMyClasses();
+            try { localStorage.setItem('caTeacherSignedIn', '1'); } catch (e) {} // 다음 접속 때 교사 코드 생략용
           }
           this.ready = true;
           renderTeacherAuthBox();
@@ -28934,8 +28963,23 @@
     let teacherCodeMemoryOk = false;
     let teacherCodePendingArgs = null;
 
+    // 이 브라우저에 교사 로그인 흔적(교사 PIN·키 확인 기록, 구글 교사 로그인)이 있으면 코드를 묻지 않음
+    function hasTeacherLoginTrace() {
+      if (TeacherAuth.user) return true;
+      try {
+        if (localStorage.getItem('caTeacherSignedIn') === '1') return true;
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (!k || !k.startsWith('caTeacherProof:')) continue;
+          const rec = JSON.parse(localStorage.getItem(k) || '{}') || {};
+          if (rec.pin || rec.key) return true;
+        }
+      } catch (e) {}
+      return false;
+    }
+
     function teacherCodeVerified() {
-      if (teacherCodeMemoryOk) return true;
+      if (teacherCodeMemoryOk || hasTeacherLoginTrace()) return true;
       try { return sessionStorage.getItem('caTeacherCodeOk') === TEACHER_CODE_SHA256; } catch (e) { return false; }
     }
 
@@ -29939,6 +29983,31 @@
         ['wall', 'floor'].forEach(p => { if (stu.home[p] && !HOME_SKIN[`${p}:${stu.home[p]}`]) delete stu.home[p]; });
         return stu.home;
       },
+      // ───── 친구 방 구경 (읽기 전용: 친구 기록은 바꾸지 않고 사본만 그림) ─────
+      visitId: null,
+      visitor() { return this.visitId ? (state.students || []).find(s => s.id === this.visitId) || null : null; },
+      viewHome(stu) {
+        const h = stu && stu.home && typeof stu.home === 'object' ? stu.home : {};
+        const items = (Array.isArray(h.items) ? h.items : Object.values(h.items || {})).filter(it => it && HOME_DEF[it.id]);
+        const out = { items, skins: [] };
+        let wall = h.wall;
+        if (HOME_SKIN_SPLIT[wall]) wall = HOME_SKIN_SPLIT[wall][0];
+        if (wall && HOME_SKIN[`wall:${wall}`]) out.wall = wall;
+        if (h.floor && HOME_SKIN[`floor:${h.floor}`]) out.floor = h.floor;
+        return out;
+      },
+      shownHome() { return this.visitId ? this.viewHome(this.visitor()) : this.home(); },
+      visit(stuId) {
+        const me = this.student();
+        switchStudentTab('home');
+        if (me && me.id === stuId) return;
+        this.visitId = stuId;
+        this.ghost = null;
+        this.sel = null;
+        this.zoom = 1;
+        this.render();
+      },
+      leaveVisit() { this.visitId = null; this.render(); },
       esc(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); },
 
       // 회전 r(0~3)에 따른 바닥 크기·그림·반전. 0: 앞면이 왼쪽 아래, 1: 왼쪽 위, 2: 오른쪽 위, 3: 오른쪽 아래
@@ -30055,7 +30124,7 @@
         const def = HOME_DEF[it.id], s = this.dims(def, it.r || 0);
         return { x0: it.x, y0: it.y, x1: it.x + s.X, y1: it.y + s.Y, def };
       },
-      placed() { const h = this.home(); return h ? h.items.filter(it => it.p) : []; },
+      placed() { const h = this.shownHome(); return h ? h.items.filter(it => it.p) : []; },
       fits(cand, ignoreU) {
         const a = this.rect(cand);
         if (a.x0 < 0 || a.y0 < 0 || a.x1 > HOME_ROOM_X || a.y1 > HOME_ROOM_Y) return false;
@@ -30098,7 +30167,7 @@
         const O = homeIso(0, 0), L = homeIso(0, HOME_ROOM_Y), R = homeIso(HOME_ROOM_X, 0), F = homeIso(HOME_ROOM_X, HOME_ROOM_Y);
         const Z = HOME_ROOM_Z, mz = HOME_MOLD / HOME_FH, bz = HOME_BASE / HOME_FH, px = 2 / HOME_FH; // 테두리 선 2도트
         // 고른 벽지·바닥 그림 (몰딩·걸레받이·벽 끝 단면 / 바닥 판 두께까지 들어 있음)
-        const h = this.home(), wallIm = h && h.wall ? this.img(`assets/room/wall_${h.wall}.webp`) : null;
+        const h = this.shownHome(), wallIm = h && h.wall ? this.img(`assets/room/wall_${h.wall}.webp`) : null;
         const floorIm = h && h.floor ? this.img(`assets/room/floor_${h.floor}.webp`) : null;
         // 벽 (왼쪽 그늘, 오른쪽 밝음)
         if (wallIm) this.ctx.drawImage(wallIm, 0, 0);
@@ -30278,8 +30347,14 @@
       render() {
         this.bind();
         const stu = this.student();
+        if (this.visitId && !this.visitor()) this.visitId = null; // 명단에서 빠진 친구
+        const guest = this.visitor();
         const ca = document.getElementById('homeRoomCa');
-        if (ca) ca.textContent = stu ? `내 CA ${(stu.mc || 0).toLocaleString()}` : '학생 로그인 필요';
+        if (ca) ca.textContent = guest ? '👀 구경만 할 수 있어요' : stu ? `내 CA ${(stu.mc || 0).toLocaleString()}` : '학생 로그인 필요';
+        const title = document.getElementById('homeRoomTitle');
+        if (title) title.innerHTML = guest ? `<span>🏠</span> ${this.esc(guest.name)}의 방` : '<span>🛋️</span> 내 방 꾸미기';
+        document.getElementById('homeRoomHelp')?.classList.toggle('hidden', !!guest);
+        document.getElementById('homeRoomTabs')?.classList.toggle('hidden', !!guest);
         this.renderList();
         this.renderToolbar();
         this.draw();
@@ -30292,6 +30367,13 @@
           const b = document.getElementById(`homeRoomTab-${k}`);
           if (b) b.className = `py-1.5 rounded-lg text-xs font-extrabold ${this.panel === k ? 'bg-pink-500 text-white' : 'text-slate-300 hover:bg-slate-800'}`;
         });
+        const guest = this.visitor();
+        if (guest) {
+          const n = this.placed().length;
+          box.innerHTML = `<div class="col-span-full text-xs text-slate-300 py-6 px-3 text-center bg-slate-950 rounded-xl border border-slate-800 leading-relaxed">
+              <div class="text-3xl mb-1">👀</div>${this.esc(guest.name)}의 방을 구경하고 있어요.<br>놓인 가구 ${n}개 · 친구 방은 바꿀 수 없어요.</div>`;
+          return;
+        }
         const stu = this.student();
         if (!stu) { box.innerHTML = `<div class="col-span-full text-xs text-slate-400 py-6 text-center bg-slate-950 rounded-xl border border-slate-800">학생 로그인을 하면 방을 꾸밀 수 있어요.</div>`; return; }
         const thumb = def => def.art
@@ -30351,6 +30433,13 @@
         const bar = document.getElementById('homeRoomToolbar');
         if (!bar) return;
         const btn = (label, fn, cls = 'bg-slate-800 hover:bg-slate-700 text-slate-200') => `<button type="button" onclick="HomeRoom.${fn}" class="px-3 py-1.5 rounded-lg ${cls} font-extrabold">${label}</button>`;
+        const guest = this.visitor();
+        if (guest) {
+          bar.innerHTML = `<span class="font-extrabold text-pink-300">🏠 ${this.esc(guest.name)}의 방 구경 중</span><span class="text-slate-400">빈 곳을 끌어 둘러보고, ＋ －로 확대·축소해요.</span>`
+            + (this.student() ? btn('🛋️ 내 방으로 돌아가기', 'leaveVisit()', 'bg-pink-500 hover:bg-pink-400 text-white') : '');
+          this.renderColors(null);
+          return;
+        }
         // 앞면이 향할 방향 4개를 바로 고르는 버튼
         const dirs = () => {
           const cur = this.curDir();
@@ -30570,7 +30659,7 @@
           this.hoverXY = p;
           try { cv.setPointerCapture(e.pointerId); } catch (err) {}
           if (this.ghost) { this.moveGhostTo(p); this.ghost.down = true; this.draw(); return; }
-          const it = this.pick(p);
+          const it = this.visitId ? null : this.pick(p); // 친구 방에서는 가구를 고르지 않고 둘러보기만
           this.sel = it ? it.u : null;
           this.press = it ? { u: it.u, cx: e.clientX, cy: e.clientY, X: p.X, Y: p.Y } : null;
           // 가구 없는 곳을 누르고 끌면 확대된 방을 둘러봄
@@ -30593,7 +30682,7 @@
         }, { passive: false });
         window.addEventListener('keydown', e => {
           if (document.getElementById('studentTab-home')?.classList.contains('hidden')) return;
-          if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+          if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || this.visitId) return;
           if (e.key === 'r' || e.key === 'R') { this.rotate(); e.preventDefault(); }
           else if (e.key === 'Escape') this.cancel();
         });
