@@ -6005,7 +6005,7 @@
     DUST_FX.img.onload = () => { DUST_FX.img.ready = true; };
     DUST_FX.img.src = 'assets/sprites/fx/dash_dust_fx.webp';
     // 돌진·돌격 꼬리: 바람 줄기(tail, 오른쪽 34px는 서서히 투명 = 몸에 붙는 쪽) + 뒤쪽 흙먼지(dirt). 오른쪽이 앞. 거리가 길면 바람 줄기만 늘림
-    const TRAIL_FX = { tail: [0, 0, 94, 67], dirt: [96, 0, 138, 47], fade: 34, dirtOverlap: 92 };
+    const TRAIL_FX = { tail: [0, 0, 94, 67], dirt: [96, 0, 138, 47], fade: 34, dirtOverlap: 92, frontPad: 14 };
     TRAIL_FX.img = new Image();
     TRAIL_FX.img.onload = () => { TRAIL_FX.img.ready = true; };
     TRAIL_FX.img.src = 'assets/sprites/fx/charge_trail_fx.webp';
@@ -20345,8 +20345,13 @@
           ctx.globalAlpha = Math.max(0, Math.min(1, (1 - progress) * 2.2));
           ctx.imageSmoothingEnabled = false;
           const bottom = 10, img = TRAIL_FX.img;
-          // 흙먼지: 바람 줄기 맨 뒤쪽 아래에 깔림
-          ctx.drawImage(img, dr[0], dr[1], dr[2], dr[3], -windW + TRAIL_FX.dirtOverlap - dr[2], bottom - dr[3], dr[2], dr[3]);
+          // 몸 앞으로 바람이 삐져나가지 않게 앞끝을 몸 중심보다 살짝 뒤로 물림
+          ctx.translate(-TRAIL_FX.frontPad, 0);
+          // 흙먼지: 늘어나지 않고 같은 크기 그림을 뒤쪽부터 앞으로 이어 붙여 반복 (앞끝 fade 구간 앞에서 멈춤)
+          const dirtX0 = -windW + TRAIL_FX.dirtOverlap - dr[2], dirtStep = dr[2] * 0.7;
+          for (let x = dirtX0; x + dr[2] <= -fadeW * 0.5 || x === dirtX0; x += dirtStep) {
+            ctx.drawImage(img, dr[0], dr[1], dr[2], dr[3], x, bottom - dr[3], dr[2], dr[3]);
+          }
           // 바람 줄기: 앞쪽 fade 구간은 그대로, 나머지는 가로로 늘림
           ctx.drawImage(img, tl[0], tl[1], tl[2] - fadeW, tl[3], -windW, bottom - tl[3], windW - fadeW, tl[3]);
           ctx.drawImage(img, tl[0] + tl[2] - fadeW, tl[1], fadeW, tl[3], -fadeW, bottom - tl[3], fadeW, tl[3]);
