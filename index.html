@@ -16892,7 +16892,7 @@
         }
         if (u.musou && (u.musou.left % HIDDEN_MUSOU_HIT_TICKS === 0) && !(u.statuses.stun > 0) && !(u.statuses.freeze > 0)) {
           const hitNo = Math.round(u.musou.left / HIDDEN_MUSOU_HIT_TICKS);
-          sim.effects.push({ type: 'hidden_musou_slash', f: hitNo % 2 ? 'swooshA' : 'swooshB', x: u.x, y: u.y - 14, w: HIDDEN_MUSOU_RADIUS * 1.7,
+          sim.effects.push({ type: 'hidden_musou_slash', f: hitNo % 2 ? 'swooshA' : 'swooshB', x: u.x, y: u.y - 14, w: HIDDEN_MUSOU_RADIUS * 2.4,
             flip: hitNo % 4 >= 2, flipY: hitNo % 3 === 0, rot: (Math.random() - 0.5) * 1.2, life: 16, maxLife: 16 });
           u.attackAnim = 14;
           u.maxAttackAnim = 14;
@@ -16901,7 +16901,7 @@
             if (!e.alive || e.team === u.team || unitDist(e, u) > HIDDEN_MUSOU_RADIUS) return;
             suppressHitKnockback = true;
             try { applyDamage(u, e, u.atk * 2.0); } finally { suppressHitKnockback = false; }
-            sim.effects.push({ type: 'hidden_musou_x', f: hitNo % 2 ? 'xBig' : 'xSmall', x: e.x, y: e.y - 20, w: 70, rot: (Math.random() - 0.5) * 1.6, life: 14, maxLife: 14 });
+            sim.effects.push({ type: 'hidden_musou_x', f: hitNo % 2 ? 'xBig' : 'xSmall', x: e.x, y: e.y - 20, w: 105, rot: (Math.random() - 0.5) * 1.6, life: 14, maxLife: 14 });
             if (e.alive && !(e.statuses.fear > 30)) inflictStatus(u, e, 'fear', HIDDEN_MUSOU_FEAR_TICKS);
           }));
         }
@@ -19229,13 +19229,27 @@
       if (musouCast || musouPose >= 0) {
         const c = u.casting;
         const ks = spriteDrawH(u, sprite) / mfx.standH;
-        let pose = musouPose, shake = 0;
+        let pose = musouPose;
         if (musouCast) {
-          pose = c.left <= 20 ? 2 : (c.left <= c.total * 0.45 ? 1 : (Math.floor(tick / 12) % 2 ? 6 : 0));
-          shake = c.left > 20 ? Math.sin(tick * 1.5) * 0.9 * ks : 0;
+          pose = 0; // 시전 중엔 창을 뒤로 비스듬히 든 이 자세로 고정
+          // 아이언 바디처럼: 같은 자세의 금빛 잔상이 몸에서 거대하게 커지며 희미해지기를 반복
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.filter = 'sepia(1) saturate(3) brightness(1.35) hue-rotate(-8deg)';
+          for (let i = 0; i < 3; i++) {
+            const q = (tick / 54 + i / 3) % 1, sc = 1 + q * 1.6;
+            ctx.save();
+            ctx.translate(0, -40 * ks);
+            ctx.scale(sc, sc);
+            ctx.translate(0, 40 * ks);
+            ctx.globalAlpha = (1 - q) * (1 - q) * 0.55;
+            ctx.drawImage(mfx.cast, 0, 0, mfx.cellW, mfx.cellH, -mfx.anchorX * ks, -mfx.anchorY * ks, mfx.cellW * ks, mfx.cellH * ks);
+            ctx.restore();
+          }
+          ctx.restore();
         }
         ctx.drawImage(mfx.cast, pose * mfx.cellW, 0, mfx.cellW, mfx.cellH,
-          -mfx.anchorX * ks + shake, -mfx.anchorY * ks, mfx.cellW * ks, mfx.cellH * ks);
+          -mfx.anchorX * ks, -mfx.anchorY * ks, mfx.cellW * ks, mfx.cellH * ks);
         ctx.restore();
         return;
       }
