@@ -17416,22 +17416,29 @@
         const colors = ['#f97316', '#38bdf8', '#facc15', '#7c3aed'];
         ctx.translate(ef.x, ef.y);
         if (MAGE_FUSION_FX.sheet.ready) {
-          // 원소 융합 4×2 시트(칸 192×192, 0~7): 0·1 = 불·얼음·번개·어둠 소용돌이(가장자리는 둥글게 사라짐) → 2 구슬로 응축 → 3 섬광 폭발 → 4·5 폭발 → 6 연기 → 7 흩어지는 불씨
+          // 원소 융합 3×2 시트(칸 256×192, 0~5): 0 불·얼음·번개·어둠이 한 점으로 모임 → 1 소용돌이 → 2 구슬로 응축 → 3 구슬이 터짐 → 4 큰 폭발 → 5 연기와 불씨. 칸이 바뀔 땐 앞 칸이 사라지며 다음 칸이 겹쳐 나타남
           const SH = MAGE_FUSION_FX.sheet;
-          let fi, D, squash = 1;
-          if (elapsed < ef.pull) {
-            fi = pullP < 0.3 ? 0 : (pullP < 0.7 ? 1 : 2);
-            D = ef.r * [2.4, 3.0, 2.8][fi];
-            if (fi < 2) squash = 0.75; // 바닥에 깔린 소용돌이는 위에서 내려다본 원근
-          } else {
-            const bp = (elapsed - ef.pull) / Math.max(1, ef.maxLife - ef.pull);
-            fi = 3 + [0.1, 0.3, 0.55, 0.8].filter(b => bp >= b).length;
-            D = ef.r * [3.0, 2.6, 2.8, 3.0, 3.0][fi - 3];
-          }
-          ctx.translate(0, -6);
-          ctx.scale(1, squash);
-          ctx.imageSmoothingEnabled = true;
-          ctx.drawImage(SH, (fi % 4) * 192, Math.floor(fi / 4) * 192, 192, 192, -D / 2, -D / 2, D, D);
+          const bp = elapsed < ef.pull ? 0 : (elapsed - ef.pull) / Math.max(1, ef.maxLife - ef.pull);
+          const cuts = elapsed < ef.pull ? [0, 0.35, 0.8, 1] : [0, 0.15, 0.4, 1], base = elapsed < ef.pull ? 0 : 3;
+          const q = elapsed < ef.pull ? pullP : bp;
+          let seg = 0;
+          while (seg < 2 && q >= cuts[seg + 1]) seg++;
+          const segP = (q - cuts[seg]) / (cuts[seg + 1] - cuts[seg]);
+          const W = [3.2, 2.6, 2.6, 3.0, 3.4, 3.2]; // 칸마다 그림이 차지하는 비율이 달라 범위 지름 기준으로 따로 맞춤
+          const drawCell = (fi, alpha) => {
+            const w = ef.r * W[fi], h = w * 0.75, squash = fi < 2 ? 0.78 : 1; // 바닥에 깔린 소용돌이는 위에서 내려다본 원근
+            ctx.save();
+            ctx.translate(0, -6);
+            ctx.scale(1, squash);
+            ctx.globalAlpha = alpha;
+            ctx.imageSmoothingEnabled = true;
+            ctx.drawImage(SH, (fi % 3) * 256, Math.floor(fi / 3) * 192, 256, 192, -w / 2, -h / 2, w, h);
+            ctx.restore();
+          };
+          const last = base + seg === 5, fadeOut = last ? 1 - segP * segP : 1;
+          const blend = !last && base + seg !== 2 ? Math.max(0, (segP - 0.7) / 0.3) : 0; // 구슬(2)에서 폭발(3)로는 바로 터짐
+          drawCell(base + seg, fadeOut * (1 - blend * 0.6));
+          if (blend > 0) drawCell(base + seg + 1, blend);
           return;
         }
         if (MAGE_FUSION_FX.fx.ready) {
