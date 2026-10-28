@@ -183,6 +183,10 @@ AI 그림 생성에 쓸 요청문은 [PROMPTS.md](PROMPTS.md)에 있습니다.
 | wall | sage_gray / slate_blue | 연회색 · 회청색 | 회색 타일 방 왼쪽 / 오른쪽 |
 | wall | ivory | 아이보리 | 나무 마루 방 (양쪽 같음) |
 | wall | olive / mint | 올리브 · 민트 | 돌바닥 방 왼쪽 / 오른쪽 |
+| wall | damask_teal / deco_black | 청록 다마스크 · 아르데코 블랙 | 다크 마블 방 왼쪽 / 오른쪽 |
+| wall | plaster_cream / plaster_beige | 크림 · 베이지 스투코 | 화이트 타일 방 왼쪽 / 오른쪽 (콘크리트 방 벽도 같아 하나로) |
+| wall | damask_sage / floral_navy | 세이지 다마스크 · 네이비 꽃넝쿨 | 테라조 방 왼쪽 / 오른쪽 |
+| floor | marble_dark / tile_white / concrete / terrazzo | 다크 마블 타일, 화이트 타일, 콘크리트, 테라조 큰 타일 | 위 방들 (2026-10-28 둘째 묶음, 걸레받이·몰딩이 조금 두꺼워 --hb 24 --ht 321) |
 | floor | terracotta / mustard / wood / stone / beige / sand / gray | 테라코타·머스터드 모로코 타일, 나무 마루, 돌바닥, 베이지·모카·회색 타일 | 위 방들 |
 
 ## 9. 방 안의 펫
