@@ -5968,7 +5968,21 @@
     const TORNADO_FX = { w: 127, h: 246, anchorX: 63, anchorY: 240 };
     [[DASH_FX, 'dash_burst_fx'], [SPIN_FX, 'spin_slash_fx'], [TORNADO_FX, 'purple_tornado_fx']].forEach(([o, file]) => {
       const img = new Image();
-      img.onload = () => { img.ready = true; };
+      img.onload = () => {
+        img.ready = true;
+        if (o === TORNADO_FX) { // 궁수 폭풍 화살용 초록 사본: 밝기는 그대로 두고 색만 초록으로 바꿈
+          const c = document.createElement('canvas');
+          c.width = img.width; c.height = img.height;
+          const g = c.getContext('2d');
+          g.drawImage(img, 0, 0);
+          g.globalCompositeOperation = 'color';
+          g.fillStyle = '#34d399';
+          g.fillRect(0, 0, c.width, c.height);
+          g.globalCompositeOperation = 'destination-in';
+          g.drawImage(img, 0, 0);
+          o.green = c;
+        }
+      };
       img.src = `assets/sprites/fx/${file}.webp`;
       o.img = img;
     });
@@ -17082,7 +17096,26 @@
             ctx.restore();
             return;
           }
-          if (c.key === 'storm') { ctx.restore(); return; } // 폭풍: 시전 그림(바람)만 쓰고 모이는 원은 생략
+          if (c.key === 'storm') {
+            // 폭풍: 모이는 원 대신, 시전 그림에서 뽑은 초록·청록 바람줄기와 잎이 몸 둘레에서 일렁이며 점점 커짐
+            const wind = ARCHER_STORM_FX.wind;
+            if (wind.ready) {
+              const W = ARCHER_STORM_FX.cellW, H = ARCHER_STORM_FX.cellH;
+              ctx.globalCompositeOperation = 'lighter';
+              [[0, 1.0, 0], [1, 1.4, 1.7]].forEach(([i, k, ph]) => {
+                const n = Math.floor(t / 5 + i * 2) % 3;
+                ctx.save();
+                ctx.translate(u.x, u.y - 26);
+                ctx.rotate(n * 2.1 + Math.sin(t * 0.08 + ph) * 0.3);
+                ctx.globalAlpha = (0.3 + 0.5 * p) * (0.75 + 0.25 * Math.sin(t * 0.3 + ph));
+                const sc = k * (0.8 + 0.3 * p);
+                ctx.drawImage(wind, n * W, 0, W, H, -W * sc / 2, -H * sc / 2, W * sc, H * sc);
+                ctx.restore();
+              });
+            }
+            ctx.restore();
+            return;
+          }
           const R = 70 + 40 * (1 - p);
           for (let i = 0; i < 6; i++) {
             const a = t * 0.08 + i * Math.PI / 3;
@@ -17417,6 +17450,34 @@
           ctx.globalAlpha = Math.min(1, fade * 6);
           ctx.scale(sc, sc); // 모양이 일렁이지 않게 그대로 날아감
           ctx.drawImage(art, -ARCHER_STORM_FX.arrowCX, -ARCHER_STORM_FX.arrowCY);
+          if (TORNADO_FX.green) {
+            // 휘몰아치는 회오리: 보라 회오리 샘플을 초록으로 물들여 화살대 방향으로 눕혀 감쌈. 번갈아 뒤집어 소용돌이가 도는 듯
+            const age = ef.maxLife - ef.life, flip = Math.floor(age / 5) % 2 ? -1 : 1;
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.translate(-70, 0);
+            ctx.rotate(Math.PI / 2);
+            ctx.scale(flip, 1);
+            ctx.globalAlpha = ctx.globalAlpha * (0.6 + 0.15 * Math.sin(age * 0.4));
+            const k = 2.6;
+            ctx.drawImage(TORNADO_FX.green, -TORNADO_FX.w * k / 2, -TORNADO_FX.h * k / 2, TORNADO_FX.w * k, TORNADO_FX.h * k);
+            ctx.restore();
+          }
+          const wind = ARCHER_STORM_FX.wind;
+          if (wind.ready) {
+            // 시전 그림에서 뽑은 초록·청록 바람줄기와 잎: 고리 둘레와 꼬리 쪽에서 프레임을 바꿔 가며 일렁임
+            const age = ef.maxLife - ef.life, A = ctx.globalAlpha, W = ARCHER_STORM_FX.cellW, H = ARCHER_STORM_FX.cellH;
+            ctx.globalCompositeOperation = 'lighter';
+            [[0, 0, 1.9, 0.8, 0], [-230, 0, 1.5, 0.55, 2], [-430, 0, 1.1, 0.4, 5]].forEach(([ox, oy, k, al, ph]) => {
+              const fi = Math.floor(age / 4 + ph) % 3;
+              ctx.save();
+              ctx.translate(ox, oy);
+              ctx.rotate(((age / 4 + ph) | 0) * 2.1 + Math.sin(age * 0.1 + ph) * 0.25);
+              ctx.globalAlpha = A * al * (0.75 + 0.25 * Math.sin(age * 0.35 + ph * 2));
+              ctx.drawImage(wind, fi * W, 0, W, H, -W * k / 2, -H * k / 2, W * k, H * k);
+              ctx.restore();
+            });
+          }
           return;
         }
         const g = ctx.createRadialGradient(0, 0, 6, 0, 0, ef.r);
