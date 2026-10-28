@@ -995,6 +995,7 @@
                 <button type="button" data-touch="skill0" class="touch-btn">1</button>
                 <button type="button" data-touch="skill1" class="touch-btn">2</button>
                 <button type="button" data-touch="skill2" class="touch-btn">3</button>
+                <button type="button" data-touch="skill3" class="touch-btn">4</button>
               </div>
               <div class="flex flex-col gap-2 items-center">
                 <button type="button" data-touch="stance" class="touch-btn hidden">🌀</button>
@@ -3277,10 +3278,10 @@
       }
     };
 
-    // ===== 히든 스킬: Lv.30 이상 용병의 '스킬 전체 다시 뽑기'에서만 0.05% 확률로 나옴 (직업마다 하나) =====
+    // ===== 히든 스킬: Lv.40 이상 용병의 '스킬 전체 다시 뽑기'에서만 0.05% 확률로 나옴 (직업마다 하나) =====
     // 용병에는 hiddenSkillKey(스킬 키) · hiddenSkillSlot(몇 번째 칸을 차지하는지)로 저장. 한 번 얻으면 다시 뽑아도 그 칸은 그대로
     const HIDDEN_SKILL_CHANCE = 0.0005;
-    const HIDDEN_SKILL_MIN_LEVEL = 30;
+    const HIDDEN_SKILL_MIN_LEVEL = 40;
     const HIDDEN_SKILL_DEFS = {
       warrior: {
         excalibur: {
@@ -5888,6 +5889,87 @@
       ARCHER_STORM_FX[k] = img;
     });
 
+    // 전사 히든 스킬 [엑스칼리버] 그림 (fx/samples/README.md)
+    // - cast: 기본 외형(warrior_0)이 검을 치켜드는 자세(0칸) → 검을 내리는 자세(1칸) · fx: 기를 모으는 고리 둘 · 베기 초승달 둘 · 날아가는 검기 · 발밑 반짝임
+    const WARRIOR_EXCALIBUR_FX = {
+      cellW: 98, cellH: 86, anchorX: 62, anchorY: 85, standH: 81,
+      frames: { // [x, y, w, h, 기준점x, 기준점y]
+        ring1: [0, 0, 128, 131, 64, 66], ring2: [132, 0, 156, 175, 78, 88],
+        crescent1: [292, 0, 126, 143, 88, 72], crescent2: [422, 0, 135, 174, 88, 88],
+        beam: [561, 0, 175, 159, 120, 80], spark: [740, 0, 96, 90, 48, 86]
+      }
+    };
+    [['cast', 'warrior_excalibur_cast'], ['fx', 'warrior_excalibur_fx']].forEach(([k, file]) => {
+      const img = new Image();
+      img.onload = () => { img.ready = true; };
+      img.src = `assets/sprites/fx/${file}.webp`;
+      WARRIOR_EXCALIBUR_FX[k] = img;
+    });
+    // 마법사 히든 스킬 [원소 융합] 그림 (fx/samples/README.md)
+    // - cast: 기본 외형(mage_0)이 보랏빛 고리 위에서 지팡이를 세움(0칸) → 번개를 두르고 눈을 뜸(1칸) → 지팡이를 내지름(2칸)
+    // - fx: swirlDark = 빨아들이는 어두운 소용돌이 · swirlColor = 화염·냉기·번개·암흑 4원소 소용돌이 · boom = 융합 폭발 (모두 기준점 = 그림 한가운데)
+    const MAGE_FUSION_FX = {
+      cellW: 110, cellH: 124, anchorX: 55, anchorY: 111, standH: 109,
+      frames: { // [x, y, w, h, 기준점x, 기준점y]
+        swirlDark: [0, 0, 324, 316, 162, 158], swirlColor: [326, 0, 321, 323, 160, 161], boom: [649, 0, 400, 377, 200, 188]
+      }
+    };
+    [['cast', 'mage_fusion_cast'], ['fx', 'mage_fusion_fx']].forEach(([k, file]) => {
+      const img = new Image();
+      img.onload = () => { img.ready = true; };
+      img.src = `assets/sprites/fx/${file}.webp`;
+      MAGE_FUSION_FX[k] = img;
+    });
+    function drawFusionFrame(ctx, name, scaleX, scaleY = scaleX) { // 기준점이 (0,0)에 오게 그림
+      const art = MAGE_FUSION_FX.fx, f = MAGE_FUSION_FX.frames[name];
+      ctx.drawImage(art, f[0], f[1], f[2], f[3], -f[4] * scaleX, -f[5] * scaleY, f[2] * scaleX, f[3] * scaleY);
+    }
+    function drawExcaliburFrame(ctx, name, scale) { // 기준점이 (0,0)에 오게 그림
+      const art = WARRIOR_EXCALIBUR_FX.fx, f = WARRIOR_EXCALIBUR_FX.frames[name];
+      ctx.drawImage(art, f[0], f[1], f[2], f[3], -f[4] * scale, -f[5] * scale, f[2] * scale, f[3] * scale);
+    }
+
+    // 성녀 히든 스킬 [기적] 그림 (fx/samples/README.md)
+    // - cast: 기본 외형(healer_0)이 두 손 모아 기도하는 자세(0칸) → 지팡이를 번쩍 드는 자세(1칸) · fx: 발밑 마법진 · 날개 달린 빛기둥 · 금빛 구체(보호막) · 오르는 화살표(능력치 상승)
+    const HEALER_MIRACLE_FX = {
+      cellW: 130, cellH: 122, anchorX: 62, anchorY: 108, standH: 82,
+      frames: { // [x, y, w, h, 기준점x, 기준점y]
+        circle: [0, 0, 129, 133, 64, 98], pillar: [133, 0, 101, 207, 51, 198],
+        sphere: [238, 0, 97, 99, 48, 50], arrows: [339, 0, 80, 102, 40, 98]
+      }
+    };
+    [['cast', 'healer_miracle_cast'], ['fx', 'healer_miracle_fx']].forEach(([k, file]) => {
+      const img = new Image();
+      img.onload = () => { img.ready = true; };
+      img.src = `assets/sprites/fx/${file}.webp`;
+      HEALER_MIRACLE_FX[k] = img;
+    });
+    function drawMiracleFrame(ctx, name, scale) { // 기준점이 (0,0)에 오게 그림
+      const art = HEALER_MIRACLE_FX.fx, f = HEALER_MIRACLE_FX.frames[name];
+      ctx.drawImage(art, f[0], f[1], f[2], f[3], -f[4] * scale, -f[5] * scale, f[2] * scale, f[3] * scale);
+    }
+
+    // 도적 히든 스킬 [암살] 그림 (fx/samples/README.md)
+    // - cast: 기본 외형(rogue_0)이 붉은 불꽃을 두른 자세(0칸) → 어둠에 잠긴 그림자 자세(1칸) → 연기에 휩싸인 자세(2칸) → 단검을 내지르는 자세(3칸) → 단검을 거두는 자세(4칸)
+    // - fx: flame = 발밑 보랏빛 불꽃 · smoke = 사라지고 나타나는 연기 · slash = 붉은 베기 · blood = 핏방울
+    const ROGUE_ASSASSINATE_FX = {
+      cellW: 139, cellH: 107, anchorX: 63, anchorY: 100, standH: 91,
+      frames: { // [x, y, w, h, 기준점x, 기준점y]
+        flame: [0, 0, 148, 197, 74, 187], smoke: [152, 0, 175, 133, 88, 125],
+        slash: [331, 0, 221, 230, 110, 117], blood: [556, 0, 130, 161, 65, 153]
+      }
+    };
+    [['cast', 'rogue_assassinate_cast'], ['fx', 'rogue_assassinate_fx']].forEach(([k, file]) => {
+      const img = new Image();
+      img.onload = () => { img.ready = true; };
+      img.src = `assets/sprites/fx/${file}.webp`;
+      ROGUE_ASSASSINATE_FX[k] = img;
+    });
+    function drawAssassinFrame(ctx, name, scaleX, scaleY = scaleX) { // 기준점이 (0,0)에 오게 그림
+      const art = ROGUE_ASSASSINATE_FX.fx, f = ROGUE_ASSASSINATE_FX.frames[name];
+      ctx.drawImage(art, f[0], f[1], f[2], f[3], -f[4] * scaleX, -f[5] * scaleY, f[2] * scaleX, f[3] * scaleY);
+    }
+
     Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX).forEach(def => {
       def.img = new Image();
       def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
@@ -6086,9 +6168,9 @@
       return keys[Math.floor(Math.random() * keys.length)];
     }
 
-    // 용병의 직업별 3개 스킬 슬롯 순서 배열 보장 (1차: 10레벨, 2차: 20레벨, 3차: 30레벨 해금)
-    // 스킬 3칸: 앞에서부터 skillsRevealed 칸까지만 정해진 스킬이고, 나머지는 아직 정해지지 않음
-    // 10레벨마다 칸이 하나 열릴 때, 아직 없는 직업 스킬 중 하나를 그 자리에서 무작위로 뽑음
+    // 용병의 직업별 스킬 슬롯 순서 배열 보장 (Lv.1 · 10 · 20 · 40에 한 칸씩 해금)
+    // 스킬 4칸: 앞에서부터 skillsRevealed 칸까지만 정해진 스킬이고, 나머지는 아직 정해지지 않음
+    // 칸이 하나 열릴 때, 아직 없는 직업 스킬 중 하나를 그 자리에서 무작위로 뽑음
     function ensureMercSkillSlots(merc) {
       const allKeys = Object.keys(SKILL_DEFS[merc.job] || SKILL_DEFS.warrior);
       let cur = Array.isArray(merc.skillSlots) ? merc.skillSlots.filter((k, i, arr) => allKeys.includes(k) && arr.indexOf(k) === i) : [];
@@ -6130,9 +6212,9 @@
         desc: `Lv.${unlockLv}이 되면 아직 없는 직업 스킬 중 하나가 무작위로 열려요.` };
     }
 
-    // 10레벨마다 스킬 1개씩 해금되어 30레벨 달성 시 3개의 스킬을 모두 사용 (Requirement 5)
+    // 1 · 10 · 20 · 40레벨에 스킬이 하나씩 열려 40레벨부터 4개의 스킬을 사용
     // 스킬 칸이 열리는 레벨 (첫 스킬은 1레벨부터)
-    const SKILL_UNLOCK_LEVELS = [1, 10, 20];
+    const SKILL_UNLOCK_LEVELS = [1, 10, 20, 40];
     function getUnlockedSkillCount(level) {
       return SKILL_UNLOCK_LEVELS.filter(lv => (level || 1) >= lv).length;
     }
@@ -6140,7 +6222,7 @@
     // 히든 스킬을 가진 용병: 스킬 칸 순서에서 그 칸만 히든 스킬로 바꾼 사본 (없으면 skillSlots 그대로)
     function mercHasHiddenSkill(merc) {
       const hid = hiddenSkillOf(merc && merc.job);
-      return Boolean(hid && merc.hiddenSkillKey === hid.id && Number.isInteger(merc.hiddenSkillSlot) && merc.hiddenSkillSlot >= 0 && merc.hiddenSkillSlot < 3);
+      return Boolean(hid && merc.hiddenSkillKey === hid.id && Number.isInteger(merc.hiddenSkillSlot) && merc.hiddenSkillSlot >= 0 && merc.hiddenSkillSlot < 4);
     }
     function mercSkillSlots(merc) {
       const slots = ensureMercSkillSlots(merc);
@@ -9012,12 +9094,12 @@
           }
         } while (mercSkillSlots(merc).slice(0, curN).every(k => before.includes(k)));
         merc.skillKey = curSlots[0];
-        // 히든 스킬: Lv.30 이상, 아직 없을 때 0.05% 확률로 다시 뽑은 칸 중 하나에 나타남
+        // 히든 스킬: Lv.40 이상, 아직 없을 때 0.05% 확률로 다시 뽑은 칸 중 하나에 나타남
         const hid = hiddenSkillOf(merc.job);
         const gotHidden = Boolean(hid && !mercHasHiddenSkill(merc) && (merc.level || 1) >= HIDDEN_SKILL_MIN_LEVEL && Math.random() < HIDDEN_SKILL_CHANCE);
         if (gotHidden) {
           merc.hiddenSkillKey = hid.id;
-          merc.hiddenSkillSlot = Math.floor(Math.random() * Math.min(3, curN));
+          merc.hiddenSkillSlot = Math.floor(Math.random() * Math.min(4, curN));
         }
         saveState();
         renderSquadTab();
@@ -10007,11 +10089,11 @@
       DailyMission.progress('formation', 1, stu);
     }
 
-    // 용병의 스킬 3칸 (Lv.1 · 10 · 20에 하나씩 해금)
+    // 용병의 스킬 4칸 (Lv.1 · 10 · 20 · 40에 하나씩 해금)
     function getMercSkillSlotInfo(merc) {
       const jobSkills = mercSkillBook(merc);
       const unlocked = getMercUnlockedSkillKeys(merc);
-      return mercSkillSlots(merc).slice(0, 3)
+      return mercSkillSlots(merc).slice(0, 4)
         .map((key, i) => {
           const open = unlocked.includes(key);
           return open
@@ -10131,7 +10213,7 @@
         <div class="grid grid-cols-2 gap-1.5 text-[11px]">
           <div class="px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 truncate">📍 ${getMercPositionLabel(merc)}</div>
           <div class="px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 truncate">
-            ⚡ 스킬 ${getUnlockedSkillCount(merc.level || 1)}/3개 열림
+            ⚡ 스킬 ${getUnlockedSkillCount(merc.level || 1)}/4개 열림
           </div>
           <button onclick="trainMercenary('${merc.id}')" class="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold">
             ⬆️ 레벨업 (${mercLevelUpCost(merc.level)} CA)
@@ -12676,8 +12758,8 @@
       keys: { w: false, a: false, s: false, d: false },
       aimX: null, aimY: null,
       attack: false,
-      dashCount: 0, skillCount: [0, 0, 0],
-      _seenDash: 0, _seenSkill: [0, 0, 0],
+      dashCount: 0, skillCount: [0, 0, 0, 0],
+      _seenDash: 0, _seenSkill: [0, 0, 0, 0],
       sniperAim: false, reloadCount: 0, _seenReload: 0
     };
     let arenaMouseCanvas = null;
@@ -12767,7 +12849,7 @@
         return;
       }
       const jobSkills = unitSkillBook(u);
-      const skillChips = (u.skillSlots || []).slice(0, 3).map((key, i) => {
+      const skillChips = (u.skillSlots || []).slice(0, 4).map((key, i) => {
         const sk = jobSkills[key];
         if (!sk) return '';
         const locked = !(u.unlockedSkills || []).includes(key);
@@ -12810,7 +12892,7 @@
       } else if (k === ' ' || e.code === 'Space') {
         if (!e.repeat) localBattleInput.dashCount++;
         e.preventDefault();
-      } else if (k === '1' || k === '2' || k === '3') {
+      } else if (k === '1' || k === '2' || k === '3' || k === '4') {
         if (!e.repeat) localBattleInput.skillCount[Number(k) - 1]++;
         e.preventDefault();
       } else if (k === 'e' || e.code === 'KeyE') {
@@ -12955,7 +13037,7 @@
           <div class="relative text-xs font-black" style="color:${ready ? '#fcd34d' : '#f1f5f9'}">${label}</div>
         </div>`;
       };
-      const skillSlots = (u.skillSlots || []).slice(0, 3).map((key, i) => {
+      const skillSlots = (u.skillSlots || []).slice(0, 4).map((key, i) => {
         const sk = jobSkills[key];
         if (!sk) return '';
         const cd = u.skillCooldowns?.[key] || 0;
@@ -13397,7 +13479,7 @@
         if (!guarding) triggerUnitDash(u, taunter ? aimAngle : (moving ? Math.atan2(my, mx) : aimAngle), '💨대시');
       }
       if (!Array.isArray(c._seenSkill)) c._seenSkill = [0, 0, 0];
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 4; i++) {
         const cnt = (c.skillCount || [])[i] || 0;
         if (cnt !== c._seenSkill[i]) {
           c._seenSkill[i] = cnt;
@@ -13448,7 +13530,7 @@
       localBattleInput.autoAim = show;
       if (!show) return;
       const jobSkills = unitSkillBook(u);
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 4; i++) {
         const btn = box.querySelector(`[data-touch="skill${i}"]`);
         if (!btn) continue;
         const key = (u.skillSlots || [])[i];
@@ -13937,7 +14019,7 @@
       battleControl.mode = 'auto';
       battleControl.unitId = null;
       battleControl.locked = false;
-      Object.assign(localBattleInput, { moveX: 0, moveY: 0, keys: { w: false, a: false, s: false, d: false }, attack: false, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0], itemCount: 0, _seenItem: 0, stanceCount: 0, _seenStance: 0, sniperAim: false, reloadCount: 0, _seenReload: 0, teamDash: 0, unitDashN: 0, unitDashId: null, forfeit: 0, controlChosen: false });
+      Object.assign(localBattleInput, { moveX: 0, moveY: 0, keys: { w: false, a: false, s: false, d: false }, attack: false, dashCount: 0, skillCount: [0, 0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0, 0], itemCount: 0, _seenItem: 0, stanceCount: 0, _seenStance: 0, sniperAim: false, reloadCount: 0, _seenReload: 0, teamDash: 0, unitDashN: 0, unitDashId: null, forfeit: 0, controlChosen: false });
       sim.awaitingControlChoice = false;
       // 실시간 결투 방장: 나와 상대가 모두 전투 방식을 고를 때까지 전투를 시작하지 않음
       sim.waitingForOpponent = netRole === 'host';
@@ -16541,15 +16623,15 @@
           f.cooldown = 30;
           f.casting = null;
           unit.healDone += f.hp;
-          sim.effects.push({ type: 'heal_pillar', x: f.x, y: f.y, life: 80, maxLife: 80 });
+          sim.effects.push({ type: 'hidden_miracle_pillar', x: f.x, y: f.y + 8, life: 80, maxLife: 80 });
           sim.floatTexts.push({ x: f.x, y: f.y - 56, text: '🌅 기적의 부활!', color: '#e879f9', life: 80 });
         });
         sim.units.filter(a => a.alive && a.team === unit.team).forEach(a => {
           const amt = Math.round(a.maxHp * 0.2);
           a.shield = (a.shield || 0) + amt;
           a.statuses.miracle = Math.max(a.statuses.miracle || 0, 600);
-          sim.effects.push({ type: 'shield_dome', x: a.x, y: a.y, life: 60, maxLife: 60 });
-          sim.floatTexts.push({ x: a.x, y: a.y - 40, text: `🛡️+${amt}`, color: '#a855f7', life: 50 });
+          sim.effects.push({ type: 'hidden_miracle_buff', x: a.x, y: a.y, life: 70, maxLife: 70, owner: a });
+          sim.floatTexts.push({ x: a.x, y: a.y - 40, text: `🛡️+${amt}`, color: '#eab308', life: 50 });
         });
         sim.effects.push({ type: 'hidden_miracle', x: unit.x, y: unit.y, life: 90, maxLife: 90 });
         hiddenImpact(8, '#fdf4ff');
@@ -16579,13 +16661,17 @@
         const dest = clampToArena(foe.x + Math.cos(back) * gap, foe.y + Math.sin(back) * gap);
         sim.effects.push({ type: 'magic_burst', spr: 'teleport', x: unit.x, y: unit.y - 12, r: 50, life: 30, maxLife: 30 });
         sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y, tx: dest.x, ty: dest.y, color: '#7c3aed', life: 24, maxLife: 24 });
+        sim.effects.push({ type: 'hidden_assassin_smoke', x: unit.x, y: unit.y + 8, life: 40, maxLife: 40 });
+        sim.effects.push({ type: 'hidden_assassin_smoke', x: dest.x, y: dest.y + 8, life: 40, maxLife: 40 });
+        const strikeDir = foe.x >= dest.x ? 1 : -1;
+        unit.assassinPose = { start: sim.tickCount }; // 도착한 뒤 단검을 내지르는 자세를 잠깐 보여 줌
         unit.x = dest.x;
         unit.y = dest.y;
         unit.kbVx = 0;
         unit.kbVy = 0;
         unit.rush = null;
         sniperFace(unit, Math.atan2(foe.y - unit.y, foe.x - unit.x));
-        sim.effects.push({ type: 'hidden_assassin', x: foe.x, y: foe.y - 20, life: 34, maxLife: 34 });
+        sim.effects.push({ type: 'hidden_assassin', x: foe.x, y: foe.y - 20, dir: strikeDir, life: 34, maxLife: 34 });
         applyDamage(unit, foe, unit.atk * 15, '', '#a855f7');
         if (foe.alive) {
           foe.permBleed = true;
@@ -16809,6 +16895,52 @@
         if (c && c.key && isHiddenSkillKey(c.key)) {
           const p = 1 - c.left / c.total;
           ctx.save();
+          if (c.key === 'excalibur' && WARRIOR_EXCALIBUR_FX.fx.ready) {
+            // 엑스칼리버: 발밑에서 반짝임이 솟고, 몸 둘레에 금빛·푸른 고리가 점점 커지며 번개가 튐 (마지막 0.5초는 큰 고리)
+            const bx = u.x, by = u.y - 36, pulse = 0.5 + 0.5 * Math.sin(t * 0.3);
+            const g = ctx.createRadialGradient(bx, by, 4, bx, by, 70 + p * 40);
+            g.addColorStop(0, `rgba(254, 243, 199, ${0.2 + p * 0.3})`);
+            g.addColorStop(1, 'rgba(250, 204, 21, 0)');
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.arc(bx, by, 70 + p * 40, 0, Math.PI * 2); ctx.fill();
+            ctx.globalCompositeOperation = 'lighter';
+            const big = c.left <= 30;
+            ctx.save();
+            ctx.translate(bx, by);
+            ctx.rotate(t * (big ? 0.05 : 0.025));
+            ctx.globalAlpha = 0.28 + 0.3 * p; // 몸이 비치도록 옅게
+            drawExcaliburFrame(ctx, big ? 'ring2' : 'ring1', (0.75 + 0.5 * p) * (1 + 0.04 * pulse) * (big ? 0.7 : 1.1));
+            ctx.restore();
+            for (let i = 0; i < 2; i++) { // 발밑 반짝임: 두 겹이 어긋나게 솟았다 사라짐
+              const q = (t * 0.03 + i * 0.5) % 1;
+              ctx.save();
+              ctx.translate(u.x + (i ? 10 : -10), u.y + 6 - q * 22);
+              ctx.globalAlpha = (1 - q) * 0.95;
+              drawExcaliburFrame(ctx, 'spark', 0.7 + 0.3 * p);
+              ctx.restore();
+            }
+            ctx.restore();
+            return;
+          }
+          if (c.key === 'miracle' && HEALER_MIRACLE_FX.fx.ready) {
+            // 기적: 발밑 마법진이 점점 밝아지며 커지고, 금빛 기운이 위로 솟음 (마지막 0.5초는 가장 크게)
+            const pulse = 0.5 + 0.5 * Math.sin(t * 0.2);
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.save();
+            ctx.translate(u.x, u.y + 8);
+            ctx.scale(1, 0.72);
+            ctx.globalAlpha = 0.5 + 0.45 * p;
+            drawMiracleFrame(ctx, 'circle', (0.6 + 0.7 * p) * (1 + 0.04 * pulse) * (c.left <= 30 ? 1.15 : 1));
+            ctx.restore();
+            for (let i = 0; i < 3; i++) { // 마법진에서 반짝임이 솟았다 사라짐
+              const q = (t * 0.02 + i / 3) % 1;
+              ctx.globalAlpha = (1 - q) * 0.8;
+              ctx.fillStyle = '#fde68a';
+              ctx.beginPath(); ctx.arc(u.x + Math.sin(i * 2.4 + t * 0.03) * 22, u.y - q * 60, 2 + p * 2, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.restore();
+            return;
+          }
           const R = 70 + 40 * (1 - p);
           for (let i = 0; i < 6; i++) {
             const a = t * 0.08 + i * Math.PI / 3;
@@ -16883,6 +17015,15 @@
         ctx.translate(ef.x + Math.cos(ef.angle) * travel, ef.y + Math.sin(ef.angle) * travel);
         ctx.rotate(ef.angle);
         const w = ef.w;
+        if (WARRIOR_EXCALIBUR_FX.fx.ready) {
+          // 그림 검기: 앞쪽 초승달이 판정 자리, 뒤로 불꽃 꼬리를 끌며 날아감. 끝에 닿을 즈음 흐려짐
+          const sc = w * 2.3 / WARRIOR_EXCALIBUR_FX.frames.beam[3];
+          ctx.globalAlpha = Math.min(1, ef.life / 8, (ef.maxLife - ef.life) / 3 + 0.3);
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.scale(1, 1 + 0.05 * Math.sin(t * 0.7));
+          drawExcaliburFrame(ctx, 'beam', sc);
+          return;
+        }
         const tail = ctx.createLinearGradient(-200, 0, 0, 0);
         tail.addColorStop(0, 'rgba(253, 224, 71, 0)');
         tail.addColorStop(1, 'rgba(253, 224, 71, 0.4)');
@@ -16911,6 +17052,18 @@
         ctx.translate(ef.x, ef.y);
         ctx.rotate(ef.angle);
         const r = ef.r * (0.6 + 0.4 * Math.min(1, progress * 3));
+        if (WARRIOR_EXCALIBUR_FX.fx.ready) {
+          // 그림 베기: 초승달이 앞으로 크게 퍼지다 폭발하듯 흩어짐 (앞쪽 가장자리가 휘두른 거리 끝에 닿게)
+          const second = progress > 0.3;
+          const name = second ? 'crescent2' : 'crescent1';
+          const f = WARRIOR_EXCALIBUR_FX.frames[name];
+          const sc = (ef.r * 1.6 / f[3]) * (0.8 + 0.35 * Math.min(1, progress * 2));
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = second ? Math.min(1, (1 - progress) * 2.2) : 1;
+          ctx.translate(ef.r * 0.45 * Math.min(1, progress * 4) + 10, 0);
+          drawExcaliburFrame(ctx, name, sc);
+          return;
+        }
         ctx.globalAlpha = fade;
         for (let k = 0; k < 3; k++) {
           ctx.strokeStyle = ['#fffbeb', '#fde047', '#f59e0b'][k];
@@ -16925,6 +17078,39 @@
         const pullP = Math.min(1, elapsed / ef.pull);
         const colors = ['#f97316', '#38bdf8', '#facc15', '#7c3aed'];
         ctx.translate(ef.x, ef.y);
+        if (MAGE_FUSION_FX.fx.ready) {
+          // 그림: 바닥에 깔린 어두운 소용돌이가 돌며 적을 빨아들이다가, 4원소 소용돌이가 오므라들며 폭발 그림이 터짐 (위에서 내려다본 원이라 세로 0.62배)
+          const Y = 0.62, sc = ef.r * 2 / MAGE_FUSION_FX.frames.swirlDark[2];
+          ctx.save();
+          ctx.scale(1, Y);
+          if (elapsed < ef.pull) {
+            ctx.rotate(-t * 0.07);
+            ctx.globalAlpha = Math.min(1, elapsed / 8) * 0.92;
+            drawFusionFrame(ctx, 'swirlDark', sc * (1.05 - 0.1 * pullP));
+            ctx.rotate(t * 0.07 + t * 0.12); // 4원소 소용돌이는 반대로, 점점 진해지며
+            ctx.globalAlpha = pullP * 0.85;
+            drawFusionFrame(ctx, 'swirlColor', sc * (0.75 - 0.2 * pullP));
+            ctx.restore();
+            const core = 16 + pullP * 34;
+            const g = ctx.createRadialGradient(0, -10, 2, 0, -10, core);
+            g.addColorStop(0, `rgba(255,255,255,${0.35 + 0.6 * pullP})`);
+            g.addColorStop(1, 'rgba(232,121,249,0)');
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.arc(0, -10, core, 0, Math.PI * 2); ctx.fill();
+            return;
+          }
+          const bp = (elapsed - ef.pull) / Math.max(1, ef.maxLife - ef.pull);
+          ctx.rotate(t * 0.19);
+          ctx.globalAlpha = Math.max(0, 1 - bp * 2.2);
+          drawFusionFrame(ctx, 'swirlColor', sc * (0.6 + bp * 0.8));
+          ctx.restore();
+          // 폭발: 처음엔 작고 환하게 → 반지름 끝까지 퍼지며 연기와 함께 흐려짐
+          const bsc = ef.r * 2.1 / MAGE_FUSION_FX.frames.boom[2] * (0.45 + 0.55 * Math.min(1, bp * 3.5));
+          ctx.globalAlpha = bp < 0.12 ? 1 : Math.max(0, 1 - (bp - 0.12) / 0.88);
+          ctx.translate(0, -10);
+          drawFusionFrame(ctx, 'boom', bsc);
+          return;
+        }
         if (elapsed < ef.pull) {
           ctx.globalAlpha = 0.16;
           ctx.fillStyle = '#c026d3';
@@ -17024,8 +17210,51 @@
         ctx.beginPath(); ctx.moveTo(26, 0); ctx.lineTo(4, -9); ctx.lineTo(8, 0); ctx.lineTo(4, 9); ctx.closePath(); ctx.fill(); ctx.stroke();
         return;
       }
+      if (ef.type === 'hidden_miracle_pillar') {
+        // 기적 부활: 쓰러진 자리에 날개 달린 빛기둥이 내려앉았다 사라짐
+        if (!HEALER_MIRACLE_FX.fx.ready) return;
+        ctx.translate(ef.x, ef.y);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = Math.min(1, progress * 6, fade * 2);
+        drawMiracleFrame(ctx, 'pillar', 0.7 + 0.3 * Math.min(1, progress * 3));
+        return;
+      }
+      if (ef.type === 'hidden_miracle_buff') {
+        // 기적 축복: 아군 몸을 금빛 구체가 감쌌다 터지듯 사라지고, 능력치 상승 화살표가 위로 솟음
+        if (!HEALER_MIRACLE_FX.fx.ready) return;
+        const o = ef.owner && ef.owner.alive ? ef.owner : ef;
+        ctx.translate(o.x, o.y - 26);
+        ctx.globalCompositeOperation = 'lighter';
+        const grow = Math.min(1, progress * 5);
+        ctx.globalAlpha = 0.5 * Math.min(1, fade * 2.5) * grow;
+        drawMiracleFrame(ctx, 'sphere', (0.5 + 0.2 * grow + 0.25 * progress));
+        ctx.globalAlpha = Math.min(1, fade * 1.6) * Math.min(1, progress * 6);
+        ctx.translate(0, 6 - progress * 40);
+        drawMiracleFrame(ctx, 'arrows', 0.6);
+        return;
+      }
       if (ef.type === 'hidden_miracle') {
         // 기적: 하늘에서 내려오는 넓은 빛기둥과 퍼지는 빛 고리
+        if (HEALER_MIRACLE_FX.fx.ready) {
+          // 그림 빛기둥: 날개 달린 큰 기둥이 시전자 자리에 내리꽂히고, 마법진이 크게 퍼지며 흩어짐
+          ctx.translate(ef.x, ef.y + 10);
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = Math.min(1, progress * 8, fade * 1.6);
+          ctx.save();
+          ctx.scale(1, 0.72);
+          drawMiracleFrame(ctx, 'circle', 1.3 + progress * 5.5);
+          ctx.restore();
+          ctx.globalAlpha = Math.min(1, progress * 8, fade * 1.6) * 0.9;
+          ctx.scale(1 + progress * 0.35, 1);
+          drawMiracleFrame(ctx, 'pillar', 1.7);
+          const top = -198 * 1.7, pw = 36 * 1.7 * (1 + progress * 0.35); // 그림 위로 이어지는 빛줄기
+          const g = ctx.createLinearGradient(0, top, 0, top - 360);
+          g.addColorStop(0, 'rgba(253, 224, 71, 0.55)');
+          g.addColorStop(1, 'rgba(253, 224, 71, 0)');
+          ctx.fillStyle = g;
+          ctx.fillRect(-pw / 2, top - 360, pw, 362);
+          return;
+        }
         ctx.globalAlpha = fade * 0.55;
         const w = 120 + progress * 80;
         const g = ctx.createLinearGradient(ef.x, ef.y - 700, ef.x, ef.y);
@@ -17038,6 +17267,29 @@
         ctx.lineWidth = 6;
         const rr = 60 + progress * 600;
         ctx.beginPath(); ctx.ellipse(ef.x, ef.y, rr, rr * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
+        return;
+      }
+      if (ef.type === 'hidden_assassin_smoke') {
+        // 암살: 사라지고 나타나는 자리에 검은 연기가 부풀었다 흩어짐
+        if (!ROGUE_ASSASSINATE_FX.fx.ready) return;
+        ctx.translate(ef.x, ef.y);
+        ctx.globalAlpha = Math.min(1, fade * 1.8);
+        drawAssassinFrame(ctx, 'smoke', 0.55 + 0.45 * Math.min(1, progress * 2.5));
+        return;
+      }
+      if (ef.type === 'hidden_assassin' && ROGUE_ASSASSINATE_FX.fx.ready) {
+        // 암살 그림: 붉은 베기가 번쩍 터지고, 발치에서 핏방울이 튐 (찌른 방향 쪽으로 기울어 보이게 좌우 뒤집음)
+        const grow = Math.min(1, progress * 5);
+        ctx.translate(ef.x, ef.y);
+        ctx.save();
+        ctx.scale(ef.dir >= 0 ? 1 : -1, 1);
+        ctx.globalAlpha = Math.min(1, fade * 2.2);
+        const sc = 0.55 + 0.45 * grow + 0.12 * progress;
+        drawAssassinFrame(ctx, 'slash', sc);
+        ctx.restore();
+        ctx.translate(0, 34);
+        ctx.globalAlpha = Math.min(1, fade * 1.8) * Math.min(1, progress * 8);
+        drawAssassinFrame(ctx, 'blood', 0.7 + 0.3 * Math.min(1, progress * 3));
         return;
       }
       if (ef.type === 'hidden_assassin') {
@@ -18558,6 +18810,57 @@
         ctx.drawImage(sprite.img, frame * sprite.cellW, 0, sprite.cellW, sprite.cellH,
           -sprite.anchorX * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
         if (storm.wind.ready) drawStorm(storm.wind);
+        ctx.restore();
+        return;
+      }
+      // 마법사 히든 스킬 [원소 융합] 시전: 기본 외형은 고리 위에서 지팡이를 세우다가 → 번개를 두르고 → 마지막에 지팡이를 내지름
+      const fusion = u.alive && u.casting && u.casting.key === 'element_fusion' && u.job === 'mage' && !u.monsterType && (u.skinVariant || 0) === 0 && MAGE_FUSION_FX.cast.ready ? MAGE_FUSION_FX : null;
+      if (fusion) {
+        const c = u.casting;
+        const ks = spriteDrawH(u, sprite) / fusion.standH;
+        const fi = c.left <= 10 ? 2 : (c.left <= c.total * 0.6 ? 1 : 0);
+        const shake = fi === 1 ? Math.sin(tick * 1.4) * 0.8 * ks : 0;
+        ctx.drawImage(fusion.cast, fi * fusion.cellW, 0, fusion.cellW, fusion.cellH,
+          -fusion.anchorX * ks + shake, -fusion.anchorY * ks, fusion.cellW * ks, fusion.cellH * ks);
+        ctx.restore();
+        return;
+      }
+      // 도적 히든 스킬 [암살]: 시전 중엔 불꽃 → 그림자 → 연기를 두른 자세, 등 뒤에 나타난 직후엔 단검을 내지르다 거두는 자세 (기본 외형만)
+      const assassinCast = u.alive && u.job === 'rogue' && !u.monsterType && (u.skinVariant || 0) === 0 && ROGUE_ASSASSINATE_FX.cast.ready && u.casting && u.casting.key === 'assassinate';
+      const assassinSince = u.alive && u.assassinPose && u.job === 'rogue' && !u.monsterType && (u.skinVariant || 0) === 0 && ROGUE_ASSASSINATE_FX.cast.ready ? sim.tickCount - u.assassinPose.start : 99;
+      if (assassinCast || (assassinSince >= 0 && assassinSince < 36)) {
+        const as = ROGUE_ASSASSINATE_FX;
+        const ks = spriteDrawH(u, sprite) / as.standH;
+        let fi, shake = 0;
+        if (assassinCast) {
+          const p = 1 - u.casting.left / u.casting.total;
+          fi = p < 0.3 ? 0 : (p < 0.85 ? (tick % 14 < 3 ? 0 : 1) : 2);
+          if (fi === 1) shake = Math.sin(tick * 1.2) * 0.8 * ks;
+        } else fi = assassinSince < 16 ? 3 : 4;
+        ctx.drawImage(as.cast, fi * as.cellW, 0, as.cellW, as.cellH,
+          -as.anchorX * ks + shake, -as.anchorY * ks, as.cellW * ks, as.cellH * ks);
+        ctx.restore();
+        return;
+      }
+      // 전사 히든 스킬 [엑스칼리버] 시전: 기본 외형은 검을 치켜들고 있다가 베기 직전 검을 내리는 자세
+      const excal = u.alive && u.casting && u.casting.key === 'excalibur' && u.job === 'warrior' && !u.monsterType && (u.skinVariant || 0) === 0 && WARRIOR_EXCALIBUR_FX.cast.ready ? WARRIOR_EXCALIBUR_FX : null;
+      if (excal) {
+        const c = u.casting;
+        const ks = spriteDrawH(u, sprite) / excal.standH;
+        const shake = c.left > 20 ? Math.sin(tick * 1.3) * 0.8 * ks : 0; // 기를 모으는 동안 몸이 잘게 떨림
+        ctx.drawImage(excal.cast, (c.left > 20 ? 0 : 1) * excal.cellW, 0, excal.cellW, excal.cellH,
+          -excal.anchorX * ks + shake, -excal.anchorY * ks, excal.cellW * ks, excal.cellH * ks);
+        ctx.restore();
+        return;
+      }
+      // 성녀 히든 스킬 [기적] 시전: 기본 외형은 두 손 모아 기도하다가 마지막에 지팡이를 번쩍 드는 자세
+      const miracle = u.alive && u.casting && u.casting.key === 'miracle' && u.job === 'healer' && !u.monsterType && (u.skinVariant || 0) === 0 && HEALER_MIRACLE_FX.cast.ready ? HEALER_MIRACLE_FX : null;
+      if (miracle) {
+        const c = u.casting;
+        const ks = spriteDrawH(u, sprite) / miracle.standH;
+        const bob = c.left > 20 ? Math.sin(tick * 0.12) * 1.2 * ks : 0; // 기도하는 동안 몸이 살짝 떠 오름
+        ctx.drawImage(miracle.cast, (c.left > 20 ? 0 : 1) * miracle.cellW, 0, miracle.cellW, miracle.cellH,
+          -miracle.anchorX * ks, -miracle.anchorY * ks - bob, miracle.cellW * ks, miracle.cellH * ks);
         ctx.restore();
         return;
       }
@@ -27558,7 +27861,7 @@
       liveNet.remoteUnitId = null;
       if (!val) return;
       if (!liveNet.remoteCtrl) {
-        liveNet.remoteCtrl = { keys: {}, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0], _seenTeamDash: 0, _seenUnitDash: 0 };
+        liveNet.remoteCtrl = { keys: {}, dashCount: 0, skillCount: [0, 0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0, 0], _seenTeamDash: 0, _seenUnitDash: 0 };
       }
       if (val.chosen === 1 && !liveNet.guestChose) {
         liveNet.guestChose = true;
@@ -27573,7 +27876,7 @@
       c.moveX = Math.max(-1, Math.min(1, liveNum(val.mvx)));
       c.moveY = Math.max(-1, Math.min(1, liveNum(val.mvy)));
       c.dashCount = liveNum(val.dash);
-      c.skillCount = [0, 1, 2].map(i => liveNum((val.sk || [])[i]));
+      c.skillCount = [0, 1, 2, 3].map(i => liveNum((val.sk || [])[i]));
       c.itemCount = liveNum(val.item);
       c.stanceCount = liveNum(val.stance);
       c.sniperAim = val.aim === 1;
@@ -27611,7 +27914,7 @@
           ? (v.unitId ? sim.units.find(u => u.id === v.unitId && u.liveOwnerId === stuId && u.alive) : null)
           : sim.units.find(u => u.liveOwnerId === stuId && u.alive);
         let c = liveNet.remoteCtrls[stuId];
-        if (!c) c = liveNet.remoteCtrls[stuId] = { keys: {}, dashCount: 0, skillCount: [0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0], _seenUnitDash: liveNum(v.unitDashN) };
+        if (!c) c = liveNet.remoteCtrls[stuId] = { keys: {}, dashCount: 0, skillCount: [0, 0, 0, 0], _seenDash: 0, _seenSkill: [0, 0, 0, 0], _seenUnitDash: liveNum(v.unitDashN) };
         // 다른 용병으로 바꿨거나 자동 전투로 돌아갔으면 예전 용병은 AI에게
         Object.keys(sim.controllers).forEach(id => { if (sim.controllers[id] === c && (!unit || id !== unit.id)) delete sim.controllers[id]; });
         if (raid && liveNum(v.unitDashN) !== c._seenUnitDash) {
@@ -27628,7 +27931,7 @@
         c.moveX = Math.max(-1, Math.min(1, liveNum(v.mvx)));
         c.moveY = Math.max(-1, Math.min(1, liveNum(v.mvy)));
         c.dashCount = liveNum(v.dash);
-        c.skillCount = [0, 1, 2].map(i => liveNum((v.sk || [])[i]));
+        c.skillCount = [0, 1, 2, 3].map(i => liveNum((v.sk || [])[i]));
         c.itemCount = liveNum(v.item);
         c.stanceCount = liveNum(v.stance);
         c.sniperAim = v.aim === 1;
@@ -27661,7 +27964,7 @@
         keys: { w: c.keys.w, a: c.keys.a, s: c.keys.s, d: c.keys.d },
         atk: Boolean(c.attack),
         dash: c.dashCount || 0,
-        sk: [...(c.skillCount || [0, 0, 0])],
+        sk: [...(c.skillCount || [0, 0, 0, 0])],
         item: c.itemCount || 0,
         stance: c.stanceCount || 0,
         aim: c.sniperAim ? 1 : 0,
