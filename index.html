@@ -437,6 +437,22 @@
     </div>
   </div>
 
+  <!-- 로그인 직후 오늘의 미션 팝업 -->
+  <div id="dailyMissionModal" class="hidden fixed inset-0 z-[65] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" onclick="if (event.target === this) DailyMission.close()">
+    <div class="bg-slate-900 border-2 border-emerald-500/60 rounded-3xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="text-xs font-extrabold text-emerald-300">📋 매일 새로 바뀌어요</div>
+          <h3 class="font-title text-2xl text-white">오늘의 미션</h3>
+          <p class="text-xs text-slate-400 mt-0.5">미션 하나마다 <strong class="text-amber-300">1,000 CA</strong>, 3개를 모두 깨면 <strong class="text-amber-300">1,000 CA</strong>를 더 받아요!</p>
+        </div>
+        <button type="button" onclick="DailyMission.close()" class="text-slate-400 hover:text-white font-bold">✕</button>
+      </div>
+      <div id="dailyMissionBody" class="flex flex-col gap-2.5"></div>
+      <button type="button" onclick="DailyMission.close()" class="py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs">닫기</button>
+    </div>
+  </div>
+
   <!-- 로그인 직후 랭킹 매칭 홍보 팝업 -->
   <div id="rankedPromoModal" class="hidden fixed inset-0 z-[60] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" onclick="if (event.target === this) closeRankedPromoModal()">
     <div class="bg-slate-900 border-2 border-amber-500/60 rounded-3xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
@@ -834,6 +850,9 @@
           </span>
           <button id="headerChangePwBtn" onclick="openChangePasswordModal()" title="내 비밀번호 변경" class="text-xs px-2.5 py-1 rounded-lg bg-amber-300 hover:bg-amber-400 text-slate-950 font-extrabold border-2 border-amber-600 shadow-sm transition">
             🔑 비번변경
+          </button>
+          <button id="headerDailyMissionBtn" onclick="DailyMission.open()" title="📋 오늘의 미션 보기" class="text-xs px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-extrabold border border-emerald-500/40 transition">
+            📋 오늘의 미션 <span id="headerDailyMissionCount">0/3</span>
           </button>
           <button id="headerPetToggleBtn" onclick="PetSystem.toggle()" title="화면에 펫 보이기 켜기/끄기" class="hidden text-xs px-2.5 py-1 rounded-lg font-extrabold border-2 shadow-sm transition"></button>
           <button onclick="goToClassLobbyPage()" class="text-xs px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold transition shadow-sm" title="우리 반 학급 페이지(전체 학생 명단)로 이동">
@@ -6457,6 +6476,7 @@
       const avBtn = document.getElementById('headerStudentAvatar');
       if (avBtn) avBtn.innerHTML = studentAvatarHTML(stu, 28);
       if (window.PetSystem) PetSystem.renderToggle();
+      if (window.DailyMission) DailyMission.renderBadge(stu);
       const powerEl = document.getElementById('headerStudentPower');
       if (powerEl) powerEl.textContent = totalSquadPower.toLocaleString();
       document.getElementById('headerStudentCoin').textContent = stu.mc.toLocaleString();
@@ -6897,6 +6917,7 @@
       closeProfileSellModal();
       renderProfileMarket();
       showRewardBanner(`🏷️ [${title}] 그림을 ${price.toLocaleString()} CA에 판매 등록했어요! 친구가 사면 CA가 들어와요.`);
+      DailyMission.progress('profileSell', 1, stu);
     }
     function cancelProfileListing(id) {
       const stu = getActiveStudent();
@@ -7019,6 +7040,7 @@
       showRewardBanner(bannerText);
       StudentInbox.settle();
       openRankedPromoModal();
+      DailyMission.open();
       PetSystem.onLogin(stu);
       if (!avatarCells(stu.avatar)) document.getElementById('emptyProfileModal')?.classList.remove('hidden');
     }
@@ -7571,6 +7593,135 @@
     function closeRankedPromoModal() {
       document.getElementById('rankedPromoModal')?.classList.add('hidden');
     }
+
+    // ----- 오늘의 미션: 날마다 3개를 뽑고, 하나 깰 때마다 1,000 CA · 3개 모두 깨면 1,000 CA 더 -----
+    // 학생 기록 stu.dailyMission = { date, ids: [3개], prog: { id: 횟수 }, done: { id: true }, bonus: true }
+    const DAILY_MISSION_REWARD = 1000;
+    const DAILY_MISSION_BONUS = 1000;
+    const DAILY_MISSION_DEFS = [
+      { id: 'tower', icon: '🗼', label: '모험의 탑 도전하기', goal: 1, go: () => goToStudentTab('tower') },
+      { id: 'raid3', icon: '🐉', label: '엘리트 몬스터 3명이서 도전하기', goal: 1, go: () => goToStudentTab('raid') },
+      { id: 'minigame', icon: '🎲', label: '미니게임 대전하기', goal: 1, go: () => goToStudentTab('minigame') },
+      { id: 'quiz', icon: '📝', label: '퀴즈 3문제 풀기', goal: 3, go: () => goToStudentTab('mission') },
+      { id: 'recruit', icon: '⛺', label: '용병 모집하기', goal: 1, go: () => goToStudentTab('office') },
+      { id: 'profileSell', icon: '🏷️', label: '프로필 판매 등록하기', goal: 1, go: () => goToStudentTab('market'), need: stu => Boolean(avatarCells(stu.avatar)) },
+      { id: 'petLove', icon: '💗', label: '펫 애정도 올리기', goal: 1, go: () => goToStudentTab('pet'), need: stu => Boolean(stu.pet && PET_DEFS[stu.pet.type] && (stu.pet.love || 0) < 100) },
+      { id: 'ranked', icon: '🎯', label: '랭킹 매칭 도전하기', goal: 1, go: () => goToRankedMatch() },
+      { id: 'levelup', icon: '⬆️', label: '용병 레벨업하기', goal: 1, go: () => goToStudentTab('squad') }
+    ];
+
+    const DailyMission = {
+      def(id) { return DAILY_MISSION_DEFS.find(d => d.id === id); },
+
+      // 오늘 미션 기록 (날짜가 바뀌면 할 수 있는 미션 중에서 3개를 새로 뽑음)
+      book(stu) {
+        const today = getTodayDateString();
+        let b = stu.dailyMission;
+        if (!b || b.date !== today || !Array.isArray(b.ids) || !b.ids.length) {
+          const pool = DAILY_MISSION_DEFS.filter(d => !d.need || d.need(stu)).map(d => d.id);
+          for (let i = pool.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [pool[i], pool[j]] = [pool[j], pool[i]];
+          }
+          b = stu.dailyMission = { date: today, ids: pool.slice(0, 3), prog: {}, done: {} };
+        }
+        if (!b.prog) b.prog = {};
+        if (!b.done) b.done = {};
+        return b;
+      },
+
+      doneCount(b) { return b.ids.filter(id => b.done[id]).length; },
+
+      // 미션 활동을 했을 때: 오늘 미션이면 횟수를 올리고, 다 채우면 바로 보상
+      progress(id, n = 1, stu = getActiveStudent()) {
+        if (!stu) return;
+        const b = this.book(stu), d = this.def(id);
+        if (!d || !b.ids.includes(id) || b.done[id]) return;
+        b.prog[id] = Math.min(d.goal, (b.prog[id] || 0) + n);
+        if (b.prog[id] < d.goal) {
+          saveState();
+          this.refresh(stu);
+          return;
+        }
+        b.done[id] = true;
+        stu.mc += DAILY_MISSION_REWARD;
+        let msg = `📋 오늘의 미션 [${d.label}] 완료! +${DAILY_MISSION_REWARD.toLocaleString()} CA`;
+        if (this.doneCount(b) >= b.ids.length && !b.bonus) {
+          b.bonus = true;
+          stu.mc += DAILY_MISSION_BONUS;
+          msg += ` · 🎉 3개 모두 완료 보너스 +${DAILY_MISSION_BONUS.toLocaleString()} CA!`;
+        } else {
+          msg += ` (${this.doneCount(b)}/${b.ids.length})`;
+        }
+        saveState();
+        this.refresh(stu);
+        updateHeaderUI();
+        // 활동 자체의 보상 안내가 먼저 보이고, 그 뒤에 미션 완료를 알림
+        setTimeout(() => showRewardBanner(msg), 1800);
+      },
+
+      renderBadge(stu = getActiveStudent()) {
+        const el = document.getElementById('headerDailyMissionCount');
+        if (!el || !stu) return;
+        const b = this.book(stu);
+        el.textContent = b.bonus ? '완료 🎉' : `${this.doneCount(b)}/${b.ids.length}`;
+      },
+
+      render(stu = getActiveStudent()) {
+        const body = document.getElementById('dailyMissionBody');
+        if (!body || !stu) return;
+        const b = this.book(stu);
+        const rows = b.ids.map(id => {
+          const d = this.def(id);
+          if (!d) return '';
+          const cur = b.done[id] ? d.goal : (b.prog[id] || 0);
+          const pct = Math.round((cur / d.goal) * 100);
+          return `
+            <div class="rounded-2xl bg-slate-950 border ${b.done[id] ? 'border-emerald-500/50' : 'border-slate-800'} p-3 flex items-center gap-3">
+              <div class="text-2xl shrink-0">${d.icon}</div>
+              <div class="flex-1 min-w-0 flex flex-col gap-1">
+                <div class="text-sm font-extrabold ${b.done[id] ? 'text-emerald-300' : 'text-white'}">${d.label}</div>
+                <div class="h-1.5 rounded-full bg-slate-800 overflow-hidden"><div class="h-full ${b.done[id] ? 'bg-emerald-400' : 'bg-amber-400'}" style="width:${pct}%"></div></div>
+                <div class="text-[11px] text-slate-400">${cur}/${d.goal} · 보상 <strong class="text-amber-300">${DAILY_MISSION_REWARD.toLocaleString()} CA</strong></div>
+              </div>
+              ${b.done[id]
+                ? '<span class="shrink-0 px-2.5 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 text-xs font-extrabold">✅ 완료</span>'
+                : `<button type="button" onclick="DailyMission.go('${id}')" class="shrink-0 px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold">바로가기</button>`}
+            </div>`;
+        }).join('');
+        const all = this.doneCount(b);
+        body.innerHTML = rows + `
+          <div class="rounded-2xl ${b.bonus ? 'bg-emerald-500/15 border-emerald-500/50' : 'bg-slate-950 border-amber-500/40'} border p-3 flex items-center justify-between gap-2 text-xs">
+            <span class="font-extrabold ${b.bonus ? 'text-emerald-300' : 'text-amber-300'}">🎁 3개 모두 완료 보너스</span>
+            <span class="font-extrabold ${b.bonus ? 'text-emerald-300' : 'text-slate-300'}">${b.bonus ? '✅ 받음' : `${all}/${b.ids.length}`} · ${DAILY_MISSION_BONUS.toLocaleString()} CA</span>
+          </div>`;
+      },
+
+      refresh(stu) {
+        this.renderBadge(stu);
+        if (!document.getElementById('dailyMissionModal')?.classList.contains('hidden')) this.render(stu);
+      },
+
+      open() {
+        const stu = getActiveStudent();
+        if (!stu) return;
+        this.render(stu);
+        this.renderBadge(stu);
+        document.getElementById('dailyMissionModal')?.classList.remove('hidden');
+      },
+
+      close() {
+        document.getElementById('dailyMissionModal')?.classList.add('hidden');
+      },
+
+      go(id) {
+        const d = this.def(id);
+        this.close();
+        closeRankedPromoModal();
+        if (d && d.go) d.go();
+      }
+    };
+    window.DailyMission = DailyMission;
 
     function openRankingBoardFromSquad() {
       switchStudentTab('pvp');
@@ -8245,6 +8396,7 @@
       } else {
         showNotice(`⬆️ [${merc.name}] Lv.${merc.level} 레벨업 완료!`);
       }
+      DailyMission.progress('levelup', 1, stu);
     }
 
     const SKILL_REROLL_COST = 500;
@@ -9534,6 +9686,7 @@
       renderSquadTab();
       setupIdlePreviewBattle();
       showRewardBanner(`🤝 [${rarObj.name} · ${JOB_DEFS[hiredMerc.job].name}] ${hiredMerc.name}${sk.id ? ` (보유 스킬: ${sk.name})` : ''} 용병과 계약을 맺었습니다!`);
+      DailyMission.progress('recruit', 1, stu);
     }
 
     // ===== 도감 기록: 한 번이라도 데리고 있던 직업 · 배운 스킬 · 처치한 몬스터 (학생 기록 stu.codex에 저장) =====
@@ -11604,6 +11757,7 @@
       const qid = quizIdOf(qObj);
       const alreadyTried = book.done.includes(qid);
       if (!alreadyTried) book.done.push(qid);
+      if (!alreadyTried) DailyMission.progress('quiz', 1, stu);
       if (!isCorrect) {
         saveState();
         showNotice(`❌ 아쉽지만 틀렸어요! 정답은 [${correctText}]예요.${alreadyTried ? '' : ' 다음 문제에 도전해 보세요.'}`);
@@ -16415,6 +16569,12 @@
         pvpScoreDelta = -Math.min(vsHigherOrEqual ? 5 : 10, stu.pvpScore || 0); // 0점 아래로는 안 내려감
       }
       if (pvpScoreDelta) stu.pvpScore = (stu.pvpScore || 0) + pvpScoreDelta;
+      if (!iForfeited) {
+        if (sim.mode === 'tower') DailyMission.progress('tower', 1, stu);
+        if (sim.mode === 'pvp_ranked') DailyMission.progress('ranked', 1, stu);
+        // 엘리트 몬스터 3명이서: 실제 친구(연습용 빈자리 제외) 3명 이상이 함께한 협동 레이드
+        if (sim.mode === 'elite_raid' && sim.raidLive && sim.raidLive.humans.length >= 3) DailyMission.progress('raid3', 1, stu);
+      }
 
       const atkKing = mvpCandidates().sort((a, b) => b.damageDealt - a.damageDealt)[0];
       const tankKing = mvpCandidates().sort((a, b) => b.damageTaken - a.damageTaken)[0];
@@ -20046,6 +20206,7 @@
       const doneIds = Array.isArray(stuMg.mgRewardedIds) ? stuMg.mgRewardedIds : [];
       if (doneIds.includes(st.gameId)) return;
       stuMg.mgRewardedIds = [...doneIds, st.gameId].slice(-30);
+      DailyMission.progress('minigame', 1, stuMg);
       if (winnerSeats.includes(my)) {
         const got = grantDailyReward(getActiveStudent(), 'minigame', amount);
         saveState();
@@ -29207,6 +29368,7 @@
         if (add <= 0) return 0;
         p.love = (p.love || 0) + add;
         p.loveGain = (p.loveGain || 0) + add;
+        DailyMission.progress('petLove', 1, this.student());
         return add;
       },
       todayLoveGain(p) { return p && p.loveDay === getTodayDateString() ? (p.loveGain || 0) : 0; },
