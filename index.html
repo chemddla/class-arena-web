@@ -1364,6 +1364,21 @@
               <li>☄️ <strong>필살 사격:</strong> 2초 조준, 사거리 무한 관통 사격 · 후 5초간 재장전 불가</li>
             </ul>
           </div>
+
+          <div class="bg-slate-900/90 border border-sky-500/40 rounded-xl p-3 flex flex-col gap-1.5">
+            <div class="flex items-center gap-2">
+              <span id="bannerWpnIcon_frost" class="w-6 h-7 flex items-center justify-center shrink-0"></span>
+              <span class="font-bold text-sky-300 text-sm">빙결술사</span>
+            </div>
+            <ul class="text-[11px] text-slate-300 space-y-1">
+              <li class="text-violet-700 font-bold">🧊 패시브 혹한: 거는 상태이상 지속 시간 2배 · 면역인 적에게도 1배로 걸림</li>
+              <li>❄️ <strong>아이스애로우:</strong> 마법사와 같은 얼음 화살 (동결·슬로우)</li>
+              <li>🛡️ <strong>아이스 배리어:</strong> 자신에게 체력 20% + 공격력 150% 보호막</li>
+              <li>🌨️ <strong>프리즈:</strong> 주변 3칸 적 5초 동결</li>
+              <li>🧊 <strong>동결:</strong> 대상에게 200% 피해 · 10초 동결 → 풀린 뒤 10초 슬로우</li>
+              <li>⛸️ <strong>스케이팅:</strong> 얼음길을 깔며 최대 4칸 미끄러짐 · 10초간 속도 +30%</li>
+            </ul>
+          </div>
         </div>
 
         <!-- 직업 고르기 + 자세한 설명 (renderCodexTab) -->
@@ -3014,6 +3029,7 @@
       immune:  { id: 'immune',  name: '면역', icon: '🕊️', color: '#0ea5e9', desc: '상태이상에 걸리지 않음' },
       stealth: { id: 'stealth', name: '은신', icon: '🌫️', color: '#64748b', desc: '적에게 보이지 않음 (투사체·범위 공격에는 맞음, AI는 노리지 못함. 엘리트·보스 몬스터는 알아봄)' },
       swift:   { id: 'swift',   name: '신속', icon: '👣', color: '#0d9488', desc: '이동 속도 +50%' },
+      skate:   { id: 'skate',   name: '스케이팅', icon: '⛸️', color: '#0ea5e9', desc: '얼음 위를 미끄러지듯 속도(이동 속도·공격 속도) +30% — 빙결술사 [스케이팅]' },
       taunt:   { id: 'taunt',   name: '도발', icon: '😤', color: '#ea580c', desc: '도발한 기사에게 강제로 다가가 기본 공격만 함 (스킬 사용 불가)' },
       guard:   { id: 'guard',   name: '방어 태세', icon: '🏰', color: '#0284c7', desc: '받는 피해 70% 감소·상태이상 면역 (느리게 이동 가능·공격 불가)' },
       spin:    { id: 'spin',    name: '창 회전', icon: '🌀', color: '#b45309', desc: '창을 돌려 주변에 다단히트·날아오는 투사체를 막음 (공격·스킬 불가, 느리게 이동)' },
@@ -3027,6 +3043,7 @@
     // 전술 그리드 1칸 크기(120px) 기준: 대시 1칸(120px), 전사 돌진 스킬 2칸(240px) (Requirement 1)
     const GRID_CELL_SIZE = 120;
     const SLOW_SPEED_DOWN = 0.3; // 슬로우: 속도(이동 속도·공격 속도) 30% 감소
+    const SKATE_SPEED_UP = 0.3;  // 빙결술사 스케이팅 뒤: 속도(이동 속도·공격 속도) 30% 증가
     // 스킬별 슬로우 지속 시간(틱, 40틱 = 1초)
     const SLOW_TICKS = { arrow_rain: 60, evasive_shot: 120, earthquake: 60, ice_arrow_after: 120 };
     const DASH_CONFIG = {
@@ -3292,6 +3309,34 @@
           manaCost: 30, cooldownTicks: 1200, cooldownSec: 20.0, castSec: 2,
           desc: '2초 동안 조준한 뒤 장전된 총알을 모두 소비해 사거리 무한의 필살 사격을 쏩니다. 소비한 총알 1발마다 피해 150%가 쌓이고, 쏜 뒤 총열이 달아올라 5초간 재장전할 수 없어요.'
         }
+      },
+      // 빙결술사: 아이스애로우는 마법사 것과 똑같이 동작 (스킬 키는 직업끼리 겹치면 안 돼서 frost_arrow)
+      frost: {
+        frost_arrow: {
+          id: 'frost_arrow', name: '아이스애로우', icon: '❄️', ccTag: '❄️동결·🐌슬로우',
+          manaCost: 27, cooldownTicks: 420, cooldownSec: 7.0, castSec: 0.49,
+          desc: '냉기 마법진에서 얼음 화살을 쏘아 185% 피해를 입히고 적을 [동결]시킵니다. 얼음이 풀린 뒤에도 잠시 [슬로우]가 남아요. (마법사 아이스애로우와 같음)'
+        },
+        ice_barrier: {
+          id: 'ice_barrier', name: '아이스 배리어', icon: '🛡️', ccTag: '🛡️보호막',
+          manaCost: 18, cooldownTicks: 300, cooldownSec: 5.0, castSec: 0,
+          desc: '얼음 갑옷을 둘러 자신에게 (최대 체력 20% + 공격력 150%) 보호막을 10초간 만듭니다. 다시 쓰면 남은 배리어를 새것으로 바꿔요.'
+        },
+        frost_nova: {
+          id: 'frost_nova', name: '프리즈', icon: '🌨️', ccTag: '❄️광역동결',
+          manaCost: 27, cooldownTicks: 600, cooldownSec: 10.0, castSec: 0,
+          desc: '발밑에서 냉기를 터뜨려 주변 3칸 안의 적들을 5초간 [동결]시킵니다.'
+        },
+        deep_freeze: {
+          id: 'deep_freeze', name: '동결', icon: '🧊', ccTag: '❄️동결·🐌슬로우',
+          manaCost: 30, cooldownTicks: 900, cooldownSec: 15.0, castSec: 0,
+          desc: '대상 하나를 얼음 속에 가둡니다. 공격력 200% 피해를 입히고 10초간 [동결], 얼음이 풀린 뒤 10초간 [슬로우]를 남겨요.'
+        },
+        skating: {
+          id: 'skating', name: '스케이팅', icon: '⛸️', ccTag: '⛸️이동·가속',
+          manaCost: 15, cooldownTicks: 480, cooldownSec: 8.0, castSec: 0,
+          desc: '발밑에 얼음길을 깔며 최대 4칸을 빠르게 미끄러져 이동합니다. 이후 10초간 속도(이동·공격 속도) +30%.'
+        }
       }
     };
 
@@ -3355,6 +3400,13 @@
           manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 5,
           desc: '가장 강한 적을 5초간 조준하는 동안 그 적은 [암흑]에 빠집니다. 사거리 무제한의 한 발은 다른 적을 지나쳐 목표만 맞히고, 공격 2000% + 목표 최대 체력 10% 피해를 입혀요.'
         }
+      },
+      frost: {
+        blizzard: {
+          id: 'blizzard', name: '블리자드', icon: '🌨️', ccTag: '✨히든 · 전역 동결', hidden: true,
+          manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 5,
+          desc: '5초간 냉기를 모은 뒤 10초 동안 전장 전체에 눈보라를 일으킵니다. 맵 위의 모든 적이 계속 다단히트 피해(0.5초마다 50%)를 받고, 시작할 때 15초간 [동결]돼요.'
+        }
       }
     };
     // 직업 스킬 + 히든 스킬을 한데 모은 정의 (히든 스킬도 키로 바로 찾을 수 있게)
@@ -3409,7 +3461,8 @@
       rogue: '🗡️',
       knight: '🛡️',
       lancer: '🔱',
-      sniper: '🔫'
+      sniper: '🔫',
+      frost: '🧊'
     };
 
     function getJobWeaponIconHTML(jobKey, size = 16) {
@@ -3488,18 +3541,28 @@
         roleDesc: '초장거리 관통 저격·은신·산탄·필살 사격',
         passiveName: '저격', passiveDesc: '기본 공격이 저격으로 변경 · 우클릭 조준선(빨간 선) 후 좌클릭 사격 · 총알 5발, R키 장전',
         baseHp: 780, baseAtk: 66, baseDef: 9, baseSpd: 100, range: 1300, maxMana: 100
+      },
+      // 빙결술사: 군중제어 특화. 사거리는 마법사와 같고 공격·체력·방어는 보통, 속도는 높음. 기본 공격은 마법사처럼 작은 범위로 터지는 냉기 구슬
+      frost: {
+        id: 'frost', name: '빙결술사',
+        icon: '🧊',
+        color: '#0284c7',
+        roleDesc: '냉기 마법·광역 동결·보호막',
+        passiveName: '혹한', passiveDesc: '거는 상태이상 지속 시간 2배 · 상태이상 면역인 적에게도 1배로 걸림 (면역 무시)',
+        baseHp: 1400, baseAtk: 54, baseDef: 28, baseSpd: 116, range: 295, maxMana: 100
       }
     };
 
     // ===== 공격 유형: 근접 기본 공격 / 원거리 기본 공격 / 스킬 =====
-    // 직업 패시브: 전사 근접 +20% · 궁수 원거리 +10% · 마법사 스킬 +30% · 성녀 치유 +20% · 도적 백어택 +50% · 기사 받는 피해 -20%·기본 공격 경직 면역
+    // 직업 패시브: 전사 근접 +20% · 궁수 원거리 +10% · 마법사 스킬 +30% · 성녀 치유 +20% · 도적 백어택 +50% · 기사 받는 피해 -20%·기본 공격 경직 면역 · 빙결술사 상태이상 2배
     const JOB_PASSIVE = {
       warrior: { melee: 1.2 },
       archer:  { ranged: 1.1 },
       mage:    { skill: 1.3 },
       healer:  { heal: 1.2 },
       rogue:   { backstab: 1.5 },
-      knight:  { taken: 0.8, basicStaggerImmune: true }
+      knight:  { taken: 0.8, basicStaggerImmune: true },
+      frost:   { statusDouble: true } // 빙결술사 혹한: inflictStatus에서 처리
       // 창병 패시브 창술(기본 공격 전환)은 수치 보정이 아니라 lancerBasicAttack에서 처리
     };
     const BACKSTAB_COS = -0.25; // 맞는 쪽이 바라보는 방향과 때린 쪽 방향의 cos이 이보다 작으면 등 뒤 (약 105° 바깥)
@@ -3688,6 +3751,7 @@
       knight:  ['랜슬롯', '가웨인', '퍼시벌', '갤러해드', '보르스', '베디비어', '롤랑', '올리버', '엘시드', '고드프리', '볼드윈', '탄크레드', '레이몬드', '보에몽', '지그문트', '발드르', '엑토르', '라모락', '펠리노어', '우서', '가레스', '아그라베인', '라이오넬', '브레노르', '이바인', '레오폴드', '콘라드', '오토', '프리드리히', '알프레드', '에드먼드', '리카르도', '세드릭', '아이반호', '로드릭', '가브리엘', '미하일', '우리엘', '라파엘', '아스트리드', '브룬힐드', '잔', '엘레노어', '기네비어', '오리아나', '실바나', '카타리나', '마틸드'],
       rogue:   ['섀도', '레이스', '닉스', '쿠나이', '하야테', '진', '카게', '렌', '시노비', '블랙', '모스', '팬텀', '베놈', '스틸', '노크', '자칼', '바이퍼', '스펙터', '크로우즈', '미드나잇', '실크', '대거', '세이버', '루퍼스', '킬리안', '오르카', '제피르', '카스', '드리프트', '에코스', '버질', '리퍼', '스카', '레녹', '토키', '야미', '하쿠', '소마', '쥬리', '아키라'],
       sniper:  ['김민준', '이도윤', '박서준', '최시우', '정하준', '강지호', '조현우', '윤준서', '장건우', '임우진', '한지훈', '오승민', '서민재', '신동현', '권태양', '황영수', '안재혁', '송병철', '류성민', '홍길우', '전상우', '고태호', '문정훈', '양기석', '손대현', '배진호', '백승우', '허준영', '남궁민', '유석진', '노재원', '하동욱', '곽철민', '성민철', '차도훈', '주영길', '우진혁', '구본석', '나승현', '도현수'],
+      frost:   ['엘사', '프레이아', '스카디', '눈송이', '서리안', '빙화', '설희', '한설', '윤설', '하얀', '이리스', '노엘', '세레스', '루미', '오로라', '빙연', '한빙', '설아', '시린', '겨울'],
       archer:  ['실바', '로빈', '제트', '카이', '아리', '호크', '린', '에코', '피닉스', '레이븐', '팔콘', '세이지', '윈드', '애쉬', '키라', '타라', '렉스', '이든', '스카이', '울프', '페인', '루크', '나일', '시온', '케이', '바람', '아론', '테오', '리스', '노아', '이글', '스패로', '크로우', '폭스', '링크스', '셀레스', '아르테미스', '디아나', '로완', '에버렛', '그레이슨', '핀', '리버', '브룩', '포레스트', '오크', '윌로우', '애로', '퀵', '스위프트', '대쉬', '제이', '리오', '미카', '하루', '소라', '유키', '레나', '키아라', '리아', '샤인', '블루', '그린', '레골', '토비', '맥', '코디', '브라이언', '에반', '니키', '릴', '루', '데미안', '이안', '콜', '레이', '세바스', '에이스', '로키', '케빈']
     };
     // 예전에 이름 앞에 붙이던 별명 (지금은 새 이름에 쓰지 않고, 예전 이름에서 떼어 낼 때만 사용)
@@ -3699,6 +3763,7 @@
       knight:  ['강철의', '성채', '맹세의', '백은', '수호의'],
       lancer:  ['장창의', '꿰뚫는', '창끝', '질풍의', '돌격의'],
       sniper:  ['정조준', '백발백중', '고요한', '탄환의', '매의 눈'],
+      frost:   ['서리', '얼음꽃', '눈보라', '혹한의', '설원의', '빙하의', '하얀', '차가운'],
       archer:  ['바람', '매의 눈', '숲의', '그림자', '날쌘', '초록', '사냥꾼', '새벽', '고요한', '은빛', '질풍', '독수리', '달빛', '번뜩이는', '조용한', '명사수', '여우', '산들', '별똥별', '유령']
     };
 
@@ -4619,6 +4684,9 @@
     MERC_SPRITE_DEFS.mage_3 = { ...MERC_SPRITE_DEFS.mage_0, src: 'assets/sprites/merc/mage_3.webp' };
     MERC_SPRITE_DEFS.mage_4 = { ...MERC_SPRITE_DEFS.mage_0, src: 'assets/sprites/merc/mage_4.webp' };
     MERC_SPRITE_DEFS.mage_5 = { ...MERC_SPRITE_DEFS.mage_0, src: 'assets/sprites/merc/mage_5.webp' };
+    // 빙결술사: 전용 그림이 나오기 전까지 마법사 시트 중 차가운 색 외형을 같이 씀 (0 = 분홍 머리·청록 모자, 1 = 민트 머리·보라 모자)
+    MERC_SPRITE_DEFS.frost_0 = { ...MERC_SPRITE_DEFS.mage_0, src: 'assets/sprites/merc/mage_4.webp' };
+    MERC_SPRITE_DEFS.frost_1 = { ...MERC_SPRITE_DEFS.mage_0, src: 'assets/sprites/merc/mage_2.webp' };
     // 궁수 외형 1 (파랑 머리·남색 옷), 2 (분홍 머리·진홍 옷), 3 (금발·남색 옷), 4 (보라 머리·회색 옷), 5 (은발·검붉은 옷): 칸·기준점·동작 구성은 archer_0과 같고 그림만 다름
     [1, 2, 3, 4, 5].forEach(v => { MERC_SPRITE_DEFS[`archer_${v}`] = { ...MERC_SPRITE_DEFS.archer_0, src: `assets/sprites/merc/archer_${v}.webp` }; });
     // 성녀 외형 1 (연보라 머리·남색 옷), 2 (주황 머리·초록 옷), 3 (분홍 머리·빨강 옷), 4 (민트 머리·청록 옷), 5 (남보라 머리·보라 옷): 칸·기준점·동작 구성은 healer_0과 같고 그림만 다름
@@ -6936,7 +7004,7 @@
       [1, 2, 3, 4].forEach(sIdx => {
         const seller = students[sIdx];
         if (seller) {
-          const jobKeys = ['warrior', 'mage', 'healer', 'archer', 'rogue', 'knight', 'lancer', 'sniper'];
+          const jobKeys = ['warrior', 'mage', 'healer', 'archer', 'rogue', 'knight', 'lancer', 'sniper', 'frost'];
           const m = createMercenary(jobKeys[(sIdx - 1) % 4], sIdx % 2 === 0 ? 'R' : 'N', 10 + (sIdx - 1) * 5, 0, false);
           const val = calcMercValuation(m, seller);
           initialAuctions.push({
@@ -7116,7 +7184,7 @@
     }
 
     // 직업별 공격 속도 배율 (1보다 작으면 느리게 공격)
-    const JOB_ATTACK_SPEED_MULT = { archer: 0.7, mage: 0.7, rogue: 1.82, knight: 0.75, lancer: 1.3, sniper: 0.571 }; // 저격수: 공격 주기 ÷ 0.571 (처음 0.4배에서 주기 30% 단축)
+    const JOB_ATTACK_SPEED_MULT = { archer: 0.7, mage: 0.7, frost: 0.7, rogue: 1.82, knight: 0.75, lancer: 1.3, sniper: 0.571 }; // 저격수: 공격 주기 ÷ 0.571 (처음 0.4배에서 주기 30% 단축)
 
     // 레벨당 스탯 상승량 배율 (비율 상승 · 고정 상승 · 고정 체력 모두 ×1.5)
     const LEVEL_STAT_GROWTH_MULT = 1.5;
@@ -10688,7 +10756,7 @@
      * 7. 용병 사무소 (명단은 하루 한 번 갱신 + 하루 무료 갱신 5회, 이후 500 CA + 낮은 확률로 레어 용병 출현)
      ********************************************************************/
     function generateRecruitPool(highTierGuarantee = false) {
-      const jobKeys = ['warrior', 'mage', 'healer', 'archer', 'rogue', 'knight', 'lancer', 'sniper'];
+      const jobKeys = ['warrior', 'mage', 'healer', 'archer', 'rogue', 'knight', 'lancer', 'sniper', 'frost'];
       // 슬롯마다 직업이 고정되지 않도록 순서를 섞는다 (Fisher-Yates)
       for (let i = jobKeys.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -10852,7 +10920,7 @@
     function codexSkillOpen(stu, job, key) { return Boolean(stu && stu.codex && stu.codex.skills && stu.codex.skills[job] && stu.codex.skills[job][key]); }
 
     // 도감: 직업별 패시브·기본 능력치·스킬 설명 (직업 고르기 버튼으로 하나씩 자세히)
-    const CODEX_JOBS = ['warrior', 'mage', 'healer', 'archer', 'rogue', 'knight', 'lancer', 'sniper'];
+    const CODEX_JOBS = ['warrior', 'mage', 'healer', 'archer', 'rogue', 'knight', 'lancer', 'sniper', 'frost'];
     let codexJob = 'warrior';
     let codexView = 'merc'; // 'merc' = 직업·스킬, 'monster' = 몬스터, 'secret' = 시크릿 레어, 'pet' = 펫
 
@@ -13178,7 +13246,7 @@
     // 실시간 결투 연결 상태 (아래 [실시간 결투 화면 동기화] 참고)
     const LIVE_FRAME_INTERVAL_MS = 100; // 방장이 화면을 보내는 간격 (실제 시간)
     const LIVE_GUEST_TIMEOUT_MS = 20000;
-    const LIVE_UNIT_ST_KEYS = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'blessed', 'rally', 'empower', 'immune', 'stealth', 'swift', 'taunt', 'guard', 'spin', 'rampage', 'darkness', 'fear', 'confuse', 'miracle', 'slow'];
+    const LIVE_UNIT_ST_KEYS = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'blessed', 'rally', 'empower', 'immune', 'stealth', 'swift', 'taunt', 'guard', 'spin', 'rampage', 'darkness', 'fear', 'confuse', 'miracle', 'slow', 'skate'];
     const liveNet = {
       role: null, roomId: null, ref: null, minAt: 0, startedAt: 0,
       initReceived: false, lastFrameAt: 0, targets: {}, finished: false,
@@ -13606,14 +13674,16 @@
       } else if (u.job === 'archer') {
         u.mana = Math.min(u.maxMana, u.mana + 18);
         directional('arrow', u.atk);
-      } else if (u.job === 'mage') {
+      } else if (u.job === 'mage' || u.job === 'frost') {
+        // 빙결술사 기본 공격도 마법사와 같은 작은 범위 구슬 (색만 냉기빛)
+        const orbColor = u.job === 'frost' ? '#38bdf8' : '#7c3aed';
         u.mana = Math.min(u.maxMana, u.mana + 18);
-        sim.effects.push({ type: 'cast_circle', x: u.x, y: u.y, color: '#7c3aed', life: 32, maxLife: 32 });
+        sim.effects.push({ type: 'cast_circle', x: u.x, y: u.y, color: orbColor, life: 32, maxLife: 32 });
         // 커서 지점(사거리 끝까지)으로 날아가서, 적에게 맞거나 그 자리에 닿으면 작은 범위로 터짐
         const pt = clampAimPoint(u, aimX, aimY, u.range + 40);
         const ang = Math.atan2((pt.y - 12) - oy, pt.x - ox);
         sim.projectiles.push({
-          projType: 'magic_orb', isDirectional: true, angle: ang, x: ox, y: oy, owner: u, dmg: u.atk, color: '#7c3aed',
+          projType: 'magic_orb', spr: u.job === 'frost' ? 'troll_frost' : undefined, isDirectional: true, angle: ang, x: ox, y: oy, owner: u, dmg: u.atk, color: orbColor,
           isHeal: false, speed: 3.2, trail: [], maxTravel: Math.max(20, Math.hypot(pt.x - ox, (pt.y - 12) - oy)),
           splashRadius: MAGE_SPLASH_RADIUS, splashRatio: MAGE_SPLASH_RATIO
         });
@@ -13640,13 +13710,17 @@
       sniper_stealth: 'self', back_roll: 'direction', power_shot: 'self', buckshot: 'direction', finisher: 'direction',
       // 히든 스킬: 엑스칼리버·폭풍은 커서 방향, 원소 융합은 커서 지점, 나머지는 알아서 (암살·마지막 한 발은 가장 강한 적)
       excalibur: 'direction', element_fusion: 'point', miracle: 'self', storm: 'direction',
-      assassinate: 'self', giant: 'self', musou: 'self', last_shot: 'self'
+      assassinate: 'self', giant: 'self', musou: 'self', last_shot: 'self',
+      // 빙결술사: 아이스애로우·동결은 커서에 가까운 적, 스케이팅은 커서 쪽으로, 나머지는 내 주변 (블리자드는 맵 전체)
+      frost_arrow: 'target', ice_barrier: 'self', frost_nova: 'self', deep_freeze: 'target', skating: 'direction', blizzard: 'self'
     };
     function manualSkillRange(u, key) {
       switch (key) {
         case 'stun_strike': return stunStrikeReach(u);
         case 'poison_arrow': return u.range + 60;
-        case 'ice_arrow': case 'thunderbolt': case 'fireball': return u.range + 90;
+        case 'ice_arrow': case 'frost_arrow': case 'deep_freeze': case 'thunderbolt': case 'fireball': return u.range + 90;
+        case 'frost_nova': return GRID_CELL_SIZE * FROST_NOVA_CELLS;
+        case 'skating': return FROST_SKATE_DISTANCE;
         case 'poison_boom': return u.range + 80;
         case 'arrow_rain': return u.range + 60;
         case 'teleport': return GRID_CELL_SIZE * 3;
@@ -13744,7 +13818,7 @@
 
     // 분신 만들기: 장비 '환영' (능력치 30%, 시간 제한 없음) · 도적 스킬 '분신' (능력치 50%, 20초)
     function spawnIllusion(u, { ratio = 0.3, label = '환영', lifeTicks = 0 } = {}) {
-      const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim', 'casting', 'pendingStrikes', 'quake', 'draggedBy', 'knightShield', 'knightShieldTicks']);
+      const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim', 'casting', 'pendingStrikes', 'quake', 'draggedBy', 'knightShield', 'knightShieldTicks', 'frostBarrier', 'frostBarrierTicks']);
       const c = JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) ? undefined : v)));
       const side = u.team === 'blue' ? 1 : -1;
       const pos = clampToArena(u.x + side * 60, u.y + 50);
@@ -13846,6 +13920,7 @@
       let speedMult = 1.0;
       if (st.blessed > 0) speedMult += 0.1;
       if (st.miracle > 0) speedMult += 0.2; // 기적의 축복: 이동·공격 속도 +20%
+      if (st.skate > 0) speedMult += SKATE_SPEED_UP;
       if (st.shock > 0) speedMult -= 0.35;
       if (st.poison > 0) speedMult -= 0.12;
       if (st.slow > 0) speedMult -= SLOW_SPEED_DOWN; // 슬로우: 이동·공격 속도 -30%
@@ -14243,7 +14318,8 @@
           rampage: 0,
           darkness: 0,
           fear: 0,
-          confuse: 0
+          confuse: 0,
+          skate: 0
         },
         damageDealt: 0,
         healDone: 0,
@@ -14251,35 +14327,47 @@
       };
     }
 
-    function inflictStatus(sourceUnit, targetUnit, statusType, durationFrames) {
-      if (!targetUnit || !targetUnit.alive) return;
-      // 정화 면역 중에는 나쁜 상태이상에 걸리지 않음
-      if ((targetUnit.statuses.immune || 0) > 0 && NEGATIVE_STATUSES.includes(statusType)) return;
-      // 기사 방어 태세 중에도 상태이상 면역
-      if ((targetUnit.statuses.guard || 0) > 0 && NEGATIVE_STATUSES.includes(statusType)) return;
+    // 상태이상 면역 판정 (글자·기록 없이 걸리는지만). 엘리트 보스는 한 번에 하나·풀린 뒤 10초 면역 규칙도 여기서 봄
+    function statusBlockedFor(sourceUnit, targetUnit, statusType) {
+      const negative = NEGATIVE_STATUSES.includes(statusType);
+      // 정화 면역·기사 방어 태세 중에는 나쁜 상태이상에 걸리지 않음
+      if (negative && ((targetUnit.statuses.immune || 0) > 0 || (targetUnit.statuses.guard || 0) > 0)) return true;
       // 히든 스킬 시전 중에는 나쁜 상태이상 면역 (자기 자신이 거는 것은 상관없음)
-      if (isCastingHiddenSkill(targetUnit) && sourceUnit !== targetUnit && NEGATIVE_STATUSES.includes(statusType)) return;
+      if (negative && sourceUnit !== targetUnit && isCastingHiddenSkill(targetUnit)) return true;
+      // 🔥 하드모드 종족 보스는 나쁜 상태이상에 모두 면역
+      if (negative && sourceUnit !== targetUnit && targetUnit.hardBossImmune) return true;
       // 엘리트 보스는 군중제어(기절·동결·감전·슬로우)에 걸리지 않음 · 지속 피해(화상·출혈·중독)는 걸림
       // 그 밖의 상태이상도 한 번에 하나만 (같은 종류 갱신도 안 됨) · 풀린 뒤 10초는 면역 (자기 버프는 상관없음)
-      const eliteDebuff = targetUnit.isEliteBoss && sourceUnit !== targetUnit && NEGATIVE_STATUSES.includes(statusType);
-      // 🔥 하드모드 종족 보스는 나쁜 상태이상에 모두 면역
-      const hardBossDebuff = targetUnit.hardBossImmune && sourceUnit !== targetUnit && NEGATIVE_STATUSES.includes(statusType);
-      if (hardBossDebuff || targetUnit.isEliteBoss && (CC_STATUSES.includes(statusType)
-        || (eliteDebuff && (targetUnit.eliteDebuff || sim.tickCount < (targetUnit.eliteDebuffImmuneUntil || 0))))) {
+      if (targetUnit.isEliteBoss) {
+        if (CC_STATUSES.includes(statusType)) return true;
+        if (negative && sourceUnit !== targetUnit && (targetUnit.eliteDebuff || sim.tickCount < (targetUnit.eliteDebuffImmuneUntil || 0))) return true;
+      }
+      return false;
+    }
+
+    function inflictStatus(sourceUnit, targetUnit, statusType, durationFrames) {
+      if (!targetUnit || !targetUnit.alive) return;
+      const negative = NEGATIVE_STATUSES.includes(statusType);
+      const blocked = statusBlockedFor(sourceUnit, targetUnit, statusType);
+      // 빙결술사 패시브 혹한: 적에게 거는 나쁜 상태이상은 지속 시간 2배, 면역인 적에게는 면역을 무시하고 1배로
+      const frostPassive = negative && sourceUnit && sourceUnit !== targetUnit && jobPassiveOf(sourceUnit).statusDouble;
+      if (blocked && !frostPassive) {
         if (sim.tickCount - (targetUnit.ccImmuneTextAt ?? -999) > 30) {
           targetUnit.ccImmuneTextAt = sim.tickCount;
           sim.floatTexts.push({ x: targetUnit.x, y: targetUnit.y - 36, text: '🛡️면역!', color: '#e2e8f0', life: 40 });
         }
         return;
       }
-      if (eliteDebuff) targetUnit.eliteDebuff = statusType;
+      if (frostPassive) durationFrames = blocked ? durationFrames : durationFrames * 2;
+      // 엘리트 보스가 지속 피해 등에 걸리면 '하나만' 규칙에 기록 (혹한으로 면역을 뚫은 군중제어는 기록하지 않음)
+      if (targetUnit.isEliteBoss && negative && sourceUnit !== targetUnit && !blocked && !CC_STATUSES.includes(statusType)) targetUnit.eliteDebuff = statusType;
       targetUnit.statuses[statusType] = Math.max(targetUnit.statuses[statusType] || 0, durationFrames);
       const stDef = STATUS_DEFS[statusType];
       if (stDef) {
         sim.floatTexts.push({
           x: targetUnit.x,
           y: targetUnit.y - 36,
-          text: `${stDef.icon}${stDef.name}!`,
+          text: `${blocked ? '🧊' : ''}${stDef.icon}${stDef.name}!`,
           color: stDef.color,
           life: 52
         });
@@ -14726,7 +14814,7 @@
     function isMercAI(u) {
       return Boolean(u && !u.monsterType && !u.isEliteBoss);
     }
-    const AI_SQUISHY_JOBS = ['healer', 'mage', 'archer', 'sniper']; // 후열 (체력·방어가 낮음)
+    const AI_SQUISHY_JOBS = ['healer', 'mage', 'archer', 'sniper', 'frost']; // 후열 (체력·방어가 낮음)
     const AI_TANK_JOBS = ['knight', 'warrior', 'lancer'];           // 앞에서 버티는 직업
     // 직업별 타겟 점수 보정 (작을수록 먼저 노림): 도적은 후열 암살(성녀 최우선)·단단한 기사는 피함
     // (궁수·마법사·전사 등에 마무리·뭉친 적 보정도 시험했지만 집중 공격이 흩어져 탑 승률이 떨어져서 뺌)
@@ -14764,7 +14852,8 @@
         case 'charge': return unit.range + GRID_CELL_SIZE;
         case 'shield_rush': return GRID_CELL_SIZE * 1.5;
         case 'javelin': return LANCER_JAVELIN_RANGE - 60;
-        case 'ice_arrow': return unit.range + 80;
+        case 'ice_arrow': case 'frost_arrow': case 'deep_freeze': return unit.range + 80;
+        case 'frost_nova': return GRID_CELL_SIZE * FROST_NOVA_CELLS * unitAreaScale(unit) - 20;
         default: return 0;
       }
     }
@@ -14783,7 +14872,7 @@
         casters.forEach(e => {
           const d = unitDist(e, unit);
           if (d > reach) return;
-          const travel = key === 'javelin' ? d / 5.2 : (key === 'ice_arrow' ? d / 3.0 : (key === 'stun_strike' ? 4 : 24));
+          const travel = key === 'javelin' ? d / 5.2 : (key === 'ice_arrow' || key === 'frost_arrow' ? d / 3.0 : (key === 'stun_strike' || key === 'deep_freeze' || key === 'frost_nova' ? 4 : 24));
           if (e.casting.left < castTicks + travel + 6) return;
           const prio = e.casting.total - d * 0.01; // 길게 시전하는(위험한) 스킬부터, 같으면 가까운 적
           if (!best || prio > best.prio) best = { key, foe: e, prio };
@@ -14958,7 +15047,7 @@
         const it = attacker.itemId;
         if (it === 'eq_worn_shinai' && !skillHitSource) modDmg *= 1.2;
         if (it === 'eq_red_orb' && skillHitSource && attacker.job === 'warrior') modDmg *= 1.2;
-        if (it === 'eq_blue_orb' && skillHitSource && (attacker.job === 'archer' || attacker.job === 'mage')) modDmg *= 1.2;
+        if (it === 'eq_blue_orb' && skillHitSource && (attacker.job === 'archer' || attacker.job === 'mage' || attacker.job === 'frost')) modDmg *= 1.2;
         if (attacker.statuses.blessed > 0) modDmg *= 1.15;
         if (attacker.statuses.rally > 0) modDmg *= 1.2;
         if (attacker.statuses.empower > 0) modDmg *= 1.2;
@@ -14987,6 +15076,7 @@
         dmg -= absorbed;
         // 기사 방패 방어막도 같은 shield에 들어 있으므로, 남은 양이 shield보다 많지 않게
         if (defender.knightShield > defender.shield) defender.knightShield = defender.shield;
+        if (defender.frostBarrier > defender.shield) defender.frostBarrier = defender.shield; // 빙결술사 아이스 배리어도 마찬가지
       }
       defender.hp -= dmg;
       defender.damageTaken += dmg;
@@ -15313,9 +15403,9 @@
           }
         }
 
-        else if (skillJobOf(skKey) === 'mage') {
+        else if (skillJobOf(skKey) === 'mage' || skKey === 'frost_arrow') {
           if (distToPrimary <= unit.range + 80) {
-            if (skKey === 'ice_arrow') {
+            if (skKey === 'ice_arrow' || skKey === 'frost_arrow') {
               const unFrozen = enemies.filter(e =>
                 unitDist(e, unit) <= unit.range + 80 &&
                 e.statuses.freeze <= 35 && e.statuses.stun <= 35
@@ -15511,7 +15601,7 @@
         }
       }
 
-      else if (skillJobOf(sk) === 'mage') {
+      else if (skillJobOf(sk) === 'mage' || sk === 'frost_arrow') {
         if (!target) return;
         if (sk === 'fireball' && aimPt) {
           const fx = unit.x, fy = unit.y - 12;
@@ -15552,7 +15642,7 @@
           });
           addBattleLog(`🔥 [마법사] ${unit.name}의 파이어볼! (광역 🔥화상 · 쿨 ${skObj.cooldownSec}초)`);
 
-        } else if (sk === 'ice_arrow') {
+        } else if (sk === 'ice_arrow' || sk === 'frost_arrow') {
           // 얼릴 수 있는 적 중, 터지는 범위에 얼릴 수 있는 적이 가장 많이 함께 들어오는 적
           const freezable = enemies.filter(e => e.statuses.freeze <= 35 && e.statuses.stun <= 35);
           const iceR = 88 * unitAreaScale(unit);
@@ -15572,7 +15662,7 @@
             speed: 3.0,
             trail: []
           });
-          addBattleLog(`❄️ [마법사] ${unit.name}의 아이스애로우! (❄️동결 · 쿨 ${skObj.cooldownSec}초)`);
+          addBattleLog(`❄️ [${sk === 'frost_arrow' ? '빙결술사' : '마법사'}] ${unit.name}의 아이스애로우! (❄️동결 · 쿨 ${skObj.cooldownSec}초)`);
 
         } else if (sk === 'thunderbolt') {
           const chainTargets = [...enemies]
@@ -15846,6 +15936,8 @@
         stepLancerEffects(u);
         // 저격수: 장전·과열
         stepSniperEffects(u);
+        // 빙결술사: 아이스 배리어 시간
+        stepFrostEffects(u);
 
         if (st.stun > 0 || st.freeze > 0) {
           cancelSkillCast(u);
@@ -15959,6 +16051,7 @@
         let speedMult = 1.0;
         if (st.blessed > 0) speedMult += 0.1;
         if (st.miracle > 0) speedMult += 0.2;
+        if (st.skate > 0) speedMult += SKATE_SPEED_UP;
         if (st.shock > 0) speedMult -= 0.35;
         if (st.poison > 0) speedMult -= 0.12;
         if (st.slow > 0) speedMult -= SLOW_SPEED_DOWN;
@@ -16104,17 +16197,19 @@
               life: u.job === 'rogue' ? 20 : 32, maxLife: u.job === 'rogue' ? 20 : 32
             });
 
-          } else if (u.job === 'mage') {
-            const orbSpr = unitProjFx(u, 'magic_orb');
-            if (!orbSpr) sim.effects.push({ // 폭탄을 던지는 몬스터는 마법진 없이
+          } else if (u.job === 'mage' || u.job === 'frost') {
+            const frostOrb = u.job === 'frost';
+            const monOrbSpr = unitProjFx(u, 'magic_orb');
+            const orbSpr = monOrbSpr || (frostOrb ? 'troll_frost' : undefined); // 빙결술사 = 작은 얼음 화살 그림
+            if (!monOrbSpr) sim.effects.push({ // 폭탄을 던지는 몬스터는 마법진 없이
               type: 'cast_circle',
-              x: u.x, y: u.y, color: '#7c3aed', life: 32, maxLife: 32
+              x: u.x, y: u.y, color: frostOrb ? '#38bdf8' : '#7c3aed', life: 32, maxLife: 32
             });
             const orbFrom = getUnitSprite(u)?.muzzle ? unitShotOrigin(u) : { x: u.x + u.facingDir * 12, y: u.y - 10 }; // 떠 있는 박쥐는 입 높이에서
             sim.projectiles.push({
               projType: 'magic_orb', spr: orbSpr,
               x: orbFrom.x, y: orbFrom.y, target, owner: u,
-              dmg: u.atk, isHeal: false, speed: 2.6, trail: [],
+              dmg: u.atk, isHeal: false, speed: 2.6, trail: [], color: frostOrb ? '#38bdf8' : undefined,
               splashRadius: MAGE_SPLASH_RADIUS, splashRatio: MAGE_SPLASH_RATIO // 마법사 기본 공격: 터지는 자리 주변에 작은 범위 피해
             });
 
@@ -16249,7 +16344,7 @@
             }
             if (p.projType === 'magic_orb') {
               playCombatSfx('magic');
-              sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : undefined), x: p.target.x, y: p.target.y - 12, r: 42, life: 22, maxLife: 22 });
+              sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), x: p.target.x, y: p.target.y - 12, r: 42, life: 22, maxLife: 22 });
             } else {
               playCombatSfx('arrow');
               sim.effects.push({ type: 'arrow_hit', spr: projHitSpr(p), x: p.target.x, y: p.target.y - 12, angle: p.angle, life: 18, maxLife: 18 });
@@ -16720,6 +16815,7 @@
       // 시전자 자리에서 재는 범위는 시전자 몸 가장자리부터 (엘리트 보스처럼 몸이 큰 유닛)
       const near = (list, x, y, r) => list.filter(u => Math.hypot(u.x - x, u.y - y) - unitBodyGap(u) - (x === unit.x && y === unit.y ? unitBodyGap(unit) : 0) <= r);
       if (castHiddenSkill(unit, allies, enemies, sk, target, aimPt)) return true;
+      if (castFrostSkill(unit, enemies, sk, target, aimPt)) return true;
 
       if (sk === 'roar') {
         // 사자후: 주변 2칸 적에게 피해 + 1.8칸 밀쳐냄
@@ -17348,6 +17444,17 @@
         addBattleLog(`🎯 [저격수] ${unit.name}의 히든 스킬 마지막 한 발! ${foe.name}을(를) 꿰뚫었어요!`);
         return true;
       }
+      if (sk === 'blizzard') {
+        // 10초간 전장 전체 눈보라: 모든 적에게 0.5초마다 50% 다단히트, 시작할 때 15초 동결 (stepHiddenSkills)
+        sim.hiddenFx.push({ kind: 'blizzard', owner: unit, left: FROST_BLIZZARD_TICKS, dmg: unit.atk * FROST_BLIZZARD_DMG });
+        const blizLife = Math.round(FROST_BLIZZARD_TICKS / BATTLE_PACE); // 그림 수명은 화면(60Hz) 기준이라 전투 틱 시간에 맞춤
+        sim.effects.push({ type: 'frost_blizzard', x: unit.x, y: unit.y, life: blizLife, maxLife: blizLife });
+        enemies.forEach(e => inflictStatus(unit, e, 'freeze', FROST_BLIZZARD_FREEZE_TICKS));
+        hiddenImpact(20, '#e0f2fe');
+        playCombatSfx('magic');
+        addBattleLog(`🌨️ [빙결술사] ${unit.name}의 히든 스킬 블리자드! 전장 전체가 얼어붙어요! (10초)`);
+        return true;
+      }
       return false;
     }
 
@@ -17428,6 +17535,14 @@
           });
           return --fx.left > 0;
         }
+        if (fx.kind === 'blizzard') {
+          // 시전자가 쓰러져도 이미 일어난 눈보라는 끝까지 감
+          if (fx.left % FROST_BLIZZARD_HIT_TICKS === 0) {
+            suppressHitKnockback = true;
+            try { withSkillHit(() => foes.forEach(e => applyDamage(o, e, fx.dmg, '', '#7dd3fc'))); } finally { suppressHitKnockback = false; }
+          }
+          return --fx.left > 0;
+        }
         if (fx.kind === 'fusion') {
           // 범위 안 적을 가운데로 빨아들이다가 폭발
           foes.forEach(e => {
@@ -17501,6 +17616,11 @@
           return nearestEnemyDist <= C * 3 ? 97 : -1;
         case 'last_shot':
           return enemies.length ? 98 : -1;
+        case 'blizzard':
+          // 맵 전체라 적이 여럿 남아 있을 때 (하나뿐이면 체력이 많을 때만). 같은 편 눈보라가 이미 불고 있으면 아낌
+          if (sim.hiddenFx && sim.hiddenFx.some(f => f.kind === 'blizzard' && f.owner && f.owner.team === unit.team)) return -1;
+          if (allies.some(a => a !== unit && a.casting && a.casting.key === 'blizzard')) return -1;
+          return enemies.length >= 2 ? 98 : (enemyTarget && enemyTarget.hp > unit.atk * 6 ? 85 : -1);
         default:
           return -1;
       }
@@ -17738,6 +17858,77 @@
     }
 
     // sim.effects의 hidden_* 그림 (이펙트 그리기 고리에서 ctx.save() 뒤에 부름)
+    // 빙결술사 그림 (도형): 프리즈 냉기 고리 · 스케이팅 얼음길 · 블리자드 전장 눈보라
+    function drawFrostEffect(ctx, ef, progress) {
+      const fade = Math.max(0, Math.min(1, (1 - progress) / 0.35));
+      if (ef.type === 'frost_nova') {
+        // 발밑에서 냉기 고리가 퍼지고, 고리를 따라 얼음 가시가 솟음
+        const grow = Math.min(1, progress / 0.4);
+        const r = ef.r * (0.25 + grow * 0.75);
+        ctx.translate(ef.x, ef.y);
+        ctx.scale(1, 0.55);
+        ctx.globalAlpha = 0.28 * fade;
+        ctx.fillStyle = '#bae6fd';
+        ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = fade;
+        ctx.strokeStyle = '#7dd3fc';
+        ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#e0f2fe';
+        ctx.strokeStyle = '#0284c7';
+        ctx.lineWidth = 1.5;
+        for (let k = 0; k < 16; k++) {
+          const a = (k / 16) * Math.PI * 2;
+          const h = (k % 2 ? 26 : 40) * grow;
+          const cx = Math.cos(a) * r, cy = Math.sin(a) * r;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(a + Math.PI / 2) * 8, cy + Math.sin(a + Math.PI / 2) * 8);
+          ctx.lineTo(cx + Math.cos(a) * h * 0.3, cy - h);
+          ctx.lineTo(cx - Math.cos(a + Math.PI / 2) * 8, cy - Math.sin(a + Math.PI / 2) * 8);
+          ctx.closePath();
+          ctx.fill(); ctx.stroke();
+        }
+      } else if (ef.type === 'frost_skate') {
+        // 미끄러진 자리에 남는 얼음길 (바닥에 깔림)
+        const ang = Math.atan2(ef.ty - ef.sy, ef.tx - ef.sx);
+        const len = Math.hypot(ef.tx - ef.sx, ef.ty - ef.sy);
+        const shown = len * Math.min(1, progress / 0.12);
+        ctx.translate(ef.sx, ef.sy + 4);
+        ctx.rotate(ang);
+        ctx.globalAlpha = 0.55 * fade;
+        ctx.fillStyle = '#bae6fd';
+        ctx.beginPath();
+        ctx.ellipse(shown / 2, 0, shown / 2 + 22, 20, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 0.85 * fade;
+        ctx.strokeStyle = '#f0f9ff';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        [-7, 6].forEach(off => { ctx.beginPath(); ctx.moveTo(0, off); ctx.lineTo(shown, off * 0.6); ctx.stroke(); });
+        ctx.strokeStyle = '#7dd3fc';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.ellipse(shown / 2, 0, shown / 2 + 22, 20, 0, 0, Math.PI * 2); ctx.stroke();
+      } else if (ef.type === 'frost_blizzard') {
+        // 전장 전체가 희게 덮이고 눈발이 비스듬히 휘날림
+        const W = sim.worldW || WORLD_WIDTH, H = sim.worldH || WORLD_HEIGHT;
+        const a = Math.min(1, progress / 0.08) * Math.min(1, (1 - progress) / 0.08);
+        const t = (ef.maxLife - ef.life);
+        ctx.globalAlpha = 0.22 * a;
+        ctx.fillStyle = '#e0f2fe';
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = 0.8 * a;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineCap = 'round';
+        for (let k = 0; k < 220; k++) {
+          const sp = 1 + (k % 4) * 0.5;
+          const x = ((k * 197.3 + t * 5.5 * sp) % (W + 200)) - 100;
+          const y = ((k * 131.7 + t * 7.5 * sp) % (H + 200)) - 100;
+          ctx.lineWidth = 1.5 + (k % 3);
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 7 * sp, y + 10 * sp); ctx.stroke();
+        }
+      }
+    }
+
     function drawHiddenEffect(ctx, ef, progress) {
       const t = sim.tickCount;
       const fade = Math.max(0, Math.min(1, ef.life / (ef.maxLife || 1)));
@@ -18601,6 +18792,109 @@
       return true;
     }
 
+    // ===== 빙결술사 공통 =====
+    // 아이스애로우(frost_arrow)는 마법사 아이스애로우 코드를 같이 씀 (castMercSkillInner). 나머지 스킬은 castFrostSkill
+    // 상태이상 지속 시간은 패시브 혹한(inflictStatus)에서 2배가 되므로 여기서는 기획서의 1배 시간을 넣음
+    const FROST_BARRIER_HP_RATIO = 0.2;   // 아이스 배리어: 최대 체력 20%
+    const FROST_BARRIER_ATK_RATIO = 1.5;  //   + 공격력 150%
+    const FROST_BARRIER_TICKS = 600;      // 배리어 10초
+    const FROST_NOVA_CELLS = 3;           // 프리즈: 시전자 둘레 3칸
+    const FROST_NOVA_FREEZE_TICKS = 300;  //   동결 5초
+    const FROST_DEEP_DMG = 2.0;           // 동결: 공격력 200%
+    const FROST_DEEP_FREEZE_TICKS = 600;  //   동결 10초
+    const FROST_DEEP_SLOW_TICKS = 600;    //   풀린 뒤 슬로우 10초
+    const FROST_SKATE_DISTANCE = GRID_CELL_SIZE * 4; // 스케이팅 최대 4칸
+    const FROST_SKATE_TICKS = 22;
+    const FROST_SKATE_BUFF_TICKS = 600;   // 스케이팅 뒤 속도 +30% 10초
+    const FROST_BLIZZARD_TICKS = 600;     // 블리자드 10초
+    const FROST_BLIZZARD_HIT_TICKS = 30;  //   0.5초마다
+    const FROST_BLIZZARD_DMG = 0.5;       //   공격력 50% 다단히트
+    const FROST_BLIZZARD_FREEZE_TICKS = 900; // 시작할 때 동결 15초
+
+    function castFrostSkill(unit, enemies, sk, target, aimPt) {
+      const C = GRID_CELL_SIZE;
+      const A = C * unitAreaScale(unit);
+      if (sk === 'ice_barrier') {
+        // 다시 쓰면 남은 배리어를 새것으로 바꿈 (성녀 보호막 등 다른 보호막은 그대로)
+        if (unit.frostBarrier > 0) unit.shield = Math.max(0, (unit.shield || 0) - Math.min(unit.frostBarrier, unit.shield || 0));
+        const amt = Math.round(unit.maxHp * FROST_BARRIER_HP_RATIO + unit.atk * FROST_BARRIER_ATK_RATIO);
+        unit.shield = (unit.shield || 0) + amt;
+        unit.frostBarrier = amt;
+        unit.frostBarrierTicks = FROST_BARRIER_TICKS;
+        sim.effects.push({ type: 'shield_dome', x: unit.x, y: unit.y, life: 50, maxLife: 50 });
+        sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: 56, color: '#7dd3fc', life: 34, maxLife: 34 });
+        sim.floatTexts.push({ x: unit.x, y: unit.y - 40, text: `🛡️+${amt}`, color: '#0284c7', life: 50 });
+        playCombatSfx('magic');
+        addBattleLog(`🛡️ [빙결술사] ${unit.name}의 아이스 배리어! 보호막 +${amt} (10초)`);
+        return true;
+      }
+      if (sk === 'frost_nova') {
+        const r = A * FROST_NOVA_CELLS;
+        sim.effects.push({ type: 'frost_nova', x: unit.x, y: unit.y, r, life: 40, maxLife: 40 });
+        const hit = enemies.filter(e => Math.hypot(e.x - unit.x, e.y - unit.y) - unitBodyGap(e) - unitBodyGap(unit) <= r);
+        hit.forEach(e => {
+          sim.effects.push({ type: 'ice_shatter', spr: 'ice_hit', x: e.x, y: e.y, r: 40, life: 30, maxLife: 30 });
+          inflictStatus(unit, e, 'freeze', FROST_NOVA_FREEZE_TICKS);
+        });
+        playCombatSfx('magic');
+        addBattleLog(`🌨️ [빙결술사] ${unit.name}의 프리즈! 주변 적 ${hit.length}명 동결`);
+        return true;
+      }
+      if (sk === 'deep_freeze') {
+        const foe = target && target.alive && target.team !== unit.team && target.team !== 'none' ? target : null;
+        if (!foe || unitDist(foe, unit) > manualSkillRange(unit, 'deep_freeze') + 20) {
+          sim.floatTexts.push({ x: unit.x, y: unit.y - 52, text: '🧊 빗나감 (너무 멀어요)', color: '#64748b', life: 40 });
+          return true;
+        }
+        sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y - 12, tx: foe.x, ty: foe.y - 12, color: '#7dd3fc', life: 18, maxLife: 18, warp: true });
+        sim.effects.push({ type: 'ice_shatter', spr: 'ice_hit', x: foe.x, y: foe.y, r: 70, life: 40, maxLife: 40 });
+        applyDamage(unit, foe, unit.atk * FROST_DEEP_DMG, '🧊', '#0284c7');
+        // 슬로우는 동결이 풀린 뒤부터 10초 남도록 동결 시간만큼 더 길게 (혹한 2배도 둘 다 같은 비율)
+        inflictStatus(unit, foe, 'freeze', FROST_DEEP_FREEZE_TICKS);
+        inflictStatus(unit, foe, 'slow', FROST_DEEP_FREEZE_TICKS + FROST_DEEP_SLOW_TICKS);
+        playCombatSfx('magic');
+        addBattleLog(`🧊 [빙결술사] ${unit.name}의 동결! ${foe.name}이(가) 얼음에 갇혔어요`);
+        return true;
+      }
+      if (sk === 'skating') {
+        // 직접 전투는 커서 쪽으로 (커서까지, 최대 4칸). AI는 적이 붙었으면 반대쪽으로, 멀면 사거리 안까지 다가감
+        const threat = enemies.filter(e => !hiddenFrom(unit, e)).reduce((b, e) => {
+          const d = unitDist(e, unit);
+          return !b || d < b.d ? { e, d } : b;
+        }, null);
+        let ang = unit.facingAngle || 0, dist = FROST_SKATE_DISTANCE;
+        if (aimPt) {
+          ang = Math.atan2(aimPt.y - unit.y, aimPt.x - unit.x);
+          dist = Math.min(FROST_SKATE_DISTANCE, Math.max(C, Math.hypot(aimPt.x - unit.x, aimPt.y - unit.y)));
+        } else if (threat && threat.d < C * 2.2) {
+          ang = Math.atan2(unit.y - threat.e.y, unit.x - threat.e.x);
+        } else if (target && target.alive && target.team !== 'none') {
+          ang = Math.atan2(target.y - unit.y, target.x - unit.x);
+          dist = Math.min(FROST_SKATE_DISTANCE, Math.max(C, unitDist(target, unit) - unit.range * 0.85));
+        }
+        ang = wallAwareAngle(unit, ang);
+        const dest = clampToArena(unit.x + Math.cos(ang) * dist, unit.y + Math.sin(ang) * dist);
+        sim.effects.push({ type: 'frost_skate', sx: unit.x, sy: unit.y, tx: dest.x, ty: dest.y, life: 150, maxLife: 150 });
+        sniperFace(unit, ang);
+        startUnitRush(unit, dest.x, dest.y, FROST_SKATE_TICKS);
+        unit.kbVx = 0;
+        unit.kbVy = 0;
+        unit.castLock = 0;
+        unit.statuses.skate = Math.max(unit.statuses.skate || 0, FROST_SKATE_BUFF_TICKS);
+        playCombatSfx('slash');
+        addBattleLog(`⛸️ [빙결술사] ${unit.name}의 스케이팅! 10초간 속도 +30%`);
+        return true;
+      }
+      return false;
+    }
+    // 매 틱: 아이스 배리어가 시간이 다 되면 배리어로 생긴 보호막만 사라짐
+    function stepFrostEffects(u) {
+      if (u.frostBarrierTicks > 0 && --u.frostBarrierTicks <= 0) {
+        u.shield = Math.max(0, (u.shield || 0) - Math.min(u.frostBarrier || 0, u.shield || 0));
+        u.frostBarrier = 0;
+      }
+    }
+
     // ===== 저격수 공통 =====
     // 기본 공격 = 저격: 총알이 날아가지 않고, 겨눈 직선 위에 있던 적이 모두 그 순간 맞음 (적이 움직여도 피할 수 없음)
     // 총알 5발 · 다 쓰면 자동 장전, R키로 미리 장전도 가능. 시전·장전·과열 상태는 유닛에 ammo / reloadLeft / overheat
@@ -18943,6 +19237,25 @@
           const kill = enemyTarget.hp <= unit.atk * SNIPER_FINISH_DMG_PER_BULLET * unit.ammo;
           return kill ? 90 : (unit.ammo >= 5 ? 74 : -1);
         }
+        case 'ice_barrier':
+          // 싸움이 붙었을 때, 배리어가 거의 다 깎였거나 없으면 다시
+          if (nearestEnemyDist > unit.range + C) return -1;
+          if ((unit.frostBarrier || 0) > unit.maxHp * 0.06) return -1;
+          return unit.hp / unit.maxHp < 0.7 ? 92 : 72;
+        case 'frost_nova': {
+          // 아직 안 얼어 있는 적이 둘레 3칸에 들어왔을 때 (여럿이면 먼저, 바짝 붙은 하나도 얼려 두고 거리를 벌림)
+          const r = C * FROST_NOVA_CELLS - 20;
+          const fresh = enemies.filter(e => unitDist(e, unit) <= r && e.statuses.freeze <= 35 && e.statuses.stun <= 35);
+          if (fresh.length >= 2) return 95;
+          return fresh.length === 1 && unitDist(fresh[0], unit) < C * 1.6 ? 88 : -1;
+        }
+        case 'deep_freeze':
+          // 안 얼어 있는 목표가 사거리 안에 있을 때
+          if (!enemyTarget || distToPrimary > unit.range + 80 || enemyTarget.statuses.freeze > 35) return -1;
+          return 90;
+        case 'skating':
+          if (nearestEnemyDist < C * 1.8) return 91; // 적이 바짝 붙으면 미끄러져 빠짐
+          return enemyTarget && distToPrimary > unit.range + C * 1.5 ? 60 : -1;
         default:
           return null;
       }
@@ -19019,7 +19332,7 @@
       if (p.splashRadius) {
         // 작은 범위 공격: 맞은 적은 전체 피해, 주변 적은 일부 피해 (빗나가도 떨어진 자리에서 터짐). 범위는 쏜 유닛 크기에 비례
         const splashR = p.splashRadius * unitAreaScale(p.owner);
-        sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : undefined), x, y: y - 12, r: splashR, life: 22, maxLife: 22 });
+        sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), x, y: y - 12, r: splashR, life: 22, maxLife: 22 });
         if (!hit) playCombatSfx('magic');
         sim.units.forEach(e => {
           if (!e.alive || e === hit || e.team === p.owner.team) return;
@@ -19032,7 +19345,7 @@
       if (p.projType === 'magic_orb') {
         playCombatSfx('magic');
         // 범위 공격은 위에서 이미 터지는 그림을 그렸으므로 한 번 더 그리지 않음
-        if (!p.splashRadius) sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : undefined), x: hit.x, y: hit.y - 12, r: 42, life: 22, maxLife: 22 });
+        if (!p.splashRadius) sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), x: hit.x, y: hit.y - 12, r: 42, life: 22, maxLife: 22 });
       } else {
         playCombatSfx('arrow');
         sim.effects.push({ type: 'arrow_hit', spr: projHitSpr(p), x: hit.x, y: hit.y - 12, angle: p.angle, life: 18, maxLife: 18 }); // 히드라 독액 = 철퍽 튀는 독
@@ -20666,9 +20979,10 @@
         const progress = 1 - ef.life / (ef.maxLife || 20);
         ctx.save();
 
-        // 히든 스킬 그림 (검기·돌풍·원소 융합 등)
-        if (typeof ef.type === 'string' && ef.type.startsWith('hidden_')) {
-          drawHiddenEffect(ctx, ef, progress);
+        // 히든 스킬 그림 (검기·돌풍·원소 융합 등) · 빙결술사 프리즈·얼음길·눈보라
+        if (typeof ef.type === 'string' && (ef.type.startsWith('hidden_') || ef.type.startsWith('frost_'))) {
+          if (ef.type.startsWith('frost_')) drawFrostEffect(ctx, ef, progress);
+          else drawHiddenEffect(ctx, ef, progress);
           ctx.restore();
           ef.life -= frameTimeScale;
           if (ef.life <= 0) sim.effects.splice(i, 1);
@@ -21538,7 +21852,7 @@
     const SKIN_JOB_LOOK = {
       warrior: 'a warrior with a one-handed sword and a cape', mage: 'a mage with a wizard hat and a magic staff',
       healer: 'a holy priestess (healer) with a holy staff', archer: 'an archer with a bow', rogue: 'a hooded rogue (ninja-like) with daggers',
-      knight: 'a plate-armored knight with a big tower shield and a war hammer', lancer: 'a lancer with a long spear', sniper: 'a sniper with a long rifle'
+      knight: 'a plate-armored knight with a big tower shield and a war hammer', lancer: 'a lancer with a long spear', sniper: 'a sniper with a long rifle', frost: 'a frost mage with an ice crystal staff'
     };
     const SKIN_ANIM_HINT = {
       idle: 'standing idle (breathing)', walk: 'walking cycle', attack: 'basic attack swing', thrust: 'spear thrust attack',
@@ -22379,6 +22693,7 @@
                   <option value="knight" ${m.job === 'knight' ? 'selected' : ''}>🛡️ 기사</option>
                   <option value="lancer" ${m.job === 'lancer' ? 'selected' : ''}>🔱 창병</option>
                   <option value="sniper" ${m.job === 'sniper' ? 'selected' : ''}>🔫 저격수</option>
+                  <option value="frost" ${m.job === 'frost' ? 'selected' : ''}>🧊 빙결술사</option>
                 </select>
               </div>
               <div>
@@ -22521,7 +22836,7 @@
         showNotice(`⚠️ 용병은 최대 ${MAX_ROSTER}명까지만 보유할 수 있습니다!`);
         return;
       }
-      const jobKeys = ['warrior', 'mage', 'healer', 'archer', 'rogue', 'knight', 'lancer', 'sniper'];
+      const jobKeys = ['warrior', 'mage', 'healer', 'archer', 'rogue', 'knight', 'lancer', 'sniper', 'frost'];
       const job = jobKeys[adminEditingRosterCopy.length % jobKeys.length];
       const canDeploy = adminEditingRosterCopy.filter(m => m.deployed).length < MAX_DEPLOY;
       const newMerc = createMercenary(job, 'N', 1, adminEditingRosterCopy.length, canDeploy);
@@ -28444,7 +28759,7 @@
     // ===== 진형 편집 공통 (PvP 방어 진형 · 결투방 진형) =====
     // ed = { layout: { 용병id: { row, col } }, pickedId } — layout 에는 들어간 용병만 (최대 MAX_DEPLOY명)
     function findFreeFormationCell(layout, merc) {
-      const pref = { archer: 0, healer: 0, mage: 1, warrior: 2, rogue: 2, knight: 2, lancer: 2, sniper: 0 }[merc.job] ?? 1;
+      const pref = { archer: 0, healer: 0, mage: 1, warrior: 2, rogue: 2, knight: 2, lancer: 2, sniper: 0, frost: 1 }[merc.job] ?? 1;
       const taken = (r, c) => Object.values(layout).some(p => p.row === r && p.col === c);
       const colOrder = [pref, 1, 2, 0].filter((c, i, arr) => arr.indexOf(c) === i);
       for (const c of colOrder) {
