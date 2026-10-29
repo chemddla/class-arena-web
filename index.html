@@ -5333,6 +5333,14 @@
       const skin = def && def.fxSkin && FX_SKINS[def.fxSkin];
       return skin && skin.anims[key] ? `${def.fxSkin}_${key}` : key;
     }
+    // 돌진 꼬리 그림 배율: 핏빛 꼬리를 쓰는 엘리트(피의 오크 대족장)는 몸이 커서 몸 키의 제곱근만큼 키움, 나머지는 원래 크기
+    function chargeTrailSize(u) {
+      return unitFxTint(u, 'charge') ? Math.sqrt(spriteDrawH(u, getUnitSprite(u)) / SPRITE_DRAW_H) : undefined;
+    }
+    // 기존 그림을 몬스터 색으로 바꿔 그릴 때의 사본 이름 (피의 오크 대족장 = 'blood'), 없으면 undefined
+    function unitFxTint(u, key) {
+      return unitFxSpr(u, key).startsWith('bloodorc_') ? 'blood' : undefined;
+    }
     // 몬스터마다 바꾼 도형 이펙트 색 (돌격 줄·방어 태세 고리 등)
     function unitFxColor(u, key, fallback) {
       const def = getUnitSprite(u);
@@ -6177,14 +6185,31 @@
     // 돌진·돌격 꼬리: 바람 줄기(tail, 오른쪽 34px는 서서히 투명 = 몸에 붙는 쪽) + 뒤쪽 흙먼지(dirt). 오른쪽이 앞. 거리가 길면 바람 줄기만 늘림
     const TRAIL_FX = { tail: [0, 0, 94, 67], dirt: [96, 0, 138, 47], fade: 34, dirtOverlap: 92, frontPad: 14, alpha: 1 };
     TRAIL_FX.img = new Image();
-    TRAIL_FX.img.onload = () => { TRAIL_FX.img.ready = true; };
+    TRAIL_FX.img.onload = () => { TRAIL_FX.blood = bloodTintCopy(TRAIL_FX.img); TRAIL_FX.img.ready = true; }; // blood = 피의 오크 대족장 돌진용 핏빛 사본
     TRAIL_FX.img.src = 'assets/sprites/fx/charge_trail_fx.webp';
-    const SPIN_FX = { frames: [[0, 0, 315, 200], [315, 0, 315, 200], [630, 0, 315, 200]] };
+    const SPIN_FX = { frames: [[0, 0, 315, 200], [315, 0, 315, 200], [630, 0, 315, 200]] }; // blood = 피의 오크 대족장 회전베기용 핏빛 사본
+    // 피의 오크 대족장용 핏빛 사본: 색을 짙은 핏빛으로 바꾸고 살짝 어둡게 (모양·투명도는 원본 그대로)
+    function bloodTintCopy(img) {
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const g = c.getContext('2d');
+      g.drawImage(img, 0, 0);
+      g.globalCompositeOperation = 'color';
+      g.fillStyle = '#dc2626';
+      g.fillRect(0, 0, c.width, c.height);
+      g.globalCompositeOperation = 'multiply';
+      g.fillStyle = '#c08080';
+      g.fillRect(0, 0, c.width, c.height);
+      g.globalCompositeOperation = 'destination-in';
+      g.drawImage(img, 0, 0);
+      return c;
+    }
     const TORNADO_FX = { w: 127, h: 246, anchorX: 63, anchorY: 240 };
     [[DASH_FX, 'dash_burst_fx'], [SPIN_FX, 'spin_slash_fx'], [TORNADO_FX, 'purple_tornado_fx']].forEach(([o, file]) => {
       const img = new Image();
       img.onload = () => {
         img.ready = true;
+        if (o === SPIN_FX) o.blood = bloodTintCopy(img);
         if (o === TORNADO_FX) { // 궁수 폭풍 화살용 초록 사본: 밝기는 그대로 두고 색만 초록으로 바꿈
           const c = document.createElement('canvas');
           c.width = img.width; c.height = img.height;
@@ -15436,7 +15461,7 @@
             playCombatSfx('heavy');
           });
           sim.effects.push({
-            type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, trail: true, runTicks: r.n, ownerId: unit.id,
+            type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, trail: true, runTicks: r.n, ownerId: unit.id, tint: unitFxTint(unit, 'charge'), size: chargeTrailSize(unit),
             color: unit.team === 'blue' ? '#2563eb' : '#e11d48',
             life: CHARGE_MOVE_TICKS + 32, maxLife: CHARGE_MOVE_TICKS + 32
           });
@@ -15467,7 +15492,7 @@
 
           sim.effects.push({
             type: 'charge_dash',
-            sx, sy, tx: r.tx, ty: r.ty, trail: true, runTicks: r.n, ownerId: unit.id,
+            sx, sy, tx: r.tx, ty: r.ty, trail: true, runTicks: r.n, ownerId: unit.id, tint: unitFxTint(unit, 'charge'), size: chargeTrailSize(unit),
             color: unit.team === 'blue' ? '#2563eb' : '#e11d48',
             life: CHARGE_MOVE_TICKS + 32, maxLife: CHARGE_MOVE_TICKS + 32
           });
@@ -19585,6 +19610,16 @@
         // 회전베기 동안 몸을 따라다니는 피의 회오리 고리: 두 장을 8틱마다 번갈아, 끝 12틱 동안 사라짐 (기존 칼바람 고리와 같은 박자)
         const own = ef.owner && ef.owner.alive ? ef.owner : ef;
         const fi = Math.floor((ef.maxLife - ef.life) / 8) % 2, fr = list[fi];
+        if (SPIN_FX.blood) {
+          // 아래에 전사 회전베기 칼바람을 핏빛으로 바꾼 것을 깔아 도는 느낌을 더함 (끝 20틱은 흩어지는 잔상)
+          const sf = SPIN_FX.frames[ef.life <= 20 ? 2 : fi], k = (ef.r * 2.2) / sf[2];
+          ctx.save();
+          ctx.translate(own.x, own.y + 6);
+          ctx.scale(1, 0.72);
+          ctx.globalAlpha = Math.min(1, ef.life / 12) * 0.85;
+          ctx.drawImage(SPIN_FX.blood, sf[0], sf[1], sf[2], sf[3], -sf[2] * k / 2, -sf[3] * k / 2, sf[2] * k, sf[3] * k);
+          ctx.restore();
+        }
         ctx.translate(own.x, own.y + 4);
         if (Math.floor((ef.maxLife - ef.life) / 16) % 2) ctx.scale(-1, 1);
         drawFxFrame(ctx, fr, 0, 0, (ef.r * 2.3 * (0.8 + ease * 0.2)) / list[1][2], 0, Math.min(1, ef.life / 12), B.img);
@@ -20892,7 +20927,7 @@
         } else if (ef.type === 'charge_dash' && ef.trail && TRAIL_FX.img.ready) {
           // 돌진·돌격: 달려가는 몸 뒤에 바람 잔상 + 흙먼지가 따라붙음. 달린 거리만큼 바람 부분이 길어지고, 도착하면 줄어들며 사라짐
           const ang = Math.atan2(ef.ty - ef.sy, ef.tx - ef.sx), dist = Math.hypot(ef.tx - ef.sx, ef.ty - ef.sy);
-          const flip = Math.cos(ang) < 0, s = 0.85;
+          const flip = Math.cos(ang) < 0, s = 0.85 * (ef.size || 1);
           // 앞머리는 실제 달리는 몸(같은 감속 곡선)에 딱 붙어 가고, 꼬리 끝은 출발점에 그대로 둠
           let headT, arrived;
           if (ef.runTicks) {
@@ -20916,7 +20951,7 @@
           ctx.scale(s, s);
           ctx.globalAlpha = TRAIL_FX.alpha * (ef.runTicks ? 1 : Math.max(0, Math.min(1, (1 - progress) * 2.2)));
           ctx.imageSmoothingEnabled = false;
-          const bottom = 10, img = TRAIL_FX.img;
+          const bottom = 10, img = (ef.tint === 'blood' && TRAIL_FX.blood) || TRAIL_FX.img;
           if (windW > 0.5) {
             // 몸 앞으로 바람이 삐져나가지 않게 앞끝을 몸 중심보다 살짝 뒤로 물림
             ctx.translate(-TRAIL_FX.frontPad, 0);
