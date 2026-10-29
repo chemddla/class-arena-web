@@ -3035,17 +3035,19 @@
     const BATTLE_PROJECTILE_SPEED = 2.8; // 화살·마법구 등 투사체 속도 배율
     const PROJECTILE_HIT_RADIUS = 30;    // 투사체가 이 거리 안으로 지나가면 맞음
     const ELITE_SIZE_MULT = 1.3;         // 엘리트 보스 상향: 몸·그림 크기와 공격 범위(기본 공격 사거리·스킬 범위) 30% 크게
-    const ELITE_BOSS_TOKEN_R = Math.round(36 * 3 * ELITE_SIZE_MULT); // 엘리트 보스 몸 크기 (보통 보스 36의 3배 × 1.3)
-    const ELITE_BOSS_HIT_RADIUS = ELITE_BOSS_TOKEN_R + 12; // 큰 몸 어디에 맞아도 맞은 것으로
+    // 엘리트 보스 몸 배율: 🔥 하드모드 보스는 eliteHardSize(1.5)만큼 더 큼
+    function eliteSizeOf(u) { return ELITE_SIZE_MULT * ((u && u.eliteHardSize) || 1); }
+    function eliteTokenR(u) { return Math.round(36 * 3 * eliteSizeOf(u)); } // 엘리트 보스 몸 크기 (보통 보스 36의 3배 × 1.3)
+    function eliteHitRadius(u) { return eliteTokenR(u) + 12; } // 큰 몸 어디에 맞아도 맞은 것으로
     // 몸 크기 배율 sizeScale (용병 = 1): 탑 몬스터는 MONSTER_DEFS의 size. 엘리트 보스는 따로 (토큰이 보통 보스의 3배)
     const BODY_HALF_W = 20; // 용병 몸 반폭 (몸이 s배면 가장자리가 BODY_HALF_W × (s - 1)만큼 바깥)
     // 사거리 판정용 거리: 몸이 큰 유닛은 몸 가장자리까지의 거리로 잼 (때리는 쪽·맞는 쪽 모두)
-    function unitBodyGap(u) { return !u ? 0 : (u.isEliteBoss ? ELITE_BOSS_TOKEN_R - 36 : BODY_HALF_W * ((u.sizeScale || 1) - 1)); }
+    function unitBodyGap(u) { return !u ? 0 : (u.isEliteBoss ? eliteTokenR(u) - 36 : BODY_HALF_W * ((u.sizeScale || 1) - 1)); }
     // 시전자 크기에 따라 커지는 스킬 범위 배율 = √몸 크기 (2.5배 보스 → 1.6배). 몸 크기 그대로 키우면 보스 사자후·지진이
     //   전장을 거의 다 덮어서 근접 용병이 붙지 못함 (tests/tower-sim.js). 엘리트 보스 스킬은 원래 크기에 맞춰 짜여 있어서
     //   몸을 키운 만큼(ELITE_SIZE_MULT)만
     //   탑 종족 보스는 크기 2배에 맞춰 범위도 크기에 비례
-    function unitAreaScale(u) { return !u ? 1 : (u.isEliteBoss ? ELITE_SIZE_MULT : (u.isRaceBoss ? (u.sizeScale || 1) : Math.sqrt(u.sizeScale || 1))); }
+    function unitAreaScale(u) { return !u ? 1 : (u.isEliteBoss ? eliteSizeOf(u) : (u.isRaceBoss ? (u.sizeScale || 1) : Math.sqrt(u.sizeScale || 1))); }
     // 몸 크기를 정하면서 근접 기본 공격 사거리도 같은 배율로 (원거리는 몸 가장자리만큼만 늘어남)
     const MELEE_RANGE_MAX = 150;
     function setUnitBodySize(unit, s) {
@@ -4787,7 +4789,7 @@
     }
     const SPRITE_DRAW_H = 54;       // 전투 화면에서 서 있는 캐릭터의 키(월드 px)
     // 탑 몬스터는 몸 크기(sizeScale)만큼. 엘리트 보스는 몸(토큰)이 보통 보스의 3배라 그림도 eliteScale만큼 크게
-    const spriteDrawH = (u, sprite) => SPRITE_DRAW_H * (u.isEliteBoss ? (sprite.eliteScale || 1) * ELITE_SIZE_MULT : (u.sizeScale || 1));
+    const spriteDrawH = (u, sprite) => SPRITE_DRAW_H * (u.isEliteBoss ? (sprite.eliteScale || 1) * eliteSizeOf(u) : (u.sizeScale || 1));
     const SPRITE_DEATH_TICKS = 150; // 쓰러진 뒤 화면에 남아 있는 시간 (되살릴 수 없는 유닛)
     const CORPSE_ALPHA = 0.55; // 되살릴 수 있는 시체가 남아 있는 진하기
     // 부활로 다시 일어날 수 있는 시체인지 (허수아비·분신은 부활 대상이 아님)
@@ -14266,7 +14268,7 @@
       box.prepend(div);
     }
 
-    function launchSimulation({ mode, title, blueStudent, redStudent, towerFloorObj, eliteBossId, rewardMc, lossRewardMc, customBlueUnits, customRedUnits, netRole = null, myTeam = 'blue', roomBattle = false }) {
+    function launchSimulation({ mode, title, blueStudent, redStudent, towerFloorObj, eliteBossId, eliteHard = false, rewardMc, lossRewardMc, customBlueUnits, customRedUnits, netRole = null, myTeam = 'blue', roomBattle = false }) {
       const blueDeployed = (blueStudent?.roster || []).filter(m => m.deployed);
       if (!customBlueUnits && blueDeployed.length === 0) {
         showNotice('⚠️ 출전 가능한 용병이 없습니다! 먼저 용병 모집에서 용병을 고용하고 출전시켜주세요.');
@@ -14360,7 +14362,7 @@
       sim.tickCount = 0;
       sim.mode = mode;
       sim.title = title;
-      sim.meta = { blueStudent, redStudent, towerFloorObj, eliteBossId: eliteBossId || null, rewardMc: rewardMc || 250, lossRewardMc };
+      sim.meta = { blueStudent, redStudent, towerFloorObj, eliteBossId: eliteBossId || null, eliteHard: Boolean(eliteHard), rewardMc: rewardMc || 250, lossRewardMc };
       sim.running = true;
       sim.netRole = netRole;
       sim.myTeam = myTeam;
@@ -16086,7 +16088,7 @@
           let hit = null;
           for (const e of sim.units) {
             if (!e.alive || e.team === p.owner.team) continue;
-            if (Math.hypot(e.x - p.x, (e.y - 12) - p.y) < (e.isEliteBoss ? ELITE_BOSS_HIT_RADIUS : PROJECTILE_HIT_RADIUS + unitBodyGap(e))) {
+            if (Math.hypot(e.x - p.x, (e.y - 12) - p.y) < (e.isEliteBoss ? eliteHitRadius(e) : PROJECTILE_HIT_RADIUS + unitBodyGap(e))) {
               hit = e;
               break;
             }
@@ -18973,7 +18975,9 @@
       const isTowerReplay = towerHard ? hardDone : Boolean(sim.mode === 'tower' && meta.towerFloorObj && meta.towerFloorObj.floor < (stu.towerFloor || 1));
       if (isTowerReplay) baseReward = 0;
       // 엘리트 보스는 보스마다 처음 잡았을 때 한 번만 보상 (잡은 뒤 재도전은 이기든 지든 보상 없음)
-      const isEliteReplay = Boolean(sim.mode === 'elite_raid' && meta.eliteBossId && eliteClaimsOf(stu)[meta.eliteBossId]);
+      // 🔥 하드모드도 보스마다 처음 잡았을 때 한 번만 (원래 보상의 2배는 rewardMc에 이미 들어 있음)
+      const eliteHard = Boolean(sim.mode === 'elite_raid' && meta.eliteHard);
+      const isEliteReplay = Boolean(sim.mode === 'elite_raid' && meta.eliteBossId && (eliteHard ? eliteHardClaimsOf(stu) : eliteClaimsOf(stu))[meta.eliteBossId]);
       if (isEliteReplay) baseReward = 0;
       const reward = (isPracticeOnly || iForfeited)
         ? 0
@@ -18982,7 +18986,14 @@
           : grantDailyReward(stu, rewardCategory, baseReward));
       if (reward > 0) state.guardianPts += blueWon ? 20 : 8;
       if (blueWon && reward > 0 && sim.mode === 'elite_raid' && meta.eliteBossId) {
-        stu.eliteRewardClaimed = { ...eliteClaimsOf(stu), [meta.eliteBossId]: true };
+        // 시즌을 새로 적기 전에 두 기록을 함께 읽어 둠 (지난 시즌 기록이 따라오지 않게)
+        const normalClaims = eliteClaimsOf(stu), hardClaims = eliteHardClaimsOf(stu);
+        if (eliteHard) stu.eliteHardClaimed = { ...hardClaims, [meta.eliteBossId]: true };
+        else stu.eliteRewardClaimed = { ...normalClaims, [meta.eliteBossId]: true };
+        if (stu.eliteSeason !== ELITE_SEASON) {
+          if (eliteHard) stu.eliteRewardClaimed = normalClaims;
+          else stu.eliteHardClaimed = hardClaims;
+        }
         stu.eliteSeason = ELITE_SEASON;
       }
 
@@ -19032,7 +19043,7 @@
         : isTowerReplay
         ? (towerHard ? '이미 깬 하드모드 층이라 보상은 없어요. 다른 층의 하드모드에 도전해 보세요!' : '이미 깬 층이라 보상은 없어요. 다음 층에 도전해 보세요!')
         : isEliteReplay
-        ? '이미 보상을 받은 엘리트 보스라 보상은 없어요. 다른 엘리트 보스에 도전해 보세요!'
+        ? (eliteHard ? '이미 보상을 받은 하드모드 엘리트 보스라 보상은 없어요. 다른 보스의 하드모드에 도전해 보세요!' : '이미 보상을 받은 엘리트 보스라 보상은 없어요. 다른 엘리트 보스에 도전해 보세요!')
         : (reward > 0
           ? `전투 보상으로 💰 ${reward} CA를 받았어요!${rewardCategory && !isFirstTowerClear ? ` (오늘 남은 ${DAILY_REWARD_LABELS[rewardCategory]} 보상: ${getDailyRewardLeft(stu, rewardCategory)}회)` : ''}`
           : dailyRewardDoneText(rewardCategory));
@@ -19946,17 +19957,18 @@
       // 2) 심플 시스템 유닛 토큰 (원형 노드 + 방향 지시자 + 직업/몬스터 심볼)
       const isEliteBoss = Boolean(u.isEliteBoss);
       const isBossMon = isEliteBoss || Boolean(monObj && monObj.big) || u.isRaceBoss;
-      const tokenR = isEliteBoss ? ELITE_BOSS_TOKEN_R : (u.sizeScale ? 18 * u.sizeScale : (isBossMon ? 21 : 18));
+      const tokenR = isEliteBoss ? eliteTokenR(u) : (u.sizeScale ? 18 * u.sizeScale : (isBossMon ? 21 : 18));
       const sprite = getUnitSprite(u);
       const useSprite = Boolean(sprite && sprite.ready);
       // 스프라이트는 머리가 토큰보다 높아서 체력바를 그만큼 위로 올림
       const headTopY = useSprite ? 12 - Math.round((sprite.topH || sprite.standH) * spriteDrawH(u, sprite) / sprite.standH) : -8 - tokenR;
 
-      // 🔥 하드모드 탑 몬스터는 시크릿 레어처럼 붉은 빛 (몸 크기만큼 크게, 그림 없는 몬스터도)
+      // 🔥 하드모드 탑 몬스터·엘리트 보스는 시크릿 레어처럼 붉은 빛 (몸 크기만큼 크게, 그림 없는 몬스터도)
       const hardFx = Boolean(u.isHardMode);
       const rareFx = hardFx || (useSprite && !u.isDarkMerc && (RARITY_DEFS[u.rarity] || RARITY_DEFS.N).isRare);
       const rarePal = hardFx || isSecretRare(u.rarity) ? RARE_FX_COLORS.red : RARE_FX_COLORS.gold;
-      const auraK = hardFx ? Math.max(1, u.sizeScale || 1) : 1;
+      const auraK = !hardFx ? 1
+        : (isEliteBoss ? (useSprite ? spriteDrawH(u, sprite) / SPRITE_DRAW_H : tokenR / 18) : Math.max(1, u.sizeScale || 1));
       const drawRareAura = front => {
         ctx.save();
         ctx.scale(auraK, auraK);
@@ -20014,7 +20026,7 @@
 
         // 유닛 중앙 심볼
         const centerSymbol = monObj ? monObj.icon : job.icon;
-        ctx.font = `${isEliteBoss ? Math.round(54 * ELITE_SIZE_MULT) : (u.sizeScale ? Math.round(15 * u.sizeScale) : (isBossMon ? 18 : 15))}px Pretendard, sans-serif`;
+        ctx.font = `${isEliteBoss ? Math.round(54 * eliteSizeOf(u)) : (u.sizeScale ? Math.round(15 * u.sizeScale) : (isBossMon ? 18 : 15))}px Pretendard, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = (u.monsterType && u.monsterType !== 'scarecrow') || u.isDarkMerc ? '#ffffff' : '#0f172a';
@@ -20183,7 +20195,7 @@
       const land = countTicks + fallTicks;
       if (t >= land) { drawUnitToken(ctx, u, sim.tickCount); return; }
       const ent = eliteEntranceOf(sim.meta && sim.meta.eliteBossId);
-      const shadowR = ELITE_BOSS_TOKEN_R * 1.5;
+      const shadowR = eliteTokenR(u) * 1.5;
       const growFrom = countTicks - 2 * BATTLE_TICKS_PER_SEC;
       const p = Math.max(0, Math.min(1, (t - growFrom) / (land - growFrom)));
       ctx.save();
@@ -22744,6 +22756,30 @@
       return (stu && stu.eliteSeason === ELITE_SEASON && stu.eliteRewardClaimed) || {};
     }
 
+    // 🔥 엘리트 보스 하드모드: 그 보스를 일반으로 잡아야 열림 · 도전할 때마다 플레이어마다 cost CA
+    //   공격·방어 stat배, 체력 hp배, 몸·공격 범위 size배, 첫 처치 보상 reward배 (탑 하드모드처럼 붉은 빛)
+    const ELITE_HARD = { stat: 2, hp: 3, size: 1.5, reward: 2, cost: 5000 };
+    let selectedEliteHard = false;
+    function eliteHardClaimsOf(stu) {
+      return (stu && stu.eliteSeason === ELITE_SEASON && stu.eliteHardClaimed) || {};
+    }
+    function isEliteHardUnlocked(stu, bossId) { return Boolean(eliteClaimsOf(stu)[bossId]); }
+    // 하드모드 레이드에 못 들어가는 이유 (들어갈 수 있으면 '')
+    function eliteHardBlockReason(stu, bossId) {
+      const def = ELITE_BOSS_DEFS.find(b => b.id === bossId);
+      if (!isEliteHardUnlocked(stu, bossId)) return `🔒 하드모드는 [${def ? def.name : '그 보스'}]를 일반 모드로 먼저 처치해야 열려요.`;
+      if ((stu.mc || 0) < ELITE_HARD.cost) return `⚠️ 하드모드 도전비용(${ELITE_HARD.cost.toLocaleString()} CA)이 부족해요. (보유: ${(stu.mc || 0).toLocaleString()} CA)`;
+      return '';
+    }
+    const eliteRewardOf = (def, hard) => (hard ? def.rewardMc * ELITE_HARD.reward : def.rewardMc);
+    // 하드모드 레이드가 출발하면 내 화면에서 내 도전비용만 냄 (연습 친구 자리는 내지 않음)
+    function chargeEliteHardCost(stu, hard) {
+      if (!hard || !stu) return;
+      stu.mc = Math.max(0, (stu.mc || 0) - ELITE_HARD.cost);
+      addBattleLog(`🔥 [하드모드] 도전비용 ${ELITE_HARD.cost.toLocaleString()} CA를 냈어요. (남은 CA: ${stu.mc.toLocaleString()})`);
+      if (typeof saveState === 'function') saveState();
+    }
+
     // 1단계는 처음부터 열림. 그 뒤 단계는 바로 앞 단계(또는 더 높은 단계)를 잡은 기록이 있으면 열림
     function isEliteBossUnlocked(stu, idx) {
       if (idx <= 0) return true;
@@ -22759,6 +22795,9 @@
       if (isEliteBossIdUnlocked(stu, selectedEliteBossId)) return;
       const open = ELITE_BOSS_DEFS.filter((b, i) => isEliteBossUnlocked(stu, i));
       selectedEliteBossId = open[open.length - 1].id;
+    }
+    function ensureSelectedEliteHardUnlocked(stu) {
+      if (selectedEliteHard && !isEliteHardUnlocked(stu, selectedEliteBossId)) selectedEliteHard = false;
     }
 
     // 추후 서버(Supabase / Firebase) 연결 시 즉시 작동하는 실시간 협동 레이드 서비스 어댑터
@@ -22826,12 +22865,18 @@
       saveRaidRoomData(room.roomId, room);
     }
 
-    function selectEliteBossForRaid(bossId) {
-      if (!isEliteBossIdUnlocked(getActiveStudent(), bossId)) {
+    function selectEliteBossForRaid(bossId, hard = false) {
+      const stu = getActiveStudent();
+      if (!isEliteBossIdUnlocked(stu, bossId)) {
         showNotice('🔒 앞 단계 엘리트 보스를 먼저 처치해야 도전할 수 있어요!');
         return;
       }
+      if (hard && !isEliteHardUnlocked(stu, bossId)) {
+        showNotice(eliteHardBlockReason(stu, bossId));
+        return;
+      }
       selectedEliteBossId = bossId;
+      selectedEliteHard = hard;
       renderCoopRaidTab();
     }
 
@@ -22854,6 +22899,7 @@
       const myStu = getActiveStudent();
       ensureSelectedRaidMercs(myStu);
       ensureSelectedEliteBossUnlocked(myStu);
+      ensureSelectedEliteHardUnlocked(myStu);
 
       const badgeEl = document.getElementById('raidMySelectedCountBadge');
       if (badgeEl) badgeEl.textContent = `내 용병 ${selectedRaidMercIds.length} / 5명 배치됨`;
@@ -22932,10 +22978,20 @@
           }
           const isSel = b.id === selectedEliteBossId;
           const claimed = Boolean(eliteClaimsOf(myStu)[b.id]);
+          const hardSel = isSel && selectedEliteHard;
+          const hardClaimed = Boolean(eliteHardClaimsOf(myStu)[b.id]);
+          const hardBtn = claimed
+            ? `<button onclick="event.stopPropagation(); selectEliteBossForRaid('${b.id}', ${!hardSel})"
+                class="mt-2 px-2.5 py-1 rounded-lg text-[11px] font-extrabold border transition ${
+                  hardSel ? 'bg-red-600 border-red-400 text-white shadow' : 'bg-red-950/60 border-red-800 text-red-300 hover:bg-red-900/70'
+                }">${hardSel ? '✅ ' : ''}🔥 하드모드 · 도전비용 ${ELITE_HARD.cost.toLocaleString()} CA · ${
+                  hardClaimed ? '보상 받음 (재도전 보상 없음)' : `보상 💰 ${eliteRewardOf(b, true).toLocaleString()} CA (1회)`}</button>`
+            : `<button disabled class="mt-2 px-2.5 py-1 rounded-lg text-[11px] font-extrabold border bg-slate-900 border-slate-800 text-slate-500 cursor-not-allowed">🔒 하드모드 (일반 처치 후 열림)</button>`;
           return `
             <div onclick="selectEliteBossForRaid('${b.id}')"
               class="cursor-pointer rounded-2xl border-2 p-3.5 transition ${
-                isSel ? 'bg-rose-500/15 border-rose-500 shadow-lg' : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                hardSel ? 'bg-red-600/20 border-red-500 shadow-lg shadow-red-900/40'
+                  : (isSel ? 'bg-rose-500/15 border-rose-500 shadow-lg' : 'bg-slate-950 border-slate-800 hover:border-slate-700')
               } flex gap-3">
               <div class="w-20 h-20 shrink-0 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center overflow-hidden">${getMonsterCodexArtHTML(b.monsterType, 80, null, null, true)}</div>
               <div class="min-w-0 flex-1">
@@ -22949,6 +23005,8 @@
               <p class="text-[11px] text-slate-400 mt-1">${b.desc}</p>
               <div class="flex flex-wrap gap-1 mt-1.5">${Object.values(eliteBossSkillBook(b.id)).map(sk =>
                 `<span class="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 text-[10px] font-bold" title="${sk.desc}">${sk.icon} ${sk.name}</span>`).join('')}</div>
+              ${hardBtn}
+              ${hardSel ? `<div class="text-[11px] font-extrabold text-red-300 mt-1">🔥 하드: 체력 ×${ELITE_HARD.hp} · 공격·방어 ×${ELITE_HARD.stat} · 크기·공격 범위 ×${ELITE_HARD.size}</div>` : ''}
               </div>
             </div>
           `;
@@ -22996,18 +23054,22 @@
     }
     // 3인이 들어가면 2인 기준 체력의 (인원/2)배 (3인 = 1.5배)
     const raidHpMult = playerCount => (playerCount >= 3 ? playerCount / 2 : 1);
-    function buildCenterEliteBoss(bossDef, playerCount = 2) {
+    function buildCenterEliteBoss(bossDef, playerCount = 2, hard = false) {
       const bossTemplate = createMercenary(bossDef.job, 'R', 30, 0, true, 'whirlwind');
-      bossTemplate.name = bossDef.name;
+      bossTemplate.name = hard ? `🔥${bossDef.name}` : bossDef.name;
       bossTemplate.monsterType = bossDef.monsterType;
       bossTemplate.row = 2;
       bossTemplate.col = 2;
-      bossTemplate.overrideMaxHp = Math.round(bossDef.hp * raidHpMult(playerCount));
-      bossTemplate.overrideAtk = bossDef.atk;
-      bossTemplate.overrideDef = bossDef.def;
+      bossTemplate.overrideMaxHp = Math.round(bossDef.hp * raidHpMult(playerCount) * (hard ? ELITE_HARD.hp : 1));
+      bossTemplate.overrideAtk = Math.round(bossDef.atk * (hard ? ELITE_HARD.stat : 1));
+      bossTemplate.overrideDef = Math.round(bossDef.def * (hard ? ELITE_HARD.stat : 1));
       const boss = createSimUnit(bossTemplate, null, 'red', 1.0);
       boss.isEliteBoss = true;
-      boss.range = Math.round(boss.range * ELITE_SIZE_MULT); // 몸을 키운 만큼 기본 공격 사거리도
+      if (hard) {
+        boss.isHardMode = true;           // 탑 하드모드처럼 붉은 빛
+        boss.eliteHardSize = ELITE_HARD.size; // 몸·그림·스킬 범위 (eliteSizeOf)
+      }
+      boss.range = Math.round(boss.range * eliteSizeOf(boss)); // 몸을 키운 만큼 기본 공격 사거리도
       boss.x = Math.round(sim.worldW / 2); // 맵 가운데
       boss.y = Math.round(sim.worldH / 2);
       applyUnitSkillBook(boss, eliteBossSkillBook(bossDef.id));
@@ -23021,7 +23083,10 @@
       const partnerSel = document.getElementById('raidPartnerStudentSelect');
       const partnerStu = otherStudents.find(s => s.id === partnerSel?.value) || otherStudents[0] || myStu;
       ensureSelectedEliteBossUnlocked(myStu);
+      ensureSelectedEliteHardUnlocked(myStu);
       const bossDef = ELITE_BOSS_DEFS.find(b => b.id === selectedEliteBossId) || ELITE_BOSS_DEFS[0];
+      const hard = selectedEliteHard;
+      if (hard && eliteHardBlockReason(myStu, bossDef.id)) { showNotice(eliteHardBlockReason(myStu, bossDef.id)); return; }
 
       const myMercs = (myStu.roster || []).filter(m => selectedRaidMercIds.includes(m.id)).slice(0, RAID_PICK);
       const partnerMercs = ((partnerStu.roster || []).filter(m => m.deployed).length >= RAID_PICK
@@ -23035,18 +23100,21 @@
         { stu: myStu, mercs: myMercs, label: myStu.name },
         { stu: partnerStu, mercs: partnerMercs, label: partnerStu.name }
       ]);
-      const singleEliteBoss = buildCenterEliteBoss(bossDef);
+      const singleEliteBoss = buildCenterEliteBoss(bossDef, 2, hard);
 
       launchSimulation({
         mode: 'elite_raid',
-        title: `🐉 실시간 2인 협동 레이드: ${myStu.name}(5인) & ${partnerStu.name}(5인) vs ${bossDef.name}`,
+        title: `🐉 실시간 2인 협동 레이드: ${myStu.name}(5인) & ${partnerStu.name}(5인) vs ${hard ? '🔥하드 ' : ''}${bossDef.name}`,
         blueStudent: myStu,
         redStudent: null,
         eliteBossId: bossDef.id,
-        rewardMc: bossDef.rewardMc,
+        eliteHard: hard,
+        rewardMc: eliteRewardOf(bossDef, hard),
         customBlueUnits: blueUnits,
         customRedUnits: [singleEliteBoss]
       });
+      if (!sim.running) return;
+      chargeEliteHardCost(myStu, hard);
       addBattleLog(`🐉 [엘리트 협동 대전] ${myStu.name}의 용병 ${myMercs.length}명 + ${partnerStu.name}의 용병 ${partnerMercs.length}명(총 ${blueUnits.length}명)이 단일 엘리트 보스 [${bossDef.name} · 체력 ${bossDef.hp.toLocaleString()}] 토벌을 시작합니다!`);
     }
 
@@ -29323,6 +29391,7 @@
       ['x', 'y', 'hp', 'maxHp', 'mana', 'maxMana', 'shield', 'level'].forEach(k => { u[k] = liveNum(u[k]); });
       u.maxHp = Math.max(1, u.maxHp);
       u.maxMana = Math.max(1, u.maxMana);
+      if (u.eliteHardSize !== undefined) u.eliteHardSize = Math.min(ELITE_HARD.size, Math.max(1, liveNum(u.eliteHardSize))); // 🔥 하드 엘리트 보스 몸 배율
       u.damageDealt = 0;
       u.healDone = 0;
       u.damageTaken = 0;
@@ -29702,10 +29771,13 @@
         return;
       }
       ensureSelectedEliteBossUnlocked(myStu);
+      ensureSelectedEliteHardUnlocked(myStu);
       const boss = ELITE_BOSS_DEFS.find(b => b.id === selectedEliteBossId) || ELITE_BOSS_DEFS[0];
+      const hard = selectedEliteHard;
+      if (hard && eliteHardBlockReason(myStu, boss.id)) { showNotice(eliteHardBlockReason(myStu, boss.id)); return; }
       const myPower = myMercs.reduce((s, m) => s + calcMercCombatPower(m, myStu), 0);
       const titleInp = document.getElementById('raidNewRoomTitleInput');
-      const customTitle = cleanUserText(titleInp?.value, 24) || `[${boss.name}] ${myStu.name}의 협동 파티`;
+      const customTitle = cleanUserText(titleInp?.value, 24) || `[${hard ? '🔥하드 ' : ''}${boss.name}] ${myStu.name}의 협동 파티`;
       if (titleInp) titleInp.value = '';
 
       const roomId = 'raid_' + myStu.id + '_' + Date.now().toString(36).slice(-5);
@@ -29717,7 +29789,8 @@
         roomId,
         title: customTitle,
         bossId: boss.id,
-        bossName: boss.name,
+        bossName: hard ? `🔥하드 ${boss.name}` : boss.name,
+        hard,
         hostId: myStu.id,
         hostNum: myStu.num,
         hostName: myStu.name,
@@ -29746,6 +29819,11 @@
       const myMercs = (myStu.roster || []).filter(m => selectedRaidMercIds.includes(m.id)).slice(0, RAID_PICK);
       if (myMercs.length === 0) {
         showNotice('⚠️ 협동 레이드 방에 입장하려면 먼저 내 용병을 최소 1명 이상 보유·선택해야 합니다!');
+        return;
+      }
+      const target = liveRaidRoomsCache[roomId];
+      if (target && target.hard && target.hostId !== myStu.id && eliteHardBlockReason(myStu, target.bossId)) {
+        showNotice(eliteHardBlockReason(myStu, target.bossId));
         return;
       }
       const myPower = myMercs.reduce((s, m) => s + calcMercCombatPower(m, myStu), 0);
@@ -29787,6 +29865,7 @@
       const room = liveRaidRoomsCache[roomId];
       const slot = room && myStu ? raidSlotOf(room, myStu.id) : null;
       if (!slot || slot === 'host') return;
+      if (!room[slot + 'Ready'] && room.hard && eliteHardBlockReason(myStu, room.bossId)) { showNotice(eliteHardBlockReason(myStu, room.bossId)); return; }
       room[slot + 'Ready'] = !room[slot + 'Ready'];
       await saveRaidRoomData(roomId, room);
       showNotice(room[slot + 'Ready'] ? '✅ 협동 레이드 준비완료! 방장이 토벌 시작을 누르기를 기다립니다.' : '⏳ 준비완료를 취소했습니다.');
@@ -29836,6 +29915,7 @@
         showNotice('⚠️ 아직 [✋ 준비완료]를 누르지 않은 파트너 친구가 있습니다!');
         return;
       }
+      if (room.hard && eliteHardBlockReason(myStu, room.bossId)) { showNotice(eliteHardBlockReason(myStu, room.bossId)); return; }
       room.status = 'in_battle';
       room.startedAt = Date.now();
       room.fighting = { [room.hostId]: true };
@@ -30003,7 +30083,7 @@
                   !hasGuest
                     ? '파트너 친구가 방에 입장하기를 기다리는 중입니다.'
                     : (canStart ? '모두 준비완료! 방장이 [협동 레이드 시작]을 누르면 출발합니다.' : '파티원이 [✋ 준비완료]를 누르기를 기다리고 있습니다...')
-                }${hpMult > 1 ? ` · <span class="text-rose-300">3인 입장: 보스 체력 ×${hpMult}</span>` : ''}
+                }${hpMult > 1 ? ` · <span class="text-rose-300">3인 입장: 보스 체력 ×${hpMult}</span>` : ''}${myRoom.hard ? ` · <span class="text-red-400">🔥 하드모드: 출발할 때 한 명당 ${ELITE_HARD.cost.toLocaleString()} CA</span>` : ''}
               </div>
               <div class="flex items-center gap-2">
                 ${
@@ -30104,7 +30184,9 @@
             return { stu, mercs: r[slot + 'Mercs'] || (stu.roster || []).slice(0, RAID_PICK), label: r[slot + 'Name'] };
           });
           const blueUnits = buildCoopRaidBlueUnits(sides);
-          const singleEliteBoss = buildCenterEliteBoss(bossDef, sides.length);
+          const hard = Boolean(r.hard);
+          const singleEliteBoss = buildCenterEliteBoss(bossDef, sides.length, hard);
+          const bossLabel = `${hard ? '🔥하드 ' : ''}${bossDef.name}`;
           const names = sides.map(s => `${s.label}`).join(' & ');
 
           // 방장 화면 하나만 전투를 계산하고, 파티원 화면은 그 화면을 받아 보며 자기 용병 조작만 보냄
@@ -30113,20 +30195,22 @@
           const isHost = r.hostId === myStu.id;
           const netRole = humans.length > 1 ? (isHost ? 'host' : 'guest') : null;
 
-          showRewardBanner(`🐉 [실시간 협동 레이드 출발!] ${names} 연합군이 [${bossDef.name}] 토벌을 시작합니다!`);
+          showRewardBanner(`🐉 [실시간 협동 레이드 출발!] ${names} 연합군이 [${bossLabel}] 토벌을 시작합니다!`);
           launchSimulation({
             mode: 'elite_raid',
-            title: `🐉 실시간 협동 레이드: ${names} vs ${bossDef.name}`,
+            title: `🐉 실시간 협동 레이드: ${names} vs ${bossLabel}`,
             blueStudent: myStu,
             redStudent: null,
             eliteBossId: bossDef.id,
-            rewardMc: bossDef.rewardMc,
+            eliteHard: hard,
+            rewardMc: eliteRewardOf(bossDef, hard),
             customBlueUnits: blueUnits,
             customRedUnits: [singleEliteBoss],
             netRole,
             roomBattle: true
           });
           if (!sim.running) return;
+          chargeEliteHardCost(myStu, hard);
           sim.raidLive = { roomId: r.roomId, hostId: r.hostId, humans, tried: [] };
           // 고르기 창을 다시 그려서 다른 친구의 용병은 빼고 내 용병만 보이게
           if (!document.getElementById('battleControlChooser')?.classList.contains('hidden')) openBattleControlChooser(true);
@@ -30322,7 +30406,7 @@
       const names = raidFilledSlots(room).map(s => room[s + 'Name']).join(' & ');
       launchSimulation({
         mode: 'elite_raid',
-        title: `📺 관전 중: ${names} vs ${bossDef.name} (${pick.name} 화면)`,
+        title: `📺 관전 중: ${names} vs ${room.hard ? '🔥하드 ' : ''}${bossDef.name} (${pick.name} 화면)`,
         blueStudent: owner,
         redStudent: null,
         eliteBossId: bossDef.id,
