@@ -37,9 +37,10 @@
 
   // ----- 새로고침해도 배치·설정 유지 (이 브라우저의 localStorage) -----
   const STORE_KEY = 'caSandboxV1';
+  let savedManual = null;
   function saveState() {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({ specs: SB.specs, cd: SB.cd, mana: SB.mana, form, sel: SB.sel }));
+      localStorage.setItem(STORE_KEY, JSON.stringify({ specs: SB.specs, cd: SB.cd, mana: SB.mana, form, sel: SB.sel, manual: SB.manual }));
     } catch (e) {}
   }
   function loadState() {
@@ -52,6 +53,7 @@
       if (typeof d.mana === 'boolean') SB.mana = d.mana;
       if (d.form) Object.assign(form, d.form);
       SB.sel = SB.specs.some(sp => sp.id === d.sel) ? d.sel : null;
+      savedManual = SB.specs.some(sp => sp.id === d.manual) ? d.manual : null;
     } catch (e) {}
   }
 
@@ -457,6 +459,7 @@
   battleControl.mode = 'auto'; battleControl.unitId = null; battleControl.locked = true;
   loadState(); // 저장된 게 없으면 아무도 없는 빈 전장 (기본 5:5는 버튼으로)
   rebuildAll();
+  if (savedManual != null) setManual(savedManual); // 새로고침 전 수동 조종 복원
   render();
   resetArenaCamera('center');
 })();
