@@ -6110,7 +6110,9 @@
     });
     // 원소 융합 장판 그림 — 시크릿 레어 마법사만 씀 (320×320 6칸, 모두 그림 중심 기준)
     // 0 네 원소 소용돌이 · 1 융합 구체 · 2 마법진 섬광 · 3 폭발 · 4 충격파 고리와 파편 · 5 연기
-    const MAGE_FUSION_SR_FX = { img: new Image(), cell: 320, burstTicks: 70 };
+    const MAGE_FUSION_SR_FX = { img: new Image(), cell: 320 };
+    // 일반 원소 융합 시트 6칸(모임 → 소용돌이 → 구슬 → 구슬이 터짐 → 큰 폭발 → 연기와 불씨)에 대응하는 그림: [그림 번호, 지름(반지름 배), 세로 비율]
+    const FUSION_SR_CELLS = [[[0, 2.8, 0.78]], [[0, 2.25, 0.78]], [[1, 2.2, 1]], [[2, 2.75, 1]], [[3, 3.2, 1]], [[5, 3.1, 1], [4, 2.8, 0.78]]];
     MAGE_FUSION_SR_FX.img.onload = () => { MAGE_FUSION_SR_FX.ready = true; };
     MAGE_FUSION_SR_FX.img.src = 'assets/sprites/fx/mage_fusion_sr_fx.webp';
     // size = 그릴 지름, squash = 세로 비율 (바닥에 깔리는 그림은 0.62)
@@ -17010,7 +17012,7 @@
         if (!pt) return true;
         const p = clampToArena(pt.x, pt.y);
         const sr = usesFusionArt(unit) && MAGE_FUSION_SR_FX.ready;
-        const life = HIDDEN_FUSION_PULL_TICKS + (sr ? MAGE_FUSION_SR_FX.burstTicks : 105); // 폭발 뒤 잔상 (70틱 → 105틱)
+        const life = HIDDEN_FUSION_PULL_TICKS + 105; // 폭발 뒤 잔상 (70틱 → 105틱)
         sim.effects.push({ type: 'hidden_fusion', x: p.x, y: p.y, r, sr, pull: HIDDEN_FUSION_PULL_TICKS, life, maxLife: life });
         sim.hiddenFx.push({ kind: 'fusion', owner: unit, x: p.x, y: p.y, r, left: HIDDEN_FUSION_PULL_TICKS, dmg: unit.atk * 15 });
         playCombatSfx('magic');
@@ -17756,28 +17758,7 @@
         const pullP = Math.min(1, elapsed / ef.pull);
         const colors = ['#f97316', '#38bdf8', '#facc15', '#7c3aed'];
         ctx.translate(ef.x, ef.y);
-        if (ef.sr) {
-          // 시크릿 레어: 바닥 소용돌이가 돌며 조여들고 그 위에 융합 구체가 맺힘
-          // → 터지면 마법진 섬광 · 폭발 · 충격파 고리 · 연기가 차례로
-          const D = ef.r * 2;
-          if (elapsed < ef.pull) {
-            ctx.save();
-            ctx.scale(1, 0.62);
-            ctx.rotate(-t * 0.08);
-            drawFusionSrFrame(ctx, 0, D * (1.1 - 0.3 * pullP), Math.min(1, elapsed / 8));
-            ctx.restore();
-            const q = Math.max(0, (pullP - 0.5) / 0.5);
-            drawFusionSrFrame(ctx, 1, D * (0.25 + 0.35 * q) * (1 + 0.04 * Math.sin(t * 0.7)), q * 2, 1, -ef.r * 0.3);
-            return;
-          }
-          const e = elapsed - ef.pull;
-          drawFusionSrFrame(ctx, 2, D * 1.1 * (0.8 + 0.2 * Math.min(1, e / 8)), Math.min(1, (22 - e) / 10), 0.62);
-          if (e >= 10) drawFusionSrFrame(ctx, 4, D * (0.7 + 0.5 * Math.min(1, (e - 10) / 25)), Math.min(1, (e - 10) / 6, (52 - e) / 16), 0.62);
-          if (e >= 20) drawFusionSrFrame(ctx, 5, D * (0.75 + 0.3 * (e - 20) / 50), Math.min(1, (e - 20) / 10, ef.life / 24) * 0.95, 1, -ef.r * 0.35);
-          if (e < 32) drawFusionSrFrame(ctx, 3, D * (0.55 + 0.5 * Math.min(1, e / 10)), Math.min(1, (32 - e) / 12), 1, -ef.r * 0.3);
-          return;
-        }
-        if (MAGE_FUSION_FX.sheet.ready) {
+        if (MAGE_FUSION_FX.sheet.ready || ef.sr) {
           // 원소 융합 3×2 시트(칸 256×192, 0~5): 0 불·얼음·번개·어둠이 한 점으로 모임 → 1 소용돌이 → 2 구슬로 응축 → 3 구슬이 터짐 → 4 큰 폭발 → 5 연기와 불씨. 칸이 바뀔 땐 앞 칸이 사라지며 다음 칸이 겹쳐 나타남
           const SH = MAGE_FUSION_FX.sheet;
           const bp = elapsed < ef.pull ? 0 : (elapsed - ef.pull) / Math.max(1, ef.maxLife - ef.pull);
@@ -17791,6 +17772,11 @@
             const w = ef.r * W[fi], h = w * 0.75, squash = fi < 2 ? 0.78 : 1; // 바닥에 깔린 소용돌이는 위에서 내려다본 원근
             ctx.save();
             ctx.translate(0, -6);
+            if (ef.sr) { // 시크릿 레어: 같은 칸 순서·타이밍에 전용 그림을 끼움 (그림 크기도 일반 칸과 같게)
+              FUSION_SR_CELLS[fi].forEach(([i, d, sq]) => drawFusionSrFrame(ctx, i, ef.r * d, alpha, sq));
+              ctx.restore();
+              return;
+            }
             ctx.scale(1, squash);
             ctx.globalAlpha = alpha;
             ctx.imageSmoothingEnabled = true;
