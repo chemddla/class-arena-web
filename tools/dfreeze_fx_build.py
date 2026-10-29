@@ -1,6 +1,6 @@
 # 빙결술사 이펙트 그림(흰 배경 도트 그림) → 한 줄 시트 (원래 크기, 빈 가장자리는 잘라 냄)
 # 사용: python tools/dfreeze_fx_build.py <그림 6장 png를 순서대로>   → assets/sprites/fx/dfreeze_fx.webp (동결 스킬)
-#       python tools/dfreeze_fx_build.py blizzard <그림 2장 png>     → assets/sprites/fx/blizzard_cast_fx.webp
+#       python tools/dfreeze_fx_build.py blizzard <그림 3장 png: 눈바람·눈꽃·시전 끝 충격>     → assets/sprites/fx/blizzard_cast_fx.webp
 #  1 시전 소용돌이+물방울 · 2 시전 바닥 얼음 가시 고리 · 3 발동 때 터지는 얼음 큐브 · 4 빙결 큐브 · 5 금 간 큐브 · 6 부서진 조각
 import sys, numpy as np
 from PIL import Image
@@ -19,7 +19,7 @@ def unblend(rgb):
 def main(paths):
     global OUT, NAMES
     if paths[0] == 'blizzard':
-        OUT, NAMES, paths = 'assets/sprites/fx/blizzard_cast_fx.webp', ['wind', 'flake'], paths[1:]
+        OUT, NAMES, paths = 'assets/sprites/fx/blizzard_cast_fx.webp', ['wind', 'flake', 'burst'], paths[1:]
     cells = []
     for p in paths:
         c, a = unblend(np.array(Image.open(p).convert('RGB')).astype(float))
