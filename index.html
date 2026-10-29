@@ -13736,10 +13736,7 @@
       if (u.job === 'warrior' || u.job === 'rogue' || u.job === 'knight') {
         const rogue = u.job === 'rogue';
         playCombatSfx('slash');
-        if (u.job === 'rogue') sim.effects.push({ // 전사·기사는 베기 선 없음
-          type: 'sword_slash', x: u.x + Math.cos(aimAngle) * (rogue ? 18 : 24), y: u.y - 6 + Math.sin(aimAngle) * (rogue ? 18 : 24),
-          angle: aimAngle, color: rogue ? '#a78bfa' : (u.job === 'knight' ? '#0ea5e9' : (u.team === 'blue' ? '#2563eb' : '#e11d48')), life: rogue ? 20 : 32, maxLife: rogue ? 20 : 32
-        });
+        // 베기 선 이펙트 없음 (전사·기사·도적 공통)
         if (target && unitDist(target, u) <= u.range + 24) {
           u.mana = Math.min(u.maxMana, u.mana + 18);
           withHitKind('melee', () => applyDamage(u, target, u.atk));
@@ -13751,7 +13748,7 @@
         // 빙결술사 기본 공격도 마법사와 같은 작은 범위 구슬 (색만 냉기빛)
         const orbColor = u.job === 'frost' ? '#38bdf8' : '#7c3aed';
         u.mana = Math.min(u.maxMana, u.mana + 18);
-        sim.effects.push({ type: 'cast_circle', x: u.x, y: u.y, color: orbColor, life: 32, maxLife: 32 });
+        if (u.job !== 'frost') sim.effects.push({ type: 'cast_circle', x: u.x, y: u.y, color: orbColor, life: 32, maxLife: 32 }); // 빙결술사는 보라 고리 없음
         // 커서 지점(사거리 끝까지)으로 날아가서, 적에게 맞거나 그 자리에 닿으면 작은 범위로 터짐
         const pt = clampAimPoint(u, aimX, aimY, u.range + 40);
         const ang = Math.atan2((pt.y - 12) - oy, pt.x - ox);
@@ -18028,7 +18025,7 @@
           const N = Math.max(4, Math.ceil((head - tail) / 12));
           for (let i = 0; i < N; i++) {
             const d0 = tail + (head - tail) * i / N, d1 = tail + (head - tail) * (i + 1) / N, mid = (d0 + d1) / 2;
-            const tailFade = Math.min(1, (mid - tail) / 40 + (tail > 0 ? 0 : 1)); // 사라지는 쪽 끝을 부드럽게
+            const tf = Math.max(0, Math.min(1, (mid - tail) / 100 + (tail > 0 ? 0 : 1))), tailFade = tf * tf * (3 - 2 * tf) * Math.min(1, (head - tail) / 70); // 사라지는 쪽 끝을 길게 부드럽게 (남은 길이가 짧아져도 뚝 끊기지 않고 옅어짐)
             const startFade = Math.min(1, mid / 30);                               // 출발점 쪽 잘린 끝도 부드럽게 (얼음 가시가 덮음)
             const u0 = (flip ? len - d1 : d0) / len * sw, u1 = (flip ? len - d0 : d1) / len * sw; // 그림에서 떼어 올 가로 범위
             ctx.globalAlpha = 0.95 * Math.max(0, tailFade) * startFade * (progress > 0.85 ? (1 - progress) / 0.15 : 1);
@@ -18043,7 +18040,7 @@
           ctx.save();
           ctx.filter = 'saturate(0.45)';
           ctx.globalAlpha = progress < 0.3 ? 1 : 1 - (progress - 0.3) / 0.1;
-          ctx.translate(ef.sx, ef.sy + 8);
+          ctx.translate(ef.sx + Math.cos(ang) * 22, ef.sy + 8 + Math.sin(ang) * 22 * 0.6); // 빙판 시작 부분에 더 겹치도록 앞쪽으로
           BACK.forEach(([da, z, nm, dl]) => {
             const lp = Math.min(1, Math.max(0, (sp - dl) / (1 - dl)));
             if (lp <= 0) return;
@@ -18057,7 +18054,7 @@
           [[-14, 6, 1.0], [6, -8, 0.8], [-30, -5, 0.7], [-24, 12, 0.7]].forEach(([ox, oy, z], i) => { // 출발점 뒤쪽에 흩어지는 얼음 파편
             const lp = Math.min(1, Math.max(0, (sp - 0.04 * i) / (1 - 0.04 * i)));
             if (lp <= 0) return;
-            const bx = Math.cos(ang + Math.PI) * (6 + lp * 26) + ox * 0.4, by = Math.sin(ang + Math.PI) * (6 + lp * 26) * 0.6 + oy * 0.4;
+            const bx = Math.cos(ang + Math.PI) * (2 + lp * 18) + ox * 0.4, by = Math.sin(ang + Math.PI) * (6 + lp * 26) * 0.6 + oy * 0.4;
             drawFrostFx(ctx, 'shard', bx, by, z * 0.8, z * 0.8, 1 - lp * 0.7);
           });
           ctx.restore();
@@ -20781,8 +20778,8 @@
           const cp = 1 - caster.casting.left / caster.casting.total, fadeIn = Math.min(1, cp / 0.2), pulse = 0.85 + 0.15 * Math.sin(tick * 0.25);
           ctx.save();
           ctx.globalAlpha = fadeIn;
-          drawDfreezeFx(ctx, 'ring', 0, bFoot + 6 + jumpY, bH * (1.5 + 0.35 * cp), 0.55 + 0.45 * cp);
-          drawDfreezeFx(ctx, 'swirl', 0, bFoot + 6 + jumpY, bH * (1.7 + 0.2 * Math.sin(tick * 0.1)), pulse);
+          drawDfreezeFx(ctx, 'ring', 0, bFoot + 12 + jumpY, bH * (1.5 + 0.35 * cp), 0.55 + 0.45 * cp);
+          drawDfreezeFx(ctx, 'swirl', 0, bFoot + 12 + jumpY, bH * (1.7 + 0.2 * Math.sin(tick * 0.1)), pulse);
           ctx.restore();
         }
         if (u.dfBurst && sim.tickCount - u.dfBurst < 28) {
@@ -20792,7 +20789,7 @@
         if (u.dfFreeze && st.freeze <= 0) { u.dfFreeze = false; u.dfCrack = sim.tickCount; } // 풀리는 순간: 금 간 큐브 → 조각
         if (u.dfCrack && sim.tickCount - u.dfCrack < 80) { // 금 간 큐브는 풀리기 전부터 보이고, 풀린 뒤엔 잠깐 남았다가 조각이 길게 흩어짐
           const el = sim.tickCount - u.dfCrack;
-          if (el < 8) drawDfreezeFx(ctx, 'crack', 0, bFoot + 4 + jumpY, bH * 1.9, 0.7 * (1 - el / 8), 'bottom', 1);
+          if (el < 8) drawDfreezeFx(ctx, 'crack', 0, bFoot + 10 + jumpY, bH * 1.9, 0.7 * (1 - el / 8), 'bottom', 1);
           drawDfreezeFx(ctx, 'shard', 0, bMid + 6 + jumpY, bH * (1.5 + 0.2 * el / 80), el < 20 ? 1 : 1 - (el - 20) / 60, 'center');
         }
       }
@@ -20803,7 +20800,7 @@
         const cubeBase = Math.max(bFoot - bTop, tokenR * 2.6), cracking = st.freeze <= 90;
         const cubeW = cubeBase * 1.9 * (1.1 - 0.1 * pop), cubeA = Math.min(1, st.freeze / 20) * (0.4 + 0.6 * pop) * 0.7;
         const shake = cracking ? Math.sin(tick * 1.7) * 1.2 : 0;
-        drawDfreezeFx(ctx, cracking ? 'crack' : 'cube', shake, bFoot + 4 + jumpY, cubeW, cubeA, 'bottom', 1);
+        drawDfreezeFx(ctx, cracking ? 'crack' : 'cube', shake, bFoot + 10 + jumpY, cubeW, cubeA, 'bottom', 1);
         if (SNOWFLAKES.ready) { // 큐브 둘레를 천천히 도는 눈꽃 (앞뒤로 오가며 위아래로 일렁임)
           const bMid = (bFoot + bTop) / 2, rx = cubeBase * 0.75, ry = cubeBase * 0.28;
           for (let i = 0; i < 9; i++) {
@@ -20891,6 +20888,13 @@
         const sc = (foot - top) * 1.12 / 60;
         const blink = u.frostBarrierTicks < 120 ? 0.55 + 0.45 * Math.sin(tick * 0.5) : 1;
         drawFrostFx(ctx, Math.floor(tick / 40) % 2 ? 'bubble1' : 'bubble0', 0, (foot + top) / 2 + jumpY, sc * (1 + 0.025 * Math.sin(tick * 0.08)), sc, 0.42 * blink);
+        if (SNOWFLAKES.ready) { // 구체 둘레를 천천히 도는 눈꽃 (눈꽃 모음 그림)
+          const cyb = (foot + top) / 2 + jumpY, rr = (foot - top) * 0.62;
+          for (let i = 0; i < 6; i++) {
+            const t = tick * 0.014 + i * (Math.PI * 2 / 6), front = Math.sin(t) > 0;
+            drawSnowflake(ctx, SNOWFLAKES.all[(i * 2) % SNOWFLAKES.all.length], Math.cos(t) * rr, cyb + Math.sin(t) * rr * 0.45 - 4 + Math.sin(tick * 0.05 + i) * 3, (foot - top) * (0.14 + 0.05 * (i % 3)), (front ? 0.9 : 0.5) * blink, t);
+          }
+        }
       }
       if (u.shield > 0 && !frostBubble) {
         if (SUPPORT_FX.ready) {
