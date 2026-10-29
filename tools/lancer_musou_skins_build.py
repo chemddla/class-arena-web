@@ -1,5 +1,5 @@
 # 창병 히든 스킬 [무쌍난무] 외형 1~5 자세 그림 가공
-# 샘플(외형마다 윗줄·아랫줄 두 장, 어두운 배경·노란 제목·한글 라벨·✦) → 기본 외형 cast와 같은 순서의 10칸 투명 webp
+# 샘플(외형마다 윗줄·아랫줄 두 장, 어두운 배경·노란 제목·한글 라벨·✦ 또는 밝은 체크무늬 배경) → 기본 외형 cast와 같은 순서의 10칸 투명 webp
 # 사용: python tools/lancer_musou_skins_build.py <샘플 폴더> <외형>:<윗줄 파일>:<아랫줄 파일> ...
 import sys, numpy as np
 from PIL import Image
@@ -25,6 +25,7 @@ def clean(path):
     im = np.array(Image.open(path).convert('RGB')).astype(float)
     H, W, _ = im.shape
     bg = np.median(np.concatenate([im[:, 0], im[:, -1], im[-1]]), axis=0)
+    if bg.mean() > 200: return clean_light(im)
     d = np.abs(im - bg).max(axis=2)
     r, g, b = im[..., 0], im[..., 1], im[..., 2]
     # 라벨 띠: 맨 아래에서 처음 만나는 글자 줄 (그 위 빈 줄까지)
@@ -72,6 +73,69 @@ def clean(path):
     rgb[solid] = im[solid]; a[solid] = 1
     a[band - 2:] = 0; soft_a[band - 2:] = 0
     return rgb, a, soft_rgb, soft_a
+
+
+def clean_light(im):
+    # 밝은 체크무늬(가짜 투명) 배경 샘플: 배경은 완전한 무채색(채널 차이 1 이하)의 밝은 회색·흰색,
+    # 흰 바람 줄기·초승달은 살짝 푸른 기가 있어 남음
+    H, W, _ = im.shape
+    mx, mn = im.max(axis=2), im.min(axis=2)
+    bgish = (mx - mn <= 1) & (mn >= 226)
+    # 라벨 띠: 맨 아래에서 처음 만나는 진한 글자 줄 (창끝이 살짝 내려와 있어 거의 빈 줄을 경계로) — 그 안에서 시작하는 덩어리만 지움
+    rows = (mn < 150).sum(axis=1)
+    y = H - 1
+    while y > 0 and rows[y] == 0: y -= 1
+    while y > 0 and rows[y] > 25: y -= 1
+    band = y + 1
+    top = band - 6
+    lab, _ = ndi.label(~bgish[top:])
+    # 띠 위에서 내려온 좁은 창끝·초승달 끝만 남김 (초승달에 붙은 라벨은 넓어서 지움)
+    keep = [i for i, sl in enumerate(ndi.find_objects(lab), 1) if sl[0].start == 0 and sl[1].stop - sl[1].start <= 40]
+    bgish[top:] |= (lab > 0) & ~np.isin(lab, keep)
+    # 흩어진 부스러기 점: 80px 미만이고 6px 안에 다른 그림이 없는 것
+    lab5, _ = ndi.label(~bgish)
+    sz = np.bincount(lab5.ravel()); sz[0] = 1 << 30
+    for i in np.where(sz < 80)[0]:
+        m = lab5 == i
+        if not ((ndi.binary_dilation(m, iterations=6) & ~bgish) & ~m).any(): bgish |= m
+    # 바깥 배경: 가장자리에서 이어진 곳 + 체크무늬 줄(240 미만)이 섞인 큰 웅덩이 (흰 초승달 속 순백 픽셀은 남김)
+    lab3, _ = ndi.label(bgish)
+    edge = np.unique(np.concatenate([lab3[0], lab3[-1], lab3[:, 0], lab3[:, -1]]))
+    sizes = np.bincount(lab3.ravel())
+    checker = np.bincount(lab3.ravel(), weights=(bgish & (mn < 240)).ravel(), minlength=len(sizes))
+    ok = (sizes >= 40) & (checker >= 3); ok[0] = False; ok[edge] = True; ok[0] = False
+    ext = ok[lab3]
+    # 바깥 가장자리 2px만 어두운 정도로 불투명도 (밝은 테두리는 흰 배경과 섞여 버림)
+    bgv = 246.0
+    soft_a = ((bgv - mn) / bgv).clip(0, 1)
+    soft_a = np.where(soft_a < 0.08, 0, soft_a)
+    soft_rgb = np.where(soft_a[..., None] > 0, (im - (1 - soft_a[..., None]) * bgv) / np.maximum(soft_a[..., None], 1e-3), 0).clip(0, 255)
+    solid = (ndi.distance_transform_edt(~ext) > 2) & ~ext
+    rgb, a = soft_rgb.copy(), np.where(ext, 0, soft_a)
+    rgb[solid] = im[solid]; a[solid] = 1
+    return rgb, a, rgb.copy(), a.copy()
+
+
+def recolor_skin4(rgb, a):
+    # 외형 4 아랫줄: 윗줄·평소 모습과 옷 색이 다르게 그려짐 → 초록 망토는 검은 망토로, 남색 바지는 어두운 보라로
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    lum = 0.3 * r + 0.55 * g + 0.15 * b
+    green = (g > r + 12) & (g >= b - 4) & (lum < 170) & (a > 0)
+    # 큰 초록 덩어리(망토)만 — 목도리·소매 같은 작은 초록은 윗줄 초록 웃옷과 맞으니 그대로 (샘플은 칸 폭 ≈ 400px)
+    lab, _ = ndi.label(green)
+    sizes = np.bincount(lab.ravel()); sizes[0] = 0
+    cx = [(0, 0)] + list(ndi.center_of_mass(green, lab, range(1, len(sizes))))
+    big = sizes >= 1000
+    tip = np.array([sizes[i] >= 400 and cx[i][1] % 400 < 100 for i in range(len(sizes))])  # 칸 왼쪽 끝 망토 자락
+    big[0] = tip[0] = False
+    cape = (big | tip)[lab]
+    cape |= ndi.binary_dilation(cape, iterations=2) & (g > r + 3) & (lum < 150) & (a > 0)  # 망토 테두리의 초록 기
+    grey = (lum * 0.62 + 12)[..., None] * np.array([1.0, 1.0, 1.12])[None, None]
+    rgb[cape] = grey.clip(0, 255)[cape]
+    navy = (b > r + 14) & (b > g + 8) & (lum < 110) & (a > 0)
+    pur = np.stack([b * 0.82 + 6, g * 0.72, b * 0.95], axis=2)
+    rgb[navy] = pur.clip(0, 255)[navy]
+    return int(cape.sum()), int(navy.sum())
 
 
 def split(a, n=5):
@@ -145,6 +209,7 @@ def body_mask(rgb, a):
 
 def row(path, name, top):
     rgb, a, srgb, sa = clean(path)
+    if name == '4' and not top: print('recolor', recolor_skin4(rgb, a))
     cuts = split(a)
     if top and name in GHOST_FIX:  # 찌르기 칸 잔상
         c0, c1 = cuts[3], cuts[4]; w = c1 - c0
