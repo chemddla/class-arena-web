@@ -25545,7 +25545,8 @@
      * ================================================================ */
     const CLASS_SYNC_KEYS = ['meta', 'students', 'profiles', 'auctions', 'tradeOffers'];
     const META_SYNC_FIELDS = ['className', 'classLocked', 'notice', 'guardianPts'];
-    let syncCache = { classCode: null, loaded: false, metaExists: false, meta: {}, students: {}, auctions: undefined, tradeOffers: undefined };
+    // studentVals: 서버와 맞춰 둔 학생 기록 (칸별로 비교해서 바뀐 칸만 올리기 위함)
+    let syncCache = { classCode: null, loaded: false, metaExists: false, meta: {}, students: {}, studentVals: {}, auctions: undefined, tradeOffers: undefined };
     let classSyncRefs = [];
     let classRemote = {};
     let classRemoteReceived = new Set();
@@ -25558,9 +25559,41 @@
         metaExists: Boolean(opts.metaExists),
         meta: {},
         students: {},
+        studentVals: {},
         auctions: undefined,
         tradeOffers: undefined
       };
+    }
+
+    // 서버와 같아진 학생 기록을 기억 (sig는 syncSig(s)와 같은 값)
+    function markStudentSynced(s, sig) {
+      syncCache.students[s.id] = sig === undefined ? syncSig(s) : sig;
+      syncCache.studentVals[s.id] = syncCanon(s) || {};
+    }
+    function forgetStudentSynced(id) {
+      delete syncCache.students[id];
+      delete syncCache.studentVals[id];
+    }
+
+    // 학생 기록에서 바뀐 칸만 골라 올림 (기록 전체를 다시 올리면 반 친구 모두에게 통째로 다시 내려감)
+    // 처음 올리는 학생이면 기록 전체, 비밀번호 칸은 건드리지 않음 (DB 규칙)
+    function addStudentUpdates(updates, base, s) {
+      const prev = syncCache.studentVals[s.id];
+      const nameChanged = !prev || syncSig(prev.num) !== syncSig(s.num) || syncSig(prev.name) !== syncSig(s.name);
+      if (!prev) {
+        updates[`${base}/students/${s.id}`] = studentCloudValue(s);
+      } else {
+        const cur = syncCanon(s) || {};
+        new Set([...Object.keys(prev), ...Object.keys(cur)]).forEach(k => {
+          if (k === 'password' || syncSig(prev[k]) === syncSig(cur[k])) return;
+          updates[`${base}/students/${s.id}/${k}`] = toFirebaseValue(s[k]);
+        });
+      }
+      if (nameChanged) {
+        updates[`${base}/profiles/${s.id}/id`] = s.id;
+        updates[`${base}/profiles/${s.id}/num`] = toFirebaseValue(s.num ?? null);
+        updates[`${base}/profiles/${s.id}/name`] = toFirebaseValue(s.name ?? null);
+      }
     }
 
     // Firebase는 빈 배열/빈 객체/null을 저장하지 않으므로, 비교할 때도 똑같이 제거하고 키를 정렬합니다.
@@ -26024,9 +26057,11 @@
         const updates = { [`classes/${code}/students/${me.id}`]: studentCloudValue(me) };
         ids.forEach(id => { updates[`classes/${code}/transfers/${me.id}/${id}`] = null; });
         const savedSig = syncSig(me);
+        const savedVal = syncCanon(me) || {};
         try {
           await db.ref().update(updates);
           syncCache.students[me.id] = savedSig;
+          syncCache.studentVals[me.id] = savedVal;
           ids.forEach(id => { if (this.items[me.id]) delete this.items[me.id][id]; });
           saveState();
           renderAllStudentViews();
@@ -26353,11 +26388,8 @@
           if (sg !== syncCache.students[s.id]) {
             if (syncCache.students[s.id] === undefined && !manager) return; // 학생 추가는 소유 교사만
             if (syncCache.students[s.id] === undefined) rosterChanged = true;
-            updates[`${base}/students/${s.id}`] = studentCloudValue(s);
-            updates[`${base}/profiles/${s.id}/id`] = s.id;
-            updates[`${base}/profiles/${s.id}/num`] = toFirebaseValue(s.num ?? null);
-            updates[`${base}/profiles/${s.id}/name`] = toFirebaseValue(s.name ?? null);
-            pending.students[s.id] = sg;
+            addStudentUpdates(updates, base, s);
+            pending.students[s.id] = { sg, val: syncCanon(s) || {} };
           }
         });
         Object.keys(syncCache.students).forEach(id => {
@@ -26441,8 +26473,11 @@
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
           }
           Object.assign(syncCache.meta, pending.meta);
-          Object.assign(syncCache.students, pending.students);
-          pending.removed.forEach(id => { delete syncCache.students[id]; });
+          Object.keys(pending.students).forEach(id => {
+            syncCache.students[id] = pending.students[id].sg;
+            syncCache.studentVals[id] = pending.students[id].val;
+          });
+          pending.removed.forEach(forgetStudentSynced);
           Object.keys(pending.lists).forEach(k => { syncCache[k] = pending.lists[k]; });
           syncCache.metaExists = true;
           const syncBadge = document.getElementById('adminFirebaseSyncBadge');
@@ -26537,16 +26572,16 @@
           const local = localById.get(rs.id);
           if (force || !local || (ownOnly && rs.id !== state.activeStudentId)) {
             result.push(rs);
-            syncCache.students[rs.id] = remoteSig;
+            markStudentSynced(rs, remoteSig);
             return;
           }
           const localSig = syncSig(local);
           if (localSig === remoteSig) {
             result.push(local);
-            syncCache.students[rs.id] = remoteSig;
+            markStudentSynced(rs, remoteSig);
           } else if (localSig === syncCache.students[rs.id]) {
             result.push(rs);
-            syncCache.students[rs.id] = remoteSig;
+            markStudentSynced(rs, remoteSig);
           } else {
             result.push(local); // 아직 업로드되지 않은 내 변경사항은 유지
           }
@@ -26555,7 +26590,7 @@
           (state.students || []).forEach(local => {
             if (seen.has(local.id)) return;
             if (syncCache.students[local.id] !== undefined && syncSig(local) === syncCache.students[local.id]) {
-              delete syncCache.students[local.id]; // 다른 기기(선생님)에서 삭제된 학생
+              forgetStudentSynced(local.id); // 다른 기기(선생님)에서 삭제된 학생
               return;
             }
             result.push(local); // 아직 업로드되지 않은 새 학생
@@ -26836,6 +26871,29 @@
     let suppressMinigameRemotePush = false;
     let lastKnownIncomingOfferCount = -1;
     let lastMinigamesSnapshot = {};
+    // 반 전체 판(minigames)을 구독하면 다른 방의 수 하나하나까지 모든 학생에게 내려가므로, 내 방 판만 받음
+    let minigamesBasePath = null;
+    let activeMinigameBoardId = null;
+    function syncMinigameBoardSub() {
+      const want = currentJoinedMinigameRoomId || mgWatchRoomId || null;
+      if (want === activeMinigameBoardId) return;
+      if (activeMinigamesRef && typeof activeMinigamesRef.off === 'function') activeMinigamesRef.off();
+      activeMinigamesRef = null;
+      activeMinigameBoardId = null;
+      lastMinigamesSnapshot = {};
+      const db = RealtimePvpService.initFirebaseClientSafe();
+      if (!want || !minigamesBasePath || !db || typeof db.ref !== 'function') return;
+      activeMinigameBoardId = want;
+      const ref = db.ref(`${minigamesBasePath}/${want}`);
+      activeMinigamesRef = ref;
+      ref.on('value', (snap) => {
+        if (activeMinigamesRef !== ref) return;
+        lastMinigamesSnapshot = { [want]: deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {}) };
+        const mgRoomId = currentJoinedMinigameRoomId || mgWatchRoomId;
+        if (!mgRealtimeSyncEnabled || mgRoomId !== want) return;
+        applyRemoteMinigamesState(lastMinigamesSnapshot[want]);
+      });
+    }
 
     const MINIGAME_TYPE_META = {
       yutnori:   { id: 'yutnori',   name: '실시간 윷놀이', icon: '🥢', maxPlayers: 4, minPlayers: 2 },
@@ -26857,6 +26915,8 @@
       if (activeMinigameRoomsRef && typeof activeMinigameRoomsRef.off === 'function') activeMinigameRoomsRef.off();
       if (activeRoomInvitesRef && typeof activeRoomInvitesRef.off === 'function') activeRoomInvitesRef.off();
       if (activeMinigamesRef && typeof activeMinigamesRef.off === 'function') activeMinigamesRef.off();
+      activeMinigamesRef = null;
+      activeMinigameBoardId = null;
       if (activeBattleEventsRef && typeof activeBattleEventsRef.off === 'function') activeBattleEventsRef.off();
       if (activeTowerLiveRef && typeof activeTowerLiveRef.off === 'function') activeTowerLiveRef.off();
 
@@ -26904,6 +26964,7 @@
         roomServerBase.minigame_rooms = JSON.parse(JSON.stringify(liveMinigameRoomsCache));
         maintainMinigameRooms();
         renderMinigameLobbyAndRoomUI();
+        syncMinigameBoardSub();
         renderSideWatchPanel();
         RoomInvites.render();
         if (RoomInvites.modal) RoomInvites.renderModal();
@@ -26916,14 +26977,9 @@
         RoomInvites.onSnapshot(deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {}));
       }, (err) => console.warn('[방 초대 구독 실패 - DB 규칙을 확인하세요]:', err));
 
-      // 4) 실시간 미니게임 4종 보드 상태 구독 (/classes/{code}/minigames)
-      activeMinigamesRef = db.ref(`classes/${cleanCode}/minigames`);
-      activeMinigamesRef.on('value', (snap) => {
-        lastMinigamesSnapshot = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
-        const mgRoomId = currentJoinedMinigameRoomId || mgWatchRoomId;
-        if (!mgRealtimeSyncEnabled || !mgRoomId) return;
-        applyRemoteMinigamesState(lastMinigamesSnapshot[mgRoomId] || {});
-      });
+      // 4) 미니게임 판 상태는 내가 들어가 있거나 관전 중인 방 하나만 구독 (syncMinigameBoardSub)
+      minigamesBasePath = `classes/${cleanCode}/minigames`;
+      syncMinigameBoardSub();
 
       // 5) 라이브 전투 중 실시간 대시(Dash) 이벤트 구독 (/classes/{code}/live_battle_events)
       activeBattleEventsRef = db.ref(`classes/${cleanCode}/live_battle_events`);
@@ -30334,6 +30390,7 @@
       leaveRoomsExcept('minigame', roomId);
       currentJoinedMinigameRoomId = roomId;
       mgRealtimeSyncEnabled = true;
+      syncMinigameBoardSub();
 
       const roomObj = {
         roomId,
@@ -30383,6 +30440,7 @@
       }
       currentJoinedMinigameRoomId = roomId;
       mgRealtimeSyncEnabled = true;
+      syncMinigameBoardSub();
       if (room.gone) delete room.gone[myStu.id];
       if ((await saveMinigameRoomData(roomId, room)) === false) {
         if (currentJoinedMinigameRoomId === roomId) currentJoinedMinigameRoomId = null;
@@ -30532,6 +30590,7 @@
         if (mgWatchRoomId !== roomId) mgStopLocalGames();
         mgWatchRoomId = roomId;
         mgRealtimeSyncEnabled = true;
+        syncMinigameBoardSub();
         applyRemoteMinigamesState(lastMinigamesSnapshot[roomId] || {});
         if (r.status === 'waiting') showRewardBanner(`📺 [${r.title || '미니게임 방'}] 대기실을 관전해요. 게임이 시작되면 관전 화면이 자동으로 열려요!`);
       }
@@ -30545,6 +30604,7 @@
       mgWatchRoomId = null;
       mgStopLocalGames();
       renderMinigameLobbyAndRoomUI();
+      syncMinigameBoardSub();
       renderSideWatchPanel();
       if (!quiet) showNotice('📺 관전을 그만뒀어요.');
     };
