@@ -6223,10 +6223,23 @@
       img.src = `assets/sprites/fx/${file}.webp`;
       ROGUE_ASSASSINATE_FX[k] = img;
     });
-    function drawAssassinFrame(ctx, name, scaleX, scaleY = scaleX) { // 기준점이 (0,0)에 오게 그림
-      const art = ROGUE_ASSASSINATE_FX.fx, f = ROGUE_ASSASSINATE_FX.frames[name];
+    // 시크릿 레어 도적 전용 검붉은 이펙트: 불꽃 · 베기 · 핏방울 (검은 연기는 원래 안 그려서 뺌)
+    ROGUE_ASSASSINATE_FX.sr = { img: new Image(), frames: { flame: [0, 0, 141, 188, 70, 178], slash: [145, 0, 192, 218, 96, 111], blood: [341, 0, 113, 150, 56, 143] } };
+    ROGUE_ASSASSINATE_FX.sr.img.onload = () => { ROGUE_ASSASSINATE_FX.sr.ready = true; };
+    ROGUE_ASSASSINATE_FX.sr.img.src = 'assets/sprites/fx/rogue_assassinate_sr_fx.webp';
+    const usesAssassinSr = u => Boolean(u && u.job === 'rogue' && !u.monsterType && isSecretRare(u.rarity) && ROGUE_ASSASSINATE_FX.sr.ready);
+    function drawAssassinFrame(ctx, name, scaleX, scaleY = scaleX, sr = false) { // 기준점이 (0,0)에 오게 그림
+      const art = sr ? ROGUE_ASSASSINATE_FX.sr.img : ROGUE_ASSASSINATE_FX.fx, f = (sr ? ROGUE_ASSASSINATE_FX.sr : ROGUE_ASSASSINATE_FX).frames[name];
       ctx.drawImage(art, f[0], f[1], f[2], f[3], -f[4] * scaleX, -f[5] * scaleY, f[2] * scaleX, f[3] * scaleY);
     }
+    // 암살 자세 그림 — 외형 1~5와 시크릿 레어(sr1): 칸 구성은 기본 외형 cast와 같음 (연기 자락·단검 끝 때문에 칸이 조금 넓음)
+    const ROGUE_ASSASSINATE_SKINS = {};
+    [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5'], [SECRET_SKIN_BASE + 1, 'sr1']].forEach(([v, n]) => {
+      const def = { cellW: 154, cellH: 107, anchorX: 69, anchorY: 100, standH: 91, cast: new Image() };
+      def.cast.onload = () => { def.cast.ready = true; };
+      def.cast.src = `assets/sprites/fx/rogue_assassinate_${n}.webp`;
+      ROGUE_ASSASSINATE_SKINS[v] = def;
+    });
 
     // 창병 히든 스킬 [무쌍난무] 그림 (fx/samples/README.md)
     // - cast: 기본 외형(lancer_0) 자세 10칸 0 서 있음 · 1 창 치켜듦 · 2 회전 고리 · 3 찌르기+잔상 · 4 휘두르기 · 5 다중 찌르기 · 6 창 당김 · 7 돌진 · 8·9 돌진+초승달
@@ -16251,7 +16264,7 @@
     const ASSASSIN_STRIKE_DELAY = 24; // 암살: 등 뒤에 나타난 뒤 찌르기까지 (0.4초)
     function assassinStrike(unit, foe, strikeDir) {
       if (!foe || !foe.alive) return;
-      sim.effects.push({ type: 'hidden_assassin', x: foe.x, y: foe.y - 20, dir: strikeDir, life: 51, maxLife: 51 }); // 잔상 +50%
+      sim.effects.push({ type: 'hidden_assassin', x: foe.x, y: foe.y - 20, dir: strikeDir, sr: usesAssassinSr(unit), life: 51, maxLife: 51 }); // 잔상 +50%
       applyDamage(unit, foe, unit.atk * 15, '', '#a855f7');
       if (foe.alive) {
         foe.permBleed = true;
@@ -17332,7 +17345,7 @@
             ctx.translate(u.x, u.y + 12);
             ctx.globalAlpha = 0.22 + 0.18 * p; // 캐릭터가 가려지지 않게 옅게
             const fl = 0.3 + 0.28 * p;
-            drawAssassinFrame(ctx, 'flame', fl * (1 + 0.05 * Math.sin(t * 0.4)), fl * (1 + 0.1 * Math.sin(t * 0.55 + 1)));
+            drawAssassinFrame(ctx, 'flame', fl * (1 + 0.05 * Math.sin(t * 0.4)), fl * (1 + 0.1 * Math.sin(t * 0.55 + 1)), usesAssassinSr(u));
             ctx.restore();
             return;
           }
@@ -17961,11 +17974,12 @@
         ctx.scale(ef.dir >= 0 ? 1 : -1, 1);
         ctx.globalAlpha = Math.min(1, fade * 2.2);
         const sc = (0.55 + 0.45 * grow + 0.12 * progress) * 1.45;
-        drawAssassinFrame(ctx, 'slash', sc);
+        drawAssassinFrame(ctx, 'slash', sc, sc, ef.sr);
         ctx.restore();
         ctx.translate(0, 44);
         ctx.globalAlpha = Math.min(1, fade * 1.8) * Math.min(1, progress * 8);
-        drawAssassinFrame(ctx, 'blood', (0.7 + 0.3 * Math.min(1, progress * 3)) * 1.45);
+        const bs = (0.7 + 0.3 * Math.min(1, progress * 3)) * 1.45;
+        drawAssassinFrame(ctx, 'blood', bs, bs, ef.sr);
         return;
       }
       if (ef.type === 'hidden_assassin') {
@@ -19548,11 +19562,15 @@
         ctx.restore();
         return;
       }
-      // 도적 히든 스킬 [암살]: 시전 중엔 불꽃 → 그림자 → 연기를 두른 자세, 등 뒤에 나타난 직후엔 단검을 내지르다 거두는 자세 (기본 외형만)
-      const assassinCast = u.alive && u.job === 'rogue' && !u.monsterType && (u.skinVariant || 0) === 0 && ROGUE_ASSASSINATE_FX.cast.ready && u.casting && u.casting.key === 'assassinate';
-      const assassinSince = u.alive && u.assassinPose && u.job === 'rogue' && !u.monsterType && (u.skinVariant || 0) === 0 && ROGUE_ASSASSINATE_FX.cast.ready ? sim.tickCount - u.assassinPose.start : 99;
+      // 도적 히든 스킬 [암살]: 시전 중엔 불꽃 → 그림자 → 연기를 두른 자세, 등 뒤에 나타난 직후엔 단검을 내지르다 거두는 자세
+      // 기본 외형은 ROGUE_ASSASSINATE_FX, 외형 1~5·시크릿 레어는 ROGUE_ASSASSINATE_SKINS (그림이 없는 외형은 평소 자세)
+      const assassinArt = u.alive && u.job === 'rogue' && !u.monsterType
+        ? ((u.skinVariant || 0) === 0 ? ROGUE_ASSASSINATE_FX : ROGUE_ASSASSINATE_SKINS[u.skinVariant]) : null;
+      const assassinReady = Boolean(assassinArt && assassinArt.cast.ready);
+      const assassinCast = assassinReady && u.casting && u.casting.key === 'assassinate';
+      const assassinSince = assassinReady && u.assassinPose ? sim.tickCount - u.assassinPose.start : 99;
       if (assassinCast || (assassinSince >= 0 && assassinSince < 24 + 32)) {
-        const as = ROGUE_ASSASSINATE_FX;
+        const as = assassinArt;
         const ks = spriteDrawH(u, sprite) / as.standH;
         let fi, shake = 0, fade = 0;
         if (assassinCast) {
