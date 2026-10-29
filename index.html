@@ -18009,22 +18009,29 @@
           }
           ctx.restore();
         }
-        // 출발점: 프리즈에 쓴 얼음 가시가 솟았다 가라앉으며 빙판의 잘린 시작 부분을 덮음
+        // 출발점: 프리즈에 쓴 얼음 줄기(스케이팅 그림)가 이동 반대쪽(뒤)으로 뻗어 나가 앞으로 튀어나가는 느낌을 냄 + 바닥 파편
         if (FROST_FX.ready && progress < 0.4) {
-          const SPOTS = [[0, 0, 1.0, 0], [-16, 5, 0.75, 2], [18, 6, 0.8, 1], [-6, -9, 0.65, 1], [8, -8, 0.7, 2], [28, -2, 0.6, 3], [-26, -3, 0.6, 3], [2, 11, 0.7, 0]];
-          const ca = Math.cos(ang), sa = Math.sin(ang), sp = progress / 0.3;  // 0~1: 솟음 → 가라앉음 (0.3 넘으면 사라짐)
+          const BACK = [[0, 1.5, 'streak0', 0], [0.22, 1.15, 'streak1', 0.03], [-0.22, 1.15, 'streak1', 0.03], [0.42, 0.8, 'streak0', 0.06], [-0.42, 0.8, 'streak0', 0.06]]; // [뻗는 각도 차이, 길이 배율, 그림, 늦게 시작하는 정도]
+          const sp = progress / 0.3;
           ctx.save();
           ctx.filter = 'saturate(0.45)';
           ctx.globalAlpha = progress < 0.3 ? 1 : 1 - (progress - 0.3) / 0.1;
-          SPOTS.slice().sort((q, r) => q[1] - r[1]).forEach(([ox, oy, z, v], i) => {
-            const lp = Math.min(1, Math.max(0, (sp - i * 0.03) / (1 - i * 0.03)));
+          ctx.translate(ef.sx, ef.sy + 8);
+          BACK.forEach(([da, z, nm, dl]) => {
+            const lp = Math.min(1, Math.max(0, (sp - dl) / (1 - dl)));
             if (lp <= 0) return;
-            const stage = lp < 0.14 ? 'spike0' : lp < 0.4 ? (v === 3 ? 'spike3' : 'spike1') : lp < 0.72 ? (v === 1 ? 'spike1' : v === 3 ? 'spike3' : 'spike2') : 'spike3';
             ctx.save();
-            ctx.translate(ef.sx + ox * 0.5 + ca * 6, ef.sy + 8 + oy * 0.5 + sa * 3);
-            ctx.scale(i % 2 ? -1 : 1, 1);
-            drawFrostFx(ctx, stage, 0, 0, z * 0.9 * Math.min(1, lp / 0.3), z * 0.9 * Math.min(1, lp / 0.3));
+            ctx.scale(1, 0.6);                    // 바닥에 눌린 원근
+            ctx.rotate(ang + Math.PI + da);        // 이동 반대쪽
+            const g = Math.min(1, lp / 0.35);      // 처음 빠르게 뻗고
+            drawFrostFx(ctx, nm, 0, 0, z * (0.35 + 0.65 * g), z * (0.7 + 0.3 * g), 1 - Math.max(0, (lp - 0.6) / 0.4));
             ctx.restore();
+          });
+          [[-14, 6, 1.0], [6, -8, 0.8], [-30, -5, 0.7], [-24, 12, 0.7]].forEach(([ox, oy, z], i) => { // 출발점 뒤쪽에 흩어지는 얼음 파편
+            const lp = Math.min(1, Math.max(0, (sp - 0.04 * i) / (1 - 0.04 * i)));
+            if (lp <= 0) return;
+            const bx = Math.cos(ang + Math.PI) * (6 + lp * 26) + ox * 0.4, by = Math.sin(ang + Math.PI) * (6 + lp * 26) * 0.6 + oy * 0.4;
+            drawFrostFx(ctx, 'shard', bx, by, z * 0.8, z * 0.8, 1 - lp * 0.7);
           });
           ctx.restore();
         }
