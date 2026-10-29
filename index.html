@@ -6145,7 +6145,10 @@
       const f = DFREEZE_FX.f[name], k = w / f[2], h = f[3] * k;
       ctx.save();
       ctx.globalAlpha *= Math.max(0, Math.min(1, alpha));
-      ctx.drawImage(DFREEZE_FX.img, f[0], f[1], f[2], f[3], cx - w / 2, anchor === 'bottom' ? cy - h : cy - h / 2, w, h);
+      const dy = anchor === 'bottom' ? cy - h : cy - h / 2;
+      ctx.drawImage(DFREEZE_FX.img, f[0], f[1], f[2], f[3], cx - w / 2, dy, w, h);
+      ctx.globalAlpha *= 0.7; // 두 번 겹쳐 그려 덜 비치게 (그림 자체가 반투명)
+      ctx.drawImage(DFREEZE_FX.img, f[0], f[1], f[2], f[3], cx - w / 2, dy, w, h);
       ctx.restore();
     }
     // 블리자드 시전 이펙트: 몸을 감싸는 눈바람 · 머리 위 큰 눈꽃 ([x, y, w, h])
@@ -20672,12 +20675,12 @@
       // 3) 상태이상 및 보호막 표시
       // 동결 스킬 이펙트 (몸 높이에 맞춰 크기·자리 조정): 시전 2초 동안 소용돌이(1)·바닥 가시 고리(2) → 발동 때 터지는 큐브(3) → 빙결 중 큐브(4) → 풀릴 때 금 간 큐브(5)·조각(6)
       if (DFREEZE_FX.ready && u.alive) {
-        const bFoot = useSprite ? 16 : -8 + tokenR + 4, bTop = useSprite ? headTopY : -8 - tokenR, bH = bFoot - bTop, bMid = (bFoot + bTop) / 2;
+        const bFoot = useSprite ? 16 : -8 + tokenR + 4, bTop = useSprite ? headTopY : -8 - tokenR, bH = Math.max(bFoot - bTop, tokenR * 2.6), bMid = (bFoot + bTop) / 2; // 몸 높이 (옆으로 넓은 몬스터는 토큰 크기 기준)
         const caster = sim.units.find(c => c.alive && c.casting && c.casting.key === 'deep_freeze' && c.casting.aimTarget === u);
         if (caster) {
           const cp = 1 - caster.casting.left / caster.casting.total, fadeIn = Math.min(1, cp / 0.2), pulse = 0.85 + 0.15 * Math.sin(tick * 0.25);
           ctx.save();
-          ctx.globalAlpha = 0.9 * fadeIn;
+          ctx.globalAlpha = fadeIn;
           drawDfreezeFx(ctx, 'ring', 0, bFoot + 6 + jumpY, bH * (1.5 + 0.35 * cp), 0.55 + 0.45 * cp);
           drawDfreezeFx(ctx, 'swirl', 0, bFoot + 6 + jumpY, bH * (1.7 + 0.2 * Math.sin(tick * 0.1)), pulse);
           ctx.restore();
@@ -20697,9 +20700,9 @@
         // 동결 스킬에 의한 빙결: 몸을 큐브로 가둠 (풀리기 직전엔 서서히 흐려짐)
         u.iceFxAge = (u.iceFxAge || 0) + 1;
         const pop = Math.min(1, u.iceFxAge / 8), bFoot = useSprite ? 16 : -8 + tokenR + 4, bTop = useSprite ? headTopY : -8 - tokenR;
-        const cubeW = (bFoot - bTop) * 1.9 * (1.1 - 0.1 * pop), cubeA = Math.min(1, st.freeze / 20) * (0.4 + 0.6 * pop);
+        const cubeBase = Math.max(bFoot - bTop, tokenR * 2.6);
+        const cubeW = cubeBase * 1.9 * (1.1 - 0.1 * pop), cubeA = Math.min(1, st.freeze / 20) * (0.4 + 0.6 * pop);
         drawDfreezeFx(ctx, 'cube', 0, bFoot + 4 + jumpY, cubeW, cubeA, 'bottom');
-        drawDfreezeFx(ctx, 'cube', 0, bFoot + 4 + jumpY, cubeW, cubeA * 0.45, 'bottom'); // 한 번 더 겹쳐 덜 비치게
       } else if (st.freeze > 0 && FREEZE_ICE_IMG.ready) {
         // 동결: 발밑부터 머리 위까지 반투명 얼음 덩어리로 덮음 (얼 때 살짝 부풀며 나타나고, 풀리기 직전엔 서서히 사라짐)
         u.iceFxAge = (u.iceFxAge || 0) + 1;
