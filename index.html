@@ -6148,6 +6148,10 @@
       ctx.drawImage(DFREEZE_FX.img, f[0], f[1], f[2], f[3], cx - w / 2, anchor === 'bottom' ? cy - h : cy - h / 2, w, h);
       ctx.restore();
     }
+    // 블리자드 시전 이펙트: 몸을 감싸는 눈바람 · 머리 위 큰 눈꽃 ([x, y, w, h])
+    const BLIZZ_FX = { img: new Image(), ready: false, f: { wind: [0,0,114,89], flake: [116,0,105,90] } };
+    BLIZZ_FX.img.onload = () => { BLIZZ_FX.ready = true; };
+    BLIZZ_FX.img.src = 'assets/sprites/fx/blizzard_cast_fx.webp';
     const FREEZE_ICE_IMG = new Image(); // 빙결 상태이상: 몸을 덮는 반투명 얼음 덩어리 (141×240, 아래쪽 = 발밑)
     FREEZE_ICE_IMG.onload = () => { FREEZE_ICE_IMG.ready = true; };
     FREEZE_ICE_IMG.src = 'assets/sprites/fx/freeze_ice.webp';
@@ -20725,13 +20729,33 @@
         drawFxFrame(ctx, def.fr, 0, -26, (tokenR * 2 + 16) * 2.3 / def.fr[2] * (1 + 0.025 * breathe), 0, (0.7 + 0.15 * breathe) * gFade, SUPPORT_FX.img);
         ctx.restore();
       }
-      // 빙결술사 블리자드 시전: 발밑에 눈꽃 소환진이 점점 커지며 돎
+      // 빙결술사 블리자드 시전: 발밑 눈꽃 소환진이 시전 내내 일정하게 커짐 (울렁이지 않게 한 장 고정, 처음 잠깐만 고리 그림) + 몸을 감싼 눈바람(1) + 머리 위 큰 눈꽃(2)
       if (FROST_FX.ready && u.casting && u.casting.key === 'blizzard') {
-        const grow = Math.min(1, (u.casting.total - u.casting.left) / Math.max(1, u.casting.total * 0.3));
+        const bp = Math.min(1, 1 - u.casting.left / u.casting.total);
+        const fr = FROST_FX.frames[bp < 0.12 ? 'circle0' : 'circle1'];
+        const ell = bp < 0.12 ? [36.5, 27, 73] : [39.5, 24.5, 77]; // 마법진 타원의 가운데 x·y와 폭 (그림 칸 안, 칸마다 달라서 맞춤)
+        const k = (0.9 + 1.5 * bp) * 76 / ell[2];
         ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
-        drawFrostFx(ctx, Math.floor(tick / 8) % 2 ? 'circle1' : 'circle2', 0, 13, (0.9 + grow * 1.3) * (1 + 0.03 * Math.sin(tick * 0.2)), 0.9 + grow * 1.3, 0.55 + 0.4 * grow);
+        ctx.globalAlpha = 0.35 + 0.6 * Math.min(1, bp / 0.15);
+        ctx.drawImage(FROST_FX.img, fr[0], fr[1], fr[2], fr[3], -ell[0] * k, 13 - ell[1] * k, fr[2] * k, fr[3] * k);
         ctx.restore();
+        if (BLIZZ_FX.ready) {
+          const zFoot = useSprite ? 16 : -8 + tokenR + 4, zTop = useSprite ? headTopY : -8 - tokenR, zH = zFoot - zTop, fi = Math.min(1, bp / 0.1);
+          const wf = BLIZZ_FX.f.wind, ww = zH * 1.9, wh = wf[3] * ww / wf[2];
+          ctx.save();
+          ctx.globalAlpha = 0.85 * fi;
+          ctx.translate(0, (zFoot + zTop) / 2 + jumpY);
+          ctx.scale(Math.floor(tick / 14) % 2 ? -1 : 1, 1); // 눈바람이 좌우로 번갈아 휘감김
+          ctx.drawImage(BLIZZ_FX.img, wf[0], wf[1], wf[2], wf[3], -ww / 2, -wh / 2, ww, wh);
+          ctx.restore();
+          const ff = BLIZZ_FX.f.flake, fw = zH * 0.9 * (0.7 + 0.5 * bp), fh = ff[3] * fw / ff[2];
+          ctx.save();
+          ctx.globalAlpha = fi;
+          ctx.translate(0, zTop - fh * 0.55 - 4 + jumpY + 2 * Math.sin(tick * 0.08));
+          ctx.rotate(tick * 0.015);
+          ctx.drawImage(BLIZZ_FX.img, ff[0], ff[1], ff[2], ff[3], -fw / 2, -fh / 2, fw, fh);
+          ctx.restore();
+        }
       }
       // 빙결술사 아이스 배리어: 몸을 감싼 얼음 구체 (끝나기 2초 전부터 깜빡임)
       const frostBubble = FROST_FX.ready && u.frostBarrierTicks > 0 && u.shield > 0;
