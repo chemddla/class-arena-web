@@ -6265,6 +6265,14 @@
       const f = LANCER_MUSOU_FX.frames[name], k = w / f[2], kh = h === null ? k : h / f[3];
       ctx.drawImage(LANCER_MUSOU_FX.fx, f[0], f[1], f[2], f[3], -f[4] * k, -f[5] * kh, f[2] * k, f[3] * kh);
     }
+    // 무쌍난무 자세 그림 — 시크릿 레어(sr1, 붉은 용인): 칸 구성은 기본 외형 cast와 같음 (초승달·찌르기 바람 때문에 칸이 넓음)
+    const LANCER_MUSOU_SKINS = {};
+    [[SECRET_SKIN_BASE + 1, 'sr1']].forEach(([v, n]) => {
+      const def = { cellW: 310, cellH: 186, anchorX: 113, anchorY: 176, standH: 108, cast: new Image() };
+      def.cast.onload = () => { def.cast.ready = true; };
+      def.cast.src = `assets/sprites/fx/lancer_musou_${n}.webp`;
+      LANCER_MUSOU_SKINS[v] = def;
+    });
 
     Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX).forEach(def => {
       def.img = new Image();
@@ -19491,19 +19499,20 @@
       } else if (u.isDarkMerc) {
         ctx.filter = 'grayscale(0.5) brightness(0.6)';
       }
-      // 창병 히든 스킬 [무쌍난무]: 기본 외형은 난무 자세로 바꿔 그리고, 모든 외형은 지나온 자리에 공격 모션 잔상을 남김
+      // 창병 히든 스킬 [무쌍난무]: 기본 외형·시크릿 레어는 난무 자세로 바꿔 그리고, 모든 외형은 지나온 자리에 공격 모션 잔상을 남김
       const mfx = LANCER_MUSOU_FX;
       const musouOn = u.alive && u.musou && u.job === 'lancer' && !u.monsterType;
-      const musouPose = musouOn && (u.skinVariant || 0) === 0 && mfx.cast.ready
+      const musouArt = u.alive && u.job === 'lancer' && !u.monsterType
+        ? ((u.skinVariant || 0) === 0 ? mfx : LANCER_MUSOU_SKINS[u.skinVariant]) : null; // 자세 그림이 없는 외형은 평소 자세
+      const musouPose = musouOn && musouArt && musouArt.cast.ready
         ? (u.attackAnim > 0 ? [4, 5, 3, 9][Math.floor(tick / 3) % 4] : [7, 8][Math.floor(tick / 4) % 2]) : -1;
       if (musouOn) {
         let gl = mfx.ghosts.get(u);
         if (!gl) { gl = []; mfx.ghosts.set(u, gl); }
         if (!gl.length || gl[gl.length - 1].t !== tick) {
-          gl.push({ t: tick, x: u.x, y: u.y, dir, pose: musouPose, frame });
+          gl.push({ t: tick, x: u.x, y: u.y, dir, pose: musouPose, art: musouArt, frame });
           if (gl.length > 8) gl.shift();
         }
-        const ksg = spriteDrawH(u, sprite) / mfx.standH;
         for (let i = gl.length - 3; i >= 0; i -= 2) { // 2틱 간격으로 오래된 것부터: 점점 옅어짐
           const g = gl[i], age = tick - g.t;
           if (age < 1 || age > 7 || Math.hypot(g.x - u.x, g.y - u.y) < 6) continue;
@@ -19513,7 +19522,8 @@
           ctx.globalAlpha *= 0.42 - age * 0.05;
           ctx.filter = 'sepia(1) saturate(3) brightness(1.35) hue-rotate(-8deg)';
           if (g.pose >= 0) {
-            ctx.drawImage(mfx.cast, g.pose * mfx.cellW, 0, mfx.cellW, mfx.cellH, -mfx.anchorX * ksg, -mfx.anchorY * ksg, mfx.cellW * ksg, mfx.cellH * ksg);
+            const ga = g.art, ksg = spriteDrawH(u, sprite) / ga.standH;
+            ctx.drawImage(ga.cast, g.pose * ga.cellW, 0, ga.cellW, ga.cellH, -ga.anchorX * ksg, -ga.anchorY * ksg, ga.cellW * ksg, ga.cellH * ksg);
           } else {
             ctx.drawImage(sprite.img, g.frame * sprite.cellW, 0, sprite.cellW, sprite.cellH, -sprite.anchorX * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
           }
@@ -19645,11 +19655,11 @@
         ctx.restore();
         return;
       }
-      // 창병 히든 스킬 [무쌍난무] 시전(기를 모으며 창을 당김 → 치켜듦 → 회전 고리)과 난무 중 자세 (기본 외형만)
-      const musouCast = u.alive && u.casting && u.casting.key === 'musou' && u.job === 'lancer' && !u.monsterType && (u.skinVariant || 0) === 0 && mfx.cast.ready;
+      // 창병 히든 스킬 [무쌍난무] 시전(기를 모으며 창을 당김 → 치켜듦 → 회전 고리)과 난무 중 자세 (기본 외형·시크릿 레어)
+      const musouCast = Boolean(musouArt && musouArt.cast.ready && u.casting && u.casting.key === 'musou');
       if (musouCast || musouPose >= 0) {
-        const c = u.casting;
-        const ks = spriteDrawH(u, sprite) / mfx.standH;
+        const c = u.casting, ma = musouArt;
+        const ks = spriteDrawH(u, sprite) / ma.standH;
         let pose = musouPose;
         if (musouCast) {
           pose = 0; // 시전 중엔 창을 뒤로 비스듬히 든 이 자세로 고정
@@ -19660,17 +19670,17 @@
           for (let i = 0; i < 3; i++) {
             const q = (tick / 54 + i / 3) % 1, sc = 1 + q * 1.6;
             ctx.save();
-            ctx.translate(0, -40 * ks);
+            ctx.translate(0, -ma.standH / 2 * ks); // 몸 한가운데를 중심으로
             ctx.scale(sc, sc);
-            ctx.translate(0, 40 * ks);
+            ctx.translate(0, ma.standH / 2 * ks);
             ctx.globalAlpha = (1 - q) * (1 - q) * 0.55;
-            ctx.drawImage(mfx.cast, 0, 0, mfx.cellW, mfx.cellH, -mfx.anchorX * ks, -mfx.anchorY * ks, mfx.cellW * ks, mfx.cellH * ks);
+            ctx.drawImage(ma.cast, 0, 0, ma.cellW, ma.cellH, -ma.anchorX * ks, -ma.anchorY * ks, ma.cellW * ks, ma.cellH * ks);
             ctx.restore();
           }
           ctx.restore();
         }
-        ctx.drawImage(mfx.cast, pose * mfx.cellW, 0, mfx.cellW, mfx.cellH,
-          -mfx.anchorX * ks, -mfx.anchorY * ks, mfx.cellW * ks, mfx.cellH * ks);
+        ctx.drawImage(ma.cast, pose * ma.cellW, 0, ma.cellW, ma.cellH,
+          -ma.anchorX * ks, -ma.anchorY * ks, ma.cellW * ks, ma.cellH * ks);
         ctx.restore();
         return;
       }
