@@ -4345,14 +4345,21 @@
       const bossFloor = Math.ceil(floor / TOWER_RACE_FLOORS) * TOWER_RACE_FLOORS;
       return Boolean(stu) && ((stu.towerFloor || 1) > bossFloor || (bossFloor === TOWER_MAX_FLOOR && stu.towerTopCleared));
     }
-    // 하드모드는 한 층씩: 바로 아래 층 하드모드를 깨야 도전 가능 (1층은 바로)
+    // 하드모드는 한 층씩: 1층부터 바로 아래 층까지 하드모드를 빠짐없이 깨야 도전 가능 (1층은 바로)
+    //   → 한 층씩 규칙 전에 띄엄띄엄 깬 기록(예: 20층대만)으로는 위층이 열리지 않음
+    function towerHardNextFloor(stu) {
+      const clears = towerHardClearsOf(stu);
+      let f = 1;
+      while (clears[f]) f++;
+      return f;
+    }
     function isTowerHardPrevCleared(stu, floor) {
-      return floor <= 1 || Boolean(towerHardClearsOf(stu)[floor - 1]);
+      return floor <= towerHardNextFloor(stu);
     }
     // 하드모드에 못 들어가는 이유 (들어갈 수 있으면 '')
     function towerHardLockReason(stu, floor) {
       if (!isTowerHardUnlocked(stu, floor)) return `${Math.ceil(floor / TOWER_RACE_FLOORS) * TOWER_RACE_FLOORS}층 보스 클리어`;
-      if (!isTowerHardPrevCleared(stu, floor)) return `${floor - 1}층 하드 클리어`;
+      if (!isTowerHardPrevCleared(stu, floor)) return `${towerHardNextFloor(stu)}층 하드 클리어`;
       return '';
     }
     function towerHardFloorObj(f) {
