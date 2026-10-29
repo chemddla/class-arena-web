@@ -6126,7 +6126,7 @@
     SNIPER_BULLET_IMG.src = 'assets/sprites/fx/sniper_bullet.webp';
     // 빙결술사 이펙트 한 장 (0.5배): 배리어 구체 · 프리즈 얼음 가시 4단계 · 동결 고리·큐브 · 스케이팅 자취 · 블리자드 소환진·충격파·눈보라 판
     // 프레임 [x, y, w, h, 기준점x, 기준점y] (가시 기준점 = 아래 가운데, 나머지 = 가운데)
-    const FROST_FX = { img: new Image(), ready: false, frames: { bubble0: [0,0,70,60,35,30], bubble1: [72,0,82,60,41,30], spike0: [156,0,74,46,37,45], spike1: [232,0,103,50,51,49], spike2: [337,0,90,62,45,61], spike3: [429,0,86,58,43,57], ring: [517,0,32,34,16,17], cube0: [551,0,80,51,40,25], cube1: [633,0,60,49,30,24], trail0: [695,0,96,44,48,22], trail1: [793,0,100,48,50,24], circle0: [895,0,74,50,37,25], circle1: [971,0,80,50,40,25], circle2: [1053,0,76,60,38,30], glaze0: [1131,0,76,38,38,19], glaze1: [1209,0,108,53,54,26], glaze2: [1319,0,104,53,52,26], snow0: [1425,0,140,104,70,52], snow1: [1567,0,143,104,71,52], snow2: [1712,0,142,104,71,52] } };
+    const FROST_FX = { img: new Image(), ready: false, frames: { bubble0: [0,0,70,60,35,30], bubble1: [72,0,82,60,41,30], spike0: [156,0,74,46,37,45], spike1: [232,0,103,50,51,49], spike2: [337,0,90,62,45,61], spike3: [429,0,86,58,43,57], ring: [517,0,32,34,16,17], cube0: [551,0,80,51,40,25], cube1: [633,0,60,49,30,24], trail0: [695,0,96,44,48,22], trail1: [793,0,100,48,50,24], circle0: [895,0,74,50,37,25], circle1: [971,0,80,50,40,25], circle2: [1053,0,76,60,38,30], glaze0: [1131,0,76,38,38,19], glaze1: [1209,0,108,53,54,26], glaze2: [1319,0,104,53,52,26], snow0: [1425,0,140,104,70,52], snow1: [1567,0,143,104,71,52], snow2: [1712,0,142,104,71,52], shard: [1858,0,64,28,32,14], streak0: [1924,0,80,34,0,17], streak1: [2006,0,84,37,0,18], dspike0: [2092,0,47,30,23,29], dspike1: [2141,0,58,50,29,49], dspike2: [2201,0,60,46,30,45] } };
     FROST_FX.img.onload = () => { FROST_FX.ready = true; };
     FROST_FX.img.src = 'assets/sprites/fx/frost_fx.webp';
     function drawFrostFx(ctx, name, x, y, sx, sy = sx, alpha = 1) {
@@ -17908,25 +17908,39 @@
         ctx.lineWidth = 5;
         ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
         if (FROST_FX.ready) {
-          // 그림 얼음 가시: 가운데를 기점으로 사방 무작위 자리에 촘촘히 솟음 (자리·크기·좌우·모양은 처음 그릴 때 한 번 뽑음. 가운데에 가까울수록 먼저)
-          // 모양(단계 순서): 키 큰 · 넓은 · 빠른 우뚝 · 작은 조각 · 퍼짐만 — 가시마다 솟는 때와 가라앉는 때가 제각각
+          // 그림 얼음 가시: 가운데를 기점으로 사방 무작위 자리에 아주 촘촘히 솟음 (자리·크기·좌우·모양은 처음 그릴 때 한 번 뽑음. 가운데에 가까울수록 먼저)
+          // 층: ① 바닥 파편·바깥으로 뻗는 얼음 줄기(스케이팅 그림) ② 곧게 솟는 가시(4단계, 모양 5종) ③ 바깥쪽으로 기운 비스듬한 가시(3단계)
           ctx.scale(1, 1 / 0.55);
           const SEQ = [['spike0', 'spike1', 'spike2', 'spike3'], ['spike0', 'spike1', 'spike1', 'spike3'], ['spike0', 'spike2', 'spike2', 'spike3'], ['spike0', 'spike0', 'spike3', 'spike3'], ['spike1', 'spike1', 'spike3', 'spike3']];
+          const DSEQ = ['dspike0', 'dspike1', 'dspike1', 'dspike2'];
           if (!ef.spots) {
-            ef.spots = [{ x: 0, y: 0, z: 1.3, d: 0, v: 0, fl: 1, g: 1 }];
-            for (let k = 0; k < 46; k++) {
-              const a = Math.random() * Math.PI * 2, dist = Math.sqrt(Math.random()); // 면적 기준 고르게
-              const big = dist < 0.45 && Math.random() < 0.6;
-              ef.spots.push({ x: Math.cos(a) * dist, y: Math.sin(a) * dist, z: big ? 1 + Math.random() * 0.35 : 0.45 + Math.random() * 0.6, d: dist * 0.3 + Math.random() * 0.14, v: Math.floor(Math.random() * SEQ.length), fl: Math.random() < 0.5 ? -1 : 1, g: 0.18 + Math.random() * 0.22 });
-            }
+            const list = ef.spots = [{ kind: 'up', x: 0, y: 0, z: 1.35, d: 0, v: 0, fl: 1, g: 0.18 }];
+            const rnd = Math.random;
+            const add = (kind, n, minD, f) => { for (let k = 0; k < n; k++) { const a = rnd() * Math.PI * 2, dist = minD + (1 - minD) * Math.sqrt(rnd()); list.push({ kind, x: Math.cos(a) * dist, y: Math.sin(a) * dist, a, d: dist * 0.3 + rnd() * 0.14, g: 0.18 + rnd() * 0.22, fl: rnd() < 0.5 ? -1 : 1, ...f(dist) }); } };
+            add('shard', 28, 0.1, d => ({ z: 0.7 + rnd() * 0.7 }));
+            add('streak', 22, 0.05, d => ({ z: 0.7 + rnd() * 0.9, v: rnd() < 0.5 ? 0 : 1 }));
+            add('up', 52, 0, d => ({ z: d < 0.45 && rnd() < 0.6 ? 1 + rnd() * 0.35 : 0.45 + rnd() * 0.6, v: Math.floor(rnd() * SEQ.length) }));
+            add('lean', 26, 0.12, d => ({ z: 0.5 + rnd() * 0.7, v: Math.floor(rnd() * 2) }));
           }
-          ef.spots.slice().sort((p, q) => p.y - q.y).forEach(sp => {
+          const kScale = r / ef.r, layer = { shard: 0, streak: 0, up: 1, lean: 1 };
+          ef.spots.slice().sort((p, q) => layer[p.kind] - layer[q.kind] || p.y - q.y).forEach(sp => {
             const lp = (progress - sp.d) / (1 - sp.d);
             if (lp <= 0) return;
-            const stage = SEQ[sp.v][lp < 0.16 ? 0 : lp < 0.42 ? 1 : lp < 0.74 ? 2 : 3];
-            const gr = Math.min(1, lp / sp.g) * sp.z * (r / ef.r);
-            ctx.save(); ctx.translate(sp.x * r, sp.y * r * 0.55 + 6); ctx.scale(sp.fl, 1);
-            drawFrostFx(ctx, stage, 0, 0, gr, gr, fade);
+            const gr = Math.min(1, lp / sp.g) * sp.z * kScale;
+            ctx.save(); ctx.translate(sp.x * r, sp.y * r * 0.55 + 6);
+            if (sp.kind === 'streak') { // 바닥에 눌린 채 가운데에서 바깥쪽으로 뻗어 나가는 얼음 줄기 (끝으로 갈수록 옅어짐)
+              ctx.scale(1, 0.55); ctx.rotate(sp.a);
+              drawFrostFx(ctx, sp.v ? 'streak1' : 'streak0', 0, 0, gr * (0.6 + 0.5 * Math.min(1, lp / 0.5)), gr, fade * Math.min(1, 2.2 * (1 - lp)));
+            } else if (sp.kind === 'shard') {
+              ctx.scale(sp.fl, 1);
+              drawFrostFx(ctx, 'shard', 0, 0, gr, gr, fade * Math.min(1, 2.5 * (1 - lp)));
+            } else if (sp.kind === 'lean') { // 바깥쪽으로 기울어 솟는 가시 (그림은 오른쪽으로 기움)
+              ctx.scale(sp.x < 0 ? -1 : 1, 1);
+              drawFrostFx(ctx, DSEQ[lp < 0.16 ? 0 : lp < 0.42 ? 1 : lp < 0.74 ? (sp.v ? 1 : 2) : 3], 0, 0, gr, gr, fade);
+            } else {
+              ctx.scale(sp.fl, 1);
+              drawFrostFx(ctx, SEQ[sp.v][lp < 0.16 ? 0 : lp < 0.42 ? 1 : lp < 0.74 ? 2 : 3], 0, 0, gr, gr, fade);
+            }
             ctx.restore();
           });
           return;
