@@ -977,6 +977,7 @@
           <span class="px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30">🩸출혈(지속물리피해)</span>
           <span class="px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30">☠️중독(지속독피해·공격감소)</span>
           <span class="px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30">⚡감전(마비·방어감소)</span>
+          <span class="px-2 py-0.5 rounded bg-lime-500/15 text-lime-300 border border-lime-500/30">🐌슬로우(이동·공격 속도감소)</span>
           <span class="px-2 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/30">🌑암흑(시야 좁아짐)</span>
           <span class="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">⚔️축복(공격·속도강화)</span>
         </div>
@@ -3006,6 +3007,7 @@
       bleed:   { id: 'bleed',   name: '출혈', icon: '🩸', color: '#f43f5e', desc: '매초 지속 출혈 물리 피해' },
       poison:  { id: 'poison',  name: '중독', icon: '☠️', color: '#a855f7', desc: '지속 독 피해 및 공격력 20% 감소' },
       shock:   { id: 'shock',   name: '감전', icon: '⚡', color: '#60a5fa', desc: '찌릿한 마비로 속도·방어력 35% 감소' },
+      slow:    { id: 'slow',    name: '슬로우', icon: '🐌', color: '#84cc16', desc: '몸이 둔해져 속도 30% 감소 (이동 속도·공격 속도 함께 느려짐)' },
       blessed: { id: 'blessed', name: '축복', icon: '⚔️', color: '#fbbf24', desc: '공격력 +15% 및 속도 +10% 강화' },
       rally:   { id: 'rally',   name: '함성', icon: '📣', color: '#dc2626', desc: '공격력 +20% · 공격 속도 +30% 강화' },
       empower: { id: 'empower', name: '증폭', icon: '🔮', color: '#7c3aed', desc: '공격력 +20% 강화' },
@@ -3024,6 +3026,9 @@
 
     // 전술 그리드 1칸 크기(120px) 기준: 대시 1칸(120px), 전사 돌진 스킬 2칸(240px) (Requirement 1)
     const GRID_CELL_SIZE = 120;
+    const SLOW_SPEED_DOWN = 0.3; // 슬로우: 속도(이동 속도·공격 속도) 30% 감소
+    // 스킬별 슬로우 지속 시간(틱, 40틱 = 1초)
+    const SLOW_TICKS = { arrow_rain: 60, evasive_shot: 120, earthquake: 60, ice_arrow_after: 120 };
     const DASH_CONFIG = {
       cooldownTicks: 270, // 4.5초 (60fps 기준)
       cooldownSec: 4.5,
@@ -3106,9 +3111,9 @@
           desc: '지팡이를 치켜들어 거대 화염구를 발사해 240% 광역 피해와 [화상]을 입힙니다.'
         },
         ice_arrow: {
-          id: 'ice_arrow', name: '아이스애로우', icon: '❄️', ccTag: '❄️동결',
+          id: 'ice_arrow', name: '아이스애로우', icon: '❄️', ccTag: '❄️동결·🐌슬로우',
           manaCost: 27, cooldownTicks: 420, cooldownSec: 7.0, castSec: 0.49,
-          desc: '냉기 마법진에서 얼음 화살을 쏘아 185% 피해를 입히고 적을 [동결]시킵니다.'
+          desc: '냉기 마법진에서 얼음 화살을 쏘아 185% 피해를 입히고 적을 [동결]시킵니다. 얼음이 풀린 뒤에도 잠시 [슬로우]가 남아요.'
         },
         thunderbolt: {
           id: 'thunderbolt', name: '썬더볼트', icon: '⚡', ccTag: '⚡감전',
@@ -3170,14 +3175,14 @@
           desc: '빠른 속도로 장궁 시위를 당겨 전방의 목표를 향해 화살 5발을 연속으로 신속하게 퍼붓습니다.'
         },
         arrow_rain: {
-          id: 'arrow_rain', name: '화살비', icon: '🌧️', ccTag: '🌧️지속장판',
+          id: 'arrow_rain', name: '화살비', icon: '🌧️', ccTag: '🌧️지속장판·🐌슬로우',
           manaCost: 24, cooldownTicks: 480, cooldownSec: 8.0, castSec: 0.8,
-          desc: '하늘로 화살을 쏘아 1칸 원형 범위에 5초간 화살비를 내려 계속 피해를 입힙니다.'
+          desc: '하늘로 화살을 쏘아 1칸 원형 범위에 5초간 화살비를 내려 계속 피해를 입힙니다. 범위 안의 적은 [슬로우]에 걸려요.'
         },
         evasive_shot: {
-          id: 'evasive_shot', name: '회피기동', icon: '🌀', ccTag: '🌀후퇴사격',
+          id: 'evasive_shot', name: '회피기동', icon: '🌀', ccTag: '🌀후퇴사격·🐌슬로우',
           manaCost: 21, cooldownTicks: 420, cooldownSec: 7.0, castSec: 0.15,
-          desc: '뒤로 크게 물러나며 화살 3발을 부채꼴로 쏩니다. 적이 바짝 붙었을 때 사용합니다.'
+          desc: '뒤로 크게 물러나며 화살 3발을 부채꼴로 쏩니다. 맞은 적은 [슬로우]에 걸려 쫓아오기 어려워요. 적이 바짝 붙었을 때 사용합니다.'
         }
       },
       rogue: {
@@ -3224,9 +3229,9 @@
           desc: '바라보는 쪽으로 3칸 돌격합니다. 부딪힌 적은 100% 피해를 입고 기사 앞에 붙어 끌려가며, 끌려가는 동안 [기절]해요.'
         },
         earthquake: {
-          id: 'earthquake', name: '지진', icon: '🌋', ccTag: '🌋끌어당김',
+          id: 'earthquake', name: '지진', icon: '🌋', ccTag: '🌋끌어당김·🐌슬로우',
           manaCost: 27, cooldownTicks: 630, cooldownSec: 10.5, castSec: 1,
-          desc: '1초 동안 힘을 모아 땅을 내리쳐, 2.5칸 안의 적에게 4.5초 동안 15.75% 피해를 18번 입힙니다. 맞을 때마다 적이 기사 쪽으로 끌려와요.'
+          desc: '1초 동안 힘을 모아 땅을 내리쳐, 2.5칸 안의 적에게 4.5초 동안 15.75% 피해를 18번 입힙니다. 맞을 때마다 적이 기사 쪽으로 끌려오고 [슬로우]에 걸려요.'
         },
         iron_stance: {
           id: 'iron_stance', name: '방어 태세', icon: '🏰', ccTag: '🏰피해감소',
@@ -3574,7 +3579,7 @@
         return;
       }
       const st = u.statuses;
-      const speedMult = Math.max(0.4, 1 - (st.shock > 0 ? 0.35 : 0) - (st.poison > 0 ? 0.12 : 0));
+      const speedMult = Math.max(0.4, 1 - (st.shock > 0 ? 0.35 : 0) - (st.poison > 0 ? 0.12 : 0) - (st.slow > 0 ? SLOW_SPEED_DOWN : 0));
       const angle = wallAwareAngle(u, Math.atan2(ay, ax));
       const sp = u.baseMoveSpeed * 0.95 * speedMult * (st.swift > 0 ? 1.5 : 1);
       u.x = Math.max(200, Math.min(sim.worldW - 200, u.x + Math.cos(angle) * sp));
@@ -6031,6 +6036,9 @@
     const SNIPER_BULLET_IMG = new Image(); // 남은 총알 표시용 (18×64)
     SNIPER_BULLET_IMG.onload = () => { SNIPER_BULLET_IMG.ready = true; };
     SNIPER_BULLET_IMG.src = 'assets/sprites/fx/sniper_bullet.webp';
+    const FREEZE_ICE_IMG = new Image(); // 동결 상태이상: 몸을 덮는 반투명 얼음 덩어리 (141×240, 아래쪽 = 발밑)
+    FREEZE_ICE_IMG.onload = () => { FREEZE_ICE_IMG.ready = true; };
+    FREEZE_ICE_IMG.src = 'assets/sprites/fx/freeze_ice.webp';
     // 창병 투창 이펙트: 날아가는 창 밑에 깔리는 바람 줄기 + 촉 앞 충격파 고리 (327×112, 촉 끝 = (326, 55))
     const LANCER_JAVELIN_FX = new Image();
     LANCER_JAVELIN_FX.onload = () => { LANCER_JAVELIN_FX.ready = true; };
@@ -13169,7 +13177,7 @@
     // 실시간 결투 연결 상태 (아래 [실시간 결투 화면 동기화] 참고)
     const LIVE_FRAME_INTERVAL_MS = 100; // 방장이 화면을 보내는 간격 (실제 시간)
     const LIVE_GUEST_TIMEOUT_MS = 20000;
-    const LIVE_UNIT_ST_KEYS = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'blessed', 'rally', 'empower', 'immune', 'stealth', 'swift', 'taunt', 'guard', 'spin', 'rampage', 'darkness', 'fear', 'confuse', 'miracle'];
+    const LIVE_UNIT_ST_KEYS = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'blessed', 'rally', 'empower', 'immune', 'stealth', 'swift', 'taunt', 'guard', 'spin', 'rampage', 'darkness', 'fear', 'confuse', 'miracle', 'slow'];
     const liveNet = {
       role: null, roomId: null, ref: null, minAt: 0, startedAt: 0,
       initReceived: false, lastFrameAt: 0, targets: {}, finished: false,
@@ -13839,6 +13847,7 @@
       if (st.miracle > 0) speedMult += 0.2; // 기적의 축복: 이동·공격 속도 +20%
       if (st.shock > 0) speedMult -= 0.35;
       if (st.poison > 0) speedMult -= 0.12;
+      if (st.slow > 0) speedMult -= SLOW_SPEED_DOWN; // 슬로우: 이동·공격 속도 -30%
       speedMult = Math.max(0.4, speedMult);
       const curMoveSpeed = u.baseMoveSpeed * speedMult * 1.15 * (u.hasteTicks > 0 ? 1.2 : 1) * (st.swift > 0 ? 1.5 : 1) * lancerMoveMult(u) * ((st.guard || 0) > 0 ? KNIGHT_GUARD_MOVE_MULT : 1);
       const curAtkInterval = Math.max(12, Math.round(u.baseAtkInterval / speedMult / (1 + (u.atkSpdStacks || 0) * 0.02) / (st.rally > 0 ? WARCRY_ATK_SPEED : 1)));
@@ -14220,6 +14229,7 @@
           bleed: 0,
           poison: 0,
           shock: 0,
+          slow: 0,
           blessed: 0,
           rally: 0,
           empower: 0,
@@ -14248,7 +14258,7 @@
       if ((targetUnit.statuses.guard || 0) > 0 && NEGATIVE_STATUSES.includes(statusType)) return;
       // 히든 스킬 시전 중에는 나쁜 상태이상 면역 (자기 자신이 거는 것은 상관없음)
       if (isCastingHiddenSkill(targetUnit) && sourceUnit !== targetUnit && NEGATIVE_STATUSES.includes(statusType)) return;
-      // 엘리트 보스는 군중제어(기절·동결·감전)에 걸리지 않음 · 지속 피해(화상·출혈·중독)는 걸림
+      // 엘리트 보스는 군중제어(기절·동결·감전·슬로우)에 걸리지 않음 · 지속 피해(화상·출혈·중독)는 걸림
       // 그 밖의 상태이상도 한 번에 하나만 (같은 종류 갱신도 안 됨) · 풀린 뒤 10초는 면역 (자기 버프는 상관없음)
       const eliteDebuff = targetUnit.isEliteBoss && sourceUnit !== targetUnit && NEGATIVE_STATUSES.includes(statusType);
       // 🔥 하드모드 종족 보스는 나쁜 상태이상에 모두 면역
@@ -15950,6 +15960,7 @@
         if (st.miracle > 0) speedMult += 0.2;
         if (st.shock > 0) speedMult -= 0.35;
         if (st.poison > 0) speedMult -= 0.12;
+        if (st.slow > 0) speedMult -= SLOW_SPEED_DOWN;
         speedMult = Math.max(0.4, speedMult);
 
         const curMoveSpeed = u.baseMoveSpeed * speedMult * (u.hasteTicks > 0 ? 1.2 : 1) * (st.swift > 0 ? 1.5 : 1) * lancerMoveMult(u);
@@ -16226,6 +16237,7 @@
               if (unitDist(e, p.target) <= (p.aoeRadius || 85) * unitAreaScale(p.owner)) {
                 applyDamage(p.owner, e, p.dmg, '', '#0284c7');
                 inflictStatus(p.owner, e, 'freeze', p.statusDur || 240);
+                inflictStatus(p.owner, e, 'slow', (p.statusDur || 240) + SLOW_TICKS.ice_arrow_after); // 얼음이 풀린 뒤에도 3초 슬로우
               }
             });
           } else {
@@ -16289,8 +16301,8 @@
     }
 
     // ===== 새 스킬용 공통 장치 (장판 · 밀쳐내기 · 텔레포트 위치 · 상태이상 면역) =====
-    const NEGATIVE_STATUSES = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'taunt', 'darkness', 'fear', 'confuse'];
-    const CC_STATUSES = ['stun', 'freeze', 'shock', 'fear', 'confuse']; // 엘리트 보스가 면역인 군중제어
+    const NEGATIVE_STATUSES = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'slow', 'taunt', 'darkness', 'fear', 'confuse'];
+    const CC_STATUSES = ['stun', 'freeze', 'shock', 'slow', 'fear', 'confuse']; // 엘리트 보스가 면역인 군중제어 (슬로우가 한 칸뿐인 상태이상 자리를 차지해 지속 피해를 막지 않게)
     const ELITE_DEBUFF_IMMUNE_SEC = 10; // 엘리트 보스의 상태이상이 끝난 뒤 면역 시간
     const ZONE_STYLES = {
       arrow_rain:  { color: '#ca8a04', fill: 'rgba(234, 179, 8, 0.22)', icon: '🌧️' },
@@ -16738,7 +16750,7 @@
         if (!target) return true;
         // 자동 전투(AI)는 사거리 안에서 적이 가장 많이 모인 자리에 떨굼
         if (!aimPt) target = bestAoePoint(unit, enemies, unit.range + 60, A * 1, target) || target;
-        spawnZone(unitFxSpr(unit, 'arrow_rain'), unit, target.x, target.y, A * 1, 300, 20, unit.atk * 0.24); // 리바이어던 = 우박 장판
+        spawnZone(unitFxSpr(unit, 'arrow_rain'), unit, target.x, target.y, A * 1, 300, 20, unit.atk * 0.24, 'slow', SLOW_TICKS.arrow_rain); // 리바이어던 = 우박 장판 · 안에 있으면 슬로우
         playCombatSfx('arrow');
         addBattleLog(`🌧️ [궁수] ${unit.name}의 화살비!`);
         return true;
@@ -16766,7 +16778,8 @@
           const base = Math.atan2((aimAt.y - 12) - shot.y, aimAt.x - shot.x);
           [-0.26, 0, 0.26].forEach(off => sim.projectiles.push({
             projType: 'golden_arrow', spr: unitProjFx(unit, 'golden_arrow'), x: shot.x, y: shot.y, owner: unit, dmg: unit.atk * 1.0,
-            isSkill: true, isDirectional: true, angle: base + off, speed: 4.2, trail: [], maxTravel: unit.range + 120
+            isSkill: true, isDirectional: true, angle: base + off, speed: 4.2, trail: [], maxTravel: unit.range + 120,
+            statusOnHit: 'slow', statusDur: SLOW_TICKS.evasive_shot
           }));
         }
         playCombatSfx('arrow');
@@ -18301,6 +18314,7 @@
           if (!e.alive || e.team === u.team || unitDist(e, u) > KNIGHT_QUAKE_RADIUS * unitAreaScale(u)) return;
           suppressHitKnockback = true; // 밀려나지 않고 끌려오게
           try { applyDamage(u, e, u.atk * KNIGHT_QUAKE_DMG); } finally { suppressHitKnockback = false; }
+          if ((e.statuses.slow || 0) < 20) inflictStatus(u, e, 'slow', SLOW_TICKS.earthquake); // 흔들리는 땅에 발이 묶임 (글자가 매번 뜨지 않게 거의 풀렸을 때만 갱신)
           if (!canKnightMove(e)) return;
           const d = Math.hypot(e.x - u.x, e.y - u.y);
           const step = Math.min(KNIGHT_QUAKE_PULL, d - 50 - unitBodyGap(e));
@@ -18996,6 +19010,7 @@
           if (Math.hypot(e.x - x, e.y - y) - unitBodyGap(e) <= r) {
             applyDamage(p.owner, e, p.dmg, '', fire ? '#ea580c' : '#0284c7');
             inflictStatus(p.owner, e, fire ? 'burn' : 'freeze', p.statusDur || (fire ? 360 : 240));
+            if (!fire) inflictStatus(p.owner, e, 'slow', (p.statusDur || 240) + SLOW_TICKS.ice_arrow_after); // 얼음이 풀린 뒤에도 3초 슬로우
           }
         });
         return;
@@ -20224,13 +20239,24 @@
       }
 
       // 3) 상태이상 및 보호막 표시
-      if (st.freeze > 0) {
+      if (st.freeze > 0 && FREEZE_ICE_IMG.ready) {
+        // 동결: 발밑부터 머리 위까지 반투명 얼음 덩어리로 덮음 (얼 때 살짝 부풀며 나타나고, 풀리기 직전엔 서서히 사라짐)
+        u.iceFxAge = (u.iceFxAge || 0) + 1;
+        const pop = Math.min(1, u.iceFxAge / 8);
+        const footY = useSprite ? 16 : -8 + tokenR + 4;
+        const iceH = (footY - (useSprite ? headTopY : -8 - tokenR)) * 1.12 * (1.12 - 0.12 * pop);
+        const iceW = iceH * FREEZE_ICE_IMG.width / FREEZE_ICE_IMG.height;
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, st.freeze / 20) * (0.35 + 0.65 * pop) * (0.92 + 0.08 * Math.sin(tick * 0.09));
+        ctx.drawImage(FREEZE_ICE_IMG, -iceW / 2, footY + jumpY - iceH, iceW, iceH);
+        ctx.restore();
+      } else if (st.freeze > 0) {
         ctx.strokeStyle = '#38bdf8';
         ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
         ctx.lineWidth = 2;
         ctx.strokeRect(-tokenR, -8 - tokenR, tokenR * 2, tokenR * 2);
         ctx.fillRect(-tokenR, -8 - tokenR, tokenR * 2, tokenR * 2);
-      }
+      } else u.iceFxAge = 0;
 
       if (st.guard > 0 && SUPPORT_FX.ready) {
         // 방어 태세: 보호막 구체와 같은 그림을 약 2.3배로 크게 (몸 위쪽까지 덮게 위로 올림) 두르고, 켜질 때 부풀며 끝나기 직전엔 서서히 사라짐
@@ -22766,7 +22792,7 @@
       elite_dire_wolf:    { name: '달그림자 장막', color: '#818cf8', debuffs: [['darkness', 7]],                            fx: 'shadow' },
       elite_golem:        { name: '대지 붕괴',     color: '#a3e635', debuffs: [['stun', 2], ['shock', 5]],                  fx: 'rock' },
       elite_swamp_hydra:  { name: '독늪 포자',     color: '#a855f7', debuffs: [['poison', 10]],                             fx: 'venom' },
-      elite_leviathan:    { name: '혹한의 해일',   color: '#38bdf8', debuffs: [['freeze', 2.5]],                            fx: 'ice' },
+      elite_leviathan:    { name: '혹한의 해일',   color: '#38bdf8', debuffs: [['freeze', 2.5], ['slow', 8]],               fx: 'ice' },
       elite_orc_warlord:  { name: '피의 지진',     color: '#ef4444', debuffs: [['bleed', 8], ['stun', 1]],                  fx: 'blood' },
       elite_lich:         { name: '망자의 장막',   color: '#22c55e', debuffs: [['darkness', 6], ['poison', 8]],             fx: 'plague' },
       elite_ifrit:        { name: '겁화 낙진',     color: '#f97316', debuffs: [['burn', 10]],                               fx: 'fire' },
