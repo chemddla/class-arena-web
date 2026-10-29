@@ -30045,13 +30045,17 @@
       const freeSlot = RAID_GUEST_SLOTS.find(s => !room[s + 'Id']);
       if (!freeSlot) { showNotice('⚠️ 이미 자리가 찬 레이드방이에요.'); return; }
       const inRoom = new Set(raidFilledSlots(room).map(s => room[s + 'Id']));
-      const others = state.students.filter(s => !inRoom.has(s.id) && (s.roster || []).length > 0);
-      const friend = others[Math.floor(Math.random() * others.length)] || state.students.find(s => !inRoom.has(s.id));
-      if (!friend) return;
-      const friendMercs = ((friend.roster || []).filter(m => m.deployed).length >= RAID_PICK
-        ? (friend.roster || []).filter(m => m.deployed)
-        : (friend.roster || [])).slice(0, RAID_PICK);
-      const friendPower = friendMercs.reduce((s, m) => s + calcMercCombatPower(m, friend), 0);
+      const raidMercsOf = stu => ((stu.roster || []).filter(m => m.deployed).length >= RAID_PICK
+        ? (stu.roster || []).filter(m => m.deployed)
+        : (stu.roster || [])).slice(0, RAID_PICK);
+      const raidPowerOf = stu => raidMercsOf(stu).reduce((s, m) => s + calcMercCombatPower(m, stu), 0);
+      // 연습 친구는 방장보다 전투력이 높은 친구는 부를 수 없음
+      const hostPower = Number(room.hostPower || 0);
+      const others = state.students.filter(s => !inRoom.has(s.id) && (s.roster || []).length > 0 && raidPowerOf(s) <= hostPower);
+      const friend = others[Math.floor(Math.random() * others.length)];
+      if (!friend) { showNotice('⚠️ 내 전투력보다 낮은 연습 친구가 없어요.'); return; }
+      const friendMercs = raidMercsOf(friend);
+      const friendPower = raidPowerOf(friend);
 
       room[freeSlot + 'Id'] = friend.id;
       room[freeSlot + 'Num'] = friend.num;
