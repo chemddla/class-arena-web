@@ -6086,6 +6086,34 @@
       const art = MAGE_FUSION_FX.fx, f = MAGE_FUSION_FX.frames[name];
       ctx.drawImage(art, f[0], f[1], f[2], f[3], -f[4] * scaleX, -f[5] * scaleY, f[2] * scaleX, f[3] * scaleY);
     }
+    // 원소 융합 시전 그림 — 외형 1~5와 시크릿 레어(sr1): 모으기 · 번개 · 내지르기 3칸 (칸 구성은 기본 외형 cast와 같음)
+    // 기준점 = 발밑, standH = 서 있는 키(일반 시트와 같은 크기로 보이게)
+    const MAGE_FUSION_SKINS = {
+      1: { cellW: 122, cellH: 128, anchorX: 40, anchorY: 119, standH: 111 },
+      2: { cellW: 122, cellH: 128, anchorX: 40, anchorY: 119, standH: 111 },
+      3: { cellW: 123, cellH: 128, anchorX: 40, anchorY: 119, standH: 111 },
+      4: { cellW: 122, cellH: 128, anchorX: 40, anchorY: 119, standH: 111 },
+      5: { cellW: 122, cellH: 128, anchorX: 40, anchorY: 119, standH: 111 },
+      [SECRET_SKIN_BASE + 1]: { cellW: 121, cellH: 121, anchorX: 39, anchorY: 111, standH: 109, file: 'sr1' }
+    };
+    Object.entries(MAGE_FUSION_SKINS).forEach(([v, def]) => {
+      def.cast = new Image();
+      def.cast.onload = () => { def.cast.ready = true; };
+      def.cast.src = `assets/sprites/fx/mage_fusion_${def.file || v}.webp`;
+    });
+    // 원소 융합 장판 그림 — 시크릿 레어 마법사만 씀 (320×320 6칸, 모두 그림 중심 기준)
+    // 0 네 원소 소용돌이 · 1 융합 구체 · 2 마법진 섬광 · 3 폭발 · 4 충격파 고리와 파편 · 5 연기
+    const MAGE_FUSION_SR_FX = { img: new Image(), cell: 320, burstTicks: 70 };
+    MAGE_FUSION_SR_FX.img.onload = () => { MAGE_FUSION_SR_FX.ready = true; };
+    MAGE_FUSION_SR_FX.img.src = 'assets/sprites/fx/mage_fusion_sr_fx.webp';
+    // size = 그릴 지름, squash = 세로 비율 (바닥에 깔리는 그림은 0.62)
+    function drawFusionSrFrame(ctx, i, size, alpha, squash = 1, cy = 0) {
+      if (alpha <= 0 || size <= 0) return;
+      const c = MAGE_FUSION_SR_FX.cell;
+      ctx.globalAlpha = Math.min(1, alpha);
+      ctx.drawImage(MAGE_FUSION_SR_FX.img, i * c, 0, c, c, -size / 2, cy - size * squash / 2, size, size * squash);
+    }
+    const usesFusionArt = u => Boolean(u && u.job === 'mage' && !u.monsterType && isSecretRare(u.rarity));
     // 돌진·회전베기·순간이동 이펙트 그림 (fx/samples/README.md의 dash_burst · spin_slash · purple_tornado)
     const DASH_FX = { frames: [[0, 0, 200, 144, 172], [200, 0, 260, 144, 245], [465, 0, 202, 144, 180]] }; // [x, y, w, h, 머리끝 x]
     const DUST_FX = { w: 87, h: 25 }; // 대시 흙먼지: dash_burst 첫 칸에서 먼지만 딴 것 (오른쪽이 앞, 왼쪽이 뒤로 퍼지는 쪽)
@@ -16937,8 +16965,9 @@
         if (!aimPt) pt = bestAoePoint(unit, enemies, unit.range + C * 2, r, tgt) || tgt;
         if (!pt) return true;
         const p = clampToArena(pt.x, pt.y);
-        const life = HIDDEN_FUSION_PULL_TICKS + 105; // 폭발 뒤 잔상 (70틱 → 105틱)
-        sim.effects.push({ type: 'hidden_fusion', x: p.x, y: p.y, r, pull: HIDDEN_FUSION_PULL_TICKS, life, maxLife: life });
+        const sr = usesFusionArt(unit) && MAGE_FUSION_SR_FX.ready;
+        const life = HIDDEN_FUSION_PULL_TICKS + (sr ? MAGE_FUSION_SR_FX.burstTicks : 105); // 폭발 뒤 잔상 (70틱 → 105틱)
+        sim.effects.push({ type: 'hidden_fusion', x: p.x, y: p.y, r, sr, pull: HIDDEN_FUSION_PULL_TICKS, life, maxLife: life });
         sim.hiddenFx.push({ kind: 'fusion', owner: unit, x: p.x, y: p.y, r, left: HIDDEN_FUSION_PULL_TICKS, dmg: unit.atk * 15 });
         playCombatSfx('magic');
         addBattleLog(`🌈 [마법사] ${unit.name}의 히든 스킬 원소 융합! 적들이 소용돌이로 빨려 들어가요!`);
@@ -17658,6 +17687,27 @@
         const pullP = Math.min(1, elapsed / ef.pull);
         const colors = ['#f97316', '#38bdf8', '#facc15', '#7c3aed'];
         ctx.translate(ef.x, ef.y);
+        if (ef.sr) {
+          // 시크릿 레어: 바닥 소용돌이가 돌며 조여들고 그 위에 융합 구체가 맺힘
+          // → 터지면 마법진 섬광 · 폭발 · 충격파 고리 · 연기가 차례로
+          const D = ef.r * 2;
+          if (elapsed < ef.pull) {
+            ctx.save();
+            ctx.scale(1, 0.62);
+            ctx.rotate(-t * 0.08);
+            drawFusionSrFrame(ctx, 0, D * (1.1 - 0.3 * pullP), Math.min(1, elapsed / 8));
+            ctx.restore();
+            const q = Math.max(0, (pullP - 0.5) / 0.5);
+            drawFusionSrFrame(ctx, 1, D * (0.25 + 0.35 * q) * (1 + 0.04 * Math.sin(t * 0.7)), q * 2, 1, -ef.r * 0.3);
+            return;
+          }
+          const e = elapsed - ef.pull;
+          drawFusionSrFrame(ctx, 2, D * 1.1 * (0.8 + 0.2 * Math.min(1, e / 8)), Math.min(1, (22 - e) / 10), 0.62);
+          if (e >= 10) drawFusionSrFrame(ctx, 4, D * (0.7 + 0.5 * Math.min(1, (e - 10) / 25)), Math.min(1, (e - 10) / 6, (52 - e) / 16), 0.62);
+          if (e >= 20) drawFusionSrFrame(ctx, 5, D * (0.75 + 0.3 * (e - 20) / 50), Math.min(1, (e - 20) / 10, ef.life / 24) * 0.95, 1, -ef.r * 0.35);
+          if (e < 32) drawFusionSrFrame(ctx, 3, D * (0.55 + 0.5 * Math.min(1, e / 10)), Math.min(1, (32 - e) / 12), 1, -ef.r * 0.3);
+          return;
+        }
         if (MAGE_FUSION_FX.sheet.ready) {
           // 원소 융합 3×2 시트(칸 256×192, 0~5): 0 불·얼음·번개·어둠이 한 점으로 모임 → 1 소용돌이 → 2 구슬로 응축 → 3 구슬이 터짐 → 4 큰 폭발 → 5 연기와 불씨. 칸이 바뀔 땐 앞 칸이 사라지며 다음 칸이 겹쳐 나타남
           const SH = MAGE_FUSION_FX.sheet;
@@ -19483,8 +19533,11 @@
         ctx.restore();
         return;
       }
-      // 마법사 히든 스킬 [원소 융합] 시전: 기본 외형은 고리 위에서 지팡이를 세우다가 → 번개를 두르고 → 마지막에 지팡이를 내지름
-      const fusion = u.alive && u.casting && u.casting.key === 'element_fusion' && u.job === 'mage' && !u.monsterType && (u.skinVariant || 0) === 0 && MAGE_FUSION_FX.cast.ready ? MAGE_FUSION_FX : null;
+      // 마법사 히든 스킬 [원소 융합] 시전: 고리 위에서 지팡이를 세우다가 → 번개를 두르고 → 마지막에 지팡이를 내지름
+      // 기본 외형은 MAGE_FUSION_FX, 외형 1~5·시크릿 레어는 MAGE_FUSION_SKINS (그림이 없는 외형은 평소 시전 자세)
+      const fusionArt = u.alive && u.casting && u.casting.key === 'element_fusion' && u.job === 'mage' && !u.monsterType
+        ? ((u.skinVariant || 0) === 0 ? MAGE_FUSION_FX : MAGE_FUSION_SKINS[u.skinVariant]) : null;
+      const fusion = fusionArt && fusionArt.cast.ready ? fusionArt : null;
       if (fusion) {
         const c = u.casting;
         const ks = spriteDrawH(u, sprite) / fusion.standH;
