@@ -6152,7 +6152,7 @@
       ctx.restore();
     }
     // 블리자드 시전 이펙트: 몸을 감싸는 눈바람 · 머리 위 큰 눈꽃 ([x, y, w, h])
-    const BLIZZ_FX = { img: new Image(), ready: false, f: { wind: [0,0,114,89], flake: [116,0,105,90], burst: [223,0,177,82] } };
+    const BLIZZ_FX = { img: new Image(), ready: false, f: { wind: [0,0,114,89], flake: [116,0,105,90], burst: [223,0,177,82], snowA: [404,0,94,98], snowB: [500,0,141,141], snowC: [643,0,133,99], mini: [778,0,16,16] } };
     BLIZZ_FX.img.onload = () => { BLIZZ_FX.ready = true; };
     BLIZZ_FX.img.src = 'assets/sprites/fx/blizzard_cast_fx.webp';
     const FREEZE_ICE_IMG = new Image(); // 빙결 상태이상: 몸을 덮는 반투명 얼음 덩어리 (141×240, 아래쪽 = 발밑)
@@ -20757,14 +20757,33 @@
           ctx.scale(Math.floor(tick / 14) % 2 ? -1 : 1, 1); // 눈바람이 좌우로 번갈아 휘감김
           ctx.drawImage(BLIZZ_FX.img, wf[0], wf[1], wf[2], wf[3], -ww / 2, -wh / 2, ww, wh);
           ctx.restore();
-          const ff = BLIZZ_FX.f.flake, fw = zH * 0.9 * (0.7 + 0.5 * bp), fh = ff[3] * fw / ff[2];
-          ctx.save();
-          ctx.globalAlpha = fi;
-          ctx.translate(0, zTop - fh * 0.55 - 4 + jumpY + 2 * Math.sin(tick * 0.08));
-          ctx.rotate(tick * 0.015);
-          ctx.drawImage(BLIZZ_FX.img, ff[0], ff[1], ff[2], ff[3], -fw / 2, -fh / 2, fw, fh);
-          ctx.restore();
+          // 머리 위 눈꽃: 주변 눈꽃이 흩어진 옅은 눈꽃(3)이 점점 짙어지며 작은 눈꽃들이 모여들고 → 빛나는 눈꽃(1)으로 진해짐. 시전이 끝나면 아래 터지는 광륜(2)
+          const sc = zH * 0.85 / 74 * (0.75 + 0.3 * bp), scx = 0, scy = zTop - zH * 0.3 - 6 + jumpY + 2 * Math.sin(tick * 0.08);
+          const put = (name, alpha, k = 1) => {
+            const f = BLIZZ_FX.f[name], w = f[2] * sc * k, h = f[3] * sc * k;
+            ctx.save(); ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+            ctx.drawImage(BLIZZ_FX.img, f[0], f[1], f[2], f[3], scx - w / 2, scy - h / 2, w, h);
+            ctx.restore();
+          };
+          put('snowC', (0.12 + 0.88 * Math.min(1, bp / 0.55)) * (1 - Math.max(0, Math.min(1, (bp - 0.55) / 0.3))));
+          put('snowA', (bp - 0.5) / 0.4);
+          for (let i = 0; i < 12; i++) { // 사방에서 소용돌이치며 눈꽃 쪽으로 모여드는 작은 눈꽃
+            const t = (tick * 0.011 + i / 12) % 1, ang = i * 2.4 + t * 1.6, rad = (1 - t) * zH * 1.7 + 6;
+            const mf = BLIZZ_FX.f.mini, mw = mf[2] * sc * 0.9, a2 = Math.sin(Math.PI * t) * Math.min(1, bp / 0.12) * (1 - Math.max(0, (bp - 0.92) / 0.08));
+            ctx.save(); ctx.globalAlpha = Math.max(0, Math.min(1, a2));
+            ctx.drawImage(BLIZZ_FX.img, mf[0], mf[1], mf[2], mf[3], scx + Math.cos(ang) * rad - mw / 2, scy + Math.sin(ang) * rad * 0.8 - mw / 2, mw, mw);
+            ctx.restore();
+          }
         }
+      }
+      // 블리자드 시전 완료: 머리 위 눈꽃 자리에서 광륜이 퍼졌다 사라짐 (잘린 곳을 채운 그림)
+      if (BLIZZ_FX.ready && u.blizzBurst && sim.tickCount - u.blizzBurst < 46) {
+        const q = (sim.tickCount - u.blizzBurst) / 46, zFoot = useSprite ? 16 : -8 + tokenR + 4, zTop = useSprite ? headTopY : -8 - tokenR, zH = zFoot - zTop;
+        const f = BLIZZ_FX.f.snowB, k = zH * 0.85 / 74 * 1.05 * 74 / 68 * (0.9 + 0.7 * q), w = f[2] * k, h = f[3] * k;
+        ctx.save();
+        ctx.globalAlpha = q < 0.25 ? 1 : 1 - (q - 0.25) / 0.75;
+        ctx.drawImage(BLIZZ_FX.img, f[0], f[1], f[2], f[3], -w / 2, zTop - zH * 0.3 - 6 + jumpY - h / 2, w, h);
+        ctx.restore();
       }
       // 빙결술사 아이스 배리어: 몸을 감싼 얼음 구체 (끝나기 2초 전부터 깜빡임)
       const frostBubble = FROST_FX.ready && u.frostBarrierTicks > 0 && u.shield > 0;
