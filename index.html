@@ -6141,14 +6141,16 @@
     DFREEZE_FX.img.onload = () => { DFREEZE_FX.ready = true; };
     DFREEZE_FX.img.src = 'assets/sprites/fx/dfreeze_fx.webp';
     // 몸 높이 H에 맞춰 그림: 가로 폭 = w, 기준 = 아래(bottom) 또는 가운데, (cx, cy)가 그 기준점
-    function drawDfreezeFx(ctx, name, cx, cy, w, alpha, anchor = 'bottom') {
+    function drawDfreezeFx(ctx, name, cx, cy, w, alpha, anchor = 'bottom', passes = 2) {
       const f = DFREEZE_FX.f[name], k = w / f[2], h = f[3] * k;
       ctx.save();
       ctx.globalAlpha *= Math.max(0, Math.min(1, alpha));
       const dy = anchor === 'bottom' ? cy - h : cy - h / 2;
       ctx.drawImage(DFREEZE_FX.img, f[0], f[1], f[2], f[3], cx - w / 2, dy, w, h);
-      ctx.globalAlpha *= 0.7; // 두 번 겹쳐 그려 덜 비치게 (그림 자체가 반투명)
-      ctx.drawImage(DFREEZE_FX.img, f[0], f[1], f[2], f[3], cx - w / 2, dy, w, h);
+      if (passes > 1) { // 두 번 겹쳐 그려 덜 비치게 (그림 자체가 반투명)
+        ctx.globalAlpha *= 0.7;
+        ctx.drawImage(DFREEZE_FX.img, f[0], f[1], f[2], f[3], cx - w / 2, dy, w, h);
+      }
       ctx.restore();
     }
     // 블리자드 시전 이펙트: 몸을 감싸는 눈바람 · 머리 위 큰 눈꽃 ([x, y, w, h])
@@ -20743,19 +20745,31 @@
           drawDfreezeFx(ctx, 'burst', 0, bMid + jumpY, bH * (1.35 + 0.35 * q), q < 0.5 ? 1 : 1 - (q - 0.5) * 2, 'center');
         }
         if (u.dfFreeze && st.freeze <= 0) { u.dfFreeze = false; u.dfCrack = sim.tickCount; } // 풀리는 순간: 금 간 큐브 → 조각
-        if (u.dfCrack && sim.tickCount - u.dfCrack < 44) {
+        if (u.dfCrack && sim.tickCount - u.dfCrack < 80) { // 금 간 큐브는 풀리기 전부터 보이고, 풀린 뒤엔 잠깐 남았다가 조각이 길게 흩어짐
           const el = sim.tickCount - u.dfCrack;
-          if (el < 16) drawDfreezeFx(ctx, 'crack', 0, bFoot + 4 + jumpY, bH * 1.9, 1);
-          else drawDfreezeFx(ctx, 'shard', 0, bMid + 6 + jumpY, bH * 1.5, 1 - (el - 16) / 28, 'center');
+          if (el < 8) drawDfreezeFx(ctx, 'crack', 0, bFoot + 4 + jumpY, bH * 1.9, 0.7 * (1 - el / 8), 'bottom', 1);
+          drawDfreezeFx(ctx, 'shard', 0, bMid + 6 + jumpY, bH * (1.5 + 0.2 * el / 80), el < 20 ? 1 : 1 - (el - 20) / 60, 'center');
         }
       }
       if (st.freeze > 0 && u.dfFreeze && DFREEZE_FX.ready) {
-        // 동결 스킬에 의한 빙결: 몸을 큐브로 가둠 (풀리기 직전엔 서서히 흐려짐)
+        // 동결 스킬에 의한 빙결: 몸을 큐브로 가두고 둘레에 눈꽃이 일렁임. 풀리기 1.5초 전부터는 금 간 큐브로 바뀌어 떨림
         u.iceFxAge = (u.iceFxAge || 0) + 1;
         const pop = Math.min(1, u.iceFxAge / 8), bFoot = useSprite ? 16 : -8 + tokenR + 4, bTop = useSprite ? headTopY : -8 - tokenR;
-        const cubeBase = Math.max(bFoot - bTop, tokenR * 2.6);
-        const cubeW = cubeBase * 1.9 * (1.1 - 0.1 * pop), cubeA = Math.min(1, st.freeze / 20) * (0.4 + 0.6 * pop);
-        drawDfreezeFx(ctx, 'cube', 0, bFoot + 4 + jumpY, cubeW, cubeA, 'bottom');
+        const cubeBase = Math.max(bFoot - bTop, tokenR * 2.6), cracking = st.freeze <= 90;
+        const cubeW = cubeBase * 1.9 * (1.1 - 0.1 * pop), cubeA = Math.min(1, st.freeze / 20) * (0.4 + 0.6 * pop) * 0.7;
+        const shake = cracking ? Math.sin(tick * 1.7) * 1.2 : 0;
+        drawDfreezeFx(ctx, cracking ? 'crack' : 'cube', shake, bFoot + 4 + jumpY, cubeW, cubeA, 'bottom', 1);
+        if (BLIZZ_FX.ready) { // 큐브 둘레를 천천히 도는 눈꽃 (앞뒤로 오가며 위아래로 일렁임)
+          const mf = BLIZZ_FX.f.mini, bMid = (bFoot + bTop) / 2, rx = cubeBase * 0.75, ry = cubeBase * 0.28;
+          for (let i = 0; i < 9; i++) {
+            const t = tick * 0.018 + i * 0.7, x = Math.cos(t) * rx * (0.85 + 0.25 * Math.sin(i * 1.9)), y = bMid + Math.sin(t * 0.8 + i) * cubeBase * 0.38 + Math.sin(t) * ry * 0.4;
+            const mw = mf[2] * (0.55 + 0.35 * ((Math.sin(t) + 1) / 2)) * cubeBase / 80, front = Math.sin(t) > 0;
+            ctx.save(); ctx.globalAlpha = Math.min(1, st.freeze / 20) * (front ? 0.95 : 0.55) * (0.6 + 0.4 * Math.sin(tick * 0.07 + i));
+            ctx.translate(x, y + jumpY); ctx.rotate(t * 0.5);
+            ctx.drawImage(BLIZZ_FX.img, mf[0], mf[1], mf[2], mf[3], -mw / 2, -mw / 2, mw, mw);
+            ctx.restore();
+          }
+        }
       } else if (st.freeze > 0 && FREEZE_ICE_IMG.ready) {
         // 동결: 발밑부터 머리 위까지 반투명 얼음 덩어리로 덮음 (얼 때 살짝 부풀며 나타나고, 풀리기 직전엔 서서히 사라짐)
         u.iceFxAge = (u.iceFxAge || 0) + 1;
