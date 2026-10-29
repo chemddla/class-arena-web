@@ -21,8 +21,17 @@ def main(src, out='assets/sprites/fx/skate_ice.webp'):
     if n > 1:
         sizes = ndi.sum(~bg, lab, range(1, n + 1))
         bg = lab != (1 + int(np.argmax(sizes)))
-    rgba = np.dstack([a.clip(0, 255), np.where(bg, 0, 255)]).astype(np.uint8)
-    ys, xs2 = np.where(~bg)
+    # 잘린 아랫부분은 열마다 맨 아래 줄에서 위로 FADE칸에 걸쳐 서서히 투명하게 (자연스럽게 번지도록)
+    FADE = 16
+    alpha = np.where(bg, 0.0, 255.0)
+    for x in range(W):
+        rows = np.where(~bg[:, x])[0]
+        if len(rows):
+            bottom = rows.max()
+            r = np.arange(H)
+            alpha[:, x] *= np.clip((bottom - r + 1) / FADE, 0, 1) ** 1.3
+    rgba = np.dstack([a.clip(0, 255), alpha]).astype(np.uint8)
+    ys, xs2 = np.where(alpha > 0)
     img = Image.fromarray(rgba, 'RGBA').crop((xs2.min(), ys.min(), xs2.max() + 1, ys.max() + 1))
     img.save(out, 'WEBP', lossless=True)
     print(out, img.size)
