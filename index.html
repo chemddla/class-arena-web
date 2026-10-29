@@ -18031,7 +18031,7 @@
           for (let i = 0; i < N; i++) {
             const d0 = tail + (head - tail) * i / N, d1 = tail + (head - tail) * (i + 1) / N, mid = (d0 + d1) / 2;
             const tf = Math.max(0, Math.min(1, (mid - tail) / 100 + (tail > 0 ? 0 : 1))), tailFade = tf * tf * (3 - 2 * tf) * Math.min(1, (head - tail) / 70); // 사라지는 쪽 끝을 길게 부드럽게 (남은 길이가 짧아져도 뚝 끊기지 않고 옅어짐)
-            const startFade = Math.min(1, mid / 30);                               // 출발점 쪽 잘린 끝도 부드럽게 (얼음 가시가 덮음)
+            const sf0 = Math.min(1, mid / 45), startFade = sf0 * sf0 * (3 - 2 * sf0);                               // 출발점 쪽 잘린 끝도 부드럽게 (얼음 가시가 덮음)
             const u0 = (flip ? len - d1 : d0) / len * sw, u1 = (flip ? len - d0 : d1) / len * sw; // 그림에서 떼어 올 가로 범위
             ctx.globalAlpha = 0.95 * Math.max(0, tailFade) * startFade * (progress > 0.85 ? (1 - progress) / 0.15 : 1);
             ctx.drawImage(SKATE_ICE, u0, 0, Math.max(1, u1 - u0), SKATE_ICE.height, flip ? -d1 : d0, -sh * 0.6, d1 - d0 + 0.6, sh);
@@ -18040,23 +18040,35 @@
         }
         // 출발점: 프리즈에 쓴 얼음 줄기(스케이팅 그림)가 이동 반대쪽(뒤)으로 뻗어 나가 앞으로 튀어나가는 느낌을 냄 + 바닥 파편
         if (FROST_FX.ready && progress < 0.44) {
-          // [뻗는 각도 차이, 길이 배율, 그림, 늦게 시작하는 정도, 빙판 쪽으로 옮긴 거리] — 뒤로 뻗는 줄기들이 빙판 시작 부분 위까지 이어지며 겹침
-          const BACK = [[0, 1.5, 'streak0', 0, 0], [0.22, 1.15, 'streak1', 0.03, 0], [-0.22, 1.15, 'streak1', 0.03, 0], [0.42, 0.8, 'streak0', 0.06, 0], [-0.42, 0.8, 'streak0', 0.06, 0],
-            [0.08, 1.1, 'streak1', 0.02, 16], [-0.1, 1.0, 'streak0', 0.04, 28], [0.05, 0.85, 'streak1', 0.05, 42], [-0.04, 0.75, 'streak0', 0.07, 56], [0.3, 0.7, 'streak1', 0.05, 12], [-0.3, 0.7, 'streak0', 0.05, 20], [0.16, 0.6, 'streak0', 0.08, 70]];
+          // [뻗는 각도 차이, 길이 배율, 그림, 늦게 시작하는 정도, 빙판 쪽으로 옮긴 거리, 옆으로 옮긴 거리(빙판 두께 방향: 음수 = 위쪽)] — 뒤로 뻗는 줄기들이 빙판 시작 부분의 위아래 전체와 겹침
+          const BACK = [[0, 1.5, 'streak0', 0, 0, -6], [0.22, 1.15, 'streak1', 0.03, 0, -14], [-0.22, 1.15, 'streak1', 0.03, 0, 4], [0.42, 0.8, 'streak0', 0.06, 0, -22], [-0.42, 0.8, 'streak0', 0.06, 0, 10],
+            [0.08, 1.1, 'streak1', 0.02, 16, -24], [-0.1, 1.0, 'streak0', 0.04, 28, -16], [0.05, 0.85, 'streak1', 0.05, 42, -26], [-0.04, 0.75, 'streak0', 0.07, 56, -10], [0.3, 0.7, 'streak1', 0.05, 12, -30], [-0.3, 0.7, 'streak0', 0.05, 20, -2], [0.16, 0.6, 'streak0', 0.08, 70, -20],
+            [0.12, 1.0, 'streak0', 0.03, 8, -34], [-0.06, 0.9, 'streak1', 0.05, 30, -32], [0.0, 0.8, 'streak1', 0.06, 50, -34]];
           const sp = progress / 0.34;
           ctx.save();
           ctx.filter = 'saturate(0.45)';
           ctx.globalAlpha = progress < 0.34 ? 1 : 1 - (progress - 0.34) / 0.1;
           ctx.translate(ef.sx + Math.cos(ang) * 22, ef.sy + 8 + Math.sin(ang) * 22 * 0.6); // 빙판 시작 부분에 더 겹치도록 앞쪽으로
-          BACK.forEach(([da, z, nm, dl, off]) => {
+          const px = -Math.sin(ang), py = Math.cos(ang); // 빙판 두께 방향
+          BACK.forEach(([da, z, nm, dl, off, lat]) => {
             const lp = Math.min(1, Math.max(0, (sp - dl) / (1 - dl)));
             if (lp <= 0) return;
             ctx.save();
-            ctx.translate(Math.cos(ang) * off, Math.sin(ang) * off * 0.6);
+            ctx.translate(Math.cos(ang) * off + px * lat, Math.sin(ang) * off * 0.6 + py * lat);
             ctx.scale(1, 0.6);                    // 바닥에 눌린 원근
             ctx.rotate(ang + Math.PI + da);        // 이동 반대쪽
             const g = Math.min(1, lp / 0.35);      // 처음 빠르게 뻗고
             drawFrostFx(ctx, nm, 0, 0, z * (0.35 + 0.65 * g), z * (0.7 + 0.3 * g), 1 - Math.max(0, (lp - 0.6) / 0.4));
+            ctx.restore();
+          });
+          // 빙판의 잘린 시작 모서리(위·아래 전체)를 덮는 작은 얼음 가시: 시작 선을 따라 솟았다가 낮아짐
+          [[-30, 0.55, 2], [-22, 0.6, 1], [-14, 0.65, 2], [-6, 0.6, 1], [2, 0.6, 2], [10, 0.5, 1]].forEach(([lat, z, v], i) => {
+            const lp = Math.min(1, Math.max(0, (sp - 0.02 * i) / (1 - 0.02 * i)));
+            if (lp <= 0) return;
+            const stage = lp < 0.2 ? 'spike0' : lp < 0.6 ? (v === 2 ? 'spike2' : 'spike1') : 'spike3';
+            const wx = px * lat - Math.cos(ang) * 14, wy = py * lat * 0.9 + 6 - Math.sin(ang) * 8;
+            ctx.save(); ctx.translate(wx, wy); ctx.scale(i % 2 ? -1 : 1, 1);
+            drawFrostFx(ctx, stage, 0, 0, z * Math.min(1, lp / 0.25), z * Math.min(1, lp / 0.25), 1 - Math.max(0, (lp - 0.7) / 0.3));
             ctx.restore();
           });
           for (let i = 0; i < 10; i++) { // 출발점 앞뒤(빙판 위 약 70px까지)로 흩어지는 얼음 파편
