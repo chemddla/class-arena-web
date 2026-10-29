@@ -6261,9 +6261,17 @@
       img.src = `assets/sprites/fx/${file}.webp`;
       LANCER_MUSOU_FX[k] = img;
     });
-    function drawMusouFrame(ctx, name, w, h = null) { // 기준점이 (0,0)에 오게, 가로 w에 맞춰 그림 (h 없으면 비율 유지)
-      const f = LANCER_MUSOU_FX.frames[name], k = w / f[2], kh = h === null ? k : h / f[3];
-      ctx.drawImage(LANCER_MUSOU_FX.fx, f[0], f[1], f[2], f[3], -f[4] * k, -f[5] * kh, f[2] * k, f[3] * kh);
+    // 시크릿 레어 창병 전용 검붉은 이펙트: 다중 찌르기 · 상승 베기(초승달) · 회전 참격 · 돌진 참격 · 강타 휘두르기 (기준점 = 한가운데)
+    LANCER_MUSOU_FX.sr = { img: new Image(), frames: {
+      cross: [0, 0, 144, 141, 72, 70], crescent: [146, 0, 130, 178, 65, 89], spin: [278, 0, 137, 87, 68, 43], dash: [417, 0, 139, 78, 69, 39], swing: [558, 0, 141, 136, 70, 68]
+    } };
+    LANCER_MUSOU_FX.sr.img.onload = () => { LANCER_MUSOU_FX.sr.ready = true; };
+    LANCER_MUSOU_FX.sr.img.src = 'assets/sprites/fx/lancer_musou_sr_fx.webp';
+    const usesMusouSr = u => Boolean(u && u.job === 'lancer' && !u.monsterType && isSecretRare(u.rarity) && LANCER_MUSOU_FX.sr.ready);
+    function drawMusouFrame(ctx, name, w, h = null, sr = false) { // 기준점이 (0,0)에 오게, 가로 w에 맞춰 그림 (h 없으면 비율 유지)
+      const set = sr ? LANCER_MUSOU_FX.sr : LANCER_MUSOU_FX, art = sr ? set.img : LANCER_MUSOU_FX.fx;
+      const f = set.frames[name], k = w / f[2], kh = h === null ? k : h / f[3];
+      ctx.drawImage(art, f[0], f[1], f[2], f[3], -f[4] * k, -f[5] * kh, f[2] * k, f[3] * kh);
     }
     // 무쌍난무 자세 그림 — 시크릿 레어(sr1, 붉은 용인): 칸 구성은 기본 외형 cast와 같음 (초승달·찌르기 바람 때문에 칸이 넓음)
     const LANCER_MUSOU_SKINS = {};
@@ -17092,7 +17100,7 @@
         unit.castLock = 0;
         unit.rush = null;
         sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: HIDDEN_MUSOU_RADIUS, color: '#facc15', life: 34, maxLife: 34 });
-        sim.effects.push({ type: 'hidden_musou_boom', x: unit.x, y: unit.y + 8, life: 36, maxLife: 36 });
+        sim.effects.push({ type: 'hidden_musou_boom', x: unit.x, y: unit.y + 8, sr: usesMusouSr(unit), life: 36, maxLife: 36 });
         hiddenImpact(16, '#fef08a');
         playCombatSfx('heavy');
         addBattleLog(`⚡ [창병] ${unit.name}의 히든 스킬 무쌍난무! (10초)`);
@@ -17154,8 +17162,8 @@
           });
         }
         if (u.musou && (u.musou.left % HIDDEN_MUSOU_HIT_TICKS === 0) && !(u.statuses.stun > 0) && !(u.statuses.freeze > 0)) {
-          const hitNo = Math.round(u.musou.left / HIDDEN_MUSOU_HIT_TICKS);
-          sim.effects.push({ type: 'hidden_musou_slash', f: hitNo % 2 ? 'swooshA' : 'swooshB', x: u.x, y: u.y - 14, w: HIDDEN_MUSOU_RADIUS * 2.4,
+          const hitNo = Math.round(u.musou.left / HIDDEN_MUSOU_HIT_TICKS), sr = usesMusouSr(u);
+          sim.effects.push({ type: 'hidden_musou_slash', f: sr ? ['crescent', 'swing', 'spin'][hitNo % 3] : (hitNo % 2 ? 'swooshA' : 'swooshB'), sr, x: u.x, y: u.y - 14, w: HIDDEN_MUSOU_RADIUS * 2.4,
             flip: hitNo % 4 >= 2, flipY: hitNo % 3 === 0, rot: (Math.random() - 0.5) * 1.2, life: 16, maxLife: 16 });
           u.attackAnim = 14;
           u.maxAttackAnim = 14;
@@ -17164,7 +17172,7 @@
             if (!e.alive || e.team === u.team || unitDist(e, u) > HIDDEN_MUSOU_RADIUS) return;
             suppressHitKnockback = true;
             try { applyDamage(u, e, u.atk * 2.0); } finally { suppressHitKnockback = false; }
-            sim.effects.push({ type: 'hidden_musou_x', f: hitNo % 2 ? 'xBig' : 'xSmall', x: e.x, y: e.y - 20, w: 105, rot: (Math.random() - 0.5) * 1.6, life: 14, maxLife: 14 });
+            sim.effects.push({ type: 'hidden_musou_x', f: sr ? 'cross' : (hitNo % 2 ? 'xBig' : 'xSmall'), sr, x: e.x, y: e.y - 20, w: 105, rot: (Math.random() - 0.5) * 1.6, life: 14, maxLife: 14 });
             if (e.alive && !(e.statuses.fear > 30)) inflictStatus(u, e, 'fear', HIDDEN_MUSOU_FEAR_TICKS);
           }));
         }
@@ -17235,7 +17243,8 @@
       const to = clampToArena(foe.x + Math.cos(ang) * over, foe.y + Math.sin(ang) * over);
       const dist = Math.hypot(to.x - u.x, to.y - u.y);
       sniperFace(u, ang);
-      sim.effects.push({ type: 'hidden_musou_dash', f: Math.random() < 0.5 ? 'streakA' : 'streakB', sx: u.x, sy: u.y, tx: to.x, ty: to.y, life: 18, maxLife: 18 });
+      const sr = usesMusouSr(u);
+      sim.effects.push({ type: 'hidden_musou_dash', f: sr ? 'dash' : (Math.random() < 0.5 ? 'streakA' : 'streakB'), sr, sx: u.x, sy: u.y, tx: to.x, ty: to.y, life: 18, maxLife: 18 });
       startUnitRush(u, to.x, to.y, Math.max(8, Math.min(22, Math.round(dist / 18))));
     }
 
@@ -17626,9 +17635,20 @@
       // 무쌍난무 이펙트 (그림이 없으면 아무것도 그리지 않음)
       if (ef.type === 'hidden_musou_boom' || ef.type === 'hidden_musou_slash' || ef.type === 'hidden_musou_x' || ef.type === 'hidden_musou_dash') {
         if (!LANCER_MUSOU_FX.fx.ready) return;
-        ctx.globalCompositeOperation = 'lighter';
+        const sr = Boolean(ef.sr); // 시크릿 레어: 검붉은 그림이라 가산 합성 대신 보통으로 겹쳐 짙은 색을 살림
+        ctx.globalCompositeOperation = sr ? 'source-over' : 'lighter';
         ctx.imageSmoothingEnabled = true;
-        if (ef.type === 'hidden_musou_boom') {
+        if (ef.type === 'hidden_musou_boom' && sr) {
+          // 발동: 회전 참격 고리 둘이 바닥에서 엇갈려 돌며 퍼짐
+          ctx.translate(ef.x, ef.y - 10);
+          for (let i = 0; i < 2; i++) {
+            ctx.save();
+            ctx.scale(i ? -1 : 1, 0.75);
+            ctx.globalAlpha = fade * (i ? 0.6 : 0.85);
+            drawMusouFrame(ctx, 'spin', (110 + progress * 240) * (i ? 0.8 : 1), null, true);
+            ctx.restore();
+          }
+        } else if (ef.type === 'hidden_musou_boom') {
           // 발동: 바닥에 금빛 폭발 + 퍼지는 소용돌이
           ctx.translate(ef.x, ef.y);
           ctx.save();
@@ -17643,19 +17663,30 @@
         } else if (ef.type === 'hidden_musou_slash') {
           // 난무 한 번: 몸 둘레에 초승달 바람 (좌우·위아래를 번갈아)
           ctx.translate(ef.x, ef.y);
-          ctx.scale(ef.flip ? -1 : 1, ef.flipY ? -1 : 1);
-          ctx.rotate(ef.rot);
-          ctx.globalAlpha = Math.min(1, fade * 1.8) * 0.9;
-          drawMusouFrame(ctx, ef.f, ef.w * (0.85 + 0.25 * progress));
+          const flat = ef.f === 'spin'; // 회전 참격은 바닥 원근 그대로 (뒤집거나 기울이지 않음)
+          ctx.scale(ef.flip ? -1 : 1, ef.flipY && !flat ? -1 : 1);
+          if (!flat) ctx.rotate(ef.rot);
+          ctx.globalAlpha = Math.min(1, fade * 1.8) * (sr ? 0.75 : 0.9); // 시크릿 레어 초승달은 짙어서 캐릭터가 비치게 옅게
+          const wk = sr ? { crescent: 0.5, swing: 0.62, spin: 0.85 }[ef.f] : 1; // 초승달·강타는 세로로 길어 가로를 줄임
+          drawMusouFrame(ctx, ef.f, ef.w * wk * (0.85 + 0.25 * progress), null, sr);
         } else if (ef.type === 'hidden_musou_x') {
           // 맞은 적 위에 엑스 베기
           ctx.translate(ef.x, ef.y);
           ctx.rotate(ef.rot);
-          ctx.globalAlpha = Math.min(1, fade * 2);
-          drawMusouFrame(ctx, ef.f, ef.w * (0.6 + 0.55 * Math.min(1, progress * 2.5)));
+          ctx.globalAlpha = Math.min(1, fade * 2) * (sr ? 0.9 : 1);
+          drawMusouFrame(ctx, ef.f, ef.w * (0.6 + 0.55 * Math.min(1, progress * 2.5)), null, sr);
         } else {
           // 돌진 경로를 따라 바람 줄기 (달려가는 반대쪽으로 꼬리)
           const dx = ef.tx - ef.sx, dy = ef.ty - ef.sy, len = Math.hypot(dx, dy) || 1;
+          if (sr) {
+            // 시크릿 레어: 늘리면 앞쪽 참격이 가늘어지므로 비율을 지키고, 참격 머리가 돌진 끝에 오게 놓음
+            const w = Math.min(len + 60, 210), back = w / 2 - 30;
+            ctx.translate(ef.tx - dx / len * back, ef.ty - dy / len * back - 10);
+            ctx.rotate(Math.atan2(dy, dx));
+            ctx.globalAlpha = fade * 0.8;
+            drawMusouFrame(ctx, ef.f, w * (0.9 + 0.1 * (1 - progress)), null, true);
+            return;
+          }
           ctx.translate((ef.sx + ef.tx) / 2, (ef.sy + ef.ty) / 2 - 10);
           ctx.rotate(Math.atan2(dy, dx));
           ctx.globalAlpha = fade * 0.85;
