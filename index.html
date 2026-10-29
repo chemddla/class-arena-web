@@ -17815,6 +17815,7 @@
             ctx.restore();
             return;
           }
+          if (c.key === 'blizzard') { ctx.restore(); return; } // 블리자드: 오색 구슬 대신 발밑 눈꽃 소환진만 씀 (유닛 그리기)
           const R = 70 + 40 * (1 - p);
           for (let i = 0; i < 7; i++) { // 빨주노초파남보
             const a = t * 0.08 + i * Math.PI * 2 / 7;
@@ -17907,19 +17908,24 @@
         ctx.lineWidth = 5;
         ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
         if (FROST_FX.ready) {
-          // 그림 얼음 가시: 가운데 큰 기둥 → 안쪽 고리 → 바깥 고리 순으로 물결치듯 솟고, 가시마다 모양(키 큰/넓은/빠른)·크기·좌우가 달라 가라앉는 때도 제각각
-          // 단계 순서: 키 큰 = 싹 → 퍼짐 → 우뚝 → 부서짐, 넓은 = 싹 → 퍼짐 → 퍼짐 → 부서짐, 빠른 = 싹 → 우뚝 → 우뚝 → 부서짐
+          // 그림 얼음 가시: 가운데를 기점으로 사방 무작위 자리에 촘촘히 솟음 (자리·크기·좌우·모양은 처음 그릴 때 한 번 뽑음. 가운데에 가까울수록 먼저)
+          // 모양(단계 순서): 키 큰 · 넓은 · 빠른 우뚝 · 작은 조각 · 퍼짐만 — 가시마다 솟는 때와 가라앉는 때가 제각각
           ctx.scale(1, 1 / 0.55);
-          const SEQ = [['spike0', 'spike1', 'spike2', 'spike3'], ['spike0', 'spike1', 'spike1', 'spike3'], ['spike0', 'spike2', 'spike2', 'spike3']];
-          const spots = [{ x: 0, y: 0, z: 1.25, d: 0, v: 0, fl: 1 }];
-          for (let k = 0; k < 7; k++) { const a = (k / 7) * Math.PI * 2 + 0.5; spots.push({ x: Math.cos(a) * r * 0.5, y: Math.sin(a) * r * 0.5 * 0.55, z: 0.9 + (k % 2) * 0.2, d: 0.1 + (k % 3) * 0.02, v: k % 3, fl: k % 2 ? -1 : 1 }); }
-          for (let k = 0; k < 14; k++) { const a = (k / 14) * Math.PI * 2 + 0.2; spots.push({ x: Math.cos(a) * r, y: Math.sin(a) * r * 0.55, z: 0.7 + (k % 3) * 0.12, d: 0.2 + (k % 4) * 0.03, v: (k + 1) % 3, fl: k % 2 ? -1 : 1 }); }
-          spots.sort((p, q) => p.y - q.y).forEach(sp => {
+          const SEQ = [['spike0', 'spike1', 'spike2', 'spike3'], ['spike0', 'spike1', 'spike1', 'spike3'], ['spike0', 'spike2', 'spike2', 'spike3'], ['spike0', 'spike0', 'spike3', 'spike3'], ['spike1', 'spike1', 'spike3', 'spike3']];
+          if (!ef.spots) {
+            ef.spots = [{ x: 0, y: 0, z: 1.3, d: 0, v: 0, fl: 1, g: 1 }];
+            for (let k = 0; k < 46; k++) {
+              const a = Math.random() * Math.PI * 2, dist = Math.sqrt(Math.random()); // 면적 기준 고르게
+              const big = dist < 0.45 && Math.random() < 0.6;
+              ef.spots.push({ x: Math.cos(a) * dist, y: Math.sin(a) * dist, z: big ? 1 + Math.random() * 0.35 : 0.45 + Math.random() * 0.6, d: dist * 0.3 + Math.random() * 0.14, v: Math.floor(Math.random() * SEQ.length), fl: Math.random() < 0.5 ? -1 : 1, g: 0.18 + Math.random() * 0.22 });
+            }
+          }
+          ef.spots.slice().sort((p, q) => p.y - q.y).forEach(sp => {
             const lp = (progress - sp.d) / (1 - sp.d);
             if (lp <= 0) return;
             const stage = SEQ[sp.v][lp < 0.16 ? 0 : lp < 0.42 ? 1 : lp < 0.74 ? 2 : 3];
-            const gr = Math.min(1, lp / 0.3) * sp.z;
-            ctx.save(); ctx.translate(sp.x, sp.y + 6); ctx.scale(sp.fl, 1);
+            const gr = Math.min(1, lp / sp.g) * sp.z * (r / ef.r);
+            ctx.save(); ctx.translate(sp.x * r, sp.y * r * 0.55 + 6); ctx.scale(sp.fl, 1);
             drawFrostFx(ctx, stage, 0, 0, gr, gr, fade);
             ctx.restore();
           });
@@ -18928,7 +18934,6 @@
           sim.floatTexts.push({ x: unit.x, y: unit.y - 52, text: '🧊 빗나감 (너무 멀어요)', color: '#64748b', life: 40 });
           return true;
         }
-        sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y - 12, tx: foe.x, ty: foe.y - 12, color: '#7dd3fc', life: 18, maxLife: 18, warp: true });
         sim.effects.push({ type: 'ice_shatter', spr: 'ice_hit', x: foe.x, y: foe.y, r: 70, life: 40, maxLife: 40 });
         sim.effects.push({ type: 'frost_cube', x: foe.x, y: foe.y - 14, life: 44, maxLife: 44 });
         applyDamage(unit, foe, unit.atk * FROST_DEEP_DMG, '🧊', '#0284c7');
@@ -20643,6 +20648,25 @@
         const footY = useSprite ? 16 : -8 + tokenR + 4;
         const iceH = (footY - (useSprite ? headTopY : -8 - tokenR)) * 1.12 * (1.12 - 0.12 * pop);
         const iceW = iceH * FREEZE_ICE_IMG.width / FREEZE_ICE_IMG.height;
+        if (FROST_FX.ready) {
+          // 동결 스킬 이펙트 중첩: 얼어 있는 동안 발밑에 프리즈 얼음 가시가 솟아 남아 있음 (풀리기 직전엔 가라앉음). 자리·모양은 유닛마다 고정
+          const seed = (u.id != null ? Number(String(u.id).replace(/\D/g, '')) || 0 : 0) + 1;
+          const rnd = i => { const x = Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453; return x - Math.floor(x); };
+          const spikeFade = Math.min(1, st.freeze / 20);
+          ctx.save();
+          for (let i = 0; i < 9; i++) {
+            const a = rnd(i) * Math.PI * 2, d = 0.25 + rnd(i + 20) * 0.75;
+            const delay = i * 2 + rnd(i + 40) * 6, lp = Math.min(1, Math.max(0, (u.iceFxAge - delay) / 10));
+            if (lp <= 0) continue;
+            const stage = lp < 0.5 ? 'spike0' : (i % 3 === 0 ? 'spike2' : i % 3 === 1 ? 'spike1' : 'spike2');
+            const sc = (0.35 + rnd(i + 60) * 0.3) * (lp < 0.5 ? 1 : 1) * (1 - 0.5 * (1 - spikeFade));
+            ctx.globalAlpha = spikeFade;
+            ctx.save(); ctx.translate(Math.cos(a) * d * tokenR * 1.4, footY + jumpY - 2 + Math.sin(a) * d * tokenR * 0.5); ctx.scale(rnd(i + 80) < 0.5 ? -1 : 1, 1);
+            drawFrostFx(ctx, stage, 0, 0, sc, sc * lp);
+            ctx.restore();
+          }
+          ctx.restore();
+        }
         ctx.save();
         ctx.globalAlpha = Math.min(1, st.freeze / 20) * (0.35 + 0.65 * pop) * (0.92 + 0.08 * Math.sin(tick * 0.09));
         ctx.drawImage(FREEZE_ICE_IMG, -iceW / 2, footY + jumpY - iceH, iceW, iceH);
