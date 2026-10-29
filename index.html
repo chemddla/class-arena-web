@@ -14640,6 +14640,76 @@
       });
     }
 
+    // ===== 직업 특성에 맞춘 용병 AI (몬스터·엘리트 보스는 예전 판단 그대로 → 탑 난이도 유지) =====
+    function isMercAI(u) {
+      return Boolean(u && !u.monsterType && !u.isEliteBoss);
+    }
+    const AI_SQUISHY_JOBS = ['healer', 'mage', 'archer', 'sniper']; // 후열 (체력·방어가 낮음)
+    const AI_TANK_JOBS = ['knight', 'warrior', 'lancer'];           // 앞에서 버티는 직업
+    // 직업별 타겟 점수 보정 (작을수록 먼저 노림): 도적은 후열 암살(성녀 최우선)·단단한 기사는 피함
+    // (궁수·마법사·전사 등에 마무리·뭉친 적 보정도 시험했지만 집중 공격이 흩어져 탑 승률이 떨어져서 뺌)
+    function jobTargetBias(unit, e) {
+      if (unit.job !== 'rogue') return 0;
+      let b = 0;
+      if (e.job === 'healer') b -= 150;
+      else if (AI_SQUISHY_JOBS.includes(e.job)) b -= 100;
+      if (e.job === 'knight') b += 120;
+      return b;
+    }
+    // 성녀 치유 대상: 체력 비율이 낮은 아군 + 적이 몰려 노리는 아군 + 앞에서 버티는 탱커. 사거리 밖이면 조금 뒤로
+    function pickHealTarget(unit, hurt, enemies) {
+      const focus = {};
+      enemies.forEach(e => { if (e.lastTargetId) focus[e.lastTargetId] = (focus[e.lastTargetId] || 0) + 1; });
+      const scoreOf = a => {
+        let s = a.hp / a.maxHp;
+        s -= Math.min(2, focus[a.id] || 0) * 0.08;
+        if (AI_TANK_JOBS.includes(a.job)) s -= 0.04;
+        if (a !== unit && unitDist(a, unit) > unit.range + 40) s += 0.12;
+        s += Math.min(0.15, (a.shield || 0) / a.maxHp); // 보호막이 있으면 덜 급함
+        return s;
+      };
+      return hurt.reduce((best, a) => (!best || scoreOf(a) < scoreOf(best) ? a : best), null);
+    }
+    // 끊을 수 있는 적의 시전이 남은 틱 (히든 스킬은 끊기지 않아 0)
+    function interruptibleCastLeft(e) {
+      return e.casting && !isCastingHiddenSkill(e) ? e.casting.left : 0;
+    }
+    // 시전 끊기에 쓰는 기절·빙결·끌어오기 스킬이 닿는 거리
+    function interruptReach(unit, key) {
+      switch (key) {
+        case 'stun_strike': return stunStrikeReach(unit);
+        // 돌진류는 멀리 있는 시전자를 쫓아 적진 깊이 뛰어들지 않게 가까운 적만
+        case 'charge': return unit.range + GRID_CELL_SIZE;
+        case 'shield_rush': return GRID_CELL_SIZE * 1.5;
+        case 'javelin': return LANCER_JAVELIN_RANGE - 60;
+        case 'ice_arrow': return unit.range + 80;
+        default: return 0;
+      }
+    }
+    // 적이 긴 시전(도발·은신·투창·부활 등)을 하고 있으면, 맞히기 전에 끝나지 않을 때만 기절·빙결로 끊음
+    function aiInterruptPlan(unit, enemies) {
+      if (!isMercAI(unit)) return null;
+      // 1초 이상 걸리는 시전만 (짧은 시전은 끊어 봐야 이득이 적음)
+      const casters = enemies.filter(e => interruptibleCastLeft(e) > 0 && e.casting.total >= 60 && !(e.statuses.stun > 0) && !(e.statuses.freeze > 0));
+      if (!casters.length) return null;
+      const book = unitSkillBook(unit);
+      let best = null;
+      aiReadySkillKeys(unit).forEach(key => {
+        const reach = interruptReach(unit, key);
+        if (!reach) return;
+        const castTicks = Math.round((book[key].castSec || 0) * 60);
+        casters.forEach(e => {
+          const d = unitDist(e, unit);
+          if (d > reach) return;
+          const travel = key === 'javelin' ? d / 5.2 : (key === 'ice_arrow' ? d / 3.0 : (key === 'stun_strike' ? 4 : 24));
+          if (e.casting.left < castTicks + travel + 6) return;
+          const prio = e.casting.total - d * 0.01; // 길게 시전하는(위험한) 스킬부터, 같으면 가까운 적
+          if (!best || prio > best.prio) best = { key, foe: e, prio };
+        });
+      });
+      return best;
+    }
+
     function pickTarget(unit, allies, enemies) {
       // 기사에게 도발당하면 그 기사만 노림 (성녀도 치유하지 못하고 기사를 공격)
       const taunter = tauntSourceOf(unit);
@@ -14655,6 +14725,7 @@
       if (unit.job === 'healer') {
         const hurtAllies = allies.filter(a => a.hp < a.maxHp);
         if (hurtAllies.length > 0) {
+          if (isMercAI(unit)) return pickHealTarget(unit, hurtAllies, enemies);
           return hurtAllies.sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
         }
         return [...allies].sort((a, b) => (unit.team === 'blue' ? b.x - a.x : a.x - b.x))[0] || unit;
@@ -14662,6 +14733,7 @@
       if (unit.targetRule === 'ally_low') {
         const hurtAllies = allies.filter(a => a.hp < a.maxHp * 0.94);
         if (hurtAllies.length > 0) {
+          if (isMercAI(unit)) return pickHealTarget(unit, hurtAllies, enemies);
           return hurtAllies.sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
         }
       }
@@ -14672,8 +14744,10 @@
         return [...enemies].sort((a, b) => a.hp - b.hp)[0];
       }
       if (unit.targetRule === 'backline') {
-        const backliners = enemies.filter(e => e.job === 'archer' || e.job === 'healer' || e.job === 'mage');
+        const backliners = enemies.filter(e => AI_SQUISHY_JOBS.includes(e.job));
         if (backliners.length > 0) {
+          // 용병은 후열 중에서도 마무리하기 쉬운·사거리 안의 적을 골라 노림 (예전처럼 가장 가까운 후열만 고집하지 않음)
+          if (isMercAI(unit)) return pickSmartEnemyTarget(unit, allies, backliners);
           return backliners.sort((a, b) => unitDist(a, unit) - unitDist(b, unit))[0];
         }
       }
@@ -14736,12 +14810,14 @@
       allies.forEach(a => {
         if (a !== unit && a.lastTargetId) focusCount[a.lastTargetId] = (focusCount[a.lastTargetId] || 0) + 1;
       });
+      const merc = isMercAI(unit);
       const scoreOf = e => {
         const d = unitDist(e, unit);
         let score = d + (e.hp / e.maxHp) * 220;
         if (d <= unit.range + 20) score -= 70;
         if (e.statuses.stun > 0 || e.statuses.freeze > 0) score -= 90;
         score -= Math.min(2, focusCount[e.id] || 0) * 45;
+        if (merc) score += jobTargetBias(unit, e);
         return score;
       };
       let best = null;
@@ -15041,24 +15117,33 @@
     }
 
     // 전략적 AI 스킬 판단 함수 (Requirement 5 & 7)
-    function selectStrategicSkillToCast(unit, allies, enemies, primaryTarget, distToPrimary) {
-      if (!unit.unlockedSkills || unit.unlockedSkills.length === 0) return null;
-      if (unit.castLock > 0) return null;
-      if (unit.sbNoSkill) return null; // 테스트 전장: 이 유닛은 스킬을 자동으로 쓰지 않음
-      if (tauntSourceOf(unit)) return null; // 도발당하면 스킬을 못 씀
-      if (lancerBusy(unit)) return null; // 창병 회전·난무 중에는 스킬을 못 씀
+    // AI가 지금 바로 쓸 수 있는 스킬 키 목록 (쿨타임·마나·도발·시전 잠금 등을 모두 확인)
+    function aiReadySkillKeys(unit) {
+      if (!unit.unlockedSkills || unit.unlockedSkills.length === 0) return [];
+      if (unit.castLock > 0) return [];
+      if (unit.sbNoSkill) return []; // 테스트 전장: 이 유닛은 스킬을 자동으로 쓰지 않음
+      if (tauntSourceOf(unit)) return []; // 도발당하면 스킬을 못 씀
+      if (lancerBusy(unit)) return []; // 창병 회전·난무 중에는 스킬을 못 씀
 
       const jobSkills = unitSkillBook(unit);
-      const readySkills = unit.unlockedSkills.filter(skKey => {
+      return unit.unlockedSkills.filter(skKey => {
         const skObj = jobSkills[skKey];
         if (!skObj) return false;
         if (unit.sbBlockSkills && unit.sbBlockSkills[skKey]) return false; // 테스트 전장: 자동 사용을 막은 스킬
         const cdLeft = unit.skillCooldowns?.[skKey] || 0;
         return cdLeft <= 0 && unit.mana >= skObj.manaCost;
       });
+    }
+    // 한 명만 때리는 피해 스킬: 다음 기본 공격으로 쓰러질 적에게는 아껴 둠 (용병 AI)
+    const AI_SINGLE_DMG_SKILLS = ['rapid_fire', 'rend', 'shuriken'];
 
+    function selectStrategicSkillToCast(unit, allies, enemies, primaryTarget, distToPrimary) {
+      const readySkills = aiReadySkillKeys(unit);
       if (readySkills.length === 0) return null;
       const autonomousPool = [...readySkills].sort(() => Math.random() - 0.5);
+      const overkill = isMercAI(unit) && primaryTarget && primaryTarget.team !== unit.team
+        && distToPrimary <= unit.range + 14 && unit.cooldown <= 10
+        && primaryTarget.hp + (primaryTarget.shield || 0) <= unit.atk * 0.7;
 
       let bestSkill = null;
       let bestScore = -1;
@@ -15180,6 +15265,8 @@
           }
         }
 
+        if (overkill && AI_SINGLE_DMG_SKILLS.includes(skKey)) score = -1;
+
         if (score > bestScore) {
           bestScore = score;
           bestSkill = skKey;
@@ -15260,7 +15347,7 @@
           const unstunned = inReach.filter(e => e.statuses.stun <= 35 && e.statuses.freeze <= 35);
           target = aimMode === 'target'
             ? (target && inReach.includes(target) ? target : null)
-            : (unstunned[0] || (target && inReach.includes(target) ? target : inReach[0]) || null);
+            : ((target && unstunned.includes(target) ? target : unstunned[0]) || (target && inReach.includes(target) ? target : inReach[0]) || null);
           if (!target) {
             sim.floatTexts.push({ x: unit.x, y: unit.y - 52, text: '🔨 빗나감 (너무 멀어요)', color: '#64748b', life: 40 });
             return;
@@ -15310,7 +15397,9 @@
         } else if (sk === 'charge') {
           // 전사 돌진 스킬: 최대 2칸(240px) 전방 돌격! (Requirement 1)
           const inReachEnemies = enemies.filter(e => unitDist(e, unit) <= CHARGE_SKILL_DISTANCE + unit.range);
-          const dashTarget = inReachEnemies.length > 0
+          // 노리던 적(시전 끊기 대상 등)이 닿으면 그 적에게, 아니면 닿는 적 중 가장 먼 적에게
+          const dashTarget = target && inReachEnemies.includes(target) ? target
+            : inReachEnemies.length > 0
             ? inReachEnemies.sort((a, b) => unitDist(b, unit) - unitDist(a, unit))[0]
             : target;
           if (!dashTarget) return;
@@ -15384,7 +15473,7 @@
           const iceR = 88 * unitAreaScale(unit);
           const unFrozen = aimMode === 'target' ? target : (freezable
             .filter(e => unitDist(e, unit) <= unit.range + 90)
-            .map(e => ({ e, n: freezable.filter(o => Math.hypot(o.x - e.x, o.y - e.y) - unitBodyGap(o) <= iceR * 0.85).length + (e === target ? 0.5 : 0) }))
+            .map(e => ({ e, n: freezable.filter(o => Math.hypot(o.x - e.x, o.y - e.y) - unitBodyGap(o) <= iceR * 0.85).length + (e === target ? 0.5 : 0) + (isMercAI(unit) && interruptibleCastLeft(e) > 20 ? 3 : 0) }))
             .sort((a, b) => b.n - a.n)[0]?.e || target);
           sim.projectiles.push({
             projType: 'ice_arrow_proj', spr: unitProjFx(unit, 'ice_arrow_proj'),
@@ -15778,6 +15867,14 @@
 
         // 장비 스킬(Q 발동형): AI 용병은 상황을 보고 알아서 사용
         if (u.itemId && u.itemCd <= 0 && maybeAiUseItem(u, allies, seenEnemies, target, dist)) return;
+
+        // 적이 긴 시전 중이면 기절·빙결 스킬로 먼저 끊음 (용병 AI)
+        const interrupt = aiInterruptPlan(u, seenEnemies);
+        if (interrupt) {
+          beginSkillCast(u, interrupt.key, { x: interrupt.foe.x, y: interrupt.foe.y, target: interrupt.foe });
+          sim.floatTexts.push({ x: u.x, y: u.y - 64, text: '✋ 시전 끊기!', color: '#f59e0b', life: 40 });
+          return;
+        }
 
         // [Requirement 5 & 7: 전략적 AI 멀티 스킬 선택 및 발동]
         const chosenSkill = selectStrategicSkillToCast(u, allies, seenEnemies, target, dist);
