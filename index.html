@@ -3473,7 +3473,7 @@
         icon: '🧊',
         color: '#0284c7',
         roleDesc: '냉기 마법·광역 빙결·보호막',
-        passiveName: '혹한', passiveDesc: '거는 상태이상 지속 시간 2배 · 상태이상 면역인 적에게도 1배로 걸림 (면역 무시)',
+        passiveName: '혹한', passiveDesc: '거는 상태이상 지속 시간 2배 · 상태이상 면역인 적에게도 1배로 걸림 (면역 무시 · 뚫은 상태이상이 끝나면 5초간은 못 뚫음)',
         baseHp: 1400, baseAtk: 54, baseDef: 28, baseSpd: 116, range: 295, maxMana: 100
       }
     };
@@ -14435,8 +14435,10 @@
       const negative = NEGATIVE_STATUSES.includes(statusType);
       const blocked = statusBlockedFor(sourceUnit, targetUnit, statusType);
       // 빙결술사 패시브 혹한: 적에게 거는 나쁜 상태이상은 지속 시간 2배, 면역인 적에게는 면역을 무시하고 1배로
+      // 면역을 뚫어 건 상태이상이 끝나면 5초간은 다시 뚫을 수 없음
+      const frostLocked = blocked && sim.tickCount < (targetUnit.frostPierceLockUntil || 0);
       const frostPassive = negative && sourceUnit && sourceUnit !== targetUnit && jobPassiveOf(sourceUnit).statusDouble;
-      if (blocked && !frostPassive) {
+      if (blocked && (!frostPassive || frostLocked)) {
         if (sim.tickCount - (targetUnit.ccImmuneTextAt ?? -999) > 30) {
           targetUnit.ccImmuneTextAt = sim.tickCount;
           sim.floatTexts.push({ x: targetUnit.x, y: targetUnit.y - 36, text: '🛡️면역!', color: '#e2e8f0', life: 40 });
@@ -14444,6 +14446,7 @@
         return;
       }
       if (frostPassive) durationFrames = blocked ? durationFrames : durationFrames * 2;
+      if (frostPassive && blocked) (targetUnit.frostPierced = targetUnit.frostPierced || {})[statusType] = true;
       // 엘리트 보스가 지속 피해 등에 걸리면 '하나만' 규칙에 기록 (혹한으로 면역을 뚫은 군중제어는 기록하지 않음)
       if (targetUnit.isEliteBoss && negative && sourceUnit !== targetUnit && !blocked && !CC_STATUSES.includes(statusType)) targetUnit.eliteDebuff = statusType;
       // 빙결은 몸집이 클수록 짧아짐: 몸집이 커진 만큼의 50%만 반영 (1배는 그대로, 2배 크기면 ÷1.5, 3배면 ÷2)
@@ -16115,6 +16118,15 @@
         Object.keys(st).forEach(k => {
           if (st[k] > 0) st[k]--;
         });
+        // 빙결술사 혹한으로 면역을 뚫고 건 상태이상이 끝나면 5초간 면역을 못 뚫음
+        if (u.frostPierced) {
+          Object.keys(u.frostPierced).forEach(k => {
+            if (!(st[k] > 0)) {
+              delete u.frostPierced[k];
+              u.frostPierceLockUntil = sim.tickCount + 5 * BATTLE_TICKS_PER_SEC;
+            }
+          });
+        }
         // 엘리트 보스: 걸려 있던 상태이상이 끝나면(정화로 풀려도) 10초간 상태이상 면역
         if (u.eliteDebuff && !(st[u.eliteDebuff] > 0)) {
           u.eliteDebuff = '';
