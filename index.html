@@ -2952,6 +2952,7 @@
       rally:   { id: 'rally',   name: '함성', icon: '📣', color: '#dc2626', desc: '공격력 +20% · 공격 속도 +30% 강화' },
       empower: { id: 'empower', name: '증폭', icon: '🔮', color: '#7c3aed', desc: '공격력 +20% 강화' },
       immune:  { id: 'immune',  name: '면역', icon: '🕊️', color: '#0ea5e9', desc: '상태이상에 걸리지 않음' },
+      resist:  { id: 'resist',  name: '저항', icon: '🔰', color: '#0f766e', desc: '상태이상 절대 면역 (상태이상을 뚫는 효과에도 걸리지 않음 · 가장 높은 면역 단계)' },
       stealth: { id: 'stealth', name: '은신', icon: '🌫️', color: '#64748b', desc: '적에게 보이지 않음 (투사체·범위 공격에는 맞음, AI는 노리지 못함. 엘리트·보스 몬스터는 알아봄)' },
       swift:   { id: 'swift',   name: '신속', icon: '👣', color: '#0d9488', desc: '이동 속도 +50%' },
       skate:   { id: 'skate',   name: '스케이팅', icon: '⛸️', color: '#0ea5e9', desc: '얼음 위를 미끄러지듯 속도(이동 속도·공격 속도) +30% — 빙결술사 [스케이팅]' },
@@ -13308,7 +13309,7 @@
     // 실시간 결투 연결 상태 (아래 [실시간 결투 화면 동기화] 참고)
     const LIVE_FRAME_INTERVAL_MS = 100; // 방장이 화면을 보내는 간격 (실제 시간)
     const LIVE_GUEST_TIMEOUT_MS = 20000;
-    const LIVE_UNIT_ST_KEYS = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'blessed', 'rally', 'empower', 'immune', 'stealth', 'swift', 'taunt', 'guard', 'spin', 'rampage', 'darkness', 'fear', 'confuse', 'miracle', 'slow', 'skate'];
+    const LIVE_UNIT_ST_KEYS = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'blessed', 'rally', 'empower', 'immune', 'resist', 'stealth', 'swift', 'taunt', 'guard', 'spin', 'rampage', 'darkness', 'fear', 'confuse', 'miracle', 'slow', 'skate'];
     const liveNet = {
       role: null, roomId: null, ref: null, minAt: 0, startedAt: 0,
       initReceived: false, lastFrameAt: 0, targets: {}, finished: false,
@@ -14388,6 +14389,7 @@
           rally: 0,
           empower: 0,
           immune: 0,
+          resist: 0,
           stealth: 0,
           swift: 0,
           taunt: 0,
@@ -14407,6 +14409,7 @@
 
     // 상태이상 면역 판정 (글자·기록 없이 걸리는지만). 엘리트 보스는 한 번에 하나·풀린 뒤 10초 면역 규칙도 여기서 봄
     function statusBlockedFor(sourceUnit, targetUnit, statusType) {
+      if ((targetUnit.statuses.resist || 0) > 0 && NEGATIVE_STATUSES.includes(statusType)) return true; // 저항: 절대 면역
       const negative = NEGATIVE_STATUSES.includes(statusType);
       // 정화 면역·기사 방어 태세 중에는 나쁜 상태이상에 걸리지 않음
       if (negative && ((targetUnit.statuses.immune || 0) > 0 || (targetUnit.statuses.guard || 0) > 0)) return true;
@@ -14425,6 +14428,14 @@
 
     function inflictStatus(sourceUnit, targetUnit, statusType, durationFrames) {
       if (!targetUnit || !targetUnit.alive) return;
+      // 저항: 가장 높은 면역 단계. 나쁜 상태이상은 누가 걸든(혹한의 면역 무시 포함) 걸리지 않음
+      if ((targetUnit.statuses.resist || 0) > 0 && NEGATIVE_STATUSES.includes(statusType)) {
+        if (sim.tickCount - (targetUnit.ccImmuneTextAt ?? -999) > 30) {
+          targetUnit.ccImmuneTextAt = sim.tickCount;
+          sim.floatTexts.push({ x: targetUnit.x, y: targetUnit.y - 36, text: '🔰저항!', color: '#0f766e', life: 40 });
+        }
+        return;
+      }
       if (rushPlayerDisableImmune(targetUnit, statusType)) {
         if (sim.tickCount - (targetUnit.ccImmuneTextAt ?? -999) > 30) {
           targetUnit.ccImmuneTextAt = sim.tickCount;
