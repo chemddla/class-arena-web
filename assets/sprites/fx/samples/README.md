@@ -212,3 +212,7 @@
 ## frost_sr1_1~6_src (2026-10-30) — 빙결술사 시크릿 레어 (얼음 여왕·옥좌), 초록 배경
 - 1: 이동 2 · 공격 3(얼음 조각 발사) · 피격 2 · 쓰러짐 3, 2: 아이스애로우(손 앞 마법진), 3: 배리어(링·얼음 돔), 4: 스케이팅, 5: 프리즈(팔 들기·물보라), 6: 동결(가리킴·반짝임·손끝 냉기)
 - 적용: tools/frost_sr1_build.py → merc/frost_sr1.webp (frost_0과 같은 28칸), fx/frost_sr_fx.webp (shard·circle·dome·star = FROST_SR_FX)
+
+## frost_sr1_blizzard_1~4_src (2026-10-30) — 얼음 여왕 블리자드 전용 눈보라 소용돌이, 검은 배경 1024×572
+- 1: 2×2 칸 모음(소용돌이가 모이는 4단계, 4번 칸 = 꽉 찬 소용돌이), 2~4: 팔 두 개가 뻗은 소용돌이 한 장씩 (가장자리가 잘림, ✦ 워터마크)
+- 적용: tools/frost_sr_blizzard_build.py → fx/frost_sr_blizzard.webp (FROST_SR_BLIZZ, 720 칸 4개: 팔 0~2 · 꽉 찬 소용돌이). 잘린 곳은 4번 칸 소용돌이를 중심 둘레로 돌려 채우고 밑에 깔아 이음
