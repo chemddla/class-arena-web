@@ -7,6 +7,7 @@
 #   circle1     = curse_ruin_circle1_src.png  발동할 때 검은 불길이 솟는 마법진 (기준점 = 마법진 가운데)
 #   마법진 샘플 모서리에 잘려 들어온 다른 그림 조각은 지움
 # 따로: curse_ruin_boom_src.png → assets/sprites/fx/curse_ruin_boom.webp  발동 직후 폭발 자세 한 장 (자르지 않고 통째로, 기준점 = 발밑)
+#       curse_ruin_blast_src.webp → assets/sprites/fx/curse_ruin_blast.webp  발동할 때 시전자 주변 바닥에 깔리는 붉은 폭발 (어두운 초록 배경, 좌우 반전, ✦ 워터마크 지움, 기준점 = 가운데 빈 자리)
 # 번개 샘플: 좌우 끝에 잘려 들어온 연기 조각은 지우고, 위쪽에서 잘린 번개는 위로 갈수록 흐리게
 # 프레임 [x, y, w, h, 기준점x, 기준점y]
 import sys, numpy as np
@@ -16,6 +17,8 @@ from scipy import ndimage as ndi
 OUT = 'assets/sprites/fx/curse_ruin_mark_fx.webp'
 OUT_BOOM = 'assets/sprites/fx/curse_ruin_boom.webp'
 BOOM_FOOT = (253, 398)  # 폭발 샘플의 두 발 가운데·발바닥
+OUT_BLAST = 'assets/sprites/fx/curse_ruin_blast.webp'
+BLAST_CENTER = (510, 615)  # 바닥 폭발 샘플의 가운데 빈 자리 (반전 전 좌표)
 # (이름, 파일, 기준점(샘플 좌표, None = 가운데), 지울 왼쪽·오른쪽 x, 위 흐리기 px[, 지울 상자 (x0, y0, x1, y1) 목록])
 SRC = [
     ('mark0', 'curse_ruin_mark0_src.png', None, None, 0),
@@ -69,6 +72,27 @@ def main(folder):
     t, ax, ay = cut(f'{folder}/curse_ruin_boom_src.png', BOOM_FOOT, None, 0, [(0, 0, 605, 3), (0, 470, 605, 473), (0, 0, 3, 473), (602, 0, 605, 473)])  # 샘플 테두리의 가는 검은 선
     Image.fromarray(t, 'RGBA').save(OUT_BOOM, 'WEBP', lossless=True)
     print(f'boom: [{t.shape[1]}, {t.shape[0]}, {ax}, {ay}]')
+    # 바닥 폭발: 배경이 어두운 초록이라 모서리 색을 배경으로 보고, 붉은·검정 그림이라 초록이 빨강의 1/4보다 많은 만큼 반투명
+    im = np.array(Image.open(f'{folder}/curse_ruin_blast_src.webp').convert('RGB')).astype(float)
+    ring = np.zeros(im.shape[:2], bool); ring[628:692, 888:952] = True; ring[634:686, 894:946] = False
+    im[634:686, 894:946] = np.median(im[ring], axis=0)  # ✦ 워터마크는 검은 구름 위라 주변 색으로 메움
+    key = np.median(np.concatenate([im[:20, :20].reshape(-1, 3), im[:20, -20:].reshape(-1, 3)]), axis=0)
+    r, g = im[..., 0], im[..., 1]
+    d = np.sqrt(((im - key) ** 2).sum(axis=2))
+    a = np.minimum(np.clip((d - 12) / 60, 0, 1), np.clip(1 - (g - 0.25 * r) / (key[1] - 0.25 * key[0]), 0, 1))
+    m = a > 0.05
+    lab, n = ndi.label(m)
+    areas = ndi.sum(m, lab, range(1, n + 1))
+    a = np.where(np.isin(lab, 1 + np.where(areas >= 10)[0]), a, 0)
+    al = np.maximum(a, 1e-3)[..., None]
+    rgb = np.where(a[..., None] < 1, key + (im - key) / al, im).clip(0, 255)
+    rgb[..., 1] = np.minimum(rgb[..., 1], np.maximum(rgb[..., 0], rgb[..., 2]))
+    t = np.dstack([rgb, a * 255])[:, ::-1]  # 좌우 반전
+    ys, xs = np.where(t[..., 3] > 12)
+    t = t[ys.min():ys.max() + 1, xs.min():xs.max() + 1].astype(np.uint8)
+    cx, cy = im.shape[1] - 1 - BLAST_CENTER[0], BLAST_CENTER[1]
+    Image.fromarray(t, 'RGBA').save(OUT_BLAST, 'WEBP', lossless=True)
+    print(f'blast: [{t.shape[1]}, {t.shape[0]}, {cx - xs.min()}, {cy - ys.min()}]')
 
 
 if __name__ == '__main__':

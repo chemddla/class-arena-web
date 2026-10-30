@@ -6241,8 +6241,8 @@
     // - reaper: 붉은 번개 소용돌이 속 사신 [w, h, 기준점x, 기준점y] (적에게 걸 때·터질 때, 기준점 = 바닥 가운데)
     // fs = 칸별 배율 (해골 가면 크기를 대기 자세에 맞춤: 샘플 칸마다 캐릭터 크기가 조금씩 달라서)
     const CURSE_RUIN_FX = { cellW: 272, cellH: 269, anchorX: 95, anchorY: 218, standH: 72, fs: [0.88, 0.88, 0.9, 0.87, 0.94], reaper: [151, 125, 78, 117],
-      boom: [599, 467, 250, 395], boomK: 0.296 }; // boom = 폭발 자세 통째 그림 (tools/curse_ruin_mark_build.py) [w, h, 발x, 발y], boomK = 크기 1일 때 그림 1px의 월드 px (해골 가면을 대기 자세에 맞춤) // standH = curse_0 standH와 같은 비율 (89 × 70/87)
-    [['cast', 'curse_ruin_cast'], ['reaperImg', 'curse_ruin_fx'], ['boomImg', 'curse_ruin_boom']].forEach(([k, file]) => {
+      boom: [599, 467, 250, 395], boomK: 0.296, blast: [976, 764, 513, 614] }; // blast = 발동할 때 시전자 주변 바닥 붉은 폭발 [w, h, 가운데x, 가운데y] // boom = 폭발 자세 통째 그림 (tools/curse_ruin_mark_build.py) [w, h, 발x, 발y], boomK = 크기 1일 때 그림 1px의 월드 px (해골 가면을 대기 자세에 맞춤) // standH = curse_0 standH와 같은 비율 (89 × 70/87)
+    [['cast', 'curse_ruin_cast'], ['reaperImg', 'curse_ruin_fx'], ['boomImg', 'curse_ruin_boom'], ['blastImg', 'curse_ruin_blast']].forEach(([k, file]) => {
       const img = new Image();
       img.onload = () => { img.ready = true; };
       img.src = `assets/sprites/fx/${file}.webp`;
@@ -6270,6 +6270,15 @@
         return;
       }
       if (ef.type === 'curse_ruin_bolt') return; // 유닛 위에 불투명하게 drawRuinMarks에서 그림
+      if (ef.type === 'curse_ruin_blast') {
+        // 파멸의 의식 발동: 시전자를 가운데 빈 자리에 두고 붉은 폭발이 바닥에 크게 퍼짐
+        const img = CURSE_RUIN_FX.blastImg;
+        if (!img || !img.ready) return;
+        const [w, h, ax, ay] = CURSE_RUIN_FX.blast, k = 320 * (ef.s || 1) / w * (0.6 + 0.4 * Math.min(1, progress / 0.15));
+        ctx.globalAlpha = Math.min(1, progress / 0.06, (1 - progress) / 0.4);
+        drawSpriteFx(ctx, img, 0, 0, w, h, ef.x - ax * k, ef.y + 12 - ay * k, w * k, h * k);
+        return;
+      }
       if (ef.type === 'curse_ruin_circle') {
         // 파멸의 의식 발동: 적 발밑 마법진에서 검은 불길이 솟음
         if (!CURSE_RUIN_MARK_FX.ready) return;
@@ -18157,6 +18166,7 @@
           try { withSkillHit(() => applyDamage(unit, e, unit.atk * CURSE_RUIN_DMG, '⚰️', '#7e22ce')); } finally { suppressHitKnockback = false; }
         });
         sim.hiddenFx.push({ kind: 'ruin', owner: unit, left: CURSE_RUIN_TICKS, marks });
+        sim.effects.push({ type: 'curse_ruin_blast', x: unit.x, y: unit.y, s: unit.sizeScale || 1, life: 60, maxLife: 60 }); // 시전자 주변 바닥에 크게 터지는 붉은 폭발
         unit.ruinPose = { start: sim.tickCount }; // 시전 끝: 폭발 자세 → 연기 속 마무리 자세
         hiddenImpact(20, '#581c87');
         playCombatSfx('magic');
