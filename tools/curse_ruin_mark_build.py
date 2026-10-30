@@ -6,6 +6,7 @@
 #   circle0     = curse_ruin_circle0_src.png  시전 중 적 발밑에 깔리는 붉은 마법진 (기준점 = 마법진 가운데)
 #   circle1     = curse_ruin_circle1_src.png  발동할 때 검은 불길이 솟는 마법진 (기준점 = 마법진 가운데)
 #   마법진 샘플 모서리에 잘려 들어온 다른 그림 조각은 지움
+# 따로: curse_ruin_boom_src.png → assets/sprites/fx/curse_ruin_boom.webp  발동 직후 폭발 자세 한 장 (자르지 않고 통째로, 기준점 = 발밑)
 # 번개 샘플: 좌우 끝에 잘려 들어온 연기 조각은 지우고, 위쪽에서 잘린 번개는 위로 갈수록 흐리게
 # 프레임 [x, y, w, h, 기준점x, 기준점y]
 import sys, numpy as np
@@ -13,6 +14,8 @@ from PIL import Image
 from scipy import ndimage as ndi
 
 OUT = 'assets/sprites/fx/curse_ruin_mark_fx.webp'
+OUT_BOOM = 'assets/sprites/fx/curse_ruin_boom.webp'
+BOOM_FOOT = (253, 398)  # 폭발 샘플의 두 발 가운데·발바닥
 # (이름, 파일, 기준점(샘플 좌표, None = 가운데), 지울 왼쪽·오른쪽 x, 위 흐리기 px[, 지울 상자 (x0, y0, x1, y1) 목록])
 SRC = [
     ('mark0', 'curse_ruin_mark0_src.png', None, None, 0),
@@ -31,9 +34,10 @@ def cut(path, anchor, xclip, top_fade, erase=()):
     key = np.median(im[bright], axis=0)
     d = np.sqrt(((im - key) ** 2).sum(axis=2))
     # 그림엔 초록이 없으니 초록 기운이 도는 픽셀은 모두 배경과 섞인 반투명 (번개 빛무리·해골 연기)
-    greenish = g > np.maximum(r, b) - 12  # 붉은 빛무리가 초록과 섞인 올리브색까지
+    red_art = 'circle' in path or 'bolt' in path or 'vortex' in path
+    greenish = g > np.maximum(r, b) + (-12 if red_art else 8)  # 붉은 그림은 초록과 섞인 올리브색까지 (회색 연기가 있는 그림은 물들지 않게 좁게)
     a = np.where(greenish, np.clip((d - 40) / 150, 0, 1), 1.0)
-    if 'circle' in path or 'bolt' in path or 'vortex' in path:
+    if red_art:
         # 붉은 그림: 원래 초록은 빨강의 1/4 이하라고 보고, 그보다 많은 초록만큼 배경과 섞인 반투명 (붉은 빛무리가 갈색으로 남지 않게)
         a = np.minimum(a, np.clip(1 - (g - 0.25 * r) / (key[1] - 0.25 * key[0]), 0, 1))
     if xclip: a[:, :xclip[0]] = 0; a[:, xclip[1]:] = 0
@@ -62,6 +66,9 @@ def main(folder):
         x += t.shape[1] + 2
     Image.fromarray(atlas, 'RGBA').save(OUT, 'WEBP', lossless=True)
     print('{ ' + ', '.join(frames) + ' }')
+    t, ax, ay = cut(f'{folder}/curse_ruin_boom_src.png', BOOM_FOOT, None, 0, [(0, 0, 605, 3), (0, 470, 605, 473), (0, 0, 3, 473), (602, 0, 605, 473)])  # 샘플 테두리의 가는 검은 선
+    Image.fromarray(t, 'RGBA').save(OUT_BOOM, 'WEBP', lossless=True)
+    print(f'boom: [{t.shape[1]}, {t.shape[0]}, {ax}, {ay}]')
 
 
 if __name__ == '__main__':

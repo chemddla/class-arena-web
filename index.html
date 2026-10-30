@@ -6240,8 +6240,9 @@
     // - cast: 0·1 붉은 불꽃 두르기 · 2 마법진 위에서 지팡이 치켜들기(검은 기둥) · 3 폭발 · 4 연기 속 마무리 (기준점 = 발밑, standH = 서 있는 키)
     // - reaper: 붉은 번개 소용돌이 속 사신 [w, h, 기준점x, 기준점y] (적에게 걸 때·터질 때, 기준점 = 바닥 가운데)
     // fs = 칸별 배율 (해골 가면 크기를 대기 자세에 맞춤: 샘플 칸마다 캐릭터 크기가 조금씩 달라서)
-    const CURSE_RUIN_FX = { cellW: 272, cellH: 269, anchorX: 95, anchorY: 218, standH: 72, fs: [0.88, 0.88, 0.9, 0.87, 0.94], reaper: [151, 125, 78, 117] }; // standH = curse_0 standH와 같은 비율 (89 × 70/87)
-    [['cast', 'curse_ruin_cast'], ['reaperImg', 'curse_ruin_fx']].forEach(([k, file]) => {
+    const CURSE_RUIN_FX = { cellW: 272, cellH: 269, anchorX: 95, anchorY: 218, standH: 72, fs: [0.88, 0.88, 0.9, 0.87, 0.94], reaper: [151, 125, 78, 117],
+      boom: [599, 467, 250, 395], boomK: 0.296 }; // boom = 폭발 자세 통째 그림 (tools/curse_ruin_mark_build.py) [w, h, 발x, 발y], boomK = 크기 1일 때 그림 1px의 월드 px (해골 가면을 대기 자세에 맞춤) // standH = curse_0 standH와 같은 비율 (89 × 70/87)
+    [['cast', 'curse_ruin_cast'], ['reaperImg', 'curse_ruin_fx'], ['boomImg', 'curse_ruin_boom']].forEach(([k, file]) => {
       const img = new Image();
       img.onload = () => { img.ready = true; };
       img.src = `assets/sprites/fx/${file}.webp`;
@@ -21748,6 +21749,13 @@
           fi = p < 1 / 3 ? 0 : (p < 2 / 3 ? 1 : 2);
           if (fi === 2) shake = Math.sin(tick * 1.3) * 0.6 * ks;
         } else fi = ruinSince < 22 ? 3 : 4;
+        if (fi === 3 && rf.boomImg && rf.boomImg.ready) {
+          // 폭발: 연기·해골·파편까지 자르지 않은 통째 그림
+          const [bw, bh, bx, by] = rf.boom, kb = rf.boomK * spriteDrawH(u, sprite) / SPRITE_DRAW_H;
+          drawSpriteFx(ctx, rf.boomImg, 0, 0, bw, bh, -bx * kb, -by * kb, bw * kb, bh * kb);
+          ctx.restore();
+          return;
+        }
         ks *= rf.fs[fi];
         if (fi === 4) ctx.globalAlpha *= Math.min(1, (54 - ruinSince) / 14);
         drawSpriteFx(ctx, rf.cast, fi * rf.cellW, 0, rf.cellW, rf.cellH,
