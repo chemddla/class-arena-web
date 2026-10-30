@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 
-const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+// index.html은 CRLF 줄바꿈이라, 아래 '\n'으로 끝을 찾는 정규식이 맞도록 LF로 바꿔 읽음
+const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const grab = (re) => {
   const m = html.match(re);
   if (!m) throw new Error('index.html에서 코드를 찾지 못함: ' + re);
