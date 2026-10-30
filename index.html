@@ -966,6 +966,9 @@
             <button onclick="forfeitBattle()" class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-extrabold text-white shadow" title="전투를 포기하고 패배로 끝내요 (보상 없음)">
               🏳️ 전투 포기
             </button>
+            <button onclick="switchPracticeControl()" id="practiceControlSwitchBtn" class="hidden px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-xs font-extrabold text-white shadow" title="연습 전투 중에 자동 전투 ↔ 직접 전투(조종할 용병)를 바꿔요">
+              🎮 조종 바꾸기
+            </button>
             <button onclick="startPracticeSim()" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white shadow">
               🔄 연습 전투 다시 하기
             </button>
@@ -1033,7 +1036,7 @@
             <div class="bg-slate-900 border-2 border-amber-500/60 rounded-3xl p-5 max-w-2xl w-full flex flex-col gap-4 shadow-2xl">
               <div class="text-center">
                 <h3 class="font-title text-2xl text-amber-300">어떻게 싸울까요?</h3>
-                <p class="text-xs text-slate-400 mt-1">한 번 고르면 이번 전투가 끝날 때까지 바꿀 수 없어요.</p>
+                <p id="battleControlChooserNote" class="text-xs text-slate-400 mt-1">한 번 고르면 이번 전투가 끝날 때까지 바꿀 수 없어요.</p>
               </div>
               <button type="button" onclick="setBattleControlMode('auto')" class="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-base shadow-lg">
                 🤖 자동 전투 <span class="block text-[11px] font-bold text-emerald-100 mt-0.5">용병들이 알아서 싸워요 · WASD로 화면 이동</span>
@@ -13505,8 +13508,19 @@
           ${getMercIconHTML(u.job, u.skinVariant, 34)}<span>${u.name}<br/><span class="text-[10px] text-slate-400">${job.name} · Lv.${u.level}</span></span>
         </button>`;
       }).join('') || '<div class="text-xs text-slate-400">조종할 수 있는 용병이 없어요.</div>';
+      const note = document.getElementById('battleControlChooserNote');
+      if (note) note.textContent = sim.mode === 'practice'
+        ? '연습 전투에서는 위쪽 🎮 조종 바꾸기 버튼으로 언제든 다시 바꿀 수 있어요.'
+        : '한 번 고르면 이번 전투가 끝날 때까지 바꿀 수 없어요.';
       sim.awaitingControlChoice = Boolean(pauseBattle);
       box.classList.remove('hidden');
+    }
+
+    // 허수아비 연습 전투: 전투 중에도 자동 ↔ 직접 전투(조종 용병)를 다시 고를 수 있음
+    function switchPracticeControl() {
+      if (!sim.running || sim.mode !== 'practice') return;
+      battleControl.locked = false;
+      openBattleControlChooser(true);
     }
 
     function renderBattleControlHud(force = false) {
@@ -14747,6 +14761,7 @@
       sim.waitingForOpponent = netRole === 'host';
       renderLiveWaitBanner(null);
       if (mode !== 'broadcast') openBattleControlChooser(true);
+      document.getElementById('practiceControlSwitchBtn')?.classList.toggle('hidden', mode !== 'practice');
       renderBattleControlHud(true);
 
       const statsBadge = document.getElementById('arenaSimStatsBadge');
