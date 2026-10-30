@@ -6059,6 +6059,8 @@
       src: 'assets/sprites/fx/frost_sr_fx.webp',
       anims: { shard: [[0,0,83,62,82,31]], circle: [[85,0,45,68,22.5,34]], dome: [[132,0,193,144,96.5,72]], star: [[327,0,27,29,13.5,14.5]] }
     };
+    // 주술사 히든 [파멸의 의식] 표식·폭발 (tools/curse_ruin_mark_build.py): mark0·1 = 걸린 적 머리 위 해골 (번갈아) · vortex = 터지기 직전 발밑 소용돌이 · bolt = 터질 때 붉은 번개 (기준점 = 바닥)
+    const CURSE_RUIN_MARK_FX = { src: 'assets/sprites/fx/curse_ruin_mark_fx.webp', anims: { mark0: [[0,0,92,120,46,60]], mark1: [[94,0,93,128,46,64]], vortex: [[189,0,275,149,140,104]], bolt: [[466,0,226,244,113,208]] } };
     // 주술사 [저주의 늪] 장판 (tools/curse_swamp_fx_build.py): 0 퍼짐 · 1 가시 늪 · 2 가시·거품 늪 · 3·4 해골 늪. 기준점 = 늪 타원 가운데
     const CURSE_SWAMP_FX = { src: 'assets/sprites/fx/curse_swamp_fx.webp', anims: { pool: [[0,0,193,112,96,73], [195,0,188,127,94,88], [385,0,196,120,98,81], [583,0,194,128,97,89], [779,0,192,128,96,89]] } };
     // 주술사 피격 이펙트 (tools/curse_hit_build.py): orb = 기본 공격 불꽃 폭발, hex = 저주 해골 폭발 (기준점 = 폭발 가운데)
@@ -6263,6 +6265,14 @@
         ctx.translate(ef.x, ef.y + 12); // 대상 발밑(유닛 발 = y + 12)에 꽂힘
         ctx.scale(ef.dir === -1 ? -1 : 1, 1);
         drawSpriteFx(ctx, CURSE_SHATTER_FX.img, 0, 0, w, h, -ax * k, -ay * k, w * k, h * k);
+        return;
+      }
+      if (ef.type === 'curse_ruin_bolt') {
+        // 파멸의 의식 폭발: 발밑 소용돌이에 붉은 번개가 내리꽂힘 (대상 크기에 비례)
+        if (!CURSE_RUIN_MARK_FX.ready) return;
+        const fr = CURSE_RUIN_MARK_FX.anims.bolt[0], s = ef.s || 1;
+        const k = 84 * s / fr[2] * (0.85 + 0.15 * Math.min(1, progress / 0.15));
+        drawFxFrame(ctx, fr, ef.x, ef.y + 12, k, 0, Math.min(1, progress / 0.06) * fade, CURSE_RUIN_MARK_FX.img);
         return;
       }
       if (!CURSE_FX.ready) return;
@@ -6720,7 +6730,7 @@
       LANCER_MUSOU_SKINS[v] = def;
     });
 
-    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BLOOD_ORC_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX, FROST_SR_FX, CURSE_ORB_FX, CURSE_HIT_FX, CURSE_SWAMP_FX).forEach(def => {
+    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BLOOD_ORC_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX, FROST_SR_FX, CURSE_ORB_FX, CURSE_HIT_FX, CURSE_SWAMP_FX, CURSE_RUIN_MARK_FX).forEach(def => {
       def.img = new Image();
       def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
       def.img.src = def.src;
@@ -18140,8 +18150,7 @@
           e.frostBarrier = 0;
           inflictStatus(unit, e, 'hex', CURSE_RUIN_TICKS);
           inflictStatus(unit, e, 'weaken', CURSE_RUIN_TICKS);
-          marks.set(e, e.damageTaken);
-          sim.effects.push({ type: 'curse_reaper', x: e.x, y: e.y + 8, life: 56, maxLife: 56 });
+          marks.set(e, e.damageTaken); // 터질 때까지 머리 위에 해골 표식 (drawRuinMarks)
           suppressHitKnockback = true;
           try { withSkillHit(() => applyDamage(unit, e, unit.atk * CURSE_RUIN_DMG, '⚰️', '#7e22ce')); } finally { suppressHitKnockback = false; }
         });
@@ -18240,8 +18249,7 @@
             withSkillHit(() => fx.marks.forEach((start, e) => {
               const burst = (e.damageTaken - start) * CURSE_RUIN_BURST;
               if (!e.alive || burst < 1) return;
-              sim.effects.push({ type: 'curse_shatter', x: e.x, y: e.y, s: unitFxSize(e), life: 34, maxLife: 34 });
-              sim.effects.push({ type: 'curse_reaper', x: e.x, y: e.y + 8, scale: 0.5, life: 30, maxLife: 30 });
+              sim.effects.push({ type: 'curse_ruin_bolt', x: e.x, y: e.y, s: unitFxSize(e), life: 36, maxLife: 36 }); // 소용돌이 위로 붉은 번개가 내리꽂히며 터짐
               applyDamage(o, e, burst, '⚰️', '#7e22ce');
             }));
           } finally { suppressHitKnockback = false; }
@@ -18363,7 +18371,30 @@
       ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
     }
     // 시전 중인 히든 스킬: 무지갯빛 기운이 모여듦 · 마지막 한 발은 목표까지 붉은 조준선 · 거인화 발밑 고리 · 거인화·무쌍난무 남은 시간
+    // 파멸의 의식에 걸린 적: 터질 때까지 머리 위에 불타는 해골(두 칸 번갈아), 터지기 RUIN_VORTEX_TICKS 전부터 발밑에 붉은 소용돌이
+    const RUIN_VORTEX_TICKS = 30;
+    function drawRuinMarks(ctx) {
+      if (!CURSE_RUIN_MARK_FX.ready || !sim.hiddenFx) return;
+      const A = CURSE_RUIN_MARK_FX.anims, img = CURSE_RUIN_MARK_FX.img, t = sim.tickCount;
+      sim.hiddenFx.forEach(fx => {
+        if (fx.kind !== 'ruin' || !fx.marks) return;
+        const end = Math.max(0, Math.min(1, 1 - fx.left / RUIN_VORTEX_TICKS)); // 소용돌이가 차오르는 정도
+        fx.marks.forEach((start, e) => {
+          if (!e.alive || (isStealthed(e) && !canViewerSeeStealthed(e))) return;
+          const s = unitFxSize(e), sp = getUnitSprite(e);
+          const headY = sp ? e.y + 12 - (sp.topH || sp.standH) * spriteDrawH(e, sp) / sp.standH : e.y - 40;
+          if (end > 0) {
+            const fr = A.vortex[0];
+            drawFxFrame(ctx, fr, e.x, e.y + 12, 74 * s / fr[2] * (0.6 + 0.4 * end), 0, Math.min(1, end * 2.5), img);
+          }
+          const fr = A[Math.floor(t / 10) % 2 ? 'mark1' : 'mark0'][0];
+          const bob = Math.sin(t * 0.08 + e.x * 0.01) * 2;
+          drawFxFrame(ctx, fr, e.x, headY - 34 * s + bob, 28 * s / fr[2], 0, 0.95 * (1 - end * 0.6), img); // 체력바·상태 아이콘보다 위
+        });
+      });
+    }
     function drawHiddenSkillOverlay(ctx) {
+      drawRuinMarks(ctx);
       const t = sim.tickCount;
       sim.units.forEach(u => {
         if (!u.alive || (isStealthed(u) && !canViewerSeeStealthed(u))) return;
@@ -21024,7 +21055,7 @@
 
     // 회복·축복·보호막 그림 (수명은 효과 루프에서 줄어듦)
     // 피격 이펙트: 맞은 대상 위에 겹쳐 보이게 유닛을 다 그린 뒤 따로 한 겹에 그려 반투명하게 얹음
-    const HIT_FX_TYPES = new Set(['magic_burst', 'arrow_hit', 'fire_explosion', 'ice_shatter', 'curse_shatter', 'hidden_snipe_hit']);
+    const HIT_FX_TYPES = new Set(['magic_burst', 'arrow_hit', 'fire_explosion', 'ice_shatter', 'curse_shatter', 'curse_ruin_bolt', 'hidden_snipe_hit']);
     const HIT_FX_ALPHA = 0.75;
     let hitFxLayer = null;
     function drawHitEffectsOnTop(ctx, drawPass) {
