@@ -31179,6 +31179,14 @@
       showNotice(room[slot + 'Ready'] ? '✅ 협동 레이드 준비완료! 방장이 토벌 시작을 누르기를 기다립니다.' : '⏳ 준비완료를 취소했습니다.');
     };
 
+    // 방장 출전 용병 중 가장 센 용병의 전투력 (연습 친구 상한)
+    const raidHostTopPower = (room, hostStu) => Math.max(0, ...(room.hostMercs || []).map(m => calcMercCombatPower(m, hostStu)));
+    // 연습 친구 용병 중 가장 센 용병의 전투력
+    const raidSlotTopPower = (room, slot) => {
+      const stu = state.students.find(s => s.id === room[slot + 'Id']) || room[slot + 'StudentSnapshot'] || null;
+      return Math.max(0, ...(room[slot + 'Mercs'] || []).map(m => calcMercCombatPower(m, stu)));
+    };
+
     window.simulateFriendJoinAndReadyRaidRoom = async function (roomId) {
       const myStu = getActiveStudent();
       const room = liveRaidRoomsCache[roomId];
@@ -31190,11 +31198,13 @@
         ? (stu.roster || []).filter(m => m.deployed)
         : (stu.roster || [])).slice(0, RAID_PICK);
       const raidPowerOf = stu => raidMercsOf(stu).reduce((s, m) => s + calcMercCombatPower(m, stu), 0);
-      // 연습 친구는 방장보다 전투력이 높은 친구는 부를 수 없음
+      // 연습 친구는 방장보다 전투력이 높은 친구는 부를 수 없음 (합계도, 용병 한 명 한 명도 방장의 가장 센 용병을 넘지 않음)
       const hostPower = Number(room.hostPower || 0);
-      const others = state.students.filter(s => !inRoom.has(s.id) && (s.roster || []).length > 0 && raidPowerOf(s) <= hostPower);
+      const hostTop = raidHostTopPower(room, myStu);
+      const others = state.students.filter(s => !inRoom.has(s.id) && (s.roster || []).length > 0 && raidPowerOf(s) <= hostPower
+        && raidMercsOf(s).every(m => calcMercCombatPower(m, s) <= hostTop));
       const friend = others[Math.floor(Math.random() * others.length)];
-      if (!friend) { showNotice('⚠️ 내 전투력보다 낮은 연습 친구가 없어요.'); return; }
+      if (!friend) { showNotice(`⚠️ 내 전투력보다 낮은 연습 친구가 없어요. (용병 한 명당 ⚔️ ${hostTop.toLocaleString()} 이하)`); return; }
       const friendMercs = raidMercsOf(friend);
       const friendPower = raidPowerOf(friend);
 
@@ -31216,6 +31226,16 @@
       if (!room || !myStu) return;
       if (room.hostId !== myStu.id) {
         showNotice('⚠️ 방장만 협동 레이드를 시작할 수 있습니다!');
+        return;
+      }
+      // 그 사이 방장 용병이 바뀌어 상한을 넘게 된 연습 친구는 뺌
+      const hostTop = raidHostTopPower(room, myStu);
+      const overCap = RAID_GUEST_SLOTS.filter(s => room[s + 'Id'] && raidIsPractice(room, s)
+        && (Number(room[s + 'Power'] || 0) > Number(room.hostPower || 0) || raidSlotTopPower(room, s) > hostTop));
+      if (overCap.length) {
+        overCap.forEach(s => raidClearSlot(room, s));
+        await saveRaidRoomData(roomId, room);
+        showNotice('⚠️ 내 용병보다 센 연습 친구는 빠졌어요. 다시 확인하고 시작해 주세요.');
         return;
       }
       const guestSlots = RAID_GUEST_SLOTS.filter(s => room[s + 'Id']);
