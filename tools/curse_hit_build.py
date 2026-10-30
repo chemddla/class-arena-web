@@ -2,7 +2,8 @@
 # 사용: python tools/curse_hit_build.py [샘플 폴더]  (기본 assets/sprites/fx/samples)
 #   orb = curse_orb_hit_src.png  기본 공격 불꽃이 맞았을 때 보라 폭발
 #   hex = curse_hex_hit_src.png  저주 해골이 맞았을 때 해골 폭발. 오른쪽 테두리에 잘린 줄기들은 지움
-# 프레임 [x, y, w, h, 기준점x, 기준점y] (기준점 = 폭발 가운데)
+#   sip = curse_sip_hit_src.png  흡혼에 맞은 적 발밑에서 솟는 보라 불길 (기준점 = 바닥 가운데)
+# 프레임 [x, y, w, h, 기준점x, 기준점y] (기준점 = 폭발 가운데, sip만 바닥 가운데)
 import sys, numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
@@ -12,6 +13,7 @@ OUT = 'assets/sprites/fx/curse_hit_fx.webp'
 SRC = [
     ('orb', 'curse_orb_hit_src.png', None, None),
     ('hex', 'curse_hex_hit_src.png', (117, 60), (70, 78)),  # 오른쪽 아래 잘린 줄기 (위쪽 붉은 가시는 남김)
+    ('sip', 'curse_sip_hit_src.png', None, 'bottom'),
 ]
 
 
@@ -32,7 +34,8 @@ def cut(path, xcut, center):
     rgb[..., 1] = np.minimum(rgb[..., 1], np.maximum(rgb[..., 0], rgb[..., 2]))  # 보라·검정뿐이라 테두리 초록 번짐은 모두 지움
     ys, xs = np.where(a > 0.05)
     rgba = np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1].astype(np.uint8)
-    cx, cy = center if center else ((xs.min() + xs.max()) / 2, (ys.min() + ys.max()) / 2)
+    if center == 'bottom': cx, cy = (xs.min() + xs.max()) / 2, ys.max()
+    else: cx, cy = center if center else ((xs.min() + xs.max()) / 2, (ys.min() + ys.max()) / 2)
     return rgba, round(cx - xs.min()), round(cy - ys.min())
 
 

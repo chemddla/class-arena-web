@@ -6057,8 +6057,8 @@
       src: 'assets/sprites/fx/frost_sr_fx.webp',
       anims: { shard: [[0,0,83,62,82,31]], circle: [[85,0,45,68,22.5,34]], dome: [[132,0,193,144,96.5,72]], star: [[327,0,27,29,13.5,14.5]] }
     };
-    // 주술사 피격 이펙트 (tools/curse_hit_build.py): orb = 기본 공격 불꽃 폭발, hex = 저주 해골 폭발. 기준점 = 폭발 가운데
-    const CURSE_HIT_FX = { src: 'assets/sprites/fx/curse_hit_fx.webp', anims: { orb: [[0,0,173,162,86,80]], hex: [[175,0,138,128,61,68]] } };
+    // 주술사 피격 이펙트 (tools/curse_hit_build.py): orb = 기본 공격 불꽃 폭발, hex = 저주 해골 폭발 (기준점 = 폭발 가운데)
+    const CURSE_HIT_FX = { src: 'assets/sprites/fx/curse_hit_fx.webp', anims: { orb: [[0,0,173,162,86,80]], hex: [[175,0,138,129,61,68]], sip: [[315,0,121,144,60,143]] } }; // sip = 흡혼에 맞은 적 발밑 보라 불길 (기준점 = 바닥 가운데)
     // 주술사 기본 공격 보라 불꽃 (tools/curse_orb_build.py). 둥근 머리가 앞(오른쪽), 꼬리 불길이 뒤. 기준점 = 둥근 머리 가운데
     const CURSE_ORB_FX = { src: 'assets/sprites/fx/curse_orb.webp', anims: { flame: [[0,0,75,51,59,26]] } };
     // 투사체 종류별 그림과 크기(첫 프레임 높이, 월드 px). match가 있으면 그 조건을 만족할 때만 (성녀 분홍 구슬 제외)
@@ -6239,7 +6239,7 @@
       img.src = `assets/sprites/fx/${file}.webp`;
       CURSE_RUIN_FX[k] = img;
     });
-    // 주술사 이펙트: curse_bolt = 날아가는 해골 (sx,sy → x,y) · curse_shatter · curse_weaken (r = 범위) · curse_siphon (r = 범위) · curse_reaper
+    // 주술사 이펙트: curse_bolt = 날아가는 해골 (sx,sy → x,y) · curse_shatter · curse_weaken (r = 범위) · curse_siphon (r = 범위) · curse_siphon_heal (회복받는 아군) · curse_reaper
     function drawCurseEffect(ctx, ef, progress) {
       const fade = Math.max(0, Math.min(1, (1 - progress) / 0.3));
       if (ef.type === 'curse_reaper') {
@@ -6274,9 +6274,13 @@
         const k = ef.r * 2.1 / CURSE_FX.frames[nm][2];
         drawCurseFx(ctx, nm, ef.x, ef.y + ef.r * 0.55, k, k * 1.4, fade);
       } else if (ef.type === 'curse_siphon') {
-        const nm = progress < 0.35 ? 'sip0' : (progress < 0.7 ? 'sip1' : 'sip2');
+        // 시전자 주변: 유령 회오리 → 유령 떼 (마지막 유령·초록 불빛 sip2는 회복받는 아군 쪽 curse_siphon_heal)
+        const nm = progress < 0.5 ? 'sip0' : 'sip1';
         const k = ef.r * 1.6 / CURSE_FX.frames.sip1[2];
         drawCurseFx(ctx, nm, ef.x, ef.y - 18, k, k, fade * 0.9);
+      } else if (ef.type === 'curse_siphon_heal') {
+        const k = 70 / CURSE_FX.frames.sip2[2] * (0.8 + 0.2 * Math.min(1, progress / 0.2));
+        drawCurseFx(ctx, 'sip2', ef.x, ef.y - 14, k, k, Math.min(1, progress / 0.12) * fade);
       }
     }
     // 빙결술사 동결 스킬 이펙트 한 줄: 소용돌이(시전)·바닥 가시 고리(시전)·터지는 큐브(발동)·큐브(빙결 중)·금 간 큐브·조각(풀릴 때). 프레임 [x, y, w, h]
@@ -19974,6 +19978,7 @@
         sim.effects.push({ type: 'curse_siphon', x: unit.x, y: unit.y, r, life: 40, maxLife: 40 });
         hit.forEach(e => {
           sim.effects.push({ type: 'charge_dash', sx: e.x, sy: e.y - 12, tx: unit.x, ty: unit.y - 12, color: '#ddd6fe', life: 20, maxLife: 20 });
+          sim.effects.push({ type: 'magic_burst', spr: 'curse_sip_hit', x: e.x, y: e.y + 12, r: 30, life: 30, maxLife: 30 }); // 맞은 적 발밑에서 영혼 불길
           applyDamage(unit, e, unit.atk * CURSE_SIPHON_DMG, '👻', '#7e22ce');
         });
         const drained = Math.max(0, unit.damageDealt - before);
@@ -19982,7 +19987,7 @@
           const amt = Math.round(drained * CURSE_SIPHON_HEAL_RATIO * healTakenMult(mate));
           mate.hp = Math.min(mate.maxHp, mate.hp + amt);
           unit.healDone += amt;
-          sim.effects.push({ type: 'heal_cross', x: mate.x, y: mate.y, life: 26, maxLife: 26 });
+          sim.effects.push({ type: 'curse_siphon_heal', x: mate.x, y: mate.y, life: 40, maxLife: 40 }); // 회복받는 아군에게 유령·초록 불빛
           sim.floatTexts.push({ x: mate.x, y: mate.y - 44, text: `💚+${amt}`, color: '#059669', life: 45 });
         }
         playCombatSfx('magic');
@@ -21050,14 +21055,14 @@
 
     // spr가 붙은 효과를 그림으로 그리면 true
     function drawSpriteEffect(ctx, ef, progress) {
-      if (ef.spr === 'curse_orb_hit' || ef.spr === 'curse_hex_hit') {
-        // 주술사 피격: wait틱 동안은 안 보이다가(날아가는 중) 작게 터져 커지며 사라짐
+      if (ef.spr === 'curse_orb_hit' || ef.spr === 'curse_hex_hit' || ef.spr === 'curse_sip_hit') {
+        // 주술사 피격: wait틱 동안은 안 보이다가(날아가는 중) 작게 터져 커지며 사라짐. 흡혼 불길은 발밑에서 솟아오름
         if (!CURSE_HIT_FX.ready) return false;
         const el = progress * (ef.maxLife || 22) - (ef.wait || 0);
         if (el < 0) return true;
         const p = el / Math.max(1, (ef.maxLife || 22) - (ef.wait || 0));
-        const hex = ef.spr === 'curse_hex_hit', fr = CURSE_HIT_FX.anims[hex ? 'hex' : 'orb'][0];
-        const w = (hex ? 58 : 46) * (0.7 + 0.3 * Math.min(1, p * 3));
+        const key = ef.spr.slice(6, 9), fr = CURSE_HIT_FX.anims[key][0];
+        const w = { orb: 46, hex: 58, sip: 40 }[key] * (0.7 + 0.3 * Math.min(1, p * 3));
         drawFxFrame(ctx, fr, ef.x, ef.y, w / fr[2], 0, Math.min(1, (1 - p) * 2.5), CURSE_HIT_FX.img);
         return true;
       }
