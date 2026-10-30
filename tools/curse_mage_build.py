@@ -2,10 +2,12 @@
 # 사용: python tools/curse_mage_build.py [샘플 폴더]  (기본 assets/sprites/fx/samples, 파일 curse_mage_1~4.webp)
 #   1 = 기본 동작, 2 = 저주·쇠약·파쇄·흡혼, 3 = 옛 저주의 늪 (발이 잘려서 안 씀), 4 = 스킬 이펙트 6줄 × 3칸 (마지막 파멸의 의식 줄은 안 씀)
 #   저주의 늪 시전 동작은 따로 받은 curse_swamp_src.png 두 칸 (불꽃 두르기 → 지팡이 꽂아 가시 늪)
+#   파쇄 동작은 따로 받은 curse_shatter_cast_src.png(손에 붉은 소용돌이 = 시전) · curse_shatter_slam_src.webp(지팡이 내리치기 = 발동, 옆 붉은 폭발까지 그대로)
+#   파쇄 대상에 터지는 이펙트는 curse_shatter_fx_src.png → assets/sprites/fx/curse_shatter_fx.webp
 #   쇠약 동작은 따로 받은 curse_weak_src.png 두 칸 (오른쪽 = 지팡이 내리는 시전 자세, 왼쪽 = 덩굴·핏물이 솟는 발동) — 옛 시트 2의 쇠약 줄은 잘린 자리가 어색해서 안 씀
 #   히든 스킬 [파멸의 의식]은 따로 받은 샘플로 tools/curse_ruin_build.py가 만듦
-# 캐릭터 칸 순서: 0 대기 · 1~4 걷기 · 5~7 공격 · 8~9 피격 · 10~12 쓰러짐 · 13~15 저주 · 16~17 쇠약 · 18~20 파쇄
-#   · 21~23 흡혼 · 24~25 저주의 늪 (모든 칸 크기 같음, 오른쪽을 봄, 발 = 기준점. 저주의 늪 칸은 발밑 늪이 기준점 아래로 내려감)
+# 캐릭터 칸 순서: 0 대기 · 1~4 걷기 · 5~7 공격 · 8~9 피격 · 10~12 쓰러짐 · 13~15 저주 · 16~17 쇠약 · 18~19 파쇄
+#   · 20~22 흡혼 · 23~24 저주의 늪 (모든 칸 크기 같음, 오른쪽을 봄, 발 = 기준점. 저주의 늪 칸은 발밑 늪이 기준점 아래로 내려감)
 # 샘플 오류 정리:
 #   - 초록 배경이 쇠약 덩굴(어두운 초록)·흡혼 빛(반투명)과 겹침 → 밝은 초록만 배경으로 보고, 반투명 가장자리는 배경색을 빼서 복원
 #   - 흡혼·저주의 늪 칸은 이펙트 때문에 커 보이지만 캐릭터 키(뿔~발 약 190px)는 다른 칸과 같아 배율은 하나로 씀
@@ -18,6 +20,8 @@ from scipy import ndimage as ndi
 
 OUT_CHAR = 'assets/sprites/merc/curse_0.webp'
 OUT_FX = 'assets/sprites/fx/curse_fx.webp'
+OUT_SHATTER = 'assets/sprites/fx/curse_shatter_fx.webp'
+SHATTER_HIT = (225, 135)  # 파쇄 이펙트 샘플에서 붉은 기운이 꽂히는 자리 (왼쪽에서 날아와 오른쪽 아래에 꽂힘)
 KEY = np.array([18.0, 238.0, 4.0])
 SCALE = 0.45  # 대기 자세 뿔 끝~발 196px → 게임 칸 약 88px
 
@@ -31,13 +35,13 @@ FRAMES = [
     (1, 'down0',  90, 298, 818, 1024, 'main'), (1, 'down1', 298, 531, 818, 1024, 'main'), (1, 'down2', 531, 765, 818, 1024, 'main'),
     (2, 'hex0',   95, 270,   0, 236, 'main'), (2, 'hex1', 270, 517, 0, 236, 'main'), (2, 'hex2', 517, 687, 0, 236, 'main'),
     (6, 'weak0', 295, 504,   0, 237, 'all'), (6, 'weak1',   0, 294, 0, 237, 'all'),
-    (2, 'shat0',  95, 275, 460, 730, 'main'), (2, 'shat1', 275, 490, 460, 730, 'body'), (2, 'shat2', 490, 687, 460, 730, 'main'),
+    (7, 'shat0',   0, 224,   0, 226, 'all'), (8, 'shat1', 70, 948, 0, 1013, 'all'),
     (2, 'sip0',   75, 282, 740, 1024, 'all'), (2, 'sip1', 282, 500, 740, 1024, 'all'), (2, 'sip2', 500, 687, 740, 1024, 'all'),
     (5, 'swamp0',   0, 160,   0, 175, 'all'), (5, 'swamp1', 180, 406, 0, 175, 'all'),
 ]
 # 칸마다 배율 따로: 저주의 늪·쇠약 샘플은 뿔 폭을 대기 자세와 맞춤, 저주 칸은 샘플 캐릭터가 약 6% 작게 그려져 있어 키움
-FRAME_SCALE = {'swamp0': 0.58, 'swamp1': 0.58, 'weak0': 0.42, 'weak1': 0.44, **{f'hex{i}': SCALE * 1.06 for i in range(3)}}
-FOOT = {'swamp0': (82, 148), 'swamp1': (272, 143), 'weak0': (387, 202), 'weak1': (150, 200)}  # 샘플 좌표의 발 가운데·발바닥 (늪·불꽃이 발보다 넓고 아래로 퍼져서 직접 지정)
+FRAME_SCALE = {'swamp0': 0.58, 'swamp1': 0.58, 'weak0': 0.42, 'weak1': 0.44, 'shat0': 0.41, 'shat1': 0.125, **{f'hex{i}': SCALE * 1.06 for i in range(3)}}
+FOOT = {'swamp0': (82, 148), 'swamp1': (272, 143), 'weak0': (387, 202), 'weak1': (150, 200), 'shat0': (100, 218), 'shat1': (330, 930)}  # 샘플 좌표의 발 가운데·발바닥 (늪·불꽃이 발보다 넓고 아래로 퍼져서 직접 지정)
 XMAX = {'atk1': 505, 'hex1': 415}  # 지팡이·손끝 앞으로 날아가는 해골은 투사체로, 지팡이 끝 덩굴 고리는 장판 이펙트로 따로 그림
 YMIN = {}
 SRC = {}
@@ -45,7 +49,8 @@ SRC = {}
 
 def load(sheet, folder):
     if sheet not in SRC:
-        path = {5: f'{folder}/curse_swamp_src.png', 6: f'{folder}/curse_weak_src.png'}.get(sheet, f'{folder}/curse_mage_{sheet}.webp')
+        path = {5: f'{folder}/curse_swamp_src.png', 6: f'{folder}/curse_weak_src.png', 7: f'{folder}/curse_shatter_cast_src.png',
+                8: f'{folder}/curse_shatter_slam_src.webp', 9: f'{folder}/curse_shatter_fx_src.png'}.get(sheet, f'{folder}/curse_mage_{sheet}.webp')
         im = np.array(Image.open(path).convert('RGB')).astype(float)
         r, g, b = im[..., 0], im[..., 1], im[..., 2]
         d = np.sqrt(((im - KEY) ** 2).sum(axis=2))
@@ -84,6 +89,11 @@ def cut(folder, f):
         eff = ndi.binary_dilation(eff, iterations=1)
         m &= ~eff
         m = ndi.binary_opening(m, iterations=1)
+    if name in ('shat0', 'shat1'):  # 소용돌이·폭발은 남기고, 다른 칸에서 잘려 들어온 작은 티끌만 지움
+        if name == 'shat1': m[850:915, 860 - x0:935 - x0] = False  # ✦ 워터마크
+        lab, n = ndi.label(m)
+        areas = ndi.sum(m, lab, range(1, n + 1))
+        m &= np.isin(lab, 1 + np.where(areas >= (60 if name == 'shat0' else 300))[0])
     if mode != 'all':
         lab, n = ndi.label(ndi.binary_dilation(m, iterations=1))
         areas = ndi.sum(m, lab, range(1, n + 1))
@@ -208,6 +218,16 @@ def main(folder):
         x += p.shape[1] + 2
     Image.fromarray(atlas, 'RGBA').save(OUT_FX, 'WEBP', lossless=True)
     print('fx frames: { ' + ', '.join(frames) + ' }')
+    # 파쇄 대상 이펙트: 한 장 그대로 (작은 압축 티끌만 지움). 기준점 = 꽂히는 자리
+    rgb, a = load(9, folder)
+    m = a > 0.05
+    lab, n = ndi.label(m)
+    areas = ndi.sum(m, lab, range(1, n + 1))
+    a = np.where(np.isin(lab, 1 + np.where(areas >= 60)[0]), a, 0)
+    ys, xs = np.where(a > 0.05)
+    rgba = np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    Image.fromarray(rgba.clip(0, 255).astype(np.uint8), 'RGBA').save(OUT_SHATTER, 'WEBP', lossless=True)
+    print(f'shatter fx: [{rgba.shape[1]}, {rgba.shape[0]}, {SHATTER_HIT[0] - xs.min()}, {SHATTER_HIT[1] - ys.min()}]')
 
 
 if __name__ == '__main__' and len(sys.argv) <= 2:
