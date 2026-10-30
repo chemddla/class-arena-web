@@ -6260,7 +6260,7 @@
     BLIZZ_FX.img.src = 'assets/sprites/fx/blizzard_cast_fx.webp';
     // 얼음 여왕(시크릿 레어 빙결술사) 블리자드: 화면을 덮는 눈보라 소용돌이 4칸 (tools/frost_sr_blizzard_build.py)
     // 0~2 = 팔 두 개가 뻗은 소용돌이(번갈아 겹쳐 꿈틀거림) · 3 = 꽉 찬 소용돌이(가운데 눈). 칸마다 720×720, 가운데 = 소용돌이 중심, 바깥 둘레는 투명
-    const FROST_SR_BLIZZ = { img: new Image(), ready: false, cell: 720 };
+    const FROST_SR_BLIZZ = { img: new Image(), ready: false, cell: 720, len: 120 }; // len: 소용돌이를 보여 주는 시간(화면 틱, 2초) → 그 뒤 원래 블리자드 눈보라
     FROST_SR_BLIZZ.img.onload = () => { FROST_SR_BLIZZ.ready = true; };
     FROST_SR_BLIZZ.img.src = 'assets/sprites/fx/frost_sr_blizzard.webp';
     function drawFrostSrSwirl(ctx, idx, x, y, r, rot, alpha) {
@@ -18275,17 +18275,18 @@
         const W = sim.worldW || WORLD_WIDTH, H = sim.worldH || WORLD_HEIGHT;
         const a = Math.min(1, progress / 0.08) * Math.min(1, (1 - progress) / 0.08);
         const t = (ef.maxLife - ef.life);
-        const srSwirl = ef.sr && FROST_SR_BLIZZ.ready;
-        ctx.globalAlpha = (srSwirl ? 0.12 : 0.22) * a;
+        // 얼음 여왕: 처음 2초는 화면을 덮는 소용돌이, 끝날 즈음 0.4초 동안 원래 눈보라 판으로 바뀜
+        const swirlK = ef.sr && FROST_SR_BLIZZ.ready ? Math.max(0, Math.min(1, (FROST_SR_BLIZZ.len - t) / 24)) : 0;
+        ctx.globalAlpha = (0.22 - 0.1 * swirlK) * a;
         ctx.fillStyle = '#e0f2fe';
         ctx.fillRect(0, 0, W, H);
-        if (srSwirl) drawFrostSrBlizzard(ctx, ef, false); // 얼음 여왕: 눈보라 판 대신 화면을 덮는 소용돌이
-        else if (FROST_FX.ready) {
+        if (swirlK > 0) drawFrostSrBlizzard(ctx, ef, false);
+        if (FROST_FX.ready && swirlK < 1) {
           // 그림 눈보라 판 두 겹을 서로 다른 속도로 비스듬히 흘려 전장을 덮음
           [['snow0', 4.6, 5, 7, 0.55], ['snow1', 5.4, 9, 12, 0.42]].forEach(([nm, sc, vx, vy, al]) => {
             const f = FROST_FX.frames[nm], tw = f[2] * sc, th = f[3] * sc;
             const ox = -(((t * vx) % tw) + tw) % tw, oy = ((t * vy) % th) - th;
-            ctx.globalAlpha = al * a;
+            ctx.globalAlpha = al * a * (1 - swirlK);
             for (let x = ox - tw; x < W + tw; x += tw - 1) for (let y = oy; y < H + th; y += th - 1) ctx.drawImage(FROST_FX.img, f[0], f[1], f[2], f[3], x, y, tw, th);
           });
         }
@@ -18315,7 +18316,7 @@
 
     // 얼음 여왕 블리자드 소용돌이 (월드 좌표, 화면 가운데 고정)
     // - 처음 0.6초: 시전자 자리에서 작게 생겨 화면 가운데로 옮겨 가며 커지고, 빠르게 돌다가 느려짐
-    // - 그 뒤: 화면 네 귀퉁이까지 덮은 채 시계 방향으로 돌고, 팔 소용돌이 3장을 번갈아 겹쳐 꿈틀거림 + 가운데 꽉 찬 소용돌이 눈
+    // - 그 뒤 2초까지: 화면 네 귀퉁이까지 덮은 채 시계 방향으로 돌고, 팔 소용돌이 3장을 번갈아 겹쳐 꿈틀거림 + 가운데 꽉 찬 소용돌이 눈
     // - top = true: 캐릭터 위로 덮치는 돌풍 (처음 1.2초만, 점점 옅어짐)
     function drawFrostSrBlizzard(ctx, ef, top) {
       const m = ctx.getTransform().inverse(), cv = ctx.canvas;
@@ -18323,7 +18324,7 @@
       const R = Math.hypot(vc.x - v0.x, vc.y - v0.y) / 0.8; // 그림 바깥 20%는 투명해지므로 귀퉁이까지 덮게
       const t = ef.maxLife - ef.life, e = 1 - Math.pow(1 - Math.min(1, t / 36), 3);
       const x = ef.x + (vc.x - ef.x) * e, y = ef.y + (vc.y - ef.y) * e;
-      const rot = t * 0.02 + 3 * e, fade = Math.min(1, ef.life / 40);
+      const rot = t * 0.02 + 3 * e, fade = Math.max(0, Math.min(1, (FROST_SR_BLIZZ.len - t) / 24));
       ctx.globalAlpha = 1;
       if (top) {
         drawFrostSrSwirl(ctx, Math.floor(t / 8) % 3, x, y, R * (1.35 - 0.35 * e), rot * 1.3, 0.65 * Math.max(0, 1 - t / 72) * Math.min(1, t / 6));
