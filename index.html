@@ -2000,7 +2000,6 @@
             <input id="rushNewRoomTitleInput" type="text" maxlength="24" placeholder="러쉬방 제목 (예: 10라운드 가자!)"
               class="flex-1 sm:w-56 rounded-xl px-3.5 py-2 text-xs font-bold border" />
             <button onclick="createRushRoom()" class="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-xs shadow shrink-0">➕ 러쉬방 만들기</button>
-            <button onclick="createRushRoom(true)" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 shrink-0">🤖 혼자 바로 출발</button>
           </div>
         </div>
 
@@ -2025,7 +2024,8 @@
           </div>
           <div class="lg:col-span-5 bg-slate-900 border-2 border-cyan-500/30 rounded-2xl p-4 flex flex-col gap-2 text-xs text-slate-300 leading-relaxed">
             <h4 class="font-title text-lg text-white">📜 러쉬 규칙</h4>
-            <div>👥 <strong>최대 5명</strong>이 한 명당 용병 1명을 <strong>직접 조종</strong>해요. 빈 자리는 출발할 때 <strong>반 친구 용병</strong>이 무작위로 채워 AI로 싸워요. (파티에서 가장 센 용병의 전투력을 넘지 않아요)</div>
+            <div>👥 <strong>최대 5명</strong>이 한 명당 용병 1명을 <strong>직접 조종</strong>해요. 방장은 빈 자리에 <strong>[🤖 AI 넣기]</strong>로 반 친구 용병을 한 명씩 넣고 뺄 수 있어요. (무작위 친구 · 파티에서 가장 센 용병의 전투력을 넘지 않아요)</div>
+            <div>🛡️ 직접 조종하는 용병은 <strong>행동불능 상태이상</strong>(기절·빙결·공포·혼란)에 걸리지 않아요.</div>
             <div>🌊 라운드가 시작되면 <strong>맵 오른쪽 뒷편</strong>에서 몬스터가 몰려와요. 뒷편은 화면 밖이라 보이지 않고 공격도 닿지 않아요. 몬스터도 맵에 들어오기 전에는 공격하지 않아요.</div>
             <div>📈 라운드를 깰수록 몬스터가 강해지고 많아져요. <strong>5라운드마다 👑 보스</strong>가 나와요.</div>
             <div>💚 라운드를 깨면 살아 있는 용병 체력 30% 회복 · 보스 라운드를 깨면 쓰러진 용병도 부활해요.</div>
@@ -4861,12 +4861,14 @@
     // 시크릿 레어 전용 외형: 파일 assets/sprites/merc/<직업>_sr<번호>.webp, 칸 순서·동작 구성은 그 직업의 0번 외형과 같음
     // skinVariant = SECRET_SKIN_BASE + 번호라 일반 외형 무작위 뽑기(0번부터 이어진 번호만 셈)에는 나오지 않음
     const SECRET_SKIN_BASE = 100;
-    const SECRET_MERC_SKINS = { warrior: [1], mage: [1], healer: [1], archer: [1], rogue: [1], knight: [1], lancer: [1], sniper: [1] };
+    const SECRET_MERC_SKINS = { warrior: [1], mage: [1], healer: [1], archer: [1], rogue: [1], knight: [1], lancer: [1], sniper: [1], frost: [1] };
     // 0번 외형과 칸 크기가 다른 시트. 전사 SR 1: 높이 든 칼·함성 번개가 잘리지 않게 칸을 위로 30px 늘림
     // 기사 SR 1: 머리 위 후광이 들어가게 칸을 위로 12px 늘리고, 체력바도 후광 위로 (topH)
     // 창병 SR 1 (붉은 용인·도끼창): 칸은 0번과 같고, 뿔이 머리보다 8px 높아서 체력바만 뿔 위로
     // 저격수 SR 1 (북극 후드·복면): 칸·기준점은 0번과 같음. 샘플에서 복면이 벗겨진 피격·쓰러짐 칸(7, 9)에 복면을 다시 그려 넣음
-    const SECRET_SKIN_SHEETS = { warrior_sr1: { cellH: 112, anchorY: 111 }, knight_sr1: { cellH: 114, anchorY: 111, topH: 101 }, lancer_sr1: { topH: 88 } };
+    // 빙결술사 SR 1 (얼음 여왕·옥좌, tools/frost_sr1_build.py): 옥좌 때문에 칸이 넓고 높음. 기본 공격은 냉기 구슬 대신 얼음 조각 다발 (FROST_SR_FX)
+    const SECRET_SKIN_SHEETS = { warrior_sr1: { cellH: 112, anchorY: 111 }, knight_sr1: { cellH: 114, anchorY: 111, topH: 101 }, lancer_sr1: { topH: 88 },
+      frost_sr1: { cellW: 170, cellH: 108, anchorX: 100, anchorY: 106, topH: 98, portraitCX: 104, projFx: { magic_orb: 'frost_sr_shard' } } };
     Object.entries(SECRET_MERC_SKINS).forEach(([job, nums]) => nums.forEach(n => {
       MERC_SPRITE_DEFS[`${job}_${SECRET_SKIN_BASE + n}`] = { ...MERC_SPRITE_DEFS[`${job}_0`], ...SECRET_SKIN_SHEETS[`${job}_sr${n}`], src: `assets/sprites/merc/${job}_sr${n}.webp` };
     }));
@@ -6054,6 +6056,12 @@
       src: 'assets/sprites/fx/fire_fx.webp',
       anims: { bolt: [[0,0,66,84,65,42]], imp: [[68,0,77,99,76,49.5]], arrow: [[147,0,109,20,108,10]], ifrit: [[258,0,63,76,62,38]] }
     };
+    // 시크릿 레어 빙결술사(얼음 여왕) 전용 이펙트 (tools/frost_sr1_build.py). 캐릭터 시트와 같은 0.7배로 그리면 샘플 비율 그대로
+    // shard = 기본 공격 얼음 조각 다발(기준점 = 앞 끝), circle = 아이스애로우 마법진, dome = 아이스 배리어 얼음 돔, star = 동결 반짝임 (기준점 = 한가운데)
+    const FROST_SR_FX = {
+      src: 'assets/sprites/fx/frost_sr_fx.webp',
+      anims: { shard: [[0,0,83,62,82,31]], circle: [[85,0,45,68,22.5,34]], dome: [[132,0,193,144,96.5,72]], star: [[327,0,27,29,13.5,14.5]] }
+    };
     // 투사체 종류별 그림과 크기(첫 프레임 높이, 월드 px). match가 있으면 그 조건을 만족할 때만 (성녀 분홍 구슬 제외)
     // 투사체에 spr가 붙어 있으면 그 키를 먼저 찾음 (sheet = 다른 아틀라스, hit = 터질 때 그릴 효과 그림)
     const PROJECTILE_SPRITES = {
@@ -6076,7 +6084,8 @@
       orc_javelin:    { anim: 'javelin', h: 14, sheet: ORC_FX },                         // 오크 투척병 창 (길이 약 34)
       troll_frost:    { anim: 'ice', h: 16, sheet: MAGE_SPELL_FX },                      // 서리트롤 주술사 기본 공격 얼음 화살
       harpy_gust:     { anim: 'gust', h: 22, sheet: SNOW_FX },                           // 폭풍 하피 돌풍 (길이 약 46)
-      frost_arrow:    { anim: 'arrow', h: 12, sheet: SNOW_FX },                          // 하피 궁수 얼음 화살 (길이 약 29)
+      frost_arrow:    { anim: 'arrow', h: 12, sheet: SNOW_FX },
+      frost_sr_shard: { anim: 'shard', h: 22, sheet: FROST_SR_FX },                      // 시크릿 레어 빙결술사 기본 공격 얼음 조각 다발 (길이 약 29)                          // 하피 궁수 얼음 화살 (길이 약 29)
       giant_ice_arrow:{ anim: 'arrow', h: 30, sheet: SNOW_FX, hit: 'ice_hit' },          // 서리 거인 아이스애로우 (길이 약 72)
       fire_bolt:      { anim: 'bolt', h: 26, sheet: FIRE_FX },                           // 작열 불꽃정령 기본 공격 불덩이 (길이 약 20)
       fire_bolt_big:  { anim: 'bolt', h: 40, sheet: FIRE_FX, hit: 'flame_hit' },         // 작열 불꽃정령 파이어볼
@@ -6192,6 +6201,7 @@
     SNIPER_BULLET_IMG.src = 'assets/sprites/fx/sniper_bullet.webp';
     // 빙결술사 이펙트 한 장 (0.5배): 배리어 구체 · 프리즈 얼음 가시 4단계 · 동결 고리·큐브 · 스케이팅 자취 · 블리자드 소환진·충격파·눈보라 판
     // 프레임 [x, y, w, h, 기준점x, 기준점y] (가시 기준점 = 아래 가운데, 나머지 = 가운데)
+    const usesFrostSr = u => Boolean(u && FROST_SR_FX.ready && getUnitSprite(u) === MERC_SPRITE_DEFS[`frost_${SECRET_SKIN_BASE + 1}`]); // 얼음 여왕 외형일 때만 전용 이펙트
     const FROST_FX = { img: new Image(), ready: false, frames: { bubble0: [0,0,70,60,35,30], bubble1: [72,0,82,60,41,30], spike0: [156,0,74,46,37,45], spike1: [232,0,103,50,51,49], spike2: [337,0,90,62,45,61], spike3: [429,0,86,58,43,57], ring: [517,0,32,34,16,17], cube0: [551,0,80,51,40,25], cube1: [633,0,60,49,30,24], trail0: [695,0,96,44,48,22], trail1: [793,0,100,48,50,24], circle0: [895,0,74,50,37,25], circle1: [971,0,80,50,40,25], circle2: [1053,0,76,60,38,30], glaze0: [1131,0,76,38,38,19], glaze1: [1209,0,108,53,54,26], glaze2: [1319,0,104,53,52,26], snow0: [1425,0,140,104,70,52], snow1: [1567,0,143,104,71,52], snow2: [1712,0,142,104,71,52], shard: [1858,0,64,28,32,14], streak0: [1924,0,80,34,0,17], streak1: [2006,0,84,37,0,18], dspike0: [2092,0,47,30,23,29], dspike1: [2141,0,58,50,29,49], dspike2: [2201,0,60,46,30,45] } };
     FROST_FX.img.onload = () => { FROST_FX.ready = true; };
     FROST_FX.img.src = 'assets/sprites/fx/frost_fx.webp';
@@ -6604,7 +6614,7 @@
       LANCER_MUSOU_SKINS[v] = def;
     });
 
-    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BLOOD_ORC_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX).forEach(def => {
+    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BLOOD_ORC_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX, FROST_SR_FX).forEach(def => {
       def.img = new Image();
       def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
       def.img.src = def.src;
@@ -13844,7 +13854,7 @@
         const pt = clampAimPoint(u, aimX, aimY, u.range + 40);
         const ang = Math.atan2((pt.y - 12) - oy, pt.x - ox);
         sim.projectiles.push({
-          projType: 'magic_orb', spr: u.job === 'frost' ? 'troll_frost' : undefined, isDirectional: true, angle: ang, x: ox, y: oy, owner: u, dmg: u.atk, color: orbColor,
+          projType: 'magic_orb', spr: u.job === 'frost' ? (unitProjFx(u, 'magic_orb') || 'troll_frost') : undefined, isDirectional: true, angle: ang, x: ox, y: oy, owner: u, dmg: u.atk, color: orbColor,
           isHeal: false, speed: 3.2, trail: [], maxTravel: Math.max(20, Math.hypot(pt.x - ox, (pt.y - 12) - oy)),
           splashRadius: MAGE_SPLASH_RADIUS, splashRatio: MAGE_SPLASH_RATIO
         });
@@ -14508,6 +14518,13 @@
 
     function inflictStatus(sourceUnit, targetUnit, statusType, durationFrames) {
       if (!targetUnit || !targetUnit.alive) return;
+      if (rushPlayerDisableImmune(targetUnit, statusType)) {
+        if (sim.tickCount - (targetUnit.ccImmuneTextAt ?? -999) > 30) {
+          targetUnit.ccImmuneTextAt = sim.tickCount;
+          sim.floatTexts.push({ x: targetUnit.x, y: targetUnit.y - 36, text: '🛡️면역!', color: '#e2e8f0', life: 40 });
+        }
+        return;
+      }
       const negative = NEGATIVE_STATUSES.includes(statusType);
       const blocked = statusBlockedFor(sourceUnit, targetUnit, statusType);
       // 빙결술사 패시브 혹한: 적에게 거는 나쁜 상태이상은 지속 시간 2배, 면역인 적에게는 면역을 무시하고 1배로
@@ -16578,6 +16595,9 @@
     // ===== 새 스킬용 공통 장치 (장판 · 밀쳐내기 · 텔레포트 위치 · 상태이상 면역) =====
     const NEGATIVE_STATUSES = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'slow', 'taunt', 'darkness', 'fear', 'confuse'];
     const CC_STATUSES = ['stun', 'freeze', 'shock', 'slow', 'fear', 'confuse']; // 엘리트 보스가 면역인 군중제어 (슬로우가 한 칸뿐인 상태이상 자리를 차지해 지속 피해를 막지 않게)
+    const DISABLE_STATUSES = ['stun', 'freeze', 'fear', 'confuse']; // 행동불능 (멈춤·도망·제멋대로 행동 → 직접 조종이 안 됨)
+    // 🌊 몬스터 러쉬: 학생이 직접 조종하는 용병은 행동불능 상태이상에 면역 (빙결술사 혹한으로도 뚫리지 않음 · AI 자리 용병은 그대로 걸림)
+    const rushPlayerDisableImmune = (u, statusType) => sim.mode === 'monster_rush' && u.team === 'blue' && !u.rushAi && !u.isClone && DISABLE_STATUSES.includes(statusType);
     const ELITE_DEBUFF_IMMUNE_SEC = 10; // 엘리트 보스의 상태이상이 끝난 뒤 면역 시간
     const ZONE_STYLES = {
       arrow_rain:  { color: '#ca8a04', fill: 'rgba(234, 179, 8, 0.22)', icon: '🌧️' },
@@ -19194,6 +19214,7 @@
           return true;
         }
         foe.dfBurst = sim.tickCount; // 동결 스킬 이펙트 3 (유닛 그리기에서 몸 크기에 맞춰 그림)
+        foe.dfBurstSr = usesFrostSr(unit); // 얼음 여왕이 건 동결은 터질 때 큰 반짝임을 더함
         applyDamage(unit, foe, unit.atk * FROST_DEEP_DMG, '🧊', '#0284c7');
         // 슬로우는 동결이 풀린 뒤부터 10초 남도록 동결 시간만큼 더 길게 (혹한 2배도 둘 다 같은 비율)
         inflictStatus(unit, foe, 'freeze', FROST_DEEP_FREEZE_TICKS);
@@ -20917,6 +20938,7 @@
         if (u.dfBurst && sim.tickCount - u.dfBurst < 28) {
           const q = (sim.tickCount - u.dfBurst) / 28;
           drawDfreezeFx(ctx, 'burst', 0, bMid + jumpY, bH * (1.35 + 0.35 * q), q < 0.5 ? 1 : 1 - (q - 0.5) * 2, 'center');
+          if (u.dfBurstSr && FROST_SR_FX.ready) drawFxFrame(ctx, FROST_SR_FX.anims.star[0], 0, bMid + jumpY, bH * (0.035 + 0.05 * Math.sin(Math.PI * Math.min(1, q * 1.4))), q * 1.2, 1 - q * q, FROST_SR_FX.img);
         }
         if (u.dfFreeze && st.freeze <= 0) { u.dfFreeze = false; u.dfCrack = sim.tickCount; } // 풀리는 순간: 금 간 큐브 → 조각
         if (u.dfCrack && sim.tickCount - u.dfCrack < 80) { // 금 간 큐브는 풀리기 전부터 보이고, 풀린 뒤엔 잠깐 남았다가 조각이 길게 흩어짐
@@ -21013,9 +21035,23 @@
         ctx.drawImage(BLIZZ_FX.img, f[0], f[1], f[2], f[3], -w / 2, zTop - zH * 0.3 - 6 + jumpY - h / 2, w, h);
         ctx.restore();
       }
-      // 빙결술사 아이스 배리어: 몸을 감싼 얼음 구체 (끝나기 2초 전부터 깜빡임)
+      // 시크릿 레어 빙결술사(얼음 여왕): 아이스애로우 시전 때 뻗은 손 앞 마법진, 동결 시전 때 손끝 반짝임 (자리 = 시트 칸 14·22의 손 위치)
+      const frostSr = useSprite && u.alive && usesFrostSr(u);
+      if (frostSr) {
+        const k = spriteDrawH(u, sprite) / sprite.standH, sk = u.casting ? u.casting.key : (u.skillAnim > 0 ? u.activeSkillType : null);
+        if (sk === 'frost_arrow') {
+          const el = tick - (u._sprSkillStart ?? tick), fade = u.casting ? 1 : Math.max(0, 1 - el / 30);
+          drawFxFrame(ctx, FROST_SR_FX.anims.circle[0], u.facingDir * 51 * k, 12 - 51 * k + jumpY, 0.7 * k * (0.92 + 0.08 * Math.sin(tick * 0.25)), 0, fade, FROST_SR_FX.img);
+        } else if (sk === 'deep_freeze' && u.casting) {
+          drawFxFrame(ctx, FROST_SR_FX.anims.star[0], u.facingDir * 64 * k, 12 - 52 * k + jumpY, k * (1 + 0.35 * Math.sin(tick * 0.3)), tick * 0.04, 1, FROST_SR_FX.img);
+        }
+      }
+      // 빙결술사 아이스 배리어: 몸을 감싼 얼음 구체 (끝나기 2초 전부터 깜빡임). 얼음 여왕은 옥좌째 덮는 얼음 돔
       const frostBubble = FROST_FX.ready && u.frostBarrierTicks > 0 && u.shield > 0;
-      if (frostBubble) {
+      if (frostBubble && frostSr) {
+        const k = spriteDrawH(u, sprite) / sprite.standH, blink = u.frostBarrierTicks < 120 ? 0.55 + 0.45 * Math.sin(tick * 0.5) : 1;
+        drawFxFrame(ctx, FROST_SR_FX.anims.dome[0], 0, 15 - 72 * 0.7 * k + jumpY, 0.7 * k * (1 + 0.015 * Math.sin(tick * 0.08)), 0, 0.85 * blink, FROST_SR_FX.img);
+      } else if (frostBubble) {
         const top = useSprite ? headTopY : -8 - tokenR, foot = useSprite ? 16 : -8 + tokenR + 4;
         const sc = (foot - top) * 1.12 / 60;
         const blink = u.frostBarrierTicks < 120 ? 0.55 + 0.45 * Math.sin(tick * 0.5) : 1;
@@ -30957,7 +30993,6 @@
       room.startedAt = null;
       room.fighting = null;
       raidGuestSlotsOf(room).forEach(s => { room[s + 'Ready'] = raidIsPractice(room, s); });
-      room.rushFill = null;
       room.lastFinishedAt = Date.now();
       saveRaidRoomData(room.roomId, room);
     }
@@ -31494,12 +31529,13 @@
     // - 계산 담당 화면만 라운드를 진행하고, 라운드 상태는 화면(frame.rs)에 실어 파티원·관전자 화면에 맞춤
     const RUSH = {
       bossEvery: 5,          // 5라운드마다 보스 라운드
-      baseCount: 12,         // 1라운드 몬스터 수
+      baseCount: 8,          // 1라운드 몬스터 수
       perRound: 3,           // 라운드마다 늘어나는 몬스터 수
       maxCount: 42,          // 한 라운드 최대 몬스터 수 (실시간 화면 전송량 때문에 제한)
       monStat: 0.4,          // 일반 몬스터 능력치 배율 (같은 층 탑 몬스터 대비 · 수가 많으니 약하게)
       bossStat: 1,           // 보스 능력치 배율 (탑 종족 보스 그대로)
       statGrow: 0.06,        // 라운드마다 몬스터 능력치 +6%
+      earlyEase: [0.6, 0.7, 0.8, 0.9], // 초반 1~4라운드는 몬스터 능력치를 이만큼 더 낮춤 (5라운드 보스부터 원래대로)
       backSpeed: 2,          // 뒷편에서 달려오는 빠르기 (평소 이동 속도의 배수)
       backDepth: 1500,       // 뒷편 길이(px): 몬스터가 이만큼 흩어져 있다가 차례로 몰려옴
       edge: 40,              // 맵 오른쪽 끝에서 이만큼 바깥에 닿으면 맵으로 넘어옴
@@ -31557,7 +31593,7 @@
     function buildRushWave(round, rs) {
       const fl = rushFloorOf(rs, round);
       const floorObj = TOWER_FLOORS[fl - 1];
-      const grow = 1 + RUSH.statGrow * (round - 1);
+      const grow = (1 + RUSH.statGrow * (round - 1)) * (RUSH.earlyEase[round - 1] ?? 1);
       const boss = isRushBossRound(round);
       const count = Math.min(RUSH.maxCount, RUSH.baseCount + RUSH.perRound * (round - 1));
       const n = boss ? Math.ceil(count * 0.6) : count; // 보스 라운드는 졸개를 줄임
@@ -31822,7 +31858,7 @@
       await saveRaidRoomData(roomId, room);
       armRoomPresence(`raid_rooms/${roomId}`, me.id);
       if (startNow) { await startRushRoom(roomId); return; }
-      showRewardBanner(`🌊 [${title}] 러쉬방을 만들었어요! 친구가 들어와 [준비완료]를 누르면 출발할 수 있어요. (빈 자리는 친구 용병 AI가 채워요)`);
+      showRewardBanner(`🌊 [${title}] 러쉬방을 만들었어요! 빈 자리에 [🤖 AI 넣기]로 친구 용병을 넣거나, 친구를 기다린 뒤 [출발]을 누르세요.`);
     };
 
     window.joinRushRoom = async function (roomId) {
@@ -31837,9 +31873,10 @@
         if (!isRushRoom(room)) { showNotice('⚠️ 사라진 러쉬방이에요.'); renderRushLobby(); return; }
         if (raidSlotOf(room, me.id)) { renderRushLobby(); return; }
         const free = RUSH_GUEST_SLOTS.find(s => !room[s + 'Id']);
-        if (room.status !== 'waiting' || !free) { showNotice('⚠️ 이미 출발했거나 자리가 찬 러쉬방이에요.'); return; }
+        if (room.status !== 'waiting' || !free || rushSeatsLeft(room) <= 0) { showNotice('⚠️ 이미 출발했거나 자리가 찬 러쉬방이에요.'); return; }
         if (attempt === 0) leaveRoomsExcept('raid', roomId);
         rushSeatInto(room, free, rushSeatFields(me, merc));
+        room.rushFill = rushFillOf(room).filter(f => f.id !== me.id); // 내 용병이 AI 자리에 있었으면 그 자리는 뺌
         room[free + 'Ready'] = false;
         room[raidPracticeKey(free)] = false;
         if (room.gone) delete room.gone[me.id];
@@ -31861,23 +31898,43 @@
       await saveRaidRoomData(roomId, room);
     };
 
-    // 빈 자리 채우기: 방에 없는 반 친구를 무작위로 골라, 그 친구 용병 중 파티 최고 전투력을 넘지 않는 가장 센 용병 1명씩
-    function pickRushFill(room) {
-      const seated = raidFilledSlots(room);
-      const inRoom = new Set(seated.map(s => room[s + 'Id']));
+    // AI 자리: 대기실에서 방장이 빈 자리마다 [🤖 AI 넣기]로 한 명씩 넣고 [✖ 빼기]로 뺌 (room.rushFill)
+    const rushFillOf = room => (Array.isArray(room && room.rushFill) ? room.rushFill : (room && room.rushFill && typeof room.rushFill === 'object' ? Object.values(room.rushFill) : [])).filter(f => f && f.merc);
+    const rushSeatsLeft = room => RUSH_MAX_PLAYERS - raidFilledSlots(room).length - rushFillOf(room).length;
+    // 방에도 AI 자리에도 없는 반 친구를 무작위로 골라, 그 친구 용병 중 파티 최고 전투력을 넘지 않는 가장 센 용병 1명
+    function pickRushAiSeat(room) {
+      const taken = new Set([...raidFilledSlots(room).map(s => room[s + 'Id']), ...rushFillOf(room).map(f => f.id)]);
       const cap = rushPartyCap(room);
       const pool = [];
       (state.students || []).forEach(s => {
-        if (!s || inRoom.has(s.id)) return;
+        if (!s || taken.has(s.id)) return;
         const best = (s.roster || []).map(m => ({ m, p: calcMercCombatPower(m, s) })).filter(x => x.p <= cap).sort((a, b) => b.p - a.p)[0];
         if (best) pool.push({ id: s.id, num: s.num || null, name: s.name, power: best.p, merc: JSON.parse(JSON.stringify(best.m)), snap: publicStudentSnapshot(s) });
       });
-      for (let i = pool.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [pool[i], pool[j]] = [pool[j], pool[i]];
-      }
-      return pool.slice(0, Math.max(0, RUSH_MAX_PLAYERS - seated.length));
+      return pool[Math.floor(Math.random() * pool.length)] || null;
     }
+
+    window.addRushAiSeat = async function (roomId) {
+      const me = getActiveStudent();
+      const room = liveRaidRoomsCache[roomId];
+      if (!me || !isRushRoom(room) || room.status !== 'waiting' || room.hostId !== me.id) return;
+      if (rushSeatsLeft(room) <= 0) { showNotice('⚠️ 빈 자리가 없어요.'); return; }
+      const seat = pickRushAiSeat(room);
+      if (!seat) { showNotice(`⚠️ 넣을 수 있는 친구 용병이 없어요. (파티 최고 전투력 ⚔️ ${rushPartyCap(room).toLocaleString()} 이하)`); return; }
+      room.rushFill = [...rushFillOf(room), seat];
+      await saveRaidRoomData(roomId, room);
+    };
+
+    window.removeRushAiSeat = async function (roomId, idx) {
+      const me = getActiveStudent();
+      const room = liveRaidRoomsCache[roomId];
+      if (!me || !isRushRoom(room) || room.status !== 'waiting' || room.hostId !== me.id) return;
+      const fill = rushFillOf(room);
+      if (!fill[idx]) return;
+      fill.splice(idx, 1);
+      room.rushFill = fill;
+      await saveRaidRoomData(roomId, room);
+    };
 
     window.startRushRoom = async function (roomId) {
       const me = getActiveStudent();
@@ -31886,7 +31943,10 @@
       if (room.hostId !== me.id) { showNotice('⚠️ 방장만 출발할 수 있어요!'); return; }
       if (!raidRealGuestSlots(room).every(s => room[s + 'Ready'])) { showNotice('⚠️ 아직 [✋ 준비완료]를 누르지 않은 친구가 있어요!'); return; }
       if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
-      room.rushFill = pickRushFill(room);
+      // 넣어 둔 AI 자리 그대로 출발 (그 사이 방에 들어온 친구·최고 전투력을 넘게 된 용병·넘친 자리는 뺌)
+      const humans = new Set(raidFilledSlots(room).map(s => room[s + 'Id']));
+      const cap = rushPartyCap(room);
+      room.rushFill = rushFillOf(room).filter(f => !humans.has(f.id) && Number(f.power || 0) <= cap).slice(0, Math.max(0, RUSH_MAX_PLAYERS - humans.size));
       const mercs = [...raidFilledSlots(room).flatMap(s => room[s + 'Mercs'] || []), ...room.rushFill.map(f => f.merc)];
       room.rushStartFloor = rushStartFloorOf(mercs);
       room.status = 'in_battle';
@@ -31908,7 +31968,7 @@
         stu: state.students.find(x => x.id === r[s + 'Id']) || r[s + 'StudentSnapshot'] || null,
         id: r[s + 'Id'], label: r[s + 'Name'] || '친구', merc: (r[s + 'Mercs'] || [])[0], ai: false
       }));
-      (Array.isArray(r.rushFill) ? r.rushFill : []).forEach(f => {
+      rushFillOf(r).forEach(f => {
         if (f && f.merc) seats.push({ stu: state.students.find(x => x.id === f.id) || f.snap || null, id: f.id, label: f.name || '친구', merc: f.merc, ai: true });
       });
       const list = seats.filter(x => x.merc).slice(0, RUSH_MAX_PLAYERS);
@@ -31936,7 +31996,7 @@
       const isHost = r.hostId === myStu.id;
       const netRole = humans.length > 1 ? (isHost ? 'host' : 'guest') : null;
       const names = raidFilledSlots(r).map(s => r[s + 'Name']).join(' & ');
-      const aiN = Array.isArray(r.rushFill) ? r.rushFill.length : 0;
+      const aiN = rushFillOf(r).length;
       showRewardBanner(`🌊 [몬스터 러쉬 출발!] ${names}${aiN ? ` + 친구 용병 AI ${aiN}명` : ''} 파티가 몰려오는 몬스터를 막아요!`);
       launchSimulation({
         mode: 'monster_rush',
@@ -32017,7 +32077,8 @@
           const allReady = guests.every(s => room[s + 'Ready']);
           const cap = rushPartyCap(room);
           const waiting = room.status === 'waiting';
-          const fill = Array.isArray(room.rushFill) ? room.rushFill : [];
+          const fill = rushFillOf(room);
+          const seatsLeft = rushSeatsLeft(room);
           const seatCard = (slot, i) => {
             if (room[slot + 'Id']) {
               const m = (room[slot + 'Mercs'] || [])[0] || {};
@@ -32033,11 +32094,15 @@
                   <div class="text-[11px] font-extrabold text-rose-400">⚔️ ${Number(room[slot + 'Power'] || 0).toLocaleString()} · 🎮 직접 조종</div>
                 </div>`;
             }
-            const f = !waiting ? fill[i - filled.length] : null;
+            const fi = i - filled.length;
+            const f = fill[fi];
             if (f) {
               return `
                 <div class="bg-slate-950 border-2 border-dashed border-violet-500/50 rounded-2xl p-3 flex flex-col gap-1.5">
-                  <span class="text-[11px] font-bold text-violet-300">🤖 친구 용병 (AI)</span>
+                  <div class="flex items-center justify-between gap-1">
+                    <span class="text-[11px] font-bold text-violet-300">🤖 친구 용병 (AI)</span>
+                    ${waiting && isHost ? `<button onclick="removeRushAiSeat('${room.roomId}', ${fi})" class="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-rose-900/70 text-[10px] font-extrabold text-rose-300">✖ 빼기</button>` : ''}
+                  </div>
                   <div class="font-title text-base text-white truncate">${f.name}</div>
                   <div class="flex items-center gap-1.5 text-[11px] text-slate-300 truncate">${f.merc && f.merc.job ? getMercIconHTML(f.merc.job, f.merc.skinVariant, 22) : ''}${(f.merc && f.merc.name) || '-'} <span class="text-cyan-300">Lv.${(f.merc && f.merc.level) || 1}</span></div>
                   <div class="text-[11px] font-extrabold text-rose-400">⚔️ ${Number(f.power || 0).toLocaleString()} · 🤖 자동 전투</div>
@@ -32046,10 +32111,14 @@
             return `
               <div class="bg-slate-950 border-2 border-dashed border-slate-700 rounded-2xl p-3 flex flex-col justify-center gap-1 text-[11px] text-slate-400">
                 <div class="font-bold text-slate-300">👋 빈 자리</div>
-                <div>친구가 들어오지 않으면 출발할 때 반 친구 용병(⚔️ ${cap.toLocaleString()} 이하)을 AI가 조종해요.</div>
+                ${waiting && isHost
+                  ? `<button onclick="addRushAiSeat('${room.roomId}')" class="mt-1 px-2 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-[11px]">🤖 AI 넣기</button>
+                     <div>반 친구 용병(⚔️ ${cap.toLocaleString()} 이하)이 무작위로 들어와요.</div>`
+                  : `<div>${waiting ? '친구가 들어오거나 방장이 AI를 넣을 수 있어요.' : '이번 러쉬에서는 비어 있어요.'}</div>`}
               </div>`;
           };
           const humanN = filled.length;
+          const aiN = fill.length;
           panel.classList.remove('hidden');
           panel.innerHTML = `
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
@@ -32068,17 +32137,17 @@
             <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
               <div class="text-xs font-bold text-slate-300">
                 ${waiting
-                  ? `👥 친구 ${humanN}명${humanN < RUSH_MAX_PLAYERS ? ` + 🤖 AI ${RUSH_MAX_PLAYERS - humanN}명` : ''} · ${guests.length && !allReady ? '파티원이 [✋ 준비완료]를 누르기를 기다리는 중이에요...' : '방장이 [출발]을 누르면 시작해요!'}`
+                  ? `👥 친구 ${humanN}명${aiN ? ` + 🤖 AI ${aiN}명` : ''}${seatsLeft ? ` · 빈 자리 ${seatsLeft}` : ''} · ${guests.length && !allReady ? '파티원이 [✋ 준비완료]를 누르기를 기다리는 중이에요...' : '방장이 [출발]을 누르면 시작해요!'}`
                   : (playing && !watching ? '🌊 러쉬가 진행 중이에요!' : (watching ? '📺 러쉬를 관전하고 있어요.' : '🌊 친구들이 러쉬 중이에요. 끝나면 이 방에서 다시 출발할 수 있어요.'))}
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                ${waiting && isHost && humanN < RUSH_MAX_PLAYERS ? roomInviteBtnHTML('raid', room.roomId) : ''}
-                ${waiting && watching && humanN < RUSH_MAX_PLAYERS ? `<button onclick="joinRushRoom('${room.roomId}')" class="px-5 py-3 rounded-2xl bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-sm shadow-lg">🚪 참가하기</button>` : ''}
+                ${waiting && isHost && seatsLeft > 0 ? roomInviteBtnHTML('raid', room.roomId) : ''}
+                ${waiting && watching && seatsLeft > 0 ? `<button onclick="joinRushRoom('${room.roomId}')" class="px-5 py-3 rounded-2xl bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-sm shadow-lg">🚪 참가하기</button>` : ''}
                 ${waiting && mySlot && mySlot !== 'host'
                   ? `<button onclick="toggleRushReady('${room.roomId}')" class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg ${room[mySlot + 'Ready'] ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-emerald-600 hover:bg-emerald-500 text-white animate-pulse'}">${room[mySlot + 'Ready'] ? '↺ 준비완료 취소' : '✋ 준비완료 누르기!'}</button>`
                   : ''}
                 ${waiting && isHost
-                  ? `<button onclick="startRushRoom('${room.roomId}')" ${allReady ? '' : 'disabled'} class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg ${allReady ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 hover:opacity-95 text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}">⚔️ ${humanN}명${humanN < RUSH_MAX_PLAYERS ? ` + AI ${RUSH_MAX_PLAYERS - humanN}명` : ''} 출발!</button>`
+                  ? `<button onclick="startRushRoom('${room.roomId}')" ${allReady ? '' : 'disabled'} class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg ${allReady ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 hover:opacity-95 text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}">⚔️ 출발! (${humanN + aiN}명)</button>`
                   : ''}
                 ${!waiting && (playing || (sim.spectator && sim.running && sim.raidWatch && sim.raidWatch.roomId === room.roomId)) ? `<button onclick="returnToBattle()" class="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-xs shadow">⚔️ 전투 화면 보기</button>` : ''}
                 ${!waiting && watching && !(sim.spectator && sim.running) ? `<button onclick="spectateRaidRoom('${room.roomId}')" class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 러쉬 화면 보기</button>` : ''}
@@ -32089,20 +32158,20 @@
 
       if (!box) return;
       if (!rooms.length) {
-        box.innerHTML = `<div class="col-span-full text-slate-400 py-6 text-center bg-slate-950 rounded-2xl border border-dashed border-slate-800 text-xs">열려 있는 러쉬방이 없어요. 위에서 <strong>[➕ 러쉬방 만들기]</strong>나 <strong>[🤖 혼자 바로 출발]</strong>을 눌러 보세요!</div>`;
+        box.innerHTML = `<div class="col-span-full text-slate-400 py-6 text-center bg-slate-950 rounded-2xl border border-dashed border-slate-800 text-xs">열려 있는 러쉬방이 없어요. 위에서 <strong>[➕ 러쉬방 만들기]</strong>를 눌러 보세요! (혼자서도 AI 친구를 넣어 출발할 수 있어요)</div>`;
         return;
       }
       box.innerHTML = rooms.map(r => {
         const mine = me && raidSlotOf(r, me.id);
         const filled = raidFilledSlots(r);
-        const full = filled.length >= RUSH_MAX_PLAYERS;
+        const full = rushSeatsLeft(r) <= 0;
         const waiting = r.status === 'waiting';
         const watchingThis = currentSpectatingRaidRoomId === r.roomId || (sim.spectator && sim.running && sim.raidWatch && sim.raidWatch.roomId === r.roomId);
         return `
           <div class="bg-slate-950 border-2 ${mine ? 'border-amber-500/60' : 'border-cyan-500/30'} rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-2">
             <div class="min-w-0">
               <div class="flex items-center gap-2 flex-wrap">
-                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${waiting ? 'bg-emerald-500/20 text-emerald-300' : 'bg-cyan-500/20 text-cyan-300'}">${waiting ? `🟢 대기 중 (${filled.length}/${RUSH_MAX_PLAYERS}명)` : '🔥 러쉬 진행 중'}</span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${waiting ? 'bg-emerald-500/20 text-emerald-300' : 'bg-cyan-500/20 text-cyan-300'}">${waiting ? `🟢 대기 중 (${RUSH_MAX_PLAYERS - rushSeatsLeft(r)}/${RUSH_MAX_PLAYERS}명${rushFillOf(r).length ? ` · AI ${rushFillOf(r).length}` : ''})` : '🔥 러쉬 진행 중'}</span>
                 <span class="font-bold text-sm text-white truncate">${r.title || `${r.hostName}의 몬스터 러쉬`}</span>
               </div>
               <div class="text-xs text-slate-400 mt-1 truncate">👥 ${filled.map(s => r[s + 'Name']).join(', ')}</div>
