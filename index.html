@@ -4944,6 +4944,8 @@
     }
     const SPRITE_DRAW_H = 54;       // 전투 화면에서 서 있는 캐릭터의 키(월드 px)
     // 탑 몬스터는 몸 크기(sizeScale)만큼. 엘리트 보스는 몸(토큰)이 보통 보스의 3배라 그림도 eliteScale만큼 크게
+    // 이펙트를 대상 크기에 맞출 때 쓰는 배율 (보통 용병 = 1, 큰 몬스터·엘리트 보스는 그만큼 큼)
+    const unitFxSize = u => { const sp = getUnitSprite(u); const h = sp ? spriteDrawH(u, sp) * (sp.topH || sp.standH) / sp.standH / SPRITE_DRAW_H : (u.sizeScale || 1); return Math.max(0.8, Math.min(4, h)); };
     const spriteDrawH = (u, sprite) => SPRITE_DRAW_H * (u.isEliteBoss ? (sprite.eliteScale || 1) * eliteSizeOf(u) : (u.sizeScale || 1));
     const SPRITE_DEATH_TICKS = 150; // 쓰러진 뒤 화면에 남아 있는 시간 (되살릴 수 없는 유닛)
     const CORPSE_ALPHA = 0.55; // 되살릴 수 있는 시체가 남아 있는 진하기
@@ -6057,6 +6059,8 @@
       src: 'assets/sprites/fx/frost_sr_fx.webp',
       anims: { shard: [[0,0,83,62,82,31]], circle: [[85,0,45,68,22.5,34]], dome: [[132,0,193,144,96.5,72]], star: [[327,0,27,29,13.5,14.5]] }
     };
+    // 주술사 [저주의 늪] 장판 (tools/curse_swamp_fx_build.py): 0 퍼짐 · 1 가시 늪 · 2 가시·거품 늪 · 3·4 해골 늪. 기준점 = 늪 타원 가운데
+    const CURSE_SWAMP_FX = { src: 'assets/sprites/fx/curse_swamp_fx.webp', anims: { pool: [[0,0,193,112,96,73], [195,0,188,127,94,88], [385,0,196,120,98,81], [583,0,194,128,97,89], [779,0,192,128,96,89]] } };
     // 주술사 피격 이펙트 (tools/curse_hit_build.py): orb = 기본 공격 불꽃 폭발, hex = 저주 해골 폭발 (기준점 = 폭발 가운데)
     const CURSE_HIT_FX = { src: 'assets/sprites/fx/curse_hit_fx.webp', anims: { orb: [[0,0,173,162,86,80]], hex: [[175,0,141,139,71,72]], sip: [[318,0,121,144,60,143]] } }; // sip = 흡혼에 맞은 적 발밑 보라 불길 (기준점 = 바닥 가운데)
     // 주술사 기본 공격 보라 불꽃 (tools/curse_orb_build.py). 둥근 머리가 앞(오른쪽), 꼬리 불길이 뒤. 기준점 = 둥근 머리 가운데
@@ -6253,9 +6257,9 @@
       if (ef.type === 'curse_shatter') {
         // 대상 몸에 꽂힘. dir = 시전자 → 대상 방향 (왼쪽에서 오면 1, 오른쪽에서 오면 -1)
         if (!CURSE_SHATTER_FX.ready) return;
-        const [w, h, ax, ay] = CURSE_SHATTER_FX.f, k = 0.3 * (0.75 + 0.25 * Math.min(1, progress / 0.15));
+        const [w, h, ax, ay] = CURSE_SHATTER_FX.f, k = 0.42 * (ef.s || 1) * (0.75 + 0.25 * Math.min(1, progress / 0.15)); // s = 맞은 대상 크기 배율
         ctx.globalAlpha = Math.min(1, progress / 0.08) * fade;
-        ctx.translate(ef.x, ef.y - 14); // 대상 몸 한가운데에 꽂힘
+        ctx.translate(ef.x, ef.y - 14 * (ef.s || 1)); // 대상 몸 한가운데에 꽂힘
         ctx.scale(ef.dir === -1 ? -1 : 1, 1);
         drawSpriteFx(ctx, CURSE_SHATTER_FX.img, 0, 0, w, h, -ax * k, -ay * k, w * k, h * k);
         return;
@@ -6267,7 +6271,7 @@
         const x = ef.sx + (ef.x - ef.sx) * t, y = ef.sy + (ef.y - ef.sy) * t;
         ctx.translate(x, y);
         ctx.rotate(Math.atan2(ef.y - ef.sy, ef.x - ef.sx));
-        const grow = 0.55 * (0.25 + 0.75 * Math.min(1, progress / 0.3)); // 지팡이 끝에서 작게 나와 커지며 날아감 (꼬리가 처음부터 몸을 덮지 않게)
+        const grow = 0.75 * (0.25 + 0.75 * Math.min(1, progress / 0.3)); // 지팡이 끝에서 작게 나와 커지며 날아감 (꼬리가 처음부터 몸을 덮지 않게)
         drawCurseFx(ctx, 'hex1', 0, 0, grow, grow, Math.min(1, (1 - progress) / 0.12));
       } else if (ef.type === 'curse_weaken') {
         const nm = progress < 0.2 ? 'weak0' : (progress < 0.6 ? 'weak1' : 'weak2');
@@ -6715,7 +6719,7 @@
       LANCER_MUSOU_SKINS[v] = def;
     });
 
-    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BLOOD_ORC_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX, FROST_SR_FX, CURSE_ORB_FX, CURSE_HIT_FX).forEach(def => {
+    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BLOOD_ORC_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX, FROST_SR_FX, CURSE_ORB_FX, CURSE_HIT_FX, CURSE_SWAMP_FX).forEach(def => {
       def.img = new Image();
       def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
       def.img.src = def.src;
@@ -17099,8 +17103,8 @@
         const st = ZONE_STYLES[z.kind] || ZONE_STYLES.arrow_rain;
         const fade = Math.min(1, z.life / 30);
         ctx.save();
-        // 범위 표시(바닥 색·점선 테두리)는 그림 효과보다 훨씬 흐리게
-        const RANGE_ALPHA = 0.25;
+        // 범위 표시(바닥 색·점선 테두리)는 그림 효과보다 훨씬 흐리게. 저주의 늪은 그림만 (범위 원·점선 없음)
+        const RANGE_ALPHA = z.kind === 'curse_field' ? 0 : 0.25;
         ctx.globalAlpha = fade * RANGE_ALPHA;
         ctx.fillStyle = st.fill;
         ctx.beginPath();
@@ -17117,13 +17121,17 @@
           ctx.globalAlpha = fade;
           drawSwampPool(ctx, z, 0.9);
         }
-        if (z.kind === 'curse_field' && CURSE_FX.ready) {
-          // 저주의 늪: 퍼지는 늪 → 가시가 솟은 늪과 해골이 떠오르는 늪을 번갈아
-          const age = z.maxLife - z.life;
-          const nm = age < 24 ? 'swamp0' : (Math.floor(age / 36) % 2 ? 'swamp2' : 'swamp1');
-          const k = z.r * 2.1 / CURSE_FX.frames[nm][2];
+        if (z.kind === 'curse_field' && CURSE_SWAMP_FX.ready) {
+          // 저주의 늪: 검은 기운이 퍼짐 → 가시 늪(1·2칸 번갈아)과 해골 늪(3·4칸 번갈아)을 72틱마다 바꿈
+          const age = z.maxLife - z.life, list = CURSE_SWAMP_FX.anims.pool;
+          const fi = age < 24 ? 0 : (Math.floor((age - 24) / 72) % 2 ? 3 : 1) + (Math.floor(age / 12) % 2);
+          const fr = list[fi], k = z.r * 2.15 / fr[2];
           ctx.globalAlpha = fade * Math.min(1, age / 10 + 0.3);
-          drawCurseFx(ctx, nm, z.x, z.y + z.r * 0.55, k, k * 1.5); // 비스듬히 그린 늪이라 세로로 늘려 둥근 범위를 덮음
+          ctx.save();
+          ctx.translate(z.x, z.y);
+          ctx.scale(1, 1.4); // 비스듬히 그린 늪이라 세로로 조금 늘려 둥근 범위를 덮음
+          drawFxFrame(ctx, fr, 0, 0, k, 0, 1, CURSE_SWAMP_FX.img);
+          ctx.restore();
         }
         ctx.globalAlpha = fade * RANGE_ALPHA;
         ctx.strokeStyle = st.color;
@@ -18231,7 +18239,7 @@
             withSkillHit(() => fx.marks.forEach((start, e) => {
               const burst = (e.damageTaken - start) * CURSE_RUIN_BURST;
               if (!e.alive || burst < 1) return;
-              sim.effects.push({ type: 'curse_shatter', x: e.x, y: e.y, life: 34, maxLife: 34 });
+              sim.effects.push({ type: 'curse_shatter', x: e.x, y: e.y, s: unitFxSize(e), life: 34, maxLife: 34 });
               sim.effects.push({ type: 'curse_reaper', x: e.x, y: e.y + 8, scale: 0.5, life: 30, maxLife: 30 });
               applyDamage(o, e, burst, '⚰️', '#7e22ce');
             }));
@@ -19921,7 +19929,7 @@
           const spr = getUnitSprite(unit), ks = spr ? spriteDrawH(unit, spr) / spr.standH : 0.77;
           sim.effects.push({ type: 'curse_bolt', sx: unit.x + dir * 66 * ks, sy: unit.y + 12 - 48 * ks, x: foe.x, y: foe.y - 20, life: 20, maxLife: 20 });
           sim.effects.push({ type: 'magic_burst', spr: 'curse_hex_hit', wait: 17, x: foe.x, y: foe.y - 20, r: 40, life: 39, maxLife: 39 }); // 해골이 닿는 때(17틱)에 터짐
-        } else sim.effects.push({ type: 'curse_shatter', x: foe.x, y: foe.y, dir: foe.x >= unit.x ? 1 : -1, life: 34, maxLife: 34 });
+        } else sim.effects.push({ type: 'curse_shatter', x: foe.x, y: foe.y, dir: foe.x >= unit.x ? 1 : -1, s: unitFxSize(foe), life: 34, maxLife: 34 });
         if (sk === 'hex_bolt') {
           applyDamage(unit, foe, unit.atk * CURSE_BOLT_DMG, '💀', '#7e22ce');
           inflictStatus(unit, foe, 'hex', CURSE_BOLT_HEX_TICKS);
@@ -19953,7 +19961,7 @@
           pt = bestAoePoint(unit, fresh.length ? fresh : enemies, reach, r, foe) || foe;
         }
         if (!pt) return true;
-        sim.effects.push({ type: 'aoe_ring', x: pt.x, y: pt.y, r, color: sk === 'enfeeble' ? '#a16207' : '#7e22ce', life: 36, maxLife: 36 });
+        if (sk === 'enfeeble') sim.effects.push({ type: 'aoe_ring', x: pt.x, y: pt.y, r, color: '#a16207', life: 36, maxLife: 36 }); // 저주의 늪은 보라 원 없이 늪 그림만
         if (sk === 'enfeeble') {
           sim.effects.push({ type: 'curse_weaken', x: pt.x, y: pt.y, r, life: 44, maxLife: 44 });
           const hit = enemies.filter(e => Math.hypot(e.x - pt.x, e.y - pt.y) - unitBodyGap(e) <= r);
