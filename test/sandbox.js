@@ -149,6 +149,12 @@
       const b = u.sbBeh;
       if (!b) return;
       if (u._sbMove === undefined) u._sbMove = u.baseMoveSpeed;
+      if (SB.manual != null && u.sbId === SB.manual) { // 수동 조종 중인 유닛은 정지·행동 제한보다 조종이 우선
+        u.baseMoveSpeed = u._sbMove;
+        u.sbNoSkill = false;
+        u.sbBlockSkills = {};
+        return;
+      }
       u.baseMoveSpeed = b.move ? u._sbMove : 0;
       if (!b.dash) u.dashCooldown = Math.max(u.dashCooldown || 0, 30);
       if (!b.attack) u.cooldown = Math.max(u.cooldown || 0, 30);
