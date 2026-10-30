@@ -14455,6 +14455,8 @@
         return;
       }
       if (frostPassive) durationFrames = blocked ? durationFrames : durationFrames * 2;
+      // 몬스터의 면역을 뚫고 건 상태이상은 기록해 두었다가, 풀리는 즉시 5초간 저항을 줌
+      if (frostPassive && blocked && (targetUnit.monsterPassives || targetUnit.isEliteBoss)) (targetUnit.frostPierced = targetUnit.frostPierced || {})[statusType] = true;
       // 엘리트 보스가 지속 피해 등에 걸리면 '하나만' 규칙에 기록 (혹한으로 면역을 뚫은 군중제어는 기록하지 않음)
       if (targetUnit.isEliteBoss && negative && sourceUnit !== targetUnit && !blocked && !CC_STATUSES.includes(statusType)) targetUnit.eliteDebuff = statusType;
       // 빙결은 몸집이 클수록 짧아짐: 몸집이 커진 만큼의 50%만 반영 (1배는 그대로, 2배 크기면 ÷1.5, 3배면 ÷2)
@@ -16128,6 +16130,16 @@
         Object.keys(st).forEach(k => {
           if (st[k] > 0) st[k]--;
         });
+        // 면역을 뚫고 건 상태이상이 끝나면(정화로 풀려도) 즉시 5초간 저항 버프
+        if (u.frostPierced) {
+          Object.keys(u.frostPierced).forEach(k => {
+            if (!(st[k] > 0)) {
+              delete u.frostPierced[k];
+              st.resist = Math.max(st.resist || 0, 5 * BATTLE_TICKS_PER_SEC);
+              sim.floatTexts.push({ x: u.x, y: u.y - 36, text: '🔰저항!', color: '#0f766e', life: 52 });
+            }
+          });
+        }
         // 엘리트 보스: 걸려 있던 상태이상이 끝나면(정화로 풀려도) 10초간 상태이상 면역
         if (u.eliteDebuff && !(st[u.eliteDebuff] > 0)) {
           u.eliteDebuff = '';
