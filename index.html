@@ -15863,11 +15863,15 @@
 
         } else if (sk === 'ice_arrow' || sk === 'frost_arrow') {
           // 얼릴 수 있는 적 중, 터지는 범위에 얼릴 수 있는 적이 가장 많이 함께 들어오는 적
-          const freezable = enemies.filter(e => e.statuses.freeze <= 35 && e.statuses.stun <= 35);
+          // 빙결술사 AI는 '곧 풀리는 적'까지 얼릴 대상으로 보고, 점수를 매길 때 고른 적(target)을 그대로 노림
+          const frostAi = sk === 'frost_arrow' && !aimPt;
+          const freezable = frostAi
+            ? enemies.filter(e => frostNeedsFreeze(unit, e, frostArrowLead(unit, e)))
+            : enemies.filter(e => e.statuses.freeze <= 35 && e.statuses.stun <= 35);
           const iceR = 88 * unitAreaScale(unit);
           const unFrozen = (freezable
             .filter(e => unitDist(e, unit) <= unit.range + 90)
-            .map(e => ({ e, n: freezable.filter(o => Math.hypot(o.x - e.x, o.y - e.y) - unitBodyGap(o) <= iceR * 0.85).length + (e === target ? 0.5 : 0) + (isMercAI(unit) && interruptibleCastLeft(e) > 20 ? 3 : 0) }))
+            .map(e => ({ e, n: freezable.filter(o => Math.hypot(o.x - e.x, o.y - e.y) - unitBodyGap(o) <= iceR * 0.85).length + (e === target ? (frostAi ? 0.9 : 0.5) : 0) + (isMercAI(unit) && interruptibleCastLeft(e) > 20 ? 3 : 0) }))
             .sort((a, b) => b.n - a.n)[0]?.e || target);
           // 논타겟: 대상을 쫓지 않고 한 방향으로 곧게 날아가 처음 닿는 적(또는 사거리 끝)에서 터짐. 직접 전투는 커서 방향, AI는 고른 적이 있는 쪽
           const arrowFrom = { x: unit.x, y: unit.y - 12 };
@@ -15883,7 +15887,7 @@
             projType: 'ice_arrow_proj', spr: unitProjFx(unit, 'ice_arrow_proj'),
             x: arrowFrom.x, y: arrowFrom.y,
             isDirectional: true, angle: arrowAng, travel: 0, maxTravel: unit.range + 90, homeTarget: null,
-            target: null, owner: unit,
+            target: null, owner: unit, frostAim: aimPt ? null : unFrozen, // 빙결술사 AI: 날아가는 중인 화살이 얼릴 적 (같은 적에게 겹쳐 쓰지 않게)
             dmg: unit.atk * 1.85,
             aoeRadius: 88,
             statusOnHit: 'freeze',
@@ -16308,7 +16312,12 @@
         // [Requirement 5 & 7: 전략적 AI 멀티 스킬 선택 및 발동]
         const chosenSkill = selectStrategicSkillToCast(u, allies, seenEnemies, target, dist);
         if (chosenSkill) {
-          beginSkillCast(u, chosenSkill, chosenSkill === 'deep_freeze' && target ? { x: target.x, y: target.y, target } : null);
+          // 빙결술사 AI는 점수를 매길 때 고른 적(곧 풀리는 적)에게 동결·아이스애로우를 씀
+          const frostFoe = u.job === 'frost' && u.frostAiFoe ? u.frostAiFoe[chosenSkill] : null;
+          const aimFoe = frostFoe && frostFoe.alive ? frostFoe : target;
+          if (chosenSkill === 'deep_freeze' && aimFoe) beginSkillCast(u, chosenSkill, { x: aimFoe.x, y: aimFoe.y, target: aimFoe });
+          else if (chosenSkill === 'frost_arrow' && frostFoe && frostFoe.alive) beginSkillCast(u, chosenSkill, { target: frostFoe });
+          else beginSkillCast(u, chosenSkill, null);
           return;
         }
 
@@ -17851,7 +17860,12 @@
           // 맵 전체라 적이 여럿 남아 있을 때 (하나뿐이면 체력이 많을 때만). 같은 편 눈보라가 이미 불고 있으면 아낌
           if (sim.hiddenFx && sim.hiddenFx.some(f => f.kind === 'blizzard' && f.owner && f.owner.team === unit.team)) return -1;
           if (allies.some(a => a !== unit && a.casting && a.casting.key === 'blizzard')) return -1;
-          return enemies.length >= 2 ? 98 : (enemyTarget && enemyTarget.hp > unit.atk * 6 ? 85 : -1);
+          {
+            // 빙결술사 AI: 5초 시전이 끝날 때쯤 풀려 있을 적이 여럿(또는 절반 이상)이면 전체를 다시 얼림. 다들 오래 얼어 있으면 아낌
+            const needy = enemies.filter(e => frostNeedsFreeze(unit, e, Math.round((unitSkillBook(unit).blizzard?.castSec || 5) * 60))).length;
+            if (needy >= 2 || (enemies.length >= 2 && needy * 2 >= enemies.length)) return 98;
+            return needy === 1 && enemies.length === 1 && enemyTarget && enemyTarget.hp > unit.atk * 6 ? 85 : -1;
+          }
         default:
           return -1;
       }
@@ -19250,6 +19264,45 @@
       if (sk === 'ice_barrier') {
         // 다시 쓰면 남은 배리어를 새것으로 바꿈 (성녀 보호막 등 다른 보호막은 그대로)
         if (unit.frostBarrier > 0) unit.shield = Math.max(0, (unit.shield || 0) - Math.min(unit.frostBarrier, unit.shield || 0));
+    // ===== 빙결술사 AI: 피해보다 빙결 유지가 목표 =====
+    // 빙결은 겹치지 않고 긴 쪽으로만 갱신되므로 이미 얼어 있는 적에게 쓰면 낭비.
+    // 얼음이 풀리기 직전(새 빙결이 닿는 데 걸리는 시간 안)인 적에게 이어 걸어 빈틈없이 얼려 둠
+    const FROST_AI_SLACK = 20; // 닿는 시간에 더하는 여유 틱
+    const FROST_AI_HOLD_KEYS = ['deep_freeze', 'frost_arrow', 'ice_arrow', 'javelin', 'stun_strike'];
+    // 적을 묶어 두고 있는 남은 틱 (빙결·기절)
+    function frostHeldLeft(e) {
+      return Math.max(e.statuses.freeze || 0, e.statuses.stun || 0);
+    }
+    // 같은 편이 이미 이 적에게 걸고 있는 빙결·기절 (시전 중인 스킬, 날아가는 아이스애로우)
+    function frostPendingOn(unit, e) {
+      for (const a of sim.units) {
+        if (!a.alive || a === unit || a.team !== unit.team || !a.casting) continue;
+        const k = a.casting.key;
+        if (k === 'blizzard') return true;
+        if (FROST_AI_HOLD_KEYS.includes(k) && a.casting.aimTarget === e) return true;
+        if (k === 'frost_nova' && unitDist(e, a) <= GRID_CELL_SIZE * FROST_NOVA_CELLS * unitAreaScale(a) - 20) return true;
+      }
+      return sim.projectiles.some(p => p.frostAim === e && p.owner && p.owner.team === unit.team);
+    }
+    // lead틱 뒤에 빙결이 닿는다면 지금 걸어야 하는 적인지 (그때쯤 풀려 있고, 아군이 거는 중도 아님)
+    function frostNeedsFreeze(unit, e, lead) {
+      return frostHeldLeft(e) <= lead + FROST_AI_SLACK && !frostPendingOn(unit, e);
+    }
+    // 먼저 얼려야 할 적일수록 큼: 공격력, 나·후열 아군에게 붙은 적, 긴 시전 중인 적
+    function frostThreatOf(unit, e, primary) {
+      const C = GRID_CELL_SIZE;
+      let s = e.atk || 1;
+      const nearSquishy = sim.units.some(a => a.alive && a.team === unit.team && AI_SQUISHY_JOBS.includes(a.job) && unitDist(a, e) <= C * 2);
+      if (nearSquishy) s *= 1.5;
+      if (interruptibleCastLeft(e) > 20) s *= 1.4;
+      if (e === primary) s *= 1.1;
+      return s;
+    }
+    // 아이스애로우가 닿는 데 걸리는 틱 (시전 + 날아가는 시간)
+    function frostArrowLead(unit, e) {
+      return Math.round(((unitSkillBook(unit).frost_arrow?.castSec) || 0.49) * 60) + unitDist(e, unit) / (3.0 * BATTLE_PROJECTILE_SPEED);
+    }
+
         const amt = Math.round(unit.maxHp * FROST_BARRIER_HP_RATIO + unit.atk * FROST_BARRIER_ATK_RATIO);
         unit.shield = (unit.shield || 0) + amt;
         unit.frostBarrier = amt;
@@ -19668,24 +19721,65 @@
           const kill = enemyTarget.hp <= unit.atk * SNIPER_FINISH_DMG_PER_BULLET * unit.ammo;
           return kill ? 90 : (unit.ammo >= 5 ? 74 : -1);
         }
-        case 'ice_barrier':
-          // 싸움이 붙었을 때, 배리어가 거의 다 깎였거나 없으면 다시
+        // 빙결술사: 피해보다 빙결을 끊기지 않게 거는 것이 목표 (frostNeedsFreeze: 곧 풀리는데 아무도 안 거는 적만)
+        //   여럿이 몰려 있으면 프리즈·아이스애로우, 하나면 가장 오래 얼리는 동결(위험한 적부터) → 아이스애로우 → 프리즈 순
+        case 'ice_barrier': {
+          // 살아 있어야 계속 얼림: 체력이 많이 줄면 먼저. 그 외엔 얼릴 일이 없을 때 끼워 넣음
           if (nearestEnemyDist > unit.range + C) return -1;
           if ((unit.frostBarrier || 0) > unit.maxHp * 0.06) return -1;
-          return unit.hp / unit.maxHp < 0.7 ? 92 : 72;
-        case 'frost_nova': {
-          // 아직 안 얼어 있는 적이 둘레 3칸에 들어왔을 때 (여럿이면 먼저, 바짝 붙은 하나도 얼려 두고 거리를 벌림)
-          const r = C * FROST_NOVA_CELLS - 20;
-          const fresh = enemies.filter(e => unitDist(e, unit) <= r && e.statuses.freeze <= 35 && e.statuses.stun <= 35);
-          if (fresh.length >= 2) return 95;
-          return fresh.length === 1 && unitDist(fresh[0], unit) < C * 1.6 ? 88 : -1;
+          if (unit.hp / unit.maxHp < 0.4) return 97;
+          const loose = enemies.some(e => unitDist(e, unit) <= C * 2.5 && frostHeldLeft(e) <= 60);
+          return loose ? (unit.hp / unit.maxHp < 0.7 ? 89 : 72) : 60;
         }
-        case 'deep_freeze':
-          // 안 얼어 있는 목표가 사거리 안에 있을 때
-          if (!enemyTarget || distToPrimary > unit.range + 80 || enemyTarget.statuses.freeze > 35) return -1;
-          return 90;
-        case 'skating':
-          return nearestEnemyDist < C * 1.8 ? 91 : -1; // 적이 바짝 붙으면 미끄러져 빠짐 (적에게 다가가는 용도로는 안 씀)
+        case 'frost_nova': {
+          // 곧 풀리는 적이 1초 뒤에도 둘레 3칸 안에 있을 때. 여럿이면 가장 먼저
+          const r = C * FROST_NOVA_CELLS - 20;
+          const lead = Math.round((unitSkillBook(unit).frost_nova?.castSec || 1) * 60);
+          const needy = enemies.filter(e => unitDist(e, unit) <= r && frostNeedsFreeze(unit, e, lead));
+          if (needy.length >= 2) return 96;
+          if (needy.length !== 1) return -1;
+          if (unitDist(needy[0], unit) < C * 1.6) return 93; // 바짝 붙은 적은 얼려 두고 거리를 벌림
+          // 하나뿐이면 다른 빙결 스킬이 없을 때만 (범위 스킬을 한 명에게 쓰고 15초 기다리지 않게). 더 몰려올 것 같으면 기다림
+          const others = aiReadySkillKeys(unit).some(k => k === 'deep_freeze' || k === 'frost_arrow');
+          return others || aoeWorthWaiting(unit, enemies, r) ? -1 : 76;
+        }
+        case 'deep_freeze': {
+          // 사거리 안에서 곧 풀리는 적 중 가장 위험한 적 하나를 20초(혹한) 가둠
+          const reach = unit.range + 80;
+          const lead = Math.round((unitSkillBook(unit).deep_freeze?.castSec || 1) * 60) + 4;
+          const needy = enemies.filter(e => unitDist(e, unit) <= reach && frostNeedsFreeze(unit, e, lead));
+          if (!needy.length) return -1;
+          const foe = needy.reduce((b, e) => (!b || frostThreatOf(unit, e, enemyTarget) > frostThreatOf(unit, b, enemyTarget) ? e : b), null);
+          if (!unit.frostAiFoe) unit.frostAiFoe = {};
+          unit.frostAiFoe.deep_freeze = foe;
+          // 프리즈 한 번에 같이 얼릴 수 있는 무리 속이면 프리즈에 맡김
+          const novaR = C * FROST_NOVA_CELLS - 20;
+          const novaReady = aiReadySkillKeys(unit).includes('frost_nova');
+          const clustered = novaReady && unitDist(foe, unit) <= novaR
+            && enemies.filter(e => unitDist(e, unit) <= novaR && frostNeedsFreeze(unit, e, 60)).length >= 2;
+          return clustered ? 80 : 94;
+        }
+        case 'frost_arrow': {
+          // 터지는 범위에 곧 풀리는 적이 가장 많이 함께 들어오는 적을 노림. 여럿이면 먼저, 하나면 동결 다음
+          const reach = unit.range + 80;
+          const iceR = 88 * unitAreaScale(unit) * 0.85;
+          const needy = enemies.filter(e => unitDist(e, unit) <= reach && frostNeedsFreeze(unit, e, frostArrowLead(unit, e)));
+          if (!needy.length) return -1;
+          let best = null;
+          needy.forEach(e => {
+            const n = needy.filter(o => Math.hypot(o.x - e.x, o.y - e.y) - unitBodyGap(o) <= iceR).length;
+            const v = n * 1000 + frostThreatOf(unit, e, enemyTarget);
+            if (!best || v > best.v) best = { e, n, v };
+          });
+          if (!unit.frostAiFoe) unit.frostAiFoe = {};
+          unit.frostAiFoe.frost_arrow = best.e;
+          return best.n >= 2 ? 95 : 91;
+        }
+        case 'skating': {
+          // 안 얼어 있는 적이 바짝 붙으면 미끄러져 빠짐 (얼어 있는 적은 위협이 아니라 그대로 둠 · 적에게 다가가는 용도로는 안 씀)
+          const close = enemies.some(e => unitDist(e, unit) < C * 1.8 && frostHeldLeft(e) <= 30);
+          return close ? 90 : -1;
+        }
         default:
           return null;
       }
