@@ -84,7 +84,7 @@
   const origTick = applyLiveBattleFrameTick;
   applyLiveBattleFrameTick = function () {
     const r = origTick.apply(this, arguments);
-    if (!sim.spectator || !sim.running || !liveNet.curFrame) return r;
+    if (sim.netRole !== 'guest' || !sim.running || !liveNet.curFrame) return r; // 관전자·도전자(방장 화면을 받는 쪽) 모두
     const now = performance.now();
     const dt = S.lastT ? now - S.lastT : 16;
     S.lastT = now;

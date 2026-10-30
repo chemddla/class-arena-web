@@ -10,7 +10,7 @@ window.__mockDb = (() => {
   const snap = p => ({ val: () => clone(get(p)), exists: () => get(p) !== undefined, key: keys(p).pop() });
   const related = (a, b) => { const x = keys(a).join('/'), y = keys(b).join('/'); return x === y || x.startsWith(y + '/') || y.startsWith(x + '/') || !y || !x; };
   const fire = p => listeners.slice().forEach(l => { if (related(p, l.path)) l.cb(snap(l.path)); });
-  const setLocal = (p, v) => {
+  const putLocal = (p, v) => {
     const ks = keys(p);
     let o = tree;
     for (let i = 0; i < ks.length - 1; i++) {
@@ -19,11 +19,14 @@ window.__mockDb = (() => {
     }
     if (v === null || v === undefined) delete o[ks[ks.length - 1]];
     else o[ks[ks.length - 1]] = clone(v);
-    fire(p);
   };
+  const setLocal = (p, v) => { putLocal(p, v); fire(p); };
+  // update는 Firebase처럼 한꺼번에: 모든 칸을 바꾼 뒤 한 번만 알림 (하나씩 알리면 status만 먼저 보고 startedAt 없이 시작하는 일이 생김)
+  const updateLocal = (p, o) => { Object.entries(o || {}).forEach(([k, v]) => putLocal(keys(p).concat(keys(k)).join('/'), v)); fire(p); };
   ch.onmessage = e => {
     const m = e.data;
     if (m.t === 'set') setLocal(m.p, m.v);
+    else if (m.t === 'upd') updateLocal(m.p, m.o);
     else if (m.t === 'req') ch.postMessage({ t: 'full', tree });
     else if (m.t === 'full' && !Object.keys(tree).length && m.tree && Object.keys(m.tree).length) {
       tree = m.tree;
@@ -36,7 +39,7 @@ window.__mockDb = (() => {
     child: c => ref(keys(p).concat(keys(c)).join('/')),
     set(v) { setLocal(p, v); ch.postMessage({ t: 'set', p, v: clone(v) }); return Promise.resolve(); },
     remove() { return this.set(null); },
-    update(o) { Object.entries(o || {}).forEach(([k, v]) => this.child(k).set(v)); return Promise.resolve(); },
+    update(o) { const v = clone(o) || {}; updateLocal(p, v); ch.postMessage({ t: 'upd', p, o: v }); return Promise.resolve(); },
     on(ev, cb) { listeners.push({ path: p, cb }); setTimeout(() => cb(snap(p)), 0); return cb; },
     off() { for (let i = listeners.length - 1; i >= 0; i--) if (listeners[i].path === p) listeners.splice(i, 1); },
     once() { return Promise.resolve(snap(p)); },
