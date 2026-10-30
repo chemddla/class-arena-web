@@ -1889,7 +1889,7 @@
             <div>📈 <strong>100라운드</strong>까지! 구간마다 몬스터가 강해지고 많아져요: 입문(1~10) · 초급(11~30) · 중급(31~50) · 상급(51~70) · 영웅(71~90) · 전설(91~100). <strong>5라운드마다 👑 보스</strong>, 10라운드마다 대보스, 100라운드는 🔥최종 보스예요.</div>
             <div>💚 라운드를 깨면 살아 있는 용병 체력 30% 회복 · 보스 라운드를 깨면 쓰러진 용병도 부활해요.</div>
             <div>⏰ 한 라운드 제한 시간 3분 · 모두 쓰러지거나 시간이 지나면 끝나요.</div>
-            <div class="mt-1 p-2.5 rounded-xl bg-slate-950 border border-slate-800">💰 보상: 깬 라운드 × <strong class="text-amber-300">100 CA</strong> + 깬 보스 라운드 × <strong class="text-amber-300">400 CA</strong> (하루 3번까지 · 중간에 그만둬도 깬 라운드 보상은 받아요)</div>
+            <div class="mt-1 p-2.5 rounded-xl bg-slate-950 border border-slate-800">💰 보상: 깬 라운드 × <strong class="text-amber-300">100 CA</strong> + 깬 보스 라운드 × <strong class="text-amber-300">400 CA</strong> (중간에 그만둬도 깬 라운드 보상은 받아요)<br>🔁 다시 도전하면 <strong>오늘 보상받은 최고 라운드를 넘어선 라운드만</strong> 보상을 받아요. 예) 3라운드까지 받았다면 다음엔 4라운드부터 보상 · 매일 초기화</div>
           </div>
         </div>
       </section>
@@ -6833,7 +6833,7 @@
       if (stu && merc.levelOwner === stu.id) return legacyLevelCostTo(merc.levelBase || 1) + (merc.levelSpent || 0);
       return legacyLevelCostTo(merc.level || 1);
     }
-    const DAILY_REWARD_LIMITS = { quiz: 20, practice: 3, tower: 3, pvp: 5, raid: 5, minigame: 5, rush: 3 };
+    const DAILY_REWARD_LIMITS = { quiz: 20, practice: 3, tower: 3, pvp: 5, raid: 5, minigame: 5 };
     const DAILY_REWARD_LABELS = { quiz: '퀴즈', practice: '허수아비 모의전', tower: '모험의 탑', pvp: '랭킹 매칭', raid: '엘리트 보스', minigame: '미니게임', rush: '몬스터 러쉬' };
 
     // 모험의 탑 하루 클리어 횟수 (처음 깨는 층을 이길 때마다 1회 · 실패나 이미 깬 층 재도전은 세지 않음)
@@ -20059,7 +20059,7 @@
       if (!sim.running) return;
       if (sim.spectator) { stopSpectatingPvpRoom(); return; }
       if (battleNotStartedYet()) { leaveBattleBeforeStart(); return; }
-      askCustomConfirm(sim.mode === 'monster_rush' ? `몬스터 러쉬를 그만둘까요? 지금까지 깬 ${(sim.rush && sim.rush.cleared) || 0}라운드만큼 보상을 받아요.` : '전투를 포기할까요? 패배로 처리되고 보상은 없어요.', () => {
+      askCustomConfirm(sim.mode === 'monster_rush' ? `몬스터 러쉬를 그만둘까요? 지금까지 깬 ${(sim.rush && sim.rush.cleared) || 0}라운드까지 보상을 받아요 (오늘 이미 받은 라운드는 빼고).` : '전투를 포기할까요? 패배로 처리되고 보상은 없어요.', () => {
         if (!sim.running) return;
         if (sim.netRole === 'guest') {
           localBattleInput.forfeit = 1;
@@ -23320,7 +23320,7 @@
         btn('tower', '🏰 모험의 탑 클리어', book.towerClears || 0, TOWER_DAILY_CLEARS),
         btn('raidClears', '🐉 엘리트 보스 클리어', book.raidClears || 0, ELITE_DAILY_CLEARS),
         btn('raid', '🐉 엘리트 보스 격려 보상', book.raid || 0, DAILY_REWARD_LIMITS.raid),
-        btn('rush', '🌊 몬스터 러쉬', book.rush || 0, DAILY_REWARD_LIMITS.rush),
+        btn('rush', '🌊 몬스터 러쉬 보상 라운드', book.rushRound || 0, RUSH.maxRound),
         btn('pvp', '🏆 랭킹 매칭', book.pvp || 0, DAILY_REWARD_LIMITS.pvp),
         btn('quiz', '❓ 퀴즈', book.quiz || 0, DAILY_REWARD_LIMITS.quiz),
         btn('practice', '🎯 허수아비', book.practice || 0, DAILY_REWARD_LIMITS.practice),
@@ -23337,6 +23337,7 @@
       cats.forEach(c => {
         book[c] = 0;
         if (c === 'tower') book.towerClears = 0;
+        if (c === 'rush') book.rushRound = 0;
       });
       saveState();
       renderAdminEditTriesBox();
@@ -31858,6 +31859,15 @@
     const isRushBossRound = round => round % RUSH.bossEvery === 0;
     const rushBossLabel = round => (round === RUSH.maxRound ? '🔥최종 보스' : (round % 10 === 0 ? '👑대보스' : '👑보스'));
     const rushRewardOf = (cleared, bosses) => cleared * RUSH.rewardPerRound + bosses * RUSH.rewardPerBoss;
+    // 하루 보상은 '오늘 보상받은 최고 라운드' 기준: 그 라운드까지는 다시 깨도 보상 없음, 넘어선 라운드만 보상 (하루 한 번 초기화)
+    const rushPaidRoundOf = stu => (stu ? getDailyRewardBook(stu).rushRound || 0 : 0);
+    function rushNewRewardOf(stu, cleared) {
+      const paid = rushPaidRoundOf(stu);
+      if (cleared <= paid) return { paid, rounds: 0, bosses: 0, amount: 0 };
+      const bossCount = r => Math.floor(r / RUSH.bossEvery);
+      const rounds = cleared - paid, bosses = bossCount(cleared) - bossCount(paid);
+      return { paid, rounds, bosses, amount: rushRewardOf(rounds, bosses) };
+    }
     // 파티 용병 평균 레벨에 맞춰 시작 층을 정함 (그 레벨대 탑 층보다 조금 아래부터, 난이도 구간에 따라 100라운드까지 최대 50층 오름)
     function rushStartFloorOf(mercs) {
       const lv = mercs.length ? mercs.reduce((s, m) => s + (m.level || 1), 0) / mercs.length : 1;
@@ -32081,15 +32091,20 @@
         const sec = Math.max(0, Math.ceil(RUSH.roundLimitSec - (sim.tickCount - rs.roundStartTick) / tps));
         text = `🌊 ${rs.round}/${RUSH.maxRound}라운드 [${rushRoundSpec(rs.round).tier}]${isRushBossRound(rs.round) ? ` ${rushBossLabel(rs.round)}` : ''} · 남은 몬스터 ${rs.left}마리${rs.pending ? ` (뒷편 ${rs.pending})` : ''} · ⏰ ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
       }
-      el.textContent = `${text} · 💰 ${rushRewardOf(rs.cleared, rs.bosses).toLocaleString()} CA`;
+      const paid = rushPaidRoundOf(getActiveStudent());
+      const gain = rushNewRewardOf(getActiveStudent(), rs.cleared).amount;
+      el.textContent = `${text} · 💰 ${gain.toLocaleString()} CA${paid ? ` (오늘 ${paid}라운드까지 받음)` : ''}`;
     }
 
-    // 러쉬가 끝남: 깬 라운드만큼 보상 (포기해도 깬 라운드 보상은 받음 · 하루 보상 횟수 안에서)
+    // 러쉬가 끝남: 오늘 보상받은 라운드를 넘어서 깬 라운드만큼 보상 (포기해도 깬 라운드 보상은 받음)
     function finishMonsterRush(stu) {
       const rs = sim.rush || newRushState(1);
-      const amount = rushRewardOf(rs.cleared, rs.bosses);
-      const reward = amount > 0 ? grantDailyReward(stu, 'rush', amount) : 0;
-      if (reward > 0) state.guardianPts += 8 + Math.min(20, rs.cleared * 2);
+      const gain = rushNewRewardOf(stu, rs.cleared);
+      const reward = gain.amount > 0 ? grantDailyReward(stu, 'rush', gain.amount) : 0;
+      if (reward > 0) {
+        getDailyRewardBook(stu).rushRound = rs.cleared;
+        state.guardianPts += 8 + Math.min(20, gain.rounds * 2);
+      }
       const newBest = rs.cleared > (stu.rushBest || 0);
       if (newBest) stu.rushBest = rs.cleared;
       const atkKing = mvpCandidates().sort((a, b) => b.damageDealt - a.damageDealt)[0];
@@ -32100,10 +32115,11 @@
       document.getElementById('battleResultTitle').textContent = done
         ? `🏆 ${RUSH.maxRound}라운드 완주!${newBest ? ' (최고 기록!)' : ''}`
         : (rs.cleared > 0 ? `${rs.cleared}라운드 클리어! [${rushRoundSpec(rs.cleared).tier}]${newBest ? ' (최고 기록!)' : ''}` : '1라운드를 넘지 못했어요');
-      const formula = `라운드 ${rs.cleared} × ${RUSH.rewardPerRound}${rs.bosses ? ` + 보스 ${rs.bosses} × ${RUSH.rewardPerBoss}` : ''}`;
+      const range = gain.paid ? `${gain.paid + 1}~${rs.cleared}라운드` : `${rs.cleared}라운드`;
+      const formula = `${range}: 라운드 ${gain.rounds} × ${RUSH.rewardPerRound}${gain.bosses ? ` + 보스 ${gain.bosses} × ${RUSH.rewardPerBoss}` : ''}`;
       document.getElementById('battleResultDesc').textContent = reward > 0
-        ? `보상으로 💰 ${reward.toLocaleString()} CA를 받았어요! (${formula}) · 오늘 남은 몬스터 러쉬 보상: ${getDailyRewardLeft(stu, 'rush')}회`
-        : (amount > 0 ? dailyRewardDoneText('rush') : '깬 라운드가 없어서 보상은 없어요. 다시 도전해 보세요!');
+        ? `보상으로 💰 ${reward.toLocaleString()} CA를 받았어요! (${formula}) · 오늘 다시 도전하면 ${rs.cleared + 1}라운드부터 보상을 받아요`
+        : (rs.cleared > 0 ? `오늘은 이미 ${gain.paid}라운드까지 보상을 받았어요. ${gain.paid + 1}라운드부터 깨면 보상을 받아요!` : '깬 라운드가 없어서 보상은 없어요. 다시 도전해 보세요!');
       document.getElementById('battleMvpBox').innerHTML = `
         <div class="font-bold text-amber-300 mb-1">🌟 이번 러쉬 3대 분야 MVP 용병</div>
         <div>⚔️ 최고 공격왕: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
@@ -32343,9 +32359,9 @@
       const me = getActiveStudent();
       if (!me || !document.getElementById('studentTab-rush')) return;
       const picked = rushMyMerc(me);
-      const left = getDailyRewardLeft(me, 'rush');
+      const paid = rushPaidRoundOf(me);
       const info = document.getElementById('rushMyInfo');
-      if (info) info.innerHTML = `🏅 최고 기록 <strong class="text-amber-300">${me.rushBest || 0}라운드</strong> · 💰 오늘 남은 보상 <strong class="text-emerald-300">${left}/${DAILY_REWARD_LIMITS.rush}회</strong>`;
+      if (info) info.innerHTML = `🏅 최고 기록 <strong class="text-amber-300">${me.rushBest || 0}라운드</strong> · 💰 오늘 보상: ${paid ? `${paid}라운드까지 받음 → <strong class="text-emerald-300">${paid + 1}라운드부터</strong> 보상` : '<strong class="text-emerald-300">1라운드부터</strong> 보상'}`;
       const grid = document.getElementById('rushMercSelectGrid');
       if (grid) {
         const roster = [...(me.roster || [])].map(m => ({ m, p: calcMercCombatPower(m, me) })).sort((a, b) => b.p - a.p);
