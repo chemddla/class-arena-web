@@ -1989,7 +1989,7 @@
           <div class="flex items-center gap-3">
             <div class="w-12 h-12 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-2xl">🌊</div>
             <div>
-              <h3 class="font-title text-2xl text-white">몬스터 러쉬 (최대 5명 협동)</h3>
+              <h3 class="font-title text-2xl text-white">몬스터 러쉬 (최대 5명 협동 · 100라운드)</h3>
               <p class="text-xs text-slate-400 mt-0.5">
                 용병 <strong>1명</strong>을 골라 <strong>직접 조종</strong>해요! 라운드마다 맵 뒷편에서 몬스터가 떼로 몰려와요. 오래 버틸수록 보상이 커져요.
               </p>
@@ -2027,7 +2027,7 @@
             <div>👥 <strong>최대 5명</strong>이 한 명당 용병 1명을 <strong>직접 조종</strong>해요. 방장은 빈 자리에 <strong>[🤖 AI 넣기]</strong>로 반 친구 용병을 한 명씩 넣고 뺄 수 있어요. (무작위 친구 · 파티에서 가장 센 용병의 전투력을 넘지 않아요)</div>
             <div>🛡️ 직접 조종하는 용병은 <strong>행동불능 상태이상</strong>(기절·빙결·공포·혼란)에 걸리지 않아요.</div>
             <div>🌊 라운드가 시작되면 <strong>맵 오른쪽 뒷편</strong>에서 몬스터가 몰려와요. 뒷편은 화면 밖이라 보이지 않고 공격도 닿지 않아요. 몬스터도 맵에 들어오기 전에는 공격하지 않아요.</div>
-            <div>📈 라운드를 깰수록 몬스터가 강해지고 많아져요. <strong>5라운드마다 👑 보스</strong>가 나와요.</div>
+            <div>📈 <strong>100라운드</strong>까지! 구간마다 몬스터가 강해지고 많아져요: 입문(1~10) · 초급(11~30) · 중급(31~50) · 상급(51~70) · 영웅(71~90) · 전설(91~100). <strong>5라운드마다 👑 보스</strong>, 10라운드마다 대보스, 100라운드는 🔥최종 보스예요.</div>
             <div>💚 라운드를 깨면 살아 있는 용병 체력 30% 회복 · 보스 라운드를 깨면 쓰러진 용병도 부활해요.</div>
             <div>⏰ 한 라운드 제한 시간 3분 · 모두 쓰러지거나 시간이 지나면 끝나요.</div>
             <div class="mt-1 p-2.5 rounded-xl bg-slate-950 border border-slate-800">💰 보상: 깬 라운드 × <strong class="text-amber-300">100 CA</strong> + 깬 보스 라운드 × <strong class="text-amber-300">400 CA</strong> (하루 3번까지 · 중간에 그만둬도 깬 라운드 보상은 받아요)</div>
@@ -31528,14 +31528,9 @@
     //   → 뒷편에 있는 동안은 보이지도 않고 어떤 공격·스킬도 닿지 않으며 공격도 안 함. 맵 가장자리에 닿으면 살아나 걸어 들어와 싸움
     // - 계산 담당 화면만 라운드를 진행하고, 라운드 상태는 화면(frame.rs)에 실어 파티원·관전자 화면에 맞춤
     const RUSH = {
-      bossEvery: 5,          // 5라운드마다 보스 라운드
-      baseCount: 8,          // 1라운드 몬스터 수
-      perRound: 3,           // 라운드마다 늘어나는 몬스터 수
+      maxRound: 100,         // 100라운드를 깨면 완주 (러쉬 끝)
+      bossEvery: 5,          // 5라운드마다 보스 라운드 (10라운드마다 대보스 · 100라운드 최종 보스)
       maxCount: 42,          // 한 라운드 최대 몬스터 수 (실시간 화면 전송량 때문에 제한)
-      monStat: 0.4,          // 일반 몬스터 능력치 배율 (같은 층 탑 몬스터 대비 · 수가 많으니 약하게)
-      bossStat: 1,           // 보스 능력치 배율 (탑 종족 보스 그대로)
-      statGrow: 0.06,        // 라운드마다 몬스터 능력치 +6%
-      earlyEase: [0.6, 0.7, 0.8, 0.9], // 초반 1~4라운드는 몬스터 능력치를 이만큼 더 낮춤 (5라운드 보스부터 원래대로)
       backSpeed: 2,          // 뒷편에서 달려오는 빠르기 (평소 이동 속도의 배수)
       backDepth: 1500,       // 뒷편 길이(px): 몬스터가 이만큼 흩어져 있다가 차례로 몰려옴
       edge: 40,              // 맵 오른쪽 끝에서 이만큼 바깥에 닿으면 맵으로 넘어옴
@@ -31550,10 +31545,37 @@
     function newRushState(startFloor) {
       return { round: 1, phase: 'fight', roundStartTick: sim.tickCount || 0, nextAt: 0, cleared: 0, bosses: 0, startFloor: Math.max(1, startFloor || 1), pending: 0, left: 0 };
     }
-    const rushFloorOf = (rs, round) => Math.min(TOWER_MAX_FLOOR, (rs.startFloor || 1) + Math.max(0, round - 1));
+    // 100라운드 난이도 구간: 구간 안에서 라운드마다 고르게(선형) 오름
+    //   floor: 시작 층에 더하는 층 수 · stat: 일반 몬스터 능력치 배율 (같은 층 탑 몬스터 대비) · count: 몬스터 수 · boss: 보스 능력치 배율
+    const RUSH_TIERS = [
+      { to: 10,  name: '입문', floor: [0, 4],   stat: [0.24, 0.5],  count: [8, 20],  boss: [0.8, 1] },
+      { to: 30,  name: '초급', floor: [5, 14],  stat: [0.5, 0.65],  count: [21, 30], boss: [1, 1.15] },
+      { to: 50,  name: '중급', floor: [15, 24], stat: [0.65, 0.8],  count: [30, 36], boss: [1.15, 1.3] },
+      { to: 70,  name: '상급', floor: [25, 34], stat: [0.8, 0.95],  count: [36, 40], boss: [1.3, 1.45] },
+      { to: 90,  name: '영웅', floor: [35, 44], stat: [0.95, 1.1],  count: [40, 42], boss: [1.45, 1.6] },
+      { to: 100, name: '전설', floor: [45, 50], stat: [1.1, 1.25],  count: [42, 42], boss: [1.6, 1.8] }
+    ];
+    const RUSH_BIG_BOSS_MULT = 1.3;   // 10라운드마다 대보스 (보스 능력치 ×1.3)
+    const RUSH_FINAL_BOSS_MULT = 1.5; // 100라운드 최종 보스 (대보스에서 ×1.5 더)
+    function rushTierOf(round) {
+      const r = Math.max(1, Math.min(RUSH.maxRound, round));
+      return RUSH_TIERS.find(t => r <= t.to) || RUSH_TIERS[RUSH_TIERS.length - 1];
+    }
+    function rushRoundSpec(round) {
+      const r = Math.max(1, Math.min(RUSH.maxRound, round));
+      const i = RUSH_TIERS.indexOf(rushTierOf(r));
+      const t = RUSH_TIERS[i];
+      const from = i ? RUSH_TIERS[i - 1].to + 1 : 1;
+      const k = t.to > from ? (r - from) / (t.to - from) : 1;
+      const lerp = ([a, b]) => a + (b - a) * k;
+      const bossMul = lerp(t.boss) * (r % 10 === 0 ? RUSH_BIG_BOSS_MULT : 1) * (r === RUSH.maxRound ? RUSH_FINAL_BOSS_MULT : 1);
+      return { tier: t.name, floorAdd: Math.round(lerp(t.floor)), stat: lerp(t.stat), count: Math.min(RUSH.maxCount, Math.round(lerp(t.count))), bossMul };
+    }
+    const rushFloorOf = (rs, round) => Math.min(TOWER_MAX_FLOOR, (rs.startFloor || 1) + rushRoundSpec(round).floorAdd);
     const isRushBossRound = round => round % RUSH.bossEvery === 0;
+    const rushBossLabel = round => (round === RUSH.maxRound ? '🔥최종 보스' : (round % 10 === 0 ? '👑대보스' : '👑보스'));
     const rushRewardOf = (cleared, bosses) => cleared * RUSH.rewardPerRound + bosses * RUSH.rewardPerBoss;
-    // 파티 용병 평균 레벨에 맞춰 시작 층을 정함 (그 레벨대 탑 층보다 조금 아래부터, 라운드마다 한 층씩 오름)
+    // 파티 용병 평균 레벨에 맞춰 시작 층을 정함 (그 레벨대 탑 층보다 조금 아래부터, 난이도 구간에 따라 100라운드까지 최대 50층 오름)
     function rushStartFloorOf(mercs) {
       const lv = mercs.length ? mercs.reduce((s, m) => s + (m.level || 1), 0) / mercs.length : 1;
       return Math.max(1, Math.min(TOWER_MAX_FLOOR - 20, Math.round(lv) - 3));
@@ -31593,18 +31615,18 @@
     function buildRushWave(round, rs) {
       const fl = rushFloorOf(rs, round);
       const floorObj = TOWER_FLOORS[fl - 1];
-      const grow = (1 + RUSH.statGrow * (round - 1)) * (RUSH.earlyEase[round - 1] ?? 1);
+      const spec = rushRoundSpec(round);
       const boss = isRushBossRound(round);
-      const count = Math.min(RUSH.maxCount, RUSH.baseCount + RUSH.perRound * (round - 1));
-      const n = boss ? Math.ceil(count * 0.6) : count; // 보스 라운드는 졸개를 줄임
+      const n = boss ? Math.ceil(spec.count * 0.6) : spec.count; // 보스 라운드는 졸개를 줄임
       const picks = floorObj.comp.map((_, i) => i).filter(i => !(floorObj.isRaceBoss && i === 0)); // 종족 보스 칸은 졸개로 안 씀
       const units = [];
-      for (let i = 0; i < n; i++) units.push(buildRushMonster(floorObj, picks[Math.floor(Math.random() * picks.length)], RUSH.monStat * grow, false));
+      for (let i = 0; i < n; i++) units.push(buildRushMonster(floorObj, picks[Math.floor(Math.random() * picks.length)], spec.stat, false));
       if (boss) {
         const bossFloor = TOWER_FLOORS[Math.min(TOWER_MAX_FLOOR, Math.ceil(fl / TOWER_RACE_FLOORS) * TOWER_RACE_FLOORS) - 1];
-        const b = buildRushMonster(bossFloor, 0, RUSH.bossStat * grow, true);
+        const b = buildRushMonster(bossFloor, 0, spec.bossMul, true);
         b.rushBoss = true;
-        b.name = `👑 ${b.name}`;
+        b.name = `${round === RUSH.maxRound ? '🔥' : '👑'} ${b.name}`;
+        if (round % 10 === 0) setUnitBodySize(b, (b.sizeScale || 1) * 1.15); // 대보스·최종 보스는 조금 더 크게
         units.push(b);
       }
       const W = sim.worldW, H = sim.worldH;
@@ -31655,7 +31677,7 @@
       const fighters = redAlive.filter(u => !u.isClone).length;
       rs.pending = pending;
       rs.left = pending + fighters;
-      if (!pending && !fighters) { clearRushRound(); return false; }
+      if (!pending && !fighters) return clearRushRound();
       if (sim.tickCount - rs.roundStartTick >= RUSH.roundLimitSec * BATTLE_TICKS_PER_SEC) {
         addBattleLog(`⏰ ${rs.round}라운드 제한 시간(${RUSH.roundLimitSec / 60}분)이 끝났어요! ${rs.cleared}라운드까지 버텼어요.`);
         finishSimulation(rs.cleared > 0);
@@ -31675,11 +31697,18 @@
       if (u.x <= inner) u.rushEntering = false;
     }
 
+    // 라운드 클리어 (100라운드를 깨서 러쉬가 끝났으면 true)
     function clearRushRound() {
       const rs = sim.rush;
       const boss = isRushBossRound(rs.round);
       rs.cleared = rs.round;
       if (boss) rs.bosses++;
+      if (rs.cleared >= RUSH.maxRound) {
+        rs.left = 0;
+        addBattleLog(`🏆 ${RUSH.maxRound}라운드 완주! 최종 보스까지 모두 물리쳤어요!`);
+        finishSimulation(true);
+        return true;
+      }
       rs.phase = 'break';
       rs.nextAt = sim.tickCount + RUSH.breakSec * BATTLE_TICKS_PER_SEC;
       rs.left = 0;
@@ -31707,7 +31736,9 @@
         }
       });
       playCombatSfx('heal');
-      addBattleLog(`✅ ${rs.round}라운드 클리어!${boss ? ' 👑 보스 처치!' : ''} 용병 체력 ${Math.round(RUSH.healRatio * 100)}% 회복${revived ? ` · 쓰러진 용병 ${revived}명 부활` : ''} · ${RUSH.breakSec}초 뒤 ${rs.round + 1}라운드${isRushBossRound(rs.round + 1) ? ' (👑 보스 라운드!)' : ''}`);
+      const next = rushRoundSpec(rs.round + 1);
+      addBattleLog(`✅ ${rs.round}라운드 클리어!${boss ? ` ${rushBossLabel(rs.round)} 처치!` : ''} 용병 체력 ${Math.round(RUSH.healRatio * 100)}% 회복${revived ? ` · 쓰러진 용병 ${revived}명 부활` : ''} · ${RUSH.breakSec}초 뒤 ${rs.round + 1}라운드${isRushBossRound(rs.round + 1) ? ` (${rushBossLabel(rs.round + 1)} 라운드!)` : ''}${next.tier !== rushRoundSpec(rs.round).tier ? ` · 🆙 [${next.tier}] 구간 시작!` : ''}`);
+      return false;
     }
 
     function startRushRound(round) {
@@ -31762,10 +31793,10 @@
       let text;
       if (rs.phase === 'break') {
         const left = Math.max(0, Math.ceil((rs.nextAt - sim.tickCount) / tps));
-        text = `✅ ${rs.cleared}라운드 클리어! · 다음 ${rs.round + 1}라운드${isRushBossRound(rs.round + 1) ? ' 👑보스' : ''}까지 ${left}초`;
+        text = `✅ ${rs.cleared}라운드 클리어! · 다음 ${rs.round + 1}/${RUSH.maxRound}라운드 [${rushRoundSpec(rs.round + 1).tier}]${isRushBossRound(rs.round + 1) ? ` ${rushBossLabel(rs.round + 1)}` : ''}까지 ${left}초`;
       } else {
         const sec = Math.max(0, Math.ceil(RUSH.roundLimitSec - (sim.tickCount - rs.roundStartTick) / tps));
-        text = `🌊 ${rs.round}라운드${isRushBossRound(rs.round) ? ' 👑보스' : ''} · 남은 몬스터 ${rs.left}마리${rs.pending ? ` (뒷편 ${rs.pending})` : ''} · ⏰ ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+        text = `🌊 ${rs.round}/${RUSH.maxRound}라운드 [${rushRoundSpec(rs.round).tier}]${isRushBossRound(rs.round) ? ` ${rushBossLabel(rs.round)}` : ''} · 남은 몬스터 ${rs.left}마리${rs.pending ? ` (뒷편 ${rs.pending})` : ''} · ⏰ ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
       }
       el.textContent = `${text} · 💰 ${rushRewardOf(rs.cleared, rs.bosses).toLocaleString()} CA`;
     }
@@ -31781,8 +31812,11 @@
       const atkKing = mvpCandidates().sort((a, b) => b.damageDealt - a.damageDealt)[0];
       const tankKing = mvpCandidates().sort((a, b) => b.damageTaken - a.damageTaken)[0];
       const healKing = mvpCandidates().sort((a, b) => b.healDone - a.healDone)[0];
+      const done = rs.cleared >= RUSH.maxRound;
       document.getElementById('battleResultEmoji').textContent = rs.cleared >= 10 ? '🏆' : (rs.cleared > 0 ? '🌊' : '🛡️');
-      document.getElementById('battleResultTitle').textContent = rs.cleared > 0 ? `${rs.cleared}라운드 클리어!${newBest ? ' (최고 기록!)' : ''}` : '1라운드를 넘지 못했어요';
+      document.getElementById('battleResultTitle').textContent = done
+        ? `🏆 ${RUSH.maxRound}라운드 완주!${newBest ? ' (최고 기록!)' : ''}`
+        : (rs.cleared > 0 ? `${rs.cleared}라운드 클리어! [${rushRoundSpec(rs.cleared).tier}]${newBest ? ' (최고 기록!)' : ''}` : '1라운드를 넘지 못했어요');
       const formula = `라운드 ${rs.cleared} × ${RUSH.rewardPerRound}${rs.bosses ? ` + 보스 ${rs.bosses} × ${RUSH.rewardPerBoss}` : ''}`;
       document.getElementById('battleResultDesc').textContent = reward > 0
         ? `보상으로 💰 ${reward.toLocaleString()} CA를 받았어요! (${formula}) · 오늘 남은 몬스터 러쉬 보상: ${getDailyRewardLeft(stu, 'rush')}회`
@@ -32017,7 +32051,7 @@
       // 한 사람에 용병 하나: 고르는 창 없이 내 용병을 바로 직접 조종
       const mine = sim.units.find(u => u.team === 'blue' && u.liveOwnerId === myStu.id && !u.rushAi);
       setBattleControlMode(mine ? 'manual' : 'auto', mine ? mine.id : null, true);
-      addBattleLog(`🌊 [몬스터 러쉬] ${rushFloorOf(rs, 1)}층 몬스터부터 시작해요! ${RUSH.bossEvery}라운드마다 👑보스가 나와요. 몬스터는 맵 오른쪽 뒷편에서 몰려와요.`);
+      addBattleLog(`🌊 [몬스터 러쉬] ${rushFloorOf(rs, 1)}층 몬스터부터 시작해요! ${RUSH.maxRound}라운드까지 · ${RUSH.bossEvery}라운드마다 👑보스, 10라운드마다 대보스가 나와요. 몬스터는 맵 오른쪽 뒷편에서 몰려와요.`);
       if (netRole) connectRaidLiveNet(r.hostId, r.startedAt, isHost ? humans.filter(id => id !== myStu.id) : []);
       else startRaidLiveBroadcast(r);
     }
