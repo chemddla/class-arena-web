@@ -4,6 +4,7 @@
 #   저주의 늪 시전 동작은 따로 받은 curse_swamp_src.png 두 칸 (불꽃 두르기 → 지팡이 꽂아 가시 늪)
 #   파쇄 동작은 따로 받은 curse_shatter_cast_src.png(손에 붉은 소용돌이 = 시전) · curse_shatter_slam_src.webp(지팡이 내리치기 = 발동, 옆 붉은 폭발까지 그대로)
 #   파쇄 대상에 터지는 이펙트는 curse_shatter_fx_src.png → assets/sprites/fx/curse_shatter_fx.webp
+#   기본 공격 2번째 칸(지팡이 내지르기)은 따로 받은 curse_attack_src.webp
 #   쇠약 동작은 따로 받은 curse_weak_src.png 두 칸 (오른쪽 = 지팡이 내리는 시전 자세, 왼쪽 = 덩굴·핏물이 솟는 발동) — 옛 시트 2의 쇠약 줄은 잘린 자리가 어색해서 안 씀
 #   히든 스킬 [파멸의 의식]은 따로 받은 샘플로 tools/curse_ruin_build.py가 만듦
 # 캐릭터 칸 순서: 0 대기 · 1~4 걷기 · 5~7 공격 · 8~9 피격 · 10~12 쓰러짐 · 13~15 저주 · 16~17 쇠약 · 18~19 파쇄
@@ -30,7 +31,7 @@ FRAMES = [
     (1, 'idle',   95, 765,   0, 212, 'main'),
     (1, 'walk0',  95, 264, 212, 416, 'main'), (1, 'walk1', 264, 430, 212, 416, 'main'),
     (1, 'walk2', 430, 597, 212, 416, 'main'), (1, 'walk3', 597, 765, 212, 416, 'main'),
-    (1, 'atk0',   90, 308, 416, 620, 'body'), (1, 'atk1', 308, 585, 416, 620, 'main'), (1, 'atk2', 585, 765, 416, 620, 'main'),
+    (1, 'atk0',   90, 308, 416, 620, 'body'), (10, 'atk1', 0, 1024, 0, 810, 'main'), (1, 'atk2', 585, 765, 416, 620, 'main'),
     (1, 'hurt0',  95, 300, 620, 818, 'main'), (1, 'hurt1', 300, 765, 620, 818, 'main'),
     (1, 'down0',  90, 298, 818, 1024, 'main'), (1, 'down1', 298, 531, 818, 1024, 'main'), (1, 'down2', 531, 765, 818, 1024, 'main'),
     (2, 'hex0',   95, 270,   0, 236, 'main'), (2, 'hex1', 270, 517, 0, 236, 'main'), (2, 'hex2', 517, 687, 0, 236, 'main'),
@@ -40,9 +41,9 @@ FRAMES = [
     (5, 'swamp0',   0, 160,   0, 175, 'all'), (5, 'swamp1', 180, 406, 0, 175, 'all'),
 ]
 # 칸마다 배율 따로: 저주의 늪·쇠약 샘플은 뿔 폭을 대기 자세와 맞춤, 저주 칸은 샘플 캐릭터가 약 6% 작게 그려져 있어 키움
-FRAME_SCALE = {'swamp0': 0.58, 'swamp1': 0.58, 'weak0': 0.42, 'weak1': 0.44, 'shat0': 0.41, 'shat1': 0.125, **{f'hex{i}': SCALE * 1.06 for i in range(3)}}
-FOOT = {'swamp0': (82, 148), 'swamp1': (272, 143), 'weak0': (387, 202), 'weak1': (150, 200), 'shat0': (100, 218), 'shat1': (330, 930)}  # 샘플 좌표의 발 가운데·발바닥 (늪·불꽃이 발보다 넓고 아래로 퍼져서 직접 지정)
-XMAX = {'atk1': 505, 'hex1': 415}  # 지팡이·손끝 앞으로 날아가는 해골은 투사체로, 지팡이 끝 덩굴 고리는 장판 이펙트로 따로 그림
+FRAME_SCALE = {'swamp0': 0.58, 'swamp1': 0.58, 'weak0': 0.42, 'weak1': 0.44, 'shat0': 0.41, 'shat1': 0.125, 'atk1': 0.11, **{f'hex{i}': SCALE * 1.06 for i in range(3)}}
+FOOT = {'swamp0': (82, 148), 'swamp1': (272, 143), 'weak0': (387, 202), 'weak1': (150, 200), 'shat0': (100, 218), 'shat1': (330, 930), 'atk1': (350, 790)}  # 샘플 좌표의 발 가운데·발바닥 (늪·불꽃이 발보다 넓고 아래로 퍼져서 직접 지정)
+XMAX = {'hex1': 415}  # 지팡이·손끝 앞으로 날아가는 해골은 투사체로, 지팡이 끝 덩굴 고리는 장판 이펙트로 따로 그림
 YMIN = {}
 SRC = {}
 
@@ -50,7 +51,8 @@ SRC = {}
 def load(sheet, folder):
     if sheet not in SRC:
         path = {5: f'{folder}/curse_swamp_src.png', 6: f'{folder}/curse_weak_src.png', 7: f'{folder}/curse_shatter_cast_src.png',
-                8: f'{folder}/curse_shatter_slam_src.webp', 9: f'{folder}/curse_shatter_fx_src.png'}.get(sheet, f'{folder}/curse_mage_{sheet}.webp')
+                8: f'{folder}/curse_shatter_slam_src.webp', 9: f'{folder}/curse_shatter_fx_src.png',
+                10: f'{folder}/curse_attack_src.webp'}.get(sheet, f'{folder}/curse_mage_{sheet}.webp')
         im = np.array(Image.open(path).convert('RGB')).astype(float)
         r, g, b = im[..., 0], im[..., 1], im[..., 2]
         d = np.sqrt(((im - KEY) ** 2).sum(axis=2))
@@ -70,6 +72,7 @@ def load(sheet, folder):
         rgb = rgb.clip(0, 255)
         if sheet < 5: a[:, :95 if sheet < 3 else 185] = 0  # 왼쪽 라벨 글자
         if sheet == 4: a[670:690, 912:930] = 0  # ✦ 워터마크
+        if sheet == 10: a[680:730, 890:940] = 0
         SRC[sheet] = (rgb, a)
     return SRC[sheet]
 
