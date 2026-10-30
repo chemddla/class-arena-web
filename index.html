@@ -14456,6 +14456,8 @@
       }
       // 빙결은 중첩되지 않음: 이미 얼어 있으면 남은 시간과 새 시간 중 긴 쪽으로 갱신할 뿐 더해지지 않음 (표시 글자도 다시 띄우지 않음)
       const wasFrozen = statusType === 'freeze' && (targetUnit.statuses.freeze || 0) > 0;
+      // 동결 스킬이 아닌 빙결이 남은 시간을 늘리면 큐브 이펙트는 끄고 기존 얼음 이펙트로 (동결 스킬은 호출 뒤에 다시 켬)
+      if (statusType === 'freeze' && durationFrames > (targetUnit.statuses.freeze || 0)) targetUnit.dfFreeze = false;
       targetUnit.statuses[statusType] = Math.max(targetUnit.statuses[statusType] || 0, durationFrames);
       const stDef = STATUS_DEFS[statusType];
       if (stDef && !wasFrozen) {
@@ -19349,8 +19351,10 @@
         foe.dfBurstSr = usesFrostSr(unit); // 얼음 여왕이 건 동결은 터질 때 큰 반짝임을 더함
         applyDamage(unit, foe, unit.atk * FROST_DEEP_DMG, '🧊', '#0284c7');
         // 슬로우는 동결이 풀린 뒤부터 10초 남도록 동결 시간만큼 더 길게 (혹한 2배도 둘 다 같은 비율)
+        const freezeBefore = foe.statuses.freeze || 0;
         inflictStatus(unit, foe, 'freeze', FROST_DEEP_FREEZE_TICKS);
-        if (foe.statuses.freeze > 0) { foe.dfFreeze = true; foe.dfCrack = 0; } // 이 빙결은 동결 스킬 것: 얼음 큐브(4) → 풀릴 때 금 간 큐브(5)·조각(6)
+        if (foe.statuses.freeze > freezeBefore) { // 이미 걸린 다른 빙결이 더 길면 그 빙결은 기존 이펙트 그대로
+ foe.dfFreeze = true; foe.dfCrack = 0; } // 이 빙결은 동결 스킬 것: 얼음 큐브(4) → 풀릴 때 금 간 큐브(5)·조각(6)
         inflictStatus(unit, foe, 'slow', FROST_DEEP_FREEZE_TICKS + FROST_DEEP_SLOW_TICKS);
         playCombatSfx('magic');
         addBattleLog(`🧊 [빙결술사] ${unit.name}의 동결! ${foe.name}이(가) 얼음에 갇혔어요`);
