@@ -6057,6 +6057,8 @@
       src: 'assets/sprites/fx/frost_sr_fx.webp',
       anims: { shard: [[0,0,83,62,82,31]], circle: [[85,0,45,68,22.5,34]], dome: [[132,0,193,144,96.5,72]], star: [[327,0,27,29,13.5,14.5]] }
     };
+    // 주술사 피격 이펙트 (tools/curse_hit_build.py): orb = 기본 공격 불꽃 폭발, hex = 저주 해골 폭발. 기준점 = 폭발 가운데
+    const CURSE_HIT_FX = { src: 'assets/sprites/fx/curse_hit_fx.webp', anims: { orb: [[0,0,173,162,86,80]], hex: [[175,0,138,128,61,68]] } };
     // 주술사 기본 공격 보라 불꽃 (tools/curse_orb_build.py). 둥근 머리가 앞(오른쪽), 꼬리 불길이 뒤. 기준점 = 둥근 머리 가운데
     const CURSE_ORB_FX = { src: 'assets/sprites/fx/curse_orb.webp', anims: { flame: [[0,0,75,51,59,26]] } };
     // 투사체 종류별 그림과 크기(첫 프레임 높이, 월드 px). match가 있으면 그 조건을 만족할 때만 (성녀 분홍 구슬 제외)
@@ -6082,7 +6084,7 @@
       troll_frost:    { anim: 'ice', h: 16, sheet: MAGE_SPELL_FX },                      // 서리트롤 주술사 기본 공격 얼음 화살
       harpy_gust:     { anim: 'gust', h: 22, sheet: SNOW_FX },                           // 폭풍 하피 돌풍 (길이 약 46)
       frost_arrow:    { anim: 'arrow', h: 12, sheet: SNOW_FX },
-      curse_flame:    { anim: 'flame', h: 16, sheet: CURSE_ORB_FX },                     // 주술사 기본 공격 보라 불꽃 (길이 약 24)
+      curse_flame:    { anim: 'flame', h: 16, sheet: CURSE_ORB_FX, hit: 'curse_orb_hit' },                     // 주술사 기본 공격 보라 불꽃 (길이 약 24)
       frost_sr_shard: { anim: 'shard', h: 22, sheet: FROST_SR_FX },                      // 시크릿 레어 빙결술사 기본 공격 얼음 조각 다발 (길이 약 29)                          // 하피 궁수 얼음 화살 (길이 약 29)
       giant_ice_arrow:{ anim: 'arrow', h: 30, sheet: SNOW_FX, hit: 'ice_hit' },          // 서리 거인 아이스애로우 (길이 약 72)
       fire_bolt:      { anim: 'bolt', h: 26, sheet: FIRE_FX },                           // 작열 불꽃정령 기본 공격 불덩이 (길이 약 20)
@@ -6709,7 +6711,7 @@
       LANCER_MUSOU_SKINS[v] = def;
     });
 
-    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BLOOD_ORC_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX, FROST_SR_FX, CURSE_ORB_FX).forEach(def => {
+    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BLOOD_ORC_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX, FROST_SR_FX, CURSE_ORB_FX, CURSE_HIT_FX).forEach(def => {
       def.img = new Image();
       def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
       def.img.src = def.src;
@@ -19914,7 +19916,7 @@
           const dir = foe.x >= unit.x ? 1 : -1;
           const spr = getUnitSprite(unit), ks = spr ? spriteDrawH(unit, spr) / spr.standH : 0.77;
           sim.effects.push({ type: 'curse_bolt', sx: unit.x + dir * 66 * ks, sy: unit.y + 12 - 48 * ks, x: foe.x, y: foe.y - 20, life: 20, maxLife: 20 });
-          sim.effects.push({ type: 'magic_burst', x: foe.x, y: foe.y - 12, r: 40, life: 22, maxLife: 22 });
+          sim.effects.push({ type: 'magic_burst', spr: 'curse_hex_hit', wait: 17, x: foe.x, y: foe.y - 20, r: 40, life: 39, maxLife: 39 }); // 해골이 닿는 때(17틱)에 터짐
         } else sim.effects.push({ type: 'curse_shatter', x: foe.x, y: foe.y, dir: foe.x >= unit.x ? 1 : -1, life: 34, maxLife: 34 });
         if (sk === 'hex_bolt') {
           applyDamage(unit, foe, unit.atk * CURSE_BOLT_DMG, '💀', '#7e22ce');
@@ -21048,6 +21050,17 @@
 
     // spr가 붙은 효과를 그림으로 그리면 true
     function drawSpriteEffect(ctx, ef, progress) {
+      if (ef.spr === 'curse_orb_hit' || ef.spr === 'curse_hex_hit') {
+        // 주술사 피격: wait틱 동안은 안 보이다가(날아가는 중) 작게 터져 커지며 사라짐
+        if (!CURSE_HIT_FX.ready) return false;
+        const el = progress * (ef.maxLife || 22) - (ef.wait || 0);
+        if (el < 0) return true;
+        const p = el / Math.max(1, (ef.maxLife || 22) - (ef.wait || 0));
+        const hex = ef.spr === 'curse_hex_hit', fr = CURSE_HIT_FX.anims[hex ? 'hex' : 'orb'][0];
+        const w = (hex ? 58 : 46) * (0.7 + 0.3 * Math.min(1, p * 3));
+        drawFxFrame(ctx, fr, ef.x, ef.y, w / fr[2], 0, Math.min(1, (1 - p) * 2.5), CURSE_HIT_FX.img);
+        return true;
+      }
       const fadeOut = Math.min(1, (1 - progress) * 3); // 마지막 1/3 동안 서서히 사라짐
       if (GOBLIN_BOMB_FX.anims[ef.spr]) {
         if (!GOBLIN_BOMB_FX.ready) return false;
