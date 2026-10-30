@@ -1820,6 +1820,7 @@
                   엘리트 보스는 전장에 <strong>단 한 마리</strong>만 등장하며, 압도적인 체력과 광역 공격력을 지니고 있습니다. 모두 <strong>10단계</strong>이며, 앞 단계를 처치해야 다음 단계 정보가 열려요.
                 </p>
               </div>
+              <p id="raidEliteClearsText" class="text-xs font-bold text-amber-300"></p>
               <div id="raidEliteBossList" class="space-y-2.5 max-h-[560px] overflow-y-auto pr-1"></div>
             </div>
 
@@ -6835,11 +6836,18 @@
     const DAILY_REWARD_LIMITS = { quiz: 20, practice: 3, tower: 3, pvp: 5, raid: 5, minigame: 5, rush: 3 };
     const DAILY_REWARD_LABELS = { quiz: '퀴즈', practice: '허수아비 모의전', tower: '모험의 탑', pvp: '랭킹 매칭', raid: '엘리트 보스', minigame: '미니게임', rush: '몬스터 러쉬' };
 
-    // 모험의 탑 하루 도전 횟수 (보상과 상관없이 도전을 시작할 때마다 1회)
-    const TOWER_DAILY_TRIES = 10;
-    function getTowerTriesLeft(stu) {
+    // 모험의 탑 하루 클리어 횟수 (처음 깨는 층을 이길 때마다 1회 · 실패나 이미 깬 층 재도전은 세지 않음)
+    const TOWER_DAILY_CLEARS = 10;
+    function getTowerClearsLeft(stu) {
       if (!stu) return 0;
-      return Math.max(0, TOWER_DAILY_TRIES - (getDailyRewardBook(stu).towerTries || 0));
+      return Math.max(0, TOWER_DAILY_CLEARS - (getDailyRewardBook(stu).towerClears || 0));
+    }
+    // 엘리트 보스 하루 클리어 횟수 (보상을 아직 안 받은 보스를 잡을 때마다 1회 · 실패나 재도전은 세지 않음)
+    // 다 채운 날에도 도전은 계속 가능: 새 보스를 잡아도 보상 없이 '안 잡은 보스'로 남아서 다음 날 다시 받을 수 있음
+    const ELITE_DAILY_CLEARS = 3;
+    function getEliteClearsLeft(stu) {
+      if (!stu) return 0;
+      return Math.max(0, ELITE_DAILY_CLEARS - (getDailyRewardBook(stu).raidClears || 0));
     }
 
     function getDailyRewardBook(stu) {
@@ -11855,7 +11863,7 @@
 
     function renderTowerTab() {
       const stu = getActiveStudent();
-      document.getElementById('myTowerProgressText').textContent = `${stu.towerFloor}층 도전 가능 (상위 층 비공개) · 오늘 남은 도전 ${getTowerTriesLeft(stu)}/${TOWER_DAILY_TRIES}회 (실패도 1회)`;
+      document.getElementById('myTowerProgressText').textContent = `${stu.towerFloor}층 도전 가능 (상위 층 비공개) · 오늘 남은 클리어 ${getTowerClearsLeft(stu)}/${TOWER_DAILY_CLEARS}회 (도전은 계속 가능)`;
       renderTowerLiveList();
 
       let filteredFloors = TOWER_FLOORS;
@@ -13357,7 +13365,7 @@
       }
       sim.awaitingControlChoice = false;
       document.getElementById('battleControlChooser')?.classList.add('hidden');
-      // 전투 방식을 골라야 전투가 시작된 것: 도전 횟수·도전비용은 이때 냄
+      // 전투 방식을 골라야 전투가 시작된 것: 도전비용은 이때 냄
       const entryCharge = sim.entryCharge;
       sim.entryCharge = null;
       if (entryCharge) entryCharge();
@@ -14676,7 +14684,9 @@
     function towerEntryBlockReason(stu, floorNum, hard) {
       if (hard && !isTowerHardUnlocked(stu, floorNum)) return `🔒 하드모드는 ${Math.ceil(floorNum / TOWER_RACE_FLOORS) * TOWER_RACE_FLOORS}층 종족 보스를 깨야 열려요.`;
       if (hard && !isTowerHardPrevCleared(stu, floorNum)) return `🔒 ${floorNum}층 하드모드는 ${floorNum - 1}층 하드모드를 먼저 깨야 열려요.`;
-      if (getTowerTriesLeft(stu) <= 0) return `오늘 모험의 탑 도전 횟수(${TOWER_DAILY_TRIES}회, 실패 포함)를 모두 썼어요. 내일 다시 도전할 수 있어요!`;
+      // 하루 클리어 횟수를 다 쓰면 새 층(처음 깨는 층)만 막음 · 이미 깬 층 재도전은 계속 가능
+      const firstClear = hard ? !towerHardClearsOf(stu)[floorNum] : floorNum >= (stu.towerFloor || 1);
+      if (firstClear && getTowerClearsLeft(stu) <= 0) return `오늘 모험의 탑 클리어 횟수(${TOWER_DAILY_CLEARS}회)를 모두 채웠어요. 새 층은 내일 다시 도전할 수 있어요!`;
       if (hard && (stu.mc || 0) < TOWER_HARD.cost) return `⚠️ 하드모드 도전비용(${TOWER_HARD.cost.toLocaleString()} CA)이 부족해요. (보유: ${(stu.mc || 0).toLocaleString()} CA)`;
       return '';
     }
@@ -14794,9 +14804,8 @@
         rewardMc: floorObj.rewardMc
       });
       if (!sim.running || sim.mode !== 'tower') return;
-      // 자동/직접 전투를 고르기 전에 나가면 패배도 아니고 도전 횟수·비용도 안 냄
+      // 자동/직접 전투를 고르기 전에 나가면 패배도 아니고 도전비용도 안 냄
       sim.entryCharge = () => {
-        getDailyRewardBook(stu).towerTries = (getDailyRewardBook(stu).towerTries || 0) + 1;
         if (hard) stu.mc = (stu.mc || 0) - TOWER_HARD.cost;
         if (typeof saveState === 'function') saveState();
         startTowerLiveBroadcast(stu, floorObj);
@@ -19914,11 +19923,15 @@
       const eliteHard = Boolean(sim.mode === 'elite_raid' && meta.eliteHard);
       const isEliteReplay = Boolean(sim.mode === 'elite_raid' && meta.eliteBossId && (eliteHard ? eliteHardClaimsOf(stu) : eliteClaimsOf(stu))[meta.eliteBossId]);
       if (isEliteReplay) baseReward = 0;
+      const isFirstEliteClear = Boolean(blueWon && sim.mode === 'elite_raid' && meta.eliteBossId && !isEliteReplay);
+      const eliteClearsFull = isFirstEliteClear && getEliteClearsLeft(stu) <= 0;
+      if (eliteClearsFull) baseReward = 0;
       const reward = (isPracticeOnly || iForfeited)
         ? 0
-        : (isFirstTowerClear
+        : ((isFirstTowerClear || isFirstEliteClear)
           ? grantDailyReward(stu, null, baseReward)
           : grantDailyReward(stu, rewardCategory, baseReward));
+      if (isFirstEliteClear && reward > 0) getDailyRewardBook(stu).raidClears = (getDailyRewardBook(stu).raidClears || 0) + 1;
       if (reward > 0) state.guardianPts += blueWon ? 20 : 8;
       if (blueWon && reward > 0 && sim.mode === 'elite_raid' && meta.eliteBossId) {
         // 시즌을 새로 적기 전에 두 기록을 함께 읽어 둠 (지난 시즌 기록이 따라오지 않게)
@@ -19932,6 +19945,7 @@
         stu.eliteSeason = ELITE_SEASON;
       }
 
+      if (isFirstTowerClear) getDailyRewardBook(stu).towerClears = (getDailyRewardBook(stu).towerClears || 0) + 1;
       if (isFirstTowerClear && towerHard) {
         stu.towerHardCleared = { ...towerHardClearsOf(stu), [meta.towerFloorObj.floor]: true };
       } else if (isFirstTowerClear && stu.towerFloor < TOWER_MAX_FLOOR) {
@@ -19977,10 +19991,12 @@
         ? (sim.mode === 'practice' ? '연습 전투라 보상은 없어요.' : '연습 경기라 보상은 없어요. 보상과 랭킹 점수는 🎯 랭킹 매칭에서 받을 수 있어요.')
         : isTowerReplay
         ? (towerHard ? '이미 깬 하드모드 층이라 보상은 없어요. 다른 층의 하드모드에 도전해 보세요!' : '이미 깬 층이라 보상은 없어요. 다음 층에 도전해 보세요!')
+        : eliteClearsFull
+        ? `오늘 엘리트 보스 클리어 횟수(${ELITE_DAILY_CLEARS}회)를 모두 채워서 보상은 없어요. 이 보스는 내일 다시 잡으면 보상을 받아요!`
         : isEliteReplay
         ? (eliteHard ? '이미 보상을 받은 하드모드 엘리트 보스라 보상은 없어요. 다른 보스의 하드모드에 도전해 보세요!' : '이미 보상을 받은 엘리트 보스라 보상은 없어요. 다른 엘리트 보스에 도전해 보세요!')
         : (reward > 0
-          ? `전투 보상으로 💰 ${reward} CA를 받았어요!${rewardCategory && !isFirstTowerClear ? ` (오늘 남은 ${DAILY_REWARD_LABELS[rewardCategory]} 보상: ${getDailyRewardLeft(stu, rewardCategory)}회)` : ''}`
+          ? `전투 보상으로 💰 ${reward} CA를 받았어요!${isFirstTowerClear ? ` (오늘 남은 탑 클리어: ${getTowerClearsLeft(stu)}회)` : isFirstEliteClear ? ` (오늘 남은 엘리트 보스 클리어: ${getEliteClearsLeft(stu)}회)` : rewardCategory ? ` (오늘 남은 ${DAILY_REWARD_LABELS[rewardCategory]} 보상: ${getDailyRewardLeft(stu, rewardCategory)}회)` : ''}`
           : dailyRewardDoneText(rewardCategory));
       if (pvpScoreDelta) {
         document.getElementById('battleResultDesc').textContent += ` 🏆 랭킹 점수 ${pvpScoreDelta > 0 ? '+' : ''}${pvpScoreDelta}점 (현재 ${stu.pvpScore}점)`;
@@ -23286,8 +23302,9 @@
           ${label} <span class="text-amber-300">${used}/${max}</span> → 초기화
         </button>`;
       box.innerHTML = [
-        btn('tower', '🏰 모험의 탑', book.towerTries || 0, TOWER_DAILY_TRIES),
-        btn('raid', '🐉 엘리트 보스', book.raid || 0, DAILY_REWARD_LIMITS.raid),
+        btn('tower', '🏰 모험의 탑 클리어', book.towerClears || 0, TOWER_DAILY_CLEARS),
+        btn('raidClears', '🐉 엘리트 보스 클리어', book.raidClears || 0, ELITE_DAILY_CLEARS),
+        btn('raid', '🐉 엘리트 보스 격려 보상', book.raid || 0, DAILY_REWARD_LIMITS.raid),
         btn('rush', '🌊 몬스터 러쉬', book.rush || 0, DAILY_REWARD_LIMITS.rush),
         btn('pvp', '🏆 랭킹 매칭', book.pvp || 0, DAILY_REWARD_LIMITS.pvp),
         btn('quiz', '❓ 퀴즈', book.quiz || 0, DAILY_REWARD_LIMITS.quiz),
@@ -23301,15 +23318,15 @@
       const stu = state.students.find(s => s.id === adminEditingStudentId);
       if (!stu) return;
       const book = getDailyRewardBook(stu);
-      const cats = category === 'all' ? ['tower', 'raid', 'pvp', 'quiz', 'practice', 'minigame', 'rush'] : [category];
+      const cats = category === 'all' ? ['tower', 'raid', 'raidClears', 'pvp', 'quiz', 'practice', 'minigame', 'rush'] : [category];
       cats.forEach(c => {
         book[c] = 0;
-        if (c === 'tower') book.towerTries = 0;
+        if (c === 'tower') book.towerClears = 0;
       });
       saveState();
       renderAdminEditTriesBox();
       renderAllStudentViews();
-      const label = category === 'all' ? '모든 콘텐츠' : (DAILY_REWARD_LABELS[category] || category);
+      const label = category === 'all' ? '모든 콘텐츠' : category === 'raidClears' ? '엘리트 보스 클리어' : (DAILY_REWARD_LABELS[category] || category);
       showRewardBanner(`🔁 ${stu.name} 학생의 오늘 ${label} 도전 기회를 초기화했어요!`);
     }
 
@@ -24084,6 +24101,8 @@
 
       const badgeEl = document.getElementById('raidMySelectedCountBadge');
       if (badgeEl) badgeEl.textContent = `내 용병 ${selectedRaidMercIds.length} / 5명 배치됨`;
+      const clearsEl = document.getElementById('raidEliteClearsText');
+      if (clearsEl) clearsEl.textContent = `🏅 오늘 남은 클리어 ${getEliteClearsLeft(myStu)}/${ELITE_DAILY_CLEARS}회 (도전은 계속 가능 · 다 채우면 새 보스 보상은 내일)`;
 
       // 1) 내 용병 5명 선택 그리드
       const myGrid = document.getElementById('raidMyMercSelectGrid');
