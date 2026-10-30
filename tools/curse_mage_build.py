@@ -1,14 +1,17 @@
 # 주술사 원형 샘플(초록 배경 도트 시트 4장, 한글 라벨 박힘) → 캐릭터 시트 assets/sprites/merc/curse_0.webp + 이펙트 아틀라스 assets/sprites/fx/curse_fx.webp
 # 사용: python tools/curse_mage_build.py [샘플 폴더]  (기본 assets/sprites/fx/samples, 파일 curse_mage_1~4.webp)
-#   1 = 기본 동작, 2 = 저주·쇠약·파쇄·흡혼, 3 = 저주의 늪 (아래 줄 파멸의 의식은 안 씀), 4 = 스킬 이펙트 6줄 × 3칸 (마지막 파멸의 의식 줄은 안 씀)
+#   1 = 기본 동작, 2 = 저주·쇠약·파쇄·흡혼, 3 = 옛 저주의 늪 (발이 잘려서 안 씀), 4 = 스킬 이펙트 6줄 × 3칸 (마지막 파멸의 의식 줄은 안 씀)
+#   저주의 늪 시전 동작은 따로 받은 curse_swamp_src.png 두 칸 (불꽃 두르기 → 지팡이 꽂아 가시 늪)
+#   쇠약 동작은 따로 받은 curse_weak_src.png 두 칸 (오른쪽 = 지팡이 내리는 시전 자세, 왼쪽 = 덩굴·핏물이 솟는 발동) — 옛 시트 2의 쇠약 줄은 잘린 자리가 어색해서 안 씀
 #   히든 스킬 [파멸의 의식]은 따로 받은 샘플로 tools/curse_ruin_build.py가 만듦
-# 캐릭터 칸 순서: 0 대기 · 1~4 걷기 · 5~7 공격 · 8~9 피격 · 10~12 쓰러짐 · 13~15 저주 · 16~18 쇠약 · 19~21 파쇄
-#   · 22~24 흡혼 · 25~27 저주의 늪 (모든 칸 크기 같음, 오른쪽을 봄, 발 = 칸 아래 2px 위)
+# 캐릭터 칸 순서: 0 대기 · 1~4 걷기 · 5~7 공격 · 8~9 피격 · 10~12 쓰러짐 · 13~15 저주 · 16~17 쇠약 · 18~20 파쇄
+#   · 21~23 흡혼 · 24~25 저주의 늪 (모든 칸 크기 같음, 오른쪽을 봄, 발 = 기준점. 저주의 늪 칸은 발밑 늪이 기준점 아래로 내려감)
 # 샘플 오류 정리:
 #   - 초록 배경이 쇠약 덩굴(어두운 초록)·흡혼 빛(반투명)과 겹침 → 밝은 초록만 배경으로 보고, 반투명 가장자리는 배경색을 빼서 복원
 #   - 흡혼·저주의 늪 칸은 이펙트 때문에 커 보이지만 캐릭터 키(뿔~발 약 190px)는 다른 칸과 같아 배율은 하나로 씀
 #   - 캐릭터 칸에 그려진 땅 장판·날아가는 해골·튀는 파편·회오리는 이펙트로 따로 그리므로 캐릭터에서 지움 (흡혼은 자기 주변 기술이라 유령·빛을 남김)
 #   - 이펙트 시트 오른쪽 아래 ✦ 워터마크 지움
+#   - 저주의 늪 샘플은 캐릭터가 커서(뿔 폭 56px, 대기 시트는 약 30px) 칸 배율을 따로 씀. 불꽃·가시 늪은 시전 동작의 일부라 그대로 둠
 import sys, numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
@@ -27,19 +30,23 @@ FRAMES = [
     (1, 'hurt0',  95, 300, 620, 818, 'main'), (1, 'hurt1', 300, 765, 620, 818, 'main'),
     (1, 'down0',  90, 298, 818, 1024, 'main'), (1, 'down1', 298, 531, 818, 1024, 'main'), (1, 'down2', 531, 765, 818, 1024, 'main'),
     (2, 'hex0',   95, 270,   0, 236, 'main'), (2, 'hex1', 270, 517, 0, 236, 'main'), (2, 'hex2', 517, 687, 0, 236, 'main'),
-    (2, 'weak0',  95, 238, 236, 460, 'main'), (2, 'weak1', 238, 503, 236, 460, 'body'), (2, 'weak2', 503, 687, 236, 460, 'body'),
+    (6, 'weak0', 295, 504,   0, 237, 'all'), (6, 'weak1',   0, 294, 0, 237, 'all'),
     (2, 'shat0',  95, 275, 460, 730, 'main'), (2, 'shat1', 275, 490, 460, 730, 'body'), (2, 'shat2', 490, 687, 460, 730, 'main'),
     (2, 'sip0',   75, 282, 740, 1024, 'all'), (2, 'sip1', 282, 500, 740, 1024, 'all'), (2, 'sip2', 500, 687, 740, 1024, 'all'),
-    (3, 'swamp0', 185, 400,  0, 260, 'body'), (3, 'swamp1', 400, 712, 0, 260, 'body'), (3, 'swamp2', 712, 1024, 0, 260, 'body'),
+    (5, 'swamp0',   0, 160,   0, 175, 'all'), (5, 'swamp1', 180, 406, 0, 175, 'all'),
 ]
-XMAX = {'atk1': 505, 'hex1': 415, 'weak1': 448}  # 지팡이·손끝 앞으로 날아가는 해골은 투사체로, 지팡이 끝 덩굴 고리는 장판 이펙트로 따로 그림
+# 칸마다 배율 따로: 저주의 늪·쇠약 샘플은 뿔 폭을 대기 자세와 맞춤, 저주 칸은 샘플 캐릭터가 약 6% 작게 그려져 있어 키움
+FRAME_SCALE = {'swamp0': 0.58, 'swamp1': 0.58, 'weak0': 0.42, 'weak1': 0.44, **{f'hex{i}': SCALE * 1.06 for i in range(3)}}
+FOOT = {'swamp0': (82, 148), 'swamp1': (272, 143), 'weak0': (387, 202), 'weak1': (150, 200)}  # 샘플 좌표의 발 가운데·발바닥 (늪·불꽃이 발보다 넓고 아래로 퍼져서 직접 지정)
+XMAX = {'atk1': 505, 'hex1': 415}  # 지팡이·손끝 앞으로 날아가는 해골은 투사체로, 지팡이 끝 덩굴 고리는 장판 이펙트로 따로 그림
 YMIN = {}
 SRC = {}
 
 
 def load(sheet, folder):
     if sheet not in SRC:
-        im = np.array(Image.open(f'{folder}/curse_mage_{sheet}.webp').convert('RGB')).astype(float)
+        path = {5: f'{folder}/curse_swamp_src.png', 6: f'{folder}/curse_weak_src.png'}.get(sheet, f'{folder}/curse_mage_{sheet}.webp')
+        im = np.array(Image.open(path).convert('RGB')).astype(float)
         r, g, b = im[..., 0], im[..., 1], im[..., 2]
         d = np.sqrt(((im - KEY) ** 2).sum(axis=2))
         # 밝은 초록만 배경 후보: 어두운 초록(쇠약 덩굴)은 그대로 불투명
@@ -56,7 +63,7 @@ def load(sheet, folder):
         green = rgb[..., 1] - np.maximum(rgb[..., 0], rgb[..., 2])
         rgb[..., 1] = np.where(near & (green > 8), np.maximum(rgb[..., 0], rgb[..., 2]) + 4, rgb[..., 1])
         rgb = rgb.clip(0, 255)
-        a[:, :95 if sheet < 3 else 185] = 0  # 왼쪽 라벨 글자
+        if sheet < 5: a[:, :95 if sheet < 3 else 185] = 0  # 왼쪽 라벨 글자
         if sheet == 4: a[670:690, 912:930] = 0  # ✦ 워터마크
         SRC[sheet] = (rgb, a)
     return SRC[sheet]
@@ -109,11 +116,15 @@ def cut(folder, f):
     k = rgba[..., 3] > 0
     low = k[int(k.shape[0] * 0.75):] if name[:4] != 'down' else k
     cx = np.where(low.any(axis=0))[0].mean()
-    return rgba, cx
+    below = 0  # 발바닥 아래로 내려간 픽셀 수
+    if name in FOOT:
+        cx = FOOT[name][0] - x0 - b[0]
+        below = b[2] + rgba.shape[0] - (FOOT[name][1] - y0)
+    return rgba, cx, below
 
 
 def contact(folder, out):
-    tiles = [cut(folder, f) for f in FRAMES]
+    tiles = [cut(folder, f)[:2] for f in FRAMES]
     W = sum(t.shape[1] + 6 for t, _ in tiles); H = max(t.shape[0] for t, _ in tiles)
     img = np.full((H, W, 3), 60.0); x = 0
     for t, c in tiles:
@@ -169,21 +180,24 @@ def shrink(rgba, sc, hard):
 def main(folder):
     pieces = []
     for f in FRAMES:
-        rgba, cx = cut(folder, f)
-        pieces.append((f[1], shrink(rgba, SCALE, f[6] != 'all'), cx * SCALE))
-    L = max(int(np.ceil(c)) for _, _, c in pieces) + 2
-    R = max(int(np.ceil(p.shape[1] - c)) for _, p, c in pieces) + 2
-    H = max(p.shape[0] for _, p, _ in pieces) + 3
+        rgba, cx, below = cut(folder, f)
+        sc = FRAME_SCALE.get(f[1], SCALE)
+        p = shrink(rgba, sc, f[6] != 'all')
+        pieces.append((f[1], p, cx * sc, int(round(below * sc))))
+    L = max(int(np.ceil(c)) for _, _, c, _ in pieces) + 2
+    R = max(int(np.ceil(p.shape[1] - c)) for _, p, c, _ in pieces) + 2
+    B = max(d for _, _, _, d in pieces)
+    H = max(p.shape[0] - d for _, p, _, d in pieces) + B + 3
     cellW = L + R
     sheet = np.zeros((H, cellW * len(pieces), 4), np.uint8)
-    for i, (name, p, c) in enumerate(pieces):
+    for i, (name, p, c, d) in enumerate(pieces):
         x = i * cellW + L - int(round(c))
-        y = H - 2 - p.shape[0]           # 발 = 칸 아래에서 2px 위
+        y = H - 2 - B - p.shape[0] + d   # 발 = 기준점 (칸 아래에서 B + 2px 위)
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = np.where(p[..., 3:] > 0, p, sheet[y:y + p.shape[0], x:x + p.shape[1]])
     Image.fromarray(sheet, 'RGBA').save(OUT_CHAR, 'WEBP', lossless=True)
     idle = pieces[0][1]
     hx = np.where(idle[:int(idle.shape[0] * 0.5), :, 3].any(axis=0))[0]
-    print(f'char cellW={cellW} cellH={H} anchorX={L} anchorY={H - 2} count={len(pieces)} topH={idle.shape[0]} portraitCX={L - int(round(pieces[0][2])) + int(hx.mean())}')
+    print(f'char cellW={cellW} cellH={H} anchorX={L} anchorY={H - 2 - B} count={len(pieces)} topH={idle.shape[0]} portraitCX={L - int(round(pieces[0][2])) + int(hx.mean())}')
     # 이펙트 아틀라스: 가로로 이어 붙이고 프레임 [x, y, w, h, 기준점x, 기준점y]
     fx = [(n, shrink(p, FX_SCALE, False), ax * FX_SCALE, ay * FX_SCALE) for n, p, ax, ay in fx_pieces(folder)]
     W = sum(p.shape[1] + 2 for _, p, _, _ in fx); FH = max(p.shape[0] for _, p, _, _ in fx)
