@@ -34,12 +34,18 @@
   if (typeof animationLoop === 'function') requestAnimationFrame(animationLoop);
 
   // ---- 인터넷 지연 ----
+  // spikeEvery·spikeMs: 평균 spikeEvery ms마다 와이파이가 spikeMs 정도 멈췄다가 밀린 소식을 한꺼번에 줌 (학교 와이파이 흉내)
   window.__net = window.__net || { base: 0, jitter: 0 };
-  let lastDeliverAt = 0;
+  let lastDeliverAt = 0, holdUntil = 0, nextSpikeAt = 0;
   window.__netDelay = fn => {
-    const { base, jitter } = window.__net;
-    if (!base && !jitter) { fn(); return; }
-    const at = Math.max(performance.now() + base + Math.random() * jitter, lastDeliverAt + 0.1);
+    const { base, jitter, spikeEvery, spikeMs } = window.__net;
+    if (!base && !jitter && !spikeEvery) { fn(); return; }
+    const now = performance.now();
+    if (spikeEvery && spikeMs) {
+      if (!nextSpikeAt) nextSpikeAt = now + spikeEvery * (0.5 + Math.random());
+      if (now >= nextSpikeAt) { holdUntil = now + spikeMs * (0.5 + Math.random()); nextSpikeAt = now + spikeEvery * (0.5 + Math.random()); }
+    }
+    const at = Math.max(now + (base || 0) + Math.random() * (jitter || 0), holdUntil, lastDeliverAt + 0.1);
     lastDeliverAt = at;
     window.__later(fn, at - performance.now());
   };

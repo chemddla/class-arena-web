@@ -14841,11 +14841,12 @@
       ref.child('result').remove().catch(() => {});
       ref.child('frame').remove().catch(() => {});
       republishLiveUnits();
-      idxRef.set({
+      liveNet.towerIdxInfo = {
         id: stu.id, name: cleanUserText(stu.name, 30) || '친구', floor: floorObj.floor,
         title: cleanUserText(floorObj.name, 60) || `${floorObj.floor}층`,
         replay: floorObj.hard ? Boolean(towerHardClearsOf(stu)[floorObj.floor]) : floorObj.floor < (stu.towerFloor || 1), at: Date.now()
-      }).catch(() => {});
+      };
+      idxRef.set(liveNet.towerIdxInfo).catch(() => {});
       idxRef.child('watchers').on('value', snap => {
         const val = snap && snap.val();
         liveNet.towerWatchers = val && typeof val === 'object' ? Object.keys(val).length : 0;
@@ -14923,12 +14924,30 @@
     function onTowerLiveIndexChanged() {
       renderTowerLiveList();
       const tw = sim.towerWatch;
-      if (!tw || !sim.spectator || !sim.running || (towerLiveCache && towerLiveCache[tw.stuId] && towerLiveCache[tw.stuId].name)) return;
-      setTimeout(() => {
-        if (sim.towerWatch === tw && sim.spectator && sim.running && !liveNet.finished) {
+      const listed = () => Boolean(towerLiveCache && towerLiveCache[tw.stuId] && towerLiveCache[tw.stuId].name);
+      if (!tw || !sim.spectator || !sim.running) return;
+      if (listed()) {
+        // 친구 인터넷이 잠깐 끊겼다 와서 목록을 다시 올렸으면 내 관전 표시도 다시 적음 (안 그러면 보는 친구가 없는 줄 알고 화면을 안 보냄)
+        const me = getActiveStudent();
+        const w = towerLiveCache[tw.stuId].watchers;
+        if (me && liveNet.towerWatchOf === tw.stuId && !(w && typeof w === 'object' && w[me.id])) setTowerWatchEntry(tw.stuId, me);
+        return;
+      }
+      if (tw.leaveTimer) return;
+      // 목록에서 잠깐 빠졌다 다시 생기는 경우(친구 인터넷이 잠깐 끊김·같은 층 다시 도전)가 있어 4초 뒤에도 빠져 있을 때만 끝냄
+      tw.leaveTimer = setTimeout(() => {
+        tw.leaveTimer = null;
+        if (sim.towerWatch === tw && sim.spectator && sim.running && !liveNet.finished && !listed()) {
           abortLiveBattle(`📺 ${tw.name} 친구가 탑 도전을 그만뒀어요.`);
         }
       }, 4000);
+    }
+
+    function setTowerWatchEntry(stuId, me) {
+      const wRef = towerLiveIndexRef(stuId)?.child('watchers').child(me.id);
+      if (!wRef) return;
+      try { wRef.onDisconnect().remove(); } catch (e) {}
+      wRef.set({ id: me.id, name: cleanUserText(me.name, 30) || '친구', at: Date.now() }).catch(() => {});
     }
 
     window.spectateTowerRun = async function (stuId) {
@@ -14973,11 +14992,7 @@
       startLiveBattleNet(roomId, 'guest', liveNum(init.at), true, false);
       liveNet.bid = typeof init.b === 'number' ? init.b : null; liveNet.ep = liveNum(init.ep); // 탑·레이드 관전은 방 시작 시각이 없어 받은 화면의 전투 표를 따라감
       liveNet.towerWatchOf = stuId;
-      const wRef = towerLiveIndexRef(stuId)?.child('watchers').child(me.id);
-      if (wRef) {
-        try { wRef.onDisconnect().remove(); } catch (e) {}
-        wRef.set({ id: me.id, name: cleanUserText(me.name, 30) || '친구', at: Date.now() }).catch(() => {});
-      }
+      setTowerWatchEntry(stuId, me);
       renderTowerLiveList();
     };
 
@@ -30272,7 +30287,17 @@
       try {
         if (liveNet.role === 'host') {
           ref.onDisconnect().remove();
-          if (liveNet.towerCast || !sim.running) return;
+          if (liveNet.towerCast) {
+            // 탑·토벌 중계: 끊긴 사이 서버가 중계 자리(전투 정보·탑 도전 목록)를 지웠을 수 있어 다시 올림
+            // (예전엔 그대로 두어서, 방장 와이파이가 한 번 끊기면 관전하던 친구는 '그만뒀어요'로 쫓겨나고 새로 볼 수도 없었음)
+            if (!sim.running) return;
+            const idxRef = !liveNet.raidCast && liveNet.towerIdxInfo ? towerLiveIndexRef(liveNet.myId) : null;
+            if (idxRef) { idxRef.onDisconnect().remove(); idxRef.update(liveNet.towerIdxInfo).catch(() => {}); }
+            republishLiveUnits();
+            liveNet.lastFramePublishedAt = 0;
+            return;
+          }
+          if (!sim.running) return;
           ref.child('init').once('value').then(snap => {
             if (liveNet.ref !== ref || liveNet.role !== 'host' || !sim.running || (snap && snap.val())) return;
             const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (k === 'manualAimTarget' ? undefined : v))));
@@ -30359,10 +30384,11 @@
       liveNet.lastFramePublishedAt = nowMs;
       const fresh = list => {
         const out = [];
+        // 한 번에 40개까지만 · 넘친 것은 버리지 않고 다음 화면에 실어 보냄 (큰 범위 기술 때 효과가 통째로 빠지지 않게)
         list.forEach(x => {
-          if (liveNet.sent.has(x)) return;
+          if (out.length >= 40 || liveNet.sent.has(x)) return;
           liveNet.sent.add(x);
-          if (out.length < 40) out.push(x);
+          out.push(x);
         });
         return out;
       };
@@ -30644,7 +30670,21 @@
       // (몬스터 러쉬 새 라운드(rr)는 유닛 순서가 바뀌므로 받아 둔 화면을 비움)
       const sameHost = liveNet.initReceived && val.by && val.by === liveNet.initBy && !val.rr;
       liveNet.initBy = val.by || null;
+      if (sameHost) {
+        // 같은 용병은 지금 보이는 상태(위치·체력·걷는 모습)를 이어 씀: 새 목록은 재생 시점보다 앞선 상태라 그대로 쓰면 체력·자세가 잠깐 앞으로 튀었다 돌아옴
+        units.forEach((u, i) => {
+          const old = sim.units[i];
+          if (!old || old.id !== u.id) return;
+          ['x', 'y', 'hp', 'shield', 'mana', 'alive', 'facingDir', 'facingAngle', 'isMoving', 'walkPhase', 'attackAnim', 'maxAttackAnim', 'skillAnim', 'maxSkillAnim',
+            'activeSkillType', 'hurtAnim', 'dashAnim', 'castLock', 'casting', 'statuses', 'sizeScale', 'maxHp'].forEach(k => { if (old[k] !== undefined) u[k] = old[k]; });
+        });
+      }
       sim.units = units;
+      // 중계하던 친구가 인터넷이 끊겼다 와서 전투 정보를 다시 올렸으면, 그 사이 지워졌을 수 있는 내 관전 표시도 다시 적음
+      if (liveNet.spectator && liveNet.raidWatchRef) {
+        const me = getActiveStudent();
+        if (me) liveNet.raidWatchRef.set({ id: me.id, name: cleanUserText(me.name, 30) || '친구', at: Date.now() }).catch(() => {});
+      }
       if (!sameHost) {
         sim.projectiles = [];
         resetLiveFrameBuffer();
@@ -30667,8 +30707,10 @@
     //   다음 화면이 오기 전에 그릴 위치가 바닥나 용병이 멈칫했다가 순간이동하듯 끊겨 보였음
     // - 지금: 방장이 보낸 시각(at)으로 순서·간격을 맞추고, 도착이 늦어지는 정도(지터)에 맞춰 기다리는 시간을 스스로 조절
     //   체력·애니메이션·효과도 위치와 같은 시점에 적용해서 맞은 효과와 움직임이 어긋나지 않음
+    // - 와이파이가 잠깐 멈췄다 몰아서 주면(학교 와이파이에서 흔함): 기다리는 시간은 빨리 늘리고 천천히 줄이며,
+    //   재생 시점(playBase)은 순간 이동하지 않고 조금 느리게/빠르게 흘러서 따라감 → 멈칫·순간이동 대신 살짝 느려졌다 돌아옴
     function resetLiveFrameBuffer() {
-      Object.assign(liveNet, { frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, lastAimCheckAt: 0, hostPause: null });
+      Object.assign(liveNet, { frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, playBase: null, lastPlayAt: 0, lastAimCheckAt: 0, hostPause: null });
     }
 
     function applyLiveFrame(val) {
@@ -30682,9 +30724,15 @@
       offs.push(now - at);
       if (offs.length > 50) offs.shift();
       liveNet.clockOff = Math.min(...offs);
-      liveNet.jitter = liveNet.jitter * 0.9 + ((now - at) - liveNet.clockOff) * 0.1;
+      // 지터: 최근 5초 화면들이 가장 빠른 것보다 늦게 온 정도 (관전은 가장 늦은 것까지 · 조종하는 도전자는 반응이 늦지 않게 90%까지)
+      const late = offs.map(o => o - liveNet.clockOff).sort((a, b) => a - b);
+      liveNet.jitter = late[Math.min(late.length - 1, Math.floor(late.length * (liveNet.spectator ? 1 : 0.9)))] || 0;
       const buf = liveNet.frameBuf;
       if (buf.some(f => f.at === at)) return;
+      // 처음 받은 화면: 재생 차례가 오기 전에도 용병을 그 자리에 세워 둠 (관전을 시작하자마자 전투 시작 자리에서 순간이동하지 않게)
+      if (!liveNet.curFrame && !buf.length) {
+        val.u.forEach((p, i) => { if (sim.units[i] && Array.isArray(p)) { sim.units[i].x = liveNum(p[0]); sim.units[i].y = liveNum(p[1]); } });
+      }
       buf.push({ at, val });
       if (buf.length > 1 && buf[buf.length - 2].at > at) buf.sort((a, b) => a.at - b.at);
       if (buf.length > 80) buf.splice(0, buf.length - 80);
@@ -30782,12 +30830,25 @@
       const buf = liveNet.frameBuf || [];
       let renderT = null;
       if (liveNet.clockOff != null) {
-        // 기다리는 시간: 화면 간격 + 지터의 2.5배 (관전은 조종 반응이 필요 없으니 조금 더 넉넉히) · 천천히 바꿔서 재생 속도가 튀지 않게
-        const want = Math.max(110, Math.min(450, LIVE_FRAME_INTERVAL_MS + liveNet.jitter * 2.5 + (liveNet.spectator ? 60 : 20)));
-        liveNet.playDelay += (want - liveNet.playDelay) * Math.min(1, 0.03 * Math.max(1, ticks));
-        renderT = now - liveNet.clockOff - liveNet.playDelay;
+        const dt = Math.max(0, Math.min(250, now - (liveNet.lastPlayAt || now)));
+        liveNet.lastPlayAt = now;
+        // 기다리는 시간: 화면 간격 + 지터 + 여유 (관전은 조종 반응이 필요 없으니 넉넉히) · 늘릴 땐 빨리, 줄일 땐 천천히
+        const want = Math.max(110, Math.min(liveNet.spectator ? 900 : 450, LIVE_FRAME_INTERVAL_MS + liveNet.jitter + (liveNet.spectator ? 80 : 20)));
+        liveNet.playDelay += (want - liveNet.playDelay) * Math.min(1, (want > liveNet.playDelay ? 0.012 : 0.0006) * dt);
+        // 재생 시점은 목표를 향해 실제 시간의 ±10%까지만 빨라지거나 느려짐 · 받아 둔 화면이 바닥나면 절반 속도로 늦춰서 버팀
+        const target = liveNet.clockOff + liveNet.playDelay;
+        if (liveNet.playBase == null || Math.abs(target - liveNet.playBase) > 1500) liveNet.playBase = target;
+        else {
+          const starving = !buf.length && liveNet.curFrame && now - liveNet.playBase >= liveNet.curFrame.at;
+          if (starving) liveNet.playBase += dt * 0.5;
+          else liveNet.playBase += Math.max(-dt * 0.1, Math.min(dt * 0.1, target - liveNet.playBase));
+        }
+        renderT = now - liveNet.playBase;
         // 탭을 내렸다 오는 등으로 한참 밀렸으면 최근 화면 근처로 건너뜀
-        if (buf.length && buf[buf.length - 1].at - renderT > 1500) renderT = buf[buf.length - 1].at - liveNet.playDelay;
+        if (buf.length && buf[buf.length - 1].at - renderT > 1500) {
+          renderT = buf[buf.length - 1].at - liveNet.playDelay;
+          liveNet.playBase = now - renderT;
+        }
         while (buf.length && buf[0].at <= renderT) {
           const f = buf.shift();
           applyLiveFrameState(f.val, renderT - f.at);
