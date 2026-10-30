@@ -3225,17 +3225,17 @@
         power_shot: {
           id: 'power_shot', name: '강화 사격', icon: '🔴', ccTag: '🔴저격강화',
           manaCost: 21, cooldownTicks: 600, cooldownSec: 10.0, castSec: 1,
-          desc: '1초 동안 집중해 장전된 총알을 1발만 남기고 모두 소진합니다. 소진한 총알 1발마다 다음 기본 공격이 +90%씩 강해져요. (총알이 2발 이상 있어야 해요)'
+          desc: '1초 동안 집중해 장전된 총알을 1발만 남기고 모두 소진합니다. 소진한 총알 1발마다 다음 기본 공격이 +150%씩 강해지고, 강화된 저격에 맞은 적은 5초간 [출혈]. (총알이 2발 이상 있어야 해요)'
         },
         buckshot: {
           id: 'buckshot', name: '산탄', icon: '💥', ccTag: '💥산탄',
           manaCost: 24, cooldownTicks: 600, cooldownSec: 10.0, castSec: 0,
-          desc: '장전된 총알을 모두 쏟아 전방 부채꼴로 산탄을 쏩니다. 소비한 총알 1발마다 피해가 80%씩 쌓여요. (사거리 약 3.5칸)'
+          desc: '장전된 총알을 모두 쏟아 전방 부채꼴로 산탄을 쏩니다. 소비한 총알 1발마다 피해가 120%씩 쌓여요. (사거리 약 3.5칸)'
         },
         finisher: {
           id: 'finisher', name: '필살 사격', icon: '☄️', ccTag: '☄️관통저격',
           manaCost: 30, cooldownTicks: 1200, cooldownSec: 20.0, castSec: 2,
-          desc: '2초 동안 조준한 뒤 장전된 총알을 모두 소비해 사거리 무한의 필살 사격을 쏩니다. 소비한 총알 1발마다 피해 120%가 쌓이고(관통할수록 뒤쪽 적은 피해가 줄어요), 쏜 뒤 총열이 달아올라 5초간 재장전할 수 없어요.'
+          desc: '2초 동안 조준한 뒤 장전된 총알을 모두 소비해 사거리 무한의 필살 사격을 쏩니다. 소비한 총알 1발마다 피해 140%가 쌓이고(관통할수록 뒤쪽 적은 피해가 줄어요), 쏜 뒤 총열이 달아올라 5초간 재장전할 수 없어요.'
         }
       },
       // 빙결술사: 아이스애로우는 마법사 것과 똑같이 동작 (스킬 키는 직업끼리 겹치면 안 돼서 frost_arrow)
@@ -3503,8 +3503,8 @@
         icon: '🔫',
         color: '#be123c',
         roleDesc: '초장거리 관통 저격·은신·산탄·필살 사격',
-        passiveName: '저격', passiveDesc: '기본 공격이 저격으로 변경 · 우클릭 조준선(빨간 선) 후 좌클릭 사격 · 총알 5발, R키 장전',
-        baseHp: 780, baseAtk: 66, baseDef: 9, baseSpd: 100, range: 1300, maxMana: 100
+        passiveName: '저격', passiveDesc: '기본 공격이 저격으로 변경 · 우클릭 조준선(빨간 선) 후 좌클릭 사격 · 총알 5발, R키 장전 · 보스에게 주는 피해 +30%',
+        baseHp: 950, baseAtk: 66, baseDef: 14, baseSpd: 100, range: 1300, maxMana: 100
       },
       // 빙결술사: 군중제어 특화. 사거리는 마법사와 같고 공격·체력·방어는 보통, 속도는 높음. 기본 공격은 마법사처럼 작은 범위로 터지는 냉기 구슬
       frost: {
@@ -3536,7 +3536,8 @@
       rogue:   { backstab: 1.5 },
       knight:  { taken: 0.8, basicStaggerImmune: true },
       frost:   { statusDouble: true }, // 빙결술사 혹한: inflictStatus에서 처리
-      curse:   { vsDebuffed: 1.25 }    // 주술사 원한: 나쁜 상태이상에 걸린 적에게 주는 피해 +25%
+      curse:   { vsDebuffed: 1.25 },   // 주술사 원한: 나쁜 상태이상에 걸린 적에게 주는 피해 +25%
+      sniper:  { vsBoss: 1.3 }         // 저격수 대형 표적: 엘리트 보스·탑 종족 보스에게 주는 피해 +30%
       // 창병 패시브 창술(기본 공격 전환)은 수치 보정이 아니라 lancerBasicAttack에서 처리
     };
     const BACKSTAB_COS = -0.25; // 맞는 쪽이 바라보는 방향과 때린 쪽 방향의 cos이 이보다 작으면 등 뒤 (약 105° 바깥)
@@ -15460,6 +15461,8 @@
         }
         // 주술사 원한: 나쁜 상태이상에 걸린 적에게 주는 피해 증가
         if (passive.vsDebuffed && attacker.team !== defender.team && hasNegativeStatus(defender)) modDmg *= passive.vsDebuffed;
+        // 저격수 대형 표적: 보스에게 주는 피해 증가
+        if (passive.vsBoss && (defender.isEliteBoss || defender.isRaceBoss)) modDmg *= passive.vsBoss;
         // 펫 효과: 근접·원거리 기본 공격 피해 증가, 주는 피해 증가
         const petFx = attacker.petType ? PET_DEFS[attacker.petType]?.battle : null;
         if (petFx) {
@@ -16561,8 +16564,9 @@
           return !best || d < best.d ? { e, d } : best;
         }, null);
         const hpRatio = u.hp / u.maxHp;
-        // 저격수: 총알이 얼마 안 남았고 적이 멀리 있으면 미리 장전
-        if (u.job === 'sniper' && (u.ammo || 0) <= 2 && (!nearestFoe || nearestFoe.d > GRID_CELL_SIZE * 5)) sniperStartReload(u);
+        // 저격수: 총알이 얼마 안 남았고 사거리 안에 쏠 적이 없으면 미리 장전
+        // (예전엔 '5칸 밖'이 기준이라 늘 멀리 서는 저격수가 2발 남을 때마다 장전해 장전에 30%를 씀)
+        if (u.job === 'sniper' && (u.ammo || 0) <= 2 && (!nearestFoe || nearestFoe.d > u.range + 60)) sniperStartReload(u);
         const healerAlly = allies.find(a => a !== u && a.job === 'healer');
         if (!u.strafeTimer || --u.strafeTimer <= 0) {
           u.strafeDir = Math.random() < 0.5 ? 1 : -1;
@@ -19788,15 +19792,16 @@
     // 기본 공격 = 저격: 총알이 날아가지 않고, 겨눈 직선 위에 있던 적이 모두 그 순간 맞음 (적이 움직여도 피할 수 없음)
     // 총알 5발 · 다 쓰면 자동 장전, R키로 미리 장전도 가능. 시전·장전·과열 상태는 유닛에 ammo / reloadLeft / overheat
     const SNIPER_MAG_SIZE = 5;
-    const SNIPER_RELOAD_TICKS = 150;      // 장전 2.5초
+    const SNIPER_RELOAD_TICKS = 90;       // 장전 1.5초 (예전 2.5초: 스킬이 총알을 다 써서 살아 있는 시간의 40%를 장전에 씀)
     const SNIPER_OVERHEAT_TICKS = 300;    // 필살 사격 뒤 총열 과열: 5초간 장전 불가
     const SNIPER_SHOT_HALF_W = 16;        // 저격선 폭의 절반
     const SNIPER_SHOT_DMG = 1.0;          // 저격 1발 피해
-    const SNIPER_POWER_PER_BULLET = 0.9;  // 강화 사격: 소진한 총알 1발마다 다음 기본 공격 +90%
+    const SNIPER_POWER_PER_BULLET = 1.5;  // 강화 사격: 소진한 총알 1발마다 다음 기본 공격 +150% (예전 +90%는 그냥 쏘는 것보다 손해였음)
+    const SNIPER_POWER_BLEED_TICKS = 300; //   강화된 저격에 맞은 적은 5초간 출혈 (엘리트 보스에게도 걸리는 지속 피해)
     const SNIPER_BUCK_REACH = GRID_CELL_SIZE * 3.5;  // 산탄 사거리
     const SNIPER_BUCK_HALF_ANGLE = 0.5;   // 산탄 부채꼴 (약 ±29°)
-    const SNIPER_BUCK_DMG_PER_BULLET = 0.8; // 산탄: 소비한 총알 1발마다 80%
-    const SNIPER_FINISH_DMG_PER_BULLET = 1.2; // 필살 사격: 소비한 총알 1발마다 120% (예전 150%)
+    const SNIPER_BUCK_DMG_PER_BULLET = 1.2; // 산탄: 소비한 총알 1발마다 120% (예전 80%)
+    const SNIPER_FINISH_DMG_PER_BULLET = 1.4; // 필살 사격: 소비한 총알 1발마다 140% (150% → 120% → 140%)
     const SNIPER_FINISH_PIERCE_FALLOFF = 0.3; // 필살 사격 관통: 두 번째로 맞는 적부터 1명마다 피해 -30%
     const SNIPER_FINISH_PIERCE_MIN = 0.4;     //   최소 40%까지
     const SNIPER_FINISH_HALF_W = 34;   // 필살 사격 폭의 절반 (처음 26에서 30% 굵게)
@@ -19856,6 +19861,7 @@
       sniperRecoil(u, angle, stacks > 0 ? SNIPER_RECOIL_POWER : SNIPER_RECOIL_BASIC);
       const mult = SNIPER_SHOT_DMG * (1 + stacks * SNIPER_POWER_PER_BULLET);
       hits.forEach(e => withHitKind('ranged', () => applyDamage(u, e, u.atk * mult)));
+      if (stacks > 0) hits.forEach(e => inflictStatus(u, e, 'bleed', SNIPER_POWER_BLEED_TICKS));
       if (stacks > 0) sim.floatTexts.push({ x: u.x, y: u.y - 52, text: `🔴 강화 사격 ×${(1 + stacks * SNIPER_POWER_PER_BULLET).toFixed(1)}`, color: '#ea580c', life: 44 });
       return true;
     }
