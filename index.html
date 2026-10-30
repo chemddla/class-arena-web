@@ -6072,7 +6072,7 @@
       const f = FROST_FX.frames[name];
       ctx.save();
       ctx.globalAlpha *= alpha;
-      ctx.drawImage(FROST_FX.img, f[0], f[1], f[2], f[3], x - f[4] * sx, y - f[5] * sy, f[2] * sx, f[3] * sy);
+      drawSpriteFx(ctx, FROST_FX.img, f[0], f[1], f[2], f[3], x - f[4] * sx, y - f[5] * sy, f[2] * sx, f[3] * sy); // 프리즈·스케이팅은 채도를 낮춘 필터를 건 채 부름
       ctx.restore();
     }
     // 빙결술사 동결 스킬 이펙트 한 줄: 소용돌이(시전)·바닥 가시 고리(시전)·터지는 큐브(발동)·큐브(빙결 중)·금 간 큐브·조각(풀릴 때). 프레임 [x, y, w, h]
@@ -6108,10 +6108,10 @@
       // part = 'back' 이면 그림의 윗부분(split 비율까지, 몸 뒤로 갈 부분), 'front' 이면 아랫부분(몸 앞으로 나올 부분)만 그림. 없으면 통째로
       const sy = part === 'front' ? f[1] + f[3] * split : f[1], sh = part === 'back' ? f[3] * split : part === 'front' ? f[3] * (1 - split) : f[3];
       const ddy = part === 'front' ? dy + h * split : dy, dh = part ? sh * k : h;
-      ctx.drawImage(DFREEZE_FX.img, f[0], sy, f[2], sh, cx - ww / 2, ddy, ww, dh);
+      drawSpriteFx(ctx, DFREEZE_FX.img, f[0], sy, f[2], sh, cx - ww / 2, ddy, ww, dh);
       if (passes > 1) { // 두 번 겹쳐 그려 덜 비치게 (그림 자체가 반투명)
         ctx.globalAlpha *= 0.7;
-        ctx.drawImage(DFREEZE_FX.img, f[0], sy, f[2], sh, cx - ww / 2, ddy, ww, dh);
+        drawSpriteFx(ctx, DFREEZE_FX.img, f[0], sy, f[2], sh, cx - ww / 2, ddy, ww, dh);
       }
       ctx.restore();
     }
@@ -15847,7 +15847,7 @@
             projType: 'ice_arrow_proj', spr: unitProjFx(unit, 'ice_arrow_proj'),
             x: arrowFrom.x, y: arrowFrom.y,
             isDirectional: true, angle: arrowAng, travel: 0, maxTravel: unit.range + 90, homeTarget: null,
-            target: null, owner: unit, frostAim: aimPt ? null : unFrozen, // 빙결술사 AI: 날아가는 중인 화살이 얼릴 적 (같은 적에게 겹쳐 쓰지 않게)
+            target: null, owner: unit, frostAimId: aimPt || !unFrozen ? null : unFrozen.id, // 빙결술사 AI: 날아가는 중인 화살이 얼릴 적 (같은 적에게 겹쳐 쓰지 않게 · 유닛을 통째로 담으면 실시간 전송·분신 복사 때 같이 복사돼서 id만)
             dmg: unit.atk * 1.85,
             aoeRadius: 88,
             statusOnHit: 'freeze',
@@ -16273,7 +16273,7 @@
         const chosenSkill = selectStrategicSkillToCast(u, allies, seenEnemies, target, dist);
         if (chosenSkill) {
           // 빙결술사 AI는 점수를 매길 때 고른 적(곧 풀리는 적)에게 동결·아이스애로우를 씀
-          const frostFoe = u.job === 'frost' && u.frostAiFoe ? u.frostAiFoe[chosenSkill] : null;
+          const frostFoe = u.job === 'frost' ? (FROST_AI_FOE.get(u) || {})[chosenSkill] : null;
           const aimFoe = frostFoe && frostFoe.alive ? frostFoe : target;
           if (chosenSkill === 'deep_freeze' && aimFoe) beginSkillCast(u, chosenSkill, { x: aimFoe.x, y: aimFoe.y, target: aimFoe });
           else if (chosenSkill === 'frost_arrow' && frostFoe && frostFoe.alive) beginSkillCast(u, chosenSkill, { target: frostFoe });
@@ -19218,12 +19218,6 @@
     const FROST_BLIZZARD_DMG = 0.5;       //   공격력 50% 다단히트
     const FROST_BLIZZARD_FREEZE_TICKS = 900; // 시작할 때 빙결 15초
 
-    function castFrostSkill(unit, enemies, sk, target, aimPt) {
-      const C = GRID_CELL_SIZE;
-      const A = C * unitAreaScale(unit);
-      if (sk === 'ice_barrier') {
-        // 다시 쓰면 남은 배리어를 새것으로 바꿈 (성녀 보호막 등 다른 보호막은 그대로)
-        if (unit.frostBarrier > 0) unit.shield = Math.max(0, (unit.shield || 0) - Math.min(unit.frostBarrier, unit.shield || 0));
     // ===== 빙결술사 AI: 피해보다 빙결 유지가 목표 =====
     // 빙결은 겹치지 않고 긴 쪽으로만 갱신되므로 이미 얼어 있는 적에게 쓰면 낭비.
     // 얼음이 풀리기 직전(새 빙결이 닿는 데 걸리는 시간 안)인 적에게 이어 걸어 빈틈없이 얼려 둠
@@ -19232,6 +19226,13 @@
     // 적을 묶어 두고 있는 남은 틱 (빙결·기절)
     function frostHeldLeft(e) {
       return Math.max(e.statuses.freeze || 0, e.statuses.stun || 0);
+    }
+    // 점수를 매길 때 고른 적 (스킬 키별). 유닛에 직접 담지 않음: 유닛을 JSON으로 복사(분신·실시간 전송)할 때 다른 유닛까지 딸려 가지 않게
+    const FROST_AI_FOE = new WeakMap();
+    function frostAiFoeOf(unit) {
+      let m = FROST_AI_FOE.get(unit);
+      if (!m) { m = {}; FROST_AI_FOE.set(unit, m); }
+      return m;
     }
     // 같은 편이 이미 이 적에게 걸고 있는 빙결·기절 (시전 중인 스킬, 날아가는 아이스애로우)
     function frostPendingOn(unit, e) {
@@ -19242,7 +19243,7 @@
         if (FROST_AI_HOLD_KEYS.includes(k) && a.casting.aimTarget === e) return true;
         if (k === 'frost_nova' && unitDist(e, a) <= GRID_CELL_SIZE * FROST_NOVA_CELLS * unitAreaScale(a) - 20) return true;
       }
-      return sim.projectiles.some(p => p.frostAim === e && p.owner && p.owner.team === unit.team);
+      return sim.projectiles.some(p => p.frostAimId === e.id && p.owner && p.owner.team === unit.team);
     }
     // lead틱 뒤에 빙결이 닿는다면 지금 걸어야 하는 적인지 (그때쯤 풀려 있고, 아군이 거는 중도 아님)
     function frostNeedsFreeze(unit, e, lead) {
@@ -19263,6 +19264,12 @@
       return Math.round(((unitSkillBook(unit).frost_arrow?.castSec) || 0.49) * 60) + unitDist(e, unit) / (3.0 * BATTLE_PROJECTILE_SPEED);
     }
 
+    function castFrostSkill(unit, enemies, sk, target, aimPt) {
+      const C = GRID_CELL_SIZE;
+      const A = C * unitAreaScale(unit);
+      if (sk === 'ice_barrier') {
+        // 다시 쓰면 남은 배리어를 새것으로 바꿈 (성녀 보호막 등 다른 보호막은 그대로)
+        if (unit.frostBarrier > 0) unit.shield = Math.max(0, (unit.shield || 0) - Math.min(unit.frostBarrier, unit.shield || 0));
         const amt = Math.round(unit.maxHp * FROST_BARRIER_HP_RATIO + unit.atk * FROST_BARRIER_ATK_RATIO);
         unit.shield = (unit.shield || 0) + amt;
         unit.frostBarrier = amt;
@@ -19710,8 +19717,7 @@
           const needy = enemies.filter(e => unitDist(e, unit) <= reach && frostNeedsFreeze(unit, e, lead));
           if (!needy.length) return -1;
           const foe = needy.reduce((b, e) => (!b || frostThreatOf(unit, e, enemyTarget) > frostThreatOf(unit, b, enemyTarget) ? e : b), null);
-          if (!unit.frostAiFoe) unit.frostAiFoe = {};
-          unit.frostAiFoe.deep_freeze = foe;
+          frostAiFoeOf(unit).deep_freeze = foe;
           // 프리즈 한 번에 같이 얼릴 수 있는 무리 속이면 프리즈에 맡김
           const novaR = C * FROST_NOVA_CELLS - 20;
           const novaReady = aiReadySkillKeys(unit).includes('frost_nova');
@@ -19731,8 +19737,7 @@
             const v = n * 1000 + frostThreatOf(unit, e, enemyTarget);
             if (!best || v > best.v) best = { e, n, v };
           });
-          if (!unit.frostAiFoe) unit.frostAiFoe = {};
-          unit.frostAiFoe.frost_arrow = best.e;
+          frostAiFoeOf(unit).frost_arrow = best.e;
           return best.n >= 2 ? 95 : 91;
         }
         case 'skating': {
@@ -20621,6 +20626,56 @@
       }
     }
 
+    // 스프라이트 그리기에서 ctx.filter를 매 화면 그대로 쓰면 그릴 때마다 따로 판을 만들어 필터를 계산해서 아주 느림
+    // (피격 번쩍임 한 번에 용병 약 11ms, 큰 보스는 16ms 이상 · 여럿이 같이 맞으면 화면이 뚝뚝 끊김)
+    // - 피격 번쩍임 brightness(1.8): 필터 없이 같은 그림을 '더하기'로 한 번 더 겹쳐 그림 (원래 색 + 0.8배 = 1.8배)
+    // - 나머지 필터(흑화·잿빛 시체·금빛 잔상 등): 그 칸에 필터를 입힌 그림을 한 번만 만들어 두고 다시 씀
+    const SPRITE_FLASH_FILTER = 'brightness(1.8)';
+    const SPRITE_FX_CACHE_MAX = 300;
+    const SPRITE_FX_WHOLE_MAX_PX = 4000000; // 이보다 작은 그림은 통째로 필터를 입혀 두고 같은 자리에서 잘라 씀 (그림을 바꿔 가며 그리는 비용도 없음)
+    let spriteFxCache = new WeakMap();
+    let spriteFxCount = 0;
+    // 필터를 입힌 그림과 그 안에서 (sx, sy)에 해당하는 자리: { src, ox, oy } → drawImage(src, sx - ox, sy - oy, ...)
+    function spriteFxSource(img, sx, sy, sw, sh, filter) {
+      const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+      const whole = W * H <= SPRITE_FX_WHOLE_MAX_PX;
+      const key = whole ? `*|${filter}` : `${sx},${sy},${sw},${sh}|${filter}`;
+      let m = spriteFxCache.get(img);
+      if (!m) { m = new Map(); spriteFxCache.set(img, m); }
+      let hit = m.get(key);
+      if (hit) return hit;
+      if (spriteFxCount >= SPRITE_FX_CACHE_MAX) { spriteFxCache = new WeakMap(); spriteFxCount = 0; m = new Map(); spriteFxCache.set(img, m); }
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.ceil(whole ? W : sw));
+      c.height = Math.max(1, Math.ceil(whole ? H : sh));
+      const g = c.getContext('2d');
+      g.filter = filter;
+      if (whole) g.drawImage(img, 0, 0);
+      else g.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+      hit = whole ? { src: c, ox: 0, oy: 0 } : { src: c, ox: sx, oy: sy };
+      m.set(key, hit);
+      spriteFxCount++;
+      return hit;
+    }
+    // drawImage(그림, 9개 인자)와 같지만, 지금 ctx에 필터가 걸려 있으면 위의 빠른 방법으로 그림
+    function drawSpriteFx(ctx, img, sx, sy, sw, sh, dx, dy, dw, dh) {
+      const filter = ctx.filter;
+      if (!filter || filter === 'none') { ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh); return; }
+      ctx.save();
+      ctx.filter = 'none';
+      if (filter === SPRITE_FLASH_FILTER) {
+        ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha *= 0.8;
+        ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+      } else if (img.naturalWidth || img.width) {
+        const f = spriteFxSource(img, sx, sy, sw, sh, filter);
+        ctx.drawImage(f.src, sx - f.ox, sy - f.oy, sw, sh, dx, dy, dw, dh);
+      }
+      ctx.restore();
+    }
+
     function drawUnitSprite(ctx, u, sprite, tick, jumpY = 0, rareGlow = false) {
       const frame = pickSpriteFrame(u, sprite, tick);
       const k = spriteDrawH(u, sprite) / sprite.standH;
@@ -20666,9 +20721,9 @@
           ctx.filter = 'sepia(1) saturate(3) brightness(1.35) hue-rotate(-8deg)';
           if (g.pose >= 0) {
             const ga = g.art, ksg = spriteDrawH(u, sprite) / ga.standH;
-            ctx.drawImage(ga.cast, g.pose * ga.cellW, 0, ga.cellW, ga.cellH, -ga.anchorX * ksg, -ga.anchorY * ksg, ga.cellW * ksg, ga.cellH * ksg);
+            drawSpriteFx(ctx, ga.cast, g.pose * ga.cellW, 0, ga.cellW, ga.cellH, -ga.anchorX * ksg, -ga.anchorY * ksg, ga.cellW * ksg, ga.cellH * ksg);
           } else {
-            ctx.drawImage(sprite.img, g.frame * sprite.cellW, 0, sprite.cellW, sprite.cellH, -sprite.anchorX * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
+            drawSpriteFx(ctx, sprite.img, g.frame * sprite.cellW, 0, sprite.cellW, sprite.cellH, -sprite.anchorX * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
           }
           ctx.restore();
         }
@@ -20691,9 +20746,9 @@
           ctx.filter = 'sepia(1) saturate(3) brightness(1.35) hue-rotate(-8deg)';
           if (g.pose >= 0) {
             const ga = g.art, ksg = spriteDrawH(u, sprite) / ga.standH;
-            ctx.drawImage(ga.cast, g.pose * ga.cellW, 0, ga.cellW, ga.cellH, -ga.anchorX * ksg, -ga.anchorY * ksg, ga.cellW * ksg, ga.cellH * ksg);
+            drawSpriteFx(ctx, ga.cast, g.pose * ga.cellW, 0, ga.cellW, ga.cellH, -ga.anchorX * ksg, -ga.anchorY * ksg, ga.cellW * ksg, ga.cellH * ksg);
           } else {
-            ctx.drawImage(sprite.img, g.frame * sprite.cellW, 0, sprite.cellW, sprite.cellH, -sprite.anchorX * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
+            drawSpriteFx(ctx, sprite.img, g.frame * sprite.cellW, 0, sprite.cellW, sprite.cellH, -sprite.anchorX * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
           }
           ctx.restore();
         });
@@ -20714,7 +20769,7 @@
         const c = u.casting;
         const fi = c.total - c.left < 30 ? 0 : 1 + Math.floor(tick / 7) % 2; // 처음엔 활을 드는 자세, 그다음 두 칸을 번갈아
         const ks = spriteDrawH(u, sprite) / storm.standH;
-        const drawStorm = img => ctx.drawImage(img, fi * storm.cellW, 0, storm.cellW, storm.cellH,
+        const drawStorm = img => drawSpriteFx(ctx, img, fi * storm.cellW, 0, storm.cellW, storm.cellH,
           -storm.anchorX * ks, -storm.anchorY * ks, storm.cellW * ks, storm.cellH * ks);
         const stormCast = (u.skinVariant || 0) === 0 ? storm.cast : storm.casts[u.skinVariant];
         if (stormCast && stormCast.ready) {
@@ -20722,7 +20777,7 @@
           ctx.restore();
           return;
         }
-        ctx.drawImage(sprite.img, frame * sprite.cellW, 0, sprite.cellW, sprite.cellH,
+        drawSpriteFx(ctx, sprite.img, frame * sprite.cellW, 0, sprite.cellW, sprite.cellH,
           -sprite.anchorX * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
         if (storm.wind.ready) drawStorm(storm.wind);
         ctx.restore();
@@ -20738,7 +20793,7 @@
         const ks = spriteDrawH(u, sprite) / fusion.standH;
         const fi = c.left <= 10 ? 2 : (c.left <= c.total * 0.6 ? 1 : 0);
         const shake = fi === 1 ? Math.sin(tick * 1.4) * 0.8 * ks : 0;
-        ctx.drawImage(fusion.cast, fi * fusion.cellW, 0, fusion.cellW, fusion.cellH,
+        drawSpriteFx(ctx, fusion.cast, fi * fusion.cellW, 0, fusion.cellW, fusion.cellH,
           -fusion.anchorX * ks + shake, -fusion.anchorY * ks, fusion.cellW * ks, fusion.cellH * ks);
         ctx.restore();
         return;
@@ -20759,11 +20814,11 @@
           fi = 0; // 불꽃 자세 위에 어둠 자세를 서서히 덧입혀 검게 변함
           fade = Math.max(0, Math.min(1, (p - 0.2) / 0.7));
         } else fi = assassinSince < 24 ? 2 : (assassinSince < 40 ? 3 : 4); // 등 뒤에서 연기 자세 → 찌름 → 거둠
-        ctx.drawImage(as.cast, fi * as.cellW, 0, as.cellW, as.cellH,
+        drawSpriteFx(ctx, as.cast, fi * as.cellW, 0, as.cellW, as.cellH,
           -as.anchorX * ks + shake, -as.anchorY * ks, as.cellW * ks, as.cellH * ks);
         if (fade > 0) {
           ctx.globalAlpha *= fade;
-          ctx.drawImage(as.cast, as.cellW, 0, as.cellW, as.cellH,
+          drawSpriteFx(ctx, as.cast, as.cellW, 0, as.cellW, as.cellH,
             -as.anchorX * ks, -as.anchorY * ks, as.cellW * ks, as.cellH * ks);
         }
         ctx.restore();
@@ -20787,13 +20842,13 @@
           const m = g.motionCell, cell = GIANT_MOTION_CELL[frame] ?? 0;
           const ms = spriteDrawH(u, sprite) / m.standH;
           const walkBob = frame >= 2 && frame <= 5 ? -Math.abs(Math.sin(tick * 0.2)) * 3 * ms : 0;
-          ctx.drawImage(g.motion, cell * m.w, 0, m.w, m.h, -m.anchorX * ms, -m.anchorY * ms + walkBob, m.w * ms, m.h * ms);
+          drawSpriteFx(ctx, g.motion, cell * m.w, 0, m.w, m.h, -m.anchorX * ms, -m.anchorY * ms + walkBob, m.w * ms, m.h * ms);
           ctx.restore();
           return;
         } else if (isGiant) fi = 4;
         if (fi >= 0) {
           const ks = spriteDrawH(u, sprite) / g.standH * grow * (fi === 3 ? 0.86 : 1); // 불꽃 터짐 그림은 몸이 거인 자세보다 커서 살짝 줄여 크기가 튀지 않게
-          ctx.drawImage(g.cast, fi * g.cellW, 0, g.cellW, g.cellH,
+          drawSpriteFx(ctx, g.cast, fi * g.cellW, 0, g.cellW, g.cellH,
             -g.anchorX * ks + shake * ks, -g.anchorY * ks, g.cellW * ks, g.cellH * ks);
           ctx.restore();
           return;
@@ -20810,7 +20865,7 @@
         const ks = spriteDrawH(u, sprite) / excal.standH;
         const raised = excalCasting && c.left > 20;
         const shake = raised ? Math.sin(tick * 1.3) * 0.8 * ks : 0; // 기를 모으는 동안 몸이 잘게 떨림
-        ctx.drawImage(excalImg, (raised ? 0 : 1) * cell.cellW, 0, cell.cellW, cell.cellH,
+        drawSpriteFx(ctx, excalImg, (raised ? 0 : 1) * cell.cellW, 0, cell.cellW, cell.cellH,
           -cell.anchorX * ks + shake, -cell.anchorY * ks, cell.cellW * ks, cell.cellH * ks);
         ctx.restore();
         return;
@@ -20821,7 +20876,7 @@
         const ex = WARRIOR_EXCALIBUR_FX, cell = (u.skinVariant || 0) === 0 ? ex : ex.skinCell;
         const ks = spriteDrawH(u, sprite) / ex.standH;
         const fi = u.skillAnim > (u.maxSkillAnim || 20) / 2 ? 0 : 1;
-        ctx.drawImage(stunImg, fi * cell.cellW, 0, cell.cellW, cell.cellH,
+        drawSpriteFx(ctx, stunImg, fi * cell.cellW, 0, cell.cellW, cell.cellH,
           -cell.anchorX * ks, -cell.anchorY * ks, cell.cellW * ks, cell.cellH * ks);
         ctx.restore();
         return;
@@ -20845,12 +20900,12 @@
             ctx.scale(sc, sc);
             ctx.translate(0, ma.standH / 2 * ks);
             ctx.globalAlpha = (1 - q) * (1 - q) * 0.55;
-            ctx.drawImage(ma.cast, 0, 0, ma.cellW, ma.cellH, -ma.anchorX * ks, -ma.anchorY * ks, ma.cellW * ks, ma.cellH * ks);
+            drawSpriteFx(ctx, ma.cast, 0, 0, ma.cellW, ma.cellH, -ma.anchorX * ks, -ma.anchorY * ks, ma.cellW * ks, ma.cellH * ks);
             ctx.restore();
           }
           ctx.restore();
         }
-        ctx.drawImage(ma.cast, pose * ma.cellW, 0, ma.cellW, ma.cellH,
+        drawSpriteFx(ctx, ma.cast, pose * ma.cellW, 0, ma.cellW, ma.cellH,
           -ma.anchorX * ks, -ma.anchorY * ks, ma.cellW * ks, ma.cellH * ks);
         ctx.restore();
         return;
@@ -20868,7 +20923,7 @@
           fi = c.left > c.total / 2 ? 0 : 1;
           if (fi === 1) shake = Math.sin(tick * 1.4) * 0.7 * ks; // 충전 중 몸이 잘게 떨림
         } else fi = lsSince < lsx.FIRE_TICKS ? 2 : 3;
-        ctx.drawImage(lsx.cast, fi * lsx.cellW, 0, lsx.cellW, lsx.cellH,
+        drawSpriteFx(ctx, lsx.cast, fi * lsx.cellW, 0, lsx.cellW, lsx.cellH,
           -lsx.anchorX * ks + shake, -lsx.anchorY * ks, lsx.cellW * ks, lsx.cellH * ks);
         ctx.restore();
         return;
@@ -20879,12 +20934,12 @@
         const c = u.casting;
         const ks = spriteDrawH(u, sprite) / miracle.standH;
         const bob = c.left > 20 ? Math.sin(tick * 0.12) * 1.2 * ks : 0; // 기도하는 동안 몸이 살짝 떠 오름
-        ctx.drawImage(miracle.cast, (c.left > 20 ? 0 : 1) * miracle.cellW, 0, miracle.cellW, miracle.cellH,
+        drawSpriteFx(ctx, miracle.cast, (c.left > 20 ? 0 : 1) * miracle.cellW, 0, miracle.cellW, miracle.cellH,
           -miracle.anchorX * ks, -miracle.anchorY * ks - bob, miracle.cellW * ks, miracle.cellH * ks);
         ctx.restore();
         return;
       }
-      ctx.drawImage(sprite.img, frame * sprite.cellW, 0, sprite.cellW, sprite.cellH,
+      drawSpriteFx(ctx, sprite.img, frame * sprite.cellW, 0, sprite.cellW, sprite.cellH,
         -sprite.anchorX * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
       ctx.restore();
     }
