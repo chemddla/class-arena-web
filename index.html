@@ -6061,7 +6061,7 @@
       anims: { shard: [[0,0,83,62,82,31]], circle: [[85,0,45,68,22.5,34]], dome: [[132,0,193,144,96.5,72]], star: [[327,0,27,29,13.5,14.5]] }
     };
     // 주술사 히든 [파멸의 의식] 표식·폭발 (tools/curse_ruin_mark_build.py): mark0·1 = 걸린 적 머리 위 해골 (번갈아) · vortex = 터지기 직전 발밑 소용돌이 · bolt = 터질 때 붉은 번개 (기준점 = 바닥)
-    const CURSE_RUIN_MARK_FX = { src: 'assets/sprites/fx/curse_ruin_mark_fx.webp', anims: { mark0: [[0,0,92,120,46,60]], mark1: [[94,0,93,128,46,64]], vortex: [[189,0,275,149,140,104]], bolt: [[466,0,226,244,113,208]] } };
+    const CURSE_RUIN_MARK_FX = { src: 'assets/sprites/fx/curse_ruin_mark_fx.webp', anims: { mark0: [[0,0,92,120,46,60]], mark1: [[94,0,93,128,46,64]], vortex: [[189,0,275,149,140,104]], bolt: [[466,0,226,244,113,208]], circle0: [[694,0,270,203,133,135]], circle1: [[966,0,182,168,87,124]] } }; // circle0 = 시전 중 적 발밑 마법진 · circle1 = 발동할 때 불길 솟는 마법진
     // 주술사 [저주의 늪] 장판 (tools/curse_swamp_fx_build.py): 0 퍼짐 · 1 가시 늪 · 2 가시·거품 늪 · 3·4 해골 늪. 기준점 = 늪 타원 가운데
     const CURSE_SWAMP_FX = { src: 'assets/sprites/fx/curse_swamp_fx.webp', anims: { pool: [[0,0,193,112,96,73], [195,0,188,127,94,88], [385,0,196,120,98,81], [583,0,194,128,97,89], [779,0,192,128,96,89]] } };
     // 주술사 피격 이펙트 (tools/curse_hit_build.py): orb = 기본 공격 불꽃 폭발, hex = 저주 해골 폭발 (기준점 = 폭발 가운데)
@@ -6268,12 +6268,12 @@
         drawSpriteFx(ctx, CURSE_SHATTER_FX.img, 0, 0, w, h, -ax * k, -ay * k, w * k, h * k);
         return;
       }
-      if (ef.type === 'curse_ruin_bolt') {
-        // 파멸의 의식 폭발: 발밑 소용돌이에 붉은 번개가 내리꽂힘 (대상 크기에 비례)
+      if (ef.type === 'curse_ruin_bolt') return; // 유닛 위에 불투명하게 drawRuinMarks에서 그림
+      if (ef.type === 'curse_ruin_circle') {
+        // 파멸의 의식 발동: 적 발밑 마법진에서 검은 불길이 솟음
         if (!CURSE_RUIN_MARK_FX.ready) return;
-        const fr = CURSE_RUIN_MARK_FX.anims.bolt[0], s = ef.s || 1;
-        const k = 84 * s / fr[2] * (0.85 + 0.15 * Math.min(1, progress / 0.15));
-        drawFxFrame(ctx, fr, ef.x, ef.y + 12, k, 0, Math.min(1, progress / 0.06) * fade, CURSE_RUIN_MARK_FX.img);
+        const fr = CURSE_RUIN_MARK_FX.anims.circle1[0], s = ef.s || 1;
+        drawFxFrame(ctx, fr, ef.x, ef.y + 12, 84 * s / fr[2] * (0.9 + 0.1 * Math.min(1, progress / 0.2)), 0, fade, CURSE_RUIN_MARK_FX.img);
         return;
       }
       if (!CURSE_FX.ready) return;
@@ -18151,6 +18151,7 @@
           inflictStatus(unit, e, 'hex', CURSE_RUIN_TICKS);
           inflictStatus(unit, e, 'weaken', CURSE_RUIN_TICKS);
           marks.set(e, e.damageTaken); // 터질 때까지 머리 위에 해골 표식 (drawRuinMarks)
+          sim.effects.push({ type: 'curse_ruin_circle', x: e.x, y: e.y, s: unitFxSize(e), life: 44, maxLife: 44 });
           suppressHitKnockback = true;
           try { withSkillHit(() => applyDamage(unit, e, unit.atk * CURSE_RUIN_DMG, '⚰️', '#7e22ce')); } finally { suppressHitKnockback = false; }
         });
@@ -18373,10 +18374,31 @@
     // 시전 중인 히든 스킬: 무지갯빛 기운이 모여듦 · 마지막 한 발은 목표까지 붉은 조준선 · 거인화 발밑 고리 · 거인화·무쌍난무 남은 시간
     // 파멸의 의식에 걸린 적: 터질 때까지 머리 위에 불타는 해골(두 칸 번갈아), 터지기 RUIN_VORTEX_TICKS 전부터 발밑에 붉은 소용돌이
     const RUIN_VORTEX_TICKS = 30;
+    // 파멸의 의식 시전 중: 시전자의 적 모두 발밑에 붉은 마법진 (바닥이라 유닛보다 먼저 그림)
+    function drawRuinCircles(ctx) {
+      if (!CURSE_RUIN_MARK_FX.ready) return;
+      const fr = CURSE_RUIN_MARK_FX.anims.circle0[0];
+      sim.units.forEach(c => {
+        if (!c.alive || !c.casting || c.casting.key !== 'ruin_rite') return;
+        const p = 1 - c.casting.left / c.casting.total;
+        sim.units.forEach(e => {
+          if (!e.alive || e.team === c.team || e.team === 'none' || (isStealthed(e) && !canViewerSeeStealthed(e))) return;
+          const s = unitFxSize(e), pulse = 1 + Math.sin(sim.tickCount * 0.15) * 0.03;
+          drawFxFrame(ctx, fr, e.x, e.y + 12, 84 * s / fr[2] * (0.7 + 0.3 * Math.min(1, p * 3)) * pulse, 0, Math.min(1, 0.3 + p * 2), CURSE_RUIN_MARK_FX.img);
+        });
+      });
+    }
     function drawRuinMarks(ctx) {
-      if (!CURSE_RUIN_MARK_FX.ready || !sim.hiddenFx) return;
+      if (!CURSE_RUIN_MARK_FX.ready) return;
       const A = CURSE_RUIN_MARK_FX.anims, img = CURSE_RUIN_MARK_FX.img, t = sim.tickCount;
-      sim.hiddenFx.forEach(fx => {
+      // 80% 폭발: 발밑 소용돌이에 붉은 번개가 내리꽂힘 (대상 크기에 비례, 다른 피격 이펙트보다 크고 진하게)
+      sim.effects.forEach(ef => {
+        if (ef.type !== 'curse_ruin_bolt') return;
+        const p = 1 - ef.life / (ef.maxLife || 36), fr = A.bolt[0], s = ef.s || 1;
+        const k = 170 * s / fr[2] * (0.85 + 0.15 * Math.min(1, p / 0.15));
+        drawFxFrame(ctx, fr, ef.x, ef.y + 12, k, 0, Math.min(1, p / 0.06, (1 - p) / 0.3), img);
+      });
+      (sim.hiddenFx || []).forEach(fx => {
         if (fx.kind !== 'ruin' || !fx.marks) return;
         const end = Math.max(0, Math.min(1, 1 - fx.left / RUIN_VORTEX_TICKS)); // 소용돌이가 차오르는 정도
         fx.marks.forEach((start, e) => {
@@ -21055,7 +21077,7 @@
 
     // 회복·축복·보호막 그림 (수명은 효과 루프에서 줄어듦)
     // 피격 이펙트: 맞은 대상 위에 겹쳐 보이게 유닛을 다 그린 뒤 따로 한 겹에 그려 반투명하게 얹음
-    const HIT_FX_TYPES = new Set(['magic_burst', 'arrow_hit', 'fire_explosion', 'ice_shatter', 'curse_shatter', 'curse_ruin_bolt', 'hidden_snipe_hit']);
+    const HIT_FX_TYPES = new Set(['magic_burst', 'arrow_hit', 'fire_explosion', 'ice_shatter', 'curse_shatter', 'hidden_snipe_hit']); // 파멸의 의식 번개는 불투명하게 drawRuinMarks에서
     const HIT_FX_ALPHA = 0.75;
     let hitFxLayer = null;
     function drawHitEffectsOnTop(ctx, drawPass) {
@@ -22599,8 +22621,9 @@
       ctx.fillText('🟥 RED TEAM (적군 3×5 진영)', WW - 220, 230);
       ctx.restore();
 
-      // 1-2) 바닥 장판 (화살비 · 포이즌 붐)
+      // 1-2) 바닥 장판 (화살비 · 포이즌 붐) · 파멸의 의식 시전 중 적 발밑 마법진
       drawZones(ctx);
+      drawRuinCircles(ctx);
 
       // 2) 스킬 및 타격 심플 기하학 이펙트 렌더링
       // 피격 이펙트(HIT_FX_TYPES)는 여기서 수명만 줄이고, 유닛을 다 그린 뒤 top 패스에서 반투명하게 덮어 그림
