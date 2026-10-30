@@ -2314,6 +2314,7 @@
             <button type="button" onclick="toggleSideRankPanel(false)" class="side-rank-close text-slate-400 hover:text-white font-bold text-sm" title="접기">✕</button>
           </div>
           <div id="sideRankMyBox" class="rounded-xl bg-indigo-500/15 border border-indigo-500/40 px-2.5 py-2 text-[11px] font-bold text-indigo-300"></div>
+          <div id="sideMissionBox" class="rounded-xl bg-slate-950 border border-sky-500/40 px-2 py-1.5 flex flex-col gap-1"></div>
           <div id="sideEarnBox" class="rounded-xl bg-slate-950 border border-emerald-500/40 px-2 py-1.5 flex flex-col gap-1"></div>
           <div id="sideRankList" class="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1"></div>
           <button type="button" onclick="goToRankedMatch()" class="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow">🎯 랭킹 매칭 하러 가기</button>
@@ -8407,6 +8408,7 @@
     function renderSideEarnBox(myStu) {
       const box = document.getElementById('sideEarnBox');
       if (!box) return;
+      DailyMission.renderSideBox(myStu);
       if (!myStu) { box.classList.add('hidden'); return; }
       box.classList.remove('hidden');
       const rows = [
@@ -8887,8 +8889,37 @@
           </div>`;
       },
 
+      // 우측 랭킹·보상 패널: 오늘의 미션 현황 (남은 CA 보상 위)
+      renderSideBox(stu = getActiveStudent()) {
+        const box = document.getElementById('sideMissionBox');
+        if (!box) return;
+        if (!stu) { box.classList.add('hidden'); return; }
+        box.classList.remove('hidden');
+        const b = this.book(stu);
+        const rows = b.ids.map(id => {
+          const d = this.def(id);
+          if (!d) return '';
+          const done = Boolean(b.done[id]);
+          const cur = done ? d.goal : (b.prog[id] || 0);
+          return `
+            <button type="button" onclick="DailyMission.go('${id}')" class="w-full text-left rounded-lg px-1.5 py-0.5 hover:bg-slate-800 transition ${done ? 'opacity-60' : ''}" title="${d.label} (보상 ${DAILY_MISSION_REWARD.toLocaleString()} CA)">
+              <div class="flex items-center justify-between gap-1 text-[11px] font-extrabold">
+                <span class="${done ? 'text-emerald-300 line-through' : 'text-slate-200'} truncate">${d.icon} ${d.label}</span>
+                <span class="${done ? 'text-emerald-300' : 'text-amber-300'} shrink-0">${done ? '✅' : `${cur}/${d.goal}`}</span>
+              </div>
+            </button>`;
+        }).join('');
+        box.innerHTML = `
+          <button type="button" onclick="DailyMission.open()" class="flex items-center justify-between gap-1 w-full text-left" title="오늘의 미션 자세히 보기">
+            <span class="text-[11px] font-extrabold text-sky-300">📋 오늘의 미션</span>
+            <span class="text-[10px] font-bold ${b.bonus ? 'text-emerald-300' : 'text-slate-400'}">${b.bonus ? '완료 🎉' : `${this.doneCount(b)}/${b.ids.length}`}</span>
+          </button>
+          ${rows}`;
+      },
+
       refresh(stu) {
         this.renderBadge(stu);
+        this.renderSideBox(stu);
         if (!document.getElementById('dailyMissionModal')?.classList.contains('hidden')) this.render(stu);
       },
 
