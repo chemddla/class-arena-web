@@ -10559,7 +10559,7 @@
 
           html += `
             <div onclick="placeSelectedMercOnTile(${r}, ${c})"
-              ${occupant ? `draggable="true" ondragstart="handleFormationDragStart(event, '${occupant.id}')"` : ''}
+              ${occupant ? `draggable="true" ondragstart="handleFormationDragStart(event, '${occupant.id}')" ondragend="handleFormationDragEnd(event, '${occupant.id}')"` : ''}
               ondragover="handleFormationDragOver(event)"
               ondragleave="handleFormationDragLeave(event)"
               ondrop="handleFormationDrop(event, ${r}, ${c})"
@@ -10631,6 +10631,18 @@
         event.dataTransfer.setData('text/plain', mercId);
         event.dataTransfer.effectAllowed = 'move';
       }
+    }
+
+    // 배치된 용병을 진형 밖으로 끌어다 놓으면 출전중 → 대기중
+    function handleFormationDragEnd(event, mercId) {
+      draggingMercId = null;
+      if (!event.dataTransfer || event.dataTransfer.dropEffect !== 'none') return;
+      const grid = document.getElementById('formationGrid');
+      const rect = grid && grid.getBoundingClientRect();
+      const x = event.clientX, y = event.clientY;
+      if (rect && (x || y) && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return; // 진형 안에서 놓친 것
+      const merc = (getActiveStudent().roster || []).find(m => m.id === mercId);
+      if (merc && merc.deployed) toggleMercDeploy(mercId);
     }
 
     function handleFormationDragOver(event) {
@@ -29612,6 +29624,34 @@
       return true;
     }
 
+    // 진형 편집 끌어서 옮기기: 칸 → 칸 = 이동·자리 바꾸기, 칸 → 진형 밖 = 빼기 (칸 누르기 방식을 그대로 흉내 냄)
+    let fedSrcCell = null;
+    function fedDragStart(event) {
+      fedSrcCell = event.currentTarget;
+      if (event.dataTransfer) { event.dataTransfer.setData('text/plain', fedSrcCell.dataset.formationCell); event.dataTransfer.effectAllowed = 'move'; }
+    }
+    function fedCellXY(el) { const [r, c] = el.dataset.formationCell.split('-').map(Number); return [r, c]; }
+    function fedDrop(event, cellFn, r, c) {
+      event.preventDefault();
+      const src = fedSrcCell; fedSrcCell = null;
+      if (!src || !src.isConnected) return;
+      const [sr, sc] = fedCellXY(src);
+      if (sr === r && sc === c) return;
+      const fn = window[cellFn];
+      const picked = src.closest('[data-formation-grid]')?.querySelector('[data-picked]');
+      if (picked && picked !== src) fn(...fedCellXY(picked)); // 먼저 눌러 둔 선택은 풀기
+      if (!(picked === src)) fn(sr, sc);                      // 끌고 온 용병을 고르고
+      fn(r, c);                                               // 놓은 칸으로 이동/교체
+    }
+    function fedDragEnd(event, toggleFn, mercId) {
+      const src = fedSrcCell; fedSrcCell = null;
+      if (!event.dataTransfer || event.dataTransfer.dropEffect !== 'none') return;
+      const rect = src && src.closest('[data-formation-grid]')?.getBoundingClientRect();
+      const x = event.clientX, y = event.clientY;
+      if (rect && (x || y) && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return;
+      window[toggleFn](mercId);
+    }
+
     // 편집 화면 (3×5 칸 + 넣고 뺄 수 있는 용병 목록)
     function formationEditorBodyHTML(ed, roster, { cellFn, toggleFn, mirror = false }) {
       const placed = roster.filter(m => ed.layout[m.id]);
@@ -29624,7 +29664,9 @@
           const picked = occ && occ.id === ed.pickedId;
           const job = occ ? (JOB_DEFS[occ.job] || JOB_DEFS.warrior) : null;
           cells += `
-            <button type="button" onclick="${cellFn}(${r}, ${c})" data-formation-cell="${r}-${c}"
+            <button type="button" onclick="${cellFn}(${r}, ${c})" data-formation-cell="${r}-${c}" ${picked ? 'data-picked="1"' : ''}
+              ${occ ? `draggable="true" ondragstart="fedDragStart(event)" ondragend="fedDragEnd(event, '${toggleFn}', '${occ.id}')"` : ''}
+              ondragover="event.preventDefault(); event.dataTransfer.dropEffect = 'move'" ondrop="fedDrop(event, '${cellFn}', ${r}, ${c})"
               class="h-12 rounded-xl border-2 flex flex-col items-center justify-center text-[10px] font-bold select-none ${
                 occ
                   ? (picked ? 'bg-amber-500/25 border-amber-400 ring-2 ring-amber-400' : 'bg-slate-900 border-slate-700 hover:border-indigo-400')
@@ -29650,11 +29692,11 @@
           <div class="grid grid-cols-3 gap-1.5 mb-1 text-center text-[10px] font-extrabold text-slate-400">
             ${cols.map(c => `<div>${c === 2 && mirror ? '◀ ' : ''}${colNames[c]}${c === 2 && !mirror ? ' ▶' : ''}</div>`).join('')}
           </div>
-          <div class="grid grid-cols-3 gap-1.5">${cells}</div>
+          <div class="grid grid-cols-3 gap-1.5" data-formation-grid>${cells}</div>
           <div class="text-center text-[10px] text-slate-500 mt-1">${mirror ? '왼쪽(전열)이 상대 쪽이에요' : '오른쪽(전열)이 상대 쪽이에요'}</div>
         </div>
         <div>
-          <div class="text-[11px] font-extrabold text-slate-300 mb-1">👥 용병 넣고 빼기 <span class="text-slate-400 font-bold">(${placed.length}/${MAX_DEPLOY}명 · 칸의 용병을 누른 뒤 옮길 칸을 누르면 자리 이동)</span></div>
+          <div class="text-[11px] font-extrabold text-slate-300 mb-1">👥 용병 넣고 빼기 <span class="text-slate-400 font-bold">(${placed.length}/${MAX_DEPLOY}명 · 칸의 용병을 끌어다 옮기거나, 진형 밖으로 끌어내면 빠져요)</span></div>
           <div class="flex flex-wrap gap-1">${chips || '<span class="text-[11px] text-slate-400">보유한 용병이 없어요.</span>'}</div>
         </div>`;
     }
