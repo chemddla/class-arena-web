@@ -6251,11 +6251,11 @@
         return;
       }
       if (ef.type === 'curse_shatter') {
-        // 대상 발밑에 꽂힘. dir = 시전자 → 대상 방향 (왼쪽에서 오면 1, 오른쪽에서 오면 -1)
+        // 대상 몸에 꽂힘. dir = 시전자 → 대상 방향 (왼쪽에서 오면 1, 오른쪽에서 오면 -1)
         if (!CURSE_SHATTER_FX.ready) return;
         const [w, h, ax, ay] = CURSE_SHATTER_FX.f, k = 0.3 * (0.75 + 0.25 * Math.min(1, progress / 0.15));
         ctx.globalAlpha = Math.min(1, progress / 0.08) * fade;
-        ctx.translate(ef.x, ef.y + 10);
+        ctx.translate(ef.x, ef.y - 14); // 대상 몸 한가운데에 꽂힘
         ctx.scale(ef.dir === -1 ? -1 : 1, 1);
         drawSpriteFx(ctx, CURSE_SHATTER_FX.img, 0, 0, w, h, -ax * k, -ay * k, w * k, h * k);
         return;
@@ -21015,6 +21015,27 @@
     }
 
     // 회복·축복·보호막 그림 (수명은 효과 루프에서 줄어듦)
+    // 피격 이펙트: 맞은 대상 위에 겹쳐 보이게 유닛을 다 그린 뒤 따로 한 겹에 그려 반투명하게 얹음
+    const HIT_FX_TYPES = new Set(['magic_burst', 'arrow_hit', 'fire_explosion', 'ice_shatter', 'curse_shatter', 'hidden_snipe_hit']);
+    const HIT_FX_ALPHA = 0.75;
+    let hitFxLayer = null;
+    function drawHitEffectsOnTop(ctx, drawPass) {
+      if (!sim.effects.some(ef => HIT_FX_TYPES.has(ef.type))) return;
+      const cv = ctx.canvas;
+      if (!hitFxLayer) hitFxLayer = document.createElement('canvas');
+      if (hitFxLayer.width !== cv.width || hitFxLayer.height !== cv.height) { hitFxLayer.width = cv.width; hitFxLayer.height = cv.height; }
+      const lc = hitFxLayer.getContext('2d');
+      lc.setTransform(1, 0, 0, 1, 0, 0);
+      lc.clearRect(0, 0, cv.width, cv.height);
+      lc.setTransform(ctx.getTransform());
+      lc.imageSmoothingEnabled = ctx.imageSmoothingEnabled;
+      drawPass(lc, true);
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = HIT_FX_ALPHA;
+      ctx.drawImage(hitFxLayer, 0, 0);
+      ctx.restore();
+    }
     function drawSupportEffects(ctx) {
       if (!SUPPORT_FX.ready) return;
       sim.effects.forEach(ef => {
@@ -22542,8 +22563,14 @@
       drawZones(ctx);
 
       // 2) 스킬 및 타격 심플 기하학 이펙트 렌더링
+      // 피격 이펙트(HIT_FX_TYPES)는 여기서 수명만 줄이고, 유닛을 다 그린 뒤 top 패스에서 반투명하게 덮어 그림
+      const drawEffectsPass = (ctx, top) => {
       for (let i = sim.effects.length - 1; i >= 0; i--) {
         const ef = sim.effects[i];
+        if (HIT_FX_TYPES.has(ef.type) !== top) {
+          if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }
+          continue;
+        }
         const progress = 1 - ef.life / (ef.maxLife || 20);
         ctx.save();
 
@@ -22553,16 +22580,14 @@
           else if (ef.type.startsWith('curse_')) drawCurseEffect(ctx, ef, progress);
           else drawHiddenEffect(ctx, ef, progress);
           ctx.restore();
-          ef.life -= frameTimeScale;
-          if (ef.life <= 0) sim.effects.splice(i, 1);
+          if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }
           continue;
         }
 
         // 회복·축복·보호막 그림은 캐릭터를 다 그린 뒤 위에 겹쳐 그림 (drawSupportEffects)
         if ((ef.spr && drawSpriteEffect(ctx, ef, progress)) || (SUPPORT_FX.ready && SUPPORT_FX.anims[ef.type])) {
           ctx.restore();
-          ef.life -= frameTimeScale;
-          if (ef.life <= 0) sim.effects.splice(i, 1);
+          if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }
           continue;
         }
 
@@ -22996,9 +23021,10 @@
         }
 
         ctx.restore();
-        ef.life -= frameTimeScale;
-        if (ef.life <= 0) sim.effects.splice(i, 1);
+        if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }
       }
+      };
+      drawEffectsPass(ctx, false);
 
       // 3) Y좌표 깊이 정렬 후 유닛 토큰 렌더링
       // 스프라이트가 있는 용병은 쓰러진 뒤에도 잠시 남겨서 쓰러지는 모션을 보여 줌
@@ -23016,6 +23042,7 @@
       });
       drawDarknessAuras(ctx);
       drawSupportEffects(ctx);
+      drawHitEffectsOnTop(ctx, drawEffectsPass);
       drawFrostSrBlizzardTop(ctx);
       drawControlledUnitMarker(ctx);
       drawCastBars(ctx);
