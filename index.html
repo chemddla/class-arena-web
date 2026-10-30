@@ -34939,18 +34939,33 @@
 
     /********************************************************************
      * 12-B. 내 방 꾸미기 (규격: assets/furniture/README.md)
-     * 방 8×6×4칸: X = 오른쪽 벽을 따라 8칸, Y = 왼쪽 벽을 따라 6칸, 높이 4층.
+     * 방 8×6×4칸(기본): X = 오른쪽 벽을 따라 8칸, Y = 왼쪽 벽을 따라 6칸, 높이 4층.
+     * CA를 내고 5단계(12×10칸)까지 넓힐 수 있음 (HOME_SIZES). 뒤 모서리가 원점이라 넓혀도 가구 자리는 그대로.
      * 1칸 = 64×32 마름모, 1층 = 40도트. 뒤 모서리 바닥이 원점(X=0, Y=0).
-     * 저장: stu.home = { items: [{ u, id, x, y, r, p }] } (p=1 방에 놓임, 0 보관함)
+     * 저장: stu.home = { items: [{ u, id, x, y, r, p }], lv } (p=1 방에 놓임, 0 보관함, lv=방 넓이 단계 1~5)
      ********************************************************************/
-    const HOME_ROOM_X = 8, HOME_ROOM_Y = 6, HOME_ROOM_Z = 4;
+    const HOME_ROOM_Z = 4;
     const HOME_CW = 64, HOME_CH = 32, HOME_FH = 80; // 칸 반폭·반높이, 1층 높이(도트). 1칸 = 128×64 (2026-10 도트 2배 세분화)
     const HOME_PAD = 32, HOME_MOLD = 28, HOME_BASE = 20, HOME_THICK = 16;
-    const HOME_OX = HOME_PAD + HOME_ROOM_Y * HOME_CW;          // 뒤 모서리 바닥 x
     const HOME_OY = HOME_PAD + HOME_ROOM_Z * HOME_FH + 8;      // 뒤 모서리 바닥 y
     const HOME_DIRS = [['↙', '왼쪽 아래'], ['↖', '왼쪽 위'], ['↗', '오른쪽 위'], ['↘', '오른쪽 아래']]; // 회전 r별 앞면 방향
-    const HOME_CANVAS_W = HOME_PAD * 2 + (HOME_ROOM_X + HOME_ROOM_Y) * HOME_CW;
-    const HOME_CANVAS_H = HOME_OY + (HOME_ROOM_X + HOME_ROOM_Y) * HOME_CH + HOME_THICK + HOME_PAD;
+    // 방 넓이 단계: 2칸씩 번갈아 넓힘 (짝수로 늘려야 2칸 무늬 벽지·바닥이 이어 붙여도 맞음)
+    const HOME_SIZES = [
+      { X: 8, Y: 6, price: 0 }, { X: 10, Y: 6, price: 3000 }, { X: 10, Y: 8, price: 5000 },
+      { X: 12, Y: 8, price: 8000 }, { X: 12, Y: 10, price: 12000 },
+    ];
+    const HOME_SKIN_X = 8, HOME_SKIN_Y = 6; // 벽지·바닥 그림(assets/room)이 그려진 기본 방 크기
+    const homeLv = h => Math.max(1, Math.min(HOME_SIZES.length, Math.floor(Number(h && h.lv)) || 1));
+    // 지금 보이는 방 크기 (내 방·친구 방에 따라 homeSetSize로 바뀜)
+    let HOME_ROOM_X, HOME_ROOM_Y, HOME_OX, HOME_CANVAS_W, HOME_CANVAS_H;
+    function homeSetSize(lv) {
+      const s = HOME_SIZES[lv - 1] || HOME_SIZES[0];
+      HOME_ROOM_X = s.X; HOME_ROOM_Y = s.Y;
+      HOME_OX = HOME_PAD + HOME_ROOM_Y * HOME_CW;                // 뒤 모서리 바닥 x
+      HOME_CANVAS_W = HOME_PAD * 2 + (HOME_ROOM_X + HOME_ROOM_Y) * HOME_CW;
+      HOME_CANVAS_H = HOME_OY + (HOME_ROOM_X + HOME_ROOM_Y) * HOME_CH + HOME_THICK + HOME_PAD;
+    }
+    homeSetSize(1);
     // cat: floor(바닥 가구) · rug(러그, 가구 밑에 깔림). art: 그림 있음, back: 뒷모습 그림(_b) 있음
     const HOME_CATALOG = [
       { id: 'bed_single', name: '포근 침대',   cat: 'floor', w: 2, d: 2, h: 1.5, price: 1500, color: '#f7b8cf', emoji: '🛏️', art: true, back: true },
@@ -35099,6 +35114,7 @@
         // 방에 데려온 펫 (펫 id 목록)
         if (!Array.isArray(stu.home.pets)) stu.home.pets = Object.values(stu.home.pets || {});
         stu.home.pets = stu.home.pets.filter(id => typeof id === 'string');
+        if (stu.home.lv != null) stu.home.lv = homeLv(stu.home);
         return stu.home;
       },
       // ───── 친구 방 구경 (읽기 전용: 친구 기록은 바꾸지 않고 사본만 그림) ─────
@@ -35107,7 +35123,7 @@
       viewHome(stu) {
         const h = stu && stu.home && typeof stu.home === 'object' ? stu.home : {};
         const items = (Array.isArray(h.items) ? h.items : Object.values(h.items || {})).filter(it => it && HOME_DEF[it.id]);
-        const out = { items, skins: [] };
+        const out = { items, skins: [], lv: homeLv(h) };
         let wall = h.wall;
         if (HOME_SKIN_SPLIT[wall]) wall = HOME_SKIN_SPLIT[wall][0];
         if (wall && HOME_SKIN[`wall:${wall}`]) out.wall = wall;
@@ -35283,12 +35299,57 @@
         for (let x = Math.round(Math.min(p.x, q.x)); x < Math.round(Math.max(p.x, q.x)); x++) ctx.fillRect(x, Math.floor(f(x + 0.5)), 1, 1);
       },
 
+      // 벽지·바닥 그림은 기본 방(8×6) 크기라, 넓힌 방에서는 칸 단위로 옮겨 이어 붙임
+      // 안쪽 칸은 원래 안쪽 칸들(1~S-2)을 통째로 되풀이(짝수 길이라 2칸 무늬도 이어짐), 끝 칸은 원래 끝 칸(벽 끝 단면·바닥 두께)을 씀
+      skinFit(im, part) {
+        if (!im || (HOME_ROOM_X === HOME_SKIN_X && HOME_ROOM_Y === HOME_SKIN_Y)) return im;
+        const key = `${im.src}|${HOME_ROOM_X}x${HOME_ROOM_Y}`;
+        this.skinCv = this.skinCv || {};
+        if (key in this.skinCv) return this.skinCv[key];
+        const SW = im.naturalWidth, SH = im.naturalHeight;
+        const c0 = document.createElement('canvas'); c0.width = SW; c0.height = SH;
+        const g0 = c0.getContext('2d'); g0.drawImage(im, 0, 0);
+        let src; try { src = g0.getImageData(0, 0, SW, SH).data; } catch (e) { return (this.skinCv[key] = null); }
+        const W = HOME_CANVAS_W, H = HOME_CANVAS_H, OX = HOME_OX, OY = HOME_OY, CW = HOME_CW, CH = HOME_CH;
+        const SOX = HOME_PAD + HOME_SKIN_Y * HOME_CW;
+        const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+        const g = cv.getContext('2d'), out = g.createImageData(W, H), d = out.data;
+        const pick = (n, N, S) => (n >= N - 1 ? S - 1 : n < S - 1 ? n : 1 + (n - 1) % (S - 2));
+        const clampN = (n, N) => Math.max(0, Math.min(N - 1, n));
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          let ox, oy;
+          if (part === 'floor') {
+            const dx = x + 0.5 - OX, dy = y + 0.5 - OY;
+            const X = clampN(Math.floor((dx / CW + dy / CH) / 2), HOME_ROOM_X), Y = clampN(Math.floor((dy / CH - dx / CW) / 2), HOME_ROOM_Y);
+            const kx = X - pick(X, HOME_ROOM_X, HOME_SKIN_X), ky = Y - pick(Y, HOME_ROOM_Y, HOME_SKIN_Y);
+            ox = x - OX + SOX - kx * CW + ky * CW; oy = y - kx * CH - ky * CH;
+          } else if (x + 0.5 < OX) { // 왼쪽 벽 (Y 방향)
+            const Y = clampN(Math.floor((OX - x - 0.5) / CW), HOME_ROOM_Y), ky = Y - pick(Y, HOME_ROOM_Y, HOME_SKIN_Y);
+            ox = x - OX + SOX + ky * CW; oy = y - ky * CH;
+          } else { // 오른쪽 벽 (X 방향)
+            const X = clampN(Math.floor((x + 0.5 - OX) / CW), HOME_ROOM_X), kx = X - pick(X, HOME_ROOM_X, HOME_SKIN_X);
+            ox = x - OX + SOX - kx * CW; oy = y - kx * CH;
+          }
+          if (ox < 0 || oy < 0 || ox >= SW || oy >= SH) continue;
+          const si = (oy * SW + ox) * 4, di = (y * W + x) * 4;
+          if (!src[si + 3]) continue;
+          d[di] = src[si]; d[di + 1] = src[si + 1]; d[di + 2] = src[si + 2]; d[di + 3] = src[si + 3];
+        }
+        g.putImageData(out, 0, 0);
+        return (this.skinCv[key] = cv);
+      },
+      // 보이는 방(내 방·친구 방)의 넓이에 맞춰 크기 값과 그림판을 맞춤
+      applySize() {
+        homeSetSize(homeLv(this.shownHome()));
+        if (this.buf && (this.buf.width !== HOME_CANVAS_W || this.buf.height !== HOME_CANVAS_H)) this.buf = null;
+      },
+
       drawRoom() {
         const O = homeIso(0, 0), L = homeIso(0, HOME_ROOM_Y), R = homeIso(HOME_ROOM_X, 0), F = homeIso(HOME_ROOM_X, HOME_ROOM_Y);
         const Z = HOME_ROOM_Z, mz = HOME_MOLD / HOME_FH, bz = HOME_BASE / HOME_FH, px = 2 / HOME_FH; // 테두리 선 2도트
         // 고른 벽지·바닥 그림 (몰딩·걸레받이·벽 끝 단면 / 바닥 판 두께까지 들어 있음)
-        const h = this.shownHome(), wallIm = h && h.wall ? this.img(`assets/room/wall_${h.wall}.webp`) : null;
-        const floorIm = h && h.floor ? this.img(`assets/room/floor_${h.floor}.webp`) : null;
+        const h = this.shownHome(), wallIm = h && h.wall ? this.skinFit(this.img(`assets/room/wall_${h.wall}.webp`), 'wall') : null;
+        const floorIm = h && h.floor ? this.skinFit(this.img(`assets/room/floor_${h.floor}.webp`), 'floor') : null;
         // 벽 (왼쪽 그늘, 오른쪽 밝음)
         if (wallIm) this.ctx.drawImage(wallIm, 0, 0);
         else { this.vface(L, O, 0, Z, '#e9e6ec'); this.vface(O, R, 0, Z, '#f6f4fc'); }
@@ -35401,6 +35462,7 @@
         const cv = document.getElementById('homeRoomCanvas');
         if (!cv || document.getElementById('studentTab-home')?.classList.contains('hidden')) return;
         // 도트 원본 크기로 따로 그린 뒤, 화면 픽셀에 정수 배로 옮겨 도트가 고르게 보이게
+        this.applySize();
         if (!this.buf) { this.buf = document.createElement('canvas'); this.buf.width = HOME_CANVAS_W; this.buf.height = HOME_CANVAS_H; }
         this.ctx = this.buf.getContext('2d');
         this.ctx.imageSmoothingEnabled = false;
@@ -35705,6 +35767,7 @@
         this.bind();
         const stu = this.student();
         if (this.visitId && !this.visitor()) this.visitId = null; // 명단에서 빠진 친구
+        this.applySize();
         const guest = this.visitor();
         const ca = document.getElementById('homeRoomCa');
         if (ca) ca.textContent = guest ? '👀 구경만 할 수 있어요' : stu ? `내 CA ${(stu.mc || 0).toLocaleString()}` : '학생 로그인 필요';
@@ -35759,7 +35822,20 @@
               </div>`;
           };
           const head = t => `<div class="col-span-full text-xs font-extrabold text-slate-300 pt-1">${t}</div>`;
-          box.innerHTML = head('🧱 벽지') + [null, ...HOME_SKINS.filter(s => s.part === 'wall')].map(s => card('wall', s)).join('')
+          // 방 넓히기: 지금 단계·다음 크기와 값
+          const lv = homeLv(home), cur = HOME_SIZES[lv - 1], next = HOME_SIZES[lv];
+          const dots = HOME_SIZES.map((_, i) => `<span class="w-2.5 h-2.5 rounded-full ${i < lv ? 'bg-pink-400' : 'bg-slate-700'}"></span>`).join('');
+          const grow = `<div class="col-span-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-1.5">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-extrabold text-slate-200">📐 방 넓히기</span>
+                <span class="flex items-center gap-1">${dots}</span>
+              </div>
+              <span class="text-[11px] font-bold text-slate-400">지금 방 ${cur.X}×${cur.Y}칸 · ${lv}/${HOME_SIZES.length}단계</span>
+              ${next
+                ? `<button type="button" onclick="HomeRoom.expand()" class="w-full py-1.5 rounded-lg ${(stu.mc || 0) >= next.price ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-500'} text-[11px] font-extrabold">${next.X}×${next.Y}칸으로 넓히기 · ${next.price.toLocaleString()} CA</button>`
+                : `<span class="w-full py-1.5 rounded-lg bg-slate-800 text-pink-300 text-[11px] font-extrabold text-center">✓ 가장 넓은 방이에요</span>`}
+            </div>`;
+          box.innerHTML = head('📐 방 크기') + grow + head('🧱 벽지') + [null, ...HOME_SKINS.filter(s => s.part === 'wall')].map(s => card('wall', s)).join('')
             + head('🟫 바닥') + [null, ...HOME_SKINS.filter(s => s.part === 'floor')].map(s => card('floor', s)).join('');
           return;
         }
@@ -35860,6 +35936,21 @@
         saveState();
         this.renderToolbar();
         this.draw();
+      },
+
+      // ───── 방 넓히기 ─────
+      expand() {
+        const stu = this.student();
+        if (!stu) { showNotice('⚠️ 학생 로그인을 한 뒤에 방을 넓힐 수 있어요.'); return; }
+        const home = this.home(stu), lv = homeLv(home), next = HOME_SIZES[lv];
+        if (!next) { showNotice('✓ 이미 가장 넓은 방이에요.'); return; }
+        if ((stu.mc || 0) < next.price) { showNotice(`⚠️ CA가 부족해요. (방 넓히기 ${next.price.toLocaleString()} CA)`); return; }
+        if (!confirm(`${next.price.toLocaleString()} CA를 내고 방을 ${next.X}×${next.Y}칸으로 넓힐까요?`)) return;
+        stu.mc -= next.price;
+        home.lv = lv + 1;
+        saveState();
+        showNotice(`📐 방이 ${next.X}×${next.Y}칸으로 넓어졌어요! (${home.lv}/${HOME_SIZES.length}단계)`);
+        this.render();
       },
 
       // ───── 벽지·바닥 ─────
