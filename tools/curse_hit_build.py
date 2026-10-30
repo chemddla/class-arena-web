@@ -8,10 +8,10 @@ from PIL import Image
 from scipy import ndimage as ndi
 
 OUT = 'assets/sprites/fx/curse_hit_fx.webp'
-# (이름, 파일, 잘라낼 곳 (가운데x, 가운데y, 가로 반지름, y0, y1) — y0~y1 줄에서 타원 바깥 오른쪽을 지움, 폭발 가운데)
+# (이름, 파일, 지울 곳 (x0, y0) — x0부터 오른쪽 끝, y0부터 아래 끝까지, 폭발 가운데)
 SRC = [
     ('orb', 'curse_orb_hit_src.png', None, None),
-    ('hex', 'curse_hex_hit_src.png', (66, 82, 52, 58, 143), (70, 78)),  # 위쪽 붉은 가시는 남기고 잘린 줄기 높이만, 구름 가장자리는 둥글게
+    ('hex', 'curse_hex_hit_src.png', (117, 60), (70, 78)),  # 오른쪽 아래 잘린 줄기 (위쪽 붉은 가시는 남김)
 ]
 
 
@@ -22,14 +22,7 @@ def cut(path, xcut, center):
     key = np.median(im[bright], axis=0)
     d = np.sqrt(((im - key) ** 2).sum(axis=2))
     a = np.where(bright, np.clip((d - 45) / 150, 0, 1), 1.0)
-    if xcut is not None:
-        cx, cy, rx, y0, y1 = xcut
-        yy, xx = np.mgrid[:a.shape[0], :a.shape[1]]
-        out = (yy >= y0) & (yy < y1) & (xx > cx) & (((xx - cx) / rx) ** 2 + ((yy - cy) / 72) ** 2 > 1)
-        a[out] = 0
-        # 새로 잘린 가장자리에 원래 그림처럼 어두운 테두리 1px
-        edge = (a > 0.5) & ndi.binary_dilation(out, iterations=1)
-        im[edge] = [34, 16, 40]; a[edge] = 1
+    if xcut is not None: a[xcut[1]:, xcut[0]:] = 0
     m = a > 0.05
     lab, n = ndi.label(m)
     areas = ndi.sum(m, lab, range(1, n + 1))
