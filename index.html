@@ -6205,38 +6205,53 @@
     const DFREEZE_FX = { img: new Image(), ready: false, f: { swirl: [0,0,128,77], ring: [130,0,167,73], burst: [299,0,127,81], cube: [428,0,92,80], crack: [522,0,81,73], shard: [605,0,85,75] } };
     DFREEZE_FX.img.onload = () => { DFREEZE_FX.ready = true; };
     DFREEZE_FX.img.src = 'assets/sprites/fx/dfreeze_fx.webp';
-    // 몸 높이 H에 맞춰 그림: 가로 폭 = w, 기준 = 아래(bottom) 또는 가운데, (cx, cy)가 그 기준점
-    function drawDfreezeFx(ctx, name, cx, cy, w, alpha, anchor = 'bottom', passes = 2, part = null, split = 0.5) {
-      const f = DFREEZE_FX.f[name], k = w / f[2], h = f[3] * k;
+    // 칸마다 발밑에 맞출 가로줄 (원본 y): 소용돌이·가시 고리 = 고리 타원의 가운데, 큐브들 = 큐브 몸통 아래 모서리(고드름 제외), 조각 = 바닥 쪽 조각들 밑선
+    const DFREEZE_FOOT = { swirl: 63, ring: 43, burst: 76, cube: 74, crack: 70, shard: 66 };
+    const DFREEZE_CRACK_K = 0.75; // 금 간 큐브는 칸을 꽉 채운 그림이라 큐브(칸 폭의 67%)와 몸통 크기가 같아지도록 줄여 그림
+    // 피사체 그림별 보정 (대기 첫 칸을 재고 눈으로 확인, 목록에 없으면 기준점 = 발끝 · 몸이 큐브 안에 들어옴)
+    // gap = 실제 몸 아래끝 - 기준점(anchorY) (원본 px, 떠 있는 피사체) · sx = 큐브·고리를 옆으로 넓히는 배율 (옆으로 긴 피사체: 몸이 큐브 폭의 85% 안에 들도록)
+    const DFREEZE_BODY = {
+      'ghost_mage.webp': { gap: -13 }, 'bat.webp': { gap: -7, sx: 1.11 }, 'bat_mage.webp': { gap: -14, sx: 1.46 },
+      'wolf.webp': { sx: 1.21 }, 'wolf_healer.webp': { sx: 1.31 }, 'wolf_king.webp': { sx: 1.38 }, 'dire_wolf.webp': { sx: 1.49 }, 'hellhound.webp': { sx: 1.07 },
+      'spider.webp': { sx: 1.11 }, 'spider_mage.webp': { sx: 1.12 }, 'spider_archer.webp': { sx: 1.09 },
+      'swamp_hydra_boss.webp': { sx: 1.18 }, 'slime_warrior.webp': { sx: 1.14 }
+    };
+    // 동결 이펙트를 맞출 몸의 발끝(foot)·머리 꼭대기(top)·키(h)·옆 배율(sx): 스프라이트는 기준점이 y = 12, 그림 없는 토큰은 원 아래
+    function dfreezeBody(u, sprite, useSprite, tokenR, headTopY) {
+      if (!useSprite) { const foot = -8 + tokenR + 4, top = -8 - tokenR; return { foot, top, h: Math.max(foot - top, tokenR * 2.6), sx: 1 }; }
+      const fix = DFREEZE_BODY[sprite.src.split('/').pop()] || {};
+      const k = spriteDrawH(u, sprite) / sprite.standH, foot = 12 + (fix.gap || 0) * k;
+      return { foot, top: headTopY, h: Math.max(foot - headTopY, tokenR * 2.6), sx: fix.sx || 1 };
+    }
+    // 몸 높이 H에 맞춰 그림: 가로 폭 = w, 기준 = 아래(bottom)·가운데(center)·발밑 줄(foot), (cx, cy)가 그 기준점
+    // sx: 높이는 그대로 두고 옆으로만 늘리는 배율
+    function drawDfreezeFx(ctx, name, cx, cy, w, alpha, anchor = 'bottom', passes = 2, part = null, split = 0.5, sx = 1) {
+      const f = DFREEZE_FX.f[name], k = w / f[2], h = f[3] * k, ww = w * sx;
       ctx.save();
       ctx.globalAlpha *= Math.max(0, Math.min(1, alpha));
       ctx.filter = 'saturate(0.5)'; // 채도를 낮춤
-      const dy = anchor === 'bottom' ? cy - h : cy - h / 2;
+      const dy = anchor === 'bottom' ? cy - h : anchor === 'foot' ? cy - DFREEZE_FOOT[name] * k : cy - h / 2;
       // part = 'back' 이면 그림의 윗부분(split 비율까지, 몸 뒤로 갈 부분), 'front' 이면 아랫부분(몸 앞으로 나올 부분)만 그림. 없으면 통째로
       const sy = part === 'front' ? f[1] + f[3] * split : f[1], sh = part === 'back' ? f[3] * split : part === 'front' ? f[3] * (1 - split) : f[3];
       const ddy = part === 'front' ? dy + h * split : dy, dh = part ? sh * k : h;
-      ctx.drawImage(DFREEZE_FX.img, f[0], sy, f[2], sh, cx - w / 2, ddy, w, dh);
+      ctx.drawImage(DFREEZE_FX.img, f[0], sy, f[2], sh, cx - ww / 2, ddy, ww, dh);
       if (passes > 1) { // 두 번 겹쳐 그려 덜 비치게 (그림 자체가 반투명)
         ctx.globalAlpha *= 0.7;
-        ctx.drawImage(DFREEZE_FX.img, f[0], sy, f[2], sh, cx - w / 2, ddy, w, dh);
+        ctx.drawImage(DFREEZE_FX.img, f[0], sy, f[2], sh, cx - ww / 2, ddy, ww, dh);
       }
       ctx.restore();
     }
     // 동결 캐스팅 이펙트(1 소용돌이 → 2 바닥 가시 고리): 피사체 둘레에 감기도록 그림을 가로선으로 나눠
-    // 뒤쪽 절반(part = 'back')은 몸보다 먼저, 앞쪽 절반(part = 'front')은 몸 위에 그림
-    const DFREEZE_CAST_SPLIT = { swirl: 0.78, ring: 0.52 };
-    function drawDfreezeCast(ctx, u, part, bFoot, bH, jumpY, tick) {
+    // 뒤쪽 절반(part = 'back')은 몸보다 먼저, 앞쪽 절반(part = 'front')은 몸 위에 그림 (나누는 줄 = 고리 가운데 = 발밑)
+    function drawDfreezeCast(ctx, u, part, bFoot, bH, jumpY, tick, sx = 1) {
       const caster = sim.units.find(c => c.alive && c.casting && c.casting.key === 'deep_freeze' && c.casting.aimTarget === u);
       if (!caster) return;
       const cp = 1 - caster.casting.left / caster.casting.total, fadeIn = Math.min(1, cp / 0.2);
       // 1번(소용돌이)이 작게 시작해 점점 커지다가 절반쯤에 2번(바닥 가시 고리)으로 바뀌고, 2번이 더 크게 자람 (울렁임 없이 계속 커지기만 함)
       const sw = cp < 0.45 ? 1 : Math.max(0, 1 - (cp - 0.45) / 0.08), rg = cp < 0.45 ? 0 : Math.min(1, (cp - 0.45) / 0.08);
       const swirlK = 0.4 + 0.5 * Math.min(1, cp / 0.45), ringK = 0.9 + 0.4 * Math.max(0, (cp - 0.45) / 0.55);
-      const cy = bFoot - 12 + jumpY; // 고리 타원의 가운데가 발 자리에 오도록 (뒤쪽 절반은 몸 뒤, 앞쪽 절반은 몸 앞)
-      const put = (name, w, alpha) => {
-        const f = DFREEZE_FX.f[name], split = DFREEZE_CAST_SPLIT[name], h = f[3] * w / f[2];
-        drawDfreezeFx(ctx, name, 0, cy + h * (1 - split), w, alpha, 'bottom', 2, part, split);
-      };
+      const cy = bFoot + jumpY; // 고리 타원의 가운데가 발밑에 오도록 (뒤쪽 절반은 몸 뒤, 앞쪽 절반은 몸 앞)
+      const put = (name, w, alpha) => drawDfreezeFx(ctx, name, 0, cy, w, alpha, 'foot', 2, part, DFREEZE_FOOT[name] / DFREEZE_FX.f[name][3], sx);
       ctx.save();
       ctx.globalAlpha = fadeIn;
       if (sw > 0) put('swirl', bH * swirlK, sw);
@@ -20897,7 +20912,7 @@
         ctx.restore();
       }
       // 동결 캐스팅 이펙트 뒤쪽 절반: 몸보다 먼저(아래에) 그려 피사체 뒤로 감김
-      if (DFREEZE_FX.ready && u.alive) drawDfreezeCast(ctx, u, 'back', useSprite ? 16 : -8 + tokenR + 4, Math.max((useSprite ? 16 : -8 + tokenR + 4) - (useSprite ? headTopY : -8 - tokenR), tokenR * 2.6), jumpY, tick);
+      if (DFREEZE_FX.ready && u.alive) { const b = dfreezeBody(u, sprite, useSprite, tokenR, headTopY); drawDfreezeCast(ctx, u, 'back', b.foot, b.h, jumpY, tick, b.sx); }
       // 빙결술사 블리자드 시전 마법진: 캐릭터 아래(몸보다 먼저)에 깔림
       if (FROST_FX.ready && u.casting && u.casting.key === 'blizzard') {
         const bp = Math.min(1, 1 - u.casting.left / u.casting.total);
@@ -20984,28 +20999,29 @@
       // 3) 상태이상 및 보호막 표시
       // 동결 스킬 이펙트 (몸 높이에 맞춰 크기·자리 조정): 시전 2초 동안 소용돌이(1)·바닥 가시 고리(2) → 발동 때 터지는 큐브(3) → 빙결 중 큐브(4) → 풀릴 때 금 간 큐브(5)·조각(6)
       if (DFREEZE_FX.ready && u.alive) {
-        const bFoot = useSprite ? 16 : -8 + tokenR + 4, bTop = useSprite ? headTopY : -8 - tokenR, bH = Math.max(bFoot - bTop, tokenR * 2.6), bMid = (bFoot + bTop) / 2; // 몸 높이 (옆으로 넓은 몬스터는 토큰 크기 기준)
-        drawDfreezeCast(ctx, u, 'front', bFoot, bH, jumpY, tick); // 캐스팅 이펙트 앞쪽 절반은 몸 위에
+        const body = dfreezeBody(u, sprite, useSprite, tokenR, headTopY), bFoot = body.foot, bH = body.h, bMid = (bFoot + body.top) / 2; // 몸 높이 (옆으로 넓은 몬스터는 토큰 크기 기준)
+        const cubeFoot = bFoot + bH * 0.06 + jumpY; // 큐브 아래 모서리: 발끝보다 살짝 아래 (발까지 가둔 느낌)
+        drawDfreezeCast(ctx, u, 'front', bFoot, bH, jumpY, tick, body.sx); // 캐스팅 이펙트 앞쪽 절반은 몸 위에
         if (u.dfBurst && sim.tickCount - u.dfBurst < 28) {
           const q = (sim.tickCount - u.dfBurst) / 28;
-          drawDfreezeFx(ctx, 'burst', 0, bMid + jumpY, bH * (1.35 + 0.35 * q), q < 0.5 ? 1 : 1 - (q - 0.5) * 2, 'center');
+          drawDfreezeFx(ctx, 'burst', 0, cubeFoot, bH * (1.35 + 0.35 * q), q < 0.5 ? 1 : 1 - (q - 0.5) * 2, 'foot', 2, null, 0.5, body.sx);
           if (u.dfBurstSr && FROST_SR_FX.ready) drawFxFrame(ctx, FROST_SR_FX.anims.star[0], 0, bMid + jumpY, bH * (0.035 + 0.05 * Math.sin(Math.PI * Math.min(1, q * 1.4))), q * 1.2, 1 - q * q, FROST_SR_FX.img);
         }
         if (u.dfFreeze && st.freeze <= 0) { u.dfFreeze = false; u.dfCrack = sim.tickCount; } // 풀리는 순간: 금 간 큐브 → 조각
         if (u.dfCrack && sim.tickCount - u.dfCrack < 80) { // 금 간 큐브는 풀리기 전부터 보이고, 풀린 뒤엔 잠깐 남았다가 조각이 길게 흩어짐
           const el = sim.tickCount - u.dfCrack;
-          if (el < 8) drawDfreezeFx(ctx, 'crack', 0, bFoot + 60 + jumpY, bH * 1.9, 0.7 * (1 - el / 8), 'bottom', 1);
-          drawDfreezeFx(ctx, 'shard', 0, bMid + 6 + jumpY, bH * (1.5 + 0.2 * el / 80), el < 20 ? 1 : 1 - (el - 20) / 60, 'center');
+          if (el < 8) drawDfreezeFx(ctx, 'crack', 0, cubeFoot, bH * 1.9 * DFREEZE_CRACK_K, 0.7 * (1 - el / 8), 'foot', 1, null, 0.5, body.sx);
+          drawDfreezeFx(ctx, 'shard', 0, cubeFoot, bH * (1.5 + 0.2 * el / 80), el < 20 ? 1 : 1 - (el - 20) / 60, 'foot', 2, null, 0.5, body.sx);
         }
       }
       if (st.freeze > 0 && u.dfFreeze && DFREEZE_FX.ready) {
         // 동결 스킬에 의한 빙결: 몸을 큐브로 가두고 둘레에 눈꽃이 일렁임. 풀리기 1.5초 전부터는 금 간 큐브로 바뀌어 떨림
         u.iceFxAge = (u.iceFxAge || 0) + 1;
-        const pop = Math.min(1, u.iceFxAge / 8), bFoot = useSprite ? 16 : -8 + tokenR + 4, bTop = useSprite ? headTopY : -8 - tokenR;
-        const cubeBase = Math.max(bFoot - bTop, tokenR * 2.6), cracking = st.freeze <= 90;
+        const body = dfreezeBody(u, sprite, useSprite, tokenR, headTopY), pop = Math.min(1, u.iceFxAge / 8), bFoot = body.foot, bTop = body.top;
+        const cubeBase = body.h, cracking = st.freeze <= 90;
         const cubeW = cubeBase * 1.9 * (1.1 - 0.1 * pop), cubeA = Math.min(1, st.freeze / 20) * (0.4 + 0.6 * pop) * 0.7;
         const shake = cracking ? Math.sin(tick * 1.7) * 1.2 : 0;
-        drawDfreezeFx(ctx, cracking ? 'crack' : 'cube', shake, bFoot + 60 + jumpY, cubeW, cubeA, 'bottom', 1);
+        drawDfreezeFx(ctx, cracking ? 'crack' : 'cube', shake, bFoot + cubeBase * 0.06 + jumpY, cracking ? cubeW * DFREEZE_CRACK_K : cubeW, cubeA, 'foot', 1, null, 0.5, body.sx); // 아래 모서리가 발끝보다 살짝 아래
         if (SNOWFLAKES.ready) { // 큐브 둘레를 천천히 도는 눈꽃 (앞뒤로 오가며 위아래로 일렁임)
           const bMid = (bFoot + bTop) / 2, rx = cubeBase * 0.75, ry = cubeBase * 0.28;
           for (let i = 0; i < 9; i++) {
