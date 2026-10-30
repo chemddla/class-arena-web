@@ -884,7 +884,7 @@
     <!-- ==================== [학생 모드 화면] ==================== -->
     <div id="studentViewContainer" class="flex flex-col gap-4">
       <!-- 학생 내비게이션 탭 (순서: 홈, 용병 모집, 도감, 스킨 제작소, 거래소, 펫, 방 꾸미기, 모험의 탑, 엘리트 보스, 결투장, 퀴즈, 미니게임 - Requirements 4, 5, 6) -->
-      <nav class="grid grid-cols-2 sm:grid-cols-6 xl:grid-cols-12 gap-1.5 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800">
+      <nav class="grid grid-cols-2 sm:grid-cols-7 xl:grid-cols-[repeat(13,minmax(0,1fr))] gap-1.5 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800">
         <button onclick="switchStudentTab('squad')" id="stab-squad" class="student-tab-btn py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 bg-indigo-600 text-white shadow">
           <span>🏠</span> 홈
         </button>
@@ -912,6 +912,9 @@
         </button>
         <button onclick="switchStudentTab('raid')" id="stab-raid" class="student-tab-btn py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 text-slate-300 hover:bg-slate-800">
           <span>🐉</span> 엘리트 보스
+        </button>
+        <button onclick="switchStudentTab('rush')" id="stab-rush" class="student-tab-btn py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 text-slate-300 hover:bg-slate-800">
+          <span>🌊</span> 몬스터 러쉬
         </button>
         <button onclick="switchStudentTab('pvp')" id="stab-pvp" class="student-tab-btn py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1 text-slate-300 hover:bg-slate-800">
           <span>⚔️</span> 결투장
@@ -1020,6 +1023,10 @@
               <div id="eliteBossShieldFill" class="absolute inset-y-0 left-0 rounded-full opacity-70" style="background:#e2e8f0"></div>
             </div>
           </div>
+
+          <!-- 몬스터 러쉬: 라운드 · 남은 몬스터 · 제한 시간 (화면 위 가운데, 보스 체력 막대 아래) -->
+          <div id="rushHud" class="hidden absolute top-[5.25rem] left-1/2 -translate-x-1/2 z-10 px-4 py-1.5 rounded-2xl font-extrabold text-xs sm:text-sm shadow-xl pointer-events-none select-none whitespace-nowrap"
+            style="background:rgba(15,23,42,0.85);color:#a5f3fc;border:2px solid #06b6d4"></div>
 
           <!-- 실시간 결투: 두 친구가 전투 방식을 고를 때까지 기다리는 안내 -->
           <div id="liveChoiceWaitBanner" class="hidden absolute top-4 left-1/2 -translate-x-1/2 z-10 px-5 py-2.5 rounded-2xl font-extrabold text-sm shadow-xl pointer-events-none"
@@ -1965,6 +1972,58 @@
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 🌊 몬스터 러쉬: 최대 5명 협동 (한 명당 용병 1명 직접 조종 · 빈 자리는 반 친구 용병 AI) · 라운드마다 맵 뒷편에서 몬스터가 몰려옴 -->
+      <section id="studentTab-rush" class="student-tab-panel hidden flex flex-col gap-4">
+        <div class="bg-slate-900 border-2 border-cyan-500/40 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-2xl">🌊</div>
+            <div>
+              <h3 class="font-title text-2xl text-white">몬스터 러쉬 (최대 5명 협동)</h3>
+              <p class="text-xs text-slate-400 mt-0.5">
+                용병 <strong>1명</strong>을 골라 <strong>직접 조종</strong>해요! 라운드마다 맵 뒷편에서 몬스터가 떼로 몰려와요. 오래 버틸수록 보상이 커져요.
+              </p>
+              <div id="rushMyInfo" class="text-xs text-slate-300 mt-1"></div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+            <input id="rushNewRoomTitleInput" type="text" maxlength="24" placeholder="러쉬방 제목 (예: 10라운드 가자!)"
+              class="flex-1 sm:w-56 rounded-xl px-3.5 py-2 text-xs font-bold border" />
+            <button onclick="createRushRoom()" class="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-xs shadow shrink-0">➕ 러쉬방 만들기</button>
+            <button onclick="createRushRoom(true)" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 shrink-0">🤖 혼자 바로 출발</button>
+          </div>
+        </div>
+
+        <!-- 내가 들어가 있는(또는 관전 중인) 러쉬방 대기실 -->
+        <div id="rushWaitingRoomPanel" class="hidden bg-slate-900 border-2 border-amber-500/60 rounded-2xl p-5 flex flex-col gap-4 shadow-xl"></div>
+
+        <div class="bg-slate-900 border-2 border-cyan-500/30 rounded-2xl p-4 flex flex-col gap-3 shadow">
+          <h4 class="font-title text-xl text-white flex items-center gap-2 border-b border-slate-800 pb-2.5">
+            <span>🚪</span> 열려 있는 러쉬방
+            <span id="rushRoomCountBadge" class="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-extrabold">방 0개</span>
+          </h4>
+          <div id="rushRoomsList" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
+            <div class="border-b border-slate-800 pb-2">
+              <h4 class="font-title text-lg text-white">🎮 내가 조종할 용병 1명 고르기</h4>
+              <p class="text-xs text-slate-400">대기실에 들어간 뒤에도 바꿀 수 있어요. (파티원은 준비완료가 풀려요)</p>
+            </div>
+            <div id="rushMercSelectGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-[420px] overflow-y-auto pr-1"></div>
+          </div>
+          <div class="lg:col-span-5 bg-slate-900 border-2 border-cyan-500/30 rounded-2xl p-4 flex flex-col gap-2 text-xs text-slate-300 leading-relaxed">
+            <h4 class="font-title text-lg text-white">📜 러쉬 규칙</h4>
+            <div>👥 <strong>최대 5명</strong>이 한 명당 용병 1명을 <strong>직접 조종</strong>해요. 빈 자리는 출발할 때 <strong>반 친구 용병</strong>이 무작위로 채워 AI로 싸워요. (파티에서 가장 센 용병의 전투력을 넘지 않아요)</div>
+            <div>🌊 라운드가 시작되면 <strong>맵 오른쪽 뒷편</strong>에서 몬스터가 몰려와요. 뒷편은 화면 밖이라 보이지 않고 공격도 닿지 않아요. 몬스터도 맵에 들어오기 전에는 공격하지 않아요.</div>
+            <div>📈 라운드를 깰수록 몬스터가 강해지고 많아져요. <strong>5라운드마다 👑 보스</strong>가 나와요.</div>
+            <div>💚 라운드를 깨면 살아 있는 용병 체력 30% 회복 · 보스 라운드를 깨면 쓰러진 용병도 부활해요.</div>
+            <div>⏰ 한 라운드 제한 시간 3분 · 모두 쓰러지거나 시간이 지나면 끝나요.</div>
+            <div class="mt-1 p-2.5 rounded-xl bg-slate-950 border border-slate-800">💰 보상: 깬 라운드 × <strong class="text-amber-300">100 CA</strong> + 깬 보스 라운드 × <strong class="text-amber-300">400 CA</strong> (하루 3번까지 · 중간에 그만둬도 깬 라운드 보상은 받아요)</div>
           </div>
         </div>
       </section>
@@ -4886,7 +4945,7 @@
     const CORPSE_ALPHA = 0.55; // 되살릴 수 있는 시체가 남아 있는 진하기
     // 부활로 다시 일어날 수 있는 시체인지 (허수아비·분신은 부활 대상이 아님)
     function isRevivableCorpse(u) {
-      return !u.alive && u.monsterType !== 'scarecrow' && !u.isClone;
+      return !u.alive && u.monsterType !== 'scarecrow' && !u.isClone && !u.rushPending;
     }
 
     // 몬스터 스프라이트: 칸·동작 형식은 용병과 같음. jobs가 있으면 그 직업으로 나온 몬스터만 그림 (나머지는 기존 토큰)
@@ -6609,7 +6668,7 @@
     const TOWER_RACE_MAPS = { '고블린족': 'tower_goblin', '언데드': 'tower_undead', '야수족': 'tower_beast', '늪지족': 'tower_swamp', '설원족': 'tower_snow', '화염족': 'tower_fire' };
     Object.values(BATTLE_MAPS).forEach(m => { m.img = new Image(); m.img.onload = () => { m.ready = true; }; m.img.src = m.src; });
     function getBattleMap(mode, towerFloor, eliteBossId) {
-      let key = mode === 'practice' ? 'practice' : mode === 'tower' ? 'tower' : mode === 'elite_raid' ? 'elite' : 'pvp';
+      let key = mode === 'practice' ? 'practice' : (mode === 'tower' || mode === 'monster_rush') ? 'tower' : mode === 'elite_raid' ? 'elite' : 'pvp';
       if (key === 'tower' && towerFloor) {
         const raceKey = TOWER_RACE_MAPS[towerRaceOfFloor(towerFloor).name];
         if (raceKey && BATTLE_MAPS[raceKey].ready) key = raceKey;
@@ -6863,8 +6922,8 @@
       if (stu && merc.levelOwner === stu.id) return legacyLevelCostTo(merc.levelBase || 1) + (merc.levelSpent || 0);
       return legacyLevelCostTo(merc.level || 1);
     }
-    const DAILY_REWARD_LIMITS = { quiz: 20, practice: 3, tower: 3, pvp: 5, raid: 5, minigame: 5 };
-    const DAILY_REWARD_LABELS = { quiz: '퀴즈', practice: '허수아비 모의전', tower: '모험의 탑', pvp: '랭킹 매칭', raid: '엘리트 보스', minigame: '미니게임' };
+    const DAILY_REWARD_LIMITS = { quiz: 20, practice: 3, tower: 3, pvp: 5, raid: 5, minigame: 5, rush: 3 };
+    const DAILY_REWARD_LABELS = { quiz: '퀴즈', practice: '허수아비 모의전', tower: '모험의 탑', pvp: '랭킹 매칭', raid: '엘리트 보스', minigame: '미니게임', rush: '몬스터 러쉬' };
 
     // 모험의 탑 하루 도전 횟수 (보상과 상관없이 도전을 시작할 때마다 1회)
     const TOWER_DAILY_TRIES = 10;
@@ -8617,9 +8676,9 @@
         if (Date.now() - (r.createdAt || 0) >= 1800000) return;
         const waiting = r.status === 'waiting';
         items.push({
-          kind: 'raid', id: r.roomId, icon: '🐉', waiting,
-          names: RAID_SLOTS.filter(s => r[s + 'Id'] && !raidIsPractice(r, s)).map(s => r[s + 'Name'] || '친구').join(', '),
-          detail: `엘리트 토벌 · ${r.bossName || '보스'}${waiting ? waitTag : ''}`, watchers: 0,
+          kind: isRushRoom(r) ? 'rush' : 'raid', id: r.roomId, icon: isRushRoom(r) ? '🌊' : '🐉', waiting,
+          names: raidSlotsOf(r).filter(s => r[s + 'Id'] && !raidIsPractice(r, s)).map(s => r[s + 'Name'] || '친구').join(', '),
+          detail: isRushRoom(r) ? `몬스터 러쉬${waiting ? waitTag : ''}` : `엘리트 토벌 · ${r.bossName || '보스'}${waiting ? waitTag : ''}`, watchers: 0,
           watching: currentSpectatingRaidRoomId === r.roomId || (watchingBattle && sim.raidWatch && sim.raidWatch.roomId === r.roomId)
         });
       });
@@ -8670,7 +8729,7 @@
       const showWaitingRoom = () => {
         goToStudentTab(kind);
         if (kind === 'pvp') switchPvpSubMode('realtime');
-        setTimeout(() => document.getElementById(kind === 'pvp' ? 'pvpWaitingRoomPanel' : 'raidWaitingRoomPanel')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+        setTimeout(() => document.getElementById(kind === 'pvp' ? 'pvpWaitingRoomPanel' : (kind === 'rush' ? 'rushWaitingRoomPanel' : 'raidWaitingRoomPanel'))?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
       };
       if (it.watching) {
         if (kind === 'minigame') goToStudentTab('minigame');
@@ -11006,7 +11065,7 @@
       const book = ensureCodexBook(stu);
       const myTeam = sim.myTeam || 'blue';
       sim.units.forEach(u => {
-        if (u.alive || u.team === myTeam || u.isClone || !u.monsterType || u.monsterType === 'scarecrow') return;
+        if (u.alive || u.rushPending || u.team === myTeam || u.isClone || !u.monsterType || u.monsterType === 'scarecrow') return;
         if (u.isEliteBoss) {
           if (sim.meta && sim.meta.eliteBossId) book.elites[sim.meta.eliteBossId] = true;
         } else if (MONSTER_DEFS[u.monsterType]) {
@@ -14555,7 +14614,9 @@
       const arenaSec = document.getElementById('arenaSection');
       if (arenaSec) arenaSec.classList.remove('hidden');
       document.getElementById('battleResultOverlay').classList.add('hidden');
-      document.getElementById('arenaModeBadge').textContent = mode === 'elite_raid'
+      document.getElementById('arenaModeBadge').textContent = mode === 'monster_rush'
+        ? '🌊 몬스터 러쉬'
+        : mode === 'elite_raid'
         ? '🐉 엘리트 보스 협동 대전'
         : (mode === 'tower' ? '🏰 모험의 탑' : (mode === 'practice' ? '🎯 연습 전투' : (mode === 'pvp_ranked' ? '🎯 랭킹 매칭 결투' : (mode === 'pvp_async' ? '🛡️ 진형 도전' : '⚡ 실시간 대결'))));
       document.getElementById('arenaMatchTitle').textContent = title;
@@ -14651,6 +14712,7 @@
       sim.towerWatch = null;
       sim.raidWatch = null;
       sim.raidLive = null;
+      sim.rush = null;
       battleControl.mode = 'auto';
       battleControl.unitId = null;
       battleControl.locked = false;
@@ -15928,9 +15990,11 @@
       const blueAlive = sim.units.filter(u => u.alive && u.team === 'blue');
       const redAlive = sim.units.filter(u => u.alive && u.team === 'red');
 
+      // 🌊 몬스터 러쉬: 적이 다 쓰러져도 끝나지 않고 다음 라운드 (전멸·시간 초과일 때만 끝남)
+      if (sim.mode === 'monster_rush' && !sim.sandbox && stepMonsterRush(blueAlive, redAlive)) return;
       // 분신만 남은 팀은 진 것으로 (분신은 머릿수에 넣지 않음)
       const blueReal = blueAlive.some(u => !u.isClone);
-      if (!sim.sandbox && (!blueReal || !redAlive.some(u => !u.isClone))) {
+      if (!sim.sandbox && sim.mode !== 'monster_rush' && (!blueReal || !redAlive.some(u => !u.isClone))) {
         // 엘리트 보스를 잡으면 쓰러지는 모습을 ELITE_DEFEAT_SHOW_SEC초 보여 준 뒤 결과 (그동안 모두 멈춰 서서 지켜봄)
         if (sim.mode === 'elite_raid' && blueReal) {
           if (sim.eliteDownAt == null) {
@@ -15954,7 +16018,7 @@
       // 시간 제한: 끝나지 않는 전투(서로 회복만 하거나, 체력이 아주 많은 허수아비)가 계속되지 않도록
       const timeLimit = sim.mode === 'practice' ? BATTLE_TIME_LIMIT.practiceTicks
         : (sim.mode === 'elite_raid' ? eliteRaidTimeLimitTicks() : BATTLE_TIME_LIMIT.battleTicks);
-      if (!sim.sandbox && sim.tickCount >= timeLimit) {
+      if (!sim.sandbox && sim.mode !== 'monster_rush' && sim.tickCount >= timeLimit) {
         finishBattleByTimeLimit(blueAlive, redAlive);
         return;
       }
@@ -16071,6 +16135,8 @@
           return;
         }
 
+        // 🌊 몬스터 러쉬: 뒷편에서 막 넘어온 몬스터는 맵 안쪽까지 걸어 들어온 뒤에 싸움
+        if (u.rushEntering) { stepRushEntering(u); return; }
         const allies = u.team === 'blue' ? blueAlive : redAlive;
         const enemies = u.team === 'blue' ? redAlive : blueAlive;
         // 공포: 시전을 끊고 진영 뒤쪽으로 달아남 (직접 조종 중이어도 마음대로 못 움직임)
@@ -17034,7 +17100,7 @@
       }
       if (sk === 'revive') {
         // 부활: 쓰러진 아군 하나를 체력 20%로 되살림 (가장 강한 아군부터)
-        const fallen = sim.units.filter(u => u.team === unit.team && !u.alive && u.monsterType !== 'scarecrow' && !u.isClone)
+        const fallen = sim.units.filter(u => u.team === unit.team && !u.alive && u.monsterType !== 'scarecrow' && !u.isClone && !u.rushPending)
           .sort((a, b) => (b.atk * b.maxHp) - (a.atk * a.maxHp))[0];
         if (!fallen) return true;
         fallen.alive = true;
@@ -17427,7 +17493,7 @@
       }
       if (sk === 'miracle') {
         // 쓰러진 아군 모두 체력 100%로 부활 + 아군 모두 최대 체력 50% 보호막 + 10초간 모든 능력치 +20%
-        const fallen = sim.units.filter(u => u.team === unit.team && !u.alive && u.monsterType !== 'scarecrow' && !u.isClone);
+        const fallen = sim.units.filter(u => u.team === unit.team && !u.alive && u.monsterType !== 'scarecrow' && !u.isClone && !u.rushPending);
         fallen.forEach(f => {
           f.alive = true;
           f.hp = f.maxHp;
@@ -17708,7 +17774,7 @@
           return n >= 2 ? 98 : (n === 1 ? 84 : -1);
         }
         case 'miracle': {
-          const fallen = sim.units.filter(u => u.team === unit.team && !u.alive && u.monsterType !== 'scarecrow' && !u.isClone).length;
+          const fallen = sim.units.filter(u => u.team === unit.team && !u.alive && u.monsterType !== 'scarecrow' && !u.isClone && !u.rushPending).length;
           if (fallen > 0) return 99;
           if (nearestEnemyDist > C * 6) return -1;
           return allies.some(a => a.hp / a.maxHp < 0.5) ? 88 : -1;
@@ -19386,7 +19452,7 @@
           return afflicted.length === 1 ? 72 : -1;
         }
         case 'revive':
-          return sim.units.some(u => u.team === unit.team && !u.alive && u.monsterType !== 'scarecrow' && !u.isClone) ? 99 : -1;
+          return sim.units.some(u => u.team === unit.team && !u.alive && u.monsterType !== 'scarecrow' && !u.isClone && !u.rushPending) ? 99 : -1;
         case 'stealth': {
           // 2초 시전이 필요하니 적이 바짝 붙기 전에, 싸움에 들어가기 직전이나 체력이 줄었을 때 사용
           if (isStealthed(unit) || nearestEnemyDist > C * 6) return -1;
@@ -19625,7 +19691,7 @@
     // MVP 후보: 분신·몬스터(탑 몬스터·엘리트 보스·허수아비)는 빼고 용병만.
     // 모험의 탑·엘리트 보스 토벌은 상대가 모두 적(어둠의 용병 포함)이라 우리 원정대(블루팀)만
     function mvpCandidates() {
-      const pveOnly = sim.mode === 'tower' || sim.mode === 'elite_raid';
+      const pveOnly = sim.mode === 'tower' || sim.mode === 'elite_raid' || sim.mode === 'monster_rush';
       return sim.units.filter(x => !x.isClone && !x.monsterType && !x.isEliteBoss && (!pveOnly || x.team === 'blue'));
     }
 
@@ -19642,6 +19708,8 @@
         document.getElementById('battleResultEmoji').textContent = '📺';
         document.getElementById('battleResultTitle').textContent = tw
           ? `관전 종료 · ${tw.name} ${blueTeamWon ? `🏆 ${tw.floor}층 돌파!` : '🛡️ 도전 실패'}`
+          : rw && rw.rush
+            ? `관전 종료 · 🌊 몬스터 러쉬 ${(sim.rush && sim.rush.cleared) || 0}라운드 클리어`
           : rw
             ? `관전 종료 · ${rw.bossName} ${blueTeamWon ? '🏆 토벌 성공!' : '🛡️ 토벌 실패'}`
             : `관전 종료 · ${winner?.name || (blueTeamWon ? '블루팀' : '레드팀')} 승리!`;
@@ -19661,7 +19729,7 @@
       }
       if (liveNet.role === 'host') publishLiveBattleResult(blueTeamWon);
       if (sim.mode === 'pvp_realtime') resetLivePvpRoomAfterBattle();
-      if (sim.mode === 'elite_raid') resetRaidRoomAfterBattle();
+      if (isRaidNetMode(sim.mode)) resetRaidRoomAfterBattle();
       // blueWon = 이 화면의 학생이 이겼는지 (실시간 결투 도전자는 레드팀)
       const blueWon = sim.myTeam === 'red' ? !blueTeamWon : blueTeamWon;
       sim.running = false;
@@ -19669,6 +19737,7 @@
       const meta = sim.meta || {};
       stu.matchCount = (stu.matchCount || 0) + 1;
       recordCodexKills(stu);
+      if (sim.mode === 'monster_rush') { finishMonsterRush(stu); return; }
 
       let baseReward = blueWon ? (meta.rewardMc || 250) : (meta.lossRewardMc != null ? meta.lossRewardMc : ECONOMY.lossReward);
       const isPvpMode = sim.mode === 'pvp' || sim.mode === 'pvp_async' || sim.mode === 'pvp_realtime' || sim.mode === 'pvp_ranked';
@@ -19780,13 +19849,13 @@
     function forfeitBattle() {
       if (!sim.running) return;
       if (sim.spectator) { stopSpectatingPvpRoom(); return; }
-      askCustomConfirm('전투를 포기할까요? 패배로 처리되고 보상은 없어요.', () => {
+      askCustomConfirm(sim.mode === 'monster_rush' ? `몬스터 러쉬를 그만둘까요? 지금까지 깬 ${(sim.rush && sim.rush.cleared) || 0}라운드만큼 보상을 받아요.` : '전투를 포기할까요? 패배로 처리되고 보상은 없어요.', () => {
         if (!sim.running) return;
         if (sim.netRole === 'guest') {
           localBattleInput.forfeit = 1;
           liveNet.lastInputSentAt = 0;
           onLocalControlChanged();
-          if (sim.mode === 'elite_raid') {
+          if (isRaidNetMode(sim.mode)) {
             // 협동 레이드 파티원: 내 용병은 AI가 이어서 싸우고, 나만 패배(보상 없음)로 끝냄
             stopLiveBattleNet();
             sim.netRole = null;
@@ -21250,7 +21319,7 @@
 
       // 1) 배경: 모드별 맵 그림 (불러오기 전에는 깔끔한 전술 격자)
       // 탑 관전은 층 정보 없이 시작하므로 관전 중인 층(towerWatch.floor)으로 종족 맵을 고름
-      const battleMap = getBattleMap(sim.mode, sim.meta?.towerFloorObj?.floor || sim.towerWatch?.floor, sim.meta?.eliteBossId);
+      const battleMap = getBattleMap(sim.mode, sim.meta?.towerFloorObj?.floor || sim.towerWatch?.floor || (sim.rush ? rushFloorOf(sim.rush, sim.rush.round) : null), sim.meta?.eliteBossId);
       if (battleMap) {
         ctx.save();
         ctx.imageSmoothingEnabled = true;
@@ -21808,7 +21877,7 @@
       });
       // 되살릴 수 있는 시체는 부활할 때까지 남김. 시체는 살아 있는 유닛보다 먼저(아래에) 그림
       const sortedUnits = [...sim.units]
-        .filter(u => u.alive || isRevivableCorpse(u) || (getUnitSprite(u) && sim.tickCount - u._deadSince < SPRITE_DEATH_TICKS))
+        .filter(u => u.alive || (!u.rushPending && (isRevivableCorpse(u) || (getUnitSprite(u) && sim.tickCount - u._deadSince < SPRITE_DEATH_TICKS))))
         .sort((a, b) => (a.alive - b.alive) || (a.y - b.y));
       sortedUnits.forEach(u => {
         if (u.isEliteBoss && sim.eliteIntro) { drawEliteBossDrop(ctx, u); return; }
@@ -22105,7 +22174,7 @@
     function updateEliteBossHpBar(arenaVisible) {
       const bar = document.getElementById('eliteBossHpBar');
       if (!bar) return;
-      const boss = arenaVisible && sim.units ? sim.units.find(u => u.isEliteBoss) : null;
+      const boss = arenaVisible && sim.units ? sim.units.find(u => u.isEliteBoss || (u.rushBoss && u.alive)) : null;
       bar.classList.toggle('hidden', !boss);
       if (!boss) return;
       const maxHp = Math.max(1, boss.maxHp || 1);
@@ -22151,7 +22220,7 @@
       // 탑 도전 중 전투 방식을 고르느라 멈춰 있어도, 보는 친구 화면이 끊기지 않게 가끔 화면을 보냄
       if (sim.running && liveNet.towerCast && liveNet.towerWatchers && Date.now() - (liveNet.lastFramePublishedAt || 0) > 3000) publishLiveBattleFrame(true);
       updateBattleControlFrame();
-      if (animationFrameNo % 3 === 0) updateEliteBossHpBar(arenaVisible);
+      if (animationFrameNo % 3 === 0) { updateEliteBossHpBar(arenaVisible); updateRushHud(arenaVisible); }
       updateReturnButtons();
       if (arenaVisible) drawArenaCanvasSmooth();
       else if (sim.running) decayHiddenBattleVisuals();
@@ -22973,6 +23042,7 @@
       box.innerHTML = [
         btn('tower', '🏰 모험의 탑', book.towerTries || 0, TOWER_DAILY_TRIES),
         btn('raid', '🐉 엘리트 보스', book.raid || 0, DAILY_REWARD_LIMITS.raid),
+        btn('rush', '🌊 몬스터 러쉬', book.rush || 0, DAILY_REWARD_LIMITS.rush),
         btn('pvp', '🏆 랭킹 매칭', book.pvp || 0, DAILY_REWARD_LIMITS.pvp),
         btn('quiz', '❓ 퀴즈', book.quiz || 0, DAILY_REWARD_LIMITS.quiz),
         btn('practice', '🎯 허수아비', book.practice || 0, DAILY_REWARD_LIMITS.practice),
@@ -22985,7 +23055,7 @@
       const stu = state.students.find(s => s.id === adminEditingStudentId);
       if (!stu) return;
       const book = getDailyRewardBook(stu);
-      const cats = category === 'all' ? ['tower', 'raid', 'pvp', 'quiz', 'practice', 'minigame'] : [category];
+      const cats = category === 'all' ? ['tower', 'raid', 'pvp', 'quiz', 'practice', 'minigame', 'rush'] : [category];
       cats.forEach(c => {
         book[c] = 0;
         if (c === 'tower') book.towerTries = 0;
@@ -23721,7 +23791,7 @@
     // 대기방에 들어간 뒤에도 출전 용병을 바꿀 수 있게: 내 칸의 용병·전투력을 방에 다시 써 넣음 (파티원은 준비완료가 풀림)
     function syncMyRaidRoomMercs(stu) {
       const room = liveRaidRoomsCache[currentJoinedRaidRoomId];
-      const slot = room && room.status === 'waiting' ? raidSlotOf(room, stu.id) : null;
+      const slot = room && room.status === 'waiting' && !isRushRoom(room) ? raidSlotOf(room, stu.id) : null;
       if (!slot) return;
       const mercs = (stu.roster || []).filter(m => selectedRaidMercIds.includes(m.id)).slice(0, RAID_PICK);
       room[slot + 'Mercs'] = JSON.parse(JSON.stringify(mercs));
@@ -26328,6 +26398,7 @@
       else window.HomeRoom?.cancel();
       if (tabKey === 'tower') renderTowerTab();
       if (tabKey === 'raid') renderCoopRaidTab();
+      if (tabKey === 'rush') renderRushTab();
       if (tabKey === 'pvp') renderPvpTab();
       if (tabKey === 'minigame') renderMinigameTab();
       if (tabKey === 'shop') renderShopTab();
@@ -26344,6 +26415,7 @@
       PetSystem.renderShop();
       renderTowerTab();
       renderCoopRaidTab();
+      renderRushTab();
       renderPvpTab();
       renderMinigameTab();
       renderShopTab();
@@ -27156,6 +27228,7 @@
         const pvp = Object.values(livePvpRoomsCache || {}).find(r => r && isPvpRoomPlayer(r, stuId));
         if (pvp) return pvp.status === 'playing' ? '⚔️ 결투 중' : '🚪 결투방 대기';
         const raid = Object.values(liveRaidRoomsCache || {}).find(r => r && raidSlotOf(r, stuId));
+        if (raid && isRushRoom(raid)) return raid.status === 'waiting' ? '🚪 러쉬방 대기' : '🌊 몬스터 러쉬 중';
         if (raid) return raid.status === 'waiting' ? '🚪 레이드방 대기' : '🐉 레이드 중';
         const mg = Object.values(liveMinigameRoomsCache || {}).find(r => r && this.inRoom('minigame', r, stuId));
         if (mg) return mg.status === 'playing' ? '🎲 미니게임 중' : '🚪 미니게임방 대기';
@@ -27318,16 +27391,18 @@
       if (sim.spectator && sim.running) { stopLiveBattleNet(); closeBattleResult(); }
       closeRoomInviteModal();
       closeFriendProfile();
-      goToStudentTab(inv.kind === 'pvp' ? 'pvp' : inv.kind === 'raid' ? 'raid' : 'minigame');
+      const rushInv = inv.kind === 'raid' && isRushRoom(room); // 몬스터 러쉬방도 레이드방 초대(kind: raid)로 옴
+      goToStudentTab(inv.kind === 'pvp' ? 'pvp' : rushInv ? 'rush' : inv.kind === 'raid' ? 'raid' : 'minigame');
       // 방에 먼저 들어간 뒤 초대를 지움 → 방장 화면이 거절로 착각하지 않음
       try {
         if (inv.kind === 'pvp') { switchPvpSubMode('realtime'); await joinFirebasePvpRoom(inv.roomId); }
+        else if (rushInv) await joinRushRoom(inv.roomId);
         else if (inv.kind === 'raid') await joinFirebaseCoopRaidRoom(inv.roomId);
         else await joinMinigameRoom(inv.roomId);
       } finally {
         RoomInvites.remove(me.id, id);
       }
-      const panelId = inv.kind === 'pvp' ? 'pvpWaitingRoomPanel' : inv.kind === 'raid' ? 'raidWaitingRoomPanel' : 'minigameWaitingRoomSection';
+      const panelId = inv.kind === 'pvp' ? 'pvpWaitingRoomPanel' : rushInv ? 'rushWaitingRoomPanel' : inv.kind === 'raid' ? 'raidWaitingRoomPanel' : 'minigameWaitingRoomSection';
       setTimeout(() => {
         const panel = document.getElementById(panelId);
         if (panel && !panel.classList.contains('hidden')) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -27774,7 +27849,7 @@
     let liveMinigameRoomsCache = {};
     // 서버에서 마지막으로 받은 방 원본 (캐시는 화면에서 직접 고쳐 쓰므로 따로 보관) — 방을 저장할 때 '내가 바꾼 칸'만 골라 합치는 기준
     const roomServerBase = { pvp_rooms: {}, raid_rooms: {}, minigame_rooms: {} };
-    const ROOM_CLAIM_KEYS = ['guestId', 'guest2Id']; // 먼저 차지한 사람이 이기는 자리
+    const ROOM_CLAIM_KEYS = ['guestId', 'guest2Id', 'guest3Id', 'guest4Id']; // 먼저 차지한 사람이 이기는 자리
     const ROOM_MAP_KEYS = new Set(['gone', 'spectators', 'fighting', 'members']); // 학생 id별로 따로 합치는 칸
     const roomJson = v => JSON.stringify(v === undefined ? null : v);
     const roomIsObj = v => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
@@ -28178,12 +28253,19 @@
     const RAID_SLOTS = ['host', 'guest', 'guest2'];
     const RAID_GUEST_SLOTS = ['guest', 'guest2'];
     const RAID_MAX_PLAYERS = 3;
+    // 🌊 몬스터 러쉬방도 레이드방(raid_rooms)에 kind: 'rush'로 들어감: 방장 + 파티원 4명 (guest ~ guest4 칸), 최대 5인
+    const RUSH_SLOTS = ['host', 'guest', 'guest2', 'guest3', 'guest4'];
+    const RUSH_GUEST_SLOTS = ['guest', 'guest2', 'guest3', 'guest4'];
+    const RUSH_MAX_PLAYERS = 5;
+    const isRushRoom = r => Boolean(r) && r.kind === 'rush';
+    const raidSlotsOf = r => (isRushRoom(r) ? RUSH_SLOTS : RAID_SLOTS);
+    const raidGuestSlotsOf = r => (isRushRoom(r) ? RUSH_GUEST_SLOTS : RAID_GUEST_SLOTS);
     const RAID_SLOT_FIELDS = ['Id', 'Num', 'Name', 'Power', 'Mercs', 'StudentSnapshot'];
-    const raidPracticeKey = slot => (slot === 'guest2' ? 'practiceFriend2' : 'practiceFriend');
+    const raidPracticeKey = slot => (slot === 'guest' ? 'practiceFriend' : 'practiceFriend' + slot.slice(5)); // guest2 → practiceFriend2
     const raidIsPractice = (r, slot) => slot !== 'host' && Boolean(r[raidPracticeKey(slot)]);
-    const raidSlotOf = (r, stuId) => (stuId && RAID_SLOTS.find(s => r[s + 'Id'] === stuId && !raidIsPractice(r, s))) || null; // 실제로 들어온 내 칸
-    const raidFilledSlots = r => RAID_SLOTS.filter(s => r[s + 'Id']);
-    const raidRealGuestSlots = r => RAID_GUEST_SLOTS.filter(s => r[s + 'Id'] && !raidIsPractice(r, s));
+    const raidSlotOf = (r, stuId) => (stuId && raidSlotsOf(r).find(s => r[s + 'Id'] === stuId && !raidIsPractice(r, s))) || null; // 실제로 들어온 내 칸
+    const raidFilledSlots = r => raidSlotsOf(r).filter(s => r[s + 'Id']);
+    const raidRealGuestSlots = r => raidGuestSlotsOf(r).filter(s => r[s + 'Id'] && !raidIsPractice(r, s));
     const raidSlotReady = (r, slot) => slot === 'host' || Boolean(r[slot + 'Ready']);
     function raidClearSlot(r, slot) {
       Object.assign(r, { [slot + 'Id']: null, [slot + 'Num']: null, [slot + 'Name']: null, [slot + 'Power']: 0, [slot + 'Mercs']: [], [slot + 'StudentSnapshot']: null });
@@ -28201,7 +28283,7 @@
       const r = JSON.parse(JSON.stringify(room));
       if (r.gone) delete r.gone[stuId];
       if (r.fighting) delete r.fighting[stuId];
-      const slot = RAID_SLOTS.find(s => r[s + 'Id'] === stuId);
+      const slot = raidSlotsOf(r).find(s => r[s + 'Id'] === stuId);
       if (slot === 'host') {
         const heir = raidRealGuestSlots(r).find(s => !roomGone(r, r[s + 'Id']));
         if (!heir) return null;
@@ -28210,7 +28292,13 @@
       } else if (slot) {
         raidClearSlot(r, slot);
       }
-      if (!r.guestId && r.guest2Id) raidMoveSlot(r, 'guest2', 'guest');
+      // 빈 칸이 생기면 뒤 칸 친구를 앞으로 당겨 앉힘 (guest → guest2 → ... 순서로 차 있게)
+      const guestSlots = raidGuestSlotsOf(r);
+      guestSlots.forEach((s, i) => {
+        if (r[s + 'Id']) return;
+        const next = guestSlots.slice(i + 1).find(t => r[t + 'Id']);
+        if (next) raidMoveSlot(r, next, s);
+      });
       return r;
     }
 
@@ -30010,6 +30098,7 @@
       };
       // 엘리트 보스 등장 연출(하늘에서 떨어지는 중인 시점)·화면 흔들림·섬광도 같이 보냄 (흔들림·섬광은 새로 생긴 것만 한 번)
       if (sim.eliteIntro) frame.it = sim.eliteIntro.t;
+      if (sim.rush) frame.rs = packRushState();
       // 전투가 멈춰 있는 까닭 (관전자 화면에 안내): 전투 방식을 고르는 중
       if (sim.awaitingControlChoice) frame.ps = 'choose';
       if (sim.shake && !liveNet.sent.has(sim.shake)) { liveNet.sent.add(sim.shake); frame.sk = [sim.shake.power, sim.shake.life, sim.shake.maxLife]; }
@@ -30027,6 +30116,7 @@
         ...(liveNet.towerCast || typeof liveNet.bid !== 'number' ? {} : { b: liveNet.bid, ep: liveNet.ep || 0 }),
         blueWon: Boolean(blueTeamWon),
         forfeitTeam: sim.forfeitTeam || null,
+        ...(sim.rush ? { rs: packRushState() } : {}),
         s: sim.units.map(u => [Math.round(liveNum(u.damageDealt)), Math.round(liveNum(u.healDone)), Math.round(liveNum(u.damageTaken))])
       }).catch(() => {});
       const roomId = liveNet.roomId;
@@ -30068,7 +30158,7 @@
     // ----- 팀원: 방장이 넘겨준 전투를 받아서(또는 방장이 갑자기 끊기면 내 화면 상태로) 이어서 계산 -----
     function applyLiveHandoff(val) {
       if (liveNet.role !== 'guest' || liveNet.spectator || !val || liveNum(val.at) < liveNet.minAt) return;
-      if (sim.mode === 'elite_raid') { applyRaidHandoff(val); return; }
+      if (isRaidNetMode(sim.mode)) { applyRaidHandoff(val); return; }
       if (val.to !== liveNet.myId) return; // 다른 친구가 이어받으면 그 친구가 새로 보내는 화면을 받음
       takeOverLiveBattle(Array.isArray(val.units) ? val.units : null, val.tick);
     }
@@ -30169,7 +30259,7 @@
       Object.entries(all).forEach(([stuId, v]) => {
         if (!v || typeof v !== 'object' || !(liveNet.teamExpect || []).includes(stuId)) return;
         // 협동 레이드: 친구마다 용병이 여럿 → 그 친구가 고른 자기 용병만 (자동 전투면 조종 없음)
-        const raid = sim.mode === 'elite_raid';
+        const raid = isRaidNetMode(sim.mode);
         const unit = raid
           ? (v.unitId ? sim.units.find(u => u.id === v.unitId && u.liveOwnerId === stuId && u.alive) : null)
           : sim.units.find(u => u.liveOwnerId === stuId && u.alive);
@@ -30270,7 +30360,8 @@
       const prevId = battleControl.mode === 'manual' ? battleControl.unitId : null;
       // 같은 방장이 전투 도중 유닛 목록만 다시 보낸 것(분신 등장 등)이면 받아 둔 화면·시계를 그대로 이어 씀
       // (예전엔 매번 버퍼를 비워서, 분신이 나올 때마다 관전·도전자 화면이 잠깐 멈칫했음)
-      const sameHost = liveNet.initReceived && val.by && val.by === liveNet.initBy;
+      // (몬스터 러쉬 새 라운드(rr)는 유닛 순서가 바뀌므로 받아 둔 화면을 비움)
+      const sameHost = liveNet.initReceived && val.by && val.by === liveNet.initBy && !val.rr;
       liveNet.initBy = val.by || null;
       sim.units = units;
       if (!sameHost) {
@@ -30323,6 +30414,7 @@
       // 토벌 도중에 들어온 관전자: 남은 시간이 방장 화면과 같게
       if (sim.raidWatch && liveNum(val.t) > 0) sim.tickCount = liveNum(val.t);
       liveNet.hostPause = val.ps === 'choose' ? val.ps : null;
+      if (Array.isArray(val.rs)) applyRushState(val.rs);
       if (sim.mode === 'elite_raid') sim.eliteIntro = liveNum(val.it) > 0 ? { t: liveNum(val.it) } : null;
       if (Array.isArray(val.sk)) sim.shake = { power: Math.min(60, liveNum(val.sk[0])), life: liveNum(val.sk[1]), maxLife: Math.max(1, liveNum(val.sk[2])) };
       if (Array.isArray(val.fl)) sim.flash = { color: cleanUserText(val.fl[0], 30) || '#ffffff', life: liveNum(val.fl[1]), maxLife: Math.max(1, liveNum(val.fl[2])) };
@@ -30333,6 +30425,7 @@
         u.shield = liveNum(p[3]);
         u.mana = liveNum(p[4]);
         u.alive = p[5] === 1;
+        if (u.alive && u.rushPending) u.rushPending = false; // 몬스터 러쉬: 뒷편에서 맵으로 넘어옴
         u.facingDir = p[6] === -1 ? -1 : 1;
         u.facingAngle = liveNum(p[7]);
         u.isMoving = p[8] === 1;
@@ -30395,6 +30488,7 @@
         u.healDone = liveNum(s[1]);
         u.damageTaken = liveNum(s[2]);
       });
+      if (Array.isArray(val.rs)) applyRushState(val.rs);
       stopLiveBattleNet();
       sim.forfeitTeam = val.forfeitTeam === 'red' || val.forfeitTeam === 'blue' ? val.forfeitTeam : null;
       if (sim.running) finishSimulation(val.blueWon === true);
@@ -30580,7 +30674,7 @@
     // 방장 화면이 한참 조용할 때: 팀전이면 다음 방장이 될 친구가 자기 화면 상태로 전투를 이어받음
     // (다른 친구·관전자는 새 방장의 화면을 조금 더 기다림) · 처리했으면 true
     function handleLiveHostSilence() {
-      if (sim.mode === 'elite_raid') return handleRaidHostSilence();
+      if (isRaidNetMode(sim.mode)) return handleRaidHostSilence();
       const me = getActiveStudent();
       const room = liveNet.roomId ? livePvpRoomsCache[liveNet.roomId] : null;
       if (!liveNet.team || !room || !me || !liveNet.initReceived) return false;
@@ -30839,17 +30933,19 @@
       room.status = 'waiting';
       room.startedAt = null;
       room.fighting = null;
-      RAID_GUEST_SLOTS.forEach(s => { room[s + 'Ready'] = raidIsPractice(room, s); });
+      raidGuestSlotsOf(room).forEach(s => { room[s + 'Ready'] = raidIsPractice(room, s); });
+      room.rushFill = null;
       room.lastFinishedAt = Date.now();
       saveRaidRoomData(room.roomId, room);
     }
 
     function renderLiveRaidRoomsList() {
+      renderRushLobby();
       const box = document.getElementById('raidLiveRoomsList');
       const badge = document.getElementById('raidLiveRoomCountBadge');
       const waitPanel = document.getElementById('raidWaitingRoomPanel');
       const myStu = getActiveStudent();
-      const rooms = Object.values(liveRaidRoomsCache || {}).filter(r => r && (r.status === 'waiting' || r.status === 'in_battle') && (Date.now() - (r.createdAt || 0) < 1800000));
+      const rooms = Object.values(liveRaidRoomsCache || {}).filter(r => r && !isRushRoom(r) && (r.status === 'waiting' || r.status === 'in_battle') && (Date.now() - (r.createdAt || 0) < 1800000));
       if (badge) badge.textContent = `대기방 ${rooms.length}개`;
 
       // 내가 들어가 있는 방 (플레이어로 없으면 관전 중인 방)
@@ -31043,6 +31139,7 @@
         if (r && r.status === 'waiting' && r.roomId && !(sim.running && currentActiveLiveBattleRoomId === r.roomId)) launchedLiveRoomIds.delete(r.roomId);
         if (!r || r.status !== 'in_battle' || !r.roomId) return;
         if (launchedLiveRoomIds.has(r.roomId)) return;
+        if (isRushRoom(r) && raidSlotOf(r, myStu.id)) { launchRushRoomBattle(r, myStu); return; }
         if (raidSlotOf(r, myStu.id)) {
           launchedLiveRoomIds.add(r.roomId);
           currentActiveLiveBattleRoomId = r.roomId;
@@ -31097,7 +31194,7 @@
 
     function startRaidLiveBroadcast(room) {
       const me = getActiveStudent();
-      if (!sim.running || sim.mode !== 'elite_raid' || !me || !room) return;
+      if (!sim.running || !isRaidNetMode(sim.mode) || !me || !room) return;
       const castId = raidCastId(room.roomId, me.id);
       const ref = liveRoomRef(castId);
       if (!ref) return;
@@ -31227,7 +31324,7 @@
 
     // 아직 토벌 중인 파티원 (방장 먼저) · 볼 화면 후보
     function raidFightingMembers(r) {
-      return RAID_SLOTS
+      return raidSlotsOf(r)
         .filter(s => r[s + 'Id'] && !raidIsPractice(r, s) && (!r.fighting || r.fighting[r[s + 'Id']]))
         .map(s => ({ id: r[s + 'Id'], name: r[s + 'Name'] || '친구' }));
     }
@@ -31273,9 +31370,10 @@
       const bossDef = ELITE_BOSS_DEFS.find(b => b.id === room.bossId) || ELITE_BOSS_DEFS[0];
       const owner = state.students.find(s => s.id === pick.id) || { id: pick.id, name: pick.name, roster: [] };
       const names = raidFilledSlots(room).map(s => room[s + 'Name']).join(' & ');
+      const rush = isRushRoom(room);
       launchSimulation({
-        mode: 'elite_raid',
-        title: `📺 관전 중: ${names} vs ${room.hard ? '🔥하드 ' : ''}${bossDef.name} (${pick.name} 화면)`,
+        mode: rush ? 'monster_rush' : 'elite_raid',
+        title: rush ? `📺 관전 중: 🌊 몬스터 러쉬 · ${names} (${pick.name} 화면)` : `📺 관전 중: ${names} vs ${room.hard ? '🔥하드 ' : ''}${bossDef.name} (${pick.name} 화면)`,
         blueStudent: owner,
         redStudent: null,
         eliteBossId: bossDef.id,
@@ -31289,7 +31387,8 @@
       sim.spectator = true;
       sim.spectateFrom = Date.now();
       sim.spectateRoomId = null;
-      sim.raidWatch = { roomId, castId: pick.castId, stuId: pick.id, hostName: pick.name, bossName: bossDef.name };
+      sim.raidWatch = { roomId, castId: pick.castId, stuId: pick.id, hostName: pick.name, bossName: rush ? '🌊 몬스터 러쉬' : bossDef.name, rush };
+      if (rush) sim.rush = newRushState(Number(room.rushStartFloor) || 1);
       // 고를 것 없이 보기만: 전투 방식 고르기 창을 닫고 자동(화면 이동만)으로 고정
       battleControl.locked = true;
       battleControl.mode = 'auto';
@@ -31297,7 +31396,7 @@
       sim.awaitingControlChoice = false;
       document.getElementById('battleControlChooser')?.classList.add('hidden');
       renderBattleControlHud(true);
-      addBattleLog(`📺 [관전] ${pick.name} 친구 화면의 [${bossDef.name}] 토벌을 보고 있어요. (WASD·드래그로 화면 이동)`);
+      addBattleLog(`📺 [관전] ${pick.name} 친구 화면의 [${rush ? '🌊 몬스터 러쉬' : bossDef.name}] ${rush ? '전투' : '토벌'}를 보고 있어요. (WASD·드래그로 화면 이동)`);
       startLiveBattleNet(pick.castId, 'guest', liveNum(init.at), true, false);
       liveNet.bid = typeof init.b === 'number' ? init.b : null; liveNet.ep = liveNum(init.ep);
       const wRef = liveRoomRef(pick.castId).child('watchers').child(me.id);
@@ -31363,6 +31462,639 @@
     }
 
     broadcastCoopRaidInvite = window.createRaidLobbyRoom;
+
+    // ==================== [D. 🌊 몬스터 러쉬 : 최대 5명 협동 · 1인 1용병 직접 전투 · 라운드마다 몰려오는 몬스터] ====================
+    // - 방은 레이드방(raid_rooms)에 kind: 'rush'로 만듦 → 입장·준비완료·방장 넘기기·실시간 화면 동기화·관전은 협동 레이드 장치를 그대로 씀
+    // - 빈 자리(5명까지)는 출발할 때 방장 화면이 반 친구 용병을 골라 rushFill에 적어 둠 (파티 최고 전투력 이하) → 그 용병은 AI가 싸움
+    // - 몬스터는 라운드마다 맵 오른쪽 바깥(뒷편)에 '아직 안 나온' 상태(rushPending, 살아 있지 않음)로 생겨 맵 쪽으로 걷기만 함
+    //   → 뒷편에 있는 동안은 보이지도 않고 어떤 공격·스킬도 닿지 않으며 공격도 안 함. 맵 가장자리에 닿으면 살아나 걸어 들어와 싸움
+    // - 계산 담당 화면만 라운드를 진행하고, 라운드 상태는 화면(frame.rs)에 실어 파티원·관전자 화면에 맞춤
+    const RUSH = {
+      bossEvery: 5,          // 5라운드마다 보스 라운드
+      baseCount: 12,         // 1라운드 몬스터 수
+      perRound: 3,           // 라운드마다 늘어나는 몬스터 수
+      maxCount: 42,          // 한 라운드 최대 몬스터 수 (실시간 화면 전송량 때문에 제한)
+      monStat: 0.4,          // 일반 몬스터 능력치 배율 (같은 층 탑 몬스터 대비 · 수가 많으니 약하게)
+      bossStat: 1,           // 보스 능력치 배율 (탑 종족 보스 그대로)
+      statGrow: 0.06,        // 라운드마다 몬스터 능력치 +6%
+      backSpeed: 2,          // 뒷편에서 달려오는 빠르기 (평소 이동 속도의 배수)
+      backDepth: 1500,       // 뒷편 길이(px): 몬스터가 이만큼 흩어져 있다가 차례로 몰려옴
+      edge: 40,              // 맵 오른쪽 끝에서 이만큼 바깥에 닿으면 맵으로 넘어옴
+      breakSec: 5,           // 라운드 사이 쉬는 시간
+      roundLimitSec: 180,    // 한 라운드 제한 시간 (넘기면 러쉬 끝)
+      healRatio: 0.3,        // 라운드를 깨면 살아 있는 용병 체력 30% 회복 · 보스 라운드를 깨면 쓰러진 용병도 30%로 부활
+      rewardPerRound: 100,   // 깬 라운드마다 보상
+      rewardPerBoss: 400     // 보스 라운드를 깨면 더 주는 보상
+    };
+
+    function isRaidNetMode(mode) { return mode === 'elite_raid' || mode === 'monster_rush'; }
+    function newRushState(startFloor) {
+      return { round: 1, phase: 'fight', roundStartTick: sim.tickCount || 0, nextAt: 0, cleared: 0, bosses: 0, startFloor: Math.max(1, startFloor || 1), pending: 0, left: 0 };
+    }
+    const rushFloorOf = (rs, round) => Math.min(TOWER_MAX_FLOOR, (rs.startFloor || 1) + Math.max(0, round - 1));
+    const isRushBossRound = round => round % RUSH.bossEvery === 0;
+    const rushRewardOf = (cleared, bosses) => cleared * RUSH.rewardPerRound + bosses * RUSH.rewardPerBoss;
+    // 파티 용병 평균 레벨에 맞춰 시작 층을 정함 (그 레벨대 탑 층보다 조금 아래부터, 라운드마다 한 층씩 오름)
+    function rushStartFloorOf(mercs) {
+      const lv = mercs.length ? mercs.reduce((s, m) => s + (m.level || 1), 0) / mercs.length : 1;
+      return Math.max(1, Math.min(TOWER_MAX_FLOOR - 20, Math.round(lv) - 3));
+    }
+
+    // 탑 층의 몬스터 한 마리 (탑 전투와 같은 방법으로 만들고 능력치만 statMul배)
+    function buildRushMonster(floorObj, idx, statMul, asBoss) {
+      const jobKey = floorObj.comp[idx];
+      const setup = towerEnemySetup(floorObj.floor);
+      const m = createMercenary(jobKey, setup.rarity, setup.level, idx, true, floorObj.skills?.[idx] || null);
+      const monKey = floorObj.monsters?.[idx] || null;
+      m.monsterType = monKey;
+      m.isDarkMerc = !monKey;
+      if (floorObj.unitNames?.[idx]) m.name = floorObj.unitNames[idx];
+      const unit = createSimUnit(m, null, 'red', setup.scale);
+      if (monKey) applyMonsterTraits(unit, monKey, asBoss, floorObj.floor);
+      const jobStat = TOWER_NEW_JOB_STAT[jobKey];
+      if (jobStat) {
+        unit.maxHp = Math.round(unit.maxHp * jobStat.hp);
+        unit.atk = Math.round(unit.atk * jobStat.atk);
+        unit.def = Math.round(unit.def * jobStat.def);
+      }
+      if (floorObj.unitSkills?.[idx]) {
+        applyUnitSkillBook(unit, buildSkillBook(floorObj.unitSkills[idx]));
+        const extra = Math.max(0, unit.unlockedSkills.length - getUnlockedSkillCount(setup.level));
+        const k = Math.max(0.4, 1 - extra * TOWER_EXTRA_SKILL_LOSS);
+        unit.maxHp = Math.round(unit.maxHp * k);
+        unit.atk = Math.round(unit.atk * k);
+      }
+      unit.maxHp = unit.hp = Math.max(1, Math.round(unit.maxHp * statMul));
+      unit.atk = Math.max(1, Math.round(unit.atk * statMul));
+      unit.def = Math.round(unit.def * Math.min(1, statMul * 1.5));
+      return unit;
+    }
+
+    // 한 라운드 몬스터: 모두 맵 오른쪽 바깥(뒷편)에 흩어져서 '아직 안 나온' 상태로 시작
+    function buildRushWave(round, rs) {
+      const fl = rushFloorOf(rs, round);
+      const floorObj = TOWER_FLOORS[fl - 1];
+      const grow = 1 + RUSH.statGrow * (round - 1);
+      const boss = isRushBossRound(round);
+      const count = Math.min(RUSH.maxCount, RUSH.baseCount + RUSH.perRound * (round - 1));
+      const n = boss ? Math.ceil(count * 0.6) : count; // 보스 라운드는 졸개를 줄임
+      const picks = floorObj.comp.map((_, i) => i).filter(i => !(floorObj.isRaceBoss && i === 0)); // 종족 보스 칸은 졸개로 안 씀
+      const units = [];
+      for (let i = 0; i < n; i++) units.push(buildRushMonster(floorObj, picks[Math.floor(Math.random() * picks.length)], RUSH.monStat * grow, false));
+      if (boss) {
+        const bossFloor = TOWER_FLOORS[Math.min(TOWER_MAX_FLOOR, Math.ceil(fl / TOWER_RACE_FLOORS) * TOWER_RACE_FLOORS) - 1];
+        const b = buildRushMonster(bossFloor, 0, RUSH.bossStat * grow, true);
+        b.rushBoss = true;
+        b.name = `👑 ${b.name}`;
+        units.push(b);
+      }
+      const W = sim.worldW, H = sim.worldH;
+      units.forEach((u, i) => {
+        u.id = `rush${round}_${i}_red`;
+        const depth = u.rushBoss ? RUSH.backDepth * 0.55 : (i / Math.max(1, n)) * RUSH.backDepth + Math.random() * 160;
+        u.x = W + RUSH.edge + 80 + depth;
+        u.y = u.rushBoss ? Math.round(H / 2) : 320 + Math.random() * (H - 320 - 280);
+        u.alive = false;
+        u.rushPending = true;
+        u.facingDir = -1;
+        u.facingAngle = Math.PI;
+      });
+      return units;
+    }
+
+    // 계산 담당 화면에서 매 틱: 뒷편 몬스터 이동 · 맵 진입 · 라운드 클리어/전멸/시간 초과 · 쉬는 시간 (러쉬가 끝났으면 true)
+    function stepMonsterRush(blueAlive, redAlive) {
+      const rs = sim.rush;
+      if (!rs) return false;
+      if (!blueAlive.some(u => !u.isClone)) {
+        addBattleLog(`💀 용병들이 모두 쓰러졌어요! ${rs.cleared}라운드까지 버텼어요.`);
+        finishSimulation(rs.cleared > 0);
+        return true;
+      }
+      if (rs.phase === 'break') {
+        if (sim.tickCount >= rs.nextAt) startRushRound(rs.round + 1);
+        return false;
+      }
+      let pending = 0;
+      sim.units.forEach(u => {
+        if (!u.rushPending) return;
+        pending++;
+        u.x -= (u.baseMoveSpeed || 1) * RUSH.backSpeed;
+        u.isMoving = true;
+        if (u.x > sim.worldW + RUSH.edge) return;
+        // 맵 가장자리에 닿음: 이때부터 살아 있는 몬스터 (공격이 닿고, 맵 안쪽까지 걸어 들어온 뒤 싸움)
+        u.x = sim.worldW + RUSH.edge;
+        u.rushPending = false;
+        u.rushEntering = true;
+        u.alive = true;
+        u._deadSince = null;
+        if (u.rushBoss) {
+          addBattleLog(`👑 보스 [${u.name}]가 전장에 들어왔어요!`);
+          sim.shake = { power: 14, life: 30, maxLife: 30 };
+        }
+      });
+      const fighters = redAlive.filter(u => !u.isClone).length;
+      rs.pending = pending;
+      rs.left = pending + fighters;
+      if (!pending && !fighters) { clearRushRound(); return false; }
+      if (sim.tickCount - rs.roundStartTick >= RUSH.roundLimitSec * BATTLE_TICKS_PER_SEC) {
+        addBattleLog(`⏰ ${rs.round}라운드 제한 시간(${RUSH.roundLimitSec / 60}분)이 끝났어요! ${rs.cleared}라운드까지 버텼어요.`);
+        finishSimulation(rs.cleared > 0);
+        return true;
+      }
+      return false;
+    }
+
+    // 막 넘어온 몬스터: 맵 바깥 가장자리에서 걸을 수 있는 곳(오른쪽 벽 안)까지 걸어 들어옴
+    function stepRushEntering(u) {
+      const inner = sim.worldW - 210;
+      u.x = Math.max(inner, u.x - (u.baseMoveSpeed || 1) * RUSH.backSpeed);
+      u.y = Math.max(260, Math.min(sim.worldH - 220, u.y));
+      u.isMoving = true;
+      u.facingDir = -1;
+      u.facingAngle = Math.PI;
+      if (u.x <= inner) u.rushEntering = false;
+    }
+
+    function clearRushRound() {
+      const rs = sim.rush;
+      const boss = isRushBossRound(rs.round);
+      rs.cleared = rs.round;
+      if (boss) rs.bosses++;
+      rs.phase = 'break';
+      rs.nextAt = sim.tickCount + RUSH.breakSec * BATTLE_TICKS_PER_SEC;
+      rs.left = 0;
+      let revived = 0;
+      sim.units.forEach(u => {
+        if (u.team === 'red') { if (u.alive && u.isClone) vanishClone(u); return; }
+        if (u.isClone) return;
+        if (u.alive) {
+          const heal = Math.round(u.maxHp * RUSH.healRatio);
+          u.hp = Math.min(u.maxHp, u.hp + heal);
+          u.mana = u.maxMana;
+          sim.floatTexts.push({ x: u.x, y: u.y - 40, text: `💚+${heal}`, color: '#16a34a', life: 60 });
+        } else if (boss) {
+          u.alive = true;
+          u.hp = Math.round(u.maxHp * RUSH.healRatio);
+          u.shield = 0;
+          u.mana = Math.round(u.maxMana * 0.5);
+          Object.keys(u.statuses).forEach(k => { u.statuses[k] = 0; });
+          u.statuses.immune = 120;
+          u.kbVx = 0;
+          u.kbVy = 0;
+          u._deadSince = null;
+          sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 70, color: '#34d399', life: 40, maxLife: 40 });
+          revived++;
+        }
+      });
+      playCombatSfx('heal');
+      addBattleLog(`✅ ${rs.round}라운드 클리어!${boss ? ' 👑 보스 처치!' : ''} 용병 체력 ${Math.round(RUSH.healRatio * 100)}% 회복${revived ? ` · 쓰러진 용병 ${revived}명 부활` : ''} · ${RUSH.breakSec}초 뒤 ${rs.round + 1}라운드${isRushBossRound(rs.round + 1) ? ' (👑 보스 라운드!)' : ''}`);
+    }
+
+    function startRushRound(round) {
+      const rs = sim.rush;
+      rs.round = round;
+      rs.phase = 'fight';
+      rs.roundStartTick = sim.tickCount;
+      // 지난 라운드에 쓰러진 몬스터·분신은 치우고 새 몬스터를 뒷편에 세움
+      sim.units = sim.units.filter(u => u.team === 'blue' && (u.alive || !u.isClone));
+      const wave = buildRushWave(round, rs);
+      sim.units.push(...wave);
+      rs.pending = rs.left = wave.length;
+      // 실시간 화면은 유닛 순서로 맞추므로 유닛 목록을 새로 보냄 (rr: 받은 화면이 받아 둔 이전 화면을 버리게)
+      if (liveNet.role === 'host' && liveNet.ref) {
+        const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim', '_deadSince']);
+        const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) ? undefined : v))));
+        liveNet.ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, rr: round, units }).catch(() => {});
+      }
+      addBattleLog(isRushBossRound(round)
+        ? `👑 ${round}라운드: 보스 라운드! 보스와 몬스터 ${wave.length - 1}마리가 몰려와요!`
+        : `🌊 ${round}라운드 시작! 몬스터 ${wave.length}마리가 맵 뒷편에서 몰려와요!`);
+    }
+
+    // 실시간 화면에 싣는 라운드 상태 (쉬는 시간·라운드 시간은 남은/지난 틱으로 → 화면마다 시계가 달라도 맞음)
+    function packRushState() {
+      const rs = sim.rush;
+      return [rs.round, rs.phase === 'break' ? 1 : 0, rs.cleared, rs.bosses, rs.pending, rs.left,
+        Math.max(0, rs.nextAt - sim.tickCount), Math.max(0, sim.tickCount - rs.roundStartTick), rs.startFloor];
+    }
+    function applyRushState(a) {
+      if (!sim.rush) sim.rush = newRushState(liveNum(a[8]) || 1);
+      const rs = sim.rush;
+      rs.round = Math.max(1, liveNum(a[0]));
+      rs.phase = a[1] === 1 ? 'break' : 'fight';
+      rs.cleared = liveNum(a[2]);
+      rs.bosses = liveNum(a[3]);
+      rs.pending = liveNum(a[4]);
+      rs.left = liveNum(a[5]);
+      rs.nextAt = sim.tickCount + liveNum(a[6]);
+      rs.roundStartTick = sim.tickCount - liveNum(a[7]);
+      rs.startFloor = liveNum(a[8]) || rs.startFloor;
+    }
+
+    // 전장 위 라운드 안내 (화면 위 가운데)
+    function updateRushHud(arenaVisible) {
+      const el = document.getElementById('rushHud');
+      if (!el) return;
+      const rs = arenaVisible && sim.mode === 'monster_rush' ? sim.rush : null;
+      el.classList.toggle('hidden', !rs);
+      if (!rs) return;
+      const tps = BATTLE_TICKS_PER_SEC;
+      let text;
+      if (rs.phase === 'break') {
+        const left = Math.max(0, Math.ceil((rs.nextAt - sim.tickCount) / tps));
+        text = `✅ ${rs.cleared}라운드 클리어! · 다음 ${rs.round + 1}라운드${isRushBossRound(rs.round + 1) ? ' 👑보스' : ''}까지 ${left}초`;
+      } else {
+        const sec = Math.max(0, Math.ceil(RUSH.roundLimitSec - (sim.tickCount - rs.roundStartTick) / tps));
+        text = `🌊 ${rs.round}라운드${isRushBossRound(rs.round) ? ' 👑보스' : ''} · 남은 몬스터 ${rs.left}마리${rs.pending ? ` (뒷편 ${rs.pending})` : ''} · ⏰ ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+      }
+      el.textContent = `${text} · 💰 ${rushRewardOf(rs.cleared, rs.bosses).toLocaleString()} CA`;
+    }
+
+    // 러쉬가 끝남: 깬 라운드만큼 보상 (포기해도 깬 라운드 보상은 받음 · 하루 보상 횟수 안에서)
+    function finishMonsterRush(stu) {
+      const rs = sim.rush || newRushState(1);
+      const amount = rushRewardOf(rs.cleared, rs.bosses);
+      const reward = amount > 0 ? grantDailyReward(stu, 'rush', amount) : 0;
+      if (reward > 0) state.guardianPts += 8 + Math.min(20, rs.cleared * 2);
+      const newBest = rs.cleared > (stu.rushBest || 0);
+      if (newBest) stu.rushBest = rs.cleared;
+      const atkKing = mvpCandidates().sort((a, b) => b.damageDealt - a.damageDealt)[0];
+      const tankKing = mvpCandidates().sort((a, b) => b.damageTaken - a.damageTaken)[0];
+      const healKing = mvpCandidates().sort((a, b) => b.healDone - a.healDone)[0];
+      document.getElementById('battleResultEmoji').textContent = rs.cleared >= 10 ? '🏆' : (rs.cleared > 0 ? '🌊' : '🛡️');
+      document.getElementById('battleResultTitle').textContent = rs.cleared > 0 ? `${rs.cleared}라운드 클리어!${newBest ? ' (최고 기록!)' : ''}` : '1라운드를 넘지 못했어요';
+      const formula = `라운드 ${rs.cleared} × ${RUSH.rewardPerRound}${rs.bosses ? ` + 보스 ${rs.bosses} × ${RUSH.rewardPerBoss}` : ''}`;
+      document.getElementById('battleResultDesc').textContent = reward > 0
+        ? `보상으로 💰 ${reward.toLocaleString()} CA를 받았어요! (${formula}) · 오늘 남은 몬스터 러쉬 보상: ${getDailyRewardLeft(stu, 'rush')}회`
+        : (amount > 0 ? dailyRewardDoneText('rush') : '깬 라운드가 없어서 보상은 없어요. 다시 도전해 보세요!');
+      document.getElementById('battleMvpBox').innerHTML = `
+        <div class="font-bold text-amber-300 mb-1">🌟 이번 러쉬 3대 분야 MVP 용병</div>
+        <div>⚔️ 최고 공격왕: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
+        <div>🛡️ 든든 수호왕: <strong>${tankKing?.name || '-'}</strong> (${tankKing?.damageTaken || 0} 방어)</div>
+        <div>💚 다정 치유왕: <strong>${healKing?.name || '-'}</strong> (${healKing?.healDone || 0} 회복·보호)</div>
+        <div class="mt-1 text-slate-400">🏅 나의 최고 기록: ${stu.rushBest || 0}라운드</div>`;
+      document.getElementById('battleResultOverlay').classList.remove('hidden');
+      if (document.getElementById('arenaSection')?.classList.contains('hidden')) {
+        showRewardBanner(`🌊 몬스터 러쉬가 끝났어요! ${rs.cleared}라운드 클리어 · ${document.getElementById('battleResultDesc').textContent}`);
+      }
+      sim.netRole = null;
+      saveState();
+      renderAllStudentViews();
+    }
+
+    // ----- 대기실 -----
+    let selectedRushMercId = null;
+    // 내가 데리고 갈 용병 1명 (고른 적이 없으면 전투력이 가장 높은 용병)
+    function rushMyMerc(stu) {
+      const roster = (stu && stu.roster) || [];
+      let m = roster.find(x => x.id === selectedRushMercId);
+      if (!m) {
+        m = [...roster].sort((a, b) => calcMercCombatPower(b, stu) - calcMercCombatPower(a, stu))[0] || null;
+        selectedRushMercId = m ? m.id : null;
+      }
+      return m;
+    }
+    function rushSeatFields(stu, merc) {
+      return { Id: stu.id, Num: stu.num || null, Name: stu.name, Power: calcMercCombatPower(merc, stu), Mercs: [JSON.parse(JSON.stringify(merc))], StudentSnapshot: publicStudentSnapshot(stu) };
+    }
+    function rushSeatInto(room, slot, fields) {
+      Object.entries(fields).forEach(([k, v]) => { room[slot + k] = v; });
+    }
+    const rushRoomsOpen = () => Object.values(liveRaidRoomsCache || {})
+      .filter(r => isRushRoom(r) && (r.status === 'waiting' || r.status === 'in_battle') && Date.now() - (r.createdAt || 0) < 1800000);
+    const myRushRoom = stuId => rushRoomsOpen().find(r => raidSlotOf(r, stuId)) || null;
+    const rushPartyCap = room => Math.max(0, ...raidFilledSlots(room).map(s => Number(room[s + 'Power']) || 0));
+
+    window.selectRushMerc = function (mercId) {
+      const stu = getActiveStudent();
+      if (!stu || !(stu.roster || []).some(m => m.id === mercId)) return;
+      selectedRushMercId = mercId;
+      // 대기실에 있으면 바뀐 용병을 내 자리에 바로 반영 (파티원은 준비완료가 풀림)
+      const room = myRushRoom(stu.id);
+      if (room && room.status === 'waiting') {
+        const slot = raidSlotOf(room, stu.id);
+        rushSeatInto(room, slot, rushSeatFields(stu, rushMyMerc(stu)));
+        if (slot !== 'host') room[slot + 'Ready'] = false;
+        saveRaidRoomData(room.roomId, room);
+      }
+      renderRushTab();
+    };
+
+    window.createRushRoom = async function (startNow = false) {
+      const me = getActiveStudent();
+      if (!me) return;
+      const merc = rushMyMerc(me);
+      if (!merc) { showNotice('⚠️ 몬스터 러쉬에 데려갈 용병이 없어요. 먼저 용병을 모집해 주세요!'); return; }
+      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      const titleInp = document.getElementById('rushNewRoomTitleInput');
+      const title = cleanUserText(titleInp?.value, 24) || `🌊 ${me.name}의 몬스터 러쉬`;
+      if (titleInp) titleInp.value = '';
+      const roomId = 'rush_' + me.id + '_' + Date.now().toString(36).slice(-5);
+      leaveRoomsExcept('raid', roomId);
+      launchedLiveRoomIds.delete(roomId);
+      const room = { roomId, kind: 'rush', title, status: 'waiting', createdAt: Date.now() };
+      rushSeatInto(room, 'host', rushSeatFields(me, merc));
+      RUSH_GUEST_SLOTS.forEach(s => raidClearSlot(room, s));
+      await saveRaidRoomData(roomId, room);
+      armRoomPresence(`raid_rooms/${roomId}`, me.id);
+      if (startNow) { await startRushRoom(roomId); return; }
+      showRewardBanner(`🌊 [${title}] 러쉬방을 만들었어요! 친구가 들어와 [준비완료]를 누르면 출발할 수 있어요. (빈 자리는 친구 용병 AI가 채워요)`);
+    };
+
+    window.joinRushRoom = async function (roomId) {
+      const me = getActiveStudent();
+      if (!me) return;
+      const merc = rushMyMerc(me);
+      if (!merc) { showNotice('⚠️ 몬스터 러쉬에 데려갈 용병이 없어요. 먼저 용병을 모집해 주세요!'); return; }
+      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      // 같은 순간에 다른 친구가 같은 칸에 먼저 앉으면 서버가 내 저장을 물리므로, 최신 방을 다시 보고 남은 칸에 앉아 봄 (최대 3번)
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const room = liveRaidRoomsCache[roomId];
+        if (!isRushRoom(room)) { showNotice('⚠️ 사라진 러쉬방이에요.'); renderRushLobby(); return; }
+        if (raidSlotOf(room, me.id)) { renderRushLobby(); return; }
+        const free = RUSH_GUEST_SLOTS.find(s => !room[s + 'Id']);
+        if (room.status !== 'waiting' || !free) { showNotice('⚠️ 이미 출발했거나 자리가 찬 러쉬방이에요.'); return; }
+        if (attempt === 0) leaveRoomsExcept('raid', roomId);
+        rushSeatInto(room, free, rushSeatFields(me, merc));
+        room[free + 'Ready'] = false;
+        room[raidPracticeKey(free)] = false;
+        if (room.gone) delete room.gone[me.id];
+        if ((await saveRaidRoomData(roomId, room)) === false) continue;
+        armRoomPresence(`raid_rooms/${roomId}`, me.id);
+        showRewardBanner(`🚪 [${room.title}] 러쉬방에 들어왔어요! [✋ 준비완료]를 눌러 주세요.`);
+        return;
+      }
+      renderRushLobby();
+      showNotice('⚠️ 그 사이 자리가 찼거나 방이 사라졌어요. 다른 방을 골라 주세요.');
+    };
+
+    window.toggleRushReady = async function (roomId) {
+      const me = getActiveStudent();
+      const room = liveRaidRoomsCache[roomId];
+      const slot = room && me ? raidSlotOf(room, me.id) : null;
+      if (!slot || slot === 'host' || room.status !== 'waiting') return;
+      room[slot + 'Ready'] = !room[slot + 'Ready'];
+      await saveRaidRoomData(roomId, room);
+    };
+
+    // 빈 자리 채우기: 방에 없는 반 친구를 무작위로 골라, 그 친구 용병 중 파티 최고 전투력을 넘지 않는 가장 센 용병 1명씩
+    function pickRushFill(room) {
+      const seated = raidFilledSlots(room);
+      const inRoom = new Set(seated.map(s => room[s + 'Id']));
+      const cap = rushPartyCap(room);
+      const pool = [];
+      (state.students || []).forEach(s => {
+        if (!s || inRoom.has(s.id)) return;
+        const best = (s.roster || []).map(m => ({ m, p: calcMercCombatPower(m, s) })).filter(x => x.p <= cap).sort((a, b) => b.p - a.p)[0];
+        if (best) pool.push({ id: s.id, num: s.num || null, name: s.name, power: best.p, merc: JSON.parse(JSON.stringify(best.m)), snap: publicStudentSnapshot(s) });
+      });
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      return pool.slice(0, Math.max(0, RUSH_MAX_PLAYERS - seated.length));
+    }
+
+    window.startRushRoom = async function (roomId) {
+      const me = getActiveStudent();
+      const room = liveRaidRoomsCache[roomId];
+      if (!me || !isRushRoom(room) || room.status !== 'waiting') return;
+      if (room.hostId !== me.id) { showNotice('⚠️ 방장만 출발할 수 있어요!'); return; }
+      if (!raidRealGuestSlots(room).every(s => room[s + 'Ready'])) { showNotice('⚠️ 아직 [✋ 준비완료]를 누르지 않은 친구가 있어요!'); return; }
+      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      room.rushFill = pickRushFill(room);
+      const mercs = [...raidFilledSlots(room).flatMap(s => room[s + 'Mercs'] || []), ...room.rushFill.map(f => f.merc)];
+      room.rushStartFloor = rushStartFloorOf(mercs);
+      room.status = 'in_battle';
+      room.startedAt = Date.now();
+      room.fighting = { [room.hostId]: true };
+      raidRealGuestSlots(room).forEach(s => { room.fighting[room[s + 'Id']] = true; });
+      await saveRaidRoomData(roomId, room);
+    };
+
+    window.leaveRushRoom = function (roomId) {
+      cancelFirebaseCoopRaidRoom(roomId, true);
+      showNotice('🚪 러쉬방에서 나왔어요.');
+      renderRushLobby();
+    };
+
+    // 파티 용병: 사람 친구(방 자리 순서) → 빈 자리를 채운 친구 용병(AI) · 맵 왼쪽에 세로로 서서 오른쪽(몬스터가 오는 쪽)을 봄
+    function buildRushBlueUnits(r) {
+      const seats = raidFilledSlots(r).map(s => ({
+        stu: state.students.find(x => x.id === r[s + 'Id']) || r[s + 'StudentSnapshot'] || null,
+        id: r[s + 'Id'], label: r[s + 'Name'] || '친구', merc: (r[s + 'Mercs'] || [])[0], ai: false
+      }));
+      (Array.isArray(r.rushFill) ? r.rushFill : []).forEach(f => {
+        if (f && f.merc) seats.push({ stu: state.students.find(x => x.id === f.id) || f.snap || null, id: f.id, label: f.name || '친구', merc: f.merc, ai: true });
+      });
+      const list = seats.filter(x => x.merc).slice(0, RUSH_MAX_PLAYERS);
+      return list.map((x, i) => {
+        const u = createSimUnit({ ...x.merc, row: 2, col: 1 }, x.stu, 'blue', 1.0);
+        u.name = `[${x.label}]${x.merc.name}`;
+        u.liveOwnerId = x.id; // 실시간: 이 친구가 보낸 조작만 이 용병에 적용 (AI 자리는 아무도 조종하지 않음)
+        u.rushAi = x.ai;
+        u.x = x.ai ? 520 : 640;
+        u.y = Math.round(sim.worldH / 2 + (i - (list.length - 1) / 2) * 200);
+        u.facingDir = 1;
+        u.facingAngle = 0;
+        return u;
+      });
+    }
+
+    // 방이 출발 상태가 되면 파티원 모두의 화면에서: 방장 화면이 계산하고 파티원은 자기 용병 조작만 보냄 (협동 레이드와 같음)
+    function launchRushRoomBattle(r, myStu) {
+      launchedLiveRoomIds.add(r.roomId);
+      currentActiveLiveBattleRoomId = r.roomId;
+      if (currentSpectatingRaidRoomId === r.roomId) currentSpectatingRaidRoomId = null;
+      if (sim.spectator && sim.running) { stopLiveBattleNet(); closeBattleResult(); }
+      const rs = newRushState(Number(r.rushStartFloor) || 1);
+      const humans = [r.hostId, ...raidRealGuestSlots(r).map(s => r[s + 'Id'])];
+      const isHost = r.hostId === myStu.id;
+      const netRole = humans.length > 1 ? (isHost ? 'host' : 'guest') : null;
+      const names = raidFilledSlots(r).map(s => r[s + 'Name']).join(' & ');
+      const aiN = Array.isArray(r.rushFill) ? r.rushFill.length : 0;
+      showRewardBanner(`🌊 [몬스터 러쉬 출발!] ${names}${aiN ? ` + 친구 용병 AI ${aiN}명` : ''} 파티가 몰려오는 몬스터를 막아요!`);
+      launchSimulation({
+        mode: 'monster_rush',
+        title: `🌊 몬스터 러쉬: ${names}${aiN ? ` + AI ${aiN}명` : ''}`,
+        blueStudent: myStu,
+        redStudent: null,
+        rewardMc: 0,
+        customBlueUnits: buildRushBlueUnits(r),
+        customRedUnits: buildRushWave(1, rs),
+        netRole,
+        roomBattle: true
+      });
+      if (!sim.running) return;
+      rs.roundStartTick = sim.tickCount;
+      rs.pending = rs.left = sim.units.filter(u => u.rushPending).length;
+      sim.rush = rs;
+      sim.raidLive = { roomId: r.roomId, hostId: r.hostId, humans, tried: [] };
+      // 한 사람에 용병 하나: 고르는 창 없이 내 용병을 바로 직접 조종
+      const mine = sim.units.find(u => u.team === 'blue' && u.liveOwnerId === myStu.id && !u.rushAi);
+      setBattleControlMode(mine ? 'manual' : 'auto', mine ? mine.id : null, true);
+      addBattleLog(`🌊 [몬스터 러쉬] ${rushFloorOf(rs, 1)}층 몬스터부터 시작해요! ${RUSH.bossEvery}라운드마다 👑보스가 나와요. 몬스터는 맵 오른쪽 뒷편에서 몰려와요.`);
+      if (netRole) connectRaidLiveNet(r.hostId, r.startedAt, isHost ? humans.filter(id => id !== myStu.id) : []);
+      else startRaidLiveBroadcast(r);
+    }
+
+    function renderRushTab() {
+      const me = getActiveStudent();
+      if (!me || !document.getElementById('studentTab-rush')) return;
+      const picked = rushMyMerc(me);
+      const left = getDailyRewardLeft(me, 'rush');
+      const info = document.getElementById('rushMyInfo');
+      if (info) info.innerHTML = `🏅 최고 기록 <strong class="text-amber-300">${me.rushBest || 0}라운드</strong> · 💰 오늘 남은 보상 <strong class="text-emerald-300">${left}/${DAILY_REWARD_LIMITS.rush}회</strong>`;
+      const grid = document.getElementById('rushMercSelectGrid');
+      if (grid) {
+        const roster = [...(me.roster || [])].map(m => ({ m, p: calcMercCombatPower(m, me) })).sort((a, b) => b.p - a.p);
+        grid.innerHTML = roster.map(({ m, p }) => {
+          const on = picked && picked.id === m.id;
+          return `
+            <div onclick="selectRushMerc('${m.id}')" class="cursor-pointer rounded-xl border-2 p-2.5 flex items-center justify-between gap-2 transition ${
+              on ? 'bg-cyan-600/20 border-cyan-400 shadow' : 'bg-slate-950 border-slate-800 opacity-70 hover:opacity-100'}">
+              <div class="flex items-center gap-2 truncate">
+                ${getMercIconHTML(m.job, m.skinVariant, 34)}
+                <div class="truncate">
+                  <div class="text-xs font-extrabold text-white truncate">${m.name} <span class="text-cyan-300">Lv.${m.level}</span></div>
+                  <div class="text-[10px] text-rose-400 font-bold">⚔️ ${p.toLocaleString()}</div>
+                </div>
+              </div>
+              <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${on ? 'bg-cyan-400 text-slate-950' : 'bg-slate-800 text-slate-400'}">${on ? '✅ 출전' : '선택'}</span>
+            </div>`;
+        }).join('') || '<div class="col-span-full text-xs text-slate-400 py-4 text-center">용병이 없어요. 먼저 용병을 모집해 주세요!</div>';
+      }
+      renderRushLobby();
+    }
+
+    function renderRushLobby() {
+      const panel = document.getElementById('rushWaitingRoomPanel');
+      const box = document.getElementById('rushRoomsList');
+      if (!panel && !box) return;
+      const me = getActiveStudent();
+      const rooms = rushRoomsOpen();
+      const badge = document.getElementById('rushRoomCountBadge');
+      if (badge) badge.textContent = `방 ${rooms.length}개`;
+      const playerRoom = me ? rooms.find(r => raidSlotOf(r, me.id)) : null;
+      const watchRoom = !playerRoom && currentSpectatingRaidRoomId ? rooms.find(r => r.roomId === currentSpectatingRaidRoomId) : null;
+      const room = playerRoom || watchRoom;
+      const playing = sim.running && sim.mode === 'monster_rush';
+
+      if (panel) {
+        if (!room) {
+          panel.classList.add('hidden');
+          panel.innerHTML = '';
+        } else {
+          const watching = !playerRoom;
+          const isHost = !watching && room.hostId === me.id;
+          const mySlot = watching ? null : raidSlotOf(room, me.id);
+          const filled = raidFilledSlots(room);
+          const guests = raidRealGuestSlots(room);
+          const allReady = guests.every(s => room[s + 'Ready']);
+          const cap = rushPartyCap(room);
+          const waiting = room.status === 'waiting';
+          const fill = Array.isArray(room.rushFill) ? room.rushFill : [];
+          const seatCard = (slot, i) => {
+            if (room[slot + 'Id']) {
+              const m = (room[slot + 'Mercs'] || [])[0] || {};
+              const ready = slot === 'host' || room[slot + 'Ready'];
+              return `
+                <div class="bg-slate-950 border-2 ${slot === 'host' ? 'border-cyan-500/60' : (ready ? 'border-emerald-500' : 'border-amber-500/60')} rounded-2xl p-3 flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between gap-1">
+                    <span class="text-[11px] font-bold ${slot === 'host' ? 'text-cyan-300' : 'text-emerald-300'}">${slot === 'host' ? '👑 방장' : `🤝 파티원 ${i}`}</span>
+                    ${waiting ? `<span class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold ${ready ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}">${ready ? '✅ 준비' : '⏳ 대기'}</span>` : ''}
+                  </div>
+                  <div class="font-title text-base text-white truncate">${room[slot + 'Num'] ? room[slot + 'Num'] + '번 ' : ''}${room[slot + 'Name']}</div>
+                  <div class="flex items-center gap-1.5 text-[11px] text-slate-300 truncate">${m.job ? getMercIconHTML(m.job, m.skinVariant, 22) : ''}${m.name || '-'} <span class="text-cyan-300">Lv.${m.level || 1}</span></div>
+                  <div class="text-[11px] font-extrabold text-rose-400">⚔️ ${Number(room[slot + 'Power'] || 0).toLocaleString()} · 🎮 직접 조종</div>
+                </div>`;
+            }
+            const f = !waiting ? fill[i - filled.length] : null;
+            if (f) {
+              return `
+                <div class="bg-slate-950 border-2 border-dashed border-violet-500/50 rounded-2xl p-3 flex flex-col gap-1.5">
+                  <span class="text-[11px] font-bold text-violet-300">🤖 친구 용병 (AI)</span>
+                  <div class="font-title text-base text-white truncate">${f.name}</div>
+                  <div class="flex items-center gap-1.5 text-[11px] text-slate-300 truncate">${f.merc && f.merc.job ? getMercIconHTML(f.merc.job, f.merc.skinVariant, 22) : ''}${(f.merc && f.merc.name) || '-'} <span class="text-cyan-300">Lv.${(f.merc && f.merc.level) || 1}</span></div>
+                  <div class="text-[11px] font-extrabold text-rose-400">⚔️ ${Number(f.power || 0).toLocaleString()} · 🤖 자동 전투</div>
+                </div>`;
+            }
+            return `
+              <div class="bg-slate-950 border-2 border-dashed border-slate-700 rounded-2xl p-3 flex flex-col justify-center gap-1 text-[11px] text-slate-400">
+                <div class="font-bold text-slate-300">👋 빈 자리</div>
+                <div>친구가 들어오지 않으면 출발할 때 반 친구 용병(⚔️ ${cap.toLocaleString()} 이하)을 AI가 조종해요.</div>
+              </div>`;
+          };
+          const humanN = filled.length;
+          panel.classList.remove('hidden');
+          panel.innerHTML = `
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="px-2.5 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 font-extrabold text-xs">${waiting ? '🌊 러쉬 대기실' : '🔥 러쉬 진행 중'}</span>
+                ${watching ? '<span class="px-2.5 py-1 rounded-lg bg-violet-500/20 text-violet-300 font-extrabold text-xs">📺 관전 중</span>' : ''}
+                <h4 class="font-title text-xl text-white">${room.title || `${room.hostName}의 몬스터 러쉬`}</h4>
+              </div>
+              ${watching
+                ? `<button onclick="stopSpectatingRaidRoom()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-violet-900/60 text-xs font-bold text-slate-300">📺 관전 그만하기</button>`
+                : (waiting ? `<button onclick="leaveRushRoom('${room.roomId}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300">🚪 ${isHost && !guests.length ? '방 닫기' : '방 나가기'}</button>` : '')}
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+              ${RUSH_SLOTS.map((s, i) => seatCard(s, i)).join('')}
+            </div>
+            <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
+              <div class="text-xs font-bold text-slate-300">
+                ${waiting
+                  ? `👥 친구 ${humanN}명${humanN < RUSH_MAX_PLAYERS ? ` + 🤖 AI ${RUSH_MAX_PLAYERS - humanN}명` : ''} · ${guests.length && !allReady ? '파티원이 [✋ 준비완료]를 누르기를 기다리는 중이에요...' : '방장이 [출발]을 누르면 시작해요!'}`
+                  : (playing && !watching ? '🌊 러쉬가 진행 중이에요!' : (watching ? '📺 러쉬를 관전하고 있어요.' : '🌊 친구들이 러쉬 중이에요. 끝나면 이 방에서 다시 출발할 수 있어요.'))}
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                ${waiting && isHost && humanN < RUSH_MAX_PLAYERS ? roomInviteBtnHTML('raid', room.roomId) : ''}
+                ${waiting && watching && humanN < RUSH_MAX_PLAYERS ? `<button onclick="joinRushRoom('${room.roomId}')" class="px-5 py-3 rounded-2xl bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-sm shadow-lg">🚪 참가하기</button>` : ''}
+                ${waiting && mySlot && mySlot !== 'host'
+                  ? `<button onclick="toggleRushReady('${room.roomId}')" class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg ${room[mySlot + 'Ready'] ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-emerald-600 hover:bg-emerald-500 text-white animate-pulse'}">${room[mySlot + 'Ready'] ? '↺ 준비완료 취소' : '✋ 준비완료 누르기!'}</button>`
+                  : ''}
+                ${waiting && isHost
+                  ? `<button onclick="startRushRoom('${room.roomId}')" ${allReady ? '' : 'disabled'} class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg ${allReady ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 hover:opacity-95 text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}">⚔️ ${humanN}명${humanN < RUSH_MAX_PLAYERS ? ` + AI ${RUSH_MAX_PLAYERS - humanN}명` : ''} 출발!</button>`
+                  : ''}
+                ${!waiting && (playing || (sim.spectator && sim.running && sim.raidWatch && sim.raidWatch.roomId === room.roomId)) ? `<button onclick="returnToBattle()" class="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-xs shadow">⚔️ 전투 화면 보기</button>` : ''}
+                ${!waiting && watching && !(sim.spectator && sim.running) ? `<button onclick="spectateRaidRoom('${room.roomId}')" class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 러쉬 화면 보기</button>` : ''}
+              </div>
+            </div>`;
+        }
+      }
+
+      if (!box) return;
+      if (!rooms.length) {
+        box.innerHTML = `<div class="col-span-full text-slate-400 py-6 text-center bg-slate-950 rounded-2xl border border-dashed border-slate-800 text-xs">열려 있는 러쉬방이 없어요. 위에서 <strong>[➕ 러쉬방 만들기]</strong>나 <strong>[🤖 혼자 바로 출발]</strong>을 눌러 보세요!</div>`;
+        return;
+      }
+      box.innerHTML = rooms.map(r => {
+        const mine = me && raidSlotOf(r, me.id);
+        const filled = raidFilledSlots(r);
+        const full = filled.length >= RUSH_MAX_PLAYERS;
+        const waiting = r.status === 'waiting';
+        const watchingThis = currentSpectatingRaidRoomId === r.roomId || (sim.spectator && sim.running && sim.raidWatch && sim.raidWatch.roomId === r.roomId);
+        return `
+          <div class="bg-slate-950 border-2 ${mine ? 'border-amber-500/60' : 'border-cyan-500/30'} rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${waiting ? 'bg-emerald-500/20 text-emerald-300' : 'bg-cyan-500/20 text-cyan-300'}">${waiting ? `🟢 대기 중 (${filled.length}/${RUSH_MAX_PLAYERS}명)` : '🔥 러쉬 진행 중'}</span>
+                <span class="font-bold text-sm text-white truncate">${r.title || `${r.hostName}의 몬스터 러쉬`}</span>
+              </div>
+              <div class="text-xs text-slate-400 mt-1 truncate">👥 ${filled.map(s => r[s + 'Name']).join(', ')}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              ${mine
+                ? `<span class="px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 font-extrabold text-xs">참여 중인 방</span>`
+                : `${watchingThis
+                    ? `<span class="px-3 py-1.5 rounded-xl bg-violet-500/20 text-violet-300 font-extrabold text-xs">📺 관전 중</span>`
+                    : `<button onclick="spectateRaidRoom('${r.roomId}')" class="px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 관전</button>`}
+                  ${waiting && !full ? `<button onclick="joinRushRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-xs shadow">🚪 입장</button>` : ''}`}
+            </div>
+          </div>`;
+      }).join('');
+    }
 
     // 대시 발동 시 실시간 이벤트 전파 훅 연결
     const _origTriggerSingleDash = triggerSingleUnitManualDash;
