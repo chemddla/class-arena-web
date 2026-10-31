@@ -1470,8 +1470,9 @@
               <div id="homeRoomColors" class="hidden flex flex-col gap-2 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs"></div>
             </div>
             <div class="lg:col-span-3 flex flex-col gap-2">
-              <div id="homeRoomTabs" class="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+              <div id="homeRoomTabs" class="grid grid-cols-4 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
                 <button type="button" id="homeRoomTab-inv" onclick="HomeRoom.setPanel('inv')" class="py-1.5 rounded-lg text-xs font-extrabold">📦 내 가구</button>
+                <button type="button" id="homeRoomTab-pet" onclick="HomeRoom.setPanel('pet')" class="py-1.5 rounded-lg text-xs font-extrabold">🐾 내 펫</button>
                 <button type="button" id="homeRoomTab-shop" onclick="HomeRoom.setPanel('shop')" class="py-1.5 rounded-lg text-xs font-extrabold">🛒 가구 상점</button>
                 <button type="button" id="homeRoomTab-skin" onclick="HomeRoom.setPanel('skin')" class="py-1.5 rounded-lg text-xs font-extrabold">📐 방·벽지</button>
               </div>
@@ -36764,6 +36765,14 @@
       { id: 'corner_divider', name: '코너 파티션 벤치', cat: 'floor', w: 2, d: 1, h: 3, price: 1600, color: '#1f8a8a', emoji: '🪴', art: true, back: true },
       { id: 'round_fire_sofa', name: '원형 벽난로 소파', cat: 'floor', w: 2, d: 2, h: 2, price: 3000, color: '#a8262e', emoji: '🔥', art: true, back: true },
       { id: 'utility_island', name: '다용도 조리대', cat: 'floor', w: 2, d: 1, h: 2.5, price: 1500, color: '#7a8a2e', emoji: '🍞', art: true, back: true },
+      { id: 'easel_workbench', name: '이젤 작업대', cat: 'floor', w: 2, d: 1, h: 2.5, price: 1400, color: '#c48a52', emoji: '🎨', art: true, back: true },
+      { id: 'aquarium_cabinet', name: '수족관 수납장', cat: 'floor', w: 2, d: 1, h: 2.5, price: 2200, color: '#22356e', emoji: '🐟', art: true, back: true },
+      { id: 'kids_slide', name: '미끄럼틀 장난감장', cat: 'floor', w: 2, d: 2, h: 2, price: 1800, color: '#e8c43a', emoji: '🛝', art: true, back: true },
+      { id: 'cat_litter_shelf', name: '고양이 화장실 선반', cat: 'floor', w: 2, d: 1, h: 2.5, price: 1400, color: '#6b3f22', emoji: '🐈', art: true, back: true },
+      { id: 'indoor_fountain', name: '실내 분수', cat: 'floor', w: 2, d: 2, h: 2, price: 2400, color: '#3fa0c8', emoji: '⛲', art: true, back: true },
+      { id: 'sewing_fabric_desk', name: '재봉틀 원단 책상', cat: 'floor', w: 2, d: 2, h: 2, price: 2000, color: '#3a2a22', emoji: '🧵', art: true, back: true },
+      { id: 'cat_wheel', name: '캣휠', cat: 'floor', w: 2, d: 2, h: 2, price: 2200, color: '#e8641e', emoji: '🐾', art: true, back: true },
+      { id: 'home_gym', name: '홈 트레이닝 랙', cat: 'floor', w: 2, d: 2, h: 2, price: 2500, color: '#2f3f86', emoji: '🏋️', art: true, back: true },
     ];
     const HOME_DEF = Object.fromEntries(HOME_CATALOG.map(d => [d.id, d]));
     // 상점에서 뺀 가구 → 돌려줄 CA (2026-10-28: 다른 가구와 그림체가 안 맞아 뺌)
@@ -37559,7 +37568,7 @@
       renderList() {
         const box = document.getElementById('homeRoomList');
         if (!box) return;
-        ['inv', 'shop', 'skin'].forEach(k => {
+        ['inv', 'pet', 'shop', 'skin'].forEach(k => {
           const b = document.getElementById(`homeRoomTab-${k}`);
           if (b) b.className = `py-1.5 rounded-lg text-xs font-extrabold ${this.panel === k ? 'bg-pink-500 text-white' : 'text-slate-300 hover:bg-slate-800'}`;
         });
@@ -37626,19 +37635,24 @@
             </div>`).join('');
           return;
         }
+        if (this.panel === 'pet') {
+          // 내 펫: 방에 데려오면 돌아다니고 가구에 올라가 쉼
+          const myPets = PetSystem.ownedPets(stu), inRoom = new Set(this.home(stu).pets);
+          box.innerHTML = myPets.length
+            ? `<div class="col-span-full text-[11px] font-bold text-slate-500 pt-1">방에 데려온 펫은 돌아다니고 가구에 올라가 쉬어요. 펫을 누르면 좋아해요.</div>` + myPets.map(p => `<div class="bg-slate-950 border ${inRoom.has(p.id) ? 'border-pink-400/60' : 'border-slate-800'} rounded-xl p-2 flex flex-col items-center gap-1">
+              <img src="${PET_DEFS[p.type].icon}" alt="" class="h-14 w-auto object-contain" draggable="false">
+              <span class="text-xs font-extrabold text-slate-200">${this.esc(p.name)}</span>
+              <button type="button" onclick="HomeRoom.togglePet('${p.id}')" class="w-full py-1.5 rounded-lg ${inRoom.has(p.id) ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-pink-500 hover:bg-pink-400 text-white'} text-[11px] font-extrabold">${inRoom.has(p.id) ? '🏠 내보내기' : '🐾 데려오기'}</button>
+            </div>`).join('')
+            : `<div class="col-span-full text-xs text-slate-400 py-6 text-center bg-slate-950 rounded-xl border border-slate-800">아직 펫이 없어요. 펫을 얻으면 방에 데려올 수 있어요.</div>`;
+          return;
+        }
         const stored = this.home(stu).items.filter(it => !it.p);
         const counts = {};
         stored.forEach(it => { counts[it.id] = (counts[it.id] || 0) + 1; });
         const ids = Object.keys(counts);
-        const head = t => `<div class="col-span-full text-xs font-extrabold text-slate-300 pt-1">${t}</div>`;
-        const myPets = PetSystem.ownedPets(stu), inRoom = new Set(this.home(stu).pets);
-        const petHtml = myPets.length ? head('🐾 내 펫 <span class="text-slate-500 font-bold">· 방에서 돌아다니고 가구에 올라가 쉬어요</span>') + myPets.map(p => `<div class="bg-slate-950 border ${inRoom.has(p.id) ? 'border-pink-400/60' : 'border-slate-800'} rounded-xl p-2 flex flex-col items-center gap-1">
-              <img src="${PET_DEFS[p.type].icon}" alt="" class="h-14 w-auto object-contain" draggable="false">
-              <span class="text-xs font-extrabold text-slate-200">${this.esc(p.name)}</span>
-              <button type="button" onclick="HomeRoom.togglePet('${p.id}')" class="w-full py-1.5 rounded-lg ${inRoom.has(p.id) ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-pink-500 hover:bg-pink-400 text-white'} text-[11px] font-extrabold">${inRoom.has(p.id) ? '🏠 내보내기' : '🐾 데려오기'}</button>
-            </div>`).join('') + head('🪑 보관한 가구') : '';
-        if (!ids.length) { box.innerHTML = petHtml + `<div class="col-span-full text-xs text-slate-400 py-6 text-center bg-slate-950 rounded-xl border border-slate-800">보관함이 비었어요. 🛒 가구 상점에서 가구를 사 보세요!</div>`; return; }
-        box.innerHTML = petHtml + ids.map(id => {
+        if (!ids.length) { box.innerHTML = `<div class="col-span-full text-xs text-slate-400 py-6 text-center bg-slate-950 rounded-xl border border-slate-800">보관함이 비었어요. 🛒 가구 상점에서 가구를 사 보세요!</div>`; return; }
+        box.innerHTML = ids.map(id => {
           const def = HOME_DEF[id];
           return `<div class="bg-slate-950 border border-slate-800 rounded-xl p-2 flex flex-col items-center gap-1">
               ${thumb(def)}
@@ -37668,9 +37682,9 @@
         };
         if (this.ghost && this.ghost.preview) {
           const def = HOME_DEF[this.ghost.id], stu = this.student(), ok = this.fits(this.ghost, this.ghost.u), rich = stu && (stu.mc || 0) >= def.price;
-          bar.innerHTML = `<span class="font-extrabold text-sky-300">👀 ${def.name} 미리보기</span><span class="text-slate-400">${this.ghost.pinned ? '사지 않았어요 · 다시 누르면 옮겨요' : '방 바닥을 눌러 자리를 정해요'}</span>`
+          bar.innerHTML = `<span class="font-extrabold text-sky-300">👀 ${def.name} 미리보기</span><span class="text-slate-400">아직 사지 않았어요 · 방 바닥을 누르거나 끌어서 옮겨 봐요</span>`
             + dirs() + btn('↻ 돌리기 (R)', 'rotate()')
-            + (this.ghost.pinned ? btn(`🛒 여기에 사서 놓기 · ${def.price.toLocaleString()} CA`, 'buyPreview()', ok && rich ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-500') : '')
+            + btn(`🛒 여기에 사서 놓기 · ${def.price.toLocaleString()} CA`, 'buyPreview()', ok && rich ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-500')
             + btn('닫기 (Esc)', 'cancel()');
           this.renderColors(null);
           return;
@@ -37837,8 +37851,11 @@
       // 4방향 중 하나로 바로 돌리기 (r: 0 ↙ · 1 ↖ · 2 ↗ · 3 ↘ 앞면 방향)
       setDir(r) {
         if (this.ghost) {
-          this.ghost.r = r;
-          this.moveGhostTo(this.hoverXY || { X: this.ghost.x + 1, Y: this.ghost.y + 1 });
+          const g = this.ghost;
+          g.r = r;
+          // 자리를 정한 미리보기는 그 자리에서 돌림
+          const s = this.dims(HOME_DEF[g.id], r);
+          this.moveGhostTo(g.pinned ? { X: g.x + s.X / 2, Y: g.y + s.Y / 2 } : this.hoverXY || { X: g.x + 1, Y: g.y + 1 });
           this.renderToolbar();
           this.draw();
           return;
@@ -37933,10 +37950,7 @@
           const p = this.toRoom(e);
           this.hoverXY = p;
           try { cv.setPointerCapture(e.pointerId); } catch (err) {}
-          if (this.ghost) {
-            if (this.ghost.pinned && !this.ghost.down) this.renderToolbar(); // 미리보기를 다시 잡아 옮기는 중
-            this.moveGhostTo(p); this.ghost.down = true; this.draw(); return;
-          }
+          if (this.ghost) { this.moveGhostTo(p); this.ghost.down = true; this.draw(); return; }
           const pet = this.pickPet(p);
           if (pet) { this.patPet(pet); return; }
           const it = this.visitId ? null : this.pick(p); // 친구 방에서는 가구를 고르지 않고 둘러보기만
