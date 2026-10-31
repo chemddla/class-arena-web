@@ -43,6 +43,11 @@ def part_masks(f, idx):
     solid = (f[..., 3] == 255) & ~ndi.binary_dilation(semi)
     vest = green & ~beret & solid
     pants = a & (h >= 195) & (h <= 250) & (s > 0.15) & (s < 0.6) & (v > 0.15) & (v < 0.62)
+    # 질풍의 리듬 소용돌이의 파랑·보라 화살표, 불협화음 번개 가장자리도 같은 색 범위라 가장 큰 두 덩어리(두 다리)만 남김
+    lab5, k5 = ndi.label(pants, np.ones((3, 3)))
+    if k5:
+        sz = ndi.sum(pants, lab5, range(1, k5 + 1))
+        pants = np.isin(lab5, [j + 1 for j in np.argsort(sz)[::-1][:2] if sz[j] >= 12])
     # 바지 안쪽에 채도가 낮거나 아주 어두운 남색 점이 섞여 있어 밝은 바지로 바꾸면 얼룩처럼 남음 → 바지 덩어리 안의 구멍도 바지로
     #   (검은 외곽선은 그대로: 바지 덩어리를 닫아서 생긴 안쪽만, 차가운 색이거나 무채색인 곳만)
     cool = (h >= 180) & (h <= 260) | (s < 0.15)
@@ -54,7 +59,7 @@ def part_masks(f, idx):
     ys, xs = np.nonzero(beret)
     if len(ys):
         box = np.zeros_like(warm)
-        box[max(0, ys.min()):ys.max() + 30, max(0, xs.min() - 8):xs.max() + 3] = True  # 오른쪽(얼굴 쪽)은 좁게: 치켜든 류트 머리가 베레모에 닿음
+        box[max(0, ys.min()):ys.max() + 30, max(0, xs.min() - 8):xs.max() + 6] = True  # 오른쪽(얼굴 쪽)은 좁게
         warm_in = warm & box
     else:
         warm_in = warm
@@ -77,7 +82,7 @@ def part_masks(f, idx):
     #   (쓰러짐 칸은 찾은 머리 둘레만) · 1px 외곽선 너머 가닥까지 잇기 위해 2px 넓혀서 닿은 덩어리
     ext = np.zeros_like(warm)
     if len(ys) and idx not in HAIR_SEEDS:
-        ext[max(0, ys.min()):ys.max() + 40, max(0, xs.min() - 14):xs.max() + 3] = True
+        ext[max(0, ys.min()):ys.max() + 40, max(0, xs.min() - 14):xs.max() + 6] = True
     elif hair.any():
         hy, hx = np.nonzero(hair)
         ext[max(0, hy.min() - 4):hy.max() + 5, max(0, hx.min() - 4):hx.max() + 5] = True
@@ -110,6 +115,15 @@ def recolor(f, idx, spec, med):
             if rim.any():
                 rgb = hsv2rgb(np.stack([np.full(rim.sum(), th / 360.), hsv[..., 1][rim], hsv[..., 2][rim]], -1)[None])[0]
                 out[rim, :3] = (rgb * 255 + .5).clip(0, 255).astype(np.uint8)
+        if key == 'beret':
+            # 날아간 베레모의 안감(어두운 청록·남색)과 챙의 청록 줄: 베레모에 붙은 어두운 차가운 색은 베레모 색상으로 (밝기는 그대로)
+            cool_dark = ~m & ~masks['pants'] & (f[..., 3] == 255) & (h >= 150) & (h <= 260) & (s > 0.1) & (v < 0.45)
+            lab6, _ = ndi.label(cool_dark, np.ones((3, 3)))
+            lining = np.isin(lab6, [j for j in np.unique(lab6[ndi.binary_dilation(m)]) if j > 0])
+            if lining.any():
+                ns = np.clip(hsv[..., 1][lining] * ts / med[key][0], 0, 1)
+                rgb = hsv2rgb(np.stack([np.full(lining.sum(), th / 360.), ns, hsv[..., 2][lining]], -1)[None])[0]
+                out[lining, :3] = (rgb * 255 + .5).clip(0, 255).astype(np.uint8)
         ms, mv = med[key]
         nh = np.full(m.sum(), th / 360.)
         ns = np.clip(hsv[..., 1][m] * ts / ms, 0, 1)
