@@ -151,32 +151,49 @@ def shrink(rgba, sc, hard=True):
     return a.clip(0, 255).astype(np.uint8)
 
 
-def peel_green(sheet):
+def peel_green(sheet, cellW):
     # 피사체 바깥 테두리에 남은 초록 배경 찌꺼기 정리 (윤곽과 배경이 섞인 어두운 초록 · 연두 · 옅은 빛을 되살리다 남은 순수 초록)
-    #   1) 투명한 곳과 맞닿은 초록 픽셀을 벗겨 냄 (최대 3겹). 청록 빛·민트 음표(파랑이 큼)는 초록 배경과 색이 달라서 남김
-    #   2) 그래도 테두리에 남은 어두운 초록 기운은 초록을 빼서 검은 윤곽색으로
+    #   1) 투명한 곳과 맞닿은 밝은 초록(G 150 이상)·배경이 반쯤 섞인 진한 초록(빨강·파랑이 거의 없음)을 벗겨 냄 (최대 2겹)
+    #      어두운 초록(G 100 미만)은 초록 기운이 밴 검은 윤곽이라 지우지 않음 (지우면 윤곽이 끊김), 베레모(빨강·파랑 60 안팎)도 남김
+    #      청록 빛·민트 음표(파랑이 큼)는 초록 배경과 색이 달라서 남김
+    #   2) 테두리에 남은 초록 기운 밴 윤곽은 초록을 빼서 검은 윤곽색으로
     #   3) 아래 참고
     s = sheet.astype(int)
     R, G, B = s[..., 0], s[..., 1], s[..., 2]
-    green = (G > np.maximum(R, B) + 25) & (np.abs(R - B) < 40)
+    hi0 = np.maximum(R, B)
+    green = (G > hi0 + 25) & (np.abs(R - B) < 40) & ((G >= 150) | ((G >= 100) & (np.minimum(R, B) < 45) & (G > hi0 + 50)))
     op = s[..., 3] > 0
-    for _ in range(3):
+    for _ in range(2):
         rim = op & green & ndi.binary_dilation(~op)
         if not rim.any(): break
         op &= ~rim
     s[..., 3] = np.where(op, s[..., 3], 0)
     edge = op & ndi.binary_dilation(~op)
-    dark = edge & (G > np.maximum(R, B) + 10) & (G < 110)
+    dark = edge & (G > np.maximum(R, B) + 10) & (G < 100)
     s[..., 1] = np.where(dark, np.maximum(R, B), G)
-    #   3) 이펙트(불꽃·번개·빛·바람) 바깥 2px에 남은 밝은 초록 번짐: 초록이 크게 튀고 반투명하면 지우고,
+    #   3) 이펙트(불꽃·번개·빛·바람) 바깥 2px에 남은 밝은 초록 번짐: 맨 바깥 1px이거나 초록이 크게 튀고 반투명하면 지우고,
     #      나머지는 초록을 빨강·파랑 중 큰 값 + 10까지 낮춤 (연두 → 노랑, 봄초록 → 청록). 베레모(G 135 이하)는 건드리지 않음
     G = s[..., 1]
     edge2 = op & ndi.binary_dilation(~op, iterations=2)
     hi = np.maximum(R, B)
     spill = edge2 & (G >= 140) & (G > hi + 10)
-    drop = spill & (G > hi + 60) & (s[..., 3] < 200)
+    edge1 = op & ndi.binary_dilation(~op)
+    drop = spill & (((G > hi + 60) & (s[..., 3] < 200)) | edge1)  # 맨 바깥 1px 번짐은 노랗게 바꾸면 가짜 윤곽처럼 보여서 지움
     s[..., 3] = np.where(drop, 0, s[..., 3])
     s[..., 1] = np.where(spill & ~drop, hi + 10, G)
+    # 불꽃·번개처럼 따뜻한 색(빨강이 큼)의 연두 번짐은 본래 어두운 주황 갈색 윤곽이 배경과 섞인 것 → 밝은 노랑으로 두면 가짜 테두리라 갈색 윤곽색으로 어둡게
+    warm = spill & ~drop & (R > B + 60)
+    warm[:, :cellW * 10] = False; warm[:, cellW * 19:] = False  # 전투의 노래·수호의 선율·불협화음 칸(10~18)만. 앙코르 금빛 고리는 갈색이 되면 안 됨
+    for ch, k in ((0, 0.6), (1, 0.4), (2, 0.5)):
+        s[..., ch] = np.where(warm, (np.minimum(R, G) if ch == 1 else s[..., ch]) * k, s[..., ch])
+    #   4) 벗겨 내면서 새로 바깥이 된 픽셀에 남은 초록: 밝으면 지우고, 어두우면 더 벗기지 않고 초록만 빼서 윤곽색으로 (안쪽으로 파고들지 않게)
+    for _ in range(2):  # 밝은 픽셀을 지우면 그 안쪽이 새로 바깥이 되므로 한 번 더
+        G = s[..., 1]
+        op = s[..., 3] > 0
+        edge = op & ndi.binary_dilation(~op)
+        left = edge & (G > hi + 25) & (np.abs(R - B) < 40)
+        s[..., 3] = np.where(left & (G >= 150), 0, s[..., 3])
+        s[..., 1] = np.where(left & (G < 150), hi, G)
     return s.clip(0, 255).astype(np.uint8)
 
 
@@ -205,7 +222,19 @@ def main(folder):
         x = i * cellW + L - int(round(c))
         y = H - 2 - B - p.shape[0] + d   # 발 = 기준점 (칸 아래에서 B + 2px 위)
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
-    sheet = peel_green(sheet)
+    sheet = peel_green(sheet, cellW)
+    # 전투의 노래 불꽃 칸(11·12): 불꽃의 검붉은 윤곽이 줄이면서 초록 배경과 섞여 맨 바깥에 노란 띠로 남음 → 붉은 불꽃과 맞닿은 노란 테두리를 검붉은 윤곽색으로
+    # (불꽃이 없는 시전 칸 10의 노란 음표, 번개 칸의 노란 번개는 본래 색이라 건드리지 않음)
+    for i in (11, 12):
+        c = sheet[:, i * cellW:(i + 1) * cellW].astype(int)
+        cr, cg, cb, ca = c[..., 0], c[..., 1], c[..., 2], c[..., 3]
+        op = ca > 0
+        rim = op & ndi.binary_dilation(~op)
+        yellow = rim & (cr > 120) & (cg > cr * 0.75) & (cb < 90)
+        red = op & (cr > 170) & (cg < 140)
+        fix = yellow & ndi.binary_dilation(red, iterations=2)
+        c[fix, :3] = [130, 45, 10]
+        sheet[:, i * cellW:(i + 1) * cellW] = c.clip(0, 255).astype(np.uint8)
     # 앙코르 시전 칸(22~24)의 반투명 금빛 고리는 초록 배경과 섞여 올리브색으로 남음 → 초록을 빨강 자리로 돌려 금빛으로 되돌림
     # (청록·파랑 오선은 파랑이 커서 그대로, 연한 순수 초록 찌꺼기는 지움, 베레모는 G 130 이하라 그대로)
     for i in (22, 23, 24):
@@ -217,6 +246,19 @@ def main(folder):
         c[..., 1] = np.where(olive, (cr + cg) * 0.45, cg)
         c[..., 3] = np.where(junk, 0, ca)
         sheet[:, i * cellW:(i + 1) * cellW] = c.clip(0, 255).astype(np.uint8)
+    # 마지막 점검: 칸별 손질 뒤에도 테두리에 남은 어두운 초록 섞임은 윤곽색으로 (베레모처럼 빨강·파랑이 45 넘는 초록은 그대로),
+    # 투명한 곳에 떨어진 3px 이하 초록 티끌은 지움
+    c = sheet.astype(int)
+    cr, cg, cb, ca = c[..., 0], c[..., 1], c[..., 2], c[..., 3]
+    op = ca > 0
+    rim = op & ndi.binary_dilation(~op)
+    cg = np.where(rim & (cg > np.maximum(cr, cb) + 25) & (np.abs(cr - cb) < 40) & (np.minimum(cr, cb) < 45), np.maximum(cr, cb), cg)
+    lab, n = ndi.label(op)
+    sizes = ndi.sum(op, lab, range(1, n + 1))
+    speck = np.isin(lab, 1 + np.where(sizes <= 3)[0]) & (cg > np.maximum(cr, cb) + 25)
+    c[..., 1] = cg
+    c[..., 3] = np.where(speck, 0, ca)
+    sheet = c.clip(0, 255).astype(np.uint8)
     Image.fromarray(sheet, 'RGBA').save(OUT_CHAR, 'WEBP', lossless=True)
     idle = pieces[0][1]
     hx = np.where(idle[:int(idle.shape[0] * 0.5), :, 3].any(axis=0))[0]
