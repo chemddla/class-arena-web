@@ -6124,8 +6124,8 @@
     const CURSE_HIT_FX = { src: 'assets/sprites/fx/curse_hit_fx.webp', anims: { orb: [[0,0,173,162,86,80]], hex: [[175,0,141,139,71,72]], sip: [[318,0,121,144,60,143]] } }; // sip = 흡혼에 맞은 적 발밑 보라 불길 (기준점 = 바닥 가운데)
     // 주술사 기본 공격 보라 불꽃 (tools/curse_orb_build.py). 둥근 머리가 앞(오른쪽), 꼬리 불길이 뒤. 기준점 = 둥근 머리 가운데
     const CURSE_ORB_FX = { src: 'assets/sprites/fx/curse_orb.webp', anims: { flame: [[0,0,75,51,59,26]] } };
-    // 음유시인 기본 공격 하늘색 물방울 · 맞은 자리에서 터지는 별빛 (tools/bard_bubble_fx_build.py). 기준점 = 그림 가운데
-    const BARD_ORB_FX = { src: 'assets/sprites/fx/bard_bubble_fx.webp', anims: { bubble: [[0,0,53,56,26,28]], burst: [[55,0,107,94,50,47]] } };
+    // 음유시인 기본 공격 하늘색 물방울 · 맞은 자리에서 터지는 별빛 · 불협화음에 맞은 적의 보라 금 간 고리 (tools/bard_bubble_fx_build.py). 기준점 = 그림 가운데
+    const BARD_ORB_FX = { src: 'assets/sprites/fx/bard_bubble_fx.webp', anims: { bubble: [[0,0,53,56,26,28]], burst: [[55,0,107,94,50,47]], disso: [[164,0,210,176,108,91]] } };
     // 투사체 종류별 그림과 크기(첫 프레임 높이, 월드 px). match가 있으면 그 조건을 만족할 때만 (성녀 분홍 구슬 제외)
     // 투사체에 spr가 붙어 있으면 그 키를 먼저 찾음 (sheet = 다른 아틀라스, hit = 터질 때 그릴 효과 그림)
     const PROJECTILE_SPRITES = {
@@ -20348,7 +20348,7 @@
         sim.effects.push({ type: 'aoe_ring', x: pt.x, y: pt.y, r, color: '#64748b', life: 36, maxLife: 36 });
         const hit = enemies.filter(e => Math.hypot(e.x - pt.x, e.y - pt.y) - unitBodyGap(e) <= r);
         hit.forEach(e => {
-          sim.effects.push({ type: 'magic_burst', x: e.x, y: e.y - 12, r: 40, life: 24, maxLife: 24 });
+          sim.effects.push({ type: 'magic_burst', spr: 'bard_disso_hit', x: e.x, y: e.y - 12, r: 40, life: 24, maxLife: 24 }); // 보라 금 간 고리·파편
           applyDamage(unit, e, unit.atk * BARD_DISSONANCE_DMG, '🎺', '#64748b');
           inflictStatus(unit, e, 'silence', BARD_SILENCE_TICKS);
         });
@@ -21349,11 +21349,11 @@
 
     // spr가 붙은 효과를 그림으로 그리면 true
     function drawSpriteEffect(ctx, ef, progress) {
-      if (ef.spr === 'bard_bubble_hit') {
-        // 음유시인 물방울이 터짐: 작게 터져 커지며 사라짐 (폭 40)
+      if (ef.spr === 'bard_bubble_hit' || ef.spr === 'bard_disso_hit') {
+        // 음유시인 물방울이 터짐 (폭 40) · 불협화음에 맞은 적의 보라 고리가 깨지며 퍼짐 (폭 56): 작게 터져 커지며 사라짐
         if (!BARD_ORB_FX.ready) return false;
-        const fr = BARD_ORB_FX.anims.burst[0];
-        drawFxFrame(ctx, fr, ef.x, ef.y, 40 * (0.55 + 0.45 * Math.min(1, progress * 3)) / fr[2], 0, Math.min(1, (1 - progress) * 2.5), BARD_ORB_FX.img);
+        const disso = ef.spr === 'bard_disso_hit', fr = BARD_ORB_FX.anims[disso ? 'disso' : 'burst'][0];
+        drawFxFrame(ctx, fr, ef.x, ef.y, (disso ? 56 : 40) * (0.55 + 0.45 * Math.min(1, progress * 3)) / fr[2], 0, Math.min(1, (1 - progress) * 2.5), BARD_ORB_FX.img);
         return true;
       }
       if (ef.spr === 'curse_orb_hit' || ef.spr === 'curse_hex_hit' || ef.spr === 'curse_sip_hit') {
