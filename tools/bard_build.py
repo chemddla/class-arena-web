@@ -155,6 +155,7 @@ def peel_green(sheet):
     # 피사체 바깥 테두리에 남은 초록 배경 찌꺼기 정리 (윤곽과 배경이 섞인 어두운 초록 · 연두 · 옅은 빛을 되살리다 남은 순수 초록)
     #   1) 투명한 곳과 맞닿은 초록 픽셀을 벗겨 냄 (최대 3겹). 청록 빛·민트 음표(파랑이 큼)는 초록 배경과 색이 달라서 남김
     #   2) 그래도 테두리에 남은 어두운 초록 기운은 초록을 빼서 검은 윤곽색으로
+    #   3) 아래 참고
     s = sheet.astype(int)
     R, G, B = s[..., 0], s[..., 1], s[..., 2]
     green = (G > np.maximum(R, B) + 25) & (np.abs(R - B) < 40)
@@ -167,6 +168,15 @@ def peel_green(sheet):
     edge = op & ndi.binary_dilation(~op)
     dark = edge & (G > np.maximum(R, B) + 10) & (G < 110)
     s[..., 1] = np.where(dark, np.maximum(R, B), G)
+    #   3) 이펙트(불꽃·번개·빛·바람) 바깥 2px에 남은 밝은 초록 번짐: 초록이 크게 튀고 반투명하면 지우고,
+    #      나머지는 초록을 빨강·파랑 중 큰 값 + 10까지 낮춤 (연두 → 노랑, 봄초록 → 청록). 베레모(G 135 이하)는 건드리지 않음
+    G = s[..., 1]
+    edge2 = op & ndi.binary_dilation(~op, iterations=2)
+    hi = np.maximum(R, B)
+    spill = edge2 & (G >= 140) & (G > hi + 10)
+    drop = spill & (G > hi + 60) & (s[..., 3] < 200)
+    s[..., 3] = np.where(drop, 0, s[..., 3])
+    s[..., 1] = np.where(spill & ~drop, hi + 10, G)
     return s.clip(0, 255).astype(np.uint8)
 
 
@@ -196,6 +206,17 @@ def main(folder):
         y = H - 2 - B - p.shape[0] + d   # 발 = 기준점 (칸 아래에서 B + 2px 위)
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
     sheet = peel_green(sheet)
+    # 앙코르 시전 칸(22~24)의 반투명 금빛 고리는 초록 배경과 섞여 올리브색으로 남음 → 초록을 빨강 자리로 돌려 금빛으로 되돌림
+    # (청록·파랑 오선은 파랑이 커서 그대로, 연한 순수 초록 찌꺼기는 지움, 베레모는 G 130 이하라 그대로)
+    for i in (22, 23, 24):
+        c = sheet[:, i * cellW:(i + 1) * cellW].astype(int)
+        cr, cg, cb, ca = c[..., 0], c[..., 1], c[..., 2], c[..., 3]
+        olive = (ca > 0) & (cg >= 140) & (cg > np.maximum(cr, cb) + 10) & (cb < cr + 40)
+        junk = olive & (cg > np.maximum(cr, cb) + 60) & (ca < 200)
+        c[..., 0] = np.where(olive, cg, cr)
+        c[..., 1] = np.where(olive, (cr + cg) * 0.45, cg)
+        c[..., 3] = np.where(junk, 0, ca)
+        sheet[:, i * cellW:(i + 1) * cellW] = c.clip(0, 255).astype(np.uint8)
     Image.fromarray(sheet, 'RGBA').save(OUT_CHAR, 'WEBP', lossless=True)
     idle = pieces[0][1]
     hx = np.where(idle[:int(idle.shape[0] * 0.5), :, 3].any(axis=0))[0]
