@@ -6320,7 +6320,8 @@
         const f = BARD_SR_ENCORE_FX.frames.burst;
         const k = 300 * (ef.s || 1) / f[2] * (0.7 + 0.3 * Math.min(1, progress / 0.2));
         ctx.globalAlpha = Math.min(1, progress / 0.08, (1 - progress) / 0.35);
-        drawSpriteFx(ctx, BARD_SR_ENCORE_FX.img, f[0], f[1], f[2], f[3], ef.x - f[4] * k, ef.y + 12 - f[5] * k, f[2] * k, f[3] * k);
+        const o = ef.owner && ef.owner.alive ? ef.owner : ef; // 시전자 발밑을 따라감
+        drawSpriteFx(ctx, BARD_SR_ENCORE_FX.img, f[0], f[1], f[2], f[3], o.x - f[4] * k, o.y + 12 - f[5] * k, f[2] * k, f[3] * k);
         return;
       }
       if (ef.type === 'bard_encore' || ef.type === 'bard_encore_ally') {
@@ -6329,7 +6330,8 @@
         const f = BARD_ENCORE_FX.frames[ef.type === 'bard_encore' ? 'stage' : 'ally'];
         const k = (ef.type === 'bard_encore' ? 230 : 100) * (ef.s || 1) / f[2] * (0.6 + 0.4 * Math.min(1, progress / 0.15));
         ctx.globalAlpha = Math.min(1, progress / 0.08, (1 - progress) / 0.3);
-        drawSpriteFx(ctx, BARD_ENCORE_FX.img, f[0], f[1], f[2], f[3], ef.x - f[4] * k, ef.y + 12 - f[5] * k, f[2] * k, f[3] * k);
+        const o = ef.owner && ef.owner.alive ? ef.owner : ef; // 시전자·아군 발밑을 따라감 (쓰러지면 그 자리)
+        drawSpriteFx(ctx, BARD_ENCORE_FX.img, f[0], f[1], f[2], f[3], o.x - f[4] * k, o.y + 12 - f[5] * k, f[2] * k, f[3] * k);
         return;
       }
       if (!BARD_WAVE_FX.ready) return;
@@ -18303,10 +18305,11 @@
       if (sk === 'encore') {
         // 모든 아군: 히든 스킬이 아닌 스킬 쿨타임 초기화 + 마나 가득 + 10초 고양·선율 (자신의 앙코르 쿨타임은 그대로)
         // 시전자 발밑에 금빛 무대(오선·음표, 시크릿 레어는 소용돌이), 다른 아군 발밑에 마법진·화살표·방패
-        if (usesBardSr(unit)) sim.effects.push({ type: 'bard_sr_encore', x: unit.x, y: unit.y, s: unitFxSize(unit), life: 90, maxLife: 90 }); // 시크릿 레어: 금빛·보랏빛 소용돌이
-        else sim.effects.push({ type: 'bard_encore', x: unit.x, y: unit.y, s: unitFxSize(unit), life: 80, maxLife: 80 });
+        // 이펙트는 owner(시전자·아군)를 따라다니며 사라질 때까지 발밑에 있음
+        if (usesBardSr(unit)) sim.effects.push({ type: 'bard_sr_encore', x: unit.x, y: unit.y, owner: unit, s: unitFxSize(unit), life: 90, maxLife: 90 }); // 시크릿 레어: 금빛·보랏빛 소용돌이
+        else sim.effects.push({ type: 'bard_encore', x: unit.x, y: unit.y, owner: unit, s: unitFxSize(unit), life: 80, maxLife: 80 });
         allies.forEach(a => {
-          if (a !== unit && a.alive) sim.effects.push({ type: 'bard_encore_ally', x: a.x, y: a.y, s: unitFxSize(a), life: 80, maxLife: 80 });
+          if (a !== unit && a.alive) sim.effects.push({ type: 'bard_encore_ally', x: a.x, y: a.y, owner: a, s: unitFxSize(a), life: 80, maxLife: 80 });
           if (a.skillCooldowns) Object.keys(a.skillCooldowns).forEach(k => { if (!isHiddenSkillKey(k)) a.skillCooldowns[k] = 0; });
           if (a.maxMana > 0) a.mana = a.maxMana;
           a.statuses.anthem = Math.max(a.statuses.anthem || 0, BARD_ENCORE_TICKS);
