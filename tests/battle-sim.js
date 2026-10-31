@@ -9,6 +9,11 @@
 (function () {
   const BS = window.BS = { results: {} };
   suppressRemoteClassPush = true;
+  // 시뮬 중에는 소리 끔 (타격음·효과음)
+  sfxEnabled = false;
+  playCombatSfx = () => {};
+  if (audioCtx) audioCtx.suspend().catch(() => {});
+  document.querySelectorAll('audio, video').forEach(a => { a.muted = true; });
   BATTLE_TIME_LIMIT.practiceTicks = 180 * BATTLE_TICKS_PER_SEC;
   BS.JOBS = Object.keys(JOB_DEFS);
   BS.yieldNow = () => new Promise(res => { const ch = new MessageChannel(); ch.port1.onmessage = () => res(); ch.port2.postMessage(0); });
