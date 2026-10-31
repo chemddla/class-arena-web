@@ -76,8 +76,15 @@ def part_masks(f, idx):
         hair_col[:(ys.min() + ys.max()) // 2] = False  # 베레모 위쪽 절반 높이보다 위는 머리가 아님 (치켜든 류트 머리)
     #   피부에 둘러싸인 곳(입·볼 그늘)도 빠짐
     face = (h <= 40) & (s < 0.5) & (v > 0.7)
-    hair_col &= ~(ndi.binary_fill_holes(face) & ~face)
-    hair &= hair_col
+    holes = ndi.binary_fill_holes(face) & ~face
+    hair_col &= ~holes
+    # 머리카락 그늘(귀 옆·얼굴 옆 머리 가닥): 채도가 낮고 어두운 갈색이라 위 색 범위에서 빠짐 → 처음 잡은 덩어리 안이거나
+    #   찾은 머리에 바로 붙은 어두운 갈색은 머리로 (밝은 피부 그늘은 밝기로, 눈·입은 피부에 둘러싸여서 빠짐)
+    shade = a & ((h <= 30) | (h >= 345)) & (s >= 0.25) & (v >= 0.15) & (v < 0.5) & ~holes
+    if len(ys) and idx not in HAIR_SEEDS:
+        shade[:(ys.min() + ys.max()) // 2] = False
+    core = hair & hair_col
+    hair = core | (hair & shade)
     # 어깨까지 내려온 뒷머리: 찾은 머리에 머리카락 색으로 이어진 곳을 조금 더 넓은 범위(아래·뒤쪽)까지
     #   (쓰러짐 칸은 찾은 머리 둘레만) · 1px 외곽선 너머 가닥까지 잇기 위해 2px 넓혀서 닿은 덩어리
     ext = np.zeros_like(warm)
@@ -88,7 +95,9 @@ def part_masks(f, idx):
         ext[max(0, hy.min() - 4):hy.max() + 5, max(0, hx.min() - 4):hx.max() + 5] = True
     lab4, _ = ndi.label(hair_col & ext, np.ones((3, 3)))
     hair |= np.isin(lab4, [i for i in np.unique(lab4[ndi.binary_dilation(hair, iterations=2)]) if i > 0])
-    return {'beret': beret, 'vest': vest, 'pants': pants, 'hair': hair & ~beret, 'solid': solid}
+    for _ in range(2):  # 머리 둘레의 어두운 가닥 끝 (가방·장갑까지 번지지 않게 2px만)
+        hair |= shade & ext & ndi.binary_dilation(hair)
+    return {'beret': beret, 'vest': vest, 'pants': pants, 'hair': hair & ~beret, 'hair_core': core & ~beret, 'solid': solid}
 
 
 def base_medians(im):
@@ -96,6 +105,7 @@ def base_medians(im):
     f = im[:, :CELL_W]
     m = part_masks(f, 0)
     _, _, s, v = hsv_of(f)
+    m['hair'] = m.pop('hair_core')  # 머리 밝기 기준은 그늘을 뺀 머리카락 색으로 (그늘이 섞이면 전체가 밝아짐)
     return {k: (np.median(s[mk]), np.median(v[mk])) for k, mk in m.items() if k != 'solid'}
 
 
