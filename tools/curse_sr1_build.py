@@ -44,6 +44,12 @@ def key_panel(rgb, tol=13):
     lab, _ = ndi.label(near)
     border = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
     bg = np.isin(lab, border[border > 0])
+    # 지팡이와 몸 사이처럼 그림에 둘러싸여 가장자리와 이어지지 않은 판 색 구멍도 배경.
+    # 망토 회색이 판 색과 가까워서 판 색과 거의 같은(±6) 넓은(150px 이상) 구멍만 지움
+    exact = np.abs(rgb - pc).max(-1) < 6
+    hl, _ = ndi.label(exact)
+    areas = ndi.sum(exact, hl, range(1, hl.max() + 1))
+    bg |= np.isin(hl, 1 + np.where(areas >= 150)[0])
     a = (~bg).astype(float)
     # 판 색이 살짝 섞인 가장자리 1px은 지움
     fringe = (a > 0) & ndi.binary_dilation(bg, iterations=1) & (np.abs(rgb - pc).max(-1) < 24)
