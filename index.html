@@ -6354,7 +6354,8 @@
     // 시크릿 레어 주술사(역병 의사) [파멸의 의식] (tools/curse_sr1_ruin_build.py): 시전 시트 칸·폭발 그림 쓰는 법은 CURSE_RUIN_FX와 같음
     // 캐릭터 키를 curse_sr1 시트와 같게(86px) 만들어서 standH도 같은 81, 칸별 배율은 모두 1. 바닥 폭발·적 표식은 기본 외형 그림을 같이 씀
     const CURSE_RUIN_SKINS = { [SECRET_SKIN_BASE + 1]: { cellW: 374, cellH: 233, anchorX: 189, anchorY: 201, standH: 81, fs: [1, 1, 1, 1, 1],
-      boom: [993, 764, 464, 636], boomK: 0.159 } };
+      boom: [993, 764, 464, 636], boomK: 0.159,
+      boomTicks: 32, endTicks: 74, boomFade: 24, blastLife: 110 } }; // 폭발 자세를 더 오래(22 → 32틱) 두고, 마무리 자세 뒤로 폭발 그림이 24틱 동안 잔상처럼 옅어짐 · 바닥 폭발 60 → 110틱
     Object.values(CURSE_RUIN_SKINS).forEach(rf => [['cast', 'curse_sr1_ruin_cast'], ['boomImg', 'curse_sr1_ruin_boom']].forEach(([k, file]) => {
       const img = new Image();
       img.onload = () => { img.ready = true; };
@@ -18311,7 +18312,7 @@
           try { withSkillHit(() => applyDamage(unit, e, unit.atk * CURSE_RUIN_DMG, '⚰️', '#7e22ce')); } finally { suppressHitKnockback = false; }
         });
         sim.hiddenFx.push({ kind: 'ruin', owner: unit, left: CURSE_RUIN_TICKS, total: CURSE_RUIN_TICKS, skin: unit.skinVariant || 0, marks }); // skin = 전용 표식 그림 (CURSE_RUIN_MARK_SKINS)
-        sim.effects.push({ type: 'curse_ruin_blast', x: unit.x, y: unit.y, s: unit.sizeScale || 1, outer: Boolean(CURSE_RUIN_SKINS[unit.skinVariant]), life: 60, maxLife: 60 }); // 시전자 주변 바닥에 크게 터지는 붉은 폭발 (시크릿 레어는 바깥에 한 겹 더)
+        sim.effects.push({ type: 'curse_ruin_blast', x: unit.x, y: unit.y, s: unit.sizeScale || 1, outer: Boolean(CURSE_RUIN_SKINS[unit.skinVariant]), life: (CURSE_RUIN_SKINS[unit.skinVariant] || {}).blastLife || 60, maxLife: (CURSE_RUIN_SKINS[unit.skinVariant] || {}).blastLife || 60 }); // 시전자 주변 바닥에 크게 터지는 붉은 폭발 (시크릿 레어는 바깥에 한 겹 더)
         unit.ruinPose = { start: sim.tickCount }; // 시전 끝: 폭발 자세 → 연기 속 마무리 자세
         hiddenImpact(20, '#581c87');
         playCombatSfx('magic');
@@ -21928,7 +21929,8 @@
       const ruinSkin = u.alive && u.job === 'curse' && !u.monsterType ? ((u.skinVariant || 0) === 0 ? CURSE_RUIN_FX : CURSE_RUIN_SKINS[u.skinVariant]) : null;
       const ruinArt = ruinSkin && ruinSkin.cast && ruinSkin.cast.ready ? ruinSkin : null;
       const ruinSince = ruinArt && u.ruinPose ? sim.tickCount - u.ruinPose.start : 99;
-      if (ruinArt && ((u.casting && u.casting.key === 'ruin_rite') || (ruinSince >= 0 && ruinSince < 54))) {
+      const ruinEnd = (ruinArt && ruinArt.endTicks) || 54, ruinBoom = (ruinArt && ruinArt.boomTicks) || 22;
+      if (ruinArt && ((u.casting && u.casting.key === 'ruin_rite') || (ruinSince >= 0 && ruinSince < ruinEnd))) {
         const rf = ruinArt;
         let ks = spriteDrawH(u, sprite) / rf.standH;
         let fi, shake = 0;
@@ -21936,7 +21938,7 @@
           const p = 1 - u.casting.left / u.casting.total;
           fi = p < 1 / 3 ? 0 : (p < 2 / 3 ? 1 : 2);
           if (fi === 2) shake = Math.sin(tick * 1.3) * 0.6 * ks;
-        } else fi = ruinSince < 22 ? 3 : 4;
+        } else fi = ruinSince < ruinBoom ? 3 : 4;
         if (fi === 3 && rf.boomImg && rf.boomImg.ready) {
           // 폭발: 연기·해골·파편까지 자르지 않은 통째 그림
           const [bw, bh, bx, by] = rf.boom, kb = rf.boomK * spriteDrawH(u, sprite) / SPRITE_DRAW_H;
@@ -21944,8 +21946,16 @@
           ctx.restore();
           return;
         }
+        if (fi === 4 && rf.boomFade && rf.boomImg && rf.boomImg.ready && ruinSince - ruinBoom < rf.boomFade) {
+          // 잔상: 마무리 자세 뒤로 폭발 그림이 옅어지며 남음
+          const [bw, bh, bx, by] = rf.boom, kb = rf.boomK * spriteDrawH(u, sprite) / SPRITE_DRAW_H;
+          const a0 = ctx.globalAlpha;
+          ctx.globalAlpha = a0 * 0.85 * (1 - (ruinSince - ruinBoom) / rf.boomFade);
+          drawSpriteFx(ctx, rf.boomImg, 0, 0, bw, bh, -bx * kb, -by * kb, bw * kb, bh * kb);
+          ctx.globalAlpha = a0;
+        }
         ks *= rf.fs[fi];
-        if (fi === 4) ctx.globalAlpha *= Math.min(1, (54 - ruinSince) / 14);
+        if (fi === 4) ctx.globalAlpha *= Math.min(1, (ruinEnd - ruinSince) / 14);
         drawSpriteFx(ctx, rf.cast, fi * rf.cellW, 0, rf.cellW, rf.cellH,
           -rf.anchorX * ks + shake, -rf.anchorY * ks, rf.cellW * ks, rf.cellH * ks);
         ctx.restore();
