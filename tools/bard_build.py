@@ -14,6 +14,7 @@
 #   - 전투의 노래 칸은 자기 주변 기술이라 음표·불꽃·화살표를 그대로 남김. 불꽃이 발보다 넓고 아래로 퍼져서 발 위치는 불꽃 색을 뺀 부츠로 잼
 #   - 수호의 선율 칸은 배경이 순수 초록(0,240,0)이고 그 위에 반투명 청록 빛이 겹쳐 있음 → 밝은 픽셀은 초록이 얼마나 남았는지로 투명도를 정하고
 #     배경색을 빼서 빛 색을 복원 (빛을 불투명 덩어리로 두거나 잘라 내지 않음). 도트 가장자리 딱딱하게 만들기도 이 칸들은 건너뜀
+#   - 다 이어 붙인 뒤 피사체 테두리에 남은 초록 배경 찌꺼기를 벗겨 냄 (peel_green)
 #   - 샘플마다 그린 크기가 달라 베레모 폭을 대기 자세에 맞춰 배율을 따로 씀. 전투의 노래 칸은 음표·불꽃이 베레모에 붙어 있어 폭 대신 부츠~베레모 키로 맞춤
 import sys, numpy as np
 from PIL import Image
@@ -150,6 +151,25 @@ def shrink(rgba, sc, hard=True):
     return a.clip(0, 255).astype(np.uint8)
 
 
+def peel_green(sheet):
+    # 피사체 바깥 테두리에 남은 초록 배경 찌꺼기 정리 (윤곽과 배경이 섞인 어두운 초록 · 연두 · 옅은 빛을 되살리다 남은 순수 초록)
+    #   1) 투명한 곳과 맞닿은 초록 픽셀을 벗겨 냄 (최대 3겹). 청록 빛·민트 음표(파랑이 큼)는 초록 배경과 색이 달라서 남김
+    #   2) 그래도 테두리에 남은 어두운 초록 기운은 초록을 빼서 검은 윤곽색으로
+    s = sheet.astype(int)
+    R, G, B = s[..., 0], s[..., 1], s[..., 2]
+    green = (G > np.maximum(R, B) + 25) & (np.abs(R - B) < 40)
+    op = s[..., 3] > 0
+    for _ in range(3):
+        rim = op & green & ndi.binary_dilation(~op)
+        if not rim.any(): break
+        op &= ~rim
+    s[..., 3] = np.where(op, s[..., 3], 0)
+    edge = op & ndi.binary_dilation(~op)
+    dark = edge & (G > np.maximum(R, B) + 10) & (G < 110)
+    s[..., 1] = np.where(dark, np.maximum(R, B), G)
+    return s.clip(0, 255).astype(np.uint8)
+
+
 def main(folder):
     cuts = {f[1]: cut(folder, f) for f in FRAMES}
     base = TARGET_H / cuts['idle'][0].shape[0]
@@ -175,6 +195,7 @@ def main(folder):
         x = i * cellW + L - int(round(c))
         y = H - 2 - B - p.shape[0] + d   # 발 = 기준점 (칸 아래에서 B + 2px 위)
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
+    sheet = peel_green(sheet)
     Image.fromarray(sheet, 'RGBA').save(OUT_CHAR, 'WEBP', lossless=True)
     idle = pieces[0][1]
     hx = np.where(idle[:int(idle.shape[0] * 0.5), :, 3].any(axis=0))[0]
