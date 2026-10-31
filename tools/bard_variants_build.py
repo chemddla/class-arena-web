@@ -54,7 +54,7 @@ def part_masks(f, idx):
     ys, xs = np.nonzero(beret)
     if len(ys):
         box = np.zeros_like(warm)
-        box[max(0, ys.min()):ys.max() + 30, max(0, xs.min() - 8):xs.max() + 9] = True
+        box[max(0, ys.min()):ys.max() + 30, max(0, xs.min() - 8):xs.max() + 3] = True  # 오른쪽(얼굴 쪽)은 좁게: 치켜든 류트 머리가 베레모에 닿음
         warm_in = warm & box
     else:
         warm_in = warm
@@ -65,6 +65,24 @@ def part_masks(f, idx):
         loose = a & ((h <= 32) | (h >= 340)) & (s > 0.25) & (s < 0.9) & (v > 0.24) & (v < 0.75) & ~skin  # 이 칸 머리는 채도가 더 높음
         lab3, _ = ndi.label(loose, np.ones((3, 3)))
         hair = np.isin(lab3, [lab3[y, x] for x, y in HAIR_SEEDS[idx] if lab3[y, x] > 0])
+    # 덩어리는 넉넉하게 잡아 이어 붙이고, 실제로 칠하는 건 머리카락 색만: 피부 그늘(채도 낮음)·눈동자·볼(붉은 쪽 색상)은 빠짐
+    hair_col = a & (h >= 5) & (h <= 30) & (s >= 0.45) & (s < 0.8) & (v >= 0.2) & (v < 0.78)  # 채도·밝기가 높은 불꽃은 빠짐
+    if len(ys) and idx not in HAIR_SEEDS:
+        hair_col[:(ys.min() + ys.max()) // 2] = False  # 베레모 위쪽 절반 높이보다 위는 머리가 아님 (치켜든 류트 머리)
+    #   피부에 둘러싸인 곳(입·볼 그늘)도 빠짐
+    face = (h <= 40) & (s < 0.5) & (v > 0.7)
+    hair_col &= ~(ndi.binary_fill_holes(face) & ~face)
+    hair &= hair_col
+    # 어깨까지 내려온 뒷머리: 찾은 머리에 머리카락 색으로 이어진 곳을 조금 더 넓은 범위(아래·뒤쪽)까지
+    #   (쓰러짐 칸은 찾은 머리 둘레만) · 1px 외곽선 너머 가닥까지 잇기 위해 2px 넓혀서 닿은 덩어리
+    ext = np.zeros_like(warm)
+    if len(ys) and idx not in HAIR_SEEDS:
+        ext[max(0, ys.min()):ys.max() + 40, max(0, xs.min() - 14):xs.max() + 3] = True
+    elif hair.any():
+        hy, hx = np.nonzero(hair)
+        ext[max(0, hy.min() - 4):hy.max() + 5, max(0, hx.min() - 4):hx.max() + 5] = True
+    lab4, _ = ndi.label(hair_col & ext, np.ones((3, 3)))
+    hair |= np.isin(lab4, [i for i in np.unique(lab4[ndi.binary_dilation(hair, iterations=2)]) if i > 0])
     return {'beret': beret, 'vest': vest, 'pants': pants, 'hair': hair & ~beret, 'solid': solid}
 
 
