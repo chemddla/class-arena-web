@@ -6312,9 +6312,23 @@
     BARD_SR_ENCORE_FX.img.onload = () => { BARD_SR_ENCORE_FX.ready = true; };
     BARD_SR_ENCORE_FX.img.src = 'assets/sprites/fx/bard_sr1_encore_fx.webp';
     const usesBardSr = u => Boolean(u && BARD_SR_ENCORE_FX.ready && getUnitSprite(u) === MERC_SPRITE_DEFS[`bard_${SECRET_SKIN_BASE + 1}`]);
+    // 음유시인 노래 스킬을 받은 아군 머리 위 표식 (tools/bard_song_buff_fx_build.py): anthem = 불타는 검 (전투의 노래) · ballad = 방패 (수호의 선율) · swift = 바람 날개 (질풍의 리듬). 기준점 = 그림 가운데
+    const BARD_SONG_FX = { img: new Image(), ready: false, frames: { anthem: [0,0,125,168,62,84], ballad: [127,0,157,158,78,79], swift: [286,0,149,148,74,74] } };
+    BARD_SONG_FX.img.onload = () => { BARD_SONG_FX.ready = true; };
+    BARD_SONG_FX.img.src = 'assets/sprites/fx/bard_song_buff_fx.webp';
     const BARD_WAVE_FLY_TICKS = 18; // 음파가 부채꼴 끝까지 날아가는 틱 (맞은 이펙트는 거리에 맞춰 늦게 터짐)
     // 음유시인 이펙트: bard_lute = 류트 소리 고리 (x,y) · bard_wave = 날아가는 음파 (sx,sy에서 ang 방향으로 r만큼) · bard_wave_hit = 맞은 자리 (wait틱 뒤 터짐)
     function drawBardEffect(ctx, ef, progress) {
+      if (ef.type === 'bard_song_buff') {
+        // 아군 머리 위에서 톡 튀어나와(키 30, 크기 1일 때) 조금 떠오르다 사라짐. 아군을 따라다님
+        if (!BARD_SONG_FX.ready) return;
+        const f = BARD_SONG_FX.frames[ef.kind], o = ef.owner && ef.owner.alive ? ef.owner : ef;
+        const pop = progress < 0.12 ? 0.5 + 0.6 * progress / 0.12 : (progress < 0.2 ? 1.1 - 0.1 * (progress - 0.12) / 0.08 : 1);
+        const k = 30 * (ef.s || 1) / f[3] * pop, cy = o.y - 74 * (ef.s || 1) - 10 * progress; // 체력바 위
+        ctx.globalAlpha = Math.min(1, progress / 0.06, (1 - progress) / 0.35);
+        drawSpriteFx(ctx, BARD_SONG_FX.img, f[0], f[1], f[2], f[3], o.x - f[4] * k, cy - f[5] * k, f[2] * k, f[3] * k);
+        return;
+      }
       if (ef.type === 'bard_sr_encore' || ef.type === 'bard_sr_encore_ally') {
         // 시크릿 레어 발동: 발밑 고리에서 커지며 피어올랐다가 사라짐. 폭: 시전자 소용돌이 = 300, 아군 구체 = 130 (크기 1일 때, 구체가 몸을 넉넉히 감쌈)
         if (!BARD_SR_ENCORE_FX.ready) return;
@@ -20318,7 +20332,7 @@
         const color = sk === 'war_song' ? '#d97706' : (sk === 'guard_melody' ? '#0891b2' : '#0d9488');
         sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: A * BARD_SONG_CELLS, color, life: 40, maxLife: 40 });
         mates.forEach(a => {
-          sim.effects.push({ type: 'blessing_aura', x: a.x, y: a.y, life: 50, maxLife: 50 });
+          sim.effects.push({ type: 'bard_song_buff', kind: sk === 'war_song' ? 'anthem' : (sk === 'guard_melody' ? 'ballad' : 'swift'), x: a.x, y: a.y, owner: a, s: unitFxSize(a), life: 60, maxLife: 60 }); // 머리 위 검·방패·날개
           if (sk === 'war_song') a.statuses.anthem = Math.max(a.statuses.anthem || 0, BARD_ANTHEM_TICKS);
           else if (sk === 'guard_melody') {
             a.statuses.ballad = Math.max(a.statuses.ballad || 0, BARD_BALLAD_TICKS);
@@ -21289,7 +21303,7 @@
 
     // 회복·축복·보호막 그림 (수명은 효과 루프에서 줄어듦)
     // 피격 이펙트: 맞은 대상 위에 겹쳐 보이게 유닛을 다 그린 뒤 따로 한 겹에 그려 반투명하게 얹음
-    const HIT_FX_TYPES = new Set(['magic_burst', 'arrow_hit', 'fire_explosion', 'ice_shatter', 'curse_shatter', 'hidden_snipe_hit', 'bard_lute', 'bard_wave', 'bard_wave_hit']); // 파멸의 의식 번개는 불투명하게 drawRuinMarks에서
+    const HIT_FX_TYPES = new Set(['magic_burst', 'arrow_hit', 'fire_explosion', 'ice_shatter', 'curse_shatter', 'hidden_snipe_hit', 'bard_lute', 'bard_wave', 'bard_wave_hit', 'bard_song_buff']); // 파멸의 의식 번개는 불투명하게 drawRuinMarks에서
     const HIT_FX_ALPHA = 0.75;
     let hitFxLayer = null;
     function drawHitEffectsOnTop(ctx, drawPass) {
