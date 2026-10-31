@@ -44,6 +44,12 @@ SRC = {}
 BODY_H = {}  # 이펙트 칸(전투의 노래·수호의 선율)의 부츠~베레모 키 (cut에서 잼)
 FX_FRAMES = ('song', 'guard', 'disso', 'tempo', 'enc')  # 이펙트를 시트에 그대로 남기는 칸
 FOOT = {'tempo2': (110, 202), 'enc0': (125, 201), 'enc1': (402, 201), 'enc2': (480, 660)}  # 소용돌이가 다리를 가려 몸통을 못 찾는 칸: 샘플 좌표의 부츠 가운데·발바닥 (배율은 tempo1과 같게 씀)
+# 위 배율로 만든 스킬 칸을 대기 칸 머리 그림과 맞춰 보니(머리 템플릿 배율 찾기) 머리가 2.5~7% 작고 몇 칸은 옆으로 밀려 있었음
+# → 칸별로 배율을 더 곱하고(SIZE_FIX) 머리가 대기 자세와 같은 x에 오게 옮김(SHIFT_X, 줄인 뒤 px, +는 오른쪽)
+SIZE_FIX = {'song0': 1.025, 'song1': 1.025, 'song2': 1.025, 'guard0': 1.08, 'guard1': 1.05, 'guard2': 1.05,
+            'disso0': 1.05, 'disso1': 1.05, 'disso2': 1.05, 'tempo0': 1.05, 'tempo1': 1.05, 'tempo2': 1.05,
+            'enc0': 1.05, 'enc1': 1.025, 'enc2': 1.05, 'cheer': 1.05}
+SHIFT_X = {'tempo1': -7, 'enc0': 4, 'enc1': 2, 'enc2': 2, 'cheer': 2}
 GLOW_SHEETS = (8, 9, 10, 14, 15, 16, 20, 21)  # 반투명 빛·바람이 겹친 샘플 (질풍의 리듬 소용돌이 안쪽 초록 바람은 배경과 색이 가까워 옅게 남음)
 
 
@@ -210,8 +216,8 @@ def main(folder):
     pieces = []
     for f in FRAMES:
         rgba, cx, below = cuts[f[1]]
-        sc = scale[f[0]]
-        pieces.append((f[1], shrink(rgba, sc, f[0] not in GLOW_SHEETS), cx * sc, int(round(below * sc))))
+        sc = scale[f[0]] * SIZE_FIX.get(f[1], 1)
+        pieces.append((f[1], shrink(rgba, sc, f[0] not in GLOW_SHEETS), cx * sc - SHIFT_X.get(f[1], 0), int(round(below * sc))))
     L = max(int(np.ceil(c)) for _, _, c, _ in pieces) + 2
     R = max(int(np.ceil(p.shape[1] - c)) for _, p, c, _ in pieces) + 2
     B = max(d for _, _, _, d in pieces)
