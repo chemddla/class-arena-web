@@ -8039,6 +8039,28 @@
       document.body.appendChild(wrap);
     }
 
+    // 용병 모집 명단에 시크릿 레어가 나왔을 때: 화면 가득 알림 창 (눌러서 닫음)
+    function showSecretRareReveal(mercs) {
+      const old = document.getElementById('secretRareReveal');
+      if (old) old.remove();
+      const wrap = document.createElement('div');
+      wrap.id = 'secretRareReveal';
+      wrap.className = 'fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm cursor-pointer';
+      wrap.innerHTML = `
+        <div class="rounded-3xl border-4 border-red-500 bg-gradient-to-b from-rose-50 to-amber-50 shadow-[0_0_28px_rgba(239,68,68,0.55)] max-w-sm w-full p-6 text-center flex flex-col items-center gap-2">
+          <div class="text-xs font-extrabold tracking-widest text-red-600">🔥 SECRET RARE 🔥</div>
+          <div data-icons class="text-6xl leading-none my-2"></div>
+          <div class="font-title text-3xl text-red-700">시크릿 레어 출현!</div>
+          <div data-who class="text-sm font-bold text-amber-700"></div>
+          <p class="text-xs text-slate-600 leading-relaxed mt-1">지원자 ${SECRET_RARE_CHANCE}% 확률로만 나오는 용병이에요. 명단을 갱신하면 사라지니 놓치지 마세요!</p>
+          <button class="mt-3 px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-extrabold text-sm shadow">확인</button>
+        </div>`;
+      wrap.querySelector('[data-icons]').textContent = mercs.map(m => (JOB_DEFS[m.job] || {}).icon || '🔥').join(' ');
+      wrap.querySelector('[data-who]').textContent = mercs.map(m => `[${(JOB_DEFS[m.job] || {}).name || ''}] ${m.name}`).join(', ');
+      wrap.addEventListener('click', () => wrap.remove());
+      document.body.appendChild(wrap);
+    }
+
     /********************************************************************
      * 5. 학생 개별 비밀번호 로그인 & 비밀번호 변경 시스템
      ********************************************************************/
@@ -11331,7 +11353,27 @@
       return recruitPool;
     }
 
+    const unhiredSecretRares = () => (recruitPool || []).filter(m => m && !m.hired && m.rarity === 'SCR');
+
+    // 새 명단에 시크릿 레어가 있으면 알림 창을 띄움
+    function announceSecretRares() {
+      const found = unhiredSecretRares();
+      if (found.length) showSecretRareReveal(found);
+    }
+
     function refreshRecruitPool(isFree = false) {
+      // 모집하지 않은 시크릿 레어가 남아 있으면 한 번 더 물어봄
+      const left = isFree ? [] : unhiredSecretRares();
+      if (left.length) {
+        const names = left.map(m => `${(JOB_DEFS[m.job] || {}).icon || ''} ${m.name}`).join(', ');
+        askCustomConfirm(`🔥 아직 모집하지 않은 시크릿 레어 용병 [${names}]이(가) 있어요!
+명단을 갱신하면 사라져요. 그래도 새로 모집할까요?`, () => doRefreshRecruitPool(isFree));
+        return;
+      }
+      doRefreshRecruitPool(isFree);
+    }
+
+    function doRefreshRecruitPool(isFree = false) {
       const stu = getActiveStudent();
       if (!isFree) {
         const freeLeft = getRemainingFreeRefreshes(stu);
@@ -11342,6 +11384,7 @@
           renderOfficeTab();
           showNotice(`🔄 무료 지원자 갱신 완료! (오늘 남은 무료 갱신: ${freeLeft - 1}/${DAILY_FREE_REFRESHES}회)`);
           DailyMission.progress('recruitRefresh', 1, stu);
+          announceSecretRares();
           return;
         }
         if (stu.mc < RECRUIT_REFRESH_COST) {
@@ -11354,6 +11397,7 @@
         renderOfficeTab();
         showNotice(`🔄 ${RECRUIT_REFRESH_COST.toLocaleString()} CA를 사용하여 새로운 지원자 명단을 갱신했습니다!`);
         DailyMission.progress('recruitRefresh', 1, stu);
+        announceSecretRares();
         return;
       }
       generateRecruitPool(false);
