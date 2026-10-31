@@ -7,6 +7,7 @@
 # 샘플 정리:
 #   - 배경이 단색(mark1은 위아래로 어두워지는 그러데이션)이라 테두리에서 배경색과 비슷한 곳을 채워 나가 지움
 #   - mark1 오른쪽 아래 ✦ 워터마크 지움
+#   - bolt는 소용돌이 고리 안쪽에 갇힌 배경이 많아서 배경색과 비슷한 곳을 모두 지움
 # 프레임 [x, y, w, h, 기준점x, 기준점y]
 import numpy as np
 from PIL import Image
@@ -20,7 +21,7 @@ BOLT_SCALE = 0.8
 BOLT_FOOT = (148, 252)                     # 사신 샘플의 바닥 소용돌이 가운데
 
 
-def key(path, tol, erase=()):
+def key(path, tol, erase=(), enclosed=False):
     im = np.array(Image.open(path).convert('RGB')).astype(float)
     h, w = im.shape[:2]
     # 줄마다 왼쪽·오른쪽 끝 색을 배경으로 보고 가로로 이어 그러데이션 배경을 만듦
@@ -31,6 +32,7 @@ def key(path, tol, erase=()):
     lab, _ = ndi.label(near)
     border = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
     a = (~np.isin(lab, border[border > 0])).astype(float)
+    if enclosed: a[near] = 0  # 고리·번개에 둘러싸여 테두리와 이어지지 않은 안쪽 배경도 지움
     for x0, y0, x1, y1 in erase: a[y0:y1, x0:x1] = 0
     # 배경과 섞인 가장자리 1px은 지움, 작은 압축 티끌도 지움
     a[ndi.binary_dilation(a == 0, iterations=1) & (np.abs(im - bg).max(-1) < tol * 2)] = 0
@@ -67,7 +69,7 @@ def main():
     a0 = (m0.shape[1] / 2, m0.shape[0] / 2)                          # mark0 기준점 = 그림 가운데
     off = (a0[0] - (e0x * s0 - x0), a0[1] - (e0y * s0 - y0))         # 두 눈 가운데에서 기준점까지
     a1 = (e1x * s1 - x1 + off[0], e1y * s1 - y1 + off[1])
-    b, bx, by = trim(shrink(key(D + 'bolt_src.png', 14), BOLT_SCALE))
+    b, bx, by = trim(shrink(key(D + 'bolt_src.png', 14, enclosed=True), BOLT_SCALE))
     tiles = [('mark0', m0, a0), ('mark1', m1, a1), ('bolt', b, (BOLT_FOOT[0] * BOLT_SCALE - bx, BOLT_FOOT[1] * BOLT_SCALE - by))]
     W = sum(t.shape[1] + 2 for _, t, _ in tiles); H = max(t.shape[0] for _, t, _ in tiles)
     atlas = np.zeros((H, W, 4), np.uint8); x = 0; frames = []
