@@ -6,9 +6,11 @@
 # 샘플 정리:
 #   - 칸 사이 가는 세로 구분선이 들어가지 않게 마법진·마무리 칸을 좁게 자름
 #   - 한 줄 샘플은 연두 배경. 검은 기둥·연기는 반투명이라 배경색을 빼서 반투명 그대로 복원 (curse_ruin_build.py와 같은 방식)
+#   - 한 줄 샘플의 마법진 칸(시전 끝)은 따로 받은 샘플(curse_sr1_ruin_circle_src.webp)로 바꿈
 #   - 한 줄 샘플의 폭발 칸은 따로 받은 폭발 샘플(어두운 초록 배경)로 바꿈. 3칸에도 같은 그림을 줄여 넣음 (폭발 그림을 못 불러왔을 때만 씀)
 #   - 왼쪽 아래 두 칸(평소 자세)은 일반 시트와 겹쳐서 안 씀. 사신 칸은 게임에서 안 써서 자르지 않음
-#   - 칸마다 캐릭터 크기가 달라서 후드 꼭대기~옷자락 끝 키를 curse_sr1 시트(86px)에 맞춤
+#   - 칸마다 캐릭터 크기가 달라서 후드 꼭대기~옷자락 끝 키를 curse_sr1 시트(86px)에 맞춤.
+#     불꽃 두르기 두 칸은 몸이 통통하게 그려져 같은 키면 커 보여서 키를 84로 잡아 조금 작게
 #   - 폭발 샘플 오른쪽 아래 ✦ 워터마크 지움
 import sys, os
 import numpy as np
@@ -20,6 +22,7 @@ from curse_ruin_build import crop, shrink
 
 SRC = 'assets/sprites/fx/samples/curse_sr1_ruin_src.png'
 BOOM_SRC = 'assets/sprites/fx/samples/curse_sr1_ruin_boom_src.webp'
+CIRCLE_SRC = 'assets/sprites/fx/samples/curse_sr1_ruin_circle_src.webp'
 OUT_CAST = 'assets/sprites/fx/curse_sr1_ruin_cast.webp'
 OUT_BOOM = 'assets/sprites/fx/curse_sr1_ruin_boom.webp'
 STAND_H = 86   # curse_sr1 시트 대기 자세 후드 꼭대기~옷자락 끝
@@ -27,15 +30,15 @@ STAND_H = 86   # curse_sr1 시트 대기 자세 후드 꼭대기~옷자락 끝
 # 폭발 샘플: 후드 꼭대기~옷자락 끝 키, 두 발 가운데 x, 발바닥 y (주변이 온통 검은 폭발이라 눈으로 잼)
 BOOM_FIT = (360, 495, 637)
 CAST = [
-    ('aura0',   0,  95,   0, 104, 78,  45,  99, (0, 0, 0)),
-    ('aura1',  95, 195,   0, 104, 78, 140,  99, (0, 0, 0)),
-    ('circle', 200, 396,  0, 200, 97, 297, 161, (30, 0, 0)),
+    ('aura0',   0,  95,   0, 104, 84,  45,  99, (0, 0, 0)),
+    ('aura1',  95, 195,   0, 104, 84, 140,  99, (0, 0, 0)),
+    ('circle', 60, 965,   0, 560, 210, 517, 488, (30, 0, 0)),  # 따로 받은 시전 끝 샘플 (나무 가지 위 붉은 해골). 위가 잘려 있어 흐리게
     ('boom',   None, None, None, None, None, None, None, None),
     ('finish', 864, 1024, 0, 200, 86, 927, 198, (0, 0, 0)),
 ]
 
 
-def load_light(path):
+def load_light(path, strip=True):
     im = np.array(Image.open(path).convert('RGB')).astype(float)
     key = np.median(np.concatenate([im[:3].reshape(-1, 3), im[-3:].reshape(-1, 3)]), axis=0)
     gex = im[..., 1] - np.maximum(im[..., 0], im[..., 2])
@@ -48,7 +51,7 @@ def load_light(path):
     # 그림 테두리의 밝은 번짐: 반쯤 투명한 가장자리는 어두운 외곽선 색으로 (curse_ruin_build.py와 같음)
     edge = (a < 0.6) & ndi.binary_dilation(a == 0, iterations=1)
     rgb[edge] *= 0.3
-    a[104:200, 0:200] = 0  # 왼쪽 아래 평소 자세 두 칸
+    if strip: a[104:200, 0:200] = 0  # 왼쪽 아래 평소 자세 두 칸
     return rgb, a
 
 
@@ -74,6 +77,8 @@ def load_boom(path):
 
 def main():
     rgb, a = load_light(SRC)
+    crgb, ca = load_light(CIRCLE_SRC, strip=False)
+    ca[455:510, 910:965] = 0  # ✦ 워터마크
     brgb, ba = load_boom(BOOM_SRC)
     bh, bfx, bfy = BOOM_FIT
     pieces = []
@@ -83,7 +88,8 @@ def main():
             pieces.append((name, shrink(np.dstack([brgb, ba * 255]), sc), bfx * sc, bfy * sc))
             continue
         sc = STAND_H / ch
-        p = shrink(crop(rgb, a, x0, x1, y0, y1, fade), sc)
+        src = (crgb, ca) if name == 'circle' else (rgb, a)
+        p = shrink(crop(*src, x0, x1, y0, y1, fade), sc)
         pieces.append((name, p, (fx - x0) * sc, (fy - y0) * sc))
     L = int(np.ceil(max(ax for _, _, ax, _ in pieces))) + 1
     R = int(np.ceil(max(p.shape[1] - ax for _, p, ax, _ in pieces))) + 1

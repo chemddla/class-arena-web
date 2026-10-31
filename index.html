@@ -4864,7 +4864,7 @@
     //   0번보다 걷기·공격 칸이 하나씩 적어서(손 내민 걷기·지팡이 내지르기 빼 달라고 함) 칸 번호를 따로 적음. 공격·저주 발동 = 공격 칸 하나(3) 파멸의 의식은 전용 시전 시트 CURSE_RUIN_SKINS
     const SECRET_SKIN_SHEETS = { warrior_sr1: { cellH: 112, anchorY: 111 }, knight_sr1: { cellH: 114, anchorY: 111, topH: 101 }, lancer_sr1: { topH: 88 },
       frost_sr1: { cellW: 170, cellH: 108, anchorX: 100, anchorY: 106, topH: 98, portraitCX: 104, projFx: { magic_orb: 'frost_sr_shard' } },
-      curse_sr1: { cellW: 179, cellH: 140, anchorX: 76, anchorY: 118, standH: 81, topH: 86, portraitCX: 88, count: 18,
+      curse_sr1: { cellW: 167, cellH: 139, anchorX: 72, anchorY: 120, standH: 81, topH: 86, portraitCX: 84, count: 18,
         anims: { idle: [0], walk: [1, 2], attack: [3], skill: [8], hurt: [4, 5], death: [5, 6, 7], hex: [3], weaken: [10], shatter: [12], siphon: [13, 14, 15], swamp: [17] },
         skillAnims: { ...MERC_SPRITE_DEFS.curse_0.skillAnims, hex_bolt: { anim: 'hex', tpf: 1, dur: 1 } }, // 저주는 해골이 날아가면 바로 평소 자세 (발동 자세 없음)
         castFrames: { hex_bolt: 8, enfeeble: 9, soul_shatter: 11, curse_field: 16, ruin_rite: 8 } } };
@@ -6261,7 +6261,7 @@
     });
     // 시크릿 레어 주술사(역병 의사) [파멸의 의식] (tools/curse_sr1_ruin_build.py): 시전 시트 칸·폭발 그림 쓰는 법은 CURSE_RUIN_FX와 같음
     // 캐릭터 키를 curse_sr1 시트와 같게(86px) 만들어서 standH도 같은 81, 칸별 배율은 모두 1. 바닥 폭발·적 표식은 기본 외형 그림을 같이 씀
-    const CURSE_RUIN_SKINS = { [SECRET_SKIN_BASE + 1]: { cellW: 248, cellH: 235, anchorX: 120, anchorY: 199, standH: 81, fs: [1, 1, 1, 1, 1],
+    const CURSE_RUIN_SKINS = { [SECRET_SKIN_BASE + 1]: { cellW: 374, cellH: 233, anchorX: 189, anchorY: 201, standH: 81, fs: [1, 1, 1, 1, 1],
       boom: [993, 764, 464, 636], boomK: 0.159 } };
     Object.values(CURSE_RUIN_SKINS).forEach(rf => [['cast', 'curse_sr1_ruin_cast'], ['boomImg', 'curse_sr1_ruin_boom']].forEach(([k, file]) => {
       const img = new Image();
@@ -6296,6 +6296,16 @@
         const img = CURSE_RUIN_FX.blastImg;
         if (!img || !img.ready) return;
         const [w, h, ax, ay] = CURSE_RUIN_FX.blast, k = 320 * (ef.s || 1) / w * (0.6 + 0.4 * Math.min(1, progress / 0.15));
+        if (ef.outer) {
+          // 시크릿 레어(역병 의사): 같은 폭발을 좌우를 되돌려 1.5배로 한 겹 더, 안쪽보다 조금 늦게 퍼지고 조금 옅게
+          const p2 = Math.max(0, progress - 0.04), k2 = k / (0.6 + 0.4 * Math.min(1, progress / 0.15)) * 1.5 * (0.55 + 0.45 * Math.min(1, p2 / 0.2));
+          ctx.save();
+          ctx.globalAlpha = 0.85 * Math.min(1, p2 / 0.08, (1 - progress) / 0.45);
+          ctx.translate(ef.x, ef.y + 12);
+          ctx.scale(-1, 1);
+          drawSpriteFx(ctx, img, 0, 0, w, h, -ax * k2, -ay * k2, w * k2, h * k2);
+          ctx.restore();
+        }
         ctx.globalAlpha = Math.min(1, progress / 0.06, (1 - progress) / 0.4);
         drawSpriteFx(ctx, img, 0, 0, w, h, ef.x - ax * k, ef.y + 12 - ay * k, w * k, h * k);
         return;
@@ -18187,7 +18197,7 @@
           try { withSkillHit(() => applyDamage(unit, e, unit.atk * CURSE_RUIN_DMG, '⚰️', '#7e22ce')); } finally { suppressHitKnockback = false; }
         });
         sim.hiddenFx.push({ kind: 'ruin', owner: unit, left: CURSE_RUIN_TICKS, total: CURSE_RUIN_TICKS, skin: unit.skinVariant || 0, marks }); // skin = 전용 표식 그림 (CURSE_RUIN_MARK_SKINS)
-        sim.effects.push({ type: 'curse_ruin_blast', x: unit.x, y: unit.y, s: unit.sizeScale || 1, life: 60, maxLife: 60 }); // 시전자 주변 바닥에 크게 터지는 붉은 폭발
+        sim.effects.push({ type: 'curse_ruin_blast', x: unit.x, y: unit.y, s: unit.sizeScale || 1, outer: Boolean(CURSE_RUIN_SKINS[unit.skinVariant]), life: 60, maxLife: 60 }); // 시전자 주변 바닥에 크게 터지는 붉은 폭발 (시크릿 레어는 바깥에 한 겹 더)
         unit.ruinPose = { start: sim.tickCount }; // 시전 끝: 폭발 자세 → 연기 속 마무리 자세
         hiddenImpact(20, '#581c87');
         playCombatSfx('magic');
