@@ -7,7 +7,7 @@
 # 샘플 정리:
 #   - 배경이 단색(mark1은 위아래로 어두워지는 그러데이션)이라 테두리에서 배경색과 비슷한 곳을 채워 나가 지움
 #   - mark1 오른쪽 아래 ✦ 워터마크 지움
-#   - bolt는 소용돌이 고리 안쪽에 갇힌 배경이 많아서 배경색과 비슷한 곳을 모두 지움
+#   - bolt는 소용돌이 고리 안쪽에 갇힌 배경이 많아서 배경색과 비슷한 곳을 모두 지움. 왼쪽 끝 세로 테두리 선·작은 얼룩도 지움
 # 프레임 [x, y, w, h, 기준점x, 기준점y]
 import numpy as np
 from PIL import Image
@@ -69,7 +69,7 @@ def main():
     a0 = (m0.shape[1] / 2, m0.shape[0] / 2)                          # mark0 기준점 = 그림 가운데
     off = (a0[0] - (e0x * s0 - x0), a0[1] - (e0y * s0 - y0))         # 두 눈 가운데에서 기준점까지
     a1 = (e1x * s1 - x1 + off[0], e1y * s1 - y1 + off[1])
-    b, bx, by = trim(shrink(key(D + 'bolt_src.png', 14, enclosed=True), BOLT_SCALE))
+    b, bx, by = trim(shrink(key(D + 'bolt_src.png', 14, [(0, 0, 8, 292), (0, 200, 30, 240)], enclosed=True), BOLT_SCALE))
     tiles = [('mark0', m0, a0), ('mark1', m1, a1), ('bolt', b, (BOLT_FOOT[0] * BOLT_SCALE - bx, BOLT_FOOT[1] * BOLT_SCALE - by))]
     W = sum(t.shape[1] + 2 for _, t, _ in tiles); H = max(t.shape[0] for _, t, _ in tiles)
     atlas = np.zeros((H, W, 4), np.uint8); x = 0; frames = []
