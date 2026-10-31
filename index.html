@@ -1213,6 +1213,20 @@
 
           <div id="myMercList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
         </div>
+
+        <!-- 용병 보관함: 지금 쓰지 않는 용병을 넣어 두는 곳 (보유 정원·전투력에 들어가지 않음) -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
+          <div>
+            <h3 class="font-title text-xl text-white flex items-center gap-2">
+              <span>📦</span> 용병 보관함
+              <span id="mercStorageCountBadge" class="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">0 / 30칸</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">
+              쓰지 않는 용병을 카드의 <strong class="text-amber-200">📦 보관</strong> 버튼으로 넣어 두세요. 보관 중인 용병은 전투에 나가지 않고 전투력에도 들어가지 않아요. 레벨·스탯·장비는 그대로예요.
+            </p>
+          </div>
+          <div id="mercStorageList" class="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-10 gap-2"></div>
+        </div>
       </section>
 
       <!-- [탭 2] 용병 사무소 (고용 시스템) -->
@@ -2935,6 +2949,7 @@
      ********************************************************************/
     const MAX_DEPLOY = 5;
     const MAX_ROSTER = 15;
+    const MAX_MERC_STORAGE = 30; // 용병 보관함 칸 수 (보관한 용병은 전투·전투력에 들어가지 않음)
     const FORMATION_COLS = 3; // 가로 3칸 (후열, 중열, 전열)
     const FORMATION_ROWS = 5; // 세로 5칸 (1행 ~ 5행)
     const WORLD_WIDTH = 2880; // 확장된 전장 월드 가로 크기
@@ -3831,6 +3846,7 @@
       // 친구들의 지원자 명단은 아직 고용 전이라 빼고, 실제 용병·경매·내 지원자 명단만 비교
       ((typeof state !== 'undefined' && state && state.students) || []).forEach(s => {
         (s.roster || []).forEach(addMerc);
+        (s.mercStorage || []).forEach(addMerc);
       });
       ((typeof state !== 'undefined' && state && state.auctions) || []).forEach(a => addMerc(a && a.merc));
       (typeof recruitPool !== 'undefined' ? recruitPool : []).forEach(addMerc);
@@ -3878,7 +3894,7 @@
       const list = [...(students || [])].filter(Boolean).sort((a, b) => String(a.id).localeCompare(String(b.id)));
       const used = new Set();
       const needs = [];
-      list.forEach(stu => (stu.roster || []).forEach(m => {
+      list.forEach(stu => [...(stu.roster || []), ...(stu.mercStorage || [])].forEach(m => {
         if (!m || !m.name) return;
         const noEpithet = stripMercEpithet(m.name, m.job) || m.name;
         const plain = stripMercGenerationSuffix(noEpithet) || noEpithet;
@@ -3905,7 +3921,9 @@
       (state.students || []).forEach(s => {
         if (s.id === stu.id) return;
         (s.roster || []).forEach(m => m && m.name && others.add(m.name));
+        (s.mercStorage || []).forEach(m => m && m.name && others.add(m.name));
       });
+      (stu.mercStorage || []).forEach(m => m && m.name && others.add(m.name));
       (state.auctions || []).forEach(a => a && a.merc && a.merc.name && others.add(a.merc.name));
       const mine = new Set();
       let changed = 0;
@@ -7458,6 +7476,7 @@
         dailyEquipShopDate: '',
         dailyEquipShop: [],
         roster: initialRoster,
+        mercStorage: [],
         defenseFormation: JSON.parse(JSON.stringify(initialRoster)),
         defenseFormationLabel: useEmptyStart ? '미배치 (용병 모집 전)' : preset.formationLabel
       };
@@ -7538,6 +7557,8 @@
             if (!Array.isArray(s.roster)) {
               s.roster = [];
             }
+            if (!Array.isArray(s.mercStorage)) s.mercStorage = [];
+            s.mercStorage.forEach(normalizeMercForSync);
             ensureRosterGotAt(s.roster);
             s.roster.forEach(m => {
               if (m.name && m.name.includes(' ')) {
@@ -9509,6 +9530,7 @@
             </button>
           </div>
         `;
+        renderMercStorage(stu);
         renderFormationGrid();
         renderSelectedMercTacticBox();
         return;
@@ -9620,26 +9642,110 @@
               </div>
             </div>
 
-            <div class="flex items-center gap-1.5 pt-1 border-t border-slate-800/80">
+            <div class="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-800/80">
               <button onclick="event.stopPropagation(); trainMercenary('${merc.id}')"
-                class="flex-1 py-1.5 rounded-xl bg-indigo-600/80 hover:bg-indigo-500 text-white font-bold text-xs">
+                class="basis-full py-1.5 rounded-xl bg-indigo-600/80 hover:bg-indigo-500 text-white font-bold text-xs">
                 ⬆️ 레벨업 (${trainCost} CA)
               </button>
               <button onclick="event.stopPropagation(); openMercDetailModal('${merc.id}')"
-                class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 font-extrabold text-xs border border-slate-700">
+                class="flex-1 px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 font-extrabold text-xs border border-slate-700">
                 🔍 세부정보
               </button>
               <button onclick="event.stopPropagation(); openMercSellModal('${merc.id}')" title="바로 팔거나 경매에 내놓아요"
-                class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs">
+                class="flex-1 px-2 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs">
                 💰 판매·경매
+              </button>
+              <button onclick="event.stopPropagation(); storeMercToStorage('${merc.id}')" title="용병 보관함에 넣어요 (보관 중에는 전투에 나가지 않아요)"
+                class="flex-1 px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-200 font-extrabold text-xs border border-slate-700">
+                📦 보관
               </button>
             </div>
           </div>
         `;
       }).join('');
 
+      renderMercStorage(stu);
       renderFormationGrid();
       renderSelectedMercTacticBox();
+    }
+
+    // ===== 용병 보관함 (최대 MAX_MERC_STORAGE칸) =====
+    // 보관한 용병은 보유 정원·전투력·진형에서 빠지고, 장비·레벨·스탯은 그대로 둔 채 꺼낼 수 있음
+    function storeMercToStorage(mercId) {
+      const stu = getActiveStudent();
+      if (!Array.isArray(stu.mercStorage)) stu.mercStorage = [];
+      const merc = stu.roster.find(m => m.id === mercId);
+      if (!merc) return;
+      if (stu.roster.length <= 1) {
+        showNotice('⚠️ 최소 1명의 용병은 용병단에 남겨두어야 합니다!');
+        return;
+      }
+      if (stu.mercStorage.length >= MAX_MERC_STORAGE) {
+        showNotice(`⚠️ 용병 보관함(${MAX_MERC_STORAGE}칸)이 가득 찼습니다!`);
+        return;
+      }
+      stu.roster = stu.roster.filter(m => m.id !== mercId);
+      merc.deployed = false;
+      stu.mercStorage.push(merc);
+      if (!stu.roster.some(m => m.deployed)) stu.roster[0].deployed = true;
+      if (stu.pvpDefenseLayout) delete stu.pvpDefenseLayout[mercId];
+      if (selectedMercId === mercId) selectedMercId = stu.roster[0]?.id || null;
+      saveState();
+      renderAllStudentViews();
+      showNotice(`📦 [${merc.name}] 용병을 보관함에 넣었어요. (${stu.mercStorage.length}/${MAX_MERC_STORAGE}칸)`);
+    }
+
+    function retrieveMercFromStorage(mercId) {
+      const stu = getActiveStudent();
+      const merc = (stu.mercStorage || []).find(m => m.id === mercId);
+      if (!merc) return;
+      if (stu.roster.length >= MAX_ROSTER) {
+        showNotice(`⚠️ 보유 용병 정원(${MAX_ROSTER}명)이 가득 차 꺼낼 수 없어요. 다른 용병을 먼저 보관해 주세요.`);
+        return;
+      }
+      stu.mercStorage = stu.mercStorage.filter(m => m.id !== mercId);
+      merc.deployed = false;
+      stu.roster.push(merc);
+      if (!stu.roster.some(m => m.deployed)) merc.deployed = true;
+      saveState();
+      renderAllStudentViews();
+      showNotice(`📤 [${merc.name}] 용병을 보관함에서 꺼냈어요.`);
+    }
+
+    function renderMercStorage(stu) {
+      const listEl = document.getElementById('mercStorageList');
+      if (!listEl) return;
+      const store = (stu && stu.mercStorage) || [];
+      const badge = document.getElementById('mercStorageCountBadge');
+      if (badge) badge.textContent = `${store.length} / ${MAX_MERC_STORAGE}칸`;
+      const rosterFull = (stu?.roster || []).length >= MAX_ROSTER;
+      const cells = store.map(merc => {
+        const job = JOB_DEFS[merc.job] || JOB_DEFS.warrior;
+        const rar = RARITY_DEFS[merc.rarity] || RARITY_DEFS.N;
+        const eq = equipDefOf(merc.equippedItem);
+        return `
+          <div class="rounded-xl border-2 p-1.5 flex flex-col items-center gap-1 text-center rarity-${merc.rarity}">
+            <div class="w-full h-11 rounded-lg bg-slate-950/85 flex items-center justify-center overflow-hidden">
+              ${getUnitPortraitHTML(merc.job, merc.rarity, merc.skinVariant || 0, 44)}
+            </div>
+            <div class="w-full leading-tight">
+              <div class="flex items-center justify-center gap-1">
+                <span class="px-1 rounded text-[9px] font-extrabold ${rar.badgeClass}">${rar.name}</span>
+                <span class="text-[10px] font-extrabold text-indigo-300">Lv.${merc.level}</span>
+              </div>
+              <div class="text-[11px] font-bold text-white truncate">${merc.name}</div>
+              <div class="text-[10px] font-bold truncate" style="color:${job.color}">${job.name}${eq ? ` · ${eq.icon}` : ''}</div>
+            </div>
+            <button onclick="retrieveMercFromStorage('${merc.id}')" ${rosterFull ? `title="보유 정원(${MAX_ROSTER}명)이 가득 찼어요"` : ''}
+              class="w-full py-1 rounded-lg text-[10px] font-extrabold transition ${rosterFull ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white'}">
+              📤 꺼내기
+            </button>
+          </div>`;
+      });
+      for (let i = store.length; i < MAX_MERC_STORAGE; i++) {
+        cells.push(`<div class="rounded-xl border-2 border-dashed bg-slate-900/40 border-slate-800/80 min-h-[7.5rem]"></div>`);
+      }
+      listEl.innerHTML = cells.join('');
     }
 
     let formationMovingMercId = null;
@@ -11416,7 +11522,7 @@
       if (!cand || cand.hired) return;
 
       if (stu.roster.length >= MAX_ROSTER) {
-        showNotice(`⚠️ 용병단 최대 정원은 ${MAX_ROSTER}명입니다! 사용하지 않는 용병을 먼저 해고해주세요.`);
+        showNotice(`⚠️ 용병단 최대 정원은 ${MAX_ROSTER}명입니다! 사용하지 않는 용병을 📦 보관함에 넣거나 판매해주세요.`);
         return;
       }
 
@@ -28587,9 +28693,11 @@
       if (!Array.isArray(s.dailyEquipShop)) s.dailyEquipShop = [];
       if (!Array.isArray(s.defenseFormation)) s.defenseFormation = [];
       if (!s.relics || typeof s.relics !== 'object') s.relics = {};
+      if (!Array.isArray(s.mercStorage)) s.mercStorage = s.mercStorage && typeof s.mercStorage === 'object' ? Object.values(s.mercStorage) : [];
       s.roster.forEach(normalizeMercForSync);
       ensureRosterGotAt(s.roster);
       s.defenseFormation.forEach(normalizeMercForSync);
+      s.mercStorage.forEach(normalizeMercForSync);
       deepCleanStrings(s);
       return s;
     }
@@ -37511,7 +37619,10 @@
               ${thumb(def)}
               <span class="text-xs font-extrabold text-slate-200">${def.name}</span>
               <span class="text-[10px] font-bold text-slate-500">${size(def)}${def.art ? '' : ' · 그림 준비 중'}</span>
-              <button type="button" onclick="HomeRoom.buy('${def.id}')" class="w-full py-1.5 rounded-lg ${(stu.mc || 0) >= def.price ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-500'} text-[11px] font-extrabold">${def.price.toLocaleString()} CA</button>
+              <div class="w-full flex gap-1">
+                <button type="button" onclick="HomeRoom.buy('${def.id}')" class="flex-1 py-1.5 rounded-lg ${(stu.mc || 0) >= def.price ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-500'} text-[11px] font-extrabold">${def.price.toLocaleString()} CA</button>
+                <button type="button" title="사지 않고 내 방에 놓아 보기" onclick="HomeRoom.startPreview('${def.id}')" class="px-2 py-1.5 rounded-lg ${this.ghost && this.ghost.preview && this.ghost.id === def.id ? 'bg-pink-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'} text-[11px] font-extrabold">👀</button>
+              </div>
             </div>`).join('');
           return;
         }
@@ -37555,6 +37666,15 @@
             + HOME_DIRS.map(([arrow, label], r) => `<button type="button" title="앞면이 ${label}" onclick="HomeRoom.setDir(${r})" class="w-8 h-7 rounded-md text-base font-black ${r === cur ? 'bg-pink-500 text-white' : 'text-slate-300 hover:bg-slate-800'}">${arrow}</button>`).join('')
             + `</span>`;
         };
+        if (this.ghost && this.ghost.preview) {
+          const def = HOME_DEF[this.ghost.id], stu = this.student(), ok = this.fits(this.ghost, this.ghost.u), rich = stu && (stu.mc || 0) >= def.price;
+          bar.innerHTML = `<span class="font-extrabold text-sky-300">👀 ${def.name} 미리보기</span><span class="text-slate-400">${this.ghost.pinned ? '사지 않았어요 · 다시 누르면 옮겨요' : '방 바닥을 눌러 자리를 정해요'}</span>`
+            + dirs() + btn('↻ 돌리기 (R)', 'rotate()')
+            + (this.ghost.pinned ? btn(`🛒 여기에 사서 놓기 · ${def.price.toLocaleString()} CA`, 'buyPreview()', ok && rich ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-500') : '')
+            + btn('닫기 (Esc)', 'cancel()');
+          this.renderColors(null);
+          return;
+        }
         if (this.ghost) {
           const def = HOME_DEF[this.ghost.id];
           bar.innerHTML = `<span class="font-extrabold text-pink-300">📍 ${def.name} 놓는 중</span><span class="text-slate-400">방 바닥을 눌러 놓아요</span>`
@@ -37664,6 +37784,32 @@
         this.moveGhostTo(this.hoverXY || { X: HOME_ROOM_X / 2, Y: HOME_ROOM_Y / 2 });
         this.render();
       },
+      // 미리보기: 사지 않은 가구를 반투명하게 방에 놓아 봄 (저장하지 않음). 마음에 들면 그 자리에 바로 사서 놓기
+      startPreview(id) {
+        if (!this.student() || !HOME_DEF[id]) return;
+        this.sel = null;
+        const r = this.ghost && this.ghost.preview ? this.ghost.r : 0;
+        this.ghost = { u: '__preview', id, r, x: 0, y: 0, preview: true };
+        this.moveGhostTo(this.hoverXY || { X: HOME_ROOM_X / 2, Y: HOME_ROOM_Y / 2 });
+        this.ghost.pinned = true;
+        this.render();
+      },
+      buyPreview() {
+        const g = this.ghost, stu = this.student(), def = g && HOME_DEF[g.id];
+        if (!g || !g.preview || !stu || !def) return;
+        if ((stu.mc || 0) < def.price) { showNotice(`⚠️ CA가 부족해요. (${def.name} ${def.price.toLocaleString()} CA)`); return; }
+        if (!this.fits(g, g.u)) { showNotice('⚠️ 여기에는 놓을 수 없어요. 자리를 옮겨 보세요.'); return; }
+        stu.mc -= def.price;
+        const u = `h_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+        this.home(stu).items.push({ u, id: g.id, x: g.x, y: g.y, r: g.r, p: 1 });
+        this.ghost = null;
+        this.sel = u;
+        saveState();
+        showNotice(`🛋️ ${def.name}을(를) 사서 놓았어요!`);
+        DailyMission.progress('furnitureBuy', 1, stu);
+        DailyMission.progress('homeDecor', 1, stu);
+        this.render();
+      },
       startMove() {
         const it = this.sel && this.placed().find(x => x.u === this.sel);
         if (!it) return;
@@ -37709,6 +37855,7 @@
       commit() {
         const g = this.ghost, stu = this.student();
         if (!g || !stu) return;
+        if (g.preview) { g.pinned = true; this.renderToolbar(); this.draw(); return; } // 미리보기는 자리만 정함
         if (!this.fits(g, g.u)) {
           showNotice('⚠️ 여기에는 놓을 수 없어요.');
           if (g.dragged) { this.ghost = null; this.sel = g.u; this.render(); } // 끌어 옮기다 막히면 원래 자리로
@@ -37778,14 +37925,18 @@
             this.sel = null;
             this.renderToolbar();
           }
-          if (this.ghost) { this.moveGhostTo(p); this.draw(); }
+          // 자리를 정한 미리보기는 다시 누르기 전까지 그 자리에 둠
+          if (this.ghost && !(this.ghost.pinned && !this.ghost.down)) { this.moveGhostTo(p); this.draw(); }
         });
         cv.addEventListener('pointerdown', e => {
           if (e.button !== 0) return;
           const p = this.toRoom(e);
           this.hoverXY = p;
           try { cv.setPointerCapture(e.pointerId); } catch (err) {}
-          if (this.ghost) { this.moveGhostTo(p); this.ghost.down = true; this.draw(); return; }
+          if (this.ghost) {
+            if (this.ghost.pinned && !this.ghost.down) this.renderToolbar(); // 미리보기를 다시 잡아 옮기는 중
+            this.moveGhostTo(p); this.ghost.down = true; this.draw(); return;
+          }
           const pet = this.pickPet(p);
           if (pet) { this.patPet(pet); return; }
           const it = this.visitId ? null : this.pick(p); // 친구 방에서는 가구를 고르지 않고 둘러보기만
