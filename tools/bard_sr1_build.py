@@ -27,6 +27,9 @@ FRAMES = [
     (6, 'src3.png', 0, 186, 0, 197),
     (7, 'src4.png', 0, 290, 0, 183), (8, 'src4.png', 290, 625, 0, 183), (9, 'src4.png', 625, 996, 0, 183),
 ]
+# 같은 샘플 안에서도 칸마다 그린 크기가 조금 다름: 대기 칸 머리 그림과 배율을 바꿔 맞춰 보니 걷기 아래 줄(3·4칸) 머리가 6% 작아서
+# 걸을 때 머리가 커졌다 작아졌다 함 → 그 칸만 배율을 더 곱함
+SIZE_FIX = {3: 1 / 0.94, 4: 1 / 0.94}
 SCALE_FROM = {'src1.webp': 0, 'src2.png': 5, 'src3.png': 5, 'src4.png': 5}
 DOWN = (7, 8, 9)  # 쓰러짐: 떨어진 하프 조각도 남기고, 기준점은 몸 전체 가운데
 HOLE_MIN = {'src1.webp': 200, 'src2.png': 40, 'src3.png': 40, 'src4.png': 40}  # 하프 안 흰 배경으로 볼 최소 넓이 (샘플 px, 게임 칸에서 약 7px²)
@@ -260,7 +263,7 @@ def main():
     src = {f[0]: f[1] for f in FRAMES}
     sc = {nm: TARGET_H / cuts[i][0].shape[0] for nm, i in SCALE_FROM.items()}
     print('scales', {k: round(v, 3) for k, v in sc.items()})
-    pieces = {i: (shrink(r, sc[src[i]]), c * sc[src[i]], 0) for i, (r, c) in cuts.items()}
+    pieces = {i: (shrink(r, sc[src[i]] * SIZE_FIX.get(i, 1)), c * sc[src[i]] * SIZE_FIX.get(i, 1), 0) for i, (r, c) in cuts.items()}
     for i, (r, c, below, s) in cut_panels().items():
         pieces[i] = (shrink(r, s, hard=False), c, int(round(below)))
     for i in range(COUNT):
