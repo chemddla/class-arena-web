@@ -6307,20 +6307,21 @@
     BARD_ENCORE_FX.img.src = 'assets/sprites/fx/bard_encore_fx.webp';
     // 시크릿 레어 음유시인 전용 [앙코르] 이펙트 (tools/bard_sr1_encore_fx_build.py). 기준점 = 바닥 고리 가운데
     // cast = 금빛 빛기둥·물방울 (시전하는 동안 발밑에 크게, 유닛 그리기에서 캐릭터 아래) · burst = 금빛·보랏빛 소용돌이 (발동 때 발밑에 크게, 기본 외형의 무대 대신)
-    const BARD_SR_ENCORE_FX = { img: new Image(), ready: false, frames: { cast: [0,0,211,315,106,270], burst: [213,0,582,463,290,386] } };
+    // ally = 오선·음표가 소용돌이치는 푸른 구체 + 금빛 마법진 (발동 때 효과를 받은 아군 발밑, 기본 외형의 아군 마법진 대신)
+    const BARD_SR_ENCORE_FX = { img: new Image(), ready: false, frames: { cast: [0,0,211,315,106,270], burst: [213,0,582,463,290,386], ally: [797,0,267,409,136,336] } };
     BARD_SR_ENCORE_FX.img.onload = () => { BARD_SR_ENCORE_FX.ready = true; };
     BARD_SR_ENCORE_FX.img.src = 'assets/sprites/fx/bard_sr1_encore_fx.webp';
     const usesBardSr = u => Boolean(u && BARD_SR_ENCORE_FX.ready && getUnitSprite(u) === MERC_SPRITE_DEFS[`bard_${SECRET_SKIN_BASE + 1}`]);
     const BARD_WAVE_FLY_TICKS = 18; // 음파가 부채꼴 끝까지 날아가는 틱 (맞은 이펙트는 거리에 맞춰 늦게 터짐)
     // 음유시인 이펙트: bard_lute = 류트 소리 고리 (x,y) · bard_wave = 날아가는 음파 (sx,sy에서 ang 방향으로 r만큼) · bard_wave_hit = 맞은 자리 (wait틱 뒤 터짐)
     function drawBardEffect(ctx, ef, progress) {
-      if (ef.type === 'bard_sr_encore') {
-        // 시크릿 레어 발동: 발밑 고리에서 소용돌이가 커지며 피어올랐다가 사라짐 (폭 300, 크기 1일 때)
+      if (ef.type === 'bard_sr_encore' || ef.type === 'bard_sr_encore_ally') {
+        // 시크릿 레어 발동: 발밑 고리에서 커지며 피어올랐다가 사라짐. 폭: 시전자 소용돌이 = 300, 아군 구체 = 90 (크기 1일 때, 구체가 몸을 감쌈)
         if (!BARD_SR_ENCORE_FX.ready) return;
-        const f = BARD_SR_ENCORE_FX.frames.burst;
-        const k = 300 * (ef.s || 1) / f[2] * (0.7 + 0.3 * Math.min(1, progress / 0.2));
+        const ally = ef.type === 'bard_sr_encore_ally', f = BARD_SR_ENCORE_FX.frames[ally ? 'ally' : 'burst'];
+        const k = (ally ? 90 : 300) * (ef.s || 1) / f[2] * (0.7 + 0.3 * Math.min(1, progress / 0.2));
         ctx.globalAlpha = Math.min(1, progress / 0.08, (1 - progress) / 0.35);
-        const o = ef.owner && ef.owner.alive ? ef.owner : ef; // 시전자 발밑을 따라감
+        const o = ef.owner && ef.owner.alive ? ef.owner : ef; // 시전자·아군 발밑을 따라감
         drawSpriteFx(ctx, BARD_SR_ENCORE_FX.img, f[0], f[1], f[2], f[3], o.x - f[4] * k, o.y + 12 - f[5] * k, f[2] * k, f[3] * k);
         return;
       }
@@ -18306,10 +18307,11 @@
         // 모든 아군: 히든 스킬이 아닌 스킬 쿨타임 초기화 + 마나 가득 + 10초 고양·선율 (자신의 앙코르 쿨타임은 그대로)
         // 시전자 발밑에 금빛 무대(오선·음표, 시크릿 레어는 소용돌이), 다른 아군 발밑에 마법진·화살표·방패
         // 이펙트는 owner(시전자·아군)를 따라다니며 사라질 때까지 발밑에 있음
-        if (usesBardSr(unit)) sim.effects.push({ type: 'bard_sr_encore', x: unit.x, y: unit.y, owner: unit, s: unitFxSize(unit), life: 90, maxLife: 90 }); // 시크릿 레어: 금빛·보랏빛 소용돌이
+        const srEncore = usesBardSr(unit);
+        if (srEncore) sim.effects.push({ type: 'bard_sr_encore', x: unit.x, y: unit.y, owner: unit, s: unitFxSize(unit), life: 90, maxLife: 90 }); // 시크릿 레어: 금빛·보랏빛 소용돌이
         else sim.effects.push({ type: 'bard_encore', x: unit.x, y: unit.y, owner: unit, s: unitFxSize(unit), life: 80, maxLife: 80 });
         allies.forEach(a => {
-          if (a !== unit && a.alive) sim.effects.push({ type: 'bard_encore_ally', x: a.x, y: a.y, owner: a, s: unitFxSize(a), life: 80, maxLife: 80 });
+          if (a !== unit && a.alive) sim.effects.push({ type: srEncore ? 'bard_sr_encore_ally' : 'bard_encore_ally', x: a.x, y: a.y, owner: a, s: unitFxSize(a), life: srEncore ? 90 : 80, maxLife: srEncore ? 90 : 80 }); // 시크릿 레어: 푸른 구체
           if (a.skillCooldowns) Object.keys(a.skillCooldowns).forEach(k => { if (!isHiddenSkillKey(k)) a.skillCooldowns[k] = 0; });
           if (a.maxMana > 0) a.mana = a.maxMana;
           a.statuses.anthem = Math.max(a.statuses.anthem || 0, BARD_ENCORE_TICKS);

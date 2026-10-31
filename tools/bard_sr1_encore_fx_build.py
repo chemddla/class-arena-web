@@ -1,7 +1,8 @@
-# 음유시인 시크릿 레어 전용 히든 [앙코르] 이펙트 샘플 2장(어두운 회색 배경) → 이펙트 아틀라스 assets/sprites/fx/bard_sr1_encore_fx.webp
-# 사용: python tools/bard_sr1_encore_fx_build.py   (샘플 assets/sprites/fx/samples/bard_sr1_encore_cast_src.png · bard_sr1_encore_burst_src.png)
+# 음유시인 시크릿 레어 전용 히든 [앙코르] 이펙트 샘플 3장(어두운 회색 배경) → 이펙트 아틀라스 assets/sprites/fx/bard_sr1_encore_fx.webp
+# 사용: python tools/bard_sr1_encore_fx_build.py   (샘플 assets/sprites/fx/samples/bard_sr1_encore_cast_src.png · _burst_src.png · _ally_src.png)
 #   cast  = 금빛 빛기둥·물방울 + 바닥 고리 (시전하는 동안 시전자 발밑에 크게)
 #   burst = 금빛·보랏빛 소용돌이 + 겹친 금빛 고리 (발동할 때 시전자 발밑에 크게)
+#   ally  = 오선·음표가 소용돌이치는 푸른 구체 + 아래 금빛 마법진 (발동할 때 효과를 받은 아군 발밑, 기본 외형의 아군 마법진 대신)
 # 샘플 정리:
 #   - 빛나는 그림이라 배경색(가장자리 중앙값)과 얼마나 다른지로 투명도를 정하고, 배경색을 빼서 빛 색을 되살림
 #   - burst 위쪽 제목 글씨("#25 발동 …")와 오른쪽 아래 ✦ 워터마크 지움
@@ -13,7 +14,8 @@ from scipy import ndimage as ndi
 S = 'assets/sprites/fx/samples/bard_sr1_encore_'
 OUT = 'assets/sprites/fx/bard_sr1_encore_fx.webp'
 # (이름, 파일, 지울 상자들 (x0, y0, x1, y1), 바닥 고리를 찾을 아래쪽 비율)
-PARTS = [('cast', 'cast_src.png', [], 0.72), ('burst', 'burst_src.png', [(0, 0, 1024, 62), (895, 445, 970, 515)], 0.68)]
+PARTS = [('cast', 'cast_src.png', [], 0.72), ('burst', 'burst_src.png', [(0, 0, 1024, 62), (895, 445, 970, 515)], 0.68),
+         ('ally', 'ally_src.png', [], 0.66)]
 
 
 def key(im):
