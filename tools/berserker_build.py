@@ -29,7 +29,7 @@ FRAMES = [
     (9, 'walk0', (0, 186)), (9, 'walk1', (186, 355)), (9, 'walk2', (355, 529)), (9, 'walk3', (529, 705)),
     (5, 'hurt'),
     (6, 'down'),
-    (11, 'atk0'), (16, 'atk1'),  # 기본 공격: 들어 올리기 → X자로 베기 (회색 X자 이펙트는 떼어 내 사거리만큼 키움)
+    (11, 'atk0'), (16, 'atk1'),  # 기본 공격: 들어 올리기 → X자로 베기 (회색 X자 이펙트는 그림 그대로)
     (12, 'rage0', (0, 148)), (12, 'rage1', (148, 332)),  # 광폭화 시전: 불길이 솟음 → 불길 속 포효 (불길은 그림 그대로)
     (13, 'throw0', (0, 174)), (13, 'throw1', (174, 355)), (13, 'throw2', (355, 486)),  # 도끼 투척 (던진 도끼는 build_axe_fx 그림으로 따로 날아감)
 ]
@@ -115,14 +115,12 @@ def cut(folder, f):
 
 
 ATTACK_RANGE_SPR = (78 - 16) * 81 / 54  # 광전사 공격 사거리 78(월드 px)에 서 있는 적의 앞쪽 몸 끝(몸 반지름 16 뺌)을 시트 px로 (게임에서 standH 81 → 54px로 그림)
-FX_SPLIT = {'atk1': 'grey', 'exec1': 'red'}  # 회색 타격 이펙트(X자·섬광·베기 궤적)를 떼어 내 공격 사거리만큼 키워 다시 붙일 칸 (red = 붉게 바꿔서)
+FX_SPLIT = {'exec1': 'red'}  # 회색 타격 이펙트(섬광·베기 궤적)를 떼어 내 공격 사거리만큼 키워 다시 붙일 칸 (red = 붉게 바꿔서). X자 베기는 그림 그대로
 
 
-FX_PROTECT = {'atk1': (140, 183, 100, 170)}  # X자 이펙트를 떼어 낼 때 어두운 픽셀은 남길 상자 (잘라 낸 샘플 x0, x1, y0, y1): X자 베기 오른손 도끼 머리
-FX_PROTECT_ALL = {'atk1': (128, 158, 140, 166)}  # 밝은 픽셀까지 다 몸에 남길 상자: 도끼 아래 가시 (밝은 회색이라 X자에 붙어 떨어져 나왔음)
 
 
-def split_fx(rgba, name=''):
+def split_fx(rgba):
     # 내려치기 샘플의 회색 타격 이펙트 = 채도 낮고 밝은 픽셀(섬광 X자·베기 초승달) 덩어리
     #   가장 큰 덩어리 + 그 2% 넘는 덩어리 중 그림 가운데(35%)보다 오른쪽에 있는 것만 (왼쪽 뒤 도끼 날은 빼려고)
     rgb, a = rgba[..., :3], rgba[..., 3] / 255
@@ -135,13 +133,6 @@ def split_fx(rgba, name=''):
     fx = np.isin(lab, keep)
     # 바로 옆의 어두운 회색 윤곽(3px)까지 이펙트로 봄
     fx |= ndi.binary_dilation(fx, iterations=3) & (sat < 30) & (a > 0)
-    if name in FX_PROTECT:  # X자 뒤에 겹친 도끼 머리: 어두운 쇠·윤곽은 몸에 남김 (떼어 내면 키운 X자 끝에 도끼 가시가 붙고 손의 도끼가 사라짐)
-        x0, x1, y0, y1 = FX_PROTECT[name]
-        box = np.zeros(fx.shape, bool); box[y0:y1, x0:x1] = True
-        fx &= ~(box & (L < 120))
-    if name in FX_PROTECT_ALL:
-        x0, x1, y0, y1 = FX_PROTECT_ALL[name]
-        fx[y0:y1, x0:x1] = False
     # 이펙트 덩어리 중 큰 것만 (목걸이 이빨·도끼 가시의 밝은 빛 같은 작은 조각은 몸에 남김)
     lab, n = ndi.label(fx, structure=np.ones((3, 3)))
     if n:
@@ -395,7 +386,7 @@ def main(folder):
         sc = rage_sc if f[0] == 12 else base * SCALE_FIX[f[1]] if f[1] in SCALE_FIX else TARGET_H / rgba.shape[0]
         cx = fx * sc if fx is not None else cx * sc + foot_off
         if f[1] in FX_SPLIT:
-            body, fxl = split_fx(rgba, f[1])
+            body, fxl = split_fx(rgba)
             if FX_SPLIT[f[1]] == 'red': fxl = redden_fx(fxl)
             p, c2, b = paste_fx(shrink(body, sc), cx, int(round(below * sc)), fxl, sc, fx)
             pieces[f[1]] = (f[1], p, c2, b)
