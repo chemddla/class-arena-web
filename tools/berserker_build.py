@@ -5,6 +5,8 @@
 #   12 = 광폭화 세 칸 (불길이 솟음 · 불길 속 포효 · 광폭 대기 — 붉은 얼굴·빛나는 눈, 분홍 아지랑이 배경),
 #   13 = 도끼 투척 세 칸 (위에 한글·영어 제목), 14 = 날아가는 도끼 두 칸 (흰 회오리 바람 포함)
 # 캐릭터 칸 순서: 0 대기 · 1~4 걷기 · 5 피격 · 6 쓰러짐 · 7~8 기본 공격 (들어 올리기 → 내려치기) · 9~10 광폭화 시전 · 11~13 도끼 투척 (뒤로 젖힘 · 던짐 · 팔을 뻗은 마무리)
+#   · 16 마무리 일격 내려치기 (기본 공격 내려치기 칸의 회색 이펙트를 붉게 — redden_fx)
+#   · 14~15 야성의 포효 (광폭화 시전 두 칸에서 불을 지우고, 불빛에 물든 하반신은 대기 자세 하반신 색으로 되돌림 — make_howl)
 # 날아가는 도끼 assets/sprites/fx/berserker_axe.webp: 두 칸 (흰 회오리는 흰 정도만큼 반투명), 게임에서 빙글빙글 돌리며 날림 (build_axe_fx) (쓰러짐 동작은 피격 → 누운 자세 두 칸) (모든 칸 크기 같음, 오른쪽을 봄, 발 = 기준점)
 # 광폭 시트 berserker_0_rage.webp: 칸 순서·크기가 같고, 대기 = 광폭 대기 샘플, 나머지 동작 = 광폭 대기의 붉은 얼굴·빛나는 눈·붉은 기운을 입힌 그림 (enrage),
 #   광폭화 시전 두 칸도 붉은 얼굴·눈빛만 입힘 (불길이 있어 붉은 기운 테두리는 안 두름). 광폭(berserk) 상태 동안 게임이 이 시트로 바꿔 그림
@@ -32,11 +34,10 @@ FRAMES = [
     (13, 'throw0', (0, 174)), (13, 'throw1', (174, 355)), (13, 'throw2', (355, 486)),  # 도끼 투척 (던진 도끼는 build_axe_fx 그림으로 따로 날아감)
 ]
 RAGE_IDLE = (12, 'ridle', (332, 470))  # 광폭 대기 (오른쪽 끝 회색 테두리는 뺌). 광폭 시트의 대기 칸이자 붉은 얼굴·눈·털 색의 기준
-HOLE_X = {12: (332, 479)}  # 갇힌 흰 덩어리를 지울 x 범위: 광폭화 샘플은 광폭 대기 칸(팔과 도끼 사이)만
-HOLE_KEEP = {10: [(700, 760, 700, 770)]}  # 갇힌 흰 덩어리 중 남길 것 (x0, x1, y0, y1): 내려치기 섬광 아래쪽 흰 속
+HOLE_KEEP = {10: [(700, 760, 700, 770)], 12: [(80, 100, 80, 90)]}  # 갇힌 흰 덩어리 중 남길 것 (x0, x1, y0, y1): 내려치기 섬광 아래쪽 흰 속, 광폭화 시전 첫 칸의 벌린 입 이빨
 RIM = {10: 8}  # 흰색이 섞인 테두리 두께 (기본 2px). 내려치기는 4.6배 큰 흐린 그림이라 번진 띠도 넓음
 DROP = {11: [(0, 40, 160, 260)], 12: [(470, 479, 0, 178)]}  # 지울 상자 (x0, x1, y0, y1): 들어 올리기 샘플 왼쪽 아래에 옆 칸 도끼가 잘려 들어옴, 광폭화 샘플 오른쪽 끝 회색 테두리
-HOLE_SHEETS = (9, 10, 12, 13)  # 몸 안에 갇힌 흰 배경도 지울 샘플 (걷기 셋째 칸·광폭 대기·도끼 투척: 팔과 도끼 사이, 내려치기: 머리털·다리와 섬광 사이)
+HOLE_SHEETS = (9, 10, 12, 13)  # 몸 안에 갇힌 흰 배경도 지울 샘플 (걷기 셋째 칸·광폭 대기·광폭화 시전 둘째 칸·도끼 투척: 팔·손과 도끼 사이, 내려치기: 머리털·다리와 섬광 사이)
 KEEP_SMALL = {'atk1': 500}  # 몸에서 떨어진 조각도 이 크기(px) 넘으면 남김: 섬광에서 떨어져 나간 빛살 (내려치기 샘플은 대기의 4.6배 크기)
 # 얼굴로 가로 기준을 못 잡는 칸: 발 기준점으로 쓸 샘플 x. 쓰러짐 = 머리털 끝~발끝 가운데 (오른쪽 도끼는 뺌),
 # 공격 = 장화 가운데 (내딛으며 몸이 앞으로 쏠려서 얼굴로 맞추면 발이 뒤로 미끄러짐)
@@ -71,8 +72,6 @@ def load(sheet, folder):
     if sheet in HOLE_SHEETS:  # 몸·도끼 자루 사이에 갇힌 흰 배경 (공격 샘플의 팔과 앞 도끼 사이, 주먹과 자루 사이): 아주 하얀 20px 넘는 덩어리도 배경
         ids = np.arange(1, n + 1)  # (다른 샘플은 도끼 날 빛·허리천이 이만큼 하얄 수 있어서 이 샘플에만 씀)
         big = ids[(ndi.sum(white, lab, ids) >= 20) & ((ndi.mean(im.min(axis=2), lab, ids) > 235) | (sheet in PINK_SHEETS))]  # 분홍 아지랑이 샘플은 갇힌 분홍빛도
-        if sheet in HOLE_X:  # 이 x 범위 안 덩어리만 (광폭화 샘플: 시전 칸의 벌린 입·이빨은 남김)
-            big = [i for i in big if HOLE_X[sheet][0] <= ndi.center_of_mass(lab == i)[1] < HOLE_X[sheet][1]]
         for x0, x1, y0, y1 in HOLE_KEEP.get(sheet, ()):  # 섬광 한가운데 흰빛은 남김
             big = [i for i in big if not (x0 <= ndi.center_of_mass(lab == i)[1] < x1 and y0 <= ndi.center_of_mass(lab == i)[0] < y1)]
         bg |= np.isin(lab, big)
@@ -142,6 +141,17 @@ def split_fx(rgba):
     out[inside, 3] = 255
     out[fx & ~inside] = 0
     return out, fx_rgba
+
+
+def redden_fx(fx_rgba):
+    # 회색 타격 이펙트 → 붉은 이펙트 (마무리 일격): 밝기에 따라 검붉은 윤곽 → 진홍 → 밝은 분홍빛 속
+    L = fx_rgba[..., :3].mean(axis=2)
+    ramp_L = np.array([40, 120, 190, 245])
+    ramp = np.array([[80, 8, 8], [185, 25, 20], [240, 70, 50], [255, 190, 170]], float)
+    out = fx_rgba.copy()
+    for ch in range(3):
+        out[..., ch] = np.interp(L, ramp_L, ramp[:, ch])
+    return out
 
 
 def paste_fx(piece, cx, below, fx_src, sc, foot_src):
@@ -264,6 +274,63 @@ def add_aura(cell):
     return out
 
 
+HOWL_WAIST = 40  # 발에서 이 높이(칸 px)까지 = 하반신: 불빛에 붉게 물든 색을 대기 자세 하반신 색으로 되돌림
+
+
+def _flame(c):
+    # 광폭화 시전 칸의 불길: 빨강~주황 (빨강이 초록보다 70 넘게 큼) · 노랑 (파랑이 빨강의 45% 아래, 초록 140 넘음)
+    R, G, B = (c[..., i].astype(int) for i in range(3))
+    return (c[..., 3] > 0) & (((R - G > 70) & (R > 80)) | ((R > 200) & (G > 140) & (B < R * 0.45)))
+
+
+def make_howl(rage_piece, idle_piece):
+    # 야성의 포효: 광폭화 시전 칸 → 불길을 지우고 (몸 안쪽으로 파고든 불은 가까운 몸 색으로 메움),
+    #   하반신(발에서 HOWL_WAIST까지)은 불빛에 붉게 물든 색을 대기 자세 하반신 색 중 가장 가까운 색으로 바꿈
+    #   (가깝다 = 빨강을 빼고 초록·파랑·밝기로 비교 — 불빛은 빨강만 올려 놓음). 검은 윤곽·도끼 회색은 그대로
+    name, r, rcx, rb = rage_piece
+    _, ip, icx, ib = idle_piece
+    r = r.astype(float).copy()
+    fl = _flame(r)
+    body = (r[..., 3] > 0) & ~fl
+    inside = fl & ndi.binary_closing(body, iterations=4)
+    src = body & (r[..., :3].mean(axis=2) > 45)
+    _, (iy, ix) = ndi.distance_transform_edt(~src, return_indices=True)
+    r[inside, :3] = r[iy[inside], ix[inside], :3]
+    r[fl & ~inside, 3] = 0
+    h = r.shape[0]
+    foot = h - 1 - rb
+    ifoot = ip.shape[0] - 1 - ib
+    pal = ip[max(0, ifoot - HOWL_WAIST):ifoot + 1]
+    pal = pal[pal[..., 3] > 200][:, :3].astype(float)
+    feat = lambda c: np.stack([c[..., 1], c[..., 2], c[..., :3].mean(axis=-1) * 0.5], axis=-1)
+    pf = feat(pal)
+    low = np.zeros(r.shape[:2], bool); low[max(0, foot - HOWL_WAIST):] = True
+    R, G, B = r[..., 0], r[..., 1], r[..., 2]
+    L = r[..., :3].mean(axis=2)
+    metal = (r[..., :3].max(axis=2) - r[..., :3].min(axis=2) < 22) & (L > 70)
+    fix = low & (r[..., 3] > 0) & (L > 15) & ~metal & (R > G + 8)
+    if fix.any():
+        q = feat(r[fix][:, :3])
+        d = ((q[:, None, :] - pf[None, :, :]) ** 2).sum(axis=2)
+        r[fix, :3] = pal[np.argmin(d, axis=1)]
+    # 하반신 밖에도 남은 불빛: 불길 윤곽이 남긴 검붉은 테두리·팔·머리털에 비친 붉은빛 (피부가 아닌 어둡고 붉은 픽셀)
+    #   → 대기 자세 전체 색 중 가장 가까운 색으로 (같은 방법)
+    allp = ip[ip[..., 3] > 200][:, :3].astype(float)
+    R, G, B = r[..., 0], r[..., 1], r[..., 2]
+    L = r[..., :3].mean(axis=2)
+    red = (r[..., 3] > 0) & (R - G > 30) & (R - B > 25) & (L < 110) & ~_skin(r)
+    if red.any():
+        q = feat(r[red][:, :3])
+        d = ((q[:, None, :] - feat(allp)[None, :, :]) ** 2).sum(axis=2)
+        r[red, :3] = allp[np.argmin(d, axis=1)]
+    out = r.clip(0, 255).astype(np.uint8)
+    op = out[..., 3] > 0  # 불을 지우고 떨어져 나간 작은 조각은 지움
+    lab, n = ndi.label(op, structure=np.ones((3, 3)))
+    sizes = ndi.sum(op, lab, range(1, n + 1))
+    out[..., 3] = np.where(np.isin(lab, 1 + np.where(sizes < sizes.max() * 0.03)[0]), 0, out[..., 3])
+    return ('howl' + name[-1], out, rcx, rb)
+
+
 def place(pieces, L, B, H, cellW):
     sheet = np.zeros((H, cellW * len(pieces), 4), np.uint8)
     for i, (name, p, c, d) in enumerate(pieces):
@@ -312,12 +379,16 @@ def main(folder):
         cx = fx * sc if fx is not None else cx * sc + foot_off
         if f[1] in FX_SPLIT:
             body, fxl = split_fx(rgba)
-            p, cx, b = paste_fx(shrink(body, sc), cx, int(round(below * sc)), fxl, sc, fx)
-            pieces[f[1]] = (f[1], p, cx, b)
+            p, c2, b = paste_fx(shrink(body, sc), cx, int(round(below * sc)), fxl, sc, fx)
+            pieces[f[1]] = (f[1], p, c2, b)
+            # 마무리 일격: 같은 내려치기 칸에 이펙트만 붉게
+            p, c2, b = paste_fx(shrink(body, sc), cx, int(round(below * sc)), redden_fx(fxl), sc, fx)
+            pieces['exec1'] = ('exec1', p, c2, b)
             continue
         pieces[f[1]] = (f[1], shrink(rgba, sc), cx, int(round(below * sc)))
     ridle = pieces['ridle'][1]
     normal = [pieces[f[1]] for f in FRAMES]
+    normal += [make_howl(pieces['rage0'], pieces['idle']), make_howl(pieces['rage1'], pieces['idle']), pieces['exec1']]
     rage = [pieces['ridle'] if n == 'idle' else (n, enrage(p, ridle), c, d) for n, p, c, d in normal]  # 시전 두 칸도 (광폭 상태가 걸린 뒤에 나옴)
     both = normal + rage
     L = max(int(np.ceil(c)) for _, _, c, _ in both) + 4  # 붉은 기운 2px 자리까지
