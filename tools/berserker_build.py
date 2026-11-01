@@ -118,10 +118,13 @@ ATTACK_RANGE_SPR = (78 - 16) * 81 / 54  # 광전사 공격 사거리 78(월드 p
 FX_SPLIT = {'atk1': 'grey', 'exec1': 'red'}  # 회색 타격 이펙트(X자·섬광·베기 궤적)를 떼어 내 공격 사거리만큼 키워 다시 붙일 칸 (red = 붉게 바꿔서)
 
 
-def split_fx(rgba):
+FX_PROTECT = {'atk1': (140, 183, 100, 170)}  # X자 이펙트를 떼어 낼 때 어두운 픽셀은 남길 상자 (잘라 낸 샘플 x0, x1, y0, y1): X자 베기 오른손 도끼 머리
+FX_PROTECT_ALL = {'atk1': (128, 158, 140, 166)}  # 밝은 픽셀까지 다 몸에 남길 상자: 도끼 아래 가시 (밝은 회색이라 X자에 붙어 떨어져 나왔음)
+
+
+def split_fx(rgba, name=''):
     # 내려치기 샘플의 회색 타격 이펙트 = 채도 낮고 밝은 픽셀(섬광 X자·베기 초승달) 덩어리
     #   가장 큰 덩어리 + 그 2% 넘는 덩어리 중 그림 가운데(35%)보다 오른쪽에 있는 것만 (왼쪽 뒤 도끼 날은 빼려고)
-    #   바로 옆의 어두운 회색 윤곽(3px)까지 이펙트로 봄
     rgb, a = rgba[..., :3], rgba[..., 3] / 255
     L = rgb.mean(axis=2); sat = rgb.max(axis=2) - rgb.min(axis=2)
     core = (a > 0.3) & (sat < 28) & (L > 120)
@@ -130,7 +133,20 @@ def split_fx(rgba):
     cxs = [c[1] for c in ndi.center_of_mass(core, lab, range(1, n + 1))]
     keep = [i + 1 for i in range(n) if sizes[i] >= sizes.max() * 0.02 and cxs[i] > rgba.shape[1] * 0.35]
     fx = np.isin(lab, keep)
+    # 바로 옆의 어두운 회색 윤곽(3px)까지 이펙트로 봄
     fx |= ndi.binary_dilation(fx, iterations=3) & (sat < 30) & (a > 0)
+    if name in FX_PROTECT:  # X자 뒤에 겹친 도끼 머리: 어두운 쇠·윤곽은 몸에 남김 (떼어 내면 키운 X자 끝에 도끼 가시가 붙고 손의 도끼가 사라짐)
+        x0, x1, y0, y1 = FX_PROTECT[name]
+        box = np.zeros(fx.shape, bool); box[y0:y1, x0:x1] = True
+        fx &= ~(box & (L < 120))
+    if name in FX_PROTECT_ALL:
+        x0, x1, y0, y1 = FX_PROTECT_ALL[name]
+        fx[y0:y1, x0:x1] = False
+    # 이펙트 덩어리 중 큰 것만 (목걸이 이빨·도끼 가시의 밝은 빛 같은 작은 조각은 몸에 남김)
+    lab, n = ndi.label(fx, structure=np.ones((3, 3)))
+    if n:
+        sizes = ndi.sum(fx, lab, range(1, n + 1))
+        fx = np.isin(lab, 1 + np.where(sizes >= sizes.max() * 0.05)[0])
     fx_rgba = np.where(fx[..., None], rgba, 0)
     # 이펙트가 덮고 있던 몸 자리는 가장 가까운 몸 색(검은 윤곽 빼고)으로 메움, 몸 바깥은 비움
     body = (a > 0.5) & ~fx
@@ -379,7 +395,7 @@ def main(folder):
         sc = rage_sc if f[0] == 12 else base * SCALE_FIX[f[1]] if f[1] in SCALE_FIX else TARGET_H / rgba.shape[0]
         cx = fx * sc if fx is not None else cx * sc + foot_off
         if f[1] in FX_SPLIT:
-            body, fxl = split_fx(rgba)
+            body, fxl = split_fx(rgba, f[1])
             if FX_SPLIT[f[1]] == 'red': fxl = redden_fx(fxl)
             p, c2, b = paste_fx(shrink(body, sc), cx, int(round(below * sc)), fxl, sc, fx)
             pieces[f[1]] = (f[1], p, c2, b)
