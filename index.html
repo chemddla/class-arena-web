@@ -2655,6 +2655,7 @@
             <div>👥 <strong>최대 5명</strong>이 한 명당 용병 1명을 <strong>직접 조종</strong>해요. 방장은 빈 자리에 <strong>[🤖 AI 넣기]</strong>로 반 친구 용병을 한 명씩 넣고 뺄 수 있어요. (무작위 친구 · 파티에서 가장 센 용병의 전투력을 넘지 않아요)</div>
             <div>🛡️ 직접 조종하는 용병은 <strong>행동불능 상태이상</strong>(기절·빙결·공포·혼란)에 걸리지 않아요.</div>
             <div>🌊 라운드가 시작되면 <strong>맵 오른쪽 동굴</strong>에서 몬스터가 차례로 나와 성벽 사이 통로로 몰려와요. 동굴에서 나오기 전에는 보이지 않고 공격도 닿지 않아요. 성벽은 아무도 지나갈 수 없어요.</div>
+            <div>🕳️ 20라운드마다 보스를 물리치면 몬스터가 나오던 굴로 들어가 <strong>새로운 전장</strong>으로 넘어가요. 21라운드부터는 몇몇 몬스터가 <strong>파티 뒤쪽에 하늘에서 떨어져요!</strong></div>
             <div>📈 <strong>100라운드</strong>까지! 구간마다 몬스터가 강해지고 많아져요: 입문(1~10) · 초급(11~30) · 중급(31~50) · 상급(51~70) · 영웅(71~90) · 전설(91~100). <strong>5라운드마다 👑 보스</strong>, 10라운드마다 대보스, 100라운드는 🔥최종 보스예요.</div>
             <div>💚 라운드를 깨면 살아 있는 용병 체력 30% 회복 · 보스 라운드를 깨면 쓰러진 용병도 부활해요.</div>
             <div>⏰ 한 라운드 제한 시간 3분 · 모두 쓰러지거나 시간이 지나면 끝나요.</div>
@@ -7971,6 +7972,7 @@
       tower:    { src: 'assets/maps/tower.webp' },    // 모험의 탑 (전용 맵이 없는 종족)
       monster_rush: { src: 'assets/maps/monster_rush.webp' }, // 몬스터 러쉬 1~20라운드 (숲속 야영지·대포·바리케이드·오른쪽 동굴)
       monster_rush_2: { src: 'assets/maps/monster_rush_2.webp' }, // 몬스터 러쉬 21~40라운드 (동굴 속 야영지·개울·나무다리 두 개·양쪽 위 굴)
+      monster_rush_3: { src: 'assets/maps/monster_rush_3.webp' }, // 몬스터 러쉬 41~60라운드 (핏빛 동굴·가운데 구덩이·핏물 강·돌다리·나무다리)
       tower_goblin: { src: 'assets/maps/tower_goblin.webp' }, // 모험의 탑 고블린족 (1~10층)
       tower_undead: { src: 'assets/maps/tower_undead.webp' }, // 모험의 탑 언데드 (11~20층)
       tower_beast:  { src: 'assets/maps/tower_beast.webp' },  // 모험의 탑 야수족 (21~30층)
@@ -24746,6 +24748,7 @@
         if (u.isEliteBoss && sim.eliteIntro) { drawEliteBossDrop(ctx, u); return; }
         drawUnitToken(ctx, u, sim.tickCount);
       });
+      if (sim.mode === 'monster_rush') drawRushDrops(ctx);
       drawDarknessAuras(ctx);
       drawSupportEffects(ctx);
       drawHitEffectsOnTop(ctx, drawEffectsPass);
@@ -33034,7 +33037,8 @@
         liveNum(u.itemCd), liveNum(u.atkSpdStacks), liveNum(u.hasteTicks), liveNum(u.frenzyTicks),
         u.lanceMode === 'thrust' ? 1 : 0,
         liveNum(u.ammo), liveNum(u.reloadLeft), liveNum(u.overheat), liveNum(u.powerStacks),
-        liveR2(u.sizeScale || 1), Math.round(liveNum(u.maxHp)) // 히든 스킬 거인화: 몸 크기·최대 체력이 바뀜
+        liveR2(u.sizeScale || 1), Math.round(liveNum(u.maxHp)), // 히든 스킬 거인화: 몸 크기·최대 체력이 바뀜
+        u.rushFall == null ? -1 : liveNum(u.rushFall) // 몬스터 러쉬: 하늘에서 떨어지는 중인 틱
       ];
     }
 
@@ -33431,6 +33435,7 @@
         u.mana = liveNum(p[4]);
         u.alive = p[5] === 1;
         if (u.alive && u.rushPending) u.rushPending = false; // 몬스터 러쉬: 뒷편에서 맵으로 넘어옴
+        u.rushFall = !u.alive && p.length > 30 && p[30] >= 0 ? liveNum(p[30]) : null; // 몬스터 러쉬: 하늘에서 떨어지는 중
         u.facingDir = p[6] === -1 ? -1 : 1;
         u.facingAngle = liveNum(p[7]);
         u.isMoving = p[8] === 1;
@@ -34516,6 +34521,10 @@
       breakSec: 5,           // 라운드 사이 쉬는 시간
       moveSec: 6,            // 다음 맵으로 넘어갈 때 굴까지 걸어가는 최대 시간 (다 모이면 바로 어두워짐)
       fadeSec: 0.9,          // 맵이 바뀔 때 어두워졌다 밝아지는 시간 (각각)
+      dropFrom: 21,          // 이 라운드부터 몇몇 몬스터가 굴 대신 파티 뒤쪽(후방)에 하늘에서 떨어짐
+      dropChance: 0.25,      // 보스가 아닌 몬스터가 떨어지는 쪽으로 나올 확률
+      dropWarnSec: 1.2,      // 떨어질 자리에 그림자·경고 원이 보이는 시간
+      dropFallSec: 0.5,      // 하늘에서 떨어지는 시간
       roundLimitSec: 180,    // 한 라운드 제한 시간 (넘기면 러쉬 끝)
       healRatio: 0.3,        // 라운드를 깨면 살아 있는 용병 체력 30% 회복 · 보스 라운드를 깨면 쓰러진 용병도 30%로 부활
       rewardPerRound: 100,   // 깬 라운드마다 보상
@@ -34529,36 +34538,42 @@
     const RUSH_STAGE_ROUNDS = 20;
     const RUSH_WALL_PAD = 18; // 몸 반쪽 두께: 벽에서 이만큼 떨어져 섬
     const rushJit = (v, d) => v + (Math.random() - 0.5) * d;
-    // 21~40라운드 동굴 맵의 개울: 물줄기를 따라 원을 늘어놓고 (위는 좁고 아래는 넓음), 나무다리 두 개 위만 비워 둠
-    const RUSH_STREAM = [[1745, 680, 55], [1740, 800, 55], [1720, 900, 55], [1700, 1000, 60], [1640, 1120, 75], [1560, 1200, 85],
-      [1470, 1280, 90], [1380, 1360, 90], [1300, 1430, 90], [1220, 1580, 85], [1180, 1700, 85]];
-    const RUSH_BRIDGES = [[1540, 960, 1960, 1145], [1140, 1440, 1530, 1545]]; // 다리 판자 (서쪽 끝 → 동쪽 끝)
-    function rushStreamWalls() {
-      const segDist = (x, y, [ax, ay, bx, by]) => {
-        const t = Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / ((bx - ax) ** 2 + (by - ay) ** 2)));
-        return Math.hypot(x - (ax + (bx - ax) * t), y - (ay + (by - ay) * t));
-      };
-      const out = [];
-      for (let i = 0; i < RUSH_STREAM.length - 1; i++) {
-        const [ax, ay, ar] = RUSH_STREAM[i], [bx, by, br] = RUSH_STREAM[i + 1];
+    // 물줄기(개울·핏물)를 따라 원을 늘어놓음 (다리 판자 위는 inRushWall에서 지나갈 수 있게 함) · xAt(y) = 그 높이에서 물줄기의 가로 위치 (이보다 오른쪽이 몬스터 쪽)
+    //   points: [x, y, 반지름] (위 → 아래) · bridges: 다리 판자 [서쪽 끝 x, y, 동쪽 끝 x, y] · top: 물줄기 위쪽 바위의 가로 위치
+    const RUSH_BRIDGE_HALF_W = 55; // 다리 판자 폭의 절반: 판자 가운데 줄에서 이만큼 안은 물 위라도 지나갈 수 있음
+    function rushSegDist(x, y, [ax, ay, bx, by]) {
+      const t = Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / ((bx - ax) ** 2 + (by - ay) ** 2)));
+      return Math.hypot(x - (ax + (bx - ax) * t), y - (ay + (by - ay) * t));
+    }
+    function rushRiver(points, bridges, top) {
+      const walls = [];
+      for (let i = 0; i < points.length - 1; i++) {
+        const [ax, ay, ar] = points[i], [bx, by, br] = points[i + 1];
         const n = Math.ceil(Math.hypot(bx - ax, by - ay) / 40);
         for (let k = 0; k < n; k++) {
-          const cx = ax + (bx - ax) * k / n, cy = ay + (by - ay) * k / n, r = ar + (br - ar) * k / n;
-          if (RUSH_BRIDGES.some(seg => segDist(cx, cy, seg) < r + RUSH_WALL_PAD + 40)) continue; // 다리 위로는 지나갈 수 있게
-          out.push({ cx, cy, r });
+          walls.push({ cx: ax + (bx - ax) * k / n, cy: ay + (by - ay) * k / n, r: ar + (br - ar) * k / n });
         }
       }
-      return out;
+      const last = points[points.length - 1];
+      const line = [[top, 0], [top, points[0][1]], ...points, [last[0], 1800]];
+      const xAt = y => {
+        for (let i = 0; i < line.length - 1; i++) {
+          const [ax, ay] = line[i], [bx, by] = line[i + 1];
+          if (y <= by) return ax + (bx - ax) * (y - ay) / Math.max(1, by - ay);
+        }
+        return last[0];
+      };
+      return { walls, xAt, bridges };
     }
-    // 개울의 가로 위치 (세로 y에서): 이보다 오른쪽이 몬스터 쪽
-    function rushStreamX(y) {
-      const line = [[1710, 0], [1710, 680], ...RUSH_STREAM, [1160, 1800]];
-      for (let i = 0; i < line.length - 1; i++) {
-        const [ax, ay] = line[i], [bx, by] = line[i + 1];
-        if (y <= by) return ax + (bx - ax) * (y - ay) / Math.max(1, by - ay);
-      }
-      return 1160;
-    }
+    // 21~40라운드 동굴 맵의 개울 (위는 좁고 아래는 넓음) · 41~60라운드 핏빛 동굴의 핏물 강 (가운데 구덩이에서 흘러나옴)
+    const RUSH_STREAM_2 = rushRiver(
+      [[1745, 680, 55], [1740, 800, 55], [1720, 900, 55], [1700, 1000, 60], [1640, 1120, 75], [1560, 1200, 85],
+        [1470, 1280, 90], [1380, 1360, 90], [1300, 1430, 90], [1220, 1580, 85], [1180, 1700, 85]],
+      [[1540, 960, 1960, 1145], [1140, 1440, 1530, 1545]], 1710);
+    const RUSH_STREAM_3 = rushRiver(
+      [[1230, 860, 70], [1300, 920, 80], [1380, 1000, 90], [1410, 1120, 90], [1400, 1260, 90], [1360, 1400, 85],
+        [1320, 1520, 85], [1320, 1700, 85]],
+      [[1230, 1090, 1760, 990], [1140, 1440, 1530, 1545]], 1300);
     const RUSH_MAPS = [
       { // 1~20라운드: 숲속 야영지 (오른쪽 돌 성벽 사이 통로 너머 동굴에서 몬스터가 나옴)
         key: 'monster_rush',
@@ -34589,20 +34604,51 @@
           { x1: 2060, y1: 1100, x2: 2300, y2: 1460 }, // 오른쪽 아래 종유석 바위
           { x1: 2250, y1: 1320, x2: 2880, y2: 1800 }, // 오른쪽 아래 낭떠러지
           { x1: 760,  y1: 1400, x2: 1110, y2: 1800 }, // 아래쪽 바위 무더기
-          ...rushStreamWalls()
+          ...RUSH_STREAM_2.walls
         ],
+        bridges: RUSH_STREAM_2.bridges,
         spawn: () => ({ x: rushJit(2540, 200), y: rushJit(370, 60) }),
         inPath: () => (Math.random() < 0.6
           ? [{ x: rushJit(2450, 120), y: rushJit(720, 100) }, { x: 1930, y: rushJit(1132, 20) }, { x: 1560, y: rushJit(970, 20) },
             { x: rushJit(1260, 120), y: rushJit(850, 300) }]
           : [{ x: rushJit(2400, 120), y: rushJit(760, 100) }, { x: 2000, y: 1000 }, { x: rushJit(1840, 60), y: rushJit(1340, 40) },
             { x: 1520, y: rushJit(1540, 16) }, { x: 1150, y: rushJit(1445, 16) }, { x: rushJit(950, 100), y: rushJit(1200, 120) }]),
-        side: (x, y) => (x > rushStreamX(y) ? 1 : 0),
+        side: (x, y) => (x > RUSH_STREAM_2.xAt(y) ? 1 : 0),
         crossings: [{ mon: { x: 1930, y: 1132 }, camp: { x: 1560, y: 970 } }, { mon: { x: 1520, y: 1540 }, camp: { x: 1150, y: 1445 } }],
         exit: [{ x: 1560, y: 970 }, { x: 1930, y: 1132 }, { x: 2450, y: 720 }, { x: 2540, y: 400 }],
         entry: {
           at: () => ({ x: rushJit(280, 120), y: rushJit(330, 40) }),
           path: (i, n) => [{ x: rushJit(300, 60), y: 560 }, { x: 640 + (i % 2) * 150, y: Math.round(900 + (i - (n - 1) / 2) * 140) }]
+        }
+      },
+      { // 41~60라운드: 핏빛 동굴 (가운데 구덩이에서 핏물 강이 흘러나옴 · 돌다리와 나무다리로만 건넘 · 오른쪽 위 굴에서 몬스터, 왼쪽 위 굴로 파티)
+        key: 'monster_rush_3',
+        walls: [
+          { x1: 100,  y1: 0,    x2: 400,  y2: 410 },  // 왼쪽 위 굴 (파티가 나오는 곳)
+          { x1: 400,  y1: 0,    x2: 1100, y2: 430 },  // 위쪽 바위벽 (거미줄·덩굴)
+          { x1: 1040, y1: 430,  x2: 1460, y2: 900 },  // 가운데 구덩이와 해골 바위기둥
+          { x1: 1100, y1: 0,    x2: 1900, y2: 430 },  // 가운데 위 바위벽
+          { x1: 1460, y1: 430,  x2: 1900, y2: 860 },  // 붉은 버섯 바위
+          { x1: 1900, y1: 0,    x2: 2200, y2: 690 },  // 알이 매달린 바위벽
+          { x1: 2200, y1: 0,    x2: 2440, y2: 560 },
+          { x1: 2440, y1: 0,    x2: 2880, y2: 430 },  // 오른쪽 위 굴 (몬스터가 나오는 곳)
+          { x1: 2300, y1: 1300, x2: 2880, y2: 1800 }, // 오른쪽 아래 낭떠러지
+          { x1: 480,  y1: 1400, x2: 1110, y2: 1800 }, // 왼쪽 아래 바위 무더기
+          ...RUSH_STREAM_3.walls
+        ],
+        bridges: RUSH_STREAM_3.bridges,
+        spawn: () => ({ x: rushJit(2580, 180), y: rushJit(360, 50) }),
+        inPath: () => (Math.random() < 0.6
+          ? [{ x: rushJit(2450, 120), y: rushJit(720, 80) }, { x: 2100, y: rushJit(920, 60) }, { x: 1780, y: rushJit(1000, 20) },
+            { x: 1220, y: rushJit(1095, 20) }, { x: rushJit(850, 160), y: rushJit(950, 300) }]
+          : [{ x: rushJit(2400, 120), y: rushJit(760, 80) }, { x: 2100, y: 1000 }, { x: rushJit(1850, 60), y: rushJit(1300, 40) },
+            { x: 1520, y: rushJit(1540, 16) }, { x: 1150, y: rushJit(1445, 16) }, { x: rushJit(900, 100), y: rushJit(1200, 120) }]),
+        side: (x, y) => (x > RUSH_STREAM_3.xAt(y) ? 1 : 0),
+        crossings: [{ mon: { x: 1780, y: 1000 }, camp: { x: 1220, y: 1095 } }, { mon: { x: 1520, y: 1540 }, camp: { x: 1150, y: 1445 } }],
+        exit: [{ x: 1220, y: 1095 }, { x: 1780, y: 1000 }, { x: 2400, y: 720 }, { x: 2580, y: 400 }],
+        entry: {
+          at: () => ({ x: rushJit(250, 120), y: rushJit(330, 40) }),
+          path: (i, n) => [{ x: rushJit(280, 60), y: 560 }, { x: 470 + (i % 2) * 140, y: Math.round(950 + (i - (n - 1) / 2) * 130) }]
         }
       }
     ];
@@ -34612,7 +34658,11 @@
       return w.r ? (x - w.cx) ** 2 + (y - w.cy) ** 2 < (w.r + RUSH_WALL_PAD) ** 2
         : x > w.x1 - RUSH_WALL_PAD && x < w.x2 + RUSH_WALL_PAD && y > w.y1 - RUSH_WALL_PAD && y < w.y2 + RUSH_WALL_PAD;
     }
-    function inRushWall(x, y) { return rushMapNow().walls.some(w => rushWallHit(w, x, y)); }
+    function inRushWall(x, y) {
+      const map = rushMapNow();
+      const onBridge = map.bridges && map.bridges.some(seg => rushSegDist(x, y, seg) < RUSH_BRIDGE_HALF_W); // 다리 판자 위는 물(원)을 지나갈 수 있음
+      return map.walls.some(w => (!onBridge || !w.r) && rushWallHit(w, x, y));
+    }
     // (ax, ay) → (bx, by)로 가는 길이 벽에 걸리는지 (20px 간격으로 확인)
     function rushPathBlocked(ax, ay, bx, by) {
       const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 20));
@@ -34783,6 +34833,8 @@
         u.y = u.rushBoss ? Math.round(H / 2) : 320 + Math.random() * (H - 320 - 280);
         u.alive = false;
         u.rushPending = true;
+        u.rushDrop = round >= RUSH.dropFrom && !u.rushBoss && Math.random() < RUSH.dropChance;
+        u.rushFall = null;
         u.facingDir = -1;
         u.facingAngle = Math.PI;
       });
@@ -34808,9 +34860,14 @@
       sim.units.forEach(u => {
         if (!u.rushPending) return;
         pending++;
+        if (u.rushFall != null) {
+          if (++u.rushFall >= (RUSH.dropWarnSec + RUSH.dropFallSec) * BATTLE_TICKS_PER_SEC) landRushDrop(u);
+          return;
+        }
         u.x -= (u.baseMoveSpeed || 1) * RUSH.backSpeed;
         u.isMoving = true;
         if (u.x > sim.worldW + RUSH.edge) return;
+        if (u.rushDrop) { startRushDrop(u); return; }
         // 차례가 됨: 동굴 입구에서 나타남 → 이때부터 살아 있는 몬스터 (공격이 닿고, 통로를 지나 야영지까지 걸어 들어온 뒤 싸움)
         const map = rushMapNow(), at = map.spawn();
         u.x = at.x;
@@ -34836,6 +34893,100 @@
         return true;
       }
       return false;
+    }
+
+    // 21라운드부터: 몇몇 몬스터는 굴 대신 파티 뒤쪽(몬스터가 오는 쪽의 반대편)에 하늘에서 떨어짐
+    // 그림자·경고 원이 먼저 보이고 (dropWarnSec) → 떨어져 내려와 (dropFallSec) → 착지하면 그 자리에서 바로 싸움
+    // 떨어지는 동안은 아직 '안 나온' 몬스터(rushPending)라서 공격이 닿지 않음
+    function startRushDrop(u) {
+      const party = sim.units.filter(b => b.alive && b.team === 'blue');
+      const map = rushMapNow();
+      let x = 700, y = 900;
+      if (party.length) {
+        const minX = Math.min(...party.map(b => b.x));
+        const cy = party.reduce((t, b) => t + b.y, 0) / party.length;
+        x = minX - 160 - Math.random() * 220;
+        y = cy + (Math.random() - 0.5) * 520;
+      }
+      x = Math.max(260, Math.min(sim.worldW - 260, x));
+      y = Math.max(320, Math.min(sim.worldH - 280, y));
+      if (inRushWall(x, y) || map.side(x, y) === 1) ({ x, y } = rushPushOut(Math.min(x, 900), y));
+      u.x = x; u.y = y;
+      u._ix = u.x; u._iy = u.y;
+      u.rushFall = 0;
+      u.isMoving = false;
+      u.facingDir = party.length && party[0].x < x ? -1 : 1;
+      u.facingAngle = u.facingDir === 1 ? 0 : Math.PI;
+    }
+    function landRushDrop(u) {
+      u.rushFall = null;
+      u.rushDrop = false;
+      u.rushPending = false;
+      u.rushEntering = false;
+      u.alive = true;
+      u._deadSince = null;
+      u.statuses.immune = Math.max(u.statuses.immune || 0, 20);
+      sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y + 10, r: 120, color: '#a8a29e', life: 30, maxLife: 30 });
+      if (!sim.shake || sim.shake.power < 8) sim.shake = { power: 8, life: 16, maxLife: 16 };
+      // 착지 충격: 바로 옆 용병만 살짝 밀려남 (피해는 없음)
+      sim.units.forEach(b => {
+        if (!b.alive || b.team === u.team) return;
+        const d = Math.max(1, Math.hypot(b.x - u.x, b.y - u.y));
+        if (d > 140) return;
+        b.kbVx = ((b.x - u.x) / d) * 6;
+        b.kbVy = ((b.y - u.y) / d) * 6;
+      });
+      const rs = sim.rush;
+      if (rs && rs.dropLogRound !== rs.round) {
+        rs.dropLogRound = rs.round;
+        addBattleLog(`🪂 몬스터가 파티 뒤쪽에 하늘에서 떨어져요! 뒤도 조심하세요!`);
+      }
+    }
+    // 떨어지는 몬스터 그리기: 그림자·경고 원 → 위에서 떨어져 내려오는 모습 (엘리트 보스 낙하를 작게)
+    function drawRushDrops(ctx) {
+      const tps = BATTLE_TICKS_PER_SEC;
+      const warn = RUSH.dropWarnSec * tps, fall = RUSH.dropFallSec * tps;
+      sim.units.forEach(u => {
+        if (!u.rushPending || u.rushFall == null) return;
+        const t = u.rushFall + Math.max(0, Math.min(1, battleTickCarry));
+        const p = Math.min(1, t / (warn + fall));
+        const R = 34 * (u.sizeScale || 1);
+        ctx.save();
+        ctx.globalAlpha = 0.35 + 0.35 * (0.5 + 0.5 * Math.sin(t * 0.4));
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([12, 8]);
+        ctx.beginPath();
+        ctx.ellipse(u.x, u.y + 12, R * 1.5, R * 0.7, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.15 + p * 0.45;
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.ellipse(u.x, u.y + 12, R * (0.3 + 0.7 * p), R * (0.3 + 0.7 * p) * 0.45, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        if (t < warn) return;
+        const f = Math.min(1, (t - warn) / fall);
+        const off = 620 * (1 - f * f);
+        ctx.save();
+        ctx.globalAlpha = 0.45;
+        ctx.strokeStyle = '#e5e7eb';
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 3;
+        for (let i = 0; i < 4; i++) {
+          const lx = u.x + (i - 1.5) * 18;
+          ctx.beginPath();
+          ctx.moveTo(lx, u.y - off - 260 - (i % 2) * 70);
+          ctx.lineTo(lx, u.y - off - 90);
+          ctx.stroke();
+        }
+        ctx.restore();
+        const y0 = u.y, a0 = u.alive;
+        u.y -= off;
+        u.alive = true;
+        try { drawUnitToken(ctx, u, sim.tickCount); } finally { u.y = y0; u.alive = a0; }
+      });
     }
 
     // 정해진 길을 따라 걷기: 굴에서 나온 몬스터 (굴 → 통로 → 야영지) · 다음 맵으로 넘어가는 파티 · 통로로 건너가는 AI 용병
