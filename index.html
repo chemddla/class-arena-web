@@ -5683,20 +5683,24 @@
     //   3 하늘 베레모·레몬 조끼·흰 바지·갈색 머리, 4 진홍 베레모·검정 조끼·회색 바지·흑발
     //   피부·셔츠·가죽·류트·시트에 그려진 이펙트는 그대로: 칸·기준점·동작 구성은 bard_0과 같음 (tools/bard_variants_build.py)
     [1, 2, 3, 4].forEach(v => { MERC_SPRITE_DEFS[`bard_${v}`] = { ...MERC_SPRITE_DEFS.bard_0, src: `assets/sprites/merc/bard_${v}.webp` }; });
-    // 광전사 외형 0 (털가죽 망토·해골 어깨·파란 문신·쌍도끼, tools/berserker_build.py): 칸 순서 = 대기, 걷기 4, 피격, 쓰러짐(누운 자세), 공격 2 (두 도끼를 머리 위로 들어 올리기 → 내려치기 — 흰 섬광·궤적은 그림에 그려져 있음)
-    // 쓰러짐은 피격 → 누운 자세. 전용 스킬 그림이 아직 없어서 포효 계열은 두 도끼를 치켜든 자세(공격 첫 칸), 나머지는 기본 공격 동작
+    // 광전사 외형 0 (털가죽 망토·해골 어깨·파란 문신·쌍도끼, tools/berserker_build.py): 칸 순서 = 대기, 걷기 4, 피격, 쓰러짐(누운 자세), 공격 2 (두 도끼를 머리 위로 들어 올리기 → 내려치기 — 흰 섬광·궤적은 그림에 그려져 있음),
+    //   광폭화 시전 2 (불길이 솟음 → 불길 속 포효 — 불길은 그림에 그려져 있음)
+    // 쓰러짐은 피격 → 누운 자세. 피의 포효는 두 도끼를 치켜든 자세(공격 첫 칸), 나머지 스킬은 기본 공격 동작
     MERC_SPRITE_DEFS.berserker_0 = {
       src: 'assets/sprites/merc/berserker_0.webp',
-      cellW: 161, cellH: 111, anchorX: 69, anchorY: 109, standH: 81, topH: 86, portraitCX: 72, count: 9,
-      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [7, 7, 8, 8], skill: [7, 8], hurt: [5], death: [5, 6], raise: [7] },
+      cellW: 165, cellH: 113, anchorX: 71, anchorY: 111, standH: 81, topH: 86, portraitCX: 74, count: 11,
+      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [7, 7, 8, 8], skill: [7, 8], hurt: [5], death: [5, 6], raise: [7], rage: [9, 10, 10] },
       skillAnims: {
-        rage:         { anim: 'raise', tpf: 44, dur: 44 },
+        rage:         { anim: 'rage', tpf: 15, dur: 45 },
         blood_howl:   { anim: 'raise', tpf: 44, dur: 44 },
         axe_throw:    { anim: 'attack', tpf: 5, dur: 20 },
         execute:      { anim: 'attack', tpf: 5, dur: 20 },
         ground_split: { anim: 'attack', tpf: 5, dur: 20 }
       }
     };
+    // 광폭(berserk) 상태 동안 쓰는 시트: 칸 순서·크기가 같고, 대기 = 광폭 대기 그림, 나머지 = 붉은 얼굴·빛나는 눈·붉은 털·몸 둘레 붉은 기운을 입힌 그림 (getUnitSprite)
+    // 외형 고르기·첫 화면 무작위 용병에 섞이지 않게 MERC_SPRITE_DEFS 밖에 둠
+    const BERSERKER_RAGE_SPRITES = { berserker_0: { ...MERC_SPRITE_DEFS.berserker_0, src: 'assets/sprites/merc/berserker_0_rage.webp' } };
     // 도적: 갈색 후드·단검. 표창은 따로 날아가는 그림(ROGUE_SHURIKEN_IMG)이라 시트에는 던지는 자세만 있음
     // 기본 스킬 동작은 찢기 2프레임을 같이 씀. 은신은 분신과 같은 인을 맺는 자세
     MERC_SPRITE_DEFS.rogue_0 = {
@@ -6416,7 +6420,13 @@
     };
     // 찾는 순서: (엘리트 보스면 'elite_<몬스터>') → '<몬스터>_<직업>_<대표 스킬>' → '<몬스터>_<직업>' → '<몬스터>'
     function getUnitSprite(u) {
-      if (!u.monsterType) return getMercSprite(u.job, u.skinVariant || 0);
+      if (!u.monsterType) {
+        if (u.job === 'berserker' && u.statuses && (u.statuses.berserk || 0) > 0) { // 광폭 중에는 붉은 광폭 시트
+          const rage = BERSERKER_RAGE_SPRITES[`berserker_${u.skinVariant || 0}`];
+          if (rage) return rage;
+        }
+        return getMercSprite(u.job, u.skinVariant || 0);
+      }
       return (u.isEliteBoss && MONSTER_SPRITE_DEFS[`elite_${u.monsterType}`]) || monsterJobSprite(u.monsterType, u.job, u.skillKey);
     }
     function monsterJobSprite(monId, job, skillKey) {
@@ -7924,7 +7934,7 @@
       LANCER_MUSOU_SKINS[v] = def;
     });
 
-    Object.values(MERC_SPRITE_DEFS).concat(Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BLOOD_ORC_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX, GIANT_FX, FROST_SR_FX, CURSE_ORB_FX, BARD_ORB_FX, CURSE_HIT_FX, CURSE_SWAMP_FX, CURSE_RUIN_MARK_FX, ...Object.values(CURSE_RUIN_MARK_SKINS)).forEach(def => {
+    Object.values(MERC_SPRITE_DEFS).concat(Object.values(BERSERKER_RAGE_SPRITES), Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BLOOD_ORC_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX, GIANT_FX, FROST_SR_FX, CURSE_ORB_FX, BARD_ORB_FX, CURSE_HIT_FX, CURSE_SWAMP_FX, CURSE_RUIN_MARK_FX, ...Object.values(CURSE_RUIN_MARK_SKINS)).forEach(def => {
       def.img = new Image();
       def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
       def.img.src = def.src;

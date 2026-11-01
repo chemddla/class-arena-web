@@ -1,8 +1,11 @@
 # 광전사 원형 샘플(흰 배경 도트, 동작마다 한 장) → 캐릭터 시트 assets/sprites/merc/berserker_0.webp
 # 사용: python tools/berserker_build.py [샘플 폴더]  (기본 assets/sprites/fx/samples, 파일 berserker_src1~.png)
 #   1 = 대기 (흰 배경, 왼쪽 위 한글 라벨 "대기"), 5 = 피격 (라벨 "피격"), 6 = 쓰러짐 (누운 자세),
-#   9 = 걷기 네 칸 (한 장에 나란히), 11 = 기본 공격 들어 올리기 (두 도끼를 머리 위로), 10 = 기본 공격 내려치기 (흰 섬광·궤적, 큰 그림)
-# 캐릭터 칸 순서: 0 대기 · 1~4 걷기 · 5 피격 · 6 쓰러짐 · 7~8 기본 공격 (들어 올리기 → 내려치기) (쓰러짐 동작은 피격 → 누운 자세 두 칸) (모든 칸 크기 같음, 오른쪽을 봄, 발 = 기준점)
+#   9 = 걷기 네 칸 (한 장에 나란히), 11 = 기본 공격 들어 올리기 (두 도끼를 머리 위로), 10 = 기본 공격 내려치기 (흰 섬광·궤적, 큰 그림),
+#   12 = 광폭화 세 칸 (불길이 솟음 · 불길 속 포효 · 광폭 대기 — 붉은 얼굴·빛나는 눈, 분홍 아지랑이 배경)
+# 캐릭터 칸 순서: 0 대기 · 1~4 걷기 · 5 피격 · 6 쓰러짐 · 7~8 기본 공격 (들어 올리기 → 내려치기) · 9~10 광폭화 시전 (쓰러짐 동작은 피격 → 누운 자세 두 칸) (모든 칸 크기 같음, 오른쪽을 봄, 발 = 기준점)
+# 광폭 시트 berserker_0_rage.webp: 칸 순서·크기가 같고, 대기 = 광폭 대기 샘플, 나머지 동작 = 광폭 대기의 붉은 얼굴·빛나는 눈·붉은 기운을 입힌 그림 (enrage),
+#   광폭화 시전 두 칸은 그대로. 광폭(berserk) 상태 동안 게임이 이 시트로 바꿔 그림
 # 샘플 정리:
 #   - 배경 흰색은 가장자리에서 이어진 흰 픽셀만 지움 (몸 안쪽 해골·도끼 날의 흰 빛은 남김)
 #   - 흰 배경과 섞인 밝은 테두리는 벗겨 냄 (윤곽이 하얗게 뜨지 않게)
@@ -13,6 +16,7 @@ from PIL import Image
 from scipy import ndimage as ndi
 
 OUT_CHAR = 'assets/sprites/merc/berserker_0.webp'
+OUT_RAGE = 'assets/sprites/merc/berserker_0_rage.webp'
 TARGET_H = 86  # 대기 자세 머리털 끝~발 → 게임 칸 키
 
 # (시트, 이름[, (x0, x1)]) — 한 장에 여러 칸이면 샘플 x 범위로 자름
@@ -22,18 +26,22 @@ FRAMES = [
     (5, 'hurt'),
     (6, 'down'),
     (11, 'atk0'), (10, 'atk1'),  # 기본 공격: 들어 올리기 → 내려치기 (섬광·궤적은 그림 그대로)
+    (12, 'rage0', (0, 148)), (12, 'rage1', (148, 332)),  # 광폭화 시전: 불길이 솟음 → 불길 속 포효 (불길은 그림 그대로)
 ]
+RAGE_IDLE = (12, 'ridle', (332, 470))  # 광폭 대기 (오른쪽 끝 회색 테두리는 뺌). 광폭 시트의 대기 칸이자 붉은 얼굴·눈·털 색의 기준
 HOLE_KEEP = {10: [(700, 760, 700, 770)]}  # 갇힌 흰 덩어리 중 남길 것 (x0, x1, y0, y1): 내려치기 섬광 아래쪽 흰 속
 RIM = {10: 8}  # 흰색이 섞인 테두리 두께 (기본 2px). 내려치기는 4.6배 큰 흐린 그림이라 번진 띠도 넓음
-DROP = {11: [(0, 40, 160, 260)]}  # 지울 상자 (x0, x1, y0, y1): 들어 올리기 샘플 왼쪽 아래에 옆 칸 도끼가 잘려 들어옴
-HOLE_SHEETS = (9, 10)  # 몸 안에 갇힌 흰 배경도 지울 샘플 (걷기 셋째 칸: 팔과 도끼 사이, 내려치기: 머리털·다리와 섬광 사이)
+DROP = {11: [(0, 40, 160, 260)], 12: [(470, 479, 0, 178)]}  # 지울 상자 (x0, x1, y0, y1): 들어 올리기 샘플 왼쪽 아래에 옆 칸 도끼가 잘려 들어옴, 광폭화 샘플 오른쪽 끝 회색 테두리
+HOLE_SHEETS = (9, 10, 12)  # 몸 안에 갇힌 흰 배경도 지울 샘플 (걷기 셋째 칸: 팔과 도끼 사이, 내려치기: 머리털·다리와 섬광 사이, 광폭 대기: 팔과 도끼 사이)
 KEEP_SMALL = {'atk1': 500}  # 몸에서 떨어진 조각도 이 크기(px) 넘으면 남김: 섬광에서 떨어져 나간 빛살 (내려치기 샘플은 대기의 4.6배 크기)
 # 얼굴로 가로 기준을 못 잡는 칸: 발 기준점으로 쓸 샘플 x. 쓰러짐 = 머리털 끝~발끝 가운데 (오른쪽 도끼는 뺌),
 # 공격 = 장화 가운데 (내딛으며 몸이 앞으로 쏠려서 얼굴로 맞추면 발이 뒤로 미끄러짐)
-FOOT_X = {'down': 150, 'atk0': 140, 'atk1': 465}
+RIDLE_FOOT = 394  # 광폭 대기 장화 가운데 (샘플 x)
+FOOT_X = {'down': 150, 'atk0': 140, 'atk1': 465, 'ridle': RIDLE_FOOT}  # 광폭 대기는 얼굴이 붉어서 피부로 얼굴을 못 찾음
 # 키로 못 맞추는 칸: 대기 배율에 곱하는 값 (얼굴·해골 크기를 대기와 같게). 피격·쓰러짐은 대기보다 5% 안팎,
 # 들어 올리기는 1.3배, 내려치기는 4.6배 크게 그려짐
 SCALE_FIX = {'hurt': 1 / 1.05, 'down': 1 / 1.05, 'atk0': 1 / 1.3, 'atk1': 1 / 4.6}
+PINK_SHEETS = (12,)  # 배경에 분홍 아지랑이가 낀 샘플: 밝은 분홍까지 배경으로 보고, 몸에 붙은 분홍 띠도 4겹까지 벗겨 냄
 def _skin(c): return (c[..., 3] > 200) & (c[..., 0] > 120) & (c[..., 0] > c[..., 1] + 20) & (c[..., 1] > c[..., 2]) & (c[..., 0] - c[..., 2] < 130)
 
 
@@ -44,9 +52,19 @@ def load(sheet, folder):
     lab, n = ndi.label(white)
     edge_ids = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
     bg = np.isin(lab, edge_ids[edge_ids > 0])
+    if sheet in PINK_SHEETS:
+        R, G, B = im[..., 0], im[..., 1], im[..., 2]
+        light = (R > 195) & (G > 150) & (B > 150) & (np.abs(G - B) < 25)
+        lab, n = ndi.label(light | white)
+        edge_ids = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
+        bg = np.isin(lab, edge_ids[edge_ids > 0])
+        pink = (R > 185) & (G > 130) & (B > 130) & (np.abs(G - B) < 30)
+        for _ in range(4):
+            bg |= pink & ndi.binary_dilation(bg)
+        white = light | white
     if sheet in HOLE_SHEETS:  # 몸·도끼 자루 사이에 갇힌 흰 배경 (공격 샘플의 팔과 앞 도끼 사이, 주먹과 자루 사이): 아주 하얀 20px 넘는 덩어리도 배경
         ids = np.arange(1, n + 1)  # (다른 샘플은 도끼 날 빛·허리천이 이만큼 하얄 수 있어서 이 샘플에만 씀)
-        big = ids[(ndi.sum(white, lab, ids) >= 20) & (ndi.mean(im.min(axis=2), lab, ids) > 235)]
+        big = ids[(ndi.sum(white, lab, ids) >= 20) & ((ndi.mean(im.min(axis=2), lab, ids) > 235) | (sheet in PINK_SHEETS))]  # 분홍 아지랑이 샘플은 갇힌 분홍빛도
         for x0, x1, y0, y1 in HOLE_KEEP.get(sheet, ()):  # 섬광 한가운데 흰빛은 남김
             big = [i for i in big if not (x0 <= ndi.center_of_mass(lab == i)[1] < x1 and y0 <= ndi.center_of_mass(lab == i)[0] < y1)]
         bg |= np.isin(lab, big)
@@ -103,31 +121,131 @@ def shrink(rgba, sc):
     return a.clip(0, 255).astype(np.uint8)
 
 
-def main(folder):
-    cuts = {f[1]: cut(folder, f) for f in FRAMES}
-    base = TARGET_H / cuts['idle'][0].shape[0]
-    foot_off = (cuts['idle'][3] - cuts['idle'][1]) * base  # 대기 자세 발 가운데 - 얼굴 가운데 (줄인 뒤 px)
-    pieces = []
-    for f in FRAMES:
-        rgba, cx, below, _, fx = cuts[f[1]]
-        # 서 있는 칸(대기·걷기)은 키(머리털 끝~발)로 맞추고, 자세가 낮은 칸은 대기 배율에 SCALE_FIX를 곱함
-        sc = base * SCALE_FIX[f[1]] if f[1] in SCALE_FIX else TARGET_H / rgba.shape[0]
-        cx = fx * sc if fx is not None else cx * sc + foot_off
-        pieces.append((f[1], shrink(rgba, sc), cx, int(round(below * sc))))
-    L = max(int(np.ceil(c)) for _, _, c, _ in pieces) + 2
-    R = max(int(np.ceil(p.shape[1] - c)) for _, p, c, _ in pieces) + 2
-    B = max(d for _, _, _, d in pieces)
-    H = max(p.shape[0] - d for _, p, _, d in pieces) + B + 3
-    cellW = L + R
+def _rank_map(v, pal):
+    # v의 밝기 순위와 같은 순위의 pal 색을 그대로 가져옴 (팔레트 양 끝 2%는 윤곽 섞임이라 안 씀)
+    pal = pal[np.argsort(pal.mean(axis=1))]
+    rank = np.argsort(np.argsort(v.mean(axis=1))) / max(len(v) - 1, 1)
+    return pal[np.round((0.02 + rank * 0.96) * (len(pal) - 1)).astype(int)]
+
+
+def _red_face(c):  # 광폭 대기의 붉어진 얼굴 피부
+    R, G, B = c[..., 0].astype(int), c[..., 1].astype(int), c[..., 2].astype(int)
+    return (c[..., 3] > 200) & (R > 140) & (R > G + 60) & (R > B + 60)
+
+
+def _brown(c):  # 머리털·털가죽 갈색 (피부·붉은 얼굴 빼고)
+    R, G, B = c[..., 0].astype(int), c[..., 1].astype(int), c[..., 2].astype(int)
+    return (c[..., 3] > 200) & (R > G) & (G >= B - 4) & (R - B > 12) & (R > 35) & ((R + G + B) / 3 < 150) & ~_skin(c) & ~_red_face(c)
+
+
+def _band(c, y0, y1):
+    m = np.zeros(c.shape[:2], bool); m[int(c.shape[0] * y0):int(c.shape[0] * y1)] = True
+    return m
+
+
+def enrage(p, ridle):
+    # 광폭 상태 그림: 광폭 대기 샘플(ridle)에서 딴 붉은 얼굴·눈빛·붉은 털 색을 입힘 (줄인 뒤 칸에 바로)
+    #   얼굴 = 위쪽 피부 덩어리를 광폭 대기 붉은 얼굴 색으로 (밝기 순위대로), 몸 피부는 35%만 붉게
+    #   머리털(위 35%)·털가죽 갈색 = 광폭 대기의 같은 부위 색으로 70%
+    #   눈 = 얼굴 덩어리 안 눈높이의 어두운 픽셀을 빛나는 빨강으로 (가운데 가로줄은 더 밝게)
+    p = p.astype(float).copy()
+    face_pal = ridle[_red_face(ridle)][:, :3].astype(float)
+    hair_pal = ridle[_brown(ridle) & _band(ridle, 0, 0.35)][:, :3].astype(float)
+    fur_pal = ridle[_brown(ridle) & _band(ridle, 0.35, 1)][:, :3].astype(float)
+    # 광폭 대기 얼굴 위 문신 색: 붉은 얼굴 상자 안에서 붉은 피부·갈색·검은 윤곽·눈빛이 아닌 픽셀
+    rf = _red_face(ridle); ry, rx = np.where(rf)
+    rbox = np.zeros(rf.shape, bool); rbox[ry.min():ry.max() + 1, rx.min():rx.max() + 1] = True
+    rc = ridle.astype(int)
+    paint_pal = ridle[rbox & ~rf & ~_brown(ridle) & (rc[..., :3].mean(axis=2) > 50) & (rc[..., 2] >= rc[..., 0] - 10) & (rc[..., 3] > 200)][:, :3].astype(float)
+    skin = _skin(p)
+    lab, n = ndi.label(skin & _band(p, 0.12, 0.55))
+    face = np.zeros_like(skin)
+    if n:
+        face = lab == np.argmax(ndi.sum(skin, lab, range(1, n + 1))) + 1
+        # 얼굴 덩어리에 이어진 피부(문신에 끊긴 뺨 조각)까지: 얼굴 상자 안 피부 전부
+        ys, xs = np.where(face)
+        box = np.zeros_like(skin); box[ys.min():ys.max() + 1, xs.min() - 1:xs.max() + 2] = True
+        face = skin & box
+    body = skin & ~face
+    rgb = p[..., :3]
+    if face.any(): rgb[face] = _rank_map(rgb[face], face_pal)
+    if body.any(): rgb[body] = rgb[body] * 0.65 + _rank_map(rgb[body], face_pal) * 0.35
+    hair = _brown(p) & _band(p, 0, 0.35)
+    fur = _brown(p) & ~hair
+    if hair.any(): rgb[hair] = rgb[hair] * 0.3 + _rank_map(rgb[hair], hair_pal) * 0.7
+    if fur.any(): rgb[fur] = rgb[fur] * 0.3 + _rank_map(rgb[fur], fur_pal) * 0.7
+    if face.any():
+        ys, xs = np.where(face)
+        y0, y1 = ys.min(), ys.max()
+        # 얼굴 위 파란 문신: 광폭 대기처럼 붉은 얼굴에 눌린 어두운 보랏빛으로 (얼굴 상자 안 문신만, 몸 문신은 그대로)
+        fbox = np.zeros_like(face); fbox[y0:y1 + 1, xs.min() - 1:xs.max() + 2] = True
+        paint = fbox & (p[..., 3] > 200) & (rgb[..., 2] > rgb[..., 0] + 25)
+        if paint.any() and paint_pal.size: rgb[paint] = _rank_map(rgb[paint], paint_pal)
+        eye = np.zeros_like(face)
+        eye[y0 + int((y1 - y0) * 0.2):y0 + int((y1 - y0) * 0.55) + 1, xs.min():xs.max() + 1] = True
+        L = rgb.mean(axis=2)
+        dark = eye & fbox & (L < 75) & (p[..., 3] > 200) & ~_brown(p)  # 문신 속 눈도 (얼굴 상자 안, 머리털 갈색은 빼고)
+        lab, n = ndi.label(dark, structure=np.ones((3, 3)))
+        dark &= np.isin(lab, 1 + np.where(ndi.sum(dark, lab, range(1, n + 1)) >= 2)[0])  # 혼자 떨어진 1px 점은 눈이 아님
+        rgb[dark] = [225, 20, 20]
+        # 눈 가운데 (가로로 이어진 안쪽)는 더 밝은 빨강, 눈 바로 옆 얼굴 1px은 붉은 번짐 (광폭 대기의 눈빛 줄기)
+        core = dark & ndi.binary_erosion(dark, structure=np.array([[1, 1, 1]]))
+        rgb[core] = [255, 90, 60]
+        glow = ndi.binary_dilation(dark, structure=np.array([[1, 1, 1]])) & ~dark & face
+        rgb[glow] = rgb[glow] * 0.4 + np.array([255, 40, 30]) * 0.6
+    p[..., :3] = rgb
+    return p.clip(0, 255).astype(np.uint8)
+
+
+def add_aura(cell):
+    # 붉은 기운: 몸 테두리 바깥 2px (1겹 진하게, 2겹 옅게), 몸 뒤에 깔림
+    op = cell[..., 3] > 0
+    r1 = ndi.binary_dilation(op) & ~op
+    r2 = ndi.binary_dilation(op, iterations=2) & ~op & ~r1
+    out = cell.copy()
+    out[r1] = [200, 20, 20, 170]
+    out[r2] = [220, 40, 30, 80]
+    return out
+
+
+def place(pieces, L, B, H, cellW):
     sheet = np.zeros((H, cellW * len(pieces), 4), np.uint8)
     for i, (name, p, c, d) in enumerate(pieces):
         x = i * cellW + L - int(round(c))
         y = H - 2 - B - p.shape[0] + d   # 발 = 기준점 (칸 아래에서 B + 2px 위)
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
-    Image.fromarray(sheet, 'RGBA').save(OUT_CHAR, 'WEBP', lossless=True)
-    idle = pieces[0][1]
+    return sheet
+
+
+def main(folder):
+    cuts = {f[1]: cut(folder, f) for f in FRAMES + [RAGE_IDLE]}
+    base = TARGET_H / cuts['idle'][0].shape[0]
+    rage_sc = TARGET_H / cuts['ridle'][0].shape[0]  # 광폭화 샘플 세 칸은 같은 크기로 그려져서 광폭 대기 키로 함께 맞춤
+    foot_off = (cuts['idle'][3] - cuts['idle'][1]) * base  # 대기 자세 발 가운데 - 얼굴 가운데 (줄인 뒤 px)
+    pieces = {}
+    for f in FRAMES + [RAGE_IDLE]:
+        rgba, cx, below, _, fx = cuts[f[1]]
+        # 서 있는 칸(대기·걷기)은 키(머리털 끝~발)로 맞추고, 자세가 낮은 칸은 대기 배율에 SCALE_FIX를 곱함
+        sc = rage_sc if f[0] == 12 else base * SCALE_FIX[f[1]] if f[1] in SCALE_FIX else TARGET_H / rgba.shape[0]
+        cx = fx * sc if fx is not None else cx * sc + foot_off
+        pieces[f[1]] = (f[1], shrink(rgba, sc), cx, int(round(below * sc)))
+    ridle = pieces['ridle'][1]
+    normal = [pieces[f[1]] for f in FRAMES]
+    rage = [pieces['ridle'] if n == 'idle' else (n, p if n.startswith('rage') else enrage(p, ridle), c, d) for n, p, c, d in normal]
+    both = normal + rage
+    L = max(int(np.ceil(c)) for _, _, c, _ in both) + 4  # 붉은 기운 2px 자리까지
+    R = max(int(np.ceil(p.shape[1] - c)) for _, p, c, _ in both) + 4
+    B = max(d for _, _, _, d in both)
+    H = max(p.shape[0] - d for _, p, _, d in both) + B + 5
+    cellW = L + R
+    Image.fromarray(place(normal, L, B, H, cellW), 'RGBA').save(OUT_CHAR, 'WEBP', lossless=True)
+    rs = place(rage, L, B, H, cellW)
+    for i, (n, *_ ) in enumerate(rage):
+        if not n.startswith('rage'): rs[:, i * cellW:(i + 1) * cellW] = add_aura(rs[:, i * cellW:(i + 1) * cellW])
+    Image.fromarray(rs, 'RGBA').save(OUT_RAGE, 'WEBP', lossless=True)
+    idle = normal[0][1]
     hx = np.where(idle[:int(idle.shape[0] * 0.3), :, 3].any(axis=0))[0]
-    print(f'char cellW={cellW} cellH={H} anchorX={L} anchorY={H - 2 - B} count={len(pieces)} topH={idle.shape[0]} portraitCX={L - int(round(pieces[0][2])) + int(hx.mean())}')
+    print(f'char cellW={cellW} cellH={H} anchorX={L} anchorY={H - 2 - B} count={len(normal)} topH={idle.shape[0]} portraitCX={L - int(round(normal[0][2])) + int(hx.mean())}')
 
 
 if __name__ == '__main__':
