@@ -1,7 +1,7 @@
 # 광전사 원형 샘플(흰 배경 도트, 동작마다 한 장) → 캐릭터 시트 assets/sprites/merc/berserker_0.webp
 # 사용: python tools/berserker_build.py [샘플 폴더]  (기본 assets/sprites/fx/samples, 파일 berserker_src1~.png)
-#   1 = 대기 (흰 배경, 왼쪽 위 한글 라벨 "대기"), 2·3·4 = 걷기 3칸 (2·3은 바둑판 배경 큰 그림, 4는 흰 배경), 5 = 피격 (라벨 "피격"), 6 = 쓰러짐 (누운 자세)
-# 캐릭터 칸 순서: 0 대기 · 1~3 걷기 · 4 피격 · 5 쓰러짐 (쓰러짐 동작은 피격 → 누운 자세 두 칸) (모든 칸 크기 같음, 오른쪽을 봄, 발 = 기준점)
+#   1 = 대기 (흰 배경, 왼쪽 위 한글 라벨 "대기"), 2·3·4 = 걷기 3칸 (2·3은 바둑판 배경 큰 그림, 4는 흰 배경), 5 = 피격 (라벨 "피격"), 6 = 쓰러짐 (누운 자세), 7 = 기본 공격 들어 올리기 (라벨 "일반공격")
+# 캐릭터 칸 순서: 0 대기 · 1~3 걷기 · 4 피격 · 5 쓰러짐 · 6~8 기본 공격 (들어 올리기 · 휘두르기 · 내려찍기) (쓰러짐 동작은 피격 → 누운 자세 두 칸) (모든 칸 크기 같음, 오른쪽을 봄, 발 = 기준점)
 # 걷기 1·2(샘플 2·3)는 대기 원본과 다르게 뽑힘 → 대기에 맞춰 손봄:
 #   색감 = 피부·머리털·문신·갈색 털가죽을 부위별로, 나머지를 전체로 대기 자세의 평균·퍼짐에 맞춤 (restyle)
 #   비율 = 몸이 홀쭉해서 가로로 1.1배, 디자인 = 오른손 도끼 머리가 작아서 쥔 자리 기준 1.3배 (grow_axe)
@@ -23,9 +23,18 @@ FRAMES = [
     (2, 'walk0'), (3, 'walk1'), (4, 'walk2'),
     (5, 'hurt'),
     (6, 'down'),
+    (7, 'atk0'), (7, 'atk1'),
 ]
+# 기본 공격: 샘플은 들어 올리기 한 칸(atk0)뿐이라 내려찍는 칸(atk1)은 여기서 만듦
+#   등 뒤로 치켜든 도끼 + 그 도끼를 쥔 앞팔을 팔꿈치 기준으로 통째로 170도 돌려 앞 땅으로 내려찍음
+#   (중간 칸 90도는 팔꿈치가 가슴 높이라 도끼 머리가 얼굴을 덮어서 뺌 — 들어 올리기 → 내려찍기 두 칸 + 궤적)
+#   원래 도끼·앞팔 자리는 지우고, 앞팔이 가리던 곳은 가장 가까운 망토·몸 색으로 메움. 궤적은 몸 바깥에만, 돌린 도끼·팔은 몸 앞에 그림
+SWING = {'atk1': (170, (-150, 30))}  # 이름: (돌릴 각도, 궤적 시작·끝 각도 — 팔꿈치 기준 화면 각도, 오른쪽 0·아래 +, 치켜든 도끼 머리는 -120)
+SWING_AXE = [(155, 5), (228, 5), (231, 48), (220, 55), (228, 62), (235, 68), (235, 77), (155, 77)]  # 치켜든 도끼 (샘플 좌표 다각형)
+SWING_ARM = (221, 72, 245, 116)  # 도끼를 쥔 앞팔 상자 (x0, y0, x1, y1)
+SWING_PIVOT = (236, 113)  # 팔꿈치
 FOOT_X = {'down': 148}  # 얼굴로 가로 기준을 못 잡는 칸: 발 기준점으로 쓸 샘플 x (잘라 낸 뒤 좌표). 쓰러짐 = 머리털 끝~발끝 가운데 (오른쪽 도끼는 뺌)
-SCALE_FIX = {'hurt': 1 / 1.05, 'down': 1 / 1.05}  # 키로 못 맞추는 칸: 대기 배율에 곱하는 값. 피격·쓰러짐은 해골·얼굴·도끼가 대기보다 5% 안팎 크게 그려짐
+SCALE_FIX = {'hurt': 1 / 1.05, 'down': 1 / 1.05, 'atk0': 1, 'atk1': 1}  # 키로 못 맞추는 칸: 대기 배율에 곱하는 값. 피격·쓰러짐은 해골·얼굴·도끼가 대기보다 5% 안팎 크게 그려짐
 RESTYLE = {2: 1.1, 3: 1.1}  # 대기 원본과 다르게 뽑힌 샘플: 색감을 대기에 맞추고 가로로 늘릴 배율 (restyle)
 REF = {}
 AXE = {2: ((400, 300, 547, 500), (400, 425), 1.3), 3: ((385, 290, 540, 490), (385, 400), 1.3)}  # 걷기 1·2 오른손 도끼 머리가 대기보다 작게(키의 22%, 대기 29%) 뽑힘: (상자, 쥔 자리, 배율)
@@ -52,6 +61,10 @@ def load(sheet, folder):
     lab, n = ndi.label(white)
     edge_ids = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
     bg = np.isin(lab, edge_ids[edge_ids > 0])
+    # 몸·도끼 자루 사이에 갇힌 흰 배경 (공격 샘플의 팔과 앞 도끼 사이): 아주 하얀 25px 넘는 덩어리도 배경 (뼈·해골은 크림색이라 남음)
+    ids = np.arange(1, n + 1)
+    big = ids[(ndi.sum(white, lab, ids) >= 25) & (ndi.mean(im.min(axis=2), lab, ids) > 240)]
+    bg |= np.isin(lab, big)
     # 흰 배경과 맞닿은 2px 띠는 검은 윤곽과 흰 배경이 섞인 색 → 흰색을 빼서 투명도·본래 색을 되살림
     # (그대로 줄이면 윤곽 바깥에 흰 점이 줄지어 남음). 윤곽은 거의 검정이라 밝을수록 투명하게 봄
     rim = ~bg & ndi.binary_dilation(bg, iterations=2)
@@ -67,6 +80,7 @@ def cut(folder, f):
     sheet, name = f
     rgb, a = load(sheet, folder)
     if sheet in AXE: rgb, a = grow_axe(rgb, a, *AXE[sheet])
+    if name in SWING: rgb, a = swing(rgb, a, *SWING[name])
     m = a > 0.5
     lab, n = ndi.label(ndi.binary_dilation(m, iterations=1))
     areas = ndi.sum(m, lab, range(1, n + 1))
@@ -101,6 +115,45 @@ def grow_axe(rgb, a, box, pivot, k):
     on = ta > 0
     rgb = np.where(on[..., None], t[..., :3] / np.maximum(ta, 1e-3)[..., None], rgb)
     a = np.where(on, np.maximum(a, ta), a)
+    return rgb, a
+
+
+def swing(rgb, a, ang, trail):
+    from PIL import ImageDraw
+    P = 60
+    rgb = np.pad(rgb, ((P, P), (P, P), (0, 0)), constant_values=255); a = np.pad(a, P)
+    h, w = a.shape
+    sel = Image.new('L', (w, h), 0); d = ImageDraw.Draw(sel)
+    d.polygon([(x + P, y + P) for x, y in SWING_AXE], fill=255)
+    x0, y0, x1, y1 = (v + P for v in SWING_ARM); d.rectangle([x0, y0, x1, y1], fill=255)
+    sel = (np.array(sel) > 0) & (a > 0)
+    piece = np.dstack([rgb, a * 255]) * sel[..., None]
+    a = np.where(sel, 0, a)
+    # 앞팔이 가리던 곳: 가장 가까운 망토 털 색으로 메움 (검은 윤곽은 빼고 찾음 — 윤곽색으로 메우면 검은 덩어리가 됨)
+    hole = np.zeros_like(sel); hole[y0:y1 + 1, x0:x1 + 1] = True
+    hole &= sel
+    fur = (a > 0.5) & (rgb.mean(axis=2) > 45) & ~ndi.binary_dilation(hole, iterations=1)
+    _, (iy, ix) = ndi.distance_transform_edt(~fur, return_indices=True)
+    rgb = np.where(hole[..., None], rgb[iy, ix], rgb); a = np.where(hole, 1.0, a)
+    px, py = SWING_PIVOT[0] + P, SWING_PIVOT[1] + P
+    # 궤적: 팔꿈치 중심 초승달 (끝으로 갈수록 두껍고 진함). 몸 뒤로 지나가서 머리 둘레로 삐져나온 부분만 보임
+    R = 96
+    tr = Image.new('RGBA', (w, h), (0, 0, 0, 0)); dt = ImageDraw.Draw(tr)
+    t0, t1 = trail; n = 40
+    for i in range(n):
+        t = i / (n - 1); th = np.radians(t0 + (t1 - t0) * t)
+        r = 3 + 9 * t
+        cx, cy = px + R * np.cos(th), py + R * np.sin(th)
+        col = (255, 255, 255, int(120 + 120 * t))
+        dt.ellipse([cx - r, cy - r, cx + r, cy + r], fill=col)
+    tr = np.array(tr).astype(float)
+    on = (tr[..., 3] > 0) & ~ndi.binary_fill_holes(a > 0)  # 몸 바깥에만 (얼굴 위·팔과 자루 사이 빈틈에는 안 그림)
+    rgb = np.where(on[..., None], tr[..., :3], rgb)
+    a = np.where(on, tr[..., 3] / 255, a)
+    # 도끼·앞팔을 팔꿈치 기준으로 돌려 몸 앞에 붙임 (화면 시계 방향)
+    T = Image.fromarray(piece.clip(0, 255).astype(np.uint8), 'RGBA').rotate(-ang, resample=Image.NEAREST, center=(px, py))
+    t = np.array(T).astype(float); ta = t[..., 3] / 255
+    rgb = np.where((ta > 0)[..., None], t[..., :3], rgb); a = np.where(ta > 0, 1.0, a)
     return rgb, a
 
 
