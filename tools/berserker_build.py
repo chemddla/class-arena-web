@@ -43,7 +43,8 @@ RIDLE_FOOT = 394  # 광폭 대기 장화 가운데 (샘플 x)
 FOOT_X = {'down': 150, 'atk0': 140, 'atk1': 465, 'ridle': RIDLE_FOOT, 'throw0': 97, 'throw1': 261, 'throw2': 417}  # 광폭 대기는 얼굴이 붉어서 피부로 얼굴을 못 찾음
 # 키로 못 맞추는 칸: 대기 배율에 곱하는 값 (얼굴·해골 크기를 대기와 같게). 피격·쓰러짐은 대기보다 5% 안팎,
 # 들어 올리기는 1.3배, 내려치기는 4.6배 크게, 도끼 투척은 0.63배 작게 그려짐
-SCALE_FIX = {'hurt': 1 / 1.05, 'down': 1 / 1.05, 'atk0': 1 / 1.3, 'atk1': 1 / 4.6, 'throw0': 1.59, 'throw1': 1.59, 'throw2': 1.59}  # 도끼 투척은 얼굴이 대기의 0.63배로 작게 그려짐
+SCALE_FIX = {'hurt': 1 / 1.05, 'down': 1 / 1.05, 'atk0': 1 / 1.3, 'atk1': 1 / 4.6, 'throw0': 1.59, 'throw1': 1.59, 'throw2': 1.59,  # 도끼 투척은 얼굴이 대기의 0.63배로 작게 그려짐
+             'walk0': 1.1, 'walk1': 1.1, 'walk2': 1.1, 'walk3': 1.1}  # 걷기는 키는 대기와 비슷한데 얼굴이 0.91배로 작게 그려짐 (키로 맞추면 얼굴이 6% 작았음)
 PINK_SHEETS = (12,)  # 배경에 분홍 아지랑이가 낀 샘플: 밝은 분홍까지 배경으로 보고, 몸에 붙은 분홍 띠도 4겹까지 벗겨 냄
 def _skin(c): return (c[..., 3] > 200) & (c[..., 0] > 120) & (c[..., 0] > c[..., 1] + 20) & (c[..., 1] > c[..., 2]) & (c[..., 0] - c[..., 2] < 130)
 
@@ -254,7 +255,7 @@ def main(folder):
     pieces = {}
     for f in FRAMES + [RAGE_IDLE]:
         rgba, cx, below, _, fx = cuts[f[1]]
-        # 서 있는 칸(대기·걷기)은 키(머리털 끝~발)로 맞추고, 자세가 낮은 칸은 대기 배율에 SCALE_FIX를 곱함
+        # 대기는 키(머리털 끝~발)로 맞추고, 나머지 칸은 대기 배율에 SCALE_FIX(얼굴 크기를 대기와 같게)를 곱함
         sc = rage_sc if f[0] == 12 else base * SCALE_FIX[f[1]] if f[1] in SCALE_FIX else TARGET_H / rgba.shape[0]
         cx = fx * sc if fx is not None else cx * sc + foot_off
         pieces[f[1]] = (f[1], shrink(rgba, sc), cx, int(round(below * sc)))
