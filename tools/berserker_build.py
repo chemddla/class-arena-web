@@ -40,6 +40,7 @@ HOLE_SHEETS = (9, 10, 12, 13)  # 몸 안에 갇힌 흰 배경도 지울 샘플 (
 KEEP_SMALL = {'atk1': 500}  # 몸에서 떨어진 조각도 이 크기(px) 넘으면 남김: 섬광에서 떨어져 나간 빛살 (내려치기 샘플은 대기의 4.6배 크기)
 # 얼굴로 가로 기준을 못 잡는 칸: 발 기준점으로 쓸 샘플 x. 쓰러짐 = 머리털 끝~발끝 가운데 (오른쪽 도끼는 뺌),
 # 공격 = 장화 가운데 (내딛으며 몸이 앞으로 쏠려서 얼굴로 맞추면 발이 뒤로 미끄러짐)
+RAGE_SCALE = 1.31  # 광폭화 샘플은 얼굴 키(34 vs 44)·머리털 폭(80 vs 106)이 대기의 0.76배 → 대기 배율의 1.31배 (키로 맞추면 5% 작았음)
 RIDLE_FOOT = 394  # 광폭 대기 장화 가운데 (샘플 x)
 FOOT_X = {'down': 150, 'atk0': 140, 'atk1': 465, 'ridle': RIDLE_FOOT, 'throw0': 97, 'throw1': 261, 'throw2': 417}  # 광폭 대기는 얼굴이 붉어서 피부로 얼굴을 못 찾음
 # 키로 못 맞추는 칸: 대기 배율에 곱하는 값 (얼굴·해골 크기를 대기와 같게). 피격·쓰러짐은 대기보다 5% 안팎,
@@ -301,7 +302,7 @@ def build_axe_fx(folder):
 def main(folder):
     cuts = {f[1]: cut(folder, f) for f in FRAMES + [RAGE_IDLE]}
     base = TARGET_H / cuts['idle'][0].shape[0]
-    rage_sc = TARGET_H / cuts['ridle'][0].shape[0]  # 광폭화 샘플 세 칸은 같은 크기로 그려져서 광폭 대기 키로 함께 맞춤
+    rage_sc = base * RAGE_SCALE  # 광폭화 샘플 세 칸은 같은 크기로 그려져서 함께 맞춤
     foot_off = (cuts['idle'][3] - cuts['idle'][1]) * base  # 대기 자세 발 가운데 - 얼굴 가운데 (줄인 뒤 px)
     pieces = {}
     for f in FRAMES + [RAGE_IDLE]:

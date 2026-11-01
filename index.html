@@ -4081,7 +4081,7 @@
         axe_throw: {
           id: 'axe_throw', name: '도끼 투척', icon: '🪓', ccTag: '🐌슬로우',
           manaCost: 18, cooldownTicks: 420, cooldownSec: 7.0, castSec: 0,
-          desc: '4칸 안의 적 하나에게 도끼를 던져 150% 피해를 입히고 2초간 [슬로우]를 겁니다.'
+          desc: '겨눈 방향으로 도끼를 던집니다. 도끼는 4칸까지 날아가 처음 맞은 적에게 150% 피해를 입히고 2초간 [슬로우]를 겁니다.'
         },
         execute: {
           id: 'execute', name: '마무리 일격', icon: '💥', ccTag: '💥마무리',
@@ -5689,6 +5689,7 @@
     MERC_SPRITE_DEFS.berserker_0 = {
       src: 'assets/sprites/merc/berserker_0.webp',
       cellW: 188, cellH: 184, anchorX: 91, anchorY: 147, standH: 81, topH: 86, portraitCX: 94, count: 14,
+      attackDur: 31, // 기본 공격: 들어 올리기 6틱 + 내려치기 25틱 (공격 자세가 이어지는 최대 42틱에서 내려치기 36틱을 30% 줄임)
       anims: { idle: [0], walk: [1, 2, 3, 4], attack: [7, 8, 8, 8], skill: [7, 8], hurt: [5], death: [5, 6], raise: [7], rage: [9, 10, 10], throw: [11, 12, 13] },
       skillAnims: {
         rage:         { anim: 'rage', tpf: 15, dur: 45 },
@@ -15547,7 +15548,7 @@
       // 음유시인: 불협화음은 커서 지점, 음파는 커서 방향, 나머지 노래는 내 주변 (앙코르는 모든 아군)
       war_song: 'self', guard_melody: 'self', dissonance: 'point', sonic_wave: 'direction', tempo: 'self', encore: 'self',
       // 광전사: 도끼 투척·마무리 일격은 커서에 가까운 적, 대지 가르기는 커서 방향, 광폭화·야성의 포효는 내 주변
-      rage: 'self', axe_throw: 'target', execute: 'target', ground_split: 'direction', blood_howl: 'self', undying_rage: 'self'
+      rage: 'self', axe_throw: 'direction', execute: 'target', ground_split: 'direction', blood_howl: 'self', undying_rage: 'self'
     };
     function manualSkillRange(u, key) {
       switch (key) {
@@ -21724,23 +21725,31 @@
         addBattleLog(`🔥 [광전사] ${unit.name}의 광폭화! 8초간 공격 속도가 올라요`);
         return true;
       }
-      if (sk === 'axe_throw' || sk === 'execute') {
+      if (sk === 'axe_throw') {
+        // 논타겟: 겨눈 방향(조준점 → 없으면 고른 적 → 바라보는 쪽)으로 곧게 날아가 처음 맞은 적에게 피해 + 슬로우 (resolveProjectileImpact)
+        // 던짐 칸이 보일 때까지 손에 들고 있다가 4칸까지 날아감 (빙글빙글 도는 그림)
+        const handDx = 16, handDy = -30;
+        const hx = unit.x + handDx * (unit.facingDir || 1), hy = unit.y + handDy;
+        const aim = aimPt || foe;
+        const ang = aim ? Math.atan2(aim.y - 12 - hy, aim.x - hx) : (unit.facingAngle || (unit.facingDir < 0 ? Math.PI : 0));
+        unit.facingAngle = ang;
+        if (Math.abs(Math.cos(ang)) > 0.1) unit.facingDir = Math.cos(ang) >= 0 ? 1 : -1;
+        sim.projectiles.push({
+          projType: 'thrown_axe', x: unit.x + handDx * (unit.facingDir || 1), y: hy, handDx, handDy, wait: BERSERKER_AXE_RELEASE,
+          owner: unit, dmg: unit.atk * BERSERKER_AXE_DMG, statusDur: BERSERKER_AXE_SLOW_TICKS,
+          isSkill: true, isDirectional: true, angle: ang, speed: 4.4, trail: [], maxTravel: manualSkillRange(unit, 'axe_throw'), color: '#94a3b8'
+        });
+        playCombatSfx('arrow');
+        return true;
+      }
+      if (sk === 'execute') {
         if (!foe || unitDist(foe, unit) > manualSkillRange(unit, sk) + 20) {
-          sim.floatTexts.push({ x: unit.x, y: unit.y - 52, text: `${unitSkillBook(unit)[sk]?.icon || '🪓'} 빗나감 (너무 멀어요)`, color: '#64748b', life: 40 });
+          sim.floatTexts.push({ x: unit.x, y: unit.y - 52, text: `${unitSkillBook(unit)[sk]?.icon || '💥'} 빗나감 (너무 멀어요)`, color: '#64748b', life: 40 });
           return true;
         }
         unit.facingAngle = Math.atan2(foe.y - unit.y, foe.x - unit.x);
         if (Math.abs(foe.x - unit.x) > 4) unit.facingDir = foe.x >= unit.x ? 1 : -1;
-        if (sk === 'axe_throw') {
-          // 도끼가 빙글빙글 돌며 날아가 맞아야 피해 + 슬로우 (resolveProjectileImpact). 던짐 칸이 보일 때까지 손에 들고 있음
-          const handDx = 16, handDy = -30;
-          sim.projectiles.push({
-            projType: 'thrown_axe', x: unit.x + handDx * (unit.facingDir || 1), y: unit.y + handDy, handDx, handDy, wait: BERSERKER_AXE_RELEASE,
-            target: foe, owner: unit, dmg: unit.atk * BERSERKER_AXE_DMG, statusDur: BERSERKER_AXE_SLOW_TICKS,
-            isSkill: true, speed: 4.4, trail: [], color: '#94a3b8'
-          });
-          playCombatSfx('arrow');
-        } else {
+        {
           const lost = Math.max(0, 1 - foe.hp / foe.maxHp);
           sim.effects.push({ type: 'magic_burst', x: foe.x, y: foe.y - 12, r: 56, life: 28, maxLife: 28 });
           applyDamage(unit, foe, unit.atk * BERSERKER_EXECUTE_DMG * (1 + lost), '💥', '#7f1d1d');
