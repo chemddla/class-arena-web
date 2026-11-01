@@ -2618,7 +2618,7 @@
             <div>
               <h3 class="font-title text-2xl text-white">몬스터 러쉬 (최대 5명 협동 · 100라운드)</h3>
               <p class="text-xs text-slate-400 mt-0.5">
-                용병 <strong>1명</strong>을 골라 <strong>직접 조종</strong>해요! 라운드마다 맵 뒷편에서 몬스터가 떼로 몰려와요. 오래 버틸수록 보상이 커져요.
+                용병 <strong>1명</strong>을 골라 <strong>직접 조종</strong>해요! 라운드마다 오른쪽 동굴에서 몬스터가 떼로 몰려나와요. 오래 버틸수록 보상이 커져요.
               </p>
               <div id="rushMyInfo" class="text-xs text-slate-300 mt-1"></div>
             </div>
@@ -2653,7 +2653,7 @@
             <h4 class="font-title text-lg text-white">📜 러쉬 규칙</h4>
             <div>👥 <strong>최대 5명</strong>이 한 명당 용병 1명을 <strong>직접 조종</strong>해요. 방장은 빈 자리에 <strong>[🤖 AI 넣기]</strong>로 반 친구 용병을 한 명씩 넣고 뺄 수 있어요. (무작위 친구 · 파티에서 가장 센 용병의 전투력을 넘지 않아요)</div>
             <div>🛡️ 직접 조종하는 용병은 <strong>행동불능 상태이상</strong>(기절·빙결·공포·혼란)에 걸리지 않아요.</div>
-            <div>🌊 라운드가 시작되면 <strong>맵 오른쪽 뒷편</strong>에서 몬스터가 몰려와요. 뒷편은 화면 밖이라 보이지 않고 공격도 닿지 않아요. 몬스터도 맵에 들어오기 전에는 공격하지 않아요.</div>
+            <div>🌊 라운드가 시작되면 <strong>맵 오른쪽 동굴</strong>에서 몬스터가 차례로 나와 성벽 사이 통로로 몰려와요. 동굴에서 나오기 전에는 보이지 않고 공격도 닿지 않아요. 성벽은 아무도 지나갈 수 없어요.</div>
             <div>📈 <strong>100라운드</strong>까지! 구간마다 몬스터가 강해지고 많아져요: 입문(1~10) · 초급(11~30) · 중급(31~50) · 상급(51~70) · 영웅(71~90) · 전설(91~100). <strong>5라운드마다 👑 보스</strong>, 10라운드마다 대보스, 100라운드는 🔥최종 보스예요.</div>
             <div>💚 라운드를 깨면 살아 있는 용병 체력 30% 회복 · 보스 라운드를 깨면 쓰러진 용병도 부활해요.</div>
             <div>⏰ 한 라운드 제한 시간 3분 · 모두 쓰러지거나 시간이 지나면 끝나요.</div>
@@ -18148,6 +18148,7 @@
             playCombatSfx('heal');
             const healAmt = Math.round(p.dmg * healPowerMult(p.owner) * healTakenMult(p.target));
             p.target.hp = Math.min(p.target.maxHp, p.target.hp + healAmt);
+      if (sim.mode === 'monster_rush') resolveRushWalls(); // 🌊 러쉬 맵 성벽: 유닛이 뚫고 지나갈 수 없음
             p.owner.healDone += healAmt;
             sim.effects.push({ type: 'heal_cross', x: p.target.x, y: p.target.y, life: 26, maxLife: 26 });
             sim.floatTexts.push({ x: p.target.x, y: p.target.y - 44, text: `💚+${healAmt}`, color: '#059669', life: 45 });
@@ -34223,8 +34224,10 @@
         u.x -= (u.baseMoveSpeed || 1) * RUSH.backSpeed;
         u.isMoving = true;
         if (u.x > sim.worldW + RUSH.edge) return;
-        // 맵 가장자리에 닿음: 이때부터 살아 있는 몬스터 (공격이 닿고, 맵 안쪽까지 걸어 들어온 뒤 싸움)
-        u.x = sim.worldW + RUSH.edge;
+        // 차례가 됨: 동굴 입구에서 나타남 → 이때부터 살아 있는 몬스터 (공격이 닿고, 통로를 지나 야영지까지 걸어 들어온 뒤 싸움)
+        u.x = 2580 + (Math.random() - 0.5) * 160;
+        u.y = 620 + Math.random() * 40;
+        u._ix = u.x; u._iy = u.y; // 뒷편 자리에서 끌려오지 않게 (성벽 판정·화면 보간)
         u.rushPending = false;
         u.rushEntering = true;
         u.alive = true;
@@ -34246,11 +34249,15 @@
       return false;
     }
 
-    // 막 넘어온 몬스터: 맵 바깥 가장자리에서 걸을 수 있는 곳(오른쪽 벽 안)까지 걸어 들어옴
+    // 동굴에서 나온 몬스터: 동굴 바닥 → 성벽 사이 통로 → 야영지 안쪽 순서로 걸어 들어옴
     function stepRushEntering(u) {
-      const inner = sim.worldW - 210;
-      u.x = Math.max(inner, u.x - (u.baseMoveSpeed || 1) * RUSH.backSpeed);
-      u.y = Math.max(260, Math.min(sim.worldH - 220, u.y));
+      if (!u.rushPath || !u.rushPath.length) u.rushPath = rushCavePath(false);
+      const wp = u.rushPath[0];
+      const step = (u.baseMoveSpeed || 1) * RUSH.backSpeed;
+      const dx = wp.x - u.x, dy = wp.y - u.y, d = Math.hypot(dx, dy);
+      const ang = Math.atan2(dy, dx);
+      if (d <= step) { u.x = wp.x; u.y = wp.y; u.rushPath.shift(); }
+      else { u.x += Math.cos(ang) * step; u.y += Math.sin(ang) * step; }
       u.isMoving = true;
       u.facingDir = -1;
       u.facingAngle = Math.PI;
@@ -34319,7 +34326,7 @@
       }
       addBattleLog(isRushBossRound(round)
         ? `👑 ${round}라운드: 보스 라운드! 보스와 몬스터 ${wave.length - 1}마리가 몰려와요!`
-        : `🌊 ${round}라운드 시작! 몬스터 ${wave.length}마리가 맵 뒷편에서 몰려와요!`);
+        : `🌊 ${round}라운드 시작! 몬스터 ${wave.length}마리가 동굴에서 몰려나와요!`);
     }
 
     // 실시간 화면에 싣는 라운드 상태 (쉬는 시간·라운드 시간은 남은/지난 틱으로 → 화면마다 시계가 달라도 맞음)
@@ -34356,7 +34363,7 @@
         text = `✅ ${rs.cleared}라운드 클리어! · 다음 ${rs.round + 1}/${RUSH.maxRound}라운드 [${rushRoundSpec(rs.round + 1).tier}]${isRushBossRound(rs.round + 1) ? ` ${rushBossLabel(rs.round + 1)}` : ''}까지 ${left}초`;
       } else {
         const sec = Math.max(0, Math.ceil(RUSH.roundLimitSec - (sim.tickCount - rs.roundStartTick) / tps));
-        text = `🌊 ${rs.round}/${RUSH.maxRound}라운드 [${rushRoundSpec(rs.round).tier}]${isRushBossRound(rs.round) ? ` ${rushBossLabel(rs.round)}` : ''} · 남은 몬스터 ${rs.left}마리${rs.pending ? ` (뒷편 ${rs.pending})` : ''} · ⏰ ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+        text = `🌊 ${rs.round}/${RUSH.maxRound}라운드 [${rushRoundSpec(rs.round).tier}]${isRushBossRound(rs.round) ? ` ${rushBossLabel(rs.round)}` : ''} · 남은 몬스터 ${rs.left}마리${rs.pending ? ` (동굴 속 ${rs.pending})` : ''} · ⏰ ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
       }
       const paid = rushPaidRoundOf(getActiveStudent());
       const gain = rushNewRewardOf(getActiveStudent(), rs.cleared).amount;
@@ -34388,6 +34395,68 @@
         ? `보상으로 💰 ${reward.toLocaleString()} CA를 받았어요! (${formula}) · 오늘 다시 도전하면 ${rs.cleared + 1}라운드부터 보상을 받아요`
         : (rs.cleared > 0 ? `오늘은 이미 ${gain.paid}라운드까지 보상을 받았어요. ${gain.paid + 1}라운드부터 깨면 보상을 받아요!` : '깬 라운드가 없어서 보상은 없어요. 다시 도전해 보세요!');
       document.getElementById('battleMvpBox').innerHTML = `
+    // 러쉬 맵(숲속 야영지)의 오른쪽 돌 성벽·동굴 바위 (월드 좌표 사각형): 유닛은 지나갈 수 없음
+    // 위·아래 성벽 사이(세로 약 810~1010)가 야영지 ↔ 동굴 통로, 성벽 오른쪽 동굴 바닥(가로 2410~, 세로 690~1370)으로 이어짐
+    const RUSH_WALLS = [
+      { x1: 2160, y1: 0,    x2: 2410, y2: 810 },  // 위쪽 성벽 (깃발 오른쪽 바위)
+      { x1: 2230, y1: 1010, x2: 2410, y2: 1800 }, // 아래쪽 성벽 (울타리 오른쪽 바위)
+      { x1: 2410, y1: 0,    x2: 2880, y2: 690 },  // 동굴 입구 (몬스터가 나오는 어두운 굴)
+      { x1: 2410, y1: 1370, x2: 2880, y2: 1800 }  // 동굴 아래 바위
+    ];
+    const RUSH_CAVE = { x1: 2410, y1: 690, y2: 1370 }; // 성벽 안쪽 동굴 바닥
+    const RUSH_WALL_PAD = 18; // 몸 반쪽 두께: 성벽에서 이만큼 떨어져 섬
+    function inRushWall(x, y) {
+      return RUSH_WALLS.some(w => x > w.x1 - RUSH_WALL_PAD && x < w.x2 + RUSH_WALL_PAD && y > w.y1 - RUSH_WALL_PAD && y < w.y2 + RUSH_WALL_PAD);
+    }
+    // (ax, ay) → (bx, by)로 가는 길이 성벽에 걸리는지 (20px 간격으로 확인)
+    function rushPathBlocked(ax, ay, bx, by) {
+      const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 20));
+      for (let i = 1; i <= n; i++) if (inRushWall(ax + (bx - ax) * i / n, ay + (by - ay) * i / n)) return true;
+      return false;
+    }
+    // 동굴에서 성벽 사이 통로를 지나 야영지 안쪽까지 걷는 길 (fromCave = 동굴 입구에서 막 나옴)
+    function rushCavePath(fromCave) {
+      const path = [];
+      if (fromCave) path.push({ x: 2530 + (Math.random() - 0.5) * 120, y: 880 + (Math.random() - 0.5) * 120 });
+      path.push({ x: 2300, y: 910 + (Math.random() - 0.5) * 100 });
+      path.push({ x: 2120, y: 910 + (Math.random() - 0.5) * 120 });
+      path.push({ x: 2080 - Math.random() * 80, y: 910 + (Math.random() - 0.5) * 260 });
+      return path;
+    }
+    // 매 틱 유닛 움직임이 끝난 뒤: 성벽을 뚫고 지나가거나 성벽 안에 들어간 유닛은 되돌림 (벽을 따라 미끄러지는 움직임은 살림)
+    function resolveRushWalls() {
+      sim.units.forEach(u => {
+        if (!u.alive || u.rushPending) return;
+        const ax = u._ix ?? u.x, ay = u._iy ?? u.y;
+        if (u.rushEntering) {
+          // 동굴에서 나오는 중: 걷는 길은 그대로, 밀려서 성벽에 박히는 것만 되돌림 (동굴 입구에서 막 나온 때는 빼고)
+          if (!inRushWall(ax, ay) && rushPathBlocked(ax, ay, u.x, u.y)) { u.x = ax; u.y = ay; u.kbVx = 0; u.kbVy = 0; }
+          return;
+        }
+        if (inRushWall(ax, ay)) {
+          // 처음부터 성벽 안: 가장 가까운 바깥으로 밀어냄
+          const w = RUSH_WALLS.find(w => ax > w.x1 - RUSH_WALL_PAD && ax < w.x2 + RUSH_WALL_PAD && ay > w.y1 - RUSH_WALL_PAD && ay < w.y2 + RUSH_WALL_PAD);
+          const opts = [
+            { x: w.x1 - RUSH_WALL_PAD - 1, y: ay }, { x: w.x2 + RUSH_WALL_PAD + 1, y: ay },
+            { x: ax, y: w.y1 - RUSH_WALL_PAD - 1 }, { x: ax, y: w.y2 + RUSH_WALL_PAD + 1 }
+          ].filter(o => o.x >= 200 && o.x <= sim.worldW - 200 && o.y >= 260 && o.y <= sim.worldH - 220 && !inRushWall(o.x, o.y));
+          opts.sort((a, b) => Math.hypot(a.x - ax, a.y - ay) - Math.hypot(b.x - ax, b.y - ay));
+          if (opts[0]) { u.x = opts[0].x; u.y = opts[0].y; }
+          return;
+        }
+        if (!rushPathBlocked(ax, ay, u.x, u.y)) return;
+        if (!rushPathBlocked(ax, ay, u.x, ay)) u.y = ay;
+        else if (!rushPathBlocked(ax, ay, ax, u.y)) u.x = ax;
+        else { u.x = ax; u.y = ay; }
+        u.kbVx = 0; u.kbVy = 0;
+      });
+      // 동굴 바닥으로 밀려 들어간 몬스터(AI)는 통로를 지나 다시 야영지로 걸어 나옴
+      sim.units.forEach(u => {
+        if (!u.alive || u.team !== 'red' || u.rushEntering || u.rushPending) return;
+        if (sim.controllers && sim.controllers[u.id]) return;
+        if (u.x > RUSH_CAVE.x1 && u.y > RUSH_CAVE.y1 && u.y < RUSH_CAVE.y2) { u.rushEntering = true; u.rushPath = rushCavePath(false); }
+      });
+    }
         <div class="font-bold text-amber-300 mb-1">🌟 이번 러쉬 3대 분야 MVP 용병</div>
         <div>⚔️ 최고 공격왕: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
         <div>🛡️ 든든 수호왕: <strong>${tankKing?.name || '-'}</strong> (${tankKing?.damageTaken || 0} 방어)</div>
@@ -34526,6 +34595,7 @@
     };
 
     window.removeRushAiSeat = async function (roomId, idx) {
+        u.rushPath = rushCavePath(true);
       const me = getActiveStudent();
       const room = liveRaidRoomsCache[roomId];
       if (!me || !isRushRoom(room) || room.status !== 'waiting' || room.hostId !== me.id) return;
@@ -34617,7 +34687,7 @@
       // 한 사람에 용병 하나: 고르는 창 없이 내 용병을 바로 직접 조종
       const mine = sim.units.find(u => u.team === 'blue' && u.liveOwnerId === myStu.id && !u.rushAi);
       setBattleControlMode(mine ? 'manual' : 'auto', mine ? mine.id : null, true);
-      addBattleLog(`🌊 [몬스터 러쉬] ${rushFloorOf(rs, 1)}층 몬스터부터 시작해요! ${RUSH.maxRound}라운드까지 · ${RUSH.bossEvery}라운드마다 👑보스, 10라운드마다 대보스가 나와요. 몬스터는 맵 오른쪽 뒷편에서 몰려와요.`);
+      addBattleLog(`🌊 [몬스터 러쉬] ${rushFloorOf(rs, 1)}층 몬스터부터 시작해요! ${RUSH.maxRound}라운드까지 · ${RUSH.bossEvery}라운드마다 👑보스, 10라운드마다 대보스가 나와요. 몬스터는 맵 오른쪽 동굴에서 성벽 사이 통로로 몰려나와요.`);
       if (netRole) connectRaidLiveNet(r.hostId, r.startedAt, isHost ? humans.filter(id => id !== myStu.id) : []);
       else startRaidLiveBroadcast(r);
     }
