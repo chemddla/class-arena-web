@@ -2,8 +2,10 @@
 # 사용: python tools/berserker_build.py [샘플 폴더]  (기본 assets/sprites/fx/samples, 파일 berserker_src1~.png)
 #   1 = 대기 (흰 배경, 왼쪽 위 한글 라벨 "대기"), 5 = 피격 (라벨 "피격"), 6 = 쓰러짐 (누운 자세),
 #   9 = 걷기 네 칸 (한 장에 나란히), 11 = 기본 공격 들어 올리기 (두 도끼를 머리 위로), 10 = 기본 공격 내려치기 (흰 섬광·궤적, 큰 그림),
-#   12 = 광폭화 세 칸 (불길이 솟음 · 불길 속 포효 · 광폭 대기 — 붉은 얼굴·빛나는 눈, 분홍 아지랑이 배경)
-# 캐릭터 칸 순서: 0 대기 · 1~4 걷기 · 5 피격 · 6 쓰러짐 · 7~8 기본 공격 (들어 올리기 → 내려치기) · 9~10 광폭화 시전 (쓰러짐 동작은 피격 → 누운 자세 두 칸) (모든 칸 크기 같음, 오른쪽을 봄, 발 = 기준점)
+#   12 = 광폭화 세 칸 (불길이 솟음 · 불길 속 포효 · 광폭 대기 — 붉은 얼굴·빛나는 눈, 분홍 아지랑이 배경),
+#   13 = 도끼 투척 세 칸 (위에 한글·영어 제목), 14 = 날아가는 도끼 두 칸 (흰 회오리 바람 포함)
+# 캐릭터 칸 순서: 0 대기 · 1~4 걷기 · 5 피격 · 6 쓰러짐 · 7~8 기본 공격 (들어 올리기 → 내려치기) · 9~10 광폭화 시전 · 11~13 도끼 투척 (뒤로 젖힘 · 던짐 · 팔을 뻗은 마무리)
+# 날아가는 도끼 assets/sprites/fx/berserker_axe.webp: 두 칸 (흰 회오리는 흰 정도만큼 반투명), 게임에서 빙글빙글 돌리며 날림 (build_axe_fx) (쓰러짐 동작은 피격 → 누운 자세 두 칸) (모든 칸 크기 같음, 오른쪽을 봄, 발 = 기준점)
 # 광폭 시트 berserker_0_rage.webp: 칸 순서·크기가 같고, 대기 = 광폭 대기 샘플, 나머지 동작 = 광폭 대기의 붉은 얼굴·빛나는 눈·붉은 기운을 입힌 그림 (enrage),
 #   광폭화 시전 두 칸은 그대로. 광폭(berserk) 상태 동안 게임이 이 시트로 바꿔 그림
 # 샘플 정리:
@@ -27,20 +29,21 @@ FRAMES = [
     (6, 'down'),
     (11, 'atk0'), (10, 'atk1'),  # 기본 공격: 들어 올리기 → 내려치기 (섬광·궤적은 그림 그대로)
     (12, 'rage0', (0, 148)), (12, 'rage1', (148, 332)),  # 광폭화 시전: 불길이 솟음 → 불길 속 포효 (불길은 그림 그대로)
+    (13, 'throw0', (0, 174)), (13, 'throw1', (174, 355)), (13, 'throw2', (355, 486)),  # 도끼 투척 (던진 도끼는 build_axe_fx 그림으로 따로 날아감)
 ]
 RAGE_IDLE = (12, 'ridle', (332, 470))  # 광폭 대기 (오른쪽 끝 회색 테두리는 뺌). 광폭 시트의 대기 칸이자 붉은 얼굴·눈·털 색의 기준
 HOLE_KEEP = {10: [(700, 760, 700, 770)]}  # 갇힌 흰 덩어리 중 남길 것 (x0, x1, y0, y1): 내려치기 섬광 아래쪽 흰 속
 RIM = {10: 8}  # 흰색이 섞인 테두리 두께 (기본 2px). 내려치기는 4.6배 큰 흐린 그림이라 번진 띠도 넓음
 DROP = {11: [(0, 40, 160, 260)], 12: [(470, 479, 0, 178)]}  # 지울 상자 (x0, x1, y0, y1): 들어 올리기 샘플 왼쪽 아래에 옆 칸 도끼가 잘려 들어옴, 광폭화 샘플 오른쪽 끝 회색 테두리
-HOLE_SHEETS = (9, 10, 12)  # 몸 안에 갇힌 흰 배경도 지울 샘플 (걷기 셋째 칸: 팔과 도끼 사이, 내려치기: 머리털·다리와 섬광 사이, 광폭 대기: 팔과 도끼 사이)
+HOLE_SHEETS = (9, 10, 12, 13)  # 몸 안에 갇힌 흰 배경도 지울 샘플 (걷기 셋째 칸·광폭 대기·도끼 투척: 팔과 도끼 사이, 내려치기: 머리털·다리와 섬광 사이)
 KEEP_SMALL = {'atk1': 500}  # 몸에서 떨어진 조각도 이 크기(px) 넘으면 남김: 섬광에서 떨어져 나간 빛살 (내려치기 샘플은 대기의 4.6배 크기)
 # 얼굴로 가로 기준을 못 잡는 칸: 발 기준점으로 쓸 샘플 x. 쓰러짐 = 머리털 끝~발끝 가운데 (오른쪽 도끼는 뺌),
 # 공격 = 장화 가운데 (내딛으며 몸이 앞으로 쏠려서 얼굴로 맞추면 발이 뒤로 미끄러짐)
 RIDLE_FOOT = 394  # 광폭 대기 장화 가운데 (샘플 x)
-FOOT_X = {'down': 150, 'atk0': 140, 'atk1': 465, 'ridle': RIDLE_FOOT}  # 광폭 대기는 얼굴이 붉어서 피부로 얼굴을 못 찾음
+FOOT_X = {'down': 150, 'atk0': 140, 'atk1': 465, 'ridle': RIDLE_FOOT, 'throw0': 97, 'throw1': 261, 'throw2': 417}  # 광폭 대기는 얼굴이 붉어서 피부로 얼굴을 못 찾음
 # 키로 못 맞추는 칸: 대기 배율에 곱하는 값 (얼굴·해골 크기를 대기와 같게). 피격·쓰러짐은 대기보다 5% 안팎,
-# 들어 올리기는 1.3배, 내려치기는 4.6배 크게 그려짐
-SCALE_FIX = {'hurt': 1 / 1.05, 'down': 1 / 1.05, 'atk0': 1 / 1.3, 'atk1': 1 / 4.6}
+# 들어 올리기는 1.3배, 내려치기는 4.6배 크게, 도끼 투척은 0.63배 작게 그려짐
+SCALE_FIX = {'hurt': 1 / 1.05, 'down': 1 / 1.05, 'atk0': 1 / 1.3, 'atk1': 1 / 4.6, 'throw0': 1.59, 'throw1': 1.59, 'throw2': 1.59}  # 도끼 투척은 얼굴이 대기의 0.63배로 작게 그려짐
 PINK_SHEETS = (12,)  # 배경에 분홍 아지랑이가 낀 샘플: 밝은 분홍까지 배경으로 보고, 몸에 붙은 분홍 띠도 4겹까지 벗겨 냄
 def _skin(c): return (c[..., 3] > 200) & (c[..., 0] > 120) & (c[..., 0] > c[..., 1] + 20) & (c[..., 1] > c[..., 2]) & (c[..., 0] - c[..., 2] < 130)
 
@@ -217,6 +220,32 @@ def place(pieces, L, B, H, cellW):
     return sheet
 
 
+OUT_AXE = 'assets/sprites/fx/berserker_axe.webp'
+AXE_FX_BOXES = ((0, 86), (86, 172))  # 날아가는 도끼 샘플 두 칸 (x 범위)
+
+
+def build_axe_fx(folder):
+    # 날아가는 도끼: 흰 배경을 흰 정도만큼 투명하게 (회오리 바람은 연회색이라 반투명으로 남고, 검은 윤곽·도끼는 그대로)
+    im = np.array(Image.open(f'{folder}/berserker_src14.png').convert('RGB')).astype(float)
+    a = np.clip((255 - im.min(axis=2)) / 110, 0, 1)
+    al = np.maximum(a, 1e-3)[..., None]
+    rgb = ((im - 255 * (1 - al)) / al).clip(0, 255)
+    # 회오리 바깥에 흩어진 아주 옅은 점은 지움
+    a = np.where(a < 0.08, 0, a)
+    cells = []
+    for x0, x1 in AXE_FX_BOXES:
+        c = np.dstack([rgb[:, x0:x1], a[:, x0:x1] * 255])
+        ys, xs = np.where(c[..., 3] > 0)
+        cells.append(c[ys.min():ys.max() + 1, xs.min():xs.max() + 1])
+    S = max(max(c.shape[:2]) for c in cells) + 2  # 정사각형 칸, 도끼를 가운데에 (가운데를 축으로 돌림)
+    out = np.zeros((S, S * len(cells), 4))
+    for i, c in enumerate(cells):
+        y, x = (S - c.shape[0]) // 2, i * S + (S - c.shape[1]) // 2
+        out[y:y + c.shape[0], x:x + c.shape[1]] = c
+    Image.fromarray(out.clip(0, 255).astype(np.uint8), 'RGBA').save(OUT_AXE, 'WEBP', lossless=True)
+    print(f'axe fx cell={S} count={len(cells)}')
+
+
 def main(folder):
     cuts = {f[1]: cut(folder, f) for f in FRAMES + [RAGE_IDLE]}
     base = TARGET_H / cuts['idle'][0].shape[0]
@@ -250,3 +279,4 @@ def main(folder):
 
 if __name__ == '__main__':
     main(sys.argv[1] if len(sys.argv) > 1 else 'assets/sprites/fx/samples')
+    build_axe_fx(sys.argv[1] if len(sys.argv) > 1 else 'assets/sprites/fx/samples')

@@ -5684,16 +5684,16 @@
     //   피부·셔츠·가죽·류트·시트에 그려진 이펙트는 그대로: 칸·기준점·동작 구성은 bard_0과 같음 (tools/bard_variants_build.py)
     [1, 2, 3, 4].forEach(v => { MERC_SPRITE_DEFS[`bard_${v}`] = { ...MERC_SPRITE_DEFS.bard_0, src: `assets/sprites/merc/bard_${v}.webp` }; });
     // 광전사 외형 0 (털가죽 망토·해골 어깨·파란 문신·쌍도끼, tools/berserker_build.py): 칸 순서 = 대기, 걷기 4, 피격, 쓰러짐(누운 자세), 공격 2 (두 도끼를 머리 위로 들어 올리기 → 내려치기 — 흰 섬광·궤적은 그림에 그려져 있음),
-    //   광폭화 시전 2 (불길이 솟음 → 불길 속 포효 — 불길은 그림에 그려져 있음)
+    //   광폭화 시전 2 (불길이 솟음 → 불길 속 포효 — 불길은 그림에 그려져 있음), 도끼 투척 3 (뒤로 젖힘 → 던짐 → 팔을 뻗은 마무리, 날아가는 도끼는 BERSERKER_AXE_FX)
     // 쓰러짐은 피격 → 누운 자세. 피의 포효는 두 도끼를 치켜든 자세(공격 첫 칸), 나머지 스킬은 기본 공격 동작
     MERC_SPRITE_DEFS.berserker_0 = {
       src: 'assets/sprites/merc/berserker_0.webp',
-      cellW: 165, cellH: 113, anchorX: 71, anchorY: 111, standH: 81, topH: 86, portraitCX: 74, count: 11,
-      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [7, 7, 8, 8], skill: [7, 8], hurt: [5], death: [5, 6], raise: [7], rage: [9, 10, 10] },
+      cellW: 167, cellH: 113, anchorX: 73, anchorY: 111, standH: 81, topH: 86, portraitCX: 76, count: 14,
+      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [7, 7, 8, 8], skill: [7, 8], hurt: [5], death: [5, 6], raise: [7], rage: [9, 10, 10], throw: [11, 12, 13] },
       skillAnims: {
         rage:         { anim: 'rage', tpf: 15, dur: 45 },
         blood_howl:   { anim: 'raise', tpf: 44, dur: 44 },
-        axe_throw:    { anim: 'attack', tpf: 5, dur: 20 },
+        axe_throw:    { anim: 'throw', tpf: 5, dur: 30 }, // 던짐 칸 다음(10틱)에 도끼가 손을 떠남 (BERSERKER_AXE_RELEASE)
         execute:      { anim: 'attack', tpf: 5, dur: 20 },
         ground_split: { anim: 'attack', tpf: 5, dur: 20 }
       }
@@ -7246,6 +7246,11 @@
     };
 
     // 도적 표창 (투사체 그림, 회전시켜 그리므로 아틀라스와 따로 둠)
+    // 광전사 도끼 투척: 날아가는 도끼 (흰 회오리 바람 포함, 두 칸 중 첫 칸을 빙글빙글 돌림, tools/berserker_build.py)
+    const BERSERKER_AXE_FX = new Image();
+    BERSERKER_AXE_FX.onload = () => { BERSERKER_AXE_FX.ready = true; };
+    BERSERKER_AXE_FX.src = 'assets/sprites/fx/berserker_axe.webp';
+    const BERSERKER_AXE_FX_CELL = 77;
     const ROGUE_SHURIKEN_IMG = new Image();
     ROGUE_SHURIKEN_IMG.onload = () => { ROGUE_SHURIKEN_IMG.ready = true; };
     ROGUE_SHURIKEN_IMG.src = 'assets/sprites/fx/rogue_shuriken.webp';
@@ -18312,6 +18317,12 @@
 
       for (let i = sim.projectiles.length - 1; i >= 0; i--) {
         const p = sim.projectiles[i];
+        if (p.wait > 0) { // 던지는 자세가 끝날 때까지 손에 들고 있음 (쏜 유닛을 따라 움직임)
+          p.wait--;
+          if (!p.owner.alive) { sim.projectiles.splice(i, 1); continue; }
+          p.x = p.owner.x + (p.handDx || 0) * (p.owner.facingDir || 1); p.y = p.owner.y + (p.handDy || 0);
+          continue;
+        }
         p.trail.push({ x: p.x, y: p.y });
         if (p.trail.length > 8) p.trail.shift();
 
@@ -21657,6 +21668,7 @@
     const BERSERKER_LIFESTEAL_LOW_HP = 0.35; //   체력 35% 이하면 2배
     const BERSERKER_RAGE_COST = 0.08;        // 광폭화: 현재 체력 8%
     const BERSERKER_RAGE_TICKS = 480;        //   광폭 8초
+    const BERSERKER_AXE_RELEASE = 10;        // 도끼 투척: 던짐 자세(5틱 × 2칸) 뒤에 도끼가 손을 떠남
     const BERSERKER_RAGE_ATK_SPEED = 1.4;    //   공격 속도 +40%
     const BERSERKER_AXE_CELLS = 4;           // 도끼 투척: 4칸
     const BERSERKER_AXE_DMG = 1.5;           //   150%
@@ -21717,12 +21729,14 @@
         unit.facingAngle = Math.atan2(foe.y - unit.y, foe.x - unit.x);
         if (Math.abs(foe.x - unit.x) > 4) unit.facingDir = foe.x >= unit.x ? 1 : -1;
         if (sk === 'axe_throw') {
-          sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y - 14, tx: foe.x, ty: foe.y - 14, color: '#94a3b8', life: 16, maxLife: 16 });
-          sim.effects.push({ type: 'magic_burst', x: foe.x, y: foe.y - 12, r: 36, life: 22, maxLife: 22 });
-          applyDamage(unit, foe, unit.atk * BERSERKER_AXE_DMG, '🪓', '#b91c1c');
-          inflictStatus(unit, foe, 'slow', BERSERKER_AXE_SLOW_TICKS);
-          playCombatSfx('slash');
-          addBattleLog(`🪓 [광전사] ${unit.name}의 도끼 투척! ${foe.name}이(가) 느려졌어요`);
+          // 도끼가 빙글빙글 돌며 날아가 맞아야 피해 + 슬로우 (resolveProjectileImpact). 던짐 칸이 보일 때까지 손에 들고 있음
+          const handDx = 16, handDy = -30;
+          sim.projectiles.push({
+            projType: 'thrown_axe', x: unit.x + handDx * (unit.facingDir || 1), y: unit.y + handDy, handDx, handDy, wait: BERSERKER_AXE_RELEASE,
+            target: foe, owner: unit, dmg: unit.atk * BERSERKER_AXE_DMG, statusDur: BERSERKER_AXE_SLOW_TICKS,
+            isSkill: true, speed: 4.4, trail: [], color: '#94a3b8'
+          });
+          playCombatSfx('arrow');
         } else {
           const lost = Math.max(0, 1 - foe.hp / foe.maxHp);
           sim.effects.push({ type: 'magic_burst', x: foe.x, y: foe.y - 12, r: 56, life: 28, maxLife: 28 });
@@ -22382,6 +22396,14 @@
         });
       }
       if (!hit) return;
+      if (p.projType === 'thrown_axe') {
+        sim.effects.push({ type: 'magic_burst', x: hit.x, y: hit.y - 12, r: 36, life: 22, maxLife: 22 });
+        applyDamage(p.owner, hit, p.dmg, '🪓', '#b91c1c');
+        inflictStatus(p.owner, hit, 'slow', p.statusDur);
+        playCombatSfx('slash');
+        if (p.owner) addBattleLog(`🪓 [광전사] ${p.owner.name}의 도끼 투척! ${hit.name}이(가) 느려졌어요`);
+        return;
+      }
       applyDamage(p.owner, hit, p.dmg);
       if (p.statusOnHit) inflictStatus(p.owner, hit, p.statusOnHit, p.statusDur || 360);
       if (p.projType === 'magic_orb') {
@@ -24772,6 +24794,7 @@
 
       // 4) 심플 시스템 투사체 렌더링
       sim.projectiles.forEach(p => {
+        if (p.wait > 0) return; // 아직 손을 떠나지 않음
         if (drawProjectileSprite(ctx, p, sim.tickCount)) return; // 그림이 있는 투사체는 꼬리까지 그림에 포함
         ctx.save();
         ctx.translate(p.x, p.y);
@@ -24810,6 +24833,16 @@
           ctx.closePath();
           ctx.fill();
           ctx.stroke();
+        } else if (p.projType === 'thrown_axe') {
+          // 광전사 도끼: 날아가는 쪽으로 빙글빙글 돌며 (왼쪽으로 날면 반대로 돔)
+          ctx.rotate((sim.tickCount || 0) * 0.5 * (Math.cos(p.angle || 0) >= 0 ? 1 : -1));
+          if (BERSERKER_AXE_FX.ready) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.drawImage(BERSERKER_AXE_FX, 0, 0, BERSERKER_AXE_FX_CELL, BERSERKER_AXE_FX_CELL, -19, -19, 38, 38);
+          } else {
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillRect(-10, -2, 20, 4);
+          }
         } else if (p.projType === 'shuriken' && ROGUE_SHURIKEN_IMG.ready) {
           // 도적 표창 그림: 빙글빙글 돌며 날아감 (속도선은 위의 trail)
           ctx.rotate((sim.tickCount || 0) * 0.45);
