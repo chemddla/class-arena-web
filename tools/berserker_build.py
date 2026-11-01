@@ -1,7 +1,7 @@
 # 광전사 원형 샘플(흰 배경 도트, 동작마다 한 장) → 캐릭터 시트 assets/sprites/merc/berserker_0.webp
 # 사용: python tools/berserker_build.py [샘플 폴더]  (기본 assets/sprites/fx/samples, 파일 berserker_src1~.png)
-#   1 = 대기 (흰 배경, 왼쪽 위 한글 라벨 "대기"), 2·3·4 = 걷기 3칸 (2·3은 바둑판 배경 큰 그림, 4는 흰 배경)
-# 캐릭터 칸 순서: 0 대기 · 1~3 걷기 (모든 칸 크기 같음, 오른쪽을 봄, 발 = 기준점)
+#   1 = 대기 (흰 배경, 왼쪽 위 한글 라벨 "대기"), 2·3·4 = 걷기 3칸 (2·3은 바둑판 배경 큰 그림, 4는 흰 배경), 5 = 피격 (라벨 "피격")
+# 캐릭터 칸 순서: 0 대기 · 1~3 걷기 · 4 피격 (모든 칸 크기 같음, 오른쪽을 봄, 발 = 기준점)
 # 걷기 1·2(샘플 2·3)는 대기 원본과 다르게 뽑힘 → 대기에 맞춰 손봄:
 #   색감 = 피부·머리털·문신·갈색 털가죽을 부위별로, 나머지를 전체로 대기 자세의 평균·퍼짐에 맞춤 (restyle)
 #   비율 = 몸이 홀쭉해서 가로로 1.1배, 디자인 = 오른손 도끼 머리가 작아서 쥔 자리 기준 1.3배 (grow_axe)
@@ -21,8 +21,9 @@ TARGET_H = 86  # 대기 자세 머리털 끝~발 → 게임 칸 키
 FRAMES = [
     (1, 'idle'),
     (2, 'walk0'), (3, 'walk1'), (4, 'walk2'),
+    (5, 'hurt'),
 ]
-SCALE_FIX = {}  # 샘플마다 대기 자세보다 크게·작게 그려진 만큼 곱하는 값
+SCALE_FIX = {'hurt': 1 / 1.05}  # 키로 못 맞추는 칸: 대기 배율에 곱하는 값. 피격은 웅크린 자세인데 해골·얼굴·도끼가 대기보다 5% 안팎 크게 그려짐
 RESTYLE = {2: 1.1, 3: 1.1}  # 대기 원본과 다르게 뽑힌 샘플: 색감을 대기에 맞추고 가로로 늘릴 배율 (restyle)
 REF = {}
 AXE = {2: ((400, 300, 547, 500), (400, 425), 1.3), 3: ((385, 290, 540, 490), (385, 400), 1.3)}  # 걷기 1·2 오른손 도끼 머리가 대기보다 작게(키의 22%, 대기 29%) 뽑힘: (상자, 쥔 자리, 배율)
@@ -151,7 +152,8 @@ def main(folder):
     pieces = []
     for f in FRAMES:
         rgba, cx, below, _ = cuts[f[1]]
-        sc = TARGET_H / rgba.shape[0] * SCALE_FIX.get(f[1], 1)  # 샘플마다 그린 크기가 달라 칸마다 키(머리털 끝~발)로 맞춤
+        # 서 있는 칸(대기·걷기)은 키(머리털 끝~발)로 맞추고, 자세가 낮은 칸은 대기 배율에 SCALE_FIX를 곱함
+        sc = base * SCALE_FIX[f[1]] if f[1] in SCALE_FIX else TARGET_H / rgba.shape[0]
         pieces.append((f[1], shrink(rgba, sc), cx * sc + foot_off, int(round(below * sc))))
     L = max(int(np.ceil(c)) for _, _, c, _ in pieces) + 2
     R = max(int(np.ceil(p.shape[1] - c)) for _, p, c, _ in pieces) + 2
