@@ -7969,7 +7969,8 @@
       practice: { src: 'assets/maps/practice.webp' }, // 연습장
       pvp:      { src: 'assets/maps/pvp.webp' },      // 결투장 (랭킹·진형 도전·실시간·중계)
       tower:    { src: 'assets/maps/tower.webp' },    // 모험의 탑 (전용 맵이 없는 종족)
-      monster_rush: { src: 'assets/maps/monster_rush.webp' }, // 몬스터 러쉬 (숲속 야영지·대포·바리케이드·오른쪽 동굴)
+      monster_rush: { src: 'assets/maps/monster_rush.webp' }, // 몬스터 러쉬 1~20라운드 (숲속 야영지·대포·바리케이드·오른쪽 동굴)
+      monster_rush_2: { src: 'assets/maps/monster_rush_2.webp' }, // 몬스터 러쉬 21~40라운드 (동굴 속 야영지·개울·나무다리 두 개·양쪽 위 굴)
       tower_goblin: { src: 'assets/maps/tower_goblin.webp' }, // 모험의 탑 고블린족 (1~10층)
       tower_undead: { src: 'assets/maps/tower_undead.webp' }, // 모험의 탑 언데드 (11~20층)
       tower_beast:  { src: 'assets/maps/tower_beast.webp' },  // 모험의 탑 야수족 (21~30층)
@@ -7993,7 +7994,11 @@
     const TOWER_RACE_MAPS = { '고블린족': 'tower_goblin', '언데드': 'tower_undead', '야수족': 'tower_beast', '늪지족': 'tower_swamp', '설원족': 'tower_snow', '화염족': 'tower_fire' };
     Object.values(BATTLE_MAPS).forEach(m => { m.img = new Image(); m.img.onload = () => { m.ready = true; }; m.img.src = m.src; });
     function getBattleMap(mode, towerFloor, eliteBossId) {
-      if (mode === 'monster_rush' && BATTLE_MAPS.monster_rush.ready) return BATTLE_MAPS.monster_rush; // 러쉬 전용 맵 (못 불러오면 탑 맵)
+      if (mode === 'monster_rush') { // 러쉬 전용 맵: 20라운드마다 바뀜 (못 불러오면 첫 맵 → 탑 맵)
+        const rm = BATTLE_MAPS[rushMapNow().key];
+        if (rm && rm.ready) return rm;
+        if (BATTLE_MAPS.monster_rush.ready) return BATTLE_MAPS.monster_rush;
+      }
       let key = mode === 'practice' ? 'practice' : (mode === 'tower' || mode === 'monster_rush') ? 'tower' : mode === 'elite_raid' ? 'elite' : 'pvp';
       if (key === 'tower' && towerFloor) {
         const raceKey = TOWER_RACE_MAPS[towerRaceOfFloor(towerFloor).name];
@@ -24937,6 +24942,16 @@
       ctx.fillStyle = '#fde047';
       ctx.fillText('🗺️ 미니맵 (클릭 시 이동)', mmX + 8, mmY + 13);
       ctx.restore();
+
+      // 🌊 러쉬 맵 넘어가기: 굴로 들어가면 화면 전체가 어두워졌다가 새 맵에서 밝아짐
+      if (sim.mode === 'monster_rush' && sim.rush && sim.rush.fade > 0) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalAlpha = Math.min(1, sim.rush.fade);
+        ctx.fillStyle = '#05070d';
+        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.restore();
+      }
     }
 
     // 전투 시간 제한 (1초 = 60틱)
@@ -34499,77 +34514,171 @@
       backDepth: 1500,       // 뒷편 길이(px): 몬스터가 이만큼 흩어져 있다가 차례로 몰려옴
       edge: 40,              // 맵 오른쪽 끝에서 이만큼 바깥에 닿으면 맵으로 넘어옴
       breakSec: 5,           // 라운드 사이 쉬는 시간
+      moveSec: 6,            // 다음 맵으로 넘어갈 때 굴까지 걸어가는 최대 시간 (다 모이면 바로 어두워짐)
+      fadeSec: 0.9,          // 맵이 바뀔 때 어두워졌다 밝아지는 시간 (각각)
       roundLimitSec: 180,    // 한 라운드 제한 시간 (넘기면 러쉬 끝)
       healRatio: 0.3,        // 라운드를 깨면 살아 있는 용병 체력 30% 회복 · 보스 라운드를 깨면 쓰러진 용병도 30%로 부활
       rewardPerRound: 100,   // 깬 라운드마다 보상
       rewardPerBoss: 400     // 보스 라운드를 깨면 더 주는 보상
     };
-    // 러쉬 맵(숲속 야영지)의 오른쪽 돌 성벽·동굴 바위 (월드 좌표 사각형): 유닛은 지나갈 수 없음
-    // 위·아래 성벽 사이(세로 약 810~1010)가 야영지 ↔ 동굴 통로, 성벽 오른쪽 동굴 바닥(가로 2410~, 세로 690~1370)으로 이어짐
-    const RUSH_WALLS = [
-      { x1: 2160, y1: 0,    x2: 2410, y2: 810 },  // 위쪽 성벽 (깃발 오른쪽 바위)
-      { x1: 2230, y1: 1010, x2: 2410, y2: 1800 }, // 아래쪽 성벽 (울타리 오른쪽 바위)
-      { x1: 2410, y1: 0,    x2: 2880, y2: 690 },  // 동굴 입구 (몬스터가 나오는 어두운 굴)
-      { x1: 2410, y1: 1370, x2: 2880, y2: 1800 }  // 동굴 아래 바위
-    ];
-    const RUSH_CAVE = { x1: 2410, y1: 690, y2: 1370 }; // 성벽 안쪽 동굴 바닥
-    const RUSH_WALL_PAD = 18; // 몸 반쪽 두께: 성벽에서 이만큼 떨어져 섬
-    function inRushWall(x, y) {
-      return RUSH_WALLS.some(w => x > w.x1 - RUSH_WALL_PAD && x < w.x2 + RUSH_WALL_PAD && y > w.y1 - RUSH_WALL_PAD && y < w.y2 + RUSH_WALL_PAD);
+    // 🌊 러쉬 맵: 20라운드마다 (보스를 깨면) 파티가 몬스터가 나오던 굴로 들어가 다음 맵으로 넘어감 (맵이 모자라면 마지막 맵 그대로)
+    // - walls: 유닛이 지나갈 수 없는 곳 (사각형 {x1,y1,x2,y2} 또는 원 {cx,cy,r}, 월드 좌표)
+    // - spawn: 몬스터가 나타나는 굴 · inPath: 굴 → 야영지까지 걷는 길
+    // - side(x, y): 1 = 몬스터 쪽 (성벽·개울 건너편), 0 = 야영지 쪽 · crossings: 두 쪽을 잇는 통로 (mon = 몬스터 쪽 끝, camp = 야영지 쪽 끝)
+    // - exit: 보스를 깬 파티가 들어가는 길 (몬스터가 나오던 굴) · entry: 이 맵으로 넘어온 파티가 나오는 굴과 걸어가 서는 자리
+    const RUSH_STAGE_ROUNDS = 20;
+    const RUSH_WALL_PAD = 18; // 몸 반쪽 두께: 벽에서 이만큼 떨어져 섬
+    const rushJit = (v, d) => v + (Math.random() - 0.5) * d;
+    // 21~40라운드 동굴 맵의 개울: 물줄기를 따라 원을 늘어놓고 (위는 좁고 아래는 넓음), 나무다리 두 개 위만 비워 둠
+    const RUSH_STREAM = [[1745, 680, 55], [1740, 800, 55], [1720, 900, 55], [1700, 1000, 60], [1640, 1120, 75], [1560, 1200, 85],
+      [1470, 1280, 90], [1380, 1360, 90], [1300, 1430, 90], [1220, 1580, 85], [1180, 1700, 85]];
+    const RUSH_BRIDGES = [[1540, 960, 1960, 1145], [1140, 1440, 1530, 1545]]; // 다리 판자 (서쪽 끝 → 동쪽 끝)
+    function rushStreamWalls() {
+      const segDist = (x, y, [ax, ay, bx, by]) => {
+        const t = Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / ((bx - ax) ** 2 + (by - ay) ** 2)));
+        return Math.hypot(x - (ax + (bx - ax) * t), y - (ay + (by - ay) * t));
+      };
+      const out = [];
+      for (let i = 0; i < RUSH_STREAM.length - 1; i++) {
+        const [ax, ay, ar] = RUSH_STREAM[i], [bx, by, br] = RUSH_STREAM[i + 1];
+        const n = Math.ceil(Math.hypot(bx - ax, by - ay) / 40);
+        for (let k = 0; k < n; k++) {
+          const cx = ax + (bx - ax) * k / n, cy = ay + (by - ay) * k / n, r = ar + (br - ar) * k / n;
+          if (RUSH_BRIDGES.some(seg => segDist(cx, cy, seg) < r + RUSH_WALL_PAD + 40)) continue; // 다리 위로는 지나갈 수 있게
+          out.push({ cx, cy, r });
+        }
+      }
+      return out;
     }
-    // (ax, ay) → (bx, by)로 가는 길이 성벽에 걸리는지 (20px 간격으로 확인)
+    // 개울의 가로 위치 (세로 y에서): 이보다 오른쪽이 몬스터 쪽
+    function rushStreamX(y) {
+      const line = [[1710, 0], [1710, 680], ...RUSH_STREAM, [1160, 1800]];
+      for (let i = 0; i < line.length - 1; i++) {
+        const [ax, ay] = line[i], [bx, by] = line[i + 1];
+        if (y <= by) return ax + (bx - ax) * (y - ay) / Math.max(1, by - ay);
+      }
+      return 1160;
+    }
+    const RUSH_MAPS = [
+      { // 1~20라운드: 숲속 야영지 (오른쪽 돌 성벽 사이 통로 너머 동굴에서 몬스터가 나옴)
+        key: 'monster_rush',
+        walls: [
+          { x1: 2160, y1: 0,    x2: 2410, y2: 810 },  // 위쪽 성벽 (깃발 오른쪽 바위)
+          { x1: 2230, y1: 1010, x2: 2410, y2: 1800 }, // 아래쪽 성벽 (울타리 오른쪽 바위)
+          { x1: 2410, y1: 0,    x2: 2880, y2: 690 },  // 동굴 입구 (몬스터가 나오는 어두운 굴)
+          { x1: 2410, y1: 1370, x2: 2880, y2: 1800 }  // 동굴 아래 바위
+        ],
+        spawn: () => ({ x: rushJit(2580, 160), y: 620 + Math.random() * 40 }),
+        inPath: () => [
+          { x: rushJit(2530, 120), y: rushJit(880, 120) }, { x: 2300, y: rushJit(910, 100) },
+          { x: 2120, y: rushJit(910, 120) }, { x: 2080 - Math.random() * 80, y: rushJit(910, 260) }
+        ],
+        side: (x, y) => (x > 2410 && y > 690 && y < 1370 ? 1 : 0),
+        crossings: [{ mon: { x: 2470, y: 900 }, camp: { x: 2120, y: 910 } }],
+        exit: [{ x: 2120, y: 910 }, { x: 2300, y: 910 }, { x: 2520, y: 870 }, { x: 2580, y: 650 }],
+        entry: null
+      },
+      { // 21~40라운드: 동굴 속 (개울은 나무다리 두 곳으로만 건넘 · 오른쪽 위 굴에서 몬스터가 나오고, 파티는 왼쪽 위 굴로 들어옴)
+        key: 'monster_rush_2',
+        walls: [
+          { x1: 120,  y1: 0,    x2: 430,  y2: 420 },  // 왼쪽 위 굴 (파티가 나오는 곳)
+          { x1: 430,  y1: 0,    x2: 1300, y2: 380 },  // 위쪽 바위벽 (거미줄·버섯)
+          { x1: 1300, y1: 0,    x2: 2370, y2: 500 },  // 가운데 위 바위벽
+          { x1: 1630, y1: 500,  x2: 1790, y2: 760 },  // 개울이 시작되는 돌기둥
+          { x1: 2370, y1: 0,    x2: 2880, y2: 440 },  // 오른쪽 위 굴 (몬스터가 나오는 곳)
+          { x1: 2060, y1: 1100, x2: 2300, y2: 1460 }, // 오른쪽 아래 종유석 바위
+          { x1: 2250, y1: 1320, x2: 2880, y2: 1800 }, // 오른쪽 아래 낭떠러지
+          { x1: 760,  y1: 1400, x2: 1110, y2: 1800 }, // 아래쪽 바위 무더기
+          ...rushStreamWalls()
+        ],
+        spawn: () => ({ x: rushJit(2540, 200), y: rushJit(370, 60) }),
+        inPath: () => (Math.random() < 0.6
+          ? [{ x: rushJit(2450, 120), y: rushJit(720, 100) }, { x: 1930, y: rushJit(1132, 20) }, { x: 1560, y: rushJit(970, 20) },
+            { x: rushJit(1260, 120), y: rushJit(850, 300) }]
+          : [{ x: rushJit(2400, 120), y: rushJit(760, 100) }, { x: 2000, y: 1000 }, { x: rushJit(1840, 60), y: rushJit(1340, 40) },
+            { x: 1520, y: rushJit(1540, 16) }, { x: 1150, y: rushJit(1445, 16) }, { x: rushJit(950, 100), y: rushJit(1200, 120) }]),
+        side: (x, y) => (x > rushStreamX(y) ? 1 : 0),
+        crossings: [{ mon: { x: 1930, y: 1132 }, camp: { x: 1560, y: 970 } }, { mon: { x: 1520, y: 1540 }, camp: { x: 1150, y: 1445 } }],
+        exit: [{ x: 1560, y: 970 }, { x: 1930, y: 1132 }, { x: 2450, y: 720 }, { x: 2540, y: 400 }],
+        entry: {
+          at: () => ({ x: rushJit(280, 120), y: rushJit(330, 40) }),
+          path: (i, n) => [{ x: rushJit(300, 60), y: 560 }, { x: 640 + (i % 2) * 150, y: Math.round(900 + (i - (n - 1) / 2) * 140) }]
+        }
+      }
+    ];
+    function rushStageOf(round) { return Math.min(RUSH_MAPS.length - 1, Math.floor((Math.max(1, round) - 1) / RUSH_STAGE_ROUNDS)); }
+    function rushMapNow() { return RUSH_MAPS[Math.min(RUSH_MAPS.length - 1, (sim.rush && sim.rush.mapStage) || 0)]; }
+    function rushWallHit(w, x, y) {
+      return w.r ? (x - w.cx) ** 2 + (y - w.cy) ** 2 < (w.r + RUSH_WALL_PAD) ** 2
+        : x > w.x1 - RUSH_WALL_PAD && x < w.x2 + RUSH_WALL_PAD && y > w.y1 - RUSH_WALL_PAD && y < w.y2 + RUSH_WALL_PAD;
+    }
+    function inRushWall(x, y) { return rushMapNow().walls.some(w => rushWallHit(w, x, y)); }
+    // (ax, ay) → (bx, by)로 가는 길이 벽에 걸리는지 (20px 간격으로 확인)
     function rushPathBlocked(ax, ay, bx, by) {
       const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 20));
       for (let i = 1; i <= n; i++) if (inRushWall(ax + (bx - ax) * i / n, ay + (by - ay) * i / n)) return true;
       return false;
     }
-    // 동굴에서 성벽 사이 통로를 지나 야영지 안쪽까지 걷는 길 (fromCave = 동굴 입구에서 막 나옴)
-    function rushCavePath(fromCave) {
-      const path = [];
-      if (fromCave) path.push({ x: 2530 + (Math.random() - 0.5) * 120, y: 880 + (Math.random() - 0.5) * 120 });
-      path.push({ x: 2300, y: 910 + (Math.random() - 0.5) * 100 });
-      path.push({ x: 2120, y: 910 + (Math.random() - 0.5) * 120 });
-      path.push({ x: 2080 - Math.random() * 80, y: 910 + (Math.random() - 0.5) * 260 });
-      return path;
+    // 가장 가까운 통로(성벽 사이·다리)로 건너편까지 가는 길 (toSide: 0 = 야영지 쪽, 1 = 몬스터 쪽)
+    function rushCrossPath(u, toSide) {
+      const from = toSide ? 'camp' : 'mon', to = toSide ? 'mon' : 'camp';
+      const c = rushMapNow().crossings.reduce((a, b) => (Math.hypot(b[from].x - u.x, b[from].y - u.y) < Math.hypot(a[from].x - u.x, a[from].y - u.y) ? b : a));
+      return [{ ...c[from] }, { x: rushJit(c[to].x, 40), y: rushJit(c[to].y, 40) }];
     }
-    // 매 틱 유닛 움직임이 끝난 뒤: 성벽을 뚫고 지나가거나 성벽 안에 들어간 유닛은 되돌림 (벽을 따라 미끄러지는 움직임은 살림)
+    // 벽 안에 들어간 점을 가장 가까운 바깥(전장 안)으로: 둘레를 넓혀 가며 빈 곳을 찾음 (벽 두 개가 맞닿은 곳도 빠져나옴)
+    function rushPushOut(x, y) {
+      for (let r = 20; r <= 600; r += 20) {
+        let best = null, bestD = Infinity;
+        for (let k = 0; k < 24; k++) {
+          const a = k * Math.PI / 12, px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
+          if (px < 200 || px > sim.worldW - 200 || py < 260 || py > sim.worldH - 220 || inRushWall(px, py)) continue;
+          if (r < bestD) { bestD = r; best = { x: px, y: py }; }
+        }
+        if (best) return best;
+      }
+      return { x, y };
+    }
+    // 매 틱 유닛 움직임이 끝난 뒤: 벽을 뚫고 지나가거나 벽 안에 들어간 유닛은 되돌림 (벽을 따라 미끄러지는 움직임은 살림)
     function resolveRushWalls() {
+      const map = rushMapNow();
       sim.units.forEach(u => {
         if (!u.alive || u.rushPending) return;
         const ax = u._ix ?? u.x, ay = u._iy ?? u.y;
         if (u.rushEntering) {
-          // 동굴에서 나오는 중: 걷는 길은 그대로, 밀려서 성벽에 박히는 것만 되돌림 (동굴 입구에서 막 나온 때는 빼고)
+          // 정해진 길을 걷는 중: 길은 그대로, 밀려서 벽에 박히는 것만 되돌림 (굴 안에서 막 나온 때는 빼고)
           if (!inRushWall(ax, ay) && rushPathBlocked(ax, ay, u.x, u.y)) { u.x = ax; u.y = ay; u.kbVx = 0; u.kbVy = 0; }
           return;
         }
-        if (inRushWall(ax, ay)) {
-          // 처음부터 성벽 안: 가장 가까운 바깥으로 밀어냄
-          const w = RUSH_WALLS.find(w => ax > w.x1 - RUSH_WALL_PAD && ax < w.x2 + RUSH_WALL_PAD && ay > w.y1 - RUSH_WALL_PAD && ay < w.y2 + RUSH_WALL_PAD);
-          const opts = [
-            { x: w.x1 - RUSH_WALL_PAD - 1, y: ay }, { x: w.x2 + RUSH_WALL_PAD + 1, y: ay },
-            { x: ax, y: w.y1 - RUSH_WALL_PAD - 1 }, { x: ax, y: w.y2 + RUSH_WALL_PAD + 1 }
-          ].filter(o => o.x >= 200 && o.x <= sim.worldW - 200 && o.y >= 260 && o.y <= sim.worldH - 220 && !inRushWall(o.x, o.y));
-          opts.sort((a, b) => Math.hypot(a.x - ax, a.y - ay) - Math.hypot(b.x - ax, b.y - ay));
-          if (opts[0]) { u.x = opts[0].x; u.y = opts[0].y; }
-          return;
-        }
-        if (!rushPathBlocked(ax, ay, u.x, u.y)) return;
+        if (inRushWall(ax, ay)) { const p = rushPushOut(ax, ay); u.x = p.x; u.y = p.y; return; }
+        if (!rushPathBlocked(ax, ay, u.x, u.y)) { u._wallStuck = 0; return; }
         if (!rushPathBlocked(ax, ay, u.x, ay)) u.y = ay;
         else if (!rushPathBlocked(ax, ay, ax, u.y)) u.x = ax;
         else { u.x = ax; u.y = ay; }
         u.kbVx = 0; u.kbVy = 0;
+        // AI 용병이 벽(개울)에 막혀 한참 못 가고, 가장 가까운 적이 건너편에 있으면 가장 가까운 통로로 건너감
+        if (u.team === 'blue' && !(sim.controllers && sim.controllers[u.id]) && (u._wallStuck = (u._wallStuck || 0) + 1) > 60) {
+          u._wallStuck = 0;
+          const mySide = map.side(u.x, u.y);
+          let foe = null, best = Infinity;
+          sim.units.forEach(e => { if (e.alive && e.team === 'red') { const d = Math.hypot(e.x - u.x, e.y - u.y); if (d < best) { best = d; foe = e; } } });
+          if (foe && map.side(foe.x, foe.y) !== mySide) { u.rushEntering = true; u.rushPath = rushCrossPath(u, 1 - mySide); }
+        }
       });
-      // 동굴 바닥으로 밀려 들어간 몬스터(AI)는 통로를 지나 다시 야영지로 걸어 나옴
+      // 몬스터 쪽(성벽 너머 동굴·개울 건너편)으로 밀려간 몬스터(AI)는 통로를 지나 다시 야영지로 걸어 나옴
       sim.units.forEach(u => {
         if (!u.alive || u.team !== 'red' || u.rushEntering || u.rushPending) return;
         if (sim.controllers && sim.controllers[u.id]) return;
-        if (u.x > RUSH_CAVE.x1 && u.y > RUSH_CAVE.y1 && u.y < RUSH_CAVE.y2) { u.rushEntering = true; u.rushPath = rushCavePath(false); }
+        if (map.side(u.x, u.y) === 1 && !rushFoeNear(u, 420)) { u.rushEntering = true; u.rushPath = rushCrossPath(u, 0); }
       });
+    }
+    function rushFoeNear(u, r) {
+      return sim.units.some(e => e.alive && e.team !== u.team && !e.rushPending && Math.hypot(e.x - u.x, e.y - u.y) < r);
     }
 
     function isRaidNetMode(mode) { return mode === 'elite_raid' || mode === 'monster_rush'; }
     function newRushState(startFloor) {
-      return { round: 1, phase: 'fight', roundStartTick: sim.tickCount || 0, nextAt: 0, cleared: 0, bosses: 0, startFloor: Math.max(1, startFloor || 1), pending: 0, left: 0 };
+      return { round: 1, phase: 'fight', roundStartTick: sim.tickCount || 0, nextAt: 0, cleared: 0, bosses: 0, startFloor: Math.max(1, startFloor || 1), pending: 0, left: 0,
+        mapStage: 0, fade: 0, moveAt: 0, fadeAt: 0, swapAt: 0 };
     }
     // 100라운드 난이도 구간: 구간 안에서 라운드마다 고르게(선형) 오름
     //   floor: 시작 층에 더하는 층 수 · stat: 일반 몬스터 능력치 배율 (같은 층 탑 몬스터 대비) · count: 몬스터 수 · boss: 보스 능력치 배율
@@ -34689,7 +34798,9 @@
         finishSimulation(rs.cleared > 0);
         return true;
       }
+      if (rs.phase === 'move') { stepRushMapMove(); return false; }
       if (rs.phase === 'break') {
+        if (rs.fade > 0) rs.fade = Math.max(0, 1 - (sim.tickCount - rs.swapAt) / (RUSH.fadeSec * BATTLE_TICKS_PER_SEC));
         if (sim.tickCount >= rs.nextAt) startRushRound(rs.round + 1);
         return false;
       }
@@ -34701,12 +34812,13 @@
         u.isMoving = true;
         if (u.x > sim.worldW + RUSH.edge) return;
         // 차례가 됨: 동굴 입구에서 나타남 → 이때부터 살아 있는 몬스터 (공격이 닿고, 통로를 지나 야영지까지 걸어 들어온 뒤 싸움)
-        u.x = 2580 + (Math.random() - 0.5) * 160;
-        u.y = 620 + Math.random() * 40;
+        const map = rushMapNow(), at = map.spawn();
+        u.x = at.x;
+        u.y = at.y;
         u._ix = u.x; u._iy = u.y; // 뒷편 자리에서 끌려오지 않게 (성벽 판정·화면 보간)
         u.rushPending = false;
         u.rushEntering = true;
-        u.rushPath = rushCavePath(true);
+        u.rushPath = map.inPath();
         u.alive = true;
         u._deadSince = null;
         if (u.rushBoss) {
@@ -34726,11 +34838,18 @@
       return false;
     }
 
-    // 동굴에서 나온 몬스터: 동굴 바닥 → 성벽 사이 통로 → 야영지 안쪽 순서로 걸어 들어옴
+    // 정해진 길을 따라 걷기: 굴에서 나온 몬스터 (굴 → 통로 → 야영지) · 다음 맵으로 넘어가는 파티 · 통로로 건너가는 AI 용병
     function stepRushEntering(u) {
-      if (!u.rushPath || !u.rushPath.length) u.rushPath = rushCavePath(false);
+      if (!u.rushPath || !u.rushPath.length) {
+        // 다음 맵으로 넘어가는 중인 파티는 굴 안에 다 모일 때까지 멈춰 섬
+        if (u.team === 'blue' && sim.rush && sim.rush.phase === 'move') { u.isMoving = false; return; }
+        u.rushEntering = false; u.rushPath = null; u._wallStuck = 0;
+        return;
+      }
+      // 걸어 나오던 몬스터도 용병이 가까이 오면 바로 맞서 싸움 (굴 앞에서 일방적으로 맞지 않게)
+      if (u.team === 'red' && rushFoeNear(u, 260)) { u.rushEntering = false; u.rushPath = null; return; }
       const wp = u.rushPath[0];
-      const step = (u.baseMoveSpeed || 1) * RUSH.backSpeed;
+      const step = (u.baseMoveSpeed || 1) * RUSH.backSpeed * (u.team === 'blue' && sim.rush && sim.rush.phase === 'move' ? 1.5 : 1); // 굴로 들어가는 파티는 조금 더 빨리
       const dx = wp.x - u.x, dy = wp.y - u.y, d = Math.hypot(dx, dy);
       const ang = Math.atan2(dy, dx);
       if (d <= step) { u.x = wp.x; u.y = wp.y; u.rushPath.shift(); }
@@ -34738,7 +34857,6 @@
       u.isMoving = true;
       u.facingDir = dx < 0 ? -1 : 1;
       u.facingAngle = ang;
-      if (!u.rushPath.length) { u.rushEntering = false; u.rushPath = null; }
     }
 
     // 라운드 클리어 (100라운드를 깨서 러쉬가 끝났으면 true)
@@ -34782,7 +34900,79 @@
       playCombatSfx('heal');
       const next = rushRoundSpec(rs.round + 1);
       addBattleLog(`✅ ${rs.round}라운드 클리어!${boss ? ` ${rushBossLabel(rs.round)} 처치!` : ''} 용병 체력 ${Math.round(RUSH.healRatio * 100)}% 회복${revived ? ` · 쓰러진 용병 ${revived}명 부활` : ''} · ${RUSH.breakSec}초 뒤 ${rs.round + 1}라운드${isRushBossRound(rs.round + 1) ? ` (${rushBossLabel(rs.round + 1)} 라운드!)` : ''}${next.tier !== rushRoundSpec(rs.round).tier ? ` · 🆙 [${next.tier}] 구간 시작!` : ''}`);
+      if (rushStageOf(rs.round + 1) !== (rs.mapStage || 0)) beginRushMapMove();
       return false;
+    }
+
+    // 보스를 깨고 다음 맵으로: 파티가 몬스터가 몰려오던 굴로 걸어 들어감 → 다 모이면 화면이 어두워지고 다음 맵의 굴에서 나옴
+    function beginRushMapMove() {
+      const rs = sim.rush;
+      rs.phase = 'move';
+      rs.moveAt = sim.tickCount;
+      rs.fadeAt = 0;
+      rs.fade = 0;
+      sim.projectiles = [];
+      sim.zones = [];
+      const exit = rushMapNow().exit;
+      sim.units.forEach(u => {
+        if (u.team !== 'blue') return;
+        if (u.isClone) { if (u.alive) vanishClone(u); return; }
+        if (!u.alive) return;
+        cancelSkillCast(u);
+        Object.keys(u.statuses).forEach(k => { u.statuses[k] = 0; });
+        u.rootTicks = 0;
+        u.kbVx = 0;
+        u.kbVy = 0;
+        u.rushEntering = true;
+        u.rushPath = exit.map((pt, i) => ({ x: rushJit(pt.x, i === exit.length - 1 ? 120 : 50), y: rushJit(pt.y, 50) }));
+      });
+      addBattleLog(`🕳️ ${rs.round}라운드 보스 돌파! 몬스터가 몰려오던 굴 속으로 들어가요... ${rs.round + 1}라운드부터 새로운 전장!`);
+    }
+    function stepRushMapMove() {
+      const rs = sim.rush;
+      const tps = BATTLE_TICKS_PER_SEC;
+      if (!rs.fadeAt) {
+        const walking = sim.units.some(u => u.alive && u.team === 'blue' && u.rushPath && u.rushPath.length);
+        if (!walking || sim.tickCount - rs.moveAt >= RUSH.moveSec * tps) rs.fadeAt = sim.tickCount;
+        return;
+      }
+      rs.fade = Math.min(1, (sim.tickCount - rs.fadeAt) / (RUSH.fadeSec * tps));
+      if (rs.fade >= 1) swapRushMap();
+    }
+    // 화면이 다 어두워졌을 때: 맵을 바꾸고 파티를 새 맵의 굴에 세운 뒤 서 있을 자리까지 걸어 나오게 함
+    function swapRushMap() {
+      const rs = sim.rush;
+      rs.mapStage = rushStageOf(rs.round + 1);
+      const map = rushMapNow();
+      sim.units = sim.units.filter(u => u.team === 'blue' && !u.isClone);
+      sim.projectiles = [];
+      sim.effects = [];
+      sim.zones = [];
+      const n = sim.units.length;
+      sim.units.forEach((u, i) => {
+        const at = map.entry ? map.entry.at() : { x: 600, y: 900 };
+        const path = map.entry ? map.entry.path(i, n) : [];
+        if (u.alive) {
+          u.x = at.x; u.y = at.y;
+          u.rushEntering = true;
+          u.rushPath = path;
+        } else {
+          const end = path[path.length - 1] || at;
+          u.x = end.x; u.y = end.y;
+        }
+        u._ix = u.prevX = u.x;
+        u._iy = u.prevY = u.y;
+        u.kbVx = 0;
+        u.kbVy = 0;
+        u.facingDir = 1;
+        u.facingAngle = 0;
+      });
+      rs.swapAt = sim.tickCount;
+      rs.phase = 'break';
+      rs.nextAt = sim.tickCount + (RUSH.breakSec + 2) * BATTLE_TICKS_PER_SEC; // 굴에서 걸어 나올 시간만큼 더 쉼
+      if (sim.camera) { sim.camera.x = 0; sim.camera.y = 0; }
+      sendRushUnitList(`m${rs.mapStage}`);
+      addBattleLog(`🗺️ 새로운 전장에 들어왔어요! 몬스터가 나오는 굴을 잘 살펴보세요.`);
     }
 
     function startRushRound(round) {
@@ -34795,28 +34985,31 @@
       const wave = buildRushWave(round, rs);
       sim.units.push(...wave);
       rs.pending = rs.left = wave.length;
-      // 실시간 화면은 유닛 순서로 맞추므로 유닛 목록을 새로 보냄 (rr: 받은 화면이 받아 둔 이전 화면을 버리게)
-      if (liveNet.role === 'host' && liveNet.ref) {
-        const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim', '_deadSince']);
-        const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) ? undefined : v))));
-        liveNet.ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, rr: round, units }).catch(() => {});
-      }
+      sendRushUnitList(round);
       addBattleLog(isRushBossRound(round)
         ? `👑 ${round}라운드: 보스 라운드! 보스와 몬스터 ${wave.length - 1}마리가 몰려와요!`
         : `🌊 ${round}라운드 시작! 몬스터 ${wave.length}마리가 동굴에서 몰려나와요!`);
     }
 
+    // 실시간 화면은 유닛 순서로 맞추므로 유닛 목록이 바뀌면 새로 보냄 (rr: 받은 화면이 받아 둔 이전 화면을 버리게)
+    function sendRushUnitList(rr) {
+      if (liveNet.role !== 'host' || !liveNet.ref) return;
+      const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim', '_deadSince', 'rushPath']);
+      const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) ? undefined : v))));
+      liveNet.ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, rr, units }).catch(() => {});
+    }
+
     // 실시간 화면에 싣는 라운드 상태 (쉬는 시간·라운드 시간은 남은/지난 틱으로 → 화면마다 시계가 달라도 맞음)
     function packRushState() {
       const rs = sim.rush;
-      return [rs.round, rs.phase === 'break' ? 1 : 0, rs.cleared, rs.bosses, rs.pending, rs.left,
-        Math.max(0, rs.nextAt - sim.tickCount), Math.max(0, sim.tickCount - rs.roundStartTick), rs.startFloor];
+      return [rs.round, rs.phase === 'break' ? 1 : rs.phase === 'move' ? 2 : 0, rs.cleared, rs.bosses, rs.pending, rs.left,
+        Math.max(0, rs.nextAt - sim.tickCount), Math.max(0, sim.tickCount - rs.roundStartTick), rs.startFloor, rs.mapStage || 0, Math.round((rs.fade || 0) * 100)];
     }
     function applyRushState(a) {
       if (!sim.rush) sim.rush = newRushState(liveNum(a[8]) || 1);
       const rs = sim.rush;
       rs.round = Math.max(1, liveNum(a[0]));
-      rs.phase = a[1] === 1 ? 'break' : 'fight';
+      rs.phase = a[1] === 1 ? 'break' : a[1] === 2 ? 'move' : 'fight';
       rs.cleared = liveNum(a[2]);
       rs.bosses = liveNum(a[3]);
       rs.pending = liveNum(a[4]);
@@ -34824,6 +35017,8 @@
       rs.nextAt = sim.tickCount + liveNum(a[6]);
       rs.roundStartTick = sim.tickCount - liveNum(a[7]);
       rs.startFloor = liveNum(a[8]) || rs.startFloor;
+      rs.mapStage = liveNum(a[9]);
+      rs.fade = Math.max(0, Math.min(1, liveNum(a[10]) / 100));
     }
 
     // 전장 위 라운드 안내 (화면 위 가운데)
@@ -34835,7 +35030,9 @@
       if (!rs) return;
       const tps = BATTLE_TICKS_PER_SEC;
       let text;
-      if (rs.phase === 'break') {
+      if (rs.phase === 'move') {
+        text = `🕳️ ${rs.cleared}라운드 보스 돌파! 굴 속으로 들어가는 중... ${rs.round + 1}라운드부터 새로운 전장`;
+      } else if (rs.phase === 'break') {
         const left = Math.max(0, Math.ceil((rs.nextAt - sim.tickCount) / tps));
         text = `✅ ${rs.cleared}라운드 클리어! · 다음 ${rs.round + 1}/${RUSH.maxRound}라운드 [${rushRoundSpec(rs.round + 1).tier}]${isRushBossRound(rs.round + 1) ? ` ${rushBossLabel(rs.round + 1)}` : ''}까지 ${left}초`;
       } else {
