@@ -1,5 +1,5 @@
 // 전투 밸런스 시뮬레이션 (브라우저 콘솔용): 실제 전투 엔진으로 여러 판을 자동으로 돌려 승률·직업별 피해·스킬별 피해를 봄
-// 사용법: localhost에서 ?dev=student 로 연 뒤
+// 사용법: localhost에서 ?dev=student&mute=1 로 연 뒤 (mute=1: 처음부터 소리 끔)
 //   const s = document.createElement('script'); s.src = 'tests/battle-sim.js'; document.head.appendChild(s);
 //   await BS.duel(8)            // 직업 1:1 승률표
 //   await BS.rand5(700)         // 무작위 5:5 (직업이 들어간 팀 승률 · 1인당 피해)
@@ -12,7 +12,8 @@
   // 시뮬 중에는 소리 끔 (타격음·효과음)
   sfxEnabled = false;
   playCombatSfx = () => {};
-  if (audioCtx) audioCtx.suspend().catch(() => {});
+  getAudioCtx = () => null;
+  if (audioCtx) audioCtx.close().catch(() => {});
   document.querySelectorAll('audio, video').forEach(a => { a.muted = true; });
   BATTLE_TIME_LIMIT.practiceTicks = 180 * BATTLE_TICKS_PER_SEC;
   BS.JOBS = Object.keys(JOB_DEFS);

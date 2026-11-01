@@ -2,6 +2,9 @@
 // 사용법: 이 파일을 불러온 뒤 await towerWinRates([1, 5, 10], 10, 0)
 window.towerWinRates = async function (floors, runs = 10, levelOffset = 0) {
   suppressRemoteClassPush = true;
+  // 시뮬 중에는 소리 끔
+  sfxEnabled = false;
+  playCombatSfx = () => {};
   const out = {};
   const fakeStu = { id: 'sim_stu', name: '시뮬', roster: [], relics: {}, inventory: [] };
   for (const f of floors) {
