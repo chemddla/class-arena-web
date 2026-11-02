@@ -4154,8 +4154,8 @@
       anthem:  { id: 'anthem',  name: '고양', icon: '🎶', color: '#d97706', desc: '공격력 +10% · 속도(이동 속도·공격 속도) +15% — 음유시인 [전투의 노래]' },
       ballad:  { id: 'ballad',  name: '선율', icon: '🎼', color: '#0891b2', desc: '받는 피해 -20% — 음유시인 [수호의 선율]' },
       silence: { id: 'silence', name: '침묵', icon: '🤐', color: '#64748b', desc: '스킬을 쓸 수 없음 (시전 중이던 스킬도 끊김, 히든 스킬은 그대로) — 음유시인 [불협화음]' },
-      berserk: { id: 'berserk', name: '광폭', icon: '🔥', color: '#b91c1c', desc: '공격 속도 +40% — 광전사 [광폭화]' },
-      undying: { id: 'undying', name: '불사', icon: '♾️', color: '#7f1d1d', desc: '체력이 1 아래로 내려가지 않음 — 광전사 히든 [불사의 분노]' }
+      berserk: { id: 'berserk', name: '광폭', icon: '🔥', color: '#b91c1c', desc: '공격 속도 +60% — 광전사 [광폭화]' },
+      undying: { id: 'undying', name: '불사', icon: '♾️', color: '#7f1d1d', desc: '체력이 1 아래로 내려가지 않음 · 공격 속도 +40% — 광전사 히든 [불사의 분노]' }
     };
 
     // 전술 그리드 1칸 크기(120px) 기준: 대시 1칸(120px), 전사 돌진 스킬 2칸(240px) (Requirement 1)
@@ -4517,7 +4517,7 @@
         rage: {
           id: 'rage', name: '광폭화', icon: '🔥', ccTag: '🔥공격 속도',
           manaCost: 21, cooldownTicks: 720, cooldownSec: 12.0, castSec: 0.3,
-          desc: '0.3초 기운을 끌어올린 뒤 현재 체력의 8%를 바쳐 8초간 [광폭]에 빠집니다. 광폭 중에는 공격 속도 +40%.'
+          desc: '0.3초 기운을 끌어올린 뒤 현재 체력의 8%를 바쳐 10초간 [광폭]에 빠집니다. 광폭 중에는 공격 속도 +60%.'
         },
         axe_throw: {
           id: 'axe_throw', name: '도끼 투척', icon: '🪓', ccTag: '🐌슬로우',
@@ -4628,7 +4628,7 @@
         undying_rage: {
           id: 'undying_rage', name: '불사의 분노', icon: '♾️', ccTag: '✨히든 · 불사', hidden: true,
           manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 1,
-          desc: '1초간 울부짖은 뒤 8초 동안 [불사]·[광폭]에 빠집니다. 불사 중에는 체력이 1 아래로 내려가지 않고 흡혈이 2배가 되며, 시작할 때 최대 체력 20%를 회복해요.'
+          desc: '1초간 울부짖은 뒤 8초 동안 [불사]·[광폭]에 빠집니다. 불사 중에는 체력이 1 아래로 내려가지 않고 흡혈이 2배가 되며, 시작할 때 최대 체력 20%를 회복해요. 불사 중에는 공격 속도가 40% 더 빨라져요.'
         }
       }
     };
@@ -16314,7 +16314,7 @@
       if (st.slow > 0) speedMult -= SLOW_SPEED_DOWN; // 슬로우: 이동·공격 속도 -30%
       speedMult = Math.max(0.4, speedMult);
       const curMoveSpeed = u.baseMoveSpeed * speedMult * 1.15 * (u.hasteTicks > 0 ? 1.2 : 1) * (st.swift > 0 ? 1.5 : 1) * lancerMoveMult(u) * ((st.guard || 0) > 0 ? KNIGHT_GUARD_MOVE_MULT : 1);
-      const curAtkInterval = Math.max(12, Math.round(u.baseAtkInterval / speedMult / (1 + (u.atkSpdStacks || 0) * 0.02) / (st.rally > 0 ? WARCRY_ATK_SPEED : 1) / ((st.berserk || 0) > 0 ? BERSERKER_RAGE_ATK_SPEED : 1)));
+      const curAtkInterval = Math.max(12, Math.round(u.baseAtkInterval / speedMult / (1 + (u.atkSpdStacks || 0) * 0.02) / (st.rally > 0 ? WARCRY_ATK_SPEED : 1) / ((st.berserk || 0) > 0 ? BERSERKER_RAGE_ATK_SPEED : 1) / ((st.undying || 0) > 0 ? BERSERKER_UNDYING_ATK_SPEED : 1)));
       const keys = c.keys || {};
       // 창병 E키: 휘두르기 ↔ 찌르기 (쿨타임·시전 없음)
       if ((c.stanceCount || 0) !== (c._seenStance || 0)) {
@@ -16628,7 +16628,7 @@
       const skillCooldowns = {};
       slots.forEach(k => { skillCooldowns[k] = 0; });
 
-      return {
+      const unit = {
         id: merc.id + '_' + team + '_' + Math.random().toString(36).slice(2, 5),
         name: merc.name,
         job: merc.job,
@@ -16721,6 +16721,8 @@
         healDone: 0,
         damageTaken: 0
       };
+      if (merc.job === 'berserker') setUnitBodySize(unit, BERSERKER_BODY_SIZE); // 광전사는 몸이 커서 근접 사거리도 같은 배율로 늘어남
+      return unit;
     }
 
     // 상태이상 면역 판정 (글자·기록 없이 걸리는지만). 엘리트 보스는 한 번에 하나·풀린 뒤 10초 면역 규칙도 여기서 봄
@@ -18671,7 +18673,7 @@
         speedMult = Math.max(0.4, speedMult);
 
         const curMoveSpeed = u.baseMoveSpeed * speedMult * (u.hasteTicks > 0 ? 1.2 : 1) * (st.swift > 0 ? 1.5 : 1) * lancerMoveMult(u);
-        const curAtkInterval = Math.max(12, Math.round(u.baseAtkInterval / speedMult / (1 + (u.atkSpdStacks || 0) * 0.02) / (st.rally > 0 ? WARCRY_ATK_SPEED : 1) / ((st.berserk || 0) > 0 ? BERSERKER_RAGE_ATK_SPEED : 1)));
+        const curAtkInterval = Math.max(12, Math.round(u.baseAtkInterval / speedMult / (1 + (u.atkSpdStacks || 0) * 0.02) / (st.rally > 0 ? WARCRY_ATK_SPEED : 1) / ((st.berserk || 0) > 0 ? BERSERKER_RAGE_ATK_SPEED : 1) / ((st.undying || 0) > 0 ? BERSERKER_UNDYING_ATK_SPEED : 1)));
 
         // 장비 스킬(Q 발동형): AI 용병은 상황을 보고 알아서 사용
         if (u.itemId && u.itemCd <= 0 && maybeAiUseItem(u, allies, seenEnemies, target, dist)) return;
@@ -20123,7 +20125,6 @@
         unit.hp = Math.min(unit.maxHp, unit.hp + amt);
         unit.healDone += amt;
         sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: GRID_CELL_SIZE * 1.5, color: '#b91c1c', life: 50, maxLife: 50 });
-        sim.effects.push({ type: 'heal_pillar', x: unit.x, y: unit.y, life: 60, maxLife: 60 });
         sim.floatTexts.push({ x: unit.x, y: unit.y - 44, text: `♾️불사! +${amt}`, color: '#b91c1c', life: 60 });
         hiddenImpact(16, '#7f1d1d');
         playCombatSfx('heavy');
@@ -22215,19 +22216,21 @@
     }
 
     // ===== 광전사 공통 =====
-    // 광폭(berserk): 공격 속도 +40% · 불사(undying): 체력이 1 아래로 안 내려감 (applyDamage·curAtkInterval)
+    // 광폭(berserk): 공격 속도 +60% · 불사(undying): 체력이 1 아래로 안 내려감, 공격 속도 +40% (applyDamage·curAtkInterval)
     // 패시브 불굴의 투지(잃은 체력만큼 피해 증가)는 JOB_PASSIVE.berserker.bloodlust로 applyDamage에서, 흡혈은 berserkerLifesteal
     const BERSERKER_BLOODLUST_MAX = 0.5;     // 체력 0%일 때 피해 +50%
     const BERSERKER_LIFESTEAL = 0.15;        // 흡혈 15%
     const BERSERKER_LIFESTEAL_LOW_HP = 0.35; //   체력 35% 이하면 2배
     const BERSERKER_RAGE_COST = 0.08;        // 광폭화: 현재 체력 8%
-    const BERSERKER_RAGE_TICKS = 480;        //   광폭 8초
+    const BERSERKER_BODY_SIZE = 1.2;         // 광전사 몸 크기 (근접 사거리·스킬 범위도 따라 커짐, setUnitBodySize)
+    const BERSERKER_RAGE_TICKS = 600;        //   광폭 10초
     const BERSERKER_NO_ATTACK_TAIL = ['rage', 'axe_throw', 'blood_howl', 'undying_rage', 'execute', 'ground_split']; // 스킬 동작 뒤에 기본 공격(X자 교차) 자세를 붙이지 않는 스킬 — 광전사 스킬은 모두 자기 동작이 있음
     const BERSERKER_TWIN_GAP = 8;            // 쌍도끼 두 번째 타: 첫 타 8틱 뒤
     const BERSERKER_AXE_RELEASE = 10;
     const BERSERKER_AXE_CHARGES = 2;         // 도끼 투척: 2개 충전
     const BERSERKER_AXE_CHARGE_GAP = 30;     //   남은 도끼가 있으면 0.5초 뒤 다시 던짐        // 도끼 투척: 던짐 자세(5틱 × 2칸) 뒤에 도끼가 손을 떠남
-    const BERSERKER_RAGE_ATK_SPEED = 1.4;    //   공격 속도 +40%
+    const BERSERKER_RAGE_ATK_SPEED = 1.6;    //   공격 속도 +60%
+    const BERSERKER_UNDYING_ATK_SPEED = 1.4; // 불사 중 공격 속도 +40% (광폭과 곱해짐)
     const BERSERKER_AXE_CELLS = 4;           // 도끼 투척: 4칸
     const BERSERKER_AXE_DMG = 1.5;           //   150%
     const BERSERKER_AXE_SLOW_TICKS = 120;    //   슬로우 2초
@@ -22346,7 +22349,7 @@
         sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: 70, color: '#b91c1c', life: 36, maxLife: 36 });
         sim.floatTexts.push({ x: unit.x, y: unit.y - 34, text: `🩸-${cost}`, color: '#b91c1c', life: 40 });
         playCombatSfx('heavy');
-        addBattleLog(`🔥 [광전사] ${unit.name}의 광폭화! 8초간 공격 속도가 올라요`);
+        addBattleLog(`🔥 [광전사] ${unit.name}의 광폭화! 10초간 공격 속도가 올라요`);
         return true;
       }
       if (sk === 'axe_throw') {
@@ -24344,7 +24347,7 @@
       if (useSprite && u.alive && isSrBerserker(u) && u.casting && u.casting.key === 'undying_rage' && BERSERKER_SR_UCAST_FX.ready) {
         const bp = Math.min(1, 1 - u.casting.left / Math.max(1, u.casting.total));
         const bodyH = spriteDrawH(u, sprite) * (sprite.topH || sprite.standH) / sprite.standH;
-        const w = bodyH * 1.9 * (0.85 + 0.15 * bp), h = w * BERSERKER_SR_UCAST_FX.height / BERSERKER_SR_UCAST_FX.width;
+        const w = bodyH * 2.6 * (0.85 + 0.15 * bp), h = w * BERSERKER_SR_UCAST_FX.height / BERSERKER_SR_UCAST_FX.width;
         ctx.save();
         ctx.globalAlpha *= Math.min(1, 0.2 + bp * 1.2) * 0.9;
         ctx.imageSmoothingEnabled = true;
@@ -24396,12 +24399,12 @@
         drawUnitSprite(ctx, u, sprite, tick, jumpY, rareFx && rarePal);
         if (rareFx && !eliteHardFx) drawRareAura(true);
         // 흑사자 불사의 분노 발동: 거대하고 희미한 붉은 실루엣이 줄어들며 진해지다가 몸 크기와 같아지면 선명해짐 → 잠깐 뒤 사라짐
-        //   0~65%: 3.2배 → 1배 (빠르게 줄다 천천히 맞춤), 투명도 0.12 → 0.95 · 65~80%: 그대로 · 80~100%: 사라짐
+        //   0~65%: 4.5배 → 1배 (빠르게 줄다 천천히 맞춤), 투명도 0.12 → 0.95 · 65~80%: 그대로 · 80~100%: 사라짐
         const sre = u.srUndyingFxAt !== undefined ? sim.tickCount - u.srUndyingFxAt : -1;
         if (u.alive && sre >= 0 && sre < BERSERKER_SR_UFIRE_TICKS && BERSERKER_SR_UFIRE_FX.ready) {
           const G = BERSERKER_SR_UFIRE_GEO, q = sre / BERSERKER_SR_UFIRE_TICKS;
           const t = Math.min(1, q / 0.65), ease = 1 - Math.pow(1 - t, 3);
-          const grow = 3.2 - 2.2 * ease;
+          const grow = 4.5 - 3.5 * ease;
           const alpha = q < 0.65 ? 0.12 + 0.83 * ease : (q < 0.8 ? 0.95 : 0.95 * (1 - (q - 0.8) / 0.2));
           const bodyH = spriteDrawH(u, sprite) * (sprite.topH || sprite.standH) / sprite.standH;
           const k = bodyH / G.bodyH * grow;
@@ -25017,7 +25020,7 @@
         if (ef.type === 'berserker_split') {
           // 대지 가르기: 꼭짓점 = 시전자 발, 가운데 방향 = 내리친 방향, 길이 = 범위(r), 벌어진 각 = 판정 반각
           //   처음 25% 동안 꼭짓점에서 앞으로 갈라져 나가고, 마지막 35% 동안 흐려짐
-          if (BERSERKER_SPLIT_FX.ready) {
+          if (!ef.sr && BERSERKER_SPLIT_FX.ready) { // 흑사자는 갈라진 땅 부채꼴 없이 전용 분출만 (아래)
             const G = BERSERKER_SPLIT_FX_GEO;
             const grow = Math.min(1, 0.25 + progress / 0.25 * 0.75);
             const sx = ef.r / G.R, sy = sx * Math.tan(ef.half) / Math.tan(G.half);
@@ -25030,7 +25033,7 @@
             ctx.drawImage(BERSERKER_SPLIT_FX, -G.ax, -G.ay);
           }
           ctx.restore();
-          // 흑사자: 갈라진 땅 위로 붉은 분출 3번 (가까운 곳부터). 폭 = 그 거리의 부채꼴 폭, 아래쪽이 땅, 튀어 오르며 커졌다 흐려짐
+          // 흑사자: 부채꼴 범위를 따라 붉은 분출 3번 (가까운 곳부터). 폭 = 그 거리의 부채꼴 폭, 아래쪽이 땅, 튀어 오르며 커졌다 흐려짐
           if (ef.sr && BERSERKER_SR_SPLIT_FX.ready) {
             const img = BERSERKER_SR_SPLIT_FX;
             const bursts = BERSERKER_SR_SPLIT_BURSTS.map(([f, t0]) => ({ f, t0, x: ef.x + Math.cos(ef.ang) * ef.r * f, y: ef.y + 10 + Math.sin(ef.ang) * ef.r * f }))
