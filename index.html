@@ -1421,7 +1421,7 @@
   </div>
 
   <!-- 스탯 마우스 오버 설명 툴팁 팝업 (Requirement 7) -->
-  <div id="statTooltipPopup" class="hidden fixed z-50 pointer-events-none bg-slate-900 border-2 border-amber-500 rounded-2xl px-3.5 py-2.5 shadow-2xl max-w-xs text-xs">
+  <div id="statTooltipPopup" class="hidden fixed z-[80] pointer-events-none bg-slate-900 border-2 border-amber-500 rounded-2xl px-3.5 py-2.5 shadow-2xl max-w-xs text-xs">
     <div id="statTooltipTitle" class="font-extrabold text-amber-300 text-sm mb-1"></div>
     <div id="statTooltipDesc" class="text-slate-200 leading-relaxed"></div>
     <div id="statTooltipDetail" class="mt-1.5 pt-1.5 border-t border-slate-700 text-[11px] font-bold text-emerald-300"></div>
@@ -9137,7 +9137,8 @@
       let left = event.clientX + pad;
       let top = event.clientY + pad;
       if (left + 290 > window.innerWidth) left = Math.max(8, event.clientX - 295);
-      if (top + 150 > window.innerHeight) top = Math.max(8, event.clientY - 155);
+      const h = popup.offsetHeight || 150;
+      if (top + h > window.innerHeight) top = Math.max(8, event.clientY - h - 5);
       popup.style.left = `${left}px`;
       popup.style.top = `${top}px`;
     }
@@ -10283,7 +10284,7 @@
         const job = JOB_DEFS[m.job] || JOB_DEFS.warrior;
         const rar = RARITY_DEFS[m.rarity] || RARITY_DEFS.N;
         return `
-          <div class="rounded-xl border p-2 flex items-center gap-2 bg-slate-950 ${m.deployed ? 'border-emerald-500/50' : 'border-slate-800'}">
+          <div onmouseenter="showFriendMercTip(event, '${s.id}', '${m.id}')" onmousemove="moveStatTooltip(event)" onmouseleave="hideStatTooltip()" class="cursor-help rounded-xl border p-2 flex items-center gap-2 bg-slate-950 ${m.deployed ? 'border-emerald-500/50' : 'border-slate-800'}">
             <div class="w-11 h-11 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center shrink-0">${getUnitPortraitHTML(m.job, m.rarity, m.skinVariant || 0, 40)}</div>
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1 text-xs font-bold text-white"><span class="truncate">${esc(m.name)}</span><span class="text-[10px] text-indigo-300 font-extrabold shrink-0">Lv.${m.level}</span></div>
@@ -10313,7 +10314,7 @@
       if (!m) {
         m = document.createElement('div');
         m.id = 'friendProfileModal';
-        m.className = 'fixed inset-0 z-[55] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4';
+        m.className = 'gl-skin fixed inset-0 z-[55] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4';
         m.addEventListener('pointerdown', e => { if (e.target === m) closeFriendProfile(); });
         document.body.appendChild(m);
       }
@@ -10346,7 +10347,25 @@
         </div>`;
       m.classList.remove('hidden');
     }
-    function closeFriendProfile() { document.getElementById('friendProfileModal')?.classList.add('hidden'); }
+    // 친구 프로필의 용병 카드에 마우스를 올리면 보유 스킬 (복사본으로 계산해 친구 용병 데이터는 건드리지 않음)
+    function showFriendMercTip(event, stuId, mercId) {
+      const src = (state.students || []).find(x => x.id === stuId)?.roster?.find(m => m.id === mercId);
+      const popup = document.getElementById('statTooltipPopup');
+      if (!src || !popup) return;
+      const merc = structuredClone(src);
+      const job = JOB_DEFS[merc.job] || JOB_DEFS.warrior;
+      const esc = v => PetSystem.esc(v);
+      const rows = getMercSkillSlotInfo(merc);
+      document.getElementById('statTooltipTitle').textContent = `⚡ ${merc.name}의 스킬`;
+      document.getElementById('statTooltipDesc').textContent = `${job.icon} ${job.name} · Lv.${merc.level} · 스킬 ${rows.filter(r => r.open).length}/4개 열림`;
+      document.getElementById('statTooltipDetail').innerHTML = rows.map(r => r.open
+        ? `<div class="py-0.5"><div class="text-amber-300">${r.sk.icon} ${esc(r.sk.name)} <span class="text-[10px] text-slate-400 font-bold">쿨 ${r.sk.cooldownSec}초 · 마나 ${r.sk.manaCost}</span></div><div class="text-[10px] text-slate-300 font-normal leading-snug">${esc(r.sk.desc || '')}</div></div>`
+        : `<div class="py-0.5 text-slate-500">🔒 Lv.${r.unlockLv}에 열려요</div>`).join('')
+        + (job.passiveName ? `<div class="mt-1 pt-1 border-t border-slate-700 text-violet-300">✨ 패시브 · ${job.passiveName}</div>` : '');
+      popup.classList.remove('hidden');
+      moveStatTooltip(event);
+    }
+    function closeFriendProfile() { hideStatTooltip(); document.getElementById('friendProfileModal')?.classList.add('hidden'); }
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeFriendProfile(); });
 
     window.addEventListener('resize', () => renderSideRankPanel());
