@@ -1,6 +1,6 @@
 # 광전사 시크릿 레어(흑사자: 검은 갈기·붉은 눈·검은 판금·쌍도끼) 샘플 → 캐릭터 시트 assets/sprites/merc/berserker_sr1.webp
 # 사용: python tools/berserker_sr1_build.py   (샘플은 assets/sprites/fx/samples/berserker_sr1_*_src.png)
-# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~3 걷기
+# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~3 걷기 · 4 피격 · 5~7 쓰러짐
 # 샘플 정리:
 #   - 흰 배경은 가장자리에서 이어진 흰 픽셀만 지움, 흰 배경과 섞인 2px 테두리는 흰색을 빼서 투명도·본래 색을 되살림 (berserker_build.load와 같음)
 #   - 몸 안에 갇힌 흰 배경(팔과 도끼 자루 사이)도 지움
@@ -22,10 +22,12 @@ TARGET_H = 86  # 광전사 0번 대기와 같은 키
 FRAMES = [
     ('idle', 'idle', 1, 0),
     ('walk_a', 'walk0', 1, 0), ('walk_b', 'walk1', 1, 0), ('walk_b', 'walk2', 1, 1),  # 걷기 3칸 (walk_b 한 장에 두 칸)
+    ('hurt', 'hurt', 1, 0),
+    ('down', 'down0', 1, 0), ('down', 'down1', 'down0', 1), ('down', 'down2', 'down0', 2),  # 쓰러짐 3칸: 누운 칸은 키로 못 재서 첫 칸(서 있음) 배율을 같이 씀
 ]
 
 
-DROP = {'walk_b': [(0, 18, 140, 200)]}  # 지울 상자 (x0, x1, y0, y1): 걷기 샘플 왼쪽 끝에 잘려 들어온 앞 칸 도끼
+DROP = {'walk_b': [(0, 18, 140, 200)], 'down': [(0, 723, 147, 155)]}  # 지울 상자 (x0, x1, y0, y1): 걷기 샘플 왼쪽 끝에 잘려 들어온 앞 칸 도끼, 쓰러짐 샘플 아래 어두운 띠 (세 칸을 한 덩어리로 이어 붙였음)
 
 
 def load(name, pick=0):
@@ -66,9 +68,12 @@ def load(name, pick=0):
 def main():
     cuts = {f[1]: load(f[0], f[3]) for f in FRAMES}
     pieces = []
+    scale = {}
     for src, name, k, _ in FRAMES:
         rgba, foot = cuts[name]
-        sc = TARGET_H / rgba.shape[0] * k  # 샘플마다 그린 크기가 달라 칸마다 키(갈기 꼭대기~발)로 맞춤
+        # 샘플마다 그린 크기가 달라 칸마다 키(갈기 꼭대기~발)로 맞춤. k가 칸 이름이면 그 칸 배율을 그대로 (누운 칸)
+        sc = scale[k] if isinstance(k, str) else TARGET_H / rgba.shape[0] * k
+        scale[name] = sc
         pieces.append((name, shrink(rgba, sc), foot * sc))
     L = max(int(np.ceil(c)) for _, _, c in pieces) + 4
     R = max(int(np.ceil(p.shape[1] - c)) for _, p, c in pieces) + 4
