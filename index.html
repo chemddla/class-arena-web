@@ -717,6 +717,19 @@
     .lp-vs { font-family: Galmuri11; font-size: 64px; line-height: 1; color: var(--lp-gold);
       text-shadow: 5px 0 0 var(--lp-ink), -5px 0 0 var(--lp-ink), 0 5px 0 var(--lp-ink), 0 -5px 0 var(--lp-ink), 5px 5px 0 #c94d1c, 8px 8px 0 var(--lp-ink); animation: lp-bob 0.8s steps(2) infinite; }
     .lp-sign-pvp { margin-top: 18px; font-size: 16px; }
+    /* 공격·스킬 이펙트 (게임 이펙트 그림을 잘라 씀), 근접 평타는 도트 베기 궤적 */
+    .lp-fxl { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+    .lp-sfx { position: absolute; display: block; background-repeat: no-repeat; image-rendering: pixelated; }
+    .lp-slash { position: absolute; width: 88px; height: 88px; margin: -44px 0 0 -44px; background: linear-gradient(90deg, transparent 50%, #fff7c2 50% 72%, #fff 72%);
+      clip-path: polygon(55% 0, 70% 6%, 82% 16%, 92% 30%, 98% 50%, 92% 70%, 82% 84%, 70% 94%, 55% 100%, 66% 84%, 74% 68%, 78% 50%, 74% 32%, 66% 16%);
+      animation: lp-slash 0.32s steps(4) forwards; }
+    .lp-slash.foe { --fl: -1; background: linear-gradient(90deg, transparent 50%, #ffb3a8 50% 72%, #ff5a4a 72%); }
+    @keyframes lp-slash {
+      from { transform: scaleX(var(--fl, 1)) rotate(-50deg) scale(calc(var(--k, 1) * 0.6)); opacity: 1; } 70% { opacity: 1; }
+      to { transform: scaleX(var(--fl, 1)) rotate(30deg) scale(calc(var(--k, 1) * 1.15)); opacity: 0; }
+    }
+    /* 들판에서 몬스터와 싸우는 동안은 땅·나무가 멈춤 */
+    .lp-halt .lp-ground, .lp-halt .lp-ground::before, .lp-halt .lp-ground::after, .lp-halt .lp-trees { animation-play-state: paused; }
     .lp-merc.lp-enter { animation: lp-enter 0.8s steps(8) both; }
     @keyframes lp-enter { from { translate: -40vw 0; } }
     .lp-shake { animation: lp-shake 0.3s steps(3); }
@@ -1514,6 +1527,7 @@
           <span class="lp-hit" aria-hidden="true"></span>
         </div>
         <div class="lp-hud" aria-hidden="true"></div>
+        <div class="lp-fxl" aria-hidden="true"></div>
         <div class="lp-wipe"></div>
       </div>
     </section>
@@ -1692,7 +1706,9 @@
             const name = (typeof JOB_DEFS !== 'undefined' && JOB_DEFS[job]?.name) || '용병';
             const def = MERC_SPRITE_DEFS[pick(byJob[job])];
             const k = job === 'rogue' ? 0.8 : +(81 / (def.standH || 81)).toFixed(3);
-            return makeSprite(def, box, k, `${name} 용병`, def.anims[base] ? base : 'idle');
+            const a = makeSprite(def, box, k, `${name} 용병`, def.anims[base] ? base : 'idle');
+            a.side = box === foeBox ? 'foe' : 'ally'; a.job = job;
+            return a;
           };
           const team = (n, base) => shuffle(Object.keys(byJob)).slice(0, n).map(job => addMerc(party, job, base));
           // 몬스터: 키(standH) 기준으로 크기를 맞춤 (큰 몬스터는 한 마리만)
@@ -1701,7 +1717,12 @@
           const toFoeBox = (a) => { foeBox.insertBefore(a.span, foeBox.querySelector('.lp-foe-bang')); return a; };
           const addFoe = (key, base, k, alt = '길을 막는 몬스터') => {
             const def = MONSTER_SPRITE_DEFS[key];
-            return toFoeBox(makeSprite(def, foeBox, k ?? sizeK(def), alt, def.anims[base] ? base : 'idle'));
+            const a = toFoeBox(makeSprite(def, foeBox, k ?? sizeK(def), alt, def.anims[base] ? base : 'idle'));
+            // 직업(이펙트 고르기용)·버티는 횟수 (들판 1~2대, 탑 2대)
+            a.side = 'foe'; a.key = key;
+            a.job = key.startsWith('elite_') ? 'boss' : def.jobs?.[0] || key.match(/_(warrior|archer|mage|healer|rogue|knight|lancer|sniper)/)?.[1] || 'warrior';
+            a.hp = mode === 'tower' ? 2 : 1 + Math.floor(Math.random() * 2);
+            return a;
           };
 
           let mode = 'field', mercs = [], foes = [], st = {};
@@ -1720,7 +1741,7 @@
               where.textContent = `모험의 탑 ${floor}층 · ${TOWER_RACES[r].name}`;
               hud.innerHTML = `<span class="lp-sign">모험의 탑<b>${floor}층</b></span>`;
               mercs = team(4, 'idle');
-              const keys = shuffle(Object.keys(MONSTER_SPRITE_DEFS).filter(k => TOWER_RACES[r].re.test(k) && slim(k)));
+              const keys = st.pool = shuffle(Object.keys(MONSTER_SPRITE_DEFS).filter(k => TOWER_RACES[r].re.test(k) && slim(k)));
               foes = keys.slice(0, narrow() ? 1 : 2).map(k => addFoe(k, 'idle'));
             },
             // 엘리트 보스: 왕좌 앞의 거대한 보스, 때릴수록 체력 줄이 깎임
@@ -1779,13 +1800,17 @@
             hud.style.left = `${Math.min(Math.max(cx, half), innerWidth - half) - ground.left}px`;
             hud.style.bottom = mode === 'pvp' ? 'calc(100% + 40px)' : `calc(100% + ${Math.round(fb.height) + 8}px)`;
           };
+          let enter = null; // 장면이 만들어진 뒤 할 일 (들판: 몬스터가 걸어 들어옴)
           const build = (m) => {
+            st.anim?.cancel();
             mode = m; st = {};
             hero.dataset.mode = m;
+            hero.classList.remove('lp-halt');
             party.innerHTML = ''; hud.innerHTML = '';
             foeBox.querySelectorAll('.lp-merc').forEach(el => el.remove());
             SCENES[m]();
             fit();
+            enter?.();
           };
           let at = Math.max(0, MODES.indexOf(new URLSearchParams(location.search).get('lpScene')));
           build(MODES[at]);
@@ -1796,67 +1821,174 @@
 
           // 프레임 진행 + 끊임없이 벌어지는 짧은 교전
           const hit = hero.querySelector('.lp-hit');
+          const fxl = hero.querySelector('.lp-fxl');
           const landing = document.getElementById('landingPageView');
           const idle = () => document.hidden || landing.classList.contains('hidden');
           setInterval(() => { if (!idle()) [...mercs, ...foes].forEach(tick); }, 110);
           const flash = (el, cls = 'on') => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
-          const alive = () => foes.filter(a => !a.dead);
+          const vis = (list) => list.filter(a => !a.dead && a.span.isConnected && a.span.style.display !== 'none');
           const setHp = () => {
             const [lag, fill] = hud.querySelectorAll('.lp-hud-hp i');
             fill?.style.setProperty('--hp', st.hp + '%');
             setTimeout(() => lag?.style.setProperty('--hp', st.hp + '%'), 250);
           };
-          // 러쉬: 맨 앞 몬스터가 쓰러지면 숲에서 다음 몬스터가 뛰어 들어옴
+
+          // 이펙트: 게임 전투에 쓰는 이펙트 그림을 그대로 잘라 씀 (칸 = [x, y, 폭, 높이, 기준점 x, y], 기준점을 지정한 자리에 맞춤)
+          const SPIN = { src: 'assets/sprites/fx/spin_slash_fx.webp', anims: { spin: SPIN_FX.frames.map(f => [...f, f[2] / 2, f[3] / 2]) } };
+          const scale = () => (parseFloat(getComputedStyle(hero).getPropertyValue('--lp-s')) || 1.5) / 1.5;
+          const framesOf = (sheet, name) => {
+            const a = sheet?.anims?.[name]; if (!a) return null;
+            const f = a.fr ? [a.fr] : a;
+            return f.length > 2 ? f : [f[0], f.at(-1), f.at(-1)]; // 한두 칸짜리도 잠깐은 보이게
+          };
+          const spark = (sheet, name, x, y, { s = 0.5, flip = false, to = null } = {}) => new Promise(done => {
+            const fr = framesOf(sheet, name); if (!fr) return done();
+            const el = document.createElement('i'), k = s * scale();
+            el.className = 'lp-sfx'; el.style.backgroundImage = `url(${sheet.src})`;
+            const show = ([fx0, fy0, w, h, ax = w / 2, ay = h / 2]) => Object.assign(el.style, {
+              width: w + 'px', height: h + 'px', backgroundPosition: `-${fx0}px -${fy0}px`, left: `${x - ax}px`, top: `${y - ay}px`,
+              transformOrigin: `${ax}px ${ay}px`, transform: `scale(${flip ? -k : k}, ${k})`
+            });
+            let i = 0; show(fr[0]); fxl.appendChild(el);
+            const t = setInterval(() => {
+              if (to) return show(fr[++i % fr.length]);
+              if (++i >= fr.length) { clearInterval(t); el.remove(); return done(); }
+              show(fr[i]);
+            }, 100);
+            if (to) {
+              el.animate([{ translate: '0 0' }, { translate: `${to[0] - x}px ${to[1] - y}px` }], { duration: 300, easing: 'steps(6)', fill: 'forwards' });
+              setTimeout(() => { clearInterval(t); el.remove(); done(); }, 300);
+            }
+          });
+          // 몸 가운데(f = 0.45)나 발밑(f = 0) 자리 (이펙트 층 = 땅 기준)
+          const pt = (a, f = 0.45) => {
+            const g = fxl.getBoundingClientRect(), r = a.span.getBoundingClientRect();
+            return [r.left + r.width / 2 - g.left, r.bottom - r.height * f - g.top];
+          };
+          // 직업별 공격·스킬 이펙트를 띄우고 맞는 순간(ms)을 돌려줌 (회복은 null = 아무도 안 맞음)
+          const effect = (a, t, skill) => {
+            const foe = a.side === 'foe', [ax, ay] = pt(a), tp = pt(t), feet = pt(t, 0);
+            const from = [ax + (foe ? -1 : 1) * a.span.offsetWidth * 0.2, ay];
+            const shot = (sheet, name, s, hitFx, n = 1) => {
+              for (let i = 0; i < n; i++) setTimeout(() => spark(sheet, name, ...from, { s, flip: foe, to: tp })
+                .then(() => hitFx && spark(hitFx[0], hitFx[1], ...tp, { s: hitFx[2] })), 150 + i * 120);
+              return 450 + (n - 1) * 120;
+            };
+            const at = (sheet, name, s, p = tp, d = 300) => { setTimeout(() => spark(sheet, name, ...p, { s, flip: foe }), d); return d + 60; };
+            const slash = () => {
+              setTimeout(() => {
+                const el = document.createElement('i');
+                el.className = 'lp-slash' + (foe ? ' foe' : '');
+                el.style.cssText = `left:${tp[0]}px;top:${tp[1]}px;--k:${scale()}`;
+                fxl.appendChild(el); setTimeout(() => el.remove(), 400);
+              }, 300);
+              return 340;
+            };
+            switch (a.job) {
+              case 'archer': case 'sniper': return shot(FX_SPRITE_SHEET, skill ? 'poison_arrow' : 'arrow', 0.8, null, skill ? 3 : 1);
+              case 'mage':
+                if (skill) return shot(MAGE_SPELL_FX, 'fireball', 0.35, [SPELL_HIT_FX, 'fire_hit', 0.4]);
+                return foe ? shot(FX_SPRITE_SHEET, 'fireball', 0.5, [FX_SPRITE_SHEET, 'fire_hit', 0.5]) : shot(FX_SPRITE_SHEET, 'orb', 0.6, [FX_SPRITE_SHEET, 'orb_hit', 0.5]);
+              case 'frost': return skill ? shot(MAGE_SPELL_FX, 'ice_arrow', 0.4, [SPELL_HIT_FX, 'ice_hit', 0.35]) : shot(FX_SPRITE_SHEET, 'ice', 0.6, [FX_SPRITE_SHEET, 'ice_hit', 0.5]);
+              case 'curse': return skill ? at(CURSE_HIT_FX, 'hex', 0.6) : shot(CURSE_ORB_FX, 'flame', 0.9, [CURSE_HIT_FX, 'orb', 0.4]);
+              case 'bard': return skill ? at(BARD_ORB_FX, 'disso', 0.5) : shot(BARD_ORB_FX, 'bubble', 0.9, [BARD_ORB_FX, 'burst', 0.5]);
+              case 'healer': {
+                if (!skill) return shot(FX_SPRITE_SHEET, 'bolt', 0.5, [FX_SPRITE_SHEET, 'bolt_hit', 0.4]);
+                const ally = pick(vis(foe ? foes : mercs)) || a; // 우리 편 하나에게 회복 빛기둥
+                at(SUPPORT_FX, 'heal_pillar', 0.45, pt(ally, 0), 250);
+                return null;
+              }
+              case 'boss':
+                if (a.key === 'elite_swamp_hydra') return skill ? shot(HYDRA_FX, 'venom', 0.7, [HYDRA_FX, 'splash', 0.7]) : shot(HYDRA_FX, 'glob', 0.8, [HYDRA_FX, 'splash', 0.6]);
+                if (a.key === 'elite_orc_warlord') return skill ? (at(BLOOD_ORC_FX, 'spin', 0.9, pt(a), 150), at(BLOOD_ORC_FX, 'rend', 0.7, tp, 450)) : at(BLOOD_ORC_FX, 'rend', 0.6);
+                {
+                  const g = a.key === 'elite_golem' ? GOLEM_FX : null; // 골렘은 흙빛·룬 초록 지진
+                  if (!skill) return at(g || SKILL_FX_SHEET, 'quake', 0.45, feet);
+                  at(g || AOE_FX, 'shout', 0.7, pt(a), 150);
+                  return at(g || SKILL_FX_SHEET, 'quake', 0.6, feet, 450);
+                }
+              default: // 근접: 평타 = 베기 궤적, 스킬 = 전사 함성·기사 지진·나머지 회전베기
+                if (!skill) return slash();
+                if (a.job === 'warrior') { at(AOE_FX, 'shout', 0.5, pt(a), 150); return slash(); }
+                if (a.job === 'knight') return at(SKILL_FX_SHEET, 'quake', 0.55, feet);
+                return at(SPIN, 'spin', 0.45);
+            }
+          };
+          const strike = (a, t, onHit) => {
+            if (!a || !t) return;
+            const acts = ACTIONS(a.def), act = acts.length && pick(acts);
+            if (!act || !play(a, act, 2)) return;
+            const ms = effect(a, t, act !== 'attack');
+            if (ms != null) setTimeout(() => { if (!t.dead && t.span.isConnected) onHit(); }, ms);
+          };
+
+          // 들판: 몬스터가 걸어 들어오면 멈춰 싸우고, 다 쓰러뜨리면 다시 걸어가며 쓰러진 몬스터를 지나침
+          const stand = (list, name) => list.forEach(a => { a.base = a.def.anims[name] ? name : 'idle'; play(a, a.base); });
+          const halt = (on) => { st.halt = on; hero.classList.toggle('lp-halt', on); stand(mercs, on ? 'idle' : 'walk'); };
+          const arrive = () => {
+            const s0 = st, d = innerWidth - foeBox.getBoundingClientRect().left + 40;
+            halt(false); stand(foes, 'walk');
+            st.anim = foeBox.animate([{ translate: `${d}px 0` }, { translate: '0 0' }], { duration: 1600, easing: 'steps(16)' });
+            setTimeout(() => { if (st === s0) { halt(true); stand(foes, 'idle'); } }, 1600);
+          };
+          enter = () => { if (mode === 'field') arrive(); };
+          const passBy = () => {
+            const s0 = st;
+            setTimeout(() => {
+              if (st !== s0) return;
+              halt(false);
+              foes.forEach(f => f.span.animate([{ translate: '0 0', opacity: 1 }, { translate: '120px 0', opacity: 0 }], { duration: 1800, easing: 'steps(9)', fill: 'forwards' }));
+              setTimeout(() => {
+                if (st !== s0) return;
+                foes.forEach(f => f.span.remove());
+                const keys = shuffle(th.foes.filter(k => MONSTER_SPRITE_DEFS[k]));
+                foes = keys.slice(0, keys.length > 1 && slim(keys[0]) && Math.random() < 0.5 ? 2 : 1).map(k => addFoe(k, 'idle'));
+                fit(); arrive();
+              }, 2000);
+            }, 700);
+          };
+          // 쓰러짐: 들판은 다 쓰러지면 지나쳐 가고, 탑·러쉬는 쓰러진 자리에 다음 몬스터가 들어옴
           const kill = (f) => {
             f.dead = true; play(f, 'death', 3);
             const n = hud.querySelector('.lp-kills'); if (n) n.textContent = ++st.kills;
+            if (mode === 'field') { if (!vis(foes).length) passBy(); return; }
+            const s0 = st;
             setTimeout(() => {
-              if (mode !== 'rush' || !f.span.isConnected) return;
+              if (st !== s0 || !f.span.isConnected) return;
               f.span.remove(); foes = foes.filter(a => a !== f);
-              const k = pick(st.pool), def = MONSTER_SPRITE_DEFS[k];
-              const a = makeSprite(def, foeBox, sizeK(def), '몰려오는 몬스터', 'walk');
+              const a = addFoe(pick(st.pool), mode === 'rush' ? 'walk' : 'idle', undefined, '몰려오는 몬스터');
               foeBox.prepend(a.span); a.span.classList.add('lp-enter');
               foes.unshift(a);
               fit();
             }, 900);
           };
-          const hitFoe = () => {
-            const live = alive(); if (!live.length) return;
-            const f = mode === 'rush' ? live.at(-1) : pick(live);
+          const hitFoe = (f) => {
             flash(hit);
             if (mode === 'boss') { st.hp = Math.max(8, Math.round(st.hp - 5 - Math.random() * 7)); setHp(); }
-            if (mode === 'rush' && Math.random() < 0.6) return kill(f);
+            if (mode === 'rush' ? Math.random() < 0.6 : mode !== 'boss' && --f.hp <= 0) return kill(f);
             play(f, 'hurt', 3);
           };
           const beat = () => {
             const roll = Math.random();
-            if (idle()) {
-              // 화면이 안 보일 땐 쉼
+            if (idle() || (mode === 'field' && !st.halt)) {
+              // 화면이 안 보이거나 들판에서 걸어가는 중엔 쉼
             } else if (mode === 'pvp') {
               // 결투장: 양쪽이 번갈아 공격
-              const mine = roll < 0.5, m = pick(mine ? mercs : foes), acts = ACTIONS(m.def);
-              if (acts.length && play(m, pick(acts), 2)) setTimeout(() => {
-                if (mine) { flash(hit); play(foes.at(-1), 'hurt', 3); } else play(mercs.at(-1), 'hurt', 3);
-              }, 380);
-            } else if (roll < (mode === 'rush' ? 0.7 : 0.5)) {
-              // 용병 한 명이 공격·스킬 → 몬스터 피격
-              const m = pick(mercs), acts = ACTIONS(m.def);
-              if (acts.length && play(m, pick(acts), 2)) setTimeout(hitFoe, 380);
-            } else if (roll < 0.8 || mode !== 'field') {
-              // 몬스터 공격 → 맨 앞 용병 피격 (보스는 땅이 흔들림)
-              const f = pick(alive()), acts = f ? ACTIONS(f.def) : [];
-              if (acts.length && play(f, pick(acts), 2)) setTimeout(() => {
-                play(mercs.at(-1), 'hurt', 3);
-                if (mode === 'boss') flash(party, 'lp-shake');
-              }, mode === 'boss' ? 520 : 380);
+              const mine = roll < 0.5, t = vis(mine ? foes : mercs).at(-1);
+              strike(pick(vis(mine ? mercs : foes)), t, () => { if (mine) flash(hit); play(t, 'hurt', 3); });
+            } else if (roll < (mode === 'boss' ? 0.5 : 0.65)) {
+              // 용병 한 명이 공격·스킬 → 몬스터 피격 (러쉬는 맨 앞 몬스터부터)
+              const live = vis(foes), f = mode === 'rush' ? live.at(-1) : pick(live);
+              strike(pick(vis(mercs)), f, () => hitFoe(f));
             } else {
-              // 일행이 잠깐 멈춰 숨 고르기
-              mercs.forEach(m => play(m, 'idle', 3));
-              setTimeout(() => mercs.forEach(m => play(m, m.base)), 1300);
+              // 몬스터 공격 → 맨 앞 용병 피격 (보스는 땅이 흔들림)
+              const t = vis(mercs).at(-1);
+              strike(pick(vis(foes)), t, () => { play(t, 'hurt', 3); if (mode === 'boss') flash(party, 'lp-shake'); });
             }
-            setTimeout(beat, mode === 'field' ? 1600 + Math.random() * 1800 : 1000 + Math.random() * 1200);
+            setTimeout(beat, 900 + Math.random() * 900);
           };
           setTimeout(beat, 1400);
+          enter();
 
           // 10초마다 다음 모드로: 잠깐 암전된 사이에 배경·일행·몬스터를 바꿈
           setInterval(() => {
