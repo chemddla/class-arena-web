@@ -293,9 +293,9 @@ def build_ufire_fx():
 OUT_EXEC_FX = 'assets/sprites/fx/berserker_sr1_slam.webp'
 
 
-def build_exec_fx():
-    # 흑사자 마무리 일격 폭발: 흰 배경(가장자리에서 이어진 것)만 지우고 둘레 2px은 흰색을 빼서 반투명, 날아가는 돌 조각도 남김
-    im = np.array(Image.open(f'{D}exec_fx_src.png').convert('RGB')).astype(float)
+def cut_fx(src, out_path, shrink_to=None):
+    # 흰 배경(가장자리에서 이어진 것)만 지우고 둘레 2px은 흰색을 빼서 반투명, 날아가는 돌 조각도 남김
+    im = np.array(Image.open(f'{D}{src}_src.png').convert('RGB')).astype(float)
     white = (im.min(axis=2) > 214) & (im.max(axis=2) - im.min(axis=2) < 20)
     lab, n = ndi.label(white)
     edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
@@ -308,8 +308,20 @@ def build_exec_fx():
     rgb = np.where(rim[..., None], (im - 255 * (1 - al)) / al, im).clip(0, 255)
     ys, xs = np.where(a > 0.05)
     out = np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
-    Image.fromarray(out.clip(0, 255).astype(np.uint8), 'RGBA').save(OUT_EXEC_FX, 'WEBP', lossless=True)
-    print(f'exec fx {out.shape[1]}x{out.shape[0]}')
+    if shrink_to: out = shrink_soft(out.astype(float), shrink_to / out.shape[1])
+    Image.fromarray(out.clip(0, 255).astype(np.uint8), 'RGBA').save(out_path, 'WEBP', lossless=True)
+    print(f'{src} {out.shape[1]}x{out.shape[0]}')
+
+
+def build_exec_fx():
+    cut_fx('exec_fx', OUT_EXEC_FX)  # 흑사자 마무리 일격 폭발
+
+
+OUT_SPLIT_FX = 'assets/sprites/fx/berserker_sr1_split.webp'
+
+
+def build_split_fx():
+    cut_fx('split_fx', OUT_SPLIT_FX, 200)  # 흑사자 대지 가르기: 부채꼴을 따라 앞으로 연달아 터지는 붉은 분출
 
 
 OUT_UND = 'assets/sprites/merc/berserker_sr1_undying.webp'   # 히든 불사의 분노 동안: 도끼까지 몸 전체가 검은 실루엣, 눈만 붉게
@@ -318,7 +330,6 @@ OUT_RAGE = 'assets/sprites/merc/berserker_sr1_rage.webp'       # 광폭화: 평�
 OUT_RAGE_UND = 'assets/sprites/merc/berserker_sr1_rage_undying.webp'  # 광폭 + 불사: 검은 모습 + 붉은 윤곽
 
 
-# 눈 색이 어두워(붉은 기 약함) 자동으로 못 찾는 칸: 칸 안 눈 자리(x, y). 빈 목록 = 눈이 안 보이는 칸 (엎드림 — 어깨 뿔을 눈으로 잡지 않게)
 EYE_HINT = {  # 칸마다 두 눈 자리 (x, y) — 칸 하나씩 확대해서 찍음. 빈 목록 = 눈이 안 보이는 칸 (엎드림)
     'idle': [(74, 70), (85, 70)], 'walk0': [(76, 70), (87, 70)], 'walk1': [(74, 70), (85, 69)], 'walk2': [(74, 69), (85, 69)],
     'hurt': [(66, 71), (76, 69)], 'down0': [(85, 72), (97, 73)], 'down1': [], 'down2': [],
@@ -477,3 +488,4 @@ if __name__ == '__main__':
     build_ucast_fx()
     build_ufire_fx()
     build_exec_fx()
+    build_split_fx()

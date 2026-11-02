@@ -7754,6 +7754,11 @@
     BERSERKER_SPLIT_FX.onload = () => { BERSERKER_SPLIT_FX.ready = true; };
     BERSERKER_SPLIT_FX.src = 'assets/sprites/fx/berserker_split.webp';
     const BERSERKER_SPLIT_FX_GEO = { ax: 13, ay: 100, mid: -0.082, half: 0.556, R: 194 };
+    // 흑사자 대지 가르기: 부채꼴을 따라 붉은 분출이 앞으로 연달아 터짐 (tools/berserker_sr1_build.py)
+    const BERSERKER_SR_SPLIT_FX = new Image();
+    BERSERKER_SR_SPLIT_FX.onload = () => { BERSERKER_SR_SPLIT_FX.ready = true; };
+    BERSERKER_SR_SPLIT_FX.src = 'assets/sprites/fx/berserker_sr1_split.webp';
+    const BERSERKER_SR_SPLIT_BURSTS = [[0.3, 0], [0.62, 0.12], [0.92, 0.24]]; // [꼭짓점에서 거리(범위 비율), 터지는 때(효과 시간 비율)]
     const BERSERKER_SLAM_FX = new Image();
     BERSERKER_SLAM_FX.onload = () => { BERSERKER_SLAM_FX.ready = true; };
     BERSERKER_SLAM_FX.src = 'assets/sprites/fx/berserker_slam.webp';
@@ -22385,7 +22390,7 @@
         unit.facingAngle = ang;
         if (Math.abs(Math.cos(ang)) > 0.2) unit.facingDir = Math.cos(ang) >= 0 ? 1 : -1;
         const r = A * BERSERKER_SPLIT_CELLS;
-        sim.effects.push({ type: 'berserker_split', x: unit.x, y: unit.y, ang, r, half: BERSERKER_SPLIT_HALF_ANGLE, life: 48, maxLife: 48 }); // 땅이 부채꼴로 갈라짐 (범위·각도 = 판정과 같음)
+        sim.effects.push({ type: 'berserker_split', x: unit.x, y: unit.y, ang, r, half: BERSERKER_SPLIT_HALF_ANGLE, life: 48, maxLife: 48, sr: isSrBerserker(unit) }); // 땅이 부채꼴로 갈라짐 (범위·각도 = 판정과 같음)
         const hit = berserkerSplitHits(unit, enemies, ang);
         hit.forEach(e => {
           berserkerTwinHit(unit, e, unit.atk * BERSERKER_SPLIT_DMG, { kind: 'skill', tag: '🌋', color: '#92400e', reach: r }); // 쌍도끼 두 번 (기절은 첫 타에 한 번)
@@ -25025,6 +25030,23 @@
             ctx.drawImage(BERSERKER_SPLIT_FX, -G.ax, -G.ay);
           }
           ctx.restore();
+          // 흑사자: 갈라진 땅 위로 붉은 분출 3번 (가까운 곳부터). 폭 = 그 거리의 부채꼴 폭, 아래쪽이 땅, 튀어 오르며 커졌다 흐려짐
+          if (ef.sr && BERSERKER_SR_SPLIT_FX.ready) {
+            const img = BERSERKER_SR_SPLIT_FX;
+            const bursts = BERSERKER_SR_SPLIT_BURSTS.map(([f, t0]) => ({ f, t0, x: ef.x + Math.cos(ef.ang) * ef.r * f, y: ef.y + 10 + Math.sin(ef.ang) * ef.r * f }))
+              .sort((a, b) => a.y - b.y);
+            for (const b of bursts) {
+              const q = (progress - b.t0) / (1 - b.t0);
+              if (q < 0) continue;
+              const w = Math.max(ef.r * 0.55, 2 * ef.r * b.f * Math.tan(ef.half) * 1.15) * Math.min(1, 0.45 + q / 0.18 * 0.55);
+              const h = w * img.height / img.width;
+              ctx.save();
+              ctx.globalAlpha = Math.min(1, (1 - q) / 0.4);
+              ctx.imageSmoothingEnabled = true;
+              ctx.drawImage(img, b.x - w / 2, b.y - h * 0.85, w, h);
+              ctx.restore();
+            }
+          }
           if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }
           continue;
         }
