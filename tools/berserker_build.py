@@ -1,10 +1,11 @@
 # 광전사 원형 샘플(흰 배경 도트, 동작마다 한 장) → 캐릭터 시트 assets/sprites/merc/berserker_0.webp
 # 사용: python tools/berserker_build.py [샘플 폴더]  (기본 assets/sprites/fx/samples, 파일 berserker_src1~.png)
 #   1 = 대기 (흰 배경, 왼쪽 위 한글 라벨 "대기"), 5 = 피격 (라벨 "피격"), 6 = 쓰러짐 (누운 자세),
-#   9 = 걷기 네 칸 (한 장에 나란히), 11 = 기본 공격 들어 올리기 (두 도끼를 머리 위로), 21 = 마무리 일격 세 칸 (점프 · 점프 · 찍기, 점프 칸 아래 회색 그림자), 22 = 찍을 때 폭발 (흰 배경, 분홍 빛무리), 23 = 대지 가르기 발동 자세, 24 = 대지 가르기 부채꼴 (흰 배경, 오른쪽 끝에 옆 칸 조각),
+#   9 = 걷기 네 칸 (한 장에 나란히), 11 = 기본 공격 들어 올리기 (두 도끼를 머리 위로), 21 = 마무리 일격 세 칸 (점프 · 점프 · 찍기, 점프 칸 아래 회색 그림자), 22 = 찍을 때 폭발 (흰 배경, 분홍 빛무리), 23 = 대지 가르기 발동 자세, 25 = 불사의 분노 시전 (바둑판 배경, 위에 검은 글자), 26 = 불사의 분노 발동, 27 = 불사의 분노 뒤 불길 (왼쪽 끝에 옆 칸 조각), 24 = 대지 가르기 부채꼴 (흰 배경, 오른쪽 끝에 옆 칸 조각),
 #   20 = 기본 공격 X자 교차 (회색 배경, ✦ 워터마크), 19 = 회색 X자 이펙트 (흰 배경), 12 = 광폭화 세 칸 (불길이 솟음 · 불길 속 포효 · 광폭 대기 — 붉은 얼굴·빛나는 눈, 분홍 아지랑이 배경),
 #   13 = 도끼 투척 세 칸 (위에 한글·영어 제목), 14 = 날아가는 도끼 두 칸 (흰 회오리 바람 포함)
 # 캐릭터 칸 순서: 0 대기 · 1~4 걷기 · 5 피격 · 6 쓰러짐 · 7~8 기본 공격 (들어 올리기 → 내려치기) · 9~10 광폭화 시전 · 11~13 도끼 투척 (뒤로 젖힘 · 던짐 · 팔을 뻗은 마무리)
+#   · 20~21 불사의 분노 시전 · 발동 (샘플 25·26, 뒤에서 타오르는 불길은 berserker_undying.webp — build_undying_fx)
 #   · 19 대지 가르기 발동 (샘플 23, 땅 위 부채꼴은 berserker_split.webp — build_split_fx)
 #   · 16 마무리 일격 찍기 · 17~18 마무리 일격 점프 (샘플 21: 점프 두 칸 → 찍기, 찍을 때 폭발은 berserker_slam.webp — build_slam_fx)
 #   · 14~15 야성의 포효 (광폭화 시전 두 칸에서 불을 지우고, 불빛에 물든 하반신은 대기 자세 하반신 색으로 되돌림 — make_howl)
@@ -22,6 +23,8 @@ from scipy import ndimage as ndi
 
 OUT_CHAR = 'assets/sprites/merc/berserker_0.webp'
 OUT_RAGE = 'assets/sprites/merc/berserker_0_rage.webp'
+OUT_UNDYING = 'assets/sprites/merc/berserker_0_undying.webp'  # 불사의 분노 중 (평소 모습 + 불타는 눈 + 푸른 빛)
+OUT_BOTH = 'assets/sprites/merc/berserker_0_rage_undying.webp'  # 광폭 + 불사 (광폭 모습 + 불타는 눈 + 붉고 푸른 빛)
 TARGET_H = 86  # 대기 자세 머리털 끝~발 → 게임 칸 키
 
 # (시트, 이름[, (x0, x1)]) — 한 장에 여러 칸이면 샘플 x 범위로 자름
@@ -36,26 +39,30 @@ FRAMES = [
 ]
 EXEC_SRC = [(21, 'exec1', (331, 518)), (21, 'jump0', (0, 160)), (21, 'jump1', (160, 331))]  # 마무리 일격: 찍기 (흙먼지는 그림 그대로) · 점프 두 칸
 # 발이 땅에서 떨어진 칸·발 아래로 흙먼지가 깔린 칸: 땅 높이 (샘플 y). 점프 칸은 그림자 가운데 = 땅 → 기준점보다 높이 그려져 떠 보임
-GROUND_Y = {'jump0': 327, 'jump1': 327, 'exec1': 322, 'split': 185}
+GROUND_Y = {'jump0': 327, 'jump1': 327, 'exec1': 322, 'split': 185, 'ucast': 190, 'ufire': 228}
+UND_SRC = [(25, 'ucast'), (26, 'ufire')]  # 불사의 분노: 시전 (보랏빛 불길) · 발동 (붉은 불길·불씨·푸른 테두리)
 SPLIT_SRC = (23, 'split')  # 대지 가르기 발동: 두 도끼로 땅을 내리친 자세 (흙먼지에 발이 가려져서 몸 가운데·흙먼지 높이로 기준점)
 RAGE_IDLE = (12, 'ridle', (332, 470))  # 광폭 대기 (오른쪽 끝 회색 테두리는 뺌). 광폭 시트의 대기 칸이자 붉은 얼굴·눈·털 색의 기준
 HOLE_KEEP = {12: [(80, 100, 80, 90)]}  # 갇힌 흰 덩어리 중 남길 것 (x0, x1, y0, y1): 광폭화 시전 첫 칸의 벌린 입 이빨
 RIM = {}  # 흰색이 섞인 테두리 두께 (기본 2px)
 DROP = {11: [(0, 40, 160, 260)], 12: [(470, 479, 0, 178)], 21: [(0, 20, 235, 295), (40, 135, 312, 340), (205, 300, 312, 340)]}  # 지울 상자 (x0, x1, y0, y1): 들어 올리기 샘플 왼쪽 아래에 옆 칸 도끼가 잘려 들어옴, 광폭화 샘플 오른쪽 끝 회색 테두리, 마무리 일격 샘플 왼쪽 끝 옆 칸 도끼·점프 칸 그림자 둘
 HOLE_SHEETS = (9, 12, 13)  # 몸 안에 갇힌 흰 배경도 지울 샘플 (걷기 셋째 칸·광폭 대기·광폭화 시전 둘째 칸·도끼 투척: 팔·손과 도끼 사이, 내려치기: 머리털·다리와 섬광 사이)
-KEEP_SMALL = {}  # 몸에서 떨어진 조각도 이 크기(px) 넘으면 남김
+KEEP_SMALL = {'ufire': 60, 'ucast': 20}  # 몸에서 떨어진 조각도 이 크기(px) 넘으면 남김: 불사의 분노 불씨·불꽃 끝
 # 얼굴로 가로 기준을 못 잡는 칸: 발 기준점으로 쓸 샘플 x. 쓰러짐 = 머리털 끝~발끝 가운데 (오른쪽 도끼는 뺌),
 # 공격 = 장화 가운데 (내딛으며 몸이 앞으로 쏠려서 얼굴로 맞추면 발이 뒤로 미끄러짐)
 RAGE_SCALE = 1.31  # 광폭화 샘플은 얼굴 키(34 vs 44)·머리털 폭(80 vs 106)이 대기의 0.76배 → 대기 배율의 1.31배 (키로 맞추면 5% 작았음)
 RIDLE_FOOT = 394  # 광폭 대기 장화 가운데 (샘플 x)
-FOOT_X = {'down': 150, 'atk0': 140, 'atk1': 532, 'exec1': 400, 'jump0': 86, 'jump1': 252, 'split': 95,  # 점프 칸은 그림자 가운데
+FOOT_X = {'down': 150, 'atk0': 140, 'atk1': 532, 'exec1': 400, 'jump0': 86, 'jump1': 252, 'split': 95, 'ucast': 96, 'ufire': 117,  # 점프 칸은 그림자 가운데
           'ridle': RIDLE_FOOT, 'throw0': 97, 'throw1': 261, 'throw2': 417}  # 광폭 대기는 얼굴이 붉어서 피부로 얼굴을 못 찾음
 # 키로 못 맞추는 칸: 대기 배율에 곱하는 값 (얼굴·해골 크기를 대기와 같게). 피격·쓰러짐은 대기보다 5% 안팎,
 # 들어 올리기는 1.3배, X자 교차는 4배(해골 114×107 vs 27×28) 크게, 도끼 투척은 0.63배 작게 그려짐, 마무리 일격 점프·찍기는 대기와 같음 (얼굴 키 45~47 vs 44)
 SCALE_FIX = {'hurt': 1 / 1.05, 'down': 1 / 1.05, 'atk0': 1 / 1.3, 'atk1': 1 / 4.0,
              'exec1': 1, 'jump0': 1, 'jump1': 1, 'split': 1 / 1.04,  # 대지 가르기는 얼굴 키 46 vs 44
+             'ucast': 1.06, 'ufire': 1.06,  # 불사의 분노는 해골 26×26 vs 27×28
              'throw0': 1.59, 'throw1': 1.59, 'throw2': 1.59,
              'walk0': 1.1, 'walk1': 1.1, 'walk2': 1.1, 'walk3': 1.1}  # 걷기는 키는 대기와 비슷한데 얼굴이 0.91배로 작게 그려짐 (키로 맞추면 얼굴이 6% 작았음)
+BG_MIN = {25: 140}  # 배경으로 볼 밝기 하한 (기본 214): 불사의 분노 시전 샘플은 바둑판 회색 칸이 149~174
+DARK_TEXT = {25: [(0, 14)]}  # 배경으로 같이 지울 검은 글자 줄 (y0, y1)
 GREY_BG = {20: 101}  # 회색 단색 배경 샘플: 배경 밝기 (오른쪽 아래 ✦ 워터마크는 떨어진 작은 조각이라 저절로 빠짐)
 PINK_SHEETS = (12,)  # 배경에 분홍 아지랑이가 낀 샘플: 밝은 분홍까지 배경으로 보고, 몸에 붙은 분홍 띠도 4겹까지 벗겨 냄
 def _skin(c): return (c[..., 3] > 200) & (c[..., 0] > 120) & (c[..., 0] > c[..., 1] + 20) & (c[..., 1] > c[..., 2]) & (c[..., 0] - c[..., 2] < 130)
@@ -64,7 +71,9 @@ def _skin(c): return (c[..., 3] > 200) & (c[..., 0] > 120) & (c[..., 0] > c[...,
 def load(sheet, folder):
     im = np.array(Image.open(f'{folder}/berserker_src{sheet}.png').convert('RGB')).astype(float)
     # 흰 배경 (조금 회색빛이 도는 흰색까지)
-    white = (im.min(axis=2) > 214) & (im.max(axis=2) - im.min(axis=2) < 20)
+    white = (im.min(axis=2) > BG_MIN.get(sheet, 214)) & (im.max(axis=2) - im.min(axis=2) < 20)
+    for y0, y1 in DARK_TEXT.get(sheet, ()):  # 위쪽에 잘려 들어온 검은 글자
+        white[y0:y1] |= (im[y0:y1].max(axis=2) < 90)
     lab, n = ndi.label(white)
     edge_ids = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
     bg = np.isin(lab, edge_ids[edge_ids > 0])
@@ -224,14 +233,67 @@ def enrage(p, ridle):
     return p.clip(0, 255).astype(np.uint8)
 
 
-def add_aura(cell):
-    # 붉은 기운: 몸 테두리 바깥 2px (1겹 진하게, 2겹 옅게), 몸 뒤에 깔림
+def find_eyes(p, ridle_like=False):
+    # 눈 픽셀 (평소 색 칸): 위쪽 피부 덩어리(얼굴) 상자 안 눈높이의 어두운 픽셀 (enrage와 같은 방법) → (눈, 눈 가운데, 눈 옆 번짐)
+    # ridle_like = 광폭 대기 샘플처럼 이미 빛나는 붉은 눈: 붉은 얼굴 상자 안의 짙은 빨강
+    c = p.astype(int)
+    if ridle_like:
+        rf = _red_face(p) & _band(p, 0.1, 0.55)
+        lab, n = ndi.label(ndi.binary_closing(rf, iterations=2))
+        face = (lab == np.argmax(ndi.sum(rf, lab, range(1, n + 1))) + 1) & rf  # 가장 큰 붉은 덩어리 = 얼굴 (붉게 물든 도끼는 빼고)
+        ys, xs = np.where(face)
+        box = np.zeros(face.shape, bool); box[ys.min():ys.max() + 1, xs.min():xs.max() + 1] = True
+        dark = box & (c[..., 3] > 200) & (c[..., 0] > 140) & (c[..., 1] < 50) & (c[..., 2] < 50)  # 붉은 얼굴(G 90 안팎)보다 짙게 빛나는 빨강
+    else:
+        skin = _skin(c)
+        lab, n = ndi.label(skin & _band(p, 0.12, 0.55))
+        if not n: return None
+        face = lab == np.argmax(ndi.sum(skin, lab, range(1, n + 1))) + 1
+        ys, xs = np.where(face)
+        box = np.zeros_like(skin); box[ys.min():ys.max() + 1, xs.min() - 1:xs.max() + 2] = True
+        face = skin & box
+        ys, xs = np.where(face)
+        y0, y1 = ys.min(), ys.max()
+        fbox = np.zeros_like(face); fbox[y0:y1 + 1, xs.min() - 1:xs.max() + 2] = True
+        eye = np.zeros_like(face)
+        eye[y0 + int((y1 - y0) * 0.2):y0 + int((y1 - y0) * 0.55) + 1, xs.min():xs.max() + 1] = True
+        L = c[..., :3].mean(axis=2)
+        dark = eye & fbox & (L < 75) & (c[..., 3] > 200) & ~_brown(p)
+    lab, n = ndi.label(dark, structure=np.ones((3, 3)))
+    dark &= np.isin(lab, 1 + np.where(ndi.sum(dark, lab, range(1, n + 1)) >= 2)[0])
+    core = dark & ndi.binary_erosion(dark, structure=np.array([[1, 1, 1]]))
+    glow = ndi.binary_dilation(dark, structure=np.array([[1, 1, 1]])) & ~dark & face
+    return dark, core, glow
+
+
+def paint_fire_eyes(p, eyes):
+    # 불사의 분노 눈빛: 붉은 테 + 노란 눈동자 (샘플처럼 주황·노랑으로 타오름), 눈 옆은 주황 번짐
+    if eyes is None: return p
+    dark, core, glow = eyes
+    p = p.astype(float).copy()
+    p[dark, :3] = [235, 70, 20]
+    p[core, :3] = [255, 222, 70]
+    p[glow, :3] = p[glow, :3] * 0.4 + np.array([255, 120, 30]) * 0.6
+    if dark.any() and not core.any():  # 가로로 3px 안 되는 작은 눈: 위쪽 반을 노랗게
+        ys, xs = np.where(dark)
+        up = ys <= np.median(ys)
+        p[ys[up], xs[up], :3] = [255, 222, 70]
+    return p.clip(0, 255).astype(np.uint8)
+
+
+AURA_RAGE = ([200, 20, 20, 170], [220, 40, 30, 80])      # 광폭: 붉은 기운
+AURA_UNDYING = ([40, 170, 255, 190], [110, 210, 255, 90])  # 불사: 푸른 빛
+AURA_BOTH = ([210, 25, 25, 190], [60, 180, 255, 150])     # 광폭 + 불사: 안쪽 붉은 테, 바깥 푸른 테
+
+
+def add_aura(cell, colors=AURA_RAGE):
+    # 몸 테두리 바깥 2px (1겹 진하게, 2겹 옅게), 몸 뒤에 깔림
     op = cell[..., 3] > 0
     r1 = ndi.binary_dilation(op) & ~op
     r2 = ndi.binary_dilation(op, iterations=2) & ~op & ~r1
     out = cell.copy()
-    out[r1] = [200, 20, 20, 170]
-    out[r2] = [220, 40, 30, 80]
+    out[r1] = colors[0]
+    out[r2] = colors[1]
     return out
 
 
@@ -456,14 +518,31 @@ def build_split_fx(folder):
     print(f'split fx {out.shape[1]}x{out.shape[0]} apex=({ax_ - x0},{ay_ - y0}) mid={mid:.3f} half={half:.3f} R={d.max():.0f}')
 
 
+OUT_UND_FX = 'assets/sprites/fx/berserker_undying.webp'
+
+
+def build_undying_fx(folder):
+    # 불사의 분노 동안 시전자 뒤에서 타오르는 불길: 배경(흰색·바둑판)만 지우고 하얀 불 속은 남김, 왼쪽 끝 옆 칸 조각은 지움, 불씨는 남김
+    rgb, a = load(27, folder)
+    a[:, :14] = 0
+    m = a > 0.5
+    lab, n = ndi.label(ndi.binary_dilation(m))
+    sizes = ndi.sum(m, lab, range(1, n + 1))
+    a = np.where(np.isin(lab, 1 + np.where(sizes >= 60)[0]), a, 0)
+    ys, xs = np.where(a > 0)
+    out = np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    Image.fromarray(out.clip(0, 255).astype(np.uint8), 'RGBA').save(OUT_UND_FX, 'WEBP', lossless=True)
+    print(f'undying fx {out.shape[1]}x{out.shape[0]}')
+
+
 def main(folder):
-    cuts = {f[1]: cut(folder, f) for f in FRAMES + [RAGE_IDLE, SPLIT_SRC] + EXEC_SRC}
+    cuts = {f[1]: cut(folder, f) for f in FRAMES + [RAGE_IDLE, SPLIT_SRC] + EXEC_SRC + UND_SRC}
     base = TARGET_H / cuts['idle'][0].shape[0]
     rage_sc = base * RAGE_SCALE  # 광폭화 샘플 세 칸은 같은 크기로 그려져서 함께 맞춤
     foot_off = (cuts['idle'][3] - cuts['idle'][1]) * base  # 대기 자세 발 가운데 - 얼굴 가운데 (줄인 뒤 px)
     pieces = {}
     xfx = load_x_fx(folder)
-    for f in FRAMES + [RAGE_IDLE, SPLIT_SRC] + EXEC_SRC:
+    for f in FRAMES + [RAGE_IDLE, SPLIT_SRC] + EXEC_SRC + UND_SRC:
         rgba, cx, below, _, fx = cuts[f[1]]
         # 대기는 키(머리털 끝~발)로 맞추고, 나머지 칸은 대기 배율에 SCALE_FIX(얼굴 크기를 대기와 같게)를 곱함
         sc = rage_sc if f[0] == 12 else base * SCALE_FIX[f[1]] if f[1] in SCALE_FIX else TARGET_H / rgba.shape[0]
@@ -472,8 +551,14 @@ def main(folder):
     pieces['atk1'] = attach_x(pieces['atk1'], xfx)
     ridle = pieces['ridle'][1]
     normal = [pieces[f[1]] for f in FRAMES]
-    normal += [make_howl(pieces['rage0'], pieces['idle']), make_howl(pieces['rage1'], pieces['idle']), pieces['exec1'], pieces['jump0'], pieces['jump1'], pieces['split']]
-    rage = [pieces['ridle'] if n == 'idle' else (n, enrage(p, ridle), c, d) for n, p, c, d in normal]  # 시전 두 칸도 (광폭 상태가 걸린 뒤에 나옴)
+    normal += [make_howl(pieces['rage0'], pieces['idle']), make_howl(pieces['rage1'], pieces['idle']), pieces['exec1'], pieces['jump0'], pieces['jump1'], pieces['split'],
+               pieces['ucast'], pieces['ufire']]
+    own = ('ucast', 'ufire')  # 불사의 분노 시전·발동 칸은 불길·눈빛이 그림에 있어서 네 시트 모두 그대로
+    rage = [pieces['ridle'] if n == 'idle' else (n, p if n in own else enrage(p, ridle), c, d) for n, p, c, d in normal]  # 광폭화 시전 두 칸도 (광폭 상태가 걸린 뒤에 나옴)
+    # 불사의 분노 중: 평소 모습 + 불타는 눈 / 광폭과 겹치면 광폭 모습 + 불타는 눈 (눈 자리는 평소 칸에서 찾음, 광폭 대기는 붉게 빛나는 눈)
+    eyes = {n: (None if n in own else find_eyes(p)) for n, p, c, d in normal}
+    und = [(n, paint_fire_eyes(p, eyes[n]), c, d) for n, p, c, d in normal]
+    both_ = [(n, p if n in own else paint_fire_eyes(p, find_eyes(p, True) if n == 'ridle' else eyes[n]), c, d) for n, p, c, d in rage]
     both = normal + rage
     L = max(int(np.ceil(c)) for _, _, c, _ in both) + 4  # 붉은 기운 2px 자리까지
     R = max(int(np.ceil(p.shape[1] - c)) for _, p, c, _ in both) + 4
@@ -481,10 +566,12 @@ def main(folder):
     H = max(p.shape[0] - d for _, p, _, d in both) + B + 5
     cellW = L + R
     Image.fromarray(place(normal, L, B, H, cellW), 'RGBA').save(OUT_CHAR, 'WEBP', lossless=True)
-    rs = place(rage, L, B, H, cellW)
-    for i, (n, *_ ) in enumerate(rage):
-        if not n.startswith('rage'): rs[:, i * cellW:(i + 1) * cellW] = add_aura(rs[:, i * cellW:(i + 1) * cellW])
-    Image.fromarray(rs, 'RGBA').save(OUT_RAGE, 'WEBP', lossless=True)
+    for lst, out, aura in ((rage, OUT_RAGE, AURA_RAGE), (und, OUT_UNDYING, AURA_UNDYING), (both_, OUT_BOTH, AURA_BOTH)):
+        rs = place(lst, L, B, H, cellW)
+        for i, (n, *_) in enumerate(lst):
+            if not n.startswith('rage') and n not in own:  # 불길이 있는 칸(광폭화·불사의 분노 시전)은 테두리 빛 없이
+                rs[:, i * cellW:(i + 1) * cellW] = add_aura(rs[:, i * cellW:(i + 1) * cellW], aura)
+        Image.fromarray(rs, 'RGBA').save(out, 'WEBP', lossless=True)
     idle = normal[0][1]
     hx = np.where(idle[:int(idle.shape[0] * 0.3), :, 3].any(axis=0))[0]
     print(f'char cellW={cellW} cellH={H} anchorX={L} anchorY={H - 2 - B} count={len(normal)} topH={idle.shape[0]} portraitCX={L - int(round(normal[0][2])) + int(hx.mean())}')
@@ -495,3 +582,4 @@ if __name__ == '__main__':
     build_axe_fx(sys.argv[1] if len(sys.argv) > 1 else 'assets/sprites/fx/samples')
     build_slam_fx(sys.argv[1] if len(sys.argv) > 1 else 'assets/sprites/fx/samples')
     build_split_fx(sys.argv[1] if len(sys.argv) > 1 else 'assets/sprites/fx/samples')
+    build_undying_fx(sys.argv[1] if len(sys.argv) > 1 else 'assets/sprites/fx/samples')
