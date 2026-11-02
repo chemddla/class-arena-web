@@ -583,6 +583,7 @@ def main(folder):
         cx = fx * sc if fx is not None else cx * sc + foot_off
         pieces[f[1]] = (f[1], shrink(rgba, sc), cx, int(round(below * sc)))
     atk1_eyes = find_eyes(pieces['atk1'][1])  # X자를 붙이면 그림이 위로 커져서 얼굴 높이 범위가 어긋남 → 붙이기 전에 찾음
+    atk1_body = pieces['atk1']  # 광폭 모습(붉은 얼굴·눈)도 X자를 붙이기 전 몸 그림에 입힘
     pieces['atk1'] = attach_x(pieces['atk1'], xfx)
     atk1_eyes = shift_eyes(atk1_eyes, ATTACH_OFF['atk1'])
     ridle = pieces['ridle'][1]
@@ -590,7 +591,9 @@ def main(folder):
     normal += [make_howl(pieces['rage0'], pieces['idle']), make_howl(pieces['rage1'], pieces['idle']), pieces['exec1'], pieces['jump0'], pieces['jump1'], pieces['split'],
                pieces['ucast'], pieces['ufire']]
     own = ('ucast', 'ufire')  # 불사의 분노 시전·발동 칸은 불길·눈빛이 그림에 있어서 네 시트 모두 그대로
-    rage = [pieces['ridle'] if n == 'idle' else (n, p if n in own else enrage(p, ridle), c, d) for n, p, c, d in normal]  # 광폭화 시전 두 칸도 (광폭 상태가 걸린 뒤에 나옴)
+    rage = [pieces['ridle'] if n == 'idle' else (n, p if n in own else enrage(p, ridle), c, d) for n, p, c, d in normal]
+    n_, p_, c_, d_ = atk1_body
+    rage[[n for n, *_ in normal].index('atk1')] = attach_x((n_, enrage(p_, ridle), c_, d_), xfx)  # 광폭화 시전 두 칸도 (광폭 상태가 걸린 뒤에 나옴)
     # 불사의 분노 중: 평소 모습 + 불타는 눈 / 광폭과 겹치면 광폭 모습 + 불타는 눈 (눈 자리는 평소 칸에서 찾음, 광폭 대기는 붉게 빛나는 눈)
     eyes = {n: (None if n in own else (atk1_eyes if n == 'atk1' else find_eyes(p))) for n, p, c, d in normal}
     und = [(n, paint_fire_eyes(p, eyes[n]), c, d) for n, p, c, d in normal]
