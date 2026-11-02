@@ -45,19 +45,23 @@ SPLIT_SRC = (23, 'split')  # 대지 가르기 발동: 두 도끼로 땅을 내�
 RAGE_IDLE = (12, 'ridle', (332, 470))  # 광폭 대기 (오른쪽 끝 회색 테두리는 뺌). 광폭 시트의 대기 칸이자 붉은 얼굴·눈·털 색의 기준
 HOLE_KEEP = {12: [(80, 100, 80, 90)]}  # 갇힌 흰 덩어리 중 남길 것 (x0, x1, y0, y1): 광폭화 시전 첫 칸의 벌린 입 이빨
 RIM = {}  # 흰색이 섞인 테두리 두께 (기본 2px)
-DROP = {11: [(0, 40, 160, 260)], 12: [(470, 479, 0, 178)], 21: [(0, 20, 235, 295), (40, 135, 312, 340), (205, 300, 312, 340)]}  # 지울 상자 (x0, x1, y0, y1): 들어 올리기 샘플 왼쪽 아래에 옆 칸 도끼가 잘려 들어옴, 광폭화 샘플 오른쪽 끝 회색 테두리, 마무리 일격 샘플 왼쪽 끝 옆 칸 도끼·점프 칸 그림자 둘
+DROP = {11: [(0, 40, 160, 260)], 12: [(470, 479, 0, 178)], 21: [(0, 20, 235, 295), (40, 135, 312, 340), (205, 300, 312, 340)],
+        26: [(58, 76, 8, 32), (34, 52, 36, 60), (16, 38, 58, 86), (2, 22, 104, 130), (126, 148, 10, 34), (148, 172, 24, 50), (186, 210, 70, 98)]}  # 불사의 분노 발동 둘레 오색 구슬
+DROP_ORB = {26: [(152, 172, 52, 72)]}  # 불길에 붙은 구슬: 상자 안 푸른·주황 구슬 색만 지움 (불길 자홍색은 남김)  # 지울 상자 (x0, x1, y0, y1): 들어 올리기 샘플 왼쪽 아래에 옆 칸 도끼가 잘려 들어옴, 광폭화 샘플 오른쪽 끝 회색 테두리, 마무리 일격 샘플 왼쪽 끝 옆 칸 도끼·점프 칸 그림자 둘
 HOLE_SHEETS = (9, 12, 13)  # 몸 안에 갇힌 흰 배경도 지울 샘플 (걷기 셋째 칸·광폭 대기·광폭화 시전 둘째 칸·도끼 투척: 팔·손과 도끼 사이, 내려치기: 머리털·다리와 섬광 사이)
-KEEP_SMALL = {'ufire': 60, 'ucast': 20}  # 몸에서 떨어진 조각도 이 크기(px) 넘으면 남김: 불사의 분노 불씨·불꽃 끝
+KEEP_SMALL = {}  # 몸에서 떨어진 조각도 이 크기(px) 넘으면 남김 (불사의 분노 둘레 오색 구슬은 떨어진 조각이라 지워짐)
 # 얼굴로 가로 기준을 못 잡는 칸: 발 기준점으로 쓸 샘플 x. 쓰러짐 = 머리털 끝~발끝 가운데 (오른쪽 도끼는 뺌),
 # 공격 = 장화 가운데 (내딛으며 몸이 앞으로 쏠려서 얼굴로 맞추면 발이 뒤로 미끄러짐)
+RAGE_FIX = {'rage1': 1.2}  # 광폭화 샘플 중 포효 칸은 얼굴이 다른 두 칸보다 작게 그려짐 (눈 사이 8.6 vs 10.4)
 RAGE_SCALE = 1.31  # 광폭화 샘플은 얼굴 키(34 vs 44)·머리털 폭(80 vs 106)이 대기의 0.76배 → 대기 배율의 1.31배 (키로 맞추면 5% 작았음)
 RIDLE_FOOT = 394  # 광폭 대기 장화 가운데 (샘플 x)
 FOOT_X = {'down': 150, 'atk0': 140, 'atk1': 532, 'exec1': 400, 'jump0': 86, 'jump1': 252, 'split': 95, 'ucast': 96, 'ufire': 117,  # 점프 칸은 그림자 가운데
           'ridle': RIDLE_FOOT, 'throw0': 97, 'throw1': 261, 'throw2': 417}  # 광폭 대기는 얼굴이 붉어서 피부로 얼굴을 못 찾음
 # 키로 못 맞추는 칸: 대기 배율에 곱하는 값 (얼굴·해골 크기를 대기와 같게). 피격·쓰러짐은 대기보다 5% 안팎,
 # 들어 올리기는 1.3배, X자 교차는 4배(해골 114×107 vs 27×28) 크게, 도끼 투척은 0.63배 작게 그려짐, 마무리 일격 점프·찍기는 대기와 같음 (얼굴 키 45~47 vs 44)
-SCALE_FIX = {'hurt': 1 / 1.05, 'down': 1 / 1.05, 'atk0': 1 / 1.3, 'atk1': 1 / 4.0,
-             'exec1': 1, 'jump0': 1, 'jump1': 1, 'split': 1 / 1.04,  # 대지 가르기는 얼굴 키 46 vs 44
+# 그 뒤 칸마다 눈 사이 거리를 대기(10.4px)와 비교해 다시 맞춤: 들어 올리기 +9%, 찍기·대지 가르기 +16% 커서 줄임
+SCALE_FIX = {'hurt': 1 / 1.05, 'down': 1 / 1.05, 'atk0': 1 / 1.42, 'atk1': 1 / 4.0,
+             'exec1': 1 / 1.16, 'jump0': 1, 'jump1': 1, 'split': 1 / 1.2,  # 대지 가르기는 얼굴 키 46 vs 44
              'ucast': 1.06, 'ufire': 1.06,  # 불사의 분노는 해골 26×26 vs 27×28
              'throw0': 1.59, 'throw1': 1.59, 'throw2': 1.59,
              'walk0': 1.1, 'walk1': 1.1, 'walk2': 1.1, 'walk3': 1.1}  # 걷기는 키는 대기와 비슷한데 얼굴이 0.91배로 작게 그려짐 (키로 맞추면 얼굴이 6% 작았음)
@@ -118,6 +122,10 @@ def cut(folder, f):
     sheet, name = f[:2]
     rgb, a = load(sheet, folder)
     for x0, x1, y0, y1 in DROP.get(sheet, ()): a[y0:y1, x0:x1] = 0
+    for x0, x1, y0, y1 in DROP_ORB.get(sheet, ()):
+        b = rgb[y0:y1, x0:x1]
+        orb = (b[..., 2] > b[..., 0]) | ((b[..., 0] > 200) & (b[..., 1] > 120))
+        a[y0:y1, x0:x1][orb] = 0
     ox = 0
     if len(f) > 2:
         ox = f[2][0]; rgb, a = rgb[:, f[2][0]:f[2][1]], a[:, f[2][0]:f[2][1]]
@@ -368,6 +376,7 @@ def load_x_fx(folder):
     return np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
 
 
+X_DROP = 8  # X자를 아래로 내리는 px
 X_SHIFT = 20  # 크기를 정한 뒤 X자를 앞(오른쪽)으로 더 옮기는 px (몸을 덜 가리고 앞으로 뻗게)
 X_REACH_SPR = (78 - 16) * 81 / 54  # 광전사 사거리 78(월드 px) − 적 몸 반지름 16 → 시트 px (게임에서 standH 81을 54px로 그림)
 
@@ -399,7 +408,7 @@ def attach_x(piece, xfx):
     k = (cx + X_REACH_SPR - lx) / (xs.max() - xs[tl])
     f = shrink(xfx, k)
     fx = int(round(lx - xs[tl] * k)) + X_SHIFT
-    fy = int(round(ly - ys[tl] * k))
+    fy = int(round(ly - ys[tl] * k)) + X_DROP
     x0, y0 = min(0, fx), min(0, fy)
     x1, y1 = max(w, fx + f.shape[1]), max(h, fy + f.shape[0])
     out = np.zeros((y1 - y0, x1 - x0, 4), np.uint8)
@@ -529,10 +538,16 @@ def build_undying_fx(folder):
     # 불사의 분노 동안 시전자 뒤에서 타오르는 불길: 배경(흰색·바둑판)만 지우고 하얀 불 속은 남김, 왼쪽 끝 옆 칸 조각은 지움, 불씨는 남김
     rgb, a = load(27, folder)
     a[:, :14] = 0
+    # 불길 가장자리에 붙은 오색 구슬: 상자 안 주황·푸른 구슬 색 (+둘레 1px)만 지움 (불길 자홍색은 남김)
+    for x0, x1, y0, y1 in ((52, 70, 10, 31), (126, 140, 12, 34), (147, 165, 28, 47), (29, 45, 36, 60), (148, 164, 54, 72), (14, 30, 68, 87), (184, 202, 82, 111)):
+        b = rgb[y0:y1, x0:x1]
+        orb = ((b[..., 0] > 190) & (b[..., 1] > 90) & (b[..., 2] < 150)) | ((b[..., 2] > 170) & (b[..., 0] < 190) & (b[..., 1] > 120))
+        a[y0:y1, x0:x1][ndi.binary_dilation(orb)] = 0
+    a[60:90, 14:30] = 0  # 왼쪽 가장자리 옅은 구슬 고리 (불길 밖)
     m = a > 0.5
     lab, n = ndi.label(ndi.binary_dilation(m))
     sizes = ndi.sum(m, lab, range(1, n + 1))
-    a = np.where(np.isin(lab, 1 + np.where(sizes >= 60)[0]), a, 0)
+    a = np.where(lab == np.argmax(sizes) + 1, a, 0)  # 불길만 (둘레에 떠 있는 오색 구슬은 지움)
     ys, xs = np.where(a > 0)
     out = np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
     Image.fromarray(out.clip(0, 255).astype(np.uint8), 'RGBA').save(OUT_UND_FX, 'WEBP', lossless=True)
@@ -549,7 +564,7 @@ def main(folder):
     for f in FRAMES + [RAGE_IDLE, SPLIT_SRC] + EXEC_SRC + UND_SRC:
         rgba, cx, below, _, fx = cuts[f[1]]
         # 대기는 키(머리털 끝~발)로 맞추고, 나머지 칸은 대기 배율에 SCALE_FIX(얼굴 크기를 대기와 같게)를 곱함
-        sc = rage_sc if f[0] == 12 else base * SCALE_FIX[f[1]] if f[1] in SCALE_FIX else TARGET_H / rgba.shape[0]
+        sc = rage_sc * RAGE_FIX.get(f[1], 1) if f[0] == 12 else base * SCALE_FIX[f[1]] if f[1] in SCALE_FIX else TARGET_H / rgba.shape[0]
         cx = fx * sc if fx is not None else cx * sc + foot_off
         pieces[f[1]] = (f[1], shrink(rgba, sc), cx, int(round(below * sc)))
     pieces['atk1'] = attach_x(pieces['atk1'], xfx)

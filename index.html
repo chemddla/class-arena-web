@@ -4084,7 +4084,7 @@
         axe_throw: {
           id: 'axe_throw', name: '도끼 투척', icon: '🪓', ccTag: '🐌슬로우',
           manaCost: 18, cooldownTicks: 420, cooldownSec: 7.0, castSec: 0,
-          desc: '겨눈 방향으로 도끼를 던집니다. 도끼는 4칸까지 날아가 처음 맞은 적에게 150% 피해를 입히고 2초간 [슬로우]를 겁니다.'
+          desc: '겨눈 방향으로 도끼를 던집니다. 도끼는 4칸까지 날아가 처음 맞은 적에게 150% 피해를 입히고 2초간 [슬로우]를 겁니다. 도끼는 2개까지 충전되고, 7초마다 하나씩 다시 차요.'
         },
         execute: {
           id: 'execute', name: '마무리 일격', icon: '💥', ccTag: '💥마무리',
@@ -15208,7 +15208,7 @@
         const cd = u.skillCooldowns?.[key] || 0;
         const noMana = u.mana < (sk.manaCost || 0);
         const status = cd > 0 ? `⏳${(cd / 60).toFixed(1)}s` : (noMana ? '💧' : '✅');
-        return `<span class="px-2 py-1 rounded-lg ${cd > 0 || noMana ? 'bg-slate-800 text-slate-400' : 'bg-indigo-600 text-white'} font-extrabold">${i + 1} ${sk.icon}${sk.name} ${status}</span>`;
+        return `<span class="px-2 py-1 rounded-lg ${cd > 0 || noMana ? 'bg-slate-800 text-slate-400' : 'bg-indigo-600 text-white'} font-extrabold">${i + 1} ${sk.icon}${sk.name}${skillChargeTag(u, key)} ${status}</span>`;
       }).join('');
       const dashTxt = u.dashCooldown > 0 ? `⏳${(u.dashCooldown / 60).toFixed(1)}s` : '✅';
       hud.innerHTML = `
@@ -15398,7 +15398,7 @@
           : u.mana < (sk.manaCost || 0) ? 'mana' : 'ready';
         // 잠긴 칸은 어떤 스킬인지 보여 주지 않음
         if (state === 'locked') return slot(String(i + 1), '❔', '???', 0, 0, state);
-        return slot(String(i + 1), sk.icon, sk.name, cd, sk.cooldownTicks || 360, state);
+        return slot(String(i + 1), sk.icon, sk.name + skillChargeTag(u, key), cd, key === 'axe_throw' && u.job === 'berserker' && (u.axeCharges ?? 2) > 0 ? BERSERKER_AXE_CHARGE_GAP : (sk.cooldownTicks || 360), state);
       }).join('');
       const dashMax = u.maxDashCooldown || DASH_CONFIG.cooldownTicks;
       // 장비 스킬(Q): 발동형 장비를 끼웠을 때만. 효과가 이어지는 동안(헤이스트·광폭화)은 남은 시간도 표시
@@ -15920,7 +15920,7 @@
         const sk = jobSkills[key];
         const open = sk && (u.unlockedSkills || []).includes(key);
         const cd = open ? (u.skillCooldowns?.[key] || 0) : 0;
-        btn.textContent = open ? (cd > 0 ? `${Math.ceil(cd / 60)}` : sk.icon) : '🔒';
+        btn.textContent = open ? (cd > 0 ? `${Math.ceil(cd / 60)}` : sk.icon + skillChargeTag(u, key).trim()) : '🔒';
         btn.style.opacity = open && cd <= 0 && u.mana >= (sk.manaCost || 0) ? '1' : '0.45';
         btn.title = open ? sk.name : '아직 잠긴 스킬';
       }
@@ -17526,6 +17526,7 @@
       unit.lastSkillTick = sim.tickCount;
       if (!unit.skillCooldowns) unit.skillCooldowns = {};
       unit.skillCooldowns[sk] = skObj.cooldownTicks || 360;
+      if (sk === 'axe_throw' && unit.job === 'berserker') berserkerUseAxeCharge(unit, skObj); // 도끼 투척은 2개 충전식
       unit.castLock = 32;
 
       unit.skillAnim = 72;
@@ -17964,6 +17965,7 @@
             if (u.skillCooldowns[k] > 0) u.skillCooldowns[k]--;
           });
         }
+        if (u.job === 'berserker') berserkerAxeRecharge(u);
         u.isMoving = false;
 
         const st = u.statuses;
@@ -18751,7 +18753,7 @@
       unit.casting = { key, left: total, total, icon: sk.icon, aimX: aim?.x ?? null, aimY: aim?.y ?? null, aimTarget: aim?.target || null };
       if (key === 'last_shot') hiddenLastShotLock(unit);
       unit.isMoving = false;
-      if (unit.job !== 'frost' && unit.job !== 'curse' && key !== 'musou' && key !== 'last_shot' && !(key === 'element_fusion' && MAGE_FUSION_FX.circle.ready) && !(key === 'ruin_rite' && CURSE_RUIN_FX.cast.ready)) sim.effects.push({ type: 'cast_circle', x: unit.x, y: unit.y, color: '#9333ea', life: Math.min(60, total), maxLife: Math.min(60, total) });
+      if (unit.job !== 'frost' && unit.job !== 'curse' && unit.job !== 'berserker' && key !== 'musou' && key !== 'last_shot' && !(key === 'element_fusion' && MAGE_FUSION_FX.circle.ready) && !(key === 'ruin_rite' && CURSE_RUIN_FX.cast.ready)) sim.effects.push({ type: 'cast_circle', x: unit.x, y: unit.y, color: '#9333ea', life: Math.min(60, total), maxLife: Math.min(60, total) });
     }
 
     function isCastingHiddenSkill(unit) {
@@ -21707,12 +21709,14 @@
     const BERSERKER_RAGE_TICKS = 480;        //   광폭 8초
     const BERSERKER_NO_ATTACK_TAIL = ['rage', 'axe_throw', 'blood_howl', 'undying_rage', 'execute', 'ground_split']; // 스킬 동작 뒤에 기본 공격(X자 교차) 자세를 붙이지 않는 스킬 — 광전사 스킬은 모두 자기 동작이 있음
     const BERSERKER_TWIN_GAP = 8;            // 쌍도끼 두 번째 타: 첫 타 8틱 뒤
-    const BERSERKER_AXE_RELEASE = 10;        // 도끼 투척: 던짐 자세(5틱 × 2칸) 뒤에 도끼가 손을 떠남
+    const BERSERKER_AXE_RELEASE = 10;
+    const BERSERKER_AXE_CHARGES = 2;         // 도끼 투척: 2개 충전
+    const BERSERKER_AXE_CHARGE_GAP = 30;     //   남은 도끼가 있으면 0.5초 뒤 다시 던짐        // 도끼 투척: 던짐 자세(5틱 × 2칸) 뒤에 도끼가 손을 떠남
     const BERSERKER_RAGE_ATK_SPEED = 1.4;    //   공격 속도 +40%
     const BERSERKER_AXE_CELLS = 4;           // 도끼 투척: 4칸
     const BERSERKER_AXE_DMG = 1.5;           //   150%
     const BERSERKER_AXE_SLOW_TICKS = 120;    //   슬로우 2초
-    const BERSERKER_EXECUTE_REACH = 60;      // 마무리 일격: 기본 사거리 + 60
+    const BERSERKER_EXECUTE_REACH = 60 + GRID_CELL_SIZE * 0.5; // 마무리 일격: 기본 사거리 + 60 + 0.5칸
     const BERSERKER_EXECUTE_DMG = 2.0;       //   200% × (1 + 잃은 체력 비율)
     const BERSERKER_EXECUTE_HEAL = 0.1;      //   쓰러뜨리면 최대 체력 10%
     const BERSERKER_SPLIT_CELLS = 2;         // 대지 가르기: 2칸 부채꼴
@@ -21726,6 +21730,25 @@
     const BERSERKER_UNDYING_HEAL = 0.2;      //   최대 체력 20% 회복
 
     // 불굴의 투지 흡혈: 광전사가 적에게 준 피해의 15% (체력 35% 이하·불사 중이면 2배)
+    // 도끼 투척 충전: 최대 BERSERKER_AXE_CHARGES개. 하나 쓰면 쿨타임(7초)마다 하나씩 다시 참
+    //   남은 도끼가 있으면 BERSERKER_AXE_CHARGE_GAP틱 뒤 바로 또 던질 수 있고, 다 쓰면 다음 도끼가 찰 때까지 쿨타임
+    function berserkerAxeCharges(u) { return u.axeCharges ?? BERSERKER_AXE_CHARGES; }
+    function berserkerUseAxeCharge(u, skObj) {
+      let n = berserkerAxeCharges(u);
+      if (n < 1) n = 1; // 앙코르처럼 쿨타임을 밖에서 없앴을 때는 한 개가 찬 것으로 봄
+      u.axeCharges = n - 1;
+      if (!(u.axeRecharge > 0)) u.axeRecharge = skObj.cooldownTicks || 420;
+      u.skillCooldowns.axe_throw = u.axeCharges > 0 ? BERSERKER_AXE_CHARGE_GAP : u.axeRecharge;
+    }
+    function berserkerAxeRecharge(u) {
+      if (berserkerAxeCharges(u) >= BERSERKER_AXE_CHARGES || !(u.axeRecharge > 0)) return;
+      if (--u.axeRecharge > 0) return;
+      u.axeCharges = berserkerAxeCharges(u) + 1;
+      if (u.axeCharges < BERSERKER_AXE_CHARGES) u.axeRecharge = unitSkillBook(u).axe_throw?.cooldownTicks || 420;
+      if (u.skillCooldowns && u.skillCooldowns.axe_throw > BERSERKER_AXE_CHARGE_GAP) u.skillCooldowns.axe_throw = 0;
+    }
+    // 스킬 칸 이름 옆 남은 개수 (충전식 스킬만)
+    function skillChargeTag(u, key) { return key === 'axe_throw' && u.job === 'berserker' ? ` ×${berserkerAxeCharges(u)}` : ''; }
     // 쌍도끼: 광전사의 도끼 타격(기본 공격·마무리 일격·대지 가르기)은 피해를 반씩 나눠 두 번 때림 (합계는 그대로)
     //   첫 타는 바로, 두 번째 타는 BERSERKER_TWIN_GAP틱 뒤 (그때 대상이 살아 있고 사거리 + 여유 안이면)
     //   opt.kind = 'melee'(기본 공격) | 'skill', opt.tag·color = 피해 글자, opt.after = 두 번째 타 뒤 처리 ('execute' = 처치 보상)
@@ -21860,7 +21883,7 @@
       if (sk === 'blood_howl') {
         const r = A * BERSERKER_HOWL_CELLS;
         const hit = enemies.filter(e => Math.hypot(e.x - unit.x, e.y - unit.y) - unitBodyGap(e) - unitBodyGap(unit) <= r);
-        sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r, color: '#7f1d1d', life: 40, maxLife: 40 });
+        sim.effects.push({ type: 'aoe_ring', spr: 'shout', tint: 'blood', x: unit.x, y: unit.y, r, color: '#7f1d1d', life: 40, maxLife: 40 }); // 사자후 충격파 고리를 붉게
         hit.forEach(e => {
           applyDamage(unit, e, unit.atk * BERSERKER_HOWL_DMG, '🐺', '#7f1d1d');
           inflictStatus(unit, e, 'fear', BERSERKER_HOWL_FEAR_TICKS);
@@ -22932,18 +22955,20 @@
       if (aoeSheet && aoeSheet.ready && aoeSheet.anims[key]) {
         // 위에서 내려다본 원 그림이라 바닥 원근에 맞게 세로로 눌러 그림
         const list = aoeSheet.anims[key];
+        // tint 'blood' = 핏빛 사본 (광전사 야성의 포효 = 붉은 사자후 고리)
+        const aoeImg = ef.tint === 'blood' ? (aoeSheet.blood ||= bloodTintCopy(aoeSheet.img)) : aoeSheet.img;
         ctx.save();
         ctx.translate(ef.x, ef.y);
         ctx.scale(1, 0.72);
         if (key === 'poison') {
           // 포이즌 붐: 소용돌이 → 독 구름 → 흩어짐. 구름(가운데 프레임) 폭 = 범위 지름의 약 95%
           const fr = fxFrameAt(list, progress, 0.75);
-          drawFxFrame(ctx, fr, 0, 0, (ef.r * 2 * 0.95) / list[1][2], 0, fadeOut, aoeSheet.img);
+          drawFxFrame(ctx, fr, 0, 0, (ef.r * 2 * 0.95) / list[1][2], 0, fadeOut, aoeImg);
         } else {
           // 사자후·도발: 퍼져 나가는 충격파 고리. 마지막 그림의 바깥 고리 지름 ≈ 실제 범위 지름
           const fr = fxFrameAt(list, progress, 0.6);
           const w = ef.r * 2 * 1.05 * (0.7 + Math.min(1, progress * 1.7) * 0.3);
-          drawFxFrame(ctx, fr, 0, 0, w / list[2][2], 0, fadeOut, aoeSheet.img);
+          drawFxFrame(ctx, fr, 0, 0, w / list[2][2], 0, fadeOut, aoeImg);
         }
         ctx.restore();
         return true;
@@ -23782,12 +23807,12 @@
         ctx.restore();
       };
       if (rareFx) drawRareAura(false);
-      // 광전사 불사의 분노: 불사 동안 몸 뒤에서 불길이 타오름 (몸 키의 1.35배, 발 아래까지, 살짝 일렁임). 시전·발동 칸은 그림에 불길이 있어서 그동안은 안 그림
+      // 광전사 불사의 분노: 불사 동안 몸 뒤에서 불길이 타오름 (몸 키의 1.8배, 발 아래까지, 살짝 일렁임). 시전·발동 칸은 그림에 불길이 있어서 그동안은 안 그림
       if (useSprite && u.alive && u.job === 'berserker' && (u.statuses?.undying || 0) > 0 && BERSERKER_UNDYING_FX.ready
         && !(u.skillAnim > 0 && u.activeSkillType === 'undying_rage')) {
         const bodyH = spriteDrawH(u, sprite) * (sprite.topH || sprite.standH) / sprite.standH;
         const sway = 1 + 0.04 * Math.sin(tick * 0.18);
-        const fh = bodyH * 1.35 * sway, fw = fh * BERSERKER_UNDYING_FX.width / BERSERKER_UNDYING_FX.height;
+        const fh = bodyH * 1.8 * sway, fw = fh * BERSERKER_UNDYING_FX.width / BERSERKER_UNDYING_FX.height;
         ctx.save();
         ctx.globalAlpha *= Math.min(1, (u.statuses.undying || 0) / 30) * 0.92; // 끝날 때 0.5초 동안 사라짐
         ctx.imageSmoothingEnabled = true;
@@ -24966,7 +24991,7 @@
           ctx.rotate((sim.tickCount || 0) * 0.5 * (Math.cos(p.angle || 0) >= 0 ? 1 : -1));
           if (BERSERKER_AXE_FX.ready) {
             ctx.imageSmoothingEnabled = true;
-            ctx.drawImage(BERSERKER_AXE_FX, 0, 0, BERSERKER_AXE_FX_CELL, BERSERKER_AXE_FX_CELL, -19, -19, 38, 38);
+            ctx.drawImage(BERSERKER_AXE_FX, 0, 0, BERSERKER_AXE_FX_CELL, BERSERKER_AXE_FX_CELL, -28, -28, 56, 56); // 지름 56 (회오리 포함)
           } else {
             ctx.fillStyle = '#94a3b8';
             ctx.fillRect(-10, -2, 20, 4);
