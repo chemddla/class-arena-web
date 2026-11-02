@@ -1,6 +1,6 @@
 # 광전사 시크릿 레어(흑사자: 검은 갈기·붉은 눈·검은 판금·쌍도끼) 샘플 → 캐릭터 시트 assets/sprites/merc/berserker_sr1.webp
 # 사용: python tools/berserker_sr1_build.py   (샘플은 assets/sprites/fx/samples/berserker_sr1_*_src.png)
-# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~3 걷기 · 4 피격 · 5~7 쓰러짐 · 8~9 기본 공격 · 10~11 도끼 투척 · 12~13 야성의 포효 · 14~15 광폭화 (시전 붉은 기운 · 발동 불길, 반투명)
+# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~3 걷기 · 4 피격 · 5~7 쓰러짐 · 8~9 기본 공격 · 10~11 도끼 투척 · 12~13 야성의 포효 · 14 찍기 (마무리 일격·대지 가르기) · 15~16 마무리 일격 점프 · 17~18 광폭화 (시전 붉은 기운 · 발동 불길, 반투명)
 # 샘플 정리:
 #   - 흰 배경은 가장자리에서 이어진 흰 픽셀만 지움, 흰 배경과 섞인 2px 테두리는 흰색을 빼서 투명도·본래 색을 되살림 (berserker_build.load와 같음)
 #   - 몸 안에 갇힌 흰 배경(팔과 도끼 자루 사이)도 지움
@@ -19,6 +19,8 @@ OUT = 'assets/sprites/merc/berserker_sr1.webp'
 TARGET_H = 86  # 광전사 0번 대기와 같은 키
 
 THROW1_BODY_H = 172  # 던짐 칸: 갈기 꼭대기~발 (샘플 px)을 190으로 맞추면 머리가 대기보다 작아 보여서 1.1배
+IDLE_SRC_H = 163  # 대기 샘플 갈기~발 키 (샘플 px). 키로 못 재는 칸은 눈 사이 거리를 대기 샘플과 비교해 이것의 몇 배로 그렸는지로 맞춤
+LIFT = {'jump0': 14, 'jump1': 20}  # 땅에서 띄워 그릴 높이 (칸 px) — 점프 샘플엔 그림자가 없어서
 RAGE_BODY_H = 151  # 광폭화 샘플의 사자 몸 키 (기운·불길을 뺀 어두운 몸, 샘플 px)
 ATK0_FIX = 0.8   # 기 모으기 칸은 같은 샘플 안에서도 X자 칸보다 크게 그려짐 (사자가 대기보다 25% 커 보였음)
 ATK_BODY_H = 287  # 공격 샘플의 사자 몸 키 (X자 칸 갈기 꼭대기~발, 샘플 px). 치켜든 도끼·X자 때문에 그림 키로는 못 맞춰서 두 칸 모두 이 값으로
@@ -31,6 +33,8 @@ FRAMES = [
     ('atk', 'atk0', ('h', ATK_BODY_H / ATK0_FIX), (0, 462)), ('atk', 'atk1', ('h', ATK_BODY_H), (472, 1024)),
     ('throw_a', 'throw0', 1, 0), ('throw_b', 'throw1', ('h', THROW1_BODY_H), 0),  # 도끼 투척: 치켜듦 → 던짐 (던진 쪽 왼쪽 도끼는 지움)
     ('howl_a', 'howl0', 1, 0), ('howl_b', 'howl1', 1, 0),  # 야성의 포효: 이를 악묾 → 포효
+    ('slam', 'slam', ('h', IDLE_SRC_H * 1.7), (0, 368)),  # 마무리 일격·대지 가르기 찍기 (불꽃·흙덩이는 그림 그대로)
+    ('jump', 'jump0', ('h', IDLE_SRC_H * 1.1), 0), ('jump', 'jump1', ('h', IDLE_SRC_H * 1.1), 1),  # 마무리 일격 점프 (땅에서 띄움 — LIFT)
     ('rage', 'rage0', ('h', RAGE_BODY_H), (0, 166)), ('rage', 'rage1', ('h', RAGE_BODY_H), (166, 375)),  # 광폭화: 시전(붉은 기운) → 발동(불길)  # 기본 공격: 기 모으기 → X자 베기 (X자 이펙트는 그림 그대로)
 ]
 
@@ -196,12 +200,12 @@ def main():
         pieces.append((name, shrink_soft(rgba, sc) if src in GLOW else shrink(rgba, sc), foot * sc))
     L = max(int(np.ceil(c)) for _, _, c in pieces) + 4
     R = max(int(np.ceil(p.shape[1] - c)) for _, p, c in pieces) + 4
-    H = max(p.shape[0] for _, p, _ in pieces) + 5
+    H = max(p.shape[0] + LIFT.get(n, 0) for n, p, _ in pieces) + 5
     cw = L + R
     sheet = np.zeros((H, cw * len(pieces), 4), np.uint8)
     for i, (name, p, c) in enumerate(pieces):
         x = i * cw + L - int(round(c))
-        y = H - 2 - p.shape[0]
+        y = H - 2 - p.shape[0] - LIFT.get(name, 0)
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
     Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
     print(f'sr1 cellW={cw} cellH={H} anchorX={L} anchorY={H - 2} count={len(pieces)}')
