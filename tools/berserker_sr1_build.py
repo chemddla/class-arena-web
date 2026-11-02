@@ -1,6 +1,6 @@
 # 광전사 시크릿 레어(흑사자: 검은 갈기·붉은 눈·검은 판금·쌍도끼) 샘플 → 캐릭터 시트 assets/sprites/merc/berserker_sr1.webp
 # 사용: python tools/berserker_sr1_build.py   (샘플은 assets/sprites/fx/samples/berserker_sr1_*_src.png)
-# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~3 걷기 · 4 피격 · 5~7 쓰러짐 · 8~9 기본 공격 · 10~11 광폭화 (시전 붉은 기운 · 발동 불길, 반투명)
+# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~3 걷기 · 4 피격 · 5~7 쓰러짐 · 8~9 기본 공격 · 10~11 도끼 투척 · 12~13 광폭화 (시전 붉은 기운 · 발동 불길, 반투명)
 # 샘플 정리:
 #   - 흰 배경은 가장자리에서 이어진 흰 픽셀만 지움, 흰 배경과 섞인 2px 테두리는 흰색을 빼서 투명도·본래 색을 되살림 (berserker_build.load와 같음)
 #   - 몸 안에 갇힌 흰 배경(팔과 도끼 자루 사이)도 지움
@@ -18,6 +18,7 @@ D = 'assets/sprites/fx/samples/berserker_sr1_'
 OUT = 'assets/sprites/merc/berserker_sr1.webp'
 TARGET_H = 86  # 광전사 0번 대기와 같은 키
 
+THROW1_BODY_H = 172  # 던짐 칸: 갈기 꼭대기~발 (샘플 px)을 190으로 맞추면 머리가 대기보다 작아 보여서 1.1배
 RAGE_BODY_H = 151  # 광폭화 샘플의 사자 몸 키 (기운·불길을 뺀 어두운 몸, 샘플 px)
 ATK0_FIX = 0.8   # 기 모으기 칸은 같은 샘플 안에서도 X자 칸보다 크게 그려짐 (사자가 대기보다 25% 커 보였음)
 ATK_BODY_H = 287  # 공격 샘플의 사자 몸 키 (X자 칸 갈기 꼭대기~발, 샘플 px). 치켜든 도끼·X자 때문에 그림 키로는 못 맞춰서 두 칸 모두 이 값으로
@@ -28,12 +29,15 @@ FRAMES = [
     ('hurt', 'hurt', 1, 0),
     ('down', 'down0', 1, 0), ('down', 'down1', 'down0', 1), ('down', 'down2', 'down0', 2),  # 쓰러짐 3칸: 누운 칸은 키로 못 재서 첫 칸(서 있음) 배율을 같이 씀
     ('atk', 'atk0', ('h', ATK_BODY_H / ATK0_FIX), (0, 462)), ('atk', 'atk1', ('h', ATK_BODY_H), (472, 1024)),
+    ('throw_a', 'throw0', 1, 0), ('throw_b', 'throw1', ('h', THROW1_BODY_H), 0),  # 도끼 투척: 치켜듦 → 던짐 (던진 쪽 왼쪽 도끼는 지움)
     ('rage', 'rage0', ('h', RAGE_BODY_H), (0, 166)), ('rage', 'rage1', ('h', RAGE_BODY_H), (166, 375)),  # 광폭화: 시전(붉은 기운) → 발동(불길)  # 기본 공격: 기 모으기 → X자 베기 (X자 이펙트는 그림 그대로)
 ]
 
 
+HAFT_ERASE = {'throw_b': [(50, 82, 98, 142)]}  # 지운 도끼 자루가 몸으로 이어지는 상자
 DROP = {'walk_b': [(0, 18, 140, 200)], 'down': [(0, 723, 147, 155)],
-        'atk': [(460, 472, 0, 454), (120, 330, 425, 454), (655, 870, 424, 454)]}  # 지울 상자 (x0, x1, y0, y1): 걷기 샘플 왼쪽 끝에 잘려 들어온 앞 칸 도끼, 쓰러짐 샘플 아래 어두운 띠 (세 칸을 한 덩어리로 이어 붙였음),
+        'atk': [(460, 472, 0, 454), (120, 330, 425, 454), (655, 870, 424, 454)],
+        'throw_b': [(0, 52, 20, 140)]}  # 던짐 칸 왼쪽 끝 도끼 머리·붉은 기운  # 지울 상자 (x0, x1, y0, y1): 걷기 샘플 왼쪽 끝에 잘려 들어온 앞 칸 도끼, 쓰러짐 샘플 아래 어두운 띠 (세 칸을 한 덩어리로 이어 붙였음),
 #   공격 샘플의 칸 사이 세로선·아래 제목 글씨·맨 아래 띠
 
 
@@ -142,6 +146,16 @@ def load(name, pick=0):
     ids2 = np.arange(1, n2 + 1)
     bg |= np.isin(lab2, ids2[ndi.sum(lt, lab2, ids2) >= 4])
     for x0, x1, y0, y1 in DROP.get(name, ()): bg[y0:y1, x0:x1] = True
+    for x0, x1, y0, y1 in HAFT_ERASE.get(name, ()):
+        # 지운 도끼의 갈색 자루: 상자 안 갈색 픽셀을 지우고, 몸 안쪽에 난 구멍은 가까운 어두운 몸 색으로 메움
+        sub, sb = im[y0:y1, x0:x1], bg[y0:y1, x0:x1]
+        brown = ~sb & (sub[..., 0] > sub[..., 2] + 12) & (sub[..., 0] > 55)
+        keep = ~sb & ~brown
+        fill = ndi.binary_closing(keep, np.ones((5, 5))) & brown
+        dark = keep & (sub.max(axis=2) < 80)
+        _, (iy, ix) = ndi.distance_transform_edt(~dark, return_indices=True)
+        sub[fill] = sub[iy[fill], ix[fill]]
+        sb |= brown & ~fill
     for box in AXE_FIX.get(name, ()):
         im, bg = smooth_blade(im, bg, box)
     rim = ~bg & ndi.binary_dilation(bg, iterations=2)
