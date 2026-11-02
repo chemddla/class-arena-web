@@ -381,6 +381,20 @@ X_SHIFT = 20  # 크기를 정한 뒤 X자를 앞(오른쪽)으로 더 옮기는 
 X_REACH_SPR = (78 - 16) * 81 / 54  # 광전사 사거리 78(월드 px) − 적 몸 반지름 16 → 시트 px (게임에서 standH 81을 54px로 그림)
 
 
+ATTACH_OFF = {}
+
+
+def shift_eyes(eyes, off):
+    # 몸 그림에서 찾은 눈 마스크를 X자를 붙여 커진 그림 좌표로 옮김
+    if eyes is None: return None
+    dy, dx, shape = off
+    out = []
+    for m in eyes:
+        z = np.zeros(shape, bool); z[dy:dy + m.shape[0], dx:dx + m.shape[1]] = m
+        out.append(z)
+    return tuple(out)
+
+
 def attach_x(piece, xfx):
     # X자 이펙트: 몸 위에 크게 그림 (두 도끼로 X자로 그은 자국), 도끼 날은 X자 위에 다시 그림
     name, p, cx, below = piece
@@ -418,6 +432,7 @@ def attach_x(piece, xfx):
     bl = out[-y0:-y0 + h, -x0:-x0 + w]
     bl[:] = np.where((lm | rm)[..., None], p, bl)  # 도끼 날은 X자 끝 위에
     print(f'X자 {k:.3f}배, 도끼 날 ({lx:.0f},{ly:.0f}) · ({rx:.0f},{ry:.0f})')
+    ATTACH_OFF[name] = (-y0, -x0, out.shape[:2])  # 몸 그림이 놓인 자리 (눈 위치를 옮길 때)
     return (name, out, cx - x0, below + max(0, y1 - h))
 
 
@@ -567,7 +582,9 @@ def main(folder):
         sc = rage_sc * RAGE_FIX.get(f[1], 1) if f[0] == 12 else base * SCALE_FIX[f[1]] if f[1] in SCALE_FIX else TARGET_H / rgba.shape[0]
         cx = fx * sc if fx is not None else cx * sc + foot_off
         pieces[f[1]] = (f[1], shrink(rgba, sc), cx, int(round(below * sc)))
+    atk1_eyes = find_eyes(pieces['atk1'][1])  # X자를 붙이면 그림이 위로 커져서 얼굴 높이 범위가 어긋남 → 붙이기 전에 찾음
     pieces['atk1'] = attach_x(pieces['atk1'], xfx)
+    atk1_eyes = shift_eyes(atk1_eyes, ATTACH_OFF['atk1'])
     ridle = pieces['ridle'][1]
     normal = [pieces[f[1]] for f in FRAMES]
     normal += [make_howl(pieces['rage0'], pieces['idle']), make_howl(pieces['rage1'], pieces['idle']), pieces['exec1'], pieces['jump0'], pieces['jump1'], pieces['split'],
@@ -575,7 +592,7 @@ def main(folder):
     own = ('ucast', 'ufire')  # 불사의 분노 시전·발동 칸은 불길·눈빛이 그림에 있어서 네 시트 모두 그대로
     rage = [pieces['ridle'] if n == 'idle' else (n, p if n in own else enrage(p, ridle), c, d) for n, p, c, d in normal]  # 광폭화 시전 두 칸도 (광폭 상태가 걸린 뒤에 나옴)
     # 불사의 분노 중: 평소 모습 + 불타는 눈 / 광폭과 겹치면 광폭 모습 + 불타는 눈 (눈 자리는 평소 칸에서 찾음, 광폭 대기는 붉게 빛나는 눈)
-    eyes = {n: (None if n in own else find_eyes(p)) for n, p, c, d in normal}
+    eyes = {n: (None if n in own else (atk1_eyes if n == 'atk1' else find_eyes(p))) for n, p, c, d in normal}
     und = [(n, paint_fire_eyes(p, eyes[n]), c, d) for n, p, c, d in normal]
     both_ = [(n, p if n in own else paint_fire_eyes(p, find_eyes(p, True) if n == 'ridle' else eyes[n]), c, d) for n, p, c, d in rage]
     both = normal + rage

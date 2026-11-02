@@ -15398,7 +15398,16 @@
           : u.mana < (sk.manaCost || 0) ? 'mana' : 'ready';
         // 잠긴 칸은 어떤 스킬인지 보여 주지 않음
         if (state === 'locked') return slot(String(i + 1), '❔', '???', 0, 0, state);
-        return slot(String(i + 1), sk.icon, sk.name + skillChargeTag(u, key), cd, key === 'axe_throw' && u.job === 'berserker' && (u.axeCharges ?? 2) > 0 ? BERSERKER_AXE_CHARGE_GAP : (sk.cooldownTicks || 360), state);
+        if (key === 'axe_throw' && u.job === 'berserker') {
+          // 도끼 투척 충전: ×1이면 던질 수 있는 채로 다음 도끼가 차는 쿨타임을 막대로 보여 주고, 다 차면 ×2
+          const n = berserkerAxeCharges(u);
+          const refilling = n < BERSERKER_AXE_CHARGES && u.axeRecharge > 0;
+          const total = sk.cooldownTicks || 420;
+          if (n > 0 && refilling && cd <= 0 && state === 'ready')
+            return slot(String(i + 1), sk.icon, `${sk.name} ×${n}`, u.axeRecharge, total, state, `×${n} · ${ticksToRealSec(u.axeRecharge).toFixed(1)}초`);
+          return slot(String(i + 1), sk.icon, `${sk.name} ×${n}`, cd, n > 0 ? BERSERKER_AXE_CHARGE_GAP : total, state, cd <= 0 && state === 'ready' ? `×${n} 준비!` : null);
+        }
+        return slot(String(i + 1), sk.icon, sk.name, cd, sk.cooldownTicks || 360, state);
       }).join('');
       const dashMax = u.maxDashCooldown || DASH_CONFIG.cooldownTicks;
       // 장비 스킬(Q): 발동형 장비를 끼웠을 때만. 효과가 이어지는 동안(헤이스트·광폭화)은 남은 시간도 표시
@@ -20080,6 +20089,7 @@
           }
           if (c.key === 'blizzard') { ctx.restore(); return; } // 블리자드: 오색 구슬 대신 발밑 눈꽃 소환진만 씀 (유닛 그리기)
           if (c.key === 'ruin_rite' && CURSE_RUIN_FX.cast.ready) { ctx.restore(); return; } // 파멸의 의식: 오색 구슬 대신 시전 시트의 불꽃·마법진 (유닛 그리기)
+          if (c.key === 'undying_rage') { ctx.restore(); return; } // 불사의 분노: 오색 구슬 없이 시전 칸의 보랏빛 불길 (유닛 그리기)
           if (c.key === 'encore') { ctx.restore(); return; } // 앙코르: 오색 구슬 없이 시전 칸의 금빛 고리·음표 (시크릿 레어는 발밑 빛기둥, 유닛 그리기)
           const R = 70 + 40 * (1 - p);
           for (let i = 0; i < 7; i++) { // 빨주노초파남보
@@ -21752,7 +21762,7 @@
     function skillChargeTag(u, key, short = false) {
       if (key !== 'axe_throw' || u.job !== 'berserker') return '';
       const n = berserkerAxeCharges(u);
-      const refill = n < BERSERKER_AXE_CHARGES && u.axeRecharge > 0 ? (short ? '⟳' : ` ⟳${Math.ceil(u.axeRecharge / 60)}s`) : '';
+      const refill = n < BERSERKER_AXE_CHARGES && u.axeRecharge > 0 ? (short ? `⟳${Math.ceil(u.axeRecharge / 60)}` : ` ⟳${Math.ceil(u.axeRecharge / 60)}s`) : '';
       return ` ×${n}${refill}`;
     }
     // 쌍도끼: 광전사의 도끼 타격(기본 공격·마무리 일격·대지 가르기)은 피해를 반씩 나눠 두 번 때림 (합계는 그대로)
