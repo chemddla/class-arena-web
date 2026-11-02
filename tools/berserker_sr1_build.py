@@ -314,6 +314,29 @@ def build_exec_fx():
 
 OUT_UND = 'assets/sprites/merc/berserker_sr1_undying.webp'   # 히든 불사의 분노 동안: 도끼까지 몸 전체가 검은 실루엣, 눈만 붉게
 OUT_EYES = 'assets/sprites/merc/berserker_sr1_eyes.webp'     # 같은 칸 배치의 눈빛만 (게임에서 일렁이게 덧그림)
+OUT_RAGE = 'assets/sprites/merc/berserker_sr1_rage.webp'       # 광폭화: 평소 흑사자 + 붉은 윤곽
+OUT_RAGE_UND = 'assets/sprites/merc/berserker_sr1_rage_undying.webp'  # 광폭 + 불사: 검은 모습 + 붉은 윤곽
+
+
+# 눈 색이 어두워(붉은 기 약함) 자동으로 못 찾는 칸: 칸 안 눈 자리(x, y). 빈 목록 = 눈이 안 보이는 칸 (엎드림 — 어깨 뿔을 눈으로 잡지 않게)
+EYE_HINT = {  # 칸마다 두 눈 자리 (x, y) — 칸 하나씩 확대해서 찍음. 빈 목록 = 눈이 안 보이는 칸 (엎드림)
+    'idle': [(74, 70), (85, 70)], 'walk0': [(76, 70), (87, 70)], 'walk1': [(74, 70), (85, 69)], 'walk2': [(74, 69), (85, 69)],
+    'hurt': [(66, 71), (76, 69)], 'down0': [(85, 72), (97, 73)], 'down1': [], 'down2': [],
+    'atk0': [(72, 70), (83, 70)], 'atk1': [(78, 71), (89, 72)], 'throw0': [(82, 69), (94, 69)], 'throw1': [(84, 61), (94, 62)],
+    'howl0': [(78, 71), (90, 71)], 'howl1': [(71, 64), (79, 64)], 'slam': [(67, 75), (78, 76)],
+    'jump0': [(93, 44), (103, 43)], 'jump1': [(102, 44), (112, 46)],
+    'ucast': [(71, 62), (80, 61)], 'ufire': [(79, 68), (88, 69)], 'rage0': [(72, 63), (82, 63)], 'rage1': [(73, 67), (83, 67)]}
+
+
+def hinted_eyes(c, pts):
+    # 눈 자리 바로 옆(1칸 남짓)의 붉은 기 도는 점 + 눈 자리 가운데 2px (눈이 어둡게 그려진 칸도 빛나게)
+    red = (c[..., 3] > 200) & (c[..., 0] > c[..., 1] + 12) & (c[..., 0] - c[..., 1] < 180)
+    yy, xx = np.mgrid[:c.shape[0], :c.shape[1]]
+    eyes = np.zeros(red.shape, bool)
+    for x, y in pts:
+        eyes |= red & ((xx - x) ** 2 + (yy - y) ** 2 <= 2)
+        eyes[y, x:x + 2] = True
+    return eyes
 
 
 def find_sr_eyes(c):
@@ -354,7 +377,7 @@ def build_undying_sheets(sheet, cw, names):
             effect |= np.isin(lab, 1 + np.where(sz >= 120)[0])
         effect |= op & (R > 150) & (G > 70) & (B < 120) & (R > B + 60)
         if name.startswith('rage'): effect |= op & ~(c[..., :3].max(axis=2) < 120)
-        eyes = find_sr_eyes(c)
+        eyes = hinted_eyes(c, EYE_HINT[name])
         body = op & ~effect & ~eyes
         L = c[..., :3].mean(axis=2)
         v = 8 + L * 0.2   # 명암만 아주 어둡게 남김 (0~255 -> 8~59)
@@ -370,6 +393,52 @@ def build_undying_sheets(sheet, cw, names):
             e[..., 3] = (a * 255).astype(np.uint8)
     Image.fromarray(und.clip(0, 255).astype(np.uint8), 'RGBA').save(OUT_UND, 'WEBP', lossless=True)
     Image.fromarray(eyes_sheet, 'RGBA').save(OUT_EYES, 'WEBP', lossless=True)
+    # 광폭화: 몸 둘레 붉은 윤곽 (평소 흑사자 · 불사 검은 모습 각각). 눈빛은 게임에서 눈빛 시트를 덧그림
+    Image.fromarray(red_outline(sheet), 'RGBA').save(OUT_RAGE, 'WEBP', lossless=True)
+    Image.fromarray(red_outline(und.clip(0, 255).astype(np.uint8)), 'RGBA').save(OUT_RAGE_UND, 'WEBP', lossless=True)
+
+
+def red_outline(sheet):
+    # 몸 테두리 바깥 2px (1겹 진하게, 2겹 옅게). 반투명한 기운·가장자리 밑에 깔아서 겹쳐도 몸은 그대로
+    op = sheet[..., 3] > 150
+    r1 = ndi.binary_dilation(op) & ~op
+    r2 = ndi.binary_dilation(op, iterations=2) & ~op & ~r1
+    under = np.zeros(sheet.shape, float)
+    under[r1] = [215, 25, 20, 200]
+    under[r2] = [230, 45, 30, 95]
+    top = sheet.astype(float)
+    ta, ua = top[..., 3:] / 255, under[..., 3:] / 255
+    oa = ta + ua * (1 - ta)
+    rgb = (top[..., :3] * ta + under[..., :3] * ua * (1 - ta)) / np.maximum(oa, 1e-6)
+    return np.concatenate([rgb, oa * 255], axis=2).clip(0, 255).astype(np.uint8)
+
+
+# 대기 칸과 머리 크기를 맞추는 칸별 배율 보정 (머리 대어 보기로 잼)
+SIZE_FIX = {'atk1': 0.9}
+# 밝기는 대기 칸 몸 밝기 분포에 맞춤. 히든스킬(불사의 분노) 칸은 그린 그대로
+KEEP_BRIGHT = {'ucast', 'ufire'}
+
+
+def body_mask(p):
+    c = p[..., :3].astype(int)
+    lum = c[..., 0] * 0.3 + c[..., 1] * 0.59 + c[..., 2] * 0.11
+    # 몸 (무채색 어두운 칸) 만. 붉은 눈·X자·광폭 기운·불똥은 빼고
+    return (p[..., 3] > 0) & (c.max(2) - c.min(2) < 40) & (lum < 130), lum
+
+
+def match_brightness(p, ref):
+    m, lum = body_mask(p)
+    solid = m & (p[..., 3] > 240)
+    qs = np.linspace(0, 100, 51)
+    src = np.percentile(lum[solid], qs)
+    lut = np.interp(lum, src, ref, left=None, right=None)
+    lut = np.where(lum > src[-1], lum - src[-1] + ref[-1], lut)
+    k = np.where(lum > 0.5, lut / np.maximum(lum, 0.5), 1.0)
+    out = p.copy()
+    rgb = p[..., :3].astype(float) * k[..., None]
+    rgb = np.where(lum[..., None] <= 0.5, rgb + lut[..., None], rgb)
+    out[..., :3] = np.where(m[..., None], np.clip(rgb, 0, 255), p[..., :3]).astype(np.uint8)
+    return out
 
 
 def main():
@@ -380,11 +449,15 @@ def main():
         rgba, foot = cuts[name]
         # 샘플마다 그린 크기가 달라 칸마다 키(갈기 꼭대기~발)로 맞춤. k가 칸 이름이면 그 칸 배율을 그대로 (누운 칸)
         sc = scale[k] if isinstance(k, str) else (TARGET_H / k[1] if isinstance(k, tuple) else TARGET_H / rgba.shape[0] * k)
+        sc *= SIZE_FIX.get(name, 1)
         scale[name] = sc
         p = shrink_soft(rgba, sc) if src in GLOW else shrink(rgba, sc)
         if src not in GLOW: p = clean_specks(p)  # X자 칸도 (X자가 붉어져서 흰 점 정리에 안 걸림)
         if name == 'atk1': p = fix_x_rim(p)
         pieces.append((name, p, foot * sc))
+    m, lum = body_mask(pieces[0][1])
+    ref = np.percentile(lum[m & (pieces[0][1][..., 3] > 240)], np.linspace(0, 100, 51))
+    pieces = [(n, p if n in KEEP_BRIGHT or n == 'idle' else match_brightness(p, ref), c) for n, p, c in pieces]
     L = max(int(np.ceil(c)) for _, _, c in pieces) + 4
     R = max(int(np.ceil(p.shape[1] - c)) for _, p, c in pieces) + 4
     H = max(p.shape[0] + LIFT.get(n, 0) for n, p, _ in pieces) + 5
