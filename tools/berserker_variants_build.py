@@ -1,6 +1,7 @@
 # 광전사 외형 0(berserker_0*.webp)에서 색 조합 변형 시트 만들기 (칸 구성·크기 모두 같음)
-# 사용: python tools/berserker_variants_build.py preview   → 후보 미리보기 한 장 (scratch 경로를 인자로)
-#       python tools/berserker_variants_build.py           → assets/sprites/merc/berserker_<번호>[_rage|_undying|_rage_undying].webp
+# 사용: python tools/berserker_variants_build.py           → assets/sprites/merc/berserker_<번호>[_rage|_undying|_rage_undying].webp
+#       python tools/berserker_variants_build.py preview <저장 경로>   → 후보 미리보기 한 장
+#   berserker_build.py로 0번 시트를 다시 만들면 이것도 다시 돌림
 # 규칙: 피부는 그대로. 부위마다 다른 색 — 머리털 · 털가죽(망토·어깨 가죽·장화·도끼 자루) · 문신(얼굴·팔 파란 물감) · 허리천
 #   해골·이빨·도끼 날·검은 윤곽·이펙트(불길·X자·흙먼지)는 그대로
 #   부위별로 원래 명암(밝기·채도의 비율)을 살린 채 색상만 옮기고, 가운데 밝기·채도를 목표값에 맞춤 (음유시인 변형과 같은 방법)
@@ -14,6 +15,7 @@ from frost_variants_build import rgb2hsv, hsv2rgb
 
 SRC = 'assets/sprites/merc/berserker_0.webp'
 COUNT = 22
+HAIR_BAND = 0.31  # 머리털 꼭대기~발 중 위쪽 이만큼이 머리털 (0.35면 어깨 털가죽 끝이 머리색으로 물들었음)
 SKIN_MAX_HUE = 23  # 살 덩어리 평균 색상이 이 도보다 노란 쪽이면 털가죽 조각
 OUTLINE_V = 0.12  # 이보다 어두운 픽셀 = 검은 윤곽 (색을 바꾸지 않음). 0.2로 두면 망토의 어두운 털까지 윤곽으로 남아 얼룩졌음
 # (번호, 이름, 머리털, 털가죽, 문신, 허리천) — (색상 도, 채도, 밝기). None = 그대로
@@ -21,6 +23,8 @@ VARIANTS = [
     (1, '설원 늑대', (35, 0.06, 0.86), (215, 0.07, 0.66), None, None),
     (2, '핏빛 전사', (0, 0.25, 0.16), (355, 0.55, 0.36), None, (0, 0.10, 0.80)),
     (3, '사막 약탈자', (30, 0.35, 0.76), (35, 0.42, 0.62), None, (25, 0.30, 0.70)),
+    (4, '붉은 머리 바이킹', (16, 0.78, 0.52), (28, 0.22, 0.34), None, None),
+    (5, '흑요석', (222, 0.18, 0.15), (220, 0.12, 0.27), None, (215, 0.06, 0.74)),
 ]
 
 
@@ -63,7 +67,7 @@ def part_masks(f):
         sizes = ndi.sum(brown, lab, range(1, n + 1))
         big = [i + 1 for i in range(n) if sizes[i] >= 40]
         if big: htop = min(np.where((lab == i).any(axis=1))[0].min() for i in big)
-    band = np.zeros(a.shape, bool); band[:htop + int((bot - htop) * 0.35)] = True
+    band = np.zeros(a.shape, bool); band[:htop + int((bot - htop) * HAIR_BAND)] = True
     hair = brown & band
     fur = brown & ~band
     # 아주 어두운 갈색: 머리털·털가죽 쪽에 붙은 것만 (얼굴·몸 윤곽은 빼고). 밝은 색으로 바꿀 때 밝기는 그대로 두고 색만 입힘
@@ -136,11 +140,42 @@ def face_mask(cell):
     return ndi.binary_dilation(face) & a
 
 
-def variant_cell(cell, var):
-    f = cell.astype(float).copy()
+def bone_mask(cell):
+    # 해골·뼈 (원본 그대로 둘 곳): 연한 크림색 덩어리 + 그 안의 그늘·눈구멍 + 둘레 1px (그늘이 털로 잡혀 해골이 털 색으로 물들었음)
+    #   허리천은 아래쪽 절반의 큰 덩어리라 따로 칠하고, 해골은 위쪽 절반에서만 찾음
+    f = cell.astype(float)
+    a = f[..., 3] > 0
+    hsv = rgb2hsv(f[..., :3] / 255.)
+    h, s, v = hsv[..., 0] * 360, hsv[..., 1], hsv[..., 2]
+    bone = a & (v > 0.68) & (s < 0.3) & (h >= 20) & (h <= 60)
+    ys = np.where(a.any(axis=1))[0]
+    if not len(ys): return np.zeros(a.shape, bool)
+    bone[ys.min() + int((ys.max() - ys.min()) * 0.6):] = False
+    lab, n = ndi.label(bone)
+    if not n: return bone
+    sz = ndi.sum(bone, lab, range(1, n + 1))
+    bone = np.isin(lab, 1 + np.where(sz >= 12)[0])
+    return ndi.binary_dilation(ndi.binary_fill_holes(ndi.binary_closing(bone, iterations=2))) & a
+
+
+FIRE_FRAMES = (9, 10, 20, 21)  # 광폭화·불사의 분노 시전 칸: 불길(채도 높은 빨강·자홍)은 털로 보지 않음
+
+
+def cell_masks(cell, idx=None):
+    # 부위 나누기는 평소 시트 칸에서 함 (광폭·불사 시트는 같은 자리에 같은 그림이라 이 마스크를 그대로 씀)
+    f = cell.astype(float)
     m = part_masks(f)
-    face = face_mask(cell)
-    for k in m: m[k] = m[k] & ~face  # 얼굴은 원본 그대로 (칸마다 얼굴 일부가 머리털·털 색으로 바뀌었음)
+    keep = face_mask(cell) | bone_mask(cell)
+    if idx in FIRE_FRAMES:
+        hsv = rgb2hsv(f[..., :3] / 255.)
+        keep |= ndi.binary_dilation(hsv[..., 1] > 0.62)
+    for k in m: m[k] = m[k] & ~keep
+    return m
+
+
+def variant_cell(cell, var, masks=None):
+    f = cell.astype(float).copy()
+    m = masks if masks is not None else cell_masks(cell)  # 얼굴은 원본 그대로 (칸마다 얼굴 일부가 머리털·털 색으로 바뀌었음)
     _, _, hair, fur, paint, cloth = var
     for k, t in (('hair', hair), ('fur', fur), ('paint', paint), ('cloth', cloth)):
         recolor(f, m[k], t)
@@ -172,6 +207,25 @@ def preview(out_path):
     canvas.resize((canvas.size[0] * 2, canvas.size[1] * 2), Image.NEAREST).save(out_path)
 
 
+SHEETS = ('', '_rage', '_undying', '_rage_undying')
+
+
+def build():
+    base = np.array(Image.open(SRC).convert('RGBA'))
+    cw = base.shape[1] // COUNT
+    masks = [cell_masks(base[:, i * cw:(i + 1) * cw], i) for i in range(COUNT)]
+    for suffix in SHEETS:
+        src = np.array(Image.open(f'assets/sprites/merc/berserker_0{suffix}.webp').convert('RGBA'))
+        for var in VARIANTS:
+            out = src.copy()
+            for i in range(COUNT):
+                out[:, i * cw:(i + 1) * cw] = variant_cell(src[:, i * cw:(i + 1) * cw], var, masks[i])
+            Image.fromarray(out, 'RGBA').save(f'assets/sprites/merc/berserker_{var[0]}{suffix}.webp', 'WEBP', lossless=True)
+        print('built', suffix or 'normal')
+
+
 if __name__ == '__main__':
+    if len(sys.argv) == 1:
+        build()
     if len(sys.argv) > 1 and sys.argv[1] == 'preview':
         preview(sys.argv[2])
