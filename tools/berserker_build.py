@@ -29,7 +29,7 @@ FRAMES = [
     (9, 'walk0', (0, 186)), (9, 'walk1', (186, 355)), (9, 'walk2', (355, 529)), (9, 'walk3', (529, 705)),
     (5, 'hurt'),
     (6, 'down'),
-    (11, 'atk0'), (20, 'atk1'),  # 기본 공격: 들어 올리기 → 두 도끼를 X자로 교차해 내리긋기 (회색 X자 이펙트는 따로 그려 붙임 — attach_x)
+    (11, 'atk0'), (20, 'atk1'),  # 기본 공격: 들어 올리기 → 두 도끼를 X자로 교차해 내리긋기 (회색 X자 이펙트는 아래 두 끝을 양쪽 도끼 날에 맞춰 붙임 — attach_x)
     (12, 'rage0', (0, 148)), (12, 'rage1', (148, 332)),  # 광폭화 시전: 불길이 솟음 → 불길 속 포효 (불길은 그림 그대로)
     (13, 'throw0', (0, 174)), (13, 'throw1', (174, 355)), (13, 'throw2', (355, 486)),  # 도끼 투척 (던진 도끼는 build_axe_fx 그림으로 따로 날아감)
 ]
@@ -365,32 +365,42 @@ def load_x_fx(folder):
 
 
 def attach_x(piece, xfx):
-    # X자 이펙트를 몸 뒤에 붙임: X자 왼쪽 아래 끝이 앞쪽(오른쪽) 도끼 날 가운데에 오고, 오른쪽 끝이 사거리 끝 적의 앞쪽 몸(발에서 ATTACK_RANGE_SPR)에 닿게 크기를 정함
+    # X자 이펙트: 아래 두 끝이 양쪽 도끼 날(뒤쪽 왼쪽 · 앞쪽 오른쪽)의 바깥쪽 날 끝에 오게 키워서 몸 위에 그림 (두 도끼로 X자로 그은 자국)
+    #   크기 = 두 날 끝 사이 거리 / X자 아래 두 끝 사이 거리, 도끼 날은 X자 끝 위에 다시 그림
     name, p, cx, below = piece
-    h = p.shape[0]
+    h, w = p.shape[:2]
     foot = h - 1 - below
     P = p.astype(int)
     L = P[..., :3].mean(axis=2); sat = P[..., :3].max(axis=2) - P[..., :3].min(axis=2)
     metal = (P[..., 3] > 0) & (sat < 25) & (L > 110)
-    metal[:, :int(cx) + 6] = False; metal[:foot - 40] = False  # 발 기준 오른쪽 아래 = 앞쪽 도끼 날
-    lab, n = ndi.label(metal, structure=np.ones((3, 3)))
-    blade = lab == np.argmax(ndi.sum(metal, lab, range(1, n + 1))) + 1
-    by, bx = (v.mean() for v in np.where(blade))
+    metal[:foot - 40] = False  # 발 높이 근처 = 도끼 날
+
+    def blade(side):
+        m = metal.copy()
+        if side < 0: m[:, int(cx) - 6:] = False
+        else: m[:, :int(cx) + 6] = False
+        lab, n = ndi.label(m, structure=np.ones((3, 3)))
+        b = lab == np.argmax(ndi.sum(m, lab, range(1, n + 1))) + 1
+        ys, xs = np.where(b)
+        return (xs.min() if side < 0 else xs.max()), ys.mean(), ndi.binary_dilation(b, iterations=2) & (P[..., 3] > 0)  # 바깥쪽 날 끝
+    lx, ly, lm = blade(-1)
+    rx, ry, rm = blade(1)
     xa = xfx[..., 3] > 0
     ys, xs = np.where(xa)
-    t = np.argmax(ys - xs)  # X자 왼쪽 아래 끝
-    tx, ty = xs[t], ys[t]
-    k = (cx + ATTACK_RANGE_SPR - bx) / (xs.max() - tx)
+    tl, tr = np.argmax(ys - xs), np.argmax(ys + xs)  # X자 왼쪽 아래 끝 · 오른쪽 아래 끝
+    k = (rx - lx) / (xs[tr] - xs[tl])
     f = shrink(xfx, k)
-    fx, fy = int(round(bx - tx * k)), int(round(by - ty * k))
-    w = p.shape[1]
+    fx = int(round(lx - xs[tl] * k))
+    fy = int(round((ly + ry) / 2 - (ys[tl] + ys[tr]) / 2 * k))
     x0, y0 = min(0, fx), min(0, fy)
     x1, y1 = max(w, fx + f.shape[1]), max(h, fy + f.shape[0])
     out = np.zeros((y1 - y0, x1 - x0, 4), np.uint8)
-    out[fy - y0:fy - y0 + f.shape[0], fx - x0:fx - x0 + f.shape[1]] = f
-    reg = out[-y0:-y0 + h, -x0:-x0 + w]
-    reg[:] = np.where((p[..., 3] > 0)[..., None], p, reg)  # 몸이 X자 위 (도끼 날이 X자 끝 위에 보이게)
-    print(f'X자 {k:.3f}배, 도끼 날 ({bx:.0f}, {by:.0f})')
+    out[-y0:-y0 + h, -x0:-x0 + w] = p
+    reg = out[fy - y0:fy - y0 + f.shape[0], fx - x0:fx - x0 + f.shape[1]]
+    reg[:] = np.where((f[..., 3] > 0)[..., None], f, reg)  # X자를 몸 위에
+    bl = out[-y0:-y0 + h, -x0:-x0 + w]
+    bl[:] = np.where((lm | rm)[..., None], p, bl)  # 도끼 날은 X자 끝 위에
+    print(f'X자 {k:.3f}배, 도끼 날 ({lx:.0f},{ly:.0f}) · ({rx:.0f},{ry:.0f})')
     return (name, out, cx - x0, below + max(0, y1 - h))
 
 
