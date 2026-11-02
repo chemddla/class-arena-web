@@ -220,6 +220,25 @@ def build_ucast_fx():
     print(f'ucast fx {out.shape[1]}x{out.shape[0]}')
 
 
+OUT_UFIRE_FX = 'assets/sprites/fx/berserker_sr1_ufire.webp'
+UFIRE_FOOT = (85, 100)   # 발동 이펙트 샘플에서 사자 발(핏빛 웅덩이 가운데) 자리
+UFIRE_BODY_H = 95        # 갈기 꼭대기~발 키 (샘플 px) — 게임에서 이 키를 캐릭터 키에 맞춤
+
+
+def build_ufire_fx():
+    # 히든 불사의 분노 발동: 붉은 사자 실루엣 + 핏빛 웅덩이. 흰 배경에 섞인 만큼 투명, 흰색을 빼서 본래 색으로
+    im = np.array(Image.open(f'{D}ufire_fx_src.png').convert('RGB')).astype(float)
+    a = np.clip((255 - im[..., 1:].min(axis=2)) / 225, 0, 1)
+    a = np.where(a < 0.05, 0, a)
+    al = np.maximum(a, 1e-3)[..., None]
+    rgb = ((im - 255 * (1 - al)) / al).clip(0, 255)
+    ys, xs = np.where(a > 0)
+    y0, x0 = ys.min(), xs.min()
+    out = np.dstack([rgb, a * 255])[y0:ys.max() + 1, x0:xs.max() + 1]
+    Image.fromarray(out.clip(0, 255).astype(np.uint8), 'RGBA').save(OUT_UFIRE_FX, 'WEBP', lossless=True)
+    print(f'ufire fx {out.shape[1]}x{out.shape[0]} foot=({UFIRE_FOOT[0] - x0},{UFIRE_FOOT[1] - y0}) bodyH={UFIRE_BODY_H}')
+
+
 def main():
     cuts = {f[1]: load(f[0], f[3]) for f in FRAMES}
     pieces = []
@@ -248,3 +267,4 @@ def main():
 if __name__ == '__main__':
     main()
     build_ucast_fx()
+    build_ufire_fx()

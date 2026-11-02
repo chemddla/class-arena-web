@@ -7713,6 +7713,17 @@
     // 광전사 마무리 일격: 찍을 때 대상 자리에 크게 터지는 폭발 (불길·흙덩이·분홍 빛무리, tools/berserker_build.py)
     // 광전사 대지 가르기: 땅 위에 갈라지며 퍼지는 부채꼴 (꼭짓점이 왼쪽 · 가운데 방향 MID · 반각 HALF · 꼭짓점에서 끝까지 R, 그림 px)
     // 광전사 불사의 분노: 불사가 이어지는 동안 시전자 뒤에서 타오르는 보랏빛·붉은 불길 (불씨 포함)
+    // 광전사 시크릿 레어(흑사자) 히든 불사의 분노: 시전 막대 동안 몸 뒤 붉은 반구 · 발동 때 거대하고 희미한 붉은 실루엣이 줄어들며 몸에 겹쳐 선명해짐
+    //   (tools/berserker_sr1_build.py — 실루엣 그림의 발 자리 FOOT, 갈기~발 키 BODY_H, 그림 px)
+    const BERSERKER_SR_UCAST_FX = new Image();
+    BERSERKER_SR_UCAST_FX.onload = () => { BERSERKER_SR_UCAST_FX.ready = true; };
+    BERSERKER_SR_UCAST_FX.src = 'assets/sprites/fx/berserker_sr1_ucast.webp';
+    const BERSERKER_SR_UFIRE_FX = new Image();
+    BERSERKER_SR_UFIRE_FX.onload = () => { BERSERKER_SR_UFIRE_FX.ready = true; };
+    BERSERKER_SR_UFIRE_FX.src = 'assets/sprites/fx/berserker_sr1_ufire.webp';
+    const BERSERKER_SR_UFIRE_GEO = { footX: 76, footY: 95, bodyH: 95 };
+    const BERSERKER_SR_UFIRE_TICKS = 60; // 발동 실루엣이 보이는 시간
+    const isSrBerserker = u => Boolean(u && u.job === 'berserker' && !u.monsterType && (u.skinVariant || 0) === SECRET_SKIN_BASE + 1);
     const BERSERKER_UNDYING_FX = new Image();
     BERSERKER_UNDYING_FX.onload = () => { BERSERKER_UNDYING_FX.ready = true; };
     BERSERKER_UNDYING_FX.src = 'assets/sprites/fx/berserker_undying.webp';
@@ -20079,6 +20090,7 @@
         // 8초 불사·광폭 + 최대 체력 20% 회복. 불사 중 흡혈 2배 (berserkerLifesteal)
         unit.statuses.undying = Math.max(unit.statuses.undying || 0, BERSERKER_UNDYING_TICKS);
         unit.statuses.berserk = Math.max(unit.statuses.berserk || 0, BERSERKER_UNDYING_TICKS);
+        if (isSrBerserker(unit)) unit.srUndyingFxAt = sim.tickCount; // 흑사자: 붉은 실루엣이 줄어들며 겹쳐짐 (유닛 그리기)
         const amt = Math.round(unit.maxHp * BERSERKER_UNDYING_HEAL * healTakenMult(unit));
         unit.hp = Math.min(unit.maxHp, unit.hp + amt);
         unit.healDone += amt;
@@ -24288,6 +24300,17 @@
         ctx.restore();
       };
       if (rareFx) drawRareAura(false);
+      // 흑사자 불사의 분노 시전: 시전 막대 동안 몸 뒤에 붉은 반구 (막대가 찰수록 진해지고 살짝 커짐)
+      if (useSprite && u.alive && isSrBerserker(u) && u.casting && u.casting.key === 'undying_rage' && BERSERKER_SR_UCAST_FX.ready) {
+        const bp = Math.min(1, 1 - u.casting.left / Math.max(1, u.casting.total));
+        const bodyH = spriteDrawH(u, sprite) * (sprite.topH || sprite.standH) / sprite.standH;
+        const w = bodyH * 1.9 * (0.85 + 0.15 * bp), h = w * BERSERKER_SR_UCAST_FX.height / BERSERKER_SR_UCAST_FX.width;
+        ctx.save();
+        ctx.globalAlpha *= Math.min(1, 0.2 + bp * 1.2) * 0.9;
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(BERSERKER_SR_UCAST_FX, -w / 2, 18 + jumpY - h, w, h);
+        ctx.restore();
+      }
       // 광전사 불사의 분노: 발동한 순간부터 불사가 끝날 때까지 몸 뒤에서 불길이 타오름 (몸 키의 1.8배, 발 아래까지, 살짝 일렁임)
       if (useSprite && u.alive && u.job === 'berserker' && (u.statuses?.undying || 0) > 0 && BERSERKER_UNDYING_FX.ready) {
         const bodyH = spriteDrawH(u, sprite) * (sprite.topH || sprite.standH) / sprite.standH;
@@ -24332,6 +24355,23 @@
       if (useSprite) {
         drawUnitSprite(ctx, u, sprite, tick, jumpY, rareFx && rarePal);
         if (rareFx && !eliteHardFx) drawRareAura(true);
+        // 흑사자 불사의 분노 발동: 거대하고 희미한 붉은 실루엣이 줄어들며 진해지다가 몸 크기와 같아지면 선명해짐 → 잠깐 뒤 사라짐
+        //   0~65%: 3.2배 → 1배 (빠르게 줄다 천천히 맞춤), 투명도 0.12 → 0.95 · 65~80%: 그대로 · 80~100%: 사라짐
+        const sre = u.srUndyingFxAt !== undefined ? sim.tickCount - u.srUndyingFxAt : -1;
+        if (u.alive && sre >= 0 && sre < BERSERKER_SR_UFIRE_TICKS && BERSERKER_SR_UFIRE_FX.ready) {
+          const G = BERSERKER_SR_UFIRE_GEO, q = sre / BERSERKER_SR_UFIRE_TICKS;
+          const t = Math.min(1, q / 0.65), ease = 1 - Math.pow(1 - t, 3);
+          const grow = 3.2 - 2.2 * ease;
+          const alpha = q < 0.65 ? 0.12 + 0.83 * ease : (q < 0.8 ? 0.95 : 0.95 * (1 - (q - 0.8) / 0.2));
+          const bodyH = spriteDrawH(u, sprite) * (sprite.topH || sprite.standH) / sprite.standH;
+          const k = bodyH / G.bodyH * grow;
+          ctx.save();
+          ctx.globalAlpha *= alpha;
+          if (u.facingDir < 0) ctx.scale(-1, 1);
+          ctx.imageSmoothingEnabled = true;
+          ctx.drawImage(BERSERKER_SR_UFIRE_FX, -G.footX * k, 12 + jumpY - G.footY * k, BERSERKER_SR_UFIRE_FX.width * k, BERSERKER_SR_UFIRE_FX.height * k);
+          ctx.restore();
+        }
       } else {
         ctx.save();
         ctx.translate(u.facingDir * lungeX, jumpY);
