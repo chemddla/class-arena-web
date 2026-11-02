@@ -99,7 +99,20 @@ def fix_x_rim(p):
     grey = op & (c[..., :3].max(axis=2) - c[..., :3].min(axis=2) < 40) & (c[..., :3].mean(axis=2) > 150) & ndi.binary_dilation(red | bright, iterations=2)
     out = p.copy()
     out[bright | grey, :3] = [72, 13, 15]
-    return out
+    # 검은 윤곽선 + 안쪽으로 그라데이션: X자 둘레 1px = 검정, 2px = 검정 65%, 3px = 검정 35%, 그 안 = 지금 색
+    x = red | bright | grey
+    # X자 = 가장 큰 붉은 덩어리 (사자 눈·어깨 뿔은 작아서 빠짐), 안쪽 어두운 결·구멍까지 메움
+    lab, n = ndi.label(x, np.ones((3, 3)))
+    x = lab == np.argmax(ndi.sum(x, lab, range(1, n + 1))) + 1
+    x = ndi.binary_fill_holes(ndi.binary_closing(x, np.ones((3, 3)), iterations=2)) & op
+    d = ndi.distance_transform_cdt(x, metric='chessboard')
+    o = out.astype(float)
+    black = np.array([14, 6, 8], float)
+    for dist, k in ((1, 1.0), (2, 0.65), (3, 0.35)):
+        m = x & (d == dist)
+        o[m, :3] = o[m, :3] * (1 - k) + black * k
+    o[(d == 1) & x, 3] = 255  # 윤곽선은 불투명하게 (반투명이면 배경에 묻혀 안 보임)
+    return o.clip(0, 255).astype(np.uint8)
 
 
 def clean_specks(p):
