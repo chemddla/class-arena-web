@@ -7718,6 +7718,9 @@
     const BERSERKER_SR_UCAST_FX = new Image();
     BERSERKER_SR_UCAST_FX.onload = () => { BERSERKER_SR_UCAST_FX.ready = true; };
     BERSERKER_SR_UCAST_FX.src = 'assets/sprites/fx/berserker_sr1_ucast.webp';
+    const BERSERKER_SR_SLAM_FX = new Image(); // 흑사자 마무리 일격 폭발 (붉은 불기둥·불꽃·돌 조각)
+    BERSERKER_SR_SLAM_FX.onload = () => { BERSERKER_SR_SLAM_FX.ready = true; };
+    BERSERKER_SR_SLAM_FX.src = 'assets/sprites/fx/berserker_sr1_slam.webp';
     const BERSERKER_SR_UFIRE_FX = new Image();
     BERSERKER_SR_UFIRE_FX.onload = () => { BERSERKER_SR_UFIRE_FX.ready = true; };
     BERSERKER_SR_UFIRE_FX.src = 'assets/sprites/fx/berserker_sr1_ufire.webp';
@@ -22347,7 +22350,7 @@
         if (Math.abs(foe.x - unit.x) > 4) unit.facingDir = foe.x >= unit.x ? 1 : -1;
         {
           const lost = Math.max(0, 1 - foe.hp / foe.maxHp);
-          sim.effects.push({ type: 'berserker_slam', x: foe.x, y: foe.y, w: 190 * unitAreaScale(unit), life: 36, maxLife: 36 }); // 대상 자리에 크게 터지는 폭발
+          sim.effects.push({ type: 'berserker_slam', x: foe.x, y: foe.y, w: (isSrBerserker(unit) ? 150 : 190) * unitAreaScale(unit), sr: isSrBerserker(unit), life: 36, maxLife: 36 }); // 대상 자리에 크게 터지는 폭발
           // 쌍도끼 두 번 (피해는 쓸 때 잃은 체력으로 한 번 정해서 반씩), 어느 타로 쓰러뜨려도 회복 + 쿨타임 절반
           berserkerTwinHit(unit, foe, unit.atk * BERSERKER_EXECUTE_DMG * (1 + lost), { kind: 'skill', tag: '💥', color: '#7f1d1d', after: 'execute', reach: manualSkillRange(unit, 'execute') });
           berserkerExecuteReward(unit, foe);
@@ -24995,12 +24998,13 @@
         }
         if (ef.type === 'berserker_slam') {
           // 마무리 일격 폭발: 처음 20% 동안 커지고 마지막 40% 동안 흐려짐, 아래쪽이 대상 발 높이
-          if (BERSERKER_SLAM_FX.ready) {
+          const slamImg = ef.sr && BERSERKER_SR_SLAM_FX.ready ? BERSERKER_SR_SLAM_FX : BERSERKER_SLAM_FX; // 흑사자는 전용 폭발
+          if (slamImg.ready) {
             const k = Math.min(1, 0.6 + progress / 0.2 * 0.4);
-            const w = ef.w * k, h = w * BERSERKER_SLAM_FX.height / BERSERKER_SLAM_FX.width;
+            const w = ef.w * k, h = w * slamImg.height / slamImg.width;
             ctx.globalAlpha = Math.min(1, (1 - progress) / 0.4);
             ctx.imageSmoothingEnabled = true;
-            ctx.drawImage(BERSERKER_SLAM_FX, ef.x - w / 2, ef.y + 14 - h, w, h);
+            ctx.drawImage(slamImg, ef.x - w / 2, ef.y + 14 - h, w, h);
           }
           ctx.restore();
           if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }

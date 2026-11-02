@@ -147,6 +147,31 @@ def load_glow(name, pick):
     return rgba, (bx.min() + bx.max()) / 2 - xx.min()
 
 
+# 흑사자 X자 베기의 회색 X자 → 흑사자 마무리 일격 이펙트 색감 (밝기 단계별: 검붉은색 → 진홍 → 연분홍)
+X_RECOLOR = {'atk': [(690, 1024, 0, 368)]}
+X_RAMP_L = np.array([40, 95, 135, 170, 205, 240])
+X_RAMP = np.array([[90, 15, 18], [143, 43, 41], [190, 85, 82], [227, 131, 122], [235, 185, 178], [253, 215, 210]], float)
+
+
+def recolor_x(im, bg, box):
+    # 상자 안 무채색 덩어리 중 큰 것(X자 이펙트)만: 도끼 날 하이라이트는 작은 조각이라 빠짐
+    x0, x1, y0, y1 = box
+    sub = im[y0:y1, x0:x1]
+    grey = ~bg[y0:y1, x0:x1] & (sub.max(axis=2) - sub.min(axis=2) < 28) & (sub.mean(axis=2) > 95)
+    # 사자 몸 테두리의 회색(검은 몸에 바로 닿은 곳)은 X자가 아님 — 붉게 칠하면 머리 둘레가 붉은 선으로 물들었음
+    grey &= ~(ndi.binary_dilation(sub.max(axis=2) < 60, iterations=2) & (sub.mean(axis=2) < 150))
+    lab, n = ndi.label(grey, np.ones((3, 3)))
+    if not n: return im
+    sz = ndi.sum(grey, lab, range(1, n + 1))
+    x = np.isin(lab, 1 + np.where(sz >= 200)[0])
+    L = sub.mean(axis=2)
+    out = sub.copy()
+    for ch in range(3):
+        out[..., ch] = np.where(x, np.interp(L, X_RAMP_L, X_RAMP[:, ch]), sub[..., ch])
+    im = im.copy(); im[y0:y1, x0:x1] = out
+    return im
+
+
 def load(name, pick=0):
     if name in GLOW: return load_glow(name, pick)
     im = np.array(Image.open(f'{D}{name}_src.png').convert('RGB')).astype(float)
@@ -179,6 +204,8 @@ def load(name, pick=0):
         sb |= brown & ~fill
     for box in AXE_FIX.get(name, ()):
         im, bg = smooth_blade(im, bg, box)
+    for box in X_RECOLOR.get(name, ()):
+        im = recolor_x(im, bg, box)
     rim = ~bg & ndi.binary_dilation(bg, iterations=2)
     a = np.where(bg, 0.0, 1.0)
     a = np.where(rim, np.clip((255 - im.min(axis=2)) / 225, 0, 1), a)
@@ -239,6 +266,28 @@ def build_ufire_fx():
     print(f'ufire fx {out.shape[1]}x{out.shape[0]} foot=({UFIRE_FOOT[0] - x0},{UFIRE_FOOT[1] - y0}) bodyH={UFIRE_BODY_H}')
 
 
+OUT_EXEC_FX = 'assets/sprites/fx/berserker_sr1_slam.webp'
+
+
+def build_exec_fx():
+    # 흑사자 마무리 일격 폭발: 흰 배경(가장자리에서 이어진 것)만 지우고 둘레 2px은 흰색을 빼서 반투명, 날아가는 돌 조각도 남김
+    im = np.array(Image.open(f'{D}exec_fx_src.png').convert('RGB')).astype(float)
+    white = (im.min(axis=2) > 214) & (im.max(axis=2) - im.min(axis=2) < 20)
+    lab, n = ndi.label(white)
+    edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
+    bg = np.isin(lab, edge[edge > 0])
+    bg |= (im.min(axis=2) > 238) & (im.max(axis=2) - im.min(axis=2) < 15)  # 불꽃 사이에 갇힌 흰 배경
+    rim = ~bg & ndi.binary_dilation(bg, iterations=2)
+    a = np.where(bg, 0.0, 1.0)
+    a = np.where(rim, np.clip((255 - im.min(axis=2)) / 225, 0, 1), a)
+    al = np.maximum(a, 1e-3)[..., None]
+    rgb = np.where(rim[..., None], (im - 255 * (1 - al)) / al, im).clip(0, 255)
+    ys, xs = np.where(a > 0.05)
+    out = np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    Image.fromarray(out.clip(0, 255).astype(np.uint8), 'RGBA').save(OUT_EXEC_FX, 'WEBP', lossless=True)
+    print(f'exec fx {out.shape[1]}x{out.shape[0]}')
+
+
 def main():
     cuts = {f[1]: load(f[0], f[3]) for f in FRAMES}
     pieces = []
@@ -268,3 +317,4 @@ if __name__ == '__main__':
     main()
     build_ucast_fx()
     build_ufire_fx()
+    build_exec_fx()
