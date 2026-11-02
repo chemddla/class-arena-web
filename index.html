@@ -18611,6 +18611,7 @@
         // AI가 알아챌 수 있는 적 (은신한 적·암흑 시야 밖의 적은 빼고 판단. 범위 피해는 아래에서 enemies 전체에 들어감)
         const seenEnemies = enemies.filter(e => !hiddenFrom(u, e) && !hiddenByDarkness(u, e));
         const target = pickTarget(u, allies, seenEnemies);
+        u.aiTargetId = target ? target.id : null; // 기사 몸막이가 '누가 누구를 노리는지' 봄
         if (!target) {
           // 은신·암흑으로 적이 안 보여도 멈춰 서지 않고 걸어 다니며 아무 데나 공격을 휘두름
           if (st.darkness > 0 || enemies.some(e => e.alive)) blindWander(u, allies, enemies);
@@ -18717,15 +18718,17 @@
           u.walkPhase += phase * speedMult;
         };
         const isRanged = u.range >= 180;
-        // 몬스터·보스는 피하지 않음. 기사는 탱커라 투사체를 피하지 않고 버팀
+        // 몬스터·보스는 피하지 않음. 기사는 탱커라 투사체를 피하지 않고 오히려 아군 대신 맞으러 감
+        // 광전사는 흡혈로 버티며 맞더라도 파고듦: 체력이 30% 아래일 때만 큰 범위 투사체(파이어볼 등)를 피함
         const canDodge = !(u.monsterType || u.isEliteBoss);
-        const canDodgeShots = canDodge && u.job !== 'knight';
-        const dodgeAngle = canDodgeShots && !taunter ? findProjectileDodgeAngle(u) : null;
+        const hpRatio = u.hp / u.maxHp;
+        const canDodgeShots = canDodge && u.job !== 'knight' && (u.job !== 'berserker' || hpRatio < 0.3);
+        const dodgeAngle = canDodgeShots && !taunter ? findProjectileDodgeAngle(u, u.job === 'berserker') : null;
         const nearestFoe = seenEnemies.reduce((best, e) => {
           const d = unitDist(e, u);
           return !best || d < best.d ? { e, d } : best;
         }, null);
-        const hpRatio = u.hp / u.maxHp;
+        const coverSpot = u.job === 'knight' && canDodge && !taunter ? findKnightCoverSpot(u, allies, seenEnemies, curMoveSpeed) : null;
         // 저격수: 총알이 얼마 안 남았고 사거리 안에 쏠 적이 없으면 미리 장전
         // (예전엔 '5칸 밖'이 기준이라 늘 멀리 서는 저격수가 2발 남을 때마다 장전해 장전에 30%를 씀)
         if (u.job === 'sniper' && (u.ammo || 0) <= 2 && (!nearestFoe || nearestFoe.d > u.range + 60)) sniperStartReload(u);
@@ -18751,6 +18754,15 @@
             ? (nearestFoe ? Math.atan2(u.y - nearestFoe.e.y, u.x - nearestFoe.e.x) : Math.random() * Math.PI * 2)
             : Math.atan2(u.y - badZone.y, u.x - badZone.x);
           moveBy(zoneAway, 1.1, 0.07);
+        } else if (coverSpot) {
+          // 기사 몸막이: 아군에게 날아가는 투사체 길목 / 아군을 쏘는 적과 그 아군 사이로 들어가 대신 맞음
+          const cd = Math.hypot(coverSpot.x - u.x, coverSpot.y - u.y);
+          const ca = Math.atan2(coverSpot.y - u.y, coverSpot.x - u.x);
+          if (coverSpot.dash && u.dashCooldown <= 0 && triggerUnitDash(u, ca, '🛡️막아서기')) {
+            // 걸어서는 늦는 투사체: 대시로 뛰어들어 막음
+          } else if (cd > 10) {
+            moveBy(ca, coverSpot.urgent ? 1.15 : 0.9, 0.06);
+          }
         } else if (dodgeAngle !== null) {
           // 코앞까지 온 투사체는 대시로 피하고, 아니면 옆으로 비켜섬
           if (u.dashCooldown <= 0 && (u.dodgeAlong || 999) < 90 && u.statuses.stun <= 0) {
@@ -22984,9 +22996,12 @@
     }
 
     // AI 회피: 나를 향해 날아오는 적 투사체가 있으면 그 길에서 비켜설 방향(각도), 없으면 null
-    function findProjectileDodgeAngle(u) {
+    // aoeOnly: 큰 범위 투사체(파이어볼·아이스애로우)만 피함 (광전사)
+    function findProjectileDodgeAngle(u, aoeOnly = false) {
       for (const p of sim.projectiles) {
         if (!p.isDirectional || p.isHeal || !p.owner || p.owner.team === u.team) continue;
+        const isAoe = p.projType === 'fireball_proj' || p.projType === 'ice_arrow_proj';
+        if (aoeOnly && !isAoe) continue;
         if (p.dodgeRoll === undefined) p.dodgeRoll = Math.random();
         if (p.dodgeRoll > AI_DODGE_CHANCE) continue;
         const dx = Math.cos(p.angle), dy = Math.sin(p.angle);
@@ -22994,7 +23009,6 @@
         const along = rx * dx + ry * dy;            // 투사체 진행 방향으로 내가 얼마나 앞에 있는지
         if (along < 0 || along > 200) continue;
         const side = rx * dy - ry * dx;             // 투사체가 지나갈 길에서 옆으로 떨어진 거리
-        const isAoe = p.projType === 'fireball_proj' || p.projType === 'ice_arrow_proj';
         const danger = isAoe ? (p.aoeRadius || 100) + 10 : PROJECTILE_HIT_RADIUS + 14;
         if (Math.abs(side) > danger) continue;
         u.dodgeAlong = along;
@@ -23002,6 +23016,62 @@
         return side >= 0 ? Math.atan2(-dx, dy) : Math.atan2(dx, -dy);
       }
       return null;
+    }
+
+    // 기사 몸막이: 아군 대신 원거리 공격을 맞아 줄 자리 { x, y, urgent, dash } (없으면 null)
+    // ① 아군에게 날아가는 적 투사체: 걸어서(또는 대시로) 제때 닿을 수 있는 길목
+    // ② 아군을 노리고 쏘는 적 원거리 유닛: 그 아군 바로 앞, 쏘는 쪽에 섬
+    function findKnightCoverSpot(u, allies, enemies, moveSpd) {
+      const guarded = allies.filter(a => a !== u && a.alive && a.job !== 'knight');
+      if (!guarded.length) return null;
+      const blockR = PROJECTILE_HIT_RADIUS + unitBodyGap(u);
+      const dashDist = DASH_CONFIG.distance * (JOB_DASH_DISTANCE_MULT[u.job] || 1);
+      const spd = Math.max(0.3, moveSpd || 1);
+      let best = null;
+      for (const p of sim.projectiles) {
+        if (!p.isDirectional || p.isHeal || !p.owner || p.owner.team === u.team) continue;
+        const dx = Math.cos(p.angle), dy = Math.sin(p.angle);
+        const step = Math.max(0.1, p.speed * BATTLE_PROJECTILE_SPEED);
+        const mx = u.x - p.x, my = (u.y - 12) - p.y;
+        const myAlong = mx * dx + my * dy;
+        for (const a of guarded) {
+          const rx = a.x - p.x, ry = (a.y - 12) - p.y;
+          const along = rx * dx + ry * dy;
+          if (along < 0 || along > 420) continue;
+          if (Math.abs(rx * dy - ry * dx) > PROJECTILE_HIT_RADIUS + unitBodyGap(a) + 10) continue; // 이 아군은 안 맞음
+          // 이미 길목에 서 있으면 그대로 버팀
+          if (myAlong > 0 && myAlong < along && Math.abs(mx * dy - my * dx) < blockR - 6) return { x: u.x, y: u.y, urgent: true, t: 0 };
+          // 길 위에서 아군보다 앞쪽, 나와 가장 가까운 점 (터지는 투사체는 폭발이 아군에 안 닿을 만큼 앞에서)
+          const isAoe = p.projType === 'fireball_proj' || p.projType === 'ice_arrow_proj';
+          const front = isAoe ? (p.aoeRadius || 100) + 10 : 24;
+          const qa = Math.max(0, Math.min(along - unitBodyGap(a) - front, myAlong));
+          if (qa <= 0) continue;
+          const qx = p.x + dx * qa, qy = p.y + dy * qa + 12;
+          const need = Math.max(0, Math.hypot(qx - u.x, qy - u.y) - blockR + 8);
+          const tP = qa / step;
+          const walkOk = need / spd <= tP;
+          const dashOk = !walkOk && u.dashCooldown <= 0 && need <= dashDist && DASH_MOVE_TICKS * (need / dashDist) <= tP;
+          if (!walkOk && !dashOk) continue;
+          if (!best || tP < best.t) best = { x: qx, y: qy, t: tP, urgent: true, dash: dashOk };
+        }
+      }
+      if (best) return best;
+      // 아군을 노리고 쏘는 적 원거리 중 그 아군에게 가장 가까운 쪽을 막아섬
+      let cover = null;
+      for (const e of enemies) {
+        if (e.range < 180) continue;
+        const a = guarded.find(g => g.id === e.aiTargetId);
+        if (!a) continue;
+        const d = unitDist(e, a);
+        if (d > e.range + 80) continue;
+        if (!cover || d < cover.d) cover = { e, a, d };
+      }
+      if (!cover) return null;
+      const ang = Math.atan2(cover.e.y - cover.a.y, cover.e.x - cover.a.x);
+      // 범위 공격(마법사 등)을 쏘는 적이면 폭발이 아군에 안 닿게 조금 더 앞에 섬
+      const splash = cover.e.job === 'mage' ? 120 : 50;
+      const R = Math.min(cover.d * 0.5, splash + unitBodyGap(cover.a) + unitBodyGap(u));
+      return { x: cover.a.x + Math.cos(ang) * R, y: cover.a.y + Math.sin(ang) * R, urgent: false };
     }
 
     // 투사체가 적에게 닿았거나 날아갈 거리를 다 갔을 때
