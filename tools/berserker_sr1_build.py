@@ -90,6 +90,18 @@ def smooth_blade(im, bg, box):
 GLOW = ('rage',)  # 흰 배경 위 반투명 붉은 기운·불길 샘플: 몸 바깥은 흰색을 빼서 투명도·본래 색을 되살림
 
 
+def fix_x_rim(p):
+    # 검붉은 X자 가장자리: 흰 배경과 섞였던 반투명 테두리가 너무 밝은 빨강(255, 55, 55)이나 회색으로 남음 → X자 안쪽 검붉은 색으로
+    c = p.astype(int)
+    op = c[..., 3] > 0
+    bright = op & (c[..., 0] > 140) & (c[..., 1] < 100) & (c[..., 0] > c[..., 1] + 70)  # X자 색(빨강 124 이하)보다 밝은 빨강
+    red = op & (c[..., 0] > c[..., 1] + 60) & ~bright
+    grey = op & (c[..., :3].max(axis=2) - c[..., :3].min(axis=2) < 40) & (c[..., :3].mean(axis=2) > 150) & ndi.binary_dilation(red | bright, iterations=2)
+    out = p.copy()
+    out[bright | grey, :3] = [72, 13, 15]
+    return out
+
+
 def clean_specks(p):
     # 줄이면서 몸 안에 1~3px 흰 점으로 남은 반짝임(검은 갑옷에 어울리지 않음) → 가까운 어두운 몸 색으로
     c = p.astype(int)
@@ -147,10 +159,10 @@ def load_glow(name, pick):
     return rgba, (bx.min() + bx.max()) / 2 - xx.min()
 
 
-# 흑사자 X자 베기의 회색 X자 → 흑사자 마무리 일격 이펙트 색감 (밝기 단계별: 검붉은색 → 진홍 → 연분홍)
+# 흑사자 X자 베기의 회색 X자 → 검붉은 색 (흑사자 마무리 일격 이펙트 색감을 어둡게, 밝기 단계별)
 X_RECOLOR = {'atk': [(690, 1024, 0, 368)]}
 X_RAMP_L = np.array([40, 95, 135, 170, 205, 240])
-X_RAMP = np.array([[90, 15, 18], [143, 43, 41], [190, 85, 82], [227, 131, 122], [235, 185, 178], [253, 215, 210]], float)
+X_RAMP = np.array([[22, 3, 5], [45, 7, 9], [64, 11, 13], [84, 16, 18], [102, 24, 25], [124, 36, 36]], float)  # 검붉은 색 (거의 검은 핏빛)
 
 
 def recolor_x(im, bg, box):
@@ -183,8 +195,7 @@ def load(name, pick=0):
     ids = np.arange(1, n + 1)
     gap = np.isin(lab, ids[(ndi.sum(white, lab, ids) >= 3) & (ndi.mean(im.min(axis=2), lab, ids) > 232)])
     keep = np.zeros_like(gap)
-    for x0, x1, y0, y1 in NO_GAP.get(name, ()): keep[y0:y1, x0:x1] = True  # X자 이펙트 속은 남김
-    gap &= ~keep
+    for x0, x1, y0, y1 in NO_GAP.get(name, ()): keep[y0:y1, x0:x1] = True  # X자 이펙트 속(밝은 회색)은 남김 — 아주 하얀 틈은 X자 상자 안에서도 배경
     bg |= gap
     # 갇힌 틈 중 흰 배경과 섞여 조금 어두운 것(밝기 185 넘는 무채색 덩어리, 갑옷 하이라이트는 2px 안팎이라 빠짐)도 배경
     lt = (im.min(axis=2) > 185) & (im.max(axis=2) - im.min(axis=2) < 30) & ~bg & ~keep
@@ -298,7 +309,8 @@ def main():
         sc = scale[k] if isinstance(k, str) else (TARGET_H / k[1] if isinstance(k, tuple) else TARGET_H / rgba.shape[0] * k)
         scale[name] = sc
         p = shrink_soft(rgba, sc) if src in GLOW else shrink(rgba, sc)
-        if src not in GLOW and name != 'atk1': p = clean_specks(p)
+        if src not in GLOW: p = clean_specks(p)  # X자 칸도 (X자가 붉어져서 흰 점 정리에 안 걸림)
+        if name == 'atk1': p = fix_x_rim(p)
         pieces.append((name, p, foot * sc))
     L = max(int(np.ceil(c)) for _, _, c in pieces) + 4
     R = max(int(np.ceil(p.shape[1] - c)) for _, p, c in pieces) + 4
