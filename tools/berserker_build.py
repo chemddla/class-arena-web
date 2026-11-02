@@ -368,9 +368,12 @@ def load_x_fx(folder):
     return np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
 
 
+X_SHIFT = 20  # 크기를 정한 뒤 X자를 앞(오른쪽)으로 더 옮기는 px (몸을 덜 가리고 앞으로 뻗게)
+X_REACH_SPR = (78 - 16) * 81 / 54  # 광전사 사거리 78(월드 px) − 적 몸 반지름 16 → 시트 px (게임에서 standH 81을 54px로 그림)
+
+
 def attach_x(piece, xfx):
-    # X자 이펙트: 아래 두 끝이 양쪽 도끼 날(뒤쪽 왼쪽 · 앞쪽 오른쪽)의 바깥쪽 날 끝에 오게 키워서 몸 위에 그림 (두 도끼로 X자로 그은 자국)
-    #   크기 = 두 날 끝 사이 거리 / X자 아래 두 끝 사이 거리, 도끼 날은 X자 끝 위에 다시 그림
+    # X자 이펙트: 몸 위에 크게 그림 (두 도끼로 X자로 그은 자국), 도끼 날은 X자 위에 다시 그림
     name, p, cx, below = piece
     h, w = p.shape[:2]
     foot = h - 1 - below
@@ -392,10 +395,11 @@ def attach_x(piece, xfx):
     xa = xfx[..., 3] > 0
     ys, xs = np.where(xa)
     tl, tr = np.argmax(ys - xs), np.argmax(ys + xs)  # X자 왼쪽 아래 끝 · 오른쪽 아래 끝
-    k = (rx - lx) / (xs[tr] - xs[tl])
+    # 크기: 왼쪽 아래 끝은 뒤쪽 도끼 날에 두고, 오른쪽 끝이 공격 사거리 끝에 선 적의 앞쪽 몸(발에서 X_REACH_SPR)까지 닿게
+    k = (cx + X_REACH_SPR - lx) / (xs.max() - xs[tl])
     f = shrink(xfx, k)
-    fx = int(round(lx - xs[tl] * k))
-    fy = int(round((ly + ry) / 2 - (ys[tl] + ys[tr]) / 2 * k))
+    fx = int(round(lx - xs[tl] * k)) + X_SHIFT
+    fy = int(round(ly - ys[tl] * k))
     x0, y0 = min(0, fx), min(0, fy)
     x1, y1 = max(w, fx + f.shape[1]), max(h, fy + f.shape[0])
     out = np.zeros((y1 - y0, x1 - x0, 4), np.uint8)
