@@ -1,10 +1,11 @@
 # 광전사 원형 샘플(흰 배경 도트, 동작마다 한 장) → 캐릭터 시트 assets/sprites/merc/berserker_0.webp
 # 사용: python tools/berserker_build.py [샘플 폴더]  (기본 assets/sprites/fx/samples, 파일 berserker_src1~.png)
 #   1 = 대기 (흰 배경, 왼쪽 위 한글 라벨 "대기"), 5 = 피격 (라벨 "피격"), 6 = 쓰러짐 (누운 자세),
-#   9 = 걷기 네 칸 (한 장에 나란히), 11 = 기본 공격 들어 올리기 (두 도끼를 머리 위로), 21 = 마무리 일격 세 칸 (점프 · 점프 · 찍기, 점프 칸 아래 회색 그림자), 22 = 찍을 때 폭발 (흰 배경, 분홍 빛무리),
+#   9 = 걷기 네 칸 (한 장에 나란히), 11 = 기본 공격 들어 올리기 (두 도끼를 머리 위로), 21 = 마무리 일격 세 칸 (점프 · 점프 · 찍기, 점프 칸 아래 회색 그림자), 22 = 찍을 때 폭발 (흰 배경, 분홍 빛무리), 23 = 대지 가르기 발동 자세, 24 = 대지 가르기 부채꼴 (흰 배경, 오른쪽 끝에 옆 칸 조각),
 #   20 = 기본 공격 X자 교차 (회색 배경, ✦ 워터마크), 19 = 회색 X자 이펙트 (흰 배경), 12 = 광폭화 세 칸 (불길이 솟음 · 불길 속 포효 · 광폭 대기 — 붉은 얼굴·빛나는 눈, 분홍 아지랑이 배경),
 #   13 = 도끼 투척 세 칸 (위에 한글·영어 제목), 14 = 날아가는 도끼 두 칸 (흰 회오리 바람 포함)
 # 캐릭터 칸 순서: 0 대기 · 1~4 걷기 · 5 피격 · 6 쓰러짐 · 7~8 기본 공격 (들어 올리기 → 내려치기) · 9~10 광폭화 시전 · 11~13 도끼 투척 (뒤로 젖힘 · 던짐 · 팔을 뻗은 마무리)
+#   · 19 대지 가르기 발동 (샘플 23, 땅 위 부채꼴은 berserker_split.webp — build_split_fx)
 #   · 16 마무리 일격 찍기 · 17~18 마무리 일격 점프 (샘플 21: 점프 두 칸 → 찍기, 찍을 때 폭발은 berserker_slam.webp — build_slam_fx)
 #   · 14~15 야성의 포효 (광폭화 시전 두 칸에서 불을 지우고, 불빛에 물든 하반신은 대기 자세 하반신 색으로 되돌림 — make_howl)
 # 날아가는 도끼 assets/sprites/fx/berserker_axe.webp: 두 칸 (흰 회오리는 흰 정도만큼 반투명), 게임에서 빙글빙글 돌리며 날림 (build_axe_fx) (쓰러짐 동작은 피격 → 누운 자세 두 칸) (모든 칸 크기 같음, 오른쪽을 봄, 발 = 기준점)
@@ -35,7 +36,8 @@ FRAMES = [
 ]
 EXEC_SRC = [(21, 'exec1', (331, 518)), (21, 'jump0', (0, 160)), (21, 'jump1', (160, 331))]  # 마무리 일격: 찍기 (흙먼지는 그림 그대로) · 점프 두 칸
 # 발이 땅에서 떨어진 칸·발 아래로 흙먼지가 깔린 칸: 땅 높이 (샘플 y). 점프 칸은 그림자 가운데 = 땅 → 기준점보다 높이 그려져 떠 보임
-GROUND_Y = {'jump0': 327, 'jump1': 327, 'exec1': 322}
+GROUND_Y = {'jump0': 327, 'jump1': 327, 'exec1': 322, 'split': 185}
+SPLIT_SRC = (23, 'split')  # 대지 가르기 발동: 두 도끼로 땅을 내리친 자세 (흙먼지에 발이 가려져서 몸 가운데·흙먼지 높이로 기준점)
 RAGE_IDLE = (12, 'ridle', (332, 470))  # 광폭 대기 (오른쪽 끝 회색 테두리는 뺌). 광폭 시트의 대기 칸이자 붉은 얼굴·눈·털 색의 기준
 HOLE_KEEP = {12: [(80, 100, 80, 90)]}  # 갇힌 흰 덩어리 중 남길 것 (x0, x1, y0, y1): 광폭화 시전 첫 칸의 벌린 입 이빨
 RIM = {}  # 흰색이 섞인 테두리 두께 (기본 2px)
@@ -46,12 +48,12 @@ KEEP_SMALL = {}  # 몸에서 떨어진 조각도 이 크기(px) 넘으면 남김
 # 공격 = 장화 가운데 (내딛으며 몸이 앞으로 쏠려서 얼굴로 맞추면 발이 뒤로 미끄러짐)
 RAGE_SCALE = 1.31  # 광폭화 샘플은 얼굴 키(34 vs 44)·머리털 폭(80 vs 106)이 대기의 0.76배 → 대기 배율의 1.31배 (키로 맞추면 5% 작았음)
 RIDLE_FOOT = 394  # 광폭 대기 장화 가운데 (샘플 x)
-FOOT_X = {'down': 150, 'atk0': 140, 'atk1': 532, 'exec1': 400, 'jump0': 86, 'jump1': 252,  # 점프 칸은 그림자 가운데
+FOOT_X = {'down': 150, 'atk0': 140, 'atk1': 532, 'exec1': 400, 'jump0': 86, 'jump1': 252, 'split': 95,  # 점프 칸은 그림자 가운데
           'ridle': RIDLE_FOOT, 'throw0': 97, 'throw1': 261, 'throw2': 417}  # 광폭 대기는 얼굴이 붉어서 피부로 얼굴을 못 찾음
 # 키로 못 맞추는 칸: 대기 배율에 곱하는 값 (얼굴·해골 크기를 대기와 같게). 피격·쓰러짐은 대기보다 5% 안팎,
 # 들어 올리기는 1.3배, X자 교차는 4배(해골 114×107 vs 27×28) 크게, 도끼 투척은 0.63배 작게 그려짐, 마무리 일격 점프·찍기는 대기와 같음 (얼굴 키 45~47 vs 44)
 SCALE_FIX = {'hurt': 1 / 1.05, 'down': 1 / 1.05, 'atk0': 1 / 1.3, 'atk1': 1 / 4.0,
-             'exec1': 1, 'jump0': 1, 'jump1': 1,
+             'exec1': 1, 'jump0': 1, 'jump1': 1, 'split': 1 / 1.04,  # 대지 가르기는 얼굴 키 46 vs 44
              'throw0': 1.59, 'throw1': 1.59, 'throw2': 1.59,
              'walk0': 1.1, 'walk1': 1.1, 'walk2': 1.1, 'walk3': 1.1}  # 걷기는 키는 대기와 비슷한데 얼굴이 0.91배로 작게 그려짐 (키로 맞추면 얼굴이 6% 작았음)
 GREY_BG = {20: 101}  # 회색 단색 배경 샘플: 배경 밝기 (오른쪽 아래 ✦ 워터마크는 떨어진 작은 조각이라 저절로 빠짐)
@@ -395,14 +397,73 @@ def build_slam_fx(folder):
     print(f'slam fx {out.shape[1]}x{out.shape[0]}')
 
 
+OUT_SPLIT = 'assets/sprites/fx/berserker_split.webp'
+
+
+def build_split_fx(folder):
+    # 대지 가르기 부채꼴 (꼭짓점이 왼쪽, 오른쪽으로 벌어짐): 흰 배경을 흰 정도만큼 투명하게, 오른쪽 끝에 잘려 들어온 옆 칸 조각은 지움
+    # 위·아래 변이 자로 그은 듯 곧게 잘려 있어서 → 열마다 바위 덩어리처럼 울퉁불퉁하게 깎고 (꼭짓점·끝은 덜), 새로 생긴 가장자리는 어둡게 윤곽
+    im = np.array(Image.open(f'{folder}/berserker_src24.png').convert('RGB')).astype(float)
+    a = np.clip((250 - im.min(axis=2)) / 60, 0, 1)
+    al = np.maximum(a, 1e-3)[..., None]
+    rgb = ((im - 255 * (1 - al)) / al).clip(0, 255)
+    m = a > 0.5
+    lab, n = ndi.label(m)
+    main_ = lab == np.argmax(ndi.sum(m, lab, range(1, n + 1))) + 1
+    a[:, 205:] = 0  # 옆 칸 조각
+    ys, xs = np.where(main_)
+    ax_, ay_ = xs.min(), ys[np.argmin(xs)]
+    rng = np.random.default_rng(7)
+    W = a.shape[1]
+    def lumpy():
+        v = np.zeros(W)
+        c = 0
+        while c < W:  # 바위 덩어리 하나 = 폭 6~12px의 둥근 혹 (깊이 2~7px)
+            wdt = int(rng.integers(6, 13))
+            v[c:c + wdt] = np.maximum(v[c:c + wdt], rng.uniform(2, 7) * np.sin(np.linspace(0.15, np.pi - 0.15, len(v[c:c + wdt]))))
+            c += wdt
+        return ndi.gaussian_filter1d(v, 1.0)
+    top_n, bot_n = lumpy(), lumpy()
+    cut = np.zeros_like(main_)
+    x_end = xs.max()
+    for x in range(ax_, x_end + 1):
+        col = np.where(main_[:, x])[0]
+        if not len(col): continue
+        t = (x - ax_) / max(1, x_end - ax_)
+        taper = min(1, t / 0.15) * min(1, (1 - t) / 0.12)  # 꼭짓점·맨 끝은 덜 깎음
+        cut[col.min():col.min() + int(round(top_n[x] * taper)), x] = True
+        hb = int(round(bot_n[x] * taper))
+        if hb: cut[col.max() - hb + 1:col.max() + 1, x] = True
+    cut &= main_
+    a = np.where(cut, 0, a)
+    edge = (a > 0.5) & ndi.binary_dilation(cut) & main_
+    rgb[edge] *= 0.62  # 깎인 자리 윤곽
+    ys, xs = np.where(a > 0.06)
+    x0, y0 = xs.min(), ys.min()
+    a = np.where(a < 0.35, 0, a)  # 흰 배경과 섞인 옅은 테두리는 지움 (허옇게 뜨지 않게)
+    ys, xs = np.where(a > 0)
+    x0, y0 = xs.min(), ys.min()
+    out = np.dstack([rgb, a * 255])[y0:ys.max() + 1, x0:xs.max() + 1]
+    Image.fromarray(out.clip(0, 255).astype(np.uint8), 'RGBA').save(OUT_SPLIT, 'WEBP', lossless=True)
+    # 게임에서 쓸 값: 꼭짓점(그림 좌표) · 부채꼴 가운데 방향 · 꼭짓점에서 가장 먼 거리
+    mm = main_ & ~cut
+    yy, xx = np.where(mm)
+    d = np.hypot(xx - ax_, yy - ay_)
+    angs = np.arctan2(yy - ay_, xx - ax_)
+    far = d > d.max() * 0.5
+    mid = (np.percentile(angs[far], 3) + np.percentile(angs[far], 97)) / 2
+    half = (np.percentile(angs[far], 97) - np.percentile(angs[far], 3)) / 2
+    print(f'split fx {out.shape[1]}x{out.shape[0]} apex=({ax_ - x0},{ay_ - y0}) mid={mid:.3f} half={half:.3f} R={d.max():.0f}')
+
+
 def main(folder):
-    cuts = {f[1]: cut(folder, f) for f in FRAMES + [RAGE_IDLE] + EXEC_SRC}
+    cuts = {f[1]: cut(folder, f) for f in FRAMES + [RAGE_IDLE, SPLIT_SRC] + EXEC_SRC}
     base = TARGET_H / cuts['idle'][0].shape[0]
     rage_sc = base * RAGE_SCALE  # 광폭화 샘플 세 칸은 같은 크기로 그려져서 함께 맞춤
     foot_off = (cuts['idle'][3] - cuts['idle'][1]) * base  # 대기 자세 발 가운데 - 얼굴 가운데 (줄인 뒤 px)
     pieces = {}
     xfx = load_x_fx(folder)
-    for f in FRAMES + [RAGE_IDLE] + EXEC_SRC:
+    for f in FRAMES + [RAGE_IDLE, SPLIT_SRC] + EXEC_SRC:
         rgba, cx, below, _, fx = cuts[f[1]]
         # 대기는 키(머리털 끝~발)로 맞추고, 나머지 칸은 대기 배율에 SCALE_FIX(얼굴 크기를 대기와 같게)를 곱함
         sc = rage_sc if f[0] == 12 else base * SCALE_FIX[f[1]] if f[1] in SCALE_FIX else TARGET_H / rgba.shape[0]
@@ -411,7 +472,7 @@ def main(folder):
     pieces['atk1'] = attach_x(pieces['atk1'], xfx)
     ridle = pieces['ridle'][1]
     normal = [pieces[f[1]] for f in FRAMES]
-    normal += [make_howl(pieces['rage0'], pieces['idle']), make_howl(pieces['rage1'], pieces['idle']), pieces['exec1'], pieces['jump0'], pieces['jump1']]
+    normal += [make_howl(pieces['rage0'], pieces['idle']), make_howl(pieces['rage1'], pieces['idle']), pieces['exec1'], pieces['jump0'], pieces['jump1'], pieces['split']]
     rage = [pieces['ridle'] if n == 'idle' else (n, enrage(p, ridle), c, d) for n, p, c, d in normal]  # 시전 두 칸도 (광폭 상태가 걸린 뒤에 나옴)
     both = normal + rage
     L = max(int(np.ceil(c)) for _, _, c, _ in both) + 4  # 붉은 기운 2px 자리까지
@@ -433,3 +494,4 @@ if __name__ == '__main__':
     main(sys.argv[1] if len(sys.argv) > 1 else 'assets/sprites/fx/samples')
     build_axe_fx(sys.argv[1] if len(sys.argv) > 1 else 'assets/sprites/fx/samples')
     build_slam_fx(sys.argv[1] if len(sys.argv) > 1 else 'assets/sprites/fx/samples')
+    build_split_fx(sys.argv[1] if len(sys.argv) > 1 else 'assets/sprites/fx/samples')
