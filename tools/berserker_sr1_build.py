@@ -1,6 +1,6 @@
 # 광전사 시크릿 레어(흑사자: 검은 갈기·붉은 눈·검은 판금·쌍도끼) 샘플 → 캐릭터 시트 assets/sprites/merc/berserker_sr1.webp
 # 사용: python tools/berserker_sr1_build.py   (샘플은 assets/sprites/fx/samples/berserker_sr1_*_src.png)
-# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~3 걷기 · 4 피격 · 5~7 쓰러짐
+# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~3 걷기 · 4 피격 · 5~7 쓰러짐 · 8~9 기본 공격 · 10~11 광폭화 (시전 붉은 기운 · 발동 불길, 반투명)
 # 샘플 정리:
 #   - 흰 배경은 가장자리에서 이어진 흰 픽셀만 지움, 흰 배경과 섞인 2px 테두리는 흰색을 빼서 투명도·본래 색을 되살림 (berserker_build.load와 같음)
 #   - 몸 안에 갇힌 흰 배경(팔과 도끼 자루 사이)도 지움
@@ -18,6 +18,7 @@ D = 'assets/sprites/fx/samples/berserker_sr1_'
 OUT = 'assets/sprites/merc/berserker_sr1.webp'
 TARGET_H = 86  # 광전사 0번 대기와 같은 키
 
+RAGE_BODY_H = 151  # 광폭화 샘플의 사자 몸 키 (기운·불길을 뺀 어두운 몸, 샘플 px)
 ATK0_FIX = 0.8   # 기 모으기 칸은 같은 샘플 안에서도 X자 칸보다 크게 그려짐 (사자가 대기보다 25% 커 보였음)
 ATK_BODY_H = 287  # 공격 샘플의 사자 몸 키 (X자 칸 갈기 꼭대기~발, 샘플 px). 치켜든 도끼·X자 때문에 그림 키로는 못 맞춰서 두 칸 모두 이 값으로
 # (샘플 이름, 칸 이름, 키를 대기와 같게 맞춘 뒤 곱할 값, 샘플 안 몇 번째 그림(왼쪽부터))
@@ -26,7 +27,8 @@ FRAMES = [
     ('walk_a', 'walk0', 1, 0), ('walk_b', 'walk1', 1, 0), ('walk_b', 'walk2', 1, 1),  # 걷기 3칸 (walk_b 한 장에 두 칸)
     ('hurt', 'hurt', 1, 0),
     ('down', 'down0', 1, 0), ('down', 'down1', 'down0', 1), ('down', 'down2', 'down0', 2),  # 쓰러짐 3칸: 누운 칸은 키로 못 재서 첫 칸(서 있음) 배율을 같이 씀
-    ('atk', 'atk0', ('h', ATK_BODY_H / ATK0_FIX), (0, 462)), ('atk', 'atk1', ('h', ATK_BODY_H), (472, 1024)),  # 기본 공격: 기 모으기 → X자 베기 (X자 이펙트는 그림 그대로)
+    ('atk', 'atk0', ('h', ATK_BODY_H / ATK0_FIX), (0, 462)), ('atk', 'atk1', ('h', ATK_BODY_H), (472, 1024)),
+    ('rage', 'rage0', ('h', RAGE_BODY_H), (0, 166)), ('rage', 'rage1', ('h', RAGE_BODY_H), (166, 375)),  # 광폭화: 시전(붉은 기운) → 발동(불길)  # 기본 공격: 기 모으기 → X자 베기 (X자 이펙트는 그림 그대로)
 ]
 
 
@@ -75,7 +77,53 @@ def smooth_blade(im, bg, box):
     return im, bg
 
 
+GLOW = ('rage',)  # 흰 배경 위 반투명 붉은 기운·불길 샘플: 몸 바깥은 흰색을 빼서 투명도·본래 색을 되살림
+
+
+def shrink_soft(rgba, sc):
+    # 반투명 빛을 살린 채 줄이기 (shrink는 가장자리를 딱딱하게 해서 붉은 기운이 사라졌음). 몸(불투명)은 그대로 또렷
+    h, w = rgba.shape[:2]
+    pm = rgba.copy(); pm[..., :3] *= pm[..., 3:] / 255
+    a = np.array(Image.fromarray(pm.clip(0, 255).astype(np.uint8), 'RGBA').resize((max(1, round(w * sc)), max(1, round(h * sc))), Image.LANCZOS)).astype(float)
+    al = a[..., 3:]
+    a[..., :3] = np.where(al > 0, a[..., :3] * 255 / np.maximum(al, 1), 0)
+    a[..., 3:] = np.where(al > 235, 255, np.where(al < 12, 0, al))
+    return a.clip(0, 255).astype(np.uint8)
+
+
+def load_glow(name, pick):
+    im = np.array(Image.open(f'{D}{name}_src.png').convert('RGB')).astype(float)
+    full_w = im.shape[1]
+    im = im[:, pick[0]:pick[1]]
+    dark = im.max(axis=2) < 110
+    lab, n = ndi.label(ndi.binary_dilation(dark, iterations=2))
+    body = (lab == np.argmax(ndi.sum(dark, lab, range(1, n + 1))) + 1) & dark
+    # 몸 = 어두운 픽셀 덩어리를 닫고 구멍을 메운 것 + 둘레 1px 중 밝지 않은 것 (밝은 분홍 가장자리까지 몸으로 잡으면 흰 테두리가 남았음)
+    body = ndi.binary_fill_holes(ndi.binary_closing(body, iterations=2))
+    body |= ndi.binary_dilation(body) & (im.max(axis=2) < 120)
+    # 몸 바깥: 흰색에 섞인 만큼 투명 (초록·파랑이 255에서 줄어든 만큼 = 붉은 빛의 진하기)
+    a = np.clip((255 - im[..., 1:].min(axis=2)) / 220, 0, 1)
+    a = np.where(a < 0.06, 0, a)
+    al = np.maximum(a, 1e-3)[..., None]
+    rgb = np.where(body[..., None], im, ((im - 255 * (1 - al)) / al).clip(0, 255))
+    a = np.where(body, 1.0, a)
+    ys = np.where(body.any(axis=1))[0]
+    bot = ys.max()
+    a[bot + 1:] = 0  # 발 아래로 번진 빛은 자름 (발 = 칸 기준점)
+    # 한 장에서 두 칸을 자른 경계 쪽 12px은 빛을 서서히 옅게 (세로로 잘린 자국이 보였음)
+    W = a.shape[1]
+    left = np.arange(W) + (12 if pick[0] == 0 else 0)            # 샘플 왼쪽 끝이면 옅게 하지 않음
+    right = W - 1 - np.arange(W) + (12 if pick[1] >= full_w else 0)
+    ramp = np.clip(np.minimum(left, right) / 12, 0, 1)
+    a = np.where(body, a, a * ramp[None, :])
+    yy, xx = np.where(a > 0)
+    rgba = np.dstack([rgb, a * 255])[yy.min():bot + 1, xx.min():xx.max() + 1]
+    bx = np.where(body[bot - 6:bot + 1].any(axis=0))[0]
+    return rgba, (bx.min() + bx.max()) / 2 - xx.min()
+
+
 def load(name, pick=0):
+    if name in GLOW: return load_glow(name, pick)
     im = np.array(Image.open(f'{D}{name}_src.png').convert('RGB')).astype(float)
     white = (im.min(axis=2) > 214) & (im.max(axis=2) - im.min(axis=2) < 20)
     lab, n = ndi.label(white)
@@ -130,7 +178,7 @@ def main():
         # 샘플마다 그린 크기가 달라 칸마다 키(갈기 꼭대기~발)로 맞춤. k가 칸 이름이면 그 칸 배율을 그대로 (누운 칸)
         sc = scale[k] if isinstance(k, str) else (TARGET_H / k[1] if isinstance(k, tuple) else TARGET_H / rgba.shape[0] * k)
         scale[name] = sc
-        pieces.append((name, shrink(rgba, sc), foot * sc))
+        pieces.append((name, shrink_soft(rgba, sc) if src in GLOW else shrink(rgba, sc), foot * sc))
     L = max(int(np.ceil(c)) for _, _, c in pieces) + 4
     R = max(int(np.ceil(p.shape[1] - c)) for _, p, c in pieces) + 4
     H = max(p.shape[0] for _, p, _ in pieces) + 5
