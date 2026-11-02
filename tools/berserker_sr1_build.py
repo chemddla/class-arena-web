@@ -312,6 +312,66 @@ def build_exec_fx():
     print(f'exec fx {out.shape[1]}x{out.shape[0]}')
 
 
+OUT_UND = 'assets/sprites/merc/berserker_sr1_undying.webp'   # 히든 불사의 분노 동안: 도끼까지 몸 전체가 검은 실루엣, 눈만 붉게
+OUT_EYES = 'assets/sprites/merc/berserker_sr1_eyes.webp'     # 같은 칸 배치의 눈빛만 (게임에서 일렁이게 덧그림)
+
+
+def find_sr_eyes(c):
+    # 눈 = 머리 높이(몸 위쪽 45%)의 작은 붉은 점 중 가장 앞쪽(오른쪽) 무리. 어깨 뿔도 붉지만 뒤쪽(왼쪽)이라 빠짐
+    op = c[..., 3] > 200
+    red = op & (c[..., 0] > c[..., 1] + 50) & (c[..., 0] > c[..., 2] + 40)
+    ys = np.where(op.any(axis=1))[0]
+    if not len(ys): return np.zeros(op.shape, bool)
+    band = ys.min() + 0.45 * (ys.max() - ys.min())
+    lab, n = ndi.label(red, np.ones((3, 3)))
+    cands = []
+    for j in range(1, n + 1):
+        m = lab == j
+        sz = m.sum()
+        yy, xx = np.where(m)
+        if 2 <= sz <= 20 and yy.mean() <= band: cands.append((xx.mean(), m))
+    if not cands: return np.zeros(op.shape, bool)
+    xmax = max(x for x, _ in cands)
+    eyes = np.zeros(op.shape, bool)
+    for x, m in cands:
+        if x >= xmax - 14: eyes |= m
+    return eyes
+
+
+def build_undying_sheets(sheet, cw, names):
+    und = sheet.astype(float).copy()
+    eyes_sheet = np.zeros(sheet.shape, np.uint8)
+    for i, name in enumerate(names):
+        c = sheet[:, i * cw:(i + 1) * cw].astype(int)
+        op = c[..., 3] > 200
+        R, G, B = c[..., 0], c[..., 1], c[..., 2]
+        # 이펙트는 그대로: X자(가장 큰 붉은 덩어리), 찍기 불꽃(주황·노랑), 광폭화 기운·불길(밝은 빨강)
+        effect = np.zeros(op.shape, bool)
+        red = op & (R > G + 50) & (R > B + 40)
+        lab, n = ndi.label(red, np.ones((3, 3)))
+        if n:
+            sz = ndi.sum(red, lab, range(1, n + 1))
+            effect |= np.isin(lab, 1 + np.where(sz >= 120)[0])
+        effect |= op & (R > 150) & (G > 70) & (B < 120) & (R > B + 60)
+        if name.startswith('rage'): effect |= op & ~(c[..., :3].max(axis=2) < 120)
+        eyes = find_sr_eyes(c)
+        body = op & ~effect & ~eyes
+        L = c[..., :3].mean(axis=2)
+        v = 8 + L * 0.2   # 명암만 아주 어둡게 남김 (0~255 -> 8~59)
+        cell = und[:, i * cw:(i + 1) * cw]
+        cell[body, 0] = v[body]; cell[body, 1] = v[body] * 0.92; cell[body, 2] = v[body] * 1.02
+        cell[eyes, :3] = [255, 45, 30]
+        # 눈빛: 눈 + 둘레 3px로 퍼지는 붉은 빛 (가운데 진하고 바깥으로 옅게)
+        if eyes.any():
+            d = ndi.distance_transform_edt(~eyes)
+            a = np.clip(1 - d / 4, 0, 1) ** 1.5
+            e = eyes_sheet[:, i * cw:(i + 1) * cw]
+            e[..., 0] = 255; e[..., 1] = np.where(d == 0, 120, 30); e[..., 2] = 20
+            e[..., 3] = (a * 255).astype(np.uint8)
+    Image.fromarray(und.clip(0, 255).astype(np.uint8), 'RGBA').save(OUT_UND, 'WEBP', lossless=True)
+    Image.fromarray(eyes_sheet, 'RGBA').save(OUT_EYES, 'WEBP', lossless=True)
+
+
 def main():
     cuts = {f[1]: load(f[0], f[3]) for f in FRAMES}
     pieces = []
@@ -335,6 +395,7 @@ def main():
         y = H - 2 - p.shape[0] - LIFT.get(name, 0)
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
     Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
+    build_undying_sheets(sheet, cw, [n for n, _, _ in pieces])
     print(f'sr1 cellW={cw} cellH={H} anchorX={L} anchorY={H - 2} count={len(pieces)}')
 
 

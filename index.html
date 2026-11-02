@@ -6261,6 +6261,25 @@
     Object.entries(SECRET_MERC_SKINS).forEach(([job, nums]) => nums.forEach(n => {
       MERC_SPRITE_DEFS[`${job}_${SECRET_SKIN_BASE + n}`] = { ...MERC_SPRITE_DEFS[`${job}_0`], ...SECRET_SKIN_SHEETS[`${job}_sr${n}`], src: `assets/sprites/merc/${job}_sr${n}.webp` };
     }));
+    // 광전사 SR 1 (흑사자: 검은 갈기·붉은 눈·검은 판금·쌍도끼, tools/berserker_sr1_build.py)
+    //   칸 순서: 0 대기 · 1~3 걷기 · 4 피격 · 5~7 쓰러짐 · 8~9 공격 (기 모으기 → X자) · 10~11 도끼 투척 · 12~13 야성의 포효 · 14 찍기 (마무리 일격·대지 가르기)
+    //   · 15~16 마무리 일격 점프 · 17~18 불사의 분노 (시전 · 발동) · 19~20 광폭화 (시전 · 발동)
+    //   불사 동안은 도끼까지 검은 실루엣 시트 + 눈빛 시트(eyesImg)를 일렁이게 덧그림 (drawUnitSprite)
+    // 시크릿 레어 목록(SECRET_MERC_SKINS)에는 아직 안 넣어서 뽑기·외형 고르기에는 안 나옴
+    MERC_SPRITE_DEFS[`berserker_${SECRET_SKIN_BASE + 1}`] = {
+      ...MERC_SPRITE_DEFS.berserker_0, src: 'assets/sprites/merc/berserker_sr1.webp',
+      cellW: 171, cellH: 133, anchorX: 71, anchorY: 131, standH: 81, topH: 86, portraitCX: 74, count: 21,
+      anims: { idle: [0], walk: [1, 2, 3, 2], attack: [8, 9, 9, 9], skill: [8, 9], hurt: [4], death: [4, 5, 6, 7], raise: [8],
+        rage: [20], throw: [10, 11, 11], howl: [13], exec: [14], jump: [15, 16], split: [14], ucast: [17], ufire: [18] },
+      castFrames: { execute: [15, 16], ground_split: 8, undying_rage: 17, blood_howl: 12, rage: 19 }
+    };
+    {
+      const k = `berserker_${SECRET_SKIN_BASE + 1}`, und = { ...MERC_SPRITE_DEFS[k], src: 'assets/sprites/merc/berserker_sr1_undying.webp' };
+      und.eyesImg = new Image(); und.eyesImg.onload = () => { und.eyesImg.ready = true; }; und.eyesImg.src = 'assets/sprites/merc/berserker_sr1_eyes.webp';
+      BERSERKER_UNDYING_SPRITES[k] = und;
+      BERSERKER_RAGE_UNDYING_SPRITES[k] = und;
+      BERSERKER_RAGE_SPRITES[k] = MERC_SPRITE_DEFS[k]; // 광폭만일 때는 평소 흑사자 그대로
+    }
     // 학생 디자인 외형: 학생이 도감에서 낸 디자인을 선생님이 관리자 화면에서 제미나이로 시트로 만들어 승인
     // classes/{학급}/skins/{id} = 이름·직업·번호 (작음, 실시간 구독), skinSheets/{id} = 시트 그림 data URL (기기마다 한 번 받아 저장)
     // 칸 순서·동작 구성은 그 직업의 0번 외형과 같음. 그 학급에서만 쓰고 skinVariant = STUDENT_SKIN_BASE + 번호
@@ -24210,6 +24229,18 @@
       }
       drawSpriteFx(ctx, sprite.img, frame * sprite.cellW, 0, sprite.cellW, sprite.cellH,
         -sprite.anchorX * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
+      // 흑사자 불사 동안: 검은 실루엣 위에 붉은 눈빛이 일렁이며 빛남 (밝기가 두 박자로 오르내림, 더하기 합성)
+      if (sprite.eyesImg && sprite.eyesImg.ready && u.alive) {
+        const flick = 0.55 + 0.3 * Math.sin(tick * 0.21) + 0.15 * Math.sin(tick * 0.53 + 1.7);
+        ctx.shadowBlur = 0;
+        ctx.globalCompositeOperation = 'lighter';
+        for (const [a, grow] of [[flick, 0], [flick * 0.45, 1.6]]) { // 눈 + 조금 더 넓게 번지는 빛
+          ctx.globalAlpha = Math.max(0, Math.min(1, a));
+          const gk = k * (1 + grow / sprite.cellH);
+          drawSpriteFx(ctx, sprite.eyesImg, frame * sprite.cellW, 0, sprite.cellW, sprite.cellH,
+            -sprite.anchorX * gk, -sprite.anchorY * gk, sprite.cellW * gk, sprite.cellH * gk);
+        }
+      }
       ctx.restore();
     }
 
