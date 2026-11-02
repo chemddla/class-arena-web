@@ -90,6 +90,21 @@ def smooth_blade(im, bg, box):
 GLOW = ('rage',)  # 흰 배경 위 반투명 붉은 기운·불길 샘플: 몸 바깥은 흰색을 빼서 투명도·본래 색을 되살림
 
 
+def clean_specks(p):
+    # 줄이면서 몸 안에 1~3px 흰 점으로 남은 반짝임(검은 갑옷에 어울리지 않음) → 가까운 어두운 몸 색으로
+    c = p.astype(int)
+    white = (c[..., 3] > 0) & (c[..., :3].min(axis=2) > 200)
+    lab, n = ndi.label(white, np.ones((3, 3)))
+    if not n: return p
+    sz = ndi.sum(white, lab, range(1, n + 1))
+    speck = np.isin(lab, 1 + np.where(sz <= 3)[0])
+    src = (c[..., 3] > 0) & ~white
+    _, (iy, ix) = ndi.distance_transform_edt(~src, return_indices=True)
+    out = p.copy()
+    out[speck, :3] = p[iy[speck], ix[speck], :3]
+    return out
+
+
 def shrink_soft(rgba, sc):
     # 반투명 빛을 살린 채 줄이기 (shrink는 가장자리를 딱딱하게 해서 붉은 기운이 사라졌음). 몸(불투명)은 그대로 또렷
     h, w = rgba.shape[:2]
@@ -189,6 +204,22 @@ def load(name, pick=0):
     return rgba, foot
 
 
+OUT_UCAST_FX = 'assets/sprites/fx/berserker_sr1_ucast.webp'
+
+
+def build_ucast_fx():
+    # 히든 불사의 분노 시전 때 몸을 감싸는 붉은 반구: 흰 배경에 섞인 만큼 투명 (초록·파랑이 255에서 줄어든 만큼), 흰색을 빼서 본래 색으로
+    im = np.array(Image.open(f'{D}ucast_fx_src.png').convert('RGB')).astype(float)
+    a = np.clip((255 - im[..., 1:].min(axis=2)) / 225, 0, 1)
+    a = np.where(a < 0.05, 0, a)
+    al = np.maximum(a, 1e-3)[..., None]
+    rgb = ((im - 255 * (1 - al)) / al).clip(0, 255)
+    ys, xs = np.where(a > 0)
+    out = np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    Image.fromarray(out.clip(0, 255).astype(np.uint8), 'RGBA').save(OUT_UCAST_FX, 'WEBP', lossless=True)
+    print(f'ucast fx {out.shape[1]}x{out.shape[0]}')
+
+
 def main():
     cuts = {f[1]: load(f[0], f[3]) for f in FRAMES}
     pieces = []
@@ -198,7 +229,9 @@ def main():
         # 샘플마다 그린 크기가 달라 칸마다 키(갈기 꼭대기~발)로 맞춤. k가 칸 이름이면 그 칸 배율을 그대로 (누운 칸)
         sc = scale[k] if isinstance(k, str) else (TARGET_H / k[1] if isinstance(k, tuple) else TARGET_H / rgba.shape[0] * k)
         scale[name] = sc
-        pieces.append((name, shrink_soft(rgba, sc) if src in GLOW else shrink(rgba, sc), foot * sc))
+        p = shrink_soft(rgba, sc) if src in GLOW else shrink(rgba, sc)
+        if src not in GLOW and name != 'atk1': p = clean_specks(p)
+        pieces.append((name, p, foot * sc))
     L = max(int(np.ceil(c)) for _, _, c in pieces) + 4
     R = max(int(np.ceil(p.shape[1] - c)) for _, p, c in pieces) + 4
     H = max(p.shape[0] + LIFT.get(n, 0) for n, p, _ in pieces) + 5
@@ -214,3 +247,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    build_ucast_fx()
