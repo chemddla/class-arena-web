@@ -2,7 +2,7 @@
 # 사용: python tools/berserker_build.py [샘플 폴더]  (기본 assets/sprites/fx/samples, 파일 berserker_src1~.png)
 #   1 = 대기 (흰 배경, 왼쪽 위 한글 라벨 "대기"), 5 = 피격 (라벨 "피격"), 6 = 쓰러짐 (누운 자세),
 #   9 = 걷기 네 칸 (한 장에 나란히), 11 = 기본 공격 들어 올리기 (두 도끼를 머리 위로), 10 = 기본 공격 내려치기 (흰 섬광·궤적, 큰 그림),
-#   16 = 기본 공격 X자 베기 (양옆에 옆 칸 도끼가 잘려 들어옴), 12 = 광폭화 세 칸 (불길이 솟음 · 불길 속 포효 · 광폭 대기 — 붉은 얼굴·빛나는 눈, 분홍 아지랑이 배경),
+#   20 = 기본 공격 X자 교차 (회색 배경, ✦ 워터마크), 19 = 회색 X자 이펙트 (흰 배경), 12 = 광폭화 세 칸 (불길이 솟음 · 불길 속 포효 · 광폭 대기 — 붉은 얼굴·빛나는 눈, 분홍 아지랑이 배경),
 #   13 = 도끼 투척 세 칸 (위에 한글·영어 제목), 14 = 날아가는 도끼 두 칸 (흰 회오리 바람 포함)
 # 캐릭터 칸 순서: 0 대기 · 1~4 걷기 · 5 피격 · 6 쓰러짐 · 7~8 기본 공격 (들어 올리기 → 내려치기) · 9~10 광폭화 시전 · 11~13 도끼 투척 (뒤로 젖힘 · 던짐 · 팔을 뻗은 마무리)
 #   · 16 마무리 일격 내려치기 (예전 기본 공격 내려치기 샘플 10의 회색 섬광을 붉게 — redden_fx)
@@ -29,7 +29,7 @@ FRAMES = [
     (9, 'walk0', (0, 186)), (9, 'walk1', (186, 355)), (9, 'walk2', (355, 529)), (9, 'walk3', (529, 705)),
     (5, 'hurt'),
     (6, 'down'),
-    (11, 'atk0'), (16, 'atk1'),  # 기본 공격: 들어 올리기 → X자로 베기 (회색 X자 이펙트는 그림 그대로)
+    (11, 'atk0'), (20, 'atk1'),  # 기본 공격: 들어 올리기 → 두 도끼를 X자로 교차해 내리긋기 (회색 X자 이펙트는 따로 그려 붙임 — attach_x)
     (12, 'rage0', (0, 148)), (12, 'rage1', (148, 332)),  # 광폭화 시전: 불길이 솟음 → 불길 속 포효 (불길은 그림 그대로)
     (13, 'throw0', (0, 174)), (13, 'throw1', (174, 355)), (13, 'throw2', (355, 486)),  # 도끼 투척 (던진 도끼는 build_axe_fx 그림으로 따로 날아감)
 ]
@@ -38,17 +38,18 @@ RAGE_IDLE = (12, 'ridle', (332, 470))  # 광폭 대기 (오른쪽 끝 회색 테
 HOLE_KEEP = {10: [(700, 760, 700, 770)], 12: [(80, 100, 80, 90)]}  # 갇힌 흰 덩어리 중 남길 것 (x0, x1, y0, y1): 내려치기 섬광 아래쪽 흰 속, 광폭화 시전 첫 칸의 벌린 입 이빨
 RIM = {10: 8}  # 흰색이 섞인 테두리 두께 (기본 2px). 내려치기는 4.6배 큰 흐린 그림이라 번진 띠도 넓음
 DROP = {11: [(0, 40, 160, 260)], 12: [(470, 479, 0, 178)]}  # 지울 상자 (x0, x1, y0, y1): 들어 올리기 샘플 왼쪽 아래에 옆 칸 도끼가 잘려 들어옴, 광폭화 샘플 오른쪽 끝 회색 테두리
-HOLE_SHEETS = (9, 10, 12, 13, 16)  # 몸 안에 갇힌 흰 배경도 지울 샘플 (걷기 셋째 칸·광폭 대기·광폭화 시전 둘째 칸·도끼 투척: 팔·손과 도끼 사이, 내려치기: 머리털·다리와 섬광 사이)
+HOLE_SHEETS = (9, 10, 12, 13)  # 몸 안에 갇힌 흰 배경도 지울 샘플 (걷기 셋째 칸·광폭 대기·광폭화 시전 둘째 칸·도끼 투척: 팔·손과 도끼 사이, 내려치기: 머리털·다리와 섬광 사이)
 KEEP_SMALL = {'exec1': 500}  # 몸에서 떨어진 조각도 이 크기(px) 넘으면 남김: 섬광에서 떨어져 나간 빛살 (내려치기 샘플은 대기의 4.6배 크기)
 # 얼굴로 가로 기준을 못 잡는 칸: 발 기준점으로 쓸 샘플 x. 쓰러짐 = 머리털 끝~발끝 가운데 (오른쪽 도끼는 뺌),
 # 공격 = 장화 가운데 (내딛으며 몸이 앞으로 쏠려서 얼굴로 맞추면 발이 뒤로 미끄러짐)
 RAGE_SCALE = 1.31  # 광폭화 샘플은 얼굴 키(34 vs 44)·머리털 폭(80 vs 106)이 대기의 0.76배 → 대기 배율의 1.31배 (키로 맞추면 5% 작았음)
 RIDLE_FOOT = 394  # 광폭 대기 장화 가운데 (샘플 x)
-FOOT_X = {'down': 150, 'atk0': 140, 'atk1': 84, 'exec1': 465, 'ridle': RIDLE_FOOT, 'throw0': 97, 'throw1': 261, 'throw2': 417}  # 광폭 대기는 얼굴이 붉어서 피부로 얼굴을 못 찾음
+FOOT_X = {'down': 150, 'atk0': 140, 'atk1': 532, 'exec1': 465, 'ridle': RIDLE_FOOT, 'throw0': 97, 'throw1': 261, 'throw2': 417}  # 광폭 대기는 얼굴이 붉어서 피부로 얼굴을 못 찾음
 # 키로 못 맞추는 칸: 대기 배율에 곱하는 값 (얼굴·해골 크기를 대기와 같게). 피격·쓰러짐은 대기보다 5% 안팎,
 # 들어 올리기는 1.3배, 내려치기는 4.6배 크게, 도끼 투척은 0.63배 작게 그려짐
-SCALE_FIX = {'hurt': 1 / 1.05, 'down': 1 / 1.05, 'atk0': 1 / 1.3, 'atk1': 1, 'exec1': 1 / 4.6, 'throw0': 1.59, 'throw1': 1.59, 'throw2': 1.59,  # 도끼 투척은 얼굴이 대기의 0.63배로 작게 그려짐
+SCALE_FIX = {'hurt': 1 / 1.05, 'down': 1 / 1.05, 'atk0': 1 / 1.3, 'atk1': 1 / 4.0,  # X자 교차는 해골이 대기의 4배 (114×107 vs 27×28) 'exec1': 1 / 4.6, 'throw0': 1.59, 'throw1': 1.59, 'throw2': 1.59,  # 도끼 투척은 얼굴이 대기의 0.63배로 작게 그려짐
              'walk0': 1.1, 'walk1': 1.1, 'walk2': 1.1, 'walk3': 1.1}  # 걷기는 키는 대기와 비슷한데 얼굴이 0.91배로 작게 그려짐 (키로 맞추면 얼굴이 6% 작았음)
+GREY_BG = {20: 101}  # 회색 단색 배경 샘플: 배경 밝기 (오른쪽 아래 ✦ 워터마크는 떨어진 작은 조각이라 저절로 빠짐)
 PINK_SHEETS = (12,)  # 배경에 분홍 아지랑이가 낀 샘플: 밝은 분홍까지 배경으로 보고, 몸에 붙은 분홍 띠도 4겹까지 벗겨 냄
 def _skin(c): return (c[..., 3] > 200) & (c[..., 0] > 120) & (c[..., 0] > c[..., 1] + 20) & (c[..., 1] > c[..., 2]) & (c[..., 0] - c[..., 2] < 130)
 
@@ -60,6 +61,16 @@ def load(sheet, folder):
     lab, n = ndi.label(white)
     edge_ids = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
     bg = np.isin(lab, edge_ids[edge_ids > 0])
+    if sheet in GREY_BG:  # 회색 단색 배경 (가장자리에서 이어진 것만), 윤곽과 섞인 회색 테두리는 3겹까지 벗겨 냄
+        L = im.mean(axis=2); sat = im.max(axis=2) - im.min(axis=2)
+        g = (np.abs(L - GREY_BG[sheet]) < 14) & (sat < 10)
+        lab, n = ndi.label(g)
+        edge_ids = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
+        bg = np.isin(lab, edge_ids[edge_ids > 0])
+        for _ in range(3):
+            bg |= ~bg & ndi.binary_dilation(bg) & (sat < 14) & (L > 60) & (L < 150)
+        white = g
+        return im, np.where(bg, 0.0, 1.0)
     if sheet in PINK_SHEETS:
         R, G, B = im[..., 0], im[..., 1], im[..., 2]
         light = (R > 195) & (G > 150) & (B > 150) & (np.abs(G - B) < 25)
@@ -339,6 +350,50 @@ def make_howl(rage_piece, idle_piece):
     return ('howl' + name[-1], out, rcx, rb)
 
 
+X_FX_SRC = 19  # 회색 X자 이펙트 샘플 (흰 배경)
+
+
+def load_x_fx(folder):
+    # 흰 배경 X자: 흰 정도만큼 투명하게 (연회색 X자 몸통은 거의 불투명, 흰색과 섞인 가장자리는 반투명), 흰색을 빼서 본래 색으로
+    im = np.array(Image.open(f'{folder}/berserker_src{X_FX_SRC}.png').convert('RGB')).astype(float)
+    a = np.clip((250 - im.min(axis=2)) / 50, 0, 1)
+    al = np.maximum(a, 1e-3)[..., None]
+    rgb = ((im - 255 * (1 - al)) / al).clip(0, 255)
+    a = np.where(a < 0.1, 0, a)
+    ys, xs = np.where(a > 0)
+    return np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+
+
+def attach_x(piece, xfx):
+    # X자 이펙트를 몸 뒤에 붙임: X자 왼쪽 아래 끝이 앞쪽(오른쪽) 도끼 날 가운데에 오고, 오른쪽 끝이 사거리 끝 적의 앞쪽 몸(발에서 ATTACK_RANGE_SPR)에 닿게 크기를 정함
+    name, p, cx, below = piece
+    h = p.shape[0]
+    foot = h - 1 - below
+    P = p.astype(int)
+    L = P[..., :3].mean(axis=2); sat = P[..., :3].max(axis=2) - P[..., :3].min(axis=2)
+    metal = (P[..., 3] > 0) & (sat < 25) & (L > 110)
+    metal[:, :int(cx) + 6] = False; metal[:foot - 40] = False  # 발 기준 오른쪽 아래 = 앞쪽 도끼 날
+    lab, n = ndi.label(metal, structure=np.ones((3, 3)))
+    blade = lab == np.argmax(ndi.sum(metal, lab, range(1, n + 1))) + 1
+    by, bx = (v.mean() for v in np.where(blade))
+    xa = xfx[..., 3] > 0
+    ys, xs = np.where(xa)
+    t = np.argmax(ys - xs)  # X자 왼쪽 아래 끝
+    tx, ty = xs[t], ys[t]
+    k = (cx + ATTACK_RANGE_SPR - bx) / (xs.max() - tx)
+    f = shrink(xfx, k)
+    fx, fy = int(round(bx - tx * k)), int(round(by - ty * k))
+    w = p.shape[1]
+    x0, y0 = min(0, fx), min(0, fy)
+    x1, y1 = max(w, fx + f.shape[1]), max(h, fy + f.shape[0])
+    out = np.zeros((y1 - y0, x1 - x0, 4), np.uint8)
+    out[fy - y0:fy - y0 + f.shape[0], fx - x0:fx - x0 + f.shape[1]] = f
+    reg = out[-y0:-y0 + h, -x0:-x0 + w]
+    reg[:] = np.where((p[..., 3] > 0)[..., None], p, reg)  # 몸이 X자 위 (도끼 날이 X자 끝 위에 보이게)
+    print(f'X자 {k:.3f}배, 도끼 날 ({bx:.0f}, {by:.0f})')
+    return (name, out, cx - x0, below + max(0, y1 - h))
+
+
 def place(pieces, L, B, H, cellW):
     sheet = np.zeros((H, cellW * len(pieces), 4), np.uint8)
     for i, (name, p, c, d) in enumerate(pieces):
@@ -380,6 +435,7 @@ def main(folder):
     rage_sc = base * RAGE_SCALE  # 광폭화 샘플 세 칸은 같은 크기로 그려져서 함께 맞춤
     foot_off = (cuts['idle'][3] - cuts['idle'][1]) * base  # 대기 자세 발 가운데 - 얼굴 가운데 (줄인 뒤 px)
     pieces = {}
+    xfx = load_x_fx(folder)
     for f in FRAMES + [RAGE_IDLE, EXEC_SRC]:
         rgba, cx, below, _, fx = cuts[f[1]]
         # 대기는 키(머리털 끝~발)로 맞추고, 나머지 칸은 대기 배율에 SCALE_FIX(얼굴 크기를 대기와 같게)를 곱함
@@ -392,6 +448,7 @@ def main(folder):
             pieces[f[1]] = (f[1], p, c2, b)
             continue
         pieces[f[1]] = (f[1], shrink(rgba, sc), cx, int(round(below * sc)))
+    pieces['atk1'] = attach_x(pieces['atk1'], xfx)
     ridle = pieces['ridle'][1]
     normal = [pieces[f[1]] for f in FRAMES]
     normal += [make_howl(pieces['rage0'], pieces['idle']), make_howl(pieces['rage1'], pieces['idle']), pieces['exec1']]
