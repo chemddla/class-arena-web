@@ -15920,7 +15920,7 @@
         const sk = jobSkills[key];
         const open = sk && (u.unlockedSkills || []).includes(key);
         const cd = open ? (u.skillCooldowns?.[key] || 0) : 0;
-        btn.textContent = open ? (cd > 0 ? `${Math.ceil(cd / 60)}` : sk.icon + skillChargeTag(u, key).trim()) : '🔒';
+        btn.textContent = open ? (cd > 0 ? `${Math.ceil(cd / 60)}` : sk.icon + skillChargeTag(u, key, true).trim()) : '🔒';
         btn.style.opacity = open && cd <= 0 && u.mana >= (sk.manaCost || 0) ? '1' : '0.45';
         btn.title = open ? sk.name : '아직 잠긴 스킬';
       }
@@ -21748,7 +21748,13 @@
       if (u.skillCooldowns && u.skillCooldowns.axe_throw > BERSERKER_AXE_CHARGE_GAP) u.skillCooldowns.axe_throw = 0;
     }
     // 스킬 칸 이름 옆 남은 개수 (충전식 스킬만)
-    function skillChargeTag(u, key) { return key === 'axe_throw' && u.job === 'berserker' ? ` ×${berserkerAxeCharges(u)}` : ''; }
+    // 다시 차는 중이면 다음 도끼까지 남은 초도 (예: ×1 ⟳4s) — 하나만 던져도 바로 다시 차기 시작함
+    function skillChargeTag(u, key, short = false) {
+      if (key !== 'axe_throw' || u.job !== 'berserker') return '';
+      const n = berserkerAxeCharges(u);
+      const refill = n < BERSERKER_AXE_CHARGES && u.axeRecharge > 0 ? (short ? '⟳' : ` ⟳${Math.ceil(u.axeRecharge / 60)}s`) : '';
+      return ` ×${n}${refill}`;
+    }
     // 쌍도끼: 광전사의 도끼 타격(기본 공격·마무리 일격·대지 가르기)은 피해를 반씩 나눠 두 번 때림 (합계는 그대로)
     //   첫 타는 바로, 두 번째 타는 BERSERKER_TWIN_GAP틱 뒤 (그때 대상이 살아 있고 사거리 + 여유 안이면)
     //   opt.kind = 'melee'(기본 공격) | 'skill', opt.tag·color = 피해 글자, opt.after = 두 번째 타 뒤 처리 ('execute' = 처치 보상)
