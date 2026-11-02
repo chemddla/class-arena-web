@@ -5685,20 +5685,20 @@
     [1, 2, 3, 4].forEach(v => { MERC_SPRITE_DEFS[`bard_${v}`] = { ...MERC_SPRITE_DEFS.bard_0, src: `assets/sprites/merc/bard_${v}.webp` }; });
     // 광전사 외형 0 (털가죽 망토·해골 어깨·파란 문신·쌍도끼, tools/berserker_build.py): 칸 순서 = 대기, 걷기 4, 피격, 쓰러짐(누운 자세), 공격 2 (두 도끼를 머리 위로 들어 올리기 6틱 → 두 도끼를 X자로 교차해 내리긋기 — 회색 X자 이펙트는 아래 두 끝이 양쪽 도끼 날 끝에 오게 키워 붙임),
     //   광폭화 시전 2 (불길이 솟음 → 불길 속 포효 — 불길은 그림에 그려져 있음), 도끼 투척 3 (뒤로 젖힘 → 던짐 → 팔을 뻗은 마무리, 날아가는 도끼는 BERSERKER_AXE_FX)
-    //   야성의 포효 2 (광폭화 시전 칸에서 불을 지우고 하반신을 대기 자세 색으로), 마무리 일격 1 (예전 기본 공격 내려치기 그림의 회색 섬광을 붉게)
+    //   야성의 포효 2 (광폭화 시전 칸에서 불을 지우고 하반신을 대기 자세 색으로), 마무리 일격 3 (찍기 · 점프 두 칸 — 점프 칸은 기준점보다 높이 그려져 떠 보임)
     // 쓰러짐은 피격 → 누운 자세. 불사의 분노는 광폭화 불길 동작, 대지 가르기는 기본 공격 동작
     MERC_SPRITE_DEFS.berserker_0 = {
       src: 'assets/sprites/merc/berserker_0.webp',
-      cellW: 188, cellH: 184, anchorX: 91, anchorY: 145, standH: 81, topH: 86, portraitCX: 94, count: 17,
+      cellW: 167, cellH: 154, anchorX: 73, anchorY: 148, standH: 81, topH: 86, portraitCX: 76, count: 19,
       attackDur: 31, // 기본 공격: 들어 올리기 6틱 + 내려치기 25틱 (공격 자세가 이어지는 최대 42틱에서 내려치기 36틱을 30% 줄임)
-      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [7, 8, 8, 8], skill: [7, 8], hurt: [5], death: [5, 6], raise: [7], rage: [9, 10, 10], throw: [11, 12, 13], howl: [14, 15, 15], exec: [16] },
-      castFrames: { execute: 7 }, // 마무리 일격 시전 막대 동안 두 도끼를 치켜든 자세
+      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [7, 8, 8, 8], skill: [7, 8], hurt: [5], death: [5, 6], raise: [7], rage: [9, 10, 10], throw: [11, 12, 13], howl: [14, 15, 15], exec: [16], jump: [17, 18] },
+      castFrames: { execute: [17, 18] }, // 마무리 일격 시전 막대 동안 두 도끼를 치켜들고 대상에게 뛰어오름 (berserkerExecuteLeap)
       skillAnims: {
         rage:         { anim: 'rage', tpf: 15, dur: 45 },
         blood_howl:   { anim: 'howl', tpf: 15, dur: 45 }, // 광폭화 시전 동작에서 불을 지우고 하반신을 원래 색으로 되돌린 포효
         undying_rage: { anim: 'rage', tpf: 15, dur: 45 }, // 히든 불사의 분노도 광폭이 걸려서 광폭화와 같은 불길 동작 (기본 skill 동작은 내려치기가 섞임)
         axe_throw:    { anim: 'throw', tpf: 5, dur: 30 }, // 던짐 칸 다음(10틱)에 도끼가 손을 떠남 (BERSERKER_AXE_RELEASE)
-        execute:      { anim: 'exec', tpf: 22, dur: 22 }, // 시전 막대 동안은 들어 올리기(castFrames), 발동하면 붉은 이펙트 내려치기
+        execute:      { anim: 'exec', tpf: 26, dur: 26 }, // 시전 막대 동안은 점프(castFrames), 발동하면 흙먼지 속에 찍기 + 폭발 (BERSERKER_SLAM_FX)
         ground_split: { anim: 'attack', tpf: 5, dur: 20 }
       }
     };
@@ -7254,6 +7254,10 @@
 
     // 도적 표창 (투사체 그림, 회전시켜 그리므로 아틀라스와 따로 둠)
     // 광전사 도끼 투척: 날아가는 도끼 (흰 회오리 바람 포함, 두 칸 중 첫 칸을 빙글빙글 돌림, tools/berserker_build.py)
+    // 광전사 마무리 일격: 찍을 때 대상 자리에 크게 터지는 폭발 (불길·흙덩이·분홍 빛무리, tools/berserker_build.py)
+    const BERSERKER_SLAM_FX = new Image();
+    BERSERKER_SLAM_FX.onload = () => { BERSERKER_SLAM_FX.ready = true; };
+    BERSERKER_SLAM_FX.src = 'assets/sprites/fx/berserker_slam.webp';
     const BERSERKER_AXE_FX = new Image();
     BERSERKER_AXE_FX.onload = () => { BERSERKER_AXE_FX.ready = true; };
     BERSERKER_AXE_FX.src = 'assets/sprites/fx/berserker_axe.webp';
@@ -18758,6 +18762,7 @@
         unit.facingAngle = Math.atan2(facing.y - unit.y, facing.x - unit.x);
         if (Math.abs(facing.x - unit.x) > 4) unit.facingDir = facing.x >= unit.x ? 1 : -1;
       }
+      if (c.key === 'execute' && unit.job === 'berserker') berserkerExecuteLeap(unit, c);
       if (--c.left > 0) return true;
       unit.casting = null;
       if (c.key === 'assassin_strike') { assassinStrike(unit, c.aimTarget, c.strikeDir); return true; }
@@ -21723,6 +21728,19 @@
       playCombatSfx('slash');
       if (t.after === 'execute') berserkerExecuteReward(unit, t.target);
     }
+    // 마무리 일격 시전: 시전 막대가 차는 동안 대상 앞(몸이 닿을 거리)까지 뛰어감 (점프 자세는 castFrames, 처음엔 천천히 → 빠르게 → 내려앉음)
+    function berserkerExecuteLeap(unit, c) {
+      const foe = c.aimTarget;
+      if (!foe || !foe.alive) return;
+      if (!c.leapFrom) c.leapFrom = { x: unit.x, y: unit.y };
+      const p = 1 - (c.left - 1) / c.total;
+      const t = 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, p));
+      const ang = Math.atan2(foe.y - c.leapFrom.y, foe.x - c.leapFrom.x);
+      const stop = 45 + unitBodyGap(foe) + unitBodyGap(unit); // 대상 바로 앞(도끼가 닿는 거리)에 내려앉음
+      const d = Math.max(0, Math.hypot(foe.x - c.leapFrom.x, foe.y - c.leapFrom.y) - stop);
+      unit.x = c.leapFrom.x + Math.cos(ang) * d * t;
+      unit.y = c.leapFrom.y + Math.sin(ang) * d * t;
+    }
     // 마무리 일격으로 쓰러뜨리면 회복 + 쿨타임 절반 (두 타 중 어느 쪽으로 쓰러뜨려도)
     function berserkerExecuteReward(unit, foe) {
       if (foe.alive || foe._execRewarded) return;
@@ -21793,7 +21811,7 @@
         if (Math.abs(foe.x - unit.x) > 4) unit.facingDir = foe.x >= unit.x ? 1 : -1;
         {
           const lost = Math.max(0, 1 - foe.hp / foe.maxHp);
-          sim.effects.push({ type: 'magic_burst', x: foe.x, y: foe.y - 12, r: 56, life: 28, maxLife: 28 });
+          sim.effects.push({ type: 'berserker_slam', x: foe.x, y: foe.y, w: 190 * unitAreaScale(unit), life: 36, maxLife: 36 }); // 대상 자리에 크게 터지는 폭발
           // 쌍도끼 두 번 (피해는 쓸 때 잃은 체력으로 한 번 정해서 반씩), 어느 타로 쓰러뜨려도 회복 + 쿨타임 절반
           berserkerTwinHit(unit, foe, unit.atk * BERSERKER_EXECUTE_DMG * (1 + lost), { kind: 'skill', tag: '💥', color: '#7f1d1d', after: 'execute', reach: manualSkillRange(unit, 'execute') });
           berserkerExecuteReward(unit, foe);
@@ -24381,6 +24399,19 @@
           continue;
         }
 
+        if (ef.type === 'berserker_slam') {
+          // 마무리 일격 폭발: 처음 20% 동안 커지고 마지막 40% 동안 흐려짐, 아래쪽이 대상 발 높이
+          if (BERSERKER_SLAM_FX.ready) {
+            const k = Math.min(1, 0.6 + progress / 0.2 * 0.4);
+            const w = ef.w * k, h = w * BERSERKER_SLAM_FX.height / BERSERKER_SLAM_FX.width;
+            ctx.globalAlpha = Math.min(1, (1 - progress) / 0.4);
+            ctx.imageSmoothingEnabled = true;
+            ctx.drawImage(BERSERKER_SLAM_FX, ef.x - w / 2, ef.y + 14 - h, w, h);
+          }
+          ctx.restore();
+          if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }
+          continue;
+        }
         if (ef.type === 'aoe_ring') {
           // 범위 스킬 퍼져 나가는 원 (r = 실제 범위) — 범위 표시라 흐리게
           ctx.globalAlpha = (ef.life / ef.maxLife) * 0.25;
