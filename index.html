@@ -40954,7 +40954,7 @@
       bomb:   { w: 84, h: 66, label: '고블린 폭탄', min: 5, hazard: true },
       // ── 슬라이드 전용: 위에서 매달려 내려와 점프로는 못 넘음 (hang). 슬라이드로 지나가면 보너스
       branch:     { w: 96, h: 400, alt: 46, label: '늘어진 나뭇가지', min: 1, air: true, hang: true },
-      hangspider: { w: 56, h: 400, alt: 44, label: '매달린 거미', min: 3, air: true, hang: true, sprite: 'spider_warrior', scale: 0.36, anim: 'idle', fps: 2, bob: 10, thread: true },
+      hangspider: { w: 56, h: 400, alt: 54, label: '매달린 거미', min: 3, air: true, hang: true, sprite: 'spider_warrior', scale: 0.36, anim: 'idle', fps: 2, bob: 10, thread: true },
       icearrow:   { w: 76, h: 22, alt: 50, label: '얼음 화살', min: 6, hang: true, approach: 1.4, hazard: true },
       harpyhigh:  { w: 0, h: 0, alt: 180, label: '하피 궁수', min: 6, air: true, decor: true, sprite: 'ice_harpy_archer', scale: 0.34, anim: 'attack', fps: 5, bob: 6 },
     };
@@ -41450,9 +41450,58 @@
         const weights = P.map(p => p[1] * (p[0] === st ? 2 : p[0] === st - 1 ? 1.3 : p[0] >= st - 3 ? 0.8 : 0.35));
         let r = Math.random() * weights.reduce((a, b) => a + b, 0), chosen = P[0];
         for (let i = 0; i < P.length; i++) { r -= weights[i]; if (r <= 0) { chosen = P[i]; break; } }
+        const n0 = s.objs.length;
         const wait = chosen[2]();
-        // 속도가 빠를수록 거리 간격이 같아지도록 시간 간격을 줄이고, 단계가 오를수록 더 촘촘하게
-        s.nextSpawn = wait * (PETRUN.speed0 / s.speed) * (1.3 - st * 0.055) + 0.25;
+        const pushed = this.spaceOut(s, n0);
+        // 속도가 빠를수록 거리 간격이 같아지도록 시간 간격을 줄이고, 단계가 오를수록 더 촘촘하게 (밀어낸 만큼 다음 생성도 늦춤)
+        s.nextSpawn = wait * (PETRUN.speed0 / s.speed) * (1.3 - st * 0.055) + 0.25 + pushed / s.speed;
+      },
+      // 장애물이 펫 자리를 지나가는 시간대(지금 속도 기준)와 피하는 방법. 다가오는 속도(approach)가 달라 따라잡혀도 도착 시간은 그대로라 생성 때 한 번만 보면 됨
+      obsWindow(o, speed) {
+        const d = PETRUN_OBS[o.sub]; if (d.decor) return null;
+        const v = speed * (1 + (o.vx || 0)), p0 = PETRUN.petX - PETRUN.standW / 2 + 6, p1 = PETRUN.petX + PETRUN.standW / 2 - 6;
+        const bx0 = o.sub === 'bomb' ? o.x : o.x + 5, bx1 = o.sub === 'bomb' ? o.x + d.w : o.x + d.w - 5;
+        const alt = d.dive ? 0 : (o.baseAlt !== undefined ? o.baseAlt : (d.alt || 0)), bob = d.bob || 0;
+        const top = alt + bob + d.h - 8; // 넘으려면 펫 발이 이만큼 떠야 함
+        const peak = PETRUN.jumpV * PETRUN.jumpV / (2 * PETRUN.gravity);
+        return { t0: (bx0 - p1) / v, t1: (bx1 - p0) / v, top, slide: alt - bob >= PETRUN.slideH - 2, jump: top <= peak * 0.88 };
+      },
+      // 두 장애물을 연달아 피할 수 있는지 (슬라이드로 둘 다 / 한 번 점프로 둘 다 / 따로따로)
+      obsFair(a, b) {
+        if (b.t0 < a.t0) [a, b] = [b, a];
+        if (a.slide && b.slide) return true;
+        const V = PETRUN.jumpV, g = PETRUN.gravity, react = 0.18;
+        const rise = h => (V - Math.sqrt(Math.max(0, V * V - 2 * g * h))) / g;   // 이 높이까지 오르는 시간
+        const over = h => 2 * Math.sqrt(Math.max(0, V * V - 2 * g * h)) / g;     // 이 높이 위에 떠 있는 시간
+        const gap = b.t0 - a.t1;
+        if (a.jump && b.jump) {
+          if (Math.max(a.t1, b.t1) - a.t0 <= over(Math.max(a.top, b.top)) * 0.85) return true;
+          if (gap >= rise(a.top) + rise(b.top) + react) return true;
+        }
+        if (a.slide && b.jump && gap >= rise(b.top) + react) return true;     // 슬라이드 → 점프
+        if (a.jump && b.slide && gap >= rise(a.top) + react) return true;     // 점프 → 착지해서 슬라이드
+        return false;
+      },
+      // 방금 만든 패턴의 장애물이 이미 있는 것(또는 같은 패턴 안의 것)과 겹쳐 못 피하게 되면 그 장애물부터 뒤쪽을 오른쪽으로 밀어냄. 반환 = 밀어낸 거리
+      spaceOut(s, n0) {
+        const fresh = s.objs.slice(n0);
+        const placed = s.objs.slice(0, n0).filter(o => o.kind === 'obs' && !o.dead && !o.passed).map(o => this.obsWindow(o, s.speed)).filter(Boolean);
+        const list = fresh.filter(o => o.kind === 'obs' && !PETRUN_OBS[o.sub].decor).sort((a, b) => a.x - b.x);
+        const done = new Set(), drop = new Set();
+        let pushed = 0;
+        for (const o of list) {
+          let w = this.obsWindow(o, s.speed), tries = 0;
+          while (!placed.every(p => this.obsFair(p, w))) {
+            if (++tries > 90) { drop.add(o); w = null; break; } // 끝내 안 되면 빼 버림
+            const x0 = o.x;
+            fresh.forEach(f => { if (!done.has(f) && f.x >= x0) f.x += 20; });
+            pushed += 20; w = this.obsWindow(o, s.speed);
+          }
+          done.add(o);
+          if (w) placed.push(w);
+        }
+        if (drop.size) s.objs = s.objs.filter(o => !drop.has(o));
+        return pushed;
       },
       finish(s) {
         s.over = true; s.overAt = 0; this.slideHold = false;
