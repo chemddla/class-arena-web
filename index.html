@@ -2694,7 +2694,7 @@
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h4 id="homeRoomTitle" class="font-title text-xl text-white flex items-center gap-2"><span>🛋️</span> 내 방 꾸미기</h4>
-              <p id="homeRoomHelp" class="text-xs text-slate-400 mt-0.5">가구를 사서 방에 놓아 보세요. 놓을 때 <strong>R</strong> 또는 <strong>↻</strong>로 돌리고, 놓인 가구는 <strong>누른 채 끌어서</strong> 옮길 수 있어요. 오른쪽 위 <strong>＋ －</strong>(또는 Ctrl+휠)로 확대·축소해요.<br>방 안의 <strong>내 단장</strong>은 <strong>방향키·WASD</strong>(또는 왼쪽 아래 십자키)로 걷고, 빈 바닥을 누르면 그리로 가요. 의자·침대 옆에서 <strong>Space(✋)</strong>를 누르면 앉고, 펫 옆에서는 쓰다듬어요. 🛡️ 내 단장 탭에서 모습을 꾸며요.</p>
+              <p id="homeRoomHelp" class="text-xs text-slate-400 mt-0.5">가구를 사서 방에 놓아 보세요. 놓을 때 <strong>R</strong> 또는 <strong>↻</strong>로 돌리고, 놓인 가구는 <strong>누른 채 끌어서</strong> 옮길 수 있어요. 오른쪽 위 <strong>＋ －</strong>(또는 Ctrl+휠)로 확대·축소해요.<br>방 안의 <strong>내 단장</strong>은 <strong>방향키·WASD</strong>(또는 왼쪽 아래 십자키)로 걷고, 빈 바닥을 누르면 그리로 가요. 의자·침대 옆에서 <strong>Space(✋)</strong>를 누르면 앉고, 펫 옆에서는 쓰다듬어요. 🛡️ 내 단장 탭에서 모습을 꾸미고, 투구·갑옷·무기 같은 부위를 직접 그려 입거나 친구에게 팔 수도 있어요.</p>
             </div>
             <span id="homeRoomCa" class="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-extrabold"></span>
           </div>
@@ -3899,6 +3899,58 @@
       <div class="flex gap-2">
         <button onclick="closeAvatarEditor()" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-sm">취소</button>
         <button onclick="saveAvatarEditor()" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-sm">💾 프로필로 저장하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 방 꾸미기 · 내 단장: 부위 그리기 (48×80 도트 레이어, HomeRoom.openPartEditor) -->
+  <div id="capEditorModal" class="gl-skin hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-3">
+    <div class="bg-slate-900 border-2 border-amber-500 rounded-3xl max-w-4xl w-full p-4 shadow-2xl flex flex-col gap-3 max-h-[96vh] overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <h3 class="font-title text-xl text-white">🎨 내 단장 부위 그리기</h3>
+        <button type="button" onclick="HomeRoom.closePartEditor()" class="text-slate-400 hover:text-white font-bold px-2">✕</button>
+      </div>
+      <p class="text-xs text-slate-400">어느 부위를 그릴지 고르고 48×80칸에 색칠해요. 흐리게 보이는 내 단장 위에 맞춰 그리면 돼요. <strong>앞모습</strong>은 꼭 그리고, 옆·뒤는 안 그리면 앞모습을 대신 써요. 저장하면 바로 입고, 내 작품 탭에서 친구에게 팔 수도 있어요.</p>
+      <div id="capEdSlots" class="flex flex-wrap gap-1"></div>
+      <div class="flex flex-col md:flex-row gap-3">
+        <div class="shrink-0 mx-auto flex flex-col gap-1">
+          <div class="flex gap-1">
+            <button type="button" data-capview="f" onclick="HomeRoom.edSetView('f')">앞</button>
+            <button type="button" data-capview="s" onclick="HomeRoom.edSetView('s')">옆</button>
+            <button type="button" data-capview="b" onclick="HomeRoom.edSetView('b')">뒤</button>
+            <button type="button" id="capEdCopy" onclick="HomeRoom.edCopyFront()" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-extrabold whitespace-nowrap">앞모습 복사</button>
+          </div>
+          <canvas id="capEdCanvas" class="touch-none select-none rounded-lg border-2 border-slate-600 bg-slate-200" style="width:min(288px,80vw);aspect-ratio:3/5;image-rendering:pixelated"></canvas>
+        </div>
+        <div class="flex flex-col gap-2 flex-1 min-w-0">
+          <div id="capEdPalette" class="grid grid-cols-8 gap-1"></div>
+          <div class="grid grid-cols-5 gap-1.5 text-xs font-extrabold whitespace-nowrap">
+            <button type="button" data-captool="pen" onclick="HomeRoom.edSetTool('pen')">✏️ 펜</button>
+            <button type="button" data-captool="fill" onclick="HomeRoom.edSetTool('fill')">🪣 채우기</button>
+            <button type="button" data-captool="erase" onclick="HomeRoom.edSetTool('erase')">🧽 지우개</button>
+            <button type="button" data-captool="pick" onclick="HomeRoom.edSetTool('pick')" title="그림에서 색을 집어 와요">💧 스포이드</button>
+            <button type="button" data-captool="mirror" onclick="HomeRoom.edToggleMirror()" title="왼쪽·오른쪽을 똑같이 그려요 (앞·뒤)">🪞 대칭</button>
+          </div>
+          <div class="grid grid-cols-3 gap-1.5 text-xs font-extrabold whitespace-nowrap">
+            <button type="button" onclick="HomeRoom.edClear()" class="py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200">🗑️ 모두 지우기</button>
+            <button type="button" onclick="HomeRoom.edUndo()" class="py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200">↩️ 되돌리기</button>
+            <button type="button" onclick="HomeRoom.edFlip()" class="py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200">↔️ 뒤집기</button>
+          </div>
+          <div class="rounded-xl bg-slate-950 border border-slate-800 p-2 flex items-center gap-3">
+            <span class="text-[11px] font-extrabold text-slate-300">입은 모습</span>
+            <canvas id="capEdPvF" width="48" height="80" class="rounded-lg bg-slate-800" style="width:72px;height:120px;image-rendering:pixelated" title="앞"></canvas>
+            <canvas id="capEdPvS" width="48" height="80" class="rounded-lg bg-slate-800" style="width:72px;height:120px;image-rendering:pixelated" title="옆"></canvas>
+            <canvas id="capEdPvB" width="48" height="80" class="rounded-lg bg-slate-800" style="width:72px;height:120px;image-rendering:pixelated" title="뒤"></canvas>
+          </div>
+          <div>
+            <label class="text-[11px] font-bold text-slate-400 block mb-1">부위 이름 (12자까지)</label>
+            <input id="capEdName" type="text" maxlength="12" placeholder="예) 불꽃 투구" class="w-full rounded-xl px-3 py-2 text-xs font-extrabold border bg-slate-950 border-slate-700 text-white" />
+          </div>
+          <div class="flex gap-2">
+            <button type="button" onclick="HomeRoom.closePartEditor()" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-sm">취소</button>
+            <button type="button" onclick="HomeRoom.savePartFromEditor()" class="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-sm">💾 저장하고 입기</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -31971,7 +32023,9 @@
         const added = gifts.map(g => ({ mc: Math.max(0, Number(g.mc) || 0), merc: applyGiftToStudent(me, g) }));
         // 거래소에서 내 그림이 팔린 대금이면 그 그림의 판매 수를 셈
         const soldListings = gifts.map(g => /^profile_sale:(\w+)$/.exec(g.kind || '')).filter(Boolean)
-          .map(m => (me.avatarShop || []).find(l => l && l.id === m[1])).filter(Boolean);
+          .map(m => (me.avatarShop || []).find(l => l && l.id === m[1])).filter(Boolean)
+          // 단장 부위 상점(방 꾸미기)에서 팔린 대금도 판매 수를 셈
+          .concat(gifts.map(g => /^captain_sale:(\w+)$/.exec(g.kind || '')).filter(Boolean).map(m => (me.capShop || []).find(l => l && l.id === m[1])).filter(Boolean));
         soldListings.forEach(l => { l.sold = (Number(l.sold) || 0) + 1; });
         const updates = { [`classes/${code}/students/${me.id}`]: studentCloudValue(me) };
         ids.forEach(id => { updates[`classes/${code}/transfers/${me.id}/${id}`] = null; });
@@ -41711,7 +41765,7 @@
 
     /********************************************************************
      * 12-C. 방 안의 내 아바타 (용병단장) — 48×80 도트, 부위마다 모양(마스크)을 찍고 명암·선을 자동으로 넣음
-     * 저장: stu.avatar = { skin, eyeColor, hair, hairColor, armor, armorColor, legs, legsColor, shoeColor,
+     * 저장: stu.captain = { skin, eyeColor, hair, hairColor, armor, armorColor, legs, legsColor, shoeColor,
      *                      cape, capeColor, hat, hatColor, weapon, face, emblem }  (색은 견본 번호)
      ********************************************************************/
     const AV_SCALE = 1.5; // 방 안에서 그리는 배율 (48×80 → 72×120 도트, 의자 등받이보다 조금 큰 키)
@@ -41738,8 +41792,10 @@
     const AV_DEFAULT = { skin: 1, eyeColor: 0, hair: 'short', hairColor: 1, face: 'none', armor: 'leather', armorColor: 12, emblem: 2, legs: 'pants', legsColor: 15, shoeColor: 12, cape: 'short', capeColor: 0, hat: 'none', hatColor: 15, weapon: 'sword' };
     // 저장된 값을 안전한 생김새로 (없거나 깨진 값은 기본)
     function avatarLook(raw) {
-      const a = { ...AV_DEFAULT };
+      const a = { ...AV_DEFAULT, c: {} };
       if (!raw || typeof raw !== 'object') return a;
+      // 입은 내 부위 (slot → 부위 id). 실제 그림은 HomeRoom.avatarOf가 capParts에서 찾아 custom에 넣음
+      if (raw.c && typeof raw.c === 'object') AV_CUSTOM_SLOTS.forEach(s => { if (typeof raw.c[s] === 'string' && raw.c[s]) a.c[s] = raw.c[s]; });
       AV_FIELDS.forEach(([k, , list]) => {
         const v = raw[k];
         if (list === 'part') { if (AV_PARTS[k].some(([id]) => id === v)) a[k] = v; }
@@ -41751,6 +41807,63 @@
       const rnd = n => Math.random() * n | 0, a = {};
       AV_FIELDS.forEach(([k, , list]) => { a[k] = list === 'part' ? AV_PARTS[k][rnd(AV_PARTS[k].length)][0] : rnd(list.length); });
       return a;
+    }
+    // ───── 학생이 직접 그리는 부위 (48×80 도트 레이어) ─────
+    // 저장: stu.capParts = [{ id, slot, name, f, s?, b?, bought?, by?, byName?, at }] (f/s/b = 앞·옆·뒤 그림 문자열)
+    //       stu.capShop  = [{ id, slot, name, f, s?, b?, price, sold, at }] (판매 등록, 산 학생은 자기 capParts에 복사본을 받음)
+    //       stu.captain.c = { slot: partId } (입은 내 부위). 대금은 친구 송금(kind 'captain_sale:<id>')으로 판 학생에게 감
+    // 그림 문자열: '~' 뒤에 [색 글자(0~9a~v, 0은 투명), 이어지는 개수 글자] 두 글자씩 (프로필 도트와 같은 방식)
+    const AV_CUSTOM_SLOTS = ['hair', 'face', 'armor', 'legs', 'cape', 'hat', 'weapon'];
+    const AV_SLOT_NAME = { hair: '머리', face: '얼굴 장식', armor: '갑옷·옷', legs: '다리', cape: '망토', hat: '투구·모자', weapon: '무기' };
+    const CAP_PAL = ['', '#2e2633', '#f2f0f4', '#aeb6c2', '#6b7280', '#3a3a40', '#e8c43a', '#d94c4c', '#e8873a', '#8cc84b', '#3f9a5a', '#4fb8b0', '#5bb4e0', '#3f6fc8', '#2f3f86', '#8a5cc8',
+      '#e87aa8', '#5a1f28', '#9a6438', '#6b4a2a', '#c9a27a', '#8a5a30', '#ffe3cc', '#f8cfa8', '#e9b083', '#cf9064', '#a4693f', '#6e432a', '#efc95e', '#eeeae2', '#ee86b0', '#4677d0'];
+    const CAP_N = 48 * 80;
+    const CAP_PARTS_MAX = 24, CAP_SHOP_MAX = 6, CAP_PRICE_MIN = 50, CAP_PRICE_MAX = 30000;
+    // 그림 문자열 → 3840칸 (빈 그림·잘못된 값은 null)
+    const capCellCache = new Map();
+    function capCells(str) {
+      if (typeof str !== 'string' || str.length > CAP_N * 2 + 1) return null;
+      if (capCellCache.has(str)) return capCellCache.get(str);
+      let out = null;
+      if (/^~(?:[0-9a-v][A-Za-z0-9_-])+$/.test(str)) {
+        const cells = new Uint8Array(CAP_N);
+        let p = 0, any = false;
+        for (let i = 1; i < str.length && p <= CAP_N; i += 2) {
+          const v = parseInt(str[i], 32), n = AVATAR_RUN_CHARS.indexOf(str[i + 1]) + 1;
+          if (v) { any = true; cells.fill(v, p, Math.min(CAP_N, p + n)); }
+          p += n;
+        }
+        if (p === CAP_N && any) out = cells;
+      }
+      if (capCellCache.size > 400) capCellCache.clear();
+      capCellCache.set(str, out);
+      return out;
+    }
+    // 3840칸 → 그림 문자열 (빈 그림은 null)
+    function capEncode(cells) {
+      if (!cells || !cells.some(v => v)) return null;
+      let out = '~';
+      for (let i = 0; i < cells.length;) {
+        let n = 1;
+        while (n < AVATAR_RUN_CHARS.length && i + n < cells.length && cells[i + n] === cells[i]) n++;
+        out += cells[i].toString(32) + AVATAR_RUN_CHARS[n - 1];
+        i += n;
+      }
+      return out;
+    }
+    // 부위 기록 → 그릴 레이어 { f, s, b } (옆·뒤가 없으면 앞을 씀: 그리는 쪽에서 처리)
+    function capLayers(p) { return { f: capCells(p.f), s: capCells(p.s), b: capCells(p.b) }; }
+    function capPartsOf(stu) {
+      if (!stu) return [];
+      if (!Array.isArray(stu.capParts)) stu.capParts = Object.values(stu.capParts || {});
+      stu.capParts = stu.capParts.filter(p => p && typeof p === 'object' && AV_CUSTOM_SLOTS.includes(p.slot) && typeof p.id === 'string' && capCells(p.f)).slice(0, CAP_PARTS_MAX);
+      return stu.capParts;
+    }
+    function capShopOf(stu) {
+      if (!stu) return [];
+      if (!Array.isArray(stu.capShop)) stu.capShop = Object.values(stu.capShop || {});
+      stu.capShop = stu.capShop.filter(l => l && typeof l === 'object' && AV_CUSTOM_SLOTS.includes(l.slot) && typeof l.id === 'string' && capCells(l.f)).slice(0, CAP_SHOP_MAX);
+      return stu.capShop;
     }
     const RoomAvatar = (() => {
       const W = 48, H = 80, FOOT = 75, SIT_FOOT = 63;
@@ -41798,6 +41911,16 @@
       };
       const put = (x, y, c) => { if (x < 0 || y < 0 || x >= W || y >= H) return; const i = (y * W + x) * 4; buf[i] = c[0]; buf[i + 1] = c[1]; buf[i + 2] = c[2]; buf[i + 3] = 255; };
       const dot = (x, y, c) => put(x, y, typeof c === 'string' ? rgb(c) : c);
+      const CAP_RGB = CAP_PAL.map(h => h ? rgb(h) : null);
+      // 학생이 그린 부위 레이어를 그대로 찍음 (o: 걷기 들썩임, maxY: 앉았을 때 아래를 잘라냄)
+      const stamp = (img, o = 0, maxY = H) => {
+        if (!img) return;
+        for (let y = 0; y < H; y++) {
+          const yy = y + o;
+          if (yy < 0 || yy >= maxY) continue;
+          for (let x = 0; x < W; x++) { const v = img[y * W + x]; if (v && CAP_RGB[v]) put(x, yy, CAP_RGB[v]); }
+        }
+      };
       // 찍은 모양을 색칠: 왼쪽 위 1줄 밝게, 오른쪽·아래 sh줄 그늘. line: 'all' 테두리, 'b' 아래쪽만 진한 선
       function commit(h, { flat = false, line = '', sh = 2 } = {}) {
         const r = ramp(h);
@@ -41825,31 +41948,38 @@
         const rH = ramp(hc), rA = ramp(ac), rS = ramp(sk), rC = ramp(cc);
         const o = sit ? 0 : -(f % 2);                       // 걸을 때 위로 1도트 들썩
         const lift = sit ? '' : f === 1 ? 'L' : f === 3 ? 'R' : ''; // 드는 다리
-        const robe = a.armor === 'robe', coat = a.armor === 'coat', plate = a.armor === 'plate';
+        // 학생이 그린 부위가 있으면 그 자리의 기본 그림은 건너뛰고 레이어를 찍음
+        const C = a.custom || {}, cu = s => C[s] && (back ? (C[s].b || C[s].f) : C[s].f);
+        const crop = sit ? SIT_FOOT + 1 : H;
+        const wp = cu('weapon') ? 'custom' : a.weapon, hr = cu('hair') ? 'custom' : a.hair, ht = cu('hat') ? 'custom' : a.hat, ar = cu('armor') ? 'custom' : a.armor;
+        const lg = cu('legs') ? 'custom' : a.legs, cp = cu('cape') ? 'custom' : a.cape, fc = cu('face') ? 'custom' : a.face;
+        const robe = ar === 'robe', coat = ar === 'coat', plate = ar === 'plate';
         const X = x => back ? W - 1 - x : x;               // 뒷모습은 오른손이 화면 왼쪽
-        const hooded = a.hat === 'hood', helmet = a.hat === 'helm' || a.hat === 'horn';
+        const hooded = ht === 'hood', helmet = ht === 'helm' || ht === 'horn';
 
         // ── 등에 멘 무기 (앞모습은 몸 뒤, 뒷모습은 맨 나중에)
         const backGear = () => {
-          if (a.weapon === 'great') {
+          if (wp === 'custom') { if (back) stamp(cu('weapon'), o); return; }
+          if (wp === 'great') {
             mLine(X(31), 26 + o, X(8), 64 + o, 4); mTri(X(8), 64 + o, X(10.5), 60 + o, X(4), 69 + o); commit(METAL, { sh: 1, line: 'b' });
             for (let k = 0; k < 9; k++) put(X(28 - k * 2), 30 + k * 3 + o, [230, 234, 240]);
             mLine(X(26), 22 + o, X(36), 30 + o, 2.4); commit(GOLD, { flat: true });
             mLine(X(31), 26 + o, X(36), 18 + o, 3); commit(LEATH, { sh: 1 });
             mEll(X(37), 16.5 + o, 2, 2); commit(GOLD, { sh: 1 });
           }
-          if (a.weapon === 'bow') {
+          if (wp === 'bow') {
             mLine(X(34), 18 + o, X(12), 64 + o, 1); commit(WHITE, { flat: true });
             mCurve(X(34), 18 + o, X(12), 34 + o, X(12), 64 + o, 3); commit(WOOD, { sh: 1, line: 'b' });
             mRect(X(21) - 1, 39 + o, 3, 5); commit(LEATH, { flat: true });
           }
         };
         // ── 망토 (앞모습은 몸 뒤, 뒷모습은 몸 위)
-        const capeBot = a.cape === 'short' ? 58 : a.cape === 'long' ? 72 : 69;
+        const capeBot = cp === 'short' ? 58 : cp === 'long' ? 72 : 69;
         const cape = () => {
-          if (a.cape === 'none') return;
+          if (cp === 'custom') { stamp(cu('cape'), o, crop); return; }
+          if (cp === 'none') return;
           mTri(14, 38 + o, 34, 38 + o, 9, capeBot + o); mTri(34, 38 + o, 39, capeBot + o, 9, capeBot + o);
-          if (a.cape === 'torn') { ink = 0; [12, 19, 26, 33].forEach(x => mTri(x, capeBot + 1 + o, x + 4, capeBot + 1 + o, x + 2, capeBot - 4 + o)); ink = 1; }
+          if (cp === 'torn') { ink = 0; [12, 19, 26, 33].forEach(x => mTri(x, capeBot + 1 + o, x + 4, capeBot + 1 + o, x + 2, capeBot - 4 + o)); ink = 1; }
           commit(cc, { line: 'b' });
           [18, 24, 30].forEach(x => { for (let y = 44; y < capeBot - 2; y++) put(x + Math.round((x - 24) * (y - 38) / 60), y + o, rC.sh); });
           if (back) { // 등의 단장 문장
@@ -41858,8 +41988,8 @@
           }
         };
         if (!back) { backGear(); cape(); }
-        if (!back && a.hair === 'long' && !hooded) { mRect(9, 22 + o, 30, 32); mEll(24, 54 + o, 15, 4); commit(hex(rH.sh)); }
-        if (a.hair === 'pony') { // 뒤로 묶은 꼬리 (앞모습은 머리 뒤 오른쪽, 뒷모습은 가운데)
+        if (!back && hr === 'long' && !hooded) { mRect(9, 22 + o, 30, 32); mEll(24, 54 + o, 15, 4); commit(hex(rH.sh)); }
+        if (hr === 'pony') { // 뒤로 묶은 꼬리 (앞모습은 머리 뒤 오른쪽, 뒷모습은 가운데)
           const px = back ? 24 : 38;
           mEll(px, 36 + o, 4, 11); commit(hc, { line: 'b' }); mEll(px, 27 + o, 3, 1.6); commit(em, { flat: true });
         }
@@ -41868,12 +41998,13 @@
         const leg = (x, side) => {
           const up = lift === side ? 2 : 0, bot = (sit ? SIT_FOOT : FOOT) - 4 - up;
           mRect(x, 54, 6, bot - 54); commit(sk);
-          if (!robe) {
-            if (a.legs === 'pants') { mRect(x, 54, 6, bot - 54); commit(lc); }
-            else if (a.legs === 'greaves') { mRect(x, 54, 6, 5); commit(lc); mRect(x - 1, 58, 8, bot - 58); commit(METAL, { line: 'all', sh: 1 }); dot(x + 1, 60, GOLD); dot(x + 4, 60, GOLD); }
+          if (!robe && lg !== 'custom') {
+            if (lg === 'pants') { mRect(x, 54, 6, bot - 54); commit(lc); }
+            else if (lg === 'greaves') { mRect(x, 54, 6, 5); commit(lc); mRect(x - 1, 58, 8, bot - 58); commit(METAL, { line: 'all', sh: 1 }); dot(x + 1, 60, GOLD); dot(x + 4, 60, GOLD); }
             else { mRect(x, 54, 6, 5); commit(lc); }
           }
-          const bh = a.legs === 'greaves' || sit ? 4 : 7;
+          if (lg === 'custom') return; // 부츠까지 학생 그림
+          const bh = lg === 'greaves' || sit ? 4 : 7;
           mRect(x - 1, bot + 4 - bh, 8, bh); ink = 0; mSet(x - 1, bot + 4 - bh); mSet(x + 6, bot + 4 - bh); ink = 1; commit(shoe, { line: 'b' });
           for (let i = 0; i < 8; i++) dot(x - 1 + i, bot + 4, [60, 44, 36]);
           if (bh === 7) for (let i = 0; i < 6; i++) put(x + i, bot - 1, ramp(shoe).dp); // 부츠 접힌 선
@@ -41881,11 +42012,12 @@
         leg(17, 'L'); leg(25, 'R');
 
         // ── 엉덩이·치마
-        if (!robe && a.legs === 'skirt') {
+        if (!robe && lg === 'skirt') {
           mTri(16, 49 + o, 32, 49 + o, 36, 63 + o); mTri(16, 49 + o, 36, 63 + o, 12, 63 + o); commit(lc, { line: 'b' });
           [16, 20, 24, 28, 32].forEach(x => { for (let y = 52; y < 62; y++) put(x + Math.round((x - 24) * (y - 50) / 24), y + o, ramp(lc).dp); });
           mRect(15, 49 + o, 18, 2); commit(METAL, { flat: true, line: 'b' });
-        } else if (!robe) { mRect(16, 50 + o, 16, 7); commit(coat ? ac : lc); }
+        } else if (!robe) { mRect(16, 50 + o, 16, 7); commit(coat ? ac : lg === 'custom' ? sk : lc); }
+        if (lg === 'custom') stamp(cu('legs'), o, crop);
 
         // ── 몸통 (갑옷 종류별)
         if (robe) {
@@ -41897,19 +42029,19 @@
           [17, 31].forEach(x => { for (let y = 54; y < rb - 3; y++) put(x + Math.round((x - 24) * (y - 50) / 30), y + o, rA.sh); });
           mRect(15, 50 + o, 18, 3); commit(GOLD, { flat: true, line: 'b' });
         } else {
-          mRect(16, 40 + o, 16, 12); mRect(17, 38 + o, 14, 2); commit(plate ? ac : ac);
+          mRect(16, 40 + o, 16, 12); mRect(17, 38 + o, 14, 2); commit(ar === 'custom' ? sk : ac);
           if (coat) { // 긴 코트 자락 (다리 위로)
             const cb = sit ? SIT_FOOT - 2 : 67;
             mRect(14, 50 + o, 20, cb - 50); ink = 0; mRect(23, 55 + o, 2, cb - 55); ink = 1; commit(ac, { line: 'b' });
           }
         }
         if (!back) {
-          if (a.armor === 'tunic') {
+          if (ar === 'tunic') {
             mEll(24, 38 + o, 3.5, 2.4); commit(sk, { flat: true });
             [[23, 41], [25, 41], [23, 43], [25, 43]].forEach(([x, y]) => dot(x, y + o, rA.dp));
             for (let y = 40; y < 45; y++) put(24, y + o, rA.sh);
           }
-          if (a.armor === 'leather') {
+          if (ar === 'leather') {
             mLine(17, 40 + o, 31, 51 + o, 2.2); commit('#4a3220', { flat: true });
             [[19, 42], [23, 45], [27, 48]].forEach(([x, y]) => dot(x, y + o, GOLD));
             mEll(16.5, 40 + o, 4.5, 2.8); mEll(31.5, 40 + o, 4.5, 2.8); commit('#4a3220', { line: 'b' });
@@ -41932,37 +42064,39 @@
             mTri(24, 42 + o, 28, 46 + o, 20, 46 + o); mTri(20, 46 + o, 28, 46 + o, 24, 50 + o); commit(em, { flat: true });
             mEll(24, 38 + o, 3, 2); commit(sk, { flat: true });
           }
-          if (!robe) { // 허리띠·버클
+          if (!robe && ar !== 'custom') { // 허리띠·버클
             mRect(16, 50 + o, 16, 2); commit(LEATH, { flat: true, line: 'b' });
             dot(23, 50 + o, GOLD); dot(24, 50 + o, GOLD); dot(23, 51 + o, GOLD); dot(24, 51 + o, GOLD);
           }
         } else {
           if (plate) { mEll(14.5, 40 + o, 5.5, 3.4); mEll(33.5, 40 + o, 5.5, 3.4); commit(ac, { line: 'all', sh: 1 }); }
-          if (a.armor === 'leather') { mEll(16.5, 40 + o, 4.5, 2.8); mEll(31.5, 40 + o, 4.5, 2.8); commit('#4a3220', { line: 'b' }); }
+          if (ar === 'leather') { mEll(16.5, 40 + o, 4.5, 2.8); mEll(31.5, 40 + o, 4.5, 2.8); commit('#4a3220', { line: 'b' }); }
           if (coat) { mRect(13, 38 + o, 6, 2); mRect(29, 38 + o, 6, 2); commit(GOLD, { flat: true, line: 'b' }); for (let y = 52; y < 66; y++) put(24, y + o, rA.dp); }
-          if (!robe) { mRect(16, 50 + o, 16, 2); commit(LEATH, { flat: true, line: 'b' }); }
+          if (!robe && ar !== 'custom') { mRect(16, 50 + o, 16, 2); commit(LEATH, { flat: true, line: 'b' }); }
         }
 
         // ── 팔 (드는 다리 반대쪽 팔이 앞으로)
         const arm = (x, side) => {
           const sw = !lift ? 0 : lift === side ? 1 : -1, y = 39 + o + sw;
-          const sleeve = { tunic: 5, leather: 4, plate: 12, coat: 13, robe: 13 }[a.armor];
+          const sleeve = { tunic: 5, leather: 4, plate: 12, coat: 13, robe: 13 }[ar] || 0;
           mRect(x, y, 4, 13); commit(sk, { line: 'all', sh: 1 });
-          mEll(x + 2, y + 14, 2.6, 2.4); commit(plate ? METAL : a.armor === 'leather' ? LEATH : sk, { sh: 1 });
+          mEll(x + 2, y + 14, 2.6, 2.4); commit(plate ? METAL : ar === 'leather' ? LEATH : sk, { sh: 1 });
           const sx = x - (side === 'L' ? 1 : 0);
           if (robe) { mRect(sx - (side === 'L' ? 1 : 0), y - 1, 6, sleeve); commit(ac, { line: 'all', sh: 1 }); for (let i = 0; i < 6; i++) put(sx - (side === 'L' ? 1 : 0) + i, y + sleeve - 2, [232, 196, 58]); }
           else { mRect(sx, y - 1, 5, sleeve); commit(ac, { line: 'all', sh: 1 }); }
-          if (a.armor === 'leather') { mRect(x, y + 8, 4, 5); commit(LEATH, { line: 'all', sh: 1 }); }
+          if (ar === 'leather') { mRect(x, y + 8, 4, 5); commit(LEATH, { line: 'all', sh: 1 }); }
           if (plate) { mRect(x - 1, y + 8, 6, 5); commit(METAL, { line: 'all', sh: 1 }); }
           if (coat) for (let i = 0; i < 5; i++) put(sx + i, y + sleeve - 2, [232, 196, 58]);
           return y;
         };
         const yL = arm(12, 'L'), yR = arm(32, 'R');
-        if (!back && a.cape !== 'none') { [15, 33].forEach(x => { mEll(x, 38.5 + o, 1.6, 1.6); commit(GOLD, { flat: true }); }); } // 망토 고리
+        if (ar === 'custom') stamp(cu('armor'), o, crop);
+        if (!back && cp !== 'none' && cp !== 'custom') { [15, 33].forEach(x => { mEll(x, 38.5 + o, 1.6, 1.6); commit(GOLD, { flat: true }); }); } // 망토 고리
 
         // ── 손에 든 무기 (오른손: 앞모습 화면 오른쪽, 뒷모습 화면 왼쪽)
         const hx = X(34), hy = yR + 14; // 오른손
-        if (a.weapon === 'sword' || a.weapon === 'shield') {
+        if (wp === 'custom' && !back) stamp(cu('weapon'), o);
+        if (wp === 'sword' || wp === 'shield') {
           const tx = X(45), ty = hy - 40;
           mLine(hx, hy - 4, tx, ty, 3); commit(METAL, { sh: 1, line: 'b' });
           for (let k = 1; k < 9; k++) put(Math.round(hx + (tx - hx) * k / 9.5), Math.round(hy - 4 + (ty - hy + 4) * k / 9.5), [236, 240, 246]);
@@ -41970,22 +42104,22 @@
           mLine(hx, hy - 2, hx - 1, hy + 3, 2.6); commit(LEATH, { sh: 1 });
           mEll(hx - 1.5, hy + 4, 1.6, 1.6); commit(GOLD, { flat: true });
         }
-        if (a.weapon === 'spear') {
+        if (wp === 'spear') {
           const px = X(38);
           mRect(px, 8 + o, 2, 70 - o); commit(WOOD, { sh: 1 });
           mTri(px - 2, 9 + o, px + 4, 9 + o, px + 1, 0 + o); commit(METAL, { sh: 1 });
           mRect(px - 1, 9 + o, 4, 2); commit(GOLD, { flat: true });
-          mEll(hx + (back ? 1 : -1) * 1, hy, 2.6, 2.4); commit(plate ? METAL : a.armor === 'leather' ? LEATH : sk, { sh: 1 });
+          mEll(hx + (back ? 1 : -1) * 1, hy, 2.6, 2.4); commit(plate ? METAL : ar === 'leather' ? LEATH : sk, { sh: 1 });
         }
-        if (a.weapon === 'staff') {
+        if (wp === 'staff') {
           const px = X(38);
           mRect(px, 10 + o, 2, 68 - o); commit(WOOD, { sh: 1 });
           mRect(px - 1, 11 + o, 4, 2); commit(GOLD, { flat: true });
           mEll(px + 1, 7 + o, 4, 4); commit(em, { sh: 1, line: 'all' });
           dot(px, 5 + o, WHITE);
-          mEll(hx + (back ? 1 : -1) * 1, hy, 2.6, 2.4); commit(plate ? METAL : a.armor === 'leather' ? LEATH : sk, { sh: 1 });
+          mEll(hx + (back ? 1 : -1) * 1, hy, 2.6, 2.4); commit(plate ? METAL : ar === 'leather' ? LEATH : sk, { sh: 1 });
         }
-        if (a.weapon === 'shield') { // 왼팔 방패 (뒷모습은 등 뒤로 살짝)
+        if (wp === 'shield') { // 왼팔 방패 (뒷모습은 등 뒤로 살짝)
           const cx = X(11), cy = yL + 9;
           if (!back) {
             mEll(cx, cy, 7.5, 9.5); commit(ac, { line: 'all', sh: 2 });
@@ -42014,26 +42148,28 @@
           for (let x = 29; x < 34; x++) put(x, 22 + o - (x === 33 ? 0 : x === 29 ? 1 : 0), rH.dp);
           put(24, 30 + o, rS.sh);
           [[22, 32], [23, 33], [24, 33], [25, 32]].forEach(([x, y]) => dot(x, y + o, '#a5464f'));
-          if (a.face === 'scar') { [[33, 20], [33, 21], [32, 22], [32, 23], [31, 30], [31, 31], [30, 32]].forEach(([x, y]) => dot(x, y + o, '#c0545a')); }
-          if (a.face === 'patch') { mLine(8, 25 + o, 40, 19 + o, 1.2); commit(DARK, { flat: true }); mEll(16.5, 26.5 + o, 3.6, 3.2); commit(DARK, { flat: true, line: 'all' }); }
-          if (a.face === 'beard') { mEll(24, 33.5 + o, 10, 4.5); ink = 0; mEll(24, 31 + o, 5.5, 2.4); ink = 1; commit(hc, { line: 'b' }); }
-          if (a.face === 'mask') { mRect(10, 29 + o, 28, 4); mEll(24, 32 + o, 14, 6); commit(DARK, { line: 'b', sh: 1 }); }
+          if (fc === 'scar') { [[33, 20], [33, 21], [32, 22], [32, 23], [31, 30], [31, 31], [30, 32]].forEach(([x, y]) => dot(x, y + o, '#c0545a')); }
+          if (fc === 'patch') { mLine(8, 25 + o, 40, 19 + o, 1.2); commit(DARK, { flat: true }); mEll(16.5, 26.5 + o, 3.6, 3.2); commit(DARK, { flat: true, line: 'all' }); }
+          if (fc === 'beard') { mEll(24, 33.5 + o, 10, 4.5); ink = 0; mEll(24, 31 + o, 5.5, 2.4); ink = 1; commit(hc, { line: 'b' }); }
+          if (fc === 'mask') { mRect(10, 29 + o, 28, 4); mEll(24, 32 + o, 14, 6); commit(DARK, { line: 'b', sh: 1 }); }
+          if (fc === 'custom') stamp(cu('face'), o);
         }
 
         // ── 머리카락
-        const sideH = { short: [4, 12], bob: [6, 20], long: [5, 30], pony: [4, 12], spiky: [4, 10], bald: [0, 0] }[a.hair];
-        if (a.hair !== 'bald') {
+        const sideH = { short: [4, 12], bob: [6, 20], long: [5, 30], pony: [4, 12], spiky: [4, 10], bald: [0, 0] }[hr];
+        if (hr === 'custom') stamp(cu('hair'), o);
+        else if (hr !== 'bald') {
           if (back) {
             mEll(24, 22 + o, 16.5, 15.5); mRect(8, 22 + o, 32, 12);
-            if (a.hair === 'long') { mRect(9, 22 + o, 30, 32); mEll(24, 54 + o, 15, 4); }
-            if (a.hair === 'bob') { mRect(6, 18 + o, 36, 20); }
+            if (hr === 'long') { mRect(9, 22 + o, 30, 32); mEll(24, 54 + o, 15, 4); }
+            if (hr === 'bob') { mRect(6, 18 + o, 36, 20); }
           } else {
             mEll(24, 20 + o, 17, 14, 0, 21 + o);
             mRect(12 - sideH[0], 18 + o, sideH[0], sideH[1]); mRect(36, 18 + o, sideH[0], sideH[1]);
             [[8, 15, 10, 31], [13, 21, 17, 25], [19, 27, 23, 24], [25, 32, 29, 25], [30, 38, 34, 24], [34, 41, 38, 31]]
               .forEach(([x0, x1, tx, ty]) => mTri(x0, 20 + o, x1, 20 + o, tx, ty + o));
           }
-          if (a.hair === 'spiky' && !helmet && a.hat !== 'bandana' && !hooded) { mTri(10, 13 + o, 17, 9 + o, 7, 2 + o); mTri(17, 9 + o, 25, 8 + o, 19, 0 + o); mTri(24, 8 + o, 31, 9 + o, 31, 1 + o); mTri(31, 9 + o, 38, 13 + o, 41, 4 + o); }
+          if (hr === 'spiky' && !helmet && ht !== 'bandana' && !hooded) { mTri(10, 13 + o, 17, 9 + o, 7, 2 + o); mTri(17, 9 + o, 25, 8 + o, 19, 0 + o); mTri(24, 8 + o, 31, 9 + o, 31, 1 + o); mTri(31, 9 + o, 38, 13 + o, 41, 4 + o); }
           commit(hc, { line: back ? '' : 'b' });
           for (let x = 13; x <= 31; x++) { const y = 12 + Math.round(((x - 22) / 9) ** 2 * 3); if (inHair(x, y + o)) put(x, y + o, rH.lt); }
           (back ? [[16, 24, 33], [24, 25, 34], [32, 24, 33]] : [[18, 14, 19], [30, 14, 18]])
@@ -42045,27 +42181,28 @@
 
         // ── 투구·모자
         const rHat = ramp(hatC);
+        if (ht === 'custom') stamp(cu('hat'), o);
         if (helmet) {
           mEll(24, 17 + o, 17.5, 13.5, 0, 22 + o); commit(hatC, { line: 'b' });
           mRect(7, 20 + o, 5, 11); mRect(36, 20 + o, 5, 11); commit(hatC, { line: 'all', sh: 1 });
           if (!back) { mRect(23, 20 + o, 2, 9); commit(hatC, { flat: true, line: 'all' }); }
           for (let x = 12; x <= 36; x++) put(x, 21 + o, rHat.dp);
           for (let y = 3; y < 10; y++) { put(24, y + o, [232, 196, 58]); put(23, y + o, [232, 196, 58]); }
-          if (a.hat === 'horn') { mTri(8, 14 + o, 13, 8 + o, 2, 1 + o); mTri(40, 14 + o, 35, 8 + o, 46, 1 + o); commit(WHITE, { sh: 1, line: 'b' }); }
+          if (ht === 'horn') { mTri(8, 14 + o, 13, 8 + o, 2, 1 + o); mTri(40, 14 + o, 35, 8 + o, 46, 1 + o); commit(WHITE, { sh: 1, line: 'b' }); }
         }
-        if (a.hat === 'feather') {
+        if (ht === 'feather') {
           mEll(24, 11 + o, 13, 9, 0, 18 + o); commit(hatC, { line: 'b' });
           mRect(11, 13 + o, 26, 3); commit(hex(rHat.dp), { flat: true });
           mEll(24, 18 + o, 22, 3.5); commit(hex(rHat.sh), { line: 'b', sh: 1 });
           mCurve(X(33), 11 + o, X(40), 3 + o, X(47), 1 + o, 3); commit(em, { sh: 1 });
           mEll(X(33), 11.5 + o, 2, 2); commit(GOLD, { flat: true });
         }
-        if (a.hat === 'bandana') {
+        if (ht === 'bandana') {
           mEll(24, 16 + o, 17.5, 11.5, 0, 20 + o); commit(hatC, { line: 'b' });
           mTri(X(38), 16 + o, X(47), 10 + o, X(45), 24 + o); commit(hatC, { line: 'b' });
           for (let x = 10; x < 38; x += 4) for (let y = 11; y < 19; y += 4) dot(x + (y % 8 ? 2 : 0), y + o, WHITE);
         }
-        if (a.hat === 'crown') {
+        if (ht === 'crown') {
           mRect(10, 13 + o, 28, 4); [10, 17, 24, 31, 38].forEach(x => mTri(x - 3, 13 + o, x + 3, 13 + o, x, 6 + o)); commit(GOLD, { line: 'b', sh: 1 });
           [14, 24, 34].forEach(x => dot(x, 14 + o, em));
         }
@@ -42075,7 +42212,7 @@
           commit(hatC, { line: 'all', sh: 2 });
           dot(24, 3 + o, hex(rHat.dp));
         }
-        if (a.hair === 'pony' && back) { mEll(24, 36 + o, 4, 11); commit(hc, { line: 'b' }); mEll(24, 27 + o, 3, 1.6); commit(em, { flat: true }); }
+        if (hr === 'pony' && back) { mEll(24, 36 + o, 4, 11); commit(hc, { line: 'b' }); mEll(24, 27 + o, 3, 1.6); commit(em, { flat: true }); }
         if (back) { cape(); backGear(); }
         outline();
         return buf;
@@ -42104,45 +42241,52 @@
         const rH = ramp(hc), rA = ramp(ac), rS = ramp(sk), rC = ramp(cc), rHat = ramp(hatC);
         const o = sit ? 0 : -(f % 2);                       // 걸을 때 위로 1도트 들썩
         const sw = sit ? 0 : f === 1 ? 1 : f === 3 ? -1 : 0; // 가까운 다리·팔이 앞(+)/뒤(−)로
-        const robe = a.armor === 'robe', coat = a.armor === 'coat', plate = a.armor === 'plate';
-        const hooded = a.hat === 'hood', helmet = a.hat === 'helm' || a.hat === 'horn';
+        // 학생이 그린 부위가 있으면 그 자리의 기본 그림은 건너뛰고 레이어를 찍음
+        const C = a.custom || {}, cu = s => C[s] && (C[s].s || C[s].f);
+        const crop = sit ? SIT_FOOT + 1 : H;
+        const wp = cu('weapon') ? 'custom' : a.weapon, hr = cu('hair') ? 'custom' : a.hair, ht = cu('hat') ? 'custom' : a.hat, ar = cu('armor') ? 'custom' : a.armor;
+        const lg = cu('legs') ? 'custom' : a.legs, cp = cu('cape') ? 'custom' : a.cape, fc = cu('face') ? 'custom' : a.face;
+        const robe = ar === 'robe', coat = ar === 'coat', plate = ar === 'plate';
+        const hooded = ht === 'hood', helmet = ht === 'helm' || ht === 'horn';
         const FT = sit ? SIT_FOOT : FOOT;
         const shade = h => hex(ramp(h).sh);
 
         // ── 등 뒤 (왼쪽): 멘 무기, 망토, 긴 머리, 방패
-        if (a.weapon === 'great') {
+        if (wp === 'great') {
           mLine(18, 24 + o, 7, 62 + o, 4); mTri(7, 62 + o, 9.5, 58 + o, 3, 67 + o); commit(METAL, { sh: 1, line: 'b' });
           for (let k = 0; k < 8; k++) put(16 - k, 28 + k * 4 + o, [230, 234, 240]);
           mLine(14, 20 + o, 22, 28 + o, 2.4); commit(GOLD, { flat: true });
           mLine(18, 24 + o, 22, 17 + o, 3); commit(LEATH, { sh: 1 });
           mEll(23, 15.5 + o, 2, 2); commit(GOLD, { sh: 1 });
         }
-        if (a.weapon === 'bow') {
+        if (wp === 'bow') {
           mLine(20, 18 + o, 7, 62 + o, 1); commit(WHITE, { flat: true });
           mCurve(20, 18 + o, 5, 36 + o, 7, 62 + o, 3); commit(WOOD, { sh: 1, line: 'b' });
         }
-        const capeBot = a.cape === 'short' ? 58 : a.cape === 'long' ? 72 : 69;
-        if (a.cape !== 'none') {
+        const capeBot = cp === 'short' ? 58 : cp === 'long' ? 72 : 69;
+        if (cp === 'custom') stamp(cu('cape'), o, crop);
+        else if (cp !== 'none') {
           mTri(15, 38 + o, 23, 38 + o, 7, capeBot + o); mTri(23, 38 + o, 20, capeBot + o, 7, capeBot + o);
-          if (a.cape === 'torn') { ink = 0; [8, 14].forEach(x => mTri(x, capeBot + 1 + o, x + 4, capeBot + 1 + o, x + 2, capeBot - 4 + o)); ink = 1; }
+          if (cp === 'torn') { ink = 0; [8, 14].forEach(x => mTri(x, capeBot + 1 + o, x + 4, capeBot + 1 + o, x + 2, capeBot - 4 + o)); ink = 1; }
           commit(cc, { line: 'b' });
           [12, 17].forEach(x => { for (let y = 44; y < capeBot - 2; y++) put(x - Math.round((y - 38) / 9), y + o, rC.sh); });
         }
-        if (a.hair === 'long' && !hooded) { mRect(9, 22 + o, 11, 30); mEll(14.5, 52 + o, 5.5, 3); commit(hex(rH.sh)); }
-        if (a.hair === 'pony') { mEll(10, 34 + o, 3.5, 10); commit(hc, { line: 'b' }); mEll(11, 25 + o, 2.5, 1.5); commit(em, { flat: true }); }
-        if (a.weapon === 'shield') { mEll(13, 47 + o, 6, 9); commit(ac, { line: 'all', sh: 2 }); mEll(13, 47 + o, 2.5, 3.5); commit(em, { flat: true, line: 'all' }); }
+        if (hr === 'long' && !hooded) { mRect(9, 22 + o, 11, 30); mEll(14.5, 52 + o, 5.5, 3); commit(hex(rH.sh)); }
+        if (hr === 'pony') { mEll(10, 34 + o, 3.5, 10); commit(hc, { line: 'b' }); mEll(11, 25 + o, 2.5, 1.5); commit(em, { flat: true }); }
+        if (wp === 'shield') { mEll(13, 47 + o, 6, 9); commit(ac, { line: 'all', sh: 2 }); mEll(13, 47 + o, 2.5, 3.5); commit(em, { flat: true, line: 'all' }); }
 
         // ── 다리: 먼 다리(그늘) 먼저, 가까운 다리 나중
         const leg = (x, near) => {
           const dx = near ? sw * 2 : -sw * 2, lx = x + dx, bot = FT - 4 - (dx > 0 ? 1 : 0);
           const c = h => near ? h : shade(h);
           mRect(lx, 54, 6, bot - 54); commit(c(sk));
-          if (!robe) {
-            if (a.legs === 'pants') { mRect(lx, 54, 6, bot - 54); commit(c(lc)); }
-            else if (a.legs === 'greaves') { mRect(lx, 54, 6, 5); commit(c(lc)); mRect(lx - 1, 58, 8, bot - 58); commit(c(METAL), { line: 'all', sh: 1 }); dot(lx + 2, 60, GOLD); }
+          if (!robe && lg !== 'custom') {
+            if (lg === 'pants') { mRect(lx, 54, 6, bot - 54); commit(c(lc)); }
+            else if (lg === 'greaves') { mRect(lx, 54, 6, 5); commit(c(lc)); mRect(lx - 1, 58, 8, bot - 58); commit(c(METAL), { line: 'all', sh: 1 }); dot(lx + 2, 60, GOLD); }
             else { mRect(lx, 54, 6, 5); commit(c(lc)); }
           }
-          const bh = a.legs === 'greaves' || sit ? 4 : 7;
+          if (lg === 'custom') return; // 부츠까지 학생 그림
+          const bh = lg === 'greaves' || sit ? 4 : 7;
           mRect(lx - 1, bot + 4 - bh, 9, bh); ink = 0; mSet(lx - 1, bot + 4 - bh); mSet(lx + 7, bot + 4 - bh); ink = 1; commit(c(shoe), { line: 'b' });
           for (let i = 0; i < 9; i++) dot(lx - 1 + i, bot + 4, [60, 44, 36]);
           if (bh === 7) for (let i = 0; i < 6; i++) put(lx + i, bot - 1, ramp(shoe).dp);
@@ -42150,11 +42294,12 @@
         leg(20, false); leg(23, true);
 
         // ── 엉덩이·치마
-        if (!robe && a.legs === 'skirt') {
+        if (!robe && lg === 'skirt') {
           mTri(17, 49 + o, 31, 49 + o, 34, 62 + o); mTri(17, 49 + o, 34, 62 + o, 14, 62 + o); commit(lc, { line: 'b' });
           [18, 24, 30].forEach(x => { for (let y = 52; y < 61; y++) put(x + Math.round((x - 24) * (y - 50) / 24), y + o, ramp(lc).dp); });
           mRect(16, 49 + o, 16, 2); commit(METAL, { flat: true, line: 'b' });
-        } else if (!robe) { mRect(18, 50 + o, 12, 7); commit(coat ? ac : lc); }
+        } else if (!robe) { mRect(18, 50 + o, 12, 7); commit(coat ? ac : lg === 'custom' ? sk : lc); }
+        if (lg === 'custom') stamp(cu('legs'), o, crop);
 
         // ── 몸통
         const rb = sit ? SIT_FOOT : FOOT - 1;
@@ -42165,11 +42310,11 @@
           for (let x = 13; x < 35; x++) put(x, rb - 3, rA.dp);
           mRect(17, 50 + o, 14, 3); commit(GOLD, { flat: true, line: 'b' });
         } else {
-          mRect(18, 40 + o, 12, 12); mRect(19, 38 + o, 10, 2); commit(ac);
+          mRect(18, 40 + o, 12, 12); mRect(19, 38 + o, 10, 2); commit(ar === 'custom' ? sk : ac);
           if (coat) { const cb = sit ? SIT_FOOT - 2 : 67; mRect(16, 50 + o, 14, cb - 50); commit(ac, { line: 'b' }); for (let y = 52; y < cb - 1; y++) put(29, y + o, rA.dp); }
         }
-        if (a.armor === 'tunic') { for (let y = 40; y < 45; y++) put(28, y + o, rA.sh); }
-        if (a.armor === 'leather') {
+        if (ar === 'tunic') { for (let y = 40; y < 45; y++) put(28, y + o, rA.sh); }
+        if (ar === 'leather') {
           mLine(20, 40 + o, 29, 50 + o, 2.2); commit('#4a3220', { flat: true });
           [[22, 42], [25, 45], [28, 48]].forEach(([x, y]) => dot(x, y + o, GOLD));
           mEll(23.5, 40 + o, 4.5, 2.8); commit('#4a3220', { line: 'b' });
@@ -42185,24 +42330,26 @@
           mTri(26, 42 + o, 28.5, 44.5 + o, 23.5, 44.5 + o); mTri(23.5, 44.5 + o, 28.5, 44.5 + o, 26, 47 + o); commit(em, { flat: true });
         }
         if (robe) { mTri(26, 42 + o, 29, 45 + o, 23, 45 + o); mTri(23, 45 + o, 29, 45 + o, 26, 48 + o); commit(em, { flat: true }); }
-        if (!robe) { mRect(18, 50 + o, 12, 2); commit(LEATH, { flat: true, line: 'b' }); dot(27, 50 + o, GOLD); dot(28, 50 + o, GOLD); dot(27, 51 + o, GOLD); dot(28, 51 + o, GOLD); }
+        if (!robe && ar !== 'custom') { mRect(18, 50 + o, 12, 2); commit(LEATH, { flat: true, line: 'b' }); dot(27, 50 + o, GOLD); dot(28, 50 + o, GOLD); dot(27, 51 + o, GOLD); dot(28, 51 + o, GOLD); }
 
         // ── 가까운 팔 (걸을 때 다리 반대로 흔들림)
         const ax = 22 - sw * 2, ay = 39 + o;
-        const sleeve = { tunic: 5, leather: 4, plate: 12, coat: 13, robe: 13 }[a.armor];
+        const sleeve = { tunic: 5, leather: 4, plate: 12, coat: 13, robe: 13 }[ar] || 0;
         mRect(ax, ay, 4, 13); commit(sk, { line: 'all', sh: 1 });
-        const handC = plate ? METAL : a.armor === 'leather' ? LEATH : sk;
+        const handC = plate ? METAL : ar === 'leather' ? LEATH : sk;
         mEll(ax + 2, ay + 14, 2.6, 2.4); commit(handC, { sh: 1 });
         if (robe) { mRect(ax - 1, ay - 1, 6, sleeve); commit(ac, { line: 'all', sh: 1 }); for (let i = 0; i < 6; i++) put(ax - 1 + i, ay + sleeve - 2, [232, 196, 58]); }
         else { mRect(ax, ay - 1, 5, sleeve); commit(ac, { line: 'all', sh: 1 }); }
-        if (a.armor === 'leather') { mRect(ax, ay + 8, 4, 5); commit(LEATH, { line: 'all', sh: 1 }); }
+        if (ar === 'leather') { mRect(ax, ay + 8, 4, 5); commit(LEATH, { line: 'all', sh: 1 }); }
         if (plate) { mRect(ax - 1, ay + 8, 6, 5); commit(METAL, { line: 'all', sh: 1 }); }
         if (coat) for (let i = 0; i < 5; i++) put(ax + i, ay + sleeve - 2, [232, 196, 58]);
-        if (a.cape !== 'none') { mEll(22, 38.5 + o, 1.6, 1.6); commit(GOLD, { flat: true }); }
+        if (cp !== 'none' && cp !== 'custom') { mEll(22, 38.5 + o, 1.6, 1.6); commit(GOLD, { flat: true }); }
 
         // ── 손에 든 무기 (가까운 손)
         const hx = ax + 2, hy = ay + 14;
-        if (a.weapon === 'sword' || a.weapon === 'shield') {
+        if (ar === 'custom') stamp(cu('armor'), o, crop);
+        if (wp === 'custom') stamp(cu('weapon'), o);
+        if (wp === 'sword' || wp === 'shield') {
           const tx = hx + 12, ty = hy - 40;
           mLine(hx, hy - 4, tx, ty, 3); commit(METAL, { sh: 1, line: 'b' });
           for (let k = 1; k < 9; k++) put(Math.round(hx + (tx - hx) * k / 9.5), Math.round(hy - 4 + (ty - hy + 4) * k / 9.5), [236, 240, 246]);
@@ -42210,10 +42357,10 @@
           mLine(hx, hy - 2, hx - 1, hy + 3, 2.6); commit(LEATH, { sh: 1 });
           mEll(hx - 1.5, hy + 4, 1.6, 1.6); commit(GOLD, { flat: true });
         }
-        if (a.weapon === 'spear' || a.weapon === 'staff') {
-          const px = hx + 4, top = a.weapon === 'spear' ? 8 : 10;
+        if (wp === 'spear' || wp === 'staff') {
+          const px = hx + 4, top = wp === 'spear' ? 8 : 10;
           mRect(px, top + o, 2, 78 - top - o); commit(WOOD, { sh: 1 });
-          if (a.weapon === 'spear') { mTri(px - 2, 9 + o, px + 4, 9 + o, px + 1, 0 + o); commit(METAL, { sh: 1 }); mRect(px - 1, 9 + o, 4, 2); commit(GOLD, { flat: true }); }
+          if (wp === 'spear') { mTri(px - 2, 9 + o, px + 4, 9 + o, px + 1, 0 + o); commit(METAL, { sh: 1 }); mRect(px - 1, 9 + o, 4, 2); commit(GOLD, { flat: true }); }
           else { mRect(px - 1, 11 + o, 4, 2); commit(GOLD, { flat: true }); mEll(px + 1, 7 + o, 4, 4); commit(em, { sh: 1, line: 'all' }); dot(px, 5 + o, WHITE); }
           mEll(hx + 1, hy, 2.6, 2.4); commit(handC, { sh: 1 });
         }
@@ -42231,45 +42378,47 @@
         dot(ex, 25 + o, WHITE); dot(ex + 1, 25 + o, WHITE); dot(ex, 26 + o, WHITE); dot(ex + 3, 28 + o, WHITE);
         for (let x = 30; x < 36; x++) put(x, 22 + o - (x >= 34 ? 1 : 0), rH.dp);
         dot(35, 32 + o, '#a5464f'); dot(36, 31 + o, '#a5464f');
-        if (a.face === 'scar') { [[34, 20], [34, 21], [33, 22], [33, 30], [33, 31], [32, 32]].forEach(([x, y]) => dot(x, y + o, '#c0545a')); }
-        if (a.face === 'patch') { mLine(12, 22 + o, 38, 21 + o, 1.2); commit(DARK, { flat: true }); mEll(32.5, 26.5 + o, 3.6, 3.2); commit(DARK, { flat: true, line: 'all' }); }
-        if (a.face === 'beard') { mEll(31, 33.5 + o, 8, 4.5); ink = 0; mEll(34, 31 + o, 4, 2.2); ink = 1; commit(hc, { line: 'b' }); }
-        if (a.face === 'mask') { mRect(22, 29 + o, 16, 4); mEll(30, 32 + o, 9, 6); commit(DARK, { line: 'b', sh: 1 }); }
+        if (fc === 'scar') { [[34, 20], [34, 21], [33, 22], [33, 30], [33, 31], [32, 32]].forEach(([x, y]) => dot(x, y + o, '#c0545a')); }
+        if (fc === 'patch') { mLine(12, 22 + o, 38, 21 + o, 1.2); commit(DARK, { flat: true }); mEll(32.5, 26.5 + o, 3.6, 3.2); commit(DARK, { flat: true, line: 'all' }); }
+        if (fc === 'beard') { mEll(31, 33.5 + o, 8, 4.5); ink = 0; mEll(34, 31 + o, 4, 2.2); ink = 1; commit(hc, { line: 'b' }); }
+        if (fc === 'mask') { mRect(22, 29 + o, 16, 4); mEll(30, 32 + o, 9, 6); commit(DARK, { line: 'b', sh: 1 }); }
 
         // ── 머리카락: 뒤통수·정수리 돔 + 뒷머리 + 앞머리 삐침
-        const backLen = { short: 12, bob: 20, long: 30, pony: 12, spiky: 10, bald: 0 }[a.hair];
-        if (a.hair !== 'bald') {
+        const backLen = { short: 12, bob: 20, long: 30, pony: 12, spiky: 10, bald: 0 }[hr];
+        if (hr === 'custom') stamp(cu('hair'), o);
+        else if (hr !== 'bald') {
           mEll(23, 20 + o, 15.5, 14, 0, 21 + o);
           mRect(9, 18 + o, 7, Math.min(backLen, 20));
           [[21, 27, 24, 25], [26, 32, 29, 24], [31, 37, 34, 26], [35, 40, 38, 30]].forEach(([x0, x1, tx, ty]) => mTri(x0, 20 + o, x1, 20 + o, tx, ty + o));
-          if (a.hair === 'spiky' && !helmet && a.hat !== 'bandana' && !hooded) { mTri(10, 13 + o, 17, 9 + o, 6, 2 + o); mTri(17, 9 + o, 25, 8 + o, 18, 0 + o); mTri(24, 8 + o, 31, 9 + o, 30, 1 + o); mTri(31, 10 + o, 37, 14 + o, 40, 5 + o); }
+          if (hr === 'spiky' && !helmet && ht !== 'bandana' && !hooded) { mTri(10, 13 + o, 17, 9 + o, 6, 2 + o); mTri(17, 9 + o, 25, 8 + o, 18, 0 + o); mTri(24, 8 + o, 31, 9 + o, 30, 1 + o); mTri(31, 10 + o, 37, 14 + o, 40, 5 + o); }
           commit(hc, { line: 'b' });
           for (let x = 13; x <= 30; x++) { const y = 12 + Math.round(((x - 21) / 9) ** 2 * 3); if (inHair(x, y + o)) put(x, y + o, rH.lt); }
           for (let y = 14; y < 19; y++) put(29, y + o, rH.sh);
         } else { dot(17, 11 + o, hex(rS.lt)); dot(18, 11 + o, hex(rS.lt)); dot(16, 12 + o, hex(rS.lt)); }
 
         // ── 투구·모자
+        if (ht === 'custom') stamp(cu('hat'), o);
         if (helmet) {
           mEll(23, 17 + o, 16.5, 13.5, 0, 22 + o); commit(hatC, { line: 'b' });
           mRect(12, 20 + o, 5, 11); commit(hatC, { line: 'all', sh: 1 });
           mRect(37, 20 + o, 2, 9); commit(hatC, { flat: true, line: 'all' });
           for (let x = 10; x <= 36; x++) put(x, 21 + o, rHat.dp);
           for (let y = 3; y < 10; y++) { put(22, y + o, [232, 196, 58]); put(23, y + o, [232, 196, 58]); }
-          if (a.hat === 'horn') { mTri(9, 14 + o, 14, 8 + o, 3, 1 + o); mTri(36, 14 + o, 31, 8 + o, 42, 1 + o); commit(WHITE, { sh: 1, line: 'b' }); }
+          if (ht === 'horn') { mTri(9, 14 + o, 14, 8 + o, 3, 1 + o); mTri(36, 14 + o, 31, 8 + o, 42, 1 + o); commit(WHITE, { sh: 1, line: 'b' }); }
         }
-        if (a.hat === 'feather') {
+        if (ht === 'feather') {
           mEll(23, 11 + o, 13, 9, 0, 18 + o); commit(hatC, { line: 'b' });
           mRect(10, 13 + o, 26, 3); commit(hex(rHat.dp), { flat: true });
           mEll(24, 18 + o, 21, 3.5); commit(hex(rHat.sh), { line: 'b', sh: 1 });
           mCurve(16, 11 + o, 9, 3 + o, 2, 2 + o, 3); commit(em, { sh: 1 });
           mEll(16, 11.5 + o, 2, 2); commit(GOLD, { flat: true });
         }
-        if (a.hat === 'bandana') {
+        if (ht === 'bandana') {
           mEll(23, 16 + o, 16.5, 11.5, 0, 20 + o); commit(hatC, { line: 'b' });
           mTri(10, 16 + o, 1, 10 + o, 4, 24 + o); commit(hatC, { line: 'b' });
           for (let x = 10; x < 36; x += 4) for (let y = 11; y < 19; y += 4) dot(x + (y % 8 ? 2 : 0), y + o, WHITE);
         }
-        if (a.hat === 'crown') {
+        if (ht === 'crown') {
           mRect(10, 13 + o, 27, 4); [10, 16.5, 23, 29.5, 36].forEach(x => mTri(x - 3, 13 + o, x + 3, 13 + o, x, 6 + o)); commit(GOLD, { line: 'b', sh: 1 });
           [14, 23, 32].forEach(x => dot(x, 14 + o, em));
         }
@@ -42288,7 +42437,7 @@
       const cache = new Map();
       // 그린 그림(캔버스)을 돌려줌. 같은 생김새·자세는 다시 그리지 않음
       function sprite(a, back = false, f = 0, sit = false, side = false) {
-        const key = JSON.stringify(a) + `|${back ? 1 : 0}${f}${sit ? 1 : 0}${side ? 1 : 0}`;
+        const key = JSON.stringify({ ...a, custom: undefined }) + `|${back ? 1 : 0}${f}${sit ? 1 : 0}${side ? 1 : 0}`;
         let cv = cache.get(key);
         if (cv) return cv;
         if (cache.size > 160) cache.clear();
@@ -43360,7 +43509,20 @@
       // ───── 방 안의 내 아바타 (용병단장): 방향키·WASD·화면 십자키로 걷고, 빈 바닥을 누르면 그리로 걸어감 ─────
       // av: 내 단장 (내 방·친구 방 어디서나), hostAv: 구경 중인 친구의 단장 (혼자 돌아다님)
       avKeys: new Set(), av: null, hostAv: null, avKey: null,
-      avatarOf(stu) { return avatarLook(stu && stu.avatar); },
+      // 예전 버그: 단장 모습이 프로필 도트 칸(stu.avatar)에 저장됐던 것을 captain으로 옮김
+      avatarOf(stu) {
+        if (stu && stu.avatar && typeof stu.avatar === 'object') { if (!stu.captain) stu.captain = stu.avatar; stu.avatar = null; }
+        const a = avatarLook(stu && stu.captain);
+        a.custom = {};
+        if (stu) {
+          const parts = this.capParts(stu);
+          Object.keys(a.c).forEach(slot => {
+            const p = parts.find(x => x.id === a.c[slot] && x.slot === slot);
+            if (p) a.custom[slot] = capLayers(p); else delete a.c[slot];
+          });
+        }
+        return a;
+      },
       avName(stu) { return `${stu && stu.name ? stu.name : '이름 없음'} 단장`; },
       // 빈 바닥 중 목표에 가장 가까운 칸
       nearestFree(tx, ty, cm) {
@@ -43545,19 +43707,32 @@
         if (!stu || !AV_FIELDS.some(([k]) => k === key)) return;
         const a = this.avatarOf(stu);
         a[key] = v;
-        stu.avatar = avatarLook(a);
+        if (AV_CUSTOM_SLOTS.includes(key)) delete a.c[key]; // 기본 부위를 고르면 그린 부위는 벗음
+        this.saveLook(stu, a);
         saveState();
         this.renderList();
         this.draw();
       },
-      randomAvatar() { const stu = this.student(); if (!stu) return; stu.avatar = avatarLook(avatarRandom()); saveState(); this.renderList(); this.draw(); },
-      resetAvatar() { const stu = this.student(); if (!stu) return; stu.avatar = { ...AV_DEFAULT }; saveState(); this.renderList(); this.draw(); },
+      randomAvatar() { const stu = this.student(); if (!stu) return; stu.captain = avatarLook(avatarRandom()); saveState(); this.renderList(); this.draw(); },
+      resetAvatar() { const stu = this.student(); if (!stu) return; stu.captain = { ...AV_DEFAULT }; saveState(); this.renderList(); this.draw(); },
       renderAvatarPanel(box, stu) {
+        this.thumbJobs = [];
         const a = this.avatarOf(stu);
+        const subs = [['look', '🎨 꾸미기'], ['parts', `✏️ 내 작품 ${this.capParts(stu).length}`], ['shop', `🛒 작품 상점 ${this.listings().length}`]];
+        const subBar = `<div class="col-span-full grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">${subs.map(([k, n]) => `<button type="button" onclick="HomeRoom.setAvSub('${k}')" class="py-1.5 rounded-lg text-[11px] font-extrabold ${this.avSub === k ? 'bg-amber-500 text-slate-950' : 'text-slate-300 hover:bg-slate-800'}">${n}</button>`).join('')}</div>`;
+        if (this.avSub === 'parts') { box.innerHTML = subBar; const d = document.createElement('div'); d.className = 'contents'; box.appendChild(d); this.renderPartsPanel(d, stu); return; }
+        if (this.avSub === 'shop') { box.innerHTML = subBar; const d = document.createElement('div'); d.className = 'contents'; box.appendChild(d); this.renderShopPanel(d, stu); return; }
+        const myParts = this.capParts(stu);
         const sw = (key, list, label) => `<div class="col-span-full"><div class="text-[11px] font-extrabold text-slate-400 mb-1">${label}</div><div class="flex flex-wrap gap-1">${list.map((c, i) => `<button type="button" onclick="HomeRoom.setAvatar('${key}',${i})" class="w-6 h-6 rounded-md border-2 ${a[key] === i ? 'border-amber-400 ring-1 ring-amber-300' : 'border-slate-900'}" style="background:${c}" title="${c}"></button>`).join('')}</div></div>`;
-        const pick = (key, label) => `<div class="col-span-full"><div class="text-[11px] font-extrabold text-slate-400 mb-1">${label}</div><div class="flex flex-wrap gap-1">${AV_PARTS[key].map(([id, n]) => `<button type="button" onclick="HomeRoom.setAvatar('${key}','${id}')" class="px-2 py-1 rounded-lg text-[11px] font-extrabold ${a[key] === id ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-200 hover:bg-slate-700'}">${n}</button>`).join('')}</div></div>`;
-        const skip = { hatColor: a.hat === 'none', capeColor: a.cape === 'none', legsColor: a.armor === 'robe' };
-        box.innerHTML = `<div class="col-span-full bg-slate-950 border border-slate-800 rounded-xl p-2 flex flex-col items-center gap-1.5">
+        // 기본 부위 + 내가 그리거나 산 부위 (✏️ 표시). 그린 부위를 입으면 기본 부위 버튼은 꺼짐
+        const pick = (key, label) => {
+          const cur = a.c[key];
+          const mine = myParts.filter(p => p.slot === key).map(p => `<button type="button" onclick="HomeRoom.setAvatarPart('${key}','${p.id}')" class="px-2 py-1 rounded-lg text-[11px] font-extrabold ${cur === p.id ? 'bg-amber-500 text-slate-950' : 'bg-indigo-900 text-indigo-100 hover:bg-indigo-800'}">✏️ ${this.esc(p.name)}</button>`).join('');
+          const draw = AV_CUSTOM_SLOTS.includes(key) ? `<button type="button" onclick="HomeRoom.openPartEditor('${key}')" title="이 부위를 직접 그려요" class="px-2 py-1 rounded-lg text-[11px] font-extrabold bg-slate-900 border border-dashed border-slate-600 text-slate-400 hover:text-white">+ 그리기</button>` : '';
+          return `<div class="col-span-full"><div class="text-[11px] font-extrabold text-slate-400 mb-1">${label}</div><div class="flex flex-wrap gap-1">${AV_PARTS[key].map(([id, n]) => `<button type="button" onclick="HomeRoom.setAvatar('${key}','${id}')" class="px-2 py-1 rounded-lg text-[11px] font-extrabold ${!cur && a[key] === id ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-200 hover:bg-slate-700'}">${n}</button>`).join('')}${mine}${draw}</div></div>`;
+        };
+        const skip = { hatColor: a.hat === 'none' || a.c.hat, capeColor: a.cape === 'none' || a.c.cape, legsColor: a.armor === 'robe' || a.c.legs, armorColor: a.c.armor, hairColor: a.c.hair };
+        box.innerHTML = subBar + `<div class="col-span-full bg-slate-950 border border-slate-800 rounded-xl p-2 flex flex-col items-center gap-1.5">
             <div class="flex gap-2">
               <canvas id="homeAvPvF" width="${RoomAvatar.W}" height="${RoomAvatar.H}" class="w-[72px] h-[120px] rounded-lg bg-slate-800" style="image-rendering:pixelated" title="앞"></canvas>
               <canvas id="homeAvPvS" width="${RoomAvatar.W}" height="${RoomAvatar.H}" class="w-[72px] h-[120px] rounded-lg bg-slate-800" style="image-rendering:pixelated" title="옆"></canvas>
@@ -43585,6 +43760,319 @@
         });
         window.addEventListener('keyup', e => { const k = this.avKeyOf(e); if (k) this.avKeys.delete(k); });
         window.addEventListener('blur', () => this.avKeys.clear());
+      },
+
+      // ───── 내가 그리는 부위: 그리기(편집기)·내 작품·작품 상점 ─────
+      avSub: 'look', shopSlot: 'all', thumbJobs: [],
+      capParts(stu) { return capPartsOf(stu); },
+      capShop(stu) { return capShopOf(stu); },
+      saveLook(stu, look) { stu.captain = avatarLook(look); },
+      setAvSub(s) { this.avSub = s; this.renderList(); },
+      setShopSlot(s) { this.shopSlot = s; this.renderList(); },
+      // 입은 부위 바꾸기 (id가 없으면 기본 부위로)
+      setAvatarPart(slot, id) {
+        const stu = this.student();
+        if (!stu || !AV_CUSTOM_SLOTS.includes(slot)) return;
+        const look = this.avatarOf(stu);
+        if (id && this.capParts(stu).some(p => p.id === id && p.slot === slot)) look.c[slot] = id; else delete look.c[slot];
+        this.saveLook(stu, look);
+        saveState();
+        this.renderList();
+        this.draw();
+      },
+      // 마네킹에 부위 하나만 입힌 모습 (목록 그림용)
+      mannequin(p) {
+        return { ...AV_DEFAULT, weapon: 'none', cape: 'none', hat: 'none', face: 'none', c: { [p.slot]: p.id }, custom: { [p.slot]: capLayers(p) } };
+      },
+      thumbHTML(p, cls = '') {
+        this.thumbJobs.push(p);
+        return `<canvas data-capthumb="${this.thumbJobs.length - 1}" width="${RoomAvatar.W}" height="${RoomAvatar.H}" class="rounded-lg bg-slate-800 ${cls}" style="width:60px;height:100px;image-rendering:pixelated"></canvas>`;
+      },
+      fillThumbs() {
+        document.querySelectorAll('[data-capthumb]').forEach(cv => {
+          const p = this.thumbJobs[Number(cv.dataset.capthumb)];
+          if (!p) return;
+          const g = cv.getContext('2d'); g.imageSmoothingEnabled = false; g.clearRect(0, 0, cv.width, cv.height);
+          g.drawImage(RoomAvatar.sprite(this.mannequin(p), false, 0), 0, 0);
+        });
+      },
+      // 내 작품 목록
+      renderPartsPanel(box, stu) {
+        const parts = this.capParts(stu), shop = this.capShop(stu), look = this.avatarOf(stu);
+        const card = p => {
+          const on = look.c[p.slot] === p.id, selling = shop.some(l => l.id === p.id);
+          return `<div class="bg-slate-950 border ${on ? 'border-amber-400/70' : 'border-slate-800'} rounded-xl p-2 flex flex-col items-center gap-1">
+              ${this.thumbHTML(p)}
+              <span class="text-xs font-extrabold text-slate-200 text-center leading-tight truncate w-full">${this.esc(p.name)}</span>
+              <span class="text-[10px] font-bold text-slate-500">${AV_SLOT_NAME[p.slot]}${p.bought ? ` · ${this.esc(p.byName || '친구')} 작품` : ''}${selling ? ' · 판매 중' : ''}</span>
+              <button type="button" onclick="HomeRoom.setAvatarPart('${p.slot}', ${on ? 'null' : `'${p.id}'`})" class="w-full py-1 rounded-lg ${on ? 'bg-slate-800 text-amber-300' : 'bg-amber-500 hover:bg-amber-400 text-slate-950'} text-[11px] font-extrabold">${on ? '✓ 입는 중 (벗기)' : '입기'}</button>
+              <div class="w-full grid grid-cols-3 gap-1">
+                <button type="button" onclick="HomeRoom.editPart('${p.id}')" title="이 그림을 불러와 새로 그려요" class="py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-extrabold">✏️</button>
+                ${p.bought ? `<button type="button" disabled title="산 부위는 팔 수 없어요" class="py-1 rounded-lg bg-slate-900 text-slate-600 text-[11px] font-extrabold">🏷️</button>`
+                  : `<button type="button" onclick="HomeRoom.openSellPart('${p.id}')" title="친구에게 팔기" class="py-1 rounded-lg bg-pink-500 hover:bg-pink-400 text-white text-[11px] font-extrabold">🏷️</button>`}
+                <button type="button" onclick="HomeRoom.deletePart('${p.id}')" title="지우기" class="py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-extrabold">🗑️</button>
+              </div>
+            </div>`;
+        };
+        const listing = l => `<div class="col-span-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border border-pink-500/40 bg-pink-500/10 text-[11px] font-bold">
+            <span class="text-pink-200 truncate">🏷️ ${this.esc(l.name)} · ${AV_SLOT_NAME[l.slot]} · ${Number(l.price).toLocaleString()} CA · ${Number(l.sold) || 0}명 구매</span>
+            <button type="button" onclick="HomeRoom.cancelSellPart('${l.id}')" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 whitespace-nowrap">내리기</button>
+          </div>`;
+        box.innerHTML = `<div class="col-span-full flex items-center justify-between gap-2">
+            <span class="text-[11px] font-bold text-slate-400">내 작품 ${parts.length}/${CAP_PARTS_MAX}</span>
+            <button type="button" onclick="HomeRoom.openPartEditor()" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-[11px] font-extrabold">✏️ 새 부위 그리기</button>
+          </div>`
+          + (shop.length ? `<div class="col-span-full text-[11px] font-extrabold text-slate-300 pt-1">판매 중 ${shop.length}/${CAP_SHOP_MAX}</div>` + shop.map(listing).join('') : '')
+          + (parts.length ? parts.map(card).join('') : `<div class="col-span-full text-xs text-slate-400 py-6 text-center bg-slate-950 rounded-xl border border-slate-800 leading-relaxed">아직 그린 부위가 없어요.<br>✏️ 새 부위 그리기로 투구·갑옷·무기 같은 부위를 직접 그려 보세요!</div>`);
+        this.fillThumbs();
+      },
+      // 작품 상점: 친구들이 판매 등록한 부위
+      listings() {
+        const out = [];
+        (state.students || []).forEach(s => this.capShop(s).forEach(l => {
+          const price = Math.round(Number(l.price) || 0);
+          if (price < CAP_PRICE_MIN || price > CAP_PRICE_MAX) return;
+          out.push({ ...l, price, seller: s });
+        }));
+        return out.sort((a, b) => (Number(b.at) || 0) - (Number(a.at) || 0));
+      },
+      renderShopPanel(box, stu) {
+        const all = this.listings(), mine = new Set(this.capParts(stu).map(p => p.id));
+        const list = this.shopSlot === 'all' ? all : all.filter(l => l.slot === this.shopSlot);
+        const chips = [['all', '전체'], ...AV_CUSTOM_SLOTS.map(s => [s, AV_SLOT_NAME[s]])].map(([k, n]) => `<button type="button" onclick="HomeRoom.setShopSlot('${k}')" class="px-2 py-1 rounded-lg text-[11px] font-extrabold ${this.shopSlot === k ? 'bg-pink-500 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}">${n}</button>`).join('');
+        const card = l => {
+          const own = l.seller.id === stu.id, have = mine.has(l.id), rich = (stu.mc || 0) >= l.price;
+          const btn = own ? `<button type="button" onclick="HomeRoom.cancelSellPart('${l.id}')" class="w-full py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-[11px] font-extrabold">판매 내리기</button>`
+            : have ? `<span class="w-full py-1.5 rounded-lg bg-slate-800 text-slate-500 text-[11px] font-extrabold text-center">이미 있어요</span>`
+            : `<button type="button" onclick="HomeRoom.buyPart('${l.seller.id}', '${l.id}')" ${rich ? '' : 'disabled'} class="w-full py-1.5 rounded-lg text-[11px] font-extrabold ${rich ? 'bg-pink-500 hover:bg-pink-400 text-white' : 'bg-slate-800 text-slate-500'}">${rich ? `${l.price.toLocaleString()} CA` : 'CA 부족'}</button>`;
+          return `<div class="bg-slate-950 border ${own ? 'border-indigo-500/50' : 'border-slate-800'} rounded-xl p-2 flex flex-col items-center gap-1">
+              ${this.thumbHTML(l)}
+              <span class="text-xs font-extrabold text-slate-200 text-center leading-tight truncate w-full">${this.esc(l.name)}</span>
+              <span class="text-[10px] font-bold text-slate-500 truncate w-full text-center">${AV_SLOT_NAME[l.slot]} · ${this.esc(l.seller.name)}${own ? ' (나)' : ''} · ${Number(l.sold) || 0}명 구매</span>
+              ${btn}
+            </div>`;
+        };
+        box.innerHTML = `<div class="col-span-full flex flex-wrap gap-1">${chips}</div>`
+          + `<div class="col-span-full text-[10px] font-bold text-slate-500">친구가 그린 부위를 CA로 사면 내 작품에 들어오고 바로 입어요. CA는 그린 친구에게 가요.</div>`
+          + (list.length ? list.map(card).join('') : `<div class="col-span-full text-xs text-slate-400 py-6 text-center bg-slate-950 rounded-xl border border-slate-800 leading-relaxed">아직 판매 중인 부위가 없어요.<br>내 작품 탭에서 내가 그린 부위를 🏷️ 판매 등록해 보세요!</div>`);
+        this.fillThumbs();
+      },
+      // 사기: 내 작품에 복사본을 넣고 바로 입음. 대금은 송금으로 판 친구에게
+      buyPart(sellerId, id) {
+        const me = this.student(), seller = (state.students || []).find(s => s.id === sellerId);
+        const l = seller && this.capShop(seller).find(x => x.id === id);
+        if (!me || !seller || !l) { showNotice('⚠️ 이미 판매가 끝난 부위예요.'); this.renderList(); return; }
+        if (seller.id === me.id) return;
+        const price = Math.round(Number(l.price) || 0);
+        if (price < CAP_PRICE_MIN || price > CAP_PRICE_MAX) return;
+        const parts = this.capParts(me);
+        if (parts.some(p => p.id === id)) { showNotice('⚠️ 이미 가지고 있는 부위예요.'); return; }
+        if (parts.length >= CAP_PARTS_MAX) { showNotice(`⚠️ 내 작품이 가득 찼어요. (최대 ${CAP_PARTS_MAX}개) 안 쓰는 부위를 지워 주세요.`); return; }
+        if ((me.mc || 0) < price) { showNotice('⚠️ CA가 부족해요.'); return; }
+        const name = cleanUserText(l.name, 12) || '부위';
+        askCustomConfirm(`${cleanUserText(seller.name)}의 [${name}] (${AV_SLOT_NAME[l.slot]})을(를) ${price.toLocaleString()} CA에 살까요? 사면 바로 입어요.`, () => {
+          if ((me.mc || 0) < price || this.capParts(me).some(p => p.id === id)) return;
+          me.mc -= price;
+          const copy = { id: l.id, slot: l.slot, name, f: l.f, bought: true, by: seller.id, byName: cleanUserText(seller.name), at: Date.now() };
+          if (l.s) copy.s = l.s;
+          if (l.b) copy.b = l.b;
+          this.capParts(me).unshift(copy);
+          const look = this.avatarOf(me); look.c[l.slot] = l.id; this.saveLook(me, look);
+          if (!StudentPw.online()) { const own = this.capShop(seller).find(x => x.id === id); if (own) own.sold = (Number(own.sold) || 0) + 1; }
+          sendToStudent(seller.id, { mc: price, kind: `captain_sale:${id}`, note: `[${name}] 단장 부위가 ${cleanUserText(me.name)}에게 팔렸어요.` });
+          saveState();
+          if (typeof updateHeaderUI === 'function') updateHeaderUI();
+          this.renderList();
+          this.draw();
+          showRewardBanner(`🎨 [${name}] 부위를 사서 입었어요! (-${price.toLocaleString()} CA)`);
+        });
+      },
+      // 팔기: 가격을 정해 판매 등록 (한 번에 CAP_SHOP_MAX개까지)
+      openSellPart(id) {
+        const stu = this.student(), p = stu && this.capParts(stu).find(x => x.id === id);
+        if (!p) return;
+        if (p.bought) { showNotice('⚠️ 산 부위는 다시 팔 수 없어요.'); return; }
+        const shop = this.capShop(stu);
+        if (shop.some(l => l.id === id)) { showNotice('⚠️ 이미 판매 중인 부위예요.'); return; }
+        if (shop.length >= CAP_SHOP_MAX) { showNotice(`⚠️ 한 번에 ${CAP_SHOP_MAX}개까지 팔 수 있어요. 판매 중인 부위를 내린 뒤 올려 주세요.`); return; }
+        const v = prompt(`[${p.name}] 즉시 구매가를 정해 주세요. (${CAP_PRICE_MIN.toLocaleString()}~${CAP_PRICE_MAX.toLocaleString()} CA)`, '300');
+        if (v == null) return;
+        const price = Math.round(Number(v) || 0);
+        if (price < CAP_PRICE_MIN || price > CAP_PRICE_MAX) { showNotice(`⚠️ 가격은 ${CAP_PRICE_MIN.toLocaleString()}~${CAP_PRICE_MAX.toLocaleString()} CA로 정해 주세요.`); return; }
+        const l = { id: p.id, slot: p.slot, name: p.name, f: p.f, price, sold: 0, at: Date.now() };
+        if (p.s) l.s = p.s;
+        if (p.b) l.b = p.b;
+        shop.unshift(l);
+        saveState();
+        this.renderList();
+        showRewardBanner(`🏷️ [${p.name}] 부위를 ${price.toLocaleString()} CA에 판매 등록했어요! 친구가 사면 CA가 들어와요.`);
+      },
+      cancelSellPart(id) {
+        const stu = this.student(), l = stu && this.capShop(stu).find(x => x.id === id);
+        if (!l) return;
+        askCustomConfirm(`[${cleanUserText(l.name, 12)}] 판매를 내릴까요? (이미 산 친구의 부위는 그대로 남아요)`, () => {
+          stu.capShop = this.capShop(stu).filter(x => x.id !== id);
+          saveState();
+          this.renderList();
+        });
+      },
+      deletePart(id) {
+        const stu = this.student(), p = stu && this.capParts(stu).find(x => x.id === id);
+        if (!p) return;
+        askCustomConfirm(p.bought ? `산 부위 [${p.name}]을(를) 지울까요? 지우면 다시 사야 해요.` : `[${p.name}] 부위를 지울까요? 판매 중이면 판매도 내려가요.`, () => {
+          stu.capParts = this.capParts(stu).filter(x => x.id !== id);
+          stu.capShop = this.capShop(stu).filter(x => x.id !== id);
+          const look = this.avatarOf(stu); if (look.c[p.slot] === id) delete look.c[p.slot]; this.saveLook(stu, look);
+          saveState();
+          this.renderList();
+          this.draw();
+        });
+      },
+      editPart(id) { const stu = this.student(), p = stu && this.capParts(stu).find(x => x.id === id); if (p) this.openPartEditor(p.slot, p); },
+
+      // ───── 부위 편집기 (48×80 도트) ─────
+      ed: null,
+      openPartEditor(slot = 'hat', part = null) {
+        const stu = this.student();
+        if (!stu) return;
+        const empty = () => new Uint8Array(CAP_N);
+        const cells = { f: empty(), s: empty(), b: empty() };
+        if (part) ['f', 's', 'b'].forEach(v => { const d = capCells(part[v]); if (d) cells[v] = d.slice(); });
+        this.ed = { slot: part ? part.slot : slot, view: 'f', cells, color: 1, tool: 'pen', mirror: false, hist: [], painting: false, last: -1 };
+        document.getElementById('capEdName').value = part ? (part.name || '') : '';
+        const slots = document.getElementById('capEdSlots');
+        if (!slots.children.length) {
+          slots.innerHTML = AV_CUSTOM_SLOTS.map(s => `<button type="button" data-capslot="${s}" onclick="HomeRoom.edSetSlot('${s}')">${AV_SLOT_NAME[s]}</button>`).join('');
+          document.getElementById('capEdPalette').innerHTML = CAP_PAL.map((c, k) => k === 0 ? '' : `<button type="button" data-capcolor="${k}" onclick="HomeRoom.edSetColor(${k})" class="aspect-square rounded-md" style="background:${c};border:2px solid #475569"></button>`).join('');
+        }
+        this.bindPartEditor();
+        this.renderPartEditor();
+        document.getElementById('capEditorModal').classList.remove('hidden');
+      },
+      closePartEditor() { if (this.ed) this.ed.painting = false; document.getElementById('capEditorModal').classList.add('hidden'); },
+      edSetSlot(s) { if (this.ed) { this.ed.slot = s; this.renderPartEditor(); } },
+      edSetView(v) { if (this.ed) { this.ed.view = v; this.renderPartEditor(); } },
+      edSetColor(k) { const e = this.ed; if (!e) return; e.color = k; if (e.tool === 'erase' || e.tool === 'pick') e.tool = 'pen'; this.renderPartEditor(); },
+      edSetTool(t) { if (this.ed) { this.ed.tool = t; this.renderPartEditor(); } },
+      edToggleMirror() { if (this.ed) { this.ed.mirror = !this.ed.mirror; this.renderPartEditor(); } },
+      edPush() { const e = this.ed; e.hist.push({ v: e.view, c: e.cells[e.view].slice() }); if (e.hist.length > 40) e.hist.shift(); },
+      edUndo() { const e = this.ed, h = e && e.hist.pop(); if (!h) return; e.cells[h.v] = h.c; e.view = h.v; this.renderPartEditor(); },
+      edClear() { if (!this.ed) return; this.edPush(); this.ed.cells[this.ed.view].fill(0); this.renderPartEditor(); },
+      edCopyFront() { const e = this.ed; if (!e || e.view === 'f') return; this.edPush(); e.cells[e.view] = e.cells.f.slice(); this.renderPartEditor(); },
+      edFlip() {
+        const e = this.ed; if (!e) return;
+        this.edPush();
+        const W = RoomAvatar.W, H = RoomAvatar.H, c = e.cells[e.view], n = c.slice();
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) n[y * W + x] = c[y * W + (W - 1 - x)];
+        e.cells[e.view] = n;
+        this.renderPartEditor();
+      },
+      edCellAt(ev) {
+        const cv = document.getElementById('capEdCanvas'), r = cv.getBoundingClientRect();
+        const x = Math.floor((ev.clientX - r.left) / r.width * RoomAvatar.W), y = Math.floor((ev.clientY - r.top) / r.height * RoomAvatar.H);
+        return x < 0 || y < 0 || x >= RoomAvatar.W || y >= RoomAvatar.H ? -1 : y * RoomAvatar.W + x;
+      },
+      edPaint(i) {
+        const e = this.ed, W = RoomAvatar.W, c = e.cells[e.view], v = e.tool === 'erase' ? 0 : e.color;
+        c[i] = v;
+        if (e.mirror && e.view !== 's') c[Math.floor(i / W) * W + (W - 1 - i % W)] = v;
+      },
+      edFill(start) {
+        const e = this.ed, W = RoomAvatar.W, H = RoomAvatar.H, c = e.cells[e.view], from = c[start], to = e.tool === 'erase' ? 0 : e.color;
+        if (from === to) return;
+        const st = [start];
+        while (st.length) {
+          const i = st.pop();
+          if (c[i] !== from) continue;
+          c[i] = to;
+          const x = i % W, y = (i / W) | 0;
+          if (x > 0) st.push(i - 1);
+          if (x < W - 1) st.push(i + 1);
+          if (y > 0) st.push(i - W);
+          if (y < H - 1) st.push(i + W);
+        }
+      },
+      bindPartEditor() {
+        if (this.edBound) return;
+        this.edBound = true;
+        const cv = document.getElementById('capEdCanvas');
+        cv.addEventListener('pointerdown', ev => {
+          const e = this.ed; if (!e || ev.button !== 0) return;
+          const i = this.edCellAt(ev); if (i < 0) return;
+          ev.preventDefault();
+          try { cv.setPointerCapture(ev.pointerId); } catch (x) {}
+          if (e.tool === 'pick') { const v = e.cells[e.view][i]; if (v) { e.color = v; e.tool = 'pen'; } this.renderPartEditor(); return; }
+          this.edPush();
+          if (e.tool === 'fill') { this.edFill(i); this.renderPartEditor(); return; }
+          e.painting = true; e.last = i; this.edPaint(i); this.renderPartEditor(true);
+        });
+        // 빠르게 끌어도 끊기지 않게 지난 칸에서 지금 칸까지 선으로 이어 칠함
+        cv.addEventListener('pointermove', ev => {
+          const e = this.ed; if (!e || !e.painting) return;
+          const i = this.edCellAt(ev); if (i < 0 || i === e.last) return;
+          const W = RoomAvatar.W, a = e.last, x0 = a % W, y0 = (a / W) | 0, x1 = i % W, y1 = (i / W) | 0, n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+          for (let k = 1; k <= n; k++) this.edPaint(Math.round(y0 + (y1 - y0) * k / n) * W + Math.round(x0 + (x1 - x0) * k / n));
+          e.last = i;
+          this.renderPartEditor(true);
+        });
+        const up = () => { if (this.ed && this.ed.painting) { this.ed.painting = false; this.renderPartEditor(); } };
+        cv.addEventListener('pointerup', up);
+        cv.addEventListener('pointercancel', up);
+      },
+      // 편집기 그림: 바둑판 위에 지금 내 단장(그 부위만 뺀 모습)을 흐리게 깔고, 그 위에 그리는 레이어와 격자
+      renderPartEditor(quick = false) {
+        const e = this.ed; if (!e) return;
+        const W = RoomAvatar.W, H = RoomAvatar.H, Z = 6, cv = document.getElementById('capEdCanvas');
+        if (cv.width !== W * Z) { cv.width = W * Z; cv.height = H * Z; }
+        const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
+        g.fillStyle = '#e2e8f0'; g.fillRect(0, 0, cv.width, cv.height);
+        g.fillStyle = '#cbd5e1'; for (let y = 0; y < H; y += 2) for (let x = (y / 2) % 2; x < W; x += 2) g.fillRect(x * Z, y * Z, Z, Z);
+        const stu = this.student(), base = this.avatarOf(stu);
+        base.c = { ...base.c, [e.slot]: 'guide' }; base.custom = { ...base.custom, [e.slot]: { f: new Uint8Array(CAP_N) } }; // 그 부위는 비워 둔 모습
+        g.globalAlpha = 0.45; g.drawImage(RoomAvatar.sprite(base, e.view === 'b', 0, false, e.view === 's'), 0, 0, W * Z, H * Z); g.globalAlpha = 1;
+        const c = e.cells[e.view];
+        for (let i = 0; i < c.length; i++) if (c[i]) { g.fillStyle = CAP_PAL[c[i]]; g.fillRect((i % W) * Z, ((i / W) | 0) * Z, Z, Z); }
+        g.strokeStyle = 'rgba(15,23,42,.12)'; g.lineWidth = 1; g.beginPath();
+        for (let x = 0; x <= W; x++) { g.moveTo(x * Z + 0.5, 0); g.lineTo(x * Z + 0.5, H * Z); }
+        for (let y = 0; y <= H; y++) { g.moveTo(0, y * Z + 0.5); g.lineTo(W * Z, y * Z + 0.5); }
+        g.stroke();
+        if (e.mirror && e.view !== 's') { g.strokeStyle = 'rgba(236,72,153,.7)'; g.beginPath(); g.moveTo(W / 2 * Z, 0); g.lineTo(W / 2 * Z, H * Z); g.stroke(); }
+        if (quick) return;
+        document.querySelectorAll('[data-capslot]').forEach(b => { b.className = `px-2 py-1 rounded-lg text-[11px] font-extrabold ${b.dataset.capslot === e.slot ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-200 hover:bg-slate-700'}`; });
+        document.querySelectorAll('[data-capview]').forEach(b => { b.className = `flex-1 px-3 py-1 rounded-lg text-[11px] font-extrabold ${b.dataset.capview === e.view ? 'bg-pink-500 text-white' : 'bg-slate-800 text-slate-200 hover:bg-slate-700'}`; });
+        document.querySelectorAll('[data-captool]').forEach(b => { const on = b.dataset.captool === 'mirror' ? e.mirror : b.dataset.captool === e.tool; b.className = `py-1.5 rounded-lg ${on ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-200 hover:bg-slate-700'}`; });
+        document.querySelectorAll('[data-capcolor]').forEach(b => { b.style.outline = Number(b.dataset.capcolor) === e.color && e.tool !== 'erase' ? '3px solid #fbbf24' : 'none'; });
+        document.getElementById('capEdCopy').classList.toggle('hidden', e.view === 'f');
+        // 입은 모습 미리보기 (앞·옆·뒤)
+        const look = this.avatarOf(stu);
+        look.c = { ...look.c, [e.slot]: 'edit' + (this.edSeq = (this.edSeq || 0) + 1) };
+        look.custom = { ...look.custom, [e.slot]: { f: e.cells.f, s: e.cells.s, b: e.cells.b } };
+        [['capEdPvF', false, false], ['capEdPvS', false, true], ['capEdPvB', true, false]].forEach(([id, back, side]) => {
+          const p = document.getElementById(id), pg = p.getContext('2d');
+          pg.imageSmoothingEnabled = false; pg.clearRect(0, 0, p.width, p.height);
+          pg.drawImage(RoomAvatar.sprite(look, back, 0, false, side), 0, 0);
+        });
+      },
+      savePartFromEditor() {
+        const stu = this.student(), e = this.ed;
+        if (!stu || !e) return;
+        const parts = this.capParts(stu);
+        if (parts.length >= CAP_PARTS_MAX) { showNotice(`⚠️ 내 작품이 가득 찼어요. (최대 ${CAP_PARTS_MAX}개) 안 쓰는 부위를 지워 주세요.`); return; }
+        const f = capEncode(e.cells.f);
+        if (!f) { showNotice('⚠️ 앞모습을 먼저 그려 주세요.'); return; }
+        const name = cleanUserText(document.getElementById('capEdName').value, 12) || `내 ${AV_SLOT_NAME[e.slot]}`;
+        const p = { id: makeAvatarId(), slot: e.slot, name, f, at: Date.now() };
+        const s = capEncode(e.cells.s), b = capEncode(e.cells.b);
+        if (s) p.s = s;
+        if (b) p.b = b;
+        parts.unshift(p);
+        const look = this.avatarOf(stu); look.c[e.slot] = p.id; this.saveLook(stu, look);
+        saveState();
+        this.closePartEditor();
+        this.avSub = 'parts';
+        this.renderList();
+        this.draw();
+        showRewardBanner(`🎨 [${name}] 부위를 저장하고 입었어요!`);
       },
 
       // ───── 마우스·터치 ─────
