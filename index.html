@@ -41886,6 +41886,19 @@
     }
     // 부위 기록 → 그릴 레이어 { f, s, b } (옆·뒤가 없으면 앞을 씀: 그리는 쪽에서 처리)
     function capLayers(p) { return { f: capCells(p.f), s: capCells(p.s), b: capCells(p.b) }; }
+    // 옆모습을 안 그린 눈·입: 앞 그림의 오른쪽 반만 옆얼굴 자리로 옮겨 씀 (두 눈이 다 찍히면 한쪽이 뒤통수에 보임)
+    // 앞 오른쪽 눈(x 29~33) → 옆 눈(x 31~35), 입 오른쪽 반(x 22~28) → 옆 입(x 30~36). 옆얼굴 밖(maxX 넘는 칸)은 잘라냄
+    const CAP_SIDE_SHIFT = { eyes: { from: 24, dx: 2, maxX: 36 }, mouth: { from: 22, dx: 8, maxX: 36 } };
+    function capSideFromFront(slot, front) {
+      const m = CAP_SIDE_SHIFT[slot];
+      if (!m || !front) return front;
+      const W = 48, H = 80, out = new Uint8Array(W * H);
+      for (let y = 0; y < H; y++) for (let x = m.from; x < W; x++) {
+        const v = front[y * W + x], nx = x + m.dx;
+        if (v && nx <= m.maxX) out[y * W + nx] = v;
+      }
+      return out;
+    }
     function capPartsOf(stu) {
       if (!stu) return [];
       if (!Array.isArray(stu.capParts)) stu.capParts = Object.values(stu.capParts || {});
@@ -42428,7 +42441,7 @@
         mRect(37, 26 + o, 2, 2); commit(sk, { sh: 3 });
         mEll(16.5, 26 + o, 2.6, 3.2); commit(sk, { sh: 1 });
         const iris = ramp(AV_EYES[a.eyeColor]), ex = 31, INK = [46, 38, 51];
-        if (ey === 'custom') stamp(cu('eyes'), o);
+        if (ey === 'custom') stamp(C.eyes.s || capSideFromFront('eyes', C.eyes.f), o);
         else if (ey === 'happy') {
           [[30, 27], [31, 26], [32, 25], [33, 25], [34, 26], [35, 27]].forEach(([x, y]) => put(x, y + o, INK));
           for (let x = 30; x < 36; x++) put(x, 22 + o - (x === 30 || x === 35 ? 0 : 1), rH.dp);
@@ -42443,7 +42456,7 @@
           dot(ex, (sharp ? 26 : 25) + o, WHITE); dot(ex + 1, (sharp ? 26 : 25) + o, WHITE); if (!sharp) dot(ex, 26 + o, WHITE); dot(ex + 3, 28 + o, WHITE);
           for (let x = 30; x < 36; x++) put(x, (sharp ? 24 - Math.round((x - 30) * 0.6) : 22 - (x >= 34 ? 1 : 0)) + o, rH.dp);
         }
-        if (mo === 'custom') stamp(cu('mouth'), o);
+        if (mo === 'custom') stamp(C.mouth.s || capSideFromFront('mouth', C.mouth.f), o);
         else if (mo === 'grin') { mRect(33, 31 + o, 5, 3); commit('#a5464f', { flat: true }); for (let x = 34; x < 37; x++) dot(x, 31 + o, WHITE); }
         else if (mo === 'flat') { for (let x = 33; x < 38; x++) dot(x, 32 + o, '#a5464f'); }
         else { dot(35, 32 + o, '#a5464f'); dot(36, 31 + o, '#a5464f'); }
@@ -44027,7 +44040,12 @@
       edPush() { const e = this.ed; e.hist.push({ v: e.view, c: e.cells[e.view].slice() }); if (e.hist.length > 40) e.hist.shift(); },
       edUndo() { const e = this.ed, h = e && e.hist.pop(); if (!h) return; e.cells[h.v] = h.c; e.view = h.v; this.renderPartEditor(); },
       edClear() { if (!this.ed) return; this.edPush(); this.ed.cells[this.ed.view].fill(0); this.renderPartEditor(); },
-      edCopyFront() { const e = this.ed; if (!e || e.view === 'f') return; this.edPush(); e.cells[e.view] = e.cells.f.slice(); this.renderPartEditor(); },
+      edCopyFront() {
+        const e = this.ed; if (!e || e.view === 'f') return;
+        this.edPush();
+        e.cells[e.view] = e.view === 's' && CAP_SIDE_SHIFT[e.slot] ? capSideFromFront(e.slot, e.cells.f) : e.cells.f.slice();
+        this.renderPartEditor();
+      },
       edFlip() {
         const e = this.ed; if (!e) return;
         this.edPush();
@@ -44115,7 +44133,8 @@
         // 입은 모습 미리보기 (앞·옆·뒤)
         const look = this.avatarOf(stu);
         look.c = { ...look.c, [e.slot]: 'edit' + (this.edSeq = (this.edSeq || 0) + 1) };
-        look.custom = { ...look.custom, [e.slot]: { f: e.cells.f, s: e.cells.s, b: e.cells.b } };
+        const has = c => c.some(v => v) ? c : null; // 안 그린 옆·뒤는 저장할 때처럼 앞 그림으로 대신 보여줌
+        look.custom = { ...look.custom, [e.slot]: { f: e.cells.f, s: has(e.cells.s), b: has(e.cells.b) } };
         [['capEdPvF', false, false], ['capEdPvS', false, true], ['capEdPvB', true, false]].forEach(([id, back, side]) => {
           const p = document.getElementById(id), pg = p.getContext('2d');
           pg.imageSmoothingEnabled = false; pg.clearRect(0, 0, p.width, p.height);
