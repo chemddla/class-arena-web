@@ -2661,11 +2661,12 @@
               <div id="homeRoomColors" class="hidden flex flex-col gap-2 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs"></div>
             </div>
             <div class="lg:col-span-3 flex flex-col gap-2">
-              <div id="homeRoomTabs" class="grid grid-cols-4 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
-                <button type="button" id="homeRoomTab-inv" onclick="HomeRoom.setPanel('inv')" class="py-1.5 rounded-lg text-xs font-extrabold">📦 내 가구</button>
-                <button type="button" id="homeRoomTab-pet" onclick="HomeRoom.setPanel('pet')" class="py-1.5 rounded-lg text-xs font-extrabold">🐾 내 펫</button>
-                <button type="button" id="homeRoomTab-shop" onclick="HomeRoom.setPanel('shop')" class="py-1.5 rounded-lg text-xs font-extrabold">🛒 가구 상점</button>
-                <button type="button" id="homeRoomTab-skin" onclick="HomeRoom.setPanel('skin')" class="py-1.5 rounded-lg text-xs font-extrabold">📐 방·벽지</button>
+              <div id="homeRoomTabs" class="grid grid-cols-5 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                <button type="button" id="homeRoomTab-inv" onclick="HomeRoom.setPanel('inv')" class="py-1.5 rounded-lg text-[11px] font-extrabold leading-tight"><span class="block text-base">📦</span>내 가구</button>
+                <button type="button" id="homeRoomTab-pet" onclick="HomeRoom.setPanel('pet')" class="py-1.5 rounded-lg text-[11px] font-extrabold leading-tight"><span class="block text-base">🐾</span>내 펫</button>
+                <button type="button" id="homeRoomTab-shop" onclick="HomeRoom.setPanel('shop')" class="py-1.5 rounded-lg text-[11px] font-extrabold leading-tight"><span class="block text-base">🛒</span>가구 상점</button>
+                <button type="button" id="homeRoomTab-skin" onclick="HomeRoom.setPanel('skin')" class="py-1.5 rounded-lg text-[11px] font-extrabold leading-tight"><span class="block text-base">🧱</span>벽지·바닥</button>
+                <button type="button" id="homeRoomTab-size" onclick="HomeRoom.setPanel('size')" class="py-1.5 rounded-lg text-[11px] font-extrabold leading-tight"><span class="block text-base">📐</span>방 넓히기</button>
               </div>
               <div id="homeRoomList" class="grid grid-cols-2 gap-2 max-h-[460px] overflow-y-auto pr-1"></div>
             </div>
@@ -40963,9 +40964,9 @@
       renderList() {
         const box = document.getElementById('homeRoomList');
         if (!box) return;
-        ['inv', 'pet', 'shop', 'skin'].forEach(k => {
+        ['inv', 'pet', 'shop', 'skin', 'size'].forEach(k => {
           const b = document.getElementById(`homeRoomTab-${k}`);
-          if (b) b.className = `py-1.5 rounded-lg text-xs font-extrabold ${this.panel === k ? 'bg-pink-500 text-white' : 'text-slate-300 hover:bg-slate-800'}`;
+          if (b) b.className = `py-1.5 rounded-lg text-[11px] font-extrabold leading-tight ${this.panel === k ? 'bg-pink-500 text-white' : 'text-slate-300 hover:bg-slate-800'}`;
         });
         const guest = this.visitor();
         if (guest) {
@@ -40980,6 +40981,32 @@
           ? `<img src="assets/furniture/${def.id}.webp" alt="" class="h-14 w-auto object-contain" style="image-rendering:pixelated" draggable="false">`
           : `<div class="h-14 flex items-center justify-center text-3xl">${def.emoji}</div>`;
         const size = def => def.cat === 'rug' ? `러그 ${def.w}×${def.d}` : `${def.w}×${def.d}×${def.h}`;
+        if (this.panel === 'size') {
+          // 방 넓히기: 지금 단계·다음 크기와 값
+          const home = this.home(stu);
+          const lv = homeLv(home), cur = HOME_SIZES[lv - 1], next = HOME_SIZES[lv];
+          const dots = HOME_SIZES.map((_, i) => `<span class="w-2.5 h-2.5 rounded-full ${i < lv ? 'bg-pink-400' : 'bg-slate-700'}"></span>`).join('');
+          const grow = `<div class="col-span-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-1.5">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-extrabold text-slate-200">📐 방 넓히기</span>
+                <span class="flex items-center gap-1">${dots}</span>
+              </div>
+              <span class="text-[11px] font-bold text-slate-400">지금 방 ${cur.X}×${cur.Y}칸 · ${lv}/${HOME_SIZES.length}단계</span>
+              ${next
+                ? `<button type="button" onclick="HomeRoom.expand()" class="w-full py-1.5 rounded-lg ${(stu.mc || 0) >= next.price ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-500'} text-[11px] font-extrabold">${next.X}×${next.Y}칸으로 넓히기 · ${next.price.toLocaleString()} CA</button>`
+                : `<span class="w-full py-1.5 rounded-lg bg-slate-800 text-pink-300 text-[11px] font-extrabold text-center">✓ 가장 넓은 방이에요</span>`}
+            </div>`;
+          // 단계별 크기·값 (넓힌 단계 / 다음 단계 / 아직)
+          const steps = HOME_SIZES.map((s, i) => {
+            const done = i < lv, isNext = i === lv;
+            return `<div class="col-span-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border ${isNext ? 'border-amber-400/60 bg-amber-500/10' : 'border-slate-800 bg-slate-950'} text-[11px] font-bold">
+                <span class="${done ? 'text-pink-300' : isNext ? 'text-amber-300' : 'text-slate-500'}">${i + 1}단계 · ${s.X}×${s.Y}칸</span>
+                <span class="${done ? 'text-pink-300' : isNext ? 'text-amber-300' : 'text-slate-500'}">${done ? (i === lv - 1 ? '✓ 지금 방' : '✓') : `${s.price.toLocaleString()} CA`}</span>
+              </div>`;
+          }).join('');
+          box.innerHTML = grow + `<div class="col-span-full text-xs font-extrabold text-slate-300 pt-1">단계별 크기</div>` + steps;
+          return;
+        }
         if (this.panel === 'skin') {
           // 벽지·바닥: 산 것은 눌러서 바로 바꾸고, 안 산 것은 사면 바로 깔림. 맨 앞은 기본 방
           const home = this.home(stu), owned = new Set(home.skins);
@@ -41000,20 +41027,7 @@
               </div>`;
           };
           const head = t => `<div class="col-span-full text-xs font-extrabold text-slate-300 pt-1">${t}</div>`;
-          // 방 넓히기: 지금 단계·다음 크기와 값
-          const lv = homeLv(home), cur = HOME_SIZES[lv - 1], next = HOME_SIZES[lv];
-          const dots = HOME_SIZES.map((_, i) => `<span class="w-2.5 h-2.5 rounded-full ${i < lv ? 'bg-pink-400' : 'bg-slate-700'}"></span>`).join('');
-          const grow = `<div class="col-span-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-1.5">
-              <div class="flex items-center justify-between gap-2">
-                <span class="text-xs font-extrabold text-slate-200">📐 방 넓히기</span>
-                <span class="flex items-center gap-1">${dots}</span>
-              </div>
-              <span class="text-[11px] font-bold text-slate-400">지금 방 ${cur.X}×${cur.Y}칸 · ${lv}/${HOME_SIZES.length}단계</span>
-              ${next
-                ? `<button type="button" onclick="HomeRoom.expand()" class="w-full py-1.5 rounded-lg ${(stu.mc || 0) >= next.price ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-500'} text-[11px] font-extrabold">${next.X}×${next.Y}칸으로 넓히기 · ${next.price.toLocaleString()} CA</button>`
-                : `<span class="w-full py-1.5 rounded-lg bg-slate-800 text-pink-300 text-[11px] font-extrabold text-center">✓ 가장 넓은 방이에요</span>`}
-            </div>`;
-          box.innerHTML = head('📐 방 크기') + grow + head('🧱 벽지') + [null, ...HOME_SKINS.filter(s => s.part === 'wall')].map(s => card('wall', s)).join('')
+          box.innerHTML = head('🧱 벽지') + [null, ...HOME_SKINS.filter(s => s.part === 'wall')].map(s => card('wall', s)).join('')
             + head('🟫 바닥') + [null, ...HOME_SKINS.filter(s => s.part === 'floor')].map(s => card('floor', s)).join('');
           return;
         }
