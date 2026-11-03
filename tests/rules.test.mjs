@@ -512,3 +512,35 @@ test('대기방 채팅: 로그인한 학생은 자기 이름으로만 보내고,
   await assertSucceeds(db(null).ref('classes/OLD1/room_chats/pvp/r1/c_abcdef10').set(chat('s1'))); // 소유자 없는 학급은 학생 확인 없음
   await assertFails(db(null).ref('classes/OLD1/room_chats/pvp/r1/c_abcdef11').set(chat('nobody'))); // 없는 학생
 });
+
+test('방 채팅: 방 꾸미기 방(home/{방 주인})에서도 대기방 채팅과 같은 규칙', async () => {
+  await assertSucceeds(db('u1').ref('classes/OWN1/room_chats/home/s2/c_home0001').set(chat('s1'))); // 친구 방에 놀러 가서
+  await assertFails(db('u1').ref('classes/OWN1/room_chats/home/s2/c_home0002').set(chat('s2'))); // 남의 이름으로
+  await assertFails(db(null).ref('classes/OWN1/room_chats/home/s2/c_home0003').set(chat('s1')));
+});
+
+// ----- 방 꾸미기 실시간 위치 (classes/{학급}/home_live/{방 주인}/{학생}) -----
+const spot = (extra = {}) => ({ x: 2.5, y: 3.5, z: 0, p: '0101', u: '', e: '', en: 0, at: Date.now() - 1000, ...extra });
+const LIVE = 'classes/OWN1/home_live';
+
+test('방 꾸미기 실시간: 로그인한 학생은 어느 방이든 자기 칸에만 쓰고 지울 수 있음', async () => {
+  await assertSucceeds(db('u1').ref(`${LIVE}/s1/s1`).set(spot()));          // 내 방
+  await assertSucceeds(db('u1').ref(`${LIVE}/s2/s1`).set(spot()));          // 친구 방 구경
+  await assertSucceeds(db(null).ref(`${LIVE}/s2`).once('value'));            // 학급 코드를 알면 봄
+  await assertFails(db('u1').ref(`${LIVE}/s2/s2`).set(spot()));             // 남의 칸
+  await assertFails(db('u2').ref(`${LIVE}/s2/s2`).set(spot()));             // 로그인(연결) 안 된 기기
+  await assertFails(db(null).ref(`${LIVE}/s1/s1`).set(spot()));
+  await assertFails(db('u1').ref(`${LIVE}/nobody/s1`).set(spot()));         // 없는 방 주인
+  await assertFails(db('u1').ref(`${LIVE}/s1/s1`).set(spot({ x: 99 })));    // 방 밖
+  await assertFails(db('u1').ref(`${LIVE}/s1/s1`).set(spot({ p: 'abcd' })));
+  await assertFails(db('u1').ref(`${LIVE}/s1/s1`).set(spot({ e: '아주아주긴감정표현입니다' })));
+  await assertFails(db('u1').ref(`${LIVE}/s1/s1`).set(spot({ mc: 100 })));  // 다른 값은 못 넣음
+  await assertFails(db('u1').ref(`${LIVE}/s1/s1`).set(spot({ at: Date.now() + 3600000 })));
+  await assertFails(db('u1').ref(`${LIVE}/s1/s1`).set({ x: 1 }));           // 위치·시각이 다 있어야 함
+  await linkS2();
+  await assertSucceeds(db('u2').ref(`${LIVE}/s2/s2`).set(spot()));
+  await assertFails(db('u2').ref(`${LIVE}/s2/s1`).remove());                // 남의 칸은 못 지움
+  await assertSucceeds(db('u1').ref(`${LIVE}/s2/s1`).remove());             // 나갈 때 내 칸 지움
+  await assertSucceeds(db('teacher').ref(`${LIVE}/s2/s2`).remove());        // 소유 교사
+  await assertSucceeds(db(null).ref('classes/OLD1/home_live/s1/s1').set(spot())); // 소유자 없는 학급은 학생 확인 없음
+});

@@ -2728,6 +2728,8 @@
               </div>
               <div id="homeRoomToolbar" class="min-h-[40px] flex flex-wrap items-center gap-2 text-xs"></div>
               <div id="homeRoomColors" class="hidden flex flex-col gap-2 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs"></div>
+              <!-- 방 채팅: 이 방에 있는 친구들과 대화 (말풍선으로도 떠요). RoomChat 'home' 종류, 방 id = 방 주인 -->
+              <div id="homeRoomChat" class="hidden"></div>
             </div>
             <div class="lg:col-span-3 flex flex-col gap-2">
               <div id="homeRoomTabs" class="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
@@ -32195,12 +32197,12 @@
         el.innerHTML = `
           <div class="bg-slate-900 border-2 border-indigo-500/40 rounded-2xl p-3 flex flex-col gap-2 shadow">
             <div class="flex items-center justify-between gap-2">
-              <span class="text-xs font-extrabold text-indigo-200">💬 대기방 채팅</span>
-              <span class="text-[10px] text-slate-400">이 방 친구들만 보여요 · 최근 ${ROOM_CHAT_MAX}개</span>
+              <span class="text-xs font-extrabold text-indigo-200">${kind === 'home' ? '💬 방 채팅' : '💬 대기방 채팅'}</span>
+              <span class="text-[10px] text-slate-400">${kind === 'home' ? '이 방에 놀러 온 친구들과 대화해요. 말풍선으로도 떠요' : '이 방 친구들만 보여요'} · 최근 ${ROOM_CHAT_MAX}개</span>
             </div>
             <div data-chat-list class="h-40 overflow-y-auto flex flex-col gap-1.5 bg-slate-950 border border-slate-800 rounded-xl p-2"></div>
             <form class="flex gap-2" onsubmit="sendRoomChat(event, '${boxId}')">
-              <input type="text" maxlength="${ROOM_CHAT_TEXT_MAX}" autocomplete="off" placeholder="메시지를 입력하세요 (${ROOM_CHAT_TEXT_MAX}자까지)" aria-label="대기방 채팅 메시지"
+              <input type="text" maxlength="${ROOM_CHAT_TEXT_MAX}" autocomplete="off" placeholder="메시지를 입력하세요 (${ROOM_CHAT_TEXT_MAX}자까지)" aria-label="${kind === 'home' ? '방' : '대기방'} 채팅 메시지"
                 class="flex-1 min-w-0 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-indigo-500 outline-none text-white text-xs">
               <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow shrink-0">보내기</button>
             </form>
@@ -43237,7 +43239,8 @@
       // 방 안 움직임 (펫·아바타) 한 틀: 둘 다 없으면 멈춤
       petLoop(t) {
         this.petRaf = 0;
-        if (document.getElementById('studentTab-home')?.classList.contains('hidden') || (!Object.keys(this.petRt || {}).length && !this.av)) return;
+        if (document.getElementById('studentTab-home')?.classList.contains('hidden')) { this.liveLeave(); RoomChat.show('homeRoomChat', 'home', null); return; }
+        if (!Object.keys(this.petRt || {}).length && !this.av) return;
         const dt = this.petLast ? Math.min(0.1, (t - this.petLast) / 1000) : 0;
         this.petLast = t;
         this.tickPets(dt, performance.now());
@@ -43432,7 +43435,7 @@
         const btn = (label, fn, cls = 'bg-slate-800 hover:bg-slate-700 text-slate-200') => `<button type="button" onclick="HomeRoom.${fn}" class="px-3 py-1.5 rounded-lg ${cls} font-extrabold">${label}</button>`;
         const guest = this.visitor();
         if (guest) {
-          bar.innerHTML = `<span class="font-extrabold text-pink-300">🏠 ${this.esc(guest.name)}의 방 구경 중</span><span class="text-slate-400">방향키로 내 아바타를 움직이고, 빈 곳을 끌어 둘러봐요.</span>`
+          bar.innerHTML = `<span class="font-extrabold text-pink-300">🏠 ${this.esc(guest.name)}의 방 구경 중</span><span class="text-slate-400">방향키로 내 아바타를 움직이고, 아래 방 채팅으로 이야기해요. 빈 곳을 끌어 둘러봐요.</span>`
             + (this.student() ? btn('🛋️ 내 방으로 돌아가기', 'leaveVisit()', 'bg-pink-500 hover:bg-pink-400 text-white') : '');
           this.renderColors(null);
           return;
@@ -43716,8 +43719,10 @@
             this.hostAv.ai = true; this.hostAv.until = now + 2500;
           }
         } else this.hostAv = null;
+        this.liveSync();
       },
-      avatars() { return [this.hostAv, this.av].filter(Boolean); },
+      // 방 주인(혼자 돌아다님, 주인이 직접 들어와 있으면 숨김) · 같은 방에 있는 친구들 · 나
+      avatars() { return [this.hostAv && !this.hostAv.hidden ? this.hostAv : null, ...Object.values(this.remote || {}), this.av].filter(Boolean); },
       avStand(s, cm) {
         const c = this.nearestFree(s.X, s.Y, cm || this.cellMap());
         s.sit = null; s.z = 0; s.path = [];
@@ -43726,7 +43731,9 @@
       tickAvatars(dt, now) {
         if (!this.av && !this.hostAv) return;
         const cm = this.cellMap(), perches = this.perches();
-        this.avatars().forEach(s => this.avTick(s, dt, now, cm, perches));
+        [this.hostAv, this.av].filter(Boolean).forEach(s => this.avTick(s, dt, now, cm, perches));
+        Object.values(this.remote || {}).forEach(s => this.remoteTick(s, dt, now));
+        this.livePublish(now);
       },
       avTick(s, dt, now, cm, perches) {
         const SPEED = 2.6; // 칸/초
@@ -43793,10 +43800,10 @@
         const near = this.perches().filter(p => (p.pose === 'sit' || p.pose === 'sleep') && Math.abs(p.X - cur.X) + Math.abs(p.Y - cur.Y) === 1);
         if (near.length) { const p = near[0]; s.path = [{ X: p.X + 0.5, Y: p.Y + 0.5, z: p.z, host: p.u, pose: p.pose }]; return; }
         const pet = Object.values(this.petRt || {}).find(p => Math.hypot(p.X - s.X, p.Y - s.Y) < 1.3);
-        if (pet) { this.patPet(pet); s.emote = { text: '💗', until: now + 1500 }; return; }
+        if (pet) { this.patPet(pet); s.emote = { text: '💗', until: now + 1500 }; this.emoteSeq++; this.lastEmote = '💗'; return; }
         this.avEmote('👋');
       },
-      avEmote(t) { if (this.av) this.av.emote = { text: t, until: performance.now() + 1800 }; },
+      avEmote(t) { if (this.av) { this.av.emote = { text: t, until: performance.now() + 1800 }; this.emoteSeq++; this.lastEmote = t; } },
       // 바닥 칸을 눌러 그리로 걸어감. 앉을 수 있는 가구를 눌렀으면 옆까지 가서 앉음
       avWalkTo(p) {
         const s = this.av;
@@ -43839,7 +43846,7 @@
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(im, -RoomAvatar.W / 2 * S, 0, RoomAvatar.W * S, RoomAvatar.H * S);
         ctx.restore();
-        // 이름표 (내 단장은 남색, 친구 단장은 보라)
+        // 이름표 (내 아바타는 남색, 친구는 보라)
         const name = this.avName(stu), mine = s === this.av;
         ctx.save();
         ctx.font = 'bold 18px system-ui, sans-serif'; ctx.textAlign = 'center';
@@ -43847,6 +43854,8 @@
         ctx.fillStyle = mine ? 'rgba(15,23,42,.82)' : 'rgba(76,29,149,.82)';
         ctx.beginPath(); ctx.roundRect(b.p.x - tw / 2, ty - 24, tw, 24, 6); ctx.fill();
         ctx.fillStyle = '#fff'; ctx.fillText(name, b.p.x, ty - 6);
+        const bub = this.chatBubble(s.stu);
+        if (bub) { ctx.restore(); this.drawBubble(bub.text, b.p.x, ty - 26, bub.k); ctx.save(); ctx.textAlign = 'center'; }
         ctx.font = '30px "Segoe UI Emoji","Apple Color Emoji",sans-serif';
         if (s.emote) {
           const k = Math.max(0, (s.emote.until - now) / 1800);
@@ -44242,6 +44251,131 @@
         this.renderList();
         this.draw();
         showRewardBanner(`🎨 [${name}] 부위를 저장하고 입었어요!`);
+      },
+
+      // ───── 같은 방에 있는 친구 (실시간): classes/{학급}/home_live/{방 주인}/{학생} = { x, y, z, p, u, e, en, at } ─────
+      // 각자 자기 칸만 쓰고, 접속이 끊기면 서버가 지움(onDisconnect). 30초 넘게 소식이 없으면 나간 것으로 봄
+      // p: 앞뒤·옆·좌우·걷는 중 4글자(0/1), u: 앉은 가구, e·en: 감정 표현과 그 번호(바뀌면 새로 띄움)
+      live: null, remote: {}, liveSent: null, liveSentAt: 0, emoteSeq: 0,
+      liveOwnerId() {
+        const me = this.student(), owner = this.petOwner();
+        return me && owner && StudentPw.online() && isStudentSession(me) ? owner.id : null;
+      },
+      liveSync() {
+        const ownerId = this.liveOwnerId(), me = this.student();
+        if (this.live && this.live.owner === ownerId && this.live.me === (me && me.id)) return;
+        this.liveLeave();
+        RoomChat.show('homeRoomChat', 'home', ownerId);
+        if (!ownerId) return;
+        const base = classRoomRef(`home_live/${ownerId}`);
+        if (!base) return;
+        const mineRef = base.child(me.id);
+        const live = { owner: ownerId, me: me.id, base, mineRef, cb: null };
+        this.live = live;
+        this.liveSent = null; this.liveSentAt = 0;
+        try { mineRef.onDisconnect().remove(); } catch (e) {}
+        live.cb = base.on('value', snap => {
+          if (this.live !== live) return;
+          this.liveApply((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
+        }, err => console.warn('[방 실시간 구독 실패 - DB 규칙을 확인하세요]:', err));
+      },
+      liveLeave() {
+        const live = this.live;
+        this.live = null;
+        this.remote = {};
+        if (!live) return;
+        try { live.base.off('value', live.cb); } catch (e) {}
+        try { live.mineRef.onDisconnect().cancel(); } catch (e) {}
+        try { live.mineRef.remove().catch(() => {}); } catch (e) {}
+      },
+      // 받은 칸들 → 화면의 친구 아바타 (부드럽게 따라가도록 목표 위치만 바꿈)
+      liveApply(val) {
+        const me = this.student(), now = mgServerNow(), seen = new Set();
+        Object.keys(val).forEach(id => {
+          const v = val[id];
+          if (!v || typeof v !== 'object' || (me && id === me.id)) return;
+          if (!(state.students || []).some(s => s.id === id)) return;
+          if (now - (Number(v.at) || 0) > 30000) return; // 오래 소식 없음 = 나감
+          const x = Math.max(0.3, Math.min(HOME_ROOM_X - 0.3, Number(v.x) || 0)), y = Math.max(0.3, Math.min(HOME_ROOM_Y - 0.3, Number(v.y) || 0));
+          seen.add(id);
+          let s = this.remote[id];
+          if (!s) {
+            s = this.remote[id] = { stu: id, X: x, Y: y, z: 0, back: false, side: false, flip: false, t: 0, moving: false, path: [], sit: null, emote: null, remote: true, en: v.en };
+            s.emote = { text: '👋', until: performance.now() + 1600 };
+          }
+          const p = String(v.p || '');
+          s.tx = x; s.ty = y; s.back = p[0] === '1'; s.side = p[1] === '1'; s.flip = p[2] === '1'; s.walk = p[3] === '1';
+          s.sitU = typeof v.u === 'string' && v.u ? v.u : null; s.tz = Number(v.z) || 0;
+          if (v.en !== s.en) { s.en = v.en; if (typeof v.e === 'string' && v.e) s.emote = { text: cleanUserText(v.e, 8), until: performance.now() + 1800 }; }
+        });
+        Object.keys(this.remote).forEach(id => { if (!seen.has(id)) delete this.remote[id]; });
+        // 방 주인이 직접 들어와 있으면 혼자 돌아다니는 주인 아바타는 숨김
+        if (this.hostAv && this.remote[this.hostAv.stu]) this.hostAv.hidden = true;
+        else if (this.hostAv) this.hostAv.hidden = false;
+        if (!this.petRaf) this.startPets();
+      },
+      // 친구 아바타: 받은 위치로 걸어가듯 따라감
+      remoteTick(s, dt, now) {
+        if (s.emote && now > s.emote.until) s.emote = null;
+        if (s.sitU) {
+          const p = this.perches().find(q => q.u === s.sitU && q.X === Math.floor(s.tx) && q.Y === Math.floor(s.ty));
+          s.X = s.tx; s.Y = s.ty; s.moving = false; s.t = 0;
+          if (p) { s.sit = { u: p.u, z: p.z, pose: p.pose }; s.z = p.z; } else { s.sit = null; s.z = 0; }
+          return;
+        }
+        s.sit = null; s.z = 0;
+        const dx = s.tx - s.X, dy = s.ty - s.Y, d = Math.hypot(dx, dy), step = 3.4 * dt;
+        if (d > 3) { s.X = s.tx; s.Y = s.ty; }                 // 너무 멀면 바로 옮김
+        else if (d > step) { s.X += dx / d * step; s.Y += dy / d * step; }
+        else { s.X = s.tx; s.Y = s.ty; }
+        s.moving = d > 0.03 || s.walk;
+        if (s.moving) s.t += dt; else s.t = 0;
+      },
+      // 내 위치 보내기: 바뀌면 0.2초마다, 가만히 있으면 8초마다 (살아 있다는 표시)
+      livePublish(now) {
+        const live = this.live, s = this.av;
+        if (!live || !s) return;
+        const msg = {
+          x: Math.round(s.X * 100) / 100, y: Math.round(s.Y * 100) / 100, z: Math.round((s.z || 0) * 100) / 100,
+          p: `${s.back ? 1 : 0}${s.side ? 1 : 0}${s.flip ? 1 : 0}${s.moving ? 1 : 0}`,
+          u: s.sit ? String(s.sit.u).slice(0, 40) : '', e: String(this.lastEmote || '').slice(0, 8), en: this.emoteSeq, // 번호가 바뀔 때만 친구 화면에 띄움
+        };
+        const sig = JSON.stringify(msg), gap = now - this.liveSentAt;
+        if ((sig === this.liveSent && gap < 8000) || gap < 200) return;
+        this.liveSent = sig; this.liveSentAt = now;
+        live.mineRef.set({ ...msg, at: window.firebase.database.ServerValue.TIMESTAMP }).catch(e => {
+          if (this.live === live) console.warn('[방 실시간 위치 보내기 실패]:', e);
+        });
+      },
+      // 채팅 말풍선: 최근 6초 안에 보낸 말
+      chatBubble(stuId) {
+        const box = RoomChat.boxes.homeRoomChat;
+        if (!box || !box.msgs.length) return null;
+        const m = [...box.msgs].reverse().find(x => x.from === stuId);
+        if (!m) return null;
+        const age = mgServerNow() - (Number(m.at) || 0) - 1000; // 보낼 때 1초 앞당긴 시각
+        return age < 6000 ? { text: cleanUserText(m.text, ROOM_CHAT_TEXT_MAX), k: Math.max(0, 1 - age / 6000) } : null;
+      },
+      drawBubble(text, cx, bottom, k) {
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.font = 'bold 17px system-ui, sans-serif'; ctx.textAlign = 'center';
+        // 14자쯤에서 줄 바꿈, 3줄까지
+        const lines = [];
+        let cur = '';
+        [...text].forEach(ch => { if (ctx.measureText(cur + ch).width > 190) { lines.push(cur); cur = ch; } else cur += ch; });
+        if (cur) lines.push(cur);
+        if (lines.length > 3) { lines.length = 3; lines[2] = lines[2].slice(0, -1) + '…'; }
+        const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + 20, h = lines.length * 21 + 12;
+        const x0 = Math.round(cx - w / 2), y0 = Math.round(bottom - h - 8);
+        ctx.globalAlpha = Math.min(1, k * 4);
+        ctx.fillStyle = 'rgba(255,255,255,.96)'; ctx.strokeStyle = 'rgba(15,23,42,.55)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(x0, y0, w, h, 10); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx - 7, y0 + h - 1); ctx.lineTo(cx, y0 + h + 8); ctx.lineTo(cx + 7, y0 + h - 1); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx - 7, y0 + h); ctx.lineTo(cx, y0 + h + 8); ctx.lineTo(cx + 7, y0 + h); ctx.stroke();
+        ctx.fillStyle = '#0f172a';
+        lines.forEach((l, i) => ctx.fillText(l, cx, y0 + 25 + i * 21));
+        ctx.restore();
       },
 
       // ───── 마우스·터치 ─────
