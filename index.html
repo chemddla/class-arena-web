@@ -25636,6 +25636,8 @@
     }
 
     function drawArenaCanvas() {
+      // 지난 그리기가 중간에 오류로 끊겼어도 카메라·흔들림 이동이 쌓이지 않게 기본 상태에서 시작 (쌓이면 화면이 날아가며 흔들림)
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const viewW = canvas.width;
       const viewH = canvas.height;
@@ -25666,8 +25668,6 @@
         const dps = Math.round(totalBlueDmg / elapsedSec);
         statsBadge.textContent = `⏱️ ${elapsedSec.toFixed(1)}초 · 💥 아군 누적 피해 ${totalBlueDmg.toLocaleString()} (DPS ${dps.toLocaleString()}/초)`;
       }
-      // 지난 그리기가 중간에 오류로 끊겼어도 카메라·흔들림 이동이 쌓이지 않게 기본 상태에서 시작 (쌓이면 화면이 날아가며 흔들림)
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
 
       // ===== 월드 카메라 변환 시작 (마우스 휠 줌 & 드래그 이동 적용) =====
       ctx.save();
@@ -34762,6 +34762,23 @@
       ];
     }
 
+    // 이펙트·유닛 목록에 섞인 다른 유닛 객체는 통째로 보내지 않음
+    // (owner·쌍도끼 두 번째 타 대상·시전 대상이 서로를 가리키면 순환 구조라 JSON이 깨져 화면이 안 가고, 아니어도 화면 한 장이 수십 KB로 불어남)
+    const isLiveUnitRef = v => Boolean(v && typeof v === 'object' && typeof v.id === 'string' && v.statuses && typeof v.hp === 'number');
+    function packLiveEffect(ef) {
+      const out = {};
+      for (const k in ef) {
+        const v = ef[k];
+        if (isLiveUnitRef(v)) { if (k === 'owner') out.oid = v.id; continue; } // 따라다니는 이펙트는 id로 → 받은 화면에서 그 유닛을 다시 찾음
+        out[k] = v;
+      }
+      return out;
+    }
+    const LIVE_INIT_DROP = new Set(['manualAimTarget']);
+    function liveUnitCopy(u, drop) {
+      return JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) || (k && isLiveUnitRef(v)) ? undefined : v)));
+    }
+
     function packLiveProjectile(p) {
       let vx = 0, vy = 0;
       if (p.isDirectional) {
@@ -34792,23 +34809,6 @@
         });
         return out;
       };
-    // 이펙트·유닛 목록에 섞인 다른 유닛 객체는 통째로 보내지 않음
-    // (owner·쌍도끼 두 번째 타 대상·시전 대상이 서로를 가리키면 순환 구조라 JSON이 깨져 화면이 안 가고, 아니어도 화면 한 장이 수십 KB로 불어남)
-    const isLiveUnitRef = v => Boolean(v && typeof v === 'object' && typeof v.id === 'string' && v.statuses && typeof v.hp === 'number');
-    function packLiveEffect(ef) {
-      const out = {};
-      for (const k in ef) {
-        const v = ef[k];
-        if (isLiveUnitRef(v)) { if (k === 'owner') out.oid = v.id; continue; } // 따라다니는 이펙트는 id로 → 받은 화면에서 그 유닛을 다시 찾음
-        out[k] = v;
-      }
-      return out;
-    }
-    const LIVE_INIT_DROP = new Set(['manualAimTarget']);
-    function liveUnitCopy(u, drop) {
-      return JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) || (k && isLiveUnitRef(v)) ? undefined : v)));
-    }
-
       const frame = {
         at: Date.now(),
         ...(liveNet.towerCast || typeof liveNet.bid !== 'number' ? {} : { b: liveNet.bid, ep: liveNet.ep || 0 }),
@@ -35197,6 +35197,10 @@
         if (u.job === 'sniper') { u.ammo = liveNum(p[24]); u.reloadLeft = liveNum(p[25]); u.overheat = liveNum(p[26]); u.powerStacks = liveNum(p[27]); }
         if (liveNum(p[28]) > 0) u.sizeScale = liveNum(p[28]);
         if (liveNum(p[29]) > 0) u.maxHp = liveNum(p[29]);
+        if (p.length > 32) {
+          u.srUndyingFxAt = p[31] >= 0 ? sim.tickCount - liveNum(p[31]) : undefined;
+          u.rageLookUntil = sim.tickCount + liveNum(p[32]);
+        }
       });
       // 투사체는 그 화면 이후 흐른 만큼 미리 날아간 자리에서 시작 (다음 화면과 위치가 거의 이어짐)
       const leadTicks = Math.max(0, ageMs) / 1000 * BATTLE_TICKS_PER_SEC;
@@ -35229,10 +35233,6 @@
       (liveNet.frameBuf || []).splice(0).forEach(f => {
         applyLiveFrameState(f.val, 0);
         f.val.u.forEach((p, i) => { if (sim.units[i] && Array.isArray(p)) { sim.units[i].x = liveNum(p[0]); sim.units[i].y = liveNum(p[1]); } });
-        if (p.length > 32) {
-          u.srUndyingFxAt = p[31] >= 0 ? sim.tickCount - liveNum(p[31]) : undefined;
-          u.rageLookUntil = sim.tickCount + liveNum(p[32]);
-        }
       });
       (Array.isArray(val.s) ? val.s : []).forEach((s, i) => {
         const u = sim.units[i];
