@@ -6912,6 +6912,34 @@
       },
       castFrames: { poison_arrow: 3, poison_boom: 3, arrow_rain: 3 }
     };
+    // 심해의 폭군 크라켄 (심해족 보스 · 엘리트 9단계 같은 그림): 칸 순서 = 대기, 걷기 4장 (펴기·웅크리기를 번갈아 기어 감), 일반공격 2장 (촉수 뻗기, 내려쳐 물보라),
+    //   피격, 쓰러짐 2장, 심해 소용돌이 2장 (기 모으기, 물 소용돌이), 촉수 휩쓸기 2장 (조준, 흙먼지 휩쓸기), 촉수 회오리 3장 (준비, 물 회오리, 물 회오리 좌우반전),
+    //   심해 압착 2장 (포착, 물기둥), 촉수 휘감기 3장 (웅크림, 들어 올림, 뻗어 휘감기), 먹물 폭탄 3장 (웅크림, 먹물 모으기, 발사), 해일 포효 2장
+    // (샘플 10장에서 잘라 붙임, tools/kraken_build.py. 흰 배경·라벨·압착 칸 ✦ 워터마크는 지우고, 샘플마다 크기가 달라 머리 길이(정수리~눈)로 배율을 맞춤.
+    //  가로는 눈, 세로는 촉수 끝이 닿는 바닥에 맞춤. 걷기 샘플은 왼쪽을 봐서 뒤집음. 먹물 폭탄 발사 칸의 날아가는 먹물탄은 이펙트로 따로 날리려고 지움.
+    //  해일 포효 샘플의 큰 파도 칸은 파도가 몸을 덮어서 안 쓰고, 파도는 해일 이펙트(KRAKEN_FX)로 범위에 깔아 줌)
+    // fxSkin = 심해 소용돌이·해일 포효·심해 압착·촉수 회오리·촉수 휩쓸기·먹물 폭탄을 KRAKEN_FX 그림으로. 회전베기 = 물 회오리 칸과 좌우반전 칸을 번갈아
+    MONSTER_SPRITE_DEFS.kraken = {
+      src: 'assets/sprites/monster/kraken.webp',
+      cellW: 510, cellH: 269, anchorX: 204, anchorY: 259, standH: 235, topH: 235, count: 27, eliteScale: 3.4,
+      fxSkin: 'kraken', fxColors: { shield_rush: '#0ea5e9' },
+      anims: {
+        idle: [0], walk: [1, 2, 3, 4], attack: [5, 6, 6], skill: [17, 18, 18], hurt: [7], death: [8, 9],
+        vortex: [10, 11], sweep: [12, 13, 13, 13], twist: [15, 16], crush: [17, 18, 18], wrap: [19, 20, 21, 21], ink: [22, 23, 24, 24], roar: [25, 26, 26]
+      },
+      skillAnims: {
+        earthquake:  { anim: 'vortex', tpf: 10, dur: 44 },
+        shield_rush: { anim: 'sweep', tpf: 6, dur: 44 },
+        charge:      { anim: 'sweep', tpf: 6, dur: 30 },
+        whirlwind:   { anim: 'twist', tpf: 4, loop: true },
+        stun_strike: { anim: 'crush', tpf: 6, dur: 24 },
+        poison_boom: { anim: 'ink', tpf: 8, dur: 32 },
+        roar:        { anim: 'roar', tpf: 10, dur: 40 },
+        warcry:      { anim: 'roar', tpf: 12, dur: 44 },
+        provoke:     { anim: 'wrap', tpf: 10, dur: 44 }
+      },
+      castFrames: { earthquake: 10, poison_boom: 23, roar: 25, provoke: 19 }
+    };
     // 찾는 순서: (엘리트 보스면 'elite_<몬스터>') → '<몬스터>_<직업>_<대표 스킬>' → '<몬스터>_<직업>' → '<몬스터>'
     function getUnitSprite(u) {
       if (!u.monsterType) {
@@ -7732,7 +7760,28 @@
         rend: [[1361,0,150,112,75,56],[1513,0,159,106,79.5,53]]
       }
     };
-    const FX_SKINS = { golem: GOLEM_FX, leviathan: LEVIATHAN_FX, hydra: HYDRA_FX, bloodorc: BLOOD_ORC_FX };
+    // 크라켄 이펙트 (원본 샘플: assets/sprites/fx/samples/kraken_ink_bomb_fx_src.png · kraken_tsunami_fx_src.png · kraken_water_fx1·2_src, tools/kraken_build.py,
+    // unitFxSpr로 'kraken_<키>'). 기준점 = ink·spiral은 가운데, 나머지는 바닥 가운데. 옆에서 본 파도 그림(wave·sweep)은 파도 머리가 오른쪽
+    // ink = 먹물탄·터지기 시작·사방으로 튐·떨어지며 사라짐, wave = 파도 솟음·양쪽으로 갈라짐·크게 덮침·잔물결, splash = 물보라 (작게·크게·높이 흩어짐·사라짐),
+    // sweep = 바닥을 쓰는 물결 (밀려옴·크게 말림·쓸고 지나감·잔물결), spiral = 위에서 본 소용돌이 (촘촘함·크게 돎·풀림·물방울),
+    // geyser = 솟는 물기둥 (솟음·퍼짐·가장 큼·무너짐), burst = 물 폭발 (섬광·터짐·갈라짐·흩어짐), twister = 물 회오리 (바닥 고리·감아 오름·가장 큼·무너짐)
+    // quake(심해 소용돌이)·shout(해일 포효)·strike(심해 압착)·whirl(촉수 회오리)·rush(촉수 휩쓸기)·poison(먹물 폭탄)·poison_boom(먹물 웅덩이). 그리기는 drawKrakenFx
+    const KRAKEN_FX = {
+      src: 'assets/sprites/fx/kraken_fx.webp',
+      anims: {
+        ink: [[0,0,118,99,59,49.5],[120,0,153,119,76.5,59.5],[275,0,165,153,82.5,76.5],[442,0,157,119,78.5,59.5]],
+        wave: [[601,0,170,117,85,117],[773,0,169,125,84.5,125],[944,0,169,149,84.5,149],[1115,0,170,76,85,76]],
+        splash: [[1287,0,90,58,45,58],[1379,0,213,116,106.5,116],[1594,0,199,128,99.5,128],[1795,0,172,126,86,126]],
+        sweep: [[1969,0,242,110,121,110],[2213,0,238,113,119,113],[2453,0,239,87,119.5,87],[2694,0,240,45,120,45]],
+        spiral: [[2936,0,158,128,79,64],[3096,0,171,139,85.5,69.5],[3269,0,187,149,93.5,74.5],[3458,0,155,142,77.5,71]],
+        geyser: [[3615,0,114,150,57,150],[3731,0,139,159,69.5,159],[3872,0,159,157,79.5,157],[4033,0,159,122,79.5,122]],
+        burst: [[4194,0,88,73,44,73],[4284,0,137,71,68.5,71],[4423,0,135,75,67.5,75],[4560,0,142,74,71,74]],
+        twister: [[4704,0,100,57,50,57],[4806,0,88,76,44,76],[4896,0,91,76,45.5,76],[4989,0,108,51,54,51]]
+      }
+    };
+    Object.assign(KRAKEN_FX.anims, { quake: KRAKEN_FX.anims.spiral, shout: KRAKEN_FX.anims.wave, strike: KRAKEN_FX.anims.burst, whirl: KRAKEN_FX.anims.twister,
+      rush: KRAKEN_FX.anims.sweep, poison: KRAKEN_FX.anims.ink, poison_boom: KRAKEN_FX.anims.ink });
+    const FX_SKINS = { golem: GOLEM_FX, leviathan: LEVIATHAN_FX, hydra: HYDRA_FX, bloodorc: BLOOD_ORC_FX, kraken: KRAKEN_FX };
 
     // 성녀 지원 이펙트 (원본 샘플: assets/sprites/fx/samples/support_fx_white.png). 캐릭터 위에 겹쳐 그림
     // 회복 = 초록 불꽃(기준점 = 발밑 고리), 축복 = 금빛 빛기둥(기준점 = 발밑), 보호막 = 푸른 구체(기준점 = 구 중심)
@@ -8472,7 +8521,7 @@
       LANCER_MUSOU_SKINS[v] = def;
     });
 
-    Object.values(MERC_SPRITE_DEFS).concat(Object.values(BERSERKER_RAGE_SPRITES), Object.values(BERSERKER_UNDYING_SPRITES), Object.values(BERSERKER_RAGE_UNDYING_SPRITES), Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BLOOD_ORC_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX, GIANT_FX, FROST_SR_FX, CURSE_ORB_FX, BARD_ORB_FX, CURSE_HIT_FX, CURSE_SWAMP_FX, CURSE_RUIN_MARK_FX, ...Object.values(CURSE_RUIN_MARK_SKINS)).forEach(def => {
+    Object.values(MERC_SPRITE_DEFS).concat(Object.values(BERSERKER_RAGE_SPRITES), Object.values(BERSERKER_UNDYING_SPRITES), Object.values(BERSERKER_RAGE_UNDYING_SPRITES), Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BLOOD_ORC_FX, KRAKEN_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX, GIANT_FX, FROST_SR_FX, CURSE_ORB_FX, BARD_ORB_FX, CURSE_HIT_FX, CURSE_SWAMP_FX, CURSE_RUIN_MARK_FX, ...Object.values(CURSE_RUIN_MARK_SKINS)).forEach(def => {
       def.img = new Image();
       def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
       def.img.src = def.src;
@@ -18263,7 +18312,8 @@
             return;
           }
           // 골렘처럼 색 이펙트가 있는 몬스터는 내리친 자리에 갈라진 땅 그림 (없으면 기본 노란 고리)
-          const strikeSpr = unitFxSpr(unit, 'quake');
+          const skinStrike = unitFxSpr(unit, 'strike'); // 크라켄 = 양옆 파도가 모여 덮치는 심해 압착
+          const strikeSpr = skinStrike !== 'strike' ? skinStrike : unitFxSpr(unit, 'quake');
           sim.effects.push({
             type: 'stun_shockwave', spr: strikeSpr === 'quake' ? undefined : strikeSpr,
             x: target.x, y: target.y, r: 100 * unitAreaScale(unit),
@@ -19211,6 +19261,7 @@
       leviathan_arrow_rain: { color: '#0ea5e9', fill: 'rgba(56, 189, 248, 0.22)', icon: '🧊' }, // 리바이어던 우박 폭풍
       hydra_arrow_rain:  { color: '#65a30d', fill: 'rgba(132, 204, 22, 0.2)', icon: '🌧️' },  // 히드라 산성비
       hydra_poison_boom: { color: '#9333ea', fill: 'rgba(168, 85, 247, 0.2)', icon: '☠️' },  // 히드라 독늪 웅덩이
+      kraken_poison_boom: { color: '#1e293b', fill: 'rgba(15, 23, 42, 0.25)', icon: '🖤' },  // 크라켄 먹물 웅덩이
       curse_field: { color: '#7e22ce', fill: 'rgba(126, 34, 206, 0.3)', icon: '🕸️' }        // 주술사 저주의 늪
     };
     let suppressHitKnockback = false; // 장판 피해처럼 공격자가 멀리 있을 때는 밀리지 않게
@@ -19287,6 +19338,16 @@
         if (z.kind === 'hydra_poison_boom' && HYDRA_FX.ready) {
           ctx.globalAlpha = fade;
           drawSwampPool(ctx, z, 0.9);
+        }
+        if (z.kind === 'kraken_poison_boom' && KRAKEN_FX.ready) {
+          // 먹물 웅덩이: 사방으로 튄 먹물 자국을 바닥에 눕혀 깔고 천천히 일렁임
+          const fr = KRAKEN_FX.anims.ink[2], pulse = 1 + Math.sin(sim.tickCount * 0.05) * 0.04;
+          ctx.globalAlpha = fade * 0.45;
+          ctx.save();
+          ctx.translate(z.x, z.y);
+          ctx.scale(1, 0.62);
+          drawFxFrame(ctx, fr, 0, 0, (z.r * 2.1 * pulse) / fr[2], 0, 1, KRAKEN_FX.img);
+          ctx.restore();
         }
         if (z.kind === 'curse_field' && CURSE_SWAMP_FX.ready) {
           // 저주의 늪: 검은 기운이 퍼짐 → 가시 늪(1·2칸 번갈아)과 해골 늪(3·4칸 번갈아)을 72틱마다 바꿈
@@ -19713,7 +19774,7 @@
         if (!target) return true;
         const r = A * 1.5;
         if (!aimPt) target = bestAoePoint(unit, enemies, unit.range + 80, r, target) || target;
-        sim.effects.push({ type: 'aoe_ring', spr: unitFxSpr(unit, 'poison'), x: target.x, y: target.y, r, color: '#16a34a', life: 36, maxLife: 36 }); // 히드라 = 독늪 폭발
+        sim.effects.push({ type: 'aoe_ring', spr: unitFxSpr(unit, 'poison'), x: target.x, y: target.y, r, color: '#16a34a', life: 36, maxLife: 36, ux: unit.x, uy: unit.y - 20 * unitFxSize(unit) }); // 히드라 = 독늪 폭발 · 크라켄 = 먹물탄이 날아가 터짐 (ux·uy = 던지는 자리)
         near(enemies, target.x, target.y, r).forEach(e => {
           applyDamage(unit, e, unit.atk * 0.6, '', '#16a34a');
           inflictStatus(unit, e, 'poison', 300);
@@ -21745,7 +21806,8 @@
           e.x = p.x; e.y = p.y; e.kbVx = 0; e.kbVy = 0;
         });
       };
-      sim.effects.push({ type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, color, trail: true, runTicks: r.n, ownerId: unit.id, life: ticks + 24, maxLife: ticks + 24 });
+      const rushSpr = unitFxSpr(unit, 'rush'); // 크라켄 = 지나간 길을 물결이 쓸고 감
+      sim.effects.push({ type: 'charge_dash', spr: rushSpr !== 'rush' ? rushSpr : undefined, sx, sy, tx: r.tx, ty: r.ty, color, trail: true, runTicks: r.n, ownerId: unit.id, size: unitFxSize(unit), life: ticks + 24, maxLife: ticks + 24 });
       return r;
     }
 
@@ -23698,6 +23760,7 @@
       // 히드라 독액 튐·독늪 폭발도 옆에서 본 그림이라 따로
       if (ef.spr.startsWith('hydra_')) return drawHydraFx(ctx, ef, ef.spr.slice(6), progress, fadeOut);
       if (ef.spr.startsWith('bloodorc_')) return drawBloodOrcFx(ctx, ef, ef.spr.slice(9), progress, fadeOut);
+      if (ef.spr.startsWith('kraken_')) return drawKrakenFx(ctx, ef, ef.spr.slice(7), progress);
       // 몬스터 색 이펙트('golem_quake' 등)는 그 스킨 아틀라스에서 원래 키의 그림을 같은 방식으로 그림
       const skinAt = ef.spr.indexOf('_');
       const skin = skinAt > 0 && FX_SKINS[ef.spr.slice(0, skinAt)];
@@ -23823,6 +23886,163 @@
       return false;
     }
 
+    // 크라켄 이펙트 (KRAKEN_FX). 그리면 true
+    // 파도는 옆에서 본 그림이라 범위 원 둘레·안쪽에 여러 장을 겹쳐 깔아 빈 곳 없이 덮음 (뒤쪽(위) 파도부터). 파도 머리가 오른쪽이라 왼쪽 자리는 좌우를 뒤집어 바깥을 보게,
+    // 소용돌이는 반대로 안쪽을 보게
+    function drawKrakenFx(ctx, ef, key, progress) {
+      const K = KRAKEN_FX;
+      if (!K.ready) return false;
+      const W = K.anims.wave, I = K.anims.ink, img = K.img;
+      const SQ = 0.72; // 바닥 원근 (세로로 눌림)
+      // 원 둘레(반지름 rr)에 파도를 빈틈없이: 파도 폭 w의 60% 간격으로 놓음
+      const waveRing = (list, cx, cy, rr, w, rot, outward) => {
+        const per = Math.PI * (rr * (1 + SQ)); // 눌린 타원 둘레 근사
+        const n = Math.max(3, Math.ceil(per / (w * 0.6)));
+        for (let i = 0; i < n; i++) {
+          const a = rot + (i / n) * Math.PI * 2;
+          list.push({ x: cx + Math.cos(a) * rr, y: cy + Math.sin(a) * rr * SQ, flip: (Math.cos(a) < 0) === outward, i });
+        }
+      };
+      const drawWaves = (list, frameOf, w, alphaOf) => {
+        list.sort((m, n) => m.y - n.y).forEach(v => {
+          const fr = frameOf(v), al = alphaOf(v);
+          if (al <= 0.01) return;
+          ctx.save();
+          ctx.translate(v.x, v.y);
+          if (v.flip) ctx.scale(-1, 1);
+          drawFxFrame(ctx, fr, 0, 0, w / fr[2], 0, al, img);
+          ctx.restore();
+        });
+      };
+      // 파도 한 장 폭: 범위에 비례하되 너무 크면 겹 수를 늘려 덮음 (거대 보스의 넓은 범위에서 파도 몇 장이 화면을 다 가리지 않게)
+      const waveW = r => Math.max(50, Math.min(420, r * 0.35));
+      if (key === 'shout') {
+        // 해일 포효: 가운데서 갈라진 파도가 솟고, 큰 파도 고리가 범위 끝까지 밀려 나가며 덮친 뒤 잔물결로 잦아듦.
+        // 고리 안쪽은 낮은 물결(잔물결 그림)을 파도 폭의 30% 간격으로 겹겹이 깔아 범위 안에 빈 곳이 없게
+        const t = progress, ease = 1 - (1 - Math.min(1, t / 0.6)) ** 2;
+        const fade = Math.min(1, (1 - t) / 0.3, t / 0.06);
+        const w = waveW(ef.r), R = ef.r * (0.4 + 0.52 * ease);
+        const sea = [], crest = [];
+        for (let rr = R - w * 0.3, j = 0; rr > w * 0.15; rr -= w * 0.3, j++) waveRing(sea, ef.x, ef.y, rr, w, 0.5 + j * 0.9, true);
+        waveRing(crest, ef.x, ef.y, R, w, 0.2, true);
+        drawWaves(sea, () => W[3], w, () => 0.7 * fade);
+        drawWaves(crest, () => W[t < 0.2 ? 0 : t < 0.7 ? 2 : 3], w, () => 0.9 * fade);
+        if (t < 0.55) drawFxFrame(ctx, W[1], ef.x, ef.y + w * 0.3, (w * 1.4) / W[1][2], 0, 0.9 * Math.min(1, (0.55 - t) / 0.2, t / 0.06), img);
+        return true;
+      }
+      // 위에서 본 소용돌이를 바닥 원근에 맞게 눌러 돌림 (지름 d). 처음엔 촘촘했다가 크게 돌고, 끝날 때 풀리며 물방울로 흩어짐
+      const drawSpiral = (cx, cy, d, age, left, alpha) => {
+        const S = K.anims.spiral;
+        const fr = age < 10 ? S[0] : left < 12 ? S[3] : left < 24 ? S[2] : S[1];
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.scale(1, SQ);
+        ctx.rotate(-age * 0.05);
+        drawFxFrame(ctx, fr, 0, 0, d / S[1][2], 0, alpha, img);
+        ctx.restore();
+      };
+      if (key === 'quake') {
+        // 심해 소용돌이: 바닥에 큰 물 소용돌이가 돌고, 범위 둘레 파도가 크라켄 쪽으로 말리며 솟음→덮침→잔물결을 되풀이 (다단히트가 끝날 때까지)
+        const age = ef.maxLife - ef.life;
+        const fade = Math.min(1, ef.life / 20, age / 8);
+        drawSpiral(ef.x, ef.y, ef.r * 2 * 0.95, age, ef.life, 0.6 * fade);
+        const w = waveW(ef.r) * 0.8;
+        const list = [];
+        waveRing(list, ef.x, ef.y, ef.r * 0.88, w, age * 0.004, false);
+        waveRing(list, ef.x, ef.y, ef.r * 0.88 - w * 0.6, w * 0.85, -age * 0.006 + 0.4, false);
+        const PERIOD = 45;
+        const ph = v => ((age + v.i * 13) % PERIOD) / PERIOD;
+        drawWaves(list, v => W[ph(v) < 0.3 ? 0 : ph(v) < 0.75 ? 2 : 3], w, v => 0.6 * fade * (ph(v) < 0.1 ? ph(v) / 0.1 : ph(v) > 0.85 ? (1 - ph(v)) / 0.15 : 1));
+        return true;
+      }
+      if (key === 'strike') {
+        // 심해 압착: 양옆에서 파도가 솟아 맞은 자리로 모여 덮치고(앞 45%), 맞부딪친 자리에서 물이 섬광과 함께 터져 흩어짐
+        const t = progress, g = Math.min(1, t / 0.45);
+        const w = Math.min(300, ef.r * 1.1), off = w * (0.68 - 0.55 * g);
+        if (t < 0.55) {
+          const fr = W[t < 0.2 ? 0 : 2];
+          const al = Math.min(1, (0.55 - t) / 0.15, t / 0.08);
+          drawFxFrame(ctx, fr, ef.x - off, ef.y + 8, w / fr[2], 0, al, img);
+          ctx.save();
+          ctx.translate(ef.x + off, ef.y + 8);
+          ctx.scale(-1, 1);
+          drawFxFrame(ctx, fr, 0, 0, w / fr[2], 0, al, img);
+          ctx.restore();
+        }
+        if (t >= 0.4) {
+          const B = K.anims.burst, q = (t - 0.4) / 0.6;
+          const fr = B[Math.min(3, Math.floor(q * 4))];
+          const bw = w * 1.3 * (fr === B[0] ? 0.6 : 1);
+          drawFxFrame(ctx, fr, ef.x, fr === B[0] ? ef.y - bw * 0.2 : ef.y + 8, bw / fr[2], 0, Math.min(1, (1 - q) / 0.3), img);
+        }
+        return true;
+      }
+      if (key === 'whirl') {
+        // 촉수 회오리: 발밑에 물 소용돌이가 돌고, 둘레를 물 회오리 여러 개가 감싸 돎 (소용돌이 장막). 처음엔 바닥 고리, 끝날 때 무너짐
+        const T = K.anims.twister, age = ef.maxLife - ef.life;
+        const o = ef.owner && ef.owner.alive ? ef.owner : ef;
+        const fade = Math.min(1, ef.life / 16, age / 6);
+        drawSpiral(o.x, o.y, ef.r * 2 * 0.9, age, ef.life, 0.5 * fade);
+        const n = 6, rr = ef.r * 0.78, h = Math.max(60, Math.min(280, ef.r * 0.55));
+        const list = [];
+        for (let i = 0; i < n; i++) {
+          const a = age * 0.06 + (i / n) * Math.PI * 2;
+          list.push({ x: o.x + Math.cos(a) * rr, y: o.y + Math.sin(a) * rr * SQ });
+        }
+        const fr = age < 8 ? T[0] : ef.life < 14 ? T[3] : T[1 + (Math.floor(age / 5) % 2)];
+        list.sort((m, n2) => m.y - n2.y).forEach((v, i) => {
+          ctx.save();
+          ctx.translate(v.x, v.y);
+          if ((Math.floor(age / 5) + i) % 2) ctx.scale(-1, 1);
+          drawFxFrame(ctx, fr, 0, 0, h / T[2][3], 0, 0.85 * fade, img);
+          ctx.restore();
+        });
+        return true;
+      }
+      if (key === 'rush') {
+        // 촉수 휩쓸기: 크라켄이 지나간 길을 따라 바닥 물결이 밀려와 크게 말렸다가 쓸고 지나가 잔물결로 잦아듦 (앞쪽일수록 막 일어난 물결)
+        const Sw = K.anims.sweep, age = ef.maxLife - ef.life;
+        const f = Math.min(1, age / Math.max(1, ef.runTicks || 1));
+        const fx = ef.sx + (ef.tx - ef.sx) * f, fy = ef.sy + (ef.ty - ef.sy) * f;
+        const len = Math.hypot(fx - ef.sx, fy - ef.sy);
+        const w = Math.max(80, Math.min(320, 70 * (ef.size || 1))), step = w * 0.45;
+        const flip = ef.tx < ef.sx, fade = Math.min(1, ef.life / 18);
+        const pts = [];
+        for (let d = 0; d <= len; d += step) pts.push(d);
+        pts.forEach(d => {
+          const k = len ? d / len : 0, behind = (len - d) / step; // 앞에서 몇 칸 뒤인지
+          const fr = Sw[Math.min(3, Math.floor(behind / 1.5) + (f >= 1 ? Math.floor((age - ef.runTicks) / 6) : 0))];
+          ctx.save();
+          ctx.translate(ef.sx + (fx - ef.sx) * k, ef.sy + (fy - ef.sy) * k + 10);
+          if (flip) ctx.scale(-1, 1);
+          drawFxFrame(ctx, fr, 0, 0, w / fr[2], 0, 0.85 * fade, img);
+          ctx.restore();
+        });
+        return true;
+      }
+      if (key === 'geyser') {
+        // 솟는 물기둥: 솟았다가 가장 크게 퍼진 뒤 무너짐. 높이 = 범위 반지름의 약 2배
+        const G = K.anims.geyser, fr = G[Math.min(3, Math.floor(progress * 4))];
+        drawFxFrame(ctx, fr, ef.x, ef.y + 8, (ef.r * 2) / G[2][3], 0, Math.min(1, (1 - progress) / 0.25, progress / 0.08), img);
+        return true;
+      }
+      if (key === 'poison') {
+        // 먹물 폭탄: (던진 자리가 있으면) 먹물탄이 포물선으로 날아가 떨어진 자리에서 터져 사방으로 튐. 가장 크게 튄 그림 폭 = 범위 지름의 약 95%
+        const FLY = ef.ux !== undefined ? 0.25 : 0;
+        if (progress < FLY) {
+          const f = progress / FLY;
+          const bx = ef.ux + (ef.x - ef.ux) * f, by = ef.uy + (ef.y - ef.uy) * f - Math.sin(f * Math.PI) * 80;
+          drawFxFrame(ctx, I[0], bx, by, 40 / I[0][2], 0, 1, img);
+          return true;
+        }
+        const q = (progress - FLY) / (1 - FLY);
+        const fr = I[q < 0.2 ? 1 : q < 0.6 ? 2 : 3];
+        const w = ef.r * 2 * 0.95 * (0.75 + Math.min(1, q * 3) * 0.25) * (fr === I[1] ? 0.8 : 1);
+        drawFxFrame(ctx, fr, ef.x, ef.y - ef.r * 0.15, w / fr[2], 0, Math.min(1, (1 - q) / 0.3), img);
+        return true;
+      }
+      return false;
+    }
     // 리바이어던 이펙트 (LEVIATHAN_FX). 그리면 true
     function drawLeviathanFx(ctx, ef, key, progress, fadeOut) {
       const L = LEVIATHAN_FX;
@@ -27588,9 +27808,10 @@
         out.push({ type: 'fire_explosion', spr: 'fire_hit', x, y, r: 320, life: 40, maxLife: 40 });
         ring(10, 380, (px, py, i) => out.push({ type: 'fire_explosion', spr: 'flame_hit', x: px, y: py, r: 90, life: 34 + i * 2, maxLife: 34 + i * 2 }));
       } else if (kind === 'ink') {
-        // 심해의 폭군 크라켄: 해일 물보라 + 먹물 연기
-        out.push({ type: 'stun_shockwave', spr: 'leviathan_quake', x, y, r: 420, life: 100, maxLife: 100 });
-        ring(8, 340, (px, py, i) => out.push({ type: 'magic_burst', spr: 'leviathan_teleport', x: px, y: py - 12, r: 60, life: 36 + i * 2, maxLife: 36 + i * 2 }));
+        // 심해의 폭군 크라켄: 해일 포효처럼 파도가 퍼져 나가고 사방에서 먹물탄이 터지며 바깥에 물기둥이 솟음
+        out.push({ type: 'aoe_ring', spr: 'kraken_shout', x, y, r: 460, life: 70, maxLife: 70 });
+        ring(8, 340, (px, py, i) => out.push({ type: 'aoe_ring', spr: 'kraken_poison', x: px, y: py, r: 70, life: 36 + i * 3, maxLife: 36 + i * 3 }));
+        ring(6, 520, (px, py, i) => out.push({ type: 'aoe_ring', spr: 'kraken_geyser', x: px, y: py, r: 110, life: 44 + i * 4, maxLife: 44 + i * 4 }));
       } else if (kind === 'doom') {
         // 종말의 마룡: 화염 폭발 + 불기둥 + 혼돈의 낙뢰
         out.push({ type: 'fire_explosion', spr: 'fire_hit', x, y, r: 340, life: 40, maxLife: 40 });

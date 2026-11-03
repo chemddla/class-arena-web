@@ -225,3 +225,14 @@
 | `curse_ruin_src.png` | 히든 [파멸의 의식] 샘플 | 1024×201 초록 배경 한 줄: 불꽃 두르기 2칸 · 평소 자세 2칸(안 씀) · 마법진+검은 기둥 · 폭발 · 사신 · 연기 마무리. 반투명 어둠이 초록과 섞여 있음 |
 
 **게임 적용 현황**: `tools/curse_mage_build.py` → `merc/curse_0.webp`(28칸) + `fx/curse_fx.webp`(CURSE_FX), `tools/curse_ruin_build.py` → `fx/curse_ruin_cast.webp`(5칸) + `fx/curse_ruin_fx.webp`(사신). 초록 배경은 반투명까지 배경색을 빼서 복원하고, 칸마다 다른 캐릭터 크기를 같은 키로 맞춤.
+
+## 크라켄 먹물 폭탄 · 해일
+
+| 파일 | 내용 | 메모 |
+| --- | --- | --- |
+| `kraken_ink_bomb_fx_src.png` | 682×200 흰 배경, 4칸: 먹물탄 · 폭발 시작 · 사방 비산 · 낙하 및 소멸 | 크라켄 보스 `poison_boom`(먹물 폭탄)용. 몸 그림은 `monster/samples/kraken_skill3_src.png`. 검은 먹물이라 lighter 말고 source-over로 그릴 것, 한글 라벨 지우기 |
+| `kraken_tsunami_fx_src.png` | 716×192 흰 배경, 4칸: 파도 솟음 · 양쪽으로 갈라짐(가운데) · 크게 덮침 · 잔물결·거품 | 크라켄 해일 포효·심해 소용돌이·심해 압착용 |
+| `kraken_water_fx1_src.webp` | 1024×765 흰 배경, 4줄×4칸: 물보라 사방 튀기 · 지면 물 휩쓸기 · 소용돌이(위에서 본 그림) · 솟는 물기둥. 줄마다 한글 라벨 | 휩쓸기 → 촉수 휩쓸기 지나간 길, 소용돌이 → 심해 소용돌이·촉수 회오리 바닥, 물기둥 → 엘리트 등장. 물보라는 아직 안 씀 |
+| `kraken_water_fx2_src.png` | 705×300 흰 배경, 3줄×4칸: 물 폭발 · 바닥 파도 쓸기(fx1 휩쓸기와 같은 그림이라 안 씀) · 물 회오리 | 물 폭발 → 심해 압착 마무리, 물 회오리 → 촉수 회오리 둘레를 도는 장막 |
+
+적용: `tools/kraken_build.py` → `fx/kraken_fx.webp`(KRAKEN_FX, drawKrakenFx). 해일 포효는 바깥 큰 파도 고리 + 안쪽 잔물결 겹으로 범위를 빈틈없이 채움.
