@@ -17875,7 +17875,7 @@
         if (attacker.monsterPassives?.includes('enrage') && attacker.hp < attacker.maxHp * 0.5) modDmg *= 1.35;
       }
       // 회피: 공격(때린 유닛이 있는 피해)의 일부를 피함
-      if (attacker && defender.monsterPassives?.includes('evade') && Math.random() < 0.18) {
+      if (attacker && !fixedDamageHit && defender.monsterPassives?.includes('evade') && Math.random() < 0.18) {
         sim.floatTexts.push({ x: defender.x, y: defender.y - 34, text: '💨회피', color: '#64748b', life: 40 });
         return;
       }
@@ -17897,7 +17897,8 @@
       if (defPetFx && defPetFx.taken) takenMult *= defPetFx.taken;
       if ((defender.statuses.hex || 0) > 0) takenMult *= 1 + CURSE_HEX_TAKEN_UP; // 저주: 받는 피해 +20%
       if ((defender.statuses.ballad || 0) > 0) takenMult *= 1 - BARD_BALLAD_TAKEN_DOWN; // 선율: 받는 피해 -20%
-      let dmg = Math.max(1, Math.round(modDmg * takenMult * BATTLE_DAMAGE_MULT * (1 - defenseReductionOf(effDef))));
+      // 고정 피해(fixedDamageHit): 패시브·버프·저주·방어력·전투 배율을 거치지 않고 받은 값 그대로
+      let dmg = fixedDamageHit ? Math.max(1, Math.round(rawDmg)) : Math.max(1, Math.round(modDmg * takenMult * BATTLE_DAMAGE_MULT * (1 - defenseReductionOf(effDef))));
 
       if (defender.shield > 0) {
         const absorbed = Math.min(defender.shield, dmg);
@@ -19320,6 +19321,7 @@
       curse_field: { color: '#7e22ce', fill: 'rgba(126, 34, 206, 0.3)', icon: '🕸️' }        // 주술사 저주의 늪
     };
     let suppressHitKnockback = false; // 장판 피해처럼 공격자가 멀리 있을 때는 밀리지 않게
+    let fixedDamageHit = false; // 고정 피해: applyDamage가 배율 없이 받은 값 그대로 넣음 (파멸의 의식 폭발)
 
     // 정해진 거리만큼 밀쳐냄 (밀림 속도가 매 틱 40%씩 줄어드는 것을 이용해 총 거리를 맞춤)
     function pushUnitAway(target, fromX, fromY, distance) {
@@ -20560,8 +20562,10 @@
         }
         if (fx.kind === 'ruin') {
           // 시전자가 쓰러져도 의식은 끝까지 감. 끝나는 순간 각 적이 그동안 받은 피해의 80%가 한 번에 터짐
+          // 받은 피해는 이미 배율이 다 붙은 값이라 고정 피해로 (다시 공식을 거치면 약 2배가 됨)
           if (--fx.left > 0) return true;
           suppressHitKnockback = true;
+          fixedDamageHit = true;
           try {
             withSkillHit(() => fx.marks.forEach((start, e) => {
               const burst = (e.damageTaken - start) * CURSE_RUIN_BURST;
@@ -20569,7 +20573,7 @@
               sim.effects.push({ type: 'curse_ruin_bolt', x: e.x, y: e.y, s: unitFxSize(e), skin: fx.skin, life: 36, maxLife: 36 }); // 소용돌이 위로 붉은 번개가 내리꽂히며 터짐
               applyDamage(o, e, burst, '⚰️', '#7e22ce');
             }));
-          } finally { suppressHitKnockback = false; }
+          } finally { suppressHitKnockback = false; fixedDamageHit = false; }
           return false;
         }
         if (fx.kind === 'blizzard') {
