@@ -2678,7 +2678,7 @@
                 </div>
                 <div id="petRunUpgrades" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2"></div>
               </div>
-              <div class="text-[11px] text-slate-500 font-bold">점수 800 → 50 CA · 1,500 → 100 CA · 3,000 → 150 CA · 6,000 → 200 CA (하루 3번까지). 점수가 오르면 난이도 ★가 올라 몬스터·불기둥·폭탄이 늘어나요. 일시정지: Esc 또는 P</div>
+              <div class="text-[11px] text-slate-500 font-bold">점수 800 → 50 CA · 1,500 → 100 CA · 3,000 → 150 CA · 6,000 → 200 CA (하루 3번까지). 점수가 오르면 난이도가 10단계까지 올라 몬스터·불기둥·폭탄이 늘어나요. 맵에 떨어진 🚀대시·🛡️보호막·🧲자석·⭐젤리 2배 아이템을 먹어 보세요. 일시정지: Esc 또는 P</div>
             </div>
             <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-1.5 min-w-0">
               <div class="text-xs font-extrabold text-slate-200 px-1">🏆 우리 반 펫 러닝 랭킹</div>
@@ -40666,11 +40666,19 @@
      ********************************************************************/
     const PETRUN = {
       W: 900, H: 380, groundY: 318, petX: 150, gravity: 2700, jumpV: 920,
-      hpMax: 100, hpDrainPerSec: 3, hitDamage: 22, invincibleSec: 1.1,
-      speed0: 340, speedGain: 8, speedMax: 740,          // px/s · 초당 증가 · 최대
+      hpMax: 100, hpDrainPerSec: 2.2, hpDrainPerStage: 0.12, hitDamage: 14, hitDamagePerStage: 1.3, invincibleSec: 1.1, // 체력 감소·피해는 단계마다 조금씩 늘어남
+      speed0: 300, speedGain: 4, speedGainPerStage: 0.9, speedMax: 760, // px/s · 초당 증가(단계마다 더) · 최대
+      boostMult: 1.75, boostSec: 3.2, magnetSec: 8, doubleSec: 8, magnetItemRange: 260, // 부스터 아이템
       jellyScore: 10, bigJellyScore: 50, heartHeal: 22, distScorePerPx: 0.03,
       standW: 52, standH: 86, slideH: 40,                 // 펫 충돌 상자
       rewards: [[6000, 200], [3000, 150], [1500, 100], [800, 50]], // 점수 이상 → CA
+    };
+    // 맵에 떨어진 부스터 아이템 (쿠키런식): 먹으면 잠시 효과. weight = 나올 확률 비중
+    const PETRUN_ITEMS = {
+      boost:  { icon: '🚀', name: '대시',     color: '#fb923c', weight: 3, text: '잠시 무적으로 빠르게 달리며 장애물을 부숴요' },
+      shield: { icon: '🛡️', name: '보호막',   color: '#60a5fa', weight: 3, text: '다음 한 번 부딪혀도 안 아파요' },
+      magnet: { icon: '🧲', name: '자석',     color: '#f472b6', weight: 2, text: '젤리가 멀리서도 끌려와요' },
+      double: { icon: '⭐', name: '젤리 2배', color: '#fde047', weight: 2, text: '젤리 점수가 두 배' },
     };
     // 펫별 러닝 특성 (전투 효과와 같은 방향)
     const PETRUN_PERKS = {
@@ -40692,25 +40700,26 @@
     const PETRUN_OBS = {
       rock:   { w: 46, h: 42, label: '바위',   min: 0 },
       log:    { w: 78, h: 34, label: '통나무', min: 0 },
-      cactus: { w: 36, h: 68, label: '선인장', min: 0 },
+      cactus: { w: 36, h: 68, label: '선인장', min: 1 },
       slime:  { w: 60, h: 46, label: '슬라임', min: 0, sprite: 'slime_warrior', scale: 0.28, anim: 'walk', fps: 6 },
-      spider: { w: 62, h: 54, label: '거미',   min: 1, sprite: 'spider_warrior', scale: 0.25, anim: 'walk', fps: 8, approach: 0.2 },
-      goblin: { w: 44, h: 62, label: '고블린', min: 1, sprite: 'goblin_warrior_whirlwind', scale: 0.68, anim: 'walk', fps: 7, approach: 0.35 },
-      fire:   { w: 42, h: 50, label: '불기둥', min: 1, hazard: true },
-      wolf:   { w: 72, h: 60, label: '늑대',   min: 2, sprite: 'wolf_warrior', scale: 0.52, anim: 'walk', fps: 10, approach: 0.7 },
-      golem:  { w: 74, h: 80, label: '이끼 골렘', min: 3, sprite: 'golem_warrior', scale: 0.46, anim: 'walk', fps: 4 },
-      bat:    { w: 50, h: 42, label: '박쥐',   min: 0, alt: 52, air: true, sprite: 'bat_archer', scale: 0.3, anim: 'walk', fps: 9, bob: 8 },
-      ghost:  { w: 52, h: 44, label: '유령',   min: 2, alt: 50, air: true, sprite: 'ghost_mage', scale: 0.5, anim: 'walk', fps: 4, bob: 12, fade: true },
-      harpy:  { w: 60, h: 64, label: '얼음 하피', min: 3, alt: 120, air: true, sprite: 'ice_harpy_archer', scale: 0.34, anim: 'walk', fps: 8, dive: true },
-      bomb:   { w: 84, h: 66, label: '고블린 폭탄', min: 2, hazard: true },
+      spider: { w: 62, h: 54, label: '거미',   min: 2, sprite: 'spider_warrior', scale: 0.25, anim: 'walk', fps: 8, approach: 0.2 },
+      goblin: { w: 44, h: 62, label: '고블린', min: 3, sprite: 'goblin_warrior_whirlwind', scale: 0.68, anim: 'walk', fps: 7, approach: 0.35 },
+      fire:   { w: 42, h: 50, label: '불기둥', min: 3, hazard: true },
+      wolf:   { w: 72, h: 60, label: '늑대',   min: 5, sprite: 'wolf_warrior', scale: 0.52, anim: 'walk', fps: 10, approach: 0.7 },
+      golem:  { w: 74, h: 80, label: '이끼 골렘', min: 6, sprite: 'golem_warrior', scale: 0.46, anim: 'walk', fps: 4 },
+      bat:    { w: 50, h: 42, label: '박쥐',   min: 2, alt: 52, air: true, sprite: 'bat_archer', scale: 0.3, anim: 'walk', fps: 9, bob: 8 },
+      ghost:  { w: 52, h: 44, label: '유령',   min: 4, alt: 50, air: true, sprite: 'ghost_mage', scale: 0.5, anim: 'walk', fps: 4, bob: 12, fade: true },
+      harpy:  { w: 60, h: 64, label: '얼음 하피', min: 7, alt: 120, air: true, sprite: 'ice_harpy_archer', scale: 0.34, anim: 'walk', fps: 8, dive: true },
+      bomb:   { w: 84, h: 66, label: '고블린 폭탄', min: 5, hazard: true },
       // ── 슬라이드 전용: 위에서 매달려 내려와 점프로는 못 넘음 (hang). 슬라이드로 지나가면 보너스
-      branch:     { w: 96, h: 400, alt: 46, label: '늘어진 나뭇가지', min: 0, air: true, hang: true },
-      hangspider: { w: 56, h: 400, alt: 44, label: '매달린 거미', min: 1, air: true, hang: true, sprite: 'spider_warrior', scale: 0.36, anim: 'idle', fps: 2, bob: 10, thread: true },
-      icearrow:   { w: 76, h: 22, alt: 50, label: '얼음 화살', min: 2, hang: true, approach: 1.4, hazard: true },
-      harpyhigh:  { w: 0, h: 0, alt: 180, label: '하피 궁수', min: 2, air: true, decor: true, sprite: 'ice_harpy_archer', scale: 0.34, anim: 'attack', fps: 5, bob: 6 },
+      branch:     { w: 96, h: 400, alt: 46, label: '늘어진 나뭇가지', min: 1, air: true, hang: true },
+      hangspider: { w: 56, h: 400, alt: 44, label: '매달린 거미', min: 3, air: true, hang: true, sprite: 'spider_warrior', scale: 0.36, anim: 'idle', fps: 2, bob: 10, thread: true },
+      icearrow:   { w: 76, h: 22, alt: 50, label: '얼음 화살', min: 6, hang: true, approach: 1.4, hazard: true },
+      harpyhigh:  { w: 0, h: 0, alt: 180, label: '하피 궁수', min: 6, air: true, decor: true, sprite: 'ice_harpy_archer', scale: 0.34, anim: 'attack', fps: 5, bob: 6 },
     };
-    // 점수 → 난이도 단계 (0~4). 단계가 오르면 새 장애물·빡빡한 패턴이 섞이고 생성 간격이 줄어듦
-    const PETRUN_STAGE_SCORES = [0, 700, 1800, 3500, 6000];
+    // 점수 → 난이도 단계 (0~9, 화면엔 1~10). 단계가 오르면 새 장애물·빡빡한 패턴이 섞이고 생성 간격이 줄고 속도·피해가 조금씩 늘어남
+    const PETRUN_STAGE_SCORES = [0, 350, 800, 1400, 2100, 3000, 4100, 5400, 7000, 9000];
+    const PETRUN_STAGE_MAX = PETRUN_STAGE_SCORES.length - 1;
     function petRunStage(score) { let st = 0; for (let i = 0; i < PETRUN_STAGE_SCORES.length; i++) if (score >= PETRUN_STAGE_SCORES[i]) st = i; return st; }
     const PETRUN_JELLY_COLORS = ['#fb7185', '#fbbf24', '#4ade80', '#60a5fa', '#c084fc', '#f97316'];
 
@@ -40942,7 +40951,7 @@
           type: pet.type, name: pet.name, perk, t: 0, dist: 0, score: 0, jelly: 0, hp: hpMax, hpMax,
           speed: PETRUN.speed0 * (perk.speed || 1), y: 0, vy: 0, onGround: true, jumps: 0, sliding: false,
           inv: 0, hitFlash: 0, shake: 0, over: false, paused: false, overAt: 0, animT: 0, airT: 0,
-          objs: [], nextSpawn: 0.9, texts: [], parts: [], heartTimer: 9 + Math.random() * 4, rewardGot: 0, isBest: false, stage: 0, stageFlash: 0,
+          objs: [], nextSpawn: 0.9, texts: [], parts: [], heartTimer: 9 + Math.random() * 4, rewardGot: 0, isBest: false, stage: 0, stageFlash: 0, fx: { boost: 0, magnet: 0, double: 0 }, shield: 0, itemTimer: 7 + Math.random() * 3, items: 0, smashed: 0,
           bg: Array.from({ length: 7 }, (_, i) => ({ x: i * 160 + Math.random() * 60, y: 40 + Math.random() * 70, s: 0.6 + Math.random() * 0.8 })),
         };
         this.slideHold = false;
@@ -40982,17 +40991,21 @@
       update(s, dt) {
         const G = PETRUN.groundY;
         s.t += dt;
-        s.speed = Math.min(PETRUN.speedMax * (s.perk.speed || 1), s.speed + PETRUN.speedGain * dt);
-        const dx = s.speed * dt;
+        s.speed = Math.min(PETRUN.speedMax * (s.perk.speed || 1), s.speed + (PETRUN.speedGain + PETRUN.speedGainPerStage * s.stage) * dt);
+        // 부스터 효과 시간
+        for (const k of Object.keys(s.fx)) if (s.fx[k] > 0) s.fx[k] = Math.max(0, s.fx[k] - dt);
+        const boosting = s.fx.boost > 0;
+        const dx = s.speed * (boosting ? PETRUN.boostMult : 1) * dt;
         s.dist += dx;
         s.score += dx * PETRUN.distScorePerPx * (s.perk.score || 1);
-        s.animT += dt * (s.speed / PETRUN.speed0);
+        s.animT += dt * (s.speed * (boosting ? PETRUN.boostMult : 1) / PETRUN.speed0);
+        if (boosting) { for (let i = 0; i < 2; i++) s.parts.push({ x: PETRUN.petX - 30 + Math.random() * 10, y: G + s.y - 20 - Math.random() * 50, vx: -300 - Math.random() * 200, vy: (Math.random() - 0.5) * 60, life: 0.3, c: ['#fb923c', '#fde047', '#fff'][i] }); }
         // 난이도 단계 (점수로)
         const stNow = petRunStage(s.score);
-        if (stNow > s.stage) { s.stage = stNow; s.stageFlash = 1.6; this.float(s, PETRUN.W / 2, 120, `🔥 난이도 ${stNow + 1}단계!`, '#fde68a'); s.speed += 25; }
+        if (stNow > s.stage) { s.stage = stNow; s.stageFlash = 1.6; this.float(s, PETRUN.W / 2, 120, `🔥 난이도 ${stNow + 1}단계!`, '#fde68a'); s.speed += 15; this.tone('big'); }
         if (s.stageFlash > 0) s.stageFlash -= dt;
-        // 체력은 계속 조금씩 줄어듦
-        s.hp -= PETRUN.hpDrainPerSec * dt;
+        // 체력은 계속 조금씩 줄어듦 (대시 중엔 안 줄어듦)
+        if (!boosting) s.hp -= (PETRUN.hpDrainPerSec + PETRUN.hpDrainPerStage * s.stage) * dt;
         if (s.inv > 0) s.inv -= dt;
         if (s.hitFlash > 0) s.hitFlash -= dt;
         if (s.shake > 0) s.shake -= dt;
@@ -41013,6 +41026,14 @@
         if (s.nextSpawn <= 0) this.spawn(s);
         s.heartTimer -= dt;
         if (s.heartTimer <= 0) { s.heartTimer = 11 + Math.random() * 6; s.objs.push({ kind: 'jelly', sub: 'heart', x: PETRUN.W + 40, y: G - 60 - Math.round(Math.random()) * 70, r: 15 }); }
+        // 부스터 아이템 (가끔)
+        s.itemTimer -= dt;
+        if (s.itemTimer <= 0) {
+          s.itemTimer = 13 + Math.random() * 8;
+          const keys = Object.keys(PETRUN_ITEMS); let r = Math.random() * keys.reduce((a, k) => a + PETRUN_ITEMS[k].weight, 0), sub = keys[0];
+          for (const k of keys) { r -= PETRUN_ITEMS[k].weight; if (r <= 0) { sub = k; break; } }
+          s.objs.push({ kind: 'item', sub, x: PETRUN.W + 60, y: G - 64 - Math.round(Math.random()) * 70, r: 17, born: s.t });
+        }
         // 펫 충돌 상자
         const px = PETRUN.petX, ph = s.sliding ? PETRUN.slideH : PETRUN.standH;
         const pb = { x0: px - PETRUN.standW / 2 + 6, x1: px + PETRUN.standW / 2 - 6, y0: G + s.y - ph, y1: G + s.y - 4 };
@@ -41020,19 +41041,33 @@
         for (const o of s.objs) {
           o.x -= dx * (o.kind === 'obs' && o.vx ? 1 + o.vx : 1);
           if (o.kind === 'obs') this.moveObs(s, o, dt);
-          if (o.kind === 'jelly') {
-            if (s.perk.magnet) {
+          if (o.kind === 'item') {
+            const mag = Math.max(s.perk.magnet || 0, s.fx.magnet > 0 ? PETRUN.magnetItemRange : 0, boosting ? 420 : 0);
+            if (mag) { const ddx = pcx - o.x, ddy = pcy - o.y, d = Math.hypot(ddx, ddy); if (d < mag && d > 1) { o.x += ddx / d * 700 * dt; o.y += ddy / d * 700 * dt; } }
+            if (!o.got && o.x + o.r > pb.x0 - 6 && o.x - o.r < pb.x1 + 6 && o.y + o.r > pb.y0 - 6 && o.y - o.r < pb.y1 + 6) {
+              o.got = true; s.items++;
+              const it = PETRUN_ITEMS[o.sub];
+              if (o.sub === 'boost') { s.fx.boost = PETRUN.boostSec; s.hitFlash = 0; }
+              else if (o.sub === 'shield') s.shield = 1;
+              else if (o.sub === 'magnet') s.fx.magnet = PETRUN.magnetSec;
+              else if (o.sub === 'double') s.fx.double = PETRUN.doubleSec;
+              this.float(s, o.x, o.y - 10, `${it.icon} ${it.name}!`, it.color); this.tone('big');
+              for (let i = 0; i < 14; i++) s.parts.push({ x: o.x, y: o.y, vx: (Math.random() - 0.5) * 360, vy: -80 - Math.random() * 200, life: 0.45 + Math.random() * 0.25, c: it.color });
+            }
+          } else if (o.kind === 'jelly') {
+            const mag = Math.max(s.perk.magnet || 0, s.fx.magnet > 0 ? PETRUN.magnetItemRange : 0, boosting ? 420 : 0);
+            if (mag) {
               const ddx = pcx - o.x, ddy = pcy - o.y, d = Math.hypot(ddx, ddy);
-              if (d < s.perk.magnet && d > 1) { o.x += ddx / d * 520 * dt; o.y += ddy / d * 520 * dt; }
+              if (d < mag && d > 1) { const v = boosting ? 1100 : 560; o.x += ddx / d * v * dt; o.y += ddy / d * v * dt; }
             }
             if (!o.got && o.x + o.r > pb.x0 && o.x - o.r < pb.x1 && o.y + o.r > pb.y0 && o.y - o.r < pb.y1) {
               o.got = true;
               if (o.sub === 'heart') { const heal = Math.round(s.perk.heal || PETRUN.heartHeal); s.hp = Math.min(s.hpMax, s.hp + heal); this.float(s, o.x, o.y, `+${heal} 체력`, '#f9a8d4'); this.tone('heart'); }
               else {
                 const base = o.sub === 'big' ? PETRUN.bigJellyScore : PETRUN.jellyScore;
-                const got = Math.round(base * (s.perk.jelly || 1) * (s.perk.score || 1));
+                const got = Math.round(base * (s.perk.jelly || 1) * (s.perk.score || 1) * (s.fx.double > 0 ? 2 : 1));
                 s.score += got; s.jelly++;
-                this.float(s, o.x, o.y, `+${got}`, o.sub === 'big' ? '#fde68a' : '#fff');
+                this.float(s, o.x, o.y, `+${got}${s.fx.double > 0 ? ' ⭐' : ''}`, o.sub === 'big' || s.fx.double > 0 ? '#fde68a' : '#fff');
                 this.tone(o.sub === 'big' ? 'big' : 'jelly');
               }
               for (let i = 0; i < 6; i++) s.parts.push({ x: o.x, y: o.y, vx: (Math.random() - 0.5) * 240, vy: -60 - Math.random() * 160, life: 0.35 + Math.random() * 0.2, c: o.c || '#f9a8d4' });
@@ -41047,9 +41082,21 @@
               if (d.hang && !o.hit && s.sliding) { const bonus = 15 + s.stage * 5; s.score += bonus; s.slides = (s.slides || 0) + 1; this.float(s, px + 30, G - 70, `🛝 슬라이딩! +${bonus}`, '#7dd3fc'); this.tone('jelly'); }
               continue;
             }
-            if (s.inv <= 0 && ob.x0 < pb.x1 && ob.x1 > pb.x0 && ob.y0 < pb.y1 && ob.y1 > pb.y0) {
+            if (ob.x0 < pb.x1 && ob.x1 > pb.x0 && ob.y0 < pb.y1 && ob.y1 > pb.y0) {
+              if (boosting) { // 대시: 뭐든 부수고 지나감
+                o.dead = true; s.smashed++;
+                const bonus = 20 + s.stage * 5; s.score += bonus; this.float(s, o.x + 20, G - 80, `🚀 +${bonus}`, '#fdba74'); this.tone('ram'); s.shake = Math.max(s.shake, 0.15);
+                for (let i = 0; i < 12; i++) s.parts.push({ x: o.x + d.w / 2, y: ob.y1 - 20, vx: (Math.random() + 0.2) * 360, vy: -100 - Math.random() * 240, life: 0.5, c: ['#fb923c', '#fde047', '#fff'][i % 3] });
+                continue;
+              }
+              if (s.inv > 0) continue;
               o.hit = true;
-              let dmg = PETRUN.hitDamage * (s.perk.dmg || 1) * (d.hazard ? 1.2 : 1);
+              if (s.shield > 0) { // 보호막이 한 번 막아 줌
+                s.shield = 0; s.inv = 0.9; this.float(s, px, G + s.y - ph - 16, '🛡️ 보호막!', '#93c5fd'); this.tone('ram');
+                for (let i = 0; i < 12; i++) { const a = Math.PI * 2 * i / 12; s.parts.push({ x: px + Math.cos(a) * 40, y: G + s.y - ph / 2 + Math.sin(a) * 40, vx: Math.cos(a) * 220, vy: Math.sin(a) * 220 - 60, life: 0.45, c: '#93c5fd' }); }
+                continue;
+              }
+              let dmg = (PETRUN.hitDamage + PETRUN.hitDamagePerStage * s.stage) * (s.perk.dmg || 1) * (d.hazard ? 1.2 : 1);
               if (s.perk.ram && !d.air && !d.hazard && !o.alt) {
                 dmg *= 0.5; o.dead = true;
                 const bonus = 30 + s.stage * 10; s.score += bonus; this.float(s, o.x + 20, G - 60, `💥 +${bonus}`, '#fdba74'); this.tone('ram');
@@ -41105,49 +41152,66 @@
         const hang = x => obs(st >= 1 && Math.random() < 0.45 ? 'hangspider' : 'branch', x);      // 매달린 것 하나
         const batSwarm = x => { [52, 96, 140].forEach((a, i) => obs('bat', x + i * 6, { baseAlt: a, alt: a, flap: 1.5 })); }; // 세로로 겹친 박쥐 떼 → 슬라이드
         const arrows = (x, n) => { obs('harpyhigh', x - 60); for (let i = 0; i < n; i++) obs('icearrow', x + 80 + i * 150, { flap: i }); }; // 높이 뜬 하피가 머리 높이로 쏨
-        const low = ['rock', 'log', 'slime', ...(st >= 1 ? ['spider'] : [])];                 // 낮은 것(점프로 쉽게)
-        const tall = ['cactus', ...(st >= 1 ? ['goblin'] : []), ...(st >= 3 ? ['golem'] : [])];  // 높은 것
-        const air = ['bat', ...(st >= 2 ? ['ghost'] : [])];
+        const low = ['rock', 'log', 'slime', ...(st >= 2 ? ['spider'] : [])];                   // 낮은 것(점프로 쉽게)
+        const tall = [...(st >= 1 ? ['cactus'] : ['rock']), ...(st >= 3 ? ['goblin'] : []), ...(st >= 6 ? ['golem'] : [])]; // 높은 것
+        const air = [...(st >= 2 ? ['bat'] : []), ...(st >= 4 ? ['ghost'] : [])];
         const pick = a => a[Math.floor(Math.random() * a.length)];
-        // 패턴 목록: [최소 단계, 가중치, 실행]
+        const rnd = (a, b) => a + Math.random() * (b - a);
+        // 패턴 목록: [최소 단계, 가중치, 실행(→ 다음 생성까지 기본 대기 초)]
         const P = [
-          [0, 3, () => { jellyLine(X, G - 42, 5 + Math.floor(Math.random() * 4)); return 0.9; }],
-          [0, 2, () => { jellyArc(X); return 1.0; }],
-          [0, 4, () => { obs(pick(low), X); jellyArc(X - 70, 5); return 1.05; }],
-          [0, 4, () => { obs(pick(air), X); jellyLine(X + 30, G - 24, 4); return 1.0; }],
-          [0, 3, () => { obs(pick(tall), X); jellyLine(X + 60, G - 130, 4); return 1.15; }],
-          [0, 4, () => { hang(X); lowJelly(X - 40, 6); return 1.1; }],
-          [1, 3, () => { hang(X); obs(pick(low), X + 200); jellyLine(X + 240, G - 42, 3); return 1.4; }],
-          [1, 2, () => { obs(pick(low), X); hang(X + 190); lowJelly(X + 160, 5); return 1.4; }],
-          [2, 3, () => { batSwarm(X); lowJelly(X - 30, 5); return 1.2; }],
-          [2, 3, () => { arrows(X, 2); return 1.5; }],
-          [3, 3, () => { hang(X); obs(pick(low), X + 170); hang(X + 340); lowJelly(X + 300, 5); return 1.8; }],
-          [3, 2, () => { arrows(X, 3); obs('fire', X + 560); return 1.9; }],
-          [4, 3, () => { batSwarm(X); obs('wolf', X + 260); hang(X + 480); return 1.9; }],
-          [4, 2, () => { obs('hangspider', X); obs('hangspider', X + 130); obs('bomb', X + 300); return 1.8; }],
-          [1, 3, () => { obs('fire', X); jellyArc(X - 60, 5); return 1.1; }],
-          [1, 3, () => { obs(pick(low), X); obs(pick(low), X + 150 + Math.random() * 60); return 1.3; }],
-          [1, 2, () => { obs(pick(ground), X); jellyLine(X + 90, G - 42, 3); return 1.1; }],
-          [2, 3, () => { obs(pick(air), X); obs(pick(low), X + 190); jellyLine(X + 230, G - 42, 3); return 1.35; }],
-          [2, 3, () => { obs('bomb', X + 60); jellyLine(X + 150, G - 42, 4); return 1.3; }],
-          [2, 2, () => { obs('fire', X); obs('fire', X + 110); jellyArc(X - 40, 7); return 1.4; }],
-          [2, 2, () => { obs('wolf', X + 80); return 1.2; }],
-          [3, 3, () => { obs(pick(tall), X); obs(pick(air), X + 230); obs(pick(low), X + 420); return 1.6; }],
-          [3, 3, () => { obs('harpy', X + 120); jellyLine(X, G - 42, 4); return 1.3; }],
-          [3, 2, () => { obs('bomb', X); obs('bomb', X + 170); return 1.5; }],
-          [3, 2, () => { obs('golem', X); jellyArc(X - 90, 7); return 1.3; }],
-          [4, 3, () => { obs('wolf', X + 60); obs(pick(air), X + 330); obs('fire', X + 520); return 1.7; }],
-          [4, 3, () => { obs('harpy', X + 100); obs(pick(low), X + 360); obs('bomb', X + 480); return 1.8; }],
-          [4, 2, () => { obs('goblin', X); obs('goblin', X + 120); obs('ghost', X + 320); return 1.6; }],
-          [0, 1, () => { s.objs.push({ kind: 'jelly', sub: 'big', x: X, y: G - 110, r: 17, c: '#fde68a' }); jellyLine(X - 70, G - 42, 3); jellyLine(X + 40, G - 42, 3); return 1.0; }],
+          // 1단계: 젤리 위주 + 낮은 장애물 하나씩, 넉넉한 간격
+          [0, 4, () => { jellyLine(X, G - 42, 5 + Math.floor(Math.random() * 4)); return 1.0; }],
+          [0, 3, () => { jellyArc(X); return 1.1; }],
+          [0, 4, () => { obs(pick(low), X); jellyArc(X - 70, 5); return 1.5; }],
+          [0, 2, () => { obs(pick(low), X); return 1.4; }],
+          [0, 1, () => { s.objs.push({ kind: 'jelly', sub: 'big', x: X, y: G - 110, r: 17, c: '#fde68a' }); jellyLine(X - 70, G - 42, 3); jellyLine(X + 40, G - 42, 3); return 1.1; }],
+          // 2단계: 선인장·나뭇가지(슬라이드 배우기)
+          [1, 3, () => { obs(pick(tall), X); jellyLine(X + 60, G - 130, 4); return 1.4; }],
+          [1, 4, () => { hang(X); lowJelly(X - 40, 6); return 1.4; }],
+          [1, 2, () => { obs(pick(low), X); obs(pick(low), X + rnd(220, 300)); return 1.6; }],
+          // 3단계: 박쥐·거미, 슬라이드→점프 연결
+          [2, 3, () => { obs(pick(air), X); jellyLine(X + 30, G - 24, 4); return 1.2; }],
+          [2, 3, () => { hang(X); obs(pick(low), X + 230); jellyLine(X + 270, G - 42, 3); return 1.6; }],
+          [2, 2, () => { obs(pick(low), X); hang(X + 220); lowJelly(X + 190, 5); return 1.6; }],
+          // 4단계: 고블린·매달린 거미·불기둥
+          [3, 3, () => { obs('fire', X); jellyArc(X - 60, 5); return 1.3; }],
+          [3, 3, () => { obs('goblin', X + 40); jellyLine(X + 120, G - 130, 3); return 1.3; }],
+          [3, 2, () => { obs(pick(ground), X); jellyLine(X + 90, G - 42, 3); return 1.2; }],
+          [3, 2, () => { obs('hangspider', X); lowJelly(X - 30, 5); return 1.3; }],
+          // 5단계: 유령, 공중+땅 조합, 불 두 개
+          [4, 3, () => { obs(pick(air), X); obs(pick(low), X + 200); jellyLine(X + 240, G - 42, 3); return 1.5; }],
+          [4, 2, () => { obs('fire', X); obs('fire', X + 120); jellyArc(X - 40, 7); return 1.5; }],
+          [4, 2, () => { hang(X); obs(pick(tall), X + 210); return 1.6; }],
+          // 6단계: 늑대·폭탄·박쥐 떼
+          [5, 3, () => { batSwarm(X); lowJelly(X - 30, 5); return 1.3; }],
+          [5, 3, () => { obs('bomb', X + 60); jellyLine(X + 150, G - 42, 4); return 1.4; }],
+          [5, 2, () => { obs('wolf', X + 80); return 1.3; }],
+          [5, 2, () => { obs(pick(low), X); obs(pick(low), X + rnd(150, 200)); return 1.4; }],
+          // 7단계: 골렘·하피 궁수 화살
+          [6, 3, () => { arrows(X, 2); return 1.6; }],
+          [6, 2, () => { obs('golem', X); jellyArc(X - 90, 7); return 1.4; }],
+          [6, 3, () => { obs(pick(tall), X); obs(pick(air), X + 230); obs(pick(low), X + 420); return 1.7; }],
+          // 8단계: 내리꽂는 하피, 폭탄 두 개, 가지-장애물-가지
+          [7, 3, () => { obs('harpy', X + 120); jellyLine(X, G - 42, 4); return 1.4; }],
+          [7, 2, () => { obs('bomb', X); obs('bomb', X + 170); return 1.6; }],
+          [7, 3, () => { hang(X); obs(pick(low), X + 170); hang(X + 340); lowJelly(X + 300, 5); return 1.9; }],
+          // 9단계: 화살+불, 늑대+공중+불
+          [8, 3, () => { arrows(X, 3); obs('fire', X + 560); return 2.0; }],
+          [8, 3, () => { obs('wolf', X + 60); obs(pick(air), X + 330); obs('fire', X + 520); return 1.8; }],
+          [8, 2, () => { batSwarm(X); obs('wolf', X + 260); hang(X + 480); return 2.0; }],
+          // 10단계: 최고 조합
+          [9, 3, () => { obs('harpy', X + 100); obs(pick(low), X + 360); obs('bomb', X + 480); return 1.9; }],
+          [9, 2, () => { obs('goblin', X); obs('goblin', X + 120); obs('ghost', X + 320); return 1.7; }],
+          [9, 2, () => { obs('hangspider', X); obs('hangspider', X + 130); obs('bomb', X + 300); return 1.9; }],
+          [9, 2, () => { obs('golem', X); arrows(X + 200, 2); obs('wolf', X + 620); return 2.2; }],
         ].filter(p => p[0] <= st);
         // 단계가 높을수록 그 단계용 패턴에 가중치를 더 줌 (낮은 단계 패턴도 섞임)
-        const weights = P.map(p => p[1] * (p[0] === st ? 2 : p[0] === st - 1 ? 1.2 : 0.7));
+        const weights = P.map(p => p[1] * (p[0] === st ? 2 : p[0] === st - 1 ? 1.3 : p[0] >= st - 3 ? 0.8 : 0.35));
         let r = Math.random() * weights.reduce((a, b) => a + b, 0), chosen = P[0];
         for (let i = 0; i < P.length; i++) { r -= weights[i]; if (r <= 0) { chosen = P[i]; break; } }
         const wait = chosen[2]();
         // 속도가 빠를수록 거리 간격이 같아지도록 시간 간격을 줄이고, 단계가 오를수록 더 촘촘하게
-        s.nextSpawn = wait * (PETRUN.speed0 / s.speed) * (1.05 - st * 0.07) + 0.22;
+        s.nextSpawn = wait * (PETRUN.speed0 / s.speed) * (1.3 - st * 0.055) + 0.25;
       },
       finish(s) {
         s.over = true; s.overAt = 0; this.slideHold = false;
@@ -41187,7 +41251,7 @@
         res.innerHTML = `
           <div class="flex flex-wrap items-center gap-x-5 gap-y-1">
             <div><span class="text-[11px] text-slate-400 font-bold">점수</span> <b class="text-2xl font-title text-amber-300">${s.score.toLocaleString()}</b>${s.isBest ? ' <span class="text-[11px] px-1.5 py-0.5 rounded bg-rose-500 text-white font-extrabold">NEW 최고 기록!</span>' : ''}</div>
-            <div class="text-[11px] text-slate-300 font-bold">🏃 ${Math.round(s.dist / 10).toLocaleString()}m · 🍬 젤리 ${s.jelly}개 · 🛝 슬라이딩 통과 ${s.slides || 0}번 · ⏱ ${Math.round(s.t)}초</div>
+            <div class="text-[11px] text-slate-300 font-bold">🏃 ${Math.round(s.dist / 10).toLocaleString()}m · 🍬 젤리 ${s.jelly}개 · 🛝 슬라이딩 통과 ${s.slides || 0}번 · 🚀 아이템 ${s.items || 0}개 · 🔥 난이도 ${s.stage + 1}단계 · ⏱ ${Math.round(s.t)}초</div>
             <div class="text-xs font-extrabold">${rewardText}</div>
             ${stu ? `<div class="text-[11px] text-slate-400 font-bold">내 최고 ${this.record(stu).best.toLocaleString()}점</div>` : ''}
           </div>`;
@@ -41207,7 +41271,7 @@
         ctx.fillText(pet ? `${pet.name}와(과) 함께 달려요!  ▶ 시작 버튼을 누르세요` : '활성화한 펫이 있어야 달릴 수 있어요', PETRUN.W / 2, 190);
         ctx.font = '700 13px sans-serif'; ctx.fillStyle = '#cbd5e1';
         ctx.fillText('점프: ↑ · 스페이스 · 화면 위쪽 터치   |   슬라이드: ↓ (누르고 있기) · 화면 아래쪽 터치', PETRUN.W / 2, 222);
-        ctx.fillText('젤리를 먹으면 점수, 하트는 체력 회복. 매달린 가지·거미·박쥐 떼·얼음 화살은 슬라이드로! 체력이 0이 되면 끝!', PETRUN.W / 2, 246);
+        ctx.fillText('젤리는 점수, 하트는 체력 회복, 🚀🛡️🧲⭐ 아이템은 잠깐 특별한 힘! 매달린 것은 슬라이드로. 체력이 0이 되면 끝!', PETRUN.W / 2, 246);
         ctx.restore();
       },
       // 색 섞기 (낮 → 노을 → 밤으로 멀리 갈수록 하늘이 바뀜)
@@ -41388,22 +41452,43 @@
           return;
         }
         ctx.save();
+        // 땅 장애물 공통 그림자
+        if (!d.air && o.sub !== 'bomb') { ctx.fillStyle = 'rgba(40,20,40,0.22)'; ctx.beginPath(); ctx.ellipse(x + d.w / 2, G + 2, d.w * 0.6, 7, 0, 0, Math.PI * 2); ctx.fill(); }
         if (o.sub === 'rock') {
-          const y = G;
-          ctx.fillStyle = '#6b7280'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 8, y - 30); ctx.lineTo(x + 22, y - d.h); ctx.lineTo(x + 38, y - 28); ctx.lineTo(x + d.w, y); ctx.closePath(); ctx.fill();
-          ctx.fillStyle = '#9ca3af'; ctx.beginPath(); ctx.moveTo(x + 10, y - 26); ctx.lineTo(x + 22, y - d.h + 4); ctx.lineTo(x + 30, y - 24); ctx.closePath(); ctx.fill();
+          // 바위: 입체 음영 + 균열 + 이끼 + 주변 자갈
+          const y = G, cx = x + d.w / 2;
+          const g = ctx.createLinearGradient(x, y - d.h, x + d.w, y);
+          g.addColorStop(0, '#9ca3af'); g.addColorStop(0.55, '#6b7280'); g.addColorStop(1, '#374151');
+          ctx.fillStyle = g; ctx.strokeStyle = '#1f2937'; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 4, y - 22); ctx.lineTo(x + 14, y - 34); ctx.lineTo(x + 24, y - d.h); ctx.lineTo(x + 36, y - 30); ctx.lineTo(x + d.w, y - 12); ctx.lineTo(x + d.w, y); ctx.closePath(); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.moveTo(x + 10, y - 26); ctx.lineTo(x + 24, y - d.h + 3); ctx.lineTo(x + 30, y - 26); ctx.lineTo(x + 20, y - 20); ctx.closePath(); ctx.fill();
+          ctx.strokeStyle = 'rgba(17,24,39,0.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x + 26, y - 30); ctx.lineTo(x + 30, y - 18); ctx.lineTo(x + 26, y - 8); ctx.moveTo(x + 14, y - 16); ctx.lineTo(x + 20, y - 12); ctx.stroke();
+          ctx.fillStyle = '#4ade80'; ctx.beginPath(); ctx.ellipse(x + 34, y - 10, 8, 4, -0.3, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#86efac'; ctx.beginPath(); ctx.arc(x + 31, y - 12, 2, 0, 7); ctx.fill();
+          ctx.fillStyle = '#6b7280'; [[-8, 3], [d.w + 6, 4], [d.w + 14, 2]].forEach(([dx, r]) => { ctx.beginPath(); ctx.arc(x + dx, y - r, r, 0, 7); ctx.fill(); });
         } else if (o.sub === 'log') {
-          const y = G;
-          ctx.fillStyle = '#92400e'; ctx.beginPath(); ctx.roundRect(x, y - d.h, d.w, d.h, 12); ctx.fill();
-          ctx.fillStyle = '#d97706'; ctx.beginPath(); ctx.ellipse(x + d.w - 10, y - d.h / 2, 10, d.h / 2 - 2, 0, 0, 7); ctx.fill();
-          ctx.strokeStyle = '#78350f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x + d.w - 10, y - d.h / 2, 5, 7, 0, 0, 7); ctx.stroke();
+          // 통나무: 껍질 결 + 나이테 + 이끼 + 버섯
+          const y = G, top = y - d.h;
+          const g = ctx.createLinearGradient(0, top, 0, y);
+          g.addColorStop(0, '#b45309'); g.addColorStop(0.45, '#92400e'); g.addColorStop(1, '#5b2d0b');
+          ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(x, top, d.w - 12, d.h, [12, 4, 4, 12]); ctx.fill();
+          ctx.strokeStyle = 'rgba(60,25,5,0.55)'; ctx.lineWidth = 1.5;
+          for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(x + 8, top + 7 + i * 7); ctx.bezierCurveTo(x + 24, top + 4 + i * 7, x + 40, top + 10 + i * 7, x + d.w - 18, top + 6 + i * 7); ctx.stroke(); }
+          ctx.fillStyle = '#d97706'; ctx.beginPath(); ctx.ellipse(x + d.w - 12, y - d.h / 2, 12, d.h / 2, 0, 0, 7); ctx.fill();
+          ctx.strokeStyle = '#92400e'; ctx.lineWidth = 2; [8, 5, 2].forEach(r => { ctx.beginPath(); ctx.ellipse(x + d.w - 12, y - d.h / 2, r, r * 1.3, 0, 0, 7); ctx.stroke(); });
+          ctx.fillStyle = '#22c55e'; ctx.beginPath(); ctx.ellipse(x + 18, top + 2, 12, 5, 0.1, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(x + 44, top - 4, 6, Math.PI, 0); ctx.fill(); ctx.fillStyle = '#fef3c7'; ctx.fillRect(x + 42, top - 4, 4, 6); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x + 42, top - 7, 1.5, 0, 7); ctx.arc(x + 47, top - 6, 1.2, 0, 7); ctx.fill();
         } else if (o.sub === 'cactus') {
-          const y = G;
-          ctx.fillStyle = '#16a34a';
-          ctx.beginPath(); ctx.roundRect(x + 10, y - d.h, 16, d.h, 8); ctx.fill();
-          ctx.beginPath(); ctx.roundRect(x, y - 46, 10, 22, 5); ctx.fill(); ctx.fillRect(x + 4, y - 30, 8, 6);
-          ctx.beginPath(); ctx.roundRect(x + 26, y - 56, 10, 24, 5); ctx.fill(); ctx.fillRect(x + 24, y - 38, 8, 6);
-          ctx.fillStyle = '#bbf7d0'; for (let i = 0; i < 5; i++) ctx.fillRect(x + 17, y - d.h + 8 + i * 12, 2, 4);
+          // 선인장: 둥근 몸통 음영 + 세로 골 + 가시 + 꽃
+          const y = G, cx = x + 18;
+          const arm = (ax, ay, w, h) => { const g = ctx.createLinearGradient(ax, 0, ax + w, 0); g.addColorStop(0, '#4ade80'); g.addColorStop(0.5, '#16a34a'); g.addColorStop(1, '#14532d'); ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(ax, ay, w, h, w / 2); ctx.fill(); };
+          arm(cx - 9, y - d.h, 18, d.h);
+          arm(x - 2, y - 48, 11, 24); ctx.fillStyle = '#16a34a'; ctx.fillRect(x + 4, y - 32, 8, 7);
+          arm(x + 27, y - 58, 11, 26); ctx.fillStyle = '#16a34a'; ctx.fillRect(x + 24, y - 40, 8, 7);
+          ctx.strokeStyle = 'rgba(20,83,45,0.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(cx - 3, y - d.h + 10); ctx.lineTo(cx - 3, y - 4); ctx.moveTo(cx + 3, y - d.h + 10); ctx.lineTo(cx + 3, y - 4); ctx.stroke();
+          ctx.strokeStyle = '#fef9c3'; ctx.lineWidth = 1.2;
+          for (let i = 0; i < 6; i++) { const yy = y - d.h + 10 + i * 10; ctx.beginPath(); ctx.moveTo(cx - 9, yy); ctx.lineTo(cx - 14, yy - 3); ctx.moveTo(cx + 9, yy); ctx.lineTo(cx + 14, yy - 3); ctx.stroke(); }
+          ctx.fillStyle = '#f472b6'; for (let i = 0; i < 5; i++) { const a = Math.PI * 2 * i / 5; ctx.beginPath(); ctx.ellipse(cx + Math.cos(a) * 5, y - d.h - 2 + Math.sin(a) * 5, 4, 2.5, a, 0, Math.PI * 2); ctx.fill(); }
+          ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(cx, y - d.h - 2, 2.5, 0, 7); ctx.fill();
         } else if (o.sub === 'branch') {
           // 늘어진 나뭇가지: 화면 위에서 내려온 줄기 + 잎 뭉치, 아래 끝이 슬라이드 높이 바로 위
           const cx = x + d.w / 2, bottom = G - alt;
@@ -41466,6 +41551,21 @@
         }
         ctx.restore();
       },
+      drawItem(ctx, o, t) {
+        const it = PETRUN_ITEMS[o.sub], bob = Math.sin(t * 4 + o.x * 0.03) * 4, y = o.y + bob;
+        ctx.save();
+        const glow = ctx.createRadialGradient(o.x, y, 4, o.x, y, 40);
+        glow.addColorStop(0, it.color + 'aa'); glow.addColorStop(1, it.color + '00');
+        ctx.fillStyle = glow; ctx.fillRect(o.x - 40, y - 40, 80, 80);
+        ctx.translate(o.x, y); ctx.rotate(Math.sin(t * 3) * 0.12);
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 0, o.r + 3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = it.color; ctx.beginPath(); ctx.arc(0, 0, o.r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.ellipse(-5, -6, 7, 4, -0.6, 0, Math.PI * 2); ctx.fill();
+        ctx.font = '18px "Segoe UI Emoji","Apple Color Emoji",sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(it.icon, 0, 1);
+        ctx.rotate(-Math.sin(t * 3) * 0.12);
+        ctx.fillStyle = '#fff'; for (let i = 0; i < 3; i++) { const a = t * 2.5 + i * 2.1, r = o.r + 10; ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t * 6 + i); ctx.fillRect(Math.cos(a) * r - 1.5, Math.sin(a) * r - 1.5, 3, 3); }
+        ctx.restore();
+      },
       drawJelly(ctx, o, t) {
         ctx.save();
         const bob = Math.sin(t * 5 + o.x * 0.05) * 3;
@@ -41490,8 +41590,22 @@
         this.drawScene(ctx, s);
         // 공중 장애물은 뒤에, 땅 장애물·젤리는 앞에
         s.objs.forEach(o => { if (o.kind === 'obs' && !o.dead && PETRUN_OBS[o.sub].air && !o.diving) this.drawObs(ctx, o, s.t); });
+        if (s.fx.boost > 0) { // 대시 잔상
+          for (let i = 3; i >= 1; i--) { ctx.save(); ctx.globalAlpha = 0.14 * (4 - i); ctx.translate(-i * 16, 0); this.drawPet(ctx, s, 'run'); ctx.restore(); }
+          const gl = ctx.createRadialGradient(PETRUN.petX, PETRUN.groundY + s.y - 40, 10, PETRUN.petX, PETRUN.groundY + s.y - 40, 90);
+          gl.addColorStop(0, 'rgba(251,146,60,0.35)'); gl.addColorStop(1, 'rgba(251,146,60,0)'); ctx.fillStyle = gl; ctx.fillRect(PETRUN.petX - 90, PETRUN.groundY + s.y - 130, 180, 180);
+        }
         this.drawPet(ctx, s, 'run');
-        s.objs.forEach(o => { if (o.kind === 'jelly') this.drawJelly(ctx, o, s.t); else if (!o.dead && (!PETRUN_OBS[o.sub].air || o.diving)) this.drawObs(ctx, o, s.t); });
+        if (s.shield > 0) { // 보호막 방울
+          const cx = PETRUN.petX, cy = PETRUN.groundY + s.y - (s.sliding ? 22 : 44), r = s.sliding ? 40 : 56;
+          ctx.save(); ctx.globalAlpha = 0.75 + 0.2 * Math.sin(s.t * 6);
+          const bg = ctx.createRadialGradient(cx, cy, r * 0.5, cx, cy, r); bg.addColorStop(0, 'rgba(147,197,253,0.05)'); bg.addColorStop(1, 'rgba(147,197,253,0.4)');
+          ctx.fillStyle = bg; ctx.beginPath(); ctx.ellipse(cx, cy, r, r * 0.85, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#bfdbfe'; ctx.lineWidth = 2.5; ctx.stroke();
+          ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.ellipse(cx - r * 0.4, cy - r * 0.45, 9, 4, -0.7, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
+        s.objs.forEach(o => { if (o.kind === 'jelly') this.drawJelly(ctx, o, s.t); else if (o.kind === 'item') this.drawItem(ctx, o, s.t); else if (!o.dead && (!PETRUN_OBS[o.sub].air || o.diving)) this.drawObs(ctx, o, s.t); });
         s.parts.forEach(p => { ctx.globalAlpha = Math.max(0, Math.min(1, p.life * 3)); ctx.fillStyle = p.c; ctx.fillRect(p.x - 3, p.y - 3, 6, 6); });
         ctx.globalAlpha = 1;
         ctx.font = '900 15px sans-serif'; ctx.textAlign = 'center';
@@ -41510,8 +41624,20 @@
         ctx.font = '900 26px sans-serif'; ctx.strokeStyle = 'rgba(15,23,42,0.7)'; ctx.lineWidth = 5; ctx.lineJoin = 'round';
         ctx.strokeText(`${Math.round(s.score).toLocaleString()}점`, W - 16, 38); ctx.fillStyle = '#fde68a'; ctx.fillText(`${Math.round(s.score).toLocaleString()}점`, W - 16, 38);
         ctx.font = '800 12px sans-serif'; ctx.lineWidth = 3;
-        const sub = `난이도 ${'★'.repeat(s.stage + 1)}${'☆'.repeat(4 - s.stage)} · ${Math.round(s.dist / 10).toLocaleString()}m · 🍬 ${s.jelly} · 속도 ${Math.round(s.speed / PETRUN.speed0 * 100)}%`;
+        const sub = `난이도 ${s.stage + 1}/${PETRUN_STAGE_MAX + 1} · ${Math.round(s.dist / 10).toLocaleString()}m · 🍬 ${s.jelly} · 속도 ${Math.round(s.speed * (s.fx.boost > 0 ? PETRUN.boostMult : 1) / PETRUN.speed0 * 100)}%`;
         ctx.strokeText(sub, W - 16, 58); ctx.fillStyle = s.stageFlash > 0 && Math.floor(s.stageFlash * 8) % 2 ? '#fde68a' : '#fff'; ctx.fillText(sub, W - 16, 58);
+        // 켜진 부스터 효과 (체력 바 아래 알약)
+        let ex = 12;
+        const pill = (it, k) => {
+          ctx.fillStyle = 'rgba(15,23,42,0.6)'; ctx.beginPath(); ctx.roundRect(ex, 48, 78, 20, 10); ctx.fill();
+          ctx.fillStyle = it.color; ctx.beginPath(); ctx.roundRect(ex + 2, 50, 74 * Math.max(0, Math.min(1, k)), 16, 8); ctx.fill();
+          ctx.fillStyle = '#fff'; ctx.font = '900 11px sans-serif'; ctx.textAlign = 'left'; ctx.fillText(`${it.icon} ${it.name}`, ex + 8, 62);
+          ex += 84;
+        };
+        if (s.fx.boost > 0) pill(PETRUN_ITEMS.boost, s.fx.boost / PETRUN.boostSec);
+        if (s.shield > 0) pill(PETRUN_ITEMS.shield, 1);
+        if (s.fx.magnet > 0) pill(PETRUN_ITEMS.magnet, s.fx.magnet / PETRUN.magnetSec);
+        if (s.fx.double > 0) pill(PETRUN_ITEMS.double, s.fx.double / PETRUN.doubleSec);
         ctx.restore();
         if (s.paused || s.over) {
           ctx.save();
