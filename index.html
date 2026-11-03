@@ -6376,20 +6376,21 @@
     [1, 2, 3].forEach(v => { MERC_SPRITE_DEFS[`knight_${v}`] = { ...MERC_SPRITE_DEFS.knight_0, src: `assets/sprites/merc/knight_${v}.webp` }; });
     // 성기사 외형 0 (은발 땋은 머리·파란 십자 방패·전쟁 망치, tools/paladin_build.py): 칸 순서 = 대기, 걷기 4, 피격, 쓰러짐 3 (뒤로 젖힘 → 무릎 → 엎어짐), 기본 공격 2 (망치 치켜들기 → 내리치기),
     //   심판 3 (시전 막대 동안 망치 뒤로 당김 → 머리 위로 치켜듦, 발동 = 땅에 내리찍음 + 망치 자리에 금빛 빛기둥 PALADIN_JUDGMENT_FX),
-    //   신성 보호 2 (시전 막대 동안 방패를 앞으로 + 발밑 푸른 마법진, 발동 = 방패를 머리 위로 + 자신에게 문양 반구 · 보호막 받은 아군에게 맑은 반구)
+    //   신성 보호 2 (시전 막대 동안 방패를 앞으로 + 발밑 푸른 마법진, 발동 = 방패를 머리 위로 + 자신에게 문양 반구 · 보호막 받은 아군에게 맑은 반구),
+    //   성스러운 돌격 1 (방패를 앞세워 달림, 발 뒤 흙먼지 꼬리까지 그림 — 그래서 칸이 넓음) + 부딪힌 적에게 금빛 폭발 · 멈춘 자리 뒤로 흙먼지
     // 샘플이 다른 직업보다 머리가 작은 6등신이라 키 110px인데 standH는 기사와 같은 90으로 두어 1.22배 크게 그림 (얼굴 크기가 다른 직업과 비슷해짐)
-    // 스킬 전용 동작 샘플이 오기 전까지: 나머지 스킬·시전 자세 = 망치 치켜든 칸(9), 성스러운 돌격 = 걷기 반복
+    // 스킬 전용 동작 샘플이 오기 전까지: 나머지 스킬·시전 자세 = 망치 치켜든 칸(9)
     MERC_SPRITE_DEFS.paladin_0 = {
       src: 'assets/sprites/merc/paladin_0.webp',
-      cellW: 211, cellH: 125, anchorX: 71, anchorY: 123, standH: 90, topH: 110, portraitCX: 76, portraitZoomOut: 1.2, count: 16,
+      cellW: 291, cellH: 125, anchorX: 151, anchorY: 123, standH: 90, topH: 110, portraitCX: 156, portraitZoomOut: 1.2, count: 17,
       anims: {
-        idle: [0], walk: [1, 2, 3, 4], attack: [9, 10], skill: [9], hurt: [5], death: [6, 7, 8], judge: [13], hshield: [15]
+        idle: [0], walk: [1, 2, 3, 4], attack: [9, 10], skill: [9], hurt: [5], death: [6, 7, 8], judge: [13], hshield: [15], charge: [16]
       },
       skillAnims: {
         judgment:    { anim: 'judge', tpf: 26, dur: 26 },
         holy_shield: { anim: 'hshield', tpf: 34, dur: 34 },
         consecrate:  { anim: 'skill', tpf: 9, dur: 27 },
-        holy_charge: { anim: 'walk', tpf: 6, loop: true, dur: 44 },
+        holy_charge: { anim: 'charge', tpf: 6, loop: true, dur: 44 },
         vow:         { anim: 'skill', tpf: 12, dur: 36 }
       },
       castFrames: { judgment: [11, 12], holy_shield: 14, consecrate: 9, vow: 9, aegis: 9 },
@@ -8086,6 +8087,9 @@
     //   (tools/paladin_build.py, 어두운 배경에서 뽑은 빛이라 'lighter'로 더해 그림. 반구는 아래 가운데 = 발)
     const PALADIN_HS_FX = {};
     ['circle', 'cast', 'ally'].forEach(k => { const im = new Image(); im.onload = () => { im.ready = true; }; im.src = `assets/sprites/fx/paladin_hs_${k}.webp`; PALADIN_HS_FX[k] = im; });
+    // 성기사 성스러운 돌격: 부딪힌 적 자리 금빛 폭발(hit) · 멈춘 자리 뒤로 피어오르는 흙먼지와 반짝임(dust, 그림은 두꺼운 쪽이 왼쪽)
+    const PALADIN_CHARGE_FX = {};
+    ['hit', 'dust'].forEach(k => { const im = new Image(); im.onload = () => { im.ready = true; }; im.src = `assets/sprites/fx/paladin_charge_${k}.webp`; PALADIN_CHARGE_FX[k] = im; });
     // 유닛 몸 키(화면 px) — 반구 크기를 몸에 맞춤
     const unitBodyDrawH = u => { const sp = getUnitSprite(u); return sp ? spriteDrawH(u, sp) * (sp.topH || sp.standH) / sp.standH : 60 * (u.sizeScale || 1); };
     const BERSERKER_SR_SLAM_FX = new Image(); // 흑사자 마무리 일격 폭발 (붉은 불기둥·불꽃·돌 조각)
@@ -23104,7 +23108,10 @@
           if (unit.alive && hitT) {
             withSkillHit(() => applyDamage(unit, hitT, unit.atk * PALADIN_CHARGE_DMG, '🐎', '#ca8a04'));
             inflictStatus(unit, hitT, 'stun', CHARGE_STUN_TICKS);
+            sim.effects.push({ type: 'paladin_charge_hit', x: hitT.x, y: hitT.y, w: unitBodyDrawH(unit) * 1.35, flip: Math.cos(angle) < 0, life: 30, maxLife: 30 });
           }
+          // 멈춘 자리 뒤로 흙먼지: 두꺼운 쪽이 성기사 발 쪽, 달려온 쪽으로 옅어짐
+          if (unit.alive) sim.effects.push({ type: 'paladin_charge_dust', x: unit.x - Math.cos(angle) * unitBodyDrawH(unit) * 0.45, y: unit.y, w: unitBodyDrawH(unit) * 1.1, flip: Math.cos(angle) >= 0, life: 40, maxLife: 40 });
           pushChargeArriveFx(unit, angle);
           playCombatSfx('heavy');
         });
@@ -24198,6 +24205,22 @@
     // 성기사 신성 보호 반구: 처음 18% 동안 툭 부풀며 나타나고 마지막 40% 동안 사라짐. 받은 유닛을 따라다님 (아래 가운데 = 발)
     function drawPaladinDomes(ctx) {
       sim.effects.forEach(ef => {
+        if (ef.type === 'paladin_charge_hit') {
+          // 돌격 충돌 폭발: 캐릭터 위에 덮어 그림. 처음 15% 동안 커지고 마지막 50% 동안 흐려짐, 가운데 아래쪽이 대상 몸 가운데
+          const img = PALADIN_CHARGE_FX.hit;
+          if (!img.ready) return;
+          const progress = 1 - ef.life / (ef.maxLife || 20);
+          const k = Math.min(1, 0.55 + progress / 0.15 * 0.45);
+          const w = ef.w * k, h = w * img.height / img.width;
+          ctx.save();
+          ctx.globalAlpha = Math.min(1, (1 - progress) / 0.5);
+          ctx.imageSmoothingEnabled = true;
+          ctx.translate(ef.x, ef.y - ef.w * 0.2);
+          if (ef.flip) ctx.scale(-1, 1);
+          ctx.drawImage(img, -w / 2, -h * 0.7, w, h);
+          ctx.restore();
+          return;
+        }
         if (ef.type !== 'paladin_hs_dome') return;
         const img = PALADIN_HS_FX[ef.big ? 'cast' : 'ally'];
         if (!img || !img.ready) return;
@@ -26206,6 +26229,22 @@
               ctx.restore();
             }
           }
+          if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }
+          continue;
+        }
+        if (ef.type === 'paladin_charge_dust') {
+          // 돌격 흙먼지: 처음 20% 동안 피어오르고 마지막 50% 동안 흐려짐, 아래가 발 높이 (flip = 오른쪽으로 달려왔을 때 두꺼운 쪽을 오른쪽으로)
+          const img = PALADIN_CHARGE_FX.dust;
+          if (img.ready) {
+            const grow = Math.min(1, 0.5 + progress / 0.2 * 0.5);
+            const w = ef.w, h = w * img.height / img.width * grow;
+            ctx.globalAlpha = Math.min(1, (1 - progress) / 0.5) * 0.9;
+            ctx.imageSmoothingEnabled = true;
+            ctx.translate(ef.x, ef.y + 14);
+            if (ef.flip) ctx.scale(-1, 1);
+            ctx.drawImage(img, -w / 2, -h, w, h);
+          }
+          ctx.restore();
           if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }
           continue;
         }

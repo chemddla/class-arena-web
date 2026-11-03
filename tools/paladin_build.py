@@ -1,7 +1,8 @@
 # 성기사(성전사) 전용 샘플(은발 땋은 머리·파란 십자 방패·전쟁 망치, 흰 배경 한 장씩) → 캐릭터 시트 assets/sprites/merc/paladin_0.webp
 # 사용: python tools/paladin_build.py   (샘플은 assets/sprites/fx/samples/paladin_*_src.png, 동작 샘플이 오는 대로 FRAMES에 늘림)
-# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~4 걷기 · 5 피격 · 6~8 쓰러짐 (서서 뒤로 젖힘 → 무릎 꿇음 → 엎어짐) · 9~10 기본 공격 (망치 치켜들기 → 내리치기) · 11~13 심판 (망치 뒤로 당김 → 머리 위로 치켜듦 → 땅에 내리찍음) · 14~15 신성 보호 (방패를 앞으로 → 방패를 머리 위로 들어 올림)
+# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~4 걷기 · 5 피격 · 6~8 쓰러짐 (서서 뒤로 젖힘 → 무릎 꿇음 → 엎어짐) · 9~10 기본 공격 (망치 치켜들기 → 내리치기) · 11~13 심판 (망치 뒤로 당김 → 머리 위로 치켜듦 → 땅에 내리찍음) · 14~15 신성 보호 (방패를 앞으로 → 방패를 머리 위로 들어 올림) · 16 성스러운 돌격 (방패를 앞세워 달림, 발 뒤 흙먼지 꼬리 포함)
 # 이펙트: 심판 금빛 빛기둥 + 땅 폭발 → assets/sprites/fx/paladin_judgment.webp (어두운 배경 샘플, build_judgment_fx)
+#   성스러운 돌격 충돌 폭발 → fx/paladin_charge_hit.webp, 멈춘 자리 흙먼지·반짝임 → fx/paladin_charge_dust.webp (build_charge_fx)
 #   신성 보호 바닥 마법진 → fx/paladin_hs_circle.webp, 시전자 보호막(문양 반구) → fx/paladin_hs_cast.webp, 아군 보호막(맑은 반구) → fx/paladin_hs_ally.webp (build_holy_shield_fx)
 # 크기 통일: 대기 샘플의 머리 꼭대기~발 키(IDLE_SRC_H)를 TARGET_H로 줄이는 배율이 기준. 다른 동작은 같은 배율(k=1)로 줄이고,
 #   샘플마다 캐릭터를 다르게 그려 왔으면 그 칸의 몸 키(머리 꼭대기~발, 샘플 px)를 ('h', 키)로 적어 대기와 같은 키가 되게 맞춤
@@ -18,6 +19,9 @@
 #   - 신성 보호 샘플 2장(137×139, 144×143): 두 번째 장 위에 "…신성 보호막…" 글씨가 방패 윗선과 붙어 있음 → 0~6행 전부, 7~8행은 방패 오른쪽(x 46~)만 지움.
 #     방패는 잘리지 않았음(윗선 8행). 얼굴은 공격 샘플보다 조금 크게(첫 장 7%) 그려져 첫 장 1.15배, 둘째 장 1.23배
 #   - 신성 보호 이펙트 2장(129×79 마법진, 335×145 보호막 둘)은 어두운 배경(35, 39, 43) — 빛 더하기용으로 배경을 뺀 밝기만 남김 (glow_dark, 게임에서 'lighter')
+#   - 성스러운 돌격 샘플(210×93): 발 뒤 흙먼지 꼬리가 몸과 붙어 있고 떨어진 먼지 조각도 있음 → 조각까지 남김. 먼지 물결 사이 갇힌 흰 배경 1곳 지움.
+#     먼지가 발보다 넓게 깔려 발 기준점은 두 발 가운데(샘플 x 135)로 직접. 캐릭터가 작게 그려져(머리 폭이 대기의 0.65배) 1.75배
+#   - 돌격 이펙트 샘플(335×114, 어두운 배경): 왼쪽 금빛 폭발(x 0~177) · 오른쪽 흙먼지+반짝임(x 196~) → 배경색을 빼서 투명하게 (흙먼지는 빛이 아니라 'lighter'로 안 그림)
 #   - 피격·쓰러짐 샘플(931×178, 제목 글씨 2개)은 얼굴은 대기와 같은데 방패가 15% 작게 그려짐 → 중간값 1.08배로 키움. 무릎 꿇음·엎어짐 칸은 키로 못 재서 첫 칸 배율 그대로
 import os, sys
 import numpy as np
@@ -42,10 +46,12 @@ FRAMES = [
     ('atk_a', 'atk0', 1.23, 0), ('atk_b', 'atk1', 1.23, 0),
     ('judge_a', 'judge0', 1.23, 0), ('judge_b', 'judge1', 1.23, 0), ('judge_c', 'judge2', 1.23, 0),
     ('hshield_a', 'hs0', 1.15, 0), ('hshield_b', 'hs1', 1.23, 0),
+    ('charge', 'charge', 1.75, (0, 210)),
 ]
+FOOTX = {'charge': 135}   # 발 가운데를 샘플 x로 직접 (먼지 꼬리가 발보다 아래·뒤로 깔림)
 CARD = {'idle': (163, 194)}   # 카드 테두리를 빼고 쓸 (너비, 높이)
 LABEL = {'idle': [(0, 45, 0, 16)], 'hshield_b': [(0, 144, 0, 7), (46, 144, 7, 9)]}   # 지울 상자 (x0, x1, y0, y1): 번호 글씨
-GAP = {'atk_a': [(15, 60, 35, 75)], 'idle': [(95, 140, 130, 175)]}   # 갇힌 흰 배경을 지울 상자 (x0, x1, y0, y1)
+GAP = {'atk_a': [(15, 60, 35, 75)], 'idle': [(95, 140, 130, 175)], 'charge': [(60, 92, 66, 82)]}   # 갇힌 흰 배경을 지울 상자 (x0, x1, y0, y1)
 LIFT = {}   # 땅에서 띄워 그릴 높이 (칸 px)
 SRC = {}
 
@@ -86,6 +92,7 @@ def load(name, pick=0):
     rgba = np.dstack([im, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
     k = rgba[..., 3] > 0
     foot = np.where(k[int(k.shape[0] * 0.92):].any(axis=0))[0].mean()   # 발 가운데 (아래 8%의 불투명 픽셀 가운데)
+    if name in FOOTX: foot = FOOTX[name] - xs.min()
     return rgba, foot
 
 
@@ -152,6 +159,11 @@ def glow_dark(src, x0=0, x1=None, out=None, gain=1.15):
     print(f'{out} {o.shape[1]}x{o.shape[0]}')
 
 
+def build_charge_fx():
+    key_dark('charge_fx', 0, 186, out='assets/sprites/fx/paladin_charge_hit.webp')                 # 금빛 충돌 폭발 (돌 조각 포함)
+    key_dark('charge_fx', 186, None, warm_keep=True, out='assets/sprites/fx/paladin_charge_dust.webp')  # 흙먼지 + 반짝임 (두꺼운 쪽이 왼쪽)
+
+
 def build_holy_shield_fx():
     glow_dark('hshield_circle', out='assets/sprites/fx/paladin_hs_circle.webp')
     glow_dark('hshield_domes', 0, 188, out='assets/sprites/fx/paladin_hs_cast.webp')     # 왼쪽: 십자·방패 문양 반구 (시전자)
@@ -162,3 +174,4 @@ if __name__ == '__main__':
     main()
     build_judgment_fx()
     build_holy_shield_fx()
+    build_charge_fx()
