@@ -12237,8 +12237,8 @@
           <div class="flex items-center gap-2">
             <span class="text-2xl">🤝</span>
             <div>
-              <h3 class="font-title text-xl text-white">친구 용병 구매 금액 제안하기</h3>
-              <p class="text-xs text-slate-400">${seller.name} 친구에게 구매 희망 금액(CA)을 제안합니다.</p>
+              <h3 class="font-title text-xl text-white">친구 용병 거래 제안하기</h3>
+              <p class="text-xs text-slate-400">${seller.name} 친구에게 CA나 내 용병(또는 둘 다)을 걸고 제안합니다.</p>
             </div>
           </div>
           <button onclick="closeTradeOfferModal()" class="text-slate-400 hover:text-white font-bold px-2">✕</button>
@@ -12265,21 +12265,43 @@
         </div>
 
         <div>
-          <label class="text-xs font-extrabold text-emerald-300 block mb-1">💰 제안할 구매 금액 (CA) · 내 보유: ${buyer.mc.toLocaleString()} CA</label>
-          <input id="tradeOfferPriceInput" type="number" min="100" step="50" value="${valInfo.valuation}"
+          <label class="text-xs font-extrabold text-sky-300 block mb-1">🔁 교환할 내 용병 (골라도 되고 안 골라도 돼요)</label>
+          <select id="tradeOfferMercSelect" onchange="onTradeOfferMercChange()" class="w-full rounded-xl px-3.5 py-2.5 text-sm font-extrabold border">
+            <option value="">없음 (CA만 제안)</option>
+            ${(buyer.roster || []).map(m => {
+              const r = RARITY_DEFS[m.rarity] || RARITY_DEFS.N;
+              return `<option value="${m.id}">[${r.name}] ${m.name} Lv.${m.level} · 감정가 ${calcMercValuation(m, buyer).valuation.toLocaleString()} CA</option>`;
+            }).join('')}
+          </select>
+        </div>
+
+        <div>
+          <label class="text-xs font-extrabold text-emerald-300 block mb-1">💰 <span id="tradeOfferPriceLabel">제안할 구매 금액</span> (CA) · 내 보유: ${buyer.mc.toLocaleString()} CA</label>
+          <input id="tradeOfferPriceInput" type="number" min="0" step="50" value="${valInfo.valuation}"
             class="w-full rounded-xl px-3.5 py-2.5 text-sm font-extrabold border" />
           <p class="text-[11px] text-slate-400 mt-1">
+            • 용병만, CA만, 용병에 CA를 얹어서 모두 제안할 수 있어요.<br>
+            • 제안한 용병과 CA는 미리 맡겨 두고, 거절되거나 취소하면 돌려받아요.<br>
             • 제안을 보내면 친구가 자기 계정에서 <strong>[수락]</strong>해야 거래가 이루어져요.
           </p>
         </div>
 
         <div class="flex flex-col sm:flex-row gap-2">
           <button onclick="submitTradeOfferToFriend()" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow">
-            💌 구매 금액 제안 보내기
+            💌 거래 제안 보내기
           </button>
         </div>
       `;
       document.getElementById('tradeOfferModal').classList.remove('hidden');
+    }
+
+    // 교환 용병을 고르면 얹을 CA는 0부터 시작
+    function onTradeOfferMercChange() {
+      const picked = document.getElementById('tradeOfferMercSelect')?.value;
+      const input = document.getElementById('tradeOfferPriceInput');
+      const label = document.getElementById('tradeOfferPriceLabel');
+      if (label) label.textContent = picked ? '용병에 얹을 금액' : '제안할 구매 금액';
+      if (input && picked) input.value = 0;
     }
 
     function closeTradeOfferModal() {
@@ -12304,14 +12326,33 @@
         showNotice('⚠️ 상대 친구의 마지막 남은 1명의 용병은 구매할 수 없습니다!');
         return;
       }
-      if (buyer.roster.length >= MAX_ROSTER) {
+      const myMercId = document.getElementById('tradeOfferMercSelect')?.value || '';
+      const myMercIdx = myMercId ? buyer.roster.findIndex(m => m.id === myMercId) : -1;
+      if (myMercId && myMercIdx === -1) {
+        showNotice('⚠️ 교환할 내 용병을 찾을 수 없어요.');
+        return;
+      }
+      if (myMercIdx !== -1 && buyer.roster.length <= 1) {
+        showNotice('⚠️ 마지막 남은 1명의 용병은 교환에 낼 수 없어요!');
+        return;
+      }
+      // 용병을 맞바꾸면 내 인원은 그대로라 정원 검사는 CA만 낼 때만
+      if (myMercIdx === -1 && buyer.roster.length >= MAX_ROSTER) {
         showNotice(`⚠️ 내 용병단 정원(${MAX_ROSTER}명)이 가득 찼습니다!`);
         return;
       }
-      const offerPrice = Math.max(50, parseInt(document.getElementById('tradeOfferPriceInput')?.value, 10) || 300);
+      const rawPrice = Math.max(0, parseInt(document.getElementById('tradeOfferPriceInput')?.value, 10) || 0);
+      const offerPrice = myMercIdx !== -1 ? rawPrice : Math.max(50, rawPrice || 300);
       if (buyer.mc < offerPrice) {
         showNotice(`⚠️ 보유한 CA가 부족합니다! (제안가: ${offerPrice.toLocaleString()} CA / 보유: ${buyer.mc.toLocaleString()} CA)`);
         return;
+      }
+      let offeredMerc = null;
+      if (myMercIdx !== -1) {
+        // 교환에 낸 용병은 제안하는 동안 내 용병단에서 빠져 맡겨 둠
+        [offeredMerc] = buyer.roster.splice(myMercIdx, 1);
+        if (!buyer.roster.some(m => m.deployed) && buyer.roster.length > 0) buyer.roster[0].deployed = true;
+        offeredMerc.deployed = false;
       }
 
       if (!Array.isArray(state.tradeOffers)) state.tradeOffers = [];
@@ -12324,6 +12365,8 @@
         mercId: merc.id,
         mercSnapshot: JSON.parse(JSON.stringify(merc)),
         offerPrice,
+        offeredMerc: offeredMerc ? JSON.parse(JSON.stringify(offeredMerc)) : null, // 교환으로 내놓은 내 용병 (맡겨 둠)
+        offeredValuation: offeredMerc ? calcMercValuation(offeredMerc, buyer).valuation : 0,
         escrow: true, // 제안 금액은 보낼 때 미리 빠지고, 거절·취소되면 돌려받음
         valuation: calcMercValuation(merc, seller).valuation,
         status: 'pending',
@@ -12333,7 +12376,7 @@
       state.tradeOffers.unshift(newOffer);
       closeTradeOfferModal();
 
-      showRewardBanner(`💌 [${seller.name}] 친구의 [${merc.name}] 용병에 ${offerPrice.toLocaleString()} CA 구매 제안을 보냈어요! 친구가 수락하면 내 용병이 돼요. (제안 금액은 미리 맡겨 두고, 거절되거나 취소하면 돌려받아요)`);
+      showRewardBanner(`💌 [${seller.name}] 친구의 [${merc.name}] 용병에 ${describeTradeOfferGive(newOffer)} 제안을 보냈어요! 친구가 수락하면 내 용병이 돼요. (제안한 것은 미리 맡겨 두고, 거절되거나 취소하면 돌려받아요)`);
       saveState();
       DailyMission.progress('tradeOffer', 1, buyer);
       renderMarketTab();
@@ -12372,7 +12415,7 @@
         showNotice('⚠️ 판매자의 최소 1명 용병 유지를 위해 거래할 수 없습니다.');
         return;
       }
-      if (buyer.roster.length >= MAX_ROSTER) {
+      if (!offer.offeredMerc && buyer.roster.length >= MAX_ROSTER) {
         showNotice(`⚠️ 구매자(${buyer.name})의 용병단 정원(${MAX_ROSTER}명)이 가득 찼습니다!`);
         return;
       }
@@ -12383,23 +12426,47 @@
       }
       transferredMerc.deployed = false;
       seller.mc += offer.offerPrice; // 구매자가 제안할 때 맡긴 금액
-      sendToStudent(buyer.id, { merc: transferredMerc, kind: 'trade_buy', note: `[${seller.name}] 친구가 구매 제안을 수락해 [${transferredMerc.name}] 용병이 왔어요.` });
+      if (offer.offeredMerc) applyGiftToStudent(seller, { merc: offer.offeredMerc }); // 교환으로 맡겨 둔 용병
+      sendToStudent(buyer.id, { merc: transferredMerc, kind: 'trade_buy', note: `[${seller.name}] 친구가 거래 제안을 수락해 [${transferredMerc.name}] 용병이 왔어요.` });
 
       // 동일 용병에 대한 다른 대기 제안 정리 (맡긴 금액은 돌려줌)
       state.tradeOffers.filter(o => o.id !== offerId && o.mercId === transferredMerc.id).forEach(o => refundTradeOffer(o, '용병이 다른 친구에게 팔려서'));
       state.tradeOffers = state.tradeOffers.filter(o => o.id !== offerId && o.mercId !== transferredMerc.id);
       saveState();
       renderAllStudentViews();
-      showRewardBanner(`🤝 용병 거래 성사! [${transferredMerc.name}] 용병을 ${offer.offerPrice.toLocaleString()} CA에 팔았어요. 용병은 [${buyer.name}] 친구가 접속하면 자동으로 전달돼요!`);
+      showRewardBanner(`🤝 용병 거래 성사! [${transferredMerc.name}] 용병을 ${describeTradeOfferGive(offer)}에 넘겼어요. 용병은 [${buyer.name}] 친구가 접속하면 자동으로 전달돼요!`);
     }
 
-    // 제안할 때 맡긴 금액을 구매자에게 돌려줌
+    // 제안에 건 것 (용병·CA) 을 글로 — "[용병] 용병 + 500 CA"
+    function describeTradeOfferGive(offer) {
+      const parts = [];
+      if (offer.offeredMerc) parts.push(`[${offer.offeredMerc.name} Lv.${offer.offeredMerc.level}] 용병`);
+      if (offer.offerPrice > 0 || !offer.offeredMerc) parts.push(`${Number(offer.offerPrice || 0).toLocaleString()} CA`);
+      return parts.join(' + ');
+    }
+
+    // 거래 제안 목록 한 줄: 건 용병·CA와 감정가 비교
+    function tradeOfferGiveLineHTML(o, label) {
+      const om = o.offeredMerc;
+      const mercPart = om
+        ? `<span class="text-sky-300 font-bold">[${getMercIconHTML(om.job, om.skinVariant, 18)}${om.name} Lv.${om.level}]</span> 용병${o.offerPrice > 0 ? ' + ' : ''}`
+        : '';
+      const caPart = (o.offerPrice > 0 || !om) ? `<strong class="text-amber-300 text-xs">${o.offerPrice.toLocaleString()} CA</strong>` : '';
+      const giveVal = (o.offeredValuation || 0) + (o.offerPrice || 0);
+      return `
+                  <div class="text-[11px] text-slate-400 mt-0.5">
+                    ${label}: ${mercPart}${caPart} (내놓은 가치 ${giveVal.toLocaleString()} CA / 감정가 ${o.valuation.toLocaleString()} CA)
+                  </div>`;
+    }
+
+    // 제안할 때 맡긴 금액·용병을 구매자에게 돌려줌
     function refundTradeOffer(offer, reason) {
       if (!offer || !offer.escrow) return;
       sendToStudent(offer.buyerId, {
         mc: offer.offerPrice,
+        merc: offer.offeredMerc || null,
         kind: 'trade_refund',
-        note: `${reason} [${offer.mercSnapshot?.name || '용병'}] 구매 제안 금액을 돌려받았어요.`
+        note: `${reason} [${offer.mercSnapshot?.name || '용병'}] 거래 제안에 맡긴 ${describeTradeOfferGive(offer)}을(를) 돌려받았어요.`
       });
     }
 
@@ -12416,7 +12483,7 @@
       state.tradeOffers.splice(idx, 1);
       saveState();
       renderMarketTab();
-      showNotice(`✖️ [${offer.mercSnapshot?.name || '용병'}] 거래 제안(${offer.offerPrice.toLocaleString()} CA)이 취소/거절되었습니다.`);
+      showNotice(`✖️ [${offer.mercSnapshot?.name || '용병'}] 거래 제안(${describeTradeOfferGive(offer)})이 취소/거절되었습니다.`);
     }
 
     function renderMarketTab() {
@@ -12458,13 +12525,11 @@
                   <div class="text-xs font-extrabold text-white">
                     🙋 구매 희망자: <span class="text-emerald-300">${o.buyerName}</span> → 내 용병 <span class="text-indigo-300">[${getMercIconHTML(m.job, m.skinVariant, 18)}${m.name} Lv.${m.level}]</span>
                   </div>
-                  <div class="text-[11px] text-slate-400 mt-0.5">
-                    제안 금액: <strong class="text-amber-300 text-xs">${o.offerPrice.toLocaleString()} CA</strong> (감정가 ${o.valuation.toLocaleString()} CA)
-                  </div>
+                  ${tradeOfferGiveLineHTML(o, '제안')}
                 </div>
                 <div class="flex items-center gap-1.5">
                   <button onclick="acceptTradeOffer('${o.id}')" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow">
-                    ✅ 수락 (${o.offerPrice.toLocaleString()} CA 받고 판매)
+                    ✅ 수락 (${describeTradeOfferGive(o)} 받기)
                   </button>
                   <button onclick="rejectOrCancelTradeOffer('${o.id}')" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-slate-300 text-xs font-bold">
                     거절
@@ -12490,9 +12555,7 @@
                   <div class="text-xs font-extrabold text-white">
                     🎯 대상: <span class="text-indigo-300">${o.sellerName}</span>의 <span class="text-amber-300">[${getMercIconHTML(m.job, m.skinVariant, 18)}${m.name} Lv.${m.level}]</span>
                   </div>
-                  <div class="text-[11px] text-slate-400 mt-0.5">
-                    내 제안 금액: <strong class="text-emerald-300">${o.offerPrice.toLocaleString()} CA</strong> (감정가 ${o.valuation.toLocaleString()} CA)
-                  </div>
+                  ${tradeOfferGiveLineHTML(o, '내 제안')}
                 </div>
                 <div class="flex items-center gap-1.5">
                   <span class="px-2.5 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-[11px] font-bold">⏳ 친구의 수락을 기다리는 중</span>
@@ -12629,7 +12692,7 @@
                   </div>
                 </div>
                 <button onclick="openTradeOfferModal('${fStu.id}', '${m.id}')" class="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow">
-                  💌 금액 제안하여 구매 신청하기
+                  💌 거래 제안하기 (CA·용병 교환)
                 </button>
               </div>
             `);
@@ -31582,7 +31645,7 @@
         if (lastKnownIncomingOfferCount >= 0 && myIncoming.length > lastKnownIncomingOfferCount) {
           const latest = myIncoming[0];
           if (latest) {
-            showRewardBanner(`💌 [실시간 거래소] ${latest.buyerName} 친구가 내 [${latest.mercSnapshot?.name || '용병'}]에 ${Number(latest.offerPrice || 0).toLocaleString()} CA 구매 제안을 보냈습니다!`);
+            showRewardBanner(`💌 [실시간 거래소] ${latest.buyerName} 친구가 내 [${latest.mercSnapshot?.name || '용병'}]에 ${describeTradeOfferGive(latest)} 거래 제안을 보냈습니다!`);
           }
         }
         lastKnownIncomingOfferCount = myIncoming.length;
