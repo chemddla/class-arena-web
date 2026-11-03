@@ -482,3 +482,33 @@ test('방 초대: 로그인한 학생은 자기 이름으로만 보내고, 받�
   await env.withSecurityRulesDisabled(async (ctx) => { await ctx.database().ref('classes/OLD1/students/s2').set(student('s2')); });
   await assertSucceeds(db(null).ref('classes/OLD1/invites/s1/i_abcdef10').set(invite('s2'))); // 소유자 없는 학급은 학생 확인 없음
 });
+
+// ----- 대기방 채팅 (classes/{학급}/room_chats/{종류}/{방id}/{id}) -----
+const chat = (from, extra = {}) => ({ from, name: from, text: '안녕!', at: Date.now() - 1000, ...extra });
+const CHAT = 'classes/OWN1/room_chats/pvp/pvp_s1_abc';
+
+test('대기방 채팅: 로그인한 학생은 자기 이름으로만 보내고, 고칠 수 없고, 학급 친구가 지울 수 있음', async () => {
+  await assertSucceeds(db('u1').ref(`${CHAT}/c_abcdef01`).set(chat('s1')));
+  await assertSucceeds(db('u1').ref('classes/OWN1/room_chats/minigame/mg_1/c_abcdef02').set(chat('s1')));
+  await assertSucceeds(db('u1').ref('classes/OWN1/room_chats/raid/raid_1/c_abcdef03').set(chat('s1')));
+  await assertFails(db('u1').ref(`${CHAT}/c_abcdef04`).set(chat('s2'))); // 남의 이름으로
+  await assertFails(db('u2').ref(`${CHAT}/c_abcdef05`).set(chat('s2'))); // 로그인 안 된 기기
+  await assertFails(db(null).ref(`${CHAT}/c_abcdef06`).set(chat('s1')));
+  await assertFails(db('u1').ref('classes/OWN1/room_chats/shop/x_1/c_abcdef07').set(chat('s1'))); // 없는 종류
+  await assertFails(db('u1').ref(`${CHAT}/c_bad00001`).set(chat('s1', { text: '' })));
+  await assertFails(db('u1').ref(`${CHAT}/c_bad00002`).set(chat('s1', { text: 'a'.repeat(101) })));
+  await assertSucceeds(db('u1').ref(`${CHAT}/c_ok000001`).set(chat('s1', { text: 'a'.repeat(100) })));
+  await assertFails(db('u1').ref(`${CHAT}/c_bad00003`).set(chat('s1', { mc: 100 })));
+  await assertFails(db('u1').ref(`${CHAT}/c_bad00004`).set(chat('s1', { at: Date.now() + 3600000 })));
+  await assertFails(db('u1').ref(`${CHAT}/bad-id`).set(chat('s1')));
+  await assertFails(db('u1').ref(`${CHAT}/c_abcdef01`).set(chat('s1', { text: '바꿈' }))); // 고치기 불가
+  await assertFails(db('u3').ref(`${CHAT}/c_abcdef01`).remove()); // 학급 학생이 아닌 기기
+  await linkS2();
+  await assertSucceeds(db('u2').ref(`${CHAT}/c_abcdef08`).set(chat('s2')));
+  await assertSucceeds(db('u2').ref(CHAT).update({ c_abcdef01: null })); // 오래된 메시지 정리
+  await assertSucceeds(db('u2').ref(CHAT).remove()); // 방이 없어지면 채팅도 통째로
+  await assertFails(db('u3').ref('classes/OWN1/room_chats/minigame/mg_1').remove());
+  await assertSucceeds(db('teacher').ref(`${CHAT}/c_abcdef09`).set(chat('s1')));
+  await assertSucceeds(db(null).ref('classes/OLD1/room_chats/pvp/r1/c_abcdef10').set(chat('s1'))); // 소유자 없는 학급은 학생 확인 없음
+  await assertFails(db(null).ref('classes/OLD1/room_chats/pvp/r1/c_abcdef11').set(chat('nobody'))); // 없는 학생
+});

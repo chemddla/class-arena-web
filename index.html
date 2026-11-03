@@ -2817,6 +2817,8 @@
 
           <!-- 현재 입장 중인 실시간 PvP 방 내부 대기실 (방 개설 또는 입장 시 표시) -->
           <div id="pvpWaitingRoomPanel" class="hidden bg-slate-900 border-2 border-amber-500/60 rounded-2xl p-5 flex flex-col gap-4 shadow-xl"></div>
+          <!-- 대기방 채팅 (그 방에 들어온 친구·관전자끼리만 보임, RoomChat) -->
+          <div id="pvpRoomChat" class="hidden"></div>
 
           <!-- 실시간 개설된 PvP 로비 대기방 목록 -->
           <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
@@ -2973,6 +2975,7 @@
 
         <!-- 현재 내가 입장해 있는 협동 레이드 방 내부 대기실 (방 개설 또는 입장 시 표시) -->
         <div id="raidWaitingRoomPanel" class="hidden bg-slate-900 border-2 border-amber-500/60 rounded-2xl p-5 flex flex-col gap-4 shadow-xl"></div>
+        <div id="raidRoomChat" class="hidden"></div>
 
         <!-- 우리 반 실시간 협동 레이드 대기 로비방 목록 -->
         <div class="bg-slate-900 border-2 border-purple-500/30 rounded-2xl p-4 flex flex-col gap-3 shadow">
@@ -3069,6 +3072,7 @@
 
         <!-- 내가 들어가 있는(또는 관전 중인) 러쉬방 대기실 -->
         <div id="rushWaitingRoomPanel" class="hidden bg-slate-900 border-2 border-amber-500/60 rounded-2xl p-5 flex flex-col gap-4 shadow-xl"></div>
+        <div id="rushRoomChat" class="hidden"></div>
 
         <div class="bg-slate-900 border-2 border-cyan-500/30 rounded-2xl p-4 flex flex-col gap-3 shadow">
           <h4 class="font-title text-xl text-white flex items-center gap-2 border-b border-slate-800 pb-2.5">
@@ -3263,6 +3267,7 @@
         <!-- ==================== [2단계: 개설된 미니게임 방 내부 대기실 화면 (#minigameWaitingRoomSection)] ==================== -->
         <div id="minigameWaitingRoomSection" class="hidden bg-slate-900 border-2 border-amber-500/60 rounded-3xl p-6 flex flex-col gap-5 shadow-2xl">
           <div id="minigameWaitingRoomBody" class="flex flex-col gap-4"></div>
+          <div id="minigameRoomChat" class="hidden"></div>
         </div>
 
         <!-- ==================== [3단계: 실시간 연동 미니게임 플레이 화면 (#minigameActiveBoardSection)] ==================== -->
@@ -31074,6 +31079,125 @@
       }
     };
 
+    // 대기방 채팅 (classes/{학급}/room_chats/{pvp|raid|minigame}/{방id}/{id}): 같은 대기방에 들어온 친구·관전자끼리만 보임
+    // 대기실 화면을 그릴 때 RoomChat.show(상자, 종류, 방id)로 그 방 하나만 구독 · 방이 지워지면 채팅도 같이 지움
+    // 보낸 기기가 방마다 최근 ROOM_CHAT_MAX개만 남기고 오래된 것을 지움 (몬스터 러쉬방은 레이드방이라 raid로 감)
+    const ROOM_CHAT_MAX = 30;
+    const ROOM_CHAT_TEXT_MAX = 100;
+    const ROOM_CHAT_GAP_MS = 700; // 너무 빨리 연달아 보내지 않게
+    const RoomChat = {
+      boxes: {},     // 상자 id → { kind, roomId, ref, query, cb, msgs }
+      lastSentAt: 0,
+
+      // roomId가 없으면 채팅창을 숨기고 구독도 끊음 · 같은 방이면 그대로 둠 (쓰던 글이 지워지지 않게)
+      show(boxId, kind, roomId) {
+        const el = document.getElementById(boxId);
+        if (!el) return;
+        const ref = roomId && getActiveStudent() ? classRoomRef(`room_chats/${kind}/${roomId}`) : null;
+        const cur = this.boxes[boxId];
+        if (cur && (!ref || cur.kind !== kind || cur.roomId !== roomId)) this.close(boxId);
+        if (!ref) { el.classList.add('hidden'); return; }
+        el.classList.remove('hidden');
+        if (this.boxes[boxId]) return;
+        const box = { kind, roomId, ref, query: ref.limitToLast(ROOM_CHAT_MAX), cb: null, msgs: [] };
+        this.boxes[boxId] = box;
+        el.innerHTML = `
+          <div class="bg-slate-900 border-2 border-indigo-500/40 rounded-2xl p-3 flex flex-col gap-2 shadow">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-extrabold text-indigo-200">💬 대기방 채팅</span>
+              <span class="text-[10px] text-slate-400">이 방 친구들만 보여요 · 최근 ${ROOM_CHAT_MAX}개</span>
+            </div>
+            <div data-chat-list class="h-40 overflow-y-auto flex flex-col gap-1.5 bg-slate-950 border border-slate-800 rounded-xl p-2"></div>
+            <form class="flex gap-2" onsubmit="sendRoomChat(event, '${boxId}')">
+              <input type="text" maxlength="${ROOM_CHAT_TEXT_MAX}" autocomplete="off" placeholder="메시지를 입력하세요 (${ROOM_CHAT_TEXT_MAX}자까지)" aria-label="대기방 채팅 메시지"
+                class="flex-1 min-w-0 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-indigo-500 outline-none text-white text-xs">
+              <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow shrink-0">보내기</button>
+            </form>
+          </div>`;
+        this.renderList(boxId);
+        box.cb = box.query.on('value', snap => {
+          if (this.boxes[boxId] !== box) return;
+          const val = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
+          box.msgs = Object.keys(val).map(id => ({ ...val[id], id }))
+            .filter(m => typeof m.text === 'string' && m.text)
+            .sort((a, b) => ((Number(a.at) || 0) - (Number(b.at) || 0)) || (a.id < b.id ? -1 : 1))
+            .slice(-ROOM_CHAT_MAX);
+          this.renderList(boxId);
+        }, err => console.warn('[대기방 채팅 구독 실패 - DB 규칙을 확인하세요]:', err));
+      },
+
+      close(boxId) {
+        const box = this.boxes[boxId];
+        delete this.boxes[boxId];
+        if (box && box.cb) { try { box.query.off('value', box.cb); } catch (e) {} }
+        const el = document.getElementById(boxId);
+        if (el) el.innerHTML = '';
+      },
+
+      renderList(boxId) {
+        const box = this.boxes[boxId];
+        const list = box && document.getElementById(boxId)?.querySelector('[data-chat-list]');
+        if (!list) return;
+        const me = getActiveStudent();
+        const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+        const last = box.msgs[box.msgs.length - 1];
+        list.innerHTML = box.msgs.map(m => {
+          const mine = me && m.from === me.id;
+          const stu = state.students.find(s => s.id === m.from);
+          const name = cleanUserText((stu && stu.name) || m.name || '친구', 40);
+          return `
+            <div class="flex flex-col ${mine ? 'items-end' : 'items-start'}">
+              ${mine ? '' : `<span class="text-[10px] font-bold text-slate-400 px-1">${name}</span>`}
+              <span class="max-w-[85%] px-2.5 py-1.5 rounded-xl text-xs break-words ${mine ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-100'}">${cleanUserText(m.text, ROOM_CHAT_TEXT_MAX)}</span>
+            </div>`;
+        }).join('') || '<div class="m-auto text-[11px] text-slate-500">아직 대화가 없어요. 먼저 인사해 보세요! 👋</div>';
+        if (nearBottom || (last && me && last.from === me.id)) list.scrollTop = list.scrollHeight;
+      },
+
+      // 방마다 최근 ROOM_CHAT_MAX개만 남김 (보낸 기기가 정리)
+      async trim(box) {
+        try {
+          const val = (await box.ref.once('value')).val() || {};
+          const at = id => Number(val[id] && val[id].at) || 0;
+          const ids = Object.keys(val).sort((a, b) => (at(a) - at(b)) || (a < b ? -1 : 1));
+          if (ids.length <= ROOM_CHAT_MAX) return;
+          const patch = {};
+          ids.slice(0, ids.length - ROOM_CHAT_MAX).forEach(id => { patch[id] = null; });
+          await box.ref.update(patch);
+        } catch (e) { console.warn('[대기방 채팅 정리 실패]:', e); }
+      },
+
+      // 방이 없어질 때 그 방 채팅도 지움
+      purge(kind, roomId) {
+        if (!roomId) return;
+        try { classRoomRef(`room_chats/${kind}/${roomId}`)?.remove().catch(() => {}); } catch (e) {}
+      }
+    };
+
+    window.sendRoomChat = async function (ev, boxId) {
+      if (ev) ev.preventDefault();
+      const box = RoomChat.boxes[boxId];
+      const me = getActiveStudent();
+      const input = document.getElementById(boxId)?.querySelector('input');
+      if (!box || !me || !input) return;
+      const text = cleanUserText(input.value, ROOM_CHAT_TEXT_MAX);
+      if (!text) { input.value = ''; return; }
+      if (Date.now() - RoomChat.lastSentAt < ROOM_CHAT_GAP_MS) return;
+      RoomChat.lastSentAt = Date.now();
+      const id = 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      // 서버 시각보다 늦은 시각은 규칙에서 막히므로 서버 시각 기준으로 살짝 앞당겨 씀
+      const msg = { from: me.id, name: cleanUserText(me.name, 40), text, at: Math.floor(mgServerNow()) - 1000 };
+      input.value = '';
+      try {
+        await box.ref.child(id).set(msg);
+        RoomChat.trim(box);
+      } catch (e) {
+        if (!input.value) input.value = text;
+        console.warn('[대기방 채팅 보내기 실패]:', e);
+        showNotice('⚠️ 채팅을 보내지 못했어요. 로그인 상태를 확인해 주세요.');
+      }
+    };
+
     // 실시간 방 초대 (classes/{학급}/invites/{받는 학생}/{id}): 방장이 친구에게 보내면 받은 친구 화면 오른쪽 아래에 [수락]/[거절]이 뜸
     // 전투(실시간·시뮬레이션) 중에도 뜨고, 받은 친구 기기가 수락·거절하면서 지움. 오래된 초대는 받은 쪽에서 지움
     const ROOM_INVITE_TTL_MS = 5 * 60 * 1000;
@@ -32346,6 +32470,7 @@
 
     async function removePvpRoomData(roomId) {
       delete livePvpRoomsCache[roomId];
+      RoomChat.purge('pvp', roomId);
       renderLivePvpRoomsList();
       const db = RealtimePvpService.initFirebaseClientSafe();
       const classCode = String(state.classCode || '').trim().toUpperCase();
@@ -33583,6 +33708,7 @@
           pvpFormationDraft = null;
         }
       }
+      RoomChat.show('pvpRoomChat', 'pvp', waitPanel && myRoom && myRoom.status === 'waiting' ? myRoom.roomId : null);
 
       if (!box) return;
       if (rooms.length === 0) {
@@ -34681,6 +34807,7 @@
 
     async function removeRaidRoomData(roomId) {
       delete liveRaidRoomsCache[roomId];
+      RoomChat.purge('raid', roomId);
       renderLiveRaidRoomsList();
       const db = RealtimePvpService.initFirebaseClientSafe();
       const classCode = String(state.classCode || '').trim().toUpperCase();
@@ -35072,6 +35199,7 @@
           waitPanel.classList.add('hidden');
         }
       }
+      RoomChat.show('raidRoomChat', 'raid', waitPanel && myRoom && myRoom.status === 'waiting' ? myRoom.roomId : null);
 
       if (!box) return;
       if (rooms.length === 0) {
@@ -36535,6 +36663,7 @@
             </div>`;
         }
       }
+      RoomChat.show('rushRoomChat', 'raid', panel && room && room.status === 'waiting' ? room.roomId : null);
 
       if (!box) return;
       if (!rooms.length) {
@@ -36613,6 +36742,7 @@
 
     async function removeMinigameRoomData(roomId) {
       delete liveMinigameRoomsCache[roomId];
+      RoomChat.purge('minigame', roomId);
       renderMinigameLobbyAndRoomUI();
       const db = RealtimePvpService.initFirebaseClientSafe();
       const classCode = String(state.classCode || '').trim().toUpperCase();
@@ -36931,6 +37061,7 @@
       if (mgViewNow !== mgLastLobbyView && /:playing$|^solo$/.test(mgLastLobbyView) && !/:playing$|^solo$/.test(mgViewNow)) mgStopLocalGames();
       else if (mgViewNow === 'lobby') mgStopLocalGames();
       mgLastLobbyView = mgViewNow;
+      RoomChat.show('minigameRoomChat', 'minigame', activeRoom && activeRoom.status === 'waiting' ? activeRoom.roomId : null);
 
       if (activeRoom) {
         if (topLeaveBtn) topLeaveBtn.classList.remove('hidden');
