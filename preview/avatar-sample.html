@@ -125,8 +125,9 @@
       }
       const METAL = '#aeb6c2', GOLD = '#e8c43a', DARK = '#3a3a40', LEATH = '#6b4a2a', WOOD = '#8a5a30', WHITE = '#f2f0f4';
 
-      // a: 생김새, back: 뒷모습, f: 걷기 칸 0~3, sit: 앉은 자세
-      function paint(a, back, f, sit) {
+      // a: 생김새, back: 뒷모습, f: 걷기 칸 0~3, sit: 앉은 자세, side: 옆모습
+      function paint(a, back, f, sit, side) {
+        if (side) return paintSide(a, f, sit);
         buf = new Uint8ClampedArray(W * H * 4); M.fill(0); ink = 1;
         const sk = AV_SKINS[a.skin], hc = AV_HAIRS[a.hairColor], ac = AV_CLOTH[a.armorColor], lc = AV_CLOTH[a.legsColor];
         const cc = AV_CLOTH[a.capeColor], hatC = AV_CLOTH[a.hatColor], shoe = AV_CLOTH[a.shoeColor], em = AV_CLOTH[a.emblem];
@@ -385,8 +386,11 @@
         }
         if (a.hair === 'pony' && back) { mEll(24, 36 + o, 4, 11); commit(hc, { line: 'b' }); mEll(24, 27 + o, 3, 1.6); commit(em, { flat: true }); }
         if (back) { cape(); backGear(); }
-
-        // ── 바깥 윤곽선: 이웃 색을 진하게
+        outline();
+        return buf;
+      }
+      // 바깥 윤곽선: 이웃 색을 진하게
+      function outline() {
         const src = buf.slice();
         for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
           const i = (y * W + x) * 4;
@@ -400,6 +404,191 @@
             break;
           }
         }
+      }
+      // 옆모습 (화면 오른쪽을 봄. 왼쪽은 그릴 때 좌우 반전). f: 걷기 칸 0~3, sit: 앉은 자세
+      function paintSide(a, f, sit) {
+        buf = new Uint8ClampedArray(W * H * 4); M.fill(0); ink = 1;
+        const sk = AV_SKINS[a.skin], hc = AV_HAIRS[a.hairColor], ac = AV_CLOTH[a.armorColor], lc = AV_CLOTH[a.legsColor];
+        const cc = AV_CLOTH[a.capeColor], hatC = AV_CLOTH[a.hatColor], shoe = AV_CLOTH[a.shoeColor], em = AV_CLOTH[a.emblem];
+        const rH = ramp(hc), rA = ramp(ac), rS = ramp(sk), rC = ramp(cc), rHat = ramp(hatC);
+        const o = sit ? 0 : -(f % 2);                       // 걸을 때 위로 1도트 들썩
+        const sw = sit ? 0 : f === 1 ? 1 : f === 3 ? -1 : 0; // 가까운 다리·팔이 앞(+)/뒤(−)로
+        const robe = a.armor === 'robe', coat = a.armor === 'coat', plate = a.armor === 'plate';
+        const hooded = a.hat === 'hood', helmet = a.hat === 'helm' || a.hat === 'horn';
+        const FT = sit ? SIT_FOOT : FOOT;
+        const shade = h => hex(ramp(h).sh);
+
+        // ── 등 뒤 (왼쪽): 멘 무기, 망토, 긴 머리, 방패
+        if (a.weapon === 'great') {
+          mLine(18, 24 + o, 7, 62 + o, 4); mTri(7, 62 + o, 9.5, 58 + o, 3, 67 + o); commit(METAL, { sh: 1, line: 'b' });
+          for (let k = 0; k < 8; k++) put(16 - k, 28 + k * 4 + o, [230, 234, 240]);
+          mLine(14, 20 + o, 22, 28 + o, 2.4); commit(GOLD, { flat: true });
+          mLine(18, 24 + o, 22, 17 + o, 3); commit(LEATH, { sh: 1 });
+          mEll(23, 15.5 + o, 2, 2); commit(GOLD, { sh: 1 });
+        }
+        if (a.weapon === 'bow') {
+          mLine(20, 18 + o, 7, 62 + o, 1); commit(WHITE, { flat: true });
+          mCurve(20, 18 + o, 5, 36 + o, 7, 62 + o, 3); commit(WOOD, { sh: 1, line: 'b' });
+        }
+        const capeBot = a.cape === 'short' ? 58 : a.cape === 'long' ? 72 : 69;
+        if (a.cape !== 'none') {
+          mTri(15, 38 + o, 23, 38 + o, 7, capeBot + o); mTri(23, 38 + o, 20, capeBot + o, 7, capeBot + o);
+          if (a.cape === 'torn') { ink = 0; [8, 14].forEach(x => mTri(x, capeBot + 1 + o, x + 4, capeBot + 1 + o, x + 2, capeBot - 4 + o)); ink = 1; }
+          commit(cc, { line: 'b' });
+          [12, 17].forEach(x => { for (let y = 44; y < capeBot - 2; y++) put(x - Math.round((y - 38) / 9), y + o, rC.sh); });
+        }
+        if (a.hair === 'long' && !hooded) { mRect(9, 22 + o, 11, 30); mEll(14.5, 52 + o, 5.5, 3); commit(hex(rH.sh)); }
+        if (a.hair === 'pony') { mEll(10, 34 + o, 3.5, 10); commit(hc, { line: 'b' }); mEll(11, 25 + o, 2.5, 1.5); commit(em, { flat: true }); }
+        if (a.weapon === 'shield') { mEll(13, 47 + o, 6, 9); commit(ac, { line: 'all', sh: 2 }); mEll(13, 47 + o, 2.5, 3.5); commit(em, { flat: true, line: 'all' }); }
+
+        // ── 다리: 먼 다리(그늘) 먼저, 가까운 다리 나중
+        const leg = (x, near) => {
+          const dx = near ? sw * 2 : -sw * 2, lx = x + dx, bot = FT - 4 - (dx > 0 ? 1 : 0);
+          const c = h => near ? h : shade(h);
+          mRect(lx, 54, 6, bot - 54); commit(c(sk));
+          if (!robe) {
+            if (a.legs === 'pants') { mRect(lx, 54, 6, bot - 54); commit(c(lc)); }
+            else if (a.legs === 'greaves') { mRect(lx, 54, 6, 5); commit(c(lc)); mRect(lx - 1, 58, 8, bot - 58); commit(c(METAL), { line: 'all', sh: 1 }); dot(lx + 2, 60, GOLD); }
+            else { mRect(lx, 54, 6, 5); commit(c(lc)); }
+          }
+          const bh = a.legs === 'greaves' || sit ? 4 : 7;
+          mRect(lx - 1, bot + 4 - bh, 9, bh); ink = 0; mSet(lx - 1, bot + 4 - bh); mSet(lx + 7, bot + 4 - bh); ink = 1; commit(c(shoe), { line: 'b' });
+          for (let i = 0; i < 9; i++) dot(lx - 1 + i, bot + 4, [60, 44, 36]);
+          if (bh === 7) for (let i = 0; i < 6; i++) put(lx + i, bot - 1, ramp(shoe).dp);
+        };
+        leg(20, false); leg(23, true);
+
+        // ── 엉덩이·치마
+        if (!robe && a.legs === 'skirt') {
+          mTri(17, 49 + o, 31, 49 + o, 34, 62 + o); mTri(17, 49 + o, 34, 62 + o, 14, 62 + o); commit(lc, { line: 'b' });
+          [18, 24, 30].forEach(x => { for (let y = 52; y < 61; y++) put(x + Math.round((x - 24) * (y - 50) / 24), y + o, ramp(lc).dp); });
+          mRect(16, 49 + o, 16, 2); commit(METAL, { flat: true, line: 'b' });
+        } else if (!robe) { mRect(18, 50 + o, 12, 7); commit(coat ? ac : lc); }
+
+        // ── 몸통
+        const rb = sit ? SIT_FOOT : FOOT - 1;
+        if (robe) {
+          mRect(18, 40 + o, 12, 12); mRect(19, 38 + o, 10, 2);
+          mRect(17, 50 + o, 14, rb - 50 - o); mTri(17, 56 + o, 17, rb, 13, rb); mTri(31, 56 + o, 31, rb, 35, rb);
+          commit(ac, { line: 'b' });
+          for (let x = 13; x < 35; x++) put(x, rb - 3, rA.dp);
+          mRect(17, 50 + o, 14, 3); commit(GOLD, { flat: true, line: 'b' });
+        } else {
+          mRect(18, 40 + o, 12, 12); mRect(19, 38 + o, 10, 2); commit(ac);
+          if (coat) { const cb = sit ? SIT_FOOT - 2 : 67; mRect(16, 50 + o, 14, cb - 50); commit(ac, { line: 'b' }); for (let y = 52; y < cb - 1; y++) put(29, y + o, rA.dp); }
+        }
+        if (a.armor === 'tunic') { for (let y = 40; y < 45; y++) put(28, y + o, rA.sh); }
+        if (a.armor === 'leather') {
+          mLine(20, 40 + o, 29, 50 + o, 2.2); commit('#4a3220', { flat: true });
+          [[22, 42], [25, 45], [28, 48]].forEach(([x, y]) => dot(x, y + o, GOLD));
+          mEll(23.5, 40 + o, 4.5, 2.8); commit('#4a3220', { line: 'b' });
+        }
+        if (plate) {
+          for (let y = 41; y < 50; y++) put(28, y + o, rA.dp);
+          mEll(23.5, 40 + o, 5.5, 3.4); commit(ac, { line: 'all', sh: 1 });
+          mRect(21, 37 + o, 7, 2); commit(hex(rA.sh), { flat: true, line: 'b' });
+        }
+        if (coat) {
+          for (let y = 44; y < 66; y++) put(29, y + o, [232, 196, 58]);
+          mRect(20, 38 + o, 7, 2); commit(GOLD, { flat: true, line: 'b' });
+          mTri(26, 42 + o, 28.5, 44.5 + o, 23.5, 44.5 + o); mTri(23.5, 44.5 + o, 28.5, 44.5 + o, 26, 47 + o); commit(em, { flat: true });
+        }
+        if (robe) { mTri(26, 42 + o, 29, 45 + o, 23, 45 + o); mTri(23, 45 + o, 29, 45 + o, 26, 48 + o); commit(em, { flat: true }); }
+        if (!robe) { mRect(18, 50 + o, 12, 2); commit(LEATH, { flat: true, line: 'b' }); dot(27, 50 + o, GOLD); dot(28, 50 + o, GOLD); dot(27, 51 + o, GOLD); dot(28, 51 + o, GOLD); }
+
+        // ── 가까운 팔 (걸을 때 다리 반대로 흔들림)
+        const ax = 22 - sw * 2, ay = 39 + o;
+        const sleeve = { tunic: 5, leather: 4, plate: 12, coat: 13, robe: 13 }[a.armor];
+        mRect(ax, ay, 4, 13); commit(sk, { line: 'all', sh: 1 });
+        const handC = plate ? METAL : a.armor === 'leather' ? LEATH : sk;
+        mEll(ax + 2, ay + 14, 2.6, 2.4); commit(handC, { sh: 1 });
+        if (robe) { mRect(ax - 1, ay - 1, 6, sleeve); commit(ac, { line: 'all', sh: 1 }); for (let i = 0; i < 6; i++) put(ax - 1 + i, ay + sleeve - 2, [232, 196, 58]); }
+        else { mRect(ax, ay - 1, 5, sleeve); commit(ac, { line: 'all', sh: 1 }); }
+        if (a.armor === 'leather') { mRect(ax, ay + 8, 4, 5); commit(LEATH, { line: 'all', sh: 1 }); }
+        if (plate) { mRect(ax - 1, ay + 8, 6, 5); commit(METAL, { line: 'all', sh: 1 }); }
+        if (coat) for (let i = 0; i < 5; i++) put(ax + i, ay + sleeve - 2, [232, 196, 58]);
+        if (a.cape !== 'none') { mEll(22, 38.5 + o, 1.6, 1.6); commit(GOLD, { flat: true }); }
+
+        // ── 손에 든 무기 (가까운 손)
+        const hx = ax + 2, hy = ay + 14;
+        if (a.weapon === 'sword' || a.weapon === 'shield') {
+          const tx = hx + 12, ty = hy - 40;
+          mLine(hx, hy - 4, tx, ty, 3); commit(METAL, { sh: 1, line: 'b' });
+          for (let k = 1; k < 9; k++) put(Math.round(hx + (tx - hx) * k / 9.5), Math.round(hy - 4 + (ty - hy + 4) * k / 9.5), [236, 240, 246]);
+          mLine(hx - 4, hy - 3, hx + 4, hy - 5, 2.2); commit(GOLD, { flat: true });
+          mLine(hx, hy - 2, hx - 1, hy + 3, 2.6); commit(LEATH, { sh: 1 });
+          mEll(hx - 1.5, hy + 4, 1.6, 1.6); commit(GOLD, { flat: true });
+        }
+        if (a.weapon === 'spear' || a.weapon === 'staff') {
+          const px = hx + 4, top = a.weapon === 'spear' ? 8 : 10;
+          mRect(px, top + o, 2, 78 - top - o); commit(WOOD, { sh: 1 });
+          if (a.weapon === 'spear') { mTri(px - 2, 9 + o, px + 4, 9 + o, px + 1, 0 + o); commit(METAL, { sh: 1 }); mRect(px - 1, 9 + o, 4, 2); commit(GOLD, { flat: true }); }
+          else { mRect(px - 1, 11 + o, 4, 2); commit(GOLD, { flat: true }); mEll(px + 1, 7 + o, 4, 4); commit(em, { sh: 1, line: 'all' }); dot(px, 5 + o, WHITE); }
+          mEll(hx + 1, hy, 2.6, 2.4); commit(handC, { sh: 1 });
+        }
+
+        // ── 목·머리·얼굴 (오른쪽이 얼굴)
+        mRect(22, 34 + o, 6, 5); commit(hex(rS.sh), { flat: true });
+        mEll(25, 23 + o, 13.5, 14.5); mEll(27, 28 + o, 11, 9.5); mRect(37, 26 + o, 2, 2); commit(sk, { sh: 3 });
+        mEll(16.5, 26 + o, 2.6, 3.2); commit(sk, { sh: 1 });
+        const iris = ramp(AV_EYES[a.eyeColor]), ex = 31;
+        for (let y = 24; y < 30; y++) for (let x = ex; x < ex + 4; x++) {
+          if (y === 24 && (x === ex || x === ex + 3)) continue;
+          put(x, y + o, y >= 27 ? (y === 29 ? iris.lt : iris.b) : [46, 38, 51]);
+        }
+        put(ex + 4, 24 + o, [46, 38, 51]);
+        dot(ex, 25 + o, WHITE); dot(ex + 1, 25 + o, WHITE); dot(ex, 26 + o, WHITE); dot(ex + 3, 28 + o, WHITE);
+        for (let x = 30; x < 36; x++) put(x, 22 + o - (x >= 34 ? 1 : 0), rH.dp);
+        dot(35, 32 + o, '#a5464f'); dot(36, 31 + o, '#a5464f');
+        if (a.face === 'scar') { [[34, 20], [34, 21], [33, 22], [33, 30], [33, 31], [32, 32]].forEach(([x, y]) => dot(x, y + o, '#c0545a')); }
+        if (a.face === 'patch') { mLine(12, 22 + o, 38, 21 + o, 1.2); commit(DARK, { flat: true }); mEll(32.5, 26.5 + o, 3.6, 3.2); commit(DARK, { flat: true, line: 'all' }); }
+        if (a.face === 'beard') { mEll(31, 33.5 + o, 8, 4.5); ink = 0; mEll(34, 31 + o, 4, 2.2); ink = 1; commit(hc, { line: 'b' }); }
+        if (a.face === 'mask') { mRect(22, 29 + o, 16, 4); mEll(30, 32 + o, 9, 6); commit(DARK, { line: 'b', sh: 1 }); }
+
+        // ── 머리카락: 뒤통수·정수리 돔 + 뒷머리 + 앞머리 삐침
+        const backLen = { short: 12, bob: 20, long: 30, pony: 12, spiky: 10, bald: 0 }[a.hair];
+        if (a.hair !== 'bald') {
+          mEll(23, 20 + o, 15.5, 14, 0, 21 + o);
+          mRect(9, 18 + o, 7, Math.min(backLen, 20));
+          [[21, 27, 24, 25], [26, 32, 29, 24], [31, 37, 34, 26], [35, 40, 38, 30]].forEach(([x0, x1, tx, ty]) => mTri(x0, 20 + o, x1, 20 + o, tx, ty + o));
+          if (a.hair === 'spiky' && !helmet && a.hat !== 'bandana' && !hooded) { mTri(10, 13 + o, 17, 9 + o, 6, 2 + o); mTri(17, 9 + o, 25, 8 + o, 18, 0 + o); mTri(24, 8 + o, 31, 9 + o, 30, 1 + o); mTri(31, 10 + o, 37, 14 + o, 40, 5 + o); }
+          commit(hc, { line: 'b' });
+          for (let x = 13; x <= 30; x++) { const y = 12 + Math.round(((x - 21) / 9) ** 2 * 3); if (inHair(x, y + o)) put(x, y + o, rH.lt); }
+          for (let y = 14; y < 19; y++) put(29, y + o, rH.sh);
+        } else { dot(17, 11 + o, hex(rS.lt)); dot(18, 11 + o, hex(rS.lt)); dot(16, 12 + o, hex(rS.lt)); }
+
+        // ── 투구·모자
+        if (helmet) {
+          mEll(23, 17 + o, 16.5, 13.5, 0, 22 + o); commit(hatC, { line: 'b' });
+          mRect(12, 20 + o, 5, 11); commit(hatC, { line: 'all', sh: 1 });
+          mRect(37, 20 + o, 2, 9); commit(hatC, { flat: true, line: 'all' });
+          for (let x = 10; x <= 36; x++) put(x, 21 + o, rHat.dp);
+          for (let y = 3; y < 10; y++) { put(22, y + o, [232, 196, 58]); put(23, y + o, [232, 196, 58]); }
+          if (a.hat === 'horn') { mTri(9, 14 + o, 14, 8 + o, 3, 1 + o); mTri(36, 14 + o, 31, 8 + o, 42, 1 + o); commit(WHITE, { sh: 1, line: 'b' }); }
+        }
+        if (a.hat === 'feather') {
+          mEll(23, 11 + o, 13, 9, 0, 18 + o); commit(hatC, { line: 'b' });
+          mRect(10, 13 + o, 26, 3); commit(hex(rHat.dp), { flat: true });
+          mEll(24, 18 + o, 21, 3.5); commit(hex(rHat.sh), { line: 'b', sh: 1 });
+          mCurve(16, 11 + o, 9, 3 + o, 2, 2 + o, 3); commit(em, { sh: 1 });
+          mEll(16, 11.5 + o, 2, 2); commit(GOLD, { flat: true });
+        }
+        if (a.hat === 'bandana') {
+          mEll(23, 16 + o, 16.5, 11.5, 0, 20 + o); commit(hatC, { line: 'b' });
+          mTri(10, 16 + o, 1, 10 + o, 4, 24 + o); commit(hatC, { line: 'b' });
+          for (let x = 10; x < 36; x += 4) for (let y = 11; y < 19; y += 4) dot(x + (y % 8 ? 2 : 0), y + o, WHITE);
+        }
+        if (a.hat === 'crown') {
+          mRect(10, 13 + o, 27, 4); [10, 16.5, 23, 29.5, 36].forEach(x => mTri(x - 3, 13 + o, x + 3, 13 + o, x, 6 + o)); commit(GOLD, { line: 'b', sh: 1 });
+          [14, 23, 32].forEach(x => dot(x, 14 + o, em));
+        }
+        if (hooded) {
+          mEll(23, 18 + o, 18, 16.5, 0, 34 + o); mRect(10, 28 + o, 26, 8);
+          ink = 0; mEll(29, 25.5 + o, 10, 9); ink = 1;
+          commit(hatC, { line: 'all', sh: 2 });
+          dot(22, 3 + o, hex(rHat.dp));
+        }
+        outline();
         return buf;
       }
       // 앞머리 윤기선은 머리카락 위에만 (머리 색 그대로인 칸)
@@ -407,29 +596,29 @@
 
       const cache = new Map();
       // 그린 그림(캔버스)을 돌려줌. 같은 생김새·자세는 다시 그리지 않음
-      function sprite(a, back = false, f = 0, sit = false) {
-        const key = JSON.stringify(a) + `|${back ? 1 : 0}${f}${sit ? 1 : 0}`;
+      function sprite(a, back = false, f = 0, sit = false, side = false) {
+        const key = JSON.stringify(a) + `|${back ? 1 : 0}${f}${sit ? 1 : 0}${side ? 1 : 0}`;
         let cv = cache.get(key);
         if (cv) return cv;
         if (cache.size > 160) cache.clear();
         cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-        cv.getContext('2d').putImageData(new ImageData(paint(a, back, f, sit), W, H), 0, 0);
+        cv.getContext('2d').putImageData(new ImageData(paint(a, back, f, sit, side), W, H), 0, 0);
         cache.set(key, cv);
         return cv;
       }
       return { W, H, FOOT, SIT_FOOT, sprite };
     })();
 const g = document.getElementById('g');
-const show = (a, label, views = [[false, 0], [false, 1], [true, 0], [false, 0, true]]) => views.forEach(([b, f, sit]) => {
+const show = (a, label, views = [[false, 0], [false, 1], [false, 0, false, true], [true, 0], [false, 0, true]]) => views.forEach(([b, f, sit, side]) => {
   const d = document.createElement('div'); d.className = 'c';
   const c = document.createElement('canvas'); c.width = RoomAvatar.W; c.height = RoomAvatar.H;
-  c.getContext('2d').drawImage(RoomAvatar.sprite(a, b, f, sit), 0, 0);
-  d.appendChild(c); d.append(label + (b ? ' 뒤' : '') + (sit ? ' 앉음' : '')); g.appendChild(d);
+  c.getContext("2d").drawImage(RoomAvatar.sprite(a, b, f, sit, side), 0, 0);
+  d.appendChild(c); d.append(label + (b ? " 뒤" : "") + (side ? " 옆" : "") + (sit ? " 앉음" : "")); g.appendChild(d);
 });
 show(avatarLook(null), '기본');
 Object.entries(AV_PARTS).forEach(([key, list]) => list.forEach(([id, n]) => {
   const extra = key === 'armor' ? { armorColor: id === 'plate' ? 14 : id === 'robe' ? 8 : id === 'coat' ? 16 : 12 } : key === 'hat' ? { hatColor: id === 'helm' || id === 'horn' ? 14 : 0 } : {};
-  show(avatarLook({ ...AV_DEFAULT, ...extra, [key]: id }), n, [[false, 0], [true, 0]]);
+  show(avatarLook({ ...AV_DEFAULT, ...extra, [key]: id }), n, [[false, 0], [false, 0, false, true], [true, 0]]);
 }));
 for (let i = 0; i < 12; i++) show(avatarLook(avatarRandom()), `랜덤 ${i + 1}`, [[false, i % 4]]);
 </script>
