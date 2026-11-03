@@ -1,13 +1,15 @@
 # 성기사(성전사) 전용 샘플(은발 땋은 머리·파란 십자 방패·전쟁 망치, 흰 배경 한 장씩) → 캐릭터 시트 assets/sprites/merc/paladin_0.webp
 # 사용: python tools/paladin_build.py   (샘플은 assets/sprites/fx/samples/paladin_*_src.png, 동작 샘플이 오는 대로 FRAMES에 늘림)
-# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~4 걷기 · 5 피격 · 6~8 쓰러짐 (서서 뒤로 젖힘 → 무릎 꿇음 → 엎어짐)
+# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~4 걷기 · 5 피격 · 6~8 쓰러짐 (서서 뒤로 젖힘 → 무릎 꿇음 → 엎어짐) · 9~10 기본 공격 (망치 치켜들기 → 내리치기)
 # 크기 통일: 대기 샘플의 머리 꼭대기~발 키(IDLE_SRC_H)를 TARGET_H로 줄이는 배율이 기준. 다른 동작은 같은 배율(k=1)로 줄이고,
 #   샘플마다 캐릭터를 다르게 그려 왔으면 그 칸의 몸 키(머리 꼭대기~발, 샘플 px)를 ('h', 키)로 적어 대기와 같은 키가 되게 맞춤
 # 샘플 정리:
-#   - 흰 배경은 가장자리에서 이어진 흰 픽셀만 지움 (갑옷·방패 십자의 흰 하이라이트는 남김), 배경과 섞인 2px 테두리는 흰색을 빼서 투명도·본래 색을 되살림
+#   - 흰 배경은 가장자리에서 이어진 흰 픽셀만 지움 (갑옷·방패 십자의 흰 하이라이트는 남김). 몸 안에 갇힌 흰 배경(공격 치켜들기의 망치와 방패 사이,
+#     대기의 망치 자루와 옷 사이)은 GAP 상자 안의 아주 하얀 덩어리만 배경으로 (가슴 갑옷·부츠 하이라이트도 똑같이 하얘서 상자로 자리를 정함), 배경과 섞인 2px 테두리는 흰색을 빼서 투명도·본래 색을 되살림
 #   - 대기 샘플(168×195)은 카드 화면을 잘라 온 것이라 오른쪽 4px·아래 1px 회색 테두리와 왼쪽 위 "#2" 번호 글씨가 박혀 있음 → 지움 (CARD, LABEL)
 #   - 발은 잘리지 않았음 (부츠 바닥 윤곽선 뒤 1px 연한 띠까지 있음)
 #   - 걷기 샘플(753×240, "2. 걷기" 제목 글씨)은 캐릭터가 대기보다 9% 크게 그려짐(키 177px, 머리 폭 77 vs 대기 69) → 몸 키로 대기와 같게
+#   - 기본 공격 샘플 2장(113×143 치켜들기, 151×140 내리치기)은 캐릭터가 대기의 0.815배로 작게 그려짐(방패·얼굴·머리 폭 모두) → 1.23배로 키움
 #   - 피격·쓰러짐 샘플(931×178, 제목 글씨 2개)은 얼굴은 대기와 같은데 방패가 15% 작게 그려짐 → 중간값 1.08배로 키움. 무릎 꿇음·엎어짐 칸은 키로 못 재서 첫 칸 배율 그대로
 import os, sys
 import numpy as np
@@ -29,9 +31,11 @@ FRAMES = [
     ('walk', 'walk0', ('h', 177), 0), ('walk', 'walk1', ('h', 177), 1), ('walk', 'walk2', ('h', 177), 2), ('walk', 'walk3', ('h', 177), 3),
     ('hurt_down', 'hurt', 1.08, 0),
     ('hurt_down', 'down0', 1.08, 1), ('hurt_down', 'down1', 'down0', 2), ('hurt_down', 'down2', 'down0', 3),
+    ('atk_a', 'atk0', 1.23, 0), ('atk_b', 'atk1', 1.23, 0),
 ]
 CARD = {'idle': (163, 194)}   # 카드 테두리를 빼고 쓸 (너비, 높이)
 LABEL = {'idle': [(0, 45, 0, 16)]}   # 지울 상자 (x0, x1, y0, y1): 번호 글씨
+GAP = {'atk_a': [(15, 60, 35, 75)], 'idle': [(95, 140, 130, 175)]}   # 갇힌 흰 배경을 지울 상자 (x0, x1, y0, y1)
 LIFT = {}   # 땅에서 띄워 그릴 높이 (칸 px)
 SRC = {}
 
@@ -45,6 +49,12 @@ def load(name, pick=0):
     edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
     bg = np.isin(lab, edge[edge > 0])
     for x0, x1, y0, y1 in LABEL.get(name, ()): bg[y0:y1, x0:x1] = True
+    if name in GAP:
+        box = np.zeros_like(bg)
+        for x0, x1, y0, y1 in GAP[name]: box[y0:y1, x0:x1] = True
+        ids = np.arange(1, n + 1)
+        gap = np.isin(lab, ids[(ndi.sum(white & box, lab, ids) >= 3) & (ndi.mean(im.min(axis=2), lab, ids) > 238)]) & box
+        bg |= gap
     rim = ~bg & ndi.binary_dilation(bg, iterations=2)
     a = np.where(bg, 0.0, 1.0)
     a = np.where(rim, np.clip((255 - im.min(axis=2)) / 225, 0, 1), a)
