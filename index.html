@@ -40679,6 +40679,11 @@
       ghost:  { w: 52, h: 44, label: '유령',   min: 2, alt: 50, air: true, sprite: 'ghost_mage', scale: 0.5, anim: 'walk', fps: 4, bob: 12, fade: true },
       harpy:  { w: 60, h: 64, label: '얼음 하피', min: 3, alt: 120, air: true, sprite: 'ice_harpy_archer', scale: 0.34, anim: 'walk', fps: 8, dive: true },
       bomb:   { w: 84, h: 66, label: '고블린 폭탄', min: 2, hazard: true },
+      // ── 슬라이드 전용: 위에서 매달려 내려와 점프로는 못 넘음 (hang). 슬라이드로 지나가면 보너스
+      branch:     { w: 96, h: 400, alt: 46, label: '늘어진 나뭇가지', min: 0, air: true, hang: true },
+      hangspider: { w: 56, h: 400, alt: 44, label: '매달린 거미', min: 1, air: true, hang: true, sprite: 'spider_warrior', scale: 0.36, anim: 'idle', fps: 2, bob: 10, thread: true },
+      icearrow:   { w: 76, h: 22, alt: 50, label: '얼음 화살', min: 2, hang: true, approach: 1.4, hazard: true },
+      harpyhigh:  { w: 0, h: 0, alt: 180, label: '하피 궁수', min: 2, air: true, decor: true, sprite: 'ice_harpy_archer', scale: 0.34, anim: 'attack', fps: 5, bob: 6 },
     };
     // 점수 → 난이도 단계 (0~4). 단계가 오르면 새 장애물·빡빡한 패턴이 섞이고 생성 간격이 줄어듦
     const PETRUN_STAGE_SCORES = [0, 700, 1800, 3500, 6000];
@@ -41012,8 +41017,14 @@
             const d = PETRUN_OBS[o.sub];
             const ob = this.obsBox(o, d);
             if (!ob) continue;
-            if (ob.x1 < pb.x0) { o.passed = true; continue; }
+            if (ob.x1 < pb.x0) {
+              o.passed = true;
+              // 매달린 것을 슬라이드로 지나가면 보너스 (부딪힌 건 제외)
+              if (d.hang && !o.hit && s.sliding) { const bonus = 15 + s.stage * 5; s.score += bonus; s.slides = (s.slides || 0) + 1; this.float(s, px + 30, G - 70, `🛝 슬라이딩! +${bonus}`, '#7dd3fc'); this.tone('jelly'); }
+              continue;
+            }
             if (s.inv <= 0 && ob.x0 < pb.x1 && ob.x1 > pb.x0 && ob.y0 < pb.y1 && ob.y1 > pb.y0) {
+              o.hit = true;
               let dmg = PETRUN.hitDamage * (s.perk.dmg || 1) * (d.hazard ? 1.2 : 1);
               if (s.perk.ram && !d.air && !d.hazard && !o.alt) {
                 dmg *= 0.5; o.dead = true;
@@ -41034,7 +41045,7 @@
       moveObs(s, o, dt) {
         const d = PETRUN_OBS[o.sub], G = PETRUN.groundY;
         o.age = (o.age || 0) + dt;
-        if (d.bob) o.alt = d.alt + Math.sin(s.t * 4 + o.flap) * d.bob;
+        if (d.bob) o.alt = (o.baseAlt !== undefined ? o.baseAlt : d.alt) + Math.sin(s.t * 4 + o.flap) * d.bob;
         if (d.dive) { const k = Math.max(0, Math.min(1, (520 - o.x) / 260)); o.alt = d.alt * (1 - k * k); if (k > 0 && k < 1) o.diving = true; }
         if (o.sub === 'bomb') {
           // 하늘에서 떨어져 땅에서 터짐: fall → boom(0.5초) → 끝
@@ -41045,6 +41056,7 @@
       // 충돌 상자 (null = 지금은 닿지 않는 상태)
       obsBox(o, d) {
         const G = PETRUN.groundY;
+        if (d.decor) return null;
         if (o.sub === 'bomb') {
           if (o.phase === 'fall') return { x0: o.x + d.w / 2 - 14, x1: o.x + d.w / 2 + 14, y0: G + o.fy - 46, y1: G + o.fy - 6 };
           if (o.phase === 'boom') { const k = Math.min(1, o.boomT / 0.18); return { x0: o.x + d.w / 2 - d.w / 2 * k, x1: o.x + d.w / 2 + d.w / 2 * k, y0: G - d.h * k, y1: G - 2 }; }
@@ -41064,7 +41076,11 @@
           s.objs.push(o);
         };
         // 단계별로 고를 수 있는 종류
-        const ground = Object.keys(PETRUN_OBS).filter(k => !PETRUN_OBS[k].air && PETRUN_OBS[k].min <= st && k !== 'bomb' && k !== 'fire');
+        const ground = Object.keys(PETRUN_OBS).filter(k => !PETRUN_OBS[k].air && !PETRUN_OBS[k].hang && !PETRUN_OBS[k].decor && PETRUN_OBS[k].min <= st && k !== 'bomb' && k !== 'fire');
+        const lowJelly = (x, n) => jellyLine(x, G - 20, n, 30);                                  // 슬라이드 높이 젤리 줄
+        const hang = x => obs(st >= 1 && Math.random() < 0.45 ? 'hangspider' : 'branch', x);      // 매달린 것 하나
+        const batSwarm = x => { [52, 96, 140].forEach((a, i) => obs('bat', x + i * 6, { baseAlt: a, alt: a, flap: 1.5 })); }; // 세로로 겹친 박쥐 떼 → 슬라이드
+        const arrows = (x, n) => { obs('harpyhigh', x - 60); for (let i = 0; i < n; i++) obs('icearrow', x + 80 + i * 150, { flap: i }); }; // 높이 뜬 하피가 머리 높이로 쏨
         const low = ['rock', 'log', 'slime', ...(st >= 1 ? ['spider'] : [])];                 // 낮은 것(점프로 쉽게)
         const tall = ['cactus', ...(st >= 1 ? ['goblin'] : []), ...(st >= 3 ? ['golem'] : [])];  // 높은 것
         const air = ['bat', ...(st >= 2 ? ['ghost'] : [])];
@@ -41076,6 +41092,15 @@
           [0, 4, () => { obs(pick(low), X); jellyArc(X - 70, 5); return 1.05; }],
           [0, 4, () => { obs(pick(air), X); jellyLine(X + 30, G - 24, 4); return 1.0; }],
           [0, 3, () => { obs(pick(tall), X); jellyLine(X + 60, G - 130, 4); return 1.15; }],
+          [0, 4, () => { hang(X); lowJelly(X - 40, 6); return 1.1; }],
+          [1, 3, () => { hang(X); obs(pick(low), X + 200); jellyLine(X + 240, G - 42, 3); return 1.4; }],
+          [1, 2, () => { obs(pick(low), X); hang(X + 190); lowJelly(X + 160, 5); return 1.4; }],
+          [2, 3, () => { batSwarm(X); lowJelly(X - 30, 5); return 1.2; }],
+          [2, 3, () => { arrows(X, 2); return 1.5; }],
+          [3, 3, () => { hang(X); obs(pick(low), X + 170); hang(X + 340); lowJelly(X + 300, 5); return 1.8; }],
+          [3, 2, () => { arrows(X, 3); obs('fire', X + 560); return 1.9; }],
+          [4, 3, () => { batSwarm(X); obs('wolf', X + 260); hang(X + 480); return 1.9; }],
+          [4, 2, () => { obs('hangspider', X); obs('hangspider', X + 130); obs('bomb', X + 300); return 1.8; }],
           [1, 3, () => { obs('fire', X); jellyArc(X - 60, 5); return 1.1; }],
           [1, 3, () => { obs(pick(low), X); obs(pick(low), X + 150 + Math.random() * 60); return 1.3; }],
           [1, 2, () => { obs(pick(ground), X); jellyLine(X + 90, G - 42, 3); return 1.1; }],
@@ -41138,7 +41163,7 @@
         res.innerHTML = `
           <div class="flex flex-wrap items-center gap-x-5 gap-y-1">
             <div><span class="text-[11px] text-slate-400 font-bold">점수</span> <b class="text-2xl font-title text-amber-300">${s.score.toLocaleString()}</b>${s.isBest ? ' <span class="text-[11px] px-1.5 py-0.5 rounded bg-rose-500 text-white font-extrabold">NEW 최고 기록!</span>' : ''}</div>
-            <div class="text-[11px] text-slate-300 font-bold">🏃 ${Math.round(s.dist / 10).toLocaleString()}m · 🍬 젤리 ${s.jelly}개 · ⏱ ${Math.round(s.t)}초</div>
+            <div class="text-[11px] text-slate-300 font-bold">🏃 ${Math.round(s.dist / 10).toLocaleString()}m · 🍬 젤리 ${s.jelly}개 · 🛝 슬라이딩 통과 ${s.slides || 0}번 · ⏱ ${Math.round(s.t)}초</div>
             <div class="text-xs font-extrabold">${rewardText}</div>
             ${stu ? `<div class="text-[11px] text-slate-400 font-bold">내 최고 ${this.record(stu).best.toLocaleString()}점</div>` : ''}
           </div>`;
@@ -41158,7 +41183,7 @@
         ctx.fillText(pet ? `${pet.name}와(과) 함께 달려요!  ▶ 시작 버튼을 누르세요` : '활성화한 펫이 있어야 달릴 수 있어요', PETRUN.W / 2, 190);
         ctx.font = '700 13px sans-serif'; ctx.fillStyle = '#cbd5e1';
         ctx.fillText('점프: ↑ · 스페이스 · 화면 위쪽 터치   |   슬라이드: ↓ (누르고 있기) · 화면 아래쪽 터치', PETRUN.W / 2, 222);
-        ctx.fillText('젤리를 먹으면 점수, 하트는 체력 회복. 체력이 0이 되면 끝!', PETRUN.W / 2, 246);
+        ctx.fillText('젤리를 먹으면 점수, 하트는 체력 회복. 매달린 가지·거미·박쥐 떼·얼음 화살은 슬라이드로! 체력이 0이 되면 끝!', PETRUN.W / 2, 246);
         ctx.restore();
       },
       // 색 섞기 (낮 → 노을 → 밤으로 멀리 갈수록 하늘이 바뀜)
@@ -41318,6 +41343,15 @@
           if (def) {
             const frames = def.anims[d.anim] || def.anims.idle, f = frames[Math.floor((o.age || 0) * d.fps + (o.flap || 0)) % frames.length];
             const alpha = d.fade ? 0.45 + 0.5 * Math.abs(Math.sin(t * 2 + (o.flap || 0))) : 1;
+            if (d.thread) { // 거미줄: 화면 위에서 거미 등까지
+              const spH = (def.standH || def.cellH) * d.scale, cx = x + d.w / 2;
+              ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, -10); ctx.lineTo(cx, G - alt - spH + 6); ctx.stroke();
+              ctx.fillStyle = 'rgba(255,255,255,0.5)'; for (let i = 0; i < 4; i++) ctx.fillRect(cx - 6 + (i % 2) * 8, 20 + i * 24 + Math.sin(t * 3 + i) * 3, 4, 2);
+              ctx.restore();
+            }
+            if (d.decor) { // 높이 뜬 하피: 얼음 기운
+              ctx.save(); ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 6); ctx.fillStyle = '#bae6fd'; ctx.font = '16px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('❄', x + d.w / 2 - 30 + Math.sin(t * 4) * 6, G - alt - 30); ctx.restore();
+            }
             // 발밑 그림자 (공중이면 작게)
             ctx.save(); ctx.fillStyle = `rgba(40,20,40,${0.22 - Math.min(0.15, alt / 600)})`; ctx.beginPath(); ctx.ellipse(x + d.w / 2, G, d.w * 0.6 * (1 - Math.min(0.5, alt / 300)), 7, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
             if (this.drawSheet(ctx, def, f, x + d.w / 2, G - alt, d.scale, true, alpha)) {
@@ -41346,6 +41380,30 @@
           ctx.beginPath(); ctx.roundRect(x, y - 46, 10, 22, 5); ctx.fill(); ctx.fillRect(x + 4, y - 30, 8, 6);
           ctx.beginPath(); ctx.roundRect(x + 26, y - 56, 10, 24, 5); ctx.fill(); ctx.fillRect(x + 24, y - 38, 8, 6);
           ctx.fillStyle = '#bbf7d0'; for (let i = 0; i < 5; i++) ctx.fillRect(x + 17, y - d.h + 8 + i * 12, 2, 4);
+        } else if (o.sub === 'branch') {
+          // 늘어진 나뭇가지: 화면 위에서 내려온 줄기 + 잎 뭉치, 아래 끝이 슬라이드 높이 바로 위
+          const cx = x + d.w / 2, bottom = G - alt;
+          ctx.fillStyle = '#5b3a1a';
+          ctx.beginPath(); ctx.moveTo(cx - 16, -10); ctx.quadraticCurveTo(cx - 30, bottom - 120, cx - 10, bottom - 40); ctx.lineTo(cx + 10, bottom - 40); ctx.quadraticCurveTo(cx + 22, bottom - 120, cx + 16, -10); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#6b4423'; ctx.beginPath(); ctx.roundRect(cx - d.w / 2, bottom - 46, d.w, 20, 10); ctx.fill();
+          ctx.fillStyle = '#4b2e14'; ctx.fillRect(cx - d.w / 2 + 10, bottom - 40, d.w - 20, 3);
+          const sway = Math.sin(t * 2 + (o.flap || 0)) * 3;
+          [[-36, -52, 26], [-6, -62, 30], [28, -50, 24], [-22, -30, 20], [18, -28, 22], [2, -12, 18]].forEach(([dx, dy, r], i) => {
+            ctx.fillStyle = i % 2 ? '#22c55e' : '#16a34a'; ctx.beginPath(); ctx.arc(cx + dx + sway * (1 + i * 0.1), bottom + dy, r, 0, Math.PI * 2); ctx.fill();
+          });
+          ctx.fillStyle = '#86efac'; [[-30, -58], [10, -66], [30, -46]].forEach(([dx, dy]) => { ctx.beginPath(); ctx.arc(cx + dx + sway, bottom + dy, 6, 0, Math.PI * 2); ctx.fill(); });
+          // 아래쪽 잎 몇 장이 슬라이드 높이에서 흔들림 (여기 닿으면 피해)
+          ctx.fillStyle = '#15803d'; [[-20, 2], [6, 6], [26, 0]].forEach(([dx, dy]) => { ctx.beginPath(); ctx.ellipse(cx + dx + sway, bottom + dy - 4, 9, 5, 0.4, 0, Math.PI * 2); ctx.fill(); });
+        } else if (o.sub === 'icearrow') {
+          // 얼음 화살: 머리 높이로 빠르게 날아옴, 뒤로 얼음 꼬리
+          const cy = G - alt - d.h / 2, x1 = x + d.w;
+          ctx.save();
+          for (let i = 0; i < 5; i++) { ctx.globalAlpha = 0.35 - i * 0.06; ctx.fillStyle = '#bae6fd'; ctx.beginPath(); ctx.ellipse(x1 + 14 + i * 12, cy + Math.sin(t * 20 + i) * 2, 8, 3, 0, 0, Math.PI * 2); ctx.fill(); }
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = '#e0f2fe'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x + 10, cy); ctx.lineTo(x1, cy); ctx.stroke();
+          ctx.fillStyle = '#7dd3fc'; ctx.beginPath(); ctx.moveTo(x, cy); ctx.lineTo(x + 22, cy - 8); ctx.lineTo(x + 16, cy); ctx.lineTo(x + 22, cy + 8); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#f0f9ff'; ctx.beginPath(); ctx.moveTo(x1 - 4, cy); ctx.lineTo(x1 + 6, cy - 6); ctx.lineTo(x1 + 6, cy + 6); ctx.closePath(); ctx.fill();
+          ctx.restore();
         } else if (o.sub === 'fire') {
           // 불기둥: 화염족 불꽃 이펙트를 땅에 세움 (흔들리며 타오름)
           const fx = typeof FIRE_FX !== 'undefined' && FIRE_FX, im = fx && this.img(fx.src);
