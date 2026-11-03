@@ -1513,6 +1513,7 @@
           <span class="lp-merc" style="--cw:99;--ch:90;--f0:4;--nf:4"><img src="assets/sprites/merc/healer_0.webp" alt="성녀 용병" width="2277" height="90"></span>
           <span class="lp-merc" style="--cw:120;--ch:81;--f0:2;--nf:4"><img src="assets/sprites/merc/archer_0.webp" alt="궁수 용병" width="2040" height="81"></span>
           <span class="lp-merc" style="--cw:118;--ch:95;--f0:0;--nf:4"><img src="assets/sprites/merc/mage_0.webp" alt="마법사 용병" width="1534" height="95"></span>
+          <span class="lp-merc lp-pet" style="--cw:152;--ch:157;--ay:155;--f0:1;--nf:4;--k:0.32"><img src="assets/sprites/pet/ginger_sheet.webp" alt="치즈 고양이 펫" width="5624" height="157"></span>
           <span class="lp-merc" style="--cw:186;--ch:102;--f0:2;--nf:4"><img src="assets/sprites/merc/knight_0.webp" alt="기사 용병" width="5766" height="102"></span>
           <span class="lp-merc" style="--cw:156;--ch:82;--f0:2;--nf:4"><img src="assets/sprites/merc/warrior_0.webp" alt="전사 용병" width="4212" height="82"></span>
         </div>
@@ -1720,7 +1721,17 @@
             return a;
           };
 
-          let mode = 'field', mercs = [], foes = [], st = {};
+          // 펫: 일행 사이에 1~2마리가 함께 다님 (칸 높이 58 = 용병 키의 2/3쯤)
+          const petTypes = typeof PET_DEFS === 'undefined' ? [] : Object.keys(PET_DEFS).filter(t => PET_DEFS[t].sheet);
+          const addPets = (n, base) => shuffle(petTypes).slice(0, n).map(type => {
+            const def = { ...PET_DEFS[type].sheet }, kids = [...party.children];
+            const a = makeSprite(def, party, +(58 / def.cellH).toFixed(3), `${PET_DEFS[type].name} 펫`, base);
+            party.insertBefore(a.span, kids[Math.floor(Math.random() * kids.length)] || null); // 맨 앞(오른쪽 끝)은 용병 자리
+            a.span.classList.add('lp-pet'); a.side = 'pet';
+            return a;
+          });
+
+          let mode = 'field', mercs = [], foes = [], pets = [], st = {};
           const SCENES = {
             // 들판 모험: 걸어가는 일행 앞을 테마 몬스터 1~2마리가 막음
             field() {
@@ -1775,8 +1786,8 @@
             const ground = hero.querySelector('.lp-ground').getBoundingClientRect();
             const minL = innerWidth > 900 ? hero.querySelector('.lp-win').getBoundingClientRect().right + 16 : ground.left + 8;
             const gap = mode === 'pvp' ? (narrow() ? 56 : 120) : 0;
-            const kids = [...party.children];
-            kids.forEach(c => { c.style.display = 'block'; });
+            const kids = [...party.children].filter(c => !c.classList.contains('lp-pet')); // 펫은 빼지 않고 늘 함께 다님
+            party.querySelectorAll('.lp-merc').forEach(c => { c.style.display = 'block'; });
             party.style.transform = 'none';
             // 결투장은 양 팀 인원을 똑같이 맞춤 (자리가 모자라면 양쪽 뒷줄을 함께 뺌)
             const rivals = mode === 'pvp' ? [...foeBox.querySelectorAll('.lp-merc')] : [];
@@ -1804,6 +1815,7 @@
             party.innerHTML = ''; hud.innerHTML = '';
             foeBox.querySelectorAll('.lp-merc').forEach(el => el.remove());
             SCENES[m]();
+            pets = addPets(m === 'field' && !narrow() ? 2 : 1, m === 'field' ? 'walk' : 'idle');
             fit();
             enter?.();
           };
@@ -1819,7 +1831,7 @@
           const fxl = hero.querySelector('.lp-fxl');
           const landing = document.getElementById('landingPageView');
           const idle = () => document.hidden || landing.classList.contains('hidden');
-          setInterval(() => { if (!idle()) [...mercs, ...foes].forEach(tick); }, 110);
+          setInterval(() => { if (!idle()) [...mercs, ...pets, ...foes].forEach(tick); }, 110);
           const flash = (el, cls = 'on') => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
           const vis = (list) => list.filter(a => !a.dead && a.span.isConnected && a.span.style.display !== 'none');
           const setHp = () => {
@@ -1919,7 +1931,7 @@
 
           // 들판: 몬스터가 걸어 들어오면 멈춰 싸우고, 다 쓰러뜨리면 다시 걸어가며 쓰러진 몬스터를 지나침
           const stand = (list, name) => list.forEach(a => { a.base = a.def.anims[name] ? name : 'idle'; play(a, a.base); });
-          const halt = (on) => { st.halt = on; hero.classList.toggle('lp-halt', on); stand(mercs, on ? 'idle' : 'walk'); };
+          const halt = (on) => { st.halt = on; hero.classList.toggle('lp-halt', on); stand([...mercs, ...pets], on ? 'idle' : 'walk'); };
           const arrive = () => {
             const s0 = st, d = innerWidth - foeBox.getBoundingClientRect().left + 40;
             halt(false); stand(foes, 'walk');
@@ -1983,6 +1995,13 @@
             setTimeout(beat, 900 + Math.random() * 900);
           };
           setTimeout(beat, 1400);
+          // 펫 재롱: 멈춰 있을 땐 꼬리 흔들기·뛰놀기·하품·털 고르기, 걸어갈 땐 가끔 폴짝
+          const antics = () => {
+            const p = pick(vis(pets));
+            if (p && !idle() && p.anim === p.base) play(p, mode === 'field' && !st.halt ? 'jump' : pick(['like', 'play', 'jump', 'groom', 'yawn']), 2);
+            setTimeout(antics, 1500 + Math.random() * 2000);
+          };
+          setTimeout(antics, 2000);
           enter();
 
           // 10초마다 다음 모드로: 잠깐 암전된 사이에 배경·일행·몬스터를 바꿈
