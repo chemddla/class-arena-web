@@ -2632,6 +2632,33 @@
           <button id="petShopToggleBtn" type="button" onclick="PetSystem.toggle()" class="hidden self-start px-3 py-1.5 rounded-xl text-xs font-extrabold border-2 transition"></button>
           <div id="petShopGrid" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3"></div>
         </div>
+
+        <!-- 펫 러닝: 쿠키런식 1인 러닝 미니게임 (PetRun) -->
+        <div id="petRunBox" class="bg-slate-900 border-2 border-sky-400/40 rounded-2xl p-4 flex flex-col gap-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h4 class="font-title text-xl text-white flex items-center gap-2"><span>🏃</span> 펫 러닝</h4>
+              <p class="text-xs text-slate-400 mt-0.5">활성화한 펫과 함께 달려요. <strong>점프(↑·스페이스)</strong>와 <strong>슬라이드(↓ 누르고 있기)</strong>로 장애물을 피하고 젤리를 먹어 점수를 올려요. 펫마다 달리기 특성이 달라요!</p>
+            </div>
+            <button type="button" id="petRunStartBtn" onclick="PetRun.start()" class="px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-extrabold text-sm shadow">▶ 달리기 시작</button>
+          </div>
+          <div id="petRunInfo" class="flex items-center gap-3 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs"></div>
+          <div class="grid grid-cols-1 lg:grid-cols-[1fr_240px] gap-3">
+            <div class="flex flex-col gap-2 min-w-0">
+              <canvas id="petRunCanvas" class="w-full h-auto rounded-xl border border-slate-700 bg-sky-200 touch-none select-none" style="aspect-ratio: 900 / 380;"></canvas>
+              <div id="petRunPad" class="hidden grid grid-cols-2 gap-2">
+                <button type="button" id="petRunJumpBtn" class="py-4 rounded-xl bg-emerald-600 active:bg-emerald-400 text-white font-extrabold text-base select-none touch-none">⬆️ 점프</button>
+                <button type="button" id="petRunSlideBtn" class="py-4 rounded-xl bg-indigo-600 active:bg-indigo-400 text-white font-extrabold text-base select-none touch-none">⬇️ 슬라이드 (꾹)</button>
+              </div>
+              <div id="petRunResult" class="hidden bg-slate-950 border border-amber-500/40 rounded-xl px-3 py-2"></div>
+              <div class="text-[11px] text-slate-500 font-bold">점수 800 → 50 CA · 1,500 → 100 CA · 3,000 → 150 CA · 6,000 → 200 CA (하루 3번까지). 일시정지: Esc 또는 P</div>
+            </div>
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-1.5 min-w-0">
+              <div class="text-xs font-extrabold text-slate-200 px-1">🏆 우리 반 펫 러닝 랭킹</div>
+              <div id="petRunRank" class="flex flex-col gap-1"></div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- [탭] 방 꾸미기: 8×6×4칸 아이소메트릭 방, 가구 사서 놓기·회전·보관 (HomeRoom) -->
@@ -8939,8 +8966,8 @@
       if (stu && merc.levelOwner === stu.id) return legacyLevelCostTo(merc.levelBase || 1) + (merc.levelSpent || 0);
       return legacyLevelCostTo(merc.level || 1);
     }
-    const DAILY_REWARD_LIMITS = { quiz: 20, practice: 3, tower: 3, pvp: 5, raid: 5, minigame: 5 };
-    const DAILY_REWARD_LABELS = { quiz: '퀴즈', practice: '허수아비 모의전', tower: '모험의 탑', pvp: '랭킹 매칭', raid: '엘리트 보스', minigame: '미니게임', rush: '몬스터 러쉬' };
+    const DAILY_REWARD_LIMITS = { quiz: 20, practice: 3, tower: 3, pvp: 5, raid: 5, minigame: 5, petrun: 3 };
+    const DAILY_REWARD_LABELS = { quiz: '퀴즈', practice: '허수아비 모의전', tower: '모험의 탑', pvp: '랭킹 매칭', raid: '엘리트 보스', minigame: '미니게임', rush: '몬스터 러쉬', petrun: '펫 러닝' };
 
     // 모험의 탑 하루 클리어 횟수 (처음 깨는 층을 이길 때마다 1회 · 실패나 이미 깬 층 재도전은 세지 않음)
     const TOWER_DAILY_CLEARS = 10;
@@ -10564,7 +10591,8 @@
       const rows = [
         { key: 'pvp', icon: '🎯', label: '랭킹 매칭', each: RANKED_REWARDS.stronger.win, eachText: `승리 최대 ${RANKED_REWARDS.stronger.win.toLocaleString()}`, go: 'goToRankedMatch()' },
         { key: 'quiz', icon: '🧠', label: '퀴즈', each: ECONOMY.quizReward, eachText: `정답 ${ECONOMY.quizReward.toLocaleString()}`, go: "goToStudentTab('mission')" },
-        { key: 'minigame', icon: '🎲', label: '미니게임', each: ECONOMY.minigameReward, eachText: `승리 ${ECONOMY.minigameReward.toLocaleString()}`, go: "goToStudentTab('minigame')" }
+        { key: 'minigame', icon: '🎲', label: '미니게임', each: ECONOMY.minigameReward, eachText: `승리 ${ECONOMY.minigameReward.toLocaleString()}`, go: "goToStudentTab('minigame')" },
+        { key: 'petrun', icon: '🏃', label: '펫 러닝', each: PETRUN.rewards[0][1], eachText: `최대 ${PETRUN.rewards[0][1].toLocaleString()}`, go: "goToStudentTab('pet')" }
       ];
       let maxLeft = 0;
       const rowHTML = rows.map(r => {
@@ -10951,6 +10979,7 @@
       { id: 'homeSkin', icon: '🧱', label: '방 벽지·바닥 바꾸기', goal: 1, go: () => goToStudentTab('home') },
       { id: 'petPat', icon: '🤚', label: '펫 쓰다듬기', goal: 1, go: () => goToStudentTab('pet'), need: stu => Boolean(stu.pet && PET_DEFS[stu.pet.type]) },
       { id: 'petSnack', icon: '🍬', label: '펫 간식 주기', goal: 1, go: () => goToStudentTab('pet'), need: stu => Boolean(stu.pet && PET_DEFS[stu.pet.type]) },
+      { id: 'petRun', icon: '🏃', label: '펫 러닝 한 판 달리기', goal: 1, go: () => goToStudentTab('pet'), need: stu => Boolean(stu.pet && PET_DEFS[stu.pet.type]) },
       ...DAILY_MISSION_MINIGAMES.map(g => ({ id: `mg_${g.tab}`, icon: g.icon, label: `${g.name} 한 판 하기`, goal: 1, go: () => { goToStudentTab('minigame'); switchMinigameSubTab(g.tab); } }))
     ];
 
@@ -27401,6 +27430,7 @@
         btn('quiz', '❓ 퀴즈', book.quiz || 0, DAILY_REWARD_LIMITS.quiz),
         btn('practice', '🎯 허수아비', book.practice || 0, DAILY_REWARD_LIMITS.practice),
         btn('minigame', '🎲 미니게임', book.minigame || 0, DAILY_REWARD_LIMITS.minigame),
+        btn('petrun', '🏃 펫 러닝', book.petrun || 0, DAILY_REWARD_LIMITS.petrun),
         `<button onclick="adminResetStudentTries('all')" class="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-[11px] text-white font-bold">전부 초기화</button>`
       ].join('');
     }
@@ -30861,7 +30891,8 @@
       if (tabKey === 'codex') renderCodexTab();
       if (tabKey === 'skinlab') renderSkinWorkshop();
       if (tabKey === 'market') renderMarketTab();
-      if (tabKey === 'pet') PetSystem.renderShop();
+      if (tabKey === 'pet') { PetSystem.renderShop(); if (window.PetRun) PetRun.render(); }
+      else if (window.PetRun) PetRun.pause();
       if (window.HomeRoom) HomeRoom.visitId = null; // 탭을 새로 열면 늘 내 방 (친구 방 구경은 HomeRoom.visit이 다시 켬)
       if (tabKey === 'home') window.HomeRoom?.render();
       else window.HomeRoom?.cancel();
@@ -39461,6 +39492,7 @@
       afterPetChange() {
         saveState();
         this.renderShop();
+        if (window.PetRun) PetRun.render();
         this.renderToggle();
         if (typeof renderSquadTab === 'function') renderSquadTab();
         if (codexView === 'pet') renderCodexTab();
@@ -40259,6 +40291,506 @@
     const homeClamp = v => Math.max(0, Math.min(1, v));
 
     // 바닥 좌표(칸) → 캔버스 도트
+    /********************************************************************
+     * 펫 러닝 (PetRun): 쿠키런식 1인 러닝 미니게임
+     * - 활성 펫이 자동으로 달리고, 점프(↑·스페이스·화면 위쪽)와 슬라이드(↓·화면 아래쪽 누르기)로 장애물을 피하며 젤리를 먹음
+     * - 체력은 시간이 갈수록 줄고 장애물에 부딪히면 크게 깎임. 0이 되면 끝. 하트 젤리로 회복
+     * - 점수 = 달린 거리 + 젤리. 기록은 stu.petRun = { best, bestAt, bestType, plays }
+     * - 보상: 점수 구간별 CA, 하루 횟수 제한(DAILY_REWARD_LIMITS.petrun). 반 친구 최고 기록 랭킹
+     ********************************************************************/
+    const PETRUN = {
+      W: 900, H: 380, groundY: 318, petX: 150, gravity: 2700, jumpV: 920,
+      hpMax: 100, hpDrainPerSec: 3, hitDamage: 22, invincibleSec: 1.1,
+      speed0: 340, speedGain: 8, speedMax: 740,          // px/s · 초당 증가 · 최대
+      jellyScore: 10, bigJellyScore: 50, heartHeal: 22, distScorePerPx: 0.03,
+      standW: 52, standH: 86, slideH: 40,                 // 펫 충돌 상자
+      rewards: [[6000, 200], [3000, 150], [1500, 100], [800, 50]], // 점수 이상 → CA
+    };
+    // 펫별 러닝 특성 (전투 효과와 같은 방향)
+    const PETRUN_PERKS = {
+      ginger:     { text: '젤리 점수 +20%', jelly: 1.2 },
+      calico:     { text: '젤리 자석 (가까운 젤리를 끌어당김)', magnet: 120 },
+      black:      { text: '점수 ×1.2 · 받는 피해 +25%', score: 1.2, dmg: 1.25 },
+      siberian:   { text: '체력 +30%', hp: 1.3 },
+      shiba:      { text: '달리기 속도 +12%', speed: 1.12 },
+      pomeranian: { text: '장애물 피해 -40%', dmg: 0.6 },
+      bulldog:    { text: '장애물을 들이받아 부숨 (피해 절반 + 점수)', ram: true },
+      collie:     { text: '이단 점프', jumps: 2 },
+    };
+    const PETRUN_OBS = {
+      rock:   { w: 46, h: 42, air: false, label: '바위' },
+      log:    { w: 78, h: 34, air: false, label: '통나무' },
+      cactus: { w: 36, h: 68, air: false, label: '선인장' },
+      bird:   { w: 48, h: 40, air: true,  label: '새' },
+      bee:    { w: 40, h: 34, air: true,  label: '벌' },
+    };
+    const PETRUN_JELLY_COLORS = ['#fb7185', '#fbbf24', '#4ade80', '#60a5fa', '#c084fc', '#f97316'];
+
+    // 오래된 브라우저용 roundRect 대체
+    if (window.CanvasRenderingContext2D && !CanvasRenderingContext2D.prototype.roundRect) {
+      CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+        r = Math.min(Array.isArray(r) ? r[0] : r, w / 2, h / 2);
+        this.moveTo(x + r, y); this.arcTo(x + w, y, x + w, y + h, r); this.arcTo(x + w, y + h, x, y + h, r); this.arcTo(x, y + h, x, y, r); this.arcTo(x, y, x + w, y, r); this.closePath();
+        return this;
+      };
+    }
+    const PetRun = {
+      cv: null, ctx: null, imgs: {}, raf: 0, last: 0, bound: false,
+      st: null, // 진행 중인 판
+      slideHold: false,
+
+      student() { return typeof PetSystem !== 'undefined' ? PetSystem.student() : null; },
+      pet() { const s = this.student(); return s && s.pet && PET_DEFS[s.pet.type] ? s.pet : null; },
+      perk(type) { return PETRUN_PERKS[type] || {}; },
+      record(stu) {
+        if (!stu) return { best: 0, plays: 0 };
+        if (!stu.petRun || typeof stu.petRun !== 'object') stu.petRun = { best: 0, plays: 0 };
+        return stu.petRun;
+      },
+      rewardFor(score) {
+        for (const [min, ca] of PETRUN.rewards) if (score >= min) return ca;
+        return 0;
+      },
+      img(src) {
+        let im = this.imgs[src];
+        if (!im) { im = this.imgs[src] = new Image(); im.src = src; }
+        return im.complete && im.naturalWidth ? im : null;
+      },
+      tone(kind) {
+        if (typeof sfxEnabled === 'undefined' || !sfxEnabled) return;
+        try {
+          const ac = getAudioCtx(); if (!ac) return;
+          const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+          const P = { jelly: ['sine', 880, 1320, 0.07, 0.09], big: ['triangle', 660, 1760, 0.1, 0.22], heart: ['sine', 520, 1040, 0.1, 0.25],
+                      jump: ['sine', 320, 640, 0.06, 0.1], hit: ['sawtooth', 220, 55, 0.13, 0.18], over: ['triangle', 440, 110, 0.12, 0.7], ram: ['square', 180, 90, 0.1, 0.12] }[kind];
+          if (!P) return;
+          o.type = P[0]; o.frequency.setValueAtTime(P[1], t); o.frequency.exponentialRampToValueAtTime(P[2], t + P[4]);
+          g.gain.setValueAtTime(P[3], t); g.gain.exponentialRampToValueAtTime(0.001, t + P[4]);
+          o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + P[4] + 0.02);
+        } catch (e) { /* 소리는 실패해도 게임은 계속 */ }
+      },
+
+      // ───── 화면 ─────
+      render() {
+        const box = document.getElementById('petRunBox');
+        if (!box) return;
+        const stu = this.student(), pet = this.pet();
+        const esc = v => PetSystem.esc(v);
+        const info = document.getElementById('petRunInfo');
+        const rec = this.record(stu);
+        const left = stu ? getDailyRewardLeft(stu, 'petrun') : 0;
+        if (info) {
+          if (!stu) info.innerHTML = `<span class="text-slate-400">학생 로그인을 하면 펫과 달릴 수 있어요.</span>`;
+          else if (!pet) info.innerHTML = `<span class="text-slate-400">활성화한 펫이 없어요. 펫을 뽑아 활성화하면 함께 달릴 수 있어요.</span>`;
+          else {
+            const perk = this.perk(pet.type);
+            info.innerHTML = `<img src="${PET_DEFS[pet.type].icon}" alt="" class="h-10 w-auto object-contain" draggable="false">
+              <div class="min-w-0"><div class="text-sm font-extrabold text-white truncate">${esc(pet.name)} <span class="text-slate-400 text-[11px]">${PET_DEFS[pet.type].name}</span></div>
+              <div class="text-[11px] font-bold text-amber-300">🏃 ${perk.text || ''}</div></div>
+              <div class="ml-auto text-right text-[11px] font-bold text-slate-300 shrink-0">내 최고 <b class="text-amber-300 text-sm">${(rec.best || 0).toLocaleString()}</b>점<br>오늘 남은 보상 <b class="${left > 0 ? 'text-emerald-300' : 'text-slate-500'}">${left}/${DAILY_REWARD_LIMITS.petrun}</b>회</div>`;
+          }
+        }
+        const startBtn = document.getElementById('petRunStartBtn');
+        if (startBtn) startBtn.disabled = !pet;
+        this.renderRank();
+        this.ensureCanvas();
+        if (!this.st) this.drawIdle();
+      },
+      renderRank() {
+        const el = document.getElementById('petRunRank');
+        if (!el) return;
+        const me = this.student();
+        const esc = v => PetSystem.esc(v);
+        const rows = ((typeof state !== 'undefined' && state && state.students) || [])
+          .filter(s => s.petRun && s.petRun.best > 0)
+          .sort((a, b) => b.petRun.best - a.petRun.best).slice(0, 10);
+        if (!rows.length) { el.innerHTML = `<div class="text-[11px] text-slate-500 text-center py-3">아직 기록이 없어요. 첫 기록의 주인공이 되어 보세요!</div>`; return; }
+        el.innerHTML = rows.map((s, i) => {
+          const d = PET_DEFS[s.petRun.bestType];
+          const mine = me && s.id === me.id;
+          return `<div class="flex items-center gap-2 px-2 py-1 rounded-lg ${mine ? 'bg-amber-500/15 border border-amber-500/40' : 'bg-slate-900'}">
+              <span class="w-5 text-center text-[11px] font-extrabold ${i < 3 ? 'text-amber-300' : 'text-slate-500'}">${['🥇', '🥈', '🥉'][i] || i + 1}</span>
+              ${d ? `<img src="${d.icon}" alt="" class="h-6 w-auto object-contain" draggable="false">` : '<span class="w-6"></span>'}
+              <span class="text-xs font-extrabold ${mine ? 'text-amber-200' : 'text-slate-200'} truncate">${esc(s.name)}</span>
+              <span class="ml-auto text-xs font-extrabold text-white">${s.petRun.best.toLocaleString()}<span class="text-[10px] text-slate-400">점</span></span>
+            </div>`;
+        }).join('');
+      },
+      ensureCanvas() {
+        const cv = document.getElementById('petRunCanvas');
+        if (!cv) return;
+        if (this.cv !== cv) {
+          this.cv = cv; this.ctx = cv.getContext('2d');
+          cv.width = PETRUN.W; cv.height = PETRUN.H;
+        }
+        if (!this.bound) {
+          this.bound = true;
+          cv.addEventListener('pointerdown', e => {
+            e.preventDefault();
+            if (!this.st || this.st.over) { if (this.st && this.st.over) return; return; }
+            if (this.st.paused) { this.resume(); return; }
+            const r = cv.getBoundingClientRect();
+            const y = (e.clientY - r.top) / r.height;
+            if (y < 0.55) this.jump(); else { this.slideHold = true; try { cv.setPointerCapture(e.pointerId); } catch (_) {} }
+          });
+          const up = () => { this.slideHold = false; };
+          cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up); cv.addEventListener('lostpointercapture', up);
+          document.addEventListener('keydown', e => {
+            if (!this.st || this.st.over) return;
+            const sec = document.getElementById('studentTab-pet');
+            if (!sec || sec.classList.contains('hidden')) return;
+            if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+            if (e.code === 'ArrowUp' || e.code === 'Space' || e.code === 'KeyW') { e.preventDefault(); if (this.st.paused) this.resume(); else this.jump(); }
+            else if (e.code === 'ArrowDown' || e.code === 'KeyS') { e.preventDefault(); this.slideHold = true; }
+            else if (e.code === 'Escape' || e.code === 'KeyP') { e.preventDefault(); this.st.paused ? this.resume() : this.pause(); }
+          });
+          document.addEventListener('keyup', e => { if (e.code === 'ArrowDown' || e.code === 'KeyS') this.slideHold = false; });
+          document.addEventListener('visibilitychange', () => { if (document.hidden && this.st && !this.st.over) this.pause(); });
+          ['petRunJumpBtn', 'petRunSlideBtn'].forEach(id => {
+            const b = document.getElementById(id);
+            if (!b) return;
+            b.addEventListener('pointerdown', e => { e.preventDefault(); if (!this.st || this.st.over) return; if (this.st.paused) { this.resume(); return; } if (id === 'petRunJumpBtn') this.jump(); else this.slideHold = true; });
+            const rel = () => { this.slideHold = false; };
+            b.addEventListener('pointerup', rel); b.addEventListener('pointercancel', rel); b.addEventListener('pointerleave', rel);
+          });
+        }
+      },
+
+      // ───── 진행 ─────
+      start() {
+        const stu = this.student(), pet = this.pet();
+        if (!stu) { showNotice('⚠️ 학생 로그인을 한 뒤에 달릴 수 있어요.'); return; }
+        if (!pet) { showNotice('⚠️ 활성화한 펫이 있어야 달릴 수 있어요. 펫을 뽑아 활성화해 주세요!'); return; }
+        this.ensureCanvas();
+        if (!this.cv) return;
+        const perk = this.perk(pet.type);
+        const hpMax = Math.round(PETRUN.hpMax * (perk.hp || 1));
+        this.st = {
+          type: pet.type, name: pet.name, perk, t: 0, dist: 0, score: 0, jelly: 0, hp: hpMax, hpMax,
+          speed: PETRUN.speed0 * (perk.speed || 1), y: 0, vy: 0, onGround: true, jumps: 0, sliding: false,
+          inv: 0, hitFlash: 0, shake: 0, over: false, paused: false, overAt: 0, animT: 0, airT: 0,
+          objs: [], nextSpawn: 0.9, texts: [], parts: [], heartTimer: 9 + Math.random() * 4, rewardGot: 0, isBest: false,
+          bg: Array.from({ length: 7 }, (_, i) => ({ x: i * 160 + Math.random() * 60, y: 40 + Math.random() * 70, s: 0.6 + Math.random() * 0.8 })),
+        };
+        this.slideHold = false;
+        this.last = performance.now();
+        cancelAnimationFrame(this.raf);
+        this.raf = requestAnimationFrame(ts => this.frame(ts));
+        const res = document.getElementById('petRunResult'); if (res) res.classList.add('hidden');
+        const startBtn = document.getElementById('petRunStartBtn'); if (startBtn) startBtn.classList.add('hidden');
+        document.getElementById('petRunPad')?.classList.toggle('hidden', !(typeof isTouchDevice === 'function' && isTouchDevice()));
+        this.cv.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      },
+      pause() { if (this.st && !this.st.over && !this.st.paused) { this.st.paused = true; this.slideHold = false; this.draw(); } },
+      resume() { if (this.st && this.st.paused) { this.st.paused = false; this.last = performance.now(); } },
+      jump() {
+        const s = this.st; if (!s || s.over || s.paused) return;
+        const maxJ = s.perk.jumps || 1;
+        if (s.onGround || s.jumps < maxJ) {
+          if (!s.onGround && s.jumps === 0) s.jumps = 1; // 떨어지는 중에 처음 누르면 한 번으로 침
+          s.vy = -PETRUN.jumpV * (s.onGround ? 1 : 0.88); s.onGround = false; s.jumps++; s.sliding = false; s.airT = 0;
+          this.tone('jump');
+          for (let i = 0; i < 5; i++) s.parts.push({ x: PETRUN.petX + (Math.random() - 0.5) * 30, y: PETRUN.groundY, vx: -80 - Math.random() * 120, vy: -60 - Math.random() * 90, life: 0.4, c: '#d9c08a' });
+        }
+      },
+      frame(ts) {
+        const s = this.st; if (!s) return;
+        let dt = Math.min(0.05, (ts - this.last) / 1000); this.last = ts;
+        if (!s.paused && !s.over) this.update(s, dt);
+        else if (s.over) { s.overAt += dt; s.parts.forEach(p => { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 900 * dt; p.life -= dt; }); s.parts = s.parts.filter(p => p.life > 0); }
+        this.draw();
+        if (!(s.over && s.overAt > 2.2)) this.raf = requestAnimationFrame(t => this.frame(t));
+        else this.drawIdle();
+      },
+      update(s, dt) {
+        const G = PETRUN.groundY;
+        s.t += dt;
+        s.speed = Math.min(PETRUN.speedMax * (s.perk.speed || 1), s.speed + PETRUN.speedGain * dt);
+        const dx = s.speed * dt;
+        s.dist += dx;
+        s.score += dx * PETRUN.distScorePerPx * (s.perk.score || 1);
+        s.animT += dt * (s.speed / PETRUN.speed0);
+        // 체력은 계속 조금씩 줄어듦
+        s.hp -= PETRUN.hpDrainPerSec * dt;
+        if (s.inv > 0) s.inv -= dt;
+        if (s.hitFlash > 0) s.hitFlash -= dt;
+        if (s.shake > 0) s.shake -= dt;
+        // 점프·중력
+        if (!s.onGround) {
+          s.vy += PETRUN.gravity * dt * (this.slideHold ? 1.9 : 1); // 공중에서 ↓는 빨리 내려오기
+          s.y += s.vy * dt; s.airT += dt;
+          if (s.y >= 0) { s.y = 0; s.vy = 0; s.onGround = true; s.jumps = 0; }
+        }
+        s.sliding = s.onGround && this.slideHold;
+        // 배경 구름
+        s.bg.forEach(c => { c.x -= dx * 0.12 * c.s; if (c.x < -140) { c.x = PETRUN.W + 60 + Math.random() * 120; c.y = 30 + Math.random() * 80; } });
+        // 장애물·젤리 생성
+        s.nextSpawn -= dt;
+        if (s.nextSpawn <= 0) this.spawn(s);
+        s.heartTimer -= dt;
+        if (s.heartTimer <= 0) { s.heartTimer = 11 + Math.random() * 6; s.objs.push({ kind: 'jelly', sub: 'heart', x: PETRUN.W + 40, y: G - 60 - Math.round(Math.random()) * 70, r: 15 }); }
+        // 펫 충돌 상자
+        const px = PETRUN.petX, ph = s.sliding ? PETRUN.slideH : PETRUN.standH;
+        const pb = { x0: px - PETRUN.standW / 2 + 6, x1: px + PETRUN.standW / 2 - 6, y0: G + s.y - ph, y1: G + s.y - 4 };
+        const pcx = px, pcy = G + s.y - ph / 2;
+        for (const o of s.objs) {
+          o.x -= dx * (o.kind === 'obs' && o.vx ? 1 + o.vx : 1);
+          if (o.kind === 'jelly') {
+            if (s.perk.magnet) {
+              const ddx = pcx - o.x, ddy = pcy - o.y, d = Math.hypot(ddx, ddy);
+              if (d < s.perk.magnet && d > 1) { o.x += ddx / d * 520 * dt; o.y += ddy / d * 520 * dt; }
+            }
+            if (!o.got && o.x + o.r > pb.x0 && o.x - o.r < pb.x1 && o.y + o.r > pb.y0 && o.y - o.r < pb.y1) {
+              o.got = true;
+              if (o.sub === 'heart') { s.hp = Math.min(s.hpMax, s.hp + PETRUN.heartHeal); this.float(s, o.x, o.y, `+${PETRUN.heartHeal} 체력`, '#f9a8d4'); this.tone('heart'); }
+              else {
+                const base = o.sub === 'big' ? PETRUN.bigJellyScore : PETRUN.jellyScore;
+                const got = Math.round(base * (s.perk.jelly || 1) * (s.perk.score || 1));
+                s.score += got; s.jelly++;
+                this.float(s, o.x, o.y, `+${got}`, o.sub === 'big' ? '#fde68a' : '#fff');
+                this.tone(o.sub === 'big' ? 'big' : 'jelly');
+              }
+              for (let i = 0; i < 6; i++) s.parts.push({ x: o.x, y: o.y, vx: (Math.random() - 0.5) * 240, vy: -60 - Math.random() * 160, life: 0.35 + Math.random() * 0.2, c: o.c || '#f9a8d4' });
+            }
+          } else if (o.kind === 'obs' && !o.dead && !o.passed) {
+            const d = PETRUN_OBS[o.sub];
+            const ob = { x0: o.x + 5, x1: o.x + d.w - 5, y0: o.y - d.h + 4, y1: o.y - 2 };
+            if (ob.x1 < pb.x0) { o.passed = true; continue; }
+            if (s.inv <= 0 && ob.x0 < pb.x1 && ob.x1 > pb.x0 && ob.y0 < pb.y1 && ob.y1 > pb.y0) {
+              let dmg = PETRUN.hitDamage * (s.perk.dmg || 1);
+              if (s.perk.ram && !d.air) {
+                dmg *= 0.5; o.dead = true;
+                const bonus = 30; s.score += bonus; this.float(s, o.x + 20, o.y - 40, `💥 +${bonus}`, '#fdba74'); this.tone('ram');
+                for (let i = 0; i < 10; i++) s.parts.push({ x: o.x + d.w / 2, y: o.y - d.h / 2, vx: (Math.random() - 0.2) * 320, vy: -80 - Math.random() * 220, life: 0.5, c: '#a8a29e' });
+              } else { this.tone('hit'); this.float(s, px, G + s.y - ph - 10, `-${Math.round(dmg)}`, '#fb7185'); }
+              s.hp -= dmg; s.inv = PETRUN.invincibleSec; s.hitFlash = 0.25; s.shake = 0.3;
+            }
+          }
+        }
+        s.objs = s.objs.filter(o => o.x > -120 && !o.got);
+        s.texts.forEach(t => { t.y -= 40 * dt; t.life -= dt; }); s.texts = s.texts.filter(t => t.life > 0);
+        s.parts.forEach(p => { p.x += p.vx * dt - dx * 0.5; p.y += p.vy * dt; p.vy += 900 * dt; p.life -= dt; }); s.parts = s.parts.filter(p => p.life > 0);
+        if (s.hp <= 0) { s.hp = 0; this.finish(s); }
+      },
+      float(s, x, y, text, color) { s.texts.push({ x, y, text, color, life: 0.8 }); },
+      spawn(s) {
+        const G = PETRUN.groundY, X = PETRUN.W + 30;
+        const stage = Math.min(1, s.t / 75); // 시간이 갈수록 어려운 패턴이 자주
+        const r = Math.random();
+        const jellyLine = (x, y, n, gap = 34) => { for (let i = 0; i < n; i++) s.objs.push({ kind: 'jelly', x: x + i * gap, y, r: 12, c: PETRUN_JELLY_COLORS[(s.jelly + i) % PETRUN_JELLY_COLORS.length] }); };
+        const jellyArc = (x, n = 6) => { for (let i = 0; i < n; i++) { const k = i / (n - 1); s.objs.push({ kind: 'jelly', x: x + i * 36, y: G - 50 - Math.sin(k * Math.PI) * 95, r: 12, c: PETRUN_JELLY_COLORS[i % PETRUN_JELLY_COLORS.length] }); } };
+        const obs = (sub, x, vx = 0) => s.objs.push({ kind: 'obs', sub, x, y: G, vx, flap: Math.random() * 6 });
+        let wait = 0.95;
+        if (r < 0.22) { jellyLine(X, G - 42, 5 + Math.floor(Math.random() * 4)); wait = 0.9; }
+        else if (r < 0.36) { jellyArc(X); wait = 1.0; }
+        else if (r < 0.52) { obs(Math.random() < 0.5 ? 'rock' : 'log', X); jellyArc(X - 70, 5); wait = 1.05; }
+        else if (r < 0.64) { obs(Math.random() < 0.6 ? 'bird' : 'bee', X, Math.random() < 0.4 ? 0.25 : 0); jellyLine(X + 30, G - 24, 4); wait = 1.0; }
+        else if (r < 0.74) { obs('cactus', X); jellyLine(X + 60, G - 130, 4); wait = 1.15; }
+        else if (r < 0.84 && stage > 0.25) { obs('rock', X); obs('rock', X + 150 + Math.random() * 60); wait = 1.3; }
+        else if (r < 0.92 && stage > 0.4) { obs('bird', X); obs('log', X + 190); jellyLine(X + 230, G - 42, 3); wait = 1.35; }
+        else if (stage > 0.55 && r < 0.97) { obs('cactus', X); obs('bee', X + 230, 0.3); obs('rock', X + 420); wait = 1.6; }
+        else { s.objs.push({ kind: 'jelly', sub: 'big', x: X, y: G - 110, r: 17, c: '#fde68a' }); jellyLine(X - 70, G - 42, 3); jellyLine(X + 40, G - 42, 3); wait = 1.0; }
+        // 속도가 빠를수록 거리 간격이 같아지도록 시간 간격을 줄임
+        s.nextSpawn = wait * (PETRUN.speed0 / s.speed) * (1.05 - stage * 0.2) + 0.25;
+      },
+      finish(s) {
+        s.over = true; s.overAt = 0; this.slideHold = false;
+        this.tone('over');
+        const stu = this.student();
+        const score = Math.round(s.score);
+        s.score = score;
+        if (stu) {
+          const rec = this.record(stu);
+          rec.plays = (rec.plays || 0) + 1;
+          rec.last = score; rec.lastAt = Date.now();
+          if (score > (rec.best || 0)) { rec.best = score; rec.bestAt = Date.now(); rec.bestType = s.type; s.isBest = true; }
+          const ca = this.rewardFor(score);
+          s.rewardCa = ca;
+          s.rewardGot = ca > 0 ? grantDailyReward(stu, 'petrun', ca) : 0;
+          try { DailyMission.progress('petRun', 1, stu); } catch (_) {}
+          saveState();
+          if (typeof updateHeaderUI === 'function') updateHeaderUI();
+          if (typeof renderSideEarnBox === 'function') renderSideEarnBox(stu);
+          if (s.rewardGot > 0) showRewardBanner(`🏃 펫 러닝 ${score.toLocaleString()}점! 보상 +${s.rewardGot} CA (오늘 남은 펫 러닝 보상: ${getDailyRewardLeft(stu, 'petrun')}회)`);
+        }
+        this.renderResult(s);
+        this.render();
+      },
+      renderResult(s) {
+        const res = document.getElementById('petRunResult');
+        const startBtn = document.getElementById('petRunStartBtn');
+        if (startBtn) startBtn.classList.remove('hidden');
+        document.getElementById('petRunPad')?.classList.add('hidden');
+        if (!res) return;
+        const stu = this.student();
+        let rewardText;
+        if (!s.rewardCa) rewardText = `<span class="text-slate-400">${PETRUN.rewards[PETRUN.rewards.length - 1][0]}점부터 CA 보상을 받아요.</span>`;
+        else if (s.rewardGot > 0) rewardText = `<span class="text-emerald-300">+${s.rewardGot} CA 획득!</span>`;
+        else rewardText = `<span class="text-slate-400">오늘 펫 러닝 보상(${DAILY_REWARD_LIMITS.petrun}회)을 모두 받았어요. 내일 다시 받을 수 있어요.</span>`;
+        res.classList.remove('hidden');
+        res.innerHTML = `
+          <div class="flex flex-wrap items-center gap-x-5 gap-y-1">
+            <div><span class="text-[11px] text-slate-400 font-bold">점수</span> <b class="text-2xl font-title text-amber-300">${s.score.toLocaleString()}</b>${s.isBest ? ' <span class="text-[11px] px-1.5 py-0.5 rounded bg-rose-500 text-white font-extrabold">NEW 최고 기록!</span>' : ''}</div>
+            <div class="text-[11px] text-slate-300 font-bold">🏃 ${Math.round(s.dist / 10).toLocaleString()}m · 🍬 젤리 ${s.jelly}개 · ⏱ ${Math.round(s.t)}초</div>
+            <div class="text-xs font-extrabold">${rewardText}</div>
+            ${stu ? `<div class="text-[11px] text-slate-400 font-bold">내 최고 ${this.record(stu).best.toLocaleString()}점</div>` : ''}
+          </div>`;
+      },
+
+      // ───── 그리기 ─────
+      drawIdle() {
+        if (!this.ctx) return;
+        const ctx = this.ctx, pet = this.pet();
+        this.drawScene(ctx, { bg: PetRun.idleBg || (PetRun.idleBg = Array.from({ length: 6 }, (_, i) => ({ x: i * 170 + 30, y: 40 + (i * 37) % 70, s: 0.7 + (i % 3) * 0.3 }))), dist: 0, objs: [], parts: [], texts: [], shake: 0 });
+        if (pet) this.drawPet(ctx, { type: pet.type, y: 0, sliding: false, onGround: true, animT: 0, inv: 0, hitFlash: 0 }, 'idle');
+        ctx.save();
+        ctx.fillStyle = 'rgba(15,23,42,0.55)'; ctx.fillRect(0, 0, PETRUN.W, PETRUN.H);
+        ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+        ctx.font = '900 30px sans-serif'; ctx.fillText('🐾 펫 러닝', PETRUN.W / 2, 150);
+        ctx.font = '800 15px sans-serif'; ctx.fillStyle = '#e2e8f0';
+        ctx.fillText(pet ? `${pet.name}와(과) 함께 달려요!  ▶ 시작 버튼을 누르세요` : '활성화한 펫이 있어야 달릴 수 있어요', PETRUN.W / 2, 190);
+        ctx.font = '700 13px sans-serif'; ctx.fillStyle = '#cbd5e1';
+        ctx.fillText('점프: ↑ · 스페이스 · 화면 위쪽 터치   |   슬라이드: ↓ (누르고 있기) · 화면 아래쪽 터치', PETRUN.W / 2, 222);
+        ctx.fillText('젤리를 먹으면 점수, 하트는 체력 회복. 체력이 0이 되면 끝!', PETRUN.W / 2, 246);
+        ctx.restore();
+      },
+      drawScene(ctx, s) {
+        const W = PETRUN.W, H = PETRUN.H, G = PETRUN.groundY;
+        // 하늘
+        const sky = ctx.createLinearGradient(0, 0, 0, G);
+        sky.addColorStop(0, '#7dd3fc'); sky.addColorStop(0.7, '#dbeafe'); sky.addColorStop(1, '#fef3c7');
+        ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+        // 구름
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        s.bg.forEach(c => { const r = 18 * c.s; ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, 7); ctx.arc(c.x + r * 1.1, c.y - r * 0.4, r * 1.2, 0, 7); ctx.arc(c.x + r * 2.3, c.y, r * 0.9, 0, 7); ctx.fill(); });
+        // 먼 언덕 (느리게)
+        const off1 = (s.dist * 0.25) % 400;
+        ctx.fillStyle = '#a7f3d0';
+        ctx.beginPath(); ctx.moveTo(0, G);
+        for (let x = -off1; x <= W + 400; x += 20) ctx.lineTo(x, G - 60 - Math.sin((x + off1) / 400 * Math.PI * 2) * 30 - Math.sin((x + off1) / 130) * 10);
+        ctx.lineTo(W, G); ctx.fill();
+        // 가까운 숲 (조금 빠르게)
+        const off2 = (s.dist * 0.5) % 120;
+        ctx.fillStyle = '#4ade80';
+        for (let x = -off2 - 60; x < W + 60; x += 120) {
+          const h = 70 + ((Math.floor((x + off2) / 120 + s.dist * 0.5 / 120) * 7919) % 5) * 9;
+          ctx.beginPath(); ctx.moveTo(x, G); ctx.lineTo(x + 40, G - h); ctx.lineTo(x + 80, G); ctx.fill();
+        }
+        // 땅
+        ctx.fillStyle = '#65a30d'; ctx.fillRect(0, G, W, 12);
+        ctx.fillStyle = '#92400e'; ctx.fillRect(0, G + 12, W, H - G - 12);
+        ctx.fillStyle = '#78350f';
+        const off3 = (s.dist) % 70;
+        for (let x = -off3; x < W; x += 70) { ctx.fillRect(x, G + 24, 26, 6); ctx.fillRect(x + 38, G + 40, 16, 5); }
+        ctx.fillStyle = '#a3e635';
+        for (let x = -(s.dist % 36); x < W; x += 36) { ctx.fillRect(x, G - 4, 3, 5); ctx.fillRect(x + 12, G - 3, 3, 4); }
+      },
+      drawPet(ctx, s, mode) {
+        const def = PET_DEFS[s.type], sh = def && def.sheet, im = sh && this.img(sh.src);
+        const G = PETRUN.groundY, S = 0.62;
+        if (!im) return;
+        let frames, f;
+        if (mode === 'idle') { f = sh.anims.idle[0]; }
+        else if (s.sliding) { f = sh.anims.sleep[0]; }
+        else if (!s.onGround) { frames = sh.anims.jump; f = s.vy < 0 ? frames[Math.min(frames.length - 1, Math.floor(s.airT * 10))] : frames[frames.length - 1]; }
+        else { frames = sh.anims.walk; f = frames[Math.floor(s.animT * 9) % frames.length]; }
+        const x = PETRUN.petX, y = G + s.y;
+        ctx.save();
+        ctx.fillStyle = 'rgba(40,20,40,0.2)';
+        ctx.beginPath(); ctx.ellipse(x, G, 30 * (1 - Math.min(0.5, -s.y / 300)), 8, 0, 0, Math.PI * 2); ctx.fill();
+        if (s.inv > 0 && Math.floor(s.inv * 14) % 2 === 0) ctx.globalAlpha = 0.45;
+        ctx.translate(Math.round(x), Math.round(y));
+        if (s.sliding) ctx.scale(1.12, 0.78);
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(im, f * sh.cellW, 0, sh.cellW, sh.cellH, -sh.anchorX * S, -sh.anchorY * S, sh.cellW * S, sh.cellH * S);
+        ctx.restore();
+      },
+      drawObs(ctx, o, t) {
+        const d = PETRUN_OBS[o.sub], x = o.x, y = o.y;
+        ctx.save();
+        if (o.sub === 'rock') {
+          ctx.fillStyle = '#6b7280'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 8, y - 30); ctx.lineTo(x + 22, y - d.h); ctx.lineTo(x + 38, y - 28); ctx.lineTo(x + d.w, y); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#9ca3af'; ctx.beginPath(); ctx.moveTo(x + 10, y - 26); ctx.lineTo(x + 22, y - d.h + 4); ctx.lineTo(x + 30, y - 24); ctx.closePath(); ctx.fill();
+        } else if (o.sub === 'log') {
+          ctx.fillStyle = '#92400e'; ctx.beginPath(); ctx.roundRect(x, y - d.h, d.w, d.h, 12); ctx.fill();
+          ctx.fillStyle = '#d97706'; ctx.beginPath(); ctx.ellipse(x + d.w - 10, y - d.h / 2, 10, d.h / 2 - 2, 0, 0, 7); ctx.fill();
+          ctx.strokeStyle = '#78350f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x + d.w - 10, y - d.h / 2, 5, 7, 0, 0, 7); ctx.stroke();
+        } else if (o.sub === 'cactus') {
+          ctx.fillStyle = '#16a34a';
+          ctx.beginPath(); ctx.roundRect(x + 10, y - d.h, 16, d.h, 8); ctx.fill();
+          ctx.beginPath(); ctx.roundRect(x, y - 46, 10, 22, 5); ctx.fill(); ctx.fillRect(x + 4, y - 30, 8, 6);
+          ctx.beginPath(); ctx.roundRect(x + 26, y - 56, 10, 24, 5); ctx.fill(); ctx.fillRect(x + 24, y - 38, 8, 6);
+          ctx.fillStyle = '#bbf7d0'; for (let i = 0; i < 5; i++) ctx.fillRect(x + 17, y - d.h + 8 + i * 12, 2, 4);
+        } else {
+          const flap = Math.sin(t * 16 + o.flap);
+          ctx.font = `${o.sub === 'bird' ? 40 : 32}px "Segoe UI Emoji","Apple Color Emoji",sans-serif`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+          ctx.translate(x + d.w / 2, y - d.h - 46 + flap * 4);
+          ctx.scale(-1, 1);
+          ctx.fillText(o.sub === 'bird' ? '🦅' : '🐝', 0, 34);
+        }
+        ctx.restore();
+      },
+      drawJelly(ctx, o, t) {
+        ctx.save();
+        const bob = Math.sin(t * 5 + o.x * 0.05) * 3;
+        if (o.sub === 'heart') {
+          ctx.font = '30px "Segoe UI Emoji","Apple Color Emoji",sans-serif'; ctx.textAlign = 'center';
+          ctx.fillText('💗', o.x, o.y + 11 + bob);
+        } else {
+          const r = o.r;
+          ctx.translate(o.x, o.y + bob);
+          ctx.fillStyle = o.c || '#fb7185';
+          ctx.beginPath(); ctx.ellipse(0, 0, r, r * 0.8, -0.4, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.beginPath(); ctx.ellipse(-r * 0.3, -r * 0.3, r * 0.35, r * 0.22, -0.5, 0, Math.PI * 2); ctx.fill();
+          if (o.sub === 'big') { ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(0, 0, r + 2, r * 0.8 + 2, -0.4, 0, Math.PI * 2); ctx.stroke(); }
+        }
+        ctx.restore();
+      },
+      draw() {
+        const s = this.st, ctx = this.ctx; if (!s || !ctx) return;
+        const W = PETRUN.W, H = PETRUN.H;
+        ctx.save();
+        if (s.shake > 0) ctx.translate((Math.random() - 0.5) * 8 * s.shake, (Math.random() - 0.5) * 8 * s.shake);
+        this.drawScene(ctx, s);
+        // 공중 장애물은 뒤에, 땅 장애물·젤리는 앞에
+        s.objs.forEach(o => { if (o.kind === 'obs' && !o.dead && PETRUN_OBS[o.sub].air) this.drawObs(ctx, o, s.t); });
+        this.drawPet(ctx, s, 'run');
+        s.objs.forEach(o => { if (o.kind === 'jelly') this.drawJelly(ctx, o, s.t); else if (!o.dead && !PETRUN_OBS[o.sub].air) this.drawObs(ctx, o, s.t); });
+        s.parts.forEach(p => { ctx.globalAlpha = Math.max(0, Math.min(1, p.life * 3)); ctx.fillStyle = p.c; ctx.fillRect(p.x - 3, p.y - 3, 6, 6); });
+        ctx.globalAlpha = 1;
+        ctx.font = '900 15px sans-serif'; ctx.textAlign = 'center';
+        s.texts.forEach(t => { ctx.globalAlpha = Math.min(1, t.life * 2.5); ctx.fillStyle = t.color; ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 3; ctx.strokeText(t.text, t.x, t.y); ctx.fillText(t.text, t.x, t.y); });
+        ctx.globalAlpha = 1;
+        if (s.hitFlash > 0) { ctx.fillStyle = `rgba(244,63,94,${s.hitFlash * 0.9})`; ctx.fillRect(-10, -10, W + 20, H + 20); }
+        ctx.restore();
+        // HUD
+        ctx.save();
+        const hpW = 220, hpR = Math.max(0, s.hp / s.hpMax);
+        ctx.fillStyle = 'rgba(15,23,42,0.55)'; ctx.beginPath(); ctx.roundRect(12, 12, hpW + 16, 30, 10); ctx.fill();
+        ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.roundRect(20, 20, hpW, 14, 7); ctx.fill();
+        ctx.fillStyle = hpR > 0.5 ? '#22c55e' : hpR > 0.25 ? '#f59e0b' : '#ef4444'; ctx.beginPath(); ctx.roundRect(20, 20, hpW * hpR, 14, 7); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = '900 11px sans-serif'; ctx.textAlign = 'left'; ctx.fillText(`❤ ${Math.ceil(s.hp)} / ${s.hpMax}`, 26, 31);
+        ctx.textAlign = 'right';
+        ctx.font = '900 26px sans-serif'; ctx.strokeStyle = 'rgba(15,23,42,0.7)'; ctx.lineWidth = 5; ctx.lineJoin = 'round';
+        ctx.strokeText(`${Math.round(s.score).toLocaleString()}점`, W - 16, 38); ctx.fillStyle = '#fde68a'; ctx.fillText(`${Math.round(s.score).toLocaleString()}점`, W - 16, 38);
+        ctx.font = '800 12px sans-serif'; ctx.lineWidth = 3;
+        const sub = `${Math.round(s.dist / 10).toLocaleString()}m · 🍬 ${s.jelly} · 속도 ${Math.round(s.speed / PETRUN.speed0 * 100)}%`;
+        ctx.strokeText(sub, W - 16, 58); ctx.fillStyle = '#fff'; ctx.fillText(sub, W - 16, 58);
+        ctx.restore();
+        if (s.paused || s.over) {
+          ctx.save();
+          ctx.fillStyle = s.over ? 'rgba(15,23,42,0.6)' : 'rgba(15,23,42,0.5)'; ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = '900 34px sans-serif';
+          ctx.fillText(s.over ? '🏁 달리기 끝!' : '⏸ 일시정지', W / 2, H / 2 - 10);
+          ctx.font = '800 15px sans-serif'; ctx.fillStyle = '#e2e8f0';
+          ctx.fillText(s.over ? `${Math.round(s.score).toLocaleString()}점 · ${Math.round(s.dist / 10).toLocaleString()}m` : '화면을 누르거나 ↑ 키를 누르면 계속해요', W / 2, H / 2 + 24);
+          ctx.restore();
+        }
+      },
+    };
+    window.PetRun = PetRun;
+
     function homeIso(X, Y, Z = 0) {
       return { x: HOME_OX + (X - Y) * HOME_CW, y: HOME_OY + (X + Y) * HOME_CH - Z * HOME_FH };
     }
