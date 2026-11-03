@@ -152,6 +152,111 @@ const WALLS = {
   },
 };
 
+// ── 2차 추가 벽지 ──
+Object.assign(WALLS, {
+  // 욕실: 아래 민트 타일(32×16) + 위 흰 벽
+  tile_bath_mint: (u, h) => {
+    const grout = hex('#cfe3dc'), white = hex('#f8f8f4');
+    if (h >= 150) return hash(u, h, 1) < 0.02 ? mix(white, hex('#e8ece8'), 0.5) : white;
+    if (h >= 144) return h === 149 ? hex('#b7cfc6') : h === 144 ? hex('#8fb3a8') : hex('#dcebe5'); // 윗 테두리 띠
+    const row = Math.floor(h / 16), hh = mod(h, 16), off = row % 2 ? 16 : 0, uu = mod(u + off, 32), col = Math.floor((u + off) / 32);
+    if (hh < 2 || uu < 2) return grout;
+    const c = hash(col, row) < 0.85 ? hex('#a9dccb') : hex('#8ccbb6');
+    if (hh === 2 || uu === 2) return mix(c, hex('#ffffff'), 0.45);
+    if (hh === 15 || uu === 31) return mix(c, grout, 0.5);
+    return c;
+  },
+  // 크림 지하철 타일 (전면, 64×32, 반칸 엇갈림)
+  subway_cream: (u, h) => {
+    const grout = hex('#d9d2c6');
+    const row = Math.floor(h / 32), hh = mod(h, 32), off = row % 2 ? 32 : 0, uu = mod(u + off, 64), col = Math.floor((u + off) / 64);
+    if (hh < 3 || uu < 3) return grout;
+    const c = hash(col, row) < 0.8 ? hex('#f7f0e2') : hex('#f1e7d4');
+    if (hh === 3 || uu === 3) return mix(c, hex('#ffffff'), 0.6);
+    if (hh === 31 || uu === 63) return mix(c, grout, 0.6);
+    if (hh === 4 || uu === 4) return mix(c, hex('#ffffff'), 0.25);
+    return c;
+  },
+  // 분홍 하트 (64×64 반복, 엇갈림)
+  heart_pink: (u, h) => {
+    const base = hex('#fbe3ea'), heart = hex('#f28ca8'), dark = hex('#e5708f');
+    const uu = mod(u, 64), hh = mod(h, 64);
+    const pts = ['.XX...XX.', 'XXXX.XXXX', 'XXXXXXXXX', 'XXXXXXXXX', '.XXXXXXX.', '..XXXXX..', '...XXX...', '....X....'];
+    const drawHeart = (cx, cy) => { // 도트 하트를 2배로 키워 18×16
+      const x = Math.floor((uu - cx + 9) / 2), y = Math.floor((cy - hh + 8) / 2);
+      if (y < 0 || y >= pts.length || x < 0 || x >= 9) return null;
+      if (pts[y][x] !== 'X') return null;
+      if (y === 1 && x === 2) return hex('#ffd6e0'); // 반짝임
+      return y >= 5 ? dark : heart;
+    };
+    return drawHeart(16, 16) || drawHeart(48, 48) || ((uu === 48 && hh === 16) || (uu === 16 && hh === 48) ? hex('#f7c6d4') : base);
+  },
+  // 머스터드 셰브론 (지그재그, 가로 64 반복)
+  chevron_mustard: (u, h) => {
+    const a = hex('#e8c43a'), b = hex('#f6e6a8'), line = hex('#d4ad2a');
+    const uu = mod(u, 64), zig = uu < 32 ? uu : 64 - uu; // 0..32..0
+    const v = mod(h - zig, 32); // 지그재그 따라 흐르는 띠
+    if (v === 0 || v === 16) return line;
+    return v < 16 ? a : b;
+  },
+  // 보라 은하수 (게임방·오락기용)
+  galaxy_purple: (u, h) => {
+    const top = hex('#2a1b4e'), bot = hex('#4a2a73');
+    let c = mix(bot, top, Math.min(1, Math.max(0, (h - 40) / 260)));
+    const n = hash(u >> 3, h >> 3, 2); if (n < 0.25) c = mix(c, hex('#6a3fa0'), 0.25 * (1 - n * 4)); // 성운
+    const r = hash(u, h, 3);
+    if (r < 0.006) return hex('#fff7d6');
+    if (r < 0.012) return hex('#c9b8ff');
+    if (r < 0.016) return hex('#8a7ad8');
+    // 큰 별 (128×128 반복): 십자 반짝임
+    const uu = mod(u, 128), hh = mod(h, 128);
+    for (const [sx, sy] of [[24, 40], [90, 96], [70, 20], [110, 60]]) {
+      const dx = Math.abs(uu - sx), dy = Math.abs(hh - sy);
+      if ((dx === 0 && dy <= 3) || (dy === 0 && dx <= 3)) return dx + dy <= 1 ? hex('#ffffff') : hex('#e6dcff');
+    }
+    // 작은 행성 하나 (반복 128)
+    const d = ((uu - 50) / 7) ** 2 + ((hh - 110) / 7) ** 2;
+    if (d < 1) return d > 0.7 ? hex('#c96a8a') : mod(uu + hh, 5) === 0 ? hex('#f0a0b8') : hex('#e58aa6');
+    if (Math.abs(((uu - 50) / 14) ** 2 + ((hh - 110) / 4) ** 2 - 1) < 0.12 && hh < 110) return hex('#f5d6a0');
+    return c;
+  },
+  // 세이지 바탕 보타닉 잎 (64×64 반복)
+  leaf_forest: (u, h) => {
+    const base = hex('#d9e4cf'), leaf = hex('#6f9a5c'), leafL = hex('#8fb57a'), stem = hex('#5a7f4a');
+    const uu = mod(u, 128), hh = mod(h, 128);
+    const leafAt = (cx, cy, flip) => {
+      const dx = (uu - cx) * (flip ? -1 : 1), dy = hh - cy; // 잎: 비스듬한 타원 + 줄기
+      const a = (dx + dy) / 24, b = (dx - dy) / 9;
+      if (a * a + b * b <= 1) {
+        if (Math.abs(dx - dy) <= 1) return stem; // 잎맥
+        if (mod(dx + dy, 8) === 0 && b * (dx - dy) > 0) return mix(b > 0 ? leafL : leaf, stem, 0.35); // 곁맥
+        return a * a + b * b > 0.85 ? mix(b > 0 ? leafL : leaf, stem, 0.3) : (b > 0 ? leafL : leaf);
+      }
+      if (dx >= -26 && dx <= -17 && Math.abs(dy - dx) <= 1) return stem; // 줄기 꼬리
+      return null;
+    };
+    return leafAt(34, 30, false) || leafAt(98, 94, true) || leafAt(100, 26, true) || leafAt(36, 98, false) || (hash(uu >> 2, hh >> 2, 9) < 0.03 ? mix(base, leaf, 0.25) : base);
+  },
+  // 회색 성벽 돌 (큰 돌 64×32, 반칸 엇갈림)
+  stone_castle: (u, h) => {
+    const mortar = hex('#6f6a66');
+    const row = Math.floor(h / 32), hh = mod(h, 32), off = row % 2 ? 32 : 0, uu = mod(u + off, 64), col = Math.floor((u + off) / 64);
+    if (hh < 3 || uu < 3) return mortar;
+    const tones = ['#a9a4a0', '#b4afaa', '#9e9995', '#aba39c'].map(hex);
+    const c = tones[Math.floor(hash(col, row) * 4)];
+    if (hh === 3 || uu === 3) return mix(c, hex('#ffffff'), 0.3);
+    if (hh === 31 || uu === 63) return mix(c, mortar, 0.5);
+    if (hash(uu >> 1, hh >> 1, col * 31 + row) < 0.08) return mix(c, mortar, 0.3); // 거친 질감
+    return c;
+  },
+  // 파스텔 무지개 가로 줄무늬 (16도트씩, 바닥선과 나란히)
+  rainbow_pastel: (u, h) => {
+    const pal = ['#f9c5c5', '#fbdcb4', '#fbf3b8', '#cfeac6', '#c6e3f6', '#dccdf3'].map(hex);
+    const i = Math.floor(h / 16), c = pal[mod(i, pal.length)];
+    return mod(h, 16) === 0 ? mix(c, hex('#ffffff'), 0.5) : c;
+  },
+});
+
 // ───────── 바닥 무늬 (p, q) → [r,g,b] ─────────
 const OAK = ['#d6a46e', '#cc9862', '#deae78', '#c7925c'].map(hex), OAK_D = hex('#8c5f36'), OAK_L = hex('#f3d6ad');
 const FLOORS = {
@@ -238,6 +343,113 @@ const FLOORS = {
     return c;
   },
 };
+
+// ── 2차 추가 바닥 ──
+Object.assign(FLOORS, {
+  // 다다미 (1×2칸 돗자리, 짜임 결 + 짙은 테두리)
+  tatami: (p, q) => {
+    const j = Math.floor(q / 128), off = (j % 2) * 128; // 줄마다 반 칸 엇갈림
+    const mp = mod(p + off, 256), mq = mod(q, 128), L = 256, H = 128;
+    const edge = hex('#2f3a2a');
+    if (mp < 5 || mq < 5 || mp >= L - 5 || mq >= H - 5) return mp === 5 || mq === 5 || mp === L - 6 || mq === H - 6 ? hex('#4a5a3a') : edge;
+    const base = hex('#c9c37e');
+    const along = mp, across = mq;
+    let c = mod(across, 3) === 0 ? mix(base, hex('#a8a360'), 0.35) : base;
+    if (mod(along, 6) === 0) c = mix(c, hex('#e0db9a'), 0.3);
+    if (hash(p >> 1, q >> 1, 2) < 0.03) c = mix(c, hex('#a8a360'), 0.3);
+    return c;
+  },
+  // 자갈길 (둥근 자갈, 64×64 반복)
+  pebble: (p, q) => {
+    const base = hex('#b9ada0');
+    const pebs = [[14, 12, 9, 7], [40, 10, 11, 8], [58, 30, 8, 6], [26, 36, 12, 9], [50, 50, 9, 8], [8, 54, 10, 7], [36, 58, 7, 5], [4, 32, 6, 5]];
+    const uu = mod(p, 64), vv = mod(q, 64), ci = Math.floor(p / 64), cj = Math.floor(q / 64);
+    for (let k = 0; k < pebs.length; k++) {
+      const [cx, cy, rx, ry] = pebs[k];
+      const jx = Math.round(hash(ci, cj, k) * 4 - 2), jy = Math.round(hash(ci, cj, k + 20) * 4 - 2);
+      for (const [ox, oy] of [[0, 0], [-64, 0], [64, 0], [0, -64], [0, 64]]) {
+        const dx = uu - cx - jx - ox, dy = vv - cy - jy - oy, d = (dx / rx) ** 2 + (dy / ry) ** 2;
+        if (d <= 1) {
+          const tones = ['#d8cfc3', '#c7bcae', '#e0d8ce', '#b8ada2', '#cfc3b5'].map(hex), c = tones[Math.floor(hash(ci * 8 + k, cj, 5) * 5)];
+          return d > 0.78 ? mix(c, hex('#8a7f73'), 0.45) : (dx < -rx * 0.3 && dy < -ry * 0.3 ? mix(c, hex('#ffffff'), 0.3) : c);
+        }
+      }
+    }
+    return hash(p, q, 7) < 0.08 ? mix(base, hex('#9a8f82'), 0.5) : base;
+  },
+  // 화이트 마블 (옅은 회색 결)
+  marble_white: (p, q) => {
+    const base = hex('#f3f1ec');
+    const i = Math.floor(p / 128), j = Math.floor(q / 128), pp = mod(p, 128), qq = mod(q, 128);
+    if (pp === 0 || qq === 0) return hex('#d4d0c8');
+    if (pp === 1 || qq === 1) return hex('#fbfaf7');
+    let c = base;
+    for (let k = 0; k < 3; k++) {
+      const ph = hash(i, j, k) * 100, amp = 6 + hash(i, j, k + 5) * 6;
+      const vy = 20 + k * 40 + amp * Math.sin((pp + ph) / 13) + 3 * Math.sin((pp + ph) / 5);
+      const d = Math.abs(qq - vy);
+      if (d < 1) c = mix(c, hex('#b8b4ac'), 0.7); else if (d < 2.5) c = mix(c, hex('#d9d6cf'), 0.6);
+    }
+    if (hash(p >> 1, q >> 1, 3) < 0.05) c = mix(c, hex('#e4e1da'), 0.6);
+    return c;
+  },
+  // 분홍·크림 체커 (64 타일)
+  checker_pink: (p, q) => {
+    const i = Math.floor(p / 64), j = Math.floor(q / 64), pp = mod(p, 64), qq = mod(q, 64);
+    const grout = hex('#e3cfd3');
+    if (pp < 2 || qq < 2) return grout;
+    const pink = (i + j) % 2 === 0, c = pink ? hex('#f5c3cf') : hex('#fbf3e8');
+    if (pp === 2 || qq === 2) return mix(c, hex('#ffffff'), 0.5);
+    if (pp === 63 || qq === 63) return mix(c, grout, 0.5);
+    return c;
+  },
+  // 다크 월넛 마루 (널 폭 32, 길이 256)
+  wood_dark: (p, q) => {
+    const row = Math.floor(q / 32), qq = mod(q, 32), off = (row % 2) * 128;
+    const seg = Math.floor((p + off) / 256), pp = mod(p + off, 256);
+    const tones = ['#5e3a26', '#684230', '#55331f', '#6e4834'].map(hex);
+    const c = tones[Math.floor(hash(seg, row) * 4)];
+    if (qq === 0 || pp === 0) return hex('#2e1a10');
+    if (qq === 1 || pp === 1) return mix(c, hex('#a0735a'), 0.35);
+    if (qq === 31 || pp === 255) return mix(c, hex('#2e1a10'), 0.4);
+    for (let g = 0; g < 3; g++) {
+      const gy = 6 + g * 9 + Math.round(2 * Math.sin((pp + hash(seg, row, g) * 300) / 29));
+      if (qq === gy && hash(pp, row, g + 3) < 0.75) return mix(c, hex('#2e1a10'), 0.25);
+    }
+    return c;
+  },
+  // 분홍 카펫
+  carpet_pink: (p, q) => {
+    const base = hex('#f0b8c8');
+    const n = hash(p >> 1, q >> 1, 1), c = mul(base, 0.95 + n * 0.09);
+    if (hash(p, q, 4) < 0.05) return mix(c, hex('#ffffff'), 0.5);
+    if (hash(p, q, 6) < 0.03) return mix(c, hex('#d98aa0'), 0.5);
+    return c;
+  },
+  // 적벽돌 테라스 (벽돌 64×32, 엇갈림)
+  brick_red: (p, q) => {
+    const row = Math.floor(q / 32), qq = mod(q, 32), off = (row % 2) * 32, pp = mod(p + off, 64), col = Math.floor((p + off) / 64);
+    const mortar = hex('#c9b9a6');
+    if (qq < 3 || pp < 3) return mortar;
+    const tones = ['#b9573f', '#a84d38', '#c4634a', '#9e4a36'].map(hex), c = tones[Math.floor(hash(col, row) * 4)];
+    if (qq === 3 || pp === 3) return mix(c, hex('#e8a08a'), 0.35);
+    if (qq === 31 || pp === 63) return mix(c, hex('#6e2e20'), 0.4);
+    if (hash(p, q, 2) < 0.05) return mix(c, hex('#6e2e20'), 0.2);
+    return c;
+  },
+  // 물결 타일 (파스텔 블루, 수영장용)
+  wave_blue: (p, q) => {
+    const base = hex('#bfe4f4'), wave = hex('#7fc4e6'), light = hex('#e8f6fc');
+    const pp = mod(p, 64), qq = mod(q, 64);
+    if (pp === 0 || qq === 0) return hex('#9fcfe6');
+    const w = 32 + 9 * Math.sin(pp / 10.2); // 타일마다 물결 하나
+    const d = qq - w;
+    if (d >= 0 && d < 7) return d < 1 ? light : d < 5 ? wave : hex('#5fa9d4');
+    if (d >= -22 && d < -16) return mix(base, wave, 0.45);
+    if (hash(p, q, 3) < 0.02) return light;
+    return base;
+  },
+});
 
 // 벽 끝 단면 색 (바깥쪽부터): 벽지 평균색을 회색빛으로 눌러 기존 단면과 비슷하게
 function capColors(avg) {
