@@ -23,7 +23,9 @@
     sniper:  { strong: '보스 (탑 보스층·엘리트)', weak: [] },
     frost:   { strong: '제어 (5:5·1:1)', weak: [] },
     curse:   { strong: '탑 일반층 약화', weak: ['duel'] },
-    bard:    { strong: '팀 버프', weak: ['duel'] }
+    bard:    { strong: '팀 버프', weak: ['duel'] },
+    berserker: { strong: '근접 브루저 (러쉬·1:1)', weak: [] },
+    paladin: { strong: '5:5·러쉬 앞줄 유지 (성녀 없는 팀의 유지력)', weak: ['duel'] }
   };
   // [아래, 위]: 이 밖이면 조정 대상
   BS.LIMITS = { duel: [20, 80], rand5: [40, 60], tower: [40, 88] };
