@@ -1,7 +1,8 @@
 # 성기사(성전사) 전용 샘플(은발 땋은 머리·파란 십자 방패·전쟁 망치, 흰 배경 한 장씩) → 캐릭터 시트 assets/sprites/merc/paladin_0.webp
 # 사용: python tools/paladin_build.py   (샘플은 assets/sprites/fx/samples/paladin_*_src.png, 동작 샘플이 오는 대로 FRAMES에 늘림)
-# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~4 걷기 · 5 피격 · 6~8 쓰러짐 (서서 뒤로 젖힘 → 무릎 꿇음 → 엎어짐) · 9~10 기본 공격 (망치 치켜들기 → 내리치기) · 11~13 심판 (망치 뒤로 당김 → 머리 위로 치켜듦 → 땅에 내리찍음)
+# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~4 걷기 · 5 피격 · 6~8 쓰러짐 (서서 뒤로 젖힘 → 무릎 꿇음 → 엎어짐) · 9~10 기본 공격 (망치 치켜들기 → 내리치기) · 11~13 심판 (망치 뒤로 당김 → 머리 위로 치켜듦 → 땅에 내리찍음) · 14~15 신성 보호 (방패를 앞으로 → 방패를 머리 위로 들어 올림)
 # 이펙트: 심판 금빛 빛기둥 + 땅 폭발 → assets/sprites/fx/paladin_judgment.webp (어두운 배경 샘플, build_judgment_fx)
+#   신성 보호 바닥 마법진 → fx/paladin_hs_circle.webp, 시전자 보호막(문양 반구) → fx/paladin_hs_cast.webp, 아군 보호막(맑은 반구) → fx/paladin_hs_ally.webp (build_holy_shield_fx)
 # 크기 통일: 대기 샘플의 머리 꼭대기~발 키(IDLE_SRC_H)를 TARGET_H로 줄이는 배율이 기준. 다른 동작은 같은 배율(k=1)로 줄이고,
 #   샘플마다 캐릭터를 다르게 그려 왔으면 그 칸의 몸 키(머리 꼭대기~발, 샘플 px)를 ('h', 키)로 적어 대기와 같은 키가 되게 맞춤
 # 샘플 정리:
@@ -14,6 +15,9 @@
 #   - 심판 샘플 3장(139×133, 125×161, 128×126)은 공격 샘플과 같은 크기(얼굴 폭 같음) → 같은 1.23배
 #   - 심판 이펙트 샘플(186×150)은 어두운 배경(35, 39, 43)에 위 6줄 "Impact (Judgement..." 글씨 → 글씨 지우고, 배경색을 빼서 투명도·본래 색을 되살림.
 #     바위 조각(어두운 갈색)은 배경과 밝기가 비슷해서 배경(푸르스름)보다 붉은 정도로 불투명도를 줌
+#   - 신성 보호 샘플 2장(137×139, 144×143): 두 번째 장 위에 "…신성 보호막…" 글씨가 방패 윗선과 붙어 있음 → 0~6행 전부, 7~8행은 방패 오른쪽(x 46~)만 지움.
+#     방패는 잘리지 않았음(윗선 8행). 얼굴은 공격 샘플보다 조금 크게(첫 장 7%) 그려져 첫 장 1.15배, 둘째 장 1.23배
+#   - 신성 보호 이펙트 2장(129×79 마법진, 335×145 보호막 둘)은 어두운 배경(35, 39, 43) — 빛 더하기용으로 배경을 뺀 밝기만 남김 (glow_dark, 게임에서 'lighter')
 #   - 피격·쓰러짐 샘플(931×178, 제목 글씨 2개)은 얼굴은 대기와 같은데 방패가 15% 작게 그려짐 → 중간값 1.08배로 키움. 무릎 꿇음·엎어짐 칸은 키로 못 재서 첫 칸 배율 그대로
 import os, sys
 import numpy as np
@@ -37,9 +41,10 @@ FRAMES = [
     ('hurt_down', 'down0', 1.08, 1), ('hurt_down', 'down1', 'down0', 2), ('hurt_down', 'down2', 'down0', 3),
     ('atk_a', 'atk0', 1.23, 0), ('atk_b', 'atk1', 1.23, 0),
     ('judge_a', 'judge0', 1.23, 0), ('judge_b', 'judge1', 1.23, 0), ('judge_c', 'judge2', 1.23, 0),
+    ('hshield_a', 'hs0', 1.15, 0), ('hshield_b', 'hs1', 1.23, 0),
 ]
 CARD = {'idle': (163, 194)}   # 카드 테두리를 빼고 쓸 (너비, 높이)
-LABEL = {'idle': [(0, 45, 0, 16)]}   # 지울 상자 (x0, x1, y0, y1): 번호 글씨
+LABEL = {'idle': [(0, 45, 0, 16)], 'hshield_b': [(0, 144, 0, 7), (46, 144, 7, 9)]}   # 지울 상자 (x0, x1, y0, y1): 번호 글씨
 GAP = {'atk_a': [(15, 60, 35, 75)], 'idle': [(95, 140, 130, 175)]}   # 갇힌 흰 배경을 지울 상자 (x0, x1, y0, y1)
 LIFT = {}   # 땅에서 띄워 그릴 높이 (칸 px)
 SRC = {}
@@ -111,22 +116,49 @@ JUDGE_FX_BG = np.array([35.0, 39.0, 43.0])
 JUDGE_FX_LABEL_ROWS = 6
 
 
-def build_judgment_fx():
-    im = np.array(Image.open(f'{D}judge_fx_src.png').convert('RGB')).astype(float)
+def key_dark(src, x0=0, x1=None, label_rows=0, warm_keep=False, out=None):
+    # 어두운 배경 이펙트 샘플: 배경색과 떨어진 만큼 불투명, 배경색을 빼서 본래 색으로 (빛 가장자리·반투명 반구 속까지 살림)
+    im = np.array(Image.open(f'{D}{src}_src.png').convert('RGB')).astype(float)[:, x0:x1]
     d = np.sqrt(((im - JUDGE_FX_BG) ** 2).sum(axis=2))
     a = np.clip((d - 8) / 70, 0, 1)
-    warm = np.clip((im[..., 0] - im[..., 2] - 3) / 8, 0, 1)   # 바위 조각: 배경은 푸르스름(파랑 > 빨강), 조각은 갈색
-    a = np.maximum(a, warm * (d > 10))
-    a[:JUDGE_FX_LABEL_ROWS] = 0
+    if warm_keep:
+        warm = np.clip((im[..., 0] - im[..., 2] - 3) / 8, 0, 1)   # 바위 조각: 배경은 푸르스름(파랑 > 빨강), 조각은 갈색
+        a = np.maximum(a, warm * (d > 10))
+    a[:label_rows] = 0
     al = np.maximum(a, 1e-3)[..., None]
     rgb = ((im - JUDGE_FX_BG * (1 - al)) / al).clip(0, 255)
     a = np.where(a < 0.04, 0, a)
     ys, xs = np.where(a > 0)
-    out = np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
-    Image.fromarray(out.clip(0, 255).astype(np.uint8), 'RGBA').save(OUT_JUDGE_FX, 'WEBP', lossless=True)
-    print(f'judgment fx {out.shape[1]}x{out.shape[0]}')
+    o = np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    Image.fromarray(o.clip(0, 255).astype(np.uint8), 'RGBA').save(out, 'WEBP', lossless=True)
+    print(f'{out} {o.shape[1]}x{o.shape[0]}')
+
+
+def build_judgment_fx():
+    key_dark('judge_fx', label_rows=JUDGE_FX_LABEL_ROWS, warm_keep=True, out=OUT_JUDGE_FX)
+
+
+def glow_dark(src, x0=0, x1=None, out=None, gain=1.15):
+    # 빛 더하기용(게임에서 'lighter'로 그림): 배경색을 뺀 밝기만 남김. 불투명도 = 가장 밝은 채널, 색은 그 비율로 나눠 둠
+    #   (배경을 빼서 투명하게 하는 방식은 반구 속 어두운 푸른빛이 회색 막처럼 남았음)
+    im = np.array(Image.open(f'{D}{src}_src.png').convert('RGB')).astype(float)[:, x0:x1]
+    add = ((im - JUDGE_FX_BG) * gain).clip(0, 255)
+    add = np.where(add.max(axis=2, keepdims=True) < 6, 0, add)
+    a = add.max(axis=2)
+    rgb = np.where(a[..., None] > 0, add * 255 / np.maximum(a, 1)[..., None], 0)
+    ys, xs = np.where(a > 0)
+    o = np.dstack([rgb, a])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    Image.fromarray(o.clip(0, 255).astype(np.uint8), 'RGBA').save(out, 'WEBP', lossless=True)
+    print(f'{out} {o.shape[1]}x{o.shape[0]}')
+
+
+def build_holy_shield_fx():
+    glow_dark('hshield_circle', out='assets/sprites/fx/paladin_hs_circle.webp')
+    glow_dark('hshield_domes', 0, 188, out='assets/sprites/fx/paladin_hs_cast.webp')     # 왼쪽: 십자·방패 문양 반구 (시전자)
+    glow_dark('hshield_domes', 188, None, out='assets/sprites/fx/paladin_hs_ally.webp')  # 오른쪽: 맑은 반구 + 빛 알갱이 (보호막 받은 아군)
 
 
 if __name__ == '__main__':
     main()
     build_judgment_fx()
+    build_holy_shield_fx()

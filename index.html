@@ -6375,23 +6375,24 @@
     // 투구는 모든 프레임에서 갑옷과 같은 색 (샘플에서 은색·금색으로 나온 투구는 갑옷 색으로 다시 칠함)
     [1, 2, 3].forEach(v => { MERC_SPRITE_DEFS[`knight_${v}`] = { ...MERC_SPRITE_DEFS.knight_0, src: `assets/sprites/merc/knight_${v}.webp` }; });
     // 성기사 외형 0 (은발 땋은 머리·파란 십자 방패·전쟁 망치, tools/paladin_build.py): 칸 순서 = 대기, 걷기 4, 피격, 쓰러짐 3 (뒤로 젖힘 → 무릎 → 엎어짐), 기본 공격 2 (망치 치켜들기 → 내리치기),
-    //   심판 3 (시전 막대 동안 망치 뒤로 당김 → 머리 위로 치켜듦, 발동 = 땅에 내리찍음 + 망치 자리에 금빛 빛기둥 PALADIN_JUDGMENT_FX)
+    //   심판 3 (시전 막대 동안 망치 뒤로 당김 → 머리 위로 치켜듦, 발동 = 땅에 내리찍음 + 망치 자리에 금빛 빛기둥 PALADIN_JUDGMENT_FX),
+    //   신성 보호 2 (시전 막대 동안 방패를 앞으로 + 발밑 푸른 마법진, 발동 = 방패를 머리 위로 + 자신에게 문양 반구 · 보호막 받은 아군에게 맑은 반구)
     // 샘플이 다른 직업보다 머리가 작은 6등신이라 키 110px인데 standH는 기사와 같은 90으로 두어 1.22배 크게 그림 (얼굴 크기가 다른 직업과 비슷해짐)
     // 스킬 전용 동작 샘플이 오기 전까지: 나머지 스킬·시전 자세 = 망치 치켜든 칸(9), 성스러운 돌격 = 걷기 반복
     MERC_SPRITE_DEFS.paladin_0 = {
       src: 'assets/sprites/merc/paladin_0.webp',
-      cellW: 211, cellH: 125, anchorX: 71, anchorY: 123, standH: 90, topH: 110, portraitCX: 76, portraitZoomOut: 1.2, count: 14,
+      cellW: 211, cellH: 125, anchorX: 71, anchorY: 123, standH: 90, topH: 110, portraitCX: 76, portraitZoomOut: 1.2, count: 16,
       anims: {
-        idle: [0], walk: [1, 2, 3, 4], attack: [9, 10], skill: [9], hurt: [5], death: [6, 7, 8], judge: [13]
+        idle: [0], walk: [1, 2, 3, 4], attack: [9, 10], skill: [9], hurt: [5], death: [6, 7, 8], judge: [13], hshield: [15]
       },
       skillAnims: {
         judgment:    { anim: 'judge', tpf: 26, dur: 26 },
-        holy_shield: { anim: 'skill', tpf: 9, dur: 27 },
+        holy_shield: { anim: 'hshield', tpf: 34, dur: 34 },
         consecrate:  { anim: 'skill', tpf: 9, dur: 27 },
         holy_charge: { anim: 'walk', tpf: 6, loop: true, dur: 44 },
         vow:         { anim: 'skill', tpf: 12, dur: 36 }
       },
-      castFrames: { judgment: [11, 12], holy_shield: 9, consecrate: 9, vow: 9, aegis: 9 },
+      castFrames: { judgment: [11, 12], holy_shield: 14, consecrate: 9, vow: 9, aegis: 9 },
       judgeHitX: 27 // 내리찍기 칸에서 망치 머리가 땅에 닿는 자리 (발 기준 앞쪽, 칸 px) — 빛기둥 위치
     };
     // 창병: 청록 머리·초록 망토·장창. 기본 공격은 휘두르기(attack)와 찌르기(thrust) 두 벌 (pickSpriteFrame에서 lanceMode로 고름)
@@ -8081,6 +8082,12 @@
     const PALADIN_JUDGMENT_FX = new Image();
     PALADIN_JUDGMENT_FX.onload = () => { PALADIN_JUDGMENT_FX.ready = true; };
     PALADIN_JUDGMENT_FX.src = 'assets/sprites/fx/paladin_judgment.webp';
+    // 성기사 신성 보호: 시전 막대 동안 발밑 푸른 마법진 · 발동 때 시전자에게 십자 문양 반구 · 보호막 받은 아군에게 맑은 반구
+    //   (tools/paladin_build.py, 어두운 배경에서 뽑은 빛이라 'lighter'로 더해 그림. 반구는 아래 가운데 = 발)
+    const PALADIN_HS_FX = {};
+    ['circle', 'cast', 'ally'].forEach(k => { const im = new Image(); im.onload = () => { im.ready = true; }; im.src = `assets/sprites/fx/paladin_hs_${k}.webp`; PALADIN_HS_FX[k] = im; });
+    // 유닛 몸 키(화면 px) — 반구 크기를 몸에 맞춤
+    const unitBodyDrawH = u => { const sp = getUnitSprite(u); return sp ? spriteDrawH(u, sp) * (sp.topH || sp.standH) / sp.standH : 60 * (u.sizeScale || 1); };
     const BERSERKER_SR_SLAM_FX = new Image(); // 흑사자 마무리 일격 폭발 (붉은 불기둥·불꽃·돌 조각)
     BERSERKER_SR_SLAM_FX.onload = () => { BERSERKER_SR_SLAM_FX.ready = true; };
     BERSERKER_SR_SLAM_FX.src = 'assets/sprites/fx/berserker_sr1_slam.webp';
@@ -23049,9 +23056,10 @@
           a.shield = amt;
           unit.healDone += add;
           n++;
-          sim.effects.push({ type: 'shield_dome', x: a.x, y: a.y, life: 60, maxLife: 60 });
+          if (a !== unit) sim.effects.push({ type: 'paladin_hs_dome', x: a.x, y: a.y, w: unitBodyDrawH(a) * 1.25, uid: a.id, life: 60, maxLife: 60 }); // 아군: 맑은 반구
           sim.floatTexts.push({ x: a.x, y: a.y - 32, text: `🛡️+${add}`, color: '#ca8a04', life: 55 });
         });
+        sim.effects.push({ type: 'paladin_hs_dome', big: true, x: unit.x, y: unit.y, w: unitBodyDrawH(unit) * 1.5, uid: unit.id, life: 60, maxLife: 60 }); // 시전자: 십자 문양 반구
         sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: A * PALADIN_AURA_CELLS, color: '#fde68a', life: 40, maxLife: 40 });
         playCombatSfx('heal');
         addBattleLog(`🛡️ [성기사] ${unit.name}의 신성 보호! 아군 ${n}명에게 보호막 ${amt}`);
@@ -24187,7 +24195,28 @@
       ctx.drawImage(hitFxLayer, 0, 0);
       ctx.restore();
     }
+    // 성기사 신성 보호 반구: 처음 18% 동안 툭 부풀며 나타나고 마지막 40% 동안 사라짐. 받은 유닛을 따라다님 (아래 가운데 = 발)
+    function drawPaladinDomes(ctx) {
+      sim.effects.forEach(ef => {
+        if (ef.type !== 'paladin_hs_dome') return;
+        const img = PALADIN_HS_FX[ef.big ? 'cast' : 'ally'];
+        if (!img || !img.ready) return;
+        const u = ef.uid != null ? sim.units.find(v => v.id === ef.uid && v.alive) : null;
+        const x = u ? u.x : ef.x, y = u ? u.y : ef.y;
+        const progress = 1 - ef.life / (ef.maxLife || 20);
+        const grow = Math.min(1, progress / 0.18), fade = Math.min(1, (1 - progress) / 0.4);
+        const pop = 0.75 + grow * 0.25 + Math.sin(grow * Math.PI) * 0.08;
+        const w = ef.w * pop, h = w * img.height / img.width;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = grow * fade * (ef.big ? 0.7 : 0.85); // 빛을 더해 그려서 진하면 안의 캐릭터가 하얗게 묻힘
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(img, x - w / 2, y + 14 - h, w, h);
+        ctx.restore();
+      });
+    }
     function drawSupportEffects(ctx) {
+      drawPaladinDomes(ctx);
       if (!SUPPORT_FX.ready) return;
       sim.effects.forEach(ef => {
         const def = SUPPORT_FX.anims[ef.type];
@@ -25455,6 +25484,19 @@
         ctx.restore();
       };
       if (rareFx) drawRareAura(false);
+      // 성기사 신성 보호 시전: 시전 막대 동안 발밑에 푸른 마법진 (막대가 찰수록 진해지고 커지며 천천히 일렁임)
+      if (u.alive && u.job === 'paladin' && !u.monsterType && u.casting && u.casting.key === 'holy_shield' && PALADIN_HS_FX.circle.ready) {
+        const img = PALADIN_HS_FX.circle;
+        const bp = Math.min(1, 1 - u.casting.left / Math.max(1, u.casting.total));
+        const bodyH = unitBodyDrawH(u);
+        const w = bodyH * 1.35 * (0.75 + 0.25 * bp), h = w * img.height / img.width;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha *= Math.min(1, 0.3 + bp) * (0.85 + 0.15 * Math.sin(tick * 0.3));
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(img, -w / 2, 12 - h / 2, w, h);
+        ctx.restore();
+      }
       // 흑사자 불사의 분노 시전: 시전 막대 동안 몸 뒤에 붉은 반구 (막대가 찰수록 진해지고 살짝 커짐)
       if (useSprite && u.alive && isSrBerserker(u) && u.casting && u.casting.key === 'undying_rage' && BERSERKER_SR_UCAST_FX.ready) {
         const bp = Math.min(1, 1 - u.casting.left / Math.max(1, u.casting.total));
