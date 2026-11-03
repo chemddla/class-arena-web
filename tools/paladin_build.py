@@ -1,6 +1,7 @@
 # 성기사(성전사) 전용 샘플(은발 땋은 머리·파란 십자 방패·전쟁 망치, 흰 배경 한 장씩) → 캐릭터 시트 assets/sprites/merc/paladin_0.webp
 # 사용: python tools/paladin_build.py   (샘플은 assets/sprites/fx/samples/paladin_*_src.png, 동작 샘플이 오는 대로 FRAMES에 늘림)
-# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~4 걷기 · 5 피격 · 6~8 쓰러짐 (서서 뒤로 젖힘 → 무릎 꿇음 → 엎어짐) · 9~10 기본 공격 (망치 치켜들기 → 내리치기)
+# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~4 걷기 · 5 피격 · 6~8 쓰러짐 (서서 뒤로 젖힘 → 무릎 꿇음 → 엎어짐) · 9~10 기본 공격 (망치 치켜들기 → 내리치기) · 11~13 심판 (망치 뒤로 당김 → 머리 위로 치켜듦 → 땅에 내리찍음)
+# 이펙트: 심판 금빛 빛기둥 + 땅 폭발 → assets/sprites/fx/paladin_judgment.webp (어두운 배경 샘플, build_judgment_fx)
 # 크기 통일: 대기 샘플의 머리 꼭대기~발 키(IDLE_SRC_H)를 TARGET_H로 줄이는 배율이 기준. 다른 동작은 같은 배율(k=1)로 줄이고,
 #   샘플마다 캐릭터를 다르게 그려 왔으면 그 칸의 몸 키(머리 꼭대기~발, 샘플 px)를 ('h', 키)로 적어 대기와 같은 키가 되게 맞춤
 # 샘플 정리:
@@ -10,6 +11,9 @@
 #   - 발은 잘리지 않았음 (부츠 바닥 윤곽선 뒤 1px 연한 띠까지 있음)
 #   - 걷기 샘플(753×240, "2. 걷기" 제목 글씨)은 캐릭터가 대기보다 9% 크게 그려짐(키 177px, 머리 폭 77 vs 대기 69) → 몸 키로 대기와 같게
 #   - 기본 공격 샘플 2장(113×143 치켜들기, 151×140 내리치기)은 캐릭터가 대기의 0.815배로 작게 그려짐(방패·얼굴·머리 폭 모두) → 1.23배로 키움
+#   - 심판 샘플 3장(139×133, 125×161, 128×126)은 공격 샘플과 같은 크기(얼굴 폭 같음) → 같은 1.23배
+#   - 심판 이펙트 샘플(186×150)은 어두운 배경(35, 39, 43)에 위 6줄 "Impact (Judgement..." 글씨 → 글씨 지우고, 배경색을 빼서 투명도·본래 색을 되살림.
+#     바위 조각(어두운 갈색)은 배경과 밝기가 비슷해서 배경(푸르스름)보다 붉은 정도로 불투명도를 줌
 #   - 피격·쓰러짐 샘플(931×178, 제목 글씨 2개)은 얼굴은 대기와 같은데 방패가 15% 작게 그려짐 → 중간값 1.08배로 키움. 무릎 꿇음·엎어짐 칸은 키로 못 재서 첫 칸 배율 그대로
 import os, sys
 import numpy as np
@@ -32,6 +36,7 @@ FRAMES = [
     ('hurt_down', 'hurt', 1.08, 0),
     ('hurt_down', 'down0', 1.08, 1), ('hurt_down', 'down1', 'down0', 2), ('hurt_down', 'down2', 'down0', 3),
     ('atk_a', 'atk0', 1.23, 0), ('atk_b', 'atk1', 1.23, 0),
+    ('judge_a', 'judge0', 1.23, 0), ('judge_b', 'judge1', 1.23, 0), ('judge_c', 'judge2', 1.23, 0),
 ]
 CARD = {'idle': (163, 194)}   # 카드 테두리를 빼고 쓸 (너비, 높이)
 LABEL = {'idle': [(0, 45, 0, 16)]}   # 지울 상자 (x0, x1, y0, y1): 번호 글씨
@@ -101,5 +106,27 @@ def main():
     print(f'paladin_0 cellW={cw} cellH={H} anchorX={L} anchorY={H - 2} count={len(pieces)}')
 
 
+OUT_JUDGE_FX = 'assets/sprites/fx/paladin_judgment.webp'
+JUDGE_FX_BG = np.array([35.0, 39.0, 43.0])
+JUDGE_FX_LABEL_ROWS = 6
+
+
+def build_judgment_fx():
+    im = np.array(Image.open(f'{D}judge_fx_src.png').convert('RGB')).astype(float)
+    d = np.sqrt(((im - JUDGE_FX_BG) ** 2).sum(axis=2))
+    a = np.clip((d - 8) / 70, 0, 1)
+    warm = np.clip((im[..., 0] - im[..., 2] - 3) / 8, 0, 1)   # 바위 조각: 배경은 푸르스름(파랑 > 빨강), 조각은 갈색
+    a = np.maximum(a, warm * (d > 10))
+    a[:JUDGE_FX_LABEL_ROWS] = 0
+    al = np.maximum(a, 1e-3)[..., None]
+    rgb = ((im - JUDGE_FX_BG * (1 - al)) / al).clip(0, 255)
+    a = np.where(a < 0.04, 0, a)
+    ys, xs = np.where(a > 0)
+    out = np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    Image.fromarray(out.clip(0, 255).astype(np.uint8), 'RGBA').save(OUT_JUDGE_FX, 'WEBP', lossless=True)
+    print(f'judgment fx {out.shape[1]}x{out.shape[0]}')
+
+
 if __name__ == '__main__':
     main()
+    build_judgment_fx()
