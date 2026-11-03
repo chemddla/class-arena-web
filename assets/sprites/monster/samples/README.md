@@ -18,6 +18,9 @@
 | `lich_robe_src.webp` | 망자의 군주 리치 원본 1 (2026-11-03) | 1024×572 RGB, 8프레임 4×2 (대기, 걷기 1·2, 일반공격 1·2, 피격, 쓰러짐 1·2). 보랏빛 로브·가시 왕관·해골 지팡이, 왼손에 푸른 불꽃. 일반공격 2의 푸른 불덩이는 투사체로 따로 날리려면 지울 것. 흰 배경, 한글·영어 라벨 지우기. **게임의 `lich.webp`(판금 갑옷·대검, 언데드 종족 보스)와 다른 그림** → 엘리트 7단계 `elite_lich`에만 씀: `python tools/lich_elite_build.py` → `monster/lich_elite.webp`(17칸, MONSTER_SPRITE_DEFS.elite_lich). 스킬은 아래 원본 2 |
 | `lich_robe_skill_src.webp` | 망자의 군주 리치 원본 2: 스킬 3종 (2026-11-03) | 1024×765 RGB, 3×3 (영혼 서리 → `ice_arrow`, 역병 폭탄 → `poison_boom`, 죽음의 저주 → `hex_bolt` × 기 모으기·기운 두름·방출). 흰 배경, 한글 라벨 지움. 방출 칸의 얼음 가시·역병 구름·해골 망령은 칸 안에 그대로 둠. `lich_elite.webp` 9~17번째 칸 |
 | `lich_robe_skill2_src.webp` | 망자의 군주 리치 원본 3: 스킬 3종 (2026-11-03) | 1024×765 RGB. 망령 이동 4칸(그대로·망령화·잔상 이동·재출현, 뒤 두 칸은 그림이 겹쳐 무게중심으로 나눔) → `teleport`, 불사의 의식 4칸(주문·금빛 마법진·불꽃 든 손·불길) → `purify`, 망자의 늪 3칸(집중·발밑 늪·늪 펼쳐 소환) → `curse_field`. 흰 배경, 라벨 지움. `lich_elite.webp` 18~28번째 칸 |
+| `ifrit_elite_src.webp` | 겁화의 이프리트 원본 1 (2026-11-03) | 1024×572 RGB. 대기 · 걷기 1·2 / 일반공격 1·2 · 피격 / 쓰러짐 1·2. 대기 아래 다리만 있는 조각은 안 씀. 일반공격 2의 불덩이는 잘라 내서 기본 공격 투사체로 씀. 대기 칸만 크게 그려져 있음(0.8배). **게임의 `ifrit.webp`(화염 대검, 화염족 보스)와 다른 그림** → 엘리트 8단계 `elite_ifrit`에만 씀: `python tools/ifrit_elite_build.py` → `monster/ifrit_elite.webp`(22칸, MONSTER_SPRITE_DEFS.elite_ifrit) |
+| `ifrit_elite_skill_src.webp` | 겁화의 이프리트 원본 2: 스킬 3종 (2026-11-03) | 1024×765 RGB, 0.84배로 줄여 씀. 겁화구 2칸(모으기·발사, 날아가는 겁화구는 투사체로 따로) → `fireball`, 화염 폭발 3칸(모으기·불길·불꽃 돔) → `roar`, 불비 3칸(의식·내려다봄·운석 강우, 날아오는 운석은 지우고 한 개를 장판 운석으로 씀) → `arrow_rain`. 라벨 지움 |
+| `ifrit_elite_skill2_src.webp` | 겁화의 이프리트 원본 3: 스킬 3종 (2026-11-03) | 1024×572 RGB, 작게 그려져 있어 1.2배로 키워 씀. 용암 분출 2칸 → `earthquake`, 불꽃 순간이동 2칸(사라짐·출현, 오른쪽 라벨은 '불꽃 분출'로 잘못 적혀 있음) → `teleport`, 불꽃 분노 2칸(포효·양옆 불길) → `warcry`. 라벨 지움 |
 
 `goblin_bomber.webp` 연결 예시 (전투에서 확인한 값):
 
