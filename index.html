@@ -16492,7 +16492,7 @@
     function republishLiveUnits() {
       if (liveNet.role !== 'host' || !liveNet.ref) return;
       const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim']);
-      const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) ? undefined : v))));
+      const units = sim.units.map(u => liveUnitCopy(u, drop));
       liveNet.ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, units }).catch(() => {});
     }
 
@@ -25632,6 +25632,8 @@
         const dps = Math.round(totalBlueDmg / elapsedSec);
         statsBadge.textContent = `⏱️ ${elapsedSec.toFixed(1)}초 · 💥 아군 누적 피해 ${totalBlueDmg.toLocaleString()} (DPS ${dps.toLocaleString()}/초)`;
       }
+      // 지난 그리기가 중간에 오류로 끊겼어도 카메라·흔들림 이동이 쌓이지 않게 기본 상태에서 시작 (쌓이면 화면이 날아가며 흔들림)
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
 
       // ===== 월드 카메라 변환 시작 (마우스 휠 줌 & 드래그 이동 적용) =====
       ctx.save();
@@ -34608,7 +34610,7 @@
         }
         sim.effects.forEach(x => liveNet.sent.add(x));
         sim.floatTexts.forEach(x => liveNet.sent.add(x));
-        const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (k === 'manualAimTarget' ? undefined : v))));
+        const units = sim.units.map(u => liveUnitCopy(u, LIVE_INIT_DROP));
         ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, b: liveNet.bid, ep: liveNet.ep, units }).catch(() => {});
         if (liveNet.team) ref.child('inputs').on('value', snap => applyTeamRemoteInputs(snap && snap.val()));
         else ref.child('input').on('value', snap => applyRemoteBattleInput(snap && snap.val()));
@@ -34662,7 +34664,7 @@
           if (!sim.running) return;
           ref.child('init').once('value').then(snap => {
             if (liveNet.ref !== ref || liveNet.role !== 'host' || !sim.running || (snap && snap.val())) return;
-            const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (k === 'manualAimTarget' ? undefined : v))));
+            const units = sim.units.map(u => liveUnitCopy(u, LIVE_INIT_DROP));
             ref.child('init').set(JSON.parse(JSON.stringify({ at: Date.now(), b: liveNet.bid, ep: liveNet.ep, units }))).catch(() => {});
           }).catch(() => {});
           liveNet.lastFramePublishedAt = 0;
@@ -34721,7 +34723,9 @@
         u.lanceMode === 'thrust' ? 1 : 0,
         liveNum(u.ammo), liveNum(u.reloadLeft), liveNum(u.overheat), liveNum(u.powerStacks),
         liveR2(u.sizeScale || 1), Math.round(liveNum(u.maxHp)), // 히든 스킬 거인화: 몸 크기·최대 체력이 바뀜
-        u.rushFall == null ? -1 : liveNum(u.rushFall) // 몬스터 러쉬: 하늘에서 떨어지는 중인 틱
+        u.rushFall == null ? -1 : liveNum(u.rushFall), // 몬스터 러쉬: 하늘에서 떨어지는 중인 틱
+        // 흑사자 불사 실루엣·광폭 모습: 방장 틱 그대로는 도전자 화면 시계와 달라서 '몇 틱 전 / 몇 틱 남음'으로 보냄
+        u.srUndyingFxAt == null ? -1 : sim.tickCount - u.srUndyingFxAt, Math.max(0, liveNum(u.rageLookUntil) - sim.tickCount)
       ];
     }
 
@@ -34755,13 +34759,30 @@
         });
         return out;
       };
+    // 이펙트·유닛 목록에 섞인 다른 유닛 객체는 통째로 보내지 않음
+    // (owner·쌍도끼 두 번째 타 대상·시전 대상이 서로를 가리키면 순환 구조라 JSON이 깨져 화면이 안 가고, 아니어도 화면 한 장이 수십 KB로 불어남)
+    const isLiveUnitRef = v => Boolean(v && typeof v === 'object' && typeof v.id === 'string' && v.statuses && typeof v.hp === 'number');
+    function packLiveEffect(ef) {
+      const out = {};
+      for (const k in ef) {
+        const v = ef[k];
+        if (isLiveUnitRef(v)) { if (k === 'owner') out.oid = v.id; continue; } // 따라다니는 이펙트는 id로 → 받은 화면에서 그 유닛을 다시 찾음
+        out[k] = v;
+      }
+      return out;
+    }
+    const LIVE_INIT_DROP = new Set(['manualAimTarget']);
+    function liveUnitCopy(u, drop) {
+      return JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) || (k && isLiveUnitRef(v)) ? undefined : v)));
+    }
+
       const frame = {
         at: Date.now(),
         ...(liveNet.towerCast || typeof liveNet.bid !== 'number' ? {} : { b: liveNet.bid, ep: liveNet.ep || 0 }),
         t: sim.tickCount,
         u: sim.units.map(packLiveUnit),
         p: sim.projectiles.slice(0, 80).map(packLiveProjectile),
-        e: fresh(sim.effects),
+        e: fresh(sim.effects).map(packLiveEffect),
         f: fresh(sim.floatTexts),
         l: liveNet.pendingLogs.splice(0, 10),
         zn: (sim.zones || []).map(z => [liveR1(z.x), liveR1(z.y), z.r, z.life, z.kind])
@@ -34813,7 +34834,7 @@
       if (!heirId) return false;
       const heir = room.members[heirId];
       publishLiveBattleFrame(true);
-      const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (k === 'manualAimTarget' ? undefined : v))));
+      const units = sim.units.map(u => liveUnitCopy(u, LIVE_INIT_DROP));
       try { ref.onDisconnect().cancel(); } catch (e) {}
       ref.child('handoff').set(JSON.parse(JSON.stringify({ at: Date.now(), from: me.id, to: heirId, tick: sim.tickCount, units }))).catch(() => {});
       saveTeamRoomPatch(roomId, {
@@ -35152,7 +35173,9 @@
         vx: liveNum(q[6]), vy: liveNum(q[7]), spr: cleanUserText(q[8], 30) || undefined, trail: []
       }));
       (Array.isArray(val.e) ? deepCleanStrings(val.e) : []).forEach(ef => {
-        if (ef && typeof ef === 'object' && ef.type && liveNum(ef.life) > 0) sim.effects.push(ef);
+        if (!ef || typeof ef !== 'object' || !ef.type || liveNum(ef.life) <= 0) return;
+        if (ef.oid != null) { ef.owner = sim.units.find(u => u.id === ef.oid) || null; delete ef.oid; } // 시전자·아군을 따라가는 이펙트
+        sim.effects.push(ef);
       });
       (Array.isArray(val.f) ? deepCleanStrings(val.f) : []).forEach(ft => {
         if (ft && typeof ft === 'object' && liveNum(ft.life) > 0) sim.floatTexts.push({ x: liveNum(ft.x), y: liveNum(ft.y), text: String(ft.text || ''), color: String(ft.color || '#64748b'), life: liveNum(ft.life) });
@@ -35173,6 +35196,10 @@
       (liveNet.frameBuf || []).splice(0).forEach(f => {
         applyLiveFrameState(f.val, 0);
         f.val.u.forEach((p, i) => { if (sim.units[i] && Array.isArray(p)) { sim.units[i].x = liveNum(p[0]); sim.units[i].y = liveNum(p[1]); } });
+        if (p.length > 32) {
+          u.srUndyingFxAt = p[31] >= 0 ? sim.tickCount - liveNum(p[31]) : undefined;
+          u.rageLookUntil = sim.tickCount + liveNum(p[32]);
+        }
       });
       (Array.isArray(val.s) ? val.s : []).forEach((s, i) => {
         const u = sim.units[i];
@@ -35981,7 +36008,7 @@
       const heirId = (liveNet.teamExpect || []).find(id => id !== me.id && !(liveNet.remoteCtrls[id] && liveNet.remoteCtrls[id].forfeited));
       if (!heirId) return false;
       publishLiveBattleFrame(true);
-      const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (k === 'manualAimTarget' ? undefined : v))));
+      const units = sim.units.map(u => liveUnitCopy(u, LIVE_INIT_DROP));
       try { ref.onDisconnect().cancel(); } catch (e) {}
       ref.child('handoff').set(JSON.parse(JSON.stringify({ at: Date.now(), from: me.id, to: heirId, tick: sim.tickCount, units }))).catch(() => {});
       stopLiveBattleNet();
@@ -36829,7 +36856,7 @@
     function sendRushUnitList(rr) {
       if (liveNet.role !== 'host' || !liveNet.ref) return;
       const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim', '_deadSince', 'rushPath']);
-      const units = sim.units.map(u => JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) ? undefined : v))));
+      const units = sim.units.map(u => liveUnitCopy(u, drop));
       liveNet.ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, rr, units }).catch(() => {});
     }
 
