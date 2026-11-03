@@ -2651,6 +2651,14 @@
                 <button type="button" id="petRunSlideBtn" class="py-4 rounded-xl bg-indigo-600 active:bg-indigo-400 text-white font-extrabold text-base select-none touch-none">⬇️ 슬라이드 (꾹)</button>
               </div>
               <div id="petRunResult" class="hidden bg-slate-950 border border-amber-500/40 rounded-xl px-3 py-2"></div>
+              <!-- CA 강화: 체력·달리기·젤리·자석·튼튼함·회복 (PetRun.renderUpgrades) -->
+              <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-2">
+                <div class="flex items-center justify-between gap-2">
+                  <div class="text-xs font-extrabold text-slate-200">⬆ 러닝 능력치 강화 <span class="text-[10px] text-slate-500 font-bold">CA로 올려요 · 판이 끝난 뒤에만</span></div>
+                  <span id="petRunUpTotal" class="text-[10px] font-bold text-amber-300"></span>
+                </div>
+                <div id="petRunUpgrades" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2"></div>
+              </div>
               <div class="text-[11px] text-slate-500 font-bold">점수 800 → 50 CA · 1,500 → 100 CA · 3,000 → 150 CA · 6,000 → 200 CA (하루 3번까지). 일시정지: Esc 또는 P</div>
             </div>
             <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-1.5 min-w-0">
@@ -40326,6 +40334,18 @@
     };
     const PETRUN_JELLY_COLORS = ['#fb7185', '#fbbf24', '#4ade80', '#60a5fa', '#c084fc', '#f97316'];
 
+    // CA로 올리는 러닝 능력치 (쿠키런식 강화). 기록은 stu.petRunUp = { hp: 레벨, speed: 레벨, ... }
+    const PETRUN_UPGRADES = [
+      { key: 'hp',     icon: '❤️', name: '체력',   per: 0.08, max: 10, fmt: v => `최대 체력 +${Math.round(v * 100)}%`,  desc: '오래 달릴 수 있어요' },
+      { key: 'speed',  icon: '💨', name: '달리기', per: 0.03, max: 10, fmt: v => `달리기 속도 +${Math.round(v * 100)}%`, desc: '거리 점수가 빨리 쌓여요' },
+      { key: 'jelly',  icon: '🍬', name: '젤리',   per: 0.08, max: 10, fmt: v => `젤리 점수 +${Math.round(v * 100)}%`,  desc: '젤리 하나하나가 더 값져요' },
+      { key: 'magnet', icon: '🧲', name: '자석',   per: 22,   max: 10, fmt: v => `젤리 끌어당기기 ${Math.round(v)}px`,  desc: '멀리 있는 젤리도 끌려와요' },
+      { key: 'armor',  icon: '🛡️', name: '튼튼함', per: 0.05, max: 10, fmt: v => `장애물 피해 -${Math.round(v * 100)}%`, desc: '부딪혀도 덜 아파요' },
+      { key: 'heal',   icon: '💗', name: '회복',   per: 4,    max: 10, fmt: v => `하트 회복 +${Math.round(v)}`,        desc: '하트 젤리가 더 많이 채워줘요' },
+    ];
+    // 강화 비용: 다음 레벨 = 400 + 250 × 현재 레벨 (Lv10까지 한 능력치 약 15,250 CA)
+    function petRunUpgradeCost(level) { return 400 + 250 * level; }
+
     // 오래된 브라우저용 roundRect 대체
     if (window.CanvasRenderingContext2D && !CanvasRenderingContext2D.prototype.roundRect) {
       CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
@@ -40350,6 +40370,67 @@
       rewardFor(score) {
         for (const [min, ca] of PETRUN.rewards) if (score >= min) return ca;
         return 0;
+      },
+      // ───── CA 강화 ─────
+      upLevels(stu) {
+        if (!stu) return {};
+        if (!stu.petRunUp || typeof stu.petRunUp !== 'object') stu.petRunUp = {};
+        return stu.petRunUp;
+      },
+      upLevel(stu, key) { const d = PETRUN_UPGRADES.find(u => u.key === key); return Math.max(0, Math.min(d ? d.max : 0, Math.floor(this.upLevels(stu)[key] || 0))); },
+      upValue(stu, key) { const d = PETRUN_UPGRADES.find(u => u.key === key); return d ? d.per * this.upLevel(stu, key) : 0; },
+      // 펫 특성 + 강화를 합친 실제 적용값
+      effective(stu, type) {
+        const perk = this.perk(type);
+        return {
+          ...perk,
+          hp: (perk.hp || 1) * (1 + this.upValue(stu, 'hp')),
+          speed: (perk.speed || 1) * (1 + this.upValue(stu, 'speed')),
+          jelly: (perk.jelly || 1) * (1 + this.upValue(stu, 'jelly')),
+          magnet: (perk.magnet || 0) + this.upValue(stu, 'magnet'),
+          dmg: (perk.dmg || 1) * (1 - this.upValue(stu, 'armor')),
+          heal: PETRUN.heartHeal + this.upValue(stu, 'heal'),
+        };
+      },
+      buyUpgrade(key) {
+        const stu = this.student();
+        const d = PETRUN_UPGRADES.find(u => u.key === key);
+        if (!stu || !d) return;
+        if (this.st && !this.st.over) { showNotice('⚠️ 달리는 중에는 강화할 수 없어요. 이번 판이 끝난 뒤에 해 주세요.'); return; }
+        const lv = this.upLevel(stu, key);
+        if (lv >= d.max) { showNotice(`${d.icon} ${d.name}은(는) 이미 최고 레벨이에요.`); return; }
+        const cost = petRunUpgradeCost(lv);
+        if ((stu.mc || 0) < cost) { showNotice(`⚠️ CA가 부족해요. (${d.name} 강화 ${cost.toLocaleString()} CA)`); return; }
+        stu.mc -= cost;
+        this.upLevels(stu)[key] = lv + 1;
+        saveState();
+        if (typeof updateHeaderUI === 'function') updateHeaderUI();
+        showRewardBanner(`${d.icon} ${d.name} Lv.${lv + 1}! ${d.fmt(d.per * (lv + 1))}`);
+        this.render();
+      },
+      renderUpgrades() {
+        const el = document.getElementById('petRunUpgrades');
+        if (!el) return;
+        const stu = this.student();
+        if (!stu) { el.innerHTML = ''; return; }
+        const total = PETRUN_UPGRADES.reduce((a, d) => a + this.upLevel(stu, d.key), 0);
+        const tot = document.getElementById('petRunUpTotal');
+        if (tot) tot.textContent = `총 Lv.${total} / ${PETRUN_UPGRADES.reduce((a, d) => a + d.max, 0)}`;
+        el.innerHTML = PETRUN_UPGRADES.map(d => {
+          const lv = this.upLevel(stu, d.key), maxed = lv >= d.max, cost = petRunUpgradeCost(lv), can = !maxed && (stu.mc || 0) >= cost;
+          const dots = Array.from({ length: d.max }, (_, i) => `<i class="h-1.5 flex-1 rounded-full ${i < lv ? 'bg-amber-400' : 'bg-slate-700'}"></i>`).join('');
+          return `<div class="bg-slate-900 border ${maxed ? 'border-amber-400/60' : 'border-slate-800'} rounded-xl p-2.5 flex flex-col gap-1.5 min-w-0">
+              <div class="flex items-center justify-between gap-1">
+                <span class="text-xs font-extrabold text-white truncate">${d.icon} ${d.name} <span class="text-amber-300">Lv.${lv}</span></span>
+                <span class="text-[10px] font-bold text-slate-500 shrink-0">${d.desc}</span>
+              </div>
+              <div class="flex gap-0.5">${dots}</div>
+              <div class="text-[11px] font-bold text-emerald-300">${lv > 0 ? d.fmt(d.per * lv) : '<span class="text-slate-500">아직 강화 전</span>'}${!maxed ? ` <span class="text-slate-500">→ ${d.fmt(d.per * (lv + 1))}</span>` : ''}</div>
+              ${maxed
+                ? `<span class="w-full py-1.5 rounded-lg bg-amber-500/20 text-amber-300 text-[11px] font-extrabold text-center border border-amber-500/40">⭐ 최고 레벨</span>`
+                : `<button type="button" onclick="PetRun.buyUpgrade('${d.key}')" class="w-full py-1.5 rounded-lg ${can ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-500'} text-[11px] font-extrabold">⬆ 강화 ${cost.toLocaleString()} CA</button>`}
+            </div>`;
+        }).join('');
       },
       img(src) {
         let im = this.imgs[src];
@@ -40386,13 +40467,15 @@
             const perk = this.perk(pet.type);
             info.innerHTML = `<img src="${PET_DEFS[pet.type].icon}" alt="" class="h-10 w-auto object-contain" draggable="false">
               <div class="min-w-0"><div class="text-sm font-extrabold text-white truncate">${esc(pet.name)} <span class="text-slate-400 text-[11px]">${PET_DEFS[pet.type].name}</span></div>
-              <div class="text-[11px] font-bold text-amber-300">🏃 ${perk.text || ''}</div></div>
+              <div class="text-[11px] font-bold text-amber-300">🏃 ${perk.text || ''}</div>
+              <div class="text-[10px] font-bold text-slate-400">${PETRUN_UPGRADES.filter(d => this.upLevel(stu, d.key) > 0).map(d => `${d.icon}${this.upLevel(stu, d.key)}`).join(' ') || '강화 없음 · 아래에서 CA로 능력치를 올릴 수 있어요'}</div></div>
               <div class="ml-auto text-right text-[11px] font-bold text-slate-300 shrink-0">내 최고 <b class="text-amber-300 text-sm">${(rec.best || 0).toLocaleString()}</b>점<br>오늘 남은 보상 <b class="${left > 0 ? 'text-emerald-300' : 'text-slate-500'}">${left}/${DAILY_REWARD_LIMITS.petrun}</b>회</div>`;
           }
         }
         const startBtn = document.getElementById('petRunStartBtn');
         if (startBtn) startBtn.disabled = !pet;
         this.renderRank();
+        this.renderUpgrades();
         this.ensureCanvas();
         if (!this.st) this.drawIdle();
       },
@@ -40463,8 +40546,8 @@
         if (!pet) { showNotice('⚠️ 활성화한 펫이 있어야 달릴 수 있어요. 펫을 뽑아 활성화해 주세요!'); return; }
         this.ensureCanvas();
         if (!this.cv) return;
-        const perk = this.perk(pet.type);
-        const hpMax = Math.round(PETRUN.hpMax * (perk.hp || 1));
+        const perk = this.effective(stu, pet.type);
+        const hpMax = Math.round(PETRUN.hpMax * perk.hp);
         this.st = {
           type: pet.type, name: pet.name, perk, t: 0, dist: 0, score: 0, jelly: 0, hp: hpMax, hpMax,
           speed: PETRUN.speed0 * (perk.speed || 1), y: 0, vy: 0, onGround: true, jumps: 0, sliding: false,
@@ -40545,7 +40628,7 @@
             }
             if (!o.got && o.x + o.r > pb.x0 && o.x - o.r < pb.x1 && o.y + o.r > pb.y0 && o.y - o.r < pb.y1) {
               o.got = true;
-              if (o.sub === 'heart') { s.hp = Math.min(s.hpMax, s.hp + PETRUN.heartHeal); this.float(s, o.x, o.y, `+${PETRUN.heartHeal} 체력`, '#f9a8d4'); this.tone('heart'); }
+              if (o.sub === 'heart') { const heal = Math.round(s.perk.heal || PETRUN.heartHeal); s.hp = Math.min(s.hpMax, s.hp + heal); this.float(s, o.x, o.y, `+${heal} 체력`, '#f9a8d4'); this.tone('heart'); }
               else {
                 const base = o.sub === 'big' ? PETRUN.bigJellyScore : PETRUN.jellyScore;
                 const got = Math.round(base * (s.perk.jelly || 1) * (s.perk.score || 1));
