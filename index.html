@@ -9377,7 +9377,7 @@
     }
 
     // 직업별 공격 속도 배율 (1보다 작으면 느리게 공격)
-    const JOB_ATTACK_SPEED_MULT = { archer: 0.85, mage: 0.7, frost: 0.7, curse: 0.75, bard: 0.8, rogue: 1.82, knight: 0.75, lancer: 1.3, sniper: 0.571, berserker: 1.2 }; // 저격수: 공격 주기 ÷ 0.571 (처음 0.4배에서 주기 30% 단축), 광전사: 공격 속도 +20%
+    const JOB_ATTACK_SPEED_MULT = { archer: 0.85, mage: 0.7, frost: 0.7, curse: 0.75, bard: 0.8, rogue: 1.82, knight: 0.75, lancer: 1.3, sniper: 0.571, berserker: 1.08 }; // 저격수: 공격 주기 ÷ 0.571 (처음 0.4배에서 주기 30% 단축), 광전사: 공격 속도 +8% (처음 +20%에서 10% 줄임)
 
     // 레벨당 스탯 상승량 배율 (비율 상승 · 고정 상승 · 고정 체력 모두 ×1.5)
     const LEVEL_STAT_GROWTH_MULT = 1.5;
@@ -9620,18 +9620,6 @@
     function calcMercCombatPower(merc, ownerStu) {
       const st = calcMercStats(merc, ownerStu);
       return Math.round(st.hp * 0.35 + st.atk * 4.5 + st.def * 2.5 + st.spd * 2.2);
-    }
-
-    // 대표 용병: 학생이 지정한 용병(stu.repMercId), 지정 안 했으면 전투력이 가장 높은 용병
-    // (용병 1명을 자동으로 고르는 곳: 명예의 전당·윷놀이 말·연습 친구·AI 자리·몬스터 러쉬 기본 용병 등)
-    // ok가 있으면 그 조건에 맞는 용병 중에서 (대표 용병이 조건 밖이면 조건에 맞는 가장 센 용병)
-    function repMercOf(stu, ok) {
-      const roster = ((stu && stu.roster) || []).filter(m => m && (!ok || ok(m)));
-      const rep = stu && stu.repMercId ? roster.find(m => m.id === stu.repMercId) : null;
-      if (rep) return rep;
-      let best = null, bestPow = -1;
-      roster.forEach(m => { const pw = calcMercCombatPower(m, stu); if (pw > bestPow) { best = m; bestPow = pw; } });
-      return best;
     }
 
     // 용병단 전체(보유 용병 전원)의 전투능력을 바탕으로 산출하는 '용병단 전투력'
@@ -11300,7 +11288,7 @@
                   <div>
                     <div class="flex items-center gap-1.5 flex-wrap">
                       <span ${infoTipAttrs('rarity', rar.code)} class="cursor-help px-1.5 py-0.5 rounded text-[10px] font-extrabold ${rar.badgeClass}">${rar.name}</span>
-                      <span class="font-bold text-sm text-white">${stu.repMercId === merc.id ? '<span title="대표 용병">👑</span> ' : ''}${merc.name}</span>
+                      <span class="font-bold text-sm text-white">${merc.name}</span>
                       <span class="text-xs font-extrabold text-indigo-300">Lv.${merc.level}</span>
                     </div>
                     <div class="text-[11px] text-slate-300 font-semibold flex items-center gap-1.5 mt-0.5 flex-wrap">
@@ -11605,18 +11593,6 @@
       DailyMission.progress('deploy', 1, stu);
     }
 
-    // 대표 용병 지정 / 해제 (해제하면 다시 전투력이 가장 높은 용병이 대표 역할)
-    function toggleRepMerc(mercId) {
-      const stu = getActiveStudent();
-      if (!stu || !stu.roster.some(m => m.id === mercId)) return;
-      const on = stu.repMercId !== mercId;
-      stu.repMercId = on ? mercId : null;
-      saveState();
-      renderSquadTab();
-      if (activeDetailMercId) renderMercDetailModal();
-      showNotice(on ? '👑 대표 용병으로 지정했어요! 명예의 전당·윷놀이 말·몬스터 러쉬 등에 이 용병이 나와요.' : '대표 용병 지정을 풀었어요. 전투력이 가장 높은 용병이 대신 나와요.');
-    }
-
     let activeDetailMercId = null;
 
     function openMercDetailModal(mercId) {
@@ -11680,12 +11656,6 @@
             </div>
           </div>
           <div class="flex items-center gap-2 shrink-0">
-            <button onclick="toggleRepMerc('${merc.id}')" title="명예의 전당·윷놀이 말·몬스터 러쉬 등 용병 1명이 나오는 곳에 이 용병이 나와요"
-              class="px-3 py-1.5 rounded-xl text-xs font-extrabold transition ${
-                stu.repMercId === merc.id ? 'bg-amber-400 text-slate-950 shadow' : 'bg-slate-800 text-amber-300 border border-amber-500/40 hover:bg-slate-700'
-              }">
-              ${stu.repMercId === merc.id ? '👑 대표 용병' : '👑 대표 지정'}
-            </button>
             <button onclick="toggleMercDeploy('${merc.id}'); renderMercDetailModal();"
               class="px-3 py-1.5 rounded-xl text-xs font-extrabold transition ${
                 merc.deployed ? 'bg-emerald-500 text-slate-950 shadow' : 'bg-slate-800 text-slate-400 border border-slate-700'
@@ -16922,7 +16892,7 @@
     }
 
     // 직업별 몸 크기 (근접 사거리·스킬 범위도 따라 커짐, setUnitBodySize)
-    const JOB_BODY_SIZE = { knight: 1.4, berserker: 1.3, warrior: 1.2, lancer: 1.2, rogue: 0.9 }; // 창병 휘두르기 사거리(210)는 근접 상한(150)을 넘어 그대로
+    const JOB_BODY_SIZE = { knight: 1.4, berserker: 1.17, warrior: 1.2, lancer: 1.2, rogue: 0.9 }; // 창병 휘두르기 사거리(210)는 근접 상한(150)을 넘어 그대로
     function createSimUnit(merc, ownerStu, team, scale = 1.0) {
       const job = JOB_DEFS[merc.job] || JOB_DEFS.warrior;
       const slots = mercSkillSlots(merc);
@@ -28149,11 +28119,10 @@
     });
 
     const RAID_PICK = 8; // 엘리트 협동 사냥: 플레이어마다 용병 8명까지
-    // 기본 출전 용병: 홈 출전 용병 먼저, 남은 자리는 대표 용병 → 전투력이 높은 용병으로 채움 (협동 레이드·8:8 총력전)
+    // 기본 출전 용병: 홈 출전 용병 먼저, 남은 자리는 전투력이 높은 용병으로 채움 (협동 레이드·8:8 총력전)
     function defaultSquadOf(stu, count) {
       const roster = (stu && stu.roster) || [];
-      const repId = stu && stu.repMercId;
-      const rest = roster.filter(m => !m.deployed).sort((a, b) => (b.id === repId) - (a.id === repId) || calcMercCombatPower(b, stu) - calcMercCombatPower(a, stu));
+      const rest = roster.filter(m => !m.deployed).sort((a, b) => calcMercCombatPower(b, stu) - calcMercCombatPower(a, stu));
       return [...roster.filter(m => m.deployed), ...rest].slice(0, count);
     }
     // 3×5 칸에 여러 용병을 겹치지 않게 앉힘: keepHome이면 홈 진형 칸을 그대로 쓰고,
@@ -28771,11 +28740,12 @@
     })();
     const YUT_TEAM_COLOR = ['#2563eb', '#e11d48'];
     const YUT_TEAM_NAME = ['블루팀', '레드팀'];
-    // 말 그림: 팀 첫 자리 플레이어의 대표 용병 (지정 안 했으면 전투력이 가장 높은 용병 · 판을 만들 때 자리마다 적어 둠, 없으면 지금 데이터로 찾음)
+    // 말 그림: 팀 첫 자리 플레이어가 가진 용병 중 전투력이 가장 높은 용병 (판을 만들 때 자리마다 적어 둠, 없으면 지금 데이터로 찾음)
     function yutTopMercOf(stuId) {
       const stu = state.students.find(s => s.id === stuId);
       if (!stu || !Array.isArray(stu.roster) || !stu.roster.length) return null;
-      const best = repMercOf(stu);
+      let best = null, bestPow = -1;
+      stu.roster.forEach(m => { const pw = calcMercCombatPower(m, stu); if (pw > bestPow) { best = m; bestPow = pw; } });
       return best ? { job: best.job, skin: best.skinVariant || 0 } : null;
     }
     function yutTeamMerc(st, team) {
@@ -33321,7 +33291,7 @@
       const others = state.students.filter(st => st.id !== me.id && !isPvpRoomMember(room, st.id) && (st.roster || []).length);
       const friend = others[Math.floor(Math.random() * others.length)];
       if (!friend) { showNotice('⚠️ 넣을 수 있는 친구가 없어요.'); return; }
-      const best = repMercOf(friend);
+      const best = [...friend.roster].sort((a, b) => calcMercCombatPower(b, friend) - calcMercCombatPower(a, friend))[0];
       await saveTeamRoomPatch(roomId, {
         [`members/${friend.id}`]: makeTeamMember(friend, side, { ai: true, ready: true, pickId: best.id, power: calcMercCombatPower(best, friend), snap: teamMemberSnap(friend, best) })
       });
@@ -33659,8 +33629,8 @@
       room.guestReady = true;
       room.practiceFriend = true; // 연습 친구는 실제 접속자가 없으므로 방장 화면에서만 진행
       if (isDuelRoom(room)) {
-        // 연습 친구는 대표 용병으로 (지정 안 했으면 가장 센 용병 · AI가 조종)
-        const best = repMercOf(friend);
+        // 연습 친구는 가장 센 용병으로 (AI가 조종)
+        const best = [...(friend.roster || [])].sort((a, b) => calcMercCombatPower(b, friend) - calcMercCombatPower(a, friend))[0];
         room.guestPickId = best ? best.id : null;
         room.guestPower = best ? calcMercCombatPower(best, friend) : 0;
       }
@@ -36976,12 +36946,12 @@
 
     // ----- 대기실 -----
     let selectedRushMercId = null;
-    // 내가 데리고 갈 용병 1명 (고른 적이 없으면 대표 용병 → 없으면 전투력이 가장 높은 용병)
+    // 내가 데리고 갈 용병 1명 (고른 적이 없으면 전투력이 가장 높은 용병)
     function rushMyMerc(stu) {
       const roster = (stu && stu.roster) || [];
       let m = roster.find(x => x.id === selectedRushMercId);
       if (!m) {
-        m = repMercOf(stu);
+        m = [...roster].sort((a, b) => calcMercCombatPower(b, stu) - calcMercCombatPower(a, stu))[0] || null;
         selectedRushMercId = m ? m.id : null;
       }
       return m;
@@ -37073,15 +37043,15 @@
     // AI 자리: 대기실에서 방장이 빈 자리마다 [🤖 AI 넣기]로 한 명씩 넣고 [✖ 빼기]로 뺌 (room.rushFill)
     const rushFillOf = room => (Array.isArray(room && room.rushFill) ? room.rushFill : (room && room.rushFill && typeof room.rushFill === 'object' ? Object.values(room.rushFill) : [])).filter(f => f && f.merc);
     const rushSeatsLeft = room => RUSH_MAX_PLAYERS - raidFilledSlots(room).length - rushFillOf(room).length;
-    // 방에도 AI 자리에도 없는 반 친구를 무작위로 골라, 그 친구 용병 중 파티 최고 전투력을 넘지 않는 대표 용병(없으면 가장 센 용병) 1명
+    // 방에도 AI 자리에도 없는 반 친구를 무작위로 골라, 그 친구 용병 중 파티 최고 전투력을 넘지 않는 가장 센 용병 1명
     function pickRushAiSeat(room) {
       const taken = new Set([...raidFilledSlots(room).map(s => room[s + 'Id']), ...rushFillOf(room).map(f => f.id)]);
       const cap = rushPartyCap(room);
       const pool = [];
       (state.students || []).forEach(s => {
         if (!s || taken.has(s.id)) return;
-        const best = repMercOf(s, m => calcMercCombatPower(m, s) <= cap);
-        if (best) pool.push({ id: s.id, num: s.num || null, name: s.name, power: calcMercCombatPower(best, s), merc: JSON.parse(JSON.stringify(best)), snap: publicStudentSnapshot(s) });
+        const best = (s.roster || []).map(m => ({ m, p: calcMercCombatPower(m, s) })).filter(x => x.p <= cap).sort((a, b) => b.p - a.p)[0];
+        if (best) pool.push({ id: s.id, num: s.num || null, name: s.name, power: best.p, merc: JSON.parse(JSON.stringify(best.m)), snap: publicStudentSnapshot(s) });
       });
       return pool[Math.floor(Math.random() * pool.length)] || null;
     }
@@ -38624,13 +38594,13 @@
       if (noticeEl) noticeEl.textContent = state.notice || '선생님 공지사항이 여기에 표시됩니다.';
       if (cntEl) cntEl.textContent = (state.students || []).length;
 
-      // 명예의 전당: 유리 진열장 선반 두 칸, 금·은·동 받침대 위에 각자 대표 용병(지정 안 했으면 전투력이 가장 높은 용병)이 대기 동작
+      // 명예의 전당: 유리 진열장 선반 두 칸, 금·은·동 받침대 위에 각자 전투력이 가장 높은 용병이 대기 동작
       const rankBox = document.getElementById('lobbyTopRankingsBox');
       if (rankBox) {
         const byPower5 = [...(state.students || [])].sort((a, b) => calcStudentDeployedPower(b) - calcStudentDeployedPower(a)).slice(0, 3);
         const byPvp = [...(state.students || [])].sort((a, b) => (b.pvpScore || 1000) - (a.pvpScore || 1000) || (b.wins || 0) - (a.wins || 0)).slice(0, 3);
         const champ = (s) => {
-          const best = repMercOf(s);
+          const best = [...(s.roster || [])].sort((a, b) => calcMercCombatPower(b, s) - calcMercCombatPower(a, s))[0];
           const sp = best && getMercSprite(best.job, best.skinVariant || 0);
           if (!sp) return studentAvatarHTML(s, 64);
           const k = 1.25, cw = sp.cellW * k;
