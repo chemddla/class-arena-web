@@ -131,7 +131,7 @@ JUDGE_FX_BG = np.array([35.0, 39.0, 43.0])
 JUDGE_FX_LABEL_ROWS = 6
 
 
-def key_dark(src, x0=0, x1=None, label_rows=0, warm_keep=False, out=None):
+def key_dark(src, x0=0, x1=None, label_rows=0, warm_keep=False, out=None, fade=None):
     # 어두운 배경 이펙트 샘플: 배경색과 떨어진 만큼 불투명, 배경색을 빼서 본래 색으로 (빛 가장자리·반투명 반구 속까지 살림)
     im = np.array(Image.open(f'{D}{src}_src.png').convert('RGB')).astype(float)[:, x0:x1]
     d = np.sqrt(((im - JUDGE_FX_BG) ** 2).sum(axis=2))
@@ -145,6 +145,15 @@ def key_dark(src, x0=0, x1=None, label_rows=0, warm_keep=False, out=None):
     a = np.where(a < 0.04, 0, a)
     ys, xs = np.where(a > 0)
     o = np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    if fade:   # 샘플 테두리에서 잘린 빛줄기: 그 가장자리 쪽으로 서서히 투명하게 (fade = {'top': 폭 px, 'right': 폭 px ...})
+        hh, ww = o.shape[:2]
+        yy, xx = np.mgrid[0:hh, 0:ww].astype(float)
+        dist = {'top': yy, 'bottom': hh - 1 - yy, 'left': xx, 'right': ww - 1 - xx}
+        m = np.ones((hh, ww))
+        for side, wpx in fade.items():
+            t = np.clip(dist[side] / wpx, 0, 1)
+            m *= t * t * (3 - 2 * t)   # smoothstep
+        o[..., 3] *= m
     Image.fromarray(o.clip(0, 255).astype(np.uint8), 'RGBA').save(out, 'WEBP', lossless=True)
     print(f'{out} {o.shape[1]}x{o.shape[0]}')
 
@@ -168,7 +177,7 @@ def glow_dark(src, x0=0, x1=None, out=None, gain=1.15):
 
 
 def build_charge_fx():
-    key_dark('charge_fx', 0, 186, out='assets/sprites/fx/paladin_charge_hit.webp')                 # 금빛 충돌 폭발 (돌 조각 포함)
+    key_dark('charge_fx', 0, 186, out='assets/sprites/fx/paladin_charge_hit.webp', fade={'top': 26, 'right': 34})  # 금빛 충돌 폭발 (돌 조각 포함). 위·오른쪽 끝에서 잘린 빛기둥·빛줄기는 끝으로 갈수록 흐리게
     key_dark('charge_fx', 186, None, warm_keep=True, out='assets/sprites/fx/paladin_charge_dust.webp')  # 흙먼지 + 반짝임 (두꺼운 쪽이 왼쪽)
 
 
