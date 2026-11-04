@@ -2211,6 +2211,7 @@
         <button onclick="switchStudentTab('raid')" id="bsub-raid" class="battle-sub-btn">엘리트 보스</button>
         <button onclick="switchStudentTab('worldraid')" id="bsub-worldraid" class="battle-sub-btn">레이드</button>
         <button onclick="switchStudentTab('rush')" id="bsub-rush" class="battle-sub-btn">몬스터 러쉬</button>
+        <button onclick="switchStudentTab('dungeon')" id="bsub-dungeon" class="battle-sub-btn">던전 탐험</button>
         <button onclick="switchStudentTab('pvp')" id="bsub-pvp" class="battle-sub-btn">결투장</button>
       </nav>
 
@@ -2310,6 +2311,9 @@
           <!-- 몬스터 러쉬: 라운드 · 남은 몬스터 · 제한 시간 (화면 위 가운데, 보스 체력 막대 아래) -->
           <div id="rushHud" class="hidden absolute top-[5.25rem] left-1/2 -translate-x-1/2 z-10 px-4 py-1.5 rounded-2xl font-extrabold text-xs sm:text-sm shadow-xl pointer-events-none select-none whitespace-nowrap"
             style="background:rgba(15,23,42,0.85);color:#a5f3fc;border:2px solid #06b6d4"></div>
+          <!-- 🏰 던전 탐험: 방·남은 시간·보상·안내 -->
+          <div id="dungeonHud" class="hidden absolute top-[5.25rem] left-1/2 -translate-x-1/2 z-10 px-4 py-1.5 rounded-2xl font-extrabold text-xs sm:text-sm shadow-xl pointer-events-none select-none whitespace-nowrap max-w-[95%] overflow-hidden text-ellipsis"
+            style="background:rgba(15,23,42,0.85);color:#fde68a;border:2px solid #f59e0b"></div>
 
           <!-- 실시간 결투: 두 친구가 전투 방식을 고를 때까지 기다리는 안내 -->
           <div id="liveChoiceWaitBanner" class="hidden absolute top-4 left-1/2 -translate-x-1/2 z-10 px-5 py-2.5 rounded-2xl font-extrabold text-sm shadow-xl pointer-events-none"
@@ -3198,6 +3202,32 @@
             <div>⏰ 한 라운드 제한 시간 3분 · 모두 쓰러지거나 시간이 지나면 끝나요.</div>
             <div class="mt-1 p-2.5 rounded-xl bg-slate-950 border border-slate-800">💰 보상: 깬 라운드 × <strong class="text-amber-300">100 CA</strong> + 깬 보스 라운드 × <strong class="text-amber-300">400 CA</strong> (중간에 그만둬도 깬 라운드 보상은 받아요)<br>🔁 다시 도전하면 <strong>오늘 보상받은 최고 라운드를 넘어선 라운드만</strong> 보상을 받아요. 예) 3라운드까지 받았다면 다음엔 4라운드부터 보상 · 매일 초기화</div>
           </div>
+        </div>
+      </section>
+
+      <!-- 🏰 던전 탐험: 입장할 때마다 새로 만들어지는 던전 지도에서 보스 방을 찾아 보스를 잡으면 클리어 (docs/dungeon-design.md) -->
+      <section id="studentTab-dungeon" class="student-tab-panel hidden flex flex-col gap-4">
+        <div class="bg-slate-900 border-2 border-amber-500/40 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-2xl">🏰</div>
+            <div>
+              <h3 class="font-title text-2xl text-white">던전 탐험 (보스 방을 찾아라!)</h3>
+              <p class="text-xs text-slate-400 mt-0.5">
+                출전 용병 5명으로 들어가요. <strong>대표 용병 1명</strong>을 직접 조종하고 나머지는 대표를 따라다니며 싸워요. 방의 몬스터를 모두 쓰러뜨리면 길이 열리고, 어딘가 숨은 <strong>👑 보스 방</strong>을 찾아 보스를 잡으면 클리어!
+              </p>
+              <div id="dungeonMyInfo" class="text-xs text-slate-300 mt-1"></div>
+            </div>
+          </div>
+        </div>
+        <div id="dungeonCardGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+        <div class="bg-slate-900 border-2 border-amber-500/30 rounded-2xl p-4 flex flex-col gap-2 text-xs text-slate-300 leading-relaxed">
+          <h4 class="font-title text-lg text-white">📜 던전 규칙</h4>
+          <div>🗺️ <strong>입장할 때마다 지도가 새로 만들어져요.</strong> 격자 크기·길·방 종류·보스 방 위치가 매번 달라요. 미니맵은 가 본 방과 그 옆 칸만 보여요.</div>
+          <div>🚪 방의 몬스터를 모두 쓰러뜨리면 문이 열려요. <strong>대표 용병을 문으로 보내거나</strong> 왼쪽 위 미니맵에서 옆 칸을 누르면 파티 전체가 그 방으로 이동해요. 보스 방과 이어진 문은 붉게 떨려요.</div>
+          <div>⚔️ 방 종류: ⚔️ 일반 · 💎 정예(크고 센 몬스터, 추가 보상) · 📦 보물(상자 3개 중 하나만: 골드·회복·보스 방 지도) · 🔥 기믹(불기둥·덫·거미줄·낙석) · 🚶 빈 방 · 👑 보스</div>
+          <div>💚 방을 깨면 쓰러진 용병이 체력 30%로 부활하고 스킬 쿨타임이 초기화돼요. 보스 방 입구 모닥불에서 5초 정비(체력 40% 회복) 뒤 보스가 나와요.</div>
+          <div>⏰ 제한 시간 6분 (보스 방에 들어가면 최소 1분 30초는 보장) · 모두 쓰러지거나 시간이 지나면 끝나요. 깬 방까지의 보상은 받아요.</div>
+          <div class="mt-1 p-2.5 rounded-xl bg-slate-950 border border-slate-800">💰 보상: 방 <strong class="text-amber-300">120 CA</strong> · 정예 +300 · 보스 1,500 · 첫 클리어 +2,000 · 2분 안에 클리어 +300 (어려움은 더 커요) · 전부 자동 전투로 깨면 ×0.8 · 하루 3회</div>
         </div>
       </section>
 
@@ -8975,6 +9005,11 @@
     const TOWER_RACE_MAPS = { '고블린족': 'tower_goblin', '언데드': 'tower_undead', '야수족': 'tower_beast', '늪지족': 'tower_swamp', '설원족': 'tower_snow', '화염족': 'tower_fire', '심해족': 'elite_kraken' };
     Object.values(BATTLE_MAPS).forEach(m => { m.img = new Image(); m.img.onload = () => { m.ready = true; }; m.img.src = m.src; });
     function getBattleMap(mode, towerFloor, eliteBossId) {
+      if (mode === 'dungeon' && sim.dungeon) { // 🏰 던전: 방 종류에 맞는 종족 맵 (보스 방은 엘리트 보스 맵)
+        const dm = BATTLE_MAPS[dungeonMapKey()];
+        if (dm && dm.ready) return dm;
+        if (BATTLE_MAPS.tower.ready) return BATTLE_MAPS.tower;
+      }
       if (mode === 'monster_rush') { // 러쉬 전용 맵: 20라운드마다 바뀜 (못 불러오면 첫 맵 → 탑 맵)
         const rm = BATTLE_MAPS[rushMapNow().key];
         if (rm && rm.ready) return rm;
@@ -9234,8 +9269,8 @@
       if (stu && merc.levelOwner === stu.id) return legacyLevelCostTo(merc.levelBase || 1) + (merc.levelSpent || 0);
       return legacyLevelCostTo(merc.level || 1);
     }
-    const DAILY_REWARD_LIMITS = { quiz: 20, practice: 3, tower: 3, pvp: 5, raid: 5, minigame: 5, petrun: 3 };
-    const DAILY_REWARD_LABELS = { quiz: '퀴즈', practice: '허수아비 모의전', tower: '모험의 탑', pvp: '랭킹 매칭', raid: '엘리트 보스', minigame: '미니게임', rush: '몬스터 러쉬', petrun: '펫 러닝' };
+    const DAILY_REWARD_LIMITS = { quiz: 20, practice: 3, tower: 3, pvp: 5, raid: 5, minigame: 5, petrun: 3, dungeon: 3 };
+    const DAILY_REWARD_LABELS = { quiz: '퀴즈', practice: '허수아비 모의전', tower: '모험의 탑', pvp: '랭킹 매칭', raid: '엘리트 보스', minigame: '미니게임', rush: '몬스터 러쉬', petrun: '펫 러닝', dungeon: '던전 탐험' };
 
     // 모험의 탑 하루 클리어 횟수 (처음 깨는 층을 이길 때마다 1회 · 실패나 이미 깬 층 재도전은 세지 않음)
     const TOWER_DAILY_CLEARS = 10;
@@ -11205,6 +11240,7 @@
     ];
     const DAILY_MISSION_DEFS = [
       { id: 'tower', icon: '🗼', label: '모험의 탑 도전하기', goal: 1, go: () => goToStudentTab('tower') },
+      { id: 'dungeon', icon: '🏰', label: '던전 탐험 클리어하기', goal: 1, go: () => goToStudentTab('dungeon') },
       { id: 'raid3', icon: '🐉', label: '엘리트 보스 3명이서 도전하기', goal: 1, go: () => goToStudentTab('raid') },
       { id: 'minigame', icon: '🎲', label: '미니게임 대전하기', goal: 1, go: () => goToStudentTab('minigame') },
       { id: 'quiz', icon: '📝', label: '퀴즈 3문제 풀기', goal: 3, go: () => goToStudentTab('mission') },
@@ -16069,6 +16105,7 @@
 
       canvas.addEventListener('mousedown', (e) => {
         const { cx, cy } = getCanvasPos(e.clientX, e.clientY);
+        if (sim.mode === 'dungeon' && e.button === 0 && dungeonMinimapClick(cx, cy)) { e.stopImmediatePropagation(); return; } // 🏰 던전 지도에서 옆 방 고르기
         if (checkMinimapJump(cx, cy)) {
           sim.camera.isDragging = true;
           sim.camera.isMinimapDrag = true;
@@ -16108,6 +16145,7 @@
       canvas.addEventListener('touchstart', (e) => {
         if (!e.touches || !e.touches[0]) return;
         const { cx, cy } = getCanvasPos(e.touches[0].clientX, e.touches[0].clientY);
+        if (sim.mode === 'dungeon' && dungeonMinimapClick(cx, cy)) return;
         if (checkMinimapJump(cx, cy)) return;
         sim.camera.isDragging = true;
         sim.camera.autoFollow = false;
@@ -16208,6 +16246,7 @@
       sim.entryCharge = null;
       if (entryCharge) entryCharge();
       if (typeof onLocalControlChanged === 'function') onLocalControlChanged();
+      if (sim.mode === 'dungeon' && sim.dungeon) dungeonOnControlChosen();
       renderBattleControlHud(true);
       const u = getControlledUnit();
       addBattleLog(u
@@ -16253,6 +16292,7 @@
       return sim.units.find(u => u.team === 'blue' && u.liveOwnerId === meId && !u.rushAi && !u.isClone) || null;
     }
     function toggleRushAutoBattle() {
+      if (sim.mode === 'dungeon') { toggleDungeonAutoBattle(); return; }
       if (sim.mode !== 'monster_rush' || !sim.running || sim.spectator) return;
       const mine = myRushUnit();
       if (battleControl.mode === 'manual') setBattleControlMode('auto', null, true);
@@ -16262,7 +16302,7 @@
       if (force || sim.tickCount % 10 === 0) refreshTouchControls();
       const rushBtn = document.getElementById('rushAutoBtn');
       if (rushBtn && (force || sim.tickCount % 10 === 0)) {
-        const mine = sim.mode === 'monster_rush' && sim.running && !sim.spectator ? myRushUnit() : null;
+        const mine = sim.mode === 'monster_rush' && sim.running && !sim.spectator ? myRushUnit() : (sim.mode === 'dungeon' && sim.running ? dungeonLeader() : null);
         rushBtn.classList.toggle('hidden', !(mine && mine.alive));
         rushBtn.textContent = battleControl.mode === 'manual' ? '🤖 자동 전투로' : '🎮 직접 조종으로';
       }
@@ -17476,7 +17516,9 @@
       const arenaSec = document.getElementById('arenaSection');
       if (arenaSec) arenaSec.classList.remove('hidden');
       document.getElementById('battleResultOverlay').classList.add('hidden');
-      document.getElementById('arenaModeBadge').textContent = mode === 'monster_rush'
+      document.getElementById('arenaModeBadge').textContent = mode === 'dungeon'
+        ? '🏰 던전 탐험'
+        : mode === 'monster_rush'
         ? '🌊 몬스터 러쉬'
         : mode === 'world_boss'
         ? '🌍 레이드 토벌'
@@ -17577,6 +17619,7 @@
       sim.raidWatch = null;
       sim.raidLive = null;
       sim.rush = null;
+      sim.dungeon = null;
       sim.entryCharge = null;
       battleControl.mode = 'auto';
       battleControl.unitId = null;
@@ -18238,6 +18281,7 @@
       // 성기사 헌신: 곁에 있는 성기사가 아군이 받을 피해의 일부를 대신 받음 (고정 피해는 그대로)
       if (attacker && attacker.team !== defender.team && !fixedDamageHit) dmg = paladinDevotionShare(defender, dmg);
 
+      if (defender.dgTakenMult && defender.dgTakenMult !== 1) dmg = Math.round(dmg * defender.dgTakenMult); // 🏰 던전 보스 페이즈: 받는 피해 줄임
       if (defender.shield > 0) {
         const absorbed = Math.min(defender.shield, dmg);
         defender.shield -= absorbed;
@@ -19012,10 +19056,12 @@
 
       // 🌊 몬스터 러쉬: 적이 다 쓰러져도 끝나지 않고 다음 라운드 (전멸·시간 초과일 때만 끝남)
       if (sim.mode === 'monster_rush' && !sim.sandbox && stepMonsterRush(blueAlive, redAlive)) return;
+      // 🏰 던전 탐험: 방마다 적을 치우고 다음 방으로 (전멸·시간 초과·보스 처치일 때만 끝남)
+      if (sim.mode === 'dungeon' && !sim.sandbox && stepDungeon(blueAlive, redAlive)) return;
       if (sim.mode === 'world_boss') WorldBoss.step(); // 🌍 체력이 광폭화 선 아래로 내려갔는지
       // 분신만 남은 팀은 진 것으로 (분신은 머릿수에 넣지 않음)
       const blueReal = blueAlive.some(u => !u.isClone);
-      if (!sim.sandbox && sim.mode !== 'monster_rush' && (!blueReal || !redAlive.some(u => !u.isClone))) {
+      if (!sim.sandbox && sim.mode !== 'monster_rush' && sim.mode !== 'dungeon' && (!blueReal || !redAlive.some(u => !u.isClone))) {
         // 적이 모두 쓰러지면 바로 끝내지 않고 쓰러지는 모습을 VICTORY_SHOW_SEC초 보여 준 뒤 결과 (그동안 모두 멈춰 서서 지켜봄)
         // PvP는 어느 쪽이 이겨도 똑같이 (방장이 진 실시간 결투도 쓰러지는 모습을 보고 끝남)
         if (blueReal || String(sim.mode || '').startsWith('pvp')) {
@@ -19041,7 +19087,7 @@
       // 시간 제한: 끝나지 않는 전투(서로 회복만 하거나, 체력이 아주 많은 허수아비)가 계속되지 않도록
       const timeLimit = sim.mode === 'practice' ? BATTLE_TIME_LIMIT.practiceTicks
         : (isEliteBossMode(sim.mode) ? eliteRaidTimeLimitTicks() : BATTLE_TIME_LIMIT.battleTicks);
-      if (!sim.sandbox && sim.mode !== 'monster_rush' && sim.tickCount >= timeLimit) {
+      if (!sim.sandbox && sim.mode !== 'monster_rush' && sim.mode !== 'dungeon' && sim.tickCount >= timeLimit) {
         finishBattleByTimeLimit(blueAlive, redAlive);
         return;
       }
@@ -19197,6 +19243,8 @@
           manualUnitStep(u, allies, enemies, manualCtrl);
           return;
         }
+        // 🏰 던전: 대표가 아닌 용병은 대표를 따라다님 (적이 가까우면 평소 AI로 싸움)
+        if (sim.mode === 'dungeon' && u.team === 'blue' && dungeonFollowStep(u, allies, enemies)) return;
         // 기사 방어 태세: 제자리에서 버팀 (이동·공격·스킬 없음). 가까운 적이 모두 사라지면 AI는 스스로 풂
         if (st.guard > 0) {
           u.isMoving = false;
@@ -24032,7 +24080,7 @@
     // MVP 후보: 분신·몬스터(탑 몬스터·엘리트 보스·허수아비)는 빼고 용병만.
     // 모험의 탑·엘리트 보스 토벌은 상대가 모두 적(어둠의 용병 포함)이라 우리 원정대(블루팀)만
     function mvpCandidates() {
-      const pveOnly = sim.mode === 'tower' || isEliteBossMode(sim.mode) || sim.mode === 'monster_rush';
+      const pveOnly = sim.mode === 'tower' || isEliteBossMode(sim.mode) || sim.mode === 'monster_rush' || sim.mode === 'dungeon';
       return sim.units.filter(x => !x.isClone && !x.monsterType && !x.isEliteBoss && (!pveOnly || x.team === 'blue'));
     }
 
@@ -24079,6 +24127,7 @@
       stu.matchCount = (stu.matchCount || 0) + 1;
       recordCodexKills(stu);
       if (sim.mode === 'monster_rush') { finishMonsterRush(stu); return; }
+      if (sim.mode === 'dungeon') { finishDungeon(stu, blueWon); return; }
       if (sim.mode === 'world_boss') { WorldBoss.finish(stu, blueWon); return; }
 
       let baseReward = blueWon ? (meta.rewardMc || 250) : (meta.lossRewardMc != null ? meta.lossRewardMc : ECONOMY.lossReward);
@@ -24201,7 +24250,7 @@
     // 혼자 하는 모험의 탑·엘리트 보스: 자동/직접 전투를 고르기 전이면 아직 전투가 시작되지 않은 것
     function battleNotStartedYet() {
       return Boolean(sim.running && !sim.spectator && sim.awaitingControlChoice && !sim.netRole
-        && (sim.mode === 'tower' || isEliteBossMode(sim.mode)));
+        && (sim.mode === 'tower' || isEliteBossMode(sim.mode) || sim.mode === 'dungeon'));
     }
 
     // 시작 전에 나가기: 패배·보상·도전 횟수·도전비용 없이 그냥 나감
@@ -26378,6 +26427,15 @@
 
       const z = sim.camera.zoom || 1.0;
 
+      // 🏰 던전: 카메라가 대표 용병을 따라감 (드래그 중에는 빼고)
+      if (sim.mode === 'dungeon' && sim.running && !sim.camera.isDragging) {
+        const L = dungeonLeader();
+        if (L) {
+          sim.camera.x += (L.x - (viewW / z) / 2 - sim.camera.x) * (1 - Math.pow(1 - 0.12, frameTimeScale));
+          sim.camera.y += (L.y - (viewH / z) / 2 - sim.camera.y) * (1 - Math.pow(1 - 0.12, frameTimeScale));
+          clampCamera();
+        }
+      }
       // 자동 추적 시점(Auto-Follow)이 켜져 있고 드래그 중이 아닐 때 교전 중심으로 카메라 부드럽게 이동
       if (sim.camera.autoFollow && !sim.camera.isDragging) {
         const aliveUnits = sim.units.filter(u => u.alive);
@@ -27047,6 +27105,7 @@
       const sortedUnits = [...sim.units]
         .filter(u => u.alive || (!u.rushPending && (isRevivableCorpse(u) || (getUnitSprite(u) && sim.tickCount - u._deadSince < SPRITE_DEATH_TICKS))))
         .sort((a, b) => (a.alive - b.alive) || (a.y - b.y));
+      if (sim.mode === 'dungeon') drawDungeonRoom(ctx); // 🏰 문·상자·모닥불·함정·경고 원 (유닛 아래)
       sortedUnits.forEach(u => {
         if (u.isEliteBoss && sim.eliteIntro) { drawEliteBossDrop(ctx, u); return; }
         drawUnitToken(ctx, u, sim.tickCount);
@@ -27259,7 +27318,17 @@
       ctx.fillStyle = '#fde047';
       ctx.fillText('🗺️ 미니맵 (클릭 시 이동)', mmX + 8, mmY + 13);
       ctx.restore();
+      if (sim.mode === 'dungeon') drawDungeonMinimap(ctx); // 🏰 왼쪽 위 던전 지도
 
+      // 🏰 던전 방 이동: 화면이 어두워졌다가 새 방에서 밝아짐
+      if (sim.mode === 'dungeon' && sim.dungeon && sim.dungeon.fade > 0) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalAlpha = Math.min(1, sim.dungeon.fade);
+        ctx.fillStyle = '#05070d';
+        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.restore();
+      }
       // 🌊 러쉬 맵 넘어가기: 굴로 들어가면 화면 전체가 어두워졌다가 새 맵에서 밝아짐
       if (sim.mode === 'monster_rush' && sim.rush && sim.rush.fade > 0) {
         ctx.save();
@@ -27417,7 +27486,7 @@
       // 탑 도전 중 전투 방식을 고르느라 멈춰 있어도, 보는 친구 화면이 끊기지 않게 가끔 화면을 보냄
       if (sim.running && liveNet.towerCast && liveNet.towerWatchers && Date.now() - (liveNet.lastFramePublishedAt || 0) > 3000) publishLiveBattleFrame(true);
       updateBattleControlFrame();
-      if (animationFrameNo % 3 === 0) { updateEliteBossHpBar(arenaVisible); updateRushHud(arenaVisible); }
+      if (animationFrameNo % 3 === 0) { updateEliteBossHpBar(arenaVisible); updateRushHud(arenaVisible); updateDungeonHud(arenaVisible); }
       updateReturnButtons();
       if (arenaVisible) drawArenaCanvasSmooth();
       else if (sim.running) decayHiddenBattleVisuals();
@@ -32691,7 +32760,7 @@
     /********************************************************************
      * 13. 탭 전환 및 초기 실행
      ********************************************************************/
-    const BATTLE_SUB_TABS = ['tower', 'raid', 'worldraid', 'rush', 'pvp'];
+    const BATTLE_SUB_TABS = ['tower', 'raid', 'worldraid', 'rush', 'dungeon', 'pvp'];
     // [⚔️ 전투] 탭을 누르면 마지막으로 보던 하위 탭으로
     function lastBattleTab() {
       let k = null;
@@ -32742,6 +32811,7 @@
       if (tabKey === 'raid') renderCoopRaidTab();
       if (tabKey === 'worldraid') renderWorldRaidTab();
       if (tabKey === 'rush') renderRushTab();
+      if (tabKey === 'dungeon') renderDungeonTab();
       if (tabKey === 'pvp') renderPvpTab();
       if (tabKey === 'minigame') renderMinigameTab();
       if (tabKey === 'shop') renderShopTab();
@@ -32760,6 +32830,7 @@
       renderCoopRaidTab();
       renderWorldRaidTab();
       renderRushTab();
+      renderDungeonTab();
       renderPvpTab();
       renderMinigameTab();
       renderShopTab();
@@ -38416,6 +38487,1181 @@
       return sim.units.some(e => e.alive && e.team !== u.team && !e.rushPending && Math.hypot(e.x - u.x, e.y - u.y) < r);
     }
 
+    /********************************************************************
+     * 🏰 던전 탐험: 보스 방을 찾아가는 탐색형 던전 (docs/dungeon-design.md)
+     * - 입장할 때마다 격자 지도(크기·길·방 종류·보스 위치)를 씨앗으로 새로 만듦
+     * - 방의 몬스터를 다 잡으면 문이 열리고, 대표 용병이 문으로 걸어가거나 미니맵을 눌러 다음 방으로
+     * - 대표 용병 1명만 직접 조종, 나머지는 대표를 따라다니는 추종 AI (dungeonFollowStep)
+     * - 1인 입장: 내 출전 용병 5명 (5인 입장은 아직 준비 중)
+     ********************************************************************/
+    const DUNGEON_TIME_SEC = 360;        // 던전 전체 제한 시간
+    const DUNGEON_BOSS_MIN_SEC = 90;     // 보스 방에 들어갈 때 남은 시간이 이보다 적으면 이만큼으로
+    const DUNGEON_BOSS_PREP_SEC = 5;     // 보스 방 입구 모닥불 정비 시간
+    const DUNGEON_REVIVE_HP = 0.3;       // 방을 깨면 쓰러진 용병이 이 체력으로 부활
+    const DUNGEON_AUTO_PICK_SEC = 30;    // 자동 전투 중 이만큼 안 고르면 안 가본 방으로 알아서 이동
+    const DUNGEON_FADE_SEC = 0.5;
+    const DUNGEON_DOOR_R = 120;          // 문 앞 이만큼 안에 대표가 서면 이동
+    const DUNGEON_TUNE = {
+      // stat: 일반 몬스터 능력치 배율 (같은 층 탑 몬스터 대비) · elite: 정예 체력/공격 배율 · boss: 보스 배율 · floorAdd: 파티 레벨로 정한 층에 더함
+      normal: { stat: 0.85, eliteHp: 2.5, eliteAtk: 1.2, boss: 0.85, floorAdd: -3, mobSkills: 2, eliteSkills: 3, bossSkills: 4, bossAdds: 1 },
+      hard:   { stat: 0.95, eliteHp: 3.0, eliteAtk: 1.3, boss: 1.05, floorAdd: 0, mobSkills: 3, eliteSkills: 4, bossSkills: 5, bossAdds: 2 }
+    };
+    const DUNGEON_KIND_INFO = {
+      start:    { icon: '🕯️', name: '시작 방' },
+      normal:   { icon: '⚔️', name: '일반 방' },
+      elite:    { icon: '💎', name: '정예 방' },
+      treasure: { icon: '📦', name: '보물 방' },
+      gimmick:  { icon: '🔥', name: '기믹 방' },
+      empty:    { icon: '🚶', name: '빈 방' },
+      boss:     { icon: '👑', name: '보스 방' }
+    };
+    // spawn: [직업, 종족 편성표(TOWER_RACE_SQUADS) 후보 번호, 마릿수] · elite: [직업, 후보 번호] (정예 1마리)
+    const DUNGEONS = {
+      goblin_den: {
+        id: 'goblin_den', name: '고블린 숲 소굴', race: '고블린족', icon: '🌲', color: 'emerald',
+        desc: '수가 많고 재빠른 고블린과 멧돼지 기수가 숲길을 막아서요. 광역 공격이 빛나는 던전!',
+        map: 'tower_goblin', bossMap: 'elite_goblin_king', boss: 'goblin_king', stars: 1, statMult: 1.0,
+        gridW: [4, 5], gridH: [3, 4], roomCount: { normal: [10, 12], hard: [12, 14] }, extraLoops: [1, 2],
+        power: { normal: 3000, hard: 5000 },
+        rooms: {
+          normal: { count: [[3, 5], [5, 7]], pool: [
+            { name: '숲길 초소',     spawn: [['warrior', 0, 3], ['archer', 0, 2]] },
+            { name: '궁수 망루',     spawn: [['archer', 0, 3], ['warrior', 0, 2]] },
+            { name: '주술사 오두막', spawn: [['mage', 0, 2], ['warrior', 0, 3]] },
+            { name: '멧돼지 길목',   spawn: [['warrior', 1, 2], ['archer', 0, 2]] } ] },
+          elite: { count: [[1, 2], [2, 3]], pool: [
+            { name: '멧돼지 우리',     elite: ['warrior', 1], spawn: [['warrior', 0, 2], ['archer', 1, 1]], gimmick: 'boar_gate',
+              hint: '🐗 우리 문이 15초마다 열려 멧돼지 기수가 더 나와요!' },
+            { name: '고블린 대장 막사', elite: ['warrior', 0], spawn: [['healer', 0, 1], ['archer', 0, 2]], gimmick: 'priest_shield',
+              hint: '🛡️ 사제가 살아 있는 동안 정예가 보호막을 계속 받아요. 사제부터!' } ] },
+          treasure: { count: [[1, 1], [0, 1]], pool: [ { name: '전리품 창고', gimmick: 'mimic_chest', hint: '📦 상자 하나만 열 수 있어요. 가짜 상자를 조심!' } ] },
+          gimmick: { count: [[1, 2], [2, 2]], pool: [
+            { name: '주술사 제단', spawn: [['mage', 0, 2], ['warrior', 0, 2]], gimmick: 'altar_fire', hint: '🔥 바닥에 붉은 원이 생기면 불기둥이 떨어져요. 피하세요!' },
+            { name: '함정 숲길',   spawn: [['warrior', 0, 2], ['archer', 0, 1]], gimmick: 'floor_traps', hint: '🪤 바닥의 덫을 밟으면 기절해요.' } ] },
+          empty: { count: [[0, 1], [0, 0]], pool: [ { name: '버려진 야영지' } ] },
+          boss: { name: '황금 왕좌', bossName: '고블린 왕' }
+        },
+        reward: { room: [120, 200], elite: [300, 500], boss: [1500, 3000], first: [2000, 4000], fast: [[120, 300], [150, 600]], chest: [300, 500] },
+        titles: { normal: '숲의 정찰병', hard: '고블린 사냥꾼' }
+      },
+      howling_canyon: {
+        id: 'howling_canyon', name: '울부짖는 협곡', race: '야수족', icon: '🐺', color: 'sky',
+        desc: '늑대 무리가 혼자 떨어진 용병부터 물어요. 파티를 뭉쳐서 다녀야 하는 던전!',
+        map: 'tower_beast', bossMap: 'elite_dire_wolf', boss: 'dire_wolf', stars: 2, statMult: 1.2,
+        gridW: [4, 5], gridH: [3, 4], roomCount: { normal: [10, 12], hard: [12, 14] }, extraLoops: [1, 2],
+        power: { normal: 6000, hard: 9000 },
+        rooms: {
+          normal: { count: [[3, 5], [5, 7]], pool: [
+            { name: '협곡 입구',   spawn: [['warrior', 0, 3], ['archer', 1, 2]] },
+            { name: '늑대 사냥터', spawn: [['warrior', 0, 4]] },
+            { name: '거미 둥지',   spawn: [['archer', 0, 2], ['mage', 1, 1], ['warrior', 0, 1]] },
+            { name: '박쥐 절벽',   spawn: [['archer', 1, 3], ['mage', 0, 1]] } ] },
+          elite: { count: [[1, 2], [2, 3]], pool: [
+            { name: '거미굴',       elite: ['warrior', 1], spawn: [['archer', 0, 2]], gimmick: 'web_floor', hint: '🕸️ 거미줄 바닥을 밟으면 느려져요.' },
+            { name: '우두머리 소굴', elite: ['healer', 0], spawn: [['warrior', 0, 3]], hint: '🐺 우두머리 늑대가 무리를 강화해요. 먼저 처치!' } ] },
+          treasure: { count: [[1, 1], [0, 1]], pool: [ { name: '사냥꾼 창고', gimmick: 'ambush_chest', hint: '📦 상자를 열면 늑대 무리가 덮쳐요. 버텨야 보상!' } ] },
+          gimmick: { count: [[1, 2], [2, 2]], pool: [
+            { name: '박쥐 동굴', spawn: [['mage', 0, 3], ['archer', 1, 2]], hint: '🦇 초음파 박쥐의 불협화음은 스킬을 막아요. 먼저 처치!' },
+            { name: '낙석 협곡', spawn: [['warrior', 0, 2], ['archer', 0, 1]], gimmick: 'rockfall', hint: '🪨 바닥에 원이 생기면 낙석이 떨어져요. 피하세요!' } ] },
+          empty: { count: [[0, 1], [0, 0]], pool: [ { name: '마른 개울' } ] },
+          boss: { name: '달빛 절벽', bossName: '늑대왕' }
+        },
+        reward: { room: [120, 200], elite: [300, 500], boss: [1500, 3000], first: [2000, 4000], fast: [[120, 300], [150, 600]], chest: [300, 500] },
+        titles: { normal: '협곡의 길잡이', hard: '늑대왕 토벌자' }
+      }
+    };
+    const DUNGEON_DIRS = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] };
+    const DUNGEON_DIR_OPP = { up: 'down', down: 'up', left: 'right', right: 'left' };
+    const DUNGEON_DIR_ICON = { up: '⬆️', down: '⬇️', left: '⬅️', right: '➡️' };
+    const DUNGEON_DIR_NAME = { up: '위쪽', down: '아래쪽', left: '왼쪽', right: '오른쪽' };
+    // 문이 있는 자리 (전장 가장자리 가운데)
+    function dungeonDoorPoint(dir) {
+      const cx = Math.round(WORLD_WIDTH / 2), cy = Math.round((ARENA_BOUNDS.top + ARENA_BOUNDS.bottom) / 2);
+      return dir === 'left' ? { x: ARENA_BOUNDS.left + 70, y: cy }
+        : dir === 'right' ? { x: ARENA_BOUNDS.right - 70, y: cy }
+        : dir === 'up' ? { x: cx, y: ARENA_BOUNDS.top + 70 }
+        : { x: cx, y: ARENA_BOUNDS.bottom - 70 };
+    }
+
+    // 씨앗 난수 (같은 씨앗이면 같은 지도 → 나중에 5인 입장에서 씨앗만 공유)
+    function dungeonRng(seed) {
+      let a = seed >>> 0;
+      return function () {
+        a = (a + 0x6D2B79F5) >>> 0;
+        let t = a;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    const dgKey = (r, c) => `${r},${c}`;
+    const dgDoorKey = (a, b) => (a[0] < b[0] || (a[0] === b[0] && a[1] < b[1])) ? `${dgKey(a[0], a[1])}|${dgKey(b[0], b[1])}` : `${dgKey(b[0], b[1])}|${dgKey(a[0], a[1])}`;
+
+    // 지도 생성 (docs/dungeon-design.md 4-1절 순서). 실패하면 처음부터 다시 (BFS로 시작→보스 경로 보장)
+    function generateDungeonMap(def, diff, seed) {
+      const rng = dungeonRng(seed);
+      const ri = ([a, b]) => a + Math.floor(rng() * (b - a + 1));
+      const pick = arr => arr[Math.floor(rng() * arr.length)];
+      const shuffle = arr => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+      const hardI = diff === 'hard' ? 1 : 0;
+      for (let attempt = 0; attempt < 40; attempt++) {
+        const w = ri(def.gridW), h = ri(def.gridH);
+        const n = Math.min(w * h, ri(def.roomCount[diff]));
+        const inGrid = (r, c) => r >= 0 && r < h && c >= 0 && c < w;
+        const nbrs = ([r, c]) => Object.values(DUNGEON_DIRS).map(([dr, dc]) => [r + dr, c + dc]).filter(([rr, cc]) => inGrid(rr, cc));
+        const edges = [];
+        for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) if (r === 0 || r === h - 1 || c === 0 || c === w - 1) edges.push([r, c]);
+        const start = pick(edges);
+        const cells = new Map([[dgKey(...start), start]]);
+        const doors = new Set();
+        let cur = start, guard = 0;
+        while (cells.size < n && guard++ < 2000) {
+          const free = nbrs(cur).filter(p => !cells.has(dgKey(...p)));
+          if (!free.length) {
+            const withFree = [...cells.values()].filter(p => nbrs(p).some(q => !cells.has(dgKey(...q))));
+            if (!withFree.length) break;
+            cur = pick(withFree);
+            continue;
+          }
+          const next = pick(free);
+          cells.set(dgKey(...next), next);
+          doors.add(dgDoorKey(cur, next));
+          cur = rng() < 0.6 ? next : pick([...cells.values()]);
+        }
+        if (cells.size < n) continue;
+        const dist = dungeonBfs(cells, doors, start);
+        const far = [...cells.values()].filter(p => dist.get(dgKey(...p)) >= 3).sort((a, b) => dist.get(dgKey(...b)) - dist.get(dgKey(...a)));
+        if (!far.length) continue;
+        const boss = pick(far.slice(0, 3));
+        // 고리: 이어지지 않은 인접 칸 쌍을 1~2개 더 뚫음
+        const pairs = [];
+        cells.forEach(p => nbrs(p).forEach(q => { if (cells.has(dgKey(...q)) && !doors.has(dgDoorKey(p, q))) pairs.push(dgDoorKey(p, q)); }));
+        shuffle([...new Set(pairs)]).slice(0, ri(def.extraLoops)).forEach(k => doors.add(k));
+        // 방 종류 개수
+        const others = [...cells.values()].filter(p => !(p[0] === start[0] && p[1] === start[1]) && !(p[0] === boss[0] && p[1] === boss[1]));
+        const kinds = ['elite', 'treasure', 'gimmick', 'empty', 'normal'];
+        const counts = {};
+        kinds.forEach(k => { counts[k] = ri(def.rooms[k].count[hardI]); });
+        let total = kinds.reduce((s, k) => s + counts[k], 0);
+        while (total > others.length) { const k = ['empty', 'normal', 'gimmick', 'treasure', 'elite'].find(x => counts[x] > 0); counts[k]--; total--; }
+        counts.normal += others.length - total;
+        // 배치: 보물 방은 시작 방 옆에 오지 않게, 정예 방끼리 붙지 않게 (몇 번 섞어 봄)
+        const isAdj = (p, q) => Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]) === 1 && doors.has(dgDoorKey(p, q));
+        let layout = null;
+        for (let t = 0; t < 30 && !layout; t++) {
+          const order = shuffle(others);
+          const kindOf = new Map();
+          let i = 0;
+          kinds.forEach(k => { for (let j = 0; j < counts[k]; j++) kindOf.set(dgKey(...order[i++]), k); });
+          const bad = others.some(p => {
+            const k = kindOf.get(dgKey(...p));
+            if (k === 'treasure' && isAdj(p, start)) return true;
+            if (k === 'elite' && others.some(q => q !== p && kindOf.get(dgKey(...q)) === 'elite' && isAdj(p, q))) return true;
+            return false;
+          });
+          if (!bad || t === 29) layout = kindOf;
+        }
+        // 방 풀에서 중복 없이 뽑음 (풀이 모자라면 다시 섞어서)
+        const pools = {};
+        kinds.forEach(k => { pools[k] = shuffle(def.rooms[k].pool); });
+        const takeDef = k => { if (!pools[k].length) pools[k] = shuffle(def.rooms[k].pool); return pools[k].pop(); };
+        const grid = [];
+        for (let r = 0; r < h; r++) { grid.push([]); for (let c = 0; c < w; c++) grid[r].push(null); }
+        cells.forEach(p => {
+          const [r, c] = p;
+          const isStart = r === start[0] && c === start[1], isBoss = r === boss[0] && c === boss[1];
+          const kind = isStart ? 'start' : isBoss ? 'boss' : layout.get(dgKey(r, c));
+          const rd = kind === 'start' ? { name: '던전 입구' } : kind === 'boss' ? def.rooms.boss : takeDef(kind);
+          grid[r][c] = { kind, def: rd, cleared: kind === 'start' || kind === 'empty' || kind === 'treasure', visited: false, revealed: false, chest: null, ambush: false };
+        });
+        // 보물 상자 내용: 💰 골드 · 🧪 회복 · 🗺️ 지도 (어려움은 지도가 안 나올 수도)
+        cells.forEach(p => {
+          const cell = grid[p[0]][p[1]];
+          if (cell.kind !== 'treasure') return;
+          const items = shuffle(['gold', 'heal', hardI && rng() < 0.5 ? 'gold' : 'map']);
+          cell.chest = { items, opened: -1, mimic: cell.def.gimmick === 'mimic_chest' ? Math.floor(rng() * 3) : -1 };
+        });
+        return { w, h, grid, doors, start, bossPos: boss, dist };
+      }
+      return null;
+    }
+    function dungeonBfs(cells, doors, start) {
+      const dist = new Map([[dgKey(...start), 0]]);
+      const q = [start];
+      while (q.length) {
+        const p = q.shift();
+        Object.values(DUNGEON_DIRS).forEach(([dr, dc]) => {
+          const n = [p[0] + dr, p[1] + dc];
+          const k = dgKey(...n);
+          if (!cells.has(k) || dist.has(k) || !doors.has(dgDoorKey(p, n))) return;
+          dist.set(k, dist.get(dgKey(...p)) + 1);
+          q.push(n);
+        });
+      }
+      return dist;
+    }
+    function dungeonCellAt(dg, r, c) { return (dg.grid[r] && dg.grid[r][c]) || null; }
+    function dungeonNeighbor(dg, dir) {
+      const [dr, dc] = DUNGEON_DIRS[dir];
+      const n = [dg.pos[0] + dr, dg.pos[1] + dc];
+      return dungeonCellAt(dg, n[0], n[1]) && dg.doors.has(dgDoorKey(dg.pos, n)) ? n : null;
+    }
+    function dungeonOpenDirs(dg) { return Object.keys(DUNGEON_DIRS).filter(d => dungeonNeighbor(dg, d)); }
+
+    // ----- 던전 기록 (학생) -----
+    function dungeonBookOf(stu, id) {
+      if (!stu) return {};
+      stu.dungeonBook = stu.dungeonBook || {};
+      stu.dungeonBook[id] = stu.dungeonBook[id] || {};
+      return stu.dungeonBook[id];
+    }
+    function dungeonHardLocked(stu, id) { return !dungeonBookOf(stu, id).normalClear; }
+    function dungeonFloorFor(stu, diff) {
+      const mercs = (stu.roster || []).filter(m => m.deployed);
+      return Math.max(1, Math.min(TOWER_MAX_FLOOR, rushStartFloorOf(mercs) + DUNGEON_TUNE[diff].floorAdd));
+    }
+
+    // ----- 입장 -----
+    function startSoloDungeon(id, diff = 'normal') {
+      const stu = getActiveStudent();
+      const def = DUNGEONS[id];
+      if (!stu || !def) return;
+      if (diff === 'hard' && dungeonHardLocked(stu, id)) { showNotice('🔒 어려움은 보통 난이도를 먼저 깨야 열려요.'); return; }
+      const deployed = (stu.roster || []).filter(m => m.deployed);
+      if (!deployed.length) { showNotice('⚠️ 출전 중인 용병이 없어요. 용병 관리에서 출전시켜 주세요!'); return; }
+      const seed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
+      const map = generateDungeonMap(def, diff, seed);
+      if (!map) { showNotice('던전 지도를 만들지 못했어요. 다시 시도해 주세요.'); return; }
+      launchSimulation({
+        mode: 'dungeon',
+        title: `${def.icon} ${def.name} [${diff === 'hard' ? '🔥어려움' : '보통'}] · 보스 방을 찾아라!`,
+        blueStudent: stu,
+        customRedUnits: [],
+        rewardMc: 0
+      });
+      if (!sim.running || sim.mode !== 'dungeon') return;
+      sim.dungeon = {
+        id, def, diff, seed, ...map, pos: [...map.start], leaderId: null, phase: 'room', fromDir: null,
+        roomStartTick: 0, startTick: 0, timeTicks: DUNGEON_TIME_SEC * BATTLE_TICKS_PER_SEC, fade: 0, fadeDir: 0, moveDir: null, moveAt: 0,
+        roomsCleared: 0, elitesKilled: 0, bossKilled: false, chestCa: 0, everManual: false, mapRevealed: false, started: false,
+        gim: {}, boss: null, floor: dungeonFloorFor(stu, diff), selectAt: 0, doneAt: 0, prepAt: 0, log: []
+      };
+      sim.units.forEach(u => { if (u.team === 'blue') u.followLeader = true; });
+      enterDungeonRoom(map.start, null);
+      addBattleLog(`🏰 ${def.name}에 들어왔어요! 지도 어딘가에 숨은 👑 보스 방을 찾아 보스를 물리치면 클리어! (제한 시간 ${DUNGEON_TIME_SEC / 60}분)`);
+      addBattleLog('🚪 방의 몬스터를 모두 쓰러뜨리면 길이 열려요. 대표 용병이 문으로 걸어가거나 왼쪽 위 미니맵의 옆 칸을 누르면 그 방으로 이동해요.');
+    }
+    function dungeonLeader() {
+      const dg = sim.dungeon;
+      if (!dg || !dg.leaderId) return null;
+      return sim.units.find(u => u.id === dg.leaderId) || null;
+    }
+    // 대표 용병을 정함: 조종하는 용병이 있으면 그 용병, 없으면 살아 있는 용병 중 전투력이 가장 높은 용병
+    function dungeonPickLeader(preferId = null) {
+      const dg = sim.dungeon;
+      if (!dg) return null;
+      const blue = sim.units.filter(u => u.team === 'blue' && u.alive && !u.isClone);
+      let L = preferId ? blue.find(u => u.id === preferId) : null;
+      if (!L) L = [...blue].sort((a, b) => ((b.maxHp || 0) + (b.atk || 0) * 10) - ((a.maxHp || 0) + (a.atk || 0) * 10))[0] || null;
+      dg.leaderId = L ? L.id : null;
+      sim.units.forEach(u => { if (u.team === 'blue') u.followLeader = Boolean(L) && u.id !== L.id; });
+      return L;
+    }
+    // 전투 방식을 고른 뒤 (setBattleControlMode에서 부름)
+    function dungeonOnControlChosen() {
+      const dg = sim.dungeon;
+      if (!dg) return;
+      const keep = battleControl.mode !== 'manual' && dg.leaderId && sim.units.some(u => u.id === dg.leaderId && u.alive);
+      const L = keep ? dungeonLeader() : dungeonPickLeader(battleControl.mode === 'manual' ? battleControl.unitId : null);
+      if (battleControl.mode === 'manual') dg.everManual = true;
+      if (!dg.started) { dg.started = true; dg.startTick = sim.tickCount; dg.roomStartTick = sim.tickCount; dg.selectAt = sim.tickCount; }
+      if (L) addBattleLog(`⭐ 대표 용병: ${L.name} — 나머지 용병은 대표를 따라다니며 싸워요.`);
+    }
+    function toggleDungeonAutoBattle() {
+      if (sim.mode !== 'dungeon' || !sim.running) return;
+      const L = dungeonLeader();
+      if (battleControl.mode === 'manual') setBattleControlMode('auto', null, true);
+      else if (L && L.alive) { setBattleControlMode('manual', L.id, true); sim.dungeon.everManual = true; }
+    }
+
+    // ----- 방 입장 -----
+    function enterDungeonRoom(pos, movedDir) {
+      const dg = sim.dungeon;
+      const cell = dungeonCellAt(dg, pos[0], pos[1]);
+      if (!cell) return;
+      dg.pos = [...pos];
+      dg.fromDir = movedDir ? DUNGEON_DIR_OPP[movedDir] : null;
+      cell.visited = true;
+      cell.revealed = true;
+      dungeonOpenDirs(dg).forEach(d => { const n = dungeonNeighbor(dg, d); const nc = dungeonCellAt(dg, n[0], n[1]); if (nc) nc.revealed = true; });
+      // 지난 방의 적·분신·투사체·장판은 치움
+      sim.units = sim.units.filter(u => u.team === 'blue' && !u.isClone);
+      sim.projectiles = [];
+      sim.effects = [];
+      sim.zones = [];
+      sim.floatTexts = [];
+      dg.gim = {};
+      // 파티는 들어온 문 쪽에 대표를 앞세워 반원으로
+      const entry = dg.fromDir ? dungeonDoorPoint(dg.fromDir) : { x: 700, y: Math.round((ARENA_BOUNDS.top + ARENA_BOUNDS.bottom) / 2) };
+      const inward = dg.fromDir === 'left' ? [1, 0] : dg.fromDir === 'right' ? [-1, 0] : dg.fromDir === 'up' ? [0, 1] : dg.fromDir === 'down' ? [0, -1] : [1, 0];
+      const L = dungeonLeader();
+      const party = sim.units.filter(u => u.team === 'blue');
+      const others = party.filter(u => u !== L);
+      const place = (u, k, n) => {
+        const back = u === L ? 0 : 150;
+        const side = u === L ? 0 : (k - (n - 1) / 2) * 120;
+        u.x = Math.round(entry.x + inward[0] * (140 - back) + inward[1] * side);
+        u.y = Math.round(entry.y + inward[1] * (140 - back) - inward[0] * side);
+        u.x = Math.max(ARENA_BOUNDS.left + 40, Math.min(ARENA_BOUNDS.right - 40, u.x));
+        u.y = Math.max(ARENA_BOUNDS.top + 40, Math.min(ARENA_BOUNDS.bottom - 40, u.y));
+        u._ix = u.prevX = u.x; u._iy = u.prevY = u.y;
+        u.kbVx = 0; u.kbVy = 0; u.rush = null;
+        u.facingDir = inward[0] < 0 ? -1 : 1;
+        u.facingAngle = Math.atan2(inward[1], inward[0]);
+        u.isMoving = false;
+        Object.keys(u.skillCooldowns || {}).forEach(k => { u.skillCooldowns[k] = 0; }); // 방 이동 시 쿨타임 초기화
+        u.dashCooldown = 0;
+      };
+      if (L) place(L, 0, 1);
+      others.forEach((u, k) => place(u, k, others.length));
+      dg.roomStartTick = sim.tickCount;
+      dg.selectAt = sim.tickCount;
+      if (sim.camera) { const z = sim.camera.zoom || 1; sim.camera.x = entry.x - canvas.width / z / 2; sim.camera.y = entry.y - canvas.height / z / 2; clampCamera(); }
+      const info = DUNGEON_KIND_INFO[cell.kind];
+      if (cell.kind === 'boss') {
+        if (cell.cleared) { dg.phase = 'select'; return; }
+        dg.phase = 'boss_prep';
+        dg.prepAt = sim.tickCount;
+        // 보스 방: 남은 시간이 너무 적으면 보스전 최소 시간만큼 보정
+        const leftTicks = dg.timeTicks - (sim.tickCount - dg.startTick);
+        if (leftTicks < DUNGEON_BOSS_MIN_SEC * BATTLE_TICKS_PER_SEC) dg.timeTicks += DUNGEON_BOSS_MIN_SEC * BATTLE_TICKS_PER_SEC - leftTicks;
+        addBattleLog(`👑 보스 방 [${cell.def.name}]을 찾았어요! 🕯️ 모닥불에서 ${DUNGEON_BOSS_PREP_SEC}초 정비 (체력 40% 회복) 뒤 ${cell.def.bossName}이(가) 나타나요!`);
+        return;
+      }
+      if (cell.cleared) {
+        dg.phase = 'select';
+        if (cell.kind === 'treasure' && cell.chest && cell.chest.opened < 0) addBattleLog(`📦 [${cell.def.name}] 상자 3개 중 하나를 골라 대표 용병이 다가가면 열려요. ${cell.def.hint || ''}`);
+        else addBattleLog(`${info.icon} [${cell.def.name}] ${cell.kind === 'start' ? '던전 입구예요.' : cell.kind === 'empty' ? '아무도 없는 통로예요.' : '이미 정리한 방이에요.'} 열린 문: ${dungeonOpenDirs(dg).map(d => DUNGEON_DIR_ICON[d]).join(' ')}`);
+        return;
+      }
+      dg.phase = 'room';
+      spawnDungeonRoomMonsters(cell);
+      setupDungeonGimmick(cell);
+      addBattleLog(`${info.icon} [${cell.def.name}] ${info.name}! 몬스터 ${sim.units.filter(u => u.team === 'red').length}마리를 모두 쓰러뜨리면 길이 열려요.${cell.def.hint ? ' ' + cell.def.hint : ''}`);
+    }
+    // 종족 편성표의 몬스터 한 마리 (탑 몬스터와 같은 방법, 러쉬의 buildRushMonster 재사용)
+    function buildDungeonMonster(job, candIdx, opts = {}) {
+      const dg = sim.dungeon, def = dg.def, tune = DUNGEON_TUNE[dg.diff];
+      const squad = TOWER_RACE_SQUADS[def.race];
+      const race = TOWER_RACES.find(r => r.name === def.race) || {};
+      const floor = dg.floor;
+      let monster, name, skills;
+      if (opts.boss) { monster = def.boss; name = MONSTER_DEFS[def.boss].name; skills = squad.boss.slice(0, tune.bossSkills); }
+      else {
+        const cands = squad[job] || squad.warrior;
+        [monster, name, skills] = cands[Math.min(candIdx, cands.length - 1)];
+        skills = skills.slice(0, opts.elite ? tune.eliteSkills : tune.mobSkills);
+      }
+      const floorObj = { floor, comp: [job], skills: [skills[0]], unitSkills: [skills], monsters: [monster], unitNames: [name] };
+      // 탑은 층의 종족 배율로 능력치를 정하므로, 이 던전 종족의 배율로 바꿔 줌
+      const raceFix = (race.floorScale || 1) / (towerRaceFloorScale(floor) || 1);
+      const statMul = (opts.boss ? tune.boss : tune.stat) * raceFix * (def.statMult || 1);
+      const u = buildRushMonster(floorObj, 0, statMul, Boolean(opts.boss));
+      if (opts.elite) {
+        u.maxHp = u.hp = Math.round(u.maxHp * tune.eliteHp);
+        u.atk = Math.round(u.atk * tune.eliteAtk);
+        u.name = `💎 ${u.name}`;
+        u.dgElite = true;
+        setUnitBodySize(u, (u.sizeScale || 1) * ELITE_SIZE_MULT);
+      }
+      if (opts.boss) { u.name = `👑 ${u.name}`; u.dgBoss = true; u.rushBoss = true; } // rushBoss: 화면 위 보스 체력 막대 재사용
+      u.dgSummon = Boolean(opts.summon);
+      return u;
+    }
+    // 몬스터를 파티 반대편에 흩어 놓음
+    function placeDungeonMonster(u, i, n) {
+      const dg = sim.dungeon;
+      const from = dg.fromDir || 'left';
+      const cx = Math.round(WORLD_WIDTH / 2), cy = Math.round((ARENA_BOUNDS.top + ARENA_BOUNDS.bottom) / 2);
+      const far = from === 'left' ? { x: ARENA_BOUNDS.right - 520, y: cy } : from === 'right' ? { x: ARENA_BOUNDS.left + 520, y: cy }
+        : from === 'up' ? { x: cx, y: ARENA_BOUNDS.bottom - 380 } : { x: cx, y: ARENA_BOUNDS.top + 380 };
+      const horizontal = from === 'left' || from === 'right';
+      const spread = (i - (n - 1) / 2) * 170;
+      const depth = (i % 2) * 160 + Math.random() * 80;
+      u.x = Math.round(horizontal ? far.x + (from === 'left' ? depth : -depth) : far.x + spread);
+      u.y = Math.round(horizontal ? far.y + spread : far.y + (from === 'up' ? depth : -depth));
+      u.x = Math.max(ARENA_BOUNDS.left + 60, Math.min(ARENA_BOUNDS.right - 60, u.x));
+      u.y = Math.max(ARENA_BOUNDS.top + 60, Math.min(ARENA_BOUNDS.bottom - 60, u.y));
+      u._ix = u.x; u._iy = u.y;
+      u.facingDir = u.x > cx ? -1 : 1;
+      u.facingAngle = u.facingDir === 1 ? 0 : Math.PI;
+    }
+    function spawnDungeonRoomMonsters(cell) {
+      const list = [];
+      (cell.def.spawn || []).forEach(([job, cand, n]) => { for (let i = 0; i < n; i++) list.push(buildDungeonMonster(job, cand)); });
+      if (cell.def.elite) {
+        const eliteN = sim.dungeon.diff === 'hard' ? 2 : 1;
+        for (let i = 0; i < eliteN; i++) list.push(buildDungeonMonster(cell.def.elite[0], cell.def.elite[1], { elite: true }));
+      }
+      list.forEach((u, i) => { u.id = `dg_${dgKey(...sim.dungeon.pos)}_${i}_${Math.random().toString(36).slice(2, 5)}`; placeDungeonMonster(u, i, list.length); });
+      sim.units.push(...list);
+      return list;
+    }
+    // 방 안에 몬스터를 더 불러옴 (우리 문·소환·습격)
+    function dungeonSummon(units, near) {
+      const dg = sim.dungeon;
+      units.forEach((u, i) => {
+        u.id = `dgs_${sim.tickCount}_${i}_${Math.random().toString(36).slice(2, 5)}`;
+        const ang = Math.random() * Math.PI * 2, r = 120 + Math.random() * 120;
+        u.x = Math.max(ARENA_BOUNDS.left + 60, Math.min(ARENA_BOUNDS.right - 60, Math.round(near.x + Math.cos(ang) * r)));
+        u.y = Math.max(ARENA_BOUNDS.top + 60, Math.min(ARENA_BOUNDS.bottom - 60, Math.round(near.y + Math.sin(ang) * r)));
+        u._ix = u.x; u._iy = u.y;
+        u.statuses.immune = Math.max(u.statuses.immune || 0, 20);
+        sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y + 8, r: 90, color: '#facc15', life: 28, maxLife: 28 });
+      });
+      sim.units.push(...units);
+      if (!sim.shake || sim.shake.power < 6) sim.shake = { power: 6, life: 14, maxLife: 14 };
+    }
+    function dungeonFarSide() {
+      const dg = sim.dungeon;
+      const from = dg.fromDir || 'left';
+      const cx = Math.round(WORLD_WIDTH / 2), cy = Math.round((ARENA_BOUNDS.top + ARENA_BOUNDS.bottom) / 2);
+      return from === 'left' ? { x: ARENA_BOUNDS.right - 300, y: cy } : from === 'right' ? { x: ARENA_BOUNDS.left + 300, y: cy }
+        : from === 'up' ? { x: cx, y: ARENA_BOUNDS.bottom - 240 } : { x: cx, y: ARENA_BOUNDS.top + 240 };
+    }
+
+    // ----- 기믹 -----
+    function setupDungeonGimmick(cell) {
+      const dg = sim.dungeon, g = cell.def.gimmick;
+      dg.gim = { kind: g || null };
+      if (g === 'boar_gate') dg.gim.opened = 0;
+      if (g === 'floor_traps') {
+        const far = dungeonFarSide(), near = dg.fromDir ? dungeonDoorPoint(dg.fromDir) : { x: 700, y: 920 };
+        dg.gim.traps = Array.from({ length: 5 }, (_, i) => {
+          const t = (i + 1) / 6;
+          return { x: Math.round(near.x + (far.x - near.x) * t + (Math.random() - 0.5) * 300), y: Math.round(near.y + (far.y - near.y) * t + (Math.random() - 0.5) * 700), used: false };
+        }).map(p => ({ ...p, x: Math.max(ARENA_BOUNDS.left + 80, Math.min(ARENA_BOUNDS.right - 80, p.x)), y: Math.max(ARENA_BOUNDS.top + 80, Math.min(ARENA_BOUNDS.bottom - 80, p.y)) }));
+      }
+      if (g === 'web_floor') {
+        dg.gim.webs = Array.from({ length: 4 }, () => ({ x: ARENA_BOUNDS.left + 400 + Math.random() * (WORLD_WIDTH - 800 - ARENA_BOUNDS.left), y: ARENA_BOUNDS.top + 200 + Math.random() * (ARENA_BOUNDS.bottom - ARENA_BOUNDS.top - 400), r: 130 }));
+        dg.gim.nextWeb = sim.tickCount + 8 * BATTLE_TICKS_PER_SEC;
+      }
+      if (g === 'altar_fire' || g === 'rockfall') { dg.gim.drops = []; dg.gim.nextDrop = sim.tickCount + 5 * BATTLE_TICKS_PER_SEC; }
+    }
+    // 바닥 낙하 공격 (불기둥·낙석): 경고 원이 먼저 보이고 1.5초 뒤 떨어짐
+    function dungeonScheduleDrops(count, radius) {
+      const dg = sim.dungeon;
+      const party = sim.units.filter(u => u.alive && u.team === 'blue');
+      if (!party.length) return;
+      for (let i = 0; i < count; i++) {
+        const p = party[Math.floor(Math.random() * party.length)];
+        const ang = Math.random() * Math.PI * 2, d = Math.random() * 180;
+        dg.gim.drops.push({ x: Math.round(p.x + Math.cos(ang) * d), y: Math.round(p.y + Math.sin(ang) * d), r: radius, at: sim.tickCount + Math.round(1.5 * BATTLE_TICKS_PER_SEC) });
+      }
+    }
+    function stepDungeonGimmick(blueAlive, redAlive) {
+      const dg = sim.dungeon, g = dg.gim;
+      if (!g || !g.kind) return;
+      const tps = BATTLE_TICKS_PER_SEC;
+      if (g.kind === 'boar_gate' && g.opened < 2 && sim.tickCount - dg.roomStartTick >= 15 * tps * (g.opened + 1)) {
+        g.opened++;
+        dungeonSummon([buildDungeonMonster('warrior', 1, { summon: true })], dungeonFarSide());
+        addBattleLog('🐗 우리 문이 열렸어요! 멧돼지 기수가 뛰쳐나와요!');
+      }
+      if (g.kind === 'priest_shield') {
+        const priest = redAlive.find(u => u.job === 'healer');
+        if (priest) redAlive.forEach(u => { if (u.dgElite) u.shield = Math.max(u.shield || 0, Math.round(u.maxHp * 0.25)); });
+      }
+      if ((g.kind === 'altar_fire' || g.kind === 'rockfall') && redAlive.length) {
+        const fire = g.kind === 'altar_fire';
+        if (sim.tickCount >= g.nextDrop) { g.nextDrop = sim.tickCount + (fire ? 8 : 6) * tps; dungeonScheduleDrops(fire ? 3 : 2, 110); }
+        const owner = redAlive.find(u => u.job === 'mage') || redAlive[0];
+        for (let i = g.drops.length - 1; i >= 0; i--) {
+          const d = g.drops[i];
+          if (sim.tickCount < d.at) continue;
+          g.drops.splice(i, 1);
+          sim.effects.push({ type: 'aoe_ring', x: d.x, y: d.y, r: d.r, color: fire ? '#f97316' : '#a8a29e', life: 26, maxLife: 26 });
+          if (!sim.shake || sim.shake.power < 7) sim.shake = { power: 7, life: 14, maxLife: 14 };
+          blueAlive.forEach(u => {
+            if (Math.hypot(u.x - d.x, u.y - d.y) > d.r + 20) return;
+            applyDamage(owner, u, Math.round(u.maxHp * (fire ? 0.15 : 0.12)), fire ? '🔥불기둥' : '🪨낙석', fire ? '#f97316' : '#a8a29e');
+            if (fire) inflictStatus(owner, u, 'burn', 180); else inflictStatus(owner, u, 'stun', 60);
+          });
+          playCombatSfx(fire ? 'magic' : 'slash');
+        }
+      }
+      if (g.kind === 'floor_traps') {
+        g.traps.forEach(t => {
+          if (t.used) return;
+          const hit = blueAlive.find(u => Math.hypot(u.x - t.x, u.y - t.y) < 52);
+          if (!hit) return;
+          t.used = true;
+          sim.effects.push({ type: 'aoe_ring', x: t.x, y: t.y, r: 70, color: '#78350f', life: 24, maxLife: 24 });
+          inflictStatus(hit, hit, 'stun', 90);
+          sim.floatTexts.push({ x: hit.x, y: hit.y - 44, text: '🪤 덫!', color: '#b45309', life: 50 });
+          playCombatSfx('slash');
+        });
+      }
+      if (g.kind === 'web_floor') {
+        if (sim.tickCount >= g.nextWeb && redAlive.some(u => u.dgElite)) {
+          g.nextWeb = sim.tickCount + 8 * tps;
+          const p = blueAlive[Math.floor(Math.random() * blueAlive.length)];
+          if (p) { g.webs.push({ x: p.x, y: p.y, r: 130 }); addBattleLog('🕸️ 거대 독거미가 새 거미줄을 쳤어요!'); }
+        }
+        blueAlive.forEach(u => { if (g.webs.some(w => Math.hypot(u.x - w.x, u.y - w.y) < w.r)) inflictStatus(u, u, 'slow', 30); });
+      }
+    }
+    // 보물 상자: 대표가 다가가면 열림 (하나만)
+    function dungeonChestPoints() {
+      const cy = Math.round((ARENA_BOUNDS.top + ARENA_BOUNDS.bottom) / 2), cx = Math.round(WORLD_WIDTH / 2);
+      return [{ x: cx - 420, y: cy - 60 }, { x: cx, y: cy - 200 }, { x: cx + 420, y: cy - 60 }];
+    }
+    function stepDungeonTreasure(cell, L) {
+      const dg = sim.dungeon, ch = cell.chest;
+      if (!ch || ch.opened >= 0 || !L || !L.alive) return;
+      const pts = dungeonChestPoints();
+      const i = pts.findIndex(p => Math.hypot(L.x - p.x, L.y - p.y) < 90);
+      if (i < 0) return;
+      ch.opened = i;
+      const p = pts[i];
+      sim.effects.push({ type: 'aoe_ring', x: p.x, y: p.y, r: 80, color: '#fbbf24', life: 30, maxLife: 30 });
+      playCombatSfx('heal');
+      if (ch.mimic === i) {
+        ch.result = 'mimic';
+        cell.cleared = false;
+        dg.phase = 'room';
+        dg.roomStartTick = sim.tickCount;
+        dungeonSummon([buildDungeonMonster('archer', 0, { summon: true }), buildDungeonMonster('archer', 0, { summon: true })], p);
+        addBattleLog('📦💥 가짜 상자! 고블린 궁수가 튀어나왔어요! 물리치면 골드 2배!');
+        return;
+      }
+      if (cell.def.gimmick === 'ambush_chest') {
+        ch.result = ch.items[i];
+        cell.cleared = false;
+        cell.ambush = true;
+        dg.phase = 'room';
+        dg.roomStartTick = sim.tickCount;
+        dungeonSummon(Array.from({ length: 4 }, () => buildDungeonMonster('warrior', 0, { summon: true })), dungeonFarSide());
+        addBattleLog('📦🐺 상자를 열자 늑대 무리가 덮쳐요! 버텨내면 상자 보상을 받아요!');
+        return;
+      }
+      dungeonGiveChest(cell, ch.items[i], 1);
+    }
+    function dungeonGiveChest(cell, item, mult) {
+      const dg = sim.dungeon, i = dg.diff === 'hard' ? 1 : 0;
+      if (item === 'gold') {
+        const ca = dg.def.reward.chest[i] * mult;
+        dg.chestCa += ca;
+        addBattleLog(`📦💰 상자에서 ${ca} CA가 나왔어요!${mult > 1 ? ' (가짜 상자 처치 보너스 2배)' : ''}`);
+      } else if (item === 'heal') {
+        sim.units.forEach(u => {
+          if (u.team !== 'blue' || !u.alive) return;
+          const heal = Math.round(u.maxHp * 0.5);
+          u.hp = Math.min(u.maxHp, u.hp + heal);
+          sim.floatTexts.push({ x: u.x, y: u.y - 40, text: `💚+${heal}`, color: '#16a34a', life: 60 });
+        });
+        addBattleLog('📦🧪 상자에서 치유의 물약! 모든 용병 체력 50% 회복!');
+      } else if (item === 'map') {
+        dg.mapRevealed = true;
+        const b = dungeonCellAt(dg, dg.bossPos[0], dg.bossPos[1]);
+        if (b) b.revealed = true;
+        addBattleLog('📦🗺️ 상자에서 던전 지도! 미니맵에 👑 보스 방 위치가 보여요!');
+      }
+    }
+
+    // ----- 보스 패턴 -----
+    function stepDungeonBoss(blueAlive, redAlive) {
+      const dg = sim.dungeon;
+      const boss = redAlive.find(u => u.dgBoss);
+      if (!boss) return;
+      const bs = dg.boss = dg.boss || { phase: 1, nextSummon: sim.tickCount + 20 * BATTLE_TICKS_PER_SEC, roarAt: 0, roarSafe: null, nextRoar: 0 };
+      const tps = BATTLE_TICKS_PER_SEC;
+      const ratio = boss.hp / Math.max(1, boss.maxHp);
+      const summoned = redAlive.filter(u => u.dgSummon).length;
+      const isGoblin = dg.def.boss === 'goblin_king';
+      if (bs.phase === 1 && ratio <= (isGoblin ? 0.7 : 0.65)) {
+        bs.phase = 2;
+        const L = dungeonLeader();
+        if (isGoblin) {
+          const far = dungeonFarSide();
+          boss.x = far.x; boss.y = far.y; boss._ix = boss.x; boss._iy = boss.y;
+          sim.effects.push({ type: 'aoe_ring', x: boss.x, y: boss.y, r: 140, color: '#facc15', life: 30, maxLife: 30 });
+          const adds = Array.from({ length: DUNGEON_TUNE[dg.diff].bossAdds }, () => buildDungeonMonster('archer', 1, { summon: true }));
+          dungeonSummon([...adds, buildDungeonMonster('healer', 0, { summon: true })], far);
+          addBattleLog('👑 고블린 왕이 왕좌 뒤로 물러나 궁기병과 사제를 불렀어요! 사제가 살아 있는 동안 왕이 받는 피해가 절반이에요!');
+        } else {
+          // 달의 포효: 늑대 소환, 가장 먼 아군 뒤로 그림자 걸음
+          const far = [...blueAlive].sort((a, b) => (L ? Math.hypot(b.x - L.x, b.y - L.y) - Math.hypot(a.x - L.x, a.y - L.y) : 0))[0];
+          if (far) { boss.x = Math.max(ARENA_BOUNDS.left + 60, Math.min(ARENA_BOUNDS.right - 60, far.x + (far.facingDir || 1) * -120)); boss.y = far.y; boss._ix = boss.x; boss._iy = boss.y; }
+          dungeonSummon(Array.from({ length: 1 + DUNGEON_TUNE[dg.diff].bossAdds }, () => buildDungeonMonster('warrior', 0, { summon: true })), dungeonFarSide());
+          bs.nextShadow = sim.tickCount + 10 * tps;
+          addBattleLog('🌕 늑대왕의 달의 포효! 늑대 무리가 나타나고, 왕이 그림자처럼 혼자 떨어진 용병 뒤를 노려요! 뭉치세요!');
+        }
+      }
+      if (bs.phase === 2 && ratio <= (isGoblin ? 0.4 : 0.35)) {
+        bs.phase = 3;
+        boss.dgRage = true;
+        if (isGoblin) { dungeonSummon(Array.from({ length: DUNGEON_TUNE[dg.diff].bossAdds }, () => buildDungeonMonster('warrior', 1, { summon: true })), dungeonFarSide()); addBattleLog('💢 고블린 왕이 분노했어요! 공격이 빨라지고 멧돼지 기수가 달려와요!'); }
+        else { bs.nextRoar = sim.tickCount + 6 * tps; addBattleLog('💢 늑대왕 광폭화! 포효 뒤 전 범위 충격! 포효 중 🌑 그림자 원 안으로 피하세요!'); }
+      }
+      if (isGoblin) {
+        if (bs.phase === 1 && sim.tickCount >= bs.nextSummon && summoned < 4) {
+          bs.nextSummon = sim.tickCount + 20 * tps;
+          dungeonSummon([buildDungeonMonster('warrior', 0, { summon: true }), buildDungeonMonster('warrior', 0, { summon: true })], boss);
+          addBattleLog('👑 "병사들아!" 고블린 전사들이 달려와요!');
+        }
+        boss.dgTakenMult = bs.phase >= 2 && redAlive.some(u => u.job === 'healer' && u.dgSummon) ? 0.5 : 1;
+      } else {
+        if (bs.phase >= 2 && sim.tickCount >= (bs.nextShadow || 0)) {
+          bs.nextShadow = sim.tickCount + 10 * tps;
+          const L = dungeonLeader();
+          const far = [...blueAlive].sort((a, b) => (L ? Math.hypot(b.x - L.x, b.y - L.y) - Math.hypot(a.x - L.x, a.y - L.y) : 0))[0];
+          if (far && L && far !== L && Math.hypot(far.x - L.x, far.y - L.y) > 300) {
+            boss.x = far.x - (far.facingDir || 1) * 90; boss.y = far.y; boss._ix = boss.x; boss._iy = boss.y;
+            sim.effects.push({ type: 'aoe_ring', x: boss.x, y: boss.y, r: 110, color: '#60a5fa', life: 24, maxLife: 24 });
+            applyDamage(boss, far, Math.round(boss.atk * 1.4), '🐾그림자 기습', '#60a5fa');
+            inflictStatus(boss, far, 'bleed', 240);
+          }
+        }
+        if (bs.phase === 3) {
+          if (!bs.roarAt && sim.tickCount >= bs.nextRoar) {
+            bs.roarAt = sim.tickCount + Math.round(1.5 * tps);
+            bs.roarSafe = [0, 1].map(k => ({ x: Math.max(ARENA_BOUNDS.left + 120, Math.min(ARENA_BOUNDS.right - 120, boss.x + (k ? 420 : -420))), y: Math.max(ARENA_BOUNDS.top + 120, Math.min(ARENA_BOUNDS.bottom - 120, boss.y + (k ? -200 : 200))), r: 150 }));
+            addBattleLog('🐺 늑대왕이 포효해요! 🌑 그림자 원 안으로!');
+            playCombatSfx('countdown');
+          }
+          if (bs.roarAt && sim.tickCount >= bs.roarAt) {
+            bs.roarAt = 0;
+            bs.nextRoar = sim.tickCount + 12 * tps;
+            sim.effects.push({ type: 'aoe_ring', x: boss.x, y: boss.y, r: 900, color: '#1e3a8a', life: 30, maxLife: 30 });
+            sim.shake = { power: 12, life: 24, maxLife: 24 };
+            blueAlive.forEach(u => {
+              if (bs.roarSafe.some(s => Math.hypot(u.x - s.x, u.y - s.y) < s.r)) { sim.floatTexts.push({ x: u.x, y: u.y - 44, text: '🌑 안전!', color: '#60a5fa', life: 50 }); return; }
+              applyDamage(boss, u, Math.round(u.maxHp * 0.22), '🐺포효 충격', '#1e3a8a');
+            });
+            bs.roarSafe = null;
+            playCombatSfx('countdown_go');
+          }
+        }
+      }
+      if (boss.dgRage) { boss.statuses.rally = Math.max(boss.statuses.rally || 0, 30); boss.statuses.swift = Math.max(boss.statuses.swift || 0, 30); }
+    }
+
+    // ----- 매 틱 (stepSimulation에서 부름, true면 이번 틱은 여기서 끝) -----
+    function stepDungeon(blueAlive, redAlive) {
+      const dg = sim.dungeon;
+      if (!dg) return false;
+      const tps = BATTLE_TICKS_PER_SEC;
+      if (!dg.started) return true; // 전투 방식을 고르기 전
+      const L = dungeonLeader();
+      if (!blueAlive.some(u => !u.isClone)) {
+        addBattleLog('💀 용병들이 모두 쓰러졌어요... 던전 탐험 실패.');
+        finishSimulation(false);
+        return true;
+      }
+      if (L && !L.alive) {
+        const nL = dungeonPickLeader(null);
+        if (nL) {
+          addBattleLog(`⭐ ${L.name}이(가) 쓰러져 ${nL.name}이(가) 새 대표 용병이 됐어요!`);
+          if (battleControl.mode === 'manual') setBattleControlMode('manual', nL.id, true);
+        }
+      }
+      if (dg.phase !== 'done' && sim.tickCount - dg.startTick >= dg.timeTicks) {
+        addBattleLog('⏰ 제한 시간이 끝났어요! 보스 방을 찾지 못했어요...');
+        finishSimulation(false);
+        return true;
+      }
+      if (dg.phase === 'move') { stepDungeonMove(); return true; }
+      if (dg.phase === 'done') {
+        if (sim.tickCount - dg.doneAt >= 2.5 * tps) { finishSimulation(true); return true; }
+        sim.units.forEach(u => { if (u.alive) u.isMoving = false; });
+        return true;
+      }
+      const cell = dungeonCellAt(dg, dg.pos[0], dg.pos[1]);
+      if (dg.phase === 'boss_prep') {
+        if (sim.tickCount - dg.prepAt === 1) {
+          sim.units.forEach(u => { if (u.team === 'blue' && u.alive) { const heal = Math.round(u.maxHp * 0.4); u.hp = Math.min(u.maxHp, u.hp + heal); sim.floatTexts.push({ x: u.x, y: u.y - 40, text: `🕯️+${heal}`, color: '#f59e0b', life: 60 }); } });
+        }
+        if (sim.tickCount - dg.prepAt >= DUNGEON_BOSS_PREP_SEC * tps) {
+          dg.phase = 'room';
+          dg.roomStartTick = sim.tickCount;
+          dg.boss = null;
+          const units = [buildDungeonMonster('warrior', 0, { boss: true })];
+          if (dg.def.boss === 'dire_wolf') units.push(buildDungeonMonster('healer', 0));
+          units.forEach((u, i) => { u.id = `dgboss_${i}_${Math.random().toString(36).slice(2, 5)}`; placeDungeonMonster(u, i, units.length); });
+          sim.units.push(...units);
+          sim.shake = { power: 14, life: 30, maxLife: 30 };
+          addBattleLog(`👑 ${cell.def.bossName} 등장! 쓰러뜨리면 던전 클리어!`);
+        } else sim.units.forEach(u => { if (u.alive) u.isMoving = false; });
+        return true;
+      }
+      if (dg.phase === 'room') {
+        stepDungeonGimmick(blueAlive, redAlive);
+        if (cell.kind === 'boss') {
+          stepDungeonBoss(blueAlive, redAlive);
+          // 보스를 잡으면 남은 졸개는 흩어져 사라짐 → 바로 클리어
+          const boss = sim.units.find(u => u.dgBoss);
+          if (boss && !boss.alive) {
+            redAlive.forEach(u => { if (u !== boss) { u.alive = false; u.hp = 0; sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 60, color: '#94a3b8', life: 20, maxLife: 20 }); } });
+            clearDungeonRoom(cell);
+            return false;
+          }
+        }
+        if (!redAlive.some(u => !u.isClone)) clearDungeonRoom(cell);
+        return false;
+      }
+      // 'select': 문이 열림. 보물 상자 · 문 앞에 선 대표 · 자동 전투 30초 뒤 알아서 이동
+      if (cell.kind === 'treasure') stepDungeonTreasure(cell, L);
+      if (dg.phase !== 'select') return false;
+      if (L && L.alive) {
+        const dir = dungeonOpenDirs(dg).find(d => { const p = dungeonDoorPoint(d); return Math.hypot(L.x - p.x, L.y - p.y) < DUNGEON_DOOR_R; });
+        if (dir && dir !== dg.fromDir || (dir && sim.tickCount - dg.selectAt > 2 * tps)) { beginDungeonMove(dir); return true; }
+      }
+      if (battleControl.mode !== 'manual' && sim.tickCount - dg.selectAt >= DUNGEON_AUTO_PICK_SEC * tps) {
+        const dirs = dungeonOpenDirs(dg);
+        const unvisited = dirs.filter(d => { const n = dungeonNeighbor(dg, d); return !dungeonCellAt(dg, n[0], n[1]).visited; });
+        const dir = (unvisited.length ? unvisited : dirs)[Math.floor(Math.random() * (unvisited.length ? unvisited : dirs).length)];
+        if (dir) { addBattleLog(`🤖 자동 전투: ${DUNGEON_DIR_NAME[dir]} 방으로 알아서 이동해요.`); beginDungeonMove(dir); return true; }
+      }
+      return false;
+    }
+    function clearDungeonRoom(cell) {
+      const dg = sim.dungeon, i = dg.diff === 'hard' ? 1 : 0;
+      cell.cleared = true;
+      let revived = 0;
+      sim.units.forEach(u => {
+        if (u.team !== 'blue' || u.isClone) return;
+        Object.keys(u.skillCooldowns || {}).forEach(k => { u.skillCooldowns[k] = 0; });
+        if (u.alive || cell.kind === 'boss') return;
+        u.alive = true;
+        u.hp = Math.max(1, Math.round(u.maxHp * DUNGEON_REVIVE_HP));
+        u.shield = 0;
+        u.mana = Math.round(u.maxMana * 0.5);
+        Object.keys(u.statuses).forEach(k => { u.statuses[k] = 0; });
+        u.statuses.immune = 120;
+        u.kbVx = 0; u.kbVy = 0;
+        u._deadSince = null;
+        sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 70, color: '#34d399', life: 40, maxLife: 40 });
+        revived++;
+      });
+      if (cell.kind === 'boss') {
+        dg.bossKilled = true;
+        dg.phase = 'done';
+        dg.doneAt = sim.tickCount;
+        sim.projectiles = [];
+        addBattleLog(`🏆 ${cell.def.bossName} 처치! ${dg.def.name} 클리어!`);
+        playCombatSfx('heal');
+        return;
+      }
+      if (cell.kind === 'treasure') {
+        // 가짜 상자·습격을 물리침 → 상자 보상
+        if (cell.chest && cell.chest.result === 'mimic') dungeonGiveChest(cell, 'gold', 2);
+        else if (cell.chest && cell.ambush) { cell.ambush = false; dungeonGiveChest(cell, cell.chest.result, 1); }
+        cell.chest.result = null;
+      } else {
+        dg.roomsCleared++;
+        if (cell.kind === 'elite') dg.elitesKilled++;
+      }
+      dg.phase = 'select';
+      dg.selectAt = sim.tickCount;
+      dungeonOpenDirs(dg).forEach(d => { const n = dungeonNeighbor(dg, d); const nc = dungeonCellAt(dg, n[0], n[1]); if (nc) nc.revealed = true; });
+      const dirs = dungeonOpenDirs(dg);
+      const bossNear = dirs.find(d => { const n = dungeonNeighbor(dg, d); return n[0] === dg.bossPos[0] && n[1] === dg.bossPos[1]; });
+      playCombatSfx('heal');
+      addBattleLog(`✅ [${cell.def.name}] 정리 완료! +${cell.kind === 'elite' ? dg.def.reward.room[i] + dg.def.reward.elite[i] : cell.kind === 'treasure' ? 0 : dg.def.reward.room[i]} CA${revived ? ` · 쓰러진 용병 ${revived}명 부활` : ''} · 🚪 길이 열렸어요: ${dirs.map(d => DUNGEON_DIR_ICON[d]).join(' ')}${bossNear ? ` · ${DUNGEON_DIR_ICON[bossNear]} 문이 붉게 떨려요... 보스가 가까워요!` : ''}`);
+    }
+    function beginDungeonMove(dir) {
+      const dg = sim.dungeon;
+      if (dg.phase !== 'select' || !dungeonNeighbor(dg, dir)) return;
+      dg.phase = 'move';
+      dg.moveDir = dir;
+      dg.moveAt = sim.tickCount;
+      dg.fade = 0;
+      dg.fadeDir = 1;
+      sim.units.forEach(u => { if (u.alive) { u.isMoving = false; u.rush = null; } });
+    }
+    function stepDungeonMove() {
+      const dg = sim.dungeon;
+      const fadeTicks = DUNGEON_FADE_SEC * BATTLE_TICKS_PER_SEC;
+      const t = sim.tickCount - dg.moveAt;
+      if (dg.fadeDir === 1) {
+        dg.fade = Math.min(1, t / fadeTicks);
+        if (dg.fade >= 1) {
+          const n = dungeonNeighbor(dg, dg.moveDir);
+          dg.fadeDir = -1;
+          dg.moveAt = sim.tickCount;
+          const prevPhase = 'move';
+          enterDungeonRoom(n, dg.moveDir);
+          dg.nextPhase = dg.phase;
+          dg.phase = prevPhase;
+        }
+        return;
+      }
+      dg.fade = Math.max(0, 1 - t / fadeTicks);
+      if (dg.fade <= 0) { dg.phase = dg.nextPhase || 'room'; dg.selectAt = sim.tickCount; }
+    }
+    // 던전 미니맵의 인접 칸을 눌렀을 때 (대표/방장만)
+    function dungeonMinimapClick(cx, cy) {
+      const dg = sim.dungeon;
+      if (!dg || !dg.mm || dg.phase !== 'select') return false;
+      const { x, y, cell, gap } = dg.mm;
+      if (cx < x || cy < y || cx > x + dg.w * (cell + gap) || cy > y + dg.h * (cell + gap)) return false;
+      const c = Math.floor((cx - x) / (cell + gap)), r = Math.floor((cy - y) / (cell + gap));
+      const dir = Object.keys(DUNGEON_DIRS).find(d => { const n = dungeonNeighbor(dg, d); return n && n[0] === r && n[1] === c; });
+      if (dir) beginDungeonMove(dir);
+      return true;
+    }
+
+    // ----- 추종 AI: 대표 용병을 따라다님 (true면 이번 틱은 여기서 처리) -----
+    function dungeonFollowStep(u, allies, enemies) {
+      const dg = sim.dungeon;
+      if (!dg || !u.followLeader) return false;
+      const L = dungeonLeader();
+      if (!L || L === u || !L.alive) return false;
+      const d = Math.hypot(L.x - u.x, L.y - u.y);
+      const ranged = u.job === 'archer' || u.job === 'mage' || u.job === 'sniper' || u.job === 'frost' || u.job === 'curse' || u.job === 'bard';
+      const prefer = u.job === 'healer' ? 180 : ranged ? 220 : 120;
+      const nearEnemy = enemies.some(e => unitDist(e, u) <= (u.range || 60) + 60);
+      const fightZone = enemies.some(e => Math.hypot(e.x - L.x, e.y - L.y) < 420 || Math.hypot(e.x - u.x, e.y - u.y) < 420);
+      if (d > 600) { dungeonWalkTo(u, L.x, L.y); return true; } // 너무 멀면 적을 버리고 복귀
+      if (nearEnemy || fightZone) return false;                 // 전투는 평소 AI
+      if (u.job === 'healer' && allies.some(a => a.hp < a.maxHp * 0.6)) return false; // 회복은 평소 AI
+      if (d > Math.max(260, prefer + 40)) {
+        // 대표 뒤쪽(바라보는 반대쪽)의 자리로
+        const tx = L.x - (L.facingDir || 1) * prefer * 0.7, ty = L.y + (allies.indexOf(u) % 2 ? 1 : -1) * 60;
+        dungeonWalkTo(u, tx, ty);
+        return true;
+      }
+      u.isMoving = false;
+      u.facingDir = L.facingDir || u.facingDir;
+      return true;
+    }
+    function dungeonWalkTo(u, tx, ty) {
+      const st = u.statuses;
+      let speedMult = 1.0;
+      if (st.shock > 0) speedMult -= 0.35;
+      if (st.poison > 0) speedMult -= 0.12;
+      if (st.slow > 0) speedMult -= SLOW_SPEED_DOWN;
+      if (st.blessed > 0) speedMult += 0.1;
+      const spd = u.baseMoveSpeed * Math.max(0.4, speedMult) * 1.15 * (st.swift > 0 ? 1.5 : 1);
+      const dx = tx - u.x, dy = ty - u.y, d = Math.hypot(dx, dy);
+      if (d < 6) { u.isMoving = false; return; }
+      const ang = Math.atan2(dy, dx);
+      u.x = Math.max(ARENA_BOUNDS.left, Math.min(ARENA_BOUNDS.right, u.x + Math.cos(ang) * Math.min(spd, d)));
+      u.y = Math.max(ARENA_BOUNDS.top, Math.min(ARENA_BOUNDS.bottom, u.y + Math.sin(ang) * Math.min(spd, d)));
+      u.isMoving = true;
+      u.walkPhase = (u.walkPhase || 0) + 0.065 * speedMult;
+      u.facingAngle = ang;
+      if (Math.abs(dx) > 4) u.facingDir = dx >= 0 ? 1 : -1;
+    }
+
+    // ----- 그리기 -----
+    function dungeonMapKey() {
+      const dg = sim.dungeon;
+      if (!dg) return null;
+      const cell = dungeonCellAt(dg, dg.pos[0], dg.pos[1]);
+      return cell && cell.kind === 'boss' ? dg.def.bossMap : dg.def.map;
+    }
+    // 월드 좌표: 문·상자·모닥불·함정·경고 원
+    function drawDungeonRoom(ctx) {
+      const dg = sim.dungeon;
+      if (!dg) return;
+      const cell = dungeonCellAt(dg, dg.pos[0], dg.pos[1]);
+      if (!cell) return;
+      const t = sim.tickCount;
+      const open = dg.phase === 'select' || (dg.phase === 'move');
+      Object.keys(DUNGEON_DIRS).forEach(dir => {
+        const n = dungeonNeighbor(dg, dir);
+        const p = dungeonDoorPoint(dir);
+        const horizontal = dir === 'left' || dir === 'right';
+        const w = horizontal ? 70 : 220, h = horizontal ? 220 : 70;
+        ctx.save();
+        if (!n) { ctx.restore(); return; } // 길 없음: 그냥 벽
+        const isBoss = n[0] === dg.bossPos[0] && n[1] === dg.bossPos[1];
+        const nc = dungeonCellAt(dg, n[0], n[1]);
+        const pulse = 0.5 + 0.5 * Math.sin(t * 0.15);
+        const shakeX = open && isBoss ? (Math.random() - 0.5) * 6 : 0;
+        ctx.translate(p.x + shakeX, p.y);
+        ctx.fillStyle = open ? (isBoss ? `rgba(220, 38, 38, ${0.45 + pulse * 0.35})` : `rgba(250, 204, 21, ${0.35 + pulse * 0.3})`) : 'rgba(15, 23, 42, 0.55)';
+        ctx.strokeStyle = open ? (isBoss ? '#ef4444' : '#fde047') : '#475569';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(-w / 2, -h / 2, w, h, 14); else ctx.rect(-w / 2, -h / 2, w, h);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = '900 34px Pretendard, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(open ? DUNGEON_DIR_ICON[dir] : '🚪', 0, 0);
+        if (open) {
+          ctx.font = '800 18px Pretendard, sans-serif';
+          const label = isBoss && (dg.mapRevealed) ? '👑 보스' : nc && nc.visited ? '✓ 가본 방' : '? 안 가본 방';
+          const ly = horizontal ? -h / 2 - 18 : (dir === 'up' ? h / 2 + 18 : -h / 2 - 18);
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+          ctx.fillRect(-70, ly - 13, 140, 26);
+          ctx.fillStyle = isBoss ? '#fca5a5' : '#fde68a';
+          ctx.fillText(label, 0, ly);
+        }
+        ctx.restore();
+      });
+      // 모닥불 (시작 방·보스 방 입구)
+      if (cell.kind === 'start' || (cell.kind === 'boss' && dg.phase === 'boss_prep')) {
+        const e = dg.fromDir ? dungeonDoorPoint(dg.fromDir) : { x: 560, y: 920 };
+        const fx = e.x + (dg.fromDir === 'left' || !dg.fromDir ? 60 : dg.fromDir === 'right' ? -60 : 0), fy = e.y + (dg.fromDir === 'up' ? 60 : dg.fromDir === 'down' ? -60 : -120);
+        ctx.save();
+        ctx.font = '900 44px Pretendard, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.globalAlpha = 0.85 + 0.15 * Math.sin(t * 0.2);
+        ctx.fillText('🔥', fx, fy);
+        ctx.restore();
+      }
+      // 보물 상자
+      if (cell.kind === 'treasure' && cell.chest) {
+        dungeonChestPoints().forEach((p, i) => {
+          const opened = cell.chest.opened === i, locked = cell.chest.opened >= 0 && !opened;
+          ctx.save();
+          ctx.globalAlpha = locked ? 0.35 : 1;
+          ctx.font = '900 56px Pretendard, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(opened ? '📭' : '📦', p.x, p.y - 10 - (locked || opened ? 0 : 6 * Math.abs(Math.sin(t * 0.08))));
+          if (!locked && !opened) {
+            ctx.strokeStyle = `rgba(251, 191, 36, ${0.4 + 0.4 * Math.abs(Math.sin(t * 0.1))})`;
+            ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.ellipse(p.x, p.y + 20, 70, 28, 0, 0, Math.PI * 2); ctx.stroke();
+          }
+          ctx.restore();
+        });
+      }
+      // 함정·거미줄·낙하 경고·포효 안전 지대
+      const g = dg.gim || {};
+      (g.traps || []).forEach(tr => {
+        if (tr.used) return;
+        ctx.save();
+        ctx.globalAlpha = 0.75;
+        ctx.font = '900 30px Pretendard, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🪤', tr.x, tr.y);
+        ctx.restore();
+      });
+      (g.webs || []).forEach(w => {
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = '#e2e8f0';
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(w.x, w.y, w.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.globalAlpha = 0.8;
+        ctx.font = '900 30px Pretendard, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🕸️', w.x, w.y);
+        ctx.restore();
+      });
+      (g.drops || []).forEach(d => {
+        const k = Math.max(0, Math.min(1, 1 - (d.at - t) / (1.5 * BATTLE_TICKS_PER_SEC)));
+        ctx.save();
+        ctx.strokeStyle = g.kind === 'altar_fire' ? '#ef4444' : '#a8a29e';
+        ctx.fillStyle = g.kind === 'altar_fire' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(168, 162, 158, 0.3)';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([12, 8]);
+        ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.beginPath(); ctx.arc(d.x, d.y, d.r * k, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      });
+      if (dg.boss && dg.boss.roarSafe) dg.boss.roarSafe.forEach(s => {
+        ctx.save();
+        ctx.fillStyle = 'rgba(30, 58, 138, 0.45)';
+        ctx.strokeStyle = '#93c5fd';
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.font = '900 36px Pretendard, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🌑', s.x, s.y);
+        ctx.restore();
+      });
+    }
+    // 화면 좌표: 왼쪽 위 던전 미니맵 (방 선택 중에는 인접 칸을 눌러 이동)
+    function drawDungeonMinimap(ctx) {
+      const dg = sim.dungeon;
+      if (!dg) return;
+      const cell = 38, gap = 5, x0 = 18, y0 = 112;
+      const W = dg.w * (cell + gap) - gap + 20, H = dg.h * (cell + gap) - gap + 36;
+      dg.mm = { x: x0 + 10, y: y0 + 26, cell, gap };
+      ctx.save();
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
+      ctx.strokeStyle = dg.phase === 'select' ? '#fde047' : 'rgba(148, 163, 184, 0.5)';
+      ctx.lineWidth = 2;
+      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x0, y0, W, H, 10); ctx.fill(); ctx.stroke(); } else { ctx.fillRect(x0, y0, W, H); }
+      ctx.font = '800 11px Pretendard, sans-serif';
+      ctx.fillStyle = '#fde047';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(dg.phase === 'select' ? '🗺️ 던전 지도 · 옆 칸을 눌러 이동' : '🗺️ 던전 지도', x0 + 10, y0 + 12);
+      const ox = dg.mm.x, oy = dg.mm.y;
+      // 길
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 4;
+      dg.doors.forEach(k => {
+        const [a, b] = k.split('|').map(s => s.split(',').map(Number));
+        const ca = dungeonCellAt(dg, a[0], a[1]), cb = dungeonCellAt(dg, b[0], b[1]);
+        if (!ca || !cb || !(ca.revealed && cb.revealed)) return;
+        ctx.beginPath();
+        ctx.moveTo(ox + a[1] * (cell + gap) + cell / 2, oy + a[0] * (cell + gap) + cell / 2);
+        ctx.lineTo(ox + b[1] * (cell + gap) + cell / 2, oy + b[0] * (cell + gap) + cell / 2);
+        ctx.stroke();
+      });
+      for (let r = 0; r < dg.h; r++) for (let c = 0; c < dg.w; c++) {
+        const cl = dg.grid[r][c];
+        const x = ox + c * (cell + gap), y = oy + r * (cell + gap);
+        if (!cl || !cl.revealed) continue;
+        const here = r === dg.pos[0] && c === dg.pos[1];
+        const isBoss = r === dg.bossPos[0] && c === dg.bossPos[1];
+        const known = cl.visited || (isBoss && dg.mapRevealed);
+        const adjacent = dg.phase === 'select' && Object.keys(DUNGEON_DIRS).some(d => { const n = dungeonNeighbor(dg, d); return n && n[0] === r && n[1] === c; });
+        ctx.fillStyle = here ? '#fbbf24' : known ? (isBoss ? '#7f1d1d' : cl.cleared ? '#1e293b' : '#3f3f46') : '#334155';
+        ctx.strokeStyle = here ? '#fff7ed' : adjacent ? '#fde047' : '#64748b';
+        ctx.lineWidth = here || adjacent ? 2.5 : 1;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(x, y, cell, cell, 7); else ctx.rect(x, y, cell, cell);
+        ctx.fill();
+        ctx.stroke();
+        ctx.font = '900 18px Pretendard, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillText(known ? (isBoss ? '👑' : DUNGEON_KIND_INFO[cl.kind].icon) : '?', x + cell / 2, y + cell / 2 + 1);
+      }
+      ctx.restore();
+    }
+    // 화면 위 가운데 안내 (rushHud와 같은 자리)
+    function updateDungeonHud(arenaVisible) {
+      const el = document.getElementById('dungeonHud');
+      if (!el) return;
+      const dg = arenaVisible && sim.mode === 'dungeon' ? sim.dungeon : null;
+      el.classList.toggle('hidden', !dg);
+      if (!dg) return;
+      const tps = BATTLE_TICKS_PER_SEC;
+      const left = dg.started ? Math.max(0, Math.ceil((dg.timeTicks - (sim.tickCount - dg.startTick)) / tps)) : DUNGEON_TIME_SEC;
+      const cell = dungeonCellAt(dg, dg.pos[0], dg.pos[1]);
+      const i = dg.diff === 'hard' ? 1 : 0;
+      const ca = dg.roomsCleared * dg.def.reward.room[i] + dg.elitesKilled * dg.def.reward.elite[i] + dg.chestCa;
+      let text;
+      if (dg.phase === 'select') text = `🚪 길이 열렸어요! 대표 용병을 문으로 보내거나 미니맵의 옆 칸을 누르세요 (${dungeonOpenDirs(dg).map(d => DUNGEON_DIR_ICON[d]).join(' ')})`;
+      else if (dg.phase === 'boss_prep') text = `🕯️ 모닥불 정비 중... ${Math.max(0, Math.ceil((DUNGEON_BOSS_PREP_SEC * tps - (sim.tickCount - dg.prepAt)) / tps))}초 뒤 보스 등장!`;
+      else if (dg.phase === 'done') text = '🏆 던전 클리어!';
+      else if (dg.phase === 'move') text = '🚶 이동 중...';
+      else text = `${DUNGEON_KIND_INFO[cell.kind].icon} [${cell.def.name}] 남은 몬스터 ${sim.units.filter(u => u.team === 'red' && u.alive && !u.isClone).length}마리`;
+      el.textContent = `🏰 ${dg.def.name} · 방 ${dg.grid.flat().filter(c => c && c.visited).length}/${dg.grid.flat().filter(Boolean).length} · ⏰ ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} · 💰 ${ca.toLocaleString()} CA · ${text}`;
+    }
+
+    // ----- 결과·보상 -----
+    function finishDungeon(stu, won) {
+      const dg = sim.dungeon;
+      const def = dg.def, i = dg.diff === 'hard' ? 1 : 0, rw = def.reward;
+      const secs = dg.started ? Math.round((sim.tickCount - dg.startTick) / BATTLE_TICKS_PER_SEC) : 0;
+      const book = dungeonBookOf(stu, def.id);
+      const clearKey = dg.diff === 'hard' ? 'hardClear' : 'normalClear';
+      const first = won && !book[clearKey];
+      const fast = won && secs <= rw.fast[i][0];
+      const parts = [];
+      let amount = 0;
+      if (dg.roomsCleared) { amount += dg.roomsCleared * rw.room[i]; parts.push(`방 ${dg.roomsCleared} × ${rw.room[i]}`); }
+      if (dg.elitesKilled) { amount += dg.elitesKilled * rw.elite[i]; parts.push(`정예 ${dg.elitesKilled} × ${rw.elite[i]}`); }
+      if (dg.chestCa) { amount += dg.chestCa; parts.push(`상자 ${dg.chestCa}`); }
+      if (won) { amount += rw.boss[i]; parts.push(`보스 ${rw.boss[i]}`); }
+      if (first) { amount += rw.first[i]; parts.push(`첫 클리어 ${rw.first[i]}`); }
+      if (fast) { amount += rw.fast[i][1]; parts.push(`빠른 탐색 ${rw.fast[i][1]}`); }
+      if (!dg.everManual && amount > 0) { amount = Math.round(amount * 0.8); parts.push('자동 전투 ×0.8'); }
+      const reward = amount > 0 ? grantDailyReward(stu, 'dungeon', amount) : 0;
+      if (reward > 0) state.guardianPts += won ? 20 : 8;
+      if (won) {
+        book[clearKey] = true;
+        book.clears = (book.clears || 0) + 1;
+        book.best = book.best || {};
+        if (!book.best[dg.diff] || secs < book.best[dg.diff]) book.best[dg.diff] = secs;
+        DailyMission.progress('dungeon', 1, stu);
+        if (first && def.titles && def.titles[dg.diff]) { stu.titles = stu.titles || []; if (!stu.titles.includes(def.titles[dg.diff])) stu.titles.push(def.titles[dg.diff]); }
+      }
+      const atkKing = mvpCandidates().sort((a, b) => b.damageDealt - a.damageDealt)[0];
+      const tankKing = mvpCandidates().sort((a, b) => b.damageTaken - a.damageTaken)[0];
+      const healKing = mvpCandidates().sort((a, b) => b.healDone - a.healDone)[0];
+      const visited = dg.grid.flat().filter(c => c && c.visited).length;
+      document.getElementById('battleResultEmoji').textContent = won ? '🏆' : '🛡️';
+      document.getElementById('battleResultTitle').textContent = won
+        ? `${def.icon} ${def.name} 클리어!${first ? ' (첫 클리어!)' : ''}${fast ? ' ⚡빠른 탐색!' : ''}`
+        : `${def.icon} ${def.name} 탐험 실패`;
+      document.getElementById('battleResultDesc').textContent = reward > 0
+        ? `보상으로 💰 ${reward.toLocaleString()} CA를 받았어요! (${parts.join(' + ')}) · 오늘 남은 던전 보상: ${getDailyRewardLeft(stu, 'dungeon')}회${first && def.titles ? ` · 🏅 칭호 [${def.titles[dg.diff]}] 획득!` : ''}`
+        : (amount > 0 ? dailyRewardDoneText('dungeon') : (won ? '보상이 없어요.' : '깬 방이 없어서 보상은 없어요. 다시 도전해 보세요!'));
+      document.getElementById('battleMvpBox').innerHTML = `
+        <div class="font-bold text-amber-300 mb-1">🌟 이번 탐험 3대 분야 MVP 용병</div>
+        <div>⚔️ 최고 공격왕: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
+        <div>🛡️ 든든 수호왕: <strong>${tankKing?.name || '-'}</strong> (${tankKing?.damageTaken || 0} 방어)</div>
+        <div>💚 다정 치유왕: <strong>${healKing?.name || '-'}</strong> (${healKing?.healDone || 0} 회복·보호)</div>
+        <div class="mt-1 text-slate-400">🗺️ 탐험한 방 ${visited}개 · ⏱️ ${Math.floor(secs / 60)}분 ${secs % 60}초${book.best && book.best[dg.diff] ? ` · 🏅 최단 기록 ${Math.floor(book.best[dg.diff] / 60)}분 ${book.best[dg.diff] % 60}초` : ''}</div>`;
+      document.getElementById('battleResultOverlay').classList.remove('hidden');
+      if (document.getElementById('arenaSection')?.classList.contains('hidden')) {
+        showRewardBanner(`🏰 던전 탐험이 끝났어요! ${won ? '🏆 클리어' : '🛡️ 실패'} · ${document.getElementById('battleResultDesc').textContent}`);
+      }
+      sim.netRole = null;
+      saveState();
+      renderAllStudentViews();
+    }
+
+    // ----- 던전 탭 -----
+    function renderDungeonTab() {
+      const stu = getActiveStudent();
+      const box = document.getElementById('dungeonCardGrid');
+      if (!stu || !box) return;
+      const power = calcStudentCombatPower(stu);
+      const left = getDailyRewardLeft(stu, 'dungeon');
+      const info = document.getElementById('dungeonMyInfo');
+      if (info) info.innerHTML = `⚔️ 내 용병단 전투력 <strong class="text-rose-300">${power.toLocaleString()}</strong> · 💰 오늘 남은 던전 보상 <strong class="${left > 0 ? 'text-emerald-300' : 'text-slate-500'}">${left}/${DAILY_REWARD_LIMITS.dungeon}</strong>회`;
+      const fmt = s => (s ? `${Math.floor(s / 60)}분 ${s % 60}초` : '-');
+      box.innerHTML = Object.values(DUNGEONS).map(def => {
+        const book = dungeonBookOf(stu, def.id);
+        const hardLocked = dungeonHardLocked(stu, def.id);
+        const race = TOWER_RACES.find(r => r.name === def.race) || {};
+        const mapSrc = (BATTLE_MAPS[def.map] || {}).src || '';
+        const stars = '★'.repeat(def.stars || 1) + '☆'.repeat(3 - (def.stars || 1));
+        return `
+          <div class="rounded-2xl border-2 border-${def.color}-500/40 bg-slate-900 overflow-hidden flex flex-col shadow">
+            <div class="relative h-36 bg-slate-950">
+              ${mapSrc ? `<img src="${mapSrc}" alt="${def.name}" class="w-full h-full object-cover opacity-80" loading="lazy">` : ''}
+              <div class="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-slate-950 to-transparent">
+                <div class="font-title text-2xl text-white">${def.icon} ${def.name}</div>
+                <div class="text-[11px] text-slate-300">[${def.race}] ${race.zone || ''}</div>
+              </div>
+            </div>
+            <div class="p-4 flex flex-col gap-3">
+              <p class="text-xs text-slate-300 leading-relaxed">${def.desc}</p>
+              <div class="grid grid-cols-2 gap-2 text-[11px]">
+                <div class="rounded-xl bg-slate-950 border border-slate-800 p-2.5">
+                  <div class="font-extrabold text-white">보통 <span class="text-amber-300">${stars}</span></div>
+                  <div class="text-slate-400">몬스터가 내 용병 레벨에 맞춰져요</div>
+                  <div class="text-slate-400">${book.normalClear ? `✅ 클리어 · 🏅 최단 ${fmt(book.best?.normal)}` : '아직 못 깼어요'}</div>
+                </div>
+                <div class="rounded-xl bg-slate-950 border border-slate-800 p-2.5 ${hardLocked ? 'opacity-60' : ''}">
+                  <div class="font-extrabold text-orange-300">🔥 어려움 <span class="text-amber-300">${stars}★</span></div>
+                  <div class="text-slate-400">스킬 많은 몬스터 · 정예 2마리 · 보스 소환 많음</div>
+                  <div class="text-slate-400">${hardLocked ? '🔒 보통을 깨면 열려요' : book.hardClear ? `✅ 클리어 · 🏅 최단 ${fmt(book.best?.hard)}` : '아직 못 깼어요'}</div>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <button onclick="startSoloDungeon('${def.id}', 'normal')" class="py-2.5 rounded-xl bg-${def.color}-600 hover:bg-${def.color}-500 text-white font-extrabold text-xs shadow">🧍 혼자 입장 (보통)</button>
+                <button onclick="startSoloDungeon('${def.id}', 'hard')" ${hardLocked ? 'disabled' : ''} class="py-2.5 rounded-xl ${hardLocked ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-500 text-white'} font-extrabold text-xs shadow">🔥 혼자 입장 (어려움)</button>
+              </div>
+              <button disabled class="py-2 rounded-xl bg-slate-800 text-slate-500 font-bold text-xs border border-slate-700 cursor-not-allowed" title="학급 친구와 함께 들어가는 5인 입장은 준비 중이에요">👥 친구와 입장 (준비 중)</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
     function isRaidNetMode(mode) { return mode === 'elite_raid' || mode === 'monster_rush'; }
     function newRushState(startFloor) {
       return { round: 1, phase: 'fight', roundStartTick: sim.tickCount || 0, nextAt: 0, cleared: 0, bosses: 0, startFloor: Math.max(1, startFloor || 1), pending: 0, left: 0,
@@ -42595,10 +43841,10 @@
         el.innerHTML = rows.map((s, i) => {
           const d = PET_DEFS[s.petRun.bestType];
           const mine = me && s.id === me.id;
-          return `<div class="flex items-center gap-2 px-2 py-1 rounded-lg ${mine ? 'bg-amber-500/15 border border-amber-500/40' : 'bg-slate-900'}">
+          return `<div class="flex items-center gap-2 px-2 py-1 rounded-lg ${mine ? 'bg-sky-500/25 border border-sky-400/70' : 'bg-slate-900'}">
               <span class="w-5 text-center text-[11px] font-extrabold ${i < 3 ? 'text-amber-300' : 'text-slate-500'}">${['🥇', '🥈', '🥉'][i] || i + 1}</span>
               ${d ? `<img src="${d.icon}" alt="" class="h-6 w-auto object-contain" draggable="false">` : '<span class="w-6"></span>'}
-              <span class="text-xs font-extrabold ${mine ? 'text-amber-200' : 'text-slate-200'} truncate">${esc(s.name)}</span>
+              <span class="text-xs font-extrabold ${mine ? 'text-sky-200' : 'text-slate-200'} truncate">${esc(s.name)}</span>
               <span class="ml-auto text-xs font-extrabold text-white">${s.petRun.best.toLocaleString()}<span class="text-[10px] text-slate-400">점</span></span>
             </div>`;
         }).join('');
