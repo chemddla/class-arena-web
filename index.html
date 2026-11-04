@@ -32642,9 +32642,13 @@
      * - 내 활성 펫 vs 친구(또는 AI) 펫. 가운데 그물, 공을 상대 땅에 떨어뜨리면 1점, 11점 먼저 (3분이 지나면 앞선 쪽 승리, 같으면 다음 득점)
      * - 조작: ←→ 이동, ↑/스페이스 점프, Z(또는 💥 버튼) 강타. 강타는 공이 몸에 닿는 순간 방향키 쪽으로 세게 날림 (↓와 함께면 내리꽂기)
      * - 실시간: 판(자리·점수·서브)은 미니게임 공통 저장(mgPush)으로 낮은 빈도로 맞추고,
-     *   펫 위치는 초당 15번 minigames/{방}_vl/{자리}에 (판 저장과 다른 노드라 판 구독이 그때마다 깨어나지 않음),
-     *   공은 "마지막으로 친 사람" 화면이 치는 순간의 위치·속도를 {방}_vl/ball에 올림
-     *   (그 뒤 공은 중력만 받아 양쪽 계산이 같음). 공이 땅에 닿았을 때의 득점 판정도 마지막으로 친 쪽 화면만 함
+     *   펫 위치는 초당 20번 minigames/{방}_vl/{자리}에 (판 저장과 다른 노드라 판 구독이 그때마다 깨어나지 않음)
+     * - 공은 "키프레임"(서브·타격 순간의 시각·위치·속도) 목록으로만 정해짐. 키프레임에서 1/120초 고정 간격으로 굴리므로
+     *   같은 키프레임이면 어느 화면에서나 같은 궤적. 타격하면 그 키프레임 하나만 {방}_vl/ball에 올림
+     * - 공이 있는 코트의 주인 화면이 그 공을 치고, 그 코트에 떨어졌는지(실점)도 판정함 → 내 화면에서 받았으면 받은 것
+     * - 상대 코트의 공은 상대 펫과 같은 만큼 늦춰(lag) 그려서 상대가 치는 모습과 공이 맞아 보이고,
+     *   상대가 공을 치면(다음은 내 차례) 바로 lag을 서서히 0으로 줄여 내 코트에 올 때쯤 지금 시각을 따라잡음 (공이 잠깐 조금 빨라 보임)
+     * - 시각은 펫 묶음에 실린 왕복 시간(에코)으로 상대 시계와의 차이를 재서 맞춤
      * - 혼자 연습(방 없음)이면 AI가 상대. 방에서 친구가 나가면 그 자리를 방장 화면의 AI가 이어받음 (mgSeatsToAi)
      ********************************************************************/
     const VOLLEY = {
@@ -32652,6 +32656,7 @@
       ballR: 17, gravity: 900, ballMax: 920, bounce: 0.9,
       petSpeed: 340, petJumpV: 820, petGravity: 2400, petR: 40, petCenterUp: 44, // 펫 몸: 발에서 petCenterUp 위가 중심인 원
       goal: 11, timeLimitSec: 180, serveDelayMs: 1500, hitCooldown: 0.3, powerWindow: 0.25,
+      physStepMs: 1000 / 120, ballLagUp: 0.3, ballLagDown: 0.45, // 공 궤적 고정 간격 · 표시 지연(lag)을 늘리는/줄이는 빠르기 (초당 0.3초·0.45초 → 공이 잠깐 30% 느리거나 45% 빠르게 보임)
       liveHz: 20, interpDelayMs: 120, interpDelayMaxMs: 420, extrapMaxMs: 400, ballSyncMs: 200, homeX: [230, 670], // 친구 펫은 받은 시각보다 interpDelay(네트워크가 흔들리면 그만큼 더, 최대 interpDelayMax)만큼 늦게 샘플 사이를 보간해 그림 · 공은 친 사람이 ballSyncMs마다 다시 맞춤
     };
     // 펫별 배구 특성 (작게: 손맛은 비슷하게, 개성만 조금)
@@ -32797,9 +32802,18 @@
         const sv = st.serveSeat || 0;
         this.st = {
           pets, ball: { x: VOLLEY.homeX[sv], y: 110, vx: 0, vy: 0, n: st.rally * 1000, by: sv, landed: false, landedAt: 0, spin: 0, ox: 0, oy: 0 },
+          // 서브 키프레임: rallyAt에 서브하는 펫 위에서 떨어지기 시작
+          kf: [{ t: st.rallyAt, x: VOLLEY.homeX[sv], y: 110, vx: 0, vy: 0, n: st.rally * 1000, by: sv }],
+          trk: {}, lag: prev ? prev.lag || 0 : 0, tau: Date.now(), landFx: new Set(),
           parts: [], texts: [], trail: [], shake: 0, flash: 0
         };
         this.serverFlash = 1;
+      },
+      // 친구 화면이 득점을 판정해 새 랠리가 옴: 내 화면은 그 코트를 조금 늦게 보므로 공이 땅에 닿는 걸 보여 준 뒤(최대 0.7초) 넘어감
+      rallyChanged() {
+        const s = this.st;
+        if (!s || !s.ball || s.ball.landed || s.pendingRally) { if (!s || !s.pendingRally) this.newRally(); return; }
+        s.pendingRally = Date.now() + 700;
       },
       run() {
         this.ensureCanvas();
@@ -32883,9 +32897,13 @@
 
       update(dt) {
         const st = petVolleyState, s = this.st, b = s.ball;
-        const waiting = Date.now() < st.rallyAt;
         const G = VOLLEY.groundY;
         if (this.serverFlash > 0) this.serverFlash -= dt;
+        if (s.pendingRally && (b.landed || Date.now() > s.pendingRally)) { this.newRally(); return; }
+        // 공: 내 화면의 표시 시각(지금 − lag)에서 키프레임 궤적을 봄
+        const tau = this.ballClock(dt);
+        const waiting = !s.pendingRally && tau < st.rallyAt;
+        this.showBall(s, tau, dt);
         // 펫
         s.pets.forEach((p, i) => {
           const type = st.pets[i], perk = this.perk(type);
@@ -32902,7 +32920,8 @@
             if (!p.onGround) { p.vy += VOLLEY.petGravity * dt; p.y += p.vy * dt; p.airT += dt; if (p.y >= G) { p.y = G; p.vy = 0; p.onGround = true; p.jumps = 0; } }
             if (p.hitCd > 0) p.hitCd -= dt;
             if (p.powerT > 0) p.powerT -= dt;
-            if (!waiting && !b.landed && p.hitCd <= 0) this.tryHit(p, i, isAi);
+            // 공이 내 코트에 있을 때만 침 (상대 코트의 공은 상대 화면이 맡음)
+            if (!waiting && !s.pendingRally && !b.landed && p.hitCd <= 0 && this.sideOf(b.x) === i) this.tryHit(p, i, isAi);
           } else if (p.buf && p.buf.length) {
             // 친구 펫: 받은 시각보다 조금(interpDelay) 늦은 시점을 샘플 사이에서 보간 → 네트워크 흔들림에도 매끈
             // 지연은 그 상대의 최근 네트워크 흔들림(지터)만큼 늘림: 늦게 오는 샘플이 많으면 더 뒤 시점을 그려 끊김 대신 약간의 지연을 택함
@@ -32945,37 +32964,96 @@
           if (p.hitAnim > 0) p.hitAnim -= dt;
           p.animT += dt;
         });
-        // 공
-        if (!waiting && !b.landed && !st.gameOver) {
-          this.stepBall(b, dt, true);
-          if (b.y + VOLLEY.ballR >= G) {
-            b.y = G - VOLLEY.ballR; b.landed = true; b.landedAt = Date.now(); b.vx *= 0.3; b.vy = 0;
-            s.shake = 0.35;
-            for (let i = 0; i < 12; i++) s.parts.push({ x: b.x, y: G, vx: (Math.random() - 0.5) * 300, vy: -60 - Math.random() * 200, life: 0.5, c: '#e8d9a6' });
-            if (this.controls(b.by)) {
-              const scorer = b.x < VOLLEY.netX ? 1 : 0;
-              s.texts.push({ x: b.x, y: G - 60, t: 0, text: `${st.seats[scorer] ? st.seats[scorer].name : ''} 득점!`, c: scorer === mgMySeat(st) ? '#fde047' : '#fda4af' });
-              this.tone(scorer === mgMySeat(st) ? 'big' : 'over');
-              petVolleyPoint(scorer);
-            }
+        // 공이 땅에 닿음: 효과는 모든 화면에서, 실점 판정은 그 코트를 맡은 화면만
+        if (!waiting && b.landed && !st.gameOver && !s.landFx.has(b.n)) {
+          s.landFx.add(b.n);
+          s.shake = 0.35;
+          for (let i = 0; i < 12; i++) s.parts.push({ x: b.x, y: G, vx: (Math.random() - 0.5) * 300, vy: -60 - Math.random() * 200, life: 0.5, c: '#e8d9a6' });
+          const side = this.sideOf(b.x);
+          if (this.controls(side) && !s.pendingRally) {
+            const scorer = 1 - side;
+            s.texts.push({ x: b.x, y: G - 60, t: 0, text: `${st.seats[scorer] ? st.seats[scorer].name : ''} 득점!`, c: scorer === mgMySeat(st) ? '#fde047' : '#fda4af' });
+            this.tone(scorer === mgMySeat(st) ? 'big' : 'over');
+            petVolleyPoint(scorer);
+            return;
           }
-        } else if (waiting) {
-          b.x = VOLLEY.homeX[st.serveSeat] ; b.y = 110 + Math.sin(Date.now() / 300) * 4; b.vx = 0; b.vy = 0;
         }
         b.spin += b.vx * dt * 0.02;
-        if (b.ox || b.oy) { const k = Math.min(1, dt / 0.12); b.ox -= b.ox * k; b.oy -= b.oy * k; if (Math.abs(b.ox) < 0.5 && Math.abs(b.oy) < 0.5) { b.ox = 0; b.oy = 0; } }
         if (!b.landed && !waiting) { s.trail.push({ x: b.x, y: b.y, life: 0.25 }); if (s.trail.length > 10) s.trail.shift(); }
         s.trail.forEach(t => { t.life -= dt; }); s.trail = s.trail.filter(t => t.life > 0);
         s.parts.forEach(p => { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 900 * dt; p.life -= dt; }); s.parts = s.parts.filter(p => p.life > 0);
         s.texts.forEach(t => { t.t += dt; }); s.texts = s.texts.filter(t => t.t < 1.3);
         if (s.shake > 0) s.shake -= dt;
         if (s.flash > 0) s.flash -= dt;
-        // 내 펫(과 내가 맡은 AI) 위치를 방에 보냄 · 내가 친 공은 날아가는 동안 ballSyncMs마다 다시 맞춤
+        // 내 펫(과 내가 맡은 AI) 위치를 방에 보냄
         if (this.inRoom() && !st.gameOver) {
           this.liveAcc += dt;
           if (this.liveAcc >= 1 / VOLLEY.liveHz) { this.liveAcc = 0; this.sendLive(); }
-          if (!waiting && !b.landed && this.controls(b.by) && Date.now() - (b.sentAt || 0) >= VOLLEY.ballSyncMs) this.sendBall();
         }
+      },
+
+      sideOf(x) { return x < VOLLEY.netX ? 0 : 1; },
+      // ───── 공 궤적 (키프레임 → 고정 간격) ─────
+      ballKfAt(s, t) { let k = null; for (const f of s.kf) { if (f.t <= t) k = f; else break; } return k; },
+      // slot마다(표시용 disp · 지금 시각 pres) 계산해 둔 자리부터 이어 굴림. 시각이 뒤로 가거나 키프레임이 바뀌면 키프레임부터 다시
+      ballTrack(s, slot, t) {
+        const k = this.ballKfAt(s, t);
+        if (!k) return null;
+        let c = s.trk[slot];
+        if (!c || c.k !== k || c.t > t) c = s.trk[slot] = { k, t: k.t, b: { x: k.x, y: k.y, vx: k.vx, vy: k.vy, landed: false } };
+        const h = VOLLEY.physStepMs, R = VOLLEY.ballR, G = VOLLEY.groundY;
+        let guard = 2000;
+        while (!c.b.landed && c.t + h <= t && guard-- > 0) {
+          this.stepBall(c.b, h / 1000, slot === 'disp');
+          if (c.b.y + R >= G) { c.b.y = G - R; c.b.landed = true; c.b.vy = 0; c.b.vx *= 0.3; }
+          c.t += h;
+        }
+        const f = c.b.landed ? 0 : (t - c.t) / 1000; // 남은 반 걸음은 그리기용으로만 이어 붙임
+        return { x: c.b.x + c.b.vx * f, y: Math.min(G - R, c.b.y + c.b.vy * f), vx: c.b.vx, vy: c.b.vy, landed: c.b.landed, n: k.n, by: k.by };
+      },
+      // 키프레임 넣기: 같은 공을 두 화면이 거의 같이 친 경우 궤적 시각이 이른 타격이 이김 (늦은 쪽은 버림)
+      insertKf(s, k) {
+        const clash = s.kf.find(f => f.n >= k.n);
+        if (clash && clash.t <= k.t) return false;
+        s.kf = s.kf.filter(f => f.n < k.n && f.t <= k.t);
+        s.kf.push(k);
+        s.kf.sort((a, c) => a.t - c.t);
+        s.trk = {};
+        return true;
+      },
+      // 상대 화면이 보는 시각만큼의 지연: 편도(왕복의 절반) + 상대 펫 보간 지연 → 상대 펫과 같은 시점
+      peerLagMs(p) { const c = p && p.clk; return (c && c.rtt != null ? c.rtt / 2 : 60) + this.peerDelay(p); },
+      // 표시 시각: 다음에 공을 칠 차례가 나면(상대가 쳤거나 내 서브) lag → 0, 상대 차례면 상대 펫과 같은 지연으로.
+      // 차례는 마지막 키프레임으로 정함 (상대가 친 공이 도착하자마자 따라잡기 시작해 내 코트에 올 때쯤 지금 시각이 됨)
+      // 한 번에 바꾸지 않고 초당 ballLagUp·ballLagDown만큼만
+      ballClock(dt) {
+        const st = petVolleyState, s = this.st;
+        const local = [0, 1].filter(i => this.controls(i));
+        let target = 0;
+        if (local.length < 2) {
+          const D = Math.max(...[0, 1].filter(i => !local.includes(i)).map(i => this.peerLagMs(s.pets[i])));
+          if (!local.length) target = D;
+          else {
+            const last = s.kf[s.kf.length - 1];
+            const turn = !last ? (st.serveSeat || 0) : (last.n % 1000 === 0 ? last.by : 1 - last.by);
+            target = turn === local[0] ? 0 : D;
+          }
+        }
+        const cur = s.lag || 0, diff = target - cur;
+        s.lag = cur + (diff > 0 ? Math.min(diff, VOLLEY.ballLagUp * dt * 1000) : Math.max(diff, -VOLLEY.ballLagDown * dt * 1000));
+        s.tau = Date.now() - s.lag;
+        return s.tau;
+      },
+      // 표시용 공(s.ball)을 표시 시각의 궤적 위치로. 타격으로 궤적이 바뀌는 순간(몸 밖으로 밀어낸 자리 등) 위치가 확 바뀌면
+      // 그 차이를 그림 오프셋으로 두고 0.14초 동안 지움 → 공이 순간이동하지 않음 (판정은 궤적 그대로)
+      showBall(s, tau, dt = 1 / 60) {
+        const st = petVolleyState, b = s.ball;
+        const d = this.ballTrack(s, 'disp', tau);
+        if (!d) { b.x = VOLLEY.homeX[st.serveSeat || 0]; b.y = 110 + Math.sin(Date.now() / 300) * 4; b.vx = 0; b.vy = 0; b.landed = false; b.shown = false; b.ox = 0; b.oy = 0; return; }
+        const px = b.x + (b.ox || 0), py = b.y + (b.oy || 0), changed = b.shown && d.n !== b.n;
+        b.x = d.x; b.y = d.y; b.vx = d.vx; b.vy = d.vy; b.n = d.n; b.by = d.by; b.landed = d.landed; b.shown = true;
+        if (changed && Math.hypot(px - b.x, py - b.y) < 450) { b.ox = px - b.x; b.oy = py - b.y; }
+        if (b.ox || b.oy) { const k = Math.min(1, dt / 0.14); b.ox -= b.ox * k; b.oy -= b.oy * k; if (Math.abs(b.ox) < 0.5 && Math.abs(b.oy) < 0.5) { b.ox = 0; b.oy = 0; } }
       },
 
       // 공 물리 한 걸음: 중력 · 벽 · 천장 · 그물
@@ -33029,13 +33107,15 @@
           vy = Math.min(-390, ny * 480 - 110);
           this.tone('hit');
         }
-        b.vx = vx; b.vy = vy;
         // 몸 밖으로 밀어내 같은 프레임에 또 닿지 않게
         const push = reach + 2;
-        if (d > 0.01) { b.x = cx + dx / d * push; b.y = cy + dy / d * push; } else { b.y = cy - push; }
-        b.by = i; b.n += 1; b.landed = false;
+        let hx, hy;
+        if (d > 0.01) { hx = cx + dx / d * push; hy = cy + dy / d * push; } else { hx = cx; hy = cy - push; }
+        const k = { t: Math.round(s.tau), x: Math.round(hx), y: Math.round(hy), vx: Math.round(vx), vy: Math.round(vy), n: b.n + 1, by: i };
+        this.insertKf(s, k);
+        this.showBall(s, s.tau, 0);
         p.hitCd = VOLLEY.hitCooldown; p.powerT = 0; p.hitAnim = 0.3; p.hitStamp = Date.now();
-        this.sendBall();
+        this.sendBall(k);
         if (this.inRoom()) this.sendLive(true);
       },
 
@@ -33082,18 +33162,19 @@
           if (!this.controls(i)) return;
           const ref = this.liveRef(String(i)); if (!ref) return;
           const pack = { x: Math.round(p.x), y: Math.round(p.y), vx: Math.round(p.vx), vy: Math.round(p.vy), g: p.onGround ? 1 : 0, m: p.moving ? 1 : 0, h: p.hitStamp || 0, t: Date.now() };
+          // 에코: 상대가 보낸 마지막 시각과 그걸 받은 뒤 지난 시간 → 상대가 왕복 시간을 잼
+          if (this.echo) { pack.e = this.echo.t; pack.eh = Date.now() - this.echo.at; }
           const key = `${pack.x},${pack.y},${pack.m},${pack.h},${pack.g}`;
           if (!force && p.lastSentKey === key && Date.now() - (p.lastSentAt || 0) < 500) return; // 가만히 있어도 0.5초마다 한 번은 보냄 (버퍼가 비지 않게)
           p.lastSentKey = key; p.lastSentAt = Date.now();
           ref.set(pack).catch(() => {});
         });
       },
-      sendBall() {
-        const st = petVolleyState, b = this.st && this.st.ball;
-        if (!b || !this.inRoom()) return;
+      sendBall(k) {
+        const st = petVolleyState;
+        if (!k || !this.inRoom()) return;
         const ref = this.liveRef('ball'); if (!ref) return;
-        b.sentAt = Date.now();
-        ref.set({ x: Math.round(b.x), y: Math.round(b.y), vx: Math.round(b.vx), vy: Math.round(b.vy), n: b.n, by: b.by, gid: st.gameId, t: Date.now() }).catch(() => {});
+        ref.set({ ...k, gid: st.gameId }).catch(() => {});
       },
       // 상대 시계 차이 추정: (내가 받은 시각 − 상대가 적은 시각)의 최근 최솟값. 기기마다 시계가 몇 초씩 달라도 보간 시점이 어긋나지 않음
       peerNote(p, t) {
@@ -33107,6 +33188,12 @@
         c.want = Math.max(VOLLEY.interpDelayMs, Math.min(VOLLEY.interpDelayMaxMs, j90 + 60));
       },
       peerOffset(p) { return p && p.clk ? p.clk.off : 0; },
+      // 상대 시각 → 내 시각: (받은 시각 − 보낸 시각)의 최솟값에서 편도(왕복의 절반)를 뺀 만큼이 두 시계의 차이
+      peerToLocal(p, t) {
+        const c = p && p.clk;
+        if (!c) return null;
+        return t + c.off - (c.rtt != null ? c.rtt / 2 : 50);
+      },
       // 지연은 한 번에 바꾸지 않고 초당 늘릴 땐 300ms, 줄일 땐 40ms씩만 옮김 → 그려지는 시점이 뒤로 확 가서 펫이 되돌아가는 일이 없음
       peerDelay(p, dt = 0) {
         const c = p && p.clk; if (!c) return VOLLEY.interpDelayMs;
@@ -33124,6 +33211,11 @@
           const sample = { x: Number(r.x) || 0, y: Number(r.y) || VOLLEY.groundY, vx: Number(r.vx) || 0, vy: Number(r.vy) || 0, g: Number(r.g) === 1 || r.g == null ? 1 : 0, m: Number(r.m) || 0, h: Number(r.h) || 0, t: Number(r.t) || Date.now() };
           if (r.g == null) sample.g = sample.y >= VOLLEY.groundY - 2 ? 1 : 0;
           this.peerNote(p, sample.t);
+          if (!this.echo || sample.t > this.echo.t) this.echo = { t: sample.t, at: Date.now() };
+          if (r.e) {
+            const rtt = Date.now() - Number(r.e) - (Number(r.eh) || 0);
+            if (rtt >= 0 && rtt < 5000) { const rs = p.clk.rtts || (p.clk.rtts = []); rs.push(rtt); if (rs.length > 30) rs.shift(); p.clk.rtt = Math.min(...rs); }
+          }
           const buf = p.buf || (p.buf = []);
           if (buf.length && sample.t <= buf[buf.length - 1].t) sample.t = buf[buf.length - 1].t + 1; // 순서가 뒤집혀 와도 버퍼는 시간순
           buf.push(sample);
@@ -33132,25 +33224,16 @@
           return;
         }
         if (key !== 'ball') return;
-        const rb = r;
-        const by = Number(rb.by), n = Number(rb.n), b = s.ball;
-        if (rb.gid !== st.gameId || this.controls(by)) return;
-        const newHit = n > b.n;
-        const resync = !newHit && n === b.n && Number(rb.t) > (b.syncT || 0) && !b.landed;
-        if (!newHit && !resync) return;
-        const px = b.x + (b.ox || 0), py = b.y + (b.oy || 0);
-        b.x = Number(rb.x); b.y = Number(rb.y); b.vx = Number(rb.vx); b.vy = Number(rb.vy); b.n = n; b.by = by; b.landed = false; b.syncT = Number(rb.t) || 0;
-        // 보낸 뒤 흐른 시간만큼 공을 미리 굴림 (최대 0.35초 · 상대 시계 차이를 뺀 값)
-        const sender = s.pets[by];
-        let age = Math.max(0, Math.min(0.35, (Date.now() - this.peerOffset(sender) - (Number(rb.t) || Date.now())) / 1000));
-        while (age > 0) { const step = Math.min(1 / 60, age); this.stepBall(b, step, false); age -= step; }
-        // 화면의 공이 갑자기 튀지 않게: 전 위치와의 차이를 그림 오프셋으로 두고 0.12초 동안 지움 (너무 멀면 그냥 옮김)
-        const dx = px - b.x, dy = py - b.y;
-        if (Math.hypot(dx, dy) < 160) { b.ox = dx; b.oy = dy; } else { b.ox = 0; b.oy = 0; }
-        if (newHit) {
-          this.tone('hit');
-          const p = s.pets[by]; if (p) p.hitAnim = 0.3;
-        }
+        const by = Number(r.by), n = Number(r.n);
+        if (r.gid !== st.gameId || this.controls(by) || !(by === 0 || by === 1)) return;
+        if (n < (Number(st.rally) || 0) * 1000) return; // 지난 랠리의 공
+        if (s.kf.some(f => f.n === n && f.by === by)) return; // 이미 받은 타격
+        // 상대 시각을 내 시각으로 (아직 시계 차이를 모르면 막 친 것으로 봄)
+        const tl = this.peerToLocal(s.pets[by], Number(r.t));
+        const k = { t: tl == null ? Date.now() - 80 : tl, x: Number(r.x), y: Number(r.y), vx: Number(r.vx), vy: Number(r.vy), n, by };
+        if (!this.insertKf(s, k)) return;
+        // 화면에 보이는 시각이 이미 그 타격을 지났으면 공이 확 옮겨짐 → showBall이 차이를 오프셋으로 두고 0.14초 동안 지움
+        if (k.t < s.tau) this.showBall(s, s.tau, 0);
       },
 
       // ───── 그리기 ─────
@@ -41965,7 +42048,8 @@
             endAt: mgLocalDeadline(pv, 'endAt'),
             last: pv.last || null
           };
-          if (!sameGame || petVolleyState.rally !== prevRally || !PetVolley.st) PetVolley.newRally();
+          if (!sameGame || !PetVolley.st) PetVolley.newRally();
+          else if (petVolleyState.rally !== prevRally) PetVolley.rallyChanged();
           renderPetVolleyBoard();
           PetVolley.run();
           note(pv);
