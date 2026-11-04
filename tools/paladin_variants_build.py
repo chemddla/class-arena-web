@@ -29,6 +29,7 @@ HAIR_SEEDS = {12: [(155, 47), (136, 70)]}   # 12 정수리·왼팔 옆으로 늘
 # 마디마다 어두운 선으로 끊겨 조각이 많은 땋은 머리: 이 상자 (x0, y0, x1, y1) 안 은색·회색은 모두 머리 (16 돌격 때 뒤로 날리는 땋은 머리)
 HAIR_BOXES = {16: [(131, 79, 158, 88)]}
 GOLD_XMIN = {16: 150}            # 돌격 칸의 흙먼지 꼬리(금빛 모래색)는 망치 장식이 아님 → 이 x보다 오른쪽 금색만
+DUST_RECTS = {16: [(0, 118, 105, 131), (0, 131, 123, 154), (0, 149, 150, 154)]}   # 흙먼지 꼬리 (x0, y0, x1, y1): 회백색 알갱이까지 어느 부위에도 안 넣음
 CLOSED_EYES = {5, 6, 7, 8, 17}   # 눈 감은 칸 (피격·쓰러짐·축성 기도): 눈동자가 없음 (이마 옆 푸른빛 머리카락을 눈으로 잡지 않게)
 DIM_EYES = {18, 19}              # 불굴의 가호 칸: 눈동자가 흐린 회청색이라 채도 0.21까지 눈으로 봄 (다른 칸은 0.3)
 EYE_KEEP = {18: [(166, 65, 176, 73)], 19: [(167, 57, 176, 65)]}  # 옆머리와 어두운 픽셀로 이어진 회색 눈 (x0, y0, x1, y1) → 머리색을 입히지 않음
@@ -87,12 +88,28 @@ def seg(f, idx=None):
     gold = A & (h > 28) & (h < 62) & (s > 0.28) & (v > 0.3)
     dust = gold & (XX < GOLD_XMIN[idx]) if idx in GOLD_XMIN else np.zeros_like(A)
     gold &= ~dust
-    R = A & ~outline & ~skin & ~blue & ~gold & ~dust
     lab, n = ndi.label(skin, K8)
-    face = None
+    face = None; facez = np.zeros_like(A)
     if n:
         sz = ndi.sum(skin, lab, range(1, n + 1)); face = lab == (1 + int(np.argmax(sz)))
+        facez = hull_fill(face)
+        gold &= ~ndi.binary_dilation(facez, K8, iterations=2)   # 입·볼의 주황 점은 망치 장식이 아님
+    # 망토·앞자락 깊은 그늘은 남보라 쪽 (안 넣으면 빨간 망토에 남색 그늘이 남음). 얼굴 안(입 속·속눈썹)은 뺌
+    blue |= A & (h >= 245) & (h < 265) & (s > 0.25) & (v < 0.4) & ~outline & ~facez
+    R = A & ~outline & ~skin & ~blue & ~gold & ~dust
     shield = pick_shield(blue, v, A)
+    if shield.any():
+        # 방패의 밝은 면(채도 낮은 하늘빛)은 갑옷과 색이 같아서, 검은 윤곽으로 둘러싸인 방패 안쪽 중 윤곽에서 2px 넘게 떨어진 곳을 방패로
+        #   (가장자리 2px 은 테두리는 갑옷, 파란 덩어리 안 구멍 = 십자는 뺌)
+        holes = ndi.binary_fill_holes(shield) & ~shield
+        le, ne = ndi.label(A & ~outline & ~skin, K4)
+        ids = np.unique(le[shield]); ids = ids[ids > 0]
+        if len(ids):
+            sy, sx = np.where(shield)   # 파란 덩어리의 세로 범위 안, 옆으로 9px까지만 (더 넓히면 방패 아래 발까지 들어왔음)
+            near = ndi.binary_dilation(shield, K8, iterations=9) & (YY >= sy.min() - 2) & (YY <= sy.max())
+            enc = (le == ids[np.argmax([(shield & (le == j)).sum() for j in ids])]) & near
+            edge = enc & ndi.binary_dilation(~enc, K8, iterations=2)
+            shield |= enc & ~edge & ~holes & (s < 0.35) & (v > 0.4) & (h > 190) & (h < 255)
     sh_full = ndi.binary_fill_holes(shield) if shield.any() else shield
     cross = sh_full & ~shield & A & ~outline
     eyes = np.zeros_like(A); hair = np.zeros_like(A)
@@ -152,7 +169,10 @@ def seg(f, idx=None):
         if hair[ring].mean() >= 0.5: hair |= c
         elif (R & ~hair & (s < 0.3))[ring].mean() >= 0.5: blue &= ~c; R |= c
     cape = blue & ~shield & ~eyes & ~hair
-    armor = R & ~hair & ~eyes & ~cross & ((s < 0.3) | (blue_spec := (h > 195) & (h < 245)))   # 은색 금속: 채도 낮은 것만 (허리띠·장갑 가죽 갈색은 그대로) + 위에서 넘긴 파란 점
+    armor = R & ~hair & ~eyes & ~cross & ~shield & ((s < 0.3) | ((h > 195) & (h < 245)))   # 은색 금속: 채도 낮은 것만 (허리띠·장갑 가죽 갈색은 그대로) + 위에서 넘긴 파란 점
+    armor &= ~(facez & ~ndi.binary_dilation(hair, K8))   # 얼굴 안 흰자·이·그늘은 그대로 (머리 바로 옆 픽셀은 머리 가장자리라 둠)
+    for x0, y0, x1, y1 in DUST_RECTS.get(idx, []):
+        for mm in (hair, eyes, armor, cape, shield, cross, gold): mm[y0:y1 + 1, x0:x1 + 1] = False
     return {'hair': hair, 'eyes': eyes, 'armor': armor, 'cape': cape, 'shield': shield, 'cross': cross, 'gold': gold, 'hsv': (h, s, v)}
 
 
