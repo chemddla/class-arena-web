@@ -16881,7 +16881,8 @@
       if (liveNet.role !== 'host' || !liveNet.ref) return;
       const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim']);
       const units = sim.units.map(u => liveUnitCopy(u, drop));
-      liveNet.ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, units }).catch(() => {});
+      const stamp = liveNet.towerCast || typeof liveNet.bid !== 'number' ? {} : { b: liveNet.bid, ep: liveNet.ep || 0 };
+      liveNet.ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, ...stamp, units }).catch(() => {});
     }
 
     // 분신 만들기: 장비 '환영' (능력치 30%, 시간 제한 없음) · 도적 스킬 '분신' (능력치 50%, 20초)
@@ -29147,6 +29148,9 @@
       cache: null, // 서버 world_boss 노드 (구독 중인 값)
       ref: null,
       ensuring: false,
+      clockOffset: 0, // 서버 시계 − 내 기기 시계 (.info/serverTimeOffset)
+      // 서버 시계: 기기마다 시계가 몇 초씩 달라도 '방이 살아 있는지'·'몇 초 지났는지'를 같은 기준으로 봄
+      now() { return Date.now() + (this.clockOffset || 0); },
       esc: v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
       // 이번 주 월요일 날짜 = 주차 키
       weekKey(d = new Date()) {
@@ -29161,7 +29165,7 @@
       makeCurrent(stage, hpMult, weekKey) {
         const def = this.defOfStage(stage);
         const maxHp = Math.round(def.hp * WORLD_BOSS.hpPerStudent * this.classSize() * (hpMult || 1));
-        return { key: `${weekKey}_${stage}`, weekKey, stage, bossId: def.id, maxHp, hp: maxHp, hpMult: hpMult || 1, v: WORLD_BOSS.hpVersion, startedAt: Date.now(), killedAt: 0, killedBy: '', killedByName: '' };
+        return { key: `${weekKey}_${stage}`, weekKey, stage, bossId: def.id, maxHp, hp: maxHp, hpMult: hpMult || 1, v: WORLD_BOSS.hpVersion, startedAt: this.now(), killedAt: 0, killedBy: '', killedByName: '' };
       },
       current() { const c = this.cache && this.cache.current; return c && c.key ? c : null; },
       contrib(key) { return (this.cache && this.cache.contrib && this.cache.contrib[key]) || {}; },
@@ -29169,7 +29173,7 @@
       logs(key) { return Object.values((this.cache && this.cache.log && this.cache.log[key]) || {}).filter(l => l && l.at).sort((a, b) => b.at - a.at); },
       triesLeft(stu) { return stu ? Math.max(0, WORLD_BOSS.tries - (getDailyRewardBook(stu).worldBossTries || 0)) : 0; },
       timeLeftText(cur) {
-        const ms = this.weekEnd(cur && cur.weekKey).getTime() - Date.now();
+        const ms = this.weekEnd(cur && cur.weekKey).getTime() - this.now();
         if (ms <= 0) return '곧 새 보스';
         const d = Math.floor(ms / 864e5), h = Math.floor((ms % 864e5) / 36e5);
         return d > 0 ? `${d}일 ${h}시간 남음` : `${Math.max(1, h)}시간 남음`;
@@ -29178,6 +29182,7 @@
       subscribe(cleanCode, db) {
         if (this.ref && typeof this.ref.off === 'function') this.ref.off();
         this.ref = db.ref(`classes/${cleanCode}/world_boss`);
+        try { db.ref('.info/serverTimeOffset').on('value', snap => { const v = snap && typeof snap.val === 'function' ? snap.val() : 0; this.clockOffset = typeof v === 'number' && isFinite(v) ? v : 0; }); } catch (e) {}
         this.ref.on('value', snap => {
           this.cache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
           this.ensureCurrent();
@@ -29230,14 +29235,14 @@
         return this.ref.child(`history/${cur.key}`).set({
           key: cur.key, weekKey: cur.weekKey, stage: cur.stage, bossId: cur.bossId, maxHp: cur.maxHp, hp: cur.hp || 0,
           startedAt: cur.startedAt || 0, killedAt: cur.killedAt || 0, killedBy: cur.killedBy || '', killedByName: cur.killedByName || '',
-          top3, endedAt: Date.now()
+          top3, endedAt: this.now()
         }).catch(() => {});
       },
       // 쓰러진 보스의 보상: 반 전원 + 기여 1·2·3위 + 마지막 일격 (학생마다 history 항목당 한 번, 접속 안 했던 학생은 다음 접속 때)
       claimKillRewards() {
         const stu = getActiveStudent();
         if (!stu || !isStudentSession(stu) || !this.cache || !this.cache.history) return;
-        const now = Date.now();
+        const now = this.now();
         let changed = false;
         Object.values(this.cache.history).forEach(h => {
           if (!h || !h.key || !h.killedAt || now - h.killedAt > WORLD_BOSS.claimDays * 864e5) return;
@@ -29277,7 +29282,7 @@
       room() {
         const r = this.cache && this.cache.room;
         const cur = this.current();
-        return r && r.id && cur && r.key === cur.key && Date.now() - (r.hb || 0) < WORLD_BOSS.roomStaleMs ? r : null;
+        return r && r.id && cur && r.key === cur.key && this.now() - (r.hb || 0) < WORLD_BOSS.roomStaleMs ? r : null;
       },
       activeMembers(r = this.room()) {
         return Object.entries((r && r.members) || {}).filter(([, m]) => m && m.merc && !m.out).map(([id, m]) => ({ id, ...m })); // out = 보스 레이드가 끝난 친구
@@ -29318,10 +29323,10 @@
         const merc = this.pickedMerc(stu);
         if (!merc) { showNotice('⚠️ 먼저 보스 레이드에 데리고 갈 용병 1명을 골라 주세요.'); return; }
         this.joining = true;
-        const now = Date.now();
+        const now = this.now();
         const me = { name: stu.name, merc: JSON.parse(JSON.stringify(merc)), at: now };
         this.ref.child('room').transaction(r => {
-          const live = r && r.id && r.key === cur.key && Date.now() - (r.hb || 0) < WORLD_BOSS.roomStaleMs;
+          const live = r && r.id && r.key === cur.key && this.now() - (r.hb || 0) < WORLD_BOSS.roomStaleMs;
           if (live) return { ...r, members: { ...(r.members || {}), [stu.id]: me } };
           return { id: `wraid_${now}_${Math.random().toString(36).slice(2, 6)}`, key: cur.key, bid: now, ep: ((r && r.ep) || 0) + 1, owner: stu.id, hb: now, members: { [stu.id]: me } };
         }).then(res => {
@@ -29350,7 +29355,7 @@
         });
         if (!sim.running) return;
         sim.meta.worldBoss = { key: cur.key, bossId: def.id, stage: cur.stage, maxHp: cur.maxHp, roomId: room.id, bid: room.bid, ep: room.ep || 0, at, host,
-          hpMark: cur.hp, dmgBase: {}, joined: { [stu.id]: at }, myEnd: Date.now() + (WORLD_BOSS.dropWaitSec + WORLD_BOSS.sessionSec) * 1000 };
+          hpMark: cur.hp, dmgBase: {}, joined: { [stu.id]: at }, myEnd: this.now() + (WORLD_BOSS.dropWaitSec + WORLD_BOSS.sessionSec) * 1000 };
         sim.worldLastHit = null;
         sim.waitingForOpponent = false;
         // 자동 전투 / 직접 조종은 고르는 동안에도 전투가 멈추지 않음 (친구들과 같은 전투라서) · 싸우는 중에도 [🎮 조종 바꾸기]
@@ -29360,7 +29365,7 @@
         battleControl.locked = false;
         openBattleControlChooser(false);
         if (host) {
-          this.ref.child(`room/members/${stu.id}/t0`).set(Date.now()).catch(() => {});
+          this.ref.child(`room/members/${stu.id}/t0`).set(this.now()).catch(() => {});
           startLiveBattleNet(room.id, 'host', room.bid, false, true, []);
           liveNet.ep = room.ep || 0;
           liveNet.guestChose = true;
@@ -29374,7 +29379,7 @@
         renderWorldRaidTab();
       },
       // 내 남은 시간 (전장 위 체력 바에 표시)
-      myLeftSec() { const m = sim.meta && sim.meta.worldBoss; return m ? Math.max(0, Math.ceil((m.myEnd - Date.now()) / 1000)) : null; },
+      myLeftSec() { const m = sim.meta && sim.meta.worldBoss; return m ? Math.max(0, Math.ceil((m.myEnd - this.now()) / 1000)) : null; },
       // 보스: 엘리트 보스 그대로(크기·스킬 동작), 체력은 반 공유 체력의 남은 만큼, 스킬은 단계와 상관없이 7개 전부
       buildBoss(cur, def) {
         const boss = buildCenterEliteBoss(def, 2, false);
@@ -29403,7 +29408,7 @@
       step() {
         const meta = sim.meta && sim.meta.worldBoss;
         if (!meta || !meta.host || meta.ending) return Boolean(meta && meta.ending);
-        meta.lastStepAt = Date.now();
+        meta.lastStepAt = this.now();
         const boss = sim.units.find(u => u.isWorldBoss);
         if (boss && boss.alive && this.applyEnrage(boss)) addBattleLog(`🔥 레이드 보스가 광폭화했어요! 공격력이 ${WORLD_BOSS.enrageAtk}배가 돼요!`);
         // 하늘에서 내려오는 용병
@@ -29415,8 +29420,8 @@
         const r = this.cache && this.cache.room;
         if (!r || r.id !== meta.roomId) {
           // 방이 사라짐 (선생님이 보스를 바꿨거나 다른 화면이 새로 열었음): 잠깐 기다렸다가 지금까지 준 피해로 끝냄
-          meta.noRoomSince = meta.noRoomSince || Date.now();
-          if (Date.now() - meta.noRoomSince > 3000) { meta.ending = true; this.commitHp(); this.finishMine({ dmg: this.dmgOf(getActiveStudent().id), win: false, reason: 'lost' }); return true; }
+          meta.noRoomSince = meta.noRoomSince || this.now();
+          if (this.now() - meta.noRoomSince > 3000) { meta.ending = true; this.commitHp(); this.finishMine({ dmg: this.dmgOf(getActiveStudent().id), win: false, reason: 'lost' }); return true; }
           return false;
         }
         meta.noRoomSince = 0;
@@ -29431,7 +29436,7 @@
         if (boss && !boss.alive) { this.endAll(r, true); return true; }
         // 한 사람씩: 용병이 쓰러짐 · 시간 끝 · 나가기
         const me = getActiveStudent();
-        const now = Date.now();
+        const now = this.now();
         for (const m of active) {
           const units = sim.units.filter(u => u.team === 'blue' && u.liveOwnerId === m.id && !u.isClone);
           if (!units.length) continue;
@@ -29457,7 +29462,7 @@
           const idx = sim.units.filter(u => u.team === 'blue' && !u.isClone).length;
           sim.units.push(this.unitFor({ ...friend, id, name: friend.name || m.name }, merc, idx));
           if (!liveNet.teamExpect.includes(id)) liveNet.teamExpect.push(id);
-          this.ref.child(`room/members/${id}/t0`).set(Date.now()).catch(() => {});
+          this.ref.child(`room/members/${id}/t0`).set(this.now()).catch(() => {});
           addBattleLog(`⚡ ${m.name || '친구'}이(가) [${merc.name}]와 함께 보스 레이드에 들어왔어요! 곧 하늘에서 내려와요.`);
           added = true;
         });
@@ -29468,7 +29473,7 @@
         const meta = sim.meta.worldBoss;
         const m = (r.members || {})[id] || {};
         const dmg = this.dmgOf(id);
-        const done = { dmg, win: Boolean(win), reason, lastHit: Boolean(lastHit), at: Date.now(), j: m.at || 0 }; // j = 그 참가의 들어온 시각 (같은 친구의 지난 참가와 구분)
+        const done = { dmg, win: Boolean(win), reason, lastHit: Boolean(lastHit), at: this.now(), j: m.at || 0 }; // j = 그 참가의 들어온 시각 (같은 친구의 지난 참가와 구분)
         this.ref.child(`room/members/${id}/out`).set(true).catch(() => {});
         if (r.members && r.members[id]) r.members[id].out = true; // 이어서 넘기는 방 정보에도 바로
         this.ref.child(`done/${meta.key}/${id}`).set(done).catch(() => {});
@@ -29498,7 +29503,7 @@
           const hp = Math.max(0, (c.hp || 0) - delta);
           const out = { ...c, hp };
           killed = hp <= 0 || !boss.alive;
-          if (killed) { out.hp = 0; out.killedAt = Date.now(); out.killedBy = (killer && killer.id) || ''; out.killedByName = (killer && killer.name) || ''; }
+          if (killed) { out.hp = 0; out.killedAt = this.now(); out.killedBy = (killer && killer.id) || ''; out.killedByName = (killer && killer.name) || ''; }
           return out;
         }).then(res => {
           if (killed && res && res.committed) return this.archive(res.snapshot && typeof res.snapshot.val === 'function' ? res.snapshot.val() : null);
@@ -29536,8 +29541,8 @@
           const units = sim.units.map(u => liveUnitCopy(u, new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim'])));
           const ep = (r.ep || 0) + 1;
           try { liveNet.ref.onDisconnect().cancel(); } catch (e) {}
-          if (liveNet.ref) liveNet.ref.child('handoff').set(JSON.parse(JSON.stringify({ at: Date.now(), from: me.id, to: heir.id, ep, tick: sim.tickCount, units, hpMark: meta.hpMark, dmgBase, lastHit: sim.worldLastHit || null }))).catch(() => {});
-          this.ref.child('room').transaction(x => (x && x.id === meta.roomId ? { ...x, owner: heir.id, ep, hb: Date.now() } : undefined)).catch(() => {});
+          if (liveNet.ref) liveNet.ref.child('handoff').set(JSON.parse(JSON.stringify({ at: this.now(), from: me.id, to: heir.id, ep, tick: sim.tickCount, units, hpMark: meta.hpMark, dmgBase, lastHit: sim.worldLastHit || null }))).catch(() => {});
+          this.ref.child('room').transaction(x => (x && x.id === meta.roomId ? { ...x, owner: heir.id, ep, hb: this.now() } : undefined)).catch(() => {});
         } else {
           this.ref.child('room').transaction(x => (x && x.id === meta.roomId ? null : undefined)).catch(() => {});
         }
@@ -29608,7 +29613,7 @@
         if (!sim.running || sim.mode !== 'world_boss' || !meta) { clearInterval(this.timer); return; }
         const me = getActiveStudent();
         const r = this.cache && this.cache.room;
-        const now = Date.now();
+        const now = this.now();
         if (meta.host) {
           if (!r || r.id !== meta.roomId) return;
           // 다른 화면이 계산을 이어받았으면 (내 화면이 한동안 멈춰 있었던 경우) 나는 받는 쪽으로
@@ -29639,8 +29644,8 @@
           if (!heir || heir.id !== me.id || meta.claiming) return;
           meta.claiming = true;
           this.ref.child('room').transaction(x => {
-            if (!x || x.id !== meta.roomId || x.owner !== r.owner || Date.now() - (x.hb || 0) <= WORLD_BOSS.roomStaleMs) return;
-            return { ...x, owner: me.id, ep: (x.ep || 0) + 1, hb: Date.now() };
+            if (!x || x.id !== meta.roomId || x.owner !== r.owner || this.now() - (x.hb || 0) <= WORLD_BOSS.roomStaleMs) return;
+            return { ...x, owner: me.id, ep: (x.ep || 0) + 1, hb: this.now() };
           }).then(res => {
             meta.claiming = false;
             const x = res && res.committed && res.snapshot && typeof res.snapshot.val === 'function' ? res.snapshot.val() : null;
@@ -29667,7 +29672,7 @@
           this.finishMine({ dmg: this.dmgOf(me.id), win: false, reason: 'leave' });
           return;
         }
-        meta.leaving = Date.now();
+        meta.leaving = this.now();
         this.ref.child(`room/members/${me.id}/leave`).set(true).catch(() => {});
         addBattleLog('🚪 보스 레이드에서 나가는 중이에요...');
       },
@@ -29740,10 +29745,10 @@
         try {
           await this.ref.child(`contrib/${key}/${who.id}`).transaction(c => {
             const o = c || {};
-            return { name: who.name, dmg: (o.dmg || 0) + dealt, tries: (o.tries || 0) + 1, best: Math.max(o.best || 0, dealt), lastAt: Date.now() };
+            return { name: who.name, dmg: (o.dmg || 0) + dealt, tries: (o.tries || 0) + 1, best: Math.max(o.best || 0, dealt), lastAt: this.now() };
           });
-          const id = 'wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-          this.ref.child(`log/${key}/${id}`).set({ id: who.id, name: who.name, dmg: dealt, at: Date.now(), kill: Boolean(kill) }).catch(() => {});
+          const id = 'wb_' + this.now() + '_' + Math.random().toString(36).slice(2, 6);
+          this.ref.child(`log/${key}/${id}`).set({ id: who.id, name: who.name, dmg: dealt, at: this.now(), kill: Boolean(kill) }).catch(() => {});
           this.pruneLog(key);
         } catch (e) { console.warn('[보스 레이드 기여도 기록 실패]', e); }
       },
