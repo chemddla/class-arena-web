@@ -166,11 +166,13 @@ def seg(f, idx=None):
         #   (안 붙이면 흑발에 은회색 얼룩, 백발에 어두운 얼룩으로 남음). 얼굴 안·방패 둘레는 뺌
         dark = R & (v < 0.3) & (s < 0.4) & ~facez & ~ndi.binary_dilation(sh_full, K8, iterations=2) & box
         for _ in range(3): hair |= dark & ndi.binary_dilation(hair, K8)
-        # 얼굴 안 가운데 띠에서 뺀 작은 조각 중 눈에 안 닿고 머리에 닿은 것(이마로 흘러내린 머리카락)은 머리로, 나머지(흰자)는 그대로 둠
-        lf, nf = ndi.label(facebits, K8)
-        for j in range(1, nf + 1):
-            c = lf == j
-            if not (c & ndi.binary_dilation(eyes, K8)).any() and (c & ndi.binary_dilation(hair, K8)).any() and v[c].mean() > 0.55: hair |= c; facebits &= ~c
+        # 얼굴 안 가운데 띠에서 뺀 작은 조각 중 머리에 닿고 눈에서 2px 넘게 떨어진 밝은 픽셀(이마·뺨 옆으로 흘러내린 머리카락)은 머리로, 나머지(흰자)는 그대로 둠
+        #   조각 단위로 하면 뺨 옆 머리 줄이 눈까지 이어져 통째로 남았음 → 픽셀 단위로 머리에서부터 4px까지 걸어 내려감
+        eyezone = ndi.binary_dilation(eyes, K8, iterations=2)
+        for _ in range(4):
+            grab = facebits & ndi.binary_dilation(hair, K8) & ~eyezone & (v > 0.5)
+            if not grab.any(): break
+            hair |= grab; facebits &= ~grab
         keep = ndi.binary_dilation(eyes, K8, iterations=2) | eyerect | facebits   # 눈 둘레 흰자·속눈썹 회색은 머리가 아님
         hair &= ~keep
     # 작은 파란 점(8px 이하): 둘레가 머리면 머리(땋은 머리의 푸른 그늘), 은색 금속이면 갑옷(갑옷에 비친 파란빛) — 망토색으로 칠하면 점이 튐
@@ -188,6 +190,13 @@ def seg(f, idx=None):
     for _ in range(2):
         cnt = ndi.convolve(hair.astype(np.uint8), np.ones((3, 3), np.uint8), mode='constant') - hair
         grab = cape & (cnt >= 5); hair |= grab; cape &= ~grab
+    # 머리와 어두운 선 사이에 낀 가는 파란 조각(12px 이하, 둘레의 6할 넘게 머리·윤곽·어두운 픽셀)도 머리 (땋은 머리 경계의 1px 선)
+    lc, nc = ndi.label(cape, K8); wall = hair | outline | (v < 0.32)
+    for j in range(1, nc + 1):
+        c = lc == j
+        if c.sum() > 12: continue
+        ring = ndi.binary_dilation(c, K8) & ~c & A
+        if ring.any() and wall[ring].mean() >= 0.6 and (hair[ring].mean() >= 0.25): hair |= c; cape &= ~c
     # 머리에 거의 둘러싸인 작은 은색 조각(이마로 흘러내린 머리카락)은 머리: 둘레의 6할 넘게 머리·윤곽이면
     if face is not None:
         armor0 = R & ~hair & ~eyes & ~cross & ~shield & (s < 0.3) & box
