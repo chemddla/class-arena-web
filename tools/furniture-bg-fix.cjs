@@ -2,7 +2,7 @@
 //   node tools/furniture-bg-fix.cjs [최소픽셀=100] [dry]   (KEEP: 악보처럼 진짜 흰 부분은 덩어리 왼쪽 위 좌표로 제외)
 const s=require('sharp'),fs=require('fs');
 const MIN=Number(process.argv[2]||100), DRY=process.argv[3]==='dry';
-const KEEP={ 'grand_piano.webp':[[87,104],[108,116]], 'easel_workbench_b.webp':[[109,47]], 'fireplace_console_b.webp':[[47,58]] }; // 악보처럼 진짜 흰 부분 (덩어리 왼쪽 위 좌표)
+const KEEP={ 'grand_piano.webp':[[87,104],[108,116]], 'easel_workbench_b.webp':[[109,47]], 'fireplace_console_b.webp':[[47,58]], 'glass_cabinet_b.webp':[[149,195]] }; // 악보처럼 진짜 흰 부분 (덩어리 왼쪽 위 좌표)
 (async()=>{
 for(const f of fs.readdirSync('assets/furniture').filter(f=>f.endsWith('.webp'))){
  const {data,info}=await s(fs.readFileSync('assets/furniture/'+f)).ensureAlpha().raw().toBuffer({resolveWithObject:true});
