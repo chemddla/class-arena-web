@@ -13,7 +13,7 @@
 #     땅 높이를 뒷발 바닥(샘플 y 940)으로 잡고 그 아래는 칸 기준점 밑으로 내려 그림 (GROUND)
 #   paladin_sr1_hshield_src.png (1024×1024): 신성 보호·수호 서약 (방패를 앞으로 내밀고 버팀, 방패 둘레 금빛 빛줄기)
 #   돌격·심판·신성 보호 세 장은 같은 크기로 그려 와서 배율이 같음
-# 칸 순서: 0 대기 · 1~4 걷기 · 5~8 기본 공격 · 9 피격 · 10~11 쓰러짐 · 12 축성 · 13 성스러운 돌격 · 14 심판 · 15 신성 보호
+# 칸 순서: 0 대기 · 1~4 걷기 · 5~6 기본 공격 (치켜듦 → 내리치기) · 7 피격 · 8~9 쓰러짐 · 10 축성 · 11 성스러운 돌격 · 12 심판 · 13 신성 보호
 # 크기: 대기의 머리 꼭대기~발 키를 TARGET_H(성기사 0번과 같은 110)로. 같은 장(sheet)의 다른 칸도 같은 배율,
 #   쓰러짐 두 장은 따로 그려 와서 얼굴·방패 폭으로 맞춘 배율(DOWN_K)
 # 흰 배경 지우기는 paladin_build.py와 같음: 가장자리에서 이어진 흰 픽셀만 배경, 배경과 섞인 2px 테두리는 흰색을 빼서 투명도·색을 되살림
@@ -40,8 +40,8 @@ FRAMES = [
     ('idle', 'sheet', (112, 0, 290, 129), 1),
     ('walk0', 'sheet', (118, 129, 292, 258), 1), ('walk1', 'sheet', (295, 122, 470, 255), 1),
     ('walk2', 'sheet', (470, 122, 645, 255), 1), ('walk3', 'sheet', (645, 122, 830, 255), 1),
-    ('atk0', 'sheet', (118, 258, 298, 391), 1), ('atk1', 'sheet', (295, 255, 470, 405), 1),
-    ('atk2', 'sheet', (470, 258, 655, 405), 1), ('atk3', 'sheet', (655, 258, 840, 405), 1),
+    # 기본 공격은 치켜듦·내리치기 두 칸만 씀 (사용자 요청으로 준비 (118, 258, 298, 391)·마무리 (655, 258, 840, 405) 칸은 뺌)
+    ('atk1', 'sheet', (295, 255, 470, 405), 1), ('atk2', 'sheet', (470, 258, 655, 405), 1),
     ('hurt', 'sheet', (118, 391, 300, 513), 1),
     ('down0', 'down_a', None, 'down'), ('down1', 'down_b', None, 'down'),
     ('consec', 'consec', None, 123 / 750),
@@ -51,7 +51,7 @@ FRAMES = [
 ]
 
 
-def load(name, box):
+def load(name, box, fname=''):
     im = np.array(Image.open(f'{D}{name}_src.png').convert('RGB')).astype(float)
     if box:
         x0, y0, x1, y1 = box; im = im[y0:y1, x0:x1]
@@ -98,6 +98,14 @@ def load(name, box):
     foot = np.where(body[int(body.shape[0] * 0.92):].any(axis=0))[0].mean()   # 발 가운데 (몸 아래 8%)
     if name in FOOTX: foot = FOOTX[name] + 2 - xs.min()   # +2 = 덧댄 여백
     below = max(0, ys.max() - (GROUND[name] + 2)) if name in GROUND else 0
+    if name == 'sheet':
+        # 시트 칸은 발(금빛 부츠) 기준: 망치 머리가 발 옆·아래로 내려가 있어서 '아래 8%' 기준이면 칸마다 몸이 앞뒤로 튀고(공격 시작 때 20px 앞으로)
+        #   내리치기 칸은 망치가 발보다 12px 아래라 몸이 떠 보였음. 부츠 바닥 줄 = 땅, 그 줄 금빛 픽셀 가운데 = 발 가운데. 피격은 발이 벌어져 상체(위 60줄) 가운데
+        g = (rgba[..., 3] > 200) & (rgba[..., 0] > 180) & (rgba[..., 1] > 130) & (rgba[..., 2] < 100) & (rgba[..., 0] - rgba[..., 2] > 100)
+        gy, gx = np.where(g)
+        gb = gy.max()
+        foot = gx[gy < gy.min() + 60].mean() if fname == 'hurt' else gx[gy >= gb - 6].mean()
+        below = max(0, rgba.shape[0] - 1 - (gb + 3))
     return rgba, foot, below
 
 
@@ -106,7 +114,7 @@ def main():
     k0 = TARGET_H / idle.shape[0]   # 대기는 머리 꼭대기가 가장 높음 (날개 끝은 머리보다 낮음)
     pieces = []
     for name, src, box, k in FRAMES:
-        rgba, foot, below = load(src, box)
+        rgba, foot, below = load(src, box, name)
         sc = k0 * (DOWN_K if k == 'down' else k)
         if name == 'down1': foot = rgba.shape[1] * 0.45   # 누운 칸은 몸 가운데쯤을 기준점으로
         p = shrink(rgba, sc)
