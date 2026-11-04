@@ -2268,6 +2268,8 @@
           <!-- 몬스터 러쉬: 내 용병을 직접 조종 ↔ AI 자동 전투 -->
           <button type="button" id="rushAutoBtn" onclick="toggleRushAutoBattle()" class="hidden shrink-0 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow"></button>
         </div>
+        <!-- 🏰 던전 1인 입장: 파티 용병을 눌러(또는 Tab 키) 조종할 용병·시점 바꾸기 -->
+        <div id="dungeonPartyBar" class="hidden flex flex-wrap items-center gap-1.5 text-[11px]"></div>
 
         <!-- 광활하게 확장된 전장 월드(2880x1800)를 마우스 드래그로 자유롭게 관찰하는 뷰포트 (1440x960) -->
         <div class="relative rounded-2xl overflow-hidden border-2 border-amber-700/40 bg-amber-50 shadow-2xl">
@@ -3228,6 +3230,7 @@
           <div>🗓️ <strong>하루에 던전 하나만 열려요.</strong> 날마다 차례로 바뀌고, 나머지 던전은 닫혀 있어요.</div>
           <div>📈 몬스터 세기는 <strong>출전 용병 전투력</strong>에 맞춰져요. 장비·스탯·등급으로 강해질수록 몬스터도 같이 강해져요. 그리고 <strong>새 방에 들어갈 때마다 몬스터가 8%씩 더 강해져요</strong> (보스도 늦게 찾을수록 세져요).</div>
           <div>🗺️ <strong>입장할 때마다 지도가 새로 만들어져요.</strong> 격자 크기·길·방 종류·보스 방 위치가 매번 달라요. 미니맵은 가 본 방과 그 옆 칸만 보여요.</div>
+          <div>🔄 전투 중에 화면 위 <strong>용병 버튼</strong>을 누르거나 <strong>Tab 키</strong>로 조종할 용병을 바꿀 수 있어요. 바꾼 용병이 대표가 되고 화면도 그 용병을 따라가요.</div>
           <div>🚪 방의 몬스터를 모두 쓰러뜨리면 문이 열려요. <strong>대표 용병을 문으로 보내거나</strong> 왼쪽 위 미니맵에서 옆 칸을 누르면 파티 전체가 그 방으로 이동해요. 보스 방과 이어진 문은 붉게 떨려요. 자동 전투면 8초 뒤 안 가본 방으로 알아서 가요.</div>
           <div>⚔️ 방 종류: ⚔️ 일반 · 💎 정예(크고 센 몬스터, 추가 보상) · 📦 보물(상자 3개 중 하나만: 골드·회복·보스 방 지도) · 🔥 기믹(불기둥·덫·거미줄·낙석) · 🚶 빈 방 · 👑 보스</div>
           <div>💚 방을 깨면 쓰러진 용병이 체력 30%로 부활해요. ⏸️ 방을 깨서 길이 열린 동안(지나온 방을 다시 지날 때도)은 스킬 쿨타임이 멈추고, 몬스터가 있는 새 방에 들어가야 다시 흘러요. 길이 열린 동안은 💨 대시 쿨타임이 없어요. 보스 방 입구 모닥불에서 5초 정비(체력 40% 회복) 뒤 보스가 나와요.</div>
@@ -16366,6 +16369,7 @@
         rushBtn.classList.toggle('hidden', !(mine && mine.alive));
         rushBtn.textContent = battleControl.mode === 'manual' ? '🤖 자동 전투로' : '🎮 직접 조종으로';
       }
+      if (force || sim.tickCount % 10 === 0) renderDungeonPartyBar();
       const hud = document.getElementById('battleControlHud');
       if (!hud) return;
       if (!force && sim.tickCount % 10 !== 0) return;
@@ -16435,6 +16439,10 @@
         // R: 저격수 장전 (총알이 남아 있어도 가능)
         if (!e.repeat) localBattleInput.reloadCount = (localBattleInput.reloadCount || 0) + 1;
         e.preventDefault();
+      } else if ((k === 'tab' || e.code === 'Tab') && sim.mode === 'dungeon') {
+        // Tab: 던전에서 조종할 용병을 다음 용병으로
+        if (!e.repeat) switchDungeonUnitNext();
+        e.preventDefault();
       } else if (k === 'q' || e.code === 'KeyQ') {
         // Q: 장비 스킬
         if (!e.repeat) localBattleInput.itemCount = (localBattleInput.itemCount || 0) + 1;
@@ -16501,6 +16509,7 @@
     function updateBattleControlFrame() {
       if (!sim.running) {
         document.getElementById('manualSkillBar')?.classList.add('hidden');
+        document.getElementById('dungeonPartyBar')?.classList.add('hidden');
         return;
       }
       const z = sim.camera.zoom || 1.0;
@@ -39416,7 +39425,53 @@
       const L = keep ? dungeonLeader() : dungeonPickLeader(battleControl.mode === 'manual' ? battleControl.unitId : null);
       if (battleControl.mode === 'manual') dg.everManual = true;
       if (!dg.started) { dg.started = true; dg.startTick = sim.tickCount; dg.roomStartTick = sim.tickCount; dg.selectAt = sim.tickCount; }
+      renderDungeonPartyBar(true);
       if (L) addBattleLog(`⭐ 대표 용병: ${L.name} — 나머지 용병은 몬스터가 있으면 자동 전투로 싸우고, 길이 열리면 대표를 따라와요.`);
+    }
+    // 1인 입장: 다른 용병으로 직접 조종·시점을 바꿈 (그 용병이 대표가 되고 나머지는 그 용병을 따라감)
+    function switchDungeonUnit(unitId) {
+      if (sim.mode !== 'dungeon' || !sim.running || !sim.dungeon || !sim.dungeon.started) return;
+      const u = sim.units.find(x => x.id === unitId && x.team === 'blue' && !x.isClone);
+      if (!u || !u.alive) return;
+      if (battleControl.mode === 'manual' && battleControl.unitId === u.id) return;
+      setBattleControlMode('manual', u.id, true); // 직접 조종으로 바꾸면서 대표도 이 용병으로 (dungeonOnControlChosen)
+      sim.dungeon.everManual = true;
+      renderDungeonPartyBar(true);
+    }
+    // Tab: 살아 있는 다음 용병으로
+    function switchDungeonUnitNext() {
+      const party = sim.units.filter(u => u.team === 'blue' && !u.isClone && u.alive);
+      if (!party.length) return;
+      const cur = battleControl.mode === 'manual' ? battleControl.unitId : (sim.dungeon && sim.dungeon.leaderId);
+      const i = party.findIndex(u => u.id === cur);
+      switchDungeonUnit(party[(i + 1) % party.length].id);
+    }
+    let dungeonPartyBarSig = '';
+    function renderDungeonPartyBar(force = false) {
+      const bar = document.getElementById('dungeonPartyBar');
+      if (!bar) return;
+      const on = sim.mode === 'dungeon' && sim.running && sim.dungeon && sim.dungeon.started;
+      bar.classList.toggle('hidden', !on);
+      if (!on) { dungeonPartyBarSig = ''; return; }
+      const party = sim.units.filter(u => u.team === 'blue' && !u.isClone);
+      const ctrlId = battleControl.mode === 'manual' ? battleControl.unitId : null;
+      const leaderId = sim.dungeon.leaderId;
+      const hpPct = u => (u.alive ? Math.max(0, Math.min(100, Math.round((u.hp / Math.max(1, u.maxHp)) * 10) * 10)) : 0);
+      const sig = party.map(u => `${u.id}:${u.alive ? 1 : 0}:${hpPct(u)}`).join('|') + `#${ctrlId}#${leaderId}`;
+      if (!force && sig === dungeonPartyBarSig) return; // 바뀐 게 없으면 다시 그리지 않음 (누르는 중에 버튼이 사라지지 않게)
+      dungeonPartyBarSig = sig;
+      bar.innerHTML = `<span class="font-extrabold text-amber-300 mr-1">🔄 조종할 용병 <span class="text-slate-400 font-bold">(Tab)</span></span>` + party.map(u => {
+        const me = u.id === ctrlId, lead = u.id === leaderId, dead = !u.alive;
+        const pct = hpPct(u);
+        return `<button type="button" data-unit-id="${u.id}" onclick="switchDungeonUnit(this.dataset.unitId)" ${dead ? 'disabled' : ''}
+          class="relative flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-xl border-2 font-extrabold ${me ? 'bg-amber-500/25 border-amber-400 text-white' : dead ? 'bg-slate-900 border-slate-800 text-slate-500 cursor-not-allowed opacity-60' : 'bg-slate-900 border-slate-700 text-slate-200 hover:border-amber-300'}">
+          ${getMercIconHTML(u.job, u.skinVariant, 24)}
+          <span class="flex flex-col items-start leading-tight">
+            <span>${lead ? '⭐' : ''}${dead ? '💀' : ''}${u.name}${me ? ' 🎮' : ''}</span>
+            <span class="block w-14 h-1 rounded bg-slate-700 overflow-hidden"><span class="block h-full ${pct > 50 ? 'bg-emerald-400' : pct > 25 ? 'bg-amber-400' : 'bg-rose-500'}" style="width:${pct}%"></span></span>
+          </span>
+        </button>`;
+      }).join('');
     }
     function toggleDungeonAutoBattle() {
       if (sim.mode !== 'dungeon' || !sim.running) return;
