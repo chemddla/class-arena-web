@@ -3216,7 +3216,7 @@
             <div>
               <h3 class="font-title text-2xl text-white">던전 탐험 (보스 방을 찾아라!)</h3>
               <p class="text-xs text-slate-400 mt-0.5">
-                출전 용병 5명으로 들어가요. <strong>대표 용병 1명</strong>을 직접 조종하고 나머지는 대표를 따라다니며 싸워요. 방의 몬스터를 모두 쓰러뜨리면 길이 열리고, 어딘가 숨은 <strong>👑 보스 방</strong>을 찾아 보스를 잡으면 클리어!
+                출전 용병 5명으로 들어가요. <strong>대표 용병 1명</strong>을 직접 조종하고 나머지는 자동 전투로 싸우다가 길이 열리면 대표를 따라와요. 방의 몬스터를 모두 쓰러뜨리면 길이 열리고, 어딘가 숨은 <strong>👑 보스 방</strong>을 찾아 보스를 잡으면 클리어!
               </p>
               <div id="dungeonMyInfo" class="text-xs text-slate-300 mt-1"></div>
             </div>
@@ -38983,7 +38983,7 @@
       const L = keep ? dungeonLeader() : dungeonPickLeader(battleControl.mode === 'manual' ? battleControl.unitId : null);
       if (battleControl.mode === 'manual') dg.everManual = true;
       if (!dg.started) { dg.started = true; dg.startTick = sim.tickCount; dg.roomStartTick = sim.tickCount; dg.selectAt = sim.tickCount; }
-      if (L) addBattleLog(`⭐ 대표 용병: ${L.name} — 나머지 용병은 대표를 따라다니며 싸워요.`);
+      if (L) addBattleLog(`⭐ 대표 용병: ${L.name} — 나머지 용병은 몬스터가 있으면 자동 전투로 싸우고, 길이 열리면 대표를 따라와요.`);
     }
     function toggleDungeonAutoBattle() {
       if (sim.mode !== 'dungeon' || !sim.running) return;
@@ -39529,19 +39529,17 @@
       return true;
     }
 
-    // ----- 추종 AI: 대표 용병을 따라다님 (true면 이번 틱은 여기서 처리) -----
+    // ----- 추종 AI: 다음 방으로 갈 수 있을 때(방을 다 치워 길이 열림)만 대표 용병을 따라다님 (true면 이번 틱은 여기서 처리) -----
+    // 몬스터가 남아 있는 동안은 따라다니지 않고 평소 자동 전투 그대로 싸움
     function dungeonFollowStep(u, allies, enemies) {
       const dg = sim.dungeon;
       if (!dg || !u.followLeader) return false;
+      if (dg.phase !== 'select' || enemies.some(e => e.alive)) return false;
       const L = dungeonLeader();
       if (!L || L === u || !L.alive) return false;
       const d = Math.hypot(L.x - u.x, L.y - u.y);
       const ranged = u.job === 'archer' || u.job === 'mage' || u.job === 'sniper' || u.job === 'frost' || u.job === 'curse' || u.job === 'bard';
       const prefer = u.job === 'healer' ? 180 : ranged ? 220 : 120;
-      const nearEnemy = enemies.some(e => unitDist(e, u) <= (u.range || 60) + 60);
-      const fightZone = enemies.some(e => Math.hypot(e.x - L.x, e.y - L.y) < 420 || Math.hypot(e.x - u.x, e.y - u.y) < 420);
-      if (d > 600) { dungeonWalkTo(u, L.x, L.y); return true; } // 너무 멀면 적을 버리고 복귀
-      if (nearEnemy || fightZone) return false;                 // 전투는 평소 AI
       if (u.job === 'healer' && allies.some(a => a.hp < a.maxHp * 0.6)) return false; // 회복은 평소 AI
       if (d > Math.max(260, prefer + 40)) {
         // 대표 뒤쪽(바라보는 반대쪽)의 자리로
