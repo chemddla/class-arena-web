@@ -32110,7 +32110,8 @@
      * - 내 활성 펫 vs 친구(또는 AI) 펫. 가운데 그물, 공을 상대 땅에 떨어뜨리면 1점, 11점 먼저 (3분이 지나면 앞선 쪽 승리, 같으면 다음 득점)
      * - 조작: ←→ 이동, ↑/스페이스 점프, Z(또는 💥 버튼) 강타. 강타는 공이 몸에 닿는 순간 방향키 쪽으로 세게 날림 (↓와 함께면 내리꽂기)
      * - 실시간: 판(자리·점수·서브)은 미니게임 공통 저장(mgPush)으로 낮은 빈도로 맞추고,
-     *   펫 위치는 초당 12번 minigames/{방}/vl/{자리}에, 공은 "마지막으로 친 사람" 화면이 치는 순간의 위치·속도를 vl/ball에 올림
+     *   펫 위치는 초당 15번 minigames/{방}_vl/{자리}에 (판 저장과 다른 노드라 판 구독이 그때마다 깨어나지 않음),
+     *   공은 "마지막으로 친 사람" 화면이 치는 순간의 위치·속도를 {방}_vl/ball에 올림
      *   (그 뒤 공은 중력만 받아 양쪽 계산이 같음). 공이 땅에 닿았을 때의 득점 판정도 마지막으로 친 쪽 화면만 함
      * - 혼자 연습(방 없음)이면 AI가 상대. 방에서 친구가 나가면 그 자리를 방장 화면의 AI가 이어받음 (mgSeatsToAi)
      ********************************************************************/
@@ -32119,7 +32120,7 @@
       ballR: 17, gravity: 1150, ballMax: 1250, bounce: 0.9,
       petSpeed: 340, petJumpV: 820, petGravity: 2400, petR: 40, petCenterUp: 44, // 펫 몸: 발에서 petCenterUp 위가 중심인 원
       goal: 11, timeLimitSec: 180, serveDelayMs: 1500, hitCooldown: 0.3, powerWindow: 0.25,
-      liveHz: 12, homeX: [230, 670],
+      liveHz: 15, interpDelayMs: 130, extrapMaxMs: 260, homeX: [230, 670], // 친구 펫은 받은 시각보다 interpDelay만큼 늦게 샘플 사이를 보간해 그림
     };
     // 펫별 배구 특성 (작게: 손맛은 비슷하게, 개성만 조금)
     const VOLLEY_PERKS = {
@@ -32230,13 +32231,28 @@
         return seat === mgMySeat(st) || (mgIsAiSeat(st, seat) && mgDrivesAi());
       },
       inRoom() { return Boolean(mgCurrentRoom() && currentJoinedMinigameRoomId); },
+      liveRoomId() { return currentJoinedMinigameRoomId || mgWatchRoomId || null; },
       liveRef(child) {
         const db = RealtimePvpService.initFirebaseClientSafe();
         const classCode = String(state.classCode || '').trim().toUpperCase();
-        if (!db || !classCode || !currentJoinedMinigameRoomId) return null;
-        return db.ref(`classes/${classCode}/minigames/${currentJoinedMinigameRoomId}/vl${child ? '/' + child : ''}`);
+        const roomId = this.liveRoomId();
+        if (!db || !classCode || !roomId) return null;
+        return db.ref(`classes/${classCode}/minigames/${roomId}_vl${child ? '/' + child : ''}`);
       },
-      clearLive() { try { this.liveRef('')?.remove().catch(() => {}); } catch (e) {} },
+      clearLive() { if (!currentJoinedMinigameRoomId) return; try { this.liveRef('')?.remove().catch(() => {}); } catch (e) {} },
+      // 실시간 노드 구독: 판 저장(minigames/{방})과 떨어진 {방}_vl만 받아서 펫·공 갱신이 판 전체 수신을 깨우지 않음
+      syncLiveSub() {
+        const want = petVolleyState.initialized && mgCurrentRoom() ? this.liveRoomId() : null;
+        if (want === this.liveSubRoom) return;
+        if (this.liveSubRef) { try { this.liveSubRef.off(); } catch (e) {} }
+        this.liveSubRef = null; this.liveSubRoom = want;
+        if (!want) return;
+        const ref = this.liveRef('');
+        if (!ref) { this.liveSubRoom = null; return; }
+        this.liveSubRef = ref;
+        ref.on('child_added', snap => { if (this.liveSubRef === ref) this.applyLiveChild(snap.key, snap.val()); });
+        ref.on('child_changed', snap => { if (this.liveSubRef === ref) this.applyLiveChild(snap.key, snap.val()); });
+      },
 
       // ───── 랠리 시작: 펫은 제자리, 공은 서브하는 펫 위에 ─────
       newRally() {
@@ -32244,17 +32260,18 @@
         const prev = this.st;
         const pets = [0, 1].map(i => ({
           seat: i, x: VOLLEY.homeX[i], y: VOLLEY.groundY, vx: 0, vy: 0, onGround: true, jumps: 0, airT: 0, animT: 0, moving: false,
-          hitCd: 0, powerT: 0, hitAnim: 0, remote: prev && prev.pets[i] ? prev.pets[i].remote : null, ai: prev && prev.pets[i] ? prev.pets[i].ai : { tx: VOLLEY.homeX[i], next: 0, dx: 0, dy: 0 }
+          hitCd: 0, powerT: 0, hitAnim: 0, buf: prev && prev.pets[i] ? prev.pets[i].buf : [], remote: prev && prev.pets[i] ? prev.pets[i].remote : null, ai: prev && prev.pets[i] ? prev.pets[i].ai : { tx: VOLLEY.homeX[i], next: 0, dx: 0, dy: 0 }
         }));
         const sv = st.serveSeat || 0;
         this.st = {
-          pets, ball: { x: VOLLEY.homeX[sv], y: 110, vx: 0, vy: 0, n: st.rally * 1000, by: sv, landed: false, landedAt: 0, spin: 0 },
+          pets, ball: { x: VOLLEY.homeX[sv], y: 110, vx: 0, vy: 0, n: st.rally * 1000, by: sv, landed: false, landedAt: 0, spin: 0, ox: 0, oy: 0 },
           parts: [], texts: [], trail: [], shake: 0, flash: 0
         };
         this.serverFlash = 1;
       },
       run() {
         this.ensureCanvas();
+        this.syncLiveSub();
         if (this.raf) return;
         this.last = performance.now();
         this.raf = requestAnimationFrame(ts => this.frame(ts));
@@ -32262,6 +32279,8 @@
       stopLocal() {
         cancelAnimationFrame(this.raf); this.raf = 0;
         this.st = null; this.keys = {};
+        if (this.liveSubRef) { try { this.liveSubRef.off(); } catch (e) {} }
+        this.liveSubRef = null; this.liveSubRoom = null;
       },
       visible() {
         const tab = document.getElementById('studentTab-minigame'), panel = document.getElementById('mgPanel-petvolley');
@@ -32352,13 +32371,29 @@
             if (p.hitCd > 0) p.hitCd -= dt;
             if (p.powerT > 0) p.powerT -= dt;
             if (!waiting && !b.landed && p.hitCd <= 0) this.tryHit(p, i, isAi);
-          } else if (p.remote) {
-            // 친구 펫: 받은 위치로 부드럽게
-            const k = Math.min(1, dt * 14);
-            p.x += (p.remote.x - p.x) * k; p.y += (p.remote.y - p.y) * k;
-            p.onGround = p.remote.y >= G - 2; p.moving = Boolean(p.remote.m);
-            if (!p.onGround) p.airT += dt;
-            if (p.remote.h && p.remote.h !== p.lastHitStamp) { p.lastHitStamp = p.remote.h; p.hitAnim = 0.3; }
+          } else if (p.buf && p.buf.length) {
+            // 친구 펫: 받은 시각보다 조금(interpDelay) 늦은 시점을 샘플 사이에서 보간 → 네트워크 흔들림에도 매끈
+            const rt = mgServerNow() - VOLLEY.interpDelayMs;
+            const buf = p.buf;
+            let a = null, c = null;
+            for (let k = buf.length - 1; k >= 0; k--) { if (buf[k].t <= rt) { a = buf[k]; c = buf[k + 1] || null; break; } }
+            if (!a) { a = buf[0]; c = null; }
+            if (c && c.t > a.t) {
+              const f = Math.max(0, Math.min(1, (rt - a.t) / (c.t - a.t)));
+              p.x = a.x + (c.x - a.x) * f; p.y = a.y + (c.y - a.y) * f;
+              p.moving = Boolean(f < 0.5 ? a.m : c.m); p.onGround = (f < 0.5 ? a.g : c.g) === 1;
+            } else {
+              // 다음 샘플이 아직 안 왔으면 마지막 속도로 조금만 이어 그림
+              const ahead = Math.max(0, Math.min(VOLLEY.extrapMaxMs, rt - a.t)) / 1000;
+              p.x = a.x + a.vx * ahead;
+              p.y = a.g === 1 ? a.y : Math.min(G, a.y + a.vy * ahead + 0.5 * VOLLEY.petGravity * ahead * ahead);
+              p.moving = Boolean(a.m) && ahead < 0.2; p.onGround = a.g === 1 || p.y >= G - 1;
+            }
+            const [lo, hi] = i === 0 ? [34, VOLLEY.netX - VOLLEY.netW / 2 - 24] : [VOLLEY.netX + VOLLEY.netW / 2 + 24, VOLLEY.W - 34];
+            p.x = Math.max(lo, Math.min(hi, p.x)); p.y = Math.min(G, p.y);
+            if (!p.onGround) p.airT += dt; else p.airT = 0;
+            const last = buf[buf.length - 1];
+            if (last.h && last.h !== p.lastHitStamp) { p.lastHitStamp = last.h; p.hitAnim = 0.3; }
           }
           if (p.hitAnim > 0) p.hitAnim -= dt;
           p.animT += dt;
@@ -32381,6 +32416,7 @@
           b.x = VOLLEY.homeX[st.serveSeat] ; b.y = 110 + Math.sin(Date.now() / 300) * 4; b.vx = 0; b.vy = 0;
         }
         b.spin += b.vx * dt * 0.02;
+        if (b.ox || b.oy) { const k = Math.min(1, dt / 0.12); b.ox -= b.ox * k; b.oy -= b.oy * k; if (Math.abs(b.ox) < 0.5 && Math.abs(b.oy) < 0.5) { b.ox = 0; b.oy = 0; } }
         if (!b.landed && !waiting) { s.trail.push({ x: b.x, y: b.y, life: 0.25 }); if (s.trail.length > 10) s.trail.shift(); }
         s.trail.forEach(t => { t.life -= dt; }); s.trail = s.trail.filter(t => t.life > 0);
         s.parts.forEach(p => { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 900 * dt; p.life -= dt; }); s.parts = s.parts.filter(p => p.life > 0);
@@ -32497,10 +32533,10 @@
         s.pets.forEach((p, i) => {
           if (!this.controls(i)) return;
           const ref = this.liveRef(String(i)); if (!ref) return;
-          const pack = { x: Math.round(p.x), y: Math.round(p.y), m: p.moving ? 1 : 0, h: p.hitStamp || 0, t: mgServerNow() };
-          const key = `${pack.x},${pack.y},${pack.m},${pack.h}`;
-          if (!force && p.lastSentKey === key) return;
-          p.lastSentKey = key;
+          const pack = { x: Math.round(p.x), y: Math.round(p.y), vx: Math.round(p.vx), vy: Math.round(p.vy), g: p.onGround ? 1 : 0, m: p.moving ? 1 : 0, h: p.hitStamp || 0, t: mgServerNow() };
+          const key = `${pack.x},${pack.y},${pack.m},${pack.h},${pack.g}`;
+          if (!force && p.lastSentKey === key && Date.now() - (p.lastSentAt || 0) < 500) return; // 가만히 있어도 0.5초마다 한 번은 보냄 (버퍼가 비지 않게)
+          p.lastSentKey = key; p.lastSentAt = Date.now();
           ref.set(pack).catch(() => {});
         });
       },
@@ -32510,20 +32546,35 @@
         const ref = this.liveRef('ball'); if (!ref) return;
         ref.set({ x: Math.round(b.x), y: Math.round(b.y), vx: Math.round(b.vx), vy: Math.round(b.vy), n: b.n, by: b.by, gid: st.gameId, t: mgServerNow() }).catch(() => {});
       },
-      applyLive(vl) {
+      // {방}_vl의 자식 하나('0' · '1' = 펫, 'ball' = 공)가 바뀔 때마다
+      applyLiveChild(key, r) {
         const st = petVolleyState, s = this.st;
-        if (!s || !vl || typeof vl !== 'object') return;
-        [0, 1].forEach(i => {
-          const r = vl[i]; if (!r || this.controls(i)) return;
-          s.pets[i].remote = { x: Number(r.x) || 0, y: Number(r.y) || VOLLEY.groundY, m: Number(r.m) || 0, h: Number(r.h) || 0 };
-        });
-        const rb = vl.ball;
-        if (rb && rb.gid === st.gameId && Number(rb.n) > s.ball.n && !this.controls(Number(rb.by))) {
+        if (!s || !st.initialized || !r || typeof r !== 'object') return;
+        if (key === '0' || key === '1') {
+          const i = Number(key);
+          if (this.controls(i)) return;
+          const p = s.pets[i];
+          const sample = { x: Number(r.x) || 0, y: Number(r.y) || VOLLEY.groundY, vx: Number(r.vx) || 0, vy: Number(r.vy) || 0, g: Number(r.g) === 1 || r.g == null ? 1 : 0, m: Number(r.m) || 0, h: Number(r.h) || 0, t: Number(r.t) || mgServerNow() };
+          if (r.g == null) sample.g = sample.y >= VOLLEY.groundY - 2 ? 1 : 0;
+          const buf = p.buf || (p.buf = []);
+          if (buf.length && sample.t <= buf[buf.length - 1].t) sample.t = buf[buf.length - 1].t + 1; // 순서가 뒤집혀 와도 버퍼는 시간순
+          buf.push(sample);
+          const cut = sample.t - 1500;
+          while (buf.length > 2 && buf[0].t < cut) buf.shift();
+          return;
+        }
+        if (key !== 'ball') return;
+        const rb = r;
+        if (rb.gid === st.gameId && Number(rb.n) > s.ball.n && !this.controls(Number(rb.by))) {
           const b = s.ball;
+          const px = b.x + (b.ox || 0), py = b.y + (b.oy || 0);
           b.x = Number(rb.x); b.y = Number(rb.y); b.vx = Number(rb.vx); b.vy = Number(rb.vy); b.n = Number(rb.n); b.by = Number(rb.by); b.landed = false;
           // 보낸 뒤 흐른 시간만큼 공을 미리 굴림 (최대 0.35초)
           let age = Math.max(0, Math.min(0.35, (mgServerNow() - (Number(rb.t) || mgServerNow())) / 1000));
           while (age > 0) { const step = Math.min(1 / 60, age); this.stepBall(b, step, false); age -= step; }
+          // 화면의 공이 갑자기 튀지 않게: 전 위치와의 차이를 그림 오프셋으로 두고 0.12초 동안 지움 (너무 멀면 그냥 옮김)
+          const dx = px - b.x, dy = py - b.y;
+          if (Math.hypot(dx, dy) < 160) { b.ox = dx; b.oy = dy; } else { b.ox = 0; b.oy = 0; }
           this.tone('hit');
           const p = s.pets[b.by]; if (p) p.hitAnim = 0.3;
         }
@@ -32555,7 +32606,7 @@
         ctx.fillStyle = '#f8fafc'; ctx.fillRect(nx - 16, nt - 4, 32, 6);
         if (s.flash > 0) { ctx.fillStyle = `rgba(255,255,255,${s.flash * 4})`; ctx.fillRect(nx - 20, nt - 6, 40, G - nt + 6); }
         // 공 그림자·궤적
-        const b = s.ball;
+        const b = { ...s.ball, x: s.ball.x + (s.ball.ox || 0), y: s.ball.y + (s.ball.oy || 0) };
         ctx.fillStyle = 'rgba(40,20,40,0.22)'; ctx.beginPath(); ctx.ellipse(b.x, G, 18 * Math.max(0.4, 1 - (G - b.y) / 500), 6, 0, 0, Math.PI * 2); ctx.fill();
         s.trail.forEach(t => { ctx.fillStyle = `rgba(255,255,255,${t.life * 1.6})`; ctx.beginPath(); ctx.arc(t.x, t.y, VOLLEY.ballR * t.life * 2.4, 0, Math.PI * 2); ctx.fill(); });
         // 펫
@@ -40083,7 +40134,6 @@
           PetVolley.run();
           note(pv);
         }
-        if (mgData.vl && petVolleyState.initialized) PetVolley.applyLive(mgData.vl);
 
         if (actorEl && latest) {
           actorEl.textContent = `📡 최근 실시간 행동: ${latest.updatedBy} (${new Date(latest.updatedAt || Date.now()).toLocaleTimeString('ko-KR')})`;
