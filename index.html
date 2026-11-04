@@ -3223,7 +3223,7 @@
         <div class="bg-slate-900 border-2 border-amber-500/30 rounded-2xl p-4 flex flex-col gap-2 text-xs text-slate-300 leading-relaxed">
           <h4 class="font-title text-lg text-white">📜 던전 규칙</h4>
           <div>🗺️ <strong>입장할 때마다 지도가 새로 만들어져요.</strong> 격자 크기·길·방 종류·보스 방 위치가 매번 달라요. 미니맵은 가 본 방과 그 옆 칸만 보여요.</div>
-          <div>🚪 방의 몬스터를 모두 쓰러뜨리면 문이 열려요. <strong>대표 용병을 문으로 보내거나</strong> 왼쪽 위 미니맵에서 옆 칸을 누르면 파티 전체가 그 방으로 이동해요. 보스 방과 이어진 문은 붉게 떨려요.</div>
+          <div>🚪 방의 몬스터를 모두 쓰러뜨리면 문이 열려요. <strong>대표 용병을 문으로 보내거나</strong> 왼쪽 위 미니맵에서 옆 칸을 누르면 파티 전체가 그 방으로 이동해요. 보스 방과 이어진 문은 붉게 떨려요. 자동 전투면 8초 뒤 안 가본 방으로 알아서 가요.</div>
           <div>⚔️ 방 종류: ⚔️ 일반 · 💎 정예(크고 센 몬스터, 추가 보상) · 📦 보물(상자 3개 중 하나만: 골드·회복·보스 방 지도) · 🔥 기믹(불기둥·덫·거미줄·낙석) · 🚶 빈 방 · 👑 보스</div>
           <div>💚 방을 깨면 쓰러진 용병이 체력 30%로 부활하고 스킬 쿨타임이 초기화돼요. 보스 방 입구 모닥불에서 5초 정비(체력 40% 회복) 뒤 보스가 나와요.</div>
           <div>⏰ 제한 시간 6분 (보스 방에 들어가면 최소 1분 30초는 보장) · 모두 쓰러지거나 시간이 지나면 끝나요. 깬 방까지의 보상은 받아요.</div>
@@ -38652,13 +38652,16 @@
     const DUNGEON_BOSS_MIN_SEC = 90;     // 보스 방에 들어갈 때 남은 시간이 이보다 적으면 이만큼으로
     const DUNGEON_BOSS_PREP_SEC = 5;     // 보스 방 입구 모닥불 정비 시간
     const DUNGEON_REVIVE_HP = 0.3;       // 방을 깨면 쓰러진 용병이 이 체력으로 부활
-    const DUNGEON_AUTO_PICK_SEC = 30;    // 자동 전투 중 이만큼 안 고르면 안 가본 방으로 알아서 이동
+    const DUNGEON_AUTO_PICK_SEC = 8;     // 자동 전투 중 이만큼 안 고르면 안 가본 방으로 알아서 이동
     const DUNGEON_FADE_SEC = 0.5;
     const DUNGEON_DOOR_R = 120;          // 문 앞 이만큼 안에 대표가 서면 이동
     const DUNGEON_TUNE = {
       // stat: 일반 몬스터 능력치 배율 (같은 층 탑 몬스터 대비) · elite: 정예 체력/공격 배율 · boss: 보스 배율 · floorAdd: 파티 레벨로 정한 층에 더함
-      normal: { stat: 0.85, eliteHp: 2.5, eliteAtk: 1.2, boss: 0.85, floorAdd: -3, mobSkills: 2, eliteSkills: 3, bossSkills: 4, bossAdds: 1 },
-      hard:   { stat: 0.95, eliteHp: 3.0, eliteAtk: 1.3, boss: 1.05, floorAdd: 0, mobSkills: 3, eliteSkills: 4, bossSkills: 5, bossAdds: 2 }
+      // 브라우저 콘솔 시뮬(자동 전투, 장비 없는 기본 용병단, 8~10판)로 맞춤: 보통 Lv.30 약 90% · Lv.55 약 75~88% / 어려움 Lv.30 약 40% · Lv.55 약 40% (어려움은 방이 더 많고 정예 2마리, 보스 소환 2배)
+      // levelEase: 레벨 30 위로 1레벨마다 층을 이만큼 더 내림 (높은 층 몬스터는 같은 레벨 용병보다 가파르게 세짐)
+      // 몬스터 3번째 스킬(함성·3중 화살)은 난이도를 크게 올려서 일반 몬스터는 두 난이도 모두 2개
+      normal: { stat: 0.8, eliteHp: 2.5, eliteAtk: 1.2, boss: 0.85, floorAdd: -3, levelEase: 0.1, mobSkills: 2, eliteSkills: 3, bossSkills: 4, bossAdds: 1 },
+      hard:   { stat: 0.8, eliteHp: 2.0, eliteAtk: 1.1, boss: 1.0, floorAdd: -3, levelEase: 0.2, mobSkills: 2, eliteSkills: 3, bossSkills: 5, bossAdds: 2 }
     };
     const DUNGEON_KIND_INFO = {
       start:    { icon: '🕯️', name: '시작 방' },
@@ -38872,7 +38875,10 @@
     function dungeonHardLocked(stu, id) { return !dungeonBookOf(stu, id).normalClear; }
     function dungeonFloorFor(stu, diff) {
       const mercs = (stu.roster || []).filter(m => m.deployed);
-      return Math.max(1, Math.min(TOWER_MAX_FLOOR, rushStartFloorOf(mercs) + DUNGEON_TUNE[diff].floorAdd));
+      const lv = mercs.length ? mercs.reduce((s, m) => s + (m.level || 1), 0) / mercs.length : 1;
+      // 높은 레벨일수록 같은 층 몬스터가 상대적으로 세져서(시뮬: Lv.55 어려움 0%) 레벨 30 위로는 층을 더 내림
+      const ease = Math.round(Math.max(0, lv - 30) * DUNGEON_TUNE[diff].levelEase);
+      return Math.max(1, Math.min(TOWER_MAX_FLOOR, rushStartFloorOf(mercs) + DUNGEON_TUNE[diff].floorAdd - ease));
     }
 
     // ----- 입장 -----
@@ -39364,8 +39370,17 @@
         if (!redAlive.some(u => !u.isClone)) clearDungeonRoom(cell);
         return false;
       }
-      // 'select': 문이 열림. 보물 상자 · 문 앞에 선 대표 · 자동 전투 30초 뒤 알아서 이동
-      if (cell.kind === 'treasure') stepDungeonTreasure(cell, L);
+      // 'select': 문이 열림. 보물 상자 · 문 앞에 선 대표 · 자동 전투면 잠시 뒤 알아서 이동
+      if (cell.kind === 'treasure') {
+        // 자동 전투: 대표가 아직 안 연 상자 중 가장 가까운 것으로 걸어감 (사람이 조종하면 직접 고름)
+        if (L && L.alive && cell.chest && cell.chest.opened < 0 && !(sim.controllers && sim.controllers[L.id])) {
+          const pts = dungeonChestPoints();
+          const t = pts.reduce((a, b) => (Math.hypot(b.x - L.x, b.y - L.y) < Math.hypot(a.x - L.x, a.y - L.y) ? b : a));
+          dungeonWalkTo(L, t.x, t.y + 40);
+          dg.selectAt = sim.tickCount; // 상자를 열 때까지는 알아서 이동하지 않음
+        }
+        stepDungeonTreasure(cell, L);
+      }
       if (dg.phase !== 'select') return false;
       if (L && L.alive) {
         const dir = dungeonOpenDirs(dg).find(d => { const p = dungeonDoorPoint(d); return Math.hypot(L.x - p.x, L.y - p.y) < DUNGEON_DOOR_R; });
@@ -39802,7 +39817,7 @@
                 </div>
                 <div class="rounded-xl bg-slate-950 border border-slate-800 p-2.5 ${hardLocked ? 'opacity-60' : ''}">
                   <div class="font-extrabold text-orange-300">🔥 어려움 <span class="text-amber-300">${stars}★</span></div>
-                  <div class="text-slate-400">스킬 많은 몬스터 · 정예 2마리 · 보스 소환 많음</div>
+                  <div class="text-slate-400">방이 더 많고 정예 2마리 · 보스가 더 세고 소환이 많아요</div>
                   <div class="text-slate-400">${hardLocked ? '🔒 보통을 깨면 열려요' : book.hardClear ? `✅ 클리어 · 🏅 최단 ${fmt(book.best?.hard)}` : '아직 못 깼어요'}</div>
                 </div>
               </div>
