@@ -16724,7 +16724,7 @@
 
     // 분신 만들기: 장비 '환영' (능력치 30%, 시간 제한 없음) · 도적 스킬 '분신' (능력치 50%, 20초)
     function spawnIllusion(u, { ratio = 0.3, label = '환영', lifeTicks = 0 } = {}) {
-      const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim', 'casting', 'pendingStrikes', 'quake', 'draggedBy', 'knightShield', 'knightShieldTicks', 'frostBarrier', 'frostBarrierTicks']);
+      const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim', 'casting', 'pendingStrikes', 'quake', 'draggedBy', 'knightShield', 'knightShieldTicks', 'frostBarrier', 'frostBarrierTicks', 'holyShield']);
       const c = JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) ? undefined : v)));
       const side = u.team === 'blue' ? 1 : -1;
       const pos = clampToArena(u.x + side * 60, u.y + 50);
@@ -18181,6 +18181,7 @@
         // 기사 방패 방어막도 같은 shield에 들어 있으므로, 남은 양이 shield보다 많지 않게
         if (defender.knightShield > defender.shield) defender.knightShield = defender.shield;
         if (defender.frostBarrier > defender.shield) defender.frostBarrier = defender.shield; // 빙결술사 아이스 배리어도 마찬가지
+        if (defender.holyShield > defender.shield) defender.holyShield = defender.shield; // 성기사 신성 보호도 마찬가지
       }
       defender.hp -= dmg;
       if ((defender.statuses.undying || 0) > 0 && defender.hp < 1) defender.hp = 1; // 불사: 체력이 1 아래로 내려가지 않음
@@ -20173,6 +20174,7 @@
         fallen.alive = true;
         fallen.hp = Math.round(fallen.maxHp * 0.2);
         fallen.shield = 0;
+        fallen.holyShield = 0;
         fallen.mana = Math.round(fallen.maxMana * 0.5);
         Object.keys(fallen.statuses).forEach(k => { fallen.statuses[k] = 0; });
         fallen.statuses.immune = 120;
@@ -20760,6 +20762,7 @@
           e.shield = 0;
           e.knightShield = 0;
           e.frostBarrier = 0;
+          e.holyShield = 0;
           inflictStatus(unit, e, 'hex', CURSE_RUIN_TICKS);
           inflictStatus(unit, e, 'weaken', CURSE_RUIN_TICKS);
           marks.set(e, e.damageTaken); // 터질 때까지 머리 위에 해골 표식 (drawRuinMarks)
@@ -22642,6 +22645,7 @@
           foe.shield = 0;
           foe.knightShield = 0;
           foe.frostBarrier = 0;
+          foe.holyShield = 0;
           const stripped = CURSE_SHATTER_BUFFS.filter(k => (foe.statuses[k] || 0) > 0);
           stripped.forEach(k => { foe.statuses[k] = 0; });
           if (broken > 0 || stripped.length) {
@@ -23046,6 +23050,8 @@
     const PALADIN_DEVOTION_MIN_HP = 0.3;    //   성기사 체력이 30% 아래면 대신 받지 않음
     const PALADIN_JUDGE_JUMP = 30;          // 심판 점프 높이 (그림 px, 키 110 기준)
     const PALADIN_JUDGE_FALL = 4;           //   발동 뒤 이 틱 동안 떨어져 땅에 내리찍음
+    const PALADIN_SWING_SPARK_W = 95;       // 기본 공격 땅 불꽃 폭 (그림 px)
+    const PALADIN_HIT_FX_SIZE = 1.75;       // 성스러운 돌격 충돌 폭발 폭 = 대상 몸 키 × 1.75
     const PALADIN_SWING_DELAY = 5;          // 기본 공격 망치 궤적: 치켜들기 칸(6틱)이 끝날 무렵부터 그림
     const PALADIN_SWING_PIVOT = [8, -52];   //   망치를 쥔 손(궤적 원의 가운데, 발 기준 그림 px)
     const PALADIN_SWING_R = 58;             //   손에서 망치 머리까지 (치켜든 칸 ~52, 내리친 칸 ~62)
@@ -23060,6 +23066,8 @@
     const PALADIN_JUDGMENT_SHIELD = 0.04;   //   맞은 적 1명마다 최대 체력 4% 보호막
     const PALADIN_JUDGMENT_SHIELD_MAX = 3;  //   최대 3명분
     const PALADIN_AURA_CELLS = 2.5;         // 신성 보호·축성: 주변 2.5칸
+    const VOW_BUBBLE_FILTER = 'sepia(1) saturate(3.5) hue-rotate(-28deg) brightness(1.1)'; // 수호 서약 구체 색
+    const HOLY_SHIELD_BUBBLE = 1.25;        // 신성 보호 보호막 구체 지름 = 몸 키(머리 꼭대기~발) × 1.25 (다른 보호막은 토큰 크기)
     const PALADIN_SHIELD_RATIO = 0.1;       // 신성 보호: 성기사 최대 체력 10% (겹치지 않고 큰 쪽만)
     const PALADIN_CONSECRATE_HEAL = 1.2;    // 축성: 공격력 120% 회복
     const PALADIN_CONSECRATE_IMMUNE = 150;  //   2.5초 면역
@@ -23086,6 +23094,7 @@
         pal.shield -= absorbed;
         if (pal.knightShield > pal.shield) pal.knightShield = pal.shield;
         if (pal.frostBarrier > pal.shield) pal.frostBarrier = pal.shield;
+        if (pal.holyShield > pal.shield) pal.holyShield = pal.shield;
         pal.hp -= share - absorbed;
       } else pal.hp -= share;
       pal.damageTaken += share;
@@ -23125,6 +23134,7 @@
           if ((a.shield || 0) >= amt) return; // 더 큰 보호막이 있으면 그대로 (겹치지 않음)
           const add = amt - (a.shield || 0);
           a.shield = amt;
+          a.holyShield = amt; // 신성 보호로 받은 몫: 남아 있는 동안 보호막 구체를 크게 그림
           unit.healDone += add;
           n++;
           if (a !== unit) sim.effects.push({ type: 'paladin_hs_dome', x: a.x, y: a.y, w: unitBodyDrawH(a) * 1.25, uid: a.id, life: 60, maxLife: 60 }); // 아군: 맑은 반구
@@ -23176,7 +23186,7 @@
           if (unit.alive && hitT) {
             withSkillHit(() => applyDamage(unit, hitT, unit.atk * PALADIN_CHARGE_DMG, '🐎', '#ca8a04'));
             inflictStatus(unit, hitT, 'stun', CHARGE_STUN_TICKS);
-            sim.effects.push({ type: 'paladin_charge_hit', x: hitT.x, y: hitT.y, w: unitBodyDrawH(unit) * 1.35, flip: Math.cos(angle) < 0, life: 30, maxLife: 30 });
+            sim.effects.push({ type: 'paladin_charge_hit', x: hitT.x, y: hitT.y, w: unitBodyDrawH(unit) * PALADIN_HIT_FX_SIZE, flip: Math.cos(angle) >= 0, life: 30, maxLife: 30 }); // 빛살이 달려온 쪽으로 터짐
           }
           // 멈춘 자리 뒤로 흙먼지: 두꺼운 쪽이 성기사 발 쪽, 달려온 쪽으로 옅어짐
           if (unit.alive) sim.effects.push({ type: 'paladin_charge_dust', x: unit.x - Math.cos(angle) * unitBodyDrawH(unit) * 0.45, y: unit.y, w: unitBodyDrawH(unit) * 1.1, flip: Math.cos(angle) >= 0, life: 40, maxLife: 40 });
@@ -24312,9 +24322,11 @@
           const img = PALADIN_CHARGE_FX.hit, ht = t - 3; // 망치가 땅에 닿는 때
           if (img.ready && ht >= 0 && ht < 18) {
             const p = ht / 18;
-            const w = 70 * k * Math.min(1, 0.5 + p / 0.2 * 0.5), h = w * img.height / img.width;
+            const w = PALADIN_SWING_SPARK_W * k * Math.min(1, 0.5 + p / 0.2 * 0.5), h = w * img.height / img.width;
             ctx.globalAlpha = Math.min(1, (1 - p) / 0.5);
-            ctx.drawImage(img, ef.hitX - w / 2, -h * 0.92, w, h);
+            ctx.translate(ef.hitX, 0);
+            ctx.scale(-1, 1); // 빛살이 성기사 쪽으로 튐
+            ctx.drawImage(img, -w / 2, -h * 0.75, w, h); // 망치 머리가 땅에 박히는 높이에서 터짐
           }
           ctx.restore();
           return;
@@ -24329,9 +24341,9 @@
           ctx.save();
           ctx.globalAlpha = Math.min(1, (1 - progress) / 0.5);
           ctx.imageSmoothingEnabled = true;
-          ctx.translate(ef.x, ef.y - ef.w * 0.2);
+          ctx.translate(ef.x, ef.y + 12); // 아래쪽이 대상 발밑 (몸 아래쪽에서 터짐)
           if (ef.flip) ctx.scale(-1, 1);
-          ctx.drawImage(img, -w / 2, -h * 0.7, w, h);
+          ctx.drawImage(img, -w / 2, -h * 0.9, w, h);
           ctx.restore();
           return;
         }
@@ -25997,20 +26009,37 @@
           }
         }
       }
-      if (u.shield > 0 && !frostBubble) {
+      // 성기사 수호 서약: 서약이 이어지는 6초 동안 신성 보호와 같은 크기의 금빛 구체로 몸을 감쌈 (보호막 구체 대신, 끝날 때 0.5초 동안 흐려짐)
+      const vowBubble = SUPPORT_FX.ready && u.alive && (st.vow || 0) > 0 && !frostBubble;
+      if (vowBubble) {
+        const fr = SUPPORT_FX.anims.shield_dome.fr, breathe = Math.sin(tick * 0.08);
+        const bodyTop = useSprite ? headTopY : -8 - tokenR;
+        const dia = Math.max(tokenR * 2 + 16, (16 - bodyTop) * HOLY_SHIELD_BUBBLE) * (1 + 0.025 * breathe), sc = dia / fr[2];
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha *= (0.6 + 0.15 * breathe) * Math.min(1, st.vow / 30);
+        ctx.filter = VOW_BUBBLE_FILTER; // 푸른 구체를 금빛으로 (drawSpriteFx가 한 번 칠해 두고 다시 씀)
+        drawSpriteFx(ctx, SUPPORT_FX.img, fr[0], fr[1], fr[2], fr[3], -fr[4] * sc, (16 + bodyTop) / 2 + jumpY - fr[5] * sc, fr[2] * sc, fr[3] * sc);
+        ctx.restore();
+      }
+      if (u.shield > 0 && !frostBubble && !vowBubble) {
         if (SUPPORT_FX.ready) {
           // 성녀 보호막 샘플의 푸른 구체: 속이 비어 보이게 가산 합성으로 몸을 감싸고, 천천히 숨 쉬듯 일렁임
           const def = SUPPORT_FX.anims.shield_dome;
           const breathe = Math.sin(tick * 0.08);
           ctx.save();
           ctx.globalCompositeOperation = 'lighter';
-          drawFxFrame(ctx, def.fr, 0, -8, (tokenR * 2 + 16) / def.fr[2] * (1 + 0.025 * breathe), 0, 0.6 + 0.15 * breathe, SUPPORT_FX.img);
+          // 성기사 신성 보호로 받은 보호막이 남아 있으면 구체를 크게 (몸 키를 다 감싸게) 그려 다른 보호막과 구분
+          const holy = Math.min(u.holyShield || 0, u.shield) > 0;
+          const bodyTop = useSprite ? headTopY : -8 - tokenR;
+          const dia = holy ? Math.max(tokenR * 2 + 16, (16 - bodyTop) * HOLY_SHIELD_BUBBLE) : tokenR * 2 + 16;
+          drawFxFrame(ctx, def.fr, 0, holy ? (16 + bodyTop) / 2 + jumpY : -8, dia / def.fr[2] * (1 + 0.025 * breathe), 0, 0.6 + 0.15 * breathe, SUPPORT_FX.img);
           ctx.restore();
         } else {
           ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.arc(0, -8, tokenR + 6, 0, Math.PI * 2);
+          ctx.arc(0, -8, tokenR + ((u.holyShield || 0) > 0 ? 14 : 6), 0, Math.PI * 2);
           ctx.stroke();
         }
       }
