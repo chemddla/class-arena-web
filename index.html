@@ -42024,6 +42024,10 @@
      *                      cape, capeColor, hat, hatColor, weapon, face, emblem }  (색은 견본 번호)
      ********************************************************************/
     const AV_SCALE = 1.5; // 방 안에서 그리는 배율 (48×80 → 72×120 도트, 의자 등받이보다 조금 큰 키)
+    // 걷기 한 걸음 = 8틀 (0.5초). 0·4: 두 발 땅, 1~3: 왼발(옆모습은 가까운 다리 앞으로), 5~7: 오른발. 가운데 틀(2·6)이 가장 높이·멀리
+    const AV_WALK_FRAMES = 8;
+    const AV_WALK_LIFT = [0, 1, 2, 1, 0, 1, 2, 1];      // 앞·뒤모습: 드는 발 높이(도트), 팔은 같은 양만큼 앞뒤로
+    const AV_WALK_SWING = [0, 1, 2, 1, 0, -1, -2, -1];  // 옆모습: 가까운 다리·팔이 앞(+)/뒤(−)로 가는 거리(도트)
     const AV_SKINS = ['#ffe3cc', '#f8cfa8', '#e9b083', '#cf9064', '#a4693f', '#6e432a'];
     const AV_HAIRS = ['#2e2633', '#5a3a28', '#9a6438', '#efc95e', '#eeeae2', '#d94c4c', '#ee86b0', '#8a5cc8', '#4677d0', '#4fb8b0'];
     const AV_EYES = ['#5a3a28', '#2e2633', '#3f6fc8', '#3f9a5a', '#8a5cc8', '#d98a2a', '#d94c4c'];
@@ -42217,8 +42221,9 @@
         const sk = AV_SKINS[a.skin], hc = AV_HAIRS[a.hairColor], ac = AV_CLOTH[a.armorColor], lc = AV_CLOTH[a.legsColor];
         const cc = AV_CLOTH[a.capeColor], hatC = AV_CLOTH[a.hatColor], shoe = AV_CLOTH[a.shoeColor], em = AV_CLOTH[a.emblem];
         const rH = ramp(hc), rA = ramp(ac), rS = ramp(sk), rC = ramp(cc);
-        const o = sit ? 0 : -(f % 2);                       // 걸을 때 위로 1도트 들썩
-        const lift = sit ? '' : f === 1 ? 'L' : f === 3 ? 'R' : ''; // 드는 다리
+        const lift = sit ? '' : f >= 1 && f <= 3 ? 'L' : f >= 5 ? 'R' : ''; // 드는 다리
+        const liftH = lift ? AV_WALK_LIFT[f] || 0 : 0;      // 드는 높이 0~2도트
+        const o = lift ? -1 : 0;                            // 발을 든 동안 몸이 위로 1도트 들썩
         // 학생이 그린 부위가 있으면 그 자리의 기본 그림은 건너뛰고 레이어를 찍음
         const C = a.custom || {}, cu = s => C[s] && (back ? (C[s].b || C[s].f) : C[s].f);
         const crop = sit ? SIT_FOOT + 1 : H;
@@ -42268,7 +42273,7 @@
 
         // ── 다리·부츠
         const leg = (x, side) => {
-          const up = lift === side ? 2 : 0, bot = (sit ? SIT_FOOT : FOOT) - 4 - up;
+          const up = lift === side ? liftH : 0, bot = (sit ? SIT_FOOT : FOOT) - 4 - up;
           mRect(x, 54, 6, bot - 54); commit(sk);
           if (!robe && lg !== 'custom') {
             if (lg === 'pants') { mRect(x, 54, 6, bot - 54); commit(lc); }
@@ -42349,7 +42354,7 @@
 
         // ── 팔 (드는 다리 반대쪽 팔이 앞으로)
         const arm = (x, side) => {
-          const sw = !lift ? 0 : lift === side ? 1 : -1, y = 39 + o + sw;
+          const sw = !lift ? 0 : lift === side ? liftH : -liftH, y = 39 + o + sw;
           const sleeve = { tunic: 5, leather: 4, plate: 12, coat: 13, robe: 13 }[ar] || 0;
           mRect(x, y, 4, 13); commit(sk, { line: 'all', sh: 1 });
           mEll(x + 2, y + 14, 2.6, 2.4); commit(plate ? METAL : ar === 'leather' ? LEATH : sk, { sh: 1 });
@@ -42529,8 +42534,8 @@
         const sk = AV_SKINS[a.skin], hc = AV_HAIRS[a.hairColor], ac = AV_CLOTH[a.armorColor], lc = AV_CLOTH[a.legsColor];
         const cc = AV_CLOTH[a.capeColor], hatC = AV_CLOTH[a.hatColor], shoe = AV_CLOTH[a.shoeColor], em = AV_CLOTH[a.emblem];
         const rH = ramp(hc), rA = ramp(ac), rS = ramp(sk), rC = ramp(cc), rHat = ramp(hatC);
-        const o = sit ? 0 : -(f % 2);                       // 걸을 때 위로 1도트 들썩
-        const sw = sit ? 0 : f === 1 ? 1 : f === 3 ? -1 : 0; // 가까운 다리·팔이 앞(+)/뒤(−)로
+        const sw = sit ? 0 : AV_WALK_SWING[f] || 0;         // 가까운 다리·팔이 앞(+)/뒤(−)로 0~2도트
+        const o = sw ? -1 : 0;                              // 발을 든 동안 몸이 위로 1도트 들썩
         // 학생이 그린 부위가 있으면 그 자리의 기본 그림은 건너뛰고 레이어를 찍음
         const C = a.custom || {}, cu = s => C[s] && (C[s].s || C[s].f);
         const crop = sit ? SIT_FOOT + 1 : H;
@@ -42568,7 +42573,7 @@
 
         // ── 다리: 먼 다리(그늘) 먼저, 가까운 다리 나중
         const leg = (x, near) => {
-          const dx = near ? sw * 2 : -sw * 2, lx = x + dx, bot = FT - 4 - (dx > 0 ? 1 : 0);
+          const dx = near ? sw : -sw, lx = x + dx, bot = FT - 4 - Math.max(0, dx); // 앞으로 가는 다리가 그만큼 들림
           const c = h => near ? h : shade(h);
           mRect(lx, 54, 6, bot - 54); commit(c(sk));
           if (!robe && lg !== 'custom') {
@@ -42624,7 +42629,7 @@
         if (!robe && ar !== 'custom') { mRect(18, 50 + o, 12, 2); commit(LEATH, { flat: true, line: 'b' }); dot(27, 50 + o, GOLD); dot(28, 50 + o, GOLD); dot(27, 51 + o, GOLD); dot(28, 51 + o, GOLD); }
 
         // ── 가까운 팔 (걸을 때 다리 반대로 흔들림)
-        const ax = 22 - sw * 2, ay = 39 + o;
+        const ax = 22 - sw, ay = 39 + o;
         const sleeve = { tunic: 5, leather: 4, plate: 12, coat: 13, robe: 13 }[ar] || 0;
         mRect(ax, ay, 4, 13); commit(sk, { line: 'all', sh: 1 });
         const handC = plate ? METAL : ar === 'leather' ? LEATH : sk;
@@ -43977,7 +43982,7 @@
         const stu = (state.students || []).find(x => x.id === s.stu);
         if (!stu) return;
         const ctx = this.ctx, S = AV_SCALE, b = this.avBox(s), now = performance.now();
-        const f = s.moving ? Math.floor(s.t * 8) % 4 : 0;
+        const f = s.moving ? Math.floor(s.t * 16) % AV_WALK_FRAMES : 0;
         const im = RoomAvatar.sprite(this.avatarOf(stu), s.back, f, !!s.sit, s.side);
         const g = homeIso(s.X, s.Y, s.z);
         ctx.save();
@@ -44013,7 +44018,7 @@
       drawAvatarPreview(t) {
         const F = document.getElementById('homeAvPvF'), Sd = document.getElementById('homeAvPvS'), B = document.getElementById('homeAvPvB'), stu = this.student();
         if (!F || !Sd || !B || !stu) return;
-        const a = this.avatarOf(stu), f = (t / 160 | 0) % 4;
+        const a = this.avatarOf(stu), f = (t / 80 | 0) % AV_WALK_FRAMES;
         [[F, false, false], [Sd, false, true], [B, true, false]].forEach(([cv, back, side]) => { const c = cv.getContext('2d'); c.imageSmoothingEnabled = false; c.clearRect(0, 0, cv.width, cv.height); c.drawImage(RoomAvatar.sprite(a, back, f, false, side), 0, 0); });
       },
       setAvatar(key, v) {
