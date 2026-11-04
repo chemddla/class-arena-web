@@ -308,6 +308,13 @@ test('실시간 결투 화면 전달(pvp_live): 학급이 있으면 쓰고 지�
   await assertFails(db(null).ref('classes/OWN1/pvp_livex/pvp_s1').set({ t: 1 }));
 });
 
+test('반 보스(world_boss): 학급이 있으면 보스 체력·기여도를 쓰고 지울 수 있고, 없는 학급에는 못 씀', async () => {
+  await assertSucceeds(db(null).ref('classes/OWN1/world_boss/current').set({ key: '2026-11-02_1', hp: 100, maxHp: 100 }));
+  await assertSucceeds(db(null).ref('classes/OWN1/world_boss/contrib/2026-11-02_1/s1').set({ name: 'a', dmg: 10, tries: 1 }));
+  await assertSucceeds(db(null).ref('classes/OWN1/world_boss/current').remove());
+  await assertFails(db(null).ref('classes/NOPE/world_boss/current').set({ hp: 1 }));
+});
+
 // ----- 학생 외형 디자인 (classes/{학급}/skinDesigns/{학생}/{id}) -----
 const design = (extra = {}) => ({ job: 'knight', title: '용암 기사', note: '빨간 갑옷', name: 's1', image: 'data:image/jpeg;base64,AAAA', at: Date.now() - 1000, ...extra });
 
