@@ -315,6 +315,12 @@ test('반 보스(world_boss): 학급이 있으면 보스 체력·기여도를 �
   await assertFails(db(null).ref('classes/NOPE/world_boss/current').set({ hp: 1 }));
 });
 
+test('레이드에서 싸우는 학생 위치(world_boss_live): 학급이 있으면 쓰고 지울 수 있고, 없는 학급에는 못 씀', async () => {
+  await assertSucceeds(db(null).ref('classes/OWN1/world_boss_live/s1').set({ n: 'a', s: [1, 2], at: 1 }));
+  await assertSucceeds(db(null).ref('classes/OWN1/world_boss_live/s1').remove());
+  await assertFails(db(null).ref('classes/NOPE/world_boss_live/s1').set({ n: 'a' }));
+});
+
 // ----- 학생 외형 디자인 (classes/{학급}/skinDesigns/{학생}/{id}) -----
 const design = (extra = {}) => ({ job: 'knight', title: '용암 기사', note: '빨간 갑옷', name: 's1', image: 'data:image/jpeg;base64,AAAA', at: Date.now() - 1000, ...extra });
 
