@@ -3084,7 +3084,7 @@
                 <h4 class="font-title text-lg text-white">🛡️ 협동 레이드에 출전할 내 용병 선택 (최대 8명)</h4>
                 <p class="text-xs text-slate-400">방을 개설하거나 친구 방에 입장할 때 함께 싸울 내 대표 용병을 <strong>8명까지</strong> 클릭해 선택하세요.</p>
               </div>
-              <span id="raidMySelectedCountBadge" class="px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 font-extrabold text-xs">내 용병 0/8명 배치됨</span>
+              <span id="raidMySelectedCountBadge" class="px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 font-extrabold text-xs">용병을 골라 주세요</span>
             </div>
 
             <div>
@@ -3142,8 +3142,8 @@
         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
             <div>
-              <h4 class="font-title text-lg text-white">🛡️ 레이드에 출전할 내 용병 선택 (최대 8명)</h4>
-              <p class="text-xs text-slate-400">클릭해서 <strong>8명까지</strong> 고르세요. 엘리트 보스 협동 사냥과 같은 선택이에요.</p>
+              <h4 class="font-title text-lg text-white">🛡️ 레이드에 데리고 갈 용병 (1명)</h4>
+              <p class="text-xs text-slate-400">레이드에는 <strong>용병 1명</strong>만 데려가서 직접 조종해요. 눌러서 골라 주세요.</p>
             </div>
             <span id="worldRaidMercCountBadge" class="px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 font-extrabold text-xs">내 용병 0/8명 배치됨</span>
           </div>
@@ -11256,8 +11256,7 @@
       { id: 'realtimePvp', icon: '⚡', label: '실시간 PvP 대결하기', goal: 1, go: () => { goToStudentTab('pvp'); switchPvpSubMode('realtime'); } },
       { id: 'towerClear', icon: '🧗', label: '모험의 탑 새 층 돌파하기', goal: 1, go: () => goToStudentTab('tower'), need: stu => (stu.towerFloor || 1) < TOWER_MAX_FLOOR },
       { id: 'raidWin', icon: '⚔️', label: '엘리트 보스 토벌 성공하기', goal: 1, go: () => goToStudentTab('raid') },
-      { id: 'worldBoss', icon: '🌍', label: '레이드 도전하기', goal: 1, go: () => goToStudentTab('worldraid') },
-      { id: 'worldBoss3', icon: '🌍', label: '레이드 3번 도전하기', goal: 3, go: () => goToStudentTab('worldraid') },
+      { id: 'worldBoss', icon: '🌍', label: '레이드 참가하기', goal: 1, go: () => goToStudentTab('worldraid') },
       { id: 'rankedWin', icon: '🏆', label: '랭킹 매칭 승리하기', goal: 1, go: () => goToRankedMatch() },
       { id: 'practice', icon: '🪆', label: '허수아비 모의전 하기', goal: 1, go: () => goToStudentTab('squad') },
       { id: 'auctionBid', icon: '🙋', label: '용병 경매에 입찰하기', goal: 1, go: () => goToStudentTab('market') },
@@ -18302,6 +18301,7 @@
       // 기사 철갑: 기본 공격(근접·원거리)으로는 밀리지 않음
       if (attacker && !suppressHitKnockback && !(basicHitKind && jobPassiveOf(defender).basicStaggerImmune)) applyHitKnockback(defender, attacker.x, attacker.y);
       if (attacker) attacker.damageDealt += dmg;
+      if (attacker && defender.isWorldBoss && attacker.liveOwnerId) sim.worldLastHit = attacker.liveOwnerId; // 🌍 레이드 마지막 일격
       applyMonsterHitPassives(attacker, defender, dmg);
       applyItemHitPassives(attacker, defender, dmg);
       berserkerLifesteal(attacker, defender, dmg);
@@ -24272,13 +24272,13 @@
       if (!sim.running) return;
       if (sim.spectator) { stopSpectatingPvpRoom(); return; }
       if (battleNotStartedYet()) { leaveBattleBeforeStart(); return; }
-      askCustomConfirm(sim.mode === 'monster_rush' ? `몬스터 러쉬를 그만둘까요? 지금까지 깬 ${(sim.rush && sim.rush.cleared) || 0}라운드까지 보상을 받아요 (오늘 이미 받은 라운드는 빼고).` : '전투를 포기할까요? 패배로 처리되고 보상은 없어요.', () => {
+      askCustomConfirm(sim.mode === 'world_boss' ? (sim.netRole === 'host' ? '레이드를 끝낼까요? 방장이 나가면 함께 싸우는 친구들의 레이드도 지금까지 준 피해로 끝나요.' : '레이드에서 나갈까요? 내 용병은 AI가 이어서 싸우고, 나는 보상을 받지 못해요.') : sim.mode === 'monster_rush' ? `몬스터 러쉬를 그만둘까요? 지금까지 깬 ${(sim.rush && sim.rush.cleared) || 0}라운드까지 보상을 받아요 (오늘 이미 받은 라운드는 빼고).` : '전투를 포기할까요? 패배로 처리되고 보상은 없어요.', () => {
         if (!sim.running) return;
         if (sim.netRole === 'guest') {
           localBattleInput.forfeit = 1;
           liveNet.lastInputSentAt = 0;
           onLocalControlChanged();
-          if (isRaidNetMode(sim.mode)) {
+          if (isRaidNetMode(sim.mode) || sim.mode === 'world_boss') {
             // 협동 레이드 파티원: 내 용병은 AI가 이어서 싸우고, 나만 패배(보상 없음)로 끝냄
             stopLiveBattleNet();
             sim.netRole = null;
@@ -28309,7 +28309,7 @@
         btn('tower', '🏰 모험의 탑 클리어', book.towerClears || 0, TOWER_DAILY_CLEARS),
         btn('raidClears', '🐉 엘리트 보스 클리어', book.raidClears || 0, ELITE_DAILY_CLEARS),
         btn('raid', '🐉 엘리트 보스 격려 보상', book.raid || 0, DAILY_REWARD_LIMITS.raid),
-        btn('worldBossTries', '🌍 레이드 도전', book.worldBossTries || 0, WORLD_BOSS.tries),
+        btn('worldBossTries', '🌍 레이드 참가', book.worldBossTries || 0, WORLD_BOSS.tries),
         btn('rush', '🌊 몬스터 러쉬 보상 라운드', book.rushRound || 0, RUSH.maxRound),
         btn('pvp', '🏆 랭킹 매칭', book.pvp || 0, DAILY_REWARD_LIMITS.pvp),
         btn('quiz', '❓ 퀴즈', book.quiz || 0, DAILY_REWARD_LIMITS.quiz),
@@ -28333,7 +28333,7 @@
       saveState();
       renderAdminEditTriesBox();
       renderAllStudentViews();
-      const label = category === 'all' ? '모든 콘텐츠' : category === 'raidClears' ? '엘리트 보스 클리어' : category === 'worldBossTries' ? '레이드 도전' : (DAILY_REWARD_LABELS[category] || category);
+      const label = category === 'all' ? '모든 콘텐츠' : category === 'raidClears' ? '엘리트 보스 클리어' : category === 'worldBossTries' ? '레이드 참가' : (DAILY_REWARD_LABELS[category] || category);
       showRewardBanner(`🔁 ${stu.name} 학생의 오늘 ${label} 도전 기회를 초기화했어요!`);
     }
 
@@ -29061,8 +29061,12 @@
     //   current: { key, weekKey, stage, bossId, maxHp, hp, hpMult, startedAt, killedAt, killedBy, killedByName }
     //   contrib/{key}/{학생id}: { name, dmg, tries, best, lastAt } · log/{key}/{id}: { id, name, dmg, at, kill } · history/{key}: 끝난 보스 (처치 보상은 여기를 보고 받음)
     const WORLD_BOSS = {
-      tries: 3,                   // 하루 도전 횟수
-      hpPerStudent: 2,            // 보스 체력 = 엘리트 보스 체력 × 학생 수 × 이 값 (선생님이 hpMult로 다시 조정)
+      tries: 1,                   // 하루 참가 횟수 (방을 열든 난입하든 1회)
+      roomStaleMs: 15000,         // 방장 화면이 이만큼 소식이 없으면 끝난 방으로 봄
+      claimDelayMs: 8000,         // 처치 뒤 친구들 기여도가 다 올라올 때까지 기다렸다가 처치 보상 순위를 매김
+      hpPerStudent: 0.2,          // 보스 체력 = 엘리트 보스 체력 × 학생 수 × 이 값 (선생님이 hpMult로 다시 조정) · 용병 1명·하루 1번 기준
+      bossAtk: 0.2,               // 레이드 보스 공격력 배율 (엘리트 보스는 용병 16명 기준이라 1명씩 들어오는 레이드에선 낮춤)
+      hpVersion: 2,               // 체력 계산식을 바꾸면 올림 → 이미 나와 있는 보스도 남은 비율 그대로 새 체력으로
       minStudents: 5,             // 학생 수가 적어도 이만큼으로 계산
       enrageAt: 0.3,              // 남은 체력 비율이 이 아래면 광폭화 (공격력 enrageAtk배, 붉은 빛)
       enrageAtk: 1.3,
@@ -29093,7 +29097,7 @@
       makeCurrent(stage, hpMult, weekKey) {
         const def = this.defOfStage(stage);
         const maxHp = Math.round(def.hp * WORLD_BOSS.hpPerStudent * this.classSize() * (hpMult || 1));
-        return { key: `${weekKey}_${stage}`, weekKey, stage, bossId: def.id, maxHp, hp: maxHp, hpMult: hpMult || 1, startedAt: Date.now(), killedAt: 0, killedBy: '', killedByName: '' };
+        return { key: `${weekKey}_${stage}`, weekKey, stage, bossId: def.id, maxHp, hp: maxHp, hpMult: hpMult || 1, v: WORLD_BOSS.hpVersion, startedAt: Date.now(), killedAt: 0, killedBy: '', killedByName: '' };
       },
       current() { const c = this.cache && this.cache.current; return c && c.key ? c : null; },
       contrib(key) { return (this.cache && this.cache.contrib && this.cache.contrib[key]) || {}; },
@@ -29114,10 +29118,22 @@
           this.cache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
           this.ensureCurrent();
           this.claimKillRewards();
+          this.syncJoiners();
+          this.announceRoom();
           this.render();
           this.renderBanner();
           this.renderAdmin();
         }, err => console.warn('[레이드 구독 실패 - DB 규칙을 확인하세요]:', err));
+      },
+
+      // 친구가 레이드 방을 열면 한 번 알림 (오늘 참가할 수 있을 때만)
+      announceRoom() {
+        const r = this.liveRoom();
+        const stu = getActiveStudent();
+        if (!r || r.id === this.seenRoomId || !stu || !isStudentSession(stu)) return;
+        this.seenRoomId = r.id;
+        if (r.hostId === stu.id || (r.members && r.members[stu.id]) || this.triesLeft(stu) <= 0) return;
+        showRewardBanner(`🌍 ${r.hostName} 친구가 레이드를 열었어요! [⚔️ 전투 → 레이드]에서 바로 난입할 수 있어요!`);
       },
 
       // 보스가 없거나·주가 바뀌었거나·방금 쓰러졌으면 새 보스를 만듦 (먼저 본 한 명만 성공하도록 transaction)
@@ -29126,7 +29142,10 @@
         if (!this.ref || this.ensuring || !(state.students || []).length) return;
         const wk = this.weekKey();
         const cur = this.current();
-        if (cur && cur.weekKey === wk && !cur.killedAt) return;
+        if (cur && cur.weekKey === wk && !cur.killedAt) {
+          if (cur.v !== WORLD_BOSS.hpVersion && !this.liveRoom()) this.rescale();
+          return;
+        }
         this.ensuring = true;
         let ended = null;
         this.ref.child('current').transaction(c => {
@@ -29138,6 +29157,17 @@
           this.ensuring = false;
           if (res && res.committed && ended && !(this.cache && this.cache.history && this.cache.history[ended.key])) this.archive(ended);
         }).catch(() => { this.ensuring = false; });
+      },
+      // 체력 계산식이 바뀌기 전에 나온 보스: 남은 비율 그대로 새 체력으로 (먼저 본 한 명만)
+      rescale() {
+        if (this.rescaling) return;
+        this.rescaling = true;
+        this.ref.child('current').transaction(c => {
+          if (!c || !c.key || c.v === WORLD_BOSS.hpVersion || c.killedAt) return;
+          const ratio = Math.max(0, Math.min(1, (c.hp || 0) / Math.max(1, c.maxHp || 1)));
+          const maxHp = Math.round(this.defOf(c).hp * WORLD_BOSS.hpPerStudent * this.classSize() * (c.hpMult || 1));
+          return { ...c, maxHp, hp: Math.max(1, Math.round(maxHp * ratio)), v: WORLD_BOSS.hpVersion };
+        }).then(() => { this.rescaling = false; }).catch(() => { this.rescaling = false; });
       },
       // 끝난 보스(쓰러졌거나 주가 끝남)를 history에 남김: 처치 보상·지난 기록은 여기를 봄
       archive(cur) {
@@ -29159,8 +29189,14 @@
           if (!h || !h.key || !h.killedAt || now - h.killedAt > WORLD_BOSS.claimDays * 864e5) return;
           const claimed = stu.worldBossClaimed || {};
           if (claimed[h.key]) return;
+          if (now - h.killedAt < WORLD_BOSS.claimDelayMs) {
+            clearTimeout(this.claimTimer);
+            this.claimTimer = setTimeout(() => this.claimKillRewards(), WORLD_BOSS.claimDelayMs - (now - h.killedAt) + 300);
+            return;
+          }
           const def = this.defOf(h);
-          const rank = (h.top3 || []).findIndex(t => t && t.id === stu.id);
+          const live = this.ranking(h.key).slice(0, 3);
+          const rank = (live.length ? live : (h.top3 || [])).findIndex(t => t && t.id === stu.id);
           let mult = WORLD_BOSS.allReward;
           if (rank >= 0) mult += WORLD_BOSS.topReward[rank] || 0;
           if (h.killedBy === stu.id) mult += WORLD_BOSS.lastHitReward;
@@ -29177,29 +29213,109 @@
         if (changed) { saveState(); renderAllStudentViews(); }
       },
 
-      // ----- 전투 -----
-      start() {
+      // ----- 레이드 방 (world_boss/room) -----
+      // 먼저 참가한 학생이 방을 열고 방장이 되어 전투를 계산함. 방이 열려 있는 동안 다른 친구가 참가하면 그 전투에 바로 난입
+      // (방장 화면이 친구 용병을 전장에 넣고 유닛 목록을 다시 보냄). 친구 화면은 실시간 팀전처럼 방장 화면을 받고 내 조작만 보냄
+      //   room: { id, key, hostId, hostName, startedAt, hb, members: { 학생id: { name, merc, at } } } · hb = 방장 화면이 살아 있다는 표시
+      liveRoom() {
+        const r = this.cache && this.cache.room;
+        const cur = this.current();
+        return r && r.id && cur && r.key === cur.key && Date.now() - (r.hb || 0) < WORLD_BOSS.roomStaleMs ? r : null;
+      },
+      // 데리고 갈 용병 1명 (고른 적이 없으면 대표 용병 → 전투력이 가장 높은 용병)
+      pickedMerc(stu) {
+        const roster = (stu && stu.roster) || [];
+        let m = roster.find(x => x.id === this.mercId);
+        if (!m) { m = repMercOf(stu) || null; this.mercId = m ? m.id : null; }
+        return m;
+      },
+      pickMerc(mercId) { this.mercId = mercId; renderWorldRaidTab(); },
+      // 레이드 용병 1명: 왼쪽 진형, 들어온 순서대로 위아래로 비켜 섬
+      unitFor(stu, merc, idx) {
+        const u = buildCoopRaidBlueUnits([{ stu, mercs: [merc], label: stu.name || '친구' }])[0];
+        const offs = [0, -140, 140, -280, 280, -420, 420];
+        const p = clampToArena(u.x - Math.floor(idx / offs.length) * 70, u.y + offs[idx % offs.length]);
+        u.x = p.x; u.y = p.y;
+        u.liveOwnerId = stu.id;
+        return u;
+      },
+      async start() {
         const stu = getActiveStudent();
         const cur = this.current();
-        if (!cur) { showNotice('⚠️ 레이드 정보를 아직 못 받았어요. 잠시 뒤 다시 눌러 주세요.'); return; }
+        if (!cur || !this.ref) { showNotice('⚠️ 레이드 정보를 아직 못 받았어요. 잠시 뒤 다시 눌러 주세요.'); return; }
         if (cur.killedAt || cur.hp <= 0) { showNotice('🏆 이 보스는 이미 쓰러졌어요! 다음 보스가 곧 나타나요.'); return; }
-        if (this.triesLeft(stu) <= 0) { showNotice(`오늘 레이드 도전 횟수(${WORLD_BOSS.tries}회)를 모두 썼어요. 내일 다시 도전할 수 있어요!`); return; }
+        if (this.triesLeft(stu) <= 0) { showNotice(`오늘 레이드 참가 횟수(${WORLD_BOSS.tries}회)를 모두 썼어요. 내일 다시 참가할 수 있어요!`); return; }
         if (sim.running) { showNotice('⚠️ 진행 중인 전투를 먼저 끝내 주세요.'); return; }
-        ensureSelectedRaidMercs(stu);
-        const mercs = (stu.roster || []).filter(m => selectedRaidMercIds.includes(m.id)).slice(0, RAID_PICK);
-        if (!mercs.length) { showNotice('⚠️ 먼저 아래 [레이드에 출전할 내 용병 선택]에서 용병을 골라 주세요.'); return; }
+        if (this.joining) return;
+        const merc = this.pickedMerc(stu);
+        if (!merc) { showNotice('⚠️ 먼저 레이드에 데리고 갈 용병 1명을 골라 주세요.'); return; }
+        this.joining = true;
+        const me = { name: stu.name, merc: JSON.parse(JSON.stringify(merc)), at: Date.now() };
+        let res = null;
+        try {
+          res = await this.ref.child('room').transaction(r => {
+            const live = r && r.id && r.key === cur.key && Date.now() - (r.hb || 0) < WORLD_BOSS.roomStaleMs;
+            if (live) return { ...r, members: { ...(r.members || {}), [stu.id]: me } };
+            const now = Date.now();
+            return { id: `wraid_${now}_${Math.random().toString(36).slice(2, 6)}`, key: cur.key, hostId: stu.id, hostName: stu.name, startedAt: now, hb: now, members: { [stu.id]: me } };
+          });
+        } catch (e) { res = null; }
+        this.joining = false;
+        const room = res && res.committed && res.snapshot && typeof res.snapshot.val === 'function' ? res.snapshot.val() : null;
+        if (!room || !room.id) { showNotice('⚠️ 레이드 방에 들어가지 못했어요. 다시 눌러 주세요.'); return; }
+        const role = room.hostId === stu.id ? 'host' : 'guest';
+        // 참가 횟수는 들어가는 순간 씀 (중간에 나가도 돌려받지 않음)
+        const book = getDailyRewardBook(stu);
+        book.worldBossTries = (book.worldBossTries || 0) + 1;
+        DailyMission.progress('worldBoss', 1, stu);
+        saveState();
         const def = this.defOf(cur);
-        const blueUnits = buildCoopRaidBlueUnits([{ stu, mercs, label: stu.name }]);
-        const boss = this.buildBoss(cur, def);
+        const mine = this.unitFor(stu, merc, 0);
         launchSimulation({
           mode: 'world_boss',
-          title: `🌍 레이드 토벌: ${stu.name}(${mercs.length}명) vs ${cur.stage}단계 ${def.name}`,
+          title: `🌍 레이드: ${cur.stage}단계 ${def.name} · 방장 ${room.hostName}`,
           blueStudent: stu, redStudent: null, eliteBossId: def.id, rewardMc: 0,
-          customBlueUnits: blueUnits, customRedUnits: [boss]
+          customBlueUnits: [mine], customRedUnits: [this.buildBoss(cur, def)],
+          netRole: role, myTeam: 'blue'
         });
         if (!sim.running) return;
-        sim.meta.worldBoss = { key: cur.key, bossId: def.id, stage: cur.stage, maxHp: cur.maxHp, startHp: cur.hp };
-        addBattleLog(`🌍 [레이드] ${stu.name}의 용병 ${mercs.length}명이 [${def.name}] (남은 체력 ${Math.round(cur.hp).toLocaleString()} / ${cur.maxHp.toLocaleString()}) 토벌에 나섭니다! 준 피해만큼 반 전체의 보스 체력이 줄어요. (제한 시간 ${Math.round(ELITE_RAID_TIME_LIMIT_SEC / 60)}분)`);
+        sim.meta.worldBoss = { key: cur.key, bossId: def.id, stage: cur.stage, maxHp: cur.maxHp, startHp: cur.hp, host: role === 'host', roomId: room.id };
+        sim.worldLastHit = null;
+        sim.waitingForOpponent = false;
+        sim.duel1v1 = true; // 내 용병 1명을 직접 조종
+        setBattleControlMode('manual', mine.id, true);
+        if (role === 'host') {
+          this.joined = new Set([stu.id]);
+          this.beat(room.id);
+          startLiveBattleNet(room.id, 'host', room.startedAt, false, true, []);
+          liveNet.guestChose = true;
+          this.syncJoiners();
+          addBattleLog(`🌍 [레이드] ${stu.name}이(가) 레이드를 열었어요! [${def.name}] 남은 체력 ${Math.round(cur.hp).toLocaleString()} / ${cur.maxHp.toLocaleString()} · 반 친구들이 언제든 난입할 수 있어요. (제한 시간 ${Math.round(ELITE_RAID_TIME_LIMIT_SEC / 60)}분)`);
+        } else {
+          startLiveBattleNet(room.id, 'guest', room.startedAt, false, true, []);
+          addBattleLog(`⚡ [레이드] ${room.hostName}의 레이드에 난입했어요! 내 용병을 직접 조종해서 함께 싸워요.`);
+        }
+        renderWorldRaidTab();
+      },
+      // 방장: 방에 새로 들어온 친구의 용병을 전장에 넣고 친구 화면들에 유닛 목록을 다시 보냄
+      syncJoiners() {
+        const meta = sim.meta && sim.meta.worldBoss;
+        if (!sim.running || sim.mode !== 'world_boss' || !meta || !meta.host || liveNet.role !== 'host') return;
+        const r = this.cache && this.cache.room;
+        if (!r || r.id !== meta.roomId) return;
+        let added = false;
+        Object.entries(r.members || {}).forEach(([id, m]) => {
+          if (this.joined.has(id) || !m || !m.merc || !m.merc.id) return;
+          this.joined.add(id);
+          const friend = (state.students || []).find(s => s.id === id) || { id, name: m.name, roster: [] };
+          const merc = (friend.roster || []).find(x => x.id === m.merc.id) || m.merc;
+          const u = this.unitFor({ ...friend, id, name: friend.name || m.name }, merc, this.joined.size - 1);
+          sim.units.push(u);
+          if (!liveNet.teamExpect.includes(id)) liveNet.teamExpect.push(id);
+          addBattleLog(`⚡ ${m.name || '친구'}이(가) [${merc.name}]와 함께 레이드에 난입했어요!`);
+          added = true;
+        });
+        if (added) { republishLiveUnits(); renderLiveUnitStatus(); }
       },
       // 보스: 엘리트 보스 그대로(크기·스킬 동작), 체력은 반 공유 체력의 남은 만큼, 스킬은 단계와 상관없이 7개 전부
       buildBoss(cur, def) {
@@ -29207,6 +29323,7 @@
         boss.maxHp = Math.max(1, Math.round(cur.maxHp));
         boss.hp = Math.max(1, Math.min(boss.maxHp, Math.round(cur.hp)));
         boss.isWorldBoss = true;
+        boss.atk = Math.max(1, Math.round(boss.atk * WORLD_BOSS.bossAtk));
         applyUnitSkillBook(boss, buildSkillBook(ELITE_BOSS_SKILLS[def.id] || []));
         this.applyEnrage(boss);
         return boss;
@@ -29219,20 +29336,30 @@
         boss.name = `🔥${boss.name}`;
         return true;
       },
-      // 전투 중 체력이 광폭화 선 아래로 내려가면
+      // 방장 화면의 매 틱: 광폭화
       step() {
         const boss = sim.units.find(u => u.isWorldBoss && u.alive);
-        if (boss && this.applyEnrage(boss)) addBattleLog(`🔥 레이드가 광폭화했어요! 공격력이 ${WORLD_BOSS.enrageAtk}배가 돼요!`);
+        if (boss && this.applyEnrage(boss)) addBattleLog(`🔥 레이드 보스가 광폭화했어요! 공격력이 ${WORLD_BOSS.enrageAtk}배가 돼요!`);
       },
-      // 전투 끝: 도전 횟수 차감, 참여 보상, 서버 체력 차감·기여도 기록 (결과창은 서버 반영을 기다리지 않고 먼저 띄움)
+      // 방장: 방이 살아 있다는 표시(hb)를 4초마다 (전투 화면 그리기와 따로 돌아서, 다른 브라우저 탭을 보고 있어도 방이 닫히지 않음)
+      beat(roomId) {
+        clearInterval(this.hbTimer);
+        this.hbTimer = setInterval(() => {
+          const meta = sim.meta && sim.meta.worldBoss;
+          const r = this.cache && this.cache.room;
+          if (!sim.running || sim.mode !== 'world_boss' || !meta || meta.roomId !== roomId || !r || r.id !== roomId) { clearInterval(this.hbTimer); return; }
+          this.ref.child('room/hb').set(Date.now()).catch(() => {});
+        }, 4000);
+      },
+      // 전투 끝 (방장·친구 모두 각자 화면에서): 내 용병이 준 피해로 참여 보상·기여도 · 방장은 보스 체력 차감·방 닫기
       finish(stu, blueWon) {
         const meta = (sim.meta && sim.meta.worldBoss) || {};
         const iForfeited = Boolean(sim.forfeitTeam) && sim.forfeitTeam === sim.myTeam;
-        const dealt = Math.max(0, Math.round(Math.min(meta.startHp || Infinity, sim.units.filter(u => u.team === 'blue').reduce((s, u) => s + (u.damageDealt || 0), 0))));
-        const book = getDailyRewardBook(stu);
-        book.worldBossTries = (book.worldBossTries || 0) + 1;
-        DailyMission.progress('worldBoss', 1, stu);
-        DailyMission.progress('worldBoss3', 1, stu);
+        const dealt = Math.max(0, Math.round(sim.units.filter(u => u.team === 'blue' && u.liveOwnerId === stu.id).reduce((s, u) => s + (u.damageDealt || 0), 0)));
+        const lastHit = sim.worldLastHit || null;
+        // 보스가 실제로 잃은 체력 (방장만 씀): 화면을 다시 그리기 전에 셈 (그린 뒤엔 미리보기 전투가 유닛 목록을 바꿀 수 있음)
+        const boss = sim.units.find(u => u.isWorldBoss);
+        const bossLost = boss ? Math.max(0, Math.round((meta.startHp || 0) - (boss.alive ? Math.max(0, boss.hp) : 0))) : 0;
         const def = this.defOf(meta);
         const share = dealt / Math.max(1, meta.maxHp || 1);
         let reward = 0;
@@ -29240,63 +29367,81 @@
           reward = Math.round(Math.min(WORLD_BOSS.joinCap, share * WORLD_BOSS.joinMult) * def.rewardMc);
           if (reward > 0) { stu.mc += reward; state.guardianPts += 8; }
         }
+        const players = new Set(sim.units.filter(u => u.team === 'blue' && u.liveOwnerId).map(u => u.liveOwnerId)).size;
         const atkKing = mvpCandidates().sort((a, b) => b.damageDealt - a.damageDealt)[0];
         const tankKing = mvpCandidates().sort((a, b) => b.damageTaken - a.damageTaken)[0];
         const healKing = mvpCandidates().sort((a, b) => b.healDone - a.healDone)[0];
         document.getElementById('battleResultEmoji').textContent = blueWon ? '🏆' : (dealt > 0 ? '🌍' : '🛡️');
         document.getElementById('battleResultTitle').textContent = blueWon
-          ? '🗡️ 레이드를 쓰러뜨렸어요! 마지막 일격!'
-          : (iForfeited ? '전투 포기' : `레이드 보스에게 ${dealt.toLocaleString()} 피해!`);
+          ? (lastHit === stu.id ? '🗡️ 레이드 보스를 쓰러뜨렸어요! 마지막 일격!' : '🏆 레이드 보스를 쓰러뜨렸어요!')
+          : (iForfeited ? '레이드에서 나왔어요' : `레이드 보스에게 ${dealt.toLocaleString()} 피해!`);
         const descEl = document.getElementById('battleResultDesc');
-        descEl.textContent = (iForfeited ? '🏳️ 전투를 포기했어요. 준 피해는 레이드 체력에서 빠지지만 보상은 없어요.'
-          : reward > 0 ? `참여 보상으로 💰 ${reward.toLocaleString()} CA를 받았어요! (레이드 체력의 ${(share * 100).toFixed(2)}%)` : '피해를 주지 못해서 참여 보상은 없어요.')
-          + ` · 오늘 남은 도전 ${this.triesLeft(stu)}회 · 서버에 반영하는 중…`;
+        descEl.textContent = (iForfeited ? '🏳️ 레이드에서 나왔어요. 보상은 없어요.'
+          : reward > 0 ? `참여 보상으로 💰 ${reward.toLocaleString()} CA를 받았어요! (보스 체력의 ${(share * 100).toFixed(2)}%)` : '피해를 주지 못해서 참여 보상은 없어요.')
+          + ` · 함께 싸운 친구 ${players}명` + (meta.host ? ' · 서버에 반영하는 중…' : '');
         document.getElementById('battleMvpBox').innerHTML = `
-          <div class="font-bold text-amber-300 mb-1">🌟 이번 토벌 3대 분야 MVP 용병</div>
+          <div class="font-bold text-amber-300 mb-1">🌟 이번 레이드 3대 분야 MVP 용병</div>
           <div>⚔️ 최고 공격왕: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
           <div>🛡️ 든든 수호왕: <strong>${tankKing?.name || '-'}</strong> (${tankKing?.damageTaken || 0} 방어)</div>
           <div>💚 다정 치유왕: <strong>${healKing?.name || '-'}</strong> (${healKing?.healDone || 0} 회복·보호)</div>`;
         document.getElementById('battleResultOverlay').classList.remove('hidden');
         if (document.getElementById('arenaSection')?.classList.contains('hidden')) {
-          showRewardBanner(`🌍 레이드 토벌이 끝났어요! ${dealt.toLocaleString()} 피해 · ${descEl.textContent}`);
+          showRewardBanner(`🌍 레이드가 끝났어요! ${dealt.toLocaleString()} 피해 · ${descEl.textContent}`);
         }
         sim.netRole = null;
         saveState();
         renderAllStudentViews();
+        if (!iForfeited) this.commitContrib(stu, meta.key, dealt, blueWon && lastHit === stu.id);
+        if (!meta.host) return;
+        // 방장: 보스가 실제로 잃은 체력만큼 공유 체력에서 빼고, 방을 닫음
+        const killer = blueWon && lastHit ? { id: lastHit, name: this.nameOf(lastHit) } : null;
         const base = descEl.textContent.replace(' · 서버에 반영하는 중…', '');
-        this.commit(stu, meta, dealt).then(info => {
-          if (!info) { descEl.textContent = `${base} · ⚠️ 서버에 연결되지 않아 레이드 체력에 반영하지 못했어요.`; return; }
-          if (info.stale) { descEl.textContent = `${base} · 이 보스는 그 사이 다른 친구가 쓰러뜨렸어요. 기여도에는 적혔어요.`; return; }
+        this.closeRoom(meta.roomId);
+        this.commitBossHp(meta, bossLost, killer).then(info => {
+          if (!info) { descEl.textContent = `${base} · ⚠️ 서버에 연결되지 않아 보스 체력에 반영하지 못했어요.`; return; }
+          if (info.stale) { descEl.textContent = `${base} · 보스 정보가 그 사이 바뀌어서 체력에는 반영되지 않았어요.`; return; }
           descEl.textContent = info.killed
-            ? `${base} · 🏆 레이드가 쓰러졌어요! 처치 보상은 곧 반 전원에게 들어가요.`
-            : `${base} · 레이드 남은 체력 ${Math.round(info.left).toLocaleString()} (${(info.left / Math.max(1, meta.maxHp) * 100).toFixed(1)}%)`;
+            ? `${base} · 🏆 레이드 보스가 쓰러졌어요! 처치 보상은 곧 반 전원에게 들어가요.`
+            : `${base} · 보스 남은 체력 ${Math.round(info.left).toLocaleString()} (${(info.left / Math.max(1, meta.maxHp) * 100).toFixed(1)}%)`;
         });
       },
-      async commit(stu, meta, dealt) {
-        if (!this.ref || !meta.key) return null;
-        const key = meta.key;
+      nameOf(id) {
+        const r = this.cache && this.cache.room;
+        return (r && r.members && r.members[id] && r.members[id].name) || ((state.students || []).find(s => s.id === id) || {}).name || '친구';
+      },
+      closeRoom(roomId) {
+        if (!this.ref || !roomId) return;
+        this.ref.child('room').transaction(r => (r && r.id === roomId ? null : undefined)).catch(() => {});
+      },
+      async commitContrib(stu, key, dealt, kill) {
+        if (!this.ref || !key) return;
         try {
           await this.ref.child(`contrib/${key}/${stu.id}`).transaction(c => {
             const o = c || {};
             return { name: stu.name, dmg: (o.dmg || 0) + dealt, tries: (o.tries || 0) + 1, best: Math.max(o.best || 0, dealt), lastAt: Date.now() };
           });
+          const id = 'wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+          this.ref.child(`log/${key}/${id}`).set({ id: stu.id, name: stu.name, dmg: dealt, at: Date.now(), kill: Boolean(kill) }).catch(() => {});
+          this.pruneLog(key);
+        } catch (e) { console.warn('[레이드 기여도 기록 실패]', e); }
+      },
+      async commitBossHp(meta, dealt, killer) {
+        if (!this.ref || !meta.key) return null;
+        try {
           let killed = false, stale = false, left = 0;
           const res = await this.ref.child('current').transaction(c => {
-            if (!c || c.key !== key || c.killedAt) { stale = true; return; }
+            if (!c || c.key !== meta.key || c.killedAt) { stale = true; return; }
             stale = false;
             const hp = Math.max(0, (c.hp || 0) - dealt);
             const out = { ...c, hp };
             killed = hp <= 0;
-            if (killed) { out.killedAt = Date.now(); out.killedBy = stu.id; out.killedByName = stu.name; }
+            if (killed) { out.killedAt = Date.now(); out.killedBy = (killer && killer.id) || ''; out.killedByName = (killer && killer.name) || ''; }
             left = hp;
             return out;
           });
-          if (stale || !(res && res.committed)) return { ok: true, stale: true, dealt };
-          const id = 'wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-          this.ref.child(`log/${key}/${id}`).set({ id: stu.id, name: stu.name, dmg: dealt, at: Date.now(), kill: killed }).catch(() => {});
-          this.pruneLog(key);
+          if (stale || !(res && res.committed)) return { stale: true };
           if (killed) await this.archive(res.snapshot && typeof res.snapshot.val === 'function' ? res.snapshot.val() : null);
-          return { ok: true, killed, left, dealt };
+          return { killed, left };
         } catch (e) {
           console.warn('[레이드 기록 실패]', e);
           return null;
@@ -29314,7 +29459,7 @@
           if (!c || !c.key) return;
           const ratio = (c.hp || 0) / Math.max(1, c.maxHp || 1);
           const maxHp = Math.round(this.defOf(c).hp * WORLD_BOSS.hpPerStudent * this.classSize() * mult);
-          return { ...c, hpMult: mult, maxHp, hp: Math.max(c.killedAt ? 0 : 1, Math.round(maxHp * ratio)) };
+          return { ...c, hpMult: mult, maxHp, hp: Math.max(c.killedAt ? 0 : 1, Math.round(maxHp * ratio)), v: WORLD_BOSS.hpVersion };
         }).then(() => showRewardBanner(`🌍 레이드 체력 배율을 ×${mult}로 바꿨어요. (남은 체력 비율은 그대로)`)).catch(() => {});
       },
       adminReset(stageDelta = 0) {
@@ -29351,6 +29496,13 @@
         const mine = myIdx >= 0 ? rank[myIdx] : null;
         const tries = this.triesLeft(stu);
         const dead = Boolean(cur.killedAt) || cur.hp <= 0;
+        const room = this.liveRoom();
+        const roomN = room ? Object.keys(room.members || {}).length : 0;
+        const inRoom = Boolean(sim.running && sim.mode === 'world_boss');
+        const off = dead || tries <= 0 || inRoom;
+        const roomHTML = room
+          ? `<div class="rounded-xl border-2 border-rose-500/60 bg-rose-500/10 px-3 py-2 text-xs flex flex-wrap items-center gap-2"><span class="inline-block w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span><strong class="text-rose-200">지금 레이드 진행 중!</strong><span class="text-slate-300">방장 ${this.esc(room.hostName)} · ${roomN}명 싸우는 중: ${Object.values(room.members || {}).map(m => this.esc(m && m.name)).join(', ')}</span></div>`
+          : '<div class="text-[11px] text-slate-400">지금 열린 레이드가 없어요. 참가하면 내가 방장이 되어 레이드가 열려요.</div>';
         const rewardMc = def.rewardMc;
         const rankHTML = rank.slice(0, 10).map((c, i) => `
           <div class="flex items-center gap-2 px-2 py-1 rounded-lg ${c.id === stu.id ? 'bg-amber-500/15 border border-amber-500/40' : 'bg-slate-950'}">
@@ -29373,7 +29525,7 @@
               <div class="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-2xl">🌍</div>
               <div>
                 <h3 class="font-title text-2xl text-white">레이드 (반 전체 협동 토벌)</h3>
-                <p class="text-xs text-slate-400 mt-0.5">한 주 동안 반 친구 모두가 <strong>같은 보스의 체력</strong>을 깎아요. 혼자 용병 8명으로 ${Math.round(ELITE_RAID_TIME_LIMIT_SEC / 60)}분 싸우면 준 피해만큼 줄어요. 쓰러뜨리면 <strong>반 전원</strong>이 보상을 받고 바로 다음 단계 보스가 나와요!</p>
+                <p class="text-xs text-slate-400 mt-0.5">한 주 동안 반 친구 모두가 <strong>같은 보스의 체력</strong>을 깎아요. <strong>용병 1명</strong>을 데리고 참가하면 레이드 방이 열리고, 그동안 다른 친구가 참가하면 <strong>바로 난입</strong>해서 함께 싸워요 (${Math.round(ELITE_RAID_TIME_LIMIT_SEC / 60)}분 · 하루 ${WORLD_BOSS.tries}번). 쓰러뜨리면 <strong>반 전원</strong>이 보상을 받고 바로 다음 단계 보스가 나와요!</p>
               </div>
             </div>
             <span class="px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-extrabold">⏳ ${this.timeLeftText(cur)}</span>
@@ -29396,16 +29548,17 @@
                 <div class="rounded-xl bg-slate-900 border border-slate-800 px-2.5 py-2"><div class="text-slate-500 font-bold">기여 1·2·3위 추가</div><div class="text-amber-300 font-extrabold">+${Math.round(rewardMc * WORLD_BOSS.topReward[0]).toLocaleString()} / ${Math.round(rewardMc * WORLD_BOSS.topReward[1]).toLocaleString()} / ${Math.round(rewardMc * WORLD_BOSS.topReward[2]).toLocaleString()}</div></div>
                 <div class="rounded-xl bg-slate-900 border border-slate-800 px-2.5 py-2"><div class="text-slate-500 font-bold">🗡️ 마지막 일격 추가</div><div class="text-rose-300 font-extrabold">+${Math.round(rewardMc * WORLD_BOSS.lastHitReward).toLocaleString()} CA</div></div>
               </div>
+              ${roomHTML}
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="text-xs text-slate-300">
-                  ${mine ? `내 기여: <strong class="text-rose-300">${Math.round(mine.dmg).toLocaleString()}</strong> 피해 (${myIdx + 1}위 · ${mine.tries}회 도전 · 최고 ${Math.round(mine.best || 0).toLocaleString()})` : '아직 이 보스에 도전하지 않았어요.'}
+                  ${mine ? `내 기여: <strong class="text-rose-300">${Math.round(mine.dmg).toLocaleString()}</strong> 피해 (${myIdx + 1}위 · ${mine.tries}회 참가 · 최고 ${Math.round(mine.best || 0).toLocaleString()})` : '아직 이 보스와 싸우지 않았어요.'}
                 </div>
-                <button onclick="WorldBoss.start()" ${dead || tries <= 0 ? 'disabled' : ''}
-                  class="px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-lg ${dead || tries <= 0 ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-400 text-slate-950'}">
-                  ${dead ? '🏆 쓰러짐 · 다음 보스 준비 중' : `⚔️ 도전하기 (오늘 ${tries}/${WORLD_BOSS.tries}회 남음)`}
+                <button onclick="WorldBoss.start()" ${off ? 'disabled' : ''}
+                  class="px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-lg ${off ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : room ? 'bg-rose-500 hover:bg-rose-400 text-white animate-pulse' : 'bg-amber-500 hover:bg-amber-400 text-slate-950'}">
+                  ${dead ? '🏆 쓰러짐 · 다음 보스 준비 중' : inRoom ? '⚔️ 레이드에서 싸우는 중' : tries <= 0 ? '✅ 오늘 레이드 참가 완료 (내일 다시)' : room ? '⚡ 지금 난입하기!' : '⚔️ 레이드 열기'}
                 </button>
               </div>
-              <div class="text-[11px] text-slate-500">출전 용병은 아래 [레이드에 출전할 내 용병 선택]에서 고른 ${RAID_PICK}명이에요.</div>
+              <div class="text-[11px] text-slate-500">데리고 갈 용병은 아래 [레이드에 데리고 갈 용병]에서 고른 1명이에요. 내 용병은 직접 조종해요.</div>
             </div>
             <div class="lg:col-span-5 flex flex-col gap-3">
               <div class="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex flex-col gap-1.5 text-xs">
@@ -29436,7 +29589,7 @@
             ${this.bossArt(def, 36)}
             <div class="min-w-0 flex-1 flex flex-col gap-1">
               <div class="flex items-center justify-between gap-2 text-xs">
-                <span class="font-extrabold text-white truncate">🌍 레이드 ${cur.stage}단계 ${this.esc(def.name)}${dead ? ' · 🏆 쓰러짐!' : ''}</span>
+                <span class="font-extrabold text-white truncate">🌍 레이드 ${cur.stage}단계 ${this.esc(def.name)}${dead ? ' · 🏆 쓰러짐!' : ''}${this.liveRoom() ? ' · <span class="text-rose-300">🔴 지금 진행 중 · 난입 가능!</span>' : ''}</span>
                 <span class="text-amber-300 font-bold shrink-0">⏳ ${this.timeLeftText(cur)}</span>
               </div>
               ${this.hpBarHTML(cur, 'h-3.5')}
@@ -29452,7 +29605,7 @@
         const rank = this.ranking(cur.key);
         box.innerHTML = `
           <h4 class="font-title text-lg text-amber-300">🌍 레이드 조정</h4>
-          <div class="text-xs text-slate-300">${cur.stage}단계 <strong>${this.esc(def.name)}</strong> · 도전한 학생 ${rank.length}명 · ${this.timeLeftText(cur)}</div>
+          <div class="text-xs text-slate-300">${cur.stage}단계 <strong>${this.esc(def.name)}</strong> · 참가한 학생 ${rank.length}명 · ${this.timeLeftText(cur)}</div>
           ${this.hpBarHTML(cur, 'h-4')}
           <label class="text-xs text-slate-400">체력 배율 (학생 수 × 엘리트 보스 체력 × ${WORLD_BOSS.hpPerStudent} × 배율 · 바꿔도 남은 비율은 그대로)</label>
           <div class="flex flex-wrap gap-1.5">
@@ -29466,21 +29619,21 @@
       }
     };
     window.WorldBoss = WorldBoss;
-    // 🌍 레이드 탭: 레이드 패널 + 출전 용병 선택 (엘리트 보스 협동 사냥과 같은 selectedRaidMercIds)
+    // 🌍 레이드 탭: 레이드 패널 + 데리고 갈 용병 1명 고르기
     function renderWorldRaidTab() {
       const stu = getActiveStudent();
       if (!stu) return;
-      ensureSelectedRaidMercs(stu);
+      const picked = WorldBoss.pickedMerc(stu);
       WorldBoss.render();
       const badge = document.getElementById('worldRaidMercCountBadge');
-      if (badge) badge.textContent = `내 용병 ${selectedRaidMercIds.length} / ${RAID_PICK}명 배치됨`;
+      if (badge) badge.textContent = picked ? `🗡️ ${picked.name}` : '용병을 골라 주세요';
       const grid = document.getElementById('worldRaidMercGrid');
       if (!grid) return;
       grid.innerHTML = (stu.roster || []).map(m => {
-        const picked = selectedRaidMercIds.includes(m.id);
+        const on = picked && picked.id === m.id;
         return `
-          <div onclick="toggleRaidMercSelection('${m.id}')"
-            class="cursor-pointer rounded-xl border-2 p-2.5 flex items-center justify-between gap-2 transition ${picked ? 'bg-indigo-600/20 border-indigo-500 shadow' : 'bg-slate-950 border-slate-800 opacity-70 hover:opacity-100'}">
+          <div onclick="WorldBoss.pickMerc('${m.id}')"
+            class="cursor-pointer rounded-xl border-2 p-2.5 flex items-center justify-between gap-2 transition ${on ? 'bg-indigo-600/20 border-indigo-500 shadow' : 'bg-slate-950 border-slate-800 opacity-70 hover:opacity-100'}">
             <div class="flex items-center gap-2 truncate">
               ${getMercIconHTML(m.job, m.skinVariant, 34)}
               <div class="truncate">
@@ -29488,7 +29641,7 @@
                 <div class="text-[10px] text-rose-400 font-bold">⚔️ ${calcMercCombatPower(m, stu).toLocaleString()}</div>
               </div>
             </div>
-            <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${picked ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-400'}">${picked ? '✅ 배치' : '선택'}</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${on ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-400'}">${on ? '✅ 데려감' : '선택'}</span>
           </div>`;
       }).join('') || '<div class="col-span-full text-xs text-slate-400 text-center py-4">아직 용병이 없어요.</div>';
     }
@@ -29568,7 +29721,6 @@
         selectedRaidMercIds.push(mercId);
       }
       renderCoopRaidTab();
-      renderWorldRaidTab();
       syncMyRaidRoomMercs(stu);
     }
 
@@ -36829,6 +36981,7 @@
         blueWon: Boolean(blueTeamWon),
         forfeitTeam: sim.forfeitTeam || null,
         ...(sim.rush ? { rs: packRushState() } : {}),
+        ...(sim.mode === 'world_boss' ? { lh: sim.worldLastHit || null } : {}),
         s: sim.units.map(u => [Math.round(liveNum(u.damageDealt)), Math.round(liveNum(u.healDone)), Math.round(liveNum(u.damageTaken))])
       }).catch(() => {});
       const roomId = liveNet.roomId;
@@ -37153,10 +37306,10 @@
     // 버퍼의 화면 한 장을 적용 (위치는 따로 이어 그림) · ageMs = 그 화면이 재생 시점보다 얼마나 앞선 것인지
     function applyLiveFrameState(val, ageMs) {
       // 토벌 도중에 들어온 관전자: 남은 시간이 방장 화면과 같게
-      if (sim.raidWatch && liveNum(val.t) > 0) sim.tickCount = liveNum(val.t);
+      if ((sim.raidWatch || sim.mode === 'world_boss') && liveNum(val.t) > 0) sim.tickCount = liveNum(val.t);
       liveNet.hostPause = val.ps === 'choose' ? val.ps : null;
       if (Array.isArray(val.rs)) applyRushState(val.rs);
-      if (sim.mode === 'elite_raid') sim.eliteIntro = liveNum(val.it) > 0 ? { t: liveNum(val.it) } : null;
+      if (isEliteBossMode(sim.mode)) sim.eliteIntro = liveNum(val.it) > 0 ? { t: liveNum(val.it) } : null;
       if (Array.isArray(val.sk)) sim.shake = { power: Math.min(60, liveNum(val.sk[0])), life: liveNum(val.sk[1]), maxLife: Math.max(1, liveNum(val.sk[2])) };
       if (Array.isArray(val.fl)) sim.flash = { color: cleanUserText(val.fl[0], 30) || '#ffffff', life: liveNum(val.fl[1]), maxLife: Math.max(1, liveNum(val.fl[2])) };
       val.u.forEach((p, i) => {
@@ -37237,8 +37390,9 @@
         u.damageTaken = liveNum(s[2]);
       });
       if (Array.isArray(val.rs)) applyRushState(val.rs);
+      if (sim.mode === 'world_boss') sim.worldLastHit = typeof val.lh === 'string' ? val.lh : null;
       stopLiveBattleNet();
-      sim.forfeitTeam = val.forfeitTeam === 'red' || val.forfeitTeam === 'blue' ? val.forfeitTeam : null;
+      sim.forfeitTeam = sim.mode !== 'world_boss' && (val.forfeitTeam === 'red' || val.forfeitTeam === 'blue') ? val.forfeitTeam : null;
       if (sim.running) finishSimulation(val.blueWon === true);
     }
 
