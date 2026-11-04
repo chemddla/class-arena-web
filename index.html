@@ -6402,6 +6402,8 @@
         aegis:       { anim: 'aegis', tpf: 45, dur: 45 }
       },
       castFrames: { judgment: [11, 12], holy_shield: 14, consecrate: 17, vow: 14, aegis: 18 },
+      frameDx: { 10: 16 }, // 기본 공격 내리치기 칸은 샘플에서 몸이 치켜들기 칸보다 뒤에 있어서, 앞으로 16px 옮겨 그림 (몸이 앞으로 실리며 내리침)
+      swingHitX: 55, // 내리치기 칸에서 망치 머리가 땅에 닿는 자리 (발 기준 앞쪽, 칸 px, frameDx 포함) — 기본 공격 타격 불꽃 위치
       judgeHitX: 27 // 내리찍기 칸에서 망치 머리가 땅에 닿는 자리 (발 기준 앞쪽, 칸 px) — 빛기둥 위치
     };
     // 창병: 청록 머리·초록 망토·장창. 기본 공격은 휘두르기(attack)와 찌르기(thrust) 두 벌 (pickSpriteFrame에서 lanceMode로 고름)
@@ -6462,7 +6464,7 @@
     //   · 13 성스러운 돌격 (방패 앞세워 날개 펴고 돌진, 바람 줄·금빛 불꽃·흙먼지). 날개를 높이 펼친 칸들 때문에 칸 높이 155
     //   다른 스킬 동작 샘플은 아직 없어서 심판 = 치켜듦(6) → 내리치기(7), 나머지 스킬·시전 = 치켜듦(6)·준비(5)
     const SECRET_SKIN_SHEETS = { warrior_sr1: { cellH: 112, anchorY: 111 }, knight_sr1: { cellH: 114, anchorY: 111, topH: 101 }, lancer_sr1: { topH: 88 },
-      paladin_sr1: { cellW: 227, cellH: 155, anchorX: 103, anchorY: 153, topH: 110, portraitCX: 106, count: 14, judgeHitX: 37, swingHitX: 37, frameDx: {}, // 0번의 내리치기 칸 옮김(frameDx)은 칸 번호가 달라 물려받지 않음 frameDx: {}, swingHitX: 37, // 0번의 내리치기 칸 옮김(10번)은 SR 1에선 쓰러짐 칸이라 끔
+      paladin_sr1: { cellW: 227, cellH: 155, anchorX: 103, anchorY: 153, topH: 110, portraitCX: 106, count: 14, judgeHitX: 37, swingHitX: 37, frameDx: {}, swingDelay: 9, swingTrail: false, // 0번의 내리치기 칸 옮김(frameDx)은 칸 번호가 달라 물려받지 않음 · 공격 4칸이라 내리치기(셋째 칸, 12틱)에 맞춰 불꽃만 (궤적은 그림에 있음)
         anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5, 6, 7, 8], skill: [6], hurt: [9], death: [9, 10, 11], judge: [7], hshield: [6], charge: [13], consec: [12], aegis: [6] },
         castFrames: { judgment: [5, 6], holy_shield: 5, consecrate: 12, vow: 5, aegis: 5 } },
       bard_sr1: { cellW: 147, cellH: 100, anchorX: 64, anchorY: 97, topH: 84, portraitCX: 69, lutePt: [27, 38] }, // lutePt = 공격 칸(5)의 하프 줄 가운데 (기준점에서 앞으로·위로, 음파가 나오는 자리)
@@ -16551,6 +16553,7 @@
           if (u.job === 'berserker') berserkerTwinHit(u, target, u.atk, { kind: 'melee' }); // 쌍도끼 50%씩 두 번
           else withHitKind('melee', () => applyDamage(u, target, u.atk));
         }
+        if (u.job === 'paladin' && !u.monsterType) paladinSwingFx(u); // 망치 궤적 + 땅 불꽃
       } else if (u.job === 'archer') {
         u.mana = Math.min(u.maxMana, u.mana + 18);
         directional('arrow', u.atk);
@@ -19360,6 +19363,7 @@
           } else if (u.job === 'warrior' || u.job === 'rogue' || u.job === 'knight' || u.job === 'paladin') {
             playCombatSfx('slash');
             withHitKind('melee', () => applyDamage(u, target, u.atk));
+            if (u.job === 'paladin' && !u.monsterType) paladinSwingFx(u); // 망치 궤적 + 땅 불꽃
             // 베기 선 이펙트 없음 (전사·기사·도적 공통)
 
           } else if (u.job === 'mage' || u.job === 'frost' || u.job === 'curse' || u.job === 'bard') {
@@ -23039,6 +23043,17 @@
     const PALADIN_DEVOTION_CELLS = 2;       // 헌신: 2칸 안 아군
     const PALADIN_DEVOTION_SHARE = 0.15;    //   받을 피해의 15%를 대신 (처음 20%: 무작위 5:5 승률 60~62%)
     const PALADIN_DEVOTION_MIN_HP = 0.3;    //   성기사 체력이 30% 아래면 대신 받지 않음
+    const PALADIN_JUDGE_JUMP = 30;          // 심판 점프 높이 (그림 px, 키 110 기준)
+    const PALADIN_JUDGE_FALL = 4;           //   발동 뒤 이 틱 동안 떨어져 땅에 내리찍음
+    const PALADIN_SWING_DELAY = 5;          // 기본 공격 망치 궤적: 치켜들기 칸(6틱)이 끝날 무렵부터 그림
+    const PALADIN_SWING_PIVOT = [8, -52];   //   망치를 쥔 손(궤적 원의 가운데, 발 기준 그림 px)
+    const PALADIN_SWING_R = 58;             //   손에서 망치 머리까지 (치켜든 칸 ~52, 내리친 칸 ~62)
+    // 성기사 기본 공격: 망치가 머리 뒤 위에서 머리 위를 지나 앞쪽 땅으로 내려오는 은빛 궤적(창병 휘두르기 초승달을 돌려 씀) + 땅에 닿는 자리 금빛 불꽃(돌격 충돌 폭발을 작게)
+    function paladinSwingFx(u) {
+      const sp = getUnitSprite(u);
+      const k = sp ? spriteDrawH(u, sp) / sp.standH : 1;
+      sim.effects.push({ type: 'paladin_swing', x: u.x, y: u.y, dir: (u.facingDir || 1) >= 0 ? 1 : -1, k, hitX: (sp?.swingHitX ?? 40) * k, delay: sp?.swingDelay ?? PALADIN_SWING_DELAY, trail: sp?.swingTrail !== false, life: 32, maxLife: 32 });
+    }
     const PALADIN_JUDGMENT_CELLS = 1.5;     // 심판: 주변 1.5칸
     const PALADIN_JUDGMENT_DMG = 1.3;       //   130%
     const PALADIN_JUDGMENT_SHIELD = 0.04;   //   맞은 적 1명마다 최대 체력 4% 보호막
@@ -24259,8 +24274,50 @@
       ctx.restore();
     }
     // 성기사 신성 보호 반구: 처음 18% 동안 툭 부풀며 나타나고 마지막 40% 동안 사라짐. 받은 유닛을 따라다님 (아래 가운데 = 발)
+    // 성기사 기본 공격 망치 궤적: 캐릭터보다 먼저(뒤에) 그려서 머리·몸에 가려 머리 뒤로 넘어가 보임. 뒤에서 앞으로 쓸며 드러나고(4틱) 흐려짐
+    function drawPaladinSwingTrail(ctx, ef) {
+      const t = (ef.maxLife - ef.life) - (ef.delay ?? PALADIN_SWING_DELAY);
+      if (t < 0 || ef.trail === false || !LANCER_SWEEP_IMG.ready || t >= 12) return;
+      const k = ef.k || 1;
+      ctx.save();
+      ctx.translate(ef.x, ef.y + 12);
+      ctx.scale(ef.dir, 1);
+      ctx.imageSmoothingEnabled = true;
+      // 망치 머리가 지나가는 원: 손(축)을 가운데로, 치켜든 칸(머리 뒤 위, 축에서 -142°)에서 머리 위를 지나 내리친 칸(앞쪽 땅, +38°)까지
+      // 초승달 그림은 원래 앞으로 불룩한 ) 모양 (원 가운데 = 그림 (93, 132), 반지름 130, 가장 굵은 곳 = 0°) → 가장 굵은 곳이 궤적 가운데(-52°)에 오게 돌림
+      const img = LANCER_SWEEP_IMG, R = PALADIN_SWING_R * k, s = R / 130;
+      const a0 = -150 * Math.PI / 180, a1 = 45 * Math.PI / 180;
+      const cur = a0 + (a1 - a0) * Math.min(1, (t + 1) / 4); // 4틱 동안 뒤에서 앞으로 쓸며 드러남
+      ctx.save();
+      ctx.translate(PALADIN_SWING_PIVOT[0] * k, PALADIN_SWING_PIVOT[1] * k);
+      ctx.globalAlpha = 0.85 * Math.min(1, (12 - t) / 7);
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R * 1.6, a0, cur); ctx.closePath(); ctx.clip();
+      ctx.rotate(-52 * Math.PI / 180);
+      ctx.drawImage(img, -93 * s, -132 * s, img.width * s, img.height * s);
+      ctx.restore();
+      ctx.restore();
+    }
     function drawPaladinDomes(ctx) {
       sim.effects.forEach(ef => {
+        if (ef.type === 'paladin_swing') {
+          // 기본 공격: 망치가 땅에 닿는 순간 금빛 불꽃 (캐릭터 위에 덮음). 은빛 궤적은 캐릭터 뒤에 그려 머리 뒤로 넘어감 (drawPaladinSwingTrail)
+          const t = (ef.maxLife - ef.life) - (ef.delay ?? PALADIN_SWING_DELAY);
+          if (t < 0) return;
+          const k = ef.k || 1;
+          ctx.save();
+          ctx.translate(ef.x, ef.y + 12);
+          ctx.scale(ef.dir, 1);
+          ctx.imageSmoothingEnabled = true;
+          const img = PALADIN_CHARGE_FX.hit, ht = t - 3; // 망치가 땅에 닿는 때
+          if (img.ready && ht >= 0 && ht < 18) {
+            const p = ht / 18;
+            const w = 70 * k * Math.min(1, 0.5 + p / 0.2 * 0.5), h = w * img.height / img.width;
+            ctx.globalAlpha = Math.min(1, (1 - p) / 0.5);
+            ctx.drawImage(img, ef.hitX - w / 2, -h * 0.92, w, h);
+          }
+          ctx.restore();
+          return;
+        }
         if (ef.type === 'paladin_charge_hit') {
           // 돌격 충돌 폭발: 캐릭터 위에 덮어 그림. 처음 15% 동안 커지고 마지막 50% 동안 흐려짐, 가운데 아래쪽이 대상 몸 가운데
           const img = PALADIN_CHARGE_FX.hit;
@@ -25507,8 +25564,9 @@
         ctx.restore();
         return;
       }
+      const fdx = (sprite.frameDx && sprite.frameDx[frame]) || 0; // 칸마다 앞으로 옮겨 그릴 거리 (성기사 내리치기)
       drawSpriteFx(ctx, sprite.img, frame * sprite.cellW, 0, sprite.cellW, sprite.cellH,
-        -sprite.anchorX * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
+        (fdx - sprite.anchorX) * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
       // 흑사자 불사 동안: 검은 실루엣 위에 붉은 눈빛이 일렁이며 빛남 (밝기가 두 박자로 오르내림, 더하기 합성)
       if (sprite.eyesImg && sprite.eyesImg.ready && u.alive) {
         // 번쩍이지 않고 일렁이게: 느린 두 물결을 겹친 밝기, 바깥 빛은 천천히 부풀었다 줄며 살짝 위로 피어오름
@@ -25602,6 +25660,17 @@
       const useSprite = Boolean(sprite && sprite.ready);
       // 스프라이트는 머리가 토큰보다 높아서 체력바를 그만큼 위로 올림
       const headTopY = useSprite ? 12 - Math.round((sprite.topH || sprite.standH) * spriteDrawH(u, sprite) / sprite.standH) : -8 - tokenR;
+      // 성기사 심판: 시전 막대 뒤 절반(망치 치켜든 둘째 칸) 동안 뛰어오르고, 발동(내리찍는 셋째 칸) 때 빠르게 떨어지며 내리찍음
+      if (useSprite && u.alive && u.job === 'paladin' && !u.monsterType) {
+        const jumpH = PALADIN_JUDGE_JUMP * spriteDrawH(u, sprite) / sprite.standH;
+        if (u.casting && u.casting.key === 'judgment') {
+          const q = Math.max(0, (1 - u.casting.left / Math.max(1, u.casting.total)) * 2 - 1);
+          jumpY = -jumpH * Math.sin(q * Math.PI / 2);
+        } else if (u.skillAnim > 0 && u.activeSkillType === 'judgment') {
+          const e = (u.skillAnim || 0) > (u._sprLastSkill || 0) ? 0 : tick - (u._sprSkillStart ?? tick); // 발동 첫 화면은 아직 시작 틱이 안 적힘
+          jumpY = -jumpH * Math.max(0, 1 - e / PALADIN_JUDGE_FALL);
+        }
+      }
 
       // 🔥 하드모드 탑 몬스터·엘리트 보스는 시크릿 레어처럼 붉은 빛 (몸 크기만큼 크게, 그림 없는 몬스터도)
       const hardFx = Boolean(u.isHardMode);
@@ -26327,6 +26396,12 @@
           continue;
         }
 
+        if (ef.type === 'paladin_swing') { // 망치 궤적은 캐릭터 뒤 (불꽃은 drawPaladinDomes에서 위에)
+          if (!top) drawPaladinSwingTrail(ctx, ef);
+          ctx.restore();
+          if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }
+          continue;
+        }
         if (ef.type === 'berserker_split') {
           // 대지 가르기: 꼭짓점 = 시전자 발, 가운데 방향 = 내리친 방향, 길이 = 범위(r), 벌어진 각 = 판정 반각
           //   처음 25% 동안 꼭짓점에서 앞으로 갈라져 나가고, 마지막 35% 동안 흐려짐
