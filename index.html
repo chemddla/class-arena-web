@@ -32443,7 +32443,7 @@
       ballR: 17, gravity: 900, ballMax: 920, bounce: 0.9,
       petSpeed: 340, petJumpV: 820, petGravity: 2400, petR: 40, petCenterUp: 44, // 펫 몸: 발에서 petCenterUp 위가 중심인 원
       goal: 11, timeLimitSec: 180, serveDelayMs: 1500, hitCooldown: 0.3, powerWindow: 0.25,
-      liveHz: 15, interpDelayMs: 130, extrapMaxMs: 260, ballSyncMs: 200, homeX: [230, 670], // 친구 펫은 받은 시각보다 interpDelay만큼 늦게 샘플 사이를 보간해 그림 · 공은 친 사람이 ballSyncMs마다 다시 맞춤
+      liveHz: 20, interpDelayMs: 120, interpDelayMaxMs: 420, extrapMaxMs: 400, ballSyncMs: 200, homeX: [230, 670], // 친구 펫은 받은 시각보다 interpDelay(네트워크가 흔들리면 그만큼 더, 최대 interpDelayMax)만큼 늦게 샘플 사이를 보간해 그림 · 공은 친 사람이 ballSyncMs마다 다시 맞춤
     };
     // 펫별 배구 특성 (작게: 손맛은 비슷하게, 개성만 조금)
     const VOLLEY_PERKS = {
@@ -32583,7 +32583,7 @@
         const prev = this.st;
         const pets = [0, 1].map(i => ({
           seat: i, x: VOLLEY.homeX[i], y: VOLLEY.groundY, vx: 0, vy: 0, onGround: true, jumps: 0, airT: 0, animT: 0, moving: false,
-          hitCd: 0, powerT: 0, hitAnim: 0, buf: prev && prev.pets[i] ? prev.pets[i].buf : [], remote: prev && prev.pets[i] ? prev.pets[i].remote : null, ai: prev && prev.pets[i] ? prev.pets[i].ai : { tx: VOLLEY.homeX[i], next: 0, dx: 0, dy: 0 }
+          hitCd: 0, powerT: 0, hitAnim: 0, buf: prev && prev.pets[i] ? prev.pets[i].buf : [], clk: prev && prev.pets[i] ? prev.pets[i].clk : null, ai: prev && prev.pets[i] ? prev.pets[i].ai : { tx: VOLLEY.homeX[i], next: 0, dx: 0, dy: 0 }
         }));
         const sv = st.serveSeat || 0;
         this.st = {
@@ -32696,24 +32696,39 @@
             if (!waiting && !b.landed && p.hitCd <= 0) this.tryHit(p, i, isAi);
           } else if (p.buf && p.buf.length) {
             // 친구 펫: 받은 시각보다 조금(interpDelay) 늦은 시점을 샘플 사이에서 보간 → 네트워크 흔들림에도 매끈
-            const rt = Date.now() - this.peerOffset(p) - VOLLEY.interpDelayMs;
+            // 지연은 그 상대의 최근 네트워크 흔들림(지터)만큼 늘림: 늦게 오는 샘플이 많으면 더 뒤 시점을 그려 끊김 대신 약간의 지연을 택함
+            const rt = Date.now() - this.peerOffset(p) - this.peerDelay(p, dt);
             const buf = p.buf;
             let a = null, c = null;
             for (let k = buf.length - 1; k >= 0; k--) { if (buf[k].t <= rt) { a = buf[k]; c = buf[k + 1] || null; break; } }
             if (!a) { a = buf[0]; c = null; }
-            if (c && c.t > a.t) {
+            let nx, ny;
+            const extrap = !(c && c.t > a.t);
+            if (!extrap) {
               const f = Math.max(0, Math.min(1, (rt - a.t) / (c.t - a.t)));
-              p.x = a.x + (c.x - a.x) * f; p.y = a.y + (c.y - a.y) * f;
+              nx = a.x + (c.x - a.x) * f; ny = a.y + (c.y - a.y) * f;
               p.moving = Boolean(f < 0.5 ? a.m : c.m); p.onGround = (f < 0.5 ? a.g : c.g) === 1;
             } else {
               // 다음 샘플이 아직 안 왔으면 마지막 속도로 조금만 이어 그림
               const ahead = Math.max(0, Math.min(VOLLEY.extrapMaxMs, rt - a.t)) / 1000;
-              p.x = a.x + a.vx * ahead;
-              p.y = a.g === 1 ? a.y : Math.min(G, a.y + a.vy * ahead + 0.5 * VOLLEY.petGravity * ahead * ahead);
-              p.moving = Boolean(a.m) && ahead < 0.2; p.onGround = a.g === 1 || p.y >= G - 1;
+              nx = a.x + a.vx * ahead;
+              const aheadY = Math.min(ahead, 0.15); // 공중 위치는 0.15초까지만 이어 그림 (더 길면 어긋남이 큼)
+              ny = a.g === 1 ? a.y : Math.min(G, a.y + a.vy * aheadY + 0.5 * VOLLEY.petGravity * aheadY * aheadY);
+              p.moving = Boolean(a.m) && ahead < 0.2; p.onGround = a.g === 1 || ny >= G - 1;
             }
             const [lo, hi] = i === 0 ? [34, VOLLEY.netX - VOLLEY.netW / 2 - 24] : [VOLLEY.netX + VOLLEY.netW / 2 + 24, VOLLEY.W - 34];
-            p.x = Math.max(lo, Math.min(hi, p.x)); p.y = Math.min(G, p.y);
+            nx = Math.max(lo, Math.min(hi, nx)); ny = Math.min(G, ny);
+            // 이어 그리던(extrap) 중에 늦은 샘플이 도착해 자리가 바뀌면 그 차이를 오프셋으로 두고 0.18초 동안 지움 → 순간이동 대신 미끄러짐
+            // (보통의 빠른 움직임은 건드리지 않음: 샘플 사이 보간 중에는 오프셋을 더하지 않음)
+            // 그 밖에도 목표 위치가 한 프레임에 30px 넘게 뛰면(지연이 바뀌어 시점이 옮겨짐 등) 같은 방법으로 미끄러뜨림. 보통 움직임은 한 프레임 25px 아래
+            if (p.hasPos) {
+              const reanchor = p.wasExtrap && (!extrap || a !== p.lastA);
+              const jump = Math.hypot(nx - p.x, ny - p.y), tjump = Math.hypot(nx - p.tx, ny - p.ty);
+              if ((reanchor && jump > 6) || tjump > 30) { p.ox = Math.max(-300, Math.min(300, (p.ox || 0) + (p.x - nx))); p.oy = Math.max(-300, Math.min(300, (p.oy || 0) + (p.y - ny))); }
+            }
+            p.wasExtrap = extrap; p.lastA = a; p.tx = nx; p.ty = ny;
+            if (p.ox || p.oy) { const k = Math.min(1, dt / 0.18); p.ox -= p.ox * k; p.oy -= p.oy * k; if (Math.abs(p.ox) < 0.5 && Math.abs(p.oy) < 0.5) { p.ox = 0; p.oy = 0; } }
+            p.x = nx + (p.ox || 0); p.y = Math.min(G, ny + (p.oy || 0)); p.hasPos = true;
             if (!p.onGround) p.airT += dt; else p.airT = 0;
             const last = buf[buf.length - 1];
             if (last.h && last.h !== p.lastHitStamp) { p.lastHitStamp = last.h; p.hitAnim = 0.3; }
@@ -32857,7 +32872,7 @@
         s.pets.forEach((p, i) => {
           if (!this.controls(i)) return;
           const ref = this.liveRef(String(i)); if (!ref) return;
-          const pack = { x: Math.round(p.x), y: Math.round(p.y), vx: Math.round(p.vx), vy: Math.round(p.vy), g: p.onGround ? 1 : 0, m: p.moving ? 1 : 0, h: p.hitStamp || 0, t: mgServerNow() };
+          const pack = { x: Math.round(p.x), y: Math.round(p.y), vx: Math.round(p.vx), vy: Math.round(p.vy), g: p.onGround ? 1 : 0, m: p.moving ? 1 : 0, h: p.hitStamp || 0, t: Date.now() };
           const key = `${pack.x},${pack.y},${pack.m},${pack.h},${pack.g}`;
           if (!force && p.lastSentKey === key && Date.now() - (p.lastSentAt || 0) < 500) return; // 가만히 있어도 0.5초마다 한 번은 보냄 (버퍼가 비지 않게)
           p.lastSentKey = key; p.lastSentAt = Date.now();
@@ -32869,16 +32884,26 @@
         if (!b || !this.inRoom()) return;
         const ref = this.liveRef('ball'); if (!ref) return;
         b.sentAt = Date.now();
-        ref.set({ x: Math.round(b.x), y: Math.round(b.y), vx: Math.round(b.vx), vy: Math.round(b.vy), n: b.n, by: b.by, gid: st.gameId, t: mgServerNow() }).catch(() => {});
+        ref.set({ x: Math.round(b.x), y: Math.round(b.y), vx: Math.round(b.vx), vy: Math.round(b.vy), n: b.n, by: b.by, gid: st.gameId, t: Date.now() }).catch(() => {});
       },
       // 상대 시계 차이 추정: (내가 받은 시각 − 상대가 적은 시각)의 최근 최솟값. 기기마다 시계가 몇 초씩 달라도 보간 시점이 어긋나지 않음
       peerNote(p, t) {
         const d = Date.now() - t;
-        const c = p.clk || (p.clk = { ds: [], off: d });
-        c.ds.push(d); if (c.ds.length > 40) c.ds.shift();
+        const c = p.clk || (p.clk = { ds: [], off: d, delay: VOLLEY.interpDelayMs });
+        c.ds.push(d); if (c.ds.length > 60) c.ds.shift();
         c.off = Math.min(...c.ds);
+        // 지터 = 가장 빨리 온 묶음보다 얼마나 늦게 왔나. 상위 10%쯤의 지터 + 60ms를 지연으로 (최소 interpDelay, 최대 interpDelayMax)
+        const js = c.ds.map(v => v - c.off).sort((x, y) => x - y);
+        const j90 = js[Math.min(js.length - 1, Math.floor(js.length * 0.9))] || 0;
+        c.want = Math.max(VOLLEY.interpDelayMs, Math.min(VOLLEY.interpDelayMaxMs, j90 + 60));
       },
       peerOffset(p) { return p && p.clk ? p.clk.off : 0; },
+      // 지연은 한 번에 바꾸지 않고 초당 늘릴 땐 300ms, 줄일 땐 40ms씩만 옮김 → 그려지는 시점이 뒤로 확 가서 펫이 되돌아가는 일이 없음
+      peerDelay(p, dt = 0) {
+        const c = p && p.clk; if (!c) return VOLLEY.interpDelayMs;
+        if (dt > 0 && c.want != null) { const diff = c.want - c.delay; c.delay += Math.max(-40 * dt, Math.min(300 * dt, diff)); }
+        return c.delay;
+      },
       // {방}_vl의 자식 하나('0' · '1' = 펫, 'ball' = 공)가 바뀔 때마다
       applyLiveChild(key, r) {
         const st = petVolleyState, s = this.st;
@@ -32887,7 +32912,7 @@
           const i = Number(key);
           if (this.controls(i)) return;
           const p = s.pets[i];
-          const sample = { x: Number(r.x) || 0, y: Number(r.y) || VOLLEY.groundY, vx: Number(r.vx) || 0, vy: Number(r.vy) || 0, g: Number(r.g) === 1 || r.g == null ? 1 : 0, m: Number(r.m) || 0, h: Number(r.h) || 0, t: Number(r.t) || mgServerNow() };
+          const sample = { x: Number(r.x) || 0, y: Number(r.y) || VOLLEY.groundY, vx: Number(r.vx) || 0, vy: Number(r.vy) || 0, g: Number(r.g) === 1 || r.g == null ? 1 : 0, m: Number(r.m) || 0, h: Number(r.h) || 0, t: Number(r.t) || Date.now() };
           if (r.g == null) sample.g = sample.y >= VOLLEY.groundY - 2 ? 1 : 0;
           this.peerNote(p, sample.t);
           const buf = p.buf || (p.buf = []);
