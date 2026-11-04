@@ -2209,11 +2209,12 @@
       <nav id="battleSubNav" class="hidden gl-subnav" aria-label="전투 장소">
         <button onclick="switchStudentTab('tower')" id="bsub-tower" class="battle-sub-btn">모험의 탑</button>
         <button onclick="switchStudentTab('raid')" id="bsub-raid" class="battle-sub-btn">엘리트 보스</button>
+        <button onclick="switchStudentTab('worldraid')" id="bsub-worldraid" class="battle-sub-btn">레이드</button>
         <button onclick="switchStudentTab('rush')" id="bsub-rush" class="battle-sub-btn">몬스터 러쉬</button>
         <button onclick="switchStudentTab('pvp')" id="bsub-pvp" class="battle-sub-btn">결투장</button>
       </nav>
 
-      <!-- 🌍 반 보스 띠: 어느 탭에서든 보스 체력·남은 시간이 보임 (WorldBoss.renderBanner) -->
+      <!-- 🌍 레이드 띠: 어느 탭에서든 보스 체력·남은 시간이 보임 (WorldBoss.renderBanner) -->
       <div id="worldBossBanner" class="hidden"></div>
 
       <!-- 시뮬레이션 실행 시에만 표시되는 와이드 아레나 캔버스 패널 -->
@@ -3053,9 +3054,6 @@
           </div>
         </div>
 
-        <!-- 🌍 반 보스: 반 전체가 한 주 동안 체력을 같이 깎는 보스 (WorldBoss.render) -->
-        <div id="worldBossPanel" class="hidden bg-slate-900 border-2 border-amber-500/50 rounded-2xl p-4 flex flex-col gap-3 shadow-xl"></div>
-
         <!-- 현재 내가 입장해 있는 협동 레이드 방 내부 대기실 (방 개설 또는 입장 시 표시) -->
         <div id="raidWaitingRoomPanel" class="hidden bg-slate-900 border-2 border-amber-500/60 rounded-2xl p-5 flex flex-col gap-4 shadow-xl"></div>
         <div id="raidRoomChat" class="hidden"></div>
@@ -3130,6 +3128,22 @@
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <!-- 🌍 레이드: 반 전체가 한 주 동안 체력을 같이 깎는 보스 (WorldBoss.render) -->
+      <section id="studentTab-worldraid" class="student-tab-panel hidden flex flex-col gap-4">
+        <div id="worldBossPanel" class="hidden bg-slate-900 border-2 border-amber-500/50 rounded-2xl p-4 flex flex-col gap-3 shadow-xl"></div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+            <div>
+              <h4 class="font-title text-lg text-white">🛡️ 레이드에 출전할 내 용병 선택 (최대 8명)</h4>
+              <p class="text-xs text-slate-400">클릭해서 <strong>8명까지</strong> 고르세요. 엘리트 보스 협동 사냥과 같은 선택이에요.</p>
+            </div>
+            <span id="worldRaidMercCountBadge" class="px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 font-extrabold text-xs">내 용병 0/8명 배치됨</span>
+          </div>
+          <div id="worldRaidMercGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2"></div>
         </div>
       </section>
 
@@ -3806,7 +3820,7 @@
             </div>
           </div>
 
-          <!-- 🌍 반 보스 조정 (WorldBoss.renderAdmin) -->
+          <!-- 🌍 레이드 조정 (WorldBoss.renderAdmin) -->
           <div id="worldBossAdminBox" class="bg-slate-900 border border-amber-500/40 rounded-2xl p-4 flex flex-col gap-2.5"></div>
         </div>
       </div>
@@ -4349,7 +4363,7 @@
     const CHARGE_SKILL_DISTANCE = GRID_CELL_SIZE * 2; // 전사 돌진 스킬 2칸 (240px)
     const BATTLE_PROJECTILE_SPEED = 2.8; // 화살·마법구 등 투사체 속도 배율
     const PROJECTILE_HIT_RADIUS = 30;    // 투사체가 이 거리 안으로 지나가면 맞음
-    // 엘리트 보스가 나오는 전투: 엘리트 협동 레이드 · 🌍 반 보스 (같은 맵·등장 연출·제한 시간)
+    // 엘리트 보스가 나오는 전투: 엘리트 협동 레이드 · 🌍 레이드 (같은 맵·등장 연출·제한 시간)
     function isEliteBossMode(mode) { return mode === 'elite_raid' || mode === 'world_boss'; }
     const ELITE_SIZE_MULT = 1.3;         // 엘리트 보스 상향: 몸·그림 크기와 공격 범위(기본 공격 사거리·스킬 범위) 30% 크게
     // 엘리트 보스 몸 배율: 🔥 하드모드 보스는 eliteHardSize(1.5)만큼 더 큼
@@ -11206,8 +11220,8 @@
       { id: 'realtimePvp', icon: '⚡', label: '실시간 PvP 대결하기', goal: 1, go: () => { goToStudentTab('pvp'); switchPvpSubMode('realtime'); } },
       { id: 'towerClear', icon: '🧗', label: '모험의 탑 새 층 돌파하기', goal: 1, go: () => goToStudentTab('tower'), need: stu => (stu.towerFloor || 1) < TOWER_MAX_FLOOR },
       { id: 'raidWin', icon: '⚔️', label: '엘리트 보스 토벌 성공하기', goal: 1, go: () => goToStudentTab('raid') },
-      { id: 'worldBoss', icon: '🌍', label: '반 보스 도전하기', goal: 1, go: () => goToStudentTab('raid') },
-      { id: 'worldBoss3', icon: '🌍', label: '반 보스 3번 도전하기', goal: 3, go: () => goToStudentTab('raid') },
+      { id: 'worldBoss', icon: '🌍', label: '레이드 도전하기', goal: 1, go: () => goToStudentTab('worldraid') },
+      { id: 'worldBoss3', icon: '🌍', label: '레이드 3번 도전하기', goal: 3, go: () => goToStudentTab('worldraid') },
       { id: 'rankedWin', icon: '🏆', label: '랭킹 매칭 승리하기', goal: 1, go: () => goToRankedMatch() },
       { id: 'practice', icon: '🪆', label: '허수아비 모의전 하기', goal: 1, go: () => goToStudentTab('squad') },
       { id: 'auctionBid', icon: '🙋', label: '용병 경매에 입찰하기', goal: 1, go: () => goToStudentTab('market') },
@@ -17465,7 +17479,7 @@
       document.getElementById('arenaModeBadge').textContent = mode === 'monster_rush'
         ? '🌊 몬스터 러쉬'
         : mode === 'world_boss'
-        ? '🌍 반 보스 토벌'
+        ? '🌍 레이드 토벌'
         : mode === 'elite_raid'
         ? '🐉 엘리트 보스 협동 대전'
         : (mode === 'tower' ? '🏰 모험의 탑' : (mode === 'practice' ? '🎯 연습 전투' : (mode === 'pvp_ranked' ? '🎯 랭킹 매칭 결투' : (mode === 'pvp_async' ? '🛡️ 진형 도전' : '⚡ 실시간 대결'))));
@@ -19009,7 +19023,7 @@
             sim.victoryAt = sim.tickCount;
             sim.projectiles = [];
             if (sim.mode === 'elite_raid') addBattleLog('🏆 엘리트 보스가 쓰러졌어요!');
-            if (sim.mode === 'world_boss') addBattleLog('🏆 반 보스가 쓰러졌어요! 마지막 일격!');
+            if (sim.mode === 'world_boss') addBattleLog('🏆 레이드가 쓰러졌어요! 마지막 일격!');
           }
           if (sim.tickCount - sim.victoryAt < VICTORY_SHOW_SEC * BATTLE_TICKS_PER_SEC) {
             sim.units.forEach(u => {
@@ -27278,7 +27292,7 @@
         return;
       }
       if (sim.mode === 'world_boss') {
-        addBattleLog('⏰ 제한 시간이 끝났어요! 지금까지 준 피해가 반 보스 체력에서 빠져요.');
+        addBattleLog('⏰ 제한 시간이 끝났어요! 지금까지 준 피해가 레이드 체력에서 빠져요.');
         finishSimulation(false);
         return;
       }
@@ -28226,7 +28240,7 @@
         btn('tower', '🏰 모험의 탑 클리어', book.towerClears || 0, TOWER_DAILY_CLEARS),
         btn('raidClears', '🐉 엘리트 보스 클리어', book.raidClears || 0, ELITE_DAILY_CLEARS),
         btn('raid', '🐉 엘리트 보스 격려 보상', book.raid || 0, DAILY_REWARD_LIMITS.raid),
-        btn('worldBossTries', '🌍 반 보스 도전', book.worldBossTries || 0, WORLD_BOSS.tries),
+        btn('worldBossTries', '🌍 레이드 도전', book.worldBossTries || 0, WORLD_BOSS.tries),
         btn('rush', '🌊 몬스터 러쉬 보상 라운드', book.rushRound || 0, RUSH.maxRound),
         btn('pvp', '🏆 랭킹 매칭', book.pvp || 0, DAILY_REWARD_LIMITS.pvp),
         btn('quiz', '❓ 퀴즈', book.quiz || 0, DAILY_REWARD_LIMITS.quiz),
@@ -28250,7 +28264,7 @@
       saveState();
       renderAdminEditTriesBox();
       renderAllStudentViews();
-      const label = category === 'all' ? '모든 콘텐츠' : category === 'raidClears' ? '엘리트 보스 클리어' : category === 'worldBossTries' ? '반 보스 도전' : (DAILY_REWARD_LABELS[category] || category);
+      const label = category === 'all' ? '모든 콘텐츠' : category === 'raidClears' ? '엘리트 보스 클리어' : category === 'worldBossTries' ? '레이드 도전' : (DAILY_REWARD_LABELS[category] || category);
       showRewardBanner(`🔁 ${stu.name} 학생의 오늘 ${label} 도전 기회를 초기화했어요!`);
     }
 
@@ -28971,7 +28985,7 @@
     }
     const eliteRewardOf = (def, hard) => (hard ? def.rewardMc * ELITE_HARD.reward : def.rewardMc);
 
-    // ===== 🌍 반 보스 (반 협동 레이드) =====
+    // ===== 🌍 레이드 (반 협동 레이드) =====
     // 반 전체가 한 주 동안(월요일 00:00 ~ 다음 월요일) 보스 한 마리의 체력을 같이 깎음. 혼자 용병 8명으로 3분 싸우고
     // 준 피해가 서버(classes/{code}/world_boss)의 공유 체력에서 빠짐. 체력을 0으로 만든 학생이 '마지막 일격', 그 즉시 다음 단계 보스가 나옴.
     // 주가 바뀌었는데 못 잡았으면 같은 단계 보스가 새 체력으로 다시 나옴.
@@ -29034,7 +29048,7 @@
           this.render();
           this.renderBanner();
           this.renderAdmin();
-        }, err => console.warn('[반 보스 구독 실패 - DB 규칙을 확인하세요]:', err));
+        }, err => console.warn('[레이드 구독 실패 - DB 규칙을 확인하세요]:', err));
       },
 
       // 보스가 없거나·주가 바뀌었거나·방금 쓰러졌으면 새 보스를 만듦 (먼저 본 한 명만 성공하도록 transaction)
@@ -29089,7 +29103,7 @@
           const parts = ['반 전원 보상'];
           if (rank >= 0) parts.push(`기여도 ${rank + 1}위`);
           if (h.killedBy === stu.id) parts.push('🗡️ 마지막 일격');
-          showRewardBanner(`🌍 반 보스 [${def.name}]가 쓰러졌어요! ${parts.join(' + ')} → 💰 ${got.toLocaleString()} CA를 받았어요!`);
+          showRewardBanner(`🌍 레이드 [${def.name}]가 쓰러졌어요! ${parts.join(' + ')} → 💰 ${got.toLocaleString()} CA를 받았어요!`);
         });
         if (changed) { saveState(); renderAllStudentViews(); }
       },
@@ -29098,25 +29112,25 @@
       start() {
         const stu = getActiveStudent();
         const cur = this.current();
-        if (!cur) { showNotice('⚠️ 반 보스 정보를 아직 못 받았어요. 잠시 뒤 다시 눌러 주세요.'); return; }
+        if (!cur) { showNotice('⚠️ 레이드 정보를 아직 못 받았어요. 잠시 뒤 다시 눌러 주세요.'); return; }
         if (cur.killedAt || cur.hp <= 0) { showNotice('🏆 이 보스는 이미 쓰러졌어요! 다음 보스가 곧 나타나요.'); return; }
-        if (this.triesLeft(stu) <= 0) { showNotice(`오늘 반 보스 도전 횟수(${WORLD_BOSS.tries}회)를 모두 썼어요. 내일 다시 도전할 수 있어요!`); return; }
+        if (this.triesLeft(stu) <= 0) { showNotice(`오늘 레이드 도전 횟수(${WORLD_BOSS.tries}회)를 모두 썼어요. 내일 다시 도전할 수 있어요!`); return; }
         if (sim.running) { showNotice('⚠️ 진행 중인 전투를 먼저 끝내 주세요.'); return; }
         ensureSelectedRaidMercs(stu);
         const mercs = (stu.roster || []).filter(m => selectedRaidMercIds.includes(m.id)).slice(0, RAID_PICK);
-        if (!mercs.length) { showNotice('⚠️ 먼저 아래 [협동 레이드에 출전할 내 용병 선택]에서 용병을 골라 주세요.'); return; }
+        if (!mercs.length) { showNotice('⚠️ 먼저 아래 [레이드에 출전할 내 용병 선택]에서 용병을 골라 주세요.'); return; }
         const def = this.defOf(cur);
         const blueUnits = buildCoopRaidBlueUnits([{ stu, mercs, label: stu.name }]);
         const boss = this.buildBoss(cur, def);
         launchSimulation({
           mode: 'world_boss',
-          title: `🌍 반 보스 토벌: ${stu.name}(${mercs.length}명) vs ${cur.stage}단계 ${def.name}`,
+          title: `🌍 레이드 토벌: ${stu.name}(${mercs.length}명) vs ${cur.stage}단계 ${def.name}`,
           blueStudent: stu, redStudent: null, eliteBossId: def.id, rewardMc: 0,
           customBlueUnits: blueUnits, customRedUnits: [boss]
         });
         if (!sim.running) return;
         sim.meta.worldBoss = { key: cur.key, bossId: def.id, stage: cur.stage, maxHp: cur.maxHp, startHp: cur.hp };
-        addBattleLog(`🌍 [반 보스] ${stu.name}의 용병 ${mercs.length}명이 [${def.name}] (남은 체력 ${Math.round(cur.hp).toLocaleString()} / ${cur.maxHp.toLocaleString()}) 토벌에 나섭니다! 준 피해만큼 반 전체의 보스 체력이 줄어요. (제한 시간 ${Math.round(ELITE_RAID_TIME_LIMIT_SEC / 60)}분)`);
+        addBattleLog(`🌍 [레이드] ${stu.name}의 용병 ${mercs.length}명이 [${def.name}] (남은 체력 ${Math.round(cur.hp).toLocaleString()} / ${cur.maxHp.toLocaleString()}) 토벌에 나섭니다! 준 피해만큼 반 전체의 보스 체력이 줄어요. (제한 시간 ${Math.round(ELITE_RAID_TIME_LIMIT_SEC / 60)}분)`);
       },
       // 보스: 엘리트 보스 그대로(크기·스킬 동작), 체력은 반 공유 체력의 남은 만큼, 스킬은 단계와 상관없이 7개 전부
       buildBoss(cur, def) {
@@ -29139,7 +29153,7 @@
       // 전투 중 체력이 광폭화 선 아래로 내려가면
       step() {
         const boss = sim.units.find(u => u.isWorldBoss && u.alive);
-        if (boss && this.applyEnrage(boss)) addBattleLog(`🔥 반 보스가 광폭화했어요! 공격력이 ${WORLD_BOSS.enrageAtk}배가 돼요!`);
+        if (boss && this.applyEnrage(boss)) addBattleLog(`🔥 레이드가 광폭화했어요! 공격력이 ${WORLD_BOSS.enrageAtk}배가 돼요!`);
       },
       // 전투 끝: 도전 횟수 차감, 참여 보상, 서버 체력 차감·기여도 기록 (결과창은 서버 반영을 기다리지 않고 먼저 띄움)
       finish(stu, blueWon) {
@@ -29162,11 +29176,11 @@
         const healKing = mvpCandidates().sort((a, b) => b.healDone - a.healDone)[0];
         document.getElementById('battleResultEmoji').textContent = blueWon ? '🏆' : (dealt > 0 ? '🌍' : '🛡️');
         document.getElementById('battleResultTitle').textContent = blueWon
-          ? '🗡️ 반 보스를 쓰러뜨렸어요! 마지막 일격!'
-          : (iForfeited ? '전투 포기' : `반 보스에게 ${dealt.toLocaleString()} 피해!`);
+          ? '🗡️ 레이드를 쓰러뜨렸어요! 마지막 일격!'
+          : (iForfeited ? '전투 포기' : `레이드 보스에게 ${dealt.toLocaleString()} 피해!`);
         const descEl = document.getElementById('battleResultDesc');
-        descEl.textContent = (iForfeited ? '🏳️ 전투를 포기했어요. 준 피해는 반 보스 체력에서 빠지지만 보상은 없어요.'
-          : reward > 0 ? `참여 보상으로 💰 ${reward.toLocaleString()} CA를 받았어요! (반 보스 체력의 ${(share * 100).toFixed(2)}%)` : '피해를 주지 못해서 참여 보상은 없어요.')
+        descEl.textContent = (iForfeited ? '🏳️ 전투를 포기했어요. 준 피해는 레이드 체력에서 빠지지만 보상은 없어요.'
+          : reward > 0 ? `참여 보상으로 💰 ${reward.toLocaleString()} CA를 받았어요! (레이드 체력의 ${(share * 100).toFixed(2)}%)` : '피해를 주지 못해서 참여 보상은 없어요.')
           + ` · 오늘 남은 도전 ${this.triesLeft(stu)}회 · 서버에 반영하는 중…`;
         document.getElementById('battleMvpBox').innerHTML = `
           <div class="font-bold text-amber-300 mb-1">🌟 이번 토벌 3대 분야 MVP 용병</div>
@@ -29175,18 +29189,18 @@
           <div>💚 다정 치유왕: <strong>${healKing?.name || '-'}</strong> (${healKing?.healDone || 0} 회복·보호)</div>`;
         document.getElementById('battleResultOverlay').classList.remove('hidden');
         if (document.getElementById('arenaSection')?.classList.contains('hidden')) {
-          showRewardBanner(`🌍 반 보스 토벌이 끝났어요! ${dealt.toLocaleString()} 피해 · ${descEl.textContent}`);
+          showRewardBanner(`🌍 레이드 토벌이 끝났어요! ${dealt.toLocaleString()} 피해 · ${descEl.textContent}`);
         }
         sim.netRole = null;
         saveState();
         renderAllStudentViews();
         const base = descEl.textContent.replace(' · 서버에 반영하는 중…', '');
         this.commit(stu, meta, dealt).then(info => {
-          if (!info) { descEl.textContent = `${base} · ⚠️ 서버에 연결되지 않아 반 보스 체력에 반영하지 못했어요.`; return; }
+          if (!info) { descEl.textContent = `${base} · ⚠️ 서버에 연결되지 않아 레이드 체력에 반영하지 못했어요.`; return; }
           if (info.stale) { descEl.textContent = `${base} · 이 보스는 그 사이 다른 친구가 쓰러뜨렸어요. 기여도에는 적혔어요.`; return; }
           descEl.textContent = info.killed
-            ? `${base} · 🏆 반 보스가 쓰러졌어요! 처치 보상은 곧 반 전원에게 들어가요.`
-            : `${base} · 반 보스 남은 체력 ${Math.round(info.left).toLocaleString()} (${(info.left / Math.max(1, meta.maxHp) * 100).toFixed(1)}%)`;
+            ? `${base} · 🏆 레이드가 쓰러졌어요! 처치 보상은 곧 반 전원에게 들어가요.`
+            : `${base} · 레이드 남은 체력 ${Math.round(info.left).toLocaleString()} (${(info.left / Math.max(1, meta.maxHp) * 100).toFixed(1)}%)`;
         });
       },
       async commit(stu, meta, dealt) {
@@ -29215,7 +29229,7 @@
           if (killed) await this.archive(res.snapshot && typeof res.snapshot.val === 'function' ? res.snapshot.val() : null);
           return { ok: true, killed, left, dealt };
         } catch (e) {
-          console.warn('[반 보스 기록 실패]', e);
+          console.warn('[레이드 기록 실패]', e);
           return null;
         }
       },
@@ -29232,7 +29246,7 @@
           const ratio = (c.hp || 0) / Math.max(1, c.maxHp || 1);
           const maxHp = Math.round(this.defOf(c).hp * WORLD_BOSS.hpPerStudent * this.classSize() * mult);
           return { ...c, hpMult: mult, maxHp, hp: Math.max(c.killedAt ? 0 : 1, Math.round(maxHp * ratio)) };
-        }).then(() => showRewardBanner(`🌍 반 보스 체력 배율을 ×${mult}로 바꿨어요. (남은 체력 비율은 그대로)`)).catch(() => {});
+        }).then(() => showRewardBanner(`🌍 레이드 체력 배율을 ×${mult}로 바꿨어요. (남은 체력 비율은 그대로)`)).catch(() => {});
       },
       adminReset(stageDelta = 0) {
         if (!this.ref) return;
@@ -29240,7 +29254,7 @@
         this.ref.child('current').transaction(c => {
           const stage = Math.max(1, ((c && c.stage) || 1) + stageDelta);
           return this.makeCurrent(stage, (c && c.hpMult) || 1, wk);
-        }).then(() => showRewardBanner('🌍 반 보스를 새 체력으로 다시 내보냈어요.')).catch(() => {});
+        }).then(() => showRewardBanner('🌍 레이드를 새 체력으로 다시 내보냈어요.')).catch(() => {});
       },
 
       // ----- 화면 -----
@@ -29261,7 +29275,7 @@
         const cur = this.current();
         if (!stu || !this.ref) { box.classList.add('hidden'); return; }
         box.classList.remove('hidden');
-        if (!cur) { box.innerHTML = '<div class="text-xs text-slate-400">🌍 반 보스를 불러오는 중…</div>'; return; }
+        if (!cur) { box.innerHTML = '<div class="text-xs text-slate-400">🌍 레이드를 불러오는 중…</div>'; return; }
         const def = this.defOf(cur);
         const rank = this.ranking(cur.key);
         const myIdx = rank.findIndex(c => c.id === stu.id);
@@ -29289,7 +29303,7 @@
             <div class="flex items-center gap-3">
               <div class="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-2xl">🌍</div>
               <div>
-                <h3 class="font-title text-2xl text-white">반 보스 (반 전체 협동 토벌)</h3>
+                <h3 class="font-title text-2xl text-white">레이드 (반 전체 협동 토벌)</h3>
                 <p class="text-xs text-slate-400 mt-0.5">한 주 동안 반 친구 모두가 <strong>같은 보스의 체력</strong>을 깎아요. 혼자 용병 8명으로 ${Math.round(ELITE_RAID_TIME_LIMIT_SEC / 60)}분 싸우면 준 피해만큼 줄어요. 쓰러뜨리면 <strong>반 전원</strong>이 보상을 받고 바로 다음 단계 보스가 나와요!</p>
               </div>
             </div>
@@ -29322,7 +29336,7 @@
                   ${dead ? '🏆 쓰러짐 · 다음 보스 준비 중' : `⚔️ 도전하기 (오늘 ${tries}/${WORLD_BOSS.tries}회 남음)`}
                 </button>
               </div>
-              <div class="text-[11px] text-slate-500">출전 용병은 아래 [협동 레이드에 출전할 내 용병 선택]에서 고른 ${RAID_PICK}명이에요.</div>
+              <div class="text-[11px] text-slate-500">출전 용병은 아래 [레이드에 출전할 내 용병 선택]에서 고른 ${RAID_PICK}명이에요.</div>
             </div>
             <div class="lg:col-span-5 flex flex-col gap-3">
               <div class="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex flex-col gap-1.5 text-xs">
@@ -29349,11 +29363,11 @@
         const dead = Boolean(cur.killedAt) || cur.hp <= 0;
         bar.classList.remove('hidden');
         bar.innerHTML = `
-          <button onclick="goToStudentTab('raid')" class="w-full flex items-center gap-3 rounded-2xl bg-slate-900 border border-amber-500/40 px-3 py-2 text-left hover:border-amber-400 transition">
+          <button onclick="goToStudentTab('worldraid')" class="w-full flex items-center gap-3 rounded-2xl bg-slate-900 border border-amber-500/40 px-3 py-2 text-left hover:border-amber-400 transition">
             ${this.bossArt(def, 36)}
             <div class="min-w-0 flex-1 flex flex-col gap-1">
               <div class="flex items-center justify-between gap-2 text-xs">
-                <span class="font-extrabold text-white truncate">🌍 반 보스 ${cur.stage}단계 ${this.esc(def.name)}${dead ? ' · 🏆 쓰러짐!' : ''}</span>
+                <span class="font-extrabold text-white truncate">🌍 레이드 ${cur.stage}단계 ${this.esc(def.name)}${dead ? ' · 🏆 쓰러짐!' : ''}</span>
                 <span class="text-amber-300 font-bold shrink-0">⏳ ${this.timeLeftText(cur)}</span>
               </div>
               ${this.hpBarHTML(cur, 'h-3.5')}
@@ -29364,11 +29378,11 @@
         const box = document.getElementById('worldBossAdminBox');
         if (!box) return;
         const cur = this.current();
-        if (!this.ref || !cur) { box.innerHTML = '<h4 class="font-title text-lg text-amber-300">🌍 반 보스</h4><div class="text-xs text-slate-400">실시간 서버에 연결되면 조정할 수 있어요.</div>'; return; }
+        if (!this.ref || !cur) { box.innerHTML = '<h4 class="font-title text-lg text-amber-300">🌍 레이드</h4><div class="text-xs text-slate-400">실시간 서버에 연결되면 조정할 수 있어요.</div>'; return; }
         const def = this.defOf(cur);
         const rank = this.ranking(cur.key);
         box.innerHTML = `
-          <h4 class="font-title text-lg text-amber-300">🌍 반 보스 조정</h4>
+          <h4 class="font-title text-lg text-amber-300">🌍 레이드 조정</h4>
           <div class="text-xs text-slate-300">${cur.stage}단계 <strong>${this.esc(def.name)}</strong> · 도전한 학생 ${rank.length}명 · ${this.timeLeftText(cur)}</div>
           ${this.hpBarHTML(cur, 'h-4')}
           <label class="text-xs text-slate-400">체력 배율 (학생 수 × 엘리트 보스 체력 × ${WORLD_BOSS.hpPerStudent} × 배율 · 바꿔도 남은 비율은 그대로)</label>
@@ -29383,6 +29397,32 @@
       }
     };
     window.WorldBoss = WorldBoss;
+    // 🌍 레이드 탭: 레이드 패널 + 출전 용병 선택 (엘리트 보스 협동 사냥과 같은 selectedRaidMercIds)
+    function renderWorldRaidTab() {
+      const stu = getActiveStudent();
+      if (!stu) return;
+      ensureSelectedRaidMercs(stu);
+      WorldBoss.render();
+      const badge = document.getElementById('worldRaidMercCountBadge');
+      if (badge) badge.textContent = `내 용병 ${selectedRaidMercIds.length} / ${RAID_PICK}명 배치됨`;
+      const grid = document.getElementById('worldRaidMercGrid');
+      if (!grid) return;
+      grid.innerHTML = (stu.roster || []).map(m => {
+        const picked = selectedRaidMercIds.includes(m.id);
+        return `
+          <div onclick="toggleRaidMercSelection('${m.id}')"
+            class="cursor-pointer rounded-xl border-2 p-2.5 flex items-center justify-between gap-2 transition ${picked ? 'bg-indigo-600/20 border-indigo-500 shadow' : 'bg-slate-950 border-slate-800 opacity-70 hover:opacity-100'}">
+            <div class="flex items-center gap-2 truncate">
+              ${getMercIconHTML(m.job, m.skinVariant, 34)}
+              <div class="truncate">
+                <div class="text-xs font-extrabold text-white truncate">${m.name} <span class="text-indigo-300">Lv.${m.level}</span></div>
+                <div class="text-[10px] text-rose-400 font-bold">⚔️ ${calcMercCombatPower(m, stu).toLocaleString()}</div>
+              </div>
+            </div>
+            <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${picked ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-400'}">${picked ? '✅ 배치' : '선택'}</span>
+          </div>`;
+      }).join('') || '<div class="col-span-full text-xs text-slate-400 text-center py-4">아직 용병이 없어요.</div>';
+    }
     // 하드모드 레이드가 출발하면 내 화면에서 내 도전비용만 냄 (연습 친구 자리는 내지 않음)
     function chargeEliteHardCost(stu, hard) {
       if (!hard || !stu) return;
@@ -29459,6 +29499,7 @@
         selectedRaidMercIds.push(mercId);
       }
       renderCoopRaidTab();
+      renderWorldRaidTab();
       syncMyRaidRoomMercs(stu);
     }
 
@@ -29514,7 +29555,6 @@
       if (badgeEl) badgeEl.textContent = `내 용병 ${selectedRaidMercIds.length} / ${RAID_PICK}명 배치됨`;
       const clearsEl = document.getElementById('raidEliteClearsText');
       if (clearsEl) clearsEl.textContent = `🏅 오늘 남은 클리어 ${getEliteClearsLeft(myStu)}/${ELITE_DAILY_CLEARS}회 (도전은 계속 가능 · 다 채우면 새 보스 보상은 내일)`;
-      WorldBoss.render();
 
       // 1) 내 용병 선택 그리드 (최대 RAID_PICK명)
       const myGrid = document.getElementById('raidMyMercSelectGrid');
@@ -32600,7 +32640,7 @@
     /********************************************************************
      * 13. 탭 전환 및 초기 실행
      ********************************************************************/
-    const BATTLE_SUB_TABS = ['tower', 'raid', 'rush', 'pvp'];
+    const BATTLE_SUB_TABS = ['tower', 'raid', 'worldraid', 'rush', 'pvp'];
     // [⚔️ 전투] 탭을 누르면 마지막으로 보던 하위 탭으로
     function lastBattleTab() {
       let k = null;
@@ -32649,6 +32689,7 @@
       else window.HomeRoom?.cancel();
       if (tabKey === 'tower') renderTowerTab();
       if (tabKey === 'raid') renderCoopRaidTab();
+      if (tabKey === 'worldraid') renderWorldRaidTab();
       if (tabKey === 'rush') renderRushTab();
       if (tabKey === 'pvp') renderPvpTab();
       if (tabKey === 'minigame') renderMinigameTab();
@@ -32666,6 +32707,7 @@
       PetSystem.renderShop();
       renderTowerTab();
       renderCoopRaidTab();
+      renderWorldRaidTab();
       renderRushTab();
       renderPvpTab();
       renderMinigameTab();
@@ -34465,7 +34507,7 @@
       minigamesBasePath = `classes/${cleanCode}/minigames`;
       syncMinigameBoardSub();
 
-      // 4-1) 🌍 반 보스 (/classes/{code}/world_boss): 공유 체력·기여도·기록
+      // 4-1) 🌍 레이드 (/classes/{code}/world_boss): 공유 체력·기여도·기록
       WorldBoss.subscribe(cleanCode, db);
 
       // 5) 라이브 전투 중 실시간 대시(Dash) 이벤트 구독 (/classes/{code}/live_battle_events)
