@@ -19847,7 +19847,7 @@
       unit.casting = { key, left: total, total, icon: sk.icon, aimX: aim?.x ?? null, aimY: aim?.y ?? null, aimTarget: aim?.target || null };
       if (key === 'last_shot') hiddenLastShotLock(unit);
       unit.isMoving = false;
-      if (unit.job !== 'frost' && unit.job !== 'curse' && unit.job !== 'berserker' && key !== 'musou' && key !== 'last_shot' && !(key === 'element_fusion' && MAGE_FUSION_FX.circle.ready) && !(key === 'ruin_rite' && CURSE_RUIN_FX.cast.ready)) sim.effects.push({ type: 'cast_circle', x: unit.x, y: unit.y, color: '#9333ea', life: Math.min(60, total), maxLife: Math.min(60, total) });
+      if (unit.job !== 'frost' && unit.job !== 'curse' && unit.job !== 'berserker' && unit.job !== 'paladin' && key !== 'musou' && key !== 'last_shot' && !(key === 'element_fusion' && MAGE_FUSION_FX.circle.ready) && !(key === 'ruin_rite' && CURSE_RUIN_FX.cast.ready)) sim.effects.push({ type: 'cast_circle', x: unit.x, y: unit.y, color: '#9333ea', life: Math.min(60, total), maxLife: Math.min(60, total) });
     }
 
     function isCastingHiddenSkill(unit) {
@@ -20713,7 +20713,7 @@
           sim.effects.push({ type: 'paladin_aegis_dome', x: a.x, y: a.y, w: unitBodyDrawH(a) * 1.7, uid: a.id, life: domeLife, maxLife: domeLife }); // 가호 동안 불꽃 반구
           sim.floatTexts.push({ x: a.x, y: a.y - 32, text: `🌟+${amt}`, color: '#ca8a04', life: 60 });
         });
-        sim.effects.push({ type: 'paladin_aegis_burst', x: unit.x, y: unit.y, w: unitBodyDrawH(unit) * 2.6, uid: unit.id, life: 60, maxLife: 60 }); // 시전자 발밑에서 솟는 빛기둥·날개
+        sim.effects.push({ type: 'paladin_aegis_burst', x: unit.x, y: unit.y, w: unitBodyDrawH(unit) * 2.6 * PALADIN_AEGIS_FX_K, uid: unit.id, life: 60, maxLife: 60 }); // 시전자 발밑에서 솟는 빛기둥·날개
         hiddenImpact(16, '#fde68a');
         playCombatSfx('heal');
         addBattleLog(`🌟 [성기사] ${unit.name}의 히든 스킬 불굴의 가호! 8초간 아군 모두가 받는 피해가 40% 줄어요!`);
@@ -21209,6 +21209,7 @@
           if (c.key === 'blizzard') { ctx.restore(); return; } // 블리자드: 오색 구슬 대신 발밑 눈꽃 소환진만 씀 (유닛 그리기)
           if (c.key === 'ruin_rite' && CURSE_RUIN_FX.cast.ready) { ctx.restore(); return; } // 파멸의 의식: 오색 구슬 대신 시전 시트의 불꽃·마법진 (유닛 그리기)
           if (c.key === 'undying_rage') { ctx.restore(); return; } // 불사의 분노: 오색 구슬 없이 시전 칸의 보랏빛 불길 (유닛 그리기)
+          if (c.key === 'aegis') { ctx.restore(); return; } // 불굴의 가호: 오색 구슬 없이 발밑 마법진·날개 (유닛 그리기)
           if (c.key === 'encore') { ctx.restore(); return; } // 앙코르: 오색 구슬 없이 시전 칸의 금빛 고리·음표 (시크릿 레어는 발밑 빛기둥, 유닛 그리기)
           const R = 70 + 40 * (1 - p);
           for (let i = 0; i < 7; i++) { // 빨주노초파남보
@@ -23061,8 +23062,8 @@
       const k = sp ? spriteDrawH(u, sp) / sp.standH : 1;
       sim.effects.push({ type: 'paladin_swing', x: u.x, y: u.y, dir: (u.facingDir || 1) >= 0 ? 1 : -1, k, hitX: (sp?.swingHitX ?? 40) * k, delay: sp?.swingDelay ?? PALADIN_SWING_DELAY, trail: sp?.swingTrail !== false, life: 32, maxLife: 32 });
     }
-    const PALADIN_JUDGMENT_FX_W = 190;      // 심판 빛기둥 폭 (그림 px, 처음 130)
-    const PALADIN_HS_CIRCLE_K = 2.0;        // 신성 보호·수호 서약 시전 마법진 폭 = 몸 키 × 2.0 (처음 1.35)
+    const PALADIN_JUDGMENT_FX_W = 380;      // 심판 빛기둥 폭 (그림 px, 처음 130 → 190 → 380)
+    const PALADIN_HS_CIRCLE_K = 2.8;        // 신성 보호·수호 서약 시전 마법진 폭 = 몸 키 × 2.8 (처음 1.35 → 2.0 → 2.8)
     const PALADIN_HS_DOME_K = 2.1;          //   발동 때 시전자 반구 폭 = 몸 키 × 2.1 (처음 1.5)
     const PALADIN_JUDGMENT_CELLS = 1.5;     // 심판: 주변 1.5칸
     const PALADIN_JUDGMENT_DMG = 1.3;       //   130%
@@ -23080,6 +23081,7 @@
     const PALADIN_VOW_TICKS = 360;          //   서약 6초
     const PALADIN_VOW_TAUNT_TICKS = 180;    //   도발 3초
     const PALADIN_VOW_TAKEN_DOWN = 0.4;     //   받는 피해 -40%
+    const PALADIN_AEGIS_FX_K = 2;           // 불굴의 가호 시전 마법진·발동 빛기둥 크기 배율 (아군 불꽃 반구는 그대로)
     const PALADIN_AEGIS_TICKS = 480;        // 불굴의 가호: 8초
     const PALADIN_AEGIS_TAKEN_DOWN = 0.4;   //   받는 피해 -40%
     const PALADIN_AEGIS_SHIELD = 0.25;      //   성기사 최대 체력 25% 보호막
@@ -25728,7 +25730,7 @@
         ctx.globalCompositeOperation = 'lighter';
         ctx.imageSmoothingEnabled = true;
         const base = ctx.globalAlpha * (0.85 + 0.15 * Math.sin(tick * 0.3));
-        [['cast0', 1 - mix, 2.4], ['cast1', mix, 2.6]].forEach(([k, al, kw]) => {
+        [['cast0', 1 - mix, 2.4 * PALADIN_AEGIS_FX_K], ['cast1', mix, 2.6 * PALADIN_AEGIS_FX_K]].forEach(([k, al, kw]) => {
           if (al <= 0) return;
           const img = PALADIN_AEGIS_FX[k];
           const w = bodyH * kw * (0.8 + 0.2 * bp), h = w * img.height / img.width;
