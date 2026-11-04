@@ -2694,7 +2694,7 @@
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h4 id="homeRoomTitle" class="font-title text-xl text-white flex items-center gap-2"><span>🛋️</span> 내 방 꾸미기</h4>
-              <p id="homeRoomHelp" class="text-xs text-slate-400 mt-0.5">가구를 사서 방에 놓아 보세요. 놓을 때 <strong>R</strong> 또는 <strong>↻</strong>로 돌리고, 놓인 가구는 <strong>누른 채 끌어서</strong> 옮길 수 있어요. 오른쪽 위 <strong>＋ －</strong>(또는 Ctrl+휠)로 확대·축소해요.<br>방 안의 <strong>내 아바타</strong>는 <strong>방향키·WASD</strong>(또는 왼쪽 아래 십자키)로 걷고, 빈 바닥을 누르면 그리로 가요. 의자·침대 옆에서 <strong>Space(✋)</strong>를 누르면 앉고, 펫 옆에서는 쓰다듬어요. 🛡️ 내 아바타 탭에서 모습을 꾸미고, 눈·입·투구·갑옷·무기 같은 부위를 직접 그려 입거나 친구에게 팔 수도 있어요.</p>
+              <p id="homeRoomHelp" class="text-xs text-slate-400 mt-0.5">가구를 사서 방에 놓아 보세요. 놓을 때 <strong>R</strong> 또는 <strong>↻</strong>로 돌리고, 놓인 가구는 <strong>누른 채 끌어서</strong> 옮길 수 있어요. 오른쪽 위 <strong>＋ －</strong>(또는 Ctrl+휠)로 확대·축소해요.<br>방 안의 <strong>내 아바타</strong>는 <strong>방향키·WASD</strong>(또는 왼쪽 아래 십자키)로 걷고, 빈 바닥을 누르면 그리로 가요. 의자·침대 옆에서 <strong>Space(✋)</strong>를 누르면 앉고, 펫 옆에서는 쓰다듬어요. 🛡️ 내 아바타 탭에서 모습을 꾸미고, 눈·입·투구·갑옷·무기 같은 부위를 직접 그려 입거나 친구에게 팔 수도 있어요. 가구만 보고 싶으면 왼쪽 위 <strong>🧍 아바타</strong> 버튼으로 아바타를 잠시 끌 수 있어요.</p>
             </div>
             <span id="homeRoomCa" class="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-extrabold"></span>
           </div>
@@ -2704,6 +2704,8 @@
                 <div id="homeRoomStage" class="rounded-2xl overflow-auto p-2 max-h-[78vh]" style="background:linear-gradient(180deg,#ead6fb 0%,#f6d5ec 100%)">
                   <canvas id="homeRoomCanvas" class="block mx-auto touch-none select-none" style="image-rendering:pixelated"></canvas>
                 </div>
+                <!-- 아바타 켜기·끄기: 끄면 방 안 아바타(나·친구·방 주인)와 십자키·감정 버튼을 감추고 가구만 봄. 친구 화면에서도 내가 빠짐 -->
+                <button type="button" id="homeRoomAvToggle" onclick="HomeRoom.toggleAvatars()" class="absolute top-2 left-4 h-8 px-2.5 rounded-lg bg-slate-950 border border-slate-800 text-xs font-extrabold text-slate-300 hover:bg-slate-800 shadow" aria-pressed="true">🧍 아바타 켜짐</button>
                 <!-- 확대·축소 (Ctrl+휠도 됨). 확대하면 가구 없는 곳을 끌어 둘러봄 -->
                 <div class="absolute top-2 right-4 flex items-center gap-0.5 bg-slate-950 border border-slate-800 rounded-lg p-0.5 text-xs font-extrabold text-slate-300 shadow">
                   <button type="button" onclick="HomeRoom.zoomBy(1 / 1.25)" title="축소" class="w-7 h-7 rounded-md hover:bg-slate-800 text-base leading-none">－</button>
@@ -43492,6 +43494,7 @@
         if (title) title.innerHTML = guest ? `<span>🏠</span> ${this.esc(guest.name)}의 방` : '<span>🛋️</span> 내 방 꾸미기';
         document.getElementById('homeRoomHelp')?.classList.toggle('hidden', !!guest);
         document.getElementById('homeRoomTabs')?.classList.toggle('hidden', !!guest);
+        this.syncAvUi();
         this.renderList();
         this.renderToolbar();
         this.syncPets();
@@ -43904,15 +43907,33 @@
         } else this.hostAv = null;
         this.liveSync();
       },
-      // 방 주인(혼자 돌아다님, 주인이 직접 들어와 있으면 숨김) · 같은 방에 있는 친구들 · 나
-      avatars() { return [this.hostAv && !this.hostAv.hidden ? this.hostAv : null, ...Object.values(this.remote || {}), this.av].filter(Boolean); },
+      // 아바타 켜기·끄기 (이 브라우저에 기억). 끄면 방 안 아바타를 모두 감추고 조작·위치 보내기를 멈춤 → 친구 화면에서도 빠짐
+      avOn: (() => { try { return localStorage.getItem('homeRoomAvOn') !== '0'; } catch (e) { return true; } })(),
+      toggleAvatars() { this.setAvatarsOn(!this.avOn); },
+      setAvatarsOn(on) {
+        this.avOn = !!on;
+        try { localStorage.setItem('homeRoomAvOn', this.avOn ? '1' : '0'); } catch (e) {}
+        this.avKeys.clear();
+        this.liveSent = null; this.liveSentAt = 0; // 켜면 바로 다시 보냄
+        if (!this.avOn && this.live) { try { this.live.mineRef.remove().catch(() => {}); } catch (e) {} }
+        this.syncAvUi();
+        this.draw();
+        showNotice(this.avOn ? '🧍 아바타를 켰어요. 방향키로 걸어 다닐 수 있어요.' : '🫥 아바타를 껐어요. 가구만 보여요. 다시 켜면 돌아와요.');
+      },
+      syncAvUi() {
+        const b = document.getElementById('homeRoomAvToggle');
+        if (b) { b.textContent = this.avOn ? '🧍 아바타 켜짐' : '🫥 아바타 꺼짐'; b.title = this.avOn ? '아바타 끄기 (가구만 보기)' : '아바타 켜기'; b.setAttribute('aria-pressed', this.avOn ? 'true' : 'false'); b.classList.toggle('text-slate-500', !this.avOn); b.classList.toggle('text-slate-300', this.avOn); }
+        ['homeRoomPad', 'homeRoomEmotes'].forEach(id => document.getElementById(id)?.classList.toggle('hidden', !this.avOn));
+      },
+      // 방 주인(혼자 돌아다님, 주인이 직접 들어와 있으면 숨김) · 같은 방에 있는 친구들 · 나. 아바타를 끄면 아무도 없음
+      avatars() { return this.avOn ? [this.hostAv && !this.hostAv.hidden ? this.hostAv : null, ...Object.values(this.remote || {}), this.av].filter(Boolean) : []; },
       avStand(s, cm) {
         const c = this.nearestFree(s.X, s.Y, cm || this.cellMap());
         s.sit = null; s.z = 0; s.path = [];
         if (c) { s.X = c.X + 0.5; s.Y = c.Y + 0.5; }
       },
       tickAvatars(dt, now) {
-        if (!this.av && !this.hostAv) return;
+        if (!this.avOn || (!this.av && !this.hostAv)) return;
         const cm = this.cellMap(), perches = this.perches();
         [this.hostAv, this.av].filter(Boolean).forEach(s => this.avTick(s, dt, now, cm, perches));
         Object.values(this.remote || {}).forEach(s => this.remoteTick(s, dt, now));
@@ -43976,7 +43997,7 @@
       // 행동 (Space·✋): 앉아 있으면 일어나고, 옆에 의자·침대가 있으면 앉고, 펫이 가까우면 쓰다듬고, 아니면 인사
       avAction() {
         const s = this.av;
-        if (!s) return;
+        if (!s || !this.avOn) return;
         const now = performance.now(), cm = this.cellMap();
         if (s.sit) { this.avStand(s, cm); return; }
         const cur = { X: Math.floor(s.X), Y: Math.floor(s.Y) };
@@ -43986,11 +44007,11 @@
         if (pet) { this.patPet(pet); s.emote = { text: '💗', until: now + 1500 }; this.emoteSeq++; this.lastEmote = '💗'; return; }
         this.avEmote('👋');
       },
-      avEmote(t) { if (this.av) { this.av.emote = { text: t, until: performance.now() + 1800 }; this.emoteSeq++; this.lastEmote = t; DailyMission.progress('roomEmote'); } },
+      avEmote(t) { if (this.av && this.avOn) { this.av.emote = { text: t, until: performance.now() + 1800 }; this.emoteSeq++; this.lastEmote = t; DailyMission.progress('roomEmote'); } },
       // 바닥 칸을 눌러 그리로 걸어감. 앉을 수 있는 가구를 눌렀으면 옆까지 가서 앉음
       avWalkTo(p) {
         const s = this.av;
-        if (!s) return;
+        if (!s || !this.avOn) return;
         const cm = this.cellMap(), tx = Math.floor(p.X), ty = Math.floor(p.Y);
         if (tx < 0 || ty < 0 || tx >= HOME_ROOM_X || ty >= HOME_ROOM_Y) return;
         if (s.sit) this.avStand(s, cm);
@@ -44522,7 +44543,7 @@
       // 내 위치 보내기: 바뀌면 0.2초마다, 가만히 있으면 8초마다 (살아 있다는 표시)
       livePublish(now) {
         const live = this.live, s = this.av;
-        if (!live || !s) return;
+        if (!live || !s || !this.avOn) return;
         const msg = {
           x: Math.round(s.X * 100) / 100, y: Math.round(s.Y * 100) / 100, z: Math.round((s.z || 0) * 100) / 100,
           p: `${s.back ? 1 : 0}${s.side ? 1 : 0}${s.flip ? 1 : 0}${s.moving ? 1 : 0}`,
@@ -44645,7 +44666,7 @@
           if (document.getElementById('studentTab-home')?.classList.contains('hidden')) return;
           if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
           // 내 단장 움직이기·행동 (친구 방에서도)
-          const k = this.av ? this.avKeyOf(e) : null;
+          const k = this.av && this.avOn ? this.avKeyOf(e) : null;
           if (k) { e.preventDefault(); if (k === 'act') { if (!e.repeat) this.avAction(); } else this.avKeys.add(k); return; }
           if (this.visitId) return;
           if (e.key === 'r' || e.key === 'R') { this.rotate(); e.preventDefault(); }
