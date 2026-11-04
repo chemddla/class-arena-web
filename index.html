@@ -43072,12 +43072,16 @@
       visitor() { return this.visitId ? (state.students || []).find(s => s.id === this.visitId) || null : null; },
       viewHome(stu) {
         const h = stu && stu.home && typeof stu.home === 'object' ? stu.home : {};
+        // 프레임마다 여러 번 불리므로, 친구 기록이 그대로면 만든 사본을 재사용
+        const vc = this.viewCache;
+        if (vc && vc.h === h && vc.items === h.items && vc.n === (Array.isArray(h.items) ? h.items.length : -1) && vc.wall === h.wall && vc.floor === h.floor && vc.lv === homeLv(h)) return vc.out;
         const items = (Array.isArray(h.items) ? h.items : Object.values(h.items || {})).filter(it => it && HOME_DEF[it.id]);
         const out = { items, skins: [], lv: homeLv(h) };
         let wall = h.wall;
         if (HOME_SKIN_SPLIT[wall]) wall = HOME_SKIN_SPLIT[wall][0];
         if (wall && HOME_SKIN[`wall:${wall}`]) out.wall = wall;
         if (h.floor && HOME_SKIN[`floor:${h.floor}`]) out.floor = h.floor;
+        this.viewCache = { h, items: h.items, n: Array.isArray(h.items) ? h.items.length : -1, wall: h.wall, floor: h.floor, lv: out.lv, out };
         return out;
       },
       shownHome() { return this.visitId ? this.viewHome(this.visitor()) : this.home(); },
@@ -43105,7 +43109,10 @@
         let im = this.imgs[src];
         if (!im) {
           im = this.imgs[src] = new Image();
-          im.onload = () => this.draw();
+          im.onload = () => { // 그림이 줄줄이 도착해도 한 프레임에 한 번만 다시 그림
+            if (this.imgRaf) return;
+            this.imgRaf = requestAnimationFrame(() => { this.imgRaf = 0; this.draw(); });
+          };
           im.src = src;
         }
         return im.complete && im.naturalWidth ? im : null;
@@ -43386,18 +43393,25 @@
       },
       // 뒤에 있는 것부터: 바닥 칸이 한쪽 축으로 완전히 앞이면 나중에
       order(list) {
-        const rs = list.map(it => this.rect(it));
+        const rs = list.map(it => this.rect(it)), n = list.length;
         const behind = (a, b) => {
           const bx = a.x1 <= b.x0, by = a.y1 <= b.y0, fx = b.x1 <= a.x0, fy = b.y1 <= a.y0;
           if ((bx || by) && !(fx || fy)) return true;
           if ((fx || fy) && !(bx || by)) return false;
           return a.x0 + a.x1 + a.y0 + a.y1 < b.x0 + b.x1 + b.y0 + b.y1;
         };
-        const idx = list.map((_, i) => i), out = [];
-        while (idx.length) {
-          let k = idx.findIndex(i => idx.every(j => j === i || !behind(rs[j], rs[i]) || behind(rs[i], rs[j])));
-          if (k < 0) k = 0;
-          out.push(list[idx.splice(k, 1)[0]]);
+        // i보다 반드시 먼저 그려야 하는 j(뒤에 있고 i는 j의 뒤가 아님)의 수를 미리 세어 둠 → O(n²)
+        const pre = new Array(n).fill(0), after = Array.from({ length: n }, () => []);
+        for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+          if (i !== j && behind(rs[j], rs[i]) && !behind(rs[i], rs[j])) { pre[i]++; after[j].push(i); }
+        }
+        const done = new Array(n).fill(false), out = [];
+        for (let c = 0; c < n; c++) {
+          let k = -1;
+          for (let i = 0; i < n; i++) if (!done[i] && pre[i] === 0) { k = i; break; }
+          if (k < 0) k = done.indexOf(false); // 서로 가리는 순환이면 남은 첫 것
+          done[k] = true; out.push(list[k]);
+          after[k].forEach(i => { pre[i]--; });
         }
         return out;
       },
@@ -43458,7 +43472,18 @@
         return ids.map(id => owned.find(p => p.id === id)).filter(Boolean);
       },
       // 칸 → 그 칸을 차지한 가구 (러그는 밟고 지나감)
+      // 가구 배치가 그대로면 칸 지도·앉는 자리를 재사용 (프레임마다 펫·아바타가 여러 번 부름)
+      placeSig() { return `${this.visitId || ''}|${HOME_ROOM_X}x${HOME_ROOM_Y}|` + this.placed().map(it => `${it.u}:${it.id}:${it.x}:${it.y}:${it.r || 0}`).join(','); },
+      layoutCache() {
+        const sig = this.placeSig();
+        if (!this.lay || this.lay.sig !== sig) this.lay = { sig, cm: null, perches: null };
+        return this.lay;
+      },
       cellMap() {
+        const lay = this.layoutCache();
+        return lay.cm || (lay.cm = this.buildCellMap());
+      },
+      buildCellMap() {
         const m = {};
         this.placed().forEach(it => {
           if (HOME_DEF[it.id].cat === 'rug') return;
@@ -43469,6 +43494,10 @@
       },
       // 펫이 올라갈 수 있는 자리 [{ X, Y, z, pose, u }]
       perches() {
+        const lay = this.layoutCache();
+        return lay.perches || (lay.perches = this.buildPerches());
+      },
+      buildPerches() {
         const out = [];
         this.placed().forEach(it => {
           const list = HOME_PERCH[it.id];
