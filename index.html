@@ -29179,7 +29179,8 @@
       makeCurrent(stage, hpMult, weekKey) {
         const def = this.defOfStage(stage);
         const maxHp = Math.round(def.hp * WORLD_BOSS.hpPerStudent * this.classSize() * (hpMult || 1));
-        return { key: `${weekKey}_${stage}`, weekKey, stage, bossId: def.id, maxHp, hp: maxHp, hpMult: hpMult || 1, v: WORLD_BOSS.hpVersion, startedAt: this.now(), killedAt: 0, killedBy: '', killedByName: '' };
+        const startedAt = this.now();
+        return { key: `${weekKey}_${stage}_${startedAt.toString(36)}`, weekKey, stage, bossId: def.id, maxHp, hp: maxHp, hpMult: hpMult || 1, v: WORLD_BOSS.hpVersion, startedAt, killedAt: 0, killedBy: '', killedByName: '' };
       },
       current() { const c = this.cache && this.cache.current; return c && c.key ? c : null; },
       contrib(key) { return (this.cache && this.cache.contrib && this.cache.contrib[key]) || {}; },
@@ -29789,7 +29790,17 @@
         this.ref.child('current').transaction(c => {
           const stage = Math.max(1, ((c && c.stage) || 1) + stageDelta);
           return this.makeCurrent(stage, (c && c.hpMult) || 1, wk);
-        }).then(() => showRewardBanner('🌍 보스 레이드를 새 체력으로 다시 내보냈어요.')).catch(() => {});
+        }).then(() => { this.ref.child('room').remove().catch(() => {}); showRewardBanner('🌍 보스 레이드를 새 체력으로 다시 내보냈어요.'); }).catch(() => {});
+      },
+      // 보스 레이드 초기화: 1단계 보스를 꽉 찬 체력으로 · 기여도 랭킹·토벌 기록·지난 보스·싸우던 방까지 모두 지움 (학생이 받은 CA는 그대로)
+      adminWipe() {
+        if (!this.ref) return;
+        const wk = this.weekKey();
+        this.ref.child('current').transaction(c => this.makeCurrent(1, (c && c.hpMult) || 1, wk)).then(res => {
+          if (!res || !res.committed) return;
+          ['contrib', 'log', 'done', 'history', 'room'].forEach(k => this.ref.child(k).remove().catch(() => {}));
+          showRewardBanner('🧹 보스 레이드를 초기화했어요! 1단계 보스부터 다시 시작해요.');
+        }).catch(() => {});
       },
 
       // ----- 화면 -----
@@ -29936,6 +29947,7 @@
             <button onclick="askCustomConfirm('이번 보스를 새 체력으로 다시 내보낼까요? (기여도는 새로 셈)', () => WorldBoss.adminReset(0))" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-white">🔁 같은 단계 다시</button>
             <button onclick="askCustomConfirm('한 단계 쉬운 보스로 바꿀까요?', () => WorldBoss.adminReset(-1))" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-white">⬇️ 한 단계 아래로</button>
             <button onclick="askCustomConfirm('한 단계 어려운 보스로 바꿀까요?', () => WorldBoss.adminReset(1))" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-white">⬆️ 한 단계 위로</button>
+            <button onclick="askCustomConfirm('보스 레이드를 처음부터 다시 시작할까요? 1단계 보스가 꽉 찬 체력으로 나오고, 기여도 랭킹·토벌 기록·지난 보스 기록이 모두 지워져요. (학생들이 이미 받은 CA는 그대로예요)', () => WorldBoss.adminWipe())" class="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-[11px] font-extrabold text-white">🧹 보스 레이드 초기화</button>
           </div>`;
       }
     };
