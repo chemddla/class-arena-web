@@ -159,7 +159,7 @@ def key_dark(src, x0=0, x1=None, label_rows=0, warm_keep=False, out=None, fade=N
 
 
 def build_judgment_fx():
-    key_dark('judge_fx', label_rows=JUDGE_FX_LABEL_ROWS, warm_keep=True, out=OUT_JUDGE_FX)
+    key_dark('judge_fx', label_rows=JUDGE_FX_LABEL_ROWS, warm_keep=True, out=OUT_JUDGE_FX, fade={'top': 48, 'bottom': 5})  # 샘플 위쪽에서 잘린 빛기둥은 위로 갈수록 사라지게, 아래(땅)는 살짝만
 
 
 def glow_dark(src, x0=0, x1=None, out=None, gain=1.15):
