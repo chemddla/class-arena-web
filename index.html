@@ -18581,8 +18581,8 @@
       unit.maxSkillAnim = 72;
       unit.activeSkillType = sk;
       // 창병, 광전사의 내려치기가 아닌 스킬은 스킬 동작이 끝난 뒤 기본 공격 동작(창병: 수그리는 끝 자세, 광전사: 내려치기)이 이어지지 않게
-      // 성기사 심판도: 내리찍기 칸이 끝나면 기본 공격 내리친 자세가 이어지지 않고 바로 대기 (시크릿 레어 포함)
-      unit.attackAnim = unit.job === 'lancer' || (unit.job === 'berserker' && BERSERKER_NO_ATTACK_TAIL.includes(sk)) || (unit.job === 'paladin' && sk === 'judgment') ? 0 : 52;
+      // 성기사 심판·신성 보호·수호 서약·성스러운 돌격·불굴의 가호도: 스킬 동작이 끝나면 기본 공격 내리친 자세가 이어지지 않고 바로 대기 (시크릿 레어 포함)
+      unit.attackAnim = unit.job === 'lancer' || (unit.job === 'berserker' && BERSERKER_NO_ATTACK_TAIL.includes(sk)) || (unit.job === 'paladin' && PALADIN_NO_ATTACK_TAIL.includes(sk)) ? 0 : 52;
       unit.maxAttackAnim = 52;
 
       // [Requirement 2]: 스킬 사용 시 피격된 적 위가 아니라 스킬 사용자(시전자) 머리 위에 스킬 이름이 뜨도록 표시!
@@ -20713,7 +20713,7 @@
           sim.effects.push({ type: 'paladin_aegis_dome', x: a.x, y: a.y, w: unitBodyDrawH(a) * 1.7, uid: a.id, life: domeLife, maxLife: domeLife }); // 가호 동안 불꽃 반구
           sim.floatTexts.push({ x: a.x, y: a.y - 32, text: `🌟+${amt}`, color: '#ca8a04', life: 60 });
         });
-        sim.effects.push({ type: 'paladin_aegis_burst', x: unit.x, y: unit.y, w: unitBodyDrawH(unit) * 2.6 * PALADIN_AEGIS_FX_K, uid: unit.id, life: 60, maxLife: 60 }); // 시전자 발밑에서 솟는 빛기둥·날개
+        sim.effects.push({ type: 'paladin_aegis_burst', x: unit.x, y: unit.y, w: unitBodyDrawH(unit) * 2.6 * PALADIN_AEGIS_BURST_K, uid: unit.id, life: 60, maxLife: 60 }); // 시전자 발밑에서 솟는 빛기둥·날개
         hiddenImpact(16, '#fde68a');
         playCombatSfx('heal');
         addBattleLog(`🌟 [성기사] ${unit.name}의 히든 스킬 불굴의 가호! 8초간 아군 모두가 받는 피해가 40% 줄어요!`);
@@ -23083,7 +23083,22 @@
     const PALADIN_VOW_TICKS = 360;          //   서약 6초
     const PALADIN_VOW_TAUNT_TICKS = 180;    //   도발 3초
     const PALADIN_VOW_TAKEN_DOWN = 0.4;     //   받는 피해 -40%
-    const PALADIN_AEGIS_ALPHA = 1.05;       // 불굴의 가호 시전 마법진·날개 진하기 (처음 0.8)
+    const PALADIN_NO_ATTACK_TAIL = ['judgment', 'holy_shield', 'vow', 'holy_charge', 'aegis']; // 스킬 뒤 기본 공격 자세 꼬리 없음 (castMercSkillInner)
+    // 불굴의 가호 그림: 빛 더하기('lighter')로만 그리면 겹친 곳이 하얗게 타 번쩍거리고 무늬가 안 보임 → 그림 색 그대로 덮어 그린 뒤(cover) 빛을 조금만 더함(PALADIN_AEGIS_GLOW)
+    //   캐릭터 위에 덮는 발동 빛기둥·아군 반구는 덮기를 옅게 (안의 캐릭터가 가려지지 않게), 캐릭터 아래 깔리는 시전 마법진은 진하게
+    const PALADIN_AEGIS_COVER = { cast: 1, burst: 0.8, ally: 0.6 }; // 또렷하게 (처음 0.9 / 0.55 / 0.4)
+    const PALADIN_AEGIS_GLOW = 0.3;
+    function drawAegisFx(ctx, alpha, cover, draw) {
+      const a0 = ctx.globalAlpha, op = ctx.globalCompositeOperation;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = Math.min(1, alpha * cover);
+      draw();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = Math.min(1, alpha * PALADIN_AEGIS_GLOW);
+      draw();
+      ctx.globalAlpha = a0; ctx.globalCompositeOperation = op;
+    }
+    const PALADIN_AEGIS_BURST_K = 3;        // 불굴의 가호 발동 빛기둥·날개 크기 배율 (처음 1 → 2 → 3)
     const PALADIN_AEGIS_FX_K = 2;           // 불굴의 가호 시전 마법진·발동 빛기둥 크기 배율 (아군 불꽃 반구는 그대로)
     const PALADIN_AEGIS_TICKS = 480;        // 불굴의 가호: 8초
     const PALADIN_AEGIS_TAKEN_DOWN = 0.4;   //   받는 피해 -40%
@@ -24385,11 +24400,11 @@
           const rise = Math.min(1, 0.3 + progress / 0.2 * 0.7);
           const w = ef.w, h = w * img.height / img.width, base = h * img.cy;
           ctx.save();
-          ctx.globalCompositeOperation = 'lighter';
-          ctx.globalAlpha = Math.min(1, (1 - progress) / 0.45) * 0.85; // 가시성을 높임 (처음 0.6 — 축성보다 큰 빛기둥이라 옅게 했었음)
           ctx.imageSmoothingEnabled = true;
-          ctx.drawImage(img, 0, 0, img.width, img.height * img.cy, x - w / 2, y + 12 - base * rise, w, base * rise);
-          ctx.drawImage(img, 0, img.height * img.cy, img.width, img.height * (1 - img.cy), x - w / 2, y + 12, w, h - base);
+          drawAegisFx(ctx, Math.min(1, (1 - progress) / 0.45), PALADIN_AEGIS_COVER.burst, () => {
+            ctx.drawImage(img, 0, 0, img.width, img.height * img.cy, x - w / 2, y + 12 - base * rise, w, base * rise);
+            ctx.drawImage(img, 0, img.height * img.cy, img.width, img.height * (1 - img.cy), x - w / 2, y + 12, w, h - base);
+          });
           ctx.restore();
           return;
         }
@@ -24404,10 +24419,8 @@
           const settle = age < 15 ? 0.95 : Math.max(0.72, 0.95 - (age - 15) / 30 * 0.23); // 가시성: 처음 0.8 → 0.55
           const w = ef.w * pop, h = w * img.height / img.width;
           ctx.save();
-          ctx.globalCompositeOperation = 'lighter';
-          ctx.globalAlpha = grow * fade * settle * (0.9 + 0.1 * Math.sin(age * 0.15)); // 빛을 더해 그려서 진하면 안의 캐릭터가 하얗게 묻힘
           ctx.imageSmoothingEnabled = true;
-          ctx.drawImage(img, u.x - w / 2, u.y + 12 - h * img.cy, w, h);
+          drawAegisFx(ctx, grow * fade * settle * (0.96 + 0.04 * Math.sin(age * 0.05)), PALADIN_AEGIS_COVER.ally, () => ctx.drawImage(img, u.x - w / 2, u.y + 12 - h * img.cy, w, h)); // 일렁임은 천천히·조금만 (빠르면 번쩍거림)
           ctx.restore();
           return;
         }
@@ -25730,15 +25743,13 @@
         const bodyH = unitBodyDrawH(u);
         const mix = Math.min(1, Math.max(0, (bp - 0.4) / 0.2));
         ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
         ctx.imageSmoothingEnabled = true;
-        const base = ctx.globalAlpha * (0.85 + 0.15 * Math.sin(tick * 0.3));
+        const base = ctx.globalAlpha * (0.95 + 0.05 * Math.sin(tick * 0.06)); // 천천히·조금만 일렁임 (예전 sin(tick × 0.3) ±15%는 번쩍거렸음)
         [['cast0', 1 - mix, 2.4 * PALADIN_AEGIS_FX_K], ['cast1', mix, 2.6 * PALADIN_AEGIS_FX_K]].forEach(([k, al, kw]) => {
           if (al <= 0) return;
           const img = PALADIN_AEGIS_FX[k];
           const w = bodyH * kw * (0.8 + 0.2 * bp), h = w * img.height / img.width;
-          ctx.globalAlpha = Math.min(1, base * al * Math.min(1, 0.35 + bp) * PALADIN_AEGIS_ALPHA); // 가시성: 처음 0.8
-          ctx.drawImage(img, -w / 2, 12 - h * img.cy, w, h);
+          drawAegisFx(ctx, base * al * Math.min(1, 0.35 + bp), PALADIN_AEGIS_COVER.cast, () => ctx.drawImage(img, -w / 2, 12 - h * img.cy, w, h));
         });
         ctx.restore();
       }
