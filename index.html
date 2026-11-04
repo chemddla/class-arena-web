@@ -4349,6 +4349,8 @@
     const CHARGE_SKILL_DISTANCE = GRID_CELL_SIZE * 2; // 전사 돌진 스킬 2칸 (240px)
     const BATTLE_PROJECTILE_SPEED = 2.8; // 화살·마법구 등 투사체 속도 배율
     const PROJECTILE_HIT_RADIUS = 30;    // 투사체가 이 거리 안으로 지나가면 맞음
+    // 엘리트 보스가 나오는 전투: 엘리트 협동 레이드 · 🌍 반 보스 (같은 맵·등장 연출·제한 시간)
+    function isEliteBossMode(mode) { return mode === 'elite_raid' || mode === 'world_boss'; }
     const ELITE_SIZE_MULT = 1.3;         // 엘리트 보스 상향: 몸·그림 크기와 공격 범위(기본 공격 사거리·스킬 범위) 30% 크게
     // 엘리트 보스 몸 배율: 🔥 하드모드 보스는 eliteHardSize(1.5)만큼 더 큼
     function eliteSizeOf(u) { return ELITE_SIZE_MULT * ((u && u.eliteHardSize) || 1); }
@@ -5034,7 +5036,7 @@
       archer:  { ranged: 1.1 },
       mage:    { skill: 1.3, skillVsMonster: 1.15 }, // 스킬이 몬스터에게 +15%: 몬스터 무리 광역 딜
       healer:  { heal: 1.2 },
-      rogue:   { backstab: 1.5, vsMonster: 1.3, bossTaken: 0.8 }, // 몬스터 +30%: 탑에서 가장 약했음 (다섯째 칸 평균 승률 48%, 궁수 81%) · 보스전에서 받는 피해 -20% (-40%에서 너프): 등 뒤는 잘 잡는데 체력이 낮아 보스 광역기·보스층 졸개에게 가장 먼저 쓰러졌음 (엘리트 5단계 처치 0%, 탑 보스층 17~33%)
+      rogue:   { backstab: 1.5, vsMonster: 1.3 }, // 몬스터 +30%: 탑에서 가장 약했음 (다섯째 칸 평균 승률 48%, 궁수 81%) · 보스전 받는 피해 감소는 삭제
       knight:  { taken: 0.8, basicStaggerImmune: true, guardAura: true }, // 수호: 2칸 안 아군 받는 피해 -10% (knightGuardOn)
       frost:   { statusDouble: true }, // 빙결술사 혹한: inflictStatus에서 처리
       curse:   { vsDebuffed: 1.3 },    // 주술사 원한: 나쁜 상태이상에 걸린 적에게 주는 피해 +30%
@@ -8964,7 +8966,7 @@
         if (rm && rm.ready) return rm;
         if (BATTLE_MAPS.monster_rush.ready) return BATTLE_MAPS.monster_rush;
       }
-      let key = mode === 'practice' ? 'practice' : (mode === 'tower' || mode === 'monster_rush') ? 'tower' : mode === 'elite_raid' ? 'elite' : 'pvp';
+      let key = mode === 'practice' ? 'practice' : (mode === 'tower' || mode === 'monster_rush') ? 'tower' : isEliteBossMode(mode) ? 'elite' : 'pvp';
       if (key === 'tower' && towerFloor) {
         const raceKey = TOWER_RACE_MAPS[towerRaceOfFloor(towerFloor).name];
         if (raceKey && BATTLE_MAPS[raceKey].ready) key = raceKey;
@@ -11204,6 +11206,8 @@
       { id: 'realtimePvp', icon: '⚡', label: '실시간 PvP 대결하기', goal: 1, go: () => { goToStudentTab('pvp'); switchPvpSubMode('realtime'); } },
       { id: 'towerClear', icon: '🧗', label: '모험의 탑 새 층 돌파하기', goal: 1, go: () => goToStudentTab('tower'), need: stu => (stu.towerFloor || 1) < TOWER_MAX_FLOOR },
       { id: 'raidWin', icon: '⚔️', label: '엘리트 보스 토벌 성공하기', goal: 1, go: () => goToStudentTab('raid') },
+      { id: 'worldBoss', icon: '🌍', label: '반 보스 도전하기', goal: 1, go: () => goToStudentTab('raid') },
+      { id: 'worldBoss3', icon: '🌍', label: '반 보스 3번 도전하기', goal: 3, go: () => goToStudentTab('raid') },
       { id: 'rankedWin', icon: '🏆', label: '랭킹 매칭 승리하기', goal: 1, go: () => goToRankedMatch() },
       { id: 'practice', icon: '🪆', label: '허수아비 모의전 하기', goal: 1, go: () => goToStudentTab('squad') },
       { id: 'auctionBid', icon: '🙋', label: '용병 경매에 입찰하기', goal: 1, go: () => goToStudentTab('market') },
@@ -17460,6 +17464,8 @@
       document.getElementById('battleResultOverlay').classList.add('hidden');
       document.getElementById('arenaModeBadge').textContent = mode === 'monster_rush'
         ? '🌊 몬스터 러쉬'
+        : mode === 'world_boss'
+        ? '🌍 반 보스 토벌'
         : mode === 'elite_raid'
         ? '🐉 엘리트 보스 협동 대전'
         : (mode === 'tower' ? '🏰 모험의 탑' : (mode === 'practice' ? '🎯 연습 전투' : (mode === 'pvp_ranked' ? '🎯 랭킹 매칭 결투' : (mode === 'pvp_async' ? '🛡️ 진형 도전' : '⚡ 실시간 대결'))));
@@ -18203,8 +18209,6 @@
       let takenMult = defPassive.taken || 1;
       // 전사 투지: 몬스터에게 받는 피해 감소
       if (defPassive.monsterTaken && attacker && attacker.team !== defender.team && (attacker.monsterType || attacker.isEliteBoss)) takenMult *= defPassive.monsterTaken;
-      // 도적 그림자 회피: 보스전(엘리트 보스, 탑 보스층의 보스·졸개)에서 받는 피해 감소
-      if (defPassive.bossTaken && attacker && attacker.team !== defender.team && (attacker.isEliteBoss || attacker.isRaceBoss || (attacker.monsterType && sim.meta?.towerFloorObj?.isRaceBoss))) takenMult *= defPassive.bossTaken;
       // 기사 수호: 곁에 있는 기사가 아군(기사 자신 빼고)이 받는 피해를 줄여 줌
       if (attacker && attacker.team !== defender.team && knightGuardOn(defender)) takenMult *= 1 - KNIGHT_AURA_TAKEN_DOWN;
       if ((defender.statuses.guard || 0) > 0) takenMult *= 1 - KNIGHT_GUARD_REDUCTION;
@@ -18994,6 +18998,7 @@
 
       // 🌊 몬스터 러쉬: 적이 다 쓰러져도 끝나지 않고 다음 라운드 (전멸·시간 초과일 때만 끝남)
       if (sim.mode === 'monster_rush' && !sim.sandbox && stepMonsterRush(blueAlive, redAlive)) return;
+      if (sim.mode === 'world_boss') WorldBoss.step(); // 🌍 체력이 광폭화 선 아래로 내려갔는지
       // 분신만 남은 팀은 진 것으로 (분신은 머릿수에 넣지 않음)
       const blueReal = blueAlive.some(u => !u.isClone);
       if (!sim.sandbox && sim.mode !== 'monster_rush' && (!blueReal || !redAlive.some(u => !u.isClone))) {
@@ -19004,6 +19009,7 @@
             sim.victoryAt = sim.tickCount;
             sim.projectiles = [];
             if (sim.mode === 'elite_raid') addBattleLog('🏆 엘리트 보스가 쓰러졌어요!');
+            if (sim.mode === 'world_boss') addBattleLog('🏆 반 보스가 쓰러졌어요! 마지막 일격!');
           }
           if (sim.tickCount - sim.victoryAt < VICTORY_SHOW_SEC * BATTLE_TICKS_PER_SEC) {
             sim.units.forEach(u => {
@@ -19020,7 +19026,7 @@
 
       // 시간 제한: 끝나지 않는 전투(서로 회복만 하거나, 체력이 아주 많은 허수아비)가 계속되지 않도록
       const timeLimit = sim.mode === 'practice' ? BATTLE_TIME_LIMIT.practiceTicks
-        : (sim.mode === 'elite_raid' ? eliteRaidTimeLimitTicks() : BATTLE_TIME_LIMIT.battleTicks);
+        : (isEliteBossMode(sim.mode) ? eliteRaidTimeLimitTicks() : BATTLE_TIME_LIMIT.battleTicks);
       if (!sim.sandbox && sim.mode !== 'monster_rush' && sim.tickCount >= timeLimit) {
         finishBattleByTimeLimit(blueAlive, redAlive);
         return;
@@ -24012,7 +24018,7 @@
     // MVP 후보: 분신·몬스터(탑 몬스터·엘리트 보스·허수아비)는 빼고 용병만.
     // 모험의 탑·엘리트 보스 토벌은 상대가 모두 적(어둠의 용병 포함)이라 우리 원정대(블루팀)만
     function mvpCandidates() {
-      const pveOnly = sim.mode === 'tower' || sim.mode === 'elite_raid' || sim.mode === 'monster_rush';
+      const pveOnly = sim.mode === 'tower' || isEliteBossMode(sim.mode) || sim.mode === 'monster_rush';
       return sim.units.filter(x => !x.isClone && !x.monsterType && !x.isEliteBoss && (!pveOnly || x.team === 'blue'));
     }
 
@@ -24059,6 +24065,7 @@
       stu.matchCount = (stu.matchCount || 0) + 1;
       recordCodexKills(stu);
       if (sim.mode === 'monster_rush') { finishMonsterRush(stu); return; }
+      if (sim.mode === 'world_boss') { WorldBoss.finish(stu, blueWon); return; }
 
       let baseReward = blueWon ? (meta.rewardMc || 250) : (meta.lossRewardMc != null ? meta.lossRewardMc : ECONOMY.lossReward);
       const isPvpMode = sim.mode === 'pvp' || sim.mode === 'pvp_async' || sim.mode === 'pvp_realtime' || sim.mode === 'pvp_ranked';
@@ -24180,7 +24187,7 @@
     // 혼자 하는 모험의 탑·엘리트 보스: 자동/직접 전투를 고르기 전이면 아직 전투가 시작되지 않은 것
     function battleNotStartedYet() {
       return Boolean(sim.running && !sim.spectator && sim.awaitingControlChoice && !sim.netRole
-        && (sim.mode === 'tower' || sim.mode === 'elite_raid'));
+        && (sim.mode === 'tower' || isEliteBossMode(sim.mode)));
     }
 
     // 시작 전에 나가기: 패배·보상·도전 횟수·도전비용 없이 그냥 나감
@@ -27270,6 +27277,11 @@
         finishSimulation(false);
         return;
       }
+      if (sim.mode === 'world_boss') {
+        addBattleLog('⏰ 제한 시간이 끝났어요! 지금까지 준 피해가 반 보스 체력에서 빠져요.');
+        finishSimulation(false);
+        return;
+      }
       const hpRatio = (alive, team) => {
         const all = sim.units.filter(u => u.team === team);
         const max = all.reduce((s, u) => s + (u.maxHp || 0), 0) || 1;
@@ -27352,7 +27364,7 @@
       const hp = boss.alive ? Math.max(0, Math.round(boss.hp || 0)) : 0;
       const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
       const shieldPct = Math.max(0, Math.min(100, ((boss.shield || 0) / maxHp) * 100));
-      const leftSec = sim.mode === 'elite_raid' ? Math.max(0, Math.min(ELITE_RAID_TIME_LIMIT_SEC, Math.ceil((eliteRaidTimeLimitTicks() - (sim.tickCount || 0)) / BATTLE_TICKS_PER_SEC))) : null;
+      const leftSec = isEliteBossMode(sim.mode) ? Math.max(0, Math.min(ELITE_RAID_TIME_LIMIT_SEC, Math.ceil((eliteRaidTimeLimitTicks() - (sim.tickCount || 0)) / BATTLE_TICKS_PER_SEC))) : null;
       const timeText = leftSec == null ? '' : ` · ⏰ ${Math.floor(leftSec / 60)}:${String(leftSec % 60).padStart(2, '0')}`;
       document.getElementById('eliteBossHpName').textContent = `👹 ${boss.name}${timeText}`;
       document.getElementById('eliteBossHpText').textContent = `${hp.toLocaleString()} / ${Math.round(maxHp).toLocaleString()} (${pct.toFixed(1)}%)`;
@@ -28214,6 +28226,7 @@
         btn('tower', '🏰 모험의 탑 클리어', book.towerClears || 0, TOWER_DAILY_CLEARS),
         btn('raidClears', '🐉 엘리트 보스 클리어', book.raidClears || 0, ELITE_DAILY_CLEARS),
         btn('raid', '🐉 엘리트 보스 격려 보상', book.raid || 0, DAILY_REWARD_LIMITS.raid),
+        btn('worldBossTries', '🌍 반 보스 도전', book.worldBossTries || 0, WORLD_BOSS.tries),
         btn('rush', '🌊 몬스터 러쉬 보상 라운드', book.rushRound || 0, RUSH.maxRound),
         btn('pvp', '🏆 랭킹 매칭', book.pvp || 0, DAILY_REWARD_LIMITS.pvp),
         btn('quiz', '❓ 퀴즈', book.quiz || 0, DAILY_REWARD_LIMITS.quiz),
@@ -28228,7 +28241,7 @@
       const stu = state.students.find(s => s.id === adminEditingStudentId);
       if (!stu) return;
       const book = getDailyRewardBook(stu);
-      const cats = category === 'all' ? ['tower', 'raid', 'raidClears', 'pvp', 'quiz', 'practice', 'minigame', 'rush'] : [category];
+      const cats = category === 'all' ? ['tower', 'raid', 'raidClears', 'worldBossTries', 'pvp', 'quiz', 'practice', 'minigame', 'rush'] : [category];
       cats.forEach(c => {
         book[c] = 0;
         if (c === 'tower') book.towerClears = 0;
@@ -28237,7 +28250,7 @@
       saveState();
       renderAdminEditTriesBox();
       renderAllStudentViews();
-      const label = category === 'all' ? '모든 콘텐츠' : category === 'raidClears' ? '엘리트 보스 클리어' : (DAILY_REWARD_LABELS[category] || category);
+      const label = category === 'all' ? '모든 콘텐츠' : category === 'raidClears' ? '엘리트 보스 클리어' : category === 'worldBossTries' ? '반 보스 도전' : (DAILY_REWARD_LABELS[category] || category);
       showRewardBanner(`🔁 ${stu.name} 학생의 오늘 ${label} 도전 기회를 초기화했어요!`);
     }
 
@@ -28772,7 +28785,7 @@
       sim.introTicks = 0;
       sim.shake = null;
       sim.flash = null;
-      if (sim.mode !== 'elite_raid' || sim.netRole === 'guest' || !sim.units.some(u => u.isEliteBoss)) return;
+      if (!isEliteBossMode(sim.mode) || sim.netRole === 'guest' || !sim.units.some(u => u.isEliteBoss)) return;
       sim.eliteIntro = { t: 0 };
       sim.introTicks = eliteIntroTotalTicks();
     }
@@ -28957,6 +28970,419 @@
       return '';
     }
     const eliteRewardOf = (def, hard) => (hard ? def.rewardMc * ELITE_HARD.reward : def.rewardMc);
+
+    // ===== 🌍 반 보스 (반 협동 레이드) =====
+    // 반 전체가 한 주 동안(월요일 00:00 ~ 다음 월요일) 보스 한 마리의 체력을 같이 깎음. 혼자 용병 8명으로 3분 싸우고
+    // 준 피해가 서버(classes/{code}/world_boss)의 공유 체력에서 빠짐. 체력을 0으로 만든 학생이 '마지막 일격', 그 즉시 다음 단계 보스가 나옴.
+    // 주가 바뀌었는데 못 잡았으면 같은 단계 보스가 새 체력으로 다시 나옴.
+    //   current: { key, weekKey, stage, bossId, maxHp, hp, hpMult, startedAt, killedAt, killedBy, killedByName }
+    //   contrib/{key}/{학생id}: { name, dmg, tries, best, lastAt } · log/{key}/{id}: { id, name, dmg, at, kill } · history/{key}: 끝난 보스 (처치 보상은 여기를 보고 받음)
+    const WORLD_BOSS = {
+      tries: 3,                   // 하루 도전 횟수
+      hpPerStudent: 2,            // 보스 체력 = 엘리트 보스 체력 × 학생 수 × 이 값 (선생님이 hpMult로 다시 조정)
+      minStudents: 5,             // 학생 수가 적어도 이만큼으로 계산
+      enrageAt: 0.3,              // 남은 체력 비율이 이 아래면 광폭화 (공격력 enrageAtk배, 붉은 빛)
+      enrageAtk: 1.3,
+      joinMult: 10,               // 도전 1회 보상 = min(joinCap, 준 피해 비율 × joinMult) × 보스 보상
+      joinCap: 0.05,
+      allReward: 0.5,             // 처치 시 반 전원 (보스 보상 × 이 값)
+      topReward: [1.0, 0.6, 0.4], // 기여도 1·2·3위 추가
+      lastHitReward: 0.3,         // 마지막 일격 추가
+      claimDays: 14,              // 처치 보상은 처치 뒤 이 기간 안에 접속해야 받음
+      logKeep: 30,                // 피해 로그 보관 개수
+      hpMultChoices: [0.5, 0.75, 1, 1.5, 2, 3]
+    };
+    const WorldBoss = {
+      cache: null, // 서버 world_boss 노드 (구독 중인 값)
+      ref: null,
+      ensuring: false,
+      esc: v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
+      // 이번 주 월요일 날짜 = 주차 키
+      weekKey(d = new Date()) {
+        const m = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        m.setDate(m.getDate() - ((m.getDay() + 6) % 7));
+        return `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}-${String(m.getDate()).padStart(2, '0')}`;
+      },
+      weekEnd(weekKey) { const [y, mo, d] = String(weekKey || this.weekKey()).split('-').map(Number); return new Date(y, mo - 1, d + 7); },
+      classSize() { return Math.max(WORLD_BOSS.minStudents, (state.students || []).length); },
+      defOfStage(stage) { return ELITE_BOSS_DEFS[(Math.max(1, stage || 1) - 1) % ELITE_BOSS_DEFS.length]; },
+      defOf(cur) { return (cur && ELITE_BOSS_DEFS.find(b => b.id === cur.bossId)) || this.defOfStage(cur && cur.stage); },
+      makeCurrent(stage, hpMult, weekKey) {
+        const def = this.defOfStage(stage);
+        const maxHp = Math.round(def.hp * WORLD_BOSS.hpPerStudent * this.classSize() * (hpMult || 1));
+        return { key: `${weekKey}_${stage}`, weekKey, stage, bossId: def.id, maxHp, hp: maxHp, hpMult: hpMult || 1, startedAt: Date.now(), killedAt: 0, killedBy: '', killedByName: '' };
+      },
+      current() { const c = this.cache && this.cache.current; return c && c.key ? c : null; },
+      contrib(key) { return (this.cache && this.cache.contrib && this.cache.contrib[key]) || {}; },
+      ranking(key) { return Object.entries(this.contrib(key)).map(([id, c]) => ({ id, ...c })).filter(c => (c.dmg || 0) > 0).sort((a, b) => b.dmg - a.dmg); },
+      logs(key) { return Object.values((this.cache && this.cache.log && this.cache.log[key]) || {}).filter(l => l && l.at).sort((a, b) => b.at - a.at); },
+      triesLeft(stu) { return stu ? Math.max(0, WORLD_BOSS.tries - (getDailyRewardBook(stu).worldBossTries || 0)) : 0; },
+      timeLeftText(cur) {
+        const ms = this.weekEnd(cur && cur.weekKey).getTime() - Date.now();
+        if (ms <= 0) return '곧 새 보스';
+        const d = Math.floor(ms / 864e5), h = Math.floor((ms % 864e5) / 36e5);
+        return d > 0 ? `${d}일 ${h}시간 남음` : `${Math.max(1, h)}시간 남음`;
+      },
+
+      subscribe(cleanCode, db) {
+        if (this.ref && typeof this.ref.off === 'function') this.ref.off();
+        this.ref = db.ref(`classes/${cleanCode}/world_boss`);
+        this.ref.on('value', snap => {
+          this.cache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
+          this.ensureCurrent();
+          this.claimKillRewards();
+          this.render();
+          this.renderBanner();
+          this.renderAdmin();
+        }, err => console.warn('[반 보스 구독 실패 - DB 규칙을 확인하세요]:', err));
+      },
+
+      // 보스가 없거나·주가 바뀌었거나·방금 쓰러졌으면 새 보스를 만듦 (먼저 본 한 명만 성공하도록 transaction)
+      //   쓰러진 보스 → 같은 주에 바로 다음 단계 · 주가 바뀌었는데 못 잡은 보스 → 같은 단계가 새 체력으로
+      ensureCurrent() {
+        if (!this.ref || this.ensuring || !(state.students || []).length) return;
+        const wk = this.weekKey();
+        const cur = this.current();
+        if (cur && cur.weekKey === wk && !cur.killedAt) return;
+        this.ensuring = true;
+        let ended = null;
+        this.ref.child('current').transaction(c => {
+          if (c && c.key && c.weekKey === wk && !c.killedAt) return; // 이미 누가 만듦
+          ended = c && c.key ? c : null;
+          const stage = c && c.key ? (c.killedAt ? c.stage + 1 : c.stage) : 1;
+          return this.makeCurrent(stage, (c && c.hpMult) || 1, wk);
+        }).then(res => {
+          this.ensuring = false;
+          if (res && res.committed && ended && !(this.cache && this.cache.history && this.cache.history[ended.key])) this.archive(ended);
+        }).catch(() => { this.ensuring = false; });
+      },
+      // 끝난 보스(쓰러졌거나 주가 끝남)를 history에 남김: 처치 보상·지난 기록은 여기를 봄
+      archive(cur) {
+        if (!this.ref || !cur || !cur.key) return Promise.resolve();
+        const top3 = this.ranking(cur.key).slice(0, 3).map(c => ({ id: c.id, name: c.name || '', dmg: c.dmg }));
+        return this.ref.child(`history/${cur.key}`).set({
+          key: cur.key, weekKey: cur.weekKey, stage: cur.stage, bossId: cur.bossId, maxHp: cur.maxHp, hp: cur.hp || 0,
+          startedAt: cur.startedAt || 0, killedAt: cur.killedAt || 0, killedBy: cur.killedBy || '', killedByName: cur.killedByName || '',
+          top3, endedAt: Date.now()
+        }).catch(() => {});
+      },
+      // 쓰러진 보스의 보상: 반 전원 + 기여 1·2·3위 + 마지막 일격 (학생마다 history 항목당 한 번, 접속 안 했던 학생은 다음 접속 때)
+      claimKillRewards() {
+        const stu = getActiveStudent();
+        if (!stu || !isStudentSession(stu) || !this.cache || !this.cache.history) return;
+        const now = Date.now();
+        let changed = false;
+        Object.values(this.cache.history).forEach(h => {
+          if (!h || !h.key || !h.killedAt || now - h.killedAt > WORLD_BOSS.claimDays * 864e5) return;
+          const claimed = stu.worldBossClaimed || {};
+          if (claimed[h.key]) return;
+          const def = this.defOf(h);
+          const rank = (h.top3 || []).findIndex(t => t && t.id === stu.id);
+          let mult = WORLD_BOSS.allReward;
+          if (rank >= 0) mult += WORLD_BOSS.topReward[rank] || 0;
+          if (h.killedBy === stu.id) mult += WORLD_BOSS.lastHitReward;
+          const got = Math.round(def.rewardMc * mult);
+          stu.mc += got;
+          state.guardianPts += 20;
+          stu.worldBossClaimed = { ...claimed, [h.key]: true };
+          changed = true;
+          const parts = ['반 전원 보상'];
+          if (rank >= 0) parts.push(`기여도 ${rank + 1}위`);
+          if (h.killedBy === stu.id) parts.push('🗡️ 마지막 일격');
+          showRewardBanner(`🌍 반 보스 [${def.name}]가 쓰러졌어요! ${parts.join(' + ')} → 💰 ${got.toLocaleString()} CA를 받았어요!`);
+        });
+        if (changed) { saveState(); renderAllStudentViews(); }
+      },
+
+      // ----- 전투 -----
+      start() {
+        const stu = getActiveStudent();
+        const cur = this.current();
+        if (!cur) { showNotice('⚠️ 반 보스 정보를 아직 못 받았어요. 잠시 뒤 다시 눌러 주세요.'); return; }
+        if (cur.killedAt || cur.hp <= 0) { showNotice('🏆 이 보스는 이미 쓰러졌어요! 다음 보스가 곧 나타나요.'); return; }
+        if (this.triesLeft(stu) <= 0) { showNotice(`오늘 반 보스 도전 횟수(${WORLD_BOSS.tries}회)를 모두 썼어요. 내일 다시 도전할 수 있어요!`); return; }
+        if (sim.running) { showNotice('⚠️ 진행 중인 전투를 먼저 끝내 주세요.'); return; }
+        ensureSelectedRaidMercs(stu);
+        const mercs = (stu.roster || []).filter(m => selectedRaidMercIds.includes(m.id)).slice(0, RAID_PICK);
+        if (!mercs.length) { showNotice('⚠️ 먼저 아래 [협동 레이드에 출전할 내 용병 선택]에서 용병을 골라 주세요.'); return; }
+        const def = this.defOf(cur);
+        const blueUnits = buildCoopRaidBlueUnits([{ stu, mercs, label: stu.name }]);
+        const boss = this.buildBoss(cur, def);
+        launchSimulation({
+          mode: 'world_boss',
+          title: `🌍 반 보스 토벌: ${stu.name}(${mercs.length}명) vs ${cur.stage}단계 ${def.name}`,
+          blueStudent: stu, redStudent: null, eliteBossId: def.id, rewardMc: 0,
+          customBlueUnits: blueUnits, customRedUnits: [boss]
+        });
+        if (!sim.running) return;
+        sim.meta.worldBoss = { key: cur.key, bossId: def.id, stage: cur.stage, maxHp: cur.maxHp, startHp: cur.hp };
+        addBattleLog(`🌍 [반 보스] ${stu.name}의 용병 ${mercs.length}명이 [${def.name}] (남은 체력 ${Math.round(cur.hp).toLocaleString()} / ${cur.maxHp.toLocaleString()}) 토벌에 나섭니다! 준 피해만큼 반 전체의 보스 체력이 줄어요. (제한 시간 ${Math.round(ELITE_RAID_TIME_LIMIT_SEC / 60)}분)`);
+      },
+      // 보스: 엘리트 보스 그대로(크기·스킬 동작), 체력은 반 공유 체력의 남은 만큼, 스킬은 단계와 상관없이 7개 전부
+      buildBoss(cur, def) {
+        const boss = buildCenterEliteBoss(def, 2, false);
+        boss.maxHp = Math.max(1, Math.round(cur.maxHp));
+        boss.hp = Math.max(1, Math.min(boss.maxHp, Math.round(cur.hp)));
+        boss.isWorldBoss = true;
+        applyUnitSkillBook(boss, buildSkillBook(ELITE_BOSS_SKILLS[def.id] || []));
+        this.applyEnrage(boss);
+        return boss;
+      },
+      applyEnrage(boss) {
+        if (!boss || boss.worldEnraged || boss.hp / Math.max(1, boss.maxHp) > WORLD_BOSS.enrageAt) return false;
+        boss.worldEnraged = true;
+        boss.isHardMode = true; // 탑·엘리트 하드모드처럼 붉은 빛
+        boss.atk = Math.round(boss.atk * WORLD_BOSS.enrageAtk);
+        boss.name = `🔥${boss.name}`;
+        return true;
+      },
+      // 전투 중 체력이 광폭화 선 아래로 내려가면
+      step() {
+        const boss = sim.units.find(u => u.isWorldBoss && u.alive);
+        if (boss && this.applyEnrage(boss)) addBattleLog(`🔥 반 보스가 광폭화했어요! 공격력이 ${WORLD_BOSS.enrageAtk}배가 돼요!`);
+      },
+      // 전투 끝: 도전 횟수 차감, 참여 보상, 서버 체력 차감·기여도 기록 (결과창은 서버 반영을 기다리지 않고 먼저 띄움)
+      finish(stu, blueWon) {
+        const meta = (sim.meta && sim.meta.worldBoss) || {};
+        const iForfeited = Boolean(sim.forfeitTeam) && sim.forfeitTeam === sim.myTeam;
+        const dealt = Math.max(0, Math.round(Math.min(meta.startHp || Infinity, sim.units.filter(u => u.team === 'blue').reduce((s, u) => s + (u.damageDealt || 0), 0))));
+        const book = getDailyRewardBook(stu);
+        book.worldBossTries = (book.worldBossTries || 0) + 1;
+        DailyMission.progress('worldBoss', 1, stu);
+        DailyMission.progress('worldBoss3', 1, stu);
+        const def = this.defOf(meta);
+        const share = dealt / Math.max(1, meta.maxHp || 1);
+        let reward = 0;
+        if (!iForfeited && dealt > 0) {
+          reward = Math.round(Math.min(WORLD_BOSS.joinCap, share * WORLD_BOSS.joinMult) * def.rewardMc);
+          if (reward > 0) { stu.mc += reward; state.guardianPts += 8; }
+        }
+        const atkKing = mvpCandidates().sort((a, b) => b.damageDealt - a.damageDealt)[0];
+        const tankKing = mvpCandidates().sort((a, b) => b.damageTaken - a.damageTaken)[0];
+        const healKing = mvpCandidates().sort((a, b) => b.healDone - a.healDone)[0];
+        document.getElementById('battleResultEmoji').textContent = blueWon ? '🏆' : (dealt > 0 ? '🌍' : '🛡️');
+        document.getElementById('battleResultTitle').textContent = blueWon
+          ? '🗡️ 반 보스를 쓰러뜨렸어요! 마지막 일격!'
+          : (iForfeited ? '전투 포기' : `반 보스에게 ${dealt.toLocaleString()} 피해!`);
+        const descEl = document.getElementById('battleResultDesc');
+        descEl.textContent = (iForfeited ? '🏳️ 전투를 포기했어요. 준 피해는 반 보스 체력에서 빠지지만 보상은 없어요.'
+          : reward > 0 ? `참여 보상으로 💰 ${reward.toLocaleString()} CA를 받았어요! (반 보스 체력의 ${(share * 100).toFixed(2)}%)` : '피해를 주지 못해서 참여 보상은 없어요.')
+          + ` · 오늘 남은 도전 ${this.triesLeft(stu)}회 · 서버에 반영하는 중…`;
+        document.getElementById('battleMvpBox').innerHTML = `
+          <div class="font-bold text-amber-300 mb-1">🌟 이번 토벌 3대 분야 MVP 용병</div>
+          <div>⚔️ 최고 공격왕: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
+          <div>🛡️ 든든 수호왕: <strong>${tankKing?.name || '-'}</strong> (${tankKing?.damageTaken || 0} 방어)</div>
+          <div>💚 다정 치유왕: <strong>${healKing?.name || '-'}</strong> (${healKing?.healDone || 0} 회복·보호)</div>`;
+        document.getElementById('battleResultOverlay').classList.remove('hidden');
+        if (document.getElementById('arenaSection')?.classList.contains('hidden')) {
+          showRewardBanner(`🌍 반 보스 토벌이 끝났어요! ${dealt.toLocaleString()} 피해 · ${descEl.textContent}`);
+        }
+        sim.netRole = null;
+        saveState();
+        renderAllStudentViews();
+        const base = descEl.textContent.replace(' · 서버에 반영하는 중…', '');
+        this.commit(stu, meta, dealt).then(info => {
+          if (!info) { descEl.textContent = `${base} · ⚠️ 서버에 연결되지 않아 반 보스 체력에 반영하지 못했어요.`; return; }
+          if (info.stale) { descEl.textContent = `${base} · 이 보스는 그 사이 다른 친구가 쓰러뜨렸어요. 기여도에는 적혔어요.`; return; }
+          descEl.textContent = info.killed
+            ? `${base} · 🏆 반 보스가 쓰러졌어요! 처치 보상은 곧 반 전원에게 들어가요.`
+            : `${base} · 반 보스 남은 체력 ${Math.round(info.left).toLocaleString()} (${(info.left / Math.max(1, meta.maxHp) * 100).toFixed(1)}%)`;
+        });
+      },
+      async commit(stu, meta, dealt) {
+        if (!this.ref || !meta.key) return null;
+        const key = meta.key;
+        try {
+          await this.ref.child(`contrib/${key}/${stu.id}`).transaction(c => {
+            const o = c || {};
+            return { name: stu.name, dmg: (o.dmg || 0) + dealt, tries: (o.tries || 0) + 1, best: Math.max(o.best || 0, dealt), lastAt: Date.now() };
+          });
+          let killed = false, stale = false, left = 0;
+          const res = await this.ref.child('current').transaction(c => {
+            if (!c || c.key !== key || c.killedAt) { stale = true; return; }
+            stale = false;
+            const hp = Math.max(0, (c.hp || 0) - dealt);
+            const out = { ...c, hp };
+            killed = hp <= 0;
+            if (killed) { out.killedAt = Date.now(); out.killedBy = stu.id; out.killedByName = stu.name; }
+            left = hp;
+            return out;
+          });
+          if (stale || !(res && res.committed)) return { ok: true, stale: true, dealt };
+          const id = 'wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+          this.ref.child(`log/${key}/${id}`).set({ id: stu.id, name: stu.name, dmg: dealt, at: Date.now(), kill: killed }).catch(() => {});
+          this.pruneLog(key);
+          if (killed) await this.archive(res.snapshot && typeof res.snapshot.val === 'function' ? res.snapshot.val() : null);
+          return { ok: true, killed, left, dealt };
+        } catch (e) {
+          console.warn('[반 보스 기록 실패]', e);
+          return null;
+        }
+      },
+      pruneLog(key) {
+        const all = Object.entries((this.cache && this.cache.log && this.cache.log[key]) || {}).filter(([, l]) => l && l.at).sort((a, b) => b[1].at - a[1].at);
+        all.slice(WORLD_BOSS.logKeep).forEach(([id]) => this.ref.child(`log/${key}/${id}`).remove().catch(() => {}));
+      },
+
+      // ----- 선생님 조정 -----
+      adminSetHpMult(mult) {
+        if (!this.ref || !WORLD_BOSS.hpMultChoices.includes(mult)) return;
+        this.ref.child('current').transaction(c => {
+          if (!c || !c.key) return;
+          const ratio = (c.hp || 0) / Math.max(1, c.maxHp || 1);
+          const maxHp = Math.round(this.defOf(c).hp * WORLD_BOSS.hpPerStudent * this.classSize() * mult);
+          return { ...c, hpMult: mult, maxHp, hp: Math.max(c.killedAt ? 0 : 1, Math.round(maxHp * ratio)) };
+        }).then(() => showRewardBanner(`🌍 반 보스 체력 배율을 ×${mult}로 바꿨어요. (남은 체력 비율은 그대로)`)).catch(() => {});
+      },
+      adminReset(stageDelta = 0) {
+        if (!this.ref) return;
+        const wk = this.weekKey();
+        this.ref.child('current').transaction(c => {
+          const stage = Math.max(1, ((c && c.stage) || 1) + stageDelta);
+          return this.makeCurrent(stage, (c && c.hpMult) || 1, wk);
+        }).then(() => showRewardBanner('🌍 반 보스를 새 체력으로 다시 내보냈어요.')).catch(() => {});
+      },
+
+      // ----- 화면 -----
+      bossArt(def, size) { return `<div class="gl-race-bd rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center overflow-hidden shrink-0" style="width:${size}px;height:${size}px" data-race="${monsterRaceOf(def.monsterType)}">${getMonsterCodexArtHTML(def.monsterType, size, null, null, true)}</div>`; },
+      hpBarHTML(cur, h = 'h-5') {
+        const pct = Math.max(0, Math.min(100, (cur.hp || 0) / Math.max(1, cur.maxHp) * 100));
+        const enraged = pct <= WORLD_BOSS.enrageAt * 100 && pct > 0;
+        return `
+          <div class="w-full ${h} rounded-full bg-slate-950 border border-slate-700 overflow-hidden relative">
+            <div class="h-full ${enraged ? 'bg-gradient-to-r from-red-700 to-orange-500' : 'bg-gradient-to-r from-rose-600 to-amber-400'} transition-all duration-700" style="width:${pct}%"></div>
+            <div class="absolute inset-0 flex items-center justify-center text-[11px] font-extrabold text-white drop-shadow">${Math.round(cur.hp || 0).toLocaleString()} / ${Math.round(cur.maxHp).toLocaleString()} (${pct.toFixed(1)}%)${enraged ? ' 🔥광폭화' : ''}</div>
+          </div>`;
+      },
+      render() {
+        const box = document.getElementById('worldBossPanel');
+        if (!box) return;
+        const stu = getActiveStudent();
+        const cur = this.current();
+        if (!stu || !this.ref) { box.classList.add('hidden'); return; }
+        box.classList.remove('hidden');
+        if (!cur) { box.innerHTML = '<div class="text-xs text-slate-400">🌍 반 보스를 불러오는 중…</div>'; return; }
+        const def = this.defOf(cur);
+        const rank = this.ranking(cur.key);
+        const myIdx = rank.findIndex(c => c.id === stu.id);
+        const mine = myIdx >= 0 ? rank[myIdx] : null;
+        const tries = this.triesLeft(stu);
+        const dead = Boolean(cur.killedAt) || cur.hp <= 0;
+        const rewardMc = def.rewardMc;
+        const rankHTML = rank.slice(0, 10).map((c, i) => `
+          <div class="flex items-center gap-2 px-2 py-1 rounded-lg ${c.id === stu.id ? 'bg-amber-500/15 border border-amber-500/40' : 'bg-slate-950'}">
+            <span class="w-6 text-center font-extrabold ${i === 0 ? 'text-amber-300' : i === 1 ? 'text-slate-200' : i === 2 ? 'text-orange-300' : 'text-slate-500'}">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span>
+            <span class="flex-1 truncate font-bold text-white">${this.esc(c.name)}</span>
+            <span class="text-rose-300 font-extrabold">${Math.round(c.dmg).toLocaleString()}</span>
+            <span class="text-slate-500 text-[10px]">${c.tries || 0}회</span>
+          </div>`).join('') || '<div class="text-slate-500 text-center py-3">아직 아무도 도전하지 않았어요. 첫 번째 용사가 되어 보세요!</div>';
+        const logHTML = this.logs(cur.key).slice(0, 8).map(l => `
+          <div class="${l.kill ? 'text-amber-300 font-extrabold' : 'text-slate-300'}">${l.kill ? '🗡️ ' : '⚔️ '}${this.esc(l.name)} <span class="${l.kill ? '' : 'text-rose-300'} font-bold">${Math.round(l.dmg).toLocaleString()}</span> 피해${l.kill ? ' · 마지막 일격!' : ''}</div>`).join('')
+          || '<div class="text-slate-500">아직 기록이 없어요.</div>';
+        const hist = Object.values((this.cache && this.cache.history) || {}).filter(h => h && h.key).sort((a, b) => (b.endedAt || 0) - (a.endedAt || 0)).slice(0, 3);
+        const histHTML = hist.map(h => {
+          const d = this.defOf(h);
+          return `<div class="text-slate-400">${h.killedAt ? '🏆' : '⏰'} ${h.stage}단계 ${this.esc(d.name)} · ${h.killedAt ? `${this.esc(h.killedByName || '')}의 마지막 일격` : '못 잡음'}${(h.top3 || []).length ? ` · 기여 1위 ${this.esc(h.top3[0].name)}` : ''}</div>`;
+        }).join('') || '<div class="text-slate-500">지난 기록이 없어요.</div>';
+        box.innerHTML = `
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-2xl">🌍</div>
+              <div>
+                <h3 class="font-title text-2xl text-white">반 보스 (반 전체 협동 토벌)</h3>
+                <p class="text-xs text-slate-400 mt-0.5">한 주 동안 반 친구 모두가 <strong>같은 보스의 체력</strong>을 깎아요. 혼자 용병 8명으로 ${Math.round(ELITE_RAID_TIME_LIMIT_SEC / 60)}분 싸우면 준 피해만큼 줄어요. 쓰러뜨리면 <strong>반 전원</strong>이 보상을 받고 바로 다음 단계 보스가 나와요!</p>
+              </div>
+            </div>
+            <span class="px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-extrabold">⏳ ${this.timeLeftText(cur)}</span>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+            <div class="lg:col-span-7 bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex flex-col gap-3">
+              <div class="flex gap-3 items-center">
+                ${this.bossArt(def, 96)}
+                <div class="min-w-0 flex-1">
+                  <div class="font-title text-xl text-white">${cur.stage}단계 · ${this.esc(def.name)}</div>
+                  <p class="text-[11px] text-slate-400 mt-0.5">${this.esc(def.desc)}</p>
+                  <div class="flex flex-wrap gap-1 mt-1.5">${Object.values(buildSkillBook(ELITE_BOSS_SKILLS[def.id] || [])).map(sk => `<span class="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 text-[10px] font-bold" title="${this.esc(sk.desc)}">${sk.icon} ${this.esc(sk.name)}</span>`).join('')}</div>
+                </div>
+              </div>
+              ${this.hpBarHTML(cur)}
+              <div class="text-[11px] text-slate-400">남은 체력 ${(WORLD_BOSS.enrageAt * 100)}% 아래면 🔥광폭화 (공격력 ×${WORLD_BOSS.enrageAtk}) · 체력은 반 학생 수(${this.classSize()}명)에 맞춰 정해져요</div>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                <div class="rounded-xl bg-slate-900 border border-slate-800 px-2.5 py-2"><div class="text-slate-500 font-bold">도전 1회</div><div class="text-amber-300 font-extrabold">피해만큼 최대 ${Math.round(rewardMc * WORLD_BOSS.joinCap).toLocaleString()} CA</div></div>
+                <div class="rounded-xl bg-slate-900 border border-slate-800 px-2.5 py-2"><div class="text-slate-500 font-bold">처치 시 반 전원</div><div class="text-emerald-300 font-extrabold">💰 ${Math.round(rewardMc * WORLD_BOSS.allReward).toLocaleString()} CA</div></div>
+                <div class="rounded-xl bg-slate-900 border border-slate-800 px-2.5 py-2"><div class="text-slate-500 font-bold">기여 1·2·3위 추가</div><div class="text-amber-300 font-extrabold">+${Math.round(rewardMc * WORLD_BOSS.topReward[0]).toLocaleString()} / ${Math.round(rewardMc * WORLD_BOSS.topReward[1]).toLocaleString()} / ${Math.round(rewardMc * WORLD_BOSS.topReward[2]).toLocaleString()}</div></div>
+                <div class="rounded-xl bg-slate-900 border border-slate-800 px-2.5 py-2"><div class="text-slate-500 font-bold">🗡️ 마지막 일격 추가</div><div class="text-rose-300 font-extrabold">+${Math.round(rewardMc * WORLD_BOSS.lastHitReward).toLocaleString()} CA</div></div>
+              </div>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="text-xs text-slate-300">
+                  ${mine ? `내 기여: <strong class="text-rose-300">${Math.round(mine.dmg).toLocaleString()}</strong> 피해 (${myIdx + 1}위 · ${mine.tries}회 도전 · 최고 ${Math.round(mine.best || 0).toLocaleString()})` : '아직 이 보스에 도전하지 않았어요.'}
+                </div>
+                <button onclick="WorldBoss.start()" ${dead || tries <= 0 ? 'disabled' : ''}
+                  class="px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-lg ${dead || tries <= 0 ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-400 text-slate-950'}">
+                  ${dead ? '🏆 쓰러짐 · 다음 보스 준비 중' : `⚔️ 도전하기 (오늘 ${tries}/${WORLD_BOSS.tries}회 남음)`}
+                </button>
+              </div>
+              <div class="text-[11px] text-slate-500">출전 용병은 아래 [협동 레이드에 출전할 내 용병 선택]에서 고른 ${RAID_PICK}명이에요.</div>
+            </div>
+            <div class="lg:col-span-5 flex flex-col gap-3">
+              <div class="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex flex-col gap-1.5 text-xs">
+                <div class="font-extrabold text-amber-300 mb-1">🏅 기여도 랭킹 (총 피해)</div>
+                ${rankHTML}
+              </div>
+              <div class="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex flex-col gap-1 text-[11px]">
+                <div class="font-extrabold text-slate-200 mb-1">📜 최근 토벌 기록</div>
+                ${logHTML}
+              </div>
+              <div class="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex flex-col gap-1 text-[11px]">
+                <div class="font-extrabold text-slate-200 mb-1">📚 지난 보스</div>
+                ${histHTML}
+              </div>
+            </div>
+          </div>`;
+      },
+      renderBanner() {
+        const bar = document.getElementById('worldBossBanner');
+        if (!bar) return;
+        const cur = this.current();
+        if (!cur || !this.ref) { bar.classList.add('hidden'); return; }
+        const def = this.defOf(cur);
+        const dead = Boolean(cur.killedAt) || cur.hp <= 0;
+        bar.classList.remove('hidden');
+        bar.innerHTML = `
+          <button onclick="goToStudentTab('raid')" class="w-full flex items-center gap-3 rounded-2xl bg-slate-900 border border-amber-500/40 px-3 py-2 text-left hover:border-amber-400 transition">
+            ${this.bossArt(def, 36)}
+            <div class="min-w-0 flex-1 flex flex-col gap-1">
+              <div class="flex items-center justify-between gap-2 text-xs">
+                <span class="font-extrabold text-white truncate">🌍 반 보스 ${cur.stage}단계 ${this.esc(def.name)}${dead ? ' · 🏆 쓰러짐!' : ''}</span>
+                <span class="text-amber-300 font-bold shrink-0">⏳ ${this.timeLeftText(cur)}</span>
+              </div>
+              ${this.hpBarHTML(cur, 'h-3.5')}
+            </div>
+          </button>`;
+      },
+      renderAdmin() {
+        const box = document.getElementById('worldBossAdminBox');
+        if (!box) return;
+        const cur = this.current();
+        if (!this.ref || !cur) { box.innerHTML = '<h4 class="font-title text-lg text-amber-300">🌍 반 보스</h4><div class="text-xs text-slate-400">실시간 서버에 연결되면 조정할 수 있어요.</div>'; return; }
+        const def = this.defOf(cur);
+        const rank = this.ranking(cur.key);
+        box.innerHTML = `
+          <h4 class="font-title text-lg text-amber-300">🌍 반 보스 조정</h4>
+          <div class="text-xs text-slate-300">${cur.stage}단계 <strong>${this.esc(def.name)}</strong> · 도전한 학생 ${rank.length}명 · ${this.timeLeftText(cur)}</div>
+          ${this.hpBarHTML(cur, 'h-4')}
+          <label class="text-xs text-slate-400">체력 배율 (학생 수 × 엘리트 보스 체력 × ${WORLD_BOSS.hpPerStudent} × 배율 · 바꿔도 남은 비율은 그대로)</label>
+          <div class="flex flex-wrap gap-1.5">
+            ${WORLD_BOSS.hpMultChoices.map(m => `<button onclick="WorldBoss.adminSetHpMult(${m})" class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold border ${m === (cur.hpMult || 1) ? 'bg-amber-500 text-slate-950 border-amber-400' : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'}">×${m}</button>`).join('')}
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            <button onclick="askCustomConfirm('이번 보스를 새 체력으로 다시 내보낼까요? (기여도는 새로 셈)', () => WorldBoss.adminReset(0))" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-white">🔁 같은 단계 다시</button>
+            <button onclick="askCustomConfirm('한 단계 쉬운 보스로 바꿀까요?', () => WorldBoss.adminReset(-1))" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-white">⬇️ 한 단계 아래로</button>
+            <button onclick="askCustomConfirm('한 단계 어려운 보스로 바꿀까요?', () => WorldBoss.adminReset(1))" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-white">⬆️ 한 단계 위로</button>
+          </div>`;
+      }
+    };
+    window.WorldBoss = WorldBoss;
     // 하드모드 레이드가 출발하면 내 화면에서 내 도전비용만 냄 (연습 친구 자리는 내지 않음)
     function chargeEliteHardCost(stu, hard) {
       if (!hard || !stu) return;
@@ -29088,6 +29514,7 @@
       if (badgeEl) badgeEl.textContent = `내 용병 ${selectedRaidMercIds.length} / ${RAID_PICK}명 배치됨`;
       const clearsEl = document.getElementById('raidEliteClearsText');
       if (clearsEl) clearsEl.textContent = `🏅 오늘 남은 클리어 ${getEliteClearsLeft(myStu)}/${ELITE_DAILY_CLEARS}회 (도전은 계속 가능 · 다 채우면 새 보스 보상은 내일)`;
+      WorldBoss.render();
 
       // 1) 내 용병 선택 그리드 (최대 RAID_PICK명)
       const myGrid = document.getElementById('raidMyMercSelectGrid');
@@ -34037,6 +34464,9 @@
       // 4) 미니게임 판 상태는 내가 들어가 있거나 관전 중인 방 하나만 구독 (syncMinigameBoardSub)
       minigamesBasePath = `classes/${cleanCode}/minigames`;
       syncMinigameBoardSub();
+
+      // 4-1) 🌍 반 보스 (/classes/{code}/world_boss): 공유 체력·기여도·기록
+      WorldBoss.subscribe(cleanCode, db);
 
       // 5) 라이브 전투 중 실시간 대시(Dash) 이벤트 구독 (/classes/{code}/live_battle_events)
       activeBattleEventsRef = db.ref(`classes/${cleanCode}/live_battle_events`);
