@@ -32227,6 +32227,13 @@
     function isStudentSession(stu) {
       try { return Boolean(stu) && sessionStorage.getItem(STUDENT_SESSION_KEY) === `${String(state.classCode || '').toUpperCase()}:${stu.id}`; } catch (e) { return false; }
     }
+    // 이 탭에서 실제로 그 학생으로 로그인했는지 (선생님 화면·학생을 고르지 않은 화면은 명단 첫 학생이 activeStudent로 잡히므로,
+    // 방 자리 자동 정리·접속 표시는 진짜 그 학생의 탭에서만 함)
+    function isMyStudentScreen(stu) {
+      if (!stu) return false;
+      if (isStudentSession(stu)) return true;
+      try { return new URLSearchParams(location.search).get('dev') === 'student'; } catch (e) { return false; }
+    }
 
     // 친구가 보낸 CA·용병(transfers/{나})을 내 기록에 더하고 선물함에서 지움 (내 기기에서만)
     const StudentInbox = {
@@ -33265,6 +33272,7 @@
         livePvpRoomsCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
         roomServerBase.pvp_rooms = JSON.parse(JSON.stringify(livePvpRoomsCache));
         maintainPvpRooms();
+        syncMyRoomMembership();
         renderLivePvpRoomsList();
         checkAutoStartMatchedPvpRoom();
         renderSideWatchPanel();
@@ -33279,6 +33287,7 @@
         liveRaidRoomsCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
         roomServerBase.raid_rooms = JSON.parse(JSON.stringify(liveRaidRoomsCache));
         maintainRaidRooms();
+        syncMyRoomMembership();
         renderLiveRaidRoomsList();
         checkAutoStartMatchedRaidRoom();
         checkSpectatedRaidRoom();
@@ -33294,6 +33303,7 @@
         liveMinigameRoomsCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
         roomServerBase.minigame_rooms = JSON.parse(JSON.stringify(liveMinigameRoomsCache));
         maintainMinigameRooms();
+        syncMyRoomMembership();
         renderMinigameLobbyAndRoomUI();
         syncMinigameBoardSub();
         renderSideWatchPanel();
@@ -33402,6 +33412,53 @@
       if (typeof g !== 'number') return true;
       return mgServerNow() - g >= ROOM_GONE_GRACE_MS;
     };
+
+    // ----- 방 목록이 바뀔 때마다 내 자리 점검 (실제로 로그인한 학생 탭에서만) -----
+    // 1) 새로고침·다른 기기에서 다시 들어온 뒤에도 '끊기면 나감' 표시(onDisconnect)를 다시 걸고, 남아 있던 내 끊김 표시(gone)는 지움
+    //    (예전엔 새로고침하면 표시가 다시 안 걸려서, 탭을 닫아도 방에 그대로 남았고 · 8초 뒤엔 접속해 있는데도 친구 화면이 나를 내보냈음)
+    // 2) 한 번에 한 방만: 어떤 까닭으로든(같은 계정 두 탭·나가기 전송 실패 등) 내가 두 방 이상에 들어가 있으면 지금 쓰는 방만 남기고 나감
+    const teamPresenceArmed = new Set();
+    function keepRoomPresence(path, room, stuId) {
+      if (!myRoomPresence.has(path)) armRoomPresence(path, stuId);
+      if (room.gone && room.gone[stuId] != null) {
+        delete room.gone[stuId];
+        try { classRoomRef(`${path}/gone/${stuId}`)?.remove().catch(() => {}); } catch (e) {}
+      }
+    }
+    function syncMyRoomMembership() {
+      const me = getActiveStudent();
+      if (!me || !isMyStudentScreen(me)) return;
+      const mine = [];
+      Object.values(livePvpRoomsCache || {}).forEach(r => {
+        if (!r || !r.roomId || !isPvpRoomPlayer(r, me.id)) return;
+        mine.push({ kind: 'pvp', roomId: r.roomId, createdAt: r.createdAt || 0 });
+        if (isTeamLiveRoom(r)) {
+          if (!teamPresenceArmed.has(r.roomId)) {
+            teamPresenceArmed.add(r.roomId);
+            try { teamMemberRef(r.roomId, me.id)?.onDisconnect().remove(); } catch (e) {}
+          }
+        } else keepRoomPresence(`pvp_rooms/${r.roomId}`, r, me.id);
+      });
+      teamPresenceArmed.forEach(id => { const r = livePvpRoomsCache[id]; if (!r || !isPvpRoomPlayer(r, me.id)) teamPresenceArmed.delete(id); });
+      Object.values(liveRaidRoomsCache || {}).forEach(r => {
+        if (!r || !r.roomId || !raidSlotOf(r, me.id)) return;
+        mine.push({ kind: 'raid', roomId: r.roomId, createdAt: r.createdAt || 0 });
+        keepRoomPresence(`raid_rooms/${r.roomId}`, r, me.id);
+      });
+      Object.values(liveMinigameRoomsCache || {}).forEach(r => {
+        if (!r || !r.roomId || !(r.players || []).some(p => p && p.id === me.id && !p.practice)) return;
+        mine.push({ kind: 'minigame', roomId: r.roomId, createdAt: r.createdAt || 0 });
+        keepRoomPresence(`minigame_rooms/${r.roomId}`, r, me.id);
+      });
+      if (mine.length < 2) return;
+      // 남길 방: 지금 전투 중인 방 → 내 화면이 들어가 있다고 아는 방 → 가장 나중에 만든 방
+      const pick = (kind, id) => (id ? mine.find(m => m.kind === kind && m.roomId === id) : null);
+      const keep = (sim.running && !sim.spectator && currentActiveLiveBattleRoomId ? mine.find(m => m.roomId === currentActiveLiveBattleRoomId) : null)
+        || pick('pvp', currentJoinedPvpRoomId) || pick('raid', currentJoinedRaidRoomId) || pick('minigame', currentJoinedMinigameRoomId)
+        || mine.slice().sort((a, b) => b.createdAt - a.createdAt)[0];
+      console.warn('[방 점검] 두 방 이상에 들어가 있어 하나만 남김:', mine.map(m => `${m.kind}:${m.roomId}`).join(', '), '→', keep.roomId);
+      leaveRoomsExcept(keep.kind, keep.roomId);
+    }
 
     // 한 번에 하나의 컨텐츠만: keepKind 방(keepRoomId)만 남기고, 들어가 있던 다른 결투방·레이드방·미니게임방(관전 포함)에서 모두 나감
     function leaveRoomsExcept(keepKind, keepRoomId = null) {
@@ -35313,7 +35370,16 @@
             ref.child('init').set(JSON.parse(JSON.stringify({ at: Date.now(), b: liveNet.bid, ep: liveNet.ep, units }))).catch(() => {});
           }).catch(() => {});
           liveNet.lastFramePublishedAt = 0;
-        } else if (!liveNet.spectator) {
+        } else if (liveNet.spectator) {
+          // 관전자: 끊긴 사이 서버가 내 관전 표시를 지웠으면 다시 적음
+          // (안 적으면 중계하는 친구가 보는 사람이 없는 줄 알고 화면을 안 보내서, 20초 뒤 '연결이 끊겨' 관전이 닫혔음)
+          const me = getActiveStudent();
+          if (me && liveNet.raidWatchRef) {
+            try { liveNet.raidWatchRef.onDisconnect().remove(); } catch (e) {}
+            liveNet.raidWatchRef.set({ id: me.id, name: cleanUserText(me.name, 30) || '친구', at: Date.now() }).catch(() => {});
+          }
+          if (me && liveNet.towerWatchOf) setTowerWatchEntry(liveNet.towerWatchOf, me);
+        } else {
           (liveNet.team ? ref.child('inputs').child(liveNet.myId || 'x') : ref.child('input')).onDisconnect().remove();
           liveNet.lastInputSentAt = 0;
           onLocalControlChanged();
@@ -35493,7 +35559,14 @@
 
     // ----- 팀원: 방장이 넘겨준 전투를 받아서(또는 방장이 갑자기 끊기면 내 화면 상태로) 이어서 계산 -----
     function applyLiveHandoff(val) {
-      if (liveNet.role !== 'guest' || liveNet.spectator || !val || liveNum(val.at) < liveNet.minAt) return;
+      if (liveNet.role !== 'guest' || !val || liveNum(val.at) < liveNet.minAt) return;
+      if (liveNet.spectator) {
+        // 관전자: 토벌·러쉬 계산 담당이 바뀌면 새 담당 친구 화면으로 옮겨 감
+        // (담당마다 화면 자리(raidcast_방_학생)가 달라서, 그대로 두면 옛 화면이 지워진 뒤 20초 만에 '끊김'으로 닫혔음)
+        const rw = sim.raidWatch;
+        if (rw && isRaidNetMode(sim.mode) && val.to && val.to !== rw.stuId) reSpectateRaidRoom(rw, val.to);
+        return;
+      }
       if (isRaidNetMode(sim.mode)) { applyRaidHandoff(val); return; }
       if (val.to !== liveNet.myId) return; // 다른 친구가 이어받으면 그 친구가 새로 보내는 화면을 받음
       takeOverLiveBattle(Array.isArray(val.units) ? val.units : null, val.tick);
@@ -36675,8 +36748,21 @@
     function handleRaidHostSilence() {
       const rl = sim.raidLive;
       const me = getActiveStudent();
+      if (liveNet.spectator) {
+        // 관전자: 중계하던 친구 화면이 한참 조용함(탭 닫힘·끊김) → 아직 싸우는 다른 친구(새 계산 담당) 화면을 찾아봄 · 없으면 끝냄
+        const rw = sim.raidWatch;
+        if (!rw) return false;
+        if (raidReWatchBusy) return true; // 이미 찾는 중
+        const r = liveRaidRoomsCache && liveRaidRoomsCache[rw.roomId];
+        if (!r || r.status !== 'in_battle' || !raidFightingMembers(r).some(m => m.id !== rw.stuId)) return false;
+        liveNet.lastFrameAt = Date.now(); // 찾는 동안 다시 '끊김'으로 닫히지 않게
+        reSpectateRaidRoom(rw, null).then(ok => {
+          if (!ok && sim.raidWatch === rw && sim.spectator && sim.running && !liveNet.finished) abortLiveBattle(`📺 ${rw.hostName} 친구 화면과 연결이 끊겨 관전을 멈췄어요.`);
+        });
+        return true;
+      }
       // (화면을 한 번도 못 받았어도 내 화면의 처음 배치 그대로 이어서 계산하면 됨)
-      if (!rl || !me || liveNet.spectator) return false;
+      if (!rl || !me) return false;
       if (!rl.tried.includes(rl.hostId)) rl.tried.push(rl.hostId);
       const heirId = nextRaidCalcHost(rl.tried);
       if (!heirId) return false;
@@ -36727,7 +36813,7 @@
     }
 
     // skipId: 이 친구 화면은 빼고 찾음 (보던 친구가 나갔을 때 다른 친구 화면으로 넘어가기) · 관전을 시작했으면 true
-    window.spectateRaidRoom = async function (roomId, { skipId = null, quiet = false } = {}) {
+    window.spectateRaidRoom = async function (roomId, { skipId = null, preferId = null, quiet = false } = {}) {
       const me = getActiveStudent();
       const r = liveRaidRoomsCache && liveRaidRoomsCache[roomId];
       if (!me || !r || (r.status !== 'in_battle' && r.status !== 'waiting')) { if (!quiet) showNotice('⚠️ 토벌을 찾지 못했어요. 이미 끝났을 수 있어요.'); return false; }
@@ -36753,6 +36839,8 @@
       const tries = raidFightingMembers(r).filter(m => m.id !== skipId).map(m => ({ ...m, castId: raidCastId(roomId, m.id) }));
       // 예전 방식(방장 화면 하나만 올리는) 친구 화면도 마지막으로 찾아봄
       if (r.hostId !== skipId) tries.push({ id: r.hostId, name: r.hostName || '친구', castId: raidCastId(roomId) });
+      // 새 계산 담당을 알고 있으면 그 친구 화면부터 찾음
+      if (preferId) tries.sort((a, b) => Number(b.id === preferId) - Number(a.id === preferId));
       let got = null, pick = null;
       for (const t of tries) {
         // 첫 후보는 조금 더 기다림 (방금 출발해서 아직 화면을 올리는 중일 수 있음)
@@ -36815,6 +36903,15 @@
 
     let raidWatchAutoKey = '';    // 관전 화면을 이미 연 토벌 (방:시작 시각) — 끝난 뒤 다시 열지 않게
     let raidWatchLaunching = false;
+    // 보던 친구 화면을 빼고(skip) 아직 싸우는 다른 친구 화면으로 옮겨 감 (preferId: 새 계산 담당이면 그 친구부터) · 한 번에 하나만
+    let raidReWatchBusy = false;
+    async function reSpectateRaidRoom(rw, preferId) {
+      if (raidReWatchBusy) return false;
+      raidReWatchBusy = true;
+      try { return await spectateRaidRoom(rw.roomId, { skipId: rw.stuId, preferId, quiet: true }); }
+      catch (e) { console.warn('[관전 화면 옮기기 예외]:', e); return false; }
+      finally { raidReWatchBusy = false; }
+    }
 
     // 레이드방 목록이 바뀔 때: 보던 친구가 결과 없이 토벌에서 빠졌으면(나감·끊김) 잠시 뒤 아직 싸우는 다른 친구 화면으로 넘어감
     // (다른 친구도 없으면 관전을 끝냄)
