@@ -1,10 +1,13 @@
-# 성기사(성전사) 전용 샘플(은발 땋은 머리·파란 십자 방패·전쟁 망치, 흰 배경 한 장씩) → 캐릭터 시트 assets/sprites/merc/paladin_0.webp
+# 성기사 전용 샘플(은발 땋은 머리·파란 십자 방패·전쟁 망치, 흰 배경 한 장씩) → 캐릭터 시트 assets/sprites/merc/paladin_0.webp
 # 사용: python tools/paladin_build.py   (샘플은 assets/sprites/fx/samples/paladin_*_src.png, 동작 샘플이 오는 대로 FRAMES에 늘림)
-# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~4 걷기 · 5 피격 · 6~8 쓰러짐 (서서 뒤로 젖힘 → 무릎 꿇음 → 엎어짐) · 9~10 기본 공격 (망치 치켜들기 → 내리치기) · 11~13 심판 (망치 뒤로 당김 → 머리 위로 치켜듦 → 땅에 내리찍음) · 14~15 신성 보호 (방패를 앞으로 → 방패를 머리 위로 들어 올림) · 16 성스러운 돌격 (방패를 앞세워 달림, 발 뒤 흙먼지 꼬리 포함) · 17 축성 (두 손 모아 기도)
+# 칸 순서 (동작 샘플이 오는 대로 늘림): 0 대기 · 1~4 걷기 · 5 피격 · 6~8 쓰러짐 (서서 뒤로 젖힘 → 무릎 꿇음 → 엎어짐) · 9~10 기본 공격 (망치 치켜들기 → 내리치기) · 11~13 심판 (망치 뒤로 당김 → 머리 위로 치켜듦 → 땅에 내리찍음) · 14~15 신성 보호 (방패를 앞으로 → 방패를 머리 위로 들어 올림) · 16 성스러운 돌격 (방패를 앞세워 달림, 발 뒤 흙먼지 꼬리 포함) · 17 축성 (두 손 모아 기도) · 18~19 불굴의 가호 (망치 치켜들고 버팀 = 시전 막대 동안 → 방패를 머리 위로 들고 외침 = 발동)
 # 이펙트: 심판 금빛 빛기둥 + 땅 폭발 → assets/sprites/fx/paladin_judgment.webp (어두운 배경 샘플, build_judgment_fx)
 #   성스러운 돌격 충돌 폭발 → fx/paladin_charge_hit.webp, 멈춘 자리 흙먼지·반짝임 → fx/paladin_charge_dust.webp (build_charge_fx)
 #   축성 시전 막대 동안 금빛 마법진 → fx/paladin_consec_cast.webp, 발동 때 빛줄기·깃털 → fx/paladin_consec_burst.webp (build_consecrate_fx)
 #   신성 보호 바닥 마법진 → fx/paladin_hs_circle.webp, 시전자 보호막(문양 반구) → fx/paladin_hs_cast.webp, 아군 보호막(맑은 반구) → fx/paladin_hs_ally.webp (build_holy_shield_fx)
+#   불굴의 가호 시전 앞쪽 마법진 → fx/paladin_aegis_cast0.webp, 시전 뒤쪽 날개·검 → fx/paladin_aegis_cast1.webp, 발동 빛기둥 → fx/paladin_aegis_burst.webp,
+#     가호 받은 아군 불꽃 반구 → fx/paladin_aegis_ally.webp (흰 배경 샘플, build_aegis_fx)
+#   - 불굴의 가호 동작 샘플(275×513, 위 = 시전 · 아래 = 발동, "불굴의 가호" 제목)은 aegis_a·aegis_b로 잘라 둠. 머리 폭이 대기의 0.65배 → 1.55배
 # 크기 통일: 대기 샘플의 머리 꼭대기~발 키(IDLE_SRC_H)를 TARGET_H로 줄이는 배율이 기준. 다른 동작은 같은 배율(k=1)로 줄이고,
 #   샘플마다 캐릭터를 다르게 그려 왔으면 그 칸의 몸 키(머리 꼭대기~발, 샘플 px)를 ('h', 키)로 적어 대기와 같은 키가 되게 맞춤
 # 샘플 정리:
@@ -51,6 +54,7 @@ FRAMES = [
     ('hshield_a', 'hs0', 1.15, 0), ('hshield_b', 'hs1', 1.23, 0),
     ('charge', 'charge', 1.75, (0, 210)),
     ('consec', 'consec', 1.25, 0),
+    ('aegis_a', 'aegis0', 1.55, 0), ('aegis_b', 'aegis1', 1.55, 0),
 ]
 FOOTX = {'charge': 135}   # 발 가운데를 샘플 x로 직접 (먼지 꼬리가 발보다 아래·뒤로 깔림)
 CARD = {'idle': (163, 194)}   # 카드 테두리를 빼고 쓸 (너비, 높이)
@@ -177,10 +181,47 @@ def build_consecrate_fx():
         print(f'  consec {k}: {a.shape[1]}x{a.shape[0]} 원 가운데 y={int(np.argmax(w))}')
 
 
+def glow_white(src, box, out, gain=1.5, pw=0.75, cut=0.05):
+    # 흰 배경 빛 이펙트 → 빛 더하기용(게임에서 'lighter'): 흰색에서 떨어진 만큼(가장 어두운 채널) 불투명, 색은 샘플 그대로
+    #   (흰색을 빼서 본래 색으로 되살려 덮어 그리면 옅은 금빛이 배경과 섞여 탁해졌음. 대신 하얀 빛기둥 한가운데는 흰 배경과 같아서 비어 보임)
+    x0, y0, x1, y1 = box
+    im = np.array(Image.open(f'{D}{src}_src.png').convert('RGB')).astype(float)[y0:y1, x0:x1]
+    a = ((254 - im.min(axis=2)) / 234 * gain).clip(0, 1) ** pw
+    a = np.where(a < cut, 0, a)
+    ys, xs = np.where(a > 0)
+    o = np.dstack([im, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    Image.fromarray(o.clip(0, 255).astype(np.uint8), 'RGBA').save(out, 'WEBP', lossless=True)
+    w = [np.ptp(np.where(r)[0]) if r.any() else 0 for r in (o[..., 3] > 60)]   # 바닥 원 = 가로로 가장 넓은 줄
+    print(f'{out} {o.shape[1]}x{o.shape[0]} 가장 넓은 줄 y={int(np.argmax(w))}')
+
+
+def build_aegis_fx():
+    # 불굴의 가호 (흰 배경 1024×705, 2×2): 위 왼쪽 = 시전 앞쪽 마법진+소용돌이 · 위 오른쪽 = 시전 뒤쪽 날개·검·방패·빛 구슬 ·
+    #   아래 왼쪽 = 발동 빛기둥+날개+방패 · 아래 오른쪽 = 가호 받은 아군에게 씌우는 불꽃 반구
+    glow_white('aegis_fx', (0, 0, 510, 322), 'assets/sprites/fx/paladin_aegis_cast0.webp')
+    glow_white('aegis_fx', (510, 0, 1024, 322), 'assets/sprites/fx/paladin_aegis_cast1.webp')
+    glow_white('aegis_fx', (0, 322, 510, 705), 'assets/sprites/fx/paladin_aegis_burst.webp')
+    glow_white('aegis_fx', (510, 322, 1024, 705), 'assets/sprites/fx/paladin_aegis_ally.webp')
+
+
 def build_holy_shield_fx():
     glow_dark('hshield_circle', out='assets/sprites/fx/paladin_hs_circle.webp')
     glow_dark('hshield_domes', 0, 188, out='assets/sprites/fx/paladin_hs_cast.webp')     # 왼쪽: 십자·방패 문양 반구 (시전자)
     glow_dark('hshield_domes', 188, None, out='assets/sprites/fx/paladin_hs_ally.webp')  # 오른쪽: 맑은 반구 + 빛 알갱이 (보호막 받은 아군)
+    # 수호 서약: 전용 이펙트 대신 신성 보호의 마법진·시전자 반구를 금빛으로 바꿔 씀 (색상만 파랑 → 노랑, 밝기·투명도는 그대로)
+    for k in ('circle', 'cast'):
+        recolor_gold(f'assets/sprites/fx/paladin_hs_{k}.webp', f'assets/sprites/fx/paladin_vow_{k}.webp')
+
+
+def recolor_gold(src, out, hue=42):
+    im = Image.open(src).convert('RGBA')
+    h, s, v = [np.array(c, float) for c in im.convert('RGB').convert('HSV').split()]
+    h = np.full_like(h, hue / 360 * 255)   # 파랑 계열이 대부분이라 색상을 통째로 금빛으로
+    s = (s * 1.1).clip(0, 255)
+    rgb = Image.merge('HSV', [Image.fromarray(c.astype(np.uint8)) for c in (h, s, v)]).convert('RGB')
+    o = Image.merge('RGBA', (*rgb.split(), im.split()[3]))
+    o.save(out, 'WEBP', lossless=True)
+    print(f'{out} {o.width}x{o.height}')
 
 
 if __name__ == '__main__':
@@ -189,3 +230,4 @@ if __name__ == '__main__':
     build_holy_shield_fx()
     build_charge_fx()
     build_consecrate_fx()
+    build_aegis_fx()
