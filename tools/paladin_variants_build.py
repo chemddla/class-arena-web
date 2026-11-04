@@ -32,8 +32,10 @@ GOLD_XMIN = {16: 150}            # 돌격 칸의 흙먼지 꼬리(금빛 모래�
 DUST_RECTS = {16: [(0, 118, 105, 131), (0, 131, 123, 154), (0, 149, 150, 154)]}   # 흙먼지 꼬리 (x0, y0, x1, y1): 회백색 알갱이까지 어느 부위에도 안 넣음
 CLOSED_EYES = {5, 6, 7, 8, 17}   # 눈 감은 칸 (피격·쓰러짐·축성 기도): 눈동자가 없음 (이마 옆 푸른빛 머리카락을 눈으로 잡지 않게)
 DIM_EYES = {18, 19}              # 불굴의 가호 칸: 눈동자가 흐린 회청색이라 채도 0.21까지 눈으로 봄 (다른 칸은 0.3)
-# 얼굴이 돌아가 얼굴 살색 껍질 밖에 걸친 눈 (x0, y0, x1, y1): 상자 안 푸른 기 도는 픽셀은 눈동자, 나머지(흰자·속눈썹)는 머리도 갑옷도 아님
-EYE_KEEP = {18: [(166, 62, 179, 73)], 19: [(170, 55, 179, 65)]}
+# 얼굴이 돌아가 먼 쪽 눈이 얼굴 가장자리·옆머리에 걸친 칸: 그 눈 상자 (x0, y0, x1, y1). 상자 안 푸른 픽셀(채도 기준은 DIM_EYES면 0.15, 아니면 0.25)은 눈동자,
+#   나머지(흰자·속눈썹)는 머리·갑옷·망토 어디에도 안 넣고 그대로. 자동으로는 옆머리·뒤 망토와 못 가름 (16번은 홍채가 망토로 잡혀 빨간 얼룩이 됐음)
+HAIR_NOT = {9: [(182, 83, 189, 92)]}   # 머리로 잘못 이어진 자리 (x0, y0, x1, y1): 9번 치켜든 팔의 건틀릿 밝은 면이 옆머리 끝에 붙어 머리가 됐음 → 갑옷
+EYE_KEEP = {13: [(156, 86, 165, 96)], 16: [(189, 85, 197, 91)], 18: [(170, 64, 178, 73)], 19: [(173, 58, 180, 64)]}
 
 # (번호, 이름, 부위별 목표 색) — 색표는 docs/paladin-skin-palette.md. 각 부위의 시트 전체 가운데 밝기·채도를 이 색에 맞추고 명암 차이는 살림. None = 그대로
 #   목표 색은 '가운데' 색이라 원래 가운데 밝기(갑옷 0.48, 망토 0.34)를 생각해서 잡음: 1·5 갑옷은 은색 그대로, 4 상아 갑옷·크림 망토는 밝기를 낮춰 명암을 남김
@@ -97,8 +99,13 @@ def seg(f, idx=None):
         sz = ndi.sum(skin, lab, range(1, n + 1)); face = lab == (1 + int(np.argmax(sz)))
         facez = hull_fill(face)
         gold &= ~ndi.binary_dilation(facez, K8, iterations=2)   # 입·볼의 주황 점은 망치 장식이 아님
-    # 망토·앞자락 깊은 그늘은 남보라 쪽 (안 넣으면 빨간 망토에 남색 그늘이 남음). 얼굴 안(입 속·속눈썹)은 뺌
-    blue |= A & (h >= 245) & (h < 265) & (s > 0.25) & (v < 0.4) & ~outline & ~facez
+    # 어두운 파랑(밝기 0.4 아래)은 진짜 망토 그늘만: 망토 그늘은 채도 0.55 이상·색상 238도 아래, 검은 바지 주름·장갑·망치 자루는 채도 0.3~0.5·색상 238~240도라 갈라짐.
+    #   망토로 잡으면 바지에 붉은 얼룩이 생김. 이 기준에 걸려 빠진 어두운 픽셀 중 망토 그늘에 둘러싸인 것(남보라 쪽 깊은 그늘)만 5x5에서 절반 넘게 망토면 되살림
+    dark = v < 0.4
+    core = blue & (~dark | ((s >= 0.5) & (h < 238)))
+    cand = A & ~outline & ~facez & dark & (h >= 195) & (h < 270) & (s > 0.25) & ~core
+    dens = ndi.uniform_filter(core.astype(float), size=5, mode='constant')
+    blue = core | (cand & (dens >= 0.5))
     R = A & ~outline & ~skin & ~blue & ~gold & ~dust
     shield = pick_shield(blue, v, A)
     if shield.any():
@@ -132,7 +139,7 @@ def seg(f, idx=None):
             for _, _, c in sorted([c for c in comps if c[1] >= th], key=lambda c: -c[0])[:2]: eyes |= c
         eyerect = np.zeros_like(A)
         for x0, y0, x1, y1 in EYE_KEEP.get(idx, []): eyerect[y0:y1 + 1, x0:x1 + 1] = True
-        eyes |= eyerect & A & ~outline & ~face & (h > 190) & (h < 275) & (s > 0.08)
+        eyes |= eyerect & A & ~outline & ~face & (h > 190) & (h < 275) & (s > (0.15 if idx in DIM_EYES else 0.25))
         # 머리: 얼굴 위쪽에 닿은 은빛 조각들 + 거기 이어진 조각 (어두운 선은 벽, 방패 둘레는 뺌)
         Rb = R & (v >= 0.3) & ~eyes & ~ndi.binary_dilation(sh_full, K8, iterations=1)   # 방패와 1px 테두리만 뺌 (4px를 빼니 방패에 가려진 머리 조각이 갑옷이 됐음)
         # 눈 흰자·눈동자 회색 조각 (얼굴 안 가운데 띠에 들어 있는 작은 조각)은 머리가 아님
@@ -184,8 +191,22 @@ def seg(f, idx=None):
         if not ring.any(): continue
         if hair[ring].mean() >= 0.5: hair |= c
         elif (R & ~hair & (s < 0.3))[ring].mean() >= 0.5: blue &= ~c; R |= c
+    for x0, y0, x1, y1 in HAIR_NOT.get(idx, []): hair[y0:y1 + 1, x0:x1 + 1] = False
     cape = blue & ~shield & ~eyes & ~hair
+    if face is not None: cape &= ~eyerect   # 먼 쪽 눈 상자 안 남은 픽셀(흰자·속눈썹)은 망토도 아님
     cape &= ~((v < 0.3) & ndi.binary_dilation(hair, K8))   # 머리 둘레의 짙은 남색 선은 윤곽 (망토색으로 칠하면 머리 테두리가 깨짐)
+    # 갑옷 판 사이로 비치는 파란 천: 작은 조각(30px 이하, 둘레 6할 넘게 갑옷·윤곽)은 통째로, 큰 조각(둘레 7할 넘게 갑옷·윤곽, 절반 가까이 어두움)은
+    #   어두운 부분(밝기 0.4 아래)만 갑옷으로. 망토색으로 칠하면 빨간 외형에서 팔·다리에 핏자국 같은 얼룩이 됐음 (은색·검정 갑옷의 그늘로 두는 편이 자연스러움)
+    #   진짜 망토(등 뒤로 늘어진 것)는 바깥쪽이 배경과 닿으니 뺌: 윤곽선 너머 3px 둘레의 3% 넘게 배경이면 그대로 망토
+    metal = (R & (s < 0.3) & ~hair) | outline
+    lc, nc = ndi.label(cape, K8)
+    for j in range(1, nc + 1):
+        c = lc == j
+        ring = ndi.binary_dilation(c, K8) & ~c & A; outer = ndi.binary_dilation(c, K8, iterations=3) & ~c
+        if not ring.any() or (~A)[outer].mean() > 0.03: continue
+        mr = metal[ring].mean(); dk = c & (v < 0.4)
+        if c.sum() <= 30 and mr >= 0.6: cape &= ~c; R |= c
+        elif mr >= 0.7 and dk.sum() >= 0.45 * c.sum(): cape &= ~dk; R |= dk
     # 머리 사이에 낀 푸른 그늘(키운 칸의 땋은 머리 결)은 뒤 망토와 이어져 있어도 머리: 8이웃 중 5개 넘게 머리인 망토 픽셀을 두 번 거둠
     for _ in range(2):
         cnt = ndi.convolve(hair.astype(np.uint8), np.ones((3, 3), np.uint8), mode='constant') - hair
