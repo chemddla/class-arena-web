@@ -9,7 +9,11 @@
 #     머리 꼭대기~발 키(약 750px)를 대기와 같게 → 대기 배율 × 123/750
 #   paladin_sr1_charge_src.png (1024×1024, 원본 webp를 png로): 성스러운 돌격 (방패를 앞세워 날개 펴고 돌진, 바람 줄·금빛 불꽃·흙먼지).
 #     얼굴·머리 폭을 축성 칸에 맞춰 축성 배율 × 1.1. 다리를 앞뒤로 벌려서 기준점은 두 발 가운데(샘플 x 390)로 직접
-# 칸 순서: 0 대기 · 1~4 걷기 · 5~8 기본 공격 · 9 피격 · 10~11 쓰러짐 · 12 축성 · 13 성스러운 돌격
+#   paladin_sr1_judge_src.png (1024×1024): 심판 내리찍기 (망치가 땅을 때림, 금빛 불꽃·돌조각·위로 튀는 줄). 망치·돌이 발보다 아래로 내려가서
+#     땅 높이를 뒷발 바닥(샘플 y 940)으로 잡고 그 아래는 칸 기준점 밑으로 내려 그림 (GROUND)
+#   paladin_sr1_hshield_src.png (1024×1024): 신성 보호·수호 서약 (방패를 앞으로 내밀고 버팀, 방패 둘레 금빛 빛줄기)
+#   돌격·심판·신성 보호 세 장은 같은 크기로 그려 와서 배율이 같음
+# 칸 순서: 0 대기 · 1~4 걷기 · 5~8 기본 공격 · 9 피격 · 10~11 쓰러짐 · 12 축성 · 13 성스러운 돌격 · 14 심판 · 15 신성 보호
 # 크기: 대기의 머리 꼭대기~발 키를 TARGET_H(성기사 0번과 같은 110)로. 같은 장(sheet)의 다른 칸도 같은 배율,
 #   쓰러짐 두 장은 따로 그려 와서 얼굴·방패 폭으로 맞춘 배율(DOWN_K)
 # 흰 배경 지우기는 paladin_build.py와 같음: 가장자리에서 이어진 흰 픽셀만 배경, 배경과 섞인 2px 테두리는 흰색을 빼서 투명도·색을 되살림
@@ -26,8 +30,9 @@ OUT = 'assets/sprites/merc/paladin_sr1.webp'
 TARGET_H = 110
 DOWN_K = 1.0   # 쓰러짐 샘플 배율 (시트 기준) — 얼굴·방패 폭이 시트 칸과 같아서 그대로
 # 연한 은빛 공격 궤적: 흰 배경과 거의 같은 색이라 배경으로 지워짐 → 이 상자(시트 좌표) 안은 흰색에서 떨어진 만큼 반투명으로 살림
-FOOTX = {'charge': 390}
-GAP = {'charge': [(150, 680, 360, 930)]}   # 갇힌 흰 배경을 지울 상자 (샘플 x0, y0, x1, y1): 망치 자루·다리·흙먼지 사이   # 발 가운데를 샘플 x로 직접
+FOOTX = {'charge': 390, 'judge': 370, 'hshield': 440}   # 발 가운데를 샘플 x로 직접 (다리를 앞뒤로 벌린 칸)
+GROUND = {'judge': 940}   # 땅 높이 (샘플 y). 이보다 아래(망치·돌조각)는 기준점 밑으로
+GAP = {'charge': [(150, 680, 360, 930)]}   # 갇힌 흰 배경을 지울 상자 (샘플 x0, y0, x1, y1): 망치 자루·다리·흙먼지 사이
 SOFT = {'sheet': [(597, 258, 652, 370)]}
 
 # (칸 이름, 샘플, 상자 (x0, y0, x1, y1), 배율 보정)
@@ -41,6 +46,8 @@ FRAMES = [
     ('down0', 'down_a', None, 'down'), ('down1', 'down_b', None, 'down'),
     ('consec', 'consec', None, 123 / 750),
     ('charge', 'charge', None, 123 / 750 * 1.1),
+    ('judge', 'judge', None, 123 / 750 * 1.1),
+    ('hshield', 'hshield', None, 123 / 750 * 1.1),
 ]
 
 
@@ -90,31 +97,34 @@ def load(name, box):
     body = np.isin(lab, [big])[ys.min():ys.max() + 1, xs.min():xs.max() + 1] & (rgba[..., 3] > 0)
     foot = np.where(body[int(body.shape[0] * 0.92):].any(axis=0))[0].mean()   # 발 가운데 (몸 아래 8%)
     if name in FOOTX: foot = FOOTX[name] + 2 - xs.min()   # +2 = 덧댄 여백
-    return rgba, foot
+    below = max(0, ys.max() - (GROUND[name] + 2)) if name in GROUND else 0
+    return rgba, foot, below
 
 
 def main():
-    idle, _ = load('sheet', FRAMES[0][2])
+    idle, _, _ = load('sheet', FRAMES[0][2])
     k0 = TARGET_H / idle.shape[0]   # 대기는 머리 꼭대기가 가장 높음 (날개 끝은 머리보다 낮음)
     pieces = []
     for name, src, box, k in FRAMES:
-        rgba, foot = load(src, box)
+        rgba, foot, below = load(src, box)
         sc = k0 * (DOWN_K if k == 'down' else k)
         if name == 'down1': foot = rgba.shape[1] * 0.45   # 누운 칸은 몸 가운데쯤을 기준점으로
         p = shrink(rgba, sc)
-        pieces.append((name, p, foot * sc))
+        pieces.append((name, p, foot * sc, int(round(below * sc))))
         print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} ×{sc:.3f} → {p.shape[1]}x{p.shape[0]}')
-    L = max(int(np.ceil(c)) for _, _, c in pieces) + 4
-    R = max(int(np.ceil(p.shape[1] - c)) for _, p, c in pieces) + 4
-    H = max(p.shape[0] for _, p, _ in pieces) + 5
+    L = max(int(np.ceil(c)) for _, _, c, _ in pieces) + 4
+    R = max(int(np.ceil(p.shape[1] - c)) for _, p, c, _ in pieces) + 4
+    B = max(b for *_, b in pieces)   # 기준점 아래로 내려가는 칸 높이
+    AY = max(p.shape[0] - b for _, p, _, b in pieces) + 3   # 기준점 y
+    H = AY + B + 2
     cw = L + R
     sheet = np.zeros((H, cw * len(pieces), 4), np.uint8)
-    for i, (name, p, c) in enumerate(pieces):
+    for i, (name, p, c, b) in enumerate(pieces):
         x = i * cw + L - int(round(c))
-        y = H - 2 - p.shape[0]
+        y = AY - (p.shape[0] - b)
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
     Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
-    print(f'paladin_sr1 cellW={cw} cellH={H} anchorX={L} anchorY={H - 2} count={len(pieces)}')
+    print(f'paladin_sr1 cellW={cw} cellH={H} anchorX={L} anchorY={AY} count={len(pieces)}')
 
 
 if __name__ == '__main__':
