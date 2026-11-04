@@ -131,6 +131,17 @@ JUDGE_FX_BG = np.array([35.0, 39.0, 43.0])
 JUDGE_FX_LABEL_ROWS = 6
 
 
+def edge_fade(hh, ww, fade):
+    # 샘플 테두리에서 잘린 빛줄기·빛 안개: 그 가장자리 쪽으로 서서히 투명하게 (fade = {'top': 폭 px, 'right': 폭 px ...}, smoothstep)
+    yy, xx = np.mgrid[0:hh, 0:ww].astype(float)
+    dist = {'top': yy, 'bottom': hh - 1 - yy, 'left': xx, 'right': ww - 1 - xx}
+    m = np.ones((hh, ww))
+    for side, wpx in fade.items():
+        t = np.clip(dist[side] / wpx, 0, 1)
+        m *= t * t * (3 - 2 * t)
+    return m
+
+
 def key_dark(src, x0=0, x1=None, label_rows=0, warm_keep=False, out=None, fade=None):
     # 어두운 배경 이펙트 샘플: 배경색과 떨어진 만큼 불투명, 배경색을 빼서 본래 색으로 (빛 가장자리·반투명 반구 속까지 살림)
     im = np.array(Image.open(f'{D}{src}_src.png').convert('RGB')).astype(float)[:, x0:x1]
@@ -145,15 +156,7 @@ def key_dark(src, x0=0, x1=None, label_rows=0, warm_keep=False, out=None, fade=N
     a = np.where(a < 0.04, 0, a)
     ys, xs = np.where(a > 0)
     o = np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
-    if fade:   # 샘플 테두리에서 잘린 빛줄기: 그 가장자리 쪽으로 서서히 투명하게 (fade = {'top': 폭 px, 'right': 폭 px ...})
-        hh, ww = o.shape[:2]
-        yy, xx = np.mgrid[0:hh, 0:ww].astype(float)
-        dist = {'top': yy, 'bottom': hh - 1 - yy, 'left': xx, 'right': ww - 1 - xx}
-        m = np.ones((hh, ww))
-        for side, wpx in fade.items():
-            t = np.clip(dist[side] / wpx, 0, 1)
-            m *= t * t * (3 - 2 * t)   # smoothstep
-        o[..., 3] *= m
+    if fade: o[..., 3] *= edge_fade(o.shape[0], o.shape[1], fade)
     Image.fromarray(o.clip(0, 255).astype(np.uint8), 'RGBA').save(out, 'WEBP', lossless=True)
     print(f'{out} {o.shape[1]}x{o.shape[0]}')
 
@@ -190,7 +193,7 @@ def build_consecrate_fx():
         print(f'  consec {k}: {a.shape[1]}x{a.shape[0]} 원 가운데 y={int(np.argmax(w))}')
 
 
-def glow_white(src, box, out, gain=1.5, pw=0.75, cut=0.05):
+def glow_white(src, box, out, gain=1.5, pw=0.75, cut=0.05, fade=None):
     # 흰 배경 빛 이펙트 → 빛 더하기용(게임에서 'lighter'): 흰색에서 떨어진 만큼(가장 어두운 채널) 불투명, 색은 샘플 그대로
     #   (흰색을 빼서 본래 색으로 되살려 덮어 그리면 옅은 금빛이 배경과 섞여 탁해졌음. 대신 하얀 빛기둥 한가운데는 흰 배경과 같아서 비어 보임)
     x0, y0, x1, y1 = box
@@ -199,6 +202,7 @@ def glow_white(src, box, out, gain=1.5, pw=0.75, cut=0.05):
     a = np.where(a < cut, 0, a)
     ys, xs = np.where(a > 0)
     o = np.dstack([im, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    if fade: o[..., 3] *= edge_fade(o.shape[0], o.shape[1], fade)
     Image.fromarray(o.clip(0, 255).astype(np.uint8), 'RGBA').save(out, 'WEBP', lossless=True)
     w = [np.ptp(np.where(r)[0]) if r.any() else 0 for r in (o[..., 3] > 60)]   # 바닥 원 = 가로로 가장 넓은 줄
     print(f'{out} {o.shape[1]}x{o.shape[0]} 가장 넓은 줄 y={int(np.argmax(w))}')
@@ -207,10 +211,12 @@ def glow_white(src, box, out, gain=1.5, pw=0.75, cut=0.05):
 def build_aegis_fx():
     # 불굴의 가호 (흰 배경 1024×705, 2×2): 위 왼쪽 = 시전 앞쪽 마법진+소용돌이 · 위 오른쪽 = 시전 뒤쪽 날개·검·방패·빛 구슬 ·
     #   아래 왼쪽 = 발동 빛기둥+날개+방패 · 아래 오른쪽 = 가호 받은 아군에게 씌우는 불꽃 반구
-    glow_white('aegis_fx', (0, 0, 510, 322), 'assets/sprites/fx/paladin_aegis_cast0.webp')
-    glow_white('aegis_fx', (510, 0, 1024, 322), 'assets/sprites/fx/paladin_aegis_cast1.webp')
-    glow_white('aegis_fx', (0, 322, 510, 705), 'assets/sprites/fx/paladin_aegis_burst.webp')
-    glow_white('aegis_fx', (510, 322, 1024, 705), 'assets/sprites/fx/paladin_aegis_ally.webp')
+    # 칸 상자 끝까지 옅은 빛 안개가 깔려 있어서 네모난 경계가 잘려 보임 → 사방을 흐리게 (발동 빛기둥은 위쪽을 길게)
+    side = {'top': 30, 'bottom': 24, 'left': 30, 'right': 30}
+    glow_white('aegis_fx', (0, 0, 510, 322), 'assets/sprites/fx/paladin_aegis_cast0.webp', fade=side)
+    glow_white('aegis_fx', (510, 0, 1024, 322), 'assets/sprites/fx/paladin_aegis_cast1.webp', fade=side)
+    glow_white('aegis_fx', (0, 322, 510, 705), 'assets/sprites/fx/paladin_aegis_burst.webp', fade={**side, 'top': 110})
+    glow_white('aegis_fx', (510, 322, 1024, 705), 'assets/sprites/fx/paladin_aegis_ally.webp', fade=side)
 
 
 def build_holy_shield_fx():
