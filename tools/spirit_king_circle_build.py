@@ -4,6 +4,7 @@
 # 칸 FRAMES장: 칸마다 색을 1/FRAMES 바퀴씩 돌려 둠 → 게임에서 차례로 그리면 색이 둘레를 따라 흐름 (타원이라 그림을 돌리지 않고 색만 돌림)
 # 원래 그림이 흰색·옅은 금색 위주라, 밝기는 남기고 색만 입힘 (아주 밝고 색이 없는 별빛 가운데만 흰색으로 남김)
 # 원소 정령 소환진 assets/sprites/fx/spirit_circle.webp: 같은 원을 원소 색 하나로 (칸 순서 = 불·물·대지·바람·번개, SPIRIT_CIRCLE_ELEMS)
+# 반짝임은 지움: 원 위로 떠 있는 별빛과 둘레 끝에 붙은 십자 별빛 = 바깥 원 타원(가운데 cy, 반지름 RX·RY 비율) 밖 픽셀은 투명하게
 # 크기를 SCALE배로 키워 둠 (게임에서 4칸 폭으로 크게 그릴 때 덜 흐릿하게, 도트 느낌 유지)
 import numpy as np
 from PIL import Image
@@ -14,6 +15,7 @@ OUT_ELEM = 'assets/sprites/fx/spirit_circle.webp'
 ELEM_COLORS = [(255, 100, 20), (30, 140, 255), (190, 120, 40), (40, 230, 190), (255, 215, 0)]  # 불·물·대지·바람·번개 (게임의 SPIRIT_CIRCLE_ELEMS 순서)
 FRAMES = 8
 SCALE = 2
+RX, RY = 0.45, 0.32  # 바깥 원 타원 반지름 (칸 폭·높이 비율)
 EL = np.array([(255, 100, 20), (255, 215, 0), (40, 230, 190), (30, 140, 255), (190, 120, 40)], float)  # 불·번개·바람·물·대지
 
 
@@ -36,7 +38,8 @@ def frame(b, rot, solid=None):
     col = ring_color(t) if solid is None else np.broadcast_to(np.array(solid, float), t.shape + (3,))
     k = np.clip(lum * 1.25, 0, 1)[..., None]
     rgb = col * k * (1 - white[..., None]) + 255 * white[..., None]
-    return np.dstack([np.clip(rgb, 0, 255), b[..., 3]]).astype(np.uint8)
+    inside = ((xx - w / 2) / (w * RX)) ** 2 + ((yy - cy) / (h * RY)) ** 2 <= 1
+    return np.dstack([np.clip(rgb, 0, 255), b[..., 3] * inside]).astype(np.uint8)
 
 
 def main():

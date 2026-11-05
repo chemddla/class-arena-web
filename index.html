@@ -8421,7 +8421,36 @@
     const BARD_ORB_FX = { src: 'assets/sprites/fx/bard_bubble_fx.webp', anims: { bubble: [[0,0,53,56,26,28]], burst: [[55,0,107,94,50,47]], disso: [[164,0,210,176,108,91]] } };
     // 투사체 종류별 그림과 크기(첫 프레임 높이, 월드 px). match가 있으면 그 조건을 만족할 때만 (성녀 분홍 구슬 제외)
     // 투사체에 spr가 붙어 있으면 그 키를 먼저 찾음 (sheet = 다른 아틀라스, hit = 터질 때 그릴 효과 그림)
+    // 소환사 기본 공격 = 마법사 기본 공격 구슬(orb)·터짐(orb_hit)을 밝기에 따라 초록으로 다시 칠한 사본
+    //   (어두운 곳 → 짙은 초록, 중간 → 연두, 밝은 곳 → 흰빛). 같은 크기 캔버스라 칸 좌표는 FX_SPRITE_SHEET 그대로 · 처음 쓸 때 한 번 만듦
+    const SUMMONER_ORB_FX = {
+      anims: FX_SPRITE_SHEET.anims, canvas: null,
+      get ready() { return !!this.img; },
+      get img() {
+        if (this.canvas) return this.canvas;
+        const sh = FX_SPRITE_SHEET;
+        if (!sh.ready || !sh.img.naturalWidth) return null;
+        const c = document.createElement('canvas');
+        c.width = sh.img.naturalWidth; c.height = sh.img.naturalHeight;
+        const g = c.getContext('2d');
+        const ramp = [[0, [6, 78, 59]], [0.3, [22, 163, 74]], [0.55, [74, 222, 128]], [0.8, [187, 247, 208]], [1, [240, 255, 244]]];
+        ['orb', 'orb_hit'].flatMap(k => sh.anims[k]).forEach(([x, y, w, h]) => {
+          g.drawImage(sh.img, x, y, w, h, x, y, w, h);
+          const d = g.getImageData(x, y, w, h), px = d.data;
+          for (let i = 0; i < px.length; i += 4) {
+            if (!px[i + 3]) continue;
+            const l = (px[i] * 0.3 + px[i + 1] * 0.59 + px[i + 2] * 0.11) / 255;
+            let j = 1; while (j < ramp.length - 1 && ramp[j][0] < l) j++;
+            const [a0, c0] = ramp[j - 1], [a1, c1] = ramp[j], f = Math.max(0, Math.min(1, (l - a0) / (a1 - a0)));
+            px[i] = c0[0] + (c1[0] - c0[0]) * f; px[i + 1] = c0[1] + (c1[1] - c0[1]) * f; px[i + 2] = c0[2] + (c1[2] - c0[2]) * f;
+          }
+          g.putImageData(d, x, y);
+        });
+        return (this.canvas = c);
+      }
+    };
     const PROJECTILE_SPRITES = {
+      summoner_orb:   { anim: 'orb', h: 18.2, sheet: SUMMONER_ORB_FX, hit: 'summoner_orb_hit' }, // 소환사 기본 공격 (마법사 구슬을 초록으로)
       bomb:            { anim: 'bomb', h: 37, sheet: GOBLIN_BOMB_FX, hit: 'bomb_hit' },          // 폭탄 지름 약 16
       goblin_fireball: { anim: 'fireball', h: 36, sheet: GOBLIN_BOMB_FX, hit: 'flame_hit' },
       magic_orb:      { anim: 'orb', h: 18.2, match: p => !p.color || p.color === '#7c3aed' }, // 마법사 기본 공격 구슬 (26에서 30% 작게)
@@ -17156,7 +17185,7 @@
         // 커서 방향으로 사거리 끝까지 날아가서(커서 지점에서 멈추지 않음), 적에게 맞거나 사거리 끝에 닿으면 작은 범위로 터짐
         const ang = Math.atan2((aimY - 12) - oy, aimX - ox);
         sim.projectiles.push({
-          projType: 'magic_orb', spr: u.job === 'frost' ? (unitProjFx(u, 'magic_orb') || 'troll_frost') : (u.job === 'curse' ? 'curse_flame' : (u.job === 'bard' ? 'bard_bubble' : undefined)), isDirectional: true, angle: ang, x: ox, y: oy, owner: u, dmg: u.atk, color: orbColor,
+          projType: 'magic_orb', spr: u.job === 'frost' ? (unitProjFx(u, 'magic_orb') || 'troll_frost') : (u.job === 'curse' ? 'curse_flame' : (u.job === 'bard' ? 'bard_bubble' : (u.job === 'summoner' ? 'summoner_orb' : undefined))), isDirectional: true, angle: ang, x: ox, y: oy, owner: u, dmg: u.atk, color: orbColor,
           isHeal: false, speed: 3.2, trail: [], maxTravel: u.range + 40,
           splashRadius: u.job === 'curse' || u.job === 'bard' || u.job === 'summoner' ? 0 : MAGE_SPLASH_RADIUS, splashRatio: MAGE_SPLASH_RATIO
         });
@@ -20024,7 +20053,7 @@
             const frostOrb = u.job === 'frost';
             const curseOrb = u.job === 'curse' || u.job === 'bard' || u.job === 'summoner'; // 주술사·음유시인·소환사 = 범위 없이 한 명만 맞는 구슬
             const monOrbSpr = unitProjFx(u, 'magic_orb');
-            const orbSpr = monOrbSpr || (frostOrb ? 'troll_frost' : (u.job === 'curse' ? 'curse_flame' : (u.job === 'bard' ? 'bard_bubble' : undefined))); // 빙결술사 = 작은 얼음 화살, 주술사 = 보라 불꽃, 음유시인 = 물방울
+            const orbSpr = monOrbSpr || (frostOrb ? 'troll_frost' : (u.job === 'curse' ? 'curse_flame' : (u.job === 'bard' ? 'bard_bubble' : (u.job === 'summoner' ? 'summoner_orb' : undefined)))); // 빙결술사 = 작은 얼음 화살, 주술사 = 보라 불꽃, 음유시인 = 물방울, 소환사 = 초록 구슬
             if (!monOrbSpr && !frostOrb && u.job !== 'curse' && u.job !== 'bard' && u.job !== 'summoner') sim.effects.push({ // 폭탄을 던지는 몬스터·빙결술사·주술사·음유시인은 마법진(보라 고리) 없이
               type: 'cast_circle',
               x: u.x, y: u.y, color: frostOrb ? '#38bdf8' : '#7c3aed', life: 32, maxLife: 32
@@ -20178,7 +20207,7 @@
             }
             if (p.projType === 'magic_orb') {
               playCombatSfx('magic');
-              if (p.owner?.job !== 'summoner') sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), x: p.target.x, y: p.target.y - 12, r: 42, life: 22, maxLife: 22 }); // 소환사 구슬은 보라 원 없이
+              sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), x: p.target.x, y: p.target.y - 12, r: 42, life: 22, maxLife: 22 }); // 소환사 = 초록 터짐 (summoner_orb_hit)
             } else {
               playCombatSfx('arrow');
               sim.effects.push({ type: 'arrow_hit', spr: projHitSpr(p), x: p.target.x, y: p.target.y - 12, angle: p.angle, life: 18, maxLife: 18 });
@@ -24952,7 +24981,7 @@
       if (p.projType === 'magic_orb') {
         playCombatSfx('magic');
         // 범위 공격은 위에서 이미 터지는 그림을 그렸으므로 한 번 더 그리지 않음
-        if (!p.splashRadius && p.owner?.job !== 'summoner') sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), x: hit.x, y: hit.y - 12, r: 42, life: 22, maxLife: 22 });
+        if (!p.splashRadius) sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), x: hit.x, y: hit.y - 12, r: 42, life: 22, maxLife: 22 });
       } else {
         playCombatSfx('arrow');
         sim.effects.push({ type: 'arrow_hit', spr: projHitSpr(p), x: hit.x, y: hit.y - 12, angle: p.angle, life: 18, maxLife: 18 }); // 히드라 독액 = 철퍽 튀는 독
@@ -25467,7 +25496,7 @@
     // 정령왕 강림: 발밑에서 원소 고리가 퍼지듯 커졌다가 (처음 25%, 반 크기 → 다 큼) 그대로 있다가 흐려짐 (마지막 40%).
     // 폭은 피해 범위(2칸 반지름)만큼. 유닛보다 먼저(아래에) 그려서 검을 꽂은 정령왕이 고리 위에 서 있게
     // 정령왕 소환진 (유닛 아래 바닥): 처음 24틱 동안 펼쳐지고, 4틱마다 다음 칸(색이 둘레를 따라 흐름), 마지막 30틱 동안 흐려짐
-    // 원소 정령 소환진도 같은 방식 (원소 색 한 장, 폭 2.4칸 × 정령 크기). 소환 시전이 짧아서 10틱 동안 펼쳐짐
+    // 원소 정령 소환진도 같은 방식 (원소 색 한 장, 폭 1.5칸 × 정령 크기). 소환 시전이 짧아서 10틱 동안 펼쳐짐
     function drawSpiritCircles(ctx) {
       const fx = SPIRIT_CIRCLE_FX;
       if (!fx.ready) return;
@@ -25477,9 +25506,9 @@
         if (i < 0) return;
         const age = (ef.maxLife || 60) - ef.life;
         const grow = Math.min(1, age / 10);
-        const w = GRID_CELL_SIZE * 2.4 * (SPIRIT_DEFS[ef.elem].size || 1) * (0.6 + 0.4 * grow), h = w * fx.cellH / fx.cellW;
+        const w = GRID_CELL_SIZE * 1.5 * (SPIRIT_DEFS[ef.elem].size || 1) * (0.6 + 0.4 * grow), h = w * fx.cellH / fx.cellW;
         ctx.save();
-        ctx.globalAlpha = grow * Math.min(1, ef.life / 20) * (0.85 + 0.15 * Math.sin(age * 0.3));
+        ctx.globalAlpha = grow * Math.min(1, ef.life / 20); // 밝기 출렁임(반짝임) 없이 일정하게
         ctx.drawImage(fx.img, i * fx.cellW, 0, fx.cellW, fx.cellH, Math.round(ef.x - w / 2), Math.round(ef.y + 12 - h * fx.cy), w, h);
         ctx.restore();
       });
@@ -25671,6 +25700,14 @@
       }
       if (!FX_SPRITE_SHEET.ready) return false;
       const A = FX_SPRITE_SHEET.anims;
+      if (ef.spr === 'summoner_orb_hit') {
+        // 소환사 기본 공격 터짐 = 마법사 orb_hit을 초록으로 (크기·움직임은 마법사와 같음)
+        const img = SUMMONER_ORB_FX.img;
+        if (!img) return false;
+        const fr = fxFrameAt(A.orb_hit, progress, 0.6);
+        drawFxFrame(ctx, fr, ef.x, ef.y, (ef.r || 42) * 1.7 * (0.75 + Math.min(1, progress * 2) * 0.25) / fr[2], 0, fadeOut, img);
+        return true;
+      }
       switch (ef.spr) {
         case 'orb_hit':
         case 'fire_hit':
@@ -27176,6 +27213,15 @@
       ctx.fillStyle = '#fbbf24';
       ctx.fillRect(bx, by + 4.5, Math.round(barW * Math.max(0, u.mana / u.maxMana)), 2);
 
+      // 소환사 정령·정령왕: 체력 바 위에 보라 바 = 소환 해제까지 남은 시간
+      const spiritLifeMax = u.spiritElem && SPIRIT_DEFS[u.spiritElem]?.life;
+      if (spiritLifeMax && u.spiritOn) {
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+        ctx.fillRect(bx - 1, by - 5, barW + 2, 4);
+        ctx.fillStyle = '#a855f7';
+        ctx.fillRect(bx, by - 4, Math.round(barW * Math.max(0, Math.min(1, (u.spiritLife || 0) / spiritLifeMax))), 2);
+      }
+
       // 대시(Dash) 자체 쿨타임 충전 바 (초록색, 가득 차면 대시 준비 완료)
       if (u.monsterType !== 'scarecrow') {
         const dashReadyRatio = 1 - Math.min(1, (u.dashCooldown || 0) / (u.maxDashCooldown || DASH_CONFIG.cooldownTicks));
@@ -27199,7 +27245,7 @@
         ctx.font = 'bold 13px Pretendard, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        ctx.fillText(activeCcList.join(''), 0, by - 3);
+        ctx.fillText(activeCcList.join(''), 0, by - (spiritLifeMax && u.spiritOn ? 7 : 3));
       }
 
       // 하단 용병 이름 배지
