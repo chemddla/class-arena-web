@@ -138,12 +138,12 @@ def masks(im):
     return parts, v, lines
 
 
-def recolor(im, parts, val, colors, lines=None):
+def recolor(im, parts, val, colors, lines=None, rng=None):   # rng = {부위: (아래 5%, 위 95%)} 주면 그 밝기 범위로 (전체 시트 빌더가 칸끼리 맞출 때)
     out = im.copy()
     for k, m in parts.items():
         c = colors.get(k)
         if c is None or not m.any(): continue
-        lo, hi = np.percentile(val[m], 5), np.percentile(val[m], 95)
+        lo, hi = rng[k] if rng and k in rng else (np.percentile(val[m], 5), np.percentile(val[m], 95))
         t = (val[m] - lo) / max(1e-3, hi - lo)
         light = 0.62
         if k in CLOTH:
