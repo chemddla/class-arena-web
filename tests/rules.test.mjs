@@ -92,6 +92,24 @@ test('소유 학급: 로그인한 학생은 자기 기록만 바꿀 수 있음',
   await assertSucceeds(db('teacher').ref('classes/OWN1/students/s9').set(student('s9')));
 });
 
+test('나만 쓰는 칸(studentPrivate): 로그인한 학생은 자기 것만, 교사는 전부', async () => {
+  await assertSucceeds(db('u1').ref('classes/OWN1/studentPrivate/s1/recruitPool').set([{ n: 'a' }]));
+  await assertSucceeds(db('u1').ref('classes/OWN1/studentPrivate/s1/codex/monsters/m1').set(true));
+  await assertSucceeds(db('u1').ref().update({ // 예전 칸에서 옮기기
+    'classes/OWN1/students/s1/recruitPool': null,
+    'classes/OWN1/studentPrivate/s1/recruitPool': [{ n: 'b' }]
+  }));
+  await assertSucceeds(db('u1').ref('classes/OWN1/studentPrivate/s1/recruitPool').remove());
+  await assertFails(db('u1').ref('classes/OWN1/studentPrivate/s2/recruitPool').set([1]));
+  await assertFails(db('u1').ref('classes/OWN1/studentPrivate/s9/recruitPool').set([1])); // 없는 학생
+  await assertFails(db('u2').ref('classes/OWN1/studentPrivate/s1/recruitPool').set([1]));
+  await assertFails(db(null).ref('classes/OWN1/studentPrivate/s1/recruitPool').set([1]));
+  await assertSucceeds(db('teacher').ref('classes/OWN1/studentPrivate/s2/codex').set({ a: 1 }));
+  await assertSucceeds(db('teacher').ref().update({ 'classes/OWN1/students/s2': null, 'classes/OWN1/studentPrivate/s2': null })); // 학생 삭제
+  await assertSucceeds(db(null).ref('classes/OWN1/studentPrivate/s1').once('value'));
+  await assertSucceeds(db(null).ref('classes/OLD1/studentPrivate/s1/codex').set({ a: 1 })); // 소유자 없는 예전 학급
+});
+
 test('소유자 없는 예전 학급은 예전처럼 열려 있음', async () => {
   await assertSucceeds(db(null).ref('classes/OLD1/students/s1/mc').set(5));
   await assertSucceeds(db('anyone').ref().update({
