@@ -27,6 +27,10 @@ concurrency:
 env:
   FIREBASE_PROJECT: class-arena-b4ee3
   FIREBASE_TOOLS: firebase-tools@15.34.0
+  WRANGLER: wrangler@4.20.0
+  # Cloudflare Pages 프로젝트 이름 = 주소 앞부분 (https://class-arena.pages.dev)
+  CF_PAGES_PROJECT: class-arena
+  GAME_URL: https://class-arena.pages.dev
 
 jobs:
   # 이번 push에서 어느 부분이 바뀌었는지 확인
@@ -61,7 +65,7 @@ jobs:
           echo "바뀐 파일:"; echo "$files"
           has() { echo "$files" | grep -qE "$1" && echo true || echo false; }
           wf='^\.github/workflows/deploy\.yml$'
-          echo "game=$(has "^index\.html$|^assets/|^tools/minify-html\.cjs$|$wf")" >> "$GITHUB_OUTPUT"
+          echo "game=$(has "^index\.html$|^assets/|^tools/minify-html\.cjs$|^tools/redirect\.html$|$wf")" >> "$GITHUB_OUTPUT"
           echo "admin=$(has "^admin/|$wf")" >> "$GITHUB_OUTPUT"
           echo "rules=$(has "^database\.rules\.json$|^tests/|$wf")" >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
@@ -121,13 +125,63 @@ jobs:
           npm install --no-save --no-audit --no-fund html-minifier-terser@7.2.0
           node tools/minify-html.cjs public/index.html
 
-      # 어느 커밋이 실제로 올라가 있는지 누구나 확인할 수 있게: https://class-arena-b4ee3.web.app/version.json
+      # 어느 커밋이 실제로 올라가 있는지 누구나 확인할 수 있게: <게임 주소>/version.json
       - name: Write version file
         run: printf '{"commit":"%s","deployedAt":"%s"}\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > public/version.json
 
+      # 게임 사이트는 Cloudflare Pages에 올림 (Firebase 무료 호스팅은 한 달 전송량 10GB라 2026-11 초에 다 써서 사이트가 막힘)
+      # 저장소 Secrets에 CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID가 있을 때만 Cloudflare로 감. 없으면 예전처럼 Firebase에 게임을 올림
+      - name: Pick game host
+        id: host
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then echo "cf=true" >> "$GITHUB_OUTPUT"; else echo "cf=false" >> "$GITHUB_OUTPUT"; echo "Cloudflare Secrets가 없어 Firebase에 게임을 올림"; fi
+
+      # 그림·소리·사전은 1시간 동안 다시 받지 않음 (게임 화면·version.json은 매번 새로 확인)
+      - name: Write Cloudflare cache rules
+        if: steps.host.outputs.cf == 'true'
+        run: |
+          printf '/assets/*\n  Cache-Control: public, max-age=3600\n/\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n/version.json\n  Cache-Control: no-cache\n' > public/_headers
+          cat public/_headers
+
+      - name: Deploy game site to Cloudflare Pages
+        if: steps.host.outputs.cf == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          # 처음 한 번은 Pages 프로젝트가 없으므로 만들어 둠 (이미 있으면 오류가 나도 넘어감)
+          npx --yes $WRANGLER pages project create $CF_PAGES_PROJECT --production-branch main || true
+          npx --yes $WRANGLER pages deploy public --project-name $CF_PAGES_PROJECT --branch main --commit-hash "$GITHUB_SHA" --commit-dirty=true
+
+      - name: Verify live game site (Cloudflare)
+        if: steps.host.outputs.cf == 'true'
+        run: bash tools/verify-deploy.sh "$GAME_URL" "게임 사이트 (Cloudflare)"
+
+      # Cloudflare로 옮긴 뒤 Firebase 옛 주소에는 새 주소로 넘겨 주는 작은 안내 페이지만 둠 (옛 QR·즐겨찾기도 계속 동작)
+      - name: Replace Firebase site with redirect page
+        if: steps.host.outputs.cf == 'true'
+        run: |
+          rm -rf public-redirect && mkdir public-redirect
+          sed "s#__GAME_URL__#$GAME_URL#g" tools/redirect.html > public-redirect/index.html
+          cp public/version.json public-redirect/version.json
+          node -e "
+            const fs = require('fs');
+            const cfg = JSON.parse(fs.readFileSync('firebase.json', 'utf8'));
+            const site = cfg.hosting.find(h => h.site === 'class-arena-b4ee3');
+            site.public = 'public-redirect';
+            site.rewrites = [{ source: '**', destination: '/index.html' }];
+            fs.writeFileSync('firebase.json', JSON.stringify(cfg, null, 2));
+          "
+          rm -rf public && mv public-redirect public
+
       # 배포: FirebaseExtended 액션 대신 버전을 고정한 firebase-tools로 직접 (2026-10 액션이 원인 모를 npx 오류로 실패해서 교체)
       # 서비스 계정 키(JSON)를 임시 파일로 두고 GOOGLE_APPLICATION_CREDENTIALS로 로그인
-      - name: Deploy game site
+      # Firebase 호스팅 전송량이 초과된 동안에도 배포 자체는 되지만, 실패해도 Cloudflare 배포가 됐으면 넘어감
+      - name: Deploy Firebase site
+        continue-on-error: ${{ steps.host.outputs.cf == 'true' }}
         env:
           FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CLASS_ARENA_B4EE3 }}
         run: |
@@ -137,8 +191,10 @@ jobs:
           rm -f "$RUNNER_TEMP/firebase-sa.json"
 
       # 라이브 사이트의 version.json이 이번 커밋인지 확인 (아니면 실패로 표시, 결과는 Summary에)
-      - name: Verify live game site
-        run: bash tools/verify-deploy.sh https://class-arena-b4ee3.web.app "게임 사이트"
+      # Cloudflare로 옮긴 뒤에는 Firebase 쪽은 안내 페이지라, 전송량 초과(509) 중이면 확인이 실패해도 넘어감
+      - name: Verify live Firebase site
+        continue-on-error: ${{ steps.host.outputs.cf == 'true' }}
+        run: bash tools/verify-deploy.sh https://class-arena-b4ee3.web.app "${{ steps.host.outputs.cf == 'true' && 'Firebase 옛 주소 (안내 페이지)' || '게임 사이트' }}"
 
   deploy-admin:
     needs: changes
