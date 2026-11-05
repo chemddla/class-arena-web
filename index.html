@@ -8031,7 +8031,10 @@
     //   → 차례로 그리면 다섯 색이 둘레를 따라 흐름. 원 가운데 = 칸 높이의 62%
     const SPIRIT_KING_CIRCLE_FX = { src: 'assets/sprites/fx/spirit_king_circle.webp', cellW: 312, cellH: 192, frames: 8, cy: 0.62 };
     // 원소 정령 소환진 (같은 빌드): 같은 별빛 원을 원소 색 하나로. 칸 순서 = elems
-    const SPIRIT_CIRCLE_FX = { src: 'assets/sprites/fx/spirit_circle.webp', cellW: 312, cellH: 192, cy: 0.62, elems: ['fire', 'water', 'earth', 'wind', 'storm'] };
+    // 원소 정령 소환진 (tools/spirit_king_circle_build.py): 기본 = 원소 색 룬 원, 소환사 SR 1 = 흰빛이 도는 별빛 원 (반짝이 포함)
+    // wk = 칸 폭 중 원이 차지하는 비율 (별빛 원은 칸 양옆에 십자 별빛이 있어 원은 0.9) → 둘 다 원 크기가 같게 그림
+    const SPIRIT_CIRCLE_FX = { src: 'assets/sprites/fx/spirit_circle.webp', cellW: 336, cellH: 159, cy: 0.5, wk: 1, elems: ['fire', 'water', 'earth', 'wind', 'storm'] };
+    const SPIRIT_CIRCLE_SR_FX = { src: 'assets/sprites/fx/spirit_circle_sr.webp', cellW: 312, cellH: 192, cy: 0.62, wk: 0.9, elems: SPIRIT_CIRCLE_FX.elems };
     // 소환사 바람 정령 (꼬마 회오리, tools/wind_spirit_build.py): 칸 순서 = 대기, 걷기 2장, 바람 칼날 베기, 피격,
     //   사라짐 2장 (흐려지며 풀림 → 바람 조각으로 흩어짐, spirit_pop 이펙트가 그림), 회피 (반투명, 공격을 피하는 순간 spirit_dodge 동안)
     //   탑 정령족 바람정령도 근접(전사·도적)으로 나오면 이 그림 (원거리·음유시인은 베기 그림이 어울리지 않아 예전 모습)
@@ -9357,7 +9360,7 @@
       LANCER_MUSOU_SKINS[v] = def;
     });
 
-    Object.values(MERC_SPRITE_DEFS).concat(Object.values(BERSERKER_RAGE_SPRITES), Object.values(BERSERKER_UNDYING_SPRITES), Object.values(BERSERKER_RAGE_UNDYING_SPRITES), Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BLOOD_ORC_FX, KRAKEN_FX, LICH_FX, IFRIT_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX, STORM_SPIRIT_FX, SPIRIT_KING_BURST_FX, SPIRIT_KING_CIRCLE_FX, SPIRIT_CIRCLE_FX, GIANT_FX, FROST_SR_FX, CURSE_ORB_FX, BARD_ORB_FX, CURSE_HIT_FX, CURSE_SWAMP_FX, CURSE_RUIN_MARK_FX, ...Object.values(CURSE_RUIN_MARK_SKINS)).forEach(def => {
+    Object.values(MERC_SPRITE_DEFS).concat(Object.values(BERSERKER_RAGE_SPRITES), Object.values(BERSERKER_UNDYING_SPRITES), Object.values(BERSERKER_RAGE_UNDYING_SPRITES), Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BLOOD_ORC_FX, KRAKEN_FX, LICH_FX, IFRIT_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX, STORM_SPIRIT_FX, SPIRIT_KING_BURST_FX, SPIRIT_KING_CIRCLE_FX, SPIRIT_CIRCLE_FX, SPIRIT_CIRCLE_SR_FX, GIANT_FX, FROST_SR_FX, CURSE_ORB_FX, BARD_ORB_FX, CURSE_HIT_FX, CURSE_SWAMP_FX, CURSE_RUIN_MARK_FX, ...Object.values(CURSE_RUIN_MARK_SKINS)).forEach(def => {
       def.img = new Image();
       def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
       def.img.src = def.src;
@@ -23794,7 +23797,8 @@
     function pushSpiritCircle(owner, elem, life) {
       const off = SPIRIT_DEFS[elem].off, side = owner.team === 'blue' ? 1 : -1;
       const pos = clampToArena(owner.x + side * off[0], owner.y + off[1]);
-      const ef = { type: 'spirit_circle', ownerId: owner.id, elem, x: pos.x, y: pos.y, life, maxLife: life };
+      const sr = getUnitSprite(owner) === MERC_SPRITE_DEFS[`summoner_${SECRET_SKIN_BASE + 1}`]; // 시크릿 레어 외형 = 별빛 소환진
+      const ef = { type: 'spirit_circle', ownerId: owner.id, elem, sr, x: pos.x, y: pos.y, life, maxLife: life };
       sim.effects.push(ef);
       return ef;
     }
@@ -25512,15 +25516,15 @@
     // 정령왕 소환진 (유닛 아래 바닥): 처음 24틱 동안 펼쳐지고, 12틱마다 다음 칸(색이 둘레를 따라 천천히 흐름, 한 바퀴 약 1.6초), 마지막 30틱 동안 흐려짐
     // 원소 정령 소환진도 같은 방식 (원소 색 한 장, 폭 1.5칸 × 정령 크기). 소환 시전이 짧아서 10틱 동안 펼쳐짐
     function drawSpiritCircles(ctx) {
-      const fx = SPIRIT_CIRCLE_FX;
-      if (!fx.ready) return;
       sim.effects.forEach(ef => {
         if (ef.type !== 'spirit_circle') return;
+        const fx = ef.sr ? SPIRIT_CIRCLE_SR_FX : SPIRIT_CIRCLE_FX;
+        if (!fx.ready) return;
         const i = fx.elems.indexOf(ef.elem);
         if (i < 0) return;
         const age = (ef.maxLife || 60) - ef.life;
         const grow = Math.min(1, age / 10);
-        const w = GRID_CELL_SIZE * 1.5 * (SPIRIT_DEFS[ef.elem].size || 1) * (0.6 + 0.4 * grow), h = w * fx.cellH / fx.cellW;
+        const w = GRID_CELL_SIZE * 1.35 * (SPIRIT_DEFS[ef.elem].size || 1) * (0.6 + 0.4 * grow) / fx.wk, h = w * fx.cellH / fx.cellW;
         ctx.save();
         ctx.globalAlpha = grow * Math.min(1, ef.life / 20); // 밝기 출렁임(반짝임) 없이 일정하게
         ctx.drawImage(fx.img, i * fx.cellW, 0, fx.cellW, fx.cellH, Math.round(ef.x - w / 2), Math.round(ef.y + 12 - h * fx.cy), w, h);
