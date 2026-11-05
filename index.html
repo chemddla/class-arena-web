@@ -29809,6 +29809,7 @@
         this.ref.on('value', snap => {
           this.cache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
           this.ensureCurrent();
+          this.pruneOld();
           this.claimKillRewards();
           this.claimDone();
           this.checkSpectate();
@@ -29858,6 +29859,30 @@
           if (full && res && res.committed) ['contrib', 'log', 'done'].forEach(k => this.ref.child(k).remove().catch(() => {}));
         }).catch(() => { this.rescaling = false; });
       },
+      // 끝난 지 오래된 보스의 기여도·피해 로그·못 받은 결과·기록을 지움
+      // world_boss는 반 전원이 접속할 때마다 통째로 받는데, 보스마다 contrib(학생 수만큼)·log(30개)·history가 끝없이 쌓였음
+      // 남기는 것: 지금 보스 · 처치 보상을 받을 수 있는 기간(claimDays + 하루) 안에 끝난 보스 · 지난 기록 화면에 보이는 최근 3개
+      // 한 기기가 접속 중 한 번만 (여러 기기가 같이 지워도 같은 결과)
+      pruneOld() {
+        if (this.pruned || !this.ref || !this.cache || !(state.students || []).length) return;
+        const cur = this.current();
+        if (!cur) return;
+        this.pruned = true;
+        const keepMs = (WORLD_BOSS.claimDays + 1) * 864e5, now = this.now();
+        const hist = this.cache.history || {};
+        const recent = Object.values(hist).filter(h => h && h.key).sort((a, b) => (b.endedAt || 0) - (a.endedAt || 0)).slice(0, 3).map(h => h.key);
+        const keep = new Set([cur.key, ...recent]);
+        Object.values(hist).forEach(h => { if (h && h.key && now - (h.endedAt || h.killedAt || 0) < keepMs) keep.add(h.key); });
+        const updates = {};
+        Object.keys(hist).forEach(k => { if (!keep.has(k)) updates[`history/${k}`] = null; });
+        ['contrib', 'log', 'done'].forEach(part => Object.keys(this.cache[part] || {}).forEach(k => {
+          if (keep.has(k) || recentBossKey(k, now, keepMs)) return;
+          updates[`${part}/${k}`] = null;
+        }));
+        if (Object.keys(updates).length) this.ref.update(updates).catch(() => {});
+        // 키 안의 시작 시각(36진수)이 아직 보상 기간 안이면 남김 (history가 늦게 올라오는 중일 수 있음)
+        function recentBossKey(k, t, ms) { const s = parseInt(String(k).split('_').pop(), 36); return isFinite(s) && t - s < ms; }
+      },
       // 끝난 보스(쓰러졌거나 주가 끝남)를 history에 남김: 처치 보상·지난 기록은 여기를 봄
       archive(cur) {
         if (!this.ref || !cur || !cur.key) return Promise.resolve();
@@ -29886,6 +29911,7 @@
       claimKillRewards() {
         const stu = getActiveStudent();
         if (!stu || !isStudentSession(stu) || !this.cache || !this.cache.history) return;
+        const now = this.now(); // (febf217에서 빠져 있었음: 지난 기록이 있으면 ReferenceError로 처치 보상·이후 화면 갱신이 멈췄음)
         let changed = this.resetTriesOnKill(stu);
         Object.values(this.cache.history).forEach(h => {
           if (!h || !h.key || !h.killedAt || now - h.killedAt > WORLD_BOSS.claimDays * 864e5) return;
@@ -30136,6 +30162,19 @@
         const delta = Math.max(0, Math.round(meta.hpMark - now));
         meta.hpMark = Math.min(meta.hpMark, now);
         if (delta <= 0 && !killer) return Promise.resolve(null);
+        // 보통(쓰러뜨리지 않음): 체력 칸(current/hp)만 transaction → 반 전원 기기에 숫자 하나만 내려감
+        // (예전엔 2초마다 current 전체(보스 정보 약 300B)를 다시 써서 레이드 중 모든 친구 기기가 계속 받았음)
+        // 0 이하가 될 때·보스가 쓰러졌을 때·서버 보스가 바뀌었을 때는 아래 전체 transaction이 처치·기록까지 처리
+        const cached = this.current();
+        if (!killer && boss.alive && cached && cached.key === meta.key && !cached.killedAt && (cached.hp || 0) - delta > 0) {
+          return this.ref.child('current/hp').transaction(hp => {
+            if (typeof hp !== 'number' || hp - delta <= 0) return; // 그만둠 → 전체 transaction으로
+            return hp - delta;
+          }).then(res => (res && res.committed ? null : this.commitHpFull(meta, boss, delta, killer))).catch(() => null);
+        }
+        return this.commitHpFull(meta, boss, delta, killer);
+      },
+      commitHpFull(meta, boss, delta, killer) {
         let killed = false;
         return this.ref.child('current').transaction(c => {
           if (!c || c.key !== meta.key || c.killedAt) return;
@@ -30258,13 +30297,22 @@
           // 다른 화면이 계산을 이어받았으면 (내 화면이 한동안 멈춰 있었던 경우) 나는 받는 쪽으로
           if (r.owner !== me.id || (r.ep || 0) > meta.ep) { this.demote(); return; }
           // 내 화면이 실제로 계산하고 있을 때만 '살아 있음' (다른 탭을 보느라 멈췄으면 친구가 이어받게)
-          if (now - (meta.lastStepAt || 0) < 2500) this.ref.child('room/hb').set(now).catch(() => {});
+          // world_boss는 반 전원이 구독하는 칸이라, 여기 쓰는 것은 레이드에 안 들어온 친구 기기에도 모두 내려감
+          // → 살아 있음(hb)·친구 피해는 commitMs(2초)마다 한 번에 묶어서, 피해는 바뀐 친구만 (예전: hb 1초마다 + 피해 2초마다 따로)
+          //   방이 멈췄다고 보는 기준(roomStaleMs 6초)까지 hb를 세 번 보냄
           if (now - (meta.lastCommitAt || 0) >= WORLD_BOSS.commitMs) {
             meta.lastCommitAt = now;
             this.commitHp();
             const patch = {};
-            this.activeMembers(r).forEach(m => { patch[`${m.id}/dmg`] = this.dmgOf(m.id); });
-            if (Object.keys(patch).length) this.ref.child('room/members').update(patch).catch(() => {});
+            if (now - (meta.lastStepAt || 0) < 2500) patch.hb = now; // 내 화면이 실제로 계산하고 있을 때만
+            meta.sentDmg = meta.sentDmg || {};
+            this.activeMembers(r).forEach(m => {
+              const d = this.dmgOf(m.id);
+              if (meta.sentDmg[m.id] === d && r.members && r.members[m.id] && r.members[m.id].dmg === d) return;
+              meta.sentDmg[m.id] = d;
+              patch[`members/${m.id}/dmg`] = d;
+            });
+            if (Object.keys(patch).length) this.ref.child('room').update(patch).catch(() => {});
           }
           return;
         }
@@ -34387,6 +34435,7 @@
     }
     // 지금 기기에 맞는 칸을 구독 (선생님 = 전부, 학생 = 지금 학생 것만) · 바뀌었을 때만 다시 구독
     function ensureStudentPrivSub() {
+      try { StudentInbox.watch(); } catch (e) {} // 선물함 구독도 로그인한 학생을 따라감
       const code = String(state.classCode || '').trim().toUpperCase();
       const db = RealtimePvpService.initFirebaseClientSafe();
       if (studentPriv.off || !code || !db || typeof db.ref !== 'function' || !classSyncRefs.length) return;
@@ -34983,6 +35032,35 @@
       items: {},
       busy: false,
       again: false,
+      ref: null,
+      watchKey: null,
+
+      // 내 선물함(transfers/{학급}/{나})만 구독 · 예전엔 반 전체 선물함을 받아서 친구 사이 거래·판매 대금이 오갈 때마다 모든 기기에 내려갔음
+      // 선생님 기기는 대신 받지 않으므로 구독하지 않음 · 학급·로그인한 학생이 바뀌면 다시 걺 (ensureStudentPrivSub·detachClassSyncRefs가 부름)
+      watch() {
+        const code = String(state.classCode || '').trim().toUpperCase();
+        const db = RealtimePvpService.initFirebaseClientSafe();
+        const id = state.activeStudentId || null;
+        const ok = code && id && db && typeof db.ref === 'function' && classExtraCode === code && !isCurrentClassOwner() && !TeacherAuth.isSuperAdmin;
+        const want = ok ? `${code}/${id}` : null;
+        if (want === this.watchKey) return;
+        this.unwatch();
+        this.watchKey = want;
+        if (!want) return;
+        const ref = db.ref(`classes/${code}/transfers/${id}`);
+        this.ref = ref;
+        ref.on('value', snap => {
+          if (this.ref !== ref || String(state.classCode || '').toUpperCase() !== code) return;
+          const v = snap && typeof snap.val === 'function' ? snap.val() : null;
+          this.onSnapshot(code, v ? { [id]: v } : null);
+        }, err => console.warn('[받을 선물함 구독 실패 - DB 규칙을 확인하세요]:', err));
+      },
+      unwatch() {
+        if (this.ref) { try { this.ref.off(); } catch (e) {} }
+        this.ref = null;
+        this.watchKey = null;
+        this.items = {};
+      },
 
       onSnapshot(code, val) {
         this.code = code;
@@ -35011,13 +35089,10 @@
           // 단장 부위 상점(방 꾸미기)에서 팔린 대금도 판매 수를 셈
           .concat(gifts.map(g => /^captain_sale:(\w+)$/.exec(g.kind || '')).filter(Boolean).map(m => (me.capShop || []).find(l => l && l.id === m[1])).filter(Boolean));
         soldListings.forEach(l => { l.sold = (Number(l.sold) || 0) + 1; });
-        const meCloud = studentCloudValue(me);
-        const updates = { [`classes/${code}/students/${me.id}`]: meCloud };
-        if (studentPrivKnown(me.id)) { // 나만 쓰는 칸은 따로 (못 받았으면 예전처럼 students 안에 둠)
-          const priv = {};
-          STUDENT_PRIVATE_KEYS.forEach(k => { if (meCloud[k] != null) priv[k] = meCloud[k]; delete meCloud[k]; });
-          updates[`classes/${code}/studentPrivate/${me.id}`] = Object.keys(priv).length ? priv : null;
-        }
+        // 내 기록은 보통 저장처럼 바뀐 칸만 올림 (예전엔 기록 전체(약 6KB)를 다시 써서 선물 하나 받을 때마다 반 친구 모두에게 통째로 다시 내려갔음)
+        // 나만 쓰는 칸(studentPrivate)도 addStudentUpdates가 나눠 올림 · 선물함 비우기와 한 번에 써서 실패하면 둘 다 안 됨
+        const updates = {};
+        addStudentUpdates(updates, `classes/${code}`, me);
         ids.forEach(id => { updates[`classes/${code}/transfers/${me.id}/${id}`] = null; });
         const savedSig = syncSig(me);
         const savedVal = syncCanon(me) || {};
@@ -35820,6 +35895,7 @@
       classExtraRefs.forEach(r => { try { r.off(); } catch (e) {} });
       classExtraRefs = [];
       classExtraCode = null;
+      StudentInbox.unwatch();
     }
     // 5칸 구독을 걸어 둠 · 같은 학급이 이미 걸려 있으면 그대로 둠 → 새로 걸었으면 true
     function attachClassSyncRefs(cleanCode, db) {
@@ -35883,14 +35959,8 @@
     }
 
     function subscribeClassExtras(cleanCode, db) {
-        const inboxRef = db.ref(`classes/${cleanCode}/transfers`);
-        inboxRef.on('value', (snap) => {
-          if (String(state.classCode || '').toUpperCase() !== cleanCode) return;
-          StudentInbox.onSnapshot(cleanCode, snap && typeof snap.val === 'function' ? snap.val() : null);
-        }, (err) => {
-          console.warn('[받을 선물함 구독 실패 - DB 규칙을 확인하세요]:', err);
-        });
-        classExtraRefs.push(inboxRef);
+        // 선물함은 내 칸(transfers/{나})만 구독 → StudentInbox.watch (로그인한 학생이 바뀌면 따라 바꿈)
+        StudentInbox.watch();
 
         // 승인된 학생 디자인 외형 목록 (그림은 ClassSkins가 따로 한 번만 받음)
         const skinsRef = db.ref(`classes/${cleanCode}/skins`);
@@ -38347,6 +38417,7 @@
     // 받는 쪽: 앞 화면 전체를 기억해 두고 예측 + 바뀐 값으로 전체를 되살린 뒤 예전처럼 처리 · 앞 화면이 없거나(방금 들어옴) 틱이 안 맞으면 다음 전체 화면까지 기다림
     const LIVE_KEYFRAME_MS = 4000; // 새로 들어온 친구는 전체 화면이 와야 그릴 수 있음 · 들어온 것을 아는 경우(도전자 연결·관전자 등록·유닛 목록 재전송)는 바로 한 장 보냄
     const LIVE_UNIT_TICK_DOWN = [9, 10, 12, 13, 14, 15, 19, 21, 22, 25, 32]; // 틱마다 1씩 줄어 0에서 멈추는 칸 (살아 있는 유닛만)
+    const LIVE_ANGLE_SLACK = 0.35; // 바뀐 칸만 보내는 화면에서 바라보는 각도는 이만큼(라디안, 약 20°) 넘게 돌았을 때만 보냄
     const liveTickDown = (v, dt) => Math.max(0, liveNum(v) - dt);
     function liveStatusesTickDown(v, dt) {
       if (typeof v !== 'string' || !v) return v;
@@ -38492,7 +38563,14 @@
       if (keyframe) liveNet.keyAt = nowMs;
       else {
         const dt = sim.tickCount - liveNet.sentT, d = {};
-        packed.forEach((a, i) => { const c = packLiveUnitDelta(predictLiveUnit(base[i], dt), a); if (c) d[i] = c; });
+        packed.forEach((a, i) => {
+          const pred = predictLiveUnit(base[i], dt);
+          // 바라보는 각도(7번 칸)는 받는 화면에서 그리지 않고(그림은 facingDir) 방장을 넘겨받을 때 이어 쓰기만 함
+          // → 소수 둘째 자리라 거의 매 화면 바뀌어 화면마다 약 37B(바뀐 칸의 1/6)를 차지했음 · LIVE_ANGLE_SLACK 넘게 돌았을 때만 보냄 (전체 화면은 그대로)
+          if (typeof pred[7] === 'number' && Math.abs(pred[7] - a[7]) < LIVE_ANGLE_SLACK) a[7] = pred[7];
+          const c = packLiveUnitDelta(pred, a);
+          if (c) d[i] = c;
+        });
         if (Object.keys(d).length) frame.d = d;
       }
       liveNet.sentU = packed;
