@@ -40,6 +40,8 @@ def toward(h, target, amt):
 def ramp_color(base, t, dark=0.45, light=0.62):
     """pixelstudio.ramp를 이어지는 값 t(0 어두움 ~ 1 밝음)로: 가운데(0.5) = base"""
     h, s, v = colorsys.rgb_to_hsv(*hexrgb(base)); hd = h * 360
+    if v > 0.7 and s < 0.35:   # 크림·은백처럼 밝고 연한 색: 그늘을 덜 내림 (많이 내리면 채도 없는 흙빛 얼룩)
+        dark = min(dark, 0.32)
     v_dark = max(0.06, v * (1 - dark)); v_light = min(1.0, v + (1 - v) * light)
     if t < 0.5:
         u = (0.5 - t) * 2
@@ -87,15 +89,32 @@ def masks(im):
     hair &= ~vine
     reddish = a & ((h >= 330) | (h < 12)) & (s > 0.35) & ~outline
     bookbox = (xx >= 73) & (yy >= 46) & (yy < 78)
+    bookbox &= (yy < 70) | (xx >= 84)   # 손 높이(y 70) 아래 x 84 왼쪽은 소매 끝 (금테가 책 금박으로 잡혀 원래 금색으로 남던 곳)
     book = a & ~outline & bookbox & ~skin & ~face & (((h < 40) | (h >= 330)) & (s > 0.2))
     bookgold = book & (h >= 28) & (v > 0.5)            # 책 표지 금박 무늬는 그대로
     book &= ~bookgold & (v < 0.5)   # 표지만 (밝은 종이 가장자리는 그대로)
     flower = reddish & (yy < 36)
     # 치마·금장식은 몸통(y 56 아래)에서만: 화관 가운데 누런 장식·입술이 치마·금장식이 되던 것 막음
-    warm = a & ~outline & ~skin & ~face & ~book & ~bookgold & ~flower & (h >= 12) & (h < 85) & (s > 0.2) & (yy >= 56)
+    # 몸통의 채도 낮은 금테(색조 32° 넘음)는 살색 기준에 걸려도 피부가 아님 (살색은 색조 30° 아래)
+    bodyskin = skin & ~((h > 32) & (yy >= 56) & ~bookbox)
+    warm = a & ~outline & ~bodyskin & ~face & ~book & ~bookgold & ~flower & ~bookbox & (h >= 12) & (h < 85) & (s > 0.2) & (yy >= 56)
     trim = warm & (s > 0.45) & (v > 0.5)
     skirt = warm & ~trim
     parts = dict(hair=hair, vine=vine, robe=robe, skirt=skirt, trim=trim, flower=flower, book=book, eyes=eyes)
+    # 옷의 빈 픽셀: 로브 가장자리 푸른빛 회색 그늘(색조 195~270°)·밝은 회색 점은 어느 부위에도 안 들어가 원래 색 얼룩으로 남음
+    #   → 둘레 8칸에 가장 많은 옷 부위(로브·치마·금장식)로 (두 번 돌려 2칸 띠까지)
+    assigned = np.zeros((H, W), bool)
+    for m in parts.values(): assigned |= m
+    cool = (h >= 185) & (h < 270) & (s > 0.08)
+    grayish = (s < 0.1) & (v > 0.3)
+    loose = a & ~assigned & ~outline & (yy >= 54) & ~bookbox & ~face & (cool | grayish)
+    for _ in range(2):
+        votes = [ndi.convolve(parts[k].astype(int), np.ones((3, 3), int), mode='constant') for k in ('robe', 'skirt', 'trim')]
+        best = np.argmax(votes, axis=0); has = np.max(votes, axis=0) > 0
+        for i, k in enumerate(('robe', 'skirt', 'trim')):
+            take = loose & has & (best == i)
+            parts[k] |= take
+        loose &= ~has
     # 윤곽선 (selout): 검은 윤곽 픽셀은 가장 가까운 부위(2칸 안)의 것으로. 피부·흰자에 붙은 윤곽, 얼굴 안 윤곽(눈 테두리 빼고)은 그대로
     line = a & outline
     keys = list(parts)
@@ -128,7 +147,8 @@ def recolor(im, parts, val, colors, lines=None):
         # 계단 아래 5%보다 어두운 픽셀(머리카락 결·접힌 선)은 계단 맨 아래 색에서 원래 어두운 만큼 더 어둡게 → 밝은 머리도 결이 뭉개지지 않음
         under = t < 0
         if under.any():
-            k_ = np.clip(val[m][under] / max(1e-3, lo), 0.35, 1.0)
+            # 머리는 결이 살게 0.35배까지, 옷·책 등은 0.7배까지만 (밝은 크림 로브 깊은 그늘이 검은 얼룩이 되지 않게)
+            k_ = np.clip(val[m][under] / max(1e-3, lo), 0.35 if k in ('hair', 'vine') else 0.7, 1.0)
             cols[under] = cols[under] * k_[:, None]
         out[m, :3] = cols * 255
         if lines is not None and lines[k].any():
