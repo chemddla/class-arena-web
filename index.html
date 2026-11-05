@@ -11149,6 +11149,17 @@
         watchers: r.watchers && typeof r.watchers === 'object' ? Object.keys(r.watchers).length : 0,
         watching: watchingBattle && sim.towerWatch && sim.towerWatch.stuId === r.id
       }));
+      // 🌍 보스 레이드: 지금 싸우는 친구가 있으면 (내가 거기서 싸우는 중이면 뺌)
+      if (!(sim.running && sim.mode === 'world_boss') && typeof WorldBoss !== 'undefined' && WorldBoss.ref) {
+        const fs = WorldBoss.fighters().filter(f => f.id !== myId);
+        const wbCur = WorldBoss.current();
+        if (fs.length && wbCur) items.push({
+          kind: 'worldboss', id: 'wb', icon: '🌍',
+          names: fs.map(f => WorldBoss.esc(f.n || '친구')).join(', '),
+          detail: `보스 레이드 · ${wbCur.stage}단계 ${WorldBoss.esc(WorldBoss.defOf(wbCur).name)}`, watchers: 0,
+          watching: Boolean(watchingBattle && sim.raidWatch && sim.raidWatch.worldBoss)
+        });
+      }
       // 대기 중인 방도 넣음 (대기실부터 관전 · 시작하면 관전 화면이 자동으로 열림)
       const waitTag = ' · ⏳ 대기실';
       Object.values(livePvpRoomsCache || {}).forEach(r => {
@@ -11233,6 +11244,16 @@
         return;
       }
       if (kind === 'minigame') { spectateMinigameRoom(id); return; }
+      if (kind === 'worldboss') {
+        if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+        if (mgWatchRoomId) stopWatchingMinigameRoom(true);
+        if (currentSpectatingPvpRoomId) stopSpectatingPvpRoom(true);
+        if (currentSpectatingRaidRoomId) stopSpectatingRaidRoom(true);
+        if (sim.spectator && sim.running) { stopLiveBattleNet(); closeBattleResult(); }
+        await WorldBoss.spectate();
+        renderSideWatchPanel();
+        return;
+      }
       if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
       // 보던 것은 그만보고 새로 봄
       if (mgWatchRoomId) stopWatchingMinigameRoom(true);
@@ -29231,6 +29252,7 @@
           this.ensureCurrent();
           this.claimKillRewards();
           this.claimDone();
+          this.checkSpectate();
           this.announce();
           this.render();
           this.renderBanner();
@@ -29288,11 +29310,24 @@
         }).catch(() => {});
       },
       // 쓰러진 보스의 보상: 반 전원 + 기여 1·2·3위 + 마지막 일격 (학생마다 history 항목당 한 번, 접속 안 했던 학생은 다음 접속 때)
+      // 보스를 쓰러뜨리면 반 전원의 '오늘 참가 횟수'를 되돌림 (다음 단계 보스에 바로 다시 도전) · 처치마다 한 번, 보상 대기와 상관없이 바로
+      resetTriesOnKill(stu) {
+        const dayStart = new Date(this.now()); dayStart.setHours(0, 0, 0, 0);
+        const latest = Object.values((this.cache && this.cache.history) || {})
+          .filter(h => h && h.key && h.killedAt >= dayStart.getTime())
+          .sort((a, b) => b.killedAt - a.killedAt)[0];
+        if (!latest || stu.worldBossTriesResetKey === latest.key) return false;
+        stu.worldBossTriesResetKey = latest.key;
+        const book = getDailyRewardBook(stu);
+        if (!book.worldBossTries) return true;
+        book.worldBossTries = 0;
+        showRewardBanner('🌍 보스 레이드 보스가 쓰러져서 오늘 입장 횟수가 초기화됐어요! 다음 보스에 다시 도전해요!');
+        return true;
+      },
       claimKillRewards() {
         const stu = getActiveStudent();
         if (!stu || !isStudentSession(stu) || !this.cache || !this.cache.history) return;
-        const now = this.now();
-        let changed = false;
+        let changed = this.resetTriesOnKill(stu);
         Object.values(this.cache.history).forEach(h => {
           if (!h || !h.key || !h.killedAt || now - h.killedAt > WORLD_BOSS.claimDays * 864e5) return;
           const claimed = stu.worldBossClaimed || {};
@@ -29785,6 +29820,64 @@
         const f = this.fighters().find(x => x.id !== stu.id);
         if (f) showRewardBanner(`🌍 ${f.n || '친구'}이(가) 보스 레이드에서 싸우고 있어요! [⚔️ 전투 → 보스 레이드]에서 같이 싸워요!`);
       },
+      // ----- 관전: 싸우는 친구 화면(방 id로 중계 중)을 받아서 보기만 함 · 방에 아무것도 쓰지 않고 보상도 없음 -----
+      async spectate() {
+        const me = getActiveStudent();
+        const r = this.room();
+        const cur = this.current();
+        if (!me || !r || !cur || !this.activeMembers(r).length) { showNotice('⚠️ 지금 보스 레이드에서 싸우는 친구가 없어요.'); return false; }
+        if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return false; }
+        if (this.watchBusy) return false;
+        const ref = liveRoomRef(r.id);
+        if (!ref) { showNotice('⚠️ 서버에 연결되어 있지 않아 관전할 수 없어요.'); return false; }
+        this.watchBusy = true;
+        try {
+          const got = await waitLiveInit(ref, 4000);
+          if (!got) { showNotice('⚠️ 보스 레이드 화면을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.'); return false; }
+          if (sim.running && !sim.spectator) return false; // 기다리는 사이 내 전투를 시작했으면 그만둠
+          if (sim.spectator) { stopLiveBattleNet(); closeBattleResult(); }
+          const { init, blueUnits, redUnits } = got;
+          const def = this.defOf(cur);
+          const owner = (state.students || []).find(s => s.id === r.owner) || { id: r.owner, name: '친구', roster: [] };
+          launchSimulation({
+            mode: 'elite_raid',
+            title: `📺 관전 중: 🌍 보스 레이드 ${cur.stage}단계 ${def.name}`,
+            blueStudent: owner, redStudent: null, eliteBossId: def.id,
+            customBlueUnits: blueUnits, customRedUnits: redUnits, rewardMc: 0,
+            netRole: 'guest', myTeam: 'blue'
+          });
+          if (!sim.running) return false;
+          sim.spectator = true;
+          sim.spectateFrom = Date.now();
+          sim.spectateRoomId = null;
+          sim.raidWatch = { roomId: r.id, castId: r.id, stuId: r.owner, hostName: '보스 레이드', bossName: `🌍 ${def.name}`, rush: false, worldBoss: true };
+          battleControl.locked = true;
+          battleControl.mode = 'auto';
+          battleControl.unitId = null;
+          sim.awaitingControlChoice = false;
+          document.getElementById('battleControlChooser')?.classList.add('hidden');
+          renderBattleControlHud(true);
+          addBattleLog(`📺 [관전] 🌍 보스 레이드 [${def.name}] 전투를 보고 있어요. (WASD·드래그로 화면 이동)`);
+          startLiveBattleNet(r.id, 'guest', liveNum(init.at), true, false);
+          liveNet.bid = typeof init.b === 'number' ? init.b : null; liveNet.ep = liveNum(init.ep);
+          renderSideWatchPanel();
+          returnToBattle();
+          return true;
+        } finally { this.watchBusy = false; }
+      },
+      // 관전 중인 보스 레이드 방이 사라지면(모두 끝남·보스 처치·선생님이 바꿈) 잠시 뒤 관전을 끝냄 · 계산 담당이 바뀌어도 방 id는 그대로
+      checkSpectate() {
+        const w = sim.raidWatch;
+        if (!w || !w.worldBoss || !sim.spectator || !sim.running) return;
+        const gone = () => { const x = this.cache && this.cache.room; return !x || x.id !== w.roomId; };
+        if (!gone()) { clearTimeout(w.endTimer); w.endTimer = null; return; }
+        if (w.endTimer) return;
+        w.endTimer = setTimeout(() => {
+          w.endTimer = null;
+          if (sim.raidWatch !== w || !sim.spectator || !sim.running || liveNet.finished || !gone()) return;
+          abortLiveBattle('📺 보스 레이드 전투가 끝났어요.');
+        }, 4000);
+      },
       async commitContrib(who, key, dealt, kill) {
         if (!this.ref || !key) return;
         try {
@@ -29906,6 +29999,7 @@
                 <div class="text-xs text-slate-300">
                   ${mine ? `내 기여: <strong class="text-rose-300">${Math.round(mine.dmg).toLocaleString()}</strong> 피해 (${myIdx + 1}위 · ${mine.tries}회 참가 · 최고 ${Math.round(mine.best || 0).toLocaleString()})` : '아직 이 보스와 싸우지 않았어요.'}
                 </div>
+                ${room && !inRoom && !dead ? '<button onclick="WorldBoss.spectate()" class="px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-sm shadow-lg">📺 관전하기</button>' : ''}
                 <button onclick="WorldBoss.start()" ${off ? 'disabled' : ''}
                   class="px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-lg ${off ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : room ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 animate-pulse' : 'bg-amber-500 hover:bg-amber-400 text-slate-950'}">
                   ${dead ? '🏆 쓰러짐 · 다음 보스 준비 중' : inRoom ? '⚔️ 보스 레이드에서 싸우는 중' : tries <= 0 ? '✅ 오늘 보스 레이드 참가 완료 (내일 다시)' : room ? '⚡ 같이 싸우기!' : '⚔️ 보스 레이드 참가'}
@@ -37763,7 +37857,7 @@
         // 관전자: 토벌·러쉬 계산 담당이 바뀌면 새 담당 친구 화면으로 옮겨 감
         // (담당마다 화면 자리(raidcast_방_학생)가 달라서, 그대로 두면 옛 화면이 지워진 뒤 20초 만에 '끊김'으로 닫혔음)
         const rw = sim.raidWatch;
-        if (rw && isRaidNetMode(sim.mode) && val.to && val.to !== rw.stuId) reSpectateRaidRoom(rw, val.to);
+        if (rw && !rw.worldBoss && isRaidNetMode(sim.mode) && val.to && val.to !== rw.stuId) reSpectateRaidRoom(rw, val.to);
         return;
       }
       if (isRaidNetMode(sim.mode)) { applyRaidHandoff(val); return; }
@@ -38964,7 +39058,7 @@
       if (liveNet.spectator) {
         // 관전자: 중계하던 친구 화면이 한참 조용함(탭 닫힘·끊김) → 아직 싸우는 다른 친구(새 계산 담당) 화면을 찾아봄 · 없으면 끝냄
         const rw = sim.raidWatch;
-        if (!rw) return false;
+        if (!rw || rw.worldBoss) return false;
         if (raidReWatchBusy) return true; // 이미 찾는 중
         const r = liveRaidRoomsCache && liveRaidRoomsCache[rw.roomId];
         if (!r || r.status !== 'in_battle' || !raidFightingMembers(r).some(m => m.id !== rw.stuId)) return false;
@@ -39149,7 +39243,7 @@
         }, 800);
       }
       const rw = sim.raidWatch;
-      if (!rw || !sim.spectator || !sim.running || rw.checking) return;
+      if (!rw || rw.worldBoss || !sim.spectator || !sim.running || rw.checking) return; // 보스 레이드 관전은 WorldBoss.checkSpectate가 지킴
       const stillOn = r => r && r.status === 'in_battle' && raidFightingMembers(r).some(m => m.id === rw.stuId);
       if (stillOn(liveRaidRoomsCache && liveRaidRoomsCache[rw.roomId])) return;
       rw.checking = true;
