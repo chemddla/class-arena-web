@@ -8022,8 +8022,8 @@
       skillAnims: { spirit_descend: { anim: 'descend', tpf: 44, dur: 44 } },
       pop: [8, 9]
     };
-    // 정령왕 강림 이펙트: 다섯 원소가 땅에서 터져 오름 (한 장, 기준점 = 바닥 가운데. drawSpiritPops가 그림)
-    const SPIRIT_KING_BURST_FX = { src: 'assets/sprites/fx/spirit_king_burst.webp', w: 360, h: 210 };
+    // 정령왕 강림 이펙트: 바닥에 퍼지는 다섯 원소 고리 (위에서 본 타원 한 장, 기준점 = 가운데. drawSpiritKingBursts가 유닛보다 먼저 그림)
+    const SPIRIT_KING_BURST_FX = { src: 'assets/sprites/fx/spirit_king_burst.webp', w: 360, h: 239 };
     // 정령사 바람 정령 (꼬마 회오리, tools/wind_spirit_build.py): 칸 순서 = 대기, 걷기 2장, 바람 칼날 베기, 피격,
     //   사라짐 2장 (흐려지며 풀림 → 바람 조각으로 흩어짐, spirit_pop 이펙트가 그림), 회피 (반투명, 공격을 피하는 순간 spirit_dodge 동안)
     //   탑 정령족 바람정령도 근접(전사·도적)으로 나오면 이 그림 (원거리·음유시인은 베기 그림이 어울리지 않아 예전 모습)
@@ -25389,8 +25389,8 @@
         ctx.restore();
       });
     }
-    // 정령왕 강림: 원소 폭발 그림이 바닥에서 솟듯 커졌다가 (처음 20%) 그대로 있다가 흐려짐 (마지막 40%). 폭은 피해 범위(2칸 반지름)만큼.
-    // 유닛보다 먼저(뒤에) 그려서 검을 꽂은 정령왕이 폭발 앞에 보이게
+    // 정령왕 강림: 발밑에서 원소 고리가 퍼지듯 커졌다가 (처음 25%, 반 크기 → 다 큼) 그대로 있다가 흐려짐 (마지막 40%).
+    // 폭은 피해 범위(2칸 반지름)만큼. 유닛보다 먼저(아래에) 그려서 검을 꽂은 정령왕이 고리 위에 서 있게
     function drawSpiritKingBursts(ctx) {
       const fx = SPIRIT_KING_BURST_FX;
       if (!fx.ready) return;
@@ -25398,11 +25398,11 @@
     }
     function drawSpiritKingBurst(ctx, ef, fx) {
       const p = 1 - ef.life / (ef.maxLife || 50);
-      const grow = Math.min(1, p / 0.2);
-      const w = GRID_CELL_SIZE * 4 * (0.75 + 0.25 * grow), h = w * fx.h / fx.w * (0.4 + 0.6 * grow);
+      const grow = Math.min(1, p / 0.25);
+      const w = GRID_CELL_SIZE * 4 * (0.5 + 0.5 * (1 - (1 - grow) * (1 - grow))), h = w * fx.h / fx.w;
       ctx.save();
       ctx.globalAlpha = Math.min(1, (1 - p) / 0.4);
-      ctx.drawImage(fx.img, Math.round(ef.x - w / 2), Math.round(ef.y + 24 - h), w, h);
+      ctx.drawImage(fx.img, Math.round(ef.x - w / 2), Math.round(ef.y + 12 - h / 2), w, h);
       ctx.restore();
     }
     function drawSupportEffects(ctx) {
@@ -27956,7 +27956,7 @@
         .filter(u => u.alive || (!u.rushPending && !u.spiritElem && (isRevivableCorpse(u) || (getUnitSprite(u) && sim.tickCount - u._deadSince < SPRITE_DEATH_TICKS))))
         .sort((a, b) => (a.alive - b.alive) || (a.y - b.y));
       if (sim.mode === 'dungeon') drawDungeonRoom(ctx); // 🏰 문·상자·모닥불·함정·경고 원 (유닛 아래)
-      drawSpiritKingBursts(ctx); // 정령왕 강림 원소 폭발 (유닛 뒤)
+      drawSpiritKingBursts(ctx); // 정령왕 강림 원소 고리 (바닥, 유닛 아래)
       sortedUnits.forEach(u => {
         if (u.isEliteBoss && sim.eliteIntro) { drawEliteBossDrop(ctx, u); return; }
         drawUnitToken(ctx, u, sim.tickCount);

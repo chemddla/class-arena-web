@@ -3,7 +3,8 @@
 # 사용: python tools/spirit_king_build.py   (샘플은 assets/sprites/fx/samples/spirit_king_*_src.png · burst_src.webp)
 # 칸 순서: 0 대기 · 1~3 걷기 · 4 공격 1 (검 치켜들기) · 5 공격 2 (불꽃 베기) · 6 강림 (검을 땅에 꽂음)
 #          7 피격 · 8~9 쓰러짐 (원소로 갈라짐 → 흩어지는 원소 조각, spirit_pop 이펙트가 그림)
-# 강림 이펙트: 다섯 원소가 땅에서 터져 오르는 그림 한 장 (기준점 = 바닥 가운데)
+# 강림 이펙트: 바닥에 퍼지는 다섯 원소 고리 한 장 (위에서 본 타원, 기준점 = 가운데)
+#   고리 사이에 갇힌 흰 배경도 지워야 해서, 가장자리와 이어진 것만이 아니라 모든 흰 픽셀을 흰색 비율만큼 투명하게 (색은 흰색을 빼서 되살림)
 # 샘플 정리: 흰 배경은 가장자리와 이어진 것만 지움. 쓰러짐 샘플 아래 가로줄은 잘라 냄.
 #   칸 가운데 = 진한 갑옷 덩어리의 가운데 (검·불꽃·방패가 옆으로 뻗어도 몸이 기준점에 오게)
 import os, sys
@@ -74,13 +75,14 @@ def main():
     print(f'spirit_king cellW={cw} cellH={H} anchorX={L} anchorY={H - 2} count={len(pieces)} idleH={pieces[0][1].shape[0]}')
 
     # 강림 이펙트: 원본(1024 폭)을 흰 배경 지우고 BURST_W 폭으로
-    src = Image.open(f'{fsb.D}burst_src.webp').convert('RGB')
-    tmp = f'{fsb.D}_tmp_src.png'
-    src.save(tmp)
-    try:
-        b, _ = fsb.load('_tmp', (0, src.size[0]))
-    finally:
-        os.remove(tmp)
+    im = np.array(Image.open(f'{fsb.D}burst_src.webp').convert('RGB')).astype(float)
+    mn = im.min(axis=2)
+    a = np.clip((255 - mn) / 70, 0, 1)                    # 흰색 = 투명, 진한 색 = 불투명
+    al = np.maximum(a, 1e-3)[..., None]
+    rgb = ((im - 255 * (1 - al)) / al).clip(0, 255)
+    a = np.where(a < 0.06, 0, a)
+    ys, xs = np.where(a > 0)
+    b = np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
     bp = shrink(b, BURST_W / b.shape[1])
     Image.fromarray(bp, 'RGBA').save(OUT_FX, 'WEBP', quality=90)
     print(f'burst {bp.shape[1]}x{bp.shape[0]}')
