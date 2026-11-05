@@ -31,16 +31,25 @@ SPIRITS = {
 }
 
 
-def load(elem, name, xr, cuts):
-    im = np.array(Image.open(f'assets/sprites/fx/samples/{elem}_spirit_{name}_src.png').convert('RGB')).astype(float)[:, xr[0]:xr[1]]
+def load(elem, name, xr, cuts, glow=False, allwhite=False):
+    # xr = (x0, x1) 또는 (x0, x1, y0, y1): 샘플 안 그 칸 범위 (y를 주면 칸 위에 적힌 글자 줄을 빼고 자를 수 있음)
+    im = np.array(Image.open(f'assets/sprites/fx/samples/{elem}_spirit_{name}_src.png').convert('RGB')).astype(float)
+    im = im[xr[2]:xr[3], xr[0]:xr[1]] if len(xr) == 4 else im[:, xr[0]:xr[1]]
     white = (im.min(axis=2) > 222) & (im.max(axis=2) - im.min(axis=2) < 22)
     lab, n = ndi.label(white)
     edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
     bg = np.isin(lab, edge[edge > 0])
+    if allwhite: bg = bg | white   # 속이 빈 거품처럼 가장자리와 이어지지 않은 흰 속도 지움 (눈 하이라이트가 없는 칸만)
     for x0, x1, y0, y1 in cuts: bg[y0:y1, x0 - xr[0] if x0 >= xr[0] else 0:max(0, x1 - xr[0])] = True
     rim = ~bg & ndi.binary_dilation(bg, iterations=2)
     a = np.where(bg, 0.0, 1.0)
     a = np.where(rim, np.clip((255 - im.min(axis=2)) / 200, 0, 1), a)
+    if glow:   # 흰 배경 위 옅은 빛(후광): 배경에서 이어진 밝은 픽셀은 흰색과 떨어진 만큼만 불투명 (진한 몸·하트는 그대로)
+        cand = ~bg & (im.min(axis=2) > 150)
+        lab2, _ = ndi.label(cand | bg)
+        g = cand & np.isin(lab2, np.unique(lab2[bg]))
+        a = np.where(g, np.clip((255 - im.min(axis=2)) / 170, 0, 1) * 0.8, a)
+        rim = rim | g
     al = np.maximum(a, 1e-3)[..., None]
     im = np.where(rim[..., None], (im - 255 * (1 - al)) / al, im).clip(0, 255)
     # 아주 작은 얼룩(흐린 배경 점)은 버림
@@ -61,8 +70,8 @@ def load(elem, name, xr, cuts):
 def build(elem):
     scale, frames = SPIRITS[elem]
     pieces = []
-    for src, name, xr, cuts, alpha in frames:
-        rgba, cx = load(elem, src, xr, cuts)
+    for src, name, xr, cuts, alpha, *opt in frames:
+        rgba, cx = load(elem, src, xr, cuts, glow='glow' in opt, allwhite='allwhite' in opt)
         p = shrink(rgba, scale)
         if alpha < 1: p[..., 3] = (p[..., 3] * alpha).round().astype(np.uint8)
         pieces.append((name, p, cx * scale))
