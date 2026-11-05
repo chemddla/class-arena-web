@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 SRC = 'assets/sprites/merc/summoner_0.webp'
 W, H = 113, 106
 HUE_SHIFT = 16.0
+FACE_LINE = '#6a3428'   # 얼굴 테두리·속눈썹 선 색 (피부 그늘 갈색)
 SCALE = 4
 
 VARIANTS = [
@@ -55,27 +56,45 @@ def masks(im):
     h, s, v = hsv[..., 0] * 360, hsv[..., 1], hsv[..., 2]
     yy, xx = np.mgrid[0:H, 0:W]
     outline = v < 0.14
+    from scipy import ndimage as ndi
+    from scipy.spatial import ConvexHull
     skin = a & (h >= 5) & (h < 40) & (s <= 0.45) & (v > 0.6)
+    # 얼굴 = 가장 큰 살색 덩어리의 볼록 껍질 (+1칸). 앞머리가 덮는 이마(y 38 위)는 빼고, 얼굴 안은 눈 말고 어떤 부위로도 칠하지 않음
+    lab, n = ndi.label(skin)
+    big = lab == (np.argmax(ndi.sum(skin, lab, range(1, n + 1))) + 1)
+    ys_, xs_ = np.where(big)
+    hull = ConvexHull(np.c_[xs_, ys_].astype(float))
+    face = np.ones((H, W), bool)
+    for ea, eb, ec in hull.equations:
+        face &= ea * xx + eb * yy + ec <= 0.5
+    face = ndi.binary_dilation(face, iterations=1)
+    guard = face & (yy >= 38)
     green = a & (h >= 85) & (h < 195) & (s > 0.08) & ~outline   # 채도 낮은 회녹색(머리 끝·로브 그늘)·청록빛 그늘(185~195)까지
     green |= a & (h >= 70) & (h < 85) & (s > 0.08) & (yy < 40) & ~outline   # 화관 둘레 누런 초록 (치마 올리브와 겹치는 색이라 머리 높이에서만)
-    eyebox = (xx >= 57) & (xx <= 74) & (yy >= 38) & (yy <= 48)   # 눈 왼쪽 앞머리(x 54~56)는 머리
-    eyes = green & eyebox & (s > 0.12)   # 홍채 아래쪽 흐린 초록까지
-    hair = green & ~eyebox & ((yy < 52) | ((xx < 45) & (yy < 80)) | ((xx >= 75) & (xx < 84) & (yy < 62)))
-    robe = green & ~hair & ~eyebox
+    eyebox = (xx >= 55) & (xx <= 74) & (yy >= 38) & (yy <= 48)
+    eyes = green & eyebox & face & (s > 0.12)   # 홍채 아래쪽 흐린 초록·눈꼬리까지. 얼굴 밖 앞머리는 눈이 아님
+    # 머리: 어깨 위(y 48 위)는 자리로, 어깨 아래는 색으로 — 머리 초록은 색조 103~140°에 밝고 로브 초록은 145~177°에 어두움.
+    #   그래서 얼굴 양옆에서 로브 위로 늘어진 두 갈래(왼쪽 x 45~55 · 오른쪽 x 72~76)도 머리. 왼쪽 긴 머리(x 45 왼쪽, y 80 위)는 자리로
+    hair = green & ~eyes & ~guard & ((yy < 48) | ((xx < 45) & (yy < 80)) | ((xx >= 75) & (xx < 84) & (yy < 62)) | (h < 142))
+    lab, n = ndi.label(hair & (yy >= 48), structure=np.ones((3, 3)))   # 어깨 아래 3픽셀 안 되는 외톨이 머리 조각은 로브
+    if n:
+        sz = ndi.sum(hair, lab, range(1, n + 1))
+        hair &= ~np.isin(lab, [i + 1 for i in range(n) if sz[i] < 3])
+    robe = green & ~hair & ~eyes & ~guard
     vine = hair & (yy >= 21) & (yy <= 36) & (xx >= 36) & (xx <= 84) & (v < 0.34) & (h >= 95)   # 화관 덩굴 (머리 위를 가로지르는 짙은 초록 띠)
     hair &= ~vine
     reddish = a & ((h >= 330) | (h < 12)) & (s > 0.35) & ~outline
     bookbox = (xx >= 73) & (yy >= 46) & (yy < 78)
-    book = a & ~outline & bookbox & ~skin & (((h < 40) | (h >= 330)) & (s > 0.2))
+    book = a & ~outline & bookbox & ~skin & ~face & (((h < 40) | (h >= 330)) & (s > 0.2))
     bookgold = book & (h >= 28) & (v > 0.5)            # 책 표지 금박 무늬는 그대로
     book &= ~bookgold & (v < 0.5)   # 표지만 (밝은 종이 가장자리는 그대로)
     flower = reddish & (yy < 36)
-    warm = a & ~outline & ~skin & ~book & ~bookgold & ~flower & (h >= 12) & (h < 85) & (s > 0.2)
+    # 치마·금장식은 몸통(y 56 아래)에서만: 화관 가운데 누런 장식·입술이 치마·금장식이 되던 것 막음
+    warm = a & ~outline & ~skin & ~face & ~book & ~bookgold & ~flower & (h >= 12) & (h < 85) & (s > 0.2) & (yy >= 56)
     trim = warm & (s > 0.45) & (v > 0.5)
     skirt = warm & ~trim
     parts = dict(hair=hair, vine=vine, robe=robe, skirt=skirt, trim=trim, flower=flower, book=book, eyes=eyes)
-    # 윤곽선 (selout): 검은 윤곽 픽셀은 가장 가까운 부위(2칸 안)의 것으로. 피부·흰자에 붙은 윤곽은 그대로
-    from scipy import ndimage as ndi
+    # 윤곽선 (selout): 검은 윤곽 픽셀은 가장 가까운 부위(2칸 안)의 것으로. 피부·흰자에 붙은 윤곽, 얼굴 안 윤곽(눈 테두리 빼고)은 그대로
     line = a & outline
     keys = list(parts)
     dist = np.full((H, W), 99.0); owner = np.full((H, W), -1)
@@ -83,7 +102,10 @@ def masks(im):
         d = ndi.distance_transform_edt(~parts[k])
         better = d < dist; dist[better] = d[better]; owner[better] = i
     dskin = ndi.distance_transform_edt(~skin)
-    lines = {k: line & (owner == i) & (dist <= 2.5) & (dist < dskin) for i, k in enumerate(keys)}
+    lines = {k: line & (owner == i) & (dist <= 2.5) & (dist < dskin) & (~guard if k != 'eyes' else True) for i, k in enumerate(keys)}
+    # 얼굴 안의 초록빛 선(얼굴 테두리·속눈썹·눈꼬리): 원래 초록 머리색에 맞춘 선이라 다른 머리색에선 얼굴에 초록 테가 남음 → 피부 그늘 갈색으로
+    greenish = a & (h >= 70) & (h < 200) & (s > 0.05)
+    lines['face'] = guard & ~eyes & ~lines['eyes'] & ~skin & (greenish | outline)
     return parts, v, lines
 
 
@@ -107,6 +129,11 @@ def recolor(im, parts, val, colors, lines=None):
             lv = val[lines[k]]
             nv = np.clip(np.maximum(lv, 0.05) * 1.1, 0.04, vv * 0.45)
             out[lines[k], :3] = np.array([colorsys.hsv_to_rgb(hh, min(1, ss * 0.9 + 0.1), x) for x in nv]) * 255
+    if lines is not None and lines['face'].any():
+        # 얼굴 선: 피부 그늘 갈색(FACE_LINE 색조·채도)에 원래 어두움 그대로 (외형마다 같음)
+        hh, ss, _ = colorsys.rgb_to_hsv(*hexrgb(FACE_LINE))
+        nv = np.clip(val[lines['face']], 0.08, 0.42)
+        out[lines['face'], :3] = np.array([colorsys.hsv_to_rgb(hh, ss, x) for x in nv]) * 255
     return out
 
 
