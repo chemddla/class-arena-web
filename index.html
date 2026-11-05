@@ -7931,6 +7931,15 @@
       anims: { idle: [0], walk: [1, 0, 2, 0], attack: [3, 4, 4], skill: [3, 4, 4], hurt: [5], death: [6, 7] },
       castFrames: { revive: 3 }
     };
+    // 정령사 불 정령 (작은 불꽃 아이, tools/fire_spirit_build.py): 칸 순서 = 대기, 걷기 3장, 불꽃 주먹, 피격,
+    //   사라짐 4장 (눈 질끈 → 불길에 휩싸임 → 불기둥 → 흩어지는 불꽃·연기). 죽은 정령은 유닛으로 그리지 않으므로 사라짐 칸은 spirit_pop 이펙트가 그림
+    //   (용병보다 조금 작게: 대기 키 112px → 화면 약 47px)
+    MONSTER_SPRITE_DEFS.fire_spirit = {
+      src: 'assets/sprites/monster/fire_spirit.webp',
+      cellW: 144, cellH: 125, anchorX: 73, anchorY: 123, standH: 128, topH: 112, count: 10,
+      anims: { idle: [0], walk: [1, 2, 3, 2], attack: [4, 4], skill: [4], hurt: [5], death: [6, 7] },
+      pop: [6, 7, 8, 9]
+    };
     // 이프리트 (화염족 보스, 불꽃 뿔·용암 갑옷·화염 대검. 엘리트 겁화의 이프리트도 이 그림을 eliteScale만큼 키움):
     //   칸 순서 = 대기, 걷기 A·B, 검 치켜들기, 베기(불꽃 궤적), 피격, 쓰러짐 2장,
     //   회전베기 2장(불꽃 고리, 좌우반전), 파이어볼(주먹 내밀기), 사자후(음파), 불화살비(검 치켜들기), 텔레포트(재로 흩어짐)
@@ -23545,7 +23554,7 @@
     //   → 실시간 전투에서 소환할 때마다 전체 유닛 목록(10KB 넘음)을 다시 보내지 않고, 바뀐 칸(자리·체력·살아 있음)만 감
     // 원소마다 전장(양 팀 합쳐서)에 1마리만 · 정령사 1명당 3마리 (정령왕은 따로) · 내 정령이 있을 때 그 원소 스킬을 다시 쓰면 해방
     const SPIRIT_DEFS = {
-      fire:  { skill: 'call_fire',  name: '불 정령',   icon: '🔥', color: '#f97316', job: 'warrior', sprite: 'fire_elemental_mage', hp: 0.6,  atk: 0.75, def: 1.0, move: 1.0, life: 900, off: [70, -50] },
+      fire:  { skill: 'call_fire',  name: '불 정령',   icon: '🔥', color: '#f97316', job: 'warrior', sprite: 'fire_spirit',         hp: 0.6,  atk: 0.75, def: 1.0, move: 1.0, life: 900, off: [70, -50] },
       water: { skill: 'call_water', name: '물 정령',   icon: '💧', color: '#38bdf8', job: 'healer',  sprite: 'ghost_mage',          hp: 0.55, atk: 0.6,  def: 1.0, move: 1.0, life: 900, off: [-20, 60] },
       earth: { skill: 'call_earth', name: '대지 정령', icon: '🪨', color: '#a16207', job: 'knight',  sprite: 'golem_warrior',       hp: 1.5,  atk: 0.35, def: 2.2, move: 0.9, life: 900, off: [110, 0], size: 1.2 },
       wind:  { skill: 'call_wind',  name: '바람 정령', icon: '🌪️', color: '#5eead4', job: 'rogue',   sprite: 'ice_harpy_mage',      hp: 0.45, atk: 0.55, def: 0.6, move: 1.4, life: 900, off: [70, 50] },
@@ -23678,11 +23687,17 @@
       const was = s.alive;
       s.alive = false; s.hp = 0; s.casting = null; s.rush = null; s.spiritOn = false; s.spiritLife = 0;
       if (!was || !withFx) return;
-      if (s.spiritElem === 'fire') spiritFireBurst(s);
+      if (s.spiritElem === 'fire') { spiritFireBurst(s); return; }
       sim.effects.push({ type: 'magic_burst', spr: 'teleport', x: s.x, y: s.y - 12, r: 40, life: 26, maxLife: 26 });
+    }
+    // 정령이 사라지는 그림 (그림에 pop 칸이 있을 때만: 지금은 불 정령 = 눈 질끈 → 불길 → 폭발)
+    function pushSpiritPop(s) {
+      const sp = MONSTER_SPRITE_DEFS[SPIRIT_DEFS[s.spiritElem]?.sprite];
+      if (sp && sp.pop) sim.effects.push({ type: 'spirit_pop', elem: s.spiritElem, x: s.x, y: s.y, dir: s.facingDir || 1, life: 44, maxLife: 44 });
     }
     function spiritFireBurst(s) {
       const r = GRID_CELL_SIZE;
+      pushSpiritPop(s);
       sim.effects.push({ type: 'aoe_ring', x: s.x, y: s.y, r, color: '#f97316', life: 30, maxLife: 30 });
       withSkillHit(() => sim.units.filter(e => e.alive && e.team !== s.team && Math.hypot(e.x - s.x, e.y - s.y) - unitBodyGap(e) <= r)
         .forEach(e => applyDamage(s, e, (s.ownerAtk || s.atk) * 1.2, '💥', '#f97316')));
@@ -23720,6 +23735,7 @@
         }
       });
       sim.effects.push({ type: 'aoe_ring', x: s.x, y: s.y, r, color: def.color, life: 40, maxLife: 40 });
+      pushSpiritPop(s);
       sim.floatTexts.push({ x: s.x, y: s.y - 50, text: `${def.icon} 해방!`, color: def.color, life: 50 });
       addBattleLog(`${def.icon} [정령사] ${owner ? owner.name : ''}의 ${def.name} 해방! (${n}명)`);
       dismissSpirit(s, false);
@@ -25240,7 +25256,25 @@
         ctx.restore();
       });
     }
+    // 정령이 사라지는 그림: 정령 그림의 pop 칸을 차례로 (불 정령 = 눈 질끈 → 불길에 휩싸임 → 불기둥 → 흩어짐), 마지막 칸에서 흐려짐
+    function drawSpiritPops(ctx) {
+      sim.effects.forEach(ef => {
+        if (ef.type !== 'spirit_pop') return;
+        const sp = MONSTER_SPRITE_DEFS[SPIRIT_DEFS[ef.elem]?.sprite];
+        if (!sp || !sp.pop || !sp.ready) return;
+        const progress = 1 - ef.life / (ef.maxLife || 44);
+        const i = Math.min(sp.pop.length - 1, Math.floor(progress * sp.pop.length));
+        const k = SPRITE_DRAW_H * (SPIRIT_DEFS[ef.elem].size || 1) / sp.standH;
+        ctx.save();
+        ctx.translate(Math.round(ef.x), Math.round(ef.y) + 12);
+        if ((ef.dir || 1) < 0) ctx.scale(-1, 1);
+        ctx.globalAlpha = Math.min(1, (1 - progress) / 0.2);
+        drawSpriteFx(ctx, sp.img, sp.pop[i] * sp.cellW, 0, sp.cellW, sp.cellH, -sp.anchorX * k, -sp.anchorY * k, sp.cellW * k, sp.cellH * k);
+        ctx.restore();
+      });
+    }
     function drawSupportEffects(ctx) {
+      drawSpiritPops(ctx);
       drawPaladinDomes(ctx);
       if (!SUPPORT_FX.ready) return;
       sim.effects.forEach(ef => {
