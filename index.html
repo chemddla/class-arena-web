@@ -2675,6 +2675,12 @@
           <div id="petRunInfo" class="flex items-center gap-3 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs"></div>
           <div class="grid grid-cols-1 lg:grid-cols-[1fr_240px] gap-3">
             <div class="flex flex-col gap-2 min-w-0">
+              <!-- 📺 친구의 펫 러닝 관전 (PetRunLive) -->
+              <div id="petRunWatchBar" class="hidden flex items-center justify-between gap-2 bg-violet-950/40 border border-violet-400/60 rounded-xl px-3 py-2">
+                <div id="petRunWatchTitle" class="text-xs font-extrabold text-violet-100 truncate"></div>
+                <button type="button" onclick="PetRunLive.stopWatch()" class="shrink-0 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-xs">그만 보기</button>
+              </div>
+              <canvas id="petRunWatchCanvas" class="hidden w-full h-auto rounded-xl border-2 border-violet-400/60 bg-sky-200 select-none" style="aspect-ratio: 900 / 380;"></canvas>
               <canvas id="petRunCanvas" class="w-full h-auto rounded-xl border border-slate-700 bg-sky-200 touch-none select-none" style="aspect-ratio: 900 / 380;"></canvas>
               <div id="petRunPad" class="hidden grid grid-cols-2 gap-2">
                 <button type="button" id="petRunJumpBtn" class="py-4 rounded-xl bg-emerald-600 active:bg-emerald-400 text-white font-extrabold text-base select-none touch-none">⬆️ 점프</button>
@@ -2692,6 +2698,8 @@
               <div class="text-[11px] text-slate-500 font-bold">점수 800 → 500 CA · 1,500 → 1,000 CA · 3,000 → 1,500 CA · 6,000 → 2,000 CA (하루 3번까지). 점수가 오르면 난이도가 10단계까지 올라 몬스터·불기둥·폭탄이 늘어나요. 맵에 떨어진 🚀대시·🛡️보호막·🧲자석·⭐젤리 2배 아이템을 먹어 보세요. 일시정지: Esc 또는 P</div>
             </div>
             <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-1.5 min-w-0">
+              <div class="text-xs font-extrabold text-slate-200 px-1">📺 지금 달리는 친구</div>
+              <div id="petRunLiveList" class="flex flex-col gap-1 mb-1"></div>
               <div class="text-xs font-extrabold text-slate-200 px-1">🏆 우리 반 펫 러닝 랭킹</div>
               <div id="petRunRank" class="flex flex-col gap-1"></div>
             </div>
@@ -11160,6 +11168,12 @@
         watchers: r.watchers && typeof r.watchers === 'object' ? Object.keys(r.watchers).length : 0,
         watching: watchingBattle && sim.towerWatch && sim.towerWatch.stuId === r.id
       }));
+      // 🏃 펫 러닝: 혼자 달리는 친구
+      if (window.PetRunLive) PetRunLive.list().forEach(r => items.push({
+        kind: 'petrun', id: r.id, icon: '🏃', names: r.name,
+        detail: `펫 러닝${PET_DEFS[r.type] ? ` · ${r.pet || PET_DEFS[r.type].name}` : ''}`,
+        watchers: PetRunLive.watchersOf(r), watching: PetRunLive.watchId === r.id
+      }));
       // 🌍 보스 레이드: 지금 싸우는 친구가 있으면 (내가 거기서 싸우는 중이면 뺌)
       if (!(sim.running && sim.mode === 'world_boss') && typeof WorldBoss !== 'undefined' && WorldBoss.ref) {
         const fs = WorldBoss.fighters().filter(f => f.id !== myId);
@@ -11250,6 +11264,8 @@
         if (kind === 'pvp') switchPvpSubMode('realtime');
         setTimeout(() => document.getElementById(kind === 'pvp' ? 'pvpWaitingRoomPanel' : (kind === 'rush' ? 'rushWaitingRoomPanel' : kind === 'dungeon' ? 'dungeonWaitingRoomPanel' : 'raidWaitingRoomPanel'))?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
       };
+      if (kind === 'petrun') { PetRunLive.spectate(id); return; }
+      if (window.PetRunLive && PetRunLive.watchId) PetRunLive.stopWatch(true); // 다른 걸 보러 가면 펫 러닝 관전은 그만
       if (it.watching) {
         if (kind === 'minigame') goToStudentTab('minigame');
         else if (sim.spectator && sim.running) returnToBattle();
@@ -35433,6 +35449,7 @@
     let activeMinigamesRef = null;
     let activeBattleEventsRef = null;
     let activeTowerLiveRef = null;
+    var activePetRunLiveRef = null;
     let towerLiveCache = {};
     let currentSubscribedSubCode = null;
     let currentActiveLiveBattleRoomId = null;
@@ -35497,12 +35514,20 @@
       activeMinigameBoardId = null;
       if (activeBattleEventsRef && typeof activeBattleEventsRef.off === 'function') activeBattleEventsRef.off();
       if (activeTowerLiveRef && typeof activeTowerLiveRef.off === 'function') activeTowerLiveRef.off();
+      if (activePetRunLiveRef && typeof activePetRunLiveRef.off === 'function') activePetRunLiveRef.off();
 
       // 0) 모험의 탑에 도전 중인 친구 목록 (관전용, /classes/{code}/pvp_live/tower_index)
       activeTowerLiveRef = db.ref(`classes/${cleanCode}/pvp_live/${TOWER_LIVE_INDEX}`);
       activeTowerLiveRef.on('value', (snap) => {
         towerLiveCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
         onTowerLiveIndexChanged();
+        renderSideWatchPanel();
+      });
+      // 0-1) 펫 러닝을 달리는 친구 목록 (관전용, /classes/{code}/pvp_live/petrun_index)
+      activePetRunLiveRef = db.ref(`classes/${cleanCode}/pvp_live/petrun_index`);
+      activePetRunLiveRef.on('value', (snap) => {
+        const val = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
+        if (window.PetRunLive) PetRunLive.onIndexChanged(val);
         renderSideWatchPanel();
       });
 
@@ -46052,6 +46077,7 @@
         if (!this.st) this.drawIdle();
       },
       renderRank() {
+        if (window.PetRunLive) PetRunLive.renderList();
         const el = document.getElementById('petRunRank');
         if (!el) return;
         const me = this.student();
@@ -46139,6 +46165,7 @@
         const startBtn = document.getElementById('petRunStartBtn'); if (startBtn) startBtn.classList.add('hidden');
         document.getElementById('petRunPad')?.classList.toggle('hidden', !(typeof isTouchDevice === 'function' && isTouchDevice()));
         this.cv.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        if (window.PetRunLive) PetRunLive.onStart(stu, this.st); // 📺 친구들이 볼 수 있게 목록에 올림
       },
       pause() { if (this.st && !this.st.over && !this.st.paused) { this.st.paused = true; this.slideHold = false; this.draw(); } },
       resume() { if (this.st && this.st.paused) { this.st.paused = false; this.last = performance.now(); } },
@@ -46158,6 +46185,7 @@
         if (!s.paused && !s.over) this.update(s, dt);
         else if (s.over) { s.overAt += dt; s.parts.forEach(p => { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 900 * dt; p.life -= dt; }); s.parts = s.parts.filter(p => p.life > 0); }
         this.draw();
+        if (this === PetRun && window.PetRunLive) PetRunLive.tick(s, dt);
         if (!(s.over && s.overAt > 2.2)) this.raf = requestAnimationFrame(t => this.frame(t));
         else this.drawIdle();
       },
@@ -46457,6 +46485,7 @@
         }
         this.renderResult(s);
         this.render();
+        if (window.PetRunLive) PetRunLive.onFinish(s);
       },
       renderResult(s) {
         const res = document.getElementById('petRunResult');
@@ -46873,6 +46902,312 @@
       },
     };
     window.PetRun = PetRun;
+
+    /********************************************************************
+     * 📺 펫 러닝 관전 (PetRunLive): 친구가 혼자 달리는 펫 러닝을 보기만 함
+     * - 달리는 화면이 pvp_live/petrun_index/{학생id}에 누가 달리는지 적고(관전자는 그 아래 watchers/{학생id}),
+     *   보는 친구가 있을 때만 초당 8번 화면 상태(펫·체력·점수·화면 안 장애물·젤리·글자)를 pvp_live/petrun_{학생id}/f에 JSON 글자로 올림
+     * - 관전 화면은 받은 상태를 PetRun 그림으로 그리고, 다음 화면이 올 때까지는 같은 속도로 미리 움직여 부드럽게 보이게 함
+     * - 관전엔 조작·보상이 없음. 친구가 끝나면 결과를 잠깐 보여 주고 관전을 마침
+     ********************************************************************/
+    const PETRUN_LIVE = { index: 'petrun_index', hz: 8, maxAgeMs: 60000, refreshMs: 15000, endKeepMs: 3500, watchEndMs: 4500, goneMs: 5000 };
+    var petRunLiveCache = {};
+
+    const PetRunWatchView = Object.assign(Object.create(PetRun), {
+      cv: null, ctx: null, st: null, slideHold: false,
+      tone() {}, // 관전 화면은 소리 없음
+    });
+
+    const PetRunLive = {
+      // 달리는 쪽
+      myId: null, idxRef: null, frameRef: null, watchers: 0, acc: 0, lastIdxAt: 0, lastSentAt: 0, endTimer: null,
+      // 보는 쪽
+      watchId: null, watchInfo: null, watchRef: null, watchEntryRef: null, raf: 0, last: 0, lastFrameAt: 0, overAt: 0, goneAt: 0, hiddenAt: 0,
+
+      idx(stuId) { const r = liveRoomRef(PETRUN_LIVE.index); return r && stuId ? r.child(stuId) : null; },
+      frameRefOf(stuId) { return stuId ? liveRoomRef('petrun_' + stuId) : null; },
+      esc(v) { return typeof PetSystem !== 'undefined' ? PetSystem.esc(v) : String(v == null ? '' : v); },
+
+      // ───── 달리는 쪽 ─────
+      onStart(stu, s) {
+        if (this.watchId) this.stopWatch(true);
+        this.endCast();
+        if (!stu || !s) return;
+        const idx = this.idx(stu.id), fr = this.frameRefOf(stu.id);
+        if (!idx || !fr) return;
+        Object.assign(this, { myId: stu.id, idxRef: idx, frameRef: fr, watchers: 0, acc: 0, lastIdxAt: Date.now(), lastSentAt: 0 });
+        try { idx.onDisconnect().remove(); fr.onDisconnect().remove(); } catch (e) {}
+        fr.remove().catch(() => {});
+        idx.set({
+          id: stu.id, name: cleanUserText(stu.name, 30) || '친구', type: s.type,
+          pet: cleanUserText(s.name, 30) || '', best: Math.round((stu.petRun && stu.petRun.best) || 0), at: Date.now()
+        }).catch(() => {});
+        idx.child('watchers').on('value', snap => {
+          if (this.idxRef !== idx) return;
+          const v = snap && snap.val();
+          const n = v && typeof v === 'object' ? Object.keys(v).length : 0;
+          if (n > this.watchers) this.acc = 1; // 새로 보는 친구에게 바로 한 장
+          this.watchers = n;
+        });
+      },
+      tick(s, dt) {
+        if (!this.idxRef || !s || s.over) return;
+        const now = Date.now();
+        if (!s.paused && now - this.lastIdxAt > PETRUN_LIVE.refreshMs) { this.lastIdxAt = now; this.idxRef.child('at').set(now).catch(() => {}); }
+        if (this.watchers <= 0) return;
+        this.acc += dt;
+        if (this.acc < 1 / PETRUN_LIVE.hz) return;
+        this.acc = 0;
+        if (s.paused && now - this.lastSentAt < 1000) return; // 멈춰 있으면 1초에 한 번만
+        this.send(s);
+      },
+      send(s) {
+        if (!this.frameRef) return;
+        this.lastSentAt = Date.now();
+        this.frameRef.set({ f: this.encode(s), at: Date.now() }).catch(() => {});
+      },
+      onFinish(s) {
+        if (!this.idxRef) return;
+        if (this.watchers > 0) this.send(s); // 마지막 점수 화면
+        clearTimeout(this.endTimer);
+        const idx = this.idxRef;
+        this.endTimer = setTimeout(() => { if (this.idxRef === idx) this.endCast(); }, PETRUN_LIVE.endKeepMs);
+      },
+      endCast() {
+        clearTimeout(this.endTimer); this.endTimer = null;
+        const idx = this.idxRef, fr = this.frameRef;
+        this.idxRef = null; this.frameRef = null; this.myId = null; this.watchers = 0;
+        if (idx) { try { idx.child('watchers').off(); idx.onDisconnect().cancel(); } catch (e) {} idx.remove().catch(() => {}); }
+        if (fr) { try { fr.onDisconnect().cancel(); } catch (e) {} fr.remove().catch(() => {}); }
+      },
+      // 화면 한 장: [판, t, 거리, 속도, y, vy, 상태, 공중시간, 걸음, 무적, 맞음, 체력, 최대, 점수, 젤리, 단계, 단계번쩍, 대시, 자석, 2배, 보호막, 흔들림, 물체[], 글자[], 슬라이딩, 아이템]
+      encode(s) {
+        const r = v => Math.round(v || 0), r2 = v => Math.round((v || 0) * 100) / 100;
+        const objs = [];
+        for (const o of s.objs) {
+          if (o.got || o.dead || o.x > PETRUN.W + 90 || o.x < -110) continue;
+          if (o.kind === 'jelly') objs.push([0, r(o.x), r(o.y), o.sub === 'heart' ? 'h' : o.sub === 'big' ? 'b' : Math.max(0, PETRUN_JELLY_COLORS.indexOf(o.c))]);
+          else if (o.kind === 'item') objs.push([1, r(o.x), r(o.y), o.sub]);
+          else {
+            const a = [2, o.sub, r(o.x), r2(o.vx), r2(o.age), r2(o.flap), o.alt === undefined ? null : r(o.alt), o.baseAlt === undefined ? null : r(o.baseAlt), o.diving ? 1 : 0];
+            if (o.sub === 'bomb') a.push(o.phase === 'fall' ? 1 : o.phase === 'boom' ? 2 : 0, r(o.fy), r(o.fvy), r2(o.boomT));
+            objs.push(a);
+          }
+        }
+        const flags = (s.onGround ? 1 : 0) | (s.sliding ? 2 : 0) | (s.over ? 4 : 0) | (s.paused ? 8 : 0) | (s.isBest ? 16 : 0);
+        return JSON.stringify([1, r2(s.t), r(s.dist), r(s.speed), r(s.y), r(s.vy), flags, r2(s.airT), r2(s.animT), r2(s.inv), r2(s.hitFlash),
+          Math.round(Math.max(0, s.hp) * 10) / 10, s.hpMax, r(s.score), s.jelly, s.stage, r2(s.stageFlash), r2(s.fx.boost), r2(s.fx.magnet), r2(s.fx.double), s.shield ? 1 : 0, r2(s.shake),
+          objs, s.texts.map(t => [r(t.x), r(t.y), String(t.text).slice(0, 40), t.color, r2(t.life)]), s.slides || 0, s.items || 0]);
+      },
+
+      // ───── 보는 쪽 ─────
+      list() {
+        const me = getActiveStudent(), now = Date.now();
+        return Object.values(petRunLiveCache || {})
+          .filter(r => r && r.id && r.name && liveNum(r.at) > now - PETRUN_LIVE.maxAgeMs && (!me || r.id !== me.id))
+          .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      },
+      watchersOf(r) { return r && r.watchers && typeof r.watchers === 'object' ? Object.keys(r.watchers).length : 0; },
+      onIndexChanged(val) {
+        petRunLiveCache = val || {};
+        this.renderList();
+        if (this.watchId) {
+          const info = petRunLiveCache[this.watchId];
+          if (info && info.name) {
+            this.goneAt = 0;
+            const me = getActiveStudent();
+            // 친구 인터넷이 잠깐 끊겼다 와서 목록을 다시 올렸으면 내 관전 표시도 다시 적음
+            if (me && this.watchEntryRef && !(info.watchers && info.watchers[me.id])) this.setWatchEntry(me);
+          } else if (!this.goneAt) this.goneAt = Date.now();
+        }
+      },
+      renderList() {
+        const el = document.getElementById('petRunLiveList');
+        if (!el) return;
+        const rows = this.list();
+        if (!rows.length) { el.innerHTML = '<div class="text-[11px] text-slate-500 text-center py-2">지금 달리는 친구가 없어요.</div>'; return; }
+        el.innerHTML = rows.map(r => {
+          const d = PET_DEFS[r.type], watching = this.watchId === r.id, n = this.watchersOf(r);
+          return `<div class="flex items-center gap-2 px-2 py-1 rounded-lg ${watching ? 'bg-violet-500/25 border border-violet-400/70' : 'bg-slate-900'}">
+              ${d ? `<img src="${d.icon}" alt="" class="h-6 w-auto object-contain" draggable="false">` : '<span class="w-6"></span>'}
+              <div class="min-w-0 flex-1">
+                <div class="text-xs font-extrabold text-slate-200 truncate">${this.esc(r.name)}</div>
+                ${n ? `<div class="text-[10px] text-violet-300 font-bold">👀 ${n}명 관전 중</div>` : ''}
+              </div>
+              <button type="button" onclick="PetRunLive.spectate('${this.esc(r.id)}')" class="shrink-0 px-2 py-1 rounded-lg ${watching ? 'bg-violet-800' : 'bg-violet-600 hover:bg-violet-500'} text-white font-extrabold text-[11px]">${watching ? '보는 중' : '📺 관전'}</button>
+            </div>`;
+        }).join('');
+      },
+      setWatchEntry(me) {
+        const wRef = this.idx(this.watchId)?.child('watchers').child(me.id);
+        if (!wRef) return;
+        this.watchEntryRef = wRef;
+        try { wRef.onDisconnect().remove(); } catch (e) {}
+        wRef.set({ id: me.id, name: cleanUserText(me.name, 30) || '친구', at: Date.now() }).catch(() => {});
+      },
+      spectate(stuId) {
+        const me = getActiveStudent();
+        if (!me) { showNotice('⚠️ 로그인하면 친구의 펫 러닝을 관전할 수 있어요.'); return; }
+        const info = petRunLiveCache && petRunLiveCache[stuId];
+        if (!info || !info.name) { showNotice('⚠️ 달리기를 찾지 못했어요. 이미 끝났을 수 있어요.'); this.renderList(); return; }
+        if (stuId === me.id) return;
+        if (PetRun.st && !PetRun.st.over) { showNotice('⚠️ 지금 달리는 판을 먼저 끝내 주세요.'); return; }
+        if (this.watchId === stuId) { goToPetRun(); return; }
+        if (this.watchId) this.stopWatch(true);
+        const ref = this.frameRefOf(stuId);
+        if (!ref) { showNotice('⚠️ 서버에 연결되어 있지 않아 관전할 수 없어요.'); return; }
+        Object.assign(this, { watchId: stuId, watchInfo: info, watchRef: ref, lastFrameAt: 0, overAt: 0, goneAt: 0, hiddenAt: 0 });
+        PetRunWatchView.st = null;
+        ref.on('value', snap => {
+          if (this.watchRef !== ref) return;
+          const v = snap && snap.val();
+          if (v && typeof v.f === 'string') this.applyFrame(v.f);
+        });
+        this.setWatchEntry(me);
+        this.showWatchUI(true);
+        goToPetRun();
+        this.last = performance.now();
+        cancelAnimationFrame(this.raf);
+        this.raf = requestAnimationFrame(ts => this.frame(ts));
+        this.renderList();
+        if (typeof renderSideWatchPanel === 'function') renderSideWatchPanel();
+      },
+      stopWatch(quiet = false, msg = '') {
+        if (!this.watchId) return;
+        const ref = this.watchRef, wRef = this.watchEntryRef;
+        this.watchId = null; this.watchInfo = null; this.watchRef = null; this.watchEntryRef = null;
+        cancelAnimationFrame(this.raf); this.raf = 0;
+        PetRunWatchView.st = null;
+        if (ref) { try { ref.off(); } catch (e) {} }
+        if (wRef) { try { wRef.onDisconnect().cancel(); } catch (e) {} wRef.remove().catch(() => {}); }
+        this.showWatchUI(false);
+        if (!PetRun.st || PetRun.st.over) { try { PetRun.ensureCanvas(); PetRun.drawIdle(); } catch (e) {} }
+        this.renderList();
+        if (typeof renderSideWatchPanel === 'function') renderSideWatchPanel();
+        if (msg) showNotice(msg);
+        else if (!quiet) showNotice('📺 관전을 그만뒀어요.');
+      },
+      showWatchUI(on) {
+        const cv = document.getElementById('petRunWatchCanvas');
+        document.getElementById('petRunWatchBar')?.classList.toggle('hidden', !on);
+        cv?.classList.toggle('hidden', !on);
+        document.getElementById('petRunCanvas')?.classList.toggle('hidden', on);
+        if (on) document.getElementById('petRunPad')?.classList.add('hidden');
+        const title = document.getElementById('petRunWatchTitle');
+        if (title && on && this.watchInfo) {
+          const d = PET_DEFS[this.watchInfo.type];
+          title.textContent = `📺 ${this.watchInfo.name}의 펫 러닝 관전 중${d ? ` · ${this.watchInfo.pet || d.name}` : ''}`;
+        }
+        if (on && cv && PetRunWatchView.cv !== cv) { PetRunWatchView.cv = cv; PetRunWatchView.ctx = cv.getContext('2d'); cv.width = PETRUN.W; cv.height = PETRUN.H; }
+      },
+      applyFrame(str) {
+        let a;
+        try { a = JSON.parse(str); } catch (e) { return; }
+        if (!Array.isArray(a) || a[0] !== 1 || !this.watchInfo) return;
+        const prev = PetRunWatchView.st, N = v => Number(v) || 0, flags = N(a[6]);
+        const objs = [];
+        (Array.isArray(a[22]) ? a[22] : []).forEach(o => {
+          if (!Array.isArray(o)) return;
+          if (o[0] === 0) {
+            const sub = o[3] === 'h' ? 'heart' : o[3] === 'b' ? 'big' : undefined;
+            objs.push({ kind: 'jelly', sub, x: N(o[1]), y: N(o[2]), r: sub === 'heart' ? 15 : sub === 'big' ? 17 : 12, c: sub === 'big' ? '#fde68a' : PETRUN_JELLY_COLORS[N(o[3]) % PETRUN_JELLY_COLORS.length] });
+          } else if (o[0] === 1 && PETRUN_ITEMS[o[3]]) objs.push({ kind: 'item', sub: o[3], x: N(o[1]), y: N(o[2]), r: 17 });
+          else if (o[0] === 2 && PETRUN_OBS[o[1]]) {
+            const ob = { kind: 'obs', sub: o[1], x: N(o[2]), y: PETRUN.groundY, vx: N(o[3]), age: N(o[4]), flap: N(o[5]), diving: Boolean(o[8]) };
+            if (o[6] !== null && o[6] !== undefined) ob.alt = N(o[6]);
+            if (o[7] !== null && o[7] !== undefined) ob.baseAlt = N(o[7]);
+            if (o[1] === 'bomb') { ob.phase = o[9] === 1 ? 'fall' : o[9] === 2 ? 'boom' : ''; ob.fy = N(o[10]); ob.fvy = N(o[11]); ob.boomT = N(o[12]); }
+            objs.push(ob);
+          }
+        });
+        const type = PET_DEFS[this.watchInfo.type] ? this.watchInfo.type : null;
+        const st = {
+          type, t: N(a[1]), dist: N(a[2]), speed: N(a[3]) || PETRUN.speed0, y: N(a[4]), vy: N(a[5]),
+          onGround: Boolean(flags & 1), sliding: Boolean(flags & 2), over: Boolean(flags & 4), paused: Boolean(flags & 8), isBest: Boolean(flags & 16),
+          airT: N(a[7]), animT: N(a[8]), inv: N(a[9]), hitFlash: N(a[10]), hp: N(a[11]), hpMax: N(a[12]) || 100, score: N(a[13]), jelly: N(a[14]),
+          stage: Math.max(0, Math.min(PETRUN_STAGE_MAX, N(a[15]))), stageFlash: N(a[16]), fx: { boost: N(a[17]), magnet: N(a[18]), double: N(a[19]) }, shield: N(a[20]), shake: N(a[21]),
+          objs, texts: (Array.isArray(a[23]) ? a[23] : []).filter(Array.isArray).map(t => ({ x: N(t[0]), y: N(t[1]), text: String(t[2] || ''), color: String(t[3] || '#fff'), life: N(t[4]) })),
+          slides: N(a[24]), items: N(a[25]), perk: {},
+          parts: prev ? prev.parts : [],
+          bg: prev ? prev.bg : Array.from({ length: 7 }, (_, i) => ({ x: i * 160 + Math.random() * 60, y: 40 + Math.random() * 70, s: 0.6 + Math.random() * 0.8 })),
+        };
+        if (st.over && !(prev && prev.over)) this.overAt = Date.now();
+        PetRunWatchView.st = st;
+        this.lastFrameAt = Date.now();
+      },
+      // 다음 화면이 올 때까지 받은 속도대로 미리 움직임 (젤리는 펫에 닿으면 먹은 것으로 보고 숨김)
+      advance(s, dt) {
+        const G = PETRUN.groundY, V = PetRunWatchView;
+        s.t += dt;
+        for (const k of Object.keys(s.fx)) if (s.fx[k] > 0) s.fx[k] = Math.max(0, s.fx[k] - dt);
+        const boosting = s.fx.boost > 0, mult = boosting ? PETRUN.boostMult : 1, dx = s.speed * mult * dt;
+        s.dist += dx;
+        s.animT += dt * (s.speed * mult / PETRUN.speed0);
+        if (!s.onGround) { s.vy += PETRUN.gravity * dt; s.y += s.vy * dt; s.airT += dt; if (s.y >= 0) { s.y = 0; s.vy = 0; s.onGround = true; } }
+        ['inv', 'hitFlash', 'shake', 'stageFlash'].forEach(k => { if (s[k] > 0) s[k] = Math.max(0, s[k] - dt); });
+        s.bg.forEach(c => { c.x -= dx * 0.12 * c.s; if (c.x < -140) { c.x = PETRUN.W + 60 + Math.random() * 120; c.y = 30 + Math.random() * 80; } });
+        const px = PETRUN.petX, ph = s.sliding ? PETRUN.slideH : PETRUN.standH;
+        const pb = { x0: px - PETRUN.standW / 2 + 6, x1: px + PETRUN.standW / 2 - 6, y0: G + s.y - ph, y1: G + s.y - 4 };
+        for (const o of s.objs) {
+          o.x -= dx * (o.kind === 'obs' && o.vx ? 1 + o.vx : 1);
+          if (o.kind === 'obs') V.moveObs(s, o, dt);
+          else if (!o.got && o.x + o.r > pb.x0 && o.x - o.r < pb.x1 && o.y + o.r > pb.y0 && o.y - o.r < pb.y1) {
+            o.got = true;
+            for (let i = 0; i < 6; i++) s.parts.push({ x: o.x, y: o.y, vx: (Math.random() - 0.5) * 240, vy: -60 - Math.random() * 160, life: 0.35 + Math.random() * 0.2, c: o.c || '#f9a8d4' });
+          }
+        }
+        s.objs = s.objs.filter(o => o.x > -120 && !o.got);
+        if (s.onGround && !s.sliding && Math.random() < 0.25 + (s.speed / PETRUN.speedMax) * 0.5) s.parts.push({ x: px - 20 + Math.random() * 10, y: G - 2, vx: -120 - Math.random() * 100, vy: -30 - Math.random() * 50, life: 0.3 + Math.random() * 0.2, c: 'rgba(217,192,138,0.8)' });
+        if (boosting) { for (let i = 0; i < 2; i++) s.parts.push({ x: px - 30 + Math.random() * 10, y: G + s.y - 20 - Math.random() * 50, vx: -300 - Math.random() * 200, vy: (Math.random() - 0.5) * 60, life: 0.3, c: ['#fb923c', '#fde047', '#fff'][i] }); }
+        s.texts.forEach(t => { t.y -= 40 * dt; t.life -= dt; }); s.texts = s.texts.filter(t => t.life > 0);
+        s.parts.forEach(p => { p.x += p.vx * dt - dx * 0.5; p.y += p.vy * dt; p.vy += 900 * dt; p.life -= dt; }); s.parts = s.parts.filter(p => p.life > 0);
+      },
+      frame(ts) {
+        if (!this.watchId) return;
+        const dt = Math.min(0.05, Math.max(0, (ts - this.last) / 1000)); this.last = ts;
+        const V = PetRunWatchView, s = V.st, now = Date.now(), name = this.watchInfo ? this.watchInfo.name : '친구';
+        if (s && !s.over && !s.paused && now - this.lastFrameAt < 1500) this.advance(s, dt);
+        else if (s) { s.parts.forEach(p => { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 900 * dt; p.life -= dt; }); s.parts = s.parts.filter(p => p.life > 0); }
+        this.draw();
+        // 끝: 친구가 끝냈거나, 목록에서 사라졌거나, 내가 펫 탭을 오래 떠나 있으면
+        if (s && s.over && this.overAt && now - this.overAt > PETRUN_LIVE.watchEndMs) { this.stopWatch(true, `🏁 ${name} 친구의 펫 러닝이 끝났어요! ${Math.round(s.score).toLocaleString()}점`); return; }
+        if (this.goneAt && now - this.goneAt > PETRUN_LIVE.goneMs && !(s && s.over)) { this.stopWatch(true, `📺 ${name} 친구가 펫 러닝을 그만뒀어요.`); return; }
+        const tab = document.getElementById('studentTab-pet');
+        const hidden = !tab || tab.classList.contains('hidden') || document.hidden;
+        if (!hidden) this.hiddenAt = 0; else if (!this.hiddenAt) this.hiddenAt = now;
+        if (this.hiddenAt && now - this.hiddenAt > 15000) { this.stopWatch(true); return; }
+        this.raf = requestAnimationFrame(t => this.frame(t));
+      },
+      draw() {
+        const V = PetRunWatchView, ctx = V.ctx, s = V.st;
+        if (!ctx) return;
+        const W = PETRUN.W, H = PETRUN.H, name = this.watchInfo ? this.watchInfo.name : '친구';
+        if (!s) {
+          V.drawScene(ctx, { bg: PetRun.idleBg || (PetRun.idleBg = Array.from({ length: 6 }, (_, i) => ({ x: i * 170 + 30, y: 40 + (i * 37) % 70, s: 0.7 + (i % 3) * 0.3 }))), dist: 0, objs: [], parts: [], texts: [], shake: 0 });
+          ctx.save(); ctx.fillStyle = 'rgba(15,23,42,0.55)'; ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = '900 26px sans-serif'; ctx.fillText(`📺 ${name}의 펫 러닝`, W / 2, H / 2 - 8);
+          ctx.font = '800 14px sans-serif'; ctx.fillStyle = '#e2e8f0'; ctx.fillText('친구 화면을 불러오는 중...', W / 2, H / 2 + 24);
+          ctx.restore();
+          return;
+        }
+        const paused = s.paused; s.paused = false;
+        PetRun.draw.call(V);
+        s.paused = paused;
+        const stale = !s.over && Date.now() - this.lastFrameAt > 3000;
+        ctx.save();
+        if (paused || stale) {
+          ctx.fillStyle = 'rgba(15,23,42,0.5)'; ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = '900 28px sans-serif';
+          ctx.fillText(paused ? '⏸ 친구가 잠깐 멈췄어요' : '📡 친구 화면을 기다리는 중...', W / 2, H / 2);
+        }
+        if (s.over && s.isBest) { ctx.textAlign = 'center'; ctx.font = '900 16px sans-serif'; ctx.fillStyle = '#fda4af'; ctx.fillText('🎉 NEW 최고 기록!', W / 2, H / 2 + 52); }
+        ctx.font = '800 13px sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(15,23,42,0.7)'; ctx.lineWidth = 3;
+        const label = `📺 관전 중: ${name}의 펫 러닝`;
+        ctx.strokeText(label, W / 2, H - 14); ctx.fillText(label, W / 2, H - 14);
+        ctx.restore();
+      },
+    };
+    window.PetRunLive = PetRunLive;
 
     /********************************************************************
      * 펫 러닝 협동 (PetCoop): 미니게임 방(2~4인)에서 각자 펫으로 달리며 팀 점수를 모음 (10번째 아케이드 게임 petruncoop)
