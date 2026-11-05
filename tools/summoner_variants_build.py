@@ -23,7 +23,8 @@ SRC = 'assets/sprites/merc/summoner_0.webp'
 CW, CH, N = 113, 106, 12
 NAMES = ['대기', '걷기1', '걷기2', '걷기3', '걷기4', '피격', '쓰러짐1', '쓰러짐2', '쓰러짐3', '공격', '시전', '발동']
 K8 = np.ones((3, 3), int)
-LYING = {6, 7, 8}     # 뒤로 젖히거나 엎드린 칸: 정수리 위치·화관 띠를 얼굴 위쪽으로 잡을 수 없음
+LYING = {6, 7, 8}
+BOOKLESS = {10}       # 시전 칸: 책이 빛나는 종이뿐이라 갈색 표지가 없음 (그늘이 표지로 잡혀 얼룩이 됐음)     # 뒤로 젖히거나 엎드린 칸: 정수리 위치·화관 띠를 얼굴 위쪽으로 잡을 수 없음
 
 
 def hsv_of(rgb):
@@ -113,18 +114,22 @@ def frame_masks(im, f):
     brown = a & ~outline & ~face & ~skin & ((h < 36) | (h >= 330)) & (s > 0.2) & (v < 0.5) & ~flower
     lab, n = ndi.label(brown, structure=K8)
     book = np.zeros_like(brown)
-    if n:
+    if n and f not in BOOKLESS:
         sz = ndi.sum(brown, lab, range(1, n + 1)); i = int(np.argmax(sz))
         if sz[i] >= 40: book = lab == i + 1
     bookarea = ndi.binary_fill_holes(ndi.binary_dilation(book, iterations=2)) if book.any() else book
     bookgold = bookarea & ~book & a & (h >= 25) & (h < 60) & (v > 0.45)
+    # 표지 무늬(룬): 표지 안의 밝은 갈색·금색 (색조 18~40°, 채도 0.28 넘고 밝기 0.38 넘음). 원래 갈색으로 두면 초록·남색 표지 위에서 살구색 얼룩 → 외형 금장식 색으로
+    rune = bookarea & ~book & a & ~outline & (h >= 18) & (h < 40) & (s >= 0.28) & (v >= 0.38)
     # 치마·금장식: 몸통 올리브·금색 (얼굴·책·화관 근처 빼고)
     head_zone = ndi.distance_transform_edt(~(vine | flower)) <= 3
     pages = a & (h >= 20) & (h < 60) & (v > 0.6) & (s < 0.4)   # 빛나는 책 종이 (시전 칸)·책 종이 가장자리 — 그대로
+    if f in BOOKLESS:   # 시전 칸 펼친 책 (오른손 위, x 70~ · y 72 위): 그늘진 종이까지 모두 그대로 (치마로 잡혀 분홍·크림이 되던 것)
+        pages |= a & (xx >= 70) & (yy <= 72) & (h >= 10) & (h < 60) & ~skin
     warm = a & ~outline & ~skin & ~face & ~bookarea & ~flower & ~head_zone & ~glow & ~pages & (h >= 12) & (h < 85) & (s > 0.2) & ~hair & ~robe & ~vine
     trim = warm & (s > 0.45) & (v > 0.5)
     skirt = warm & ~trim
-    parts = dict(hair=hair, vine=vine, robe=robe, skirt=skirt, trim=trim, flower=flower, book=book, eyes=eyes)
+    parts = dict(hair=hair, vine=vine, robe=robe, skirt=skirt, trim=trim, flower=flower, book=book, eyes=eyes, rune=rune)
     # 빈 옷 픽셀 → 둘레에 많은 옷 부위로
     assigned = np.zeros((H, W), bool)
     for m in parts.values(): assigned |= m
@@ -147,6 +152,13 @@ def frame_masks(im, f):
         better = d < dist; dist[better] = d[better]; owner[better] = i
     dskin = ndi.distance_transform_edt(~skin) if skin.any() else np.full((H, W), 99.0)
     lines = {k: line & (owner == i) & (dist <= 2.5) & (dist < dskin) & (~guard if k != 'eyes' else True) for i, k in enumerate(keys)}
+    # 선 모양 어두운 픽셀(밝기 0.22 아래, 투명한 곳과 맞닿았거나 둘레보다 0.15 넘게 어두움) = 실루엣·머리와 로브 경계·옷 주름 선 → 그 부위 윤곽(selout)
+    #   짙은 초록을 옷·머리로 넣으면서 이 선들이 밝은 크림 로브·연분홍 머리에서 밝게 칠해져 윤곽이 끊기고 머리와 로브가 한 덩어리로 보이던 것
+    near_tr = ndi.binary_dilation(im[..., 3] < 40, structure=K8)
+    vmax = ndi.maximum_filter(np.where(a, v, 0.0), size=3)
+    edge_dark = (v < 0.22) & ~guard & (near_tr | (vmax - v >= 0.15))
+    for k in ('hair', 'vine', 'robe', 'skirt'):
+        lines[k] |= parts[k] & edge_dark
     greenish = a & (h >= 70) & (h < 200) & (s > 0.05) & ~glow
     face_px = guard & ~eyes & ~lines['eyes'] & ~skin & (greenish | outline)
     near_eye = ndi.distance_transform_edt(~eyes) <= 2.5 if eyes.any() else np.zeros((H, W), bool)
@@ -171,6 +183,7 @@ def load():
 
 
 def recolor_frame(fr, parts, lines, val, colors, rng):
+    colors = dict(colors, rune=colors['trim'])   # 책 무늬는 외형 금장식 색
     return PP.recolor(fr, parts, val, colors, lines, rng)
 
 
@@ -226,7 +239,7 @@ def detail(path, fi, scale=5):
 def masks_img(path, scale=3):
     sheet, frames, info, _ = load()
     cols = dict(hair=(230, 40, 40), vine=(120, 255, 120), robe=(30, 150, 50), skirt=(240, 190, 0), trim=(255, 120, 0),
-                flower=(230, 0, 230), book=(40, 60, 230), eyes=(0, 200, 220))
+                flower=(230, 0, 230), book=(40, 60, 230), eyes=(0, 200, 220), rune=(255, 255, 0))
     out = []
     for i in range(N):
         fr = frames[i].copy(); fr[..., :3] = fr[..., :3] * 0.3 + 255 * 0.7
