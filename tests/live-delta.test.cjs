@@ -63,4 +63,15 @@ t('죽은 유닛은 아무 칸도 줄지 않음 · 죽는 순간의 값은 그�
   assert.deepStrictEqual(got, [unit({ 5: 0, 2: 0 })]);
   assert.ok(Object.keys(d[0]).includes('5') && Object.keys(d[0]).includes('9'));
 });
+t('정령사 정령 칸: 잠든 칸을 살리고(소환) 다시 재워도(해방) 바뀐 칸만으로 그대로 되살림', () => {
+  // 잠든 칸 = 죽은 유닛 (체력 0, 스킬 칸 없음). 소환하면 자리·체력·최대 체력·살아 있음만 바뀜
+  const idle = unit({ 0: 300, 1: 400, 2: 0, 4: 0, 5: 0, 9: 0, 12: 0, 14: 0, 16: '', 17: [], 21: 0, 29: 0 });
+  const summoned = unit({ 0: 512, 1: 377, 2: 640, 4: 0, 5: 1, 9: 0, 12: 0, 14: 0, 16: '4:30', 17: [], 21: 0, 29: 640 });
+  let r = roundTrip([idle], [summoned], 6);
+  assert.deepStrictEqual(r.got, [summoned]);
+  assert.ok(JSON.stringify(r.d).length < 80, '소환 한 번은 수십 바이트');
+  const released = Object.assign([], summoned, { 2: 0, 5: 0, 16: '4:24' }); // 해방·시간 끝: 다시 잠든 칸
+  r = roundTrip([summoned], [released], 6);
+  assert.deepStrictEqual(r.got, [released]);
+});
 console.log('all', n);
