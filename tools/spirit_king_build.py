@@ -83,9 +83,25 @@ def main():
     a = np.where(a < 0.06, 0, a)
     ys, xs = np.where(a > 0)
     b = np.dstack([rgb, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
-    bp = shrink(b, BURST_W / b.shape[1])
-    Image.fromarray(bp, 'RGBA').save(OUT_FX, 'WEBP', quality=90)
+    bp = peel_white(shrink(b, BURST_W / b.shape[1]))
+    Image.fromarray(bp, 'RGBA').save(OUT_FX, 'WEBP', lossless=True)
     print(f'burst {bp.shape[1]}x{bp.shape[0]}')
+
+
+
+def peel_white(b, rounds=4):
+    """그림 둘레의 흰 테두리(스티커 외곽선)를 바깥쪽부터 벗겨 냄: 투명한 곳에 닿은 흰빛 픽셀만 지우기를 몇 번 반복
+    (안쪽 폭발 가운데 흰빛·옅은 노란 번개는 투명한 곳에 닿지 않거나 색이 있어서 남음)"""
+    b = b.copy()
+    for _ in range(rounds):
+        a = b[..., 3]
+        rgb = b[..., :3].astype(int)
+        mn, mx = rgb.min(2), rgb.max(2)
+        kill = (a > 0) & (mn > 185) & (mx - mn < 60) & ndi.binary_dilation(a < 40, structure=np.ones((3, 3)))
+        if not kill.any():
+            break
+        b[kill, 3] = 0
+    return b
 
 
 if __name__ == '__main__':
