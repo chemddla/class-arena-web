@@ -7,7 +7,7 @@
 ![대기 칸 리컬러 (외형 0~5, 아래는 부위별 명암 계단)](summoner-skin-palette.png)
 
 ## 전체 시트 (12칸)
-`assets/sprites/merc/summoner_1~5.webp` — `python tools/summoner_variants_build.py`로 0번 시트 12칸 전체에 색을 입혀 만든다 (칸 구성·크기·기준점은 0번과 같음). **아직 게임에 등록하지 않음** (`MERC_SPRITE_DEFS.summoner_1~5`·외형 수).
+`assets/sprites/merc/summoner_1~5.webp` — `python tools/summoner_variants_build.py`로 0번 시트 12칸 전체에 색을 입혀 만든다 (칸 구성·크기·기준점은 0번과 같음). 게임 등록: `MERC_SPRITE_DEFS.summoner_1~5` (외형 수는 정의 수로 자동 6).
 
 ![외형 0~5 × 12칸](summoner-skins-preview.png)
 
