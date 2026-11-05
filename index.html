@@ -491,9 +491,12 @@
     .lp-win {
       position: relative; z-index: 3; align-self: flex-start; width: min(560px, 100%); margin: clamp(20px, 4vh, 40px) 0 32px 6px;
       background: var(--lp-win); color: #fff; border: 4px solid #fff;
-      box-shadow: 0 0 0 4px var(--lp-ink), 10px 10px 0 4px rgba(27, 24, 64, 0.4);
+      /* 빛은 왼쪽 위에서: 안쪽 왼·위 가장자리는 밝게, 오른·아래는 어둡게 (평평한 판이 아니라 도톰한 창) */
+      box-shadow: inset 4px 4px 0 #3b45a6, inset -4px -4px 0 #1a1f58, 0 0 0 4px var(--lp-ink), 10px 10px 0 4px rgba(27, 24, 64, 0.4);
       padding: 22px 24px 26px; display: flex; flex-direction: column; gap: 12px;
     }
+    /* 도트 이펙트 판이 켜지면 CSS 날림 알갱이·횃불 둥근 빛 대신 캔버스로 그림 */
+    .lp-pfx-on .lp-fx, .lp-pfx-on .lp-fglow { display: none; }
     .lp-where { margin: 0; font-family: Galmuri9; font-size: 18px; color: var(--lp-gold); }
     .lp-lead { margin: 0 0 4px; font-size: 22px; line-height: 1.6; }
     .lp-label { font-family: Galmuri9; font-size: 18px; color: #b9c2ff; }
@@ -1621,6 +1624,20 @@
     <footer class="lp-foot">
       <p>CLASS ARENA · 우리 반이 함께 키우는 용병단 게임</p>
     </footer>
+    <!-- 도트 이펙트 엔진 (pixelfx 작법: 색+빛 두 층, 팔레트 램프, 빠른 터짐·느린 사라짐) -->
+    <script src="assets/pixelfx-lite.js"></script>
+    <script>
+      // 출발·학급 만들기 버튼을 누르면 버튼에서 금빛 불꽃이 터짐 (화면이 바뀌어도 위에 남음)
+      document.addEventListener('click', (e) => {
+        const b = e.target.closest?.('.lp-btn-go, .lp-btn-make');
+        if (b && window.PixelFX) PixelFX.popAt(b, 'burst');
+      });
+      // 학급 페이지(모험가 길드): 등불 아래 금빛 먼지가 떠다님 (화면이 숨겨지면 알아서 멈춤)
+      window.addEventListener('DOMContentLoaded', () => {
+        const gh = document.getElementById('classLobbyPageView');
+        if (gh && window.PixelFX) PixelFX.Layer(gh, { z: 1, cls: 'gh-pfx' }).ambient('mote');
+      });
+    </script>
     <script>
       // 초기화면 모험 장면: 들판 모험 → 모험의 탑 → 던전 탐험 → 엘리트 보스 → 보스 레이드 → 결투장 → 몬스터 러쉬를 10초마다 돌아가며 보여줌.
       // 접속마다 배경·용병·몬스터를 새로 뽑고, 사이사이 공격·스킬·피격 동작을 섞음
@@ -1736,6 +1753,10 @@
             fx.appendChild(p);
           }
           // 보스방에 떠오르는 불씨, 러쉬 숲 속에서 깜빡이는 몬스터 눈
+          // 도트 이펙트 판 (assets/pixelfx-lite.js): 뒤판 = 하늘 위 날림·불빛, 앞판 = 일행 위 타격·반짝임
+          const sky = hero.querySelector('.lp-sky');
+          const PFX = window.PixelFX && !still ? { back: PixelFX.Layer(sky, { cls: 'lp-pfx' }), front: PixelFX.Layer(hero, { z: 2, cls: 'lp-pfx-front' }) } : null;
+          if (PFX) { PFX.back.canvases.forEach(c => sky.insertBefore(c, sky.querySelector('.lp-wipe'))); hero.classList.add('lp-pfx-on'); }
           const bossSet = hero.querySelector('.lp-set-boss');
           for (let i = 0; i < 14; i++) {
             const dur = 5 + Math.random() * 6;
@@ -1886,6 +1907,22 @@
             hud.style.left = `${Math.min(Math.max(cx, half), innerWidth - half) - ground.left}px`;
             hud.style.bottom = mode === 'pvp' ? 'calc(100% + 40px)' : `calc(100% + ${Math.round(fb.height) + 8}px)`;
           };
+          // 장면마다 날림 효과 (들판 = 테마 날림, 결투장 = 모래바람, 러쉬 숲 = 반딧불)와 횃불·모닥불 빛 (빛 웅덩이 + 뜨거운 심이 일렁임)
+          const AMB = { pvp: 'dust', rush: 'firefly' };
+          const setAmbient = () => {
+            if (!PFX) return;
+            const ground = hero.querySelector('.lp-ground').offsetHeight;
+            PFX.back.ambient(mode === 'field' ? th.fx : AMB[mode], { ground, rate: mode === 'pvp' ? 1.4 : undefined });
+            const s = sky.getBoundingClientRect(), k = PFX.back.PX;
+            const fires = [...sky.querySelectorAll('.lp-flame')].map(el => el.getBoundingClientRect()).filter(r => r.width)
+              .map(r => [(r.left + r.width / 2 - s.left) / k, (r.top + r.height * 0.55 - s.top) / k]);
+            PFX.back.steady(fires.length ? (glow, dot, t) => fires.forEach(([x, y], i) => {
+              const f = 0.75 + 0.12 * Math.sin(t * 11 + i * 2.1) + 0.08 * Math.sin(t * 23 + i);
+              glow(x, y, 26, [255, 140, 50], 0.5 * f);
+              glow(x, y - 1, 7, [255, 220, 140], 0.6 * f);
+            }) : null);
+          };
+          addEventListener('resize', () => { clearTimeout(setAmbient.t); setAmbient.t = setTimeout(setAmbient, 200); });
           let enter = null; // 장면이 만들어진 뒤 할 일 (들판: 몬스터가 걸어 들어옴)
           const build = (m) => {
             st.anim?.cancel();
@@ -1897,6 +1934,8 @@
             SCENES[m]();
             pets = addPets(m === 'field' && !narrow() ? 2 : 1, m === 'field' ? 'walk' : 'idle');
             fit();
+            PFX?.front.clear();
+            requestAnimationFrame(setAmbient);
             enter?.();
           };
           let at = Math.max(0, MODES.indexOf(new URLSearchParams(location.search).get('lpScene')));
@@ -2048,8 +2087,12 @@
             }, 700);
           };
           // 쓰러짐: 들판은 다 쓰러지면 지나쳐 가고, 탑·러쉬는 쓰러진 자리에 다음 몬스터가 들어옴
+          // 앞판 좌표 (몸 가운데 f = 0.45, 발밑 f = 0)
+          const spot = (a, f = 0.45) => { const g = hero.getBoundingClientRect(), r = a.span.getBoundingClientRect(); return [r.left + r.width / 2 - g.left, r.bottom - r.height * f - g.top]; };
+          const pop = (kind, a, f, o) => { if (PFX && a?.span?.isConnected) PFX.front.pop(kind, ...spot(a, f), o); };
           const kill = (f) => {
             f.dead = true; play(f, 'death', 3);
+            pop('poof', f, 0.05, { coins: mode !== 'pvp' });
             const n = hud.querySelector('.lp-kills'); if (n) n.textContent = ++st.kills;
             if (mode === 'field') { if (!vis(foes).length) passBy(); return; }
             if (mode === 'dungeon') {
@@ -2068,6 +2111,7 @@
           };
           const hitFoe = (f) => {
             flash(hit);
+            pop('hit', f, 0.5, { s: mode === 'boss' || mode === 'raid' ? 1.4 : 1 });
             if (mode === 'boss' || mode === 'raid') { st.hp = Math.max(8, Math.round(st.hp - (mode === 'raid' ? 2 + Math.random() * 4 : 5 + Math.random() * 7))); setHp(); }
             if (mode === 'rush' ? Math.random() < 0.6 : mode !== 'boss' && mode !== 'raid' && --f.hp <= 0) return kill(f);
             play(f, 'hurt', 3);
@@ -2079,7 +2123,7 @@
             } else if (mode === 'pvp') {
               // 결투장: 양쪽이 번갈아 공격
               const mine = roll < 0.5, t = vis(mine ? foes : mercs).at(-1);
-              strike(pick(vis(mine ? mercs : foes)), t, () => { if (mine) flash(hit); play(t, 'hurt', 3); });
+              strike(pick(vis(mine ? mercs : foes)), t, () => { if (mine) flash(hit); play(t, 'hurt', 3); pop('hit', t, 0.5, { n: 9 }); });
             } else if (roll < (mode === 'boss' || mode === 'raid' ? 0.5 : 0.65)) {
               // 용병 한 명이 공격·스킬 → 몬스터 피격 (러쉬는 맨 앞 몬스터부터)
               const live = vis(foes), f = mode === 'rush' ? live.at(-1) : pick(live);
@@ -2087,7 +2131,7 @@
             } else {
               // 몬스터 공격 → 맨 앞 용병 피격 (보스는 땅이 흔들림)
               const t = vis(mercs).at(-1);
-              strike(pick(vis(foes)), t, () => { play(t, 'hurt', 3); if (mode === 'boss' || mode === 'raid') flash(party, 'lp-shake'); });
+              strike(pick(vis(foes)), t, () => { play(t, 'hurt', 3); pop('hit', t, 0.5, { n: 8, s: 0.8, ramp: window.PixelFX?.ramps.fire }); if (mode === 'boss' || mode === 'raid') flash(party, 'lp-shake'); });
             }
             setTimeout(beat, 900 + Math.random() * 900);
           };
@@ -2099,6 +2143,13 @@
             setTimeout(antics, 1500 + Math.random() * 2000);
           };
           setTimeout(antics, 2000);
+          // 제목 글자 위에 가끔 반짝임 (금빛 '용병단'에 더 자주)
+          if (PFX) setInterval(() => {
+            if (idle()) return;
+            const spans = hero.querySelectorAll('.lp-title span'), el = spans[Math.random() < 0.7 ? spans.length - 1 : 0];
+            const r = el?.getBoundingClientRect(), g = hero.getBoundingClientRect(); if (!r?.width) return;
+            PFX.front.pop('glint', r.left - g.left + r.width * (0.08 + Math.random() * 0.84), r.top - g.top + r.height * (0.2 + Math.random() * 0.5), { r: 3 + Math.round(Math.random() * 2) });
+          }, 1300);
           enter();
 
           // 10초마다 다음 모드로: 잠깐 암전된 사이에 배경·일행·몬스터를 바꿈
@@ -10368,6 +10419,8 @@
       banner.style.setProperty('--toast-accent', accent);
       document.getElementById('rewardBannerText').textContent = text;
       banner.classList.add('show');
+      // 받은 보상(+…CA)이면 알림 왼쪽에서 동전이 튐 (도트 이펙트)
+      if (/\+\s?[\d,]+\s?CA/.test(text) && window.PixelFX) setTimeout(() => PixelFX.popAt(banner, 'coins', { n: 8 }, { fx: 0.1, fy: 0.3 }), 120);
       clearTimeout(rewardBannerTimer);
       rewardBannerTimer = setTimeout(() => banner.classList.remove('show'), Math.min(6000, 2600 + text.length * 30));
     }
@@ -10392,6 +10445,8 @@
       wrap.querySelector('[data-who]').textContent = `[${merc.name}]이(가) 히든 스킬을 깨우쳤어요!`;
       wrap.addEventListener('click', () => wrap.remove());
       document.body.appendChild(wrap);
+      // 카드 뒤에서 빛기둥이 오르고 색종이가 터짐
+      if (window.PixelFX) { const c = wrap.querySelector('.hidden-skill-card'); PixelFX.popAt(c, 'holy', null, { fy: 0.35 }); setTimeout(() => PixelFX.popAt(c, 'confetti', null, { fy: 0.1 }), 250); }
     }
 
     // 용병 모집 명단에 시크릿 레어가 나왔을 때: 화면 가득 알림 창 (눌러서 닫음)
@@ -10414,6 +10469,8 @@
       wrap.querySelector('[data-who]').textContent = mercs.map(m => `[${(JOB_DEFS[m.job] || {}).name || ''}] ${m.name}`).join(', ');
       wrap.addEventListener('click', () => wrap.remove());
       document.body.appendChild(wrap);
+      // 불꽃 빛기둥 + 색종이
+      if (window.PixelFX) { const c = wrap.firstElementChild; PixelFX.popAt(c, 'holy', { ramp: PixelFX.ramps.fire }, { fy: 0.35 }); setTimeout(() => PixelFX.popAt(c, 'confetti', null, { fy: 0.1 }), 250); }
     }
 
     /********************************************************************
