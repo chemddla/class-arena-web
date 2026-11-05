@@ -7940,6 +7940,16 @@
       anims: { idle: [0], walk: [1, 2, 3, 2], attack: [4, 4], skill: [4], hurt: [5], death: [6, 7] },
       pop: [6, 7, 8, 9]
     };
+    // 정령사 대지 정령 (새싹 달린 작은 바위 아이, tools/earth_spirit_build.py): 칸 순서 = 대기, 걷기 3장, 바위 주먹, 피격 (튕겨 나감),
+    //   무너짐 3장 (눈 감고 버팀 → 무너져 내림 → 흙더미, spirit_pop 이펙트가 그림), 도발 시전 (움찔 모으기) · 도발 발동 (외치기)
+    //   도발 2장은 나올 때 주변 적을 도발하는 순간 재생 (spirit_taunt). 대기 키 103px, SPIRIT_DEFS size 1.2로 불 정령보다 조금 큼
+    MONSTER_SPRITE_DEFS.earth_spirit = {
+      src: 'assets/sprites/monster/earth_spirit.webp',
+      cellW: 118, cellH: 107, anchorX: 63, anchorY: 105, standH: 118, topH: 103, count: 11,
+      anims: { idle: [0], walk: [1, 2, 3, 2], attack: [4, 4], skill: [4], hurt: [5], death: [6, 7], taunt: [9, 10] },
+      skillAnims: { spirit_taunt: { anim: 'taunt', tpf: 16, dur: 48 } },
+      pop: [6, 7, 8]
+    };
     // 이프리트 (화염족 보스, 불꽃 뿔·용암 갑옷·화염 대검. 엘리트 겁화의 이프리트도 이 그림을 eliteScale만큼 키움):
     //   칸 순서 = 대기, 걷기 A·B, 검 치켜들기, 베기(불꽃 궤적), 피격, 쓰러짐 2장,
     //   회전베기 2장(불꽃 고리, 좌우반전), 파이어볼(주먹 내밀기), 사자후(음파), 불화살비(검 치켜들기), 텔레포트(재로 흩어짐)
@@ -23556,7 +23566,7 @@
     const SPIRIT_DEFS = {
       fire:  { skill: 'call_fire',  name: '불 정령',   icon: '🔥', color: '#f97316', job: 'warrior', sprite: 'fire_spirit',         hp: 0.6,  atk: 0.75, def: 1.0, move: 1.0, life: 900, off: [70, -50] },
       water: { skill: 'call_water', name: '물 정령',   icon: '💧', color: '#38bdf8', job: 'healer',  sprite: 'ghost_mage',          hp: 0.55, atk: 0.6,  def: 1.0, move: 1.0, life: 900, off: [-20, 60] },
-      earth: { skill: 'call_earth', name: '대지 정령', icon: '🪨', color: '#a16207', job: 'knight',  sprite: 'golem_warrior',       hp: 1.5,  atk: 0.35, def: 2.2, move: 0.9, life: 900, off: [110, 0], size: 1.2 },
+      earth: { skill: 'call_earth', name: '대지 정령', icon: '🪨', color: '#a16207', job: 'knight',  sprite: 'earth_spirit',        hp: 1.5,  atk: 0.35, def: 2.2, move: 0.9, life: 900, off: [110, 0], size: 1.2 },
       wind:  { skill: 'call_wind',  name: '바람 정령', icon: '🌪️', color: '#5eead4', job: 'rogue',   sprite: 'ice_harpy_mage',      hp: 0.45, atk: 0.55, def: 0.6, move: 1.4, life: 900, off: [70, 50] },
       storm: { skill: 'call_storm', name: '번개 정령', icon: '⚡', color: '#facc15', job: 'archer',  sprite: 'ice_harpy_archer',    hp: 0.42, atk: 0.6,  def: 0.6, move: 1.0, life: 900, off: [10, -70], range: 260 },
       king:  { skill: 'spirit_king', name: '정령왕',   icon: '🌈', color: '#14b8a6', job: 'warrior', sprite: 'ifrit',               hp: 2.5,  atk: 2.0,  def: 1.2, move: 1.0, life: 1080, off: [130, 0], size: 1.6 }
@@ -23668,6 +23678,8 @@
       const C = GRID_CELL_SIZE;
       const foes = sim.units.filter(e => e.alive && e.team !== s.team && Math.hypot(e.x - s.x, e.y - s.y) - unitBodyGap(e) - unitBodyGap(s) <= C * (s.spiritElem === 'king' ? 2 : 1.5));
       if (s.spiritElem === 'earth') {
+        // 움찔 모았다가 외치는 도발 동작 (그리기만: 이동·공격은 그대로)
+        s.skillAnim = 48; s.maxSkillAnim = 48; s.activeSkillType = 'spirit_taunt'; s.attackAnim = 0;
         foes.forEach(e => {
           inflictStatus(s, e, 'taunt', 90);
           if (!(e.statuses.taunt > 0)) return;
@@ -23688,12 +23700,15 @@
       s.alive = false; s.hp = 0; s.casting = null; s.rush = null; s.spiritOn = false; s.spiritLife = 0;
       if (!was || !withFx) return;
       if (s.spiritElem === 'fire') { spiritFireBurst(s); return; }
+      if (pushSpiritPop(s)) return;
       sim.effects.push({ type: 'magic_burst', spr: 'teleport', x: s.x, y: s.y - 12, r: 40, life: 26, maxLife: 26 });
     }
-    // 정령이 사라지는 그림 (그림에 pop 칸이 있을 때만: 지금은 불 정령 = 눈 질끈 → 불길 → 폭발)
+    // 정령이 사라지는 그림 (그림에 pop 칸이 있을 때만: 불 정령 = 눈 질끈 → 불길 → 폭발, 대지 정령 = 버팀 → 무너짐 → 흙더미). 그렸으면 true
     function pushSpiritPop(s) {
       const sp = MONSTER_SPRITE_DEFS[SPIRIT_DEFS[s.spiritElem]?.sprite];
-      if (sp && sp.pop) sim.effects.push({ type: 'spirit_pop', elem: s.spiritElem, x: s.x, y: s.y, dir: s.facingDir || 1, life: 44, maxLife: 44 });
+      if (!sp || !sp.pop) return false;
+      sim.effects.push({ type: 'spirit_pop', elem: s.spiritElem, x: s.x, y: s.y, dir: s.facingDir || 1, life: 44, maxLife: 44 });
+      return true;
     }
     function spiritFireBurst(s) {
       const r = GRID_CELL_SIZE;
@@ -23770,7 +23785,7 @@
         const s = sim.units[i];
         if (!s.spiritElem) continue;
         if (!s.alive) {
-          if (s.spiritOn) { s.spiritOn = false; if (s.spiritElem === 'fire') spiritFireBurst(s); }
+          if (s.spiritOn) { s.spiritOn = false; if (s.spiritElem === 'fire') spiritFireBurst(s); else pushSpiritPop(s); }
           continue;
         }
         const owner = unitByIdNow(s.ownerId);
