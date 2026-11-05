@@ -23790,6 +23790,7 @@
     const SPIRIT_HARMONY_BONUS = [1, 1, 1.1, 1.2]; // 서로 다른 정령 수 → 정령 기본 공격·체력 배율 (정령왕이 있으면 3종)
     const SPIRIT_RELEASE_HARMONY = 1.2;        // 3종일 때 해방 효과 +20%
     const SPIRIT_OWNER_GONE_TICKS = 60;        // 소환사가 쓰러지면 1초 뒤 정령이 사라짐
+    const SPIRIT_KING_HIT_STATUSES = ['burn', 'shock', 'freeze', 'stun', 'slow']; // 정령왕 기본 공격이 돌아가며 거는 상태이상
     const SPIRIT_KING_DESCENT_CELLS = 2.6;     // 정령왕 강림 피해 범위 반지름 (칸). 강림 이펙트도 이만큼 그림
     const SPIRIT_WIND_EVADE = 0.2;             // 바람 정령: 공격의 20%를 피함
     const SPIRIT_FIRE_BURN_TICKS = 90;         // 불 정령 기본 공격: [화상] 1.5초
@@ -24027,9 +24028,10 @@
         }));
         [d, ...others].forEach(e => inflictStatus(s, e, 'shock', 60));
       } else if (s.spiritElem === 'king') {
-        const cyc = s.spiritSr ? ['burn', 'shock', 'slow', 'darkness'] : ['burn', 'shock', 'slow']; // 시크릿 레어 정령왕은 [암흑]까지 돌아가며
+        // 화상·감전·빙결·기절·슬로우를 돌아가며 (시크릿 레어 정령왕은 [암흑]까지). 행동 불능(빙결·기절)은 1초, 나머지는 2초
+        const cyc = s.spiritSr ? SPIRIT_KING_HIT_STATUSES.concat('darkness') : SPIRIT_KING_HIT_STATUSES;
         const st = cyc[(s.spiritHits = (s.spiritHits || 0) + 1) % cyc.length];
-        if (d.alive) inflictStatus(s, d, st, 120);
+        if (d.alive) inflictStatus(s, d, st, st === 'stun' || st === 'freeze' ? 60 : 120);
         withSkillHit(() => sim.units.filter(e => e.alive && e.team !== s.team && e !== d && unitDist(e, d) <= C)
           .forEach(e => applyDamage(s, e, s.atk * 0.5, '🌈', '#14b8a6')));
       }
