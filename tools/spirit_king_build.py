@@ -1,4 +1,4 @@
-# 정령사 히든 정령왕 샘플(불꽃 머리 흑기사, 흰 배경) → 몬스터 시트 assets/sprites/monster/spirit_king.webp
+# 소환사 히든 정령왕 샘플(불꽃 머리 흑기사, 흰 배경) → 몬스터 시트 assets/sprites/monster/spirit_king.webp
 #                                                    + 강림 이펙트 assets/sprites/fx/spirit_king_burst.webp
 # 사용: python tools/spirit_king_build.py   (샘플은 assets/sprites/fx/samples/spirit_king_*_src.png · burst_src.webp)
 # 칸 순서: 0 대기 · 1~3 걷기 · 4 공격 1 (검 치켜들기) · 5 공격 2 (불꽃 베기) · 6 강림 (검을 땅에 꽂음)

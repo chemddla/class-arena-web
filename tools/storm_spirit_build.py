@@ -1,4 +1,4 @@
-# 정령사 번개 정령 샘플(삐죽한 번개 아이, 흰 배경) → 몬스터 시트 assets/sprites/monster/storm_spirit.webp
+# 소환사 번개 정령 샘플(삐죽한 번개 아이, 흰 배경) → 몬스터 시트 assets/sprites/monster/storm_spirit.webp
 #                                                  + 기본 공격 번개 구슬 assets/sprites/fx/storm_spirit_fx.webp
 # 사용: python tools/storm_spirit_build.py   (샘플은 assets/sprites/fx/samples/storm_spirit_*_src.png)
 # 칸 순서: 0 대기 · 1~2 이동 · 3 기본 공격 (손 내밀기, 구슬은 투사체로 따로) · 4~6 연쇄 번개 (모으기 → 뿜기 → 굵은 번개)

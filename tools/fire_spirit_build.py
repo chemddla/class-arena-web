@@ -1,4 +1,4 @@
-# 정령사 불 정령 샘플(작은 불꽃 아이, 흰 배경) → 몬스터 시트 assets/sprites/monster/fire_spirit.webp
+# 소환사 불 정령 샘플(작은 불꽃 아이, 흰 배경) → 몬스터 시트 assets/sprites/monster/fire_spirit.webp
 # 사용: python tools/fire_spirit_build.py   (샘플은 assets/sprites/fx/samples/fire_spirit_*_src.png)
 # 칸 순서: 0 대기 · 1~3 걷기 · 4 기본 공격 (불꽃 주먹) · 5 피격 · 6 쓰러짐 (눈 질끈) · 7 불길에 휩싸임 · 8~9 폭발 (불기둥 → 흩어지는 불꽃·연기)
 #   - 6~9는 정령이 사라질 때(쓰러짐·돌려보냄·해방) 그 자리에서 이펙트로 차례로 그림 (죽은 정령은 유닛으로 그리지 않음)

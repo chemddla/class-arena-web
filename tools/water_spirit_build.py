@@ -1,4 +1,4 @@
-# 정령사 물 정령 샘플(물방울 아이, 흰 배경) → 몬스터 시트 assets/sprites/monster/water_spirit.webp
+# 소환사 물 정령 샘플(물방울 아이, 흰 배경) → 몬스터 시트 assets/sprites/monster/water_spirit.webp
 # 사용: python tools/water_spirit_build.py   (샘플은 assets/sprites/fx/samples/water_spirit_*_src.png, 정리 방식은 tools/wind_spirit_build.py)
 # 칸 순서: 0 대기 · 1~3 걷기 · 4 치유 (두 손으로 물방울을 내밂, 연두빛 후광·하트) · 5 피격
 #   · 6~8 사라짐 (녹아내림 → 물웅덩이에 주저앉음 → 웅덩이와 거품만, spirit_pop 이펙트가 그림)

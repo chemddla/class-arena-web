@@ -1,4 +1,4 @@
-# 정령사 전용 샘플(초록 긴 머리·장미 화관·초록 로브·갈색 마법서, 흰 배경) → 캐릭터 시트 assets/sprites/merc/summoner_0.webp
+# 소환사 전용 샘플(초록 긴 머리·장미 화관·초록 로브·갈색 마법서, 흰 배경) → 캐릭터 시트 assets/sprites/merc/summoner_0.webp
 # 사용: python tools/summoner_build.py   (샘플은 assets/sprites/fx/samples/summoner_*_src.png, 동작 샘플이 오는 대로 FRAMES에 늘림)
 # 칸 순서: 0 대기 · 1~4 걷기 · 5 피격 · 6~8 쓰러짐 (책을 놓치며 뒤로 젖힘 → 무릎 꿇고 앞으로 고꾸라짐 → 엎드려 쓰러짐)
 #   · 9 기본 공격 (주먹 쥔 손을 앞으로 뻗음) · 10 소환 시전 (시전 막대 동안 책을 펼쳐 빛 가루) · 11 소환 발동 (책 위 연둣빛 마법진)

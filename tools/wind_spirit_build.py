@@ -1,4 +1,4 @@
-# 정령사 바람 정령 샘플(흰 배경) → 몬스터 시트 assets/sprites/monster/wind_spirit.webp
+# 소환사 바람 정령 샘플(흰 배경) → 몬스터 시트 assets/sprites/monster/wind_spirit.webp
 # 사용: python tools/wind_spirit_build.py   (샘플은 assets/sprites/fx/samples/wind_spirit_*_src.png)
 # 정리 방식은 tools/fire_spirit_build.py와 같음 (SPIRITS에 원소를 더하면 다른 정령도 이 파일로 만들 수 있음)
 #

@@ -1,4 +1,4 @@
-# 정령사 대지 정령 샘플(새싹 달린 작은 바위 아이, 흰 배경) → 몬스터 시트 assets/sprites/monster/earth_spirit.webp
+# 소환사 대지 정령 샘플(새싹 달린 작은 바위 아이, 흰 배경) → 몬스터 시트 assets/sprites/monster/earth_spirit.webp
 # 사용: python tools/earth_spirit_build.py   (샘플은 assets/sprites/fx/samples/earth_spirit_*_src.png)
 # 칸 순서: 0 대기 · 1~3 걷기 · 4 기본 공격 (바위 주먹) · 5 피격 (튕겨 나감)
 #          6~8 무너짐 (눈 감고 버팀 → 무너져 내림 → 흙더미) · 9 도발 시전 (움찔 모으기) · 10 도발 발동 (외치기)
