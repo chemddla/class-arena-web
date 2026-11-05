@@ -11180,6 +11180,7 @@
         if (!r || !r.roomId || (r.status !== 'playing' && r.status !== 'waiting') || Date.now() - (r.createdAt || 0) >= 3600000) return;
         const players = (r.players || []).filter(Boolean);
         if (myId && players.some(p => p.id === myId && !p.practice)) return;
+        if (r.status === 'playing' && r.gameOverAt) return; // 이미 끝난 판
         const waiting = r.status === 'waiting';
         items.push({
           kind: 'minigame', id: r.roomId, icon: r.gameIcon || '🎲', waiting,
@@ -42320,6 +42321,7 @@
 
       room.status = 'playing';
       room.startedAt = Date.now();
+      room.gameOverAt = 0;
       await saveMinigameRoomData(room.roomId, room);
       showRewardBanner(`🚀 [${room.title}] 실시간 ${room.gameName} 게임이 시작되었습니다!`);
     };
@@ -42381,7 +42383,7 @@
     window.spectateMinigameRoom = function (roomId) {
       const me = getActiveStudent();
       const r = liveMinigameRoomsCache && liveMinigameRoomsCache[roomId];
-      if (!me || !r || (r.status !== 'playing' && r.status !== 'waiting')) { showNotice('⚠️ 미니게임을 찾지 못했어요. 이미 끝났을 수 있어요.'); return; }
+      if (!me || !r || (r.status !== 'playing' && r.status !== 'waiting') || (r.status === 'playing' && r.gameOverAt)) { showNotice('⚠️ 미니게임을 찾지 못했어요. 이미 끝났을 수 있어요.'); return; }
       if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
       if (sim.spectator && sim.running) { stopLiveBattleNet(); closeBattleResult(); }
       const isPlayer = (r.players || []).some(p => p && p.id === me.id && !p.practice);
@@ -42699,7 +42701,9 @@
                           <button onclick="joinMinigameRoom('${r.roomId}')" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow-lg">🚪 이 방에 입장하기</button>
                           <button onclick="spectateMinigameRoom('${r.roomId}')" class="px-3 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow-lg">📺 관전</button>
                         </div>`)
-                  : `<button onclick="spectateMinigameRoom('${r.roomId}')" class="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow-lg">📺 경기 진행중 · 관전하기</button>`
+                  : (r.gameOverAt
+                      ? `<div class="w-full py-2.5 rounded-xl bg-slate-800 text-slate-400 font-bold text-xs text-center">🏁 경기가 끝났어요 · 방장이 대기실로 돌아오면 다시 시작해요</div>`
+                      : `<button onclick="spectateMinigameRoom('${r.roomId}')" class="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow-lg">📺 경기 진행중 · 관전하기</button>`)
               }
             </div>
           </div>
@@ -42730,6 +42734,12 @@
         });
       } catch (e) {
         console.warn('[미니게임 실시간 저장 예외]:', e);
+      }
+      // 판이 끝났는지 방 정보에도 표시 → 관전하기 목록에서 끝난 경기는 빠짐 (새 판이 시작되면 다시 지움)
+      const room = liveMinigameRoomsCache[currentJoinedMinigameRoomId];
+      if (room && room.status === 'playing' && Boolean(room.gameOverAt) !== Boolean(statePayload && statePayload.gameOver)) {
+        room.gameOverAt = statePayload.gameOver ? Date.now() : 0;
+        saveMinigameRoomData(room.roomId, room);
       }
     }
 
