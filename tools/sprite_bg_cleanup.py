@@ -10,7 +10,7 @@ from scipy import ndimage as ndi
 
 JOBS = {
     'assets/sprites/monster/earth_spirit.webp': dict(halo=True, green=True),
-    'assets/sprites/merc/summoner_0.webp': dict(halo=True, boxes=[(c * 113 + 30, 58, c * 113 + 42, 80) for c in range(5)]),   # 대기·걷기 칸: 왼쪽 머리카락 사이 흰·회색 줄
+    'assets/sprites/merc/summoner_0.webp': dict(halo=True, boxes=[(c * 113 + 30, 58, c * 113 + 42, 80) for c in range(5)] + [(2 * 113 + 72, 72, 2 * 113 + 78, 77)]),   # 대기·걷기 칸: 왼쪽 머리카락 사이 흰·회색 줄 · 걷기 둘째 칸 오른손 옆 흰 점
     'assets/sprites/monster/fire_spirit.webp': dict(halo_x=(0, 864), seeds=[(780, 100), (98, 79), (93, 87)]),   # 피격 칸 꼬리 사이 · 대기 칸 손과 불덩이 사이. 사라짐 칸(6~9)의 연기는 회색이라 테두리 정리에서 뺌
     'assets/sprites/monster/storm_spirit.webp': dict(seeds=[(1180, 45)]),                   # 굵은 번개 칸: 몸과 번개 사이
 }
