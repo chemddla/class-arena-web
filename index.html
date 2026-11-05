@@ -5146,7 +5146,7 @@
         spirit_king: {
           id: 'spirit_king', name: '정령왕 강림', icon: '🌈', ccTag: '✨히든 · 정령왕', hidden: true,
           manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 3,
-          desc: '3초간 무지개 소환진을 그린 뒤 정령왕을 18초간 부릅니다 (소환사 체력 250%·공격 200%). 나올 때 주변 2칸에 300% 피해와 1초 [기절], 있는 동안 내 정령 모두 원소 조화 최대(+20%), 사라질 때 내 정령을 모두 해방해요. 정령왕도 전장에 1마리만.'
+          desc: '3초간 무지개 소환진을 그린 뒤 정령왕을 18초간 부릅니다 (소환사 체력 250%·공격 200%). 나올 때 주변 2.6칸에 300% 피해와 1초 [기절], 있는 동안 내 정령 모두 원소 조화 최대(+20%), 사라질 때 내 정령을 모두 해방해요. 정령왕도 전장에 1마리만.'
         }
       }
     };
@@ -23774,7 +23774,7 @@
       earth: { skill: 'call_earth', name: '대지 정령', icon: '🪨', color: '#a16207', job: 'knight',  sprite: 'earth_spirit',        hp: 1.5,  atk: 0.35, def: 2.2, move: 0.9, life: 900, off: [110, 0], size: 1.2 },
       wind:  { skill: 'call_wind',  name: '바람 정령', icon: '🌪️', color: '#5eead4', job: 'rogue',   sprite: 'wind_spirit',         hp: 0.45, atk: 0.55, def: 0.6, move: 1.4, life: 900, off: [70, 50] },
       storm: { skill: 'call_storm', name: '번개 정령', icon: '⚡', color: '#facc15', job: 'archer',  sprite: 'storm_spirit',        hp: 0.42, atk: 0.6,  def: 0.6, move: 1.0, life: 900, off: [10, -70], range: 260 },
-      king:  { skill: 'spirit_king', name: '정령왕',   icon: '🌈', color: '#14b8a6', job: 'warrior', sprite: 'spirit_king',         hp: 2.5,  atk: 2.0,  def: 1.2, move: 1.0, life: 1080, off: [130, 0], size: 1.92 }
+      king:  { skill: 'spirit_king', name: '정령왕',   icon: '🌈', color: '#14b8a6', job: 'warrior', sprite: 'spirit_king',         hp: 2.5,  atk: 2.0,  def: 1.2, move: 1.0, life: 1080, off: [130, 0], size: 2.5 }
     };
     const SPIRIT_SKILL_ELEM = {};
     Object.entries(SPIRIT_DEFS).forEach(([e, d]) => { SPIRIT_SKILL_ELEM[d.skill] = e; });
@@ -23782,6 +23782,7 @@
     const SPIRIT_HARMONY_BONUS = [1, 1, 1.1, 1.2]; // 서로 다른 정령 수 → 정령 기본 공격·체력 배율 (정령왕이 있으면 3종)
     const SPIRIT_RELEASE_HARMONY = 1.2;        // 3종일 때 해방 효과 +20%
     const SPIRIT_OWNER_GONE_TICKS = 60;        // 소환사가 쓰러지면 1초 뒤 정령이 사라짐
+    const SPIRIT_KING_DESCENT_CELLS = 2.6;     // 정령왕 강림 피해 범위 반지름 (칸). 강림 이펙트도 이만큼 그림
     const SPIRIT_WIND_EVADE = 0.2;             // 바람 정령: 공격의 20%를 피함
     const SPIRIT_FIRE_BURN_TICKS = 90;         // 불 정령 기본 공격: [화상] 1.5초
     const SPIRIT_STORM_CHAIN_EVERY = 3;        // 번개 정령: 세 번째 공격마다 연쇄 번개
@@ -23912,10 +23913,10 @@
       addBattleLog(`${def.icon} [소환사] ${owner.name}이(가) ${def.name}을 불렀어요`);
       return s;
     }
-    // 나올 때: 대지 정령 = 주변 1.5칸 적 도발 · 정령왕 = 주변 2칸 300% 피해 + 기절
+    // 나올 때: 대지 정령 = 주변 1.5칸 적 도발 · 정령왕 = 주변 2.6칸 300% 피해 + 기절
     function spiritOnSummon(s) {
       const C = GRID_CELL_SIZE;
-      const foes = sim.units.filter(e => e.alive && e.team !== s.team && Math.hypot(e.x - s.x, e.y - s.y) - unitBodyGap(e) - unitBodyGap(s) <= C * (s.spiritElem === 'king' ? 2 : 1.5));
+      const foes = sim.units.filter(e => e.alive && e.team !== s.team && Math.hypot(e.x - s.x, e.y - s.y) - unitBodyGap(e) - unitBodyGap(s) <= C * (s.spiritElem === 'king' ? SPIRIT_KING_DESCENT_CELLS : 1.5));
       if (s.spiritElem === 'earth') {
         // 움찔 모았다가 외치는 도발 동작 (그리기만: 이동·공격은 그대로)
         s.skillAnim = 48; s.maxSkillAnim = 48; s.activeSkillType = 'spirit_taunt'; s.attackAnim = 0;
@@ -23930,7 +23931,7 @@
         s.skillAnim = 44; s.maxSkillAnim = 44; s.activeSkillType = 'spirit_descend'; s.attackAnim = 0; s.rootTicks = 44; // 검을 땅에 꽂는 강림 자세: 다 끝날 때까지 제자리 (이동·공격 안 함)
         sim.effects.push({ type: 'spirit_king_burst', x: s.x, y: s.y, sr: Boolean(s.spiritSr), unitId: s.id, dir: s.facingDir || 1, size: s.sizeScale || 1, life: 50, maxLife: 50 });
         withSkillHit(() => foes.forEach(e => { applyDamage(s, e, s.ownerAtk * 3, '🌈', '#14b8a6'); inflictStatus(s, e, 'stun', 60); }));
-        sim.effects.push({ type: 'aoe_ring', x: s.x, y: s.y, r: C * 2, color: '#14b8a6', life: 44, maxLife: 44 });
+        sim.effects.push({ type: 'aoe_ring', x: s.x, y: s.y, r: C * SPIRIT_KING_DESCENT_CELLS, color: '#14b8a6', life: 44, maxLife: 44 });
         if (!sim.shake || sim.shake.power < 8) sim.shake = { power: 8, life: 16, maxLife: 16 };
       }
     }
@@ -23947,7 +23948,7 @@
     function pushSpiritPop(s) {
       const sp = MONSTER_SPRITE_DEFS[spiritSpriteKey(s.spiritElem, s.spiritSr)];
       if (!sp || !sp.pop) return false;
-      sim.effects.push({ type: 'spirit_pop', elem: s.spiritElem, sr: Boolean(s.spiritSr), x: s.x, y: s.y, dir: s.facingDir || 1, size: s.sizeScale || 1, life: 44, maxLife: 44 }); // size = 살아 있을 때 크기 (정령왕 1.92·대지 1.2)
+      sim.effects.push({ type: 'spirit_pop', elem: s.spiritElem, sr: Boolean(s.spiritSr), x: s.x, y: s.y, dir: s.facingDir || 1, size: s.sizeScale || 1, life: 44, maxLife: 44 }); // size = 살아 있을 때 크기 (정령왕 2.5·대지 1.2)
       return true;
     }
     function spiritFireBurst(s) {
@@ -25536,7 +25537,7 @@
       });
     }
     // 정령왕 강림: 발밑에서 원소 고리가 퍼지듯 커졌다가 (처음 25%, 반 크기 → 다 큼) 그대로 있다가 흐려짐 (마지막 40%).
-    // 폭은 피해 범위(2칸 반지름)만큼. 유닛보다 먼저(아래에) 그려서 검을 꽂은 정령왕이 고리 위에 서 있게
+    // 폭은 피해 범위(2.6칸 반지름)만큼. 유닛보다 먼저(아래에) 그려서 검을 꽂은 정령왕이 고리 위에 서 있게
     // 정령왕 소환진 (유닛 아래 바닥): 처음 24틱 동안 펼쳐지고, 12틱마다 다음 칸(색이 둘레를 따라 천천히 흐름, 한 바퀴 약 1.6초), 마지막 30틱 동안 흐려짐
     // 원소 정령 소환진도 같은 방식 (원소 색 한 장, 폭 1.5칸 × 정령 크기). 소환 시전이 짧아서 10틱 동안 펼쳐짐
     function drawSpiritCircles(ctx) {
@@ -25608,7 +25609,7 @@
     function drawSpiritKingBurst(ctx, ef, fx) {
       const p = 1 - ef.life / (ef.maxLife || 50);
       const grow = Math.min(1, p / 0.25);
-      const w = GRID_CELL_SIZE * 4 * (0.5 + 0.5 * (1 - (1 - grow) * (1 - grow))), h = w * fx.h / fx.w;
+      const w = GRID_CELL_SIZE * 2 * SPIRIT_KING_DESCENT_CELLS * (0.5 + 0.5 * (1 - (1 - grow) * (1 - grow))), h = w * fx.h / fx.w; // 폭 = 피해 범위 지름
       ctx.save();
       ctx.globalAlpha = Math.min(1, (1 - p) / 0.4);
       ctx.drawImage(fx.img, Math.round(ef.x - w / 2), Math.round(ef.y + 12 - h / 2), w, h);
