@@ -75,11 +75,13 @@ def masks(im):
     eyes = green & eyebox & face & (s > 0.12)   # 홍채 아래쪽 흐린 초록·눈꼬리까지. 얼굴 밖 앞머리는 눈이 아님
     # 머리: 어깨 위(y 48 위)는 자리로, 어깨 아래는 색으로 — 머리 초록은 색조 103~140°에 밝고 로브 초록은 145~177°에 어두움.
     #   그래서 얼굴 양옆에서 로브 위로 늘어진 두 갈래(왼쪽 x 45~55 · 오른쪽 x 72~76)도 머리. 왼쪽 긴 머리(x 45 왼쪽, y 80 위)는 자리로
-    hair = green & ~eyes & ~guard & ((yy < 48) | ((xx < 45) & (yy < 80)) | ((xx >= 75) & (xx < 84) & (yy < 62)) | (h < 142))
-    lab, n = ndi.label(hair & (yy >= 48), structure=np.ones((3, 3)))   # 어깨 아래 3픽셀 안 되는 외톨이 머리 조각은 로브
-    if n:
-        sz = ndi.sum(hair, lab, range(1, n + 1))
-        hair &= ~np.isin(lab, [i + 1 for i in range(n) if sz[i] < 3])
+    #   색으로 잡는 건 손 높이(y 80) 위까지, 그리고 머리에서 이어진 덩어리만: 로브 밝은 면도 색조가 142° 아래로 내려가는 곳이 있어서
+    #   (오른쪽 소매·로브 아랫자락) 따로 떨어진 조각까지 머리로 치면 로브에 머리색 얼룩이 생김. 맨 왼쪽(x 40 왼쪽) 머리끝은 y 80 아래도 머리
+    seed = green & ~eyes & ~guard & ((yy < 48) | ((xx < 45) & (yy < 80)) | ((xx >= 75) & (xx < 84) & (yy < 62)))
+    cand = green & ~eyes & ~guard & (h < 142) & (yy >= 48) & ((yy < 80) | (xx < 40))
+    lab, n = ndi.label(seed | cand, structure=np.ones((3, 3)))
+    keep = np.unique(lab[seed])
+    hair = seed | (cand & np.isin(lab, keep[keep > 0]))
     robe = green & ~hair & ~eyes & ~guard
     vine = hair & (yy >= 21) & (yy <= 36) & (xx >= 36) & (xx <= 84) & (v < 0.34) & (h >= 95)   # 화관 덩굴 (머리 위를 가로지르는 짙은 초록 띠)
     hair &= ~vine
@@ -105,7 +107,13 @@ def masks(im):
     lines = {k: line & (owner == i) & (dist <= 2.5) & (dist < dskin) & (~guard if k != 'eyes' else True) for i, k in enumerate(keys)}
     # 얼굴 안의 초록빛 선(얼굴 테두리·속눈썹·눈꼬리): 원래 초록 머리색에 맞춘 선이라 다른 머리색에선 얼굴에 초록 테가 남음 → 피부 그늘 갈색으로
     greenish = a & (h >= 70) & (h < 200) & (s > 0.05)
-    lines['face'] = guard & ~eyes & ~lines['eyes'] & ~skin & (greenish | outline)
+    face_px = guard & ~eyes & ~lines['eyes'] & ~skin & (greenish | outline)
+    near_eye = ndi.distance_transform_edt(~eyes) <= 2.5
+    near_hair = ndi.distance_transform_edt(~parts['hair']) <= 1.5
+    lines['white'] = face_px & (v > 0.5)                                   # 흰자 (원래 초록빛 회색) → 무채색
+    lines['eyeshade'] = face_px & ~lines['white'] & near_eye & (v > 0.14)  # 눈 모서리 그늘 → 눈동자 계단 맨 아래
+    lines['hairedge'] = face_px & ~lines['white'] & ~lines['eyeshade'] & near_hair   # 얼굴과 머리 경계 → 머리 윤곽
+    lines['face'] = face_px & ~lines['white'] & ~lines['eyeshade'] & ~lines['hairedge']   # 나머지 진한 속눈썹 선 → 거의 검은 갈색
     return parts, v, lines
 
 
@@ -129,11 +137,23 @@ def recolor(im, parts, val, colors, lines=None):
             lv = val[lines[k]]
             nv = np.clip(np.maximum(lv, 0.05) * 1.1, 0.04, vv * 0.45)
             out[lines[k], :3] = np.array([colorsys.hsv_to_rgb(hh, min(1, ss * 0.9 + 0.1), x) for x in nv]) * 255
-    if lines is not None and lines['face'].any():
-        # 얼굴 선: 피부 그늘 갈색(FACE_LINE 색조·채도)에 원래 어두움 그대로 (외형마다 같음)
-        hh, ss, _ = colorsys.rgb_to_hsv(*hexrgb(FACE_LINE))
-        nv = np.clip(val[lines['face']], 0.08, 0.42)
-        out[lines['face'], :3] = np.array([colorsys.hsv_to_rgb(hh, ss, x) for x in nv]) * 255
+    if lines is not None:
+        def paint(m, base, vmax, sat_k=1.0):
+            if not m.any(): return
+            hh, ss, _ = colorsys.rgb_to_hsv(*base)
+            nv = np.clip(val[m], 0.04, vmax)
+            out[m, :3] = np.array([colorsys.hsv_to_rgb(hh, min(1, ss * sat_k), x) for x in nv]) * 255
+        # 속눈썹 선: 거의 검은 갈색 (원래 어두움 그대로, 밝아도 0.2까지 — 눈 둘레가 갈색 테로 보이지 않게)
+        paint(lines['face'], hexrgb(FACE_LINE), 0.2)
+        # 흰자: 색 없이 원래 밝기 그대로
+        m = lines['white']
+        if m.any(): out[m, :3] = np.repeat(val[m][:, None] * 255, 3, axis=1)
+        # 눈 모서리 그늘: 그 외형 눈동자 계단 맨 아래 색조, 원래 어두움
+        if colors.get('eyes'): paint(lines['eyeshade'], ramp_color(colors['eyes'], 0), 0.32, 0.8)
+        # 얼굴과 머리 경계: 그 외형 머리 계단 맨 아래 색조 (머리 윤곽과 같은 식)
+        if colors.get('hair'):
+            vv = colorsys.rgb_to_hsv(*ramp_color(colors['hair'], 0))[2]
+            paint(lines['hairedge'], ramp_color(colors['hair'], 0), max(0.12, vv * 0.6))
     return out
 
 
