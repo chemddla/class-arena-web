@@ -124,12 +124,16 @@ def frame_masks(im, f):
     # 치마·금장식: 몸통 올리브·금색 (얼굴·책·화관 근처 빼고)
     head_zone = ndi.distance_transform_edt(~(vine | flower)) <= 3
     pages = a & (h >= 20) & (h < 60) & (v > 0.6) & (s < 0.4)   # 빛나는 책 종이 (시전 칸)·책 종이 가장자리 — 그대로
-    if f in BOOKLESS:   # 시전 칸 펼친 책 (오른손 위, x 70~ · y 72 위): 그늘진 종이까지 모두 그대로 (치마로 잡혀 분홍·크림이 되던 것)
-        pages |= a & (xx >= 70) & (yy <= 72) & (h >= 10) & (h < 60) & ~skin
+    if f in BOOKLESS:   # 시전 칸 펼친 책 (오른손 위, x 70~ · y 72 위): 빛나는 밝은 종이는 그대로, 흐린 갈색 표지·그늘은 책 표지 색으로
+        bookzone = a & (xx >= 70) & (yy <= 72) & (h >= 10) & (h < 60) & ~skin & ~outline
+        cover = bookzone & ~((v > 0.6) & (s < 0.4))
+        bookarea = bookarea | bookzone
+        pages |= bookzone & ~cover
     warm = a & ~outline & ~skin & ~face & ~bookarea & ~flower & ~head_zone & ~glow & ~pages & (h >= 12) & (h < 85) & (s > 0.2) & ~hair & ~robe & ~vine
     trim = warm & (s > 0.45) & (v > 0.5)
     skirt = warm & ~trim
-    parts = dict(hair=hair, vine=vine, robe=robe, skirt=skirt, trim=trim, flower=flower, book=book, eyes=eyes, rune=rune)
+    castbook = cover if f in BOOKLESS else np.zeros((H, W), bool)   # 시전 칸 빛나는 표지: 책 색, 밝기 범위는 이 칸 것으로 (시트 범위면 계단 맨 밝은 끝에만 놓여 거의 원본처럼 보임)
+    parts = dict(hair=hair, vine=vine, robe=robe, skirt=skirt, trim=trim, flower=flower, book=book, eyes=eyes, rune=rune, castbook=castbook)
     # 빈 옷 픽셀 → 둘레에 많은 옷 부위로
     assigned = np.zeros((H, W), bool)
     for m in parts.values(): assigned |= m
@@ -176,14 +180,14 @@ def load():
     info = [frame_masks(fr, i) for i, fr in enumerate(frames)]
     # 부위별 밝기 범위는 시트 전체로 (칸끼리 같은 색이 같은 계단에 오게)
     rng = {}
-    for k in info[0][0]:
+    for k in [k for k in info[0][0] if k != 'castbook']:   # castbook은 칸 안 범위 (recolor가 percentile로)
         vals = np.concatenate([inf[2][inf[0][k]] for inf in info if inf[0][k].any()]) if any(inf[0][k].any() for inf in info) else np.array([0.3])
         rng[k] = (np.percentile(vals, 5), np.percentile(vals, 95))
     return sheet, frames, info, rng
 
 
 def recolor_frame(fr, parts, lines, val, colors, rng):
-    colors = dict(colors, rune=colors['trim'])   # 책 무늬는 외형 금장식 색
+    colors = dict(colors, rune=colors['trim'], castbook=colors['book'])   # 책 무늬는 외형 금장식 색, 시전 칸 표지는 책 색
     return PP.recolor(fr, parts, val, colors, lines, rng)
 
 
