@@ -17,7 +17,7 @@ W, H = 113, 106
 HUE_SHIFT = 16.0
 FACE_LINE = '#6a3428'
 CLOTH = ('robe', 'skirt')   # 명암을 고르게 펴고 단으로 끊는 옷 부위
-CLOTH_STEPS = 5   # 얼굴 테두리·속눈썹 선 색 (피부 그늘 갈색)
+CLOTH_STEPS = 4   # 얼굴 테두리·속눈썹 선 색 (피부 그늘 갈색)
 SCALE = 4
 
 VARIANTS = [
@@ -150,12 +150,12 @@ def recolor(im, parts, val, colors, lines=None, rng=None):   # rng = {부위: (�
             # 옷(로브·망토·치마): 원본의 잔 명암 잡티까지 따라가면 얼룩덜룩함 → 같은 부위 이웃 3×3 가운데값으로 고르게 편 뒤
             #   CLOTH_STEPS단으로 끊음 (pixel-art-studio palettes: 재질 하나 3~5색, 단 사이 밝기 15~25%). 밝은 끝도 덜 하얗게 (망토 밝은 주름이 분홍 덩어리 되던 것)
             tm = np.full(val.shape, np.nan); tm[m] = t
-            pad = np.pad(tm, 1, constant_values=np.nan)
-            stack = np.stack([pad[1 + dy:1 + dy + val.shape[0], 1 + dx:1 + dx + val.shape[1]] for dy in (-1, 0, 1) for dx in (-1, 0, 1)])
+            pad = np.pad(tm, 2, constant_values=np.nan)   # 5×5 (3×3이면 명암 단이 칸마다 들쭉날쭉해 망토에 조각 얼룩)
+            stack = np.stack([pad[2 + dy:2 + dy + val.shape[0], 2 + dx:2 + dx + val.shape[1]] for dy in (-2, -1, 0, 1, 2) for dx in (-2, -1, 0, 1, 2)])
             t = np.nanmedian(stack, axis=0)[m]
             q = np.clip(np.round(np.clip(t, 0, 1) * (CLOTH_STEPS - 1)) / (CLOTH_STEPS - 1), 0, 1)
             t = np.where(t < 0, t, q)
-            light = 0.38
+            light = 0.15   # 밝은 끝을 더 낮춤 (진홍 망토 밝은 주름이 연어색 조각이 되던 것)
         cols = np.array([ramp_color(c, x, light=light) for x in np.clip(t, 0, 1)])
         # 계단 아래 5%보다 어두운 픽셀(머리카락 결·접힌 선)은 계단 맨 아래 색에서 원래 어두운 만큼 더 어둡게 → 밝은 머리도 결이 뭉개지지 않음
         under = t < 0

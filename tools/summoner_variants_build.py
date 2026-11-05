@@ -99,11 +99,18 @@ def frame_masks(im, f):
             if m.sum() >= 12 and v[m].mean() > 0.22:   # 공격 칸 왼쪽으로 날리는 어두운 머리도
                 hair |= m
     robe = green & ~hair & ~eyes & ~guard
-    # 머리·로브 경계 잡티 고르기: 둘레 8칸 중 6칸 넘게 다른 쪽이면 그쪽으로 (두 번)
-    for _ in range(2):
-        nh = ndi.convolve(hair.astype(int), K8, mode='constant') - hair
-        nr = ndi.convolve(robe.astype(int), K8, mode='constant') - robe
-        to_r = hair & (nr >= 6) & (nh <= 1); to_h = robe & (nh >= 6) & (nr <= 1)
+    # 아래로 늘어진 머리끝: 머리에서 4방향으로 이어진 색조 148° 아래 초록은 손 높이(얼굴 위에서 얼굴 키 2.2배)까지 머리로 키움 (서 있는 칸).
+    #   머리끝은 어두워져 밝기 기준에 걸려 어깨 아래에서 망토 색으로 끊겼음. 망토 쪽으로 샌 조각은 아래 다수결이 되돌림
+    if upright:
+        grow_ok = green & ~eyes & ~guard & (h < 148) & (yy < ftop + 2.2 * fh)
+        hair = ndi.binary_propagation(hair, mask=grow_ok | hair)
+    # 머리·로브 경계 잡티 고르기: 5×5 안 머리·로브 수 다수결 (세 번). 머리끝·망토 아랫단은 색조가 겹쳐(135~157°) 한 칸씩 번갈아 잡혀 얼룩이 됐음.
+    #   폭 3칸 머리 갈래는 5×5에서 15:10으로 살아남음. 정수리 씨앗은 그대로 머리
+    K5 = np.ones((5, 5), int)
+    for _ in range(3):
+        nh = ndi.convolve(hair.astype(int), K5, mode='constant')
+        nr = ndi.convolve(robe.astype(int), K5, mode='constant')
+        to_r = hair & ~seed & (nr > nh + 2); to_h = robe & (nh > nr + 2)
         hair = (hair & ~to_r) | to_h; robe = (robe & ~to_h) | to_r
     # 화관 덩굴: 장미 둘레 5칸 + (서 있는 칸) 정수리 둘레 띠의 짙은 초록. 누운 칸은 장미 둘레만 (띠로 잡으면 머리 대부분이 덩굴이 됨)
     crownband = (yy >= ftop - 14) & (yy <= ftop + 0.15 * fh) & upright
@@ -161,6 +168,12 @@ def frame_masks(im, f):
     near_tr = ndi.binary_dilation(im[..., 3] < 40, structure=K8)
     vmax = ndi.maximum_filter(np.where(a, v, 0.0), size=3)
     edge_dark = (v < 0.22) & ~guard & (near_tr | (vmax - v >= 0.15))
+    # 외딴 어두운 점(이어진 덩어리 3픽셀 아래, 투명한 곳과 안 닿음)은 선이 아니라 옷 결 → 윤곽 아님 (밝은 옷 위 검은 점 얼룩)
+    lab_d, n_d = ndi.label(edge_dark, structure=K8)
+    if n_d:
+        sz_d = ndi.sum(edge_dark, lab_d, range(1, n_d + 1))
+        small = np.isin(lab_d, [i + 1 for i in range(n_d) if sz_d[i] < 3])
+        edge_dark &= ~(small & ~near_tr)
     for k in ('hair', 'vine', 'robe', 'skirt'):
         lines[k] |= parts[k] & edge_dark
     greenish = a & (h >= 70) & (h < 200) & (s > 0.05) & ~glow
