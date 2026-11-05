@@ -16266,7 +16266,7 @@
     sim.controllers = {};
     const battleControl = { mode: 'auto', unitId: null, locked: false }; // locked: 이번 전투에서 이미 골랐으면 바꿀 수 없음
     // 실시간 결투 연결 상태 (아래 [실시간 결투 화면 동기화] 참고)
-    const LIVE_FRAME_INTERVAL_MS = 100; // 방장이 화면을 보내는 간격 (실제 시간)
+    const LIVE_FRAME_INTERVAL_MS = 150; // 방장이 화면을 보내는 간격 (실제 시간) · 받는 화면은 두 화면 사이를 이어 그림 (100ms면 Firebase 내려받기 용량이 너무 큼)
     const LIVE_GUEST_TIMEOUT_MS = 20000;
     const LIVE_UNIT_ST_KEYS = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'blessed', 'rally', 'empower', 'immune', 'resist', 'stealth', 'swift', 'taunt', 'guard', 'spin', 'rampage', 'darkness', 'fear', 'confuse', 'miracle', 'slow', 'skate', 'hex', 'weaken', 'anthem', 'ballad', 'silence', 'berserk', 'undying', 'vow', 'aegis'];
     const liveNet = {
@@ -33726,8 +33726,8 @@
       } else {
         const cur = syncCanon(s) || {};
         new Set([...Object.keys(prev), ...Object.keys(cur)]).forEach(k => {
-          if (k === 'password' || syncSig(prev[k]) === syncSig(cur[k])) return;
-          updates[`${base}/students/${s.id}/${k}`] = toFirebaseValue(s[k]);
+          if (k === 'password') return;
+          addSyncDiffPaths(updates, `${base}/students/${s.id}/${k}`, prev[k], cur[k], 1);
         });
       }
       if (nameChanged) {
@@ -33735,6 +33735,24 @@
         updates[`${base}/profiles/${s.id}/num`] = toFirebaseValue(s.num ?? null);
         updates[`${base}/profiles/${s.id}/name`] = toFirebaseValue(s.name ?? null);
       }
+    }
+
+    // 서버에 있는 값(prev)과 지금 값(cur, 둘 다 syncCanon 결과)을 비교해 바뀐 아래 칸만 올림
+    // 용병 한 명의 경험치가 올랐다고 용병 목록(roster) 전체를 다시 올리면 반 친구 모두에게 그만큼 다시 내려가서
+    // Firebase 내려받기 용량이 금방 바닥남 → 객체·배열은 몇 단계 안쪽까지 들어가서 바뀐 칸만 경로로 올림
+    const SYNC_DIFF_MAX_DEPTH = 4;
+    function addSyncDiffPaths(updates, path, prev, cur, depth) {
+      if (syncSig(prev) === syncSig(cur)) return;
+      const bothArr = Array.isArray(prev) && Array.isArray(cur);
+      const bothObj = prev && cur && typeof prev === 'object' && typeof cur === 'object' && !Array.isArray(prev) && !Array.isArray(cur);
+      if (depth < SYNC_DIFF_MAX_DEPTH && (bothArr || bothObj)) {
+        const keys = bothArr
+          ? Array.from({ length: Math.max(prev.length, cur.length) }, (_, i) => String(i))
+          : [...new Set([...Object.keys(prev), ...Object.keys(cur)])];
+        keys.forEach(k => addSyncDiffPaths(updates, `${path}/${k}`, prev[k], cur[k], depth + 1));
+        return;
+      }
+      updates[path] = cur === undefined ? null : toFirebaseValue(cur);
     }
 
     // Firebase는 빈 배열/빈 객체/null을 저장하지 않으므로, 비교할 때도 똑같이 제거하고 키를 정렬합니다.
@@ -37364,13 +37382,25 @@
     }
 
     // ----- 방장: 화면 상태 보내기 -----
+    function packLiveStatuses(st) {
+      if (!st) return '';
+      const out = [];
+      LIVE_UNIT_ST_KEYS.forEach((k, j) => { const v = liveNum(st[k]); if (v) out.push(j + ':' + v); });
+      return out.join(',');
+    }
+    function unpackLiveStatuses(v) {
+      if (Array.isArray(v)) return v; // 예전 방식 (상태마다 한 칸씩)
+      const arr = [];
+      if (typeof v === 'string' && v) v.split(',').forEach(pair => { const [j, n] = pair.split(':'); arr[Number(j)] = liveNum(Number(n)); });
+      return arr;
+    }
     function packLiveUnit(u) {
       return [
         liveR1(u.x), liveR1(u.y), Math.round(liveNum(u.hp)), Math.round(liveNum(u.shield)), Math.round(liveNum(u.mana)), u.alive ? 1 : 0,
         u.facingDir === -1 ? -1 : 1, liveR2(u.facingAngle), u.isMoving ? 1 : 0,
         liveNum(u.attackAnim), liveNum(u.skillAnim), String(u.activeSkillType || ''), liveNum(u.hurtAnim), liveNum(u.dashAnim),
         liveNum(u.dashCooldown), liveNum(u.castLock),
-        LIVE_UNIT_ST_KEYS.map(k => liveNum(u.statuses && u.statuses[k])),
+        packLiveStatuses(u.statuses), // 걸린 상태만 '번호:틱' 글자로 (0이 30개 넘게 늘어선 배열을 매번 보내지 않게)
         (u.skillSlots || []).map(k => liveNum(u.skillCooldowns && u.skillCooldowns[k])),
         u.casting ? [u.casting.left, u.casting.total, String(u.casting.icon || ''), String(u.casting.key || '')] : 0,
         liveNum(u.itemCd), liveNum(u.atkSpdStacks), liveNum(u.hasteTicks), liveNum(u.frenzyTicks),
@@ -37816,7 +37846,7 @@
         u.dashAnim = liveNum(p[13]);
         u.dashCooldown = liveNum(p[14]);
         u.castLock = liveNum(p[15]);
-        const st = Array.isArray(p[16]) ? p[16] : [];
+        const st = unpackLiveStatuses(p[16]);
         LIVE_UNIT_ST_KEYS.forEach((k, j) => { u.statuses[k] = liveNum(st[j]); });
         const cds = Array.isArray(p[17]) ? p[17] : [];
         u.skillSlots.forEach((key, j) => { u.skillCooldowns[key] = liveNum(cds[j]); });
