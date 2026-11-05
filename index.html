@@ -16917,6 +16917,7 @@
       const units = sim.units.map(u => liveUnitCopy(u, drop));
       const stamp = liveNet.towerCast || typeof liveNet.bid !== 'number' ? {} : { b: liveNet.bid, ep: liveNet.ep || 0 };
       liveNet.ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, ...stamp, units }).catch(() => {});
+      liveNet.sentU = null; // 다음 화면은 전체로 (유닛 목록이 바뀌었거나 새 친구가 들어옴)
     }
 
     // 분신 만들기: 장비 '환영' (능력치 30%, 시간 제한 없음) · 도적 스킬 '분신' (능력치 50%, 20초)
@@ -17907,7 +17908,7 @@
       if (!ref || !idxRef) return;
       Object.assign(liveNet, {
         role: 'host', roomId, ref, startedAt: Date.now(), finished: false,
-        sent: new WeakSet(), pendingLogs: [], lastFramePublishedAt: 0, spectator: false,
+        sent: new WeakSet(), pendingLogs: [], lastFramePublishedAt: 0, spectator: false, sentU: null, sentT: 0, keyAt: 0,
         team: false, remoteCtrls: {}, myId: stu.id, towerCast: true, towerWatchers: 0
       });
       sim.effects.forEach(x => liveNet.sent.add(x));
@@ -17924,7 +17925,9 @@
       idxRef.set(liveNet.towerIdxInfo).catch(() => {});
       idxRef.child('watchers').on('value', snap => {
         const val = snap && snap.val();
-        liveNet.towerWatchers = val && typeof val === 'object' ? Object.keys(val).length : 0;
+        const n = val && typeof val === 'object' ? Object.keys(val).length : 0;
+        if (n > liveNet.towerWatchers) liveNet.sentU = null; // 새로 보는 친구에게 바로 전체 화면 한 장
+        liveNet.towerWatchers = n;
       });
     }
 
@@ -35095,13 +35098,71 @@
     function handleClassDeletedRemotely(classCode) {
       resetClassSyncCache(classCode, { loaded: false, metaExists: false }); // 삭제된 학급을 다시 올리지 않도록
       forgetLocalClassCopy(classCode);
-      classSyncRefs.forEach(r => { try { r.off(); } catch (e) {} });
-      classSyncRefs = [];
+      detachClassSyncRefs();
       resetStudentPrivSub();
       showNotice(`🗑️ 학급 [${classCode}]이(가) 삭제되었습니다. 다른 학급 코드로 입장해주세요.`);
       const inp = document.getElementById('landingClassCodeInput');
       if (inp) inp.value = '';
       goToLandingPage();
+    }
+
+    // ----- 학급 5칸(meta·students·profiles·auctions·tradeOffers) 구독 -----
+    // 한 학급에 한 번만 걸고 그대로 이어 씀. 예전엔 페이지를 열 때 on, 입장 코드를 넣으면 once로 또, 그 뒤 on을 다시 걸어서
+    // 학급 데이터(학생 23명 기준 수백 KB)를 접속 한 번에 세 번까지 내려받았음 (Firebase 내려받기 용량)
+    let classSyncCode = null;   // 지금 걸려 있는 5칸 구독의 학급 코드
+    let classExtraCode = null;  // 선물함·학생 디자인 외형 구독의 학급 코드
+    let classExtraRefs = [];
+    let classPrime = null;      // 입장 코드로 처음 받는 중: 첫 전체 소식을 넘겨 줄 곳 { code, resolve, reject }
+    function scheduleRemoteClassApply(cleanCode) {
+      if (classApplyTimer) clearTimeout(classApplyTimer);
+      classApplyTimer = setTimeout(() => handleRemoteClassUpdate(cleanCode), 60);
+    }
+    function detachClassSyncRefs() {
+      classSyncRefs.forEach(r => { try { r.off(); } catch (e) {} });
+      classSyncRefs = [];
+      classSyncCode = null;
+      classExtraRefs.forEach(r => { try { r.off(); } catch (e) {} });
+      classExtraRefs = [];
+      classExtraCode = null;
+    }
+    // 5칸 구독을 걸어 둠 · 같은 학급이 이미 걸려 있으면 그대로 둠 → 새로 걸었으면 true
+    function attachClassSyncRefs(cleanCode, db) {
+      if (classSyncCode === cleanCode && classSyncRefs.length) return false;
+      classSyncRefs.forEach(r => { try { r.off(); } catch (e) {} });
+      classSyncRefs = [];
+      classSyncCode = cleanCode;
+      classRemote = {};
+      classRemoteReceived = new Set();
+      // 학급 전체가 아니라 필요한 5개 칸만 구독 (방·미니게임 변화로 화면 전체가 다시 그려지지 않도록)
+      CLASS_SYNC_KEYS.forEach(key => {
+        const ref = db.ref(`classes/${cleanCode}/${key}`);
+        ref.on('value', (snap) => {
+          if (classSyncCode !== cleanCode) return;
+          classRemote[key] = snap && typeof snap.val === 'function' ? snap.val() : null;
+          classRemoteReceived.add(key);
+          if (classRemoteReceived.size < CLASS_SYNC_KEYS.length) return;
+          if (classPrime && classPrime.code === cleanCode) { const pr = classPrime; classPrime = null; pr.resolve({ ...classRemote }); return; } // 입장 코드 조회에 넘김
+          if (String(state.classCode || '').toUpperCase() !== cleanCode) return;
+          scheduleRemoteClassApply(cleanCode);
+        }, (err) => {
+          console.warn(`[학급 ${key} 구독 실패 - DB 규칙을 확인하세요]:`, err);
+          if (classSyncCode === cleanCode) { classSyncRefs.forEach(r => { try { r.off(); } catch (e) {} }); classSyncRefs = []; classSyncCode = null; }
+          if (classPrime && classPrime.code === cleanCode) { const pr = classPrime; classPrime = null; pr.reject(err); }
+        });
+        classSyncRefs.push(ref);
+      });
+      return true;
+    }
+    // 입장 코드로 학급을 받음: 구독을 걸고(이미 있으면 그대로) 첫 전체 소식을 돌려줌 · 서버에 연결할 수 없으면 null
+    function primeClassSync(cleanCode) {
+      const db = RealtimePvpService.initFirebaseClientSafe();
+      if (!db || typeof db.ref !== 'function') return Promise.resolve(null);
+      return new Promise((resolve, reject) => {
+        if (classPrime) { const old = classPrime; classPrime = null; old.reject(new Error('다른 학급 코드 조회로 바뀜')); }
+        classPrime = { code: cleanCode, resolve, reject };
+        const fresh = attachClassSyncRefs(cleanCode, db);
+        if (!fresh && classRemoteReceived.size >= CLASS_SYNC_KEYS.length) { classPrime = null; resolve({ ...classRemote }); } // 이미 받아 둔 학급
+      });
     }
 
     function subscribeToActiveClassRealtime(classCode) {
@@ -35110,27 +35171,22 @@
       const db = RealtimePvpService.initFirebaseClientSafe();
       if (!db || typeof db.ref !== 'function') return;
       try {
-        classSyncRefs.forEach(r => { try { r.off(); } catch (e) {} });
-        classSyncRefs = [];
-        resetStudentPrivSub();
-        classRemote = {};
-        classRemoteReceived = new Set();
-        // 학급 전체가 아니라 필요한 5개 칸만 구독 (방·미니게임 변화로 화면 전체가 다시 그려지지 않도록)
-        CLASS_SYNC_KEYS.forEach(key => {
-          const ref = db.ref(`classes/${cleanCode}/${key}`);
-          ref.on('value', (snap) => {
-            if (String(state.classCode || '').toUpperCase() !== cleanCode) return;
-            classRemote[key] = snap && typeof snap.val === 'function' ? snap.val() : null;
-            classRemoteReceived.add(key);
-            if (classRemoteReceived.size < CLASS_SYNC_KEYS.length) return;
-            if (classApplyTimer) clearTimeout(classApplyTimer);
-            classApplyTimer = setTimeout(() => handleRemoteClassUpdate(cleanCode), 60);
-          }, (err) => {
-            console.warn(`[학급 ${key} 구독 실패 - DB 규칙을 확인하세요]:`, err);
-          });
-          classSyncRefs.push(ref);
-        });
+        if (attachClassSyncRefs(cleanCode, db)) resetStudentPrivSub();
+        else if (classRemoteReceived.size >= CLASS_SYNC_KEYS.length) scheduleRemoteClassApply(cleanCode); // 받아 둔 소식을 이 학급 화면에 적용
+        if (classExtraCode !== cleanCode) {
+          classExtraRefs.forEach(r => { try { r.off(); } catch (e) {} });
+          classExtraRefs = [];
+          classExtraCode = cleanCode;
+          subscribeClassExtras(cleanCode, db);
+        }
+        subscribeToInteractiveChannels(cleanCode, db);
+        ensureStudentPrivSub();
+      } catch (e) {
+        console.warn('[실시간 학급 구독 예외]:', e);
+      }
+    }
 
+    function subscribeClassExtras(cleanCode, db) {
         const inboxRef = db.ref(`classes/${cleanCode}/transfers`);
         inboxRef.on('value', (snap) => {
           if (String(state.classCode || '').toUpperCase() !== cleanCode) return;
@@ -35138,7 +35194,7 @@
         }, (err) => {
           console.warn('[받을 선물함 구독 실패 - DB 규칙을 확인하세요]:', err);
         });
-        classSyncRefs.push(inboxRef);
+        classExtraRefs.push(inboxRef);
 
         // 승인된 학생 디자인 외형 목록 (그림은 ClassSkins가 따로 한 번만 받음)
         const skinsRef = db.ref(`classes/${cleanCode}/skins`);
@@ -35148,13 +35204,7 @@
         }, (err) => {
           console.warn('[학생 디자인 외형 구독 실패 - DB 규칙을 확인하세요]:', err);
         });
-        classSyncRefs.push(skinsRef);
-
-        subscribeToInteractiveChannels(cleanCode, db);
-        ensureStudentPrivSub();
-      } catch (e) {
-        console.warn('[실시간 학급 구독 예외]:', e);
-      }
+        classExtraRefs.push(skinsRef);
     }
 
     // ==================== [실시간 대기 로비방 (미니게임 4종 · 엘리트 협동 레이드 · 실시간 PvP) & 준비완료(Ready) → 게임시작(Start) 엔진] ====================
@@ -37373,7 +37423,7 @@
         // bid: 이번 전투 표(방 시작 시각) · ep: 방장이 바뀔 때마다 1씩 커지는 번호 → 기기 시계가 달라도 '지난 전투의 화면'과 '새 방장의 화면'을 구분함
         bid: takeover && typeof prevBid === 'number' ? prevBid : (roomStartedAt || Date.now()), ep: takeover ? prevEp + 1 : 0,
         startedAt: Date.now(), initReceived: false, lastFrameAt: Date.now(), finished: false,
-        sent: new WeakSet(), pendingLogs: [], remoteCtrl: null, remoteUnitId: null,
+        sent: new WeakSet(), pendingLogs: [], remoteCtrl: null, remoteUnitId: null, sentU: null, sentT: 0, keyAt: 0,
         lastInputSentAt: 0, inputTimer: null, lastAimSent: null,
         guestChose: false, started: false, lastStatusAt: 0, hostStatus: null,
         lastFramePublishedAt: 0, spectator, timeoutExtended: false,
@@ -37449,6 +37499,7 @@
             ref.child('init').set(JSON.parse(JSON.stringify({ at: Date.now(), b: liveNet.bid, ep: liveNet.ep, units }))).catch(() => {});
           }).catch(() => {});
           liveNet.lastFramePublishedAt = 0;
+          liveNet.sentU = null;
         } else if (liveNet.spectator) {
           // 관전자: 끊긴 사이 서버가 내 관전 표시를 지웠으면 다시 적음
           // (안 적으면 중계하는 친구가 보는 사람이 없는 줄 알고 화면을 안 보내서, 20초 뒤 '연결이 끊겨' 관전이 닫혔음)
@@ -37512,6 +37563,46 @@
       if (typeof v === 'string' && v) v.split(',').forEach(pair => { const [j, n] = pair.split(':'); arr[Number(j)] = liveNum(Number(n)); });
       return arr;
     }
+    // ----- 유닛 칸은 '바뀐 값만' 보냄 -----
+    // 화면 한 장(평균 1.9KB)의 3/4가 유닛 칸(u)이라, 매 화면 다 보내면 받는 친구마다 초당 10KB 넘게 내려받았음 (Firebase 내려받기 용량)
+    // 방장: LIVE_KEYFRAME_MS마다 전체(u) 한 장, 그 사이는 바로 앞 화면(bt = 그 화면의 틱)을 바탕으로 { 유닛번호: { 칸번호: 값 } }(d)만 보냄
+    //   틱마다 1씩 줄어드는 칸(공격·피격 모습, 쿨타임, 상태 남은 틱 등)은 받는 쪽도 똑같이 줄여서 예측하므로 예측과 같으면 보내지 않음
+    // 받는 쪽: 앞 화면 전체를 기억해 두고 예측 + 바뀐 값으로 전체를 되살린 뒤 예전처럼 처리 · 앞 화면이 없거나(방금 들어옴) 틱이 안 맞으면 다음 전체 화면까지 기다림
+    const LIVE_KEYFRAME_MS = 2000;
+    const LIVE_UNIT_TICK_DOWN = [9, 10, 12, 13, 14, 15, 19, 21, 22, 25, 32]; // 틱마다 1씩 줄어 0에서 멈추는 칸 (살아 있는 유닛만)
+    const liveTickDown = (v, dt) => Math.max(0, liveNum(v) - dt);
+    function liveStatusesTickDown(v, dt) {
+      if (typeof v !== 'string' || !v) return v;
+      return v.split(',').map(pair => { const [j, n] = pair.split(':'); const left = liveTickDown(Number(n), dt); return left ? `${j}:${left}` : ''; }).filter(Boolean).join(',');
+    }
+    // 앞 화면의 유닛 칸(prev)에서 dt틱 뒤에 예상되는 값
+    function predictLiveUnit(prev, dt) {
+      const p = Array.isArray(prev) ? prev.slice() : [];
+      if (!(dt > 0) || !p.length || p[5] !== 1) return p; // 죽은 유닛은 방장 쪽에서도 아무 칸도 줄지 않음
+      LIVE_UNIT_TICK_DOWN.forEach(i => { if (typeof p[i] === 'number') p[i] = liveTickDown(p[i], dt); });
+      p[16] = liveStatusesTickDown(p[16], dt);
+      if (Array.isArray(p[17])) p[17] = p[17].map(v => liveTickDown(v, dt));
+      if (Array.isArray(p[18])) p[18] = [liveTickDown(p[18][0], dt), ...p[18].slice(1)]; // 시전 남은 틱
+      if (typeof p[31] === 'number' && p[31] >= 0) p[31] += dt; // 불사 실루엣: 몇 틱 전
+      return p;
+    }
+    const liveSame = (a, b) => a === b || (Boolean(a) && Boolean(b) && typeof a === 'object' && typeof b === 'object' && JSON.stringify(a) === JSON.stringify(b));
+    // 예측과 다른 칸만 { 칸번호: 값 } · 모두 같으면 null
+    function packLiveUnitDelta(predicted, cur) {
+      let d = null;
+      for (let i = 0; i < cur.length; i++) if (!liveSame(predicted[i], cur[i])) (d = d || {})[i] = cur[i];
+      return d;
+    }
+    // 받는 쪽: 앞 화면(base) + 예측 + 바뀐 값(d) → 전체 유닛 칸 (Firebase는 번호 키 객체를 배열로 바꿔 주기도 하므로 null 칸은 건너뜀)
+    function unpackLiveUnitDelta(base, d, dt) {
+      return base.map((prev, i) => {
+        const p = predictLiveUnit(prev, dt);
+        const c = d && d[i];
+        if (c && typeof c === 'object') Object.keys(c).forEach(k => { if (c[k] !== null && c[k] !== undefined) p[Number(k)] = c[k]; });
+        return p;
+      });
+    }
+
     function packLiveUnit(u) {
       return [
         liveR1(u.x), liveR1(u.y), Math.round(liveNum(u.hp)), Math.round(liveNum(u.shield)), Math.round(liveNum(u.mana)), u.alive ? 1 : 0,
@@ -37545,7 +37636,10 @@
     }
     const LIVE_INIT_DROP = new Set(['manualAimTarget']);
     function liveUnitCopy(u, drop) {
-      return JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) || (k && isLiveUnitRef(v)) ? undefined : v)));
+      const c = JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) || (k && isLiveUnitRef(v)) ? undefined : v)));
+      // 0인 상태·스킬 쿨타임은 빼고 보냄 (유닛 한 명당 약 450B · 받는 쪽 normalizeLiveUnit이 0으로 채움)
+      ['statuses', 'skillCooldowns'].forEach(k => { const o = c[k]; if (o && typeof o === 'object') Object.keys(o).forEach(x => { if (!o[x]) delete o[x]; }); });
+      return c;
     }
 
     function packLiveProjectile(p) {
@@ -37578,14 +37672,18 @@
         });
         return out;
       };
+      const packed = sim.units.map(packLiveUnit);
+      const base = liveNet.sentU;
+      // 전체 화면: 강제(결과·넘기기)·처음·유닛 수가 바뀜·LIVE_KEYFRAME_MS 지남 · 그 밖에는 앞 화면 대비 바뀐 칸만
+      const keyframe = force || !base || base.length !== packed.length || nowMs - (liveNet.keyAt || 0) >= LIVE_KEYFRAME_MS;
       const frame = {
         at: Date.now(),
         ...(liveNet.towerCast || typeof liveNet.bid !== 'number' ? {} : { b: liveNet.bid, ep: liveNet.ep || 0 }),
         t: sim.tickCount,
-        u: sim.units.map(packLiveUnit),
+        ...(keyframe ? { u: packed } : { bt: liveNet.sentT }),
         p: sim.projectiles.slice(0, 80).map(packLiveProjectile),
         e: fresh(sim.effects).map(packLiveEffect),
-        f: fresh(sim.floatTexts),
+        f: fresh(sim.floatTexts).map(ft => [liveR1(ft.x), liveR1(ft.y), String(ft.text || ''), String(ft.color || ''), liveNum(ft.life)]), // 받는 쪽은 이 5칸만 씀
         l: liveNet.pendingLogs.splice(0, 10),
         zn: (sim.zones || []).map(z => [liveR1(z.x), liveR1(z.y), z.r, z.life, z.kind])
       };
@@ -37596,6 +37694,14 @@
       if (sim.awaitingControlChoice) frame.ps = 'choose';
       if (sim.shake && !liveNet.sent.has(sim.shake)) { liveNet.sent.add(sim.shake); frame.sk = [sim.shake.power, sim.shake.life, sim.shake.maxLife]; }
       if (sim.flash && !liveNet.sent.has(sim.flash)) { liveNet.sent.add(sim.flash); frame.fl = [String(sim.flash.color || '#ffffff'), sim.flash.life, sim.flash.maxLife]; }
+      if (keyframe) liveNet.keyAt = nowMs;
+      else {
+        const dt = sim.tickCount - liveNet.sentT, d = {};
+        packed.forEach((a, i) => { const c = packLiveUnitDelta(predictLiveUnit(base[i], dt), a); if (c) d[i] = c; });
+        if (Object.keys(d).length) frame.d = d;
+      }
+      liveNet.sentU = packed;
+      liveNet.sentT = sim.tickCount;
       // undefined·NaN 값은 서버에 올릴 수 없으므로 JSON으로 한 번 정리
       liveNet.ref.child('frame').set(JSON.parse(JSON.stringify(frame))).catch(() => {});
     }
@@ -37716,6 +37822,7 @@
       }
       if (val.chosen === 1 && !liveNet.guestChose) {
         liveNet.guestChose = true;
+        liveNet.sentU = null; // 이제 막 연결된 친구에게 바로 전체 화면 한 장
         addBattleLog('✅ 상대 친구가 전투 방식을 골랐어요.');
       }
       const c = liveNet.remoteCtrl;
@@ -37773,7 +37880,7 @@
           const du = sim.units.find(u => u.id === v.unitDashId && u.liveOwnerId === stuId && u.alive);
           if (du && du.dashCooldown <= 0) triggerSingleUnitManualDash(du.id);
         }
-        if (v.chosen === 1) liveNet.teamChosen[stuId] = true;
+        if (v.chosen === 1 && !liveNet.teamChosen[stuId]) { liveNet.teamChosen[stuId] = true; liveNet.sentU = null; } // 막 연결된 친구에게 바로 전체 화면 한 장
         const k = v.keys || {};
         c.keys = { w: Boolean(k.w), a: Boolean(k.a), s: Boolean(k.s), d: Boolean(k.d) };
         c.aimX = typeof v.ax === 'number' ? v.ax : null;
@@ -37842,6 +37949,7 @@
       u.skillSlots = Array.isArray(u.skillSlots) ? u.skillSlots : [];
       u.unlockedSkills = Array.isArray(u.unlockedSkills) ? u.unlockedSkills : [];
       u.skillCooldowns = u.skillCooldowns && typeof u.skillCooldowns === 'object' ? u.skillCooldowns : {};
+      [...u.skillSlots, ...u.unlockedSkills].forEach(k => { if (typeof k === 'string' && !(k in u.skillCooldowns)) u.skillCooldowns[k] = 0; }); // 보낼 때 뺀 0
       u.name = cleanUserText(u.name, 30) || '용병';
       u.team = u.team === 'red' ? 'red' : 'blue';
       ['x', 'y', 'hp', 'maxHp', 'mana', 'maxMana', 'shield', 'level'].forEach(k => { u[k] = liveNum(u[k]); });
@@ -37904,11 +38012,18 @@
     // - 와이파이가 잠깐 멈췄다 몰아서 주면(학교 와이파이에서 흔함): 기다리는 시간은 빨리 늘리고 천천히 줄이며,
     //   재생 시점(playBase)은 순간 이동하지 않고 조금 느리게/빠르게 흘러서 따라감 → 멈칫·순간이동 대신 살짝 느려졌다 돌아옴
     function resetLiveFrameBuffer() {
-      Object.assign(liveNet, { frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, playBase: null, lastPlayAt: 0, lastAimCheckAt: 0, hostPause: null });
+      Object.assign(liveNet, { frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, playBase: null, lastPlayAt: 0, lastAimCheckAt: 0, hostPause: null, recvU: null, recvT: null });
     }
 
     function applyLiveFrame(val) {
-      if (liveNet.role !== 'guest' || !liveNet.initReceived || !val || !Array.isArray(val.u) || !liveAcceptPayload(val)) return;
+      if (liveNet.role !== 'guest' || !liveNet.initReceived || !val || !(Array.isArray(val.u) || typeof val.bt === 'number') || !liveAcceptPayload(val)) return;
+      if (!Array.isArray(val.u)) {
+        // 바뀐 칸만 담긴 화면: 바로 앞 화면을 바탕으로 전체를 되살림 · 앞 화면이 없으면(방금 들어옴·놓침) 다음 전체 화면까지 기다림
+        if (!liveNet.recvU || liveNum(val.bt) !== liveNet.recvT) return;
+        val.u = unpackLiveUnitDelta(liveNet.recvU, val.d, liveNum(val.t) - liveNet.recvT);
+      }
+      liveNet.recvU = val.u;
+      liveNet.recvT = liveNum(val.t);
       const now = Date.now();
       const at = liveNum(val.at);
       liveNet.lastFrameAt = now;
@@ -37992,6 +38107,7 @@
         sim.effects.push(ef);
       });
       (Array.isArray(val.f) ? deepCleanStrings(val.f) : []).forEach(ft => {
+        if (Array.isArray(ft)) ft = { x: ft[0], y: ft[1], text: ft[2], color: ft[3], life: ft[4] };
         if (ft && typeof ft === 'object' && liveNum(ft.life) > 0) sim.floatTexts.push({ x: liveNum(ft.x), y: liveNum(ft.y), text: String(ft.text || ''), color: String(ft.color || '#64748b'), life: liveNum(ft.life) });
       });
       if (sim.effects.length > 300) sim.effects.splice(0, sim.effects.length - 300);
@@ -38764,7 +38880,7 @@
       if (!ref) return;
       Object.assign(liveNet, {
         role: 'host', roomId: castId, ref, startedAt: Date.now(), finished: false,
-        sent: new WeakSet(), pendingLogs: [], lastFramePublishedAt: 0, spectator: false,
+        sent: new WeakSet(), pendingLogs: [], lastFramePublishedAt: 0, spectator: false, sentU: null, sentT: 0, keyAt: 0,
         team: false, remoteCtrls: {}, myId: me.id, towerCast: true, towerWatchers: 0, raidCast: true
       });
       sim.effects.forEach(x => liveNet.sent.add(x));
@@ -38775,7 +38891,9 @@
       republishLiveUnits();
       ref.child('watchers').on('value', snap => {
         const val = snap && snap.val();
-        liveNet.towerWatchers = val && typeof val === 'object' ? Object.keys(val).length : 0;
+        const n = val && typeof val === 'object' ? Object.keys(val).length : 0;
+        if (n > liveNet.towerWatchers) liveNet.sentU = null; // 새로 보는 친구에게 바로 전체 화면 한 장
+        liveNet.towerWatchers = n;
       });
     }
 
@@ -42900,25 +43018,24 @@
       let firebaseReadOk = false;
 
       // 1) Firebase Realtime Database에서 필요한 칸만 조회 (방·미니게임 데이터는 받지 않음)
-      const db = RealtimePvpService.initFirebaseClientSafe();
-      if (db && typeof db.ref === 'function') {
-        try {
-          const snaps = await Promise.all(CLASS_SYNC_KEYS.map(k => db.ref(`classes/${code}/${k}`).once('value')));
+      //    구독을 걸어 두고 첫 소식을 받음: 아래 subscribeToActiveClassRealtime이 같은 구독을 이어 써서 학급 데이터를 다시 받지 않음
+      try {
+        const merged = await primeClassSync(code);
+        if (merged) {
           firebaseReadOk = true;
-          const merged = {};
-          CLASS_SYNC_KEYS.forEach((k, i) => { merged[k] = snaps[i].val(); });
           if (merged.meta) {
             foundData = merged;
             loadedFromFirebase = true;
           }
-        } catch (err) {
-          console.warn('[Firebase 학급 코드 조회 예외 - 로컬 학급 레지스트리 확인]:', err);
         }
+      } catch (err) {
+        console.warn('[Firebase 학급 코드 조회 예외 - 로컬 학급 레지스트리 확인]:', err);
       }
 
       // 서버 조회는 성공했는데 학급이 없으면 삭제된 학급: 이 기기의 예전 사본으로 입장하지 않음
       if (!foundData && firebaseReadOk) {
         forgetLocalClassCopy(code);
+        if (state.classCode && String(state.classCode).toUpperCase() !== code) subscribeToActiveClassRealtime(state.classCode); // 보고 있던 학급 구독으로 되돌림
         if (statusEl) {
           statusEl.textContent = `❌ 학급 코드 [${code}]을(를) 찾을 수 없어요. 삭제되었거나 코드가 잘못되었어요. 선생님께 확인하세요.`;
           statusEl.className = 'text-xs font-bold text-rose-400';

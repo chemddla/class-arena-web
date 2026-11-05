@@ -9,7 +9,21 @@ window.__mockDb = (() => {
   const get = p => keys(p).reduce((o, k) => (o == null ? undefined : o[k]), tree);
   const snap = p => ({ val: () => clone(get(p)), exists: () => get(p) !== undefined, key: keys(p).pop() });
   const related = (a, b) => { const x = keys(a).join('/'), y = keys(b).join('/'); return x === y || x.startsWith(y + '/') || y.startsWith(x + '/') || !y || !x; };
-  const fire = p => listeners.slice().forEach(l => { if (related(p, l.path)) l.cb(snap(l.path)); });
+  // child_added / child_changed: 바뀐 자식만 알림 (펫 배구·펫 러닝 협동이 씀) · value: 그 경로 전체
+  const childSnap = (base, k) => { const cp = keys(base).concat(k).join('/'); return { key: k, val: () => clone(get(cp)), exists: () => get(cp) !== undefined }; };
+  const fireChild = (l, p) => {
+    const lk = keys(l.path), pk = keys(p);
+    const obj = get(l.path);
+    const names = pk.length > lk.length ? [pk[lk.length]] : Object.keys(obj && typeof obj === 'object' ? obj : {});
+    names.forEach(k => {
+      const exists = obj && typeof obj === 'object' && obj[k] !== undefined;
+      const seen = l.seen.has(k);
+      if (!exists) { l.seen.delete(k); return; }
+      if (!seen) { l.seen.add(k); if (l.ev === 'child_added') l.cb(childSnap(l.path, k)); }
+      else if (l.ev === 'child_changed') l.cb(childSnap(l.path, k));
+    });
+  };
+  const fire = p => listeners.slice().forEach(l => { if (!related(p, l.path)) return; if (l.ev === 'child_added' || l.ev === 'child_changed') fireChild(l, p); else l.cb(snap(l.path)); });
   const putLocal = (p, v) => {
     const ks = keys(p);
     let o = tree;
@@ -30,7 +44,7 @@ window.__mockDb = (() => {
     else if (m.t === 'req') ch.postMessage({ t: 'full', tree });
     else if (m.t === 'full' && !Object.keys(tree).length && m.tree && Object.keys(m.tree).length) {
       tree = m.tree;
-      listeners.slice().forEach(l => l.cb(snap(l.path)));
+      listeners.slice().forEach(l => { if (l.ev === 'child_added' || l.ev === 'child_changed') fireChild(l, l.path); else l.cb(snap(l.path)); });
     }
   };
   ch.postMessage({ t: 'req' });
@@ -40,9 +54,16 @@ window.__mockDb = (() => {
     set(v) { setLocal(p, v); ch.postMessage({ t: 'set', p, v: clone(v) }); return Promise.resolve(); },
     remove() { return this.set(null); },
     update(o) { const v = clone(o) || {}; updateLocal(p, v); ch.postMessage({ t: 'upd', p, o: v }); return Promise.resolve(); },
-    on(ev, cb) { listeners.push({ path: p, cb }); setTimeout(() => cb(snap(p)), 0); return cb; },
+    on(ev, cb) {
+      const l = { path: p, cb, ev, seen: new Set() };
+      listeners.push(l);
+      setTimeout(() => { if (!listeners.includes(l)) return; if (ev === 'child_added' || ev === 'child_changed') fireChild(l, p); else cb(snap(p)); }, 0);
+      return cb;
+    },
     off() { for (let i = listeners.length - 1; i >= 0; i--) if (listeners[i].path === p) listeners.splice(i, 1); },
     once() { return Promise.resolve(snap(p)); },
+    // Firebase transaction 흉내 (보스 레이드가 씀): fn이 undefined를 돌려주면 그대로 둠
+    transaction(fn) { const next = fn(clone(get(p))); if (next === undefined) return Promise.resolve({ committed: false, snapshot: snap(p) }); return this.set(next).then(() => ({ committed: true, snapshot: snap(p) })); },
     limitToLast() { return this; },
     orderByChild() { return this; },
     onDisconnect: () => ({ remove: () => Promise.resolve(), set: () => Promise.resolve(), cancel: () => Promise.resolve() })
