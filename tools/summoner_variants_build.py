@@ -199,9 +199,63 @@ def load():
     return sheet, frames, info, rng
 
 
+DARK_KEEP = 0.2   # 원본에서 이보다 어두운 픽셀은 어느 외형이든 그 어두움을 지킴
+
+
 def recolor_frame(fr, parts, lines, val, colors, rng):
     colors = dict(colors, rune=colors['trim'], castbook=colors['book'])   # 책 무늬는 외형 금장식 색, 시전 칸 표지는 책 색
-    return PP.recolor(fr, parts, val, colors, lines, rng)
+    out = PP.recolor(fr, parts, val, colors, lines, rng)
+    # 원본 어두움 지키기: 원본 밝기 DARK_KEEP 아래 픽셀(실루엣·머리와 옷 경계·주름 선·깊은 그늘)은 그 부위 계단 맨 아래 색조로, 밝기는 원본 그대로 (조금만 밝힘).
+    #   밝은 외형(4 크림 로브·연분홍 머리, 1 은백 머리)에서 이 선들이 계단 밝은 쪽에 놓여 윤곽이 끊기고 잔점이 생기던 것.
+    #   규칙으로 '윤곽인지' 고르지 않고 원본 어두움을 그대로 따르므로 원본에 있던 선은 빠지지 않음
+    a = fr[..., 3] > 0
+    # 바깥 회색 테두리 점: 어느 부위에도 안 든, 투명한 곳과 맞닿은 채도 낮은 픽셀 (원본 샘플 흰 배경이 섞여 남은 흔적, 대기 칸에 많음).
+    #   초록 위에선 섞여 안 보이지만 밝은 외형에선 회색 점으로 튐 → 가장 가까운 부위 윤곽으로 칠하고, 그 안쪽 픽셀이 '맨 바깥 줄'로 잡히게 바깥으로 침
+    assigned = np.zeros(a.shape, bool)
+    for m in parts.values(): assigned |= m
+    for m in lines.values(): assigned |= m
+    tr0 = fr[..., 3] < 40
+    hsat = np.array([colorsys.rgb_to_hsv(*(p / 255)) for p in fr[..., :3].reshape(-1, 3)])[:, 1].reshape(a.shape)
+    halo = a & ~tr0 & ~assigned & (hsat < 0.25) & ndi.binary_dilation(tr0, structure=np.ones((3, 3), bool))
+    if halo.any():
+        keys = [k for k in parts if parts[k].any() and k not in ('eyes',)]
+        dist = np.full(a.shape, 99.0); owner = np.full(a.shape, -1)
+        for i, k in enumerate(keys):
+            d = ndi.distance_transform_edt(~parts[k]); b = d < dist; dist[b] = d[b]; owner[b] = i
+        for i, k in enumerate(keys):
+            hm = halo & (owner == i) & (dist <= 2.5)
+            c = colors.get(k)
+            if c is None or not hm.any(): continue
+            hh, ss, _ = colorsys.rgb_to_hsv(*PP.ramp_color(c, 0))
+            out[hm, :3] = np.array(colorsys.hsv_to_rgb(hh, min(1.0, ss * 0.9 + 0.15), 0.16)) * 255
+    tr = tr0 | halo
+    # 선 모양만: 어두운 픽셀 중 3×3 열기로 남는 넓은 덩어리(망토 깊은 그늘)는 빼고, 투명한 곳과 맞닿은 바깥 테두리는 넓어도 넣음
+    #   (넓은 그늘까지 원본 어두움으로 두면 크림 망토에 검은 구멍처럼 보임 → 그건 계단 맨 아래 색)
+    dark_all = a & (val < DARK_KEEP)
+    wide = ndi.binary_opening(dark_all, structure=np.ones((3, 3), bool))
+    # 바깥 테두리: 투명한 곳과 맞닿은 픽셀은 원본 밝기 0.32 아래면 윤곽 (원본 실루엣이 밝기 0.2~0.3 짙은 초록인 곳이 있어 0.2로는 점선)
+    #   대기 칸은 원본 실루엣이 밝기 0.27~0.35라 기준에 걸렸다 말았다 점선 → 투명한 곳과 상하좌우로 맞닿은 맨 바깥 한 줄은 원본 0.45 아래면 모두 윤곽
+    outer = a & ~halo & ndi.binary_dilation(tr, structure=ndi.generate_binary_structure(2, 1))
+    rim = (outer & (val < 0.45)) | (a & ~halo & (val < 0.32) & ndi.binary_dilation(tr, structure=np.ones((3, 3), bool)))
+    thin = dark_all & ~wide
+    lab_t, n_t = ndi.label(thin, structure=np.ones((3, 3), bool))
+    if n_t:   # 3픽셀 안 되는 외딴 어두운 점은 선이 아니라 옷 결 (밝은 옷 위 검은 점)
+        sz_t = ndi.sum(thin, lab_t, range(1, n_t + 1))
+        thin &= np.isin(lab_t, [i + 1 for i in range(n_t) if sz_t[i] >= 3])
+    linelike = thin | rim
+    for k, m in list(parts.items()) + [('l_' + k, lines[k]) for k in parts]:
+        kk = k[2:] if k.startswith('l_') else k
+        c = colors.get(kk)
+        if c is None or kk == 'eyes': continue
+        d = m & linelike
+        if not d.any(): continue
+        hh, ss, vv = colorsys.rgb_to_hsv(*PP.ramp_color(c, 0))
+        ov = np.clip(val[d] * 1.15, 0.04, DARK_KEEP)   # 테두리에서 원본 0.2~0.32인 픽셀도 0.2로 눌러 윤곽이 됨
+        cur = out[d, :3] / 255.0
+        cur_v = cur.max(axis=1)
+        nv = np.minimum(cur_v, ov)                     # 이미 더 어두우면 그대로
+        out[d, :3] = np.array([colorsys.hsv_to_rgb(hh, min(1.0, ss * 0.9 + 0.15), x) for x in nv]) * 255
+    return out
 
 
 def build_all():
