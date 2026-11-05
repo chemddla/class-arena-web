@@ -10090,6 +10090,7 @@
     }
 
     // 직업별 공격 속도 배율 (1보다 작으면 느리게 공격)
+    const SUMMONER_ORB_COLOR = '#86efac'; // 정령사 기본 공격 구슬 (연한 초록)
     const JOB_ATTACK_SPEED_MULT = { archer: 0.85, mage: 0.7, frost: 0.7, curse: 0.75, bard: 0.8, rogue: 1.82, knight: 0.75, lancer: 1.3, sniper: 0.571, berserker: 0.97, paladin: 0.85, summoner: 0.75 }; // 저격수: 공격 주기 ÷ 0.571 (처음 0.4배에서 주기 30% 단축), 광전사: 공격 속도 -3% (1.08에서 10% 더 줄임)
 
     // 레벨당 스탯 상승량 배율 (비율 상승 · 고정 상승 · 고정 체력 모두 ×1.5)
@@ -17122,9 +17123,9 @@
         directional('arrow', u.atk);
       } else if (u.job === 'mage' || u.job === 'frost' || u.job === 'curse' || u.job === 'bard' || u.job === 'summoner') {
         // 빙결술사 기본 공격도 마법사와 같은 작은 범위 구슬 (색만 냉기빛) · 주술사·음유시인은 범위 없이 한 명만 맞는 구슬
-        const orbColor = u.job === 'frost' ? '#38bdf8' : (u.job === 'curse' ? '#a855f7' : (u.job === 'bard' ? '#7dd3fc' : '#7c3aed'));
+        const orbColor = u.job === 'frost' ? '#38bdf8' : (u.job === 'curse' ? '#a855f7' : (u.job === 'bard' ? '#7dd3fc' : (u.job === 'summoner' ? SUMMONER_ORB_COLOR : '#7c3aed')));
         u.mana = Math.min(u.maxMana, u.mana + 18);
-        if (u.job !== 'frost' && u.job !== 'curse' && u.job !== 'bard') sim.effects.push({ type: 'cast_circle', x: u.x, y: u.y, color: orbColor, life: 32, maxLife: 32 }); // 빙결술사·주술사·음유시인은 보라 고리 없음
+        if (u.job !== 'frost' && u.job !== 'curse' && u.job !== 'bard' && u.job !== 'summoner') sim.effects.push({ type: 'cast_circle', x: u.x, y: u.y, color: orbColor, life: 32, maxLife: 32 }); // 빙결술사·주술사·음유시인·정령사는 보라 고리 없음
         // 커서 방향으로 사거리 끝까지 날아가서(커서 지점에서 멈추지 않음), 적에게 맞거나 사거리 끝에 닿으면 작은 범위로 터짐
         const ang = Math.atan2((aimY - 12) - oy, aimX - ox);
         sim.projectiles.push({
@@ -20005,7 +20006,7 @@
             sim.projectiles.push({
               projType: 'magic_orb', spr: orbSpr,
               x: orbFrom.x, y: orbFrom.y, target, owner: u,
-              dmg: u.atk, isHeal: false, speed: 2.6, trail: [], color: frostOrb ? '#38bdf8' : (curseOrb ? (u.job === 'bard' ? '#7dd3fc' : (u.job === 'summoner' ? '#2dd4bf' : '#a855f7')) : undefined),
+              dmg: u.atk, isHeal: false, speed: 2.6, trail: [], color: frostOrb ? '#38bdf8' : (curseOrb ? (u.job === 'bard' ? '#7dd3fc' : (u.job === 'summoner' ? SUMMONER_ORB_COLOR : '#a855f7')) : undefined),
               splashRadius: curseOrb ? 0 : MAGE_SPLASH_RADIUS, splashRatio: MAGE_SPLASH_RATIO // 마법사 기본 공격: 터지는 자리 주변에 작은 범위 피해
             });
 
@@ -20150,7 +20151,7 @@
             }
             if (p.projType === 'magic_orb') {
               playCombatSfx('magic');
-              sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), x: p.target.x, y: p.target.y - 12, r: 42, life: 22, maxLife: 22 });
+              if (p.owner?.job !== 'summoner') sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), x: p.target.x, y: p.target.y - 12, r: 42, life: 22, maxLife: 22 }); // 정령사 구슬은 보라 원 없이
             } else {
               playCombatSfx('arrow');
               sim.effects.push({ type: 'arrow_hit', spr: projHitSpr(p), x: p.target.x, y: p.target.y - 12, angle: p.angle, life: 18, maxLife: 18 });
@@ -24904,7 +24905,7 @@
       if (p.projType === 'magic_orb') {
         playCombatSfx('magic');
         // 범위 공격은 위에서 이미 터지는 그림을 그렸으므로 한 번 더 그리지 않음
-        if (!p.splashRadius) sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), x: hit.x, y: hit.y - 12, r: 42, life: 22, maxLife: 22 });
+        if (!p.splashRadius && p.owner?.job !== 'summoner') sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), x: hit.x, y: hit.y - 12, r: 42, life: 22, maxLife: 22 });
       } else {
         playCombatSfx('arrow');
         sim.effects.push({ type: 'arrow_hit', spr: projHitSpr(p), x: hit.x, y: hit.y - 12, angle: p.angle, life: 18, maxLife: 18 }); // 히드라 독액 = 철퍽 튀는 독
