@@ -33970,7 +33970,30 @@
     // students는 반 학생 모두가 통째로 받으므로, 친구 화면에서 쓰지 않는 큰 칸(지원자 명단·도감·일일 상점 등)은 따로 둠
     // → 학생 기기는 자기 칸만, 선생님 기기는 전부 받음 (접속할 때마다 받는 학급 데이터가 약 1/3 줄어듦)
     // 예전 버전이 students/{id} 안에 남긴 값은 그 학생(또는 선생님) 기기가 저장할 때 이쪽으로 옮김
-    const STUDENT_PRIVATE_KEYS = ['recruitPool', 'codex', 'dailyEquipShop', 'mgRewardedIds', 'dailyMission', 'dailyRewards', 'quizBook', 'petDex'];
+    // mercStorage(보관함 용병)·avatarBox(도트 보관함)도 본인만 쓰는 칸 (친구 화면에서는 용병 이름 겹침 확인에만 쓰였음 · 학급 학생 기록의 11%)
+    const STUDENT_PRIVATE_KEYS = ['recruitPool', 'codex', 'dailyEquipShop', 'mgRewardedIds', 'dailyMission', 'dailyRewards', 'quizBook', 'petDex', 'mercStorage', 'avatarBox'];
+    // 서버에 두지 않고 로스터·PvP 진형(pvpDefenseLayout)에서 계산하는 칸: PvP 방어 진형 사본은 학생 기록의 1/4(53KB/219KB)였고,
+    // 그 화면을 열어 보지 않은 학생의 사본은 로스터와 어긋난 오래된 값이었음 → 받을 때 normalizeRemoteStudent가 계산해 채움
+    const DERIVED_STUDENT_KEYS = ['defenseFormation', 'defenseFormationLabel'];
+    let derivedLegacyCode = null;         // derivedLegacyIds가 어느 학급 것인지
+    const derivedLegacyIds = new Set();   // 서버 학생 기록에 예전 계산 값이 남아 있는 학생
+    const derivedCleaning = new Set();    // 지우기를 시도한 학생 (실패해도 이번 접속 동안은 다시 시도하지 않음)
+    // 예전 버전이 올린 계산 값을 그 학생(또는 선생님) 기기가 한 번 지움 · 권한이 없으면 조용히 넘어감
+    function cleanDerivedLegacy(code) {
+      const db = RealtimePvpService.initFirebaseClientSafe();
+      if (!db || typeof db.ref !== 'function' || !derivedLegacyIds.size || derivedLegacyCode !== code) return;
+      const me = getActiveStudent();
+      const ids = canManageCurrentClass() ? [...derivedLegacyIds] : (me && isStudentSession(me) && derivedLegacyIds.has(me.id) ? [me.id] : []);
+      const todo = ids.filter(id => !derivedCleaning.has(id));
+      if (!todo.length) return;
+      const updates = {};
+      todo.forEach(id => {
+        derivedCleaning.add(id);
+        DERIVED_STUDENT_KEYS.forEach(k => { updates[`classes/${code}/students/${id}/${k}`] = null; });
+      });
+      db.ref().update(updates).then(() => { todo.forEach(id => derivedLegacyIds.delete(id)); })
+        .catch(err => console.warn('[예전 진형 사본 지우기 실패 - 이번 접속은 그대로 둠]:', err));
+    }
     const studentPriv = { code: null, want: null, ref: null, all: false, loadedId: null, remote: {}, legacy: {}, off: false };
     // off: 서버 DB 규칙에 아직 studentPrivate가 없음(저장이 거부됨) → 이번 접속 동안은 예전처럼 students 안에 둠
     function studentPrivKnown(id) { return !studentPriv.off && (studentPriv.all || (Boolean(id) && studentPriv.loadedId === id)); }
@@ -34086,6 +34109,7 @@
         const migrate = studentNeedsPrivMigration(s.id) ? studentPriv.legacy[s.id] : [];
         new Set([...Object.keys(prev), ...Object.keys(cur)]).forEach(k => {
           if (k === 'password') return;
+          if (DERIVED_STUDENT_KEYS.includes(k)) return; // 계산하는 칸은 올리지 않음
           if (STUDENT_PRIVATE_KEYS.includes(k) && !studentPriv.off) {
             if (!known) return; // 서버 값을 아직 못 받음 → 올리지 않음
             if (migrate.includes(k)) return; // 아래에서 통째로 옮김
@@ -34475,13 +34499,14 @@
       if (!Array.isArray(s.roster)) s.roster = s.roster && typeof s.roster === 'object' ? Object.values(s.roster) : [];
       if (!Array.isArray(s.inventory)) s.inventory = [];
       if (!Array.isArray(s.dailyEquipShop)) s.dailyEquipShop = [];
-      if (!Array.isArray(s.defenseFormation)) s.defenseFormation = [];
       if (!s.relics || typeof s.relics !== 'object') s.relics = {};
       if (!Array.isArray(s.mercStorage)) s.mercStorage = s.mercStorage && typeof s.mercStorage === 'object' ? Object.values(s.mercStorage) : [];
       s.roster.forEach(normalizeMercForSync);
       ensureRosterGotAt(s.roster);
-      s.defenseFormation.forEach(normalizeMercForSync);
       s.mercStorage.forEach(normalizeMercForSync);
+      // PvP 방어 진형은 서버 사본이 아니라 로스터·pvpDefenseLayout에서 계산 (DERIVED_STUDENT_KEYS)
+      s.defenseFormation = computeDefenseFormation(s);
+      s.defenseFormationLabel = defenseFormationLabel(s);
       deepCleanStrings(s);
       return s;
     }
@@ -34525,6 +34550,7 @@
     // 서버에 올리는 학생 기록 (옮기기 전 예전 비밀번호 칸은 지우지 않음: DB 규칙상 지우면 거부됨)
     function studentCloudValue(s) {
       const v = toFirebaseValue(s);
+      DERIVED_STUDENT_KEYS.forEach(k => { delete v[k]; });
       const legacyPw = StudentPw.legacy[s.id];
       if (legacyPw && legacyPw.inStudent) v.password = legacyPw.inStudent;
       return v;
@@ -35243,6 +35269,11 @@
 
         // 2) 학생
         const remoteStudents = mergeStudentPrivate((data.students && typeof data.students === 'object') ? data.students : {});
+        if (derivedLegacyCode !== code) { derivedLegacyCode = code; derivedLegacyIds.clear(); derivedCleaning.clear(); }
+        Object.keys(remoteStudents).forEach(id => {
+          const r = remoteStudents[id];
+          if (r && typeof r === 'object' && DERIVED_STUDENT_KEYS.some(k => k in r)) derivedLegacyIds.add(id); else derivedLegacyIds.delete(id);
+        });
         const profiles = (data.profiles && typeof data.profiles === 'object') ? data.profiles : {};
         if (StudentPw.online()) {
           StudentPw.loadFromServer(profiles, remoteStudents);
@@ -35335,6 +35366,7 @@
       const force = !(syncCache.loaded && syncCache.classCode === cleanCode);
       applyLoadedClassPayload(cleanCode, { ...classRemote }, true, force);
       ensureStudentPrivSub(); // 로그인한 학생·선생님이 바뀌었으면 나만 쓰는 칸 구독도 바꿈
+      setTimeout(() => cleanDerivedLegacy(cleanCode), 0); // 서버에 남은 예전 진형 사본 지우기
       if (ensurePvpWeekAll()) saveState(); // 새 주가 됐으면 랭킹 매칭 점수 초기화
       if (force) StudentInbox.settle();
       PetSystem.migrateLegacy();
