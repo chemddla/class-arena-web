@@ -2,6 +2,7 @@
 # 사용: python tools/sprite_bg_cleanup.py
 # - halo: 투명한 곳과 맞닿은 밝은 무채색 픽셀(샘플 흰 배경이 섞여 남은 테두리)을 2겹 지움
 # - green: 초록(덩굴·잎) 가까이 있는 밝은 무채색 = 덩굴 고리 안에 갇힌 흰 배경
+# - faint: 반투명(불투명도 200 아래)하면서 밝은 회색·회청색 픽셀 = 흰 배경이 섞여 남은 머리카락 가장자리 (칸 왼쪽 faint_w 안만 — 오른쪽 소환 빛은 반투명이라 뺌)
 # - seeds: 그 점에서 이어진 밝은 무채색 덩어리 = 몸 사이에 갇힌 흰 배경 (눈 하이라이트·번개 빛은 건드리지 않게 콕 집어서)
 # 무채색 = 가장 밝은 채널과 가장 어두운 채널 차이가 작음. 노란 번개 빛·크림색 불꽃은 차이가 커서 남음
 import numpy as np
@@ -10,7 +11,10 @@ from scipy import ndimage as ndi
 
 JOBS = {
     'assets/sprites/monster/earth_spirit.webp': dict(halo=True, green=True),
-    'assets/sprites/merc/summoner_0.webp': dict(halo=True, boxes=[(c * 113 + 30, 58, c * 113 + 42, 80) for c in range(5)] + [(2 * 113 + 72, 72, 2 * 113 + 78, 77)]),   # 대기·걷기 칸: 왼쪽 머리카락 사이 흰·회색 줄 · 걷기 둘째 칸 오른손 옆 흰 점
+    'assets/sprites/merc/summoner_0.webp': dict(halo=True, boxes=[(c * 113 + 30, 58, c * 113 + 42, 80) for c in range(5)] + [(2 * 113 + 72, 72, 2 * 113 + 78, 77)]
+                                            + [(5 * 113 + 37, 61, 5 * 113 + 41, 67), (6 * 113 + 36, 69, 6 * 113 + 43, 78), (11 * 113 + 26, 52, 11 * 113 + 31, 57)],
+                                            faint=113, faint_w=60),   # 대기·걷기 칸: 왼쪽 머리카락 사이 흰·회색 줄 · 걷기 둘째 칸 오른손 옆 흰 점
+                                            # · 피격·쓰러짐 첫 칸·소환 발동 칸 왼쪽 머리카락 사이 흰 덩어리 · 대기 칸 머리 왼쪽 반투명 회청색 줄 (faint, 칸 폭 113)
     'assets/sprites/monster/fire_spirit.webp': dict(halo_x=(0, 864), seeds=[(780, 100), (98, 79), (93, 87)]),   # 피격 칸 꼬리 사이 · 대기 칸 손과 불덩이 사이. 사라짐 칸(6~9)의 연기는 회색이라 테두리 정리에서 뺌
     'assets/sprites/monster/storm_spirit.webp': dict(seeds=[(1180, 45)]),                   # 굵은 번개 칸: 몸과 번개 사이
 }
@@ -20,7 +24,7 @@ def light_neutral(rgb, lo=170, chroma=45):
     return (rgb.min(axis=2) > lo) & (rgb.max(axis=2) - rgb.min(axis=2) < chroma)
 
 
-def clean(path, halo=False, halo_x=None, green=False, seeds=(), boxes=()):
+def clean(path, halo=False, halo_x=None, green=False, seeds=(), boxes=(), faint=0, faint_w=0):
     a = np.array(Image.open(path).convert('RGBA'))
     rgb = a[..., :3].astype(int)
     before = int((a[..., 3] > 0).sum())
@@ -38,6 +42,11 @@ def clean(path, halo=False, halo_x=None, green=False, seeds=(), boxes=()):
         g = (a[..., 3] > 128) & (rgb[..., 1] > rgb[..., 0] + 15) & (rgb[..., 1] > rgb[..., 2] + 15)
         near = ndi.binary_dilation(g, iterations=2)
         a[near & light_neutral(rgb, 150, 45), 3] = 0
+    if faint:
+        al = a[..., 3].astype(int)
+        local = np.arange(a.shape[1]) % faint < faint_w
+        m = (al > 0) & (al < 200) & (rgb.max(axis=2) > 70) & (rgb.max(axis=2) - rgb.min(axis=2) < 70) & local[None, :]
+        a[m, 3] = 0
     for x0, y0, x1, y1 in boxes:   # 이 네모 안의 밝은 무채색(회색 섞인 흰 배경)은 모두 지움
         box = np.zeros(a.shape[:2], bool)
         box[y0:y1, x0:x1] = True
