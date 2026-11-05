@@ -2853,6 +2853,10 @@
                   <div class="text-slate-300">승리 <strong class="text-amber-300">500 CA</strong> · 패배 <strong class="text-amber-300">200 CA</strong></div>
                 </div>
               </div>
+              <div>
+                <div class="text-xs font-extrabold text-violet-300 mb-1.5">📺 지금 랭킹 매칭 중인 친구</div>
+                <div id="rankedLiveList" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+              </div>
             </div>
 
             <div class="lg:col-span-4 flex flex-col gap-4">
@@ -11163,8 +11167,8 @@
       const watchingBattle = sim.spectator && sim.running;
       const items = [];
       liveTowerRuns().forEach(r => items.push({
-        kind: 'tower', id: r.id, icon: '🏰', names: r.name,
-        detail: `모험의 탑 · ${r.title || `${liveNum(r.floor)}층`}${r.replay ? ' (연습)' : ''}`,
+        kind: 'tower', id: r.id, icon: isRankedLiveRun(r) ? '🎯' : '🏰', names: r.name,
+        detail: isRankedLiveRun(r) ? `랭킹 매칭 · vs ${r.vs || '친구'}` : `모험의 탑 · ${r.title || `${liveNum(r.floor)}층`}${r.replay ? ' (연습)' : ''}`,
         watchers: r.watchers && typeof r.watchers === 'object' ? Object.keys(r.watchers).length : 0,
         watching: watchingBattle && sim.towerWatch && sim.towerWatch.stuId === r.id
       }));
@@ -15351,6 +15355,8 @@
         lossRewardMc: rw.loss
       });
       if (sim.running && sim.mode === 'pvp_ranked') {
+        // 전투 방식을 고르면(=전투가 시작되면) 친구들이 관전할 수 있게 중계 시작 (탑 도전과 같은 방식)
+        sim.entryCharge = () => startRankedLiveBroadcast(myStu, enemyStu);
         addBattleLog(`🎯 상대를 찾았어요! ${enemyStu.name}(${enemyScore}점) · ${stronger ? '💪 나보다 강한 상대' : '🙂 나보다 약한 상대'} — 전투가 끝나면 결과가 나와요. (승리 ${rw.win} CA · 패배 ${rw.loss} CA)`);
       }
     }
@@ -15366,6 +15372,7 @@
       ensurePvpWeekAll();
       RealtimePvpService.init();
       renderSideRankPanel();
+      renderTowerLiveList(); // 랭킹 매칭 중인 친구 목록(rankedLiveList)도 같이 그림
       const myStu = getActiveStudent();
       const sorted = [...state.students].sort((a, b) => b.pvpScore - a.pvpScore || calcStudentCombatPower(b) - calcStudentCombatPower(a));
 
@@ -17953,6 +17960,25 @@
 
     function startTowerLiveBroadcast(stu, floorObj) {
       if (!sim.running || sim.mode !== 'tower' || !stu) return;
+      startSoloLiveBroadcast(stu, {
+        id: stu.id, name: cleanUserText(stu.name, 30) || '친구', floor: floorObj.floor,
+        title: cleanUserText(floorObj.name, 60) || `${floorObj.floor}층`,
+        replay: floorObj.hard ? Boolean(towerHardClearsOf(stu)[floorObj.floor]) : floorObj.floor < (stu.towerFloor || 1), at: Date.now()
+      });
+    }
+
+    // 🎯 랭킹 매칭도 같은 목록(tower_index)에 kind: 'ranked'로 올려 관전할 수 있게 함
+    // (예전 탭은 kind를 모르므로 '모험의 탑 · 🎯 랭킹 매칭 vs …'로 보이고, 관전도 그대로 됨)
+    function startRankedLiveBroadcast(stu, enemyStu) {
+      if (!sim.running || sim.mode !== 'pvp_ranked' || !stu || !enemyStu) return;
+      const vs = cleanUserText(enemyStu.name, 30) || '친구';
+      startSoloLiveBroadcast(stu, {
+        id: stu.id, name: cleanUserText(stu.name, 30) || '친구', floor: 0, kind: 'ranked',
+        vsId: enemyStu.id, vs, title: `🎯 랭킹 매칭 vs ${vs}`, replay: false, at: Date.now()
+      });
+    }
+
+    function startSoloLiveBroadcast(stu, info) {
       const roomId = `tower_${stu.id}`;
       const ref = liveRoomRef(roomId);
       const idxRef = towerLiveIndexRef(stu.id);
@@ -17968,11 +17994,7 @@
       ref.child('result').remove().catch(() => {});
       ref.child('frame').remove().catch(() => {});
       republishLiveUnits();
-      liveNet.towerIdxInfo = {
-        id: stu.id, name: cleanUserText(stu.name, 30) || '친구', floor: floorObj.floor,
-        title: cleanUserText(floorObj.name, 60) || `${floorObj.floor}층`,
-        replay: floorObj.hard ? Boolean(towerHardClearsOf(stu)[floorObj.floor]) : floorObj.floor < (stu.towerFloor || 1), at: Date.now()
-      };
+      liveNet.towerIdxInfo = info;
       idxRef.set(liveNet.towerIdxInfo).catch(() => {});
       idxRef.child('watchers').on('value', snap => {
         const val = snap && snap.val();
@@ -18023,12 +18045,16 @@
         .sort((a, b) => liveNum(b.floor) - liveNum(a.floor));
     }
 
+    const isRankedLiveRun = r => Boolean(r && r.kind === 'ranked');
+
+    // 탑 화면(towerLiveList)엔 탑 도전만, 랭킹 매칭 화면(rankedLiveList)엔 랭킹 매칭만
     function renderTowerLiveList() {
-      const box = document.getElementById('towerLiveList');
+      [['towerLiveList', false, '지금 탑에 도전 중인 친구가 없어요.'], ['rankedLiveList', true, '지금 랭킹 매칭 중인 친구가 없어요.']].forEach(([boxId, ranked, emptyText]) => {
+      const box = document.getElementById(boxId);
       if (!box) return;
-      const runs = liveTowerRuns();
+      const runs = liveTowerRuns().filter(r => isRankedLiveRun(r) === ranked);
       if (!runs.length) {
-        box.innerHTML = '<div class="text-xs text-slate-400 bg-slate-950 border border-slate-800 rounded-xl p-3 sm:col-span-2 lg:col-span-3">지금 탑에 도전 중인 친구가 없어요.</div>';
+        box.innerHTML = `<div class="text-xs text-slate-400 bg-slate-950 border border-slate-800 rounded-xl p-3 sm:col-span-2 lg:col-span-3">${emptyText}</div>`;
         return;
       }
       const watchingId = sim.spectator && sim.running && sim.towerWatch ? sim.towerWatch.stuId : null;
@@ -18039,7 +18065,7 @@
           <div class="bg-slate-950 border ${watching ? 'border-violet-400' : 'border-slate-800'} rounded-xl p-3 flex items-center justify-between gap-2">
             <div class="min-w-0">
               <div class="text-sm font-extrabold text-white truncate">${r.name}</div>
-              <div class="text-[11px] text-slate-300 truncate">🏰 ${r.title || `${liveNum(r.floor)}층`}${r.replay ? ' (연습)' : ''}</div>
+              <div class="text-[11px] text-slate-300 truncate">${ranked ? `🎯 vs ${r.vs || '친구'}` : `🏰 ${r.title || `${liveNum(r.floor)}층`}${r.replay ? ' (연습)' : ''}`}</div>
               ${watchers ? `<div class="text-[10px] text-violet-300 font-bold">👀 ${watchers}명 관전 중</div>` : ''}
             </div>
             ${watching
@@ -18047,6 +18073,7 @@
               : `<button onclick="spectateTowerRun('${r.id}')" class="px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow shrink-0">📺 관전하기</button>`}
           </div>`;
       }).join('');
+      });
     }
 
     // 탑 도전 목록이 바뀔 때: 보던 친구가 목록에서 사라졌는데 결과가 안 오면 잠시 뒤 관전을 끝냄
@@ -18067,7 +18094,7 @@
       tw.leaveTimer = setTimeout(() => {
         tw.leaveTimer = null;
         if (sim.towerWatch === tw && sim.spectator && sim.running && !liveNet.finished && !listed()) {
-          abortLiveBattle(`📺 ${tw.name} 친구가 탑 도전을 그만뒀어요.`);
+          abortLiveBattle(`📺 ${tw.name} 친구가 ${tw.ranked ? '랭킹 매칭' : '탑 도전'}을 그만뒀어요.`);
         }
       }, 4000);
     }
@@ -18082,23 +18109,27 @@
     window.spectateTowerRun = async function (stuId) {
       const me = getActiveStudent();
       const info = towerLiveCache && towerLiveCache[stuId];
-      if (!me || !info || !info.name) { showNotice('⚠️ 탑 도전을 찾지 못했어요. 이미 끝났을 수 있어요.'); return; }
+      const ranked = isRankedLiveRun(info);
+      if (!me || !info || !info.name) { showNotice('⚠️ 관전할 전투를 찾지 못했어요. 이미 끝났을 수 있어요.'); return; }
       if (stuId === me.id) return;
       if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
       const roomId = `tower_${stuId}`;
       const ref = liveRoomRef(roomId);
       if (!ref) { showNotice('⚠️ 서버에 연결되어 있지 않아 관전할 수 없어요.'); return; }
       const got = await waitLiveInit(ref);
-      if (!got) { showNotice('⚠️ 탑 전투 화면을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.'); return; }
+      if (!got) { showNotice(`⚠️ ${ranked ? '랭킹 매칭' : '탑'} 전투 화면을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.`); return; }
       const { init, blueUnits, redUnits } = got;
       if (sim.running && !sim.spectator) return; // 기다리는 사이 내 전투를 시작했으면 그만둠
       if (sim.spectator) { stopLiveBattleNet(); closeBattleResult(); }
       const owner = state.students.find(s => s.id === stuId) || { id: stuId, name: info.name, roster: [] };
       const floor = liveNum(info.floor);
+      const vsName = info.vs || '친구';
+      const enemy = ranked ? (state.students.find(s => s.id === info.vsId) || { id: info.vsId || 'enemy', name: vsName, roster: [] }) : null;
       launchSimulation({
-        mode: 'tower',
-        title: `📺 관전 중: ${info.name}의 ${info.title || `${floor}층`}`,
+        mode: ranked ? 'pvp_ranked' : 'tower',
+        title: ranked ? `📺 관전 중: ${info.name}의 랭킹 매칭 (vs ${vsName})` : `📺 관전 중: ${info.name}의 ${info.title || `${floor}층`}`,
         blueStudent: owner,
+        ...(ranked ? { redStudent: enemy } : {}),
         customBlueUnits: blueUnits,
         customRedUnits: redUnits,
         rewardMc: 0,
@@ -18109,7 +18140,7 @@
       sim.spectator = true;
       sim.spectateFrom = Date.now();
       sim.spectateRoomId = null;
-      sim.towerWatch = { stuId, name: info.name, floor };
+      sim.towerWatch = { stuId, name: info.name, floor, ranked, vs: vsName };
       // 고를 것 없이 보기만: 전투 방식 고르기 창을 닫고 자동(화면 이동만)으로 고정
       battleControl.locked = true;
       battleControl.mode = 'auto';
@@ -18117,7 +18148,9 @@
       sim.awaitingControlChoice = false;
       document.getElementById('battleControlChooser')?.classList.add('hidden');
       renderBattleControlHud(true);
-      addBattleLog(`📺 [관전] ${info.name}의 모험의 탑 ${floor}층 도전을 보고 있어요. (WASD·드래그로 화면 이동)`);
+      addBattleLog(ranked
+        ? `📺 [관전] ${info.name}의 랭킹 매칭(vs ${vsName} 방어 진형)을 보고 있어요. (WASD·드래그로 화면 이동)`
+        : `📺 [관전] ${info.name}의 모험의 탑 ${floor}층 도전을 보고 있어요. (WASD·드래그로 화면 이동)`);
       startLiveBattleNet(roomId, 'guest', liveNum(init.at), true, false);
       liveNet.bid = typeof init.b === 'number' ? init.b : null; liveNet.ep = liveNum(init.ep); // 탑·레이드 관전은 방 시작 시각이 없어 받은 화면의 전투 표를 따라감
       liveNet.towerWatchOf = stuId;
@@ -24246,7 +24279,9 @@
         const tw = sim.towerWatch;
         const rw = sim.raidWatch;
         document.getElementById('battleResultEmoji').textContent = '📺';
-        document.getElementById('battleResultTitle').textContent = tw
+        document.getElementById('battleResultTitle').textContent = tw && tw.ranked
+          ? `관전 종료 · ${tw.name} ${blueTeamWon ? `🏆 승리! (vs ${tw.vs})` : `🛡️ 패배 (vs ${tw.vs})`}`
+          : tw
           ? `관전 종료 · ${tw.name} ${blueTeamWon ? `🏆 ${tw.floor}층 돌파!` : '🛡️ 도전 실패'}`
           : rw && rw.rush
             ? `관전 종료 · 🌊 몬스터 러쉬 ${(sim.rush && sim.rush.cleared) || 0}라운드 클리어`
@@ -24259,7 +24294,7 @@
           ? (rw.dungeon ? '관전한 던전 탐험이 끝났어요. (관전은 보상이 없어요)' : '관전한 엘리트 보스 토벌이 끝났어요. (관전은 보상이 없어요)')
           : sim.forfeitTeam
             ? `${(sim.forfeitTeam === 'blue' ? meta.blueStudent : meta.redStudent)?.name || ''} 친구가 포기했어요.`
-            : (tw ? '관전한 탑 도전이 끝났어요. (관전은 보상이 없어요)' : '관전한 결투가 끝났어요. (관전은 보상이 없어요)');
+            : (tw ? `관전한 ${tw.ranked ? '랭킹 매칭' : '탑 도전'}이 끝났어요. (관전은 보상이 없어요)` : '관전한 결투가 끝났어요. (관전은 보상이 없어요)');
         document.getElementById('battleMvpBox').innerHTML = `
           <div class="font-bold text-amber-300 mb-1">🌟 이번 ${tw ? '도전' : rw ? '토벌' : '결투'} MVP</div>
           <div>⚔️ 최고 공격왕: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
