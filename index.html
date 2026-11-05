@@ -3224,6 +3224,16 @@
             </div>
           </div>
         </div>
+        <!-- 👥 내가 들어가 있는(또는 관전 중인) 던전 5인 방 대기실 · 열려 있는 던전방 -->
+        <div id="dungeonWaitingRoomPanel" class="hidden bg-slate-900 border-2 border-amber-500/60 rounded-2xl p-5 flex flex-col gap-4 shadow-xl"></div>
+        <div id="dungeonRoomChat" class="hidden"></div>
+        <div id="dungeonRoomsBox" class="bg-slate-900 border-2 border-amber-500/30 rounded-2xl p-4 flex flex-col gap-3 shadow">
+          <h4 class="font-title text-xl text-white flex items-center gap-2 border-b border-slate-800 pb-2.5">
+            <span>👥</span> 친구와 가는 던전방 (최대 5명)
+            <span id="dungeonRoomCountBadge" class="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-extrabold">방 0개</span>
+          </h4>
+          <div id="dungeonRoomsList" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+        </div>
         <div id="dungeonCardGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
         <div class="bg-slate-900 border-2 border-amber-500/30 rounded-2xl p-4 flex flex-col gap-2 text-xs text-slate-300 leading-relaxed">
           <h4 class="font-title text-lg text-white">📜 던전 규칙</h4>
@@ -3235,6 +3245,7 @@
           <div>⚔️ 방 종류: ⚔️ 일반 · 💎 정예(크고 센 몬스터, 추가 보상) · 📦 보물(상자 3개 중 하나만: 골드·회복·보스 방 지도) · 🔥 기믹(던전마다 달라요: 불기둥·덫·거미줄·낙석·망자의 손·독 웅덩이·포자·투석·전쟁 북·부활하는 해골·눈보라·고드름·용암) · 🚶 빈 방 · 👑 보스</div>
           <div>💚 방을 깨면 쓰러진 용병이 체력 30%로 부활해요. ⏸️ 방을 깨서 길이 열린 동안(지나온 방을 다시 지날 때도)은 스킬 쿨타임이 멈추고, 몬스터가 있는 새 방에 들어가야 다시 흘러요. 길이 열린 동안은 💨 대시 쿨타임이 없어요. 보스 방 입구 모닥불에서 5초 정비(체력 40% 회복) 뒤 보스가 나와요.</div>
           <div>⏰ 제한 시간 6분 (보스 방에 들어가면 최소 1분 30초는 보장) · 모두 쓰러지거나 시간이 지나면 끝나요. 깬 방까지의 보상은 받아요.</div>
+          <div>👥 <strong>친구와 입장</strong>: 던전방을 만들면 반 친구가 최대 5명까지 들어와요. 한 사람이 <strong>출전 용병 1명</strong>을 골라 직접 조종하고, 빈 자리는 방장이 <strong>[🤖 AI 넣기]</strong>로 반 친구 용병을 채울 수 있어요. <strong>⭐ 대표 용병은 방장 용병</strong>이고, 이동할 방은 대표가 문으로 걸어가거나 방장이 미니맵에서 골라요. 몬스터 세기는 파티 용병들의 전투력에 맞춰지고, 보상은 혼자 입장과 같아요 (각자 하루 3회).</div>
           <div class="mt-1 p-2.5 rounded-xl bg-slate-950 border border-slate-800">💰 보상: 방 <strong class="text-amber-300">120 CA</strong> · 정예 +300 · 보스 1,500 · 첫 클리어 +2,000 · 2분 안에 클리어 +300 (어려움은 더 커요) · 전부 자동 전투로 깨면 ×0.8 · 하루 3회</div>
         </div>
       </section>
@@ -11180,10 +11191,11 @@
         if (!r || !r.roomId || (r.status !== 'in_battle' && r.status !== 'waiting') || (myId && raidSlotOf(r, myId))) return;
         if (Date.now() - (r.createdAt || 0) >= 1800000) return;
         const waiting = r.status === 'waiting';
+        const dgDef = isDungeonRoom(r) ? DUNGEONS[r.dungeonId] : null;
         items.push({
-          kind: isRushRoom(r) ? 'rush' : 'raid', id: r.roomId, icon: isRushRoom(r) ? '🌊' : '🐉', waiting,
+          kind: isRushRoom(r) ? 'rush' : isDungeonRoom(r) ? 'dungeon' : 'raid', id: r.roomId, icon: isRushRoom(r) ? '🌊' : dgDef ? dgDef.icon : '🐉', waiting,
           names: raidSlotsOf(r).filter(s => r[s + 'Id'] && !raidIsPractice(r, s)).map(s => r[s + 'Name'] || '친구').join(', '),
-          detail: isRushRoom(r) ? `몬스터 러쉬${waiting ? waitTag : ''}` : `엘리트 토벌 · ${r.bossName || '보스'}${waiting ? waitTag : ''}`, watchers: 0,
+          detail: isRushRoom(r) ? `몬스터 러쉬${waiting ? waitTag : ''}` : isDungeonRoom(r) ? `던전 5인 · ${dgDef ? dgDef.name : '던전'}${waiting ? waitTag : ''}` : `엘리트 토벌 · ${r.bossName || '보스'}${waiting ? waitTag : ''}`, watchers: 0,
           watching: currentSpectatingRaidRoomId === r.roomId || (watchingBattle && sim.raidWatch && sim.raidWatch.roomId === r.roomId)
         });
       });
@@ -11236,7 +11248,7 @@
       const showWaitingRoom = () => {
         goToStudentTab(kind);
         if (kind === 'pvp') switchPvpSubMode('realtime');
-        setTimeout(() => document.getElementById(kind === 'pvp' ? 'pvpWaitingRoomPanel' : (kind === 'rush' ? 'rushWaitingRoomPanel' : 'raidWaitingRoomPanel'))?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+        setTimeout(() => document.getElementById(kind === 'pvp' ? 'pvpWaitingRoomPanel' : (kind === 'rush' ? 'rushWaitingRoomPanel' : kind === 'dungeon' ? 'dungeonWaitingRoomPanel' : 'raidWaitingRoomPanel'))?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
       };
       if (it.watching) {
         if (kind === 'minigame') goToStudentTab('minigame');
@@ -16411,7 +16423,7 @@
       if (force || sim.tickCount % 10 === 0) refreshTouchControls();
       const rushBtn = document.getElementById('rushAutoBtn');
       if (rushBtn && (force || sim.tickCount % 10 === 0)) {
-        const mine = sim.mode === 'monster_rush' && sim.running && !sim.spectator ? myRushUnit() : (sim.mode === 'dungeon' && sim.running ? dungeonLeader() : null);
+        const mine = sim.mode === 'monster_rush' && sim.running && !sim.spectator ? myRushUnit() : (sim.mode === 'dungeon' && sim.running ? (sim.dungeon && sim.dungeon.party ? dungeonMyUnit() : dungeonLeader()) : null);
         rushBtn.classList.toggle('hidden', !(mine && mine.alive));
         rushBtn.textContent = battleControl.mode === 'manual' ? '🤖 자동 전투로' : '🎮 직접 조종으로';
       }
@@ -24222,11 +24234,13 @@
           ? `관전 종료 · ${tw.name} ${blueTeamWon ? `🏆 ${tw.floor}층 돌파!` : '🛡️ 도전 실패'}`
           : rw && rw.rush
             ? `관전 종료 · 🌊 몬스터 러쉬 ${(sim.rush && sim.rush.cleared) || 0}라운드 클리어`
+          : rw && rw.dungeon
+            ? `관전 종료 · ${rw.bossName} ${blueTeamWon ? '🏆 클리어!' : '🛡️ 탐험 실패'}`
           : rw
             ? `관전 종료 · ${rw.bossName} ${blueTeamWon ? '🏆 토벌 성공!' : '🛡️ 토벌 실패'}`
             : `관전 종료 · ${winner?.name || (blueTeamWon ? '블루팀' : '레드팀')} 승리!`;
         document.getElementById('battleResultDesc').textContent = rw
-          ? '관전한 엘리트 보스 토벌이 끝났어요. (관전은 보상이 없어요)'
+          ? (rw.dungeon ? '관전한 던전 탐험이 끝났어요. (관전은 보상이 없어요)' : '관전한 엘리트 보스 토벌이 끝났어요. (관전은 보상이 없어요)')
           : sim.forfeitTeam
             ? `${(sim.forfeitTeam === 'blue' ? meta.blueStudent : meta.redStudent)?.name || ''} 친구가 포기했어요.`
             : (tw ? '관전한 탑 도전이 끝났어요. (관전은 보상이 없어요)' : '관전한 결투가 끝났어요. (관전은 보상이 없어요)');
@@ -26554,7 +26568,8 @@
 
       // 🏰 던전: 카메라가 대표 용병을 따라감 (드래그 중에는 빼고)
       if (sim.mode === 'dungeon' && sim.running && !sim.camera.isDragging) {
-        const L = dungeonLeader();
+        const mine = dungeonMyUnit(); // 5인 입장: 내 용병 (쓰러졌으면 대표)
+        const L = mine && mine.alive ? mine : dungeonLeader();
         if (L) {
           sim.camera.x += (L.x - (viewW / z) / 2 - sim.camera.x) * (1 - Math.pow(1 - 0.12, frameTimeScale));
           sim.camera.y += (L.y - (viewH / z) / 2 - sim.camera.y) * (1 - Math.pow(1 - 0.12, frameTimeScale));
@@ -30176,7 +30191,7 @@
     // 대기방에 들어간 뒤에도 출전 용병을 바꿀 수 있게: 내 칸의 용병·전투력을 방에 다시 써 넣음 (파티원은 준비완료가 풀림)
     function syncMyRaidRoomMercs(stu) {
       const room = liveRaidRoomsCache[currentJoinedRaidRoomId];
-      const slot = room && room.status === 'waiting' && !isRushRoom(room) ? raidSlotOf(room, stu.id) : null;
+      const slot = room && room.status === 'waiting' && !isPartyRoom(room) ? raidSlotOf(room, stu.id) : null;
       if (!slot) return;
       const mercs = (stu.roster || []).filter(m => selectedRaidMercIds.includes(m.id)).slice(0, RAID_PICK);
       room[slot + 'Mercs'] = JSON.parse(JSON.stringify(mercs));
@@ -34627,6 +34642,7 @@
         if (pvp) return pvp.status === 'playing' ? '⚔️ 결투 중' : '🚪 결투방 대기';
         const raid = Object.values(liveRaidRoomsCache || {}).find(r => r && raidSlotOf(r, stuId));
         if (raid && isRushRoom(raid)) return raid.status === 'waiting' ? '🚪 러쉬방 대기' : '🌊 몬스터 러쉬 중';
+        if (raid && isDungeonRoom(raid)) return raid.status === 'waiting' ? '🚪 던전방 대기' : '🏰 던전 탐험 중';
         if (raid) return raid.status === 'waiting' ? '🚪 레이드방 대기' : '🐉 레이드 중';
         const mg = Object.values(liveMinigameRoomsCache || {}).find(r => r && this.inRoom('minigame', r, stuId));
         if (mg) return mg.status === 'playing' ? '🎲 미니게임 중' : '🚪 미니게임방 대기';
@@ -34790,17 +34806,19 @@
       closeRoomInviteModal();
       closeFriendProfile();
       const rushInv = inv.kind === 'raid' && isRushRoom(room); // 몬스터 러쉬방도 레이드방 초대(kind: raid)로 옴
-      goToStudentTab(inv.kind === 'pvp' ? 'pvp' : rushInv ? 'rush' : inv.kind === 'raid' ? 'raid' : 'minigame');
+      const dgInv = inv.kind === 'raid' && isDungeonRoom(room); // 던전 5인 방도 마찬가지
+      goToStudentTab(inv.kind === 'pvp' ? 'pvp' : rushInv ? 'rush' : dgInv ? 'dungeon' : inv.kind === 'raid' ? 'raid' : 'minigame');
       // 방에 먼저 들어간 뒤 초대를 지움 → 방장 화면이 거절로 착각하지 않음
       try {
         if (inv.kind === 'pvp') { switchPvpSubMode('realtime'); await joinFirebasePvpRoom(inv.roomId); }
         else if (rushInv) await joinRushRoom(inv.roomId);
+        else if (dgInv) await joinDungeonRoom(inv.roomId);
         else if (inv.kind === 'raid') await joinFirebaseCoopRaidRoom(inv.roomId);
         else await joinMinigameRoom(inv.roomId);
       } finally {
         RoomInvites.remove(me.id, id);
       }
-      const panelId = inv.kind === 'pvp' ? 'pvpWaitingRoomPanel' : rushInv ? 'rushWaitingRoomPanel' : inv.kind === 'raid' ? 'raidWaitingRoomPanel' : 'minigameWaitingRoomSection';
+      const panelId = inv.kind === 'pvp' ? 'pvpWaitingRoomPanel' : rushInv ? 'rushWaitingRoomPanel' : dgInv ? 'dungeonWaitingRoomPanel' : inv.kind === 'raid' ? 'raidWaitingRoomPanel' : 'minigameWaitingRoomSection';
       setTimeout(() => {
         const panel = document.getElementById(panelId);
         if (panel && !panel.classList.contains('hidden')) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -35773,8 +35791,11 @@
     const RUSH_GUEST_SLOTS = ['guest', 'guest2', 'guest3', 'guest4'];
     const RUSH_MAX_PLAYERS = 5;
     const isRushRoom = r => Boolean(r) && r.kind === 'rush';
-    const raidSlotsOf = r => (isRushRoom(r) ? RUSH_SLOTS : RAID_SLOTS);
-    const raidGuestSlotsOf = r => (isRushRoom(r) ? RUSH_GUEST_SLOTS : RAID_GUEST_SLOTS);
+    // 🏰 던전 5인 입장 방도 레이드방에 kind: 'dungeon'으로 들어감 (러쉬방과 같은 5칸)
+    const isDungeonRoom = r => Boolean(r) && r.kind === 'dungeon';
+    const isPartyRoom = r => isRushRoom(r) || isDungeonRoom(r);
+    const raidSlotsOf = r => (isPartyRoom(r) ? RUSH_SLOTS : RAID_SLOTS);
+    const raidGuestSlotsOf = r => (isPartyRoom(r) ? RUSH_GUEST_SLOTS : RAID_GUEST_SLOTS);
     const RAID_SLOT_FIELDS = ['Id', 'Num', 'Name', 'Power', 'Mercs', 'StudentSnapshot'];
     const raidPracticeKey = slot => (slot === 'guest' ? 'practiceFriend' : 'practiceFriend' + slot.slice(5)); // guest2 → practiceFriend2
     const raidIsPractice = (r, slot) => slot !== 'host' && Boolean(r[raidPracticeKey(slot)]);
@@ -37472,14 +37493,15 @@
 
     // 관전 시작: 중계 화면의 유닛 목록(init)을 받아 옴 · 아직 안 올라왔으면 한 번 읽고 포기하지 않고 잠시(최대 waitMs) 기다림
     // 양 팀 유닛이 모두 있으면 { init, blueUnits, redUnits }, 끝내 없으면 null
-    function waitLiveInit(ref, waitMs = 5000) {
+    // blueOnly: 적이 없는 화면도 받음 (🏰 던전은 시작 방·빈 방·보물 방에 몬스터가 없음)
+    function waitLiveInit(ref, waitMs = 5000, blueOnly = false) {
       const parse = init => {
         const units = init && Array.isArray(init.units)
           ? deepCleanStrings(init.units).filter(u => u && typeof u === 'object' && u.id).map(normalizeLiveUnit)
           : [];
         const blueUnits = units.filter(u => u.team === 'blue');
         const redUnits = units.filter(u => u.team === 'red');
-        return blueUnits.length && redUnits.length ? { init, blueUnits, redUnits } : null;
+        return blueUnits.length && (redUnits.length || blueOnly) ? { init, blueUnits, redUnits } : null;
       };
       return new Promise(resolve => {
         let done = false, timer = null;
@@ -37524,7 +37546,8 @@
         lastInputSentAt: 0, inputTimer: null, lastAimSent: null,
         guestChose: false, started: false, lastStatusAt: 0, hostStatus: null,
         lastFramePublishedAt: 0, spectator, timeoutExtended: false,
-        team: Boolean(team), teamExpect: teamExpect || [], teamChosen: {}, remoteCtrls: {}, myId: getActiveStudent()?.id || null
+        team: Boolean(team), teamExpect: teamExpect || [], teamChosen: {}, remoteCtrls: {}, myId: getActiveStudent()?.id || null,
+        dgUnitSig: null, dgRoomSeq: null, dgSentJ: null, dgChangedAt: 0
       });
       resetLiveFrameBuffer();
       if (role === 'host') {
@@ -37772,6 +37795,7 @@
         });
         return out;
       };
+      if (sim.dungeon && sim.dungeon.party) syncDungeonLiveUnits(); // 🏰 5인 던전: 방을 옮기거나 몬스터가 더 나오면 유닛 목록부터 다시 보냄
       const packed = sim.units.map(packLiveUnit);
       const base = liveNet.sentU;
       // 전체 화면: 강제(결과·넘기기)·처음·유닛 수가 바뀜·LIVE_KEYFRAME_MS 지남 · 그 밖에는 앞 화면 대비 바뀐 칸만
@@ -37790,6 +37814,12 @@
       // 엘리트 보스 등장 연출(하늘에서 떨어지는 중인 시점)·화면 흔들림·섬광도 같이 보냄 (흔들림·섬광은 새로 생긴 것만 한 번)
       if (sim.eliteIntro) frame.it = sim.eliteIntro.t;
       if (sim.rush) frame.rs = packRushState();
+      // 🏰 5인 던전: 지도·방 진행 상태는 바뀐 뒤 1초 동안과 전체 화면에만 실음 (화면 몇 장이 건너뛰어져도 받게)
+      if (sim.dungeon && sim.dungeon.party) {
+        const dgs = packDungeonState(), j = JSON.stringify(dgs);
+        if (j !== liveNet.dgSentJ) { liveNet.dgSentJ = j; liveNet.dgChangedAt = nowMs; }
+        if (keyframe || nowMs - (liveNet.dgChangedAt || 0) < 1000) frame.dg = dgs;
+      }
       // 전투가 멈춰 있는 까닭 (관전자 화면에 안내): 전투 방식을 고르는 중
       if (sim.awaitingControlChoice) frame.ps = 'choose';
       if (sim.shake && !liveNet.sent.has(sim.shake)) { liveNet.sent.add(sim.shake); frame.sk = [sim.shake.power, sim.shake.life, sim.shake.maxLife]; }
@@ -37816,6 +37846,7 @@
         blueWon: Boolean(blueTeamWon),
         forfeitTeam: sim.forfeitTeam || null,
         ...(sim.rush ? { rs: packRushState() } : {}),
+        ...(sim.dungeon && sim.dungeon.party ? { dg: packDungeonState() } : {}),
         s: sim.units.map(u => [Math.round(liveNum(u.damageDealt)), Math.round(liveNum(u.healDone)), Math.round(liveNum(u.damageTaken))])
       }).catch(() => {});
       const roomId = liveNet.roomId;
@@ -38150,7 +38181,8 @@
     // 버퍼의 화면 한 장을 적용 (위치는 따로 이어 그림) · ageMs = 그 화면이 재생 시점보다 얼마나 앞선 것인지
     function applyLiveFrameState(val, ageMs) {
       // 토벌 도중에 들어온 관전자: 남은 시간이 방장 화면과 같게
-      if (sim.raidWatch && liveNum(val.t) > 0) sim.tickCount = liveNum(val.t);
+      if ((sim.raidWatch || (sim.dungeon && sim.dungeon.party)) && liveNum(val.t) > 0) sim.tickCount = liveNum(val.t); // 5인 던전: 남은 시간·기믹 시각이 방장 화면 기준
+      if (val.dg && typeof val.dg === 'object' && sim.dungeon) applyDungeonState(val.dg);
       liveNet.hostPause = val.ps === 'choose' ? val.ps : null;
       if (Array.isArray(val.rs)) applyRushState(val.rs);
       if (isEliteBossMode(sim.mode)) sim.eliteIntro = liveNum(val.it) > 0 ? { t: liveNum(val.it) } : null;
@@ -38236,6 +38268,7 @@
         u.damageTaken = liveNum(s[2]);
       });
       if (Array.isArray(val.rs)) applyRushState(val.rs);
+      if (val.dg && typeof val.dg === 'object' && sim.dungeon) applyDungeonState(val.dg);
       stopLiveBattleNet();
       sim.forfeitTeam = val.forfeitTeam === 'red' || val.forfeitTeam === 'blue' ? val.forfeitTeam : null;
       if (sim.running) finishSimulation(val.blueWon === true);
@@ -38720,11 +38753,12 @@
 
     function renderLiveRaidRoomsList() {
       renderRushLobby();
+      renderDungeonLobby();
       const box = document.getElementById('raidLiveRoomsList');
       const badge = document.getElementById('raidLiveRoomCountBadge');
       const waitPanel = document.getElementById('raidWaitingRoomPanel');
       const myStu = getActiveStudent();
-      const rooms = Object.values(liveRaidRoomsCache || {}).filter(r => r && !isRushRoom(r) && (r.status === 'waiting' || r.status === 'in_battle') && (Date.now() - (r.createdAt || 0) < 1800000));
+      const rooms = Object.values(liveRaidRoomsCache || {}).filter(r => r && !isPartyRoom(r) && (r.status === 'waiting' || r.status === 'in_battle') && (Date.now() - (r.createdAt || 0) < 1800000));
       if (badge) badge.textContent = `대기방 ${rooms.length}개`;
 
       // 내가 들어가 있는 방 (플레이어로 없으면 관전 중인 방)
@@ -38920,6 +38954,7 @@
         if (!r || r.status !== 'in_battle' || !r.roomId) return;
         if (launchedLiveRoomIds.has(r.roomId)) return;
         if (isRushRoom(r) && raidSlotOf(r, myStu.id)) { launchRushRoomBattle(r, myStu); return; }
+        if (isDungeonRoom(r)) { if (raidSlotOf(r, myStu.id)) launchDungeonRoomBattle(r, myStu); return; }
         if (raidSlotOf(r, myStu.id)) {
           launchedLiveRoomIds.add(r.roomId);
           currentActiveLiveBattleRoomId = r.roomId;
@@ -38981,7 +39016,8 @@
       Object.assign(liveNet, {
         role: 'host', roomId: castId, ref, startedAt: Date.now(), finished: false,
         sent: new WeakSet(), pendingLogs: [], lastFramePublishedAt: 0, spectator: false, sentU: null, sentT: 0, keyAt: 0,
-        team: false, remoteCtrls: {}, myId: me.id, towerCast: true, towerWatchers: 0, raidCast: true
+        team: false, remoteCtrls: {}, myId: me.id, towerCast: true, towerWatchers: 0, raidCast: true,
+        dgUnitSig: null, dgRoomSeq: null, dgSentJ: null, dgChangedAt: 0
       });
       sim.effects.forEach(x => liveNet.sent.add(x));
       sim.floatTexts.forEach(x => liveNet.sent.add(x));
@@ -39040,7 +39076,8 @@
       publishLiveBattleFrame(true);
       const units = sim.units.map(u => liveUnitCopy(u, LIVE_INIT_DROP));
       try { ref.onDisconnect().cancel(); } catch (e) {}
-      ref.child('handoff').set(JSON.parse(JSON.stringify({ at: Date.now(), from: me.id, to: heirId, tick: sim.tickCount, units }))).catch(() => {});
+      const dg = sim.dungeon && sim.dungeon.party ? packDungeonState() : null; // 🏰 5인 던전: 지도·방 진행 상태도 함께 넘김
+      ref.child('handoff').set(JSON.parse(JSON.stringify({ at: Date.now(), from: me.id, to: heirId, tick: sim.tickCount, units, ...(dg ? { dg } : {}) }))).catch(() => {});
       stopLiveBattleNet();
       setTimeout(() => { if (liveNet.ref !== ref) ref.remove().catch(() => {}); }, 20000);
       addBattleLog('👑 남은 친구에게 토벌 계산을 넘겼어요. 친구들의 토벌은 계속 이어져요.');
@@ -39052,6 +39089,7 @@
       const rl = sim.raidLive;
       if (!rl || !val.to) return;
       if (val.from && !rl.tried.includes(val.from)) rl.tried.push(val.from);
+      if (val.to === liveNet.myId && val.dg && typeof val.dg === 'object' && sim.dungeon) applyDungeonState(val.dg);
       if (val.to === liveNet.myId) takeOverRaidBattle(Array.isArray(val.units) ? val.units : null, val.tick);
       else connectRaidLiveNet(val.to, Date.now() - 3000, []);
     }
@@ -39115,6 +39153,12 @@
         startRaidLiveBroadcast(liveRaidRoomsCache[rl.roomId] || { roomId: rl.roomId });
       }
       addBattleLog('👑 계산하던 친구가 빠져서 내 화면이 이어서 토벌을 계산해요! (빠진 친구 용병은 AI가 싸워요)');
+      // 🏰 5인 던전: 이제 내 용병이 대표 · 길이 열린 방에서 이어받으면 고르는 시간을 다시 셈
+      if (sim.dungeon && sim.dungeon.party) {
+        sim.dungeon.leaderId = null;
+        sim.dungeon.selectAt = sim.tickCount;
+        dungeonPartyLeader();
+      }
     }
 
     // 아직 토벌 중인 파티원 (방장 먼저) · 볼 화면 후보
@@ -39156,7 +39200,7 @@
       let got = null, pick = null;
       for (const t of tries) {
         // 첫 후보는 조금 더 기다림 (방금 출발해서 아직 화면을 올리는 중일 수 있음)
-        got = await waitLiveInit(liveRoomRef(t.castId), t === tries[0] ? 4000 : 1500);
+        got = await waitLiveInit(liveRoomRef(t.castId), t === tries[0] ? 4000 : 1500, isDungeonRoom(r));
         if (got) { pick = t; break; }
       }
       if (!got) { if (!quiet) showNotice('⚠️ 토벌 화면을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.'); return false; }
@@ -39168,9 +39212,14 @@
       const owner = state.students.find(s => s.id === pick.id) || { id: pick.id, name: pick.name, roster: [] };
       const names = raidFilledSlots(room).map(s => room[s + 'Name']).join(' & ');
       const rush = isRushRoom(room);
+      // 🏰 던전 5인 방: 같은 씨앗으로 같은 지도를 만들고, 방 진행은 받은 화면(dg)을 따라감
+      const dgDef = isDungeonRoom(room) ? DUNGEONS[room.dungeonId] : null;
+      const dgDiff = room.diff === 'hard' ? 'hard' : 'normal';
+      const dgMap = dgDef ? generateDungeonMap(dgDef, dgDiff, Number(room.dgSeed) >>> 0) : null;
+      if (isDungeonRoom(room) && !dgMap) { if (!quiet) showNotice('⚠️ 던전 화면을 불러오지 못했어요.'); return false; }
       launchSimulation({
-        mode: rush ? 'monster_rush' : 'elite_raid',
-        title: rush ? `📺 관전 중: 🌊 몬스터 러쉬 · ${names} (${pick.name} 화면)` : `📺 관전 중: ${names} vs ${room.hard ? '🔥하드 ' : ''}${bossDef.name} (${pick.name} 화면)`,
+        mode: rush ? 'monster_rush' : dgMap ? 'dungeon' : 'elite_raid',
+        title: rush ? `📺 관전 중: 🌊 몬스터 러쉬 · ${names} (${pick.name} 화면)` : dgMap ? `📺 관전 중: ${dgDef.icon} ${dgDef.name} [${dgDiff === 'hard' ? '🔥어려움' : '보통'}] · ${names} (${pick.name} 화면)` : `📺 관전 중: ${names} vs ${room.hard ? '🔥하드 ' : ''}${bossDef.name} (${pick.name} 화면)`,
         blueStudent: owner,
         redStudent: null,
         eliteBossId: bossDef.id,
@@ -39184,8 +39233,14 @@
       sim.spectator = true;
       sim.spectateFrom = Date.now();
       sim.spectateRoomId = null;
-      sim.raidWatch = { roomId, castId: pick.castId, stuId: pick.id, hostName: pick.name, bossName: rush ? '🌊 몬스터 러쉬' : bossDef.name, rush };
+      sim.raidWatch = { roomId, castId: pick.castId, stuId: pick.id, hostName: pick.name, bossName: rush ? '🌊 몬스터 러쉬' : dgMap ? `${dgDef.icon} ${dgDef.name}` : bossDef.name, rush, dungeon: Boolean(dgMap) };
       if (rush) sim.rush = newRushState(Number(room.rushStartFloor) || 1);
+      if (dgMap) {
+        sim.dungeon = newDungeonState(dgDef.id, dgDiff, Number(room.dgSeed) >>> 0, dgMap, { floor: Number(room.dgFloor) || 1, powerRatio: Number(room.dgRatio) || 1, power: Number(room.dgPower) || 0 });
+        sim.dungeon.party = true;
+        sim.dungeon.started = true;
+        sim.dungeon.grid[dgMap.start[0]][dgMap.start[1]].visited = true;
+      }
       // 고를 것 없이 보기만: 전투 방식 고르기 창을 닫고 자동(화면 이동만)으로 고정
       battleControl.locked = true;
       battleControl.mode = 'auto';
@@ -39193,7 +39248,7 @@
       sim.awaitingControlChoice = false;
       document.getElementById('battleControlChooser')?.classList.add('hidden');
       renderBattleControlHud(true);
-      addBattleLog(`📺 [관전] ${pick.name} 친구 화면의 [${rush ? '🌊 몬스터 러쉬' : bossDef.name}] ${rush ? '전투' : '토벌'}를 보고 있어요. (WASD·드래그로 화면 이동)`);
+      addBattleLog(`📺 [관전] ${pick.name} 친구 화면의 [${sim.raidWatch.bossName}] ${rush ? '전투' : dgMap ? '던전 탐험' : '토벌'}를 보고 있어요. (WASD·드래그로 화면 이동)`);
       startLiveBattleNet(pick.castId, 'guest', liveNum(init.at), true, false);
       liveNet.bid = typeof init.b === 'number' ? init.b : null; liveNet.ep = liveNum(init.ep);
       const wRef = liveRoomRef(pick.castId).child('watchers').child(me.id);
@@ -39549,8 +39604,9 @@
       const mercs = ((stu && stu.roster) || []).filter(m => m.deployed);
       const base = mercs.reduce((s, m) => s + dungeonBaseMercPower(m.job, m.level || 1), 0);
       if (!base) return 1;
-      return Math.max(DUNGEON_POWER_CLAMP[0], Math.min(DUNGEON_POWER_CLAMP[1], dungeonPowerOf(stu) / base));
+      return dungeonClampRatio(dungeonPowerOf(stu) / base);
     }
+    const dungeonClampRatio = x => Math.max(DUNGEON_POWER_CLAMP[0], Math.min(DUNGEON_POWER_CLAMP[1], x || 1));
     // 지금 방 몬스터의 세기 배율 (전투력 비율 × 방을 옮긴 만큼)
     function dungeonRoomMult() {
       const dg = sim.dungeon;
@@ -39989,7 +40045,9 @@
     }
     function dungeonHardLocked(stu, id) { return !dungeonBookOf(stu, id).normalClear; }
     function dungeonFloorFor(stu, diff) {
-      const mercs = (stu.roster || []).filter(m => m.deployed);
+      return dungeonFloorOfMercs((stu.roster || []).filter(m => m.deployed), diff);
+    }
+    function dungeonFloorOfMercs(mercs, diff) {
       const lv = mercs.length ? mercs.reduce((s, m) => s + (m.level || 1), 0) / mercs.length : 1;
       // 높은 레벨일수록 같은 층 몬스터가 상대적으로 세져서(시뮬: Lv.55 어려움 0%) 레벨 30 위로는 층을 더 내림
       const ease = Math.round(Math.max(0, lv - 30) * DUNGEON_TUNE[diff].levelEase);
@@ -40016,18 +40074,22 @@
         rewardMc: 0
       });
       if (!sim.running || sim.mode !== 'dungeon') return;
-      sim.dungeon = {
-        id, def, diff, seed, ...map, pos: [...map.start], leaderId: null, phase: 'room', fromDir: null,
-        roomStartTick: 0, startTick: 0, timeTicks: DUNGEON_TIME_SEC * BATTLE_TICKS_PER_SEC, fade: 0, fadeDir: 0, moveDir: null, moveAt: 0,
-        roomsCleared: 0, elitesKilled: 0, bossKilled: false, chestCa: 0, everManual: false, mapRevealed: false, started: false,
-        gim: {}, boss: null, floor: dungeonFloorFor(stu, diff), selectAt: 0, doneAt: 0, prepAt: 0, log: [],
-        powerRatio: dungeonPowerRatio(stu), power: dungeonPowerOf(stu), roomNo: 0
-      };
+      sim.dungeon = newDungeonState(id, diff, seed, map, { floor: dungeonFloorFor(stu, diff), powerRatio: dungeonPowerRatio(stu), power: dungeonPowerOf(stu) });
       sim.units.forEach(u => { if (u.team === 'blue') u.followLeader = true; });
       enterDungeonRoom(map.start, null);
       addBattleLog(`🏰 ${def.name}에 들어왔어요! 지도 어딘가에 숨은 👑 보스 방을 찾아 보스를 물리치면 클리어! (제한 시간 ${DUNGEON_TIME_SEC / 60}분)`);
       addBattleLog('🚪 방의 몬스터를 모두 쓰러뜨리면 길이 열려요. 대표 용병이 문으로 걸어가거나 왼쪽 위 미니맵의 옆 칸을 누르면 그 방으로 이동해요.');
       addBattleLog(`📈 몬스터 세기는 출전 용병 전투력 ${sim.dungeon.power.toLocaleString()}에 맞춰졌어요 (기본 용병의 ${Math.round(sim.dungeon.powerRatio * 100)}%). 새 방에 들어갈 때마다 몬스터가 ${Math.round(DUNGEON_ROOM_RAMP * 100)}%씩 더 강해져요!`);
+    }
+    // party: 5인 입장 (방장 화면이 계산, roomSeq: 방에 들어갈 때마다 +1 → 친구 화면에 유닛 목록을 새로 보냄)
+    function newDungeonState(id, diff, seed, map, { floor, powerRatio, power }) {
+      return {
+        id, def: DUNGEONS[id], diff, seed, ...map, pos: [...map.start], leaderId: null, phase: 'room', fromDir: null,
+        roomStartTick: 0, startTick: 0, timeTicks: DUNGEON_TIME_SEC * BATTLE_TICKS_PER_SEC, fade: 0, fadeDir: 0, moveDir: null, moveAt: 0,
+        roomsCleared: 0, elitesKilled: 0, bossKilled: false, chestCa: 0, everManual: false, mapRevealed: false, started: false,
+        gim: {}, boss: null, floor, selectAt: 0, doneAt: 0, prepAt: 0, log: [],
+        powerRatio: powerRatio || 1, power: power || 0, roomNo: 0, roomSeq: 0, party: false
+      };
     }
     function dungeonLeader() {
       const dg = sim.dungeon;
@@ -40045,10 +40107,36 @@
       sim.units.forEach(u => { if (u.team === 'blue') u.followLeader = Boolean(L) && u.id !== L.id; });
       return L;
     }
+    // 5인 입장의 대표: 계산하는 친구(방장)의 용병 · 쓰러졌으면 지금 대표 → 살아 있는 용병 중 가장 센 용병 (방을 깨서 방장 용병이 부활하면 다시 방장 용병)
+    function dungeonPartyLeader() {
+      const dg = sim.dungeon, rl = sim.raidLive;
+      if (!dg) return null;
+      const blue = sim.units.filter(u => u.team === 'blue' && u.alive && !u.isClone);
+      const ownerId = rl && rl.hostId;
+      const L = blue.find(u => ownerId && u.liveOwnerId === ownerId && !u.rushAi) || blue.find(u => u.id === dg.leaderId) || null;
+      if (!L) return dungeonPickLeader(null);
+      if (dg.leaderId !== L.id) {
+        dg.leaderId = L.id;
+        sim.units.forEach(u => { if (u.team === 'blue') u.followLeader = u.id !== L.id; });
+      }
+      return L;
+    }
+    // 이 화면 학생의 용병 (5인 입장)
+    function dungeonMyUnit() {
+      if (!sim.dungeon || !sim.dungeon.party || sim.spectator) return null;
+      return myRushUnit();
+    }
     // 전투 방식을 고른 뒤 (setBattleControlMode에서 부름)
     function dungeonOnControlChosen() {
       const dg = sim.dungeon;
       if (!dg) return;
+      if (dg.party) {
+        // 5인 입장: 사람마다 자기 용병 1명이라 대표는 바꾸지 않음 (자동 전투를 고르면 내 용병도 대표를 따라다님)
+        if (battleControl.mode === 'manual') dg.everManual = true;
+        if (!dg.started) { dg.started = true; dg.startTick = sim.tickCount; dg.roomStartTick = sim.tickCount; dg.selectAt = sim.tickCount; }
+        renderDungeonPartyBar(true);
+        return;
+      }
       const keep = battleControl.mode !== 'manual' && dg.leaderId && sim.units.some(u => u.id === dg.leaderId && u.alive);
       const L = keep ? dungeonLeader() : dungeonPickLeader(battleControl.mode === 'manual' ? battleControl.unitId : null);
       if (battleControl.mode === 'manual') dg.everManual = true;
@@ -40058,7 +40146,7 @@
     }
     // 1인 입장: 다른 용병으로 직접 조종·시점을 바꿈 (그 용병이 대표가 되고 나머지는 그 용병을 따라감)
     function switchDungeonUnit(unitId) {
-      if (sim.mode !== 'dungeon' || !sim.running || !sim.dungeon || !sim.dungeon.started) return;
+      if (sim.mode !== 'dungeon' || !sim.running || !sim.dungeon || !sim.dungeon.started || sim.dungeon.party) return;
       const u = sim.units.find(x => x.id === unitId && x.team === 'blue' && !x.isClone);
       if (!u || !u.alive) return;
       if (battleControl.mode === 'manual' && battleControl.unitId === u.id) return;
@@ -40068,6 +40156,7 @@
     }
     // Tab: 살아 있는 다음 용병으로
     function switchDungeonUnitNext() {
+      if (!sim.dungeon || sim.dungeon.party) return; // 5인 입장은 한 사람에 용병 하나
       const party = sim.units.filter(u => u.team === 'blue' && !u.isClone && u.alive);
       if (!party.length) return;
       const cur = battleControl.mode === 'manual' ? battleControl.unitId : (sim.dungeon && sim.dungeon.leaderId);
@@ -40082,17 +40171,21 @@
       bar.classList.toggle('hidden', !on);
       if (!on) { dungeonPartyBarSig = ''; return; }
       const party = sim.units.filter(u => u.team === 'blue' && !u.isClone);
-      const ctrlId = battleControl.mode === 'manual' ? battleControl.unitId : null;
+      const together = Boolean(sim.dungeon.party);
+      const myU = together ? dungeonMyUnit() : null;
+      const ctrlId = together ? (myU && myU.id) : battleControl.mode === 'manual' ? battleControl.unitId : null;
       const leaderId = sim.dungeon.leaderId;
       const hpPct = u => (u.alive ? Math.max(0, Math.min(100, Math.round((u.hp / Math.max(1, u.maxHp)) * 10) * 10)) : 0);
       const sig = party.map(u => `${u.id}:${u.alive ? 1 : 0}:${hpPct(u)}`).join('|') + `#${ctrlId}#${leaderId}`;
       if (!force && sig === dungeonPartyBarSig) return; // 바뀐 게 없으면 다시 그리지 않음 (누르는 중에 버튼이 사라지지 않게)
       dungeonPartyBarSig = sig;
-      bar.innerHTML = `<span class="font-extrabold text-amber-300 mr-1">🔄 조종할 용병 <span class="text-slate-400 font-bold">(Tab)</span></span>` + party.map(u => {
+      bar.innerHTML = (together
+        ? `<span class="font-extrabold text-amber-300 mr-1">👥 파티 <span class="text-slate-400 font-bold">(⭐ 대표 · 🎮 나)</span></span>`
+        : `<span class="font-extrabold text-amber-300 mr-1">🔄 조종할 용병 <span class="text-slate-400 font-bold">(Tab)</span></span>`) + party.map(u => {
         const me = u.id === ctrlId, lead = u.id === leaderId, dead = !u.alive;
         const pct = hpPct(u);
-        return `<button type="button" data-unit-id="${u.id}" onclick="switchDungeonUnit(this.dataset.unitId)" ${dead ? 'disabled' : ''}
-          class="relative flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-xl border-2 font-extrabold ${me ? 'bg-amber-500/25 border-amber-400 text-white' : dead ? 'bg-slate-900 border-slate-800 text-slate-500 cursor-not-allowed opacity-60' : 'bg-slate-900 border-slate-700 text-slate-200 hover:border-amber-300'}">
+        return `<button type="button" data-unit-id="${u.id}" onclick="switchDungeonUnit(this.dataset.unitId)" ${dead || together ? 'disabled' : ''}
+          class="relative flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-xl border-2 font-extrabold ${me ? 'bg-amber-500/25 border-amber-400 text-white' : dead ? 'bg-slate-900 border-slate-800 text-slate-500 cursor-not-allowed opacity-60' : `bg-slate-900 border-slate-700 text-slate-200 ${together ? 'cursor-default' : 'hover:border-amber-300'}`}">
           ${getMercIconHTML(u.job, u.skinVariant, 24)}
           <span class="flex flex-col items-start leading-tight">
             <span>${lead ? '⭐' : ''}${dead ? '💀' : ''}${u.name}${me ? ' 🎮' : ''}</span>
@@ -40103,6 +40196,12 @@
     }
     function toggleDungeonAutoBattle() {
       if (sim.mode !== 'dungeon' || !sim.running) return;
+      if (sim.dungeon && sim.dungeon.party) {
+        const mine = dungeonMyUnit();
+        if (battleControl.mode === 'manual') setBattleControlMode('auto', null, true);
+        else if (mine && mine.alive) setBattleControlMode('manual', mine.id, true);
+        return;
+      }
       const L = dungeonLeader();
       if (battleControl.mode === 'manual') setBattleControlMode('auto', null, true);
       else if (L && L.alive) { setBattleControlMode('manual', L.id, true); sim.dungeon.everManual = true; }
@@ -40114,6 +40213,7 @@
       const cell = dungeonCellAt(dg, pos[0], pos[1]);
       if (!cell) return;
       dg.pos = [...pos];
+      dg.roomSeq = (dg.roomSeq || 0) + 1;
       dg.fromDir = movedDir ? DUNGEON_DIR_OPP[movedDir] : null;
       if (!cell.visited && cell.kind !== 'start') dg.roomNo = (dg.roomNo || 0) + 1; // 처음 들어가는 방마다 몬스터가 더 강해짐
       cell.visited = true;
@@ -40732,18 +40832,24 @@
       if (!dg) return false;
       const tps = BATTLE_TICKS_PER_SEC;
       if (!dg.started) return true; // 전투 방식을 고르기 전
-      const L = dungeonLeader();
+      let L = dungeonLeader();
       if (!blueAlive.some(u => !u.isClone)) {
         addBattleLog('💀 용병들이 모두 쓰러졌어요... 던전 탐험 실패.');
         finishSimulation(false);
         return true;
       }
-      if (L && !L.alive) {
+      if (dg.party) {
+        // 5인 입장: 남의 용병을 조종으로 빼앗지 않고 대표만 바꿈
+        const nL = dungeonPartyLeader();
+        if (nL && L && nL.id !== L.id) addBattleLog(L.alive ? `⭐ ${nL.name}이(가) 다시 대표 용병이 됐어요!` : `⭐ ${L.name}이(가) 쓰러져 ${nL.name}이(가) 새 대표 용병이 됐어요!`);
+        L = nL;
+      } else if (L && !L.alive) {
         const nL = dungeonPickLeader(null);
         if (nL) {
           addBattleLog(`⭐ ${L.name}이(가) 쓰러져 ${nL.name}이(가) 새 대표 용병이 됐어요!`);
           if (battleControl.mode === 'manual') setBattleControlMode('manual', nL.id, true);
         }
+        L = nL;
       }
       if (dg.phase !== 'done' && sim.tickCount - dg.startTick >= dg.timeTicks) {
         addBattleLog('⏰ 제한 시간이 끝났어요! 보스 방을 찾지 못했어요...');
@@ -40807,7 +40913,9 @@
         const dir = dungeonOpenDirs(dg).find(d => { const p = dungeonDoorPoint(d); return Math.hypot(L.x - p.x, L.y - p.y) < DUNGEON_DOOR_R; });
         if (dir && dir !== dg.fromDir || (dir && sim.tickCount - dg.selectAt > 2 * tps)) { beginDungeonMove(dir); return true; }
       }
-      if (battleControl.mode !== 'manual' && sim.tickCount - dg.selectAt >= DUNGEON_AUTO_PICK_SEC * tps) {
+      // 대표를 아무도 조종하지 않으면 잠시 뒤 알아서 이동 (5인 입장: 대표 용병이 자동 전투·AI 친구 용병일 때)
+      const leaderSteered = dg.party ? Boolean(L && L.alive && sim.controllers && sim.controllers[L.id]) : battleControl.mode === 'manual';
+      if (!leaderSteered && sim.tickCount - dg.selectAt >= DUNGEON_AUTO_PICK_SEC * tps) {
         const dirs = dungeonOpenDirs(dg);
         const unvisited = dirs.filter(d => { const n = dungeonNeighbor(dg, d); return !dungeonCellAt(dg, n[0], n[1]).visited; });
         const dir = (unvisited.length ? unvisited : dirs)[Math.floor(Math.random() * (unvisited.length ? unvisited : dirs).length)];
@@ -40895,6 +41003,10 @@
       if (!dg || !dg.mm || dg.phase !== 'select') return false;
       const { x, y, cell, gap } = dg.mm;
       if (cx < x || cy < y || cx > x + dg.w * (cell + gap) || cy > y + dg.h * (cell + gap)) return false;
+      if (dg.party && (sim.netRole === 'guest' || sim.spectator)) {
+        if (Date.now() - (dg.mmNoticeAt || 0) > 3000) { dg.mmNoticeAt = Date.now(); showNotice('🗺️ 이동할 방은 방장이 골라요. (대표 용병이 문으로 걸어가도 이동해요)'); }
+        return true;
+      }
       const c = Math.floor((cx - x) / (cell + gap)), r = Math.floor((cy - y) / (cell + gap));
       const dir = Object.keys(DUNGEON_DIRS).find(d => { const n = dungeonNeighbor(dg, d); return n && n[0] === r && n[1] === c; });
       if (dir) beginDungeonMove(dir);
@@ -41192,7 +41304,9 @@
       const i = dg.diff === 'hard' ? 1 : 0;
       const ca = dg.roomsCleared * dg.def.reward.room[i] + dg.elitesKilled * dg.def.reward.elite[i] + dg.chestCa;
       let text;
-      if (dg.phase === 'select') text = `🚪 길이 열렸어요! 대표 용병을 문으로 보내거나 미니맵의 옆 칸을 누르세요 (${dungeonOpenDirs(dg).map(d => DUNGEON_DIR_ICON[d]).join(' ')})`;
+      if (dg.phase === 'select') text = dg.party
+        ? `🚪 길이 열렸어요! ⭐ 대표 용병이 문으로 가거나 방장이 미니맵의 옆 칸을 누르면 이동해요 (${dungeonOpenDirs(dg).map(d => DUNGEON_DIR_ICON[d]).join(' ')})`
+        : `🚪 길이 열렸어요! 대표 용병을 문으로 보내거나 미니맵의 옆 칸을 누르세요 (${dungeonOpenDirs(dg).map(d => DUNGEON_DIR_ICON[d]).join(' ')})`;
       else if (dg.phase === 'boss_prep') text = `🕯️ 모닥불 정비 중... ${Math.max(0, Math.ceil((DUNGEON_BOSS_PREP_SEC * tps - (sim.tickCount - dg.prepAt)) / tps))}초 뒤 보스 등장!`;
       else if (dg.phase === 'done') text = '🏆 던전 클리어!';
       else if (dg.phase === 'move') text = '🚶 이동 중...';
@@ -41314,13 +41428,426 @@
                 <button onclick="startSoloDungeon('${def.id}', 'normal')" class="py-2.5 rounded-xl bg-${def.color}-600 hover:bg-${def.color}-500 text-white font-extrabold text-xs shadow">🧍 혼자 입장 (보통)</button>
                 <button onclick="startSoloDungeon('${def.id}', 'hard')" ${hardLocked ? 'disabled' : ''} class="py-2.5 rounded-xl ${hardLocked ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-500 text-white'} font-extrabold text-xs shadow">🔥 혼자 입장 (어려움)</button>
               </div>
-              <button disabled class="py-2 rounded-xl bg-slate-800 text-slate-500 font-bold text-xs border border-slate-700 cursor-not-allowed" title="학급 친구와 함께 들어가는 5인 입장은 준비 중이에요">👥 친구와 입장 (준비 중)</button>
+              <div class="grid grid-cols-2 gap-2">
+                <button onclick="createDungeonRoom('${def.id}', 'normal')" class="py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-${def.color}-200 font-extrabold text-xs border border-${def.color}-500/40">👥 친구와 입장 (보통)</button>
+                <button onclick="createDungeonRoom('${def.id}', 'hard')" ${hardLocked ? 'disabled' : ''} class="py-2 rounded-xl ${hardLocked ? 'bg-slate-800 text-slate-500 cursor-not-allowed border-slate-700' : 'bg-slate-800 hover:bg-slate-700 text-orange-200 border-orange-500/40'} font-extrabold text-xs border">👥 친구와 입장 (어려움)</button>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+      renderDungeonLobby();
+    }
+
+    /********************************************************************
+     * 👥 던전 5인 입장 (학급 파티 던전, docs/dungeon-design.md 2-2절)
+     * - 방은 레이드방(raid_rooms)에 kind: 'dungeon'으로 만듦 → 칸 5개·준비완료·AI 자리(rushFill)·방장 넘기기·초대·관전은 몬스터 러쉬방 장치를 그대로 씀
+     * - 한 사람이 출전 용병 1명을 들고 들어감 · 빈 자리는 방장이 [🤖 AI 넣기]로 반 친구 용병(파티 최고 전투력 이하)을 채움
+     * - 출발하면 방장 화면 하나가 던전을 계산함 (지도는 방에 적힌 씨앗으로 모두 같게 만듦)
+     *   친구 화면은 그 화면을 받아 보며 자기 용병 조작만 보냄 · 지도·방 진행 상태는 화면에 dg로 실려 옴 (packDungeonState)
+     * - ⭐ 대표 용병 = 계산하는 친구(방장)의 용병 · 이동할 방은 대표가 문으로 걷거나 방장이 미니맵에서 고름
+     * - 보상은 각자 화면에서 (혼자 입장과 같은 계산 · 각자 하루 3회)
+     ********************************************************************/
+    let selectedDungeonMercId = null;
+    // 내가 데리고 갈 용병 1명: 출전 용병 중 고른 용병 (고른 적이 없으면 대표 용병 → 가장 센 출전 용병)
+    function dungeonMyMerc(stu) {
+      const deployed = ((stu && stu.roster) || []).filter(m => m && m.deployed);
+      let m = deployed.find(x => x.id === selectedDungeonMercId);
+      if (!m) {
+        m = repMercOf(stu, x => x.deployed) || null;
+        selectedDungeonMercId = m ? m.id : null;
+      }
+      return m;
+    }
+    const dungeonRoomsOpen = () => Object.values(liveRaidRoomsCache || {})
+      .filter(r => isDungeonRoom(r) && (r.status === 'waiting' || r.status === 'in_battle') && Date.now() - (r.createdAt || 0) < 1800000);
+    const dungeonDiffLabel = d => (d === 'hard' ? '🔥어려움' : '보통');
+
+    window.selectDungeonMerc = function (mercId) {
+      const stu = getActiveStudent();
+      if (!stu || !(stu.roster || []).some(m => m.id === mercId && m.deployed)) return;
+      selectedDungeonMercId = mercId;
+      // 대기실에 있으면 바뀐 용병을 내 자리에 바로 반영 (파티원은 준비완료가 풀림)
+      const room = dungeonRoomsOpen().find(r => raidSlotOf(r, stu.id));
+      if (room && room.status === 'waiting') {
+        const slot = raidSlotOf(room, stu.id);
+        rushSeatInto(room, slot, rushSeatFields(stu, dungeonMyMerc(stu)));
+        if (slot !== 'host') room[slot + 'Ready'] = false;
+        saveRaidRoomData(room.roomId, room);
+      }
+      renderDungeonLobby();
+    };
+
+    window.createDungeonRoom = async function (id, diff = 'normal') {
+      const me = getActiveStudent();
+      const def = DUNGEONS[id];
+      if (!me || !def) return;
+      diff = diff === 'hard' ? 'hard' : 'normal';
+      if (id !== todayDungeonId()) { showNotice(`🔒 오늘은 [${DUNGEONS[todayDungeonId()].name}]만 열려 있어요.`); return; }
+      if (diff === 'hard' && dungeonHardLocked(me, id)) { showNotice('🔒 어려움은 보통 난이도를 먼저 깨야 방을 만들 수 있어요.'); return; }
+      const merc = dungeonMyMerc(me);
+      if (!merc) { showNotice('⚠️ 출전 중인 용병이 없어요. 용병 관리에서 출전시켜 주세요!'); return; }
+      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      const roomId = 'dgn_' + me.id + '_' + Date.now().toString(36).slice(-5);
+      leaveRoomsExcept('raid', roomId);
+      launchedLiveRoomIds.delete(roomId);
+      const title = `${def.icon} ${me.name}의 ${def.name} [${dungeonDiffLabel(diff)}]`;
+      const room = { roomId, kind: 'dungeon', dungeonId: id, diff, title, status: 'waiting', createdAt: Date.now() };
+      rushSeatInto(room, 'host', rushSeatFields(me, merc));
+      RUSH_GUEST_SLOTS.forEach(s => raidClearSlot(room, s));
+      await saveRaidRoomData(roomId, room);
+      armRoomPresence(`raid_rooms/${roomId}`, me.id);
+      showRewardBanner(`👥 [${title}] 던전방을 만들었어요! 친구를 기다리거나 빈 자리에 [🤖 AI 넣기]로 친구 용병을 넣고 [출발]을 누르세요.`);
+      renderDungeonLobby();
+      setTimeout(() => document.getElementById('dungeonWaitingRoomPanel')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+    };
+
+    window.joinDungeonRoom = async function (roomId) {
+      const me = getActiveStudent();
+      if (!me) return;
+      const merc = dungeonMyMerc(me);
+      if (!merc) { showNotice('⚠️ 출전 중인 용병이 없어요. 용병 관리에서 출전시켜 주세요!'); return; }
+      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      // 같은 순간에 다른 친구가 같은 칸에 먼저 앉으면 서버가 내 저장을 물리므로, 최신 방을 다시 보고 남은 칸에 앉아 봄 (최대 3번)
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const room = liveRaidRoomsCache[roomId];
+        if (!isDungeonRoom(room)) { showNotice('⚠️ 사라진 던전방이에요.'); renderDungeonLobby(); return; }
+        if (raidSlotOf(room, me.id)) { renderDungeonLobby(); return; }
+        const free = RUSH_GUEST_SLOTS.find(s => !room[s + 'Id']);
+        if (room.status !== 'waiting' || !free || rushSeatsLeft(room) <= 0) { showNotice('⚠️ 이미 출발했거나 자리가 찬 던전방이에요.'); return; }
+        if (attempt === 0) leaveRoomsExcept('raid', roomId);
+        rushSeatInto(room, free, rushSeatFields(me, merc));
+        room.rushFill = rushFillOf(room).filter(f => f.id !== me.id); // 내 용병이 AI 자리에 있었으면 그 자리는 뺌
+        room[free + 'Ready'] = false;
+        room[raidPracticeKey(free)] = false;
+        if (room.gone) delete room.gone[me.id];
+        if ((await saveRaidRoomData(roomId, room)) === false) continue;
+        armRoomPresence(`raid_rooms/${roomId}`, me.id);
+        if (currentSpectatingRaidRoomId === roomId) currentSpectatingRaidRoomId = null;
+        showRewardBanner(`🚪 [${room.title}] 던전방에 들어왔어요! 데려갈 용병을 고르고 [✋ 준비완료]를 눌러 주세요.`);
+        renderDungeonLobby();
+        return;
+      }
+      renderDungeonLobby();
+      showNotice('⚠️ 그 사이 자리가 찼거나 방이 사라졌어요. 다른 방을 골라 주세요.');
+    };
+
+    window.startDungeonRoom = async function (roomId) {
+      const me = getActiveStudent();
+      const room = liveRaidRoomsCache[roomId];
+      if (!me || !isDungeonRoom(room) || room.status !== 'waiting') return;
+      if (room.hostId !== me.id) { showNotice('⚠️ 방장만 출발할 수 있어요!'); return; }
+      if (!raidRealGuestSlots(room).every(s => room[s + 'Ready'])) { showNotice('⚠️ 아직 [✋ 준비완료]를 누르지 않은 친구가 있어요!'); return; }
+      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      const def = DUNGEONS[room.dungeonId];
+      if (!def || room.dungeonId !== todayDungeonId()) { showNotice('🔒 이 던전은 오늘 닫혀 있어요. 방을 닫고 오늘 열린 던전으로 새로 만들어 주세요.'); return; }
+      const diff = room.diff === 'hard' ? 'hard' : 'normal';
+      // 넣어 둔 AI 자리 그대로 출발 (그 사이 방에 들어온 친구·최고 전투력을 넘게 된 용병·넘친 자리는 뺌)
+      const humans = new Set(raidFilledSlots(room).map(s => room[s + 'Id']));
+      const cap = rushPartyCap(room);
+      room.rushFill = rushFillOf(room).filter(f => !humans.has(f.id) && Number(f.power || 0) <= cap).slice(0, Math.max(0, RUSH_MAX_PLAYERS - humans.size));
+      const seats = [
+        ...raidFilledSlots(room).map(s => ({ merc: (room[s + 'Mercs'] || [])[0], power: Number(room[s + 'Power']) || 0 })),
+        ...room.rushFill.map(f => ({ merc: f.merc, power: Number(f.power) || 0 }))
+      ].filter(x => x.merc);
+      if (!seats.length) { showNotice('⚠️ 데려갈 용병이 없어요.'); return; }
+      // 몬스터 세기: 파티 용병들의 평균 레벨로 정한 층 × 파티 전투력 비율 (모두의 화면이 같은 값을 쓰게 방에 적어 둠)
+      const base = seats.reduce((sum, x) => sum + dungeonBaseMercPower(x.merc.job, x.merc.level || 1), 0);
+      const power = seats.reduce((sum, x) => sum + x.power, 0);
+      room.dgSeed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
+      room.dgFloor = dungeonFloorOfMercs(seats.map(x => x.merc), diff);
+      room.dgPower = power;
+      room.dgRatio = base ? dungeonClampRatio(power / base) : 1;
+      room.status = 'in_battle';
+      room.startedAt = Date.now();
+      room.fighting = { [room.hostId]: true };
+      raidRealGuestSlots(room).forEach(s => { room.fighting[room[s + 'Id']] = true; });
+      await saveRaidRoomData(roomId, room);
+    };
+
+    window.leaveDungeonRoom = function (roomId) {
+      cancelFirebaseCoopRaidRoom(roomId, true);
+      showNotice('🚪 던전방에서 나왔어요.');
+      renderDungeonLobby();
+    };
+
+    // 방이 출발 상태가 되면 파티원 모두의 화면에서: 방장 화면이 계산하고 파티원은 자기 용병 조작만 보냄
+    function launchDungeonRoomBattle(r, myStu) {
+      launchedLiveRoomIds.add(r.roomId);
+      const def = DUNGEONS[r.dungeonId];
+      const diff = r.diff === 'hard' ? 'hard' : 'normal';
+      const seed = Number(r.dgSeed) >>> 0;
+      const map = def ? generateDungeonMap(def, diff, seed) : null;
+      if (!map) { showNotice('⚠️ 던전 지도를 만들지 못했어요. 방장에게 다시 출발해 달라고 해 주세요.'); return; }
+      currentActiveLiveBattleRoomId = r.roomId;
+      if (currentSpectatingRaidRoomId === r.roomId) currentSpectatingRaidRoomId = null;
+      if (sim.spectator && sim.running) { stopLiveBattleNet(); closeBattleResult(); }
+      const humans = [r.hostId, ...raidRealGuestSlots(r).map(s => r[s + 'Id'])];
+      const isHost = r.hostId === myStu.id;
+      const netRole = humans.length > 1 ? (isHost ? 'host' : 'guest') : null;
+      const names = raidFilledSlots(r).map(s => r[s + 'Name']).join(' & ');
+      const aiN = rushFillOf(r).length;
+      showRewardBanner(`${def.icon} [던전 5인 출발!] ${names}${aiN ? ` + 친구 용병 AI ${aiN}명` : ''} 파티가 ${def.name}의 👑 보스 방을 찾아 나서요!`);
+      launchSimulation({
+        mode: 'dungeon',
+        title: `${def.icon} ${def.name} [${diff === 'hard' ? '🔥어려움' : '보통'}] 👥 ${names}${aiN ? ` + AI ${aiN}명` : ''}`,
+        blueStudent: myStu,
+        redStudent: null,
+        rewardMc: 0,
+        customBlueUnits: buildRushBlueUnits(r),
+        customRedUnits: [],
+        netRole,
+        roomBattle: true
+      });
+      if (!sim.running || sim.mode !== 'dungeon') return;
+      sim.dungeon = newDungeonState(def.id, diff, seed, map, { floor: Number(r.dgFloor) || 1, powerRatio: Number(r.dgRatio) || 1, power: Number(r.dgPower) || 0 });
+      sim.dungeon.party = true;
+      sim.raidLive = { roomId: r.roomId, hostId: r.hostId, humans, tried: [] };
+      sim.units.forEach(u => { if (u.team === 'blue') u.followLeader = true; });
+      const L = dungeonPartyLeader();
+      enterDungeonRoom(map.start, null);
+      addBattleLog(`🏰 ${def.name}에 친구들과 들어왔어요! 지도 어딘가에 숨은 👑 보스 방을 찾아 보스를 물리치면 클리어! (제한 시간 ${DUNGEON_TIME_SEC / 60}분)`);
+      addBattleLog(`⭐ 대표 용병: ${L ? L.name : '-'} — 방을 깨면 대표가 문으로 걸어가거나 방장이 왼쪽 위 미니맵의 옆 칸을 눌러 다음 방으로 가요. 다른 용병은 길이 열리면 대표를 따라와요.`);
+      addBattleLog(`📈 몬스터 세기는 파티 전투력 ${sim.dungeon.power.toLocaleString()}에 맞춰졌어요 (기본 용병의 ${Math.round(sim.dungeon.powerRatio * 100)}%). 새 방에 들어갈 때마다 ${Math.round(DUNGEON_ROOM_RAMP * 100)}%씩 더 강해져요!`);
+      // 한 사람에 용병 하나: 고르는 창 없이 내 용병을 바로 직접 조종
+      const mine = sim.units.find(u => u.team === 'blue' && u.liveOwnerId === myStu.id && !u.rushAi);
+      setBattleControlMode(mine ? 'manual' : 'auto', mine ? mine.id : null, true);
+      if (netRole) connectRaidLiveNet(r.hostId, r.startedAt, isHost ? humans.filter(id => id !== myStu.id) : []);
+      else startRaidLiveBroadcast(r);
+    }
+
+    // ----- 실시간 화면에 싣는 던전 상태 -----
+    // 칸 상태는 비트: 1 가 봄 · 2 깸 · 4 미니맵에 보임 · 8 습격 상자 싸우는 중 · 시각(…Tick·At)은 방장 화면의 틱 (받는 쪽 틱도 화면마다 방장 틱으로 맞춤)
+    function packDungeonState() {
+      const dg = sim.dungeon;
+      const cells = [], chests = {};
+      for (let r = 0; r < dg.h; r++) for (let c = 0; c < dg.w; c++) {
+        const cl = dg.grid[r][c];
+        cells.push(cl ? (cl.visited ? 1 : 0) | (cl.cleared ? 2 : 0) | (cl.revealed ? 4 : 0) | (cl.ambush ? 8 : 0) : 0);
+        if (cl && cl.chest) chests[dgKey(r, c)] = [cl.chest.opened, cl.chest.result || null];
+      }
+      return {
+        p: dg.pos, ph: dg.phase, np: dg.nextPhase || null, fd: dg.fromDir || null, md: dg.moveDir || null,
+        rn: dg.roomNo || 0, rq: dg.roomSeq || 0, rst: dg.roomStartTick, st: dg.startTick, tt: dg.timeTicks,
+        fa: Math.round((dg.fade || 0) * 20) / 20, fdir: dg.fadeDir || 0, ma: dg.moveAt, pa: dg.prepAt, da: dg.doneAt, sa: dg.selectAt,
+        L: dg.leaderId == null ? null : dg.leaderId, rc: dg.roomsCleared, ek: dg.elitesKilled, bk: dg.bossKilled ? 1 : 0, ca: dg.chestCa,
+        mr: dg.mapRevealed ? 1 : 0, sd: dg.started ? 1 : 0, c: cells, ch: chests, g: dg.gim || {}, b: dg.boss || null
+      };
+    }
+    function applyDungeonState(a) {
+      const dg = sim.dungeon;
+      if (!dg || !a || typeof a !== 'object') return;
+      const num = (v, d = 0) => (typeof v === 'number' && isFinite(v) ? v : d);
+      const PHASES = ['room', 'select', 'move', 'boss_prep', 'done'];
+      const dir = d => (typeof d === 'string' && DUNGEON_DIRS[d] ? d : null);
+      if (Array.isArray(a.p) && dungeonCellAt(dg, num(a.p[0], -1), num(a.p[1], -1))) dg.pos = [num(a.p[0]), num(a.p[1])];
+      if (PHASES.includes(a.ph)) dg.phase = a.ph;
+      dg.nextPhase = PHASES.includes(a.np) ? a.np : null;
+      dg.fromDir = dir(a.fd);
+      dg.moveDir = dir(a.md);
+      dg.roomNo = num(a.rn, dg.roomNo);
+      dg.roomSeq = num(a.rq, dg.roomSeq);
+      dg.roomStartTick = num(a.rst, dg.roomStartTick);
+      dg.startTick = num(a.st, dg.startTick);
+      dg.timeTicks = Math.max(1, num(a.tt, dg.timeTicks));
+      dg.fade = Math.max(0, Math.min(1, num(a.fa)));
+      dg.fadeDir = num(a.fdir);
+      dg.moveAt = num(a.ma, dg.moveAt);
+      dg.prepAt = num(a.pa, dg.prepAt);
+      dg.doneAt = num(a.da, dg.doneAt);
+      dg.selectAt = num(a.sa, dg.selectAt);
+      if (a.L != null && (typeof a.L === 'string' || typeof a.L === 'number')) dg.leaderId = a.L;
+      dg.roomsCleared = Math.max(0, num(a.rc, dg.roomsCleared));
+      dg.elitesKilled = Math.max(0, num(a.ek, dg.elitesKilled));
+      dg.bossKilled = a.bk === 1;
+      dg.chestCa = Math.max(0, num(a.ca, dg.chestCa));
+      dg.mapRevealed = a.mr === 1;
+      if (a.sd === 1) dg.started = true;
+      if (Array.isArray(a.c)) {
+        let i = 0;
+        for (let r = 0; r < dg.h; r++) for (let c = 0; c < dg.w; c++, i++) {
+          const cl = dg.grid[r][c], b = num(a.c[i]);
+          if (!cl) continue;
+          cl.visited = Boolean(b & 1); cl.cleared = Boolean(b & 2); cl.revealed = Boolean(b & 4); cl.ambush = Boolean(b & 8);
+        }
+      }
+      if (a.ch && typeof a.ch === 'object') Object.entries(a.ch).forEach(([k, v]) => {
+        const [r, c] = String(k).split(',').map(Number);
+        const cl = dungeonCellAt(dg, r, c);
+        if (!cl || !cl.chest || !Array.isArray(v)) return;
+        cl.chest.opened = num(v[0], -1);
+        cl.chest.result = typeof v[1] === 'string' ? cleanUserText(v[1], 12) : null;
+      });
+      dg.gim = a.g && typeof a.g === 'object' ? deepCleanStrings(a.g) : {};
+      dg.boss = a.b && typeof a.b === 'object' ? deepCleanStrings(a.b) : null;
+    }
+    // 방장: 방을 옮겼거나(유닛 순서가 통째로 바뀜 → 받은 화면을 비우게 rr) 몬스터가 더 나왔으면 유닛 목록을 다시 보냄
+    function syncDungeonLiveUnits() {
+      const dg = sim.dungeon;
+      const sig = sim.units.map(u => u.id).join(',');
+      if (liveNet.dgUnitSig === sig) return;
+      const newRoom = liveNet.dgRoomSeq !== dg.roomSeq;
+      liveNet.dgUnitSig = sig;
+      liveNet.dgRoomSeq = dg.roomSeq;
+      if (newRoom) sendRushUnitList(`dg${dg.roomSeq}`);
+      else republishLiveUnits();
+      liveNet.sentU = null; // 다음 화면은 전체로
+    }
+
+    // ----- 던전 탭의 5인 방 대기실 · 방 목록 -----
+    function renderDungeonLobby() {
+      const panel = document.getElementById('dungeonWaitingRoomPanel');
+      const box = document.getElementById('dungeonRoomsList');
+      if (!panel && !box) return;
+      const me = getActiveStudent();
+      const rooms = dungeonRoomsOpen();
+      const badge = document.getElementById('dungeonRoomCountBadge');
+      if (badge) badge.textContent = `방 ${rooms.length}개`;
+      const playerRoom = me ? rooms.find(r => raidSlotOf(r, me.id)) : null;
+      const watchRoom = !playerRoom && currentSpectatingRaidRoomId ? rooms.find(r => r.roomId === currentSpectatingRaidRoomId) : null;
+      const room = playerRoom || watchRoom;
+      const playing = sim.running && sim.mode === 'dungeon' && sim.dungeon && sim.dungeon.party && !sim.spectator;
+
+      if (panel) {
+        if (!room) {
+          panel.classList.add('hidden');
+          panel.innerHTML = '';
+        } else {
+          const def = DUNGEONS[room.dungeonId] || {};
+          const watching = !playerRoom;
+          const isHost = !watching && room.hostId === me.id;
+          const mySlot = watching ? null : raidSlotOf(room, me.id);
+          const filled = raidFilledSlots(room);
+          const guests = raidRealGuestSlots(room);
+          const allReady = guests.every(s => room[s + 'Ready']);
+          const cap = rushPartyCap(room);
+          const waiting = room.status === 'waiting';
+          const fill = rushFillOf(room);
+          const seatsLeft = rushSeatsLeft(room);
+          const closedToday = room.dungeonId !== todayDungeonId();
+          const seatCard = (slot, i) => {
+            if (room[slot + 'Id']) {
+              const m = (room[slot + 'Mercs'] || [])[0] || {};
+              const ready = slot === 'host' || room[slot + 'Ready'];
+              return `
+                <div class="bg-slate-950 border-2 ${slot === 'host' ? 'border-amber-500/70' : (ready ? 'border-emerald-500' : 'border-amber-500/40')} rounded-2xl p-3 flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between gap-1">
+                    <span class="text-[11px] font-bold ${slot === 'host' ? 'text-amber-300' : 'text-emerald-300'}">${slot === 'host' ? '👑 방장 · ⭐대표' : `🤝 파티원 ${i}`}</span>
+                    ${waiting ? `<span class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold ${ready ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}">${ready ? '✅ 준비' : '⏳ 대기'}</span>` : ''}
+                  </div>
+                  <div class="font-title text-base text-white truncate">${room[slot + 'Num'] ? room[slot + 'Num'] + '번 ' : ''}${room[slot + 'Name']}</div>
+                  <div class="flex items-center gap-1.5 text-[11px] text-slate-300 truncate">${m.job ? getMercIconHTML(m.job, m.skinVariant, 22) : ''}${m.name || '-'} <span class="text-cyan-300">Lv.${m.level || 1}</span></div>
+                  <div class="text-[11px] font-extrabold text-rose-400">⚔️ ${Number(room[slot + 'Power'] || 0).toLocaleString()} · 🎮 직접 조종</div>
+                </div>`;
+            }
+            const fi = i - filled.length;
+            const f = fill[fi];
+            if (f) {
+              return `
+                <div class="bg-slate-950 border-2 border-dashed border-violet-500/50 rounded-2xl p-3 flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between gap-1">
+                    <span class="text-[11px] font-bold text-violet-300">🤖 친구 용병 (AI)</span>
+                    ${waiting && isHost ? `<button onclick="removeRushAiSeat('${room.roomId}', ${fi})" class="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-rose-900/70 text-[10px] font-extrabold text-rose-300">✖ 빼기</button>` : ''}
+                  </div>
+                  <div class="font-title text-base text-white truncate">${f.name}</div>
+                  <div class="flex items-center gap-1.5 text-[11px] text-slate-300 truncate">${f.merc && f.merc.job ? getMercIconHTML(f.merc.job, f.merc.skinVariant, 22) : ''}${(f.merc && f.merc.name) || '-'} <span class="text-cyan-300">Lv.${(f.merc && f.merc.level) || 1}</span></div>
+                  <div class="text-[11px] font-extrabold text-rose-400">⚔️ ${Number(f.power || 0).toLocaleString()} · 🤖 대표를 따라다님</div>
+                </div>`;
+            }
+            return `
+              <div class="bg-slate-950 border-2 border-dashed border-slate-700 rounded-2xl p-3 flex flex-col justify-center gap-1 text-[11px] text-slate-400">
+                <div class="font-bold text-slate-300">👋 빈 자리</div>
+                ${waiting && isHost
+                  ? `<button onclick="addRushAiSeat('${room.roomId}')" class="mt-1 px-2 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-[11px]">🤖 AI 넣기</button>
+                     <div>반 친구 용병(⚔️ ${cap.toLocaleString()} 이하)이 무작위로 들어와요.</div>`
+                  : `<div>${waiting ? '친구가 들어오거나 방장이 AI를 넣을 수 있어요.' : '이번 탐험에서는 비어 있어요.'}</div>`}
+              </div>`;
+          };
+          // 대기 중이면 내 출전 용병 중 데려갈 용병을 바꿀 수 있음
+          const myDeployed = mySlot && waiting ? (me.roster || []).filter(m => m.deployed) : [];
+          const myMercId = mySlot ? ((room[mySlot + 'Mercs'] || [])[0] || {}).id : null;
+          const mercPicker = myDeployed.length > 1 ? `
+            <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span class="font-extrabold text-amber-300 mr-1">🎮 데려갈 용병</span>
+              ${myDeployed.map(m => `<button onclick="selectDungeonMerc('${m.id}')" class="flex items-center gap-1 pl-1 pr-2 py-1 rounded-xl border-2 font-extrabold ${m.id === myMercId ? 'bg-amber-500/25 border-amber-400 text-white' : 'bg-slate-950 border-slate-700 text-slate-300 hover:border-amber-300'}">${getMercIconHTML(m.job, m.skinVariant, 20)}${m.name} <span class="text-cyan-300">Lv.${m.level}</span></button>`).join('')}
+            </div>` : '';
+          const humanN = filled.length;
+          const aiN = fill.length;
+          panel.classList.remove('hidden');
+          panel.innerHTML = `
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-extrabold text-xs">${waiting ? '👥 던전방 대기실' : '🔥 탐험 중'}</span>
+                ${watching ? '<span class="px-2.5 py-1 rounded-lg bg-violet-500/20 text-violet-300 font-extrabold text-xs">📺 관전 중</span>' : ''}
+                <h4 class="font-title text-xl text-white">${room.title || `${room.hostName}의 던전`}</h4>
+                <span class="px-2.5 py-0.5 rounded bg-slate-800 text-slate-300 font-bold text-xs">${def.icon || '🏰'} ${def.name || '던전'} · ${dungeonDiffLabel(room.diff)}</span>
+              </div>
+              ${watching
+                ? `<button onclick="stopSpectatingRaidRoom()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-violet-900/60 text-xs font-bold text-slate-300">📺 관전 그만하기</button>`
+                : (waiting ? `<button onclick="leaveDungeonRoom('${room.roomId}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300">🚪 ${isHost ? (guests.length ? '방 나가기 (방장 넘기기)' : '방 닫기') : '방 나가기'}</button>` : '')}
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+              ${RUSH_SLOTS.map((s, i) => seatCard(s, i)).join('')}
+            </div>
+            ${mercPicker}
+            <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
+              <div class="text-xs font-bold text-slate-300">
+                ${waiting
+                  ? (closedToday ? '🔒 이 던전은 오늘 닫혀 있어요. 방을 닫고 오늘 열린 던전으로 새로 만들어 주세요.'
+                    : `👥 친구 ${humanN}명${aiN ? ` + 🤖 AI ${aiN}명` : ''}${seatsLeft ? ` · 빈 자리 ${seatsLeft}` : ''} · ${guests.length && !allReady ? '파티원이 [✋ 준비완료]를 누르기를 기다리는 중이에요...' : '방장이 [출발]을 누르면 시작해요!'}`)
+                  : (playing ? '🏰 탐험 중이에요!' : (watching ? '📺 탐험을 관전하고 있어요.' : '🏰 친구들이 탐험 중이에요. 끝나면 이 방에서 다시 출발할 수 있어요.'))}
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                ${waiting && isHost && seatsLeft > 0 ? roomInviteBtnHTML('raid', room.roomId) : ''}
+                ${waiting && watching && seatsLeft > 0 ? `<button onclick="joinDungeonRoom('${room.roomId}')" class="px-5 py-3 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-sm shadow-lg">🚪 참가하기</button>` : ''}
+                ${waiting && mySlot && mySlot !== 'host'
+                  ? `<button onclick="toggleRushReady('${room.roomId}')" class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg ${room[mySlot + 'Ready'] ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-emerald-600 hover:bg-emerald-500 text-white animate-pulse'}">${room[mySlot + 'Ready'] ? '↺ 준비완료 취소' : '✋ 준비완료 누르기!'}</button>`
+                  : ''}
+                ${waiting && isHost
+                  ? `<button onclick="startDungeonRoom('${room.roomId}')" ${allReady && !closedToday ? '' : 'disabled'} class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg ${allReady && !closedToday ? 'bg-gradient-to-r from-amber-600 to-orange-600 hover:opacity-95 text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}">⚔️ 출발! (${humanN + aiN}명)</button>`
+                  : ''}
+                ${!waiting && (playing || (sim.spectator && sim.running && sim.raidWatch && sim.raidWatch.roomId === room.roomId)) ? `<button onclick="returnToBattle()" class="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs shadow">⚔️ 전투 화면 보기</button>` : ''}
+                ${!waiting && watching && !(sim.spectator && sim.running) ? `<button onclick="spectateRaidRoom('${room.roomId}')" class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 탐험 화면 보기</button>` : ''}
+              </div>
+            </div>`;
+        }
+      }
+      RoomChat.show('dungeonRoomChat', 'raid', panel && room && room.status === 'waiting' ? room.roomId : null);
+
+      if (!box) return;
+      if (!rooms.length) {
+        box.innerHTML = `<div class="col-span-full text-slate-400 py-6 text-center bg-slate-950 rounded-2xl border border-dashed border-slate-800 text-xs">열려 있는 던전방이 없어요. 아래 오늘 열린 던전 카드에서 <strong>[👥 친구와 입장]</strong>을 눌러 방을 만들어 보세요! (혼자서도 AI 친구 용병을 넣어 출발할 수 있어요)</div>`;
+        return;
+      }
+      box.innerHTML = rooms.map(r => {
+        const def = DUNGEONS[r.dungeonId] || {};
+        const mine = me && raidSlotOf(r, me.id);
+        const filled = raidFilledSlots(r);
+        const full = rushSeatsLeft(r) <= 0;
+        const waiting = r.status === 'waiting';
+        const watchingThis = currentSpectatingRaidRoomId === r.roomId || (sim.spectator && sim.running && sim.raidWatch && sim.raidWatch.roomId === r.roomId);
+        return `
+          <div class="bg-slate-950 border-2 ${mine ? 'border-amber-500/60' : 'border-amber-500/20'} rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${waiting ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}">${waiting ? `🟢 대기 중 (${RUSH_MAX_PLAYERS - rushSeatsLeft(r)}/${RUSH_MAX_PLAYERS}명${rushFillOf(r).length ? ` · AI ${rushFillOf(r).length}` : ''})` : '🔥 탐험 중'}</span>
+                <span class="font-bold text-sm text-white truncate">${r.title || `${r.hostName}의 던전`}</span>
+              </div>
+              <div class="text-xs text-slate-400 mt-1 truncate">${def.icon || '🏰'} ${def.name || '던전'} · ${dungeonDiffLabel(r.diff)} · 👥 ${filled.map(s => r[s + 'Name']).join(', ')}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              ${mine
+                ? `<span class="px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 font-extrabold text-xs">참여 중인 방</span>`
+                : `${watchingThis
+                    ? `<span class="px-3 py-1.5 rounded-xl bg-violet-500/20 text-violet-300 font-extrabold text-xs">📺 관전 중</span>`
+                    : `<button onclick="spectateRaidRoom('${r.roomId}')" class="px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 관전</button>`}
+                  ${waiting && !full ? `<button onclick="joinDungeonRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs shadow">🚪 입장</button>` : ''}`}
             </div>
           </div>`;
       }).join('');
     }
 
-    function isRaidNetMode(mode) { return mode === 'elite_raid' || mode === 'monster_rush'; }
+    // 🏰 던전은 5인 입장(sim.dungeon.party)만 레이드방 실시간 장치를 씀
+    function isRaidNetMode(mode) { return mode === 'elite_raid' || mode === 'monster_rush' || (mode === 'dungeon' && Boolean(sim.dungeon && sim.dungeon.party)); }
     function newRushState(startFloor) {
       return { round: 1, phase: 'fight', roundStartTick: sim.tickCount || 0, nextAt: 0, cleared: 0, bosses: 0, startFloor: Math.max(1, startFloor || 1), pending: 0, left: 0,
         mapStage: 0, fade: 0, moveAt: 0, fadeAt: 0, swapAt: 0 };
@@ -41948,7 +42475,7 @@
     window.addRushAiSeat = async function (roomId) {
       const me = getActiveStudent();
       const room = liveRaidRoomsCache[roomId];
-      if (!me || !isRushRoom(room) || room.status !== 'waiting' || room.hostId !== me.id) return;
+      if (!me || !isPartyRoom(room) || room.status !== 'waiting' || room.hostId !== me.id) return;
       if (rushSeatsLeft(room) <= 0) { showNotice('⚠️ 빈 자리가 없어요.'); return; }
       const seat = pickRushAiSeat(room);
       if (!seat) { showNotice(`⚠️ 넣을 수 있는 친구 용병이 없어요. (파티 최고 전투력 ⚔️ ${rushPartyCap(room).toLocaleString()} 이하)`); return; }
@@ -41959,7 +42486,7 @@
     window.removeRushAiSeat = async function (roomId, idx) {
       const me = getActiveStudent();
       const room = liveRaidRoomsCache[roomId];
-      if (!me || !isRushRoom(room) || room.status !== 'waiting' || room.hostId !== me.id) return;
+      if (!me || !isPartyRoom(room) || room.status !== 'waiting' || room.hostId !== me.id) return;
       const fill = rushFillOf(room);
       if (!fill[idx]) return;
       fill.splice(idx, 1);
