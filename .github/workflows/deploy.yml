@@ -31,6 +31,8 @@ env:
   # Cloudflare Pages 프로젝트 이름 = 주소 앞부분 (https://class-arena.pages.dev)
   CF_PAGES_PROJECT: class-arena
   GAME_URL: https://class-arena.pages.dev
+  CF_ADMIN_PROJECT: class-arena-admin
+  ADMIN_URL: https://class-arena-admin.pages.dev
 
 jobs:
   # 이번 push에서 어느 부분이 바뀌었는지 확인
@@ -211,7 +213,49 @@ jobs:
       - name: Write version file
         run: printf '{"commit":"%s","deployedAt":"%s"}\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > admin/version.json
 
-      - name: Deploy admin site
+      # 관리자 사이트도 게임처럼 Cloudflare Pages로 (같은 Firebase 프로젝트의 호스팅 전송량 한도를 함께 써서 2026-11 초에 같이 막힘)
+      - name: Pick admin host
+        id: host
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then echo "cf=true" >> "$GITHUB_OUTPUT"; else echo "cf=false" >> "$GITHUB_OUTPUT"; echo "Cloudflare Secrets가 없어 Firebase에 관리자 사이트를 올림"; fi
+
+      - name: Deploy admin site to Cloudflare Pages
+        if: steps.host.outputs.cf == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          rm -rf admin-cf && cp -r admin admin-cf
+          # Firebase 설정과 같게: 항상 새로 확인 + 검색엔진에 안 나오게
+          printf '/*\n  Cache-Control: no-cache\n  X-Robots-Tag: noindex\n' > admin-cf/_headers
+          npx --yes $WRANGLER pages project create $CF_ADMIN_PROJECT --production-branch main || true
+          npx --yes $WRANGLER pages deploy admin-cf --project-name $CF_ADMIN_PROJECT --branch main --commit-hash "$GITHUB_SHA" --commit-dirty=true
+
+      - name: Verify live admin site (Cloudflare)
+        if: steps.host.outputs.cf == 'true'
+        run: bash tools/verify-deploy.sh "$ADMIN_URL" "관리자 사이트 (Cloudflare)"
+
+      # Firebase 옛 관리자 주소에는 새 주소로 넘겨 주는 안내 페이지만 둠
+      - name: Replace Firebase admin site with redirect page
+        if: steps.host.outputs.cf == 'true'
+        run: |
+          rm -rf admin-redirect && mkdir admin-redirect
+          sed "s#__GAME_URL__#$ADMIN_URL#g; s#클래스 아레나 주소#클래스 아레나 관리자 주소#g" tools/redirect.html > admin-redirect/index.html
+          cp admin/version.json admin-redirect/version.json
+          node -e "
+            const fs = require('fs');
+            const cfg = JSON.parse(fs.readFileSync('firebase.json', 'utf8'));
+            const site = cfg.hosting.find(h => h.site === 'class-arena-b4ee3-admin');
+            site.public = 'admin-redirect';
+            site.rewrites = [{ source: '**', destination: '/index.html' }];
+            fs.writeFileSync('firebase.json', JSON.stringify(cfg, null, 2));
+          "
+
+      - name: Deploy Firebase admin site
+        continue-on-error: ${{ steps.host.outputs.cf == 'true' }}
         env:
           FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CLASS_ARENA_B4EE3 }}
         run: |
@@ -220,8 +264,9 @@ jobs:
           npx --yes $FIREBASE_TOOLS deploy --only hosting:class-arena-b4ee3-admin --project $FIREBASE_PROJECT --non-interactive
           rm -f "$RUNNER_TEMP/firebase-sa.json"
 
-      - name: Verify live admin site
-        run: bash tools/verify-deploy.sh https://class-arena-b4ee3-admin.web.app "관리자 사이트"
+      - name: Verify live Firebase admin site
+        continue-on-error: ${{ steps.host.outputs.cf == 'true' }}
+        run: bash tools/verify-deploy.sh https://class-arena-b4ee3-admin.web.app "${{ steps.host.outputs.cf == 'true' && 'Firebase 옛 관리자 주소 (안내 페이지)' || '관리자 사이트' }}"
 
   # DB 보안 규칙은 잘못 올라가면 학생 데이터가 바로 열리거나 막히므로, 에뮬레이터 테스트를 먼저 통과해야 함
   test-rules:
