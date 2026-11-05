@@ -7950,6 +7950,16 @@
       skillAnims: { spirit_taunt: { anim: 'taunt', tpf: 16, dur: 48 } },
       pop: [6, 7, 8]
     };
+    // 정령사 바람 정령 (꼬마 회오리, tools/wind_spirit_build.py): 칸 순서 = 대기, 걷기 2장, 바람 칼날 베기, 피격,
+    //   사라짐 2장 (흐려지며 풀림 → 바람 조각으로 흩어짐, spirit_pop 이펙트가 그림), 회피 (반투명, 공격을 피하는 순간 spirit_dodge 동안)
+    //   탑 정령족 바람정령도 근접(전사·도적)으로 나오면 이 그림 (원거리·음유시인은 베기 그림이 어울리지 않아 예전 모습)
+    //   대기 키 101px → 화면 약 44px (불 정령보다 조금 작고 가벼움)
+    MONSTER_SPRITE_DEFS.wind_spirit = {
+      src: 'assets/sprites/monster/wind_spirit.webp',
+      cellW: 149, cellH: 105, anchorX: 82, anchorY: 103, standH: 125, topH: 101, count: 8, jobs: ['warrior', 'rogue'],
+      anims: { idle: [0], walk: [1, 0, 2, 0], attack: [3, 3], skill: [3], hurt: [4], death: [5, 6], evade: [7] },
+      pop: [5, 6]
+    };
     // 이프리트 (화염족 보스, 불꽃 뿔·용암 갑옷·화염 대검. 엘리트 겁화의 이프리트도 이 그림을 eliteScale만큼 키움):
     //   칸 순서 = 대기, 걷기 A·B, 검 치켜들기, 베기(불꽃 궤적), 피격, 쓰러짐 2장,
     //   회전베기 2장(불꽃 고리, 좌우반전), 파이어볼(주먹 내밀기), 사자후(음파), 불화살비(검 치켜들기), 텔레포트(재로 흩어짐)
@@ -18644,6 +18654,8 @@
       if (attacker && !fixedDamageHit && ((defender.monsterPassives?.includes('evade') && Math.random() < 0.18)
         || (defender.spiritElem === 'wind' && Math.random() < SPIRIT_WIND_EVADE))) { // 바람 정령: 20% 회피
         sim.floatTexts.push({ x: defender.x, y: defender.y - 34, text: '💨회피', color: '#64748b', life: 40 });
+        // 회피 그림이 있으면 잠깐 그 칸으로 (이펙트라 실시간 전투에도 owner id로 같이 감)
+        if (getUnitSprite(defender)?.anims?.evade) sim.effects.push({ type: 'spirit_dodge', owner: defender, life: 18, maxLife: 18 });
         return;
       }
       const effDef = (defender.statuses.shock > 0 ? defender.def * 0.65 : defender.def) * (defender.statuses.miracle > 0 ? 1.2 : 1)
@@ -23567,7 +23579,7 @@
       fire:  { skill: 'call_fire',  name: '불 정령',   icon: '🔥', color: '#f97316', job: 'warrior', sprite: 'fire_spirit',         hp: 0.6,  atk: 0.75, def: 1.0, move: 1.0, life: 900, off: [70, -50] },
       water: { skill: 'call_water', name: '물 정령',   icon: '💧', color: '#38bdf8', job: 'healer',  sprite: 'ghost_mage',          hp: 0.55, atk: 0.6,  def: 1.0, move: 1.0, life: 900, off: [-20, 60] },
       earth: { skill: 'call_earth', name: '대지 정령', icon: '🪨', color: '#a16207', job: 'knight',  sprite: 'earth_spirit',        hp: 1.5,  atk: 0.35, def: 2.2, move: 0.9, life: 900, off: [110, 0], size: 1.2 },
-      wind:  { skill: 'call_wind',  name: '바람 정령', icon: '🌪️', color: '#5eead4', job: 'rogue',   sprite: 'ice_harpy_mage',      hp: 0.45, atk: 0.55, def: 0.6, move: 1.4, life: 900, off: [70, 50] },
+      wind:  { skill: 'call_wind',  name: '바람 정령', icon: '🌪️', color: '#5eead4', job: 'rogue',   sprite: 'wind_spirit',         hp: 0.45, atk: 0.55, def: 0.6, move: 1.4, life: 900, off: [70, 50] },
       storm: { skill: 'call_storm', name: '번개 정령', icon: '⚡', color: '#facc15', job: 'archer',  sprite: 'ice_harpy_archer',    hp: 0.42, atk: 0.6,  def: 0.6, move: 1.0, life: 900, off: [10, -70], range: 260 },
       king:  { skill: 'spirit_king', name: '정령왕',   icon: '🌈', color: '#14b8a6', job: 'warrior', sprite: 'ifrit',               hp: 2.5,  atk: 2.0,  def: 1.2, move: 1.0, life: 1080, off: [130, 0], size: 1.6 }
     };
@@ -26012,6 +26024,8 @@
       u._sprLastSkill = u.skillAnim || 0;
 
       if (!u.alive) return step(a.death, tick - (u._deadSince ?? tick), 12);
+      // 회피 그림 (바람 정령): 공격을 피한 직후 잠깐
+      if (a.evade && sim.effects.some(e => e.type === 'spirit_dodge' && e.owner === u && e.life > 0)) return a.evade[0];
       // 기사 방어 태세: 태세가 끝날 때까지 방벽 동작을 반복
       // 저격수 총열 과열: 과열이 풀릴 때까지 얼굴이 붉어지고 연기가 나는 모습 유지
       if (a.overheat && u.overheat > 0) return a.overheat[0];
