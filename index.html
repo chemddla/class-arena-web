@@ -8483,7 +8483,8 @@
       giant_rock:     { anim: 'rock', h: 13, sheet: GIANT_FX },                          // 외눈 투석꾼 바위 (길이 약 20)
       giant_bolt:     { anim: 'bolt', h: 15, sheet: GIANT_FX, hit: 'bolt_hit' },          // 번개 사이클롭스 번개 (길이 약 42)
       ifrit_fireball: { anim: 'ifrit', h: 44, sheet: FIRE_FX, hit: 'flame_hit' },
-      storm_orb:      { anim: 'orb', h: 14, sheet: STORM_SPIRIT_FX },                    // 소환사 번개 정령 기본 공격 번개 구슬 (길이 약 26)        // 이프리트 파이어볼 (지름 약 37)
+      storm_orb:      { anim: 'orb', h: 14, sheet: STORM_SPIRIT_FX },
+      storm_orb_charged: { anim: 'orb', h: 17, sheet: STORM_SPIRIT_FX, charged: true },  // 번개 정령 강화 공격(연쇄 번개가 터지는 세 번째): 조금 큰 구슬 + 노란 전격 (drawStormChargeFx)                    // 소환사 번개 정령 기본 공격 번개 구슬 (길이 약 26)        // 이프리트 파이어볼 (지름 약 37)
       ifrit_orb:      { anim: 'orb', h: 56, sheet: IFRIT_FX, hit: 'flame_hit' },         // 엘리트 겁화의 이프리트 기본 공격 불덩이 (폭 약 38)
       ifrit_inferno:  { anim: 'ball', h: 130, sheet: IFRIT_FX, hit: 'ifrit_boom' }       // 엘리트 겁화의 이프리트 겁화구 (거대한 보스 손에서 나가서 크게: 불덩이 지름 약 130, 꼬리까지 약 260)
     };
@@ -20085,8 +20086,13 @@
             }
 
           } else if (u.job === 'archer') {
+            // 번개 정령: 세 번째 공격마다 노란 전격을 두른 강화 구슬 → 이 구슬이 맞으면 연쇄 번개 (spiritBasicHit)
+            //   쏠 때 세므로 빗나가거나 날아가는 중이어도 그림과 연쇄 번개가 어긋나지 않음 · 그림 이름으로 구분해서 실시간 전투에도 그대로 감
+            //   강화 구슬이 빗나가면 다음 구슬이 다시 강화 구슬 (_stormChargeCarry) → 예전처럼 맞힌 세 번째마다 연쇄 번개
+            const stormCharged = u.spiritElem === 'storm' && (u._stormChargeCarry || (u.spiritHits = (u.spiritHits || 0) + 1) % SPIRIT_STORM_CHAIN_EVERY === 0);
+            if (stormCharged) u._stormChargeCarry = false;
             sim.projectiles.push({
-              projType: 'arrow', spr: unitProjFx(u, 'arrow'), // 히드라 = 독 구슬 (입에서 뱉음)
+              projType: 'arrow', spr: stormCharged ? 'storm_orb_charged' : unitProjFx(u, 'arrow'), // 히드라 = 독 구슬 (입에서 뱉음)
               ...unitShotOrigin(u, 12), target, owner: u,
               dmg: u.atk, isHeal: false, speed: 4.0, trail: []
             });
@@ -20201,7 +20207,9 @@
             });
           } else {
             const tag = '';
+            if (p.spr === 'storm_orb_charged' && p.owner) p.owner._stormChargeHit = true; // 번개 정령 강화 구슬 → 맞으면 연쇄 번개
             applyDamage(p.owner, p.target, p.dmg, tag);
+            if (p.owner) p.owner._stormChargeHit = false;
             if (p.statusOnHit) {
               inflictStatus(p.owner, p.target, p.statusOnHit, p.statusDur || 360);
             }
@@ -23956,14 +23964,14 @@
       addBattleLog(`${def.icon} [소환사] ${owner ? owner.name : ''}의 ${def.name} 해방! (${n}명)`);
       dismissSpirit(s, false);
     }
-    // 정령 기본 공격이 맞았을 때: 불 = 화상 · 번개 = 세 번째마다 연쇄 번개 · 정령왕 = 주변에 반 피해 + 화상/감전/슬로우 번갈아
+    // 정령 기본 공격이 맞았을 때: 불 = 화상 · 번개 = 강화 구슬(세 번째 공격)이 맞으면 연쇄 번개 · 정령왕 = 주변에 반 피해 + 화상/감전/슬로우 번갈아
     function spiritBasicHit(s, d) {
       const C = GRID_CELL_SIZE;
       if (s.spiritElem === 'fire') {
         if (d.alive) inflictStatus(s, d, 'burn', SPIRIT_FIRE_BURN_TICKS);
       } else if (s.spiritElem === 'storm') {
-        s.spiritHits = (s.spiritHits || 0) + 1;
-        if (s.spiritHits % SPIRIT_STORM_CHAIN_EVERY) return;
+        if (!s._stormChargeHit) return; // 강화 구슬(세 번째 공격, 쏠 때 셈)이 맞았을 때만
+        s._stormChargeHit = false;
         s.skillAnim = 24; s.maxSkillAnim = 24; s.activeSkillType = 'spirit_chain'; s.attackAnim = 0; // 번개를 뿜는 동작 (그리기만)
         const others = sim.units.filter(e => e.alive && e.team !== s.team && e !== d && unitDist(e, d) <= C * 2)
           .sort((a, b) => unitDist(a, d) - unitDist(b, d)).slice(0, 2);
@@ -24967,6 +24975,7 @@
           if (Math.hypot(e.x - x, e.y - y) - unitBodyGap(e) <= splashR) applyDamage(p.owner, e, p.dmg * (p.splashRatio || 0.5));
         });
       }
+      if (!hit && p.spr === 'storm_orb_charged' && p.owner) p.owner._stormChargeCarry = true; // 번개 정령 강화 구슬이 빗나감 → 다음 구슬이 강화
       if (!hit) return;
       if (p.projType === 'thrown_axe') {
         sim.effects.push({ type: 'magic_burst', x: hit.x, y: hit.y - 12, r: 36, life: 22, maxLife: 22 });
@@ -24976,7 +24985,9 @@
         if (p.owner) addBattleLog(`🪓 [광전사] ${p.owner.name}의 도끼 투척! ${hit.name}이(가) 느려졌어요`);
         return;
       }
+      if (p.spr === 'storm_orb_charged' && p.owner) p.owner._stormChargeHit = true; // 번개 정령 강화 구슬 → 맞으면 연쇄 번개
       applyDamage(p.owner, hit, p.dmg);
+      if (p.owner) p.owner._stormChargeHit = false;
       if (p.statusOnHit) inflictStatus(p.owner, hit, p.statusOnHit, p.statusDur || 360);
       if (p.projType === 'magic_orb') {
         playCombatSfx('magic');
@@ -25579,8 +25590,61 @@
       if (!def || !sheet.ready || (def.match && !def.match(p))) return false;
       const list = sheet.anims[def.anim];
       const fr = list[Math.floor(tick / 6) % list.length];
+      if (def.charged) drawStormChargeFx(ctx, p, tick, 'under');
       drawFxFrame(ctx, fr, p.x, p.y, def.h / list[0][3], p.angle || 0, 1, sheet.img);
+      if (def.charged) drawStormChargeFx(ctx, p, tick, 'over');
       return true;
+    }
+    // 노란 전격 (번개 정령 강화 공격 구슬). pixelfx 작법 (assets/pixelfx-lite.js와 같은 규칙):
+    //   - 색은 어두움→밝음 램프 하나 (STORM_CHARGE_RAMP), 갓 튄 전기는 꼭대기(흰·레몬), 식으면 아래(호박)로
+    //   - 빛 층(더해지는 빛) = 크고 옅은 웅덩이 + 작고 뜨거운 심. 3틱마다 확 밝아졌다가 남은 시간의 제곱으로 빠르게 꺼짐
+    //   - 색 층 = 2px 도트 칸에 맞춘 지그재그 전기 줄 3가닥 (머리는 밝고 꼬리는 어두운 2톤), 3틱마다 새로 튐
+    //   - 뒤로 흩날리는 불티 도트: 오래될수록 램프 아래 색 · 'under' = 빛 웅덩이(구슬 아래), 'over' = 전기 줄·불티(구슬 위)
+    const STORM_CHARGE_RAMP = ['#6b3a00', '#b86e00', '#f2b200', '#ffe14a', '#fff7b8', '#ffffff'];
+    function drawStormChargeFx(ctx, p, tick, layer) {
+      const PX = 2, R = STORM_CHARGE_RAMP, top = R.length - 1;
+      const beat = Math.floor(tick / 3), u = (tick % 3) / 3, flash = (1 - u) * (1 - u); // 3틱마다 번쩍 → 제곱으로 꺼짐
+      let seed = (beat * 2654435761 + Math.round((p.angle || 0) * 1000)) >>> 0;
+      const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+      const snap = v => Math.round(v / PX) * PX;
+      const dot = (x, y, c, a = 1) => { ctx.globalAlpha = a; ctx.fillStyle = c; ctx.fillRect(snap(x) - PX / 2, snap(y) - PX / 2, PX, PX); };
+      ctx.save();
+      if (layer === 'under') {
+        ctx.globalCompositeOperation = 'lighter';
+        const pool = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 22);
+        pool.addColorStop(0, `rgba(255, 214, 40, ${0.28 + 0.3 * flash})`);
+        pool.addColorStop(1, 'rgba(255, 180, 0, 0)');
+        ctx.fillStyle = pool; ctx.fillRect(p.x - 22, p.y - 22, 44, 44);
+        const core = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 8);
+        core.addColorStop(0, `rgba(255, 255, 230, ${0.45 + 0.45 * flash})`);
+        core.addColorStop(1, 'rgba(255, 240, 120, 0)');
+        ctx.fillStyle = core; ctx.fillRect(p.x - 8, p.y - 8, 16, 16);
+        ctx.restore();
+        return;
+      }
+      const back = (p.angle || 0) + Math.PI;
+      // 전기 줄 3가닥: 구슬 둘레(위·아래·뒤 쪽으로 고르게)에서 바깥으로, 좌우로 번갈아 꺾이는 지그재그
+      for (let k = 0; k < 3; k++) {
+        const dir = back + (k - 1) * 2.1 + (rnd() - 0.5) * 0.8;
+        let x = p.x + Math.cos(dir) * 6, y = p.y + Math.sin(dir) * 6;
+        const n = 4 + Math.floor(rnd() * 3);
+        for (let i = 0; i < n; i++) {
+          const a = dir + (i % 2 ? 1 : -1) * (0.75 + rnd() * 0.5);
+          const nx = x + Math.cos(a) * 4.5, ny = y + Math.sin(a) * 4.5;
+          const ci = Math.max(1, top - Math.floor(i * top / n)); // 머리(구슬 쪽) 밝음 → 끝 어두움
+          dot(x, y, R[ci], 0.55 + 0.45 * flash);
+          dot((x + nx) / 2, (y + ny) / 2, R[Math.max(0, ci - 1)], 0.5 + 0.4 * flash);
+          x = nx; y = ny;
+        }
+      }
+      // 불티: 지나온 길 뒤로 흩어지며 식음
+      for (let k = 0; k < 4; k++) {
+        const age = (k + u) / 4, d = 6 + age * 16, side = (rnd() - 0.5) * 10 * age;
+        const x = p.x + Math.cos(back) * d - Math.sin(back) * side, y = p.y + Math.sin(back) * d + Math.cos(back) * side;
+        dot(x, y, R[Math.max(0, Math.round(top * (1 - age)) - 1)], 1 - age * 0.7);
+      }
+      dot(p.x, p.y - 1, R[top], 0.6 + 0.4 * flash); // 구슬 가운데 하얀 심
+      ctx.restore();
     }
 
     // spr가 붙은 효과를 그림으로 그리면 true
