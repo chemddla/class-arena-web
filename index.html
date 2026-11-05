@@ -8019,23 +8019,28 @@
       projFx: { arrow: 'storm_orb', poison_arrow: 'storm_orb', golden_arrow: 'storm_orb' }
     };
     // 소환사 히든 정령왕 (불꽃 머리 흑기사, tools/spirit_king_build.py): 칸 순서 = 대기, 걷기 3장, 공격 2장 (검 치켜들기 → 불꽃 베기),
-    //   강림 (검을 땅에 꽂음: 나올 때 spirit_descend + 원소 폭발 이펙트 spirit_king_burst), 피격, 쓰러짐 2장 (원소로 갈라짐 → 흩어짐, spirit_pop 이펙트가 그림)
+    //   강림 (검을 땅에 꽂음: 나올 때 spirit_descend + 원소 폭발 이펙트 spirit_king_burst), 피격, 쓰러짐 2장 (원소로 갈라짐 → 흩어짐, spirit_pop 이펙트가 그림),
+    //   공격 B 2장 (검을 당겨 겨눔 → 불꽃 찌르기)
+    //   attackSets = 기본 공격 동작 여러 벌: 공격할 때마다 다음 벌로 돌아가며 (pickSpriteFrame)
     //   (정령은 몸 크기 sizeScale이 1이라 그림 크기는 standH로만 정함: standH 100이면 용병보다 약 1.35배 큼. 몸 판정은 그대로)
     MONSTER_SPRITE_DEFS.spirit_king = {
       src: 'assets/sprites/monster/spirit_king.webp',
-      cellW: 211, cellH: 136, anchorX: 105, anchorY: 134, standH: 100, topH: 119, count: 10,
+      cellW: 283, cellH: 136, anchorX: 105, anchorY: 134, standH: 100, topH: 119, count: 12,
       anims: { idle: [0], walk: [1, 2, 3, 2], attack: [4, 5, 5], skill: [4], hurt: [7], death: [8, 9], descend: [6] },
+      attackSets: [[4, 5, 5], [10, 11, 11]],
       skillAnims: { spirit_descend: { anim: 'descend', tpf: 44, dur: 44 } },
       pop: [8, 9], popScale: 1.25 // 흩어지는 칸은 몸이 작고 바닥으로 퍼진 그림이라 살아 있을 때보다 키워 그림
     };
     // 소환사 시크릿 레어 전용 정령왕 (별빛 왕관·성운 머리 기사, tools/spirit_king_sr1_build.py): SR 외형 소환사가 부른 정령왕만 이 그림
-    //   칸 순서 = 대기, 걷기 4장, 공격 2장 (검 휘두르기 → 초승달 검기), 강림, 피격, 쓰러짐 3장 (무너짐 → 별빛으로 흩어짐 → 정령만 남아 사라짐)
+    //   칸 순서 = 대기, 걷기 4장, 공격 2장 (검 휘두르기 → 초승달 검기), 강림, 피격, 쓰러짐 3장 (무너짐 → 별빛으로 흩어짐 → 정령만 남아 사라짐),
+    //   공격 B (몸을 돌려 휘감는 별빛 베기), 공격 C (성운 검기 찌르기) — 기본 공격은 세 벌을 돌아가며
     //   standH는 옛 정령왕과 화면 키가 같게 (불꽃 포함 키의 84%)
     MONSTER_SPRITE_DEFS.spirit_king_sr1 = {
       src: 'assets/sprites/monster/spirit_king_sr1.webp',
-      cellW: 232, cellH: 182, anchorX: 125, anchorY: 178, standH: 143, topH: 170, count: 12,
+      cellW: 354, cellH: 182, anchorX: 175, anchorY: 178, standH: 143, topH: 170, count: 14,
       visScale: 1.2, // 그림만 20% 크게: 베기 검 끝(기준점에서 102px)이 기본 공격 사거리(사거리 82 + 몸 반폭 30 = 몸 가운데에서 112px)에 닿게
       anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5, 6, 6], skill: [5], hurt: [8], death: [9, 10, 11], descend: [7] },
+      attackSets: [[5, 6, 6], [12], [13]],
       skillAnims: { spirit_descend: { anim: 'descend', tpf: 44, dur: 44 } },
       pop: [9, 10, 11]
     };
@@ -26424,7 +26429,7 @@
     function pickSpriteFrame(u, sprite, tick) {
       const a = sprite.anims;
       const step = (list, elapsed, ticksPerFrame) => list[Math.min(list.length - 1, Math.max(0, Math.floor(elapsed / ticksPerFrame)))];
-      if ((u.attackAnim || 0) > (u._sprLastAtk || 0)) u._sprAtkStart = tick;
+      if ((u.attackAnim || 0) > (u._sprLastAtk || 0)) { u._sprAtkStart = tick; u._sprAtkSet = (u._sprAtkSet ?? -1) + 1; } // 새 공격마다 다음 동작 벌 (attackSets)
       if ((u.skillAnim || 0) > (u._sprLastSkill || 0)) u._sprSkillStart = tick;
       u._sprLastAtk = u.attackAnim || 0;
       u._sprLastSkill = u.skillAnim || 0;
@@ -26452,7 +26457,11 @@
         return cf ?? a.skill[0];
       }
       // attackDur가 있으면 그만큼만 공격 자세 (주술사: 불꽃을 날리고 나면 바로 평소 자세로)
-      if (u.attackAnim > 0 && !(sprite.attackDur && tick - (u._sprAtkStart ?? tick) >= sprite.attackDur)) return step((u.lanceMode === 'thrust' && a.thrust) || a.attack, tick - (u._sprAtkStart ?? tick), 6); // 창병 찌르기는 따로
+      if (u.attackAnim > 0 && !(sprite.attackDur && tick - (u._sprAtkStart ?? tick) >= sprite.attackDur)) {
+        const sets = sprite.attackSets;
+        const list = (u.lanceMode === 'thrust' && a.thrust) || (sets ? sets[(u._sprAtkSet || 0) % sets.length] : a.attack); // 창병 찌르기는 따로
+        return step(list, tick - (u._sprAtkStart ?? tick), 6);
+      }
       if (u.hurtAnim > 0) return step(a.hurt, 10 - u.hurtAnim, 10 / a.hurt.length); // hurtAnim은 10에서 줄어듦
       // 저격수 강화 사격이 쌓여 있으면 다음 사격까지 금빛 오라 자세 유지 (쏘면 powerStacks가 0이 되어 원래 모습)
       if (a.charged && u.powerStacks > 0) return a.charged[0];

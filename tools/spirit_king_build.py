@@ -3,6 +3,7 @@
 # 사용: python tools/spirit_king_build.py   (샘플은 assets/sprites/fx/samples/spirit_king_*_src.png · burst_src.webp)
 # 칸 순서: 0 대기 · 1~3 걷기 · 4 공격 1 (검 치켜들기) · 5 공격 2 (불꽃 베기) · 6 강림 (검을 땅에 꽂음)
 #          7 피격 · 8~9 쓰러짐 (원소로 갈라짐 → 흩어지는 원소 조각, spirit_pop 이펙트가 그림)
+#          10~11 공격 B (검을 당겨 겨눔 → 불꽃 찌르기). 샘플 atk3는 다른 그림보다 커서 0.79배로 줄여 맞춤 (갑옷 덩어리 키 145 → 114)
 # 강림 이펙트: 바닥에 퍼지는 다섯 원소 고리 한 장 (위에서 본 타원, 기준점 = 가운데)
 #   고리 사이에 갇힌 흰 배경도 지워야 해서, 가장자리와 이어진 것만이 아니라 모든 흰 픽셀을 흰색 비율만큼 투명하게 (색은 흰색을 빼서 되살림)
 # 샘플 정리: 흰 배경은 가장자리와 이어진 것만 지움. 쓰러짐 샘플 아래 가로줄은 잘라 냄.
@@ -30,6 +31,7 @@ FRAMES = [
     ('descend', 'descend', (0, 228), None),
     ('hurt', 'hurt', (0, 151), None),
     ('down', 'down0', (0, 205), (0, 150)), ('down', 'down1', (205, 424), (0, 150)),
+    ('atk3', 'atk3a', (0, 275), None, 0.79), ('atk3', 'atk3b', (275, 672), None, 0.79),
 ]
 
 
@@ -57,10 +59,11 @@ def load(name, xr, yr):
 
 def main():
     pieces = []
-    for src, name, xr, yr in FRAMES:
+    for src, name, xr, yr, *k in FRAMES:
         rgba, cx = load(src, xr, yr)
-        p = shrink(rgba, SCALE)
-        pieces.append((name, p, cx * SCALE))
+        sc = SCALE * (k[0] if k else 1)
+        p = shrink(rgba, sc)
+        pieces.append((name, p, cx * sc))
         print(f'{name}: {rgba.shape[1]}x{rgba.shape[0]} -> {p.shape[1]}x{p.shape[0]}  cx {cx:.0f}')
     L = max(int(np.ceil(c)) for _, _, c in pieces) + 3
     R = max(int(np.ceil(p.shape[1] - c)) for _, p, c in pieces) + 3
