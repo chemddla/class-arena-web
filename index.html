@@ -38193,7 +38193,7 @@
           try { (liveNet.team ? ref.child('inputs').child(liveNet.myId || 'x') : ref.child('input')).onDisconnect().remove(); } catch (e) {}
         }
         ref.child('init').on('value', snap => applyLiveInit(snap && snap.val()));
-        ref.child('frame').on('value', snap => applyLiveFrame(snap && snap.val()));
+        attachLiveFrameListener(ref);
         ref.child('result').on('value', snap => applyLiveResult(snap && snap.val()));
         ref.child('status').on('value', snap => applyLiveChoiceStatus(snap && snap.val()));
         ref.child('handoff').on('value', snap => applyLiveHandoff(snap && snap.val()));
@@ -38201,6 +38201,38 @@
       }
       liveWatchConnection();
     }
+
+    // ----- 관전자가 다른 탭을 보고 있는 동안은 전투 화면을 받지 않음 -----
+    // 숨겨진 탭도 화면(수신자 한 명당 초당 약 5KB)을 계속 내려받았음. 15초 넘게 숨겨 두면 화면 받기만 멈추고(전투 정보·결과는 계속 받음),
+    // 돌아오면 다시 받기 시작해 다음 전체 화면(4초 안)부터 이어 봄. 직접 참여하는 친구(도전자·팀원·파티원)는 해당 없음
+    const LIVE_HIDDEN_PAUSE_MS = 15000;
+    function attachLiveFrameListener(ref) {
+      ref.child('frame').on('value', snap => applyLiveFrame(snap && snap.val()));
+    }
+    function liveWatcherCanPause() {
+      return liveNet.role === 'guest' && liveNet.spectator && Boolean(liveNet.ref) && !liveNet.finished;
+    }
+    function onLiveVisibility() {
+      clearTimeout(liveNet.hiddenTimer);
+      liveNet.hiddenTimer = null;
+      if (document.hidden) {
+        if (!liveWatcherCanPause()) return;
+        liveNet.hiddenTimer = setTimeout(() => {
+          liveNet.hiddenTimer = null;
+          if (!document.hidden || !liveWatcherCanPause() || liveNet.framePaused) return;
+          try { liveNet.ref.child('frame').off(); } catch (e) {}
+          liveNet.framePaused = true;
+        }, LIVE_HIDDEN_PAUSE_MS);
+        return;
+      }
+      if (!liveNet.framePaused) return;
+      liveNet.framePaused = false;
+      if (!liveWatcherCanPause()) return;
+      resetLiveFrameBuffer(); // 그 사이 놓친 화면: 앞 화면이 없으니 다음 전체 화면부터
+      liveNet.lastFrameAt = Date.now();
+      attachLiveFrameListener(liveNet.ref);
+    }
+    document.addEventListener('visibilitychange', onLiveVisibility);
 
     // 인터넷이 잠깐 끊겼다 돌아오면: 서버에 걸어 둔 '끊기면 지우기'는 한 번 쓰이면 사라지고, 그 사이 전투 정보(init)·내 조작이 지워졌을 수 있어 다시 걸고 채워 넣음
     let liveConnWatchOn = false, liveConnWasDown = false;
@@ -38277,6 +38309,9 @@
     }
 
     function stopLiveBattleNet() {
+      clearTimeout(liveNet.hiddenTimer);
+      liveNet.hiddenTimer = null;
+      liveNet.framePaused = false;
       stopTowerLiveNet();
       if (liveNet.ref) {
         ['init', 'frame', 'result', 'input', 'inputs', 'status', 'handoff'].forEach(k => { try { liveNet.ref.child(k).off(); } catch (e) {} });
@@ -38367,12 +38402,19 @@
     // 이펙트·유닛 목록에 섞인 다른 유닛 객체는 통째로 보내지 않음
     // (owner·쌍도끼 두 번째 타 대상·시전 대상이 서로를 가리키면 순환 구조라 JSON이 깨져 화면이 안 가고, 아니어도 화면 한 장이 수십 KB로 불어남)
     const isLiveUnitRef = v => Boolean(v && typeof v === 'object' && typeof v.id === 'string' && v.statuses && typeof v.hp === 'number');
+    // 소수 열다섯 자리(1880.94608679776)까지 그대로 올라가던 좌표·크기를 반올림: 10 미만은 소수 둘째, 그 이상은 첫째 자리
+    function roundLiveNum(v) {
+      if (typeof v === 'number') return Number.isInteger(v) || !isFinite(v) ? v : (Math.abs(v) < 10 ? Math.round(v * 100) / 100 : Math.round(v * 10) / 10);
+      if (Array.isArray(v)) return v.map(roundLiveNum);
+      if (v && typeof v === 'object') { const o = {}; for (const k in v) o[k] = roundLiveNum(v[k]); return o; }
+      return v;
+    }
     function packLiveEffect(ef) {
       const out = {};
       for (const k in ef) {
         const v = ef[k];
         if (isLiveUnitRef(v)) { if (k === 'owner') out.oid = v.id; continue; } // 따라다니는 이펙트는 id로 → 받은 화면에서 그 유닛을 다시 찾음
-        out[k] = v;
+        out[k] = roundLiveNum(v);
       }
       return out;
     }
@@ -38394,7 +38436,11 @@
         vx = (dx / d) * liveNum(p.speed) * BATTLE_PROJECTILE_SPEED;
         vy = (dy / d) * liveNum(p.speed) * BATTLE_PROJECTILE_SPEED;
       }
-      return [liveR1(p.x), liveR1(p.y), liveR2(p.angle), String(p.projType || ''), String(p.color || ''), liveNum(p.radius), liveR2(vx), liveR2(vy), String(p.spr || '')];
+      // 투사체는 화면마다 통째로 다시 보내므로(평균 3.7개, 화면의 21%) 자리는 정수·속도는 소수 한 자리면 충분 (받는 쪽이 흐른 만큼 미리 날려 그림)
+      const out = [Math.round(liveNum(p.x)), Math.round(liveNum(p.y)), liveR2(p.angle), String(p.projType || ''), String(p.color || ''), liveNum(p.radius), liveR1(vx), liveR1(vy)];
+      const spr = String(p.spr || '');
+      if (spr) out.push(spr); // 그림 이름이 있을 때만 (없으면 생략)
+      return out;
     }
 
     function publishLiveBattleFrame(force = false) {
@@ -38979,6 +39025,7 @@
         if (!a || Math.hypot(a.x - localBattleInput.aimX, a.y - localBattleInput.aimY) > 12) onLocalControlChanged();
       }
 
+      if (liveNet.framePaused) liveNet.lastFrameAt = now; // 일부러 멈춘 동안의 조용함은 끊김이 아님
       const silentFor = now - (liveNet.initReceived ? liveNet.lastFrameAt : liveNet.startedAt);
       if (liveNet.role === 'guest' && silentFor > LIVE_GUEST_TIMEOUT_MS) {
         if (!handleLiveHostSilence()) abortLiveBattle('📡 방장 화면과 연결이 끊겨 결투를 멈췄어요. (이번 결투는 보상이 없어요)');
