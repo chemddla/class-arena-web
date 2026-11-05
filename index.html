@@ -9124,6 +9124,31 @@
     TRAIL_FX.img.src = 'assets/sprites/fx/charge_trail_fx.webp';
     const SPIN_FX = { frames: [[0, 0, 315, 200], [315, 0, 315, 200], [630, 0, 315, 200]] }; // blood = 피의 오크 대족장 회전베기용 핏빛 사본
     // 피의 오크 대족장용 핏빛 사본: 색을 짙은 핏빛으로 바꾸고 살짝 어둡게 (모양·투명도는 원본 그대로)
+    // 번개 정령 연쇄 번개용 노란 썬더볼트: 마법사 썬더볼트 그림(줄기·착탄)만 밝기에 따라 다시 칠한 사본
+    //   (어두운 파랑·보라 → 호박색, 중간 → 레몬 노랑, 밝은 곳 → 흰빛). 같은 크기 캔버스라 칸 좌표는 그대로 씀 · 시트마다 처음 쓸 때 한 번 만듦
+    //   지금 썬더볼트 = SPELL_HIT_FX (beam·bolt_hit), 그 그림이 아직 없을 때 쓰는 예전 그림 = FX_SPRITE_SHEET (bolt·bolt_hit)
+    function stormBoltSheet(sh = FX_SPRITE_SHEET, keys = ['bolt', 'bolt_hit']) {
+      if (sh.storm) return sh.storm;
+      if (!sh.ready || !sh.img.naturalWidth) return null;
+      const c = document.createElement('canvas');
+      c.width = sh.img.naturalWidth; c.height = sh.img.naturalHeight;
+      const g = c.getContext('2d');
+      const ramp = [[0, [146, 64, 14]], [0.35, [217, 119, 6]], [0.6, [250, 204, 21]], [0.85, [254, 240, 138]], [1, [255, 255, 240]]];
+      keys.flatMap(k => sh.anims[k]).forEach(([x, y, w, h]) => {
+        g.drawImage(sh.img, x, y, w, h, x, y, w, h);
+        const d = g.getImageData(x, y, w, h), px = d.data;
+        for (let i = 0; i < px.length; i += 4) {
+          if (!px[i + 3]) continue;
+          const l = (px[i] * 0.3 + px[i + 1] * 0.59 + px[i + 2] * 0.11) / 255;
+          let j = 1; while (j < ramp.length - 1 && ramp[j][0] < l) j++;
+          const [a0, c0] = ramp[j - 1], [a1, c1] = ramp[j], f = Math.max(0, Math.min(1, (l - a0) / (a1 - a0)));
+          px[i] = c0[0] + (c1[0] - c0[0]) * f; px[i + 1] = c0[1] + (c1[1] - c0[1]) * f; px[i + 2] = c0[2] + (c1[2] - c0[2]) * f;
+        }
+        g.putImageData(d, x, y);
+      });
+      sh.storm = c;
+      return c;
+    }
     function bloodTintCopy(img) {
       const c = document.createElement('canvas');
       c.width = img.width; c.height = img.height;
@@ -23913,9 +23938,12 @@
         s.skillAnim = 24; s.maxSkillAnim = 24; s.activeSkillType = 'spirit_chain'; s.attackAnim = 0; // 번개를 뿜는 동작 (그리기만)
         const others = sim.units.filter(e => e.alive && e.team !== s.team && e !== d && unitDist(e, d) <= C * 2)
           .sort((a, b) => unitDist(a, d) - unitDist(b, d)).slice(0, 2);
+        // 그림 = 마법사 썬더볼트를 노란색으로 (tint 'storm'): 정령 손끝 → 맞은 적 → 옆 적들로 이어짐
+        const from = unitShotOrigin(s, 12);
+        sim.effects.push({ type: 'lightning_bolt', spr: 'bolt', tint: 'storm', sx: from.x, sy: from.y, tx: d.x, ty: d.y - 14, life: 30, maxLife: 30 });
         let px = d.x, py = d.y;
         withSkillHit(() => others.forEach(e => {
-          sim.effects.push({ type: 'lightning_bolt', sx: px, sy: py - 14, tx: e.x, ty: e.y - 14, life: 30, maxLife: 30 });
+          sim.effects.push({ type: 'lightning_bolt', spr: 'bolt', tint: 'storm', sx: px, sy: py - 14, tx: e.x, ty: e.y - 14, life: 30, maxLife: 30 });
           applyDamage(s, e, s.atk * 0.6, '⚡', '#facc15');
           px = e.x; py = e.y;
         }));
@@ -25627,6 +25655,7 @@
         const dx = ef.tx - ef.sx, dy = ef.ty - ef.sy;
         const len = Math.hypot(dx, dy) || 1;
         const fr = B.beam[progress < 0.55 ? 0 : 1];
+        const boltImg = (ef.tint === 'storm' && stormBoltSheet(SPELL_HIT_FX, ['beam', 'bolt_hit'])) || SPELL_HIT_FX.img; // 번개 정령 연쇄 번개 = 노란 사본
         const ky = 34 / B.beam[0][3];  // 굵은 번개 높이 = 34
         ctx.save();
         ctx.translate(ef.sx, ef.sy);
@@ -25634,10 +25663,10 @@
         if (Math.floor(ef.life / 4) % 2) ctx.scale(1, -1);
         ctx.globalAlpha = fadeOut;
         ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(SPELL_HIT_FX.img, fr[0], fr[1], fr[2], fr[3], 0, -fr[5] * ky, len, fr[3] * ky);
+        ctx.drawImage(boltImg, fr[0], fr[1], fr[2], fr[3], 0, -fr[5] * ky, len, fr[3] * ky);
         ctx.restore();
         const hit = fxFrameAt(B.bolt_hit, progress, 0.6);
-        drawFxFrame(ctx, hit, ef.tx, ef.ty - 12, (70 * (0.8 + 0.2 * Math.sin(progress * Math.PI))) / B.bolt_hit[0][2], 0, fadeOut, SPELL_HIT_FX.img);
+        drawFxFrame(ctx, hit, ef.tx, ef.ty - 12, (70 * (0.8 + 0.2 * Math.sin(progress * Math.PI))) / B.bolt_hit[0][2], 0, fadeOut, boltImg);
         return true;
       }
       if (!FX_SPRITE_SHEET.ready) return false;
@@ -25659,6 +25688,7 @@
           const len = Math.hypot(dx, dy) || 1;
           const ang = Math.atan2(dy, dx);
           const fr = A.bolt[Math.floor(ef.life / 4) % A.bolt.length];
+          const boltImg = (ef.tint === 'storm' && stormBoltSheet()) || FX_SPRITE_SHEET.img; // 번개 정령 연쇄 번개 = 노란 사본
           const k = 30 / fr[3];        // 줄기 조각 길이 배율
           const ky = 16 / fr[3];       // 줄기 굵기 배율 (길이는 그대로 두고 굵기만 얇게)
           const segW = fr[2] * k;
@@ -25672,11 +25702,11 @@
           ctx.rect(0, -40, len, 80);
           ctx.clip();
           for (let x = 0; x < len; x += segW * 0.92) {
-            ctx.drawImage(FX_SPRITE_SHEET.img, fr[0], fr[1], fr[2], fr[3], x, -fr[5] * ky, segW, fr[3] * ky);
+            ctx.drawImage(boltImg, fr[0], fr[1], fr[2], fr[3], x, -fr[5] * ky, segW, fr[3] * ky);
           }
           ctx.restore();
           const hit = A.bolt_hit[0];
-          drawFxFrame(ctx, hit, ef.tx, ef.ty - 12, (74 * (0.8 + 0.2 * Math.sin(progress * Math.PI))) / hit[2], 0, fadeOut);
+          drawFxFrame(ctx, hit, ef.tx, ef.ty - 12, (74 * (0.8 + 0.2 * Math.sin(progress * Math.PI))) / hit[2], 0, fadeOut, boltImg);
           return true;
         }
         case 'poison': {
