@@ -8021,7 +8021,7 @@
     // 소환사 히든 정령왕 (불꽃 머리 흑기사, tools/spirit_king_build.py): 칸 순서 = 대기, 걷기 3장, 공격 2장 (검 치켜들기 → 불꽃 베기),
     //   강림 (검을 땅에 꽂음: 나올 때 spirit_descend + 원소 폭발 이펙트 spirit_king_burst), 피격, 쓰러짐 2장 (원소로 갈라짐 → 흩어짐, spirit_pop 이펙트가 그림),
     //   공격 B 2장 (검을 당겨 겨눔 → 불꽃 찌르기)
-    //   attackSets = 기본 공격 동작 여러 벌: 공격할 때마다 다음 벌로 돌아가며 (pickSpriteFrame)
+    //   attackSets = 기본 공격 동작 여러 벌: 공격할 때마다 무작위로 한 벌 (pickSpriteFrame)
     //   (정령은 몸 크기 sizeScale이 1이라 그림 크기는 standH로만 정함: standH 100이면 용병보다 약 1.35배 큼. 몸 판정은 그대로)
     MONSTER_SPRITE_DEFS.spirit_king = {
       src: 'assets/sprites/monster/spirit_king.webp?v=2', // ?v = 칸 배치가 바뀔 때마다 올림: 배포 사이트가 그림을 1시간 캐시해서, 옛 그림 + 새 칸 크기로 그려지는 걸 막음
@@ -8033,7 +8033,7 @@
     };
     // 소환사 시크릿 레어 전용 정령왕 (별빛 왕관·성운 머리 기사, tools/spirit_king_sr1_build.py): SR 외형 소환사가 부른 정령왕만 이 그림
     //   칸 순서 = 대기, 걷기 4장, 공격 2장 (검 휘두르기 → 초승달 검기), 강림, 피격, 쓰러짐 3장 (무너짐 → 별빛으로 흩어짐 → 정령만 남아 사라짐),
-    //   공격 B (몸을 돌려 휘감는 별빛 베기), 공격 C (성운 검기 찌르기) — 기본 공격은 세 벌을 돌아가며
+    //   공격 B (몸을 돌려 휘감는 별빛 베기), 공격 C (성운 검기 찌르기) — 기본 공격은 세 벌 중 무작위
     //   standH는 옛 정령왕과 화면 키가 같게 (불꽃 포함 키의 84%)
     MONSTER_SPRITE_DEFS.spirit_king_sr1 = {
       src: 'assets/sprites/monster/spirit_king_sr1.webp?v=2', // ?v = 칸 배치가 바뀔 때마다 올림 (위와 같은 이유)
@@ -26429,7 +26429,7 @@
     function pickSpriteFrame(u, sprite, tick) {
       const a = sprite.anims;
       const step = (list, elapsed, ticksPerFrame) => list[Math.min(list.length - 1, Math.max(0, Math.floor(elapsed / ticksPerFrame)))];
-      if ((u.attackAnim || 0) > (u._sprLastAtk || 0)) { u._sprAtkStart = tick; u._sprAtkSet = (u._sprAtkSet ?? -1) + 1; } // 새 공격마다 다음 동작 벌 (attackSets)
+      if ((u.attackAnim || 0) > (u._sprLastAtk || 0)) { u._sprAtkStart = tick; u._sprAtkRoll = Math.random(); } // 새 공격마다 동작 벌을 무작위로 (attackSets). 그리기에만 쓰여 전투 결과와는 상관없음
       if ((u.skillAnim || 0) > (u._sprLastSkill || 0)) u._sprSkillStart = tick;
       u._sprLastAtk = u.attackAnim || 0;
       u._sprLastSkill = u.skillAnim || 0;
@@ -26459,7 +26459,7 @@
       // attackDur가 있으면 그만큼만 공격 자세 (주술사: 불꽃을 날리고 나면 바로 평소 자세로)
       if (u.attackAnim > 0 && !(sprite.attackDur && tick - (u._sprAtkStart ?? tick) >= sprite.attackDur)) {
         const sets = sprite.attackSets;
-        const list = (u.lanceMode === 'thrust' && a.thrust) || (sets ? sets[(u._sprAtkSet || 0) % sets.length] : a.attack); // 창병 찌르기는 따로
+        const list = (u.lanceMode === 'thrust' && a.thrust) || (sets ? sets[Math.floor((u._sprAtkRoll || 0) * sets.length)] : a.attack); // 창병 찌르기는 따로
         return step(list, tick - (u._sprAtkStart ?? tick), 6);
       }
       if (u.hurtAnim > 0) return step(a.hurt, 10 - u.hurtAnim, 10 / a.hurt.length); // hurtAnim은 10에서 줄어듦
