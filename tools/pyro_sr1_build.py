@@ -14,10 +14,12 @@
 #   fbcast_src.png (236×339): 파이어볼·플레어 시전 (두 손 사이 불덩이, 아래 이름표는 버림) · flare_src.png (257×234): 플레어 발사
 #   combust_src.png (454×289): 왼쪽 = 익스플로전 시전 (주먹을 치켜듦, 발밑 불길 → 기준점 밑으로) · 오른쪽 = 익스플로전 발동 (불티가 사방으로)
 #     파이어볼 발사 샘플과 같은 해상도라 다섯 장 모두 한 배율(sc_fb, 파이어볼 시전 칸 몸 키 = 대기 몸 키)을 씀
+#   dash_src.png (276×235): 돌진(대쉬) — 몸을 눕혀 날아가며 앞쪽에 불꽃 고리. 아래 이름표·반짝이는 버림, 고리 안쪽 배경도 지움
+#     날아가는 자세라 발이 없어서 기준점 x는 몸통 가운데(DASH_FOOT_X), 맨 아래가 바닥
 #   meteor_fall_src.webp (1024×572): 연기 꼬리가 왼쪽 위로 길게 달린 불타는 운석 (날아오는 투사체)
 #   meteor_hit_src.webp (1024×572): 착탄 순간 (운석이 땅에 박히며 불꽃이 튐) · meteor_boom_src.webp: 착탄 뒤 폭발
 # 캐릭터 칸 순서: 0 대기 · 1~2 걷기 · 3 공격 준비 · 4 공격 발사 · 5 피격 · 6~7 쓰러짐 · 8 파이어볼·플레어 시전 · 9 (예전 파이어볼, = 공격 발사) · 10 플레어 발사 · 11 걷기 3
-#   · 12 메테오 시전 앞 · 13 메테오 시전 끝 · 14 플레임 링 시전 · 15 파이어볼 발사 · 16 익스플로전 시전 · 17 익스플로전 발동
+#   · 12 메테오 시전 앞 · 13 메테오 시전 끝 · 14 플레임 링 시전 · 15 파이어볼 발사 · 16 익스플로전 시전 · 17 익스플로전 발동 · 18 대쉬
 # 크기: 대기 머리 꼭대기~발(BODY_TOP~발) = TARGET_H. 다른 샘플은 몸 덩어리 키를 대기와 같게 맞춘 배율 (쓰러짐은 같은 장 공격·피격 칸 배율)
 # 이펙트 시트 칸: fall (운석, 기준점 = 돌덩이 가운데) · hit (착탄, 기준점 = 바닥 가운데) · boom (폭발, 기준점 = 바닥 가운데)
 #   꼬리가 그림 밖으로 잘린 왼쪽 위는 FADE 폭만큼 서서히 투명하게 (게임에서 잘린 끝이 보이지 않게)
@@ -46,7 +48,8 @@ STRETCH_BAND = 40                      # 걷기 3 위쪽에서 위로 늘리는 
 CAST_BG = np.array([49, 52, 62], float)
 CAST_BOX = {'m0': (16, 0, 328, 495), 'm1': (336, 0, 704, 495), 'ring': (712, 0, 1000, 495)}
 CAST_WM = (912, 460, 960, 505)         # 반짝이 표시 (고리 위에 겹침)
-DARK_SRC = {'fbcast': ('fbcast', (0, 0, 236, 300)), 'flare': ('flare', None), 'cb_cast': ('combust', (0, 0, 210, 289)), 'cb_go': ('combust', (210, 0, 454, 289))}
+DARK_SRC = {'fbcast': ('fbcast', (0, 0, 236, 300)), 'flare': ('flare', None), 'cb_cast': ('combust', (0, 0, 210, 289)), 'cb_go': ('combust', (210, 0, 454, 289)), 'dash': ('dash', (0, 0, 276, 174))}
+DASH_FOOT_X = 125   # 대쉬 칸 기준점 x (몸통 가운데, 잘라 낸 그림 기준 샘플 px)
 GROUND_DROP = {'ring': 27, 'cb_cast': 16}             # 바닥 고리가 발보다 이만큼(샘플 px) 아래까지 내려옴 → 발을 바닥에 맞추고 고리 앞쪽은 기준점 밑으로
 FB_BG = np.array([50, 53, 62], float)
 OUTLINE = np.array([96, 22, 12], float)
@@ -216,7 +219,8 @@ def build_char():
            ('cast', dk['fbcast'], sc_fb), ('fb', sh['a2'], sc_sheet), ('sc', dk['flare'], sc_fb),
            ('walk2', wc, sc_walk),
            ('meteor0', ca['m0'], sc_cast), ('meteor1', ca['m1'], sc_cast), ('ring', ca['ring'], sc_cast), ('fb_release', fb, sc_fb),
-           ('cb_cast', dk['cb_cast'], sc_fb), ('cb_go', dk['cb_go'], sc_fb)]
+           ('cb_cast', dk['cb_cast'], sc_fb), ('cb_go', dk['cb_go'], sc_fb),
+           ('dash', (dk['dash'][0], DASH_FOOT_X) + dk['dash'][2:], sc_fb)]
     pieces = []
     for name, (rgba, foot, _, _), k in src:
         p = shrink(rgba, k)
