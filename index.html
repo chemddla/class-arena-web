@@ -5094,7 +5094,7 @@
         combustion: {
           id: 'combustion', name: '대폭발', icon: '💥', ccTag: '💥불티 폭발·기절',
           manaCost: 27, cooldownTicks: 720, cooldownSec: 12.0, castSec: 0.5,
-          desc: '3칸 안에서 내가 쌓은 [불티]가 있는 적 모두의 불티를 한꺼번에 터뜨립니다. 불티 1개당 60% 피해 (5개 = 300%), 5개가 터진 적은 1초 [기절].'
+          desc: '3칸 안에서 내가 쌓은 [불티]가 있는 적 모두의 불티를 한꺼번에 터뜨립니다. 불티 1개당 60% 피해 (4개 = 240%). 불티는 5개가 되면 저절로 터지므로 4개일 때가 가장 셉니다.'
         }
       },
       // 소환사: 스킬 5개가 모두 원소 소환 (5개 중 4개를 배움). 원소마다 전장에 1마리만 · 내 정령이 있을 때 다시 쓰면 그 정령을 해방 (SPIRIT_DEFS)
@@ -5227,7 +5227,7 @@
         meteor: {
           id: 'meteor', name: '메테오', icon: '☄️', ccTag: '✨히든 · 초광역·불티 폭발', hidden: true,
           manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 3,
-          desc: '3초간 하늘로 지팡이를 든 뒤 적이 가장 많이 모인 자리에 거대 운석을 떨어뜨립니다. 반지름 5칸 안의 적 모두에게 400% 피해와 4초 [화상], 이어서 그 적들의 [불티]를 모두 터뜨려요 (불티 1개당 80%, 5개면 1.5초 [기절]).'
+          desc: '3초간 하늘로 지팡이를 든 뒤 적이 가장 많이 모인 자리에 거대 운석을 떨어뜨립니다. 반지름 5칸 안의 적 모두에게 400% 피해와 4초 [화상], 이어서 그 적들의 [불티]를 모두 터뜨려요 (불티 1개당 80%).'
         }
       },
       summoner: {
@@ -5440,7 +5440,7 @@
         icon: '🔥',
         color: '#ea580c',
         roleDesc: '다중 공격·불티 폭발',
-        passiveName: '번지는 불길', passiveDesc: '기본 공격은 불씨 3발이 서로 다른 적에게 (각 45%, 둘레에 다른 적이 없으면 남은 불씨는 60%) · 맞힌 적에게 [불티] (최대 5, 6초) · 불티 1개당 그 적에게 주는 피해 +7% · [화상]에 걸린 적이 쓰러지면 둘레 적 2명에게 화상이 옮겨붙음 · 몬스터에게 주는 피해 +30%',
+        passiveName: '번지는 불길', passiveDesc: '기본 공격은 불씨 3발이 서로 다른 적에게 (각 45%, 둘레에 다른 적이 없으면 남은 불씨는 60%) · 맞힌 적에게 [불티] (6초) · 불티 1개당 그 적에게 주는 피해 +7% · 불티가 5개 쌓이면 바로 터져 120% 피해 · [화상]에 걸린 적이 쓰러지면 둘레 적 2명에게 화상이 옮겨붙음 · 몬스터에게 주는 피해 +30%',
         baseHp: 1350, baseAtk: 58, baseDef: 28, baseSpd: 98, range: 290, maxMana: 100
       }
     };
@@ -24623,6 +24623,7 @@
     const PYRO_EMBER_DMG = 0.5;              // 기본 공격 불씨 한 발 50%
     const PYRO_EMBER_SOLO = 0.5;             //   둘레에 다른 적이 없어 같은 적에게 가는 불씨는 절반 (혼자인 적 = 100%, 3명 = 150%)
     const PYRO_EMBER_SPLIT_CELLS = 2;        //   첫 대상 둘레 2칸 안의 다른 적에게 갈라짐
+    const PYRO_EMBER_BURST = 1.2;            // 불티가 5개 쌓이면 바로 터짐: 공격력 120% 피해, 불티는 0개로
     const PYRO_EMBER_AMP = 0.07;             // 불티 1개당 그 화염술사에게 받는 피해 +7% (5개 = +35%)
     const PYRO_EMBER_HOMING = 0.06;          //   불씨는 목표를 따라 꺾어 날아감 (보통 투사체 0.006의 10배)
     const PYRO_SCATTER_CELLS = 3;            // 화염 산탄: 3칸 · 5발 · 60° · 각 100% (같은 적 두 번째 발부터 절반)
@@ -24662,6 +24663,13 @@
       if (!owner || !e || !e.alive || e.team === owner.team) return;
       e.emberBy = e.emberBy || {};
       const next = Math.min(PYRO_EMBER_MAX, pyroEmberOf(owner, e) + n);
+      if (next >= PYRO_EMBER_MAX) { // 불티 5개: 그 자리에서 터져 피해를 주고 0개로 (사용자 요청 2026-11-06)
+        delete e.emberBy[owner.id];
+        e.emberShow = Object.values(e.emberBy).reduce((m, v) => Math.max(m, v.until > sim.tickCount ? v.n : 0), 0);
+        sim.effects.push({ type: 'pyro_hit', anim: 'hit', x: e.x, y: e.y - 16, angle: 0, scale: 1.5, life: 26, maxLife: 26 });
+        withSkillHit(() => applyDamage(owner, e, owner.atk * PYRO_EMBER_BURST, '🔥', '#ea580c'));
+        return;
+      }
       e.emberBy[owner.id] = { n: next, until: sim.tickCount + PYRO_EMBER_TICKS };
       e.emberShow = Math.max(e.emberShow || 0, next);
     }
@@ -24877,14 +24885,12 @@
       }
 
       if (sk === 'meteor') {
-        const R = A * PYRO_METEOR_CELLS;
         const pt = aimPt || pyroMeteorSpot(unit, live, tgt) || tgt;
         if (!pt) return true;
         const p = clampToArena(pt.x, pt.y);
         const fallD = Math.min(560, (p.y - 12 - 40) / Math.sin(PYRO_METEOR_DIR)); // 그림 방향(약 45°)으로 떨어짐 · 전장 위쪽 밖으로 나가지 않게
         const sx = p.x - Math.cos(PYRO_METEOR_DIR) * fallD, sy = p.y - 12 - Math.sin(PYRO_METEOR_DIR) * fallD;
         const dist = Math.hypot(p.x - sx, p.y - 12 - sy);
-        sim.effects.push({ type: 'aoe_ring', x: p.x, y: p.y, r: R, color: '#dc2626', life: PYRO_METEOR_FALL + 16, maxLife: PYRO_METEOR_FALL + 16 }); // 떨어질 자리 경고
         sim.projectiles.push({
           projType: 'pyro_meteor', spr: 'pyro_meteor', x: sx, y: sy, owner: unit, isHeal: false, trail: [],
           isDirectional: true, angle: Math.atan2(p.y - 12 - sy, p.x - sx), maxTravel: dist - 1,
@@ -24902,8 +24908,7 @@
       if (!owner) return;
       const R = GRID_CELL_SIZE * PYRO_METEOR_CELLS * unitAreaScale(owner);
       sim.effects.push({ type: 'pyro_meteor_impact', x, y: y - 12, life: 90, maxLife: 90 }); // 떨어지던 바위 자리(투사체 기준 12 위)에 그대로 박힘
-      sim.effects.push({ type: 'aoe_ring', x, y, r: R, color: '#ea580c', life: 46, maxLife: 46 });
-      hiddenImpact(24, '#fed7aa');
+      sim.shake = { power: 24, life: 30, maxLife: 30 }; // 화면만 흔듦 (범위 원·화면 번쩍임 같은 코드 이펙트 없이 받은 그림만)
       playCombatSfx('heavy');
       const foes = pyroFoes(owner).filter(e => Math.hypot(e.x - x, e.y - y) - unitBodyGap(e) <= R);
       foes.forEach(e => {
@@ -24925,6 +24930,11 @@
 
     // 매 틱: 불의 고리 다단히트 · 지난 불티 정리 (방장·혼자 하는 전투만, 받는 화면은 emberShow를 받음)
     function stepPyro() {
+      // 전장에 화염술사가 있으면 그림을 미리 받아 둠 (메테오는 쓰는 순간 받기 시작하면 떨어지는 동안 못 받을 수 있음)
+      if (sim.pyroFxWarm !== sim && sim.units.some(u => u.job === 'pyro' && !u.monsterType)) {
+        sim.pyroFxWarm = sim;
+        [PYRO_FX, PYRO_RING_FX, PYRO_METEOR_FX].forEach(d => d.ready);
+      }
       sim.units.forEach(u => {
         if (u.emberBy) {
           let mx = 0;
@@ -29750,6 +29760,7 @@
       sim.projectiles.forEach(p => {
         if (p.wait > 0) return; // 아직 손을 떠나지 않음
         if (drawProjectileSprite(ctx, p, sim.tickCount)) return; // 그림이 있는 투사체는 꼬리까지 그림에 포함
+        if (p.pyro || p.projType === 'pyro_meteor' || String(p.spr || '').startsWith('pyro_')) return; // 화염술사 투사체는 받은 그림만 씀 (그림을 아직 못 받았으면 기본 도형·보라 구슬 대신 그리지 않음)
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.angle || 0);
