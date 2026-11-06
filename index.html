@@ -36887,6 +36887,7 @@
         const mgRoomId = currentJoinedMinigameRoomId || mgWatchRoomId;
         if (!mgRealtimeSyncEnabled || mgRoomId !== want) return;
         applyRemoteMinigamesState(lastMinigamesSnapshot[want]);
+        mgMarkRoomGameOverFromBoard(want);
       });
     }
 
@@ -36979,6 +36980,7 @@
         syncMyRoomMembership();
         renderMinigameLobbyAndRoomUI();
         syncMinigameBoardSub();
+        mgMarkRoomGameOverFromBoard(currentJoinedMinigameRoomId);
         renderSideWatchPanel();
         RoomInvites.render();
         if (RoomInvites.modal) RoomInvites.renderModal();
@@ -44885,6 +44887,19 @@
         room.gameOverAt = statePayload.gameOver ? Date.now() : 0;
         saveMinigameRoomData(room.roomId, room);
       }
+    }
+
+    // 끝난 판을 올린 화면이 예전 버전(끝남 표시를 모름)이거나 표시를 쓰기 전에 나가 버리면 방이 계속 '진행 중'으로 남아
+    // 관전하기 목록에 끝난 경기가 떠 있었음 → 방장 화면이 받은 판이 끝나 있으면 대신 표시함 (이번 판이 시작된 뒤에 올라온 판만)
+    function mgMarkRoomGameOverFromBoard(roomId) {
+      const me = getActiveStudent();
+      const room = roomId && liveMinigameRoomsCache[roomId];
+      if (!me || !room || roomId !== currentJoinedMinigameRoomId || room.hostId !== me.id) return;
+      if (room.status !== 'playing' || room.gameOverAt) return;
+      const st = (lastMinigamesSnapshot[roomId] || {})[room.gameType];
+      if (!st || !st.initialized || !st.gameOver || (st.updatedAt || 0) < (room.startedAt || 0)) return;
+      room.gameOverAt = Date.now();
+      saveMinigameRoomData(roomId, room);
     }
 
     // Firebase는 빈 배열·null을 지우고 배열을 객체로 바꾸기도 해서, 받은 값을 다시 배열로 맞춤
