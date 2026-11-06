@@ -54,6 +54,10 @@ CAST_WM = (912, 460, 960, 505)         # 반짝이 표시 (고리 위에 겹침)
 DARK_SRC = {'fbcast': ('fbcast', (0, 0, 236, 300)), 'flare': ('flare', None), 'cb_cast': ('combust', (0, 0, 210, 289)), 'cb_go': ('combust', (210, 0, 454, 289)), 'dash': ('dash', (0, 0, 276, 174)), 'ignite': ('ignite', (0, 0, 197, 258)),
             'rb_egg': ('rb_egg', (0, 0, 200, 210)), 'rb_swirl': ('rb_swirl', (0, 0, 202, 207)), 'rb_crouch': ('rb_crouch', (0, 0, 196, 210)), 'rb_roar': ('rb_roar', (0, 0, 249, 267))}
 RB_ZOOM = 1.3       # 웅크리기·포효 샘플은 불사조를 둥근 불꽃 안에 작게 그려서 몸 크기를 대기와 비슷하게 키움
+# 칸별 크기 보정: 대기 칸 옆에 놓고 머리·몸통 크기를 눈으로 맞춘 배율 (몸 키로 맞추면 자세마다 머리 크기가 달라짐)
+SIZE_FIX = {'walk0': 0.91, 'walk1': 0.91, 'walk2': 0.91,
+            'atk_ready': 0.82, 'atk_fire': 0.82, 'hurt': 0.82, 'down0': 0.82, 'down1': 0.82,
+            'ring': 1.15, 'rb_roar': 0.8, 'rb_crouch': 0.92}
 DASH_FOOT_X = 125   # 대쉬 칸 기준점 x (몸통 가운데, 잘라 낸 그림 기준 샘플 px)
 GROUND_DROP = {'ring': 27, 'cb_cast': 16}             # 바닥 고리가 발보다 이만큼(샘플 px) 아래까지 내려옴 → 발을 바닥에 맞추고 고리 앞쪽은 기준점 밑으로
 FB_BG = np.array([50, 53, 62], float)
@@ -166,6 +170,12 @@ def key_dark(im, bg, tol=16, enclosed_min=0):
     if enclosed_min:
         sz = ndi.sum(near, lab, range(1, n + 1))
         bgm |= np.isin(lab, 1 + np.where(sz >= enclosed_min)[0])
+    # 가장자리 테두리: 배경과 맞닿은 2px 안에서 배경과 섞여 남색으로 뜬 어두운 점은 지움 (불사조 색은 빨강이 파랑보다 셈 · 재 색 밝은 회색은 남김)
+    rim = ~bgm & ndi.binary_dilation(bgm, iterations=2)
+    fringe = rim & (im[..., 2] > im[..., 0] + 4) & (im.max(axis=2) < 110)
+    bgm |= fringe
+    rim2 = ~bgm & ndi.binary_dilation(bgm, iterations=1)   # 한 번 더 (지운 자리 바깥에 새로 드러난 점)
+    bgm |= rim2 & (im[..., 2] > im[..., 0] + 4) & (im.max(axis=2) < 110)
     a = np.where(bgm, 0.0, 1.0)[2:-2, 2:-2]
     return im[2:-2, 2:-2], a
 
@@ -229,6 +239,7 @@ def build_char():
            ('rb_egg', dk['rb_egg'], sc_fb), ('rb_swirl', dk['rb_swirl'], sc_fb), ('rb_crouch', dk['rb_crouch'], sc_fb * RB_ZOOM), ('rb_roar', dk['rb_roar'], sc_fb * RB_ZOOM)]
     pieces = []
     for name, (rgba, foot, _, _), k in src:
+        k *= SIZE_FIX.get(name, 1)
         p = shrink(rgba, k)
         pieces.append((name, p, foot * k, int(round(GROUND_DROP.get(name, 0) * k))))
     L = max(int(np.ceil(c)) for _, _, c, _ in pieces) + 3
