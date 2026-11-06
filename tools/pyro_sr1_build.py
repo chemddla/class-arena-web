@@ -34,7 +34,8 @@ A2_MAX_X = 630                         # 공격 발사 칸: 이 x부터는 날�
 D2_ERASE = [(588, 440, 637, 498)]      # 쓰러짐 2 반짝이 표시
 WALK_AB_TEXT = (40, 0, 240, 9)         # 걷기 샘플 위 잘린 제목 글씨
 WALK_C_BOX = (6, 6, 152, 161)          # 카드 테두리 안쪽
-TAPER = {'top': 18, 'bottom': 4}       # 잘린 줄에서 이 높이만큼 점점 좁혀 뾰족하게
+TAPER = {'top': 24, 'bottom': 4}       # 잘린 줄에서 이 높이만큼 점점 좁혀 뾰족하게 (위는 늘린 높이 + 이 값)
+STRETCH_BAND = 40                      # 걷기 3 위쪽에서 위로 늘리는 띠 높이 (샘플 px)
 OUTLINE = np.array([96, 22, 12], float)
 FX_SCALE = 0.5              # 이펙트 시트 배율 (게임에서 다시 늘려 그림)
 FALL_ANGLE = 36.5           # 샘플 운석이 내려오는 각도 (오른쪽 아래로 36.5°) — 게임도 이 각도로 떨어뜨림
@@ -103,7 +104,7 @@ def taper(im, a, side, T):
         lab, n = ndi.label(row)
         for i in range(1, n + 1):
             xs = np.where(lab == i)[0]
-            w = int(round(len(xs) * ((d + 1) / T) ** 1.2))
+            w = int(round(len(xs) * ((d + 1) / T) ** 1.5))
             mid = (xs[0] + xs[-1]) / 2 + (len(xs) * 0.15 if side == 'top' else 0)   # 끝은 살짝 오른쪽(바람 방향)으로
             keep = xs[np.abs(xs - mid) <= w / 2]
             a[y, xs] = 0; a[y, keep] = 1
@@ -116,15 +117,21 @@ def taper(im, a, side, T):
     return im, a
 
 
-def load_walk_c():
+def load_walk_c(target_h):
+    """걷기 3: 카드 테두리에 잘린 윗부분(날개 끝·볏)을 다른 걷기 칸 키(target_h)만큼 위로 늘려 세우고 끝을 뾰족하게"""
     im = np.array(Image.open(f'{D}walk_c_src.png').convert('RGB')).astype(float)
     x0, y0, x1, y1 = WALK_C_BOX
     im, a = white_bg(im[y0:y1, x0:x1])
     a[:2] = 0; a[-2:] = 0   # white_bg가 덧댄 여백 때문에 남는 테두리 줄
-    for side, T in TAPER.items():
-        rows = np.where((a > 0.3).any(axis=1))[0]
-        sl = slice(rows.min(), rows.max() + 1)
-        im[sl], a[sl] = taper(im[sl], a[sl], side, T)
+    rows = np.where((a > 0.3).any(axis=1))[0]
+    im, a = im[rows.min():rows.max() + 1], a[rows.min():rows.max() + 1]
+    ext = max(0, int(round(target_h - a.shape[0])))
+    if ext:   # 위쪽 STRETCH_BAND 줄을 band + ext 줄로 세로로 늘림 (불꽃이 위로 솟게)
+        K = STRETCH_BAND
+        idx = np.minimum((np.arange(K + ext) * K / (K + ext)).astype(int), K - 1)
+        im = np.concatenate([im[idx], im[K:]]); a = np.concatenate([a[idx], a[K:]])
+    im, a = taper(im, a, 'top', ext + TAPER['top'])
+    im, a = taper(im, a, 'bottom', TAPER['bottom'])
     return finish(im, a, drop_edge=False)
 
 
@@ -145,7 +152,8 @@ def build_char():
     idle, ifoot, ih, itop_h = load_idle()
     sc_idle = TARGET_H / itop_h
     ref_h = ih * sc_idle   # 대기 몸 덩어리 키 (게임 px) — 다른 샘플은 이 키에 맞춤
-    wa, wb, wc = load_walk_ab(0), load_walk_ab(1), load_walk_c()
+    wa, wb = load_walk_ab(0), load_walk_ab(1)
+    wc = load_walk_c((wa[2] + wb[2]) / 2)
     sh = {k: load_sheet(k) for k in SHEET_BOX}
     sc_walk = ref_h / ((wa[2] + wb[2]) / 2)
     sc_sheet = ref_h / ((sh['a1'][2] + sh['a2'][2] + sh['hurt'][2]) / 3)
