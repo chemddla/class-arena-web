@@ -5074,7 +5074,7 @@
         flame_scatter: {
           id: 'flame_scatter', name: '플레어', icon: '🎇', ccTag: '🎇부채꼴 다중',
           manaCost: 21, cooldownTicks: 420, cooldownSec: 7.0, castSec: 0.3,
-          desc: '바라보는 방향 60° 부채꼴로 불덩이 7발을 쏩니다. 5칸까지 날아가 처음 맞은 적에게 각 100% 피해와 [불티]를 쌓아요. 한 적이 여러 발을 맞으면 두 번째 발부터 절반.'
+          desc: '바라보는 방향 60° 부채꼴로 불덩이 7발을 쏩니다. 5칸까지 날아가 처음 맞은 적에게 각 100% 피해와 [불티]를 쌓고, 맞은 자리 주변 적에게도 50% 스플래시 피해를 줘요. 한 적이 여러 발을 맞으면 두 번째 발부터 절반.'
         },
         chain_ignite: {
           id: 'chain_ignite', name: '이그나이트', icon: '🔗', ccTag: '🔗연쇄 5명·화상',
@@ -24606,7 +24606,7 @@
     const PYRO_EMBER_DMG = 0.5;              // 기본 공격 불씨 한 발 50%
     const PYRO_EMBER_SOLO = 0.5;             //   둘레에 다른 적이 없어 같은 적에게 가는 불씨는 절반 (혼자인 적 = 100%, 3명 = 150%)
     const PYRO_EMBER_SPLIT_CELLS = 4;        //   첫 대상 둘레 4칸 안의 다른 적에게 갈라짐
-    const PYRO_EMBER_SPLASH_R = 60;          //   불씨가 맞은 자리 주변(마법사 기본 공격과 같은 반지름)의 다른 적에게 50% 스플래시 (불티는 안 쌓임)
+    const PYRO_EMBER_SPLASH_R = 60;          //   불씨·플레어 불덩이가 맞은 자리 주변(마법사 기본 공격과 같은 반지름)의 다른 적에게 50% 스플래시 (불티는 안 쌓임)
     const PYRO_EMBER_SPLASH_RATIO = 0.5;
     const PYRO_EMBER_BURST = 1.2;            // 불티가 5개 쌓이면 바로 터짐: 공격력 120% 피해, 불티는 0개로
     const PYRO_EMBER_AMP = 0.07;             // 불티 1개당 그 화염술사에게 받는 피해 +7% (5개 = +35%)
@@ -24727,16 +24727,16 @@
         p.volley.set(hit.id, k + 1);
       }
       applyDamage(p.owner, hit, dmg, '', '#f97316');
-      if (!p.isSkill) { // 기본 공격 불씨: 맞은 자리 주변 다른 적에게 스플래시
-        const sr = PYRO_EMBER_SPLASH_R * unitAreaScale(p.owner);
-        sim.units.forEach(e => {
-          if (!e.alive || e === hit || e.team === p.owner.team || e.rushPending) return;
-          if (Math.hypot(e.x - hit.x, e.y - hit.y) - unitBodyGap(e) <= sr) applyDamage(p.owner, e, dmg * PYRO_EMBER_SPLASH_RATIO, '', '#f97316');
-        });
-      }
+      // 기본 공격 불씨·플레어 불덩이: 맞은 자리 주변 다른 적에게 스플래시
+      const sr = PYRO_EMBER_SPLASH_R * unitAreaScale(p.owner);
+      sim.units.forEach(e => {
+        if (!e.alive || e === hit || e.team === p.owner.team || e.rushPending) return;
+        if (Math.hypot(e.x - hit.x, e.y - hit.y) - unitBodyGap(e) <= sr) applyDamage(p.owner, e, dmg * PYRO_EMBER_SPLASH_RATIO, '', '#f97316');
+      });
       pyroAddEmber(p.owner, hit);
       playCombatSfx('magic');
-      sim.effects.push({ type: 'pyro_hit', anim: 'hit', x: hit.x, y: hit.y - 14, angle: 0, scale: p.isSkill ? 0.85 : 0.6, life: 18, maxLife: 18 }); // 불티가 사방으로 튐
+      const hitW = PYRO_FX.anims.hit[0][2]; // 피격 그림 너비 = 스플래시 지름
+      sim.effects.push({ type: 'pyro_hit', anim: 'hit', x: hit.x, y: hit.y - 14, angle: 0, scale: 2 * sr / hitW, life: 18, maxLife: 18 }); // 불티가 사방으로 튐
     }
 
     function pyroGap(unit, e) { return unitDist(e, unit) - unitBodyGap(e) - unitBodyGap(unit); }
