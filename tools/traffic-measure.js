@@ -50,6 +50,12 @@
   // 서버가 보낸 데이터 메시지를 경로별로 셈 (firebase.database.enableLogging의 'handleServerMessage' 줄 · 실제 전송은 경로·틀 몇십 B가 더 붙음)
   async function live(code, sec = 180) {
     code = String(code).toUpperCase();
+    // enableLogging은 탭에 하나뿐: 두 번 겹쳐 돌리면 나중 것이 앞의 기록을 가로채고, 먼저 끝난 쪽이 끄면 나머지도 멈춤
+    if (live.running) throw new Error('TM.live가 이미 돌고 있어요 (겹쳐 돌리면 숫자가 틀어짐)');
+    live.running = true;
+    try { return await liveRun(code, sec); } finally { live.running = false; }
+  }
+  async function liveRun(code, sec) {
     const base = `/classes/${code}/`, pres = `/presence/${code}`;
     const bytes = {}, msgs = {};
     let total = 0;
@@ -71,6 +77,13 @@
       const p = '/' + m.p.replace(/^\//, '');
       const k = keyOf(p);
       if (!k) return;
+      // students 노드에 여러 칸을 한꺼번에 쓴 merge(m)는 칸 이름별로 나눠 셈 ('(통째)'에 다 몰리지 않게)
+      // 키는 경로 깊이에 따라 '학생id/칸/…' 또는 '칸/…' (m.p가 students/{id}일 때)
+      if (k === 'students/(통째)' && hit[1] === 'm' && m.d && typeof m.d === 'object') {
+        const atStudent = /\/students\/[^/]+$/.test(p);
+        Object.entries(m.d).forEach(([f, v]) => { const seg = f.split('/'); const kk = `students/${(atStudent ? seg[0] : seg[1]) || seg[0]}(m)`, n = len(v) + f.length + 4; bytes[kk] = (bytes[kk] || 0) + n; msgs[kk] = (msgs[kk] || 0) + 1; });
+        total += body.length; return;
+      }
       bytes[k] = (bytes[k] || 0) + body.length; msgs[k] = (msgs[k] || 0) + 1; total += body.length;
     }, false);
     const refs = [...ALWAYS, ...SOMETIMES].map(p => db().ref(`classes/${code}/${p}`)).concat(db().ref(`presence/${code}`));
