@@ -28952,7 +28952,7 @@
         if (u.isEliteBoss && sim.eliteIntro) { drawEliteBossDrop(ctx, u); return; }
         drawUnitToken(ctx, u, sim.tickCount);
       });
-      if (sim.mode === 'monster_rush' || sim.mode === 'world_boss') drawRushDrops(ctx);
+      if (sim.mode === 'monster_rush' || sim.mode === 'world_boss' || sim.mode === 'dungeon') drawRushDrops(ctx);
       drawDarknessAuras(ctx);
       drawSupportEffects(ctx);
       drawHitEffectsOnTop(ctx, drawEffectsPass);
@@ -41542,6 +41542,15 @@
       normal: { stat: 0.8, eliteHp: 2.5, eliteAtk: 1.2, boss: 0.85, floorAdd: -3, levelEase: 0.05, mobSkills: 2, eliteSkills: 3, bossSkills: 4, bossAdds: 1 },
       hard:   { stat: 0.78, eliteHp: 2.0, eliteAtk: 1.1, boss: 0.9, floorAdd: -3, levelEase: 0.2, mobSkills: 2, eliteSkills: 3, bossSkills: 5, bossAdds: 2 }
     };
+    // 방마다 몬스터 수: 방 정의의 마릿수 × mult × (1 + depth × 시작 방에서 떨어진 칸 수) + 무리마다 -1~+1 (최소 1)
+    // 깊은 방일수록 붐비고, 같은 방이라도 판마다 수가 조금씩 다름 · 수가 늘어난 만큼 일반 몬스터 한 마리는 mobStat 배율로 약하게
+    // firstWave보다 많으면 나머지는 싸우는 도중 하늘에서 떨어짐: 남은 몬스터가 trigger 이하가 되거나 every초가 지나면 wave마리씩
+    const DUNGEON_CROWD = {
+      // 시뮬(Lv.30, 8개 던전 × 10판): 방당 보통 3.6 → 약 7마리 · 어려움 4.3 → 약 8.7마리, 승률 보통 52 → 61% · 어려움 13 → 28% (Lv.55: 38 → 52% · 25 → 21%)
+      normal: { mult: 1.8, depth: 0.08, cap: 14, firstWave: 7, wave: [3, 4], trigger: 3, every: 14, mobStat: 0.54 },
+      hard:   { mult: 2.0, depth: 0.1,  cap: 16, firstWave: 8, wave: [3, 5], trigger: 3, every: 12, mobStat: 0.6 }
+    };
+    const DUNGEON_DROP_WARN_SEC = 1.6;    // 떨어질 자리에 그림자·경고 원이 보이는 시간
     const DUNGEON_ROOM_RAMP = 0.08;       // 새 방에 들어갈 때마다 몬스터 능력치 +8% (첫 방 = 기본, 보스 방은 들어갈 때까지 쌓인 만큼)
     const DUNGEON_POWER_CLAMP = [0.6, 4]; // 전투력 비율(내 출전 용병 전투력 ÷ 같은 직업·레벨 기본 용병 전투력)의 범위
     // 하루에 던전 하나만 열림: 날짜마다 차례로 돌아감 (DUNGEONS에 적힌 순서)
@@ -42200,6 +42209,7 @@
       sim.zones = [];
       sim.floatTexts = [];
       dg.gim = {};
+      dg.reinfQ = [];
       // 파티는 들어온 문 쪽에 대표를 앞세워 반원으로
       const entry = dg.fromDir ? dungeonDoorPoint(dg.fromDir) : { x: 700, y: Math.round((ARENA_BOUNDS.top + ARENA_BOUNDS.bottom) / 2) };
       const inward = dg.fromDir === 'left' ? [1, 0] : dg.fromDir === 'right' ? [-1, 0] : dg.fromDir === 'up' ? [0, 1] : dg.fromDir === 'down' ? [0, -1] : [1, 0];
@@ -42245,7 +42255,9 @@
       dg.phase = 'room';
       spawnDungeonRoomMonsters(cell);
       setupDungeonGimmick(cell);
-      addBattleLog(`${info.icon} [${cell.def.name}] ${info.name}! 몬스터 ${sim.units.filter(u => u.team === 'red').length}마리를 모두 쓰러뜨리면 길이 열려요.${cell.def.hint ? ' ' + cell.def.hint : ''}`);
+      const incoming = (dg.reinfQ || []).length;
+      if (dg.gim) dg.gim.incoming = incoming;
+      addBattleLog(`${info.icon} [${cell.def.name}] ${info.name}! 몬스터 ${sim.units.filter(u => u.team === 'red').length + incoming}마리를 모두 쓰러뜨리면 길이 열려요.${incoming ? ` 🪂 그중 ${incoming}마리는 싸우는 도중 하늘에서 떨어져요!` : ''}${cell.def.hint ? ' ' + cell.def.hint : ''}`);
     }
     // 종족 편성표의 몬스터 한 마리 (탑 몬스터와 같은 방법, 러쉬의 buildRushMonster 재사용)
     function buildDungeonMonster(job, candIdx, opts = {}) {
@@ -42264,7 +42276,8 @@
       // 탑은 층의 종족 배율로 능력치를 정하므로, 이 던전 종족의 배율로 바꿔 줌
       const raceFix = (race.floorScale || 1) / (towerRaceFloorScale(floor) || 1);
       // bossMult: 종족 보스마다 다른 세기 보정 (탑의 bossFloorScale처럼 리치·히드라는 기본 스킬이 세서 낮춤) · hardMult: 어려움에서만 곱함
-      const statMul = (opts.boss ? tune.boss * (def.bossMult || 1) : tune.stat) * raceFix * (def.statMult || 1) * (dg.diff === 'hard' ? def.hardMult || 1 : 1) * dungeonRoomMult();
+      const crowd = !opts.boss && !opts.elite ? DUNGEON_CROWD[dg.diff].mobStat : 1; // 수가 많아진 만큼 일반 몬스터는 약하게
+      const statMul = (opts.boss ? tune.boss * (def.bossMult || 1) : tune.stat * crowd) * raceFix * (def.statMult || 1) * (dg.diff === 'hard' ? def.hardMult || 1 : 1) * dungeonRoomMult();
       const u = buildRushMonster(floorObj, 0, statMul, Boolean(opts.boss));
       if (opts.elite) {
         u.maxHp = u.hp = Math.round(u.maxHp * tune.eliteHp);
@@ -42295,16 +42308,95 @@
       u.facingDir = u.x > cx ? -1 : 1;
       u.facingAngle = u.facingDir === 1 ? 0 : Math.PI;
     }
+    // 이 방의 무리별 마릿수 (깊이·난이도·흔들림 반영, 합이 cap을 넘으면 큰 무리부터 줄임)
+    function dungeonRoomCounts(cell) {
+      const dg = sim.dungeon, C = DUNGEON_CROWD[dg.diff];
+      const depth = (dg.dist && dg.dist.get && dg.dist.get(dgKey(...dg.pos))) || 1;
+      const scale = C.mult * (1 + C.depth * Math.max(0, depth - 1));
+      const groups = (cell.def.spawn || []).map(([job, cand, n]) => ({ job, cand, n: Math.max(1, Math.round(n * scale + (Math.random() * 3 | 0) - 1)) }));
+      const cap = C.cap - (cell.def.elite ? (dg.diff === 'hard' ? 2 : 1) * 2 : 0); // 정예 방은 정예가 세서 졸개를 조금 덜
+      let total = groups.reduce((t, g) => t + g.n, 0);
+      while (total > cap) { const g = groups.reduce((a, b) => (b.n > a.n ? b : a)); if (g.n <= 1) break; g.n--; total--; }
+      return groups;
+    }
     function spawnDungeonRoomMonsters(cell) {
-      const list = [];
-      (cell.def.spawn || []).forEach(([job, cand, n]) => { for (let i = 0; i < n; i++) list.push(buildDungeonMonster(job, cand)); });
+      const dg = sim.dungeon, C = DUNGEON_CROWD[dg.diff];
+      const mobs = [];
+      dungeonRoomCounts(cell).forEach(({ job, cand, n }) => { for (let i = 0; i < n; i++) mobs.push(buildDungeonMonster(job, cand)); });
+      // 섞어서 처음 무리와 하늘에서 떨어질 무리가 골고루 섞이게 (힐러는 처음부터 서 있게 앞으로)
+      for (let i = mobs.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [mobs[i], mobs[j]] = [mobs[j], mobs[i]]; }
+      mobs.sort((a, b) => (b.job === 'healer') - (a.job === 'healer'));
+      const elites = [];
       if (cell.def.elite) {
-        const eliteN = sim.dungeon.diff === 'hard' ? 2 : 1;
-        for (let i = 0; i < eliteN; i++) list.push(buildDungeonMonster(cell.def.elite[0], cell.def.elite[1], { elite: true }));
+        const eliteN = dg.diff === 'hard' ? 2 : 1;
+        for (let i = 0; i < eliteN; i++) elites.push(buildDungeonMonster(cell.def.elite[0], cell.def.elite[1], { elite: true }));
       }
-      list.forEach((u, i) => { u.id = `dg_${dgKey(...sim.dungeon.pos)}_${i}_${Math.random().toString(36).slice(2, 5)}`; placeDungeonMonster(u, i, list.length); });
+      const firstN = Math.max(1, C.firstWave - elites.length);
+      const list = [...mobs.slice(0, firstN), ...elites];
+      dg.reinfQ = mobs.slice(firstN);
+      dg.reinfNext = sim.tickCount + C.every * BATTLE_TICKS_PER_SEC;
+      list.forEach((u, i) => { u.id = `dg_${dgKey(...dg.pos)}_${i}_${Math.random().toString(36).slice(2, 5)}`; placeDungeonMonster(u, i, list.length); });
       sim.units.push(...list);
       return list;
+    }
+    // 하늘에서 떨어질 자리: 파티 둘레 (옆·뒤로도 떨어져 포위하듯), 서로 겹치지 않게
+    function dungeonDropSpot(party, taken) {
+      const cx = party.reduce((t, b) => t + b.x, 0) / party.length, cy = party.reduce((t, b) => t + b.y, 0) / party.length;
+      let best = null;
+      for (let k = 0; k < 12; k++) {
+        const ang = Math.random() * Math.PI * 2, d = 230 + Math.random() * 230;
+        const p = {
+          x: Math.round(Math.max(ARENA_BOUNDS.left + 90, Math.min(ARENA_BOUNDS.right - 90, cx + Math.cos(ang) * d))),
+          y: Math.round(Math.max(ARENA_BOUNDS.top + 90, Math.min(ARENA_BOUNDS.bottom - 90, cy + Math.sin(ang) * d)))
+        };
+        const gap = Math.min(...taken.map(q => Math.hypot(p.x - q.x, p.y - q.y)), ...party.map(b => Math.hypot(p.x - b.x, p.y - b.y) + 60));
+        if (!best || gap > best.gap) best = { ...p, gap };
+        if (gap > 150) break;
+      }
+      return best;
+    }
+    // 증원: 떨어지는 중인 몬스터 착지 · 차례가 되면 다음 무리를 하늘에서 떨어뜨림
+    function stepDungeonReinforce(blueAlive, redAlive) {
+      const dg = sim.dungeon, tps = BATTLE_TICKS_PER_SEC;
+      sim.units.forEach(u => {
+        if (u.team !== 'red' || !u.rushPending || u.rushFall == null) return;
+        if (++u.rushFall >= (u.dropWarn || 0) + RUSH.dropFallSec * tps) landRushDrop(u);
+      });
+      const q = dg.reinfQ;
+      if (!q || !q.length) { if (dg.gim) dg.gim.incoming = 0; return; }
+      if (dg.gim) dg.gim.incoming = q.length;
+      const C = DUNGEON_CROWD[dg.diff];
+      const fighters = redAlive.filter(u => !u.isClone).length;
+      const falling = sim.units.some(u => u.team === 'red' && u.rushPending);
+      if (falling || (fighters > C.trigger && sim.tickCount < dg.reinfNext)) return;
+      const party = blueAlive.filter(u => !u.isClone);
+      if (!party.length) return;
+      const n = Math.min(q.length, C.wave[0] + Math.floor(Math.random() * (C.wave[1] - C.wave[0] + 1)));
+      const wave = q.splice(0, q.length - n < 2 ? q.length : n); // 1마리만 남기지 않음
+      const taken = [];
+      wave.forEach((u, i) => {
+        const p = dungeonDropSpot(party, taken);
+        taken.push(p);
+        u.id = `dgr_${sim.tickCount}_${i}_${Math.random().toString(36).slice(2, 5)}`;
+        u.x = p.x; u.y = p.y; u._ix = u.x; u._iy = u.y;
+        u.alive = false;
+        u.rushPending = true;
+        u.rushFall = -Math.floor(Math.random() * 0.5 * tps); // 조금씩 어긋나게 떨어짐
+        u.dropWarn = Math.round(DUNGEON_DROP_WARN_SEC * tps);
+        u.isMoving = false;
+        u.facingDir = party[0].x < u.x ? -1 : 1;
+        u.facingAngle = u.facingDir === 1 ? 0 : Math.PI;
+      });
+      sim.units.push(...wave);
+      dg.reinfNext = sim.tickCount + C.every * tps;
+      if (dg.gim) dg.gim.incoming = q.length;
+      addBattleLog(`🪂 하늘에서 몬스터 ${wave.length}마리가 떨어져요! 그림자를 조심하세요!${q.length ? ` (아직 ${q.length}마리 더 있어요)` : ''}`);
+      playCombatSfx('countdown');
+    }
+    // 아직 안 나왔거나 떨어지는 중인 몬스터가 있는지
+    function dungeonReinfLeft() {
+      const dg = sim.dungeon;
+      return Boolean((dg.reinfQ && dg.reinfQ.length) || sim.units.some(u => u.team === 'red' && u.rushPending));
     }
     // 방 안에 몬스터를 더 불러옴 (우리 문·소환·습격)
     function dungeonSummon(units, near) {
@@ -42856,6 +42948,7 @@
       }
       if (dg.phase === 'room') {
         stepDungeonGimmick(blueAlive, redAlive);
+        stepDungeonReinforce(blueAlive, redAlive);
         if (cell.kind === 'boss') {
           stepDungeonBoss(blueAlive, redAlive);
           // 보스를 잡으면 남은 졸개는 흩어져 사라짐 → 바로 클리어
@@ -42866,7 +42959,7 @@
             return false;
           }
         }
-        if (!redAlive.some(u => !u.isClone)) clearDungeonRoom(cell);
+        if (!redAlive.some(u => !u.isClone) && !dungeonReinfLeft()) clearDungeonRoom(cell);
         return false;
       }
       // 'select': 문이 열림. 보물 상자 · 문 앞에 선 대표 · 자동 전투면 잠시 뒤 알아서 이동
@@ -42900,6 +42993,9 @@
     function clearDungeonRoom(cell) {
       const dg = sim.dungeon, i = dg.diff === 'hard' ? 1 : 0;
       cell.cleared = true;
+      dg.reinfQ = [];
+      if (dg.gim) dg.gim.incoming = 0;
+      sim.units = sim.units.filter(u => !(u.team === 'red' && u.rushPending)); // 아직 떨어지던 몬스터는 치움
       let revived = 0;
       sim.units.forEach(u => {
         if (u.team !== 'blue' || u.isClone) return;
@@ -43284,7 +43380,7 @@
       else if (dg.phase === 'boss_prep') text = `🕯️ 모닥불 정비 중... ${Math.max(0, Math.ceil((DUNGEON_BOSS_PREP_SEC * tps - (sim.tickCount - dg.prepAt)) / tps))}초 뒤 보스 등장!`;
       else if (dg.phase === 'done') text = '🏆 던전 클리어!';
       else if (dg.phase === 'move') text = '🚶 이동 중...';
-      else text = `${DUNGEON_KIND_INFO[cell.kind].icon} [${cell.def.name}] 남은 몬스터 ${sim.units.filter(u => u.team === 'red' && u.alive && !u.isClone).length}마리`;
+      else text = `${DUNGEON_KIND_INFO[cell.kind].icon} [${cell.def.name}] 남은 몬스터 ${sim.units.filter(u => u.team === 'red' && (u.alive || u.rushPending) && !u.isClone).length + ((dg.gim && dg.gim.incoming) || 0)}마리${dg.gim && dg.gim.incoming ? ` (🪂 ${dg.gim.incoming}마리 더 와요)` : ''}`;
       el.textContent = `🏰 ${dg.def.name} · 방 ${dg.grid.flat().filter(c => c && c.visited).length}/${dg.grid.flat().filter(Boolean).length} · 📈 +${Math.round(DUNGEON_ROOM_RAMP * 100 * Math.max(0, (dg.roomNo || 1) - 1))}% · ⏰ ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} · 💰 ${ca.toLocaleString()} CA · ${text}`;
     }
 
