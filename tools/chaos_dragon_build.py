@@ -52,14 +52,15 @@ CELLS = {
     'ds_a':    (S4, 428, 692, 404, 562, {'cx': (0, 676)}),
     'ds_b':    (S4, 668, 887, 404, 562, {}),
 }
-def clean_watermark(path, x0, x1, y0, y1):
+def clean_watermark(path, x0, x1, y0, y1, sat_max=34, lo=80, fill_all=False):
     """✦ 워터마크 (어두운 회색, 채도 거의 없음): 몸에 둘러싸인 곳은 둘레 몸 색으로 메우고 나머지는 지움 (load 캐시를 고침)"""
     rgb, a = load(path)
     c, al = rgb[y0:y1, x0:x1], a[y0:y1, x0:x1]
     sat, mean = c.max(2) - c.min(2), c.mean(2)
-    gray = (sat < 34) & (mean > 80) & (al > 0)
+    gray = (sat < sat_max) & (mean > lo) & (al > 0)
     solid = (al > 0.5) & ~gray
     inside = ndi.binary_fill_holes(ndi.binary_closing(solid, iterations=4)) & gray
+    if fill_all: inside = gray & (mean < 200)   # 그림 한가운데 얹힌 ✦: 둘레 색으로 다 메움 (흰 배경 테는 그대로)
     _, (iy, ix) = ndi.distance_transform_edt(~solid, return_indices=True)
     c[inside] = c[iy, ix][inside]
     al[gray & ~inside] = 0
@@ -67,6 +68,78 @@ def clean_watermark(path, x0, x1, y0, y1):
 
 
 clean_watermark(S2, 900, 962, 452, 514)   # 쓰러짐 2 머리 옆
+
+
+def unblend_star(path, cx, cy, rx, ry, k=0.3):
+    """그림 위에 반투명 흰 ✦가 얹힌 곳: 네 꼭짓점 별(|dx|/rx)^0.7+(|dy|/ry)^0.7<=1 안에서 흰빛 k만큼을 빼서 원래 색을 되살림 (load 캐시를 고침)"""
+    rgb, a = load(path)
+    ys, xs = np.mgrid[cy - ry:cy + ry + 1, cx - rx:cx + rx + 1]
+    d = (np.abs(xs - cx) / rx) ** 0.7 + (np.abs(ys - cy) / ry) ** 0.7
+    w = np.clip((1.15 - d) / 0.3, 0, 1) * k        # 가장자리는 부드럽게
+    blk = rgb[cy - ry:cy + ry + 1, cx - rx:cx + rx + 1]
+    on = a[cy - ry:cy + ry + 1, cx - rx:cx + rx + 1] > 0.5
+    fixed = (blk - 255 * w[..., None]) / (1 - w[..., None])
+    blk[on] = np.clip(fixed, 0, 255)[on]
+
+
+def patch_from_rotated(path, cx, cy, rx, ry, ox, oy):
+    """반투명 ✦가 얹힌 별 모양 자리를 (ox, oy)를 중심으로 180도 돌린 자리의 그림으로 바꿔 끼움 (소용돌이처럼 돌려도 같은 무늬인 그림, load 캐시를 고침)"""
+    rgb, a = load(path)
+    ys, xs = np.mgrid[cy - ry:cy + ry + 1, cx - rx:cx + rx + 1]
+    d = (np.abs(xs - cx) / rx) ** 0.7 + (np.abs(ys - cy) / ry) ** 0.7
+    m = d <= 1.1
+    sy, sx = 2 * oy - ys[m], 2 * ox - xs[m]
+    rgb[ys[m], xs[m]] = rgb[sy, sx]
+    a[ys[m], xs[m]] = a[sy, sx]
+
+
+patch_from_rotated(S8, 929, 482, 21, 29, 956, 506)   # 굉음 소용돌이 왼쪽 위 (보라 위에 반투명 ✦) → 반대편 소용돌이 무늬로
+
+
+def defringe(rgba, lo=95, sat=40, passes=2):
+    """외곽 회색 테 벗기기: 투명한 곳에 닿은 테두리 픽셀 중 밝고 채도 낮은 것(흰 배경이 섞인 회색 테)을 지움. passes번 되풀이해서 2px 두께까지.
+    용 비늘은 훨씬 어둡고, 번개·불꽃·구슬은 채도가 높아서 안 걸림"""
+    rgba = rgba.copy()
+    for _ in range(passes):
+        c, A = rgba[..., :3], rgba[..., 3]
+        edge = ndi.binary_dilation(A < 100, iterations=1) & (A > 0)
+        pale = (c.mean(2) >= lo) & (c.max(2) - c.min(2) <= sat)
+        rgba[..., 3][edge & pale] = 0
+    return rgba
+
+
+def tears(rgba, lo=120, sat=45, keep=2):
+    """날개 찢긴 틈의 흰 줄 (몸에 둘러싸인 밝은 회색 덩어리): keep px보다 크면 지움. 1~2px짜리는 날개 속 별빛이라 남김"""
+    c, A = rgba[..., :3], rgba[..., 3]
+    pale = (c.mean(2) >= lo) & (c.max(2) - c.min(2) <= sat) & (A > 0)
+    lab, n = ndi.label(pale, structure=np.ones((3, 3)))
+    if not n: return rgba
+    big = np.zeros(n + 1, bool); big[1:] = ndi.sum(pale, lab, range(1, n + 1)) > keep
+    # 빛나는 구슬·섬광의 하얀 속: 둘레(2px 띠)가 밝으면 빛 속이라 남김 (날개 틈 둘레는 어두운 비늘)
+    lum = c.mean(2)
+    for i in np.where(big)[0]:
+        m = lab == i
+        ring = ndi.binary_dilation(m, iterations=2) & ~m & (A > 100)
+        if ring.any() and lum[ring].mean() > 120: big[i] = False
+    rgba = rgba.copy(); rgba[..., 3][big[lab]] = 0
+    return rgba
+
+
+def fill_glow_holes(rgba):
+    """빛나는 구슬의 새하얀 속이 배경 지우기에서 구멍이 된 것 되살리기: 둘레가 밝은(빛) 구멍은 흰빛으로 메움"""
+    A = rgba[..., 3]
+    solid = A > 100
+    holes = ndi.binary_fill_holes(solid) & ~solid
+    lab, n = ndi.label(holes)
+    if not n: return rgba
+    lum = rgba[..., :3].mean(2)
+    rgba = rgba.copy()
+    for i in range(1, n + 1):
+        m = lab == i
+        ring = ndi.binary_dilation(m, iterations=2) & ~m & solid
+        if ring.any() and lum[ring].mean() > 150:
+            rgba[m] = (255, 244, 255, 255)
+    return rgba
 
 
 def drop_white(rgba, lo=222, sat=16):
@@ -81,6 +154,13 @@ def drop_white(rgba, lo=222, sat=16):
     touch = ndi.maximum(clear, lab, range(1, n + 1))
     kill = np.zeros(n + 1, bool)
     kill[1:] = (areas >= 4) | (touch > 0)
+    # 빛 속의 하얀 심(섬광·폭발 속): 투명한 곳에 안 닿고 둘레가 밝으면 남김
+    lum = c.mean(2)
+    for i in np.where(kill)[0]:
+        if touch[i - 1] > 0: continue
+        m = lab == i
+        ring = ndi.binary_dilation(m, iterations=2) & ~m & (A > 100)
+        if ring.any() and lum[ring].mean() > 150: kill[i] = False
     rgba = rgba.copy()
     rgba[..., 3][kill[lab]] = 0
     # 지운 자리 둘레의 밝은 테두리도 반투명하게
@@ -107,6 +187,10 @@ def placed0(name):
     rgba, info = cut((path, x0, x1, y0, y1, {'min': 60, **opt}))
     # 몸: 찢어진 날개 끝에 낀 연보라빛 흰 배경 조각까지 (용 몸 색은 훨씬 어두움)
     rgba = drop_white(rgba, lo=150, sat=26)
+    # 외곽 회색 테·날개 틈 흰 줄 (바위가 튀는 대지 진동 2는 바위 테두리가 깎이지 않게 더 밝은 것만)
+    rock = name == 'eq_b'
+    rgba = tears(defringe(rgba, lo=150 if rock else 95), lo=150 if rock else 120)
+    rgba = fill_glow_holes(rgba)   # 맨 끝에 (앞 단계들이 흰빛을 다시 지우지 않게)
     A = rgba[..., 3]
     c = rgba[..., :3]
     dark = (A > 200) & (c.mean(2) < 110)
@@ -169,11 +253,11 @@ FX_CELLS = {
     'crack':    (S8, 350, 455, 395, 462, {'min': 2}),                   # 포효: 땅 갈라짐
     'cone_0':   (S6, 150, 268, 140, 290, {'min': 2, 'cx': (170, 300)}), # 포효 원뿔 1~3 (오른쪽으로 퍼짐)
     'cone_1':   (S6, 395, 645, 96, 350, {'min': 2, 'cx': (405, 700)}),
-    'cone_2':   (S6, 655, 1016, 58, 550, {'min': 2}),
+    'cone_2':   (S6, 655, 1016, 58, 550, {'min': 2, 'drop': [(910, 962, 460, 515)]}),   # 오른쪽 아래 ✦ 얹힌 불똥 조각은 지움
     'tornado':  (S8, 692, 795, 290, 395, {'min': 2}),                   # 용의 분노: 붉은 회오리
     'spiky':    (S8, 795, 900, 285, 395, {'min': 2}),                   # 용의 분노: 검은 가시 폭발
     'qcrack':   (S8, 350, 455, 395, 462, {'min': 2}),                   # 대지 진동: 땅 갈라짐
-    'spike':    (S5, 372, 648, 220, 368, {'min': 2}),                   # 대지 진동: 보라 가시 분출 + 튀는 바위 (샘플 5)
+    'spike':    (S5, 372, 648, 220, 368, {'min': 2, 'rock': True}),                   # 대지 진동: 보라 가시 분출 + 튀는 바위 (샘플 5)
     'flame':    (S8, 122, 228, 448, 562, {'min': 2}),                   # 대지 진동: 보라 불꽃 분출
     'erupt':    (S8, 228, 335, 458, 562, {'min': 2}),                   # 대지 진동: 불꽃 + 바닥 물결
     'hole':     (S8, 690, 798, 450, 560, {'min': 2}),                   # 종말의 굉음: 검은 구멍
@@ -192,7 +276,14 @@ BOTTOM = {'bolt', 'spark', 'impact_0', 'impact_1', 'impact_2', 'crack', 'qcrack'
 
 def fx_cut(spec):
     rgba = fx_cut0(spec)
-    return rgba if spec[5].get('white') else drop_white(rgba)
+    if spec[5].get('white'):
+        # 번개·섬광·충돌 폭발: 흰빛이 진짜라 바깥에 닿은 흰 배경 조각과 흰 테만
+        return defringe(drop_white(rgba, lo=200, sat=30), lo=175, sat=34)
+    if spec[5].get('rock'):
+        # 회색 바위가 튀는 그림: 바위 테두리가 깎이지 않게 아주 하얀 테만
+        return defringe(drop_white(rgba, lo=215, sat=24), lo=200, sat=26)
+    # 소용돌이·고리 사이에 낀 회색 틈도 (빛 속 하얀 심은 tears가 남김)
+    return tears(defringe(drop_white(rgba, lo=200, sat=30), lo=170, sat=38), lo=115, sat=40)
 
 
 def fx_cut0(spec):
