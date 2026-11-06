@@ -28,6 +28,7 @@ SAMPLES['dragonkin_warrior'] = {
 # 성난 드레이크 (초록 용, 맨손 할퀴기): 칸마다 패널, 칸 위 라벨. 대기 칸 콧김·걷기 칸 꼬리 움직임 선은 지움
 SAMPLES['drake_warrior'] = {
     'wm': (934, 482, 20),
+    'common': {'pocket': 120},
     'cells': {
         'idle': B(15, 250, 55, 282, drop=[(205, 250, 140, 192)]), 'walk_a': B(268, 505, 55, 282),
         'walk_b': B(522, 760, 55, 282, drop=[(522, 556, 165, 220)]), 'atk_a': B(778, 1015, 55, 282),
@@ -141,7 +142,7 @@ SAMPLES['dragonkin_frost'] = {
 # 공격 2 앞 보라 불길은 투사체 curse_breath. 칸 순서 = 대기, 걷기 A·B, 웅크림, 구슬 모으기, 불 뿜기, 피격, 쓰러짐 2장
 SAMPLES['wyvern_curse'] = {
     'wm': (613, 924, 20),
-    'common': {'tol': 10},
+    'common': {'tol': 10, 'pocket': 120},   # 날개·꼬리 사이에 갇힌 바탕도 지움
     'cells': {
         'idle': B(28, 238, 28, 252), 'walk_a': B(242, 452, 32, 252), 'walk_b': B(452, 692, 58, 252),
         'crouch': B(32, 338, 338, 482), 'atk_a': B(392, 652, 310, 482), 'atk_b': B(18, 402, 542, 728, drop=[(262, 402, 575, 715)]),
@@ -163,7 +164,7 @@ SAMPLES['dragonkin_bard'] = {
 # 공격 칸 앞 보라 광선은 투사체 dark_beam
 SAMPLES['dark_dragon'] = {
     'wm': (662, 921, 20),
-    'common': {'tol': 5},
+    'common': {'tol': 5, 'pocket': 120},
     'cells': {
         'idle': B(28, 242, 38, 268, lab=[(18, 185, 15, 54)]), 'walk_a': B(292, 502, 42, 270, lab=[(292, 475, 15, 54)]),
         'walk_b': B(518, 742, 38, 270),
@@ -208,16 +209,16 @@ SAMPLES['drake_sniper_walk'] = {
     'cells': {'walk_a': B(0, 333, 0, 302, min=150, drop=[(305, 333, 0, 40)]), 'walk_b': B(0, 333, 380, 747, min=150)},
 }
 SAMPLES['drake_sniper']['order'] = ['idle', 'drake_sniper_walk/walk_a', 'drake_sniper_walk/walk_b', 'atk_a', 'atk_b', 'hurt', 'death_a', 'death_b']
-# 급습 와이번 (복면·남보라 날개·발톱 베기): 회색 바탕이 몸 색과 가까워 tol을 낮춤. 피격·쓰러짐 1은 반대쪽을 보고 뒤집혀 있어 좌우반전(~)해서 씀.
+# 급습 와이번 (복면·남보라 날개·발톱 베기): 피격·쓰러짐 1은 반대쪽을 보고 뒤집혀 있어 좌우반전(~)해서 씀.
 # 공격 2의 보라 발톱 궤적은 그림에 둠. 쓰러짐 2 뒤 검은 연기 얼룩은 그대로
 SAMPLES['wyvern_rogue'] = {
-    'wm': (661, 921, 20),
-    'common': {'tol': 7, 'pocket': 120, 'min': 150},
+    # 흰 바탕으로 다시 받은 샘플 (처음 샘플은 회색 바탕이 몸 색과 비슷했음). 날개·꼬리 사이에 갇힌 흰 바탕도 지움
+    'common': {'pocket': 12, 'min': 150, 'tol': 40},
     'cells': {
-        'idle': B(42, 218, 44, 202, lab=[(10, 230, 8, 48)]), 'walk_a': B(58, 322, 238, 396, lab=[(10, 200, 208, 248)]),
+        'idle': B(42, 218, 44, 202, drop=[(42, 70, 44, 125), (178, 202, 100, 152)]), 'walk_a': B(58, 322, 238, 396, erase_r=[(10, 205, 205, 250)]),
         'walk_b': B(378, 640, 225, 396),
         'atk_a': B(78, 302, 444, 602), 'atk_b': B(368, 698, 444, 610),
-        'hurt': B(82, 332, 648, 806), 'death_a': B(106, 348, 848, 1008), 'death_b': B(458, 702, 842, 1010),
+        'hurt': B(82, 332, 648, 806), 'death_a': B(106, 348, 848, 1008), 'death_b': B(458, 702, 842, 1010, drop=[(505, 648, 842, 893), (458, 500, 900, 960)]),   # 위로 피어오르는 연기 얼룩은 지움
     },
     'order': ['idle', 'walk_a', 'walk_b', 'atk_a', 'atk_b', 'hurt~', 'death_a~', 'death_b'],
 }
@@ -240,6 +241,9 @@ def snow_fix(cfg):
 
 
 SAMPLES['dragonkin_frost']['fix'] = snow_fix(SAMPLES['dragonkin_frost'])
+
+
+
 
 # 투사체 (공격 칸에서 떼어 냄). 기준점 = 앞(오른쪽) 끝
 FX = {
