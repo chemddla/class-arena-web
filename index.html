@@ -5077,9 +5077,9 @@
           desc: '바라보는 방향 60° 부채꼴로 불덩이 7발을 쏩니다. 5칸까지 날아가 처음 맞은 적에게 각 100% 피해와 [불티]를 쌓아요. 한 적이 여러 발을 맞으면 두 번째 발부터 절반.'
         },
         chain_ignite: {
-          id: 'chain_ignite', name: '이그나이트', icon: '🔗', ccTag: '🔗연쇄 5명',
+          id: 'chain_ignite', name: '이그나이트', icon: '🔗', ccTag: '🔗연쇄 5명·화상',
           manaCost: 24, cooldownTicks: 540, cooldownSec: 9.0, castSec: 0.4,
-          desc: '대상 하나를 터뜨려 130% 피해를 입히고, 불길이 3칸 안의 다음 적에게 튀어 최대 5명까지 이어집니다 (튈 때마다 -10%). 맞은 적의 [불티] 1개마다 그 적에게 +15%.'
+          desc: '대상 하나를 터뜨려 130% 피해를 입히고, 불길이 3칸 안의 다음 적에게 튀어 최대 5명까지 이어집니다 (튈 때마다 -10%). 맞은 적의 [불티] 1개마다 그 적에게 +15%, 맞은 적 모두 3초 [화상].'
         },
         pyro_fireball: {
           id: 'pyro_fireball', name: '파이어볼', icon: '🔥', ccTag: '🔥화상',
@@ -5440,7 +5440,7 @@
         icon: '🔥',
         color: '#ea580c',
         roleDesc: '다중 공격·불티 폭발',
-        passiveName: '번지는 불길', passiveDesc: '기본 공격은 불씨 3발이 대상과 그 둘레 4칸 안의 서로 다른 적에게 (각 45%, 둘레에 다른 적이 없으면 남은 불씨는 60%) · 맞힌 적에게 [불티] (6초) · 불티 1개당 그 적에게 주는 피해 +7% · 불티가 5개 쌓이면 바로 터져 120% 피해 · [화상]에 걸린 적이 쓰러지면 둘레 적 2명에게 화상이 옮겨붙음 · 몬스터에게 주는 피해 +30%',
+        passiveName: '번지는 불길', passiveDesc: '기본 공격은 불씨 3발이 대상과 그 둘레 4칸 안의 서로 다른 적에게 (각 50%, 둘레에 다른 적이 없으면 남은 불씨는 25%) · 불씨가 맞은 자리 주변 적에게도 50% 스플래시 · 맞힌 적에게 [불티] (6초) · 불티 1개당 그 적에게 주는 피해 +7% · 불티가 5개 쌓이면 바로 터져 120% 피해 · [화상]에 걸린 적이 쓰러지면 둘레 적 2명에게 화상이 옮겨붙음 · 몬스터에게 주는 피해 +30%',
         baseHp: 1350, baseAtk: 58, baseDef: 28, baseSpd: 98, range: 290, maxMana: 100
       }
     };
@@ -24606,6 +24606,8 @@
     const PYRO_EMBER_DMG = 0.5;              // 기본 공격 불씨 한 발 50%
     const PYRO_EMBER_SOLO = 0.5;             //   둘레에 다른 적이 없어 같은 적에게 가는 불씨는 절반 (혼자인 적 = 100%, 3명 = 150%)
     const PYRO_EMBER_SPLIT_CELLS = 4;        //   첫 대상 둘레 4칸 안의 다른 적에게 갈라짐
+    const PYRO_EMBER_SPLASH_R = 60;          //   불씨가 맞은 자리 주변(마법사 기본 공격과 같은 반지름)의 다른 적에게 50% 스플래시 (불티는 안 쌓임)
+    const PYRO_EMBER_SPLASH_RATIO = 0.5;
     const PYRO_EMBER_BURST = 1.2;            // 불티가 5개 쌓이면 바로 터짐: 공격력 120% 피해, 불티는 0개로
     const PYRO_EMBER_AMP = 0.07;             // 불티 1개당 그 화염술사에게 받는 피해 +7% (5개 = +35%)
     const PYRO_EMBER_HOMING = 0.06;          //   불씨는 목표를 따라 꺾어 날아감 (보통 투사체 0.006의 10배)
@@ -24618,6 +24620,7 @@
     const PYRO_CHAIN_CELLS = 3;
     const PYRO_CHAIN_FALLOFF = 0.1;
     const PYRO_CHAIN_PER_EMBER = 0.15;
+    const PYRO_CHAIN_BURN = 180;             //   맞은 적마다 [화상] 3초
     const PYRO_FIREBALL_DMG = 2.4;           // 파이어볼: 마법사와 같음 (240% · 반지름 170 · 화상 560틱)
     const PYRO_FIREBALL_R = 170;
     const PYRO_FIREBALL_EMBER = 2;           //   맞은 적마다 불티 2개
@@ -24724,6 +24727,13 @@
         p.volley.set(hit.id, k + 1);
       }
       applyDamage(p.owner, hit, dmg, '', '#f97316');
+      if (!p.isSkill) { // 기본 공격 불씨: 맞은 자리 주변 다른 적에게 스플래시
+        const sr = PYRO_EMBER_SPLASH_R * unitAreaScale(p.owner);
+        sim.units.forEach(e => {
+          if (!e.alive || e === hit || e.team === p.owner.team || e.rushPending) return;
+          if (Math.hypot(e.x - hit.x, e.y - hit.y) - unitBodyGap(e) <= sr) applyDamage(p.owner, e, dmg * PYRO_EMBER_SPLASH_RATIO, '', '#f97316');
+        });
+      }
       pyroAddEmber(p.owner, hit);
       playCombatSfx('magic');
       sim.effects.push({ type: 'pyro_hit', anim: 'hit', x: hit.x, y: hit.y - 14, angle: 0, scale: p.isSkill ? 0.85 : 0.6, life: 18, maxLife: 18 }); // 불티가 사방으로 튐
@@ -24818,6 +24828,7 @@
         chain.forEach((e, k) => {
           const em = pyroEmberOf(unit, e);
           applyDamage(unit, e, unit.atk * PYRO_CHAIN_DMG * (1 - PYRO_CHAIN_FALLOFF * k) * (1 + PYRO_CHAIN_PER_EMBER * em), '🔗', '#f97316');
+          if (e.alive) inflictStatus(unit, e, 'burn', PYRO_CHAIN_BURN);
           pyroAddEmber(unit, e);
           sim.effects.push({ type: 'fire_explosion', spr: 'fire_hit', x: e.x, y: e.y, r: 46, life: 30, maxLife: 30 });
         });
