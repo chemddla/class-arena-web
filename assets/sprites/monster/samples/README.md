@@ -57,3 +57,26 @@
 보스라고 standH를 작게 해서 키우지 말 것. 표에 없는 몬스터를 새로 넣으면 크기를 적어 둔다 (없으면 보스 2.2, 나머지 1).
 
 **크라켄 게임 적용**: `python tools/kraken_build.py` → `monster/kraken.webp`(27칸, MONSTER_SPRITE_DEFS.kraken · 심해족 보스와 엘리트 9단계 공용) + `fx/kraken_fx.webp`(KRAKEN_FX: 먹물 4칸·해일 4칸). 샘플마다 크기가 달라 머리 길이(정수리~눈)로 배율을 맞춤. 대기 = 첫 샘플(정면), 걷기 = 걷기 샘플 2칸 + 추가 2칸을 펴기·웅크리기로 번갈아. 해일 포효 샘플의 큰 파도 칸은 안 씀(파도는 이펙트로 범위에 깔림).
+
+## 용족 (2026-11-06)
+
+`python tools/dragon_build.py` → `monster/<이름>.webp` 14장 + 투사체 `fx/dragon_fx.webp` (DRAGON_FX). 배경 지우기는 `deepsea2_build.cut2`를 그대로 쓰되,
+칸 테두리 색 중 바탕(중앙값)에 가까운 것만 배경 색으로 삼고 '갇힌 배경' 지우기는 끔 (어두운 로브·갑옷·망토가 지워지지 않게).
+
+| 파일 | 몬스터 | 메모 |
+| --- | --- | --- |
+| `dragonkin_warrior_src.webp` · `dragonkin_warrior_walk_src.webp` | 용인족 전사 | 처음 샘플의 걷기 ②는 검이 빠져 있어 다시 받은 칸으로 바꿈 |
+| `drake_warrior_src.webp` · `drake_warrior_walk_src.webp` | 성난 드레이크 | 걷기 2칸(흙먼지)은 다시 받은 칸, 원래 샘플보다 작아 키워 씀 |
+| `wyvern_archer_src.webp` | 독꼬리 와이번 | 보라 불덩이 = 투사체 |
+| `dragonkin_archer_src.webp` | 용인족 궁수 | 피격 칸은 활을 놓친 그림 |
+| `drake_mage_src.webp` | 화염 드레이크 | 넓은 칸의 불줄기 뿜기를 공격 2로, '공격 ②'(대기와 같음)·이름 없는 웅크린 칸은 안 씀 |
+| `dragonkin_mage_src.webp` | 용인족 주술사 | 보라 구슬 = 투사체 |
+| `dragonkin_healer_src.webp` | 용인족 사제 | 금빛 섬광 = 투사체 |
+| `wyvern_rogue_src.webp` | 급습 와이번 | **안 씀** — 피격·쓰러짐 1이 반대쪽을 보며 뒤집혀 있고 몸 색이 회색 바탕과 비슷함. 다시 받을 것 |
+| `dragonkin_knight_src.webp` | 용비늘 기사 | |
+| `dragonkin_lancer_src.webp` | 용인족 창기사 | '피긱'(대기와 같음)·이름 없는 기울어진 칸은 안 씀, 칸 위 라벨 띠는 지움 |
+| `drake_sniper_src.webp` · `drake_sniper_walk_src.webp` | 화염포 드레이크 | 걷기 2칸은 다시 받은 칸(대기 크기에 맞춰 0.93배 더 줄임), 대포 불길 = 투사체 |
+| `dragonkin_frost_src.webp` | 서리 용인족 | 눈밭 바닥선 아래는 어두운 부츠만 남김. '쓰러짐 1'이 대기와 같은 그림이라 피격 → 쓰러짐 2 |
+| `wyvern_curse_src.webp` | 저주 와이번 | '일반공격 1' 두 칸(웅크림·구슬 모으기) 다 씀, 보라 불길 = 투사체 |
+| `dragonkin_bard_src.webp` | 용인족 전고수 | |
+| `dark_dragon_src.webp` · `dark_dragon_skill_src.webp` | 심연마룡 (탑 보스) | 걷기 두 칸은 소품이 칸마다 바뀌어 안 씀. 스킬 5종(돌진·파이어볼·사자후·화살비·썬더볼트) × 2칸은 1.5배로 키워 붙임 |
