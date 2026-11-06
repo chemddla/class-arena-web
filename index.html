@@ -6696,15 +6696,17 @@
     MERC_SPRITE_DEFS.mage_5 = { ...MERC_SPRITE_DEFS.mage_0, src: 'assets/sprites/merc/mage_5.webp' };
     // 화염술사 외형 0 (붉은 포니테일·주홍 로브·손 위 불덩이, tools/pyro_build.py): 칸 순서 = 0 대기 · 1~2 걷기 · 3 공격 준비 (손 앞 불덩이·불꽃 고리)
     //   · 4 공격 발사 (손을 뻗음, 불씨는 투사체로 따로) · 5 피격 · 6~7 쓰러짐 (뒤로 넘어짐 → 누움) · 8 화염 시전 (두 손 사이에 불덩이, 흩날리는 불티)
-    //   파이어볼·화염 산탄: 시전 막대 동안 8번, 발동하면 발사 자세(4) · 나머지 스킬: 시전 막대 동안 공격 준비 자세(3)
+    //   · 9 파이어볼 발사 (주먹을 내지름) · 10 화염 산탄 발사 (손을 뻗음)
+    //   파이어볼·화염 산탄: 시전 막대 동안 8번, 발동하면 9·10번 + 손 앞 이펙트 (fireHand·scatterHand = 손 자리, 칸 px · 발 기준) · 나머지 스킬: 시전 막대 동안 공격 준비 자세(3)
     MERC_SPRITE_DEFS.pyro_0 = {
       src: 'assets/sprites/merc/pyro_0.webp',
-      cellW: 117, cellH: 95, anchorX: 60, anchorY: 93, standH: 90, topH: 90, portraitCX: 60, count: 9,
-      anims: { idle: [0], walk: [1, 0, 2, 0], attack: [3, 4], skill: [3, 4], hurt: [5], death: [6, 7], fire: [4] },
+      cellW: 117, cellH: 95, anchorX: 60, anchorY: 93, standH: 90, topH: 90, portraitCX: 60, count: 11,
+      anims: { idle: [0], walk: [1, 0, 2, 0], attack: [3, 4], skill: [3, 4], hurt: [5], death: [6, 7], fb: [9], sc: [10] },
       skillAnims: {
-        pyro_fireball: { anim: 'fire', tpf: 30, dur: 30 },
-        flame_scatter: { anim: 'fire', tpf: 30, dur: 30 }
+        pyro_fireball: { anim: 'fb', tpf: 30, dur: 30 },
+        flame_scatter: { anim: 'sc', tpf: 30, dur: 30 }
       },
+      fireHand: [53, -67], scatterHand: [45, -43.5],
       castFrames: { flame_scatter: 8, chain_ignite: 3, pyro_fireball: 8, combustion: 3, meteor: 3 }
     };
     // 소환사 외형 0 (초록 긴 머리·장미 화관·초록 로브·마법서, tools/summoner_build.py): 칸 순서 = 대기, 걷기 4, 피격, 쓰러짐 3 (책을 놓치며 젖힘 → 고꾸라짐 → 엎드림),
@@ -8859,11 +8861,13 @@
       anims: { bolt: [[0,0,66,84,65,42]], imp: [[68,0,77,99,76,49.5]], arrow: [[147,0,109,20,108,10]], ifrit: [[258,0,63,76,62,38]] }
     };
     // 소환사 번개 정령 기본 공격 번개 구슬 (공격 샘플에서 떼어 냄, tools/storm_spirit_build.py). 기준점 = 앞 끝
-    // 화염술사 기본 공격 불씨 (전용 샘플 발사 칸의 날아가는 불덩이, tools/pyro_build.py). 기준점 = 앞 끝
+    // 화염술사 이펙트 (tools/pyro_build.py): ember = 기본 공격 불씨 · bolt = 화염 산탄 불덩이 (연기 꼬리, 기준점 = 앞 끝)
+    //   burst = 화염 산탄 손 앞 불꽃 분출 (기준점 = 왼쪽 끝 손) · flash = 파이어볼 주먹 끝 불꽃 (가운데). burst·flash는 샘플 1배 크기라 PYRO_FX_SAMPLE_K를 곱해 그림
     const PYRO_FX = {
       src: 'assets/sprites/fx/pyro_fx.webp',
-      anims: { ember: [[0,0,33,26,32,13]] }
+      anims: { ember: [[0,0,33,26,32,13]], bolt: [[35,0,155,36,154,18.9]], burst: [[192,0,80,80,0,39.5]], flash: [[274,0,14,48,7,24]] }
     };
+    const PYRO_FX_SAMPLE_K = 0.455; // 9·10번 칸 샘플 → 캐릭터 칸 배율 (이펙트도 같은 배율)
     const STORM_SPIRIT_FX = {
       src: 'assets/sprites/fx/storm_spirit_fx.webp',
       anims: { orb: [[0,0,34,18,33,9]] }
@@ -9019,7 +9023,8 @@
       fire_bolt:      { anim: 'bolt', h: 26, sheet: FIRE_FX },                           // 작열 불꽃정령 기본 공격 불덩이 (길이 약 20)
       fire_bolt_big:  { anim: 'bolt', h: 40, sheet: FIRE_FX, hit: 'flame_hit' },         // 작열 불꽃정령 파이어볼
       imp_fire:       { anim: 'imp', h: 26, sheet: FIRE_FX },
-      pyro_ember:     { anim: 'ember', h: 13, sheet: PYRO_FX },                          // 화염술사 기본 공격 불씨 (불티 꼬리가 달린 불덩이)                            // 임프 주술사 기본 공격 불꽃 (길이 약 20)
+      pyro_ember:     { anim: 'ember', h: 13, sheet: PYRO_FX },
+      pyro_bolt:      { anim: 'bolt', h: 14, sheet: PYRO_FX },                           // 화염술사 화염 산탄 불덩이 (연기 꼬리)                          // 화염술사 기본 공격 불씨 (불티 꼬리가 달린 불덩이)                            // 임프 주술사 기본 공격 불꽃 (길이 약 20)
       imp_fireball:   { anim: 'imp', h: 40, sheet: FIRE_FX, hit: 'flame_hit' },          // 임프 주술사 파이어볼
       imp_arrow:      { anim: 'arrow', h: 6, sheet: FIRE_FX },                           // 임프 궁수 화살 (길이 약 33)
       giant_rock:     { anim: 'rock', h: 13, sheet: GIANT_FX },                          // 외눈 투석꾼 바위 (길이 약 20)
@@ -20056,7 +20061,8 @@
       // 창병, 광전사의 내려치기가 아닌 스킬은 스킬 동작이 끝난 뒤 기본 공격 동작(창병: 수그리는 끝 자세, 광전사: 내려치기)이 이어지지 않게
       // 성기사 심판·신성 보호·수호 서약·성스러운 돌격·불굴의 가호도: 스킬 동작이 끝나면 기본 공격 내리친 자세가 이어지지 않고 바로 대기 (시크릿 레어 포함)
       // 소환사 소환도 마찬가지 (소환 발동 칸 → 바로 대기, 주먹 뻗는 기본 공격 칸이 끼지 않게)
-      unit.attackAnim = unit.job === 'lancer' || unit.job === 'summoner' || (unit.job === 'berserker' && BERSERKER_NO_ATTACK_TAIL.includes(sk)) || (unit.job === 'paladin' && PALADIN_NO_ATTACK_TAIL.includes(sk)) ? 0 : 52;
+      // 화염술사도 (발사 자세 → 바로 대기, 불꽃 고리를 든 공격 준비 칸이 끼지 않게)
+      unit.attackAnim = unit.job === 'lancer' || unit.job === 'summoner' || unit.job === 'pyro' || (unit.job === 'berserker' && BERSERKER_NO_ATTACK_TAIL.includes(sk)) || (unit.job === 'paladin' && PALADIN_NO_ATTACK_TAIL.includes(sk)) ? 0 : 52;
       unit.maxAttackAnim = 52;
 
       // [Requirement 2]: 스킬 사용 시 피격된 적 위가 아니라 스킬 사용자(시전자) 머리 위에 스킬 이름이 뜨도록 표시!
@@ -24713,6 +24719,15 @@
       return bestAoePoint(unit, enemies, unit.range + C * 4, C * PYRO_METEOR_CELLS, prefer);
     }
 
+    // 발사 자세의 손 앞에 이펙트 (그림에 적어 둔 손 자리 · 캐릭터 그림 배율 그대로)
+    function pyroHandFx(unit, handKey, anim, angle) {
+      const sp = getUnitSprite(unit);
+      const hand = sp && sp[handKey];
+      if (!hand) return;
+      const jk = spriteDrawH(unit, sp) / sp.standH, dir = unit.facingDir === -1 ? -1 : 1;
+      sim.effects.push({ type: 'pyro_burst', anim, x: unit.x + dir * hand[0] * jk, y: unit.y + 12 + hand[1] * jk, angle: anim === 'flash' ? 0 : angle, scale: PYRO_FX_SAMPLE_K * jk, life: 22, maxLife: 22 });
+    }
+
     // 화염술사 스킬 발동 (처리했으면 true)
     function castPyroSkill(unit, allies, enemies, sk, target, aimPt) {
       if (skillJobOf(sk) !== 'pyro') return false;
@@ -24733,10 +24748,11 @@
           const home = inFan.filter(e => pyroAngleDiff(Math.atan2(e.y - unit.y, e.x - unit.x), a) <= 0.35)
             .sort((x, y) => pyroAngleDiff(Math.atan2(x.y - unit.y, x.x - unit.x), a) - pyroAngleDiff(Math.atan2(y.y - unit.y, y.x - unit.x), a))[0] || null;
           pyroShot(unit, { x: unit.x, y: unit.y - 12 }, {
-            spr: 'fire_bolt', isDirectional: true, angle: a, maxTravel: reach + 40, homeTarget: home, homeTurn: 0.03,
+            spr: 'pyro_bolt', isDirectional: true, angle: a, maxTravel: reach + 40, homeTarget: home, homeTurn: 0.03,
             dmg: unit.atk * PYRO_SCATTER_DMG, isSkill: true, speed: 3.4, volley
           });
         }
+        pyroHandFx(unit, 'scatterHand', 'burst', angle);
         playCombatSfx('magic');
         addBattleLog(`🎇 [화염술사] ${unit.name}의 화염 산탄! (불덩이 ${PYRO_SCATTER_SHOTS}발)`);
         return true;
@@ -24780,6 +24796,8 @@
           dmg: unit.atk * PYRO_FIREBALL_DMG, aoeRadius: PYRO_FIREBALL_R, statusOnHit: 'burn', statusDur: 560, isSkill: true, speed: 2.8, trail: [],
           isDirectional: true, angle, maxTravel: travel
         });
+        if (Math.abs(Math.cos(angle)) > 0.1) unit.facingDir = Math.cos(angle) >= 0 ? 1 : -1;
+        pyroHandFx(unit, 'fireHand', 'flash', 0);
         addBattleLog(`🔥 [화염술사] ${unit.name}의 파이어볼! (광역 🔥화상 · 불티)`);
         return true;
       }
@@ -29139,6 +29157,14 @@
             if (ef.flip) ctx.scale(-1, 1);
             ctx.drawImage(img, -w / 2, -h, w, h);
           }
+          ctx.restore();
+          if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }
+          continue;
+        }
+        if (ef.type === 'pyro_burst') {
+          // 화염술사 손 앞 불꽃: 처음 25% 동안 커지고 뒤 절반 동안 흐려짐
+          const fr = PYRO_FX.ready && PYRO_FX.anims[ef.anim] && PYRO_FX.anims[ef.anim][0];
+          if (fr) drawFxFrame(ctx, fr, ef.x, ef.y, ef.scale * Math.min(1, 0.6 + progress / 0.25 * 0.4), ef.angle || 0, Math.min(1, (1 - progress) / 0.5), PYRO_FX.img);
           ctx.restore();
           if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }
           continue;

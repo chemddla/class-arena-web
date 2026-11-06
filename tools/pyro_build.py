@@ -2,6 +2,11 @@
 # 사용: python tools/pyro_build.py   (샘플 assets/sprites/fx/samples/pyro_src.webp, 909×1024)
 # 칸 순서: 0 대기 · 1~2 걷기 · 3 공격 준비 (손 앞에 불덩이와 불꽃 고리) · 4 공격 발사 (손을 뻗음, 날아가는 불덩이는 게임이 따로 그림)
 #   · 5 피격 · 6~7 쓰러짐 (뒤로 넘어짐 → 누움) · 8 화염 시전 (두 손 사이에 불덩이를 모으고 불티가 흩날림, 파이어볼·화염 산탄)
+#   · 9 파이어볼 발사 (주먹을 내지름) · 10 화염 산탄 발사 (손을 뻗음, 손 앞 불꽃 분출은 이펙트로 따로)
+#   - 9·10번 샘플(FB_SRC 209×210, SC_SRC 443×261)은 8번 샘플과 같은 도트 크기라 8번 배율을 그대로 씀
+#     · 파이어볼 샘플 왼쪽 끝 불덩이는 그림 밖으로 잘려 있어서 버림, 주먹 끝 작은 불꽃은 이펙트 flash
+#     · 산탄 샘플은 손 끝(SC_HAND_X)부터 오른쪽이 불꽃 분출 → 이펙트 burst, 연기 꼬리가 달린 불덩이 하나(SC_BOLT_AT)는 산탄 투사체 bolt
+# 이펙트 시트 FX_OUT: ember (기본 공격 불씨, 큰 샘플 ×FX_SCALE) · bolt · burst · flash (따로 받은 샘플 그대로 1배, 게임에서 배율을 곱해 그림)
 #   - 8번은 따로 받은 샘플(CAST_SRC, 191×212)이라 크기가 달라서 키를 CAST_H로 맞춤. 몸에서 떨어진 불티 조각까지 모두 살림
 # 샘플 정리:
 #   - 흰 배경 = 가장자리에서 이어진 흰 픽셀 + 갇힌 흰 덩어리 중 ENCLOSED_MIN 이상 (불꽃 고리 안쪽·팔 사이 틈). 눈의 흰 하이라이트는 남김
@@ -23,6 +28,10 @@ EMBER_AT = (820, 523)   # 샘플에서 날아가는 불덩이 한 점
 FX_SCALE = 0.5          # 투사체 시트 배율 (게임에서는 h로 다시 줄여 그림)
 ENCLOSED_MIN = 15   # 갇힌 흰 덩어리가 이 px 이상이면 배경
 CAST_SRC = 'assets/sprites/fx/samples/pyro_cast_src.png'
+FB_SRC = 'assets/sprites/fx/samples/pyro_fireball_src.png'
+SC_SRC = 'assets/sprites/fx/samples/pyro_scatter_src.png'
+SC_HAND_X = 164          # 산탄 샘플: 이 열부터 오른쪽은 손 앞 불꽃 분출
+SC_BOLT_AT = (340, 140)  # 산탄 샘플: 투사체로 쓸 불덩이(가운데 긴 것) 한 점
 CAST_H = 86     # 시전 자세 키 (살짝 몸을 숙여서 대기 90보다 조금 작게)
 TARGET_H = 90   # 대기 자세 키 → 게임 칸 키 (마법사 topH 92, 소환사 88과 비슷하게)
 
@@ -52,6 +61,9 @@ def prep(path):
     al = np.maximum(a, 1e-3)[..., None]
     im = np.where(rim[..., None], (im - 255 * (1 - al)) / al, im).clip(0, 255)
     return im, a
+
+
+FX_EXTRA = {}
 
 
 def main():
@@ -91,6 +103,55 @@ def main():
     pieces.append(('cast', p, foot * csc))
     print(f'cast: 샘플 {rgba.shape[1]}x{rgba.shape[0]} ×{csc:.3f} → {p.shape[1]}x{p.shape[0]}  발 {foot:.0f}')
 
+    def blob_of(a_, at):
+        bl, _ = ndi.label(ndi.binary_dilation(a_ > 0.5, iterations=2))
+        return (bl == bl[at[1], at[0]]) & (a_ > 0)
+
+    def crop(im_, a_, m):
+        ys, xs = np.where(m)
+        return np.dstack([im_, np.where(m, a_, 0) * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1], xs.min(), ys.min()
+
+    hands = {}
+    # 9 파이어볼 발사: 가장 큰 덩어리 (몸), 주먹 끝 불꽃은 flash
+    fim, fa = prep(FB_SRC)
+    bl, n = ndi.label(ndi.binary_dilation(fa > 0.5, iterations=2))
+    sz = ndi.sum(fa > 0.5, bl, range(1, n + 1))
+    body = (bl == 1 + int(np.argmax(sz))) & (fa > 0)
+    rgba, bx0, by0 = crop(fim, fa, body)
+    k = rgba[..., 3] > 128
+    foot = np.where(k[int(k.shape[0] * 0.92):].any(axis=0))[0].mean()
+    pieces.append(('fb', shrink(rgba, csc), foot * csc))
+    by1 = by0 + rgba.shape[0] - 2   # 발 높이 (샘플)
+    flash_m = np.zeros_like(body)
+    for i in range(n):   # 몸 오른쪽(주먹 끝) 작은 덩어리들 = 주먹 불꽃 (왼쪽 끝 잘린 불덩이는 빼고)
+        ys, xs = np.where(bl == i + 1)
+        if i + 1 != 1 + int(np.argmax(sz)) and xs.min() > fim.shape[1] * 0.7: flash_m |= (bl == i + 1) & (fa > 0)
+    flash, fx0, fy0 = crop(fim, fa, flash_m)
+    hands['fireHand'] = ((fx0 + flash.shape[1] / 2 - (bx0 + foot)) * csc, (fy0 + flash.shape[0] / 2 - by1) * csc)
+
+    # 10 화염 산탄 발사: 몸 덩어리 중 손 끝 왼쪽만, 오른쪽은 burst
+    sim_, sa = prep(SC_SRC)
+    bl, n = ndi.label(ndi.binary_dilation(sa > 0.5, iterations=2))
+    sz = ndi.sum(sa > 0.5, bl, range(1, n + 1))
+    whole = (bl == 1 + int(np.argmax(sz))) & (sa > 0)
+    body = whole.copy(); body[:, SC_HAND_X:] = False
+    burst_m = whole.copy(); burst_m[:, :SC_HAND_X] = False
+    rgba, bx0, by0 = crop(sim_, sa, body)
+    k = rgba[..., 3] > 128
+    foot = np.where(k[int(k.shape[0] * 0.92):].any(axis=0))[0].mean()
+    pieces.append(('sc', shrink(rgba, csc), foot * csc))
+    by1 = by0 + rgba.shape[0] - 2
+    burst, ux0, uy0 = crop(sim_, sa, burst_m)
+    bk = burst[..., 3] > 128
+    burst_ay = np.where(bk[:, :4].any(axis=1))[0].mean()   # 분출 왼쪽 끝(손) 세로 가운데
+    hands['scatterHand'] = ((ux0 - (bx0 + foot)) * csc, (uy0 + burst_ay - by1) * csc)
+    bolt, _, _ = crop(sim_, sa, blob_of(sa, SC_BOLT_AT))
+    tk = bolt[..., 3] > 128
+    head = bolt[..., :3].sum(axis=2) * tk
+    bolt_ay = np.average(np.arange(bolt.shape[0]), weights=head[:, -bolt.shape[1] // 4:].sum(axis=1) + 1e-6)   # 불덩이 머리(오른쪽 1/4) 밝기 가운데
+    print('hands (칸 px, 발 기준):', {k_: (round(v[0], 1), round(v[1], 1)) for k_, v in hands.items()})
+    FX_EXTRA.update(bolt=(bolt, bolt.shape[1] - 1, bolt_ay), burst=(burst, 0, burst_ay), flash=(flash, flash.shape[1] / 2, flash.shape[0] / 2))
+
     L = max(int(np.ceil(c)) for _, _, c in pieces) + 4
     R = max(int(np.ceil(p.shape[1] - c)) for _, p, c in pieces) + 4
     H = max(p.shape[0] for _, p, _ in pieces) + 5
@@ -107,9 +168,19 @@ def main():
     ys, xs = np.where(m)
     y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
     ember = shrink(np.dstack([im, np.where(m, a, 0) * 255])[y0:y1, x0:x1], FX_SCALE)
-    Image.fromarray(ember, 'RGBA').save(FX_OUT, 'WEBP', lossless=True)
-    eh, ew = ember.shape[:2]
-    print(f'pyro_fx ember: [0,0,{ew},{eh},{ew - 1},{eh / 2:g}]')
+    # 이펙트 시트: 가로로 이어 붙임 (칸 사이 2px)
+    parts = [('ember', ember, ember.shape[1] - 1, ember.shape[0] / 2)] + [(k_, *v) for k_, v in FX_EXTRA.items()]
+    W = sum(q.shape[1] for _, q, _, _ in parts) + 2 * len(parts)
+    Hh = max(q.shape[0] for _, q, _, _ in parts)
+    atlas = np.zeros((Hh, W, 4), np.uint8)
+    x, out = 0, []
+    for k_, q, ax, ay in parts:
+        atlas[:q.shape[0], x:x + q.shape[1]] = q
+        out.append(f"{k_}: [[{x},0,{q.shape[1]},{q.shape[0]},{ax:.1f},{ay:.1f}]]")
+        x += q.shape[1] + 2
+    Image.fromarray(atlas, 'RGBA').save(FX_OUT, 'WEBP', lossless=True)
+    print('PYRO_FX anims: { ' + ', '.join(out) + ' }')
+    print(f'샘플 배율(9·10번 이펙트) = {csc:.4f}')
     print(f'pyro_0 cellW={cw} cellH={H} anchorX={L} anchorY={H - 2} count={len(pieces)} 대기 키={pieces[0][1].shape[0]}')
 
 
