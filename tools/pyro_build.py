@@ -17,6 +17,8 @@
 # 기본 공격 피격 이펙트 hit (샘플 HIT_SRC, 불티가 사방으로 튐, 기준점 = 가운데) → FX_OUT
 #   · 15 메테오 시전 중간 (두 손 위에 불덩이) · 16 메테오 시전 완료 직전 (두 주먹을 치켜듦)
 #   - 15번 샘플의 발밑 빨간 장판은 지움 (PUDDLE: 그 줄 아래 순수한 빨강, 치맛자락 상자는 빼고)
+#   · 17 이그나이트(연쇄 점화) — 한 손에 불꽃을 쥠 (시전 막대 동안 + 발동). 발밑 연보라 그림자는 지움
+# 모든 칸·이펙트 마지막 정리(defringe): 바깥 테두리에 붙은 밝고 채도 낮은(흰 배경이 섞인) 픽셀을 지움, 2번 반복
 # 이펙트 시트 FX_OUT: ember (기본 공격 불씨, 큰 샘플 ×FX_SCALE) · bolt · burst · flash (따로 받은 샘플 그대로 1배, 게임에서 배율을 곱해 그림)
 #   - 8번은 따로 받은 샘플(CAST_SRC, 191×212)이라 크기가 달라서 키를 CAST_H로 맞춤. 몸에서 떨어진 불티 조각까지 모두 살림
 # 샘플 정리:
@@ -51,11 +53,12 @@ POSES = [
     ('ring', 'assets/sprites/fx/samples/pyro_ring_src.png', 196, [], 'ring'),
     ('mcast_mid', 'assets/sprites/fx/samples/pyro_meteor_cast_mid_src.png', 169, [], 'mcast'),
     ('mcast_end', 'assets/sprites/fx/samples/pyro_meteor_cast_end_src.png', 162, [], 'mcast'),
+    ('ignite', 'assets/sprites/fx/samples/pyro_ignite_src.png', 187, [], 'ring'),
 ]
 PUDDLE = {'mcast_mid': (122, (28, 119, 0, 148))}   # 장판: 이 줄 아래 순수한 빨강 = 배경 (치맛자락 상자 x0, x1, y0, y1은 빼고)
 MCAST_K = 0.6   # 15·16번 샘플 → 칸 배율 (머리 크기를 대기 자세와 맞춤)
 RING_K = 0.5    # 13·14번 샘플 → 칸 배율
-SHADOW = {'ringcast': 140, 'ring': 150}   # 이 줄 아래 연보라 그림자 = 배경
+SHADOW = {'ringcast': 140, 'ring': 150, 'ignite': 176}   # 이그나이트는 바지 색이 그림자와 비슷해 바지 아래(장화 높이)부터만   # 이 줄 아래 연보라 그림자 = 배경
 RING_FX_TOP = 133   # 13번 샘플: 이 줄 아래 불꽃색 픽셀 = 발밑 고리 (치맛자락 상자 RING_FX_SKIP은 빼고)
 RING_FX_SKIP = (45, 121, 0, 159)   # 치맛자락 (159줄 아래는 고리 뒤쪽이 다리 뒤로 지나감)
 SC_BODY_X = 161          # 산탄 샘플: 캐릭터는 이 열 왼쪽까지 (161~163열은 손가락과 분출이 겹쳐서 양쪽 다 버림)
@@ -98,6 +101,18 @@ def prep(path, shadow_y=None):
 
 
 FX_EXTRA = {}
+
+
+def defringe(p, passes=2):
+    # 바깥 테두리(투명 칸과 맞닿은 픽셀) 중 밝고 채도 낮은 것 = 흰 배경 찌꺼기 → 지움. 피부·바지·불꽃은 색이 있어 남음
+    p = p.copy()
+    for _ in range(passes):
+        a = p[..., 3] > 0
+        edge = a & ndi.binary_dilation(~a, iterations=1)
+        c = p[..., :3].astype(int)
+        light = (c.min(axis=2) > 185) & (c.max(axis=2) - c.min(axis=2) < 45)
+        p[edge & light, 3] = 0
+    return p
 
 
 def main():
@@ -252,7 +267,7 @@ def main():
     for i, (name, p, c) in enumerate(pieces):
         x = i * cw + L - int(round(c))
         y = AY + drops.get(i, 0) - p.shape[0]
-        sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
+        sheet[y:y + p.shape[0], x:x + p.shape[1]] = defringe(p)
     Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
 
     # 날아가는 불덩이 → 투사체 시트 (오른쪽으로 날아가는 그림, 기준점 = 오른쪽 끝 세로 가운데)
@@ -272,7 +287,7 @@ def main():
     atlas = np.zeros((Hh, W, 4), np.uint8)
     x, out = 0, []
     for k_, q, ax, ay in parts:
-        atlas[:q.shape[0], x:x + q.shape[1]] = q
+        atlas[:q.shape[0], x:x + q.shape[1]] = defringe(q)
         out.append(f"{k_}: [[{x},0,{q.shape[1]},{q.shape[0]},{ax:.1f},{ay:.1f}]]")
         x += q.shape[1] + 2
     Image.fromarray(atlas, 'RGBA').save(FX_OUT, 'WEBP', lossless=True)
