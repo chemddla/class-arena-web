@@ -39698,6 +39698,16 @@
           ['x', 'y', 'hp', 'shield', 'mana', 'alive', 'facingDir', 'facingAngle', 'isMoving', 'walkPhase', 'attackAnim', 'maxAttackAnim', 'skillAnim', 'maxSkillAnim',
             'activeSkillType', 'hurtAnim', 'dashAnim', 'castLock', 'casting', 'statuses', 'sizeScale', 'maxHp'].forEach(k => { if (old[k] !== undefined) u[k] = old[k]; });
         });
+        // 받아 둔(아직 재생 전) 화면은 예전 유닛 순서로 실려 있음 → 새 목록 순서로 옮겨 담음
+        // (보스 레이드에서 용병이 쓰러져 목록에서 빠지면 뒤 칸이 한 칸씩 당겨져, 보스 칸에 다른 유닛 체력이 들어가 보스 체력 막대가 확 줄어 보였음)
+        const oldIdx = new Map(sim.units.map((o, i) => [o && o.id, i]));
+        const order = units.map(u => oldIdx.has(u.id) ? oldIdx.get(u.id) : -1);
+        if (order.length !== sim.units.length || order.some((o, i) => o !== i)) {
+          const remap = arr => Array.isArray(arr) ? order.map(o => o >= 0 ? arr[o] : null) : arr;
+          (liveNet.frameBuf || []).forEach(f => { if (f && f.val) f.val.u = remap(f.val.u); });
+          [liveNet.curFrame, liveNet.prevFrame].forEach(f => { if (f && f.val && !(liveNet.frameBuf || []).includes(f)) f.val.u = remap(f.val.u); });
+          liveNet.recvU = order.includes(-1) ? null : remap(liveNet.recvU); // 새 유닛이 있으면 다음 전체 화면부터 (방장도 다음은 전체로 보냄)
+        }
       }
       sim.units = units;
       if (!sameHost) prepareBattleImages(); // 관전·도전자: 방장이 보낸 유닛 그림 (러쉬 새 라운드 몬스터 포함)
