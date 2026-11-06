@@ -15,6 +15,8 @@
 #   - 13번 발밑 불꽃 고리는 따로 떼어 이펙트 ring으로도 저장 (불의 고리가 유지되는 동안 발밑에 깔림, 기준점 = 고리 가운데)
 #     · 몸에 가려 그려져 있지 않던 뒤쪽 가운데는 앞쪽 가운데 띠를 뒤집어 채움
 # 기본 공격 피격 이펙트 hit (샘플 HIT_SRC, 불티가 사방으로 튐, 기준점 = 가운데) → FX_OUT
+#   · 15 메테오 시전 중간 (두 손 위에 불덩이) · 16 메테오 시전 완료 직전 (두 주먹을 치켜듦)
+#   - 15번 샘플의 발밑 빨간 장판은 지움 (PUDDLE: 그 줄 아래 순수한 빨강, 치맛자락 상자는 빼고)
 # 이펙트 시트 FX_OUT: ember (기본 공격 불씨, 큰 샘플 ×FX_SCALE) · bolt · burst · flash (따로 받은 샘플 그대로 1배, 게임에서 배율을 곱해 그림)
 #   - 8번은 따로 받은 샘플(CAST_SRC, 191×212)이라 크기가 달라서 키를 CAST_H로 맞춤. 몸에서 떨어진 불티 조각까지 모두 살림
 # 샘플 정리:
@@ -47,7 +49,11 @@ POSES = [
     ('raise', 'assets/sprites/fx/samples/pyro_raise_src.png', 172, [(60, 82, 157, 161)]),
     ('ringcast', 'assets/sprites/fx/samples/pyro_ringcast_src.png', 184, [], 'ring'),
     ('ring', 'assets/sprites/fx/samples/pyro_ring_src.png', 196, [], 'ring'),
+    ('mcast_mid', 'assets/sprites/fx/samples/pyro_meteor_cast_mid_src.png', 169, [], 'mcast'),
+    ('mcast_end', 'assets/sprites/fx/samples/pyro_meteor_cast_end_src.png', 162, [], 'mcast'),
 ]
+PUDDLE = {'mcast_mid': (122, (28, 119, 0, 148))}   # 장판: 이 줄 아래 순수한 빨강 = 배경 (치맛자락 상자 x0, x1, y0, y1은 빼고)
+MCAST_K = 0.6   # 15·16번 샘플 → 칸 배율 (머리 크기를 대기 자세와 맞춤)
 RING_K = 0.5    # 13·14번 샘플 → 칸 배율
 SHADOW = {'ringcast': 140, 'ring': 150}   # 이 줄 아래 연보라 그림자 = 배경
 RING_FX_TOP = 133   # 13번 샘플: 이 줄 아래 불꽃색 픽셀 = 발밑 고리 (치맛자락 상자 RING_FX_SKIP은 빼고)
@@ -183,8 +189,29 @@ def main():
     # 11·12: 그림 전체 (흩날리는 불티·불길 포함). drop = 기준점(발) 아래로 내려가는 칸 px
     drops = {}
     for name, path, foot_y, cuts, *opt in POSES:
-        pk = RING_K if opt else POSE_K
+        pk = {'ring': RING_K, 'mcast': MCAST_K}[opt[0]] if opt else POSE_K
         pim, pa = prep(path, SHADOW.get(name))
+        if name in PUDDLE:   # 발밑 빨간 장판 지우기
+            top, (bx0, bx1, by0, by1) = PUDDLE[name]
+            r, g, b = pim[..., 0], pim[..., 1], pim[..., 2]
+            red = (r > 140) & (r - np.maximum(g, b) > 80)
+            red[:top] = False
+            red[by0:by1, bx0:bx1] = False
+            red = ndi.binary_dilation(red, iterations=1) & (r - np.maximum(g, b) > 40)   # 장판 가장자리 어두운 빨강까지
+            red[by0:by1, bx0:bx1] = False
+            inbox = np.zeros_like(red); inbox[top:by1, bx0:bx1] = True   # 치맛자락 상자 안: 순수한 빨강만 (치맛자락은 초록 55 이상의 붉은 주황)
+            red |= inbox & (r > 150) & (g < 45) & (b < 55)
+            below = np.zeros_like(red); below[by1:] = True   # 치맛자락 끝 아래(다리·장화만 있는 곳): 빨강이 강한 픽셀은 모두 장판 (장화 갈색은 빨강이 약해 남음)
+            red |= below & (r - np.maximum(g, b) > 50)
+            pa = np.where(red, 0, pa)
+            # 장판을 지우고 남은 조각: 몸통(가장 큰 덩어리)과 그림 위쪽 손 위 불덩이만 남기고 떨어진 조각은 모두 지움
+            bl, n = ndi.label(pa > 0.3, structure=np.ones((3, 3)))
+            if n:
+                sz = ndi.sum(pa > 0.3, bl, range(1, n + 1))
+                keep = bl == 1 + int(np.argmax(sz))
+                for i, sl in enumerate(ndi.find_objects(bl)):
+                    if sl[0].stop <= top // 2: keep |= bl == i + 1
+                pa = np.where(ndi.binary_dilation(keep, iterations=1), pa, 0)
         if name == 'ringcast':   # 발밑 불꽃 고리만 따로 → 이펙트 ring
             r, g, b = pim[..., 0], pim[..., 1], pim[..., 2]
             fire = (r > 150) & (b < 150) & ((r > g * 1.6) | ((r > 200) & (g > 120)))
