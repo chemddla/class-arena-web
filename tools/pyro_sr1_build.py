@@ -71,6 +71,7 @@ def fx_white_cleanup(im, bg):
     """메테오 이펙트용 흰 찌꺼기 정리 (불꽃 한가운데 흰색은 남김)
     - 갇힌 흰 틈: 둘레가 어두우면(연기·파편 사이) 배경, 둘레가 밝은 노랑·주황이면 불꽃 심이라 남김
     - 배경과 맞닿은 연회색·옅은 보랏빛 점 (흰 배경과 섞인 연기 가장자리) 두 겹"""
+    near_bg = ndi.distance_transform_edt(~bg)   # 바깥 배경까지 거리 (샘플 px)
     whiteish = (im.min(axis=2) > 205) & (im.max(axis=2) - im.min(axis=2) < 45) & ~bg
     lab, n = ndi.label(whiteish, structure=np.ones((3, 3)))
     for i in range(1, n + 1):
@@ -79,7 +80,9 @@ def fx_white_cleanup(im, bg):
         if not ring.any(): bg |= comp; continue
         rc = im[ring]
         warm = ((rc[:, 0] > 200) & (rc[:, 1] > 110)).mean()   # 둘레가 밝은 노랑·주황인 비율
-        if warm < 0.45: bg |= comp
+        if warm < 0.45: bg |= comp; continue
+        # 둘레가 불꽃이어도, 작고 바깥 배경 가까이 있는 흰 틈은 불꽃 가장자리에 갇힌 배경 (불꽃 심은 크고 배경에서 멂)
+        if comp.sum() < 900 and near_bg[comp].min() <= 14: bg |= comp
     for _ in range(2):
         rim = ~bg & ndi.binary_dilation(bg)
         bg |= rim & (im.min(axis=2) > 140) & (im.max(axis=2) - im.min(axis=2) < 60)
@@ -320,13 +323,24 @@ def fx_piece(name, anchor):
     return r.clip(0, 255).astype(np.uint8), ax * FX_SCALE, ay * FX_SCALE
 
 
+def rock_box_center(rgba, a, win=None):
+    """운석 돌덩이 가운데 = 가장 큰 검붉은 덩어리를 감싸는 상자의 가운데
+    (어두운 픽셀 평균으로 잡으면 불빛을 받은 앞쪽이 빠져 뒤로 쏠림 → 낙하·착탄 그림이 어긋났음)"""
+    c = rgba[..., :3]
+    dark = (a > 0.9) & (c.max(axis=2) < 110) & (c[..., 0] >= c[..., 2])
+    if win is not None:
+        m = np.zeros_like(dark); x0, y0, x1, y1 = win; m[max(0, y0):y1, max(0, x0):x1] = True; dark &= m
+    dark = ndi.binary_closing(dark, iterations=3)   # 돌 표면의 붉은 금(용암 줄)으로 끊긴 조각을 한 덩어리로
+    lab, n = ndi.label(dark, structure=np.ones((3, 3)))
+    sz = ndi.sum(dark, lab, range(1, n + 1)); i = 1 + int(np.argmax(sz))
+    ys, xs = np.where(lab == i)
+    return (xs.min() + xs.max()) / 2, (ys.min() + ys.max()) / 2
+
+
 def rock_center(rgba, a):
-    # 운석 돌덩이 = 오른쪽 아래의 어두운 덩어리
-    dark = (a > 0.9) & (rgba[..., :3].max(axis=2) < 70)
-    h, w = dark.shape
-    dark[:, :int(w * 0.6)] = False
-    ys, xs = np.where(dark)
-    return xs.mean(), ys.mean()
+    # 낙하 운석: 오른쪽 40% 안의 돌덩이
+    h, w = a.shape
+    return rock_box_center(rgba, a, (int(w * 0.6), 0, w, h))
 
 
 HIT_ROCK_NEAR = (600, 410)   # 착탄 그림 속 운석이 있는 대략의 자리 (잘라 낸 샘플 px) — 이 둘레 RANGE 안의 검붉은 덩어리 가운데를 기준점으로
@@ -334,18 +348,9 @@ HIT_ROCK_RANGE = 70
 
 
 def rock_in_hit(rgba, a):
-    # 착탄 그림 속 운석 돌덩이 가운데 (둘레의 파편·보랏빛 연기는 빼고 HIT_ROCK_NEAR 둘레만 봄)
-    c = rgba[..., :3]
-    h, w = a.shape
-    dark = (a > 0.9) & (c.max(axis=2) < 90) & (c[..., 0] >= c[..., 2])
+    # 착탄 그림 속 운석 돌덩이 (둘레의 파편·보랏빛 연기는 빼고 HIT_ROCK_NEAR 둘레만 봄)
     cx, cy = HIT_ROCK_NEAR
-    win = np.zeros_like(dark)
-    win[max(0, cy - HIT_ROCK_RANGE):cy + HIT_ROCK_RANGE, max(0, cx - HIT_ROCK_RANGE):cx + HIT_ROCK_RANGE] = True
-    dark &= win
-    lab, n = ndi.label(dark, structure=np.ones((3, 3)))
-    sz = ndi.sum(dark, lab, range(1, n + 1)); i = 1 + int(np.argmax(sz))
-    ys, xs = np.where(lab == i)
-    return xs.mean(), ys.mean()
+    return rock_box_center(rgba, a, (cx - HIT_ROCK_RANGE, cy - HIT_ROCK_RANGE, cx + HIT_ROCK_RANGE, cy + HIT_ROCK_RANGE))
 
 
 def ground_center(rgba, a):
