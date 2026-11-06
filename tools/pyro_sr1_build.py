@@ -24,7 +24,7 @@
 # 캐릭터 칸 순서: 0 대기 · 1~2 걷기 · 3 공격 준비 · 4 공격 발사 · 5 피격 · 6~7 쓰러짐 · 8 파이어볼·플레어 시전 · 9 (예전 파이어볼, = 공격 발사) · 10 플레어 발사 · 11 걷기 3
 #   · 12 메테오 시전 앞 · 13 메테오 시전 끝 · 14 플레임 링 시전 · 15 파이어볼 발사 · 16 익스플로전 시전 · 17 익스플로전 발동 · 18 대쉬 · 19 이그나이트 · 20 알 · 21 불꽃의 응축 · 22 공중 웅크리기 · 23 공중 포효
 # 크기: 대기 머리 꼭대기~발(BODY_TOP~발) = TARGET_H. 다른 샘플은 몸 덩어리 키를 대기와 같게 맞춘 배율 (쓰러짐은 같은 장 공격·피격 칸 배율)
-# 이펙트 시트 칸: fall (운석, 기준점 = 돌덩이 가운데) · hit (착탄, 기준점 = 바닥 가운데) · boom (폭발, 기준점 = 바닥 가운데)
+# 이펙트 시트 칸: fall (운석, 기준점 = 돌덩이 가운데) · hit (착탄) · boom (폭발) — 둘 다 기준점 = 착탄 그림 속 운석 가운데
 #   꼬리가 그림 밖으로 잘린 왼쪽 위는 FADE 폭만큼 서서히 투명하게 (게임에서 잘린 끝이 보이지 않게)
 import os, sys
 import numpy as np
@@ -67,12 +67,20 @@ FALL_ANGLE = 36.5           # 샘플 운석이 내려오는 각도 (오른쪽 �
 FADE = 260                  # 이펙트 꼬리 끝 서서히 사라지는 폭 (샘플 px)
 
 
-def white_bg(im, thr=222, tone=16):
+def white_bg(im, thr=222, tone=16, enclosed=False):
+    """흰 배경 지우기. enclosed=True (캐릭터): 바깥과 이어지지 않은 흰 틈(깃털·다리 사이)과 가장자리의 연회색 찌꺼기도 지움
+    (메테오 이펙트는 불꽃 한가운데가 흰색이라 enclosed=False)"""
     im = np.pad(im, ((2, 2), (2, 2), (0, 0)), constant_values=255)
     white = (im.min(axis=2) > thr) & (im.max(axis=2) - im.min(axis=2) < tone)
     lab, n = ndi.label(white)
     edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
     bg = np.isin(lab, edge[edge > 0])
+    if enclosed:
+        pale = (im.min(axis=2) > 200) & (im.max(axis=2) - im.min(axis=2) < 40)   # 갇힌 흰 틈 (조금 덜 하얀 것까지)
+        bg |= pale
+        for _ in range(2):   # 배경과 맞닿은 연회색·분홍빛 흰 점 (흰 배경과 섞인 찌꺼기)
+            rim0 = ~bg & ndi.binary_dilation(bg)
+            bg |= rim0 & (im.min(axis=2) > 165) & (im.max(axis=2) - im.min(axis=2) < 70)
     rim = ~bg & ndi.binary_dilation(bg, iterations=2)
     a = np.where(bg, 0.0, 1.0)
     a = np.where(rim, np.clip((255 - im.min(axis=2)) / 200, 0, 1), a)
@@ -106,7 +114,7 @@ def finish(im, a, drop_edge=True):
 def load_idle():
     im = np.array(Image.open(f'{D}idle_src.png').convert('RGB')).astype(float)
     for x0, y0, x1, y1 in CUT: im[y0:y1, x0:x1] = 255
-    im, a = white_bg(im)
+    im, a = white_bg(im, enclosed=True)
     rgba, foot, h, y0 = finish(im, a)
     return rgba, foot, h, rgba.shape[0] - 1 - (BODY_TOP - y0)
 
@@ -115,7 +123,7 @@ def load_walk_ab(half):
     im = np.array(Image.open(f'{D}walk_ab_src.png').convert('RGB')).astype(float)
     x0, y0, x1, y1 = WALK_AB_TEXT; im[y0:y1, x0:x1] = 255
     im = im[:, :151] if half == 0 else im[:, 151:]
-    im, a = white_bg(im)
+    im, a = white_bg(im, enclosed=True)
     return finish(im, a, drop_edge=False)
 
 
@@ -146,7 +154,7 @@ def load_walk_c(target_h):
     """걷기 3: 카드 테두리에 잘린 윗부분(날개 끝·볏)을 다른 걷기 칸 키(target_h)만큼 위로 늘려 세우고 끝을 뾰족하게"""
     im = np.array(Image.open(f'{D}walk_c_src.png').convert('RGB')).astype(float)
     x0, y0, x1, y1 = WALK_C_BOX
-    im, a = white_bg(im[y0:y1, x0:x1])
+    im, a = white_bg(im[y0:y1, x0:x1], enclosed=True)
     a[:2] = 0; a[-2:] = 0   # white_bg가 덧댄 여백 때문에 남는 테두리 줄
     rows = np.where((a > 0.3).any(axis=1))[0]
     im, a = im[rows.min():rows.max() + 1], a[rows.min():rows.max() + 1]
@@ -301,6 +309,25 @@ def rock_center(rgba, a):
     return xs.mean(), ys.mean()
 
 
+HIT_ROCK_NEAR = (600, 410)   # 착탄 그림 속 운석이 있는 대략의 자리 (잘라 낸 샘플 px) — 이 둘레 RANGE 안의 검붉은 덩어리 가운데를 기준점으로
+HIT_ROCK_RANGE = 70
+
+
+def rock_in_hit(rgba, a):
+    # 착탄 그림 속 운석 돌덩이 가운데 (둘레의 파편·보랏빛 연기는 빼고 HIT_ROCK_NEAR 둘레만 봄)
+    c = rgba[..., :3]
+    h, w = a.shape
+    dark = (a > 0.9) & (c.max(axis=2) < 90) & (c[..., 0] >= c[..., 2])
+    cx, cy = HIT_ROCK_NEAR
+    win = np.zeros_like(dark)
+    win[max(0, cy - HIT_ROCK_RANGE):cy + HIT_ROCK_RANGE, max(0, cx - HIT_ROCK_RANGE):cx + HIT_ROCK_RANGE] = True
+    dark &= win
+    lab, n = ndi.label(dark, structure=np.ones((3, 3)))
+    sz = ndi.sum(dark, lab, range(1, n + 1)); i = 1 + int(np.argmax(sz))
+    ys, xs = np.where(lab == i)
+    return xs.mean(), ys.mean()
+
+
 def ground_center(rgba, a):
     # 바닥 = 맨 아래 줄 근처 그림의 가운데 · 기준점 y는 바닥 흙더미 가운데 높이
     ys = np.where((a > 0.5).any(axis=1))[0]
@@ -310,7 +337,11 @@ def ground_center(rgba, a):
 
 
 def build_fx():
-    parts = [('fall',) + fx_piece('fall', rock_center), ('hit',) + fx_piece('hit', ground_center), ('boom',) + fx_piece('boom', ground_center)]
+    # 착탄·폭발 기준점 = 착탄 그림 속 운석 가운데 (두 샘플은 같은 구도라 같은 자리) → 떨어지던 운석(fall 기준점)이 멈춘 자리에 그대로 겹침
+    hit = fx_piece('hit', rock_in_hit)
+    boom = fx_piece('boom', lambda r, a: (hit[1] / FX_SCALE, hit[2] / FX_SCALE))
+    assert boom[0].shape == hit[0].shape, '착탄·폭발 샘플 구도가 다름'
+    parts = [('fall',) + fx_piece('fall', rock_center), ('hit',) + hit, ('boom',) + boom]
     W = sum(p.shape[1] for _, p, _, _ in parts) + 2 * (len(parts) - 1)
     H = max(p.shape[0] for _, p, _, _ in parts)
     sheet = np.zeros((H, W, 4), np.uint8)
