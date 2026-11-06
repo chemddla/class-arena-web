@@ -11,10 +11,13 @@
 #   cast_src.webp (1024×572, 어두운 배경·아래 이름표): 메테오 시전 앞 (머리 위 불덩이) · 메테오 시전 끝 (주먹 앞 불꽃) · 플레임 링 시전 (발밑 불꽃 고리)
 #     오른쪽 아래 반짝이 표시가 고리에 겹쳐 있어 그 상자 안의 채도 낮은 점만 지움 (CAST_WM)
 #   fb_src.png (222×219, 어두운 배경): 파이어볼 발사 (날개를 펴고 뛰어오르며 손을 뻗음)
+#   fbcast_src.png (236×339): 파이어볼·플레어 시전 (두 손 사이 불덩이, 아래 이름표는 버림) · flare_src.png (257×234): 플레어 발사
+#   combust_src.png (454×289): 왼쪽 = 익스플로전 시전 (주먹을 치켜듦, 발밑 불길 → 기준점 밑으로) · 오른쪽 = 익스플로전 발동 (불티가 사방으로)
+#     파이어볼 발사 샘플과 같은 해상도라 다섯 장 모두 한 배율(sc_fb, 파이어볼 시전 칸 몸 키 = 대기 몸 키)을 씀
 #   meteor_fall_src.webp (1024×572): 연기 꼬리가 왼쪽 위로 길게 달린 불타는 운석 (날아오는 투사체)
 #   meteor_hit_src.webp (1024×572): 착탄 순간 (운석이 땅에 박히며 불꽃이 튐) · meteor_boom_src.webp: 착탄 뒤 폭발
-# 캐릭터 칸 순서: 0 대기 · 1~2 걷기 · 3 공격 준비 · 4 공격 발사 · 5 피격 · 6~7 쓰러짐 · 8 화염 시전 (= 공격 준비) · 9 (예전 파이어볼, = 공격 발사) · 10 산탄 (= 공격 발사) · 11 걷기 3
-#   · 12 메테오 시전 앞 · 13 메테오 시전 끝 · 14 플레임 링 시전 · 15 파이어볼 발사
+# 캐릭터 칸 순서: 0 대기 · 1~2 걷기 · 3 공격 준비 · 4 공격 발사 · 5 피격 · 6~7 쓰러짐 · 8 파이어볼·플레어 시전 · 9 (예전 파이어볼, = 공격 발사) · 10 플레어 발사 · 11 걷기 3
+#   · 12 메테오 시전 앞 · 13 메테오 시전 끝 · 14 플레임 링 시전 · 15 파이어볼 발사 · 16 익스플로전 시전 · 17 익스플로전 발동
 # 크기: 대기 머리 꼭대기~발(BODY_TOP~발) = TARGET_H. 다른 샘플은 몸 덩어리 키를 대기와 같게 맞춘 배율 (쓰러짐은 같은 장 공격·피격 칸 배율)
 # 이펙트 시트 칸: fall (운석, 기준점 = 돌덩이 가운데) · hit (착탄, 기준점 = 바닥 가운데) · boom (폭발, 기준점 = 바닥 가운데)
 #   꼬리가 그림 밖으로 잘린 왼쪽 위는 FADE 폭만큼 서서히 투명하게 (게임에서 잘린 끝이 보이지 않게)
@@ -43,7 +46,8 @@ STRETCH_BAND = 40                      # 걷기 3 위쪽에서 위로 늘리는 
 CAST_BG = np.array([49, 52, 62], float)
 CAST_BOX = {'m0': (16, 0, 328, 495), 'm1': (336, 0, 704, 495), 'ring': (712, 0, 1000, 495)}
 CAST_WM = (912, 460, 960, 505)         # 반짝이 표시 (고리 위에 겹침)
-GROUND_DROP = {'ring': 27}             # 바닥 고리가 발보다 이만큼(샘플 px) 아래까지 내려옴 → 발을 바닥에 맞추고 고리 앞쪽은 기준점 밑으로
+DARK_SRC = {'fbcast': ('fbcast', (0, 0, 236, 300)), 'flare': ('flare', None), 'cb_cast': ('combust', (0, 0, 210, 289)), 'cb_go': ('combust', (210, 0, 454, 289))}
+GROUND_DROP = {'ring': 27, 'cb_cast': 16}             # 바닥 고리가 발보다 이만큼(샘플 px) 아래까지 내려옴 → 발을 바닥에 맞추고 고리 앞쪽은 기준점 밑으로
 FB_BG = np.array([50, 53, 62], float)
 OUTLINE = np.array([96, 22, 12], float)
 FX_SCALE = 0.5              # 이펙트 시트 배율 (게임에서 다시 늘려 그림)
@@ -176,6 +180,13 @@ def load_cast(name):
     return finish(*key_dark(im[y0:y1, x0:x1], CAST_BG, 20, 40), drop_edge=False)
 
 
+def load_dark(key):
+    f, box = DARK_SRC[key]
+    im = np.array(Image.open(f'{D}{f}_src.png').convert('RGB')).astype(float)
+    if box: im = im[box[1]:box[3], box[0]:box[2]]
+    return finish(*key_dark(im, im[2, 2].copy(), 20, 40), drop_edge=False)
+
+
 def load_fb():
     im = np.array(Image.open(f'{D}fb_src.png').convert('RGB')).astype(float)
     return finish(*key_dark(im, FB_BG, 20), drop_edge=False)
@@ -194,14 +205,18 @@ def build_char():
     fb = load_fb()
     sc_cast = ref_h / ca['m1'][2]   # 메테오 시전 끝 (날개를 세우고 선 모습)의 몸 키를 대기와 같게
     sc_fb = ref_h / fb[2]
+    dk = {k: load_dark(k) for k in DARK_SRC}
+    sc_fb = ref_h / dk['fbcast'][2]   # 날개를 세우고 선 파이어볼 시전 칸의 몸 키를 대기와 같게 (같은 해상도인 파이어볼 발사·플레어·익스플로전도 이 배율)
+    print('몸 키: ' + ' '.join(f'{k} {v[2]}' for k, v in dk.items()))
     print(f'몸 키: 메테오 {ca["m0"][2]} {ca["m1"][2]} 링 {ca["ring"][2]} 파이어볼 {fb[2]}')
     print(f'몸 키: 대기 {ih} 걷기 {wa[2]} {wb[2]} {wc[2]} 공격 {sh["a1"][2]} {sh["a2"][2]} 피격 {sh["hurt"][2]}')
     src = [('idle', (idle, ifoot, ih, 0), sc_idle), ('walk0', wa, sc_walk), ('walk1', wb, sc_walk),
            ('atk_ready', sh['a1'], sc_sheet), ('atk_fire', sh['a2'], sc_sheet), ('hurt', sh['hurt'], sc_sheet),
            ('down0', sh['d1'], sc_sheet), ('down1', sh['d2'], sc_sheet),
-           ('cast', sh['a1'], sc_sheet), ('fb', sh['a2'], sc_sheet), ('sc', sh['a2'], sc_sheet),
+           ('cast', dk['fbcast'], sc_fb), ('fb', sh['a2'], sc_sheet), ('sc', dk['flare'], sc_fb),
            ('walk2', wc, sc_walk),
-           ('meteor0', ca['m0'], sc_cast), ('meteor1', ca['m1'], sc_cast), ('ring', ca['ring'], sc_cast), ('fb_release', fb, sc_fb)]
+           ('meteor0', ca['m0'], sc_cast), ('meteor1', ca['m1'], sc_cast), ('ring', ca['ring'], sc_cast), ('fb_release', fb, sc_fb),
+           ('cb_cast', dk['cb_cast'], sc_fb), ('cb_go', dk['cb_go'], sc_fb)]
     pieces = []
     for name, (rgba, foot, _, _), k in src:
         p = shrink(rgba, k)
@@ -217,10 +232,10 @@ def build_char():
     Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
     print(f'배율 대기 {sc_idle:.3f} 걷기 {sc_walk:.3f} 시트 {sc_sheet:.3f} 시전 {sc_cast:.3f} 파이어볼 {sc_fb:.3f}  pyro_sr1 cellW={cw} cellH={ch} anchorX={L} anchorY={U} count={len(pieces)}')
     # 손 자리 (발 기준): 공격 발사 칸 오른쪽 끝 · 공격 준비 칸 손 위 불꽃 (몸 오른쪽의 가장 밝은 노란 덩어리)
-    for i, label in ((4, '발사 손끝'), (15, '파이어볼 손끝'), (3, '준비 손 불꽃')):
+    for i, label in ((4, '발사 손끝'), (15, '파이어볼 손끝'), (10, '플레어 손끝'), (3, '준비 손 불꽃')):
         p, c = pieces[i][1].astype(int), pieces[i][2]
         al = p[..., 3] > 0
-        if i in (4, 15):
+        if i in (4, 15, 10):
             xr = np.where(al.any(axis=0))[0].max()
             yy = np.where(al[:, xr - 3:xr + 1].any(axis=1))[0].mean()
             print(f'{label} = [{xr - c:.0f}, {yy - p.shape[0]:.0f}]')
