@@ -72,6 +72,7 @@ def fx_white_cleanup(im, bg):
     - 갇힌 흰 틈: 둘레가 어두우면(연기·파편 사이) 배경, 둘레가 밝은 노랑·주황이면 불꽃 심이라 남김
     - 배경과 맞닿은 연회색·옅은 보랏빛 점 (흰 배경과 섞인 연기 가장자리) 두 겹"""
     near_bg = ndi.distance_transform_edt(~bg)   # 바깥 배경까지 거리 (샘플 px)
+    rock = ~bg & (im.max(axis=2) < 90) & (im[..., 0] >= im[..., 2])   # 운석 돌덩이 (검붉은 색, 보랏빛 연기는 파랑이 더 셈)
     whiteish = (im.min(axis=2) > 205) & (im.max(axis=2) - im.min(axis=2) < 45) & ~bg
     lab, n = ndi.label(whiteish, structure=np.ones((3, 3)))
     for i in range(1, n + 1):
@@ -81,6 +82,7 @@ def fx_white_cleanup(im, bg):
         rc = im[ring]
         warm = ((rc[:, 0] > 200) & (rc[:, 1] > 110)).mean()   # 둘레가 밝은 노랑·주황인 비율
         if warm < 0.45: bg |= comp; continue
+        if (ring & rock).sum() > 3: continue   # 운석 돌덩이에 맞닿은 흰빛은 운석을 감싼 불빛 (사용자 확인: 배경 아님)
         # 둘레가 불꽃이어도, 작고 바깥 배경 가까이 있는 흰 틈은 불꽃 가장자리에 갇힌 배경 (불꽃 심은 크고 배경에서 멂)
         if comp.sum() < 900 and near_bg[comp].min() <= 14: bg |= comp
     for _ in range(2):
