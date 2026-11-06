@@ -48953,6 +48953,21 @@
         if (!(s.over && s.overAt > 2.2)) this.raf = requestAnimationFrame(t => this.frame(t));
         else this.drawIdle();
       },
+      // 관전 화면: 내 펫이 없으니 가장 앞서 달리는 친구를 따라 트랙(배경·땅)을 움직임
+      followCam(s, dt) {
+        const now = mgServerNow();
+        let lead = null, leadD = -Infinity;
+        Object.values(s.team).forEach(r => {
+          if (r.st === 3 || now - r.t > PETCOOP.staleMs) return;
+          const d = r.d + (r.v || 0) * Math.min(0.5, Math.max(0, (now - r.t) / 1000));
+          if (d > leadD) { leadD = d; lead = r; }
+        });
+        if (!lead) return;
+        if (!s.camOn || Math.abs(leadD - s.dist) > 3000) { s.camOn = true; s.dist = Math.max(0, leadD); return; }
+        const dx = Math.max(0, (lead.v || 0) * dt + (leadD - s.dist) * Math.min(1, dt * 2));
+        s.dist += dx; s.t += dt;
+        s.bg.forEach(c => { c.x -= dx * 0.12 * c.s; if (c.x < -140) { c.x = PETRUN.W + 60 + Math.random() * 120; c.y = 30 + Math.random() * 80; } });
+      },
       tickFx(s, dt) {
         s.t += 0; // 시간은 안 흐름 (쓰러져 있는 동안 체력도 안 줄고 장애물도 안 옴)
         s.texts.forEach(t => { t.y -= 40 * dt; t.life -= dt; }); s.texts = s.texts.filter(t => t.life > 0);
@@ -48961,7 +48976,8 @@
         if (s.inv > 0) s.inv -= dt;
       },
       update(s, dt) {
-        if (s.seat < 0 || s.down) { this.tickFx(s, dt); this.hostCheck(s, dt); return; }
+        if (s.seat < 0) { this.followCam(s, dt); this.tickFx(s, dt); return; }
+        if (s.down) { this.tickFx(s, dt); this.hostCheck(s, dt); return; }
         const items0 = s.items, m0 = s.fx.magnet, d0 = s.fx.double;
         PetRun.update.call(this, s, dt);
         if (s.items > items0) { // 방금 먹은 부스터가 팀 공유 종류면 친구들에게도
@@ -49053,7 +49069,12 @@
         const seat = Number(key);
         if (!Number.isInteger(seat) || seat === s.seat || !st.seats[seat]) return;
         const prev = s.team[seat];
-        s.team[seat] = { d: Number(r.d) || 0, y: Number(r.y) || 0, st: Number(r.st) || 0, hp: Number(r.hp) || 0, hm: Number(r.hm) || 100, sc: Number(r.sc) || 0, stg: Number(r.stg) || 0, da: Number(r.da) || 0, t: Number(r.t) || mgServerNow(),
+        // 받은 거리 차이로 친구 속도를 어림 (관전 화면이 다음 소식까지 이 속도로 미리 움직임)
+        const nd = Number(r.d) || 0, nt = Number(r.t) || mgServerNow();
+        let v = prev ? prev.v || 0 : PETRUN.speed0;
+        if (prev && nt > prev.t) v = v * 0.5 + Math.max(0, Math.min(PETRUN.speedMax * PETRUN.boostMult, (nd - prev.d) / ((nt - prev.t) / 1000))) * 0.5;
+        if (Number(r.st) === 3) v = 0;
+        s.team[seat] = { v, d: Number(r.d) || 0, y: Number(r.y) || 0, st: Number(r.st) || 0, hp: Number(r.hp) || 0, hm: Number(r.hm) || 100, sc: Number(r.sc) || 0, stg: Number(r.stg) || 0, da: Number(r.da) || 0, t: Number(r.t) || mgServerNow(),
           ox: prev ? prev.ox : 0, dy: prev ? prev.dy : 0, animT: prev ? prev.animT : Math.random() * 3 };
       },
       // 자리의 지금 상태 (내 자리는 내 화면 값, 친구는 마지막으로 받은 값)
