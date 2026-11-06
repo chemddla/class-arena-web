@@ -5228,7 +5228,7 @@
         meteor: {
           id: 'meteor', name: '메테오', icon: '☄️', ccTag: '✨히든 · 초광역·불티 폭발', hidden: true,
           manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 3,
-          desc: '3초간 하늘로 지팡이를 든 뒤 적이 가장 많이 모인 자리에 거대 운석을 떨어뜨립니다. 반지름 10칸 안의 적 모두에게 400% 피해와 4초 [화상], 이어서 그 적들의 [불티]를 모두 터뜨려요 (불티 1개당 80%). 터뜨린 뒤 맞은 적마다 [불티] 3개를 쌓아요. 시크릿 레어 불사조는 반지름 15칸이고, 땅에 닿을 때 40% 피해와 [화상], 0.7초 뒤 폭발하며 나머지 60% 피해와 [불티] 폭발이 들어가요.'
+          desc: '3초간 하늘로 지팡이를 든 뒤 적이 가장 많이 모인 자리에 거대 운석을 떨어뜨립니다. 반지름 10칸 안의 적 모두에게 1000% 피해와 4초 [화상], 이어서 그 적들의 [불티]를 모두 터뜨려요 (불티 1개당 80%). 터뜨린 뒤 맞은 적마다 [불티] 3개를 쌓아요. 시크릿 레어 불사조는 반지름 15칸이고, 땅에 닿을 때 400% 피해와 [화상], 0.7초 뒤 폭발하며 600% 피해와 [불티] 폭발이 들어가요.'
         }
       },
       summoner: {
@@ -24672,13 +24672,13 @@
     const PYRO_COMBUST_PER_EMBER = 0.6;
     const PYRO_COMBUST_STUN = 60;
     const PYRO_METEOR_CELLS = 10;            // (2026-11-06 5칸 → 10칸, 2배)             // 메테오 (히든): 반지름 5칸 · 400% + 화상 4초 → 불티 1개당 80% · 5개면 1.5초 기절
-    const PYRO_METEOR_DMG = 4.0;
+    const PYRO_METEOR_DMG = 10.0;            //   (2026-11-07 400% → 1000%, 사용자 요청) 기본 메테오는 착탄 때 한 번에 · 불사조는 착탄 400% + 폭발 600% (PYRO_METEOR_SR_IMPACT_SHARE)
     const PYRO_METEOR_BURN = 240;
     const PYRO_METEOR_PER_EMBER = 0.8;
     const PYRO_METEOR_STUN = 90;
     const PYRO_METEOR_EMBER = 3;             //   터뜨린 뒤 맞은 적마다 불티 3개
     const PYRO_METEOR_SR_MULT = 1.5;         //   시크릿 레어 불사조: 반지름 1.5배
-    const PYRO_METEOR_SR_IMPACT_SHARE = 0.4; //   불사조: 피해를 둘로 나눔 — 땅에 닿을 때 40% (+화상), 폭발할 때 나머지 60% (+불티 폭발·불티 3개)
+    const PYRO_METEOR_SR_IMPACT_SHARE = 0.4; //   불사조: 피해를 둘로 나눔 — 땅에 닿을 때 40% = 400% (+화상), 폭발할 때 나머지 60% = 600% (+불티 폭발·불티 3개)
     const PYRO_METEOR_SR_BOOM_DELAY = 28;    //   땅에 닿고 폭발하기까지 (틱, 0.7초) — 폭발 그림도 이 순간에 나옴
     const isSrPyro = u => Boolean(u && u.job === 'pyro' && !u.monsterType && (u.skinVariant || 0) === SECRET_SKIN_BASE + 1);
     const pyroMeteorCells = u => PYRO_METEOR_CELLS * (isSrPyro(u) ? PYRO_METEOR_SR_MULT : 1);
@@ -24973,8 +24973,8 @@
       return false;
     }
 
-    // 메테오 착탄: 반지름 10칸 400% + 화상 → 이어서 내 불티를 모두 터뜨림 → 맞은 적에게 불티 3개
-    //   시크릿 레어 불사조: 땅에 닿을 때 40% + 화상만 → PYRO_METEOR_SR_BOOM_DELAY 뒤 폭발하며 나머지 60% + 불티 폭발 (pyroSrMeteorBoom)
+    // 메테오 착탄: 반지름 10칸 1000% + 화상 → 이어서 내 불티를 모두 터뜨림 → 맞은 적에게 불티 3개
+    //   시크릿 레어 불사조: 땅에 닿을 때 400% + 화상만 → PYRO_METEOR_SR_BOOM_DELAY 뒤 폭발하며 600% + 불티 폭발 (pyroSrMeteorBoom)
     function pyroMeteorImpact(owner, x, y) {
       if (!owner) return;
       const R = GRID_CELL_SIZE * pyroMeteorCells(owner) * unitAreaScale(owner);
@@ -25011,7 +25011,7 @@
       foes.forEach(e => { if (e.alive) pyroAddEmber(owner, e, PYRO_METEOR_EMBER); }); // 터뜨린 뒤 불티 3개
       return popped;
     }
-    // 불사조 메테오 폭발 (착탄 PYRO_METEOR_SR_BOOM_DELAY 뒤): 그때 범위 안의 적에게 나머지 60% + 불티 폭발
+    // 불사조 메테오 폭발 (착탄 PYRO_METEOR_SR_BOOM_DELAY 뒤): 그때 범위 안의 적에게 600% + 불티 폭발
     function pyroSrMeteorBoom(owner, b) {
       const i = sim.effects.indexOf(b.ef);
       if (i >= 0) sim.effects.splice(i, 1);
