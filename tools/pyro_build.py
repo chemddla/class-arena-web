@@ -10,6 +10,10 @@
 #   - 11·12번 샘플(178×150, 144×188)은 도트가 더 작게 그려져서 머리 크기를 대기 자세와 맞춘 배율 POSE_K를 씀
 #     · 12번은 발밑 불길이 발보다 아래로 내려와 있어서 장화 바닥 줄(foot_y)을 기준점에 맞추고, 그 아래 불길은 기준점 아래로 그림
 #     · 12번 다리 사이에 떠 있는 살구색 줄 하나는 지움 (CUT)
+#   · 13 불의 고리 시전 (가슴 앞에 불꽃을 쥠, 발밑 불꽃 고리) · 14 불의 고리 발동 (허리 둘레에 큰 불꽃 고리)
+#   - 13·14번 샘플(165×203, 299×214)은 발밑 연보라 그림자를 지움 (SHADOW: 그 줄 아래 연보라 픽셀 = 배경)
+#   - 13번 발밑 불꽃 고리는 따로 떼어 이펙트 ring으로도 저장 (불의 고리가 유지되는 동안 발밑에 깔림, 기준점 = 고리 가운데)
+#     · 몸에 가려 그려져 있지 않던 뒤쪽 가운데는 앞쪽 가운데 띠를 뒤집어 채움
 # 이펙트 시트 FX_OUT: ember (기본 공격 불씨, 큰 샘플 ×FX_SCALE) · bolt · burst · flash (따로 받은 샘플 그대로 1배, 게임에서 배율을 곱해 그림)
 #   - 8번은 따로 받은 샘플(CAST_SRC, 191×212)이라 크기가 달라서 키를 CAST_H로 맞춤. 몸에서 떨어진 불티 조각까지 모두 살림
 # 샘플 정리:
@@ -39,7 +43,13 @@ POSE_K = 0.66   # 11·12번 샘플 → 칸 배율
 POSES = [
     ('combust', 'assets/sprites/fx/samples/pyro_combust_src.png', None, []),
     ('raise', 'assets/sprites/fx/samples/pyro_raise_src.png', 172, [(60, 82, 157, 161)]),
+    ('ringcast', 'assets/sprites/fx/samples/pyro_ringcast_src.png', 184, [], 'ring'),
+    ('ring', 'assets/sprites/fx/samples/pyro_ring_src.png', 196, [], 'ring'),
 ]
+RING_K = 0.5    # 13·14번 샘플 → 칸 배율
+SHADOW = {'ringcast': 140, 'ring': 150}   # 이 줄 아래 연보라 그림자 = 배경
+RING_FX_TOP = 133   # 13번 샘플: 이 줄 아래 불꽃색 픽셀 = 발밑 고리 (치맛자락 상자 RING_FX_SKIP은 빼고)
+RING_FX_SKIP = (45, 121, 0, 159)   # 치맛자락 (159줄 아래는 고리 뒤쪽이 다리 뒤로 지나감)
 SC_BODY_X = 161          # 산탄 샘플: 캐릭터는 이 열 왼쪽까지 (161~163열은 손가락과 분출이 겹쳐서 양쪽 다 버림)
 SC_HAND_X = 164          # 산탄 샘플: 이 열부터 오른쪽은 손 앞 불꽃 분출
 SC_BOLT_AT = (340, 140)  # 산탄 샘플: 투사체로 쓸 불덩이(가운데 긴 것) 한 점
@@ -56,10 +66,15 @@ FRAMES = [
 ]
 
 
-def prep(path):
-    # 흰 배경 지우기 → (색, 알파 0~1)
+def prep(path, shadow_y=None):
+    # 흰 배경 지우기 → (색, 알파 0~1). shadow_y: 그 줄 아래 연보라 그림자도 배경
     im = np.array(Image.open(path).convert('RGB')).astype(float)
     white = (im.min(axis=2) > 222) & (im.max(axis=2) - im.min(axis=2) < 26)
+    if shadow_y is not None:
+        sh = (im.min(axis=2) > 165) & (im.max(axis=2) - im.min(axis=2) < 45) & (im[..., 2] >= im[..., 0] - 10)
+        sh |= (im.min(axis=2) > 180) & (np.abs(im[..., 1] - im[..., 2]) < 15)   # 불빛이 비친 분홍빛 그림자 가장자리 (피부·바지는 초록이 파랑보다 25 넘게 큼)
+        sh[:shadow_y] = False
+        white |= sh
     lab, _ = ndi.label(white)
     edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
     bg = np.isin(lab, edge[edge > 0])
@@ -165,8 +180,26 @@ def main():
 
     # 11·12: 그림 전체 (흩날리는 불티·불길 포함). drop = 기준점(발) 아래로 내려가는 칸 px
     drops = {}
-    for name, path, foot_y, cuts in POSES:
-        pim, pa = prep(path)
+    for name, path, foot_y, cuts, *opt in POSES:
+        pk = RING_K if opt else POSE_K
+        pim, pa = prep(path, SHADOW.get(name))
+        if name == 'ringcast':   # 발밑 불꽃 고리만 따로 → 이펙트 ring
+            r, g, b = pim[..., 0], pim[..., 1], pim[..., 2]
+            fire = (r > 150) & (b < 150) & ((r > g * 1.6) | ((r > 200) & (g > 120)))
+            fire[:RING_FX_TOP] = False
+            x0, x1, y0, y1 = RING_FX_SKIP; fire[y0:y1, x0:x1] = False
+            rm = fire & (pa > 0)
+            bl, n = ndi.label(rm, structure=np.ones((3, 3)))   # 고리 안쪽에 섞인 장화·그림자 조각(작은 덩어리)은 버림
+            rm &= np.isin(bl, 1 + np.where(ndi.sum(rm, bl, range(1, n + 1)) >= 30)[0])
+            rys, rxs = np.where(rm)
+            ring = np.dstack([pim, np.where(rm, pa, 0) * 255])[rys.min():rys.max() + 1, rxs.min():rxs.max() + 1]
+            # 뒤쪽 가운데는 몸에 가려 그려져 있지 않음 → 앞쪽 가운데 띠(불꽃 혀 없이 매끈한 곳)를 위아래로 뒤집어 채움
+            hh, w = ring.shape[0] // 2, ring.shape[1]
+            xa, xb = int(w * 0.1), int(w * 0.9)
+            flip = ring[::-1, xa:xb]
+            top = ring[:hh, xa:xb]
+            ring[:hh, xa:xb] = np.where(flip[:hh, :, 3:] > top[..., 3:], flip[:hh], top)
+            FX_EXTRA['ring'] = (ring, ring.shape[1] / 2, ring.shape[0] / 2)
         for x0, x1, y0, y1 in cuts: pa[y0:y1, x0:x1] = 0
         ys, xs = np.where(pa > 0)
         rgba = np.dstack([pim, pa * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
@@ -175,10 +208,10 @@ def main():
         body = bl == 1 + int(np.argmax(ndi.sum(k, bl, range(1, n + 1))))
         fy = (foot_y - ys.min()) if foot_y is not None else body.shape[0] - 1
         foot = np.where(body[max(0, fy - 8):fy + 1].any(axis=0))[0].mean()
-        p = shrink(rgba, POSE_K)
-        drops[len(pieces)] = int(round((rgba.shape[0] - 1 - fy) * POSE_K))
-        pieces.append((name, p, foot * POSE_K))
-        print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} ×{POSE_K} → {p.shape[1]}x{p.shape[0]}  발 {foot:.0f} 아래로 {drops[len(pieces) - 1]}')
+        p = shrink(rgba, pk)
+        drops[len(pieces)] = int(round((rgba.shape[0] - 1 - fy) * pk))
+        pieces.append((name, p, foot * pk))
+        print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} ×{pk} → {p.shape[1]}x{p.shape[0]}  발 {foot:.0f} 아래로 {drops[len(pieces) - 1]}')
 
     L = max(int(np.ceil(c)) for _, _, c in pieces) + 4
     R = max(int(np.ceil(p.shape[1] - c)) for _, p, c in pieces) + 4
