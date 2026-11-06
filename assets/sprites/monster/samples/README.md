@@ -72,7 +72,7 @@
 | `drake_mage_src.webp` | 화염 드레이크 | 넓은 칸의 불줄기 뿜기를 공격 2로, '공격 ②'(대기와 같음)·이름 없는 웅크린 칸은 안 씀 |
 | `dragonkin_mage_src.webp` | 용인족 주술사 | 보라 구슬 = 투사체 |
 | `dragonkin_healer_src.webp` | 용인족 사제 | 금빛 섬광 = 투사체 |
-| `wyvern_rogue_src.webp` | 급습 와이번 | **안 씀** — 피격·쓰러짐 1이 반대쪽을 보며 뒤집혀 있고 몸 색이 회색 바탕과 비슷함. 다시 받을 것 |
+| `wyvern_rogue_src.webp` | 급습 와이번 | 피격·쓰러짐 1이 반대쪽을 보며 뒤집혀 있어 좌우반전해서 씀. 몸 색이 회색 바탕과 비슷해 tol 7, 날개 밑 갇힌 바탕은 지움 |
 | `dragonkin_knight_src.webp` | 용비늘 기사 | |
 | `dragonkin_lancer_src.webp` | 용인족 창기사 | '피긱'(대기와 같음)·이름 없는 기울어진 칸은 안 씀, 칸 위 라벨 띠는 지움 |
 | `drake_sniper_src.webp` · `drake_sniper_walk_src.webp` | 화염포 드레이크 | 걷기 2칸은 다시 받은 칸(대기 크기에 맞춰 0.93배 더 줄임), 대포 불길 = 투사체 |

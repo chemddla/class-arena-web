@@ -208,7 +208,19 @@ SAMPLES['drake_sniper_walk'] = {
     'cells': {'walk_a': B(0, 333, 0, 302, min=150, drop=[(305, 333, 0, 40)]), 'walk_b': B(0, 333, 380, 747, min=150)},
 }
 SAMPLES['drake_sniper']['order'] = ['idle', 'drake_sniper_walk/walk_a', 'drake_sniper_walk/walk_b', 'atk_a', 'atk_b', 'hurt', 'death_a', 'death_b']
-# 급습 와이번: 샘플 오류가 커서 아직 안 씀 (피격·쓰러짐 1이 반대쪽을 보고 뒤집혀 있고, 회색 바탕과 몸 색이 비슷함)
+# 급습 와이번 (복면·남보라 날개·발톱 베기): 회색 바탕이 몸 색과 가까워 tol을 낮춤. 피격·쓰러짐 1은 반대쪽을 보고 뒤집혀 있어 좌우반전(~)해서 씀.
+# 공격 2의 보라 발톱 궤적은 그림에 둠. 쓰러짐 2 뒤 검은 연기 얼룩은 그대로
+SAMPLES['wyvern_rogue'] = {
+    'wm': (661, 921, 20),
+    'common': {'tol': 7, 'pocket': 120, 'min': 150},
+    'cells': {
+        'idle': B(42, 218, 44, 202, lab=[(10, 230, 8, 48)]), 'walk_a': B(58, 322, 238, 396, lab=[(10, 200, 208, 248)]),
+        'walk_b': B(378, 640, 225, 396),
+        'atk_a': B(78, 302, 444, 602), 'atk_b': B(368, 698, 444, 610),
+        'hurt': B(82, 332, 648, 806), 'death_a': B(106, 348, 848, 1008), 'death_b': B(458, 702, 842, 1010),
+    },
+    'order': ['idle', 'walk_a', 'walk_b', 'atk_a', 'atk_b', 'hurt~', 'death_a~', 'death_b'],
+}
 
 
 def snow_fix(cfg):
