@@ -5,7 +5,7 @@
 # 샘플 정리:
 #   - 흰 배경 = 가장자리에서 이어진 흰 픽셀 + 갇힌 흰 덩어리 중 ENCLOSED_MIN 이상 (불꽃 고리 안쪽·팔 사이 틈). 눈의 흰 하이라이트는 남김
 #   - 그림마다 3px 넓힌 덩어리(손 위 불덩이·튀는 불티까지 한 덩어리)로 고르고, 그 아래 한글 이름표 줄은 잘라 냄 (CUT_Y)
-#   - 발사 칸 오른쪽에 따로 떨어진 불덩이(투사체)는 다른 덩어리라 저절로 빠짐
+#   - 발사 칸 오른쪽에 따로 떨어진 불덩이는 다른 덩어리라 캐릭터 칸에서는 빠지고, 기본 공격 불씨 투사체로 따로 저장 (FX_OUT, 기준점 = 앞 끝)
 # 크기: 샘플은 모든 동작을 같은 크기로 그려서 대기 자세 키(머리카락 꼭대기~발)를 TARGET_H로 맞춘 배율 하나를 모든 칸에 씀
 import os, sys
 import numpy as np
@@ -17,6 +17,9 @@ from berserker_build import shrink
 
 SRC = 'assets/sprites/fx/samples/pyro_src.webp'
 OUT = 'assets/sprites/merc/pyro_0.webp'
+FX_OUT = 'assets/sprites/fx/pyro_fx.webp'   # 기본 공격 불씨 (날아가는 불덩이)
+EMBER_AT = (820, 523)   # 샘플에서 날아가는 불덩이 한 점
+FX_SCALE = 0.5          # 투사체 시트 배율 (게임에서는 h로 다시 줄여 그림)
 ENCLOSED_MIN = 15   # 갇힌 흰 덩어리가 이 px 이상이면 배경
 TARGET_H = 90   # 대기 자세 키 → 게임 칸 키 (마법사 topH 92, 소환사 88과 비슷하게)
 
@@ -74,6 +77,15 @@ def main():
         y = H - 2 - p.shape[0]
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
     Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
+
+    # 날아가는 불덩이 → 투사체 시트 (오른쪽으로 날아가는 그림, 기준점 = 오른쪽 끝 세로 가운데)
+    m = (blobs == blobs[EMBER_AT[1], EMBER_AT[0]]) & (a > 0)
+    ys, xs = np.where(m)
+    y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+    ember = shrink(np.dstack([im, np.where(m, a, 0) * 255])[y0:y1, x0:x1], FX_SCALE)
+    Image.fromarray(ember, 'RGBA').save(FX_OUT, 'WEBP', lossless=True)
+    eh, ew = ember.shape[:2]
+    print(f'pyro_fx ember: [0,0,{ew},{eh},{ew - 1},{eh / 2:g}]')
     print(f'pyro_0 cellW={cw} cellH={H} anchorX={L} anchorY={H - 2} count={len(pieces)} 대기 키={pieces[0][1].shape[0]}')
 
 
