@@ -14,12 +14,6 @@
 #   - 13·14번 샘플(165×203, 299×214)은 발밑 연보라 그림자를 지움 (SHADOW: 그 줄 아래 연보라 픽셀 = 배경)
 #   - 13번 발밑 불꽃 고리는 따로 떼어 이펙트 ring으로도 저장 (불의 고리가 유지되는 동안 발밑에 깔림, 기준점 = 고리 가운데)
 #     · 몸에 가려 그려져 있지 않던 뒤쪽 가운데는 앞쪽 가운데 띠를 뒤집어 채움
-# 불의 고리 이펙트 RING_OUT (샘플 RINGFX_SRC 825×1024 한 장에 여러 칸, ×RINGFX_K): 칸 이름 = RING_FRAMES 순서 (게임 PYRO_RING_FX.anims)
-#   - in = 고리가 피어오름 (1줄 3칸) · loop = 허리 고리 + 발밑 고리가 함께 타오름 (2줄 오른쪽 3칸 + 3줄 첫 칸) · out = 흩어짐 (4줄 왼쪽)
-#   - 칸마다 기준점 = 발밑 고리 가운데 (아래쪽 RING_LOW 비율 안 픽셀의 상자 가운데) → 칸이 바뀌어도 고리가 제자리
-#   - 고리가 두 개인 칸(loop·out)은 위 고리(허리)와 발밑 고리를 나눠 '<이름>_hi'·'<이름>' 두 칸으로 저장
-#     (게임에서 발밑 고리는 판정 범위 크기로 바닥에, 위 고리는 캐릭터 몸 크기로 허리에 따로 그림. _hi 기준점 = 위 고리 가운데)
-#   - 3줄 가운데·4줄 오른쪽의 넓은 칸은 아래 고리 두 개가 한 칸에 겹쳐 있어 뺌
 # 기본 공격 피격 이펙트 hit (샘플 HIT_SRC, 불티가 사방으로 튐, 기준점 = 가운데) → FX_OUT
 # 이펙트 시트 FX_OUT: ember (기본 공격 불씨, 큰 샘플 ×FX_SCALE) · bolt · burst · flash (따로 받은 샘플 그대로 1배, 게임에서 배율을 곱해 그림)
 #   - 8번은 따로 받은 샘플(CAST_SRC, 191×212)이라 크기가 달라서 키를 CAST_H로 맞춤. 몸에서 떨어진 불티 조각까지 모두 살림
@@ -45,15 +39,6 @@ ENCLOSED_MIN = 15   # 갇힌 흰 덩어리가 이 px 이상이면 배경
 CAST_SRC = 'assets/sprites/fx/samples/pyro_cast_src.png'
 FB_SRC = 'assets/sprites/fx/samples/pyro_fireball_src.png'
 SC_SRC = 'assets/sprites/fx/samples/pyro_scatter_src.png'
-RINGFX_SRC = 'assets/sprites/fx/samples/pyro_ringfx_src.webp'
-RING_OUT = 'assets/sprites/fx/pyro_ring_fx.webp'
-RINGFX_K = 0.5
-RING_LOW = 0.45
-RING_FRAMES = [   # (이름, 샘플 상자 x0, x1, y0, y1)
-    ('in0', 225, 396, 135, 246), ('in1', 427, 606, 110, 246), ('in2', 636, 813, 110, 246),
-    ('loop0', 211, 404, 290, 503), ('loop1', 412, 618, 290, 503), ('loop2', 621, 823, 290, 503), ('loop3', 0, 202, 540, 768),
-    ('out0', 0, 190, 830, 1024),
-]
 HIT_SRC = 'assets/sprites/fx/samples/pyro_hit_src.png'
 POSE_K = 0.66   # 11·12번 샘플 → 칸 배율
 # (칸 이름, 샘플, 장화 바닥 줄 (None = 그림 바닥), 지울 상자들 (x0, x1, y0, y1))
@@ -248,45 +233,6 @@ def main():
     ys, xs = np.where(m)
     y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
     ember = shrink(np.dstack([im, np.where(m, a, 0) * 255])[y0:y1, x0:x1], FX_SCALE)
-    # 불의 고리 이펙트 시트
-    rim, ra = prep(RINGFX_SRC)
-    rparts = []
-    for name, x0, x1, y0, y1 in RING_FRAMES:
-        m = np.zeros(ra.shape, bool); m[y0:y1, x0:x1] = ra[y0:y1, x0:x1] > 0
-        ys, xs = np.where(m)
-        q = np.dstack([rim, np.where(m, ra, 0) * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
-        k = q[..., 3] > 128
-        low = k.copy(); low[:int(k.shape[0] * (1 - RING_LOW))] = False
-        if not name.startswith('in'):   # 고리 두 개: 가운데쯤 가장 빈 줄에서 위·아래로 나눔
-            rows = k.sum(axis=1)
-            a0, a1 = int(k.shape[0] * 0.45), int(k.shape[0] * 0.8)
-            cut = a0 + int(np.argmin(rows[a0:a1]))
-            hi = q[:cut].copy()
-            hk = hi[..., 3] > 128
-            hys, hxs = np.where(hk)
-            hi = hi[hys.min():hys.max() + 1, hxs.min():hxs.max() + 1]
-            rparts.append((name + '_hi', shrink(hi, RINGFX_K), hi.shape[1] / 2 * RINGFX_K, hi.shape[0] / 2 * RINGFX_K, hi.shape[1] * RINGFX_K))
-            q = q.copy(); q[:cut, :, 3] = 0
-            k = q[..., 3] > 128
-            ys2, xs2 = np.where(k)
-            q = q[ys2.min():ys2.max() + 1, xs2.min():xs2.max() + 1]
-            k = q[..., 3] > 128
-            low = k
-        lys, lxs = np.where(low)
-        ax, ay = (lxs.min() + lxs.max()) / 2, (lys.min() + lys.max()) / 2
-        rparts.append((name, shrink(q, RINGFX_K), ax * RINGFX_K, ay * RINGFX_K, (lxs.max() - lxs.min()) * RINGFX_K))
-    W = sum(q.shape[1] for _, q, _, _, _ in rparts) + 2 * len(rparts)
-    Hh = max(q.shape[0] for _, q, _, _, _ in rparts)
-    atlas = np.zeros((Hh, W, 4), np.uint8)
-    x, out = 0, []
-    for name, q, ax, ay, lw in rparts:
-        atlas[:q.shape[0], x:x + q.shape[1]] = q
-        out.append(f"{name}: [[{x},0,{q.shape[1]},{q.shape[0]},{ax:.1f},{ay:.1f}]]")
-        x += q.shape[1] + 2
-    Image.fromarray(atlas, 'RGBA').save(RING_OUT, 'WEBP', lossless=True)
-    print('PYRO_RING_FX anims: { ' + ', '.join(out) + ' }')
-    print('발밑 고리 너비:', {n: round(lw, 1) for n, _, _, _, lw in rparts})
-
     him, ha = prep(HIT_SRC)
     ys, xs = np.where(ha > 0)
     hit = shrink(np.dstack([him, ha * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1], 0.5)
