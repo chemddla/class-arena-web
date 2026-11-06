@@ -14674,8 +14674,9 @@
       // 스킬 수에는 히든 스킬도 함께 셈
       const skillTotal = CODEX_JOBS.reduce((n, j) => n + Object.keys(JOB_SKILL_BOOK[j] || {}).length, 0);
       const skillOpen = CODEX_JOBS.reduce((n, j) => n + Object.keys(JOB_SKILL_BOOK[j] || {}).filter(k => codexSkillOpen(stu, j, k)).length, 0);
-      const monTotal = codexMonsterIds().length + ELITE_BOSS_DEFS.length;
-      const monOpen = codexMonsterIds().filter(id => book.monsters[id]).length + ELITE_BOSS_DEFS.filter(b => book.elites[b.id]).length;
+      const monEntries = codexMonsterEntries();
+      const monTotal = monEntries.length + ELITE_BOSS_DEFS.length;
+      const monOpen = monEntries.filter(e => book.monsters[e.id]).length + ELITE_BOSS_DEFS.filter(b => book.elites[b.id]).length;
       const secretList = codexSecretSkinList();
       const secretOpen = secretList.filter(e => book.secrets[e.key]).length;
       const petDex = PetSystem.dexState(stu);
@@ -14777,6 +14778,25 @@
       return `<div>
             <div class="text-xs font-extrabold text-fuchsia-700 mb-1.5">✨ 히든 스킬 (${open ? 1 : 0}/1)</div>
             ${open ? `
+    // 도감 기록 여러 개를 합침 (늘기만 하는 기록이라 한쪽에만 열린 칸도 모두 남김). 비었거나 잘못된 값은 건너뜀
+    function mergeCodexBooks(...books) {
+      const out = { jobs: {}, skills: {}, monsters: {}, elites: {}, secrets: {} };
+      books.forEach(b => {
+        if (!b || typeof b !== 'object') return;
+        ['jobs', 'monsters', 'elites', 'secrets'].forEach(k => {
+          const src = b[k];
+          if (src && typeof src === 'object') Object.keys(src).forEach(id => { if (src[id]) out[k][id] = true; });
+        });
+        const sk = b.skills;
+        if (sk && typeof sk === 'object') Object.keys(sk).forEach(job => {
+          const m = sk[job];
+          if (!m || typeof m !== 'object') return;
+          const dst = out.skills[job] || (out.skills[job] = {});
+          Object.keys(m).forEach(id => { if (m[id]) dst[id] = true; });
+        });
+      });
+      return out;
+    }
             <div class="hidden-skill-card border-2 rounded-xl p-3 flex flex-col gap-1.5">
               <div class="flex items-center justify-between gap-2 flex-wrap">
                 <span class="text-sm font-extrabold text-white">${hid.icon} ${hid.name}</span>
@@ -15388,7 +15408,8 @@
       const keys = Object.keys(MONSTER_SPRITE_DEFS).filter(k => k === monId
         || (k.startsWith(monId + '_') && JOB_DEFS[k.slice(monId.length + 1).split('_')[0]]));
       const key = keys.find(k => k === monId) || keys.find(k => k.startsWith(monId + '_warrior')) || keys[0];
-      const def = (elite && MONSTER_SPRITE_DEFS[`elite_${monId}`]) || (job ? monsterJobSprite(monId, job, skillKey) : key && MONSTER_SPRITE_DEFS[key]);
+      // 그 직업 그림이 아직 없으면 같은 몬스터의 다른 그림으로 대신 보여 줌
+      const def = (elite && MONSTER_SPRITE_DEFS[`elite_${monId}`]) || (job && monsterJobSprite(monId, job, skillKey)) || (key && MONSTER_SPRITE_DEFS[key]);
       const mon = MONSTER_DEFS[monId] || {};
       if (!def || !def.src) return `<span style="font-size:${Math.round(size * 0.6)}px;line-height:1">${mon.icon || '👾'}</span>`;
       const frame = (def.anims && def.anims.idle && def.anims.idle[0]) || 0;
@@ -15416,20 +15437,20 @@
           <div><div class="text-sm font-extrabold text-slate-500">🔒 ???</div><div class="text-[11px] text-slate-500 mt-0.5">${text}</div></div>
         </div>`;
       const raceHtml = TOWER_RACES.map((race, ri) => {
-        const ids = codexRaceMonsterIds(race);
-        const nOpen = ids.filter(id => book.monsters[id]).length;
+        const entries = codexRaceEntries(race);
+        const nOpen = entries.filter(e => book.monsters[e.id]).length;
         const floors = `${ri * 10 + 1}~${ri * 10 + 10}층`;
-        const cards = ids.map(id => {
+        const cards = entries.map(({ id, job, name, skill, isBoss }) => {
           if (!book.monsters[id]) return lockedCard('모험의 탑에서 한 번이라도 처치하면 열려요.');
           const mon = MONSTER_DEFS[id];
-          const isBoss = id === race.boss;
+          const jd = JOB_DEFS[job];
           const passives = (mon.passives || []).map(p => MONSTER_PASSIVES[p]).filter(Boolean);
           return `
             <div class="bg-slate-950 border ${isBoss ? 'border-amber-500/50' : 'border-slate-800'} rounded-xl p-3 flex gap-3">
-              <div class="gl-race-bd w-16 h-16 shrink-0 rounded-lg bg-slate-900 flex items-center justify-center overflow-hidden" data-race="${race.name}">${getMonsterCodexArtHTML(id, 64)}</div>
+              <div class="gl-race-bd w-16 h-16 shrink-0 rounded-lg bg-slate-900 flex items-center justify-center overflow-hidden" data-race="${race.name}">${getMonsterCodexArtHTML(id, 64, job, skill)}</div>
               <div class="min-w-0 flex flex-col gap-1">
                 <div class="flex items-center gap-1.5 flex-wrap">
-                  <span class="text-sm font-extrabold text-white">${mon.icon} ${mon.name}</span>
+                  <span class="text-sm font-extrabold text-white">${mon.icon} ${name}</span>
                   ${isBoss ? '<span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold">👑 종족 보스</span>' : ''}
                 </div>
                 ${MONSTER_CODEX_DESC[id] ? `<p class="text-[11px] text-slate-300 leading-snug">${MONSTER_CODEX_DESC[id]}</p>` : ''}
@@ -15441,7 +15462,7 @@
           <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-2">
             <div class="flex items-center justify-between gap-2 flex-wrap">
               <h4 class="font-title text-lg ${nOpen ? 'text-emerald-300' : 'text-slate-500'}">${nOpen ? `${race.name} · ${race.zone}` : '🔒 알 수 없는 종족'}</h4>
-              <span class="text-[11px] font-bold text-slate-400">🗼 ${floors} · ${nOpen}/${ids.length}</span>
+              <span class="text-[11px] font-bold text-slate-400">🗼 ${floors} · ${nOpen}/${entries.length}</span>
             </div>
             ${nOpen ? `<p class="text-[11px] text-slate-400">${race.desc}</p>` : ''}
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">${cards}</div>
@@ -15537,6 +15558,29 @@
               <div class="grid grid-cols-4 gap-1 text-center bg-slate-950/90 rounded-xl p-2 text-xs mb-3">
                 <div class="cursor-help rounded-lg py-0.5 hover:bg-slate-800/60 transition"
                   onmouseenter="showStatTooltip(event, ${idx}, 'hp', true)"
+    // 도감 카드 목록: 종족 보스 + 직업 편성(TOWER_RACE_SQUADS)의 칸 하나하나 (같은 몬스터라도 직업마다 따로, 예: 용인족 전사·궁수·주술사…)
+    // 카드는 그 몬스터(id)를 한 번이라도 처치하면 열림
+    function codexRaceEntries(race) {
+      const squad = TOWER_RACE_SQUADS[race.name] || {};
+      const list = [];
+      const seen = new Set();
+      const add = (id, job, name, skill, isBoss) => {
+        if (!MONSTER_DEFS[id]) return;
+        const key = `${id}|${job}|${name}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        list.push({ id, job, name, skill, isBoss });
+      };
+      add(race.boss, race.bossJob, MONSTER_DEFS[race.boss] && MONSTER_DEFS[race.boss].name, (squad.boss || [])[0], true);
+      Object.keys(squad).forEach(job => {
+        if (job === 'boss' || !Array.isArray(squad[job])) return;
+        squad[job].forEach(e => { if (e) add(e[0], job, e[1] || (MONSTER_DEFS[e[0]] && MONSTER_DEFS[e[0]].name), (e[2] || [])[0], false); });
+      });
+      return list;
+    }
+    function codexMonsterEntries() {
+      return TOWER_RACES.flatMap(codexRaceEntries);
+    }
                   onmousemove="moveStatTooltip(event)"
                   onmouseleave="hideStatTooltip()">
                   <div class="text-[10px] text-slate-400">체력</div>
@@ -15586,6 +15630,7 @@
 
     function setTowerFloorFilter(rangeKey) {
       currentTowerFloorFilter = rangeKey;
+                  ${jd ? `<span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-bold">${jd.icon} ${jd.name}</span>` : ''}
       ['all', '1-40', '41-80', '81-120', '121-160', '161-200'].forEach(k => {
         const btn = document.getElementById(`tfilter-${k}`);
         if (btn) {
@@ -35449,7 +35494,8 @@
         STUDENT_PRIVATE_KEYS.forEach(k => {
           if ((studentPriv.legacy[id] || []).includes(k)) return;
           if (priv[k] == null) { if (vals) delete vals[k]; return; } // 서버에 없음 → 이 기기 값을 다음 저장 때 올림
-          local[k] = JSON.parse(JSON.stringify(priv[k]));
+          // 도감은 늘기만 하는 기록 → 서버 값에 이 기기에서 새로 연 칸을 합침 (합친 차이는 다음 저장 때 올라감)
+          local[k] = k === 'codex' ? mergeCodexBooks(priv[k], local[k]) : JSON.parse(JSON.stringify(priv[k]));
           if (vals) { const c = syncCanon(priv[k]); if (c === undefined) delete vals[k]; else vals[k] = c; }
         });
         if (vals) syncCache.students[id] = syncSig(vals);
@@ -35457,7 +35503,6 @@
     }
     // 서버 students 원본에 나만 쓰는 칸을 합침 · 아직 못 받은 학생은 이 기기 값을 그대로 둠 (빈 값으로 덮어 지우지 않게)
     function mergeStudentPrivate(rawStudents) {
-      if (studentPriv.off) return rawStudents || {};
       const out = {};
       const localById = new Map((state.students || []).map(x => [x.id, x]));
       Object.keys(rawStudents || {}).forEach(id => {
@@ -35615,6 +35660,22 @@
     function hashStudentPassword(stu, pw) {
       return 'h:' + simpleHashString('pw:' + (stu && stu.id ? stu.id : '') + ':' + String(pw || ''));
     }
+      if (studentPriv.off) {
+        // 예전 방식으로 저장하는 동안에도 서버 students에 없는 나만 쓰는 칸은 이 기기 값을 그대로 둠
+        // (지우면 도감이 빈 값으로 다시 만들어져 그대로 서버에 올라갔음)
+        Object.keys(rawStudents || {}).forEach(id => {
+          const raw = rawStudents[id];
+          const local = localById.get(id);
+          if (!raw || typeof raw !== 'object' || !local) { out[id] = raw; return; }
+          const rec = { ...raw };
+          STUDENT_PRIVATE_KEYS.forEach(k => {
+            if (k === 'codex' && raw[k] != null) rec[k] = mergeCodexBooks(raw[k], local[k]);
+            else if (raw[k] == null && local[k] !== undefined) rec[k] = local[k];
+          });
+          out[id] = rec;
+        });
+        return out;
+      }
 
     function checkStudentPassword(stu, input) {
       return legacyStudentPasswordMatches(stu, String((stu && state.localPwHashes && state.localPwHashes[stu.id]) || ''), input);
@@ -35624,6 +35685,11 @@
     function legacyStudentPasswordMatches(stu, stored, input) {
       if (!stored) return false;
       if (stored.startsWith('h:')) return stored === hashStudentPassword(stu, input);
+          // 예전 버전(오래 열어 둔 탭 등)이 students에 쓴 도감은 거의 빈 값일 수 있음 → 서버 전용 칸·이 기기 값과 합침 (덮어쓰면 도감이 초기화됐음)
+          if (k === 'codex' && raw[k] != null) {
+            rec[k] = mergeCodexBooks(raw[k], studentPrivKnown(id) ? priv[k] : null, local && local[k]);
+            return;
+          }
       return stored === input;
     }
 
