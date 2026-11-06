@@ -5228,7 +5228,7 @@
         meteor: {
           id: 'meteor', name: '메테오', icon: '☄️', ccTag: '✨히든 · 초광역·불티 폭발', hidden: true,
           manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 3,
-          desc: '3초간 하늘로 지팡이를 든 뒤 적이 가장 많이 모인 자리에 거대 운석을 떨어뜨립니다. 반지름 10칸 안의 적 모두에게 400% 피해와 4초 [화상], 이어서 그 적들의 [불티]를 모두 터뜨려요 (불티 1개당 80%). 터뜨린 뒤 맞은 적마다 [불티] 3개를 쌓아요. 시크릿 레어 불사조는 반지름 15칸.'
+          desc: '3초간 하늘로 지팡이를 든 뒤 적이 가장 많이 모인 자리에 거대 운석을 떨어뜨립니다. 반지름 10칸 안의 적 모두에게 400% 피해와 4초 [화상], 이어서 그 적들의 [불티]를 모두 터뜨려요 (불티 1개당 80%). 터뜨린 뒤 맞은 적마다 [불티] 3개를 쌓아요. 시크릿 레어 불사조는 반지름 15칸이고, 땅에 닿을 때 40% 피해와 [화상], 0.7초 뒤 폭발하며 나머지 60% 피해와 [불티] 폭발이 들어가요.'
         }
       },
       summoner: {
@@ -8911,8 +8911,8 @@
       anims: { fall: [[0,0,406,136,364.8,79.0]], hit: [[408,0,432,274,302.5,204.2]], boom: [[842,0,432,274,302.5,204.2]] } // 착탄·폭발 기준점 = 그림 속 운석 가운데 (떨어지던 운석과 겹침)
     };
     const PYRO_SR_METEOR_DIR = 36.5 * Math.PI / 180; // 불사조 운석이 내려오는 각도 (샘플 그림과 같음)
-    const PYRO_SR_METEOR_LIFE = 115;   // 착탄 그림 + 폭발 그림 전체 길이 (60fps 프레임, 약 1.9초)
-    const PYRO_SR_METEOR_HIT = 42;     //   그중 착탄 그림만 보이는 앞부분 (약 0.7초 뒤 터짐 · 2026-11-07 사용자 요청으로 0.27초에서 늘림)
+    const PYRO_SR_METEOR_LIFE = 115;   // 착탄 그림 + 폭발 그림 전체 길이 (60fps 프레임, 약 1.9초) → 폭발 그림 = LIFE - HIT
+    const PYRO_SR_METEOR_HIT = 42;     //   착탄 그림 길이 (실제 폭발 시점은 전투 틱 PYRO_METEOR_SR_BOOM_DELAY, 이 값은 받는 화면 안전 수명에 씀)
     const PYRO_SR_METEOR_K = 1.5 * 220 / 55 * 0.8 * 0.9; // 시트 배율: 바위 지름 = 기본 메테오 바위(약 220)의 1.5배에서 20%, 다시 10% 줄임 (2026-11-07 사용자 요청 · 공격 범위는 그대로)
     const PYRO_FRING_W = 204;       // 플레임 링 고리 그림의 타원 너비 → 공격 범위 지름에 맞춤 (튀는 불티는 범위 밖으로 나가도 그대로)
     const PYRO_FX_SAMPLE_K = 0.455; // 9·10번 칸 샘플 → 캐릭터 칸 배율 (이펙트도 같은 배율)
@@ -24678,6 +24678,8 @@
     const PYRO_METEOR_STUN = 90;
     const PYRO_METEOR_EMBER = 3;             //   터뜨린 뒤 맞은 적마다 불티 3개
     const PYRO_METEOR_SR_MULT = 1.5;         //   시크릿 레어 불사조: 반지름 1.5배
+    const PYRO_METEOR_SR_IMPACT_SHARE = 0.4; //   불사조: 피해를 둘로 나눔 — 땅에 닿을 때 40% (+화상), 폭발할 때 나머지 60% (+불티 폭발·불티 3개)
+    const PYRO_METEOR_SR_BOOM_DELAY = 28;    //   땅에 닿고 폭발하기까지 (틱, 0.7초) — 폭발 그림도 이 순간에 나옴
     const isSrPyro = u => Boolean(u && u.job === 'pyro' && !u.monsterType && (u.skinVariant || 0) === SECRET_SKIN_BASE + 1);
     const pyroMeteorCells = u => PYRO_METEOR_CELLS * (isSrPyro(u) ? PYRO_METEOR_SR_MULT : 1);
     // 시크릿 레어 불사조 특수 패시브 [불사조의 부활]: 쓰러지는 순간 알이 되어 10초간 무적 (피해·상태이상을 받지 않고 적이 노리지 못함, 행동도 못 함)
@@ -24971,19 +24973,31 @@
       return false;
     }
 
-    // 메테오 착탄: 반지름 5칸 400% + 화상 → 이어서 내 불티를 모두 터뜨림 → 맞은 적에게 불티 3개
+    // 메테오 착탄: 반지름 10칸 400% + 화상 → 이어서 내 불티를 모두 터뜨림 → 맞은 적에게 불티 3개
+    //   시크릿 레어 불사조: 땅에 닿을 때 40% + 화상만 → PYRO_METEOR_SR_BOOM_DELAY 뒤 폭발하며 나머지 60% + 불티 폭발 (pyroSrMeteorBoom)
     function pyroMeteorImpact(owner, x, y) {
       if (!owner) return;
       const R = GRID_CELL_SIZE * pyroMeteorCells(owner) * unitAreaScale(owner);
-      if (isSrPyro(owner)) sim.effects.push({ type: 'pyro_sr_meteor', x, y: y - 12, life: PYRO_SR_METEOR_LIFE, maxLife: PYRO_SR_METEOR_LIFE }); // 불사조: 착탄 → 폭발 전용 그림. 떨어지던 운석 자리(투사체 기준 12 위)에 그림 속 운석을 겹침
-      else sim.effects.push({ type: 'pyro_meteor_impact', x, y: y - 12, life: 90, maxLife: 90 }); // 떨어지던 바위 자리(투사체 기준 12 위)에 그대로 박힘
-      sim.shake = { power: 24, life: 30, maxLife: 30 }; // 화면만 흔듦 (범위 원·화면 번쩍임 같은 코드 이펙트 없이 받은 그림만)
+      const sr = isSrPyro(owner);
+      if (sr) {
+        // 불사조: 땅에 박힌 착탄 그림 (폭발 순간 pyroSrMeteorBoom이 지우고 폭발 그림으로 바꿈. 받는 화면은 수명으로 사라짐)
+        const hitEf = { type: 'pyro_sr_meteor_hit', x, y: y - 12, life: PYRO_SR_METEOR_HIT + 30, maxLife: PYRO_SR_METEOR_HIT + 30 };
+        sim.effects.push(hitEf);
+        (owner.pyroSrBooms = owner.pyroSrBooms || []).push({ at: sim.tickCount + PYRO_METEOR_SR_BOOM_DELAY, x, y, ef: hitEf });
+      } else sim.effects.push({ type: 'pyro_meteor_impact', x, y: y - 12, life: 90, maxLife: 90 }); // 떨어지던 바위 자리(투사체 기준 12 위)에 그대로 박힘
+      sim.shake = { power: sr ? 14 : 24, life: 30, maxLife: 30 }; // 화면만 흔듦 (범위 원·화면 번쩍임 같은 코드 이펙트 없이 받은 그림만)
       playCombatSfx('heavy');
       const foes = pyroFoes(owner).filter(e => Math.hypot(e.x - x, e.y - y) - unitBodyGap(e) <= R);
       foes.forEach(e => {
-        applyDamage(owner, e, owner.atk * PYRO_METEOR_DMG, '☄️', '#dc2626');
+        applyDamage(owner, e, owner.atk * PYRO_METEOR_DMG * (sr ? PYRO_METEOR_SR_IMPACT_SHARE : 1), '☄️', '#dc2626');
         inflictStatus(owner, e, 'burn', PYRO_METEOR_BURN);
       });
+      if (sr) { addBattleLog(`☄️ 메테오 착탄! ${foes.length}명 피격 · 곧 폭발해요`); return; }
+      const popped = pyroMeteorPop(owner, foes);
+      addBattleLog(`☄️ 메테오 착탄! ${foes.length}명 피격${popped ? ` · 불티 폭발 ${popped}명` : ''}`);
+    }
+    // 메테오 불티 폭발: 맞은 적의 내 불티를 모두 터뜨림 (5개면 기절) → 불티 3개를 새로 쌓음. 터진 적 수를 돌려줌
+    function pyroMeteorPop(owner, foes) {
       let popped = 0;
       foes.forEach(e => {
         if (!e.alive) return;
@@ -24995,7 +25009,21 @@
         if (n >= PYRO_EMBER_MAX) inflictStatus(owner, e, 'stun', PYRO_METEOR_STUN);
       });
       foes.forEach(e => { if (e.alive) pyroAddEmber(owner, e, PYRO_METEOR_EMBER); }); // 터뜨린 뒤 불티 3개
-      addBattleLog(`☄️ 메테오 착탄! ${foes.length}명 피격${popped ? ` · 불티 폭발 ${popped}명` : ''}`);
+      return popped;
+    }
+    // 불사조 메테오 폭발 (착탄 PYRO_METEOR_SR_BOOM_DELAY 뒤): 그때 범위 안의 적에게 나머지 60% + 불티 폭발
+    function pyroSrMeteorBoom(owner, b) {
+      const i = sim.effects.indexOf(b.ef);
+      if (i >= 0) sim.effects.splice(i, 1);
+      const life = PYRO_SR_METEOR_LIFE - PYRO_SR_METEOR_HIT;
+      sim.effects.push({ type: 'pyro_sr_meteor', x: b.x, y: b.y - 12, life, maxLife: life });
+      sim.shake = { power: 24, life: 30, maxLife: 30 };
+      playCombatSfx('heavy');
+      const R = GRID_CELL_SIZE * pyroMeteorCells(owner) * unitAreaScale(owner);
+      const foes = pyroFoes(owner).filter(e => Math.hypot(e.x - b.x, e.y - b.y) - unitBodyGap(e) <= R);
+      foes.forEach(e => applyDamage(owner, e, owner.atk * PYRO_METEOR_DMG * (1 - PYRO_METEOR_SR_IMPACT_SHARE), '💥', '#dc2626'));
+      const popped = pyroMeteorPop(owner, foes);
+      addBattleLog(`💥 메테오 폭발! ${foes.length}명 피격${popped ? ` · 불티 폭발 ${popped}명` : ''}`);
     }
 
     // 매 틱: 플레임 링 다단히트 · 지난 불티 정리 (방장·혼자 하는 전투만, 받는 화면은 emberShow를 받음)
@@ -25005,6 +25033,14 @@
         sim.pyroFxWarm = sim;
         [PYRO_FX, PYRO_METEOR_FX, PYRO_SR_METEOR_FX].forEach(d => d.ready);
       }
+      // 불사조 메테오: 착탄 뒤 폭발할 차례가 된 것 (화염술사가 그사이 쓰러져도 터짐)
+      sim.units.forEach(u => {
+        if (!u.pyroSrBooms || !u.pyroSrBooms.length) return;
+        const due = u.pyroSrBooms.filter(b => b.at <= sim.tickCount);
+        if (!due.length) return;
+        u.pyroSrBooms = u.pyroSrBooms.filter(b => b.at > sim.tickCount);
+        due.forEach(b => pyroSrMeteorBoom(u, b));
+      });
       sim.units.forEach(u => {
         if (u.emberBy) {
           let mx = 0;
@@ -29300,14 +29336,12 @@
           if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }
           continue;
         }
-        if (ef.type === 'pyro_sr_meteor') {
-          // 불사조 메테오: 처음 PYRO_SR_METEOR_HIT 프레임은 운석이 땅에 박힌 착탄 그림 (바로 터지지 않고 잠깐 머묾),
-          //   그 뒤 폭발 그림이 살짝 커지며 폭발 구간의 마지막 절반 동안 흐려짐 (피해는 착탄 순간 그대로)
+        if (ef.type === 'pyro_sr_meteor_hit' || ef.type === 'pyro_sr_meteor') {
+          // 불사조 메테오: pyro_sr_meteor_hit = 땅에 박힌 착탄 그림 (폭발 순간 지워짐) · pyro_sr_meteor = 폭발 그림 (살짝 커지며 뒤 절반 동안 흐려짐)
           if (PYRO_SR_METEOR_FX.ready) {
-            const A = PYRO_SR_METEOR_FX.anims, el = (ef.maxLife || PYRO_SR_METEOR_LIFE) - ef.life, hit = el < PYRO_SR_METEOR_HIT;
-            const bp = hit ? 0 : (el - PYRO_SR_METEOR_HIT) / ((ef.maxLife || PYRO_SR_METEOR_LIFE) - PYRO_SR_METEOR_HIT); // 폭발 구간 진행 0~1
-            const grow = 1 + bp * 0.08;
-            drawFxFrame(ctx, (hit ? A.hit : A.boom)[0], ef.x, ef.y, PYRO_SR_METEOR_K * grow, 0, Math.min(1, (1 - bp) / 0.5), PYRO_SR_METEOR_FX.img);
+            const A = PYRO_SR_METEOR_FX.anims, hit = ef.type === 'pyro_sr_meteor_hit';
+            const grow = hit ? 1 : 1 + progress * 0.08;
+            drawFxFrame(ctx, (hit ? A.hit : A.boom)[0], ef.x, ef.y, PYRO_SR_METEOR_K * grow, 0, hit ? 1 : Math.min(1, (1 - progress) / 0.5), PYRO_SR_METEOR_FX.img);
           }
           ctx.restore();
           if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }
