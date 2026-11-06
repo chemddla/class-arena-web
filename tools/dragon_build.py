@@ -128,13 +128,13 @@ SAMPLES['drake_sniper'] = {
 }
 # 서리 용인족 (얼음 비늘·털 코트·얼음 지팡이): 칸마다 눈밭 그림. 눈 바닥선 아래는 어두운 부츠만 남김.
 # '쓰러짐 1'은 대기와 같은 그림이라 안 쓰고 피격 → 쓰러짐 2로 이어 씀
-SNOW = {'r1': 221, 'r2': 511, 'r3': 771}
 SAMPLES['dragonkin_frost'] = {
-    'common': {'tol': 9, 'min': 120},
+    # 흰 바탕으로 다시 받은 샘플 (처음 샘플은 어두운 눈밭 패널이라 코트가 바탕과 같은 색이었음). 얼음 몸이 밝아서 tol을 낮게
+    'common': {'tol': 12, 'pocket': 12, 'min': 120},
     'cells': {
-        'idle': B(36, 215, 41, 236, snow=SNOW['r1']), 'walk_a': B(245, 423, 41, 236, snow=SNOW['r1']), 'walk_b': B(455, 633, 41, 236, snow=SNOW['r1']),
-        'atk_a': B(36, 215, 341, 526, snow=SNOW['r2']), 'atk_b': B(245, 423, 341, 526, snow=SNOW['r2']), 'hurt': B(455, 633, 341, 526, snow=SNOW['r2']),
-        'death_b': B(245, 423, 630, 786, snow=SNOW['r3']),
+        'idle': B(34, 218, 40, 248), 'walk_a': B(243, 425, 40, 248), 'walk_b': B(453, 635, 40, 248),
+        'atk_a': B(34, 218, 340, 540), 'atk_b': B(243, 425, 340, 540), 'hurt': B(453, 635, 340, 540),
+        'death_b': B(243, 425, 630, 797),
     },
     'order': ['idle', 'walk_a', 'walk_b', 'atk_a', 'atk_b', 'hurt', 'hurt', 'death_b'],
 }
@@ -240,7 +240,6 @@ def snow_fix(cfg):
     return fix
 
 
-SAMPLES['dragonkin_frost']['fix'] = snow_fix(SAMPLES['dragonkin_frost'])
 
 
 

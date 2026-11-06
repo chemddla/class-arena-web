@@ -76,7 +76,7 @@
 | `dragonkin_knight_src.webp` | 용비늘 기사 | |
 | `dragonkin_lancer_src.webp` | 용인족 창기사 | '피긱'(대기와 같음)·이름 없는 기울어진 칸은 안 씀, 칸 위 라벨 띠는 지움 |
 | `drake_sniper_src.webp` · `drake_sniper_walk_src.webp` | 화염포 드레이크 | 걷기 2칸은 다시 받은 칸(대기 크기에 맞춰 0.93배 더 줄임), 대포 불길 = 투사체 |
-| `dragonkin_frost_src.webp` | 서리 용인족 | 눈밭 바닥선 아래는 어두운 부츠만 남김. '쓰러짐 1'이 대기와 같은 그림이라 피격 → 쓰러짐 2 |
+| `dragonkin_frost_src.webp` | 서리 용인족 | 흰 바탕으로 다시 받은 샘플 (처음 어두운 눈밭 패널 샘플은 git 기록에). '쓰러짐 1'이 대기와 같은 그림이라 피격 → 쓰러짐 2 |
 | `wyvern_curse_src.webp` | 저주 와이번 | '일반공격 1' 두 칸(웅크림·구슬 모으기) 다 씀, 보라 불길 = 투사체. 날개·꼬리 사이 갇힌 바탕도 지움 |
 | `dragonkin_bard_src.webp` | 용인족 전고수 | |
 | `dark_dragon_src.webp` · `dark_dragon_skill_src.webp` | 심연마룡 (탑 보스) | 걷기 두 칸은 소품이 칸마다 바뀌어 안 씀. 스킬 5종(돌진·파이어볼·사자후·화살비·썬더볼트) × 2칸은 1.5배로 키워 붙임 |
