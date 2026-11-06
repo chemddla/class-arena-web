@@ -1645,6 +1645,19 @@
     <!-- 도트 이펙트 엔진 (pixelfx 작법: 색+빛 두 층, 팔레트 램프, 빠른 터짐·느린 사라짐) -->
     <script src="assets/pixelfx-lite.js"></script>
     <script>
+      // 배포본 그림 주소에 파일 내용 해시 붙이기 (tools/stamp-asset-versions.cjs가 배포할 때 window.__ASSET_V = { 'assets/…': 해시 }를 넣음)
+      //   글자 그대로 적힌 주소는 배포할 때 이미 ?v=해시가 붙어 있고, 코드로 조립한 주소(`…/${job}_sr${n}.webp` 등)는 여기서 그림을 불러오는 순간 붙임
+      //   → 그림을 고쳐도 브라우저가 1시간 동안 옛 그림을 쓰다가 새 칸 크기로 잘려 동작이 깨지는 일이 없음. 로컬 개발(표 없음)에서는 아무것도 안 함
+      function assetVer(src) {
+        const V = window.__ASSET_V;
+        if (!V || typeof src !== 'string' || src.includes('?')) return src;
+        const m = src.match(/^(?:\.\/)?(assets\/[^#]+)$/);
+        return m && V[m[1]] ? `${src}?v=${V[m[1]]}` : src;
+      }
+      if (window.__ASSET_V) {
+        const d = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+        if (d && d.set) Object.defineProperty(HTMLImageElement.prototype, 'src', { get() { return d.get.call(this); }, set(v) { d.set.call(this, assetVer(v)); }, configurable: true, enumerable: d.enumerable });
+      }
       // 출발·학급 만들기 버튼을 누르면 버튼에서 금빛 불꽃이 터짐 (화면이 바뀌어도 위에 남음)
       document.addEventListener('click', (e) => {
         const b = e.target.closest?.('.lp-btn-go, .lp-btn-make');
@@ -10013,6 +10026,7 @@
     // 세 값은 열거되지 않는 속성이라 {...def}로 복사해도 그림을 받지 않고, 복사본에 따라가지도 않음
     function makeLazyImageDef(def, onLoad) {
       if (Object.getOwnPropertyDescriptor(def, 'img')?.get) return; // 같은 def가 두 표에 들어 있으면 한 번만
+      if (def.src) def.src = assetVer(def.src); // 배포본: 코드로 조립한 주소에도 내용 해시 (CSS 배경 url(sp.src)에도 같이 쓰임)
       const img = new Image();
       img.decoding = 'async';
       let ready = false, portraits = null, started = false;

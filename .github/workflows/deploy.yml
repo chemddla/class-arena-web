@@ -1,7 +1,7 @@
 name: Deploy Class Arena
 
 # main에 push하면 바뀐 부분만 골라서 배포
-#   게임 사이트   ← index.html, assets/, tools/minify-html.cjs
+#   게임 사이트   ← index.html, assets/, tools/minify-html.cjs, tools/stamp-asset-versions.cjs
 #   관리자 사이트 ← admin/
 #   DB 보안 규칙  ← database.rules.json (tests/의 규칙 테스트를 통과해야만 배포)
 # Actions 탭에서 직접 실행(workflow_dispatch)하면 고른 대상을 바뀐 것과 상관없이 배포
@@ -67,7 +67,7 @@ jobs:
           echo "바뀐 파일:"; echo "$files"
           has() { echo "$files" | grep -qE "$1" && echo true || echo false; }
           wf='^\.github/workflows/deploy\.yml$'
-          echo "game=$(has "^index\.html$|^assets/|^tools/minify-html\.cjs$|^tools/redirect\.html$|$wf")" >> "$GITHUB_OUTPUT"
+          echo "game=$(has "^index\.html$|^assets/|^tools/minify-html\.cjs$|^tools/stamp-asset-versions\.cjs$|^tools/redirect\.html$|$wf")" >> "$GITHUB_OUTPUT"
           echo "admin=$(has "^admin/|$wf")" >> "$GITHUB_OUTPUT"
           echo "rules=$(has "^database\.rules\.json$|^tests/|$wf")" >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
@@ -102,6 +102,11 @@ jobs:
           cp -r assets public/assets
           # 게임이 불러오지 않는 원본 샘플 그림(약 4MB)은 배포에서 뺌
           find public/assets -type d -name samples -prune -exec rm -rf {} +
+
+      # 그림·소리 주소에 파일 내용 해시(?v=…)를 붙임: assets/는 1시간 캐시라, 그림을 고쳐도 주소가 같으면 옛 그림이 새 칸 크기로 잘려 동작이 깨졌음
+      # 글자 그대로 적힌 주소는 바로 바꾸고, 코드로 조립하는 주소용 파일 → 해시 표(window.__ASSET_V)를 넣음 (index.html assetVer)
+      - name: Stamp asset versions
+        run: node tools/stamp-asset-versions.cjs public
 
       # 디자인(Tailwind)을 학생 기기에서 매번 계산하지 않도록, 배포할 때 CSS를 미리 만들어 넣음
       # (개발할 때는 index.html의 CDN 스크립트로 바로 확인하고, 배포본만 미리 만든 CSS를 씀)
