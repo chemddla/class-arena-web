@@ -5486,6 +5486,7 @@
     }
     // viewer(AI·조준하는 유닛)에게 e가 은신으로 안 보이는지
     function hiddenFrom(viewer, e) {
+      if (e && e.statuses && e.statuses.rebirth > 0) return true; // 불사조의 알: 보스도 노리지 못함
       return isStealthed(e) && !seesStealth(viewer);
     }
     // 암흑: 걸린 유닛은 둘레 DARKNESS_SIGHT_R 밖의 적을 알아보지 못함 (AI 표적에서 빠짐)
@@ -6991,10 +6992,11 @@
       // 화염술사 SR 1 (불사조, tools/pyro_sr1_build.py): 18칸 = 0 대기 · 1~2 걷기 · 3 공격 준비 (손 위 불꽃) · 4 공격 발사 (손을 뻗음) · 5 피격 · 6~7 쓰러짐 (무릎 꿇음 → 재)
       //   · 8 파이어볼·플레어 시전 (두 손 사이 불덩이) · 9 (안 씀) · 10 플레어 발사 · 11 걷기 3 · 12 메테오 시전 앞 (머리 위 불덩이) · 13 메테오 시전 끝 (주먹 앞 불꽃)
       //   · 14 플레임 링 시전 (발밑 고리) · 15 파이어볼 발사 · 16 익스플로전 시전 (주먹을 치켜듦, 발밑 불길) · 17 익스플로전 발동 (불티가 사방으로) · 18 대쉬 (불꽃 고리를 뚫고 날아감, dashRun) · 19 이그나이트 (한 손에 불꽃을 쥠, 시전 막대 동안 + 발동)
+      //   · 20 알 · 21 불꽃의 응축 (태동) · 22 공중 웅크리기 (부활 직전) · 23 공중 포효 (부활) — 특수 패시브 [불사조의 부활] (PHOENIX_REBIRTH_TICKS)
       //   0번과 칸 번호가 달라 동작·시전 자세를 다시 적음. 0번은 발동 자세가 없지만 불사조는 파이어볼·플레어·익스플로전 발동 자세를 보임 (skillAnims, castPyroSkill 뒤에도 유지)
-      pyro_sr1: { cellW: 173, cellH: 158, anchorX: 92, anchorY: 146, standH: 80, topH: 118, portraitCX: 97, count: 20, fireHand: [62, -45], scatterHand: [77, -47],
-        anims: { idle: [0], walk: [1, 2, 11, 2], attack: [3, 4], skill: [3, 4], hurt: [5], death: [6, 7], fb: [15], sc: [10], cb: [17], raise: [16], ringr: [14], ign: [19], dashRun: [18] },
-        skillAnims: { pyro_fireball: { anim: 'fb', tpf: 30, dur: 30 }, flame_scatter: { anim: 'sc', tpf: 30, dur: 30 }, combustion: { anim: 'cb', tpf: 30, dur: 30 }, chain_ignite: { anim: 'ign', tpf: 30, dur: 30 } },
+      pyro_sr1: { cellW: 175, cellH: 189, anchorX: 92, anchorY: 177, standH: 80, topH: 118, portraitCX: 97, count: 24, fireHand: [62, -45], scatterHand: [77, -47],
+        anims: { idle: [0], walk: [1, 2, 11, 2], attack: [3, 4], skill: [3, 4], hurt: [5], death: [6, 7], fb: [15], sc: [10], cb: [17], raise: [16], ringr: [14], ign: [19], dashRun: [18], egg: [20], eggStir: [21], eggRise: [22], rebirth: [23] },
+        skillAnims: { pyro_fireball: { anim: 'fb', tpf: 30, dur: 30 }, flame_scatter: { anim: 'sc', tpf: 30, dur: 30 }, combustion: { anim: 'cb', tpf: 30, dur: 30 }, chain_ignite: { anim: 'ign', tpf: 30, dur: 30 }, phoenix_rebirth: { anim: 'rebirth', tpf: 60, dur: 60 } },
         castFrames: { flame_scatter: 8, chain_ignite: 19, pyro_fireball: 8, combustion: 16, meteor: [12, 12, 13], flame_ring: 14 } },
       summoner_sr1: { cellW: 109, cellH: 97, anchorX: 56, anchorY: 95, topH: 88, portraitCX: 54, projFx: { magic_orb: 'summoner_sr_orb' } }, // 기본 공격 구슬은 보라
       bard_sr1: { cellW: 147, cellH: 100, anchorX: 64, anchorY: 97, topH: 84, portraitCX: 69, lutePt: [27, 38] }, // lutePt = 공격 칸(5)의 하프 줄 가운데 (기준점에서 앞으로·위로, 음파가 나오는 자리)
@@ -15175,7 +15177,7 @@
           <div class="${open ? 'rarity-SCR merc-rare-shine' : 'bg-slate-950/60 border-dashed border-slate-700'} border rounded-xl p-3 flex flex-col items-center gap-1.5 text-center">
             <div class="relative w-24 h-24 flex items-center justify-center">${open ? rareAuraHTML('SCR') : ''}<div class="relative">${art}</div>${open ? rareTwinkleHTML('SCR') : ''}</div>
             <div class="text-sm font-extrabold ${open ? 'text-red-700' : 'text-slate-500'}">${open ? `🔥 ${jd.name} 시크릿 레어 #${e.n}` : `🔒 ${jd.name} · ???`}</div>
-            <div class="text-[11px] ${open ? 'text-slate-700' : 'text-slate-500'} leading-snug">${open ? `전용 외형 · ${rarityPerkText(rar)}` : `시크릿 레어 ${jd.name} 용병을 한 번이라도 데리고 있으면 열려요.`}</div>
+            <div class="text-[11px] ${open ? 'text-slate-700' : 'text-slate-500'} leading-snug">${open ? `전용 외형 · ${rarityPerkText(rar)}${e.job === 'pyro' ? `<br>🥚 ${PHOENIX_REBIRTH_DESC}` : ''}` : `시크릿 레어 ${jd.name} 용병을 한 번이라도 데리고 있으면 열려요.`}</div>
           </div>`;
       }).join('');
       box.innerHTML = `
@@ -17439,7 +17441,7 @@
     // 실시간 결투 연결 상태 (아래 [실시간 결투 화면 동기화] 참고)
     const LIVE_FRAME_INTERVAL_MS = 150; // 방장이 화면을 보내는 간격 (실제 시간) · 받는 화면은 두 화면 사이를 이어 그림 (100ms면 Firebase 내려받기 용량이 너무 큼)
     const LIVE_GUEST_TIMEOUT_MS = 20000;
-    const LIVE_UNIT_ST_KEYS = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'blessed', 'rally', 'empower', 'immune', 'resist', 'stealth', 'swift', 'taunt', 'guard', 'spin', 'rampage', 'darkness', 'fear', 'confuse', 'miracle', 'slow', 'skate', 'hex', 'weaken', 'anthem', 'ballad', 'silence', 'berserk', 'undying', 'vow', 'aegis'];
+    const LIVE_UNIT_ST_KEYS = ['stun', 'freeze', 'burn', 'bleed', 'poison', 'shock', 'blessed', 'rally', 'empower', 'immune', 'resist', 'stealth', 'swift', 'taunt', 'guard', 'spin', 'rampage', 'darkness', 'fear', 'confuse', 'miracle', 'slow', 'skate', 'hex', 'weaken', 'anthem', 'ballad', 'silence', 'berserk', 'undying', 'vow', 'aegis', 'rebirth'];
     const liveNet = {
       role: null, roomId: null, ref: null, minAt: 0, startedAt: 0,
       initReceived: false, lastFrameAt: 0, targets: {}, finished: false,
@@ -18655,6 +18657,7 @@
 
     function inflictStatus(sourceUnit, targetUnit, statusType, durationFrames) {
       if (!targetUnit || !targetUnit.alive) return;
+      if ((targetUnit.statuses.rebirth || 0) > 0) return; // 불사조의 알: 무적
       // 저항: 가장 높은 면역 단계. 나쁜 상태이상은 누가 걸든(혹한의 면역 무시 포함) 걸리지 않음
       if ((targetUnit.statuses.resist || 0) > 0 && NEGATIVE_STATUSES.includes(statusType)) {
         if (sim.tickCount - (targetUnit.ccImmuneTextAt ?? -999) > 30) {
@@ -19608,6 +19611,7 @@
 
     function applyDamage(attacker, defender, rawDmg, tagText = '', customColor = null) {
       if (!defender.alive) return;
+      if ((defender.statuses?.rebirth || 0) > 0) return; // 불사조의 알: 무적
       let modDmg = rawDmg;
       if (attacker) {
         // 직업 패시브 (공격 유형별 피해 증가 · 도적 백어택)
@@ -19739,6 +19743,8 @@
         addBattleLog(`✝️ ${defender.name}의 낡은 십자가가 빛나며 다시 일어났어요!`);
         return;
       }
+      // 불사조의 부활 (시크릿 레어 화염술사, 한 전투에 한 번): 쓰러지는 대신 알이 됨
+      if (defender.hp <= 0 && isSrPyro(defender) && !defender.rebirthUsed) { phoenixEnterEgg(defender); return; }
       if (defender.hp <= 0) {
         defender.hp = 0;
         defender.alive = false;
@@ -20520,6 +20526,11 @@
       }
       turnOrder.forEach(u => {
         if (!u.alive) return;
+        if ((u.statuses.rebirth || 0) > 0) { // 불사조의 알: 아무것도 하지 않고 부활을 기다림
+          u.vx = 0; u.vy = 0; u.isMoving = false;
+          if (--u.statuses.rebirth <= 0) phoenixHatch(u);
+          return;
+        }
         // 지난 틱 동안 움직인 양 (투사체가 이동 방향을 예측해 겨눌 때 사용)
         u.vx = u.x - (u.prevX ?? u.x);
         u.vy = u.y - (u.prevY ?? u.y);
@@ -24664,6 +24675,34 @@
     const PYRO_METEOR_SR_MULT = 1.5;         //   시크릿 레어 불사조: 반지름 1.5배
     const isSrPyro = u => Boolean(u && u.job === 'pyro' && !u.monsterType && (u.skinVariant || 0) === SECRET_SKIN_BASE + 1);
     const pyroMeteorCells = u => PYRO_METEOR_CELLS * (isSrPyro(u) ? PYRO_METEOR_SR_MULT : 1);
+    // 시크릿 레어 불사조 특수 패시브 [불사조의 부활]: 쓰러지는 순간 알이 되어 10초간 무적 (피해·상태이상을 받지 않고 적이 노리지 못함, 행동도 못 함)
+    //   → 체력 100%로 부활. 한 전투에 한 번. 알 상태는 statuses.rebirth (남은 틱)라 실시간 전투에서도 같이 보임
+    //   체력은 알이 될 때 가득 채워 둠 (아군 치유가 알에 낭비되지 않게)
+    const PHOENIX_REBIRTH_TICKS = 400;      // 10초 (BATTLE_TICKS_PER_SEC 40)
+    const PHOENIX_STIR_AT = 200;            //   5초부터 태동 (불꽃의 응축)
+    const PHOENIX_RISE_AT = 360;            //   9초부터 부활 직전 (공중 웅크리기)
+    const PHOENIX_REBIRTH_DESC = '특수 패시브 [불사조의 부활]: 쓰러지면 알이 되어 10초간 무적 → 체력 100%로 부활 (한 전투에 한 번)';
+    function phoenixEnterEgg(u) {
+      u.rebirthUsed = true;
+      u.hp = u.maxHp; u.shield = 0;
+      Object.keys(u.statuses).forEach(k => { u.statuses[k] = 0; });
+      u.statuses.rebirth = PHOENIX_REBIRTH_TICKS;
+      u.casting = null; u.skillAnim = 0; u.attackAnim = 0; u.hurtAnim = 0; u.dashAnim = 0; u.kbVx = 0; u.kbVy = 0;
+      sim.effects.push({ type: 'fire_explosion', spr: 'fire_hit', x: u.x, y: u.y, r: 70, life: 34, maxLife: 34 });
+      sim.floatTexts.push({ x: u.x, y: u.y - 60, text: '🥚 불사조의 알!', color: '#ea580c', life: 80 });
+      playCombatSfx('magic');
+      addBattleLog(`🥚 ${u.name}이(가) 쓰러지며 불사조의 알이 되었어요! 10초 뒤 다시 태어나요.`);
+    }
+    function phoenixHatch(u) {
+      u.statuses.rebirth = 0;
+      u.hp = u.maxHp;
+      u.statuses.immune = Math.max(u.statuses.immune || 0, 60); // 깨어나는 순간 바로 묶이지 않게 1.5초 상태이상 면역
+      u.skillAnim = 60; u.maxSkillAnim = 60; u.activeSkillType = 'phoenix_rebirth'; // 공중 포효
+      sim.effects.push({ type: 'fire_explosion', spr: 'fire_hit', x: u.x, y: u.y, r: 130, life: 40, maxLife: 40 });
+      sim.floatTexts.push({ x: u.x, y: u.y - 60, text: '🔥 부활!', color: '#dc2626', life: 80 });
+      playCombatSfx('heavy');
+      addBattleLog(`🔥 ${u.name}이(가) 불꽃 속에서 다시 태어났어요! (체력 100%)`);
+    }
     const PYRO_METEOR_FALL = 40;             //   하늘에서 떨어지는 시간 (틱)
     const PYRO_SPREAD_CELLS = 1.5;           // 번짐: 화상 걸린 적이 쓰러지면 1.5칸 안 적 2명에게 화상 3초
     const PYRO_SPREAD_COUNT = 2;
@@ -27827,6 +27866,11 @@
       u._sprLastSkill = u.skillAnim || 0;
 
       if (!u.alive) return step(a.death, tick - (u._deadSince ?? tick), 12);
+      // 불사조의 부활: 알 (처음 5초) → 불꽃의 응축 (태동) → 공중 웅크리기 (마지막 1초)
+      if (a.egg && u.statuses && (u.statuses.rebirth || 0) > 0) {
+        const el = PHOENIX_REBIRTH_TICKS - u.statuses.rebirth;
+        return el < PHOENIX_STIR_AT ? a.egg[0] : (el < PHOENIX_RISE_AT ? a.eggStir[0] : a.eggRise[0]);
+      }
       // 회피 그림 (바람 정령): 공격을 피한 직후 잠깐
       if (a.evade && sim.effects.some(e => e.type === 'spirit_dodge' && e.owner === u && e.life > 0)) return a.evade[0];
       // 기사 방어 태세: 태세가 끝날 때까지 방벽 동작을 반복
