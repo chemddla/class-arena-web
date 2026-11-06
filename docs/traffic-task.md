@@ -53,3 +53,13 @@ const R = await TM.live('ARENA3', 300); // 5분 동안의 변경량 (탭을 앞�
 - 형식을 바꾸면 옛 탭(배포 전에 연 탭)이 읽을 수 있는지, 아니면 기준 시각을 둘지 정한다.
 - `node tests/*.test.cjs ../index.html` 통과, 바꾼 뒤 `TM.live`로 다시 재서 커밋 메시지에 전/후 숫자를 남긴다.
 - 같은 폴더에서 다른 세션이 index.html을 고치므로 커밋 전 `git diff`에 내 변경만 있는지 확인.
+
+## 6. 예전 탭 정리 (minBuild)
+
+형식을 바꾸는 배포 뒤, 그 전에 연 탭을 새로고침시키려면:
+
+1. `https://class-arena.pages.dev/version.json`의 `buildAt`(ms)을 확인한다.
+2. `MSYS_NO_PATHCONV=1 firebase database:set /classes/ARENA3/meta/minBuild <buildAt> --project class-arena-b4ee3` (학급마다).
+3. 그보다 오래된 탭(빌드 시각이 들어간 2026-11-06 이후 버전)은 안내 띠를 띄우고, 전투 중이 아닐 때 탭으로 돌아오면 새로고침한다. 그 전 버전 탭에는 이 장치가 없다.
+
+2026-11-06 측정: 예전 주소(web.app)가 11-05 오전 버전으로 남아 있던 탓에(안내 페이지 배포 실패, 2d89243에서 고침) `raid_rooms`가 기기당 12.5KB/s(반 전체 약 210KB/s)였다.

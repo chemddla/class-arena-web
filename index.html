@@ -35217,6 +35217,27 @@
      * - 서버 데이터를 한 번이라도 받은 뒤에만 업로드합니다. (오래된 기기 데이터가 덮어쓰는 문제 방지)
      * - 결투방·레이드방·미니게임 등 다른 데이터는 건드리지 않습니다.
      * ================================================================ */
+    // ----- 예전 버전 탭 새로고침 안내 -----
+    // 배포할 때 deploy.yml이 아래 따옴표 안을 빌드 시각(ms)으로 바꿔 넣음 (로컬 원본은 바뀌지 않아 0 → 확인 안 함)
+    // classes/{코드}/meta/minBuild가 이 탭의 빌드 시각보다 뒤면 예전 탭: 안내를 띄우고, 전투 중이 아닐 때 탭으로 돌아오면 새로고침
+    // (2026-11-06: 예전 주소에 남은 11-05 오전 버전 탭들이 방을 통째로 다시 써서 반 전체 트래픽의 대부분을 차지했음)
+    // 올리는 법: version.json의 buildAt을 보고 `firebase database:set /classes/<코드>/meta/minBuild <buildAt>` (docs/traffic-task.md)
+    const APP_BUILD_AT = Number('__APP_BUILD_AT__') || 0;
+    let appUpdateNoticeShown = false;
+    function checkAppMinBuild(meta) {
+      const need = Number(meta && meta.minBuild) || 0;
+      if (!APP_BUILD_AT || !need || need <= APP_BUILD_AT || appUpdateNoticeShown) return;
+      appUpdateNoticeShown = true;
+      const bar = document.createElement('div');
+      bar.style.cssText = 'position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:9999;max-width:calc(100vw - 24px);padding:10px 14px;background:#fff4d6;color:#3d2410;border:3px solid #d9bd7f;box-shadow:4px 4px 0 rgba(47,28,11,.35);font-weight:800;font-size:14px;display:flex;gap:10px;align-items:center';
+      bar.innerHTML = '<span>🔄 새 버전이 나왔어요! 하던 걸 마치면 새로고침해 주세요.</span><button style="padding:4px 10px;background:#6366f1;color:#fff;border-radius:8px;font-weight:800">새로고침</button>';
+      bar.querySelector('button').onclick = () => location.reload();
+      document.body.appendChild(bar);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && !(typeof sim !== 'undefined' && sim.running)) location.reload();
+      });
+    }
+
     const CLASS_SYNC_KEYS = ['meta', 'students', 'profiles', 'auctions', 'tradeOffers'];
     const META_SYNC_FIELDS = ['className', 'classLocked', 'notice', 'guardianPts'];
     // studentVals: 서버와 맞춰 둔 학생 기록 (칸별로 비교해서 바뀐 칸만 올리기 위함)
@@ -36739,6 +36760,7 @@
         ref.on('value', (snap) => {
           if (classSyncCode !== cleanCode) return;
           classRemote[key] = snap && typeof snap.val === 'function' ? snap.val() : null;
+          if (key === 'meta') checkAppMinBuild(classRemote.meta);
           classRemoteReceived.add(key);
           if (classRemoteReceived.size < CLASS_SYNC_KEYS.length) return;
           if (classPrime && classPrime.code === cleanCode) { const pr = classPrime; classPrime = null; pr.resolve({ ...classRemote }); return; } // 입장 코드 조회에 넘김

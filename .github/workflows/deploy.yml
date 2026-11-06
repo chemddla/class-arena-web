@@ -121,15 +121,24 @@ jobs:
             console.log('Tailwind CSS inlined:', fs.statSync('tw.out.css').size, 'bytes');
           "
 
+      # 빌드 시각(ms)을 게임에 넣음 → classes/{코드}/meta/minBuild보다 오래된 탭이 새로고침 안내를 띄움 (index.html APP_BUILD_AT)
+      # 압축 전에 바꿈 (압축기가 Number('__APP_BUILD_AT__')를 미리 계산해 0으로 접을 수 있음)
+      - name: Stamp build time
+        run: |
+          at=$(date +%s%3N)
+          echo "BUILD_AT=$at" >> "$GITHUB_ENV"
+          sed -i "s/__APP_BUILD_AT__/$at/" public/index.html
+          if grep -q "__APP_BUILD_AT__" public/index.html || ! grep -qE "Number\('[0-9]{13}'\)" public/index.html; then echo "빌드 시각을 넣지 못함"; exit 1; fi
+
       # 배포본만 압축(주석·들여쓰기 제거, JS·CSS 줄이기). 원본 index.html은 읽기 쉬운 그대로 둠
       - name: Minify game HTML
         run: |
           npm install --no-save --no-audit --no-fund html-minifier-terser@7.2.0
           node tools/minify-html.cjs public/index.html
 
-      # 어느 커밋이 실제로 올라가 있는지 누구나 확인할 수 있게: <게임 주소>/version.json
+      # 어느 커밋이 실제로 올라가 있는지 누구나 확인할 수 있게: <게임 주소>/version.json (buildAt = 위에서 넣은 빌드 시각, minBuild로 쓰는 값)
       - name: Write version file
-        run: printf '{"commit":"%s","deployedAt":"%s"}\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > public/version.json
+        run: printf '{"commit":"%s","deployedAt":"%s","buildAt":%s}\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BUILD_AT" > public/version.json
 
       # 게임 사이트는 Cloudflare Pages에 올림 (Firebase 무료 호스팅은 한 달 전송량 10GB라 2026-11 초에 다 써서 사이트가 막힘)
       # 저장소 Secrets에 CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID가 있을 때만 Cloudflare로 감. 없으면 예전처럼 Firebase에 게임을 올림
