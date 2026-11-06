@@ -4625,7 +4625,7 @@
     const STATUS_DEFS = {
       stun:    { id: 'stun',    name: '기절', icon: '💫', color: '#facc15', desc: '행동 불능 (이동·공격 불가)' },
       freeze:  { id: 'freeze',  name: '빙결', icon: '❄️', color: '#38bdf8', desc: '얼어붙어 행동 불능 및 속도 급감' },
-      burn:    { id: 'burn',    name: '화상', icon: '🔥', color: '#f97316', desc: '매초 지속 화염 피해' },
+      burn:    { id: 'burn',    name: '화상', icon: '🔥', color: '#f97316', desc: '매초 지속 화염 피해 · 받는 회복 -50%' },
       bleed:   { id: 'bleed',   name: '출혈', icon: '🩸', color: '#f43f5e', desc: '매초 지속 출혈 물리 피해' },
       poison:  { id: 'poison',  name: '중독', icon: '☠️', color: '#a855f7', desc: '지속 독 피해 및 공격력 20% 감소' },
       shock:   { id: 'shock',   name: '감전', icon: '⚡', color: '#60a5fa', desc: '찌릿한 마비로 속도·방어력 35% 감소' },
@@ -24190,9 +24190,15 @@
     const CURSE_RUIN_DMG = 3.0;             //   시전 즉시 모든 적에게 300%
     const CURSE_RUIN_BURST = 0.8;           //   끝날 때 그동안 받은 피해의 80%
 
-    // 받는 회복 배율 (저주받으면 절반)
+    // 받는 회복 배율 (저주·화상에 걸리면 절반, 둘 다 걸려도 겹치지 않고 더 센 쪽 하나만)
+    const BURN_HEAL_DOWN = 0.5;             // 화상: 받는 회복 -50%
     function healTakenMult(u) {
-      return u && u.statuses && (u.statuses.hex || 0) > 0 ? 1 - CURSE_HEX_HEAL_DOWN : 1;
+      const st = u && u.statuses;
+      if (!st) return 1;
+      let down = 0;
+      if ((st.hex || 0) > 0) down = Math.max(down, CURSE_HEX_HEAL_DOWN);
+      if ((st.burn || 0) > 0) down = Math.max(down, BURN_HEAL_DOWN);
+      return 1 - down;
     }
     function hasNegativeStatus(u) {
       return Boolean(u && u.statuses && NEGATIVE_STATUSES.some(k => (u.statuses[k] || 0) > 0));
