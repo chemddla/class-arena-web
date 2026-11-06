@@ -3,7 +3,7 @@
 # 칸 순서: 0 대기 · 1~2 걷기 · 3 공격 준비 (손 앞에 불덩이와 불꽃 고리) · 4 공격 발사 (손을 뻗음, 날아가는 불덩이는 게임이 따로 그림)
 #   · 5 피격 · 6~7 쓰러짐 (뒤로 넘어짐 → 누움)
 # 샘플 정리:
-#   - 흰 배경은 가장자리에서 이어진 흰 픽셀만 지움 (눈의 흰 하이라이트는 남김)
+#   - 흰 배경 = 가장자리에서 이어진 흰 픽셀 + 갇힌 흰 덩어리 중 ENCLOSED_MIN 이상 (불꽃 고리 안쪽·팔 사이 틈). 눈의 흰 하이라이트는 남김
 #   - 그림마다 3px 넓힌 덩어리(손 위 불덩이·튀는 불티까지 한 덩어리)로 고르고, 그 아래 한글 이름표 줄은 잘라 냄 (CUT_Y)
 #   - 발사 칸 오른쪽에 따로 떨어진 불덩이(투사체)는 다른 덩어리라 저절로 빠짐
 # 크기: 샘플은 모든 동작을 같은 크기로 그려서 대기 자세 키(머리카락 꼭대기~발)를 TARGET_H로 맞춘 배율 하나를 모든 칸에 씀
@@ -17,6 +17,7 @@ from berserker_build import shrink
 
 SRC = 'assets/sprites/fx/samples/pyro_src.webp'
 OUT = 'assets/sprites/merc/pyro_0.webp'
+ENCLOSED_MIN = 15   # 갇힌 흰 덩어리가 이 px 이상이면 배경
 TARGET_H = 90   # 대기 자세 키 → 게임 칸 키 (마법사 topH 92, 소환사 88과 비슷하게)
 
 # (칸 이름, 덩어리를 고를 샘플 안 한 점 (x, y), 이 줄 아래는 이름표라 버림)
@@ -35,6 +36,9 @@ def main():
     lab, _ = ndi.label(white)
     edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
     bg = np.isin(lab, edge[edge > 0])
+    # 가장자리와 이어지지 않은 흰 덩어리도 15px 이상이면 배경 (공격 준비 칸 불꽃 고리 안쪽, 팔과 몸 사이로 비친 배경). 눈 하이라이트는 15px보다 작음
+    sz = ndi.sum(white, lab, range(1, lab.max() + 1))
+    bg |= np.isin(lab, 1 + np.where(sz >= ENCLOSED_MIN)[0]) & white
     rim = ~bg & ndi.binary_dilation(bg, iterations=2)
     a = np.where(bg, 0.0, 1.0)
     a = np.where(rim, np.clip((255 - im.min(axis=2)) / 225, 0, 1), a)   # 흰 배경과 섞인 가장자리는 흰색을 빼고 반투명으로
