@@ -5089,7 +5089,7 @@
         flame_ring: {
           id: 'flame_ring', name: '플레임 링', icon: '⭕', ccTag: '⭕다단히트·밀쳐내기',
           manaCost: 24, cooldownTicks: 720, cooldownSec: 12.0, castSec: 0.3,
-          desc: '8초간 허리에 플레임 링를 두릅니다. 고리에 몸이 닿은 적에게 0.5초마다 35% 피해와 [불티]를 쌓고, 처음 닿은 적은 0.8칸 밀려나요.'
+          desc: '8초간 발밑에 불꽃 고리를 둘러 몸 둘레 2칸 안의 적에게 0.5초마다 35% 피해와 [불티]를 쌓습니다. 처음 들어온 적은 0.8칸 밀려나요.'
         },
         combustion: {
           id: 'combustion', name: '익스플로전', icon: '💥', ccTag: '💥불티 폭발·기절',
@@ -5227,7 +5227,7 @@
         meteor: {
           id: 'meteor', name: '메테오', icon: '☄️', ccTag: '✨히든 · 초광역·불티 폭발', hidden: true,
           manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 3,
-          desc: '3초간 하늘로 지팡이를 든 뒤 적이 가장 많이 모인 자리에 거대 운석을 떨어뜨립니다. 반지름 5칸 안의 적 모두에게 400% 피해와 4초 [화상], 이어서 그 적들의 [불티]를 모두 터뜨려요 (불티 1개당 80%). 터뜨린 뒤 맞은 적마다 [불티] 3개를 쌓아요.'
+          desc: '3초간 하늘로 지팡이를 든 뒤 적이 가장 많이 모인 자리에 거대 운석을 떨어뜨립니다. 반지름 10칸 안의 적 모두에게 400% 피해와 4초 [화상], 이어서 그 적들의 [불티]를 모두 터뜨려요 (불티 1개당 80%). 터뜨린 뒤 맞은 적마다 [불티] 3개를 쌓아요.'
         }
       },
       summoner: {
@@ -6721,15 +6721,9 @@
       src: 'assets/sprites/merc/pyro_0.webp?v=2', // ?v = 칸 배치가 바뀔 때마다 올림: 배포 사이트가 그림을 1시간 캐시해서 옛 시트를 새 칸 크기로 자르면 동작이 깨짐
       cellW: 144, cellH: 117, anchorX: 71, anchorY: 106, standH: 80, topH: 90, portraitCX: 71, count: 18,
       anims: { idle: [0], walk: [1, 0, 2, 0], attack: [3, 4], skill: [3, 4], hurt: [5], death: [6, 7], fb: [9], sc: [10], cb: [11], raise: [12], ringr: [14], ign: [17] },
-      skillAnims: {
-        pyro_fireball: { anim: 'fb', tpf: 30, dur: 30 },
-        flame_scatter: { anim: 'sc', tpf: 30, dur: 30 },
-        combustion:    { anim: 'cb', tpf: 36, dur: 36 },
-        chain_ignite:  { anim: 'ign', tpf: 30, dur: 30 },
-        flame_ring:    { anim: 'ringr', tpf: 30 } // dur 없음: 고리가 유지되는 동안(skillAnim) 계속 발동 자세
-      },
+      skillAnims: {}, // 모든 스킬은 시전이 끝나면 바로 평소 모습 (발동 자세 없음 · 사용자 요청 2026-11-06). 시전 막대 동안의 자세는 castFrames
       fireHand: [53, -67], scatterHand: [45, -43.5],
-      castFrames: { flame_scatter: 8, chain_ignite: 17, pyro_fireball: 8, combustion: 12, meteor: [15, 15, 16], flame_ring: 13 }
+      castFrames: { flame_scatter: 8, chain_ignite: 17, pyro_fireball: 8, combustion: 12, meteor: [15, 15, 16], flame_ring: 14 }
     };
     // 소환사 외형 0 (초록 긴 머리·장미 화관·초록 로브·마법서, tools/summoner_build.py): 칸 순서 = 대기, 걷기 4, 피격, 쓰러짐 3 (책을 놓치며 젖힘 → 고꾸라짐 → 엎드림),
     //   기본 공격 (주먹 쥔 손을 앞으로), 소환 시전 (시전 막대 동안 책을 펼쳐 빛 가루), 소환 발동 (책 위 연둣빛 마법진)
@@ -8884,10 +8878,10 @@
     };
     // 소환사 번개 정령 기본 공격 번개 구슬 (공격 샘플에서 떼어 냄, tools/storm_spirit_build.py). 기준점 = 앞 끝
     // 화염술사 이펙트 (tools/pyro_build.py): ember = 기본 공격 불씨 · bolt = 플레어 불덩이 (연기 꼬리, 기준점 = 앞 끝)
-    //   xpl0·xpl1 = 익스플로전 폭발 (불덩이 → 흩어지는 연기, 가운데) · burst = 플레어 손 앞 불꽃 분출 (기준점 = 왼쪽 끝 손) · flash = 파이어볼 주먹 끝 불꽃 (가운데) · ring = 플레임 링 발밑 불꽃 고리 (가운데, 너비 = 고리 지름). burst·flash는 샘플 1배 크기라 PYRO_FX_SAMPLE_K를 곱해 그림
+    //   fring = 플레임 링 바닥 고리 (기준점 = 타원 가운데, 타원 너비 PYRO_FRING_W) · xpl0·xpl1 = 익스플로전 폭발 (불덩이 → 흩어지는 연기, 가운데) · burst = 플레어 손 앞 불꽃 분출 (기준점 = 왼쪽 끝 손) · flash = 파이어볼 주먹 끝 불꽃 (가운데) · ring = 플레임 링 발밑 불꽃 고리 (가운데, 너비 = 고리 지름). burst·flash는 샘플 1배 크기라 PYRO_FX_SAMPLE_K를 곱해 그림
     const PYRO_FX = {
       src: 'assets/sprites/fx/pyro_fx.webp?v=2', // ?v = 칸 배치가 바뀔 때마다 올림 (위와 같은 이유)
-      anims: { ember: [[0,0,33,26,32,13]], bolt: [[35,0,155,36,154,18.9]], burst: [[192,0,80,80,0,39.5]], flash: [[274,0,14,48,7,24]], ring: [[290,0,154,54,77,27]], hit: [[446,0,56,50,28,25]], xpl0: [[504,0,136,90,68,45]], xpl1: [[642,0,118,75,59,37.5]] }
+      anims: { ember: [[0,0,33,26,32,13]], bolt: [[35,0,155,36,154,18.9]], burst: [[192,0,80,80,0,39.5]], flash: [[274,0,14,48,7,24]], ring: [[290,0,154,54,77,27]], hit: [[446,0,56,50,28,25]], fring: [[504,0,204,99,102,61.5]], xpl0: [[710,0,136,90,68,45]], xpl1: [[848,0,118,75,59,37.5]] }
     };
     // 화염술사 히든 메테오 (tools/pyro_meteor_build.py, 일러스트 2장): fall = 연기 꼬리를 끌며 오른쪽 아래로 떨어지는 운석 · impact = 땅에 박혀 구덩이·파편
     //   두 칸 모두 기준점 = 운석 바위 가운데 → 떨어지던 바위가 그 자리에 그대로 박힘. 그림이 약 45° 방향이라 돌리지 않고 그 방향으로 떨어뜨림
@@ -8895,8 +8889,9 @@
       src: 'assets/sprites/fx/pyro_meteor_fx.webp',
       anims: { fall: [[0,0,450,430,342,343.9]], impact: [[452,0,498,424,341.2,343.8]] }
     };
-    const PYRO_METEOR_DRAW_H = 330;   // 떨어지는 운석 그림 높이 (월드 px, 바위 지름 약 110). 착탄 그림도 같은 배율
+    const PYRO_METEOR_DRAW_H = 660;   // (2026-11-06 330 → 660, 2배)   // 떨어지는 운석 그림 높이 (월드 px, 바위 지름 약 110). 착탄 그림도 같은 배율
     const PYRO_METEOR_DIR = Math.atan2(343.9, 342); // 그림 속 떨어지는 방향 (꼬리 → 바위)
+    const PYRO_FRING_W = 204;       // 플레임 링 고리 그림의 타원 너비 → 공격 범위 지름에 맞춤 (튀는 불티는 범위 밖으로 나가도 그대로)
     const PYRO_FX_SAMPLE_K = 0.455; // 9·10번 칸 샘플 → 캐릭터 칸 배율 (이펙트도 같은 배율)
     const STORM_SPIRIT_FX = {
       src: 'assets/sprites/fx/storm_spirit_fx.webp',
@@ -21595,7 +21590,7 @@
       // 시전자 자리에서 재는 범위는 시전자 몸 가장자리부터 (엘리트 보스처럼 몸이 큰 유닛)
       const near = (list, x, y, r) => list.filter(u => Math.hypot(u.x - x, u.y - y) - unitBodyGap(u) - (x === unit.x && y === unit.y ? unitBodyGap(unit) : 0) <= r);
       if (castSummonerSkill(unit, sk)) return true; // 소환사 원소 소환·해방 (정령왕 강림 포함)
-      if (castPyroSkill(unit, allies, enemies, sk, target, aimPt)) return true; // 화염술사 (히든 메테오 포함)
+      if (castPyroSkill(unit, allies, enemies, sk, target, aimPt)) { unit.skillAnim = 0; return true; } // 화염술사 (히든 메테오 포함) · 모든 스킬은 시전이 끝나면 바로 평소 모습 (발동 자세 없음)
       if (castHiddenSkill(unit, allies, enemies, sk, target, aimPt)) return true;
       if (castFrostSkill(unit, enemies, sk, target, aimPt)) return true;
       if (castCurseSkill(unit, allies, enemies, sk, target, aimPt)) return true;
@@ -24626,14 +24621,12 @@
     const PYRO_FIREBALL_DMG = 2.4;           // 파이어볼: 마법사와 같음 (240% · 반지름 170 · 화상 560틱)
     const PYRO_FIREBALL_R = 170;
     const PYRO_FIREBALL_EMBER = 2;           //   맞은 적마다 불티 2개
-    // 플레임 링: 범위 = 발동 자세(시트 14번 칸) 속 허리 고리 크기 (칸 px 너비 128 → 반지름 64, 캐릭터 그림 배율을 곱함)
-    //   고리가 유지되는 동안 캐릭터는 그 발동 자세를 계속 보여 줌 (이펙트 없이 자세 그림이 곧 고리)
-    const PYRO_RING_CELL_R = 64;
+    // 플레임 링: 시전 막대 동안 허리 고리 자세(시트 14번 칸) → 발동하면 평소 모습 + 발밑 불꽃 고리 이펙트(fring)가 따라다님
+    //   범위 = 몸 둘레 2칸 (가운데에서 몸 반지름 + 2칸, 적은 몸이 닿으면 맞음). 고리 그림의 타원 너비를 이 지름에 맞춤
+    const PYRO_RING_CELLS = 2;
     function pyroRingRadius(u) {
-      const sp = getUnitSprite(u);
-      return sp ? PYRO_RING_CELL_R * spriteDrawH(u, sp) / sp.standH : GRID_CELL_SIZE * 0.36;
-    }
-    const PYRO_RING_CELLS = 0.36;            // (AI·직접 조종 사거리 표시용 근삿값, 실제 판정은 pyroRingRadius)             // (예전: 1.5칸 · 4초 · 0.5초마다 35% · 처음 들어온 적 0.8칸 밀쳐냄
+      return unitBodyGap(u) + GRID_CELL_SIZE * PYRO_RING_CELLS * unitAreaScale(u);
+    }             // (예전: 1.5칸 · 4초 · 0.5초마다 35% · 처음 들어온 적 0.8칸 밀쳐냄
     const PYRO_RING_TICKS = 480;             // 8초 (범위를 모션 속 고리로 줄인 대신 4초 → 8초)
     const PYRO_RING_EVERY = 30;
     const PYRO_RING_DMG = 0.35;
@@ -24642,7 +24635,7 @@
     const PYRO_COMBUST_EMBER = 2;
     const PYRO_COMBUST_PER_EMBER = 0.6;
     const PYRO_COMBUST_STUN = 60;
-    const PYRO_METEOR_CELLS = 5;             // 메테오 (히든): 반지름 5칸 · 400% + 화상 4초 → 불티 1개당 80% · 5개면 1.5초 기절
+    const PYRO_METEOR_CELLS = 10;            // (2026-11-06 5칸 → 10칸, 2배)             // 메테오 (히든): 반지름 5칸 · 400% + 화상 4초 → 불티 1개당 80% · 5개면 1.5초 기절
     const PYRO_METEOR_DMG = 4.0;
     const PYRO_METEOR_BURN = 240;
     const PYRO_METEOR_PER_EMBER = 0.8;
@@ -24858,7 +24851,9 @@
 
       if (sk === 'flame_ring') {
         unit.pyroRing = { until: sim.tickCount + PYRO_RING_TICKS, next: sim.tickCount, pushed: new Set() };
-        unit.skillAnim = unit.maxSkillAnim = PYRO_RING_TICKS; // 고리가 유지되는 동안 발동 자세(허리 고리)를 계속 보임 (skillAnim은 실시간 전투로도 감)
+        unit.skillAnim = 0; // 발동하면 바로 평소 모습 (허리 고리 자세는 시전 막대 동안만)
+        const ringLife = Math.round(PYRO_RING_TICKS / BATTLE_PACE); // 그림 수명은 화면(60Hz) 기준
+        sim.effects.push({ type: 'pyro_fring', owner: unit, x: unit.x, y: unit.y, r: pyroRingRadius(unit), life: ringLife, maxLife: ringLife }); // 발밑 불꽃 고리 (범위 크기)
         playCombatSfx('magic');
         addBattleLog(`⭕ [화염술사] ${unit.name}의 플레임 링! (8초)`);
         return true;
@@ -24946,9 +24941,7 @@
         }
         const ring = u.pyroRing;
         if (!ring) return;
-        if (!u.alive || sim.tickCount >= ring.until) { u.pyroRing = null; if (u.activeSkillType === 'flame_ring') u.skillAnim = 0; return; }
-        // 다른 스킬 동작이 끝나면 다시 고리 자세로
-        if (!u.casting && !(u.skillAnim > 0)) { u.activeSkillType = 'flame_ring'; u.skillAnim = u.maxSkillAnim = ring.until - sim.tickCount; }
+        if (!u.alive || sim.tickCount >= ring.until) { u.pyroRing = null; return; }
         if (sim.tickCount < ring.next) return;
         ring.next = sim.tickCount + PYRO_RING_EVERY;
         const r = pyroRingRadius(u);
@@ -24989,8 +24982,8 @@
         case 'flame_ring': {
           if (unit.pyroRing) return -1;
           const rr = pyroRingRadius(unit);
-          if (live.some(e => unitDist(e, unit) - unitBodyGap(e) <= rr + 10)) return 93; // 고리에 닿을 만큼 붙은 적
-          return live.some(e => unitDist(e, unit) - unitBodyGap(e) <= rr * 2.5) ? 70 : -1;
+          if (live.some(e => unitDist(e, unit) - unitBodyGap(e) <= rr)) return 93; // 고리 안에 적
+          return live.some(e => unitDist(e, unit) - unitBodyGap(e) <= rr * 1.3) ? 70 : -1;
         }
         case 'combustion': {
           const marked = live.filter(e => pyroGap(unit, e) <= C * PYRO_COMBUST_CELLS && pyroEmberOf(unit, e) > 0);
@@ -29230,6 +29223,19 @@
           if (fr) {
             const k = PYRO_METEOR_DRAW_H / PYRO_METEOR_FX.anims.fall[0][3] * (progress < 0.06 ? 1.08 - progress : 1);
             drawFxFrame(ctx, fr, ef.x, ef.y, k, 0, Math.min(1, (1 - progress) / 0.4), PYRO_METEOR_FX.img);
+          }
+          ctx.restore();
+          if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }
+          continue;
+        }
+        if (ef.type === 'pyro_fring') {
+          // 플레임 링: 발밑 불꽃 고리가 주인을 따라다님. 타원 너비 = 범위 지름 (튀는 불티는 범위 밖으로 나가도 자르지 않음). 처음 6% 동안 커지고 마지막 10% 동안 흐려짐
+          const o = ef.owner && typeof ef.owner === 'object' ? ef.owner : (ef.oid ? sim.units.find(u => u.id === ef.oid) : null);
+          if (o && !o.alive) ef.life = Math.min(ef.life, 6);
+          const fr = PYRO_FX.ready && PYRO_FX.anims.fring[0];
+          if (fr) {
+            const k = ef.r * 2 / PYRO_FRING_W * Math.min(1, 0.6 + progress / 0.06 * 0.4) * (1 + 0.02 * Math.sin(progress * 80));
+            drawFxFrame(ctx, fr, o ? o.x : ef.x, (o ? o.y : ef.y) + 12, k, 0, Math.min(1, (1 - progress) / 0.1), PYRO_FX.img);
           }
           ctx.restore();
           if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }

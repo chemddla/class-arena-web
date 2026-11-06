@@ -15,6 +15,7 @@
 #   - 13번 발밑 불꽃 고리는 따로 떼어 이펙트 ring으로도 저장 (불의 고리가 유지되는 동안 발밑에 깔림, 기준점 = 고리 가운데)
 #     · 몸에 가려 그려져 있지 않던 뒤쪽 가운데는 앞쪽 가운데 띠를 뒤집어 채움
 # 익스플로전 폭발 xpl0 (불덩이) · xpl1 (흩어지는 연기) — 샘플 XPL_SRC 한 장을 XPL_SPLIT 열에서 나눔, 기준점 = 각 칸 가운데
+# 플레임 링 바닥 고리 fring — 샘플 FRING_SRC, 기준점 = 타원 가운데 (FRING_C, 샘플 좌표), 타원 너비 FRING_W (게임은 이 너비를 공격 범위 지름에 맞춤)
 # 기본 공격 피격 이펙트 hit (샘플 HIT_SRC, 불티가 사방으로 튐, 기준점 = 가운데) → FX_OUT
 #   · 15 메테오 시전 중간 (두 손 위에 불덩이) · 16 메테오 시전 완료 직전 (두 주먹을 치켜듦)
 #   - 15번 샘플의 발밑 빨간 장판은 지움 (PUDDLE: 그 줄 아래 순수한 빨강, 치맛자락 상자는 빼고)
@@ -46,6 +47,8 @@ FB_SRC = 'assets/sprites/fx/samples/pyro_fireball_src.png'
 SC_SRC = 'assets/sprites/fx/samples/pyro_scatter_src.png'
 XPL_SRC = 'assets/sprites/fx/samples/pyro_explosion_src.png'
 XPL_SPLIT = 290
+FRING_SRC = 'assets/sprites/fx/samples/pyro_flamering_src.png'
+FRING_C = (228, 145)   # 타원 가운데 (가장 넓은 줄의 가운데)
 HIT_SRC = 'assets/sprites/fx/samples/pyro_hit_src.png'
 POSE_K = 0.66   # 11·12번 샘플 → 칸 배율
 # (칸 이름, 샘플, 장화 바닥 줄 (None = 그림 바닥), 지울 상자들 (x0, x1, y0, y1))
@@ -282,6 +285,12 @@ def main():
     ys, xs = np.where(ha > 0)
     hit = shrink(np.dstack([him, ha * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1], 0.5)
     FX_EXTRA['hit'] = (hit, hit.shape[1] / 2, hit.shape[0] / 2)
+
+    fim2, fa2 = prep(FRING_SRC)
+    ys, xs = np.where(fa2 > 0)
+    q = shrink(np.dstack([fim2, fa2 * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1], 0.5)
+    FX_EXTRA['fring'] = (q, (FRING_C[0] - xs.min()) * 0.5, (FRING_C[1] - ys.min()) * 0.5)
+    print('fring 타원 너비(시트 px):', (xs.max() - xs.min() + 1) * 0.5)
 
     xim, xa = prep(XPL_SRC)
     for k, (x0, x1) in (('xpl0', (0, XPL_SPLIT)), ('xpl1', (XPL_SPLIT, xa.shape[1]))):
