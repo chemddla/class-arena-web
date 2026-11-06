@@ -47566,18 +47566,23 @@
 
     // 개발용 바로 입장 (내 컴퓨터 localhost에서만): 주소에 ?dev=lobby 또는 ?dev=student(&stu=번호&tab=codex)
     // 로그인 없이 화면만 바꿔 보여 줌. 학생 로그인 기록(markStudentSession)은 남기지 않아 서버에 그 학생으로 저장되지 않음
+    // 테스트 전장(주소 /test)으로 열린 화면인지. 배포 사이트에서도 열리므로, 이때는 학급 데이터를 서버와 주고받지 않음 (window.onload)
+    function isSandboxEntry() {
+      return new URLSearchParams(location.search).get('dev') === 'sandbox';
+    }
+
     function applyLocalDevEntry() {
-      if (!['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) return;
-      const q = new URLSearchParams(location.search);
-      const dev = q.get('dev');
-      if (dev === 'lobby') { goToClassLobbyPage(); return; }
-      // 테스트 전장: 주소 /test (test/index.html이 이 화면을 감싸 보여 줌). 패널 코드는 test/sandbox.js
-      if (dev === 'sandbox') {
+      // 테스트 전장: 주소 /test (test/index.html이 이 화면을 감싸 보여 줌). 패널 코드는 test/sandbox.js. 배포 사이트에서도 열림
+      if (isSandboxEntry()) {
         const s = document.createElement('script');
         s.src = 'test/sandbox.js';
         document.head.appendChild(s);
         return;
       }
+      if (!['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) return;
+      const q = new URLSearchParams(location.search);
+      const dev = q.get('dev');
+      if (dev === 'lobby') { goToClassLobbyPage(); return; }
       if (dev !== 'student') return;
       const num = Number(q.get('stu'));
       const stu = (num && state.students.find(s => s.num === num)) || state.students[0];
@@ -47604,7 +47609,8 @@
       restoreStudentViewOnLoad(reopenStudentView);
       PetSystem.refresh();
       // 서버 데이터를 먼저 받아온 뒤에만 업로드합니다 (오래된 기기 데이터로 덮어쓰기 방지)
-      subscribeToActiveClassRealtime(state.classCode);
+      // 테스트 전장에서는 학급 서버와 연결하지 않음 (배포 사이트의 /test에서 학급 데이터를 건드리지 않게)
+      if (!isSandboxEntry()) subscribeToActiveClassRealtime(state.classCode);
       requestAnimationFrame(animationLoop);
     };
 

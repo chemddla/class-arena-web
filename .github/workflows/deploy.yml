@@ -67,7 +67,7 @@ jobs:
           echo "바뀐 파일:"; echo "$files"
           has() { echo "$files" | grep -qE "$1" && echo true || echo false; }
           wf='^\.github/workflows/deploy\.yml$'
-          echo "game=$(has "^index\.html$|^assets/|^tools/minify-html\.cjs$|^tools/stamp-asset-versions\.cjs$|^tools/redirect\.html$|$wf")" >> "$GITHUB_OUTPUT"
+          echo "game=$(has "^index\.html$|^assets/|^tools/minify-html\.cjs$|^tools/stamp-asset-versions\.cjs$|^tools/redirect\.html$|^test/|$wf")" >> "$GITHUB_OUTPUT"
           echo "admin=$(has "^admin/|$wf")" >> "$GITHUB_OUTPUT"
           echo "rules=$(has "^database\.rules\.json$|^tests/|$wf")" >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
@@ -100,6 +100,8 @@ jobs:
           mkdir -p public
           cp index.html public/index.html
           cp -r assets public/assets
+          # 테스트 전장(/test)도 함께 올림: 게임과 같은 커밋이라 배포되면 바로 최신 코드로 시험 가능
+          cp -r test public/test
           # 게임이 불러오지 않는 원본 샘플 그림(약 4MB)은 배포에서 뺌
           find public/assets -type d -name samples -prune -exec rm -rf {} +
 
@@ -113,7 +115,7 @@ jobs:
       - name: Build Tailwind CSS into the page
         run: |
           printf '@tailwind base;\n@tailwind components;\n@tailwind utilities;\n' > tw.in.css
-          npx --yes tailwindcss@3.4.17 -i tw.in.css -o tw.out.css --content public/index.html --minify
+          npx --yes tailwindcss@3.4.17 -i tw.in.css -o tw.out.css --content "public/index.html,public/test/*.js" --minify
           node -e "
             const fs = require('fs');
             const file = 'public/index.html';
@@ -159,7 +161,7 @@ jobs:
       - name: Write Cloudflare cache rules
         if: steps.host.outputs.cf == 'true'
         run: |
-          printf '/assets/*\n  Cache-Control: public, max-age=3600\n/\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n/version.json\n  Cache-Control: no-cache\n' > public/_headers
+          printf '/assets/*\n  Cache-Control: public, max-age=3600\n/\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n/version.json\n  Cache-Control: no-cache\n/test/*\n  Cache-Control: no-cache\n  X-Robots-Tag: noindex\n' > public/_headers
           cat public/_headers
 
       - name: Deploy game site to Cloudflare Pages

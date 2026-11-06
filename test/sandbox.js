@@ -1,5 +1,5 @@
 /********************************************************************
- * 테스트 전장 (주소 /test, localhost 전용)
+ * 테스트 전장 (주소 /test, 내 컴퓨터와 배포 사이트 모두)
  * - index.html의 전투 엔진을 그대로 써서, 용병·몬스터·허수아비를 마음대로 놓고 행동·스킬·쿨타임을 시험함
  * - index.html의 applyLocalDevEntry()가 ?dev=sandbox 일 때 이 파일을 불러옴
  * - 엔진 쪽 연결: stepSimulation의 sandboxPreTick() · 전투 종료 판정 건너뛰기 · selectStrategicSkillToCast의 sbNoSkill/sbBlockSkills
