@@ -1,6 +1,7 @@
 # 공용 불 폭발(spell_hit_fx.webp의 fire_hit 3칸: 마법사·화염술사 파이어볼 폭발)의 흰 배경 찌꺼기 정리 — 시트를 그 자리에서 고침
 # 사용: python tools/spell_hit_fire_clean.py   (여러 번 돌려도 결과가 거의 같음)
 # - 투명 배경과 맞닿은 연한 점(흰색·연회색·크림 테두리)을 바깥부터 PEEL겹, 아주 흰 점(흰 배경이 남은 덩어리)은 WHITE_PEEL겹 벗김
+# - 얇은 불꽃 안쪽에 갇힌 흰 덩어리도 바깥에서 ENCLOSED_NEAR px 안이면 지움 (불꽃 심은 멀어서 남음)
 # - 연한 점만으로 된 작은 조각(떠 있는 흰 점)은 통째로 지움
 # - 가운데 크림색 불꽃 심은 둘레가 주황·빨강이라 투명 배경과 닿지 않아 남음
 # - 원본(손실 webp)을 다시 무손실로 저장하면 파일이 두 배가 되므로 손실 압축(QUALITY)으로 저장하되, fire_hit 밖은 원본 칸 그대로
@@ -13,6 +14,7 @@ REGION = (0, 0, 677, 276)   # fire_hit 칸들 (x0, y0, x1, y1)
 PEEL = 2
 WHITE_PEEL = 8
 QUALITY = 92
+ENCLOSED_NEAR = 8
 
 
 def pale(c):     # 흰색·연회색·크림 (불꽃 노랑 255,230,120 같은 진한 색은 빠짐)
@@ -34,6 +36,14 @@ def main():
         clear = a == 0
         rim = (a > 0) & ndi.binary_dilation(clear, structure=np.ones((3, 3)))
         a[rim & (p if k < PEEL else white(c))] = 0
+    # 얇은 불꽃에 막혀 바깥과 직접 닿지 않은 흰 덩어리 (큰 불덩이 위쪽 등): 투명한 바깥까지 ENCLOSED_NEAR px 안이면 배경
+    #   가운데 크림색 불꽃 심은 바깥에서 멀어서 남음
+    wm = (a > 0) & white(c)
+    dist = ndi.distance_transform_edt(a > 0)
+    wl, wn = ndi.label(wm, structure=np.ones((3, 3)))
+    for i in range(1, wn + 1):
+        comp = wl == i
+        if dist[comp].min() <= ENCLOSED_NEAR: a[comp] = 0
     op = a > 0
     lab, n = ndi.label(op, structure=np.ones((3, 3)))
     if n:
