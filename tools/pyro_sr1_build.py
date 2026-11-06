@@ -67,7 +67,26 @@ FALL_ANGLE = 36.5           # 샘플 운석이 내려오는 각도 (오른쪽 �
 FADE = 260                  # 이펙트 꼬리 끝 서서히 사라지는 폭 (샘플 px)
 
 
-def white_bg(im, thr=222, tone=16, enclosed=False):
+def fx_white_cleanup(im, bg):
+    """메테오 이펙트용 흰 찌꺼기 정리 (불꽃 한가운데 흰색은 남김)
+    - 갇힌 흰 틈: 둘레가 어두우면(연기·파편 사이) 배경, 둘레가 밝은 노랑·주황이면 불꽃 심이라 남김
+    - 배경과 맞닿은 연회색·옅은 보랏빛 점 (흰 배경과 섞인 연기 가장자리) 두 겹"""
+    whiteish = (im.min(axis=2) > 205) & (im.max(axis=2) - im.min(axis=2) < 45) & ~bg
+    lab, n = ndi.label(whiteish, structure=np.ones((3, 3)))
+    for i in range(1, n + 1):
+        comp = lab == i
+        ring = ndi.binary_dilation(comp, iterations=2) & ~comp & ~bg
+        if not ring.any(): bg |= comp; continue
+        rc = im[ring]
+        warm = ((rc[:, 0] > 200) & (rc[:, 1] > 110)).mean()   # 둘레가 밝은 노랑·주황인 비율
+        if warm < 0.45: bg |= comp
+    for _ in range(2):
+        rim = ~bg & ndi.binary_dilation(bg)
+        bg |= rim & (im.min(axis=2) > 140) & (im.max(axis=2) - im.min(axis=2) < 60)
+    return bg
+
+
+def white_bg(im, thr=222, tone=16, enclosed=False, fx=False):
     """흰 배경 지우기. enclosed=True (캐릭터): 바깥과 이어지지 않은 흰 틈(깃털·다리 사이)과 가장자리의 연회색 찌꺼기도 지움
     (메테오 이펙트는 불꽃 한가운데가 흰색이라 enclosed=False)"""
     im = np.pad(im, ((2, 2), (2, 2), (0, 0)), constant_values=255)
@@ -81,6 +100,7 @@ def white_bg(im, thr=222, tone=16, enclosed=False):
         for _ in range(2):   # 배경과 맞닿은 연회색·분홍빛 흰 점 (흰 배경과 섞인 찌꺼기)
             rim0 = ~bg & ndi.binary_dilation(bg)
             bg |= rim0 & (im.min(axis=2) > 165) & (im.max(axis=2) - im.min(axis=2) < 70)
+    if fx: bg = fx_white_cleanup(im, bg)
     rim = ~bg & ndi.binary_dilation(bg, iterations=2)
     a = np.where(bg, 0.0, 1.0)
     a = np.where(rim, np.clip((255 - im.min(axis=2)) / 200, 0, 1), a)
@@ -275,7 +295,7 @@ def build_char():
 
 def fx_piece(name, anchor):
     im = np.array(Image.open(f'{D}meteor_{name}_src.webp').convert('RGB')).astype(float)
-    im, a = white_bg(im, thr=226, tone=22)
+    im, a = white_bg(im, thr=226, tone=22, fx=True)
     H, W = a.shape
     yy, xx = np.mgrid[0:H, 0:W]
     # 왼쪽 위 꼬리 끝: 그림 왼쪽·위 가장자리에서 FADE 안쪽은 서서히 투명
