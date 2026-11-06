@@ -1,13 +1,17 @@
 # 화염술사 시크릿 레어 1 (불사조: 불꽃 날개·불타는 깃털 몸·오른손 위 불길) 샘플 → assets/sprites/merc/pyro_sr1.webp
 #   + 전용 메테오 이펙트 assets/sprites/fx/pyro_sr_meteor_fx.webp
-# 사용: python tools/pyro_sr1_build.py
-# 샘플 (흰 배경, assets/sprites/fx/samples/pyro_sr1_*):
-#   idle_src.png (269×317): 대기 한 장뿐. 위쪽 "#08" 글씨는 지우고(CUT), 왼쪽 가장자리에 걸친 옆 그림 조각은 버림
+# 사용: python tools/pyro_sr1_build.py            (캐릭터·이펙트 둘 다)  ·  python tools/pyro_sr1_build.py char  (캐릭터만)
+# 샘플 (assets/sprites/fx/samples/pyro_sr1_*):
+#   idle_src.png (269×317, 흰 배경): 대기. 위쪽 "#08" 글씨는 지우고(CUT), 왼쪽 가장자리에 걸친 옆 그림 조각은 버림
+#   walk_ab_src.png (302×183, 흰 배경): 걷기 2칸 (왼쪽·오른쪽 반). 위에 잘린 제목 글씨는 지움 (WALK_AB_TEXT)
+#   walk_c_src.png (155×167, 흰 배경·회색 카드 테두리): 걷기 3번째. 테두리에 잘린 날개 끝·볏(위)과 발끝(아래)은
+#     잘린 줄에 가까울수록 좁아지게 깎아 뾰족하게 다듬고(TAPER), 새로 생긴 가장자리에 진한 윤곽색을 칠함
+#   sheet_src.png (708×560, 어두운 배경·칸 테두리·한글 이름표): 공격 2칸 (손 위 불꽃 → 손을 뻗어 불덩이 발사) · 피격 · 쓰러짐 2칸 (무릎 꿇음 → 재가 되어 엎드림)
+#     공격 발사 칸의 칸 밖 불덩이는 게임이 투사체로 따로 그리므로 버림 (A2_MAX_X), 쓰러짐 2칸 오른쪽 위 반짝이 표시는 지움 (D2_ERASE)
 #   meteor_fall_src.webp (1024×572): 연기 꼬리가 왼쪽 위로 길게 달린 불타는 운석 (날아오는 투사체)
 #   meteor_hit_src.webp (1024×572): 착탄 순간 (운석이 땅에 박히며 불꽃이 튐) · meteor_boom_src.webp: 착탄 뒤 폭발
-# 캐릭터 칸 순서 = 화염술사 0번과 같음: 0 대기 · 1~2 걷기 · 3 공격 준비 · 4 공격 발사 · 5 피격 · 6~7 쓰러짐 · 8 화염 시전 · 9 파이어볼 발사 · 10 화염 산탄 발사
-#   대기 한 장만 받아서, 나머지 칸은 발 가운데를 축으로 기울이고(앞으로 숙임 · 뒤로 젖힘) 들썩임·밝기만 바꿔 만듦
-# 크기: 머리 꼭대기~발(BODY_TOP~발)을 화염술사 0번 키(90)와 같게 → 날개는 그 위로 솟음
+# 캐릭터 칸 순서: 0 대기 · 1~2 걷기 · 3 공격 준비 · 4 공격 발사 · 5 피격 · 6~7 쓰러짐 · 8 화염 시전 (= 공격 준비) · 9 파이어볼 · 10 산탄 (= 공격 발사) · 11 걷기 3
+# 크기: 대기 머리 꼭대기~발(BODY_TOP~발) = TARGET_H. 다른 샘플은 몸 덩어리 키를 대기와 같게 맞춘 배율 (쓰러짐은 같은 장 공격·피격 칸 배율)
 # 이펙트 시트 칸: fall (운석, 기준점 = 돌덩이 가운데) · hit (착탄, 기준점 = 바닥 가운데) · boom (폭발, 기준점 = 바닥 가운데)
 #   꼬리가 그림 밖으로 잘린 왼쪽 위는 FADE 폭만큼 서서히 투명하게 (게임에서 잘린 끝이 보이지 않게)
 import os, sys
@@ -22,19 +26,19 @@ D = 'assets/sprites/fx/samples/pyro_sr1_'
 OUT = 'assets/sprites/merc/pyro_sr1.webp'
 FX_OUT = 'assets/sprites/fx/pyro_sr_meteor_fx.webp'
 CUT = [(122, 6, 170, 30)]   # "#08" 글씨
-BODY_TOP = 98               # 샘플에서 머리(볏) 꼭대기 y — 이 높이~발을 TARGET_H로
+BODY_TOP = 98               # 대기 샘플에서 머리(볏) 꼭대기 y — 이 높이~발을 TARGET_H로
 TARGET_H = 90
-FX_SCALE = 0.5              # 이펙트 시트 배율 (게임에서 반지름에 맞춰 다시 늘려 그림)
-FALL_ANGLE = 36.5          # 샘플 운석이 내려오는 각도 (오른쪽 아래로 36.5°) — 게임도 이 각도로 떨어뜨림
+SHEET_BG = np.array([30, 34, 43], float)
+SHEET_BOX = {'a1': (242, 6, 433, 182), 'a2': (444, 6, 637, 182), 'hurt': (242, 193, 433, 370), 'd1': (242, 381, 433, 552), 'd2': (444, 381, 637, 552)}
+A2_MAX_X = 630                         # 공격 발사 칸: 이 x부터는 날아가는 불덩이 (버림)
+D2_ERASE = [(588, 440, 637, 498)]      # 쓰러짐 2 반짝이 표시
+WALK_AB_TEXT = (40, 0, 240, 9)         # 걷기 샘플 위 잘린 제목 글씨
+WALK_C_BOX = (6, 6, 152, 161)          # 카드 테두리 안쪽
+TAPER = {'top': 18, 'bottom': 4}       # 잘린 줄에서 이 높이만큼 점점 좁혀 뾰족하게
+OUTLINE = np.array([96, 22, 12], float)
+FX_SCALE = 0.5              # 이펙트 시트 배율 (게임에서 다시 늘려 그림)
+FALL_ANGLE = 36.5           # 샘플 운석이 내려오는 각도 (오른쪽 아래로 36.5°) — 게임도 이 각도로 떨어뜨림
 FADE = 260                  # 이펙트 꼬리 끝 서서히 사라지는 폭 (샘플 px)
-
-# (칸 이름, 기울기° (+ = 뒤로 젖힘), 위로 들썩 (샘플 px), 밝기, 붉은 기)
-FRAMES = [
-    ('idle', 0, 0, 1.0, 0), ('walk0', -2, 6, 1.0, 0), ('walk1', 2, 2, 1.0, 0),
-    ('atk_ready', 5, 0, 1.06, 0), ('atk_fire', -7, 0, 1.08, 0),
-    ('hurt', 12, 0, 1.0, 0.35), ('down0', 45, 0, 0.85, 0.15), ('down1', 88, 0, 0.7, 0),
-    ('cast', 4, 4, 1.15, 0), ('fb', -10, 0, 1.12, 0), ('sc', -8, 0, 1.1, 0),
-]
 
 
 def white_bg(im, thr=222, tone=16):
@@ -51,71 +55,131 @@ def white_bg(im, thr=222, tone=16):
     return im[2:-2, 2:-2], a[2:-2, 2:-2]
 
 
+def finish(im, a, drop_edge=True):
+    """작은 티끌·가장자리 조각 정리 → (잘라 낸 rgba, 발 x, 몸 덩어리 키, 잘라 낸 위쪽 y)"""
+    m = a > 0.3
+    lab, n = ndi.label(m, structure=np.ones((3, 3)))
+    sz = ndi.sum(m, lab, range(1, n + 1))
+    body = 1 + int(np.argmax(sz))
+    H, W = m.shape
+    for i in range(1, n + 1):
+        if i == body: continue
+        ys, xs = np.where(lab == i)
+        dark_bit = sz[i - 1] < 40 and im[ys, xs].max(axis=1).mean() < 110   # 잘린 글씨 조각 (어둡고 작은 덩어리)
+        if sz[i - 1] < 3 or dark_bit or (drop_edge and (xs.min() <= 1 or ys.min() <= 1 or xs.max() >= W - 2)): a[lab == i] = 0
+    ys, xs = np.where(a > 0)
+    y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+    rgba = np.dstack([im, a * 255])[y0:y1, x0:x1]
+    bm = (lab == body)[y0:y1, x0:x1]
+    rows = np.where(bm.any(axis=1))[0]
+    bot = rows.max()
+    foot = np.where(bm[bot - max(4, int(len(rows) * 0.07)):bot + 1].any(axis=0))[0].mean()
+    return rgba, foot, rows.max() - rows.min() + 1, y0
+
+
 def load_idle():
     im = np.array(Image.open(f'{D}idle_src.png').convert('RGB')).astype(float)
     for x0, y0, x1, y1 in CUT: im[y0:y1, x0:x1] = 255
     im, a = white_bg(im)
-    m = a > 0.3
-    lab, n = ndi.label(m, structure=np.ones((3, 3)))
-    H, W = m.shape
-    for i in range(1, n + 1):
-        ys, xs = np.where(lab == i)
-        if xs.min() <= 1 or ys.min() <= 1 or xs.max() >= W - 2: a[lab == i] = 0   # 가장자리에 걸친 옆 그림 조각
-    ys, xs = np.where(a > 0)
-    y0 = ys.min()
-    rgba = np.dstack([im, a * 255])[y0:ys.max() + 1, xs.min():xs.max() + 1]
-    body = rgba[..., 3] > 200
-    bot = np.where(body.any(axis=1))[0].max()
-    foot = np.where(body[bot - 14:bot + 1].any(axis=0))[0].mean()   # 두 발 가운데
-    return rgba, foot, bot, BODY_TOP - y0
+    rgba, foot, h, y0 = finish(im, a)
+    return rgba, foot, h, rgba.shape[0] - 1 - (BODY_TOP - y0)
 
 
-def pose(rgba, foot, bot, ang, lift, bright, red):
-    h, w = rgba.shape[:2]
-    P = int(max(h, w) * 1.2)
-    big = np.zeros((2 * P, 2 * P, 4))
-    ox, oy = int(P - foot), int(P - bot)
-    big[oy:oy + h, ox:ox + w] = rgba
-    pm = big.copy(); pm[..., :3] *= pm[..., 3:] / 255
-    img = Image.fromarray(pm.clip(0, 255).astype(np.uint8), 'RGBA').rotate(ang, Image.BICUBIC, center=(P, P))
-    r = np.array(img).astype(float)
-    al = r[..., 3:]
-    r[..., :3] = np.where(al > 0, r[..., :3] * 255 / np.maximum(al, 1), 0)
-    r[..., :3] *= bright
-    if red: r[..., :3] = r[..., :3] * (1 - red) + np.array([255, 70, 60]) * red
-    r = np.clip(r, 0, 255)
-    ys, xs = np.where(r[..., 3] > 8)
-    x0, y0 = xs.min(), ys.min()
-    crop = r[y0:max(ys.max() + 1, P + 1), x0:xs.max() + 1]
-    if ang >= 30: return crop, P - x0, crop.shape[0]   # 쓰러짐: 가장 아래 닿는 곳을 바닥에
-    return crop, P - x0, (P - y0) + lift   # 발 기준점 (칸 안 x, 바닥 y)
+def load_walk_ab(half):
+    im = np.array(Image.open(f'{D}walk_ab_src.png').convert('RGB')).astype(float)
+    x0, y0, x1, y1 = WALK_AB_TEXT; im[y0:y1, x0:x1] = 255
+    im = im[:, :151] if half == 0 else im[:, 151:]
+    im, a = white_bg(im)
+    return finish(im, a, drop_edge=False)
+
+
+def taper(im, a, side, T):
+    """잘린 줄(side = 'top' | 'bottom')에 닿은 덩어리를 그 줄에 가까울수록 좁혀 뾰족하게 + 새 가장자리에 윤곽색"""
+    H, W = a.shape
+    for d in range(T):   # 덩어리마다 제 폭을 기준으로 잘린 줄 쪽으로 갈수록 좁힘 → 불꽃 끝처럼 뾰족
+        y = d if side == 'top' else H - 1 - d
+        row = a[y] > 0.3
+        if not row.any(): continue
+        lab, n = ndi.label(row)
+        for i in range(1, n + 1):
+            xs = np.where(lab == i)[0]
+            w = int(round(len(xs) * ((d + 1) / T) ** 1.2))
+            mid = (xs[0] + xs[-1]) / 2 + (len(xs) * 0.15 if side == 'top' else 0)   # 끝은 살짝 오른쪽(바람 방향)으로
+            keep = xs[np.abs(xs - mid) <= w / 2]
+            a[y, xs] = 0; a[y, keep] = 1
+    after = a > 0.3
+    edge = after & ~ndi.binary_erosion(after, structure=np.ones((3, 3)))
+    band = np.zeros_like(after)
+    if side == 'top': band[:T + 1] = True
+    else: band[H - T - 1:] = True
+    im[edge & band] = OUTLINE
+    return im, a
+
+
+def load_walk_c():
+    im = np.array(Image.open(f'{D}walk_c_src.png').convert('RGB')).astype(float)
+    x0, y0, x1, y1 = WALK_C_BOX
+    im, a = white_bg(im[y0:y1, x0:x1])
+    a[:2] = 0; a[-2:] = 0   # white_bg가 덧댄 여백 때문에 남는 테두리 줄
+    for side, T in TAPER.items():
+        rows = np.where((a > 0.3).any(axis=1))[0]
+        sl = slice(rows.min(), rows.max() + 1)
+        im[sl], a[sl] = taper(im[sl], a[sl], side, T)
+    return finish(im, a, drop_edge=False)
+
+
+def load_sheet(name):
+    im = np.array(Image.open(f'{D}sheet_src.png').convert('RGB')).astype(float)
+    for x0, y0, x1, y1 in (D2_ERASE if name == 'd2' else ()): im[y0:y1, x0:x1] = SHEET_BG
+    x0, y0, x1, y1 = SHEET_BOX[name]
+    if name == 'a2': x1 = A2_MAX_X
+    im = np.pad(im[y0:y1, x0:x1], ((2, 2), (2, 2), (0, 0)), mode='edge')
+    near = np.abs(im - SHEET_BG).max(axis=2) < 16
+    lab, n = ndi.label(near)
+    edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
+    a = np.where(np.isin(lab, edge[edge > 0]), 0.0, 1.0)[2:-2, 2:-2]
+    return finish(im[2:-2, 2:-2], a, drop_edge=False)
 
 
 def build_char():
-    rgba, foot, bot, top = load_idle()
-    sc = TARGET_H / (bot - top)
+    idle, ifoot, ih, itop_h = load_idle()
+    sc_idle = TARGET_H / itop_h
+    ref_h = ih * sc_idle   # 대기 몸 덩어리 키 (게임 px) — 다른 샘플은 이 키에 맞춤
+    wa, wb, wc = load_walk_ab(0), load_walk_ab(1), load_walk_c()
+    sh = {k: load_sheet(k) for k in SHEET_BOX}
+    sc_walk = ref_h / ((wa[2] + wb[2]) / 2)
+    sc_sheet = ref_h / ((sh['a1'][2] + sh['a2'][2] + sh['hurt'][2]) / 3)
+    print(f'몸 키: 대기 {ih} 걷기 {wa[2]} {wb[2]} {wc[2]} 공격 {sh["a1"][2]} {sh["a2"][2]} 피격 {sh["hurt"][2]}')
+    src = [('idle', (idle, ifoot, ih, 0), sc_idle), ('walk0', wa, sc_walk), ('walk1', wb, sc_walk),
+           ('atk_ready', sh['a1'], sc_sheet), ('atk_fire', sh['a2'], sc_sheet), ('hurt', sh['hurt'], sc_sheet),
+           ('down0', sh['d1'], sc_sheet), ('down1', sh['d2'], sc_sheet),
+           ('cast', sh['a1'], sc_sheet), ('fb', sh['a2'], sc_sheet), ('sc', sh['a2'], sc_sheet),
+           ('walk2', wc, sc_walk)]
     pieces = []
-    for name, ang, lift, br, red in FRAMES:
-        p, fx, fy = pose(rgba, foot, bot, ang, lift, br, red)
-        s = shrink(p, sc)
-        pieces.append((name, s, fx * sc, fy * sc))
-    L = max(int(np.ceil(c)) for _, _, c, _ in pieces) + 3
-    R = max(int(np.ceil(p.shape[1] - c)) for _, p, c, _ in pieces) + 3
-    U = max(int(np.ceil(fy)) for _, _, _, fy in pieces) + 3
-    Dn = max(int(np.ceil(p.shape[0] - fy)) for _, p, _, fy in pieces) + 2
-    cw, ch = L + R, U + Dn
+    for name, (rgba, foot, _, _), k in src:
+        p = shrink(rgba, k)
+        pieces.append((name, p, foot * k))
+    L = max(int(np.ceil(c)) for _, _, c in pieces) + 3
+    R = max(int(np.ceil(p.shape[1] - c)) for _, p, c in pieces) + 3
+    U = max(p.shape[0] for _, p, _ in pieces) + 3
+    cw, ch = L + R, U + 2
     sheet = np.zeros((ch, cw * len(pieces), 4), np.uint8)
-    for i, (name, p, c, fy) in enumerate(pieces):
-        x = i * cw + L - int(round(c)); y = U - int(round(fy))
+    for i, (name, p, c) in enumerate(pieces):
+        x = i * cw + L - int(round(c)); y = U - p.shape[0]
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
     Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
-    idle = pieces[0][1]
-    print(f'배율 {sc:.3f}  pyro_sr1 cellW={cw} cellH={ch} anchorX={L} anchorY={U} count={len(pieces)}  대기 그림 키 {int(round(pieces[0][3]))}')
-    # 손 위 불길 자리 (대기 칸, 발 기준): 몸 오른쪽 가장 밝은 노란 덩어리
-    sm = shrink(rgba, sc).astype(int)
-    hx = foot * sc
-    yy, xx = np.where((sm[..., 3] > 0) & (sm[..., 0] > 235) & (sm[..., 1] > 200) & (np.arange(sm.shape[1])[None] > hx + 15))
-    if len(xx): print(f'손 불길 = [{xx.mean() - hx:.0f}, {yy.mean() - sm.shape[0]:.0f}]')
+    print(f'배율 대기 {sc_idle:.3f} 걷기 {sc_walk:.3f} 시트 {sc_sheet:.3f}  pyro_sr1 cellW={cw} cellH={ch} anchorX={L} anchorY={U} count={len(pieces)}')
+    # 손 자리 (발 기준): 공격 발사 칸 오른쪽 끝 · 공격 준비 칸 손 위 불꽃 (몸 오른쪽의 가장 밝은 노란 덩어리)
+    for i, label in ((4, '발사 손끝'), (3, '준비 손 불꽃')):
+        p, c = pieces[i][1].astype(int), pieces[i][2]
+        al = p[..., 3] > 0
+        if i == 4:
+            xr = np.where(al.any(axis=0))[0].max()
+            yy = np.where(al[:, xr - 3:xr + 1].any(axis=1))[0].mean()
+            print(f'{label} = [{xr - c:.0f}, {yy - p.shape[0]:.0f}]')
+        else:
+            yy, xx = np.where(al & (p[..., 0] > 235) & (p[..., 1] > 200) & (np.arange(p.shape[1])[None] > c + 10))
+            if len(xx): print(f'{label} = [{xx.mean() - c:.0f}, {yy.mean() - p.shape[0]:.0f}]')
 
 
 def fx_piece(name, anchor):
@@ -156,7 +220,6 @@ def rock_center(rgba, a):
 
 def ground_center(rgba, a):
     # 바닥 = 맨 아래 줄 근처 그림의 가운데 · 기준점 y는 바닥 흙더미 가운데 높이
-    h, w = a.shape
     ys = np.where((a > 0.5).any(axis=1))[0]
     bot = ys.max()
     xs = np.where((a[bot - 30:bot + 1] > 0.5).any(axis=0))[0]
@@ -178,4 +241,4 @@ def build_fx():
 
 if __name__ == '__main__':
     build_char()
-    build_fx()
+    if 'char' not in sys.argv[1:]: build_fx()
