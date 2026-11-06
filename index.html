@@ -5441,7 +5441,7 @@
         icon: '🔥',
         color: '#ea580c',
         roleDesc: '다중 공격·불티 폭발',
-        passiveName: '번지는 불길', passiveDesc: '기본 공격은 불씨 3발이 대상과 그 둘레 4칸 안의 서로 다른 적에게 (각 50%, 둘레에 다른 적이 없으면 남은 불씨는 25%) · 불씨가 맞은 자리 주변 적에게도 50% 스플래시 · 맞힌 적에게 [불티] (6초) · 불티 1개당 그 적에게 주는 피해 +7% · 불티가 5개 쌓이면 바로 터져 120% 피해 · [화상]에 걸린 적이 쓰러지면 둘레 적 2명에게 화상이 옮겨붙음 · 몬스터에게 주는 피해 +30%',
+        passiveName: '번지는 불길', passiveDesc: '기본 공격은 불씨 3발이 대상과 그 둘레 4칸 안의 서로 다른 적에게 (각 50%, 둘레에 다른 적이 없으면 남은 불씨는 25%) · 불씨가 맞은 자리 주변 적에게도 50% 스플래시 · 맞힌 적에게 [불티] (6초) · 불티 1개당 그 적에게 주는 피해 +7% · 불티가 5개 쌓이면 바로 터져 120% 피해 (주변 적에게도 50% 스플래시) · [화상]에 걸린 적이 쓰러지면 둘레 적 2명에게 화상이 옮겨붙음 · 몬스터에게 주는 피해 +30%',
         baseHp: 1350, baseAtk: 58, baseDef: 28, baseSpd: 98, range: 290, maxMana: 100
       }
     };
@@ -24725,6 +24725,15 @@
       const m = owner && e && e.emberBy && e.emberBy[owner.id];
       return m && m.until > sim.tickCount ? m.n : 0;
     }
+    // 스플래시: center 자리 주변(반지름 60 × 크기 배율)의 다른 적에게 dmg의 50% (불티는 안 쌓임)
+    function pyroSplash(owner, center, dmg) {
+      const sr = PYRO_EMBER_SPLASH_R * unitAreaScale(owner);
+      sim.units.forEach(e => {
+        if (!e.alive || e === center || e.team === owner.team || e.rushPending) return;
+        if (Math.hypot(e.x - center.x, e.y - center.y) - unitBodyGap(e) <= sr) applyDamage(owner, e, dmg * PYRO_EMBER_SPLASH_RATIO, '', '#f97316');
+      });
+      return sr;
+    }
     function pyroAddEmber(owner, e, n = 1) {
       if (!owner || !e || !e.alive || e.team === owner.team) return;
       e.emberBy = e.emberBy || {};
@@ -24733,7 +24742,10 @@
         delete e.emberBy[owner.id];
         e.emberShow = Object.values(e.emberBy).reduce((m, v) => Math.max(m, v.until > sim.tickCount ? v.n : 0), 0);
         sim.effects.push({ type: 'fire_explosion', spr: 'fire_hit', x: e.x, y: e.y, r: 70, life: 34, maxLife: 34 }); // 파이어볼과 같은 폭발 그림
-        withSkillHit(() => applyDamage(owner, e, owner.atk * PYRO_EMBER_BURST, '🔥', '#ea580c'));
+        withSkillHit(() => {
+          applyDamage(owner, e, owner.atk * PYRO_EMBER_BURST, '🔥', '#ea580c');
+          pyroSplash(owner, e, owner.atk * PYRO_EMBER_BURST); // 주변 적에게도 50%
+        });
         return;
       }
       e.emberBy[owner.id] = { n: next, until: sim.tickCount + PYRO_EMBER_TICKS };
@@ -24799,12 +24811,7 @@
         p.volley.set(hit.id, k + 1);
       }
       applyDamage(p.owner, hit, dmg, '', '#f97316');
-      // 기본 공격 불씨·플레어 불덩이: 맞은 자리 주변 다른 적에게 스플래시
-      const sr = PYRO_EMBER_SPLASH_R * unitAreaScale(p.owner);
-      sim.units.forEach(e => {
-        if (!e.alive || e === hit || e.team === p.owner.team || e.rushPending) return;
-        if (Math.hypot(e.x - hit.x, e.y - hit.y) - unitBodyGap(e) <= sr) applyDamage(p.owner, e, dmg * PYRO_EMBER_SPLASH_RATIO, '', '#f97316');
-      });
+      const sr = pyroSplash(p.owner, hit, dmg); // 기본 공격 불씨·플레어 불덩이: 맞은 자리 주변 다른 적에게 스플래시
       pyroAddEmber(p.owner, hit);
       playCombatSfx('magic');
       const hitW = PYRO_FX.anims.hit[0][2]; // 피격 그림 너비 = 스플래시 지름
