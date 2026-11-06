@@ -2424,6 +2424,12 @@
         <!-- 광활하게 확장된 전장 월드(2880x1800)를 마우스 드래그로 자유롭게 관찰하는 뷰포트 (1440x960) -->
         <div class="relative rounded-2xl overflow-hidden border-2 border-amber-700/40 bg-amber-50 shadow-2xl">
           <canvas id="arenaCanvas" width="1440" height="960" class="w-full h-[560px] sm:h-[720px] lg:h-[880px] block cursor-grab active:cursor-grabbing"></canvas>
+          <!-- 전투 준비: 이번 전투 그림을 받는 동안 (prepareBattleImages) -->
+          <div id="arenaLoadingOverlay" class="hidden absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-slate-950/80 text-white pointer-events-none select-none">
+            <div class="text-lg sm:text-xl font-black">⏳ 전투 준비 중…</div>
+            <div class="w-56 max-w-[70%] h-2.5 rounded-full bg-slate-700 overflow-hidden"><div id="arenaLoadingBar" class="h-full bg-amber-400 transition-all duration-200" style="width:0%"></div></div>
+            <div id="arenaLoadingText" class="text-xs text-slate-300">용병과 몬스터 그림을 받는 중</div>
+          </div>
 
           <!-- 태블릿 터치 조작 (직접 전투일 때만 보임) -->
           <div id="touchControls" class="hidden absolute inset-0 pointer-events-none select-none">
@@ -9456,10 +9462,42 @@
       LANCER_MUSOU_SKINS[v] = def;
     });
 
+    // ── 그림 시트는 처음 쓸 때 받음 ──
+    // 예전엔 첫 화면을 열자마자 용병·몬스터·이펙트 시트와 전투 맵을 전부(약 50MB) 받아서, 반 전체가 접속하면 전송량이 아주 컸음 (2026-11-06)
+    // 이제 def.img·def.ready·def.portraits를 처음 읽는 순간(전장에 그리기·초상화 만들기) 받기 시작
+    // 세 값은 열거되지 않는 속성이라 {...def}로 복사해도 그림을 받지 않고, 복사본에 따라가지도 않음
+    // 전투에 들어갈 때는 prepareBattleImages가 그 전투 그림을 먼저 받고 디코딩까지 끝내 둠 (첫 등장 때 끊김 방지)
+    const LAZY_IMG_PENDING = new Set(); // 받기 시작했지만 아직 받기·디코딩이 안 끝난 그림
+    let lazyImgDoneN = 0;               // 지금까지 다 받은 그림 수 (준비 화면 진행 막대용)
+    function makeLazyImageDef(def, onLoad) {
+      if (Object.getOwnPropertyDescriptor(def, 'img')?.get) return; // 같은 def가 두 표에 들어 있으면 한 번만
+      const img = new Image();
+      img.decoding = 'async';
+      let ready = false, portraits = null, started = false;
+      const start = () => {
+        if (started || !def.src) return;
+        started = true;
+        LAZY_IMG_PENDING.add(img);
+        img.src = def.src;
+      };
+      const done = () => { if (LAZY_IMG_PENDING.delete(img)) lazyImgDoneN++; };
+      img.addEventListener('load', () => {
+        ready = true;
+        if (onLoad) onLoad(def);
+        // 디코딩까지 끝내 두면 첫 등장 때 안 끊김 · 기기에 따라 decode()가 안 끝나기도 해서 1.5초까지만 기다림
+        Promise.race([img.decode ? img.decode().catch(() => {}) : null, new Promise(r => setTimeout(r, 1500))]).then(done);
+      });
+      img.addEventListener('error', done);
+      const hidden = (get, set) => ({ get, set, enumerable: false, configurable: true });
+      Object.defineProperties(def, {
+        img: hidden(() => { start(); return img; }, v => { Object.defineProperty(def, 'img', { value: v, writable: true, enumerable: false, configurable: true }); }),
+        ready: hidden(() => { start(); return ready; }, v => { ready = v; }),
+        portraits: hidden(() => { start(); return portraits; }, v => { portraits = v; })
+      });
+    }
+
     Object.values(MERC_SPRITE_DEFS).concat(Object.values(BERSERKER_RAGE_SPRITES), Object.values(BERSERKER_UNDYING_SPRITES), Object.values(BERSERKER_RAGE_UNDYING_SPRITES), Object.values(MONSTER_SPRITE_DEFS), FX_SPRITE_SHEET, SKILL_FX_SHEET, GOBLIN_BOMB_FX, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX, GOLEM_FX, LEVIATHAN_FX, HYDRA_FX, BLOOD_ORC_FX, KRAKEN_FX, LICH_FX, IFRIT_FX, BAT_FX, SPIDER_FX, ORC_FX, SNOW_FX, FIRE_FX, STORM_SPIRIT_FX, SPIRIT_KING_BURST_FX, SPIRIT_KING_CIRCLE_FX, SPIRIT_KING_SR_BURST_FX, SPIRIT_KING_SR_CIRCLE_FX, SPIRIT_CIRCLE_FX, SPIRIT_CIRCLE_SR_FX, GIANT_FX, DEEPSEA_FX, FROST_SR_FX, CURSE_ORB_FX, BARD_ORB_FX, CURSE_HIT_FX, CURSE_SWAMP_FX, CURSE_RUIN_MARK_FX, ...Object.values(CURSE_RUIN_MARK_SKINS)).forEach(def => {
-      def.img = new Image();
-      def.img.onload = () => { def.ready = true; if (def.portraitCX !== undefined) buildSpritePortraits(def); };
-      def.img.src = def.src;
+      makeLazyImageDef(def, d => { if (d.portraitCX !== undefined) buildSpritePortraits(d); });
     });
 
     // 용병 외형(skinVariant) 배정: 직업별 그림 수만큼 무작위.
@@ -9532,7 +9570,7 @@
     };
     // 모험의 탑 종족별 맵 (없으면 공통 tower 맵)
     const TOWER_RACE_MAPS = { '고블린족': 'tower_goblin', '언데드': 'tower_undead', '야수족': 'tower_beast', '늪지족': 'tower_swamp', '설원족': 'tower_snow', '화염족': 'tower_fire', '심해족': 'elite_kraken' };
-    Object.values(BATTLE_MAPS).forEach(m => { m.img = new Image(); m.img.onload = () => { m.ready = true; }; m.img.src = m.src; });
+    Object.values(BATTLE_MAPS).forEach(m => makeLazyImageDef(m)); // 맵도 그 전투에서 처음 그릴 때 받음 (makeLazyImageDef)
     function getBattleMap(mode, towerFloor, eliteBossId) {
       if (mode === 'dungeon' && sim.dungeon) { // 🏰 던전: 방 종류에 맞는 종족 맵 (보스 방은 엘리트 보스 맵)
         const dm = BATTLE_MAPS[dungeonMapKey()];
@@ -18123,6 +18161,42 @@
       box.prepend(div);
     }
 
+    // 전투 준비 화면: 이번 전투에 나오는 그림을 먼저 받고 디코딩까지 끝냄 (그림은 처음 쓸 때 받으므로 · makeLazyImageDef)
+    // 전투 진행(실시간 결투·관전 시계)은 멈추지 않고 전장만 잠깐 가림 · 오래 걸려도 8초 뒤에는 걷음 · 이미 받은 그림뿐이면 안 보임
+    // 관전·실시간 도전자는 방장이 유닛 목록을 보내올 때(applyLiveInit)도 다시 부름
+    let battlePrepSeq = 0;
+    function prepareBattleImages() {
+      const seq = ++battlePrepSeq;
+      (sim.units || []).forEach(u => {
+        try {
+          getUnitSprite(u)?.img; // 읽기만 해도 받기 시작
+          if (u.job === 'berserker' && !u.monsterType) { // 광폭·불사 모습 시트
+            const k = `berserker_${u.skinVariant || 0}`;
+            [BERSERKER_RAGE_SPRITES, BERSERKER_UNDYING_SPRITES, BERSERKER_RAGE_UNDYING_SPRITES].forEach(t => { (t[k] || t.berserker_0)?.img; });
+          }
+          if (u.job === 'summoner' && !u.monsterType && !u.spiritElem) { // 불러낼 정령들
+            const sr = isSummonerSr(u);
+            Object.keys(SPIRIT_DEFS).forEach(e => { MONSTER_SPRITE_DEFS[spiritSpriteKey(e, sr)]?.img; });
+          }
+        } catch (e) {}
+      });
+      [FX_SPRITE_SHEET, SKILL_FX_SHEET, SUPPORT_FX, MAGE_SPELL_FX, SPELL_HIT_FX, AOE_FX].forEach(d => { d?.img; }); // 거의 모든 전투에 나오는 공통 이펙트
+      const ov = document.getElementById('arenaLoadingOverlay');
+      const bar = document.getElementById('arenaLoadingBar'), txt = document.getElementById('arenaLoadingText');
+      if (!ov) return;
+      const startDone = lazyImgDoneN, t0 = Date.now();
+      const tick = () => {
+        if (seq !== battlePrepSeq) return; // 다음 전투(또는 새 유닛 목록) 준비가 이어받음
+        const left = LAZY_IMG_PENDING.size, got = Math.max(0, lazyImgDoneN - startDone);
+        if (!left || !sim.running || Date.now() - t0 > 8000) { ov.classList.add('hidden'); return; }
+        ov.classList.remove('hidden');
+        if (bar) bar.style.width = `${Math.round(got / (got + left) * 100)}%`;
+        if (txt) txt.textContent = `용병과 몬스터 그림을 받는 중 (${got} / ${got + left})`;
+        setTimeout(tick, 120);
+      };
+      tick();
+    }
+
     function launchSimulation({ mode, title, blueStudent, redStudent, towerFloorObj, eliteBossId, eliteHard = false, rewardMc, lossRewardMc, customBlueUnits, customRedUnits, netRole = null, myTeam = 'blue', roomBattle = false, liveKind = null }) {
       const blueDeployed = (blueStudent?.roster || []).filter(m => m.deployed);
       if (!customBlueUnits && blueDeployed.length === 0) {
@@ -18270,6 +18344,7 @@
       } else {
         addBattleLog(`${title} 시뮬레이션이 시작되었습니다! (마우스 드래그로 전장 화면 이동 가능)`);
       }
+      prepareBattleImages();
       if (arenaSec) {
         arenaSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
@@ -39476,6 +39551,7 @@
         });
       }
       sim.units = units;
+      if (!sameHost) prepareBattleImages(); // 관전·도전자: 방장이 보낸 유닛 그림 (러쉬 새 라운드 몬스터 포함)
       // 중계하던 친구가 인터넷이 끊겼다 와서 전투 정보를 다시 올렸으면, 그 사이 지워졌을 수 있는 내 관전 표시도 다시 적음
       if (liveNet.spectator && liveNet.raidWatchRef) {
         const me = getActiveStudent();
