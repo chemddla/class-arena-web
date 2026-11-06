@@ -21,6 +21,10 @@
 | `ifrit_elite_src.webp` | 겁화의 이프리트 원본 1 (2026-11-03) | 1024×572 RGB. 대기 · 걷기 1·2 / 일반공격 1·2 · 피격 / 쓰러짐 1·2. 대기 아래 다리만 있는 조각은 안 씀. 일반공격 2의 불덩이는 잘라 내서 기본 공격 투사체로 씀. 대기 칸만 크게 그려져 있음(0.8배). **게임의 `ifrit.webp`(화염 대검, 화염족 보스)와 다른 그림** → 엘리트 8단계 `elite_ifrit`에만 씀: `python tools/ifrit_elite_build.py` → `monster/ifrit_elite.webp`(22칸, MONSTER_SPRITE_DEFS.elite_ifrit) |
 | `ifrit_elite_skill_src.webp` | 겁화의 이프리트 원본 2: 스킬 3종 (2026-11-03) | 1024×765 RGB, 0.84배로 줄여 씀. 겁화구 2칸(모으기·발사, 날아가는 겁화구는 투사체로 따로) → `fireball`, 화염 폭발 3칸(모으기·불길·불꽃 돔) → `roar`, 불비 3칸(의식·내려다봄·운석 강우, 날아오는 운석은 지우고 한 개를 장판 운석으로 씀) → `arrow_rain`. 라벨 지움 |
 | `ifrit_elite_skill2_src.webp` | 겁화의 이프리트 원본 3: 스킬 3종 (2026-11-03) | 1024×572 RGB, 작게 그려져 있어 1.2배로 키워 씀. 용암 분출 2칸 → `earthquake`, 불꽃 순간이동 2칸(사라짐·출현, 오른쪽 라벨은 '불꽃 분출'로 잘못 적혀 있음) → `teleport`, 불꽃 분노 2칸(포효·양옆 불길) → `warcry`. 라벨 지움 |
+| `crab_warrior_src.webp` | 심해족 집게 전사 원본 (2026-11-06) | 765×1024 RGB, 3·3·2칸 (대기, 걷기 1·2 / 일반공격 1·2, 피격 / 쓰러짐 1·2). 남색 배경, 한글 라벨, 쓰러짐 2 소라 방패에 ✦ 워터마크 → `python tools/deepsea_build.py` → `monster/crab_warrior.webp` |
+| `merfolk_archer_src.webp` | 심해족 인어 작살수 원본 (2026-11-06) | 765×1024 RGB, 같은 배치. 걷기 2·피격 칸은 작살이 빠져 있어 대기 칸 작살을 쥐여 줌. 쓰러짐 2 얼굴 위 ✦ 워터마크. 작살은 투사체 `fx/deepsea_fx.webp` harpoon |
+| `octopus_archer_src.webp` | 심해족 먹물 저격 문어 원본 (2026-11-06) | 1024×765 RGB, 같은 배치. 일반공격 2의 물방울은 투사체 squirt로 떼어 냄. 쓰러짐 2 소라 위 ✦ 워터마크 |
+| `octopus_mage_src.webp` | 심해족 먹물폭탄 문어 원본 (2026-11-06) | 765×1024 RGB, 3·2·3칸 (대기, 걷기 1·2 / 일반공격 1·2 / 피격, 쓰러짐 1·2). 대기 칸 먹물 방울은 지움, 일반공격 2의 날아가는 폭탄은 투사체 bomb. 쓰러짐 2 촉수 위 ✦ 워터마크 |
 
 `goblin_bomber.webp` 연결 예시 (전투에서 확인한 값):
 
