@@ -20,6 +20,37 @@
       f.addEventListener('load', () => { give(); setTimeout(give, 300); setTimeout(give, 1000); });
       window.addEventListener('focus', give);
     })();
+
+    // 최신 main 테스트 서버(tools/live-main-server.cjs)로 열었을 때만: 지금 보는 커밋을 표시하고,
+    // 누가 origin/main에 새로 푸시하면 "새 버전 도착" 버튼을 띄움 (누르면 전장을 새 코드로 다시 불러옴)
+    (function () {
+      let shown = '';
+      const badge = document.createElement('button');
+      badge.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:9;border:0;border-radius:6px;padding:4px 8px;' +
+        'font:12px/1.4 system-ui,sans-serif;color:#cbd5e1;background:rgba(15,23,42,.85);cursor:default;max-width:60vw;' +
+        'white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      badge.addEventListener('click', () => { if (badge.dataset.fresh) location.reload(); });
+      async function check() {
+        let v;
+        try { const r = await fetch('/__live/version', { cache: 'no-store' }); if (!r.ok) return false; v = await r.json(); }
+        catch (e) { return false; }
+        if (!v.commit) return true;
+        if (!badge.isConnected) document.body.appendChild(badge);
+        if (!shown) {
+          shown = v.commit;
+          badge.textContent = '최신 main ' + v.short + ' · ' + v.subject;
+          badge.title = '이 화면은 origin/main을 몇 초마다 받아 옴';
+        } else if (v.commit !== shown) {
+          badge.dataset.fresh = '1';
+          badge.style.background = '#16a34a';
+          badge.style.color = '#fff';
+          badge.style.cursor = 'pointer';
+          badge.textContent = '새 버전 도착 ' + v.short + ' · ' + v.subject + ' — 눌러서 새로고침';
+        }
+        return true;
+      }
+      check().then((ok) => { if (ok) setInterval(check, 3000); });
+    })();
   </script>
 </body>
 </html>
