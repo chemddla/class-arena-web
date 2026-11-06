@@ -14778,6 +14778,25 @@
       });
       return stu.codex;
     }
+    // 도감 기록 여러 개를 합침 (늘기만 하는 기록이라 한쪽에만 열린 칸도 모두 남김). 비었거나 잘못된 값은 건너뜀
+    function mergeCodexBooks(...books) {
+      const out = { jobs: {}, skills: {}, monsters: {}, elites: {}, secrets: {} };
+      books.forEach(b => {
+        if (!b || typeof b !== 'object') return;
+        ['jobs', 'monsters', 'elites', 'secrets'].forEach(k => {
+          const src = b[k];
+          if (src && typeof src === 'object') Object.keys(src).forEach(id => { if (src[id]) out[k][id] = true; });
+        });
+        const sk = b.skills;
+        if (sk && typeof sk === 'object') Object.keys(sk).forEach(job => {
+          const m = sk[job];
+          if (!m || typeof m !== 'object') return;
+          const dst = out.skills[job] || (out.skills[job] = {});
+          Object.keys(m).forEach(id => { if (m[id]) dst[id] = true; });
+        });
+      });
+      return out;
+    }
     // 지금 데리고 있는 용병의 직업과 열린 스킬을 도감에 남김 (모집·거래·선물 등 어떤 길로 들어와도 저장할 때 기록됨)
     function syncCodexFromRoster(stu) {
       if (!stu || !Array.isArray(stu.roster)) return;
@@ -14934,25 +14953,6 @@
       return `<div>
             <div class="text-xs font-extrabold text-fuchsia-700 mb-1.5">✨ 히든 스킬 (${open ? 1 : 0}/1)</div>
             ${open ? `
-    // 도감 기록 여러 개를 합침 (늘기만 하는 기록이라 한쪽에만 열린 칸도 모두 남김). 비었거나 잘못된 값은 건너뜀
-    function mergeCodexBooks(...books) {
-      const out = { jobs: {}, skills: {}, monsters: {}, elites: {}, secrets: {} };
-      books.forEach(b => {
-        if (!b || typeof b !== 'object') return;
-        ['jobs', 'monsters', 'elites', 'secrets'].forEach(k => {
-          const src = b[k];
-          if (src && typeof src === 'object') Object.keys(src).forEach(id => { if (src[id]) out[k][id] = true; });
-        });
-        const sk = b.skills;
-        if (sk && typeof sk === 'object') Object.keys(sk).forEach(job => {
-          const m = sk[job];
-          if (!m || typeof m !== 'object') return;
-          const dst = out.skills[job] || (out.skills[job] = {});
-          Object.keys(m).forEach(id => { if (m[id]) dst[id] = true; });
-        });
-      });
-      return out;
-    }
             <div class="hidden-skill-card border-2 rounded-xl p-3 flex flex-col gap-1.5">
               <div class="flex items-center justify-between gap-2 flex-wrap">
                 <span class="text-sm font-extrabold text-white">${hid.icon} ${hid.name}</span>
@@ -15558,6 +15558,29 @@
     function codexMonsterIds() {
       return [...new Set(TOWER_RACES.flatMap(codexRaceMonsterIds))];
     }
+    // 도감 카드 목록: 종족 보스 + 직업 편성(TOWER_RACE_SQUADS)의 칸 하나하나 (같은 몬스터라도 직업마다 따로, 예: 용인족 전사·궁수·주술사…)
+    // 카드는 그 몬스터(id)를 한 번이라도 처치하면 열림
+    function codexRaceEntries(race) {
+      const squad = TOWER_RACE_SQUADS[race.name] || {};
+      const list = [];
+      const seen = new Set();
+      const add = (id, job, name, skill, isBoss) => {
+        if (!MONSTER_DEFS[id]) return;
+        const key = `${id}|${job}|${name}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        list.push({ id, job, name, skill, isBoss });
+      };
+      add(race.boss, race.bossJob, MONSTER_DEFS[race.boss] && MONSTER_DEFS[race.boss].name, (squad.boss || [])[0], true);
+      Object.keys(squad).forEach(job => {
+        if (job === 'boss' || !Array.isArray(squad[job])) return;
+        squad[job].forEach(e => { if (e) add(e[0], job, e[1] || (MONSTER_DEFS[e[0]] && MONSTER_DEFS[e[0]].name), (e[2] || [])[0], false); });
+      });
+      return list;
+    }
+    function codexMonsterEntries() {
+      return TOWER_RACES.flatMap(codexRaceEntries);
+    }
     // 몬스터 그림: 스프라이트 시트의 대기 첫 칸을 발 기준으로 잘라 보여 줌 (그림이 없으면 이모지)
     // job을 주면 그 직업 그림 (전투와 같은 규칙: getUnitSprite). elite = 엘리트 보스 칸이면 'elite_<몬스터>' 그림을 먼저 씀
     function getMonsterCodexArtHTML(monId, size, job, skillKey, elite = false) {
@@ -15608,6 +15631,7 @@
                 <div class="flex items-center gap-1.5 flex-wrap">
                   <span class="text-sm font-extrabold text-white">${mon.icon} ${name}</span>
                   ${isBoss ? '<span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold">👑 종족 보스</span>' : ''}
+                  ${jd ? `<span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-bold">${jd.icon} ${jd.name}</span>` : ''}
                 </div>
                 ${MONSTER_CODEX_DESC[id] ? `<p class="text-[11px] text-slate-300 leading-snug">${MONSTER_CODEX_DESC[id]}</p>` : ''}
                 ${passives.length ? passives.map(p => `<div class="text-[11px] text-slate-300 leading-snug">${p.icon} <strong>${p.name}</strong>: ${p.desc}</div>`).join('') : '<div class="text-[11px] text-slate-500">특별한 특성 없음</div>'}
@@ -15714,29 +15738,6 @@
               <div class="grid grid-cols-4 gap-1 text-center bg-slate-950/90 rounded-xl p-2 text-xs mb-3">
                 <div class="cursor-help rounded-lg py-0.5 hover:bg-slate-800/60 transition"
                   onmouseenter="showStatTooltip(event, ${idx}, 'hp', true)"
-    // 도감 카드 목록: 종족 보스 + 직업 편성(TOWER_RACE_SQUADS)의 칸 하나하나 (같은 몬스터라도 직업마다 따로, 예: 용인족 전사·궁수·주술사…)
-    // 카드는 그 몬스터(id)를 한 번이라도 처치하면 열림
-    function codexRaceEntries(race) {
-      const squad = TOWER_RACE_SQUADS[race.name] || {};
-      const list = [];
-      const seen = new Set();
-      const add = (id, job, name, skill, isBoss) => {
-        if (!MONSTER_DEFS[id]) return;
-        const key = `${id}|${job}|${name}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        list.push({ id, job, name, skill, isBoss });
-      };
-      add(race.boss, race.bossJob, MONSTER_DEFS[race.boss] && MONSTER_DEFS[race.boss].name, (squad.boss || [])[0], true);
-      Object.keys(squad).forEach(job => {
-        if (job === 'boss' || !Array.isArray(squad[job])) return;
-        squad[job].forEach(e => { if (e) add(e[0], job, e[1] || (MONSTER_DEFS[e[0]] && MONSTER_DEFS[e[0]].name), (e[2] || [])[0], false); });
-      });
-      return list;
-    }
-    function codexMonsterEntries() {
-      return TOWER_RACES.flatMap(codexRaceEntries);
-    }
                   onmousemove="moveStatTooltip(event)"
                   onmouseleave="hideStatTooltip()">
                   <div class="text-[10px] text-slate-400">체력</div>
@@ -15786,7 +15787,6 @@
 
     function setTowerFloorFilter(rangeKey) {
       currentTowerFloorFilter = rangeKey;
-                  ${jd ? `<span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-bold">${jd.icon} ${jd.name}</span>` : ''}
       ['all', '1-40', '41-80', '81-120', '121-160', '161-200'].forEach(k => {
         const btn = document.getElementById(`tfilter-${k}`);
         if (btn) {
@@ -35661,6 +35661,22 @@
     function mergeStudentPrivate(rawStudents) {
       const out = {};
       const localById = new Map((state.students || []).map(x => [x.id, x]));
+      if (studentPriv.off) {
+        // 예전 방식으로 저장하는 동안에도 서버 students에 없는 나만 쓰는 칸은 이 기기 값을 그대로 둠
+        // (지우면 도감이 빈 값으로 다시 만들어져 그대로 서버에 올라갔음)
+        Object.keys(rawStudents || {}).forEach(id => {
+          const raw = rawStudents[id];
+          const local = localById.get(id);
+          if (!raw || typeof raw !== 'object' || !local) { out[id] = raw; return; }
+          const rec = { ...raw };
+          STUDENT_PRIVATE_KEYS.forEach(k => {
+            if (k === 'codex' && raw[k] != null) rec[k] = mergeCodexBooks(raw[k], local[k]);
+            else if (raw[k] == null && local[k] !== undefined) rec[k] = local[k];
+          });
+          out[id] = rec;
+        });
+        return out;
+      }
       Object.keys(rawStudents || {}).forEach(id => {
         const raw = rawStudents[id];
         if (!raw || typeof raw !== 'object') { out[id] = raw; return; }
@@ -35670,6 +35686,11 @@
         const priv = studentPriv.remote[id] || {};
         const local = localById.get(id);
         STUDENT_PRIVATE_KEYS.forEach(k => {
+          // 예전 버전(오래 열어 둔 탭 등)이 students에 쓴 도감은 거의 빈 값일 수 있음 → 서버 전용 칸·이 기기 값과 합침 (덮어쓰면 도감이 초기화됐음)
+          if (k === 'codex' && raw[k] != null) {
+            rec[k] = mergeCodexBooks(raw[k], studentPrivKnown(id) ? priv[k] : null, local && local[k]);
+            return;
+          }
           if (raw[k] != null) return; // 예전 버전이 students에 쓴 값 (가장 최근 값)
           if (studentPrivKnown(id)) { if (priv[k] != null) rec[k] = priv[k]; }
           else if (local && local[k] !== undefined) rec[k] = local[k];
@@ -35816,22 +35837,6 @@
     function hashStudentPassword(stu, pw) {
       return 'h:' + simpleHashString('pw:' + (stu && stu.id ? stu.id : '') + ':' + String(pw || ''));
     }
-      if (studentPriv.off) {
-        // 예전 방식으로 저장하는 동안에도 서버 students에 없는 나만 쓰는 칸은 이 기기 값을 그대로 둠
-        // (지우면 도감이 빈 값으로 다시 만들어져 그대로 서버에 올라갔음)
-        Object.keys(rawStudents || {}).forEach(id => {
-          const raw = rawStudents[id];
-          const local = localById.get(id);
-          if (!raw || typeof raw !== 'object' || !local) { out[id] = raw; return; }
-          const rec = { ...raw };
-          STUDENT_PRIVATE_KEYS.forEach(k => {
-            if (k === 'codex' && raw[k] != null) rec[k] = mergeCodexBooks(raw[k], local[k]);
-            else if (raw[k] == null && local[k] !== undefined) rec[k] = local[k];
-          });
-          out[id] = rec;
-        });
-        return out;
-      }
 
     function checkStudentPassword(stu, input) {
       return legacyStudentPasswordMatches(stu, String((stu && state.localPwHashes && state.localPwHashes[stu.id]) || ''), input);
@@ -35841,11 +35846,6 @@
     function legacyStudentPasswordMatches(stu, stored, input) {
       if (!stored) return false;
       if (stored.startsWith('h:')) return stored === hashStudentPassword(stu, input);
-          // 예전 버전(오래 열어 둔 탭 등)이 students에 쓴 도감은 거의 빈 값일 수 있음 → 서버 전용 칸·이 기기 값과 합침 (덮어쓰면 도감이 초기화됐음)
-          if (k === 'codex' && raw[k] != null) {
-            rec[k] = mergeCodexBooks(raw[k], studentPrivKnown(id) ? priv[k] : null, local && local[k]);
-            return;
-          }
       return stored === input;
     }
 
