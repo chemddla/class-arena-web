@@ -68,6 +68,26 @@ def clean_watermark(path, x0, x1, y0, y1):
 
 clean_watermark(S2, 900, 962, 452, 514)   # 쓰러짐 2 머리 옆
 
+
+def drop_white(rgba, lo=222, sat=16):
+    """배경 지우기에서 남은 흰 틈 (날개 밑·고리 사이의 덜 하얀 배경 조각): 거의 흰 덩어리 중 4px 이상이거나 투명한 곳에 닿은 것을 지움.
+    날개 속 별빛 점(1~3px, 몸에 둘러싸임)은 남김"""
+    c, A = rgba[..., :3], rgba[..., 3]
+    wh = (c.min(2) >= lo) & (c.max(2) - c.min(2) <= sat) & (A > 0)
+    lab, n = ndi.label(wh, structure=np.ones((3, 3)))
+    if not n: return rgba
+    clear = ndi.binary_dilation(A < 128, iterations=1)
+    areas = ndi.sum(wh, lab, range(1, n + 1))
+    touch = ndi.maximum(clear, lab, range(1, n + 1))
+    kill = np.zeros(n + 1, bool)
+    kill[1:] = (areas >= 4) | (touch > 0)
+    rgba = rgba.copy()
+    rgba[..., 3][kill[lab]] = 0
+    # 지운 자리 둘레의 밝은 테두리도 반투명하게
+    edge = ndi.binary_dilation(kill[lab], iterations=1) & ~kill[lab] & (c.min(2) >= 200)
+    rgba[..., 3][edge] *= 0.4
+    return rgba
+
 ORDER = ['idle', 'walk_a', 'walk_b', 'walk_c', 'atk_a', 'atk_b', 'hurt', 'death_a', 'death_b',
          'br_a', 'br_b', 'tb_a', 'tb_b', 'charge', 'rain', 'ro_b', 'ro_c', 'eq_a', 'eq_b', 'rg_a', 'rg_b', 'ds_a', 'ds_b']
 OUT = 'assets/sprites/monster/chaos_dragon.webp'
@@ -85,6 +105,8 @@ def placed0(name):
     path, x0, x1, y0, y1, opt = CELLS[name]
     # min = 칸 구분 점선·라벨 글자 부스러기 지우기
     rgba, info = cut((path, x0, x1, y0, y1, {'min': 60, **opt}))
+    # 몸: 찢어진 날개 끝에 낀 연보라빛 흰 배경 조각까지 (용 몸 색은 훨씬 어두움)
+    rgba = drop_white(rgba, lo=150, sat=26)
     A = rgba[..., 3]
     c = rgba[..., :3]
     dark = (A > 200) & (c.mean(2) < 110)
@@ -134,13 +156,13 @@ def build():
 FX_CELLS = {
     'breath':   (S5, 8, 352, 34, 195, {'min': 2}),                      # 종말의 브레스 큰 불길 (머리가 오른쪽)
     'beam':     (S8, 70, 325, 48, 95, {'min': 2}),                      # 일반 공격 보라 숨결 (머리가 오른쪽)
-    'bolt':     (S8, 360, 455, 48, 235, {'min': 2}),                    # 낙뢰 기둥 (바닥에 튀는 불꽃째)
-    'spark':    (S8, 588, 670, 120, 235, {'min': 2}),                   # 낙뢰가 꽂힌 자리 섬광
+    'bolt':     (S8, 360, 455, 48, 235, {'min': 2, 'white': True}),                    # 낙뢰 기둥 (바닥에 튀는 불꽃째)
+    'spark':    (S8, 588, 670, 120, 235, {'min': 2, 'white': True}),                   # 낙뢰가 꽂힌 자리 섬광
     'meteor_0': (S8, 692, 795, 38, 135, {'min': 2, 'big': True}),       # 운석 (꼬리가 왼쪽 위)
     'meteor_1': (S8, 692, 795, 145, 240, {'min': 2, 'big': True}),      # 큰 운석
-    'impact_0': (S8, 798, 902, 145, 240, {'min': 2}),                   # 운석 충돌 폭발
-    'impact_1': (S8, 902, 1006, 145, 240, {'min': 2}),
-    'impact_2': (S8, 125, 232, 285, 392, {'min': 2}),
+    'impact_0': (S8, 798, 902, 145, 240, {'min': 2, 'white': True}),                   # 운석 충돌 폭발
+    'impact_1': (S8, 902, 1006, 145, 240, {'min': 2, 'white': True}),
+    'impact_2': (S8, 125, 232, 285, 392, {'min': 2, 'white': True}),
     'sphere':   (S8, 355, 455, 288, 392, {'min': 2}),                   # 포효: 검붉은 기운 구체
     'rings':    (S8, 455, 565, 288, 395, {'min': 2}),                   # 포효: 비스듬한 충격파 고리
     'ripple':   (S8, 455, 565, 470, 560, {'min': 2}),                   # 포효: 바닥 물결 고리 (위에서 본)
@@ -150,8 +172,8 @@ FX_CELLS = {
     'cone_2':   (S6, 655, 1016, 58, 550, {'min': 2}),
     'tornado':  (S8, 692, 795, 290, 395, {'min': 2}),                   # 용의 분노: 붉은 회오리
     'spiky':    (S8, 795, 900, 285, 395, {'min': 2}),                   # 용의 분노: 검은 가시 폭발
-    'dome':     (S8, 900, 1008, 290, 395, {'min': 2}),                  # 용의 분노: 붉은 돔
-    'pit':      (S8, 10, 122, 450, 562, {'min': 2}),                    # 대지 진동: 용암 구덩이
+    'qcrack':   (S8, 350, 455, 395, 462, {'min': 2}),                   # 대지 진동: 땅 갈라짐
+    'spike':    (S5, 372, 648, 220, 368, {'min': 2}),                   # 대지 진동: 보라 가시 분출 + 튀는 바위 (샘플 5)
     'flame':    (S8, 122, 228, 448, 562, {'min': 2}),                   # 대지 진동: 보라 불꽃 분출
     'erupt':    (S8, 228, 335, 458, 562, {'min': 2}),                   # 대지 진동: 불꽃 + 바닥 물결
     'hole':     (S8, 690, 798, 450, 560, {'min': 2}),                   # 종말의 굉음: 검은 구멍
@@ -162,13 +184,18 @@ FX_ANIMS = {
     'breath': ['breath'], 'beam': ['beam'], 'bolt': ['bolt'], 'spark': ['spark'],
     'meteor': ['meteor_0', 'meteor_1'], 'impact': ['impact_0', 'impact_1', 'impact_2'],
     'roar': ['sphere', 'rings', 'ripple', 'crack'], 'cone': ['cone_0', 'cone_1', 'cone_2'],
-    'rage': ['tornado', 'spiky', 'dome'], 'quake': ['pit', 'flame', 'erupt'], 'disso': ['hole', 'star', 'vortex'],
+    'rage': ['tornado', 'spiky'], 'quake': ['qcrack', 'spike', 'erupt'], 'disso': ['hole', 'star', 'vortex'],
 }
 OUT_FX = 'assets/sprites/fx/chaos_dragon_fx.webp'
-BOTTOM = {'bolt', 'spark', 'impact_0', 'impact_1', 'impact_2', 'crack', 'tornado', 'dome', 'pit', 'flame', 'erupt'}
+BOTTOM = {'bolt', 'spark', 'impact_0', 'impact_1', 'impact_2', 'crack', 'qcrack', 'spike', 'tornado', 'flame', 'erupt'}
 
 
 def fx_cut(spec):
+    rgba = fx_cut0(spec)
+    return rgba if spec[5].get('white') else drop_white(rgba)
+
+
+def fx_cut0(spec):
     if not spec[5].get('big'): return cut(spec)[0]
     _, a = load(spec[0])
     p, x0, x1, y0, y1, _ = spec
