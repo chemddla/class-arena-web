@@ -14,6 +14,7 @@
 #   - 13·14번 샘플(165×203, 299×214)은 발밑 연보라 그림자를 지움 (SHADOW: 그 줄 아래 연보라 픽셀 = 배경)
 #   - 13번 발밑 불꽃 고리는 따로 떼어 이펙트 ring으로도 저장 (불의 고리가 유지되는 동안 발밑에 깔림, 기준점 = 고리 가운데)
 #     · 몸에 가려 그려져 있지 않던 뒤쪽 가운데는 앞쪽 가운데 띠를 뒤집어 채움
+# 익스플로전 폭발 xpl0 (불덩이) · xpl1 (흩어지는 연기) — 샘플 XPL_SRC 한 장을 XPL_SPLIT 열에서 나눔, 기준점 = 각 칸 가운데
 # 기본 공격 피격 이펙트 hit (샘플 HIT_SRC, 불티가 사방으로 튐, 기준점 = 가운데) → FX_OUT
 #   · 15 메테오 시전 중간 (두 손 위에 불덩이) · 16 메테오 시전 완료 직전 (두 주먹을 치켜듦)
 #   - 15번 샘플의 발밑 빨간 장판은 지움 (PUDDLE: 그 줄 아래 순수한 빨강, 치맛자락 상자는 빼고)
@@ -43,6 +44,8 @@ ENCLOSED_MIN = 15   # 갇힌 흰 덩어리가 이 px 이상이면 배경
 CAST_SRC = 'assets/sprites/fx/samples/pyro_cast_src.png'
 FB_SRC = 'assets/sprites/fx/samples/pyro_fireball_src.png'
 SC_SRC = 'assets/sprites/fx/samples/pyro_scatter_src.png'
+XPL_SRC = 'assets/sprites/fx/samples/pyro_explosion_src.png'
+XPL_SPLIT = 290
 HIT_SRC = 'assets/sprites/fx/samples/pyro_hit_src.png'
 POSE_K = 0.66   # 11·12번 샘플 → 칸 배율
 # (칸 이름, 샘플, 장화 바닥 줄 (None = 그림 바닥), 지울 상자들 (x0, x1, y0, y1))
@@ -279,6 +282,13 @@ def main():
     ys, xs = np.where(ha > 0)
     hit = shrink(np.dstack([him, ha * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1], 0.5)
     FX_EXTRA['hit'] = (hit, hit.shape[1] / 2, hit.shape[0] / 2)
+
+    xim, xa = prep(XPL_SRC)
+    for k, (x0, x1) in (('xpl0', (0, XPL_SPLIT)), ('xpl1', (XPL_SPLIT, xa.shape[1]))):
+        m = np.zeros(xa.shape, bool); m[:, x0:x1] = xa[:, x0:x1] > 0
+        ys, xs = np.where(m)
+        q = shrink(np.dstack([xim, np.where(m, xa, 0) * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1], 0.5)
+        FX_EXTRA[k] = (q, q.shape[1] / 2, q.shape[0] / 2)
 
     # 이펙트 시트: 가로로 이어 붙임 (칸 사이 2px)
     parts = [('ember', ember, ember.shape[1] - 1, ember.shape[0] / 2)] + [(k_, *v) for k_, v in FX_EXTRA.items()]
