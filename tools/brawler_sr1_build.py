@@ -14,6 +14,7 @@
 #     SR만 armor: [팔 모음, 24]로 씀 (두 팔 사이 갇힌 배경 구멍도 지움)
 #   - down1_src.png · down2_src.png  쓰러짐 (흰 배경): 1 = 앞으로 고꾸라지며 한 손·무릎을 짚음 · 2 = 엎어져 누움(머리 오른쪽)
 #     기본 격투가 6·7번 자리에 그대로 (둘 다 앞으로 넘어가 방향이 이어져서 뒤집지 않음)
+#   - duel_src.png  결투 (한 주먹을 높이 치켜들고 포효, 어두운 회색 배경 + 왼쪽 아래 옆 칸 흙먼지 조각) → 25번 자리
 # 흰 배경: 가장자리에서 이어진 흰 픽셀 + 꼬리·팔 사이에 갇힌 새하얀 구멍(무채색 253 안팎) 을 지움
 #   (호랑이 흰 털은 푸른 기가 돌고(파랑이 빨강보다 ~6 높음) 238 안팎이라 남음)
 import os, sys
@@ -29,6 +30,7 @@ TARGET_H = 86   # 대기 자세 키 → brawler_0과 같은 칸 키
 WALK = ['B2', 'B3', 'B4', 'B5']
 ARMOR_SC = 0.50   # 금강은 정면이라 귀 줄 폭으로 재면 귀 끝 사이만 잡혀 얼굴이 커짐(×0.55). 같은 크기로 그린 대시 샘플 배율(×0.50)에 맞춘 고정값
 ARMOR = [(0, 127), (127, 286)]
+DUEL_SC = 0.45   # 결투 배율: 치켜든 주먹이 맨 위라 귀 줄로 못 재서, 머리·어깨~발 길이가 대기와 같아지는 값
 DOWN_SC = 0.45   # 쓰러짐 두 칸 배율: 염주 알·머리 크기가 대기 칸과 같아지는 값 (누워 있어 귀 줄 폭으로는 못 잼)   # 금강 샘플 가로 범위: 1 = 두 팔을 머리 위로 모음 · 2 = 주먹 쥐고 양팔에 힘줌 (왼쪽 끝 옆 칸 조각은 가장 큰 덩어리만 남겨 빠짐)
 
 
@@ -118,6 +120,11 @@ def main():
         p = shrink(r, DOWN_SC); down.append((p, p.shape[1] / 2))
         print(f'{n}: {r.shape[1]}x{r.shape[0]} → {p.shape[:2]}')
     preview([(idle_p, head(idle)[1] * sc0)] * 2 + down[:1] * 2 + down[1:] * 6, '_preview_brawler_sr1_down.gif')
+    r = cut_dark(np.array(Image.open(f'{D}duel_src.png').convert('RGB')), tol=10)
+    p = shrink(r, DUEL_SC)
+    k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]   # 기준점 = 두 발 가운데
+    print(f'duel: {r.shape[1]}x{r.shape[0]} → {p.shape[:2]}')
+    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [(p, (xs.min() + xs.max()) / 2)] * 4, '_preview_brawler_sr1_duel.gif')
 
 
 def preview(frames, out):
