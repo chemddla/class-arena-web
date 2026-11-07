@@ -32,6 +32,9 @@
 #     한 장에 같은 크기로 그린 것이라 두 칸 모두 a의 귀 줄 폭 배율을 같이 씀
 #   - combo7a_src.png · combo7b_src.png  연격 7타 두 칸 (흰 배경): a = 몸을 웅크리며 무릎 당김 · b = 몸을 뒤로 젖히며 상단 뒤꿈치 차올리기
 #     a는 귀 줄 폭. b는 차올린 발이 맨 위라 귀 줄로 못 재서 머리·디딘 다리 길이가 a와 같아지는 고정 배율 COMBO7B_SC
+#   - combo8a_src.png · combo8b_src.png  연격 8타 두 칸 (흰 배경, 살짝 뛰어올라 침): a = 뛰기 전 발끝으로 웅크림 · b = 공중 앞차기
+#     a 오른쪽 아래 번호 글자 '06'·b 오른쪽 끝 옆 칸 조각은 떨어져 있어 가장 큰 덩어리만 남기면 빠짐. 배율은 귀 줄 폭
+#     b는 LIFT['c8b']만큼 바닥에서 띄움 (기본 격투가 날아 차기 10보다 낮게 '살짝')
 # 흰 배경: 가장자리에서 이어진 흰 픽셀 + 꼬리·팔 사이에 갇힌 새하얀 구멍(무채색 253 안팎) 을 지움
 #   (호랑이 흰 털은 푸른 기가 돌고(파랑이 빨강보다 ~6 높음) 238 안팎이라 남음)
 import os, sys
@@ -50,6 +53,7 @@ ARMOR = [(0, 127), (127, 286)]
 DUEL_SC = 0.45   # 결투 배율: 치켜든 주먹이 맨 위라 귀 줄로 못 재서, 머리·어깨~발 길이가 대기와 같아지는 값
 ANNPREP_SC = 0.45   # 멸식 준비: 귀 줄 폭(×0.37)은 숙인 어깨가 섞여 머리가 작아짐 → 머리·염주 크기가 대기와 같아지는 값
 COMBO7B_SC = 0.42
+LIFT = {'c8b': 6}   # 칸 이름 → 바닥에서 띄울 높이 (게임 px)
 DOWN_SC = 0.45   # 쓰러짐 두 칸 배율: 염주 알·머리 크기가 대기 칸과 같아지는 값 (누워 있어 귀 줄 폭으로는 못 잼)   # 금강 샘플 가로 범위: 1 = 두 팔을 머리 위로 모음 · 2 = 주먹 쥐고 양팔에 힘줌 (왼쪽 끝 옆 칸 조각은 가장 큰 덩어리만 남겨 빠짐)
 
 
@@ -176,12 +180,12 @@ def main():
     k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
     combo['c3'] = (p, (xs.min() + xs.max()) / 2)
     print(f'c3: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {p.shape[:2]}')
-    for nm in ('4a', '4b', '5a', '5b'):
+    for nm in ('4a', '4b', '5a', '5b', '8a', '8b'):
         im = np.array(Image.open(f'{D}combo{nm}_src.png').convert('RGB'))
         if nm == '4a': im[:, :7] = 255
         r = cut(im); sc4 = hw0 / head(r)[0]; p = shrink(r, sc4)
         k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]   # 기준점 = 디딘 발 (한 발 들어서 맨 아래 줄 = 디딘 발)
-        combo['c' + nm] = (p, (xs.min() + xs.max()) / 2)
+        combo['c' + nm] = (p, (xs.min() + xs.max()) / 2, LIFT.get('c' + nm, 0))
         print(f'c{nm}: {r.shape[1]}x{r.shape[0]} ×{sc4:.3f} → {p.shape[:2]}')
     for nm in ('7a', '7b'):
         r = cut(np.array(Image.open(f'{D}combo{nm}_src.png').convert('RGB')))
@@ -195,16 +199,17 @@ def main():
         k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
         combo['c' + nm] = (p, (xs.min() + xs.max()) / 2)
         print(f'c{nm}: {r.shape[1]}x{r.shape[0]} ×{sc6:.3f} → {p.shape[:2]}')
-    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [combo['c1']] * 2 + [combo['c2']] * 2 + [combo['c3']] * 3 + [combo['c4a']] * 2 + [combo['c4b']] * 3 + [combo['c5a']] * 2 + [combo['c5b']] * 3 + [combo['c6a']] * 2 + [combo['c6b']] * 3 + [combo['c7a']] * 2 + [combo['c7b']] * 3, '_preview_brawler_sr1_combo.gif')
+    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [combo['c1']] * 2 + [combo['c2']] * 2 + [combo['c3']] * 3 + [combo['c4a']] * 2 + [combo['c4b']] * 3 + [combo['c5a']] * 2 + [combo['c5b']] * 3 + [combo['c6a']] * 2 + [combo['c6b']] * 3 + [combo['c7a']] * 2 + [combo['c7b']] * 3 + [combo['c8a']] * 2 + [combo['c8b']] * 3, '_preview_brawler_sr1_combo.gif')
 
 
-def preview(frames, out):
-    L = max(c for _, c in frames) + 6; R = max(p.shape[1] - c for p, c in frames) + 6
-    H = max(p.shape[0] for p, _ in frames) + 4
+def preview(frames, out):   # frames: (그림, 기준점 x[, 바닥에서 띄울 높이])
+    frames = [f if len(f) == 3 else (*f, 0) for f in frames]
+    L = max(c for _, c, _ in frames) + 6; R = max(p.shape[1] - c for p, c, _ in frames) + 6
+    H = max(p.shape[0] + lift for p, _, lift in frames) + 4
     gif = []
-    for p, c in frames:
+    for p, c, lift in frames:
         cv = Image.new('RGBA', (int(L + R), H), (70, 90, 70, 255))
-        cv.alpha_composite(Image.fromarray(p), (int(round(L - c)), H - 2 - p.shape[0]))
+        cv.alpha_composite(Image.fromarray(p), (int(round(L - c)), H - 2 - p.shape[0] - lift))
         gif.append(cv.resize((cv.width * 3, cv.height * 3), Image.NEAREST).convert('RGB'))
     gif[0].save(out, save_all=True, append_images=gif[1:], duration=150, loop=0)
 
