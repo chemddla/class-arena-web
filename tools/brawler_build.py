@@ -160,6 +160,9 @@ COMBO_SEQ = [15, 0, 2, 13, 1, 14, 10, 4, 12, 6, 8, 7, 9, 13, 11, 3, 'flash0', 'k
 HEAD_PX = {'combo00': 62, 'combo01': 62, 'combo02': 88, 'combo03': 67, 'combo04': 66, 'combo05': 66, 'combo06': 58, 'combo07': 60,
            'combo08': 62, 'combo09': 60, 'combo10': 61, 'combo11': 56, 'combo12': 54, 'combo13': 56, 'combo14': 60, 'combo15': 57}
 HEAD_ANCHOR = {f'walk{j}' for j in range(4)}
+# 칸 배율 덧곱: 걷기 3번째 칸(두 발 디딤, 받은 4번째 샘플)은 따로 받은 작은 샘플이라 머리 폭으로 맞추면 키가 4px 작아져
+#   한 걸음마다 머리가 푹 꺼져서 절뚝이는 것처럼 보였음 → 3% 키워 디딜 때 1~2px만 내려가게
+SCALE_MUL = {'walk2': 1.035}
 FOOTX = {}   # 칸 이름 → 발 가운데 (자른 그림 기준 px)
 
 
@@ -180,6 +183,7 @@ def main():
         if name in FOOTX: foot = FOOTX[name]
         sc = TARGET_H / bh if k == 'H' else ref['hw'] / hw if k == 'W' else ref['hair'] / hair if k == 'HAIR' else ref['hw'] / HEAD_PX[name] if k == 'HEAD' else scale[k]
         if name == 'idle': ref = {'hw': hw * sc, 'dx': (hcx - foot) * sc, 'hair': hair * sc}
+        sc *= SCALE_MUL.get(name, 1)
         if name in HEAD_ANCHOR: foot = hcx - ref['dx'] / sc
         scale[name] = sc
         p = shrink(rgba, sc)
