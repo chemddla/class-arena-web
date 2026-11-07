@@ -1,9 +1,11 @@
 # 격투가 전용 샘플(갈색 머리·흰 도복·검은 띠, 흰 배경) → 캐릭터 시트 assets/sprites/merc/brawler_0.webp
 # 사용: python tools/brawler_build.py   (샘플은 assets/sprites/fx/samples/brawler_*_src.png, 동작 샘플이 오는 대로 FRAMES에 늘림)
-# 칸 순서: 0 대기 (주먹을 쥐고 선 자세)
+# 칸 순서: 0 대기 (주먹을 쥐고 선 자세) · 1~4 걷기 (받은 샘플을 WALK_ORDER 순서로 다시 놓음)
 # 크기 통일: 대기 자세 몸 키(머리털 끝~발, 샘플 px)를 TARGET_H로 줄임. 다른 동작은 대기와 같은 배율('idle')로 줄여 얼굴 크기를 맞춤
 # 샘플 정리:
 #   - 대기 샘플(158×179)은 도트 그림을 흐리게 키운 것 + 아래 2줄(175~176)·오른쪽 1줄(157) 회색 테두리 → 잘라 냄 (CARD)
+#   - 걷기 4번째 샘플(110×147)은 연회색 격자선(가로 36~37·99~100줄, 세로 20~21·89~90칸) + 아래 143줄부터 검은 바닥 줄
+#     → 격자선 위의 무채색 회색 픽셀만 흰색으로 칠하고(GRID) 바닥 줄은 잘라 냄
 #   - 흰 배경은 가장자리에서 이어진 흰 픽셀만 지움 (흰 도복은 검은 외곽선 안쪽이라 남음)
 import os, sys
 import numpy as np
@@ -17,13 +19,21 @@ D = 'assets/sprites/fx/samples/brawler_'
 OUT = 'assets/sprites/merc/brawler_0.webp'
 TARGET_H = 86   # 대기 자세 머리털 끝~발 → 게임 칸 키. 게임에선 standH 78, topH 86으로 그림 (몸이 길고 머리가 작아 86으로 두면 얼굴이 소환사·광전사보다 작아 보임)
 
-CARD = {'idle': (0, 157, 0, 175)}   # (x0, x1, y0, y1): 샘플 테두리 회색 줄 잘라 냄
+CARD = {'idle': (0, 157, 0, 175), 'walk3': (0, 110, 0, 143)}   # (x0, x1, y0, y1): 샘플 테두리 회색 줄 잘라 냄
 WHITE_MIN = {}
 CUT = {}   # 지울 상자 (x0, x1, y0, y1)
+GRID = {'walk3': ([36, 37, 99, 100], [20, 21, 89, 90])}   # (가로줄 y, 세로줄 x): 샘플에 남은 격자선
 
 
 def load(name, pick=0):
     im = np.array(Image.open(f'{D}{name}_src.png').convert('RGB')).astype(float)
+    if name in GRID:   # 격자선: 선 위(±1줄)의 무채색 연회색만 흰색으로 (도복 그림자는 푸른 기가 있어 남음)
+        line = np.zeros(im.shape[:2], bool)
+        ys, xs = GRID[name]
+        for y in ys: line[max(0, y - 1):y + 2] = True
+        for x in xs: line[:, max(0, x - 1):x + 2] = True
+        grey = (im.min(axis=2) > 195) & (im.max(axis=2) - im.min(axis=2) < 8)
+        im[line & grey] = 255
     if name in CARD:
         x0, x1, y0, y1 = CARD[name]; im = im[y0:y1, x0:x1]
     wm = WHITE_MIN.get(name, 222)
@@ -52,22 +62,32 @@ def load(name, pick=0):
     k = rgba[..., 3] > 127
     body = np.where(k.any(axis=1))[0]
     foot = np.where(k[int(k.shape[0] * 0.92):].any(axis=0))[0].mean()
-    return rgba, foot, body.max() - body.min() + 1
+    rows = [np.where(k[y])[0] for y in range(int(k.shape[0] * 0.08), int(k.shape[0] * 0.28))]   # 머리 줄 (어깨·팔 위)
+    rows = [r for r in rows if len(r)]
+    head_w = max(r.max() - r.min() + 1 for r in rows)
+    head_cx = float(np.mean([(r.max() + r.min()) / 2 for r in rows]))
+    return rgba, foot, body.max() - body.min() + 1, head_w, head_cx
 
 
-# (샘플 이름, 칸 이름, 배율: 'H' = 몸 키를 TARGET_H로 · 칸 이름 = 그 칸 배율 그대로, 샘플 안 몇 번째 그림(왼쪽부터))
+WALK_ORDER = [0, 2, 3, 1]   # 걷기 칸 1~4에 넣을 샘플 번호 (받은 순서 기준): 뒷발 들고 지나감 → 앞발 내뻗음(발끝 듦) → 두 발 디딤(보폭 최대, 몸이 가장 낮음) → 뒷발 뒤꿈치 듦 → 다시 처음
+# (샘플 이름, 칸 이름, 배율: 'H' = 몸 키를 TARGET_H로 · 'W' = 머리 폭을 대기 칸 머리 폭과 같게 · 칸 이름 = 그 칸 배율 그대로, 샘플 안 몇 번째 그림(왼쪽부터))
+# 걷기는 보폭에 따라 키가 달라서 머리 폭으로 맞추고, 발 기준점도 머리 가운데로 잡아 걸을 때 몸이 좌우로 흔들리지 않게 함 (HEAD_ANCHOR)
 FRAMES = [
     ('idle', 'idle', 'H', 0),
-]
+] + [(f'walk{i}', f'walk{j}', 'W', 0) for j, i in enumerate(WALK_ORDER)]
+HEAD_ANCHOR = {f'walk{j}' for j in range(4)}
 FOOTX = {}   # 칸 이름 → 발 가운데 (자른 그림 기준 px)
 
 
 def main():
     pieces, scale = [], {}
+    ref = {}   # 대기 칸: 게임 px 머리 폭 · 머리 가운데에서 발까지 거리
     for src, name, k, pick in FRAMES:
-        rgba, foot, bh = load(src, pick)
+        rgba, foot, bh, hw, hcx = load(src, pick)
         if name in FOOTX: foot = FOOTX[name]
-        sc = scale[k] if k != 'H' else TARGET_H / bh
+        sc = TARGET_H / bh if k == 'H' else ref['hw'] / hw if k == 'W' else scale[k]
+        if name == 'idle': ref = {'hw': hw * sc, 'dx': (hcx - foot) * sc}
+        if name in HEAD_ANCHOR: foot = hcx - ref['dx'] / sc
         scale[name] = sc
         p = shrink(rgba, sc)
         pieces.append((name, p, foot * sc))
