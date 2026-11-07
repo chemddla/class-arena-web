@@ -28,6 +28,8 @@
 #     배율: 둘 다 귀 줄 폭 (a ×0.62 = 1·2타와 같음 · b ×0.54는 차는 다리로 그림이 커져 원본 머리가 작게 그려진 것)
 #   - combo5a_src.png · combo5b_src.png  연격 5타 두 칸 (흰 배경): a = 무릎을 가슴까지 당김(가드) · b = 앞차기 (두 손 가드를 턱에 붙인 채 다리를 비스듬히 위로 뻗음, 2026-11-08 교체)
 #     b 오른쪽 끝 옆 칸 꼬리 조각은 떨어져 있어 가장 큰 덩어리만 남기면 빠짐. 배율은 귀 줄 폭
+#   - combo6_src.png  연격 6타 두 칸 (흰 배경, 한 장에 나란히, 등을 보이며 돎): a = 등 돌려 무릎 듦 · b = 뒤돌려 옆차기
+#     한 장에 같은 크기로 그린 것이라 두 칸 모두 a의 귀 줄 폭 배율을 같이 씀
 # 흰 배경: 가장자리에서 이어진 흰 픽셀 + 꼬리·팔 사이에 갇힌 새하얀 구멍(무채색 253 안팎) 을 지움
 #   (호랑이 흰 털은 푸른 기가 돌고(파랑이 빨강보다 ~6 높음) 238 안팎이라 남음)
 import os, sys
@@ -178,7 +180,13 @@ def main():
         k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]   # 기준점 = 디딘 발 (한 발 들어서 맨 아래 줄 = 디딘 발)
         combo['c' + nm] = (p, (xs.min() + xs.max()) / 2)
         print(f'c{nm}: {r.shape[1]}x{r.shape[0]} ×{sc4:.3f} → {p.shape[:2]}')
-    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [combo['c1']] * 2 + [combo['c2']] * 2 + [combo['c3']] * 3 + [combo['c4a']] * 2 + [combo['c4b']] * 3 + [combo['c5a']] * 2 + [combo['c5b']] * 3, '_preview_brawler_sr1_combo.gif')
+    sc6 = None
+    for nm, f in zip(('6a', '6b'), split_figs(np.array(Image.open(f'{D}combo6_src.png').convert('RGB')))):
+        r = cut(f); sc6 = sc6 or hw0 / head(r)[0]; p = shrink(r, sc6)
+        k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
+        combo['c' + nm] = (p, (xs.min() + xs.max()) / 2)
+        print(f'c{nm}: {r.shape[1]}x{r.shape[0]} ×{sc6:.3f} → {p.shape[:2]}')
+    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [combo['c1']] * 2 + [combo['c2']] * 2 + [combo['c3']] * 3 + [combo['c4a']] * 2 + [combo['c4b']] * 3 + [combo['c5a']] * 2 + [combo['c5b']] * 3 + [combo['c6a']] * 2 + [combo['c6b']] * 3, '_preview_brawler_sr1_combo.gif')
 
 
 def preview(frames, out):
