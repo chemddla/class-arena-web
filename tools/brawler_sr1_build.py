@@ -110,6 +110,7 @@ def cut(im):   # 흰 배경 지우고 가장 큰 덩어리(캐릭터)만 → RGB
     # 1) 가장자리에서 이어진 흰 배경
     # 2) 갇힌 큰 배경 구멍: 가장자리 배경과 색이 거의 같고 색차가 작은 곳 (털은 푸른 기 색차 6~10이라 안 걸림, 금강 1 머리 위 구멍은 색차 3.8)
     #    (색이 아니라 '검은 선에 갇힌 밝은 덩어리'로 찾으면 줄무늬 사이 흰 털까지 지워짐 — 4타 무릎 칸 머리 털이 무채색 흰색)
+    #    + 색차 3.5 미만 무채색 구멍 중 둘레 40% 이상이 검은 선인 것 (털은 푸른 기 4 이상이거나 둘레가 털이라 안 걸림)
     # 3) 테두리·구멍 둘레 찌꺼기: 배경에 닿은 밝은 무채색 2겹 벗김
     im = im.astype(float)
     mn, ch = im.min(axis=2), im.max(axis=2) - im.min(axis=2)
@@ -122,7 +123,11 @@ def cut(im):   # 흰 배경 지우고 가장 큰 덩어리(캐릭터)만 → RGB
         m = lab == i
         if not bg[m].any() and m.sum() >= 4:   # 다리·팔 사이 작은 구멍까지
             px = im[m]
-            if np.abs(px.mean(axis=0) - bgc).max() < 5 and (px.max(axis=1) - px.min(axis=1)).mean() < 4.5: bg |= m
+            pch = (px.max(axis=1) - px.min(axis=1)).mean()
+            if np.abs(px.mean(axis=0) - bgc).max() < 5 and pch < 4.5: bg |= m
+            elif pch < 3.5:   # 배경색보다 살짝 어두운 무채색 구멍(다리·팔 사이, 249 vs 254 등): 둘레 2px의 40% 이상이 검은 외곽선이면 배경
+                ring = ndi.binary_dilation(m, iterations=2) & ~m
+                if (mn[ring] < 100).mean() >= 0.4: bg |= m
     rimc = (mn > 110) & (ch < 7)   # 흰 배경과 외곽선이 섞인 회색
     for _ in range(2):
         bg |= ndi.binary_dilation(bg) & rimc
