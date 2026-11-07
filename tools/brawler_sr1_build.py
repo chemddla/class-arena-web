@@ -50,11 +50,12 @@ def cut(im):   # 흰 배경 지우고 가장 큰 덩어리(캐릭터)만 → RGB
     lab, n = ndi.label(white)
     edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
     bg = np.isin(lab, edge[edge > 0])
-    for i in range(1, n + 1):   # 갇힌 새하얀 구멍
+    bgc = im[bg].mean(axis=0)
+    for i in range(1, n + 1):   # 꼬리·팔 사이에 갇힌 배경 구멍 = 가장자리 배경과 색이 거의 같고 색차가 작은 곳
         m = lab == i
-        if not bg[m].any() and m.sum() >= 20:
+        if not bg[m].any() and m.sum() >= 20:   # 털은 푸른 기(색차 6~10)라 안 걸림. 금강 1 머리 위 구멍은 배경처럼 살짝 푸른 연회색(색차 3.8)
             px = im[m]
-            if px.mean() > 235 and (px.max(axis=1) - px.min(axis=1)).mean() < 2.5: bg |= m   # 털은 푸른 기(색차 6~10)라 안 걸림
+            if np.abs(px.mean(axis=0) - bgc).max() < 5 and (px.max(axis=1) - px.min(axis=1)).mean() < 4.5: bg |= m
     rim = ~bg & ndi.binary_dilation(bg, iterations=2)
     a = np.where(bg, 0.0, 1.0)
     a = np.where(rim, np.clip((255 - im.min(axis=2)) / 200, 0, 1), a)
