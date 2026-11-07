@@ -17388,6 +17388,7 @@
     }
 
     function toggleCameraAutoFollow() {
+      if (sim.mode === 'dungeon') { sim.camera.manualPan = false; return; } // 던전: 버튼을 누르면 다시 용병 따라가기
       sim.camera.autoFollow = !sim.camera.autoFollow;
       const followBtn = document.getElementById('camFollowBtn');
       if (followBtn) {
@@ -17416,6 +17417,7 @@
           const ratioY = (cy - mmY) / mmH;
           const z = sim.camera.zoom || 1.0;
           sim.camera.autoFollow = false;
+          sim.camera.manualPan = true;
           sim.camera.x = Math.round(ratioX * sim.worldW - (canvas.width / z) / 2);
           sim.camera.y = Math.round(ratioY * sim.worldH - (canvas.height / z) / 2);
           clampCamera();
@@ -17443,6 +17445,7 @@
         sim.camera.isDragging = true;
         sim.camera.isMinimapDrag = false;
         sim.camera.autoFollow = false;
+        sim.camera.manualPan = true;
         const followBtn = document.getElementById('camFollowBtn');
         if (followBtn) followBtn.textContent = '🎥 시점: 자유이동(드래그)';
         sim.camera.dragStartX = cx;
@@ -17478,6 +17481,7 @@
         if (checkMinimapJump(cx, cy)) return;
         sim.camera.isDragging = true;
         sim.camera.autoFollow = false;
+        sim.camera.manualPan = true;
         sim.camera.dragStartX = cx;
         sim.camera.dragStartY = cy;
         sim.camera.camStartX = sim.camera.x;
@@ -17801,6 +17805,7 @@
         const panY = (k.s ? 1 : 0) - (k.w ? 1 : 0);
         if (panX || panY) {
           sim.camera.autoFollow = false;
+          sim.camera.manualPan = true;
           sim.camera.x += panX * CAMERA_PAN_SPEED * frameTimeScale / z;
           sim.camera.y += panY * CAMERA_PAN_SPEED * frameTimeScale / z;
           clampCamera();
@@ -29500,7 +29505,7 @@
       const z = sim.camera.zoom || 1.0;
 
       // 🏰 던전: 카메라가 대표 용병을 따라감 (드래그 중에는 빼고)
-      if (sim.mode === 'dungeon' && sim.running && !sim.camera.isDragging) {
+      if (sim.mode === 'dungeon' && sim.running && !sim.camera.isDragging && !sim.camera.manualPan) { // 직접 옮긴 시점은 그대로 둠
         const mine = dungeonMyUnit(); // 5인 입장: 내 용병 (쓰러졌으면 대표)
         const L = mine && mine.alive ? mine : dungeonLeader();
         if (L) {
@@ -43567,6 +43572,7 @@
       if (!cell) return;
       dg.pos = [...pos];
       dg.roomSeq = (dg.roomSeq || 0) + 1;
+      sim.camera.manualPan = false; // 새 방에 들어가면 다시 내 용병을 따라감
       dg.fromDir = movedDir ? DUNGEON_DIR_OPP[movedDir] : null;
       if (!cell.visited && cell.kind !== 'start') dg.roomNo = (dg.roomNo || 0) + 1; // 처음 들어가는 방마다 몬스터가 더 강해짐
       cell.visited = true;
