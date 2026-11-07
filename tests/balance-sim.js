@@ -27,7 +27,8 @@
     berserker: { strong: '근접 브루저 (러쉬·1:1)', weak: [] },
     paladin: { strong: '5:5·러쉬 앞줄 유지 (성녀 없는 팀의 유지력)', weak: ['duel'] },
     summoner: { strong: '수 싸움·몬스터 무리 (탑·러쉬)', weak: [] },
-    pyro:    { strong: '몬스터 무리 다중 공격 (탑 일반층·러쉬·던전)', weak: ['duel'] }
+    pyro:    { strong: '몬스터 무리 다중 공격 (탑 일반층·러쉬·던전)', weak: ['duel'] },
+    brawler: { strong: '1:1 대결 (개인전)', weak: ['tower'] }
   };
   // [아래, 위]: 이 밖이면 조정 대상
   BS.LIMITS = { duel: [20, 80], rand5: [40, 60], tower: [40, 88] };
