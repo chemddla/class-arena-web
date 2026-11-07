@@ -5279,7 +5279,7 @@
         annihilate: {
           id: 'annihilate', name: '멸식 - 격', icon: '⚡', ccTag: '✨히든 · 연격 10타 뒤 · 6초 난타·무적', hidden: true,
           manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 0,
-          desc: '기본 공격 연격을 10타까지 이었을 때만 쓸 수 있습니다 (10타 뒤 5초 안). 3칸 안의 대상에게 6초간 눈으로 잡을 수 없는 속도로 주먹을 날려 0.2초마다 40% 피해 (모두 1200%)를 입혀요. 그동안 격투가는 무적이고 대상은 [기절]해요.'
+          desc: '기본 공격 연격을 10타까지 이었을 때만 쓸 수 있습니다 (10타 뒤 5초 안). 3칸 안의 대상에게 기운을 끌어올린 뒤 눈으로 잡을 수 없는 속도로 주먹을 날려 0.2초마다 40% 피해를 입히고, 마지막엔 뒤로 물러났다가 날아 차기로 280% 피해를 입혀요 (6초 · 모두 1200%). 그동안 격투가는 무적이고 대상은 [기절]해요.'
         }
       },
       summoner: {
@@ -6795,16 +6795,30 @@
     };
     // 화염술사 외형 1~5는 같은 그림의 채도·명암 변형 (1 바랜 노을, 2 잿불, 3 숯불, 4 흑염, 5 무채 은회; 색상은 그대로, 피부만 원래 색): 칸·기준점·동작 구성은 pyro_0과 같음 (tools/pyro_variants_build.py)
     [1, 2, 3, 4, 5].forEach(v => { MERC_SPRITE_DEFS[`pyro_${v}`] = { ...MERC_SPRITE_DEFS.pyro_0, src: `assets/sprites/merc/pyro_${v}.webp` }; });
-    // 격투가 임시 그림: 전사 외형 3 (흑발·보라 망토)을 빌려 씀 (전용 맨손 그림은 나중에). 스킬 동작은 전사 동작으로 맞춤
+    // 격투가 외형 0 (갈색 머리·흰 도복·검은 띠, tools/brawler_build.py): 칸 = 0 대기 · 1~4 걷기 · 5 피격 · 6~7 쓰러짐 (뒤로 넘어감 → 누움)
+    //   · 8~23 연격 샘플 16장 · 24 금강 (이를 악물고 버팀) · 25 결투 (기합) · 26 웅크림 · 27 날아 차기 (섬각·반격 타격·연격 10타)
+    //   · 28~29 붕권 (당김 → 내지름) · 30 반격 자세 · 31 멸식 - 격 시전 (푸른 기운) · 32 멸식 마무리 날아 차기 (이 스킬에서만)
+    // 기본 공격: 연격 몇 타째인지에 따라 brawlChain의 칸 묶음 (1타 잽 … 9타 내려찍기 · 10타 웅크렸다 날아 차기). brawlerPickFrame이 고름
+    // 반격 자세 동안 30번, 받아치면 날아 차기(27)로 상대에게 날아감. 멸식 - 격: 시전 → 연격 칸으로 난타(칠 때마다 잔상) → 물러나 웅크림 → 32번 날아 차기
+    // standH 78: 몸이 길고 머리가 작아 키 86으로 두면 얼굴이 다른 직업보다 작아 보임
     MERC_SPRITE_DEFS.brawler_0 = {
-      ...MERC_SPRITE_DEFS.warrior_0, src: 'assets/sprites/merc/warrior_3.webp',
+      src: 'assets/sprites/merc/brawler_0.webp',
+      cellW: 119, cellH: 106, anchorX: 63, anchorY: 104, standH: 78, topH: 86, portraitCX: 66, portraitZoomOut: 0.96, count: 33,
+      anims: {
+        idle: [0], walk: [1, 2, 3, 4], attack: [8, 10], skill: [25], hurt: [5], death: [6, 7],
+        armor: [24], duel: [25], crush: [28, 29], kick: [26, 27], flykick: [27], counter: [30], annCast: [31], annKick: [32],
+        barrage: [8, 10, 9, 22, 18, 17, 15, 11] // 멸식 난타: 연격 칸을 빠르게 돌려 씀
+      },
+      brawlChain: [[23, 8], [10], [21, 9], [22], [18, 12], [20, 14], [16, 15], [17], [21, 19, 11], [26, 27]],
+      pickFrame: (u, sprite, tick, step) => brawlerPickFrame(u, sprite, tick, step),
       skillAnims: {
-        crush_fist:     { anim: 'charge', tpf: 4, loop: true, dur: 20 },
-        counter_stance: { anim: 'skill', tpf: 15, dur: 60 },
-        flash_kick:     { anim: 'charge', tpf: 3, loop: true, dur: 12 },
-        diamond_body:   { anim: 'shout', tpf: 12, dur: 44 },
-        duel_call:      { anim: 'shout', tpf: 12, dur: 36 },
-        annihilate:     { anim: 'whirl', tpf: 3, loop: true, dur: 240 }
+        crush_fist:     { anim: 'crush', tpf: 5, dur: 26 },   // 주먹을 당겼다가 돌진하며 내지름
+        flash_kick:     { anim: 'kick', tpf: 3, dur: 16 },    // 웅크렸다가 날아 차며 다가감
+        counter_stance: { anim: 'counter', tpf: 60, dur: 4 }, // 자세는 반격 상태 동안 brawlerPickFrame이 유지
+        counter_strike: { anim: 'flykick', tpf: 20, dur: 20 },
+        diamond_body:   { anim: 'armor', tpf: 40, dur: 40 },
+        duel_call:      { anim: 'duel', tpf: 40, dur: 40 },
+        annihilate:     { anim: 'annKick', tpf: 240, dur: 240 } // 멸식이 끝나는 틱 (자세는 멸식 동안 brawlerPickFrame이 고름)
       }
     };
     // 소환사 외형 0 (초록 긴 머리·장미 화관·초록 로브·마법서, tools/summoner_build.py): 칸 순서 = 대기, 걷기 4, 피격, 쓰러짐 3 (책을 놓치며 젖힘 → 고꾸라짐 → 엎드림),
@@ -24824,6 +24838,13 @@
     const BRAWLER_FLURRY_TICKS = 240;        // 멸식 - 격 (히든): 6초 · 8틱마다 40% (30번 = 1200%) · 시전 중 무적 · 대상 기절
     const BRAWLER_FLURRY_EVERY = 8;
     const BRAWLER_FLURRY_DMG = 0.4;
+    // 멸식 단계 (시작부터 틱): 1~20 시전 자세 (기운을 끌어올림) → ~200 난타 (23번 = 920%) → ~214 뒤로 물러나 웅크림 → 8틱 날아 차기 마무리 280% (모두 1200%)
+    const BRAWLER_FLURRY_WINDUP = 20;
+    const BRAWLER_FLURRY_BACK_AT = 200;
+    const BRAWLER_FLURRY_KICK_AT = 214;
+    const BRAWLER_FLURRY_KICK_TICKS = 8;
+    const BRAWLER_FLURRY_FINISH_DMG = 2.8;
+    const BRAWLER_COUNTER_RUSH_TICKS = 6;    // 반격: 날아 차며 공격자에게 붙는 틱 (피해는 닿을 때, 기절은 바로)
 
     const isBossLike = e => Boolean(e && (e.isEliteBoss || e.isRaceBoss || e.isWorldBoss));
     function brawlerFoeOk(u, e) { return Boolean(e && e.alive && e.team !== u.team && e.team !== 'none'); }
@@ -24838,6 +24859,54 @@
       if (heal > 0) { attacker.hp += heal; attacker.healDone = (attacker.healDone || 0) + heal; }
     }
     function brawlerFlurryReady(u) { return (u.flurryReadyUntil || 0) >= sim.tickCount; }
+
+    // ----- 그림 (MERC_SPRITE_DEFS.brawler_0.pickFrame) -----
+    // 관전·대결 화면에는 연격 타 수(brawlChain)가 실려 오지 않아서, 없으면 공격 간격으로 타 수를 셈 (40틱 안에 다음 공격 = 다음 타)
+    function brawlerPickFrame(u, sprite, tick, step) {
+      const a = sprite.anims, st = u.statuses || {};
+      if ((st.flurry || 0) > 0 && u.activeSkillType === 'annihilate') {
+        const el = BRAWLER_FLURRY_TICKS - st.flurry;
+        if (el <= BRAWLER_FLURRY_WINDUP) return a.annCast[0];
+        if (el <= BRAWLER_FLURRY_BACK_AT) return a.barrage[Math.floor(el / 4) % a.barrage.length];
+        if (el <= BRAWLER_FLURRY_KICK_AT) return a.kick[0];
+        return a.annKick[0];
+      }
+      if ((st.counter || 0) > 0) return a.counter[0];
+      if (u.skillAnim > 0 || u.casting || !(u.attackAnim > 0) || !sprite.brawlChain) return null;
+      const chain = sprite.brawlChain;
+      if (u._brawlAtkSeen !== u._sprAtkStart) { // 새 기본 공격
+        u._brawlAtkSeen = u._sprAtkStart;
+        const k = u.brawlChain || 0;
+        u._brawlHit = k > 0 ? Math.min(chain.length, k) - 1 : (tick - (u._brawlLastAt ?? -999) <= 40 ? ((u._brawlHit ?? -1) + 1) % chain.length : 0);
+        u._brawlLastAt = tick;
+      }
+      const list = chain[u._brawlHit || 0];
+      return step(list, tick - (u._sprAtkStart ?? tick), Math.max(2, Math.floor((u.maxAttackAnim || 12) / (list.length + 0.5))));
+    }
+    // 멸식 - 격 잔상: 대상 둘레로 옮겨 다니며 칠 때마다 그 자리·자세를 남겨 서서히 지움 (마무리 날아 차기는 지나온 길에 남음)
+    const BRAWLER_GHOSTS = new WeakMap();
+    const BRAWLER_GHOST_LIFE = 18;
+    function drawBrawlerGhosts(ctx, u, sprite, tick, frame, dir, k) {
+      const on = u.alive && (u.statuses?.flurry || 0) > 0 && u.activeSkillType === 'annihilate';
+      let g = BRAWLER_GHOSTS.get(u);
+      if (!g) { if (!on) return; g = { last: null, list: [] }; BRAWLER_GHOSTS.set(u, g); }
+      if (g.last && g.last.t !== tick) {
+        if (on && Math.hypot(g.last.x - u.x, g.last.y - u.y) > 10) g.list.push({ ...g.last, t: tick });
+        g.last = null;
+      }
+      if (on && !g.last) g.last = { x: u.x, y: u.y, dir, frame, t: tick };
+      g.list = g.list.filter(q => tick - q.t < BRAWLER_GHOST_LIFE).slice(-8);
+      if (!on && !g.list.length) { BRAWLER_GHOSTS.delete(u); return; }
+      g.list.forEach(q => {
+        ctx.save();
+        ctx.translate(q.x - u.x, q.y - u.y);
+        ctx.scale(q.dir, 1);
+        ctx.globalAlpha *= 0.5 * (1 - (tick - q.t) / BRAWLER_GHOST_LIFE);
+        ctx.filter = 'sepia(1) saturate(3) brightness(1.35) hue-rotate(-8deg)';
+        drawSpriteFx(ctx, sprite.img, q.frame * sprite.cellW, 0, sprite.cellW, sprite.cellH, -sprite.anchorX * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
+        ctx.restore();
+      });
+    }
 
     // ----- 결투 -----
     // 결투 상대 (결투 중이고 상대가 살아 있을 때만). iso = 서로에게만 피해 (보스·엘리트 보스와의 결투는 피해 증가만)
@@ -24908,11 +24977,45 @@
       u.statuses.flurry--; // 이 틱에는 상태 시간 줄이기를 건너뛰므로 여기서
       u.vx = 0; u.vy = 0; u.isMoving = false; u.rush = null;
       f.t = (f.t || 0) + 1;
+      const clampX = x => Math.max(200, Math.min(sim.worldW - 200, x)), clampY = y => Math.max(260, Math.min(sim.worldH - 220, y));
+      if (f.t <= BRAWLER_FLURRY_WINDUP) { // 시전 자세: 제자리에서 기운을 끌어올림
+        brawlerFace(u, foe);
+        if (f.t === 1) sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 60, color: '#60a5fa', life: BRAWLER_FLURRY_WINDUP, maxLife: BRAWLER_FLURRY_WINDUP });
+        return true;
+      }
+      if (f.t > BRAWLER_FLURRY_BACK_AT) {
+        if (f.t <= BRAWLER_FLURRY_KICK_AT) { // 뒤로 물러나 웅크림 (연격 10타 준비 자세)
+          if (!f.back) {
+            const ang = Math.atan2(u.y - foe.y, u.x - foe.x), d = 170 + unitBodyGap(foe) + unitBodyGap(u);
+            f.back = { x: clampX(foe.x + Math.cos(ang) * d), y: clampY(foe.y + Math.sin(ang) * d * 0.6) };
+          }
+          u.x += (f.back.x - u.x) * 0.3; u.y += (f.back.y - u.y) * 0.3;
+          brawlerFace(u, foe);
+        } else if (!f.done) { // 마무리: 날아 차며 대상에게 꽂힘
+          if (!f.kick) f.kick = { sx: u.x, sy: u.y, n: 0 };
+          f.kick.n++;
+          const ang = Math.atan2(foe.y - f.kick.sy, foe.x - f.kick.sx), gap = 26 + unitBodyGap(foe) + unitBodyGap(u);
+          const p = Math.min(1, f.kick.n / BRAWLER_FLURRY_KICK_TICKS);
+          u.x = f.kick.sx + (foe.x - Math.cos(ang) * gap - f.kick.sx) * p;
+          u.y = f.kick.sy + (foe.y - Math.sin(ang) * gap - f.kick.sy) * p;
+          brawlerFace(u, foe);
+          if (p >= 1) {
+            f.done = true;
+            const mana = foe.mana;
+            withSkillHit(() => applyDamage(u, foe, u.atk * BRAWLER_FLURRY_FINISH_DMG, '⚡', '#c2410c'));
+            foe.mana = Math.min(foe.mana, mana);
+            sim.effects.push({ type: 'magic_burst', x: foe.x, y: foe.y - 20, r: 48, color: '#f97316', life: 26, maxLife: 26 });
+            sim.effects.push({ type: 'aoe_ring', x: foe.x, y: foe.y, r: 80, color: '#60a5fa', life: 26, maxLife: 26 });
+            playCombatSfx('heavy');
+          }
+        }
+        return true;
+      }
       // 눈으로 잡을 수 없는 속도: 대상 둘레를 이리저리 옮겨 다니며 때림
       if (f.t % 4 === 1) {
         const a = Math.random() * Math.PI * 2, d = 40 + unitBodyGap(foe) + unitBodyGap(u);
-        u.x = Math.max(200, Math.min(sim.worldW - 200, foe.x + Math.cos(a) * d));
-        u.y = Math.max(260, Math.min(sim.worldH - 220, foe.y + Math.sin(a) * d * 0.6));
+        u.x = clampX(foe.x + Math.cos(a) * d);
+        u.y = clampY(foe.y + Math.sin(a) * d * 0.6);
         brawlerFace(u, foe);
         sim.effects.push({ type: 'magic_burst', x: u.x, y: u.y - 20, r: 14, color: '#fdba74', life: 10, maxLife: 10 });
       }
@@ -24962,12 +25065,16 @@
         sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 46, color: '#f59e0b', life: 22, maxLife: 22 });
         return;
       }
-      brawlerFace(u, attacker);
-      withSkillHit(() => applyDamage(u, attacker, u.atk * BRAWLER_COUNTER_DMG, '🔄', '#f59e0b'));
       inflictStatus(u, attacker, 'stun', BRAWLER_COUNTER_STUN);
       cancelSkillCast(attacker);
-      sim.effects.push({ type: 'magic_burst', x: attacker.x, y: attacker.y - 18, r: 40, color: '#f59e0b', life: 22, maxLife: 22 });
-      playCombatSfx('heavy');
+      // 날아 차기 자세로 공격자에게 날아가 닿을 때 피해 (그림만 쓰는 skillAnim · activeSkillType)
+      u.skillAnim = 20; u.maxSkillAnim = 20; u.activeSkillType = 'counter_strike';
+      brawlerRushTo(u, attacker, BRAWLER_COUNTER_RUSH_TICKS, '#f59e0b', () => {
+        if (!attacker.alive) return;
+        withSkillHit(() => applyDamage(u, attacker, u.atk * BRAWLER_COUNTER_DMG, '🔄', '#f59e0b'));
+        sim.effects.push({ type: 'magic_burst', x: attacker.x, y: attacker.y - 18, r: 40, color: '#f59e0b', life: 22, maxLife: 22 });
+        playCombatSfx('heavy');
+      });
       addBattleLog(`🔄 [격투가] ${u.name}이(가) ${attacker.name}의 공격을 받아쳤어요!`);
     }
     function brawlerMissText(unit, sk) {
@@ -28399,6 +28506,7 @@
       u._sprLastSkill = u.skillAnim || 0;
 
       if (!u.alive) return step(a.death, tick - (u._deadSince ?? tick), 12);
+      if (sprite.pickFrame) { const f = sprite.pickFrame(u, sprite, tick, step); if (f != null) return f; } // 직업 전용 자세 (격투가 연격·반격·멸식)
       // 불사조의 부활: 알 (처음 5초) → 불꽃의 응축 (태동) → 공중 웅크리기 (마지막 1초)
       if (a.egg && u.statuses && (u.statuses.rebirth || 0) > 0) {
         const el = PHOENIX_REBIRTH_TICKS - u.statuses.rebirth;
@@ -28672,6 +28780,7 @@
         mfx.ghosts.delete(u);
         mfx.hitGhosts.delete(u);
       }
+      if (u.job === 'brawler' && !u.monsterType && sprite.pickFrame) drawBrawlerGhosts(ctx, u, sprite, tick, frame, dir, k);
       ctx.scale(dir, 1);
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
