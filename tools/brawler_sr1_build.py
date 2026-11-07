@@ -87,16 +87,22 @@ def shrink(rgba, sc):   # 축소: 색은 LANCZOS(얇은 검은 외곽선이 살�
 D = 'assets/sprites/fx/samples/brawler_sr1_'
 TARGET_H = 86   # 대기 자세 키 → brawler_0과 같은 칸 키
 WALK = ['B2', 'B3', 'B4', 'B5']
-ARMOR_SC = 0.50   # 금강은 정면이라 귀 줄 폭으로 재면 귀 끝 사이만 잡혀 얼굴이 커짐(×0.55). 같은 크기로 그린 대시 샘플 배율(×0.50)에 맞춘 고정값
-ARMOR = [(0, 127), (127, 286)]
-DUEL_SC = 0.45   # 결투 배율: 치켜든 주먹이 맨 위라 귀 줄로 못 재서, 머리·어깨~발 길이가 대기와 같아지는 값
-ANNPREP_SC = 0.45   # 멸식 준비: 귀 줄 폭(×0.37)은 숙인 어깨가 섞여 머리가 작아짐 → 머리·염주 크기가 대기와 같아지는 값
-COMBO7B_SC = 0.42
-COMBO9A_SC = 0.58
-LIFT = {'c8b': 6, 'c10': 20}
-FINISH_SC = 0.62   # 착지
-KICK10_SC = 0.56   # 10타 날아 차기   # 칸 이름 → 바닥에서 띄울 높이 (게임 px)
-DOWN_SC = 0.45   # 쓰러짐 두 칸 배율: 염주 알·머리 크기가 대기 칸과 같아지는 값 (누워 있어 귀 줄 폭으로는 못 잼)   # 금강 샘플 가로 범위: 1 = 두 팔을 머리 위로 모음 · 2 = 주먹 쥐고 양팔에 힘줌 (왼쪽 끝 옆 칸 조각은 가장 큰 덩어리만 남겨 빠짐)
+ARMOR = [(0, 127), (127, 286)]   # 금강 샘플 가로 범위: 1 = 두 팔을 머리 위로 모음 · 2 = 주먹 쥐고 양팔에 힘줌
+LIFT = {'c8b': 6, 'c10': 20}   # 칸 이름 → 바닥에서 띄울 높이 (게임 px)
+# 칸별 배율 (원본 px → 게임 px) — 얼굴 크기를 대기 칸과 같게 (2026-11-08 '크기 비율 통일')
+#   재는 법: 대기 칸 머리(염주 위)를 본으로 잘라 배율·좌우·기울기를 바꿔 가며 정규화 상호상관이 가장 큰 배율을 찾음
+#   (확신 0.8 이상이면 그 값, 낮은 칸은 귀 줄 폭 값과 같은 원본에서 그린 칸의 값으로 정함). 귀 줄 폭은 대체로 맞았고
+#   눈대중으로 고쳤던 칸(멸식 준비·3타·9타 착지·10타·쓰러짐)이 10~20% 크게 들어가 있었음
+SCALE = {
+    'armor1': 0.562, 'armor2': 0.562,        # 금강 2 머리 일치 0.90 · 금강 1은 같은 장에 같은 크기로 그림
+    'down1': 0.383, 'down2': 0.383,          # 쓰러짐 1 기울인 본 일치 0.64 · 2는 같은 묶음 샘플
+    'duel': 0.45,                            # 머리를 젖혀 일치 낮음 → 허리·띠 본 일치 0.70 값
+    'counter': 0.445, 'annprep': 0.371,
+    'c1': 0.607, 'c2': 0.607, 'c3': 0.545, 'c4a': 0.607, 'c4b': 0.539, 'c5a': 0.475, 'c5b': 0.365,
+    'c6a': 0.59, 'c6b': 0.59,                # 뒷모습이라 본 일치 낮음 → 귀 줄 폭(0.604)에서 앞모습 칸들의 차이(-2.5%)만큼
+    'c7a': 0.43, 'c7b': 0.43,                # 7a 귀 줄 0.453 · 기울인 본 0.408의 가운데, 7b 머리 일치 0.73
+    'c8a': 0.598, 'c8b': 0.607, 'c9a': 0.536, 'c10': 0.462, 'land': 0.589,
+}
 
 
 def cells(name):   # 여러 칸 샘플 → {'B1': 그림, ...} (큰 덩어리를 줄·칸 순서로)
@@ -200,7 +206,7 @@ def main():
     full = np.array(Image.open(f'{D}armor_src.png').convert('RGB'))
     arm = []
     for x0, x1 in ARMOR:
-        r = cut(full[:, x0:x1]); hcx = head(r)[1]; sc = ARMOR_SC
+        r = cut(full[:, x0:x1]); hcx = head(r)[1]; sc = SCALE[f'armor{len(arm) + 1}']
         arm.append((shrink(r, sc), hcx * sc))
         print(f'armor {x0}~{x1}: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {arm[-1][0].shape[:2]}')
     idle_p = shrink(idle, sc0)
@@ -208,59 +214,59 @@ def main():
     down = []
     for n in ('down1', 'down2'):   # 기준점 = 엉덩이(띠) 자리 대신 그림 가로 가운데 · 쓰러질 때 몸이 앞으로 밀려 나가 보이게
         r = cut(np.array(Image.open(f'{D}{n}_src.png').convert('RGB')))
-        p = shrink(r, DOWN_SC); down.append((p, p.shape[1] / 2))
+        p = shrink(r, SCALE[n]); down.append((p, p.shape[1] / 2))
         print(f'{n}: {r.shape[1]}x{r.shape[0]} → {p.shape[:2]}')
     preview([(idle_p, head(idle)[1] * sc0)] * 2 + down[:1] * 2 + down[1:] * 6, '_preview_brawler_sr1_down.gif')
     r = cut_dark(np.array(Image.open(f'{D}duel_src.png').convert('RGB')), tol=10)
-    p = shrink(r, DUEL_SC)
+    p = shrink(r, SCALE['duel'])
     k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]   # 기준점 = 두 발 가운데
     print(f'duel: {r.shape[1]}x{r.shape[0]} → {p.shape[:2]}')
     preview([(idle_p, head(idle)[1] * sc0)] * 2 + [(p, (xs.min() + xs.max()) / 2)] * 4, '_preview_brawler_sr1_duel.gif')
     r = cut(np.array(Image.open(f'{D}counter_src.png').convert('RGB')))
-    hw, hcx = head(r); sc = hw0 / hw
+    hcx = head(r)[1]; sc = SCALE['counter']
     print(f'counter: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {shrink(r, sc).shape[:2]}')
     preview([(idle_p, head(idle)[1] * sc0)] * 2 + [(shrink(r, sc), hcx * sc)] * 4, '_preview_brawler_sr1_counter.gif')
     r = cut(np.array(Image.open(f'{D}annprep_src.png').convert('RGB')))
-    p = shrink(r, ANNPREP_SC)
+    p = shrink(r, SCALE['annprep'])
     k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]   # 기준점 = 두 발 가운데
     print(f'annprep: {r.shape[1]}x{r.shape[0]} → {p.shape[:2]}')
     preview([(idle_p, head(idle)[1] * sc0)] * 2 + [(p, (xs.min() + xs.max()) / 2)] * 4, '_preview_brawler_sr1_annprep.gif')
     combo = {}
     for nm, f in zip(('c1', 'c2'), split_figs(np.array(Image.open(f'{D}combo12_src.png').convert('RGB')))):
-        r = cut(f); hw = head(r)[0]; sc = hw0 / hw; p = shrink(r, sc)
+        r = cut(f); sc = SCALE[nm]; p = shrink(r, sc)
         k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]   # 기준점 = 두 발 가운데
         combo[nm] = (p, (xs.min() + xs.max()) / 2)
         print(f'{nm}: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {p.shape[:2]}')
-    r = cut(np.array(Image.open(f'{D}combo3_src.png').convert('RGB'))); p = shrink(r, sc)   # sc = 1·2타 배율
+    sc = SCALE['c3']; r = cut(np.array(Image.open(f'{D}combo3_src.png').convert('RGB'))); p = shrink(r, sc)
     k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
     combo['c3'] = (p, (xs.min() + xs.max()) / 2)
     print(f'c3: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {p.shape[:2]}')
     for nm in ('4a', '4b', '5a', '5b', '8a', '8b'):
         im = np.array(Image.open(f'{D}combo{nm}_src.png').convert('RGB'))
         if nm == '4a': im[:, :7] = 255
-        r = cut(im); sc4 = hw0 / head(r)[0]; p = shrink(r, sc4)
+        r = cut(im); sc4 = SCALE['c' + nm]; p = shrink(r, sc4)
         k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]   # 기준점 = 디딘 발 (한 발 들어서 맨 아래 줄 = 디딘 발)
         combo['c' + nm] = (p, (xs.min() + xs.max()) / 2, LIFT.get('c' + nm, 0))
         print(f'c{nm}: {r.shape[1]}x{r.shape[0]} ×{sc4:.3f} → {p.shape[:2]}')
     for nm in ('7a', '7b'):
         r = cut(np.array(Image.open(f'{D}combo{nm}_src.png').convert('RGB')))
-        sc7 = hw0 / head(r)[0] if nm == '7a' else COMBO7B_SC; p = shrink(r, sc7)
+        sc7 = SCALE['c' + nm]; p = shrink(r, sc7)
         k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
         combo['c' + nm] = (p, (xs.min() + xs.max()) / 2)
         print(f'c{nm}: {r.shape[1]}x{r.shape[0]} ×{sc7:.3f} → {p.shape[:2]}')
-    r = cut_dark(np.array(Image.open(f'{D}combo9a_src.png').convert('RGB')), tol=10); p = shrink(r, COMBO9A_SC)
+    r = cut_dark(np.array(Image.open(f'{D}combo9a_src.png').convert('RGB')), tol=10); p = shrink(r, SCALE['c9a'])
     k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
     combo['c9a'] = (p, (xs.min() + xs.max()) / 2)
-    print(f'c9a: {r.shape[1]}x{r.shape[0]} ×{COMBO9A_SC:.3f} → {p.shape[:2]}')
+    print(f'c9a: {r.shape[1]}x{r.shape[0]} ×{SCALE['c9a']:.3f} → {p.shape[:2]}')
     for nm, f in (('c10', 'combo10'), ('land', 'land')):
-        sc10 = KICK10_SC if nm == 'c10' else FINISH_SC
+        sc10 = SCALE[nm]
         r = cut(load_flat(f'{D}{f}_src.png')); p = shrink(r, sc10)
         k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
         combo[nm] = (p, (xs.min() + xs.max()) / 2 if nm == 'land' else p.shape[1] / 2, LIFT.get(nm, 0))
         print(f'{nm}: {r.shape[1]}x{r.shape[0]} ×{sc10:.3f} → {p.shape[:2]}')
     sc6 = None
     for nm, f in zip(('6a', '6b'), split_figs(np.array(Image.open(f'{D}combo6_src.png').convert('RGB')))):
-        r = cut(f); sc6 = sc6 or hw0 / head(r)[0]; p = shrink(r, sc6)
+        r = cut(f); sc6 = SCALE['c' + nm]; p = shrink(r, sc6)
         k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
         combo['c' + nm] = (p, (xs.min() + xs.max()) / 2)
         print(f'c{nm}: {r.shape[1]}x{r.shape[0]} ×{sc6:.3f} → {p.shape[:2]}')
