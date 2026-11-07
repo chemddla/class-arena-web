@@ -53,6 +53,9 @@ CAST_BOX = {'m0': (16, 0, 328, 495), 'm1': (336, 0, 704, 495), 'ring': (712, 0, 
 CAST_WM = (912, 460, 960, 505)         # 반짝이 표시 (고리 위에 겹침)
 DARK_SRC = {'fbcast': ('fbcast', (0, 0, 236, 300)), 'flare': ('flare', None), 'cb_cast': ('combust', (0, 0, 210, 289)), 'cb_go': ('combust', (210, 0, 454, 289)), 'dash': ('dash', (0, 0, 276, 174)), 'ignite': ('ignite', (0, 0, 197, 258)),
             'rb_egg': ('rb_egg', (0, 0, 200, 210)), 'rb_swirl': ('rb_swirl', (0, 0, 202, 207)), 'rb_crouch': ('rb_crouch', (0, 0, 196, 210)), 'rb_roar': ('rb_roar', (0, 0, 249, 267))}
+# 걷기 칸 머리 맞춤 (게임 px, + = 오른쪽): 발 가운데로 맞추면 걸음마다 부리 끝이 기준점에서 +24 → +17 → +33 → +17로 앞뒤로 흔들려서,
+#   세 칸의 부리 끝을 평균(+24)에 모음 (발은 조금 미끄러지지만 걷는 중이라 눈에 덜 띔)
+HEAD_ALIGN_DX = {'walk0': 0, 'walk1': 8, 'walk2': -9}
 RB_ZOOM = 1.3       # 웅크리기·포효 샘플은 불사조를 둥근 불꽃 안에 작게 그려서 몸 크기를 대기와 비슷하게 키움
 # 칸별 크기 보정: 대기 칸 옆에 놓고 머리·몸통 크기를 눈으로 맞춘 배율 (몸 키로 맞추면 자세마다 머리 크기가 달라짐)
 SIZE_FIX = {'walk0': 0.91, 'walk1': 0.91, 'walk2': 0.91,
@@ -274,7 +277,7 @@ def build_char():
     for name, (rgba, foot, _, _), k in src:
         k *= SIZE_FIX.get(name, 1)
         p = shrink(rgba, k)
-        pieces.append((name, p, foot * k, int(round(GROUND_DROP.get(name, 0) * k))))
+        pieces.append((name, p, foot * k - HEAD_ALIGN_DX.get(name, 0), int(round(GROUND_DROP.get(name, 0) * k))))
     L = max(int(np.ceil(c)) for _, _, c, _ in pieces) + 3
     R = max(int(np.ceil(p.shape[1] - c)) for _, p, c, _ in pieces) + 3
     U = max(p.shape[0] - dr for _, p, _, dr in pieces) + 3
