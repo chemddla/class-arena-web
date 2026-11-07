@@ -19,6 +19,8 @@
 #   - annprep_src.png  멸식 - 격 마무리 날아 차기 전 준비 자세 (흰 배경, 다리를 넓게 벌리고 낮게 웅크림)
 #     기본 격투가는 멸식 마무리 준비에 섬각 준비(26)를 같이 씀 → SR은 뒤에 한 칸 더 붙여 anims.annPrep으로 따로 씀
 #     (게임: brawlerPickFrame의 멸식 마무리 a.kick[0] → (a.annPrep || a.kick)[0])
+#   - combo12_src.png  연격 1·2타 (흰 배경, 두 칸이 가로로 살짝 겹쳐 그려짐 → split_figs로 덩어리별로 나눔)
+#     1 = 앞손 잽 (팔을 쭉 뻗음) → 8번 자리 · 2 = 뒷손을 끌어올리며 가드한 채 힘줌 → 10번 자리 (기본 연격 1타 [8] · 2타 [10])
 # 흰 배경: 가장자리에서 이어진 흰 픽셀 + 꼬리·팔 사이에 갇힌 새하얀 구멍(무채색 253 안팎) 을 지움
 #   (호랑이 흰 털은 푸른 기가 돌고(파랑이 빨강보다 ~6 높음) 238 안팎이라 남음)
 import os, sys
@@ -90,6 +92,18 @@ def cut_dark(im, bgc=(59, 63, 67), tol=8):   # 어두운 단색 배경 샘플 (�
     return np.dstack([im, keep * 255]).astype(float)[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
 
 
+def split_figs(im, n=2):   # 한 장에 붙어 그린 여러 칸 → 칸마다 다른 그림을 흰색으로 덮은 사본 (왼쪽부터). 칸끼리 가로로 겹쳐도 덩어리로 나눔
+    fg = im.astype(int).min(axis=2) < 230
+    lab, k = ndi.label(fg)
+    sz = ndi.sum(fg, lab, range(1, k + 1))
+    big = sorted(np.argsort(-sz)[:n] + 1, key=lambda i: np.where(lab == i)[1].mean())
+    out = []
+    for i in big:
+        o = im.copy(); o[ndi.binary_dilation(fg & (lab != i), iterations=2) & ~(lab == i)] = 255
+        out.append(o)
+    return out
+
+
 def head(rgba):   # 귀 높이 줄(위 2~7%)의 최대 폭 · 가운데 x. 더 내려가면 숙인 자세(대시)에서 어깨·팔이 섞여 머리가 크게 잡힘
     k = rgba[..., 3] > 127
     rows = [np.where(k[y])[0] for y in range(int(k.shape[0] * .02), int(k.shape[0] * .07) + 1)]
@@ -140,6 +154,13 @@ def main():
     k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]   # 기준점 = 두 발 가운데
     print(f'annprep: {r.shape[1]}x{r.shape[0]} → {p.shape[:2]}')
     preview([(idle_p, head(idle)[1] * sc0)] * 2 + [(p, (xs.min() + xs.max()) / 2)] * 4, '_preview_brawler_sr1_annprep.gif')
+    combo = {}
+    for nm, f in zip(('c1', 'c2'), split_figs(np.array(Image.open(f'{D}combo12_src.png').convert('RGB')))):
+        r = cut(f); hw = head(r)[0]; sc = hw0 / hw; p = shrink(r, sc)
+        k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]   # 기준점 = 두 발 가운데
+        combo[nm] = (p, (xs.min() + xs.max()) / 2)
+        print(f'{nm}: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {p.shape[:2]}')
+    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [combo['c1']] * 2 + [combo['c2']] * 2 + [combo['c1']] * 2 + [combo['c2']] * 2, '_preview_brawler_sr1_combo.gif')
 
 
 def preview(frames, out):
