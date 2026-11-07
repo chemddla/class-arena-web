@@ -37,6 +37,10 @@
 #     b는 LIFT['c8b']만큼 바닥에서 띄움 (기본 격투가 날아 차기 10보다 낮게 '살짝')
 #   - combo9a_src.png  연격 9타 첫 칸: 8타 점프에서 내려와 자세를 잡음 (어두운 회색 배경). 9타 지르기 그림은 3타 샘플과 똑같아(픽셀 차이 0) 3타 칸을 다시 씀
 #     배율 COMBO9A_SC: 귀 줄 폭(×0.54)은 머리만 잘라 비교하면 대기보다 작아 0.58
+#   - combo10_src.png  연격 10타 (막타) 공중 날아 차기. 투명 배경 PNG(150×393)라 흰색 위에 깔고 자름 (RGB로 바꾸면 투명 자리가 검게 됨)
+#     그림은 맨 위, 맨 아래에 붉은 표시(110~118열) → 땅 위치로 보면 원본 296px(게임 ~180px) 위. 일단 LIFT 20으로 띄움 (기본 날아 차기 10의 두 배)
+#   - land_src.png  막타 뒤 착지 (흰 배경, 낮게 웅크려 내려앉음) → 33번 자리. 10타 날아 차기 → 착지 → 평소 자세
+#     배율: 둘 다 머리만 잘라 대기와 맞춘 0.62 (착지 귀 줄 폭 ×0.59는 살짝 작음)
 # 게임 반영 때 할 일 (사용자 지시, 2026-11-08):
 #   - 연격 9타: 착지(9a) → 지르기(3타 칸)로 치면서 대상을 뚫고 지나가, 10타를 칠 거리만큼 멀리 이동
 #     (기본 격투가는 10타 날아 차기에서 관통함 = BRAWLER_PASS_DIST·BRAWLER_PASS_TICKS. SR은 9타에서 관통 → 10타는 그 거리에서 다시 들어오며 침)
@@ -59,7 +63,8 @@ DUEL_SC = 0.45   # 결투 배율: 치켜든 주먹이 맨 위라 귀 줄로 못 
 ANNPREP_SC = 0.45   # 멸식 준비: 귀 줄 폭(×0.37)은 숙인 어깨가 섞여 머리가 작아짐 → 머리·염주 크기가 대기와 같아지는 값
 COMBO7B_SC = 0.42
 COMBO9A_SC = 0.58
-LIFT = {'c8b': 6}   # 칸 이름 → 바닥에서 띄울 높이 (게임 px)
+LIFT = {'c8b': 6, 'c10': 20}
+FINISH_SC = 0.62   # 10타 날아 차기·착지   # 칸 이름 → 바닥에서 띄울 높이 (게임 px)
 DOWN_SC = 0.45   # 쓰러짐 두 칸 배율: 염주 알·머리 크기가 대기 칸과 같아지는 값 (누워 있어 귀 줄 폭으로는 못 잼)   # 금강 샘플 가로 범위: 1 = 두 팔을 머리 위로 모음 · 2 = 주먹 쥐고 양팔에 힘줌 (왼쪽 끝 옆 칸 조각은 가장 큰 덩어리만 남겨 빠짐)
 
 
@@ -71,6 +76,11 @@ def cells(name):   # 여러 칸 샘플 → {'B1': 그림, ...} (큰 덩어리를
     objs = ndi.find_objects(lab)
     big = sorted([objs[i] for i in range(k) if sz[i] > 2000], key=lambda o: (o[0].start // 150, o[1].start))
     return {f'{name}{j + 1}': im[sl] for j, sl in enumerate(big)}
+
+
+def load_flat(path):   # 투명 PNG도 흰 배경 위에 깐 RGB로
+    im = Image.open(path).convert('RGBA'); bg = Image.new('RGBA', im.size, (255, 255, 255, 255)); bg.alpha_composite(im)
+    return np.array(bg.convert('RGB'))
 
 
 def cut(im):   # 흰 배경 지우고 가장 큰 덩어리(캐릭터)만 → RGBA, 외곽은 흰색과 섞인 만큼 반투명으로 풀어 줌
@@ -203,13 +213,18 @@ def main():
     k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
     combo['c9a'] = (p, (xs.min() + xs.max()) / 2)
     print(f'c9a: {r.shape[1]}x{r.shape[0]} ×{COMBO9A_SC:.3f} → {p.shape[:2]}')
+    for nm, f in (('c10', 'combo10'), ('land', 'land')):
+        r = cut(load_flat(f'{D}{f}_src.png')); p = shrink(r, FINISH_SC)
+        k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
+        combo[nm] = (p, (xs.min() + xs.max()) / 2 if nm == 'land' else p.shape[1] / 2, LIFT.get(nm, 0))
+        print(f'{nm}: {r.shape[1]}x{r.shape[0]} ×{FINISH_SC:.3f} → {p.shape[:2]}')
     sc6 = None
     for nm, f in zip(('6a', '6b'), split_figs(np.array(Image.open(f'{D}combo6_src.png').convert('RGB')))):
         r = cut(f); sc6 = sc6 or hw0 / head(r)[0]; p = shrink(r, sc6)
         k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
         combo['c' + nm] = (p, (xs.min() + xs.max()) / 2)
         print(f'c{nm}: {r.shape[1]}x{r.shape[0]} ×{sc6:.3f} → {p.shape[:2]}')
-    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [combo['c1']] * 2 + [combo['c2']] * 2 + [combo['c3']] * 3 + [combo['c4a']] * 2 + [combo['c4b']] * 3 + [combo['c5a']] * 2 + [combo['c5b']] * 3 + [combo['c6a']] * 2 + [combo['c6b']] * 3 + [combo['c7a']] * 2 + [combo['c7b']] * 3 + [combo['c8a']] * 2 + [combo['c8b']] * 3 + [combo['c9a']] * 2 + [combo['c3']] * 3, '_preview_brawler_sr1_combo.gif')
+    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [combo['c1']] * 2 + [combo['c2']] * 2 + [combo['c3']] * 3 + [combo['c4a']] * 2 + [combo['c4b']] * 3 + [combo['c5a']] * 2 + [combo['c5b']] * 3 + [combo['c6a']] * 2 + [combo['c6b']] * 3 + [combo['c7a']] * 2 + [combo['c7b']] * 3 + [combo['c8a']] * 2 + [combo['c8b']] * 3 + [combo['c9a']] * 2 + [combo['c3']] * 3 + [combo['c10']] * 3 + [combo['land']] * 3, '_preview_brawler_sr1_combo.gif')
 
 
 def preview(frames, out):   # frames: (그림, 기준점 x[, 바닥에서 띄울 높이])
