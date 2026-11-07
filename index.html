@@ -9452,6 +9452,10 @@
     LANCER_THRUST_IMG.src = 'assets/sprites/fx/lancer_thrust.webp';
     // 저격수 이펙트 (sniper_fx.webp 한 줄 아틀라스, [x, y, w, h]): 0~2 = 붉은 저격선(굵은 섬광 → 가는 선 → 흩어짐),
     // 3~5 = 산탄(총구 연기 → 탄 부채꼴 → 흩어짐), 6~8 = 총알 3종(쓰지 않음). 저격선·산탄 기준점 = 왼쪽 가운데
+    // 격투가 타격 섬광 (원본 샘플: assets/sprites/fx/samples/brawler_hit_src.png, tools/brawler_build.py) · 그림 가운데 = 맞은 자리
+    const BRAWLER_HIT_FX = new Image();
+    BRAWLER_HIT_FX.onload = () => { BRAWLER_HIT_FX.ready = true; };
+    BRAWLER_HIT_FX.src = 'assets/sprites/fx/brawler_hit.webp';
     const SNIPER_FX_IMG = new Image();
     SNIPER_FX_IMG.onload = () => { SNIPER_FX_IMG.ready = true; };
     SNIPER_FX_IMG.src = 'assets/sprites/fx/sniper_fx.webp';
@@ -19891,6 +19895,8 @@
       }
       defender.hp -= dmg;
       if ((defender.statuses.undying || 0) > 0 && defender.hp < 1) defender.hp = 1; // 불사: 체력이 1 아래로 내려가지 않음
+      if (attacker?.job === 'brawler' && !attacker.monsterType && dmg > 0) // 격투가 타격 섬광 (스킬 피해는 조금 크게)
+        sim.effects.push({ type: 'brawl_hit', x: defender.x + (Math.random() * 12 - 6), y: defender.y - 18 - Math.random() * 10, r: skillHitSource ? 50 : 40, flip: Math.random() < 0.5, life: 9, maxLife: 9 });
       defender.damageTaken += dmg;
       // 엘리트 보스는 기본 공격에 경직 면역: 피격 자세·흔들림 없이 하얗게 번쩍이기만 (스킬에 맞으면 경직)
       // 히든 스킬 시전 중에도 경직 면역 (피격 자세 없이 번쩍이기만)
@@ -25266,7 +25272,29 @@
       const gap = Math.max(BRAWLER_CHAIN_GAP_MIN, BRAWLER_CHAIN_GAP0 - (k - 1));
       u.cooldown = Math.min(u.cooldown || gap, gap);
       u.attackAnim = Math.min(u.attackAnim || 0, gap + 2); u.maxAttackAnim = u.attackAnim;
-      if (k > 1) sim.effects.push({ type: 'magic_burst', x: target.x + (Math.random() * 14 - 7), y: target.y - 18, r: 12 + k, color: '#fdba74', life: 10, maxLife: 10 });
+    }
+
+    // 백호 9타: 정권으로 대상을 뚫고 반대편으로 BRAWLER_SR_PASS_DIST만큼 지나감 → 바로 돌아서 날아 차기로 다시 들어와 10타
+    //   (사거리 밖이라 보통 공격으로는 못 이어서, 도착하면 10타를 직접 부름. 그동안 투혼은 이어짐)
+    function brawlerTigerPass(u, target) {
+      const ang = Math.atan2(target.y - u.y, target.x - u.x), pass = BRAWLER_SR_PASS_DIST + unitBodyGap(target) + unitBodyGap(u), sx = u.x, sy = u.y;
+      brawlerFace(u, target);
+      u.attackAnim = Math.min(u.attackAnim || 0, BRAWLER_SR_PASS_TICKS + 2); u.maxAttackAnim = u.attackAnim; // 착지 → 정권을 지나가는 동안 다 보여 줌
+      u.brawlSpiritUntil = sim.tickCount + BRAWLER_SR_PASS_TICKS + BRAWLER_SR_LEAP_TICKS + BRAWLER_SPIRIT_TICKS;
+      const r = startUnitRush(u, target.x + Math.cos(ang) * pass, target.y + Math.sin(ang) * pass, BRAWLER_SR_PASS_TICKS, () => {
+        if (!u.alive || !brawlerFoeOk(u, target)) return;
+        brawlerFace(u, target);
+        u.brawlHitAt = sim.tickCount; u.brawlHitNo = BRAWLER_CHAIN_MAX; // 그림: 날아 들어오는 동안부터 10타 자세
+        u.attackAnim = BRAWLER_SR_LEAP_TICKS + 22; u.maxAttackAnim = u.attackAnim;
+        brawlerRushTo(u, target, BRAWLER_SR_LEAP_TICKS, '#f97316', () => {
+          if (!brawlerFoeOk(u, target)) return;
+          u.cooldown = Math.max(u.cooldown || 0, u.baseAtkInterval || 30);
+          u.mana = Math.min(u.maxMana, u.mana + 18);
+          playCombatSfx('slash');
+          brawlerBasicAttack(u, target);
+        });
+      });
+      sim.effects.push({ type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, trail: true, runTicks: r.n, ownerId: u.id, color: '#fdba74', life: r.n + 20, maxLife: r.n + 20 });
     }
 
     // 백호 9타: 정권으로 대상을 뚫고 반대편으로 BRAWLER_SR_PASS_DIST만큼 지나감 → 바로 돌아서 날아 차기로 다시 들어와 10타
@@ -27572,7 +27600,7 @@
 
     // 회복·축복·보호막 그림 (수명은 효과 루프에서 줄어듦)
     // 피격 이펙트: 맞은 대상 위에 겹쳐 보이게 유닛을 다 그린 뒤 따로 한 겹에 그려 반투명하게 얹음
-    const HIT_FX_TYPES = new Set(['pyro_hit', 'pyro_xpl', 'magic_burst', 'arrow_hit', 'fire_explosion', 'ice_shatter', 'curse_shatter', 'hidden_snipe_hit', 'bard_lute', 'bard_wave', 'bard_wave_hit', 'bard_song_buff']); // 파멸의 의식 번개는 불투명하게 drawRuinMarks에서
+    const HIT_FX_TYPES = new Set(['pyro_hit', 'pyro_xpl', 'magic_burst', 'arrow_hit', 'fire_explosion', 'ice_shatter', 'curse_shatter', 'hidden_snipe_hit', 'bard_lute', 'bard_wave', 'bard_wave_hit', 'bard_song_buff', 'brawl_hit']); // 파멸의 의식 번개는 불투명하게 drawRuinMarks에서
     const HIT_FX_ALPHA = 0.75;
     let hitFxLayer = null;
     function drawHitEffectsOnTop(ctx, drawPass) {
@@ -30403,6 +30431,18 @@
           ctx.lineTo(len - 8, w + 3);
           ctx.closePath();
           ctx.fill();
+
+        } else if (ef.type === 'brawl_hit') {
+          // 격투가 타격 섬광: 앞 3틱에 확 터지고 나머지는 살짝 커지며 사라짐
+          if (BRAWLER_HIT_FX.ready) {
+            const pop = progress < 0.33 ? 0.6 + progress / 0.33 * 0.5 : 1.1 + (progress - 0.33) * 0.15;
+            const d = (ef.r || 40) * pop;
+            ctx.translate(ef.x, ef.y);
+            if (ef.flip) ctx.scale(-1, 1);
+            ctx.globalAlpha = progress < 0.4 ? 1 : Math.max(0, (1 - progress) / 0.6);
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(BRAWLER_HIT_FX, -d / 2, -d / 2, d, d);
+          }
 
         } else if (ef.type === 'sniper_line' && SNIPER_FX_IMG.ready) {
           // 저격수 저격·필살 사격 그림: 머리(총구 섬광)는 그대로, 몸통은 사거리만큼 늘림

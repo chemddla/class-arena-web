@@ -46,6 +46,8 @@ GRID_AUTO = {'down1', 'down2'} | {f'combo{i:02d}' for i in range(16)}   # 격자
 FLIP = {'down2'}
 AURA_OUT = 'assets/sprites/fx/brawler_aura.webp'   # 멸식을 쓸 수 있을 때 몸 뒤에 깔 기운 (멸식 시전 칸의 기운만, 칸·기준점은 시트와 같음)
 AURA_RGBA = {}   # 샘플 이름 → 기운만 남긴 그림 (몸이 가리던 자리는 가까운 기운 색으로 채움)
+HIT_SRC = 'assets/sprites/fx/samples/brawler_hit_src.png'   # 타격 섬광 샘플 (어두운 회색 배경 위 흰·노란 빛)
+HIT_OUT = 'assets/sprites/fx/brawler_hit.webp'   # 격투가가 맞힐 때 대상에게 터지는 섬광 (가운데 = 맞은 자리)
 AURA = {'ann0'}   # 몸 둘레 푸른·노란 기운: 흰 배경 위에 옅게 그려져 있어 흰색과 떨어진 만큼만 불투명 (반투명 빛)
 
 
@@ -211,5 +213,26 @@ def main():
     print(f'brawler_0 cellW={cw} cellH={H} anchorX={L} anchorY={H - 2} count={len(pieces)}')
 
 
+
+def build_hit():
+    # 배경(어두운 회색)보다 밝은 만큼만 불투명: 빛 번짐이 그대로 반투명으로 남음 (배경보다 어두운 테두리 점은 버림)
+    im = np.asarray(Image.open(HIT_SRC).convert('RGB')).astype(float)
+    bg = np.median(np.concatenate([im[0], im[-1], im[:, 0], im[:, -1]]), axis=0)
+    a = np.clip(((im - bg) / (255 - bg)).max(axis=2), 0, 1)
+    a = np.where(a < 0.04, 0, a)
+    col = np.clip((im - bg * (1 - a[..., None])) / np.maximum(a[..., None], 1e-3), 0, 255)
+    ys, xs = np.nonzero(a)
+    cy, cx = int(round((ys * a[ys, xs]).sum() / a[ys, xs].sum())), int(round((xs * a[ys, xs]).sum() / a[ys, xs].sum()))
+    r = max(cy - ys.min(), ys.max() - cy, cx - xs.min(), xs.max() - cx) + 1   # 가운데를 맞춘 정사각 칸
+    out = np.zeros((2 * r + 1, 2 * r + 1, 4), np.uint8)
+    y0, x0 = cy - r, cx - r
+    for yy in range(max(0, y0), min(im.shape[0], cy + r + 1)):
+        for xx in range(max(0, x0), min(im.shape[1], cx + r + 1)):
+            out[yy - y0, xx - x0] = [*col[yy, xx].astype(np.uint8), int(a[yy, xx] * 255)]
+    Image.fromarray(out, 'RGBA').save(HIT_OUT, 'WEBP', lossless=True)
+    print(f'brawler_hit {out.shape[1]}x{out.shape[0]} center=({cx},{cy}) in sample')
+
+
 if __name__ == '__main__':
+    build_hit()
     main()
