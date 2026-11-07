@@ -3,6 +3,7 @@
 # 칸 순서: 0 대기 (주먹을 쥐고 선 자세) · 1~4 걷기 (받은 샘플을 WALK_ORDER 순서로 다시 놓음) · 5 피격 (몸을 젖히며 얼굴을 찡그림)
 #   · 6~7 쓰러짐 (뒤로 넘어감 → 누워 기절) · 8~23 연격 샘플 0~15 (받은 순서 그대로, 재생 순서는 COMBO_SEQ)
 #   · 24 슈퍼아머 (이를 악물고 버티는 자세) · 25 결투 (상대를 향해 기합을 지르는 자세)
+#   · 26 섬각 준비 (낮게 웅크림) · 27 섬각 날아 차기 (공중에서 앞발을 뻗음, LIFT만큼 바닥에서 띄움). 연격 마지막도 이 두 칸
 #   - 슈퍼아머·결투 샘플은 발 아래 번호 글자('04'·'07') → 몸과 떨어져 있어 가장 큰 덩어리만 남기면 빠짐
 #   - 연격 샘플: 0·1은 격자선+바닥 줄, 3·5·8은 왼쪽 끝에 옆 칸 조각 → 격자 자동 제거 + 가장 큰 덩어리만. 3의 발차기 궤적(흰 호)은 다리에 붙어 있어 남김
 # 크기 통일: 대기 자세 몸 키(머리털 끝~발, 샘플 px)를 TARGET_H로 줄임. 다른 동작은 대기와 같은 배율('idle')로 줄여 얼굴 크기를 맞춤
@@ -113,14 +114,17 @@ FRAMES = [
     ('down1', 'down1', 'HAIR', 'big'), ('down2', 'down2', 'down1', 'big'),
 ] + [(f'combo{i:02d}', f'combo{i:02d}', 'HEAD', 'big') for i in range(16)] + [
     ('armor', 'armor', 'W', 'big'), ('duel', 'duel', 'W', 'big'),
+    ('flash0', 'flash0', 'W', 'big'), ('flash1', 'flash1', 'W', 'big'),
 ]
+LIFT = {'flash1': 10}   # 칸 이름 → 바닥에서 띄울 높이 (게임 px): 날아 차기는 공중에 뜬 모습
 # 연격 샘플 머리 폭 (샘플 px). 'HEAD' = 이 폭을 대기 칸 머리 폭(샘플 67px × 대기 배율)과 같게
 #   머리 실루엣 가로 폭으로 잼. 주먹·다리가 머리에 붙은 칸(0·1·10·11·13·14)은 실루엣이 이어져 크게 나와서 머리털 폭 × 1.19 (정면 칸들의 머리 폭 ÷ 머리털 폭)
 #   뒷모습 칸(6·7·8·12)은 머리털이 머리 전체라 머리털 폭으로는 작게 나와 실루엣 폭을 씀
 # 연격 재생 순서 (샘플 번호, 같은 칸을 다시 써도 됨) → 시트 칸 번호는 8 + 샘플 번호. 게임 anims.combo에 넣을 목록은 main이 출력
 #   가드 → 잽 → 정권 지르기 → 무릎 당겨 → 중단 돌려차기 → 돌려차기 → 상단 돌려차기 → 무릎 회수
-#   → 등 돌림 → 뒤돌며 발 듦 → 무릎 당김(뒷모습) → 뒤후려차기 → 옆차기 → 무릎 당겨 → 내려찍기 들어올림 → 내려찍기(궤적) → 가드
-COMBO_SEQ = [15, 0, 2, 13, 1, 14, 10, 4, 12, 6, 8, 7, 9, 13, 11, 3, 5]
+#   → 등 돌림 → 뒤돌며 발 듦 → 무릎 당김(뒷모습) → 뒤후려차기 → 옆차기 → 무릎 당겨 → 내려찍기 들어올림 → 내려찍기(궤적)
+#   → 마무리 섬각 (웅크림 → 날아 차기). 숫자 = 연격 샘플 번호, 글자 = 칸 이름
+COMBO_SEQ = [15, 0, 2, 13, 1, 14, 10, 4, 12, 6, 8, 7, 9, 13, 11, 3, 'flash0', 'flash1']
 HEAD_PX = {'combo00': 62, 'combo01': 62, 'combo02': 88, 'combo03': 67, 'combo04': 66, 'combo05': 66, 'combo06': 58, 'combo07': 60,
            'combo08': 62, 'combo09': 60, 'combo10': 61, 'combo11': 56, 'combo12': 54, 'combo13': 56, 'combo14': 60, 'combo15': 57}
 HEAD_ANCHOR = {f'walk{j}' for j in range(4)}
@@ -142,15 +146,17 @@ def main():
         print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} 키 {bh} ×{sc:.3f} → {p.shape[1]}x{p.shape[0]}  발 {foot:.0f}')
     L = max(int(np.ceil(c)) for _, _, c in pieces) + 4
     R = max(int(np.ceil(p.shape[1] - c)) for _, p, c in pieces) + 4
-    H = max(p.shape[0] for _, p, _ in pieces) + 5
+    H = max(p.shape[0] + LIFT.get(name, 0) for name, p, _ in pieces) + 5
     cw = L + R
     sheet = np.zeros((H, cw * len(pieces), 4), np.uint8)
     for i, (name, p, c) in enumerate(pieces):
         x = i * cw + L - int(round(c))
-        y = H - 2 - p.shape[0]
+        y = H - 2 - p.shape[0] - LIFT.get(name, 0)
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
     Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
-    print('combo anim:', [8 + i for i in COMBO_SEQ])
+    names = [n for _, n, _, _ in FRAMES]
+    print('combo anim:', [names.index(f'combo{c:02d}' if isinstance(c, int) else c) for c in COMBO_SEQ])
+    print('cells:', ' '.join(f'{i}={n}' for i, n in enumerate(names)))
     print(f'brawler_0 cellW={cw} cellH={H} anchorX={L} anchorY={H - 2} count={len(pieces)}')
 
 
