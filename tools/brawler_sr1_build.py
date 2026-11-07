@@ -7,6 +7,9 @@
 #     B는 그림이 크고 팔 모양이 일정함. B9·B10은 팔짱으로 넘어가는 칸이라 걷기엔 안 씀 (B10엔 발 쪽 회색 별 무늬도 있음)
 #     B2~B5는 꼬리가 아래로 늘어지고 B6~B8은 꼬리를 말아 올려서, 섞으면 걸음마다 꼬리가 위아래로 튐 → 꼬리가 같은 B2~B5만 씀
 #     → 걷기 = B2 (보폭 최대, 두 발 디딤) → B3 (보폭 줄며 몸이 내려감) → B4 (뒷발 들어 앞으로) → B5 (뒷발이 몸 밑을 지나감) → 다시 B2
+#   - dash_src.png  대시 (앞으로 몸을 숙이고 달려 나감). 어두운 회색 배경(59,63,67) + 양옆에 옆 칸 조각
+#     → 배경색과 8 이내인 픽셀을 가장자리부터 지우고 가장 큰 덩어리만 남김. 시트에선 brawler_0 칸 뒤에 한 칸 더 붙여 dashRun으로 씀
+#       (불사조 SR처럼 대시 동안 이 칸, 기본 격투가는 대시 때 걷기 칸)
 # 흰 배경: 가장자리에서 이어진 흰 픽셀 + 꼬리·팔 사이에 갇힌 새하얀 구멍(무채색 253 안팎) 을 지움
 #   (호랑이 흰 털은 푸른 기가 돌고(파랑이 빨강보다 ~6 높음) 238 안팎이라 남음)
 import os, sys
@@ -57,9 +60,24 @@ def cut(im):   # 흰 배경 지우고 가장 큰 덩어리(캐릭터)만 → RGB
     return np.dstack([im, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
 
 
-def head(rgba):   # 머리 줄(위 4~20%)의 최대 폭 · 가운데 x
+def cut_dark(im, bgc=(59, 63, 67), tol=8):   # 어두운 단색 배경 샘플 (외곽선이 배경보다 훨씬 어두워 반투명 처리 없이 딱 자름)
+    im = im.astype(int)
+    near = np.abs(im - bgc).max(axis=2) <= tol
+    lab, n = ndi.label(near)
+    edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
+    bg = np.isin(lab, edge[edge > 0])
+    for i in range(1, n + 1):   # 꼬리·팔 사이에 갇힌 배경
+        m = lab == i
+        if not bg[m].any() and m.sum() >= 15: bg |= m
+    lab, n = ndi.label(~bg)
+    keep = lab == 1 + int(np.argmax(ndi.sum(~bg, lab, range(1, n + 1))))
+    ys, xs = np.where(keep)
+    return np.dstack([im, keep * 255]).astype(float)[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+
+
+def head(rgba):   # 귀 높이 줄(위 2~7%)의 최대 폭 · 가운데 x. 더 내려가면 숙인 자세(대시)에서 어깨·팔이 섞여 머리가 크게 잡힘
     k = rgba[..., 3] > 127
-    rows = [np.where(k[y])[0] for y in range(int(k.shape[0] * .04), int(k.shape[0] * .2))]
+    rows = [np.where(k[y])[0] for y in range(int(k.shape[0] * .02), int(k.shape[0] * .07) + 1)]
     rows = [r for r in rows if len(r)]
     return max(r.max() - r.min() + 1 for r in rows), float(np.mean([(r.max() + r.min()) / 2 for r in rows]))
 
@@ -74,6 +92,14 @@ def main():
         r = cut(src[nm]); hw, hcx = head(r); sc = hw0 / hw
         frames.append((shrink(r, sc), hcx * sc))
         print(f'{nm}: {r.shape[1]}x{r.shape[0]} ×{sc:.3f}')
+    preview(frames, '_preview_brawler_sr1_walk.gif')
+    r = cut_dark(np.array(Image.open(f'{D}dash_src.png').convert('RGB')))
+    hw, hcx = head(r); sc = hw0 / hw
+    print(f'dash: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {shrink(r, sc).shape[:2]}')
+    preview(frames + [(shrink(r, sc), hcx * sc)] * 3, '_preview_brawler_sr1_dash.gif')   # 걷다가 대시
+
+
+def preview(frames, out):
     L = max(c for _, c in frames) + 6; R = max(p.shape[1] - c for p, c in frames) + 6
     H = max(p.shape[0] for p, _ in frames) + 4
     gif = []
@@ -81,7 +107,7 @@ def main():
         cv = Image.new('RGBA', (int(L + R), H), (70, 90, 70, 255))
         cv.alpha_composite(Image.fromarray(p), (int(round(L - c)), H - 2 - p.shape[0]))
         gif.append(cv.resize((cv.width * 3, cv.height * 3), Image.NEAREST).convert('RGB'))
-    gif[0].save('_preview_brawler_sr1_walk.gif', save_all=True, append_images=gif[1:], duration=150, loop=0)
+    gif[0].save(out, save_all=True, append_images=gif[1:], duration=150, loop=0)
 
 
 if __name__ == '__main__':
