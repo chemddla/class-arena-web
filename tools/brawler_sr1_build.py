@@ -97,7 +97,7 @@ SCALE = {
     'armor1': 0.562, 'armor2': 0.562,        # 금강 2 머리 일치 0.90 · 금강 1은 같은 장에 같은 크기로 그림
     'down1': 0.383, 'down2': 0.383,          # 쓰러짐 1 기울인 본 일치 0.64 · 2는 같은 묶음 샘플
     'duel': 0.45,                            # 머리를 젖혀 일치 낮음 → 허리·띠 본 일치 0.70 값
-    'counter': 0.445, 'annprep': 0.371,
+    'counter': 0.445, 'annprep': 0.371, 'hurt': 0.47,   # 피격: 머리 일치 0.93 (귀 줄 0.467)
     'c1': 0.607, 'c2': 0.607, 'c3': 0.545, 'c4a': 0.607, 'c4b': 0.539, 'c5a': 0.475, 'c5b': 0.365,
     'c6a': 0.59, 'c6b': 0.59,                # 뒷모습이라 본 일치 낮음 → 귀 줄 폭(0.604)에서 앞모습 칸들의 차이(-2.5%)만큼
     'c7a': 0.43, 'c7b': 0.43,                # 7a 귀 줄 0.453 · 기울인 본 0.408의 가운데, 7b 머리 일치 0.73
@@ -282,12 +282,17 @@ def main():
         print(f'c{nm}: {r.shape[1]}x{r.shape[0]} ×{sc6:.3f} → {p.shape[:2]}')
     preview([F['idle']] * 2 + [combo['c1']] * 2 + [combo['c2']] * 2 + [combo['c3']] * 3 + [combo['c4a']] * 2 + [combo['c4b']] * 3 + [combo['c5a']] * 2 + [combo['c5b']] * 3 + [combo['c6a']] * 2 + [combo['c6b']] * 3 + [combo['c7a']] * 2 + [combo['c7b']] * 3 + [combo['c8a']] * 2 + [combo['c8b']] * 3 + [combo['c9a']] * 2 + [combo['c3']] * 3 + [combo['c10']] * 3 + [combo['land']] * 3, '_preview_brawler_sr1_combo.gif')
     for k_, v in combo.items(): F[k_] = v if len(v) == 3 else (*v, 0)
+    im = load_flat(f'{D}hurt_src.png').copy(); im[:70, :4] = 255; im[:62, 4:6] = 255   # 왼쪽 끝 옆 칸 조각 (꼬리 끝에 닿아 있음)
+    r = cut(im); p = shrink(r, SCALE['hurt'])   # 피격 (몸을 젖히며 한 손을 들어 막음, 흰 배경)
+    k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
+    F['hurt'] = (p, (xs.min() + xs.max()) / 2, 0)
+    print(f'hurt: {r.shape[1]}x{r.shape[0]} ×{SCALE["hurt"]:.3f} → {p.shape[:2]}')
     build_sheet(F)
 
 
 # 시트 칸 순서 (brawler_0과 같은 번호 + 뒤에 SR 전용 칸). 아직 샘플이 없는 동작은 가장 비슷한 백호 칸으로 채움
 SHEET = ['idle', 'walk1', 'walk2', 'walk3', 'walk4',
-         'c7a',                     # 5 피격: 샘플 없음 → 웅크려 무릎 당긴 7타a (막는 자세)
+         'hurt',                    # 5 피격
          'down1', 'down2',
          'c1', 'c2', 'c3', 'c4a', 'c4b', 'c5a', 'c5b', 'c6a', 'c6b', 'c7a', 'c7b', 'c8a', 'c8b', 'c9a',   # 8~21 연격 (SR brawlChain)
          'c1', 'c2',                # 22~23 안 씀 (0번 칸 수 맞춤)
