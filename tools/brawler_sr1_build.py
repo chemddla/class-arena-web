@@ -21,6 +21,8 @@
 #     (게임: brawlerPickFrame의 멸식 마무리 a.kick[0] → (a.annPrep || a.kick)[0])
 #   - combo12_src.png  연격 1·2타 (흰 배경, 두 칸이 가로로 살짝 겹쳐 그려짐 → split_figs로 덩어리별로 나눔)
 #     1 = 앞손 잽 (팔을 쭉 뻗음) → 8번 자리 · 2 = 뒷손을 끌어올리며 가드한 채 힘줌 → 10번 자리 (기본 연격 1타 [8] · 2타 [10])
+#   - combo3_src.png  연격 3타 (흰 배경, 허리를 틀며 뒷손 정권 지르기). 기본 3타는 [21, 9] 두 칸 → SR은 한 칸이라 brawlChain을 SR용으로 따로 둠
+#     배율: 원본 크기가 1·2타 샘플과 같아(키 143 vs 142) 1·2타 배율을 그대로 씀 (귀 줄 폭으론 ×0.54라 머리가 작아짐)
 # 흰 배경: 가장자리에서 이어진 흰 픽셀 + 꼬리·팔 사이에 갇힌 새하얀 구멍(무채색 253 안팎) 을 지움
 #   (호랑이 흰 털은 푸른 기가 돌고(파랑이 빨강보다 ~6 높음) 238 안팎이라 남음)
 import os, sys
@@ -160,7 +162,11 @@ def main():
         k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]   # 기준점 = 두 발 가운데
         combo[nm] = (p, (xs.min() + xs.max()) / 2)
         print(f'{nm}: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {p.shape[:2]}')
-    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [combo['c1']] * 2 + [combo['c2']] * 2 + [combo['c1']] * 2 + [combo['c2']] * 2, '_preview_brawler_sr1_combo.gif')
+    r = cut(np.array(Image.open(f'{D}combo3_src.png').convert('RGB'))); p = shrink(r, sc)   # sc = 1·2타 배율
+    k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
+    combo['c3'] = (p, (xs.min() + xs.max()) / 2)
+    print(f'c3: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {p.shape[:2]}')
+    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [combo['c1']] * 2 + [combo['c2']] * 2 + [combo['c3']] * 3, '_preview_brawler_sr1_combo.gif')
 
 
 def preview(frames, out):
