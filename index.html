@@ -4139,6 +4139,9 @@
             </div>
           </div>
 
+          <!-- 👨‍🏫 선생님 학급 계정 · 콘텐츠별 반영 여부 (renderTeacherAcctAdmin) -->
+          <div id="teacherAcctAdminBox" class="bg-slate-900 border border-amber-400/40 rounded-2xl p-4 flex flex-col gap-2.5"></div>
+
           <!-- 🌍 보스 레이드 조정 (WorldBoss.renderAdmin) -->
           <div id="worldBossAdminBox" class="bg-slate-900 border border-amber-500/40 rounded-2xl p-4 flex flex-col gap-2.5"></div>
         </div>
@@ -11655,7 +11658,7 @@
     // 대금은 친구 송금(transfers)으로 판 학생에게 가고, 판 학생 기기가 받으면서 판매 수를 셈
     function getProfileListings() {
       const out = [];
-      (state.students || []).forEach(s => {
+      studentsFor('market').forEach(s => {
         (Array.isArray(s.avatarShop) ? s.avatarShop : []).forEach(l => {
           const cells = l && avatarCells(l.art);
           const price = Math.round(Number(l && l.price) || 0);
@@ -11972,19 +11975,56 @@
     }
 
     /********************************************************************
+     * 선생님 학급 계정: 선생님이 학생처럼 플레이하는 계정 (classes/{코드}/meta/teacherAcct · 선생님만 바꿈)
+     * 콘텐츠마다 이 계정을 넣을지(반영) 뺄지(미반영) 고름 · 기본은 모두 미반영
+     ********************************************************************/
+    const TEACHER_ACCT_SCOPES = [
+      { key: 'match', icon: '⚔️', label: '랭킹 매칭 상대', desc: '랭킹 매칭 상대·전자칠판 빅매치 추첨에 나와요. 빼면 선생님 진형과 겨뤄 학생 점수가 오르내리지 않아요.' },
+      { key: 'rank', icon: '🏆', label: '순위표·명예의 전당', desc: '결투장 승점·5인 전투력 순위, 명예의 전당, 보스 레이드 기여도 순위(처치 보상 순위)에 들어가요.' },
+      { key: 'petRank', icon: '🐾', label: '펫 러닝·펫 배구 순위', desc: '펫 러닝 최고 기록·펫 배구 승수 순위에 들어가요.' },
+      { key: 'aiFriend', icon: '🤖', label: 'AI·연습 친구', desc: '연습 친구·AI 친구로 불려 나오고, 협동 레이드 파트너·미니게임 상대 목록에 나와요.' },
+      { key: 'classPower', icon: '🌍', label: '학급 규모·전투력 산정', desc: '보스 레이드 난이도(전투력 상위 5명)와 보스 체력(학생 수) 계산에 들어가요. 선생님 용병이 세면 학생들에게 보스가 너무 어려워질 수 있어요.' },
+      { key: 'market', icon: '🛒', label: '거래소 목록', desc: '친구 용병 둘러보기·구매 제안, 도트 프로필 상점, 외형 공유 목록에 나와요.' }
+    ];
+    function normalizeTeacherAcct(v) {
+      const o = v && typeof v === 'object' ? v : {};
+      const ids = typeof o.ids === 'string' ? o.ids.split(',').map(x => x.trim()).filter(x => /^[A-Za-z0-9_-]{1,60}$/.test(x)) : [];
+      const out = { ids: [...new Set(ids)].join(',') };
+      TEACHER_ACCT_SCOPES.forEach(sc => { out[sc.key] = o[sc.key] === true; });
+      return out;
+    }
+    function teacherAcctIdList() { return String((typeof state !== 'undefined' && state && state.teacherAcct && state.teacherAcct.ids) || '').split(',').filter(Boolean); }
+    function isTeacherAcct(stuOrId) {
+      const id = typeof stuOrId === 'string' ? stuOrId : stuOrId && stuOrId.id;
+      return Boolean(id) && teacherAcctIdList().includes(id);
+    }
+    // 이 학생 기록이 그 콘텐츠에 들어가는지 (학생은 언제나 · 선생님 계정은 선생님이 '반영'으로 켠 콘텐츠만)
+    function teacherAcctCounts(stu, scope) {
+      return !isTeacherAcct(stu) || Boolean(state.teacherAcct && state.teacherAcct[scope] === true);
+    }
+    function studentsFor(scope, list) {
+      return (list || (typeof state !== 'undefined' && state && state.students) || []).filter(s => s && teacherAcctCounts(s, scope));
+    }
+    // 내 순위 글자: 선생님 계정이 순위에서 빠져 있으면 0위 대신 '미반영'
+    function rankLabel(n) { return n > 0 ? `${n}위` : '순위 미반영'; }
+    function teacherAcctBadgeHTML(stu) {
+      return isTeacherAcct(stu) ? '<span class="ml-1 px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/50 text-amber-300 text-[10px] font-bold align-middle">👨‍🏫 선생님</span>' : '';
+    }
+
+    /********************************************************************
      * 6. 나의 용병단 로스터
      ********************************************************************/
     function getStudentRankInfo(stu) {
-      const byPower5 = [...state.students].sort((a, b) => calcStudentDeployedPower(b) - calcStudentDeployedPower(a) || calcStudentCombatPower(b) - calcStudentCombatPower(a));
+      const byPower5 = [...studentsFor('rank')].sort((a, b) => calcStudentDeployedPower(b) - calcStudentDeployedPower(a) || calcStudentCombatPower(b) - calcStudentCombatPower(a));
       const byPvp = sortStudentsByPvp();
       const power5Rank = byPower5.findIndex(s => s.id === stu.id) + 1;
       const pvpRank = byPvp.findIndex(s => s.id === stu.id) + 1;
-      return { power5Rank, pvpRank, totalStudents: state.students.length };
+      return { power5Rank, pvpRank, totalStudents: byPvp.length };
     }
 
     // 랭킹 매칭 점수 순위 (점수 → 승수 → 5인 전투력)
     function sortStudentsByPvp() {
-      return [...state.students].sort((a, b) => (b.pvpScore || 1000) - (a.pvpScore || 1000) || (b.wins || 0) - (a.wins || 0) || calcStudentDeployedPower(b) - calcStudentDeployedPower(a));
+      return [...studentsFor('rank')].sort((a, b) => (b.pvpScore || 1000) - (a.pvpScore || 1000) || (b.wins || 0) - (a.wins || 0) || calcStudentDeployedPower(b) - calcStudentDeployedPower(a));
     }
 
     function getPvpTierBadge(score) {
@@ -12112,7 +12152,7 @@
       if (myBox) {
         if (myStu) {
           const rank = sorted.findIndex(s => s.id === myStu.id) + 1;
-          myBox.innerHTML = `<div class="flex items-center gap-2">${studentAvatarHTML(myStu, 28)}<div class="min-w-0">👤 ${myStu.name} · <strong>${rank}위</strong>/${sorted.length}명<br>🏆 ${myStu.pvpScore || 1000}점</div></div>`;
+          myBox.innerHTML = `<div class="flex items-center gap-2">${studentAvatarHTML(myStu, 28)}<div class="min-w-0">👤 ${myStu.name} · <strong>${rankLabel(rank)}</strong>${rank > 0 ? `/${sorted.length}명` : ''}<br>🏆 ${myStu.pvpScore || 1000}점</div></div>`;
         } else {
           myBox.textContent = '로그인하면 내 순위가 보여요.';
         }
@@ -12459,7 +12499,7 @@
         <div class="grid grid-cols-2 gap-2">
           <div class="rounded-2xl bg-slate-950 border border-indigo-500/40 p-3 text-center">
             <div class="text-[11px] font-bold text-slate-400">내 순위</div>
-            <div class="font-title text-3xl text-white">${rank}<span class="text-base">위</span></div>
+            <div class="font-title text-3xl text-white">${rank > 0 ? `${rank}<span class="text-base">위</span>` : '<span class="text-base">순위 미반영</span>'}</div>
             <div class="text-[11px] text-slate-400">${sorted.length}명 중 · ${score}점</div>
             <div class="mt-1">${getPvpTierBadge(score)}</div>
           </div>
@@ -12777,7 +12817,7 @@
       if (totalSubEl) totalSubEl.textContent = `보유 용병 ${(stu.roster || []).length}명 전체 전투능력 합산`;
       if (depEl) depEl.textContent = deployedPower.toLocaleString();
       if (depSubEl) depSubEl.textContent = `출전 중 ${deployedCount}/${MAX_DEPLOY}명 전술 부대 전투력`;
-      if (rankEl) rankEl.textContent = `5인전투력 ${rankInfo.power5Rank}위 · PvP ${rankInfo.pvpRank}위`;
+      if (rankEl) rankEl.textContent = rankInfo.pvpRank > 0 ? `5인전투력 ${rankInfo.power5Rank}위 · PvP ${rankInfo.pvpRank}위` : '👨‍🏫 선생님 계정 · 순위 미반영';
       if (dummyEl) dummyEl.textContent = `허수아비 개체당 ❤️ ${dummyHpEach.toLocaleString()}`;
     }
 
@@ -14491,7 +14531,7 @@
 
       // 4) 친구 보유 용병 둘러보기 & 구매 제안
       const filterSel = document.getElementById('marketFriendFilterSelect');
-      const otherStudents = state.students.filter(s => s.id !== myStu.id);
+      const otherStudents = studentsFor('market').filter(s => s.id !== myStu.id);
       if (filterSel) {
         const curVal = filterSel.value || 'all';
         filterSel.innerHTML = `<option value="all">우리 반 친구 전체 보기</option>` +
@@ -15401,7 +15441,7 @@
 
     // 이 외형을 공유하는 친구들 (싼 값부터). 보유하고 있고 값이 맞는 친구만
     function skinShareOffers(id, me) {
-      return (state.students || [])
+      return studentsFor('market')
         .filter(s => s && (!me || s.id !== me.id) && ownsDesignSkin(s, id))
         .map(s => ({ seller: s, price: Math.round(Number(s.skinShares && s.skinShares[id]) || 0) }))
         .filter(o => o.price >= SKIN_SHARE_PRICE_MIN && o.price <= SKIN_SHARE_PRICE_MAX)
@@ -16498,7 +16538,7 @@
     // 랭킹 매칭: 내 점수와 비슷한(±100점부터 점점 넓혀서) 친구의 저장된 방어 진형과 겨룸
     function pickRankedOpponent(myStu) {
       const myScore = myStu.pvpScore || 1000;
-      const candidates = state.students.filter(s => s.id !== myStu.id && getStudentDefenseSquad(s).length > 0);
+      const candidates = studentsFor('match').filter(s => s.id !== myStu.id && getStudentDefenseSquad(s).length > 0);
       if (!candidates.length) return null;
       for (const range of [100, 200, 400]) {
         const near = candidates.filter(s => Math.abs((s.pvpScore || 1000) - myScore) <= range);
@@ -16568,7 +16608,7 @@
       renderSideRankPanel();
       renderTowerLiveList(); // 랭킹 매칭 중인 친구 목록(rankedLiveList)도 같이 그림
       const myStu = getActiveStudent();
-      const sorted = [...state.students].sort((a, b) => b.pvpScore - a.pvpScore || calcStudentCombatPower(b) - calcStudentCombatPower(a));
+      const sorted = [...studentsFor('rank')].sort((a, b) => b.pvpScore - a.pvpScore || calcStudentCombatPower(b) - calcStudentCombatPower(a));
 
       const myDefBox = document.getElementById('myDefenseFormationPreviewBox');
       const myDefBadge = document.getElementById('myDefenseFormationBadge');
@@ -16657,7 +16697,7 @@
       const rankInfo = getStudentRankInfo(myStu);
       const summaryBadge = document.getElementById('rankingMySummaryBadge');
       if (summaryBadge) {
-        summaryBadge.innerHTML = `👤 <strong>${myStu.name}</strong> · 🛡️ 5인 전투력 <strong>${rankInfo.power5Rank}위</strong> (${calcStudentDeployedPower(myStu).toLocaleString()}) · ⚔️ PvP <strong>${rankInfo.pvpRank}위</strong> (${myStu.pvpScore}점 · ${myStu.wins}승)`;
+        summaryBadge.innerHTML = `👤 <strong>${myStu.name}</strong> · 🛡️ 5인 전투력 <strong>${rankLabel(rankInfo.power5Rank)}</strong> (${calcStudentDeployedPower(myStu).toLocaleString()}) · ⚔️ PvP <strong>${rankLabel(rankInfo.pvpRank)}</strong> (${myStu.pvpScore}점 · ${myStu.wins}승)`;
       }
 
       const getMedalHTML = (rankIdx) => {
@@ -16669,7 +16709,7 @@
 
       const power5ListEl = document.getElementById('power5RankingList');
       if (power5ListEl) {
-        const sortedByPower5 = [...state.students].sort((a, b) => calcStudentDeployedPower(b) - calcStudentDeployedPower(a) || calcStudentCombatPower(b) - calcStudentCombatPower(a));
+        const sortedByPower5 = [...studentsFor('rank')].sort((a, b) => calcStudentDeployedPower(b) - calcStudentDeployedPower(a) || calcStudentCombatPower(b) - calcStudentCombatPower(a));
         power5ListEl.innerHTML = sortedByPower5.map((s, idx) => {
           const isMe = s.id === myStu.id;
           const deployed = (s.roster || []).filter(m => m.deployed);
@@ -31373,6 +31413,7 @@
     let adminEditingRosterCopy = [];
 
     function renderAdminStudentGrid() {
+      renderTeacherAcctAdmin();
       const grid = document.getElementById('adminStudentGrid');
       grid.innerHTML = state.students.map(s => {
         const checked = adminSelectedIds.has(s.id);
@@ -31387,7 +31428,7 @@
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
                 <input type="checkbox" ${checked ? 'checked' : ''} class="pointer-events-none accent-amber-400" />
-                <span class="font-bold text-sm text-white">${s.name}</span>
+                <span class="font-bold text-sm text-white">${s.name}${teacherAcctBadgeHTML(s)}</span>
               </div>
               <span class="text-xs">${jobs} (${s.roster.length}명)</span>
             </div>
@@ -31415,6 +31456,96 @@
           </div>
         `;
       }).join('');
+    }
+
+    // ----- 선생님 학급 계정 설정 (관리자 화면) -----
+    function renderTeacherAcctAdmin() {
+      const box = document.getElementById('teacherAcctAdminBox');
+      if (!box) return;
+      state.teacherAcct = normalizeTeacherAcct(state.teacherAcct);
+      const ids = teacherAcctIdList();
+      const accts = ids.map(id => (state.students || []).find(s => s.id === id)).filter(Boolean);
+      const candidates = (state.students || []).filter(s => !ids.includes(s.id));
+      const esc = v => String(v == null ? '' : v).replace(/[<>"'`&]/g, '');
+      box.innerHTML = `
+        <h4 class="font-title text-lg text-amber-300">👨‍🏫 선생님 학급 계정</h4>
+        <p class="text-[11px] text-slate-400 leading-relaxed">선생님이 학생처럼 직접 플레이하는 계정이에요. 학생 화면에서 이 계정으로 로그인하면 돼요(첫 로그인 때 비밀번호를 정해요).<br>아래에서 콘텐츠마다 이 계정을 <b class="text-emerald-300">반영</b>할지 <b class="text-rose-300">미반영</b>할지 고를 수 있어요. 미반영이면 학생들의 순위·매칭·보상 계산에서 빠져요.</p>
+        <div class="flex flex-col gap-1.5">
+          ${accts.length ? accts.map(s => `
+            <div class="flex items-center justify-between gap-2 bg-slate-950 border border-amber-500/30 rounded-xl px-2.5 py-1.5">
+              <span class="text-xs font-bold text-white truncate">👨‍🏫 ${esc(s.name)} <span class="text-[10px] text-slate-400">(${Number(s.num) || '-'}번)</span></span>
+              <button type="button" onclick="setTeacherAcct('${s.id}', false)" class="shrink-0 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 font-bold border border-slate-700">학생으로 되돌리기</button>
+            </div>`).join('') : '<div class="text-[11px] text-slate-500 bg-slate-950 border border-dashed border-slate-800 rounded-xl px-2.5 py-2 text-center">아직 선생님 계정이 없어요.</div>'}
+        </div>
+        <div class="flex gap-2">
+          <button type="button" onclick="createTeacherAcct()" class="flex-1 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold">➕ 선생님 계정 새로 만들기</button>
+        </div>
+        ${candidates.length ? `
+        <div class="flex gap-2">
+          <select id="teacherAcctPickSelect" class="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-xl px-2 py-1.5 text-xs text-white">
+            ${candidates.map(s => `<option value="${s.id}">${Number(s.num) || '-'}번 ${esc(s.name)}</option>`).join('')}
+          </select>
+          <button type="button" onclick="pickTeacherAcct()" class="shrink-0 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-amber-300">기존 계정 지정</button>
+        </div>` : ''}
+        <div class="flex flex-col gap-1.5 pt-2 border-t border-slate-800">
+          <div class="text-[11px] font-bold text-slate-300">콘텐츠별 반영 여부</div>
+          ${TEACHER_ACCT_SCOPES.map(sc => {
+            const on = state.teacherAcct[sc.key] === true;
+            return `
+            <button type="button" onclick="toggleTeacherAcctScope('${sc.key}')" class="w-full text-left flex items-start gap-2 rounded-xl px-2.5 py-2 border transition ${on ? 'bg-emerald-500/10 border-emerald-500/50' : 'bg-slate-950 border-slate-800 hover:border-slate-700'}">
+              <span class="shrink-0 text-base leading-none mt-0.5">${sc.icon}</span>
+              <span class="min-w-0 flex-1">
+                <span class="block text-xs font-extrabold text-white">${sc.label}</span>
+                <span class="block text-[10px] text-slate-400 leading-snug">${sc.desc}</span>
+              </span>
+              <span class="shrink-0 px-2 py-0.5 rounded-lg text-[11px] font-extrabold ${on ? 'bg-emerald-500 text-slate-950' : 'bg-rose-900/70 text-rose-200 border border-rose-700'}">${on ? '반영' : '미반영'}</span>
+            </button>`;
+          }).join('')}
+        </div>`;
+    }
+
+    function applyTeacherAcctChange(msg) {
+      saveState();
+      renderAdminStudentGrid();
+      if (msg) showRewardBanner(msg);
+    }
+
+    function setTeacherAcct(stuId, on) {
+      state.teacherAcct = normalizeTeacherAcct(state.teacherAcct);
+      const ids = teacherAcctIdList().filter(id => id !== stuId);
+      if (on) ids.push(stuId);
+      state.teacherAcct.ids = ids.join(',');
+      const stu = (state.students || []).find(s => s.id === stuId);
+      applyTeacherAcctChange(on ? `👨‍🏫 ${stu ? stu.name : '이 계정'}을(를) 선생님 계정으로 지정했어요.` : `👦 ${stu ? stu.name : '이 계정'}을(를) 일반 학생 계정으로 되돌렸어요.`);
+    }
+
+    function pickTeacherAcct() {
+      const sel = document.getElementById('teacherAcctPickSelect');
+      if (!sel || !sel.value) return;
+      const stu = (state.students || []).find(s => s.id === sel.value);
+      if (!stu) return;
+      askCustomConfirm(`[${stu.name}] 계정을 선생님 계정으로 지정할까요? 미반영으로 둔 콘텐츠에서는 이 계정이 학생들 순위·매칭에서 빠져요.`, () => setTeacherAcct(stu.id, true));
+    }
+
+    function createTeacherAcct() {
+      const nums = (state.students || []).map(s => Number(s.num) || 0);
+      const num = Math.max(0, ...nums) + 1;
+      const taken = new Set((state.students || []).map(s => s.name));
+      let name = '선생님';
+      for (let i = 2; taken.has(name); i++) name = `선생님${i}`;
+      const stu = createStudent(num, name, true);
+      state.students.push(stu);
+      state.teacherAcct = normalizeTeacherAcct(state.teacherAcct);
+      state.teacherAcct.ids = [...teacherAcctIdList(), stu.id].join(',');
+      applyTeacherAcctChange(`👨‍🏫 [${name}] 선생님 계정을 만들었어요! 학생 화면에서 이 계정으로 로그인해 플레이할 수 있어요.`);
+    }
+
+    function toggleTeacherAcctScope(key) {
+      const sc = TEACHER_ACCT_SCOPES.find(x => x.key === key);
+      if (!sc) return;
+      state.teacherAcct = normalizeTeacherAcct(state.teacherAcct);
+      state.teacherAcct[key] = !state.teacherAcct[key];
+      applyTeacherAcctChange(`${sc.icon} 선생님 계정: ${sc.label} ${state.teacherAcct[key] ? '반영' : '미반영'}`);
     }
 
     function openAdminStudentEditModal(stuId) {
@@ -31880,8 +32011,8 @@
     }
 
     function launchFairBroadcastMatch() {
-      if (state.students.length < 2) return;
-      const sortedByFairness = [...state.students].sort((a, b) => (a.matchCount || 0) - (b.matchCount || 0) || (Math.random() - 0.5));
+      if (studentsFor('match').length < 2) return;
+      const sortedByFairness = [...studentsFor('match')].sort((a, b) => (a.matchCount || 0) - (b.matchCount || 0) || (Math.random() - 0.5));
       const blueStu = sortedByFairness[0];
       const redStu = sortedByFairness[1];
 
@@ -32256,14 +32387,14 @@
         return `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}-${String(m.getDate()).padStart(2, '0')}`;
       },
       weekEnd(weekKey) { const [y, mo, d] = String(weekKey || this.weekKey()).split('-').map(Number); return new Date(y, mo - 1, d + 7); },
-      classSize() { return Math.max(WORLD_BOSS.minStudents, (state.students || []).length); },
+      classSize() { return Math.max(WORLD_BOSS.minStudents, studentsFor('classPower').length); },
       defOfStage(stage) { return ELITE_BOSS_DEFS[(Math.max(1, stage || 1) - 1) % ELITE_BOSS_DEFS.length]; },
       defOf(cur) { return (cur && ELITE_BOSS_DEFS.find(b => b.id === cur.bossId)) || this.defOfStage(cur && cur.stage); },
       // 이름표: 예전 단계식 보스만 'N단계'를 붙임
       label(cur) { const def = this.defOf(cur); return cur && cur.stage && !cur.pow ? `${cur.stage}단계 ${def.name}` : def.name; },
       // 이번 주 난이도 기준: 용병단 전투력 상위 5명 학생의 대표 용병(레이드에 데려가는 1명) 평균 능력치
       difficulty() {
-        const tops = (state.students || []).map(s => ({ s, p: calcStudentCombatPower(s) })).filter(x => x.p > 0)
+        const tops = studentsFor('classPower').map(s => ({ s, p: calcStudentCombatPower(s) })).filter(x => x.p > 0)
           .sort((a, b) => b.p - a.p).slice(0, WORLD_BOSS.topN);
         const picks = tops.map(({ s }) => { const m = repMercOf(s); return m ? { st: calcMercStats(m, s), pw: calcMercCombatPower(m, s) } : null; }).filter(Boolean);
         if (!picks.length) return { hp: 1500, atk: 100, def: 50, pow: 0, n: 0 };
@@ -32285,7 +32416,7 @@
       },
       current() { const c = this.cache && this.cache.current; return c && c.key ? c : null; },
       contrib(key) { return (this.cache && this.cache.contrib && this.cache.contrib[key]) || {}; },
-      ranking(key) { return Object.entries(this.contrib(key)).map(([id, c]) => ({ id, ...c })).filter(c => (c.dmg || 0) > 0).sort((a, b) => b.dmg - a.dmg); },
+      ranking(key) { return Object.entries(this.contrib(key)).map(([id, c]) => ({ id, ...c })).filter(c => (c.dmg || 0) > 0 && teacherAcctCounts(c.id, 'rank')).sort((a, b) => b.dmg - a.dmg); },
       logs(key) { return Object.values((this.cache && this.cache.log && this.cache.log[key]) || {}).filter(l => l && l.at).sort((a, b) => b.at - a.at); },
       triesLeft(stu) { return stu ? Math.max(0, WORLD_BOSS.tries - (getDailyRewardBook(stu).worldBossTries || 0)) : 0; },
       timeLeftText(cur) {
@@ -33342,7 +33473,7 @@
 
       // 2) 파트너 학생 선택 & 파트너의 출전 용병 미리보기
       const partnerSel = document.getElementById('raidPartnerStudentSelect');
-      const otherStudents = state.students.filter(s => s.id !== myStu.id);
+      const otherStudents = studentsFor('aiFriend').filter(s => s.id !== myStu.id);
       if (partnerSel) {
         const curVal = partnerSel.value && otherStudents.some(s => s.id === partnerSel.value)
           ? partnerSel.value
@@ -33486,7 +33617,7 @@
     function startCoopEliteRaidBattle() {
       const myStu = getActiveStudent();
       ensureSelectedRaidMercs(myStu);
-      const otherStudents = state.students.filter(s => s.id !== myStu.id);
+      const otherStudents = studentsFor('aiFriend').filter(s => s.id !== myStu.id);
       const partnerSel = document.getElementById('raidPartnerStudentSelect');
       const partnerStu = otherStudents.find(s => s.id === partnerSel?.value) || otherStudents[0] || myStu;
       ensureSelectedEliteBossUnlocked(myStu);
@@ -33544,7 +33675,7 @@
 
     function renderMinigameTab() {
       const myStu = getActiveStudent();
-      const others = state.students.filter(s => s.id !== myStu.id);
+      const others = studentsFor('aiFriend').filter(s => s.id !== myStu.id);
 
       const populateSelect = (selId, defaultIdx = 0) => {
         const sel = document.getElementById(selId);
@@ -35965,7 +36096,7 @@
       box.innerHTML = petVolleySeatChip(st, 0) + petVolleySeatChip(st, 1);
       const rank = document.getElementById('petVolleyRankBox');
       if (rank) {
-        const rows = (state.students || []).filter(s => s.petVolley && (s.petVolley.wins || 0) > 0)
+        const rows = studentsFor('petRank').filter(s => s.petVolley && (s.petVolley.wins || 0) > 0)
           .sort((a, b) => (b.petVolley.wins || 0) - (a.petVolley.wins || 0) || (a.petVolley.losses || 0) - (b.petVolley.losses || 0)).slice(0, 5);
         rank.innerHTML = rows.length
           ? `<div class="text-[11px] font-bold text-slate-400 mb-1">🏆 반 펫 배구 승수</div>` + rows.map((s, i) => `<div class="flex justify-between text-[11px]"><span class="truncate">${['🥇', '🥈', '🥉'][i] || `${i + 1}.`} ${s.name}</span><span class="text-amber-300 font-bold">${s.petVolley.wins}승 ${s.petVolley.losses || 0}패</span></div>`).join('')
@@ -36893,7 +37024,7 @@
     }
 
     const CLASS_SYNC_KEYS = ['meta', 'students', 'profiles', 'auctions', 'tradeOffers'];
-    const META_SYNC_FIELDS = ['className', 'classLocked', 'notice', 'guardianPts'];
+    const META_SYNC_FIELDS = ['className', 'classLocked', 'notice', 'guardianPts', 'teacherAcct'];
     // studentVals: 서버와 맞춰 둔 학생 기록 (칸별로 비교해서 바뀐 칸만 올리기 위함)
     let syncCache = { classCode: null, loaded: false, metaExists: false, meta: {}, students: {}, studentVals: {}, auctions: undefined, tradeOffers: undefined };
     let classSyncRefs = [];
@@ -37473,7 +37604,8 @@
         className: state.className || '우리 반 용병단',
         classLocked: Boolean(state.classLocked),
         notice: state.notice || '',
-        guardianPts: Number(state.guardianPts) || 0
+        guardianPts: Number(state.guardianPts) || 0,
+        teacherAcct: normalizeTeacherAcct(state.teacherAcct)
       };
     }
 
@@ -38236,11 +38368,12 @@
           className: rm.className || '우리 반 용병단',
           classLocked: Boolean(rm.classLocked),
           notice: rm.notice || state.notice || '',
-          guardianPts: typeof rm.guardianPts === 'number' ? rm.guardianPts : (Number(state.guardianPts) || 0)
+          guardianPts: typeof rm.guardianPts === 'number' ? rm.guardianPts : (Number(state.guardianPts) || 0),
+          teacherAcct: normalizeTeacherAcct(rm.teacherAcct)
         };
         const localMeta = buildMetaFields();
         META_SYNC_FIELDS.forEach(k => {
-          const remoteSig = syncSig(data.meta[k]);
+          const remoteSig = syncSig(k === 'teacherAcct' ? remoteValues.teacherAcct : data.meta[k]); // 선생님 계정 칸은 없는 학급도 기본값으로 맞춰 비교
           const localSig = syncSig(localMeta[k]);
           const isClean = force || localSig === syncCache.meta[k] || localSig === remoteSig;
           if (isClean) {
@@ -39440,7 +39573,7 @@
       const nr = teamSideMembers(room, 'red').length;
       const side = nr < nb ? 'red' : 'blue';
       if (teamSideMembers(room, side).length >= TEAM_LIVE_MAX_PER_SIDE) { showNotice('⚠️ 두 팀 모두 꽉 찼어요!'); return; }
-      const others = state.students.filter(st => st.id !== me.id && !isPvpRoomMember(room, st.id) && (st.roster || []).length);
+      const others = studentsFor('aiFriend').filter(st => st.id !== me.id && !isPvpRoomMember(room, st.id) && (st.roster || []).length);
       const friend = others[Math.floor(Math.random() * others.length)];
       if (!friend) { showNotice('⚠️ 넣을 수 있는 친구가 없어요.'); return; }
       const best = repMercOf(friend);
@@ -39772,8 +39905,8 @@
       const myStu = getActiveStudent();
       const room = livePvpRoomsCache[roomId];
       if (!room || !myStu) return;
-      const others = state.students.filter(s => s.id !== myStu.id && (s.roster || []).length > 0);
-      const friend = others[Math.floor(Math.random() * others.length)] || state.students.find(s => s.id !== myStu.id);
+      const others = studentsFor('aiFriend').filter(s => s.id !== myStu.id && (s.roster || []).length > 0);
+      const friend = others[Math.floor(Math.random() * others.length)] || studentsFor('aiFriend').find(s => s.id !== myStu.id);
       if (!friend) return;
       room.guestId = friend.id;
       room.guestNum = friend.num;
@@ -41947,7 +42080,7 @@
       // 연습 친구는 방장보다 전투력이 높은 친구는 부를 수 없음 (합계도, 용병 한 명 한 명도 방장의 가장 센 용병을 넘지 않음)
       const hostPower = Number(room.hostPower || 0);
       const hostTop = raidHostTopPower(room, myStu);
-      const others = state.students.filter(s => !inRoom.has(s.id) && (s.roster || []).length > 0 && raidPowerOf(s) <= hostPower
+      const others = studentsFor('aiFriend').filter(s => !inRoom.has(s.id) && (s.roster || []).length > 0 && raidPowerOf(s) <= hostPower
         && raidMercsOf(s).every(m => calcMercCombatPower(m, s) <= hostTop));
       const friend = others[Math.floor(Math.random() * others.length)];
       if (!friend) { showNotice(`⚠️ 내 전투력보다 낮은 연습 친구가 없어요. (용병 한 명당 ⚔️ ${hostTop.toLocaleString()} 이하)`); return; }
@@ -47636,6 +47769,7 @@
       state.className = className;
       delete state.teacherPin;
       state.classLocked = false;
+      state.teacherAcct = normalizeTeacherAcct(null);
       state.auctions = [];
       state.tradeOffers = [];
       state.notice = `📢 [${className}] 학급 아레나에 오신 것을 환영합니다! (학급 코드: ${classCode})`;
@@ -47790,8 +47924,8 @@
       // 명예의 전당: 유리 진열장 선반 두 칸, 금·은·동 받침대 위에 각자 대표 용병(지정 안 했으면 전투력이 가장 높은 용병)이 서 있음
       const rankBox = document.getElementById('lobbyTopRankingsBox');
       if (rankBox) {
-        const byPower5 = [...(state.students || [])].sort((a, b) => calcStudentDeployedPower(b) - calcStudentDeployedPower(a)).slice(0, 3);
-        const byPvp = [...(state.students || [])].sort((a, b) => (b.pvpScore || 1000) - (a.pvpScore || 1000) || (b.wins || 0) - (a.wins || 0)).slice(0, 3);
+        const byPower5 = [...studentsFor('rank')].sort((a, b) => calcStudentDeployedPower(b) - calcStudentDeployedPower(a)).slice(0, 3);
+        const byPvp = [...studentsFor('rank')].sort((a, b) => (b.pvpScore || 1000) - (a.pvpScore || 1000) || (b.wins || 0) - (a.wins || 0)).slice(0, 3);
         const champ = (s) => {
           const best = repMercOf(s);
           const sp = best && getMercSprite(best.job, best.skinVariant || 0);
@@ -49792,7 +49926,7 @@
         if (!el) return;
         const me = this.student();
         const esc = v => PetSystem.esc(v);
-        const rows = ((typeof state !== 'undefined' && state && state.students) || [])
+        const rows = studentsFor('petRank')
           .filter(s => s.petRun && s.petRun.best > 0)
           .sort((a, b) => b.petRun.best - a.petRun.best).slice(0, 10);
         if (!rows.length) { el.innerHTML = `<div class="text-[11px] text-slate-500 text-center py-3">아직 기록이 없어요. 첫 기록의 주인공이 되어 보세요!</div>`; return; }
