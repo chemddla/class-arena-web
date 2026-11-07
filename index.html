@@ -7066,7 +7066,7 @@
     // 시크릿 레어 전용 외형: 파일 assets/sprites/merc/<직업>_sr<번호>.webp, 칸 순서·동작 구성은 그 직업의 0번 외형과 같음
     // skinVariant = SECRET_SKIN_BASE + 번호라 일반 외형 무작위 뽑기(0번부터 이어진 번호만 셈)에는 나오지 않음
     const SECRET_SKIN_BASE = 100;
-    const SECRET_MERC_SKINS = { warrior: [1], mage: [1], healer: [1], archer: [1], rogue: [1], knight: [1], lancer: [1], sniper: [1], frost: [1], curse: [1], bard: [1], berserker: [1], paladin: [1], summoner: [1], pyro: [1] };
+    const SECRET_MERC_SKINS = { warrior: [1], mage: [1], healer: [1], archer: [1], rogue: [1], knight: [1], lancer: [1], sniper: [1], frost: [1], curse: [1], bard: [1], berserker: [1], paladin: [1], summoner: [1], pyro: [1], brawler: [1] };
     // 0번 외형과 칸 크기가 다른 시트. 전사 SR 1: 높이 든 칼·함성 번개가 잘리지 않게 칸을 위로 30px 늘림
     // 기사 SR 1: 머리 위 후광이 들어가게 칸을 위로 12px 늘리고, 체력바도 후광 위로 (topH)
     // 창병 SR 1 (붉은 용인·도끼창): 칸은 0번과 같고, 뿔이 머리보다 8px 높아서 체력바만 뿔 위로
@@ -7116,6 +7116,22 @@
       anims: { idle: [0], walk: [1, 2, 3, 2], attack: [8, 9, 9, 9], skill: [8, 9], hurt: [4], death: [4, 5, 6, 7], raise: [8],
         rage: [20], throw: [10, 11, 11], howl: [13], exec: [14], jump: [15, 16], split: [14], ucast: [17], ufire: [18] },
       castFrames: { execute: [15, 16], ground_split: 8, undying_rage: 17, blood_howl: 12, rage: 19 }
+    };
+    // 격투가 SR 1 (백호: 흰 줄무늬 호랑이·붉은 염주·붕대 손발·검은 바지·붉은 띠, tools/brawler_sr1_build.py): 칸 0~33은 brawler_0과 같은 쓰임 + 34~36 SR 전용
+    //   0 대기 (팔짱) · 1~4 걷기 · 5 피격 (샘플 없음 → 7타a 웅크림) · 6~7 쓰러짐 (앞으로 고꾸라짐 → 엎어짐) · 8~21 연격 (아래 brawlChain) · 22~23 안 씀
+    //   · 24 금강 힘줌 · 25 결투 (주먹을 치켜들고 포효) · 26 섬각 준비 (샘플 없음 → 멸식 준비 웅크림) · 27 날아 차기 · 28~29 붕권 (샘플 없음 → 2타 당김 → 3타 정권)
+    //   · 30 반격 · 31 멸식 시전 (샘플 없음 → 금강 힘줌) · 32 멸식 마무리 날아 차기 · 33 착지 · 34 금강 두 팔 모음 · 35 멸식 마무리 준비 · 36 대시
+    //   연격: 1 잽 · 2 가드 · 3 정권 · 4 무릎 → 돌려차기 · 5 무릎 → 앞차기 · 6 등 돌려 무릎 → 뒤돌려 옆차기 · 7 웅크림 → 차올리기 · 8 살짝 뛰어 앞차기
+    //   · 9 착지 → 정권으로 대상을 뚫고 지나감 · 10 그 거리에서 날아 차기로 다시 들어와 침 → 착지 (brawlPass9, brawlerBasicAttack)
+    MERC_SPRITE_DEFS[`brawler_${SECRET_SKIN_BASE + 1}`] = {
+      ...MERC_SPRITE_DEFS.brawler_0, src: 'assets/sprites/merc/brawler_sr1.webp',
+      cellW: 129, cellH: 113, anchorX: 67, anchorY: 111, standH: 78, topH: 86, portraitCX: 70, count: 37,
+      anims: { ...MERC_SPRITE_DEFS.brawler_0.anims, walk: [1, 2, 3, 4], hurt: [5], armor: [34, 24], annPrep: [35], dashRun: [36],
+        barrage: [8, 9, 10, 12, 14, 16, 18, 20] },
+      brawlChain: [[8], [9], [10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 10], [27]],
+      brawlFinish: [[27, 12], [33, 16]], // 10타: 날아 들어오며 차기 (BRAWLER_SR_LEAP_TICKS 8 + 닿고 4틱) → 착지 → 평소 자세
+      brawlPass9: true,
+      skillAnims: { ...MERC_SPRITE_DEFS.brawler_0.skillAnims, diamond_body: { anim: 'armor', tpf: 20, dur: 40 } } // 두 팔 모음 → 힘줌
     };
     {
       const k = `berserker_${SECRET_SKIN_BASE + 1}`, eyesImg = new Image();
@@ -24821,6 +24837,9 @@
     const BRAWLER_CHAIN_GAP_MIN = 10;
     const BRAWLER_PASS_TICKS = 10;           // 연격 10타: 날아 차며 대상을 뚫고 지나가는 틱 · 대상 너머 거리
     const BRAWLER_PASS_DIST = 70;
+    const BRAWLER_SR_PASS_TICKS = 8;         // 백호(격투가 SR 1): 9타 정권으로 대상을 뚫고 지나가는 틱 · 대상 너머 거리 → 그 자리에서 10타 날아 차기로 다시 들어옴
+    const BRAWLER_SR_PASS_DIST = 90;
+    const BRAWLER_SR_LEAP_TICKS = 8;
     const BRAWLER_LIFESTEAL = 0.1;
     const BRAWLER_TAKEN_DOWN = 0.1;
     const BRAWLER_DASH_CD_MULT = 0.5;
@@ -24887,7 +24906,7 @@
         const el = BRAWLER_FLURRY_TICKS - st.flurry;
         if (el <= BRAWLER_FLURRY_WINDUP) return a.annCast[0];
         if (el <= BRAWLER_FLURRY_BACK_AT) return a.barrage[Math.floor(el / 4) % a.barrage.length];
-        if (el <= BRAWLER_FLURRY_KICK_AT) return a.kick[0];
+        if (el <= BRAWLER_FLURRY_KICK_AT) return (a.annPrep || a.kick)[0]; // 백호는 멸식 전용 준비 자세
         return el <= BRAWLER_FLURRY_KICK_AT + BRAWLER_FLURRY_KICK_TICKS + BRAWLER_FLURRY_HITSTOP + BRAWLER_FLURRY_PASS_TICKS ? a.annKick[0] : a.land[0]; // 날아 차기 (닿기·경직·관통) → 착지
       }
       if ((st.counter || 0) > 0) return a.counter[0];
@@ -25028,7 +25047,8 @@
       return (u._brawlHit ?? -1) === BRAWLER_CHAIN_MAX - 1 && u._brawlLastAt != null && tick - u._brawlLastAt <= BRAWLER_FLURRY_READY_TICKS;
     }
     function drawBrawlerAura(ctx, sprite, k, tick, u) {
-      const w = sprite.cellW * k, h = sprite.cellH * k, x0 = -sprite.anchorX * k, y0 = -sprite.anchorY * k;
+      const b0 = MERC_SPRITE_DEFS.brawler_0; // 기운 그림은 brawler_0 칸 크기로 뽑은 것 (외형마다 칸이 달라도 그대로)
+      const w = b0.cellW * k, h = b0.cellH * k, x0 = -b0.anchorX * k, y0 = -b0.anchorY * k;
       const bodyH = (sprite.topH || sprite.standH) * k;
       ctx.save();
       ctx.shadowBlur = 0;
@@ -25044,7 +25064,7 @@
       ctx.save();
       ctx.globalAlpha *= 0.92 + 0.08 * Math.sin(tick * 0.45);
       ctx.scale(flip, 1 + 0.07 * Math.sin(tick * 0.3));
-      ctx.drawImage(BRAWLER_AURA_FX, 0, 0, sprite.cellW, sprite.cellH, x0, y0, w, h);
+      ctx.drawImage(BRAWLER_AURA_FX, 0, 0, b0.cellW, b0.cellH, x0, y0, w, h);
       ctx.restore();
       // 불티: 발밑에서 몸 높이까지 피어오르며 사라짐 (유닛마다 엇갈리게)
       let seed = 0; for (const ch of String(u.id ?? '')) seed = (seed * 31 + ch.charCodeAt(0)) % 997; // 유닛 id(글자일 수도 있음)로 엇갈림
@@ -25225,6 +25245,8 @@
       u.brawlHitAt = t; u.brawlHitNo = k; // 그림: 이번 공격이 맞힌 타 (허공을 치면 기록이 없어 1타 자세)
       const mult = k === 1 ? 1 : BRAWLER_CHAIN_DMG0 + BRAWLER_CHAIN_DMG_STEP * (k - 2);
       withHitKind('melee', () => applyDamage(u, target, u.atk * mult, '', k > 1 ? '#c2410c' : null)); // 타 수는 머리 위 콤보 표시로 (피해 숫자엔 안 붙임)
+      const tiger = !u.monsterType && getMercSprite('brawler', u.skinVariant || 0)?.brawlPass9;
+      if (tiger && k === BRAWLER_CHAIN_MAX - 1 && target.alive) { brawlerTigerPass(u, target); return; }
       if (k >= BRAWLER_CHAIN_MAX) {
         // 10타 완성: 투혼은 끝나고 다음 공격은 보통 주기로 · 히든 멸식 - 격을 쓸 수 있음
         u.brawlSpiritUntil = 0;
@@ -25232,6 +25254,7 @@
         sim.floatTexts.push({ x: u.x, y: u.y - 58, text: '🔥 연격 10타!', color: '#f97316', life: 50 });
         sim.effects.push({ type: 'magic_burst', x: target.x, y: target.y - 18, r: 34, color: '#f97316', life: 18, maxLife: 18 });
         playCombatSfx('heavy');
+        if (tiger) return; // 백호는 9타에서 이미 뚫고 지나갔다가 날아 들어와 친 것 → 그 자리에 착지
         // 날아 차며 대상을 뚫고 반대편으로 지나감
         const ang = Math.atan2(target.y - u.y, target.x - u.x), pass = BRAWLER_PASS_DIST + unitBodyGap(target) + unitBodyGap(u), sx = u.x, sy = u.y;
         brawlerFace(u, target);
@@ -25244,6 +25267,29 @@
       u.cooldown = Math.min(u.cooldown || gap, gap);
       u.attackAnim = Math.min(u.attackAnim || 0, gap + 2); u.maxAttackAnim = u.attackAnim;
       if (k > 1) sim.effects.push({ type: 'magic_burst', x: target.x + (Math.random() * 14 - 7), y: target.y - 18, r: 12 + k, color: '#fdba74', life: 10, maxLife: 10 });
+    }
+
+    // 백호 9타: 정권으로 대상을 뚫고 반대편으로 BRAWLER_SR_PASS_DIST만큼 지나감 → 바로 돌아서 날아 차기로 다시 들어와 10타
+    //   (사거리 밖이라 보통 공격으로는 못 이어서, 도착하면 10타를 직접 부름. 그동안 투혼은 이어짐)
+    function brawlerTigerPass(u, target) {
+      const ang = Math.atan2(target.y - u.y, target.x - u.x), pass = BRAWLER_SR_PASS_DIST + unitBodyGap(target) + unitBodyGap(u), sx = u.x, sy = u.y;
+      brawlerFace(u, target);
+      u.attackAnim = Math.min(u.attackAnim || 0, BRAWLER_SR_PASS_TICKS + 2); u.maxAttackAnim = u.attackAnim; // 착지 → 정권을 지나가는 동안 다 보여 줌
+      u.brawlSpiritUntil = sim.tickCount + BRAWLER_SR_PASS_TICKS + BRAWLER_SR_LEAP_TICKS + BRAWLER_SPIRIT_TICKS;
+      const r = startUnitRush(u, target.x + Math.cos(ang) * pass, target.y + Math.sin(ang) * pass, BRAWLER_SR_PASS_TICKS, () => {
+        if (!u.alive || !brawlerFoeOk(u, target)) return;
+        brawlerFace(u, target);
+        u.brawlHitAt = sim.tickCount; u.brawlHitNo = BRAWLER_CHAIN_MAX; // 그림: 날아 들어오는 동안부터 10타 자세
+        u.attackAnim = BRAWLER_SR_LEAP_TICKS + 22; u.maxAttackAnim = u.attackAnim;
+        brawlerRushTo(u, target, BRAWLER_SR_LEAP_TICKS, '#f97316', () => {
+          if (!brawlerFoeOk(u, target)) return;
+          u.cooldown = Math.max(u.cooldown || 0, u.baseAtkInterval || 30);
+          u.mana = Math.min(u.maxMana, u.mana + 18);
+          playCombatSfx('slash');
+          brawlerBasicAttack(u, target);
+        });
+      });
+      sim.effects.push({ type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, trail: true, runTicks: r.n, ownerId: u.id, color: '#fdba74', life: r.n + 20, maxLife: r.n + 20 });
     }
 
     // 반격: 반격 자세 중 처음 받는 공격을 막고 받아침

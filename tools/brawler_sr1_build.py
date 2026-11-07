@@ -192,45 +192,55 @@ def main():
     idle = cut(np.array(Image.open(f'{D}idle_src.png').convert('RGB')))
     sc0 = TARGET_H / idle.shape[0]
     hw0 = head(idle)[0] * sc0
+    idle_p = shrink(idle, sc0)
+    ki = idle_p[..., 3] > 127; fx = np.where(ki[int(ki.shape[0] * .9):].any(axis=0))[0]
+    idle_c = (fx.min() + fx.max()) / 2   # 대기 기준점 = 두 발 가운데
+    dx = head(idle)[1] * sc0 - idle_c    # 대기 칸의 머리 가운데 - 발 가운데 (머리 기준 칸들은 머리가 이만큼 앞에 오게)
+    F = {'idle': (idle_p, idle_c, 0)}    # 시트에 넣을 칸: 이름 → (그림, 기준점 x, 띄울 높이)
     src = {**cells('A'), **cells('B')}
     frames = []
     for nm in WALK:   # 걷기는 머리 폭을 대기와 같게, 기준점은 머리 가운데 (걸을 때 몸이 좌우로 흔들리지 않게)
         r = cut(src[nm]); hw, hcx = head(r); sc = hw0 / hw
-        frames.append((shrink(r, sc), hcx * sc))
+        frames.append((shrink(r, sc), hcx * sc - dx))
         print(f'{nm}: {r.shape[1]}x{r.shape[0]} ×{sc:.3f}')
+    for i, f in enumerate(frames): F[f'walk{i + 1}'] = (*f, 0)
     preview(frames, '_preview_brawler_sr1_walk.gif')
     r = cut_dark(np.array(Image.open(f'{D}dash_src.png').convert('RGB')))
     hw, hcx = head(r); sc = hw0 / hw
     print(f'dash: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {shrink(r, sc).shape[:2]}')
-    preview(frames + [(shrink(r, sc), hcx * sc)] * 3, '_preview_brawler_sr1_dash.gif')   # 걷다가 대시
+    F['dash'] = (shrink(r, sc), hcx * sc - dx, 0)
+    preview(frames + [F['dash']] * 3, '_preview_brawler_sr1_dash.gif')   # 걷다가 대시
     full = np.array(Image.open(f'{D}armor_src.png').convert('RGB'))
     arm = []
     for x0, x1 in ARMOR:
         r = cut(full[:, x0:x1]); hcx = head(r)[1]; sc = SCALE[f'armor{len(arm) + 1}']
-        arm.append((shrink(r, sc), hcx * sc))
+        arm.append((shrink(r, sc), hcx * sc - dx))
+        F[f'armor{len(arm)}'] = (*arm[-1], 0)
         print(f'armor {x0}~{x1}: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {arm[-1][0].shape[:2]}')
-    idle_p = shrink(idle, sc0)
-    preview([(idle_p, head(idle)[1] * sc0)] * 2 + arm[:1] * 2 + arm[1:] * 6, '_preview_brawler_sr1_armor.gif')   # 대기 → 팔 들어 기 모음 → 힘줌
+    preview([F['idle']] * 2 + arm[:1] * 2 + arm[1:] * 6, '_preview_brawler_sr1_armor.gif')   # 대기 → 팔 들어 기 모음 → 힘줌
     down = []
     for n in ('down1', 'down2'):   # 기준점 = 엉덩이(띠) 자리 대신 그림 가로 가운데 · 쓰러질 때 몸이 앞으로 밀려 나가 보이게
         r = cut(np.array(Image.open(f'{D}{n}_src.png').convert('RGB')))
-        p = shrink(r, SCALE[n]); down.append((p, p.shape[1] / 2))
+        p = shrink(r, SCALE[n]); down.append((p, p.shape[1] / 2)); F[n] = (*down[-1], 0)
         print(f'{n}: {r.shape[1]}x{r.shape[0]} → {p.shape[:2]}')
-    preview([(idle_p, head(idle)[1] * sc0)] * 2 + down[:1] * 2 + down[1:] * 6, '_preview_brawler_sr1_down.gif')
+    preview([F['idle']] * 2 + down[:1] * 2 + down[1:] * 6, '_preview_brawler_sr1_down.gif')
     r = cut_dark(np.array(Image.open(f'{D}duel_src.png').convert('RGB')), tol=10)
     p = shrink(r, SCALE['duel'])
     k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]   # 기준점 = 두 발 가운데
     print(f'duel: {r.shape[1]}x{r.shape[0]} → {p.shape[:2]}')
-    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [(p, (xs.min() + xs.max()) / 2)] * 4, '_preview_brawler_sr1_duel.gif')
+    F['duel'] = (p, (xs.min() + xs.max()) / 2, 0)
+    preview([F['idle']] * 2 + [F['duel']] * 4, '_preview_brawler_sr1_duel.gif')
     r = cut(np.array(Image.open(f'{D}counter_src.png').convert('RGB')))
     hcx = head(r)[1]; sc = SCALE['counter']
     print(f'counter: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {shrink(r, sc).shape[:2]}')
-    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [(shrink(r, sc), hcx * sc)] * 4, '_preview_brawler_sr1_counter.gif')
+    F['counter'] = (shrink(r, sc), hcx * sc - dx, 0)
+    preview([F['idle']] * 2 + [F['counter']] * 4, '_preview_brawler_sr1_counter.gif')
     r = cut(np.array(Image.open(f'{D}annprep_src.png').convert('RGB')))
     p = shrink(r, SCALE['annprep'])
     k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]   # 기준점 = 두 발 가운데
     print(f'annprep: {r.shape[1]}x{r.shape[0]} → {p.shape[:2]}')
-    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [(p, (xs.min() + xs.max()) / 2)] * 4, '_preview_brawler_sr1_annprep.gif')
+    F['annprep'] = (p, (xs.min() + xs.max()) / 2, 0)
+    preview([F['idle']] * 2 + [F['annprep']] * 4, '_preview_brawler_sr1_annprep.gif')
     combo = {}
     for nm, f in zip(('c1', 'c2'), split_figs(np.array(Image.open(f'{D}combo12_src.png').convert('RGB')))):
         r = cut(f); sc = SCALE[nm]; p = shrink(r, sc)
@@ -270,7 +280,39 @@ def main():
         k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
         combo['c' + nm] = (p, (xs.min() + xs.max()) / 2)
         print(f'c{nm}: {r.shape[1]}x{r.shape[0]} ×{sc6:.3f} → {p.shape[:2]}')
-    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [combo['c1']] * 2 + [combo['c2']] * 2 + [combo['c3']] * 3 + [combo['c4a']] * 2 + [combo['c4b']] * 3 + [combo['c5a']] * 2 + [combo['c5b']] * 3 + [combo['c6a']] * 2 + [combo['c6b']] * 3 + [combo['c7a']] * 2 + [combo['c7b']] * 3 + [combo['c8a']] * 2 + [combo['c8b']] * 3 + [combo['c9a']] * 2 + [combo['c3']] * 3 + [combo['c10']] * 3 + [combo['land']] * 3, '_preview_brawler_sr1_combo.gif')
+    preview([F['idle']] * 2 + [combo['c1']] * 2 + [combo['c2']] * 2 + [combo['c3']] * 3 + [combo['c4a']] * 2 + [combo['c4b']] * 3 + [combo['c5a']] * 2 + [combo['c5b']] * 3 + [combo['c6a']] * 2 + [combo['c6b']] * 3 + [combo['c7a']] * 2 + [combo['c7b']] * 3 + [combo['c8a']] * 2 + [combo['c8b']] * 3 + [combo['c9a']] * 2 + [combo['c3']] * 3 + [combo['c10']] * 3 + [combo['land']] * 3, '_preview_brawler_sr1_combo.gif')
+    for k_, v in combo.items(): F[k_] = v if len(v) == 3 else (*v, 0)
+    build_sheet(F)
+
+
+# 시트 칸 순서 (brawler_0과 같은 번호 + 뒤에 SR 전용 칸). 아직 샘플이 없는 동작은 가장 비슷한 백호 칸으로 채움
+SHEET = ['idle', 'walk1', 'walk2', 'walk3', 'walk4',
+         'c7a',                     # 5 피격: 샘플 없음 → 웅크려 무릎 당긴 7타a (막는 자세)
+         'down1', 'down2',
+         'c1', 'c2', 'c3', 'c4a', 'c4b', 'c5a', 'c5b', 'c6a', 'c6b', 'c7a', 'c7b', 'c8a', 'c8b', 'c9a',   # 8~21 연격 (SR brawlChain)
+         'c1', 'c2',                # 22~23 안 씀 (0번 칸 수 맞춤)
+         'armor2', 'duel',          # 24 금강(힘줌) · 25 결투
+         'annprep', 'c10',          # 26 섬각 준비(샘플 없음 → 멸식 준비 웅크림) · 27 날아 차기 (섬각·반격·연격 10타)
+         'c2', 'c3',                # 28~29 붕권: 샘플 없음 → 2타(주먹 당김) → 3타(정권)
+         'counter', 'armor2',       # 30 반격 · 31 멸식 시전: 샘플 없음 → 금강 힘줌
+         'c10', 'land',             # 32 멸식 마무리 날아 차기 · 33 착지
+         'armor1', 'annprep', 'dash']   # 34 금강 팔 모음 · 35 멸식 마무리 준비 (annPrep) · 36 대시 (dashRun)
+OUT = 'assets/sprites/merc/brawler_sr1.webp'
+
+
+def build_sheet(F):
+    pieces = [F[n] for n in SHEET]
+    L = int(np.ceil(max(c for _, c, _ in pieces))) + 3
+    R = int(np.ceil(max(p.shape[1] - c for p, c, _ in pieces))) + 3
+    H = max(p.shape[0] + lift for p, _, lift in pieces) + 4
+    cw = L + R
+    sheet = np.zeros((H, cw * len(pieces), 4), np.uint8)
+    for i, (p, c, lift) in enumerate(pieces):
+        x = i * cw + L - int(round(c)); y = H - 2 - p.shape[0] - lift
+        sheet[y:y + p.shape[0], x:x + p.shape[1]] = np.maximum(sheet[y:y + p.shape[0], x:x + p.shape[1]], p)
+    Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
+    ip = F['idle'][0]; topH = ip.shape[0]
+    print(f'시트 {OUT}: 칸 {len(pieces)}개 · cellW {cw} · cellH {H} · anchorX {L} · anchorY {H - 2} · 대기 키 {topH}')
 
 
 def preview(frames, out):   # frames: (그림, 기준점 x[, 바닥에서 띄울 높이])
