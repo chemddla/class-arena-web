@@ -1,7 +1,8 @@
 # 격투가 전용 샘플(갈색 머리·흰 도복·검은 띠, 흰 배경) → 캐릭터 시트 assets/sprites/merc/brawler_0.webp
 # 사용: python tools/brawler_build.py   (샘플은 assets/sprites/fx/samples/brawler_*_src.png, 동작 샘플이 오는 대로 FRAMES에 늘림)
 # 칸 순서: 0 대기 (주먹을 쥐고 선 자세) · 1~4 걷기 (받은 샘플을 WALK_ORDER 순서로 다시 놓음) · 5 피격 (몸을 젖히며 얼굴을 찡그림)
-#   · 6~7 쓰러짐 (뒤로 넘어감 → 누워 기절)
+#   · 6~7 쓰러짐 (뒤로 넘어감 → 누워 기절) · 8~23 연격 샘플 0~15 (받은 순서 그대로, 재생 순서는 COMBO_SEQ)
+#   - 연격 샘플: 0·1은 격자선+바닥 줄, 3·5·8은 왼쪽 끝에 옆 칸 조각 → 격자 자동 제거 + 가장 큰 덩어리만. 3의 발차기 궤적(흰 호)은 다리에 붙어 있어 남김
 # 크기 통일: 대기 자세 몸 키(머리털 끝~발, 샘플 px)를 TARGET_H로 줄임. 다른 동작은 대기와 같은 배율('idle')로 줄여 얼굴 크기를 맞춤
 # 샘플 정리:
 #   - 대기 샘플(158×179)은 도트 그림을 흐리게 키운 것 + 아래 2줄(175~176)·오른쪽 1줄(157) 회색 테두리 → 잘라 냄 (CARD)
@@ -29,7 +30,7 @@ WHITE_MIN = {}
 CUT = {}   # 지울 상자 (x0, x1, y0, y1)
 GRID = {'walk3': ([36, 37, 99, 100], [20, 21, 89, 90])}   # (가로줄 y, 세로줄 x): 샘플에 남은 격자선
 SRC = {'down1': ('down', (0, 335, 0, 150)), 'down2': ('down', (339, 674, 0, 150))}   # 칸 이름 → (샘플, 자를 상자): 한 장에 여러 칸
-GRID_AUTO = {'down1', 'down2'}   # 격자선 줄을 자동으로 찾음 (무채색 회색이 줄의 25% 이상)
+GRID_AUTO = {'down1', 'down2'} | {f'combo{i:02d}' for i in range(16)}   # 격자선 줄을 자동으로 찾음 (무채색 회색이 줄의 25% 이상)
 FLIP = {'down2'}
 
 
@@ -53,6 +54,9 @@ def load(name, pick=0):
         for y in np.where(grey.sum(axis=1) > im.shape[1] * 0.25)[0]: line[max(0, y - 1):y + 2] = True
         for x in np.where(grey.sum(axis=0) > im.shape[0] * 0.25)[0]: line[:, max(0, x - 1):x + 2] = True
         im[line & grey] = 255
+        dark = (im.min(axis=2) < 140).sum(axis=1) > im.shape[1] * 0.6   # 아래 바닥 줄 (줄 대부분이 어두움) → 그 위까지만
+        bot = [y for y in range(im.shape[0] - 1, int(im.shape[0] * 0.8), -1) if dark[y]]
+        if bot: im = im[:min(bot) - 1]
     if name in FLIP: im = im[:, ::-1]
     if name in GRID:   # 격자선: 선 위(±1줄)의 무채색 연회색만 흰색으로 (도복 그림자는 푸른 기가 있어 남음)
         line = np.zeros(im.shape[:2], bool)
@@ -105,7 +109,16 @@ FRAMES = [
 ] + [(f'walk{i}', f'walk{j}', 'W', 0) for j, i in enumerate(WALK_ORDER)] + [
     ('hurt', 'hurt', 'HAIR', 'big'),
     ('down1', 'down1', 'HAIR', 'big'), ('down2', 'down2', 'down1', 'big'),
-]
+] + [(f'combo{i:02d}', f'combo{i:02d}', 'HEAD', 'big') for i in range(16)]
+# 연격 샘플 머리 폭 (샘플 px). 'HEAD' = 이 폭을 대기 칸 머리 폭(샘플 67px × 대기 배율)과 같게
+#   머리 실루엣 가로 폭으로 잼. 주먹·다리가 머리에 붙은 칸(0·1·10·11·13·14)은 실루엣이 이어져 크게 나와서 머리털 폭 × 1.19 (정면 칸들의 머리 폭 ÷ 머리털 폭)
+#   뒷모습 칸(6·7·8·12)은 머리털이 머리 전체라 머리털 폭으로는 작게 나와 실루엣 폭을 씀
+# 연격 재생 순서 (샘플 번호, 같은 칸을 다시 써도 됨) → 시트 칸 번호는 8 + 샘플 번호. 게임 anims.combo에 넣을 목록은 main이 출력
+#   가드 → 잽 → 정권 지르기 → 무릎 당겨 → 중단 돌려차기 → 돌려차기 → 상단 돌려차기 → 무릎 회수
+#   → 등 돌림 → 뒤돌며 발 듦 → 무릎 당김(뒷모습) → 뒤후려차기 → 옆차기 → 무릎 당겨 → 내려찍기 들어올림 → 내려찍기(궤적) → 가드
+COMBO_SEQ = [15, 0, 2, 13, 1, 14, 10, 4, 12, 6, 8, 7, 9, 13, 11, 3, 5]
+HEAD_PX = {'combo00': 62, 'combo01': 62, 'combo02': 88, 'combo03': 67, 'combo04': 66, 'combo05': 66, 'combo06': 58, 'combo07': 60,
+           'combo08': 62, 'combo09': 60, 'combo10': 61, 'combo11': 56, 'combo12': 54, 'combo13': 56, 'combo14': 60, 'combo15': 57}
 HEAD_ANCHOR = {f'walk{j}' for j in range(4)}
 FOOTX = {}   # 칸 이름 → 발 가운데 (자른 그림 기준 px)
 
@@ -116,7 +129,7 @@ def main():
     for src, name, k, pick in FRAMES:
         rgba, foot, bh, hw, hcx, hair = load(src, pick)
         if name in FOOTX: foot = FOOTX[name]
-        sc = TARGET_H / bh if k == 'H' else ref['hw'] / hw if k == 'W' else ref['hair'] / hair if k == 'HAIR' else scale[k]
+        sc = TARGET_H / bh if k == 'H' else ref['hw'] / hw if k == 'W' else ref['hair'] / hair if k == 'HAIR' else ref['hw'] / HEAD_PX[name] if k == 'HEAD' else scale[k]
         if name == 'idle': ref = {'hw': hw * sc, 'dx': (hcx - foot) * sc, 'hair': hair * sc}
         if name in HEAD_ANCHOR: foot = hcx - ref['dx'] / sc
         scale[name] = sc
@@ -133,6 +146,7 @@ def main():
         y = H - 2 - p.shape[0]
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
     Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
+    print('combo anim:', [8 + i for i in COMBO_SEQ])
     print(f'brawler_0 cellW={cw} cellH={H} anchorX={L} anchorY={H - 2} count={len(pieces)}')
 
 
