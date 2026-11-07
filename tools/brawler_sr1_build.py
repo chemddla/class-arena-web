@@ -23,6 +23,9 @@
 #     1 = 앞손 잽 (팔을 쭉 뻗음) → 8번 자리 · 2 = 뒷손을 끌어올리며 가드한 채 힘줌 → 10번 자리 (기본 연격 1타 [8] · 2타 [10])
 #   - combo3_src.png  연격 3타 (흰 배경, 허리를 틀며 뒷손 정권 지르기). 기본 3타는 [21, 9] 두 칸 → SR은 한 칸이라 brawlChain을 SR용으로 따로 둠
 #     배율: 원본 크기가 1·2타 샘플과 같아(키 143 vs 142) 1·2타 배율을 그대로 씀 (귀 줄 폭으론 ×0.54라 머리가 작아짐)
+#   - combo4a_src.png · combo4b_src.png  연격 4타 두 칸 (흰 배경): a = 무릎을 높이 당겨 올림 · b = 중단 돌려차기 (다리를 쭉 뻗음)
+#     기본 4타는 [22] 한 칸 → SR은 [a, b] 두 칸. a 왼쪽 끝 옆 칸 조각(0~6열)이 꼬리에 닿아 있어 그 열을 흰색으로 덮고 자름
+#     배율: 둘 다 귀 줄 폭 (a ×0.62 = 1·2타와 같음 · b ×0.54는 차는 다리로 그림이 커져 원본 머리가 작게 그려진 것)
 # 흰 배경: 가장자리에서 이어진 흰 픽셀 + 꼬리·팔 사이에 갇힌 새하얀 구멍(무채색 253 안팎) 을 지움
 #   (호랑이 흰 털은 푸른 기가 돌고(파랑이 빨강보다 ~6 높음) 238 안팎이라 남음)
 import os, sys
@@ -166,7 +169,14 @@ def main():
     k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
     combo['c3'] = (p, (xs.min() + xs.max()) / 2)
     print(f'c3: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {p.shape[:2]}')
-    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [combo['c1']] * 2 + [combo['c2']] * 2 + [combo['c3']] * 3, '_preview_brawler_sr1_combo.gif')
+    for nm in ('4a', '4b'):
+        im = np.array(Image.open(f'{D}combo{nm}_src.png').convert('RGB'))
+        if nm == '4a': im[:, :7] = 255
+        r = cut(im); sc4 = hw0 / head(r)[0]; p = shrink(r, sc4)
+        k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]   # 기준점 = 디딘 발 (한 발 들어서 맨 아래 줄 = 디딘 발)
+        combo['c' + nm] = (p, (xs.min() + xs.max()) / 2)
+        print(f'c{nm}: {r.shape[1]}x{r.shape[0]} ×{sc4:.3f} → {p.shape[:2]}')
+    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [combo['c1']] * 2 + [combo['c2']] * 2 + [combo['c3']] * 3 + [combo['c4a']] * 2 + [combo['c4b']] * 3, '_preview_brawler_sr1_combo.gif')
 
 
 def preview(frames, out):
