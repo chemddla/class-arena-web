@@ -12322,7 +12322,7 @@
         if (fs.length && wbCur) items.push({
           kind: 'worldboss', id: 'wb', icon: '🌍',
           names: fs.map(f => WorldBoss.esc(f.n || '친구')).join(', '),
-          detail: `보스 레이드 · ${wbCur.stage}단계 ${WorldBoss.esc(WorldBoss.defOf(wbCur).name)}`, watchers: 0,
+          detail: `보스 레이드 · ${WorldBoss.esc(WorldBoss.label(wbCur))}`, watchers: 0,
           watching: Boolean(watchingBattle && sim.raidWatch && sim.raidWatch.worldBoss)
         });
       }
@@ -32203,10 +32203,11 @@
     const eliteRewardOf = (def, hard) => (hard ? def.rewardMc * ELITE_HARD.reward : def.rewardMc);
 
     // ===== 🌍 레이드 (반 협동 레이드) =====
-    // 반 전체가 한 주 동안(월요일 00:00 ~ 다음 월요일) 보스 한 마리의 체력을 같이 깎음. 혼자 용병 8명으로 3분 싸우고
-    // 준 피해가 서버(classes/{code}/world_boss)의 공유 체력에서 빠짐. 체력을 0으로 만든 학생이 '마지막 일격', 그 즉시 다음 단계 보스가 나옴.
-    // 주가 바뀌었는데 못 잡았으면 같은 단계 보스가 새 체력으로 다시 나옴.
-    //   current: { key, weekKey, stage, bossId, maxHp, hp, hpMult, startedAt, killedAt, killedBy, killedByName }
+    // 반 전체가 한 주 동안(월요일 00:00 ~ 다음 월요일) 보스 한 마리의 체력을 같이 깎음. 용병 1명으로 3분 싸우고
+    // 준 피해가 서버(classes/{code}/world_boss)의 공유 체력에서 빠짐. 체력을 0으로 만든 학생이 '마지막 일격'.
+    // 단계 없음: 매주 엘리트 보스 1~10단계 중 한 마리가 랜덤으로 나오고(11단계 이후 보스는 안 나옴), 쓰러뜨려도 다음 보스는 다음 주 월요일에.
+    // 난이도도 매주 새로: 보스가 나올 때 용병단 전투력 상위 5명의 대표 용병 능력치로 보스 체력·공격력·방어력을 정해 그 주 내내 그대로
+    //   current: { key, weekKey, bossId, maxHp, hp, hpMult, atk, def, pow, startedAt, killedAt, killedBy, killedByName }  (stage = 예전 단계식 보스에만)
     //   contrib/{key}/{학생id}: { name, dmg, tries, best, lastAt } · log/{key}/{id}: { id, name, dmg, at, kill } · history/{key}: 끝난 보스 (처치 보상은 여기를 보고 받음)
     const WORLD_BOSS = {
       tries: 1,                   // 하루 참가 횟수
@@ -32215,9 +32216,18 @@
       roomStaleMs: 6000,          // 계산 담당 화면이 이만큼 조용하면 남은 친구가 이어받음 (아무도 없으면 보스는 멈춤)
       commitMs: 2000,             // 계산 담당이 깎인 보스 체력을 서버에 반영하는 간격
       claimDelayMs: 8000,         // 처치 뒤 친구들 기여도가 다 올라올 때까지 기다렸다가 처치 보상 순위를 매김
-      hpPerStudent: 0.2,          // 보스 체력 = 엘리트 보스 체력 × 학생 수 × 이 값 (선생님이 hpMult로 다시 조정) · 용병 1명·하루 1번 기준
-      bossAtk: 0.2,               // 레이드 보스 공격력 배율 (엘리트 보스는 용병 16명 기준이라 1명씩 들어오는 보스 레이드에선 낮춤)
-      hpVersion: 3,               // 체력 계산식을 바꾸면 올림 → 이미 나와 있는 보스도 남은 비율 그대로 새 체력으로
+      hpPerStudent: 0.2,          // (예전 단계식 보스) 보스 체력 = 엘리트 보스 체력 × 학생 수 × 이 값
+      bossAtk: 0.2,               // (예전 단계식 보스) 레이드 보스 공격력 배율
+      maxBossStage: 10,           // 이 단계까지의 엘리트 보스 중에서 매주 랜덤 (11단계 이후 보스는 안 나옴)
+      topN: 5,                    // 난이도 기준: 용병단 전투력 상위 이만큼 학생의 대표 용병(레이드에 데려가는 1명)
+      // 난이도: 상위 5명 대표 용병의 평균 능력치(체력·공격력·방어력)로 보스를 만듦
+      //   공격력 = 평균 체력 × atkPerHp · 방어력 = 평균 방어력 × defPerDef · 체력 = 평균 공격력 × hpPerAtk × 학생 수 × hpMult × 보스별 보정
+      //   시뮬(2026-11-07, Lv.10~30 대표 용병, 1~10단계 보스 각각): 상위 5명 용병이 혼자 들어가면 평균 약 104초 버티고 한 번에 약 1.3만(평균 공격력 × 118) 피해
+      //   → 체력은 상위 5명이 학생 1명당 2번씩 들어간 만큼 (반 평균은 더 약하니 실제로는 한 사람 3번쯤 · 친구와 같이 싸우면 보스 공격이 나뉘어 더 오래 버팀)
+      tune: { atkPerHp: 0.004, defPerDef: 1, hpPerAtk: 240 },
+      // 보스별 체력 보정: 같은 용병이 주는 피해가 보스마다 달라서 (히드라는 멀리서 독을 뿌려 잘 안 맞고, 골렘은 느려서 잘 맞음)
+      bossHpAdj: { elite_swamp_hydra: 0.4, elite_golem: 1.5, elite_leviathan: 1.15 },
+      hpVersion: 4,               // 체력 계산식을 바꾸면 올림 → 이미 나와 있는 보스도 남은 비율 그대로 새 체력으로
       fullHpVersion: 3,           // 이 버전보다 예전 보스는 남은 비율 대신 체력을 꽉 채우고 기여도·토벌 기록도 지움 (3 = 테스트 기록 지우기, 2026-11-04)
       minStudents: 5,             // 학생 수가 적어도 이만큼으로 계산
       enrageAt: 0.3,              // 남은 체력 비율이 이 아래면 광폭화 (공격력 enrageAtk배, 붉은 빛)
@@ -32249,11 +32259,29 @@
       classSize() { return Math.max(WORLD_BOSS.minStudents, (state.students || []).length); },
       defOfStage(stage) { return ELITE_BOSS_DEFS[(Math.max(1, stage || 1) - 1) % ELITE_BOSS_DEFS.length]; },
       defOf(cur) { return (cur && ELITE_BOSS_DEFS.find(b => b.id === cur.bossId)) || this.defOfStage(cur && cur.stage); },
-      makeCurrent(stage, hpMult, weekKey) {
-        const def = this.defOfStage(stage);
-        const maxHp = Math.round(def.hp * WORLD_BOSS.hpPerStudent * this.classSize() * (hpMult || 1));
+      // 이름표: 예전 단계식 보스만 'N단계'를 붙임
+      label(cur) { const def = this.defOf(cur); return cur && cur.stage && !cur.pow ? `${cur.stage}단계 ${def.name}` : def.name; },
+      // 이번 주 난이도 기준: 용병단 전투력 상위 5명 학생의 대표 용병(레이드에 데려가는 1명) 평균 능력치
+      difficulty() {
+        const tops = (state.students || []).map(s => ({ s, p: calcStudentCombatPower(s) })).filter(x => x.p > 0)
+          .sort((a, b) => b.p - a.p).slice(0, WORLD_BOSS.topN);
+        const picks = tops.map(({ s }) => { const m = repMercOf(s); return m ? { st: calcMercStats(m, s), pw: calcMercCombatPower(m, s) } : null; }).filter(Boolean);
+        if (!picks.length) return { hp: 1500, atk: 100, def: 50, pow: 0, n: 0 };
+        const avg = k => picks.reduce((sum, x) => sum + (k === 'pw' ? x.pw : x.st[k] || 0), 0) / picks.length;
+        return { hp: avg('hp'), atk: avg('atk'), def: avg('def'), pow: Math.round(avg('pw')), n: picks.length };
+      },
+      hpFor(ma, hpMult, bossId) { return Math.max(1, Math.round(ma * WORLD_BOSS.tune.hpPerAtk * this.classSize() * (hpMult || 1) * (WORLD_BOSS.bossHpAdj[bossId] || 1))); },
+      // 이번 주 보스: 엘리트 보스 1~10단계 중 랜덤 (바로 지난 보스는 빼고) · 능력치는 지금 상위 5명 기준으로 정해 그 주 내내 그대로
+      makeCurrent(weekKey, hpMult, prevBossId, sameBoss = false) {
+        const pool = ELITE_BOSS_DEFS.filter(b => b.stage <= WORLD_BOSS.maxBossStage);
+        const others = pool.filter(b => b.id !== prevBossId);
+        const def = (sameBoss && pool.find(b => b.id === prevBossId)) || (others.length ? others : pool)[Math.floor(Math.random() * (others.length || pool.length))];
+        const d = this.difficulty();
+        const maxHp = this.hpFor(d.atk, hpMult, def.id);
         const startedAt = this.now();
-        return { key: `${weekKey}_${stage}_${startedAt.toString(36)}`, weekKey, stage, bossId: def.id, maxHp, hp: maxHp, hpMult: hpMult || 1, v: WORLD_BOSS.hpVersion, startedAt, killedAt: 0, killedBy: '', killedByName: '' };
+        return { key: `${weekKey}_${def.id}_${startedAt.toString(36)}`, weekKey, bossId: def.id, maxHp, hp: maxHp, hpMult: hpMult || 1,
+          atk: Math.max(1, Math.round(d.hp * WORLD_BOSS.tune.atkPerHp)), def: Math.max(0, Math.round(d.def * WORLD_BOSS.tune.defPerDef)), ma: Math.round(d.atk), pow: Math.max(1, d.pow), top: d.n,
+          v: WORLD_BOSS.hpVersion, startedAt, killedAt: 0, killedBy: '', killedByName: '' };
       },
       current() { const c = this.cache && this.cache.current; return c && c.key ? c : null; },
       contrib(key) { return (this.cache && this.cache.contrib && this.cache.contrib[key]) || {}; },
@@ -32264,7 +32292,8 @@
         const ms = this.weekEnd(cur && cur.weekKey).getTime() - this.now();
         if (ms <= 0) return '곧 새 보스';
         const d = Math.floor(ms / 864e5), h = Math.floor((ms % 864e5) / 36e5);
-        return d > 0 ? `${d}일 ${h}시간 남음` : `${Math.max(1, h)}시간 남음`;
+        const left = d > 0 ? `${d}일 ${h}시간` : `${Math.max(1, h)}시간`;
+        return cur && cur.killedAt ? `새 보스까지 ${left}` : `${left} 남음`;
       },
 
       subscribe(cleanCode, db) {
@@ -32285,23 +32314,24 @@
         }, err => console.warn('[보스 레이드 구독 실패 - DB 규칙을 확인하세요]:', err));
       },
 
-      // 보스가 없거나·주가 바뀌었거나·방금 쓰러졌으면 새 보스를 만듦 (먼저 본 한 명만 성공하도록 transaction)
-      //   쓰러진 보스 → 같은 주에 바로 다음 단계 · 주가 바뀌었는데 못 잡은 보스 → 같은 단계가 새 체력으로
+      // 보스가 없거나·주가 바뀌었으면 이번 주 보스를 만듦 (먼저 본 한 명만 성공하도록 transaction)
+      //   쓰러져도 그 주에는 새 보스가 안 나옴 · 예전 단계식 보스(pow 없음)는 싸우는 사람이 없을 때 이번 주 보스로 바꿈
       ensureCurrent() {
         if (!this.ref || this.ensuring || !(state.students || []).length) return;
         const wk = this.weekKey();
         const cur = this.current();
-        if (cur && cur.weekKey === wk && !cur.killedAt) {
-          if (cur.v !== WORLD_BOSS.hpVersion && !this.liveCount()) this.rescale();
+        const thisWeek = c => Boolean(c && c.key && c.weekKey === wk && c.pow);
+        if (thisWeek(cur)) {
+          if (cur.v !== WORLD_BOSS.hpVersion && !cur.killedAt && !this.liveCount()) this.rescale();
           return;
         }
+        if (cur && cur.weekKey === wk && this.liveCount()) return; // 예전 보스와 싸우는 중이면 끝날 때까지
         this.ensuring = true;
         let ended = null;
         this.ref.child('current').transaction(c => {
-          if (c && c.key && c.weekKey === wk && !c.killedAt) return; // 이미 누가 만듦
+          if (thisWeek(c)) return; // 이미 누가 만듦
           ended = c && c.key ? c : null;
-          const stage = c && c.key ? (c.killedAt ? c.stage + 1 : c.stage) : 1;
-          return this.makeCurrent(stage, (c && c.hpMult) || 1, wk);
+          return this.makeCurrent(wk, (c && c.hpMult) || 1, c && c.bossId);
         }).then(res => {
           this.ensuring = false;
           if (res && res.committed && ended && !(this.cache && this.cache.history && this.cache.history[ended.key])) this.archive(ended);
@@ -32313,9 +32343,9 @@
         this.rescaling = true;
         let full = false;
         this.ref.child('current').transaction(c => {
-          if (!c || !c.key || c.v === WORLD_BOSS.hpVersion || c.killedAt) return;
+          if (!c || !c.key || !c.ma || c.v === WORLD_BOSS.hpVersion || c.killedAt) return;
           const ratio = Math.max(0, Math.min(1, (c.hp || 0) / Math.max(1, c.maxHp || 1)));
-          const maxHp = Math.round(this.defOf(c).hp * WORLD_BOSS.hpPerStudent * this.classSize() * (c.hpMult || 1));
+          const maxHp = this.hpFor(c.ma, c.hpMult, c.bossId);
           full = (c.v || 0) < WORLD_BOSS.fullHpVersion;
           return { ...c, maxHp, hp: full ? maxHp : Math.max(1, Math.round(maxHp * ratio)), v: WORLD_BOSS.hpVersion };
         }).then(res => {
@@ -32353,31 +32383,17 @@
         if (!this.ref || !cur || !cur.key) return Promise.resolve();
         const top3 = this.ranking(cur.key).slice(0, 3).map(c => ({ id: c.id, name: c.name || '', dmg: c.dmg }));
         return this.ref.child(`history/${cur.key}`).set({
-          key: cur.key, weekKey: cur.weekKey, stage: cur.stage, bossId: cur.bossId, maxHp: cur.maxHp, hp: cur.hp || 0,
+          key: cur.key, weekKey: cur.weekKey, stage: cur.stage || 0, bossId: cur.bossId, maxHp: cur.maxHp, hp: cur.hp || 0,
           startedAt: cur.startedAt || 0, killedAt: cur.killedAt || 0, killedBy: cur.killedBy || '', killedByName: cur.killedByName || '',
           top3, endedAt: this.now()
         }).catch(() => {});
       },
       // 쓰러진 보스의 보상: 반 전원 + 기여 1·2·3위 + 마지막 일격 (학생마다 history 항목당 한 번, 접속 안 했던 학생은 다음 접속 때)
-      // 보스를 쓰러뜨리면 반 전원의 '오늘 참가 횟수'를 되돌림 (다음 단계 보스에 바로 다시 도전) · 처치마다 한 번, 보상 대기와 상관없이 바로
-      resetTriesOnKill(stu) {
-        const dayStart = new Date(this.now()); dayStart.setHours(0, 0, 0, 0);
-        const latest = Object.values((this.cache && this.cache.history) || {})
-          .filter(h => h && h.key && h.killedAt >= dayStart.getTime())
-          .sort((a, b) => b.killedAt - a.killedAt)[0];
-        if (!latest || stu.worldBossTriesResetKey === latest.key) return false;
-        stu.worldBossTriesResetKey = latest.key;
-        const book = getDailyRewardBook(stu);
-        if (!book.worldBossTries) return true;
-        book.worldBossTries = 0;
-        showRewardBanner('🌍 보스 레이드 보스가 쓰러져서 오늘 입장 횟수가 초기화됐어요! 다음 보스에 다시 도전해요!');
-        return true;
-      },
       claimKillRewards() {
         const stu = getActiveStudent();
         if (!stu || !isStudentSession(stu) || !this.cache || !this.cache.history) return;
         const now = this.now(); // (febf217에서 빠져 있었음: 지난 기록이 있으면 ReferenceError로 처치 보상·이후 화면 갱신이 멈췄음)
-        let changed = this.resetTriesOnKill(stu);
+        let changed = false; // (예전엔 처치 때 오늘 입장 횟수를 되돌려 다음 단계 보스에 바로 도전했음 · 이제 다음 보스는 다음 주)
         Object.values(this.cache.history).forEach(h => {
           if (!h || !h.key || !h.killedAt || now - h.killedAt > WORLD_BOSS.claimDays * 864e5) return;
           const claimed = stu.worldBossClaimed || {};
@@ -32450,7 +32466,7 @@
         const stu = getActiveStudent();
         const cur = this.current();
         if (!cur || !this.ref) { showNotice('⚠️ 보스 레이드 정보를 아직 못 받았어요. 잠시 뒤 다시 눌러 주세요.'); return; }
-        if (cur.killedAt || cur.hp <= 0) { showNotice('🏆 이 보스는 이미 쓰러졌어요! 다음 보스가 곧 나타나요.'); return; }
+        if (cur.killedAt || cur.hp <= 0) { showNotice('🏆 이번 주 보스는 이미 쓰러졌어요! 다음 주 월요일에 새 보스가 나타나요.'); return; }
         if (this.triesLeft(stu) <= 0) { showNotice(`오늘 보스 레이드 참가 횟수(${WORLD_BOSS.tries}회)를 모두 썼어요. 내일 다시 참가할 수 있어요!`); return; }
         if (sim.running) { showNotice('⚠️ 진행 중인 전투를 먼저 끝내 주세요.'); return; }
         if (this.joining) return;
@@ -32482,7 +32498,7 @@
         const mine = this.unitFor(stu, merc, others.length);
         launchSimulation({
           mode: 'world_boss',
-          title: `🌍 보스 레이드: ${cur.stage}단계 ${def.name}`,
+          title: `🌍 보스 레이드: ${this.label(cur)}`,
           blueStudent: stu, redStudent: null, eliteBossId: def.id, rewardMc: 0,
           customBlueUnits: [mine], customRedUnits: [this.buildBoss(cur, def)],
           netRole: host ? 'host' : 'guest', myTeam: 'blue'
@@ -32516,7 +32532,9 @@
         boss.maxHp = Math.max(1, Math.round(cur.maxHp));
         boss.hp = Math.max(1, Math.min(boss.maxHp, Math.round(cur.hp)));
         boss.isWorldBoss = true;
-        boss.wbBaseAtk = Math.max(1, Math.round(boss.atk * WORLD_BOSS.bossAtk));
+        // 이번 주 보스: 상위 5명 기준으로 정해 둔 공격력·방어력 · 예전 단계식 보스: 엘리트 보스 공격력 × bossAtk
+        boss.wbBaseAtk = cur.atk ? Math.max(1, Math.round(cur.atk)) : Math.max(1, Math.round(boss.atk * WORLD_BOSS.bossAtk));
+        if (cur.def != null && cur.pow) boss.def = Math.max(0, Math.round(cur.def));
         boss.atk = boss.wbBaseAtk;
         applyUnitSkillBook(boss, buildSkillBook(ELITE_BOSS_SKILLS[def.id] || []));
         this.applyEnrage(boss);
@@ -32653,7 +32671,7 @@
           return null;
         }).catch(() => null);
       },
-      // 보스가 쓰러짐: 모두 승리로 끝내고 방을 닫음 (다음 단계 보스가 나옴)
+      // 보스가 쓰러짐: 모두 승리로 끝내고 방을 닫음 (다음 보스는 다음 주 월요일)
       endAll(r, win) {
         const meta = sim.meta.worldBoss;
         meta.ending = true;
@@ -32913,7 +32931,7 @@
           const owner = (state.students || []).find(s => s.id === r.owner) || { id: r.owner, name: '친구', roster: [] };
           launchSimulation({
             mode: 'elite_raid',
-            title: `📺 관전 중: 🌍 보스 레이드 ${cur.stage}단계 ${def.name}`,
+            title: `📺 관전 중: 🌍 보스 레이드 ${this.label(cur)}`,
             blueStudent: owner, redStudent: null, eliteBossId: def.id,
             customBlueUnits: blueUnits, customRedUnits: redUnits, rewardMc: 0,
             netRole: 'guest', myTeam: 'blue'
@@ -32973,26 +32991,25 @@
         this.ref.child('current').transaction(c => {
           if (!c || !c.key) return;
           const ratio = (c.hp || 0) / Math.max(1, c.maxHp || 1);
-          const maxHp = Math.round(this.defOf(c).hp * WORLD_BOSS.hpPerStudent * this.classSize() * mult);
+          const maxHp = c.ma ? this.hpFor(c.ma, mult, c.bossId) : Math.round(this.defOf(c).hp * WORLD_BOSS.hpPerStudent * this.classSize() * mult);
           return { ...c, hpMult: mult, maxHp, hp: Math.max(c.killedAt ? 0 : 1, Math.round(maxHp * ratio)), v: WORLD_BOSS.hpVersion };
         }).then(() => showRewardBanner(`🌍 보스 레이드 체력 배율을 ×${mult}로 바꿨어요. (남은 체력 비율은 그대로)`)).catch(() => {});
       },
-      adminReset(stageDelta = 0) {
+      // 이번 주 보스를 다시 내보냄: sameBoss면 같은 보스, 아니면 다른 보스로 다시 뽑기 · 난이도는 지금 상위 5명 기준으로 새로
+      adminReset(sameBoss = true) {
         if (!this.ref) return;
         const wk = this.weekKey();
-        this.ref.child('current').transaction(c => {
-          const stage = Math.max(1, ((c && c.stage) || 1) + stageDelta);
-          return this.makeCurrent(stage, (c && c.hpMult) || 1, wk);
-        }).then(() => { this.ref.child('room').remove().catch(() => {}); showRewardBanner('🌍 보스 레이드를 새 체력으로 다시 내보냈어요.'); }).catch(() => {});
+        this.ref.child('current').transaction(c => this.makeCurrent(wk, (c && c.hpMult) || 1, c && c.bossId, sameBoss))
+          .then(() => { this.ref.child('room').remove().catch(() => {}); showRewardBanner(sameBoss ? '🌍 같은 보스를 새 난이도·꽉 찬 체력으로 다시 내보냈어요.' : '🎲 이번 주 보스를 다른 보스로 다시 뽑았어요.'); }).catch(() => {});
       },
-      // 보스 레이드 초기화: 1단계 보스를 꽉 찬 체력으로 · 기여도 랭킹·토벌 기록·지난 보스·싸우던 방까지 모두 지움 (학생이 받은 CA는 그대로)
+      // 보스 레이드 초기화: 이번 주 보스를 새로 뽑아 꽉 찬 체력으로 · 기여도 랭킹·토벌 기록·지난 보스·싸우던 방까지 모두 지움 (학생이 받은 CA는 그대로)
       adminWipe() {
         if (!this.ref) return;
         const wk = this.weekKey();
-        this.ref.child('current').transaction(c => this.makeCurrent(1, (c && c.hpMult) || 1, wk)).then(res => {
+        this.ref.child('current').transaction(c => this.makeCurrent(wk, (c && c.hpMult) || 1, c && c.bossId)).then(res => {
           if (!res || !res.committed) return;
           ['contrib', 'log', 'done', 'history', 'room'].forEach(k => this.ref.child(k).remove().catch(() => {}));
-          showRewardBanner('🧹 보스 레이드를 초기화했어요! 1단계 보스부터 다시 시작해요.');
+          showRewardBanner('🧹 보스 레이드를 초기화했어요! 이번 주 보스를 새로 뽑았어요.');
         }).catch(() => {});
       },
 
@@ -33041,7 +33058,7 @@
         const hist = Object.values((this.cache && this.cache.history) || {}).filter(h => h && h.key).sort((a, b) => (b.endedAt || 0) - (a.endedAt || 0)).slice(0, 3);
         const histHTML = hist.map(h => {
           const d = this.defOf(h);
-          return `<div class="text-slate-400">${h.killedAt ? '🏆' : '⏰'} ${h.stage}단계 ${this.esc(d.name)} · ${h.killedAt ? `${this.esc(h.killedByName || '')}의 마지막 일격` : '못 잡음'}${(h.top3 || []).length ? ` · 기여 1위 ${this.esc(h.top3[0].name)}` : ''}</div>`;
+          return `<div class="text-slate-400">${h.killedAt ? '🏆' : '⏰'} ${this.esc(this.label(h))} · ${h.killedAt ? `${this.esc(h.killedByName || '')}의 마지막 일격` : '못 잡음'}${(h.top3 || []).length ? ` · 기여 1위 ${this.esc(h.top3[0].name)}` : ''}</div>`;
         }).join('') || '<div class="text-slate-500">지난 기록이 없어요.</div>';
         box.innerHTML = `
           <div class="flex flex-wrap items-center justify-between gap-2">
@@ -33049,7 +33066,7 @@
               <div class="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-2xl">🌍</div>
               <div>
                 <h3 class="font-title text-2xl text-white">보스 레이드 (반 전체 협동 토벌)</h3>
-                <p class="text-xs text-slate-400 mt-0.5">한 주 동안 반 친구 모두가 <strong>같은 보스의 체력</strong>을 깎아요. 보스 레이드는 <strong>늘 열려 있어요</strong>. <strong>용병 1명</strong>을 데리고 언제든 들어가면 3초 뒤 <strong>하늘에서 내려와</strong> 지금 싸우고 있는 친구들과 <strong>같은 전장</strong>에서 함께 보스를 때려요 (${Math.round(ELITE_RAID_TIME_LIMIT_SEC / 60)}분 · 하루 ${WORLD_BOSS.tries}번 · 친구가 많을수록 보스 공격이 나뉘어 약해져요). 아무도 없을 땐 보스가 멈춰 있어요. 쓰러뜨리면 바로 다음 단계 보스가 나와요!</p>
+                <p class="text-xs text-slate-400 mt-0.5">한 주 동안 반 친구 모두가 <strong>같은 보스의 체력</strong>을 깎아요. 보스 레이드는 <strong>늘 열려 있어요</strong>. <strong>용병 1명</strong>을 데리고 언제든 들어가면 3초 뒤 <strong>하늘에서 내려와</strong> 지금 싸우고 있는 친구들과 <strong>같은 전장</strong>에서 함께 보스를 때려요 (${Math.round(ELITE_RAID_TIME_LIMIT_SEC / 60)}분 · 하루 ${WORLD_BOSS.tries}번 · 친구가 많을수록 보스 공격이 나뉘어 약해져요). 아무도 없을 땐 보스가 멈춰 있어요. 보스는 <strong>매주 월요일</strong>에 엘리트 보스 중 한 마리가 랜덤으로 나오고, 쓰러뜨리면 다음 주까지 쉬어요!</p>
               </div>
             </div>
             <span class="px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-extrabold">⏳ ${this.timeLeftText(cur)}</span>
@@ -33059,13 +33076,13 @@
               <div class="flex gap-3 items-center">
                 ${this.bossArt(def, 96)}
                 <div class="min-w-0 flex-1">
-                  <div class="font-title text-xl text-white">${cur.stage}단계 · ${this.esc(def.name)}</div>
+                  <div class="font-title text-xl text-white">${this.esc(this.label(cur))}</div>
                   <p class="text-[11px] text-slate-400 mt-0.5">${this.esc(def.desc)}</p>
                   <div class="flex flex-wrap gap-1 mt-1.5">${Object.values(buildSkillBook(ELITE_BOSS_SKILLS[def.id] || [])).map(sk => `<span class="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 text-[10px] font-bold" title="${this.esc(sk.desc)}">${sk.icon} ${this.esc(sk.name)}</span>`).join('')}</div>
                 </div>
               </div>
               ${this.hpBarHTML(cur)}
-              <div class="text-[11px] text-slate-400">남은 체력 ${(WORLD_BOSS.enrageAt * 100)}% 아래면 🔥광폭화 (공격력 ×${WORLD_BOSS.enrageAtk}) · 체력은 반 학생 수(${this.classSize()}명)에 맞춰 정해져요</div>
+              <div class="text-[11px] text-slate-400">남은 체력 ${(WORLD_BOSS.enrageAt * 100)}% 아래면 🔥광폭화 (공격력 ×${WORLD_BOSS.enrageAtk}) · 난이도는 매주 <strong>전투력 상위 ${cur.top || WORLD_BOSS.topN}명</strong>의 대표 용병(평균 ⚔️ ${(cur.pow || 0).toLocaleString()})과 반 학생 수(${this.classSize()}명)에 맞춰 정해져요</div>
               ${roomHTML}
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="text-xs text-slate-300">
@@ -33074,7 +33091,7 @@
                 ${room && !inRoom && !dead ? '<button onclick="WorldBoss.spectate()" class="px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-sm shadow-lg">📺 관전하기</button>' : ''}
                 <button onclick="WorldBoss.start()" ${off ? 'disabled' : ''}
                   class="px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-lg ${off ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : room ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 animate-pulse' : 'bg-amber-500 hover:bg-amber-400 text-slate-950'}">
-                  ${dead ? '🏆 쓰러짐 · 다음 보스 준비 중' : inRoom ? '⚔️ 보스 레이드에서 싸우는 중' : tries <= 0 ? '✅ 오늘 보스 레이드 참가 완료 (내일 다시)' : room ? '⚡ 같이 싸우기!' : '⚔️ 보스 레이드 참가'}
+                  ${dead ? '🏆 쓰러짐 · 다음 주 월요일에 새 보스' : inRoom ? '⚔️ 보스 레이드에서 싸우는 중' : tries <= 0 ? '✅ 오늘 보스 레이드 참가 완료 (내일 다시)' : room ? '⚡ 같이 싸우기!' : '⚔️ 보스 레이드 참가'}
                 </button>
               </div>
               <div class="text-[11px] text-slate-500">데리고 갈 용병은 아래 [보스 레이드에 데리고 갈 용병]에서 고른 1명이에요. 들어가서 자동 전투·직접 조종 중에 고르고, 싸우는 중에도 [🎮 조종 바꾸기]로 바꿀 수 있어요.</div>
@@ -33108,7 +33125,7 @@
             ${this.bossArt(def, 36)}
             <div class="min-w-0 flex-1 flex flex-col gap-1">
               <div class="flex items-center justify-between gap-2 text-xs">
-                <span class="font-extrabold text-white truncate">🌍 보스 레이드 ${cur.stage}단계 ${this.esc(def.name)}${dead ? ' · 🏆 쓰러짐!' : ''}${dead ? '' : this.liveCount() ? ` · <span class="text-emerald-300">🟢 ${this.liveCount()}명 싸우는 중</span>` : ' · <span class="text-slate-400">⏸ 멈춤</span>'}</span>
+                <span class="font-extrabold text-white truncate">🌍 보스 레이드 ${this.esc(this.label(cur))}${dead ? ' · 🏆 쓰러짐!' : ''}${dead ? '' : this.liveCount() ? ` · <span class="text-emerald-300">🟢 ${this.liveCount()}명 싸우는 중</span>` : ' · <span class="text-slate-400">⏸ 멈춤</span>'}</span>
                 <span class="text-amber-300 font-bold shrink-0">⏳ ${this.timeLeftText(cur)}</span>
               </div>
               ${this.hpBarHTML(cur, 'h-3.5')}
@@ -33124,17 +33141,17 @@
         const rank = this.ranking(cur.key);
         box.innerHTML = `
           <h4 class="font-title text-lg text-amber-300">🌍 보스 레이드 조정</h4>
-          <div class="text-xs text-slate-300">${cur.stage}단계 <strong>${this.esc(def.name)}</strong> · 참가한 학생 ${rank.length}명 · ${this.timeLeftText(cur)}</div>
+          <div class="text-xs text-slate-300"><strong>${this.esc(this.label(cur))}</strong> · 참가한 학생 ${rank.length}명 · ${this.timeLeftText(cur)}</div>
           ${this.hpBarHTML(cur, 'h-4')}
-          <label class="text-xs text-slate-400">체력 배율 (학생 수 × 엘리트 보스 체력 × ${WORLD_BOSS.hpPerStudent} × 배율 · 바꿔도 남은 비율은 그대로)</label>
+          <div class="text-[11px] text-slate-400">이번 주 난이도: 전투력 상위 ${cur.top || 0}명 대표 용병 평균 ⚔️ ${(cur.pow || 0).toLocaleString()} · 보스 공격력 ${(cur.atk || 0).toLocaleString()} · 방어력 ${(cur.def || 0).toLocaleString()} (보스가 나올 때 정해져 그 주 내내 그대로)</div>
+          <label class="text-xs text-slate-400">체력 배율 (상위 ${WORLD_BOSS.topN}명 대표 용병 평균 공격력 × 학생 수 × 배율 · 바꿔도 남은 비율은 그대로)</label>
           <div class="flex flex-wrap gap-1.5">
             ${WORLD_BOSS.hpMultChoices.map(m => `<button onclick="WorldBoss.adminSetHpMult(${m})" class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold border ${m === (cur.hpMult || 1) ? 'bg-amber-500 text-slate-950 border-amber-400' : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'}">×${m}</button>`).join('')}
           </div>
           <div class="flex flex-wrap gap-1.5">
-            <button onclick="askCustomConfirm('이번 보스를 새 체력으로 다시 내보낼까요? (기여도는 새로 셈)', () => WorldBoss.adminReset(0))" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-white">🔁 같은 단계 다시</button>
-            <button onclick="askCustomConfirm('한 단계 쉬운 보스로 바꿀까요?', () => WorldBoss.adminReset(-1))" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-white">⬇️ 한 단계 아래로</button>
-            <button onclick="askCustomConfirm('한 단계 어려운 보스로 바꿀까요?', () => WorldBoss.adminReset(1))" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-white">⬆️ 한 단계 위로</button>
-            <button onclick="askCustomConfirm('보스 레이드를 처음부터 다시 시작할까요? 1단계 보스가 꽉 찬 체력으로 나오고, 기여도 랭킹·토벌 기록·지난 보스 기록이 모두 지워져요. (학생들이 이미 받은 CA는 그대로예요)', () => WorldBoss.adminWipe())" class="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-[11px] font-extrabold text-white">🧹 보스 레이드 초기화</button>
+            <button onclick="askCustomConfirm('이번 보스를 지금 상위 ${WORLD_BOSS.topN}명 기준 난이도·꽉 찬 체력으로 다시 내보낼까요? (기여도는 새로 셈)', () => WorldBoss.adminReset(true))" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-white">🔁 같은 보스 다시</button>
+            <button onclick="askCustomConfirm('이번 주 보스를 다른 엘리트 보스로 다시 뽑을까요? (기여도는 새로 셈)', () => WorldBoss.adminReset(false))" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-white">🎲 다른 보스로</button>
+            <button onclick="askCustomConfirm('보스 레이드를 처음부터 다시 시작할까요? 이번 주 보스를 새로 뽑아 꽉 찬 체력으로 나오고, 기여도 랭킹·토벌 기록·지난 보스 기록이 모두 지워져요. (학생들이 이미 받은 CA는 그대로예요)', () => WorldBoss.adminWipe())" class="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-[11px] font-extrabold text-white">🧹 보스 레이드 초기화</button>
           </div>`;
       }
     };
