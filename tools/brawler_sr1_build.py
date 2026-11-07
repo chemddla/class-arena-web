@@ -51,7 +51,30 @@ from PIL import Image
 from scipy import ndimage as ndi
 
 sys.path.insert(0, os.path.dirname(__file__))
-from berserker_build import shrink
+
+
+def shrink(rgba, sc):   # 축소: 색은 LANCZOS(얇은 검은 외곽선이 살아남음), 모양(알파)은 면적 평균 절반 이상인 칸만
+    # berserker_build.shrink처럼 알파까지 LANCZOS로 정하면 외곽선 바깥에 밝은 고리가 남아 흰 테두리처럼 보이고,
+    # 색까지 면적 평균으로 하면 1~2px 외곽선이 털 색에 묻혀 흰 털이 그대로 테두리가 됨
+    h, w = rgba.shape[:2]
+    size = (max(1, round(w * sc)), max(1, round(h * sc)))
+    pm = rgba.astype(float).copy(); pm[..., :3] *= pm[..., 3:] / 255
+    pim = Image.fromarray(pm.clip(0, 255).astype(np.uint8), 'RGBA')
+    lz = np.array(pim.resize(size, Image.LANCZOS)).astype(float)
+    bx = np.array(pim.resize(size, Image.BOX)).astype(float)
+    out = np.zeros_like(lz)
+    la = lz[..., 3:]
+    out[..., :3] = np.where(la > 8, lz[..., :3] * 255 / np.maximum(la, 1), bx[..., :3] * 255 / np.maximum(bx[..., 3:], 1))
+    out[..., 3] = np.where(bx[..., 3] >= 128, 255, 0)
+    bxc = bx[..., :3] * 255 / np.maximum(bx[..., 3:], 1)
+    edge = (out[..., 3] > 0) & ndi.binary_dilation(out[..., 3] == 0)   # 맨 바깥 줄만: 두 색 중 어두운 쪽 (LANCZOS 알파가 얇은 칸은 색이 부풀어 흰 점이 됨)
+    out[..., :3] = np.where(edge[..., None], np.minimum(out[..., :3], bxc), out[..., :3])
+    op = out[..., 3] > 0   # 3픽셀 이하 떨어진 티끌 제거
+    lab, n = ndi.label(op, structure=np.ones((3, 3)))
+    sizes = ndi.sum(op, lab, range(1, n + 1))
+    out[..., 3] = np.where(np.isin(lab, 1 + np.where(sizes <= 3)[0]), 0, out[..., 3])
+    return out.clip(0, 255).astype(np.uint8)
+
 
 D = 'assets/sprites/fx/samples/brawler_sr1_'
 TARGET_H = 86   # 대기 자세 키 → brawler_0과 같은 칸 키
@@ -83,28 +106,31 @@ def load_flat(path):   # 투명 PNG도 흰 배경 위에 깐 RGB로
     return np.array(bg.convert('RGB'))
 
 
-def cut(im):   # 흰 배경 지우고 가장 큰 덩어리(캐릭터)만 → RGBA, 외곽은 흰색과 섞인 만큼 반투명으로 풀어 줌
+def cut(im):   # 흰 배경 지우고 가장 큰 덩어리(캐릭터)만 → RGBA (도트 그림이라 반투명 없이 딱 자름)
+    # 1) 가장자리에서 이어진 흰 배경
+    # 2) 갇힌 큰 배경 구멍: 가장자리 배경과 색이 거의 같고 색차가 작은 곳 (털은 푸른 기 색차 6~10이라 안 걸림, 금강 1 머리 위 구멍은 색차 3.8)
+    #    (색이 아니라 '검은 선에 갇힌 밝은 덩어리'로 찾으면 줄무늬 사이 흰 털까지 지워짐 — 4타 무릎 칸 머리 털이 무채색 흰색)
+    # 3) 테두리·구멍 둘레 찌꺼기: 배경에 닿은 밝은 무채색 2겹 벗김
     im = im.astype(float)
-    white = (im.min(axis=2) > 222) & (im.max(axis=2) - im.min(axis=2) < 20)
+    mn, ch = im.min(axis=2), im.max(axis=2) - im.min(axis=2)
+    white = (mn > 222) & (ch < 20)
     lab, n = ndi.label(white)
     edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
     bg = np.isin(lab, edge[edge > 0])
     bgc = im[bg].mean(axis=0)
-    for i in range(1, n + 1):   # 꼬리·팔 사이에 갇힌 배경 구멍 = 가장자리 배경과 색이 거의 같고 색차가 작은 곳
+    for i in range(1, n + 1):
         m = lab == i
-        if not bg[m].any() and m.sum() >= 20:   # 털은 푸른 기(색차 6~10)라 안 걸림. 금강 1 머리 위 구멍은 배경처럼 살짝 푸른 연회색(색차 3.8)
+        if not bg[m].any() and m.sum() >= 4:   # 다리·팔 사이 작은 구멍까지
             px = im[m]
             if np.abs(px.mean(axis=0) - bgc).max() < 5 and (px.max(axis=1) - px.min(axis=1)).mean() < 4.5: bg |= m
-    rim = ~bg & ndi.binary_dilation(bg, iterations=2)
+    rimc = (mn > 110) & (ch < 7)   # 흰 배경과 외곽선이 섞인 회색
+    for _ in range(2):
+        bg |= ndi.binary_dilation(bg) & rimc
     a = np.where(bg, 0.0, 1.0)
-    a = np.where(rim, np.clip((255 - im.min(axis=2)) / 200, 0, 1), a)
-    al = np.maximum(a, 1e-3)[..., None]
-    im = np.where(rim[..., None], (im - 255 * (1 - al)) / al, im).clip(0, 255)
     m = a > 0.5
     lab, n = ndi.label(ndi.binary_dilation(m, iterations=2))
     sz = ndi.sum(m, lab, range(1, n + 1))
     a = np.where(lab == 1 + int(np.argmax(sz)), a, 0)
-    a = np.where(a < 0.12, 0, a)
     ys, xs = np.where(a > 0)
     return np.dstack([im, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
 
