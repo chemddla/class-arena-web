@@ -12,6 +12,8 @@
 #       (불사조 SR처럼 대시 동안 이 칸, 기본 격투가는 대시 때 걷기 칸)
 #   - armor_src.png  금강 두 칸 (연회색 배경 238~250). 기본 격투가는 슈퍼아머 1칸(24)이라 24 = 2번(힘줌), 1번(팔 모음)은 뒤에 한 칸 더 붙여
 #     SR만 armor: [팔 모음, 24]로 씀 (두 팔 사이 갇힌 배경 구멍도 지움)
+#   - down1_src.png · down2_src.png  쓰러짐 (흰 배경): 1 = 앞으로 고꾸라지며 한 손·무릎을 짚음 · 2 = 엎어져 누움(머리 오른쪽)
+#     기본 격투가 6·7번 자리에 그대로 (둘 다 앞으로 넘어가 방향이 이어져서 뒤집지 않음)
 # 흰 배경: 가장자리에서 이어진 흰 픽셀 + 꼬리·팔 사이에 갇힌 새하얀 구멍(무채색 253 안팎) 을 지움
 #   (호랑이 흰 털은 푸른 기가 돌고(파랑이 빨강보다 ~6 높음) 238 안팎이라 남음)
 import os, sys
@@ -26,7 +28,8 @@ D = 'assets/sprites/fx/samples/brawler_sr1_'
 TARGET_H = 86   # 대기 자세 키 → brawler_0과 같은 칸 키
 WALK = ['B2', 'B3', 'B4', 'B5']
 ARMOR_SC = 0.50   # 금강은 정면이라 귀 줄 폭으로 재면 귀 끝 사이만 잡혀 얼굴이 커짐(×0.55). 같은 크기로 그린 대시 샘플 배율(×0.50)에 맞춘 고정값
-ARMOR = [(0, 127), (127, 286)]   # 금강 샘플 가로 범위: 1 = 두 팔을 머리 위로 모음 · 2 = 주먹 쥐고 양팔에 힘줌 (왼쪽 끝 옆 칸 조각은 가장 큰 덩어리만 남겨 빠짐)
+ARMOR = [(0, 127), (127, 286)]
+DOWN_SC = 0.45   # 쓰러짐 두 칸 배율: 염주 알·머리 크기가 대기 칸과 같아지는 값 (누워 있어 귀 줄 폭으로는 못 잼)   # 금강 샘플 가로 범위: 1 = 두 팔을 머리 위로 모음 · 2 = 주먹 쥐고 양팔에 힘줌 (왼쪽 끝 옆 칸 조각은 가장 큰 덩어리만 남겨 빠짐)
 
 
 def cells(name):   # 여러 칸 샘플 → {'B1': 그림, ...} (큰 덩어리를 줄·칸 순서로)
@@ -109,6 +112,12 @@ def main():
         print(f'armor {x0}~{x1}: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {arm[-1][0].shape[:2]}')
     idle_p = shrink(idle, sc0)
     preview([(idle_p, head(idle)[1] * sc0)] * 2 + arm[:1] * 2 + arm[1:] * 6, '_preview_brawler_sr1_armor.gif')   # 대기 → 팔 들어 기 모음 → 힘줌
+    down = []
+    for n in ('down1', 'down2'):   # 기준점 = 엉덩이(띠) 자리 대신 그림 가로 가운데 · 쓰러질 때 몸이 앞으로 밀려 나가 보이게
+        r = cut(np.array(Image.open(f'{D}{n}_src.png').convert('RGB')))
+        p = shrink(r, DOWN_SC); down.append((p, p.shape[1] / 2))
+        print(f'{n}: {r.shape[1]}x{r.shape[0]} → {p.shape[:2]}')
+    preview([(idle_p, head(idle)[1] * sc0)] * 2 + down[:1] * 2 + down[1:] * 6, '_preview_brawler_sr1_down.gif')
 
 
 def preview(frames, out):
