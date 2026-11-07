@@ -6798,18 +6798,20 @@
     // 격투가 외형 0 (갈색 머리·흰 도복·검은 띠, tools/brawler_build.py): 칸 = 0 대기 · 1~4 걷기 · 5 피격 · 6~7 쓰러짐 (뒤로 넘어감 → 누움)
     //   · 8~23 연격 샘플 16장 · 24 금강 (이를 악물고 버팀) · 25 결투 (기합) · 26 웅크림 · 27 날아 차기 (섬각·반격 타격·연격 10타)
     //   · 28~29 붕권 (당김 → 내지름) · 30 반격 자세 · 31 멸식 - 격 시전 (푸른 기운) · 32 멸식 마무리 날아 차기 (이 스킬에서만)
+    //   · 33 착지 (연격 10타 관통·멸식 마무리 뒤 도착한 자리에서 잠깐 자세를 잡고 평소 자세로)
     // 기본 공격: 연격 몇 타째인지에 따라 brawlChain의 칸 묶음 (1타 잽 … 9타 내려찍기 · 10타 웅크렸다 날아 차기). brawlerPickFrame이 고름
     // 반격 자세 동안 30번, 받아치면 날아 차기(27)로 상대에게 날아감. 멸식 - 격: 시전 → 연격 칸으로 난타(칠 때마다 잔상) → 물러나 웅크림 → 32번 날아 차기
     // standH 78: 몸이 길고 머리가 작아 키 86으로 두면 얼굴이 다른 직업보다 작아 보임
     MERC_SPRITE_DEFS.brawler_0 = {
       src: 'assets/sprites/merc/brawler_0.webp',
-      cellW: 119, cellH: 106, anchorX: 63, anchorY: 104, standH: 78, topH: 86, portraitCX: 66, portraitZoomOut: 0.96, count: 33,
+      cellW: 119, cellH: 106, anchorX: 63, anchorY: 104, standH: 78, topH: 86, portraitCX: 66, portraitZoomOut: 0.96, count: 34,
       anims: {
         idle: [0], walk: [1, 2, 3, 4], attack: [8, 10], skill: [25], hurt: [5], death: [6, 7],
-        armor: [24], duel: [25], crush: [28, 29], kick: [26, 27], flykick: [27], counter: [30], annCast: [31], annKick: [32],
+        armor: [24], duel: [25], crush: [28, 29], kick: [26, 27], flykick: [27], counter: [30], annCast: [31], annKick: [32], land: [33],
         barrage: [8, 10, 9, 22, 18, 17, 15, 11] // 멸식 난타: 연격 칸을 빠르게 돌려 씀
       },
-      brawlChain: [[23, 8], [10], [21, 9], [22], [18, 12], [20, 14], [16, 15], [17], [21, 19, 11], [26, 27, 27, 27]],
+      brawlChain: [[23, 8], [10], [21, 9], [22], [18, 12], [20, 14], [16, 15], [17], [21, 19, 11], [26, 27]],
+      brawlFinish: [[26, 2], [27, 8], [33, 14]], // 연격 10타: [칸, 틱] 웅크림 → 날아 차며 관통 (BRAWLER_PASS_TICKS) → 도착해서 착지 → 평소 자세
       pickFrame: (u, sprite, tick, step) => brawlerPickFrame(u, sprite, tick, step),
       skillAnims: {
         crush_fist:     { anim: 'crush', tpf: 5, dur: 14 },   // 주먹을 당겼다가 돌진하며 내지름 (돌진 12틱 · 닿으면 바로 평소 자세)
@@ -6818,7 +6820,7 @@
         counter_strike: { anim: 'flykick', tpf: 8, dur: 8 },  // 날아 차기로 공격자에게 붙음 (6틱)
         diamond_body:   { anim: 'armor', tpf: 40, dur: 40 },
         duel_call:      { anim: 'duel', tpf: 40, dur: 40 },
-        annihilate:     { anim: 'annKick', tpf: 240, dur: 240 } // 멸식이 끝나는 틱 (자세는 멸식 동안 brawlerPickFrame이 고름)
+        annihilate:     { anim: 'land', tpf: 240, dur: 240 } // 멸식이 끝나는 틱 = 착지 자세 (자세는 멸식 동안 brawlerPickFrame이 고름)
       }
     };
     // 소환사 외형 0 (초록 긴 머리·장미 화관·초록 로브·마법서, tools/summoner_build.py): 칸 순서 = 대기, 걷기 4, 피격, 쓰러짐 3 (책을 놓치며 젖힘 → 고꾸라짐 → 엎드림),
@@ -18059,7 +18061,7 @@
         if (target && unitDist(target, u) <= u.range + 24) {
           u.mana = Math.min(u.maxMana, u.mana + 18);
           brawlerBasicAttack(u, target);
-        }
+        } else u.brawlChain = 0; // 허공을 치면 연격이 처음부터 (1타 자세)
       } else if (u.job === 'warrior' || u.job === 'rogue' || u.job === 'knight' || u.job === 'berserker' || u.job === 'paladin') {
         const rogue = u.job === 'rogue';
         playCombatSfx('slash');
@@ -24847,6 +24849,7 @@
     const BRAWLER_FLURRY_KICK_AT = 214;
     const BRAWLER_FLURRY_KICK_TICKS = 8;
     const BRAWLER_FLURRY_FINISH_DMG = 2.8;
+    const BRAWLER_LAND_TICKS = 14;           // 멸식 마무리 뒤 착지 자세 (연격 10타 착지는 brawler_0.brawlFinish)
     const BRAWLER_COUNTER_RUSH_TICKS = 6;    // 반격: 날아 차며 공격자에게 붙는 틱 (피해는 닿을 때, 기절은 바로)
 
     const isBossLike = e => Boolean(e && (e.isEliteBoss || e.isRaceBoss || e.isWorldBoss));
@@ -24869,8 +24872,9 @@
       const a = sprite.anims, st = u.statuses || {}, chain = sprite.brawlChain;
       if (chain && u.attackAnim > 0 && u._brawlAtkSeen !== u._sprAtkStart) { // 새 기본 공격 = 연격 다음 타
         u._brawlAtkSeen = u._sprAtkStart;
-        const k = u.brawlChain || 0;
-        u._brawlHit = k > 0 ? Math.min(chain.length, k) - 1 : (tick - (u._brawlLastAt ?? -999) <= BRAWLER_HUD_LINK ? ((u._brawlHit ?? -1) + 1) % chain.length : 0);
+        if (sim.netRole !== 'guest') { // 전투를 돌리는 화면: 이번 공격이 실제로 맞힌 타 (허공을 치면 1타 자세)
+          u._brawlHit = (u.brawlHitAt ?? -99) >= sim.tickCount - BRAWLER_HIT_FRESH ? Math.min(chain.length, u.brawlHitNo || 1) - 1 : 0;
+        } else u._brawlHit = tick - (u._brawlLastAt ?? -999) <= BRAWLER_HUD_LINK ? ((u._brawlHit ?? -1) + 1) % chain.length : 0; // 관전: 공격 간격으로 셈
         u._brawlLastAt = tick;
       }
       if ((st.flurry || 0) > 0 && u.activeSkillType === 'annihilate') {
@@ -24878,7 +24882,7 @@
         if (el <= BRAWLER_FLURRY_WINDUP) return a.annCast[0];
         if (el <= BRAWLER_FLURRY_BACK_AT) return a.barrage[Math.floor(el / 4) % a.barrage.length];
         if (el <= BRAWLER_FLURRY_KICK_AT) return a.kick[0];
-        return a.annKick[0];
+        return el <= BRAWLER_FLURRY_KICK_AT + BRAWLER_FLURRY_KICK_TICKS ? a.annKick[0] : a.land[0]; // 마무리 일격 뒤 착지
       }
       if ((st.counter || 0) > 0) return a.counter[0];
       if (u.casting || !(u.attackAnim > 0) || !chain) return null;
@@ -24886,15 +24890,22 @@
         const plan = sprite.skillAnims && sprite.skillAnims[u.activeSkillType];
         if (!plan || !plan.dur || tick - (u._sprSkillStart ?? tick) < plan.dur) return null; // 스킬 자세를 보여 주는 중
       }
+      const el = tick - (u._sprAtkStart ?? tick);
+      if (sprite.brawlFinish && (u._brawlHit || 0) === chain.length - 1) {
+        let t = el;
+        for (const [f, n] of sprite.brawlFinish) { if (t < n) return f; t -= n; }
+        return u.isMoving || u.dashAnim > 0 ? a.walk[Math.floor(tick / 8) % a.walk.length] : a.idle[0]; // 착지 뒤 바로 평소 자세
+      }
       const list = chain[u._brawlHit || 0];
-      return step(list, tick - (u._sprAtkStart ?? tick), Math.max(2, Math.floor((u.maxAttackAnim || 12) / (list.length + 0.5))));
+      return step(list, el, Math.max(2, Math.floor((u.maxAttackAnim || 12) / (list.length + 0.5))));
     }
     // 연격 콤보 표시: 체력 바 오른쪽 위에 'N 콤보' (2타부터). 새 타마다 커졌다 줄고, 타 수가 오를수록 주황 → 빨강, 10타는 금빛 'MAX'
     //   전투를 돌리는 화면은 실제 타 수(brawlChain), 관전·대결 화면은 그림 쪽에서 센 타 수 (BRAWLER_HUD_LINK틱 안에 다음 공격 = 이어짐)
     //   연격이 끊기면 잠깐 남았다가 사라짐 (10타는 조금 더 오래)
     const BRAWLER_HUD_LINK = 40;
+    const BRAWLER_HIT_FRESH = 6; // 공격이 시작된 지 이 틱 안에 맞힌 기록이 있으면 그 타 (배속으로 한 화면에 여러 틱이 지나가도)
     function drawBrawlerCombo(ctx, u, tick, x, y) {
-      const live = u.brawlChain !== undefined ? (u.brawlChain || 0)
+      const live = sim.netRole !== 'guest' ? (u.brawlChain > 0 ? u.brawlChain : ((u.brawlHitAt ?? -99) >= sim.tickCount - BRAWLER_HIT_FRESH ? u.brawlHitNo || 0 : 0))
         : (u._brawlLastAt != null && tick - u._brawlLastAt <= BRAWLER_HUD_LINK ? (u._brawlHit ?? -1) + 1 : 0);
       const c = u._comboHud || (u._comboHud = { n: 0, popAt: -99, endAt: null });
       if (live > 0) {
@@ -24934,7 +24945,7 @@
     }
     // 투혼 남은 비율 (0 = 꺼짐). 전투를 돌리는 화면은 brawlSpiritUntil, 관전·대결 화면은 마지막 기본 공격부터 BRAWLER_SPIRIT_TICKS
     function brawlerSpiritLeft(u, tick) {
-      if (u.brawlChain !== undefined) return u.brawlChain > 0 ? Math.max(0, Math.min(1, ((u.brawlSpiritUntil || 0) - sim.tickCount) / BRAWLER_SPIRIT_TICKS)) : 0;
+      if (sim.netRole !== 'guest') return u.brawlChain > 0 ? Math.max(0, Math.min(1, ((u.brawlSpiritUntil || 0) - sim.tickCount) / BRAWLER_SPIRIT_TICKS)) : 0;
       return u._brawlLastAt != null && (u._brawlHit ?? 0) + 1 < BRAWLER_CHAIN_MAX ? Math.max(0, 1 - (tick - u._brawlLastAt) / BRAWLER_SPIRIT_TICKS) : 0;
     }
     function drawBrawlerSpirit(ctx, left, bx, by, barW) {
@@ -25074,7 +25085,7 @@
             sim.effects.push({ type: 'magic_burst', x: foe.x, y: foe.y - 20, r: 48, color: '#f97316', life: 26, maxLife: 26 });
             sim.effects.push({ type: 'aoe_ring', x: foe.x, y: foe.y, r: 80, color: '#60a5fa', life: 26, maxLife: 26 });
             playCombatSfx('heavy');
-            u.statuses.flurry = Math.min(u.statuses.flurry, 2); // 마무리 일격 뒤 바로 끝 (날아 차기 자세를 붙들지 않음)
+            u.statuses.flurry = Math.min(u.statuses.flurry, BRAWLER_LAND_TICKS); // 마무리 일격 뒤 도착한 자리에서 착지 자세만 잠깐 보이고 끝
           }
         }
         return true;
@@ -25105,6 +25116,7 @@
       const linked = u.brawlChain > 0 && u.brawlChain < BRAWLER_CHAIN_MAX && t <= (u.brawlSpiritUntil || 0);
       u.brawlChain = linked ? u.brawlChain + 1 : 1;
       const k = u.brawlChain;
+      u.brawlHitAt = t; u.brawlHitNo = k; // 그림: 이번 공격이 맞힌 타 (허공을 치면 기록이 없어 1타 자세)
       const mult = k === 1 ? 1 : BRAWLER_CHAIN_DMG0 + BRAWLER_CHAIN_DMG_STEP * (k - 2);
       withHitKind('melee', () => applyDamage(u, target, u.atk * mult, k > 1 ? `${k}타 ` : '', k > 1 ? '#c2410c' : null));
       if (k >= BRAWLER_CHAIN_MAX) {
