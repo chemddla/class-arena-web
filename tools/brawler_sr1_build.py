@@ -69,6 +69,14 @@ def shrink(rgba, sc):   # 축소: 색은 LANCZOS(얇은 검은 외곽선이 살�
     bxc = bx[..., :3] * 255 / np.maximum(bx[..., 3:], 1)
     edge = (out[..., 3] > 0) & ndi.binary_dilation(out[..., 3] == 0)   # 맨 바깥 줄만: 두 색 중 어두운 쪽 (LANCZOS 알파가 얇은 칸은 색이 부풀어 흰 점이 됨)
     out[..., :3] = np.where(edge[..., None], np.minimum(out[..., :3], bxc), out[..., :3])
+    for _ in range(2):   # 바깥으로 1칸 튀어나온 밝은 픽셀(이웃 불투명 1칸 이하) 제거
+        op = out[..., 3] > 0
+        nb = ndi.convolve(op.astype(int), np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]]), mode='constant')
+        out[..., 3] = np.where(op & (nb <= 1) & (out[..., :3].min(axis=2) > 100), 0, out[..., 3])
+    op = out[..., 3] > 0   # 맨 바깥 줄의 밝은 픽셀(흰 찌꺼기·외곽선이 묻힌 흰 털) → 외곽선 색(33,34,35) 쪽으로 어둡게 (모양은 그대로)
+    edge = op & ndi.binary_dilation(~op)
+    lit = edge & (out[..., :3].min(axis=2) > 100)
+    out[..., :3] = np.where(lit[..., None], out[..., :3] * 0.3 + np.array([33, 34, 35]) * 0.7, out[..., :3])
     op = out[..., 3] > 0   # 3픽셀 이하 떨어진 티끌 제거
     lab, n = ndi.label(op, structure=np.ones((3, 3)))
     sizes = ndi.sum(op, lab, range(1, n + 1))
