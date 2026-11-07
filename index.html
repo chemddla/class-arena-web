@@ -24964,6 +24964,53 @@
       ctx.fillStyle = '#d8b4fe';
       ctx.fillText('투혼', bx - 2, by - 3);
     }
+    // 결투: 결투 중인 격투가와 상대의 가슴 사이를 붉은 빛줄기가 일렁이며 이음 (세 겹 물결선, 더하기 합성, 양 끝은 고정·가운데가 출렁)
+    //   건 직후 12틱은 격투가에게서 상대 쪽으로 뻗어 나가고 24틱 동안 더 밝게 번쩍임, 끝나기 30틱 전부터 옅어짐
+    //   관전·대결 화면엔 결투 상대(duelWith)가 실려 오지 않아서, 결투 상태가 남은 시간이 가장 비슷한 다른 편 유닛으로 짝지음
+    function drawDuelTethers(ctx) {
+      const t = sim.tickCount;
+      sim.units.forEach(u => {
+        if (!u.alive || u.job !== 'brawler' || u.monsterType || !((u.statuses?.duel || 0) > 0)) return;
+        const p = sim.netRole !== 'guest' ? duelPartnerOf(u)
+          : sim.units.filter(e => e.alive && e.team !== u.team && (e.statuses?.duel || 0) > 0)
+            .sort((a, b) => Math.abs(a.statuses.duel - u.statuses.duel) - Math.abs(b.statuses.duel - u.statuses.duel))[0];
+        if (!p) return;
+        const el = BRAWLER_DUEL_TICKS - u.statuses.duel;
+        const ax = u.x, ay = u.y - unitBodyDrawH(u) * 0.45, bx = p.x, by = p.y - unitBodyDrawH(p) * 0.45;
+        const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
+        const reach = Math.max(0.05, Math.min(1, el / 12));
+        const flash = Math.max(0, 1 - el / 24);
+        const fade = Math.min(1, u.statuses.duel / 30);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        const N = Math.max(10, Math.ceil(len / 9));
+        for (const [w, a, amp, ph, col] of [[10, 0.16, 7, 0, '220, 38, 38'], [4.5, 0.42, 5, 1.7, '239, 68, 68'], [1.8, 0.9, 3, 3.1, '254, 205, 205']]) {
+          ctx.strokeStyle = `rgba(${col}, ${Math.min(1, a * (1 + flash * 1.5)) * fade})`;
+          ctx.lineWidth = w * (1 + flash * 0.8);
+          ctx.beginPath();
+          for (let i = 0; i <= N; i++) {
+            const q = i / N, s = q * reach, env = Math.sin(Math.PI * q);
+            const off = (Math.sin(s * len / 26 - t * 0.35 + ph) + 0.35 * Math.sin(s * len / 11 + t * 0.6 + ph)) * amp * env;
+            const x = ax + dx * s + nx * off, y = ay + dy * s + ny * off;
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        }
+        // 양 끝 (상대 쪽은 다 뻗은 뒤) 붉은 빛 알갱이가 숨 쉬듯 커졌다 작아짐
+        const ends = reach >= 1 ? [[ax, ay], [bx, by]] : [[ax, ay], [ax + dx * reach, ay + dy * reach]];
+        ends.forEach(([x, y], i) => {
+          const r = (9 + 3 * Math.sin(t * 0.25 + i * 2)) * (1 + flash);
+          const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+          g.addColorStop(0, `rgba(254, 226, 226, ${0.85 * fade})`);
+          g.addColorStop(0.4, `rgba(239, 68, 68, ${0.5 * fade})`);
+          g.addColorStop(1, 'rgba(220, 38, 38, 0)');
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.restore();
+      });
+    }
     // 멸식 - 격 준비 기운: 연격 10타를 이어 멸식을 쓸 수 있는 동안(쿨타임이면 없음) 몸 뒤에서 푸른·노란 불꽃이 일렁임
     //   그림 = 멸식 시전 칸의 기운만 뽑은 것 (assets/sprites/fx/brawler_aura.webp, 칸·기준점은 brawler_0과 같음, tools/brawler_build.py)
     //   잘려 보이지 않게: 발밑에 옅은 빛무리를 먼저 깔고, 불꽃은 좌우를 번갈아 뒤집으며 키·밝기가 출렁이고, 불티가 위로 피어오름
@@ -30631,6 +30678,7 @@
       if (sim.mode === 'dungeon') drawDungeonRoom(ctx); // 🏰 문·상자·모닥불·함정·경고 원 (유닛 아래)
       drawSpiritKingCircles(ctx); // 정령왕 소환진 (바닥)
       drawSpiritKingBursts(ctx); // 정령왕 강림 원소 고리 (바닥, 유닛 아래)
+      drawDuelTethers(ctx); // 격투가 결투: 둘 사이 붉은 빛줄기 (유닛 몸 뒤)
       sortedUnits.forEach(u => {
         if (u.isEliteBoss && sim.eliteIntro) { drawEliteBossDrop(ctx, u); return; }
         drawUnitToken(ctx, u, sim.tickCount);
