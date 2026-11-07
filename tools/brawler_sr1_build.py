@@ -10,6 +10,8 @@
 #   - dash_src.png  대시 (앞으로 몸을 숙이고 달려 나감). 어두운 회색 배경(59,63,67) + 양옆에 옆 칸 조각
 #     → 배경색과 8 이내인 픽셀을 가장자리부터 지우고 가장 큰 덩어리만 남김. 시트에선 brawler_0 칸 뒤에 한 칸 더 붙여 dashRun으로 씀
 #       (불사조 SR처럼 대시 동안 이 칸, 기본 격투가는 대시 때 걷기 칸)
+#   - armor_src.png  금강 두 칸 (연회색 배경 238~250). 기본 격투가는 슈퍼아머 1칸(24)이라 24 = 2번(힘줌), 1번(팔 모음)은 뒤에 한 칸 더 붙여
+#     SR만 armor: [팔 모음, 24]로 씀 (두 팔 사이 갇힌 배경 구멍도 지움)
 # 흰 배경: 가장자리에서 이어진 흰 픽셀 + 꼬리·팔 사이에 갇힌 새하얀 구멍(무채색 253 안팎) 을 지움
 #   (호랑이 흰 털은 푸른 기가 돌고(파랑이 빨강보다 ~6 높음) 238 안팎이라 남음)
 import os, sys
@@ -23,6 +25,8 @@ from berserker_build import shrink
 D = 'assets/sprites/fx/samples/brawler_sr1_'
 TARGET_H = 86   # 대기 자세 키 → brawler_0과 같은 칸 키
 WALK = ['B2', 'B3', 'B4', 'B5']
+ARMOR_SC = 0.50   # 금강은 정면이라 귀 줄 폭으로 재면 귀 끝 사이만 잡혀 얼굴이 커짐(×0.55). 같은 크기로 그린 대시 샘플 배율(×0.50)에 맞춘 고정값
+ARMOR = [(0, 127), (127, 286)]   # 금강 샘플 가로 범위: 1 = 두 팔을 머리 위로 모음 · 2 = 주먹 쥐고 양팔에 힘줌 (왼쪽 끝 옆 칸 조각은 가장 큰 덩어리만 남겨 빠짐)
 
 
 def cells(name):   # 여러 칸 샘플 → {'B1': 그림, ...} (큰 덩어리를 줄·칸 순서로)
@@ -45,7 +49,7 @@ def cut(im):   # 흰 배경 지우고 가장 큰 덩어리(캐릭터)만 → RGB
         m = lab == i
         if not bg[m].any() and m.sum() >= 20:
             px = im[m]
-            if px.mean() > 248 and (px.max(axis=1) - px.min(axis=1)).mean() < 2: bg |= m
+            if px.mean() > 235 and (px.max(axis=1) - px.min(axis=1)).mean() < 2.5: bg |= m   # 털은 푸른 기(색차 6~10)라 안 걸림
     rim = ~bg & ndi.binary_dilation(bg, iterations=2)
     a = np.where(bg, 0.0, 1.0)
     a = np.where(rim, np.clip((255 - im.min(axis=2)) / 200, 0, 1), a)
@@ -97,6 +101,14 @@ def main():
     hw, hcx = head(r); sc = hw0 / hw
     print(f'dash: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {shrink(r, sc).shape[:2]}')
     preview(frames + [(shrink(r, sc), hcx * sc)] * 3, '_preview_brawler_sr1_dash.gif')   # 걷다가 대시
+    full = np.array(Image.open(f'{D}armor_src.png').convert('RGB'))
+    arm = []
+    for x0, x1 in ARMOR:
+        r = cut(full[:, x0:x1]); hcx = head(r)[1]; sc = ARMOR_SC
+        arm.append((shrink(r, sc), hcx * sc))
+        print(f'armor {x0}~{x1}: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {arm[-1][0].shape[:2]}')
+    idle_p = shrink(idle, sc0)
+    preview([(idle_p, head(idle)[1] * sc0)] * 2 + arm[:1] * 2 + arm[1:] * 6, '_preview_brawler_sr1_armor.gif')   # 대기 → 팔 들어 기 모음 → 힘줌
 
 
 def preview(frames, out):
