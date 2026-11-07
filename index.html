@@ -7132,7 +7132,11 @@
       brawlFinish: [[27, 12], [33, 16]], // 10타: 날아 들어오며 차기 (BRAWLER_SR_LEAP_TICKS 8 + 닿고 4틱) → 착지 → 평소 자세
       brawlPass9: true,
       unitSize: 1.3, // 몸 1.3배 (그림·몸 판정·근접 사거리, createSimUnit)
-      skillAnims: { ...MERC_SPRITE_DEFS.brawler_0.skillAnims, diamond_body: { anim: 'armor', tpf: 20, dur: 40 } } // 두 팔 모음 → 힘줌
+      // 멸식 - 격: 잔상은 흰 털에 어울리는 서늘한 청백색 · 마무리 준비(웅크림) 14 → 30틱 · 닿을 때 경직 8 → 20틱 + 화면 흔들림 (brawlerFlurryPlan)
+      ghostFilter: 'grayscale(1) sepia(1) saturate(3) hue-rotate(170deg) brightness(1.25)',
+      flurryPrepExtra: 16, flurryHitstop: 20,
+      skillAnims: { ...MERC_SPRITE_DEFS.brawler_0.skillAnims, diamond_body: { anim: 'armor', tpf: 20, dur: 40 }, // 두 팔 모음 → 힘줌
+        annihilate: { anim: 'land', tpf: 268, dur: 268 } } // 멸식 전체 틱 (240 + 준비 16 + 경직 12, brawlerFlurryPlan)
     };
     {
       const k = `berserker_${SECRET_SKIN_BASE + 1}`, eyesImg = new Image();
@@ -24883,6 +24887,12 @@
     const BRAWLER_FLURRY_PASS_TICKS = 8;
     const BRAWLER_FLURRY_PASS_DIST = 150;    // 마무리로 대상을 뚫고 지나가는 거리 (대상 너머, 연격 10타는 BRAWLER_PASS_DIST)
     const BRAWLER_FLURRY_FINISH_DMG = 3.6;
+    // 외형마다 다른 멸식 단계 (백호: 마무리 준비를 길게 · 닿을 때 경직을 길게). 난타 구간은 같아서 피해는 그대로, 늘어난 만큼 전체 시간이 길어짐
+    function brawlerFlurryPlan(u) {
+      const sp = u && !u.monsterType ? getMercSprite('brawler', u.skinVariant || 0) : null;
+      const extra = sp?.flurryPrepExtra || 0, hs = sp?.flurryHitstop || BRAWLER_FLURRY_HITSTOP;
+      return { kickAt: BRAWLER_FLURRY_KICK_AT + extra, hs, total: BRAWLER_FLURRY_TICKS + extra + (hs - BRAWLER_FLURRY_HITSTOP), shake: hs > BRAWLER_FLURRY_HITSTOP };
+    }
     const BRAWLER_COUNTER_RUSH_TICKS = 6;    // 반격: 날아 차며 공격자에게 붙는 틱 (피해는 닿을 때, 기절은 바로)
 
     const isBossLike = e => Boolean(e && (e.isEliteBoss || e.isRaceBoss || e.isWorldBoss));
@@ -24913,11 +24923,11 @@
         u._brawlLastAt = tick;
       }
       if ((st.flurry || 0) > 0 && u.activeSkillType === 'annihilate') {
-        const el = BRAWLER_FLURRY_TICKS - st.flurry;
+        const P = brawlerFlurryPlan(u), el = P.total - st.flurry;
         if (el <= BRAWLER_FLURRY_WINDUP) return a.annCast[0];
         if (el <= BRAWLER_FLURRY_BACK_AT) return a.barrage[Math.floor(el / 4) % a.barrage.length];
-        if (el <= BRAWLER_FLURRY_KICK_AT) return (a.annPrep || a.kick)[0]; // 백호는 멸식 전용 준비 자세
-        return el <= BRAWLER_FLURRY_KICK_AT + BRAWLER_FLURRY_KICK_TICKS + BRAWLER_FLURRY_HITSTOP + BRAWLER_FLURRY_PASS_TICKS ? a.annKick[0] : a.land[0]; // 날아 차기 (닿기·경직·관통) → 착지
+        if (el <= P.kickAt) return (a.annPrep || a.kick)[0]; // 백호는 멸식 전용 준비 자세
+        return el <= P.kickAt + BRAWLER_FLURRY_KICK_TICKS + P.hs + BRAWLER_FLURRY_PASS_TICKS ? a.annKick[0] : a.land[0]; // 날아 차기 (닿기·경직·관통) → 착지
       }
       if ((st.counter || 0) > 0) return a.counter[0];
       if (u.casting || !(u.attackAnim > 0) || !chain) return null;
@@ -25107,7 +25117,7 @@
         ctx.translate(q.x - u.x, q.y - u.y);
         ctx.scale(q.dir, 1);
         ctx.globalAlpha *= 0.5 * (1 - (tick - q.t) / BRAWLER_GHOST_LIFE);
-        ctx.filter = 'sepia(1) saturate(3) brightness(1.35) hue-rotate(-8deg)';
+        ctx.filter = sprite.ghostFilter || 'sepia(1) saturate(3) brightness(1.35) hue-rotate(-8deg)'; // 백호는 청백색
         drawSpriteFx(ctx, sprite.img, q.frame * sprite.cellW, 0, sprite.cellW, sprite.cellH, -sprite.anchorX * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
         ctx.restore();
       });
@@ -25182,6 +25192,7 @@
       u.statuses.flurry--; // 이 틱에는 상태 시간 줄이기를 건너뛰므로 여기서
       u.vx = 0; u.vy = 0; u.isMoving = false; u.rush = null;
       f.t = (f.t || 0) + 1;
+      const P = brawlerFlurryPlan(u);
       const clampX = x => Math.max(200, Math.min(sim.worldW - 200, x)), clampY = y => Math.max(260, Math.min(sim.worldH - 220, y));
       if (f.t <= BRAWLER_FLURRY_WINDUP) { // 시전 자세: 제자리에서 기운을 끌어올림
         brawlerFace(u, foe);
@@ -25189,17 +25200,17 @@
         return true;
       }
       if (f.t > BRAWLER_FLURRY_BACK_AT) {
-        if (f.t <= BRAWLER_FLURRY_KICK_AT) { // 뒤로 물러나 웅크림 (연격 10타 준비 자세)
+        if (f.t <= P.kickAt) { // 뒤로 물러나 웅크림 (연격 10타 준비 자세)
           if (!f.back) {
             const ang = Math.atan2(u.y - foe.y, u.x - foe.x), d = 170 + unitBodyGap(foe) + unitBodyGap(u);
             f.back = { x: clampX(foe.x + Math.cos(ang) * d), y: clampY(foe.y + Math.sin(ang) * d * 0.6) };
           }
           u.x += (f.back.x - u.x) * 0.3; u.y += (f.back.y - u.y) * 0.3;
           brawlerFace(u, foe);
-        } else if (!f.kick || f.kick.n < BRAWLER_FLURRY_KICK_TICKS + BRAWLER_FLURRY_HITSTOP + BRAWLER_FLURRY_PASS_TICKS) {
+        } else if (!f.kick || f.kick.n < BRAWLER_FLURRY_KICK_TICKS + P.hs + BRAWLER_FLURRY_PASS_TICKS) {
           // 마무리: 날아 차며 대상에게 닿고 (피해) → 둘 다 잠깐 멈칫 → 대상을 뚫고 반대편으로 → 남은 시간은 그 자리에서 착지 자세
           if (!f.kick) f.kick = { sx: u.x, sy: u.y, n: 0 };
-          const K = f.kick, KT = BRAWLER_FLURRY_KICK_TICKS, HS = BRAWLER_FLURRY_HITSTOP;
+          const K = f.kick, KT = BRAWLER_FLURRY_KICK_TICKS, HS = P.hs;
           K.n++;
           if (K.n <= KT) {
             const ang = Math.atan2(foe.y - K.sy, foe.x - K.sx), gap = 26 + unitBodyGap(foe) + unitBodyGap(u);
@@ -25211,7 +25222,8 @@
               const mana = foe.mana;
               withSkillHit(() => { suppressHitKnockback = true; try { applyDamage(u, foe, u.atk * BRAWLER_FLURRY_FINISH_DMG, '⚡', '#c2410c'); } finally { suppressHitKnockback = false; } });
               foe.mana = Math.min(foe.mana, mana);
-              foe.hurtAnim = Math.max(foe.hurtAnim || 0, 10);
+              foe.hurtAnim = Math.max(foe.hurtAnim || 0, Math.max(10, HS));
+              if (P.shake && (!sim.shake || sim.shake.power < 12)) sim.shake = { power: 12, life: HS, maxLife: HS }; // 경직 동안 화면도 흔들림
               sim.effects.push({ type: 'magic_burst', x: foe.x, y: foe.y - 20, r: 48, color: '#f97316', life: 26, maxLife: 26 });
               sim.effects.push({ type: 'aoe_ring', x: foe.x, y: foe.y, r: 80, color: '#60a5fa', life: 26, maxLife: 26 });
               playCombatSfx('heavy');
@@ -25432,10 +25444,11 @@
         if (!foe) { brawlerMissText(unit, sk); return true; }
         unit.flurryReadyUntil = 0;
         unit.rush = null;
-        unit.statuses.flurry = BRAWLER_FLURRY_TICKS;
-        unit.skillAnim = BRAWLER_FLURRY_TICKS; unit.maxSkillAnim = BRAWLER_FLURRY_TICKS; unit.activeSkillType = 'annihilate';
+        const FT = brawlerFlurryPlan(unit).total;
+        unit.statuses.flurry = FT;
+        unit.skillAnim = FT; unit.maxSkillAnim = FT; unit.activeSkillType = 'annihilate';
         const stunBefore = foe.statuses.stun || 0;
-        inflictStatus(unit, foe, 'stun', BRAWLER_FLURRY_TICKS);
+        inflictStatus(unit, foe, 'stun', FT);
         cancelSkillCast(foe);
         unit.flurry = { targetId: foe.id, t: 0, stunned: (foe.statuses.stun || 0) > stunBefore };
         sim.effects.push({ type: 'aoe_ring', x: foe.x, y: foe.y, r: 90, color: '#f97316', life: 40, maxLife: 40 });
