@@ -15,6 +15,7 @@
 #   - down1_src.png · down2_src.png  쓰러짐 (흰 배경): 1 = 앞으로 고꾸라지며 한 손·무릎을 짚음 · 2 = 엎어져 누움(머리 오른쪽)
 #     기본 격투가 6·7번 자리에 그대로 (둘 다 앞으로 넘어가 방향이 이어져서 뒤집지 않음)
 #   - duel_src.png  결투 (한 주먹을 높이 치켜들고 포효, 어두운 회색 배경 + 왼쪽 아래 옆 칸 흙먼지 조각) → 25번 자리
+#   - counter_src.png  반격 자세 (흰 배경, 낮게 서서 두 손을 갈고리처럼 앞에 모음) → 30번 자리. 귀 줄 폭으로 대기와 맞춤
 # 흰 배경: 가장자리에서 이어진 흰 픽셀 + 꼬리·팔 사이에 갇힌 새하얀 구멍(무채색 253 안팎) 을 지움
 #   (호랑이 흰 털은 푸른 기가 돌고(파랑이 빨강보다 ~6 높음) 238 안팎이라 남음)
 import os, sys
@@ -126,6 +127,10 @@ def main():
     k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]   # 기준점 = 두 발 가운데
     print(f'duel: {r.shape[1]}x{r.shape[0]} → {p.shape[:2]}')
     preview([(idle_p, head(idle)[1] * sc0)] * 2 + [(p, (xs.min() + xs.max()) / 2)] * 4, '_preview_brawler_sr1_duel.gif')
+    r = cut(np.array(Image.open(f'{D}counter_src.png').convert('RGB')))
+    hw, hcx = head(r); sc = hw0 / hw
+    print(f'counter: {r.shape[1]}x{r.shape[0]} ×{sc:.3f} → {shrink(r, sc).shape[:2]}')
+    preview([(idle_p, head(idle)[1] * sc0)] * 2 + [(shrink(r, sc), hcx * sc)] * 4, '_preview_brawler_sr1_counter.gif')
 
 
 def preview(frames, out):
