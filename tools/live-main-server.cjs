@@ -121,7 +121,11 @@ function serveFile(file, res) {
   await ensureWorktree();
   await sync();
   setInterval(sync, POLL_MS);
+  // localhost가 IPv6(::1)로 먼저 연결되는 브라우저가 있어 둘 다 받음 (127.0.0.1만 열면 "사이트에 연결할 수 없음")
   server.listen(PORT, '127.0.0.1', () => {
     console.log(`[live] 최신 main 테스트 서버: http://localhost:${PORT}/test  (origin/main을 ${POLL_MS / 1000}초마다 확인)`);
   });
+  const server6 = http.createServer((req, res) => server.emit('request', req, res));
+  server6.on('error', (e) => console.warn('[live] IPv6(::1)로는 열지 못함:', e.code || e.message));
+  server6.listen(PORT, '::1');
 })().catch((e) => { console.error('[live] 시작 실패:', e); process.exit(1); });
