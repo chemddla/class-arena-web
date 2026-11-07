@@ -10,6 +10,7 @@
 #   · 31 멸식 - 격 시전 (낮게 버티며 몸 둘레로 푸른·노란 기운이 솟음, 기운은 반투명) · 32 멸식 - 격 마무리 날아 차기 (이 칸은 멸식에서만)
 #     (난타는 연격 칸을 그대로 쓰고, 마무리는 뒤로 물러나 26 웅크림 → 32 날아 차기)
 #   · 33 착지 자세 (날아 차기로 지나간 뒤 도착한 자리에서 낮게 자세를 잡음): 연격 10타 관통 · 멸식 마무리 뒤
+#   - 기운 이펙트(AURA_OUT): 멸식 시전 칸의 기운만 따로 한 칸 (반투명 그대로, 몸 자리는 비우고 바닥 쪽은 흐리게). 멸식을 쓸 수 있을 때 게임이 몸 뒤에 깔아 일렁이게 그림
 #   - 멸식 시전 샘플은 발 아래 '03' 글자(CUT) + 흰 배경 위 옅은 기운(AURA)
 #   - 붕권 발사 샘플은 왼쪽 끝 옆 칸 주먹 조각(가장 큰 덩어리만) + 발 아래 '08' 글자(CUT)
 #   - 슈퍼아머·결투 샘플은 발 아래 번호 글자('04'·'07') → 몸과 떨어져 있어 가장 큰 덩어리만 남기면 빠짐
@@ -43,6 +44,8 @@ GRID = {'walk3': ([36, 37, 99, 100], [20, 21, 89, 90])}   # (가로줄 y, 세로
 SRC = {'down1': ('down', (0, 335, 0, 150)), 'down2': ('down', (339, 674, 0, 150))}   # 칸 이름 → (샘플, 자를 상자): 한 장에 여러 칸
 GRID_AUTO = {'down1', 'down2'} | {f'combo{i:02d}' for i in range(16)}   # 격자선 줄을 자동으로 찾음 (무채색 회색이 줄의 25% 이상)
 FLIP = {'down2'}
+AURA_OUT = 'assets/sprites/fx/brawler_aura.webp'   # 멸식을 쓸 수 있을 때 몸 뒤에 깔 기운 (멸식 시전 칸의 기운만, 칸·기준점은 시트와 같음)
+AURA_RGBA = {}   # 샘플 이름 → 기운만 남긴 그림 (몸이 가리던 자리는 가까운 기운 색으로 채움)
 AURA = {'ann0'}   # 몸 둘레 푸른·노란 기운: 흰 배경 위에 옅게 그려져 있어 흰색과 떨어진 만큼만 불투명 (반투명 빛)
 
 
@@ -112,6 +115,12 @@ def load(name, pick=0):
 
     ys, xs = np.where(a > 0)
     rgba = np.dstack([im, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    if name in AURA:   # 기운만 (몸 자리는 비움: 게임에서 몸 뒤에 깔고 발밑 빛무리·불티를 같이 그림). 바닥에 닿는 아래 6줄은 흐리게 사라지게
+        cy, cx = slice(ys.min(), ys.max() + 1), slice(xs.min(), xs.max() + 1)
+        am, ic = np.where(aura, a, 0)[cy, cx], im[cy, cx]
+        rows = np.where(am.any(axis=1))[0]
+        fade = np.clip((rows.max() + 1 - np.arange(am.shape[0])) / 7, 0, 1)[:, None]
+        AURA_RGBA[name] = np.dstack([ic, am * fade * 255])
     k = rgba[..., 3] > (235 if name in AURA else 127)
     body = np.where(k.any(axis=1))[0]
     foot = np.where(k[int(k.shape[0] * 0.92):].any(axis=0))[0].mean()
@@ -154,6 +163,15 @@ HEAD_ANCHOR = {f'walk{j}' for j in range(4)}
 FOOTX = {}   # 칸 이름 → 발 가운데 (자른 그림 기준 px)
 
 
+def soft_shrink(rgba, sc):   # 반투명을 그대로 둔 축소 (기운 이펙트용 · shrink는 가장자리를 딱딱하게 만듦)
+    h, w = rgba.shape[:2]
+    pm = rgba.copy(); pm[..., :3] *= pm[..., 3:] / 255
+    a = np.array(Image.fromarray(pm.clip(0, 255).astype(np.uint8), 'RGBA').resize((max(1, round(w * sc)), max(1, round(h * sc))), Image.LANCZOS)).astype(float)
+    al = a[..., 3:]
+    a[..., :3] = np.where(al > 0, a[..., :3] * 255 / np.maximum(al, 1), 0)
+    return a.clip(0, 255).astype(np.uint8)
+
+
 def main():
     pieces, scale = [], {}
     ref = {}   # 대기 칸: 게임 px 머리 폭 · 머리 가운데에서 발까지 거리
@@ -166,6 +184,7 @@ def main():
         scale[name] = sc
         p = shrink(rgba, sc)
         pieces.append((name, p, foot * sc))
+        if src in AURA_RGBA: aura_piece = (soft_shrink(AURA_RGBA[src], sc), foot * sc, p.shape)
         print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} 키 {bh} ×{sc:.3f} → {p.shape[1]}x{p.shape[0]}  발 {foot:.0f}')
     L = max(int(np.ceil(c)) for _, _, c in pieces) + 4
     R = max(int(np.ceil(p.shape[1] - c)) for _, p, c in pieces) + 4
@@ -177,6 +196,11 @@ def main():
         y = H - 2 - p.shape[0] - LIFT.get(name, 0)
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
     Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
+    ap, ac, pshape = aura_piece   # 기운 칸: 시트의 멸식 시전 칸과 같은 자리
+    cell = np.zeros((H, cw, 4), np.uint8)
+    x, y = L - int(round(ac)), H - 2 - pshape[0]
+    cell[y:y + ap.shape[0], x:x + ap.shape[1]] = ap[:H - y, :cw - x]
+    Image.fromarray(cell, 'RGBA').save(AURA_OUT, 'WEBP', lossless=True)
     names = [n for _, n, _, _ in FRAMES]
     print('combo anim:', [names.index(f'combo{c:02d}' if isinstance(c, int) else c) for c in COMBO_SEQ])
     print('cells:', ' '.join(f'{i}={n}' for i, n in enumerate(names)))

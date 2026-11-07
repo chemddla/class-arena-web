@@ -24961,6 +24961,50 @@
       ctx.fillStyle = '#d8b4fe';
       ctx.fillText('투혼', bx - 2, by - 3);
     }
+    // 멸식 - 격 준비 기운: 연격 10타를 이어 멸식을 쓸 수 있는 동안(쿨타임이면 없음) 몸 뒤에서 푸른·노란 불꽃이 일렁임
+    //   그림 = 멸식 시전 칸의 기운만 뽑은 것 (assets/sprites/fx/brawler_aura.webp, 칸·기준점은 brawler_0과 같음, tools/brawler_build.py)
+    //   잘려 보이지 않게: 발밑에 옅은 빛무리를 먼저 깔고, 불꽃은 좌우를 번갈아 뒤집으며 키·밝기가 출렁이고, 불티가 위로 피어오름
+    const BRAWLER_AURA_FX = new Image();
+    BRAWLER_AURA_FX.onload = () => { BRAWLER_AURA_FX.ready = true; };
+    BRAWLER_AURA_FX.src = 'assets/sprites/fx/brawler_aura.webp';
+    function brawlerAuraOn(u, tick) {
+      if (!u.alive || u.job !== 'brawler' || u.monsterType || (u.statuses?.flurry || 0) > 0 || !BRAWLER_AURA_FX.ready) return false;
+      if (!(u.skillSlots || []).includes('annihilate') || (u.skillCooldowns?.annihilate || 0) > 0) return false;
+      if (sim.netRole !== 'guest') return brawlerFlurryReady(u);
+      // 관전·대결 화면: 쓸 수 있는 시각이 실려 오지 않아서, 그림 쪽에서 센 10타 뒤 5초
+      return (u._brawlHit ?? -1) === BRAWLER_CHAIN_MAX - 1 && u._brawlLastAt != null && tick - u._brawlLastAt <= BRAWLER_FLURRY_READY_TICKS;
+    }
+    function drawBrawlerAura(ctx, sprite, k, tick, u) {
+      const w = sprite.cellW * k, h = sprite.cellH * k, x0 = -sprite.anchorX * k, y0 = -sprite.anchorY * k;
+      const bodyH = (sprite.topH || sprite.standH) * k;
+      ctx.save();
+      ctx.shadowBlur = 0;
+      // 발밑 빛무리 (바닥과 불꽃 아래쪽을 이어 줌)
+      const glow = ctx.createRadialGradient(0, -2, 1, 0, -2, bodyH * 0.55);
+      glow.addColorStop(0, 'rgba(253, 230, 138, 0.5)');
+      glow.addColorStop(0.5, 'rgba(96, 165, 250, 0.28)');
+      glow.addColorStop(1, 'rgba(96, 165, 250, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.ellipse(0, -2, bodyH * 0.55, bodyH * 0.16, 0, 0, Math.PI * 2); ctx.fill();
+      // 불꽃: 7틱마다 좌우를 바꾸고, 키는 발 기준으로 출렁임
+      const flip = Math.floor(tick / 7) % 2 ? -1 : 1;
+      ctx.save();
+      ctx.globalAlpha *= 0.92 + 0.08 * Math.sin(tick * 0.45);
+      ctx.scale(flip, 1 + 0.07 * Math.sin(tick * 0.3));
+      ctx.drawImage(BRAWLER_AURA_FX, 0, 0, sprite.cellW, sprite.cellH, x0, y0, w, h);
+      ctx.restore();
+      // 불티: 발밑에서 몸 높이까지 피어오르며 사라짐 (유닛마다 엇갈리게)
+      let seed = 0; for (const ch of String(u.id ?? '')) seed = (seed * 31 + ch.charCodeAt(0)) % 997; // 유닛 id(글자일 수도 있음)로 엇갈림
+      for (let i = 0; i < 6; i++) {
+        const t = ((tick + seed + i * 11) % 40) / 40;
+        const sx = Math.sin(i * 2.4 + seed) * bodyH * 0.32 + Math.sin(tick * 0.08 + i) * 2;
+        ctx.globalAlpha = Math.sin(t * Math.PI) * 0.85;
+        ctx.fillStyle = i % 2 ? '#fde68a' : '#93c5fd';
+        const r = (1 - t) * 1.6 + 0.6;
+        ctx.fillRect(sx - r / 2, -t * bodyH * 0.85 - r / 2, r, r);
+      }
+      ctx.restore();
+    }
     // 멸식 - 격 잔상: 대상 둘레로 옮겨 다니며 칠 때마다 그 자리·자세를 남겨 서서히 지움 (마무리 날아 차기는 지나온 길에 남음)
     const BRAWLER_GHOSTS = new WeakMap();
     const BRAWLER_GHOST_LIFE = 18;
@@ -29103,6 +29147,7 @@
         return;
       }
       const fdx = (sprite.frameDx && sprite.frameDx[frame]) || 0; // 칸마다 앞으로 옮겨 그릴 거리 (성기사 내리치기)
+      if (brawlerAuraOn(u, tick)) drawBrawlerAura(ctx, sprite, k, tick, u); // 격투가: 멸식 - 격을 쓸 수 있으면 몸 뒤에 기운
       if (u.alive && (u.statuses?.superarmor || 0) > 0) drawSuperArmorOutline(ctx, sprite.img, frame * sprite.cellW, sprite.cellW, sprite.cellH,
         (fdx - sprite.anchorX) * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k, tick);
       drawSpriteFx(ctx, sprite.img, frame * sprite.cellW, 0, sprite.cellW, sprite.cellH,
