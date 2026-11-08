@@ -20456,6 +20456,8 @@
             type: 'stun_shockwave', spr: strikeSpr === 'quake' ? undefined : strikeSpr,
             x: target.x, y: target.y, r: 100 * unitAreaScale(unit),
             angle: strikeSpr === 'quake' ? Math.atan2(target.y - unit.y, target.x - unit.x) : undefined, ux: unit.x, uy: unit.y,
+            // 전사 기본 외형(대검 기사)은 강타 전용 그림 없이 일반 베기 동작이라, 베는 순간 대상 자리에 금빛 타격·바닥 충격 고리를 더함
+            smash: unit.job === 'warrior' && !unit.monsterType && (unit.skinVariant || 0) === 0 || undefined,
             life: 56, maxLife: 56
           });
           unit.rootTicks = STUN_STRIKE_ROOT_TICKS; // 내리치는 동안만 제자리 (이동·공격 불가)
@@ -30979,6 +30981,21 @@
           ctx.stroke();
 
         } else if (ef.type === 'stun_shockwave' && ef.angle != null && WARRIOR_EXCALIBUR_FX.fx.ready) {
+          if (ef.smash) {
+            // 전사 기본 외형 강타 (pixelfx 작법: 치켜듦 5틱 → 베기 칸에서 맞는 순간 흰 섬광 → 금빛 불티·충격 고리가 식으며 흩어짐)
+            //   대상 몸 높이에 금빛 터짐 + 발밑에 납작한 도트 충격 고리 (땅을 내리친 느낌). 4틱 뒤 = 베기 칸이 나오는 순간
+            const sp = ((ef.maxLife - ef.life) - 4) / 34;
+            if (sp >= 0 && sp < 1) {
+              const ramp = ['#5a3a10', '#b8761c', '#f5b82a', '#ffe27a', '#fffbe0'];
+              const seed = pfxSeedOf(ef);
+              drawPixelBurst(ctx, ef.x, ef.y - 18, 58, sp, ramp, seed, { cone: ef.angle, spread: 1.1, glow: 0.9, coreK: 0.26 });
+              ctx.save();
+              ctx.translate(ef.x, ef.y + 4);
+              ctx.scale(1, 0.42);
+              drawPixelBurst(ctx, 0, 0, 74, Math.min(1, sp * 1.15), ramp, seed ^ 0x5bd1e995, { noGlow: true, coreK: 0 });
+              ctx.restore();
+            }
+          }
           // 강타: 엑스칼리버 초승달1을 작게 — 내리친 방향으로 번쩍 커졌다 흩어짐
           // 시전자와 적 사이, 적 쪽으로 살짝 더 나간 자리에서 시작
           ctx.translate(ef.ux + (ef.x - ef.ux) * 0.55, ef.uy + (ef.y - ef.uy) * 0.55 - 14);
