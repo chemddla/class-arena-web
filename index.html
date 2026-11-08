@@ -18588,7 +18588,7 @@
         const cnt = (c.skillCount || [])[i] || 0;
         if (cnt !== c._seenSkill[i]) {
           c._seenSkill[i] = cnt;
-          tryManualSkill(u, allies, enemies, i, c);
+          withLagRewind(u, c, () => tryManualSkill(u, allies, enemies, i, c)); // 친구가 조종하면 그 친구가 보던 적 자리로 대상·판정
         }
       }
       if ((c.itemCount || 0) !== (c._seenItem || 0)) {
@@ -18610,7 +18610,7 @@
             else manualBasicAttack(u, allies, [taunter], ta, { ...c, aimX: taunter.x, aimY: taunter.y }, curAtkInterval, true);
           }
         } else {
-          manualBasicAttack(u, allies, enemies, aimAngle, c, curAtkInterval);
+          withLagRewind(u, c, () => manualBasicAttack(u, allies, enemies, aimAngle, c, curAtkInterval));
         }
       }
     }
@@ -31667,6 +31667,7 @@
         for (let s = 0; s < ticks; s++) {
           if (sim.running) stepSimulation();
         }
+        if (ticks > 0 && sim.netRole === 'host') recordLagCompHistory(); // 지연 보정: 친구 화면이 보던 적 자리를 되찾을 수 있게
         if (refreshStatus) renderLiveUnitStatus();
         if (ticks > 0 && sim.running && (sim.netRole === 'host' || liveNet.towerCast)) { publishLiveBattleFrame(); publishLiveRtcFrame(); }
       } else if (!sim.running) {
@@ -42909,6 +42910,7 @@
         addBattleLog('✅ 상대 친구가 전투 방식을 골랐어요.');
       }
       const c = liveNet.remoteCtrl;
+      noteRemoteViewTime(c, val);
       const k = val.keys || {};
       c.keys = { w: Boolean(k.w), a: Boolean(k.a), s: Boolean(k.s), d: Boolean(k.d) };
       c.aimX = typeof val.ax === 'number' ? val.ax : null;
@@ -42942,6 +42944,54 @@
       }
     }
 
+    // ==================== [🎯 지연 보정 (방장)] ====================
+    // 친구 화면은 방장 화면보다 늦게(받는 시간 + 부드럽게 보이려 기다리는 시간) 보임 → 친구가 겨눈 적은 방장 화면에선 이미 조금 움직였음
+    // 그래서 친구가 조종하는 용병의 평타·스킬(대상 고르기·바로 맞히는 판정)은 그 친구가 보던 순간의 적 자리로 잠깐 되돌려 판정함
+    //   · 지연(lagMs) = 받은 시각 − 친구가 보던 화면 시각(vt) · 최대 LIVE_LAGCOMP_MAX_MS만 되돌림 (너무 느린 연결이 맞은 것으로 우기지 못하게)
+    //   · 판정 중에 밀려난 만큼(넉백 등)은 지금 자리에 그대로 더해 줌 · 날아가는 화살·구슬의 맞음, 적이 친구를 때리는 판정은 그대로 방장 기준
+    //   · 주고받는 양: 조작에 vt 한 칸이 누를 때·공격 중 0.3초마다만 더 실림
+    const LIVE_LAGCOMP_MAX_MS = 350;
+    const LIVE_LAGCOMP_KEEP_MS = 600;
+    function noteRemoteViewTime(c, v) {
+      if (!c || !v || typeof v.vt !== 'number' || v.vt === c._vt) return; // 같은 vt가 서버·직접 연결로 두 번 오거나, 팀전에서 다른 친구 조작과 함께 다시 오면 무시
+      c._vt = v.vt;
+      c.lagMs = Math.max(0, Math.min(1000, Date.now() - v.vt));
+    }
+    // 방장: 매 화면 유닛 자리를 기록 (최근 0.6초)
+    function recordLagCompHistory() {
+      if (liveNet.role !== 'host' || !sim.running) return;
+      const now = Date.now();
+      const H = liveNet.posHist || (liveNet.posHist = []);
+      if (H.length && H[H.length - 1].tick > sim.tickCount) H.length = 0; // 새 전투
+      const pos = new Map();
+      sim.units.forEach(e => { if (e.alive) pos.set(e.id, [e.x, e.y]); });
+      H.push({ t: now, tick: sim.tickCount, pos });
+      while (H.length > 2 && now - H[0].t > LIVE_LAGCOMP_KEEP_MS) H.shift();
+    }
+    // 친구가 조종하는 용병(u, 조작 c)의 판정 fn을 그 친구가 보던 순간의 적 자리로 돌려서 실행
+    function withLagRewind(u, c, fn) {
+      const H = liveNet.posHist;
+      const lag = c && c !== localBattleInput ? liveNum(c.lagMs) : 0;
+      if (liveNet.role !== 'host' || !(lag > 20) || !H || H.length < 2) return fn();
+      const T = Date.now() - Math.min(LIVE_LAGCOMP_MAX_MS, lag);
+      let a = H[0], b = H[H.length - 1];
+      for (let i = H.length - 1; i >= 0; i--) { if (H[i].t <= T) { a = H[i]; b = H[i + 1] || H[i]; break; } }
+      const k = b.t > a.t ? Math.max(0, Math.min(1, (T - a.t) / (b.t - a.t))) : 0;
+      const moved = [];
+      sim.units.forEach(e => {
+        if (!e.alive || e.team === u.team || e.rush) return;
+        const pa = a.pos.get(e.id), pb = b.pos.get(e.id) || pa;
+        if (!pa) return;
+        const rx = pa[0] + (pb[0] - pa[0]) * k, ry = pa[1] + (pb[1] - pa[1]) * k;
+        if (Math.hypot(rx - e.x, ry - e.y) > 300) return; // 순간이동 등은 되돌리지 않음
+        moved.push([e, e.x, e.y, rx, ry]);
+        e.x = rx; e.y = ry;
+      });
+      try { return fn(); } finally {
+        moved.forEach(([e, cx, cy, rx, ry]) => { e.x = cx + (e.x - rx); e.y = cy + (e.y - ry); });
+      }
+    }
+
     // ----- 방장(팀전): 팀원마다 inputs/{학생id} 로 보낸 조작을 그 친구가 고른 용병에만 적용 -----
     function applyTeamRemoteInputs(val) {
       if (liveNet.role !== 'host' || !sim.running || !liveNet.team) return;
@@ -42967,6 +43017,7 @@
         // 📝 던전 퀴즈 답 (지금 문제에 한 번만)
         const dq = sim.dungeon && sim.dungeon.quiz;
         if (dq && !dq.done && dq.need && Array.isArray(v.qz) && v.qz[0] === dq.id && dq.need.includes(stuId) && !(stuId in dq.ans)) dq.ans[stuId] = v.qz[1] === 1 ? 1 : 0;
+        noteRemoteViewTime(c, v);
         const k = v.keys || {};
         c.keys = { w: Boolean(k.w), a: Boolean(k.a), s: Boolean(k.s), d: Boolean(k.d) };
         c.aimX = typeof v.ax === 'number' ? v.ax : null;
@@ -43018,6 +43069,8 @@
         chosen: c.controlChosen ? 1 : 0,
         qz: Array.isArray(c.quizAns) ? c.quizAns : null // 📝 던전 퀴즈 답 [문제 번호, 맞힘 1/0]
       };
+      // 지연 보정: 내가 보고 있던 화면 시각(방장 시계 기준) · 바뀔 때만 실려 감 (onLocalControlChanged가 정함)
+      if (typeof liveNet.vtSent === 'number') payload.vt = liveNet.vtSent;
       if (typeof c.aimX === 'number' && typeof c.aimY === 'number') {
         payload.ax = liveR1(c.aimX);
         payload.ay = liveR1(c.aimY);
@@ -43029,6 +43082,17 @@
     function onLocalControlChanged(full = false) {
       if (full) liveNet.inputFull = true;
       if (sim.netRole !== 'guest' || liveNet.role !== 'guest' || !liveNet.ref || liveNet.spectator) return;
+      // 지연 보정용 '보던 화면 시각'(vt): 공격·스킬·대시·장비를 누를 때, 공격을 누르고 있으면 0.3초마다, 전체를 보낼 때만 새로 적음
+      // (매번 바뀌는 값이라 늘 실으면 조작을 보낼 때마다 칸이 늘어남 · 방장은 값이 바뀌었을 때만 받은 시각과 견줘 지연을 잼)
+      {
+        const lc = localBattleInput, nowMs = Date.now();
+        const sig = [lc.dashCount || 0, ...(lc.skillCount || []), lc.itemCount || 0, lc.attack ? 1 : 0].join(',');
+        if (typeof liveNet.viewT === 'number' && (liveNet.inputFull || sig !== liveNet.vtSig || (lc.attack && nowMs - (liveNet.vtAt || 0) > 300))) {
+          liveNet.vtSig = sig;
+          liveNet.vtAt = nowMs;
+          liveNet.vtSent = Math.round(liveNet.viewT + (nowMs - (liveNet.viewTAt || nowMs)));
+        }
+      }
       // ⚡ 직접 연결: 기다리지 않고 바로 방장 기기로 (서버로도 아래에서 그대로 보내 둠 → 직접 연결이 끊겨도 이어짐)
       if (liveRtcCanSend('guest')) liveRtcSend({ k: 'i', v: buildLiveInputPayload() });
       const wait = 60 - (Date.now() - liveNet.lastInputSentAt);
@@ -43138,7 +43202,7 @@
     // - 와이파이가 잠깐 멈췄다 몰아서 주면(학교 와이파이에서 흔함): 기다리는 시간은 빨리 늘리고 천천히 줄이며,
     //   재생 시점(playBase)은 순간 이동하지 않고 조금 느리게/빠르게 흘러서 따라감 → 멈칫·순간이동 대신 살짝 느려졌다 돌아옴
     function resetLiveFrameBuffer() {
-      Object.assign(liveNet, { rtcFeeding: false, ownPred: null, ownAct: null, frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, playBase: null, lastPlayAt: 0, lastAimCheckAt: 0, hostPause: null, recvU: null, recvT: null });
+      Object.assign(liveNet, { rtcFeeding: false, ownPred: null, ownAct: null, viewT: null, viewTAt: 0, vtSent: null, vtSig: null, frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, playBase: null, lastPlayAt: 0, lastAimCheckAt: 0, hostPause: null, recvU: null, recvT: null });
     }
 
     function applyLiveFrame(val, fromRtc = false) {
@@ -43630,6 +43694,8 @@
           renderT = buf[buf.length - 1].at - liveNet.playDelay;
           liveNet.playBase = now - renderT;
         }
+        liveNet.viewT = renderT; // 지금 그리는 화면의 방장 시각 (지연 보정용으로 조작에 실어 보냄)
+        liveNet.viewTAt = now;
         while (buf.length && buf[0].at <= renderT) {
           const f = buf.shift();
           applyLiveFrameState(f.val, renderT - f.at);
