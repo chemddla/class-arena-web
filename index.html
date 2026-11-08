@@ -5133,7 +5133,7 @@
         },
         diamond_body: {
           id: 'diamond_body', name: '금강', icon: '🛡️', ccTag: '🛡️슈퍼아머 8초',
-          manaCost: 24, cooldownTicks: 960, cooldownSec: 16.0, castSec: 0,
+          manaCost: 24, cooldownTicks: 960, cooldownSec: 16.0, castSec: 0.5,
           desc: '8초간 [슈퍼아머]를 얻습니다. 맞아도 움찔하거나 밀리지 않고, 나쁜 상태이상에 걸리지 않아요 (이미 걸린 것도 풀려요).'
         },
         duel_call: {
@@ -6813,13 +6813,14 @@
       brawlChain: [[8], [10], [21, 9], [22], [18, 12], [20, 14], [16, 15], [17], [21, 19, 11], [26, 27]],
       brawlFinish: [[26, 2], [27, 8], [33, 14]], // 연격 10타: [칸, 틱] 웅크림 → 날아 차며 관통 (BRAWLER_PASS_TICKS) → 도착해서 착지 → 평소 자세
       pickFrame: (u, sprite, tick, step) => brawlerPickFrame(u, sprite, tick, step),
+      castFrames: { diamond_body: 24 }, // 시전 중 자세 (결투는 anims.skill = 결투 자세)
       skillAnims: {
         crush_fist:     { anim: 'crush', tpf: 5, dur: 14 },   // 주먹을 당겼다가 돌진하며 내지름 (돌진 12틱 · 닿으면 바로 평소 자세)
         flash_kick:     { anim: 'kick', tpf: 3, dur: 8 },     // 웅크렸다가 날아 차며 다가감 (6틱)
         counter_stance: { anim: 'counter', tpf: 60, dur: 4 }, // 자세는 반격 상태 동안 brawlerPickFrame이 유지
         counter_strike: { anim: 'flykick', tpf: 8, dur: 8 },  // 날아 차기로 공격자에게 붙음 (6틱)
         diamond_body:   { anim: 'armor', tpf: 40, dur: 40 },
-        duel_call:      { anim: 'duel', tpf: 60, dur: 60 },   // 시전(1초) 동안 결투 자세 → 걸린 뒤 1초 더 (BRAWLER_DUEL_HOLD) → 해제
+        duel_call:      { anim: 'duel', tpf: 30, dur: 30 },   // 시전(1초) 동안 결투 자세 → 걸린 뒤 0.5초 더 (BRAWLER_DUEL_HOLD) → 해제
         annihilate:     { anim: 'land', tpf: 240, dur: 240 } // 멸식이 끝나는 틱 = 착지 자세 (자세는 멸식 동안 brawlerPickFrame이 고름)
       }
     };
@@ -24889,7 +24890,7 @@
     const BRAWLER_LIFESTEAL = 0.1;
     const BRAWLER_TAKEN_DOWN = 0.1;
     const BRAWLER_DASH_CD_MULT = 0.5;
-    const BRAWLER_DUEL_HOLD = 60;            // 결투가 걸린 뒤 결투 자세로 서 있는 틱 (시전 1초 + 이 1초)
+    const BRAWLER_DUEL_HOLD = 30;            // 결투가 걸린 뒤 결투 자세로 서 있는 틱 (시전 1초 + 이 0.5초)
     const BRAWLER_CAST_LOCK = 6;             // 스킬을 쓴 뒤 기본 공격을 못 하는 틱 (보통 32): 스킬을 섞어도 연격이 이어질 수 있게
     const BRAWLER_FLURRY_READY_TICKS = 200;  // 10타를 이은 뒤 멸식을 쓸 수 있는 시간 5초
     const BRAWLER_REACH_CELLS = 3;           // 붕권·섬각·멸식: 3칸 안의 대상
@@ -25297,6 +25298,7 @@
         return false;
       }
       u.statuses.flurry--; // 이 틱에는 상태 시간 줄이기를 건너뛰므로 여기서
+      if ((u.statuses.duel || 0) > 0 && --u.statuses.duel <= 0) endDuel(u); // 결투도 (안 줄이면 상대는 끝났는데 격투가 머리 위 '결투!'만 남음)
       u.vx = 0; u.vy = 0; u.isMoving = false; u.rush = null;
       f.t = (f.t || 0) + 1;
       const P = brawlerFlurryPlan(u);
@@ -25585,7 +25587,7 @@
         unit.duelWith = foe.id; unit.duelIso = iso; unit.statuses.duel = BRAWLER_DUEL_TICKS;
         foe.duelWith = unit.id; foe.duelIso = iso; foe.statuses.duel = BRAWLER_DUEL_TICKS;
         brawlerFace(unit, foe);
-        unit.rootTicks = Math.max(unit.rootTicks || 0, BRAWLER_DUEL_HOLD); unit.isMoving = false; // 걸린 뒤 1초 더 결투 자세로 제자리 (이동·공격 불가)
+        unit.rootTicks = Math.max(unit.rootTicks || 0, BRAWLER_DUEL_HOLD); unit.isMoving = false; // 걸린 뒤 0.5초 더 결투 자세로 제자리 (이동·공격 불가)
         [unit, foe].forEach(x => sim.effects.push({ type: 'aoe_ring', x: x.x, y: x.y, r: 56, color: '#dc2626', life: 40, maxLife: 40 }));
         playCombatSfx('heavy');
         addBattleLog(`⚔️ [격투가] ${unit.name}이(가) ${foe.name}에게 결투를 걸었어요! ${iso ? '10초간 서로에게만 피해를 줄 수 있어요' : '서로 주는 피해가 늘어나요'}`);
