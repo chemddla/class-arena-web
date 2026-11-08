@@ -42128,8 +42128,10 @@
         addBattleLog(spectator ? '📡 결투 화면을 받아오는 중이에요...' : '📡 방장 화면에서 진행되는 전투를 받아오는 중이에요...');
       }
       // ⚡ 1:1로 맞붙는 결투(방장 + 도전자 한 명)는 두 기기를 직접 연결해 화면·조작을 주고받음 (안 되면 서버로 그대로)
+      liveNet.rtcTried = false;
+      liveNet.rtcDecision = null;
       if (!team && !spectator && typeof liveNet.bid === 'number') {
-        if (role === 'host') liveRtcStartHost(ref, liveNet.bid);
+        if (role === 'host') { liveNet.rtcTried = true; liveRtcStartHost(ref, liveNet.bid); }
         else liveRtcStartGuest(ref, liveNet.bid);
       }
       liveWatchConnection();
@@ -42143,7 +42145,54 @@
     const LIVE_RTC_FRAME_MS = 50;
     const LIVE_RTC_STALE_MS = 600; // 직접 연결 화면이 이만큼 안 오면 서버 화면으로
     const LIVE_RTC_ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
-    const LiveRtc = { gen: 0, pc: null, dc: null, open: false, ref: null, role: null, bid: null, offerSdp: null, lastFrameAt: 0, lastSentAt: 0, sent: new WeakSet(), logs: [] };
+    const LiveRtc = { gen: 0, pc: null, dc: null, open: false, ref: null, role: null, bid: null, offerSdp: null, lastFrameAt: 0, lastSentAt: 0, sent: new WeakSet(), logs: [], startedAt: 0, pings: {}, pingN: 0, lastPingAt: 0, rtts: [] };
+    // ----- 시작 전 연결 점검: 방장이 전투를 시작하기 전에 직접 연결이 원활한지 재 보고, 원활하면 직접 연결 · 아니면 처음부터 서버로 -----
+    // 직접 연결이 열리면 0.1초마다 10번 신호를 주고받아 왕복 시간을 잼 → 8번 넘게 돌아오고 · 가운데 값 100ms 이하 · 느린 쪽(90%) 250ms 이하면 원활
+    // 6초 안에 열리지 않으면 서버로 (도중에 끊기면 그때도 저절로 서버로 이어 감)
+    const LIVE_RTC_CHECK_TIMEOUT_MS = 6000;
+    const LIVE_RTC_PING_N = 10, LIVE_RTC_PING_GAP_MS = 100;
+    const LIVE_RTC_GOOD_MEDIAN_MS = 100, LIVE_RTC_GOOD_P90_MS = 250, LIVE_RTC_GOOD_MIN_PONGS = 8;
+    // 방장이 시작해도 되는지 (직접 연결을 쓰지 않는 전투는 바로 true)
+    function liveRtcDecided() {
+      return liveNet.role !== 'host' || !liveNet.rtcTried || Boolean(liveNet.rtcDecision);
+    }
+    function liveRtcDecide(mode, note) {
+      if (liveNet.rtcDecision) return;
+      liveNet.rtcDecision = mode;
+      const R = LiveRtc;
+      if (mode === 'rtc') {
+        liveRtcSend({ k: 'mode', v: 'rtc' });
+        addBattleLog(`⚡ 친구 기기와 직접 연결이 원활해요${note ? ` (${note})` : ''}! 직접 연결로 진행해요.`);
+      } else {
+        if (R.open) liveRtcSend({ k: 'mode', v: 'server' });
+        addBattleLog(`📡 직접 연결이 원활하지 않아${note ? ` (${note})` : ''} 서버로 진행해요.`);
+        const gen = R.gen;
+        setTimeout(() => { if (LiveRtc.gen === gen) liveRtcStop(); }, 300); // 알림이 먼저 건너가게 잠깐 뒤에 닫음
+      }
+    }
+    // 방장이 기다리는 동안 매 프레임: 신호 주고받기 · 판정
+    function liveRtcCheckTick() {
+      if (liveRtcDecided()) return;
+      const R = LiveRtc, now = Date.now();
+      if (R.role !== 'host' || !R.startedAt) { liveRtcDecide('server', '직접 연결을 쓸 수 없음'); return; }
+      if (!R.open) {
+        if (now - R.startedAt > LIVE_RTC_CHECK_TIMEOUT_MS) liveRtcDecide('server', '연결되지 않음');
+        return;
+      }
+      if (R.pingN < LIVE_RTC_PING_N && now - R.lastPingAt >= LIVE_RTC_PING_GAP_MS) {
+        const id = ++R.pingN;
+        R.pings[id] = now;
+        R.lastPingAt = now;
+        liveRtcSend({ k: 'ping', id });
+      }
+      const done = R.rtts.length >= LIVE_RTC_PING_N || (R.pingN >= LIVE_RTC_PING_N && now - R.lastPingAt > 500) || now - R.startedAt > LIVE_RTC_CHECK_TIMEOUT_MS + 2000;
+      if (!done) return;
+      const rtts = [...R.rtts].sort((a, b) => a - b);
+      const med = rtts.length ? rtts[Math.floor(rtts.length / 2)] : Infinity;
+      const p90 = rtts.length ? rtts[Math.min(rtts.length - 1, Math.floor(rtts.length * 0.9))] : Infinity;
+      const good = rtts.length >= LIVE_RTC_GOOD_MIN_PONGS && med <= LIVE_RTC_GOOD_MEDIAN_MS && p90 <= LIVE_RTC_GOOD_P90_MS;
+      liveRtcDecide(good ? 'rtc' : 'server', rtts.length ? `왕복 ${Math.round(med)}ms · ${rtts.length}/${R.pingN}번 응답` : '응답 없음');
+    }
     function liveRtcSupported() { return typeof RTCPeerConnection === 'function'; }
     function liveRtcCanSend(role) {
       return LiveRtc.open && LiveRtc.role === role && Boolean(LiveRtc.dc) && LiveRtc.dc.readyState === 'open';
@@ -42161,7 +42210,7 @@
       if (R.ref) { try { R.ref.child('rtc/offer').off(); R.ref.child('rtc/answer').off(); } catch (e) {} }
       try { if (R.dc) R.dc.close(); } catch (e) {}
       try { if (R.pc) R.pc.close(); } catch (e) {}
-      Object.assign(R, { gen: R.gen + 1, pc: null, dc: null, open: false, ref: null, role: null, bid: null, offerSdp: null, lastFrameAt: 0, lastSentAt: 0, sent: new WeakSet(), logs: [] });
+      Object.assign(R, { gen: R.gen + 1, pc: null, dc: null, open: false, ref: null, role: null, bid: null, offerSdp: null, lastFrameAt: 0, lastSentAt: 0, sent: new WeakSet(), logs: [], startedAt: 0, pings: {}, pingN: 0, lastPingAt: 0, rtts: [] });
     }
     // ICE 후보를 다 모을 때까지(최대 ms) 기다림 → 연결 정보를 한 번에 주고받음
     function liveRtcIceDone(pc, ms) {
@@ -42182,7 +42231,6 @@
         R.sent = new WeakSet();
         sim.effects.forEach(x => R.sent.add(x));
         sim.floatTexts.forEach(x => R.sent.add(x));
-        addBattleLog('⚡ 친구 기기와 직접 연결됐어요! 화면·조작을 더 빠르게 주고받아요.');
         if (R.role === 'guest') onLocalControlChanged(true);
       };
       dc.onclose = () => {
@@ -42201,6 +42249,16 @@
           applyLiveFrame(m.v, true);
         } else if (m.k === 'i' && R.role === 'host' && liveNet.role === 'host') {
           applyRemoteBattleInput(m.v && typeof m.v === 'object' ? m.v : null);
+        } else if (m.k === 'ping' && R.role === 'guest') {
+          liveRtcSend({ k: 'pong', id: m.id });
+        } else if (m.k === 'pong' && R.role === 'host' && R.pings[m.id]) {
+          R.rtts.push(Date.now() - R.pings[m.id]);
+          delete R.pings[m.id];
+        } else if (m.k === 'mode' && R.role === 'guest') {
+          if (m.v === 'server') {
+            addBattleLog('📡 직접 연결이 원활하지 않아 서버로 진행해요.');
+            liveRtcStop();
+          } else addBattleLog('⚡ 친구 기기와 직접 연결로 진행해요!');
         }
       };
     }
@@ -42208,7 +42266,7 @@
       liveRtcStop();
       if (!liveRtcSupported()) return;
       const R = LiveRtc, gen = R.gen;
-      Object.assign(R, { ref, role: 'host', bid });
+      Object.assign(R, { ref, role: 'host', bid, startedAt: Date.now() });
       try {
         const pc = R.pc = new RTCPeerConnection({ iceServers: LIVE_RTC_ICE });
         liveRtcBindChannel(pc.createDataChannel('live', { ordered: true }), gen);
@@ -43363,14 +43421,18 @@
         }
       }
       const hostChose = !sim.awaitingControlChoice;
-      const ready = hostChose && liveNet.guestChose;
+      liveRtcCheckTick();
+      const netReady = liveRtcDecided();
+      const ready = hostChose && liveNet.guestChose && netReady;
       if (ready) {
         sim.waitingForOpponent = false;
         liveNet.started = true;
         renderLiveWaitBanner(null);
         addBattleLog('⚔️ 두 친구 모두 전투 방식을 골랐어요! 결투 시작!');
       } else {
-        renderLiveWaitBanner(hostChose
+        renderLiveWaitBanner(hostChose && liveNet.guestChose
+          ? '📶 친구 기기와 연결 상태를 확인하는 중이에요... (원활하면 직접 연결, 아니면 서버로 진행)'
+          : hostChose
           ? `⏳ 상대 친구가 전투 방식을 고르는 중이에요... (${Math.ceil(left / 1000)}초)`
           : `🎮 전투 방식을 골라 주세요! (${Math.ceil(left / 1000)}초 뒤 자동 전투)`);
       }
@@ -43399,7 +43461,7 @@
       if (!localBattleInput.controlChosen) {
         renderLiveWaitBanner(`🎮 전투 방식을 골라 주세요! (${sec}초 뒤 자동 전투)`);
       } else {
-        renderLiveWaitBanner(val.hostChose ? '⏳ 곧 시작해요...' : `⏳ 상대 친구가 전투 방식을 고르는 중이에요... (${sec}초)`);
+        renderLiveWaitBanner(val.hostChose ? '📶 연결 상태를 확인하고 곧 시작해요...' : `⏳ 상대 친구가 전투 방식을 고르는 중이에요... (${sec}초)`);
         // 방장이 아직 내 선택을 못 받았으면 다시 보냄
         if (!val.guestChose) onLocalControlChanged();
       }
