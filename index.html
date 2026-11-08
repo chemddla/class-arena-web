@@ -21770,7 +21770,7 @@
       if (key === 'spirit_king') pushSpiritKingCircle(unit, total + 120, total); // 3초 동안 정령왕이 나올 자리에 무지개 소환진 (느린 기기 대비 2초 여유, 나오면 줄어듦)
       unit.isMoving = false;
       // (스킬 시전 때 발밑 보라 원은 없앰 · 스킬마다 자기 시전 그림이 있음)
-      if (SPIRIT_SKILL_ELEM[key] && SPIRIT_SKILL_ELEM[key] !== 'king' && !spiritOnField(SPIRIT_SKILL_ELEM[key]) && !summonerSkillBlock(unit, key)) {
+      if (SPIRIT_SKILL_ELEM[key] && SPIRIT_SKILL_ELEM[key] !== 'king' && !spiritOnField(SPIRIT_SKILL_ELEM[key], unit.team) && !summonerSkillBlock(unit, key)) {
         pushSpiritCircle(unit, SPIRIT_SKILL_ELEM[key], total + 60); // 원소 정령 소환: 시전 동안 정령이 나올 자리에 원소 색 소환진 (해방할 때는 없음)
       }
     }
@@ -26345,7 +26345,8 @@
     const SPIRIT_COPY_DROP = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim', 'casting', 'pendingStrikes', 'quake', 'draggedBy', 'knightShield', 'knightShieldTicks', 'frostBarrier', 'frostBarrierTicks', 'holyShield', 'spiritIds', 'tauntBy']);
 
     function unitByIdNow(id) { return id ? sim.units.find(x => x.id === id) || null : null; }
-    function spiritOnField(elem) { return sim.units.find(x => x.spiritElem === elem && x.alive) || null; }
+    // 같은 원소 정령은 팀마다 하나 (같은 팀 소환사끼리만 겹쳐 부를 수 없음 · 상대 팀에 같은 정령이 있어도 부를 수 있음 · 모든 컨텐츠 공통)
+    function spiritOnField(elem, team) { return sim.units.find(x => x.spiritElem === elem && x.alive && (!team || x.team === team)) || null; }
     function ownedSpirits(ownerId) { return sim.units.filter(x => x.spiritElem && x.alive && x.ownerId === ownerId); }
     function spiritHarmonyCount(ownerId) {
       const own = ownedSpirits(ownerId);
@@ -26360,8 +26361,8 @@
       const elem = SPIRIT_SKILL_ELEM[key];
       if (!elem) return null;
       if (u.isClone) return '🪄 분신은 정령을 못 불러요';
-      const cur = spiritOnField(elem);
-      if (cur && cur.ownerId !== u.id) return `${SPIRIT_DEFS[elem].icon} ${SPIRIT_DEFS[elem].name}이 이미 전장에 있어요`;
+      const cur = spiritOnField(elem, u.team);
+      if (cur && cur.ownerId !== u.id) return `${SPIRIT_DEFS[elem].icon} ${SPIRIT_DEFS[elem].name}이 이미 우리 팀에 있어요`;
       return null;
     }
 
@@ -26623,7 +26624,7 @@
       if (!elem) return false;
       const block = summonerSkillBlock(unit, sk);
       if (block) { sim.floatTexts.push({ x: unit.x, y: unit.y - 52, text: block, color: '#64748b', life: 40 }); return true; }
-      const cur = spiritOnField(elem);
+      const cur = spiritOnField(elem, unit.team);
       if (cur) releaseSpirit(cur); // 남의 정령이면 위에서 막힘 → 내 정령
       else activateSpirit(unit, elem);
       playCombatSfx('magic');
@@ -26637,7 +26638,7 @@
       const C = GRID_CELL_SIZE;
       const near = (list, x, y, r) => list.filter(u => Math.hypot(u.x - x, u.y - y) - unitBodyGap(u) <= r);
       const nearestEnemyDist = enemies.reduce((m, e) => Math.min(m, unitDist(e, unit)), Infinity);
-      const cur = spiritOnField(elem);
+      const cur = spiritOnField(elem, unit.team);
       if (cur) {
         // 해방할 때 (원소마다 효과가 가장 잘 드는 순간 · 곧 사라지거나 쓰러질 것 같으면 맞힐 게 하나만 있어도)
         const urgent = cur.spiritLife <= 120 || cur.hp / cur.maxHp < 0.25;
