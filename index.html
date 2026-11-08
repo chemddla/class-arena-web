@@ -10031,7 +10031,20 @@
       const img = new Image();
       img.onload = () => {
         img.ready = true;
-        if (o === SPIN_FX) o.blood = bloodTintCopy(img);
+        if (o === SPIN_FX) {
+          o.blood = bloodTintCopy(img);
+          // 전사 시크릿 레어 회전베기용 노란 빛 사본: 밝기는 그대로, 색만 금빛 (lighter로 그려서 빛처럼 보임)
+          const c = document.createElement('canvas');
+          c.width = img.width; c.height = img.height;
+          const g = c.getContext('2d');
+          g.drawImage(img, 0, 0);
+          g.globalCompositeOperation = 'color';
+          g.fillStyle = '#facc15';
+          g.fillRect(0, 0, c.width, c.height);
+          g.globalCompositeOperation = 'destination-in';
+          g.drawImage(img, 0, 0);
+          o.gold = c;
+        }
         if (o === TORNADO_FX) { // 궁수 폭풍 화살용 초록 사본: 밝기는 그대로 두고 색만 초록으로 바꿈
           const c = document.createElement('canvas');
           c.width = img.width; c.height = img.height;
@@ -30967,6 +30980,8 @@
           let fi, ang = 0, alpha;
           const own = ef.owner && ef.owner.alive ? ef.owner : ef;
           if (ef.seq) {
+            // 회전베기가 끝날 때까지 유지: 남은 시간을 시전자의 회전베기 남은 틱에 맞춤 (이펙트 수명은 화면 프레임, 스킬은 전투 틱이라 따로 줄면 어긋남)
+            if (own === ef.owner && own.activeSkillType === 'whirlwind' && own.skillAnim > 0) ef.life = Math.max(1, own.skillAnim);
             fi = ef.life <= 20 ? 2 : Math.floor(elapsed / 8) % 2;
             alpha = Math.min(1, ef.life / 12);
           } else if (ef.f != null) {
@@ -30985,7 +31000,8 @@
           ctx.globalAlpha = alpha;
           ctx.globalCompositeOperation = 'lighter';
           ctx.imageSmoothingEnabled = true;
-          ctx.drawImage(SPIN_FX.img, fr[0], fr[1], fr[2], fr[3], -fr[2] * k / 2, -fr[3] * k / 2, fr[2] * k, fr[3] * k);
+          const spinImg = ef.seq && usesExcalSr(ef.owner) && SPIN_FX.gold ? SPIN_FX.gold : SPIN_FX.img; // 전사 시크릿 레어 = 노란 빛
+          ctx.drawImage(spinImg, fr[0], fr[1], fr[2], fr[3], -fr[2] * k / 2, -fr[3] * k / 2, fr[2] * k, fr[3] * k);
 
         } else if (ef.type === 'whirlwind_slash') {
           ctx.translate(ef.x, ef.y);
