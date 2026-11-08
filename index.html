@@ -5458,7 +5458,7 @@
         icon: '🎵',
         color: '#d97706',
         roleDesc: '노래 버프·피해 감소·침묵·밀쳐내기',
-        passiveName: '합주', passiveDesc: '주변 2.5칸 안의 아군(자신 포함)이 주는 피해 +8% (음유시인이 여럿이어도 한 번만)',
+        passiveName: '합주', passiveDesc: '주변 2.5칸 안의 아군(자신 포함)이 주는 피해 +12%, 공격·이동 속도 +10% (음유시인이 여럿이어도 한 번만)',
         baseHp: 1400, baseAtk: 58, baseDef: 24, baseSpd: 112, range: 280, maxMana: 100
       },
       // 광전사: 근접 브루저. 체력·방어는 전사와 같고 공격력은 높음. 기본 공격은 전사처럼 한 명을 베는 도끼질
@@ -5524,7 +5524,7 @@
       summoner: { harmony: true },
       brawler: { spirit: true },         // 격투가 투혼: 연격(brawlerBasicAttack) · 받는 피해 -10%·흡혈 10% (applyDamage) · 대시 쿨타임 0.1초 (createSimUnit)
       pyro:    { vsMonster: 1.3, ember: true }, // 화염술사 번지는 불길: 불티(pyroAddEmber)·화상 번짐(pyroBurnSpread)은 따로 처리       // 소환사 원소 조화: 정령 능력치 보너스 (spiritHarmonyMult)
-      paladin: { taken: 0.9, devotion: true },   // 성기사 헌신: 2칸 안 아군이 받는 피해 20%를 대신 받음 (paladinDevotionShare)  // 광전사 불굴의 투지: 잃은 체력만큼 피해 증가 + 흡혈 (applyDamage·berserkerLifesteal)     // 음유시인 합주: 주변 아군 주는 피해 +8% (bardEnsembleOn으로 applyDamage에서)
+      paladin: { taken: 0.9, devotion: true },   // 성기사 헌신: 2칸 안 아군이 받는 피해 20%를 대신 받음 (paladinDevotionShare)  // 광전사 불굴의 투지: 잃은 체력만큼 피해 증가 + 흡혈 (applyDamage·berserkerLifesteal)     // 음유시인 합주: 주변 아군 주는 피해 +12% (bardEnsembleOn으로 applyDamage에서)
       sniper:  { vsBoss: 1.3 }         // 저격수 대형 표적: 엘리트 보스·탑 종족 보스에게 주는 피해 +30%
       // 창병 패시브 창술(기본 공격 전환)은 수치 보정이 아니라 lancerBasicAttack에서 처리
     };
@@ -18436,6 +18436,7 @@
       if (st.blessed > 0) speedMult += 0.1;
       if (st.miracle > 0) speedMult += 0.2; // 기적의 축복: 이동·공격 속도 +20%
       if ((st.anthem || 0) > 0) speedMult += BARD_ANTHEM_SPEED_UP; // 고양: 이동·공격 속도 +15%
+      if (bardEnsembleOn(u)) speedMult += BARD_ENSEMBLE_SPEED_UP; // 합주: 이동·공격 속도 +10%
       if (st.skate > 0) speedMult += SKATE_SPEED_UP;
       if (st.shock > 0) speedMult -= 0.35;
       if (st.poison > 0) speedMult -= 0.12;
@@ -19899,7 +19900,7 @@
         if (attacker.statuses.poison > 0) modDmg *= 0.80;
         if (attacker.statuses.weaken > 0) modDmg *= 1 - CURSE_WEAKEN_ATK_DOWN; // 쇠약: 공격력 -20%
         if ((attacker.statuses.anthem || 0) > 0) modDmg *= 1 + BARD_ANTHEM_ATK_UP; // 고양: 공격력 +10%
-        if (bardEnsembleOn(attacker)) modDmg *= 1 + BARD_ENSEMBLE_DMG_UP; // 음유시인 합주: 주변 아군 주는 피해 +8%
+        if (bardEnsembleOn(attacker)) modDmg *= 1 + BARD_ENSEMBLE_DMG_UP; // 음유시인 합주: 주변 아군 주는 피해 +12%
         if (attacker.monsterPassives?.includes('enrage') && attacker.hp < attacker.maxHp * 0.5) modDmg *= 1.35;
         if (attacker.spiritElem && !skillHitSource) modDmg *= spiritHarmonyMult(attacker.ownerId); // 소환사 원소 조화: 정령 기본 공격
       }
@@ -21012,6 +21013,7 @@
         if (st.blessed > 0) speedMult += 0.1;
         if (st.miracle > 0) speedMult += 0.2;
         if ((st.anthem || 0) > 0) speedMult += BARD_ANTHEM_SPEED_UP;
+        if (bardEnsembleOn(u)) speedMult += BARD_ENSEMBLE_SPEED_UP; // 합주: 이동·공격 속도 +10%
         if (st.skate > 0) speedMult += SKATE_SPEED_UP;
         if (st.shock > 0) speedMult -= 0.35;
         if (st.poison > 0) speedMult -= 0.12;
@@ -24562,9 +24564,10 @@
 
     // ===== 음유시인 공통 =====
     // 고양(anthem): 공격력 +10%·속도 +15% · 선율(ballad): 받는 피해 -20% · 침묵(silence): 스킬 사용 불가 (applyDamage·speedMult·aiReadySkillKeys)
-    // 패시브 합주(주변 아군 주는 피해 +8%)는 JOB_PASSIVE.bard.ensemble로 bardEnsembleOn에서
+    // 패시브 합주(주변 아군 주는 피해 +12%·이동·공격 속도 +10%)는 JOB_PASSIVE.bard.ensemble로 bardEnsembleOn에서
     const BARD_ENSEMBLE_CELLS = 2.5;
     const BARD_ENSEMBLE_DMG_UP = 0.12;
+    const BARD_ENSEMBLE_SPEED_UP = 0.1;     // 합주: 이동·공격 속도 +10%
     const BARD_ANTHEM_ATK_UP = 0.15;
     const BARD_ANTHEM_SPEED_UP = 0.2;
     const BARD_BALLAD_TAKEN_DOWN = 0.25;
