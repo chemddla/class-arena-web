@@ -39964,7 +39964,7 @@
         // 내가 중계 중인 결투방에 관전자가 늘었으면 바로 전체 화면 한 장 (바뀐 칸만 받으면 되살릴 바탕이 없음)
         if (liveNet.role === 'host' && liveNet.roomId && livePvpRoomsCache[liveNet.roomId]) {
           const n = Object.keys(livePvpRoomsCache[liveNet.roomId].spectators || {}).length;
-          if (n > (liveNet.pvpWatchers || 0)) liveNet.sentU = null;
+          if (n > (liveNet.pvpWatchers || 0)) { liveNet.sentU = null; liveNet.lastFramePublishedAt = 0; }
           liveNet.pvpWatchers = n;
         }
         maintainPvpRooms();
@@ -41936,15 +41936,6 @@
         ? `📺 [관전] ${r.hostName}의 팀전을 보고 있어요. (WASD·드래그로 화면 이동)`
         : `📺 [관전] ${r.hostName} vs ${r.guestName} 결투를 보고 있어요. (WASD·드래그로 화면 이동)`);
       startLiveBattleNet(r.roomId, 'guest', r.startedAt, true, isTeamLiveRoom(r));
-      // 관전 표시(watchers/내 id): 방장이 보는 사람 수를 알게 → 1:1 결투에서 직접 연결로 잘 보내는 중이고 아무도 안 보면 서버 화면을 드문드문 보냄 (liveServerFrameInterval)
-      // 레이드 관전과 같은 칸(raidWatchRef)을 써서 멈출 때 지우고(stopTowerLiveNet) 재접속 때 다시 적는(onLiveReconnected) 처리를 함께 씀 · 끊기면 서버가 지움
-      const me = getActiveStudent();
-      if (me && liveNet.ref && liveNet.role === 'guest') {
-        const wRef = liveNet.ref.child('watchers').child(me.id);
-        liveNet.raidWatchRef = wRef;
-        try { wRef.onDisconnect().remove(); } catch (e) {}
-        wRef.set({ id: me.id, name: cleanUserText(me.name, 30) || '친구', at: Date.now() }).catch(() => {});
-      }
     }
 
     function checkAutoStartMatchedPvpRoom() {
@@ -42121,7 +42112,7 @@
         sent: new WeakSet(), pendingLogs: [], remoteCtrl: null, remoteUnitId: null, sentU: null, sentT: 0, keyAt: 0, remoteInputAt: 0,
         lastInputSentAt: 0, inputTimer: null, lastAimSent: null, lastInput: null, inputFull: false,
         guestChose: false, started: false, lastStatusAt: 0, hostStatus: null,
-        lastFramePublishedAt: 0, spectator, timeoutExtended: false, roomWatchers: 0,
+        lastFramePublishedAt: 0, spectator, timeoutExtended: false, pvpWatchers: 0,
         team: Boolean(team), teamExpect: teamExpect || [], teamChosen: {}, remoteCtrls: {}, myId: getActiveStudent()?.id || null,
         dgUnitSig: null, dgRoomSeq: null, dgSentJ: null, dgChangedAt: 0
       });
@@ -42161,18 +42152,7 @@
         if (role === 'host') {
           // 이 기기에서 요즘 직접 연결이 계속 안 됐으면(학교 와이파이가 기기끼리 막아 둔 경우 등) 점검 없이 바로 서버로 → 시작이 6초씩 늦어지지 않게
           if (liveRtcRecentlyFailed()) addBattleLog('📡 이 와이파이에서는 직접 연결이 잘 안 돼서 서버로 진행해요.');
-          else {
-            liveNet.rtcTried = true;
-            liveRtcStartHost(ref, liveNet.bid);
-            // 보는 친구 수(watchers): 직접 연결 중에 아무도 안 보면 서버 화면을 드문드문 보냄 (liveServerFrameInterval) · 새로 보는 친구에겐 바로 전체 화면 한 장
-            ref.child('watchers').on('value', snap => {
-              if (liveNet.ref !== ref) return;
-              const val = snap && snap.val();
-              const n = val && typeof val === 'object' ? Object.keys(val).length : 0;
-              if (n > liveNet.roomWatchers) { liveNet.sentU = null; liveNet.lastFramePublishedAt = 0; }
-              liveNet.roomWatchers = n;
-            });
-          }
+          else { liveNet.rtcTried = true; liveRtcStartHost(ref, liveNet.bid); }
         } else liveRtcStartGuest(ref, liveNet.bid);
       }
       liveWatchConnection();
@@ -42273,15 +42253,19 @@
       return LiveRtc.open && LiveRtc.role === 'guest' && Date.now() - LiveRtc.lastFrameAt < LIVE_RTC_STALE_MS;
     }
     // 방장이 서버(Firebase)로 화면을 보내는 간격
-    // 직접 연결로 도전자에게 잘 보내는 중(0.3초 안에 보냈고 밀린 양이 작음)이고 보는 친구(watchers)가 없으면: 서버 화면은 도전자가 안 보고(직접 연결 화면을 봄) 끊겼을 때 이어 볼 바탕일 뿐이라
+    // 직접 연결로 도전자에게 잘 보내는 중(0.3초 안에 보냈고 밀린 양이 작음)이고 보는 친구(pvp_rooms/<방>/spectators, 방장이 pvp_rooms 구독으로 받음)가 없으면: 서버 화면은 도전자가 안 보고(직접 연결 화면을 봄) 끊겼을 때 이어 볼 바탕일 뿐이라
     // LIVE_RTC_SERVER_FRAME_MS마다만 보냄 → 도전자 기기가 내려받는 서버 화면이 약 1/3로 줌. 링크가 막히면(밀린 양이 늘면) 바로 0.15초 간격으로 돌아옴 (도전자는 0.6초 뒤 서버 화면으로 넘어옴)
     // 바뀐 칸만 담는 화면(d)의 이어 붙이기는 간격과 상관없음 (도전자는 직접 연결 중에도 서버 화면을 이어 붙여 둠)
-    // LIVE_RTC_SERVER_THROTTLE_FROM 전에는 예전 간격 그대로: 그 전에 연 관전 탭은 watchers에 표시하지 않아 방장이 모름
+    // LIVE_RTC_SERVER_THROTTLE_FROM 전에는 예전 간격 그대로 (직접 연결 자체가 그날 들어간 기능이라 같은 기준 시각으로 맞춤)
     const LIVE_RTC_SERVER_FRAME_MS = 500, LIVE_RTC_HEALTHY_MS = 300, LIVE_RTC_HEALTHY_BUF = 4096;
     const LIVE_RTC_SERVER_THROTTLE_FROM = Date.UTC(2026, 10, 8, 15);
+    function livePvpSpectatorCount() {
+      const r = liveNet.roomId && livePvpRoomsCache ? livePvpRoomsCache[liveNet.roomId] : null;
+      return r && r.spectators && typeof r.spectators === 'object' ? Object.keys(r.spectators).length : 0;
+    }
     function liveServerFrameInterval(nowMs) {
       const R = LiveRtc;
-      if (liveNet.rtcDecision !== 'rtc' || liveNet.team || liveNet.towerCast || liveNet.roomWatchers > 0 || nowMs < LIVE_RTC_SERVER_THROTTLE_FROM) return LIVE_FRAME_INTERVAL_MS;
+      if (liveNet.rtcDecision !== 'rtc' || liveNet.team || liveNet.towerCast || nowMs < LIVE_RTC_SERVER_THROTTLE_FROM || livePvpSpectatorCount() > 0) return LIVE_FRAME_INTERVAL_MS;
       if (!liveRtcCanSend('host') || nowMs - R.lastSentAt > LIVE_RTC_HEALTHY_MS || R.dc.bufferedAmount > LIVE_RTC_HEALTHY_BUF) return LIVE_FRAME_INTERVAL_MS;
       return LIVE_RTC_SERVER_FRAME_MS;
     }
@@ -42557,7 +42541,7 @@
       liveNet.framePaused = false;
       stopTowerLiveNet();
       if (liveNet.ref) {
-        ['init', 'frame', 'result', 'input', 'inputs', 'status', 'handoff', 'watchers'].forEach(k => { try { liveNet.ref.child(k).off(); } catch (e) {} });
+        ['init', 'frame', 'result', 'input', 'inputs', 'status', 'handoff'].forEach(k => { try { liveNet.ref.child(k).off(); } catch (e) {} });
       }
       clearTimeout(liveNet.inputTimer);
       Object.values(liveNet.remoteCtrls || {}).forEach(c => {
