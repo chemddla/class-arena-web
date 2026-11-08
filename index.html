@@ -19075,6 +19075,7 @@
     function addBattleLog(text) {
       if (liveNet.role === 'host' && sim.running && liveNet.pendingLogs.length < 30) {
         liveNet.pendingLogs.push(String(text).replace(/<[^>]*>/g, ''));
+        if (LiveRtc.open && LiveRtc.role === 'host' && LiveRtc.logs.length < 30) LiveRtc.logs.push(String(text).replace(/<[^>]*>/g, ''));
       }
       const box = document.getElementById('battleLogBox');
       const div = document.createElement('div');
@@ -31657,7 +31658,7 @@
           if (sim.running) stepSimulation();
         }
         if (refreshStatus) renderLiveUnitStatus();
-        if (ticks > 0 && sim.running && (sim.netRole === 'host' || liveNet.towerCast)) publishLiveBattleFrame();
+        if (ticks > 0 && sim.running && (sim.netRole === 'host' || liveNet.towerCast)) { publishLiveBattleFrame(); publishLiveRtcFrame(); }
       } else if (!sim.running) {
         sim.tickCount++;
       }
@@ -42091,7 +42092,7 @@
         // bid: 이번 전투 표(방 시작 시각) · ep: 방장이 바뀔 때마다 1씩 커지는 번호 → 기기 시계가 달라도 '지난 전투의 화면'과 '새 방장의 화면'을 구분함
         bid: takeover && typeof prevBid === 'number' ? prevBid : (roomStartedAt || Date.now()), ep: takeover ? prevEp + 1 : 0,
         startedAt: Date.now(), initReceived: false, lastFrameAt: Date.now(), finished: false,
-        sent: new WeakSet(), pendingLogs: [], remoteCtrl: null, remoteUnitId: null, sentU: null, sentT: 0, keyAt: 0,
+        sent: new WeakSet(), pendingLogs: [], remoteCtrl: null, remoteUnitId: null, sentU: null, sentT: 0, keyAt: 0, remoteInputAt: 0,
         lastInputSentAt: 0, inputTimer: null, lastAimSent: null, lastInput: null, inputFull: false,
         guestChose: false, started: false, lastStatusAt: 0, hostStatus: null,
         lastFramePublishedAt: 0, spectator, timeoutExtended: false,
@@ -42126,7 +42127,158 @@
         ref.child('handoff').on('value', snap => applyLiveHandoff(snap && snap.val()));
         addBattleLog(spectator ? '📡 결투 화면을 받아오는 중이에요...' : '📡 방장 화면에서 진행되는 전투를 받아오는 중이에요...');
       }
+      // ⚡ 1:1로 맞붙는 결투(방장 + 도전자 한 명)는 두 기기를 직접 연결해 화면·조작을 주고받음 (안 되면 서버로 그대로)
+      if (!team && !spectator && typeof liveNet.bid === 'number') {
+        if (role === 'host') liveRtcStartHost(ref, liveNet.bid);
+        else liveRtcStartGuest(ref, liveNet.bid);
+      }
       liveWatchConnection();
+    }
+
+    // ==================== [⚡ 실시간 결투 직접 연결 (WebRTC)] ====================
+    // 예전: 방장 화면 → Firebase 서버 → 도전자 화면 (한 번에 0.1~0.3초, 화면은 0.15초마다) → 도전자는 늘 늦게 봄
+    // 지금: 1:1 결투(방장 + 도전자 한 명)는 시작할 때 서버(pvp_live/방/rtc)로 연결 정보만 주고받고 두 기기를 직접 이음
+    //   · 같은 교실·와이파이면 대개 0.01~0.05초 · 화면은 0.05초마다(늘 전체 화면) · 도전자 조작은 누르는 즉시
+    //   · 서버로도 예전처럼 계속 보냄(관전자·연결이 끊겼을 때 대비) → 직접 연결이 안 되거나 끊기면 저절로 서버 화면으로 이어 봄
+    const LIVE_RTC_FRAME_MS = 50;
+    const LIVE_RTC_STALE_MS = 600; // 직접 연결 화면이 이만큼 안 오면 서버 화면으로
+    const LIVE_RTC_ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
+    const LiveRtc = { gen: 0, pc: null, dc: null, open: false, ref: null, role: null, bid: null, offerSdp: null, lastFrameAt: 0, lastSentAt: 0, sent: new WeakSet(), logs: [] };
+    function liveRtcSupported() { return typeof RTCPeerConnection === 'function'; }
+    function liveRtcCanSend(role) {
+      return LiveRtc.open && LiveRtc.role === role && Boolean(LiveRtc.dc) && LiveRtc.dc.readyState === 'open';
+    }
+    function liveRtcSend(msg) {
+      const dc = LiveRtc.dc;
+      if (!dc || dc.readyState !== 'open' || dc.bufferedAmount > 256 * 1024) return false; // 밀려 있으면 이번 것은 건너뜀
+      try { dc.send(JSON.stringify(msg)); return true; } catch (e) { return false; }
+    }
+    function liveRtcFeeding() {
+      return LiveRtc.open && LiveRtc.role === 'guest' && Date.now() - LiveRtc.lastFrameAt < LIVE_RTC_STALE_MS;
+    }
+    function liveRtcStop() {
+      const R = LiveRtc;
+      if (R.ref) { try { R.ref.child('rtc/offer').off(); R.ref.child('rtc/answer').off(); } catch (e) {} }
+      try { if (R.dc) R.dc.close(); } catch (e) {}
+      try { if (R.pc) R.pc.close(); } catch (e) {}
+      Object.assign(R, { gen: R.gen + 1, pc: null, dc: null, open: false, ref: null, role: null, bid: null, offerSdp: null, lastFrameAt: 0, lastSentAt: 0, sent: new WeakSet(), logs: [] });
+    }
+    // ICE 후보를 다 모을 때까지(최대 ms) 기다림 → 연결 정보를 한 번에 주고받음
+    function liveRtcIceDone(pc, ms) {
+      return new Promise(res => {
+        if (pc.iceGatheringState === 'complete') { res(); return; }
+        const t = setTimeout(res, ms);
+        pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') { clearTimeout(t); res(); } });
+      });
+    }
+    function liveRtcBindChannel(dc, gen) {
+      const R = LiveRtc;
+      if (R.gen !== gen) return;
+      R.dc = dc;
+      dc.onopen = () => {
+        if (R.gen !== gen) return;
+        R.open = true;
+        // 이미 서버로 보낸 이펙트는 직접 연결로 다시 보내지 않음
+        R.sent = new WeakSet();
+        sim.effects.forEach(x => R.sent.add(x));
+        sim.floatTexts.forEach(x => R.sent.add(x));
+        addBattleLog('⚡ 친구 기기와 직접 연결됐어요! 화면·조작을 더 빠르게 주고받아요.');
+        if (R.role === 'guest') onLocalControlChanged(true);
+      };
+      dc.onclose = () => {
+        if (R.gen !== gen || !R.open) return;
+        R.open = false;
+        // 전투가 끝나서 닫힌 것이면 알리지 않음 (결과가 서버로 조금 늦게 올 수 있어 잠깐 뒤에 확인)
+        setTimeout(() => { if (R.gen === gen && sim.running && liveNet.role && !liveNet.finished) addBattleLog('📡 직접 연결이 끊겨 서버로 이어서 주고받아요.'); }, 1500);
+      };
+      dc.onmessage = ev => {
+        if (R.gen !== gen) return;
+        let m = null;
+        try { m = JSON.parse(ev.data); } catch (e) { return; }
+        if (!m || typeof m !== 'object') return;
+        if (m.k === 'f' && R.role === 'guest' && liveNet.role === 'guest') {
+          R.lastFrameAt = Date.now();
+          applyLiveFrame(m.v, true);
+        } else if (m.k === 'i' && R.role === 'host' && liveNet.role === 'host') {
+          applyRemoteBattleInput(m.v && typeof m.v === 'object' ? m.v : null);
+        }
+      };
+    }
+    async function liveRtcStartHost(ref, bid) {
+      liveRtcStop();
+      if (!liveRtcSupported()) return;
+      const R = LiveRtc, gen = R.gen;
+      Object.assign(R, { ref, role: 'host', bid });
+      try {
+        const pc = R.pc = new RTCPeerConnection({ iceServers: LIVE_RTC_ICE });
+        liveRtcBindChannel(pc.createDataChannel('live', { ordered: true }), gen);
+        await ref.child('rtc').remove();
+        await pc.setLocalDescription(await pc.createOffer());
+        await liveRtcIceDone(pc, 2500);
+        if (R.gen !== gen) return;
+        await ref.child('rtc/offer').set({ b: bid, sdp: pc.localDescription.sdp, at: Date.now() });
+        if (R.gen !== gen) return;
+        ref.child('rtc/answer').on('value', snap => {
+          const v = snap && snap.val();
+          if (R.gen !== gen || !v || v.b !== bid || typeof v.sdp !== 'string' || pc.remoteDescription) return;
+          pc.setRemoteDescription({ type: 'answer', sdp: v.sdp }).catch(() => {});
+        });
+      } catch (e) {}
+    }
+    function liveRtcStartGuest(ref, bid) {
+      liveRtcStop();
+      if (!liveRtcSupported()) return;
+      const R = LiveRtc, gen = R.gen;
+      Object.assign(R, { ref, role: 'guest', bid });
+      ref.child('rtc/offer').on('value', async snap => {
+        const v = snap && snap.val();
+        if (R.gen !== gen || !v || v.b !== bid || typeof v.sdp !== 'string' || R.offerSdp === v.sdp) return;
+        R.offerSdp = v.sdp;
+        R.open = false;
+        try { if (R.pc) R.pc.close(); } catch (e) {}
+        try {
+          const pc = R.pc = new RTCPeerConnection({ iceServers: LIVE_RTC_ICE });
+          pc.ondatachannel = ev => { if (R.pc === pc) liveRtcBindChannel(ev.channel, gen); };
+          await pc.setRemoteDescription({ type: 'offer', sdp: v.sdp });
+          await pc.setLocalDescription(await pc.createAnswer());
+          await liveRtcIceDone(pc, 2500);
+          if (R.gen !== gen || R.pc !== pc) return;
+          await ref.child('rtc/answer').set({ b: bid, sdp: pc.localDescription.sdp, at: Date.now() });
+        } catch (e) {}
+      });
+    }
+    // 방장: 직접 연결로 0.05초마다 전체 화면 (서버로 보내는 화면과 따로 · 이펙트·글자·기록도 따로 한 번씩)
+    function publishLiveRtcFrame() {
+      const R = LiveRtc;
+      if (!liveRtcCanSend('host') || liveNet.role !== 'host' || !sim.running) return;
+      const now = Date.now();
+      if (now - R.lastSentAt < LIVE_RTC_FRAME_MS) return;
+      R.lastSentAt = now;
+      const fresh = list => {
+        const out = [];
+        list.forEach(x => {
+          if (out.length >= 40 || R.sent.has(x)) return;
+          R.sent.add(x);
+          out.push(x);
+        });
+        return out;
+      };
+      const frame = {
+        at: now, b: liveNet.bid, ep: liveNet.ep || 0, t: sim.tickCount,
+        u: sim.units.map(packLiveUnit),
+        p: sim.projectiles.slice(0, 80).map(packLiveProjectile), // 투사체 번호 표(서버 화면용)는 건드리지 않게 늘 전체 모양으로
+        e: fresh(sim.effects).map(packLiveEffect),
+        f: fresh(sim.floatTexts).map(ft => [liveR1(ft.x), liveR1(ft.y), String(ft.text || ''), String(ft.color || ''), liveNum(ft.life)]),
+        l: R.logs.splice(0, 10),
+        zn: (sim.zones || []).map(z => [liveR1(z.x), liveR1(z.y), z.r, z.life, z.kind])
+      };
+      if (sim.eliteIntro) frame.it = sim.eliteIntro.t;
+      if (sim.rush) frame.rs = packRushState();
+      if (sim.dungeon && sim.dungeon.party) frame.dg = packDungeonState();
+      if (sim.awaitingControlChoice) frame.ps = 'choose';
+      if (sim.shake && !R.sent.has(sim.shake)) { R.sent.add(sim.shake); frame.sk = [sim.shake.power, sim.shake.life, sim.shake.maxLife]; }
+      if (sim.flash && !R.sent.has(sim.flash)) { R.sent.add(sim.flash); frame.fl = [String(sim.flash.color || '#ffffff'), sim.flash.life, sim.flash.maxLife]; }
+      liveRtcSend({ k: 'f', v: JSON.parse(JSON.stringify(frame)) });
     }
 
     // ----- 관전자가 다른 탭을 보고 있는 동안은 전투 화면을 받지 않음 -----
@@ -42236,6 +42388,7 @@
     }
 
     function stopLiveBattleNet() {
+      liveRtcStop();
       clearTimeout(liveNet.hiddenTimer);
       liveNet.hiddenTimer = null;
       liveNet.framePaused = false;
@@ -42582,6 +42735,10 @@
     // ----- 방장: 도전자 조작 받기 (도전자는 레드팀 용병만 조종할 수 있음) -----
     function applyRemoteBattleInput(val) {
       if (liveNet.role !== 'host' || !sim.running) return;
+      if (val && typeof val.at === 'number') {
+        if (val.at < (liveNet.remoteInputAt || 0)) return; // 직접 연결로 이미 받은 것보다 옛 조작
+        liveNet.remoteInputAt = val.at;
+      }
       const unit = val && val.unitId ? sim.units.find(u => u.id === val.unitId && u.team === 'red') : null;
       const prevId = liveNet.remoteUnitId;
       if (prevId && (!unit || unit.id !== prevId) && sim.controllers[prevId] === liveNet.remoteCtrl) delete sim.controllers[prevId];
@@ -42682,17 +42839,8 @@
     // ----- 도전자: 내 조작 보내기 (너무 자주 보내지 않도록 최소 60ms 간격) -----
     // full=true: 전체를 보냄 (1.5초마다의 확인용 · 방장이 잠깐 끊겼다 와서 서버의 내 조작이 지워졌어도 되살아나게)
     // 그 밖에는 앞서 보낸 것과 다른 칸만 update로 (조준만 움직여도 250B 전체를 보내던 것을 40B 안팎으로 · 방장 내려받기)
-    function onLocalControlChanged(full = false) {
-      if (full) liveNet.inputFull = true;
-      if (sim.netRole !== 'guest' || liveNet.role !== 'guest' || !liveNet.ref || liveNet.spectator) return;
-      const wait = 60 - (Date.now() - liveNet.lastInputSentAt);
-      if (wait > 0) {
-        if (!liveNet.inputTimer) liveNet.inputTimer = setTimeout(() => { liveNet.inputTimer = null; onLocalControlChanged(); }, wait);
-        return;
-      }
-      const sendFull = liveNet.inputFull || !liveNet.lastInput || !liveNet.lastInputSentAt; // 처음·다시 보내야 할 때(lastInputSentAt = 0)
-      liveNet.inputFull = false;
-      liveNet.lastInputSentAt = Date.now();
+    // 도전자 조작 한 묶음 (서버·직접 연결 둘 다 같은 모양)
+    function buildLiveInputPayload() {
       const c = localBattleInput;
       const payload = {
         at: Date.now(),
@@ -42719,6 +42867,23 @@
         payload.ay = liveR1(c.aimY);
         liveNet.lastAimSent = { x: c.aimX, y: c.aimY };
       }
+      return payload;
+    }
+
+    function onLocalControlChanged(full = false) {
+      if (full) liveNet.inputFull = true;
+      if (sim.netRole !== 'guest' || liveNet.role !== 'guest' || !liveNet.ref || liveNet.spectator) return;
+      // ⚡ 직접 연결: 기다리지 않고 바로 방장 기기로 (서버로도 아래에서 그대로 보내 둠 → 직접 연결이 끊겨도 이어짐)
+      if (liveRtcCanSend('guest')) liveRtcSend({ k: 'i', v: JSON.parse(JSON.stringify(buildLiveInputPayload())) });
+      const wait = 60 - (Date.now() - liveNet.lastInputSentAt);
+      if (wait > 0) {
+        if (!liveNet.inputTimer) liveNet.inputTimer = setTimeout(() => { liveNet.inputTimer = null; onLocalControlChanged(); }, wait);
+        return;
+      }
+      const sendFull = liveNet.inputFull || !liveNet.lastInput || !liveNet.lastInputSentAt; // 처음·다시 보내야 할 때(lastInputSentAt = 0)
+      liveNet.inputFull = false;
+      liveNet.lastInputSentAt = Date.now();
+      const payload = buildLiveInputPayload();
       const ref = liveNet.team ? liveNet.ref.child('inputs').child(liveNet.myId || 'x') : liveNet.ref.child('input');
       const clean = JSON.parse(JSON.stringify(payload));
       if (sendFull) { liveNet.lastInput = clean; ref.set(clean).catch(() => {}); return; }
@@ -42817,18 +42982,27 @@
     // - 와이파이가 잠깐 멈췄다 몰아서 주면(학교 와이파이에서 흔함): 기다리는 시간은 빨리 늘리고 천천히 줄이며,
     //   재생 시점(playBase)은 순간 이동하지 않고 조금 느리게/빠르게 흘러서 따라감 → 멈칫·순간이동 대신 살짝 느려졌다 돌아옴
     function resetLiveFrameBuffer() {
-      Object.assign(liveNet, { ownPred: null, frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, playBase: null, lastPlayAt: 0, lastAimCheckAt: 0, hostPause: null, recvU: null, recvT: null });
+      Object.assign(liveNet, { rtcFeeding: false, ownPred: null, frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, playBase: null, lastPlayAt: 0, lastAimCheckAt: 0, hostPause: null, recvU: null, recvT: null });
     }
 
-    function applyLiveFrame(val) {
+    function applyLiveFrame(val, fromRtc = false) {
       if (liveNet.role !== 'guest' || !liveNet.initReceived || !val || !(Array.isArray(val.u) || typeof val.bt === 'number') || !liveAcceptPayload(val)) return;
-      if (!Array.isArray(val.u)) {
-        // 바뀐 칸만 담긴 화면: 바로 앞 화면을 바탕으로 전체를 되살림 · 앞 화면이 없으면(방금 들어옴·놓침) 다음 전체 화면까지 기다림
-        if (!liveNet.recvU || liveNum(val.bt) !== liveNet.recvT) return;
-        val.u = unpackLiveUnitDelta(liveNet.recvU, val.d, liveNum(val.t) - liveNet.recvT);
+      if (fromRtc) {
+        if (!Array.isArray(val.u)) return; // 직접 연결 화면은 늘 전체 화면
+        // 서버 → 직접 연결로 바뀜: 도착 시간 기준을 새로 잡음 (서버 화면이 더 늦게 오던 기록이 남아 기다리는 시간이 길어지지 않게)
+        if (!liveNet.rtcFeeding) { liveNet.rtcFeeding = true; liveNet.clockOffs = []; }
+      } else {
+        if (!Array.isArray(val.u)) {
+          // 바뀐 칸만 담긴 화면: 바로 앞 화면을 바탕으로 전체를 되살림 · 앞 화면이 없으면(방금 들어옴·놓침) 다음 전체 화면까지 기다림
+          if (!liveNet.recvU || liveNum(val.bt) !== liveNet.recvT) return;
+          val.u = unpackLiveUnitDelta(liveNet.recvU, val.d, liveNum(val.t) - liveNet.recvT);
+        }
+        liveNet.recvU = val.u;
+        liveNet.recvT = liveNum(val.t);
+        // 직접 연결로 잘 받는 중이면 서버 화면은 이어 붙이기(바뀐 칸 되살리기)만 해 두고 쓰지 않음 · 직접 연결이 멈추면 바로 서버 화면으로
+        if (liveRtcFeeding()) { liveNet.lastFrameAt = Date.now(); return; }
+        if (liveNet.rtcFeeding) { liveNet.rtcFeeding = false; liveNet.clockOffs = []; }
       }
-      liveNet.recvU = val.u;
-      liveNet.recvT = liveNum(val.t);
       const now = Date.now();
       const at = liveNum(val.at);
       liveNet.lastFrameAt = now;
@@ -43046,7 +43220,10 @@
         const dt = Math.max(0, Math.min(250, now - (liveNet.lastPlayAt || now)));
         liveNet.lastPlayAt = now;
         // 기다리는 시간: 화면 간격 + 지터 + 여유 (관전은 조종 반응이 필요 없으니 넉넉히) · 늘릴 땐 빨리, 줄일 땐 천천히
-        const want = Math.max(110, Math.min(liveNet.spectator ? 900 : 450, LIVE_FRAME_INTERVAL_MS + liveNet.jitter + (liveNet.spectator ? 80 : 20)));
+        // 직접 연결이면 화면이 촘촘히(0.05초마다) 와서 훨씬 짧게 기다려도 됨
+        const want = liveNet.rtcFeeding
+          ? Math.max(45, Math.min(450, LIVE_RTC_FRAME_MS + liveNet.jitter + 15))
+          : Math.max(110, Math.min(liveNet.spectator ? 900 : 450, LIVE_FRAME_INTERVAL_MS + liveNet.jitter + (liveNet.spectator ? 80 : 20)));
         liveNet.playDelay += (want - liveNet.playDelay) * Math.min(1, (want > liveNet.playDelay ? 0.012 : 0.0006) * dt);
         // 재생 시점은 목표를 향해 실제 시간의 ±10%까지만 빨라지거나 느려짐 · 받아 둔 화면이 바닥나면 절반 속도로 늦춰서 버팀
         const target = liveNet.clockOff + liveNet.playDelay;
