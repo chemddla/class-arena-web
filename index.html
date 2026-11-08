@@ -39864,14 +39864,12 @@
       }, wait + 250);
     }
     let launchedLiveRoomIds = new Set();
-    let processedBattleEventIds = new Set();
 
     let activePvpRoomsRef = null;
     let activeRaidRoomsRef = null;
     let activeMinigameRoomsRef = null;
     let activeRoomInvitesRef = null;
     let activeMinigamesRef = null;
-    let activeBattleEventsRef = null;
     let activeTowerLiveRef = null;
     var activePetRunLiveRef = null;
     let towerLiveCache = {};
@@ -39937,7 +39935,6 @@
       if (activeMinigamesRef && typeof activeMinigamesRef.off === 'function') activeMinigamesRef.off();
       activeMinigamesRef = null;
       activeMinigameBoardId = null;
-      if (activeBattleEventsRef && typeof activeBattleEventsRef.off === 'function') activeBattleEventsRef.off();
       if (activeTowerLiveRef && typeof activeTowerLiveRef.off === 'function') activeTowerLiveRef.off();
       if (activePetRunLiveRef && typeof activePetRunLiveRef.off === 'function') activePetRunLiveRef.off();
 
@@ -40021,51 +40018,8 @@
 
       // 4-1) 🌍 레이드 (/classes/{code}/world_boss): 공유 체력·기여도·기록
       WorldBoss.subscribe(cleanCode, db);
-
-      // 5) 라이브 전투 중 실시간 대시(Dash) 이벤트 구독 (/classes/{code}/live_battle_events)
-      activeBattleEventsRef = db.ref(`classes/${cleanCode}/live_battle_events`);
-      activeBattleEventsRef.limitToLast(10).on('child_added', (snap) => {
-        const ev = snap && typeof snap.val === 'function' ? snap.val() : null;
-        if (!ev || !ev.eventId || processedBattleEventIds.has(ev.eventId)) return;
-        if (processedBattleEventIds.size > 1000) processedBattleEventIds.clear(); // 이벤트는 20초 뒤 지워지므로 오래 기억할 필요 없음
-        processedBattleEventIds.add(ev.eventId);
-        const myStu = getActiveStudent();
-        if (!sim.running || !myStu || ev.actorId === myStu.id) return;
-        if (sim.netRole) return; // 화면 동기화 중인 결투는 대시도 조작 입력으로 전달됨
-        if (currentActiveLiveBattleRoomId && ev.roomId === currentActiveLiveBattleRoomId) {
-          const targetTeam = ev.team || 'red';
-          const units = sim.units.filter(u => u.alive && u.team === targetTeam);
-          units.forEach(u => {
-            if (u.dashCooldown <= 0) {
-              triggerUnitDash(u, u.facingAngle || (u.team === 'blue' ? 0 : Math.PI), `💨${ev.actorName || '실시간'}대시`);
-            }
-          });
-          renderLiveUnitStatus();
-        }
-      });
-    }
-
-    function pushLiveBattleDashEvent(teamColor) {
-      const db = RealtimePvpService.initFirebaseClientSafe();
-      const classCode = String(state.classCode || '').trim().toUpperCase();
-      const myStu = getActiveStudent();
-      if (!db || !classCode || !myStu || !sim.running) return;
-      if (sim.mode !== 'pvp_realtime' && sim.mode !== 'elite_raid') return;
-      if (sim.netRole) return;
-      const evId = 'dash_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-      processedBattleEventIds.add(evId);
-      const evRef = db.ref(`classes/${classCode}/live_battle_events/${evId}`);
-      evRef.set({
-        eventId: evId,
-        roomId: currentActiveLiveBattleRoomId || 'default_live',
-        actorId: myStu.id,
-        actorName: myStu.name,
-        team: teamColor || 'blue',
-        createdAt: Date.now()
-      }).then(() => {
-        try { evRef.onDisconnect().remove(); } catch (e) {}
-        setTimeout(() => { evRef.remove().catch(() => {}); }, 20000);
-      }).catch(() => {});
+      // (예전 5) live_battle_events 대시 이벤트 구독은 뺌: 화면 동기화(netRole) 전 방식이라 받는 쪽이 늘 무시했고,
+      //  보내는 쪽은 혼자 하는 엘리트 토벌·연습 친구 결투에서만 써서 학급 전체 탭이 쓸모없는 이벤트와 20초 뒤 삭제를 내려받았음. 예전 탭이 올린 것은 스스로 20초 뒤 지움)
     }
 
     // ==================== [방 접속 표시 · 방장 넘기기 · 한 번에 하나의 컨텐츠] ====================
@@ -48539,18 +48493,6 @@
           </div>`;
       }).join('');
     }
-
-    // 대시 발동 시 실시간 이벤트 전파 훅 연결
-    const _origTriggerSingleDash = triggerSingleUnitManualDash;
-    triggerSingleUnitManualDash = function (unitId) {
-      _origTriggerSingleDash(unitId);
-      pushLiveBattleDashEvent('blue');
-    };
-    const _origTriggerAllDash = triggerAllBlueDash;
-    triggerAllBlueDash = function () {
-      _origTriggerAllDash();
-      pushLiveBattleDashEvent('blue');
-    };
 
     // ==================== [C. 미니게임 대기 로비실 → 방 개설 → 친구 입장 → 준비완료 → 실시간 미니게임 시작] ====================
     window.selectLobbyMinigameType = function (typeKey) {
