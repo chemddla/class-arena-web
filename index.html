@@ -5670,7 +5670,7 @@
       if (!u.casting && !(u.castLock > 0) && Math.random() < 0.012) confusedRandomSkill(u, enemies);
     }
     function confusedRandomSkill(u, enemies) {
-      if (lancerBusy(u) || brawlerHolding(u) || (u.statuses.guard || 0) > 0 || (u.statuses.silence || 0) > 0) return;
+      if (lancerBusy(u) || whirlwindBusy(u) || brawlerHolding(u) || (u.statuses.guard || 0) > 0 || (u.statuses.silence || 0) > 0) return;
       const book = unitSkillBook(u);
       const ammo = u.ammo || 0;
       const ready = (u.unlockedSkills || []).filter(k => book[k] && !CONFUSE_SKIP_SKILLS.includes(k)
@@ -18308,6 +18308,7 @@
       if (tauntSourceOf(u)) { say('😤 도발당해서 스킬을 못 써요', '#ea580c'); return; }
       if ((u.statuses.silence || 0) > 0) { say('🤐 침묵해서 스킬을 못 써요'); return; }
       if (lancerBusy(u)) { say('🔱 창을 휘두르는 중에는 못 써요'); return; }
+      if (whirlwindBusy(u)) { say('🌪️ 회전베기 중에는 못 써요'); return; }
       if (brawlerHolding(u)) { say('🥋 반격 자세 중에는 못 써요'); return; }
       if ((u.skillCooldowns?.[key] || 0) > 0) { say('⏳ 아직 준비 중'); return; }
       if (u.mana < (sk.manaCost || 0)) { say('💧 마나 부족', '#0284c7'); return; }
@@ -20241,6 +20242,7 @@
       if (tauntSourceOf(unit)) return []; // 도발당하면 스킬을 못 씀
       if ((unit.statuses?.silence || 0) > 0) return []; // 침묵: 스킬을 못 씀
       if (lancerBusy(unit)) return []; // 창병 회전·난무 중에는 스킬을 못 씀
+      if (whirlwindBusy(unit)) return []; // 회전베기로 도는 중에는 다른 스킬을 못 씀
       if (brawlerHolding(unit)) return []; // 격투가 반격 자세 중에는 스킬을 못 씀
 
       const jobSkills = unitSkillBook(unit);
@@ -24130,6 +24132,10 @@
     function lancerMoveMult(u) {
       const st = u.statuses || {};
       return (st.rampage || 0) > 0 ? 0 : ((st.spin || 0) > 0 ? LANCER_SPIN_MOVE_MULT : 1);
+    }
+    // 회전베기로 도는 중 (다른 스킬 불가, 끝나야 다음 스킬)
+    function whirlwindBusy(u) {
+      return Boolean(u && u.activeSkillType === 'whirlwind' && (u.skillAnim || 0) > 0);
     }
     // 회전·난무 중 (기본 공격·스킬 불가)
     function lancerBusy(u) {
