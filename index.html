@@ -22949,6 +22949,45 @@
     // 히든 스킬 시전 중 오색 구슬: 예전부터 있던 히든 스킬이 전용 시전 그림을 아직 받는 동안 잠깐 대신 보여 줄 때만 씀.
     //   쓰는 스킬만 적는 방식이라, 새로 만드는 히든 스킬(메테오 등)은 이 목록에 넣지 않음 → 오색 구슬이 나오지 않음 (사용자 요청 2026-11-06)
     const HIDDEN_CAST_ORB_KEYS = new Set(['excalibur', 'element_fusion', 'miracle', 'storm', 'assassinate', 'giant', 'musou', 'last_shot', 'blizzard', 'ruin_rite', 'encore', 'undying_rage', 'aegis', 'spirit_king']);
+    // 엑스칼리버 시전 기운: 유닛보다 먼저 그려서 전사 몸 뒤에 깔림 (위에 덮으면 전사가 가려짐)
+    function drawExcaliburCastAura(ctx) {
+      if (!WARRIOR_EXCALIBUR_FX.fx.ready) return;
+      const t = sim.tickCount;
+      sim.units.forEach(u => {
+        if (!u.alive || (isStealthed(u) && !canViewerSeeStealthed(u))) return;
+        const c = u.casting;
+        if (!c || c.key !== 'excalibur') return;
+        const p = 1 - c.left / c.total;
+        ctx.save();
+        // 엑스칼리버: 발밑에서 반짝임이 솟고, 몸 둘레에 금빛·푸른 고리가 점점 커지며 번개가 튐 (마지막 0.5초는 큰 고리)
+        const bx = u.x, by = u.y - 36, pulse = 0.5 + 0.5 * Math.sin(t * 0.3);
+        const g = ctx.createRadialGradient(bx, by, 4, bx, by, 70 + p * 40);
+        g.addColorStop(0, `rgba(254, 243, 199, ${0.2 + p * 0.3})`);
+        g.addColorStop(1, 'rgba(250, 204, 21, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(bx, by, 70 + p * 40, 0, Math.PI * 2); ctx.fill();
+        ctx.globalCompositeOperation = 'lighter';
+        const big = c.left <= 30;
+        ctx.save();
+        ctx.translate(bx, by);
+        ctx.rotate(t * (big ? 0.05 : 0.025));
+        ctx.globalAlpha = 0.28 + 0.3 * p; // 몸이 비치도록 옅게
+        if (usesExcalSr(u) && WARRIOR_EXCAL_SR_FX.ready) { // 시크릿 레어: 번개 구체 → 고리가 겹친 구체
+          ctx.rotate(-t * (big ? 0.05 : 0.025));
+          drawExcalSrFrame(ctx, p < 0.55 && !big ? 'charge1' : 'charge2', (0.8 + 0.4 * p) * (1 + 0.04 * pulse), 0.5 + 0.4 * p);
+        } else drawExcaliburFrame(ctx, big ? 'ring2' : 'ring1', (0.75 + 0.5 * p) * (1 + 0.04 * pulse) * (big ? 0.7 : 1.1));
+        ctx.restore();
+        for (let i = 0; i < 2; i++) { // 발밑 반짝임: 두 겹이 어긋나게 솟았다 사라짐
+          const q = (t * 0.03 + i * 0.5) % 1;
+          ctx.save();
+          ctx.translate(u.x + (i ? 10 : -10), u.y + 6 - q * 22);
+          ctx.globalAlpha = (1 - q) * 0.95;
+          drawExcaliburFrame(ctx, 'spark', 0.7 + 0.3 * p);
+          ctx.restore();
+        }
+        ctx.restore();
+      });
+    }
     function drawHiddenSkillOverlay(ctx) {
       drawRuinMarks(ctx);
       const t = sim.tickCount;
@@ -22958,36 +22997,7 @@
         if (c && c.key && isHiddenSkillKey(c.key)) {
           const p = 1 - c.left / c.total;
           ctx.save();
-          if (c.key === 'excalibur' && WARRIOR_EXCALIBUR_FX.fx.ready) {
-            // 엑스칼리버: 발밑에서 반짝임이 솟고, 몸 둘레에 금빛·푸른 고리가 점점 커지며 번개가 튐 (마지막 0.5초는 큰 고리)
-            const bx = u.x, by = u.y - 36, pulse = 0.5 + 0.5 * Math.sin(t * 0.3);
-            const g = ctx.createRadialGradient(bx, by, 4, bx, by, 70 + p * 40);
-            g.addColorStop(0, `rgba(254, 243, 199, ${0.2 + p * 0.3})`);
-            g.addColorStop(1, 'rgba(250, 204, 21, 0)');
-            ctx.fillStyle = g;
-            ctx.beginPath(); ctx.arc(bx, by, 70 + p * 40, 0, Math.PI * 2); ctx.fill();
-            ctx.globalCompositeOperation = 'lighter';
-            const big = c.left <= 30;
-            ctx.save();
-            ctx.translate(bx, by);
-            ctx.rotate(t * (big ? 0.05 : 0.025));
-            ctx.globalAlpha = 0.28 + 0.3 * p; // 몸이 비치도록 옅게
-            if (usesExcalSr(u) && WARRIOR_EXCAL_SR_FX.ready) { // 시크릿 레어: 번개 구체 → 고리가 겹친 구체
-              ctx.rotate(-t * (big ? 0.05 : 0.025));
-              drawExcalSrFrame(ctx, p < 0.55 && !big ? 'charge1' : 'charge2', (0.8 + 0.4 * p) * (1 + 0.04 * pulse), 0.5 + 0.4 * p);
-            } else drawExcaliburFrame(ctx, big ? 'ring2' : 'ring1', (0.75 + 0.5 * p) * (1 + 0.04 * pulse) * (big ? 0.7 : 1.1));
-            ctx.restore();
-            for (let i = 0; i < 2; i++) { // 발밑 반짝임: 두 겹이 어긋나게 솟았다 사라짐
-              const q = (t * 0.03 + i * 0.5) % 1;
-              ctx.save();
-              ctx.translate(u.x + (i ? 10 : -10), u.y + 6 - q * 22);
-              ctx.globalAlpha = (1 - q) * 0.95;
-              drawExcaliburFrame(ctx, 'spark', 0.7 + 0.3 * p);
-              ctx.restore();
-            }
-            ctx.restore();
-            return;
-          }
+          if (c.key === 'excalibur' && WARRIOR_EXCALIBUR_FX.fx.ready) { ctx.restore(); return; } // 엑스칼리버는 유닛보다 먼저 drawExcaliburCastAura에서 (몸을 가리지 않게)
           if (c.key === 'giant' && KNIGHT_GIANT_FX.fx.ready) {
             // 거인화: 발밑 불 마법진이 점점 커지며 타오르고, 붉은 불씨가 위로 솟음 (마지막 0.5초는 가장 크게)
             const pulse = 0.5 + 0.5 * Math.sin(t * 0.25);
@@ -31219,6 +31229,7 @@
       drawSpiritKingCircles(ctx); // 정령왕 소환진 (바닥)
       drawSpiritKingBursts(ctx); // 정령왕 강림 원소 고리 (바닥, 유닛 아래)
       drawDuelTethers(ctx); // 격투가 결투: 둘 사이 붉은 빛줄기 (유닛 몸 뒤)
+      drawExcaliburCastAura(ctx); // 엑스칼리버 시전 기운 (전사 몸 뒤)
       sortedUnits.forEach(u => {
         if (u.isEliteBoss && sim.eliteIntro) { drawEliteBossDrop(ctx, u); return; }
         drawUnitToken(ctx, u, sim.tickCount);
