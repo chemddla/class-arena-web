@@ -176,6 +176,24 @@ def load_matte(src, box, name=None):
     return rgba, foot, gnd - hy.min() + 1, hx.max() - hx.min() + 1, hx.mean(), gnd
 
 
+def trim_halo(sheet, passes=2):
+    # 흰 배경 찌꺼기: 검은 외곽선 바깥에 남은 1px 연회색 테두리 (배경과 섞인 가장자리)
+    #   투명한 곳에 닿아 있고 + 밝은 무채색 + 바로 옆에 어두운 외곽선이 있는 픽셀만 지움
+    #   (외곽선이 없는 바람 고리·궤적·먼지·바람 줄은 어두운 이웃이 없어 남음)
+    out = sheet.copy()
+    k = np.ones((3, 3), bool)
+    for _ in range(passes):
+        a = out[..., 3].astype(int)
+        rgb = out[..., :3].astype(int)
+        lum = rgb.mean(axis=2)
+        chroma = rgb.max(axis=2) - rgb.min(axis=2)
+        clear = a < 40
+        dark = (a > 200) & (lum < 75)
+        halo = (a > 0) & ndi.binary_dilation(clear, structure=k) & ndi.binary_dilation(dark, structure=k) & (lum > 120) & (chroma < 50)
+        out[halo] = 0
+    return out
+
+
 def soft_shrink(rgba, sc):   # 반투명을 살린 축소 (바람 고리용). 거의 불투명한 곳만 딱딱하게
     h, w = rgba.shape[:2]
     pm = rgba.copy(); pm[..., :3] *= pm[..., 3:] / 255
@@ -212,6 +230,7 @@ def main():
         x = i * cw + L - int(round(c))
         y = U - int(round(g))
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
+    sheet = trim_halo(sheet)
     Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
     print('cells:', ' '.join(f'{i}={n}' for i, (n, _, _) in enumerate(FRAMES)))
     print(f'warrior_0 cellW={cw} cellH={H} anchorX={L} anchorY={U} count={len(pieces)}')
