@@ -21906,13 +21906,21 @@
       });
     }
 
+    const UNIT_HEAD_TOP = new WeakMap(); // 유닛 → 마지막으로 그린 머리 꼭대기 y (유닛 기준, 그리기 전용)
+    // 화면 위 보스 체력 막대에 체력이 나오는 유닛 (updateEliteBossHpBar와 같은 조건)
+    function hasTopBossHpBar(u) { return Boolean(u && (u.isEliteBoss || u.rushBoss)); }
+    // 시전·지속 막대 높이: 보통은 몸 위 78px, 보스는 큰 몸을 가리지 않게 머리 꼭대기 위로
+    function castBarY(u) {
+      const head = UNIT_HEAD_TOP.get(u);
+      return u.y + (hasTopBossHpBar(u) && head != null ? Math.min(-78, head - 14) : -78);
+    }
     function drawCastBars(ctx) {
       sim.units.forEach(u => {
         // 회전베기·창병 회전·난무 중: 캐릭터 위에 남은 지속 시간이 줄어드는 막대
         const lasting = { whirlwind: [WHIRLWIND_TICKS, '🌪️'], spear_spin: [LANCER_SPIN_TICKS, '🌀'], spear_rampage: [LANCER_RAMPAGE_TICKS, '💥'] }[u.activeSkillType];
         if (u.alive && !u.casting && lasting && u.skillAnim > 0) {
           const ratio = Math.max(0, Math.min(1, u.skillAnim / lasting[0]));
-          const w = 54, h = 7, x = u.x - w / 2, y = u.y - 78;
+          const w = 54, h = 7, x = u.x - w / 2, y = castBarY(u);
           ctx.save();
           ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
           ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
@@ -21927,7 +21935,7 @@
         if (!u.alive || !u.casting || (isStealthed(u) && !canViewerSeeStealthed(u))) return;
         const c = u.casting;
         const ratio = 1 - c.left / c.total;
-        const w = 54, h = 7, x = u.x - w / 2, y = u.y - 78;
+        const w = 54, h = 7, x = u.x - w / 2, y = castBarY(u);
         ctx.save();
         ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
         ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
@@ -29841,6 +29849,7 @@
       const useSprite = Boolean(sprite && sprite.ready);
       // 스프라이트는 머리가 토큰보다 높아서 체력바를 그만큼 위로 올림
       const headTopY = useSprite ? 12 - Math.round((sprite.topH || sprite.standH) * spriteDrawH(u, sprite) / sprite.standH) : -8 - tokenR;
+      UNIT_HEAD_TOP.set(u, headTopY); // 시전 막대가 머리 위에 오도록 (drawCastBars)
       // 성기사 심판: 시전 막대 뒤 절반(망치 치켜든 둘째 칸) 동안 뛰어오르고, 발동(내리찍는 셋째 칸) 때 빠르게 떨어지며 내리찍음
       if (useSprite && u.alive && u.job === 'paladin' && !u.monsterType) {
         const jumpH = PALADIN_JUDGE_JUMP * spriteDrawH(u, sprite) / sprite.standH;
@@ -30226,9 +30235,12 @@
       }
 
       // 4) 체력·마나바 (폭 36px, 머리 위 배치)
+      // 보스 레이드·엘리트 보스·던전/러쉬 보스는 화면 위 보스 체력 막대가 있으니 머리 위 체력·마나·대시 막대는 생략
       const barW = 36;
       const bx = -barW / 2;
       const by = headTopY - 14;
+      const spiritLifeMax = u.spiritElem && SPIRIT_DEFS[u.spiritElem]?.life; // 아래 상태 아이콘 높이에도 씀
+      if (!hasTopBossHpBar(u)) {
       ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
       ctx.fillRect(bx - 1, by - 1, barW + 2, 8);
 
@@ -30247,7 +30259,6 @@
       ctx.fillRect(bx, by + 4.5, Math.round(barW * Math.max(0, u.mana / u.maxMana)), 2);
 
       // 소환사 정령·정령왕: 체력 바 위에 보라 바 = 소환 해제까지 남은 시간
-      const spiritLifeMax = u.spiritElem && SPIRIT_DEFS[u.spiritElem]?.life;
       if (spiritLifeMax && u.spiritOn) {
         ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
         ctx.fillRect(bx - 1, by - 5, barW + 2, 4);
@@ -30261,6 +30272,7 @@
         ctx.fillStyle = dashReadyRatio >= 1 ? '#10b981' : '#64748b';
         ctx.fillRect(bx, by + 7, Math.round(barW * dashReadyRatio), 1.5);
       }
+      } // 머리 위 막대 끝
 
       // 장비 상태: 가속 팔찌 ⚡쌓인 수 · 헤이스트 👟 · 광폭화 🎭 (체력바 오른쪽)
       const gearMarks = [u.atkSpdStacks > 0 ? `⚡${u.atkSpdStacks}` : '', u.hasteTicks > 0 ? '👟' : '', u.frenzyTicks > 0 ? '🎭' : ''].filter(Boolean).join('');
