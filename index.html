@@ -18336,8 +18336,7 @@
     // 실시간 결투 방장: 분신처럼 전투 중에 유닛이 늘면 상대 화면에 유닛 목록을 다시 보냄
     function republishLiveUnits() {
       if (liveNet.role !== 'host' || !liveNet.ref) return;
-      const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim']);
-      const units = sim.units.map(u => liveUnitCopy(u, drop));
+      const units = sim.units.map(u => liveUnitCopy(u, LIVE_INIT_DROP));
       const stamp = liveNet.towerCast || typeof liveNet.bid !== 'number' ? {} : { b: liveNet.bid, ep: liveNet.ep || 0 };
       liveNet.ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, ...stamp, units }).catch(() => {});
       liveNet.sentU = null; // 다음 화면은 전체로 (유닛 목록이 바뀌었거나 새 친구가 들어옴)
@@ -42111,9 +42110,18 @@
       }
       return out;
     }
-    const LIVE_INIT_DROP = new Set(['manualAimTarget']);
+    // 방장을 넘길 때(handoff)는 이어서 계산해야 하므로 유닛을 거의 통째로 보냄
+    const LIVE_HANDOFF_DROP = new Set(['manualAimTarget']);
+    // 유닛 목록(init·다시 보내기)은 받는 쪽이 그리기·이름표에만 쓰고 움직임·상태는 매 화면(frame)으로 받음
+    // → AI 대상·이전 좌표·애니메이션 틱·상태·쿨타임 같은 임시 칸은 뺌 (한 유닛 약 1.9KB → 약 1.2KB · 정령·분신이 나올 때마다 목록 전체가 다시 가므로 효과가 큼)
+    const LIVE_INIT_DROP = new Set([...LIVE_HANDOFF_DROP, 'aimTarget', 'rush', 'teleportAim',
+      'aiTargetId', 'lastTargetId', 'prevX', 'prevY', '_ix', '_iy', 'walkPhase', 'isMoving', 'facingAngle',
+      'attackAnim', 'skillAnim', 'hurtAnim', 'dashAnim', 'castLock', 'dashCooldown', 'casting', 'statuses', 'skillCooldowns',
+      'damageDealt', 'healDone', 'damageTaken', 'manualSkillMode', 'lastSkillTick', 'knightAuraTick', 'ensembleTick', 'bsKey', 'bsLastSkill',
+      // 매 화면(frame)에 실려 오는 값·AI 움직임 내부 값 (받는 쪽 normalizeLiveUnit이 0으로 채움)
+      'vx', 'vy', 'strafeTimer', 'strafeDir', 'cooldown', 'skillCooldown', 'activeSkillType', 'itemCd', 'atkSpdStacks', 'hasteTicks', 'frenzyTicks', 'reloadLeft', 'overheat', 'powerStacks']);
     function liveUnitCopy(u, drop) {
-      const c = JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) || (k && isLiveUnitRef(v)) ? undefined : v)));
+      const c = JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) || (k && isLiveUnitRef(v)) ? undefined : (typeof v === 'number' ? roundLiveNum(v) : v))));
       // 0인 상태·스킬 쿨타임은 빼고 보냄 (유닛 한 명당 약 450B · 받는 쪽 normalizeLiveUnit이 0으로 채움)
       ['statuses', 'skillCooldowns'].forEach(k => { const o = c[k]; if (o && typeof o === 'object') Object.keys(o).forEach(x => { if (!o[x]) delete o[x]; }); });
       return c;
@@ -42238,7 +42246,7 @@
       if (!heirId) return false;
       const heir = room.members[heirId];
       publishLiveBattleFrame(true);
-      const units = sim.units.map(u => liveUnitCopy(u, LIVE_INIT_DROP));
+      const units = sim.units.map(u => liveUnitCopy(u, LIVE_HANDOFF_DROP));
       try { ref.onDisconnect().cancel(); } catch (e) {}
       ref.child('handoff').set(JSON.parse(JSON.stringify({ at: Date.now(), from: me.id, to: heirId, tick: sim.tickCount, units }))).catch(() => {});
       saveTeamRoomPatch(roomId, {
@@ -42467,6 +42475,12 @@
       u.name = cleanUserText(u.name, 30) || '용병';
       u.team = u.team === 'red' ? 'red' : 'blue';
       ['x', 'y', 'hp', 'maxHp', 'mana', 'maxMana', 'shield', 'level'].forEach(k => { u[k] = liveNum(u[k]); });
+      ['attackAnim', 'skillAnim', 'hurtAnim', 'dashAnim', 'castLock', 'dashCooldown', 'walkPhase', 'vx', 'vy', 'strafeTimer', 'cooldown', 'skillCooldown',
+        'itemCd', 'atkSpdStacks', 'hasteTicks', 'frenzyTicks', 'reloadLeft', 'overheat', 'powerStacks'].forEach(k => { if (typeof u[k] !== 'number') u[k] = 0; }); // 목록에서 뺀 임시 칸 (LIVE_INIT_DROP)
+      if (typeof u.activeSkillType !== 'string') u.activeSkillType = '';
+      if (typeof u.facingAngle !== 'number') u.facingAngle = u.team === 'red' ? Math.PI : 0;
+      if (u.facingDir !== -1 && u.facingDir !== 1) u.facingDir = u.team === 'red' ? -1 : 1;
+      if (u.casting !== null && typeof u.casting !== 'object') u.casting = null;
       u.maxHp = Math.max(1, u.maxHp);
       u.maxMana = Math.max(1, u.maxMana);
       if (u.eliteHardSize !== undefined) u.eliteHardSize = Math.min(ELITE_HARD.size, Math.max(1, liveNum(u.eliteHardSize))); // 🔥 하드 엘리트 보스 몸 배율
@@ -43470,7 +43484,7 @@
       const heirId = (liveNet.teamExpect || []).find(id => id !== me.id && !(liveNet.remoteCtrls[id] && liveNet.remoteCtrls[id].forfeited));
       if (!heirId) return false;
       publishLiveBattleFrame(true);
-      const units = sim.units.map(u => liveUnitCopy(u, LIVE_INIT_DROP));
+      const units = sim.units.map(u => liveUnitCopy(u, LIVE_HANDOFF_DROP));
       try { ref.onDisconnect().cancel(); } catch (e) {}
       const dg = sim.dungeon && sim.dungeon.party ? packDungeonState() : null; // 🏰 5인 던전: 지도·방 진행 상태도 함께 넘김
       ref.child('handoff').set(JSON.parse(JSON.stringify({ at: Date.now(), from: me.id, to: heirId, tick: sim.tickCount, units, ...(dg ? { dg } : {}) }))).catch(() => {});
@@ -47065,7 +47079,7 @@
     // 실시간 화면은 유닛 순서로 맞추므로 유닛 목록이 바뀌면 새로 보냄 (rr: 받은 화면이 받아 둔 이전 화면을 버리게)
     function sendRushUnitList(rr) {
       if (liveNet.role !== 'host' || !liveNet.ref) return;
-      const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim', '_deadSince', 'rushPath']);
+      const drop = new Set([...LIVE_INIT_DROP, '_deadSince', 'rushPath']);
       const units = sim.units.map(u => liveUnitCopy(u, drop));
       liveNet.ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, rr, units }).catch(() => {});
     }
