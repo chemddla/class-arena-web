@@ -7136,9 +7136,9 @@
       ghostFilter: 'grayscale(1) sepia(1) saturate(3) hue-rotate(170deg) brightness(1.25)',
       flurryPrepExtra: 16, flurryHitstop: 20,
       // 멸식 - 격 마지막 일격 (SR 전용): 막타로 뚫고 지나간 자리에서 한 번 더 주먹을 당겨 준비(37) → 날아 차며 다시 들어와 강한 일격(38, 300%) → 경직·화면 흔들림 → 그대로 뚫고 앞으로 지나가 착지
-      flurryFinal: { prep: 48, dmg: 3.0, hitstop: 40 },
+      flurryFinal: { land: 40, prep: 48, dmg: 3.0, hitstop: 40 }, // land = 막타로 지나간 뒤 착지 자세로 서 있는 틱 (1초)
       skillAnims: { ...MERC_SPRITE_DEFS.brawler_0.skillAnims, diamond_body: { anim: 'armor', tpf: 20, dur: 40 }, // 두 팔 모음 → 힘줌
-        annihilate: { anim: 'land', tpf: 372, dur: 372 } } // 멸식 전체 틱 (240 + 준비 16 + 경직 12 + 마지막 일격 104, brawlerFlurryPlan)
+        annihilate: { anim: 'land', tpf: 412, dur: 412 } } // 멸식 전체 틱 (240 + 준비 16 + 경직 12 + 마지막 일격 144, brawlerFlurryPlan)
     };
     {
       const k = `berserker_${SECRET_SKIN_BASE + 1}`, eyesImg = new Image();
@@ -24896,7 +24896,7 @@
       const sp = u && !u.monsterType ? getMercSprite('brawler', u.skinVariant || 0) : null;
       const extra = sp?.flurryPrepExtra || 0, hs = sp?.flurryHitstop || BRAWLER_FLURRY_HITSTOP, fin = sp?.flurryFinal || null;
       const kickAt = BRAWLER_FLURRY_KICK_AT + extra, kickEnd = kickAt + BRAWLER_FLURRY_KICK_TICKS + hs + BRAWLER_FLURRY_PASS_TICKS;
-      const finLen = fin ? fin.prep + BRAWLER_FLURRY_KICK_TICKS + fin.hitstop + BRAWLER_FLURRY_PASS_TICKS : 0; // 준비 → 날아 차기 → 경직 → 뚫고 지나감
+      const finLen = fin ? (fin.land || 0) + fin.prep + BRAWLER_FLURRY_KICK_TICKS + fin.hitstop + BRAWLER_FLURRY_PASS_TICKS : 0; // 착지 → 준비 → 날아 차기 → 경직 → 뚫고 지나감
       return { kickAt, kickEnd, hs, fin, total: BRAWLER_FLURRY_TICKS + extra + (hs - BRAWLER_FLURRY_HITSTOP) + finLen, shake: hs > BRAWLER_FLURRY_HITSTOP };
     }
     const BRAWLER_COUNTER_RUSH_TICKS = 6;    // 반격: 날아 차며 공격자에게 붙는 틱 (피해는 닿을 때, 기절은 바로)
@@ -24935,8 +24935,10 @@
         if (el <= P.kickAt) return (a.annPrep || a.kick)[0]; // 백호는 멸식 전용 준비 자세
         if (el <= P.kickEnd) return a.annKick[0];
         if (P.fin && a.annFinal) { // 마지막 일격 (SR): 준비 자세 → 날아 차기 (닿고 경직하는 동안도)
-          if (el <= P.kickEnd + P.fin.prep) return a.annPrep2[0];
-          if (el <= P.kickEnd + P.fin.prep + BRAWLER_FLURRY_KICK_TICKS + P.fin.hitstop + BRAWLER_FLURRY_PASS_TICKS) return a.annFinal[0];
+          const e2 = el - P.kickEnd - (P.fin.land || 0); // 막타 뒤 착지 자세로 잠깐 서 있다가
+          if (e2 <= 0) return a.land[0];
+          if (e2 <= P.fin.prep) return a.annPrep2[0];
+          if (e2 <= P.fin.prep + BRAWLER_FLURRY_KICK_TICKS + P.fin.hitstop + BRAWLER_FLURRY_PASS_TICKS) return a.annFinal[0];
         }
         return a.land[0]; // 날아 차기 (닿기·경직·관통) → 착지
       }
@@ -25271,13 +25273,15 @@
     function brawlerFlurryFinal(u, foe, f, P) {
       const F = f.fin || (f.fin = { n: 0 }), KT = BRAWLER_FLURRY_KICK_TICKS;
       F.n++;
-      if (F.n <= P.fin.prep) { // 준비: 주먹을 당기고 기운을 모음
+      const n = F.n - (P.fin.land || 0); // 처음 land틱은 막타 착지 자세 그대로 (돌아서서 상대를 봄)
+      if (n <= 0) { brawlerFace(u, foe); return; }
+      if (n <= P.fin.prep) { // 준비: 주먹을 당기고 기운을 모음
         brawlerFace(u, foe);
-        if (F.n === 1) sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 56, color: '#bae6fd', life: P.fin.prep, maxLife: P.fin.prep });
+        if (n === 1) sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 56, color: '#bae6fd', life: P.fin.prep, maxLife: P.fin.prep });
         return;
       }
-      if (F.n > P.fin.prep + KT) { // 경직 동안은 닿은 자리에 그대로 → 그 자세 그대로 대상을 뚫고 앞으로 지나가 착지
-        const q = F.n - P.fin.prep - KT - P.fin.hitstop;
+      if (n > P.fin.prep + KT) { // 경직 동안은 닿은 자리에 그대로 → 그 자세 그대로 대상을 뚫고 앞으로 지나가 착지
+        const q = n - P.fin.prep - KT - P.fin.hitstop;
         if (q > 0 && F.tx != null) {
           const p = Math.min(1, q / BRAWLER_FLURRY_PASS_TICKS);
           u.x = F.cx + (F.tx - F.cx) * p; u.y = F.cy + (F.ty - F.cy) * p;
@@ -25285,11 +25289,11 @@
         return;
       }
       if (F.sx == null) { F.sx = u.x; F.sy = u.y; }
-      const ang = Math.atan2(foe.y - F.sy, foe.x - F.sx), gap = 26 + unitBodyGap(foe) + unitBodyGap(u), p = (F.n - P.fin.prep) / KT;
+      const ang = Math.atan2(foe.y - F.sy, foe.x - F.sx), gap = 26 + unitBodyGap(foe) + unitBodyGap(u), p = (n - P.fin.prep) / KT;
       u.x = F.sx + (foe.x - Math.cos(ang) * gap - F.sx) * p;
       u.y = F.sy + (foe.y - Math.sin(ang) * gap - F.sy) * p;
       brawlerFace(u, foe);
-      if (F.n === P.fin.prep + KT) { // 닿음: 강한 일격 + 긴 경직 + 큰 화면 흔들림
+      if (n === P.fin.prep + KT) { // 닿음: 강한 일격 + 긴 경직 + 큰 화면 흔들림
         const mana = foe.mana;
         withSkillHit(() => { suppressHitKnockback = true; try { applyDamage(u, foe, u.atk * P.fin.dmg, '⚡', '#0ea5e9'); } finally { suppressHitKnockback = false; } });
         foe.mana = Math.min(foe.mana, mana);
