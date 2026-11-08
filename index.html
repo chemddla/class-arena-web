@@ -31657,6 +31657,8 @@
       requestAnimationFrame(animationLoop);
       animationFrameNo++;
       lastFrameDtMs = measureFrameTime();
+      trackDeviceFrameTime(lastFrameDtMs);
+      if (animationFrameNo % 30 === 0) maybePublishLivePerf(); // 실시간 방 대기실: 이 기기 빠르기를 가끔 올림 (계산 담당 고르기용)
       const arenaVisible = !document.getElementById('arenaSection')?.classList.contains('hidden')
         && !document.getElementById('mainAppShell')?.classList.contains('hidden');
       // 용병 상태 목록은 화면이 보일 때만, 6프레임마다 한 번 갱신 (매 프레임 다시 그리면 화면이 버벅임)
@@ -31708,6 +31710,7 @@
       for (let s = 0; s < ticks; s++) {
         if (sim.running) stepSimulation();
       }
+      if (ticks > 0 && sim.netRole === 'host') recordLagCompHistory();
       if (ticks > 0 && sim.running && (sim.netRole === 'host' || liveNet.towerCast)) { publishLiveBattleFrame(); publishLiveRtcFrame(); }
       decayHiddenBattleVisuals();
     }
@@ -40291,7 +40294,12 @@
           if (r.members && r.members[r.hostId]) return;
           // 방장이 갑자기 나감 → 가장 먼저 들어온 친구가 이어받음 (전투 중이면 전투 계산까지)
           if (humans[0].id !== me.id) return;
-          if (r.status === 'playing' && sim.running && liveNet.role === 'guest' && liveNet.roomId === r.roomId && !liveNet.spectator) {
+          // 전투 계산은 다른 친구 기기(simHost)가 맡고 있고 그 친구가 아직 있으면: 전투는 그대로 두고 방장 자리만 이어받음
+          const simElsewhere = r.status === 'playing' && r.simHost && r.simHost !== r.hostId && r.members && r.members[r.simHost];
+          if (simElsewhere) {
+            saveTeamRoomPatch(r.roomId, { hostId: me.id, hostName: me.name, hostNum: me.num || null, title: retitleForNewHost(r.title, r.hostName, me.name), [`members/${me.id}/ready`]: true, ...(r.simHost === me.id ? { simHost: null } : {}) });
+            showRewardBanner(`👑 방장이 나가서 [${r.title}] 팀전방의 새 방장이 됐어요!`);
+          } else if (r.status === 'playing' && sim.running && liveNet.role === 'guest' && liveNet.roomId === r.roomId && !liveNet.spectator) {
             takeOverLiveBattle(null);
           } else {
             saveTeamRoomPatch(r.roomId, {
@@ -40751,7 +40759,11 @@
       if (!st.allPicked) { showNotice('⚠️ 아직 용병을 고르지 않은 친구가 있어요!'); return; }
       if (!st.allReady) { showNotice('⚠️ 아직 [✋ 준비완료]를 누르지 않은 친구가 있어요!'); return; }
       if (!st.equal && !fill) { showNotice('⚠️ 두 팀 인원이 달라요. [부족한 자리 채우고 시작]을 눌러 주세요.'); return; }
-      await saveTeamRoomPatch(roomId, { status: 'playing', startedAt: Date.now(), fill: !st.equal });
+      // 사람 친구들 중 가장 빠른 기기가 이번 전투를 계산 (방장은 그대로)
+      const simHost = await pickLiveSimHost(room, teamMembersOf(room).filter(m => !m.ai).map(m => m.id));
+      const fresh = livePvpRoomsCache[roomId] || room;
+      if (fresh.status !== 'waiting') return;
+      await saveTeamRoomPatch(roomId, { status: 'playing', startedAt: Date.now(), fill: !st.equal, simHost: simHost && fresh.members && fresh.members[simHost] ? simHost : null });
     };
 
     function renderTeamLiveRoomHTML(room, me) {
@@ -41085,6 +41097,65 @@
       showRewardBanner(`🙋 [${friend.name}] 친구가 결투방에 입장하여 [✅ 준비완료]를 눌렀습니다! 이제 [⚡ 실시간 결투 시작!]을 누르세요.`);
     };
 
+    // ==================== [⚙️ 전투 계산을 맡을 기기 고르기] ====================
+    // 전투는 한 기기(계산 담당)에서만 계산하고 모두 그 화면을 받음 → 그 기기가 느리면(오래된 태블릿·약한 와이파이) 모두가 느려짐
+    // 대기실에 있는 동안 기기마다 화면 한 번 그리는 시간(f)과 서버 왕복 시간(r)을 15초마다 pvp_live/방/perf/학생에 올려 두고,
+    // 방장이 시작을 누르면 가장 빠른 기기를 이번 전투의 계산 담당(simHost)으로 정함 (방장은 그대로 · 끝나면 simHost를 지움)
+    //   · 방장 기기보다 확실히 빠를 때만 바꿈 (LIVE_SIMHOST_MIN_GAIN) · 30초 넘게 소식이 없는 기기·탭을 내린 기기는 고르지 않음
+    //   · 주고받는 양: 대기실에서 학생마다 15초에 한 번 40B 안팎 · 시작할 때 방장이 한 번 읽음
+    const LIVE_PERF_EVERY_MS = 15000, LIVE_PERF_FRESH_MS = 30000, LIVE_SIMHOST_MIN_GAIN = 40;
+    let deviceFrameEma = 1000 / 60, livePerfRtt = null, livePerfLastAt = 0, livePerfBusy = false;
+    function trackDeviceFrameTime(dt) {
+      if (document.hidden || !(dt > 0) || dt >= 100) return; // 탭을 내렸다 온 큰 틈은 빼고
+      deviceFrameEma += (dt - deviceFrameEma) * 0.02;
+    }
+    // 낮을수록 좋음: 서버 왕복(ms) + 60Hz보다 느린 만큼의 화면 시간 × 6
+    function livePerfScore(p) {
+      if (!p || typeof p.r !== 'number' || typeof p.f !== 'number') return Infinity;
+      return p.r + Math.max(0, p.f - 1000 / 60) * 6;
+    }
+    function myWaitingLiveRoom() {
+      const me = getActiveStudent();
+      if (!me) return null;
+      return Object.values(livePvpRoomsCache || {}).find(r => r && r.roomId && r.status === 'waiting' && !r.practiceFriend && isPvpRoomPlayer(r, me.id)) || null;
+    }
+    function maybePublishLivePerf() {
+      const now = Date.now();
+      if (livePerfBusy || now - livePerfLastAt < LIVE_PERF_EVERY_MS || document.hidden) return;
+      const room = myWaitingLiveRoom(), me = getActiveStudent();
+      if (!room || !me) return;
+      const ref = liveRoomRef(room.roomId);
+      if (!ref) return;
+      livePerfLastAt = now;
+      livePerfBusy = true;
+      const t0 = performance.now();
+      ref.child('perf').child(me.id).set({ f: Math.round(deviceFrameEma * 10) / 10, r: livePerfRtt == null ? 999 : Math.round(livePerfRtt), at: window.firebase.database.ServerValue.TIMESTAMP })
+        .then(() => { const rtt = performance.now() - t0; livePerfRtt = livePerfRtt == null ? rtt : livePerfRtt + (rtt - livePerfRtt) * 0.4; })
+        .catch(() => {})
+        .then(() => { livePerfBusy = false; });
+    }
+    // 방장: 이번 전투의 계산 담당 (방장 자신이면 null)
+    async function pickLiveSimHost(room, candidateIds) {
+      const me = getActiveStudent();
+      const ref = room && liveRoomRef(room.roomId);
+      if (!me || !ref || !candidateIds || candidateIds.length < 2) return null;
+      let all = null;
+      try { all = (await Promise.race([ref.child('perf').once('value'), new Promise(r => setTimeout(() => r(null), 1500))]))?.val() || null; } catch (e) { all = null; }
+      if (!all) return null;
+      const serverNow = mgServerNow(); // 기기마다 시계가 달라도 서버 시각 기준으로 '최근 소식인지' 봄
+      const mine = { f: deviceFrameEma, r: livePerfRtt == null ? 999 : livePerfRtt };
+      const scoreOf = id => {
+        if (id === me.id) return livePerfScore(mine);
+        const p = all[id];
+        if (!p || typeof p.at !== 'number' || Math.abs(serverNow - p.at) > LIVE_PERF_FRESH_MS) return Infinity;
+        return livePerfScore(p);
+      };
+      const myScore = scoreOf(me.id);
+      let best = null, bestScore = Infinity;
+      candidateIds.forEach(id => { if (id === me.id) return; const s = scoreOf(id); if (s < bestScore) { bestScore = s; best = id; } });
+      return best && bestScore + LIVE_SIMHOST_MIN_GAIN < myScore ? best : null;
+    }
+
     window.startPvpRoomBattle = async function (roomId) {
       const myStu = getActiveStudent();
       const room = livePvpRoomsCache[roomId];
@@ -41105,9 +41176,14 @@
         showNotice('⚠️ 먼저 대결할 내 용병 1명을 골라 주세요!');
         return;
       }
-      room.status = 'playing';
-      room.startedAt = Date.now();
-      await savePvpRoomData(roomId, room);
+      // 두 기기 중 더 빠른 쪽이 이번 전투를 계산 (연습 친구는 내 화면에서만 진행)
+      const simHost = room.practiceFriend ? null : await pickLiveSimHost(room, [room.hostId, room.guestId]);
+      const fresh = livePvpRoomsCache[roomId] || room; // 고르는 동안 방이 바뀌었을 수 있음
+      if (fresh.status !== 'waiting' || fresh.guestId !== room.guestId) return;
+      fresh.simHost = simHost || null;
+      fresh.status = 'playing';
+      fresh.startedAt = Date.now();
+      await savePvpRoomData(roomId, fresh);
     };
 
     // 방에서 나가기: 방장이 나가도 방은 그대로 두고 남은 친구에게 방장을 넘김 (남은 사람이 없을 때만 방을 닫음)
@@ -41918,7 +41994,9 @@
           if (opponentStu) {
             // 방장(블루팀) 화면이 전투를 계산하고, 도전자(레드팀) 화면은 그 화면을 받아서 보여 줌
             const isHost = r.hostId === myStu.id;
-            const netRole = r.practiceFriend ? null : (isHost ? 'host' : 'guest');
+            // 계산 담당: 시작할 때 더 빠른 기기로 정했으면 그 기기(simHost), 아니면 방장 · 팀(블루=방장, 레드=도전자)은 그대로
+            const simHostId = r.simHost && (r.simHost === r.hostId || r.simHost === r.guestId) ? r.simHost : r.hostId;
+            const netRole = r.practiceFriend ? null : (simHostId === myStu.id ? 'host' : 'guest');
             showRewardBanner(isFairDuelRoom(r)
               ? `⚖️ [공정한 결투 시작!] ${r.hostName} vs ${r.guestName} — 같은 ${JOB_DEFS[fairDuelJobOf(r)].name} Lv.${FAIR_DUEL_LEVEL}, 실력으로 승부!`
               : isDuelRoom(r)
@@ -41959,6 +42037,7 @@
               if (mine) setBattleControlMode('manual', mine.id, true);
               addBattleLog('🗡️ [1:1 용병 대결] 내 용병을 직접 조종해서 싸워요! 먼저 쓰러뜨리면 승리!');
             }
+            if (netRole && sim.running && simHostId !== r.hostId) addBattleLog(netRole === 'host' ? '⚙️ 내 기기가 더 빨라서 이번 결투 계산을 맡아요.' : '⚙️ 상대 친구 기기가 더 빨라서 이번 결투 계산을 맡아요. (끝나면 방장은 그대로예요)');
             if (netRole && sim.running) startLiveBattleNet(r.roomId, netRole, r.startedAt);
           }
         }
@@ -41970,8 +42049,10 @@
       if (!mem) return;
       launchedLiveRoomIds.add(r.roomId);
       currentActiveLiveBattleRoomId = r.roomId;
-      const isHost = r.hostId === myStu.id;
-      const humanGuests = teamMembersOf(r).filter(m => m.id !== r.hostId && !m.ai).map(m => m.id);
+      // 계산 담당: 시작할 때 가장 빠른 기기로 정했으면 그 친구(simHost), 아니면 방장
+      const simHostId = r.simHost && r.members && r.members[r.simHost] && !r.members[r.simHost].ai ? r.simHost : r.hostId;
+      const isHost = simHostId === myStu.id;
+      const humanGuests = teamMembersOf(r).filter(m => m.id !== simHostId && !m.ai).map(m => m.id);
       const netRole = humanGuests.length ? (isHost ? 'host' : 'guest') : null;
       const built = buildTeamLiveUnits(r);
       if (!built) {
@@ -41998,6 +42079,7 @@
       const mine = sim.units.find(u => u.liveOwnerId === myStu.id);
       if (mine) setBattleControlMode('manual', mine.id, true);
       addBattleLog('👥 [실시간 팀전] 내 용병을 직접 조종해서 팀과 함께 싸워요! 상대 팀을 모두 쓰러뜨리면 승리!');
+      if (netRole && simHostId !== r.hostId) addBattleLog(isHost ? '⚙️ 내 기기가 가장 빨라서 이번 팀전 계산을 맡아요. (끝나면 방장은 그대로예요)' : `⚙️ ${(r.members[simHostId] && r.members[simHostId].name) || '친구'} 기기가 가장 빨라서 이번 팀전 계산을 맡아요.`);
       if (netRole) startLiveBattleNet(r.roomId, netRole, r.startedAt, false, true, humanGuests);
     }
 
@@ -42769,10 +42851,13 @@
       const units = sim.units.map(u => liveUnitCopy(u, LIVE_HANDOFF_DROP));
       try { ref.onDisconnect().cancel(); } catch (e) {}
       ref.child('handoff').set(JSON.parse(JSON.stringify({ at: Date.now(), from: me.id, to: heirId, tick: sim.tickCount, units }))).catch(() => {});
-      saveTeamRoomPatch(roomId, {
+      // 방장이 계산을 맡고 있었으면 방장도 넘김 (끝나면 원래 방장이 아직 방에 있을 때 되돌림 · origHostId)
+      // 시작할 때 더 빠른 기기로 계산만 맡긴 경우(simHost)면 방장은 그대로 두고 계산 담당만 바꿈
+      saveTeamRoomPatch(roomId, room.hostId === me.id ? {
         hostId: heirId, hostName: heir.name || '', hostNum: heir.num || null, title: retitleForNewHost(room.title, room.hostName, heir.name),
+        origHostId: room.origHostId || me.id, simHost: null,
         [`members/${heirId}/ready`]: true, [`members/${me.id}/ready`]: false
-      });
+      } : { simHost: heirId, [`members/${me.id}/ready`]: false });
       stopLiveBattleNet();
       addBattleLog(`👑 ${heir.name || '친구'}에게 방장을 넘겼어요. 친구들의 전투는 계속 이어져요.`);
       return true;
@@ -42826,8 +42911,16 @@
       }
       currentActiveLiveBattleRoomId = roomId;
       renderLiveWaitBanner(null);
+      // 방장은 방에 그대로 있고 계산 담당(simHost)만 끊긴 경우: 방장 자리는 두고 계산 담당만 내가 이어받음
+      const roomHostStays = room.hostId !== me.id && room.members && room.members[room.hostId] && room.simHost && room.simHost !== room.hostId;
+      if (roomHostStays) {
+        saveTeamRoomPatch(roomId, { simHost: me.id, [`members/${me.id}/ready`]: true });
+        addBattleLog('⚙️ 계산하던 친구 기기가 끊겨서 내가 이어서 전투를 계산해요! (끊긴 친구 용병은 AI가 싸워요)');
+        return;
+      }
       if (room.hostId !== me.id || !(room.members && room.members[me.id] && room.members[me.id].ready)) {
-        saveTeamRoomPatch(roomId, { hostId: me.id, hostName: me.name, hostNum: me.num || null, title: retitleForNewHost(room.title, room.hostName, me.name), [`members/${me.id}/ready`]: true });
+        saveTeamRoomPatch(roomId, { hostId: me.id, hostName: me.name, hostNum: me.num || null, title: retitleForNewHost(room.title, room.hostName, me.name), [`members/${me.id}/ready`]: true,
+          simHost: null, ...(room.hostId !== me.id ? { origHostId: room.origHostId || room.hostId } : {}) });
       }
       addBattleLog('👑 방장이 나가서 내가 이어서 전투를 진행해요! (나간 친구 용병은 AI가 싸워요)');
       showRewardBanner('👑 방장이 나가서 내가 새 방장이 됐어요! 전투는 그대로 이어져요.');
@@ -42840,7 +42933,9 @@
         if (val.at < (liveNet.remoteInputAt || 0)) return; // 직접 연결로 이미 받은 것보다 옛 조작
         liveNet.remoteInputAt = val.at;
       }
-      const unit = val && val.unitId ? sim.units.find(u => u.id === val.unitId && u.team === 'red') : null;
+      // 상대 팀: 보통은 방장(블루)이 계산하고 도전자가 레드 · 더 빠른 도전자 기기가 계산을 맡으면(simHost) 방장이 블루로 조종해 옴
+      const remoteTeam = getMyBattleTeam() === 'red' ? 'blue' : 'red';
+      const unit = val && val.unitId ? sim.units.find(u => u.id === val.unitId && u.team === remoteTeam) : null;
       const prevId = liveNet.remoteUnitId;
       if (prevId && (!unit || unit.id !== prevId) && sim.controllers[prevId] === liveNet.remoteCtrl) delete sim.controllers[prevId];
       liveNet.remoteUnitId = null;
@@ -42873,17 +42968,17 @@
         liveNet.remoteUnitId = unit.id;
       }
       if (val.forfeit === 1 && sim.running) {
-        sim.forfeitTeam = 'red';
-        finishSimulation(true);
+        sim.forfeitTeam = remoteTeam;
+        finishSimulation(remoteTeam === 'red');
         return;
       }
       if (liveNum(val.teamDash) !== c._seenTeamDash) {
         c._seenTeamDash = liveNum(val.teamDash);
-        dashTeamUnits('red');
+        dashTeamUnits(remoteTeam);
       }
       if (liveNum(val.unitDashN) !== c._seenUnitDash) {
         c._seenUnitDash = liveNum(val.unitDashN);
-        const du = sim.units.find(u => u.id === val.unitDashId && u.team === 'red' && u.alive);
+        const du = sim.units.find(u => u.id === val.unitDashId && u.team === remoteTeam && u.alive);
         if (du && du.dashCooldown <= 0) triggerSingleUnitManualDash(du.id);
       }
     }
@@ -43712,11 +43807,21 @@
         if (!r || r.status !== 'playing') return;
         if (isTeamLiveRoom(r)) {
           // 팀전: 사람 친구들은 다시 준비완료를 눌러야 함 (AI 친구는 그대로 준비)
-          const patch = { status: 'waiting', startedAt: null, fill: null, lastFinishedAt: Date.now() };
-          teamMembersOf(r).forEach(m => { if (m.id !== r.hostId && !m.ai) patch[`members/${m.id}/ready`] = false; });
+          const patch = { status: 'waiting', startedAt: null, fill: null, lastFinishedAt: Date.now(), simHost: null };
+          // 전투 중에 방장이 넘어왔으면, 원래 방장이 아직 방에 있을 때 원래 방장에게 되돌림
+          const orig = r.origHostId && r.origHostId !== r.hostId && r.members && r.members[r.origHostId] && !r.members[r.origHostId].ai ? r.members[r.origHostId] : null;
+          let keepReady = r.hostId;
+          if (orig) {
+            Object.assign(patch, { hostId: orig.id, hostName: orig.name || '', hostNum: orig.num || null, title: retitleForNewHost(r.title, r.hostName, orig.name), origHostId: null });
+            keepReady = orig.id;
+            patch[`members/${orig.id}/ready`] = true;
+          } else if (r.origHostId) patch.origHostId = null;
+          teamMembersOf(r).forEach(m => { if (m.id !== keepReady && !m.ai) patch[`members/${m.id}/ready`] = false; });
           saveTeamRoomPatch(roomId, patch);
+          if (orig) addBattleLog(`👑 ${orig.name || '원래 방장'} 친구가 다시 방장이 됐어요.`);
           return;
         }
+        r.simHost = null;
         r.status = 'waiting';
         r.guestReady = Boolean(r.practiceFriend); // AI 연습 상대는 바로 다시 준비완료
         r.startedAt = null;
@@ -43818,7 +43923,8 @@
       const me = getActiveStudent();
       const room = liveNet.roomId ? livePvpRoomsCache[liveNet.roomId] : null;
       if (!liveNet.team || !room || !me || !liveNet.initReceived) return false;
-      const heir = teamMembersOf(room).find(m => !m.ai && m.id !== room.hostId);
+      const simNow = room.simHost && room.members && room.members[room.simHost] ? room.simHost : room.hostId; // 지금 계산하던(소식이 끊긴) 기기
+      const heir = teamMembersOf(room).find(m => !m.ai && m.id !== simNow);
       if (!liveNet.spectator && heir && heir.id === me.id) { takeOverLiveBattle(null); return true; }
       if (liveNet.timeoutExtended) return false;
       liveNet.timeoutExtended = true;
