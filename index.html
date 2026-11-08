@@ -5503,7 +5503,7 @@
         icon: '🥊',
         color: '#c2410c',
         roleDesc: '맨손 근접·투혼 연격·결투',
-        passiveName: '투혼', passiveDesc: '기본 공격을 맞히면 0.5초간 [투혼] · 투혼 중에는 기본 공격이 연격으로 이어짐 (최대 10타, 타마다 피해·공격 속도 증가, 맞힐 때마다 투혼 갱신) · 0.5초 안에 기본 공격으로 다음 타를 못 맞히면 연격이 처음부터 (스킬은 연격 중에도 쓸 수 있음) · 준 피해의 10%만큼 회복 · 받는 피해 -10% · 대시 쿨타임 -50%',
+        passiveName: '투혼', passiveDesc: '기본 공격을 맞히면 0.5초간 [투혼] · 투혼 중에는 기본 공격이 연격으로 이어짐 (최대 10타, 타마다 피해·공격 속도 증가, 맞힐 때마다 투혼 갱신) · 0.5초 안에 기본 공격으로 다음 타를 못 맞히면 연격이 처음부터 (스킬은 연격 중에도 쓸 수 있음) · 준 피해의 10%만큼 회복 · 받는 피해 -10% · 대시 쿨타임 없음',
         baseHp: 2150, baseAtk: 55, baseDef: 34, baseSpd: 118, range: 64, maxMana: 100
       }
     };
@@ -5522,7 +5522,7 @@
       bard:    { ensemble: true },
       berserker: { bloodlust: true },
       summoner: { harmony: true },
-      brawler: { spirit: true },         // 격투가 투혼: 연격(brawlerBasicAttack) · 받는 피해 -10%·흡혈 10% (applyDamage) · 대시 쿨타임 -50% (createSimUnit)
+      brawler: { spirit: true },         // 격투가 투혼: 연격(brawlerBasicAttack) · 받는 피해 -10%·흡혈 10% (applyDamage) · 대시 쿨타임 없음 (createSimUnit)
       pyro:    { vsMonster: 1.3, ember: true }, // 화염술사 번지는 불길: 불티(pyroAddEmber)·화상 번짐(pyroBurnSpread)은 따로 처리       // 소환사 원소 조화: 정령 능력치 보너스 (spiritHarmonyMult)
       paladin: { taken: 0.9, devotion: true },   // 성기사 헌신: 2칸 안 아군이 받는 피해 20%를 대신 받음 (paladinDevotionShare)  // 광전사 불굴의 투지: 잃은 체력만큼 피해 증가 + 흡혈 (applyDamage·berserkerLifesteal)     // 음유시인 합주: 주변 아군 주는 피해 +8% (bardEnsembleOn으로 applyDamage에서)
       sniper:  { vsBoss: 1.3 }         // 저격수 대형 표적: 엘리트 보스·탑 종족 보스에게 주는 피해 +30%
@@ -17988,7 +17988,7 @@
         }
         return slot(String(i + 1), sk.icon, sk.name, cd, sk.cooldownTicks || 360, state);
       }).join('');
-      const dashMax = u.maxDashCooldown || DASH_CONFIG.cooldownTicks;
+      const dashMax = Math.max(1, u.maxDashCooldown ?? DASH_CONFIG.cooldownTicks);
       // 장비 스킬(Q): 발동형 장비를 끼웠을 때만. 효과가 이어지는 동안(헤이스트·광폭화)은 남은 시간도 표시
       const idef = equipDefOf(u.itemId);
       let itemSlot = '';
@@ -18784,7 +18784,7 @@
         skillCooldown: 0,
         // 자체 쿨타임을 갖는 대시(Dash) 상태 (Requirement 4)
         dashCooldown: 0,
-        maxDashCooldown: Math.round(DASH_CONFIG.cooldownTicks * (merc.job === 'brawler' ? BRAWLER_DASH_CD_MULT : 1)), // 격투가 투혼: 대시 쿨타임 -50%
+        maxDashCooldown: Math.round(DASH_CONFIG.cooldownTicks * (merc.job === 'brawler' ? BRAWLER_DASH_CD_MULT : 1)), // 격투가 투혼: 대시 쿨타임 없음 (0)
         dashAnim: 0,
         mana: startMana,
         maxMana: maxMana,
@@ -20083,7 +20083,7 @@
       const sy = unit.y;
       const dist = DASH_CONFIG.distance * (JOB_DASH_DISTANCE_MULT[unit.job] || 1);
       const r = startUnitRush(unit, sx + Math.cos(dashAngle) * dist, sy + Math.sin(dashAngle) * dist, DASH_MOVE_TICKS);
-      unit.dashCooldown = unit.maxDashCooldown || DASH_CONFIG.cooldownTicks;
+      unit.dashCooldown = unit.maxDashCooldown ?? DASH_CONFIG.cooldownTicks; // 0 = 쿨타임 없음 (격투가)
       if (Math.abs(Math.cos(dashAngle)) > 0.1) {
         unit.facingDir = Math.cos(dashAngle) >= 0 ? 1 : -1;
       }
@@ -24880,7 +24880,7 @@
     // ===== 격투가 (docs/brawler-design.md) =====
     // 1:1(개인전) 특화 근접 맨손 격투가. 패시브 [투혼]: 기본 공격을 맞히면 0.5초간 투혼 → 그동안 다음 기본 공격이 연격으로 이어짐 (최대 10타)
     //   연격은 타마다 피해·공격 속도가 오르고, 0.5초 안에 기본 공격으로 다음 타를 못 맞히면 처음부터 (스킬은 써도 되지만 기본 공격으로 이어야 함)
-    //   10타를 이으면 히든 [멸식]을 쓸 수 있음 (5초 안에). 준 피해 10% 회복 · 받는 피해 -10% · 대시 쿨타임 -50% (항상)
+    //   10타를 이으면 히든 [멸식]을 쓸 수 있음 (5초 안에). 준 피해 10% 회복 · 받는 피해 -10% · 대시 쿨타임 없음 (항상)
     //   u.brawlChain = 이어진 타 수 (0 = 연격 아님), u.brawlSpiritUntil = 투혼이 끝나는 틱, u.flurryReadyUntil = 멸식을 쓸 수 있는 마지막 틱
     const BRAWLER_SPIRIT_TICKS = 20;         // 투혼 0.5초
     const BRAWLER_CHAIN_MAX = 10;
@@ -24895,7 +24895,7 @@
     const BRAWLER_SR_LEAP_TICKS = 8;
     const BRAWLER_LIFESTEAL = 0.1;
     const BRAWLER_TAKEN_DOWN = 0.1;
-    const BRAWLER_DASH_CD_MULT = 0.5;
+    const BRAWLER_DASH_CD_MULT = 0;          // 투혼: 대시 쿨타임 없음 (달리는 중엔 다시 못 씀 · unit.rush)
     const BRAWLER_DUEL_HOLD = 30;            // 결투가 걸린 뒤 결투 자세로 서 있는 틱 (시전 1초 + 이 0.5초)
     const BRAWLER_CAST_LOCK = 6;             // 스킬을 쓴 뒤 기본 공격을 못 하는 틱 (보통 32): 스킬을 섞어도 연격이 이어질 수 있게
     const BRAWLER_FLURRY_READY_TICKS = 200;  // 10타를 이은 뒤 멸식을 쓸 수 있는 시간 5초
@@ -30148,7 +30148,7 @@
 
       // 대시(Dash) 자체 쿨타임 충전 바 (초록색, 가득 차면 대시 준비 완료)
       if (u.monsterType !== 'scarecrow') {
-        const dashReadyRatio = 1 - Math.min(1, (u.dashCooldown || 0) / (u.maxDashCooldown || DASH_CONFIG.cooldownTicks));
+        const dashReadyRatio = 1 - Math.min(1, (u.dashCooldown || 0) / Math.max(1, u.maxDashCooldown ?? DASH_CONFIG.cooldownTicks));
         ctx.fillStyle = dashReadyRatio >= 1 ? '#10b981' : '#64748b';
         ctx.fillRect(bx, by + 7, Math.round(barW * dashReadyRatio), 1.5);
       }
