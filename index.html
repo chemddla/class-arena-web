@@ -9849,9 +9849,10 @@
     const archerStormSr = v => (v || 0) === SECRET_SKIN_BASE + 1 ? ARCHER_STORM_FX.sr : null; // 시크릿 레어 전용 이펙트
 
     // 전사 히든 스킬 [엑스칼리버] 그림 (fx/samples/README.md)
-    // - cast: 기본 외형(warrior_0)이 검을 치켜드는 자세(0칸) → 검을 내리는 자세(1칸) · fx: 기를 모으는 고리 둘 · 베기 초승달 둘 · 날아가는 검기 · 발밑 반짝임
+    // - cast: 기본 외형(warrior_0 대검 기사, tools/warrior_excalibur0_build.py) 4칸 = 0 웅크려 기를 모음 · 1 일어서며 푸른 기운 · 2 뛰어올라 검을 치켜듦 · 3 내려베기 (땅이 터짐)
+    //   fx: 기를 모으는 고리 둘 · 베기 초승달 둘 · 날아가는 검기 · 발밑 반짝임
     const WARRIOR_EXCALIBUR_FX = {
-      cellW: 98, cellH: 86, anchorX: 62, anchorY: 85, standH: 81,
+      cellW: 200, cellH: 156, anchorX: 114, anchorY: 148, standH: 81,
       frames: { // [x, y, w, h, 기준점x, 기준점y]
         ring1: [0, 0, 128, 131, 64, 66], ring2: [132, 0, 156, 175, 78, 88],
         crescent1: [292, 0, 126, 143, 88, 72], crescent2: [422, 0, 135, 174, 88, 88],
@@ -29584,7 +29585,8 @@
           return;
         }
       }
-      // 전사 히든 스킬 [엑스칼리버] 시전: 기본 외형은 검을 치켜들고 있다가 베기 직전 검을 내리는 자세
+      // 전사 히든 스킬 [엑스칼리버] 시전. 기본 외형: 시전 앞 절반 웅크려 기를 모음(0) → 일어서며 기운(1) → 마지막 20틱 뛰어올라 치켜듦(2) → 벤 직후 내려베기(3)
+      //   다른 외형: 검을 치켜들고 있다가 베기 직전 검을 내리는 자세 (2칸)
       const excalSkin = (u.skinVariant || 0) === 0 ? null : WARRIOR_EXCALIBUR_FX.casts[u.skinVariant];
       const excalImg = (u.skinVariant || 0) === 0 ? WARRIOR_EXCALIBUR_FX.cast : excalSkin;
       const excalCasting = u.casting && u.casting.key === 'excalibur';
@@ -29595,13 +29597,16 @@
         const ks = spriteDrawH(u, sprite) / excal.standH;
         const raised = excalCasting && c.left > 20;
         const shake = raised ? Math.sin(tick * 1.3) * 0.8 * ks : 0; // 기를 모으는 동안 몸이 잘게 떨림
-        drawSpriteFx(ctx, excalImg, (raised ? 0 : 1) * cell.cellW, 0, cell.cellW, cell.cellH,
+        const efi = excalSkin ? (raised ? 0 : 1)
+          : !excalCasting ? 3 : !raised ? 2 : c.left > c.total / 2 ? 0 : 1;
+        drawSpriteFx(ctx, excalImg, efi * cell.cellW, 0, cell.cellW, cell.cellH,
           -cell.anchorX * ks + shake, -cell.anchorY * ks, cell.cellW * ks, cell.cellH * ks);
         ctx.restore();
         return;
       }
       // 전사 강타: 엑스칼리버 시전 그림을 그대로 씀 — 앞 절반은 검 치켜들기(1칸), 뒤 절반은 내리치기(2칸)
-      const stunImg = (u.skinVariant || 0) === 0 ? WARRIOR_EXCALIBUR_FX.cast : WARRIOR_EXCALIBUR_FX.casts[u.skinVariant];
+      //   기본 외형(대검 기사)은 시전 그림이 엑스칼리버 전용 4칸이라 쓰지 않고, 시트의 공격 동작(치켜듦 → 베기)으로 침
+      const stunImg = (u.skinVariant || 0) === 0 ? null : WARRIOR_EXCALIBUR_FX.casts[u.skinVariant];
       if (u.alive && u.skillAnim > 0 && u.activeSkillType === 'stun_strike' && u.job === 'warrior' && !u.monsterType && stunImg && stunImg.ready) {
         const ex = WARRIOR_EXCALIBUR_FX, cell = (u.skinVariant || 0) === 0 ? ex : ex.skinCell;
         const ks = spriteDrawH(u, sprite) / ex.standH;
