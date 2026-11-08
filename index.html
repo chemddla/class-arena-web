@@ -10682,6 +10682,10 @@
           spd: pick(4)
         };
       }
+      // 일부 칸만 빠진 경우(동기화 중 칸이 지워진 기록) 빠진 능력치는 1로 채움 (NaN 방지)
+      ['hp', 'atk', 'def', 'spd'].forEach(k => {
+        if (!Number.isFinite(merc.statVariance[k])) merc.statVariance[k] = 1;
+      });
       return merc.statVariance;
     }
 
@@ -38061,7 +38065,12 @@
       if (syncSig(prev) === syncSig(cur)) return;
       const bothArr = Array.isArray(prev) && Array.isArray(cur);
       const bothObj = prev && cur && typeof prev === 'object' && typeof cur === 'object' && !Array.isArray(prev) && !Array.isArray(cur);
-      if (depth < SYNC_DIFF_MAX_DEPTH && (bothArr || bothObj)) {
+      // 용병처럼 id가 있는 배열은 순서(id)가 바뀌면 통째로 올림
+      // (칸 번호별로 바뀐 칸만 올리면, 서버 사본이 이 기기 기억과 다를 때 서로 다른 용병 기록이 섞이고 레벨·등급 칸이 지워졌음)
+      const hasId = x => x && typeof x === 'object' && x.id;
+      const idsShifted = bothArr && (prev.some(hasId) || cur.some(hasId))
+        && (prev.length !== cur.length || cur.some((x, i) => (x && x.id) !== (prev[i] && prev[i].id)));
+      if (depth < SYNC_DIFF_MAX_DEPTH && (bothArr || bothObj) && !idsShifted) {
         const keys = bothArr
           ? Array.from({ length: Math.max(prev.length, cur.length) }, (_, i) => String(i))
           : [...new Set([...Object.keys(prev), ...Object.keys(cur)])];
@@ -38406,6 +38415,15 @@
 
     function normalizeMercForSync(m) {
       if (!m || typeof m !== 'object' || !m.job) return m;
+      // 동기화 중 칸이 지워진 용병 복구: 레벨은 레벨업 장부(시작 레벨 + 쓴 CA)로 되살리고, 등급은 일반으로
+      if (!Number.isFinite(m.level) || m.level < 1) {
+        const base = Number.isFinite(m.levelBase) && m.levelBase >= 1 ? m.levelBase : 1;
+        const spent = Number.isFinite(m.levelSpent) ? m.levelSpent : 0;
+        let lv = base;
+        while (lv < 100 && totalLevelCostTo(lv + 1) - totalLevelCostTo(base) <= spent) lv++;
+        m.level = lv;
+      }
+      if (!m.rarity || !RARITY_DEFS[m.rarity]) m.rarity = 'N';
       ensureMercSkillSlots(m);
       ensureMercVariance(m);
       if (!m.statPoints) m.statPoints = { hp: 0, atk: 0, def: 0, spd: 0 };
