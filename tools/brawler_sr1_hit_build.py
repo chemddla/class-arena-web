@@ -1,30 +1,31 @@
-# 백호(격투가 SR 1) 전용 타격 이펙트: 흰 소용돌이 고리 + 사방으로 튀는 불티 (검은 배경 샘플)
-#   → assets/sprites/fx/brawler_sr1_hit.webp (밝기 = 불투명도, 색은 흰색 그대로) · 게임에서 그림 가운데 = 맞은 자리
+# 백호(격투가 SR 1) 전용 타격 이펙트 4종 (검은 배경 흰 소용돌이 고리 샘플, 1024×1024)
+#   → assets/sprites/fx/brawler_sr1_hit_<종류>.webp (밝기 = 불투명도, 색은 흰색) · 게임에서 그림 가운데 = 맞은 자리
+#   basic   = 고리 + 불티 (연격 1~8타)
+#   skill   = 안쪽 고리가 하나 더 (연격 9·10타, 붕권·섬각·반격 같은 스킬 타격)
+#   barrage = 바깥으로 줄기가 길게 튐 (멸식 - 격 난타)
+#   big     = 굵은 붓질이 사방으로 터짐 (멸식 막타·마지막 일격)
 # 사용: python tools/brawler_sr1_hit_build.py
 import numpy as np
 from PIL import Image
 
-SRC = 'assets/sprites/fx/samples/brawler_sr1_hit_src.png'
-OUT = 'assets/sprites/fx/brawler_sr1_hit.webp'
+D = 'assets/sprites/fx/samples/brawler_sr1_hit_'
+SRC = {'basic': 'basic_src.png', 'skill': 'skill_src.png', 'barrage': 'barrage_src.webp', 'big': 'big_src.webp'}
 BG, FULL = 18, 235
+OUT_W = 256
 
 
-def main():
-    im = np.array(Image.open(SRC).convert('RGB')).astype(float)
-    lum = im.max(axis=2)
-    a = np.clip((lum - BG) / (FULL - BG), 0, 1)
+def build(kind, src):
+    im = np.array(Image.open(D + src).convert('RGB')).astype(float)
+    a = np.clip((im.max(axis=2) - BG) / (FULL - BG), 0, 1)
     h, w = a.shape
     yy, xx = np.mgrid[0:h, 0:w]
-    a *= np.clip(np.minimum.reduce([xx, w - 1 - xx, yy, h - 1 - yy]) / 12, 0, 1)   # 가장자리 잘린 티 없게
-    rgb = np.clip(im / np.maximum(a[..., None], 1e-3), 0, 255)   # 검은 배경과 섞였던 만큼 밝기를 되돌림 (흰색)
+    a *= np.clip(np.minimum.reduce([xx, w - 1 - xx, yy, h - 1 - yy]) / 40, 0, 1)   # 가장자리 잘린 티 없게
+    rgb = np.clip(im / np.maximum(a[..., None], 1e-3), 0, 255)   # 검은 배경과 섞였던 만큼 밝기를 되돌림
     rgb = np.where(a[..., None] > 0.02, rgb, 255)
-    # 고리 가운데(어두운 구멍)를 그림 가운데로: 밝은 픽셀의 무게중심 기준 정사각형
-    cy, cx = (np.array(np.where(a > 0.5)).mean(axis=1)).round().astype(int)
-    r = int(min(cx, w - cx, cy, h - cy))
-    out = np.dstack([rgb, a * 255])[cy - r:cy + r, cx - r:cx + r].astype(np.uint8)
-    Image.fromarray(out, 'RGBA').save(OUT, 'WEBP', quality=92)
-    print(OUT, out.shape[:2], 'center', cx, cy)
+    out = Image.fromarray(np.dstack([rgb, a * 255]).astype(np.uint8), 'RGBA').resize((OUT_W, OUT_W), Image.LANCZOS)
+    out.save(f'assets/sprites/fx/brawler_sr1_hit_{kind}.webp', 'WEBP', quality=90)
+    print(kind, out.size)
 
 
 if __name__ == '__main__':
-    main()
+    for k, s in SRC.items(): build(k, s)

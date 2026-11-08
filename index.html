@@ -9464,10 +9464,19 @@
     const BRAWLER_HIT_FX = new Image();
     BRAWLER_HIT_FX.onload = () => { BRAWLER_HIT_FX.ready = true; };
     BRAWLER_HIT_FX.src = 'assets/sprites/fx/brawler_hit.webp';
-    // 백호(격투가 SR 1) 전용 타격 이펙트: 흰 소용돌이 고리 + 튀는 불티 (tools/brawler_sr1_hit_build.py) · 그림 가운데 = 맞은 자리
-    const BRAWLER_SR_HIT_FX = new Image();
-    BRAWLER_SR_HIT_FX.onload = () => { BRAWLER_SR_HIT_FX.ready = true; };
-    BRAWLER_SR_HIT_FX.src = 'assets/sprites/fx/brawler_sr1_hit.webp';
+    // 백호(격투가 SR 1) 전용 타격 이펙트 4종: 흰 소용돌이 고리 (tools/brawler_sr1_hit_build.py) · 그림 가운데 = 맞은 자리
+    //   basic = 연격 1~8타 · skill = 연격 9·10타·스킬 타격 · barrage = 멸식 난타 · big = 멸식 막타·마지막 일격 (brawlerSrHitKind)
+    const BRAWLER_SR_HIT_FX = {};
+    ['basic', 'skill', 'barrage', 'big'].forEach(k => {
+      const im = new Image(); im.onload = () => { im.ready = true; }; im.src = `assets/sprites/fx/brawler_sr1_hit_${k}.webp`; BRAWLER_SR_HIT_FX[k] = im;
+    });
+    const BRAWLER_SR_HIT_R = { basic: 54, skill: 68, barrage: 50, big: 120 };
+    function brawlerSrHitKind(attacker) {
+      if (attacker._srHitKind) return attacker._srHitKind; // 멸식 막타·마지막 일격이 잠깐 정해 둠
+      if ((attacker.statuses?.flurry || 0) > 0 && attacker.activeSkillType === 'annihilate') return 'barrage';
+      if (skillHitSource || (attacker.brawlChain || 0) >= BRAWLER_CHAIN_MAX - 1) return 'skill';
+      return 'basic';
+    }
     const SNIPER_FX_IMG = new Image();
     SNIPER_FX_IMG.onload = () => { SNIPER_FX_IMG.ready = true; };
     SNIPER_FX_IMG.src = 'assets/sprites/fx/sniper_fx.webp';
@@ -19912,9 +19921,10 @@
       defender.hp -= dmg;
       if ((defender.statuses.undying || 0) > 0 && defender.hp < 1) defender.hp = 1; // 불사: 체력이 1 아래로 내려가지 않음
       if (attacker?.job === 'brawler' && !attacker.monsterType && dmg > 0) { // 격투가 타격 섬광 (스킬 피해는 조금 크게) · 백호는 전용 소용돌이 고리
-        const sr = Boolean(getMercSprite('brawler', attacker.skinVariant || 0)?.srHitFx);
-        sim.effects.push({ type: 'brawl_hit', x: defender.x + (Math.random() * 12 - 6), y: defender.y - 18 - Math.random() * 10, r: sr ? (skillHitSource ? 66 : 54) : (skillHitSource ? 50 : 40),
-          flip: Math.random() < 0.5, sr, rot: Math.random() * Math.PI * 2, life: sr ? 12 : 9, maxLife: sr ? 12 : 9 });
+        const srk = getMercSprite('brawler', attacker.skinVariant || 0)?.srHitFx ? brawlerSrHitKind(attacker) : null;
+        const life = srk === 'big' ? 20 : srk ? 12 : 9;
+        sim.effects.push({ type: 'brawl_hit', x: defender.x + (Math.random() * 12 - 6), y: defender.y - 18 - Math.random() * 10, r: srk ? BRAWLER_SR_HIT_R[srk] : (skillHitSource ? 50 : 40),
+          flip: Math.random() < 0.5, srk, rot: Math.random() * Math.PI * 2, life, maxLife: life });
       }
       defender.damageTaken += dmg;
       // 엘리트 보스는 기본 공격에 경직 면역: 피격 자세·흔들림 없이 하얗게 번쩍이기만 (스킬에 맞으면 경직)
@@ -25268,7 +25278,8 @@
             brawlerFace(u, foe);
             if (K.n === KT) { // 닿음: 마무리 피해 + 경직 (밀려나지 않고 그 자리에서 움찔)
               const mana = foe.mana;
-              withSkillHit(() => { suppressHitKnockback = true; try { applyDamage(u, foe, u.atk * BRAWLER_FLURRY_FINISH_DMG, '⚡', '#c2410c'); } finally { suppressHitKnockback = false; } });
+              u._srHitKind = 'big'; // 백호 타격 이펙트: 막타는 가장 큰 것
+              withSkillHit(() => { suppressHitKnockback = true; try { applyDamage(u, foe, u.atk * BRAWLER_FLURRY_FINISH_DMG, '⚡', '#c2410c'); } finally { suppressHitKnockback = false; u._srHitKind = null; } });
               foe.mana = Math.min(foe.mana, mana);
               foe.hurtAnim = Math.max(foe.hurtAnim || 0, Math.max(10, HS));
               if (P.shake && (!sim.shake || sim.shake.power < 12)) sim.shake = { power: 12, life: HS, maxLife: HS }; // 경직 동안 화면도 흔들림
@@ -25332,7 +25343,8 @@
       brawlerFace(u, foe);
       if (n === P.fin.prep + KT) { // 닿음: 강한 일격 + 긴 경직 + 큰 화면 흔들림
         const mana = foe.mana;
-        withSkillHit(() => { suppressHitKnockback = true; try { applyDamage(u, foe, u.atk * P.fin.dmg, '⚡', '#0ea5e9'); } finally { suppressHitKnockback = false; } });
+        u._srHitKind = 'big';
+        withSkillHit(() => { suppressHitKnockback = true; try { applyDamage(u, foe, u.atk * P.fin.dmg, '⚡', '#0ea5e9'); } finally { suppressHitKnockback = false; u._srHitKind = null; } });
         foe.mana = Math.min(foe.mana, mana);
         foe.hurtAnim = Math.max(foe.hurtAnim || 0, P.fin.hitstop);
         sim.effects.push({ type: 'magic_burst', x: foe.x, y: foe.y - 22, r: 70, color: '#e0f2fe', life: 30, maxLife: 30 });
@@ -30698,14 +30710,14 @@
 
         } else if (ef.type === 'brawl_hit') {
           // 격투가 타격 섬광: 앞 3틱에 확 터지고 나머지는 살짝 커지며 사라짐
-          if (ef.sr && BRAWLER_SR_HIT_FX.ready) { // 백호: 흰 소용돌이 고리가 확 퍼지며 돌다가 사라짐
+          if (ef.srk && BRAWLER_SR_HIT_FX[ef.srk]?.ready) { // 백호: 흰 소용돌이 고리가 확 퍼지며 돌다가 사라짐 (상황별 4종)
             const pop = progress < 0.25 ? 0.45 + progress / 0.25 * 0.7 : 1.15 + (progress - 0.25) * 0.3;
             const d = (ef.r || 54) * pop;
             ctx.translate(ef.x, ef.y);
             ctx.rotate((ef.rot || 0) + progress * (ef.flip ? -0.9 : 0.9));
             ctx.globalAlpha = progress < 0.35 ? 1 : Math.max(0, (1 - progress) / 0.65);
             ctx.imageSmoothingEnabled = true;
-            ctx.drawImage(BRAWLER_SR_HIT_FX, -d / 2, -d / 2, d, d);
+            ctx.drawImage(BRAWLER_SR_HIT_FX[ef.srk], -d / 2, -d / 2, d, d);
           } else if (BRAWLER_HIT_FX.ready) {
             const pop = progress < 0.33 ? 0.6 + progress / 0.33 * 0.5 : 1.1 + (progress - 0.33) * 0.15;
             const d = (ef.r || 40) * pop;
