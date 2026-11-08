@@ -2915,7 +2915,7 @@
             <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-1.5 min-w-0">
               <div class="text-xs font-extrabold text-slate-200 px-1">📺 지금 달리는 친구</div>
               <div id="petRunLiveList" class="flex flex-col gap-1 mb-1"></div>
-              <div class="text-xs font-extrabold text-slate-200 px-1">🏆 우리 반 펫 러닝 랭킹</div>
+              <div class="text-xs font-extrabold text-slate-200 px-1">🏆 이번 주 펫 러닝 랭킹 <span class="text-[10px] text-slate-500 font-bold">매주 월요일 초기화</span></div>
               <div id="petRunRank" class="flex flex-col gap-1"></div>
             </div>
           </div>
@@ -52057,6 +52057,14 @@
         if (!stu.petRun || typeof stu.petRun !== 'object') stu.petRun = { best: 0, plays: 0 };
         return stu.petRun;
       },
+      // 랭킹은 주간 기록(weekBest)으로: 매주 월요일(pvpWeekKey)에 새로 시작. 지난 주 기록은 순위에 안 나옴
+      weekBest(stu) {
+        const r = stu && stu.petRun, wk = pvpWeekKey();
+        if (!r) return 0;
+        if (r.week === wk) return r.weekBest || 0;
+        // 주간 기록이 생기기 전 기록: 역대 최고를 이번 주에 냈다면 그대로 인정
+        return !r.week && r.bestAt && pvpWeekKey(new Date(r.bestAt)) === wk ? (r.best || 0) : 0;
+      },
       rewardFor(score) {
         for (const [min, ca] of PETRUN.rewards) if (score >= min) return ca;
         return 0;
@@ -52169,7 +52177,7 @@
               <div class="min-w-0"><div class="text-sm font-extrabold text-white truncate">${esc(pet.name)} <span class="text-slate-400 text-[11px]">${PET_DEFS[pet.type].name}</span></div>
               <div class="text-[11px] font-bold text-amber-300">🏃 ${perk.text || ''}</div>
               <div class="text-[10px] font-bold text-slate-400">${PETRUN_UPGRADES.filter(d => this.upLevel(stu, d.key) > 0).map(d => `${d.icon}${this.upLevel(stu, d.key)}`).join(' ') || '강화 없음 · 아래에서 CA로 능력치를 올릴 수 있어요'}</div></div>
-              <div class="ml-auto text-right text-[11px] font-bold text-slate-300 shrink-0">내 최고 <b class="text-amber-300 text-sm">${(rec.best || 0).toLocaleString()}</b>점<br>오늘 남은 보상 <b class="${left > 0 ? 'text-emerald-300' : 'text-slate-500'}">${left}/${DAILY_REWARD_LIMITS.petrun}</b>회</div>`;
+              <div class="ml-auto text-right text-[11px] font-bold text-slate-300 shrink-0">이번 주 <b class="text-amber-300 text-sm">${this.weekBest(stu).toLocaleString()}</b>점 · 역대 ${(rec.best || 0).toLocaleString()}점<br>오늘 남은 보상 <b class="${left > 0 ? 'text-emerald-300' : 'text-slate-500'}">${left}/${DAILY_REWARD_LIMITS.petrun}</b>회</div>`;
           }
         }
         const startBtn = document.getElementById('petRunStartBtn');
@@ -52186,17 +52194,17 @@
         const me = this.student();
         const esc = v => PetSystem.esc(v);
         const rows = studentsFor('petRank')
-          .filter(s => s.petRun && s.petRun.best > 0)
-          .sort((a, b) => b.petRun.best - a.petRun.best).slice(0, 10);
-        if (!rows.length) { el.innerHTML = `<div class="text-[11px] text-slate-500 text-center py-3">아직 기록이 없어요. 첫 기록의 주인공이 되어 보세요!</div>`; return; }
+          .filter(s => this.weekBest(s) > 0)
+          .sort((a, b) => this.weekBest(b) - this.weekBest(a)).slice(0, 10);
+        if (!rows.length) { el.innerHTML = `<div class="text-[11px] text-slate-500 text-center py-3">이번 주 기록이 아직 없어요. 첫 기록의 주인공이 되어 보세요!</div>`; return; }
         el.innerHTML = rows.map((s, i) => {
-          const d = PET_DEFS[s.petRun.bestType];
+          const d = PET_DEFS[s.petRun.weekBestType];
           const mine = me && s.id === me.id;
           return `<div class="flex items-center gap-2 px-2 py-1 rounded-lg ${mine ? 'bg-sky-500/25 border border-sky-400/70' : 'bg-slate-900'}">
               <span class="w-5 text-center text-[11px] font-extrabold ${i < 3 ? 'text-amber-300' : 'text-slate-500'}">${['🥇', '🥈', '🥉'][i] || i + 1}</span>
               ${d ? `<img src="${d.icon}" alt="" class="h-6 w-auto object-contain" draggable="false">` : '<span class="w-6"></span>'}
               <span class="text-xs font-extrabold ${mine ? 'text-sky-200' : 'text-slate-200'} truncate">${esc(s.name)}</span>
-              <span class="ml-auto text-xs font-extrabold text-white">${s.petRun.best.toLocaleString()}<span class="text-[10px] text-slate-400">점</span></span>
+              <span class="ml-auto text-xs font-extrabold text-white">${this.weekBest(s).toLocaleString()}<span class="text-[10px] text-slate-400">점</span></span>
             </div>`;
         }).join('');
       },
@@ -52577,6 +52585,9 @@
           rec.plays = (rec.plays || 0) + 1;
           rec.last = score; rec.lastAt = Date.now();
           if (score > (rec.best || 0)) { rec.best = score; rec.bestAt = Date.now(); rec.bestType = s.type; s.isBest = true; }
+          const wk = pvpWeekKey();
+          if (rec.week !== wk) { const keep = this.weekBest(stu); rec.weekBestType = keep ? rec.bestType : null; rec.week = wk; rec.weekBest = keep; }
+          if (score > (rec.weekBest || 0)) { rec.weekBest = score; rec.weekBestType = s.type; s.isWeekBest = true; }
           const ca = this.rewardFor(score);
           s.rewardCa = ca;
           s.rewardGot = ca > 0 ? grantDailyReward(stu, 'petrun', ca) : 0;
@@ -52604,10 +52615,10 @@
         res.classList.remove('hidden');
         res.innerHTML = `
           <div class="flex flex-wrap items-center gap-x-5 gap-y-1">
-            <div><span class="text-[11px] text-slate-400 font-bold">점수</span> <b class="text-2xl font-title text-amber-300">${s.score.toLocaleString()}</b>${s.isBest ? ' <span class="text-[11px] px-1.5 py-0.5 rounded bg-rose-500 text-white font-extrabold">NEW 최고 기록!</span>' : ''}</div>
+            <div><span class="text-[11px] text-slate-400 font-bold">점수</span> <b class="text-2xl font-title text-amber-300">${s.score.toLocaleString()}</b>${s.isBest ? ' <span class="text-[11px] px-1.5 py-0.5 rounded bg-rose-500 text-white font-extrabold">NEW 최고 기록!</span>' : s.isWeekBest ? ' <span class="text-[11px] px-1.5 py-0.5 rounded bg-sky-500 text-white font-extrabold">이번 주 최고!</span>' : ''}</div>
             <div class="text-[11px] text-slate-300 font-bold">🏃 ${Math.round(s.dist / 10).toLocaleString()}m · 🍬 젤리 ${s.jelly}개 · 🛝 슬라이딩 통과 ${s.slides || 0}번 · 🚀 아이템 ${s.items || 0}개 · 🔥 난이도 ${s.stage + 1}단계 · ⏱ ${Math.round(s.t)}초</div>
             <div class="text-xs font-extrabold">${rewardText}</div>
-            ${stu ? `<div class="text-[11px] text-slate-400 font-bold">내 최고 ${this.record(stu).best.toLocaleString()}점</div>` : ''}
+            ${stu ? `<div class="text-[11px] text-slate-400 font-bold">이번 주 최고 ${this.weekBest(stu).toLocaleString()}점 · 역대 ${this.record(stu).best.toLocaleString()}점</div>` : ''}
           </div>`;
       },
 
