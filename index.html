@@ -10877,6 +10877,7 @@
               s.roster = [];
             }
             if (!Array.isArray(s.mercStorage)) s.mercStorage = [];
+            s.mercStorage = s.mercStorage.filter(m => m && typeof m === 'object');
             s.mercStorage.forEach(normalizeMercForSync);
             ensureRosterGotAt(s.roster);
             s.roster.forEach(m => {
@@ -13184,7 +13185,7 @@
     function renderMercStorage(stu) {
       const listEl = document.getElementById('mercStorageList');
       if (!listEl) return;
-      const store = (stu && stu.mercStorage) || [];
+      const store = ((stu && stu.mercStorage) || []).filter(m => m && typeof m === 'object');
       const badge = document.getElementById('mercStorageCountBadge');
       if (badge) badge.textContent = `${store.length} / ${MAX_MERC_STORAGE}칸`;
       const rosterFull = (stu?.roster || []).length >= MAX_ROSTER;
@@ -37938,6 +37939,7 @@
           if (priv[k] == null) { if (vals) delete vals[k]; return; } // 서버에 없음 → 이 기기 값을 다음 저장 때 올림
           // 도감은 늘기만 하는 기록 → 서버 값에 이 기기에서 새로 연 칸을 합침 (합친 차이는 다음 저장 때 올라감)
           local[k] = k === 'codex' ? mergeCodexBooks(priv[k], local[k]) : JSON.parse(JSON.stringify(priv[k]));
+          if (k === 'mercStorage') local[k] = (Array.isArray(local[k]) ? local[k] : Object.values(local[k] || {})).filter(m => m && typeof m === 'object');
           if (vals) { const c = syncCanon(priv[k]); if (c === undefined) delete vals[k]; else vals[k] = c; }
         });
         if (vals) syncCache.students[id] = syncSig(vals);
@@ -38422,6 +38424,9 @@
       if (!Array.isArray(s.dailyEquipShop)) s.dailyEquipShop = [];
       if (!s.relics || typeof s.relics !== 'object') s.relics = {};
       if (!Array.isArray(s.mercStorage)) s.mercStorage = s.mercStorage && typeof s.mercStorage === 'object' ? Object.values(s.mercStorage) : [];
+      // 서버 배열에 빈 칸(null)이 끼면 화면 그리기가 멈춰 로그인·학생 전환이 안 됐음 → 빈 칸은 버림
+      s.roster = s.roster.filter(m => m && typeof m === 'object');
+      s.mercStorage = s.mercStorage.filter(m => m && typeof m === 'object');
       s.roster.forEach(normalizeMercForSync);
       ensureRosterGotAt(s.roster);
       s.mercStorage.forEach(normalizeMercForSync);
