@@ -10078,7 +10078,7 @@
       const art = WARRIOR_EXCALIBUR_FX.fx, f = WARRIOR_EXCALIBUR_FX.frames[name];
       ctx.drawImage(art, f[0], f[1], f[2], f[3], -f[4] * scale, -f[5] * scale, f[2] * scale, f[3] * scale);
     }
-    // 엑스칼리버 시크릿 레어 전용 그림 (fx/samples/README.md) — 시크릿 레어 전사는 위 그림 대신 이걸 씀
+    // 엑스칼리버 시크릿 레어 전용 그림 (fx/samples/README.md) — 시크릿 레어 전사는 위 그림 대신 이걸 씀. 원본의 파랑·청록 빛은 붉은 빛으로 다시 칠함 (2026-11-08)
     // 칸 [x, y, w, h, 기준점x, 기준점y]: 기 모으기 2칸(구체 중심) · 베기 초승달 2칸(빛 중심) · 날아가는 검기(앞머리, 오른쪽 방향)
     // · 섬광 폭발(별 중심) · 바닥 고리 먼지(고리 중심) · 꽂힌 성검과 빛 가루(바닥 고리 중심)
     const WARRIOR_EXCAL_SR_FX = {
@@ -22426,8 +22426,8 @@
         const reach = (Math.max(unit.range, 90) + C * 0.8) * 1.5; // 이펙트 +50%에 맞춰 판정도 +50%
         const sr = usesExcalSr(unit);
         sim.effects.push({ type: 'hidden_slash', x: unit.x, y: unit.y - 14, angle, r: reach, sr, life: 28, maxLife: 28 });
-        if (sr) { // 시크릿 레어: 베인 자리에 섬광 폭발 → 바닥 고리 먼지 → 꽂힌 성검과 빛 가루
-          sim.effects.push({ type: 'hidden_excal_impact', x: unit.x + Math.cos(angle) * reach * 0.5, y: unit.y + Math.sin(angle) * reach * 0.5 + 12, r: reach, life: 100, maxLife: 100 });
+        if (sr) { // 시크릿 레어: 베인 자리에 섬광 폭발 → 바닥 고리 먼지 (고리가 사라지는 72틱에 끝남)
+          sim.effects.push({ type: 'hidden_excal_impact', x: unit.x + Math.cos(angle) * reach * 0.5, y: unit.y + Math.sin(angle) * reach * 0.5 + 12, r: reach, life: 72, maxLife: 72 });
         }
         lancerArcHits(unit, angle, reach, 1.15).forEach(e => applyDamage(unit, e, unit.atk * 21, '', '#facc15'));
         const sx = unit.x + Math.cos(angle) * 40, sy = unit.y - 14 + Math.sin(angle) * 40;
@@ -23802,7 +23802,7 @@
         return;
       }
       if (ef.type === 'hidden_excal_impact') {
-        // 엑스칼리버(시크릿 레어) 베인 자리: 섬광 폭발 → 바닥 고리 먼지 → 꽂힌 성검과 빛 가루가 차례로 (x, y = 바닥)
+        // 엑스칼리버(시크릿 레어) 베인 자리: 섬광 폭발 → 바닥 고리 먼지 (x, y = 바닥)
         if (!WARRIOR_EXCAL_SR_FX.ready) return;
         const e = ef.maxLife - ef.life;
         const sc = ef.r / 230;
@@ -23814,11 +23814,7 @@
           ctx.restore();
         }
         if (e >= 12 && e < 72) drawExcalSrFrame(ctx, 'ring', sc * (0.85 + 0.25 * Math.min(1, (e - 12) / 20)), Math.min(1, (e - 12) / 8, (72 - e) / 18));
-        if (e >= 40) { // 성검은 밝은 바닥에서 옅어서 두 번 겹침
-          const a = Math.min(1, (e - 40) / 12, ef.life / 24);
-          drawExcalSrFrame(ctx, 'sword', sc * 0.85, a);
-          drawExcalSrFrame(ctx, 'sword', sc * 0.85, a * 0.7);
-        }
+        // 꽂힌 성검과 빛 가루(sword 칸)는 빼 달라고 함
         return;
       }
       if (ef.type === 'hidden_storm') {
