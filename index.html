@@ -42068,7 +42068,7 @@
         guestChose: false, started: false, lastStatusAt: 0, hostStatus: null,
         lastFramePublishedAt: 0, spectator, timeoutExtended: false, pvpWatchers: 0,
         team: Boolean(team), teamExpect: teamExpect || [], teamChosen: {}, remoteCtrls: {}, myId: getActiveStudent()?.id || null,
-        dgUnitSig: null, dgRoomSeq: null, dgSentJ: null, dgChangedAt: 0
+        dgUnitSig: null, dgRoomSeq: null, dgSentJ: null, dgChangedAt: 0, rsSent: null, rsSentT: 0
       });
       resetLiveFrameBuffer();
       if (role === 'host') {
@@ -42699,7 +42699,7 @@
       };
       // 엘리트 보스 등장 연출(하늘에서 떨어지는 중인 시점)·화면 흔들림·섬광도 같이 보냄 (흔들림·섬광은 새로 생긴 것만 한 번)
       if (sim.eliteIntro) frame.it = sim.eliteIntro.t;
-      if (sim.rush) frame.rs = packRushState();
+      if (sim.rush) { const rs = rushStateForFrame(keyframe); if (rs) frame.rs = rs; }
       // 🏰 5인 던전: 지도·방 진행 상태는 바뀐 뒤 1초 동안과 전체 화면에만 실음 (화면 몇 장이 건너뛰어져도 받게)
       if (sim.dungeon && sim.dungeon.party) {
         const dgs = packDungeonState(), j = JSON.stringify(dgs);
@@ -44363,7 +44363,7 @@
         role: 'host', roomId: castId, ref, startedAt: Date.now(), finished: false,
         sent: new WeakSet(), pendingLogs: [], lastFramePublishedAt: 0, spectator: false, sentU: null, sentT: 0, keyAt: 0,
         team: false, remoteCtrls: {}, myId: me.id, towerCast: true, towerWatchers: 0, raidCast: true,
-        dgUnitSig: null, dgRoomSeq: null, dgSentJ: null, dgChangedAt: 0
+        dgUnitSig: null, dgRoomSeq: null, dgSentJ: null, dgChangedAt: 0, rsSent: null, rsSentT: 0
       });
       sim.effects.forEach(x => liveNet.sent.add(x));
       sim.floatTexts.forEach(x => liveNet.sent.add(x));
@@ -48025,6 +48025,17 @@
       const rs = sim.rush;
       return [rs.round, rs.phase === 'break' ? 1 : rs.phase === 'move' ? 2 : 0, rs.cleared, rs.bosses, rs.pending, rs.left,
         Math.max(0, rs.nextAt - sim.tickCount), Math.max(0, sim.tickCount - rs.roundStartTick), rs.startFloor, rs.mapStage || 0, Math.round((rs.fade || 0) * 100)];
+    }
+    // 화면(frame)에 실을 라운드 상태: 전체 화면·바뀌었을 때만 (매 화면 약 40B였음 · 받는 쪽은 nextAt·roundStartTick을 자기 틱 기준 절대값으로 두어 그 사이 화면에 rs가 없어도 남은 시간이 맞음)
+    // 칸 6(다음 라운드까지)·7(라운드 시작 뒤)은 흐른 틱만큼 변한 것은 바뀐 것으로 보지 않음 (2틱 넘게 어긋나면 라운드가 새로 잡힌 것 → 보냄)
+    function rushStateForFrame(keyframe) {
+      const rs = packRushState(), prev = liveNet.rsSent, dt = sim.tickCount - (liveNet.rsSentT || 0);
+      const same = !keyframe && Array.isArray(prev) && prev.length === rs.length
+        && rs.every((v, i) => i === 6 ? Math.abs(Math.max(0, prev[6] - dt) - v) <= 2 : i === 7 ? Math.abs(prev[7] + dt - v) <= 2 : v === prev[i]);
+      if (same) return null;
+      liveNet.rsSent = rs;
+      liveNet.rsSentT = sim.tickCount;
+      return rs;
     }
     function applyRushState(a) {
       if (!sim.rush) sim.rush = newRushState(liveNum(a[8]) || 1);
