@@ -7125,8 +7125,8 @@
     //   · 9 착지 → 정권으로 대상을 뚫고 지나감 · 10 그 거리에서 날아 차기로 다시 들어와 침 → 착지 (brawlPass9, brawlerBasicAttack)
     MERC_SPRITE_DEFS[`brawler_${SECRET_SKIN_BASE + 1}`] = {
       ...MERC_SPRITE_DEFS.brawler_0, src: 'assets/sprites/merc/brawler_sr1.webp',
-      cellW: 129, cellH: 113, anchorX: 67, anchorY: 111, standH: 78, topH: 86, portraitCX: 70, count: 37,
-      anims: { ...MERC_SPRITE_DEFS.brawler_0.anims, walk: [1, 2, 3, 4], hurt: [5], armor: [34, 24], annPrep: [35], dashRun: [36],
+      cellW: 131, cellH: 113, anchorX: 67, anchorY: 111, standH: 78, topH: 86, portraitCX: 70, count: 39,
+      anims: { ...MERC_SPRITE_DEFS.brawler_0.anims, walk: [1, 2, 3, 4], hurt: [5], armor: [34, 24], annPrep: [35], dashRun: [36], annPrep2: [37], annFinal: [38],
         barrage: [8, 9, 10, 12, 14, 16, 18, 20] },
       brawlChain: [[8], [9], [10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 10], [27]],
       brawlFinish: [[27, 12], [33, 16]], // 10타: 날아 들어오며 차기 (BRAWLER_SR_LEAP_TICKS 8 + 닿고 4틱) → 착지 → 평소 자세
@@ -7135,8 +7135,10 @@
       // 멸식 - 격: 잔상은 흰 털에 어울리는 서늘한 청백색 · 마무리 준비(웅크림) 14 → 30틱 · 닿을 때 경직 8 → 20틱 + 화면 흔들림 (brawlerFlurryPlan)
       ghostFilter: 'grayscale(1) sepia(1) saturate(3) hue-rotate(170deg) brightness(1.25)',
       flurryPrepExtra: 16, flurryHitstop: 20,
+      // 멸식 - 격 마지막 일격 (SR 전용): 막타로 뚫고 지나간 자리에서 한 번 더 주먹을 당겨 준비(37) → 날아 차며 다시 들어와 강한 일격(38, 300%) → 경직·화면 흔들림 → 착지
+      flurryFinal: { prep: 24, dmg: 3.0, hitstop: 20 },
       skillAnims: { ...MERC_SPRITE_DEFS.brawler_0.skillAnims, diamond_body: { anim: 'armor', tpf: 20, dur: 40 }, // 두 팔 모음 → 힘줌
-        annihilate: { anim: 'land', tpf: 268, dur: 268 } } // 멸식 전체 틱 (240 + 준비 16 + 경직 12, brawlerFlurryPlan)
+        annihilate: { anim: 'land', tpf: 320, dur: 320 } } // 멸식 전체 틱 (240 + 준비 16 + 경직 12 + 마지막 일격 52, brawlerFlurryPlan)
     };
     {
       const k = `berserker_${SECRET_SKIN_BASE + 1}`, eyesImg = new Image();
@@ -24890,8 +24892,10 @@
     // 외형마다 다른 멸식 단계 (백호: 마무리 준비를 길게 · 닿을 때 경직을 길게). 난타 구간은 같아서 피해는 그대로, 늘어난 만큼 전체 시간이 길어짐
     function brawlerFlurryPlan(u) {
       const sp = u && !u.monsterType ? getMercSprite('brawler', u.skinVariant || 0) : null;
-      const extra = sp?.flurryPrepExtra || 0, hs = sp?.flurryHitstop || BRAWLER_FLURRY_HITSTOP;
-      return { kickAt: BRAWLER_FLURRY_KICK_AT + extra, hs, total: BRAWLER_FLURRY_TICKS + extra + (hs - BRAWLER_FLURRY_HITSTOP), shake: hs > BRAWLER_FLURRY_HITSTOP };
+      const extra = sp?.flurryPrepExtra || 0, hs = sp?.flurryHitstop || BRAWLER_FLURRY_HITSTOP, fin = sp?.flurryFinal || null;
+      const kickAt = BRAWLER_FLURRY_KICK_AT + extra, kickEnd = kickAt + BRAWLER_FLURRY_KICK_TICKS + hs + BRAWLER_FLURRY_PASS_TICKS;
+      const finLen = fin ? fin.prep + BRAWLER_FLURRY_KICK_TICKS + fin.hitstop : 0;
+      return { kickAt, kickEnd, hs, fin, total: BRAWLER_FLURRY_TICKS + extra + (hs - BRAWLER_FLURRY_HITSTOP) + finLen, shake: hs > BRAWLER_FLURRY_HITSTOP };
     }
     const BRAWLER_COUNTER_RUSH_TICKS = 6;    // 반격: 날아 차며 공격자에게 붙는 틱 (피해는 닿을 때, 기절은 바로)
 
@@ -24927,7 +24931,12 @@
         if (el <= BRAWLER_FLURRY_WINDUP) return a.annCast[0];
         if (el <= BRAWLER_FLURRY_BACK_AT) return a.barrage[Math.floor(el / 4) % a.barrage.length];
         if (el <= P.kickAt) return (a.annPrep || a.kick)[0]; // 백호는 멸식 전용 준비 자세
-        return el <= P.kickAt + BRAWLER_FLURRY_KICK_TICKS + P.hs + BRAWLER_FLURRY_PASS_TICKS ? a.annKick[0] : a.land[0]; // 날아 차기 (닿기·경직·관통) → 착지
+        if (el <= P.kickEnd) return a.annKick[0];
+        if (P.fin && a.annFinal) { // 마지막 일격 (SR): 준비 자세 → 날아 차기 (닿고 경직하는 동안도)
+          if (el <= P.kickEnd + P.fin.prep) return a.annPrep2[0];
+          if (el <= P.kickEnd + P.fin.prep + BRAWLER_FLURRY_KICK_TICKS + P.fin.hitstop) return a.annFinal[0];
+        }
+        return a.land[0]; // 날아 차기 (닿기·경직·관통) → 착지
       }
       if ((st.counter || 0) > 0) return a.counter[0];
       if (u.casting || !(u.attackAnim > 0) || !chain) return null;
@@ -25235,7 +25244,7 @@
             const p = Math.min(1, (K.n - KT - HS) / BRAWLER_FLURRY_PASS_TICKS);
             u.x = K.cx + (K.tx - K.cx) * p; u.y = K.cy + (K.ty - K.cy) * p;
           }
-        }
+        } else if (P.fin) brawlerFlurryFinal(u, foe, f, P);
         return true;
       }
       // 눈으로 잡을 수 없는 속도: 대상 둘레를 이리저리 옮겨 다니며 때림
@@ -25254,6 +25263,34 @@
         playCombatSfx('slash');
       }
       return true;
+    }
+
+    // 멸식 - 격 마지막 일격 (SR 외형 flurryFinal): 막타로 뚫고 지나간 자리에서 돌아서 한 번 더 준비 → 날아 차며 다시 들어와 강한 일격 → 경직
+    function brawlerFlurryFinal(u, foe, f, P) {
+      const F = f.fin || (f.fin = { n: 0 }), KT = BRAWLER_FLURRY_KICK_TICKS;
+      F.n++;
+      if (F.n <= P.fin.prep) { // 준비: 주먹을 당기고 기운을 모음
+        brawlerFace(u, foe);
+        if (F.n === 1) sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 56, color: '#bae6fd', life: P.fin.prep, maxLife: P.fin.prep });
+        return;
+      }
+      if (F.n > P.fin.prep + KT) return; // 경직: 닿은 자리에 그대로 (그다음은 착지 자세)
+      if (F.sx == null) { F.sx = u.x; F.sy = u.y; }
+      const ang = Math.atan2(foe.y - F.sy, foe.x - F.sx), gap = 26 + unitBodyGap(foe) + unitBodyGap(u), p = (F.n - P.fin.prep) / KT;
+      u.x = F.sx + (foe.x - Math.cos(ang) * gap - F.sx) * p;
+      u.y = F.sy + (foe.y - Math.sin(ang) * gap - F.sy) * p;
+      brawlerFace(u, foe);
+      if (F.n === P.fin.prep + KT) { // 닿음: 강한 일격 + 긴 경직 + 큰 화면 흔들림
+        const mana = foe.mana;
+        withSkillHit(() => { suppressHitKnockback = true; try { applyDamage(u, foe, u.atk * P.fin.dmg, '⚡', '#0ea5e9'); } finally { suppressHitKnockback = false; } });
+        foe.mana = Math.min(foe.mana, mana);
+        foe.hurtAnim = Math.max(foe.hurtAnim || 0, P.fin.hitstop);
+        sim.effects.push({ type: 'magic_burst', x: foe.x, y: foe.y - 22, r: 70, color: '#e0f2fe', life: 30, maxLife: 30 });
+        sim.effects.push({ type: 'aoe_ring', x: foe.x, y: foe.y, r: 120, color: '#38bdf8', life: 30, maxLife: 30 });
+        sim.effects.push({ type: 'aoe_ring', x: foe.x, y: foe.y, r: 70, color: '#f8fafc', life: 22, maxLife: 22 });
+        if (!sim.shake || sim.shake.power < 20) sim.shake = { power: 20, life: P.fin.hitstop + 6, maxLife: P.fin.hitstop + 6 };
+        playCombatSfx('heavy');
+      }
     }
 
     // ----- 기본 공격: 투혼 연격 -----

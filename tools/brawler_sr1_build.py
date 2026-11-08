@@ -10,6 +10,7 @@
 #   - dash_src.png  대시 (앞으로 몸을 숙이고 달려 나감). 어두운 회색 배경(59,63,67) + 양옆에 옆 칸 조각
 #     → 배경색과 8 이내인 픽셀을 가장자리부터 지우고 가장 큰 덩어리만 남김. 시트에선 brawler_0 칸 뒤에 한 칸 더 붙여 dashRun으로 씀
 #       (불사조 SR처럼 대시 동안 이 칸, 기본 격투가는 대시 때 걷기 칸)
+#   - finprep_src.webp · finkick_src.webp  멸식 - 격 마지막 일격 (SR 전용, 흰 배경 큰 그림, 뒷모습): 막타 뒤 한 번 더 주먹을 당긴 준비 자세 → 강하게 날아 차기
 #   - armor_src.png  금강 두 칸 (연회색 배경 238~250). 기본 격투가는 슈퍼아머 1칸(24)이라 24 = 2번(힘줌), 1번(팔 모음)은 뒤에 한 칸 더 붙여
 #     SR만 armor: [팔 모음, 24]로 씀 (두 팔 사이 갇힌 배경 구멍도 지움)
 #   - down1_src.png · down2_src.png  쓰러짐 (흰 배경): 1 = 앞으로 고꾸라지며 한 손·무릎을 짚음 · 2 = 엎어져 누움(머리 오른쪽)
@@ -88,7 +89,7 @@ D = 'assets/sprites/fx/samples/brawler_sr1_'
 TARGET_H = 86   # 대기 자세 키 → brawler_0과 같은 칸 키
 WALK = ['B2', 'B3', 'B4', 'B5']
 ARMOR = [(0, 127), (127, 286)]   # 금강 샘플 가로 범위: 1 = 두 팔을 머리 위로 모음 · 2 = 주먹 쥐고 양팔에 힘줌
-LIFT = {'c8b': 6, 'c10': 20}   # 칸 이름 → 바닥에서 띄울 높이 (게임 px)
+LIFT = {'c8b': 6, 'c10': 20, 'finkick': 16}   # 칸 이름 → 바닥에서 띄울 높이 (게임 px)
 # 칸별 배율 (원본 px → 게임 px) — 얼굴 크기를 대기 칸과 같게 (2026-11-08 '크기 비율 통일')
 #   재는 법: 대기 칸 머리(염주 위)를 본으로 잘라 배율·좌우·기울기를 바꿔 가며 정규화 상호상관이 가장 큰 배율을 찾음
 #   (확신 0.8 이상이면 그 값, 낮은 칸은 귀 줄 폭 값과 같은 원본에서 그린 칸의 값으로 정함). 귀 줄 폭은 대체로 맞았고
@@ -97,6 +98,7 @@ SCALE = {
     'armor1': 0.562, 'armor2': 0.562,        # 금강 2 머리 일치 0.90 · 금강 1은 같은 장에 같은 크기로 그림
     'down1': 0.383, 'down2': 0.383,          # 쓰러짐 1 기울인 본 일치 0.64 · 2는 같은 묶음 샘플
     'duel': 0.45,                            # 머리를 젖혀 일치 낮음 → 허리·띠 본 일치 0.70 값
+    'finprep': 0.125, 'finkick': 0.125,      # 멸식 마지막 일격 (뒷모습, 1024×765 큰 샘플): 머리 일치 낮음(0.41) → 귀 줄 0.123 · 같은 뒷모습 6타와 머리·몸통 비교
     'counter': 0.445, 'annprep': 0.371, 'hurt': 0.47,   # 피격: 머리 일치 0.93 (귀 줄 0.467)
     'c1': 0.607, 'c2': 0.607, 'c3': 0.545, 'c4a': 0.607, 'c4b': 0.539, 'c5a': 0.475, 'c5b': 0.365,
     'c6a': 0.59, 'c6b': 0.59,                # 뒷모습이라 본 일치 낮음 → 귀 줄 폭(0.604)에서 앞모습 칸들의 차이(-2.5%)만큼
@@ -287,6 +289,11 @@ def main():
     k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
     F['hurt'] = (p, (xs.min() + xs.max()) / 2, 0)
     print(f'hurt: {r.shape[1]}x{r.shape[0]} ×{SCALE["hurt"]:.3f} → {p.shape[:2]}')
+    for nm in ('finprep', 'finkick'):   # 멸식 마지막 일격 (SR 전용): 한 번 더 준비 자세 → 강하게 날아 차기
+        r = cut(load_flat(f'{D}{nm}_src.webp')); p = shrink(r, SCALE[nm])
+        k = p[..., 3] > 127; xs = np.where(k[int(k.shape[0] * .9):].any(axis=0))[0]
+        F[nm] = (p, (xs.min() + xs.max()) / 2 if nm == 'finprep' else p.shape[1] / 2, LIFT.get(nm, 0))
+        print(f'{nm}: {r.shape[1]}x{r.shape[0]} ×{SCALE[nm]:.3f} → {p.shape[:2]}')
     build_sheet(F)
 
 
@@ -301,7 +308,8 @@ SHEET = ['idle', 'walk1', 'walk2', 'walk3', 'walk4',
          'c2', 'c3',                # 28~29 붕권: 샘플 없음 → 2타(주먹 당김) → 3타(정권)
          'counter', 'armor2',       # 30 반격 · 31 멸식 시전: 샘플 없음 → 금강 힘줌
          'c10', 'land',             # 32 멸식 마무리 날아 차기 · 33 착지
-         'armor1', 'annprep', 'dash']   # 34 금강 팔 모음 · 35 멸식 마무리 준비 (annPrep) · 36 대시 (dashRun)
+         'armor1', 'annprep', 'dash',   # 34 금강 팔 모음 · 35 멸식 마무리 준비 (annPrep) · 36 대시 (dashRun)
+         'finprep', 'finkick']          # 37 멸식 마지막 일격 준비 (annPrep2) · 38 마지막 일격 날아 차기 (annFinal)
 OUT = 'assets/sprites/merc/brawler_sr1.webp'
 
 
