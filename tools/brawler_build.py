@@ -47,7 +47,11 @@ FLIP = {'down2'}
 AURA_OUT = 'assets/sprites/fx/brawler_aura.webp'   # 멸식을 쓸 수 있을 때 몸 뒤에 깔 기운 (멸식 시전 칸의 기운만, 칸·기준점은 시트와 같음)
 AURA_RGBA = {}   # 샘플 이름 → 기운만 남긴 그림 (몸이 가리던 자리는 가까운 기운 색으로 채움)
 HIT_SRC = 'assets/sprites/fx/samples/brawler_hit_src.png'   # 타격 섬광 샘플 (어두운 회색 배경 위 흰·노란 빛)
-HIT_OUT = 'assets/sprites/fx/brawler_hit.webp'   # 격투가가 맞힐 때 대상에게 터지는 섬광 (가운데 = 맞은 자리)
+HIT_OUT = 'assets/sprites/fx/brawler_hit.webp'
+RING_SRC = 'assets/sprites/fx/samples/brawler_hit_ring_src.png'   # 강타 고리 샘플 (검은 배경 위 흰 빛 고리 + 가시, 글자·로고 있음)
+RING_OUT = 'assets/sprites/fx/brawler_hit_ring.webp'   # 스킬·연격 10타가 맞을 때 터지는 노란 고리 (가운데 = 맞은 자리)
+RING_CUT = [(30, 58, 0, 186), (472, 504, 0, 44), (478, 523, 512, 557)]   # 지울 상자 (y0, y1, x0, x1): 위 'al Hit Effect 1 piece' · 아래 'eces' · 오른쪽 아래 로고
+RING_PX = 112   # 내보낼 칸 크기   # 격투가가 맞힐 때 대상에게 터지는 섬광 (가운데 = 맞은 자리)
 AURA = {'ann0'}   # 몸 둘레 푸른·노란 기운: 흰 배경 위에 옅게 그려져 있어 흰색과 떨어진 만큼만 불투명 (반투명 빛)
 
 
@@ -233,6 +237,34 @@ def build_hit():
     print(f'brawler_hit {out.shape[1]}x{out.shape[0]} center=({cx},{cy}) in sample')
 
 
+
+def build_ring():
+    # 검은 배경 = 밝기만큼 불투명. 밝기를 노란 색띠로: 어두운 빛 = 주황, 가운데 = 금빛, 가장 밝은 곳 = 연한 크림
+    g = np.asarray(Image.open(RING_SRC).convert('L')).astype(float) / 255
+    for y0, y1, x0, x1 in RING_CUT: g[y0:y1, x0:x1] = 0
+    g = np.where(g < 0.06, 0, g)
+    ys, xs = np.nonzero(g > 0.55)   # 고리 가운데 = 밝은 고리 점들의 가운데
+    cy, cx = int(round(ys.mean())), int(round(xs.mean()))
+    r = min(cy, cx, g.shape[0] - 1 - cy, g.shape[1] - 1 - cx)
+    g = g[cy - r:cy + r + 1, cx - r:cx + r + 1]
+    ramp = np.array([[245, 140, 20], [252, 200, 40], [255, 228, 90], [255, 248, 200]], float)   # 주황 → 금 → 노랑 → 크림
+    t = np.clip(g, 0, 1) * (len(ramp) - 1)
+    i = np.minimum(t.astype(int), len(ramp) - 2)
+    f = (t - i)[..., None]
+    col = ramp[i] * (1 - f) + ramp[i + 1] * f
+    a = np.clip(g * 1.25, 0, 1)
+    rgba = np.dstack([col, a[..., None] * 255]).astype(np.uint8)
+    im = Image.fromarray(rgba, 'RGBA')
+    # 알파를 곱해 줄여야 검은 테두리가 안 생김
+    pm = np.asarray(im).astype(float); pm[..., :3] *= pm[..., 3:4] / 255
+    pm = np.asarray(Image.fromarray(pm.astype(np.uint8), 'RGBA').resize((RING_PX, RING_PX), Image.LANCZOS)).astype(float)
+    al = pm[..., 3:4]
+    pm[..., :3] = np.where(al > 0, np.clip(pm[..., :3] * 255 / np.maximum(al, 1), 0, 255), 0)
+    Image.fromarray(pm.astype(np.uint8), 'RGBA').save(RING_OUT, 'WEBP', lossless=True)
+    print(f'brawler_hit_ring {RING_PX}px from center=({cx},{cy}) r={r}')
+
+
 if __name__ == '__main__':
     build_hit()
+    build_ring()
     main()
