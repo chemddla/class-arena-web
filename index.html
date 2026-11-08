@@ -25165,6 +25165,7 @@
     BRAWLER_SPIRIT_FX.src = 'assets/sprites/fx/brawler_sr1_spirit.webp';
     const BRAWLER_SPIRIT_FADE_OUT = 10;
     const BRAWLER_SPIRIT_EYE_TICKS = 24; // 준비 끝 0.6초 동안 눈빛이 차오름
+    const BRAWLER_SPIRIT_FLASH_TICKS = 5; // 번쩍 섬광: 꼭대기 앞뒤 5틱
     const BRAWLER_SPIRIT_EYES = [[0.386, 0.403], [0.619, 0.403]]; // 그림 안 두 눈 자리 (가로·세로 비율, 원본 460·657, 335 px)
     function drawBrawlerSpirit(ctx, sprite, k, tick, u) {
       if (!BRAWLER_SPIRIT_FX.ready || !u.alive || !((u.statuses?.flurry || 0) > 0) || u.activeSkillType !== 'annihilate') return;
@@ -25203,6 +25204,22 @@
           ctx.fillStyle = 'rgba(224,242,254,0.95)'; // 가로로 번지는 눈빛 줄기
           ctx.beginPath(); ctx.ellipse(ex, ey, er * (1.3 + 1.4 * g), er * 0.2, 0, 0, Math.PI * 2); ctx.fill();
         }));
+        // 번쩍!: 뛰쳐나가기 직전(준비 끝 2틱 전이 꼭대기) 짧게 확 터지는 섬광 — 큰 빛무리 + 십자 별빛
+        const fl = Math.max(0, 1 - Math.abs(e - (P.fin.prep - 2)) / BRAWLER_SPIRIT_FLASH_TICKS);
+        if (fl > 0) BRAWLER_SPIRIT_EYES.forEach(([nx, ny]) => {
+          const ex = x0 + w * nx, ey = y0 + h * ny, R = er * (1.7 + 1.6 * fl); // 두 눈이 따로 보이게 빛무리는 작게, 별빛 줄기는 길게
+          ctx.globalAlpha = Math.min(1, fl * 1.2);
+          const grd = ctx.createRadialGradient(ex, ey, 0, ex, ey, R);
+          grd.addColorStop(0, 'rgba(255,255,255,1)');
+          grd.addColorStop(0.35, 'rgba(224,242,254,0.8)');
+          grd.addColorStop(1, 'rgba(56,189,248,0)');
+          ctx.fillStyle = grd;
+          ctx.beginPath(); ctx.arc(ex, ey, R, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.95)';
+          [[R * 4.2, er * 0.13, 0], [R * 2.4, er * 0.11, Math.PI / 2], [R * 1.3, er * 0.08, Math.PI / 4], [R * 1.3, er * 0.08, -Math.PI / 4]].forEach(([rx, ry, rot]) => {
+            ctx.beginPath(); ctx.ellipse(ex, ey, rx, ry, rot, 0, Math.PI * 2); ctx.fill();
+          });
+        });
       }
       ctx.restore();
     }
@@ -25375,6 +25392,7 @@
       if (n <= P.fin.prep) { // 준비: 주먹을 당기고 기운을 모음
         brawlerFace(u, foe);
         if (n === 1) sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 56, color: '#bae6fd', life: P.fin.prep, maxLife: P.fin.prep });
+        if (n === P.fin.prep - 2) playCombatSfx('magic'); // 호랑이 눈이 번쩍 (drawBrawlerSpirit 섬광과 같은 틱)
         const pw = 1 + 11 * Math.pow(n / P.fin.prep, 1.6); // 화면 진동이 점점 세짐 (1 → 12, 기를 모을수록)
         if (!sim.shake || sim.shake.ramp || sim.shake.power <= pw) sim.shake = { power: pw, life: 4, maxLife: 4, ramp: true };
         return;
