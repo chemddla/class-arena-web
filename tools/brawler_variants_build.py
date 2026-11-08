@@ -1,5 +1,5 @@
 # 격투가 외형 0(brawler_0.webp)에서 도복·띠·머리 색만 바꾼 외형 시트 만들기 (칸 구성·크기 모두 같음)
-# 사용: python tools/brawler_variants_build.py   → assets/sprites/merc/brawler_1~2.webp
+# 사용: python tools/brawler_variants_build.py   → assets/sprites/merc/brawler_1~3.webp
 # 규칙: 피부(얼굴·손·발과 그 테두리·그림자)와 눈(흰자·눈동자)·입은 그대로.
 #   멸식 기운처럼 밝고 진한 빛, 흙먼지(따뜻한 색)는 도복으로 보지 않아 그대로 둠
 import sys, os
@@ -17,6 +17,7 @@ SRC = 'assets/sprites/merc/brawler_0.webp'
 VARIANTS = [
     (1, '흑도복', 'tone', (1.5, 0.25, 0.5, 0.45)),
     (2, '주황 도복·검은 띠', 'paint', ('#e07a28', None, '#2a2020')),
+    (3, '짙은 청도복·검은 띠', 'paint', ('#1f4fa8', None, '#2a2020')),
 ]
 
 
