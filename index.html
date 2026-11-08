@@ -3105,6 +3105,7 @@
                     <strong>🗡️ 1:1 대결방</strong>은 용병 1명씩 골라 <strong>직접 조종</strong>해서 겨뤄요.
                     <strong>👥 팀전방</strong>은 친구들이 블루·레드팀으로 나뉘어 각자 용병 1명을 조종해요. (최대 5:5)
                     <strong>🔥 8:8 총력전방</strong>은 홈 출전 용병에 전투력 높은 용병을 더해 8명씩 맞붙어요.
+                    <strong>⚖️ 공정한 결투방</strong>은 방장이 정한 같은 직업·같은 스킬·Lv.50으로 직접 조종해서 겨뤄요. (히든 스킬 없음)
                   </p>
                 </div>
               </div>
@@ -3116,6 +3117,9 @@
                 </button>
                 <button onclick="createPvpLobbyRoom('total8')" class="px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-400 text-slate-950 font-extrabold text-xs shadow flex items-center gap-1.5 shrink-0">
                   🔥 8:8 총력전방
+                </button>
+                <button onclick="createPvpLobbyRoom('fairDuel')" class="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs shadow flex items-center gap-1.5 shrink-0">
+                  ⚖️ 공정한 결투방
                 </button>
                 <button onclick="createPvpLobbyRoom('duel1v1')" class="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow flex items-center gap-1.5 shrink-0">
                   🗡️ 1:1 대결방
@@ -3623,6 +3627,16 @@
                 </div>
                 <div class="font-title text-base text-white mt-1">펫 러닝 협동</div>
                 <p class="text-[11px] text-slate-400">친구 펫과 함께 달려요! 쓰러진 친구는 💗로 살리고, 팀 점수로 보상</p>
+              </button>
+
+              <button type="button" onclick="goToFairDuel()" id="mgCreateTypeBtn-fairduel"
+                class="p-3.5 rounded-2xl border-2 text-left transition flex flex-col gap-1 bg-slate-950 border-slate-800 hover:border-slate-700">
+                <div class="flex items-center justify-between">
+                  <span class="text-2xl">⚖️</span>
+                  <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-extrabold">1:1 수동 전투</span>
+                </div>
+                <div class="font-title text-base text-white mt-1">공정한 결투</div>
+                <p class="text-[11px] text-slate-400">방장이 고른 같은 직업·같은 스킬·Lv.50으로 직접 조종해 실력만으로 승부! (히든 스킬 없음 · 결투장에 방이 생겨요)</p>
               </button>
             </div>
 
@@ -12479,7 +12493,7 @@
         items.push({
           kind: 'pvp', id: r.roomId, icon: '⚔️', waiting,
           names: team ? `${r.hostName}의 팀전` : `${r.hostName} vs ${r.guestName || '?'}`,
-          detail: (team ? '실시간 팀전' : (isDuelRoom(r) ? '1:1 용병 대결' : isTotalRoom(r) ? '8:8 총력전' : '5:5 실시간 결투')) + (waiting ? waitTag : ''),
+          detail: (team ? '실시간 팀전' : (isFairDuelRoom(r) ? '공정한 결투' : isDuelRoom(r) ? '1:1 용병 대결' : isTotalRoom(r) ? '8:8 총력전' : '5:5 실시간 결투')) + (waiting ? waitTag : ''),
           watchers: pvpSpectatorList(r).length,
           watching: currentSpectatingPvpRoomId === r.roomId || (watchingBattle && sim.spectateRoomId === r.roomId),
           locked: !waiting && (r.practiceFriend || (team && !teamMembersOf(r).some(m => !m.ai && m.id !== r.hostId))) ? '연습 경기' : ''
@@ -40118,7 +40132,7 @@
         r.title = retitleForNewHost(r.title, r.hostName, r.guestName);
         Object.assign(r, {
           hostId: r.guestId, hostNum: r.guestNum || null, hostName: r.guestName || '', hostPower: r.guestPower || 0,
-          hostStudentSnapshot: r.guestStudentSnapshot || null, hostFormationSaved: Boolean(r.guestFormationSaved), hostPickId: r.guestPickId || null
+          hostStudentSnapshot: r.guestStudentSnapshot || null, hostFormationSaved: Boolean(r.guestFormationSaved), hostPickId: r.fairJob ? 'fair' : (r.guestPickId || null)
         });
         clearGuest();
         r.status = 'waiting';
@@ -40351,6 +40365,78 @@
     // ===== 1:1 용병 대결 (mode: 'duel1v1') =====
     // 방장·도전자가 각자 용병 1명을 고르고(hostPickId / guestPickId), 결투는 그 두 용병만으로 직접 전투(수동)로만 진행
     const isDuelRoom = room => Boolean(room && room.mode === 'duel1v1');
+    // ⚖️ 공정한 결투 (duel1v1 + fairJob): 방장이 정한 직업 하나로 둘 다 Lv.50 · 같은 스킬 칸 · 히든 스킬 없음
+    // 초기 스탯 편차·특성·장비·펫 효과도 없이 똑같은 용병을 만들어 직접 조종(수동 전투)으로만 겨룸. 내 용병은 쓰지 않음
+    const FAIR_DUEL_LEVEL = 50;
+    const isFairDuelRoom = room => Boolean(isDuelRoom(room) && room.fairJob);
+    const fairDuelJobOf = room => (JOB_DEFS[room && room.fairJob] ? room.fairJob : 'warrior');
+    function fairDuelSkillKeys(job) {
+      return Object.keys(SKILL_DEFS[job] || SKILL_DEFS.warrior).slice(0, getUnlockedSkillCount(FAIR_DUEL_LEVEL));
+    }
+    function fairDuelMerc(room, side) {
+      const job = fairDuelJobOf(room);
+      const m = buildNewMercenary(job, 'N', FAIR_DUEL_LEVEL, 2, true, null); // 2번 자리 = 가운데 줄
+      const all = Object.keys(SKILL_DEFS[job] || SKILL_DEFS.warrior);
+      const keys = fairDuelSkillKeys(job);
+      return Object.assign(m, {
+        id: 'fair_' + side,
+        name: room[side + 'Name'] || JOB_DEFS[job].name,
+        skillKey: keys[0],
+        skillSlots: [...keys, ...all.filter(k => !keys.includes(k))],
+        skillsRevealed: keys.length, skillsKept: 0,
+        hiddenSkillKey: null, hiddenSkillSlot: null,
+        skinVariant: 0, rarity: 'N', level: FAIR_DUEL_LEVEL,
+        statPoints: { hp: 0, atk: 0, def: 0, spd: 0 },
+        statVariance: { hp: 1, atk: 1, def: 1, spd: 1 },
+        traitId: NO_TRAIT.id, traitName: '',
+        equippedItem: null, row: 2, col: 1
+      });
+    }
+    function fairDuelSkillChipsHTML(job) {
+      const book = SKILL_DEFS[job] || SKILL_DEFS.warrior;
+      return fairDuelSkillKeys(job).map(k => `<span class="px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-bold text-slate-200" title="${String((book[k] && book[k].desc) || '').replace(/"/g, '&quot;')}">${(book[k] && book[k].icon) || ''} ${(book[k] && book[k].name) || k}</span>`).join('');
+    }
+    function renderFairDuelPickerHTML(room, isHost) {
+      const cur = fairDuelJobOf(room);
+      const cards = Object.keys(JOB_DEFS).map(k => {
+        const job = JOB_DEFS[k];
+        const picked = k === cur;
+        return `<button type="button" ${isHost ? '' : 'disabled'} onclick="pickFairDuelJob('${room.roomId}', '${k}')"
+          class="rounded-xl border-2 p-2 flex items-center gap-2 text-left transition ${picked ? 'border-emerald-500 bg-emerald-500/15 shadow' : 'border-slate-800 bg-slate-900' + (isHost ? ' hover:border-emerald-400' : ' opacity-40')}">
+          <span class="w-9 h-9 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center overflow-hidden shrink-0">${getMercIconHTML(k, 0, 34)}</span>
+          <span class="block text-xs font-extrabold text-white truncate">${picked ? '✅ ' : ''}${job.name}</span>
+        </button>`;
+      }).join('');
+      return `
+        <div class="bg-slate-950 border border-emerald-500/40 rounded-2xl p-4 flex flex-col gap-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="text-sm font-extrabold text-white">⚖️ 공정한 결투 직업 ${isHost ? '고르기' : ''} <span class="text-[11px] text-slate-400 font-bold">· ${isHost ? '방장이 고른 직업으로 둘 다 싸워요' : '방장이 직업을 정해요'}</span></div>
+            <div class="text-[11px] font-bold text-emerald-300">${JOB_DEFS[cur].icon} ${JOB_DEFS[cur].name} · Lv.${FAIR_DUEL_LEVEL} · 히든 스킬 없음</div>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5"><span class="text-[11px] font-extrabold text-slate-400">둘 다 같은 스킬:</span>${fairDuelSkillChipsHTML(cur)}</div>
+          <div class="text-[11px] text-slate-500 font-bold">내 용병 대신 똑같은 능력치의 용병으로 싸워요 (장비·펫 효과·초기 스탯 차이 없음). 직접 조종(수동 전투)만 돼요.</div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 2xl:grid-cols-8 gap-2">${cards}</div>
+        </div>`;
+    }
+    window.pickFairDuelJob = async function (roomId, job) {
+      const me = getActiveStudent();
+      const room = livePvpRoomsCache[roomId];
+      if (!room || !me || !isFairDuelRoom(room) || room.status !== 'waiting' || room.hostId !== me.id || !JOB_DEFS[job]) return;
+      if (room.fairJob === job) return;
+      room.fairJob = job;
+      // 직업이 바뀌면 도전자가 다시 확인하고 준비완료를 누르게 (연습 친구는 그대로)
+      if (room.guestId && room.guestReady && !room.practiceFriend) {
+        room.guestReady = false;
+        showNotice('⚖️ 직업을 바꿔서 도전자의 준비완료가 풀렸어요.');
+      }
+      await savePvpRoomData(roomId, room);
+    };
+    // 미니게임 탭의 [공정한 결투] 카드: 결투장(실시간)으로 가서 공정한 결투방을 바로 만듦
+    window.goToFairDuel = function () {
+      goToStudentTab('pvp');
+      if (typeof switchPvpSubMode === 'function') switchPvpSubMode('realtime');
+      createPvpLobbyRoom('fairDuel');
+    };
     // 🔥 8:8 총력전방 (mode: 'total8'): 5:5 결투방처럼 방장·도전자 둘이지만, 진형 편집 없이 각자 8명 (totalWarSquad)
     const isTotalRoom = room => Boolean(room && room.mode === 'total8');
 
@@ -40363,6 +40449,10 @@
     }
 
     function duelPickLabel(room, side) {
+      if (isFairDuelRoom(room)) {
+        const job = JOB_DEFS[fairDuelJobOf(room)];
+        return `<span class="text-emerald-300">${job.icon} ${job.name} Lv.${FAIR_DUEL_LEVEL}</span> · ⚖️ 같은 조건`;
+      }
       const stu = state.students.find(x => x.id === room[side + 'Id']) || room[side + 'StudentSnapshot'];
       const m = duelPickedMerc(stu, room[side + 'StudentSnapshot'], room[side + 'PickId']);
       if (!m) return '<span class="text-slate-400">용병 고르는 중...</span>';
@@ -40373,7 +40463,7 @@
     window.pickDuelMerc = async function (roomId, mercId) {
       const me = getActiveStudent();
       const room = livePvpRoomsCache[roomId];
-      if (!room || !me || !isDuelRoom(room) || room.status !== 'waiting') return;
+      if (!room || !me || !isDuelRoom(room) || isFairDuelRoom(room) || room.status !== 'waiting') return;
       const merc = (me.roster || []).find(m => m.id === mercId);
       if (!merc) return;
       if (room.hostId === me.id) {
@@ -40412,6 +40502,7 @@
     }
 
     function renderDuelPickerHTML(room, me, isHost, isGuest) {
+      if (isFairDuelRoom(room)) return renderFairDuelPickerHTML(room, isHost);
       const myPick = isHost ? room.hostPickId : room.guestPickId;
       const locked = isGuest && room.guestReady;
       const roster = [...(me.roster || [])].sort((a, b) => calcMercCombatPower(b, me) - calcMercCombatPower(a, me));
@@ -40794,9 +40885,11 @@
         showRewardBanner(`👥 [${customTitle}] 팀전방을 만들었어요! 친구들이 들어와 팀을 고르고 준비완료를 누르면 시작할 수 있어요.`);
         return;
       }
-      const duel = roomMode === 'duel1v1';
+      const fair = roomMode === 'fairDuel';
+      const duel = roomMode === 'duel1v1' || fair;
       const total = roomMode === 'total8';
-      if ((duel || total) && (!myStu || !(myStu.roster || []).length)) {
+      if (fair && !myStu) return;
+      if (!fair && (duel || total) && (!myStu || !(myStu.roster || []).length)) {
         showNotice(`⚠️ ${duel ? '1:1 대결방' : '8:8 총력전방'}을 만들려면 먼저 용병을 1명 이상 고용해 주세요!`);
         return;
       }
@@ -40805,7 +40898,7 @@
         return;
       }
       const titleInp = document.getElementById('pvpNewRoomTitleInput');
-      const customTitle = cleanUserText(titleInp?.value, 24) || (duel ? `${myStu.name}의 1:1 용병 대결방` : total ? `${myStu.name}의 8:8 총력전방` : `${myStu.name}의 5:5 실시간 결투방`);
+      const customTitle = cleanUserText(titleInp?.value, 24) || (fair ? `${myStu.name}의 공정한 결투방` : duel ? `${myStu.name}의 1:1 용병 대결방` : total ? `${myStu.name}의 8:8 총력전방` : `${myStu.name}의 5:5 실시간 결투방`);
       if (titleInp) titleInp.value = '';
       const roomId = 'pvp_' + myStu.id + '_' + Date.now().toString(36).slice(-5);
       leaveRoomsExcept('pvp', roomId);
@@ -40833,10 +40926,13 @@
         createdAt: Date.now()
       };
       if (duel) roomObj.hostPower = 0;
+      if (fair) { roomObj.fairJob = 'warrior'; roomObj.hostPickId = 'fair'; }
       if (total) roomObj.hostPower = totalWarPower(myStu, totalWarSquad(myStu));
       await savePvpRoomData(roomId, roomObj);
       armRoomPresence(`pvp_rooms/${roomId}`, myStu.id);
-      showRewardBanner(`⚡ [${customTitle}] 결투 대기방이 개설되었습니다! 다른 친구가 입장해 [준비완료]를 누르면 시작할 수 있습니다.`);
+      showRewardBanner(fair
+        ? `⚖️ [${customTitle}] 공정한 결투방을 만들었어요! 싸울 직업을 고르고 친구를 기다려요.`
+        : `⚡ [${customTitle}] 결투 대기방이 개설되었습니다! 다른 친구가 입장해 [준비완료]를 누르면 시작할 수 있습니다.`);
     };
 
     window.joinFirebasePvpRoom = async function (roomId) {
@@ -40844,7 +40940,8 @@
       const room = livePvpRoomsCache[roomId];
       if (!room) return;
       if (isTeamLiveRoom(room)) return joinTeamLiveRoom(roomId);
-      if (isDuelRoom(room) || isTotalRoom(room) ? !(myStu && (myStu.roster || []).length) : (!myStu || !myStu.roster || !myStu.roster.some(m => m.deployed))) {
+      if (!myStu) return;
+      if (!isFairDuelRoom(room) && (isDuelRoom(room) || isTotalRoom(room)) ? !(myStu && (myStu.roster || []).length) : (!myStu || !myStu.roster || !myStu.roster.some(m => m.deployed))) {
         showNotice(isDuelRoom(room) || isTotalRoom(room)
           ? `⚠️ ${isDuelRoom(room) ? '1:1 대결방' : '8:8 총력전방'}에 들어가려면 먼저 용병을 1명 이상 고용해 주세요!`
           : '⚠️ 결투방에 입장하려면 먼저 [🏠 홈]에서 출전 용병을 1명 이상 배치해주세요!');
@@ -40867,7 +40964,7 @@
       room.guestFormationSaved = false;
       room.guestReady = false;
       room.practiceFriend = false;
-      if (isDuelRoom(room)) { room.guestPickId = null; room.guestPower = 0; }
+      if (isDuelRoom(room)) { room.guestPickId = isFairDuelRoom(room) ? 'fair' : null; room.guestPower = 0; }
       if (isTotalRoom(room)) room.guestPower = totalWarPower(myStu, totalWarSquad(myStu));
       if (room.gone) delete room.gone[myStu.id];
       if (room.spectators) delete room.spectators[myStu.id];
@@ -40916,6 +41013,7 @@
         const best = repMercOf(friend);
         room.guestPickId = best ? best.id : null;
         room.guestPower = best ? calcMercCombatPower(best, friend) : 0;
+        if (isFairDuelRoom(room)) { room.guestPickId = 'fair'; room.guestPower = 0; }
       }
       if (isTotalRoom(room)) room.guestPower = totalWarPower(friend, totalWarSquad(friend));
       await savePvpRoomData(roomId, room);
@@ -41487,7 +41585,7 @@
           waitPanel.innerHTML = `
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
               <div class="flex items-center gap-2">
-                <span class="px-2.5 py-1 rounded-lg ${duel ? 'bg-amber-500/20 text-amber-300' : total ? 'bg-orange-500/20 text-orange-300' : 'bg-rose-500/20 text-rose-300'} font-extrabold text-xs">${duel ? '🗡️ 1:1 용병 대결 대기실' : total ? '🔥 8:8 총력전 대기실' : '⚡ 실시간 PvP 대기실'}</span>
+                <span class="px-2.5 py-1 rounded-lg ${duel ? 'bg-amber-500/20 text-amber-300' : total ? 'bg-orange-500/20 text-orange-300' : 'bg-rose-500/20 text-rose-300'} font-extrabold text-xs">${isFairDuelRoom(myRoom) ? '⚖️ 공정한 결투 대기실' : duel ? '🗡️ 1:1 용병 대결 대기실' : total ? '🔥 8:8 총력전 대기실' : '⚡ 실시간 PvP 대기실'}</span>
                 <h4 class="font-title text-xl text-white">${myRoom.title || `${myRoom.hostName}의 결투방`}</h4>
                 ${watching ? '<span class="px-2 py-0.5 rounded-lg bg-violet-500/20 text-violet-300 font-extrabold text-[11px]">📺 관전 중</span>' : ''}
               </div>
@@ -41594,7 +41692,7 @@
                         class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg transition ${
                           canStart ? 'bg-rose-600 hover:bg-rose-500 text-white animate-bounce' : 'bg-slate-800 text-slate-500 cursor-not-allowed'
                         }">
-                        ${duel ? '🗡️ 1:1 대결 시작!' : total ? '🔥 8:8 총력전 시작!' : '⚡ 실시간 5:5 결투 시작!'}
+                        ${isFairDuelRoom(myRoom) ? '⚖️ 공정한 결투 시작!' : duel ? '🗡️ 1:1 대결 시작!' : total ? '🔥 8:8 총력전 시작!' : '⚡ 실시간 5:5 결투 시작!'}
                       </button>`
                     : ''
                 }
@@ -41627,12 +41725,12 @@
                 <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${r.status === 'waiting' ? (hasGuest ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300') : 'bg-rose-500/20 text-rose-300'}">
                   ${r.status === 'waiting' ? (hasGuest ? (r.guestReady ? '✅ 준비완료 (2/2명)' : '⏳ 준비중 (2/2명)') : '🟢 입장 가능 (1/2명)') : '🔥 결투 진행중'}
                 </span>
-                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${isDuelRoom(r) ? 'bg-amber-500/20 text-amber-300' : isTotalRoom(r) ? 'bg-orange-500/20 text-orange-300' : 'bg-indigo-500/20 text-indigo-300'}">${isDuelRoom(r) ? '🗡️ 1:1 대결' : isTotalRoom(r) ? '🔥 8:8 총력전' : '👥 5:5'}</span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${isDuelRoom(r) ? 'bg-amber-500/20 text-amber-300' : isTotalRoom(r) ? 'bg-orange-500/20 text-orange-300' : 'bg-indigo-500/20 text-indigo-300'}">${isFairDuelRoom(r) ? `⚖️ 공정한 결투 · ${JOB_DEFS[fairDuelJobOf(r)].icon} ${JOB_DEFS[fairDuelJobOf(r)].name}` : isDuelRoom(r) ? '🗡️ 1:1 대결' : isTotalRoom(r) ? '🔥 8:8 총력전' : '👥 5:5'}</span>
                 ${nSpec ? `<span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-violet-500/20 text-violet-300">📺 ${nSpec}명 관전</span>` : ''}
                 <span class="font-bold text-sm text-white">${r.title || `${r.hostName}의 결투방`}</span>
               </div>
               <div class="text-xs text-slate-400 mt-1">
-                👑 방장: <strong class="text-white">${r.hostName}</strong> ${isDuelRoom(r) ? (r.hostPickId ? `(대결 용병 전투력 ${Number(r.hostPower || 0).toLocaleString()})` : '') : `(전투력 ${Number(r.hostPower || 0).toLocaleString()})`}
+                👑 방장: <strong class="text-white">${r.hostName}</strong> ${isFairDuelRoom(r) ? `(Lv.${FAIR_DUEL_LEVEL} 같은 조건)` : isDuelRoom(r) ? (r.hostPickId ? `(대결 용병 전투력 ${Number(r.hostPower || 0).toLocaleString()})` : '') : `(전투력 ${Number(r.hostPower || 0).toLocaleString()})`}
                 ${hasGuest ? ` · ⚔️ 도전자: <strong class="text-rose-300">${r.guestName}</strong>` : ' · 도전자 대기중'}
               </div>
             </div>
@@ -41661,6 +41759,13 @@
     // 결투방의 양쪽 유닛 만들기 (1:1은 고른 용병 1명씩 가운데 줄에서 마주 보고, 5:5는 대기실에서 저장한 진형대로)
     function buildLiveRoomUnits(r, blueStu, redStu) {
       if (isTeamLiveRoom(r)) return buildTeamLiveUnits(r);
+      if (isFairDuelRoom(r)) {
+        // 주인 학생 효과(펫 등)를 받지 않게 주인 없이 만듦
+        return {
+          blueUnits: [createSimUnit(fairDuelMerc(r, 'host'), null, 'blue', 1.0)],
+          redUnits: [createSimUnit(fairDuelMerc(r, 'guest'), null, 'red', 1.0)]
+        };
+      }
       if (isDuelRoom(r)) {
         const bm = duelPickedMerc(blueStu, r.hostStudentSnapshot, r.hostPickId);
         const rm = duelPickedMerc(redStu, r.guestStudentSnapshot, r.guestPickId);
@@ -41696,7 +41801,7 @@
         mode: 'pvp_realtime',
         title: isTeamLiveRoom(r)
           ? `📺 관전 중: ${r.hostName}의 팀전 (${built.blueUnits.length}:${built.redUnits.length})`
-          : `📺 관전 중: ${r.hostName} vs ${r.guestName}${isDuelRoom(r) ? ' (1:1 용병 대결)' : isTotalRoom(r) ? ' (8:8 총력전)' : ' (5:5 결투)'}`,
+          : `📺 관전 중: ${r.hostName} vs ${r.guestName}${isFairDuelRoom(r) ? ' (⚖️ 공정한 결투)' : isDuelRoom(r) ? ' (1:1 용병 대결)' : isTotalRoom(r) ? ' (8:8 총력전)' : ' (5:5 결투)'}`,
         blueStudent: blueStu,
         redStudent: redStu,
         customBlueUnits: built.blueUnits,
@@ -41749,7 +41854,9 @@
             // 방장(블루팀) 화면이 전투를 계산하고, 도전자(레드팀) 화면은 그 화면을 받아서 보여 줌
             const isHost = r.hostId === myStu.id;
             const netRole = r.practiceFriend ? null : (isHost ? 'host' : 'guest');
-            showRewardBanner(isDuelRoom(r)
+            showRewardBanner(isFairDuelRoom(r)
+              ? `⚖️ [공정한 결투 시작!] ${r.hostName} vs ${r.guestName} — 같은 ${JOB_DEFS[fairDuelJobOf(r)].name} Lv.${FAIR_DUEL_LEVEL}, 실력으로 승부!`
+              : isDuelRoom(r)
               ? `🗡️ [1:1 용병 대결 시작!] ${r.hostName} vs ${r.guestName} — 내 용병을 직접 조종하세요!`
               : `⚡ [실시간 PvP 결투 시작!] ${r.hostName} vs ${r.guestName} ${isTotalRoom(r) ? '8:8 총력전' : '5:5 라이브 결투'}가 시작됩니다!`);
             const blueStu = isHost ? myStu : opponentStu;
@@ -41764,7 +41871,9 @@
             const { blueUnits, redUnits } = built;
             launchSimulation({
               mode: 'pvp_realtime',
-              title: duel
+              title: isFairDuelRoom(r)
+                ? `⚖️ 공정한 결투 (${JOB_DEFS[fairDuelJobOf(r)].name} Lv.${FAIR_DUEL_LEVEL}): ${r.hostName} vs ${r.guestName}`
+                : duel
                 ? `🗡️ 1:1 용병 대결: ${r.hostName}의 ${blueUnits[0].name} vs ${r.guestName}의 ${redUnits[0].name}`
                 : isTotalRoom(r)
                 ? `🔥 8:8 총력전: ${r.hostName}(${blueUnits.length}명) vs ${r.guestName}(${redUnits.length}명)`
