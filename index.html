@@ -10074,12 +10074,18 @@
       img.src = `assets/sprites/fx/${file}.webp`;
       o.img = img;
     });
-    function drawExcaliburFrame(ctx, name, scale) { // 기준점이 (0,0)에 오게 그림
-      const art = WARRIOR_EXCALIBUR_FX.fx, f = WARRIOR_EXCALIBUR_FX.frames[name];
+    // 강타 초승달: 엑스칼리버 시트가 하늘색으로 바뀌어서, 원래 금빛 초승달1만 따로 둔 그림 (기준점은 초승달1과 같음)
+    const WARRIOR_STRIKE_CRESCENT = new Image();
+    WARRIOR_STRIKE_CRESCENT.onload = () => { WARRIOR_STRIKE_CRESCENT.ready = true; };
+    WARRIOR_STRIKE_CRESCENT.src = 'assets/sprites/fx/warrior_strike_crescent.webp';
+    function drawExcaliburFrame(ctx, name, scale, artOverride) { // 기준점이 (0,0)에 오게 그림
+      const f = WARRIOR_EXCALIBUR_FX.frames[name];
+      const art = artOverride || WARRIOR_EXCALIBUR_FX.fx;
+      const sx = artOverride ? 0 : f[0], sy = artOverride ? 0 : f[1];
       const x = -f[4] * scale, y = -f[5] * scale, w = f[2] * scale, h = f[3] * scale, a = ctx.globalAlpha;
-      ctx.drawImage(art, f[0], f[1], f[2], f[3], x, y, w, h);
+      ctx.drawImage(art, sx, sy, f[2], f[3], x, y, w, h);
       ctx.globalAlpha = a * 0.6; // 진하게: 같은 그림을 한 번 더 겹침
-      ctx.drawImage(art, f[0], f[1], f[2], f[3], x, y, w, h);
+      ctx.drawImage(art, sx, sy, f[2], f[3], x, y, w, h);
       ctx.globalAlpha = a;
     }
     // 엑스칼리버 시크릿 레어 전용 그림 (fx/samples/README.md) — 시크릿 레어 전사는 위 그림 대신 이걸 씀. 원본의 파랑·청록 빛은 붉은 빛으로 다시 칠함 (2026-11-08)
@@ -22972,8 +22978,9 @@
         // 엑스칼리버: 발밑에서 반짝임이 솟고, 몸 둘레에 금빛·푸른 고리가 점점 커지며 번개가 튐 (마지막 0.5초는 큰 고리)
         const bx = u.x, by = u.y - 36, pulse = 0.5 + 0.5 * Math.sin(t * 0.3);
         const g = ctx.createRadialGradient(bx, by, 4, bx, by, 70 + p * 40);
-        g.addColorStop(0, `rgba(254, 243, 199, ${0.32 + p * 0.38})`);
-        g.addColorStop(1, 'rgba(250, 204, 21, 0)');
+        const srLook = usesExcalSr(u); // 기본 외형 = 하늘색 불꽃, 시크릿 레어 = 붉은 불꽃 시전 모션에 맞춘 빛
+        g.addColorStop(0, srLook ? `rgba(254, 215, 170, ${0.32 + p * 0.38})` : `rgba(207, 250, 254, ${0.32 + p * 0.38})`);
+        g.addColorStop(1, srLook ? 'rgba(220, 38, 38, 0)' : 'rgba(41, 163, 236, 0)');
         ctx.fillStyle = g;
         ctx.beginPath(); ctx.arc(bx, by, 70 + p * 40, 0, Math.PI * 2); ctx.fill();
         ctx.globalCompositeOperation = 'lighter';
@@ -22992,6 +22999,7 @@
           ctx.save();
           ctx.translate(u.x + (i ? 10 : -10), u.y + 6 - q * 22);
           ctx.globalAlpha = (1 - q) * 0.95;
+          if (srLook) ctx.filter = 'hue-rotate(170deg) saturate(1.5)'; // 하늘색 반짝임 → 붉은 불티
           drawExcaliburFrame(ctx, 'spark', 0.7 + 0.3 * p);
           ctx.restore();
         }
@@ -23519,7 +23527,7 @@
             const ex = -10 - ph * 195 - (k % 3) * 12; // 뒤쪽으로 흘러감
             const ey = side * (w * (0.35 + 0.6 * ((k * 37) % 10) / 10)) * (1 - ph * 0.35);
             ctx.globalAlpha = A * (1 - ph) * 0.85;
-            ctx.fillStyle = k % 3 ? '#fde047' : '#ffffff';
+            ctx.fillStyle = k % 3 ? '#67e8f9' : '#ffffff'; // 하늘색 검기에 맞춘 불똥
             ctx.beginPath();
             ctx.arc(ex, ey, (3.2 - 2 * ph) * (1.1 + (k % 3) * 0.3), 0, Math.PI * 2);
             ctx.fill();
@@ -31053,7 +31061,7 @@
           ctx.rotate(ef.angle);
           ctx.globalCompositeOperation = 'lighter';
           ctx.globalAlpha = Math.max(0, Math.min(1, (1 - progress) * 1.8));
-          drawExcaliburFrame(ctx, 'crescent1', 0.6 + 0.2 * Math.min(1, progress * 3));
+          drawExcaliburFrame(ctx, 'crescent1', 0.6 + 0.2 * Math.min(1, progress * 3), WARRIOR_STRIKE_CRESCENT.ready ? WARRIOR_STRIKE_CRESCENT : null);
 
         } else if (ef.type === 'stun_shockwave') {
           ctx.globalAlpha = ef.life / ef.maxLife;
