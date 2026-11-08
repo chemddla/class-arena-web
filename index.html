@@ -38258,7 +38258,7 @@
         });
         migrate.forEach(k => {
           updates[`${base}/students/${s.id}/${k}`] = null;
-          updates[`${base}/studentPrivate/${s.id}/${k}`] = cur[k] === undefined ? null : toFirebaseValue(cur[k]);
+          updates[`${base}/studentPrivate/${s.id}/${k}`] = cur[k] === undefined ? null : toFirebaseValue(slimUploadValue(cur[k]));
         });
       }
       if (nameChanged) {
@@ -38285,7 +38285,7 @@
       // → 서버 사본과 이 기기 기억이 어긋나도 한 용병 안에서 칸이 섞이거나 레벨·등급 칸만 지워지는 일이 없음 (DB 규칙도 필수 칸을 검사)
       if (bothArr && !idsShifted && (prev.some(hasId) || cur.some(hasId))) {
         cur.forEach((x, i) => {
-          if (syncSig(prev[i]) !== syncSig(x)) updates[`${path}/${i}`] = x === undefined ? null : toFirebaseValue(x);
+          if (syncSig(prev[i]) !== syncSig(x)) updates[`${path}/${i}`] = x === undefined ? null : toFirebaseValue(slimMercForUpload(x));
         });
         return;
       }
@@ -38296,7 +38296,7 @@
         keys.forEach(k => addSyncDiffPaths(updates, `${path}/${k}`, prev[k], cur[k], depth + 1));
         return;
       }
-      updates[path] = cur === undefined ? null : toFirebaseValue(cur);
+      updates[path] = cur === undefined ? null : toFirebaseValue(slimUploadValue(cur));
     }
 
     // Firebase는 빈 배열/빈 객체/null을 저장하지 않으므로, 비교할 때도 똑같이 제거하고 키를 정렬합니다.
@@ -38646,9 +38646,27 @@
       ensureMercSkillSlots(m);
       ensureMercVariance(m);
       if (!m.statPoints) m.statPoints = { hp: 0, atk: 0, def: 0, spd: 0 };
+      if (!m.traitName && m.traitId) { const t = TRAIT_POOL.find(x => x.id === m.traitId); if (t) m.traitName = t.name; } // 올릴 때 뺀 칸 (slimMercForUpload)
       if (m.equippedItem === undefined) m.equippedItem = null;
       ensureMercSkin(m);
       return m;
+    }
+
+    // ----- 올릴 때 빼는 용병 칸 (받는 쪽 normalizeMercForSync가 똑같이 되살림 · 서버 규칙은 id·job·level만 요구) -----
+    // ARENA3 학생 기록 150KB 중 용병 목록이 90KB(163명)였고, 그중 traitName(특성 이름, traitId로 정해짐) 5KB · 0뿐인 statPoints 6KB는 받는 쪽이 만들 수 있는 칸
+    // → 접속 때 통째로 내려받는 양과 용병 한 명이 바뀔 때마다 올라가는 양(약 550B → 490B)이 줄어듦
+    // MERC_SLIM_FROM(2026-11-09 00:00 KST) 전에는 그대로: 그 전에 연 탭은 특성 이름을 기록에서만 읽음
+    const MERC_SLIM_FROM = Date.UTC(2026, 10, 8, 15);
+    function slimMercForUpload(m) {
+      if (Date.now() < MERC_SLIM_FROM || !m || typeof m !== 'object' || Array.isArray(m) || !m.job || !m.id) return m;
+      const out = { ...m };
+      if (out.traitId && TRAIT_POOL.some(t => t.id === out.traitId && t.name === out.traitName)) delete out.traitName;
+      const sp = out.statPoints;
+      if (sp && typeof sp === 'object' && !Array.isArray(sp) && Object.keys(sp).every(k => !sp[k])) delete out.statPoints;
+      return out;
+    }
+    function slimUploadValue(v) {
+      return Array.isArray(v) ? v.map(slimMercForUpload) : slimMercForUpload(v); // 용병 목록(roster·mercStorage)을 통째로 올릴 때도
     }
 
     function normalizeRemoteStudent(raw, id, profile) {
@@ -38715,6 +38733,7 @@
     function studentCloudValue(s) {
       const v = toFirebaseValue(s);
       DERIVED_STUDENT_KEYS.forEach(k => { delete v[k]; });
+      ['roster', 'mercStorage'].forEach(k => { if (Array.isArray(v[k])) v[k] = v[k].map(slimMercForUpload); });
       const legacyPw = StudentPw.legacy[s.id];
       if (legacyPw && legacyPw.inStudent) v.password = legacyPw.inStudent;
       return v;
