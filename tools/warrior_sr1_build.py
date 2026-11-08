@@ -4,7 +4,10 @@
 #   idle: 대기 1장 · walk: 걷기 3장 가로 · atk: 칼 치켜듦 + 베기 (옅은 금빛 궤적) · down: 무릎 꿇음 + 엎드림 (칼은 떨어져 있음) · hurt: 피격
 #   걷기 샘플만 작게 그려져 있어서(얼굴 넓이로 재면 0.755배) 걷기는 배율을 따로 씀. 나머지는 대기와 같은 배율
 # 칸 = 0 대기 · 1~3 걷기 · 4 공격 치켜듦 · 5 공격 베기 · 6 피격 · 7~8 쓰러짐 (무릎 → 엎드림)
-#   회전베기·사자후·돌진 샘플은 아직 없어서 index.html에서 베기·치켜듦 칸을 빌려 씀
+#   · 9~10 사자후 (숨을 들이쉼 → 주먹을 쥐고 포효) · 11~12 돌진 (칼을 낮게 겨누고 출발 → 칼을 앞세워 달림, 바람 줄)
+#   skill: 2×2 시트 (윗줄 사자후 2장, 아랫줄 돌진 2장). 0.625배로 작게 그려져 있음 (얼굴 넓이)
+#   사자후 포효 칸 오른쪽의 크림색 음파는 지움 — 게임이 사자후 고리 이펙트를 따로 그림
+#   회전베기 샘플은 아직 없어서 index.html에서 베기 칸을 빌려 씀
 import os, sys
 import numpy as np
 from PIL import Image
@@ -17,9 +20,10 @@ D = 'assets/sprites/fx/samples/warrior_sr1_'
 OUT = 'assets/sprites/merc/warrior_sr1.webp'
 TARGET_H = 81          # 대기 자세 머리털 끝~발 (전사 0번과 같은 키)
 IDLE_H = 189 - 27      # 대기 샘플의 머리털 끝(27)~발(189)
-WALK_SCALE = 1 / 0.755  # 걷기 샘플은 작게 그려져 있음
+SRC_SCALE = {'walk': 1 / 0.755, 'skill': 1 / 0.625}  # 작게 그려진 샘플 (대기 대비 얼굴 넓이)
+WAVE_X = 346   # skill 샘플 포효 칸: 이 x부터 밝은 크림·금빛(음파)을 지움
 
-# (칸 이름, 샘플, 자를 x 범위, 발 가운데 x (샘플 좌표, None = 아래 8% 줄의 가운데))
+# (칸 이름, 샘플, 자를 범위 (x0, x1[, y0, y1]), 발 가운데 x (샘플 좌표, None = 아래 8% 줄의 가운데))
 FRAMES = [
     ('idle',  'idle', (0, 208),   125),
     ('walk0', 'walk', (0, 180),   None),
@@ -30,12 +34,21 @@ FRAMES = [
     ('hurt',  'hurt', (0, 214),   145),
     ('kneel', 'down', (0, 290),   150),
     ('lie',   'down', (290, 771), 460),
+    ('inhale', 'skill', (40, 200, 0, 119),    110),
+    ('roar',   'skill', (220, 505, 0, 119),   318),
+    ('cstart', 'skill', (0, 200, 119, 229),   118),
+    ('crun',   'skill', (240, 505, 119, 229), 330),
 ]
 
 
 def load(src, xr):
     full = np.array(Image.open(f'{D}{src}_src.png').convert('RGB')).astype(float)
-    x0, x1 = xr
+    x0, x1, y0, y1 = (*xr, 0, full.shape[0])[:4]
+    full = full[y0:y1].copy()
+    if src == 'skill' and y0 == 0:   # 포효 음파 지우기 (주먹은 갈색·검정이라 남음)
+        w = full[:, WAVE_X:]
+        pale = (w[..., 0] > 185) & (w[..., 1] > 130)
+        w[pale] = 255
     im = np.pad(full[:, x0:x1], ((2, 2), (2, 2), (0, 0)), constant_values=255)
     white = (im.min(axis=2) > 222) & (im.max(axis=2) - im.min(axis=2) < 16)
     lab, n = ndi.label(white)
@@ -55,7 +68,7 @@ def load(src, xr):
     for i in range(1, n + 1):
         if i == body or sz[i - 1] < 4: continue
         ys, xs = np.where(lab == i)
-        touches = xs.min() <= 3 or xs.max() >= W - 4
+        touches = xs.min() <= 3 or xs.max() >= W - 4 or ys.min() <= 3 or ys.max() >= H - 4
         keep[i] = not touches   # 옆 그림 조각은 버리고, 떨어진 칼·베기 궤적은 남김
     a = np.where(keep[lab], a, 0)
     ys, xs = np.where(a > 0)
@@ -71,7 +84,7 @@ def main():
     for name, src, xr, fx in FRAMES:
         rgba, foot, ox = load(src, xr)
         if fx is not None: foot = fx - ox
-        s = sc * (WALK_SCALE if src == 'walk' else 1)
+        s = sc * SRC_SCALE.get(src, 1)
         p = shrink(rgba, s)
         pieces.append((name, p, foot * s))
         print(f'{name}: {rgba.shape[1]}x{rgba.shape[0]} → {p.shape[1]}x{p.shape[0]}  발 {foot * s:.1f}')
