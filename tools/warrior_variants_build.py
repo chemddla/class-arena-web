@@ -160,13 +160,16 @@ def glow_masks(cell):
     red = solid & ((h >= 325) | (h <= 10)) & (s >= 0.3) & (v >= 0.1) & ~hair
     lab, n, sz = comps(red)
     red = np.isin(lab, np.where(sz >= 6)[0] + 1) if n else red   # 낱개 점(입·잡티)은 빼고
-    cloth = solid & (h >= 212) & (h <= 245) & (s >= 0.55) & (v < 0.6)
+    # 천은 칠하지 않음: 파란 빛을 받은 갑옷 그늘도 진한 남색이라 천과 갈리지 않아, 천 색으로 칠하면 갑옷이 금빛·고동 등으로 보였음
+    #   (게임 화면에서 확인, 2026-11-08) → 진한 남색은 갑옷으로 보고 갑옷색으로 칠함 (허리 천 조각도 갑옷색이 되지만 작음)
+    navy = solid & (h >= 200) & (h <= 245) & (s >= 0.5) & (v >= 0.15) & (v < 0.6)
+    cloth = np.zeros_like(solid)
     red &= ~top | (s >= 0.3)
     # 갑옷 쇠: 빛에 물든 하늘색~남색(색상 180~245) 또는 무채색 중 중간 밝기(0.3~0.88)·채도 0.5 미만
     #   빼는 것: 하얗게 날아간 얼굴·섬광(밝기 0.88 이상), 노란 빛에 물든 얼굴(색상 40~65), 밝은 번개·불꽃(채도 0.5 이상),
     #   검날(평소 판정의 길쭉한 밝은 덩어리), 머리·망토·천
     blade = masks(cell)['sword']
-    steel = solid & (((h >= 180) & (h <= 245)) | (s < 0.15)) & (s < 0.5) & (v >= 0.3) & (v < 0.88) & ~hair & ~red & ~cloth & ~blade
+    steel = ((solid & (((h >= 180) & (h <= 245)) | (s < 0.15)) & (s < 0.5) & (v >= 0.3) & (v < 0.88)) | navy) & ~hair & ~red & ~blade   # + 진한 남색 그늘
     z = np.zeros_like(solid)
     return dict(skin=skin, hair=hair, red=red, cloth=cloth, steel=steel, sword=blade, gold=z, fringe=np.zeros(solid.shape), glow=True)
 
