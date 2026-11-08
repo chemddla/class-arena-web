@@ -4755,17 +4755,17 @@
         stun_strike: {
           id: 'stun_strike', name: '강타', icon: '🔨', ccTag: '💫기절',
           manaCost: 27, cooldownTicks: 450, cooldownSec: 7.5, castSec: 0.5,
-          desc: '대검을 힘껏 내리쳐 눈앞의 적을 강하게 타격합니다. 160% 피해를 입히고 2.5초간 [기절]시켜요. (내려치는 동안은 움직일 수 없어요)'
+          desc: '대검을 힘껏 내리쳐 눈앞의 적을 강하게 타격합니다. 160% 피해를 입히고 5초간 [기절]시켜요. (내려치는 동안은 움직일 수 없어요)'
         },
         charge: {
           id: 'charge', name: '돌진', icon: '💨', ccTag: '💫기절',
-          manaCost: 21, cooldownTicks: 330, cooldownSec: 5.5, castSec: 0,
+          manaCost: 21, cooldownTicks: 210, cooldownSec: 3.5, castSec: 0,
           desc: '목표 적을 향해 전방 2칸(240px) 고속 돌진하여 강력한 300% 충돌 피해를 입히고 0.5초간 [기절]시킵니다.'
         },
         roar: {
           id: 'roar', name: '사자후', icon: '🦁', ccTag: '🦁밀쳐내기',
           manaCost: 24, cooldownTicks: 360, cooldownSec: 6.0, castSec: 0.5,
-          desc: '사자처럼 포효해 주변 2칸 범위의 적들에게 190% 피해를 입히고 1.8칸 멀리 밀쳐냅니다.'
+          desc: '사자처럼 포효해 주변 2.5칸 범위의 적들에게 190% 피해를 입히고 1.8칸 멀리 밀쳐냅니다.'
         },
         warcry: {
           id: 'warcry', name: '함성', icon: '📣', ccTag: '📣공격강화',
@@ -5326,13 +5326,20 @@
       if (u.spiritElem) return SPIRIT_DEFS[u.spiritElem]?.name || u.name; // 정령: '불 정령'처럼 원소 이름 그대로
       return u.monsterType || u.isEliteBoss ? u.name : u.name.split(' ').pop();
     }
+    // 용병 전사만 강화한 스킬(2026-11-08)은 몬스터·엘리트 보스 스킬 묶음에서 예전 값·설명 그대로 (탑 균형 유지)
+    //   회전베기 다단히트 간격·강타 기절·사자후 범위는 시전할 때 isMercWarrior로 갈림 (WARRIOR_MERC_TUNE)
+    const MONSTER_SKILL_KEEP = {
+      charge: { cooldownTicks: 330, cooldownSec: 5.5 },
+      stun_strike: { desc: '대검을 힘껏 내리쳐 눈앞의 적을 강하게 타격합니다. 160% 피해를 입히고 2.5초간 [기절]시켜요. (내려치는 동안은 움직일 수 없어요)' },
+      roar: { desc: '사자처럼 포효해 주변 2칸 범위의 적들에게 190% 피해를 입히고 1.8칸 멀리 밀쳐냅니다.' }
+    };
     // [스킬 키, 이름?, 아이콘?] 목록 → 스킬 정의 묶음 (다른 직업 스킬도 가능, 이름·아이콘만 바꿀 수 있음)
     function buildSkillBook(entries) {
       const book = {};
       entries.forEach(e => {
         const [key, name, icon] = Array.isArray(e) ? e : [e];
         const base = (SKILL_DEFS[skillJobOf(key)] || {})[key];
-        if (base) book[key] = { ...base, name: name || base.name, icon: icon || base.icon };
+        if (base) book[key] = { ...base, ...(MONSTER_SKILL_KEEP[key] || {}), name: name || base.name, icon: icon || base.icon };
       });
       return book;
     }
@@ -18552,7 +18559,7 @@
       u.facingAngle = aimAngle;
       if (Math.abs(Math.cos(aimAngle)) > 0.1) u.facingDir = Math.cos(aimAngle) >= 0 ? 1 : -1;
 
-      if (u.skillAnim > 0 && u.activeSkillType === 'whirlwind' && u.skillAnim % 28 === 0) {
+      if (u.skillAnim > 0 && u.activeSkillType === 'whirlwind' && u.skillAnim % whirlHitEvery(u) === 0) {
         enemies.forEach(e => {
           if (unitDist(e, u) <= WHIRLWIND_RADIUS * unitAreaScale(u)) {
             playCombatSfx('slash');
@@ -20509,7 +20516,7 @@
           inReach.forEach(e => {
             if (unitDist(e, target) <= 80 * unitAreaScale(unit)) {
               applyDamage(unit, e, unit.atk * 1.6);
-              inflictStatus(unit, e, 'stun', 150); // 2.5초
+              inflictStatus(unit, e, 'stun', isMercWarrior(unit) ? WARRIOR_MERC_TUNE.stunTicks : 150); // 용병 전사 5초 · 몬스터 2.5초
             }
           });
           playCombatSfx('heavy');
@@ -21036,11 +21043,11 @@
         }
 
         if (u.skillAnim > 0 && u.activeSkillType === 'whirlwind') {
-          if (u.skillAnim % 28 === 0) {
+          if (u.skillAnim % whirlHitEvery(u) === 0) {
             // 회전 그림이 있는 몬스터(고블린 전사)는 타격마다 창병 난무 소용돌이를 번갈아 뒤집어 그림 (spinFx: 'gold' = 노란 소용돌이)
             const spr = getUnitSprite(u);
             if (spr && spr.spinFx) {
-              const hitNo = Math.round(u.skillAnim / 28);
+              const hitNo = Math.round(u.skillAnim / whirlHitEvery(u));
               sim.effects.push({ type: 'rampage_fx', f: 2 + (hitNo % 2), x: u.x, y: u.y - 14, w: WHIRLWIND_RADIUS * 2 * unitAreaScale(u), flip: hitNo % 4 >= 2, tint: spr.spinFx === 'gold' ? 'gold' : undefined, life: 22, maxLife: 22 });
             }
             enemies.forEach(e => {
@@ -21797,6 +21804,12 @@
     }
 
     const WHIRLWIND_TICKS = 160; // 회전베기 지속 시간 (틱)
+    // 용병 전사만 강화 (2026-11-08): 회전베기 다단히트 28틱 → 14틱 간격 · 강타 기절 2.5초 → 5초 · 사자후 범위 2칸 → 2.5칸 (돌진 쿨타임 5.5초 → 3.5초는 스킬 정의)
+    //   몬스터·엘리트 보스가 쓰는 같은 스킬은 예전 값 (MONSTER_SKILL_KEEP)
+    const WARRIOR_MERC_TUNE = { whirlHitEvery: 14, stunTicks: 300, roarCells: 2.5 };
+    const isMercWarrior = u => Boolean(u && u.job === 'warrior' && !u.monsterType && !u.isEliteBoss);
+    const whirlHitEvery = u => isMercWarrior(u) ? WARRIOR_MERC_TUNE.whirlHitEvery : 28;
+    const roarCells = u => isMercWarrior(u) ? WARRIOR_MERC_TUNE.roarCells : 2;
     const WARCRY_ATK_SPEED = 1.3; // 함성: 공격 속도 +30% (공격 간격 ÷ 1.3)
     const WHIRLWIND_RADIUS = 185; // 회전베기 범위 (예전 125에서 0.5칸 넓힘) (시전자 몸 크기에 따라 unitAreaScale배)
     const STUN_STRIKE_ROOT_TICKS = 20; // 강타: 한 번 내리치는 시간 (틱) — 이동 불가 + 모션 길이
@@ -21967,13 +21980,14 @@
       if (castPaladinSkill(unit, allies, enemies, sk, target, aimPt)) return true;
 
       if (sk === 'roar') {
-        // 사자후: 주변 2칸 적에게 피해 + 1.8칸 밀쳐냄
+        // 사자후: 주변 2칸(용병 전사 2.5칸) 적에게 피해 + 1.8칸 밀쳐냄
         const shoutSpr = unitFxSpr(unit, 'shout');
-        const roarFx = { type: 'aoe_ring', spr: shoutSpr, x: unit.x, y: unit.y, r: A * 2, color: '#d97706', life: 36, maxLife: 36 };
+        const roarR = A * roarCells(unit);
+        const roarFx = { type: 'aoe_ring', spr: shoutSpr, x: unit.x, y: unit.y, r: roarR, color: '#d97706', life: 36, maxLife: 36 };
         if (shoutSpr === 'chaos_shout') { const mo = unitShotOrigin(unit); Object.assign(roarFx, { mx: mo.x, my: mo.y, cdir: unit.facingDir || 1, life: 44, maxLife: 44 }); } // 카오스드래곤 = 입에서 원뿔 음파
         sim.effects.push(roarFx);
-        if (shoutSpr === 'bloodorc_shout') sim.effects.push({ type: 'aoe_ring', spr: 'taunt', x: unit.x, y: unit.y, r: A * 2, color: '#dc2626', life: 36, maxLife: 36 }); // 피의 오크 대족장 = 붉은 충격파도
-        near(enemies, unit.x, unit.y, A * 2).forEach(e => {
+        if (shoutSpr === 'bloodorc_shout') sim.effects.push({ type: 'aoe_ring', spr: 'taunt', x: unit.x, y: unit.y, r: roarR, color: '#dc2626', life: 36, maxLife: 36 }); // 피의 오크 대족장 = 붉은 충격파도
+        near(enemies, unit.x, unit.y, roarR).forEach(e => {
           applyDamage(unit, e, unit.atk * 1.9);
           pushUnitAway(e, unit.x, unit.y, C * 1.8);
         });
@@ -27016,10 +27030,10 @@
 
       switch (skKey) {
         case 'roar': {
-          const n = countNear(enemies, unit.x, unit.y, C * 2);
+          const n = countNear(enemies, unit.x, unit.y, C * roarCells(unit));
           if (n >= 2) return 93;
           if (n === 1 && unit.hp / unit.maxHp < 0.5) return 86;
-          if (n === 1) return aoeWorthWaiting(unit, enemies, C * 2) ? -1 : 70;
+          if (n === 1) return aoeWorthWaiting(unit, enemies, C * roarCells(unit)) ? -1 : 70;
           return -1;
         }
         case 'warcry': {
