@@ -47,6 +47,7 @@ const R = await TM.live('ARENA3', 300); // 5분 동안의 변경량 (탭을 앞�
 - 2026-11-08 (10차): `live_battle_events`(학급 전체가 limitToLast(10) child_added로 구독하던 대시 이벤트) 구독·쓰기 제거. 화면 동기화 전 방식이라 받는 쪽은 `sim.netRole`이 있으면 늘 무시했고, 보내는 쪽은 netRole이 없는 전투(혼자 하는 엘리트 토벌·연습 친구 결투·AI뿐인 팀전)의 수동 대시마다 학급 전체 탭에 이벤트(약 150B)와 20초 뒤 삭제를 내려보냈음. 서버 규칙의 `live_battle_events` 항목은 예전 탭이 올리는 것을 위해 남겨 둠
 - 2026-11-08 (11차): 몬스터 러쉬 화면의 라운드 상태 `rs`(숫자 11칸, 약 40B)를 매 화면 → 전체 화면·바뀌었을 때만(`rushStateForFrame`, 틱 카운터 칸의 자연 감소는 바뀜으로 안 봄). 받는 쪽은 예전부터 rs가 없는 화면을 그냥 넘기고 절대 틱(nextAt·roundStartTick)으로 남은 시간을 세므로 형식 변경 없음. 장판 `zn`은 받는 쪽이 life를 스스로 줄이지 않아 그대로 둠
 - 2026-11-08 (12차): 서버 화면 0.5초 간격(`liveServerFrameInterval`)을 팀전·협동 레이드·던전에도: 사람 팀원 모두가 원활한 직접 연결(`LiveRtcHub.peers`, mode 'rtc'·0.3초 안 전송·밀림 4KB 아래)로 받고 있고 보는 친구가 없을 때(팀전방은 spectators · 레이드/던전은 계산 담당이 새로 구독하는 중계 자리 watchers). 한 명이라도 서버 화면을 보면 그대로 0.15초. 5:5 팀전에서 팀원 4명이 안 쓰고 내려받던 서버 화면(각 약 5KB/s)이 약 1/3로
+- 2026-11-08 (13차, ARENA3 노드 크기 읽기 전용 측정): students 150KB(23명, 탭마다 접속 때 통째로 한 번) · studentPrivate 122KB(학생은 자기 칸만 구독) · profiles 1.6KB · auctions 2.2KB · invites 2.4KB(TTL 정리 있음) · minigames 5KB(끝난 판 17개 — `{방}_pc`·`{방}_vl` 실시간 노드가 방 삭제 때 안 지워짐) · pvp_live 92KB(끝난 러쉬 중계 2개 `raidcast_rush_…`, 아무도 구독하지 않아 트래픽은 없음) · 나머지 0~0.5KB. 고침: 레이드·러쉬·던전 방 삭제 때 그 방의 중계 자리도 지우고(`removeRaidRoomData`), 계산을 이어받은 친구가 예전 담당 자리를 20초 뒤 지움, 미니게임 방 삭제 때 `_pc`·`_vl`도 지움. 남아 있는 옛 노드는 `firebase database:remove /classes/ARENA3/pvp_live/<id>`로 한 번 치우면 됨. 남은 큰 항목은 접속 때 students 통째 내려받기(150KB)인데, 바뀐 학생만 받으려면 updatedAt 색인·삭제 감지가 필요해 보류
 
 ## 4. 고칠 후보 (재 본 숫자로 우선순위를 정함)
 

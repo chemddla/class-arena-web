@@ -44178,6 +44178,7 @@
     }
 
     async function removeRaidRoomData(roomId) {
+      const room = liveRaidRoomsCache[roomId];
       delete liveRaidRoomsCache[roomId];
       RoomChat.purge('raid', roomId);
       renderLiveRaidRoomsList();
@@ -44187,6 +44188,11 @@
         try {
           await db.ref(`classes/${classCode}/raid_rooms/${roomId}`).remove();
         } catch (e) {}
+        // 이 방의 중계 자리(계산 담당마다 하나)도 함께 지움: 담당이 넘기고 바로 페이지를 떠나면 onDisconnect를 끈 뒤라 자리가 남았음 (없는 자리 지우기는 아주 작은 쓰기)
+        const ids = room && typeof room === 'object' ? raidSlotsOf(room).map(s => room[s + 'Id']).filter(Boolean) : [];
+        [...new Set([raidCastId(roomId), ...ids.map(id => raidCastId(roomId, id))])].forEach(castId => {
+          db.ref(`classes/${classCode}/pvp_live/${castId}`).remove().catch(() => {});
+        });
       }
     }
 
@@ -44778,8 +44784,11 @@
       if (!rl || !val.to) return;
       if (val.from && !rl.tried.includes(val.from)) rl.tried.push(val.from);
       if (val.to === liveNet.myId && val.dg && typeof val.dg === 'object' && sim.dungeon) applyDungeonState(val.dg);
-      if (val.to === liveNet.myId) takeOverRaidBattle(Array.isArray(val.units) ? val.units : null, val.tick);
-      else connectRaidLiveNet(val.to, Date.now() - 3000, []);
+      const oldRef = liveNet.ref;
+      if (val.to === liveNet.myId) {
+        takeOverRaidBattle(Array.isArray(val.units) ? val.units : null, val.tick);
+        if (oldRef) setTimeout(() => { if (liveNet.ref !== oldRef) oldRef.remove().catch(() => {}); }, 20000); // 예전 담당이 지우지 못하고 떠났어도 남지 않게
+      } else connectRaidLiveNet(val.to, Date.now() - 3000, []);
     }
 
     // 파티원: 계산 담당 화면이 한참 조용함(갑자기 끊김) → 다음 친구가 자기 화면 상태로 이어서 계산 · 처리했으면 true
@@ -48890,6 +48899,9 @@
         try {
           await db.ref(`classes/${classCode}/minigame_rooms/${roomId}`).remove();
           await db.ref(`classes/${classCode}/minigames/${roomId}`).remove();
+          // 펫 러닝 협동({방}_pc)·발리볼({방}_vl)의 실시간 노드도 (판 노드만 지워서 끝난 판 노드가 쌓였음)
+          db.ref(`classes/${classCode}/minigames/${roomId}_pc`).remove().catch(() => {});
+          db.ref(`classes/${classCode}/minigames/${roomId}_vl`).remove().catch(() => {});
         } catch (e) {}
       }
     }
