@@ -18335,7 +18335,16 @@
     let illusionSeq = 0;
 
     // 실시간 결투 방장: 분신처럼 전투 중에 유닛이 늘면 상대 화면에 유닛 목록을 다시 보냄
+    // 같은 순간에 여럿이 생기면(정령 여러 마리·분신 연속) 한 번만: LIVE_REPUBLISH_COALESCE_MS 안의 요청은 묶어서 보냄
+    // (목록 한 번이 유닛 수 × 약 0.8KB라 5:5 한 판에 4~5번 가던 것 중 1~2번이 겹쳤음 · 그 사이 화면은 받는 쪽이 모르는 유닛 칸을 건너뜀)
+    const LIVE_REPUBLISH_COALESCE_MS = 400;
+    let republishLiveTimer = null;
     function republishLiveUnits() {
+      if (liveNet.role !== 'host' || !liveNet.ref || republishLiveTimer) return;
+      republishLiveTimer = setTimeout(() => { republishLiveTimer = null; republishLiveUnitsNow(); }, LIVE_REPUBLISH_COALESCE_MS);
+    }
+    function republishLiveUnitsNow() {
+      clearTimeout(republishLiveTimer); republishLiveTimer = null;
       if (liveNet.role !== 'host' || !liveNet.ref) return;
       const units = sim.units.map(u => liveUnitCopy(u, LIVE_INIT_DROP));
       const stamp = liveNet.towerCast || typeof liveNet.bid !== 'number' ? {} : { b: liveNet.bid, ep: liveNet.ep || 0 };
@@ -19462,7 +19471,7 @@
       try { ref.onDisconnect().remove(); idxRef.onDisconnect().remove(); } catch (e) {}
       ref.child('result').remove().catch(() => {});
       ref.child('frame').remove().catch(() => {});
-      republishLiveUnits();
+      republishLiveUnitsNow();
       liveNet.towerIdxInfo = info;
       idxRef.set(liveNet.towerIdxInfo).catch(() => {});
       idxRef.child('watchers').on('value', snap => {
@@ -41957,7 +41966,7 @@
             if (!sim.running) return;
             const idxRef = !liveNet.raidCast && liveNet.towerIdxInfo ? towerLiveIndexRef(liveNet.myId) : null;
             if (idxRef) { idxRef.onDisconnect().remove(); idxRef.update(liveNet.towerIdxInfo).catch(() => {}); }
-            republishLiveUnits();
+            republishLiveUnitsNow();
             liveNet.lastFramePublishedAt = 0;
             return;
           }
@@ -43439,7 +43448,7 @@
       try { ref.onDisconnect().remove(); } catch (e) {}
       ref.child('result').remove().catch(() => {});
       ref.child('frame').remove().catch(() => {});
-      republishLiveUnits();
+      republishLiveUnitsNow();
       ref.child('watchers').on('value', snap => {
         const val = snap && snap.val();
         const n = val && typeof val === 'object' ? Object.keys(val).length : 0;
