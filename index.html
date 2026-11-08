@@ -7131,6 +7131,7 @@
       brawlChain: [[8], [9], [10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 10], [27]],
       brawlFinish: [[27, 12], [33, 16]], // 10타: 날아 들어오며 차기 (BRAWLER_SR_LEAP_TICKS 8 + 닿고 4틱) → 착지 → 평소 자세
       brawlPass9: true,
+      srHitFx: true, // 타격 이펙트 = 흰 소용돌이 고리 (BRAWLER_SR_HIT_FX)
       unitSize: 1.3, // 몸 1.3배 (그림·몸 판정·근접 사거리, createSimUnit)
       // 멸식 - 격: 잔상은 흰 털에 어울리는 서늘한 청백색 · 마무리 준비(웅크림) 14 → 30틱 · 닿을 때 경직 8 → 20틱 + 화면 흔들림 (brawlerFlurryPlan)
       ghostFilter: 'grayscale(1) sepia(1) saturate(3) hue-rotate(170deg) brightness(1.25)',
@@ -9463,6 +9464,10 @@
     const BRAWLER_HIT_FX = new Image();
     BRAWLER_HIT_FX.onload = () => { BRAWLER_HIT_FX.ready = true; };
     BRAWLER_HIT_FX.src = 'assets/sprites/fx/brawler_hit.webp';
+    // 백호(격투가 SR 1) 전용 타격 이펙트: 흰 소용돌이 고리 + 튀는 불티 (tools/brawler_sr1_hit_build.py) · 그림 가운데 = 맞은 자리
+    const BRAWLER_SR_HIT_FX = new Image();
+    BRAWLER_SR_HIT_FX.onload = () => { BRAWLER_SR_HIT_FX.ready = true; };
+    BRAWLER_SR_HIT_FX.src = 'assets/sprites/fx/brawler_sr1_hit.webp';
     const SNIPER_FX_IMG = new Image();
     SNIPER_FX_IMG.onload = () => { SNIPER_FX_IMG.ready = true; };
     SNIPER_FX_IMG.src = 'assets/sprites/fx/sniper_fx.webp';
@@ -19906,8 +19911,11 @@
       }
       defender.hp -= dmg;
       if ((defender.statuses.undying || 0) > 0 && defender.hp < 1) defender.hp = 1; // 불사: 체력이 1 아래로 내려가지 않음
-      if (attacker?.job === 'brawler' && !attacker.monsterType && dmg > 0) // 격투가 타격 섬광 (스킬 피해는 조금 크게)
-        sim.effects.push({ type: 'brawl_hit', x: defender.x + (Math.random() * 12 - 6), y: defender.y - 18 - Math.random() * 10, r: skillHitSource ? 50 : 40, flip: Math.random() < 0.5, life: 9, maxLife: 9 });
+      if (attacker?.job === 'brawler' && !attacker.monsterType && dmg > 0) { // 격투가 타격 섬광 (스킬 피해는 조금 크게) · 백호는 전용 소용돌이 고리
+        const sr = Boolean(getMercSprite('brawler', attacker.skinVariant || 0)?.srHitFx);
+        sim.effects.push({ type: 'brawl_hit', x: defender.x + (Math.random() * 12 - 6), y: defender.y - 18 - Math.random() * 10, r: sr ? (skillHitSource ? 66 : 54) : (skillHitSource ? 50 : 40),
+          flip: Math.random() < 0.5, sr, rot: Math.random() * Math.PI * 2, life: sr ? 12 : 9, maxLife: sr ? 12 : 9 });
+      }
       defender.damageTaken += dmg;
       // 엘리트 보스는 기본 공격에 경직 면역: 피격 자세·흔들림 없이 하얗게 번쩍이기만 (스킬에 맞으면 경직)
       // 히든 스킬 시전 중에도 경직 면역 (피격 자세 없이 번쩍이기만)
@@ -30690,7 +30698,15 @@
 
         } else if (ef.type === 'brawl_hit') {
           // 격투가 타격 섬광: 앞 3틱에 확 터지고 나머지는 살짝 커지며 사라짐
-          if (BRAWLER_HIT_FX.ready) {
+          if (ef.sr && BRAWLER_SR_HIT_FX.ready) { // 백호: 흰 소용돌이 고리가 확 퍼지며 돌다가 사라짐
+            const pop = progress < 0.25 ? 0.45 + progress / 0.25 * 0.7 : 1.15 + (progress - 0.25) * 0.3;
+            const d = (ef.r || 54) * pop;
+            ctx.translate(ef.x, ef.y);
+            ctx.rotate((ef.rot || 0) + progress * (ef.flip ? -0.9 : 0.9));
+            ctx.globalAlpha = progress < 0.35 ? 1 : Math.max(0, (1 - progress) / 0.65);
+            ctx.imageSmoothingEnabled = true;
+            ctx.drawImage(BRAWLER_SR_HIT_FX, -d / 2, -d / 2, d, d);
+          } else if (BRAWLER_HIT_FX.ready) {
             const pop = progress < 0.33 ? 0.6 + progress / 0.33 * 0.5 : 1.1 + (progress - 0.33) * 0.15;
             const d = (ef.r || 40) * pop;
             ctx.translate(ef.x, ef.y);
