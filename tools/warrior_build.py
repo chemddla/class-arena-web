@@ -41,6 +41,12 @@ FRAMES = [
     ('whirl3', 'whirl',     (340, 514, 0, 183)),
 ]
 FLIP = {'down2'}
+# 검정 배경 샘플이 같이 온 칸: 흰 배경·검정 배경 두 장을 비교해 투명도를 셈 (바람 고리처럼 반투명한 부분이 흰 테·잘림 없이 남음)
+#   흰 배경 W = a·c + (1-a)·255, 검정 배경 B = a·c → a = 1 - (W - B)/255, c = B / a
+#   검정 샘플은 크기·위치가 달라 칸마다 맞춘 값 (흰 샘플 x,y → 검정 샘플 sx·x + ox, sy·y + oy): 외곽선 차이가 가장 작은 값을 찾음
+#   몸 안쪽(흰 배경 방식으로 확실히 불투명한 곳)은 흰 샘플 색 그대로, 발밑 그림자는 그대로 지움
+BLACK = {'whirl': 'whirl_black'}
+BLACK_FIT = {'whirl1': (2.011, 2.033, 0.0, -4.41), 'whirl2': (2.02, 1.975, 0.9, 1.89), 'whirl3': (2.0, 2.0285, 2.1, -3.46)}
 
 
 def hair_mask(rgba):
@@ -48,11 +54,13 @@ def hair_mask(rgba):
     return (a > 200) & (r > g) & (g > b) & (r - b > 30) & (r < 210) & (r > 60)
 
 
-def load(src, box, flip):
+def load(src, box, flip, name=None):
     im = np.array(Image.open(f'{D}{src}_src.png').convert('RGB')).astype(float)
+    full = im.shape
     x0, x1, y0, y1 = box
     im = im[y0:y1, x0:x1]
     if flip: im = im[:, ::-1]
+    raw = im.copy()
     white = (im.min(axis=2) > 222) & (im.max(axis=2) - im.min(axis=2) < 20)
     lab, n = ndi.label(white)
     edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
@@ -94,6 +102,19 @@ def load(src, box, flip):
     a = np.where(rim, np.clip((255 - im.min(axis=2)) / 200, 0, 1), a)
     al = np.maximum(a, 1e-3)[..., None]
     im = np.where(rim[..., None], (im - 255 * (1 - al)) / al, im).clip(0, 255)
+    if src in BLACK:
+        sx, sy, ox, oy = BLACK_FIT[name]
+        Bi = Image.open(f'{D}{BLACK[src]}_src.png').convert('RGB')
+        B = np.array(Bi.transform((full[1], full[0]), Image.AFFINE, (sx, 0, ox, 0, sy, oy), Image.BILINEAR)).astype(float)[y0:y1, x0:x1]
+        matte = np.clip(1 - (raw - B).mean(axis=2) / 255, 0, 1)
+        core = ndi.binary_erosion(a >= 0.99, iterations=1) & (ndi.median_filter(matte, 3) > 0.8)
+        col = np.clip(B / np.maximum(matte, 1e-3)[..., None], 0, 255)
+        im = np.where(core[..., None], raw, col)
+        a = np.where(core, 1.0, np.where(matte < 0.08, 0, matte))
+        a[shadow] = 0
+        lab, n = ndi.label(a > 0.3)   # 몸에서 떨어진 잡티 (정렬 어긋남) 지움
+        sz = ndi.sum(a > 0.3, lab, range(1, n + 1))
+        a = np.where(ndi.binary_dilation(np.isin(lab, [i + 1 for i in range(n) if sz[i] >= 30]), iterations=3), a, 0)
     a = np.where(a < 0.12, 0, a)
     ys, xs = np.where(a > 0)
     rgba = np.dstack([im, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
@@ -106,13 +127,23 @@ def load(src, box, flip):
     return rgba, foot, rows.max() - top + 1, hx.max() - hx.min() + 1, hx.mean()
 
 
+def soft_shrink(rgba, sc):   # 반투명을 살린 축소 (바람 고리용). 거의 불투명한 곳만 딱딱하게
+    h, w = rgba.shape[:2]
+    pm = rgba.copy(); pm[..., :3] *= pm[..., 3:] / 255
+    a = np.array(Image.fromarray(pm.clip(0, 255).astype(np.uint8), 'RGBA').resize((max(1, round(w * sc)), max(1, round(h * sc))), Image.LANCZOS)).astype(float)
+    al = a[..., 3:]
+    a[..., :3] = np.where(al > 0, a[..., :3] * 255 / np.maximum(al, 1), 0)
+    a[..., 3:] = np.where(al > 215, 255, np.where(al < 14, 0, al))
+    return a.clip(0, 255).astype(np.uint8)
+
+
 def main():
     pieces = []
     sc = None
     for name, src, box in FRAMES:
-        rgba, foot, bh, hw, hcx = load(src, box, name in FLIP)
+        rgba, foot, bh, hw, hcx = load(src, box, name in FLIP, name)
         if sc is None: sc = TARGET_H / bh
-        p = shrink(rgba, sc)
+        p = soft_shrink(rgba, sc) if src in BLACK else shrink(rgba, sc)
         pieces.append((name, p, foot * sc))
         print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} 키 {bh} 머리털 폭 {hw} ×{sc:.3f} → {p.shape[1]}x{p.shape[0]}  발 {foot:.0f}')
     L = max(int(np.ceil(c)) for _, _, c in pieces) + 3
