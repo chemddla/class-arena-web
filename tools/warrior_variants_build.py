@@ -152,9 +152,9 @@ def glow_masks(cell):
     # 얼굴이 보이는 칸(일어섬): 머리가 번개·흰 빛과 섞여 색으로는 군데군데만 잡혀 얼룩짐 → 위치로: 얼굴 위쪽 머리 영역에서
     #   하늘색 번개(색상 165~205·채도 0.25 이상)·하얀 섬광(밝기 0.85 이상·채도 0.12 미만)·피부만 빼고 전부 머리
     #   얼굴은 노란 빛(색상 51~62)에 물들어 피부로 안 잡히고, 머리는 갈색 반·파란 빛 받은 남색 반
-    #   → 실루엣 위쪽 28% 안(눈썹까지), 머리 덩어리 둘레 14칸 안의 어두운 칸(밝기 0.6 미만)은 모두 머리 (얼굴·번개·섬광은 밝아서 빠짐)
+    #   → 실루엣 위쪽 33% 안(이마 아래 앞머리까지), 머리 덩어리 둘레 14칸 안의 어두운 칸(밝기 0.6 미만)은 모두 머리 (얼굴·번개·섬광은 밝아서 빠짐)
     if hair.sum() > 0:
-        head = np.zeros_like(solid); head[:int(ys.min() + 0.28 * (ys.max() - ys.min()))] = True
+        head = np.zeros_like(solid); head[:int(ys.min() + 0.33 * (ys.max() - ys.min()))] = True
         head &= ndi.binary_dilation(hair, iterations=14)
         hair |= solid & head & (v < 0.6) & ~skin
     red = solid & ((h >= 325) | (h <= 10)) & (s >= 0.3) & (v >= 0.1) & ~hair
@@ -162,8 +162,13 @@ def glow_masks(cell):
     red = np.isin(lab, np.where(sz >= 6)[0] + 1) if n else red   # 낱개 점(입·잡티)은 빼고
     cloth = solid & (h >= 212) & (h <= 245) & (s >= 0.55) & (v < 0.6)
     red &= ~top | (s >= 0.3)
+    # 갑옷 쇠: 빛에 물든 하늘색~남색(색상 180~245) 또는 무채색 중 중간 밝기(0.3~0.88)·채도 0.5 미만
+    #   빼는 것: 하얗게 날아간 얼굴·섬광(밝기 0.88 이상), 노란 빛에 물든 얼굴(색상 40~65), 밝은 번개·불꽃(채도 0.5 이상),
+    #   검날(평소 판정의 길쭉한 밝은 덩어리), 머리·망토·천
+    blade = masks(cell)['sword']
+    steel = solid & (((h >= 180) & (h <= 245)) | (s < 0.15)) & (s < 0.5) & (v >= 0.3) & (v < 0.88) & ~hair & ~red & ~cloth & ~blade
     z = np.zeros_like(solid)
-    return dict(skin=skin, hair=hair, red=red, cloth=cloth, steel=z, sword=z, gold=z, fringe=np.zeros(solid.shape), glow=True)
+    return dict(skin=skin, hair=hair, red=red, cloth=cloth, steel=steel, sword=blade, gold=z, fringe=np.zeros(solid.shape), glow=True)
 
 
 def _hex(c):
@@ -258,7 +263,7 @@ def main():
     ex = np.array(Image.open(EXCAL_SRC).convert('RGBA'))
     for n, name, *cols in VARIANTS:
         Image.fromarray(recolor(im, *cols, fxmask=fxm), 'RGBA').save(f'assets/sprites/merc/warrior_{n}.webp', 'WEBP', lossless=True)
-        Image.fromarray(recolor(ex, *cols, cw=EXCAL_CELL, steel_cells={0}, glow_cells={1, 2, 3}), 'RGBA').save(f'assets/sprites/fx/warrior_excalibur_cast_{n}.webp', 'WEBP', lossless=True)
+        Image.fromarray(recolor(ex, *cols, cw=EXCAL_CELL, glow_cells={1, 2, 3}), 'RGBA').save(f'assets/sprites/fx/warrior_excalibur_cast_{n}.webp', 'WEBP', lossless=True)
         print(f'warrior_{n}.webp · warrior_excalibur_cast_{n}.webp  {name}')
 
 
