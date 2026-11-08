@@ -148,6 +148,21 @@ def paint(im, skin, hair, trim, dobok, belt, hair_c):
     return out
 
 
+RIM = (22, 20, 26)  # 바깥 윤곽선 색 (원본의 가장 어두운 테두리)
+
+
+def dark_rim(out, im):
+    """원본 바깥 가장자리의 옅은 회백색 테두리(반투명 포함)를 검은 윤곽선으로.
+    흰 도복에서는 안 보이지만 색을 입히면 몸 둘레에 하얀 선으로 드러남. 멸식 기운(진한 색)·흙먼지(따뜻한 색)는 그대로"""
+    hsv = rgb2hsv(im[..., :3] / 255.)
+    al = im[..., 3] > 0
+    edge = al & (ndimage.binary_dilation(~al) | (im[..., 3] < 255))
+    rim = edge & (hsv[..., 1] < 0.12) & (hsv[..., 2] > 0.3)
+    out = out.copy()
+    out[rim, :3] = RIM
+    return out
+
+
 def build(im):
     skin, hair, hair_edge, trim = masks(im)
     hair_all = hair | hair_edge
@@ -157,6 +172,7 @@ def build(im):
             res[num] = tone(im, skin, hair_all, *p)
         else:
             res[num] = paint(im, skin, hair_all if p[2] else hair, trim, *p)
+        res[num] = dark_rim(res[num], im)
     return res
 
 
