@@ -110,6 +110,23 @@ test('나만 쓰는 칸(studentPrivate): 로그인한 학생은 자기 것만, �
   await assertSucceeds(db(null).ref('classes/OLD1/studentPrivate/s1/codex').set({ a: 1 })); // 소유자 없는 예전 학급
 });
 
+test('용병 기록: id·job·level이 빠진 용병은 저장할 수 없음 (칸이 지워진 채 섞이는 것 방지)', async () => {
+  const merc = (id, extra = {}) => ({ id, job: 'warrior', level: 3, name: id, ...extra });
+  // 정상: 목록 통째로, 한 명 통째로, 한 칸만 바꾸기, 한 명 지우기
+  await assertSucceeds(db('u1').ref('classes/OWN1/students/s1/roster').set([merc('m1'), merc('m2')]));
+  await assertSucceeds(db('u1').ref('classes/OWN1/students/s1/roster/1').set(merc('m3')));
+  await assertSucceeds(db('u1').ref('classes/OWN1/students/s1/roster/0/level').set(9));
+  await assertSucceeds(db('u1').ref('classes/OWN1/students/s1/roster/1').remove());
+  await assertSucceeds(db('u1').ref('classes/OWN1/studentPrivate/s1/mercStorage').set([merc('m5')]));
+  await assertSucceeds(db('teacher').ref('classes/OWN1/students/s2').set(student('s2', { roster: [merc('m7')] })));
+  // 거부: 레벨·직업·id 빠진 용병, 기존 용병의 레벨 칸만 지우기
+  await assertFails(db('u1').ref('classes/OWN1/students/s1/roster/1').set({ id: 'm4', job: 'warrior' }));
+  await assertFails(db('u1').ref('classes/OWN1/students/s1/roster/0/level').remove());
+  await assertFails(db('u1').ref('classes/OWN1/students/s1/mercStorage').set([{ id: 'm6', level: 1 }]));
+  await assertFails(db('u1').ref('classes/OWN1/studentPrivate/s1/mercStorage/1').set({ job: 'warrior', level: 1 }));
+  await assertFails(db('teacher').ref('classes/OWN1/students/s2').set(student('s2', { roster: [{ id: 'm8' }] })));
+});
+
 test('소유자 없는 예전 학급은 예전처럼 열려 있음', async () => {
   await assertSucceeds(db(null).ref('classes/OLD1/students/s1/mc').set(5));
   await assertSucceeds(db('anyone').ref().update({

@@ -38018,7 +38018,22 @@
 
     // 학생 기록에서 바뀐 칸만 골라 올림 (기록 전체를 다시 올리면 반 친구 모두에게 통째로 다시 내려감)
     // 처음 올리는 학생이면 기록 전체, 비밀번호 칸은 건드리지 않음 (DB 규칙)
+    // 올리기 전 검사: 용병 목록의 빈 칸(null)·id 없는 기록은 버리고, 빠진 레벨·등급·능력치는 채움
+    // (깨진 기록을 서버에 올리면 그 학생 로그인·화면이 멈췄음 · DB 규칙도 id·job·level 없는 용병은 거부)
+    function sanitizeStudentMercs(s) {
+      ['roster', 'mercStorage'].forEach(k => {
+        if (s[k] == null) return;
+        const arr = Array.isArray(s[k]) ? s[k] : (typeof s[k] === 'object' ? Object.values(s[k]) : []);
+        const ok = arr.filter(m => m && typeof m === 'object' && m.id);
+        ok.forEach(m => { if (!m.job) { console.warn(`[저장 전 검사] 직업 없는 용병 ${m.name || m.id} → 전사로`); m.job = 'warrior'; } });
+        if (ok.length !== arr.length) console.warn(`[저장 전 검사] ${s.name || s.id}의 ${k}에서 깨진 칸 ${arr.length - ok.length}개를 뺐어요`);
+        ok.forEach(m => { normalizeMercForSync(m); ensureMercVariance(m); });
+        s[k] = ok;
+      });
+    }
+
     function addStudentUpdates(updates, base, s) {
+      sanitizeStudentMercs(s);
       const prev = syncCache.studentVals[s.id];
       const nameChanged = !prev || syncSig(prev.num) !== syncSig(s.num) || syncSig(prev.name) !== syncSig(s.name);
       if (!prev && studentPriv.off) {
@@ -38070,6 +38085,14 @@
       const hasId = x => x && typeof x === 'object' && x.id;
       const idsShifted = bothArr && (prev.some(hasId) || cur.some(hasId))
         && (prev.length !== cur.length || cur.some((x, i) => (x && x.id) !== (prev[i] && prev[i].id)));
+      // id가 있는 배열(용병 목록 등)은 바뀐 원소를 한 명 단위로 통째로 올림
+      // → 서버 사본과 이 기기 기억이 어긋나도 한 용병 안에서 칸이 섞이거나 레벨·등급 칸만 지워지는 일이 없음 (DB 규칙도 필수 칸을 검사)
+      if (bothArr && !idsShifted && (prev.some(hasId) || cur.some(hasId))) {
+        cur.forEach((x, i) => {
+          if (syncSig(prev[i]) !== syncSig(x)) updates[`${path}/${i}`] = x === undefined ? null : toFirebaseValue(x);
+        });
+        return;
+      }
       if (depth < SYNC_DIFF_MAX_DEPTH && (bothArr || bothObj) && !idsShifted) {
         const keys = bothArr
           ? Array.from({ length: Math.max(prev.length, cur.length) }, (_, i) => String(i))
