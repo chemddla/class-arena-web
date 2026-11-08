@@ -1578,7 +1578,7 @@
           <span class="lp-merc" style="--cw:118;--ch:95;--f0:0;--nf:4;--k:0.931"><img src="assets/sprites/merc/mage_0.webp" alt="마법사 용병" width="1534" height="95"></span>
           <span class="lp-merc lp-pet" style="--cw:152;--ch:157;--ay:155;--f0:1;--nf:4;--k:0.32"><img src="assets/sprites/pet/ginger_sheet.webp" alt="치즈 고양이 펫" width="5624" height="157"></span>
           <span class="lp-merc" style="--cw:186;--ch:102;--f0:2;--nf:4;--k:1.26"><img src="assets/sprites/merc/knight_0.webp" alt="기사 용병" width="5766" height="102"></span>
-          <span class="lp-merc" style="--cw:161;--ch:89;--ay:86;--f0:0;--nf:3;--k:1.2"><img src="assets/sprites/merc/warrior_0.webp" alt="전사 용병" width="2576" height="89"></span>
+          <span class="lp-merc" style="--cw:171;--ch:101;--ay:98;--f0:0;--nf:3;--k:1.2"><img src="assets/sprites/merc/warrior_0.webp" alt="전사 용병" width="2736" height="101"></span>
         </div>
         <div class="lp-foe">
           <span class="lp-merc" style="--cw:148;--ch:111;--f0:0;--nf:1;--k:0.9"><img src="assets/sprites/monster/goblin.webp" alt="길을 막는 고블린" width="2220" height="111"></span>
@@ -6746,7 +6746,7 @@
       //   · 11~12 사자후 (숨을 들이쉼 → 주먹을 내밀며 포효, 음파 그림은 뺌). 함성도 같은 동작 · 13~15 돌진 (출발 → 검을 앞세워 달림 → 멈춰 섬)
       warrior_0: {
         src: 'assets/sprites/merc/warrior_0.webp',
-        cellW: 161, cellH: 89, anchorX: 81, anchorY: 86, standH: 81, portraitCX: 86, count: 16,
+        cellW: 171, cellH: 101, anchorX: 85, anchorY: 98, standH: 81, portraitCX: 87, count: 16,
         anims: {
           idle: [0], walk: [1, 0, 2, 0], attack: [3, 4], skill: [3, 4], hurt: [5], death: [6, 7],
           whirl: [8, 9, 10], shout: [11, 12], charge: [13, 14, 14, 14, 15]
@@ -9860,7 +9860,7 @@
     // - cast: 기본 외형(warrior_0 대검 기사, tools/warrior_excalibur0_build.py) 4칸 = 0 웅크려 기를 모음 · 1 일어서며 푸른 기운 · 2 뛰어올라 검을 치켜듦 · 3 내려베기 (땅이 터짐)
     //   fx: 기를 모으는 고리 둘 · 베기 초승달 둘 · 날아가는 검기 · 발밑 반짝임
     const WARRIOR_EXCALIBUR_FX = {
-      cellW: 200, cellH: 156, anchorX: 114, anchorY: 148, standH: 81,
+      cellW: 149, cellH: 117, anchorX: 85, anchorY: 111, standH: 81,
       frames: { // [x, y, w, h, 기준점x, 기준점y]
         ring1: [0, 0, 128, 131, 64, 66], ring2: [132, 0, 156, 175, 78, 88],
         crescent1: [292, 0, 126, 143, 88, 72], crescent2: [422, 0, 135, 174, 88, 88],
@@ -29177,8 +29177,12 @@
     function pickSpriteFrame(u, sprite, tick) {
       const a = sprite.anims;
       const step = (list, elapsed, ticksPerFrame) => list[Math.min(list.length - 1, Math.max(0, Math.floor(elapsed / ticksPerFrame)))];
-      if ((u.attackAnim || 0) > (u._sprLastAtk || 0)) { u._sprAtkStart = tick; u._sprAtkRoll = Math.random(); } // 새 공격마다 동작 벌을 무작위로 (attackSets). 그리기에만 쓰여 전투 결과와는 상관없음
-      if ((u.skillAnim || 0) > (u._sprLastSkill || 0)) u._sprSkillStart = tick;
+      const newAtk = (u.attackAnim || 0) > (u._sprLastAtk || 0), newSkill = (u.skillAnim || 0) > (u._sprLastSkill || 0);
+      if (newAtk) { u._sprAtkStart = tick; u._sprAtkRoll = Math.random(); } // 새 공격마다 동작 벌을 무작위로 (attackSets). 그리기에만 쓰여 전투 결과와는 상관없음
+      if (newSkill) u._sprSkillStart = tick;
+      // 스킬과 같은 순간에 붙은 공격 시간(castMercSkillInner의 attackAnim)은 기본 공격이 아님 → 스킬 동작이 끝나면 기본 공격 끝 자세를 붙이지 않고 바로 평소 자세로 (모든 직업·외형 공통, 새 직업도 자동 적용)
+      //   일부러 꼬리를 보이려는 외형만 skillAttackTail: true
+      if (newAtk) u._sprAtkFromSkill = newSkill && !sprite.skillAttackTail;
       u._sprLastAtk = u.attackAnim || 0;
       u._sprLastSkill = u.skillAnim || 0;
 
@@ -29211,7 +29215,7 @@
         return cf ?? a.skill[0];
       }
       // attackDur가 있으면 그만큼만 공격 자세 (주술사: 불꽃을 날리고 나면 바로 평소 자세로)
-      if (u.attackAnim > 0 && !(sprite.attackDur && tick - (u._sprAtkStart ?? tick) >= sprite.attackDur)) {
+      if (u.attackAnim > 0 && !u._sprAtkFromSkill && !(sprite.attackDur && tick - (u._sprAtkStart ?? tick) >= sprite.attackDur)) {
         const sets = sprite.attackSets;
         const list = (u.lanceMode === 'thrust' && a.thrust) || (sets ? sets[Math.floor((u._sprAtkRoll || 0) * sets.length)] : a.attack); // 창병 찌르기는 따로
         return step(list, tick - (u._sprAtkStart ?? tick), 6);
