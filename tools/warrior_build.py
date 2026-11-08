@@ -40,7 +40,7 @@ FRAMES = [
     ('whirl2', 'whirl',     (155, 340, 0, 183)),
     ('whirl3', 'whirl',     (340, 514, 0, 183)),
     ('roar1',  'roar_charge', (0, 256, 0, 262)),     # 사자후 1: 검을 내리고 숨을 들이쉼
-    ('roar2',  'roar_charge', (256, 614, 0, 262)),   # 사자후 2: 주먹을 내밀며 포효 (앞으로 퍼지는 음파 고리). 샘플의 3번째 그림은 쓰지 않음 (사용자 요청)
+    ('roar2',  'roar_charge', (256, 614, 0, 262)),   # 사자후 2: 주먹을 내밀며 포효. 샘플의 음파 고리는 빼고(BODY_ONLY), 3번째 그림은 쓰지 않음 (사용자 요청)
     ('dash1',  'roar_charge', (80, 370, 262, 502)),  # 돌진 1: 몸을 앞으로 숙이며 출발
     ('dash2',  'roar_charge', (370, 690, 262, 502)), # 돌진 2: 검을 앞세워 달림 (바람 줄·흙먼지)
     ('dash3',  'roar_charge', (690, 1024, 262, 502)),# 돌진 3: 멈춰 서며 검을 끌어내림 (발 뒤 흙먼지)
@@ -55,6 +55,7 @@ BLACK_FIT = {'whirl1': (2.011, 2.033, 0.0, -4.41), 'whirl2': (2.02, 1.975, 0.9, 
 # 사자후·돌진 샘플 (warrior_roar_charge_src.png + _black_src.png, 1024×502, 두 장이 픽셀 단위로 맞음): 몸은 흰 샘플에서 확실히 칠해진 곳(밝기 205 미만)과
 #   외곽선 안쪽 작은 구멍을 불투명하게, 그 밖(음파·바람 줄·흙먼지)은 두 배경 비교값. 그림이 더 크게 그려져 사자후 1의 키(머리털 끝~발)를 TARGET_H로 맞춘 배율을 샘플 전체에 씀
 MATTE = {'roar_charge': 'roar_charge_black'}
+BODY_ONLY = {'roar2'}   # 몸 덩어리만 남김 (몸에서 떨어진 음파 고리·반투명 이펙트는 버림)
 MATTE_CUT = {'roar_charge': [(0, 135, 0, 66), (0, 165, 262, 320), (915, 965, 395, 440)]}   # 지울 상자 (x0, x1, y0, y1): '사자후'·'돌진' 글자, 검정 샘플 오른쪽 아래 반짝이 표시
 
 
@@ -136,7 +137,7 @@ def load(src, box, flip, name=None):
     return rgba, foot, rows.max() - top + 1, hx.max() - hx.min() + 1, hx.mean()
 
 
-def load_matte(src, box):
+def load_matte(src, box, name=None):
     W = np.array(Image.open(f'{D}{src}_src.png').convert('RGB')).astype(float)
     B = np.array(Image.open(f'{D}{MATTE[src]}_src.png').convert('RGB')).astype(float)
     a = np.clip(1 - (W - B).mean(axis=2) / 255, 0, 1)
@@ -159,6 +160,11 @@ def load_matte(src, box):
     keep = np.isin(lab, np.unique(lab[near & m]))
     keep = ndi.binary_dilation(keep, iterations=2) & (a > 0)
     a = np.where(keep, a, 0); body &= keep
+    if name in BODY_ONLY:
+        bl, bn = ndi.label(body, structure=np.ones((3, 3)))
+        main_body = bl == 1 + int(np.argmax(ndi.sum(body, bl, range(1, bn + 1))))
+        a = np.where(ndi.binary_dilation(main_body, iterations=1), a, 0)
+        body &= main_body
     ys, xs = np.where(a > 0)
     sl = (slice(ys.min(), ys.max() + 1), slice(xs.min(), xs.max() + 1))
     rgba = np.dstack([col, a * 255])[sl]
@@ -185,7 +191,7 @@ def main():
     sc, src_sc = None, {}
     for name, src, box in FRAMES:
         if src in MATTE:
-            rgba, foot, bh, hw, hcx, gnd = load_matte(src, box)
+            rgba, foot, bh, hw, hcx, gnd = load_matte(src, box, name)
         else:
             rgba, foot, bh, hw, hcx = load(src, box, name in FLIP, name)
             gnd = rgba.shape[0] - 1
