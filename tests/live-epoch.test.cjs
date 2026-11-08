@@ -2,7 +2,7 @@ const fs=require('fs');const assert=require('assert');
 const src=fs.readFileSync((process.argv[2]||'../index.html'),'utf8');
 const grab=(from,to)=>{const a=src.indexOf(from);const b=src.indexOf(to,a);if(a<0||b<0)throw new Error(from);return src.slice(a,b);};
 const accept=grab('    function liveAcceptPayload(val)','    function stopLiveBattleNet');
-const reset=grab('    function resetLiveFrameBuffer()','    function applyLiveFrame(val)');
+const reset=grab('    function resetLiveFrameBuffer()','    function applyLiveFrame(val');
 const mk=new Function(`const liveNum=v=>(typeof v==='number'&&isFinite(v)?v:0);
 const liveNet={bid:1000,ep:0,minAt:997,frameBuf:[1],curFrame:{at:5},lastFrameAt:0};
 ${reset}
