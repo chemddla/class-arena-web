@@ -120,7 +120,10 @@ def _hex(c):
 def _paint(hsv, hsv0, m, color, lo, hi):
     th, ts, tv = rgb2hsv(_hex(color)[None, None])[0, 0]
     t = np.clip((hsv0[..., 2] - lo) / (hi - lo), 0, 1)
-    v = np.clip(tv * (0.42 + 0.68 * t), 0, 1)
+    # 흰색·밝은 무채색은 그늘 폭을 좁혀야 회색이 아니라 흰색으로 보임 (흰 띠)
+    pale = np.clip((tv - 0.75) / 0.2, 0, 1) * np.clip(1 - ts / 0.25, 0, 1)
+    floor = 0.42 + 0.4 * pale
+    v = np.clip(tv * (floor + (1.1 - floor) * t), 0, 1)
     s = ts * (1 - 0.45 * np.clip((t - 0.85) / 0.15, 0, 1))  # 가장 밝은 칸은 살짝 색을 뺌 (광택)
     hsv[..., 0] = np.where(m, th, hsv[..., 0])
     hsv[..., 1] = np.where(m, s, hsv[..., 1])
