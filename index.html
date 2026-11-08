@@ -42802,7 +42802,7 @@
     // - 와이파이가 잠깐 멈췄다 몰아서 주면(학교 와이파이에서 흔함): 기다리는 시간은 빨리 늘리고 천천히 줄이며,
     //   재생 시점(playBase)은 순간 이동하지 않고 조금 느리게/빠르게 흘러서 따라감 → 멈칫·순간이동 대신 살짝 느려졌다 돌아옴
     function resetLiveFrameBuffer() {
-      Object.assign(liveNet, { frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, playBase: null, lastPlayAt: 0, lastAimCheckAt: 0, hostPause: null, recvU: null, recvT: null });
+      Object.assign(liveNet, { ownPred: null, frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, playBase: null, lastPlayAt: 0, lastAimCheckAt: 0, hostPause: null, recvU: null, recvT: null });
     }
 
     function applyLiveFrame(val) {
@@ -42835,6 +42835,80 @@
       buf.push({ at, val });
       if (buf.length > 1 && buf[buf.length - 2].at > at) buf.sort((a, b) => a.at - b.at);
       if (buf.length > 80) buf.splice(0, buf.length - 80);
+    }
+
+    // ----- 도전자가 직접 조종하는 내 용병: 방장 화면을 기다리지 않고 내 조작대로 바로 움직여 보임 (예측) -----
+    // 예전: 내 용병도 방장이 계산해 보낸 위치를 버퍼 재생 시점(0.1~0.45초 늦게) + 조작이 방장에게 가는 시간만큼 늦게 그려서,
+    //       키를 눌러도 한참 뒤에 움직이고 멈춰도 미끄러지는 등 도전자 화면만 끊겨 보였음
+    // 지금: 키 입력대로 바로 옮기고, 방장이 보낸 가장 최근 위치를 '그 무렵 내가 있던 자리(최근 기록 중 가장 가까운 곳)'와 견줘
+    //       어긋난 만큼만 부드럽게 당겨 맞춤 (대시·넉백·순간이동처럼 크게 어긋나면 바로 맞춤). 맞고 때리는 판정은 그대로 방장 화면 기준
+    function liveOwnMoveSpeed(u) {
+      const st = u.statuses || {};
+      let m = 1;
+      if (st.blessed > 0) m += 0.1;
+      if (st.miracle > 0) m += 0.2;
+      if ((st.anthem || 0) > 0) m += BARD_ANTHEM_SPEED_UP;
+      if (st.skate > 0) m += SKATE_SPEED_UP;
+      if (st.shock > 0) m -= 0.35;
+      if (st.poison > 0) m -= 0.12;
+      if (st.slow > 0) m -= SLOW_SPEED_DOWN;
+      m = Math.max(0.4, m);
+      return (u.baseMoveSpeed || 0) * m * 1.15 * (u.hasteTicks > 0 ? 1.2 : 1) * (st.swift > 0 ? 1.5 : 1) * lancerMoveMult(u) * ((st.guard || 0) > 0 ? KNIGHT_GUARD_MOVE_MULT : 1);
+    }
+    function guestPredictOwnUnit(ticks, now) {
+      const u = liveNet.role === 'guest' && !liveNet.spectator && !sim.spectator && battleControl.mode === 'manual' && battleControl.unitId
+        ? sim.units.find(x => x.id === battleControl.unitId) : null;
+      const idx = u ? sim.units.indexOf(u) : -1;
+      const buf = liveNet.frameBuf || [];
+      const newest = buf.length ? buf[buf.length - 1] : liveNet.curFrame;
+      const sp = newest && newest.val && Array.isArray(newest.val.u) ? newest.val.u[idx] : null;
+      if (!u || !u.alive || !Array.isArray(sp) || sp[5] !== 1) { liveNet.ownPred = null; return; }
+      const sx = liveNum(sp[0]), sy = liveNum(sp[1]);
+      let P = liveNet.ownPred;
+      if (!P || P.id !== u.id) P = liveNet.ownPred = { id: u.id, x: sx, y: sy, hist: [] };
+      const st = u.statuses || {};
+      const c = localBattleInput;
+      // 내 조작이 먹히지 않는 동안(시전·기절·빙결·공포·혼란·도발·대시 중)은 방장 위치를 빨리 따라감
+      const locked = u.castLock > 0 || u.dashAnim > 0 || st.stun > 0 || st.freeze > 0 || st.fear > 0 || st.confuse > 0 || st.taunt > 0 || (st.rampage || 0) > 0;
+      let mx = (c.keys.d ? 1 : 0) - (c.keys.a ? 1 : 0), my = (c.keys.s ? 1 : 0) - (c.keys.w ? 1 : 0);
+      if (Math.hypot(c.moveX || 0, c.moveY || 0) > 0.2) { mx = c.moveX; my = c.moveY; }
+      const moving = !locked && Boolean(mx || my);
+      if (moving && ticks > 0) {
+        const len = Math.hypot(mx, my), spd = liveOwnMoveSpeed(u) * Math.min(1, len) * ticks;
+        P.x = Math.max(200, Math.min(sim.worldW - 200, P.x + (mx / len) * spd));
+        P.y = Math.max(260, Math.min(sim.worldH - 220, P.y + (my / len) * spd));
+      }
+      P.hist.push({ t: now, x: P.x, y: P.y });
+      while (P.hist.length && now - P.hist[0].t > 1200) P.hist.shift();
+      // 방장 위치와 그 무렵 내 자리 비교
+      let best = null, bestD = Infinity;
+      P.hist.forEach(h => { const d = Math.hypot(sx - h.x, sy - h.y); if (d < bestD) { bestD = d; best = h; } });
+      let ex = 0, ey = 0, k = 0;
+      if (!best || bestD > 260) { // 크게 어긋남(대시·넉백·순간이동): 바로 맞춤
+        P.x = sx; P.y = sy; P.hist = [{ t: now, x: sx, y: sy }];
+      } else if (locked || now - best.t > 700) { // 조작이 안 먹히거나 방장 쪽 용병이 막혀 멈춤: 지금 자리를 방장 위치로 당김
+        ex = sx - P.x; ey = sy - P.y; k = locked ? 0.3 : 0.12;
+      } else {
+        ex = sx - best.x; ey = sy - best.y; k = moving ? 0.06 : 0.15;
+      }
+      if (k) {
+        const f = 1 - Math.pow(1 - k, Math.max(1, ticks));
+        const cx = ex * f, cy = ey * f;
+        P.x += cx; P.y += cy;
+        P.hist.forEach(h => { h.x += cx; h.y += cy; });
+      }
+      u.x = P.x;
+      u.y = P.y;
+      if (!locked) {
+        u.isMoving = moving;
+        if (typeof c.aimX === 'number' && typeof c.aimY === 'number') {
+          u.facingAngle = Math.atan2(c.aimY - u.y, c.aimX - u.x);
+          if (Math.abs(Math.cos(u.facingAngle)) > 0.1) u.facingDir = Math.cos(u.facingAngle) >= 0 ? 1 : -1;
+        } else if (moving) {
+          u.facingAngle = Math.atan2(my, mx);
+          if (Math.abs(mx) > 0.1) u.facingDir = mx > 0 ? 1 : -1;
+        }
+      }
     }
 
     // 버퍼의 화면 한 장을 적용 (위치는 따로 이어 그림) · ageMs = 그 화면이 재생 시점보다 얼마나 앞선 것인지
@@ -43006,6 +43080,7 @@
         u.x = x;
         u.y = y;
       });
+      guestPredictOwnUnit(ticks, now);
       sim.projectiles.forEach(p => { p.x += (p.vx || 0) * ticks; p.y += (p.vy || 0) * ticks; });
       (sim.zones || []).forEach(z => { if (z.life > 1) z.life = Math.max(1, z.life - ticks); });
       if (sim.eliteIntro) sim.eliteIntro.t += ticks; // 다음 화면이 올 때까지 보스가 떨어지는 연출도 이어 그림
