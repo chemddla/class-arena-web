@@ -18500,8 +18500,9 @@
     }
 
     // 조종하는 용병의 한 틱 (stepSimulation에서 AI 대신 호출)
-    function manualUnitStep(u, allies, enemies, c) {
-      const st = u.statuses;
+    // 직접 조종하는 용병의 이동·공격 빠르기 배율 (실시간 도전자 화면의 내 용병 예측도 같은 값을 씀)
+    function manualSpeedMult(u) {
+      const st = u.statuses || {};
       let speedMult = 1.0;
       if (st.blessed > 0) speedMult += 0.1;
       if (st.miracle > 0) speedMult += 0.2; // 기적의 축복: 이동·공격 속도 +20%
@@ -18511,9 +18512,18 @@
       if (st.shock > 0) speedMult -= 0.35;
       if (st.poison > 0) speedMult -= 0.12;
       if (st.slow > 0) speedMult -= SLOW_SPEED_DOWN; // 슬로우: 이동·공격 속도 -30%
-      speedMult = Math.max(0.4, speedMult);
+      return Math.max(0.4, speedMult);
+    }
+    function manualAtkInterval(u, speedMult) {
+      const st = u.statuses || {};
+      return Math.max(12, Math.round(u.baseAtkInterval / speedMult / (1 + (u.atkSpdStacks || 0) * 0.02) / (st.rally > 0 ? WARCRY_ATK_SPEED : 1) / ((st.berserk || 0) > 0 ? BERSERKER_RAGE_ATK_SPEED : 1) / ((st.undying || 0) > 0 ? BERSERKER_UNDYING_ATK_SPEED : 1)));
+    }
+
+    function manualUnitStep(u, allies, enemies, c) {
+      const st = u.statuses;
+      const speedMult = manualSpeedMult(u);
       const curMoveSpeed = u.baseMoveSpeed * speedMult * 1.15 * (u.hasteTicks > 0 ? 1.2 : 1) * (st.swift > 0 ? 1.5 : 1) * lancerMoveMult(u) * ((st.guard || 0) > 0 ? KNIGHT_GUARD_MOVE_MULT : 1);
-      const curAtkInterval = Math.max(12, Math.round(u.baseAtkInterval / speedMult / (1 + (u.atkSpdStacks || 0) * 0.02) / (st.rally > 0 ? WARCRY_ATK_SPEED : 1) / ((st.berserk || 0) > 0 ? BERSERKER_RAGE_ATK_SPEED : 1) / ((st.undying || 0) > 0 ? BERSERKER_UNDYING_ATK_SPEED : 1)));
+      const curAtkInterval = manualAtkInterval(u, speedMult);
       const keys = c.keys || {};
       // 창병 E키: 휘두르기 ↔ 찌르기 (쿨타임·시전 없음)
       if ((c.stanceCount || 0) !== (c._seenStance || 0)) {
@@ -43095,7 +43105,7 @@
     // - 와이파이가 잠깐 멈췄다 몰아서 주면(학교 와이파이에서 흔함): 기다리는 시간은 빨리 늘리고 천천히 줄이며,
     //   재생 시점(playBase)은 순간 이동하지 않고 조금 느리게/빠르게 흘러서 따라감 → 멈칫·순간이동 대신 살짝 느려졌다 돌아옴
     function resetLiveFrameBuffer() {
-      Object.assign(liveNet, { rtcFeeding: false, ownPred: null, frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, playBase: null, lastPlayAt: 0, lastAimCheckAt: 0, hostPause: null, recvU: null, recvT: null });
+      Object.assign(liveNet, { rtcFeeding: false, ownPred: null, ownAct: null, frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, playBase: null, lastPlayAt: 0, lastAimCheckAt: 0, hostPause: null, recvU: null, recvT: null });
     }
 
     function applyLiveFrame(val, fromRtc = false) {
@@ -43146,17 +43156,140 @@
     //       어긋난 만큼만 부드럽게 당겨 맞춤 (대시·넉백·순간이동처럼 크게 어긋나면 바로 맞춤). 맞고 때리는 판정은 그대로 방장 화면 기준
     function liveOwnMoveSpeed(u) {
       const st = u.statuses || {};
-      let m = 1;
-      if (st.blessed > 0) m += 0.1;
-      if (st.miracle > 0) m += 0.2;
-      if ((st.anthem || 0) > 0) m += BARD_ANTHEM_SPEED_UP;
-      if (st.skate > 0) m += SKATE_SPEED_UP;
-      if (st.shock > 0) m -= 0.35;
-      if (st.poison > 0) m -= 0.12;
-      if (st.slow > 0) m -= SLOW_SPEED_DOWN;
-      m = Math.max(0.4, m);
+      const m = manualSpeedMult(u);
       return (u.baseMoveSpeed || 0) * m * 1.15 * (u.hasteTicks > 0 ? 1.2 : 1) * (st.swift > 0 ? 1.5 : 1) * lancerMoveMult(u) * ((st.guard || 0) > 0 ? KNIGHT_GUARD_MOVE_MULT : 1);
     }
+    // ----- 도전자가 직접 조종하는 내 용병: 대시·평타·스킬 시전 시작을 내 화면에서 먼저 (서버로 받을 때만) -----
+    // 예전: 키를 누르면 조작이 방장에게 갔다가 방장 화면이 돌아올 때까지(0.3~0.6초) 아무 일도 없어 보였음
+    // 지금: 방장과 같은 조건(쿨타임·마나·기절 등, 방장 화면으로 받은 값)을 내 화면에서 먼저 따져 모습만 바로 시작
+    //   · 대시: 같은 거리·같은 감속으로 미끄러져 감 + 먼지 자국 (방장이 보낸 같은 자국은 한 번 건너뜀)
+    //   · 평타: 누르고 있는 동안 공격 간격마다 휘두르는 모습 (화살·구슬·피해는 방장 화면 그대로)
+    //   · 시전 시간이 있는 스킬: 시전 막대를 바로 띄우고, 방장이 시전을 마칠 때까지 끝자락에서 기다림
+    //   · 방장 쪽에서 안 됐으면(그 사이 기절·쿨타임 차이 등) 잠깐 뒤 방장 화면으로 돌아감 · 판정·피해는 늘 방장 기준
+    //   · 직접 연결(WebRTC)로 받는 중이면 화면이 충분히 빨라서 새로 예측하지 않음 · 주고받는 양은 늘지 않음 (내 화면에서만 그림)
+    // 이 기기에서 그리는 것만이라 시전 시간이 없는 스킬(자세가 스킬마다 달라 잘못 그리기 쉬움)·히든 스킬·조건이 까다로운 스킬은 예측하지 않음
+    const LIVE_PRED_CAST_SKIP = new Set(['revive', 'shadow_step', 'shadow_clone', 'annihilate', 'power_shot', 'buckshot', 'finisher', 'last_shot', 'assassin_strike']);
+    function guestPredictOwnActions(u, P, ticks, now) {
+      const c = localBattleInput;
+      let A = liveNet.ownAct;
+      if (!A || A.id !== u.id) {
+        // 처음(또는 다른 용병으로 바꿈): 그 전에 누른 것은 예측하지 않음
+        A = liveNet.ownAct = { id: u.id, seenDash: c.dashCount || 0, seenSkill: [...(c.skillCount || [0, 0, 0, 0])], host: null,
+          atkLeft: 0, atkAnim: 0, atkMax: 0, atkUntil: 0, rush: null, dashAnim: 0, dashCd: 0, dashAt: 0, dashUntil: 0, dashSeen: false, dashFx: null, cast: null };
+      }
+      const on = !liveNet.rtcFeeding;
+      const st = u.statuses || {};
+      const msPerTick = 1000 / BATTLE_TICKS_PER_SEC;
+      const margin = (liveNet.playDelay || 160) + 300; // 방장 화면이 내 조작을 반영해 돌아오기까지 넉넉히
+      const H = A.host || {}; // 가장 최근에 받은 방장 화면의 내 용병 (예측으로 덮기 전 값)
+      const busy = st.stun > 0 || st.freeze > 0 || st.fear > 0 || st.confuse > 0 || st.taunt > 0 || (st.guard || 0) > 0 || lancerBusy(u);
+      const hasAim = typeof c.aimX === 'number' && typeof c.aimY === 'number';
+
+      // --- 대시 ---
+      const dashN = c.dashCount || 0;
+      if (dashN !== A.seenDash) {
+        A.seenDash = dashN;
+        if (on && !A.rush && !u.casting && !busy && !(u.dashCooldown > 0) && !u.rushPending && u.monsterType !== 'scarecrow') {
+          let mx = (c.keys.d ? 1 : 0) - (c.keys.a ? 1 : 0), my = (c.keys.s ? 1 : 0) - (c.keys.w ? 1 : 0);
+          if (Math.hypot(c.moveX || 0, c.moveY || 0) > 0.2) { mx = c.moveX; my = c.moveY; }
+          let ang = (mx || my) ? Math.atan2(my, mx) : (hasAim ? Math.atan2(c.aimY - P.y, c.aimX - P.x) : (u.facingAngle || 0));
+          const ox = u.x, oy = u.y;
+          u.x = P.x; u.y = P.y;
+          try { ang = wallAwareAngle(u, ang); } catch (e) {}
+          u.x = ox; u.y = oy;
+          const dist = DASH_CONFIG.distance * (JOB_DASH_DISTANCE_MULT[u.job] || 1);
+          const tx = Math.max(200, Math.min(sim.worldW - 200, P.x + Math.cos(ang) * dist));
+          const ty = Math.max(260, Math.min(sim.worldH - 220, P.y + Math.sin(ang) * dist));
+          A.rush = { sx: P.x, sy: P.y, tx, ty, t: 0, n: DASH_MOVE_TICKS };
+          A.dashAnim = DASH_MOVE_TICKS + 6;
+          A.dashCd = u.maxDashCooldown ?? DASH_CONFIG.cooldownTicks;
+          A.dashAt = now;
+          A.dashSeen = false;
+          A.dashUntil = now + A.dashAnim * msPerTick + margin + 400;
+          A.dashFx = { x: P.x, y: P.y, until: now + margin + 1500 };
+          A.atkAnim = 0;
+          sim.effects.push({ type: 'charge_dash', sx: P.x, sy: P.y, tx, ty, color: u.team === 'blue' ? '#10b981' : '#f43f5e', dust: true, life: DASH_MOVE_TICKS + 20, maxLife: DASH_MOVE_TICKS + 20 });
+        }
+      }
+      if (A.dashAt) {
+        if ((H.at || 0) > A.dashAt && H.dashAnim > 0) A.dashSeen = true;
+        if (!A.dashSeen && now - A.dashAt > margin + 900) { A.dashUntil = 0; A.dashCd = 0; A.dashAt = 0; } // 방장 쪽에선 대시가 안 됨 → 방장 화면대로
+        else if (now - A.dashAt > margin + 1200) A.dashAt = 0; // 이제 방장 화면의 쿨타임이 맞음
+      }
+      if (A.dashAnim > 0) A.dashAnim = Math.max(0, A.dashAnim - ticks);
+      if (A.dashCd > 0) A.dashCd = Math.max(0, A.dashCd - ticks);
+      if (A.dashUntil > now) u.dashAnim = A.dashAnim;
+      else if (A.dashUntil) { A.dashUntil = 0; u.dashAnim = 0; }
+      if (A.dashAt) u.dashCooldown = Math.max(u.dashCooldown || 0, A.dashCd);
+
+      // --- 스킬 시전 시작 ---
+      const sc = c.skillCount || [];
+      for (let i = 0; i < 4; i++) {
+        const n = sc[i] || 0;
+        if (n === (A.seenSkill[i] || 0)) continue;
+        A.seenSkill[i] = n;
+        if (!on || A.cast || A.rush) continue;
+        const key = (u.skillSlots || [])[i];
+        const sk = key ? unitSkillBook(u)[key] : null;
+        if (!sk || !(sk.castSec > 0) || LIVE_PRED_CAST_SKIP.has(key) || isHiddenSkillKey(key)) continue;
+        if (!(u.unlockedSkills || []).includes(key) || (u.skillCooldowns?.[key] || 0) > 0 || u.mana < (sk.manaCost || 0)) continue;
+        if (u.casting || u.castLock > 0 || busy || (st.silence || 0) > 0 || whirlwindBusy(u) || brawlerHolding(u) || summonerSkillBlock(u, key)) continue;
+        if (u.job === 'sniper') continue; // 총알·조준선 조건이 많음
+        if ((MANUAL_SKILL_AIM[key] || 'point') === 'target') {
+          // 커서 가까이(약 1칸) 있는 적이 사거리 안이어야 방장 쪽에서도 시전됨
+          let ax = c.aimX, ay = c.aimY;
+          const foes = sim.units.filter(e => e.alive && e.team !== u.team && !hiddenFrom(u, e));
+          if (!hasAim) { const f = foes.slice().sort((a, b) => unitDist(a, u) - unitDist(b, u))[0]; if (!f) continue; ax = f.x; ay = f.y - 14; }
+          const pick = foes.map(e => ({ e, d: Math.hypot(e.x - ax, (e.y - 14) - ay) })).filter(x => x.d <= 110).sort((a, b) => a.d - b.d)[0];
+          if (!pick || unitDist(pick.e, u) > manualSkillRange(u, key)) continue;
+        }
+        const total = Math.max(1, Math.round(sk.castSec * 60));
+        A.cast = { key, left: total, total, icon: sk.icon, at: now, seen: false };
+        A.atkAnim = 0;
+      }
+      if (A.cast) {
+        const C = A.cast;
+        const fresh = (H.at || 0) > C.at;
+        if (fresh && H.casting === C.key) C.seen = true;
+        const hostDone = C.seen && fresh && H.casting !== C.key; // 방장 쪽 시전이 끝남 (스킬 효과는 방장 화면으로 옴)
+        const rejected = !C.seen && now - C.at > margin + 900; // 방장 쪽에선 시전이 안 됨
+        if (hostDone || rejected || now - C.at > C.total * msPerTick + margin + 2500 || st.stun > 0 || st.freeze > 0 || st.fear > 0) {
+          A.cast = null;
+          u.casting = null; // 다음 방장 화면이 바로 맞춰 줌
+        } else {
+          C.left = Math.max(1, C.left - ticks); // 다 차면 방장 쪽 시전이 끝날 때까지 끝자락에서 기다림
+          u.casting = { left: C.left, total: C.total, icon: C.icon, key: C.key };
+          u.isMoving = false;
+        }
+      }
+
+      // --- 평타 (누르고 있는 동안) ---
+      if (A.atkLeft > 0) A.atkLeft = Math.max(0, A.atkLeft - ticks);
+      if (A.atkAnim > 0) A.atkAnim = Math.max(0, A.atkAnim - ticks);
+      const canAtk = on && c.attack && !A.rush && !u.casting && !(u.castLock > 0) && !busy && u.job !== 'sniper' && u.job !== 'healer' && !brawlerHolding(u);
+      if (canAtk && A.atkLeft <= 0) {
+        const iv = manualAtkInterval(u, manualSpeedMult(u));
+        A.atkLeft = iv;
+        A.atkAnim = A.atkMax = Math.min(42, iv);
+        A.atkUntil = now + A.atkAnim * msPerTick + margin; // 그동안 방장 화면의 공격 모습은 쓰지 않음 (늦게 온 같은 휘두르기가 한 번 더 보이지 않게)
+      }
+      if (A.atkUntil > now) {
+        u.attackAnim = A.atkAnim;
+        u.maxAttackAnim = Math.max(1, A.atkMax);
+      } else if (A.atkUntil) {
+        A.atkUntil = 0;
+        u.attackAnim = 0;
+      }
+      return A;
+    }
+    // 방장 화면이 보낸 대시 먼지 자국이 내가 먼저 그린 것과 같으면 한 번 건너뜀
+    function liveOwnDashFxDup(ef) {
+      const A = liveNet.ownAct, F = A && A.dashFx;
+      if (!F || F.until < Date.now() || Math.hypot(liveNum(ef.sx) - F.x, liveNum(ef.sy) - F.y) > 160) return false;
+      A.dashFx = null;
+      return true;
+    }
+
     function guestPredictOwnUnit(ticks, now) {
       const u = liveNet.role === 'guest' && !liveNet.spectator && !sim.spectator && battleControl.mode === 'manual' && battleControl.unitId
         ? sim.units.find(x => x.id === battleControl.unitId) : null;
@@ -43164,18 +43297,29 @@
       const buf = liveNet.frameBuf || [];
       const newest = buf.length ? buf[buf.length - 1] : liveNet.curFrame;
       const sp = newest && newest.val && Array.isArray(newest.val.u) ? newest.val.u[idx] : null;
-      if (!u || !u.alive || !Array.isArray(sp) || sp[5] !== 1) { liveNet.ownPred = null; return; }
+      if (!u || !u.alive || !Array.isArray(sp) || sp[5] !== 1) { liveNet.ownPred = null; liveNet.ownAct = null; return; }
       const sx = liveNum(sp[0]), sy = liveNum(sp[1]);
       let P = liveNet.ownPred;
       if (!P || P.id !== u.id) P = liveNet.ownPred = { id: u.id, x: sx, y: sy, hist: [] };
       const st = u.statuses || {};
       const c = localBattleInput;
+      // 대시·평타·스킬 시전 시작도 방장 화면을 기다리지 않고 먼저 보여 줌 (아래 guestPredictOwnActions)
+      const A = guestPredictOwnActions(u, P, ticks, now);
+      const predDash = A.dashUntil > now; // 내가 먼저 시작한 대시: 방장 쪽 대시 모습(dashAnim)이 늦게 와도 '조작 안 먹힘'으로 보지 않음
+      const R = A.rush;
       // 내 조작이 먹히지 않는 동안(시전·기절·빙결·공포·혼란·도발·대시 중)은 방장 위치를 빨리 따라감
-      const locked = u.castLock > 0 || u.dashAnim > 0 || st.stun > 0 || st.freeze > 0 || st.fear > 0 || st.confuse > 0 || st.taunt > 0 || (st.rampage || 0) > 0;
+      const locked = u.castLock > 0 || (u.dashAnim > 0 && !predDash) || st.stun > 0 || st.freeze > 0 || st.fear > 0 || st.confuse > 0 || st.taunt > 0 || (st.rampage || 0) > 0;
       let mx = (c.keys.d ? 1 : 0) - (c.keys.a ? 1 : 0), my = (c.keys.s ? 1 : 0) - (c.keys.w ? 1 : 0);
       if (Math.hypot(c.moveX || 0, c.moveY || 0) > 0.2) { mx = c.moveX; my = c.moveY; }
-      const moving = !locked && Boolean(mx || my);
-      if (moving && ticks > 0) {
+      const moving = !locked && !R && !u.casting && Boolean(mx || my); // 스킬 시전 중에는 방장 쪽에서도 서 있음
+      if (R && ticks > 0) {
+        // 대시: 방장과 같은 모양(처음엔 빠르고 도착할 때 살짝 감속)으로 미끄러져 감
+        R.t = Math.min(R.n, R.t + ticks);
+        const e = 1 - (1 - R.t / R.n) * (1 - R.t / R.n);
+        P.x = R.sx + (R.tx - R.sx) * e;
+        P.y = R.sy + (R.ty - R.sy) * e;
+        if (R.t >= R.n) A.rush = null;
+      } else if (moving && ticks > 0) {
         const len = Math.hypot(mx, my), spd = liveOwnMoveSpeed(u) * Math.min(1, len) * ticks;
         P.x = Math.max(200, Math.min(sim.worldW - 200, P.x + (mx / len) * spd));
         P.y = Math.max(260, Math.min(sim.worldH - 220, P.y + (my / len) * spd));
@@ -43186,7 +43330,9 @@
       let best = null, bestD = Infinity;
       P.hist.forEach(h => { const d = Math.hypot(sx - h.x, sy - h.y); if (d < bestD) { bestD = d; best = h; } });
       let ex = 0, ey = 0, k = 0;
-      if (!best || bestD > 260) { // 크게 어긋남(대시·넉백·순간이동): 바로 맞춤
+      if (R) {
+        // 대시하는 동안은 맞추지 않음 (방장 쪽 대시는 조금 뒤에 같은 길로 따라옴 → 끝난 뒤 기록과 견줘 맞춤)
+      } else if (!best || bestD > 260) { // 크게 어긋남(대시·넉백·순간이동): 바로 맞춤
         P.x = sx; P.y = sy; P.hist = [{ t: now, x: sx, y: sy }];
       } else if (locked || now - best.t > 700) { // 조작이 안 먹히거나 방장 쪽 용병이 막혀 멈춤: 지금 자리를 방장 위치로 당김
         ex = sx - P.x; ey = sy - P.y; k = locked ? 0.3 : 0.12;
@@ -43201,7 +43347,10 @@
       }
       u.x = P.x;
       u.y = P.y;
-      if (!locked) {
+      if (R) {
+        u.isMoving = true;
+        if (Math.abs(R.tx - R.sx) > 4) u.facingDir = R.tx > R.sx ? 1 : -1;
+      } else if (!locked) {
         u.isMoving = moving;
         if (typeof c.aimX === 'number' && typeof c.aimY === 'number') {
           u.facingAngle = Math.atan2(c.aimY - u.y, c.aimX - u.x);
@@ -43262,6 +43411,12 @@
         }
         u.emberShow = p.length > 33 ? liveNum(p[33]) : 0;
       });
+      // 내가 먼저 시작한 대시·평타·시전이 방장 쪽에서도 됐는지 보려고, 덮어쓰기 전 방장 값을 기억해 둠
+      const ownAct = liveNet.ownAct;
+      if (ownAct) {
+        const ou = sim.units.find(x => x.id === ownAct.id);
+        if (ou) ownAct.host = { at: Date.now(), casting: ou.casting ? ou.casting.key : null, dashAnim: ou.dashAnim };
+      }
       // 투사체는 그 화면 이후 흐른 만큼 미리 날아간 자리에서 시작 (다음 화면과 위치가 거의 이어짐)
       const leadTicks = Math.max(0, ageMs) / 1000 * BATTLE_TICKS_PER_SEC;
       // 형식 v2: 전체 화면(u)마다 투사체 고정 칸 표를 새로 받음 · 짧은 꼴([x, y, 각도, 번호, vx, vy])은 표에서 종류·색·그림을 찾고, 모르는 번호는 다음 전체 화면까지 건너뜀
@@ -43284,6 +43439,7 @@
       (Array.isArray(val.e) ? deepCleanStrings(val.e) : []).forEach(ef => {
         if (ef && typeof ef.type === 'number') ef.type = LIVE_FX_TYPES[ef.type] || ''; // 형식 v2: 표 번호 → 이름
         if (!ef || typeof ef !== 'object' || !ef.type || liveNum(ef.life) <= 0) return;
+        if (ef.type === 'charge_dash' && liveOwnDashFxDup(ef)) return;
         if (ef.oid != null) { ef.owner = sim.units.find(u => u.id === ef.oid) || null; delete ef.oid; } // 시전자·아군을 따라가는 이펙트
         sim.effects.push(ef);
       });
