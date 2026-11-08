@@ -1,4 +1,5 @@
 # 전사 [엑스칼리버] 외형별 시전 그림 가공: 회색 배경 샘플(좌·우 두 자세) → 투명 webp 2칸
+# ※ 옛 한손검 외형용. 2026-11-08부터 외형 1~5 시전 그림은 tools/warrior_variants_build.py가 만듦 (기본 4칸을 외형 색으로) — 이 도구를 다시 돌리면 덮어쓰니 주의
 import sys, numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
