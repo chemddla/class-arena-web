@@ -43388,6 +43388,16 @@
           const noTail = u.job === 'warrior' || u.job === 'lancer' || u.job === 'summoner' || (u.job === 'berserker' && BERSERKER_NO_ATTACK_TAIL.includes(key)) || (u.job === 'paladin' && PALADIN_NO_ATTACK_TAIL.includes(key));
           A.skill = { key, anim: 72, at: now, until: now + 72 * msPerTick + margin, seen: false };
           A.lockLeft = 32;
+          // 몸이 움직이는 스킬(전사 돌진·성기사 성스러운 돌격·기사 돌격): 같은 거리·같은 감속으로 먼저 달려감 (대시와 같은 길: 방장 쪽이 안 하면 되돌아감)
+          const mv = liveSkillRushOf(u, key, P, c);
+          if (mv) {
+            A.rush = { sx: P.x, sy: P.y, tx: mv.tx, ty: mv.ty, t: 0, n: mv.n };
+            A.dashAnim = mv.n + 6;
+            A.dashCd = 0;
+            A.dashAt = now;
+            A.dashSeen = false;
+            A.dashUntil = now + A.dashAnim * msPerTick + margin + 400;
+          }
           A.atkAnim = noTail ? 0 : 52; A.atkMax = 52; A.atkUntil = noTail ? 0 : now + 52 * msPerTick + margin;
           const text = `${sk.icon} ${sk.name}!`;
           if (key !== 'duel_call') {
@@ -43434,13 +43444,19 @@
       // --- 평타 (누르고 있는 동안) ---
       if (A.atkLeft > 0) A.atkLeft = Math.max(0, A.atkLeft - ticks);
       if (A.atkAnim > 0) A.atkAnim = Math.max(0, A.atkAnim - ticks);
-      const canAtk = on && c.attack && !A.rush && !u.casting && !(u.castLock > 0) && !(A.lockLeft > 0) && !busy && u.job !== 'sniper' && u.job !== 'healer' && !brawlerHolding(u);
-      if (canAtk && A.atkLeft <= 0) {
+      const canAtk = on && c.attack && !A.rush && !u.casting && !(u.castLock > 0) && !(A.lockLeft > 0) && !busy && u.job !== 'sniper' && !brawlerHolding(u);
+      // 성녀: 치유 광선은 치유할 아군이 있을 때만 (방장과 같은 고르기) · 홀로 남아 적을 치는 경우는 방장 화면 그대로
+      const healT = canAtk && A.atkLeft <= 0 && u.job === 'healer' ? liveHealerBeamTarget(u, P, c) : null;
+      if (canAtk && A.atkLeft <= 0 && (u.job !== 'healer' || healT)) {
         const iv = manualAtkInterval(u, manualSpeedMult(u));
         A.atkLeft = iv;
         A.atkAnim = A.atkMax = Math.min(42, iv);
         A.atkUntil = now + A.atkAnim * msPerTick + margin; // 그동안 방장 화면의 공격 모습은 쓰지 않음 (늦게 온 같은 휘두르기가 한 번 더 보이지 않게)
         guestPredictOwnShot(u, P, A, now, msPerTick, margin);
+        if (healT) {
+          sim.effects.push({ type: 'heal_beam', sx: P.x, sy: P.y - 10, tx: healT.x, ty: healT.y - 10, life: 32, maxLife: 32 });
+          A.beamFx = { x: P.x, y: P.y - 10, until: now + margin + 1500 };
+        }
       }
       guestStepOwnShots(u, A, ticks, now);
       if (A.atkUntil > now) {
@@ -43451,6 +43467,27 @@
         u.attackAnim = 0;
       }
       return A;
+    }
+    // 직접 조종으로 쓴 돌진류 스킬이 달려갈 곳 (castMercSkillInner·castNewSkill의 조준 있는 경우와 같은 계산) · 아니면 null
+    function liveSkillRushOf(u, key, P, c) {
+      if (!((key === 'charge' && u.job === 'warrior') || (key === 'holy_charge' && u.job === 'paladin') || (key === 'shield_rush' && u.job === 'knight'))) return null;
+      let ax = c.aimX, ay = c.aimY;
+      if (typeof ax !== 'number' || typeof ay !== 'number') {
+        // 마우스 없음(태블릿): 가장 가까운 적 쪽 (tryManualSkill과 같음)
+        const foe = sim.units.filter(e => e.alive && e.team !== u.team && !hiddenFrom(u, e)).sort((a, b) => Math.hypot(a.x - P.x, a.y - P.y) - Math.hypot(b.x - P.x, b.y - P.y))[0];
+        if (foe) { ax = foe.x; ay = foe.y - 14; }
+        else { ax = P.x + Math.cos(u.facingAngle || 0) * 100; ay = P.y + Math.sin(u.facingAngle || 0) * 100; }
+      }
+      const ang = Math.atan2(ay - P.y, ax - P.x);
+      let tx, ty, n;
+      if (key === 'shield_rush') {
+        const d = clampToArena(P.x + Math.cos(ang) * KNIGHT_RUSH_DISTANCE, P.y + Math.sin(ang) * KNIGHT_RUSH_DISTANCE);
+        tx = d.x; ty = d.y; n = KNIGHT_RUSH_TICKS;
+      } else {
+        const md = Math.min(CHARGE_SKILL_DISTANCE, Math.max(40, Math.hypot(ax - P.x, ay - P.y)));
+        tx = P.x + Math.cos(ang) * md; ty = P.y + Math.sin(ang) * md; n = CHARGE_MOVE_TICKS;
+      }
+      return { tx: Math.max(200, Math.min(sim.worldW - 200, tx)), ty: Math.max(260, Math.min(sim.worldH - 220, ty)), n }; // startUnitRush와 같은 울타리
     }
     // 내 평타 화살·구슬을 먼저 쏨 (manualBasicAttack과 같은 출발점·방향·속도·사거리 · 그림만, 피해·터짐은 방장 화면)
     function guestPredictOwnShot(u, P, A, now, msPerTick, margin) {
@@ -43499,6 +43536,24 @@
         return !foes.some(e => Math.hypot(e.x - p.x, (e.y - 14) - p.y) < 24 * (e.sizeScale || 1));
       });
       A.proj.forEach(p => sim.projectiles.push(p));
+    }
+    // 성녀 평타(치유 광선) 대상: manualBasicAttack과 같은 고르기 (겨눈 곳 가까운 다친 아군 → 없으면 사거리 안에서 가장 위급한 아군)
+    function liveHealerBeamTarget(u, P, c) {
+      const allies = sim.units.filter(a => a.alive && a.team === u.team);
+      if (healerIsAlone(u, allies)) return null;
+      const dist = a => Math.hypot(a.x - P.x, a.y - P.y);
+      const hasAim = typeof c.aimX === 'number' && typeof c.aimY === 'number';
+      const aimX = hasAim ? c.aimX : P.x + Math.cos(u.facingAngle || 0) * 100, aimY = hasAim ? c.aimY : P.y + Math.sin(u.facingAngle || 0) * 100;
+      const hurt = allies.filter(a => a.hp < a.maxHp && dist(a) <= u.range + 80);
+      const nearAim = hurt.filter(a => Math.hypot(a.x - aimX, a.y - aimY) < 140).sort((a, b) => Math.hypot(a.x - aimX, a.y - aimY) - Math.hypot(b.x - aimX, b.y - aimY))[0];
+      return nearAim || hurt.sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0] || null;
+    }
+    // 방장 화면이 보낸 치유 광선이 내가 먼저 그린 것과 같으면 한 번 건너뜀
+    function liveOwnBeamFxDup(ef) {
+      const A = liveNet.ownAct, F = A && A.beamFx;
+      if (!F || F.until < Date.now() || Math.hypot(liveNum(ef.sx) - F.x, liveNum(ef.sy) - F.y) > 160) return false;
+      A.beamFx = null;
+      return true;
     }
     // 방장 화면이 보낸 스킬 이름 글자가 내가 먼저 띄운 것과 같으면 한 번 건너뜀
     function liveOwnTextDup(ft) {
@@ -43665,6 +43720,7 @@
         if (ef && typeof ef.type === 'number') ef.type = LIVE_FX_TYPES[ef.type] || ''; // 형식 v2: 표 번호 → 이름
         if (!ef || typeof ef !== 'object' || !ef.type || liveNum(ef.life) <= 0) return;
         if (ef.type === 'charge_dash' && liveOwnDashFxDup(ef)) return;
+        if (ef.type === 'heal_beam' && liveOwnBeamFxDup(ef)) return;
         if (ef.oid != null) { ef.owner = sim.units.find(u => u.id === ef.oid) || null; delete ef.oid; } // 시전자·아군을 따라가는 이펙트
         sim.effects.push(ef);
       });
