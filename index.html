@@ -25111,6 +25111,32 @@
       }
       ctx.restore();
     }
+    // 백호 멸식 - 격 마지막 일격 준비: 푸른 빛으로 이루어진 백호 얼굴이 몸 뒤에서 떠오름 (assets/sprites/fx/brawler_sr1_spirit.webp, tools/brawler_sr1_spirit_build.py)
+    //   준비 자세 동안 서서히 나타나며 커지고 일렁이다가, 날아 차기로 뛰쳐나가면 빠르게 사라짐 · 보통 합성 + 살짝 더하기 (밝은 바닥에서 하얗게 바래지 않게)
+    const BRAWLER_SPIRIT_FX = new Image();
+    BRAWLER_SPIRIT_FX.onload = () => { BRAWLER_SPIRIT_FX.ready = true; };
+    BRAWLER_SPIRIT_FX.src = 'assets/sprites/fx/brawler_sr1_spirit.webp';
+    const BRAWLER_SPIRIT_FADE_OUT = 10;
+    function drawBrawlerSpirit(ctx, sprite, k, tick, u) {
+      if (!BRAWLER_SPIRIT_FX.ready || !u.alive || !((u.statuses?.flurry || 0) > 0) || u.activeSkillType !== 'annihilate') return;
+      const P = brawlerFlurryPlan(u);
+      if (!P.fin) return;
+      const e = P.total - u.statuses.flurry - P.kickEnd - (P.fin.land || 0); // 준비 자세에 들어선 지 몇 틱째
+      if (e <= 0 || e > P.fin.prep + BRAWLER_SPIRIT_FADE_OUT) return;
+      const fadeIn = Math.min(1, e / 14), fadeOut = e > P.fin.prep ? 1 - (e - P.fin.prep) / BRAWLER_SPIRIT_FADE_OUT : 1;
+      const grow = 0.82 + 0.2 * Math.min(1, e / P.fin.prep) + (e > P.fin.prep ? 0.12 * (e - P.fin.prep) / BRAWLER_SPIRIT_FADE_OUT : 0);
+      const bodyH = (sprite.topH || sprite.standH) * k;
+      const w = bodyH * 2.3 * grow, h = w * BRAWLER_SPIRIT_FX.height / BRAWLER_SPIRIT_FX.width;
+      const x0 = -w / 2, y0 = -bodyH * 1.05 - h / 2 - Math.sin(tick * 0.12) * 2 * k; // 머리 위·뒤로 크게
+      const a = Math.max(0, fadeIn * fadeOut);
+      ctx.save();
+      ctx.globalAlpha *= a * 0.92; // 밝은 바닥에서도 푸른 빛·얼굴 모양이 보이게 보통 합성으로 먼저
+      ctx.drawImage(BRAWLER_SPIRIT_FX, x0, y0, w, h);
+      ctx.globalCompositeOperation = 'lighter'; // 위에 살짝 더해 빛나는 느낌 (일렁임)
+      ctx.globalAlpha = a * (0.18 + 0.12 * Math.sin(tick * 0.35));
+      ctx.drawImage(BRAWLER_SPIRIT_FX, x0, y0, w, h);
+      ctx.restore();
+    }
     // 멸식 - 격 잔상: 대상 둘레로 옮겨 다니며 칠 때마다 그 자리·자세를 남겨 서서히 지움 (마무리 날아 차기는 지나온 길에 남음)
     const BRAWLER_GHOSTS = new WeakMap();
     const BRAWLER_GHOST_LIFE = 18;
@@ -29510,6 +29536,7 @@
       }
       const fdx = (sprite.frameDx && sprite.frameDx[frame]) || 0; // 칸마다 앞으로 옮겨 그릴 거리 (성기사 내리치기)
       if (brawlerAuraOn(u, tick)) drawBrawlerAura(ctx, sprite, k, tick, u); // 격투가: 멸식 - 격을 쓸 수 있으면 몸 뒤에 기운
+      if (sprite.flurryFinal && u.job === 'brawler') drawBrawlerSpirit(ctx, sprite, k, tick, u); // 백호: 마지막 일격 준비 동안 몸 뒤에 백호 얼굴
       if (u.alive && (u.statuses?.superarmor || 0) > 0) drawSuperArmorOutline(ctx, sprite.img, frame * sprite.cellW, sprite.cellW, sprite.cellH,
         (fdx - sprite.anchorX) * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k, tick);
       drawSpriteFx(ctx, sprite.img, frame * sprite.cellW, 0, sprite.cellW, sprite.cellH,
