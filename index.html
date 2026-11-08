@@ -3634,14 +3634,14 @@
                 <p class="text-[11px] text-slate-400">친구 펫과 함께 달려요! 쓰러진 친구는 💗로 살리고, 팀 점수로 보상</p>
               </button>
 
-              <button type="button" onclick="goToFairDuel()" id="mgCreateTypeBtn-fairduel"
+              <button type="button" onclick="selectLobbyMinigameType('fairduel')" id="mgCreateTypeBtn-fairduel"
                 class="p-3.5 rounded-2xl border-2 text-left transition flex flex-col gap-1 bg-slate-950 border-slate-800 hover:border-slate-700">
                 <div class="flex items-center justify-between">
                   <span class="text-2xl">⚖️</span>
                   <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-extrabold">1:1 수동 전투</span>
                 </div>
                 <div class="font-title text-base text-white mt-1">공정한 결투</div>
-                <p class="text-[11px] text-slate-400">방장이 고른 같은 직업·같은 스킬·Lv.50으로 직접 조종해 실력만으로 승부! (히든 스킬 없음 · 결투장에 방이 생겨요)</p>
+                <p class="text-[11px] text-slate-400">방장이 고른 같은 직업·같은 스킬·Lv.50으로 직접 조종해 실력만으로 승부! (히든 스킬 없음 · 방을 개설하면 결투장에 방이 생겨요)</p>
               </button>
             </div>
 
@@ -48844,11 +48844,13 @@
     }
 
     // ==================== [C. 미니게임 대기 로비실 → 방 개설 → 친구 입장 → 준비완료 → 실시간 미니게임 시작] ====================
+    // 공정한 결투는 미니게임 방이 아니라 결투장(pvp_rooms)에 방이 생겨서 메타 표에는 없고, 여기서만 이름표를 따로 씀
+    const FAIR_DUEL_MG_META = { id: 'fairduel', name: '공정한 결투', icon: '⚖️' };
     window.selectLobbyMinigameType = function (typeKey) {
-      if (!MINIGAME_TYPE_META[typeKey]) return;
+      const meta = typeKey === 'fairduel' ? FAIR_DUEL_MG_META : MINIGAME_TYPE_META[typeKey];
+      if (!meta) return;
       selectedLobbyMinigameType = typeKey;
-      const meta = MINIGAME_TYPE_META[typeKey];
-      ['yutnori', 'omok', 'cardflip', 'wordchain', 'chosung', 'mathduel', 'baduk', 'chess', 'petvolley', 'petruncoop'].forEach(k => {
+      ['yutnori', 'omok', 'cardflip', 'wordchain', 'chosung', 'mathduel', 'baduk', 'chess', 'petvolley', 'petruncoop', 'fairduel'].forEach(k => {
         const btn = document.getElementById(`mgCreateTypeBtn-${k}`);
         if (btn) {
           btn.className = (k === typeKey)
@@ -48892,6 +48894,14 @@
       const myStu = getActiveStudent();
       if (!myStu) return;
       mgSoloPracticeActive = false;
+      if (selectedLobbyMinigameType === 'fairduel') {
+        // 적어 둔 방 제목을 결투방 제목 칸으로 옮겨서 그대로 개설
+        const mgInp = document.getElementById('mgNewRoomTitleInput');
+        const pvpInp = document.getElementById('pvpNewRoomTitleInput');
+        if (mgInp && pvpInp) { pvpInp.value = mgInp.value || ''; mgInp.value = ''; }
+        goToFairDuel();
+        return;
+      }
       const meta = MINIGAME_TYPE_META[selectedLobbyMinigameType] || MINIGAME_TYPE_META.yutnori;
       const inp = document.getElementById('mgNewRoomTitleInput');
       const customTitle = cleanUserText(inp?.value, 24) || `${myStu.name}의 ${meta.name} 방`;
@@ -49127,6 +49137,7 @@
     };
 
     window.startSoloMinigamePractice = function () {
+      if (selectedLobbyMinigameType === 'fairduel') { showNotice('⚠️ 공정한 결투는 혼자 연습하기가 없어요. [➕ 미니게임 방 개설하기]로 친구와 겨뤄 보세요!'); return; }
       leaveRoomsExcept('minigame', null);
       currentJoinedMinigameRoomId = null;
       mgRealtimeSyncEnabled = false;
