@@ -39,6 +39,11 @@ FRAMES = [
     ('whirl1', 'whirl',     (0, 155, 0, 183)),
     ('whirl2', 'whirl',     (155, 340, 0, 183)),
     ('whirl3', 'whirl',     (340, 514, 0, 183)),
+    ('roar1',  'roar_charge', (0, 256, 0, 262)),     # 사자후 1: 검을 내리고 숨을 들이쉼
+    ('roar2',  'roar_charge', (256, 614, 0, 262)),   # 사자후 2: 주먹을 내밀며 포효 (앞으로 퍼지는 음파 고리). 샘플의 3번째 그림은 쓰지 않음 (사용자 요청)
+    ('dash1',  'roar_charge', (80, 370, 262, 502)),  # 돌진 1: 몸을 앞으로 숙이며 출발
+    ('dash2',  'roar_charge', (370, 690, 262, 502)), # 돌진 2: 검을 앞세워 달림 (바람 줄·흙먼지)
+    ('dash3',  'roar_charge', (690, 1024, 262, 502)),# 돌진 3: 멈춰 서며 검을 끌어내림 (발 뒤 흙먼지)
 ]
 FLIP = {'down2'}
 # 검정 배경 샘플이 같이 온 칸: 흰 배경·검정 배경 두 장을 비교해 투명도를 셈 (바람 고리처럼 반투명한 부분이 흰 테·잘림 없이 남음)
@@ -47,6 +52,10 @@ FLIP = {'down2'}
 #   몸 안쪽(흰 배경 방식으로 확실히 불투명한 곳)은 흰 샘플 색 그대로, 발밑 그림자는 그대로 지움
 BLACK = {'whirl': 'whirl_black'}
 BLACK_FIT = {'whirl1': (2.011, 2.033, 0.0, -4.41), 'whirl2': (2.02, 1.975, 0.9, 1.89), 'whirl3': (2.0, 2.0285, 2.1, -3.46)}
+# 사자후·돌진 샘플 (warrior_roar_charge_src.png + _black_src.png, 1024×502, 두 장이 픽셀 단위로 맞음): 몸은 흰 샘플에서 확실히 칠해진 곳(밝기 205 미만)과
+#   외곽선 안쪽 작은 구멍을 불투명하게, 그 밖(음파·바람 줄·흙먼지)은 두 배경 비교값. 그림이 더 크게 그려져 사자후 1의 키(머리털 끝~발)를 TARGET_H로 맞춘 배율을 샘플 전체에 씀
+MATTE = {'roar_charge': 'roar_charge_black'}
+MATTE_CUT = {'roar_charge': [(0, 135, 0, 66), (0, 165, 262, 320), (915, 965, 395, 440)]}   # 지울 상자 (x0, x1, y0, y1): '사자후'·'돌진' 글자, 검정 샘플 오른쪽 아래 반짝이 표시
 
 
 def hair_mask(rgba):
@@ -127,6 +136,40 @@ def load(src, box, flip, name=None):
     return rgba, foot, rows.max() - top + 1, hx.max() - hx.min() + 1, hx.mean()
 
 
+def load_matte(src, box):
+    W = np.array(Image.open(f'{D}{src}_src.png').convert('RGB')).astype(float)
+    B = np.array(Image.open(f'{D}{MATTE[src]}_src.png').convert('RGB')).astype(float)
+    a = np.clip(1 - (W - B).mean(axis=2) / 255, 0, 1)
+    col = np.clip(B / np.maximum(a, 1e-3)[..., None], 0, 255)
+    for x0, x1, y0, y1 in MATTE_CUT.get(src, ()): a[y0:y1, x0:x1] = 0
+    body = (W.mean(axis=2) < 205) & (a > 0.3)
+    holes = ndi.binary_fill_holes(body) & ~body
+    hl, hn = ndi.label(holes)
+    hs = ndi.sum(holes, hl, range(1, hn + 1))
+    body |= np.isin(hl, [j + 1 for j in range(hn) if hs[j] <= 80])
+    col = np.where(body[..., None], W, col)
+    a = np.where(body, 1.0, np.where(a < 0.06, 0, a))
+    x0, x1, y0, y1 = box
+    a, col, body = a[y0:y1, x0:x1], col[y0:y1, x0:x1], body[y0:y1, x0:x1]
+    m = a > 0.1   # 가장 큰 덩어리(몸) + 그 곁 25px 안의 조각(흙먼지·음파)만
+    lab, n = ndi.label(m, structure=np.ones((3, 3)))
+    sz = ndi.sum(m, lab, range(1, n + 1))
+    main = lab == 1 + int(np.argmax(sz))
+    near = ndi.distance_transform_edt(~main) < 25
+    keep = np.isin(lab, np.unique(lab[near & m]))
+    keep = ndi.binary_dilation(keep, iterations=2) & (a > 0)
+    a = np.where(keep, a, 0); body &= keep
+    ys, xs = np.where(a > 0)
+    sl = (slice(ys.min(), ys.max() + 1), slice(xs.min(), xs.max() + 1))
+    rgba = np.dstack([col, a * 255])[sl]
+    body = body[sl]
+    rows = np.where(body.any(axis=1))[0]
+    gnd = rows.max()   # 몸(불투명) 맨 아래 = 바닥 줄 (음파·먼지는 더 아래로 내려갈 수 있음)
+    foot = np.where(body[int(gnd - (gnd - rows.min()) * 0.08):gnd + 1].any(axis=0))[0].mean()
+    hy, hx = np.where(hair_mask(rgba))
+    return rgba, foot, gnd - hy.min() + 1, hx.max() - hx.min() + 1, hx.mean(), gnd
+
+
 def soft_shrink(rgba, sc):   # 반투명을 살린 축소 (바람 고리용). 거의 불투명한 곳만 딱딱하게
     h, w = rgba.shape[:2]
     pm = rgba.copy(); pm[..., :3] *= pm[..., 3:] / 255
@@ -139,25 +182,33 @@ def soft_shrink(rgba, sc):   # 반투명을 살린 축소 (바람 고리용). �
 
 def main():
     pieces = []
-    sc = None
+    sc, src_sc = None, {}
     for name, src, box in FRAMES:
-        rgba, foot, bh, hw, hcx = load(src, box, name in FLIP, name)
+        if src in MATTE:
+            rgba, foot, bh, hw, hcx, gnd = load_matte(src, box)
+        else:
+            rgba, foot, bh, hw, hcx = load(src, box, name in FLIP, name)
+            gnd = rgba.shape[0] - 1
         if sc is None: sc = TARGET_H / bh
-        p = soft_shrink(rgba, sc) if src in BLACK else shrink(rgba, sc)
-        pieces.append((name, p, foot * sc))
-        print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} 키 {bh} 머리털 폭 {hw} ×{sc:.3f} → {p.shape[1]}x{p.shape[0]}  발 {foot:.0f}')
-    L = max(int(np.ceil(c)) for _, _, c in pieces) + 3
-    R = max(int(np.ceil(p.shape[1] - c)) for _, p, c in pieces) + 3
-    H = max(p.shape[0] for _, p, _ in pieces) + 3
+        if src in MATTE and src not in src_sc: src_sc[src] = TARGET_H / bh   # 이 샘플 첫 칸(사자후 1)의 키로 샘플 배율
+        s = src_sc.get(src, sc)
+        p = soft_shrink(rgba, s) if src in BLACK or src in MATTE else shrink(rgba, s)
+        pieces.append((name, p, foot * s, (gnd + 1) * s))
+        print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} 키 {bh} 머리털 폭 {hw} ×{s:.3f} → {p.shape[1]}x{p.shape[0]}  발 {foot:.0f}')
+    L = max(int(np.ceil(c)) for _, _, c, _ in pieces) + 3
+    R = max(int(np.ceil(p.shape[1] - c)) for _, p, c, _ in pieces) + 3
+    U = max(int(np.ceil(g)) for _, _, _, g in pieces) + 1
+    Dn = max(int(np.ceil(p.shape[0] - g)) for _, p, _, g in pieces) + 2
+    H = U + Dn
     cw = L + R
     sheet = np.zeros((H, cw * len(pieces), 4), np.uint8)
-    for i, (name, p, c) in enumerate(pieces):
+    for i, (name, p, c, g) in enumerate(pieces):
         x = i * cw + L - int(round(c))
-        y = H - 2 - p.shape[0]
+        y = U - int(round(g))
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
     Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
     print('cells:', ' '.join(f'{i}={n}' for i, (n, _, _) in enumerate(FRAMES)))
-    print(f'warrior_0 cellW={cw} cellH={H} anchorX={L} anchorY={H - 2} count={len(pieces)}')
+    print(f'warrior_0 cellW={cw} cellH={H} anchorX={L} anchorY={U} count={len(pieces)}')
 
 
 if __name__ == '__main__':
