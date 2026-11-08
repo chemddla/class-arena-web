@@ -12134,7 +12134,7 @@
       { key: 'rank', icon: '🏆', label: '순위표·명예의 전당', desc: '결투장 승점·5인 전투력 순위, 명예의 전당, 보스 레이드 기여도 순위(처치 보상 순위)에 들어가요.' },
       { key: 'petRank', icon: '🐾', label: '펫 러닝·펫 배구 순위', desc: '펫 러닝 최고 기록·펫 배구 승수 순위에 들어가요.' },
       { key: 'aiFriend', icon: '🤖', label: 'AI·연습 친구', desc: '연습 친구·AI 친구로 불려 나오고, 협동 레이드 파트너·미니게임 상대 목록에 나와요.' },
-      { key: 'classPower', icon: '🌍', label: '학급 규모·전투력 산정', desc: '보스 레이드 난이도(전투력 상위 5명)와 보스 체력(학생 수) 계산에 들어가요. 선생님 용병이 세면 학생들에게 보스가 너무 어려워질 수 있어요.' },
+      { key: 'classPower', icon: '🌍', label: '학급 규모·전투력 산정', desc: '보스 레이드 난이도(반 최강 용병)와 보스 체력(학생 수) 계산에 들어가요. 선생님 용병이 세면 학생들에게 보스가 너무 어려워질 수 있어요.' },
       { key: 'market', icon: '🛒', label: '거래소 목록', desc: '친구 용병 둘러보기·구매 제안, 도트 프로필 상점, 외형 공유 목록에 나와요.' }
     ];
     function normalizeTeacherAcct(v) {
@@ -19559,6 +19559,7 @@
       }
       const raidCast = liveNet.raidCast;
       liveNet.raidCast = false;
+      liveNet.raidWatchOn = false;
       liveNet.raidWatchRef = null;
       if (liveNet.towerCast && !raidCast) {
         const idxRef = towerLiveIndexRef(liveNet.myId);
@@ -33353,7 +33354,7 @@
     // 반 전체가 한 주 동안(월요일 00:00 ~ 다음 월요일) 보스 한 마리의 체력을 같이 깎음. 용병 1명으로 3분 싸우고
     // 준 피해가 서버(classes/{code}/world_boss)의 공유 체력에서 빠짐. 체력을 0으로 만든 학생이 '마지막 일격'.
     // 단계 없음: 매주 엘리트 보스 1~10단계 중 한 마리가 랜덤으로 나오고(11단계 이후 보스는 안 나옴), 쓰러뜨려도 다음 보스는 다음 주 월요일에.
-    // 난이도도 매주 새로: 보스가 나올 때 용병단 전투력 상위 5명의 대표 용병 능력치로 보스 체력·공격력·방어력을 정해 그 주 내내 그대로
+    // 난이도도 매주 새로: 보스가 나올 때 반에서 전투력이 가장 높은 용병의 능력치로 보스 체력·공격력·방어력을 정해 그 주 내내 그대로
     //   current: { key, weekKey, bossId, maxHp, hp, hpMult, atk, def, pow, startedAt, killedAt, killedBy, killedByName }  (stage = 예전 단계식 보스에만)
     //   contrib/{key}/{학생id}: { name, dmg, tries, best, lastAt } · log/{key}/{id}: { id, name, dmg, at, kill } · history/{key}: 끝난 보스 (처치 보상은 여기를 보고 받음)
     const WORLD_BOSS = {
@@ -33366,9 +33367,8 @@
       hpPerStudent: 0.2,          // (예전 단계식 보스) 보스 체력 = 엘리트 보스 체력 × 학생 수 × 이 값
       bossAtk: 0.2,               // (예전 단계식 보스) 레이드 보스 공격력 배율
       maxBossStage: 10,           // 이 단계까지의 엘리트 보스 중에서 매주 랜덤 (11단계 이후 보스는 안 나옴)
-      topN: 5,                    // 난이도 기준: 용병단 전투력 상위 이만큼 학생의 대표 용병(레이드에 데려가는 1명)
-      // 난이도: 상위 5명 대표 용병의 평균 능력치(체력·공격력·방어력)로 보스를 만듦
-      //   공격력 = 평균 체력 × atkPerHp · 방어력 = 평균 방어력 × defPerDef · 체력 = 평균 공격력 × hpPerAtk × 학생 수 × hpMult × 보스별 보정
+      // 난이도: 반 전체 용병 중 전투력이 가장 높은 용병 1명의 능력치(체력·공격력·방어력)로 보스를 만듦 (2026-11-08부터, 그 전엔 상위 5명 대표 용병 평균)
+      //   공격력 = 체력 × atkPerHp · 방어력 = 방어력 × defPerDef · 체력 = 공격력 × hpPerAtk × 학생 수 × hpMult × 보스별 보정
       //   시뮬(2026-11-07, Lv.10~30 대표 용병, 1~10단계 보스 각각): 상위 5명 용병이 혼자 들어가면 평균 약 104초 버티고 한 번에 약 1.3만(평균 공격력 × 118) 피해
       //   → 체력은 상위 5명이 학생 1명당 2번씩 들어간 만큼 (반 평균은 더 약하니 실제로는 한 사람 3번쯤 · 친구와 같이 싸우면 보스 공격이 나뉘어 더 오래 버팀)
       tune: { atkPerHp: 0.004, defPerDef: 1, hpPerAtk: 240 },
@@ -33408,17 +33408,20 @@
       defOf(cur) { return (cur && ELITE_BOSS_DEFS.find(b => b.id === cur.bossId)) || this.defOfStage(cur && cur.stage); },
       // 이름표: 예전 단계식 보스만 'N단계'를 붙임
       label(cur) { const def = this.defOf(cur); return cur && cur.stage && !cur.pow ? `${cur.stage}단계 ${def.name}` : def.name; },
-      // 이번 주 난이도 기준: 용병단 전투력 상위 5명 학생의 대표 용병(레이드에 데려가는 1명) 평균 능력치
+      // 이번 주 난이도 기준: 반 전체 용병 중 전투력이 가장 높은 용병 1명의 능력치
       difficulty() {
-        const tops = studentsFor('classPower').map(s => ({ s, p: calcStudentCombatPower(s) })).filter(x => x.p > 0)
-          .sort((a, b) => b.p - a.p).slice(0, WORLD_BOSS.topN);
-        const picks = tops.map(({ s }) => { const m = repMercOf(s); return m ? { st: calcMercStats(m, s), pw: calcMercCombatPower(m, s) } : null; }).filter(Boolean);
-        if (!picks.length) return { hp: 1500, atk: 100, def: 50, pow: 0, n: 0 };
-        const avg = k => picks.reduce((sum, x) => sum + (k === 'pw' ? x.pw : x.st[k] || 0), 0) / picks.length;
-        return { hp: avg('hp'), atk: avg('atk'), def: avg('def'), pow: Math.round(avg('pw')), n: picks.length };
+        let best = null;
+        studentsFor('classPower').forEach(s => ((s && s.roster) || []).forEach(m => {
+          if (!m) return;
+          const pw = calcMercCombatPower(m, s);
+          if (pw > 0 && (!best || pw > best.pw)) best = { m, s, pw };
+        }));
+        if (!best) return { hp: 1500, atk: 100, def: 50, pow: 0, n: 0 };
+        const st = calcMercStats(best.m, best.s);
+        return { hp: st.hp || 0, atk: st.atk || 0, def: st.def || 0, pow: Math.round(best.pw), n: 1 };
       },
       hpFor(ma, hpMult, bossId) { return Math.max(1, Math.round(ma * WORLD_BOSS.tune.hpPerAtk * this.classSize() * (hpMult || 1) * (WORLD_BOSS.bossHpAdj[bossId] || 1))); },
-      // 이번 주 보스: 엘리트 보스 1~10단계 중 랜덤 (바로 지난 보스는 빼고) · 능력치는 지금 상위 5명 기준으로 정해 그 주 내내 그대로
+      // 이번 주 보스: 엘리트 보스 1~10단계 중 랜덤 (바로 지난 보스는 빼고) · 능력치는 지금 반 최강 용병 기준으로 정해 그 주 내내 그대로
       makeCurrent(weekKey, hpMult, prevBossId, sameBoss = false) {
         const pool = ELITE_BOSS_DEFS.filter(b => b.stage <= WORLD_BOSS.maxBossStage);
         const others = pool.filter(b => b.id !== prevBossId);
@@ -33679,7 +33682,7 @@
         boss.maxHp = Math.max(1, Math.round(cur.maxHp));
         boss.hp = Math.max(1, Math.min(boss.maxHp, Math.round(cur.hp)));
         boss.isWorldBoss = true;
-        // 이번 주 보스: 상위 5명 기준으로 정해 둔 공격력·방어력 · 예전 단계식 보스: 엘리트 보스 공격력 × bossAtk
+        // 이번 주 보스: 반 최강 용병 기준으로 정해 둔 공격력·방어력 · 예전 단계식 보스: 엘리트 보스 공격력 × bossAtk
         boss.wbBaseAtk = cur.atk ? Math.max(1, Math.round(cur.atk)) : Math.max(1, Math.round(boss.atk * WORLD_BOSS.bossAtk));
         if (cur.def != null && cur.pow) boss.def = Math.max(0, Math.round(cur.def));
         boss.atk = boss.wbBaseAtk;
@@ -34142,7 +34145,7 @@
           return { ...c, hpMult: mult, maxHp, hp: Math.max(c.killedAt ? 0 : 1, Math.round(maxHp * ratio)), v: WORLD_BOSS.hpVersion };
         }).then(() => showRewardBanner(`🌍 보스 레이드 체력 배율을 ×${mult}로 바꿨어요. (남은 체력 비율은 그대로)`)).catch(() => {});
       },
-      // 이번 주 보스를 다시 내보냄: sameBoss면 같은 보스, 아니면 다른 보스로 다시 뽑기 · 난이도는 지금 상위 5명 기준으로 새로
+      // 이번 주 보스를 다시 내보냄: sameBoss면 같은 보스, 아니면 다른 보스로 다시 뽑기 · 난이도는 지금 반 최강 용병 기준으로 새로
       adminReset(sameBoss = true) {
         if (!this.ref) return;
         const wk = this.weekKey();
@@ -34230,7 +34233,7 @@
                 </div>
               </div>
               ${this.hpBarHTML(cur)}
-              <div class="text-[11px] text-slate-400">남은 체력 ${(WORLD_BOSS.enrageAt * 100)}% 아래면 🔥광폭화 (공격력 ×${WORLD_BOSS.enrageAtk}) · 난이도는 매주 <strong>전투력 상위 ${cur.top || WORLD_BOSS.topN}명</strong>의 대표 용병(평균 ⚔️ ${(cur.pow || 0).toLocaleString()})과 반 학생 수(${this.classSize()}명)에 맞춰 정해져요</div>
+              <div class="text-[11px] text-slate-400">남은 체력 ${(WORLD_BOSS.enrageAt * 100)}% 아래면 🔥광폭화 (공격력 ×${WORLD_BOSS.enrageAtk}) · 난이도는 매주 <strong>반에서 전투력이 가장 높은 용병</strong>(⚔️ ${(cur.pow || 0).toLocaleString()})과 반 학생 수(${this.classSize()}명)에 맞춰 정해져요</div>
               ${roomHTML}
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="text-xs text-slate-300">
@@ -34292,13 +34295,13 @@
           <h4 class="font-title text-lg text-amber-300">🌍 보스 레이드 조정</h4>
           <div class="text-xs text-slate-300"><strong>${this.esc(this.label(cur))}</strong> · 참가한 학생 ${rank.length}명 · ${this.timeLeftText(cur)}</div>
           ${this.hpBarHTML(cur, 'h-4')}
-          <div class="text-[11px] text-slate-400">이번 주 난이도: 전투력 상위 ${cur.top || 0}명 대표 용병 평균 ⚔️ ${(cur.pow || 0).toLocaleString()} · 보스 공격력 ${(cur.atk || 0).toLocaleString()} · 방어력 ${(cur.def || 0).toLocaleString()} (보스가 나올 때 정해져 그 주 내내 그대로)</div>
-          <label class="text-xs text-slate-400">체력 배율 (상위 ${WORLD_BOSS.topN}명 대표 용병 평균 공격력 × 학생 수 × 배율 · 바꿔도 남은 비율은 그대로)</label>
+          <div class="text-[11px] text-slate-400">이번 주 난이도: ${cur.top === 1 ? '반 최강 용병' : `전투력 상위 ${cur.top || 0}명 대표 용병 평균`} ⚔️ ${(cur.pow || 0).toLocaleString()} · 보스 공격력 ${(cur.atk || 0).toLocaleString()} · 방어력 ${(cur.def || 0).toLocaleString()} (보스가 나올 때 정해져 그 주 내내 그대로)</div>
+          <label class="text-xs text-slate-400">체력 배율 (반 최강 용병 공격력 × 학생 수 × 배율 · 바꿔도 남은 비율은 그대로)</label>
           <div class="flex flex-wrap gap-1.5">
             ${WORLD_BOSS.hpMultChoices.map(m => `<button onclick="WorldBoss.adminSetHpMult(${m})" class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold border ${m === (cur.hpMult || 1) ? 'bg-amber-500 text-slate-950 border-amber-400' : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'}">×${m}</button>`).join('')}
           </div>
           <div class="flex flex-wrap gap-1.5">
-            <button onclick="askCustomConfirm('이번 보스를 지금 상위 ${WORLD_BOSS.topN}명 기준 난이도·꽉 찬 체력으로 다시 내보낼까요? (기여도는 새로 셈)', () => WorldBoss.adminReset(true))" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-white">🔁 같은 보스 다시</button>
+            <button onclick="askCustomConfirm('이번 보스를 지금 반 최강 용병 기준 난이도·꽉 찬 체력으로 다시 내보낼까요? (기여도는 새로 셈)', () => WorldBoss.adminReset(true))" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-white">🔁 같은 보스 다시</button>
             <button onclick="askCustomConfirm('이번 주 보스를 다른 엘리트 보스로 다시 뽑을까요? (기여도는 새로 셈)', () => WorldBoss.adminReset(false))" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-white">🎲 다른 보스로</button>
             <button onclick="askCustomConfirm('보스 레이드를 처음부터 다시 시작할까요? 이번 주 보스를 새로 뽑아 꽉 찬 체력으로 나오고, 기여도 랭킹·토벌 기록·지난 보스 기록이 모두 지워져요. (학생들이 이미 받은 CA는 그대로예요)', () => WorldBoss.adminWipe())" class="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-[11px] font-extrabold text-white">🧹 보스 레이드 초기화</button>
           </div>`;
@@ -42305,11 +42308,25 @@
       const r = liveNet.roomId && livePvpRoomsCache ? livePvpRoomsCache[liveNet.roomId] : null;
       return r && r.spectators && typeof r.spectators === 'object' ? Object.keys(r.spectators).length : 0;
     }
+    // 직접 연결이 '원활히 보내는 중'인지: 열려 있고 · LIVE_RTC_HEALTHY_MS 안에 보냈고 · 밀린 양이 LIVE_RTC_HEALTHY_BUF 아래
+    function liveRtcLinkHealthy(open, dc, lastSentAt, nowMs) {
+      return Boolean(open && dc && dc.readyState === 'open') && nowMs - lastSentAt <= LIVE_RTC_HEALTHY_MS && dc.bufferedAmount <= LIVE_RTC_HEALTHY_BUF;
+    }
     function liveServerFrameInterval(nowMs) {
-      const R = LiveRtc;
-      if (liveNet.rtcDecision !== 'rtc' || liveNet.team || liveNet.towerCast || nowMs < LIVE_RTC_SERVER_THROTTLE_FROM || livePvpSpectatorCount() > 0) return LIVE_FRAME_INTERVAL_MS;
-      if (!liveRtcCanSend('host') || nowMs - R.lastSentAt > LIVE_RTC_HEALTHY_MS || R.dc.bufferedAmount > LIVE_RTC_HEALTHY_BUF) return LIVE_FRAME_INTERVAL_MS;
-      return LIVE_RTC_SERVER_FRAME_MS;
+      if (nowMs < LIVE_RTC_SERVER_THROTTLE_FROM) return LIVE_FRAME_INTERVAL_MS;
+      // 보는 친구가 있으면 서버 화면이 그 친구의 화면 → 늘 0.15초. 보는 친구 수를 아는 전투만 줄임:
+      //   결투·팀전방은 pvp_rooms의 spectators · 협동 레이드·던전은 중계 자리의 watchers(raidWatchOn, connectRaidLiveNet) · 탑·엘리트 토벌 중계는 그대로
+      if (liveNet.raidCast) { if (!liveNet.raidWatchOn || liveNet.towerWatchers > 0) return LIVE_FRAME_INTERVAL_MS; }
+      else if (liveNet.towerCast || !(liveNet.roomId && livePvpRoomsCache && livePvpRoomsCache[liveNet.roomId]) || livePvpSpectatorCount() > 0) return LIVE_FRAME_INTERVAL_MS;
+      if (!liveNet.team) {
+        const R = LiveRtc;
+        return liveNet.rtcDecision === 'rtc' && R.role === 'host' && liveRtcLinkHealthy(R.open, R.dc, R.lastSentAt, nowMs) ? LIVE_RTC_SERVER_FRAME_MS : LIVE_FRAME_INTERVAL_MS;
+      }
+      // 팀전·레이드·던전: 사람 팀원 모두가 원활한 직접 연결(LiveRtcHub)로 받고 있을 때만 (한 명이라도 서버 화면을 보면 그대로)
+      const ids = (liveNet.teamExpect || []).filter(id => id && id !== liveNet.myId);
+      if (!ids.length || !LiveRtcHub.ref) return LIVE_FRAME_INTERVAL_MS;
+      const all = ids.every(id => { const P = LiveRtcHub.peers[id]; return Boolean(P) && P.mode === 'rtc' && liveRtcLinkHealthy(P.open, P.dc, P.lastSentAt, nowMs); });
+      return all ? LIVE_RTC_SERVER_FRAME_MS : LIVE_FRAME_INTERVAL_MS;
     }
     function liveRtcStop() {
       const R = LiveRtc;
@@ -44682,7 +44699,7 @@
       ref.child('watchers').on('value', snap => {
         const val = snap && snap.val();
         const n = val && typeof val === 'object' ? Object.keys(val).length : 0;
-        if (n > liveNet.towerWatchers) liveNet.sentU = null; // 새로 보는 친구에게 바로 전체 화면 한 장
+        if (n > liveNet.towerWatchers) { liveNet.sentU = null; liveNet.lastFramePublishedAt = 0; } // 새로 보는 친구에게 바로 전체 화면 한 장
         liveNet.towerWatchers = n;
       });
     }
@@ -44700,6 +44717,19 @@
       if (!liveNet.ref) return; // 서버에 연결되지 않았으면 각자 화면에서 진행
       if (!asHost) liveNet.bid = null; // 레이드는 계산 담당이 바뀔 때마다 새 화면 줄을 따로 쓰므로 예전처럼 시각으로 가름
       liveNet.raidCast = true;
+      if (asHost) {
+        // 보는 친구 수(중계 자리의 watchers): 팀원 모두가 직접 연결로 받고 아무도 안 보면 서버 화면을 드문드문 (liveServerFrameInterval) · 새로 보는 친구에겐 바로 전체 화면 한 장
+        const ref = liveNet.ref;
+        liveNet.towerWatchers = 0;
+        liveNet.raidWatchOn = true;
+        ref.child('watchers').on('value', snap => {
+          if (liveNet.ref !== ref) return;
+          const val = snap && snap.val();
+          const n = val && typeof val === 'object' ? Object.keys(val).length : 0;
+          if (n > liveNet.towerWatchers) { liveNet.sentU = null; liveNet.lastFramePublishedAt = 0; }
+          liveNet.towerWatchers = n;
+        });
+      }
       if (asHost && takeover) {
         liveNet.guestChose = true;
         liveNet.started = true;
