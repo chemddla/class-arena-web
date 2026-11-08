@@ -130,27 +130,51 @@ def _paint(hsv, hsv0, m, color, lo, hi):
     hsv[..., 2] = np.where(m, v, hsv[..., 2])
 
 
+def _pale(c):
+    return rgb2hsv(_hex(c)[None, None])[0, 0, 2] > 0.75
+
+
+def belt_region(im, skin, hair, trim):
+    """흰 띠로 칠할 띠·깃 모양: 2칸 이상 굵은 어두운 부분 + trim, 삐죽한 칸은 깎고 1칸 틈은 메움"""
+    v = rgb2hsv(im[..., :3] / 255.)[..., 2]
+    al = im[..., 3] > 0
+    body = al & ~skin & ~hair & ~ndimage.binary_dilation(~al)
+    thick = ndimage.binary_opening(body & (v < 0.45), np.ones((2, 2), bool))
+    region = (thick & ndimage.binary_dilation(trim, iterations=2)) | trim
+    k = np.ones((3, 3), int)
+    for _ in range(3):
+        c = ndimage.convolve(region.astype(int), k, mode='constant') - region
+        region = (region & (c >= 3)) | (body & ~region & (c >= 6))
+    lab, n = ndimage.label(region)
+    sz = ndimage.sum(region, lab, range(1, n + 1))
+    return np.isin(lab, np.where(sz >= 8)[0] + 1)
+
+
 def paint(im, skin, hair, trim, dobok, belt, hair_c):
     hsv0 = rgb2hsv(im[..., :3] / 255.)
     hsv = hsv0.copy()
     h0, s0, v0 = hsv0[..., 0] * 360, hsv0[..., 1], hsv0[..., 2]
     al = im[..., 3] > 0
-    fabric = al & ~skin & ~hair & ~trim & (((h0 >= 180) & (h0 <= 290)) | (s0 < 0.08)) & (s0 < 0.35) & (v0 >= 0.3)
+    region = belt_region(im, skin, hair, trim) if belt and _pale(belt) else trim
+    fabric = al & ~skin & ~hair & ~region & (((h0 >= 180) & (h0 <= 290)) | (s0 < 0.08)) & (s0 < 0.35) & (v0 >= 0.3)
     ch = np.zeros_like(al)
     if dobok:
         _paint(hsv, hsv0, fabric, dobok, 0.35, 1.0); ch |= fabric
-    if belt:
+    if belt and not _pale(belt):
         _paint(hsv, hsv0, trim, belt, 0.04, 0.3); ch |= trim
     if hair_c:
         _paint(hsv, hsv0, hair, hair_c, 0.05, 0.5); ch |= hair
     out = im.copy()
     out[ch, :3] = (hsv2rgb(hsv)[ch] * 255 + .5).clip(0, 255).astype(np.uint8)
-    if belt and rgb2hsv(_hex(belt)[None, None])[0, 0, 2] > 0.75:
-        # 밝은 띠(흰 띠)는 둘레 1칸을 검은 윤곽선으로: 원래 검은 띠는 도복과 맞닿은 칸이 그 자체로 경계였음
-        border = trim & ndimage.binary_dilation(~trim & al & ~skin & ~hair, np.ones((3, 3), bool))
-        # 가는 깃(1~2칸 폭)은 선만 남아 얼룩덜룩해지므로 넓은 띠 부분에만
-        border &= ndimage.convolve(trim.astype(int), np.ones((5, 5), int), mode='constant') >= 13
-        out[border, :3] = RIM
+    if belt and _pale(belt):
+        # 밝은 띠(흰 띠): 원래 검은 띠·깃 모양을 다듬어 안쪽은 흰색, 둘레 1칸은 검은 윤곽선
+        #   (검은 띠는 그늘·주름이 다 검어서 모양이 들쭉날쭉해도 티가 안 났지만, 흰색이면 삐져나온 칸이 다 보임)
+        region = belt_region(im, skin, hair, trim)
+        inner = ndimage.binary_erosion(region)
+        hsv2 = rgb2hsv(im[..., :3] / 255.)
+        _paint(hsv2, hsv0, inner, belt, 0.04, 0.3)
+        out[region & ~inner, :3] = RIM
+        out[inner, :3] = (hsv2rgb(hsv2)[inner] * 255 + .5).clip(0, 255).astype(np.uint8)
     return out
 
 
