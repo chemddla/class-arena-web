@@ -145,6 +145,12 @@ def paint(im, skin, hair, trim, dobok, belt, hair_c):
         _paint(hsv, hsv0, hair, hair_c, 0.05, 0.5); ch |= hair
     out = im.copy()
     out[ch, :3] = (hsv2rgb(hsv)[ch] * 255 + .5).clip(0, 255).astype(np.uint8)
+    if belt and rgb2hsv(_hex(belt)[None, None])[0, 0, 2] > 0.75:
+        # 밝은 띠(흰 띠)는 둘레 1칸을 검은 윤곽선으로: 원래 검은 띠는 도복과 맞닿은 칸이 그 자체로 경계였음
+        border = trim & ndimage.binary_dilation(~trim & al & ~skin & ~hair, np.ones((3, 3), bool))
+        # 가는 깃(1~2칸 폭)은 선만 남아 얼룩덜룩해지므로 넓은 띠 부분에만
+        border &= ndimage.convolve(trim.astype(int), np.ones((5, 5), int), mode='constant') >= 13
+        out[border, :3] = RIM
     return out
 
 
