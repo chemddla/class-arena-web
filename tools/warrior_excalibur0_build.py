@@ -15,6 +15,9 @@ D = 'assets/sprites/fx/samples/warrior_excal0_'
 OUT = 'assets/sprites/fx/warrior_excalibur_cast.webp'
 BLACK_FIT = (1.0, 1.0016, 0.75, -0.25)   # 흰 샘플 x,y → 검정 샘플 sx·x + ox, sy·y + oy
 HAIR_GAME = 110 * 0.526   # 전사 시트 대기 칸 머리털 폭 (샘플 110px × 시트 배율)
+# 크기 통일 (2026-11-08): 위 머리털 폭 기준으로 맞추면 시전 칸이 대기 칸보다 머리 면적 1.32배·얼굴 폭 1.38배로 커서
+#   시전할 때 몸이 확 커졌음 → 둘의 평균 1.35배만큼 줄임 (대기 칸 기준으로 통일)
+SIZE_MUL = 1 / 1.35
 TEXT = [(0, 312, 0, 82), (0, 1024, 0, 9), (0, 30, 0, 268)]   # 지울 상자 (x0, x1, y0, y1): 글자 · 위 끝 옆 그림 조각 · 왼쪽 세로줄
 GROUND = 252   # 샘플 바닥 줄 (서 있는 칸 발끝)
 
@@ -72,7 +75,7 @@ def main():
         x0, x1 = xs.min(), xs.max() + 1
         c = rgba[:, x0:x1].copy()
         c[..., 3] = np.where(keep[:, x0:x1], c[..., 3], 0)
-        if sc is None: sc = HAIR_GAME / hair_width(c)
+        if sc is None: sc = HAIR_GAME / hair_width(c) * SIZE_MUL
         k = c[..., 3] > 230
         if i == 2:   # 공중 칸: 몸 덩어리 가운데
             foot = np.where(k)[1].mean()

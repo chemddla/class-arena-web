@@ -24,6 +24,15 @@ from berserker_build import shrink
 
 D = 'assets/sprites/fx/samples/warrior_'
 OUT = 'assets/sprites/merc/warrior_0.webp'
+# 이펙트 자리 표 (시트와 같은 크기, 흰색 = 몸이 아닌 이펙트): 흰·검정 비교로 만든 칸(회전베기·사자후·돌진)은 어디가 몸이고 어디가 이펙트인지 정확히 앎
+#   → tools/warrior_variants_build.py가 외형 색을 칠할 때 바람 고리·바람 줄·흙먼지를 확실히 빼는 데 씀 (색만으로는 부츠·다리 갑옷과 갈리지 않음)
+OUT_FX = 'assets/sprites/fx/samples/warrior_0_fxmask.png'
+BODY = {}   # 칸 이름 → 몸 자리 (잘라 낸 그림과 같은 크기)
+# 샘플 묶음별 크기 보정 (대기 칸 기준으로 통일, 2026-11-08): 샘플마다 화면 확대가 달라 같은 배율로 줄여도 머리 크기가 달랐음
+#   잰 값 = 머리카락 면적의 제곱근을 대기 칸과 비교 (같은 샘플 안 칸들의 평균). 4% 안쪽은 자세 차이·재는 오차라 그대로 둠
+#   걷기 0.966 (그대로) · 공격 0.939 · 피격·쓰러짐 0.950 · 회전베기 0.868 · 사자후·돌진 0.911 → 보정 = 1 / 잰 값
+#   같은 샘플 안에서는 같은 배율이라 동작이 이어질 때 크기가 튀지 않음
+SAMPLE_MUL = {'attack': 1 / 0.939, 'hurt_down': 1 / 0.950, 'whirl': 1 / 0.868, 'roar_charge': 1 / 0.911}
 TARGET_H = 81
 
 # (칸 이름, 샘플, 상자 x0 x1 y0 y1)
@@ -128,6 +137,7 @@ def load(src, box, flip, name=None):
     a = np.where(a < 0.12, 0, a)
     ys, xs = np.where(a > 0)
     rgba = np.dstack([im, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    if src in BLACK: BODY[name] = ndi.binary_dilation(core, iterations=2)[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
     k = rgba[..., 3] > 127
     rows = np.where(k.any(axis=1))[0]
     foot = np.where(k[int(rows.max() - (rows.max() - rows.min()) * 0.08):].any(axis=0))[0].mean()
@@ -169,6 +179,7 @@ def load_matte(src, box, name=None):
     sl = (slice(ys.min(), ys.max() + 1), slice(xs.min(), xs.max() + 1))
     rgba = np.dstack([col, a * 255])[sl]
     body = body[sl]
+    BODY[name] = ndi.binary_dilation(body)
     rows = np.where(body.any(axis=1))[0]
     gnd = rows.max()   # 몸(불투명) 맨 아래 = 바닥 줄 (음파·먼지는 더 아래로 내려갈 수 있음)
     foot = np.where(body[int(gnd - (gnd - rows.min()) * 0.08):gnd + 1].any(axis=0))[0].mean()
@@ -215,23 +226,33 @@ def main():
             gnd = rgba.shape[0] - 1
         if sc is None: sc = TARGET_H / bh
         if src in MATTE and src not in src_sc: src_sc[src] = TARGET_H / bh   # 이 샘플 첫 칸(사자후 1)의 키로 샘플 배율
-        s = src_sc.get(src, sc)
+        s = src_sc.get(src, sc) * SAMPLE_MUL.get(src, 1)
         p = soft_shrink(rgba, s) if src in BLACK or src in MATTE else shrink(rgba, s)
-        pieces.append((name, p, foot * s, (gnd + 1) * s))
+        if name in BODY:   # 이펙트만 남긴 그림을 같은 배율로 줄여 이펙트 자리 표에 씀
+            fxa = rgba.copy(); fxa[..., 3] = np.where(BODY[name], 0, fxa[..., 3])
+            fx = soft_shrink(fxa, s)[..., 3]
+            fx = np.where(fx.astype(int) * 2 >= p[..., 3].astype(int), fx, 0)[:p.shape[0], :p.shape[1]]   # 몸과 섞인 가장자리는 몸 쪽
+        else:
+            fx = np.zeros(p.shape[:2], np.uint8)
+        pieces.append((name, p, foot * s, (gnd + 1) * s, fx))
         print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} 키 {bh} 머리털 폭 {hw} ×{s:.3f} → {p.shape[1]}x{p.shape[0]}  발 {foot:.0f}')
-    L = max(int(np.ceil(c)) for _, _, c, _ in pieces) + 3
-    R = max(int(np.ceil(p.shape[1] - c)) for _, p, c, _ in pieces) + 3
-    U = max(int(np.ceil(g)) for _, _, _, g in pieces) + 1
-    Dn = max(int(np.ceil(p.shape[0] - g)) for _, p, _, g in pieces) + 2
+    L = max(int(np.ceil(c)) for _, _, c, _, _ in pieces) + 3
+    R = max(int(np.ceil(p.shape[1] - c)) for _, p, c, _, _ in pieces) + 3
+    U = max(int(np.ceil(g)) for _, _, _, g, _ in pieces) + 1
+    Dn = max(int(np.ceil(p.shape[0] - g)) for _, p, _, g, _ in pieces) + 2
     H = U + Dn
     cw = L + R
     sheet = np.zeros((H, cw * len(pieces), 4), np.uint8)
-    for i, (name, p, c, g) in enumerate(pieces):
+    fxsheet = np.zeros((H, cw * len(pieces)), np.uint8)
+    for i, (name, p, c, g, fx) in enumerate(pieces):
         x = i * cw + L - int(round(c))
         y = U - int(round(g))
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
+        fxsheet[y:y + fx.shape[0], x:x + fx.shape[1]] = np.where(fx > 0, 255, 0)
     sheet = trim_halo(sheet)
+    fxsheet[sheet[..., 3] == 0] = 0
     Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
+    Image.fromarray(fxsheet, 'L').save(OUT_FX)
     print('cells:', ' '.join(f'{i}={n}' for i, (n, _, _) in enumerate(FRAMES)))
     print(f'warrior_0 cellW={cw} cellH={H} anchorX={L} anchorY={U} count={len(pieces)}')
 
