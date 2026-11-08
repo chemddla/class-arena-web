@@ -42115,11 +42115,19 @@
       if (v && typeof v === 'object') { const o = {}; for (const k in v) o[k] = roundLiveNum(v[k]); return o; }
       return v;
     }
+    // ----- 화면 형식 v2 (LIVE_FRAME_V2_FROM = 2026-11-09 00:00 KST부터 방장이 보냄 · 받는 쪽은 두 형식 다 읽음) -----
+    // 이펙트 종류 이름(평균 15자, 이펙트 바이트의 1/5)은 표 번호로 · 투사체의 안 바뀌는 칸(종류·색·반지름·그림)은 처음 한 번만 (매 화면 다시 보내던 투사체 바이트의 절반)
+    // ⚠ LIVE_FX_TYPES 순서를 바꾸거나 중간에 끼우면 먼저 연 탭이 다른 이펙트를 그림 → 새 종류는 끝에만 더할 것 (표에 없는 종류는 이름 그대로 감)
+    const LIVE_FRAME_V2_FROM = Date.UTC(2026, 10, 8, 15);
+    const LIVE_FX_TYPES = ['aoe_ring', 'arrow_hit', 'bard_encore', 'bard_lute', 'bard_song_buff', 'bard_sr_encore', 'bard_wave', 'bard_wave_hit', 'berserker_slam', 'berserker_split', 'blessing_aura', 'blood_fx', 'brawl_hit', 'brawl_ring', 'cast_circle', 'charge_dash', 'curse_bolt', 'curse_ruin_blast', 'curse_ruin_bolt', 'curse_ruin_circle', 'curse_shatter', 'curse_siphon', 'curse_siphon_heal', 'curse_weaken', 'fire_explosion', 'frost_blizzard', 'frost_glaze', 'frost_nova', 'frost_skate', 'heal_beam', 'heal_cross', 'heal_pillar', 'hidden_assassin', 'hidden_assassin_smoke', 'hidden_beam', 'hidden_excal_impact', 'hidden_fusion', 'hidden_giant_aura', 'hidden_giant_burst', 'hidden_miracle', 'hidden_miracle_buff', 'hidden_miracle_pillar', 'hidden_musou_boom', 'hidden_musou_dash', 'hidden_musou_slash', 'hidden_musou_x', 'hidden_slash', 'hidden_snipe_bullet', 'hidden_snipe_hit', 'hidden_storm', 'ice_shatter', 'lightning_bolt', 'magic_burst', 'paladin_aegis_burst', 'paladin_aegis_dome', 'paladin_charge_dust', 'paladin_charge_hit', 'paladin_consec_burst', 'paladin_hs_dome', 'paladin_judgment', 'paladin_swing', 'pierce_fx', 'pyro_burst', 'pyro_fring', 'pyro_hit', 'pyro_meteor_impact', 'pyro_sr_meteor', 'pyro_xpl', 'rampage_fx', 'shield_dome', 'sniper_line', 'sniper_spread', 'spirit_dodge', 'spirit_king_burst', 'spirit_pop', 'stun_shockwave', 'whirlwind_slash'];
+    const LIVE_FX_TYPE_IDX = Object.fromEntries(LIVE_FX_TYPES.map((t, i) => [t, i]));
+    let liveFrameV2 = false; // publishLiveBattleFrame이 화면마다 정함
     function packLiveEffect(ef) {
       const out = {};
       for (const k in ef) {
         const v = ef[k];
         if (isLiveUnitRef(v)) { if (k === 'owner') out.oid = v.id; continue; } // 따라다니는 이펙트는 id로 → 받은 화면에서 그 유닛을 다시 찾음
+        if (liveFrameV2 && k === 'type' && LIVE_FX_TYPE_IDX[v] !== undefined) { out.type = LIVE_FX_TYPE_IDX[v]; continue; }
         out[k] = roundLiveNum(v);
       }
       return out;
@@ -42142,6 +42150,14 @@
     }
 
     function packLiveProjectile(p) {
+      const [vx, vy] = liveProjVel(p);
+      // 투사체는 화면마다 통째로 다시 보내므로(평균 3.7개, 화면의 21%) 자리는 정수·속도는 소수 한 자리면 충분 (받는 쪽이 흐른 만큼 미리 날려 그림)
+      const out = [Math.round(liveNum(p.x)), Math.round(liveNum(p.y)), liveR2(p.angle), String(p.projType || ''), String(p.color || ''), liveNum(p.radius), liveR1(vx), liveR1(vy)];
+      const spr = String(p.spr || '');
+      if (spr) out.push(spr); // 그림 이름이 있을 때만 (없으면 생략)
+      return out;
+    }
+    function liveProjVel(p) {
       let vx = 0, vy = 0;
       if (p.isDirectional) {
         vx = Math.cos(p.angle || 0) * liveNum(p.speed) * BATTLE_PROJECTILE_SPEED;
@@ -42151,10 +42167,22 @@
         vx = (dx / d) * liveNum(p.speed) * BATTLE_PROJECTILE_SPEED;
         vy = (dy / d) * liveNum(p.speed) * BATTLE_PROJECTILE_SPEED;
       }
-      // 투사체는 화면마다 통째로 다시 보내므로(평균 3.7개, 화면의 21%) 자리는 정수·속도는 소수 한 자리면 충분 (받는 쪽이 흐른 만큼 미리 날려 그림)
-      const out = [Math.round(liveNum(p.x)), Math.round(liveNum(p.y)), liveR2(p.angle), String(p.projType || ''), String(p.color || ''), liveNum(p.radius), liveR1(vx), liveR1(vy)];
-      const spr = String(p.spr || '');
-      if (spr) out.push(spr); // 그림 이름이 있을 때만 (없으면 생략)
+      return [vx, vy];
+    }
+    // 형식 v2: 전체 화면·처음 보는 투사체는 통째로(+ 끝에 번호), 이미 보낸 투사체는 [x, y, 각도, 번호, vx, vy]만 (4번 칸이 숫자면 짧은 꼴)
+    function packLiveProjectiles(list, keyframe) {
+      if (!liveFrameV2) return list.map(packLiveProjectile);
+      const known = liveNet.sentP || new Set(), next = new Set();
+      const out = list.map(q => {
+        const id = q._lid || (q._lid = (liveNet.pSeq = (liveNet.pSeq || 0) + 1));
+        next.add(id);
+        if (!keyframe && known.has(id)) { const [vx, vy] = liveProjVel(q); return [Math.round(liveNum(q.x)), Math.round(liveNum(q.y)), liveR2(q.angle), id, liveR1(vx), liveR1(vy)]; }
+        const full = packLiveProjectile(q);
+        if (full.length < 9) full.push('');
+        full.push(id);
+        return full;
+      });
+      liveNet.sentP = next;
       return out;
     }
 
@@ -42165,6 +42193,7 @@
       // 탑 도전: 보는 친구가 없으면 화면을 보내지 않음 (결과를 보낼 때만 마지막 화면 한 장)
       if (liveNet.towerCast && !liveNet.towerWatchers && !force) return;
       liveNet.lastFramePublishedAt = nowMs;
+      liveFrameV2 = nowMs >= LIVE_FRAME_V2_FROM;
       const fresh = list => {
         const out = [];
         // 한 번에 40개까지만 · 넘친 것은 버리지 않고 다음 화면에 실어 보냄 (큰 범위 기술 때 효과가 통째로 빠지지 않게)
@@ -42185,7 +42214,7 @@
         ...(liveNet.towerCast || typeof liveNet.bid !== 'number' ? {} : { b: liveNet.bid, ep: liveNet.ep || 0 }),
         t: sim.tickCount,
         ...(keyframe ? { u: packed } : { bt: liveNet.sentT }),
-        p: sim.projectiles.slice(0, 80).map(packLiveProjectile),
+        p: packLiveProjectiles(sim.projectiles.slice(0, 80), keyframe),
         e: fresh(sim.effects).map(packLiveEffect),
         f: fresh(sim.floatTexts).map(ft => [liveR1(ft.x), liveR1(ft.y), String(ft.text || ''), String(ft.color || ''), liveNum(ft.life)]), // 받는 쪽은 이 5칸만 씀
         l: liveNet.pendingLogs.splice(0, 10),
@@ -42651,12 +42680,25 @@
       });
       // 투사체는 그 화면 이후 흐른 만큼 미리 날아간 자리에서 시작 (다음 화면과 위치가 거의 이어짐)
       const leadTicks = Math.max(0, ageMs) / 1000 * BATTLE_TICKS_PER_SEC;
-      sim.projectiles = (Array.isArray(val.p) ? val.p : []).filter(Array.isArray).map(q => ({
-        x: liveNum(q[0]) + liveNum(q[6]) * leadTicks, y: liveNum(q[1]) + liveNum(q[7]) * leadTicks, angle: liveNum(q[2]),
-        projType: cleanUserText(q[3], 30), color: cleanUserText(q[4], 30) || undefined, radius: liveNum(q[5]) || undefined,
-        vx: liveNum(q[6]), vy: liveNum(q[7]), spr: cleanUserText(q[8], 30) || undefined, trail: []
-      }));
+      // 형식 v2: 전체 화면(u)마다 투사체 고정 칸 표를 새로 받음 · 짧은 꼴([x, y, 각도, 번호, vx, vy])은 표에서 종류·색·그림을 찾고, 모르는 번호는 다음 전체 화면까지 건너뜀
+      if (Array.isArray(val.u) || !liveNet.projStatic) liveNet.projStatic = new Map();
+      const ps = liveNet.projStatic;
+      sim.projectiles = (Array.isArray(val.p) ? val.p : []).filter(Array.isArray).map(q => {
+        if (typeof q[3] === 'number') {
+          const st = ps.get(q[3]);
+          if (!st) return null;
+          return { x: liveNum(q[0]) + liveNum(q[4]) * leadTicks, y: liveNum(q[1]) + liveNum(q[5]) * leadTicks, angle: liveNum(q[2]), ...st, vx: liveNum(q[4]), vy: liveNum(q[5]), trail: [] };
+        }
+        const o = {
+          x: liveNum(q[0]) + liveNum(q[6]) * leadTicks, y: liveNum(q[1]) + liveNum(q[7]) * leadTicks, angle: liveNum(q[2]),
+          projType: cleanUserText(q[3], 30), color: cleanUserText(q[4], 30) || undefined, radius: liveNum(q[5]) || undefined,
+          vx: liveNum(q[6]), vy: liveNum(q[7]), spr: cleanUserText(q[8], 30) || undefined, trail: []
+        };
+        if (typeof q[9] === 'number') ps.set(q[9], { projType: o.projType, color: o.color, radius: o.radius, spr: o.spr });
+        return o;
+      }).filter(Boolean);
       (Array.isArray(val.e) ? deepCleanStrings(val.e) : []).forEach(ef => {
+        if (ef && typeof ef.type === 'number') ef.type = LIVE_FX_TYPES[ef.type] || ''; // 형식 v2: 표 번호 → 이름
         if (!ef || typeof ef !== 'object' || !ef.type || liveNum(ef.life) <= 0) return;
         if (ef.oid != null) { ef.owner = sim.units.find(u => u.id === ef.oid) || null; delete ef.oid; } // 시전자·아군을 따라가는 이펙트
         sim.effects.push(ef);
