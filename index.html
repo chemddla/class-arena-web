@@ -43175,7 +43175,8 @@
       if (!A || A.id !== u.id) {
         // 처음(또는 다른 용병으로 바꿈): 그 전에 누른 것은 예측하지 않음
         A = liveNet.ownAct = { id: u.id, seenDash: c.dashCount || 0, seenSkill: [...(c.skillCount || [0, 0, 0, 0])], host: null,
-          atkLeft: 0, atkAnim: 0, atkMax: 0, atkUntil: 0, rush: null, dashAnim: 0, dashCd: 0, dashAt: 0, dashUntil: 0, dashSeen: false, dashFx: null, cast: null };
+          atkLeft: 0, atkAnim: 0, atkMax: 0, atkUntil: 0, rush: null, dashAnim: 0, dashCd: 0, dashAt: 0, dashUntil: 0, dashSeen: false, dashFx: null, cast: null,
+          skill: null, lockLeft: 0, textFx: null, proj: [], rays: [] };
       }
       const on = !liveNet.rtcFeeding;
       const st = u.statuses || {};
@@ -43228,10 +43229,12 @@
         const n = sc[i] || 0;
         if (n === (A.seenSkill[i] || 0)) continue;
         A.seenSkill[i] = n;
-        if (!on || A.cast || A.rush) continue;
+        if (!on || A.cast || A.skill || A.rush || A.lockLeft > 0) continue;
         const key = (u.skillSlots || [])[i];
         const sk = key ? unitSkillBook(u)[key] : null;
-        if (!sk || !(sk.castSec > 0) || LIVE_PRED_CAST_SKIP.has(key) || isHiddenSkillKey(key)) continue;
+        if (!sk || LIVE_PRED_CAST_SKIP.has(key) || isHiddenSkillKey(key)) continue;
+        // 시전 시간이 없는 스킬: 화염술사(발동 자세가 외형마다 다름)·격투가(연격·반격 자세)는 방장 화면 그대로
+        if (!(sk.castSec > 0) && (u.job === 'pyro' || u.job === 'brawler')) continue;
         if (!(u.unlockedSkills || []).includes(key) || (u.skillCooldowns?.[key] || 0) > 0 || u.mana < (sk.manaCost || 0)) continue;
         if (u.casting || u.castLock > 0 || busy || (st.silence || 0) > 0 || whirlwindBusy(u) || brawlerHolding(u) || summonerSkillBlock(u, key)) continue;
         if (u.job === 'sniper') continue; // 총알·조준선 조건이 많음
@@ -43243,9 +43246,38 @@
           const pick = foes.map(e => ({ e, d: Math.hypot(e.x - ax, (e.y - 14) - ay) })).filter(x => x.d <= 110).sort((a, b) => a.d - b.d)[0];
           if (!pick || unitDist(pick.e, u) > manualSkillRange(u, key)) continue;
         }
+        if (!(sk.castSec > 0)) {
+          // 바로 발동하는 스킬: 방장의 castMercSkillInner와 같은 시작 모습 (스킬 동작 72틱 · 0.53초 동안 못 움직임 · 기본 공격 꼬리 · 머리 위 스킬 이름)
+          // 회전베기처럼 더 긴 동작은 이어서 방장 화면 값으로 계속됨 · 효과·피해는 방장 화면으로 옴
+          const noTail = u.job === 'warrior' || u.job === 'lancer' || u.job === 'summoner' || (u.job === 'berserker' && BERSERKER_NO_ATTACK_TAIL.includes(key)) || (u.job === 'paladin' && PALADIN_NO_ATTACK_TAIL.includes(key));
+          A.skill = { key, anim: 72, at: now, until: now + 72 * msPerTick + margin, seen: false };
+          A.lockLeft = 32;
+          A.atkAnim = noTail ? 0 : 52; A.atkMax = 52; A.atkUntil = noTail ? 0 : now + 52 * msPerTick + margin;
+          const text = `${sk.icon} ${sk.name}!`;
+          if (key !== 'duel_call') {
+            sim.floatTexts.push({ x: P.x, y: P.y - 48, text, color: u.team === 'blue' ? '#1d4ed8' : '#be123c', life: 62 });
+            A.textFx = { text, until: now + margin + 1500 };
+          }
+          continue;
+        }
         const total = Math.max(1, Math.round(sk.castSec * 60));
         A.cast = { key, left: total, total, icon: sk.icon, at: now, seen: false };
         A.atkAnim = 0;
+      }
+      if (A.lockLeft > 0) A.lockLeft = Math.max(0, A.lockLeft - ticks);
+      if (A.skill) {
+        const S = A.skill;
+        S.anim = Math.max(0, S.anim - ticks);
+        if ((H.at || 0) > S.at && H.skillType === S.key && H.skillAnim > 0) S.seen = true;
+        const rejected = !S.seen && now - S.at > margin + 900;
+        if (now < S.until && !rejected) {
+          u.skillAnim = S.anim; u.maxSkillAnim = 72; u.activeSkillType = S.key;
+        } else {
+          A.skill = null;
+          // 방장 쪽 동작이 아직 한참 남았으면(회전베기 등) 그대로 이어 보고, 끝자락만 남았으면 다시 그리지 않음
+          if (rejected || !(H.skillType === S.key && H.skillAnim > margin / msPerTick)) u.skillAnim = 0;
+          if (rejected) { A.atkUntil = 0; u.attackAnim = 0; }
+        }
       }
       if (A.cast) {
         const C = A.cast;
@@ -43266,13 +43298,15 @@
       // --- 평타 (누르고 있는 동안) ---
       if (A.atkLeft > 0) A.atkLeft = Math.max(0, A.atkLeft - ticks);
       if (A.atkAnim > 0) A.atkAnim = Math.max(0, A.atkAnim - ticks);
-      const canAtk = on && c.attack && !A.rush && !u.casting && !(u.castLock > 0) && !busy && u.job !== 'sniper' && u.job !== 'healer' && !brawlerHolding(u);
+      const canAtk = on && c.attack && !A.rush && !u.casting && !(u.castLock > 0) && !(A.lockLeft > 0) && !busy && u.job !== 'sniper' && u.job !== 'healer' && !brawlerHolding(u);
       if (canAtk && A.atkLeft <= 0) {
         const iv = manualAtkInterval(u, manualSpeedMult(u));
         A.atkLeft = iv;
         A.atkAnim = A.atkMax = Math.min(42, iv);
         A.atkUntil = now + A.atkAnim * msPerTick + margin; // 그동안 방장 화면의 공격 모습은 쓰지 않음 (늦게 온 같은 휘두르기가 한 번 더 보이지 않게)
+        guestPredictOwnShot(u, P, A, now, msPerTick, margin);
       }
+      guestStepOwnShots(u, A, ticks, now);
       if (A.atkUntil > now) {
         u.attackAnim = A.atkAnim;
         u.maxAttackAnim = Math.max(1, A.atkMax);
@@ -43281,6 +43315,61 @@
         u.attackAnim = 0;
       }
       return A;
+    }
+    // 내 평타 화살·구슬을 먼저 쏨 (manualBasicAttack과 같은 출발점·방향·속도·사거리 · 그림만, 피해·터짐은 방장 화면)
+    function guestPredictOwnShot(u, P, A, now, msPerTick, margin) {
+      const c = localBattleInput;
+      const orb = u.job === 'mage' || u.job === 'frost' || u.job === 'curse' || u.job === 'bard' || u.job === 'summoner';
+      if (u.job !== 'archer' && !orb) return;
+      const hasAim = typeof c.aimX === 'number' && typeof c.aimY === 'number';
+      const aimAngle = hasAim ? Math.atan2(c.aimY - P.y, c.aimX - P.x) : (u.facingAngle || 0);
+      const aimX = hasAim ? c.aimX : P.x + Math.cos(aimAngle) * 100, aimY = hasAim ? c.aimY : P.y + Math.sin(aimAngle) * 100;
+      const ox = P.x + Math.cos(aimAngle) * 14, oy = P.y - 8 + Math.sin(aimAngle) * 14;
+      let p;
+      if (u.job === 'archer') {
+        p = { projType: 'arrow', isDirectional: true, angle: aimAngle, x: ox, y: oy, speed: 4.6, maxTravel: u.range * 1.7 + 80, trail: [] };
+      } else {
+        const color = u.job === 'frost' ? '#38bdf8' : (u.job === 'curse' ? '#a855f7' : (u.job === 'bard' ? '#7dd3fc' : (u.job === 'summoner' ? SUMMONER_ORB_COLOR : '#7c3aed')));
+        const spr = u.job === 'frost' ? (unitProjFx(u, 'magic_orb') || 'troll_frost') : (u.job === 'curse' ? 'curse_flame' : (u.job === 'bard' ? 'bard_bubble' : (u.job === 'summoner' ? (unitProjFx(u, 'magic_orb') || 'summoner_orb') : undefined)));
+        const ang = Math.atan2((aimY - 12) - oy, aimX - ox);
+        p = { projType: 'magic_orb', spr, color, isDirectional: true, angle: ang, x: ox, y: oy, speed: 3.2, maxTravel: u.range + 40, trail: [] };
+        if (u.job === 'mage') sim.effects.push({ type: 'cast_circle', x: P.x, y: P.y, color, life: 32, maxLife: 32 });
+      }
+      p.vx = Math.cos(p.angle) * p.speed; p.vy = Math.sin(p.angle) * p.speed; p.travel = 0; p._own = true;
+      A.proj.push(p);
+      // 방장 화면에 같은 것이 늦게 실려 오면 그 길 위의 것은 그리지 않음 (내 것이 사라진 뒤에도 방장 것이 따라오는 동안)
+      A.rays.push({ x: ox, y: oy, ang: p.angle, type: p.projType, len: p.maxTravel, until: now + (p.maxTravel / p.speed) * msPerTick + margin + 400 });
+    }
+    function guestStepOwnShots(u, A, ticks, now) {
+      A.rays = A.rays.filter(r => r.until > now);
+      // 방장 화면이 보낸 투사체 중 내가 먼저 쏜 것과 같은 길 위의 것은 빼고, 내 것을 그림 목록에 다시 넣음 (방장 화면이 올 때마다 목록이 새로 바뀜)
+      if (A.rays.length || A.proj.length) {
+        sim.projectiles = sim.projectiles.filter(q => {
+          if (q._own) return false;
+          return !A.rays.some(r => {
+            if (q.projType !== r.type) return false;
+            const dx = q.x - r.x, dy = q.y - r.y;
+            const along = dx * Math.cos(r.ang) + dy * Math.sin(r.ang), side = Math.abs(-dx * Math.sin(r.ang) + dy * Math.cos(r.ang));
+            const qa = typeof q.angle === 'number' ? Math.abs(Math.atan2(Math.sin(q.angle - r.ang), Math.cos(q.angle - r.ang))) : 0;
+            return side < 26 && along > -40 && along < r.len + 60 && qa < 0.35;
+          });
+        });
+      }
+      const foes = sim.units.filter(e => e.alive && e.team !== u.team);
+      A.proj = A.proj.filter(p => {
+        if (ticks > 0) { p.x += p.vx * ticks; p.y += p.vy * ticks; p.travel += p.speed * ticks; }
+        if (p.travel >= p.maxTravel) return false;
+        // 내 화면에서 적에 닿으면 사라짐 (맞은 효과·피해 숫자는 방장 화면으로 옴)
+        return !foes.some(e => Math.hypot(e.x - p.x, (e.y - 14) - p.y) < 24 * (e.sizeScale || 1));
+      });
+      A.proj.forEach(p => sim.projectiles.push(p));
+    }
+    // 방장 화면이 보낸 스킬 이름 글자가 내가 먼저 띄운 것과 같으면 한 번 건너뜀
+    function liveOwnTextDup(ft) {
+      const A = liveNet.ownAct, T = A && A.textFx;
+      if (!T || T.until < Date.now() || String(ft.text || '') !== T.text) return false;
+      A.textFx = null;
+      return true;
     }
     // 방장 화면이 보낸 대시 먼지 자국이 내가 먼저 그린 것과 같으면 한 번 건너뜀
     function liveOwnDashFxDup(ef) {
@@ -43311,7 +43400,7 @@
       const locked = u.castLock > 0 || (u.dashAnim > 0 && !predDash) || st.stun > 0 || st.freeze > 0 || st.fear > 0 || st.confuse > 0 || st.taunt > 0 || (st.rampage || 0) > 0;
       let mx = (c.keys.d ? 1 : 0) - (c.keys.a ? 1 : 0), my = (c.keys.s ? 1 : 0) - (c.keys.w ? 1 : 0);
       if (Math.hypot(c.moveX || 0, c.moveY || 0) > 0.2) { mx = c.moveX; my = c.moveY; }
-      const moving = !locked && !R && !u.casting && Boolean(mx || my); // 스킬 시전 중에는 방장 쪽에서도 서 있음
+      const moving = !locked && !R && !u.casting && !(A.lockLeft > 0) && Boolean(mx || my); // 바로 발동한 스킬 뒤 잠깐(castLock)도 방장 쪽에서 서 있음 // 스킬 시전 중에는 방장 쪽에서도 서 있음
       if (R && ticks > 0) {
         // 대시: 방장과 같은 모양(처음엔 빠르고 도착할 때 살짝 감속)으로 미끄러져 감
         R.t = Math.min(R.n, R.t + ticks);
@@ -43415,7 +43504,7 @@
       const ownAct = liveNet.ownAct;
       if (ownAct) {
         const ou = sim.units.find(x => x.id === ownAct.id);
-        if (ou) ownAct.host = { at: Date.now(), casting: ou.casting ? ou.casting.key : null, dashAnim: ou.dashAnim };
+        if (ou) ownAct.host = { at: Date.now(), casting: ou.casting ? ou.casting.key : null, dashAnim: ou.dashAnim, skillAnim: ou.skillAnim, skillType: ou.activeSkillType };
       }
       // 투사체는 그 화면 이후 흐른 만큼 미리 날아간 자리에서 시작 (다음 화면과 위치가 거의 이어짐)
       const leadTicks = Math.max(0, ageMs) / 1000 * BATTLE_TICKS_PER_SEC;
@@ -43445,7 +43534,7 @@
       });
       (Array.isArray(val.f) ? deepCleanStrings(val.f) : []).forEach(ft => {
         if (Array.isArray(ft)) ft = { x: ft[0], y: ft[1], text: ft[2], color: ft[3], life: ft[4] };
-        if (ft && typeof ft === 'object' && liveNum(ft.life) > 0) sim.floatTexts.push({ x: liveNum(ft.x), y: liveNum(ft.y), text: String(ft.text || ''), color: String(ft.color || '#64748b'), life: liveNum(ft.life) });
+        if (ft && typeof ft === 'object' && liveNum(ft.life) > 0 && !liveOwnTextDup(ft)) sim.floatTexts.push({ x: liveNum(ft.x), y: liveNum(ft.y), text: String(ft.text || ''), color: String(ft.color || '#64748b'), life: liveNum(ft.life) });
       });
       if (sim.effects.length > 300) sim.effects.splice(0, sim.effects.length - 300);
       if (sim.floatTexts.length > 200) sim.floatTexts.splice(0, sim.floatTexts.length - 200);
@@ -43542,7 +43631,7 @@
         u.y = y;
       });
       guestPredictOwnUnit(ticks, now);
-      sim.projectiles.forEach(p => { p.x += (p.vx || 0) * ticks; p.y += (p.vy || 0) * ticks; });
+      sim.projectiles.forEach(p => { if (!p._own) { p.x += (p.vx || 0) * ticks; p.y += (p.vy || 0) * ticks; } }); // 내가 먼저 쏜 것(_own)은 guestPredictOwnActions가 움직임
       (sim.zones || []).forEach(z => { if (z.life > 1) z.life = Math.max(1, z.life - ticks); });
       if (sim.eliteIntro) sim.eliteIntro.t += ticks; // 다음 화면이 올 때까지 보스가 떨어지는 연출도 이어 그림
 
