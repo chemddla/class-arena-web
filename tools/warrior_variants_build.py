@@ -136,11 +136,41 @@ def masks(cell, fxk=None):
     return parts
 
 
+def glow_masks(cell):
+    """엑스칼리버 빛 칸(일어섬·도약·내려베기)의 부위 판정: 빛에 물들어 평소 기준으로는 머리가 안 잡히고 몸이 갑옷·천으로 잘못 잡힘
+    머리 = 몸 위쪽 40% 안의 따뜻한 갈색 계열(빛에 바랜 연갈색 포함) 중 큰 덩어리 · 망토·목도리 = 빨강~자주 계열(채도 0.3 이상)
+    천 = 진한 남색만(빛에 물든 하늘색 갑옷·번개는 색상 205 아래라 빠짐). 갑옷 쇠는 칠하지 않음"""
+    h, s, v, _ = hsv_of(cell)
+    solid = cell[..., 3] > 200
+    ys = np.where(solid.any(axis=1))[0]
+    top = np.zeros_like(solid); top[:int(ys.min() + 0.4 * (ys.max() - ys.min()))] = True
+    skin = solid & (h >= 14) & (h <= 32) & (s <= 0.32) & (v >= 0.8)
+    # 일어서는 칸의 머리는 빛에 바래 채도 0.08~0.18·밝기 0.37~0.46 → 채도 0.05부터, 색상은 붉은 갈색 쪽(330~30)까지
+    warm = solid & top & ((h <= 30) | (h >= 330)) & (s >= 0.05) & (s <= 0.7) & (v >= 0.12) & (v < 0.7) & ~skin
+    lab, n, sz = comps(warm)
+    hair = np.isin(lab, np.where(sz >= max(25, sz.max() * 0.3))[0] + 1) if n else warm
+    # 얼굴이 보이는 칸(일어섬): 머리가 번개·흰 빛과 섞여 색으로는 군데군데만 잡혀 얼룩짐 → 위치로: 얼굴 위쪽 머리 영역에서
+    #   하늘색 번개(색상 165~205·채도 0.25 이상)·하얀 섬광(밝기 0.85 이상·채도 0.12 미만)·피부만 빼고 전부 머리
+    #   얼굴은 노란 빛(색상 51~62)에 물들어 피부로 안 잡히고, 머리는 갈색 반·파란 빛 받은 남색 반
+    #   → 실루엣 위쪽 28% 안(눈썹까지), 머리 덩어리 둘레 14칸 안의 어두운 칸(밝기 0.6 미만)은 모두 머리 (얼굴·번개·섬광은 밝아서 빠짐)
+    if hair.sum() > 0:
+        head = np.zeros_like(solid); head[:int(ys.min() + 0.28 * (ys.max() - ys.min()))] = True
+        head &= ndi.binary_dilation(hair, iterations=14)
+        hair |= solid & head & (v < 0.6) & ~skin
+    red = solid & ((h >= 325) | (h <= 10)) & (s >= 0.3) & (v >= 0.1) & ~hair
+    lab, n, sz = comps(red)
+    red = np.isin(lab, np.where(sz >= 6)[0] + 1) if n else red   # 낱개 점(입·잡티)은 빼고
+    cloth = solid & (h >= 212) & (h <= 245) & (s >= 0.55) & (v < 0.6)
+    red &= ~top | (s >= 0.3)
+    z = np.zeros_like(solid)
+    return dict(skin=skin, hair=hair, red=red, cloth=cloth, steel=z, sword=z, gold=z, fringe=np.zeros(solid.shape), glow=True)
+
+
 def _hex(c):
     return np.array([int(c[i:i + 2], 16) for i in (1, 3, 5)]) / 255.
 
 
-def paint(hsv, hsv0, m, color, lo, hi, gloss=0.45, floor=None, gamma=1.0):
+def paint(hsv, hsv0, m, color, lo, hi, gloss=0.45, floor=None, gamma=1.0, keep_wash=False):
     """m 영역을 color로: 원래 밝기 lo~hi를 그 색의 그늘(floor, 기본 42%)~밝은 면(112%)으로. 가장 밝은 칸은 색을 조금 빼 광택
     머리는 floor를 낮게: 금발·은발로 칠해도 머리 그늘·눈썹·감은 눈 선이 어둡게 남음"""
     th, ts, tv = rgb2hsv(_hex(color)[None, None])[0, 0]
@@ -149,17 +179,19 @@ def paint(hsv, hsv0, m, color, lo, hi, gloss=0.45, floor=None, gamma=1.0):
         floor = 0.42 + 0.35 * np.clip((tv - 0.75) / 0.2, 0, 1) * np.clip(1 - ts / 0.25, 0, 1)
     vv = np.clip(tv * (floor + (1.12 - floor) * t), 0, 1)
     ss = ts * (1 - gloss * np.clip((t - 0.8) / 0.2, 0, 1))
+    if keep_wash:   # 빛에 바랜 칸: 원래 채도에 비례해 칠해 바랜 느낌을 남김 (채도 0.25 이상이면 그대로)
+        ss = ss * np.clip(hsv0[..., 1] / 0.25, 0.35, 1)
     hsv[..., 0] = np.where(m, th, hsv[..., 0])
     hsv[..., 1] = np.where(m, ss, hsv[..., 1])
     hsv[..., 2] = np.where(m, vv, hsv[..., 2])
 
 
-def recolor(im, hair_c, steel_c, cloth_c, cape_c, cw=CELL, steel_cells=None, fxmask=None):
+def recolor(im, hair_c, steel_c, cloth_c, cape_c, cw=CELL, steel_cells=None, fxmask=None, glow_cells=()):
     # steel_cells: 갑옷 쇠를 칠할 칸 (None = 모두). 엑스칼리버 빛 칸은 얼굴까지 하얗게 날아가 쇠로 잡히므로 빼고 칠함
     out = im.copy()
     for k in range(im.shape[1] // cw):
         cell = im[:, k * cw:(k + 1) * cw]
-        m = masks(cell, None if fxmask is None else fxmask[:, k * cw:(k + 1) * cw])
+        m = glow_masks(cell) if k in glow_cells else masks(cell, None if fxmask is None else fxmask[:, k * cw:(k + 1) * cw])
         _, _, _, hsv0 = hsv_of(cell)
         hsv = hsv0.copy()
         ch = np.zeros(cell.shape[:2], bool)
@@ -169,7 +201,7 @@ def recolor(im, hair_c, steel_c, cloth_c, cape_c, cw=CELL, steel_cells=None, fxm
             if mk == 'steel' and steel_cells is not None and k not in steel_cells: continue
             if col:
                 region = m[mk] | fr if mk == 'hair' else m[mk]
-                paint(hsv, hsv0, region, col, lo, hi, gloss=0.6 if mk == 'steel' else 0.45,
+                paint(hsv, hsv0, region, col, lo, hi, gloss=0.6 if mk == 'steel' else 0.45, keep_wash=bool(m.get('glow')),
                       floor=0.16 if mk == 'hair' else None, gamma=0.6 if mk == 'hair' else 1.0)   # 머리: 외곽선만 어둡게, 중간 톤은 밝게
                 ch |= m[mk]
         rgb = (hsv2rgb(hsv) * 255 + .5).clip(0, 255).astype(np.uint8)
@@ -226,7 +258,7 @@ def main():
     ex = np.array(Image.open(EXCAL_SRC).convert('RGBA'))
     for n, name, *cols in VARIANTS:
         Image.fromarray(recolor(im, *cols, fxmask=fxm), 'RGBA').save(f'assets/sprites/merc/warrior_{n}.webp', 'WEBP', lossless=True)
-        Image.fromarray(recolor(ex, *cols, cw=EXCAL_CELL, steel_cells={0}), 'RGBA').save(f'assets/sprites/fx/warrior_excalibur_cast_{n}.webp', 'WEBP', lossless=True)
+        Image.fromarray(recolor(ex, *cols, cw=EXCAL_CELL, steel_cells={0}, glow_cells={1, 2, 3}), 'RGBA').save(f'assets/sprites/fx/warrior_excalibur_cast_{n}.webp', 'WEBP', lossless=True)
         print(f'warrior_{n}.webp · warrior_excalibur_cast_{n}.webp  {name}')
 
 
