@@ -9,7 +9,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Jua&family=Pretendard:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Jua&family=Nanum+Brush+Script&family=Pretendard:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css" rel="stylesheet">
   <style>
     :root {
@@ -20348,7 +20348,8 @@
       unit.maxAttackAnim = 52;
 
       // [Requirement 2]: 스킬 사용 시 피격된 적 위가 아니라 스킬 사용자(시전자) 머리 위에 스킬 이름이 뜨도록 표시!
-      sim.floatTexts.push({
+      // (격투가 결투는 빼고: 걸리면 둘 머리 위에 붓글씨 '결투!'가 뜸)
+      if (sk !== 'duel_call') sim.floatTexts.push({
         x: unit.x,
         y: unit.y - 48,
         text: `${skObj.icon} ${skObj.name}!`,
@@ -25094,6 +25095,24 @@
         ctx.restore();
       });
     }
+    // 결투 중: 머리 위에 붓글씨 '결투!' (무협 느낌 · 붉은 글자에 먹빛 테두리, 살짝 맥박)
+    try { document.fonts && document.fonts.load('24px "Nanum Brush Script"'); } catch (e) {}
+    function drawDuelLabel(ctx, tick, y) {
+      ctx.save();
+      const k = 1 + 0.06 * Math.sin(tick * 0.25);
+      ctx.translate(0, y);
+      ctx.scale(k, k);
+      ctx.font = '24px "Nanum Brush Script", "Jua", serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(20, 8, 4, 0.9)';
+      ctx.strokeText('결투!', 0, 0);
+      ctx.fillStyle = '#dc2626';
+      ctx.fillText('결투!', 0, 0);
+      ctx.restore();
+    }
     // 멸식 - 격 준비 기운: 연격 10타를 이어 멸식을 쓸 수 있는 동안(쿨타임이면 없음) 몸 뒤에서 푸른·노란 불꽃이 일렁임
     //   그림 = 멸식 시전 칸의 기운만 뽑은 것 (assets/sprites/fx/brawler_aura.webp, 칸·기준점은 brawler_0과 같음, tools/brawler_build.py)
     //   잘려 보이지 않게: 발밑에 옅은 빛무리를 먼저 깔고, 불꽃은 좌우를 번갈아 뒤집으며 키·밝기가 출렁이고, 불티가 위로 피어오름
@@ -25548,7 +25567,6 @@
         brawlerFace(unit, foe);
         unit.rootTicks = Math.max(unit.rootTicks || 0, BRAWLER_DUEL_HOLD); unit.isMoving = false; // 걸린 뒤 1초 더 결투 자세로 제자리 (이동·공격 불가)
         [unit, foe].forEach(x => sim.effects.push({ type: 'aoe_ring', x: x.x, y: x.y, r: 56, color: '#dc2626', life: 40, maxLife: 40 }));
-        sim.floatTexts.push({ x: foe.x, y: foe.y - 56, text: '⚔️ 결투!', color: '#dc2626', life: 60 });
         playCombatSfx('heavy');
         addBattleLog(`⚔️ [격투가] ${unit.name}이(가) ${foe.name}에게 결투를 걸었어요! ${iso ? '10초간 서로에게만 피해를 줄 수 있어요' : '서로 주는 피해가 늘어나요'}`);
         return true;
@@ -30113,13 +30131,16 @@
       if (u.alive && u.job === 'brawler' && !u.monsterType) drawBrawlerCombo(ctx, u, tick, bx + barW + 3, by - 2); // 격투가 연격 콤보
 
       // 활성 CC 아이콘
-      const activeCcList = Object.keys(st).filter(k => st[k] > 0 && k !== 'superarmor').map(k => STATUS_DEFS[k].icon); // 슈퍼아머는 빨강·파랑 윤곽선으로 보여서 방패 아이콘은 뺌
+      // 슈퍼아머는 빨강·파랑 윤곽선으로 보여서 방패 아이콘은 뺌 · 결투는 ⚔️ 대신 붓글씨 '결투!' (drawDuelLabel)
+      const activeCcList = Object.keys(st).filter(k => st[k] > 0 && k !== 'superarmor' && k !== 'duel').map(k => STATUS_DEFS[k].icon);
+      const ccY = by - ((spiritLifeMax && u.spiritOn) || brawlSpirit > 0 ? 7 : 3);
       if (activeCcList.length > 0) {
         ctx.font = 'bold 13px Pretendard, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        ctx.fillText(activeCcList.join(''), 0, by - ((spiritLifeMax && u.spiritOn) || brawlSpirit > 0 ? 7 : 3));
+        ctx.fillText(activeCcList.join(''), 0, ccY);
       }
+      if ((st.duel || 0) > 0) drawDuelLabel(ctx, tick, activeCcList.length > 0 ? ccY - 15 : ccY);
 
       // 하단 용병 이름 배지
       const shortName = unitShortName(u);
