@@ -42130,9 +42130,13 @@
       // ⚡ 1:1로 맞붙는 결투(방장 + 도전자 한 명)는 두 기기를 직접 연결해 화면·조작을 주고받음 (안 되면 서버로 그대로)
       liveNet.rtcTried = false;
       liveNet.rtcDecision = null;
+      liveNet.rtcRetries = 0;
       if (!team && !spectator && typeof liveNet.bid === 'number') {
-        if (role === 'host') { liveNet.rtcTried = true; liveRtcStartHost(ref, liveNet.bid); }
-        else liveRtcStartGuest(ref, liveNet.bid);
+        if (role === 'host') {
+          // 이 기기에서 요즘 직접 연결이 계속 안 됐으면(학교 와이파이가 기기끼리 막아 둔 경우 등) 점검 없이 바로 서버로 → 시작이 6초씩 늦어지지 않게
+          if (liveRtcRecentlyFailed()) addBattleLog('📡 이 와이파이에서는 직접 연결이 잘 안 돼서 서버로 진행해요.');
+          else { liveNet.rtcTried = true; liveRtcStartHost(ref, liveNet.bid); }
+        } else liveRtcStartGuest(ref, liveNet.bid);
       }
       liveWatchConnection();
     }
@@ -42145,7 +42149,31 @@
     const LIVE_RTC_FRAME_MS = 50;
     const LIVE_RTC_STALE_MS = 600; // 직접 연결 화면이 이만큼 안 오면 서버 화면으로
     const LIVE_RTC_ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
-    const LiveRtc = { gen: 0, pc: null, dc: null, open: false, ref: null, role: null, bid: null, offerSdp: null, lastFrameAt: 0, lastSentAt: 0, sent: new WeakSet(), logs: [], startedAt: 0, pings: {}, pingN: 0, lastPingAt: 0, rtts: [] };
+    // 직접 연결로 보내려고 밀려 있는 양이 이보다 많으면 이번 화면은 건너뜀 (화면 2~3장 분량)
+    // 예전 256KB: 와이파이가 1~2초 멈추면 지나간 화면 수십 장이 쌓였다가 한꺼번에 도착해서, 도전자 화면이 한동안 더 늦게 재생됐음
+    // 화면은 늘 전체 화면이라 몇 장 건너뛰어도 다음 장으로 바로 이어짐 · 조작은 작아서 따로 넉넉히(64KB)
+    const LIVE_RTC_FRAME_BUF_MAX = 12 * 1024;
+    const LIVE_RTC_MSG_BUF_MAX = 64 * 1024;
+    // 전투 중 직접 연결이 끊기면 다시 연결 (한 판에 이만큼까지 · 그동안은 서버 화면으로 이어 봄)
+    const LIVE_RTC_MAX_RETRIES = 3, LIVE_RTC_RETRY_DELAY_MS = 1500;
+    // 연결조차 안 된 일이 이 기기에서 연달아 LIVE_RTC_FAIL_SKIP_N번이면 LIVE_RTC_FAIL_SKIP_MS 동안 점검 없이 바로 서버로 (한 번이라도 되면 지움)
+    const LIVE_RTC_FAIL_KEY = 'caLiveRtcFail', LIVE_RTC_FAIL_SKIP_N = 2, LIVE_RTC_FAIL_SKIP_MS = 3 * 3600 * 1000;
+    function liveRtcFailInfo() {
+      try { const v = JSON.parse(localStorage.getItem(LIVE_RTC_FAIL_KEY) || 'null'); return v && typeof v === 'object' ? v : null; } catch (e) { return null; }
+    }
+    function liveRtcRecentlyFailed() {
+      const v = liveRtcFailInfo();
+      return Boolean(v && liveNum(v.n) >= LIVE_RTC_FAIL_SKIP_N && Date.now() - liveNum(v.at) < LIVE_RTC_FAIL_SKIP_MS);
+    }
+    function liveRtcRememberFail(failed) {
+      try {
+        if (!failed) { localStorage.removeItem(LIVE_RTC_FAIL_KEY); return; }
+        const v = liveRtcFailInfo();
+        const n = v && Date.now() - liveNum(v.at) < LIVE_RTC_FAIL_SKIP_MS ? liveNum(v.n) + 1 : 1;
+        localStorage.setItem(LIVE_RTC_FAIL_KEY, JSON.stringify({ n, at: Date.now() }));
+      } catch (e) {}
+    }
+    const LiveRtc = { gen: 0, pc: null, dc: null, open: false, failed: false, ref: null, role: null, bid: null, offerSdp: null, lastFrameAt: 0, lastSentAt: 0, sent: new WeakSet(), logs: [], startedAt: 0, pings: {}, pingN: 0, lastPingAt: 0, rtts: [] };
     // ----- 시작 전 연결 점검: 방장이 전투를 시작하기 전에 직접 연결이 원활한지 재 보고, 원활하면 직접 연결 · 아니면 처음부터 서버로 -----
     // 직접 연결이 열리면 0.1초마다 10번 신호를 주고받아 왕복 시간을 잼 → 8번 넘게 돌아오고 · 가운데 값 100ms 이하 · 느린 쪽(90%) 250ms 이하면 원활
     // 6초 안에 열리지 않으면 서버로 (도중에 끊기면 그때도 저절로 서버로 이어 감)
@@ -42176,7 +42204,8 @@
       const R = LiveRtc, now = Date.now();
       if (R.role !== 'host' || !R.startedAt) { liveRtcDecide('server', '직접 연결을 쓸 수 없음'); return; }
       if (!R.open) {
-        if (now - R.startedAt > LIVE_RTC_CHECK_TIMEOUT_MS) liveRtcDecide('server', '연결되지 않음');
+        // 연결 실패가 확실하면(ICE failed) 6초를 다 기다리지 않음
+        if (R.failed || now - R.startedAt > LIVE_RTC_CHECK_TIMEOUT_MS) { liveRtcRememberFail(true); liveRtcDecide('server', '연결되지 않음'); }
         return;
       }
       if (R.pingN < LIVE_RTC_PING_N && now - R.lastPingAt >= LIVE_RTC_PING_GAP_MS) {
@@ -42191,15 +42220,16 @@
       const med = rtts.length ? rtts[Math.floor(rtts.length / 2)] : Infinity;
       const p90 = rtts.length ? rtts[Math.min(rtts.length - 1, Math.floor(rtts.length * 0.9))] : Infinity;
       const good = rtts.length >= LIVE_RTC_GOOD_MIN_PONGS && med <= LIVE_RTC_GOOD_MEDIAN_MS && p90 <= LIVE_RTC_GOOD_P90_MS;
+      liveRtcRememberFail(false); // 연결은 됐음 (느려서 서버로 가더라도 다음엔 다시 점검)
       liveRtcDecide(good ? 'rtc' : 'server', rtts.length ? `왕복 ${Math.round(med)}ms · ${rtts.length}/${R.pingN}번 응답` : '응답 없음');
     }
     function liveRtcSupported() { return typeof RTCPeerConnection === 'function'; }
     function liveRtcCanSend(role) {
       return LiveRtc.open && LiveRtc.role === role && Boolean(LiveRtc.dc) && LiveRtc.dc.readyState === 'open';
     }
-    function liveRtcSend(msg) {
+    function liveRtcSend(msg, maxBuf = LIVE_RTC_MSG_BUF_MAX) {
       const dc = LiveRtc.dc;
-      if (!dc || dc.readyState !== 'open' || dc.bufferedAmount > 256 * 1024) return false; // 밀려 있으면 이번 것은 건너뜀
+      if (!dc || dc.readyState !== 'open' || dc.bufferedAmount > maxBuf) return false; // 밀려 있으면 이번 것은 건너뜀
       try { dc.send(JSON.stringify(msg)); return true; } catch (e) { return false; }
     }
     function liveRtcFeeding() {
@@ -42210,7 +42240,7 @@
       if (R.ref) { try { R.ref.child('rtc/offer').off(); R.ref.child('rtc/answer').off(); } catch (e) {} }
       try { if (R.dc) R.dc.close(); } catch (e) {}
       try { if (R.pc) R.pc.close(); } catch (e) {}
-      Object.assign(R, { gen: R.gen + 1, pc: null, dc: null, open: false, ref: null, role: null, bid: null, offerSdp: null, lastFrameAt: 0, lastSentAt: 0, sent: new WeakSet(), logs: [], startedAt: 0, pings: {}, pingN: 0, lastPingAt: 0, rtts: [] });
+      Object.assign(R, { gen: R.gen + 1, pc: null, dc: null, open: false, failed: false, ref: null, role: null, bid: null, offerSdp: null, lastFrameAt: 0, lastSentAt: 0, sent: new WeakSet(), logs: [], startedAt: 0, pings: {}, pingN: 0, lastPingAt: 0, rtts: [] });
     }
     // ICE 후보를 다 모을 때까지(최대 ms) 기다림 → 연결 정보를 한 번에 주고받음
     function liveRtcIceDone(pc, ms) {
@@ -42233,12 +42263,7 @@
         sim.floatTexts.forEach(x => R.sent.add(x));
         if (R.role === 'guest') onLocalControlChanged(true);
       };
-      dc.onclose = () => {
-        if (R.gen !== gen || !R.open) return;
-        R.open = false;
-        // 전투가 끝나서 닫힌 것이면 알리지 않음 (결과가 서버로 조금 늦게 올 수 있어 잠깐 뒤에 확인)
-        setTimeout(() => { if (R.gen === gen && sim.running && liveNet.role && !liveNet.finished) addBattleLog('📡 직접 연결이 끊겨 서버로 이어서 주고받아요.'); }, 1500);
-      };
+      dc.onclose = () => liveRtcLost(gen);
       dc.onmessage = ev => {
         if (R.gen !== gen) return;
         let m = null;
@@ -42262,6 +42287,31 @@
         }
       };
     }
+    // 직접 연결이 끊김 (통로가 닫힘 · 연결 실패): 서버 화면으로 이어 보고, 방장은 전투 중이면 잠깐 뒤 다시 연결해 봄
+    function liveRtcLost(gen) {
+      const R = LiveRtc;
+      if (R.gen !== gen) return;
+      // 열려 있던 통로가 끊김 · 또는 전투 중 다시 연결하려다 실패 (시작 전 점검 중 실패는 liveRtcCheckTick이 판정)
+      if (!R.open && !(R.failed && liveNet.rtcDecision === 'rtc')) return;
+      R.open = false;
+      const ref = R.ref, bid = R.bid, wasHost = R.role === 'host';
+      setTimeout(() => {
+        // 전투가 끝나서 닫힌 것이면 알리지 않음 (결과가 서버로 조금 늦게 올 수 있어 잠깐 뒤에 확인)
+        if (R.gen !== gen || !sim.running || !liveNet.role || liveNet.finished) return;
+        const retry = wasHost && liveNet.role === 'host' && liveNet.rtcDecision === 'rtc' && ref && typeof bid === 'number' && (liveNet.rtcRetries || 0) < LIVE_RTC_MAX_RETRIES;
+        addBattleLog(retry ? '📡 직접 연결이 끊겨 서버로 이어 가며 다시 연결해 볼게요.' : '📡 직접 연결이 끊겨 서버로 이어서 주고받아요.');
+        if (retry) { liveNet.rtcRetries = (liveNet.rtcRetries || 0) + 1; liveRtcStartHost(ref, bid); }
+      }, LIVE_RTC_RETRY_DELAY_MS);
+    }
+    // ICE 연결 실패를 바로 알아챔 (통로 닫힘은 한참 뒤에야 오기도 함)
+    function liveRtcWatchPc(pc, gen) {
+      pc.addEventListener('connectionstatechange', () => {
+        const R = LiveRtc;
+        if (R.gen !== gen || R.pc !== pc || pc.connectionState !== 'failed') return;
+        R.failed = true;
+        liveRtcLost(gen);
+      });
+    }
     async function liveRtcStartHost(ref, bid) {
       liveRtcStop();
       if (!liveRtcSupported()) return;
@@ -42269,6 +42319,7 @@
       Object.assign(R, { ref, role: 'host', bid, startedAt: Date.now() });
       try {
         const pc = R.pc = new RTCPeerConnection({ iceServers: LIVE_RTC_ICE });
+        liveRtcWatchPc(pc, gen);
         liveRtcBindChannel(pc.createDataChannel('live', { ordered: true }), gen);
         await ref.child('rtc').remove();
         await pc.setLocalDescription(await pc.createOffer());
@@ -42296,6 +42347,8 @@
         try { if (R.pc) R.pc.close(); } catch (e) {}
         try {
           const pc = R.pc = new RTCPeerConnection({ iceServers: LIVE_RTC_ICE });
+          R.failed = false;
+          liveRtcWatchPc(pc, gen);
           pc.ondatachannel = ev => { if (R.pc === pc) liveRtcBindChannel(ev.channel, gen); };
           await pc.setRemoteDescription({ type: 'offer', sdp: v.sdp });
           await pc.setLocalDescription(await pc.createAnswer());
@@ -42311,6 +42364,8 @@
       if (!liveRtcCanSend('host') || liveNet.role !== 'host' || !sim.running) return;
       const now = Date.now();
       if (now - R.lastSentAt < LIVE_RTC_FRAME_MS) return;
+      // 앞 화면이 아직 밀려 있으면 이번 장은 만들지도 않음 (이펙트·글자·기록은 다음 장에 실려 감)
+      if (R.dc.bufferedAmount > LIVE_RTC_FRAME_BUF_MAX) return;
       R.lastSentAt = now;
       const fresh = list => {
         const out = [];
