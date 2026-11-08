@@ -10,13 +10,14 @@ from PIL import Image
 
 D = 'assets/sprites/fx/samples/brawler_sr1_hit_'
 SRC = {'basic': 'basic_src.png', 'skill': 'skill_src.png', 'barrage': 'barrage_src.webp', 'big': 'big_src.webp'}
-BG, FULL = 18, 235
+BG, FULL = 18, 170   # 170 이상 밝은 곳은 완전 불투명 (2026-11-08 '투명도 낮춰' → 235에서 낮춤)
+GAMMA = 0.7          # 1보다 작을수록 흐린 빛 부분도 진하게
 OUT_W = 256
 
 
 def build(kind, src):
     im = np.array(Image.open(D + src).convert('RGB')).astype(float)
-    a = np.clip((im.max(axis=2) - BG) / (FULL - BG), 0, 1)
+    a = np.clip((im.max(axis=2) - BG) / (FULL - BG), 0, 1) ** GAMMA
     h, w = a.shape
     yy, xx = np.mgrid[0:h, 0:w]
     a *= np.clip(np.minimum.reduce([xx, w - 1 - xx, yy, h - 1 - yy]) / 40, 0, 1)   # 가장자리 잘린 티 없게
