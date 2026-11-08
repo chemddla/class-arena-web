@@ -1805,24 +1805,29 @@
           const hud = hero.querySelector('.lp-hud');
           const where = document.getElementById('lpWhere');
           const narrow = () => innerWidth <= 480;
-          // 용병: 직업마다 외형 하나를 무작위로. 크기는 전투 화면과 같은 비율 = 키(standH) 기준 × 직업 덩치(JOB_BODY_SIZE: 기사 1.4, 전사 1.2, 도적 0.9 …)
+          // 크기: 전투 화면의 그림 키(spriteDrawH)를 보통 용병(1) 대비 배율로 구한 뒤, 차이가 너무 벌어지지 않게 0.6제곱으로 완만하게 줄여 씀
+          //   (보통 용병 키 81px 기준. 기사 1.4 → 1.22, 도적 0.9 → 0.94, 오우거 2.18 → 1.6)
+          const soften = (r) => Math.pow(Math.max(0.5, r), 0.6);
+          // 용병: 직업마다 외형 하나를 무작위로. 게임 속 배율 = 직업 덩치(JOB_BODY_SIZE) × 외형 몸 크기(unitSize, 격투가 백호 1.3) × 그림 배율(visScale)
           const addMerc = (box, job, base) => {
             const name = (typeof JOB_DEFS !== 'undefined' && JOB_DEFS[job]?.name) || '용병';
             const def = MERC_SPRITE_DEFS[pick(byJob[job])];
-            const body = (typeof JOB_BODY_SIZE !== 'undefined' && JOB_BODY_SIZE[job]) || 1;
-            const k = +(81 * body / (def.standH || 81)).toFixed(3);
+            const body = ((typeof JOB_BODY_SIZE !== 'undefined' && JOB_BODY_SIZE[job]) || 1) * (def.unitSize || 1) * (def.visScale || 1);
+            const k = +(81 * soften(body) / (def.standH || 81)).toFixed(3);
             const a = makeSprite(def, box, k, `${name} 용병`, def.anims[base] ? base : 'idle');
             a.side = box === foeBox ? 'foe' : 'ally'; a.job = job;
             return a;
           };
           const team = (n, base) => shuffle(Object.keys(byJob)).slice(0, n).map(job => addMerc(party, job, base));
-          // 몬스터: 키(standH) 기준으로 크기를 맞춤 (큰 몬스터는 한 마리만)
-          const sizeK = (def) => { const target = 85 * Math.min(1.8, Math.max(1, def.standH / 100)); return +(target / def.standH).toFixed(3); };
-          const slim = (k) => { const d = MONSTER_SPRITE_DEFS[k]; return d && d.cellW * sizeK(d) < 220; };
+          // 몬스터: 그림 이름에서 몬스터 종류를 찾아(goblin_archer → goblin) 게임 속 몸 크기(MONSTER_DEFS.size) × 그림 배율을 같은 방식으로 완만하게. 일반 몬스터는 1.7배까지 (큰 몬스터는 한 마리만)
+          const monIds = typeof MONSTER_DEFS === 'undefined' ? [] : Object.keys(MONSTER_DEFS).sort((a, b) => b.length - a.length);
+          const gameSize = (key) => { const id = monIds.find(m => key === m || key.startsWith(m + '_')); return (id && MONSTER_DEFS[id].size) || 1.35; };
+          const sizeK = (key) => { const def = MONSTER_SPRITE_DEFS[key]; return +(81 * Math.min(1.7, soften(gameSize(key) * (def.visScale || 1))) / def.standH).toFixed(3); };
+          const slim = (k) => { const d = MONSTER_SPRITE_DEFS[k]; return d && d.cellW * sizeK(k) < 220; };
           const toFoeBox = (a) => { foeBox.insertBefore(a.span, foeBox.querySelector('.lp-foe-bang')); return a; };
           const addFoe = (key, base, k, alt = '길을 막는 몬스터') => {
             const def = MONSTER_SPRITE_DEFS[key];
-            const a = toFoeBox(makeSprite(def, foeBox, k ?? sizeK(def), alt, def.anims[base] ? base : 'idle'));
+            const a = toFoeBox(makeSprite(def, foeBox, k ?? sizeK(key), alt, def.anims[base] ? base : 'idle'));
             // 직업(이펙트 고르기용)·버티는 횟수 (들판 1~2대, 탑 2대)
             a.side = 'foe'; a.key = key;
             a.job = key.startsWith('elite_') ? 'boss' : def.jobs?.[0] || key.match(/_(warrior|archer|mage|healer|rogue|knight|lancer|sniper)/)?.[1] || 'warrior';
