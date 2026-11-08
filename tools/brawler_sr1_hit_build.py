@@ -10,8 +10,8 @@ from PIL import Image
 
 D = 'assets/sprites/fx/samples/brawler_sr1_hit_'
 SRC = {'basic': 'basic_src.png', 'skill': 'skill_src.png', 'barrage': 'barrage_src.webp', 'big': 'big_src.webp'}
-BG, FULL = 18, 170   # 170 이상 밝은 곳은 완전 불투명 (2026-11-08 '투명도 낮춰' → 235에서 낮춤)
-GAMMA = 0.7          # 1보다 작을수록 흐린 빛 부분도 진하게
+BG, FULL = 18, 130   # 130 이상 밝은 곳은 완전 불투명 (2026-11-08 '투명도 낮춰'·'더 진하게': 235 → 170 → 130)
+GAMMA = 0.5          # 1보다 작을수록 흐린 빛 부분도 진하게
 OUT_W = 256
 
 
