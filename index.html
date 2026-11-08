@@ -10945,9 +10945,22 @@
     function saveState() {
       try { syncCodexFromRoster(getActiveStudent()); } catch (e) {}
       try { ensurePvpWeekAll(); } catch (e) {}
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      flushLocalStateSave();
       updateHeaderUI();
     }
+    // 이 기기에 학급 기록 적기: 내가 바꾼 것은 바로(saveState), 서버에서 받은 반 친구 소식은 묶어서 조금 뒤에
+    // (반 친구가 저장할 때마다 학급 전체(수백 KB)를 JSON으로 다시 적으면 실시간 전투·관전 화면이 그만큼 멈칫했음)
+    var localStateSaveTimer = null;
+    function scheduleLocalStateSave(delay = 1500) {
+      if (!localStateSaveTimer) localStateSaveTimer = setTimeout(flushLocalStateSave, delay);
+    }
+    function flushLocalStateSave() {
+      clearTimeout(localStateSaveTimer); localStateSaveTimer = null;
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { console.warn('[이 기기 저장 실패]:', e); }
+    }
+    // 탭을 숨기거나 닫을 때는 미뤄 둔 것을 바로 적음
+    document.addEventListener('visibilitychange', () => { if (document.hidden && localStateSaveTimer) flushLocalStateSave(); });
+    window.addEventListener('pagehide', () => { if (localStateSaveTimer) flushLocalStateSave(); });
 
     function getActiveStudent() {
       return state.students.find(s => s.id === state.activeStudentId) || state.students[0];
@@ -25042,7 +25055,7 @@
       if (sim.netRole !== 'guest') return u.brawlChain > 0 ? Math.max(0, Math.min(1, ((u.brawlSpiritUntil || 0) - sim.tickCount) / BRAWLER_SPIRIT_TICKS)) : 0;
       return u._brawlLastAt != null && (u._brawlHit ?? 0) + 1 < BRAWLER_CHAIN_MAX ? Math.max(0, 1 - (tick - u._brawlLastAt) / BRAWLER_SPIRIT_TICKS) : 0;
     }
-    function drawBrawlerSpirit(ctx, left, bx, by, barW) {
+    function drawBrawlerSpiritBar(ctx, left, bx, by, barW) {
       ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
       ctx.fillRect(bx - 1, by - 5, barW + 2, 4);
       ctx.fillStyle = '#a855f7';
@@ -25466,29 +25479,6 @@
       const gap = Math.max(BRAWLER_CHAIN_GAP_MIN, BRAWLER_CHAIN_GAP0 - (k - 1));
       u.cooldown = Math.min(u.cooldown || gap, gap);
       u.attackAnim = Math.min(u.attackAnim || 0, gap + 2); u.maxAttackAnim = u.attackAnim;
-    }
-
-    // 백호 9타: 정권으로 대상을 뚫고 반대편으로 BRAWLER_SR_PASS_DIST만큼 지나감 → 바로 돌아서 날아 차기로 다시 들어와 10타
-    //   (사거리 밖이라 보통 공격으로는 못 이어서, 도착하면 10타를 직접 부름. 그동안 투혼은 이어짐)
-    function brawlerTigerPass(u, target) {
-      const ang = Math.atan2(target.y - u.y, target.x - u.x), pass = BRAWLER_SR_PASS_DIST + unitBodyGap(target) + unitBodyGap(u), sx = u.x, sy = u.y;
-      brawlerFace(u, target);
-      u.attackAnim = Math.min(u.attackAnim || 0, BRAWLER_SR_PASS_TICKS + 2); u.maxAttackAnim = u.attackAnim; // 착지 → 정권을 지나가는 동안 다 보여 줌
-      u.brawlSpiritUntil = sim.tickCount + BRAWLER_SR_PASS_TICKS + BRAWLER_SR_LEAP_TICKS + BRAWLER_SPIRIT_TICKS;
-      const r = startUnitRush(u, target.x + Math.cos(ang) * pass, target.y + Math.sin(ang) * pass, BRAWLER_SR_PASS_TICKS, () => {
-        if (!u.alive || !brawlerFoeOk(u, target)) return;
-        brawlerFace(u, target);
-        u.brawlHitAt = sim.tickCount; u.brawlHitNo = BRAWLER_CHAIN_MAX; // 그림: 날아 들어오는 동안부터 10타 자세
-        u.attackAnim = BRAWLER_SR_LEAP_TICKS + 22; u.maxAttackAnim = u.attackAnim;
-        brawlerRushTo(u, target, BRAWLER_SR_LEAP_TICKS, '#f97316', () => {
-          if (!brawlerFoeOk(u, target)) return;
-          u.cooldown = Math.max(u.cooldown || 0, u.baseAtkInterval || 30);
-          u.mana = Math.min(u.maxMana, u.mana + 18);
-          playCombatSfx('slash');
-          brawlerBasicAttack(u, target);
-        });
-      });
-      sim.effects.push({ type: 'charge_dash', sx, sy, tx: r.tx, ty: r.ty, trail: true, runTicks: r.n, ownerId: u.id, color: '#fdba74', life: r.n + 20, maxLife: r.n + 20 });
     }
 
     // 백호 9타: 정권으로 대상을 뚫고 반대편으로 BRAWLER_SR_PASS_DIST만큼 지나감 → 바로 돌아서 날아 차기로 다시 들어와 10타
@@ -27707,6 +27697,7 @@
       const arenaSec = document.getElementById('arenaSection');
       if (arenaSec) arenaSec.classList.add('hidden');
       setupIdlePreviewBattle();
+      if (classTabRefreshDeferred) { classTabRefreshDeferred = false; renderAllStudentViews(); } // 전투 중 미뤄 둔 반 친구 소식 반영
     }
 
     function renderLiveUnitStatus() {
@@ -30173,7 +30164,7 @@
       }
 
       const brawlSpirit = u.alive && u.job === 'brawler' && !u.monsterType ? brawlerSpiritLeft(u, tick) : 0;
-      if (brawlSpirit > 0) drawBrawlerSpirit(ctx, brawlSpirit, bx, by, barW); // 격투가 투혼 남은 시간 (보라)
+      if (brawlSpirit > 0) drawBrawlerSpiritBar(ctx, brawlSpirit, bx, by, barW); // 격투가 투혼 남은 시간 (보라)
       if (u.alive && u.job === 'brawler' && !u.monsterType) drawBrawlerCombo(ctx, u, tick, bx + barW + 3, by - 2); // 격투가 연격 콤보
 
       // 활성 CC 아이콘
@@ -37606,6 +37597,7 @@
     }
 
     function renderAllStudentViews() {
+      classTabRefreshDeferred = false;
       updateHeaderUI();
       renderSquadTab();
       renderOfficeTab();
@@ -37869,6 +37861,12 @@
     let classRemote = {};
     let classRemoteReceived = new Set();
     let classApplyTimer = null;
+    // 서버에서 바뀐 학생만 다시 정리하기 위한 표시: students·profiles의 학생별(자식) 소식으로 모음 · 처음·다시 구독할 때는 전부
+    const classDirtyStudents = new Set();
+    var classDirtyAll = true;
+    var classChildSeen = false; // 전체(value) 소식 전에 학생별 소식을 받았는지 (순서가 어긋나면 전부 다시)
+    function markClassStudentDirty(id) { if (id) classDirtyStudents.add(String(id)); classChildSeen = true; }
+    var classTabRefreshDeferred = false; // 전투·관전 중에 미뤄 둔 탭 다시 그리기
 
     // ----- 나만 쓰는 학생 기록 칸 (classes/{코드}/studentPrivate/{학생id}) -----
     // students는 반 학생 모두가 통째로 받으므로, 친구 화면에서 쓰지 않는 큰 칸(지원자 명단·도감·일일 상점 등)은 따로 둠
@@ -37926,6 +37924,7 @@
         if (first) adoptFirstStudentPriv(want === '*' ? (state.students || []).map(x => x.id) : [want], want === '*' ? val : { [want]: val });
         if (want === '*') { studentPriv.remote = val && typeof val === 'object' ? val : {}; studentPriv.all = true; }
         else { studentPriv.remote = { [want]: val && typeof val === 'object' ? val : {} }; studentPriv.loadedId = want; }
+        if (want === '*') classDirtyAll = true; else markClassStudentDirty(want); // 나만 쓰는 칸이 바뀐 학생도 다시 정리
         if (classRemoteReceived.size < CLASS_SYNC_KEYS.length) return;
         if (classApplyTimer) clearTimeout(classApplyTimer);
         classApplyTimer = setTimeout(() => handleRemoteClassUpdate(code), 60);
@@ -39024,12 +39023,14 @@
       const classCode = String(state.classCode || '').trim().toUpperCase();
       if (!classCode) return;
 
-      // 1) 이 기기(브라우저)에 백업
-      const reg = getLocalClassesRegistry();
-      reg[classCode] = buildClassCloudPayload();
-      saveLocalClassesRegistry(reg);
-
       const doPush = async () => {
+        sparkClassPushFn = null;
+        // 1) 이 기기(브라우저)에 백업 — 저장 요청마다가 아니라 올릴 때 한 번 (학급 전체를 JSON으로 다시 쓰는 일이라 연달아 저장하면 화면이 멈칫했음)
+        try {
+          const reg = getLocalClassesRegistry();
+          reg[classCode] = buildClassCloudPayload();
+          saveLocalClassesRegistry(reg);
+        } catch (e) { console.warn('[이 기기 백업 실패]:', e); }
         if (StudentInbox.busy) { // 선물함 정산 쓰기가 끝난 뒤에 올림 (내 기록을 예전 값으로 덮지 않도록)
           sparkClassSyncTimer = setTimeout(doPush, 600);
           return false;
@@ -39218,8 +39219,19 @@
       if (immediate) {
         return await doPush();
       }
+      sparkClassPushFn = doPush;
       sparkClassSyncTimer = setTimeout(doPush, 600);
     }
+    // 탭을 닫거나 숨길 때 미뤄 둔 저장은 바로 올림 (백업도 그때 같이)
+    var sparkClassPushFn = null;
+    function flushPendingClassPush() {
+      if (!sparkClassPushFn) return;
+      clearTimeout(sparkClassSyncTimer); sparkClassSyncTimer = null;
+      const fn = sparkClassPushFn; sparkClassPushFn = null;
+      try { fn(); } catch (e) {}
+    }
+    window.addEventListener('pagehide', flushPendingClassPush);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) flushPendingClassPush(); });
 
     // force=true : 서버 데이터를 그대로 받아들임 (처음 접속할 때)
     // force=false: 내가 아직 업로드하지 않은 변경은 지키고, 나머지만 서버 값으로 갱신
@@ -39278,10 +39290,21 @@
         const ownOnly = !canManageCurrentClass(); // 학생 기기: 친구 기록은 언제나 서버 값을 따름
         const result = [];
         const seen = new Set();
-        const normalizedRemote = Object.keys(remoteStudents)
+        // 서버에서 바뀐 학생(또는 처음)만 다시 정리하고, 나머지는 지금 들고 있는 기록을 그대로 씀
+        // (예전엔 반 친구 한 명이 저장할 때마다 모든 학생을 복사·정리·진형 계산·비교해서 태블릿의 전투 화면이 끊겼음)
+        const dirtyAll = force || classDirtyAll;
+        const dirty = new Set(classDirtyStudents);
+        classDirtyStudents.clear(); classDirtyAll = false;
+        const reused = [], toNormalize = [];
+        Object.keys(remoteStudents).forEach(id => {
+          const local = localById.get(id);
+          if (!dirtyAll && !dirty.has(id) && local) reused.push(local); else toNormalize.push(id);
+        });
+        const normalizedRemote = toNormalize
           .map(id => normalizeRemoteStudent(remoteStudents[id], id, profiles[id]))
           .filter(Boolean);
-        assignPlainMercNamesForClass(normalizedRemote);
+        assignPlainMercNamesForClass([...reused, ...normalizedRemote]);
+        reused.forEach(local => { seen.add(local.id); result.push(local); });
         normalizedRemote.forEach(rs => {
           seen.add(rs.id);
           const remoteSig = syncSig(rs);
@@ -39339,7 +39362,7 @@
           state.activeStudentId = state.students[0]?.id || null;
         }
         localStorage.setItem(SPARK_LAST_CLASS_CODE_KEY, state.classCode);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        if (force) flushLocalStateSave(); else scheduleLocalStateSave(); // 반 친구 소식은 묶어서 이 기기에 적음 (처음 받을 때는 바로)
         updateClassBadgesUI();
         updateHeaderUI();
       } finally {
@@ -39385,6 +39408,8 @@
       if (isLoginOpen) renderLoginStudentGrid();
       const isLobbyOpen = !document.getElementById('classLobbyPageView')?.classList.contains('hidden');
       if (isLobbyOpen) renderClassLobbyPage();
+      // 전투·관전 화면이 돌아가는 동안은 탭 다시 그리기를 미룸 (반 친구가 저장할 때마다 큰 목록을 다시 그려 화면이 끊겼음) → 전투가 끝나면 한 번에
+      if (typeof sim !== 'undefined' && sim.running && sim.mode !== 'preview') { classTabRefreshDeferred = true; return; }
       if (!document.getElementById('studentTab-squad')?.classList.contains('hidden')) {
         updateSquadPowerDashboard(getActiveStudent());
       }
@@ -39441,12 +39466,18 @@
       classSyncCode = cleanCode;
       classRemote = {};
       classRemoteReceived = new Set();
+      classDirtyAll = true; classDirtyStudents.clear(); classChildSeen = false;
       // 학급 전체가 아니라 필요한 5개 칸만 구독 (방·미니게임 변화로 화면 전체가 다시 그려지지 않도록)
       CLASS_SYNC_KEYS.forEach(key => {
         const ref = db.ref(`classes/${cleanCode}/${key}`);
+        // 학생별 소식으로 바뀐 학생만 표시 → 받을 때 그 학생만 다시 정리 (같은 경로의 구독이라 서버 내려받기는 늘지 않음)
+        if (key === 'students' || key === 'profiles') {
+          ['child_added', 'child_changed', 'child_removed'].forEach(ev => ref.on(ev, snap => { if (classSyncCode === cleanCode) markClassStudentDirty(snap && snap.key); }, () => {}));
+        }
         ref.on('value', (snap) => {
           if (classSyncCode !== cleanCode) return;
           classRemote[key] = snap && typeof snap.val === 'function' ? snap.val() : null;
+          if (key === 'students') { if (!classChildSeen) classDirtyAll = true; classChildSeen = false; } // 학생별 소식 없이 전체만 왔으면 전부 다시
           if (key === 'meta') checkAppMinBuild(classRemote.meta);
           classRemoteReceived.add(key);
           if (classRemoteReceived.size < CLASS_SYNC_KEYS.length) return;
@@ -39801,6 +39832,7 @@
       activeBattleEventsRef.limitToLast(10).on('child_added', (snap) => {
         const ev = snap && typeof snap.val === 'function' ? snap.val() : null;
         if (!ev || !ev.eventId || processedBattleEventIds.has(ev.eventId)) return;
+        if (processedBattleEventIds.size > 1000) processedBattleEventIds.clear(); // 이벤트는 20초 뒤 지워지므로 오래 기억할 필요 없음
         processedBattleEventIds.add(ev.eventId);
         const myStu = getActiveStudent();
         if (!sim.running || !myStu || ev.actorId === myStu.id) return;
@@ -51633,7 +51665,9 @@
      * - 관전 화면은 받은 상태를 PetRun 그림으로 그리고, 다음 화면이 올 때까지는 같은 속도로 미리 움직여 부드럽게 보이게 함
      * - 관전엔 조작·보상이 없음. 친구가 끝나면 결과를 잠깐 보여 주고 관전을 마침
      ********************************************************************/
-    const PETRUN_LIVE = { index: 'petrun_index', hz: 8, maxAgeMs: 60000, refreshMs: 15000, endKeepMs: 3500, watchEndMs: 4500, goneMs: 5000 };
+    const PETRUN_LIVE = { index: 'petrun_index', hz: 8, maxAgeMs: 60000, refreshMs: 15000, endKeepMs: 3500, watchEndMs: 4500, goneMs: 5000,
+      // objsFullMs: 물체·글자 목록을 통째로 다시 보내는 간격 · deltaFrom(2026-11-09 00:00 KST)부터 그 사이 화면은 목록 칸을 비움 (그 전에 연 옛 탭은 매 화면 전체를 기대함)
+      objsFullMs: 500, deltaFrom: Date.UTC(2026, 10, 8, 15) };
     var petRunLiveCache = {};
 
     const PetRunWatchView = Object.assign(Object.create(PetRun), {
@@ -51643,7 +51677,7 @@
 
     const PetRunLive = {
       // 달리는 쪽
-      myId: null, idxRef: null, frameRef: null, watchers: 0, acc: 0, lastIdxAt: 0, lastSentAt: 0, endTimer: null,
+      myId: null, idxRef: null, frameRef: null, watchers: 0, acc: 0, lastIdxAt: 0, lastSentAt: 0, endTimer: null, lidSeq: 0, lastObjSig: null, lastFullAt: 0,
       // 보는 쪽
       watchId: null, watchInfo: null, watchRef: null, watchEntryRef: null, raf: 0, last: 0, lastFrameAt: 0, overAt: 0, goneAt: 0, hiddenAt: 0,
 
@@ -51658,7 +51692,7 @@
         if (!stu || !s) return;
         const idx = this.idx(stu.id), fr = this.frameRefOf(stu.id);
         if (!idx || !fr) return;
-        Object.assign(this, { myId: stu.id, idxRef: idx, frameRef: fr, watchers: 0, acc: 0, lastIdxAt: Date.now(), lastSentAt: 0 });
+        Object.assign(this, { myId: stu.id, idxRef: idx, frameRef: fr, watchers: 0, acc: 0, lastIdxAt: Date.now(), lastSentAt: 0, lastObjSig: null, lastFullAt: 0 });
         try { idx.onDisconnect().remove(); fr.onDisconnect().remove(); } catch (e) {}
         fr.remove().catch(() => {});
         idx.set({
@@ -51669,7 +51703,7 @@
           if (this.idxRef !== idx) return;
           const v = snap && snap.val();
           const n = v && typeof v === 'object' ? Object.keys(v).length : 0;
-          if (n > this.watchers) this.acc = 1; // 새로 보는 친구에게 바로 한 장
+          if (n > this.watchers) { this.acc = 1; this.lastObjSig = null; } // 새로 보는 친구에게 바로 전체 화면 한 장
           this.watchers = n;
         });
       },
@@ -51706,9 +51740,14 @@
       // 화면 한 장: [판, t, 거리, 속도, y, vy, 상태, 공중시간, 걸음, 무적, 맞음, 체력, 최대, 점수, 젤리, 단계, 단계번쩍, 대시, 자석, 2배, 보호막, 흔들림, 물체[], 글자[], 슬라이딩, 아이템]
       encode(s) {
         const r = v => Math.round(v || 0), r2 = v => Math.round((v || 0) * 100) / 100;
+        // 물체(젤리·아이템·장애물)·글자 목록이 화면 한 장(350~800B)의 대부분인데, 받는 쪽은 advance로 똑같이 흘려 보냄
+        // → 목록이 바뀌었을 때(생김·먹음·사라짐)와 objsFullMs마다만 통째로 보내고, 그 사이 화면은 null (받는 쪽이 앞 화면 목록을 이어 씀)
+        const now = Date.now();
         const objs = [];
+        let sig = '';
         for (const o of s.objs) {
           if (o.got || o.dead || o.x > PETRUN.W + 90 || o.x < -110) continue;
+          sig += (o._lid || (o._lid = ++this.lidSeq)) + ',';
           if (o.kind === 'jelly') objs.push([0, r(o.x), r(o.y), o.sub === 'heart' ? 'h' : o.sub === 'big' ? 'b' : Math.max(0, PETRUN_JELLY_COLORS.indexOf(o.c))]);
           else if (o.kind === 'item') objs.push([1, r(o.x), r(o.y), o.sub]);
           else {
@@ -51718,9 +51757,13 @@
           }
         }
         const flags = (s.onGround ? 1 : 0) | (s.sliding ? 2 : 0) | (s.over ? 4 : 0) | (s.paused ? 8 : 0) | (s.isBest ? 16 : 0);
+        sig += '|' + s.texts.map(t => t._lid || (t._lid = ++this.lidSeq)).join(',');
+        const skipLists = now >= PETRUN_LIVE.deltaFrom && sig === this.lastObjSig && now - this.lastFullAt < PETRUN_LIVE.objsFullMs;
+        if (!skipLists) { this.lastObjSig = sig; this.lastFullAt = now; }
+        const texts = skipLists ? null : s.texts.map(t => [r(t.x), r(t.y), String(t.text).slice(0, 40), t.color, r2(t.life)]);
         return JSON.stringify([1, r2(s.t), r(s.dist), r(s.speed), r(s.y), r(s.vy), flags, r2(s.airT), r2(s.animT), r2(s.inv), r2(s.hitFlash),
           Math.round(Math.max(0, s.hp) * 10) / 10, s.hpMax, r(s.score), s.jelly, s.stage, r2(s.stageFlash), r2(s.fx.boost), r2(s.fx.magnet), r2(s.fx.double), s.shield ? 1 : 0, r2(s.shake),
-          objs, s.texts.map(t => [r(t.x), r(t.y), String(t.text).slice(0, 40), t.color, r2(t.life)]), s.slides || 0, s.items || 0]);
+          skipLists ? null : objs, texts, s.slides || 0, s.items || 0]);
       },
 
       // ───── 보는 쪽 ─────
@@ -51828,8 +51871,10 @@
         try { a = JSON.parse(str); } catch (e) { return; }
         if (!Array.isArray(a) || a[0] !== 1 || !this.watchInfo) return;
         const prev = PetRunWatchView.st, N = v => Number(v) || 0, flags = N(a[6]);
-        const objs = [];
-        (Array.isArray(a[22]) ? a[22] : []).forEach(o => {
+        // 물체·글자 칸이 null이면 바뀐 게 없다는 뜻: 앞 화면 목록을 그대로 이어 씀 (advance가 흘려 보냄) · 앞 화면이 없으면 다음 전체 목록까지 비움
+        const keepObjs = a[22] === null && Boolean(prev), keepTexts = a[23] === null && Boolean(prev);
+        const objs = keepObjs ? prev.objs : [];
+        (keepObjs || !Array.isArray(a[22]) ? [] : a[22]).forEach(o => {
           if (!Array.isArray(o)) return;
           if (o[0] === 0) {
             const sub = o[3] === 'h' ? 'heart' : o[3] === 'b' ? 'big' : undefined;
@@ -51849,7 +51894,7 @@
           onGround: Boolean(flags & 1), sliding: Boolean(flags & 2), over: Boolean(flags & 4), paused: Boolean(flags & 8), isBest: Boolean(flags & 16),
           airT: N(a[7]), animT: N(a[8]), inv: N(a[9]), hitFlash: N(a[10]), hp: N(a[11]), hpMax: N(a[12]) || 100, score: N(a[13]), jelly: N(a[14]),
           stage: Math.max(0, Math.min(PETRUN_STAGE_MAX, N(a[15]))), stageFlash: N(a[16]), fx: { boost: N(a[17]), magnet: N(a[18]), double: N(a[19]) }, shield: N(a[20]), shake: N(a[21]),
-          objs, texts: (Array.isArray(a[23]) ? a[23] : []).filter(Array.isArray).map(t => ({ x: N(t[0]), y: N(t[1]), text: String(t[2] || ''), color: String(t[3] || '#fff'), life: N(t[4]) })),
+          objs, texts: keepTexts ? prev.texts : (Array.isArray(a[23]) ? a[23] : []).filter(Array.isArray).map(t => ({ x: N(t[0]), y: N(t[1]), text: String(t[2] || ''), color: String(t[3] || '#fff'), life: N(t[4]) })),
           slides: N(a[24]), items: N(a[25]), perk: {},
           parts: prev ? prev.parts : [],
           bg: prev ? prev.bg : Array.from({ length: 7 }, (_, i) => ({ x: i * 160 + Math.random() * 60, y: 40 + Math.random() * 70, s: 0.6 + Math.random() * 0.8 })),

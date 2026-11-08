@@ -38,6 +38,7 @@ const R = await TM.live('ARENA3', 300); // 5분 동안의 변경량 (탭을 앞�
 - 7c796d7: 로비방 슬림·바뀐 칸만 쓰기, 게스트 입력은 바뀐 칸만
 - 5d68526 / f56cb99: 전투 화면 바뀐 칸만(d) · 투사체·이펙트 반올림 · 숨은 탭 관전자 일시정지
 - f4e1e09: 보스 레이드 hb·피해 2초마다 묶음, 체력은 `current/hp`만 transaction, 끝난 보스 기록 정리, 선물함은 내 칸만 구독, 선물 정산은 바뀐 칸만, 전투 화면 바라보는 각도(칸 7) 데드밴드
+- 2026-11-08 (점검 패치): 펫 러닝 관전 화면의 물체·글자 목록은 바뀌었을 때·0.5초마다만 통째로 보내고 그 사이는 null (`PETRUN_LIVE.objsFullMs`·`deltaFrom` 2026-11-09 00:00 KST부터, 받는 쪽은 앞 화면 목록을 advance로 이어 씀) · 받는 쪽 CPU: 학급 students 소식은 자식(학생별) 이벤트로 바뀐 학생만 다시 정리(`classDirtyStudents`), 전투·관전 중엔 탭 다시 그리기를 미룸(`classTabRefreshDeferred`), 이 기기 localStorage 저장·백업은 묶어서(`scheduleLocalStateSave`, doPush 안 백업)
 
 ## 4. 고칠 후보 (재 본 숫자로 우선순위를 정함)
 
