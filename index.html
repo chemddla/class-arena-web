@@ -1575,7 +1575,7 @@
         <div class="lp-party" aria-label="모험을 떠나는 우리 반 용병단">
           <span class="lp-merc" style="--cw:99;--ch:90;--f0:4;--nf:4;--k:0.988"><img src="assets/sprites/merc/healer_0.webp" alt="성녀 용병" width="2277" height="90"></span>
           <span class="lp-merc" style="--cw:120;--ch:81;--f0:2;--nf:4"><img src="assets/sprites/merc/archer_0.webp" alt="궁수 용병" width="2040" height="81"></span>
-          <span class="lp-merc" style="--cw:172;--ch:112;--ay:110;--f0:0;--nf:4;--k:0.81"><img src="assets/sprites/merc/mage_0.webp" alt="마법사 용병" width="1892" height="112"></span>
+          <span class="lp-merc" style="--cw:160;--ch:117;--ay:115;--f0:0;--nf:4;--k:0.81"><img src="assets/sprites/merc/mage_0.webp" alt="마법사 용병" width="1760" height="117"></span>
           <span class="lp-merc lp-pet" style="--cw:152;--ch:157;--ay:155;--f0:1;--nf:4;--k:0.32"><img src="assets/sprites/pet/ginger_sheet.webp" alt="치즈 고양이 펫" width="5624" height="157"></span>
           <span class="lp-merc" style="--cw:186;--ch:102;--f0:2;--nf:4;--k:1.26"><img src="assets/sprites/merc/knight_0.webp" alt="기사 용병" width="5766" height="102"></span>
           <span class="lp-merc" style="--cw:171;--ch:101;--ay:98;--f0:0;--nf:3;--k:1.2"><img src="assets/sprites/merc/warrior_0.webp" alt="전사 용병" width="2736" height="101"></span>
@@ -6774,12 +6774,13 @@
       },
       // 마법사 (2026-11-09 교체: 은발·파란 모자·푸른 수정 지팡이, tools/mage0_build.py): 투사체는 따로 그리므로 시트에는 시전 자세만 있음
       //   0 대기 · 1 걷기A · 2 대기 · 3 걷기B · 4~5 공격 · 6~7 스킬 (수정 둘레 소용돌이 → 내지르기) · 8 피격 · 9~10 쓰러짐
+      //   칸마다 얼굴 크기를 대기 칸에 맞춘 배율 (똑바로 선 칸은 키와 반반) · 바깥 회색 테두리 찌꺼기는 지움
       //   standH 100: 키(모자 꼭대기~발) 106에서 모자 몫을 빼서 얼굴 크기를 다른 직업과 맞춤 (예전 그림 92 → 87과 같은 비율)
       mage_0: {
         src: 'assets/sprites/merc/mage_0.webp',
-        cellW: 172, cellH: 112, anchorX: 82, anchorY: 110, standH: 100, topH: 106, portraitCX: 84, count: 11,
+        cellW: 160, cellH: 117, anchorX: 74, anchorY: 115, standH: 100, topH: 106, portraitCX: 78, count: 11,
         anims: { idle: [0], walk: [0, 1, 2, 3], attack: [4, 5], skill: [6, 7], hurt: [8], death: [9, 10] },
-        skillAnims: {}
+        skillAnims: {}, skillDur: 36 // 스킬 자세는 72틱의 절반만 보이고 평소 자세로 (2026-11-09 사용자 요청)
       },
       // 성녀: 직접 때리는 공격이 없어서 기본 공격은 지팡이를 앞으로 뻗어 치유 빛을 보내는 동작. 스킬은 후광·반짝임까지 6프레임
       healer_0: {
@@ -7148,6 +7149,9 @@
     Object.entries(SECRET_MERC_SKINS).forEach(([job, nums]) => nums.forEach(n => {
       MERC_SPRITE_DEFS[`${job}_${SECRET_SKIN_BASE + n}`] = { ...MERC_SPRITE_DEFS[`${job}_0`], ...SECRET_SKIN_SHEETS[`${job}_sr${n}`], src: `assets/sprites/merc/${job}_sr${n}.webp` };
     }));
+    // 마법사 기본 공격 섬광: 기본 외형·외형 1~5 (같은 칸 구성) — [지팡이를 내지른 칸, 수정 가운데 x, y (시트 픽셀)]
+    //   시크릿 레어·학생 디자인 외형은 위에서 mage_0을 펼쳐 만들기 때문에, 그 뒤에 이 여섯 외형에만 붙임
+    for (let v = 0; v <= 5; v++) MERC_SPRITE_DEFS[`mage_${v}`].attackFlash = [5, 144, 64];
     // 광전사 SR 1 (흑사자: 검은 갈기·붉은 눈·검은 판금·쌍도끼, tools/berserker_sr1_build.py)
     //   칸 순서: 0 대기 · 1~3 걷기 · 4 피격 · 5~7 쓰러짐 · 8~9 공격 (기 모으기 → X자) · 10~11 도끼 투척 · 12~13 야성의 포효 · 14 찍기 (마무리 일격·대지 가르기)
     //   · 15~16 마무리 일격 점프 · 17~18 불사의 분노 (시전 · 발동) · 19~20 광폭화 (시전 · 발동)
@@ -8925,8 +8929,78 @@
     }
     // 투사체가 터질 때 그릴 효과 그림 (투사체 그림에 hit가 있으면 그것, 없으면 fallback)
     function projHitSpr(p, fallback) {
+      if (p.spr && PIXEL_ORBS[p.spr]) return undefined; // 도트 구슬은 그림 대신 그 색 도트 터짐 (projHitColor)
       const def = p.spr && PROJECTILE_SPRITES[p.spr];
       return (def && def.hit) || fallback;
+    }
+    // 도트 구슬 기본 공격 (2026-11-09, pixelfx 작법 — 하얀 심 · 색 구슬 · 빛 번짐 · 디더 꼬리). 그림 시트 대신 코드로 그림
+    //   ramp = 어두움→밝음 5칸, glow = 빛 번짐 색. star = 별빛 (시크릿 레어 마법사: 노란 오각별 머리 + 별 부스러기 꼬리)
+    //   맞으면 같은 색 도트 터짐 (magic_burst에 color, 그림 없음)
+    const PIXEL_ORBS = {
+      mage_orb:        { ramp: ['#1e3a6e', '#2f74b8', '#5cc0f0', '#bdeaff', '#ffffff'], glow: '#38bdf8', hit: '#38bdf8' },  // 마법사: 푸른 마력 구슬 (수정 색)
+      mage_sr_star:    { ramp: ['#7a4a00', '#d4a017', '#facc15', '#fef08a', '#ffffff'], glow: '#fde047', hit: '#facc15', star: true }, // 시크릿 레어 마법사: 노란 별빛
+      summoner_orb:    { ramp: ['#14532d', '#15803d', '#4ade80', '#bbf7d0', '#ffffff'], glow: '#4ade80', hit: '#4ade80' },  // 소환사: 초록
+      summoner_sr_orb: { ramp: ['#3b1a6e', '#6d3fc0', '#a875f0', '#dcc4ff', '#ffffff'], glow: '#a855f7', hit: '#a855f7' },  // 시크릿 레어 소환사: 보라
+      healer_orb:      { ramp: ['#713f12', '#ca8a04', '#facc15', '#fef3c7', '#ffffff'], glow: '#fde68a', hit: '#fde047' }   // 도발당한 성녀가 던지는 빛 구슬: 금빛
+    };
+    const projHitColor = p => (p.spr && PIXEL_ORBS[p.spr] ? PIXEL_ORBS[p.spr].hit : undefined);
+    // 용병 마법사 기본 공격 구슬 (몬스터 마법사는 예전 보라 구슬 그림 그대로)
+    const mageOrbSpr = u => (u.monsterType ? undefined : (isSecretSkinVariant(u.skinVariant) ? 'mage_sr_star' : 'mage_orb'));
+    function drawPixelOrb(ctx, p, tick) {
+      const o = PIXEL_ORBS[p.spr], R = o.ramp, c = 2, K = 1.6;
+      let ang = p.angle;
+      if (ang == null) ang = p.target ? Math.atan2(p.target.y - 10 - p.y, p.target.x - p.x) : 0; // 따라가는 구슬은 과녁 쪽
+      ctx.save();
+      ctx.translate(p.x, p.y); ctx.rotate(ang); ctx.scale(K, K);
+      const dot = (x, y, col, a = 1) => { ctx.globalAlpha = a; ctx.fillStyle = col; ctx.fillRect(Math.round(x / c) * c - c / 2, Math.round(y / c) * c - c / 2, c, c); };
+      // 빛 번짐 (더하기)
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 14);
+      g.addColorStop(0, o.glow + 'aa'); g.addColorStop(1, o.glow + '00');
+      ctx.globalAlpha = 0.7 + 0.15 * Math.sin(tick * 0.5); ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      const rnd = pfxRng(((Math.floor(tick / 2) * 2654435761) ^ Math.round(p.x * 7 + p.y * 13)) >>> 0);
+      if (o.star) {
+        // 별 부스러기 꼬리: 작은 십자 별과 점이 뒤로 흩어지며 식음
+        for (let i = 1; i <= 9; i++) {
+          const q = i / 9, x = -i * 3.2, y = (rnd() * 2 - 1) * 4 * q;
+          const col = q < 0.3 ? R[4] : q < 0.6 ? R[3] : R[2], a = 1 - q * 0.6;
+          dot(x, y, col, a);
+          if (i % 3 === 1 && q < 0.8) { dot(x + c, y, R[2], a); dot(x - c, y, R[2], a); dot(x, y + c, R[2], a); dot(x, y - c, R[2], a); }
+        }
+        // 머리: 오각별 (날아가는 방향과 상관없이 똑바로 섬 — 돌리면 작은 도트라 모양이 뭉개짐) — 칸마다 별 안쪽인지 재서 도트로 채움, 가운데 하양 → 노랑 → 가장자리 진노랑
+        ctx.rotate(-ang);
+        const spin = 0, RO = 9, RI = 3.8, V = [];
+        for (let k = 0; k < 10; k++) { const t = -Math.PI / 2 + spin + k * Math.PI / 5, rr = k % 2 ? RI : RO; V.push([Math.cos(t) * rr, Math.sin(t) * rr]); }
+        const inside = (x, y) => { let ins = false; for (let a = 0, b = 9; a < 10; b = a++) { const [xa, ya] = V[a], [xb, yb] = V[b]; if ((ya > y) !== (yb > y) && x < (xb - xa) * (y - ya) / (yb - ya) + xa) ins = !ins; } return ins; };
+        for (let yy = -RO; yy <= RO; yy += c) for (let xx = -RO; xx <= RO; xx += c) {
+          if (!inside(xx, yy)) continue;
+          const edge = !inside(xx + c, yy) || !inside(xx - c, yy) || !inside(xx, yy + c) || !inside(xx, yy - c);
+          const d = Math.hypot(xx, yy);
+          dot(xx, yy, d < 2 ? '#ffffff' : edge ? R[2] : d < 4 ? R[4] : R[3]);
+        }
+        // 꼭짓점 반짝임: 다섯 꼭짓점 중 하나씩 돌아가며 하얀 빛점
+        const tipK = Math.floor(tick / 3) % 5, [tx, ty] = V[tipK * 2];
+        dot(tx * 1.25, ty * 1.25, '#ffffff', 0.9);
+      } else {
+        // 디더 꼬리: 뒤로 갈수록 성기고 어두움
+        for (let i = 1; i <= 12; i++) {
+          const q = i / 12, x = -5 - q * 22, y = (rnd() * 2 - 1) * 3 * q;
+          if (PFX_BAYER[((Math.round(y / c) & 3) << 2) | (Math.round(x / c) & 3)] > 1.1 - q * 0.9) continue;
+          dot(x, y, q < 0.3 ? R[3] : q < 0.6 ? R[2] : R[1]);
+        }
+        // 구슬: 바깥 어두운 테 → 본색 → 밝음 → 하얀 심
+        const r = 5;
+        for (let yy = -r; yy <= r; yy += c) for (let xx = -r; xx <= r; xx += c) {
+          const q = Math.hypot(xx, yy) / r;
+          if (q > 1) continue;
+          dot(xx, yy, q > 0.75 ? R[1] : q > 0.45 ? R[2] : q > 0.2 ? R[3] : R[4]);
+        }
+        dot(-2, -2, '#ffffff');
+      }
+      ctx.restore();
+      return true;
     }
 
     /********************************************************************
@@ -9953,7 +10027,7 @@
     //   mage_0 시트와 같은 배율이라 standH도 같은 100
     // - fx: swirlDark = 빨아들이는 어두운 소용돌이 · swirlColor = 화염·냉기·번개·암흑 4원소 소용돌이 · boom = 융합 폭발 (모두 기준점 = 그림 한가운데)
     const MAGE_FUSION_FX = {
-      cellW: 113, cellH: 119, anchorX: 53, anchorY: 117, standH: 100,
+      cellW: 116, cellH: 121, anchorX: 54, anchorY: 119, standH: 100,
       frames: { // [x, y, w, h, 기준점x, 기준점y]
         swirlDark: [0, 0, 324, 316, 162, 158], swirlColor: [326, 0, 321, 323, 160, 161], boom: [649, 0, 400, 377, 200, 188]
       }
@@ -9972,7 +10046,7 @@
     //  0 모으기: 화염·냉기·번개·암흑 빛알이 소용돌이치며 수정으로 빨려 들고 수정이 점점 밝아짐
     //  1 치켜듦: 수정에서 몸 둘레로 노란 번개가 튀고(3틱마다 모양이 바뀜) 수정 둘레를 원소 빛알이 돎
     //  2 내지르기: 수정 끝에서 앞으로 네 원소 불티가 터짐
-    MAGE_FUSION_FX.tips = [[21, 71], [11, 26], [100, 64]]; // 칸마다 수정 가운데 (시트 픽셀)
+    MAGE_FUSION_FX.tips = [[22, 73], [11, 26], [103, 64]]; // 칸마다 수정 가운데 (시트 픽셀)
     const FUSION_BOLT_RAMP = ['#5a4300', '#c99a12', '#facc15', '#fef08a', '#ffffff'];
     const fusionElemRamps = () => [PFX_RAMPS.fire_explosion, PFX_RAMPS.ice_shatter, FUSION_BOLT_RAMP, PFX_RAMPS.magic_burst];
     function drawFusionCastFx(ctx, u, fi, ks, tick, F = MAGE_FUSION_FX) { // F = 시전 그림 (칸 크기·기준점·수정 위치 tips)
@@ -10037,11 +10111,11 @@
     //   그림에 이펙트가 없어서 기본 외형처럼 drawFusionCastFx로 도트 이펙트를 겹침 (tips = 수정 위치)
     // 기준점 = 발밑, standH = 서 있는 키(일반 시트와 같은 크기로 보이게)
     const MAGE_FUSION_SKINS = {
-      1: { cellW: 113, cellH: 119, anchorX: 53, anchorY: 117, standH: 100, tips: MAGE_FUSION_FX.tips },
-      2: { cellW: 113, cellH: 119, anchorX: 53, anchorY: 117, standH: 100, tips: MAGE_FUSION_FX.tips },
-      3: { cellW: 113, cellH: 119, anchorX: 53, anchorY: 117, standH: 100, tips: MAGE_FUSION_FX.tips },
-      4: { cellW: 113, cellH: 119, anchorX: 53, anchorY: 117, standH: 100, tips: MAGE_FUSION_FX.tips },
-      5: { cellW: 113, cellH: 119, anchorX: 53, anchorY: 117, standH: 100, tips: MAGE_FUSION_FX.tips },
+      1: { cellW: 116, cellH: 121, anchorX: 54, anchorY: 119, standH: 100, tips: MAGE_FUSION_FX.tips },
+      2: { cellW: 116, cellH: 121, anchorX: 54, anchorY: 119, standH: 100, tips: MAGE_FUSION_FX.tips },
+      3: { cellW: 116, cellH: 121, anchorX: 54, anchorY: 119, standH: 100, tips: MAGE_FUSION_FX.tips },
+      4: { cellW: 116, cellH: 121, anchorX: 54, anchorY: 119, standH: 100, tips: MAGE_FUSION_FX.tips },
+      5: { cellW: 116, cellH: 121, anchorX: 54, anchorY: 119, standH: 100, tips: MAGE_FUSION_FX.tips },
       // 시크릿 레어 (tools/mage_sr1_build.py): 기 모으기 (발밑 빛 고리) · 마력 집중 (마법진 앞에 떠오름) · 스킬 해방 (별빛 광선). 기준점 = 발밑 (마력 집중 칸은 그림자 자리)
       [SECRET_SKIN_BASE + 1]: { cellW: 235, cellH: 209, anchorX: 77, anchorY: 195, standH: 87, file: 'sr1' }
     };
@@ -18187,7 +18261,7 @@
       u.maxAttackAnim = u.attackAnim;
       u.mana = Math.min(u.maxMana, u.mana + 18);
       sim.projectiles.push({
-        projType: 'magic_orb',
+        projType: 'magic_orb', spr: 'healer_orb',
         x: u.x + u.facingDir * 12, y: u.y - 10, target: taunter, owner: u,
         dmg: u.atk * dmgMult, isHeal: false, speed: 2.6, trail: []
       });
@@ -18297,11 +18371,11 @@
         // 빙결술사 기본 공격도 마법사와 같은 작은 범위 구슬 (색만 냉기빛) · 주술사·음유시인은 범위 없이 한 명만 맞는 구슬
         const orbColor = u.job === 'frost' ? '#38bdf8' : (u.job === 'curse' ? '#a855f7' : (u.job === 'bard' ? '#7dd3fc' : (u.job === 'summoner' ? SUMMONER_ORB_COLOR : '#7c3aed')));
         u.mana = Math.min(u.maxMana, u.mana + 18);
-        if (u.job === 'mage') sim.effects.push({ type: 'cast_circle', x: u.x, y: u.y, color: orbColor, life: 32, maxLife: 32 }); // 보라 고리는 마법사만 (새 직업은 넣지 않음, 쓰는 직업만 적는 방식) // 빙결술사·주술사·음유시인·소환사는 보라 고리 없음
+        if (u.job === 'mage' && u.monsterType) sim.effects.push({ type: 'cast_circle', x: u.x, y: u.y, color: orbColor, life: 32, maxLife: 32 }); // 보라 고리는 마법사 몬스터만 (용병 마법사는 2026-11-09 사용자 요청으로 뺌) (새 직업은 넣지 않음, 쓰는 직업만 적는 방식) // 빙결술사·주술사·음유시인·소환사는 보라 고리 없음
         // 커서 방향으로 사거리 끝까지 날아가서(커서 지점에서 멈추지 않음), 적에게 맞거나 사거리 끝에 닿으면 작은 범위로 터짐
         const ang = Math.atan2((aimY - 12) - oy, aimX - ox);
         sim.projectiles.push({
-          projType: 'magic_orb', spr: u.job === 'frost' ? (unitProjFx(u, 'magic_orb') || 'troll_frost') : (u.job === 'curse' ? 'curse_flame' : (u.job === 'bard' ? 'bard_bubble' : (u.job === 'summoner' ? (unitProjFx(u, 'magic_orb') || 'summoner_orb') : undefined))), isDirectional: true, angle: ang, x: ox, y: oy, owner: u, dmg: u.atk, color: orbColor,
+          projType: 'magic_orb', spr: u.job === 'frost' ? (unitProjFx(u, 'magic_orb') || 'troll_frost') : (u.job === 'curse' ? 'curse_flame' : (u.job === 'bard' ? 'bard_bubble' : (u.job === 'summoner' ? (unitProjFx(u, 'magic_orb') || 'summoner_orb') : (u.job === 'mage' ? mageOrbSpr(u) : undefined)))), isDirectional: true, angle: ang, x: ox, y: oy, owner: u, dmg: u.atk, color: orbColor,
           isHeal: false, speed: 3.2, trail: [], maxTravel: u.range + 40,
           splashRadius: u.job === 'curse' || u.job === 'bard' || u.job === 'summoner' ? 0 : MAGE_SPLASH_RADIUS, splashRatio: MAGE_SPLASH_RATIO
         });
@@ -21363,8 +21437,8 @@
             const frostOrb = u.job === 'frost';
             const curseOrb = u.job === 'curse' || u.job === 'bard' || u.job === 'summoner'; // 주술사·음유시인·소환사 = 범위 없이 한 명만 맞는 구슬
             const monOrbSpr = unitProjFx(u, 'magic_orb');
-            const orbSpr = monOrbSpr || (frostOrb ? 'troll_frost' : (u.job === 'curse' ? 'curse_flame' : (u.job === 'bard' ? 'bard_bubble' : (u.job === 'summoner' ? (unitProjFx(u, 'magic_orb') || 'summoner_orb') : undefined)))); // 빙결술사 = 작은 얼음 화살, 주술사 = 보라 불꽃, 음유시인 = 물방울, 소환사 = 초록 구슬
-            if (!monOrbSpr && u.job === 'mage') sim.effects.push({ // 보라 고리(마법진)는 마법사만 (새 직업은 넣지 않음, 쓰는 직업만 적는 방식) // 폭탄을 던지는 몬스터·빙결술사·주술사·음유시인은 마법진(보라 고리) 없이
+            const orbSpr = monOrbSpr || (frostOrb ? 'troll_frost' : (u.job === 'curse' ? 'curse_flame' : (u.job === 'bard' ? 'bard_bubble' : (u.job === 'summoner' ? (unitProjFx(u, 'magic_orb') || 'summoner_orb') : (u.job === 'mage' ? mageOrbSpr(u) : undefined))))); // 빙결술사 = 작은 얼음 화살, 주술사 = 보라 불꽃, 음유시인 = 물방울, 소환사 = 초록 구슬
+            if (!monOrbSpr && u.job === 'mage' && u.monsterType) sim.effects.push({ // 보라 고리(마법진)는 마법사 몬스터만 (용병 마법사는 2026-11-09 사용자 요청으로 뺌) (새 직업은 넣지 않음, 쓰는 직업만 적는 방식) // 폭탄을 던지는 몬스터·빙결술사·주술사·음유시인은 마법진(보라 고리) 없이
               type: 'cast_circle',
               x: u.x, y: u.y, color: frostOrb ? '#38bdf8' : '#7c3aed', life: 32, maxLife: 32
             });
@@ -21527,7 +21601,7 @@
             }
             if (p.projType === 'magic_orb') {
               playCombatSfx('magic');
-              sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), x: p.target.x, y: p.target.y - 12, r: 42, life: 22, maxLife: 22 }); // 소환사 = 초록 터짐 (summoner_orb_hit)
+              sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), color: projHitColor(p), x: p.target.x, y: p.target.y - 12, r: 42, life: 22, maxLife: 22 }); // 소환사 = 초록 터짐 (summoner_orb_hit)
             } else {
               playCombatSfx('arrow');
               sim.effects.push({ type: 'arrow_hit', spr: projHitSpr(p), x: p.target.x, y: p.target.y - 12, angle: p.angle, life: 18, maxLife: 18 });
@@ -27651,7 +27725,7 @@
       if (p.splashRadius) {
         // 작은 범위 공격: 맞은 적은 전체 피해, 주변 적은 일부 피해 (빗나가도 떨어진 자리에서 터짐). 범위는 쏜 유닛 크기에 비례
         const splashR = p.splashRadius * unitAreaScale(p.owner);
-        sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), x, y: y - 12, r: splashR, life: 22, maxLife: 22 });
+        sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), color: projHitColor(p), x, y: y - 12, r: splashR, life: 22, maxLife: 22 });
         if (!hit) playCombatSfx('magic');
         sim.units.forEach(e => {
           if (!e.alive || e === hit || e.team === p.owner.team) return;
@@ -27675,7 +27749,7 @@
       if (p.projType === 'magic_orb') {
         playCombatSfx('magic');
         // 범위 공격은 위에서 이미 터지는 그림을 그렸으므로 한 번 더 그리지 않음
-        if (!p.splashRadius) sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), x: hit.x, y: hit.y - 12, r: 42, life: 22, maxLife: 22 });
+        if (!p.splashRadius) sim.effects.push({ type: 'magic_burst', spr: projHitSpr(p, p.owner?.job === 'mage' ? 'orb_hit' : (p.owner?.job === 'frost' ? 'ice_hit' : undefined)), color: projHitColor(p), x: hit.x, y: hit.y - 12, r: 42, life: 22, maxLife: 22 });
       } else {
         playCombatSfx('arrow');
         sim.effects.push({ type: 'arrow_hit', spr: projHitSpr(p), x: hit.x, y: hit.y - 12, angle: p.angle, life: 18, maxLife: 18 }); // 히드라 독액 = 철퍽 튀는 독
@@ -28471,6 +28545,7 @@
 
     // 투사체를 그림으로 그리면 true (그림이 없거나 아직 안 불러왔으면 false → 기본 도형)
     function drawProjectileSprite(ctx, p, tick) {
+      if (p.spr && PIXEL_ORBS[p.spr]) return drawPixelOrb(ctx, p, tick);
       const def = (p.spr && PROJECTILE_SPRITES[p.spr]) || PROJECTILE_SPRITES[p.projType];
       const sheet = (def && def.sheet) || FX_SPRITE_SHEET;
       if (!def || !sheet.ready || (def.match && !def.match(p))) return false;
@@ -29364,7 +29439,7 @@
       if (a.overheat && u.overheat > 0) return a.overheat[0];
       if (a.defense && u.statuses && u.statuses.guard > 0) return a.defense[Math.floor(tick / 10) % a.defense.length];
       if (u.skillAnim > 0) {
-        const plan = (sprite.skillAnims && sprite.skillAnims[u.activeSkillType]) || { anim: 'skill', tpf: 8 };
+        const plan = (sprite.skillAnims && sprite.skillAnims[u.activeSkillType]) || { anim: 'skill', tpf: 8, dur: sprite.skillDur }; // skillDur = 따로 정하지 않은 스킬의 자세 유지 틱 (없으면 skillAnim 72틱 내내)
         const list = a[plan.anim] || a.skill;
         const elapsed = tick - (u._sprSkillStart ?? tick);
         if (!plan.dur || elapsed < plan.dur) {
@@ -29873,6 +29948,18 @@
         (fdx - sprite.anchorX) * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k, tick);
       drawSpriteFx(ctx, sprite.img, frame * sprite.cellW, 0, sprite.cellW, sprite.cellH,
         (fdx - sprite.anchorX) * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
+      // 기본 공격 섬광 (attackFlash, 마법사): 지팡이를 내지른 칸이 보이는 동안 수정 끝이 하얗게 번쩍이고 앞으로 푸른 불티가 튐 (pixelfx 작법)
+      //   그리기 전용 (공격 시작 틱 _sprAtkStart 기준이라 관전·대결 화면에서도 같게 보임)
+      if (sprite.attackFlash && !sprite.design && u.alive && frame === sprite.attackFlash[0] && u.attackAnim > 0 && !u._sprAtkFromSkill) {
+        const el = tick - (u._sprAtkStart ?? tick) - 6; // 공격 둘째 칸은 6틱째부터 (pickSpriteFrame의 step 6틱)
+        if (el >= 0 && el < 22) {
+          ctx.save();
+          ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
+          drawPixelBurst(ctx, (sprite.attackFlash[1] + 3 - sprite.anchorX) * k, (sprite.attackFlash[2] - sprite.anchorY) * k, 35 * k, el / 22,
+            PFX_RAMPS.ice_shatter, ((u._sprAtkStart || 0) * 2654435761) >>> 0, { cone: 0, spread: 0.6, sparks: 7, noRing: true, coreK: 0.4 });
+          ctx.restore();
+        }
+      }
       // 흑사자 불사 동안: 검은 실루엣 위에 붉은 눈빛이 일렁이며 빛남 (밝기가 두 박자로 오르내림, 더하기 합성)
       if (sprite.eyesImg && sprite.eyesImg.ready && u.alive) {
         // 번쩍이지 않고 일렁이게: 느린 두 물결을 겹친 밝기, 바깥 빛은 천천히 부풀었다 줄며 살짝 위로 피어오름
@@ -43852,10 +43939,10 @@
         p = { projType: 'arrow', isDirectional: true, angle: aimAngle, x: ox, y: oy, speed: 4.6, maxTravel: u.range * 1.7 + 80, trail: [] };
       } else {
         const color = u.job === 'frost' ? '#38bdf8' : (u.job === 'curse' ? '#a855f7' : (u.job === 'bard' ? '#7dd3fc' : (u.job === 'summoner' ? SUMMONER_ORB_COLOR : '#7c3aed')));
-        const spr = u.job === 'frost' ? (unitProjFx(u, 'magic_orb') || 'troll_frost') : (u.job === 'curse' ? 'curse_flame' : (u.job === 'bard' ? 'bard_bubble' : (u.job === 'summoner' ? (unitProjFx(u, 'magic_orb') || 'summoner_orb') : undefined)));
+        const spr = u.job === 'frost' ? (unitProjFx(u, 'magic_orb') || 'troll_frost') : (u.job === 'curse' ? 'curse_flame' : (u.job === 'bard' ? 'bard_bubble' : (u.job === 'summoner' ? (unitProjFx(u, 'magic_orb') || 'summoner_orb') : (u.job === 'mage' ? mageOrbSpr(u) : undefined))));
         const ang = Math.atan2((aimY - 12) - oy, aimX - ox);
         p = { projType: 'magic_orb', spr, color, isDirectional: true, angle: ang, x: ox, y: oy, speed: 3.2, maxTravel: u.range + 40, trail: [] };
-        if (u.job === 'mage') sim.effects.push({ type: 'cast_circle', x: P.x, y: P.y, color, life: 32, maxLife: 32 });
+        if (u.job === 'mage' && u.monsterType) sim.effects.push({ type: 'cast_circle', x: P.x, y: P.y, color, life: 32, maxLife: 32 }); // 보라 고리는 마법사 몬스터만 (용병 마법사는 뺌)
       }
       p.vx = Math.cos(p.angle) * p.speed; p.vy = Math.sin(p.angle) * p.speed; p.travel = 0; p._own = true;
       A.proj.push(p);

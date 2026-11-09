@@ -21,8 +21,12 @@ from berserker_build import shrink
 
 D = 'assets/sprites/merc/samples/mage_edit_'
 OUT = 'assets/sprites/merc/mage_0.webp'
-TARGET_H = 104   # 걷기 키(샘플 약 185px) 기준. 대기 샘플만 조금 크게 그려져 와서(195px) IDLE_K로 줄임
-IDLE_K = 0.95
+IDLE_H = 106   # 대기 칸 키(모자 꼭대기~발). 다른 칸은 얼굴 크기(살색 덩어리 가로·세로)를 대기 칸과 같게 맞춰 배율을 정함
+#   (샘플마다 그려 온 크기가 5~20% 달라서 키나 한 장 배율로는 칸마다 얼굴이 커졌다 작아졌다 함)
+SAME_K = {'down1': 'down0'}
+# 똑바로 선 칸은 얼굴만으로 맞추면 샘플마다 머리·몸 비율이 조금씩 달라 걷기 칸 키가 대기보다 커짐(걸을 때 들썩임)
+#   → 키(모자 꼭대기~발)로 맞춘 배율과 반반 섞음
+UPRIGHT = {'walk0', 'walk1', 'atk0', 'hurt', 'skill0', 'hold'}   # 누운 칸은 얼굴이 옆으로 누워 재기 어려워 바로 앞 칸 배율을 씀
 # 스킬 2: 수정 앞에서 퍼지는 광선 고리는 수정(y 100~122) 위아래로 x 168부터 나옴 → 그 자리를 지움
 # 원소 융합 둘째 장: 오른쪽 끝에 다음 그림(모자 챙·망토)이 걸려 있음 → 수정 끝(x 445) 오른쪽과 모자 높이의 x 426~ 를 지움
 CLEAR = {'5_skill_src': [(166, 0, 379, 99), (166, 123, 379, 210)],
@@ -96,6 +100,32 @@ def load(src, box):
     return rgba, foot
 
 
+def face_size(rgba):
+    # 얼굴 = 가장 큰 살색 덩어리. 포즈마다 키는 달라도 얼굴 크기는 같아야 해서 칸마다 배율을 이것으로 맞춤
+    rgb = rgba[..., :3] / 255; a = rgba[..., 3] > 200
+    mx, mn = rgb.max(-1), rgb.min(-1); s = np.where(mx > 0, (mx - mn) / np.maximum(mx, 1e-6), 0)
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    skin = a & (mx > 0.72) & (s > 0.08) & (s < 0.45) & (r >= g) & (g >= b) & (r - b > 0.08)
+    lab, n = ndi.label(ndi.binary_closing(skin, iterations=2))
+    big = int(np.argmax(ndi.sum(skin, lab, range(1, n + 1)))) + 1
+    ys, xs = np.where(lab == big)
+    return xs.max() - xs.min() + 1, ys.max() - ys.min() + 1
+
+
+def defringe(p):
+    # 줄인 뒤 바깥 테두리에 남은 흰 배경 찌꺼기: 투명한 칸에 닿은 밝은 무채색 픽셀(윤곽 바깥 회색 띠)을 두 겹까지 지움
+    #   (수정·소용돌이처럼 색이 도는 밝은 픽셀은 남김)
+    for _ in range(2):
+        a = p[..., 3] > 0
+        edge = a & ndi.binary_dilation(~a)
+        c = p[..., :3].astype(int)
+        light = (c.min(-1) > 110) & (c.max(-1) - c.min(-1) < 45)
+        kill = edge & light
+        if not kill.any(): break
+        p[kill] = 0
+    return p
+
+
 def pack(pieces, out, label):
     L = max(int(np.ceil(c)) for _, _, c in pieces) + 3
     R = max(int(np.ceil(p.shape[1] - c)) for _, p, c in pieces) + 3
@@ -112,25 +142,33 @@ def pack(pieces, out, label):
 
 
 def main():
-    walk, _ = load(FRAMES[1][1], FRAMES[1][2])
-    k0 = TARGET_H / walk.shape[0]
+    idle, _ = load(FRAMES[0][1], FRAMES[0][2])
+    ki = IDLE_H / idle.shape[0]
+    fw0, fh0 = face_size(idle)
+    ks = {}
+
+    def scale_of(name, rgba):
+        if name in SAME_K: return ks[SAME_K[name]]
+        fw, fh = face_size(rgba)
+        ks[name] = ki * (fw0 / fw + fh0 / fh) / 2
+        if name in UPRIGHT: ks[name] = (ks[name] * IDLE_H / rgba.shape[0]) ** 0.5
+        return ks[name]
+
     pieces = []
     for name, src, box in FRAMES:
         rgba, foot = load(src, box)
-        k = k0 * (IDLE_K if name.startswith('idle') else 1)
+        k = scale_of(name, rgba)
         if name == 'down1': foot = rgba.shape[1] * 0.45   # 누운 칸은 몸 가운데쯤
-        p = shrink(rgba, k)
+        p = defringe(shrink(rgba, k))
         pieces.append((name, p, foot * k))
         print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} ×{k:.3f} → {p.shape[1]}x{p.shape[0]}, 발 {foot * k:.1f}')
     pack(pieces, OUT, 'mage_0')
-    # 원소 융합: 맞출 칸의 키(시트 픽셀)
-    ref = {name: p.shape[0] for name, p, _ in pieces}
-    k7 = ref['atk1'] / load(*FUSION[2][1:3])[0].shape[0]
+    # 원소 융합: 같은 방식(얼굴 크기를 대기 칸에)으로 배율
     fpieces = []
     for name, src, box, _ in FUSION:
         rgba, foot = load(src, box)
-        k = ref['idle'] / rgba.shape[0] if name == 'hold' else k7
-        p = shrink(rgba, k)
+        k = scale_of(name, rgba)
+        p = defringe(shrink(rgba, k))
         fpieces.append((name, p, foot * k))
         print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} ×{k:.3f} → {p.shape[1]}x{p.shape[0]}, 발 {foot * k:.1f}')
     pack(fpieces, FUSION_OUT, 'mage_fusion_cast')
