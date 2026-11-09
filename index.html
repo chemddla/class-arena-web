@@ -10657,14 +10657,17 @@
     // 시크릿 레어 1 (천사, tools/healer_sr1_build.py) 4칸 = 0 초록 회오리·깃털 · 1 금빛 마법진 · 2 은하 날개·유성·빛기둥 · 3 초록 반짝이 마무리
     //   시전 막대 앞 절반 0, 뒤 절반 1 → 발동하면 2를 40틱, 3을 24틱. 칸 배율은 healer_sr1과 같음 (standH 98)
     HEALER_MIRACLE_FX.sr = { cellW: 206, cellH: 226, anchorX: 103, anchorY: 185, standH: 98, showTicks: 40, endTicks: 24, castN: 2, showFi: 2 };
-    [['cast', 'healer_miracle_cast'], ['fx', 'healer_miracle_fx'], ['srCast', 'healer_miracle_cast_sr1']].forEach(([k, file]) => {
+    // 이펙트 그림(fx)은 원본의 진한 금색을 시전 그림에 붙은 색으로 다시 칠한 것 (tools/healer_miracle_fx_build.py)
+    //   fx = 기본 외형 연한 크림·금빛 · fxSr = 시크릿 레어 천사 민트 초록 (마법진은 연두 금빛)
+    [['cast', 'healer_miracle_cast'], ['fx', 'healer_miracle_fx_soft'], ['fxSr', 'healer_miracle_fx_sr1'], ['srCast', 'healer_miracle_cast_sr1']].forEach(([k, file]) => {
       const img = new Image();
       img.onload = () => { img.ready = true; };
       img.src = `assets/sprites/fx/${file}.webp`;
       HEALER_MIRACLE_FX[k] = img;
     });
-    function drawMiracleFrame(ctx, name, scale) { // 기준점이 (0,0)에 오게 그림
-      const art = HEALER_MIRACLE_FX.fx, f = HEALER_MIRACLE_FX.frames[name];
+    const usesMiracleSr = u => Boolean(u && u.job === 'healer' && !u.monsterType && (u.skinVariant || 0) === SECRET_SKIN_BASE + 1);
+    function drawMiracleFrame(ctx, name, scale, sr = false) { // 기준점이 (0,0)에 오게 그림 · sr = 시크릿 레어 천사 색
+      const art = sr && HEALER_MIRACLE_FX.fxSr.ready ? HEALER_MIRACLE_FX.fxSr : HEALER_MIRACLE_FX.fx, f = HEALER_MIRACLE_FX.frames[name];
       ctx.drawImage(art, f[0], f[1], f[2], f[3], -f[4] * scale, -f[5] * scale, f[2] * scale, f[3] * scale);
     }
 
@@ -23093,6 +23096,7 @@
       if (sk === 'miracle') {
         // 쓰러진 아군 모두 체력 100%로 부활 + 아군 모두 최대 체력 50% 보호막 + 10초간 모든 능력치 +20%
         const fallen = sim.units.filter(u => u.team === unit.team && !u.alive && u.monsterType !== 'scarecrow' && !u.isClone && !u.rushPending);
+        const miracleSr = usesMiracleSr(unit) ? 1 : 0; // 시크릿 레어 천사는 빛기둥·구체도 민트 초록
         fallen.forEach(f => {
           f.alive = true;
           f.hp = f.maxHp;
@@ -23103,17 +23107,17 @@
           f.cooldown = 30;
           f.casting = null;
           unit.healDone += f.hp;
-          sim.effects.push({ type: 'hidden_miracle_pillar', x: f.x, y: f.y + 8, life: 80, maxLife: 80 });
+          sim.effects.push({ type: 'hidden_miracle_pillar', x: f.x, y: f.y + 8, life: 80, maxLife: 80, sr: miracleSr });
           sim.floatTexts.push({ x: f.x, y: f.y - 56, text: '🌅 기적의 부활!', color: '#e879f9', life: 80 });
         });
         sim.units.filter(a => a.alive && a.team === unit.team).forEach(a => {
           const amt = Math.round(unit.atk * HIDDEN_MIRACLE_SHIELD_ATK); // 예전 받는 아군 최대 체력 50% → 성녀 공격력 비례
           a.shield = (a.shield || 0) + amt;
           a.statuses.miracle = Math.max(a.statuses.miracle || 0, 600);
-          sim.effects.push({ type: 'hidden_miracle_buff', x: a.x, y: a.y, life: 70, maxLife: 70, owner: a });
+          sim.effects.push({ type: 'hidden_miracle_buff', x: a.x, y: a.y, life: 70, maxLife: 70, owner: a, sr: miracleSr });
           sim.floatTexts.push({ x: a.x, y: a.y - 40, text: `🛡️+${amt}`, color: '#eab308', life: 50 });
         });
-        sim.effects.push({ type: 'hidden_miracle', x: unit.x, y: unit.y, life: 90, maxLife: 90 });
+        sim.effects.push({ type: 'hidden_miracle', x: unit.x, y: unit.y, life: 90, maxLife: 90, sr: miracleSr });
         hiddenImpact(8, '#fdf4ff');
         playCombatSfx('heal');
         addBattleLog(`🌅 [성녀] ${unit.name}의 히든 스킬 기적!${fallen.length ? ` 쓰러진 아군 ${fallen.length}명이 모두 일어났어요!` : ''} 모든 능력치 +20% (10초)`);
@@ -23652,6 +23656,33 @@
         ctx.restore();
       });
     }
+    // 기적 시전: 발밑 마법진이 점점 밝아지며 커지고, 빛 알갱이가 위로 솟음 (마지막 0.5초는 가장 크게)
+    //   유닛보다 먼저 그려 몸 뒤에 깔림 (예전엔 몸 위에 더하기로 겹쳐 성녀가 하얗게 가려짐) · 색은 시전 그림에 붙은 이펙트와 같은 단계, 보통 겹치기
+    function drawMiracleCastBack(ctx) {
+      if (!HEALER_MIRACLE_FX.fx.ready) return;
+      const t = sim.tickCount;
+      sim.units.forEach(u => {
+        if (!u.alive || (isStealthed(u) && !canViewerSeeStealthed(u))) return;
+        const c = u.casting;
+        if (!c || c.key !== 'miracle') return;
+        const p = 1 - c.left / Math.max(1, c.total), sr = usesMiracleSr(u);
+        const pulse = 0.5 + 0.5 * Math.sin(t * 0.2);
+        ctx.save();
+        ctx.translate(u.x, u.y + 8);
+        ctx.scale(1, 0.72);
+        ctx.globalAlpha = 0.35 + 0.4 * p;
+        drawMiracleFrame(ctx, 'circle', (0.6 + 0.7 * p) * (1 + 0.04 * pulse) * (c.left <= 30 ? 1.15 : 1), sr);
+        ctx.restore();
+        ctx.save();
+        ctx.fillStyle = sr ? '#bbefa7' : '#fdf0a7';
+        for (let i = 0; i < 3; i++) { // 마법진에서 빛 알갱이가 솟았다 사라짐 (몸 둘레 바깥쪽)
+          const q = (t * 0.02 + i / 3) % 1;
+          ctx.globalAlpha = (1 - q) * 0.75;
+          ctx.fillRect(Math.round(u.x + Math.sin(i * 2.4 + t * 0.03) * 26) - 1, Math.round(u.y - q * 60) - 1, 2 + Math.round(p * 2), 2 + Math.round(p * 2));
+        }
+        ctx.restore();
+      });
+    }
     function drawHiddenSkillOverlay(ctx) {
       drawRuinMarks(ctx);
       const t = sim.tickCount;
@@ -23672,25 +23703,7 @@
             ctx.restore();
             return;
           }
-          if (c.key === 'miracle' && HEALER_MIRACLE_FX.fx.ready) {
-            // 기적: 발밑 마법진이 점점 밝아지며 커지고, 금빛 기운이 위로 솟음 (마지막 0.5초는 가장 크게)
-            const pulse = 0.5 + 0.5 * Math.sin(t * 0.2);
-            ctx.globalCompositeOperation = 'lighter';
-            ctx.save();
-            ctx.translate(u.x, u.y + 8);
-            ctx.scale(1, 0.72);
-            ctx.globalAlpha = 0.5 + 0.45 * p;
-            drawMiracleFrame(ctx, 'circle', (0.6 + 0.7 * p) * (1 + 0.04 * pulse) * (c.left <= 30 ? 1.15 : 1));
-            ctx.restore();
-            for (let i = 0; i < 3; i++) { // 마법진에서 반짝임이 솟았다 사라짐
-              const q = (t * 0.02 + i / 3) % 1;
-              ctx.globalAlpha = (1 - q) * 0.8;
-              ctx.fillStyle = '#fde68a';
-              ctx.beginPath(); ctx.arc(u.x + Math.sin(i * 2.4 + t * 0.03) * 22, u.y - q * 60, 2 + p * 2, 0, Math.PI * 2); ctx.fill();
-            }
-            ctx.restore();
-            return;
-          }
+          if (c.key === 'miracle' && HEALER_MIRACLE_FX.fx.ready) { ctx.restore(); return; } // 기적 마법진은 유닛보다 먼저 drawMiracleCastBack에서 (몸을 가리지 않게)
           if (c.key === 'assassinate' && ROGUE_ASSASSINATE_FX.fx.ready) {
             // 암살: 발밑에서 보랏빛 불꽃이 점점 커지고, 마지막엔 연기가 몸을 감쌈
             ctx.translate(u.x, u.y + 12);
@@ -24547,46 +24560,46 @@
         return;
       }
       if (ef.type === 'hidden_miracle_pillar') {
-        // 기적 부활: 쓰러진 자리에 날개 달린 빛기둥이 내려앉았다 사라짐
+        // 기적 부활: 쓰러진 자리에 날개 달린 빛기둥이 내려앉았다 사라짐 (유닛보다 먼저 = 일어난 아군 몸 뒤)
         if (!HEALER_MIRACLE_FX.fx.ready) return;
         ctx.translate(ef.x, ef.y);
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = Math.min(1, progress * 6, fade * 2);
-        drawMiracleFrame(ctx, 'pillar', 0.7 + 0.3 * Math.min(1, progress * 3));
+        ctx.globalAlpha = Math.min(1, progress * 6, fade * 2) * 0.8;
+        drawMiracleFrame(ctx, 'pillar', 0.7 + 0.3 * Math.min(1, progress * 3), ef.sr);
         return;
       }
       if (ef.type === 'hidden_miracle_buff') {
-        // 기적 축복: 아군 몸을 금빛 구체가 감쌌다 터지듯 사라지고, 능력치 상승 화살표가 위로 솟음
+        // 기적 축복: 아군 몸 뒤로 빛 구체가 부풀었다 사라지고, 능력치 상승 화살표가 위로 솟음
+        //   구체는 몸 뒤라 가장자리만 보임 → 옅게 · 화살표는 머리 위로 올라가며 드러남
         if (!HEALER_MIRACLE_FX.fx.ready) return;
         const o = ef.owner && ef.owner.alive ? ef.owner : ef;
         ctx.translate(o.x, o.y - 26);
-        ctx.globalCompositeOperation = 'lighter';
         const grow = Math.min(1, progress * 5);
-        ctx.globalAlpha = 0.5 * Math.min(1, fade * 2.5) * grow;
-        drawMiracleFrame(ctx, 'sphere', (0.5 + 0.2 * grow + 0.25 * progress));
-        ctx.globalAlpha = Math.min(1, fade * 1.6) * Math.min(1, progress * 6);
+        ctx.globalAlpha = 0.4 * Math.min(1, fade * 2.5) * grow;
+        drawMiracleFrame(ctx, 'sphere', (0.5 + 0.2 * grow + 0.25 * progress), ef.sr);
+        ctx.globalAlpha = Math.min(1, fade * 1.6) * Math.min(1, progress * 6) * 0.9;
         ctx.translate(0, 6 - progress * 40);
-        drawMiracleFrame(ctx, 'arrows', 0.6);
+        drawMiracleFrame(ctx, 'arrows', 0.6, ef.sr);
         return;
       }
       if (ef.type === 'hidden_miracle') {
-        // 기적: 하늘에서 내려오는 넓은 빛기둥과 퍼지는 빛 고리
+        // 기적: 하늘에서 내려오는 넓은 빛기둥과 퍼지는 빛 고리 (유닛보다 먼저 = 성녀 몸 뒤)
         if (HEALER_MIRACLE_FX.fx.ready) {
           // 그림 빛기둥: 날개 달린 큰 기둥이 시전자 자리에 내리꽂히고, 마법진이 크게 퍼지며 흩어짐
+          //   보통 겹치기 (더하기면 밝은 바닥 위에서 하얗게 날아가 시전 그림의 연한 금빛·민트와 안 맞음)
           ctx.translate(ef.x, ef.y + 10);
-          ctx.globalCompositeOperation = 'lighter';
-          ctx.globalAlpha = Math.min(1, progress * 8, fade * 1.6);
+          const a0 = Math.min(1, progress * 8, fade * 1.6);
+          ctx.globalAlpha = a0 * 0.6 * (1 - progress * 0.7); // 크게 퍼질수록 옅게 (바닥 전체가 뿌옇게 덮이지 않게)
           ctx.save();
           ctx.scale(1, 0.72);
-          drawMiracleFrame(ctx, 'circle', 1.3 + progress * 5.5);
+          drawMiracleFrame(ctx, 'circle', 1.3 + progress * 5.5, ef.sr);
           ctx.restore();
-          ctx.globalAlpha = Math.min(1, progress * 8, fade * 1.6) * 0.9;
+          ctx.globalAlpha = a0 * 0.7;
           ctx.scale(1 + progress * 0.35, 1);
-          drawMiracleFrame(ctx, 'pillar', 1.7);
+          drawMiracleFrame(ctx, 'pillar', 1.7, ef.sr);
           const top = -198 * 1.7, pw = 36 * 1.7 * (1 + progress * 0.35); // 그림 위로 이어지는 빛줄기
           const g = ctx.createLinearGradient(0, top, 0, top - 360);
-          g.addColorStop(0, 'rgba(253, 224, 71, 0.55)');
-          g.addColorStop(1, 'rgba(253, 224, 71, 0)');
+          g.addColorStop(0, ef.sr ? 'rgba(226, 251, 182, 0.55)' : 'rgba(253, 240, 167, 0.55)');
+          g.addColorStop(1, ef.sr ? 'rgba(226, 251, 182, 0)' : 'rgba(253, 240, 167, 0)');
           ctx.fillStyle = g;
           ctx.fillRect(-pw / 2, top - 360, pw, 362);
           return;
@@ -32164,6 +32177,7 @@
       drawSpiritKingBursts(ctx); // 정령왕 강림 원소 고리 (바닥, 유닛 아래)
       drawDuelTethers(ctx); // 격투가 결투: 둘 사이 붉은 빛줄기 (유닛 몸 뒤)
       drawExcaliburCastAura(ctx); // 엑스칼리버 시전 기운 (전사 몸 뒤)
+      drawMiracleCastBack(ctx); // 기적 시전 마법진 (성녀 몸 뒤)
       drawFusionSrCastBack(ctx); // 시크릿 레어 마법사 원소 융합 시전 마법진 (몸 뒤)
       sortedUnits.forEach(u => {
         if (u.isEliteBoss && sim.eliteIntro) { drawEliteBossDrop(ctx, u); return; }
