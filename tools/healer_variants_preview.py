@@ -70,7 +70,11 @@ def tone(im, keep, neu, col):
     m = (im[..., 3] > 0) & ~keep
     s0, v0 = hsv[..., 1].copy(), hsv[..., 2].copy()
     w = np.clip((s0 - 0.15) / 0.15, 0, 1)   # 0 = 무채색(흰 옷·은발), 1 = 유채색(금빛·갈색)
-    sat = neu[0] * (1 - w) + col[0] * w
+    # 무채색 채도를 크게 올릴 때 따뜻한 색조(빨강~주황) 음영은 빨간 점처럼 튀어서 1.5배까지만 (눈가 머리카락·수도복 단)
+    hh = hsv[..., 0] * 360
+    warm = (hh < 50) | (hh > 320)
+    sn = np.where(warm, np.minimum(neu[0], 1.5), neu[0])
+    sat = sn * (1 - w) + col[0] * w
     val = neu[1] * (1 - w) + col[1] * w
     hsv[..., 1] = np.where(m, np.clip(s0 * sat, 0, 1), s0)
     # 어둡게 할 때 밝은 금빛은 조금 덜 어둡게 (노랑이 어두워지면 탁한 올리브가 됨)
