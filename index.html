@@ -6798,6 +6798,7 @@
       archer_0: {
         src: 'assets/sprites/merc/archer_0.webp?v=3', // ?v = 칸 배치가 바뀔 때 올림 (배포 그림 1시간 캐시)
         cellW: 214, cellH: 111, anchorX: 82, anchorY: 109, standH: 96, topH: 100, portraitCX: 76, count: 14,
+        muzzle: [56, 45], // 화살이 나가는 자리 = 쏘는 칸(6)의 화살촉 바로 뒤 앞 56 (그림 픽셀) · 높이는 화살촉(위 57)보다 조금 아래 위 45 — 몸이 아니라 활에서 나감 (2026-11-09 사용자 요청)
         anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5, 6, 13], skill: [5, 6, 13], hurt: [7], death: [8, 9], rain: [10], rainEnd: [12], leap: [11] },
         skillAnims: { arrow_rain: { anim: 'rainEnd', tpf: 15, dur: 15 }, evasive_shot: { anim: 'leap', tpf: 18, dur: 18 } }, // 회피기동 물러나기 = 14틱 (쏜 뒤 자세는 안 붙임)
         // 쏜 뒤 자세(13) 시간을 절반으로 (2026-11-09 사용자 요청): 기본 공격은 당김 12틱 + 꼬리 약 30 → 15틱, 다른 스킬은 당김 16틱 + 꼬리 56 → 28틱, 화살비 끝 자세 30 → 15틱
@@ -6934,7 +6935,7 @@
     //   칸·기준점·동작 구성은 archer_0과 같음 (tools/archer_variants_build.py)
     //   시크릿 레어 1·예전 학생 디자인은 2026-11-09 기본 외형 교체 전 그림이라 예전 칸 구성 (ARCHER_OLD_SHEET, 17칸)
     const ARCHER_OLD_SHEET = { cellW: 120, cellH: 81, anchorX: 55, anchorY: 80, standH: 81, topH: 80, portraitCX: 51, count: 17,
-      anims: { idle: [0, 1], walk: [2, 3, 4, 5], attack: [6, 7, 8, 9], skill: [10, 11, 12], hurt: [13], death: [14, 15, 16] }, skillAnims: {}, castFrames: {}, attackDur: undefined, skillDur: undefined }; // 새 기본 외형의 꼬리 자세 시간은 안 물려받음
+      anims: { idle: [0, 1], walk: [2, 3, 4, 5], attack: [6, 7, 8, 9], skill: [10, 11, 12], hurt: [13], death: [14, 15, 16] }, skillAnims: {}, castFrames: {}, attackDur: undefined, skillDur: undefined, muzzle: undefined }; // 새 기본 외형의 꼬리 자세 시간·활 위치는 안 물려받음
     [1, 2, 3, 4, 5].forEach(v => { MERC_SPRITE_DEFS[`archer_${v}`] = { ...MERC_SPRITE_DEFS.archer_0, src: `assets/sprites/merc/archer_${v}.webp` }; });
     // 성녀 외형 1 (연보라 머리·남색 옷), 2 (주황 머리·초록 옷), 3 (분홍 머리·빨강 옷), 4 (민트 머리·청록 옷), 5 (남보라 머리·보라 옷): 칸·기준점·동작 구성은 healer_0과 같고 그림만 다름
     [1, 2, 3, 4, 5].forEach(v => { MERC_SPRITE_DEFS[`healer_${v}`] = { ...MERC_SPRITE_DEFS.healer_0, src: `assets/sprites/merc/healer_${v}.webp` }; });
@@ -8941,6 +8942,13 @@
       const k = spriteDrawH(u, def) / def.standH;
       return { x: u.x + (u.facingDir || 1) * def.muzzle[0] * k, y: u.y - def.muzzle[1] * k };
     }
+    // 직접 조종 평타처럼 아무 방향으로 쏠 때 나가는 자리 (x·y = 그 유닛의 발 자리). 그림에 muzzle이 있으면 그만큼 앞·위(활·입), 없으면 몸 가운데에서 14 앞
+    function aimShotOrigin(u, x, y, ang) {
+      const def = getUnitSprite(u);
+      if (!def || !def.muzzle) return { x: x + Math.cos(ang) * 14, y: y - 8 + Math.sin(ang) * 14 };
+      const k = spriteDrawH(u, def) / def.standH, f = def.muzzle[0] * k;
+      return { x: x + Math.cos(ang) * f, y: y - def.muzzle[1] * k + Math.sin(ang) * f * 0.4 };
+    }
     // 투사체가 터질 때 그릴 효과 그림 (투사체 그림에 hit가 있으면 그것, 없으면 fallback)
     function projHitSpr(p, fallback) {
       if (p.spr && PIXEL_ORBS[p.spr]) return undefined; // 도트 구슬은 그림 대신 그 색 도트 터짐 (projHitColor)
@@ -8960,36 +8968,6 @@
     const projHitColor = p => (p.spr && PIXEL_ORBS[p.spr] ? PIXEL_ORBS[p.spr].hit : undefined);
     // 용병 마법사 기본 공격 구슬 (몬스터 마법사는 예전 보라 구슬 그림 그대로)
     const mageOrbSpr = u => (u.monsterType ? undefined : (isSecretSkinVariant(u.skinVariant) ? 'mage_sr_star' : 'mage_orb'));
-    // 용병 궁수 기본 공격 도트 화살 (2026-11-09 사용자 선택 A안, pixelfx 작법): 은빛 촉 · 나무 몸통 · 흰 깃 + 뒤로 성기게 흩어지는 흰 바람줄. 빛 번짐 없음
-    //   몬스터 궁수·정령은 예전 그림 그대로. 맞으면 예전 화살 타격 그림
-    const PIXEL_ARROWS = { merc_arrow: 1 };
-    const mercArrowSpr = u => (!u.monsterType && !u.spiritElem ? 'merc_arrow' : undefined);
-    const PX_ARROW_WOOD = ['#3b2414', '#6b4423', '#a8743f'], PX_ARROW_STEEL = ['#4a5361', '#9aa6b8', '#e8eef7', '#ffffff'];
-    function drawPixelArrowBody(dot, len, alpha = 1) {
-      // 원점 = 화살촉 끝, 오른쪽을 봄 · 칸 2
-      const S = PX_ARROW_STEEL, W = PX_ARROW_WOOD;
-      dot(0, 0, S[3], alpha); dot(-2, 0, S[2], alpha); dot(-4, 0, S[2], alpha); dot(-2, -2, S[1], alpha); dot(-2, 2, S[0], alpha);
-      dot(-4, -2, S[2], alpha); dot(-4, 2, S[0], alpha); dot(-6, -2, S[1], alpha); dot(-6, 2, S[0], alpha);
-      for (let x = -8; x > -len + 6; x -= 2) dot(x, 0, x % 4 ? W[2] : W[1], alpha);
-      for (let i = 0; i < 3; i++) { const x = -len + 6 - i * 2; dot(x, -2, '#ffffff', alpha); dot(x - 2, -4, '#ffffff', alpha); dot(x, 2, '#c9ced8', alpha); dot(x - 2, 4, '#c9ced8', alpha); dot(x, 0, W[0], alpha); }
-    }
-    function drawPixelArrow(ctx, p, tick) {
-      const c = 2, K = 1.2;
-      let ang = p.angle;
-      if (ang == null) ang = p.target ? Math.atan2(p.target.y - 10 - p.y, p.target.x - p.x) : 0;
-      ctx.save();
-      ctx.translate(p.x, p.y); ctx.rotate(ang); ctx.scale(K, K);
-      const dot = (x, y, col, a = 1) => { ctx.globalAlpha = a; ctx.fillStyle = col; ctx.fillRect(Math.round(x / c) * c - c / 2, Math.round(y / c) * c - c / 2, c, c); };
-      // 흰 바람줄: 위아래로 번갈아 조금씩 벌어지며 뒤로 갈수록 성기고 옅어짐
-      for (let i = 1; i <= 14; i++) {
-        const q = i / 14, x = -28 - q * 26, y = (i % 2 ? -1 : 1) * 2 * q;
-        if (PFX_BAYER[((Math.round(y / c) & 3) << 2) | (Math.round(x / c) & 3)] > 1.05 - q * 0.9) continue;
-        dot(x, y, '#ffffff', 0.75 - q * 0.5);
-      }
-      drawPixelArrowBody(dot, 30);
-      ctx.restore();
-      return true;
-    }
     function drawPixelOrb(ctx, p, tick) {
       const o = PIXEL_ORBS[p.spr], R = o.ramp, c = 2, K = 1.6;
       let ang = p.angle;
@@ -18429,8 +18407,7 @@
       u.cooldown = interval;
       u.attackAnim = Math.min(42, interval);
       u.maxAttackAnim = u.attackAnim;
-      const ox = u.x + Math.cos(aimAngle) * 14;
-      const oy = u.y - 8 + Math.sin(aimAngle) * 14;
+      const { x: ox, y: oy } = aimShotOrigin(u, u.x, u.y, aimAngle); // 궁수 기본 외형 = 활 앞에서
       const directional = (projType, dmg, extra = {}) => sim.projectiles.push({
         projType, isDirectional: true, angle: aimAngle, x: ox, y: oy, owner: u, dmg,
         isHeal: false, speed: 4.6, trail: [], maxTravel: u.range * 1.7 + 80, ...extra
@@ -18454,7 +18431,7 @@
         if (u.job === 'paladin' && !u.monsterType) paladinSwingFx(u); // 망치 궤적 + 땅 불꽃
       } else if (u.job === 'archer') {
         u.mana = Math.min(u.maxMana, u.mana + 18);
-        directional('arrow', u.atk, { spr: unitProjFx(u, 'arrow') || mercArrowSpr(u) }); // 용병 궁수 = 도트 화살
+        directional('arrow', u.atk);
       } else if (u.job === 'pyro') {
         u.mana = Math.min(u.maxMana, u.mana + 18);
         pyroManualBasic(u, Math.atan2((aimY - 12) - oy, aimX - ox), ox, oy);
@@ -21565,7 +21542,7 @@
             const stormCharged = u.spiritElem === 'storm' && (u._stormChargeCarry || (u.spiritHits = (u.spiritHits || 0) + 1) % SPIRIT_STORM_CHAIN_EVERY === 0);
             if (stormCharged) u._stormChargeCarry = false;
             sim.projectiles.push({
-              projType: 'arrow', spr: stormCharged ? 'storm_orb_charged' : (unitProjFx(u, 'arrow') || mercArrowSpr(u)), // 히드라 = 독 구슬 (입에서 뱉음) · 용병 궁수 = 도트 화살
+              projType: 'arrow', spr: stormCharged ? 'storm_orb_charged' : unitProjFx(u, 'arrow'), // 히드라 = 독 구슬 (입에서 뱉음)
               ...unitShotOrigin(u, 12), target, owner: u,
               dmg: u.atk, isHeal: false, speed: 4.0, trail: []
             });
@@ -28722,7 +28699,6 @@
     // 투사체를 그림으로 그리면 true (그림이 없거나 아직 안 불러왔으면 false → 기본 도형)
     function drawProjectileSprite(ctx, p, tick) {
       if (p.spr && PIXEL_ORBS[p.spr]) return drawPixelOrb(ctx, p, tick);
-      if (p.spr && PIXEL_ARROWS[p.spr]) return drawPixelArrow(ctx, p, tick);
       const def = (p.spr && PROJECTILE_SPRITES[p.spr]) || PROJECTILE_SPRITES[p.projType];
       const sheet = (def && def.sheet) || FX_SPRITE_SHEET;
       if (!def || !sheet.ready || (def.match && !def.match(p))) return false;
@@ -44301,10 +44277,10 @@
       const hasAim = typeof c.aimX === 'number' && typeof c.aimY === 'number';
       const aimAngle = hasAim ? Math.atan2(c.aimY - P.y, c.aimX - P.x) : (u.facingAngle || 0);
       const aimX = hasAim ? c.aimX : P.x + Math.cos(aimAngle) * 100, aimY = hasAim ? c.aimY : P.y + Math.sin(aimAngle) * 100;
-      const ox = P.x + Math.cos(aimAngle) * 14, oy = P.y - 8 + Math.sin(aimAngle) * 14;
+      const { x: ox, y: oy } = aimShotOrigin(u, P.x, P.y, aimAngle); // manualBasicAttack과 같은 자리
       let p;
       if (u.job === 'archer') {
-        p = { projType: 'arrow', spr: unitProjFx(u, 'arrow') || mercArrowSpr(u), isDirectional: true, angle: aimAngle, x: ox, y: oy, speed: 4.6, maxTravel: u.range * 1.7 + 80, trail: [] };
+        p = { projType: 'arrow', isDirectional: true, angle: aimAngle, x: ox, y: oy, speed: 4.6, maxTravel: u.range * 1.7 + 80, trail: [] };
       } else {
         const color = u.job === 'frost' ? '#38bdf8' : (u.job === 'curse' ? '#a855f7' : (u.job === 'bard' ? '#7dd3fc' : (u.job === 'summoner' ? SUMMONER_ORB_COLOR : '#7c3aed')));
         const spr = u.job === 'frost' ? (unitProjFx(u, 'magic_orb') || 'troll_frost') : (u.job === 'curse' ? 'curse_flame' : (u.job === 'bard' ? 'bard_bubble' : (u.job === 'summoner' ? (unitProjFx(u, 'magic_orb') || 'summoner_orb') : (u.job === 'mage' ? mageOrbSpr(u) : undefined))));
