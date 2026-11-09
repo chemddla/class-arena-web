@@ -338,6 +338,65 @@ def load_pair(wbox, bbox, foot=None):
     return rgba, solid, fx, fy
 
 
+# 발동 칸 이펙트 색 바꾸기: (칸 이름, 빛 색, 빛무리 색). 이펙트 크기 FX_SCALE 배 (이펙트 무게중심 기준으로 퍼지며 커짐)
+FX_VARIANTS = [('fx_heal', (74, 222, 128), (34, 197, 94)),       # 다수회복 초록
+               ('fx_shield', (96, 165, 250), (37, 99, 235)),     # 보호막 푸른색
+               ('fx_bless', (250, 204, 21), (234, 179, 8)),      # 축복 노란색
+               ('fx_purify', (248, 250, 255), (148, 170, 210))]  # 정화 흰색 (흰 수도복·밝은 바닥에서도 보이게 빛무리는 옅은 청회색)
+FX_SCALE = 1.6
+
+
+def fx_variant(rgba, body, fx, fy, tint, halo):
+    # 몸(지팡이 포함)에 닿지 않는 덩어리 = 이펙트. 이펙트만 떼어 키우고 색을 바꿔 몸 위에 다시 올림
+    a = rgba[..., 3] > 0
+    eff = a & ~body
+    lab, n = ndi.label(eff, structure=np.ones((3, 3)))
+    near = ndi.binary_dilation(body, iterations=2)
+    keep = [i for i in range(1, n + 1) if not (near & (lab == i)).any()]
+    em = np.isin(lab, keep)
+    base = rgba.copy(); base[em] = 0
+    E = rgba.copy(); E[~em] = 0
+    ys, xs = np.where(em)
+    w8 = E[ys, xs, 3]
+    cy, cx = (ys * w8).sum() / w8.sum(), (xs * w8).sum() / w8.sum()
+    # 색: 밝기를 살려 빛 색으로, 가장 밝은 속은 흰빛
+    L = E[..., :3].max(axis=2) / 255
+    t = np.array(tint, float)
+    col = t * (0.55 + 0.45 * L)[..., None]
+    wmix = (np.clip((L - 0.75) / 0.25, 0, 1) * 0.7)[..., None]
+    E[..., :3] = col * (1 - wmix) + 255 * wmix
+    # 키우기 (premultiplied)
+    h, w = E.shape[:2]
+    S = FX_SCALE
+    big = (round(w * S), round(h * S))
+    pm = E.copy(); pm[..., :3] *= pm[..., 3:] / 255
+    pm = np.array(Image.fromarray(pm.clip(0, 255).astype(np.uint8), 'RGBA').resize(big, Image.LANCZOS)).astype(float)
+    al = pm[..., 3:]
+    pm[..., :3] = np.where(al > 0, pm[..., :3] * 255 / np.maximum(al, 1), 0)
+    # 빛무리: 이펙트 알파를 번지게 해서 옅게 깔기
+    glow = ndi.gaussian_filter(pm[..., 3], 4) * 0.55
+    # 새 캔버스: 원래 칸 + 커진 이펙트가 다 들어가게
+    ox, oy = cx * S - cx, cy * S - cy   # 커진 이펙트를 무게중심이 같은 자리에 오게 옮기는 양
+    x0 = int(np.floor(min(0, -ox))); y0 = int(np.floor(min(0, -oy)))
+    x1 = int(np.ceil(max(w, big[0] - ox))); y1 = int(np.ceil(max(h, big[1] - oy)))
+    W, Hh = x1 - x0, y1 - y0
+    out = np.zeros((Hh, W, 4)); bd = np.zeros((Hh, W), bool)
+    out[-y0:-y0 + h, -x0:-x0 + w] = base; bd[-y0:-y0 + h, -x0:-x0 + w] = body
+    ex, ey = int(round(-ox - x0)), int(round(-oy - y0))
+    def over(dst, src_rgb, src_a):
+        sa = src_a[..., None] / 255; da = dst[..., 3:] / 255
+        oa = sa + da * (1 - sa)
+        dst[..., :3] = np.where(oa > 0, (src_rgb * sa + dst[..., :3] * da * (1 - sa)) / np.maximum(oa, 1e-6), 0)
+        dst[..., 3:] = oa * 255
+    reg = out[ey:ey + big[1], ex:ex + big[0]]
+    over(reg, np.broadcast_to(np.array(halo, float), reg.shape[:2] + (3,)), np.clip(glow, 0, 255) * ~bd[ey:ey + big[1], ex:ex + big[0]])
+    over(reg, pm[..., :3], pm[..., 3])
+    out[..., 3] = np.where(out[..., 3] < 10, 0, out[..., 3])
+    ys, xs = np.where(out[..., 3] > 0)
+    yy0, yy1, xx0, xx1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+    return out[yy0:yy1, xx0:xx1], bd[yy0:yy1, xx0:xx1], fx - x0 - xx0, fy - y0 - yy0
+
+
 def add_outline(p, body):
     # 검은 배경 장 칸을 대기 칸처럼: 몸(불투명) 바로 바깥 1px에 대기 칸 윤곽선 색, 몸 둘레 반투명 테두리는 지움
     #   (반짝이·마법진 고리처럼 몸에서 떨어진 빛은 그대로)
@@ -403,6 +462,13 @@ def main():
         p = add_outline(shrink_soft(rgba, bd, kb), bd)
         pieces.append((name, p, fx * kb + 1, fy * kb + 2))   # 발 = 윤곽선 아래끝
         print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} ×{kb:.3f} → {p.shape[1]}x{p.shape[0]}')
+    # 13~16: 발동 칸(11)의 빛 십자·반짝이를 스킬마다 다른 색으로 키운 칸 (다수회복 · 보호막 · 축복 · 정화)
+    fire = [r for r in row if r[0] == 'fire'][0]
+    for name, tint, halo in FX_VARIANTS:
+        rgba, bd, fx, fy = fx_variant(fire[1], fire[2], fire[3], fire[4], tint, halo)
+        p = add_outline(shrink_soft(rgba, bd, kb), bd)
+        pieces.append((name, p, fx * kb + 1, fy * kb + 2))
+        print(f'{name}: {rgba.shape[1]}x{rgba.shape[0]} → {p.shape[1]}x{p.shape[0]}')
     cell = pack(pieces, OUT, 'healer_0')
     try:
         import cv2   # noqa: F401 — 히든 스킬 맞대기용. 없으면 히든 스킬 그림은 그대로 둠
