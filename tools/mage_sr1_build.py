@@ -5,11 +5,16 @@
 #   mage_sr1_edit_1_src.png (199×231): 대기 1칸 (맨 아래 회색 줄은 화면 캡처 테두리 → 버림)
 #   mage_sr1_edit_2_walk_src.png (424×202): 걷기 3칸
 #   mage_sr1_edit_3_walk_src.png (144×186): 걷기 1칸 (넷째 걸음)
-#   mage_sr1_edit_4_attack_hurt_death_src.png (762×544): 일반공격 2칸 · 피격 1칸 · 쓰러짐 2칸 (왼쪽 글씨는 상자로 버림)
+#   mage_sr1_edit_4_attack_hurt_death_src.png (762×544): 일반공격 2칸(안 씀) · 피격 1칸 · 쓰러짐 2칸 (왼쪽 글씨는 상자로 버림)
 #     쓰러짐 둘째 칸의 떨어진 지팡이는 몸과 떨어져 있어도 남김 (상자 안 덩어리를 다 남김)
 #   mage_sr1_edit_5_hidden_skill_src.png (642×314): 히든 스킬 기 모으기 · 마력 집중(마법진) · 스킬 해방(별빛 광선)
 #     오른쪽 위의 회색 '이미지' 단추와 아래 글씨는 화면 캡처 조각 → 상자로 버림
-# 칸 순서: 0 대기 · 1~4 걷기 · 5~6 공격 · 7 피격 · 8~9 쓰러짐 (일반 스킬 그림은 없어서 공격 칸을 같이 씀)
+#   mage_sr1_edit_7_hidden_skill_black_src.png (575×323): 5번과 같은 그림을 검은 배경에 놓은 화면 캡처 (위치·크기가 조금 다름)
+#     → 칸마다 검은 판을 흰 판에 맞춰 옮긴 뒤(BLACK_FIT) 두 판의 차이로 투명도를 뽑음: 흰 배경에서 a·색 + (1-a)·255, 검은 배경에서 a·색
+#       → a = 1 - (흰 판 - 검은 판)/255, 색 = 검은 판 / a. 옅은 빛·마법진 안쪽·반짝이 가장자리가 흰 테 없이 반투명으로 남음
+#       몸(a 0.85 이상)은 흰 판 색을 그대로 씀 (검은 판 캡처가 조금 어둡게 찍힘)
+#   mage_sr1_edit_6_attack_src.png (216×238): 일반공격 단일 칸 (지팡이를 내밀고 별 반짝이). 오른쪽 아래 모서리의 이웃 그림 조각은 지움
+# 칸 순서: 0 대기 · 1~4 걷기 · 5 공격 · 6 피격 · 7~8 쓰러짐 (일반 스킬 그림은 없어서 공격 칸을 같이 씀)
 # 크기: 대기 칸 기준. 대기 키(리본 꼭대기~발)를 TARGET_H로 맞추고, 다른 칸은 얼굴 폭(살색 덩어리 폭)이 대기 칸과 같아지게 줄임
 #   샘플 한 장 안의 칸들은 같은 크기로 그려져 있어서 장마다 배율 하나 (그 장 얼굴 폭의 가운뎃값 기준)
 #   → 칸마다 키를 따로 맞추던 때보다 머리 크기·몸 비율이 대기 칸과 같고, 걸음마다 키가 오르내리는 것도 그대로 남음
@@ -36,12 +41,14 @@ FRAMES = [
     ('walk1', '2_walk_src', (141, 0, 283, 202)),
     ('walk2', '2_walk_src', (283, 0, 424, 202)),
     ('walk3', '3_walk_src', None),
-    ('atk0', '4_attack_hurt_death_src', (185, 0, 365, 191)),
-    ('atk1', '4_attack_hurt_death_src', (410, 0, 660, 191)),
+    ('atk', '6_attack_src', None),
     ('hurt', '4_attack_hurt_death_src', (200, 191, 400, 372)),
     ('down0', '4_attack_hurt_death_src', (215, 372, 405, 544)),
     ('down1', '4_attack_hurt_death_src', (405, 400, 720, 544)),
 ]
+BODY_CLEAR = {'atk': [(205, 180, 216, 238)]}   # 몸 칸에서 흰색으로 덮을 조각 (샘플 좌표)
+# 배율을 잴 때 더 넣는 얼굴: 4번 장은 시트엔 안 쓰는 예전 공격 2칸 얼굴도 같이 재서 가운뎃값을 냄 (공격을 바꾸기 전과 같은 배율)
+FACE_BOX = {'4_attack_hurt_death_src': [(185, 0, 365, 191), (410, 0, 660, 191)]}
 NO_FACE = {'down1', 'charge'}   # 얼굴이 옆으로 누웠거나(쓰러짐 둘째) 별·손에 가려서(기 모으기) 얼굴 폭을 재지 않음
 # 히든 스킬: (칸 이름, 샘플, 상자, (안 씀: 예전 키 맞춤 값), 땅 자리 (x, y) 샘플 좌표) — 눈으로 잰 값
 #   땅 자리가 칸 기준점(발밑)이 됨. 발밑 빛 고리는 기준점 아래로 조금 내려감
@@ -54,8 +61,8 @@ FUSION = [
 # 상자 안에 걸린 조각을 흰색으로 덮음 (샘플 좌표): 기 모으기 왼쪽의 'Powerful Skill' 글씨 끝 ·
 #   기 모으기 상자 오른쪽 위에 걸린 마법진 왼쪽 끝 · 마력 집중 상자 왼쪽 아래에 걸린 기 모으기 빛 고리 오른쪽 끝
 CLEAR = {'charge': [(100, 150, 137, 205), (236, 150, 250, 236)], 'focus': [(232, 236, 252, 268)]}
-# 아이 몸통 상자 (샘플 좌표): 이 안의 갇힌 흰색은 소매·장갑·앞치마라 남김. 밖은 마법진·빛 고리 안쪽이라 지움
-KEEP = {'charge': [(145, 175, 216, 248)], 'focus': [(298, 160, 352, 242), (352, 138, 378, 165)], 'release': [(438, 185, 520, 252)]}
+# 검은 판(7번) → 흰 판(5번) 좌표: x' = s·x + tx, y' = s·y + ty (칸마다 진한 윤곽이 겹치게 맞춘 값)
+BLACK_FIT = {'charge': (0.9955, 90.46, -5.61), 'focus': (0.9952, 89.45, -5.8), 'release': (0.9902, 90.54, -4.61)}
 
 
 def face_w(rgba):
@@ -93,7 +100,7 @@ def load(src, box, clear=(), fx=False, keep_boxes=()):
     edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
     bg = np.isin(lab, edge[edge > 0])
     # 갇힌 흰색은 몸 칸에선 지우지 않음: 이 그림은 소매·치마 앞자락이 순백이라 지우면 구멍이 남 (몸 사이로 뚫린 배경 틈은 없음)
-    # 히든 스킬 칸은 마법진·고리 안쪽의 갇힌 흰색이 배경. 아이 몸통(소매·장갑·앞치마·스타킹) 상자 안의 흰색만 남김 (KEEP, 샘플 좌표)
+    # (흰 판만으로 히든 스킬 칸을 뺄 때 쓰던 길) 마법진·고리 안쪽의 갇힌 흰색은 배경, keep_boxes 상자 안의 흰색만 남김
     if fx:
         bx, by = (box[0], box[1]) if box else (0, 0)
         keep = np.zeros_like(bg)
@@ -131,6 +138,43 @@ def load(src, box, clear=(), fx=False, keep_boxes=()):
     return rgba, foot, (ox, oy)
 
 
+def load_pair(name, box, clear=()):
+    # 흰 판·검은 판 차이로 투명도를 뽑음 (히든 스킬 칸)
+    import cv2
+    Wim = np.array(Image.open(f'{D}5_hidden_skill_src.png').convert('RGB')).astype(np.float32)
+    Kim = np.array(Image.open(f'{D}7_hidden_skill_black_src.png').convert('RGB')).astype(np.float32)
+    s, tx, ty = BLACK_FIT[name]
+    Kim = cv2.warpAffine(Kim, np.float32([[s, 0, tx], [0, s, ty]]), (Wim.shape[1], Wim.shape[0]), flags=cv2.INTER_LINEAR,
+                         borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    for x0, y0, x1, y1 in clear: Wim[y0:y1, x0:x1] = 255; Kim[y0:y1, x0:x1] = 0
+    x0, y0, x1, y1 = box
+    Wc, Kc = Wim[y0:y1, x0:x1], Kim[y0:y1, x0:x1]
+    a = np.clip(1 - (Wc - Kc).max(axis=2) / 255, 0, 1)
+    a = np.where(a < 0.06, 0, a)                     # 캡처 잡티
+    a = ndi.median_filter(a, size=3) * 0.5 + a * 0.5  # 두 판이 반 픽셀 어긋난 가장자리의 들쭉날쭉함을 조금 누름
+    col = np.where(a[..., None] > 0.02, Kc / np.maximum(a, 0.02)[..., None], 0).clip(0, 255)
+    body = a >= 0.85
+    col = np.where(body[..., None], Wc, col); a = np.where(body, 1.0, a)
+    m = a > 0.3   # 너무 작은 티끌(15px 미만) 지움
+    lab, n = ndi.label(ndi.binary_dilation(m, iterations=2))
+    sz = ndi.sum(m, lab, range(1, n + 1))
+    a = np.where(np.isin(lab, 1 + np.where(sz >= 15)[0]), a, 0)
+    ys, xs = np.where(a > 0)
+    rgba = np.dstack([col, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    return rgba, None, (x0 + xs.min(), y0 + ys.min())
+
+
+def shrink_soft(rgba, sc):
+    # 히든 스킬 칸: 빛의 반투명을 살린 채 줄임 (shrink는 가장자리를 딱딱하게 만들어 옅은 빛이 잘림). 몸(불투명)은 그대로 또렷함
+    h, w = rgba.shape[:2]
+    pm = rgba.copy(); pm[..., :3] *= pm[..., 3:] / 255
+    sm = np.array(Image.fromarray(pm.clip(0, 255).astype(np.uint8), 'RGBA').resize((max(1, round(w * sc)), max(1, round(h * sc))), Image.LANCZOS)).astype(float)
+    al = sm[..., 3:]
+    sm[..., :3] = np.where(al > 0, sm[..., :3] * 255 / np.maximum(al, 1), 0)
+    sm[..., 3:] = np.where(al > 235, 255, np.where(al < 12, 0, al))
+    return sm.clip(0, 255).astype(np.uint8)
+
+
 def pack(pieces, out, label):
     # pieces: (이름, 그림, 기준점 x, 기준점 y) — 기준점 y가 없으면 그림 맨 아래
     pieces = [(n, p, c, p.shape[0] if g is None else g) for n, p, c, g in pieces]
@@ -149,14 +193,14 @@ def pack(pieces, out, label):
 
 
 def main():
-    loaded = [(name, src) + load(src, box) for name, src, box in FRAMES]
+    loaded = [(name, src) + load(src, box, BODY_CLEAR.get(name, ())) for name, src, box in FRAMES]
     idle = loaded[0][2]
     k_idle = TARGET_H / idle.shape[0]
     ref = face_w(idle) * k_idle   # 시트에서 대기 칸 얼굴 폭 (px)
     ks = {}
     for src in dict.fromkeys(s for _, s, *_ in loaded):
         if src == FRAMES[0][1]: ks[src] = k_idle; continue
-        ws = [face_w(r) for n, s, r, *_ in loaded if s == src and n not in NO_FACE]
+        ws = [face_w(load(src, b)[0]) for b in FACE_BOX.get(src, [])] +             [face_w(r) for n, s, r, *_ in loaded if s == src and n not in NO_FACE]
         ks[src] = ref / float(np.median(ws))
         print(f'{src}: 얼굴 폭 {ws} → ×{ks[src]:.3f}')
     pieces = []
@@ -170,14 +214,14 @@ def main():
         pieces.append((name, p, foot * k, None))
         print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} ×{k:.3f} → {p.shape[1]}x{p.shape[0]}, 발 {foot * k:.1f}')
     pack(pieces, OUT, 'mage_sr1')
-    floaded = [(name, load(src, box, CLEAR.get(name, ()), fx=True, keep_boxes=KEEP.get(name, ())), g) for name, src, box, _, g in FUSION]
+    floaded = [(name, load_pair(name, box, CLEAR.get(name, ())), g) for name, src, box, _, g in FUSION]
     # 히든 스킬 장은 칸마다 아이 크기가 달라서(마력 집중이 조금 큼) 칸마다 얼굴 폭으로 맞춤. 기 모으기는 얼굴이 가려 스킬 해방 배율을 씀
     kf = {n: ref / face_w(r) for n, (r, _, _), _ in floaded if n not in NO_FACE}
     kf['charge'] = kf['release']
     fpieces = []
     for name, (rgba, _, (ox, oy)), (gx, gy) in floaded:
         k = kf[name]
-        p = shrink(rgba, k)
+        p = shrink_soft(rgba, k)
         fpieces.append((name, p, (gx - ox) * k, (gy - oy) * k))
         print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} ×{k:.3f} → {p.shape[1]}x{p.shape[0]}, 땅 ({(gx - ox) * k:.1f}, {(gy - oy) * k:.1f})')
     pack(fpieces, FUSION_OUT, 'mage_fusion_sr1')

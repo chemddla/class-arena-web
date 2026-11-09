@@ -7137,10 +7137,10 @@
         castFrames: { flame_scatter: 8, chain_ignite: 19, pyro_fireball: 8, combustion: 16, meteor: [12, 12, 13], flame_ring: 14 } },
       summoner_sr1: { cellW: 109, cellH: 97, anchorX: 56, anchorY: 95, topH: 88, portraitCX: 54, projFx: { magic_orb: 'summoner_sr_orb' } }, // 기본 공격 구슬은 보라
       bard_sr1: { cellW: 147, cellH: 100, anchorX: 64, anchorY: 97, topH: 84, portraitCX: 69, lutePt: [27, 38] }, // lutePt = 공격 칸(5)의 하프 줄 가운데 (기준점에서 앞으로·위로, 음파가 나오는 자리)
-      // 마법사 SR 1 (2026-11-09 교체: 갈색 긴 머리·분홍 리본·분홍 드레스·별 지팡이 마법소녀, tools/mage_sr1_build.py): 10칸 = 0 대기 · 1~4 걷기
-      //   · 5~6 공격 (별빛 물보라는 그림에 있음) · 7 피격 · 8~9 쓰러짐 (무릎 꿇음 → 누움, 지팡이가 떨어짐). 일반 스킬 그림은 없어서 공격 칸을 같이 씀
-      mage_sr1: { cellW: 157, cellH: 99, anchorX: 64, anchorY: 97, standH: 87, topH: 92, portraitCX: 68, count: 10,
-        anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5, 6], skill: [5, 6], hurt: [7], death: [8, 9] }, skillAnims: {} },
+      // 마법사 SR 1 (2026-11-09 교체: 갈색 긴 머리·분홍 리본·분홍 드레스·별 지팡이 마법소녀, tools/mage_sr1_build.py): 9칸 = 0 대기 · 1~4 걷기
+      //   · 5 공격 (지팡이를 내밀고 별 반짝이, 단일 칸) · 6 피격 · 7~8 쓰러짐 (무릎 꿇음 → 누움, 지팡이가 떨어짐). 일반 스킬 그림은 없어서 공격 칸을 같이 씀
+      mage_sr1: { cellW: 157, cellH: 99, anchorX: 64, anchorY: 97, standH: 87, topH: 92, portraitCX: 68, count: 9,
+        anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5], skill: [5], hurt: [6], death: [7, 8] }, skillAnims: {} },
       frost_sr1: { cellW: 170, cellH: 108, anchorX: 100, anchorY: 106, topH: 98, portraitCX: 104, projFx: { magic_orb: 'frost_sr_shard' } },
       curse_sr1: { cellW: 167, cellH: 139, anchorX: 72, anchorY: 120, standH: 81, topH: 86, portraitCX: 84, count: 18,
         anims: { idle: [0], walk: [1, 2], attack: [3], skill: [8], hurt: [4, 5], death: [5, 6, 7], hex: [3], weaken: [10], shatter: [12], siphon: [13, 14, 15], swamp: [17] },
@@ -10117,13 +10117,33 @@
       4: { cellW: 116, cellH: 121, anchorX: 54, anchorY: 119, standH: 100, tips: MAGE_FUSION_FX.tips },
       5: { cellW: 116, cellH: 121, anchorX: 54, anchorY: 119, standH: 100, tips: MAGE_FUSION_FX.tips },
       // 시크릿 레어 (tools/mage_sr1_build.py): 기 모으기 (발밑 빛 고리) · 마력 집중 (마법진 앞에 떠오름) · 스킬 해방 (별빛 광선). 기준점 = 발밑 (마력 집중 칸은 그림자 자리)
-      [SECRET_SKIN_BASE + 1]: { cellW: 235, cellH: 209, anchorX: 77, anchorY: 195, standH: 87, file: 'sr1' }
+      [SECRET_SKIN_BASE + 1]: { cellW: 235, cellH: 209, anchorX: 78, anchorY: 195, standH: 87, file: 'sr1' }
     };
     Object.entries(MAGE_FUSION_SKINS).forEach(([v, def]) => {
       def.cast = new Image();
       def.cast.onload = () => { def.cast.ready = true; };
       def.cast.src = `assets/sprites/fx/mage_fusion_${def.file || v}.webp`;
     });
+    // 원소 융합 시전 마법진 — 시크릿 레어 마법사만 (tools/mage_sr1_cast_fx_build.py, 169×142 3칸, 칸 한가운데 기준, 검은 판에서 뽑은 빛 그림)
+    //   0 땅 마법진 (기 모으기부터 발밑에서 돌며 커짐) · 1 고리 두른 별빛 구체 (마력 집중 때 몸 뒤) · 2 네 갈래 별과 고리 (스킬 해방 때 지팡이 끝)
+    //   다른 외형이 쓰는 무지갯빛 발밑 마법진(MAGE_FUSION_FX.circle) 대신 씀
+    const MAGE_FUSION_SR_CAST = new Image();
+    MAGE_FUSION_SR_CAST.onload = () => { MAGE_FUSION_SR_CAST.ready = true; };
+    MAGE_FUSION_SR_CAST.src = 'assets/sprites/fx/mage_fusion_sr_cast_fx.webp';
+    const MAGE_FUSION_SR_CAST_CELL = [169, 142];
+    const usesFusionSrCast = u => u.job === 'mage' && !u.monsterType && MAGE_FUSION_SKINS[u.skinVariant]?.file === 'sr1';
+    // i칸을 (x, y) 가운데에 지름 d로 그림. squash = 세로 비율, rot = 돌림 (squash 전에 돌려서 땅에 눕힌 원판처럼 돎)
+    function drawFusionSrCastCell(ctx, i, x, y, d, alpha, squash = 1, rot = 0) {
+      if (alpha <= 0 || d <= 0) return;
+      const [cw, ch] = MAGE_FUSION_SR_CAST_CELL, k = d / cw;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, alpha);
+      ctx.translate(x, y);
+      ctx.scale(1, squash);
+      if (rot) ctx.rotate(rot);
+      ctx.drawImage(MAGE_FUSION_SR_CAST, i * cw, 0, cw, ch, -cw * k / 2, -ch * k / 2, cw * k, ch * k);
+      ctx.restore();
+    }
     // 원소 융합 장판 그림 — 시크릿 레어 마법사만 씀 (320×320 6칸, 모두 그림 중심 기준)
     // 0 네 원소 소용돌이 · 1 융합 구체 · 2 마법진 섬광 · 3 폭발 · 4 충격파 고리와 파편 · 5 연기
     const MAGE_FUSION_SR_FX = { img: new Image(), cell: 320 };
@@ -23158,6 +23178,29 @@
     // 히든 스킬 시전 중 오색 구슬: 예전부터 있던 히든 스킬이 전용 시전 그림을 아직 받는 동안 잠깐 대신 보여 줄 때만 씀.
     //   쓰는 스킬만 적는 방식이라, 새로 만드는 히든 스킬(메테오 등)은 이 목록에 넣지 않음 → 오색 구슬이 나오지 않음 (사용자 요청 2026-11-06)
     const HIDDEN_CAST_ORB_KEYS = new Set(['excalibur', 'element_fusion', 'miracle', 'storm', 'assassinate', 'giant', 'musou', 'last_shot', 'blizzard', 'ruin_rite', 'encore', 'undying_rage', 'aegis', 'spirit_king']);
+    // 시크릿 레어 마법사 [원소 융합] 시전 마법진 (몸 뒤): 시전 그림 칸(0 기 모으기 → 1 마력 집중 → 2 스킬 해방, 마지막 10틱)에 맞춤
+    //   발밑 땅 마법진은 시전 내내 돌며 커지고, 마력 집중 동안 몸 뒤에 고리 두른 별빛 구체가 떠오름 (시전 그림 속 마법진 뒤에서 고리가 삐져나오게 더 크게, 같은 자리)
+    //   크기는 그림 키(H) 기준. 스킬 해방 때 네 갈래 별은 지팡이 끝 앞쪽이라 drawHiddenSkillOverlay에서
+    function drawFusionSrCastBack(ctx) {
+      if (!MAGE_FUSION_SR_CAST.ready) return;
+      const t = sim.tickCount;
+      sim.units.forEach(u => {
+        const c = u.casting;
+        if (!u.alive || !c || c.key !== 'element_fusion' || !usesFusionSrCast(u)) return;
+        if (isStealthed(u) && !canViewerSeeStealthed(u)) return;
+        const sp = getUnitSprite(u);
+        if (!sp) return;
+        const H = spriteDrawH(u, sp), p = 1 - c.left / c.total, footY = u.y + 12;
+        const fi = c.left <= 10 ? 2 : (c.left <= c.total * 0.6 ? 1 : 0);
+        const end = fi === 2 ? c.left / 10 : 1; // 스킬 해방 동안 사라짐
+        const grow = Math.min(1, p / 0.4), ease = 1 - (1 - grow) * (1 - grow);
+        drawFusionSrCastCell(ctx, 0, u.x, footY, H * 1.9 * (0.55 + 0.45 * ease), Math.min(1, p / 0.12) * (0.75 + 0.2 * Math.sin(t * 0.2)) * end, 0.36, t * 0.025);
+        if (fi >= 1) {
+          const q = Math.min(1, (p - 0.4) / 0.15); // 마력 집중이 시작되며 커짐
+          drawFusionSrCastCell(ctx, 1, u.x, footY - H * 1.13, H * 2.7 * (0.6 + 0.4 * q) * (1 + 0.03 * Math.sin(t * 0.3)), q * 0.9 * end * end * end);
+        }
+      });
+    }
     // 엑스칼리버 시전 기운: 유닛보다 먼저 그려서 전사 몸 뒤에 깔림 (위에 덮으면 전사가 가려짐)
     function drawExcaliburCastAura(ctx) {
       if (!WARRIOR_EXCALIBUR_FX.fx.ready) return;
@@ -23310,6 +23353,17 @@
               });
               ctx.restore();
             }
+            return;
+          }
+          if (c.key === 'element_fusion' && usesFusionSrCast(u)) {
+            // 시크릿 레어: 무지갯빛 마법진 대신 전용 마법진 (발밑·몸 뒤는 drawFusionSrCastBack). 여기선 스킬 해방(마지막 10틱) 때 지팡이 끝 네 갈래 별
+            //   지팡이 끝 = 시전 그림 스킬 해방 칸의 별 자리 (발밑에서 앞으로 키의 0.85배, 위로 0.56배)
+            const sp = getUnitSprite(u);
+            if (sp && MAGE_FUSION_SR_CAST.ready && c.left <= 10) {
+              const H = spriteDrawH(u, sp), dir = u.facingDir >= 0 ? 1 : -1, q = (10 - c.left) / 10;
+              drawFusionSrCastCell(ctx, 2, u.x + dir * H * 0.85, u.y + 12 - H * 0.56, H * (0.8 + 0.7 * Math.min(1, q * 2.5)), Math.min(1, 1.6 - q), 1, q * 0.6);
+            }
+            ctx.restore();
             return;
           }
           if (c.key === 'element_fusion' && MAGE_FUSION_FX.circle.ready) {
@@ -31550,6 +31604,7 @@
       drawSpiritKingBursts(ctx); // 정령왕 강림 원소 고리 (바닥, 유닛 아래)
       drawDuelTethers(ctx); // 격투가 결투: 둘 사이 붉은 빛줄기 (유닛 몸 뒤)
       drawExcaliburCastAura(ctx); // 엑스칼리버 시전 기운 (전사 몸 뒤)
+      drawFusionSrCastBack(ctx); // 시크릿 레어 마법사 원소 융합 시전 마법진 (몸 뒤)
       sortedUnits.forEach(u => {
         if (u.isEliteBoss && sim.eliteIntro) { drawEliteBossDrop(ctx, u); return; }
         drawUnitToken(ctx, u, sim.tickCount);
