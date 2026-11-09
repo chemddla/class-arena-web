@@ -30315,34 +30315,45 @@
     // 레어는 금빛, 시크릿 레어는 붉은 빛 ([밝은 색 RGB, 진한 색 RGB, 별 안쪽 색])
     // nebula = 시크릿 레어 정령왕 (성운 머리·별빛 왕관): 하늘색 빛 · 남보라 번짐 · 금빛 별
     const RARE_FX_COLORS = { gold: ['253, 224, 71', '251, 191, 36', '#fff7c2'], red: ['248, 113, 113', '220, 38, 38', '#ffe4e4'], nebula: ['125, 211, 252', '99, 102, 241', '#fde68a'] };
+    // 빛무리는 shadowBlur(매번 흐림 계산, 느림) 대신 같은 별을 1.8배 크기·옅은 색으로 밑에 한 번 더 그려 흉내 (한 화면에 레어 용병마다 9번씩 그림)
     function drawRareSparkle(ctx, x, y, r, alpha, pal = RARE_FX_COLORS.gold) {
       if (alpha <= 0.02) return;
       ctx.save();
       ctx.globalAlpha *= alpha;
       ctx.translate(x, y);
+      const star = rr => { ctx.beginPath(); ctx.moveTo(0, -rr); ctx.quadraticCurveTo(0, 0, rr, 0); ctx.quadraticCurveTo(0, 0, 0, rr); ctx.quadraticCurveTo(0, 0, -rr, 0); ctx.quadraticCurveTo(0, 0, 0, -rr); ctx.fill(); };
+      ctx.fillStyle = `rgba(${pal[1]}, 0.45)`;
+      star(r * 1.8);
       ctx.fillStyle = pal[2];
-      ctx.shadowColor = `rgba(${pal[1]}, 1)`;
-      ctx.shadowBlur = 6;
-      ctx.beginPath();
-      ctx.moveTo(0, -r); ctx.quadraticCurveTo(0, 0, r, 0); ctx.quadraticCurveTo(0, 0, 0, r); ctx.quadraticCurveTo(0, 0, -r, 0); ctx.quadraticCurveTo(0, 0, 0, -r);
-      ctx.fill();
+      star(r);
       ctx.restore();
     }
     // 레어 용병: 발밑 금빛 후광과 위로 피어오르는 빛 (스프라이트 뒤에 그림)
+    const rareAuraGradCache = new Map(); // 팔레트·맥동 단계(16)별 그라데이션 (매 화면 두 개씩 새로 만들던 것)
+    function rareAuraGrads(ctx, pal, p) {
+      const step = Math.round(p * 15), key = `${pal[0]}|${pal[1]}|${step}`;
+      let hit = rareAuraGradCache.get(key);
+      if (hit) return hit;
+      const q = step / 15;
+      const g = ctx.createRadialGradient(0, 8, 2, 0, 8, 30);
+      g.addColorStop(0, `rgba(${pal[0]}, ${0.45 + q * 0.25})`);
+      g.addColorStop(0.6, `rgba(${pal[1]}, ${0.15 + q * 0.12})`);
+      g.addColorStop(1, `rgba(${pal[1]}, 0)`);
+      const col = ctx.createLinearGradient(0, 12, 0, -46);
+      col.addColorStop(0, `rgba(${pal[0]}, ${0.22 + q * 0.12})`);
+      col.addColorStop(1, `rgba(${pal[0]}, 0)`);
+      hit = { g, col };
+      rareAuraGradCache.set(key, hit);
+      return hit;
+    }
     function drawRareAuraBack(ctx, tick, pal = RARE_FX_COLORS.gold) {
       const p = 0.5 + 0.5 * Math.sin(tick * 0.08);
       ctx.save();
-      const g = ctx.createRadialGradient(0, 8, 2, 0, 8, 30);
-      g.addColorStop(0, `rgba(${pal[0]}, ${0.45 + p * 0.25})`);
-      g.addColorStop(0.6, `rgba(${pal[1]}, ${0.15 + p * 0.12})`);
-      g.addColorStop(1, `rgba(${pal[1]}, 0)`);
+      const { g, col } = rareAuraGrads(ctx, pal, p);
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.ellipse(0, 10, 30, 12, 0, 0, Math.PI * 2);
       ctx.fill();
-      const col = ctx.createLinearGradient(0, 12, 0, -46);
-      col.addColorStop(0, `rgba(${pal[0]}, ${0.22 + p * 0.12})`);
-      col.addColorStop(1, `rgba(${pal[0]}, 0)`);
       ctx.fillStyle = col;
       ctx.beginPath();
       ctx.ellipse(0, -16, 18 + p * 3, 30, 0, 0, Math.PI * 2);
@@ -30358,6 +30369,7 @@
         const tw = 0.5 + 0.5 * Math.sin(tick * 0.18 + i * 1.7);
         drawRareSparkle(ctx, x, y, 2.5 + tw * 3.5, 0.35 + tw * 0.65, pal);
       }
+      if (lowFxMode()) return; // 느린 기기: 고리 별 4개만
       for (let i = 0; i < 5; i++) {
         const t = ((tick * 0.7 + i * 23) % 60) / 60;
         const x = Math.sin(i * 2.3 + tick * 0.02) * 16;
@@ -30369,18 +30381,20 @@
     // 세련된 별빛 하나: 옅은 빛무리 + 가늘고 긴 십자 광선(세로가 더 김) + 짧은 대각 광선 + 흰 심. 더하기로 그려 겹치면 더 밝음
     //   pal = [빛무리 rgb, 광선 끝 rgb, 심 색] · rot = 살짝 도는 각도
     const SR_STAR_PAL = ['147, 197, 253', '253, 224, 140', '#ffffff'];
-    function drawStarGlint(ctx, x, y, r, alpha, pal = SR_STAR_PAL, rot = 0) {
-      if (alpha <= 0.02 || r <= 0.3) return;
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha *= alpha;
+    const starGlintCache = new Map(); // 팔레트별 별빛 그림 (한 번 그려 두고 drawImage · 예전엔 별 하나에 그라데이션 5개를 매 화면 새로 만들었음)
+    const STAR_GLINT_R = 14, STAR_GLINT_PX = 64; // 그림 속 별 반지름 · 그림 한 변 (빛무리 1.5r·광선 1.9r가 들어가게)
+    function starGlintImage(pal) {
+      const key = pal.join('|');
+      let c = starGlintCache.get(key);
+      if (c) return c;
+      c = document.createElement('canvas'); c.width = c.height = STAR_GLINT_PX;
+      const ctx = c.getContext('2d'), r = STAR_GLINT_R;
+      ctx.translate(STAR_GLINT_PX / 2, STAR_GLINT_PX / 2);
       const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 1.5);
       halo.addColorStop(0, `rgba(${pal[0]}, 0.55)`);
       halo.addColorStop(1, `rgba(${pal[0]}, 0)`);
       ctx.fillStyle = halo;
       ctx.beginPath(); ctx.arc(0, 0, r * 1.5, 0, Math.PI * 2); ctx.fill();
-      ctx.rotate(rot);
       const ray = (len, wid) => { // 가운데가 가장 굵고 끝이 바늘처럼 가는 광선 한 쌍
         const g = ctx.createLinearGradient(0, -len, 0, len);
         g.addColorStop(0, `rgba(${pal[1]}, 0)`); g.addColorStop(0.5, 'rgba(255, 255, 255, 0.95)'); g.addColorStop(1, `rgba(${pal[1]}, 0)`);
@@ -30394,6 +30408,18 @@
       ctx.rotate(Math.PI / 2); ray(r * 0.6, r * 0.14);
       ctx.fillStyle = pal[2];
       ctx.beginPath(); ctx.arc(0, 0, r * 0.2, 0, Math.PI * 2); ctx.fill();
+      starGlintCache.set(key, c);
+      return c;
+    }
+    function drawStarGlint(ctx, x, y, r, alpha, pal = SR_STAR_PAL, rot = 0) {
+      if (alpha <= 0.02 || r <= 0.3) return;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha *= alpha;
+      ctx.rotate(rot);
+      const s = (STAR_GLINT_PX / 2) * (r / STAR_GLINT_R);
+      ctx.drawImage(starGlintImage(pal), -s, -s, s * 2, s * 2);
       ctx.restore();
     }
     // 시크릿 레어 정령왕: 별 6개가 몸 둘레를 기울어진 고리로 감싸며 돎. 몸 키(topY~발)에 맞춰 고리 크기를 정하고,
@@ -30442,8 +30468,49 @@
       spriteFxCount++;
       return hit;
     }
-    // drawImage(그림, 9개 인자)와 같지만, 지금 ctx에 필터가 걸려 있으면 위의 빠른 방법으로 그림
+    // 레어 후광(rareGlow): 그림 칸마다 '둘레 빛'만 남긴 그림을 한 번 만들어 둠 (shadowBlur 10으로 그린 뒤 몸을 지움) → 매 화면 흐림 계산 없이 drawImage 한 번
+    // (예전엔 레어 용병마다 매 화면 그림 전체에 shadowBlur 7~12를 걸어, 태블릿에서 용병 한 명이 몇 ms씩 들었음)
+    // 후광 그림은 반 크기로 만듦(흐릿한 빛이라 티가 안 나고 메모리 1/4: 칸 하나 약 25KB) · 필터 캐시와 따로 세어 서로 비우지 않음
+    const SPRITE_GLOW_PAD = 16, SPRITE_GLOW_SCALE = 0.5, SPRITE_GLOW_CACHE_MAX = 600;
+    let spriteGlowCache = new WeakMap(), spriteGlowCount = 0;
+    function spriteGlowSource(img, sx, sy, sw, sh, color) {
+      const key = `${sx},${sy},${sw},${sh}|${color}`;
+      let m = spriteGlowCache.get(img);
+      if (!m) { m = new Map(); spriteGlowCache.set(img, m); }
+      let hit = m.get(key);
+      if (hit) return hit;
+      if (spriteGlowCount >= SPRITE_GLOW_CACHE_MAX) { spriteGlowCache = new WeakMap(); spriteGlowCount = 0; m = new Map(); spriteGlowCache.set(img, m); }
+      const P = SPRITE_GLOW_PAD, S = SPRITE_GLOW_SCALE, c = document.createElement('canvas');
+      c.width = Math.max(1, Math.ceil((sw + 2 * P) * S)); c.height = Math.max(1, Math.ceil((sh + 2 * P) * S));
+      const g = c.getContext('2d');
+      g.scale(S, S);
+      g.shadowColor = color; g.shadowBlur = 10 * S;
+      g.drawImage(img, sx, sy, sw, sh, P, P, sw, sh);
+      g.shadowBlur = 0; g.shadowColor = 'transparent';
+      g.globalCompositeOperation = 'destination-out';
+      g.drawImage(img, sx, sy, sw, sh, P, P, sw, sh); // 몸은 지우고 둘레 빛만 (본 그림은 위에 따로 그림)
+      hit = { src: c };
+      m.set(key, hit);
+      spriteGlowCount++;
+      return hit;
+    }
+    // 느린 기기(화면 한 장에 평균 24ms 넘게 걸림 = 60fps를 못 냄)면 꾸밈 효과를 줄임: 레어 후광 생략 · 반짝임 절반 (전투 내용은 그대로)
+    function lowFxMode() { return deviceFrameEma > 24; }
+    // drawImage(그림, 9개 인자)와 같지만, 지금 ctx에 필터가 걸려 있으면 위의 빠른 방법으로 그림 · 그림자(레어 후광)가 걸려 있으면 만들어 둔 둘레 빛을 깔고 그림자는 끔
     function drawSpriteFx(ctx, img, sx, sy, sw, sh, dx, dy, dw, dh) {
+      if (ctx.shadowBlur > 0 && (img.naturalWidth || img.width)) {
+        const blur = ctx.shadowBlur, color = ctx.shadowColor;
+        ctx.shadowBlur = 0;
+        if (lowFxMode()) { ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh); return; } // 느린 기기: 후광 없이 본 그림만
+        const glow = spriteGlowSource(img, sx, sy, sw, sh, color);
+        const kx = dw / sw, ky = dh / sh, P = SPRITE_GLOW_PAD;
+        const a0 = ctx.globalAlpha, f0 = ctx.filter, filtered = f0 && f0 !== 'none';
+        ctx.globalAlpha = a0 * (0.55 + 0.45 * Math.max(0, Math.min(1, (blur - 7) / 5))); // 예전 흐림 크기 7~12의 맥동을 밝기로
+        if (filtered) ctx.filter = 'none';
+        ctx.drawImage(glow.src, dx - P * kx, dy - P * ky, dw + 2 * P * kx, dh + 2 * P * ky);
+        if (filtered) ctx.filter = f0;
+        ctx.globalAlpha = a0;
+      }
       const filter = ctx.filter;
       if (!filter || filter === 'none') { ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh); return; }
       ctx.save();
