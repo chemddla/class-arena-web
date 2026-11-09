@@ -44,14 +44,17 @@ SKILL = [   # 스킬 장 윗줄 (×0.96)
     ('ring', (520, 70, 754, 282), None),
     ('bless', (764, 12, 1004, 300), None),
 ]
-K_SKILL = 0.96
+K_SKILL = 0.985   # 2026-11-09 '샘플별로 크기 및 비율 맞춰': 0.96이면 후광·얼굴이 대기보다 5~7% 작아 몸 키(4% 큼)와 후광·얼굴의 가운데로
+# 칸별 배율 보정 (장 배율에 곱함): 후광 폭·얼굴 폭·후광 꼭대기~발 키를 대기 칸과 비교해 맞춤
+#   공격 2칸은 같은 장인데도 후광 30·얼굴 35~37·키 118로 대기(29·35·112)보다 4~5% 크게 그려져 있음
+FIX = {'atk0': 0.955, 'atk1': 0.955}
 MIRACLE = [   # 스킬 장 아랫줄 (×1.08)
     ('whirl', (12, 392, 252, 708)),
     ('circle', (243, 412, 482, 722)),
     ('galaxy', (481, 370, 780, 700)),
     ('end', (778, 398, 1010, 702)),
 ]
-K_MIRACLE = 1.08
+K_MIRACLE = 1.11   # 1.08이면 회오리·마무리 칸 후광 28·얼굴 33~34로 대기보다 3~4% 작음
 MIRACLE_FACE = {'circle': (145, 98)}   # 금빛 마법진이 살색처럼 잡혀 얼굴을 못 찾는 칸: 자른 그림 좌표의 얼굴 가운데
 CAST_OUT = 'assets/sprites/fx/healer_miracle_cast_sr1.webp'
 STAR = (880, 620, 955, 700)   # 검은 장의 별 표시 (흰 장에는 없음)
@@ -187,9 +190,10 @@ def main():
             if fr is not None: fx = rgba.shape[1] * fr
             if name == 'idle':
                 fcx, fcy = face_c(rgba, solid); idle_face = (fx - fcx, fy - fcy)
-            p = shrink_soft(rgba, solid, k)   # 두 장으로 알파를 구해 흰 테두리 찌꺼기가 없음 — defringe는 가는 흰 후광을 지워서 안 씀
-            pieces.append((name, p, fx * k, fy * k))
-            print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} → {p.shape[1]}x{p.shape[0]}, 발 ({fx * k:.0f}, {fy * k:.0f})')
+            kf = k * FIX.get(name, 1)
+            p = shrink_soft(rgba, solid, kf)   # 두 장으로 알파를 구해 흰 테두리 찌꺼기가 없음 — defringe는 가는 흰 후광을 지워서 안 씀
+            pieces.append((name, p, fx * kf, fy * kf))
+            print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} → {p.shape[1]}x{p.shape[0]}, 발 ({fx * kf:.0f}, {fy * kf:.0f})')
     base = {n: (p, fx, fy) for n, p, fx, fy in pieces}
     for skill, target in RECOLOR:
         for src in ('pray', 'ring'):
