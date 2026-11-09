@@ -26,7 +26,9 @@ IDLE_H = 106   # 대기 칸 키(모자 꼭대기~발). 다른 칸은 얼굴 크�
 SAME_K = {'down1': 'down0'}
 # 똑바로 선 칸은 얼굴만으로 맞추면 샘플마다 머리·몸 비율이 조금씩 달라 걷기 칸 키가 대기보다 커짐(걸을 때 들썩임)
 #   → 키(모자 꼭대기~발)로 맞춘 배율과 반반 섞음
-UPRIGHT = {'walk0', 'walk1', 'atk0', 'hurt', 'skill0', 'hold'}   # 누운 칸은 얼굴이 옆으로 누워 재기 어려워 바로 앞 칸 배율을 씀
+UPRIGHT = {'walk0', 'walk1', 'atk0', 'hurt', 'skill0', 'hold'}
+# 시전 자세는 몸을 비스듬히 돌리고 망토를 펼친 그림이라 얼굴·키를 맞춰도 대기보다 작아 보임 (2026-11-09 사용자 지적) → 따로 조금 키움
+EXTRA = {'skill0': 1.08, 'skill1': 1.08, 'hold': 1.06, 'raise': 1.06, 'thrust': 1.06}   # 누운 칸은 얼굴이 옆으로 누워 재기 어려워 바로 앞 칸 배율을 씀
 # 스킬 2: 수정 앞에서 퍼지는 광선 고리는 수정(y 100~122) 위아래로 x 168부터 나옴 → 그 자리를 지움
 # 원소 융합 둘째 장: 오른쪽 끝에 다음 그림(모자 챙·망토)이 걸려 있음 → 수정 끝(x 445) 오른쪽과 모자 높이의 x 426~ 를 지움
 CLEAR = {'5_skill_src': [(166, 0, 379, 99), (166, 123, 379, 210)],
@@ -152,6 +154,7 @@ def main():
         fw, fh = face_size(rgba)
         ks[name] = ki * (fw0 / fw + fh0 / fh) / 2
         if name in UPRIGHT: ks[name] = (ks[name] * IDLE_H / rgba.shape[0]) ** 0.5
+        ks[name] *= EXTRA.get(name, 1)
         return ks[name]
 
     pieces = []
