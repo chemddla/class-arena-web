@@ -40261,7 +40261,7 @@
     // 서버에서 마지막으로 받은 방 원본 (캐시는 화면에서 직접 고쳐 쓰므로 따로 보관) — 방을 저장할 때 '내가 바꾼 칸'만 골라 합치는 기준
     const roomServerBase = { pvp_rooms: {}, raid_rooms: {}, minigame_rooms: {} };
     const ROOM_CLAIM_KEYS = ['guestId', 'guest2Id', 'guest3Id', 'guest4Id']; // 먼저 차지한 사람이 이기는 자리
-    const ROOM_MAP_KEYS = new Set(['gone', 'spectators', 'fighting', 'members']); // 학생 id별로 따로 합치는 칸
+    const ROOM_MAP_KEYS = new Set(['gone', 'spectators', 'fighting', 'members', 'rushFill']); // 학생 id별(rushFill은 자리 키별)로 따로 합치는 칸
     const roomJson = v => JSON.stringify(v === undefined ? null : v);
     const roomIsObj = v => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
     const roomPlayerList = a => (Array.isArray(a) ? a : (a && typeof a === 'object' ? Object.values(a) : [])).filter(p => p && p.id);
@@ -48116,7 +48116,7 @@
         if (room.status !== 'waiting' || !free || rushSeatsLeft(room) <= 0) { showNotice('⚠️ 이미 출발했거나 자리가 찬 던전방이에요.'); return; }
         if (attempt === 0) leaveRoomsExcept('raid', roomId);
         rushSeatInto(room, free, rushSeatFields(me, merc));
-        room.rushFill = rushFillOf(room).filter(f => f.id !== me.id); // 내 용병이 AI 자리에 있었으면 그 자리는 뺌
+        room.rushFill = rushFillKeep(room, f => f.id !== me.id); // 내 용병이 AI 자리에 있었으면 그 자리는 뺌
         room[free + 'Ready'] = false;
         room[raidPracticeKey(free)] = false;
         if (room.gone) delete room.gone[me.id];
@@ -48144,10 +48144,10 @@
       // 넣어 둔 AI 자리 그대로 출발 (그 사이 방에 들어온 친구·최고 전투력을 넘게 된 용병·넘친 자리는 뺌)
       const humans = new Set(raidFilledSlots(room).map(s => room[s + 'Id']));
       const cap = rushPartyCap(room);
-      room.rushFill = rushFillOf(room).filter(f => !humans.has(f.id) && Number(f.power || 0) <= cap).slice(0, Math.max(0, RUSH_MAX_PLAYERS - humans.size));
+      room.rushFill = rushFillKeep(room, f => !humans.has(f.id) && Number(f.power || 0) <= cap, Math.max(0, RUSH_MAX_PLAYERS - humans.size));
       const seats = [
         ...raidFilledSlots(room).map(s => ({ merc: (room[s + 'Mercs'] || [])[0], power: Number(room[s + 'Power']) || 0 })),
-        ...room.rushFill.map(f => ({ merc: f.merc, power: Number(f.power) || 0 }))
+        ...rushFillOf(room).map(f => ({ merc: f.merc, power: Number(f.power) || 0 }))
       ].filter(x => x.merc);
       if (!seats.length) { showNotice('⚠️ 데려갈 용병이 없어요.'); return; }
       // 몬스터 세기: 파티 용병들의 평균 레벨로 정한 층 × 파티 전투력 비율 (모두의 화면이 같은 값을 쓰게 방에 적어 둠)
@@ -49052,7 +49052,7 @@
         if (room.status !== 'waiting' || !free || rushSeatsLeft(room) <= 0) { showNotice('⚠️ 이미 출발했거나 자리가 찬 러쉬방이에요.'); return; }
         if (attempt === 0) leaveRoomsExcept('raid', roomId);
         rushSeatInto(room, free, rushSeatFields(me, merc));
-        room.rushFill = rushFillOf(room).filter(f => f.id !== me.id); // 내 용병이 AI 자리에 있었으면 그 자리는 뺌
+        room.rushFill = rushFillKeep(room, f => f.id !== me.id); // 내 용병이 AI 자리에 있었으면 그 자리는 뺌
         room[free + 'Ready'] = false;
         room[raidPracticeKey(free)] = false;
         if (room.gone) delete room.gone[me.id];
@@ -49075,7 +49075,23 @@
     };
 
     // AI 자리: 대기실에서 방장이 빈 자리마다 [🤖 AI 넣기]로 한 명씩 넣고 [✖ 빼기]로 뺌 (room.rushFill)
-    const rushFillOf = room => (Array.isArray(room && room.rushFill) ? room.rushFill : (room && room.rushFill && typeof room.rushFill === 'object' ? Object.values(room.rushFill) : [])).filter(f => f && f.merc);
+    // AI 자리는 {자리 키: 자리} 묶음으로 저장해서 넣기·빼기 때 그 자리 하나만 씀 (ROOM_MAP_KEYS)
+    // - 배열이던 때는 한 번 누를 때마다 배열 전체(자리당 1.7KB)를 다시 써서, 방장이 넣기·빼기를 연타하면 반 전체가 초당 5KB씩 받았음 (2026-11-09 실측)
+    // - 키는 넣은 시각(t+36진수)이라 글자순 = 넣은 순서. 예전 배열(예전 탭이 쓴 것 포함)은 a0~a4로 읽고, 다음 저장 때 한 번 묶음으로 바뀜
+    const rushFillEntries = room => {
+      const v = room && room.rushFill;
+      const ent = Array.isArray(v) ? v.map((f, i) => ['a' + i, f]) : (roomIsObj(v) ? Object.entries(v).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)) : []);
+      return ent.filter(([, f]) => f && f.merc);
+    };
+    const rushFillOf = room => rushFillEntries(room).map(([, f]) => f);
+    const rushFillKeep = (room, keep, max = Infinity) => {
+      const kept = rushFillEntries(room).filter(([, f]) => keep(f)).slice(0, max);
+      return kept.length ? Object.fromEntries(kept) : null;
+    };
+    // AI 자리 친구 스냅샷은 용병 정보(merc)를 roster에 한 번 더 담지 않고 저장 → 읽을 때 merc로 채움 (자리 하나 1.7KB → 약 1KB)
+    const rushFillSnap = f => (f && f.snap ? (Array.isArray(f.snap.roster) ? f.snap : { ...f.snap, roster: [f.merc] }) : null);
+    const RUSH_AI_ADD_GAP_MS = 1500; // [🤖 AI 넣기] 연타 막기 (넣기·빼기를 번갈아 눌러 친구를 고르는 동안 방 저장이 반 전체로 퍼짐)
+    let rushAiAddAt = 0;
     const rushSeatsLeft = room => RUSH_MAX_PLAYERS - raidFilledSlots(room).length - rushFillOf(room).length;
     // 방에도 AI 자리에도 없는 반 친구를 무작위로 골라, 그 친구 용병 중 파티 최고 전투력을 넘지 않는 대표 용병(없으면 가장 센 용병) 1명
     function pickRushAiSeat(room) {
@@ -49085,7 +49101,9 @@
       (state.students || []).forEach(s => {
         if (!s || taken.has(s.id)) return;
         const best = repMercOf(s, m => calcMercCombatPower(m, s) <= cap);
-        if (best) pool.push({ id: s.id, num: s.num || null, name: s.name, power: calcMercCombatPower(best, s), merc: JSON.parse(JSON.stringify(best)), snap: publicStudentSnapshot(s, [best]) });
+        if (!best) return;
+        const { roster, ...snap } = publicStudentSnapshot(s, [best]); // roster = [best]라 merc와 겹침 → 빼고 저장 (rushFillSnap)
+        pool.push({ id: s.id, num: s.num || null, name: s.name, power: calcMercCombatPower(best, s), merc: JSON.parse(JSON.stringify(best)), snap });
       });
       return pool[Math.floor(Math.random() * pool.length)] || null;
     }
@@ -49095,9 +49113,15 @@
       const room = liveRaidRoomsCache[roomId];
       if (!me || !isPartyRoom(room) || room.status !== 'waiting' || room.hostId !== me.id) return;
       if (rushSeatsLeft(room) <= 0) { showNotice('⚠️ 빈 자리가 없어요.'); return; }
+      if (Date.now() - rushAiAddAt < RUSH_AI_ADD_GAP_MS) { showNotice('⏳ 잠깐만요! AI 자리는 조금 뒤에 다시 넣을 수 있어요.'); return; }
       const seat = pickRushAiSeat(room);
       if (!seat) { showNotice(`⚠️ 넣을 수 있는 친구 용병이 없어요. (파티 최고 전투력 ⚔️ ${rushPartyCap(room).toLocaleString()} 이하)`); return; }
-      room.rushFill = [...rushFillOf(room), seat];
+      rushAiAddAt = Date.now();
+      const fill = Object.fromEntries(rushFillEntries(room));
+      let key = 't' + Date.now().toString(36);
+      while (fill[key]) key += '0';
+      fill[key] = seat;
+      room.rushFill = fill;
       await saveRaidRoomData(roomId, room);
     };
 
@@ -49105,10 +49129,10 @@
       const me = getActiveStudent();
       const room = liveRaidRoomsCache[roomId];
       if (!me || !isPartyRoom(room) || room.status !== 'waiting' || room.hostId !== me.id) return;
-      const fill = rushFillOf(room);
-      if (!fill[idx]) return;
-      fill.splice(idx, 1);
-      room.rushFill = fill;
+      const ent = rushFillEntries(room);
+      if (!ent[idx]) return;
+      ent.splice(idx, 1);
+      room.rushFill = ent.length ? Object.fromEntries(ent) : null;
       await saveRaidRoomData(roomId, room);
     };
 
@@ -49122,8 +49146,8 @@
       // 넣어 둔 AI 자리 그대로 출발 (그 사이 방에 들어온 친구·최고 전투력을 넘게 된 용병·넘친 자리는 뺌)
       const humans = new Set(raidFilledSlots(room).map(s => room[s + 'Id']));
       const cap = rushPartyCap(room);
-      room.rushFill = rushFillOf(room).filter(f => !humans.has(f.id) && Number(f.power || 0) <= cap).slice(0, Math.max(0, RUSH_MAX_PLAYERS - humans.size));
-      const mercs = [...raidFilledSlots(room).flatMap(s => room[s + 'Mercs'] || []), ...room.rushFill.map(f => f.merc)];
+      room.rushFill = rushFillKeep(room, f => !humans.has(f.id) && Number(f.power || 0) <= cap, Math.max(0, RUSH_MAX_PLAYERS - humans.size));
+      const mercs = [...raidFilledSlots(room).flatMap(s => room[s + 'Mercs'] || []), ...rushFillOf(room).map(f => f.merc)];
       room.rushStartFloor = rushStartFloorOf(mercs);
       room.status = 'in_battle';
       room.startedAt = Date.now();
@@ -49145,7 +49169,7 @@
         id: r[s + 'Id'], label: r[s + 'Name'] || '친구', merc: (r[s + 'Mercs'] || [])[0], ai: false
       }));
       rushFillOf(r).forEach(f => {
-        if (f && f.merc) seats.push({ stu: state.students.find(x => x.id === f.id) || f.snap || null, id: f.id, label: f.name || '친구', merc: f.merc, ai: true });
+        if (f && f.merc) seats.push({ stu: state.students.find(x => x.id === f.id) || rushFillSnap(f), id: f.id, label: f.name || '친구', merc: f.merc, ai: true });
       });
       const list = seats.filter(x => x.merc).slice(0, RUSH_MAX_PLAYERS);
       return list.map((x, i) => {
