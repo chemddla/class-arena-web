@@ -9749,6 +9749,20 @@
     const LANCER_JAVELIN_IMG = new Image();
     LANCER_JAVELIN_IMG.onload = () => { LANCER_JAVELIN_IMG.ready = true; };
     LANCER_JAVELIN_IMG.src = 'assets/sprites/fx/lancer_javelin.webp';
+    // 2026-11-09 창병 이펙트는 회색 계열 (새 기본 외형의 검은 갑옷에 맞춤, tools/lancer_fx_grey.py):
+    //   다른 직업과 같이 쓰는 그림(난무 소용돌이 = 전사 회전베기, 휘두르기 초승달 = 성기사 휘두르기)은 불러올 때 채도만 뺀 사본을 만들어 창병에만 씀
+    function greyFxCopy(img) {
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const g = c.getContext('2d');
+      g.drawImage(img, 0, 0);
+      g.globalCompositeOperation = 'saturation'; // 밝기는 그대로, 채도 0
+      g.fillStyle = '#808080';
+      g.fillRect(0, 0, c.width, c.height);
+      g.globalCompositeOperation = 'destination-in';
+      g.drawImage(img, 0, 0);
+      return c;
+    }
     // 창병 난무 이펙트: 0·1 = 작은 활 모양 베기, 2·3 = 범위 전체를 감싸는 큰 소용돌이 ([x, y, w, h])
     const LANCER_RAMPAGE_FX = { img: new Image(), frames: [[0, 0, 153, 155], [155, 0, 162, 126], [319, 0, 311, 182], [632, 0, 302, 190]] };
     LANCER_RAMPAGE_FX.img.onload = () => {
@@ -9763,6 +9777,7 @@
       g.globalCompositeOperation = 'destination-in';
       g.drawImage(img, 0, 0);
       LANCER_RAMPAGE_FX.gold = c;
+      LANCER_RAMPAGE_FX.grey = greyFxCopy(img); // 창병 회전·난무용 회색 사본 (전사 회전베기는 원래 하늘색)
       LANCER_RAMPAGE_FX.ready = true;
     };
     LANCER_RAMPAGE_FX.img.src = 'assets/sprites/fx/lancer_rampage.webp';
@@ -9773,7 +9788,7 @@
     // 창병 기본 공격 이펙트: 휘두르기 = 오른쪽으로 볼록한 초승달 (223×263, 바깥 원 중심 (93.8, 131.6)·반지름 129.5)
     //                       찌르기 = 오른쪽을 향한 화살 모양 창 바람 (208×43, 촉 끝 = (207, 21))
     const LANCER_SWEEP_IMG = new Image();
-    LANCER_SWEEP_IMG.onload = () => { LANCER_SWEEP_IMG.ready = true; };
+    LANCER_SWEEP_IMG.onload = () => { LANCER_SWEEP_IMG.grey = greyFxCopy(LANCER_SWEEP_IMG); LANCER_SWEEP_IMG.ready = true; }; // 창병은 회색 사본 (성기사 휘두르기는 원래 그림)
     LANCER_SWEEP_IMG.src = 'assets/sprites/fx/lancer_sweep.webp';
     const LANCER_THRUST_IMG = new Image();
     LANCER_THRUST_IMG.onload = () => { LANCER_THRUST_IMG.ready = true; };
@@ -10845,11 +10860,11 @@
     // 창병 히든 스킬 [무쌍난무] 그림 (fx/samples/README.md)
     // - cast: 기본 외형(lancer_0) 자세 10칸 0 서 있음 · 1 창 치켜듦 · 2 회전 고리 · 3 찌르기+잔상 · 4 휘두르기 · 5 다중 찌르기 · 6 창 당김 · 7 돌진 · 8·9 돌진+초승달
     //   (시전: 0·6 번갈아 → 1 → 2 / 난무 중: 돌진 7·8, 공격 4·5·3·9)
-    //   2026-11-09 기본 외형 교체로 새 그림 (tools/lancer0_build.py): 0 겨눔 · 1 올려 베기 초승달 · 2 회전 고리 · 3 찌르기+바람 · 4 휘두르기
-    //   · 5 찌르기+초승달 · 6 창 당김 · 7·8 돌진 · 9 양쪽 초승달 회전. 칸 배율은 lancer_0과 같음 (standH 96)
+    //   2026-11-09 기본 외형 교체로 새 그림 (tools/lancer0_build.py): 0~5는 무쌍난무 전용 샘플 (0 겨눔 · 1 창을 치켜들며 큰 초승달 · 2 회전 고리
+    //   · 3 잔상 남기며 다중 찌르기(금빛 불꽃) · 4 휘두르기 초승달 · 5 사선 찌르기), 6 창 당김 · 7·8 돌진 · 9 양쪽 초승달 회전. 칸 배율은 lancer_0과 같음 (standH 96)
     // - fx: 엑스 베기 둘 · 초승달 바람 둘 · 금빛 고리 · 회오리 · 바닥 소용돌이 · 바람 줄기 둘 · 흙바람 둘 · 폭발 (기준점 = 한가운데)
     const LANCER_MUSOU_FX = {
-      cellW: 192, cellH: 121, anchorX: 82, anchorY: 117, standH: 96,
+      cellW: 254, cellH: 157, anchorX: 82, anchorY: 147, standH: 96,
       frames: { // [x, y, w, h, 기준점x, 기준점y]
         xBig: [0, 0, 113, 92, 56, 46], xSmall: [115, 0, 100, 91, 50, 45], swooshA: [217, 0, 188, 91, 94, 45], swooshB: [407, 0, 161, 85, 80, 42],
         ring: [570, 0, 164, 142, 82, 71], tornado: [736, 0, 164, 144, 82, 72], vortex: [902, 0, 184, 116, 92, 58],
@@ -25117,10 +25132,10 @@
       sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: LANCER_RAMPAGE_RADIUS, color: '#c2410c', life: 18, maxLife: 18 });
       // 범위 전체를 감싸는 큰 소용돌이(타마다 번갈아) + 범위 안 여기저기 작은 베기 2개
       const hitNo = Math.round((LANCER_RAMPAGE_TICKS - (u.statuses.rampage || 0)) / LANCER_HIT_INTERVAL);
-      sim.effects.push({ type: 'rampage_fx', f: 2 + (hitNo % 2), x: u.x, y: u.y - 14, w: LANCER_RAMPAGE_RADIUS * 2, flip: hitNo % 4 >= 2, life: 22, maxLife: 22 });
+      sim.effects.push({ type: 'rampage_fx', f: 2 + (hitNo % 2), x: u.x, y: u.y - 14, w: LANCER_RAMPAGE_RADIUS * 2, flip: hitNo % 4 >= 2, tint: 'grey', life: 22, maxLife: 22 });
       for (let k = 0; k < 2; k++) {
         const a = Math.random() * Math.PI * 2, d = 40 + Math.random() * (LANCER_RAMPAGE_RADIUS - 90);
-        sim.effects.push({ type: 'rampage_fx', f: k, x: u.x + Math.cos(a) * d, y: u.y - 14 + Math.sin(a) * d * 0.6, w: 120, flip: Math.random() < 0.5, life: 16, maxLife: 16 });
+        sim.effects.push({ type: 'rampage_fx', f: k, x: u.x + Math.cos(a) * d, y: u.y - 14 + Math.sin(a) * d * 0.6, w: 120, flip: Math.random() < 0.5, tint: 'grey', life: 16, maxLife: 16 });
       }
       playCombatSfx('slash');
       withSkillHit(() => sim.units.forEach(e => {
@@ -31875,7 +31890,7 @@
             if (ef.flip) ctx.scale(-1, 1);
             ctx.globalAlpha = Math.min(1, (ef.life / ef.maxLife) * 1.6) * 0.95;
             ctx.imageSmoothingEnabled = true;
-            const src = (ef.tint === 'gold' && LANCER_RAMPAGE_FX.gold) || LANCER_RAMPAGE_FX.img;
+            const src = (ef.tint === 'gold' && LANCER_RAMPAGE_FX.gold) || (ef.tint === 'grey' && LANCER_RAMPAGE_FX.grey) || LANCER_RAMPAGE_FX.img;
             ctx.drawImage(src, fr[0], fr[1], fr[2], fr[3], -fr[2] * k / 2, -fr[3] * k / 2, fr[2] * k, fr[3] * k);
           }
 
@@ -31911,7 +31926,7 @@
           ctx.rotate(ef.angle + (Math.cos(ef.angle) < 0 ? 1 : -1) * (0.35 - progress * 0.5));
           ctx.globalAlpha = Math.min(1, (ef.life / ef.maxLife) * 1.6) * 0.32; // 자주 나오는 큰 그림이라 흐리게
           ctx.imageSmoothingEnabled = true;
-          ctx.drawImage(LANCER_SWEEP_IMG, -93.8 * k, -131.6 * k, 223 * k, 263 * k);
+          ctx.drawImage(LANCER_SWEEP_IMG.grey || LANCER_SWEEP_IMG, -93.8 * k, -131.6 * k, 223 * k, 263 * k);
 
         } else if (ef.type === 'lance_thrust' && LANCER_THRUST_IMG.ready) {
           // 창병 찌르기 그림: 창 바람이 사거리 끝까지 뻗어 나감
