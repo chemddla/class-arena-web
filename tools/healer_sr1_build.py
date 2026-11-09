@@ -46,7 +46,11 @@ def matte(W, B):
     # 동작 이름 글씨: 흰 장에선 검고 검은 장에선 하얀 곳 (그림에는 없음) + 둘레 2px
     bg |= ndi.binary_dilation((W.max(axis=2) < 110) & (B.min(axis=2) > 140), iterations=2)
     a[bg] = 0
-    solid = ndi.binary_closing(a > 0.85, iterations=2) & ~bg
+    # 하프 줄 사이처럼 좁은 틈: 틈 메우기(closing)가 흰 장 색으로 칠해 버리지 않게
+    #   배경 같은 곳 (흰 장에선 밝고 검은 장에선 어두움, 압축 번짐 포함)은 투명, 반 넘게 비치는 곳(뒤에 치유 빛)은 메우지 않음
+    bgish = (W.min(axis=2) > 200) & (B.max(axis=2) < 70)
+    a[bgish & (a < 0.35)] = 0
+    solid = ndi.binary_closing(a > 0.85, iterations=2) & ~bg & ~bgish & (a >= 0.5)
     solid = ndi.binary_opening(solid, iterations=1)
     # 작은 반투명 티끌(거품 가운데처럼 진한 점)만 불투명이 되지 않게: 30px 넘는 덩어리만 몸
     lab, n = ndi.label(solid)
