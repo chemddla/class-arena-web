@@ -157,11 +157,13 @@ jobs:
         run: |
           if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then echo "cf=true" >> "$GITHUB_OUTPUT"; else echo "cf=false" >> "$GITHUB_OUTPUT"; echo "Cloudflare Secrets가 없어 Firebase에 게임을 올림"; fi
 
-      # 그림·소리·사전은 1시간 동안 다시 받지 않음 (게임 화면·version.json은 매번 새로 확인)
+      # 그림·소리·사전은 1년 동안 다시 받지 않음 (게임 화면·version.json은 매번 새로 확인)
+      # 모든 그림·소리 주소에 파일 내용 해시(?v=…)가 붙으므로(Stamp asset versions · index.html의 Image.src 가로채기·assetVer) 내용이 바뀌면 주소도 바뀜 → 오래 캐시해도 옛 그림이 남지 않음
+      # (예전 1시간: 수업 중 1시간이 지나면 그림 수십 장을 서버에 다시 물어봐(304) 태블릿 느린 와이파이에서 접속마다 몇 초씩 걸렸음)
       - name: Write Cloudflare cache rules
         if: steps.host.outputs.cf == 'true'
         run: |
-          printf '/assets/*\n  Cache-Control: public, max-age=3600\n/\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n/version.json\n  Cache-Control: no-cache\n/test/*\n  Cache-Control: no-cache\n  X-Robots-Tag: noindex\n' > public/_headers
+          printf '/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n/\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n/version.json\n  Cache-Control: no-cache\n/test/*\n  Cache-Control: no-cache\n  X-Robots-Tag: noindex\n' > public/_headers
           cat public/_headers
 
       - name: Deploy game site to Cloudflare Pages

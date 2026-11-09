@@ -51,6 +51,7 @@ const R = await TM.live('ARENA3', 300); // 5분 동안의 변경량 (탭을 앞�
 - 2026-11-08 (14차, ARENA3 학생 기록 150KB 분해): roster 90KB(용병 163명, 한 명 약 550B: skillSlots 12KB · statVariance 10KB · statPoints 7KB · id 5KB · traitName 5KB · targetRule/behaviorRule 7KB …) · capParts 9.6KB(4명, 픽셀 아트) · petBox 9KB · home 8.5KB · avatar 5.7KB(17명). 픽셀 아트·집·펫은 실제 데이터라 못 줄임. 고침: 올릴 때 `traitName`(traitId로 정해짐)과 0뿐인 `statPoints`를 빼고(`slimMercForUpload`, `MERC_SLIM_FROM` 2026-11-09 00:00 KST부터) 받는 쪽 `normalizeMercForSync`가 되살림 → 접속 때 내려받기 약 11KB(7%)·용병 한 명 갱신 약 60B 감소. skillsRevealed(0을 빼면 받는 쪽이 다른 값으로 채움)·skinVariant(직접 읽는 곳 있음)·statVariance(형식 변경)는 그대로
 - 2026-11-08 (15차): 학생 기록은 학생마다 따로 구독(`attachClassStudentSubs`, students/<id>). Firebase는 재접속 때 구독마다 받아 둔 값의 해시를 보내 안 바뀐 구독은 다시 내려주지 않으므로, 학급 전체 한 구독이던 때는 끊겼던 사이 한 명만 저장돼도 약 140KB가 전부 다시 왔고 이제는 바뀐 학생 것만 옴 (처음 접속·평소 소식량은 같음). id 목록은 접속 때 REST shallow(약 1KB)로 키만 받고 이름표(profiles)에 새로 생기는 id를 더함 · 키를 못 받으면 예전처럼 전체 한 구독. 모든 학생의 첫 값이 올 때까지 적용을 미뤄 일부만 받은 채 학생 목록을 덮어쓰지 않음
 - 2026-11-09 (펫 배구): 두 기기 직접 연결 `VolleyLink`(WebRTC, 신호는 `minigames/{방}_vl/rtc`) — 열려 있으면 펫 위치 20Hz·공 타격을 직접 보내고 서버로는 0.25초마다만(`VOLLEY.linkFbMs`) → 배구 중 서버 쓰기 약 1/5. 표시 지연의 왕복 추정은 최솟값 대신 상위 80%(`rttHi`). 안 열리면 예전처럼 서버로만
+- 2026-11-09 (로딩): 배포 페이지 2.49MB(압축 0.7MB, 캐시 없음·ETag 없음 → 접속마다 내려받음) · assets 149MB/1310개는 1시간 캐시였음. 모든 그림·소리 주소가 내용 해시(?v=)라 `/assets/*`를 1년 immutable로 (Cloudflare 전송량·접속 속도, Firebase와 무관). 낱말 사전 1.9MB는 끝말잇기를 열 때만 받음
 
 ## 4. 고칠 후보 (재 본 숫자로 우선순위를 정함)
 
