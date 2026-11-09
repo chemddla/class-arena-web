@@ -8960,6 +8960,36 @@
     const projHitColor = p => (p.spr && PIXEL_ORBS[p.spr] ? PIXEL_ORBS[p.spr].hit : undefined);
     // 용병 마법사 기본 공격 구슬 (몬스터 마법사는 예전 보라 구슬 그림 그대로)
     const mageOrbSpr = u => (u.monsterType ? undefined : (isSecretSkinVariant(u.skinVariant) ? 'mage_sr_star' : 'mage_orb'));
+    // 용병 궁수 기본 공격 도트 화살 (2026-11-09 사용자 선택 A안, pixelfx 작법): 은빛 촉 · 나무 몸통 · 흰 깃 + 뒤로 성기게 흩어지는 흰 바람줄. 빛 번짐 없음
+    //   몬스터 궁수·정령은 예전 그림 그대로. 맞으면 예전 화살 타격 그림
+    const PIXEL_ARROWS = { merc_arrow: 1 };
+    const mercArrowSpr = u => (!u.monsterType && !u.spiritElem ? 'merc_arrow' : undefined);
+    const PX_ARROW_WOOD = ['#3b2414', '#6b4423', '#a8743f'], PX_ARROW_STEEL = ['#4a5361', '#9aa6b8', '#e8eef7', '#ffffff'];
+    function drawPixelArrowBody(dot, len, alpha = 1) {
+      // 원점 = 화살촉 끝, 오른쪽을 봄 · 칸 2
+      const S = PX_ARROW_STEEL, W = PX_ARROW_WOOD;
+      dot(0, 0, S[3], alpha); dot(-2, 0, S[2], alpha); dot(-4, 0, S[2], alpha); dot(-2, -2, S[1], alpha); dot(-2, 2, S[0], alpha);
+      dot(-4, -2, S[2], alpha); dot(-4, 2, S[0], alpha); dot(-6, -2, S[1], alpha); dot(-6, 2, S[0], alpha);
+      for (let x = -8; x > -len + 6; x -= 2) dot(x, 0, x % 4 ? W[2] : W[1], alpha);
+      for (let i = 0; i < 3; i++) { const x = -len + 6 - i * 2; dot(x, -2, '#ffffff', alpha); dot(x - 2, -4, '#ffffff', alpha); dot(x, 2, '#c9ced8', alpha); dot(x - 2, 4, '#c9ced8', alpha); dot(x, 0, W[0], alpha); }
+    }
+    function drawPixelArrow(ctx, p, tick) {
+      const c = 2, K = 1.2;
+      let ang = p.angle;
+      if (ang == null) ang = p.target ? Math.atan2(p.target.y - 10 - p.y, p.target.x - p.x) : 0;
+      ctx.save();
+      ctx.translate(p.x, p.y); ctx.rotate(ang); ctx.scale(K, K);
+      const dot = (x, y, col, a = 1) => { ctx.globalAlpha = a; ctx.fillStyle = col; ctx.fillRect(Math.round(x / c) * c - c / 2, Math.round(y / c) * c - c / 2, c, c); };
+      // 흰 바람줄: 위아래로 번갈아 조금씩 벌어지며 뒤로 갈수록 성기고 옅어짐
+      for (let i = 1; i <= 14; i++) {
+        const q = i / 14, x = -28 - q * 26, y = (i % 2 ? -1 : 1) * 2 * q;
+        if (PFX_BAYER[((Math.round(y / c) & 3) << 2) | (Math.round(x / c) & 3)] > 1.05 - q * 0.9) continue;
+        dot(x, y, '#ffffff', 0.75 - q * 0.5);
+      }
+      drawPixelArrowBody(dot, 30);
+      ctx.restore();
+      return true;
+    }
     function drawPixelOrb(ctx, p, tick) {
       const o = PIXEL_ORBS[p.spr], R = o.ramp, c = 2, K = 1.6;
       let ang = p.angle;
@@ -9977,8 +10007,9 @@
       img.src = `assets/sprites/fx/archer_storm_cast_${v}.webp`;
     });
     const archerStormBase = v => (v || 0) <= 5; // 기본 외형·외형 1~5 = 새 금발 궁수 시전 그림·연두 바람
-    // 기본 외형용 바람 고리·돌풍 화살: 예전 청록 그림을 새 시전 그림의 밝은 연두로 옮긴 것 (tools/archer_storm_fx_recolor.py, 칸·크기는 예전과 같음)
-    [['wind', 'archer_storm_wind_0'], ['arrow', 'storm_arrow_0']].forEach(([k, f]) => {
+    // 기본 외형용 시전 중 몸 둘레 바람 고리: 예전 청록 그림을 새 시전 그림의 밝은 연두로 옮긴 것 (tools/archer_storm_fx_recolor.py, 칸·크기는 예전과 같음)
+    //   날아가는 돌풍 화살(투사체)은 모든 외형이 예전 청록 그림 (2026-11-09 사용자 요청으로 연두 storm_arrow_0에서 되돌림)
+    [['wind', 'archer_storm_wind_0']].forEach(([k, f]) => {
       const img = ARCHER_STORM_FX.base[k] = new Image();
       img.onload = () => { img.ready = true; };
       img.src = `assets/sprites/fx/${f}.webp`;
@@ -18423,7 +18454,7 @@
         if (u.job === 'paladin' && !u.monsterType) paladinSwingFx(u); // 망치 궤적 + 땅 불꽃
       } else if (u.job === 'archer') {
         u.mana = Math.min(u.maxMana, u.mana + 18);
-        directional('arrow', u.atk);
+        directional('arrow', u.atk, { spr: unitProjFx(u, 'arrow') || mercArrowSpr(u) }); // 용병 궁수 = 도트 화살
       } else if (u.job === 'pyro') {
         u.mana = Math.min(u.maxMana, u.mana + 18);
         pyroManualBasic(u, Math.atan2((aimY - 12) - oy, aimX - ox), ox, oy);
@@ -21534,7 +21565,7 @@
             const stormCharged = u.spiritElem === 'storm' && (u._stormChargeCarry || (u.spiritHits = (u.spiritHits || 0) + 1) % SPIRIT_STORM_CHAIN_EVERY === 0);
             if (stormCharged) u._stormChargeCarry = false;
             sim.projectiles.push({
-              projType: 'arrow', spr: stormCharged ? 'storm_orb_charged' : unitProjFx(u, 'arrow'), // 히드라 = 독 구슬 (입에서 뱉음)
+              projType: 'arrow', spr: stormCharged ? 'storm_orb_charged' : (unitProjFx(u, 'arrow') || mercArrowSpr(u)), // 히드라 = 독 구슬 (입에서 뱉음) · 용병 궁수 = 도트 화살
               ...unitShotOrigin(u, 12), target, owner: u,
               dmg: u.atk, isHeal: false, speed: 4.0, trail: []
             });
@@ -21721,6 +21752,7 @@
     const ELITE_DEBUFF_IMMUNE_SEC = 10; // 엘리트 보스의 상태이상이 끝난 뒤 면역 시간
     const ZONE_STYLES = {
       arrow_rain:  { color: '#ca8a04', fill: 'rgba(234, 179, 8, 0.22)', icon: '🌧️' },
+      merc_arrow_rain: { color: '#ca8a04', fill: 'rgba(234, 179, 8, 0.22)', icon: '🌧️' }, // 용병 궁수 화살비: 금빛 빛줄기 (drawLightRainZone)
       poison_boom: { color: '#16a34a', fill: 'rgba(34, 197, 94, 0.22)', icon: '☠️' },
       mage_poison_boom: { color: '#16a34a', fill: 'rgba(34, 197, 94, 0.22)', icon: '☠️' },  // 용병 마법사 포이즌 붐: 끓는 도트 독 웅덩이 (drawPoisonPool)
       leviathan_arrow_rain: { color: '#0ea5e9', fill: 'rgba(56, 189, 248, 0.22)', icon: '🧊' }, // 리바이어던 우박 폭풍
@@ -21785,6 +21817,41 @@
       }
     }
 
+    // 용병 궁수 화살비 (pixelfx 작법): 금빛 빛줄기가 비스듬히 내리꽂히고(하얀 머리 → 연노랑 → 금 → 진금 꼬리, 빛 번짐),
+    //   꽂히는 순간 빛이 확 터졌다 줄며 금빛 도트가 위로 튐. 줄기마다 주기를 엇갈려 계속 내리는 느낌 · 그림 시트 없음
+    function drawLightRainZone(ctx, z) {
+      const c = 2, PERIOD = 42, COUNT = 16, DROP_H = 70, DROP_X = 14, FALL = 0.4;
+      const R = ['#f0a92a', '#ffd84a', '#fff4b0', '#ffffff'];
+      const base = ctx.globalAlpha, ang = Math.atan2(DROP_H, DROP_X);
+      const dot = (x, y, col, a = 1) => { ctx.globalAlpha = base * a; ctx.fillStyle = col; ctx.fillRect(Math.round(x / c) * c - c / 2, Math.round(y / c) * c - c / 2, c, c); };
+      const glow = (x, y, r, a) => {
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = base * a;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, '#ffd84acc'); g.addColorStop(1, '#ffd84a00');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      };
+      for (let k = 0; k < COUNT; k++) {
+        const t = sim.tickCount + Math.floor((k * PERIOD) / COUNT), cyc = Math.floor(t / PERIOD), p = (t % PERIOD) / PERIOD;
+        const rnd = pfxRng(((k + 1) * 9973 + cyc * 7919) >>> 0);
+        const rr = z.r * 0.85 * Math.sqrt(rnd()), a = rnd() * Math.PI * 2;
+        const lx = z.x + Math.cos(a) * rr, ly = z.y + Math.sin(a) * rr;
+        if (p < FALL) {
+          const f = p / FALL, hx = lx - DROP_X * (1 - f), hy = ly - DROP_H * (1 - f);
+          glow(hx, hy, 8, 0.6 * Math.min(1, p / 0.08));
+          ctx.save(); ctx.translate(hx, hy); ctx.rotate(ang); ctx.translate(-hx, -hy);
+          for (let i = 0; i < 12; i++) dot(hx - i * c, hy, i < 2 ? R[3] : i < 5 ? R[2] : i < 8 ? R[1] : R[0], (1 - i / 14) * Math.min(1, p / 0.08));
+          ctx.restore();
+        } else {
+          const e = (p - FALL) / (1 - FALL) / 0.35;
+          if (e >= 1) continue;
+          glow(lx, ly, 10 * (1 - e) + 4, 0.8 * (1 - e));
+          for (let i = 0; i < 6; i++) {
+            const a2 = Math.PI + (i / 5) * Math.PI + (rnd() - 0.5) * 0.4, sp = 3 + rnd() * 7;
+            dot(lx + Math.cos(a2) * sp * e, ly + Math.sin(a2) * sp * e * 0.7 - 3 * e, e < 0.4 ? R[3] : R[1], 1 - e);
+          }
+        }
+      }
+      ctx.globalAlpha = base;
+    }
     function drawZones(ctx) {
       (sim.zones || []).forEach(z => {
         const st = ZONE_STYLES[z.kind] || ZONE_STYLES.arrow_rain;
@@ -21864,6 +21931,8 @@
           if (CHAOS_FX.ready) drawChaosMeteorZone(ctx, z);
         } else if (z.kind === 'hydra_arrow_rain') {
           if (HYDRA_FX.ready) drawAcidRainZone(ctx, z);
+        } else if (z.kind === 'merc_arrow_rain') {
+          drawLightRainZone(ctx, z);
         } else if (z.kind === 'arrow_rain' && FX_SPRITE_SHEET.ready) {
           // 작게 줄인 화살 그림이 위에서 비스듬히 떨어져 꽂힌 뒤 사라짐 (화살마다 주기를 엇갈려 계속 내리는 느낌)
           const fr = FX_SPRITE_SHEET.anims.arrow[0];
@@ -22250,7 +22319,9 @@
         if (!target) return true;
         // 자동 전투(AI)는 사거리 안에서 적이 가장 많이 모인 자리에 떨굼
         if (!aimPt) target = bestAoePoint(unit, enemies, unit.range + 60, A * 1, target) || target;
-        spawnZone(unitFxSpr(unit, 'arrow_rain'), unit, target.x, target.y, A * 1, 300, 20, unit.atk * 0.3, 'slow', SLOW_TICKS.arrow_rain); // 리바이어던 = 우박 장판 · 안에 있으면 슬로우
+        // 용병 궁수 = 금빛 빛줄기 화살비 (merc_arrow_rain, 2026-11-09 사용자 선택 C안) · 몬스터는 예전 화살 그림 (리바이어던 = 우박 장판 등)
+        const rainKind = unitFxSpr(unit, 'arrow_rain') === 'arrow_rain' && !unit.monsterType && !unit.spiritElem ? 'merc_arrow_rain' : unitFxSpr(unit, 'arrow_rain');
+        spawnZone(rainKind, unit, target.x, target.y, A * 1, 300, 20, unit.atk * 0.3, 'slow', SLOW_TICKS.arrow_rain); // 안에 있으면 슬로우
         playCombatSfx('arrow');
         addBattleLog(`🌧️ [궁수] ${unit.name}의 화살비!`);
         return true;
@@ -22768,7 +22839,7 @@
           : (tgt ? lancerBestLine(unit, enemies.filter(e => !hiddenFrom(unit, e)), C * 12, HIDDEN_STORM_R, tgt).angle : (unit.facingAngle || 0));
         sniperFace(unit, angle);
         const ticks = Math.max(1, Math.round(distToArenaEdge(shot.x, shot.y, angle) / HIDDEN_STORM_SPEED));
-        sim.effects.push({ type: 'hidden_storm', x: shot.x, y: shot.y, angle, speed: HIDDEN_STORM_SPEED, r: HIDDEN_STORM_R, life: ticks, maxLife: ticks, sr: !!archerStormSr(unit.skinVariant), ...(archerStormBase(unit.skinVariant) ? { base: 1 } : {}) }); // base = 기본 외형·외형 1~5 (연두 화살)
+        sim.effects.push({ type: 'hidden_storm', x: shot.x, y: shot.y, angle, speed: HIDDEN_STORM_SPEED, r: HIDDEN_STORM_R, life: ticks, maxLife: ticks, sr: !!archerStormSr(unit.skinVariant) }); // base = 기본 외형·외형 1~5 (연두 화살)
         unit.skillAnim = ARCHER_STORM_AFTER; unit.maxSkillAnim = ARCHER_STORM_AFTER; unit.attackAnim = 0; // 쏘고 난 자세(기본 외형 시전 그림 2칸)를 잠깐 → 바로 대기
         sim.hiddenFx.push({ kind: 'storm', owner: unit, x: shot.x, y: shot.y + 12, angle, left: ticks, dmg: unit.atk * 4.5, last: new Map() });
         playCombatSfx('arrow');
@@ -24138,8 +24209,7 @@
         const travel = (ef.maxLife - ef.life) * ef.speed;
         ctx.translate(ef.x + Math.cos(ef.angle) * travel, ef.y + Math.sin(ef.angle) * travel);
         const srFx = ef.sr && ARCHER_STORM_FX.sr.arrow.ready ? ARCHER_STORM_FX.sr : null;
-        const baseFx = !srFx && ef.base && ARCHER_STORM_FX.base.arrow.ready ? ARCHER_STORM_FX.base : null; // 기본 외형: 시전 그림 색에 맞춘 연두 화살·바람
-        const art = srFx ? srFx.arrow : (baseFx ? baseFx.arrow : ARCHER_STORM_FX.arrow);
+        const art = srFx ? srFx.arrow : ARCHER_STORM_FX.arrow;
         if (art.ready) {
           // 그림 화살: 앞쪽 큰 고리가 돌풍 판정 자리. 위아래로 뒤집은 그림을 번갈아 비춰 나선이 도는 것처럼
           const sc = ef.r / ARCHER_STORM_FX.arrowRingR;
@@ -24147,7 +24217,7 @@
           ctx.globalAlpha = Math.min(1, fade * 6);
           ctx.scale(sc, sc); // 모양이 일렁이지 않게 그대로 날아감
           ctx.drawImage(art, -(srFx || ARCHER_STORM_FX).arrowCX, -(srFx || ARCHER_STORM_FX).arrowCY);
-          const wind = srFx && srFx.wind.ready ? srFx.wind : (baseFx && baseFx.wind.ready ? baseFx.wind : ARCHER_STORM_FX.wind);
+          const wind = srFx && srFx.wind.ready ? srFx.wind : ARCHER_STORM_FX.wind;
           if (wind.ready) {
             // 간단한 바람 한 겹: 고리 둘레에서 초록 바람줄기가 은은하게 일렁임
             const age = ef.maxLife - ef.life, W = ARCHER_STORM_FX.cellW, H = ARCHER_STORM_FX.cellH, n = Math.floor(age / 5) % 3;
@@ -28652,6 +28722,7 @@
     // 투사체를 그림으로 그리면 true (그림이 없거나 아직 안 불러왔으면 false → 기본 도형)
     function drawProjectileSprite(ctx, p, tick) {
       if (p.spr && PIXEL_ORBS[p.spr]) return drawPixelOrb(ctx, p, tick);
+      if (p.spr && PIXEL_ARROWS[p.spr]) return drawPixelArrow(ctx, p, tick);
       const def = (p.spr && PROJECTILE_SPRITES[p.spr]) || PROJECTILE_SPRITES[p.projType];
       const sheet = (def && def.sheet) || FX_SPRITE_SHEET;
       if (!def || !sheet.ready || (def.match && !def.match(p))) return false;
@@ -44233,7 +44304,7 @@
       const ox = P.x + Math.cos(aimAngle) * 14, oy = P.y - 8 + Math.sin(aimAngle) * 14;
       let p;
       if (u.job === 'archer') {
-        p = { projType: 'arrow', isDirectional: true, angle: aimAngle, x: ox, y: oy, speed: 4.6, maxTravel: u.range * 1.7 + 80, trail: [] };
+        p = { projType: 'arrow', spr: unitProjFx(u, 'arrow') || mercArrowSpr(u), isDirectional: true, angle: aimAngle, x: ox, y: oy, speed: 4.6, maxTravel: u.range * 1.7 + 80, trail: [] };
       } else {
         const color = u.job === 'frost' ? '#38bdf8' : (u.job === 'curse' ? '#a855f7' : (u.job === 'bard' ? '#7dd3fc' : (u.job === 'summoner' ? SUMMONER_ORB_COLOR : '#7c3aed')));
         const spr = u.job === 'frost' ? (unitProjFx(u, 'magic_orb') || 'troll_frost') : (u.job === 'curse' ? 'curse_flame' : (u.job === 'bard' ? 'bard_bubble' : (u.job === 'summoner' ? (unitProjFx(u, 'magic_orb') || 'summoner_orb') : (u.job === 'mage' ? mageOrbSpr(u) : undefined))));
