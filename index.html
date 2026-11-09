@@ -38724,6 +38724,19 @@
         });
         return;
       }
+      // 순서가 바뀐 용병 목록: 처음 어긋난 칸부터만 한 명씩 통째로 (모집으로 끝에 붙으면 그 한 명만 · 예전엔 목록 전체 4~8KB를 반 전체가 받았음, 2026-11-09)
+      // 앞쪽 칸은 id가 그대로라 위의 '순서가 같을 때'와 똑같이 다루고, 줄어든 뒤쪽 칸은 null
+      if (idsShifted) {
+        let k = 0;
+        while (k < cur.length && k < prev.length && (cur[k] && cur[k].id) === (prev[k] && prev[k].id)) k++;
+        if (k > 0) {
+          cur.forEach((x, i) => {
+            if (syncSig(prev[i]) !== syncSig(x)) updates[`${path}/${i}`] = x === undefined || x === null ? null : toFirebaseValue(slimMercForUpload(x));
+          });
+          for (let i = cur.length; i < prev.length; i++) updates[`${path}/${i}`] = null;
+          return;
+        }
+      }
       if (depth < SYNC_DIFF_MAX_DEPTH && (bothArr || bothObj) && !idsShifted) {
         const keys = bothArr
           ? Array.from({ length: Math.max(prev.length, cur.length) }, (_, i) => String(i))
