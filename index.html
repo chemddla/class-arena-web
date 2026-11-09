@@ -38493,9 +38493,11 @@
       const updates = {};
       todo.forEach(id => {
         derivedCleaning.add(id);
-        DERIVED_STUDENT_KEYS.forEach(k => { updates[`classes/${code}/students/${id}/${k}`] = null; });
+        DERIVED_STUDENT_KEYS.forEach(k => { if (derivedLegacyKeys(id)) updates[`classes/${code}/students/${id}/${k}`] = null; });
+        (mercSlimLegacy.get(id) || []).forEach(path => { updates[`classes/${code}/students/${id}/${path}`] = null; });
       });
-      db.ref().update(updates).then(() => { todo.forEach(id => derivedLegacyIds.delete(id)); })
+      if (!Object.keys(updates).length) return;
+      db.ref().update(updates).then(() => { todo.forEach(id => { derivedLegacyIds.delete(id); mercSlimLegacy.delete(id); }); })
         .catch(err => console.warn('[예전 진형 사본 지우기 실패 - 이번 접속은 그대로 둠]:', err));
     }
     const studentPriv = { code: null, want: null, ref: null, all: false, loadedId: null, remote: {}, legacy: {}, off: false };
@@ -38507,6 +38509,9 @@
     }
     // 지금 기기에 맞는 칸을 구독 (선생님 = 전부, 학생 = 지금 학생 것만) · 바뀌었을 때만 다시 구독
     function ensureStudentPrivSub() {
+    const derivedHasKeys = new Set();     // derivedLegacyIds 중 예전 진형 사본이 실제로 남은 학생 (나머지는 용병 칸만)
+    const derivedLegacyKeys = id => derivedHasKeys.has(id);
+    const mercSlimLegacy = new Map();     // 학생 id → 서버 용병 목록에서 지울 칸 경로 (roster/칸/skillKey 등, mercLegacySlimKeys)
       try { StudentInbox.watch(); } catch (e) {} // 선물함 구독도 로그인한 학생을 따라감
       const code = String(state.classCode || '').trim().toUpperCase();
       const db = RealtimePvpService.initFirebaseClientSafe();
@@ -39093,8 +39098,17 @@
       // PvP 방어 진형은 서버 사본이 아니라 로스터·pvpDefenseLayout에서 계산 (DERIVED_STUDENT_KEYS)
       s.defenseFormation = computeDefenseFormation(s);
       s.defenseFormationLabel = defenseFormationLabel(s);
+      // skillKey는 언제나 skillSlots[0] (받는 쪽 ensureMercSkillSlots가 다시 채움 · 11-05 이전 버전도 같음) → 용병 176명에 약 4KB (2026-11-09)
+      if (Array.isArray(out.skillSlots) && out.skillSlots[0] === out.skillKey) delete out.skillKey;
       deepCleanStrings(s);
       return s;
+    // 서버에 이미 올라가 있는 기록에서 지울 수 있는 칸: 칸 번호로 지우므로(그 사이 순서가 바뀌어도 해가 없게) 받는 쪽이 언제나 다시 만드는 칸만
+    // statPoints는 다른 용병 칸을 지우면 투자한 포인트가 사라지므로 여기서는 빼고, 그 용병이 다음에 올라갈 때 줄어듦
+    function mercLegacySlimKeys(m) {
+      if (!m || typeof m !== 'object' || Array.isArray(m) || !m.job || !m.id) return [];
+      const slim = slimMercForUpload(m);
+      return ['skillKey', 'traitName'].filter(k => k in m && !(k in slim));
+    }
     }
 
     function buildMetaFields() {
@@ -39897,10 +39911,17 @@
 
         // 2) 학생
         const remoteStudents = mergeStudentPrivate((data.students && typeof data.students === 'object') ? data.students : {});
-        if (derivedLegacyCode !== code) { derivedLegacyCode = code; derivedLegacyIds.clear(); derivedCleaning.clear(); }
+        if (derivedLegacyCode !== code) { derivedLegacyCode = code; derivedLegacyIds.clear(); derivedCleaning.clear(); derivedHasKeys.clear(); mercSlimLegacy.clear(); }
         Object.keys(remoteStudents).forEach(id => {
           const r = remoteStudents[id];
-          if (r && typeof r === 'object' && DERIVED_STUDENT_KEYS.some(k => k in r)) derivedLegacyIds.add(id); else derivedLegacyIds.delete(id);
+          const derived = Boolean(r && typeof r === 'object' && DERIVED_STUDENT_KEYS.some(k => k in r));
+          if (derived) derivedHasKeys.add(id); else derivedHasKeys.delete(id);
+          // 서버 용병 목록에 남은 되살릴 수 있는 칸 (예전에 통째로 올라간 용병): 한 번 지우면 반 전체가 접속 때마다 받는 양이 줄어듦
+          const roster = r && typeof r === 'object' && r.roster && typeof r.roster === 'object' ? r.roster : null;
+          const paths = [];
+          if (roster && Date.now() >= MERC_SLIM_FROM) Object.keys(roster).forEach(i => mercLegacySlimKeys(roster[i]).forEach(k => paths.push(`roster/${i}/${k}`)));
+          if (paths.length) mercSlimLegacy.set(id, paths); else mercSlimLegacy.delete(id);
+          if (derived || paths.length) derivedLegacyIds.add(id); else derivedLegacyIds.delete(id);
         });
         const profiles = (data.profiles && typeof data.profiles === 'object') ? data.profiles : {};
         if (StudentPw.online()) {
