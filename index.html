@@ -38887,6 +38887,7 @@
       petSpeed: 340, petJumpV: 820, petGravity: 2400, petR: 40, petCenterUp: 44, // 펫 몸: 발에서 petCenterUp 위가 중심인 원
       goal: 11, timeLimitSec: 180, serveDelayMs: 1500, hitCooldown: 0.3, powerWindow: 0.25,
       physStepMs: 1000 / 120, ballLagUp: 0.3, ballLagDown: 0.45, // 공 궤적 고정 간격 · 표시 지연(lag)을 늘리는/줄이는 빠르기 (초당 0.3초·0.45초 → 공이 잠깐 30% 느리거나 45% 빠르게 보임)
+      linkFbMs: 250, interpDelayLinkMs: 60, // 직접 연결(VolleyLink) 중: 서버로는 0.25초마다만(관전자·끊겼을 때 이어 붙이기용) · 직접 연결 샘플은 보간 지연 최소 60ms
       liveHz: 20, interpDelayMs: 120, interpDelayMaxMs: 420, extrapMaxMs: 400, ballSyncMs: 200, homeX: [230, 670], // 친구 펫은 받은 시각보다 interpDelay(네트워크가 흔들리면 그만큼 더, 최대 interpDelayMax)만큼 늦게 샘플 사이를 보간해 그림 · 공은 친 사람이 ballSyncMs마다 다시 맞춤
     };
     // 펫별 배구 특성 (작게: 손맛은 비슷하게, 개성만 조금)
@@ -38985,8 +38986,97 @@
       }
     }
 
+    // ───── 펫 배구 직접 연결 (WebRTC, 두 기기 사이) ─────
+    // 예전: 펫 위치 20Hz·공 타격이 모두 Firebase 서버를 거쳐 한 번에 100~400ms(학교 와이파이) → 상대가 친 공이 늦게 알려져 내 화면의 공이 확 옮겨지고(순간이동),
+    //   상대 펫은 늘 0.2~0.5초 늦게 보였음. 지금: 방장이 연결 정보를 {방}_vl/rtc/offer에, 도전자가 answer에 적어 두 기기를 직접 이음(같은 교실이면 10~50ms).
+    //   열려 있는 동안 펫 위치·공 타격은 직접 연결로 바로 보내고, 서버로는 0.25초마다만(관전자·끊겼을 때 이어 붙이기) · 공 타격은 서버로도 늘 한 번(놓치지 않게)
+    //   안 열리거나 끊기면 저절로 예전처럼 서버로만 (8초 안에 안 열리면 방장이 3번까지 다시 시도)
+    const VolleyLink = {
+      gen: 0, roomId: null, role: null, pc: null, dc: null, open: false, ref: null, owner: null, startedAt: 0, retries: 0, lastRecvAt: 0, offerG: null,
+      supported() { return typeof RTCPeerConnection === 'function'; },
+      // owner(PetVolley)가 1초마다: 방·역할(방장=offer · 도전자=answer)이 맞으면 유지, 바뀌면 다시, 필요 없으면 닫음
+      ensure(roomId, role, owner) {
+        if (!roomId || !role || !this.supported()) { if (this.roomId) this.stop(); return; }
+        if (this.roomId === roomId && this.role === role) { this.tick(); return; }
+        this.stop();
+        Object.assign(this, { roomId, role, owner, retries: 0, offerG: null });
+        this.start();
+      },
+      tick() {
+        if (!this.roomId || this.open || !this.startedAt) return;
+        if (Date.now() - this.startedAt > 8000 && this.retries < 3) { this.retries++; this.start(); } // 안 열림 → 다시 (도전자는 새 offer를 받으면 따라감)
+      },
+      healthy() { return this.open && Boolean(this.dc) && this.dc.readyState === 'open' && this.dc.bufferedAmount < 16384 && Date.now() - this.lastRecvAt < 2000; }, // 상대가 0.5초마다는 보내므로 2초 조용하면 막힌 것
+      send(msg) {
+        if (!this.healthy()) return false;
+        try { this.dc.send(JSON.stringify(msg)); return true; } catch (e) { return false; }
+      },
+      stop() {
+        this.gen++;
+        if (this.ref) { try { this.ref.child('offer').off(); this.ref.child('answer').off(); } catch (e) {} }
+        try { if (this.dc) this.dc.close(); } catch (e) {}
+        try { if (this.pc) this.pc.close(); } catch (e) {}
+        Object.assign(this, { roomId: null, role: null, pc: null, dc: null, open: false, ref: null, owner: null, startedAt: 0, lastRecvAt: 0, offerG: null });
+      },
+      bind(dc, gen) {
+        this.dc = dc;
+        dc.onopen = () => { if (this.gen !== gen) return; this.open = true; this.lastRecvAt = Date.now(); if (this.owner && this.owner.onLinkOpen) this.owner.onLinkOpen(); };
+        dc.onclose = () => { if (this.gen !== gen) return; this.open = false; this.startedAt = Date.now(); };
+        dc.onmessage = ev => {
+          if (this.gen !== gen) return;
+          let m = null;
+          try { m = JSON.parse(ev.data); } catch (e) { return; }
+          if (!m || typeof m !== 'object') return;
+          this.lastRecvAt = Date.now();
+          if (m.k === 'c' && this.owner && m.v && typeof m.v === 'object') this.owner.applyLiveChild(String(m.key), m.v, true);
+        };
+      },
+      async start() {
+        const gen = ++this.gen;
+        if (this.ref) { try { this.ref.child('offer').off(); this.ref.child('answer').off(); } catch (e) {} }
+        try { if (this.dc) this.dc.close(); } catch (e) {}
+        try { if (this.pc) this.pc.close(); } catch (e) {}
+        this.open = false; this.dc = null; this.startedAt = Date.now();
+        const ref = this.owner && this.owner.liveRef ? this.owner.liveRef('rtc') : null;
+        if (!ref) return;
+        this.ref = ref;
+        try {
+          const pc = this.pc = new RTCPeerConnection({ iceServers: LIVE_RTC_ICE });
+          pc.addEventListener('connectionstatechange', () => { if (this.gen === gen && (pc.connectionState === 'failed' || pc.connectionState === 'closed')) { this.open = false; this.startedAt = Date.now(); } });
+          if (this.role === 'host') {
+            this.bind(pc.createDataChannel('vl', { ordered: true }), gen);
+            await ref.remove(); // 예전 신호 지움
+            await pc.setLocalDescription(await pc.createOffer());
+            await liveRtcIceDone(pc, 2500);
+            if (this.gen !== gen) return;
+            await ref.child('offer').set({ sdp: pc.localDescription.sdp, at: Date.now(), g: gen });
+            ref.child('answer').on('value', snap => {
+              const v = snap && snap.val();
+              if (this.gen !== gen || !v || typeof v.sdp !== 'string' || v.g !== gen || pc.remoteDescription) return;
+              pc.setRemoteDescription({ type: 'answer', sdp: v.sdp }).catch(() => {});
+            });
+          } else {
+            pc.ondatachannel = ev => { if (this.gen === gen) this.bind(ev.channel, gen); };
+            ref.child('offer').on('value', async snap => {
+              const v = snap && snap.val();
+              if (this.gen !== gen || !v || typeof v.sdp !== 'string') return;
+              if (pc.remoteDescription) { if (v.g !== this.offerG) this.start(); return; } // 방장이 새로 시도함 → 나도 새로
+              try {
+                this.offerG = v.g;
+                await pc.setRemoteDescription({ type: 'offer', sdp: v.sdp });
+                await pc.setLocalDescription(await pc.createAnswer());
+                await liveRtcIceDone(pc, 2500);
+                if (this.gen !== gen) return;
+                await ref.child('answer').set({ sdp: pc.localDescription.sdp, at: Date.now(), g: v.g });
+              } catch (e) {}
+            });
+          }
+        } catch (e) {}
+      }
+    };
+
     const PetVolley = {
-      st: null, raf: 0, last: 0, keys: {}, bound: false, liveAcc: 0, serverFlash: 0,
+      st: null, raf: 0, last: 0, keys: {}, bound: false, liveAcc: 0, serverFlash: 0, linkAcc: 0,
       randomPet() { const types = Object.keys(PET_DEFS).filter(t => PET_DEFS[t].sheet); return types[Math.floor(Math.random() * types.length)] || 'shiba'; },
       perk(type) { return VOLLEY_PERKS[type] || {}; },
       img(src) { return window.PetRun ? PetRun.img(src) : null; },
@@ -39045,9 +39135,22 @@
         if (!s || !s.ball || s.ball.landed || s.pendingRally) { if (!s || !s.pendingRally) this.newRally(); return; }
         s.pendingRally = Date.now() + 700;
       },
+      linkSync() {
+        const st = petVolleyState;
+        const roomId = this.liveSubRoom;
+        const my = st.initialized ? mgMySeat(st) : -1;
+        const want = roomId && currentJoinedMinigameRoomId === roomId && !st.gameOver && my >= 0 && !mgIsAiSeat(st, 0) && !mgIsAiSeat(st, 1);
+        VolleyLink.ensure(want ? roomId : null, want ? (mgCanReset() ? 'host' : 'guest') : null, this);
+      },
+      // 직접 연결이 열림: 상대 시계·지연 추정은 직접 연결 샘플로 새로 (서버를 거친 느린 샘플 기록을 비움)
+      onLinkOpen() {
+        const s = this.st; if (!s) return;
+        s.pets.forEach(p => { if (p.clk) { p.clk.ds = []; p.clk.rtts = []; p.clk.rtt = null; p.clk.rttHi = null; } });
+      },
       run() {
         this.ensureCanvas();
         this.syncLiveSub();
+        this.linkSync();
         if (this.raf) return;
         this.last = performance.now();
         this.raf = requestAnimationFrame(ts => this.frame(ts));
@@ -39055,6 +39158,7 @@
       stopLocal() {
         cancelAnimationFrame(this.raf); this.raf = 0;
         this.st = null; this.keys = {};
+        VolleyLink.stop();
         if (this.liveSubRef) { try { this.liveSubRef.off(); } catch (e) {} }
         this.liveSubRef = null; this.liveSubRoom = null;
       },
@@ -39219,6 +39323,8 @@
         if (this.inRoom() && !st.gameOver) {
           this.liveAcc += dt;
           if (this.liveAcc >= 1 / VOLLEY.liveHz) { this.liveAcc = 0; this.sendLive(); }
+          this.linkAcc += dt;
+          if (this.linkAcc >= 1) { this.linkAcc = 0; this.linkSync(); }
         }
       },
 
@@ -39252,7 +39358,8 @@
         return true;
       },
       // 상대 화면이 보는 시각만큼의 지연: 편도(왕복의 절반) + 상대 펫 보간 지연 → 상대 펫과 같은 시점
-      peerLagMs(p) { const c = p && p.clk; return (c && c.rtt != null ? c.rtt / 2 : 60) + this.peerDelay(p); },
+      // 왕복은 최솟값(rtt, 시계 차이용)이 아니라 상위 80%(rttHi)로: 최솟값으로 잡으면 조금만 늦게 와도 상대 타격이 '이미 지난 시각'에 끼어들어 공이 확 옮겨졌음
+      peerLagMs(p) { const c = p && p.clk; return (c && c.rttHi != null ? c.rttHi / 2 : (c && c.rtt != null ? c.rtt / 2 : 60)) + this.peerDelay(p); },
       // 표시 시각: 다음에 공을 칠 차례가 나면(상대가 쳤거나 내 서브) lag → 0, 상대 차례면 상대 펫과 같은 지연으로.
       // 차례는 마지막 키프레임으로 정함 (상대가 친 공이 도착하자마자 따라잡기 시작해 내 코트에 올 때쯤 지금 시각이 됨)
       // 한 번에 바꾸지 않고 초당 ballLagUp·ballLagDown만큼만
@@ -39395,8 +39502,12 @@
           // 에코: 상대가 보낸 마지막 시각과 그걸 받은 뒤 지난 시간 → 상대가 왕복 시간을 잼
           if (this.echo) { pack.e = this.echo.t; pack.eh = Date.now() - this.echo.at; }
           const key = `${pack.x},${pack.y},${pack.m},${pack.h},${pack.g}`;
-          if (!force && p.lastSentKey === key && Date.now() - (p.lastSentAt || 0) < 500) return; // 가만히 있어도 0.5초마다 한 번은 보냄 (버퍼가 비지 않게)
-          p.lastSentKey = key; p.lastSentAt = Date.now();
+          const now = Date.now();
+          if (VolleyLink.healthy()) {
+            VolleyLink.send({ k: 'c', key: String(i), v: pack }); // 직접 연결: 매번 바로
+            if (!force && now - (p.lastFbAt || 0) < VOLLEY.linkFbMs) return; // 서버로는 0.25초마다만 (관전자·끊겼을 때 이어 붙이기)
+          } else if (!force && p.lastSentKey === key && now - (p.lastSentAt || 0) < 500) return; // 가만히 있어도 0.5초마다 한 번은 보냄 (버퍼가 비지 않게)
+          p.lastSentKey = key; p.lastSentAt = now; p.lastFbAt = now;
           ref.set(pack).catch(() => {});
         });
       },
@@ -39404,18 +39515,20 @@
         const st = petVolleyState;
         if (!k || !this.inRoom()) return;
         const ref = this.liveRef('ball'); if (!ref) return;
-        ref.set({ ...k, gid: st.gameId }).catch(() => {});
+        const v = { ...k, gid: st.gameId };
+        VolleyLink.send({ k: 'c', key: 'ball', v }); // 직접 연결로 바로 (받는 쪽은 같은 타격(n·by)을 두 번 받아도 한 번만 씀)
+        ref.set(v).catch(() => {});
       },
       // 상대 시계 차이 추정: (내가 받은 시각 − 상대가 적은 시각)의 최근 최솟값. 기기마다 시계가 몇 초씩 달라도 보간 시점이 어긋나지 않음
-      peerNote(p, t) {
+      peerNote(p, t, viaLink = false) {
         const d = Date.now() - t;
         const c = p.clk || (p.clk = { ds: [], off: d, delay: VOLLEY.interpDelayMs });
         c.ds.push(d); if (c.ds.length > 60) c.ds.shift();
         c.off = Math.min(...c.ds);
-        // 지터 = 가장 빨리 온 묶음보다 얼마나 늦게 왔나. 상위 10%쯤의 지터 + 60ms를 지연으로 (최소 interpDelay, 최대 interpDelayMax)
+        // 지터 = 가장 빨리 온 묶음보다 얼마나 늦게 왔나. 상위 10%쯤의 지터 + 60ms를 지연으로 (최소 interpDelay(직접 연결이면 interpDelayLink), 최대 interpDelayMax)
         const js = c.ds.map(v => v - c.off).sort((x, y) => x - y);
         const j90 = js[Math.min(js.length - 1, Math.floor(js.length * 0.9))] || 0;
-        c.want = Math.max(VOLLEY.interpDelayMs, Math.min(VOLLEY.interpDelayMaxMs, j90 + 60));
+        c.want = Math.max(viaLink ? VOLLEY.interpDelayLinkMs : VOLLEY.interpDelayMs, Math.min(VOLLEY.interpDelayMaxMs, j90 + 60));
       },
       peerOffset(p) { return p && p.clk ? p.clk.off : 0; },
       // 상대 시각 → 내 시각: (받은 시각 − 보낸 시각)의 최솟값에서 편도(왕복의 절반)를 뺀 만큼이 두 시계의 차이
@@ -39431,22 +39544,31 @@
         return c.delay;
       },
       // {방}_vl의 자식 하나('0' · '1' = 펫, 'ball' = 공)가 바뀔 때마다
-      applyLiveChild(key, r) {
+      // viaLink: 직접 연결로 온 것 (서버를 거친 샘플은 직접 연결이 열려 있는 동안 시계·지연 추정에 쓰지 않고, 이미 받은 시각보다 오래된 것은 버림)
+      applyLiveChild(key, r, viaLink = false) {
         const st = petVolleyState, s = this.st;
         if (!s || !st.initialized || !r || typeof r !== 'object') return;
+        const linkOn = VolleyLink.open; // 직접 연결은 지금 방의 상대와만 열림 (linkSync)
         if (key === '0' || key === '1') {
           const i = Number(key);
           if (this.controls(i)) return;
           const p = s.pets[i];
           const sample = { x: Number(r.x) || 0, y: Number(r.y) || VOLLEY.groundY, vx: Number(r.vx) || 0, vy: Number(r.vy) || 0, g: Number(r.g) === 1 || r.g == null ? 1 : 0, m: Number(r.m) || 0, h: Number(r.h) || 0, t: Number(r.t) || Date.now() };
           if (r.g == null) sample.g = sample.y >= VOLLEY.groundY - 2 ? 1 : 0;
-          this.peerNote(p, sample.t);
-          if (!this.echo || sample.t > this.echo.t) this.echo = { t: sample.t, at: Date.now() };
-          if (r.e) {
-            const rtt = Date.now() - Number(r.e) - (Number(r.eh) || 0);
-            if (rtt >= 0 && rtt < 5000) { const rs = p.clk.rtts || (p.clk.rtts = []); rs.push(rtt); if (rs.length > 30) rs.shift(); p.clk.rtt = Math.min(...rs); }
-          }
           const buf = p.buf || (p.buf = []);
+          if (linkOn && !viaLink && buf.length && sample.t <= buf[buf.length - 1].t) return; // 직접 연결로 이미 받은 것보다 오래된 서버 샘플 (늦게 옴) → 버림
+          if (viaLink || !linkOn) {
+            this.peerNote(p, sample.t, viaLink);
+            if (!this.echo || sample.t > this.echo.t) this.echo = { t: sample.t, at: Date.now() };
+            if (r.e) {
+              const rtt = Date.now() - Number(r.e) - (Number(r.eh) || 0);
+              if (rtt >= 0 && rtt < 5000) {
+                const rs = p.clk.rtts || (p.clk.rtts = []); rs.push(rtt); if (rs.length > 30) rs.shift();
+                p.clk.rtt = Math.min(...rs);
+                const sorted = [...rs].sort((a, b) => a - b); p.clk.rttHi = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.8))];
+              }
+            }
+          } else if (!p.clk) this.peerNote(p, sample.t, false);
           if (buf.length && sample.t <= buf[buf.length - 1].t) sample.t = buf[buf.length - 1].t + 1; // 순서가 뒤집혀 와도 버퍼는 시간순
           buf.push(sample);
           const cut = sample.t - 1500;
