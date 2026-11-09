@@ -21714,6 +21714,7 @@
     const ZONE_STYLES = {
       arrow_rain:  { color: '#ca8a04', fill: 'rgba(234, 179, 8, 0.22)', icon: '🌧️' },
       poison_boom: { color: '#16a34a', fill: 'rgba(34, 197, 94, 0.22)', icon: '☠️' },
+      mage_poison_boom: { color: '#16a34a', fill: 'rgba(34, 197, 94, 0.22)', icon: '☠️' },  // 용병 마법사 포이즌 붐: 끓는 도트 독 웅덩이 (drawPoisonPool)
       leviathan_arrow_rain: { color: '#0ea5e9', fill: 'rgba(56, 189, 248, 0.22)', icon: '🧊' }, // 리바이어던 우박 폭풍
       hydra_arrow_rain:  { color: '#65a30d', fill: 'rgba(132, 204, 22, 0.2)', icon: '🌧️' },  // 히드라 산성비
       hydra_poison_boom: { color: '#9333ea', fill: 'rgba(168, 85, 247, 0.2)', icon: '☠️' },  // 히드라 독늪 웅덩이
@@ -21788,8 +21789,15 @@
         ctx.beginPath();
         ctx.arc(z.x, z.y, z.r, 0, Math.PI * 2);
         ctx.fill();
-        if (z.kind === 'poison_boom') {
-          // 끓는 독 웅덩이 (도트, drawPoisonPool)
+        if (z.kind === 'poison_boom' && FX_SPRITE_SHEET.ready) {
+          // 독 구름이 천천히 부풀었다 줄었다 하며 장판을 덮음
+          const cloud = FX_SPRITE_SHEET.anims.poison[3];
+          const pulse = 1 + Math.sin(sim.tickCount * 0.05) * 0.04;
+          ctx.globalAlpha = fade;
+          drawFxFrame(ctx, cloud, z.x, z.y, (z.r * 2 * 0.95 * pulse) / cloud[2], 0, 0.6);
+        }
+        if (z.kind === 'mage_poison_boom') {
+          // 용병 마법사: 끓는 독 웅덩이 (도트, drawPoisonPool)
           drawPoisonPool(ctx, z, (z.maxLife || z.life) - z.life, fade, sim.tickCount);
         }
         if (z.kind === 'hydra_poison_boom' && HYDRA_FX.ready) {
@@ -22273,12 +22281,14 @@
         if (!target) return true;
         const r = A * 1.5;
         if (!aimPt) target = bestAoePoint(unit, enemies, unit.range + 80, r, target) || target;
-        sim.effects.push({ type: 'aoe_ring', spr: unitFxSpr(unit, 'poison'), x: target.x, y: target.y, r, color: '#16a34a', life: 36, maxLife: 36, ux: unit.x, uy: unit.y - 20 * unitFxSize(unit) }); // 히드라 = 독늪 폭발 · 크라켄 = 먹물탄이 날아가 터짐 (ux·uy = 던지는 자리)
+        // 도트 독구름·웅덩이(mage_poison)는 용병 마법사만. 몬스터·보스는 예전 독 구름 그림 (2026-11-09 사용자 요청: 눈이 아픔)
+        const pxPoison = unit.job === 'mage' && !unit.monsterType && unitFxSpr(unit, 'poison') === 'poison';
+        sim.effects.push({ type: 'aoe_ring', spr: pxPoison ? 'mage_poison' : unitFxSpr(unit, 'poison'), x: target.x, y: target.y, r, color: '#16a34a', life: 36, maxLife: 36, ux: unit.x, uy: unit.y - 20 * unitFxSize(unit) }); // 히드라 = 독늪 폭발 · 크라켄 = 먹물탄이 날아가 터짐 (ux·uy = 던지는 자리)
         near(enemies, target.x, target.y, r).forEach(e => {
           applyDamage(unit, e, unit.atk * 0.6, '', '#16a34a');
           inflictStatus(unit, e, 'poison', 300);
         });
-        spawnZone(unitFxSpr(unit, 'poison_boom'), unit, target.x, target.y, r, 360, 30, unit.atk * 0.12, 'poison', 240); // 히드라 = 독늪 웅덩이
+        spawnZone(pxPoison ? 'mage_poison_boom' : unitFxSpr(unit, 'poison_boom'), unit, target.x, target.y, r, 360, 30, unit.atk * 0.12, 'poison', 240); // 히드라 = 독늪 웅덩이
         playCombatSfx('magic');
         addBattleLog(`🧪 [마법사] ${unit.name}의 포이즌 붐!`);
         return true;
@@ -28950,8 +28960,8 @@
         drawTeleportPillar(ctx, ef.x, ef.y + (ef.type === 'magic_burst' ? 12 : 0), progress, ef.s || 1, ((Math.round(ef.x) * 2654435761) ^ Math.round(ef.y * 97)) >>> 0);
         return true;
       }
-      if (ef.spr === 'poison') {
-        // 포이즌 붐 터짐: 도트 독구름 + 독 방울 (drawPoisonBoomFx, 그림 시트 없음). 자리로 무늬를 정해 관전 화면에서도 같게
+      if (ef.spr === 'mage_poison') {
+        // 용병 마법사 포이즌 붐 터짐: 도트 독구름 + 독 방울 (drawPoisonBoomFx, 그림 시트 없음). 자리로 무늬를 정해 관전 화면에서도 같게
         drawPoisonBoomFx(ctx, ef.x, ef.y, ef.r, progress, ((Math.round(ef.x) * 2654435761) ^ Math.round(ef.y * 97)) >>> 0);
         return true;
       }
@@ -29001,6 +29011,12 @@
           ctx.restore();
           const hit = A.bolt_hit[0];
           drawFxFrame(ctx, hit, ef.tx, ef.ty - 12, (74 * (0.8 + 0.2 * Math.sin(progress * Math.PI))) / hit[2], 0, fadeOut, boltImg);
+          return true;
+        }
+        case 'poison': {
+          // 독 구름이 실제 범위만큼 퍼짐
+          const fr = fxFrameAt(A.poison, progress, 0.7);
+          drawFxFrame(ctx, fr, ef.x, ef.y, (ef.r * 2 * 0.95) / A.poison[3][2], 0, fadeOut);
           return true;
         }
         case 'teleport': {
