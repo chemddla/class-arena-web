@@ -30493,19 +30493,20 @@
         // 잔상 색: 시크릿 레어(붉은 용인)는 붉은 계열, 그 밖은 금빛
         const ghostFilter = (u.skinVariant || 0) === SECRET_SKIN_BASE + 1
           ? 'sepia(1) saturate(5) brightness(1.1) hue-rotate(-45deg)' : 'sepia(1) saturate(3) brightness(1.35) hue-rotate(-8deg)';
+        const ghostLen = (u.skinVariant || 0) === SECRET_SKIN_BASE + 1 ? 2 : 1; // 시크릿 레어는 잔상이 두 배 오래 남음
         let gl = mfx.ghosts.get(u);
         if (!gl) { gl = []; mfx.ghosts.set(u, gl); }
         if (!gl.length || gl[gl.length - 1].t !== tick) {
           gl.push({ t: tick, x: u.x, y: u.y, dir, pose: musouPose, art: musouArt, frame });
-          if (gl.length > 8) gl.shift();
+          if (gl.length > 8 * ghostLen) gl.shift();
         }
         for (let i = gl.length - 3; i >= 0; i -= 2) { // 2틱 간격으로 오래된 것부터: 점점 옅어짐
           const g = gl[i], age = tick - g.t;
-          if (age < 1 || age > 7 || Math.hypot(g.x - u.x, g.y - u.y) < 6) continue;
+          if (age < 1 || age > 7 * ghostLen || Math.hypot(g.x - u.x, g.y - u.y) < 6) continue;
           ctx.save();
           ctx.translate(g.x - u.x, g.y - u.y);
           ctx.scale(g.dir, 1);
-          ctx.globalAlpha *= 0.42 - age * 0.05;
+          ctx.globalAlpha *= 0.42 - age * 0.05 / ghostLen;
           ctx.filter = ghostFilter;
           if (g.pose >= 0) {
             const ga = g.art, ksg = spriteDrawH(u, sprite) / ga.standH;
@@ -30524,13 +30525,13 @@
           if (hg.list.length > 4) hg.list.shift();
         }
         hg.anim = u.attackAnim;
-        hg.list = hg.list.filter(g => g.until == null || tick - g.until < 12);
+        hg.list = hg.list.filter(g => g.until == null || tick - g.until < 12 * ghostLen);
         hg.list.forEach(g => {
           if (tick - g.t < 2 || Math.hypot(g.x - u.x, g.y - u.y) < 6) return; // 막 친 자리(몸과 겹침)는 건너뜀
           ctx.save();
           ctx.translate(g.x - u.x, g.y - u.y);
           ctx.scale(g.dir, 1);
-          ctx.globalAlpha *= 0.4 * (g.until == null ? 1 : 1 - (tick - g.until) / 12);
+          ctx.globalAlpha *= 0.4 * (g.until == null ? 1 : 1 - (tick - g.until) / (12 * ghostLen));
           ctx.filter = ghostFilter;
           if (g.pose >= 0) {
             const ga = g.art, ksg = spriteDrawH(u, sprite) / ga.standH;
