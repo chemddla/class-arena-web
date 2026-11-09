@@ -18631,10 +18631,9 @@
           tx = u.x + Math.cos(ang) * ITEM_BLINK_RANGE; ty = u.y + Math.sin(ang) * ITEM_BLINK_RANGE;
         }
         const dest = clampAimPoint(u, tx, ty, ITEM_BLINK_RANGE);
-        sim.effects.push({ type: 'cast_circle', spr: 'teleport', x: u.x, y: u.y, color: '#7c3aed', life: 30, maxLife: 30 });
-        sim.effects.push({ type: 'charge_dash', sx: u.x, sy: u.y, tx: dest.x, ty: dest.y, color: '#7c3aed', life: 24, maxLife: 24, warp: true });
+        sim.effects.push({ type: 'cast_circle', spr: 'tp_pillar', x: u.x, y: u.y, color: '#7c3aed', life: 30, maxLife: 30 }); // 텔레포트 스킬과 같은 빛기둥
         u.x = dest.x; u.y = dest.y; u.kbVx = 0; u.kbVy = 0; u.rush = null;
-        sim.effects.push({ type: 'magic_burst', spr: 'teleport', x: u.x, y: u.y - 12, r: 50, life: 30, maxLife: 30 });
+        sim.effects.push({ type: 'magic_burst', spr: 'tp_pillar', x: u.x, y: u.y - 12, r: 50, life: 30, maxLife: 30 });
         say('📿 텔레포트!', '#7c3aed');
       } else if (def.skill === 'illusion') {
         if (sim.units.some(x => x.isClone && !x.spiritElem && x.ownerId === u.id && x.alive)) { if (fromPlayer) say('🪞 이미 환영이 싸우고 있어요'); return false; }
@@ -22258,14 +22257,16 @@
         // 텔레포트: 5칸 안으로 순간이동 후 5초간 공격력 +20%
         const dest = chooseTeleportSpot(unit, enemies, target, unit.teleportIntent || 'escape');
         const tpDir = dest.x >= unit.x ? 1 : -1; // 리치 망령 이동 궤적 그림이 날아온 쪽을 보게
-        sim.effects.push({ type: 'cast_circle', spr: unitFxSpr(unit, 'teleport'), x: unit.x, y: unit.y, s: unitFxSize(unit), color: '#7c3aed', life: 30, maxLife: 30 });
-        sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y, tx: dest.x, ty: dest.y, color: unitFxColor(unit, 'teleport', '#7c3aed'), life: 24, maxLife: 24, warp: true });
+        // 기본 텔레포트 = 빛기둥 (tp_pillar: 떠나는 자리·도착하는 자리에 하늘에서 빛기둥이 꽂힘, 회오리 없음). 리치처럼 따로 그림이 있는 몬스터는 그대로
+        const tpSpr = unitFxSpr(unit, 'teleport'), tpPillar = tpSpr === 'teleport';
+        sim.effects.push({ type: 'cast_circle', spr: tpPillar ? 'tp_pillar' : tpSpr, x: unit.x, y: unit.y, s: unitFxSize(unit), color: '#7c3aed', life: 30, maxLife: 30 });
+        if (!tpPillar) sim.effects.push({ type: 'charge_dash', sx: unit.x, sy: unit.y, tx: dest.x, ty: dest.y, color: unitFxColor(unit, 'teleport', '#7c3aed'), life: 24, maxLife: 24, warp: true });
         unit.x = dest.x;
         unit.y = dest.y;
         unit.kbVx = 0;
         unit.kbVy = 0;
         unit.statuses.empower = Math.max(unit.statuses.empower || 0, 300);
-        sim.effects.push({ type: 'magic_burst', spr: unitFxSpr(unit, 'teleport'), x: unit.x, y: unit.y - 12, r: 50, s: unitFxSize(unit), dir: tpDir, life: 30, maxLife: 30 }); // s·dir = 리치 망령 이동 그림 크기·방향
+        sim.effects.push({ type: 'magic_burst', spr: tpPillar ? 'tp_pillar' : tpSpr, x: unit.x, y: unit.y - 12, r: 50, s: unitFxSize(unit), dir: tpDir, life: 30, maxLife: 30 }); // s·dir = 리치 망령 이동 그림 크기·방향
         unit.teleportIntent = null;
         playCombatSfx('magic');
         addBattleLog(`🔮 [마법사] ${unit.name}의 텔레포트! 공격력 +20% (5초)`);
@@ -28750,6 +28751,48 @@
       ctx.restore();
     }
 
+    // 텔레포트 빛기둥 (2026-11-09, 사용자가 고른 후보 B, docs/teleport-fx-candidates.png): 하늘에서 가는 빛기둥이 꽂혀
+    //   넓어졌다 좁아지며 사라짐. 가운데 하양 → 하늘색, 가장자리는 디더로 일렁임. 바닥에 퍼지는 빛 고리 + 위로 솟는 불티
+    //   x·y = 발 위치, s = 시전자 크기 (큰 몬스터는 기둥도 굵고 높게)
+    function drawTeleportPillar(ctx, x, y, p, s, seed) {
+      if (p >= 1) return;
+      const B = ['#0c2a4d', '#1d5fa8', '#38bdf8', '#bae6fd', '#ffffff'];
+      const c = Math.max(3, Math.round(3 * s)), w = Math.sin(Math.PI * Math.min(1, p * 1.1)) * 13 * s, top = y - 120 * s;
+      const bay = (gx, gy, f) => PFX_BAYER[((Math.round(gy / c) & 3) << 2) | (Math.round(gx / c) & 3)] < f;
+      const dot = (px, py, col, a = 1) => { ctx.globalAlpha = a; ctx.fillStyle = col; ctx.fillRect(Math.round(px / c) * c, Math.round(py / c) * c, c, c); };
+      ctx.save();
+      if (w > 0.5) {
+        ctx.globalCompositeOperation = 'lighter';
+        const g = ctx.createLinearGradient(x - w * 2.2, 0, x + w * 2.2, 0);
+        g.addColorStop(0, '#38bdf800'); g.addColorStop(0.5, '#38bdf866'); g.addColorStop(1, '#38bdf800');
+        ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(x - w * 2.2, top, w * 4.4, y - top);
+        ctx.globalCompositeOperation = 'source-over';
+        const paths = new Map();
+        for (let gy = top; gy <= y; gy += c) for (let gx = -w; gx <= w; gx += c) {
+          const q = Math.abs(gx) / Math.max(1, w), v = (gy - top) / (y - top);
+          if (q > 0.6 && !bay(gx, gy + p * 40, 1.2 - q)) continue; // 가장자리 일렁임
+          if (v < 0.25 && !bay(gx, gy, v * 4)) continue;           // 위쪽 끝은 하늘로 흐려짐
+          const col = q < 0.3 ? B[4] : q < 0.65 ? B[3] : B[2];
+          let path = paths.get(col);
+          if (!path) paths.set(col, path = new Path2D());
+          path.rect(Math.round((x + gx) / c) * c, Math.round(gy / c) * c, c, c);
+        }
+        ctx.globalAlpha = 1;
+        for (const [col, path] of paths) { ctx.fillStyle = col; ctx.fill(path); }
+      }
+      // 바닥 빛 고리
+      const ease = t => 1 - Math.pow(1 - t, 3);
+      const rr = (10 + ease(Math.min(1, p * 1.4)) * 26) * s, rf = 1 - Math.max(0, (p - 0.5) / 0.5);
+      for (let k = 0; k < 40; k++) { const t = k / 40 * Math.PI * 2; if (bay(k * c, k, rf)) dot(x + Math.cos(t) * rr, y + Math.sin(t) * rr * 0.36, k % 5 ? B[2] : B[4]); }
+      // 솟는 불티
+      const rnd = pfxRng(seed);
+      for (let i = 0; i < 12; i++) {
+        const ox = (rnd() * 2 - 1) * 22 * s, sp = 0.5 + rnd(), d0 = rnd() * 0.5, t = Math.max(0, Math.min(1, (p - d0) / 0.5));
+        if (t > 0 && t < 1) dot(x + ox, y - t * 70 * s * sp, t < 0.5 ? B[4] : B[2], 1 - t);
+      }
+      ctx.restore();
+    }
+
     // spr가 붙은 효과를 그림으로 그리면 true
     function drawSpriteEffect(ctx, ef, progress) {
       if (ef.spr === 'bard_bubble_hit' || ef.spr === 'bard_disso_hit') {
@@ -28864,6 +28907,11 @@
         ctx.restore();
         const hit = fxFrameAt(B.bolt_hit, progress, 0.6);
         drawFxFrame(ctx, hit, ef.tx, ef.ty - 12, (70 * (0.8 + 0.2 * Math.sin(progress * Math.PI))) / B.bolt_hit[0][2], 0, fadeOut, boltImg);
+        return true;
+      }
+      if (ef.spr === 'tp_pillar') {
+        // 텔레포트 빛기둥: magic_burst(도착)는 발보다 12 위에서 만들어짐 → 발 위치로
+        drawTeleportPillar(ctx, ef.x, ef.y + (ef.type === 'magic_burst' ? 12 : 0), progress, ef.s || 1, ((Math.round(ef.x) * 2654435761) ^ Math.round(ef.y * 97)) >>> 0);
         return true;
       }
       if (ef.spr === 'poison') {
