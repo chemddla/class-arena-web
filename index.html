@@ -9969,6 +9969,12 @@
     ARCHER_STORM_FX.base = { cellW: 159, cellH: 168, anchorX: 77, anchorY: 127, standH: 96, img: new Image() };
     ARCHER_STORM_FX.base.img.onload = () => { ARCHER_STORM_FX.base.img.ready = true; };
     ARCHER_STORM_FX.base.img.src = 'assets/sprites/fx/archer_storm_cast_0.webp';
+    // 기본 외형용 바람 고리·돌풍 화살: 예전 청록 그림을 새 시전 그림의 밝은 연두로 옮긴 것 (tools/archer_storm_fx_recolor.py, 칸·크기는 예전과 같음)
+    [['wind', 'archer_storm_wind_0'], ['arrow', 'storm_arrow_0']].forEach(([k, f]) => {
+      const img = ARCHER_STORM_FX.base[k] = new Image();
+      img.onload = () => { img.ready = true; };
+      img.src = `assets/sprites/fx/${f}.webp`;
+    });
 
     // 전사 히든 스킬 [엑스칼리버] 그림 (fx/samples/README.md)
     // - cast: 기본 외형(warrior_0 대검 기사, tools/warrior_excalibur0_build.py) 4칸 = 0 웅크려 기를 모음 · 1 일어서며 푸른 기운 · 2 뛰어올라 검을 치켜듦 · 3 내려베기 (땅이 터짐)
@@ -22243,13 +22249,11 @@
           ? Math.atan2(unit.y - aimPt.y, unit.x - aimPt.x)
           : (threat ? Math.atan2(unit.y - threat.e.y, unit.x - threat.e.x) : (unit.team === 'blue' ? Math.PI : 0));
         const ang = wallAwareAngle(unit, away);
-        const from = { x: unit.x, y: unit.y };
         const to = clampToArena(unit.x + Math.cos(ang) * C * 1.6, unit.y + Math.sin(ang) * C * 1.6);
-        // 순간이동 대신 빠르게 뒤로 물러남 (화살은 물러나기 시작할 때 쏨)
+        // 순간이동 대신 빠르게 뒤로 물러남 (화살은 물러나기 시작할 때 쏨). 물러나는 길의 흰 돌격 이펙트(charge_dash)는 2026-11-09 사용자 요청으로 뺌
         startUnitRush(unit, to.x, to.y, 14);
         unit.kbVx = 0;
         unit.kbVy = 0;
-        sim.effects.push({ type: 'charge_dash', sx: from.x, sy: from.y, tx: to.x, ty: to.y, color: teamColor, life: 34, maxLife: 34 });
         const aimAt = aimPt ? { x: aimPt.x, y: aimPt.y } : (target || (threat && threat.e));
         if (aimAt) {
           const shot = unitShotOrigin(unit);
@@ -22746,7 +22750,7 @@
           : (tgt ? lancerBestLine(unit, enemies.filter(e => !hiddenFrom(unit, e)), C * 12, HIDDEN_STORM_R, tgt).angle : (unit.facingAngle || 0));
         sniperFace(unit, angle);
         const ticks = Math.max(1, Math.round(distToArenaEdge(shot.x, shot.y, angle) / HIDDEN_STORM_SPEED));
-        sim.effects.push({ type: 'hidden_storm', x: shot.x, y: shot.y, angle, speed: HIDDEN_STORM_SPEED, r: HIDDEN_STORM_R, life: ticks, maxLife: ticks, sr: !!archerStormSr(unit.skinVariant) });
+        sim.effects.push({ type: 'hidden_storm', x: shot.x, y: shot.y, angle, speed: HIDDEN_STORM_SPEED, r: HIDDEN_STORM_R, life: ticks, maxLife: ticks, sr: !!archerStormSr(unit.skinVariant), ...(!(unit.skinVariant || 0) ? { base: 1 } : {}) }); // base = 기본 외형 (연두 화살)
         unit.skillAnim = ARCHER_STORM_AFTER; unit.maxSkillAnim = ARCHER_STORM_AFTER; unit.attackAnim = 0; // 쏘고 난 자세(기본 외형 시전 그림 2칸)를 잠깐 → 바로 대기
         sim.hiddenFx.push({ kind: 'storm', owner: unit, x: shot.x, y: shot.y + 12, angle, left: ticks, dmg: unit.atk * 4.5, last: new Map() });
         playCombatSfx('arrow');
@@ -23323,7 +23327,8 @@
           if (c.key === 'storm') {
             // 폭풍: 모이는 원 대신, 시전 그림에서 뽑은 초록·청록 바람줄기와 잎이 몸 둘레에서 일렁이며 점점 커짐
             const srw = archerStormSr(u.skinVariant);
-            const wind = srw ? srw.wind : ARCHER_STORM_FX.wind;
+            const bw = !(u.skinVariant || 0) && ARCHER_STORM_FX.base.wind.ready ? ARCHER_STORM_FX.base.wind : null; // 기본 외형은 시전 그림 색에 맞춘 연두 바람
+            const wind = srw ? srw.wind : (bw || ARCHER_STORM_FX.wind);
             if (wind.ready) {
               const W = ARCHER_STORM_FX.cellW, H = ARCHER_STORM_FX.cellH;
               ctx.globalCompositeOperation = 'lighter';
@@ -24115,7 +24120,8 @@
         const travel = (ef.maxLife - ef.life) * ef.speed;
         ctx.translate(ef.x + Math.cos(ef.angle) * travel, ef.y + Math.sin(ef.angle) * travel);
         const srFx = ef.sr && ARCHER_STORM_FX.sr.arrow.ready ? ARCHER_STORM_FX.sr : null;
-        const art = srFx ? srFx.arrow : ARCHER_STORM_FX.arrow;
+        const baseFx = !srFx && ef.base && ARCHER_STORM_FX.base.arrow.ready ? ARCHER_STORM_FX.base : null; // 기본 외형: 시전 그림 색에 맞춘 연두 화살·바람
+        const art = srFx ? srFx.arrow : (baseFx ? baseFx.arrow : ARCHER_STORM_FX.arrow);
         if (art.ready) {
           // 그림 화살: 앞쪽 큰 고리가 돌풍 판정 자리. 위아래로 뒤집은 그림을 번갈아 비춰 나선이 도는 것처럼
           const sc = ef.r / ARCHER_STORM_FX.arrowRingR;
@@ -24123,7 +24129,7 @@
           ctx.globalAlpha = Math.min(1, fade * 6);
           ctx.scale(sc, sc); // 모양이 일렁이지 않게 그대로 날아감
           ctx.drawImage(art, -(srFx || ARCHER_STORM_FX).arrowCX, -(srFx || ARCHER_STORM_FX).arrowCY);
-          const wind = srFx && srFx.wind.ready ? srFx.wind : ARCHER_STORM_FX.wind;
+          const wind = srFx && srFx.wind.ready ? srFx.wind : (baseFx && baseFx.wind.ready ? baseFx.wind : ARCHER_STORM_FX.wind);
           if (wind.ready) {
             // 간단한 바람 한 겹: 고리 둘레에서 초록 바람줄기가 은은하게 일렁임
             const age = ef.maxLife - ef.life, W = ARCHER_STORM_FX.cellW, H = ARCHER_STORM_FX.cellH, n = Math.floor(age / 5) % 3;
