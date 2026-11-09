@@ -4,6 +4,8 @@
 #   대기 1 · 걷기 4 · 일반공격 2 · 피격 1 · 쓰러짐 2 (누운 칸 옆에 떨어진 활이 따로 있음 → 같은 칸에 넣음)
 # 칸 순서: 0 대기 · 1~4 걷기 · 5~6 공격 (시위 당김 → 화살 놓기 직전) · 7 피격 · 8~9 쓰러짐 (뒤로 비틀 → 누움 + 떨어진 활)
 #   · 10 화살비 (하늘로 활을 겨눔) · 11 회피기동 (뒤로 뛰어오르며 쏨, 공중이라 발밑을 띄움)
+#   · 12 화살비를 쏜 뒤 (활을 위로 든 채 시위를 놓음) · 13 기본 공격·스킬을 쏜 뒤 (활을 앞으로 든 채 시위를 놓음)
+#     (archer_edit_7_rain_after_src.png 152×179 · archer_edit_8_attack_after_src.png 135×169)
 #   다른 스킬은 공격 칸을 같이 씀. 화살은 게임이 따로 날림 → 시위에 걸린 화살은 그림에 남김 (쏘기 전 자세)
 # 스킬 샘플 (따로 받은 장, 흰 배경): archer_edit_2_arrow_rain_src.png (142×124) · archer_edit_3_evasive_src.png (146×116)
 #   첫 장보다 작게 그려져 있어 대기 칸 머리 크기에 맞춘 배율을 곱함 (head_scale: 대기 칸 머리를 기울이고 키우며 찾아 맞춤). 회피기동 오른쪽 끝의 날아가는 화살은 몸과 떨어져 있어 지워짐
@@ -38,6 +40,8 @@ FRAMES = [
     ('down1', (448, 680, 790, 765), False),   # 누운 몸 + 떨어진 활
     ('rain', None, True, '2_arrow_rain_src', 'head', 0),
     ('evade', None, True, '3_evasive_src', 'head', 8),
+    ('rainEnd', None, True, '7_rain_after_src', 'head', 0),
+    ('atkEnd', None, True, '8_attack_after_src', 'head', 0),
 ]
 
 
