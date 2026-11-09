@@ -3,12 +3,15 @@
 # 사용: python tools/healer_sr1_build.py
 # 샘플 (assets/sprites/merc/samples/healer_sr1_edit_*): 같은 그림을 흰 배경(1)·검은 배경(2)으로 받은 한 장 (1024×979, 동작 이름 글씨 포함)
 #   대기 1 · 이동(비행) 4 · 일반공격(치유) 2 (지팡이 끝에 초록 빛 → 초록 거품을 앞으로 뿜음) · 피격 1 · 쓰러짐 2 (주저앉음 → 누움, 하프가 떨어짐)
-# 칸 순서 (healer_sr1): 0 대기 · 1~4 비행 · 5~6 일반공격 (치유) · 7 피격 · 8~9 쓰러짐
-#   스킬 샘플은 없어서 게임에서는 일반공격 두 칸을 씀 (index.html SECRET_SKIN_SHEETS.healer_sr1)
+#   3·4 (1024×765, 흰·검은 배경 한 쌍): 윗줄 기도 후 축복 4 (손 모아 기도 → 빛이 모임 → 눈 뜨고 초록 고리 → 금빛 십자·초록 날개 축복)
+#         아랫줄 히든 스킬 [기적] 4 (초록 회오리·깃털 → 금빛 마법진 → 은하 날개·유성·빛기둥 → 초록 반짝이 마무리). 검은 장 오른쪽 아래 별 표시는 지움
+# 칸 순서 (healer_sr1): 0 대기 · 1~4 비행 · 5~6 일반공격 (치유) · 7 피격 · 8~9 쓰러짐 · 10~13 스킬 (기도 · 빛 모음 · 초록 고리 · 축복)
+# 히든 스킬 [기적] 시전 그림 → assets/sprites/fx/healer_miracle_cast_sr1.webp (HEALER_MIRACLE_FX.sr, 4칸: 회오리 · 마법진 · 은하 날개 · 마무리)
 # 배경 지우기: 두 장은 같은 자리에 있지만 다시 그려져 윤곽이 조금씩 다름
 #   흰 장이 하얗고 검은 장이 까만 곳 = 배경 · 두 장의 차이(흰 - 검은)로 알파를 구함 (치유 빛·거품의 반투명)
 #   거의 불투명(0.85 넘음)한 덩어리는 작은 틈(다시 그린 윤곽 차이)을 메워 완전히 불투명 → 색은 흰 장, 반투명 곳의 색은 검은 장 / 알파
-# 크기: 모든 동작이 한 장에 같은 크기로 그려져 있어 한 배율 (K)
+# 크기: 같은 장의 동작은 같은 크기로 그려져 있어 장마다 한 배율. 스킬 장 윗줄은 몸 키가 대기보다 4% 커서 ×0.96,
+#   아랫줄(기적)은 마무리 칸 몸 키가 대기보다 작아 ×1.08. 기적 칸은 이펙트가 발밑까지 덮어 발을 못 찾음 → 얼굴 가운데에서 대기 칸과 같은 거리 아래가 발
 import os, sys
 import numpy as np
 from PIL import Image
@@ -33,6 +36,23 @@ FRAMES = [
     ('down0', (328, 748, 534, 955), 0.55),
     ('down1', (584, 824, 842, 968), 0.42),
 ]
+SKILL = [   # 스킬 장 윗줄 (×0.96)
+    ('pray', (28, 70, 248, 278), None),
+    ('gather', (276, 70, 498, 280), None),
+    ('ring', (520, 70, 754, 282), None),
+    ('bless', (764, 12, 1004, 300), None),
+]
+K_SKILL = 0.96
+MIRACLE = [   # 스킬 장 아랫줄 (×1.08)
+    ('whirl', (12, 392, 252, 708)),
+    ('circle', (243, 412, 482, 722)),
+    ('galaxy', (481, 370, 780, 700)),
+    ('end', (778, 398, 1010, 702)),
+]
+K_MIRACLE = 1.08
+MIRACLE_FACE = {'circle': (145, 98)}   # 금빛 마법진이 살색처럼 잡혀 얼굴을 못 찾는 칸: 자른 그림 좌표의 얼굴 가운데
+CAST_OUT = 'assets/sprites/fx/healer_miracle_cast_sr1.webp'
+STAR = (880, 620, 955, 700)   # 검은 장의 별 표시 (흰 장에는 없음)
 
 
 def rgb(src):
@@ -67,26 +87,33 @@ def foot_x(body):
     y1 = ys.max(); return xs[ys >= y1 - max(3, int((y1 - ys.min()) * 0.06))].mean(), y1
 
 
-def main():
-    W, B = rgb('1_white_src.webp'), rgb('2_black_src.webp')
-    pieces = []
-    for name, (x0, y0, x1, y1), fr in FRAMES:
-        rgba, solid = matte(W[y0:y1, x0:x1], B[y0:y1, x0:x1])
-        # 몸에서 떨어진 것: 큰 덩어리(몸)와 그 둘레 60px 안의 빛·거품만
-        m = rgba[..., 3] > 0
-        lab, n = ndi.label(ndi.binary_dilation(m, iterations=2))
-        big = int(np.argmax(ndi.sum(solid, lab, range(1, n + 1)))) + 1
-        near = ndi.binary_dilation(lab == big, iterations=60)
-        keep = np.isin(lab, np.unique(lab[near & (lab > 0)]))
-        rgba[..., 3] = np.where(keep, rgba[..., 3], 0); solid &= (lab == big)
-        ys, xs = np.where(rgba[..., 3] > 0)
-        sy0, sy1, sx0, sx1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
-        rgba, solid = rgba[sy0:sy1, sx0:sx1], solid[sy0:sy1, sx0:sx1]
-        fx, fy = foot_x(solid)
-        if fr is not None: fx = rgba.shape[1] * fr
-        p = shrink_soft(rgba, solid, K)   # 두 장으로 알파를 구해 흰 테두리 찌꺼기가 없음 — defringe는 가는 흰 후광을 지워서 안 씀
-        pieces.append((name, p, fx * K, fy * K))
-        print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} → {p.shape[1]}x{p.shape[0]}, 발 ({fx * K:.0f}, {fy * K:.0f})')
+def face_c(rgba, body):
+    # 얼굴 가운데: 몸 덩어리 안의 살색 (밝은 살구색) 가운데
+    c = rgba[..., :3]
+    sk = body & (c[..., 0] > 235) & (c[..., 1] > 195) & (c[..., 2] > 170) & (c[..., 0] - c[..., 2] > 15) & (c[..., 0] - c[..., 2] < 60)
+    lab, n = ndi.label(ndi.binary_closing(sk, iterations=2))
+    big = lab == int(np.argmax(ndi.sum(sk, lab, range(1, n + 1)))) + 1
+    ys, xs = np.where(big); return xs.mean(), ys.mean()
+
+
+def cut(W, B, box, near_px=60):
+    x0, y0, x1, y1 = box
+    rgba, solid = matte(W[y0:y1, x0:x1], B[y0:y1, x0:x1])
+    # 몸에서 떨어진 것: 큰 덩어리(몸)와 그 둘레 near_px 안의 빛·거품만
+    m = rgba[..., 3] > 0
+    lab, n = ndi.label(ndi.binary_dilation(m, iterations=2))
+    big = int(np.argmax(ndi.sum(solid, lab, range(1, n + 1)))) + 1
+    near = ndi.binary_dilation(lab == big, iterations=near_px)
+    keep = np.isin(lab, np.unique(lab[near & (lab > 0)]))
+    rgba[..., 3] = np.where(keep, rgba[..., 3], 0)
+    sl, sn = ndi.label(solid & (lab == big))
+    solid = sl == int(np.argmax(ndi.sum(solid, sl, range(1, sn + 1)))) + 1 if sn else solid
+    ys, xs = np.where(rgba[..., 3] > 0)
+    sy0, sy1, sx0, sx1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+    return rgba[sy0:sy1, sx0:sx1], solid[sy0:sy1, sx0:sx1]
+
+
+def pack(pieces, out, label):
     L = max(int(np.ceil(fx)) for _, _, fx, _ in pieces) + 3
     R = max(int(np.ceil(p.shape[1] - fx)) for _, p, fx, _ in pieces) + 3
     U = max(int(np.ceil(fy)) for _, _, _, fy in pieces) + 3
@@ -96,8 +123,39 @@ def main():
     for i, (name, p, fx, fy) in enumerate(pieces):
         x = i * cw + L - int(round(fx)); y = U - int(round(fy))
         sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
-    Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
-    print(f'healer_sr1 cellW={cw} cellH={ch} anchorX={L} anchorY={U} count={len(pieces)}')
+    Image.fromarray(sheet, 'RGBA').save(out, 'WEBP', lossless=True)
+    print(f'{label} cellW={cw} cellH={ch} anchorX={L} anchorY={U} count={len(pieces)}')
+
+
+def main():
+    W, B = rgb('1_white_src.webp'), rgb('2_black_src.webp')
+    W2, B2 = rgb('3_skill_white_src.webp'), rgb('4_skill_black_src.webp')
+    x0, y0, x1, y1 = STAR
+    star = W2[y0:y1, x0:x1].min(axis=2) > 225
+    B2[y0:y1, x0:x1][star] = 0
+    pieces = []
+    idle_face = None
+    for (W_, B_, frames, k) in ((W, B, FRAMES, K), (W2, B2, SKILL, K * K_SKILL)):
+        for name, box, fr in frames:
+            rgba, solid = cut(W_, B_, box)
+            fx, fy = foot_x(solid)
+            if fr is not None: fx = rgba.shape[1] * fr
+            if name == 'idle':
+                fcx, fcy = face_c(rgba, solid); idle_face = (fx - fcx, fy - fcy)
+            p = shrink_soft(rgba, solid, k)   # 두 장으로 알파를 구해 흰 테두리 찌꺼기가 없음 — defringe는 가는 흰 후광을 지워서 안 씀
+            pieces.append((name, p, fx * k, fy * k))
+            print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} → {p.shape[1]}x{p.shape[0]}, 발 ({fx * k:.0f}, {fy * k:.0f})')
+    pack(pieces, OUT, 'healer_sr1')
+    km = K * K_MIRACLE
+    mp = []
+    for name, box in MIRACLE:
+        rgba, solid = cut(W2, B2, box, near_px=400)
+        fcx, fcy = MIRACLE_FACE.get(name) or face_c(rgba, solid)
+        fx, fy = fcx + idle_face[0] / K_MIRACLE, fcy + idle_face[1] / K_MIRACLE
+        p = shrink_soft(rgba, solid, km)
+        mp.append((name, p, fx * km, fy * km))
+        print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} → {p.shape[1]}x{p.shape[0]}, 발 ({fx * km:.0f}, {fy * km:.0f})')
+    pack(mp, CAST_OUT, 'healer_miracle_cast_sr1')
 
 
 if __name__ == '__main__':

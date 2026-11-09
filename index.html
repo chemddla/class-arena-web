@@ -7147,12 +7147,13 @@
         projFx: { arrow: 'archer_sr_arrow', golden_arrow: 'archer_sr_arrow', poison_arrow: 'archer_sr_poison' } }, warrior_sr1: { cellW: 246, cellH: 99, anchorX: 92, anchorY: 97, topH: 81, portraitCX: 85, count: 16,
         anims: { idle: [0], walk: [1, 2, 3, 2], attack: [4, 5], skill: [4, 5], hurt: [6], death: [7, 8], whirl: [13, 14, 15], shout: [10], charge: [11, 12, 12, 12, 12] } },
       knight_sr1: { cellH: 114, anchorY: 111, topH: 101 }, lancer_sr1: { topH: 88 },
-      // 성녀 SR 1 (2026-11-09 교체: 분홍 단발 천사 — 후광·분홍빛 날개·연두 금빛 로브·날개 달린 하프 지팡이, tools/healer_sr1_build.py): 10칸 = 0 대기 · 1~4 비행
+      // 성녀 SR 1 (2026-11-09 교체: 분홍 단발 천사 — 후광·분홍빛 날개·연두 금빛 로브·날개 달린 하프 지팡이, tools/healer_sr1_build.py): 14칸 = 0 대기 · 1~4 비행
       //   · 5 일반공격 준비 (지팡이 끝 초록 빛) · 6 일반공격 (초록 치유 거품을 앞으로) · 7 피격 · 8~9 쓰러짐 (주저앉음 → 누움, 하프가 떨어짐)
-      //   스킬 샘플이 없어서 스킬도 일반공격 두 칸, 시전 막대 동안은 준비 칸(5). hover = 날개로 떠 있어 몸이 살짝 오르내림 (비행 칸은 더 높이)
-      healer_sr1: { cellW: 240, cellH: 126, anchorX: 70, anchorY: 122, standH: 98, topH: 112, portraitCX: 68, count: 10, hover: true,
-        anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5, 6], skill: [5, 6, 6, 6], hurt: [7], death: [8, 9] }, skillAnims: {}, skillDur: 40,
-        castFrames: { heal: 5, shield: 5, blessing: 5, purify: 5, revive: 5 } },
+      //   · 10~13 스킬 '기도 후 축복' (손 모아 기도 → 빛이 모임 → 눈 뜨고 초록 고리 → 금빛 십자·초록 날개 축복): 시전 막대 동안 10 → 11 → 12, 발동하면 13 (40틱)
+      //   hover = 날개로 떠 있어 몸이 살짝 오르내림 (비행 칸은 더 높이). 히든 스킬 [기적] 시전 = HEALER_MIRACLE_FX.sr
+      healer_sr1: { cellW: 240, cellH: 167, anchorX: 70, anchorY: 151, standH: 98, topH: 112, portraitCX: 68, count: 14, hover: true,
+        anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5, 6], skill: [13], hurt: [7], death: [8, 9] }, skillAnims: {}, skillDur: 40,
+        castFrames: { heal: [10, 11, 12], shield: [10, 11, 12], blessing: [10, 11, 12], purify: [10, 11, 12], revive: [10, 11, 12] } },
       paladin_sr1: { cellW: 227, cellH: 163, anchorX: 103, anchorY: 153, topH: 110, portraitCX: 112, count: 14, judgeHitX: 71, swingHitX: 67, frameDx: {}, swingDelay: 3, swingTrail: false, // 초상화는 얼굴 가운데(대기 칸 x 112)에 맞춤 · 0번의 내리치기 칸 옮김(frameDx)은 칸 번호가 달라 물려받지 않음 · 공격 2칸이라 내리치기(둘째 칸, 6틱)에 맞춰 불꽃만 (궤적은 그림에 있음)
         anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5, 6], skill: [5], hurt: [7], death: [7, 8, 9], judge: [12], hshield: [13], charge: [11], consec: [10], aegis: [5] },
         castFrames: { judgment: 5, holy_shield: 13, consecrate: 10, vow: 13, aegis: 5 } },
@@ -10640,7 +10641,10 @@
         sphere: [238, 0, 97, 99, 48, 50], arrows: [339, 0, 80, 102, 40, 98]
       }
     };
-    [['cast', 'healer_miracle_cast'], ['fx', 'healer_miracle_fx']].forEach(([k, file]) => {
+    // 시크릿 레어 1 (천사, tools/healer_sr1_build.py) 4칸 = 0 초록 회오리·깃털 · 1 금빛 마법진 · 2 은하 날개·유성·빛기둥 · 3 초록 반짝이 마무리
+    //   시전 막대 앞 절반 0, 뒤 절반 1 → 발동하면 2를 40틱, 3을 24틱. 칸 배율은 healer_sr1과 같음 (standH 98)
+    HEALER_MIRACLE_FX.sr = { cellW: 201, cellH: 220, anchorX: 100, anchorY: 182, standH: 98, showTicks: 40, endTicks: 24, castN: 2, showFi: 2 };
+    [['cast', 'healer_miracle_cast'], ['fx', 'healer_miracle_fx'], ['srCast', 'healer_miracle_cast_sr1']].forEach(([k, file]) => {
       const img = new Image();
       img.onload = () => { img.ready = true; };
       img.src = `assets/sprites/fx/${file}.webp`;
@@ -30538,14 +30542,18 @@
         return;
       }
       // 성녀 히든 스킬 [기적]: 기본 외형은 시전 막대 동안 집중 → 상승 → 시전, 발동하면 연출(금빛 날개) → 마무리 (HEALER_MIRACLE_FX.cast 5칸)
-      const miracleHealer = u.alive && u.job === 'healer' && !u.monsterType && (u.skinVariant || 0) === 0 && HEALER_MIRACLE_FX.cast.ready;
+      //   시크릿 레어 1 (천사)은 회오리 → 마법진, 발동하면 은하 날개 → 마무리 (HEALER_MIRACLE_FX.sr 4칸)
+      const miracleSkin = u.job === 'healer' && !u.monsterType ? (u.skinVariant || 0) : -1;
+      const miracleArt = miracleSkin === 0 && HEALER_MIRACLE_FX.cast.ready ? { ...HEALER_MIRACLE_FX, castN: 3, showFi: 3, img: HEALER_MIRACLE_FX.cast }
+        : (miracleSkin === SECRET_SKIN_BASE + 1 && HEALER_MIRACLE_FX.srCast.ready ? { ...HEALER_MIRACLE_FX.sr, img: HEALER_MIRACLE_FX.srCast } : null);
+      const miracleHealer = u.alive && miracleArt;
       const miracleCasting = miracleHealer && u.casting && u.casting.key === 'miracle';
       const miracleAfter = miracleHealer && !u.casting && u.skillAnim > 0 && u.activeSkillType === 'miracle' ? tick - (u._sprSkillStart ?? tick) : -1;
-      if (miracleCasting || (miracleAfter >= 0 && miracleAfter < HEALER_MIRACLE_FX.showTicks + HEALER_MIRACLE_FX.endTicks)) {
-        const miracle = HEALER_MIRACLE_FX, c = u.casting;
-        const fi = miracleCasting ? Math.min(2, Math.floor((1 - c.left / Math.max(1, c.total)) * 3)) : (miracleAfter < miracle.showTicks ? 3 : 4);
+      if (miracleCasting || (miracleAfter >= 0 && miracleAfter < miracleArt.showTicks + miracleArt.endTicks)) {
+        const miracle = miracleArt, c = u.casting;
+        const fi = miracleCasting ? Math.min(miracle.castN - 1, Math.floor((1 - c.left / Math.max(1, c.total)) * miracle.castN)) : (miracleAfter < miracle.showTicks ? miracle.showFi : miracle.showFi + 1);
         const ks = spriteDrawH(u, sprite) / miracle.standH;
-        drawSpriteFx(ctx, miracle.cast, fi * miracle.cellW, 0, miracle.cellW, miracle.cellH,
+        drawSpriteFx(ctx, miracle.img, fi * miracle.cellW, 0, miracle.cellW, miracle.cellH,
           -miracle.anchorX * ks, -miracle.anchorY * ks, miracle.cellW * ks, miracle.cellH * ks);
         ctx.restore();
         return;
