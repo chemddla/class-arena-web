@@ -6,6 +6,8 @@
 #   3·4 (1024×765, 흰·검은 배경 한 쌍): 윗줄 기도 후 축복 4 (손 모아 기도 → 빛이 모임 → 눈 뜨고 초록 고리 → 금빛 십자·초록 날개 축복)
 #         아랫줄 히든 스킬 [기적] 4 (초록 회오리·깃털 → 금빛 마법진 → 은하 날개·유성·빛기둥 → 초록 반짝이 마무리). 검은 장 오른쪽 아래 별 표시는 지움
 # 칸 순서 (healer_sr1): 0 대기 · 1~4 비행 · 5~6 일반공격 (치유) · 7 피격 · 8~9 쓰러짐 · 10~13 스킬 (기도 · 빛 모음 · 초록 고리 · 축복)
+#   · 14~19 = 기도(10)·초록 고리(12)의 초록 빛만 스킬 색으로 바꾼 것: 14~15 보호막 (푸른) · 16~17 축복 (노란) · 18~19 정화 (흰)
+#     (2026-11-09 사용자 요청: 다수 회복 = 초록 그대로 10→12, 부활 = 빛 모음·축복 11→13, 나머지는 기도·고리를 스킬 색으로)
 # 히든 스킬 [기적] 시전 그림 → assets/sprites/fx/healer_miracle_cast_sr1.webp (HEALER_MIRACLE_FX.sr, 4칸: 회오리 · 마법진 · 은하 날개 · 마무리)
 # 배경 지우기: 두 장은 같은 자리에 있지만 다시 그려져 윤곽이 조금씩 다름
 #   흰 장이 하얗고 검은 장이 까만 곳 = 배경 · 두 장의 차이(흰 - 검은)로 알파를 구함 (치유 빛·거품의 반투명)
@@ -113,6 +115,49 @@ def cut(W, B, box, near_px=60):
     return rgba[sy0:sy1, sx0:sx1], solid[sy0:sy1, sx0:sx1]
 
 
+# 초록 빛 다시 칠하기: (색상 °, 채도 배율, 밝기 더함). 흰 계열은 채도를 거의 없애고 밝힘
+RECOLOR = [('shield', (205, 1.0, 0.0)), ('bless', (46, 1.0, 0.04)), ('purify', (0, 0.1, 0.12))]
+
+
+# 초록 고리 칸(12)의 고리 앞쪽 줄 (로브 위를 가로지르는 밝은 연두 줄): 로브와 색이 같아 색으로는 못 가름 → 자리로 정함
+#   기준점(발) 기준 x -45~+42, 가운데 y = -27 - 4·(1 - ((x + 5) / 45)²) 의 위아래 2.5px 안에서 밝은(0.9 넘음) 연두만
+RING_FRONT = (-45, 42, -27, 4, 2.5)
+
+
+def recolor(p, target, anchor=None):
+    # 초록 빛 = 초록 색상(58~170°, 연두 포함·금빛 제외) 중 반투명하거나, 머리 아래(위 35% 밑)에서 채도가 진한 곳 (연한 민트 로브·머리 깃털 장식은 그대로)
+    #   + anchor가 있으면 고리 앞쪽 줄 (RING_FRONT)
+    hue, sm, vadd = target
+    rgb = p[..., :3].astype(float) / 255; a = p[..., 3]
+    mx, mn = rgb.max(-1), rgb.min(-1); c = mx - mn
+    s = np.where(mx > 0, c / np.maximum(mx, 1e-6), 0)
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    h = np.where(c == 0, 0, np.where(mx == r, ((g - b) / np.maximum(c, 1e-6)) % 6, np.where(mx == g, (b - r) / np.maximum(c, 1e-6) + 2, (r - g) / np.maximum(c, 1e-6) + 4))) * 60
+    ys, _ = np.where(a > 0); top = ys.min() + (ys.max() - ys.min()) * 0.35
+    yy = np.arange(p.shape[0])[:, None] + np.zeros(p.shape[:2]); xx = np.arange(p.shape[1])[None, :] + np.zeros(p.shape[:2])
+    green = (h > 58) & (h < 170) & (s > 0.18) & (a > 0)
+    m = green & ((a < 250) | ((s > 0.42) & (mx > 0.45) & (yy > top)))
+    m = ndi.binary_opening(m, iterations=1) | (m & (a < 250))
+    if anchor:
+        x0, x1, cy, bow, half = RING_FRONT
+        rx, ry = xx - anchor[0], yy - anchor[1]
+        mid = cy - bow * (1 - ((rx + 5) / 45) ** 2)
+        m |= (rx >= x0) & (rx <= x1) & (np.abs(ry - mid) <= half) & (h > 50) & (h < 140) & (mx > 0.9) & (s > 0.1) & (a > 0)
+    # 색상: 초록(120°) 둘레 퍼짐을 1/4로 줄여 목표 색 둘레에 (노랑이 주황·빨강으로 번지지 않게). 흰 계열은 색상 그대로 채도만 뺌
+    nh = np.where(m, (hue + (h - 120) * 0.25) % 360 if hue else h, h) / 60
+    ns = np.where(m, np.clip(s * sm * (1.15 if hue else 1), 0, 1), s)
+    nv = np.where(m, np.clip(np.where(a < 250, np.maximum(mx, 0.8), mx) + vadd, 0, 1), mx)   # 어두운 반투명 빛은 밝혀서 빛나 보이게
+    i_ = np.floor(nh).astype(int) % 6; f = nh - np.floor(nh)
+    pp, qq, tt = nv * (1 - ns), nv * (1 - ns * f), nv * (1 - ns * (1 - f))
+    res = np.zeros_like(rgb)
+    for k, (x, y, z) in enumerate([(nv, tt, pp), (qq, nv, pp), (pp, nv, tt), (pp, qq, nv), (tt, pp, nv), (nv, pp, qq)]):
+        w = i_ == k
+        res[..., 0][w], res[..., 1][w], res[..., 2][w] = x[w], y[w], z[w]
+    q = p.copy()
+    q[..., :3] = np.where(m[..., None], (res * 255).round(), p[..., :3]).clip(0, 255).astype(np.uint8)
+    return q
+
+
 def pack(pieces, out, label):
     L = max(int(np.ceil(fx)) for _, _, fx, _ in pieces) + 3
     R = max(int(np.ceil(p.shape[1] - fx)) for _, p, fx, _ in pieces) + 3
@@ -145,6 +190,11 @@ def main():
             p = shrink_soft(rgba, solid, k)   # 두 장으로 알파를 구해 흰 테두리 찌꺼기가 없음 — defringe는 가는 흰 후광을 지워서 안 씀
             pieces.append((name, p, fx * k, fy * k))
             print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} → {p.shape[1]}x{p.shape[0]}, 발 ({fx * k:.0f}, {fy * k:.0f})')
+    base = {n: (p, fx, fy) for n, p, fx, fy in pieces}
+    for skill, target in RECOLOR:
+        for src in ('pray', 'ring'):
+            p, fx, fy = base[src]
+            pieces.append((f'{src}_{skill}', recolor(p, target, (fx, fy) if src == 'ring' else None), fx, fy))
     pack(pieces, OUT, 'healer_sr1')
     km = K * K_MIRACLE
     mp = []
