@@ -42,6 +42,18 @@ FRAMES = [
     ('down0', '5_fall_src.png', (0, 0, 214, 159), 'one', 'hurt'),
     ('down1', '5_fall_src.png', (214, 0, 514, 159), 'all', 'hurt'),
 ]
+# 9번 검은 배경 장 기본 칸: (칸 이름, 상자, 덩어리 고르기) — 이동 1칸째는 대기와 같아 빼고, 공격은 반짝이 칸(2칸째), 쓰러짐은 지팡이 떨군 두 칸
+BASE_BLACK = '9_base_black_src.webp'
+BASE = [('idle', (36, 36, 190, 206), 'one'),
+        ('walk0', (226, 232, 376, 408), 'one'),
+        ('walk1', (413, 232, 563, 408), 'one'),
+        ('walk2', (597, 232, 748, 408), 'one'),
+        ('atk', (215, 443, 402, 624), 'spark'),
+        ('hurt', (42, 652, 211, 820), 'one'),
+        ('down0', (205, 846, 423, 1008), 'all'),
+        ('down1', (418, 900, 712, 1018), 'all')]
+GROUP_H = {'walk': 99, 'hurt': 87, 'down': 84}   # 이동(첫 칸)·피격·쓰러짐(첫 칸) 키
+BASE_MARK = (642, 901, 683, 942)   # ✦ 표식 (지움)
 SKILL_ROW = (62, 262)   # 검은 배경 장 윗줄 (y)
 SKILL_NAMES = ['ready', 'start', 'cast', 'fire', 'end']
 # 히든 스킬: (칸 이름, 흰 배경 상자, 검은 배경 상자) — 연출 칸 발밑의 회색 그림자 타원은 상자 밖으로 뺌
@@ -62,7 +74,59 @@ def rgb(src):
     return np.array(Image.open(D + src).convert('RGB')).astype(float)
 
 
-def load_white(src, box, pick):
+def black_sil(box):
+    # 9번 검은 배경 장 한 칸의 실루엣 (배경은 새까맘 0, 몸 안의 새까만 틈은 배경)
+    B = rgb(BASE_BLACK)
+    x0, y0, x1, y1 = BASE_MARK; B[y0:y1, x0:x1] = 0
+    x0, y0, x1, y1 = box
+    v = B[y0:y1, x0:x1].max(axis=2)
+    fg = v > 14
+    lab, n = ndi.label(ndi.binary_dilation(fg, iterations=2))
+    sz = ndi.sum(fg, lab, range(1, n + 1))
+    fg &= np.isin(lab, 1 + np.where(sz >= 3)[0])
+    ys, xs = np.where(fg)
+    return fg[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+
+
+def guide_bg(im, bg, box):
+    # 흰 배경 장의 불투명 덩어리와 검은 배경 장 실루엣을 배율·위치를 바꿔 가며 맞대고, 실루엣 밖의 흰빛을 배경으로 돌려줌
+    G = black_sil(box)
+    fgw = ~bg
+    lab, n = ndi.label(fgw)
+    sz = ndi.sum(fgw, lab, range(1, n + 1))
+    fgw &= np.isin(lab, 1 + np.where(sz >= 30)[0])
+    ys, xs = np.where(fgw)
+    oy, ox = ys.min(), xs.min()
+    Wc = fgw[oy:ys.max() + 1, ox:xs.max() + 1]
+    s0 = Wc.shape[0] / G.shape[0]   # 흰 장 / 검은 장
+    small = lambda m, s: np.array(Image.fromarray(m.astype(np.uint8) * 255).resize((max(1, round(m.shape[1] / s)), max(1, round(m.shape[0] / s))), Image.BILINEAR)) > 127
+    P = 8
+    Gp = np.pad(G, P)
+    best = None
+    for s in s0 * np.arange(0.95, 1.051, 0.01):
+        w = small(Wc, s)
+        if w.shape[0] > Gp.shape[0] or w.shape[1] > Gp.shape[1]: continue
+        for dy in range(0, Gp.shape[0] - w.shape[0] + 1):
+            for dx in range(0, Gp.shape[1] - w.shape[1] + 1):
+                g = Gp[dy:dy + w.shape[0], dx:dx + w.shape[1]]
+                iou = (g & w).sum() / max(1, (g | w).sum())
+                if best is None or iou > best[0]: best = (iou, s, dy, dx, w.shape)
+    iou, s, dy, dx, (h, w) = best
+    print(f'  실루엣 맞춤 IoU {iou:.3f} ×{s:.3f}')
+    g = Gp[dy:dy + h, dx:dx + w]
+    gw = np.array(Image.fromarray(g.astype(np.uint8) * 255).resize((Wc.shape[1], Wc.shape[0]), Image.BILINEAR)) > 127
+    full = np.zeros_like(bg); full[oy:oy + Wc.shape[0], ox:ox + Wc.shape[1]] = gw
+    full = ndi.binary_dilation(full, iterations=max(1, round(s * 1.0)))   # 검은 장 1px 만큼 여유
+    # 픽셀 단위로 깎으면 맞춤이 어긋난 곳(베일 가장자리)이 뜯김 → 흰빛 덩어리 단위로, 대부분(65%↑)이 실루엣 밖인 덩어리만 배경
+    whiteish = (im.min(axis=2) > 200) & (im.max(axis=2) - im.min(axis=2) < 28) & ~bg
+    lab, n = ndi.label(whiteish)
+    if n == 0: return np.zeros_like(bg)
+    tot = ndi.sum(whiteish, lab, range(1, n + 1))
+    out = ndi.sum(whiteish & ~full, lab, range(1, n + 1))
+    return np.isin(lab, 1 + np.where(out / np.maximum(tot, 1) > 0.65)[0])
+
+
+def load_white(src, box, pick, guide=None):
     im = rgb(src)
     if box:
         x0, y0, x1, y1 = box; im = im[y0:y1, x0:x1]
@@ -86,6 +150,8 @@ def load_white(src, box, pick):
         mm = np.zeros_like(big); mm[sl[0].start - y0:sl[0].stop - y0, sl[1].start - x0:sl[1].stop - x0] = m
         rg = ndi.binary_dilation(mm, iterations=3) & ~mm
         if big[rg].mean() > TRAP_DARK: bg |= (lab == i + 1)
+    if guide:   # 9번 검은 배경 장의 같은 칸 실루엣 밖에 있는 흰빛 = 배경 (갇힌 흰 배경·흰 테두리)
+        bg |= guide_bg(im, bg, guide)
     rim = ~bg & ndi.binary_dilation(bg, iterations=2)
     a = np.where(bg, 0.0, 1.0)
     a = np.where(rim, np.clip((255 - im.min(axis=2)) / 225, 0, 1), a)
@@ -129,6 +195,41 @@ def foot_x(body):
 def gold(im):
     r, g, b = im[..., 0], im[..., 1], im[..., 2]
     return (r - b > 55) & (r >= g - 10)
+
+
+def load_black(box, pick):
+    # 9번 검은 배경 장 한 칸 → (rgba, 몸). 배경은 새까맘(0) → 몸 = 밝은 덩어리를 채운 것, 그 안의 새까만 틈(지팡이와 머리 사이)은 배경
+    B = rgb(BASE_BLACK)
+    x0, y0, x1, y1 = BASE_MARK; B[y0:y1, x0:x1] = 0
+    x0, y0, x1, y1 = box
+    B = np.pad(B[y0:y1, x0:x1], ((4, 4), (4, 4), (0, 0)))
+    v = B.max(axis=2)
+    fg = v > 22
+    lab, n = ndi.label(ndi.binary_dilation(fg, iterations=2))
+    sz = ndi.sum(fg, lab, range(1, n + 1))
+    big = int(np.argmax(sz)) + 1
+    if pick == 'one': keep = lab == big
+    elif pick == 'all': keep = np.isin(lab, 1 + np.where(sz >= 150)[0])
+    else: keep = np.isin(lab, np.unique(lab[ndi.binary_dilation(lab == big, iterations=40) & (lab > 0)]))
+    core = fg & np.isin(lab, 1 + np.where(sz >= 150)[0]) & keep
+    body = ndi.binary_fill_holes(ndi.binary_closing(core, iterations=1))
+    hole = body & (v <= 22)
+    hl, hn = ndi.label(hole)
+    body &= ~np.isin(hl, 1 + np.where(ndi.sum(hole, hl, range(1, hn + 1)) >= 4)[0])
+    # 몸 바깥 가장자리: 검은 배경과 섞인 반투명 → 밝기로 알파 (윤곽선 밝기 ≈ 60 을 불투명으로)
+    edge = keep & ~body & ndi.binary_dilation(body, iterations=2)
+    spark = keep & ~body & ~edge & fg
+    a = np.where(body, 1.0, 0.0)
+    a = np.where(edge, np.clip((v - 6) / 54, 0, 1), a)
+    a = np.where(spark, np.clip(v / 200, 0, 1), a)
+    a = np.where(a < 0.08, 0, a)
+    col = np.where(body[..., None], B, B / np.maximum(a, 1e-3)[..., None]).clip(0, 255)
+    ys, xs = np.where(a > 0)
+    y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+    bd = body[y0:y1, x0:x1]
+    if pick == 'spark':   # 발 자리용 몸은 가장 큰 덩어리만
+        bl, _ = ndi.label(bd); bd = bl == int(np.argmax(np.bincount(bl.ravel())[1:])) + 1
+    return np.dstack([col, a * 255])[y0:y1, x0:x1], bd
 
 
 def load_black_row():
@@ -247,7 +348,8 @@ def pack(pieces, out, label):
 
 
 def main():
-    loaded = [(f, *load_white(src, box, pick)) for f in FRAMES for (_, src, box, pick, _) in [f]]
+    guides = {name: box for name, box, _ in BASE}
+    loaded = [(f, *load_white(src, box, pick, guides[f[0]])) for f in FRAMES for (_, src, box, pick, _) in [f]]
     idle = loaded[0][1]
     ki = IDLE_H / idle.shape[0]
     fw0, fh0 = face_size(idle)
@@ -271,14 +373,17 @@ def main():
     # 스킬 줄 (검은 배경): 준비 칸 얼굴로 배율
     row = load_black_row()
     # 검은 배경에서는 머리카락·손이 살색과 섞여 얼굴을 못 잡음 → 준비 칸(똑바로 선 자세) 키를 걷기 칸 키에 맞춤
-    walk_h = [r for (f, r, _) in loaded if f[0] == 'walk0'][0].shape[0]
-    kb = groups['walk'] * walk_h / row[0][1].shape[0]
+    kb = GROUP_H['walk'] / row[0][1].shape[0]
     print(f'  배율 검은 배경: 준비 칸 키 {row[0][1].shape[0]} → ×{kb:.3f}')
     for name, rgba, bd, fx, fy in row:
         p = shrink_soft(rgba, bd, kb)
         pieces.append((name, p, fx * kb, fy * kb))
         print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} ×{kb:.3f} → {p.shape[1]}x{p.shape[0]}')
     cell = pack(pieces, OUT, 'healer_0')
+    try:
+        import cv2   # noqa: F401 — 히든 스킬 맞대기용. 없으면 히든 스킬 그림은 그대로 둠
+    except ImportError:
+        print('cv2 없음 → healer_miracle_cast 는 다시 안 만듦'); return cell
     hp = []
     for name, wbox, bbox in HIDDEN:
         rgba, solid, fx, fy = load_pair(wbox, bbox, HIDDEN_FOOT.get(name))
