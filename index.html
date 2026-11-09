@@ -3854,9 +3854,11 @@
                   · 모서리·가운데(방)에 딱 멈추면 다음에 지름길로 가요.<br/>
                   · 내 말 위에 서면 <strong>업고</strong> 함께 가요. 상대 말 위에 서면 <strong>잡고</strong> 한 번 더 던져요!<br/>
                   · 한 바퀴 돌아 출발점(참먹이)에 딱 멈추면 아직 판 위예요. <strong>출발점을 넘어가야</strong> 말이 나요.<br/>
-                  · 빽도는 한 칸 뒤로! 말 3개가 먼저 다 나면 승리.
+                  · 빽도는 한 칸 뒤로! 말 3개가 먼저 다 나면 승리.<br/>
+                  · <strong>🔮 초능력 모드</strong>: 판이 시작되면 저마다 <strong>윷을 다스리는 힘</strong> 1개와 <strong>말을 다스리는 힘</strong> 1개를 받아요. 힘마다 한 판에 한 번, <strong>윷을 던지기 전에</strong> 써요. 한 차례에는 하나만!
                 </div>
               </details>
+              <div id="yutModeBar" class="grid grid-cols-2 gap-2"></div>
               <div class="mgs-stage mgs-mini"><div id="yutStageRow" class="mgs-row"><div class="mgs-empty self-center w-full">🥢 팀 펫들이 무대에 올라와요</div></div></div>
               <div id="yutTurnStatusBox" class="bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs font-bold text-center"></div>
               <div class="mg-yut-stage">
@@ -3867,6 +3869,7 @@
                 <span class="text-[11px] font-extrabold text-slate-300 shrink-0">🎯 쓸 결과</span>
                 <div id="yutResultChips" class="flex items-center gap-1.5 flex-wrap"></div>
               </div>
+              <div id="yutPowerBox" class="hidden bg-slate-900 border border-violet-700/60 rounded-xl p-2.5 flex flex-col gap-2"></div>
               <div class="flex gap-2">
                 <button onclick="throwYutSticks()" id="yutThrowBtn" class="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-sm shadow disabled:opacity-40">🥢 윷 던지기!</button>
                 <button onclick="resetYutnoriGame()" class="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300">🔄 새 게임</button>
@@ -35952,6 +35955,30 @@
     }
     const YUT_STEP_MS = 150; // 말이 한 칸 움직이는 데 걸리는 시간 (애니메이션)
 
+    // ---- 초능력 윷놀이 (메이플 초능력 윷놀이 방식) ----
+    // 판이 시작되면 자리마다 윷 힘 1개 + 말 힘 1개를 무작위로 받음. 힘마다 한 판에 한 번, 그 차례 첫 윷을 던지기 전에만, 한 차례에 하나만
+    const YUT_POWERS = {
+      dogpig:    { kind: 'yut',   icon: '🐷', name: '개와 돼지의 시간', desc: '던지지 않고 도·개를 둘 다 받아요' },
+      power100:  { kind: 'yut',   icon: '💯', name: '100 마력',         desc: '무조건 걸이 나와요' },
+      reverse:   { kind: 'yut',   icon: '⏪', name: '후진 기어',        desc: '무조건 빽도가 나와요' },
+      double:    { kind: 'yut',   icon: '✌️', name: '디스 이스 더블더블', desc: '이번에 나온 결과를 하나 더 받아요' },
+      moordo:    { kind: 'yut',   icon: '🎲', name: '모 아니면 도',      desc: '모 또는 도가 나와요 (반반)' },
+      midas:     { kind: 'yut',   icon: '👑', name: '마이더스의 손',     desc: '윷 또는 모가 나와요 (반반)' },
+      takeout:   { kind: 'yut',   icon: '🥡', name: '테이크 아웃',       desc: '이번 차례 결과를 다음 차례로 미뤄 써요' },
+      backstep:  { kind: 'yut',   icon: '🔙', name: '백스텝',           desc: '이번 차례 결과만큼 뒤로 가요' },
+      sendhome:  { kind: 'horse', icon: '🏠', name: '강제 귀가',         desc: '상대 말 하나를 대기석으로 돌려보내요' },
+      piggyback: { kind: 'horse', icon: '🎒', name: '업고 가실게요',     desc: '판 위 내 말에 대기 중인 말을 하나 업혀요' },
+      swap:      { kind: 'horse', icon: '🔄', name: '자리 좀 바꿔주세요', desc: '상대 말과 내 말의 자리를 바꿔요' },
+      infront:   { kind: 'horse', icon: '🧲', name: '제 앞에 놔주세요',  desc: '상대 말을 내 말 앞 1~3칸으로 데려와요' },
+      backhug:   { kind: 'horse', icon: '🤗', name: '백허그',           desc: '내 말을 상대 말 바로 한 칸 뒤로 옮겨요' },
+      flip:      { kind: 'horse', icon: '🙃', name: '밥상 뒤집기',       desc: '판 위 모든 말의 자리를 마구 섞어요' },
+      portal:    { kind: 'horse', icon: '🌀', name: '결승점이 코앞이네', desc: '멈추면 참먹이로 순간이동하는 문을 놓아요' },
+      bomb:      { kind: 'horse', icon: '💣', name: '폭발물 주의',       desc: '밟거나 지나가면 대기석으로 가는 폭탄을 놓아요' }
+    };
+    const YUT_POWER_IDS = { yut: Object.keys(YUT_POWERS).filter(k => YUT_POWERS[k].kind === 'yut'), horse: Object.keys(YUT_POWERS).filter(k => YUT_POWERS[k].kind === 'horse') };
+    let yutModePref = 'basic';   // 새 판을 만들 때 쓸 모드 ('basic' | 'super')
+    let yutPowerPick = null;     // 말 힘의 대상을 고르는 중 { id, step, a } — 내 화면에서만
+
     let yutState = { initialized: false };
     let yutSelected = null;   // 내가 고른 말 무리 ('home' 또는 칸 이름) — 내 화면에서만
     let yutAnimSeq = -1;      // 마지막으로 움직임을 보여 준 수
@@ -35966,10 +35993,17 @@
     function resetYutnoriGame() {
       if (yutState.initialized && !mgCanReset()) { showNotice('⚠️ 새 게임은 방장만 시작할 수 있어요.'); return; }
       const seats = mgBuildSeats(4).map(s => ({ ...s, merc: yutTopMercOf(s.id) }));
+      const mode = yutModePref === 'super' ? 'super' : 'basic';
+      const pick = arr => arr[Math.floor(Math.random() * arr.length)];
       yutState = {
         initialized: true,
         gameId: mgNewGameId(),
         seq: 0,
+        mode,
+        // 초능력: 자리마다 { yut, yutUsed, horse, horseUsed } · 이번 차례 상태 · 판 위 폭탄·순간이동 문 · 테이크 아웃으로 미뤄 둔 결과
+        powers: mode === 'super' ? seats.map(() => ({ yut: pick(YUT_POWER_IDS.yut), yutUsed: false, horse: pick(YUT_POWER_IDS.horse), horseUsed: false })) : [],
+        turnThrown: false, turnPowerUsed: false, pendingYut: '', turnTakeout: false, turnBackstep: false,
+        bombs: [], portal: '', saved: [],
         seats,
         pieces: [0, 1].map(() => Array.from({ length: YUT_PIECES }, () => ({ route: 'outer', idx: 0, home: true, done: false }))),
         turnSeat: 0,
@@ -35979,12 +36013,13 @@
         throwSeq: 0,
         lastMove: null,      // { seq, team, path: [칸...], count, captured: 칸 | null, goal }
         moveSeq: 0,
-        log: ['🥢 새 판! 블루팀부터 윷을 던져요.'],
+        log: [mode === 'super' ? '🔮 초능력 윷놀이 새 판! 저마다 초능력 2개를 받았어요. 블루팀부터 던져요.' : '🥢 새 판! 블루팀부터 윷을 던져요.'],
         gameOver: false,
         winnerTeam: -1
       };
       yutState.pets = mgSeatPets(yutState.seats);
       yutSelected = null;
+      yutPowerPick = null;
       renderYutnoriBoard();
       mgPush('yutnori', yutState);
       yutScheduleAi();
@@ -36004,6 +36039,33 @@
       return { sticks, name, steps, extra: steps >= 4 };
     }
 
+    // 정해진 결과로 던지기 (초능력) — 윷가락 모양도 그 결과에 맞춤
+    function yutRollFixed(name) {
+      const T = true, F = false;
+      const table = { '빽도': [[T, F, F, F], -1], '도': [[F, T, F, F], 1], '개': [[T, T, F, F], 2], '걸': [[T, T, T, F], 3], '윷': [[T, T, T, T], 4], '모': [[F, F, F, F], 5] };
+      const [sticks, steps] = table[name];
+      return { sticks: sticks.slice(), name, steps, extra: steps >= 4 };
+    }
+
+    // 이번 던지기에 걸린 윷 힘을 적용한 결과
+    function yutRollWithPower(id) {
+      const coin = (a, b) => (Math.random() < 0.5 ? a : b);
+      if (id === 'power100') return yutRollFixed('걸');
+      if (id === 'reverse') return yutRollFixed('빽도');
+      if (id === 'moordo') return yutRollFixed(coin('모', '도'));
+      if (id === 'midas') return yutRollFixed(coin('윷', '모'));
+      return yutRollSticks();
+    }
+
+    // 칸 이름 → 그 칸에 서 있는 말 (지름길 칸은 지름길로 이어 가게)
+    function yutPieceAt(node) {
+      for (const route of ['dC', 'd10', 'd5', 'outer']) {
+        const idx = YUT_ROUTES[route].indexOf(node);
+        if (idx >= 0 && node !== 'G') return { route, idx, home: false, done: false };
+      }
+      return { route: 'outer', idx: 0, home: true, done: false };
+    }
+
     function yutNodeOf(p) {
       return p.home || p.done ? null : YUT_ROUTES[p.route][p.idx];
     }
@@ -36020,6 +36082,17 @@
     // 말 하나를 steps 칸 옮긴 결과와 지나가는 칸들 (원본은 그대로). 못 가면 null
     function yutMovedPiece(p, steps) {
       const q = { ...p };
+      if (steps < -1) { // 백스텝: 한 칸씩 여러 번 뒤로 (대기석에 닿으면 멈춤)
+        let cur = q, path = null;
+        for (let k = 0; k < -steps; k++) {
+          const mv = yutMovedPiece(cur, -1);
+          if (!mv) return null;
+          path = path ? path.concat(mv.path.slice(1)) : mv.path;
+          cur = mv.piece;
+          if (cur.home) break;
+        }
+        return { piece: cur, path };
+      }
       if (steps < 0) {
         if (q.home) return null;
         const from = yutNodeOf(q);
@@ -36094,7 +36167,16 @@
       st.turnSeat = (st.turnSeat + 1) % st.seats.length;
       st.phase = 'throw';
       st.results = [];
+      Object.assign(st, { turnThrown: false, turnPowerUsed: false, pendingYut: '', turnTakeout: false, turnBackstep: false });
+      // 테이크 아웃으로 미뤄 둔 결과를 이번 차례에 꺼냄 (그래도 윷은 평소처럼 던짐)
+      const saved = (st.saved || []).find(e => e.seat === st.turnSeat);
+      if (saved) {
+        st.saved = st.saved.filter(e => e !== saved);
+        st.results = mgArr(saved.results).slice();
+        if (st.results.length) st.log.unshift(`🥡 ${st.seats[st.turnSeat].name}: 미뤄 둔 [${st.results.map(r => r.name).join(', ')}]을(를) 꺼냈어요!`);
+      }
       yutSelected = null;
+      yutPowerPick = null;
       if (st.log.length > 30) st.log.length = 30;
     }
 
@@ -36108,33 +36190,264 @@
       if (st.gameOver) { resetYutnoriGame(); return; }
       if (!yutCanActNow(st)) return;
       if (st.phase !== 'throw') { showNotice('⚠️ 먼저 모아 둔 결과로 말을 옮겨 주세요.'); return; }
-      const roll = yutRollSticks();
-      st.lastThrow = roll;
+      yutPowerPick = null;
+      const who = st.seats[st.turnSeat].name;
+      const pending = st.pendingYut || '';
+      st.pendingYut = '';
+      st.turnThrown = true;
       st.throwSeq += 1;
-      st.results.push({ name: roll.name, steps: roll.steps });
       yutSfx('arrow');
-      st.log.unshift(`${st.seats[st.turnSeat].name}: ${roll.name}!${roll.extra ? ' 한 번 더 던져요!' : ''}`);
-      if (!roll.extra) {
-        st.phase = 'move';
-        yutSelected = null;
-        yutSettleAfterChange(st);
+      if (pending === 'dogpig') { // 개와 돼지의 시간: 도·개를 함께 받고 더 던지지 않음
+        st.lastThrow = { ...yutRollFixed('개'), name: '도·개', label: '도 + 개 (둘 다 받음)', extra: false };
+        st.results.push({ name: '도', steps: 1 }, { name: '개', steps: 2 });
+        st.log.unshift(`🐷 ${who}: 개와 돼지의 시간! 도와 개를 받았어요.`);
+        yutEndThrowing(st);
+        renderYutnoriBoard();
+        mgPush('yutnori', st);
+        yutScheduleAi();
+        return;
       }
+      const roll = yutRollWithPower(pending);
+      st.lastThrow = roll;
+      const res = st.turnBackstep
+        ? { name: roll.steps < 0 ? '빽도' : `뒤로 ${roll.name}`, steps: -Math.abs(roll.steps) }
+        : { name: roll.name, steps: roll.steps };
+      st.results.push(res);
+      if (pending === 'double') st.results.push({ ...res });
+      st.log.unshift(`${pending ? YUT_POWERS[pending].icon + ' ' : ''}${who}: ${roll.name}!${pending === 'double' ? ' 더블더블로 두 번!' : ''}${roll.extra ? ' 한 번 더 던져요!' : ''}`);
+      if (!roll.extra) yutEndThrowing(st);
       renderYutnoriBoard();
       mgPush('yutnori', st);
       yutScheduleAi();
     }
+
+    // 더 던질 게 없으면: 말 옮기기로 (테이크 아웃이면 결과를 다음 차례로 미루고 차례 넘김)
+    function yutEndThrowing(st) {
+      if (st.turnTakeout && st.results.length) {
+        const seat = st.turnSeat;
+        st.saved = (st.saved || []).filter(e => e.seat !== seat).concat([{ seat, results: st.results.slice() }]);
+        st.log.unshift(`🥡 [${st.results.map(r => r.name).join(', ')}]을(를) 포장해서 다음 차례에 써요!`);
+        st.results = [];
+        yutNextTurn(st);
+        return;
+      }
+      st.phase = 'move';
+      yutSelected = null;
+      yutSettleAfterChange(st);
+    }
+
+    // ---- 초능력 쓰기 ----
+    function yutGroupsOf(st, team) {
+      const by = {};
+      st.pieces[team].forEach((p, i) => { const n = yutNodeOf(p); if (n) (by[n] = by[n] || []).push(i); });
+      return by;
+    }
+    function yutRemain(p) { return p.done ? 0 : (p.home ? 22 : YUT_ROUTES[p.route].length - 1 - p.idx); }
+    // 아무도 없고 폭탄·문도 없는 칸 (출발점·참먹이 제외)
+    function yutEmptyNodes(st) {
+      const used = new Set([...Object.keys(yutGroupsOf(st, 0)), ...Object.keys(yutGroupsOf(st, 1)), ...(st.bombs || []), st.portal || '', 'o0', 'E', 'G']);
+      return Object.keys(YUT_NODE_XY).filter(k => !used.has(k));
+    }
+    // 상대 말 한 칸 뒤 (출발점 바로 뒤는 참먹이)
+    function yutBehindNode(st, team, node) {
+      const enemy = 1 - team;
+      const idx = st.pieces[enemy].findIndex(p => yutNodeOf(p) === node);
+      if (idx < 0) return null;
+      const mv = yutMovedPiece(st.pieces[enemy][idx], -1);
+      if (!mv || mv.piece.home) return null;
+      const n = yutNodeOf(mv.piece);
+      return n === 'o0' ? 'E' : n;
+    }
+    // 단계마다 고를 수 있는 대상 (칸 이름 · 'home' = 대기 중인 말)
+    function yutPowerTargets(st, id, step, a) {
+      const team = yutTeamOfSeat(st.turnSeat);
+      const mine = Object.keys(yutGroupsOf(st, team));
+      const theirs = Object.keys(yutGroupsOf(st, 1 - team));
+      const homeCnt = st.pieces[team].filter(p => p.home).length;
+      switch (id) {
+        case 'sendhome': return theirs;
+        case 'piggyback': return homeCnt ? mine : [];
+        case 'swap': return step === 0 ? (mine.length ? theirs : []) : mine;
+        case 'infront': { const m = mine.filter(n => n !== 'E'); return step === 0 ? (m.length ? theirs : []) : m; }
+        case 'backhug': {
+          if (step === 0) return (mine.length || homeCnt) ? theirs.filter(n => yutBehindNode(st, team, n)) : [];
+          const behind = yutBehindNode(st, team, a);
+          return mine.filter(n => n !== behind).concat(homeCnt ? ['home'] : []);
+        }
+        case 'portal': case 'bomb': return yutEmptyNodes(st);
+        default: return [];
+      }
+    }
+    function yutPowerSteps(id) { return id === 'flip' ? 0 : (['swap', 'infront', 'backhug'].includes(id) ? 2 : 1); }
+    function yutPowerUsable(st, id) {
+      if (YUT_POWERS[id].kind === 'yut') return true;
+      if (id === 'flip') return [0, 1].some(t => Object.keys(yutGroupsOf(st, t)).length);
+      return yutPowerTargets(st, id, 0, null).length > 0;
+    }
+    function yutCanUsePowers(st) {
+      return st.mode === 'super' && !st.gameOver && st.phase === 'throw' && !st.turnThrown && !st.turnPowerUsed && !yutAnimating;
+    }
+
+    // 말 무리를 칸에 놓기 — 그 칸의 상대 말은 잡혀서 대기석으로 (잡은 수 돌려줌)
+    function yutPlaceGroup(st, team, indices, node) {
+      let captured = 0;
+      st.pieces[1 - team].forEach((p, i) => { if (yutNodeOf(p) === node) { st.pieces[1 - team][i] = { route: 'outer', idx: 0, home: true, done: false }; captured++; } });
+      indices.forEach(i => { st.pieces[team][i] = yutPieceAt(node); });
+      return captured;
+    }
+
+    // 힘 쓰기 (대상은 이미 골라 둠) — 상태만 바꿈
+    function yutApplyPower(st, id, a, b) {
+      const seat = st.turnSeat;
+      const team = yutTeamOfSeat(seat);
+      const enemy = 1 - team;
+      const pw = st.powers[seat];
+      const P = YUT_POWERS[id];
+      const who = st.seats[seat].name;
+      if (P.kind === 'yut') pw.yutUsed = true; else pw.horseUsed = true;
+      st.turnPowerUsed = true;
+      st.powerSeq = (st.powerSeq || 0) + 1;
+      let msg = '', fxNode = '', fxText = `${P.icon} ${P.name}!`;
+      const mineAt = n => yutGroupsOf(st, team)[n] || [];
+      const theirsAt = n => yutGroupsOf(st, enemy)[n] || [];
+      if (P.kind === 'yut') {
+        if (id === 'takeout') st.turnTakeout = true;
+        else if (id === 'backstep') st.turnBackstep = true;
+        else st.pendingYut = id;
+        msg = `${P.icon} ${who}: [${P.name}] 발동! ${P.desc}`;
+      } else if (id === 'sendhome') {
+        const idx = theirsAt(a);
+        idx.forEach(i => { st.pieces[enemy][i] = { route: 'outer', idx: 0, home: true, done: false }; });
+        msg = `🏠 ${who}: 강제 귀가! ${YUT_TEAM_NAME[enemy]} 말 ${idx.length}개가 대기석으로!`; fxNode = a;
+      } else if (id === 'piggyback') {
+        const h = st.pieces[team].findIndex(p => p.home);
+        st.pieces[team][h] = yutPieceAt(a);
+        msg = `🎒 ${who}: 업고 가실게요! 대기 중인 말이 업혔어요.`; fxNode = a;
+      } else if (id === 'swap') {
+        const ti = theirsAt(a), mi = mineAt(b);
+        ti.forEach(i => { st.pieces[enemy][i] = yutPieceAt(b); });
+        mi.forEach(i => { st.pieces[team][i] = yutPieceAt(a); });
+        msg = `🔄 ${who}: 자리 좀 바꿔주세요! 두 말의 자리가 바뀌었어요.`; fxNode = b;
+      } else if (id === 'infront') {
+        const ti = theirsAt(a), mi = mineAt(b);
+        const base = st.pieces[team][mi[0]];
+        const spots = [1, 2, 3].map(k => yutMovedPiece(base, k)).filter(mv => mv && !mv.piece.done).map(mv => yutNodeOf(mv.piece))
+          .filter(n => n !== a && !mineAt(n).length);
+        const to = spots.length ? spots[Math.floor(Math.random() * spots.length)] : null;
+        if (to) {
+          ti.forEach(i => { st.pieces[enemy][i] = yutPieceAt(to); });
+          msg = `🧲 ${who}: 제 앞에 놔주세요! 상대 말을 끌어왔어요.`; fxNode = to;
+        } else msg = `🧲 ${who}: 제 앞에 놔주세요… 앞에 놓을 자리가 없었어요.`;
+      } else if (id === 'backhug') {
+        const to = yutBehindNode(st, team, a);
+        const mi = b === 'home' ? [st.pieces[team].findIndex(p => p.home)] : mineAt(b);
+        const cap = to ? yutPlaceGroup(st, team, mi, to) : 0;
+        msg = `🤗 ${who}: 백허그! 상대 말 바로 뒤로 붙었어요.${cap ? ` (말 ${cap}개도 잡았어요)` : ''}`; fxNode = to || '';
+      } else if (id === 'flip') {
+        const groups = [];
+        [0, 1].forEach(t => Object.values(yutGroupsOf(st, t)).forEach(idx => groups.push({ t, idx })));
+        const spots = Object.keys(YUT_NODE_XY).filter(k => !['o0', 'E', 'G', st.portal || ''].includes(k) && !(st.bombs || []).includes(k));
+        for (let i = spots.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [spots[i], spots[j]] = [spots[j], spots[i]]; }
+        groups.forEach((g, k) => g.idx.forEach(i => { st.pieces[g.t][i] = yutPieceAt(spots[k]); }));
+        msg = `🙃 ${who}: 밥상 뒤집기!! 판 위 말들이 뒤죽박죽!`; fxNode = 'C';
+      } else if (id === 'portal') {
+        st.portal = a;
+        msg = `🌀 ${who}: 결승점이 코앞이네! 이 칸에 멈추면 참먹이로 순간이동해요.`; fxNode = a;
+      } else if (id === 'bomb') {
+        st.bombs = (st.bombs || []).concat([a]);
+        msg = `💣 ${who}: 폭발물 주의! 밟거나 지나가면 대기석으로 가요.`; fxNode = a;
+      }
+      st.lastPower = { seq: st.powerSeq, seat, id, node: fxNode, text: fxText };
+      st.log.unshift(msg);
+      yutSfx(P.kind === 'yut' ? 'heal' : 'heavy');
+    }
+
+    // 초능력 카드 누르기
+    window.useYutPower = function (kind) {
+      const st = yutState;
+      if (!st.initialized || !mgCanAct(st) || !yutCanUsePowers(st)) return;
+      const pw = st.powers && st.powers[st.turnSeat];
+      if (!pw || (kind === 'yut' ? pw.yutUsed : pw.horseUsed)) return;
+      const id = kind === 'yut' ? pw.yut : pw.horse;
+      if (yutPowerPick && yutPowerPick.id === id) { yutPowerPick = null; renderYutnoriBoard(); return; } // 다시 누르면 취소
+      if (!yutPowerUsable(st, id)) { showNotice(`⚠️ 지금은 [${YUT_POWERS[id].name}]을(를) 쓸 수 있는 말이 없어요.`); return; }
+      if (yutPowerSteps(id) === 0 || YUT_POWERS[id].kind === 'yut') {
+        yutApplyPower(st, id, null, null);
+        renderYutnoriBoard();
+        mgPush('yutnori', st);
+        return;
+      }
+      yutPowerPick = { id, step: 0, a: null };
+      renderYutnoriBoard();
+    };
+    window.cancelYutPower = function () { yutPowerPick = null; renderYutnoriBoard(); };
+    window.chooseYutPowerTarget = function (key) {
+      const st = yutState;
+      const pk = yutPowerPick;
+      if (!pk || !mgCanAct(st) || !yutCanUsePowers(st)) return;
+      if (!yutPowerTargets(st, pk.id, pk.step, pk.a).includes(key)) return;
+      if (pk.step + 1 < yutPowerSteps(pk.id)) { yutPowerPick = { ...pk, step: pk.step + 1, a: key }; renderYutnoriBoard(); return; }
+      const a = pk.step === 0 ? key : pk.a, b = pk.step === 0 ? null : key;
+      yutPowerPick = null;
+      yutApplyPower(st, pk.id, a, b);
+      renderYutnoriBoard();
+      mgPush('yutnori', st);
+    };
+    function yutPowerPrompt(pk) {
+      const two = yutPowerSteps(pk.id) === 2;
+      if (pk.id === 'portal') return '🌀 순간이동 문을 놓을 빈 칸을 누르세요';
+      if (pk.id === 'bomb') return '💣 폭탄을 놓을 빈 칸을 누르세요';
+      if (pk.id === 'piggyback') return '🎒 대기 중인 말을 업힐 내 말을 누르세요';
+      if (pk.step === 0) return `${YUT_POWERS[pk.id].icon} 상대 말을 누르세요${two ? ' (1/2)' : ''}`;
+      return pk.id === 'backhug' ? '🤗 옮길 내 말(또는 대기 중인 말)을 누르세요 (2/2)' : `${YUT_POWERS[pk.id].icon} 내 말을 누르세요 (2/2)`;
+    }
+
+    // 초능력 모드 고르기 (새 판을 만듦 · 방이면 방장만)
+    window.setYutMode = function (mode) {
+      if (mode !== 'basic' && mode !== 'super') return;
+      if (!mgCanReset()) { showNotice('⚠️ 모드는 방장만 바꿀 수 있어요.'); return; }
+      const st = yutState;
+      if (st.initialized && st.mode === mode && !st.gameOver) return;
+      if (st.initialized && !st.gameOver && (st.throwSeq || 0) > 0 && !confirm('지금 판을 끝내고 새 모드로 새 판을 시작할까요?')) return;
+      yutModePref = mode;
+      resetYutnoriGame();
+    };
 
     // 고른 수 두기
     function yutApplyChoice(st, ch) {
       const team = yutTeamOfSeat(st.turnSeat);
       const enemy = 1 - team;
       const pieces = st.pieces[team];
+      // 초능력 판: 지나가거나 밟은 폭탄 → 대기석, 순간이동 문에 멈춤 → 참먹이
+      let dest = { ...ch.dest }, path = ch.path.slice(), bombed = '', ported = false;
+      if ((st.bombs || []).length && !dest.home) {
+        for (let k = 1; k < path.length; k++) {
+          if (st.bombs.includes(path[k])) {
+            bombed = path[k];
+            path = path.slice(0, k + 1);
+            dest = { route: 'outer', idx: 0, home: true, done: false };
+            st.bombs = st.bombs.filter(b => b !== bombed);
+            break;
+          }
+        }
+      }
+      if (!bombed && st.portal && !dest.done && !dest.home && yutNodeOf(dest) === st.portal) {
+        dest = yutPieceAt('E');
+        path.push('E');
+        ported = true;
+        st.portal = '';
+      }
+      ch = { ...ch, dest, path };
       ch.indices.forEach(i => { pieces[i] = { ...ch.dest }; });
       st.results.splice(ch.resultIdx, 1);
       st.moveSeq = (st.moveSeq || 0) + 1;
       let captured = 0;
       const destNode = yutNodeOf(ch.dest);
-      if (ch.dest.done) {
+      if (ported) st.log.unshift(`🌀 ${YUT_TEAM_NAME[team]} 말이 순간이동 문을 타고 참먹이로 슝!`);
+      if (bombed) {
+        st.log.unshift(`💣 펑! ${YUT_TEAM_NAME[team]} 말 ${ch.indices.length}개가 폭탄을 밟아 대기석으로!`);
+        yutSfx('heavy');
+      } else if (ch.dest.done) {
         st.log.unshift(`🏁 ${YUT_TEAM_NAME[team]} 말 ${ch.indices.length}개가 났어요!`);
         yutSfx('heal');
       } else if (ch.dest.home) {
@@ -36156,7 +36469,7 @@
           yutSfx('slash');
         }
       }
-      st.lastMove = { seq: st.moveSeq, team, path: ch.path, count: ch.indices.length, captured: captured ? destNode : null, goal: Boolean(ch.dest.done) };
+      st.lastMove = { seq: st.moveSeq, team, path: ch.path, count: ch.indices.length, captured: captured ? destNode : null, goal: Boolean(ch.dest.done), bomb: bombed || null, portal: ported };
       yutSelected = null;
       if (st.pieces[team].every(p => p.done)) {
         st.gameOver = true;
@@ -36193,6 +36506,60 @@
     };
 
     // AI (혼자 연습할 때 레드팀): 결과와 말을 함께 따져서 고름 — 잡기 > 나기 > 지름길 > 업기 > 멀리 가기, 상대 앞자리는 피함
+    // AI 초능력: 상대 말이 결승점에 가까우면 말 힘으로 막고, 윷 힘은 가끔 (판이 길어질수록 자주) 씀
+    function yutAiPowerPlan(st) {
+      const seat = st.turnSeat;
+      const pw = st.powers && st.powers[seat];
+      if (!pw) return null;
+      const team = yutTeamOfSeat(seat), enemy = 1 - team;
+      const mineG = yutGroupsOf(st, team), theirG = yutGroupsOf(st, enemy);
+      const remainAt = (t, n) => yutRemain(st.pieces[t][(t === team ? mineG : theirG)[n][0]]);
+      const theirs = Object.keys(theirG).sort((x, y) => remainAt(enemy, x) - remainAt(enemy, y));
+      const mine = Object.keys(mineG).sort((x, y) => remainAt(team, x) - remainAt(team, y));
+      const lead = theirs[0];
+      const leadRemain = lead ? remainAt(enemy, lead) : 99;
+      const threat = lead && (leadRemain <= 6 || theirG[lead].length >= 2 && leadRemain <= 10);
+      const progress = t => st.pieces[t].reduce((s, p) => s + (22 - yutRemain(p)), 0);
+      const late = Math.min(0.5, 0.12 + (st.throwSeq || 0) * 0.01);
+      const ok = (id, a, b) => {
+        const t0 = yutPowerTargets(st, id, 0, null);
+        if (id === 'flip') return yutPowerUsable(st, id) ? { id } : null;
+        if (!t0.includes(a)) return null;
+        if (yutPowerSteps(id) === 2 && !yutPowerTargets(st, id, 1, a).includes(b)) return null;
+        return { id, a, b };
+      };
+      if (!pw.horseUsed) {
+        const h = pw.horse;
+        let plan = null;
+        if (h === 'sendhome' && threat) plan = ok(h, lead);
+        else if (h === 'swap' && threat && mine.length) plan = ok(h, lead, mine[mine.length - 1]);
+        else if (h === 'backhug' && threat) plan = ok(h, lead, st.pieces[team].some(p => p.home) ? 'home' : mine[mine.length - 1]);
+        else if (h === 'infront' && threat && mine.length) plan = ok(h, lead, mine.filter(n => n !== 'E').pop());
+        else if (h === 'flip' && progress(team) + 12 < progress(enemy) && Math.random() < 0.4) plan = ok(h);
+        else if (h === 'piggyback' && mine.length && remainAt(team, mine[0]) <= 7) plan = ok(h, mine[0]);
+        else if (h === 'bomb' && lead && Math.random() < 0.5) {
+          const empties = yutEmptyNodes(st);
+          const p = st.pieces[enemy][theirG[lead][0]];
+          const spot = [1, 2, 3].map(k => yutMovedPiece(p, k)).filter(mv => mv && !mv.piece.done).map(mv => yutNodeOf(mv.piece)).find(n => empties.includes(n));
+          if (spot) plan = ok(h, spot);
+        } else if (h === 'portal' && mine.length && Math.random() < 0.35) {
+          const empties = yutEmptyNodes(st);
+          const p = st.pieces[team][mineG[mine[mine.length - 1]][0]];
+          const spot = [3, 2, 4].map(k => yutMovedPiece(p, k)).filter(mv => mv && !mv.piece.done).map(mv => yutNodeOf(mv.piece)).find(n => empties.includes(n));
+          if (spot && yutRemain(yutPieceAt(spot)) > 4) plan = ok(h, spot);
+        }
+        if (plan) return plan;
+      }
+      if (!pw.yutUsed) {
+        const y = pw.yut;
+        const behindEnemy = mine.some(n => { const mv = yutMovedPiece(st.pieces[team][mineG[n][0]], -1); return mv && !mv.piece.home && theirG[yutNodeOf(mv.piece)]; });
+        if (y === 'reverse' || y === 'backstep') return behindEnemy && (y === 'reverse' || Math.random() < 0.5) ? { id: y } : null;
+        if (y === 'takeout') return Math.random() < late * 0.5 ? { id: y } : null;
+        if (Math.random() < late) return { id: y };
+      }
+      return null;
+    }
+
     let yutAiTimer = null;
     function yutScheduleAi() {
       clearTimeout(yutAiTimer);
@@ -36201,7 +36568,18 @@
       const animWait = yutAnimating ? (yutAnimating.steps || 1) * YUT_STEP_MS + 250 : 0;
       yutAiTimer = setTimeout(() => {
         if (yutState !== st || st.gameOver || !mgIsAiSeat(st, st.turnSeat)) return;
-        if (st.phase === 'throw') { throwYutSticks(); return; }
+        if (st.phase === 'throw') {
+          const plan = yutCanUsePowers(st) ? yutAiPowerPlan(st) : null;
+          if (plan) {
+            yutApplyPower(st, plan.id, plan.a, plan.b);
+            renderYutnoriBoard();
+            mgPush('yutnori', st);
+            yutScheduleAi();
+            return;
+          }
+          throwYutSticks();
+          return;
+        }
         const team = yutTeamOfSeat(st.turnSeat);
         const enemy = 1 - team;
         const enemyNodes = st.pieces[enemy].filter(p => !p.home && !p.done).map(yutNodeOf);
@@ -36219,6 +36597,8 @@
           if (node && danger.has(node) && !enemyNodes.includes(node)) s -= 25 * c.indices.length;
           if (c.dest.home) s -= 40;
           if (c.fromHome) s += 4;
+          if ((st.bombs || []).length && !c.dest.home && c.path.slice(1).some(n => st.bombs.includes(n))) s -= 60 * c.indices.length;
+          if (st.portal && node === st.portal) s += 30;
           return s + c.steps * 0.5 + Math.random() * 3;
         };
         const best = yutAllChoices(st).sort((a, b) => score(b) - score(a))[0];
@@ -36249,8 +36629,10 @@
           g.remove();
           yutAnimating = null;
           renderYutnoriBoard();
-          if (mv.captured) yutBurst(mv.captured, '💥 잡았다!');
+          if (mv.bomb) yutBurst(mv.bomb, '💣 펑!');
+          else if (mv.captured) yutBurst(mv.captured, '💥 잡았다!');
           else if (mv.goal) yutBurst('E', '🏁 났다!');
+          else if (mv.portal) yutBurst('E', '🌀 슝!');
           return;
         }
         g.setAttribute('transform', `translate(${pts[i][0] + off},${pts[i][1] + off}) scale(1.08)`);
@@ -36276,6 +36658,7 @@
     }
 
     let yutShownThrowSeq = -1;
+    let yutShownPowerSeq = -1;
     function renderYutnoriBoard() {
       const st = yutState;
       if (!st.initialized) return;
@@ -36303,7 +36686,8 @@
       if (statusBox) {
         const cur = st.seats[st.turnSeat];
         let doNow;
-        if (st.phase === 'throw') doNow = st.results.length ? '한 번 더 던지세요! 🥢' : '윷을 던지세요 🥢';
+        if (myTurn && yutPowerPick) doNow = yutPowerPrompt(yutPowerPick);
+        else if (st.phase === 'throw') doNow = st.results.length && st.turnThrown ? '한 번 더 던지세요! 🥢' : (myTurn && yutCanUsePowers(st) ? '윷을 던지세요 🥢 (던지기 전에 초능력을 쓸 수 있어요)' : '윷을 던지세요 🥢');
         else if (!myTurn) doNow = '말을 옮기는 중...';
         else doNow = yutSelected
           ? '② 도착할 칸(빛나는 점)을 누르세요'
@@ -36317,7 +36701,7 @@
       const resBox = document.getElementById('yutResultChips');
       if (resBox) {
         resBox.innerHTML = st.results.length
-          ? st.results.map(r => `<span class="px-2.5 py-1 rounded-lg font-extrabold text-xs ${r.steps >= 4 ? 'bg-amber-400 text-slate-950' : (r.steps < 0 ? 'bg-slate-700 text-white' : 'bg-indigo-600 text-white')}">${r.name} ${r.steps > 0 ? r.steps + '칸' : '뒤로 1칸'}</span>`).join('')
+          ? st.results.map(r => `<span class="px-2.5 py-1 rounded-lg font-extrabold text-xs ${r.steps >= 4 ? 'bg-amber-400 text-slate-950' : (r.steps < 0 ? 'bg-slate-700 text-white' : 'bg-indigo-600 text-white')}">${r.name} ${r.steps > 0 ? r.steps + '칸' : `뒤로 ${-r.steps}칸`}</span>`).join('')
           : '<span class="text-[11px] text-slate-500">던진 결과가 여기 모여요</span>';
       }
 
@@ -36325,7 +36709,7 @@
       if (throwBtn) {
         const canThrow = myTurn && st.phase === 'throw';
         throwBtn.disabled = !st.gameOver && !canThrow;
-        throwBtn.textContent = st.gameOver ? '🔄 다시 하기' : (canThrow && st.results.length ? '🥢 한 번 더 던지기!' : '🥢 윷 던지기!');
+        throwBtn.textContent = st.gameOver ? '🔄 다시 하기' : (canThrow && st.turnThrown ? '🥢 한 번 더 던지기!' : (canThrow && st.pendingYut ? `${YUT_POWERS[st.pendingYut].icon} 초능력으로 던지기!` : '🥢 윷 던지기!'));
         throwBtn.classList.toggle('animate-pulse', canThrow);
       }
 
@@ -36339,7 +36723,7 @@
           `<div class="mg-stick ${flat ? 'flat' : 'round'} ${i === 0 ? 'marked' : ''} ${fresh ? 'tossing' : ''}" style="animation-delay:${i * 60}ms"></div>`).join('');
         if (resultEl) {
           const t = st.lastThrow;
-          const label = `${t.name}${t.steps > 0 ? ` (${t.steps}칸)` : ' (1칸 뒤로)'}${t.extra ? ' · 한 번 더!' : ''}`;
+          const label = t.label || `${t.name}${t.steps > 0 ? ` (${t.steps}칸)` : ' (1칸 뒤로)'}${t.extra ? ' · 한 번 더!' : ''}`;
           if (fresh) {
             resultEl.classList.remove('pop');
             resultEl.textContent = '…';
@@ -36352,6 +36736,52 @@
       } else if (sticksEl && !st.lastThrow) {
         sticksEl.innerHTML = [1, 0, 1, 0].map((f, i) => `<div class="mg-stick ${f ? 'flat' : 'round'} ${i === 0 ? 'marked' : ''}"></div>`).join('');
         if (resultEl) resultEl.textContent = '윷을 던져 보세요!';
+      }
+
+      // 모드 고르기 (기본 / 초능력)
+      const modeBar = document.getElementById('yutModeBar');
+      if (modeBar) {
+        const canSet = mgCanReset();
+        modeBar.innerHTML = [['basic', '🥢 기본 윷놀이', '그냥 윷놀이'], ['super', '🔮 초능력 윷놀이', '초능력 2개씩!']].map(([m, label, sub]) => {
+          const on = (st.mode || 'basic') === m;
+          return `<button type="button" onclick="setYutMode('${m}')" ${canSet ? '' : 'disabled'}
+            class="py-2 rounded-xl border-2 text-xs font-extrabold leading-tight ${on ? (m === 'super' ? 'bg-violet-600 border-violet-300 text-white' : 'bg-indigo-600 border-indigo-300 text-white') : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'} ${canSet ? '' : 'opacity-70 cursor-not-allowed'}">
+            ${label}<div class="text-[10px] font-bold ${on ? 'text-white/80' : 'text-slate-500'}">${on ? '✔ 지금 모드' : (canSet ? sub + ' · 눌러서 새 판' : '방장이 골라요')}</div></button>`;
+        }).join('');
+      }
+
+      // 초능력 카드
+      const powerBox = document.getElementById('yutPowerBox');
+      if (powerBox) {
+        const isSuper = st.mode === 'super' && Array.isArray(st.powers) && st.powers.length;
+        powerBox.classList.toggle('hidden', !isSuper);
+        if (isSuper) {
+          const canUse = myTurn && yutCanUsePowers(st);
+          const card = (seat, kind) => {
+            const pw = st.powers[seat] || {};
+            const id = kind === 'yut' ? pw.yut : pw.horse;
+            const P = YUT_POWERS[id];
+            if (!P) return '';
+            const used = kind === 'yut' ? pw.yutUsed : pw.horseUsed;
+            const active = seat === st.turnSeat && (st.pendingYut === id || (id === 'takeout' && st.turnTakeout) || (id === 'backstep' && st.turnBackstep));
+            const picking = yutPowerPick && yutPowerPick.id === id && seat === st.turnSeat;
+            const clickable = canUse && seat === st.turnSeat && !used;
+            const tone = kind === 'yut' ? 'border-amber-400/70 bg-amber-500/10' : 'border-fuchsia-400/70 bg-fuchsia-500/10';
+            return `<button type="button" ${clickable ? `onclick="useYutPower('${kind}')"` : 'disabled'} title="${P.name}: ${P.desc}"
+              class="text-left rounded-lg border px-2 py-1.5 ${used && !active ? 'border-slate-800 bg-slate-950 opacity-40 line-through' : tone} ${clickable ? 'hover:brightness-125 cursor-pointer' + (picking ? ' ring-2 ring-violet-300' : ' animate-pulse') : 'cursor-default'} ${active ? 'ring-2 ring-amber-300' : ''}">
+              <div class="text-[11px] font-extrabold text-white">${P.icon} ${P.name}${active ? ' · 발동 중' : ''}</div>
+              <div class="text-[10px] text-slate-400 leading-snug">${kind === 'yut' ? '윷' : '말'} · ${P.desc}</div></button>`;
+          };
+          const my = mgMySeat(st);
+          const order = st.seats.map((_, i) => i).sort((a, b) => (b === my) - (a === my));
+          powerBox.innerHTML = `<div class="flex items-center justify-between gap-2">
+              <span class="text-[11px] font-extrabold text-violet-300">🔮 초능력 (한 판에 한 번 · 던지기 전에 · 한 차례에 하나)</span>
+              ${myTurn && yutPowerPick ? `<button type="button" onclick="cancelYutPower()" class="px-2 py-0.5 rounded-md bg-slate-700 text-[11px] font-bold text-white">취소</button>` : ''}
+            </div>
+            ${order.map(i => `<div>
+              <div class="text-[10px] font-extrabold mb-0.5" style="color:${YUT_TEAM_COLOR[yutTeamOfSeat(i)]}">${st.seats[i].name}${i === my ? ' (나)' : ''}${i === st.turnSeat ? ' · 차례' : ''}</div>
+              <div class="grid grid-cols-2 gap-1.5">${card(i, 'yut')}${card(i, 'horse')}</div></div>`).join('')}`;
+        }
       }
 
       // 대기·난 말
@@ -36430,7 +36860,37 @@
             </g>`;
           }).join('');
         }).join('');
-        boardEl.innerHTML = `<svg viewBox="0 0 360 392" class="w-full h-auto select-none" style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:4px solid #a16207;border-radius:18px">${lines}${nodes}${labels}${tokens}${destMarks}</svg>`;
+        // 초능력: 폭탄·순간이동 문, 고르는 중인 힘의 대상
+        const traps = (st.bombs || []).filter(n => YUT_NODE_XY[n]).map(n => {
+          const [x, y] = YUT_NODE_XY[n];
+          return `<circle cx="${x}" cy="${y}" r="14" fill="#fee2e2" stroke="#dc2626" stroke-width="2.5" stroke-dasharray="4 3"/><text x="${x}" y="${y + 7}" text-anchor="middle" font-size="19">💣</text>`;
+        }).join('') + (st.portal && YUT_NODE_XY[st.portal] ? (() => {
+          const [x, y] = YUT_NODE_XY[st.portal];
+          return `<circle cx="${x}" cy="${y}" r="14" fill="#7c3aed" opacity="0.35"/><text x="${x}" y="${y + 6}" text-anchor="middle" font-size="17">🌀</text>`;
+        })() : '');
+        let powerMarks = '';
+        if (myTurn && yutPowerPick) {
+          powerMarks = yutPowerTargets(st, yutPowerPick.id, yutPowerPick.step, yutPowerPick.a).map(key => {
+            if (key === 'home') {
+              return `<g class="mg-yut-dest" onclick="chooseYutPowerTarget('home')"><rect x="250" y="364" width="160" height="22" rx="11" fill="#7c3aed" stroke="#fff" stroke-width="2"/>
+                <text x="330" y="379" text-anchor="middle" font-size="12" font-weight="900" fill="#fff">🏠 대기 중인 말로</text></g>`;
+            }
+            const [x, y] = YUT_NODE_XY[key];
+            return `<g class="mg-yut-dest" onclick="chooseYutPowerTarget('${key}')">
+              <circle cx="${x}" cy="${y}" r="19" fill="#7c3aed" opacity="0.25"/>
+              <circle cx="${x}" cy="${y}" r="19" fill="none" stroke="#7c3aed" stroke-width="3" stroke-dasharray="5 4"/></g>`;
+          }).join('');
+          if (yutPowerPick.a && YUT_NODE_XY[yutPowerPick.a]) {
+            const [x, y] = YUT_NODE_XY[yutPowerPick.a];
+            powerMarks += `<circle cx="${x}" cy="${y}" r="21" fill="none" stroke="#f59e0b" stroke-width="4" pointer-events="none"/>`;
+          }
+        }
+        boardEl.innerHTML = `<svg viewBox="0 0 360 392" class="w-full h-auto select-none" style="background:linear-gradient(135deg,${st.mode === 'super' ? '#ede9fe,#fde68a' : '#fef3c7,#fde68a'});border:4px solid ${st.mode === 'super' ? '#7c3aed' : '#a16207'};border-radius:18px">${lines}${nodes}${labels}${traps}${tokens}${destMarks}${powerMarks}</svg>`;
+        // 방금 쓴 초능력 이름을 판 위에 띄움 (화면마다 한 번)
+        if (st.lastPower && st.lastPower.seq !== yutShownPowerSeq) {
+          yutShownPowerSeq = st.lastPower.seq;
+          yutBurst(st.lastPower.node || 'C', st.lastPower.text);
+        }
         if (animNow) {
           yutAnimSeq = mv.seq;
           yutPlayMoveAnimation(boardEl.querySelector('svg'), mv);
@@ -51096,8 +51556,16 @@
             lastThrow: y.lastThrow ? { ...y.lastThrow, sticks: mgArr(y.lastThrow.sticks) } : null,
             results: mgArr(y.results),
             lastMove: y.lastMove ? { ...y.lastMove, path: mgArr(y.lastMove.path) } : null,
-            log: mgArr(y.log)
+            log: mgArr(y.log),
+            mode: y.mode === 'super' ? 'super' : 'basic',
+            powers: mgArr(y.powers),
+            bombs: mgArr(y.bombs),
+            portal: y.portal || '',
+            pendingYut: y.pendingYut || '',
+            saved: mgArr(y.saved).map(e => ({ ...e, results: mgArr(e && e.results) }))
           };
+          yutModePref = yutState.mode; // 방장이 바뀌어도 [새 게임]은 같은 모드로
+          if (yutPowerPick && (yutState.turnThrown || yutState.turnPowerUsed || !mgCanAct(yutState))) yutPowerPick = null;
           renderYutnoriBoard();
           yutScheduleAi(); // 나간 친구 자리를 AI가 이어받았으면 (방장 화면에서) 이어서 둠
           note(y);
