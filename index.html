@@ -7133,8 +7133,9 @@
     //   불굴의 가호 샘플은 아직 없어서 치켜듦(5)
     // 소환사 SR 1 (은발·보라 눈·흰 금빛 로브·보라 망토·청록 마법서, tools/summoner_sr1_build.py): 칸 순서는 0번과 같음.
     //   샘플이 걷기 3장·쓰러짐 2장이라 걷기 넷째 칸 = 걷기 2, 쓰러짐 첫 칸 = 피격. 누운 쓰러짐은 머리 방향을 맞추려 좌우로 뒤집음
-    // 궁수 SR 1 (2026-11-09 은발 엘프로 교체, tools/archer_sr1_build.py): 칸 순서·동작 구성은 archer_0과 같은 14칸, 칸 크기만 다름. muzzle = 쏘는 칸(6) 화살촉(앞 56, 위 57) 바로 뒤 조금 아래 (archer_0과 같은 간격) 히든 스킬 [폭풍] 시전 = ARCHER_STORM_FX.srCast
-    const SECRET_SKIN_SHEETS = { archer_sr1: { cellW: 118, cellH: 115, anchorX: 52, anchorY: 113, topH: 98, portraitCX: 55, muzzle: [50, 45] }, warrior_sr1: { cellW: 246, cellH: 99, anchorX: 92, anchorY: 97, topH: 81, portraitCX: 85, count: 16,
+    // 궁수 SR 1 (2026-11-09 은발 엘프로 교체, tools/archer_sr1_build.py): 칸 순서·동작 구성은 archer_0과 같은 14칸, 칸 크기만 다름. muzzle = 쏘는 칸(6) 화살촉(앞 56, 위 57) 바로 뒤 조금 아래 (archer_0과 같은 간격). 히든 스킬 [폭풍] 시전 = ARCHER_STORM_FX.srCast
+    const SECRET_SKIN_SHEETS = { archer_sr1: { cellW: 114, cellH: 121, anchorX: 48, anchorY: 119, topH: 98, portraitCX: 51, muzzle: [50, 45],
+        projFx: { arrow: 'archer_sr_arrow', golden_arrow: 'archer_sr_arrow', poison_arrow: 'archer_sr_poison' } }, warrior_sr1: { cellW: 246, cellH: 99, anchorX: 92, anchorY: 97, topH: 81, portraitCX: 85, count: 16,
         anims: { idle: [0], walk: [1, 2, 3, 2], attack: [4, 5], skill: [4, 5], hurt: [6], death: [7, 8], whirl: [13, 14, 15], shout: [10], charge: [11, 12, 12, 12, 12] } },
       knight_sr1: { cellH: 114, anchorY: 111, topH: 101 }, lancer_sr1: { topH: 88 },
       paladin_sr1: { cellW: 227, cellH: 163, anchorX: 103, anchorY: 153, topH: 110, portraitCX: 112, count: 14, judgeHitX: 71, swingHitX: 67, frameDx: {}, swingDelay: 3, swingTrail: false, // 초상화는 얼굴 가운데(대기 칸 x 112)에 맞춤 · 0번의 내리치기 칸 옮김(frameDx)은 칸 번호가 달라 물려받지 않음 · 공격 2칸이라 내리치기(둘째 칸, 6틱)에 맞춰 불꽃만 (궤적은 그림에 있음)
@@ -9275,7 +9276,7 @@
     // 소환사 기본 공격 = 마법사 기본 공격 구슬(orb)·터짐(orb_hit)을 밝기에 따라 초록으로 다시 칠한 사본
     //   (어두운 곳 → 짙은 초록, 중간 → 연두, 밝은 곳 → 흰빛). 같은 크기 캔버스라 칸 좌표는 FX_SPRITE_SHEET 그대로 · 처음 쓸 때 한 번 만듦
     // 시크릿 레어 소환사(summoner_sr1, projFx)는 같은 구슬을 보라색으로 (어두운 곳 → 짙은 남보라, 중간 → 보라·연보라, 밝은 곳 → 흰빛)
-    function makeRecoloredOrbFx(ramp) {
+    function makeRecoloredOrbFx(ramp, keys = ['orb', 'orb_hit']) { // keys = 다시 칠할 FX_SPRITE_SHEET 칸 (나머지 칸은 비어 있음)
       return {
         anims: FX_SPRITE_SHEET.anims, canvas: null,
         get ready() { return !!this.img; },
@@ -9286,7 +9287,7 @@
           const c = document.createElement('canvas');
           c.width = sh.img.naturalWidth; c.height = sh.img.naturalHeight;
           const g = c.getContext('2d');
-          ['orb', 'orb_hit'].flatMap(k => sh.anims[k]).forEach(([x, y, w, h]) => {
+          keys.flatMap(k => sh.anims[k]).forEach(([x, y, w, h]) => {
             g.drawImage(sh.img, x, y, w, h, x, y, w, h);
             const d = g.getImageData(x, y, w, h), px = d.data;
             for (let i = 0; i < px.length; i += 4) {
@@ -9304,6 +9305,10 @@
     }
     const SUMMONER_ORB_FX = makeRecoloredOrbFx([[0, [6, 78, 59]], [0.3, [22, 163, 74]], [0.55, [74, 222, 128]], [0.8, [187, 247, 208]], [1, [240, 255, 244]]]);
     const SUMMONER_SR_ORB_FX = makeRecoloredOrbFx([[0, [46, 16, 101]], [0.3, [109, 40, 217]], [0.55, [167, 139, 250]], [0.8, [221, 214, 254]], [1, [250, 245, 255]]]);
+    // 시크릿 레어 궁수(은발 엘프) 화살: 기본 화살·독화살 그림을 밝기에 따라 달빛 얼음색으로 (어두운 곳 → 남청, 중간 → 얼음 파랑·은빛, 밝은 곳 → 흰빛. 나무 화살대가 어두워서 램프를 밝은 쪽으로 당김)
+    //   독화살은 촉 색이 따로 있어서 같은 램프로 칠하면 기본 화살과 똑같아짐 → 청록 바람색 램프 (허리천 색)
+    const ARCHER_SR_ARROW_FX = makeRecoloredOrbFx([[0, [30, 52, 92]], [0.25, [78, 128, 186]], [0.5, [150, 200, 236]], [0.75, [220, 242, 255]], [1, [255, 255, 255]]], ['arrow']);
+    const ARCHER_SR_POISON_FX = makeRecoloredOrbFx([[0, [14, 48, 56]], [0.3, [34, 128, 140]], [0.55, [90, 206, 200]], [0.8, [200, 250, 242]], [1, [255, 255, 255]]], ['poison_arrow']);
     const PROJECTILE_SPRITES = {
       summoner_orb:   { anim: 'orb', h: 18.2, sheet: SUMMONER_ORB_FX, hit: 'summoner_orb_hit' }, // 소환사 기본 공격 (마법사 구슬을 초록으로)
       summoner_sr_orb: { anim: 'orb', h: 18.2, sheet: SUMMONER_SR_ORB_FX, hit: 'summoner_sr_orb_hit' }, // 시크릿 레어 소환사 기본 공격 (보라)
@@ -9315,6 +9320,8 @@
       arrow:          { anim: 'arrow', h: 8 },
       golden_arrow:   { anim: 'arrow', h: 8 },
       poison_arrow:   { anim: 'poison_arrow', h: 8 },
+      archer_sr_arrow:  { anim: 'arrow', h: 8, sheet: ARCHER_SR_ARROW_FX, hit: 'archer_sr_hit' },          // 시크릿 레어 궁수 화살 (얼음 은빛, 맞으면 얼음 불티)
+      archer_sr_poison: { anim: 'poison_arrow', h: 8, sheet: ARCHER_SR_POISON_FX, hit: 'archer_sr_hit' }, // 시크릿 레어 궁수 독화살 (청록)
       glacial_spear:  { anim: 'spear', h: 40, sheet: LEVIATHAN_FX, hit: 'ice_hit' }, // 리바이어던 빙결의 창 (길이 약 110)
       frost_breath:   { anim: 'breath', h: 36, sheet: LEVIATHAN_FX, hit: 'ice_hit' }, // 리바이어던 기본 공격 얼음창 (길이 약 55)
       hydra_venom:    { anim: 'venom', h: 30, sheet: HYDRA_FX, hit: 'hydra_splash' },   // 히드라 독액 뿜기 (덩어리 지름 약 22, 꼬리까지 약 87)
@@ -9980,10 +9987,13 @@
     const STORM_SR_FROST = ['#1b3358', '#3577b8', '#7cc6f2', '#d4f0ff', '#ffffff'];
     const STORM_SR_WIND = ['#173f4a', '#2a8796', '#5fd0cc', '#c6fbf2', '#ffffff'];
     // 은발 엘프 [폭풍] 시전 이펙트 (pixelfx 작법: 격자 도트 · 밝은 머리/어두운 꼬리 2톤 · 더하기 빛 웅덩이 · 빠르게 터지고 디더로 사라짐)
-    //   back = true: 몸 뒤 (발밑 달빛 마법진) · false: 몸 앞
-    //   0 겨누기: 발밑 점선 마법진이 돌며 커지고, 얼음 빛알과 청록 바람알이 소용돌이치며 화살촉으로 빨려 듦
-    //   1 바람에 망토가 날림: 앞에서 불어오는 바람 줄기가 몸을 지나 뒤로 흐르고, 화살 앞에 돌풍 고리 셋이 돌며 화살촉이 맥박침
-    //   2 쏜 뒤: 화살촉 자리에서 앞으로 얼음 불티가 터지고 바람 줄기·마법진이 흩어짐
+    //   back = true: 몸 뒤 · false: 몸 앞. 몸을 감는 바람 띠는 앞쪽 반은 몸 앞, 뒤쪽 반은 몸 뒤에 그려 몸을 휘감는 것처럼
+    //   몸 뒤: 하늘로 솟는 달빛 기둥 · 발밑 마법진 (점선 고리 둘 + 도는 육망성 + 깜빡이는 룬 여덟 + 네 갈래 별)
+    //   몸 앞: 마법진에서 솟는 서리 빛알
+    //   0 겨누기: 마법진·기둥이 점점 커지고, 바람 띠 둘이 발밑부터 머리 위까지 차오르며, 얼음·청록 빛알이 소용돌이치며 화살촉으로 빨려 듦
+    //   1 바람에 망토가 날림: 모든 게 빨라지고, 화살촉에 얼음 소용돌이 구체 (기울어 도는 고리 둘 · 3틱마다 튀는 얼음 금 · 맥박치는 네 갈래 별),
+    //     화살 앞 돌풍 고리 셋, 앞에서 불어온 바람 줄기가 몸을 지나 뒤로 흐름
+    //   2 쏜 뒤: 화살촉에서 큰 얼음 불티 터짐 + 앞으로 밀려 나가는 세로 충격파 고리 둘, 바람 띠·마법진·기둥은 퍼지며 디더로 사라짐
     function drawStormSrCastFx(ctx, u, fi, ks, tick, back) {
       const F = ARCHER_STORM_FX.srCast, d = Math.max(2, Math.round(2.4 * ks)) || 2;
       const tx = (F.tips[fi][0] - F.anchorX) * ks, ty = (F.tips[fi][1] - F.anchorY) * ks;
@@ -9991,7 +10001,9 @@
       // 진행도: 겨누기 = 시전 막대 앞 2/3 동안 0→1 · 쏜 뒤 = 남은 자세 시간 0→1
       const p = fi === 0 && c ? Math.min(1, (c.total - c.left) / Math.max(1, c.total * 2 / 3)) : 1;
       const q = fi === 2 ? 1 - Math.max(0, u.skillAnim || 0) / Math.max(1, u.maxSkillAnim || ARCHER_STORM_AFTER) : 0;
-      const fade = fi === 2 ? Math.max(0, 1 - q * 1.3) : 1;
+      const fade = fi === 2 ? Math.max(0, 1 - q * 1.25) : 1;
+      const grow = fi === 0 ? pfxEaseOutQuart(p) : 1, spin = fi === 1 ? 1.8 : 1;
+      const FR = STORM_SR_FROST, WD = STORM_SR_WIND;
       ctx.save();
       ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
       const glow = (x, y, r, col, a) => {
@@ -10004,93 +10016,168 @@
         ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
       };
       const keep = (x, y, k) => PFX_BAYER[((Math.round(y / d) & 3) << 2) | (Math.round(x / d) & 3)] < k; // 디더로 흩어짐
+      const dot = (x, y, col, a = 1) => { if (a <= 0.02) return; ctx.globalAlpha = Math.min(1, a); ctx.fillStyle = col; pfxDot(ctx, x, y, d); };
+      const line = (x0, y0, x1, y1, col, a) => {
+        const n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / d));
+        for (let i = 0; i <= n; i++) { const x = x0 + (x1 - x0) * i / n, y = y0 + (y1 - y0) * i / n; if (keep(x, y, fade)) dot(x, y, col, a); }
+      };
+      const R = (24 + 34 * grow) * ks * (fi === 2 ? 1 + q * 0.4 : 1), SQ = 0.32; // 발밑 마법진 반지름 (바닥에 누운 원이라 세로 SQ)
+      // 몸을 감는 바람 띠 둘: 발밑에서 머리 위까지 나선. 앞쪽(sin > 0) 반은 몸 앞, 뒤쪽 반은 몸 뒤에
+      const ribbons = () => {
+        const top = fi === 0 ? 0.25 + 0.75 * grow : 1, RX = (26 + (fi === 2 ? q * 30 : 0)) * ks;
+        for (let k = 0; k < 2; k++) {
+          const n = 46;
+          for (let i = 0; i <= n; i++) {
+            const t = i / n; if (t > top) break;
+            const a = t * Math.PI * 4.2 - tick * 0.16 * spin + k * Math.PI, sa = Math.sin(a);
+            if ((sa > 0) === back) continue;
+            const x = Math.cos(a) * RX * (0.8 + 0.3 * t), y = -t * 104 * ks + sa * RX * 0.28;
+            if (!keep(x, y, fade)) continue;
+            const head = (top - t) * n; // 위쪽 끝(머리)이 가장 밝음
+            const ramp = k ? WD : FR;
+            dot(x, y, head < 2 ? ramp[4] : (head < 7 ? ramp[3] : ramp[2]), (back ? 0.55 : 0.95) * (0.5 + 0.5 * t));
+            if (i % 3 === 0) dot(x - sa * d, y + d, ramp[1], 0.6); // 띠 아래쪽 어두운 가장자리
+          }
+        }
+      };
       if (back) {
-        // 발밑 달빛 마법진: 점선 고리 둘이 반대로 돌고, 도는 밝은 머리 넷이 꼬리를 끎. 바닥에 누운 원이라 세로 0.32
-        const R = (20 + 32 * (fi === 0 ? pfxEaseOutQuart(p) : 1)) * ks * (fi === 2 ? 1 + q * 0.25 : 1);
-        glow(0, 0, R * 1.1, '#7cc6f2', (fi === 1 ? 0.42 + 0.12 * Math.sin(tick * 0.5) : 0.3) * fade);
-        [[R, 0.06, 48, 4], [R * 0.66, -0.09, 32, 3]].forEach(([r, w, n, heads]) => {
-          if (r < 4) return;
+        // 하늘로 솟는 달빛 기둥: 몸 뒤 세로 빛 (가운데 밝은 심), 쏜 뒤엔 위로 빠지며 사라짐
+        const ph = 150 * ks * grow, pw = (18 + 6 * Math.sin(tick * 0.3)) * ks, a0 = (fi === 1 ? 0.5 : 0.32 * grow) * fade;
+        const lift = fi === 2 ? q * 40 * ks : 0;
+        if (a0 > 0.01 && ph > 1) {
+          ctx.globalCompositeOperation = 'lighter';
+          const g = ctx.createLinearGradient(0, -lift, 0, -ph - lift);
+          g.addColorStop(0, `rgba(124, 198, 242, ${a0})`); g.addColorStop(0.6, `rgba(124, 198, 242, ${a0 * 0.45})`); g.addColorStop(1, 'rgba(124, 198, 242, 0)');
+          ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(-pw, -ph - lift, pw * 2, ph);
+          const g2 = ctx.createLinearGradient(0, -lift, 0, -ph - lift);
+          g2.addColorStop(0, `rgba(230, 248, 255, ${a0 * 0.9})`); g2.addColorStop(1, 'rgba(230, 248, 255, 0)');
+          ctx.fillStyle = g2; ctx.fillRect(-pw * 0.3, -ph - lift, pw * 0.6, ph);
+          ctx.globalCompositeOperation = 'source-over';
+        }
+        glow(0, 0, R * 1.2, '#7cc6f2', (fi === 1 ? 0.5 + 0.15 * Math.sin(tick * 0.5) : 0.35 * grow) * fade);
+        // 점선 고리 둘: 바깥은 시계, 안쪽은 반대로 돌고 밝은 머리 넷·셋이 꼬리를 끎
+        [[R, 0.05, 56, 4], [R * 0.7, -0.08, 38, 3]].forEach(([r, w, n, heads]) => {
           for (let i = 0; i < n; i++) {
-            const a = i / n * Math.PI * 2 + tick * w, x = Math.cos(a) * r, y = Math.sin(a) * r * 0.32;
-            if (i % 5 === 4 || !keep(x, y, fade)) continue; // 점선: 다섯 칸마다 한 칸 빔
-            const h = ((i / n * heads) % 1 + 1) % 1; // 머리(0) → 꼬리(1)
-            ctx.globalAlpha = 0.9 * fade;
-            ctx.fillStyle = h < 0.12 ? STORM_SR_FROST[4] : (h < 0.45 ? STORM_SR_FROST[3] : STORM_SR_FROST[2]);
-            pfxDot(ctx, x, y, d);
+            const a = i / n * Math.PI * 2 + tick * w * spin, x = Math.cos(a) * r, y = Math.sin(a) * r * SQ;
+            if (i % 6 === 5 || !keep(x, y, fade)) continue;
+            const h = ((i / n * heads) % 1 + 1) % 1;
+            dot(x, y, h < 0.1 ? FR[4] : (h < 0.4 ? FR[3] : FR[2]), 0.95);
           }
         });
-        // 마법진 둘레 네 갈래 별 (달빛 룬): 가로·세로로 커졌다 작아짐
-        for (let k = 0; k < 4; k++) {
-          const a = k * Math.PI / 2 + tick * 0.06, x = Math.cos(a) * R, y = Math.sin(a) * R * 0.32;
-          const s = (1 + (Math.sin(tick * 0.4 + k * 1.7) > 0.3 ? 1 : 0)) * d;
+        // 도는 육망성 (삼각형 둘), 안쪽 고리에 꼭짓점
+        const hr = R * 0.7, hp = [];
+        for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 - tick * 0.03 * spin; hp.push([Math.cos(a) * hr, Math.sin(a) * hr * SQ]); }
+        for (let i = 0; i < 6; i++) { const [x0, y0] = hp[i], [x1, y1] = hp[(i + 2) % 6]; line(x0, y0, x1, y1, i % 2 ? WD[2] : FR[2], 0.7); }
+        // 룬 여덟: 두 고리 사이에서 차례로 깜빡이는 작은 마름모
+        for (let i = 0; i < 8; i++) {
+          const a = i * Math.PI / 4 + tick * 0.05 * spin, r = R * 0.85, x = Math.cos(a) * r, y = Math.sin(a) * r * SQ;
           if (!keep(x, y, fade)) continue;
-          ctx.globalAlpha = fade; ctx.fillStyle = STORM_SR_FROST[4];
-          pfxDot(ctx, x, y, d); pfxDot(ctx, x - s, y, d); pfxDot(ctx, x + s, y, d); pfxDot(ctx, x, y - s, d); pfxDot(ctx, x, y + s, d);
+          const on = ((Math.floor(tick / 4) + i) % 8) < 3, col = on ? FR[4] : WD[3];
+          dot(x, y - d, col); dot(x - d, y, col); dot(x + d, y, col); dot(x, y + d, col);
+          if (on) glow(x, y, 6 * ks, '#c6fbf2', 0.5 * fade);
         }
+        // 마법진 둘레 네 갈래 별: 커졌다 작아짐
+        for (let k = 0; k < 4; k++) {
+          const a = k * Math.PI / 2 + Math.PI / 4 + tick * 0.05 * spin, x = Math.cos(a) * R, y = Math.sin(a) * R * SQ;
+          const s = (1 + (Math.sin(tick * 0.4 + k * 1.7) > 0.2 ? 1 : 0)) * d;
+          if (!keep(x, y, fade)) continue;
+          dot(x, y, FR[4]); dot(x - s, y, FR[3]); dot(x + s, y, FR[3]); dot(x, y - s * 1.5, FR[3]); dot(x, y + s, FR[3]);
+        }
+        ribbons();
         ctx.restore();
         return;
       }
+      ribbons();
+      // 마법진에서 솟는 서리 빛알 (위로 갈수록 식어 어두워짐)
+      const motes = fi === 1 ? 18 : Math.round(6 + 10 * grow);
+      for (let i = 0; i < motes; i++) {
+        const f = (tick * (fi === 1 ? 0.03 : 0.018) + i / motes) % 1, a = i * 2.39996;
+        const x = Math.cos(a) * R * 0.9 + Math.sin(f * 9 + i) * 3 * ks, y = Math.sin(a) * R * SQ - f * 96 * ks - (fi === 2 ? q * 20 * ks : 0);
+        if (!keep(x, y, fade * (1 - f))) continue;
+        const ramp = i % 3 ? FR : WD;
+        dot(x, y, f < 0.3 ? ramp[4] : (f < 0.65 ? ramp[3] : ramp[2]), 1 - f * 0.6);
+        dot(x, y + d, ramp[1], 0.6 * (1 - f));
+      }
       if (fi === 0) {
-        // 화살촉으로 빨려 드는 빛알: 바깥에서 돌며 들어옴 (얼음 · 청록 바람 번갈아), 다 와 가면 흰 머리
-        glow(tx, ty, (6 + 12 * p) * ks, '#7cc6f2', 0.25 + 0.55 * p);
-        for (let i = 0; i < 14; i++) {
-          const f = (tick * 0.024 + i / 14) % 1, rr = (6 + 46 * (1 - f)) * ks;
-          const a = i * 2.39996 + f * 3.4, ca = Math.cos(a), sa = Math.sin(a) * 0.85;
-          const ramp = i % 2 ? STORM_SR_WIND : STORM_SR_FROST, hx = tx + ca * rr, hy = ty + sa * rr;
-          ctx.globalAlpha = Math.min(1, f * 4) * (0.6 + 0.4 * p);
-          ctx.fillStyle = ramp[f < 0.6 ? 2 : 3]; pfxDot(ctx, hx, hy, d);
-          ctx.fillStyle = ramp[1]; pfxDot(ctx, hx + ca * d * 1.4, hy + sa * d * 1.4, d); // 바깥쪽 어두운 꼬리
-          if (f > 0.75) { ctx.fillStyle = ramp[4]; pfxDot(ctx, hx - ca * d, hy - sa * d, d); }
+        // 화살촉으로 빨려 드는 빛알: 바깥에서 돌며 들어옴 (얼음 · 청록 번갈아), 다 와 가면 흰 머리
+        glow(tx, ty, (8 + 16 * p) * ks, '#7cc6f2', 0.3 + 0.6 * p);
+        for (let i = 0; i < 20; i++) {
+          const f = (tick * 0.026 + i / 20) % 1, rr = (6 + 60 * (1 - f)) * ks;
+          const a = i * 2.39996 + f * 3.6, ca = Math.cos(a), sa = Math.sin(a) * 0.85;
+          const ramp = i % 2 ? WD : FR, hx = tx + ca * rr, hy = ty + sa * rr;
+          const al = Math.min(1, f * 4) * (0.55 + 0.45 * p);
+          dot(hx, hy, ramp[f < 0.6 ? 2 : 3], al);
+          dot(hx + ca * d * 1.4, hy + sa * d * 1.4, ramp[1], al); // 바깥쪽 어두운 꼬리
+          if (f > 0.7) dot(hx - ca * d, hy - sa * d, ramp[4], al);
         }
+        const s = Math.round(1 + 2 * p) * d; // 화살촉에 맺히는 별
+        for (let k = -s; k <= s; k += d) { dot(tx + k, ty, FR[4], 0.6 + 0.4 * p); dot(tx, ty + k, FR[3], 0.6 + 0.4 * p); }
       } else if (fi === 1) {
         // 앞에서 불어오는 바람 줄기: 앞(오른쪽) → 뒤로 흐름. 밝은 머리가 뒤쪽 끝, 앞쪽은 어두운 꼬리
         const rnd = pfxRng(seed);
-        for (let i = 0; i < 7; i++) {
-          const y0 = (-8 - rnd() * 80) * ks, len = (18 + rnd() * 22) * ks, sp = 1.6 + rnd() * 1.2, off = rnd();
-          const f = (tick * 0.03 * sp + off) % 1, hx = (60 - f * 130) * ks, wav = Math.sin(f * 6 + i) * 3 * ks;
-          const n = Math.max(2, Math.round(len / d));
+        for (let i = 0; i < 10; i++) {
+          const y0 = (-6 - rnd() * 96) * ks, len = (22 + rnd() * 26) * ks, sp = 1.8 + rnd() * 1.4, off = rnd();
+          const f = (tick * 0.03 * sp + off) % 1, hx = (80 - f * 170) * ks, wav = Math.sin(f * 6 + i) * 3 * ks;
+          const n = Math.max(2, Math.round(len / d)), fa = Math.min(1, f * 5, (1 - f) * 4);
           for (let k = 0; k <= n; k++) {
             const x = hx + k * d, y = y0 + wav + Math.sin((x / ks) * 0.08 + i) * 2 * ks;
-            const fa = Math.min(1, f * 5, (1 - f) * 4);
-            if (!keep(x, y, fa)) continue;
-            ctx.globalAlpha = 0.85;
-            ctx.fillStyle = (i % 3 ? STORM_SR_WIND : STORM_SR_FROST)[k < 2 ? 4 : (k < n * 0.5 ? 3 : 2)];
-            pfxDot(ctx, x, y, d);
+            if (keep(x, y, fa)) dot(x, y, (i % 3 ? WD : FR)[k < 2 ? 4 : (k < n * 0.5 ? 3 : 2)], 0.85);
           }
         }
-        // 화살 앞 돌풍 고리 셋: 세로로 긴 점선 고리가 돌며(밝은 점이 위아래로 감김) 앞쪽일수록 작고 옅음
+        // 화살 앞 돌풍 고리 셋: 세로로 긴 점선 고리가 돌며 앞쪽일수록 작고 옅음
         for (let r = 0; r < 3; r++) {
-          const cx = tx + (6 + r * 11) * ks, ry = (13 - r * 3) * ks, rx = (3.2 - r * 0.6) * ks, n = 16;
+          const cx = tx + (10 + r * 13) * ks, ry = (17 - r * 4) * ks, rx = (4 - r * 0.7) * ks, n = 20;
           for (let i = 0; i < n; i++) {
-            const a = i / n * Math.PI * 2 + tick * 0.35 + r * 1.3, front = Math.cos(a) > 0;
-            const x = cx + Math.cos(a) * rx, y = ty + Math.sin(a) * ry;
-            ctx.globalAlpha = (front ? 1 : 0.55) * (1 - r * 0.22);
-            ctx.fillStyle = (front ? STORM_SR_FROST : STORM_SR_WIND)[front ? (i % 4 === 0 ? 4 : 3) : 2];
-            pfxDot(ctx, x, y, d);
+            const a = i / n * Math.PI * 2 + tick * 0.4 + r * 1.3, front = Math.cos(a) > 0;
+            dot(cx + Math.cos(a) * rx, ty + Math.sin(a) * ry, (front ? FR : WD)[front ? (i % 4 === 0 ? 4 : 3) : 2], (front ? 1 : 0.55) * (1 - r * 0.2));
           }
         }
-        // 화살촉: 맥박치는 빛 + 네 갈래 별
+        // 화살촉 얼음 소용돌이 구체: 큰 빛 + 기울어 도는 고리 둘 + 3틱마다 튀는 얼음 금 + 맥박치는 네 갈래 별
         const pulse = 0.5 + 0.5 * Math.sin(tick * 0.6);
-        glow(tx, ty, (16 + 4 * pulse) * ks, '#9be7ff', 0.8);
-        const s = (2 + Math.round(pulse * 2)) * d;
-        ctx.globalAlpha = 1; ctx.fillStyle = STORM_SR_FROST[4];
-        for (let k = -s; k <= s; k += d) { pfxDot(ctx, tx + k, ty, d); pfxDot(ctx, tx, ty + k * 0.7, d); }
-        ctx.fillStyle = STORM_SR_FROST[3];
-        pfxDot(ctx, tx + d, ty + d, d); pfxDot(ctx, tx - d, ty - d, d); pfxDot(ctx, tx + d, ty - d, d); pfxDot(ctx, tx - d, ty + d, d);
+        glow(tx, ty, (30 + 6 * pulse) * ks, '#7cc6f2', 0.75);
+        glow(tx, ty, (12 + 3 * pulse) * ks, '#ffffff', 0.7);
+        [[0.5, 1], [-0.5, -1.3]].forEach(([tilt, w]) => {
+          const n = 26, rx = 17 * ks, ry = 6 * ks, ct = Math.cos(tilt), st = Math.sin(tilt);
+          for (let i = 0; i < n; i++) {
+            const a = i / n * Math.PI * 2 + tick * 0.3 * w, ex = Math.cos(a) * rx, ey = Math.sin(a) * ry;
+            const h = ((i / n * 2 - tick * 0.05 * w) % 1 + 1) % 1;
+            dot(tx + ex * ct - ey * st, ty + ex * st + ey * ct, h < 0.15 ? FR[4] : (Math.sin(a) > 0 ? FR[3] : WD[2]), 0.9);
+          }
+        });
+        const crk = pfxRng(seed + Math.floor(tick / 3) * 7919);
+        for (let b = 0; b < 5; b++) {
+          let a = crk() * Math.PI * 2, x = tx, y = ty;
+          for (let s2 = 0; s2 < 4; s2++) {
+            const nx = x + Math.cos(a) * 6 * ks, ny = y + Math.sin(a) * 6 * ks;
+            line(x, y, nx, ny, s2 < 2 ? FR[4] : FR[2], 1 - s2 * 0.2);
+            x = nx; y = ny; a += (crk() - 0.5) * 1.4;
+          }
+        }
+        const s = (3 + Math.round(pulse * 2)) * d;
+        for (let k = -s; k <= s; k += d) { dot(tx + k, ty, FR[4]); dot(tx, ty + k * 0.8, FR[4]); }
+        dot(tx + d, ty + d, FR[3]); dot(tx - d, ty - d, FR[3]); dot(tx + d, ty - d, FR[3]); dot(tx - d, ty + d, FR[3]);
       } else {
-        // 쏜 뒤: 화살촉 자리에서 앞으로 얼음 불티 · 청록 바람 불티가 터짐 (빠르게 터지고 천천히 사라짐)
-        drawPixelBurst(ctx, tx + 4 * ks, ty, 40 * ks, q, STORM_SR_FROST, seed, { cone: 0, spread: 0.7, sparks: 9, coreK: 0.3 });
-        drawPixelBurst(ctx, tx + 4 * ks, ty, 34 * ks, q - 0.06, STORM_SR_WIND, seed + 101, { cone: 0, spread: 0.9, sparks: 6, noRing: true, noGlow: true, coreK: 0 });
+        // 쏜 뒤: 화살촉 자리에서 큰 얼음 불티 · 청록 바람 불티가 터짐 (빠르게 터지고 천천히 사라짐)
+        drawPixelBurst(ctx, tx + 4 * ks, ty, 64 * ks, q, FR, seed, { cone: 0, spread: 0.75, sparks: 14, coreK: 0.35 });
+        drawPixelBurst(ctx, tx + 4 * ks, ty, 52 * ks, q - 0.05, WD, seed + 101, { cone: 0, spread: 1.0, sparks: 10, noRing: true, noGlow: true, coreK: 0 });
+        // 앞으로 밀려 나가는 세로 충격파 고리 둘
+        for (let r = 0; r < 2; r++) {
+          const e = Math.min(1, Math.max(0, q * 1.4 - r * 0.25));
+          if (e <= 0 || e >= 1) continue;
+          const cx = tx + (6 + e * 70) * ks, ry = (10 + e * 30) * ks, rx = ry * 0.32, n = 28;
+          for (let i = 0; i < n; i++) {
+            const a = i / n * Math.PI * 2, x = cx + Math.cos(a) * rx, y = ty + Math.sin(a) * ry;
+            if (keep(x, y, 1 - e)) dot(x, y, Math.cos(a) > 0 ? FR[4] : FR[2], 1 - e * 0.5);
+          }
+        }
         // 몸을 지나 뒤로 흩어지는 바람 줄기 (디더로 사라짐)
         const rnd = pfxRng(seed + 7);
-        for (let i = 0; i < 5; i++) {
-          const y0 = (-14 - rnd() * 70) * ks, len = (14 + rnd() * 16) * ks, hx = (10 - rnd() * 30 - q * 50) * ks;
+        for (let i = 0; i < 7; i++) {
+          const y0 = (-14 - rnd() * 80) * ks, len = (16 + rnd() * 20) * ks, hx = (10 - rnd() * 30 - q * 60) * ks;
           const n = Math.max(2, Math.round(len / d));
           for (let k = 0; k <= n; k++) {
             const x = hx - k * d, y = y0 + Math.sin(k * 0.5 + i) * 1.5 * ks;
-            if (!keep(x, y, fade * (1 - k / (n + 1)))) continue;
-            ctx.globalAlpha = 0.8; ctx.fillStyle = STORM_SR_WIND[k < 2 ? 3 : 2];
-            pfxDot(ctx, x, y, d);
+            if (keep(x, y, fade * (1 - k / (n + 1)))) dot(x, y, WD[k < 2 ? 3 : 2], 0.8);
           }
         }
       }
@@ -18553,7 +18640,7 @@
         if (u.job === 'paladin' && !u.monsterType) paladinSwingFx(u); // 망치 궤적 + 땅 불꽃
       } else if (u.job === 'archer') {
         u.mana = Math.min(u.maxMana, u.mana + 18);
-        directional('arrow', u.atk);
+        directional('arrow', u.atk, { spr: unitProjFx(u, 'arrow') }); // 시크릿 레어 궁수 = 얼음 화살
       } else if (u.job === 'pyro') {
         u.mana = Math.min(u.maxMana, u.mana + 18);
         pyroManualBasic(u, Math.atan2((aimY - 12) - oy, aimX - ox), ox, oy);
@@ -21852,6 +21939,7 @@
     const ZONE_STYLES = {
       arrow_rain:  { color: '#ca8a04', fill: 'rgba(234, 179, 8, 0.22)', icon: '🌧️' },
       merc_arrow_rain: { color: '#ca8a04', fill: 'rgba(234, 179, 8, 0.22)', icon: '🌧️' }, // 용병 궁수 화살비: 금빛 빛줄기 (drawLightRainZone)
+      merc_arrow_rain_sr: { color: '#3577b8', fill: 'rgba(124, 198, 242, 0.22)', icon: '🌧️' }, // 시크릿 레어 궁수(은발 엘프) 화살비: 달빛 얼음 빛줄기
       poison_boom: { color: '#16a34a', fill: 'rgba(34, 197, 94, 0.22)', icon: '☠️' },
       mage_poison_boom: { color: '#16a34a', fill: 'rgba(34, 197, 94, 0.22)', icon: '☠️' },  // 용병 마법사 포이즌 붐: 끓는 도트 독 웅덩이 (drawPoisonPool)
       leviathan_arrow_rain: { color: '#0ea5e9', fill: 'rgba(56, 189, 248, 0.22)', icon: '🧊' }, // 리바이어던 우박 폭풍
@@ -21918,14 +22006,15 @@
 
     // 용병 궁수 화살비 (pixelfx 작법): 금빛 빛줄기가 비스듬히 내리꽂히고(하얀 머리 → 연노랑 → 금 → 진금 꼬리, 빛 번짐),
     //   꽂히는 순간 빛이 확 터졌다 줄며 금빛 도트가 위로 튐. 줄기마다 주기를 엇갈려 계속 내리는 느낌 · 그림 시트 없음
+    //   시크릿 레어 궁수(merc_arrow_rain_sr)는 같은 모양에 달빛 얼음색 (얼음 파랑 꼬리 → 하늘 → 흰 머리)
     function drawLightRainZone(ctx, z) {
-      const c = 2, PERIOD = 42, COUNT = 16, DROP_H = 70, DROP_X = 14, FALL = 0.4;
-      const R = ['#f0a92a', '#ffd84a', '#fff4b0', '#ffffff'];
+      const c = 2, PERIOD = 42, COUNT = 16, DROP_H = 70, DROP_X = 14, FALL = 0.4, sr = z.kind === 'merc_arrow_rain_sr';
+      const R = sr ? ['#3577b8', '#7cc6f2', '#d4f0ff', '#ffffff'] : ['#f0a92a', '#ffd84a', '#fff4b0', '#ffffff'];
       const base = ctx.globalAlpha, ang = Math.atan2(DROP_H, DROP_X);
       const dot = (x, y, col, a = 1) => { ctx.globalAlpha = base * a; ctx.fillStyle = col; ctx.fillRect(Math.round(x / c) * c - c / 2, Math.round(y / c) * c - c / 2, c, c); };
       const glow = (x, y, r, a) => {
         ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = base * a;
-        const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, '#ffd84acc'); g.addColorStop(1, '#ffd84a00');
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r); const gc = sr ? '#7cc6f2' : '#ffd84a'; g.addColorStop(0, gc + 'cc'); g.addColorStop(1, gc + '00');
         ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.restore();
       };
       for (let k = 0; k < COUNT; k++) {
@@ -22030,7 +22119,7 @@
           if (CHAOS_FX.ready) drawChaosMeteorZone(ctx, z);
         } else if (z.kind === 'hydra_arrow_rain') {
           if (HYDRA_FX.ready) drawAcidRainZone(ctx, z);
-        } else if (z.kind === 'merc_arrow_rain') {
+        } else if (z.kind === 'merc_arrow_rain' || z.kind === 'merc_arrow_rain_sr') {
           drawLightRainZone(ctx, z);
         } else if (z.kind === 'arrow_rain' && FX_SPRITE_SHEET.ready) {
           // 작게 줄인 화살 그림이 위에서 비스듬히 떨어져 꽂힌 뒤 사라짐 (화살마다 주기를 엇갈려 계속 내리는 느낌)
@@ -22419,7 +22508,7 @@
         // 자동 전투(AI)는 사거리 안에서 적이 가장 많이 모인 자리에 떨굼
         if (!aimPt) target = bestAoePoint(unit, enemies, unit.range + 60, A * 1, target) || target;
         // 용병 궁수 = 금빛 빛줄기 화살비 (merc_arrow_rain, 2026-11-09 사용자 선택 C안) · 몬스터는 예전 화살 그림 (리바이어던 = 우박 장판 등)
-        const rainKind = unitFxSpr(unit, 'arrow_rain') === 'arrow_rain' && !unit.monsterType && !unit.spiritElem ? 'merc_arrow_rain' : unitFxSpr(unit, 'arrow_rain');
+        const rainKind = unitFxSpr(unit, 'arrow_rain') === 'arrow_rain' && !unit.monsterType && !unit.spiritElem ? (archerStormSr(unit.skinVariant) && unit.job === 'archer' ? 'merc_arrow_rain_sr' : 'merc_arrow_rain') : unitFxSpr(unit, 'arrow_rain'); // 시크릿 레어 궁수 = 얼음 빛줄기
         spawnZone(rainKind, unit, target.x, target.y, A * 1, 300, 20, unit.atk * 0.3, 'slow', SLOW_TICKS.arrow_rain); // 안에 있으면 슬로우
         playCombatSfx('arrow');
         addBattleLog(`🌧️ [궁수] ${unit.name}의 화살비!`);
@@ -31873,7 +31962,7 @@
 
         } else if (ef.type === 'arrow_hit') {
           // 그림(spr) 없는 적중: 날아온 반대쪽으로 튀는 금빛 불티 + 흰 섬광 (pixelfx 작법)
-          drawPixelBurst(ctx, ef.x, ef.y, 30, progress, PFX_RAMPS.arrow_hit, pfxSeedOf(ef),
+          drawPixelBurst(ctx, ef.x, ef.y, 30, progress, ef.spr === 'archer_sr_hit' ? STORM_SR_FROST : PFX_RAMPS.arrow_hit, pfxSeedOf(ef), // 시크릿 레어 궁수 = 얼음 불티
             { cone: (ef.angle ?? 0) + Math.PI, spread: 1.1, sparks: 10, noRing: true, coreK: 0.3, glow: 0.6 });
         }
 
@@ -44406,7 +44495,7 @@
       const { x: ox, y: oy } = aimShotOrigin(u, P.x, P.y, aimAngle); // manualBasicAttack과 같은 자리
       let p;
       if (u.job === 'archer') {
-        p = { projType: 'arrow', isDirectional: true, angle: aimAngle, x: ox, y: oy, speed: 4.6, maxTravel: u.range * 1.7 + 80, trail: [] };
+        p = { projType: 'arrow', spr: unitProjFx(u, 'arrow'), isDirectional: true, angle: aimAngle, x: ox, y: oy, speed: 4.6, maxTravel: u.range * 1.7 + 80, trail: [] };
       } else {
         const color = u.job === 'frost' ? '#38bdf8' : (u.job === 'curse' ? '#a855f7' : (u.job === 'bard' ? '#7dd3fc' : (u.job === 'summoner' ? SUMMONER_ORB_COLOR : '#7c3aed')));
         const spr = u.job === 'frost' ? (unitProjFx(u, 'magic_orb') || 'troll_frost') : (u.job === 'curse' ? 'curse_flame' : (u.job === 'bard' ? 'bard_bubble' : (u.job === 'summoner' ? (unitProjFx(u, 'magic_orb') || 'summoner_orb') : (u.job === 'mage' ? mageOrbSpr(u) : undefined))));

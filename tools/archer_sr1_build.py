@@ -25,24 +25,25 @@ IDLE_H = 96            # 대기 키 (머리끝~발). 포니테일이 없어 arch
 IDLE_HEAD = (125, 45, 182, 100)   # 첫 장 대기 칸 머리 (머리띠·얼굴·앞머리)
 # (칸 이름, 샘플, 상자 또는 None, 남길 덩어리 'one' | 최소 크기, {옵션})
 #   옵션: erase = 지울 상자들 (샘플 좌표) · scale = 다른 칸 배율을 같이 씀 · flip · lift = 발밑 띄우기 · foot = 기준점 x 비율
+#         fix = 머리로 찾은 배율에 곱함 (2026-11-09 사용자 요청 '모션 샘플별로 크기와 비율 맞춰'): 샘플마다 다리·몸 비율이 달라
+#           머리만 맞추면 걷기가 대기보다 7% 작아 보여 ×1.05 (머리는 조금 커짐, 키와 머리의 가운데), 시전 3칸은 몸을 앞으로 돌려 커 보여 ×0.93
 FRAMES = [
     ('idle', '1_idle_walk_src.png', (66, 12, 256, 240), 'one', {}),
-    ('walk0', '1_idle_walk_src.png', (70, 240, 247, 449), 'one', {}),
-    ('walk1', '1_idle_walk_src.png', (247, 240, 414, 449), 'one', {}),
-    ('walk2', '1_idle_walk_src.png', (414, 240, 584, 449), 'one', {}),
-    ('walk3', '1_idle_walk_src.png', (584, 240, 753, 449), 'one', {}),
+    ('walk0', '1_idle_walk_src.png', (70, 240, 247, 449), 'one', {'fix': 1.05}),
+    ('walk1', '1_idle_walk_src.png', (247, 240, 414, 449), 'one', {'fix': 1.05}),
+    ('walk2', '1_idle_walk_src.png', (414, 240, 584, 449), 'one', {'fix': 1.05}),
+    ('walk3', '1_idle_walk_src.png', (584, 240, 753, 449), 'one', {'fix': 1.05}),
     ('atk0', '5_attack_draw_src.png', None, 'one', {}),
     ('atk1', '5_attack_draw_src.png', None, 'one', {}),
     ('hurt', '2_hurt_src.webp', None, 'one', {}),
-    ('down0', '8_fall_src.png', (2, 24, 183, 217), 'one', {'rel': 1.12}),   # 머리가 기울고 눈을 감아 못 찾음 → 눈으로 맞춘 배율
+    ('down0', '8_fall_src.png', (2, 24, 183, 217), 'one', {'rel': 1.02}),   # 머리가 기울고 눈을 감아 못 찾음 → 눈으로 맞춘 배율
     ('down1', '8_fall_src.png', (188, 24, 377, 217), 60, {'scale': 'down0', 'flip': True, 'foot': 0.5}),
-    ('rain', '3_rain_draw_src.webp', None, 60, {'erase': [(10, 120, 340, 195)], 'rel': 0.275}),   # 고개를 들어 머리를 작게 잡음(1.3배 크게 나옴) → 눈으로 맞춤
+    ('rain', '3_rain_draw_src.webp', None, 60, {'erase': [(10, 120, 340, 195)], 'rel': 0.29}),   # 고개를 들어 머리를 작게 잡음(1.3배 크게 나옴) → 눈으로 맞춤
     ('evade', '7_evasive_src.webp', None, 'one', {'lift': 8, 'foot': 0.42, 'fix': 0.92}),   # 머리를 찾은 배율로는 조금 커 보임
     ('rainEnd', '4_rain_release_src.webp', None, 'one', {'erase': [(10, 120, 340, 195)], 'scale': 'rain'}),
     ('atkEnd', '6_attack_release_src.webp', None, 'one', {}),
 ]
 # 히든 스킬 [폭풍] 시전 3칸: 0 겨누기 (시전 막대 앞 2/3) · 1 바람에 망토가 날림 (마지막 1/3) · 2 쏜 뒤 (발동 직후)
-#   머리를 찾은 배율보다 대기 칸 옆에서 조금 커 보여 ×0.93 (fix)
 #   이펙트는 그림에 없음 → 게임이 pixelfx 작법으로 겹쳐 그림 (index.html drawStormSrCastFx). 화살촉 자리를 출력함
 CAST = [
     ('aim', '9_hidden_shot_src.png', (0, 0, 180, 184), 'one', {'fix': 0.93}),
