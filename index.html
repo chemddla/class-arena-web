@@ -21737,12 +21737,9 @@
         ctx.beginPath();
         ctx.arc(z.x, z.y, z.r, 0, Math.PI * 2);
         ctx.fill();
-        if (z.kind === 'poison_boom' && FX_SPRITE_SHEET.ready) {
-          // 독 구름이 천천히 부풀었다 줄었다 하며 장판을 덮음
-          const cloud = FX_SPRITE_SHEET.anims.poison[3];
-          const pulse = 1 + Math.sin(sim.tickCount * 0.05) * 0.04;
-          ctx.globalAlpha = fade;
-          drawFxFrame(ctx, cloud, z.x, z.y, (z.r * 2 * 0.95 * pulse) / cloud[2], 0, 0.6);
+        if (z.kind === 'poison_boom') {
+          // 끓는 독 웅덩이 (도트, drawPoisonPool)
+          drawPoisonPool(ctx, z, (z.maxLife || z.life) - z.life, fade, sim.tickCount);
         }
         if (z.kind === 'hydra_poison_boom' && HYDRA_FX.ready) {
           ctx.globalAlpha = fade;
@@ -28608,6 +28605,97 @@
       ctx.restore();
     }
 
+    // 포이즌 붐 (2026-11-09, pixelfx 작법 도트, 그림 시트 없음): 사용자가 고른 후보 B(독가스 구름) + C(산성 튀김)
+    //   터짐: 섬광 → 독 방울이 위로 튀었다 떨어짐 + 독구름 덩어리가 부풀며 피어오르다 디더로 흩어짐 (보라 반점)
+    //   장판(6초): 바닥에 독 웅덩이가 번진 뒤 군데군데 거품이 올라와 터지고 옅은 독기가 피어오름
+    //   칸 크기 c는 범위에 비례 (보스 등장 연출처럼 큰 범위도 도트 수가 늘지 않게)
+    const PFX_TOXIC = ['#14290a', '#2f5d12', '#4d9a1a', '#9be33a', '#e4fbb0'];
+    const PFX_TOXIC_PUR = ['#5b21a8', '#9d5cf0', '#d3b5ff'];
+    function pfxToxicCell(r) { return Math.max(3, Math.round(r / 34)); }
+    function pfxToxicDisc(ctx, x, y, r, c, colOf, sy, keep) {
+      // 색마다 칸을 모아 한 번에 칠함 (칸마다 fillStyle을 바꾸면 느림)
+      const paths = new Map();
+      for (let gy = -r; gy <= r; gy += c) for (let gx = -r; gx <= r; gx += c) {
+        const q = Math.hypot(gx, gy / sy) / r;
+        if (q > 1 || (keep && !keep(gx, gy, q))) continue;
+        const col = colOf(q, gx, gy);
+        let path = paths.get(col);
+        if (!path) paths.set(col, path = new Path2D());
+        path.rect(Math.round((x + gx) / c) * c, Math.round((y + gy) / c) * c, c, c);
+      }
+      for (const [col, path] of paths) { ctx.fillStyle = col; ctx.fill(path); }
+    }
+    function drawPoisonBoomFx(ctx, x, y, r, p, seed) {
+      if (p >= 1) return;
+      const c = pfxToxicCell(r), T = PFX_TOXIC, rnd = pfxRng(seed);
+      const bay = (gx, gy, f) => PFX_BAYER[((Math.round(gy / c) & 3) << 2) | (Math.round(gx / c) & 3)] < f;
+      const dot = (px, py, col) => { ctx.fillStyle = col; ctx.fillRect(Math.round(px / c) * c, Math.round(py / c) * c, c, c); };
+      const ease = t => 1 - Math.pow(1 - t, 3);
+      ctx.save();
+      ctx.globalAlpha = 1;
+      // 섬광 (첫 12%)
+      if (p < 0.12) pfxToxicDisc(ctx, x, y - r * 0.12, r * (0.08 + 0.16 * (1 - p / 0.12)), c, q => (q < 0.45 ? '#ffffff' : T[4]), 1);
+      drawPixelBurst(ctx, x, y - r * 0.12, r * 0.7, Math.min(1, p * 2.2), T, seed, { noRing: true, sparks: 0 });
+      // 독구름 덩어리 (뒤쪽부터 그려 앞이 덮음)
+      const f = p < 0.55 ? 1 : 1 - (p - 0.55) / 0.45, g = ease(Math.min(1, p * 1.8)), rise = p * r * 0.28;
+      const puffs = [];
+      for (let i = 0; i < 9; i++) { const a = rnd() * Math.PI * 2, d = rnd() * 0.65; puffs.push([Math.cos(a) * d * r, Math.sin(a) * d * r * 0.4 - rnd() * r * 0.3, (0.19 + rnd() * 0.15) * r]); }
+      puffs.sort((a, b) => a[1] - b[1]);
+      for (const [px, py, pr] of puffs) {
+        const rr = pr * (0.35 + 0.65 * g);
+        pfxToxicDisc(ctx, x + px * g, y - r * 0.16 + py * g - rise, rr, c,
+          (q, gx, gy) => (gy < -rr * 0.35 && q < 0.8 ? T[3] : q > 0.85 ? T[1] : T[2]), 0.85, (gx, gy) => bay(gx + px, gy + py, f));
+      }
+      for (let i = 0; i < 10; i++) {
+        const a = rnd() * Math.PI * 2, d = rnd() * r * 0.75 * g;
+        if (bay(i * c, i * 2 * c, f)) dot(x + Math.cos(a) * d, y - r * 0.2 + Math.sin(a) * d * 0.5 - rise, PFX_TOXIC_PUR[i % 2 ? 1 : 2]);
+      }
+      // 독 방울: 위로 튀었다가 포물선으로 떨어져 웅덩이에 닿으면 사라짐
+      const t = p * 1.5;
+      if (t < 1) for (let i = 0; i < 18; i++) {
+        const a = -Math.PI / 2 + (rnd() * 2 - 1) * 1.2, v = 0.7 + rnd() * 0.6;
+        const bx = x + Math.cos(a) * r * 1.3 * v * t, by = y - r * 0.12 + Math.sin(a) * r * 2 * v * t + r * 2.2 * t * t; // 구름 위로 솟았다 떨어짐
+        if (by > y + c) continue;
+        dot(bx, by + c, T[0]); dot(bx + c, by + c, T[0]); // 2×2 방울: 아래 어두운 테로 구름 위에서도 보이게, 위는 밝게
+        dot(bx, by, T[3]); dot(bx + c, by, T[3]); dot(bx, by - c, T[4]); dot(bx + c, by - c, '#ffffff');
+      }
+      ctx.restore();
+    }
+    // 독 장판 웅덩이: 공격 범위(z.r) 원과 똑같은 동그라미. age = 생긴 뒤 지난 틱, fade = 사라질 때 0으로
+    function drawPoisonPool(ctx, z, age, fade, tick) {
+      const r = z.r, c = pfxToxicCell(r), T = PFX_TOXIC;
+      const grow = 1 - Math.pow(1 - Math.min(1, age / 18), 3), pr = r * grow;
+      if (pr < c) return;
+      const bay = (gx, gy, f) => PFX_BAYER[((Math.round(gy / c) & 3) << 2) | (Math.round(gx / c) & 3)] < f;
+      ctx.save();
+      ctx.globalAlpha = 0.85 * fade;
+      // 가장자리는 진하게, 안쪽은 디더로 성기게 (바닥이 비침), 일렁이는 밝은 물결 한 줄
+      const wave = (tick * 0.04) % 1;
+      pfxToxicDisc(ctx, z.x, z.y, pr, c, q => (q > 0.86 ? T[1] : Math.abs(q - wave) < 0.06 ? T[3] : T[2]), 1,
+        (gx, gy, q) => q > 0.86 || bay(gx, gy, 0.35 + 0.3 * q));
+      // 거품: 자리마다 주기가 달라 군데군데 부풀었다 터짐
+      ctx.globalAlpha = fade;
+      const rnd = pfxRng(((Math.round(z.x) * 73856093) ^ (Math.round(z.y) * 19349663)) >>> 0);
+      const n = Math.max(5, Math.round(r / 14));
+      for (let i = 0; i < n; i++) {
+        const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * pr * 0.78, per = 34 + Math.floor(rnd() * 30), off = Math.floor(rnd() * per);
+        const q = ((tick + off) % per) / 18;
+        if (q > 1) continue;
+        const bx = z.x + Math.cos(a) * d, by = z.y + Math.sin(a) * d, br = c * (0.7 + q * 1.6);
+        ctx.fillStyle = q > 0.75 ? T[3] : T[4];
+        for (let k = 0; k < 8; k++) { const t = k / 8 * Math.PI * 2; ctx.fillRect(Math.round((bx + Math.cos(t) * br) / c) * c, Math.round((by + Math.sin(t) * br * 0.7 - q * c) / c) * c, c, c); }
+        if (q > 0.85) { ctx.fillStyle = T[4]; ctx.fillRect(Math.round(bx / c) * c, Math.round((by - br - c * 2) / c) * c, c, c); } // 터진 물방울
+      }
+      // 옅은 독기: 웅덩이 위로 점이 천천히 피어오르며 사라짐
+      for (let i = 0; i < Math.max(4, Math.round(r / 20)); i++) {
+        const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * pr * 0.7, per = 60 + Math.floor(rnd() * 40), q = ((tick + Math.floor(rnd() * per)) % per) / per;
+        ctx.globalAlpha = fade * (1 - q) * 0.8;
+        ctx.fillStyle = i % 3 ? T[3] : PFX_TOXIC_PUR[1];
+        ctx.fillRect(Math.round((z.x + Math.cos(a) * d + Math.sin(q * 6 + i) * c) / c) * c, Math.round((z.y + Math.sin(a) * d - q * r * 0.3) / c) * c, c, c);
+      }
+      ctx.restore();
+    }
+
     // spr가 붙은 효과를 그림으로 그리면 true
     function drawSpriteEffect(ctx, ef, progress) {
       if (ef.spr === 'bard_bubble_hit' || ef.spr === 'bard_disso_hit') {
@@ -28724,6 +28812,11 @@
         drawFxFrame(ctx, hit, ef.tx, ef.ty - 12, (70 * (0.8 + 0.2 * Math.sin(progress * Math.PI))) / B.bolt_hit[0][2], 0, fadeOut, boltImg);
         return true;
       }
+      if (ef.spr === 'poison') {
+        // 포이즌 붐 터짐: 도트 독구름 + 독 방울 (drawPoisonBoomFx, 그림 시트 없음). 자리로 무늬를 정해 관전 화면에서도 같게
+        drawPoisonBoomFx(ctx, ef.x, ef.y, ef.r, progress, ((Math.round(ef.x) * 2654435761) ^ Math.round(ef.y * 97)) >>> 0);
+        return true;
+      }
       if (!FX_SPRITE_SHEET.ready) return false;
       const A = FX_SPRITE_SHEET.anims;
       if (ef.spr === 'summoner_orb_hit' || ef.spr === 'summoner_sr_orb_hit') {
@@ -28770,12 +28863,6 @@
           ctx.restore();
           const hit = A.bolt_hit[0];
           drawFxFrame(ctx, hit, ef.tx, ef.ty - 12, (74 * (0.8 + 0.2 * Math.sin(progress * Math.PI))) / hit[2], 0, fadeOut, boltImg);
-          return true;
-        }
-        case 'poison': {
-          // 독 구름이 실제 범위만큼 퍼짐
-          const fr = fxFrameAt(A.poison, progress, 0.7);
-          drawFxFrame(ctx, fr, ef.x, ef.y, (ef.r * 2 * 0.95) / A.poison[3][2], 0, fadeOut);
           return true;
         }
         case 'teleport': {
