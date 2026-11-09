@@ -6799,7 +6799,9 @@
         src: 'assets/sprites/merc/archer_0.webp?v=3', // ?v = 칸 배치가 바뀔 때 올림 (배포 그림 1시간 캐시)
         cellW: 214, cellH: 111, anchorX: 82, anchorY: 109, standH: 96, topH: 100, portraitCX: 76, count: 14,
         anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5, 6, 13], skill: [5, 6, 13], hurt: [7], death: [8, 9], rain: [10], rainEnd: [12], leap: [11] },
-        skillAnims: { arrow_rain: { anim: 'rainEnd', tpf: 30, dur: 30 }, evasive_shot: { anim: 'leap', tpf: 18, dur: 18 } }, // 회피기동 물러나기 = 14틱 (쏜 뒤 자세는 안 붙임)
+        skillAnims: { arrow_rain: { anim: 'rainEnd', tpf: 15, dur: 15 }, evasive_shot: { anim: 'leap', tpf: 18, dur: 18 } }, // 회피기동 물러나기 = 14틱 (쏜 뒤 자세는 안 붙임)
+        // 쏜 뒤 자세(13) 시간을 절반으로 (2026-11-09 사용자 요청): 기본 공격은 당김 12틱 + 꼬리 약 30 → 15틱, 다른 스킬은 당김 16틱 + 꼬리 56 → 28틱, 화살비 끝 자세 30 → 15틱
+        attackDur: 27, skillDur: 44,
         castFrames: { arrow_rain: 10 }
       }
     };
@@ -6928,11 +6930,12 @@
     };
     // 주술사 외형 1~5는 같은 그림의 색 변형 (1 진홍, 2 칠흑, 3 심야 남보라, 4 묵청, 5 뼈빛 회갈; 망토·바지·깃털·이펙트만 바꾸고 피부·가면·지팡이는 그대로): 칸·기준점·동작 구성은 curse_0과 같음 (tools/curse_variants_build.py)
     [1, 2, 3, 4, 5].forEach(v => { MERC_SPRITE_DEFS[`curse_${v}`] = { ...MERC_SPRITE_DEFS.curse_0, src: `assets/sprites/merc/curse_${v}.webp` }; });
-    // 궁수 외형 1 (파랑 머리·남색 옷), 2 (분홍 머리·진홍 옷), 3 (금발·남색 옷), 4 (보라 머리·회색 옷), 5 (은발·검붉은 옷): 칸·기준점·동작 구성은 archer_0과 같고 그림만 다름
-    //   외형 1~5·시크릿 레어 1·예전 학생 디자인은 2026-11-09 기본 외형 교체 전 그림이라 예전 칸 구성 (ARCHER_OLD_SHEET, 17칸)
+    // 궁수 외형 1~5는 기본 외형(2026-11-09 금발 궁수)의 색 변형 (1 파스텔, 2 짙은 숲, 3 어스름, 4 무채 은회, 5 그림자; 피부·눈 흰자는 그대로, 나머지 채도·명도만 바꿈):
+    //   칸·기준점·동작 구성은 archer_0과 같음 (tools/archer_variants_build.py)
+    //   시크릿 레어 1·예전 학생 디자인은 2026-11-09 기본 외형 교체 전 그림이라 예전 칸 구성 (ARCHER_OLD_SHEET, 17칸)
     const ARCHER_OLD_SHEET = { cellW: 120, cellH: 81, anchorX: 55, anchorY: 80, standH: 81, topH: 80, portraitCX: 51, count: 17,
-      anims: { idle: [0, 1], walk: [2, 3, 4, 5], attack: [6, 7, 8, 9], skill: [10, 11, 12], hurt: [13], death: [14, 15, 16] }, skillAnims: {}, castFrames: {} };
-    [1, 2, 3, 4, 5].forEach(v => { MERC_SPRITE_DEFS[`archer_${v}`] = { ...MERC_SPRITE_DEFS.archer_0, ...ARCHER_OLD_SHEET, src: `assets/sprites/merc/archer_${v}.webp` }; });
+      anims: { idle: [0, 1], walk: [2, 3, 4, 5], attack: [6, 7, 8, 9], skill: [10, 11, 12], hurt: [13], death: [14, 15, 16] }, skillAnims: {}, castFrames: {}, attackDur: undefined, skillDur: undefined }; // 새 기본 외형의 꼬리 자세 시간은 안 물려받음
+    [1, 2, 3, 4, 5].forEach(v => { MERC_SPRITE_DEFS[`archer_${v}`] = { ...MERC_SPRITE_DEFS.archer_0, src: `assets/sprites/merc/archer_${v}.webp` }; });
     // 성녀 외형 1 (연보라 머리·남색 옷), 2 (주황 머리·초록 옷), 3 (분홍 머리·빨강 옷), 4 (민트 머리·청록 옷), 5 (남보라 머리·보라 옷): 칸·기준점·동작 구성은 healer_0과 같고 그림만 다름
     [1, 2, 3, 4, 5].forEach(v => { MERC_SPRITE_DEFS[`healer_${v}`] = { ...MERC_SPRITE_DEFS.healer_0, src: `assets/sprites/merc/healer_${v}.webp` }; });
     // 음유시인 외형 0 (초록 베레모·류트, tools/bard_build.py): 칸 순서 = 대기, 걷기 4, 공격 1 (류트 튕기기 — 음표 구슬은 따로 날아감), 피격 1, 쓰러짐 3,
@@ -9948,9 +9951,9 @@
       img.src = `assets/sprites/fx/${k === 'arrow' ? 'storm_arrow' : `archer_storm_${k}`}.webp`;
       ARCHER_STORM_FX[k] = img;
     });
-    // 외형별 시전 그림(같은 칸 규격): 1~5번 외형 · 시크릿 레어 sr1(얼음 바람 — 전용 돌풍 화살·바람 포함). 키 = skinVariant
+    // 외형별 시전 그림(같은 칸 규격): 시크릿 레어 sr1(얼음 바람 — 전용 돌풍 화살·바람 포함). 키 = skinVariant. 외형 1~5는 아래 base 그림의 색 변형
     ARCHER_STORM_FX.casts = {};
-    [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5'], [SECRET_SKIN_BASE + 1, 'sr1']].forEach(([v, n]) => {
+    [[SECRET_SKIN_BASE + 1, 'sr1']].forEach(([v, n]) => {
       const img = new Image();
       img.onload = () => { img.ready = true; };
       img.src = `assets/sprites/fx/archer_storm_cast_${n}.webp`;
@@ -9965,10 +9968,15 @@
     const archerStormSr = v => (v || 0) === SECRET_SKIN_BASE + 1 ? ARCHER_STORM_FX.sr : null; // 시크릿 레어 전용 이펙트
     // 기본 외형(2026-11-09 금발 궁수)의 시전 그림 (tools/archer0_build.py, 흰·검은 배경 샘플 두 장을 비교해 배경을 지움, 3칸 · 바람·빛은 반투명): 0 캐스팅 (몸 둘레 바람·발밑 마법진)
     //   · 1 쏘기 직전 (바람 구체, 시전 막대 마지막 1/3) · 2 쏘고 난 뒤 (바람이 흩어짐, 쏜 뒤 ARCHER_STORM_AFTER틱). 몸 칸과 같은 배율이라 standH도 archer_0과 같음
-    const ARCHER_STORM_AFTER = 36;
-    ARCHER_STORM_FX.base = { cellW: 159, cellH: 168, anchorX: 77, anchorY: 127, standH: 96, img: new Image() };
-    ARCHER_STORM_FX.base.img.onload = () => { ARCHER_STORM_FX.base.img.ready = true; };
-    ARCHER_STORM_FX.base.img.src = 'assets/sprites/fx/archer_storm_cast_0.webp';
+    const ARCHER_STORM_AFTER = 18; // 쏘고 난 자세 36틱 → 절반 (2026-11-09 사용자 요청)
+    //   외형 1~5는 같은 칸의 색 변형 archer_storm_cast_1~5 (tools/archer_variants_build.py, 바람·빛은 그대로라 바람 고리·돌풍 화살도 기본 외형 것을 씀)
+    ARCHER_STORM_FX.base = { cellW: 159, cellH: 168, anchorX: 77, anchorY: 127, standH: 96, imgs: [] };
+    [0, 1, 2, 3, 4, 5].forEach(v => {
+      const img = ARCHER_STORM_FX.base.imgs[v] = new Image();
+      img.onload = () => { img.ready = true; };
+      img.src = `assets/sprites/fx/archer_storm_cast_${v}.webp`;
+    });
+    const archerStormBase = v => (v || 0) <= 5; // 기본 외형·외형 1~5 = 새 금발 궁수 시전 그림·연두 바람
     // 기본 외형용 바람 고리·돌풍 화살: 예전 청록 그림을 새 시전 그림의 밝은 연두로 옮긴 것 (tools/archer_storm_fx_recolor.py, 칸·크기는 예전과 같음)
     [['wind', 'archer_storm_wind_0'], ['arrow', 'storm_arrow_0']].forEach(([k, f]) => {
       const img = ARCHER_STORM_FX.base[k] = new Image();
@@ -22760,7 +22768,7 @@
           : (tgt ? lancerBestLine(unit, enemies.filter(e => !hiddenFrom(unit, e)), C * 12, HIDDEN_STORM_R, tgt).angle : (unit.facingAngle || 0));
         sniperFace(unit, angle);
         const ticks = Math.max(1, Math.round(distToArenaEdge(shot.x, shot.y, angle) / HIDDEN_STORM_SPEED));
-        sim.effects.push({ type: 'hidden_storm', x: shot.x, y: shot.y, angle, speed: HIDDEN_STORM_SPEED, r: HIDDEN_STORM_R, life: ticks, maxLife: ticks, sr: !!archerStormSr(unit.skinVariant), ...(!(unit.skinVariant || 0) ? { base: 1 } : {}) }); // base = 기본 외형 (연두 화살)
+        sim.effects.push({ type: 'hidden_storm', x: shot.x, y: shot.y, angle, speed: HIDDEN_STORM_SPEED, r: HIDDEN_STORM_R, life: ticks, maxLife: ticks, sr: !!archerStormSr(unit.skinVariant), ...(archerStormBase(unit.skinVariant) ? { base: 1 } : {}) }); // base = 기본 외형·외형 1~5 (연두 화살)
         unit.skillAnim = ARCHER_STORM_AFTER; unit.maxSkillAnim = ARCHER_STORM_AFTER; unit.attackAnim = 0; // 쏘고 난 자세(기본 외형 시전 그림 2칸)를 잠깐 → 바로 대기
         sim.hiddenFx.push({ kind: 'storm', owner: unit, x: shot.x, y: shot.y + 12, angle, left: ticks, dmg: unit.atk * 4.5, last: new Map() });
         playCombatSfx('arrow');
@@ -23337,7 +23345,7 @@
           if (c.key === 'storm') {
             // 폭풍: 모이는 원 대신, 시전 그림에서 뽑은 초록·청록 바람줄기와 잎이 몸 둘레에서 일렁이며 점점 커짐
             const srw = archerStormSr(u.skinVariant);
-            const bw = !(u.skinVariant || 0) && ARCHER_STORM_FX.base.wind.ready ? ARCHER_STORM_FX.base.wind : null; // 기본 외형은 시전 그림 색에 맞춘 연두 바람
+            const bw = archerStormBase(u.skinVariant) && ARCHER_STORM_FX.base.wind.ready ? ARCHER_STORM_FX.base.wind : null; // 기본 외형은 시전 그림 색에 맞춘 연두 바람
             const wind = srw ? srw.wind : (bw || ARCHER_STORM_FX.wind);
             if (wind.ready) {
               const W = ARCHER_STORM_FX.cellW, H = ARCHER_STORM_FX.cellH;
@@ -29965,15 +29973,16 @@
         ctx.shadowBlur = 7 + 5 * (0.5 + 0.5 * Math.sin(tick * 0.08));
       }
       // 궁수 히든 스킬 [폭풍] 시전: 외형 1~5·시크릿 레어는 바람을 두른 시전 그림으로, 그림이 없는 외형은 시전 자세 위에 바람 고리만 겹침
-      //   기본 외형은 ARCHER_STORM_FX.base: 캐스팅 → 시전 막대 마지막 1/3은 쏘기 직전 → 쏜 뒤(skillAnim 동안)는 쏘고 난 자세
+      //   기본 외형·외형 1~5는 ARCHER_STORM_FX.base: 캐스팅 → 시전 막대 마지막 1/3은 쏘기 직전 → 쏜 뒤(skillAnim 동안)는 쏘고 난 자세
       const stormArcher = u.alive && u.job === 'archer' && !u.monsterType;
-      const stormBase = stormArcher && !(u.skinVariant || 0) && ARCHER_STORM_FX.base.img.ready ? ARCHER_STORM_FX.base : null;
+      const stormBaseImg = stormArcher && archerStormBase(u.skinVariant) ? ARCHER_STORM_FX.base.imgs[u.skinVariant || 0] : null;
+      const stormBase = stormBaseImg && stormBaseImg.ready ? ARCHER_STORM_FX.base : null; // 외형 1~5도 같은 칸 (색 변형)
       const stormCasting = stormArcher && u.casting && u.casting.key === 'storm';
       if (stormBase && (stormCasting || (u.skillAnim > 0 && u.activeSkillType === 'storm'))) {
         const sb = stormBase, c = u.casting;
         const fi = stormCasting ? (c.left > c.total / 3 ? 0 : 1) : 2;
         const ks = spriteDrawH(u, sprite) / sb.standH;
-        drawSpriteFx(ctx, sb.img, fi * sb.cellW, 0, sb.cellW, sb.cellH, -sb.anchorX * ks, -sb.anchorY * ks, sb.cellW * ks, sb.cellH * ks);
+        drawSpriteFx(ctx, stormBaseImg, fi * sb.cellW, 0, sb.cellW, sb.cellH, -sb.anchorX * ks, -sb.anchorY * ks, sb.cellW * ks, sb.cellH * ks);
         ctx.restore();
         return;
       }

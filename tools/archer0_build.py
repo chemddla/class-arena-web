@@ -103,6 +103,41 @@ def load(box, one_blob, src=SRC):
     return rgba, foot
 
 
+def cleanup(p):
+    # 줄인 뒤 남은 흰 찌꺼기 지우기 (2026-11-09 사용자가 표시한 곳: 얼굴 왼쪽 귀걸이, 장갑과 활 사이 흰 틈, 망토 왼쪽 윤곽의 흰 점)
+    #   1 귀걸이: 얼굴(가장 큰 살색 덩어리) 왼쪽 끝 둘레, 얼굴 아래쪽 60% 높이의 작은 밝은 무채색 덩어리 → 둘레 머리카락 색으로 메움
+    #   2 갇힌 흰 배경: 얼굴 밖의 밝은 무채색 덩어리 4px 이상(평균이 거의 흰색) → 투명 (눈 흰자·빛점은 얼굴 안이라 남음)
+    #   3 윤곽의 흰 점: 투명한 곳에서 2px 안의 거의 흰 1~2px, 얼굴 가운데보다 왼쪽(화살촉·활 끝은 오른쪽이라 남음) → 둘레 색으로 메움
+    p = p.copy()
+    c = p[..., :3].astype(int); a = p[..., 3] > 0
+    light = a & (c.min(-1) > 150) & (c.max(-1) - c.min(-1) < 45)   # 귀걸이는 회색(가장 어두운 채널 155~170)이라 넉넉히
+    r, g, b = c[..., 0], c[..., 1], c[..., 2]
+    skin = a & (r > 200) & (g > 150) & (g < 230) & (b > 120) & (b < 215) & (r - b > 25) & (r - b < 90)
+    lab, n = ndi.label(skin)
+    if not n: return p
+    big = int(np.argmax(ndi.sum(skin, lab, range(1, n + 1)))) + 1
+    ys, xs = np.where(lab == big)
+    fx0, fx1, fy0, fy1 = xs.min(), xs.max(), ys.min(), ys.max()
+    face = np.zeros_like(a); face[max(0, fy0 - 2):fy1 + 3, max(0, fx0 - 1):fx1 + 2] = True
+    if fx1 - fx0 > (fy1 - fy0) * 1.6: return p   # 누운 칸 (얼굴이 옆으로) → 건드리지 않음
+    lab, n = ndi.label(light)
+    for i, sl in enumerate(ndi.find_objects(lab)):
+        m = lab == i + 1; sz = m.sum()
+        y0, y1, x0, x1 = sl[0].start, sl[0].stop, sl[1].start, sl[1].stop
+        cy = (y0 + y1) / 2
+        if sz <= 12 and x1 <= fx0 + 3 and x0 >= fx0 - 8 and fy0 + (fy1 - fy0) * 0.4 <= cy <= fy1 + 4:
+            ring = ndi.binary_dilation(m, iterations=2) & ~m & a & ~light
+            if ring.any(): p[m, :3] = np.median(p[ring, :3], axis=0)
+            continue
+        if sz >= 4 and c[m].min(-1).mean() > 195 and (c[m].max(-1) - c[m].min(-1)).mean() < 25 and not (m & face).any():
+            p[m] = 0; continue
+        edge = (ndi.binary_dilation(m, iterations=2) & (p[..., 3] < 200)).any()   # 반투명 테두리에 닿아도 윤곽
+        if sz <= 2 and edge and x1 <= (fx0 + fx1) / 2 and (c[m].min(-1) > 225).all():
+            ring = ndi.binary_dilation(m, iterations=1) & ~m & a & ~light
+            if ring.any(): p[m, :3] = np.median(p[ring, :3], axis=0)
+    return p
+
+
 def main():
     idle, _ = load(FRAMES[0][1], True)
     k = IDLE_H / idle.shape[0]
@@ -117,7 +152,7 @@ def main():
         kk = k * rel
         if name == 'down1': foot = 120   # 누운 칸: 엉덩이쯤(샘플 x)을 기준점으로, 활은 앞쪽에 떨어져 있음
         if name == 'evade': foot = rgba.shape[1] * 0.42   # 공중 자세: 몸 가운데쯤 (뒷발 끝이 아니라)
-        p = defringe(shrink(rgba, kk))
+        p = cleanup(defringe(shrink(rgba, kk)))
         if lift: p = np.concatenate([p, np.zeros((lift, p.shape[1], 4), np.uint8)])   # 아래에 빈 줄 → 기준점보다 위에 뜸
         pieces.append((name, p, foot * kk))
         print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} ×{kk:.3f} → {p.shape[1]}x{p.shape[0]}, 발 {foot * kk:.1f}')
