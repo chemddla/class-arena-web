@@ -230,7 +230,7 @@
     return {
       canvas: cv, canvases: [cv, lcv],
       // kind 이펙트를 (x, y)에 (판 기준 CSS px)
-      pop(kind, x, y, o) { if (still() && kind !== 'glint') return; size(); BURSTS[kind]?.(toPx(x), toPx(y), o); kick(); },
+      pop(kind, x, y, o) { if (still() && kind !== 'glint') return; size(); BURSTS[kind]?.(toPx(x), toPx(y), o || {}); kick(); },
       // 날림 효과 켜기/끄기. ground = 바닥 높이(px, 반딧불·불씨가 오르는 자리)
       ambient(kind, { ground = 0, rate } = {}) {
         emitters.length = 0;
