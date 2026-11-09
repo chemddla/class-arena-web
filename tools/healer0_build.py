@@ -55,6 +55,7 @@ BASE = [('idle', (36, 36, 190, 206), 'one'),
 GROUP_H = {'walk': 99, 'hurt': 87, 'down': 84}   # 이동(첫 칸)·피격·쓰러짐(첫 칸) 키
 BASE_MARK = (642, 901, 683, 942)   # ✦ 표식 (지움)
 SKILL_ROW = (62, 262)   # 검은 배경 장 윗줄 (y)
+OUTLINE = np.array([43.0, 41.0, 39.0])   # 대기 칸 바깥 윤곽선 평균 색
 SKILL_NAMES = ['ready', 'start', 'cast', 'fire', 'end']
 # 히든 스킬: (칸 이름, 흰 배경 상자, 검은 배경 상자) — 연출 칸 발밑의 회색 그림자 타원은 상자 밖으로 뺌
 HIDDEN = [('focus', (20, 95, 240, 299), (14, 455, 210, 636)),
@@ -254,14 +255,20 @@ def load_black_row():
         filled = ndi.binary_fill_holes(ndi.binary_closing(clab == bi, iterations=2))
         body = ndi.binary_fill_holes(filled | (mine & ndi.binary_dilation(filled, iterations=4)))
         # 채운 곳 중 새까만 덩어리 (지팡이와 몸 사이 배경)는 다시 빼냄
-        hole = body & (B.max(axis=2) <= 24)
+        #   진짜 배경은 거의 0 → 덩어리 평균이 아주 어두운 것만 (눈·눈썹처럼 어두운 남색은 남김)
+        v = B.max(axis=2)
+        hole = body & (v <= 24)
         hl, hn = ndi.label(hole)
-        body &= ~np.isin(hl, 1 + np.where(ndi.sum(hole, hl, range(1, hn + 1)) >= 6)[0])
-        # 바깥 테두리의 검은 배경 섞인 어두운 픽셀 (밝은 배경에서 검은 띠로 보임) 두 겹 지움
-        for _ in range(2):
-            rim = body & ndi.binary_dilation(~body) & (B.max(axis=2) < 110)
-            body &= ~rim
-        a = np.where(body, 1.0, np.where(mine & ~ndi.binary_dilation(body, iterations=2) | (mine & (B.max(axis=2) > 150)), B.max(axis=2) / 255, 0))
+        idx = np.arange(1, hn + 1)
+        hsz, hmean = ndi.sum(hole, hl, idx), ndi.mean(v, hl, idx)
+        body &= ~np.isin(hl, idx[(hsz >= 6) & (hmean < 6)])
+        # 바깥 테두리: 대기 칸처럼 어두운 윤곽선 한 겹 (검은 배경에 묻힌 윤곽선 픽셀을 지우지 않고 윤곽선 색으로 다짐)
+        rim = body & ndi.binary_dilation(~body) & (v < 110)
+        B = np.where((rim & (v < OUTLINE.max()))[..., None], OUTLINE, B)
+        a = np.where(body, 1.0, np.where(mine & ~ndi.binary_dilation(body, iterations=2) | (mine & (v > 150)), v / 255, 0))
+        # 지팡이 끝 금빛 십자처럼 진한 금빛은 대기 칸처럼 불투명 (흐린 빛무리는 밝기 알파 그대로)
+        solid_gold = mine & ~body & gold(B) & (v > 120)
+        a = np.where(solid_gold, np.maximum(a, np.clip((v - 60) / 90, 0, 1)), a)
         a = np.where(a < 0.08, 0, a)
         col = np.where(body[..., None], B, B / np.maximum(a, 1e-3)[..., None]).clip(0, 255)
         ys, xs = np.where(a > 0)
@@ -331,6 +338,22 @@ def load_pair(wbox, bbox, foot=None):
     return rgba, solid, fx, fy
 
 
+def add_outline(p, body):
+    # 검은 배경 장 칸을 대기 칸처럼: 몸(불투명) 바로 바깥 1px에 대기 칸 윤곽선 색, 몸 둘레 반투명 테두리는 지움
+    #   (반짝이·마법진 고리처럼 몸에서 떨어진 빛은 그대로)
+    h, w = p.shape[:2]
+    bm = np.array(Image.fromarray((body * 255).astype(np.uint8)).resize((w, h), Image.BILINEAR)) > 128
+    q = np.pad(p, ((1, 1), (1, 1), (0, 0))).astype(float); bm = np.pad(bm, 1)
+    op = bm & (q[..., 3] > 60)
+    op = ndi.binary_fill_holes(op) & (q[..., 3] > 0) | op
+    q[..., 3] = np.where(op, 255, q[..., 3])
+    ring = ndi.binary_dilation(op) & ~op
+    fringe = ndi.binary_dilation(op, iterations=2) & ~op & ~ring & (q[..., 3] < 160)
+    q[..., :3] = np.where(ring[..., None], OUTLINE, q[..., :3])
+    q[..., 3] = np.where(ring, 255, np.where(fringe, 0, q[..., 3]))
+    return q.clip(0, 255).astype(np.uint8)
+
+
 def pack(pieces, out, label):
     # pieces: (이름, rgba, 발 x, 발 y). 발 자리를 칸마다 같은 기준점에
     L = max(int(np.ceil(fx)) for _, _, fx, _ in pieces) + 3
@@ -373,11 +396,12 @@ def main():
     # 스킬 줄 (검은 배경): 준비 칸 얼굴로 배율
     row = load_black_row()
     # 검은 배경에서는 머리카락·손이 살색과 섞여 얼굴을 못 잡음 → 준비 칸(똑바로 선 자세) 키를 걷기 칸 키에 맞춤
-    kb = GROUP_H['walk'] / row[0][1].shape[0]
+    #   바깥에 윤곽선 1px을 두르므로 몸은 2px 작게 줄임 (윤곽선까지 걷기 키와 같게)
+    kb = (GROUP_H['walk'] - 2) / row[0][1].shape[0]
     print(f'  배율 검은 배경: 준비 칸 키 {row[0][1].shape[0]} → ×{kb:.3f}')
     for name, rgba, bd, fx, fy in row:
-        p = shrink_soft(rgba, bd, kb)
-        pieces.append((name, p, fx * kb, fy * kb))
+        p = add_outline(shrink_soft(rgba, bd, kb), bd)
+        pieces.append((name, p, fx * kb + 1, fy * kb + 2))   # 발 = 윤곽선 아래끝
         print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} ×{kb:.3f} → {p.shape[1]}x{p.shape[0]}')
     cell = pack(pieces, OUT, 'healer_0')
     try:
