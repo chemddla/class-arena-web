@@ -48200,10 +48200,11 @@
       const def = DUNGEONS[room.dungeonId];
       if (!def || !isDungeonOpenToday(room.dungeonId)) { showNotice('🔒 이 던전은 오늘 닫혀 있어요. 방을 닫고 오늘 열린 던전으로 새로 만들어 주세요.'); return; }
       const diff = dgNormDiff(room.diff);
-      // 넣어 둔 AI 자리 그대로 출발 (그 사이 방에 들어온 친구·최고 전투력을 넘게 된 용병·넘친 자리는 뺌)
+      // 넣어 둔 AI 자리 그대로 출발 (그 사이 방에 들어온 친구·넘친 자리만 뺌)
+      // - 전투력 한도는 [🤖 AI 넣기] 때만 봄: 출발 때 다시 보면 센 친구가 나가거나 방장이 약한 용병으로 바꾼 뒤
+      //   대기실에는 AI가 그대로 보이는데 전투에는 안 나왔음 (2026-11-09)
       const humans = new Set(raidFilledSlots(room).map(s => room[s + 'Id']));
-      const cap = rushPartyCap(room);
-      room.rushFill = rushFillKeep(room, f => !humans.has(f.id) && Number(f.power || 0) <= cap, Math.max(0, RUSH_MAX_PLAYERS - humans.size));
+      room.rushFill = rushFillKeep(room, f => !humans.has(f.id), Math.max(0, RUSH_MAX_PLAYERS - humans.size));
       const seats = [
         ...raidFilledSlots(room).map(s => ({ merc: (room[s + 'Mercs'] || [])[0], power: Number(room[s + 'Power']) || 0 })),
         ...rushFillOf(room).map(f => ({ merc: f.merc, power: Number(f.power) || 0 }))
@@ -49202,10 +49203,11 @@
       if (room.hostId !== me.id) { showNotice('⚠️ 방장만 출발할 수 있어요!'); return; }
       if (!raidRealGuestSlots(room).every(s => room[s + 'Ready'])) { showNotice('⚠️ 아직 [✋ 준비완료]를 누르지 않은 친구가 있어요!'); return; }
       if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
-      // 넣어 둔 AI 자리 그대로 출발 (그 사이 방에 들어온 친구·최고 전투력을 넘게 된 용병·넘친 자리는 뺌)
+      // 넣어 둔 AI 자리 그대로 출발 (그 사이 방에 들어온 친구·넘친 자리만 뺌)
+      // - 전투력 한도는 [🤖 AI 넣기] 때만 봄: 출발 때 다시 보면 센 친구가 나가거나 방장이 약한 용병으로 바꾼 뒤
+      //   대기실에는 AI가 그대로 보이는데 전투에는 안 나왔음 (2026-11-09)
       const humans = new Set(raidFilledSlots(room).map(s => room[s + 'Id']));
-      const cap = rushPartyCap(room);
-      room.rushFill = rushFillKeep(room, f => !humans.has(f.id) && Number(f.power || 0) <= cap, Math.max(0, RUSH_MAX_PLAYERS - humans.size));
+      room.rushFill = rushFillKeep(room, f => !humans.has(f.id), Math.max(0, RUSH_MAX_PLAYERS - humans.size));
       const mercs = [...raidFilledSlots(room).flatMap(s => room[s + 'Mercs'] || []), ...rushFillOf(room).map(f => f.merc)];
       room.rushStartFloor = rushStartFloorOf(mercs);
       room.status = 'in_battle';
