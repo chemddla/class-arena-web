@@ -202,8 +202,8 @@
   const onPath = (x, z, m) => Math.abs(x) < m || STREETS.some(st => Math.abs(z - st.z) < m && Math.abs(x) < st.len / 2 + m);
   const strip = (x, z, w, d, c, y) => { const m = floor(mesh(new THREE.PlaneGeometry(w, d, Math.max(1, Math.round(w)), Math.max(1, Math.round(d))), c)); m.rotation.x = -Math.PI / 2; scene.add(at(m, x, y, z)); return m; };
   const sandMat = (rx, ry) => { const t = sandTex.clone(); t.needsUpdate = true; t.repeat.set(rx, ry); return toonMat({ map: t }); };
-  strip(0, 7, 2.46, 50.26, '#d6bd7e', 0.022); STREETS.forEach((st, i) => strip(0, st.z, st.len + 0.26, 2.46, '#d6bd7e', 0.023 + i * 0.0005)); // 길 테두리
-  strip(0, 7, 2.2, 50, sandMat(1, 23), 0.03); STREETS.forEach((st, i) => strip(0, st.z, st.len, 2.2, sandMat(Math.round(st.len / 2.2), 1), 0.031 + i * 0.0005));
+  strip(0, 6, 2.46, 52.26, '#d6bd7e', 0.022); STREETS.forEach((st, i) => strip(0, st.z, st.len + 0.26, 2.46, '#d6bd7e', 0.023 + i * 0.0005)); // 길 테두리
+  strip(0, 6, 2.2, 52, sandMat(1, 24), 0.03); STREETS.forEach((st, i) => strip(0, st.z, st.len, 2.2, sandMat(Math.round(st.len / 2.2), 1), 0.031 + i * 0.0005));
   { const rim = floor(mesh(new THREE.RingGeometry(0, 4.55, 48, 5), '#d6bd7e')); rim.rotation.x = -Math.PI / 2; scene.add(at(rim, 0, 0.038, 0)); }
   const plaza = floor(mesh(new THREE.RingGeometry(0, 4.4, 48, 5), '#f5e7bd')); plaza.rotation.x = -Math.PI / 2; scene.add(at(plaza, 0, 0.045, 0));
   const RIVER = { z0: -9.3, z1: -6.3, bridge: 1.15 };
@@ -269,6 +269,30 @@
     scene.add(at(g, x, 0, z)); solid(x - 0.75, z, 1.55); solid(x + 0.75, z, 1.55); solid(x + 2.1, z + 1.5, 0.3);
   });
 
+  // ── 마을사무소: 큰길 북쪽 끝, 광장을 바라봄
+  { const g = new THREE.Group(), OZ = -23;
+    g.add(at(mesh(new THREE.BoxGeometry(7, 0.3, 4.2), '#d9cfbf'), 0, 0.15, 0));
+    g.add(at(mesh(new THREE.BoxGeometry(6.4, 3, 3.6), texMat(wallTex, '#fff6e6')), 0, 1.8, 0));
+    const rf = at(mesh(new THREE.ConeGeometry(4.9, 1.9, 4), texMat(roofTex, '#3f7fc8')), 0, 4.25, 0); rf.rotation.y = Math.PI / 4; rf.scale.z = 0.62; g.add(rf);
+    g.add(at(mesh(new THREE.BoxGeometry(6.7, 0.16, 3.9), '#3f7fc8'), 0, 3.32, 0));
+    g.add(at(mesh(new THREE.BoxGeometry(1.1, 1.5, 1.1), '#fff6e6'), 0, 5.1, 0)); // 시계탑
+    const cap = at(mesh(new THREE.ConeGeometry(0.95, 0.9, 4), '#3f7fc8'), 0, 6.3, 0); cap.rotation.y = Math.PI / 4; g.add(cap);
+    const clock = at(mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.06, 24), '#ffffff'), 0, 5.15, 0.56); clock.rotation.x = Math.PI / 2; g.add(clock);
+    g.add(at(mesh(new THREE.BoxGeometry(0.05, 0.28, 0.04), '#334155'), 0, 5.25, 0.6)); g.add(at(mesh(new THREE.BoxGeometry(0.22, 0.05, 0.04), '#334155'), 0.09, 5.15, 0.6));
+    const sc = document.createElement('canvas'); sc.width = 256; sc.height = 64; const sg = sc.getContext('2d');
+    sg.fillStyle = '#2f5f9e'; sg.fillRect(0, 0, 256, 64); sg.fillStyle = '#fff'; sg.font = "800 36px 'Malgun Gothic', sans-serif"; sg.textAlign = 'center'; sg.textBaseline = 'middle'; sg.fillText('마을사무소', 128, 34);
+    g.add(at(noShadow(mesh(new THREE.PlaneGeometry(2.6, 0.65), flat(0xffffff, { map: new THREE.CanvasTexture(sc) }))), 0, 2.85, 1.82));
+    [-0.36, 0.36].forEach(x => g.add(at(mesh(new THREE.BoxGeometry(0.68, 1.6, 0.1), '#a06a3c'), x, 1.1, 1.81)));
+    [-0.12, 0.12].forEach(x => g.add(at(mesh(new THREE.SphereGeometry(0.06, 8, 6), '#f2c53a'), x, 1.1, 1.88)));
+    [-1.15, 1.15].forEach(x => g.add(at(mesh(new THREE.CylinderGeometry(0.11, 0.11, 2.2, 10), '#ffffff'), x, 1.4, 2.15))); // 현관 기둥과 차양
+    g.add(at(mesh(new THREE.BoxGeometry(2.8, 0.14, 0.9), '#3f7fc8'), 0, 2.5, 2.1));
+    g.add(at(mesh(new THREE.BoxGeometry(2.6, 0.12, 0.9), '#d3c9ba'), 0, 0.36, 2.15));
+    [-2.25, -1.55, 1.55, 2.25].forEach(x => { g.add(at(mesh(new THREE.BoxGeometry(0.62, 0.8, 0.06), '#ffffff'), x, 1.35, 1.8)); g.add(at(noShadow(mesh(new THREE.BoxGeometry(0.48, 0.66, 0.08), winMat)), x, 1.35, 1.81)); g.add(halo(1.6, x, 1.35, 2)); });
+    [-1.9, 0, 1.9].forEach(x => { if (x) { g.add(at(mesh(new THREE.BoxGeometry(0.9, 0.62, 0.06), '#ffffff'), x, 2.75, 1.8)); g.add(at(noShadow(mesh(new THREE.BoxGeometry(0.76, 0.48, 0.08), winMat)), x, 2.75, 1.81)); } });
+    g.add(at(mesh(new THREE.CylinderGeometry(0.05, 0.05, 4.2, 8), '#cbd5e1'), 3.9, 2.1, 1.4)); // 깃발
+    g.add(at(mesh(new THREE.BoxGeometry(1, 0.62, 0.03), '#ffd24a'), 4.42, 3.82, 1.4));
+    scene.add(at(g, 0, 0, OZ)); [-2.2, 0, 2.2].forEach(x => solid(x, OZ, 1.9)); solid(3.9, OZ + 1.4, 0.2);
+  }
   // ── 소품: 통나무 탁자, 줄무늬 의자, 그네
   const stump = (x, z, r, h) => { const g = new THREE.Group(); g.add(at(mesh(new THREE.CylinderGeometry(r, r * 1.08, h, 40), '#b9824e'), 0, h / 2, 0)); g.add(at(mesh(new THREE.CylinderGeometry(r * 0.93, r * 0.93, 0.03, 40), '#ecc28c'), 0, h + 0.012, 0)); g.add(at(mesh(new THREE.TorusGeometry(r * 0.5, 0.018, 4, 18), '#d7a66c'), 0, h + 0.03, 0)); g.children[2].rotation.x = Math.PI / 2; scene.add(at(g, x, 0, z)); solid(x, z, r); };
   stump(6.2, 3.6, 0.95, 0.55); stump(7.7, 3.2, 0.36, 0.34); stump(5.2, 4.7, 0.36, 0.34);
@@ -302,7 +326,7 @@
     tr.blobs.forEach(b => { dummy.position.set(b.x, b.y, b.z); dummy.scale.setScalar(b.r); dummy.rotation.set(b.rot[0], b.rot[1], b.rot[2]); dummy.updateMatrix(); tr.im.setMatrixAt(b.i, mtx.multiplyMatrices(tr.top.matrixWorld, dummy.matrix)); });
     tr.im.instanceMatrix.needsUpdate = true;
   }
-  for (let i = 0, tries = 0; i < 58 && tries < 6000; tries++) {
+  for (let i = 0, tries = 0; i < 36 && tries < 6000; tries++) {
     const x = (rnd() - 0.5) * 68, z = -22 + rnd() * 56;
     if (!freeSpot(x, z, 0)) continue;
     const kind = i % 5 < 3 ? 'blossom' : 'fruit', sc = 0.9 + rnd() * 0.35, cols = kind === 'blossom' ? PINK : LEAF;
