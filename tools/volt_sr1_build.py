@@ -1,5 +1,5 @@
-# 전격술사 전용 샘플(남색 비니·회색 단발·둥근 안경·카키 점퍼·체크 스커트·목에 건 헤드폰, 흰 배경) → 캐릭터 시트 assets/sprites/merc/volt_0.webp
-# 사용: python tools/volt_build.py   (샘플 assets/sprites/fx/samples/volt_*_src.*)
+# 전격술사 시크릿 레어 1 샘플 (2026-11-10까지 기본 외형이던 그림)(남색 비니·회색 단발·둥근 안경·카키 점퍼·체크 스커트·목에 건 헤드폰, 흰 배경) → 캐릭터 시트 assets/sprites/merc/volt_sr1.webp
+# 사용: python tools/volt_sr1_build.py   (샘플 assets/sprites/fx/samples/volt_*_src.*)
 # 칸 순서: 0 대기 (한 손 위에 하늘색 전기 불꽃) · 1~4 걷기 (양손을 주머니에) · 5 기본 공격 (두 손을 뻗음, 손 앞 전류 줄기는 이펙트로 따로)
 #   · 6 피격 · 7~8 쓰러짐 (뒤로 넘어감 → 누움) · 9 썬더볼트·체인 라이트닝 (두 손 사이 전기 구체) · 10 일렉트릭 필드 (모은 손 위 전기 불꽃)
 #   · 11~12 전자포 (당겨 모음 → 손바닥을 내밂) · 13~14 방전 (주먹 모음 → 두 팔을 활짝) · 15~16 오버로드 (무릎 꿇고 땅 짚음 → 일어나 주먹)
@@ -20,7 +20,7 @@ from berserker_build import shrink
 from pyro_build import prep, defringe
 
 S = 'assets/sprites/fx/samples/'
-OUT = 'assets/sprites/merc/volt_0.webp'
+OUT = 'assets/sprites/merc/volt_sr1.webp'
 FX_OUT = 'assets/sprites/fx/volt_fx.webp'
 TARGET_H = 88   # 대기 자세 키 → 게임 칸 키 (격투가 86, 소환사 88과 비슷하게)
 
