@@ -20,6 +20,19 @@ const { execFile } = require('child_process');
 const REPO = path.resolve(__dirname, '..');
 const WT = path.join(REPO, '.claude', 'worktrees', 'live-main');
 const PORT = Number(process.env.PORT) || 5190;
+
+// --log <파일>: 화면 없이 켤 때(작업 스케줄러) 기록을 파일로 남김. 켤 때마다 새로 씀
+const logArg = process.argv.indexOf('--log');
+if (logArg > 0 && process.argv[logArg + 1]) {
+  const logFile = process.argv[logArg + 1];
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  const out = fs.createWriteStream(logFile, { flags: 'w' });
+  for (const k of ['log', 'warn', 'error']) {
+    const orig = console[k].bind(console);
+    console[k] = (...a) => { orig(...a); out.write(a.map(String).join(' ') + '\n'); };
+  }
+  process.on('uncaughtException', (e) => { console.error('[live] 멈춤:', e && e.stack || e); setTimeout(() => process.exit(1), 200); });
+}
 const POLL_MS = Math.max(2000, Number(process.env.LIVE_POLL_MS) || 5000);
 
 const MIME = {
