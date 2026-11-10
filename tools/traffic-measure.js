@@ -1,9 +1,9 @@
 // 실제 학급의 Firebase 트래픽 재기 (읽기 전용) — docs/traffic-task.md 참고
 // 로컬 미리보기(http://localhost:5173/?dev=student&mute=1, 앱은 빈 샘플 학급 ARENA1에 머묾)의 콘솔에서:
 //   (0, eval)(await (await fetch('/tools/traffic-measure.js')).text());
-//   await TM.login('ARENA3')        // 접속할 때 학생 기기 한 대가 받는 양 (노드별·students 칸별·용병 칸별)
-//   await TM.live('ARENA3', 180)    // 180초 동안 서버가 보내는 변경량 (경로별 B/s · 라이브 전투는 방별)
-// 측정용 구독만 따로 걸고 받기만 함: 앱 로직은 ARENA3를 모르므로 정리·보상 같은 쓰기를 하지 않음
+//   await TM.login('<학급코드>')        // 접속할 때 학생 기기 한 대가 받는 양 (노드별·students 칸별·용병 칸별)
+//   await TM.live('<학급코드>', 180)    // 180초 동안 서버가 보내는 변경량 (경로별 B/s · 라이브 전투는 방별)
+// 측정용 구독만 따로 걸고 받기만 함: 앱 로직은 <학급코드>를 모르므로 정리·보상 같은 쓰기를 하지 않음
 (function () {
   const db = () => RealtimePvpService.initFirebaseClientSafe();
   const len = v => (v == null ? 0 : JSON.stringify(v).length);

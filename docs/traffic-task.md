@@ -10,17 +10,17 @@
 
 ```js
 (0, eval)(await (await fetch('/tools/traffic-measure.js')).text());
-const L = await TM.login('ARENA3');   // 접속할 때 받는 양
-const R = await TM.live('ARENA3', 300); // 5분 동안의 변경량 (탭을 앞에 둔 채로)
+const L = await TM.login('<학급코드>');   // 접속할 때 받는 양
+const R = await TM.live('<학급코드>', 300); // 5분 동안의 변경량 (탭을 앞에 둔 채로)
 ```
 
-- 읽기 전용: 앱은 빈 샘플 학급(ARENA1)에 머물고, 스크립트는 ARENA3 경로에 측정용 구독만 건다. 정리·보상 같은 쓰기는 일어나지 않는다.
+- 읽기 전용: 앱은 빈 샘플 학급(ARENA1)에 머물고, 스크립트는 <학급코드> 경로에 측정용 구독만 건다. 정리·보상 같은 쓰기는 일어나지 않는다.
 - `R.rows`: 경로별 B/s. `students/칸이름`은 학생 기록에서 바뀐 칸, `pvp_live/방/frame`은 그 방 화면(참가자·관전자 한 명이 받는 양).
 - `R.alwaysBpsPerDevice × 접속 수` = 반 전체가 받는 양 (늘 구독하는 경로는 접속한 학생 모두가 받음).
 - 레이드·관전·펫 러닝이 실제로 돌고 있을 때 재야 의미가 있다. 가능하면 2~3번 (쉬는 시간·컨텐츠 중) 잰다.
 - 전투 화면 칸별 크기는 로컬 전투로도 잴 수 있다: `tests/battle-sim.js`를 불러 5:5를 돌리며 가상 시계로 `publishLiveBattleFrame`을 부르고 칸별 JSON 길이를 더한다 (f4e1e09 커밋 메시지의 측정 방식).
 
-## 2. 2026-11-05 저녁에 잰 기준값 (ARENA3, 23명, 접속 1명)
+## 2. 2026-11-05 저녁에 잰 기준값 (<학급코드>, 23명, 접속 1명)
 
 | 항목 | 크기 |
 |---|---|
@@ -47,8 +47,8 @@ const R = await TM.live('ARENA3', 300); // 5분 동안의 변경량 (탭을 앞�
 - 2026-11-08 (10차): `live_battle_events`(학급 전체가 limitToLast(10) child_added로 구독하던 대시 이벤트) 구독·쓰기 제거. 화면 동기화 전 방식이라 받는 쪽은 `sim.netRole`이 있으면 늘 무시했고, 보내는 쪽은 netRole이 없는 전투(혼자 하는 엘리트 토벌·연습 친구 결투·AI뿐인 팀전)의 수동 대시마다 학급 전체 탭에 이벤트(약 150B)와 20초 뒤 삭제를 내려보냈음. 서버 규칙의 `live_battle_events` 항목은 예전 탭이 올리는 것을 위해 남겨 둠
 - 2026-11-08 (11차): 몬스터 러쉬 화면의 라운드 상태 `rs`(숫자 11칸, 약 40B)를 매 화면 → 전체 화면·바뀌었을 때만(`rushStateForFrame`, 틱 카운터 칸의 자연 감소는 바뀜으로 안 봄). 받는 쪽은 예전부터 rs가 없는 화면을 그냥 넘기고 절대 틱(nextAt·roundStartTick)으로 남은 시간을 세므로 형식 변경 없음. 장판 `zn`은 받는 쪽이 life를 스스로 줄이지 않아 그대로 둠
 - 2026-11-08 (12차): 서버 화면 0.5초 간격(`liveServerFrameInterval`)을 팀전·협동 레이드·던전에도: 사람 팀원 모두가 원활한 직접 연결(`LiveRtcHub.peers`, mode 'rtc'·0.3초 안 전송·밀림 4KB 아래)로 받고 있고 보는 친구가 없을 때(팀전방은 spectators · 레이드/던전은 계산 담당이 새로 구독하는 중계 자리 watchers). 한 명이라도 서버 화면을 보면 그대로 0.15초. 5:5 팀전에서 팀원 4명이 안 쓰고 내려받던 서버 화면(각 약 5KB/s)이 약 1/3로
-- 2026-11-08 (13차, ARENA3 노드 크기 읽기 전용 측정): students 150KB(23명, 탭마다 접속 때 통째로 한 번) · studentPrivate 122KB(학생은 자기 칸만 구독) · profiles 1.6KB · auctions 2.2KB · invites 2.4KB(TTL 정리 있음) · minigames 5KB(끝난 판 17개 — `{방}_pc`·`{방}_vl` 실시간 노드가 방 삭제 때 안 지워짐) · pvp_live 92KB(끝난 러쉬 중계 2개 `raidcast_rush_…`, 아무도 구독하지 않아 트래픽은 없음) · 나머지 0~0.5KB. 고침: 레이드·러쉬·던전 방 삭제 때 그 방의 중계 자리도 지우고(`removeRaidRoomData`), 계산을 이어받은 친구가 예전 담당 자리를 20초 뒤 지움, 미니게임 방 삭제 때 `_pc`·`_vl`도 지움. 남아 있는 옛 노드는 `firebase database:remove /classes/ARENA3/pvp_live/<id>`로 한 번 치우면 됨. 남은 큰 항목은 접속 때 students 통째 내려받기(150KB)인데, 바뀐 학생만 받으려면 updatedAt 색인·삭제 감지가 필요해 보류
-- 2026-11-08 (14차, ARENA3 학생 기록 150KB 분해): roster 90KB(용병 163명, 한 명 약 550B: skillSlots 12KB · statVariance 10KB · statPoints 7KB · id 5KB · traitName 5KB · targetRule/behaviorRule 7KB …) · capParts 9.6KB(4명, 픽셀 아트) · petBox 9KB · home 8.5KB · avatar 5.7KB(17명). 픽셀 아트·집·펫은 실제 데이터라 못 줄임. 고침: 올릴 때 `traitName`(traitId로 정해짐)과 0뿐인 `statPoints`를 빼고(`slimMercForUpload`, `MERC_SLIM_FROM` 2026-11-09 00:00 KST부터) 받는 쪽 `normalizeMercForSync`가 되살림 → 접속 때 내려받기 약 11KB(7%)·용병 한 명 갱신 약 60B 감소. skillsRevealed(0을 빼면 받는 쪽이 다른 값으로 채움)·skinVariant(직접 읽는 곳 있음)·statVariance(형식 변경)는 그대로
+- 2026-11-08 (13차, <학급코드> 노드 크기 읽기 전용 측정): students 150KB(23명, 탭마다 접속 때 통째로 한 번) · studentPrivate 122KB(학생은 자기 칸만 구독) · profiles 1.6KB · auctions 2.2KB · invites 2.4KB(TTL 정리 있음) · minigames 5KB(끝난 판 17개 — `{방}_pc`·`{방}_vl` 실시간 노드가 방 삭제 때 안 지워짐) · pvp_live 92KB(끝난 러쉬 중계 2개 `raidcast_rush_…`, 아무도 구독하지 않아 트래픽은 없음) · 나머지 0~0.5KB. 고침: 레이드·러쉬·던전 방 삭제 때 그 방의 중계 자리도 지우고(`removeRaidRoomData`), 계산을 이어받은 친구가 예전 담당 자리를 20초 뒤 지움, 미니게임 방 삭제 때 `_pc`·`_vl`도 지움. 남아 있는 옛 노드는 `firebase database:remove /classes/<학급코드>/pvp_live/<id>`로 한 번 치우면 됨. 남은 큰 항목은 접속 때 students 통째 내려받기(150KB)인데, 바뀐 학생만 받으려면 updatedAt 색인·삭제 감지가 필요해 보류
+- 2026-11-08 (14차, <학급코드> 학생 기록 150KB 분해): roster 90KB(용병 163명, 한 명 약 550B: skillSlots 12KB · statVariance 10KB · statPoints 7KB · id 5KB · traitName 5KB · targetRule/behaviorRule 7KB …) · capParts 9.6KB(4명, 픽셀 아트) · petBox 9KB · home 8.5KB · avatar 5.7KB(17명). 픽셀 아트·집·펫은 실제 데이터라 못 줄임. 고침: 올릴 때 `traitName`(traitId로 정해짐)과 0뿐인 `statPoints`를 빼고(`slimMercForUpload`, `MERC_SLIM_FROM` 2026-11-09 00:00 KST부터) 받는 쪽 `normalizeMercForSync`가 되살림 → 접속 때 내려받기 약 11KB(7%)·용병 한 명 갱신 약 60B 감소. skillsRevealed(0을 빼면 받는 쪽이 다른 값으로 채움)·skinVariant(직접 읽는 곳 있음)·statVariance(형식 변경)는 그대로
 - 2026-11-08 (15차): 학생 기록은 학생마다 따로 구독(`attachClassStudentSubs`, students/<id>). Firebase는 재접속 때 구독마다 받아 둔 값의 해시를 보내 안 바뀐 구독은 다시 내려주지 않으므로, 학급 전체 한 구독이던 때는 끊겼던 사이 한 명만 저장돼도 약 140KB가 전부 다시 왔고 이제는 바뀐 학생 것만 옴 (처음 접속·평소 소식량은 같음). id 목록은 접속 때 REST shallow(약 1KB)로 키만 받고 이름표(profiles)에 새로 생기는 id를 더함 · 키를 못 받으면 예전처럼 전체 한 구독. 모든 학생의 첫 값이 올 때까지 적용을 미뤄 일부만 받은 채 학생 목록을 덮어쓰지 않음
 - 2026-11-09 (펫 배구): 두 기기 직접 연결 `VolleyLink`(WebRTC, 신호는 `minigames/{방}_vl/rtc`) — 열려 있으면 펫 위치 20Hz·공 타격을 직접 보내고 서버로는 0.25초마다만(`VOLLEY.linkFbMs`) → 배구 중 서버 쓰기 약 1/5. 표시 지연의 왕복 추정은 최솟값 대신 상위 80%(`rttHi`). 안 열리면 예전처럼 서버로만
 - 2026-11-09 (로딩): 배포 페이지 2.49MB(압축 0.7MB, 캐시 없음·ETag 없음 → 접속마다 내려받음) · assets 149MB/1310개는 1시간 캐시였음. 모든 그림·소리 주소가 내용 해시(?v=)라 `/assets/*`를 1년 immutable로 (Cloudflare 전송량·접속 속도, Firebase와 무관). 낱말 사전 1.9MB는 끝말잇기를 열 때만 받음
@@ -77,7 +77,7 @@ const R = await TM.live('ARENA3', 300); // 5분 동안의 변경량 (탭을 앞�
 형식을 바꾸는 배포 뒤, 그 전에 연 탭을 새로고침시키려면:
 
 1. `https://class-arena.pages.dev/version.json`의 `buildAt`(ms)을 확인한다.
-2. `MSYS_NO_PATHCONV=1 firebase database:set /classes/ARENA3/meta/minBuild <buildAt> --project class-arena-b4ee3` (학급마다).
+2. `MSYS_NO_PATHCONV=1 firebase database:set /classes/<학급코드>/meta/minBuild <buildAt> --project class-arena-b4ee3` (학급마다).
 3. 그보다 오래된 탭(빌드 시각이 들어간 2026-11-06 이후 버전)은 안내 띠를 띄우고, 전투 중이 아닐 때 탭으로 돌아오면 새로고침한다. 그 전 버전 탭에는 이 장치가 없다.
 
 2026-11-06 측정: 예전 주소(web.app)가 11-05 오전 버전으로 남아 있던 탓에(안내 페이지 배포 실패, 2d89243에서 고침) `raid_rooms`가 기기당 12.5KB/s(반 전체 약 210KB/s)였다.
