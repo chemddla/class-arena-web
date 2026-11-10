@@ -27,11 +27,11 @@
   .vlg .vlg-acts button { font-size: 15px; padding: 12px 16px; }
   .vlg .vlg-hint { position: absolute; left: 12px; bottom: 14px; font-size: 12px; font-weight: 700; background: rgba(255, 255, 255, .8); padding: 6px 10px; border-radius: 10px; max-width: 55%; }
   .vlg .vlg-mapbox { position: absolute; right: 12px; bottom: 74px; }
-  .vlg .vlg-map { display: block; width: 240px; height: 221px; border-radius: 14px; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); background: #8fd07a; pointer-events: none; }
+  .vlg .vlg-map { display: block; width: 240px; height: 200px; border-radius: 14px; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); background: #8fd07a; pointer-events: none; }
   .vlg .vlg-mapbox button { position: absolute; top: 7px; right: 7px; font-size: 12px; padding: 3px 9px; }
   .vlg .vlg-mapbox.off .vlg-map { display: none; }
   .vlg .vlg-mapbox.off button { position: static; font-size: 13px; padding: 6px 12px; }
-  @media (max-width: 640px) { .vlg .vlg-hint { display: none; } .vlg .vlg-map { width: 160px; height: 147px; } }`;
+  @media (max-width: 640px) { .vlg .vlg-hint { display: none; } .vlg .vlg-map { width: 160px; height: 133px; } }`;
   const HTML = `
   <canvas class="vlg-gl" data-v="gl"></canvas>
   <div class="vlg-labels" data-v="labels"><div class="vlg-prompt" data-v="prompt"></div></div>
@@ -224,15 +224,31 @@
   const RIVER = { w: 4.6, bridge: 1.4 };
   const riverZ = x => -8.6 + 0.9 * Math.sin(x * 0.11 + 0.4) + 0.4 * Math.sin(x * 0.27);
   const riverDist = (x, z) => Math.abs(z - riverZ(x)) - RIVER.w / 2; // 0보다 작으면 물속
-  const ribbon = (off, w, mat, y, rows) => { // 강을 따라 휘는 띠 (둥근 땅에 맞게 잘게 나눔)
-    const N = 300, R = rows || 4, pos = [], uv = [], idx = [];
-    for (let i = 0; i <= N; i++) { const x = -75 + i * 0.5; for (let j = 0; j <= R; j++) { pos.push(x, y, riverZ(x) + off + (j / R - 0.5) * w); uv.push(i / N, j / R); } }
+  const ribbon = (off, w, mat, y, rows, x0 = -75, x1 = 75) => { // 강을 따라 휘는 띠 (둥근 땅에 맞게 잘게 나눔)
+    const N = Math.round((x1 - x0) * 2), R = rows || 4, pos = [], uv = [], idx = [];
+    for (let i = 0; i <= N; i++) { const x = x0 + (x1 - x0) * i / N; for (let j = 0; j <= R; j++) { pos.push(x, y, riverZ(x) + off + (j / R - 0.5) * w); uv.push(i / N, j / R); } }
     for (let i = 0; i < N; i++) for (let j = 0; j < R; j++) { const a = i * (R + 1) + j, b = a + R + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx); geo.computeVertexNormals();
     const m = floor(new THREE.Mesh(geo, typeof mat === 'string' ? M(mat) : mat)); scene.add(m); return m; };
   ribbon(0, RIVER.w + 1.1, '#ead9a0', 0.035);
   waterTex.repeat.set(41, 1); ribbon(0, RIVER.w, flat(0xffffff, { map: waterTex }), 0.05);
-  [-1, 1].forEach(s => { noShadow(ribbon(s * (RIVER.w / 2 - 0.07), 0.14, flat(0xe9f8ff), 0.055, 1)).userData.floor = false; }); // 물가 흰 띠
+  [[-1, -75, 75], [1, -75, 34.2], [1, 39.1, 75]].forEach(([s, x0, x1]) => { noShadow(ribbon(s * (RIVER.w / 2 - 0.07), 0.14, flat(0xe9f8ff), 0.055, 1, x0, x1)).userData.floor = false; }); // 물가 흰 띠 (동쪽 강이 갈라지는 곳은 비움)
+  // ── 동쪽 강: 큰 강에서 갈라져 마을 오른쪽 바깥을 구불구불 내려가 바다로 흘러듦. 바다 가까이서 점점 넓어져 강어귀가 됨
+  const EAST = { z0: riverZ(37.5) - 0.5, z1: 51.3, shore: 50.4, mouth: 44 }; // z1: 물이 바다에 닿는 끝, shore: 모래 물가
+  const eastX = z => 37.5 + 1.3 * Math.sin(z * 0.13 + 0.6) + 0.5 * Math.sin(z * 0.31);
+  const eastW = z => 4 + Math.pow(Math.max(0, z - EAST.mouth), 1.4) * 0.55 + 3.2 * Math.pow(Math.max(0, 1 - (z - EAST.z0) / 5), 2); // 큰 강에서 갈라지는 곳과 강어귀에서 나팔처럼 벌어짐
+  const eastDist = (x, z) => z < EAST.z0 || z > EAST.z1 ? 99 : Math.abs(x - eastX(z)) - eastW(z) / 2;
+  const eastTex = waterTex.clone(); eastTex.needsUpdate = true;
+  const ribbonZ = (side, extra, mat, y, z0, z1, rows) => { // 동쪽 강을 따라 남북으로 휘는 띠. side: -1/1이면 그쪽 물가에 붙은 가는 띠
+    const N = Math.round((z1 - z0) * 2), R = rows || 4, pos = [], uv = [], idx = [];
+    for (let i = 0; i <= N; i++) { const z = z0 + (z1 - z0) * i / N, w = eastW(z) + extra; for (let j = 0; j <= R; j++) {
+      const off = side ? side * (eastW(z) / 2 - 0.07) + (j / R - 0.5) * extra : (j / R - 0.5) * w; pos.push(eastX(z) + off, y, z); uv.push(i / N, j / R); } }
+    for (let i = 0; i < N; i++) for (let j = 0; j < R; j++) { const a = i * (R + 1) + j, b = a + R + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx); geo.computeVertexNormals();
+    const m = floor(new THREE.Mesh(geo, typeof mat === 'string' ? M(mat) : mat)); scene.add(m); return m; };
+  eastTex.repeat.set(Math.round((EAST.z1 - EAST.z0) / 3.7), 1);
+  ribbonZ(0, 1.1, '#ead9a0', 0.03, EAST.z0, EAST.shore); ribbonZ(0, 0, flat(0xffffff, { map: eastTex }), 0.038, EAST.z0, EAST.z1); // 물은 바다 물거품 밑으로 들어가 이어짐
+  [-1, 1].forEach(sd => { noShadow(ribbonZ(sd, 0.14, flat(0xe9f8ff), 0.041, riverZ(eastX(0)) + RIVER.w / 2 + 0.3, EAST.shore, 1)).userData.floor = false; }); // 물가 흰 띠 (큰 강과 만나는 곳부터)
   // ── 다리: 돌 아치 다리. 난간 끝 기둥마다 등불, 옆면에 아치 무늬. 걸으면 아치를 따라 오르내림
   const BR = { z: riverZ(0), half: 1.45, L: RIVER.w + 2.4, peak: 0.62 };
   const deckY = lz => 0.12 + BR.peak * Math.sin(Math.PI * Math.min(1, Math.max(0, (lz + BR.L / 2) / BR.L))); // 다리 위 높이 (lz: 다리 가운데 기준)
@@ -619,7 +635,7 @@
   { const bg = [];
     for (let i = 0, tries = 0; i < 80 && tries < 5000; tries++) {
       const x = (rnd() - 0.5) * 112, z = -44 + rnd() * 100;
-      if (!((Math.abs(x) > 36.5 && z < BEACH.z0 - 1) || z < -25.5) || riverDist(x, z) < 1.6 || bg.some(b => Math.hypot(x - b[0], z - b[1]) < 3.4) || (x < -31 && x > PLAY.x - 12 && z > SCH.z - 4.5 && z < PLAY.z + 7.5)) continue;
+      if (!((Math.abs(x) > 36.5 && z < BEACH.z0 - 1) || z < -25.5) || riverDist(x, z) < 1.6 || eastDist(x, z) < 1.8 || bg.some(b => Math.hypot(x - b[0], z - b[1]) < 3.4) || (x < -31 && x > PLAY.x - 12 && z > SCH.z - 4.5 && z < PLAY.z + 7.5)) continue;
       bg.push([x, z]); i++;
       const sc = 1 + rnd() * 0.5, pinkTree = rnd() < 0.55, im = pinkTree ? blobsPinkFar : blobsLeafFar;
       scene.add(at(mesh(new THREE.CylinderGeometry(0.26 * sc, 0.4 * sc, 1.6 * sc, 12), barkMat), x, 0.8 * sc, z));
@@ -1054,7 +1070,7 @@
   }
 
   // ── 미니맵: 땅·길·강·집·나무는 한 번 그려 두고, 매 프레임 친구와 나만 점으로 올림
-  const MAP = { x0: -54, x1: 34, z0: -25.5, z1: 56, s: 6 }, mapC = $('map');
+  const MAP = { x0: -54, x1: 44, z0: -25.5, z1: 56, s: 6 }, mapC = $('map');
   mapC.width = (MAP.x1 - MAP.x0) * MAP.s; mapC.height = (MAP.z1 - MAP.z0) * MAP.s;
   const mapG = mapC.getContext('2d'), mapBg = document.createElement('canvas'); mapBg.width = mapC.width; mapBg.height = mapC.height;
   const mx = x => (x - MAP.x0) * MAP.s, mz = z => (z - MAP.z0) * MAP.s;
@@ -1062,6 +1078,9 @@
     g.fillStyle = '#8fd07a'; g.fillRect(0, 0, mapBg.width, mapBg.height);
     rect(-10, (BEACH.z0 + BEACH.z1) / 2, 100, BEACH.z1 - BEACH.z0, '#f6e6b4'); rect(-10, (BEACH.z1 + MAP.z1) / 2 + 0.5, 100, MAP.z1 - BEACH.z1 + 1, '#4fb3e8'); rect(-10, BEACH.z1 + 0.4, 100, 0.6, '#ffffff');
     [[-30, 45.5], [-23, 47.6], [-17.5, 44.6], [-9, 46.8], [-4.2, 44.2], [5.5, 47.2], [11, 44.8], [17.5, 47.8], [24, 45], [30.5, 47.2]].forEach(([x, z]) => { g.fillStyle = '#3f9a4a'; g.beginPath(); g.arc(mx(x), mz(z), 1.1 * S, 0, 6.29); g.fill(); });
+    [[1.1, '#ead9a0'], [0, '#56bdee']].forEach(([ex, c]) => { g.fillStyle = c; g.beginPath(); // 동쪽 강 (넓어지는 강어귀까지)
+      for (let z = EAST.z0; z <= EAST.shore; z += 0.5) g.lineTo(mx(eastX(z) - (eastW(z) + ex) / 2), mz(z));
+      for (let z = EAST.shore; z >= EAST.z0; z -= 0.5) g.lineTo(mx(eastX(z) + (eastW(z) + ex) / 2), mz(z)); g.fill(); });
     [[RIVER.w + 1.1, '#ead9a0'], [RIVER.w, '#56bdee']].forEach(([w, c]) => { g.strokeStyle = c; g.lineWidth = w * S; g.beginPath(); for (let x = MAP.x0; x <= MAP.x1; x += 0.5) g.lineTo(mx(x), mz(riverZ(x))); g.stroke(); });
     rect(0, 11, 2.2, 62, '#ead2a0'); STREETS.forEach(st => rect(0, st.z, st.len, 2.2, '#ead2a0'));
     rect(0, BR.z, BR.half * 2, BR.L, '#cfc7b6');
@@ -1193,7 +1212,7 @@
     spout.scale.setScalar(1 + Math.sin(t * 6) * 0.12);
     ripples.forEach((m, i) => { const u = (t * 0.45 + i / 3) % 1; m.scale.setScalar(0.6 + u * 5); m.material.opacity = 0.55 * (1 - u); });
     rides.forEach(q => { if (q.tick) q.tick(t, dt, actors.some(a => a.sit === q)); });
-    waterTex.offset.x = -t * 0.12; seaTex.offset.set(t * 0.02, -t * 0.05);
+    waterTex.offset.x = -t * 0.12; eastTex.offset.x = -t * 0.12; seaTex.offset.set(t * 0.02, -t * 0.05);
     foam.position.z = BEACH.z1 + 0.75 + Math.sin(t * 0.9) * 0.35; foam.material.opacity = 0.55 + Math.sin(t * 0.9 + 1) * 0.3;
     marker.rotation.z = t * 2;
     clouds.position.set(me.x - Math.sin(view.yaw) * 44 + Math.sin(t * 0.02) * 10, 0, me.z - Math.cos(view.yaw) * 44); clouds.rotation.y = view.yaw;
