@@ -366,6 +366,67 @@
     swingSeat.add(at(mesh(new THREE.BoxGeometry(0.95, 0.07, 0.32), '#e0685a'), 0, -1.8, 0));
     g.add(at(swingSeat, 0, 2.55, 0)); scene.add(at(g, -4.6, 0, -4.2)); solid(-5.7, -4.2, 0.3); solid(-3.5, -4.2, 0.3); }
 
+  // ── 놀이터: 강 건너 왼쪽(북서쪽). 그네 두 자리·미끄럼틀·시소·뺑뺑이, E로 탐 (탈 자리는 아래 seats 끝에 붙음)
+  const PLAY = { x: -17, z: -15.4 }, movers = [swingSeat], rides = [];
+  strip(PLAY.x, PLAY.z, 17.6, 9, '#d9b878', 0.025); strip(PLAY.x, PLAY.z, 17, 8.4, sandMat(8, 4), 0.033);
+  { // 그네 두 자리
+    const g = new THREE.Group(), gx = -23, gz = -17.6;
+    [-1, 1].forEach(s => { g.add(at(mesh(new THREE.CylinderGeometry(0.09, 0.1, 2.7, 8), '#5b8fd8'), s * 2, 1.35, 0)); solid(gx + s * 2, gz, 0.3); });
+    g.add(at(mesh(new THREE.BoxGeometry(4.3, 0.16, 0.16), '#e0685a'), 0, 2.65, 0));
+    [-0.95, 0.95].forEach((dx, k) => { const pv = new THREE.Group();
+      [-1, 1].forEach(s => pv.add(at(mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.8, 4), '#e9dcc0'), s * 0.38, -0.9, 0)));
+      pv.add(at(mesh(new THREE.BoxGeometry(0.95, 0.07, 0.32), ['#f2c53a', '#4fae6a'][k]), 0, -1.8, 0));
+      g.add(at(pv, dx, 2.55, 0)); movers.push(pv);
+      const q = { x: gx + dx, z: gz, face: 0, ox: 0, oz: 1.1, ride: '🎠 그네 타기', amp: 0.06, ph: k * 1.3 };
+      q.tick = (t, dt, on) => { q.amp += ((on ? 0.6 : 0.06) - q.amp) * Math.min(1, dt * 2); pv.rotation.x = Math.sin(t * 1.9 + q.ph) * q.amp; };
+      q.place = a => { const th = pv.rotation.x; a.g.position.set(q.x, 2.55 - 1.8 * Math.cos(th) + 0.04, q.z - 1.8 * Math.sin(th)); a.g.rotation.x = th; a.face = 0; };
+      rides.push(q); });
+    scene.add(at(g, gx, 0, gz));
+  }
+  { // 미끄럼틀: 사다리로 올라가 앞(남쪽)으로 미끄러져 내려옴
+    const g = new THREE.Group(), sx = -17.2, top = 1.6;
+    [-1, 1].forEach(s => { [-0.45, 0.25].forEach(z => g.add(at(mesh(new THREE.CylinderGeometry(0.06, 0.06, top + 0.9, 8), '#5b8fd8'), s * 0.45, (top + 0.9) / 2, z))); });
+    g.add(at(mesh(new THREE.BoxGeometry(1.05, 0.12, 0.85), '#f2c53a'), 0, top, -0.1));
+    for (let i = 1; i < 5; i++) g.add(at(mesh(new THREE.BoxGeometry(0.85, 0.06, 0.08), '#e9dcc0'), 0, i * top / 5, -0.62)); // 사다리 칸
+    [-1, 1].forEach(s => g.add(at(mesh(new THREE.BoxGeometry(0.06, top + 0.1, 0.06), '#5b8fd8'), s * 0.42, (top + 0.1) / 2, -0.62)));
+    const L = Math.hypot(2.6, top - 0.15), ang = Math.atan2(top - 0.15, 2.6), ch = new THREE.Group();
+    ch.add(at(mesh(new THREE.BoxGeometry(0.8, 0.06, L), '#e0685a'), 0, 0, 0)); [-1, 1].forEach(s => ch.add(at(mesh(new THREE.BoxGeometry(0.06, 0.2, L), '#e0685a'), s * 0.4, 0.1, 0)));
+    ch.rotation.x = ang; g.add(at(ch, 0, (top + 0.15) / 2, 0.3 + 1.3));
+    scene.add(at(g, sx, 0, PLAY.z - 2.1)); solid(sx, PLAY.z - 2.3, 0.65); solid(sx, PLAY.z - 0.9, 0.45);
+    const z0 = PLAY.z - 2.1, q = { x: sx, z: z0 + 1.2, face: Math.PI, ox: 0, oz: 2.1, ride: '🛝 미끄럼틀 타기', reach: 1.9 };
+    q.place = (a, t) => { // 0~0.9초 사다리 오르기 → 위에서 돌아앉기 → 1.3~2.1초 미끄러져 내려옴 → 끝나면 내림
+      const u = t - a.sitAt; let y, z, f = Math.PI;
+      if (u < 0.9) { const k = u / 0.9; y = k * top; z = z0 - 0.75 + k * 0.6; }
+      else if (u < 1.3) { y = top; z = z0 - 0.1; f = (u - 0.9) / 0.4 * Math.PI + Math.PI; }
+      else { const k = Math.min(1, (u - 1.3) / 0.8); y = top + 0.05 - k * (top - 0.15); z = z0 + 0.3 + k * 2.6; f = 0; }
+      a.g.position.set(q.x, y, z); a.g.rotation.x = u > 1.3 ? -ang * 0.6 : 0; a.face = f;
+      if (a === me && u > 2.2) { standUp(); me.hop = 0.4; }
+    };
+    rides.push(q);
+  }
+  { // 시소
+    const g = new THREE.Group(), cx = -11.6, cz = -17.4, plank = new THREE.Group();
+    g.add(at(mesh(new THREE.CylinderGeometry(0.22, 0.32, 0.55, 10), '#4fae6a'), 0, 0.27, 0));
+    plank.add(at(mesh(new THREE.BoxGeometry(3.4, 0.1, 0.38), '#e8a13a'), 0, 0, 0));
+    [-1, 1].forEach(s => { plank.add(at(mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4, 6), '#e0685a'), s * 1.15, 0.22, 0)); plank.add(at(mesh(new THREE.BoxGeometry(0.06, 0.06, 0.4), '#e0685a'), s * 1.15, 0.42, 0)); });
+    g.add(at(plank, 0, 0.58, 0)); movers.push(plank); scene.add(at(g, cx, 0, cz)); solid(cx, cz, 0.4);
+    const pair = [-1, 1].map(s => ({ x: cx + s * 1.45, z: cz, face: s < 0 ? Math.PI / 2 : -Math.PI / 2, ox: 0, oz: 0.9, ride: '⚖️ 시소 타기', s }));
+    let th = 0.2;
+    pair[0].tick = (t, dt) => { const on = pair.some(q => actors.some(a => a.sit === q)); th += ((on ? Math.sin(t * 2.2) * 0.3 : 0.2) - th) * Math.min(1, dt * 4); plank.rotation.z = th; };
+    pair.forEach(q => { q.place = a => { a.g.position.set(cx + q.s * 1.45 * Math.cos(th), 0.64 + q.s * 1.45 * Math.sin(th), cz); a.g.rotation.x = 0; a.face = q.face; }; rides.push(q); });
+  }
+  { // 뺑뺑이: 탄 사람이 있으면 빨리 돎
+    const g = new THREE.Group(), cx = -17, cz = -12.4, disc = new THREE.Group(); let spd = 0.25;
+    g.add(at(mesh(new THREE.CylinderGeometry(0.25, 0.3, 0.3, 10), '#56606c'), 0, 0.15, 0));
+    ['#e0685a', '#f2c53a', '#5b8fd8', '#4fae6a', '#b06fc8', '#ff8fb0'].forEach((c, k) => { const w = at(mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.12, 6, 1, false, k * Math.PI / 3, Math.PI / 3), c), 0, 0, 0); disc.add(w); });
+    disc.add(at(mesh(new THREE.CylinderGeometry(0.07, 0.07, 1, 8), '#e9dcc0'), 0, 0.5, 0));
+    for (let k = 0; k < 3; k++) { const a = k * Math.PI * 2 / 3 + Math.PI / 3; const bar = at(mesh(new THREE.BoxGeometry(0.06, 0.06, 1.1), '#e9dcc0'), Math.sin(a) * 0.55, 0.95, Math.cos(a) * 0.55); bar.rotation.y = a; disc.add(bar); disc.add(at(mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.95, 6), '#e9dcc0'), Math.sin(a) * 1.1, 0.5, Math.cos(a) * 1.1)); }
+    g.add(at(disc, 0, 0.36, 0)); movers.push(disc); scene.add(at(g, cx, 0, cz)); solid(cx, cz, 1.35);
+    const trio = [0, 1, 2].map(k => ({ x: cx, z: cz, face: 0, ox: 0, oz: 2, ride: '🎡 뺑뺑이 타기', reach: 2.1, phi: k * Math.PI * 2 / 3 }));
+    trio[0].tick = (t, dt) => { const on = trio.some(q => actors.some(a => a.sit === q)); spd += ((on ? 2 : 0.25) - spd) * Math.min(1, dt * 1.5); disc.rotation.y += spd * dt; };
+    trio.forEach(q => { q.place = a => { const ang = disc.rotation.y + q.phi; a.g.position.set(cx + Math.sin(ang) * 0.85, 0.42, cz + Math.cos(ang) * 0.85); a.g.rotation.x = 0; a.face = ang; a.g.rotation.y = ang; }; rides.push(q); });
+  }
+
   // ── 나무: 꽃·잎 뭉치는 한 번에 그리는 묶음(InstancedMesh)으로, 줄기와 열매만 따로
   const BLOB_MAX = 900;
   const mkBlobs = (tex, geo) => { const im = new THREE.InstancedMesh(geo || new THREE.SphereGeometry(1, 16, 11), bend(new THREE.MeshToonMaterial({ gradientMap: softGrad, map: tex }), 0.011), BLOB_MAX);
@@ -376,7 +437,7 @@
   const addBlob = (im, colors) => { const i = im.count++; im.setColorAt(i, col.set(pick(colors))); return i; };
   const PINK = ['#ffffff', '#fff2f5', '#ffe6ec', '#fff8fa'], LEAF = ['#ffffff', '#eaffe6', '#dff5d6', '#f4fff0'];
   const trees = [];
-  const freeSpot = (x, z, pad) => !onPath(x, z, 1.9 + pad) && Math.hypot(x, z) > 6.2 + pad && !(z > -26 && z < -17.8 && x > -0.5 && x < 17)
+  const freeSpot = (x, z, pad) => !onPath(x, z, 1.9 + pad) && Math.hypot(x, z) > 6.2 + pad && !(z > -26 && z < -17.8 && x > -0.5 && x < 17) && !(z > -21 && z < -9.8 && x > -27.5 && x < -6.5)
     && !(z > RIVER.z0 - 1.5 && z < RIVER.z1 + 1.5) && HOUSES.every(h => Math.hypot(x - h[0], z - h[1]) > 4.2 + pad)
     && solids.every(s => Math.hypot(x - s.x, z - s.z) > s.r + 1.6 + pad) && trees.every(t => Math.hypot(x - t.x, z - t.z) > 2.6);
   function placeTree(tr) { // 줄기 묶음의 지금 위치·기울기대로 뭉치들을 옮김
@@ -538,12 +599,12 @@
   // ── 환경 테두리선: 물건마다 제 색을 어둡게 한 선을 두름
   const envOutlines = [];
   { // 집·소품·줄기를 묶음마다 한 덩어리로 합침 (따로 움직이는 그네 자리와 나무 윗부분은 건너뜀)
-    const stop = new Set([swingSeat].concat(trees.map(t => t.top)));
+    const stop = new Set(movers.concat(trees.map(t => t.top)));
     const opt = () => ({ stop, vertexMaterial: vcMat, outlineMaterial: vcLine, thickness: 0.022, minSize: 0.15, minSecond: 0.06, accept: m => m.material === winMat || (m.material.isMeshToonMaterial && !m.userData.noShadow && !m.userData.floor) });
     const loose = new THREE.Group(); // 묶음 없이 놓인 것(배경 줄기·바위·집 기단)
     scene.children.slice().forEach(o => { if (o.isMesh && !o.isInstancedMesh && o.material.isMeshToonMaterial && !o.userData.floor && !o.userData.noShadow) loose.add(o); });
     scene.add(loose);
-    scene.children.slice().concat([swingSeat]).forEach(o => { if (o.isGroup) VillagePets.merge(THREE, o, opt()).outlines.forEach(ol => envOutlines.push(ol)); });
+    scene.children.slice().concat(movers).forEach(o => { if (o.isGroup) VillagePets.merge(THREE, o, opt()).outlines.forEach(ol => envOutlines.push(ol)); });
     dress(scene);
   }
   const lineMats = {};
@@ -661,7 +722,7 @@
     { x: 5.2, z: 4.7, y: 0.36, face: Math.atan2(6.2 - 5.2, 3.6 - 4.7), ox: -0.3, oz: 0.8 },
     { x: -5.4, z: 3.4, y: 0.42, face: 0.5, ox: 0.5, oz: 1.1 },
     { x: -4.6, z: -4.2, y: 0.78, face: 0, ox: 0, oz: 1.0, swing: true },
-  ];
+  ].concat(rides); // 순서는 친구 화면과 맞춰야 하므로 놀이터 자리는 늘 뒤에 붙임
   let swingAmp = 0.12;
   function emote(kind) { // 1 기쁨 · 2 하트: 가까운 친구들이 따라 함
     const text = kind === 'joy' ? '😄 야호!' : '❤️';
@@ -674,9 +735,9 @@
   const prompt = $('prompt'), shakeBtn = $('shakeBtn');
   // 지금 내 곁에서 할 수 있는 일
   function nearby() {
-    if (me.sit) return { kind: 'stand', label: '일어나기' };
-    const seat = seats.find(q => Math.hypot(me.x - q.x, me.z - q.z) < 1.3);
-    if (seat) return { kind: 'seat', seat, label: seat.swing ? '🎠 그네 타기' : '🪑 앉기' };
+    if (me.sit) return { kind: 'stand', label: me.sit.ride ? '내리기' : '일어나기' };
+    const seat = seats.find(q => Math.hypot(me.x - q.x, me.z - q.z) < (q.reach || 1.3) && !actors.some(a => a !== me && a.sit === q)); // 빈 자리만
+    if (seat) return { kind: 'seat', seat, label: seat.ride || (seat.swing ? '🎠 그네 타기' : '🪑 앉기') };
     for (let i = 0; i < houses.length; i++) { const h = houses[i]; if (Math.hypot(me.x - h.x, me.z - (h.z + 1.9)) < 1.2) return { kind: 'door', house: h, owner: ownerOf(i), label: !ownerOf(i) ? '🚪 빈 집' : demo ? '🚪 ' + ownerOf(i).name + '네 집 · 똑똑' : ownerOf(i).id === host.me.id ? '🚪 내 방 들어가기' : '🚪 ' + ownerOf(i).name + '네 집 놀러 가기' }; }
     if (Math.hypot(me.x - 3.1, me.z + 3.1) < 2) return { kind: 'board', label: '📋 게시판 보기' };
     if (Math.hypot(me.x - SHOP.x, me.z - (SHOP.z + 2.7)) < 1.4) return { kind: 'shopIn', label: '🛒 슈퍼마켓 들어가기' };
@@ -827,7 +888,9 @@
     g.fillStyle = '#f5e7bd'; g.beginPath(); g.arc(mx(0), mz(0), 4.4 * S, 0, 6.29); g.fill();
     g.fillStyle = '#7fd0f0'; g.beginPath(); g.arc(mx(0), mz(0), 1.3 * S, 0, 6.29); g.fill();
     HOUSES.forEach(h => { rect(h[0], h[1], 3.2, 2.6, h[3]); });
-    rect(0, -23, 6.4, 3.6, '#7a4a2e'); rect(0, -23, 1.2, 1.2, '#a8744f'); rect(SHOP.x, SHOP.z, 7, 3.8, '#3f9a5a'); rect(7.05, -19.9, 11.9, 1.6, '#ead2a0'); rect(6.45, -22.7, 1.8, 5.4, '#ead2a0');
+    rect(0, -23, 6.4, 3.6, '#7a4a2e'); rect(0, -23, 1.2, 1.2, '#a8744f'); rect(SHOP.x, SHOP.z, 7, 3.8, '#3f9a5a'); rect(7.05, -19.9, 11.9, 1.6, '#ead2a0'); rect(6.45, -22.7, 1.8, 5.4, '#ead2a0'); rect(PLAY.x, PLAY.z, 17, 8.4, '#e9d9a8');
+    [[-23, -17.6, 4.2, 0.5, '#e0685a'], [-17.2, -16.8, 1, 3.4, '#e0685a'], [-11.6, -17.4, 3.4, 0.5, '#e8a13a']].forEach(b => rect(...b));
+    g.fillStyle = '#5b8fd8'; g.beginPath(); g.arc(mx(-17), mz(-12.4), 1.3 * S, 0, 6.29); g.fill();
     trees.forEach(t => { g.fillStyle = t.kind === 'blossom' ? '#ffc8d6' : '#3f9e4b'; g.beginPath(); g.arc(mx(t.x), mz(t.z), 1.2 * t.sc * S, 0, 6.29); g.fill(); });
   }
   const mapBox = $('mapBox'), mapBtn = $('mapBtn');
@@ -940,6 +1003,7 @@
     spout.scale.setScalar(1 + Math.sin(t * 6) * 0.12);
     swingAmp += ((me.sit && me.sit.swing ? 0.55 : 0.12) - swingAmp) * Math.min(1, dt * 2);
     swingSeat.rotation.x = Math.sin(t * 1.9) * swingAmp;
+    rides.forEach(q => { if (q.tick) q.tick(t, dt, actors.some(a => a.sit === q)); });
     waterTex.offset.x = -t * 0.12;
     marker.rotation.z = t * 2;
     clouds.position.set(me.x * 0.6 + Math.sin(t * 0.02) * 10, 0, me.z - 44);
@@ -969,7 +1033,9 @@
     // 캐릭터 모습·이름표
     actors.forEach(a => {
       if (a.hop > 0) a.hop -= dt;
-      if (a.sit) { // 앉은 자리에 붙음 (그네는 줄을 따라 같이 흔들림)
+      if (a.sit !== a.sitWas) { a.sitWas = a.sit; a.sitAt = t; } // 미끄럼틀처럼 탄 뒤 지난 시간으로 움직이는 것용
+      if (a.sit && a.sit.place) a.sit.place(a, t); // 놀이터 기구
+      else if (a.sit) { // 앉은 자리에 붙음 (그네는 줄을 따라 같이 흔들림)
         const q = a.sit, th = q.swing ? swingSeat.rotation.x : 0;
         a.g.position.set(q.x, q.swing ? 2.55 - 1.8 * Math.cos(th) + 0.04 : q.y, q.swing ? q.z - 1.8 * Math.sin(th) : q.z);
         a.g.rotation.x = th; a.face = q.face;
