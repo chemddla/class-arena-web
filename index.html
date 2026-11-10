@@ -5565,7 +5565,7 @@
           desc: '4칸 안에서 내가 쌓은 [불티]가 있는 적 모두의 불티를 한꺼번에 터뜨립니다. 불티 1개당 60% 피해 (4개 = 240%). 터뜨린 뒤 4칸 안의 적 모두에게 [불티] 2개를 쌓아요. 불티는 5개가 되면 저절로 터지므로 4개일 때가 가장 셉니다.'
         }
       },
-      // 전격술사: 축전 5에서 쓰는 스킬은 강화판. 감전을 깔고(필드·방전) 이어서 지지고(체인) 쓸어 버림(전자포) (docs/electromancer-design.md)
+      // 전격술사: 축전 3에서 쓰는 스킬은 강화판. 감전을 깔고(필드·방전) 이어서 지지고(체인) 쓸어 버림(전자포) (docs/electromancer-design.md)
       volt: {
         volt_thunderbolt: {
           id: 'volt_thunderbolt', name: '썬더볼트', icon: '⚡', ccTag: '⚡연쇄 3명·감전',
@@ -6005,7 +6005,7 @@
         icon: '🌩️',
         color: '#6366f1',
         roleDesc: '채널링 전류·감전·강화 스킬',
-        passiveName: '축전', passiveDesc: '스킬을 쓸 때마다 [축전] +1 (최대 5) · 축전 5에서 쓰는 스킬은 강화판으로 나가고 축전 0 · 기본 공격은 멈춰 서서 한 명을 0.25초마다 지지는 전류 줄기 (보통 기본 공격 피해의 100% → 이어질수록 최대 160%, 1초 넘게 이어지면 [감전]) · 움직이거나 스킬에 맞으면 끊기고, 기본 공격에 맞으면 쌓인 피해가 처음부터 · [감전]된 적에게 주는 피해 +20% · 몬스터에게 주는 피해 +15%',
+        passiveName: '축전', passiveDesc: '스킬을 쓸 때마다 [축전] +1 (최대 3) · 축전 3에서 쓰는 스킬은 강화판으로 나가고 축전 0 · 기본 공격은 멈춰 서서 한 명을 0.25초마다 지지는 전류 줄기 (보통 기본 공격 피해의 100% → 이어질수록 최대 160%, 1초 넘게 이어지면 [감전], 감전된 대상이면 둘레 1.5칸 적 2명에게 전깃줄이 튀어 50%) · 움직이거나 스킬에 맞으면 끊기고, 기본 공격에 맞으면 쌓인 피해가 처음부터 · [감전]된 적에게 주는 피해 +20% · 몬스터에게 주는 피해 +15%',
         baseHp: 1400, baseAtk: 56, baseDef: 22, baseSpd: 100, range: 285, maxMana: 100
       }
     };
@@ -27678,17 +27678,20 @@
     }
 
     // ===== 전격술사 (docs/electromancer-design.md) =====
-    // 패시브 [축전]: 스킬을 쓸 때마다 +1 (최대 5) → 축전 5에서 쓰는 스킬은 강화판, 축전 0 (강화 스킬은 축전을 쌓지 않음)
+    // 패시브 [축전]: 스킬을 쓸 때마다 +1 (최대 3) → 축전 3에서 쓰는 스킬은 강화판, 축전 0 (강화 스킬은 축전을 쌓지 않음)
     // 기본 공격 = 채널링 전류 줄기: 멈춰 서서 한 명을 0.25초마다 지짐. 움직이거나 스킬에 맞으면 끊김, 기본 공격에 맞으면 쌓인 피해만 처음부터 (장판·상태이상 틱은 상관없음)
     // 감전을 걸려고 하면 막혀도(엘리트 보스·저항) [대전] 표시(e.voltMarkUntil)를 남김 → 체인 라이트닝은 감전 또는 대전인 적을 이음
     // 시간은 다른 스킬처럼 60틱 = 스킬 설명의 1초
-    const VOLT_CHARGE_MAX = 5;
+    const VOLT_CHARGE_MAX = 3;        // 2026-11-10 5 → 3 (사용자 요청)
     const VOLT_CH_TICK = 15;          // 채널: 0.25초마다
     const VOLT_CH_DMG = 1.0;          //   틱 피해 = 같은 시간 동안 기본 공격이 낼 피해의 100% → 이어질 때마다 +15% → 최대 160% (공격 속도가 빨라지면 그만큼 셈)
     const VOLT_CH_STEP = 0.15;
     const VOLT_CH_MAX = 1.6;
     const VOLT_CH_SHOCK_AFTER = 60;   //   1초 넘게 이어지면 대상 [감전] 1초 (이어지는 동안 계속 갱신)
     const VOLT_CH_SHOCK = 60;
+    const VOLT_CH_ARC_CELLS = 1.5;    //   대상이 [감전]·[대전]이면 대상 둘레 1.5칸 안 다른 적 최대 2명에게 전깃줄이 튀어 그 틱 피해의 50%
+    const VOLT_CH_ARC_N = 2;
+    const VOLT_CH_ARC_DMG = 0.5;
     const VOLT_CH_RESUME = 24;        //   직접 맞아 끊기면 0.4초 뒤에 다시 (쌓인 피해는 처음부터)
     const VOLT_TB_DMG = 1.6, VOLT_TB_EMP_DMG = 2.0, VOLT_TB_BACK = 0.8, VOLT_TB_SHOCK = 240, VOLT_TB_N = 3; // 썬더볼트 (강화: 되돌아오는 줄기 80%)
     const VOLT_FIELD_CELLS = 3, VOLT_FIELD_EMP_CELLS = 4, VOLT_FIELD_TICKS = 300, VOLT_FIELD_EVERY = 30;  // 일렉트릭 필드: 5초, 0.5초마다
@@ -27758,8 +27761,21 @@
       if (!cont) playCombatSfx('magic');
       const h = voltHand(u);
       sim.effects.push({ type: 'volt_beam', sx: h.x, sy: h.y, tx: target.x, ty: target.y - 14, k: Math.round(h.k * 100) / 100, life: period + 4, maxLife: period + 4 });
-      withHitKind('ranged', () => applyDamage(u, target, u.atk * share * Math.min(VOLT_CH_MAX, VOLT_CH_DMG + VOLT_CH_STEP * n), '', '#818cf8'));
+      const dmg = u.atk * share * Math.min(VOLT_CH_MAX, VOLT_CH_DMG + VOLT_CH_STEP * n);
+      const shocked = voltShocked(target); // 맞기 전에 이미 감전된 대상만 번짐 (이번 틱에 처음 감전되면 다음 틱부터)
+      withHitKind('ranged', () => applyDamage(u, target, dmg, '', '#818cf8'));
       if (sim.tickCount - u.voltCh.since >= VOLT_CH_SHOCK_AFTER) voltShock(u, target, VOLT_CH_SHOCK);
+      if (shocked) voltChannelArc(u, target, dmg * VOLT_CH_ARC_DMG, period);
+    }
+    // 감전된 대상에서 둘레 적에게 전깃줄이 이어지며 추가 피해 (가까운 적부터 최대 VOLT_CH_ARC_N명)
+    function voltChannelArc(u, from, dmg, period) {
+      const R = GRID_CELL_SIZE * VOLT_CH_ARC_CELLS * unitAreaScale(u);
+      const near = sim.units.filter(e => e !== from && e.alive && e.team !== u.team && e.team !== 'none' && !e.rushPending && !((e.statuses?.rebirth || 0) > 0)
+        && !hiddenFrom(u, e) && unitDist(e, from) <= R).sort((a, b) => unitDist(a, from) - unitDist(b, from)).slice(0, VOLT_CH_ARC_N);
+      near.forEach(e => {
+        sim.effects.push({ type: 'volt_beam', sx: from.x, sy: from.y - 14, tx: e.x, ty: e.y - 14, k: 0.7, life: period + 4, maxLife: period + 4 });
+        withHitKind('ranged', () => applyDamage(u, e, dmg, '', '#818cf8'));
+      });
     }
     // 직접 조종: 누르는 순간 겨눈 적 → 계속 누르고 있으면 그 적을 놓지 않음 (사거리 + 0.5칸 밖으로 나가면 끊김)
     function voltManualChannel(u, enemies, aimX, aimY, interval) {
@@ -28018,7 +28034,7 @@
       const emp = voltNextEmpowered(unit);
       const near = r => live.filter(e => Math.hypot(e.x - unit.x, e.y - unit.y) - unitBodyGap(e) <= r);
       const boss = live.some(e => e.isEliteBoss || e.isRaceBoss);
-      // 축전 4: 다음 스킬이 강화라서, 강화 가치가 큰 체인·전자포가 곧(2초 안) 준비되면 다른 스킬로 축전 5를 넘기지 않음
+      // 축전 2: 다음 스킬이 강화라서, 강화 가치가 큰 체인·전자포가 곧(2초 안) 준비되면 다른 스킬로 축전 3을 넘기지 않음
       if (!voltOverloadOn(unit) && (unit.voltCharge || 0) === VOLT_CHARGE_MAX - 1 && skKey !== 'chain_lightning' && skKey !== 'rail_cannon' && skKey !== 'overload') {
         const soon = ['chain_lightning', 'rail_cannon'].some(k => (unit.unlockedSkills || []).includes(k) && (unit.skillCooldowns?.[k] || 0) <= 120);
         if (soon && !near(A * 2).length) return -1;
@@ -28157,7 +28173,7 @@
       if (voltInBattleAt !== sim.tickCount) { voltInBattleAt = sim.tickCount; voltInBattleV = sim.units.some(v => v.job === 'volt' && !v.monsterType); }
       return voltInBattleV;
     }
-    // 몸에 붙는 반복 이펙트: 감전(적) · 축전 5 · 오버로드 · 과부하. 체력바를 그리는 자리에서 불림 (몸 그림 위, 캔버스는 이미 유닛 발 자리로 옮겨져 있음)
+    // 몸에 붙는 반복 이펙트: 감전(적) · 축전 가득 · 오버로드 · 과부하. 체력바를 그리는 자리에서 불림 (몸 그림 위, 캔버스는 이미 유닛 발 자리로 옮겨져 있음)
     function drawVoltBodyFx(ctx, u) {
       const sc = Math.min(2, u.sizeScale || 1), f = sim.tickCount / 3 + (String(u.id).length * 7 + (u.x | 0)) % 12;
       if ((u.statuses?.shock || 0) > 0 && voltInBattle()) drawVoltFx(ctx, 'shock', f, 0, 12, sc);
@@ -28167,7 +28183,7 @@
       else if ((u.voltCharge || 0) >= VOLT_CHARGE_MAX) drawVoltFx(ctx, 'charged', f, 0, 12, sc);
     }
     // ----- 그림 (pixelfx 작법: 칸 단위 도트 · 남보라 램프 · 깜빡이며 꺼짐) -----
-    // 축전: 체력바 아래 작은 칸 5개 (가득 차면 노랑) · 오버로드 중엔 몸 둘레에 노란 잔전류가 튐 · 과부하 중엔 회색
+    // 축전: 체력바 아래 작은 칸 3개 (가득 차면 노랑) · 오버로드 중엔 몸 둘레에 노란 잔전류가 튐 · 과부하 중엔 회색
     function drawVoltCharge(ctx, u, bx, by, barW, tick) {
       const n = Math.max(0, Math.min(VOLT_CHARGE_MAX, u.voltCharge || 0));
       const over = voltOverloadOn(u), burn = voltBurnout(u);
@@ -32697,8 +32713,8 @@
         }
       }
 
-      if (u.alive) drawVoltBodyFx(ctx, u); // 전격술사 시트: 감전(적) · 축전 5 · 오버로드 · 과부하
-      if (u.alive && u.job === 'volt' && !u.monsterType) drawVoltCharge(ctx, u, bx, by, barW, tick); // 전격술사 축전 칸 5개 · 오버로드 잔전류
+      if (u.alive) drawVoltBodyFx(ctx, u); // 전격술사 시트: 감전(적) · 축전 가득 · 오버로드 · 과부하
+      if (u.alive && u.job === 'volt' && !u.monsterType) drawVoltCharge(ctx, u, bx, by, barW, tick); // 전격술사 축전 칸 3개 · 오버로드 잔전류
       const brawlSpirit = u.alive && u.job === 'brawler' && !u.monsterType ? brawlerSpiritLeft(u, tick) : 0;
       if (brawlSpirit > 0) drawBrawlerSpiritBar(ctx, brawlSpirit, bx, by, barW); // 격투가 투혼 남은 시간 (보라)
       if (u.alive && u.job === 'brawler' && !u.monsterType) drawBrawlerCombo(ctx, u, tick, bx + barW + 3, by - 2); // 격투가 연격 콤보
@@ -46596,7 +46612,7 @@
         // 흑사자 불사 실루엣·광폭 모습: 방장 틱 그대로는 도전자 화면 시계와 달라서 '몇 틱 전 / 몇 틱 남음'으로 보냄
         u.srUndyingFxAt == null ? -1 : sim.tickCount - u.srUndyingFxAt, Math.max(0, liveNum(u.rageLookUntil) - sim.tickCount),
         liveNum(u.emberShow), // 화염술사 불티 (머리 옆 불꽃 점 0~5)
-        liveNum(u.voltCharge) // 전격술사 축전 (0~5)
+        liveNum(u.voltCharge) // 전격술사 축전 (0~3)
       ];
     }
 
