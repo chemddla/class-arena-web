@@ -3300,7 +3300,7 @@
                     <strong>🗡️ 1:1 대결방</strong>은 용병 1명씩 골라 <strong>직접 조종</strong>해서 겨뤄요.
                     <strong>👥 팀전방</strong>은 친구들이 블루·레드팀으로 나뉘어 각자 용병 1명을 조종해요. (최대 5:5)
                     <strong>🔥 8:8 총력전방</strong>은 홈 출전 용병에 전투력 높은 용병을 더해 8명씩 맞붙어요.
-                    <strong>⚖️ 공정한 결투방</strong>은 방장이 정한 같은 직업·같은 스킬·Lv.50으로 직접 조종해서 겨뤄요. (히든 스킬 없음)
+                    <strong>⚖️ 공정한 결투방</strong>은 방장이 정한 같은 직업·같은 스킬·Lv.50으로 직접 조종해서 겨뤄요. (히든 스킬 없음 · 3분 안에 못 끝나면 체력이 더 많은 쪽이 승리)
                   </p>
                 </div>
               </div>
@@ -20239,6 +20239,8 @@
       sim.title = title;
       sim.meta = { blueStudent, redStudent, towerFloorObj, eliteBossId: eliteBossId || null, eliteHard: Boolean(eliteHard), rewardMc: rewardMc || 250, lossRewardMc, liveKind };
       sim.running = true;
+      sim.fairDuel = mode === 'pvp_realtime' && liveKind === 'fair'; // ⚖️ 공정한 결투: 3분 제한 · 체력 많은 쪽 승리 (관전은 따로 켬)
+      sim.fairSuddenDeath = false;
       sim.netRole = netRole;
       sim.myTeam = myTeam;
       // 모든 전투를 같은 빠르기로: 가장 느린 1배속에 맞춤 (예전 2배속 설정이 다음 전투에 남지 않게)
@@ -21805,8 +21807,14 @@
       const timeLimit = sim.mode === 'practice' ? BATTLE_TIME_LIMIT.practiceTicks
         : (isEliteBossMode(sim.mode) ? eliteRaidTimeLimitTicks() : BATTLE_TIME_LIMIT.battleTicks);
       if (!sim.sandbox && sim.mode !== 'monster_rush' && sim.mode !== 'dungeon' && sim.mode !== 'world_boss' && sim.tickCount >= timeLimit) {
-        finishBattleByTimeLimit(blueAlive, redAlive);
-        return;
+        if (sim.fairDuel && fairDuelHpTie(blueAlive, redAlive)) {
+          // 체력이 똑같으면 먼저 한 대 맞는 쪽이 지는 연장전 (방장 쪽이 저절로 이기지 않게)
+          if (!sim.fairSuddenDeath) { sim.fairSuddenDeath = true; addBattleLog('⏰ 시간 종료! 남은 체력이 똑같아서 연장전! 먼저 체력이 줄어드는 쪽이 져요.'); }
+        } else {
+          finishBattleByTimeLimit(blueAlive, redAlive);
+          return;
+        }
+        : sim.fairDuel ? FAIR_DUEL_TIME_LIMIT_SEC * BATTLE_TICKS_PER_SEC
       }
 
       stepSpirits(); // 소환사 정령: 시간·주인 쓰러짐·쓰러진 불 정령 폭발
@@ -32940,6 +32948,11 @@
     function finishBattleByTimeLimit(blueAlive, redAlive) {
       if (sim.mode === 'practice') {
         addBattleLog('⏰ 연습 시간이 끝났어요! 연습 완료!');
+    // ⚖️ 공정한 결투: 실제 시간 3분 안에 못 끝나면 남은 체력이 더 많은 쪽이 승리
+    const FAIR_DUEL_TIME_LIMIT_SEC = 180;
+    const fairDuelHp = alive => Math.round(alive.filter(u => !u.isClone).reduce((s, u) => s + Math.max(0, u.hp || 0), 0));
+    function fairDuelHpTie(blueAlive, redAlive) { return fairDuelHp(blueAlive) === fairDuelHp(redAlive); }
+    function fairDuelLeftSec() { return Math.max(0, Math.ceil(FAIR_DUEL_TIME_LIMIT_SEC - (sim.tickCount || 0) / BATTLE_TICKS_PER_SEC)); }
         finishSimulation(true);
         return;
       }
@@ -32958,6 +32971,12 @@
         const max = all.reduce((s, u) => s + (u.maxHp || 0), 0) || 1;
         return alive.reduce((s, u) => s + Math.max(0, u.hp), 0) / max;
       };
+      if (sim.fairDuel) {
+        const b = fairDuelHp(blueAlive), r = fairDuelHp(redAlive);
+        addBattleLog(`⏰ 제한 시간 3분 끝! 남은 체력 ${b.toLocaleString()} : ${r.toLocaleString()} — 체력이 더 많은 ${b > r ? '블루' : '레드'}팀 승리!`);
+        finishSimulation(b > r);
+        return;
+      }
       const blueRatio = hpRatio(blueAlive, 'blue');
       const redRatio = hpRatio(redAlive, 'red');
       addBattleLog(`⏰ 시간 종료! 남은 체력 ${Math.round(blueRatio * 100)}% : ${Math.round(redRatio * 100)}% 로 판정해요.`);
@@ -44596,6 +44615,7 @@
       // 고를 것 없이 보기만: 전투 방식 고르기 창을 닫고 자동(화면 이동만)으로 고정
       battleControl.locked = true;
       battleControl.mode = 'auto';
+      sim.fairDuel = isFairDuelRoom(r); // 남은 시간 표시용 (오늘의 미션은 안 셈)
       battleControl.unitId = null;
       sim.awaitingControlChoice = false;
       document.getElementById('battleControlChooser')?.classList.add('hidden');
@@ -46518,7 +46538,7 @@
     // 버퍼의 화면 한 장을 적용 (위치는 따로 이어 그림) · ageMs = 그 화면이 재생 시점보다 얼마나 앞선 것인지
     function applyLiveFrameState(val, ageMs) {
       // 토벌 도중에 들어온 관전자: 남은 시간이 방장 화면과 같게
-      if ((sim.raidWatch || (sim.dungeon && sim.dungeon.party)) && liveNum(val.t) > 0) sim.tickCount = liveNum(val.t); // 5인 던전: 남은 시간·기믹 시각이 방장 화면 기준
+      if ((sim.raidWatch || sim.fairDuel || (sim.dungeon && sim.dungeon.party)) && liveNum(val.t) > 0) sim.tickCount = liveNum(val.t); // 공정한 결투: 남은 시간도 계산 담당 화면 기준 // 5인 던전: 남은 시간·기믹 시각이 방장 화면 기준
       if (val.dg && typeof val.dg === 'object' && sim.dungeon) applyDungeonState(val.dg);
       liveNet.hostPause = val.ps === 'choose' ? val.ps : null;
       if (Array.isArray(val.rs)) applyRushState(val.rs);
@@ -51123,6 +51143,13 @@
       if (!rs) return;
       const tps = BATTLE_TICKS_PER_SEC;
       let text;
+      if (arenaVisible && sim.fairDuel && sim.mode === 'pvp_realtime') { // ⚖️ 공정한 결투: 남은 시간
+        el.classList.remove('hidden');
+        const sec = fairDuelLeftSec();
+        el.textContent = sim.fairSuddenDeath || sec === 0 ?'⚖️ 연장전! 먼저 체력이 줄어드는 쪽이 져요'
+          : `⚖️ 공정한 결투 · ⏰ ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}${sec <= 30 ? ' · 시간이 다 되면 체력 많은 쪽 승리!' : ''}`;
+        return;
+      }
       if (rs.phase === 'move') {
         text = `🕳️ ${rs.cleared}라운드 보스 돌파! 굴 속으로 들어가는 중... ${rs.round + 1}라운드부터 새로운 전장`;
       } else if (rs.phase === 'break') {
