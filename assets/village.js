@@ -440,6 +440,48 @@
     duo.forEach(q => { q.place = (a, t) => { const k = hop(q, t); a.g.position.set(cx + q.dx, H + k * 1.5 - Math.max(0, 0.25 - k) * 0.6, cz); a.g.rotation.x = 0; a.face = 0; }; rides.push(q); });
   }
 
+  // ── 학교: 놀이터 위(북쪽). 2층 본관 + 가운데 시계탑, 현관 앞 돌길이 놀이터로 이어짐
+  const SCH = { x: -44, z: -0.8 };
+  { const g = new THREE.Group(), box = (w, h, d, c, x, y, z) => { const m = at(mesh(new THREE.BoxGeometry(w, h, d), c), x, y, z); g.add(m); return m; };
+    const WALL = '#fff4e0', TRIM = '#6fbfa6', ROOF = '#d9604f', W = 12.4, D = 4.4, H = 4.6, B = 0.35, F = D / 2; // F: 앞면 z
+    box(W + 0.6, B, D + 0.6, '#cdbfa3', 0, B / 2, 0); // 기단
+    g.add(at(mesh(new THREE.BoxGeometry(W, H, D), texMat(wallTex, WALL)), 0, B + H / 2, 0));
+    box(W + 0.12, 0.18, D + 0.12, TRIM, 0, B + 2.25, 0); box(W + 0.4, 0.24, D + 0.4, '#f6e7c8', 0, B + H + 0.08, 0); // 층 사이 띠, 처마
+    const roof = (w, d, h, y, z, hex) => { const o = new THREE.Group(), mid = new THREE.Group(), r0 = d / 1.732; // 세모 기둥을 눕혀 박공지붕
+      const pr = mesh(new THREE.CylinderGeometry(r0, r0, w, 3), texMat(roofTex, hex)); pr.rotation.z = Math.PI / 2; mid.add(pr); mid.rotation.x = -Math.PI / 2;
+      o.add(mid); o.scale.y = h / (1.5 * r0); g.add(at(o, 0, y + 0.5 * r0 * o.scale.y, z)); };
+    roof(W + 0.7, D + 0.9, 1.5, B + H + 0.2, 0, ROOF);
+    // 1·2층 창문 (가운데 탑을 비우고 양쪽 날개에 셋씩)
+    [2.45, 3.75, 5.05].forEach(ax => [-1, 1].forEach(sd => { const x = ax * sd;
+      [B + 1.15, B + 3.3].forEach((y, fl) => { box(0.96, 1.12, 0.06, '#ffffff', x, y, F + 0.02); g.add(at(noShadow(mesh(new THREE.BoxGeometry(0.78, 0.94, 0.08), winMat)), x, y, F + 0.03));
+        box(0.06, 0.94, 0.1, '#ffffff', x, y, F + 0.05); box(0.78, 0.06, 0.1, '#ffffff', x, y + 0.1, F + 0.05); box(1.08, 0.12, 0.14, TRIM, x, y + 0.62, F + 0.06);
+        if (!fl) { box(1, 0.18, 0.26, '#b9824e', x, y - 0.66, F + 0.15); [-0.3, 0, 0.3].forEach((dx, k) => g.add(at(mesh(new THREE.SphereGeometry(0.1, 8, 6), ['#ff7fa6', '#ffcf3a', '#fff6e8'][(k + (sd > 0)) % 3]), x + dx, y - 0.52, F + 0.17))); g.add(halo(1.5, x, y, F + 0.2)); } }); }));
+    // 가운데 시계탑과 현관
+    const TW = 3.2, TH = 6.9, TF = F + 0.3;
+    box(TW, TH, D + 0.6, '#fffaf0', 0, B + TH / 2, 0); box(TW + 0.14, 0.18, D + 0.74, TRIM, 0, B + 2.25, 0); box(TW + 0.3, 0.2, D + 0.9, '#f6e7c8', 0, B + TH + 0.06, 0);
+    const cap = at(mesh(new THREE.ConeGeometry(2.55, 1.9, 4), texMat(roofTex, ROOF)), 0, B + TH + 1.1, 0); cap.rotation.y = Math.PI / 4; g.add(cap);
+    box(0.08, 0.9, 0.08, '#d9a441', 0, B + TH + 2.4, 0); g.add(at(mesh(new THREE.SphereGeometry(0.13, 10, 8), '#d9a441'), 0, B + TH + 2.9, 0));
+    const ring = at(mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.08, 32), '#d9a441'), 0, B + 5.6, TF + 0.02); ring.rotation.x = Math.PI / 2; g.add(ring);
+    const face = at(mesh(new THREE.CylinderGeometry(0.66, 0.66, 0.08, 32), '#fffdf6'), 0, B + 5.6, TF + 0.05); face.rotation.x = Math.PI / 2; g.add(face);
+    for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2; box(0.05, k % 3 ? 0.07 : 0.14, 0.03, '#56606c', Math.sin(a) * 0.54, B + 5.6 + Math.cos(a) * 0.54, TF + 0.1).rotation.z = -a; }
+    box(0.06, 0.42, 0.03, '#3a3a44', 0, B + 5.78, TF + 0.12); const mh = box(0.05, 0.5, 0.03, '#3a3a44', 0.17, B + 5.6, TF + 0.12); mh.rotation.z = -1.2; mh.position.y += 0.08;
+    const sc = document.createElement('canvas'); sc.width = 384; sc.height = 72; const sg = sc.getContext('2d');
+    sg.fillStyle = '#2f6f5f'; sg.fillRect(0, 0, 384, 72); sg.strokeStyle = '#f6e7c8'; sg.lineWidth = 4; sg.strokeRect(6, 6, 372, 60);
+    sg.fillStyle = '#fffaf0'; sg.font = "800 38px 'Malgun Gothic', sans-serif"; sg.textAlign = 'center'; sg.textBaseline = 'middle'; sg.fillText('햇살초등학교', 192, 38);
+    g.add(at(noShadow(mesh(new THREE.PlaneGeometry(2.9, 0.54), flat(0xffffff, { map: new THREE.CanvasTexture(sc) }))), 0, B + 3.7, TF + 0.05));
+    box(1.9, 2.2, 0.1, '#ffffff', 0, B + 1.1, TF + 0.02); [-0.44, 0.44].forEach(x => { box(0.8, 1.95, 0.1, '#5fa898', x, B + 0.98, TF + 0.05); box(0.5, 0.7, 0.04, '#cfeefc', x, B + 1.35, TF + 0.11); });
+    const arch = at(mesh(new THREE.CylinderGeometry(0.95, 0.95, 0.1, 24, 1, false, -Math.PI / 2, Math.PI), '#ffffff'), 0, B + 2.2, TF + 0.02); arch.rotation.x = Math.PI / 2; g.add(arch);
+    const fan = at(noShadow(mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.12, 24, 1, false, -Math.PI / 2, Math.PI), winMat)), 0, B + 2.2, TF + 0.03); fan.rotation.x = Math.PI / 2; g.add(fan);
+    box(3, 0.14, 1.1, TRIM, 0, B + 3.0, TF + 0.5); [-1.3, 1.3].forEach(x => { g.add(at(mesh(new THREE.CylinderGeometry(0.09, 0.1, 2.65, 10), '#ffffff'), x, B + 1.65, TF + 0.95)); });
+    box(3.2, 0.16, 0.8, '#d6c7ab', 0, B + 0.08, TF + 0.55); box(3.6, 0.16, 0.6, '#cdbfa3', 0, 0.08, TF + 1.15); // 계단
+    // 앞 화단(현관 앞은 비움)과 국기 게양대
+    [-1, 1].forEach(sd => { box(4.2, 0.55, 0.6, '#5cbd50', sd * 4, 0.3, F + 0.95); for (let k = 0; k < 7; k++) g.add(at(mesh(new THREE.SphereGeometry(0.12, 8, 6), ['#ff7fa6', '#ffcf3a', '#fff6e8', '#ff8a3a'][k % 4]), sd * 4 - 1.8 + k * 0.6, 0.62, F + 1.05)); });
+    g.add(at(mesh(new THREE.CylinderGeometry(0.05, 0.06, 5, 8), '#cbd5e1'), -7.4, 2.5, F + 1.4)); g.add(at(mesh(new THREE.SphereGeometry(0.1, 8, 6), '#d9a441'), -7.4, 5.05, F + 1.4));
+    box(1.2, 0.75, 0.03, '#f2c53a', -6.78, 4.5, F + 1.4); box(0.36, 0.36, 0.04, '#e0685a', -6.78, 4.5, F + 1.41);
+    scene.add(at(g, SCH.x, 0, SCH.z)); solid(SCH.x - 7.4, SCH.z + F + 1.4, 0.2);
+    strip(SCH.x, (SCH.z + TF + 1.45 + PLAY.z - 4.2) / 2, 2.2, PLAY.z - 4.2 - (SCH.z + TF + 1.45), sandMat(1, 2), 0.031); // 현관에서 놀이터까지 돌길
+  }
+
   // ── 나무: 꽃·잎 뭉치는 한 번에 그리는 묶음(InstancedMesh)으로, 줄기와 열매만 따로
   const BLOB_MAX = 900;
   const mkBlobs = (tex, geo) => { const im = new THREE.InstancedMesh(geo || new THREE.SphereGeometry(1, 16, 11), bend(new THREE.MeshToonMaterial({ gradientMap: softGrad, map: tex }), 0.011), BLOB_MAX);
@@ -480,7 +522,7 @@
   { const bg = [];
     for (let i = 0, tries = 0; i < 60 && tries < 4000; tries++) {
       const x = (rnd() - 0.5) * 112, z = -44 + rnd() * 66;
-      if (!(Math.abs(x) > 36.5 || z < -25.5) || (z > RIVER.z0 - 1.6 && z < RIVER.z1 + 1.6) || bg.some(b => Math.hypot(x - b[0], z - b[1]) < 3.4) || (x < -31 && x > PLAY.x - 12 && Math.abs(z - PLAY.z) < 7.5)) continue;
+      if (!(Math.abs(x) > 36.5 || z < -25.5) || (z > RIVER.z0 - 1.6 && z < RIVER.z1 + 1.6) || bg.some(b => Math.hypot(x - b[0], z - b[1]) < 3.4) || (x < -31 && x > PLAY.x - 12 && z > SCH.z - 4.5 && z < PLAY.z + 7.5)) continue;
       bg.push([x, z]); i++;
       const sc = 1 + rnd() * 0.5, pinkTree = rnd() < 0.55, im = pinkTree ? blobsPinkFar : blobsLeafFar;
       scene.add(at(mesh(new THREE.CylinderGeometry(0.26 * sc, 0.4 * sc, 1.6 * sc, 12), barkMat), x, 0.8 * sc, z));
@@ -682,8 +724,8 @@
       if (Math.abs(a.x) <= RIVER.bridge && pz > RIVER.z0 - 0.05 && pz < RIVER.z1 + 0.05) x = Math.max(-RIVER.bridge + 0.25, Math.min(RIVER.bridge - 0.25, x));
       else if (Math.abs(x) > RIVER.bridge - 0.25) z = pz >= RIVER.z1 ? RIVER.z1 : pz <= RIVER.z0 ? RIVER.z0 : z;
     }
-    if (x < -LX && pz < 40) { // 집들 왼쪽 바깥은 놀이터 안으로만 감
-      if (a.x >= -LX && Math.abs(z - PLAY.z) > 4) x = -LX; else z = Math.max(PLAY.z - 4, Math.min(PLAY.z + 4, z));
+    if (x < -LX && pz < 40) { // 집들 왼쪽 바깥은 학교 앞마당·놀이터 안으로만 감
+      if (a.x >= -LX && (z < SCH.z + 3.9 || z > PLAY.z + 4)) x = -LX; else z = Math.max(SCH.z + 3.9, Math.min(PLAY.z + 4, z));
     }
     if (z < -21 && pz < 40) { // 사무소·가게 뒤로는 그 사이 길로만 들어감
       if (pz >= -21 && Math.abs(x - 6.45) > 0.9) z = -21; else x = Math.max(5.55, Math.min(7.35, x));
@@ -905,7 +947,7 @@
     g.fillStyle = '#7fd0f0'; g.beginPath(); g.arc(mx(0), mz(0), 1.3 * S, 0, 6.29); g.fill();
     HOUSES.forEach(h => { rect(h[0], h[1], 3.2, 2.6, h[3]); });
     rect(0, -23, 6.4, 3.6, '#7a4a2e'); rect(0, -23, 1.2, 1.2, '#a8744f'); rect(SHOP.x, SHOP.z, 7, 3.8, '#3f9a5a'); rect(7.05, -19.9, 11.9, 1.6, '#ead2a0'); rect(6.45, -22.7, 1.8, 5.4, '#ead2a0'); rect(PLAY.x, PLAY.z, 17, 8.4, '#e9d9a8');
-    rect(-34.3, 11.6, 2.8, 2.2, '#ead2a0');
+    rect(-34.3, 11.6, 2.8, 2.2, '#ead2a0'); rect(SCH.x, SCH.z, 12.4, 4.4, '#d9604f'); rect(SCH.x, SCH.z + 0.3, 3.2, 5, '#c24f40'); rect(SCH.x, (SCH.z + 3.95 + PLAY.z - 4.2) / 2, 2.2, PLAY.z - 4.2 - (SCH.z + 3.95), '#ead2a0');
     [[-6, -2.2, 4.2, 0.5, '#e0685a'], [-0.2, -1.4, 1, 3.4, '#e0685a'], [5.4, -2, 3.4, 0.5, '#e8a13a']].forEach(b => rect(PLAY.x + b[0], PLAY.z + b[1], b[2], b[3], b[4]));
     [[0, 3, '#5b8fd8'], [5.4, 2.8, '#4fae6a']].forEach(b => { g.fillStyle = b[2]; g.beginPath(); g.arc(mx(PLAY.x + b[0]), mz(PLAY.z + b[1]), 1.3 * S, 0, 6.29); g.fill(); });
     trees.forEach(t => { g.fillStyle = t.kind === 'blossom' ? '#ffc8d6' : '#3f9e4b'; g.beginPath(); g.arc(mx(t.x), mz(t.z), 1.2 * t.sc * S, 0, 6.29); g.fill(); });
