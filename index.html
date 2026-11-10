@@ -27813,16 +27813,18 @@
         applyDamage(u, e2, u.atk * VOLT_FIN_DMG, '', '#e0f2fe');
         voltShock(u, e2, VOLT_FIN_SHOCK);
       }));
-      // 10칸까지 퍼지는 그림: 피날레와 같은 매끈한 줄기의 방전 그림(discharge-gold, 백열 은빛)을 세 겹으로 무작위로 섞어 차례로 터뜨림
-      //   안쪽(약 3칸) 4개 → 중간(약 6칸) 6개 → 바깥(약 9칸) 8개, 겹마다 0.1초씩 늦게 · 자리·크기·시작 프레임을 무작위로 (코드로 그리는 줄기·낙뢰는 쓰지 않음, 사용자 요청 2026-11-10)
-      const fy = u.y + 12, seed = sim.tickCount * 131;
+      // 10칸까지 끊기지 않게 퍼지는 그림: 피날레와 같은 매끈한 줄기의 방전 그림(discharge-gold, 백열 은빛)만 엮음 (코드 줄기·낙뢰 없음, 사용자 요청 2026-11-10)
+      //   바퀴살 8줄: 가운데 터짐의 가장자리(약 2.5칸)부터 10칸 끝까지 방전을 앞 것과 겹치게(간격 260 < 방전 반지름 약 300) 이어 놓음,
+      //   이웃 줄은 반 간격씩 엇갈려 줄 사이 빈틈을 메움 · 거리에 따라 늦게 터져 안에서 밖으로 이어 퍼짐 · 방향 흔들림·크기·시작 프레임은 무작위
+      const fy = u.y + 12, seed = sim.tickCount * 131, SPOKES = 8, STEP = 260;
       const rnd = i => (((seed + i * 2654435761) >>> 0) % 1000) / 1000;
-      [[0.3, 4, 3], [0.6, 6, 9], [0.88, 8, 15]].forEach(([rk, n, wait], ring) => {
-        for (let i = 0; i < n; i++) {
-          const id = ring * 20 + i, a2 = ((i + rnd(id) * 0.8) / n) * Math.PI * 2, d = R * rk * (0.85 + rnd(id + 7) * 0.3);
-          voltFx('discharge-gold', u.x + Math.cos(a2) * d, fy + Math.sin(a2) * d * 0.62, 0.45 + rnd(id + 13) * 0.35, wait + Math.round(rnd(id + 21) * 5));
+      for (let k = 0; k < SPOKES; k++) {
+        const base = (k / SPOKES) * Math.PI * 2 + (rnd(k) - 0.5) * 0.35;
+        for (let n = 0, d = 290 + (k % 2) * STEP / 2; d < R * 0.97; n++, d += STEP * (0.9 + rnd(k * 31 + n) * 0.2)) {
+          const id = k * 50 + n, a2 = base + (rnd(id + 7) - 0.5) * 0.3;
+          voltFx('discharge-gold', u.x + Math.cos(a2) * d, fy + Math.sin(a2) * d * 0.62, 0.55 + rnd(id + 13) * 0.2, 2 + Math.round(d / 90) + Math.round(rnd(id + 21) * 2));
         }
-      });
+      }
       sim.shake = { power: 16, life: 30, maxLife: 30 };
       playCombatSfx('heavy');
       addBattleLog(`💥 [전격술사] ${u.name}의 뇌신 강림! ${hits.length}명 감전`);
