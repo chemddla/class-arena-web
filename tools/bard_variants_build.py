@@ -12,9 +12,9 @@ sys.path.insert(0, os.path.dirname(__file__))
 from frost_variants_build import rgb2hsv, hsv2rgb
 
 SRC = 'assets/sprites/merc/bard_0.webp'
-CELL_W = 143
+CELL_W = 149  # 2026-10-31 bard_0 칸이 143x102 → 149x105로 커짐 (기준점 +2, +3)
 # 베레모가 날아가 머리와 떨어진 쓰러짐 칸: 머리카락 덩어리를 찾을 점 (칸 안 x, y)
-HAIR_SEEDS = {8: [(71, 43)], 9: [(38, 64)]}
+HAIR_SEEDS = {8: [(73, 46)], 9: [(40, 67)]}
 # 부위별 (색상 도, 채도, 밝기) — 각 부위 가운데 값이 이 값이 되도록 맞춤. None = 그대로
 # (번호, 이름, 베레모, 조끼, 바지, 머리카락)
 VARIANTS = [
