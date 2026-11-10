@@ -296,9 +296,16 @@
 
   // ── 집
   // 집터 32곳: 광장에서 가까운 순서. 학생 명단 순서대로 한 채씩 (남는 집은 빈 집). 집 앞(남쪽)에 울타리 마당, 그 앞이 골목
-  const ROOFS = ['#e0685a', '#5b8fd8', '#e8a13a', '#4fae6a', '#b06fc8', '#3fb0a8', '#e07a9a', '#7a8fd8'], WALLS = ['#fff1dc', '#f4f0ff', '#fff6cf', '#eaf7e4', '#ffe9ee'];
-  const HOUSES = [], lot = (x, z) => HOUSES.push([x, z, WALLS[HOUSES.length % 5], ROOFS[HOUSES.length % 8]]);
+  const ROOFS = ['#e0685a', '#5b8fd8', '#e8a13a', '#4fae6a', '#b06fc8', '#3fb0a8', '#e07a9a', '#7a8fd8', '#9a6a4a', '#8fbf4a', '#f2c53a', '#6a7fa8'];
+  const WALLS = ['#fff1dc', '#f4f0ff', '#fff6cf', '#eaf7e4', '#ffe9ee', '#e8f4ff', '#fde8d6', '#f1f1e6'];
+  const HOUSES = [], lot = (x, z) => HOUSES.push([x, z]);
   [5, 15, 25, 35].forEach(z => [6.5, 13.5, 20.5, 27.5].forEach(x => { lot(-x, z); lot(x, z); })); // 골목(z+5)에서 마당만큼 물러남
+  { // 벽·지붕 색과 지붕 모양을 섞음: 정해진 난수로 고르되 옆집·앞뒷집과는 겹치지 않게 (모든 기기에서 같음)
+    let sd = 11; const rc = n => Math.floor((sd = (sd * 16807) % 2147483647) / 2147483647 * n);
+    HOUSES.forEach((h, i) => { const d = o => Math.hypot(o[0] - h[0], o[1] - h[1]), prev = HOUSES.slice(0, i); // 지붕은 두 집 건너까지, 벽은 바로 옆집과 다르게
+      let w, f, tries = 0; do { w = WALLS[rc(WALLS.length)]; f = ROOFS[rc(ROOFS.length)]; } while (++tries < 60 && prev.some(o => (d(o) < 15 && o[3] === f) || (d(o) < 11 && o[2] === w)));
+      h.push(w, f, rc(2) === 1); }); // [x, z, 벽, 지붕, 박공지붕인지]
+  }
   const texMat = (tex, hex) => toonMat({ map: tex, color: new THREE.Color(hex) });
   const barkMat = texMat(barkTex, '#a8744f');
   const haloMat = bend(new THREE.MeshBasicMaterial({ color: 0xffcf70, map: softTex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -308,13 +315,13 @@
   const prism = (g, w, d, h, y, mat) => { const o = new THREE.Group(), mid = new THREE.Group(), r0 = d / 1.732; // 세모 기둥을 눕힌 박공지붕
     const pr = mesh(new THREE.CylinderGeometry(r0, r0, w, 3), mat); pr.rotation.z = Math.PI / 2; mid.add(pr); mid.rotation.x = -Math.PI / 2;
     o.add(mid); o.scale.y = h / (1.5 * r0); g.add(at(o, 0, y + 0.5 * r0 * o.scale.y, 0)); };
-  HOUSES.forEach(([x, z, wall, roof], k) => {
+  HOUSES.forEach(([x, z, wall, roof, gable]) => {
     const g = new THREE.Group(), b = (w, h, d, c, px, py, pz) => { const m = at(mesh(new THREE.BoxGeometry(w, h, d), c), px, py, pz); g.add(m); return m; };
     const B = 0.3, H = 2, TOP = B + H, F = 1.3; // F: 앞벽 z
     b(3.5, B, 2.9, '#cfc6b6', 0, B / 2, 0); // 돌 기단
     g.add(at(mesh(new THREE.BoxGeometry(3.2, H, 2.6), texMat(wallTex, wall)), 0, B + H / 2, 0));
     [-1, 1].forEach(sx => [-1, 1].forEach(sz => b(0.14, H, 0.14, '#ffffff', sx * 1.57, B + H / 2, sz * 1.27))); b(3.34, 0.12, 2.74, '#ffffff', 0, TOP - 0.04, 0); // 흰 모서리 기둥·띠
-    if (k % 2) prism(g, 3.8, 3.2, 1.35, TOP + 0.08, texMat(roofTex, roof)); // 지붕: 박공·모임지붕 번갈아
+    if (gable) prism(g, 3.8, 3.2, 1.35, TOP + 0.08, texMat(roofTex, roof)); // 지붕: 박공·모임지붕 섞임
     else { const rf = at(mesh(new THREE.ConeGeometry(2.75, 1.6, 4), texMat(roofTex, roof)), 0, TOP + 0.88, 0); rf.rotation.y = Math.PI / 4; rf.scale.z = 0.86; g.add(rf); }
     b(3.5, 0.14, 2.9, roof, 0, TOP + 0.08, 0);
     b(0.42, 1.0, 0.42, '#b5654a', 0.9, TOP + 1.0, -0.3); b(0.54, 0.1, 0.54, '#8f4a36', 0.9, TOP + 1.52, -0.3); // 굴뚝
