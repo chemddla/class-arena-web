@@ -27,11 +27,11 @@
   .vlg .vlg-acts button { font-size: 15px; padding: 12px 16px; }
   .vlg .vlg-hint { position: absolute; left: 12px; bottom: 14px; font-size: 12px; font-weight: 700; background: rgba(255, 255, 255, .8); padding: 6px 10px; border-radius: 10px; max-width: 55%; }
   .vlg .vlg-mapbox { position: absolute; right: 12px; bottom: 74px; }
-  .vlg .vlg-map { display: block; width: 240px; height: 187px; border-radius: 14px; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); background: #8fd07a; pointer-events: none; }
+  .vlg .vlg-map { display: block; width: 240px; height: 221px; border-radius: 14px; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); background: #8fd07a; pointer-events: none; }
   .vlg .vlg-mapbox button { position: absolute; top: 7px; right: 7px; font-size: 12px; padding: 3px 9px; }
   .vlg .vlg-mapbox.off .vlg-map { display: none; }
   .vlg .vlg-mapbox.off button { position: static; font-size: 13px; padding: 6px 12px; }
-  @media (max-width: 640px) { .vlg .vlg-hint { display: none; } .vlg .vlg-map { width: 160px; height: 125px; } }`;
+  @media (max-width: 640px) { .vlg .vlg-hint { display: none; } .vlg .vlg-map { width: 160px; height: 147px; } }`;
   const HTML = `
   <canvas class="vlg-gl" data-v="gl"></canvas>
   <div class="vlg-labels" data-v="labels"><div class="vlg-prompt" data-v="prompt"></div></div>
@@ -387,7 +387,7 @@
     scene.add(at(g, 0, 0, OZ)); [-2.2, 0, 2.2].forEach(x => solid(x, OZ, 1.9, 5));
   }
   // ── 슈퍼마켓: 마을사무소 오른쪽 1층 가게. 안은 마을 남쪽 바깥(SHOP.iz)에 따로 지어 두고, 문으로 오가면 그리로 옮겨 감
-  const SHOP = { x: 13, z: -23, ix: 0, iz: 60, x0: -5.6, x1: 5.6, z0: 56.9, z1: 62.8 }; // x0~z1: 안에서 걸을 수 있는 범위
+  const SHOP = { x: 13, z: -23, ix: 0, iz: 160, x0: -5.6, x1: 5.6, z0: 156.9, z1: 162.8, far: 100 }; // x0~z1: 안에서 걸을 수 있는 범위, far: z가 이보다 크면 가게 안
   { const g = new THREE.Group(), box = (w, h, d, c, x, y, z) => g.add(at(mesh(new THREE.BoxGeometry(w, h, d), c), x, y, z));
     box(7.4, 0.3, 4.4, '#cdbfa3', 0, 0.15, 0);
     g.add(at(mesh(new THREE.BoxGeometry(7, 2.6, 3.8), texMat(wallTex, '#fbf4e6')), 0, 1.6, 0));
@@ -547,6 +547,34 @@
     strip(-34, 1.8, 2.8, 5.8, sandMat(1, 3), 0.0315); strip(-39.2, 3.9, 9.8, 1.6, sandMat(4, 1), 0.0312); // 분수 앞 골목 끝 → 학교 현관 앞
   }
 
+  // ── 해변: 마을 맨 남쪽. 모래사장(BEACH.z0~z1)과 그 너머 바다, 야자나무·파라솔·비치볼
+  const BEACH = { z0: 42.4, z1: 50.4 }; // z1: 물가(걸을 수 있는 끝)
+  { const sandB = sandTex.clone(); sandB.needsUpdate = true; sandB.repeat.set(60, 4);
+    strip(0, (BEACH.z0 + BEACH.z1) / 2 + 0.3, 150, BEACH.z1 - BEACH.z0 + 0.6, toonMat({ map: sandB, color: new THREE.Color('#fff3cf') }), 0.021);
+    strip(0, BEACH.z1 + 0.4, 150, 0.9, '#e2c98f', 0.024); // 젖은 모래
+    strip(0, 44, 2.2, 3.4, '#c9a06a', 0.032); for (let i = 0; i < 6; i++) strip(0, 42.6 + i * 0.6, 2.3, 0.08, '#a87e4c', 0.034); // 큰길 끝 나무 데크
+  }
+  const seaTex = waterTex.clone(); seaTex.needsUpdate = true; seaTex.repeat.set(30, 6);
+  { const sea = floor(mesh(new THREE.PlaneGeometry(150, 34, 150, 34), flat(0xffffff, { map: seaTex }))); sea.rotation.x = -Math.PI / 2; scene.add(at(sea, 0, 0.028, BEACH.z1 + 17.8)); }
+  const foam = noShadow(strip(0, BEACH.z1 + 0.75, 150, 0.35, flat(0xffffff, { transparent: true, opacity: 0.85 }), 0.04)); foam.userData.floor = false; // 밀려왔다 빠지는 물거품
+  { // 야자나무: 휘어 올라간 줄기 마디, 늘어진 잎, 코코넛
+    const palm = (x, z, lean, rot) => { const g = new THREE.Group(), segs = 7, h = 0.48;
+      for (let i = 0; i < segs; i++) { const m = mesh(new THREE.CylinderGeometry(0.15 - i * 0.008, 0.19 - i * 0.008, h, 10), i % 2 ? '#b98a5a' : '#a87b4e'); m.rotation.z = -lean * i * 0.05; g.add(at(m, Math.sin(lean * i * 0.05) * 0 + lean * i * i * 0.012, h * (i + 0.5), 0)); }
+      const top = new THREE.Group(), tx = lean * segs * segs * 0.012; top.position.set(tx, h * segs, 0); g.add(top);
+      for (let k = 0; k < 8; k++) { const leaf = new THREE.Group(), mat = toonMat({ color: k % 2 ? 0x4fae5a : 0x3f9a4a }, 0.02); // 잎: 끝으로 갈수록 가늘고 아래로 휨
+        [[0, 0.75, 0.32, 1.3, 0], [-0.12, 1.75, 0.22, 0.9, 0.5]].forEach(([y, z, w, len, rx]) => { const c = mesh(new THREE.ConeGeometry(w, len, 4), mat); c.rotation.x = Math.PI / 2 + rx; c.scale.set(1.6, 1, 0.18); c.position.set(0, y, z); leaf.add(c); });
+        leaf.rotation.set(0.35 + (k % 2) * 0.15, k / 8 * Math.PI * 2, 0, 'YXZ'); top.add(leaf); }
+      [[0.14, -0.12, 0.06], [-0.1, -0.14, 0.1], [0.02, -0.12, -0.14]].forEach(c => top.add(at(mesh(new THREE.SphereGeometry(0.12, 10, 8), '#7a4a2e'), c[0], c[1], c[2])));
+      g.rotation.y = rot; scene.add(at(g, x, 0, z)); solid(x, z, 0.3); };
+    [[-30, 45.5, 1, 0.3], [-23, 47.6, -1, 2.2], [-17.5, 44.6, 1, 4.1], [-9, 46.8, -1, 1.1], [-4.2, 44.2, 1, 5.2], [5.5, 47.2, -1, 0.6], [11, 44.8, 1, 3.3], [17.5, 47.8, -1, 2.7], [24, 45, 1, 5.9], [30.5, 47.2, -1, 1.7]].forEach(q => palm(...q));
+    const umbrella = (x, z, c) => { const g = new THREE.Group(); g.add(at(mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.1, 8), '#ffffff'), 0, 1.05, 0));
+      for (let k = 0; k < 8; k++) { const w = mesh(new THREE.ConeGeometry(1.3, 0.45, 8, 1, true, k * Math.PI / 4, Math.PI / 4), k % 2 ? '#ffffff' : c); g.add(at(w, 0, 2.05, 0)); }
+      const towel = at(mesh(new THREE.BoxGeometry(0.9, 0.03, 1.7), c), 0.9, 0.03, 0.4); towel.rotation.y = 0.2; g.add(towel); g.add(at(mesh(new THREE.BoxGeometry(0.9, 0.035, 0.25), '#ffffff'), 0.86, 0.035, -0.3));
+      scene.add(at(g, x, 0, z)); solid(x, z, 0.15); };
+    umbrella(-13, 47.5, '#e0685a'); umbrella(8.5, 46.5, '#5b8fd8'); umbrella(21, 46.2, '#f2c53a');
+    const ball = new THREE.Group(); ['#e0685a', '#ffffff', '#5b8fd8', '#ffffff', '#f2c53a', '#ffffff'].forEach((c, k) => ball.add(mesh(new THREE.SphereGeometry(0.28, 12, 10, k * Math.PI / 3, Math.PI / 3), c))); scene.add(at(ball, -11.2, 0.28, 48.6));
+    [[-6, 49.2, '#ff8a6a'], [14, 49.4, '#ffb347'], [-26, 49.1, '#ff7fa6']].forEach(([x, z, c]) => { const st = new THREE.Group(); for (let k = 0; k < 5; k++) { const hold = new THREE.Group(), arm = mesh(new THREE.ConeGeometry(0.07, 0.3, 6), c); arm.rotation.x = Math.PI / 2; arm.position.z = 0.15; arm.scale.z = 0.5; hold.add(arm); hold.rotation.y = k / 5 * Math.PI * 2; st.add(hold); } scene.add(at(st, x, 0.03, z)); }); // 불가사리
+  }
   // ── 나무: 꽃·잎 뭉치는 한 번에 그리는 묶음(InstancedMesh)으로, 줄기와 열매만 따로
   const BLOB_MAX = 900;
   const mkBlobs = (tex, geo) => { const im = new THREE.InstancedMesh(geo || new THREE.SphereGeometry(1, 16, 11), bend(new THREE.MeshToonMaterial({ gradientMap: softGrad, map: tex }), 0.011), BLOB_MAX);
@@ -557,7 +585,7 @@
   const addBlob = (im, colors) => { const i = im.count++; im.setColorAt(i, col.set(pick(colors))); return i; };
   const PINK = ['#ffffff', '#fff2f5', '#ffe6ec', '#fff8fa'], LEAF = ['#ffffff', '#eaffe6', '#dff5d6', '#f4fff0'];
   const trees = [];
-  const freeSpot = (x, z, pad) => !onPath(x, z, 1.9 + pad) && Math.hypot(x, z) > 6.2 + pad && !(z > -26 && z < -17.8 && x > -0.5 && x < 17) && !(x < -31.5 && z > -2 && z < 5.5) 
+  const freeSpot = (x, z, pad) => z < BEACH.z0 - 1.5 && !onPath(x, z, 1.9 + pad) && Math.hypot(x, z) > 6.2 + pad && !(z > -26 && z < -17.8 && x > -0.5 && x < 17) && !(x < -31.5 && z > -2 && z < 5.5) 
     && riverDist(x, z) > 1.5 && HOUSES.every(h => Math.hypot(x - h[0], z - h[1]) > 4.2 + pad && !(Math.abs(x - h[0]) < 3.6 + pad && z > h[1] - 2 && z < h[1] + 4.4 + pad))
     && solids.every(s => Math.hypot(x - s.x, z - s.z) > s.r + 1.6 + pad) && trees.every(t => Math.hypot(x - t.x, z - t.z) > 2.6);
   function placeTree(tr) { // 줄기 묶음의 지금 위치·기울기대로 뭉치들을 옮김
@@ -587,7 +615,7 @@
   { const bg = [];
     for (let i = 0, tries = 0; i < 80 && tries < 5000; tries++) {
       const x = (rnd() - 0.5) * 112, z = -44 + rnd() * 100;
-      if (!(Math.abs(x) > 36.5 || z < -25.5 || z > 45) || riverDist(x, z) < 1.6 || bg.some(b => Math.hypot(x - b[0], z - b[1]) < 3.4) || (x < -31 && x > PLAY.x - 12 && z > SCH.z - 4.5 && z < PLAY.z + 7.5)) continue;
+      if (!((Math.abs(x) > 36.5 && z < BEACH.z0 - 1) || z < -25.5) || riverDist(x, z) < 1.6 || bg.some(b => Math.hypot(x - b[0], z - b[1]) < 3.4) || (x < -31 && x > PLAY.x - 12 && z > SCH.z - 4.5 && z < PLAY.z + 7.5)) continue;
       bg.push([x, z]); i++;
       const sc = 1 + rnd() * 0.5, pinkTree = rnd() < 0.55, im = pinkTree ? blobsPinkFar : blobsLeafFar;
       scene.add(at(mesh(new THREE.CylinderGeometry(0.26 * sc, 0.4 * sc, 1.6 * sc, 12), barkMat), x, 0.8 * sc, z));
@@ -781,24 +809,24 @@
   const ownerOf = i => demo ? actors.filter(a => !a.npc)[i + 1] : host.students[i]; // i번째 집 주인
 
   // ── 움직임·부딪힘
-  const LX = 33, LZ0 = -25, LZ1 = 42, SPEED = 3.3, RUN = 1.8, R = 0.32; // RUN: Shift 누르고 뛸 때 배수
+  const LX = 33, LZ0 = -25, LZ1 = BEACH.z1, SPEED = 3.3, RUN = 1.8, R = 0.32; // RUN: Shift 누르고 뛸 때 배수
   function step(a, dx, dz) {
     const pz = a.z; let x = a.x + dx, z = a.z + dz;
     solids.forEach(c => { const d = Math.hypot(x - c.x, z - c.z), min = c.r + R; if (d < min && d > 1e-4) { x = c.x + (x - c.x) / d * min; z = c.z + (z - c.z) / d * min; } });
-    if (pz < 40 && riverDist(x, z) < 0) { // 강: 다리 위에서만 건넘
+    if (pz < SHOP.far && riverDist(x, z) < 0) { // 강: 다리 위에서만 건넘
       if (Math.abs(a.x) <= RIVER.bridge && riverDist(a.x, pz) < 0.05) x = Math.max(-RIVER.bridge + 0.25, Math.min(RIVER.bridge - 0.25, x));
       else if (Math.abs(x) > RIVER.bridge - 0.25) z = riverZ(x) + (pz >= riverZ(a.x) ? 1 : -1) * RIVER.w / 2;
     }
-    if (x < -LX && pz < 40) { // 집들 왼쪽 바깥은 학교 앞마당·놀이터 안으로만 감
+    if (x < -LX && pz < SHOP.far) { // 집들 왼쪽 바깥은 학교 앞마당·놀이터 안으로만 감
       const zMin = x > -35.4 ? -1.1 : SCH.z + 3.9; // 골목에서 꺾어 올라가는 길목은 학교 옆이라 더 아래까지 걸음
       if (a.x >= -LX && (z < -1.1 || z > PLAY.z + 4)) x = -LX;
       else if (x < -35.4 && a.x >= -35.4 && z < zMin) x = -35.4; // 학교 옆벽
       else z = Math.max(zMin, Math.min(PLAY.z + 4, z));
     }
-    if (z < -21 && pz < 40) { // 사무소·가게 뒤로는 그 사이 길로만 들어감
+    if (z < -21 && pz < SHOP.far) { // 사무소·가게 뒤로는 그 사이 길로만 들어감
       if (pz >= -21 && Math.abs(x - 6.45) > 0.9) z = -21; else x = Math.max(5.55, Math.min(7.35, x));
     }
-    [a.x, a.z] = clampZone(x, z, pz > 40);
+    [a.x, a.z] = clampZone(x, z, pz > SHOP.far);
   }
   const clampZone = (x, z, inShop) => inShop ? [Math.max(SHOP.ix + SHOP.x0, Math.min(SHOP.ix + SHOP.x1, x)), Math.max(SHOP.z0, Math.min(SHOP.z1, z))] : [Math.max(PLAY.x - 8.2, Math.min(LX, x)), Math.max(LZ0, Math.min(LZ1, z))];
   const keys = {};
@@ -826,7 +854,7 @@
     if (!d.moved && Math.hypot(dx, dy) < 6) return;
     if (!d.moved) { d.moved = true; try { canvas.setPointerCapture(e.pointerId); } catch (err) {} }
     d.x = e.clientX; d.y = e.clientY;
-    if (me.z > 40) return; // 가게 안은 앞이 트인 방이라 돌리지 않음
+    if (me.z > SHOP.far) return; // 가게 안은 앞이 트인 방이라 돌리지 않음
     view.yaw -= dx * 0.006; view.pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, view.pitch + dy * 0.005));
   });
   const endDrag = e => {
@@ -835,7 +863,7 @@
     const rc = canvas.getBoundingClientRect();
     ray.setFromCamera({ x: (e.clientX - rc.left) / rc.width * 2 - 1, y: -((e.clientY - rc.top) / rc.height) * 2 + 1 }, camera);
     if (!ray.ray.intersectPlane(plane, hit)) return;
-    const [tx, tz] = clampZone(hit.x, hit.z, me.z > 40); me.target = { x: tx, z: tz, stuck: 0 };
+    const [tx, tz] = clampZone(hit.x, hit.z, me.z > SHOP.far); me.target = { x: tx, z: tz, stuck: 0 };
     marker.position.set(me.target.x, 0.09, me.target.z); marker.visible = true;
   };
   canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
@@ -1017,12 +1045,14 @@
   }
 
   // ── 미니맵: 땅·길·강·집·나무는 한 번 그려 두고, 매 프레임 친구와 나만 점으로 올림
-  const MAP = { x0: -54, x1: 34, z0: -25.5, z1: 43, s: 6 }, mapC = $('map');
+  const MAP = { x0: -54, x1: 34, z0: -25.5, z1: 56, s: 6 }, mapC = $('map');
   mapC.width = (MAP.x1 - MAP.x0) * MAP.s; mapC.height = (MAP.z1 - MAP.z0) * MAP.s;
   const mapG = mapC.getContext('2d'), mapBg = document.createElement('canvas'); mapBg.width = mapC.width; mapBg.height = mapC.height;
   const mx = x => (x - MAP.x0) * MAP.s, mz = z => (z - MAP.z0) * MAP.s;
   { const g = mapBg.getContext('2d'), S = MAP.s, rect = (x, z, w, d, c) => { g.fillStyle = c; g.fillRect(mx(x - w / 2), mz(z - d / 2), w * S, d * S); };
     g.fillStyle = '#8fd07a'; g.fillRect(0, 0, mapBg.width, mapBg.height);
+    rect(-10, (BEACH.z0 + BEACH.z1) / 2, 100, BEACH.z1 - BEACH.z0, '#f6e6b4'); rect(-10, (BEACH.z1 + MAP.z1) / 2 + 0.5, 100, MAP.z1 - BEACH.z1 + 1, '#4fb3e8'); rect(-10, BEACH.z1 + 0.4, 100, 0.6, '#ffffff');
+    [[-30, 45.5], [-23, 47.6], [-17.5, 44.6], [-9, 46.8], [-4.2, 44.2], [5.5, 47.2], [11, 44.8], [17.5, 47.8], [24, 45], [30.5, 47.2]].forEach(([x, z]) => { g.fillStyle = '#3f9a4a'; g.beginPath(); g.arc(mx(x), mz(z), 1.1 * S, 0, 6.29); g.fill(); });
     [[RIVER.w + 1.1, '#ead9a0'], [RIVER.w, '#56bdee']].forEach(([w, c]) => { g.strokeStyle = c; g.lineWidth = w * S; g.beginPath(); for (let x = MAP.x0; x <= MAP.x1; x += 0.5) g.lineTo(mx(x), mz(riverZ(x))); g.stroke(); });
     rect(0, 11, 2.2, 62, '#ead2a0'); STREETS.forEach(st => rect(0, st.z, st.len, 2.2, '#ead2a0'));
     rect(0, BR.z, BR.half * 2, BR.L, '#cfc7b6');
@@ -1043,7 +1073,7 @@
     if (mapBox.classList.contains('off')) return;
     mapG.drawImage(mapBg, 0, 0);
     const dot = (x, z, r, fill) => { mapG.fillStyle = fill; mapG.strokeStyle = '#fff'; mapG.lineWidth = 3; mapG.beginPath(); mapG.arc(mx(x), mz(z), r, 0, 6.29); mapG.fill(); mapG.stroke(); };
-    const out = a => a.z > 40 ? [SHOP.x, SHOP.z + 2.4] : [a.x, a.z]; // 가게 안에 있으면 가게 문 앞에 표시
+    const out = a => a.z > SHOP.far ? [SHOP.x, SHOP.z + 2.4] : [a.x, a.z]; // 가게 안에 있으면 가게 문 앞에 표시
     actors.forEach(a => { if (!a.me && !a.npc) dot(...out(a), 7, a.remote ? '#f0a83a' : '#8a94a6'); });
     const f = me.face, x = mx(out(me)[0]), z = mz(out(me)[1]); // 나: 바라보는 쪽을 가리키는 화살촉
     mapG.fillStyle = '#e8483f'; mapG.strokeStyle = '#fff'; mapG.lineWidth = 3; mapG.beginPath();
@@ -1147,7 +1177,8 @@
     spout.scale.setScalar(1 + Math.sin(t * 6) * 0.12);
     ripples.forEach((m, i) => { const u = (t * 0.45 + i / 3) % 1; m.scale.setScalar(0.6 + u * 5); m.material.opacity = 0.55 * (1 - u); });
     rides.forEach(q => { if (q.tick) q.tick(t, dt, actors.some(a => a.sit === q)); });
-    waterTex.offset.x = -t * 0.12;
+    waterTex.offset.x = -t * 0.12; seaTex.offset.set(t * 0.02, -t * 0.05);
+    foam.position.z = BEACH.z1 + 0.75 + Math.sin(t * 0.9) * 0.35; foam.material.opacity = 0.55 + Math.sin(t * 0.9 + 1) * 0.3;
     marker.rotation.z = t * 2;
     clouds.position.set(me.x - Math.sin(view.yaw) * 44 + Math.sin(t * 0.02) * 10, 0, me.z - Math.cos(view.yaw) * 44); clouds.rotation.y = view.yaw;
 
@@ -1169,7 +1200,7 @@
     stars.position.set(me.x, 0, me.z);
     { const fx = me.x - Math.sin(view.yaw) * 3, fz = me.z - Math.cos(view.yaw) * 3; sun.target.position.set(fx, 0, fz); sun.position.set(fx + env.sunPos.x, env.sunPos.y, fz + 3 + env.sunPos.z); } // 그림자 범위는 보는 쪽 앞을 중심으로
     curve.uCurve.value += ((curveOn ? 0.0075 : 0) - curve.uCurve.value) * Math.min(1, dt * 5);
-    if (me.z > 40) { view.yaw = 0; view.pitch = Math.max(0.35, view.pitch); }
+    if (me.z > SHOP.far) { view.yaw = 0; view.pitch = Math.max(0.35, view.pitch); }
     { const off = Math.abs(Math.atan2(Math.sin(view.yaw), Math.cos(view.yaw))) > 0.02 || Math.abs(view.pitch - 0.567) > 0.02; if (String(off) !== viewBtn.dataset.on) { viewBtn.dataset.on = off; viewBtn.style.display = off ? '' : 'none'; } }
     { const sy = Math.sin(view.yaw), cy = Math.cos(view.yaw), el = Math.max(0.1, view.pitch), D = 10.43 * zoom;
       curve.uFocus.value.set(me.x, me.z); curve.uDir.value.set(-sy, -cy);
