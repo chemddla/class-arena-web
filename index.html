@@ -7333,16 +7333,18 @@
     // 전격술사 시크릿 레어 1 (2026-11-10까지 기본 외형: 남색 비니·회색 단발·둥근 안경·카키 점퍼·맨손, tools/volt_sr1_build.py) · 칸 103×94, 18칸
     //   0 대기 · 1~4 걷기 · 5 기본 공격 (손을 뻗음, 채널 동안 유지) · 6 피격 · 7~8 쓰러짐 · 9 썬더볼트·체인 · 10 필드 시전 · 11~12 전자포 (모음 → 발사)
     //   13~14 방전 (모음 → 터뜨림) · 15~16 오버로드 (웅크림 → 일어섬) · 17 주먹 버팀 (필드 발동 · 오버로드 시전 중간)
+    //   18~20 시크릿 레어 히든 피날레 (오버로드가 끝날 때): 웅크려 모음 → 도약 → 두 팔 활짝 터뜨림
     //   beamHand = 기본 공격 줄기가 나오는 손 자리 (칸 px · 발 기준, 오른쪽을 볼 때)
     const VOLT_SR1_SHEET = {
       src: 'assets/sprites/merc/volt_sr1.webp',
-      cellW: 103, cellH: 94, anchorX: 51, anchorY: 92, standH: 88, topH: 92, portraitCX: 51, count: 18,
-      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5], skill: [9], hurt: [6], death: [7, 8], tb: [9], fist: [17], rail: [12], dis: [14], ovl: [16] },
+      cellW: 103, cellH: 94, anchorX: 51, anchorY: 92, standH: 88, topH: 92, portraitCX: 51, count: 21,
+      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5], skill: [9], hurt: [6], death: [7, 8], tb: [9], fist: [17], rail: [12], dis: [14], ovl: [16], fin: [18, 18, 19, 20, 20, 20] },
       skillAnims: {
         volt_thunderbolt: { anim: 'tb', tpf: 30, dur: 30 }, chain_lightning: { anim: 'tb', tpf: 30, dur: 30 },
         electric_field: { anim: 'fist', tpf: 30, dur: 30 }, discharge: { anim: 'dis', tpf: 30, dur: 30 },
         rail_cannon: { anim: 'rail', tpf: 60 }, // 포를 쏘는 동안 내내 (castVoltSkill이 skillAnim을 포 길이로 늘림)
-        overload: { anim: 'ovl', tpf: 30, dur: 40 }
+        overload: { anim: 'ovl', tpf: 30, dur: 40 },
+        volt_finale: { anim: 'fin', tpf: 18, dur: 108 } // 히든 피날레: 웅크림 0.6초 → 도약 0.3초 → 두 팔 활짝 (공중 높이는 drawUnitToken의 jumpY · voltFinLift)
       },
       castFrames: { volt_thunderbolt: 9, chain_lightning: 9, electric_field: 10, rail_cannon: 11, discharge: 13, overload: [15, 17, 16] },
       beamHand: [30.3, -46.2]
@@ -27722,9 +27724,61 @@
     const VOLT_RAIL_STUN = 60, VOLT_RAIL_SHOCK = 180, VOLT_RAIL_TURN = Math.PI / 4 / 60;                   //   처음 닿은 적 기절 1초·감전 3초 · 직접 조종하면 초당 45°까지 돌림
     const VOLT_VS_SHOCKED = 1.2;      // 패시브: 감전(대전 포함)된 적에게 주는 피해 +20%
     const VOLT_OVERLOAD_TICKS = 900, VOLT_BURNOUT_TICKS = 600, VOLT_OVERLOAD_SPEED = 0.5;                 // 오버로드 15초 (2026-11-10 10초 → 20초 → 15초, 사용자 요청) → 과부하 10초 · 속도 +50%
+    // 시크릿 레어 히든 피날레 (2026-11-10 사용자 요청): 오버로드가 끝나는 순간 사방의 전기를 모아 공중으로 도약 → 주변 10칸 적 모두에게 큰 전격 피해 + 감전 5초
+    //   0~0.6초 웅크려 모음 · 0.6~0.9초 도약 · 0.9초 최고점에서 터짐(피해) · 1.2~1.5초 내려옴 · 1.8초 동안 그 자리에 고정 (이펙트 시트 finale과 같은 시간)
+    const VOLT_FIN_GATHER = 36, VOLT_FIN_BANG = 54, VOLT_FIN_DUR = 108, VOLT_FIN_JUMP = 70;
+    const VOLT_FIN_CELLS = 10, VOLT_FIN_DMG = 3.0, VOLT_FIN_SHOCK = 300;
 
     function voltOverloadOn(u) { return Boolean(u && u.statuses && (u.statuses.overload || 0) > 0); }
     function voltBurnout(u) { return Boolean(u && u.statuses && (u.statuses.overload_burnout || 0) > 0); }
+    function voltIsSr(u) { return Boolean(u && u.job === 'volt' && !u.monsterType && isSecretSkinVariant(u.skinVariant)); }
+    // 피날레 몸 높이 (0~1, 이펙트 finale의 lift와 같은 곡선): 도약에서 sin으로 올라 최고점 유지 → 내려옴
+    function voltFinLift(e) {
+      if (e < VOLT_FIN_GATHER) return 0;
+      if (e < VOLT_FIN_BANG) return Math.sin((e - VOLT_FIN_GATHER) / (VOLT_FIN_BANG - VOLT_FIN_GATHER) * Math.PI / 2);
+      if (e < 72) return 1;
+      if (e < 90) { const q = (e - 72) / 18; return 1 - q * q; }
+      return 0;
+    }
+    function voltFinaleStart(u) {
+      u.voltFin = { at: sim.tickCount, x: u.x, y: u.y, done: false };
+      u.voltCh = null; u.voltBeam = null; u.voltChain = null; u.casting = null; u.attackAnim = 0;
+      u.activeSkillType = 'volt_finale'; u.skillAnim = VOLT_FIN_DUR; u.maxSkillAnim = VOLT_FIN_DUR;
+      voltFx('finale', u.x, u.y + 12);
+      sim.floatTexts.push({ x: u.x, y: u.y - 96, text: '⚡ 뇌신 강림', color: '#e0f2fe', life: 80 });
+      addBattleLog(`⚡ [전격술사] ${u.name}이(가) 남은 전기를 모아 뛰어올라요!`);
+    }
+    // 피날레 매 틱: 자리 고정 · 공격·대시 막음 · 최고점에서 터짐
+    function voltFinaleStep(u) {
+      const F = u.voltFin, e = sim.tickCount - F.at;
+      if (!u.alive || e >= VOLT_FIN_DUR) { u.voltFin = null; return; }
+      u.x = F.x; u.y = F.y; u.isMoving = false; u.kbVx = 0; u.kbVy = 0;
+      u.cooldown = Math.max(u.cooldown || 0, 2); u.dashCooldown = Math.max(u.dashCooldown || 0, 2);
+      if (F.done || e < VOLT_FIN_BANG) return;
+      F.done = true;
+      const sp = getUnitSprite(u), k = sp && sp.standH ? spriteDrawH(u, sp) / sp.standH : 1;
+      const ax = u.x, ay = u.y + 12 - (VOLT_FIN_JUMP + 46) * k; // 공중의 몸 가운데
+      const R = GRID_CELL_SIZE * VOLT_FIN_CELLS * unitAreaScale(u);
+      const hits = voltFoes(u).filter(e2 => Math.hypot(e2.x - u.x, e2.y - u.y) - unitBodyGap(e2) <= R);
+      withSkillHit(() => hits.forEach(e2 => {
+        applyDamage(u, e2, u.atk * VOLT_FIN_DMG, '', '#e0f2fe');
+        voltShock(u, e2, VOLT_FIN_SHOCK);
+      }));
+      // 공중의 몸에서 맞은 적마다 굵은 백열 줄기 + 끝 매듭, 앞의 6명에게는 하늘 낙뢰도
+      hits.forEach((e2, i) => {
+        voltBolt(ax, ay, e2.x, e2.y - 14, 42, true, 1.7, u);
+        voltFx('hit-gold', e2.x, e2.y - 14, 1.4, 0, 42);
+        if (i < 6) voltFx('thunderbolt-gold', e2.x, e2.y + 12, Math.min(1.6, e2.sizeScale || 1), 2 + i * 3);
+      });
+      // 10칸 범위가 보이게: 바닥 먼 자리 14곳으로 꽂히는 줄기 (원 테두리 없이)
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2 + ((sim.tickCount + i * 37) % 10) * 0.04, d = R * (0.5 + ((i * 53) % 10) / 20);
+        voltBolt(ax, ay, u.x + Math.cos(a) * d, u.y + 12 + Math.sin(a) * d * 0.62, 36, true, 1.15, u);
+      }
+      sim.shake = { power: 16, life: 30, maxLife: 30 };
+      playCombatSfx('heavy');
+      addBattleLog(`💥 [전격술사] ${u.name}의 뇌신 강림! ${hits.length}명 감전`);
+    }
     function voltOverloadHalf(u) { return u && u.job === 'volt' && voltOverloadOn(u) ? 0.5 : 1; }
     function voltSkillBlocked(u) { return Boolean(u && u.job === 'volt' && (voltBurnout(u) || u.voltBeam)); }
     function voltFoes(u) { return sim.units.filter(e => e.alive && e.team !== u.team && e.team !== 'none' && !e.rushPending && !((e.statuses?.rebirth || 0) > 0)); }
@@ -28007,8 +28061,10 @@
             u.statuses.overload_burnout = VOLT_BURNOUT_TICKS;
             u.voltCharge = 0;
             sim.floatTexts.push({ x: u.x, y: u.y - 60, text: '🪫 과부하', color: '#64748b', life: 60 });
+            if (voltIsSr(u)) voltFinaleStart(u); // 시크릿 레어: 오버로드가 끝나는 순간 피날레 (과부하는 그대로 시작)
           }
         }
+        if (u.voltFin) voltFinaleStep(u);
         const ch = u.voltChain;
         if (ch) {
           if (!u.alive || sim.tickCount >= ch.until) u.voltChain = null;
@@ -28145,6 +28201,7 @@
       'hit-gold': [56, 48, 4, 16, 20, 1, 32, 24],
       'overload': [118, 137, 5, 20, 20, 1, 59, 124],
       'overload-cast': [516, 558, 6, 31, 20, 0, 258, 498],
+      'finale': [679, 635, 7, 41, 20, 0, 319, 435],
       'overload-burst': [259, 259, 6, 29, 20, 0, 129, 210],
       'rail-arc': [137, 198, 5, 12, 20, 1, 15, 114],
       'rail-arc-wide': [229, 392, 5, 12, 20, 1, 29, 227],
@@ -28236,6 +28293,7 @@
         if (has('chain_lightning')) pre('hit-gold');
         if (has('rail_cannon')) ['', '-wide-gold'].forEach(sf => ['rail-body', 'rail-arc', 'rail-tip', 'rail-muzzle'].forEach(n => pre(n + sf)));
         if (has('overload')) ['overload-cast', 'overload'].forEach(pre), voltFxImg('burnout');
+        if (has('overload') && voltIsSr(u)) voltFxImg('finale'); // 시크릿 레어 피날레
       }
       if (voltOverloadOn(u)) drawVoltFx(ctx, voltFxName(u, 'overload'), f, 0, 12, sc);
       else if (voltBurnout(u)) drawVoltFx(ctx, 'burnout', f, 0, 12, sc);
@@ -30233,11 +30291,11 @@
       stroke(trunk, 22 * w, ramp[1], 0.22 * k);
       stroke(trunk, 11 * w, ramp[2], 0.3 * k);
       ctx.globalCompositeOperation = 'source-over';
-      const dots = (pts, c, col) => {
+      const dots = (pts, c, col) => { // 칸(c) 크기와 상관없이 2px 격자에 찍음 (c 격자에 맞추면 굵을 때 계단·줄무늬가 생김)
         ctx.fillStyle = col;
         for (let i = 1; i < pts.length; i++) {
           const [ax, ay] = pts[i - 1], [bx, by] = pts[i], n = Math.max(1, Math.round(Math.hypot(bx - ax, by - ay) / 2));
-          for (let j = 0; j <= n; j++) pfxDot(ctx, ax + (bx - ax) * j / n, ay + (by - ay) * j / n, c);
+          for (let j = 0; j <= n; j++) ctx.fillRect(Math.round((ax + (bx - ax) * j / n) / 2) * 2 - (c >> 1), Math.round((ay + (by - ay) * j / n) / 2) * 2 - (c >> 1), c, c);
         }
       };
       ctx.globalAlpha = k;
@@ -32344,6 +32402,11 @@
           const e = (u.skillAnim || 0) > (u._sprLastSkill || 0) ? 0 : tick - (u._sprSkillStart ?? tick); // 발동 첫 화면은 아직 시작 틱이 안 적힘
           jumpY = -jumpH * Math.max(0, 1 - e / PALADIN_JUDGE_FALL);
         }
+      }
+
+      // 전격술사 시크릿 레어 피날레: 도약해서 공중에서 터뜨리고 내려옴 (voltFinLift, 이펙트 finale과 같은 높이)
+      if (useSprite && u.alive && u.job === 'volt' && u.skillAnim > 0 && u.activeSkillType === 'volt_finale') {
+        jumpY = -VOLT_FIN_JUMP * spriteDrawH(u, sprite) / sprite.standH * voltFinLift(tick - (u._sprSkillStart ?? tick));
       }
 
       // 🔥 하드모드 탑 몬스터·엘리트 보스는 시크릿 레어처럼 붉은 빛 (몸 크기만큼 크게, 그림 없는 몬스터도)
