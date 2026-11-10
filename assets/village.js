@@ -25,8 +25,12 @@
   .vlg .vlg-acts { position: absolute; right: 12px; bottom: 14px; display: flex; gap: 8px; }
   .vlg .vlg-acts button { font-size: 15px; padding: 12px 16px; }
   .vlg .vlg-hint { position: absolute; left: 12px; bottom: 14px; font-size: 12px; font-weight: 700; background: rgba(255, 255, 255, .8); padding: 6px 10px; border-radius: 10px; max-width: 55%; }
-  .vlg .vlg-map { position: absolute; right: 12px; bottom: 74px; width: 156px; height: 134px; border-radius: 14px; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); background: #8fd07a; pointer-events: none; }
-  @media (max-width: 640px) { .vlg .vlg-hint { display: none; } .vlg .vlg-map { width: 117px; height: 100px; } }`;
+  .vlg .vlg-mapbox { position: absolute; right: 12px; bottom: 74px; }
+  .vlg .vlg-map { display: block; width: 240px; height: 207px; border-radius: 14px; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); background: #8fd07a; pointer-events: none; }
+  .vlg .vlg-mapbox button { position: absolute; top: 7px; right: 7px; font-size: 12px; padding: 3px 9px; }
+  .vlg .vlg-mapbox.off .vlg-map { display: none; }
+  .vlg .vlg-mapbox.off button { position: static; font-size: 13px; padding: 6px 12px; }
+  @media (max-width: 640px) { .vlg .vlg-hint { display: none; } .vlg .vlg-map { width: 160px; height: 138px; } }`;
   const HTML = `
   <canvas class="vlg-gl" data-v="gl"></canvas>
   <div class="vlg-labels" data-v="labels"><div class="vlg-prompt" data-v="prompt"></div></div>
@@ -43,7 +47,7 @@
     <span class="pill"><b data-v="fpsN">–</b> fps · <span data-v="qN">화질 높음</span></span>
   </div>
   <div class="vlg-hint">이동: WASD·방향키 또는 땅 누르기 · 달리기: Shift · 인사: Space · 하기: E · 감정: 1·2 · 확대: 마우스 휠</div>
-  <canvas class="vlg-map" data-v="map"></canvas>
+  <div class="vlg-mapbox" data-v="mapBox"><canvas class="vlg-map" data-v="map"></canvas><button data-v="mapBtn">▾ 내리기</button></div>
   <div class="vlg-acts"><button data-v="joyBtn" title="기쁨 (1)">😄</button><button data-v="heartBtn" title="하트 (2)">❤️</button><button data-v="waveBtn">👋 인사</button><button data-v="shakeBtn">🌳 흔들기</button></div>`;
 
   function start(root, host) {
@@ -766,7 +770,12 @@
     rect(0, -23, 6.4, 3.6, '#7a4a2e'); rect(0, -23, 1.2, 1.2, '#a8744f');
     trees.forEach(t => { g.fillStyle = t.kind === 'blossom' ? '#ffc8d6' : '#3f9e4b'; g.beginPath(); g.arc(mx(t.x), mz(t.z), 1.2 * t.sc * S, 0, 6.29); g.fill(); });
   }
+  const mapBox = $('mapBox'), mapBtn = $('mapBtn');
+  const setMap = on => { mapBox.classList.toggle('off', !on); mapBtn.textContent = on ? '▾ 내리기' : '🗺 지도'; try { localStorage.setItem('vlgMap', on ? '1' : '0'); } catch (e) {} };
+  try { setMap(localStorage.getItem('vlgMap') !== '0'); } catch (e) { setMap(true); }
+  mapBtn.onclick = () => setMap(mapBox.classList.contains('off'));
   function drawMap() {
+    if (mapBox.classList.contains('off')) return;
     mapG.drawImage(mapBg, 0, 0);
     const dot = (x, z, r, fill) => { mapG.fillStyle = fill; mapG.strokeStyle = '#fff'; mapG.lineWidth = 3; mapG.beginPath(); mapG.arc(mx(x), mz(z), r, 0, 6.29); mapG.fill(); mapG.stroke(); };
     actors.forEach(a => { if (!a.me) dot(a.x, a.z, 7, a.remote ? '#f0a83a' : '#8a94a6'); });
