@@ -1129,10 +1129,11 @@
     { const sy = Math.sin(view.yaw), cy = Math.cos(view.yaw), el = Math.max(0.1, view.pitch), D = 10.43 * zoom;
       curve.uFocus.value.set(me.x, me.z); curve.uDir.value.set(-sy, -cy);
       camPos.set(me.x + sy * D * Math.cos(el), Math.max(0.7, D * Math.sin(el)), me.z + cy * D * Math.cos(el));
-      let k = 1; // 나와 카메라 사이에 건물이 있으면 그 앞으로 당겨 옴
-      for (let f = 0.1; f <= 1.001 && k === 1; f += 0.05) { const x = me.x + (camPos.x - me.x) * f, z = me.z + (camPos.z - me.z) * f, y = 0.95 + (camPos.y - 0.95) * f;
-        if (solids.some(o => o.h > y && Math.hypot(x - o.x, z - o.z) < o.r + 0.5)) k = Math.max(0.12, f - 0.05); }
-      if (k < 1) camPos.set(me.x + (camPos.x - me.x) * k, 0.95 + (camPos.y - 0.95) * k, me.z + (camPos.z - me.z) * k);
+      // 카메라 자리 자체가 건물 속일 때만 밖으로 나올 만큼 당겨 옴 (지붕 위로 지나가는 건 그대로 둠), 당기고 놓는 건 부드럽게
+      const inside = f => { const x = me.x + (camPos.x - me.x) * f, z = me.z + (camPos.z - me.z) * f, y = 0.95 + (camPos.y - 0.95) * f; return solids.some(o => o.h > y && Math.hypot(x - o.x, z - o.z) < o.r + 0.3); };
+      let k = 1; while (k > 0.15 && inside(k)) k -= 0.05;
+      view.k = (view.k || 1) + (k - (view.k || 1)) * Math.min(1, dt * (k < (view.k || 1) ? 10 : 3));
+      if (view.k < 0.999) camPos.set(me.x + (camPos.x - me.x) * view.k, 0.95 + (camPos.y - 0.95) * view.k, me.z + (camPos.z - me.z) * view.k);
       camera.position.lerp(camPos, camera.position.lengthSq() < 1 ? 1 : Math.min(1, dt * 8));
       camera.lookAt(me.x, 0.95 + Math.max(0, 0.1 - view.pitch) * 5 * zoom, me.z); } // 0.1보다 더 올리면 바라보는 점이 하늘로 올라감
 
