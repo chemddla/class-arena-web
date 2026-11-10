@@ -25,7 +25,8 @@
   .vlg .vlg-acts { position: absolute; right: 12px; bottom: 14px; display: flex; gap: 8px; }
   .vlg .vlg-acts button { font-size: 15px; padding: 12px 16px; }
   .vlg .vlg-hint { position: absolute; left: 12px; bottom: 14px; font-size: 12px; font-weight: 700; background: rgba(255, 255, 255, .8); padding: 6px 10px; border-radius: 10px; max-width: 55%; }
-  @media (max-width: 640px) { .vlg .vlg-hint { display: none; } }`;
+  .vlg .vlg-map { position: absolute; right: 12px; bottom: 74px; width: 156px; height: 134px; border-radius: 14px; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); background: #8fd07a; pointer-events: none; }
+  @media (max-width: 640px) { .vlg .vlg-hint { display: none; } .vlg .vlg-map { width: 117px; height: 100px; } }`;
   const HTML = `
   <canvas class="vlg-gl" data-v="gl"></canvas>
   <div class="vlg-labels" data-v="labels"><div class="vlg-prompt" data-v="prompt"></div></div>
@@ -42,6 +43,7 @@
     <span class="pill"><b data-v="fpsN">–</b> fps · <span data-v="qN">화질 높음</span></span>
   </div>
   <div class="vlg-hint">이동: WASD·방향키 또는 땅 누르기 · 달리기: Shift · 인사: Space · 하기: E · 감정: 1·2 · 확대: 마우스 휠</div>
+  <canvas class="vlg-map" data-v="map"></canvas>
   <div class="vlg-acts"><button data-v="joyBtn" title="기쁨 (1)">😄</button><button data-v="heartBtn" title="하트 (2)">❤️</button><button data-v="waveBtn">👋 인사</button><button data-v="shakeBtn">🌳 흔들기</button></div>`;
 
   function start(root, host) {
@@ -748,6 +750,31 @@
     Object.keys(net.remotes).forEach(netRemove);
   }
 
+  // ── 미니맵: 땅·길·강·집·나무는 한 번 그려 두고, 매 프레임 친구와 나만 점으로 올림
+  const MAP = { x0: -34, x1: 34, z0: -25.5, z1: 33, s: 6 }, mapC = $('map');
+  mapC.width = (MAP.x1 - MAP.x0) * MAP.s; mapC.height = (MAP.z1 - MAP.z0) * MAP.s;
+  const mapG = mapC.getContext('2d'), mapBg = document.createElement('canvas'); mapBg.width = mapC.width; mapBg.height = mapC.height;
+  const mx = x => (x - MAP.x0) * MAP.s, mz = z => (z - MAP.z0) * MAP.s;
+  { const g = mapBg.getContext('2d'), S = MAP.s, rect = (x, z, w, d, c) => { g.fillStyle = c; g.fillRect(mx(x - w / 2), mz(z - d / 2), w * S, d * S); };
+    g.fillStyle = '#8fd07a'; g.fillRect(0, 0, mapBg.width, mapBg.height);
+    rect(0, -7.8, 150, 3.8, '#ead9a0'); rect(0, -7.8, 150, 3, '#56bdee');
+    rect(0, 6, 2.2, 52, '#ead2a0'); STREETS.forEach(st => rect(0, st.z, st.len, 2.2, '#ead2a0'));
+    rect(0, -7.8, 2.4, 3.8, '#b47d4c');
+    g.fillStyle = '#f5e7bd'; g.beginPath(); g.arc(mx(0), mz(0), 4.4 * S, 0, 6.29); g.fill();
+    g.fillStyle = '#7fd0f0'; g.beginPath(); g.arc(mx(0), mz(0), 1.3 * S, 0, 6.29); g.fill();
+    HOUSES.forEach(h => { rect(h[0], h[1], 3.2, 2.6, h[3]); });
+    rect(0, -23, 6.4, 3.6, '#7a4a2e'); rect(0, -23, 1.2, 1.2, '#a8744f');
+    trees.forEach(t => { g.fillStyle = t.kind === 'blossom' ? '#ffc8d6' : '#3f9e4b'; g.beginPath(); g.arc(mx(t.x), mz(t.z), 1.2 * t.sc * S, 0, 6.29); g.fill(); });
+  }
+  function drawMap() {
+    mapG.drawImage(mapBg, 0, 0);
+    const dot = (x, z, r, fill) => { mapG.fillStyle = fill; mapG.strokeStyle = '#fff'; mapG.lineWidth = 3; mapG.beginPath(); mapG.arc(mx(x), mz(z), r, 0, 6.29); mapG.fill(); mapG.stroke(); };
+    actors.forEach(a => { if (!a.me) dot(a.x, a.z, 7, a.remote ? '#f0a83a' : '#8a94a6'); });
+    const f = me.face, x = mx(me.x), z = mz(me.z); // 나: 바라보는 쪽을 가리키는 화살촉
+    mapG.fillStyle = '#e8483f'; mapG.strokeStyle = '#fff'; mapG.lineWidth = 3; mapG.beginPath();
+    mapG.moveTo(x + Math.sin(f) * 16, z + Math.cos(f) * 16); mapG.lineTo(x + Math.sin(f + 2.5) * 11, z + Math.cos(f + 2.5) * 11); mapG.lineTo(x + Math.sin(f - 2.5) * 11, z + Math.cos(f - 2.5) * 11); mapG.closePath(); mapG.fill(); mapG.stroke();
+  }
+
   // ── 매 프레임
   const camPos = new THREE.Vector3(), v = new THREE.Vector3();
   let prev = performance.now();
@@ -779,6 +806,7 @@
       if (r === true || me.target.stuck > 0.6) { me.target = null; marker.visible = false; }
     }
     netTick(kx, kz, now);
+    drawMap();
     // 친구들: 쉬다가 아무 데나 걸어감
     actors.forEach(a => {
       if (a.me) return;
