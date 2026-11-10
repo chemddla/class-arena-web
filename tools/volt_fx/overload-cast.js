@@ -5,7 +5,7 @@
 //             바닥: 금빛 균열 전류가 좌우 멀리 달려 나감 + 바닥 빛 / 불티 분수가 크게 솟음
 //   0.50~1.50 기둥 잔광이 위로 걷히고, 금빛 불티가 비처럼 내리고, 몸 둘레 잔전류가 사그라짐
 // 하늘색(PLASMA_V)으로 모으고 금빛(GOLD_V)으로 터짐 — 오버로드 동안 모든 스킬이 강화(금빛)인 것과 이어짐
-import { Particles, Lights, P, Rng, fit, flare, clamp, rng, TAU, WHITE } from "../../core/index.js";
+import { Particles, Lights, P, Rng, fit, flare, clamp, rng, mix, TAU, WHITE } from "../../core/index.js";
 import { zigzag, stroke, crackle } from "../lightning/_lib.js";
 import { PLASMA_V, SPARK_V, GOLD_V, GOLD_SPARK_V } from "./_volt.js";
 
@@ -26,6 +26,21 @@ export const meta = {
 const STRIKES = [[0.0, 1.0], [0.15, 1.25], [0.28, 1.5], [0.4, 1.8]];   // [시각, 굵기]
 const BK = [1, 0.75, 1, 0.6, 0.85, 0.45];
 const PK = [1, 1, 0.85, 1, 0.75, 0.9, 0.6, 0.7, 0.45, 0.3];   // 금빛 기둥: 더 오래 여러 번 다시 그음
+
+// 바닥 빛 웅덩이 (그라데이션): 가운데 흰빛 → 밝은 색 → 짙은 색으로 부드럽게 번지고, 가장자리로 갈수록 진짜 반투명으로 사라짐 (점무늬·단색 띠 없음)
+//   cols = [가운데, 중간, 바깥] 색, k = 세기 0~1
+function pool(p, rx, ry, cols, k) {
+  if (k <= 0.01 || rx < 1) return;
+  for (let y = Math.floor(-ry); y <= Math.ceil(ry); y++)
+    for (let x = Math.floor(-rx); x <= Math.ceil(rx); x++) {
+      const d = Math.hypot((x + 0.5) / rx, (y + 0.5) / ry);
+      if (d >= 1) continue;
+      const c = d < 0.35 ? mix(cols[0], cols[1], d / 0.35) : mix(cols[1], cols[2], (d - 0.35) / 0.65);
+      p.blend(x, y, c, k * Math.min(0.95, 1.5 * Math.pow(1 - d, 0.8)));   // 가운데는 거의 불투명, 가장자리로 부드럽게 0
+    }
+  p.glow(0, -2, rx * 0.9, cols[1], 0.5 * k);
+  p.glow(0, -1, rx * 0.35, cols[0], 0.5 * k);
+}
 
 export function create(o) {
   const C = fit(o.palette, 8), G = fit(o.gold, 8), R = new Rng(o.seed), floor = () => 0;
@@ -89,8 +104,7 @@ export function create(o) {
         const r = rng(o.seed, 3, i, ba >> 1);
         stroke(p, zigzag(r, r.range(-30, 30), TOP, 0, -6, 0.12, 0.6), BK[ba], C, w * (ba === 0 ? 1.2 : 1), { hero: ba === 0, light: 0.6 });
         if (ba < 2) {
-          p.ellipse(0, -1, 14 * w, 4 * w, C[6]);
-          p.ellipse(0, -1, 7 * w, 2 * w, WHITE);
+          pool(p, 26 * w, 7 * w, [WHITE, C[5], C[3]], ba === 0 ? 1 : 0.7);
           crackle(p, zigzag(r, -6, 0, -r.range(30, 60) * w, r.range(-4, 4), 0.35, 0.5), 0.9, C, 0.4);
           crackle(p, zigzag(r, 6, 0, r.range(30, 60) * w, r.range(-4, 4), 0.35, 0.5), 0.9, C, 0.4);
         }
@@ -117,10 +131,8 @@ export function create(o) {
       }
       if (a > 0 && a < 0.8) {
         const q = a / 0.8, r = rng(o.seed, 7, f), reach = 30 + 220 * Math.sqrt(q), k = 1 - q;
-        // 바닥 빛 웅덩이: 점무늬 없이 단계 색으로 (퍼지며 안쪽 밝은 층부터 사라짐)
-        if (k > 0.25) p.ellipse(0, 0, reach * 0.55, reach * 0.12, k > 0.6 ? G[4] : G[3]);
-        if (k > 0.45) p.ellipse(0, 0, reach * 0.36, reach * 0.08, k > 0.75 ? G[6] : G[5]);
-        if (k > 0.65) p.ellipse(0, 0, reach * 0.18, reach * 0.04, WHITE);
+        // 바닥 빛 웅덩이: 그라데이션으로 퍼지며 흐려짐 (가운데 흰빛 → 금빛 → 주황, 가장자리는 투명하게)
+        pool(p, reach * 0.62, reach * 0.15, [k > 0.5 ? WHITE : G[6], G[5], G[2]], Math.min(1, k * 1.3));
         for (const s of [-1, 1])
           for (let j = 0; j < 2; j++) {
             const y0 = r.range(-6, 6);
