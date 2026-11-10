@@ -7350,18 +7350,18 @@
     // 전격술사 시크릿 레어 1 (2026-11-10까지 기본 외형: 남색 비니·회색 단발·둥근 안경·카키 점퍼·맨손, tools/volt_sr1_build.py) · 칸 103×94, 18칸
     //   0 대기 · 1~4 걷기 · 5 기본 공격 (손을 뻗음, 채널 동안 유지) · 6 피격 · 7~8 쓰러짐 · 9 썬더볼트·체인 · 10 필드 시전 · 11~12 전자포 (모음 → 발사)
     //   13~14 방전 (모음 → 터뜨림) · 15~16 오버로드 (웅크림 → 일어섬) · 17 주먹 버팀 (필드 발동 · 오버로드 시전 중간)
-    //   18~20 시크릿 레어 히든 피날레 (오버로드가 끝날 때): 웅크려 모음 → 도약 → 두 팔 활짝 터뜨림
+    //   18~22 시크릿 레어 히든 피날레 (오버로드가 끝날 때): 웅크려 모음 → 도약 → 두 팔 활짝 터뜨림 → 체공하며 내려옴 → 착지
     //   beamHand = 기본 공격 줄기가 나오는 손 자리 (칸 px · 발 기준, 오른쪽을 볼 때)
     const VOLT_SR1_SHEET = {
       src: 'assets/sprites/merc/volt_sr1.webp',
-      cellW: 103, cellH: 94, anchorX: 51, anchorY: 92, standH: 88, topH: 92, portraitCX: 51, count: 21,
-      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5], skill: [9], hurt: [6], death: [7, 8], tb: [9], fist: [17], rail: [12], dis: [14], ovl: [16], fin: [18, 18, 19, 20] },
+      cellW: 103, cellH: 94, anchorX: 51, anchorY: 92, standH: 88, topH: 92, portraitCX: 51, count: 23,
+      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5], skill: [9], hurt: [6], death: [7, 8], tb: [9], fist: [17], rail: [12], dis: [14], ovl: [16], fin: [18, 18, 18, 18, 18, 18, 19, 19, 19, 20, 20, 20, 20, 21, 21, 21, 21, 21, 21, 21, 21, 21, 22] }, // 6틱씩: 웅크림 0.6초 · 도약 0.3초 · 방출 0.4초 · 체공하며 내려옴 0.9초 · 착지
       skillAnims: {
         volt_thunderbolt: { anim: 'tb', tpf: 30, dur: 30 }, chain_lightning: { anim: 'tb', tpf: 30, dur: 30 },
         electric_field: { anim: 'fist', tpf: 30, dur: 30 }, discharge: { anim: 'dis', tpf: 30, dur: 30 },
         rail_cannon: { anim: 'rail', tpf: 60 }, // 포를 쏘는 동안 내내 (castVoltSkill이 skillAnim을 포 길이로 늘림)
         overload: { anim: 'ovl', tpf: 30, dur: 40 },
-        volt_finale: { anim: 'fin', tpf: 18, dur: 150 } // 히든 피날레: 웅크림 0.6초 → 도약 0.3초 → 두 팔 활짝 (체공·내려오는 동안 유지) (공중 높이는 drawUnitToken의 jumpY · voltFinLift)
+        volt_finale: { anim: 'fin', tpf: 6, dur: 162 } // 히든 피날레: 웅크림 → 도약 → 두 팔 활짝 방출 → 체공하며 내려옴 → 착지 (2.2초에 땅에 닿고 0.5초 착지 자세) (공중 높이는 drawUnitToken의 jumpY · voltFinLift)
       },
       castFrames: { volt_thunderbolt: 9, chain_lightning: 9, electric_field: 10, rail_cannon: 11, discharge: 13, overload: [15, 17, 16] },
       beamHand: [30.3, -46.2]
@@ -27789,8 +27789,8 @@
     const VOLT_VS_SHOCKED = 1.2;      // 패시브: 감전(대전 포함)된 적에게 주는 피해 +20%
     const VOLT_OVERLOAD_TICKS = 900, VOLT_BURNOUT_TICKS = 600, VOLT_OVERLOAD_SPEED = 0.5;                 // 오버로드 15초 (2026-11-10 10초 → 20초 → 15초, 사용자 요청) → 과부하 10초 · 속도 +50%
     // 시크릿 레어 히든 피날레 (2026-11-10 사용자 요청): 오버로드가 끝나는 순간 사방의 전기를 모아 공중으로 도약 → 주변 10칸 적 모두에게 큰 전격 피해 + 감전 5초
-    //   0~0.6초 웅크려 모음 · 0.6~0.9초 도약 · 0.9초 최고점에서 터짐(피해) · 0.9~1.9초 공중에 떠 있음 · 1.9~2.2초 내려옴 · 2.5초 동안 그 자리에 고정 (이펙트 시트 finale과 같은 시간)
-    const VOLT_FIN_GATHER = 36, VOLT_FIN_BANG = 54, VOLT_FIN_HOVER = 114, VOLT_FIN_DUR = 150, VOLT_FIN_JUMP = 70; // 터뜨린 뒤 1초 체공(54~114) → 0.3초 내려옴
+    //   0~0.6초 웅크려 모음 · 0.6~0.9초 도약 · 0.9초 최고점에서 터짐(피해) · 0.9~1.9초 공중에 떠 있음 · 1.9~2.2초 내려옴 · 2.2~2.7초 착지 · 2.7초 동안 그 자리에 고정 (이펙트 시트 finale과 같은 시간)
+    const VOLT_FIN_GATHER = 36, VOLT_FIN_BANG = 54, VOLT_FIN_HOVER = 114, VOLT_FIN_DUR = 162, VOLT_FIN_JUMP = 70; // 터뜨린 뒤 1초 체공(54~114) → 0.3초 내려옴(132에 땅) → 0.5초 착지 자세
     const VOLT_FIN_CELLS = 10, VOLT_FIN_DMG = 3.0, VOLT_FIN_SHOCK = 300;
 
     function voltOverloadOn(u) { return Boolean(u && u.statuses && (u.statuses.overload || 0) > 0); }

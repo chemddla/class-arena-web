@@ -4,7 +4,7 @@
 #   · 6 피격 · 7~8 쓰러짐 (뒤로 넘어감 → 누움) · 9 썬더볼트·체인 라이트닝 (두 손 사이 전기 구체) · 10 일렉트릭 필드 (모은 손 위 전기 불꽃)
 #   · 11~12 전자포 (당겨 모음 → 손바닥을 내밂) · 13~14 방전 (주먹 모음 → 두 팔을 활짝) · 15~16 오버로드 (무릎 꿇고 땅 짚음 → 일어나 주먹)
 #   · 17 주먹 쥐고 버팀 (일렉트릭 필드 발동 · 오버로드 시전 중간)
-#   · 18~20 시크릿 레어 히든 피날레 (오버로드가 끝날 때): 웅크려 전기를 모음 → 공중으로 도약 → 두 팔을 활짝 펴고 터뜨림 (샘플 volt_finale_*_src.png, 같은 크기 묶음 'finale', 키 기준 = 터뜨림)
+#   · 18~22 시크릿 레어 히든 피날레 (오버로드가 끝날 때): 웅크려 전기를 모음 → 공중으로 도약 → 두 팔을 활짝 펴고 터뜨림 → 체공하며 내려옴 → 착지 (웅크려 손 짚음) (샘플 volt_finale_*_src.png, 같은 크기 묶음 'finale', 키 기준 = 터뜨림)
 # 크기: 샘플마다 그린 크기가 달라서, 비니(가장 큰 남색 덩어리) 넓이의 제곱근이 대기 자세와 같아지게 묶음(GROUP)마다 배율을 따로 씀
 #   (비니 가로세로 비는 모든 샘플이 1.52~1.59로 같아서 가로·세로 비율은 그대로)
 #   대기 자세 키(비니 꼭대기~운동화 바닥)를 TARGET_H로 맞춘 배율이 기준
@@ -40,12 +40,14 @@ FRAMES = [
     ('ovl0', 'volt_overload_src.png', 0), ('ovl1', 'volt_overload_src.png', 1),
     ('fist', 'volt_fist_src.png', 0),
     ('fin0', 'volt_finale_crouch_src.png', 0), ('fin1', 'volt_finale_leap_src.png', 0), ('fin2', 'volt_finale_burst_src.png', 0),
+    ('fin3', 'volt_finale_float_src.png', 0), ('fin4', 'volt_finale_land_src.png', 0),
 ]
 # 같은 크기로 그려진 샘플 묶음: 묶음 안 그림들의 비니 크기 가운데값 하나로 배율을 정함
 #   (그림 하나만 보면 머리 각도·가려짐 때문에 비니가 10%쯤 작게 재지는 그림이 있음 — 방전 1·오버로드 2가 그랬음)
 GROUP = {'volt_walk_src.webp': 'walk', 'volt_atk_hurt_src.png': 'mid', 'volt_down_src.png': 'mid', 'volt_bolt_src.png': 'mid',
          'volt_field_src.png': 'small', 'volt_rail_src.png': 'small', 'volt_discharge_src.png': 'small', 'volt_overload_src.png': 'small',
-         'volt_finale_crouch_src.png': 'finale', 'volt_finale_leap_src.png': 'finale', 'volt_finale_burst_src.png': 'finale'}
+         'volt_finale_crouch_src.png': 'finale', 'volt_finale_leap_src.png': 'finale', 'volt_finale_burst_src.png': 'finale',
+         'volt_finale_float_src.png': 'finale', 'volt_finale_land_src.png': 'finale'}
 # 비율: 샘플마다 머리:몸 비율도 다름 (비니 너비 ÷ 선 키 = 대기 0.29, 전자포·방전 묶음 0.32, 주먹 샘플 0.34 — 뒤로 갈수록 머리가 큼)
 #   비니만 맞추면 몸이 대기보다 10~17% 작아지고, 키만 맞추면 머리가 그만큼 커짐 → 두 배율의 기하평균을 씀 (머리·키 차이를 반씩 나눔)
 #   키 배율 = 묶음에서 똑바로 선 그림(BODY_REF)의 키를 TARGET_H로
