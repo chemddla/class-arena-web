@@ -41503,6 +41503,7 @@
       RoomInvites.render();
     };
 
+    let pushDeniedStreak = 0; // 연달아 거부된 저장 수 (성공하면 0)
     async function pushCurrentClassStateToFirebase(immediate = false) {
       if (suppressRemoteClassPush) return;
       ensureCurrentClassMetadata();
@@ -41666,6 +41667,7 @@
 
         try {
           await db.ref().update(updates);
+          pushDeniedStreak = 0;
           if (creating && pendingClassSecrets && pendingClassSecrets.classCode === classCode) {
             TeacherSecrets.pinProof[classCode] = pendingClassSecrets.pin;
             TeacherSecrets.keyConfirmed[classCode] = pendingClassSecrets.key;
@@ -41702,16 +41704,36 @@
           return true;
         } catch (err) {
           // 서버 DB 규칙에 studentPrivate가 아직 없으면 그 칸 때문에 업데이트 전체가 거부됨 → 예전 방식으로 바꿔 한 번 더
-          if (!studentPriv.off && StudentPw.isDenied(err) && Object.keys(updates).some(k => k.includes('/studentPrivate/'))) {
-            console.warn('[studentPrivate 저장 거부 - 이번 접속은 예전처럼 students 안에 저장]:', err);
-            studentPriv.off = true;
-            resetStudentPrivSub();
-            return await doPush();
+          // 단, 거부된 까닭이 '로그인(인증)이 아직 안 됨'이면 바꾸지 않음: 내 기록(students/내id)의 이름을 같은 값으로 써 봐서, 그것은 되는데 나만 쓰는 칸만 거부될 때만 바꿈
+          // (2026-11-10 실측: 접속 직후 첫 저장이 한 번 거부되면 그 접속 내내 예전 방식이 되어, 20명 중 16명이 지원자 명단(한 번에 2.4KB)·일일 상점·미션을
+          //  반 전체가 받는 students에 쓰고 있었음 — 4분 반 동안 반 전체로 간 학생 기록 246KB 중 약 170KB)
+          const denied = StudentPw.isDenied(err);
+          if (!studentPriv.off && denied && Object.keys(updates).some(k => k.includes('/studentPrivate/'))) {
+            let ownOk = manager;
+            if (!manager) {
+              try {
+                const meId = state.activeStudentId, cur = meId && syncCache.studentVals[meId];
+                if (cur && typeof cur.name === 'string') { await db.ref(`${base}/students/${meId}/name`).set(cur.name); ownOk = true; }
+              } catch (e2) {}
+            }
+            if (ownOk) {
+              console.warn('[studentPrivate 저장 거부 - 이번 접속은 예전처럼 students 안에 저장]:', err);
+              studentPriv.off = true;
+              resetStudentPrivSub();
+              return await doPush();
+            }
           }
           console.warn('[학급 데이터 업로드 실패 - 이 기기에는 저장됨]:', err);
-          if (!manager && StudentPw.isDenied(err) && !StudentPw.reloginNoticeShown) {
-            StudentPw.reloginNoticeShown = true;
-            showNotice('🔑 로그인이 풀렸어요. 내 이름을 다시 눌러 비밀번호로 로그인해 주세요.');
+          if (!manager && denied) {
+            // 접속 직후 인증이 자리 잡기 전의 거부일 수 있음 → 처음 한 번은 조용히 잠깐 뒤 다시 올려 보고, 또 거부되면 안내
+            pushDeniedStreak++;
+            if (pushDeniedStreak === 1) {
+              if (sparkClassSyncTimer) clearTimeout(sparkClassSyncTimer);
+              sparkClassSyncTimer = setTimeout(doPush, 1500);
+            } else if (!StudentPw.reloginNoticeShown) {
+              StudentPw.reloginNoticeShown = true;
+              showNotice('🔑 로그인이 풀렸어요. 내 이름을 다시 눌러 비밀번호로 로그인해 주세요.');
+            }
           }
           const syncBadge = document.getElementById('adminFirebaseSyncBadge');
           if (syncBadge) {
@@ -45752,6 +45774,7 @@
       return payload;
     }
 
+    const LIVE_INPUT_SERVER_GAP_RTC_MS = 500;
     function onLocalControlChanged(full = false) {
       if (full) liveNet.inputFull = true;
       if (sim.netRole !== 'guest' || liveNet.role !== 'guest' || !liveNet.ref || liveNet.spectator) return;
@@ -45766,9 +45789,12 @@
           liveNet.vtSent = Math.round(liveNet.viewT + (nowMs - (liveNet.viewTAt || nowMs)));
         }
       }
-      // ⚡ 직접 연결: 기다리지 않고 바로 방장 기기로 (서버로도 아래에서 그대로 보내 둠 → 직접 연결이 끊겨도 이어짐)
-      if (liveRtcCanSend('guest')) liveRtcSend({ k: 'i', v: buildLiveInputPayload() });
-      const wait = 60 - (Date.now() - liveNet.lastInputSentAt);
+      // ⚡ 직접 연결: 기다리지 않고 바로 방장 기기로 (서버로도 아래에서 보내 둠 → 직접 연결이 끊겨도 이어짐)
+      const viaRtc = liveRtcCanSend('guest') && liveRtcSend({ k: 'i', v: buildLiveInputPayload() });
+      // 직접 연결로 보냈고 화면도 그쪽으로 잘 오는 중이면 서버 사본은 0.5초마다만 (끊겼을 때 이어 갈 바탕 · 방장은 보낸 시각(at)이 더 옛 것은 건너뜀)
+      // (2026-11-10 실측: 직접 연결 결투에서도 조작이 초당 6~12번 서버로 가서, 방장이 받는 양이 줄어든 서버 화면보다 많았음)
+      const serverGap = viaRtc && liveRtcFeeding() ? LIVE_INPUT_SERVER_GAP_RTC_MS : 60;
+      const wait = serverGap - (Date.now() - liveNet.lastInputSentAt);
       if (wait > 0) {
         if (!liveNet.inputTimer) liveNet.inputTimer = setTimeout(() => { liveNet.inputTimer = null; onLocalControlChanged(); }, wait);
         return;
