@@ -25,6 +25,8 @@ const VARIANTS = [
   ["rail-body-wide-gold", "rail-body", { thick: 2, ...GOLD }],
   ["rail-muzzle-wide-gold", "rail-muzzle", { thick: 2, ...GOLD }],
   ["rail-tip-wide-gold", "rail-tip", { thick: 2, ...GOLD }],
+  ["rail-arc-wide", "rail-arc", { thick: 2 }],
+  ["rail-arc-wide-gold", "rail-arc", { thick: 2, ...GOLD }],
   ["thunderbolt-gold", "thunderbolt", { echo: 1, width: 1.25, ...GOLD }],
   ["field-gold", "field", { R: 480, ...GOLD }],
   ["discharge-gold", "discharge", { R: 480, ...GOLD }],
