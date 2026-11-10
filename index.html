@@ -2577,6 +2577,7 @@
         </button>
         <button onclick="switchStudentTab('pet')" id="stab-pet" class="student-tab-btn"><b>펫</b></button>
         <button onclick="switchStudentTab('home')" id="stab-home" class="student-tab-btn"><b>방 꾸미기</b></button>
+        <button onclick="switchStudentTab('village')" id="stab-village" class="student-tab-btn"><b>마을</b></button>
         <button onclick="switchStudentTab(lastBattleTab())" id="stab-battle" class="student-tab-btn"><b>전투</b></button>
         <button onclick="switchStudentTab('mission')" id="stab-mission" class="student-tab-btn"><b>퀴즈</b></button>
         <button onclick="switchStudentTab('minigame')" id="stab-minigame" class="student-tab-btn"><b>미니게임</b></button>
@@ -3173,6 +3174,17 @@
       </section>
 
       <!-- [탭 3] 모험의 탑 (1층 ~ 200층) -->
+      <!-- 우리 반 마을 (3D): 화면은 assets/village.js가 #villageRoot 안에 그림. 연결 코드는 VillageTab -->
+      <section id="studentTab-village" class="student-tab-panel hidden flex flex-col gap-4">
+        <div class="bg-slate-900 border-2 border-emerald-400/40 rounded-2xl p-3 flex flex-col gap-2">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h4 class="font-title text-xl text-white flex items-center gap-2"><span>🏡</span> 우리 반 마을</h4>
+            <p id="villageStatus" class="text-xs font-bold text-slate-400">내 펫으로 마을을 걸어 다니고, 친구 집 문 앞에서 E를 누르면 놀러 갈 수 있어요.</p>
+          </div>
+          <div id="villageRoot" style="height: min(72vh, 760px); min-height: 420px; border-radius: 14px;"></div>
+        </div>
+      </section>
+
       <section id="studentTab-tower" class="student-tab-panel hidden flex flex-col gap-4">
         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
           <div class="flex flex-wrap items-center justify-between gap-3">
@@ -40196,6 +40208,60 @@
       if (tabKey === 'shop' && EQUIP_SHOP_LOCKED) {
         showNotice('🔒 장비·상점은 준비 중이에요. 곧 열릴 예정이에요!');
         return;
+    // ===== 우리 반 마을 (3D) =====
+    // 화면·움직임·친구 위치 주고받기는 assets/village.js, 펫 3D 모델은 assets/village-pets.js. three.js까지 세 파일은 마을 탭을 처음 열 때만 받음.
+    // 친구 위치는 village/{학급}/{학생}에 짧은 글자 한 줄로 오감 (학급 데이터와 따로라 다른 화면의 수신량에 섞이지 않음).
+    // 비밀번호로 로그인한 학생만 위치를 올림 — 그 밖(교사가 학생 화면 보기·테스트 전장)에는 혼자 보기.
+    const VILLAGE_FILES = ['https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js', 'assets/village-pets.js?v=1', 'assets/village.js?v=1'];
+    const VillageTab = {
+      api: null,     // Village.start가 돌려준 손잡이 (pause·resume·dispose)
+      key: '',       // 지금 마을을 연 학급·학생·펫 (바뀌면 새로 만듦)
+      loading: null,
+
+      load() {
+        if (!this.loading) {
+          this.loading = VILLAGE_FILES.reduce((p, src) => p.then(() => new Promise((ok, fail) => {
+            const s = document.createElement('script');
+            s.src = src; s.onload = ok; s.onerror = () => fail(new Error(src));
+            document.head.appendChild(s);
+          })), Promise.resolve()).catch(e => { this.loading = null; throw e; });
+        }
+        return this.loading;
+      },
+
+      host(me) {
+        const uid = TeacherAuth.auth()?.currentUser?.uid;
+        const canSync = Boolean(StudentPw.db() && uid && isStudentSession(me) && !isSandboxEntry());
+        const roster = [...(state.students || [])].sort((a, b) => (a.num || 0) - (b.num || 0)).map(s => ({ id: s.id, name: s.name }));
+        return {
+          db: canSync ? StudentPw.db() : null,
+          code: StudentPw.code(),
+          me: { id: me.id, name: me.name, pet: me.pet && PET_DEFS[me.pet.type] ? me.pet.type : null },
+          students: roster, // 집 주인 순서 (번호순, 33번째부터는 집 없음)
+          nameOf: id => (state.students || []).find(s => s.id === id)?.name || '친구',
+          visitHome: id => HomeRoom.visit(id),
+        };
+      },
+
+      open() {
+        const me = getActiveStudent(), root = document.getElementById('villageRoot'), status = document.getElementById('villageStatus');
+        if (!me || !root) return;
+        const host = this.host(me), key = `${host.code}|${me.id}|${host.me.pet}|${host.db ? 1 : 0}`;
+        this.load().then(() => {
+          if (document.getElementById('studentTab-village').classList.contains('hidden')) return; // 받는 사이 다른 탭으로 감
+          if (this.api && this.key === key) { this.api.resume(); return; }
+          if (this.api) this.api.dispose();
+          this.key = key;
+          this.api = window.Village.start(root, host);
+        }).catch(e => {
+          console.warn('[마을 불러오기 실패]:', e);
+          if (status) status.textContent = '마을을 불러오지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.';
+        });
+      },
+
+      close() { if (this.api) this.api.pause(); },
+    };
+
       }
       try { sessionStorage.setItem('mca_student_tab', tabKey); } catch (e) {}
       // 진행 중인 전투는 멈추지 않고 화면만 숨김 → [⚔️ 진행 중인 전투로 돌아가기]로 다시 볼 수 있음
@@ -40235,6 +40301,7 @@
       if (tabKey === 'worldraid') renderWorldRaidTab();
       if (tabKey === 'rush') renderRushTab();
       if (tabKey === 'dungeon') renderDungeonTab();
+      if (tabKey === 'village') VillageTab.open(); else VillageTab.close();
       if (tabKey === 'pvp') renderPvpTab();
       if (tabKey === 'minigame') renderMinigameTab();
       if (tabKey === 'shop') renderShopTab();

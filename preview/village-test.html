@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>마을 시험판</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #a8dcf7; }
+  #root { position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<!-- 마을 본체(assets/village.js)를 로그인 없이 돌려 보는 화면.
+     그냥 열면 시험판(흉내 친구·펫 고르기·시간 버튼).
+     ?sync=이름&pet=shiba 로 열면 실제 마을 방식으로 돌되, 서버 대신 이 브라우저 안의 가짜 저장소로 위치를 주고받음
+     → 같은 브라우저에서 창 두 개(또는 preview/village-sync-test.html)로 친구 보이기를 점검 -->
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="../assets/village-pets.js"></script>
+<script src="../assets/village.js"></script>
+<script>
+  // 가짜 저장소: Firebase의 ref().set/remove/on/onDisconnect 흉내. 창끼리는 BroadcastChannel로 알림
+  function mockDb() {
+    const KEY = 'vmock:', ch = new BroadcastChannel('vmock'), subs = [], mine = new Set();
+    const kids = base => Object.keys(localStorage).filter(k => k.startsWith(KEY + base + '/')).map(k => [k.slice((KEY + base + '/').length), localStorage.getItem(k)]);
+    const emit = (type, path, val) => subs.forEach(su => { const pre = su.base + '/'; if (!path.startsWith(pre)) return; const key = path.slice(pre.length); if (key.includes('/')) return; const cb = su.cbs[type]; if (cb) cb({ key, val: () => val }); });
+    ch.onmessage = e => emit(e.data.type, e.data.path, e.data.val);
+    addEventListener('pagehide', () => mine.forEach(p => { localStorage.removeItem(KEY + p); ch.postMessage({ type: 'child_removed', path: p }); }));
+    return { sets: 0, bytes: 0, ref(path) {
+      const db = this;
+      if (path === '.info/connected') return { on: (t, cb) => setTimeout(() => cb({ val: () => true }), 0), off() {} };
+      return {
+        set(v) { const had = localStorage.getItem(KEY + path) != null; localStorage.setItem(KEY + path, v); db.sets++; db.bytes += String(v).length; const type = had ? 'child_changed' : 'child_added'; ch.postMessage({ type, path, val: v }); emit(type, path, v); return Promise.resolve(); },
+        remove() { localStorage.removeItem(KEY + path); mine.delete(path); ch.postMessage({ type: 'child_removed', path }); emit('child_removed', path, null); return Promise.resolve(); },
+        onDisconnect() { return { remove() { mine.add(path); return Promise.resolve(); }, cancel() { mine.delete(path); } }; },
+        on(type, cb) { let su = subs.find(x => x.base === path); if (!su) subs.push(su = { base: path, cbs: {} }); su.cbs[type] = cb; if (type === 'child_added') kids(path).forEach(([key, val]) => cb({ key, val: () => val })); },
+        off() { const i = subs.findIndex(x => x.base === path); if (i >= 0) subs.splice(i, 1); },
+      };
+    } };
+  }
+  const q = new URLSearchParams(location.search), who = q.get('sync');
+  let host = null;
+  if (who) {
+    const roster = ['가람', '나래', '다온', '라온', '마루'].map(n => ({ id: 'stu_' + n, name: n }));
+    if (!roster.some(r => r.name === who)) roster.push({ id: 'stu_' + who, name: who });
+    host = { db: q.get('solo') ? null : mockDb(), code: 'TEST', me: { id: 'stu_' + who, name: who, pet: q.get('pet') || null }, students: roster,
+      nameOf: id => (roster.find(r => r.id === id) || { name: '친구' }).name, visitHome: id => { window.__visited = id; } };
+  }
+  const api = Village.start(document.getElementById('root'), host);
+  window.__api = api; window.__village = api.debug; window.frame = api.frame;
+  // 점검용: 화면이 가려져 느리게 돌 때도 n 프레임을 바로 진행
+  window.__step = n => { const raf = window.requestAnimationFrame; window.requestAnimationFrame = () => 0; let T = performance.now(); for (let i = 0; i < n; i++) { T += 33; api.frame(T); } window.requestAnimationFrame = raf; raf(api.frame); };
+</script>
+</body>
+</html>

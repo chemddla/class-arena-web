@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>마을 3D 펫 미리보기</title>
+<style>
+  :root { --bg: #cfe8c9; --card: #f7fbf2; --ink: #2f4a35; --sub: #6a8570; --line: #b7d6b0; --btn: #ffffff; --on: #3f9a5a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: 'Pretendard', 'Malgun Gothic', system-ui, sans-serif; }
+  canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+  header { position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 12px 16px; background: rgba(207, 232, 201, .92); border-bottom: 2px solid var(--line); }
+  h1 { font-size: 18px; margin: 0; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  button { font: inherit; font-weight: 700; font-size: 13px; padding: 6px 12px; border-radius: 999px; border: 2px solid var(--line); background: var(--btn); color: var(--ink); cursor: pointer; }
+  button.on { background: var(--on); border-color: var(--on); color: #fff; }
+  main { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; padding: 16px; }
+  .card { background: var(--card); border: 2px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .view { aspect-ratio: 1 / 1.1; cursor: grab; touch-action: pan-y; }
+  .meta { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-top: 2px solid var(--line); background: #fff; position: relative; z-index: 2; }
+  .meta img { width: 44px; height: 44px; object-fit: contain; image-rendering: pixelated; }
+  .meta b { font-size: 14px; display: block; }
+  .meta span { font-size: 11px; color: var(--sub); }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<header>
+  <h1>🏡 마을 3D 펫 미리보기</h1>
+  <div class="btns" id="animBtns">
+    <button data-a="idle" class="on">서 있기</button>
+    <button data-a="walk">걷기</button>
+    <button data-a="wave">인사</button>
+  </div>
+  <div class="btns">
+    <button id="spinBtn" class="on">자동 회전</button>
+    <button data-v="0">앞</button><button data-v="1.5708">옆</button><button data-v="3.1416">뒤</button>
+  </div>
+</header>
+<main id="grid"></main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="../assets/village-pets.js"></script>
+<script>
+  const canvas = document.getElementById('gl');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.setScissorTest(true);
+  const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 50);
+  let anim = 'idle', spin = true, angle = 0.5;
+  const toonMat = VillagePets.toon(THREE);
+  const items = Object.keys(VillagePets.SPECS).map(id => {
+    const spec = VillagePets.SPECS[id];
+    const card = document.createElement('div'); card.className = 'card';
+    card.innerHTML = `<div class="view"></div><div class="meta"><img src="../assets/sprites/pet/${id}.webp" alt=""><div><b>${spec.name}</b><span>왼쪽: 기존 그림 · 위: 3D</span></div></div>`;
+    document.getElementById('grid').appendChild(card);
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xc9d3b8, 0.62));
+    const sun = new THREE.DirectionalLight(0xfff2dd, 0.62); sun.position.set(2, 4, 3); scene.add(sun);
+    const ground = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.66, 0.08, 40), new THREE.MeshLambertMaterial({ color: 0x8ccf7a })); ground.position.y = -0.04; scene.add(ground);
+    const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.26, 24), new THREE.MeshBasicMaterial({ color: 0x2f6a3a, transparent: true, opacity: 0.28 })); shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.002; scene.add(shadow);
+    const pet = VillagePets.build(THREE, id, { material: toonMat }); scene.add(pet.group);
+    return { view: card.querySelector('.view'), scene, pet };
+  });
+  // 끌어서 돌리기
+  let drag = null;
+  addEventListener('pointerdown', e => { if (e.target.classList.contains('view')) drag = e.clientX; });
+  addEventListener('pointermove', e => { if (drag != null) { angle += (e.clientX - drag) * 0.012; drag = e.clientX; } });
+  addEventListener('pointerup', () => { drag = null; });
+  document.querySelectorAll('#animBtns button').forEach(b => b.onclick = () => { anim = b.dataset.a; document.querySelectorAll('#animBtns button').forEach(x => x.classList.toggle('on', x === b)); });
+  const spinBtn = document.getElementById('spinBtn');
+  spinBtn.onclick = () => { spin = !spin; spinBtn.classList.toggle('on', spin); };
+  document.querySelectorAll('button[data-v]').forEach(b => b.onclick = () => { angle = Number(b.dataset.v); spin = false; spinBtn.classList.remove('on'); });
+
+  let prev = performance.now();
+  function frame(now) {
+    const t = now / 1000, dt = (now - prev) / 1000; prev = now;
+    if (spin && drag == null) angle += dt * 0.7;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== Math.floor(w * renderer.getPixelRatio()) || canvas.height !== Math.floor(h * renderer.getPixelRatio())) renderer.setSize(w, h, false);
+    renderer.setScissor(0, 0, w, h); renderer.clear();
+    items.forEach(it => {
+      const r = it.view.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > h || r.width < 2) return;
+      it.pet.group.rotation.y = angle;
+      it.pet.update(t, { moving: anim === 'walk', wave: anim === 'wave' });
+      camera.aspect = r.width / r.height; camera.position.set(0, 1.05, 3.3); camera.lookAt(0, 0.47, 0); camera.updateProjectionMatrix();
+      renderer.setViewport(r.left, h - r.bottom, r.width, r.height);
+      renderer.setScissor(r.left, h - r.bottom, r.width, r.height);
+      renderer.render(it.scene, camera);
+    });
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  window.__pets = { items, set: (a, ang) => { anim = a; if (ang != null) { angle = ang; spin = false; } } };
+</script>
+</body>
+</html>
