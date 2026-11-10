@@ -46468,7 +46468,7 @@
     // 지금: 직접 연결 화면이 LIVE_RTC_PAUSE_AFTER_MS 동안 끊김 없이 오면 서버 화면 구독을 끊고, 0.6초 넘게 멈추면 다시 구독하면서 방장에게 전체 화면 한 장을 청함(kf/내id)
     //   · 방장이 그 청을 듣는 버전일 때만 (직접 연결 알림의 kf 표시 · 예전 방장이면 전체 화면을 최대 4초 기다려야 하므로 예전처럼 계속 받음)
     //   · 전투 정보·결과·넘기기는 그대로 서버로 받음
-    const LIVE_RTC_PAUSE_AFTER_MS = 2000, LIVE_KF_REQ_GAP_MS = 4000, LIVE_KF_REQ_HOLD_MS = 5000;
+    const LIVE_RTC_PAUSE_AFTER_MS = 2000, LIVE_KF_REQ_GAP_MS = 4000, LIVE_KF_REQ_HOLD_MS = 5000, LIVE_RTC_PREWARM_MS = 350;
     function liveRequestKeyframe(now) {
       liveNet.kfWanted = true;
       liveNet.kfReqAt = now;
@@ -46478,8 +46478,10 @@
       if (liveNet.role !== 'guest' || liveNet.spectator || !liveNet.ref || liveNet.finished) return;
       const feeding = liveRtcFeeding();
       if (liveNet.rtcPaused) {
-        if (feeding) return;
-        // 직접 연결이 멈춤 → 서버 화면으로: 이어 붙일 앞 화면이 없으니 전체 화면부터
+        // 직접 연결 화면이 LIVE_RTC_PREWARM_MS 넘게 안 오면(평소엔 0.05초마다) 서버 화면을 미리 다시 받기 시작함: 0.6초에 서버 화면으로 넘어갈 때
+        // 이어 붙일 화면이 이미 와 있도록 (끊긴 뒤에야 구독하면 구독·전체 화면 왕복만큼 0.2~0.4초 더 멈춰 보였음) · 직접 연결이 되살아나면 2초 뒤 다시 끊음
+        if (feeding && now - LiveRtc.lastFrameAt < LIVE_RTC_PREWARM_MS) return;
+        // 직접 연결이 멈춤(멈추려 함) → 서버 화면으로: 이어 붙일 앞 화면이 없으니 전체 화면부터
         liveNet.rtcPaused = false;
         liveNet.rtcFeedSince = 0;
         liveNet.recvU = null; liveNet.recvT = null; liveNet.recvZn = null;
@@ -48112,8 +48114,7 @@
       // 투사체는 그 화면 이후 흐른 만큼 미리 날아간 자리에서 시작 (다음 화면과 위치가 거의 이어짐)
       const leadTicks = Math.max(0, ageMs) / 1000 * BATTLE_TICKS_PER_SEC;
       // 형식 v2: 전체 화면(u)마다 투사체 고정 칸 표를 새로 받음 · 짧은 꼴([x, y, 각도, 번호, vx, vy])은 표에서 종류·색·그림을 찾고, 모르는 번호는 다음 전체 화면까지 건너뜀
-      if (Array.isArray(val.u) || !liveNet.projStatic) liveNet.projStatic = new Map();
-      const ps = liveNet.projStatic;
+      const ps = liveNet.projStatic || (liveNet.projStatic = new Map()); // 짧은 꼴은 받을 때(applyLiveFrame → expandLiveProjectiles) 이미 통째 꼴로 되살려 둠 · 아래 번호 분기는 쓰이지 않음
       sim.projectiles = (Array.isArray(val.p) ? val.p : []).filter(Array.isArray).map(q => {
         if (typeof q[3] === 'number') {
           const st = ps.get(q[3]);
