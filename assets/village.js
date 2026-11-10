@@ -212,8 +212,14 @@
   const sandMat = (rx, ry) => { const t = sandTex.clone(); t.needsUpdate = true; t.repeat.set(rx, ry); return toonMat({ map: t }); };
   strip(0, 6, 2.46, 52.26, '#d6bd7e', 0.022); STREETS.forEach((st, i) => strip(0, st.z, st.len + 0.26, 2.46, '#d6bd7e', 0.023 + i * 0.0005)); // 길 테두리
   strip(0, 6, 2.2, 52, sandMat(1, 24), 0.03); STREETS.forEach((st, i) => strip(0, st.z, st.len, 2.2, sandMat(Math.round(st.len / 2.2), 1), 0.031 + i * 0.0005));
-  { const rim = floor(mesh(new THREE.RingGeometry(0, 4.55, 48, 5), '#d6bd7e')); rim.rotation.x = -Math.PI / 2; scene.add(at(rim, 0, 0.038, 0)); }
-  const plaza = floor(mesh(new THREE.RingGeometry(0, 4.4, 48, 5), '#f5e7bd')); plaza.rotation.x = -Math.PI / 2; scene.add(at(plaza, 0, 0.045, 0));
+  // 광장: 회색 돌을 엇갈려 깐 바닥, 가장자리와 분수 둘레에 짙은 돌 띠
+  const stoneTex = paint(256, (g, s) => { g.fillStyle = '#9d9a94'; g.fillRect(0, 0, s, s); const n = 4, w = s / n;
+    for (let row = 0; row < n; row++) for (let i = -1; i < n; i++) { const x = i * w + (row % 2 ? w / 2 : 0), y = row * w;
+      g.fillStyle = pick(['#d6d3cd', '#cbc8c1', '#dedbd5', '#c4c1ba', '#d1cdc5']); g.fillRect(x + 3, y + 3, w - 6, w - 6);
+      g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(x + 3, y + 3, w - 6, 4); } }, 5);
+  const disc = (r0, r1, c, y) => { const m = floor(mesh(new THREE.RingGeometry(r0, r1, 64, 5), c)); m.rotation.x = -Math.PI / 2; scene.add(at(m, 0, y, 0)); return m; };
+  disc(0, 4.6, '#8f8b84', 0.038); const plaza = disc(0, 4.4, toonMat({ map: stoneTex }), 0.045);
+  disc(3.05, 3.25, '#aaa69e', 0.05); disc(2.05, 2.3, '#8f8b84', 0.05);
   const RIVER = { z0: -9.3, z1: -6.3, bridge: 1.15 };
   strip(0, -7.8, 150, 3.8, '#ead9a0', 0.035);
   waterTex.repeat.set(41, 1); strip(0, -7.8, 150, 3, flat(0xffffff, { map: waterTex }), 0.05);
@@ -228,13 +234,24 @@
   const solid = (x, z, r, h) => solids.push({ x, z, r, h: h || 0 }); // h: 건물 높이 — 카메라가 그 안으로 들어가지 않게 (작은 소품은 0)
 
   // ── 분수·게시판
-  const fountain = new THREE.Group();
-  fountain.add(at(mesh(new THREE.CylinderGeometry(1.3, 1.4, 0.45, 48), '#e3ddd0'), 0, 0.225, 0));
-  fountain.add(at(noShadow(mesh(new THREE.CylinderGeometry(1.08, 1.08, 0.06, 48), flat(0x7fd0f0))), 0, 0.45, 0));
-  fountain.add(at(mesh(new THREE.CylinderGeometry(0.16, 0.22, 1.1, 12), '#e3ddd0'), 0, 0.9, 0));
-  fountain.add(at(mesh(new THREE.CylinderGeometry(0.5, 0.2, 0.16, 18), '#e3ddd0'), 0, 1.4, 0));
-  const spout = at(noShadow(mesh(new THREE.SphereGeometry(0.2, 12, 10), flat(0xd4f2ff))), 0, 1.62, 0); fountain.add(spout);
-  scene.add(fountain); solid(0, 0, 1.5);
+  // 분수: 팔각 돌 연못 + 2단 물그릇, 그릇 가장자리로 흘러내리는 물, 연못에 번지는 물결, 둘레 꽃덤불
+  const fountain = new THREE.Group(), ripples = [];
+  { const STONE = '#e6e0d3', EDGE = '#f4efe5', f = (geo, c, y) => { const m = at(mesh(geo, c), 0, y, 0); fountain.add(m); return m; };
+    const cyl = (a, b, h, n, open) => new THREE.CylinderGeometry(a, b, h, n || 32, 1, open);
+    f(cyl(1.8, 1.92, 0.5, 8), STONE, 0.25); f(cyl(1.95, 1.95, 0.1, 8), EDGE, 0.55); f(cyl(1.94, 1.94, 0.1, 8), '#5b9bd5', 0.3); // 연못 벽, 테, 파란 타일 띠
+    f(cyl(1.6, 1.6, 0.05, 40), flat(0x7fd0f0), 0.5).userData.noShadow = true;
+    f(cyl(0.26, 0.34, 1.05, 16), STONE, 1.02); f(cyl(0.36, 0.36, 0.1, 16), EDGE, 0.6); f(cyl(0.3, 0.3, 0.08, 16), EDGE, 1.2);
+    f(cyl(0.9, 0.38, 0.26, 32), STONE, 1.52); f(cyl(0.92, 0.92, 0.06, 32), EDGE, 1.66); f(cyl(0.8, 0.8, 0.04, 32), flat(0x8fdcf8), 1.65).userData.noShadow = true;
+    f(cyl(0.13, 0.18, 0.55, 12), STONE, 1.95); f(cyl(0.46, 0.2, 0.16, 24), STONE, 2.28); f(cyl(0.48, 0.48, 0.05, 24), EDGE, 2.37); f(cyl(0.4, 0.4, 0.03, 24), flat(0x8fdcf8), 2.37).userData.noShadow = true;
+    const veil = flat(0xd4f2ff, { transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false }); // 흘러내리는 물
+    noShadow(f(cyl(0.9, 1.0, 1.12, 32, true), veil, 1.1)); noShadow(f(cyl(0.47, 0.52, 0.7, 24, true), veil, 2.02));
+    for (let k = 0; k < 3; k++) { const m = new THREE.Mesh(new THREE.RingGeometry(0.22, 0.27, 32), flat(0xffffff, { transparent: true, opacity: 0, depthWrite: false })); m.rotation.x = -Math.PI / 2; noShadow(m); fountain.add(at(m, 0, 0.54, 0)); ripples.push(m); }
+    for (let k = 0; k < 8; k++) { const a = (k + 0.5) / 8 * Math.PI * 2, x = Math.sin(a) * 2.15, z = Math.cos(a) * 2.15; // 꽃덤불
+      f(new THREE.SphereGeometry(0.3, 12, 9), '#5cbd50', 0.2).position.set(x, 0.2, z);
+      [[0, 0.42, 0], [0.14, 0.36, 0.1], [-0.12, 0.38, -0.08]].forEach((o, j) => f(new THREE.SphereGeometry(0.075, 8, 6), ['#ff7fa6', '#ffcf3a', '#fff6e8', '#b06fc8'][(k + j) % 4], 0).position.set(x + o[0], o[1], z + o[2])); }
+  }
+  const spout = at(noShadow(mesh(new THREE.SphereGeometry(0.16, 12, 10), flat(0xd4f2ff))), 0, 2.48, 0); fountain.add(spout);
+  scene.add(fountain); solid(0, 0, 2.3);
   const board = new THREE.Group(); // 마을 게시판: 지붕 달린 나무 틀, 코르크판에 압정 꽂은 쪽지들, 이름판, 등불, 꽃 상자
   { const b = (w, h, d, c, x, y, z) => { const m = at(mesh(new THREE.BoxGeometry(w, h, d), c), x, y, z); board.add(m); return m; };
     const WOOD = '#7a4a2e', LIGHT = '#b9824e';
@@ -367,11 +384,6 @@
     scene.add(at(g, SHOP.ix, 0, SHOP.iz));
     [[-2.6, -1.2, 0.75], [-3.8, -1.2, 0.75], [-1.4, -1.2, 0.75], [2.8, 0.3, 0.6], [4.4, 0.3, 0.6], [-3.85, 1.4, 0.75]].forEach(([x, z, r]) => solid(SHOP.ix + x, SHOP.iz + z, r));
   }
-  // ── 소품: 줄무늬 의자
-  { const g = new THREE.Group(), cols = ['#ff8f8f', '#ffd27a', '#fff3a8', '#9fe0a0', '#8fc8ff', '#c9a8f0'];
-    cols.forEach((c, i) => { const p = at(mesh(new THREE.BoxGeometry(0.95, 0.03, 0.21), c), 0, 0.22 + i * 0.105, 0.55 - i * 0.2); p.rotation.x = 0.48; g.add(p); });
-    [-1, 1].forEach(s => { const a = at(mesh(new THREE.BoxGeometry(0.06, 0.06, 1.6), '#b9824e'), s * 0.5, 0.48, 0.05); a.rotation.x = 0.48; g.add(a); const b = at(mesh(new THREE.BoxGeometry(0.06, 0.06, 1.1), '#b9824e'), s * 0.5, 0.3, -0.1); b.rotation.x = -0.55; g.add(b); });
-    g.rotation.y = 0.5; scene.add(at(g, -5.4, 0, 3.4)); solid(-5.4, 3.4, 0.6); }
 
   // ── 놀이터: 강 아래 집들 맨 왼쪽 바깥. 그네 두 자리·미끄럼틀·시소·뺑뺑이·트램펄린, E로 탐 (탈 자리는 아래 seats 끝에 붙음)
   const PLAY = { x: -44, z: 12 }, movers = [], rides = [];
@@ -807,9 +819,7 @@
   soundBtn.onclick = () => { soundOn = !soundOn; if (soundOn && !audio) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) audio = new AC(); } soundBtn.textContent = '소리: ' + (soundOn ? '켬' : '끔'); if (soundOn) sfx.note(); };
   function say(a, text, sec) { a.say = text; a.sayT = sec || 1.8; }
   // 앉을 자리: y = 앉는 높이, face = 앉아서 보는 쪽, (ox, oz) = 일어날 때 내려서는 곳
-  const seats = [
-    { x: -5.4, z: 3.4, y: 0.42, face: 0.5, ox: 0.5, oz: 1.1 },
-  ].concat(rides); // 순서는 친구 화면과 맞춰야 하므로 놀이터 자리는 늘 뒤에 붙임
+  const seats = rides; // 순서는 친구 화면과 맞춰야 함 (번호로 주고받음)
   function emote(kind) { // 1 기쁨 · 2 하트: 가까운 친구들이 따라 함
     const text = kind === 'joy' ? '😄 야호!' : '❤️';
     const act = a => { say(a, text, 1.4); if (kind === 'joy') a.hop = 0.4; else popText('❤️', a.x, 1.9, a.z); };
@@ -1090,6 +1100,7 @@
     shades.forEach((q, i) => { q.x += q.v * dt; if (q.x > 46) q.x = -46; dummy.position.set(q.x, 0.07, q.z); dummy.rotation.set(-Math.PI / 2, 0, 0); dummy.scale.set(q.r * 1.5, q.r, 1); dummy.updateMatrix(); shadeIM.setMatrixAt(i, dummy.matrix); });
     shadeIM.instanceMatrix.needsUpdate = true; cloudShadeMat.opacity = 0.14 * (1 - env.night);
     spout.scale.setScalar(1 + Math.sin(t * 6) * 0.12);
+    ripples.forEach((m, i) => { const u = (t * 0.45 + i / 3) % 1; m.scale.setScalar(0.6 + u * 5); m.material.opacity = 0.55 * (1 - u); });
     rides.forEach(q => { if (q.tick) q.tick(t, dt, actors.some(a => a.sit === q)); });
     waterTex.offset.x = -t * 0.12;
     marker.rotation.z = t * 2;
