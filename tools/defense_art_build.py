@@ -1,16 +1,14 @@
-# 💎 수정 방어전 그림 → assets/maps/crystal_defense.webp · assets/sprites/fx/defense_towers.png · assets/sprites/fx/defense_crystal.png
+# 💎 수정 방어전 그림 → assets/maps/crystal_defense.webp · assets/sprites/fx/defense_crystal.png
 # 사용: python tools/defense_art_build.py [미리보기 폴더]
 #
 # 모두 코드로 찍는 도트 그림. 작법 (pixelfx · 도트 기본기):
 #  - 색 단계는 색조를 섞음 (그림자는 푸르고 보랏빛, 밝은 곳은 노랗게) · 빛은 늘 왼쪽 위
 #  - 테두리는 검정 한 가지가 아니라 맞닿은 재질의 가장 어두운 색 (아래쪽 테두리가 더 어두움)
-#  - 바위·흙·절벽은 높이 노이즈로 빛을 계산 (요철) · 그림자는 오른쪽 아래로 떨어짐
+#  - 바위·흙·광장은 높이 노이즈로 빛을 계산 (요철) · 그림자는 오른쪽 아래로 떨어짐
 #  - 빛 웅덩이(수정·화로·횃불)는 단계로 끊고 바이어 디더로 섞음
 # - 맵: 720×450 도트 (월드 2880×1800의 1/4). 게임은 다듬기 없이 4배.
-#   길·동굴·받침돌·수정 좌표는 index.html의 DEFENSE_LANES · defenseMakeSlots · DEFENSE_CRYSTAL과 같음 (월드 ÷ 4).
-# - 시설 시트: 칸 36×52, 가로 12칸 = 단계(1~3)마다 [평소 A, 평소 B, 공격 A, 공격 B],
-#   세로 6줄 = 화살탑 · 마법탑 · 서리탑 · 방벽 · 덫 · 치유 토템.
-#   방벽은 공격 칸 = 부서진 모습, 덫은 공격 칸 = 터진 뒤(빈 덫). 발 위치 = 칸 (18, 49). 게임에서 3배.
+#   한가운데 수정 광장 · 동서남북 바위 언덕 동굴 네 곳 · 동굴에서 수정까지 흙길 넷 (수정 가까이는 돌길) · 숲 테두리
+#   길·동굴·수정 좌표는 index.html의 DEFENSE_LANES · DEFENSE_CRYSTAL과 같음 (월드 ÷ 4).
 # - 수정 시트: 칸 32×60, 가로 6프레임(빛 흐름), 세로 3줄 = 성함 · 금 감(70% 아래) · 크게 금 감(30% 아래). 게임에서 3배.
 import math, os, random, sys
 import numpy as np
@@ -18,7 +16,6 @@ from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_MAP = os.path.join(ROOT, 'assets/maps/crystal_defense.webp')
-OUT_TOWERS = os.path.join(ROOT, 'assets/sprites/fx/defense_towers.png')
 OUT_CRYSTAL = os.path.join(ROOT, 'assets/sprites/fx/defense_crystal.png')
 PREVIEW = sys.argv[1] if len(sys.argv) > 1 else None
 BAYER = np.array([[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]) / 16.0
@@ -196,346 +193,6 @@ def plinth(s, lv, trim=None):
         s.px(x, bot + 1, C('#3e6b33')); s.px(x - 1, bot + 1, C('#2c5230')); s.px(x, bot, C('#5d8f3e'))
 
 
-# ---------------------------------------------------------------- 시설
-def banner(s, x, y, w, h, pal, wave):
-    """천 깃발: 물결(wave)로 아래 끝이 흔들림 · 접힌 그림자."""
-    for i in range(h):
-        sway = int(round(math.sin(i * 0.5 + wave * math.pi) * (i / h) * 1.5))
-        for j in range(w):
-            k = 3 if j < w * 0.35 else 2 if j < w * 0.8 else 1
-            if (i + wave * 2) % 5 == 0:
-                k = max(0, k - 1)
-            s.px(x + j + sway, y + i, pal[k])
-    # 아래 끝 V
-    for j in range(w):
-        if abs(j - w / 2 + 0.5) < w / 2 - 1:
-            s.px(x + j + int(round(math.sin(h * 0.5 + wave * math.pi) * 1.5)), y + h + (1 if abs(j - w / 2 + 0.5) > 1 else 0), pal[1])
-
-
-def arrow_tower(lv, f):
-    s = Spr(36, 52)
-    fire, alt = f >= 2, f % 2
-    plinth(s, lv, trim=GOLD if lv >= 3 else IRON if lv >= 2 else None)
-    if lv == 1:
-        # 통나무 망루 + 천 지붕
-        for x in (9, 25):
-            s.cyl(x, x + 2, 18, 40, WOOD)
-        s.cyl(14, 15, 20, 39, WOOD[:5]); s.cyl(20, 21, 20, 39, WOOD[:5])
-        s.line(11, 23, 24, 37, WOOD[2]); s.line(24, 23, 11, 37, WOOD[3])
-        s.line(11, 24, 24, 38, WOOD[1])
-        s.rect(10, 31, 25, 31, WOOD[4])  # 가로 버팀
-        # 판자 바닥 (위 면)
-        s.rect(6, 16, 29, 19, WOOD[5]); s.rect(6, 19, 29, 20, WOOD[3])
-        for x in range(7, 29, 3):
-            s.px(x, 17, WOOD[4]); s.px(x, 18, WOOD[4])
-        s.rect(6, 21, 29, 21, WOOD[1])
-        # 천 지붕 (기둥 2개 위)
-        s.cyl(7, 7, 5, 16, WOOD[:5]); s.cyl(28, 28, 5, 16, WOOD[:5])
-        for y in range(2, 8):
-            half = 13 - (7 - y) * 0 + (y - 2) * 0.6
-            for x in range(int(18 - half), int(18 + half) + 1):
-                sway = 1 if (alt and y == 7 and x % 3 == 0) else 0
-                k = 4 if x < 16 else 3 if x < 24 else 2
-                if y == 7:
-                    k = 2 if (x // 2) % 2 else 3
-                s.px(x, y + sway, AMBER[k])
-        top = 15
-    else:
-        y0 = 22 if lv == 2 else 16
-        s.cyl(9, 27, y0, 40, STONE[1:7])
-        bricks(s, 10, 26, y0 + 2, 40, STONE, bh=3, bw=5, seed=lv * 7, mossy=lv == 2)
-        # 화살 구멍 (어둠 + 빛 가장자리)
-        s.rect(17, y0 + 6, 18, y0 + 11, C('#0d0e15')); s.px(16, y0 + 6, STONE[5])
-        if lv >= 3:
-            s.rect(17, y0 + 7, 18, y0 + 8, AMBER[4] if not alt else AMBER[3])  # 창문 불빛
-        # 흉벽
-        s.rect(7, y0 - 3, 29, y0 - 1, STONE[4]); s.rect(7, y0 - 3, 29, y0 - 3, STONE[6])
-        for x in range(7, 30, 4):
-            s.rect(x, y0 - 6, x + 1, y0 - 4, STONE[5] if x < 18 else STONE[4]); s.px(x, y0 - 6, STONE[6])
-        if lv >= 3:
-            for x in range(7, 30):
-                s.px(x, y0 - 1, GOLD[4] if x < 15 else GOLD[3] if x < 25 else GOLD[2])
-        s.rect(7, y0, 29, y0, STONE[1])
-        # 매달린 깃발
-        banner(s, 15, y0 + 13, 6, 9 if lv == 2 else 12, CLOTH_R if lv == 2 else [CLOTH_R[0], CLOTH_R[1], GOLD[3], GOLD[4]], alt)
-        if lv >= 3:
-            s.px(17, y0 + 16, GOLD[5]); s.px(18, y0 + 17, GOLD[5])
-        top = y0 - 4
-    # 노포 (위)
-    by = top - 3
-    s.rect(11, by + 1, 25, by + 2, WOOD[4]); s.rect(11, by + 3, 25, by + 3, WOOD[2])
-    s.rect(16, by + 3, 19, by + 5, WOOD[3])
-    bow = GOLD if lv >= 3 else IRON
-    pull = 0 if fire else 1
-    if not fire or f == 3:
-        s.line(9, by - 4, 13, by + 1, bow[5]); s.line(27, by - 4, 23, by + 1, bow[3])
-        s.line(9, by - 4, 17 - pull * 2, by + 1, C('#efe6cf')); s.line(27, by - 4, 17 - pull * 2, by + 1, C('#efe6cf'))
-    else:
-        s.line(9, by - 5, 12, by + 1, bow[5]); s.line(27, by - 5, 24, by + 1, bow[3])
-        s.line(9, by - 5, 27, by - 5, C('#efe6cf'))
-    if not fire:
-        for k in range(2 if lv >= 3 else 1):
-            yy = by - k * 2
-            s.rect(16, yy, 30, yy, IRON[5]); s.px(31, yy, IRON[6]); s.px(30, yy - 1, IRON[4]); s.px(30, yy + 1, IRON[3])
-            s.px(15, yy - 1, C('#f2f2f2')); s.px(15, yy + 1, C('#f2f2f2'))
-    elif f == 2:
-        # 쏜 순간: 섬광 + 연기
-        for i, c in enumerate((AMBER[5], AMBER[4], AMBER[3], AMBER[2])):
-            s.px(31 + i, by, c)
-        for (dx, dy, c) in ((32, -1, AMBER[4]), (32, 1, AMBER[4]), (33, -2, AMBER[3]), (33, 2, AMBER[3]), (34, -3, AMBER[2]), (34, 3, AMBER[2])):
-            s.px(dx, by + dy, c)
-    else:
-        for (dx, dy, c) in ((30, -1, STONE[6]), (31, 0, STONE[5]), (32, -2, STONE[4]), (29, 1, STONE[5])):
-            s.px(dx, by + dy, c)
-    s.outline()
-    return s
-
-
-def magic_tower(lv, f):
-    s = Spr(36, 52)
-    fire, alt = f >= 2, f % 2
-    plinth(s, lv, trim=GOLD if lv >= 3 else PURPLE if lv >= 2 else None)
-    y_top = 19 - (lv - 1) * 2
-    # 오벨리스크 (가늘어지는 기둥, 면 두 개)
-    for y in range(y_top, 41):
-        t = (y - y_top) / (41 - y_top)
-        half = 2.5 + t * 4.5
-        for x in range(int(18 - half), int(18 + half) + 1):
-            u = (x - (18 - half)) / (2 * half)
-            k = 6 if u < 0.15 else 5 if u < 0.5 else 3 if u < 0.85 else 2
-            s.px(x, y, STONE[k])
-    s.px(18, y_top - 1, STONE[6]); s.px(18, y_top - 2, STONE[5])
-    # 새긴 룬 (빛남)
-    glow = PURPLE[5] if (fire or alt) else PURPLE[4]
-    for i, y in enumerate(range(y_top + 4, 39, 4)):
-        s.px(17 + (i % 2), y, glow); s.px(17, y + 1, PURPLE[3]); s.px(19, y + 1, PURPLE[3])
-    if lv >= 2:
-        # 돌 고리 받침
-        for a in range(24):
-            ang = a * math.pi / 12
-            x, y = 18 + math.cos(ang) * 9, y_top - 9 + math.sin(ang) * 9
-            if 0.2 < ang < 2.9:
-                continue  # 아래 반쪽은 기둥 뒤
-            s.px(x, y, (GOLD if lv >= 3 else STONE)[5 if math.cos(ang) < 0 else 3])
-        s.line(14, y_top + 1, 10, y_top - 6, (GOLD if lv >= 3 else STONE)[4]); s.line(22, y_top + 1, 26, y_top - 6, (GOLD if lv >= 3 else STONE)[3])
-    r = 4 if lv < 3 else 5
-    bob = -1 if alt else 0
-    oy = y_top - 9 + bob
-    pal = PURPLE[1:] if fire else PURPLE[:6]
-    s.disc(18, oy, r + (1 if f == 2 else 0), pal)
-    # 구슬 안 소용돌이
-    for i in range(5):
-        ang = i * 1.3 + alt * 0.6
-        s.px(18 + math.cos(ang) * (r - 2) * 0.7, oy + math.sin(ang) * (r - 2) * 0.7, PURPLE[5])
-    s.px(16, oy - 2, PURPLE[6])
-    if fire:
-        rr = r + (4 if f == 2 else 6)
-        for a in range(12):
-            ang = a * math.pi / 6 + (0.26 if f == 3 else 0)
-            s.px(18 + math.cos(ang) * rr, oy + math.sin(ang) * rr, PURPLE[5] if f == 2 else PURPLE[3])
-    if lv >= 3:
-        for a in (0.4, 2.5, 4.5):
-            ang = a + alt * 0.5 + (1 if fire else 0)
-            x, y = 18 + math.cos(ang) * (r + 7), oy + math.sin(ang) * (r + 3)
-            s.px(x, y, GOLD[5]); s.px(x + 1, y, GOLD[3])
-    s.outline()
-    return s
-
-
-def frost_tower(lv, f):
-    s = Spr(36, 52)
-    fire, alt = f >= 2, f % 2
-    plinth(s, lv, trim=GOLD if lv >= 3 else ICE if lv >= 2 else None)
-    # 받침 위 눈
-    for x in range(8, 29):
-        if (x * 7) % 5 < 3:
-            s.px(x, 39, ICE[6]); s.px(x, 40, ICE[5])
-
-    def shard(cx, top, bottom, half, lean=0):
-        for y in range(top, bottom + 1):
-            t = (y - top) / max(1, bottom - top)
-            w = half * min(1, t * 2.6)
-            ox = lean * (1 - t)
-            for x in range(int(cx + ox - w), int(cx + ox + w) + 1):
-                u = (x - (cx + ox - w)) / max(1, 2 * w)
-                k = 6 if u < 0.2 else 5 if u < 0.45 else 3 if u < 0.75 else 2
-                if fire:
-                    k = min(7, k + 1)
-                s.px(x, y, ICE[k])
-            if w >= 2:
-                s.px(cx + ox - w + 1, y, ICE[7] if (y + alt) % 6 == 0 else ICE[6])
-
-    main_top = 12 - (lv - 1) * 3
-    shard(12, 25 - lv, 41, 2.6, -2)
-    shard(24, 27 - lv, 41, 2.6, 2)
-    if lv >= 2:
-        shard(8, 31, 41, 1.6, -2)
-        shard(28, 30, 41, 1.6, 2)
-    shard(18, main_top, 41, 4.2)
-    if lv >= 3:
-        for a in range(20):
-            ang = a * math.pi / 10 + alt * 0.15
-            x, y = 18 + math.cos(ang) * 10, main_top - 2 + math.sin(ang) * 3
-            if math.sin(ang) > 0.3:
-                continue
-            s.px(x, y, ICE[6] if math.cos(ang) < 0 else ICE[4])
-        s.px(18, main_top - 7, ICE[7]); s.px(17, main_top - 7, ICE[5]); s.px(19, main_top - 7, ICE[5]); s.px(18, main_top - 8, ICE[5]); s.px(18, main_top - 6, ICE[5])
-    # 반짝임
-    sp = [(9, main_top + 6), (27, main_top + 10), (15, main_top + 1), (23, main_top + 15)]
-    for i, (x, y) in enumerate(sp):
-        if fire or (i + alt) % 2 == 0:
-            c = ICE[7]
-            s.px(x, y, c)
-            if fire:
-                s.px(x - 1, y, ICE[5]); s.px(x + 1, y, ICE[5]); s.px(x, y - 1, ICE[5]); s.px(x, y + 1, ICE[5])
-    s.outline()
-    return s
-
-
-def wall_seg(lv, f):
-    s = Spr(36, 52)
-    broken, alt = f >= 2, f % 2
-    if broken:
-        rnd = random.Random(lv * 7 + 1)
-        pal = WOOD if lv == 1 else STONE
-        for _ in range(18):
-            x, y = rnd.randint(9, 26), rnd.randint(40, 47)
-            s.disc(x, y, rnd.choice((1.6, 2.2, 2.8)), pal[1:6])
-        if lv == 1:
-            s.line(8, 45, 19, 37, WOOD[4]); s.line(8, 46, 19, 38, WOOD[2])
-            s.line(20, 38, 28, 46, WOOD[3])
-        else:
-            s.rect(11, 34, 17, 40, STONE[4]); s.rect(11, 34, 17, 34, STONE[6])
-        # 먼지
-        if alt:
-            for (x, y) in ((8, 38), (27, 36), (14, 33)):
-                s.px(x, y, WARMSTONE[5])
-        s.outline()
-        return s
-    x0, x1, top = 13, 23, 7
-    if lv == 1:
-        for i, x in enumerate(range(x0, x1 + 1, 3)):
-            h = top + (i % 2) * 2
-            s.cyl(x, x + 2, h, 48, WOOD)
-            s.px(x + 1, h - 1, WOOD[5]); s.px(x + 1, h - 2, WOOD[6]); s.px(x, h - 1, WOOD[3])
-        for y in (14, 36):
-            s.rect(x0 - 1, y, x1 + 2, y, C('#b49a6a')); s.rect(x0 - 1, y + 1, x1 + 2, y + 1, C('#7d6845'))
-    else:
-        # 위 면 + 앞 면
-        s.rect(x0, top, x1, top + 3, STONE[6]); s.rect(x0, top, x0 + 3, top + 3, STONE[7])
-        s.rect(x0, top + 4, x1, 48, STONE[3])
-        bricks(s, x0, x1, top + 4, 48, STONE, bh=4, bw=6, seed=lv * 31, mossy=True)
-        for y in range(top - 3, top):
-            for x in (x0, x0 + 4, x0 + 8):
-                s.rect(x, y, x + 2, y, STONE[6] if x < 18 else STONE[5])
-        # 이끼 줄기
-        for y in range(top + 10, 47, 3):
-            s.px(x0, y, C('#4c7a35') if y % 2 else C('#3a6130'))
-        if lv >= 3:
-            # 쇠판 + 가시 (몬스터 쪽 = 오른쪽)
-            for y in range(top + 6, 47, 7):
-                s.rect(x0 + 1, y, x1 - 1, y + 2, IRON[3]); s.rect(x0 + 1, y, x1 - 1, y, IRON[5])
-                s.px(x0 + 2, y + 1, GOLD[5]); s.px(x1 - 2, y + 1, GOLD[3])
-                s.rect(x1 + 1, y + 1, x1 + 5, y + 1, IRON[4]); s.px(x1 + 6, y + 1, IRON[6]); s.px(x1 + 1, y + 2, IRON[2])
-    s.outline()
-    return s
-
-
-def trap(lv, f):
-    s = Spr(36, 52)
-    sprung, alt = f >= 2, f % 2
-    cy, w = 44, 7 + lv
-    # 땅에 박힌 판 (흙 테두리)
-    for y in range(cy - 4, cy + 5):
-        for x in range(18 - w - 2, 18 + w + 3):
-            if ((x - 18) / (w + 2)) ** 2 + ((y - cy) / 4.5) ** 2 <= 1:
-                s.px(x, y, C('#4a3322') if y > cy else C('#5c4129'))
-    for y in range(cy - 3, cy + 4):
-        for x in range(18 - w, 18 + w + 1):
-            if ((x - 18) / w) ** 2 + ((y - cy) / 3.5) ** 2 <= 1:
-                s.px(x, y, IRON[3] if y < cy else IRON[2])
-    s.rect(18 - w + 2, cy, 18 + w - 2, cy, IRON[1])
-    if lv >= 3:
-        for a in range(8):
-            ang = a * math.pi / 4
-            s.px(18 + math.cos(ang) * (w - 2), cy + math.sin(ang) * 2, (RED[4] if alt else RED[3]) if not sprung else RED[1])
-    if not sprung:
-        for side in (-1, 1):
-            for i in range(w - 1):
-                x = 18 + side * (i + 1)
-                tooth = i % 2 == 0
-                s.px(x, cy - 3 - (2 if tooth else 1), IRON[6] if side < 0 else IRON[5])
-                s.px(x, cy - 3, IRON[4]); s.px(x, cy - 2, IRON[3])
-        s.disc(18, cy, 1.8, [RED[2], RED[3], RED[4], RED[5]] if lv >= 2 else IRON[3:7])
-        if alt:
-            s.px(18 - w + 2, cy - 5, C('#ffffff'))  # 반짝
-        if lv >= 2:
-            for x in (18 - w - 1, 18 + w + 1):
-                s.rect(x, cy - 3, x, cy, IRON[4]); s.px(x, cy - 4, IRON[6])
-    else:
-        for i in range(-w + 2, w - 1):
-            s.px(18 + i, cy - 3, IRON[4] if i % 2 else IRON[5]); s.px(18 + i, cy - 2, IRON[2])
-        if not alt:
-            for (x, y) in ((12, 38), (24, 37), (18, 35)):
-                s.px(x, y, WARMSTONE[4])
-    s.outline()
-    return s
-
-
-def totem(lv, f):
-    s = Spr(36, 52)
-    fire, alt = f >= 2, f % 2
-    top = 17 - (lv - 1) * 3
-    s.cyl(13, 23, top, 48, WOOD)
-    # 얼굴 조각: 칠한 눈썹·눈·입 + 홈
-    for i, fy in enumerate(range(top + 4, 46, 10)):
-        s.rect(13, fy - 2, 23, fy - 2, WOOD[2])
-        paint = PAINT_R if i % 2 == 0 else PAINT_T
-        s.rect(14, fy, 16, fy, paint); s.rect(20, fy, 22, fy, paint)
-        s.rect(15, fy + 1, 15, fy + 2, C('#120a06')); s.rect(21, fy + 1, 21, fy + 2, C('#120a06'))
-        s.px(15, fy + 1, GREEN[5] if (fire or alt) else GREEN[4]); s.px(21, fy + 1, GREEN[5] if (fire or alt) else GREEN[4])
-        s.rect(17, fy + 3, 19, fy + 4, WOOD[5]); s.px(18, fy + 3, WOOD[6])
-        s.rect(15, fy + 6, 21, fy + 6, C('#120a06')); s.rect(16, fy + 7, 20, fy + 7, paint)
-    # 깃털
-    for i, (x, c) in enumerate(((12, CLOTH_R[3]), (24, PAINT_T))):
-        for k in range(5):
-            s.px(x + (-1 if x < 18 else 1) * (k // 2), top + 3 + k, c)
-    # 날개 (잎)
-    if lv >= 2:
-        for side in (-1, 1):
-            for i in range(7):
-                x = 18 + side * (6 + i)
-                y0 = top + 7 + i // 2 - (1 if alt and i > 3 else 0)
-                for y in range(y0, y0 + 5 - i // 2):
-                    s.px(x, y, GREEN[4] if y == y0 else GREEN[3] if side < 0 else GREEN[2])
-            s.px(18 + side * 12, top + 10, GREEN[5])
-    # 보석
-    r = 3 + (1 if lv >= 3 else 0)
-    s.disc(18, top - 3, r + (1 if f == 2 else 0), GREEN[1:7] if fire else GREEN[:6])
-    s.px(17, top - 4, GREEN[6])
-    s.rect(15, top - 1, 21, top, GOLD[3] if lv >= 3 else WOOD[4])
-    if lv >= 3:
-        for a in range(10):
-            ang = a * math.pi / 5 + alt * 0.3
-            s.px(18 + math.cos(ang) * 8, top - 3 + math.sin(ang) * 8, GOLD[5] if a % 2 else GOLD[3])
-    if fire:
-        for (x, y) in ((7, top + 3), (29, top + 5), (10, top - 9), (26, top - 8), (5, top + 14), (31, top + 16)):
-            s.px(x, y - (f - 2) * 2, GREEN[6]); s.px(x, y + 1 - (f - 2) * 2, GREEN[4])
-    s.outline()
-    return s
-
-
-def build_towers():
-    makers = [arrow_tower, magic_tower, frost_tower, wall_seg, trap, totem]
-    sheet = np.zeros((52 * 6, 36 * 12, 4), np.uint8)
-    for r, mk in enumerate(makers):
-        for lv in (1, 2, 3):
-            for f in range(4):
-                c = (lv - 1) * 4 + f
-                sheet[r * 52:(r + 1) * 52, c * 36:(c + 1) * 36] = mk(lv, f).a
-    return Image.fromarray(sheet, 'RGBA')
-
-
 # ---------------------------------------------------------------- 수정
 CRYS = R('#081a3d', '#0e2f6b', '#1650a0', '#2378cf', '#43a6ec', '#86d1fb', '#c8eeff', '#ffffff')
 HURT = R('#2a0a2e', '#4d1350', '#7a1f6e', '#ad3487', '#d95aa3', '#f59ac8', '#ffd2e6', '#ffffff')
@@ -596,11 +253,12 @@ def build_crystal():
 # ---------------------------------------------------------------- 맵
 W, H = 720, 450
 LANES = [
-    [[2620, 430], [1950, 430], [1350, 500], [920, 690], [660, 850]],
-    [[2620, 920], [1850, 970], [1250, 900], [780, 920]],
-    [[2620, 1420], [1950, 1410], [1350, 1340], [920, 1150], [660, 990]],
+    [[1440, 300], [1540, 470], [1360, 630], [1440, 740]],
+    [[2650, 920], [2330, 1030], [1980, 830], [1660, 920]],
+    [[1440, 1550], [1340, 1390], [1520, 1230], [1440, 1110]],
+    [[230, 920], [550, 810], [900, 1010], [1220, 920]],
 ]
-CRYSTAL = (560, 920)
+CRYSTAL = (1440, 920)
 
 GRASS = R('#15302d', '#1c3d32', '#254b34', '#305b37', '#3e6b3a', '#527d3f', '#6a9045', '#88a652', '#acbf68')
 DIRT = R('#2e211f', '#43302a', '#5a3f2f', '#735235', '#8c663d', '#a57d4b', '#bf975e', '#d8b679')
@@ -666,18 +324,6 @@ def lane_point(pts, frac):
             return ax + (bx - ax) * t, ay + (by - ay) * t, -(by - ay) / ln, (bx - ax) / ln
         d -= l
     return pts[0][0], pts[0][1], 0, 1
-
-
-def slots_world():
-    out = []
-    for pts in LANES:
-        for k, f in enumerate((0.2, 0.38, 0.56, 0.74)):
-            x, y, nx, ny = lane_point(pts, f)
-            side = 1 if k % 2 else -1
-            out.append((round(x + nx * 105 * side), round(y + ny * 105 * side)))
-    for dx, dy in ((-30, -200), (-30, 200)):
-        out.append((CRYSTAL[0] + dx, CRYSTAL[1] + dy))
-    return out
 
 
 class Canvas:
@@ -805,7 +451,11 @@ def build_map():
                     if cob[jy + 3, jx + xx]:
                         img[jy + 3, jx + xx] = STONE[1][:3]
     # 웅덩이 (가운데 길 2곳, 아래 길 1곳)
-    for (px_, py_, rx, ry) in ((395, 235, 7, 3), (250, 226, 5, 2.5), (430, 340, 6, 2.5)):
+    puddles = []
+    for li, pts in enumerate(LANES):
+        x_, y_, _, _ = lane_point(pts, 0.42 if li % 2 else 0.58)
+        puddles.append((x_ / 4, y_ / 4, 6 if li % 2 else 4, 2.6))
+    for (px_, py_, rx, ry) in puddles:
         for y in range(int(py_ - ry - 1), int(py_ + ry + 2)):
             for x in range(int(px_ - rx - 1), int(px_ + rx + 2)):
                 d = ((x - px_) / rx) ** 2 + ((y - py_) / ry) ** 2
@@ -841,106 +491,87 @@ def build_map():
             img[y - 1, x + (1 if rnd.random() < 0.5 else -1)] = GRASS[min(8, k + 1)][:3]
         img[y + 1, x] = GRASS[max(0, k - 1)][:3]
 
-    # ---- 4) 오른쪽 절벽 (높은 바위 고원) · 요철 빛 · 층 무늬 · 아래 자갈
-    cn = value_noise(1, H, 12, rnd)[:, 0]
-    cliff_x = 640 + (cn - 0.5) * 22
-    rock_h = fbm(W, H, [20, 9, 4, 2], rnd)
+    # ---- 4) 동서남북 바위 언덕 동굴: 요철 바위 언덕 + 수정 쪽을 보는 동굴 입 + 쐐기 돌 아치 + 횃불 두 개 + 해골 깃발
+    rock_h = fbm(W, H, [16, 8, 4, 2], rnd)
     rl = bump_light(rock_h * 1.6)
-    strata = (np.sin((ys + rock_h * 25) * 0.55) + 1) * 0.5
-    for y in range(H):
-        x0 = int(cliff_x[y])
-        for x in range(max(0, x0), W):
-            depth = (x - x0)
-            if depth < 7:
-                # 서쪽을 보는 절벽 면: 어둡고 세로 결
-                k = 2 + (1 if (x + y) % 3 == 0 else 0) + (1 if rl[y, x] > 0.6 else 0)
-            else:
-                k = int(np.clip(2 + rl[y, x] * 5 + strata[y, x] * 1.2 - 0.6, 1, 8))
-            img[y, x] = CLIFF[k][:3]
-        # 위 가장자리 밝은 턱
-        if x0 + 7 < W:
-            img[y, x0 + 7] = CLIFF[7][:3] if y % 2 else CLIFF[6][:3]
-        # 절벽 발치 그림자
-        for x in range(max(0, x0 - 6), x0):
-            cv.shade(x, y, 0.45 * (1 - (x0 - x) / 6))
-    # 고원 위 이끼·풀
-    for _ in range(500):
-        y = rnd.randint(0, H - 1)
-        x = rnd.randint(int(cliff_x[y]) + 9, W - 1)
-        if rnd.random() < 0.5:
-            img[y, x] = C('#4b6e36')[:3]
-            if x + 1 < W:
-                img[y, x + 1] = C('#3a5a2f')[:3]
-    # 발치 굴러떨어진 돌
-    for _ in range(60):
-        y = rnd.randint(55, H - 50)
-        x = int(cliff_x[y]) - rnd.randint(3, 16)
-        r = rnd.uniform(1.6, 3.6)
-        if not road[min(H - 1, y), max(0, x)]:
-            cv.ellipse_shadow(x + 1.5, y + r * 0.6, r + 1, r * 0.5, 0.4)
-            for yy in range(int(y - r), int(y + r * 0.7) + 1):
-                for xx in range(int(x - r), int(x + r) + 1):
-                    d = ((xx - x) / r) ** 2 + ((yy - y) / (r * 0.8)) ** 2
-                    if d < 1 and 0 <= xx < W and 0 <= yy < H:
-                        lum = (-(xx - x) / r * 0.6 - (yy - y) / r * 0.8) * 0.5 + 0.55
-                        img[yy, xx] = CLIFF[1 if d > 0.78 else int(np.clip(3 + lum * 4, 2, 8))][:3]
-
-    # ---- 5) 동굴 입구: 돌 아치 + 나무 버팀목 + 안쪽 어둠 그라데이션 + 횃불 + 해골 깃발
     for li, pts in enumerate(LANES):
-        mx, my = pts[0][0] / 4 + 6, pts[0][1] / 4
-        rx, ry = 22, 27
-        for y in range(int(my - ry - 8), int(my + ry + 6)):
-            for x in range(int(mx - rx - 8), int(mx + rx + 14)):
+        mx, my = pts[0][0] / 4, pts[0][1] / 4
+        nx_, ny_ = pts[1][0] / 4, pts[1][1] / 4
+        dl = math.hypot(nx_ - mx, ny_ - my)
+        fx_, fy_ = (nx_ - mx) / dl, (ny_ - my) / dl  # 수정 쪽 방향
+        hx, hy = mx - fx_ * 16, my - fy_ * 16       # 언덕 가운데 (입 뒤쪽)
+        hrx, hry = (54, 40) if abs(fy_) > 0.7 else (40, 52)
+        edge = value_noise(64, 1, 6, rnd)[0]
+        for y in range(int(hy - hry - 6), int(hy + hry + 6)):
+            for x in range(int(hx - hrx - 6), int(hx + hrx + 6)):
                 if not (0 <= x < W and 0 <= y < H):
                     continue
-                e = ((x - mx) / rx) ** 2 + ((y - my) / ry) ** 2
-                if e <= 1.0:
-                    # 안쪽: 가운데로 갈수록 더 어두움 (디더)
-                    k = 0 if e < 0.55 else 1 if e < 0.8 else 2
-                    if 0.5 < e < 0.62 and BAYER[y & 3, x & 3] < 0.5:
+                a = math.atan2(y - hy, x - hx)
+                rr = 1 + (edge[int((a + math.pi) / (2 * math.pi) * 63)] - 0.5) * 0.35
+                e = ((x - hx) / (hrx * rr)) ** 2 + ((y - hy) / (hry * rr)) ** 2
+                if e > 1:
+                    if e < 1.25:
+                        cv.shade(x + 2, y + 2, 0.4)
+                    continue
+                dome = math.sqrt(max(0, 1 - e))
+                lum = rl[y, x] * 0.55 + (-(x - hx) / hrx * 0.25 - (y - hy) / hry * 0.35) + dome * 0.35
+                k = int(np.clip(1 + lum * 6, 1, 8))
+                if e > 0.86:
+                    k = min(k, 2)
+                img[y, x] = CLIFF[k][:3]
+                if dome > 0.6 and rnd.random() < 0.05:
+                    img[y, x] = C('#4b6e36')[:3]  # 언덕 위 이끼
+        # 동굴 입: 수정 쪽 가장자리에 (가운데로 갈수록 어두움)
+        ox, oy = mx - fx_ * 4, my - fy_ * 4
+        rx, ry = (20, 15) if abs(fy_) > 0.7 else (15, 20)
+        for y in range(int(oy - ry - 7), int(oy + ry + 8)):
+            for x in range(int(ox - rx - 7), int(ox + rx + 8)):
+                if not (0 <= x < W and 0 <= y < H):
+                    continue
+                e = ((x - ox) / rx) ** 2 + ((y - oy) / ry) ** 2
+                toward = ((x - ox) * fx_ + (y - oy) * fy_) / max(1, math.hypot(x - ox, y - oy))
+                if e <= 1:
+                    k = 0 if e < 0.5 else 1 if e < 0.78 else 2
+                    if 0.45 < e < 0.56 and BAYER[y & 3, x & 3] < 0.5:
                         k = 1
                     img[y, x] = R('#040306', '#0b080c', '#171116')[k][:3]
-                elif e <= 1.55 and y < my + ry * 0.75:
-                    # 아치 돌: 쐐기 돌 무늬
-                    ang = math.atan2(y - my, x - mx)
-                    block = int((ang + math.pi) / (math.pi / 7))
-                    lum = (-(x - mx) * 0.5 - (y - my) * 0.9) / (rx + ry) + 0.5
+                elif e <= 1.6 and toward < 0.55:
+                    an = math.atan2(y - oy, x - ox)
+                    block = int((an + math.pi) / (math.pi / 8))
+                    lum = (-(x - ox) * 0.5 - (y - oy) * 0.9) / (rx + ry) + 0.5
                     k = int(np.clip(3 + lum * 4 + (block % 2) * 0.8, 2, 8))
-                    if abs(((ang + math.pi) % (math.pi / 7)) - 0.01) < 0.06 or abs(e - 1.0) < 0.08:
+                    if abs(((an + math.pi) % (math.pi / 8)) - 0.01) < 0.07 or abs(e - 1.0) < 0.09:
                         k = 1
                     img[y, x] = CLIFF[k][:3]
-        # 나무 버팀목 (양쪽 기둥 + 위 들보)
+        # 안쪽 붉은 눈 세 쌍
+        for i_, c in enumerate(('#ff5a3d', '#c23a2a', '#8a2a22')):
+            ex, ey = ox - fx_ * (3 + i_ * 4) + (i_ - 1) * 5 * fy_, oy - fy_ * (3 + i_ * 4) + (i_ - 1) * 5 * fx_
+            img[int(ey), int(ex)] = C(c)[:3]
+            img[int(ey + 3 * fx_ * 0), int(ex + 3)] = C(c)[:3]
+        # 횃불 두 개 (입 양옆)
+        px_, py_ = -fy_, fx_
         for side in (-1, 1):
-            bx = int(mx + side * (rx - 3))
-            for y in range(int(my - ry + 8), int(my + ry - 2)):
-                for dx, k in ((0, 5 if side < 0 else 3), (1, 4 if side < 0 else 2), (2, 2)):
-                    img[y, bx + dx * side * -1 if side > 0 else bx + dx] = WOOD[k][:3]
-        for x in range(int(mx - rx + 1), int(mx + rx - 1)):
-            img[int(my - ry + 7), x] = WOOD[5][:3]; img[int(my - ry + 8), x] = WOOD[4][:3]; img[int(my - ry + 9), x] = WOOD[1][:3]
-        # 안쪽 붉은 눈 세 쌍 (깊이마다 어둡게)
-        for (ex, ey, c) in ((mx + 4, my - 4, '#ff5a3d'), (mx + 12, my + 6, '#c23a2a'), (mx - 6, my + 9, '#8a2a22')):
-            img[int(ey), int(ex)] = C(c)[:3]; img[int(ey), int(ex) + 3] = C(c)[:3]
-        # 횃불 (아치 왼쪽)
-        tx, ty = int(mx - rx - 7), int(my - 6)
-        for y in range(ty, ty + 9):
-            img[y, tx] = WOOD[3][:3]; img[y, tx + 1] = WOOD[1][:3]
-        for (dx, dy, c) in ((0, -1, RED[3]), (1, -1, RED[2]), (0, -2, AMBER[3]), (1, -2, RED[3]), (0, -3, AMBER[4]), (0, -4, AMBER[5]), (1, -3, AMBER[3])):
-            img[ty + dy, tx + dx] = c[:3]
-        cv.light.append((tx, ty - 3, 26, (255, 150, 60), 0.55))
-        # 해골 깃발 (아치 위)
-        fx, fy = int(mx + rx + 2), int(my - ry - 2)
-        for y in range(fy, fy + 16):
-            img[y, fx] = WOOD[2][:3]
-        for y in range(fy + 1, fy + 8):
-            for x in range(fx + 1, fx + 7 - (y - fy) // 3):
-                img[y, x] = CLOTH_R[2 if x < fx + 4 else 1][:3]
-        img[fy + 3, fx + 2] = C('#e8e2d0')[:3]; img[fy + 3, fx + 3] = C('#e8e2d0')[:3]; img[fy + 4, fx + 2] = C('#e8e2d0')[:3]
-        # 입구 앞 흙 부채꼴은 길이 이미 있음. 뼈 몇 조각
-        for _ in range(4):
-            bx_, by_ = int(mx - rx - rnd.randint(4, 18)), int(my + rnd.randint(-14, 14))
-            if road[by_, bx_]:
+            tx, ty = int(ox + px_ * side * (rx + 7) + fx_ * 6), int(oy + py_ * side * (ry + 7) + fy_ * 6)
+            for y in range(ty, ty + 9):
+                img[y, tx] = WOOD[3][:3]; img[y, tx + 1] = WOOD[1][:3]
+            for (dx, dy, c) in ((0, -1, RED[3]), (1, -1, RED[2]), (0, -2, AMBER[3]), (1, -2, RED[3]), (0, -3, AMBER[4]), (0, -4, AMBER[5]), (1, -3, AMBER[3])):
+                img[ty + dy, tx + dx] = c[:3]
+            cv.light.append((tx, ty - 3, 24, (255, 150, 60), 0.5))
+        # 해골 깃발 (언덕 위)
+        fxp, fyp = int(hx + px_ * 18 - 2), int(hy + py_ * 18 - 22)
+        for y in range(fyp, fyp + 16):
+            img[y, fxp] = WOOD[2][:3]
+        for y in range(fyp + 1, fyp + 8):
+            for x in range(fxp + 1, fxp + 7 - (y - fyp) // 3):
+                img[y, x] = CLOTH_R[2 if x < fxp + 4 else 1][:3]
+        img[fyp + 3, fxp + 2] = C('#e8e2d0')[:3]; img[fyp + 3, fxp + 3] = C('#e8e2d0')[:3]; img[fyp + 4, fxp + 2] = C('#e8e2d0')[:3]
+        # 입 앞 뼈 몇 조각
+        for _ in range(5):
+            t_ = rnd.uniform(8, 30)
+            bx_, by_ = int(ox + fx_ * t_ + px_ * rnd.uniform(-10, 10)), int(oy + fy_ * t_ + py_ * rnd.uniform(-10, 10))
+            if 0 <= bx_ < W - 1 and 0 <= by_ < H and road[by_, bx_]:
                 img[by_, bx_] = C('#e2dccb')[:3]; img[by_, bx_ + 1] = C('#b9b19c')[:3]
-        cv.keep[int(my - ry - 10):int(my + ry + 8), int(mx - rx - 20):] = True
+        cv.keep[max(0, int(hy - hry - 12)):int(hy + hry + 12), max(0, int(hx - hrx - 12)):int(hx + hrx + 12)] = True
 
     # ---- 6) 수정 광장: 돌 모자이크 (고리마다 엇갈린 판석, 판석마다 밝기 다름) · 갈라진 틈 사이 풀 · 룬 원 · 받침
     cx, cy = cr
@@ -1037,8 +668,8 @@ def build_map():
         cv.blit(s, px_ - 6, py_ - base - 2)
         cv.keep[py_ - base - 4:py_ + 5, px_ - 8:px_ + 10] = True
 
-    for i, a_ in enumerate((-2.55, -1.95, -1.15, 1.15, 1.95, 2.55)):
-        pillar(cx + math.cos(a_) * 63, cy + math.sin(a_) * 60, 16 if i % 3 else 10, i % 3 == 0, vine=i in (1, 4))
+    for i, a_ in enumerate((-2.55, -2.1, -1.05, -0.6, 0.6, 1.05, 2.1, 2.55)):
+        pillar(cx + math.cos(a_) * 66, cy + math.sin(a_) * 62, 16 if i % 3 else 10, i % 3 == 0, vine=i in (1, 5))
 
     def brazier(bx, by):
         bx, by = int(bx), int(by)
@@ -1053,103 +684,8 @@ def build_map():
         cv.light.append((bx, by - 4, 30, (255, 150, 60), 0.6))
         cv.keep[by - 8:by + 11, bx - 7:bx + 8] = True
 
-    brazier(cx + 30, cy - 46)
-    brazier(cx + 30, cy + 44)
-
-    # ---- 8) 왼쪽 신전 터: 높은 단(위 면 + 남쪽 앞 면) · 광장 쪽 계단 · 기둥 줄 · 수호상 · 쓰러진 기둥
-    tx0, tx1, ty0, ty1 = 18, 82, 176, 278
-    front_h = 7
-    for y in range(ty0, ty1):
-        for x in range(tx0, tx1):
-            # 판석 (6×6, 엇갈림)
-            sx_, sy_ = (x - tx0 + (3 if ((y - ty0) // 6) % 2 else 0)) // 6, (y - ty0) // 6
-            tone = 4 + ((sx_ * 7 + sy_ * 13) % 3) - 1
-            if (x - tx0 + (3 if ((y - ty0) // 6) % 2 else 0)) % 6 == 0 or (y - ty0) % 6 == 0:
-                tone = 2
-            elif (y - ty0) % 6 == 1:
-                tone += 1
-            img[y, x] = WARMSTONE[max(0, min(6, tone))][:3]
-    # 앞 면 (남쪽)
-    for y in range(ty1, ty1 + front_h):
-        for x in range(tx0, tx1):
-            k = 2 if (y - ty1) % 3 == 0 else 3
-            if (x + (y - ty1) // 3 * 3) % 8 == 0:
-                k = 1
-            img[y, x] = WARMSTONE[k][:3]
-    img[ty1, tx0:tx1] = WARMSTONE[5][:3]
-    for x in range(tx0, tx1 + 5):
-        for y in range(ty1 + front_h, ty1 + front_h + 4):
-            cv.shade(x, y, 0.4)
-    # 동쪽 계단 (광장 쪽으로 내려감)
-    for i in range(4):
-        x0_ = tx1 + i * 3
-        for y in range(198 + i * 2, 258 - i * 2):
-            for x in range(x0_, x0_ + 3):
-                img[y, x] = WARMSTONE[6 - i if x == x0_ else 4 - i // 2][:3]
-        img[258 - i * 2:260 - i * 2, x0_:x0_ + 3] = WARMSTONE[1][:3]
-    img[ty0, tx0:tx1] = WARMSTONE[6][:3]
-    img[ty0:ty1, tx0] = WARMSTONE[5][:3]
-    # 수호상 (날개 단 석상)
-    st = Spr(18, 26)
-    st.rect(4, 21, 13, 24, WARMSTONE[3]); st.rect(4, 21, 13, 21, WARMSTONE[6])
-    st.cyl(6, 11, 9, 20, WARMSTONE[1:7])
-    st.disc(8.5, 6, 3, WARMSTONE[2:7])
-    for i in range(6):
-        st.line(5 - i // 2, 10 + i, 1 + i // 3, 6 + i, WARMSTONE[5 - i // 3]); st.line(12 + i // 2, 10 + i, 16 - i // 3, 6 + i, WARMSTONE[4 - i // 3])
-    st.rect(8, 12, 9, 18, WARMSTONE[2])
-    st.px(8, 14, RUNEC[3]); st.px(9, 14, RUNEC[3])
-    st.outline()
-    cv.ellipse_shadow(47, 236, 9, 3, 0.45)
-    cv.blit(st, 39, 210)
-    cv.light.append((47, 222, 16, (120, 210, 255), 0.35))
-    cv.keep[150:300, 0:100] = True
-    for py_ in (190, 270):
-        for px_ in (26, 44, 62):
-            pillar(px_, py_, 26 if not (px_ == 62 and py_ == 270) else 12, px_ == 62 and py_ == 270, vine=px_ == 26)
-    # 쓰러진 기둥 토막 (단 앞)
-    for (lx, ly) in ((70, 296), (90, 300)):
-        s = Spr(16, 8)
-        for x in range(1, 15):
-            for y in range(1, 7):
-                k = 6 if y < 3 else 4 if y < 5 else 2
-                s.px(x, y, STONE[k])
-        s.disc(14, 4, 2.5, STONE[2:7])
-        s.outline()
-        cv.ellipse_shadow(lx + 9, ly + 7, 9, 2, 0.4)
-        cv.blit(s, lx, ly)
-        cv.keep[ly - 4:ly + 12, lx - 4:lx + 20] = True
-
-    # ---- 9) 시설 받침돌 14개: 둥근 돌 단 (위 면 판석 고리 + 앞 면) · 희미한 룬 · 이끼
-    for i, (wx, wy) in enumerate(slots_world()):
-        sx, sy = wx / 4, wy / 4 + 4
-        cv.ellipse_shadow(sx + 2, sy + 4, 13, 5, 0.45)
-        s = Spr(26, 18)
-        ocx, ocy = 13, 7
-        for y in range(18):
-            for x in range(26):
-                e = ((x - ocx) / 12) ** 2 + ((y - ocy) / 6) ** 2
-                e2 = ((x - ocx) / 12) ** 2 + ((y - ocy - 3) / 6) ** 2
-                if e <= 1:
-                    k = 6 if (x < ocx - 2 and y < ocy) else 5 if y < ocy else 4
-                    if 0.55 < e < 0.72:
-                        k = 3  # 안쪽 고리 홈
-                    if e < 0.3:
-                        k = 5 if x < ocx else 4
-                    s.px(x, y, STONE[k])
-                elif e2 <= 1 and y > ocy:
-                    s.px(x, y, STONE[2] if x < ocx + 4 else STONE[1])
-        for a_ in range(8):
-            an = a_ * math.pi / 4 + 0.4
-            s.px(ocx + math.cos(an) * 9.5, ocy + math.sin(an) * 4.7, RUNEC[2] if a_ % 2 else RUNEC[1])
-        s.px(ocx, ocy, RUNEC[3])
-        rr = random.Random(i)
-        for _ in range(3):
-            mx_, my_ = rr.randint(2, 23), rr.randint(6, 12)
-            if s.a[my_, mx_, 3]:
-                s.px(mx_, my_, C('#4c7a35')); s.px(mx_ + 1, my_, C('#3a6130'))
-        s.outline()
-        cv.blit(s, sx - 13, sy - 7)
-        cv.keep[int(sy - 14):int(sy + 13), int(sx - 17):int(sx + 18)] = True
+    for a_ in (-2.35, -0.8, 0.8, 2.35):
+        brazier(cx + math.cos(a_) * 44, cy + math.sin(a_) * 40)
 
     # ---- 10) 숲 테두리: 둥근 나무(잎 덩어리 여러 개) · 전나무 · 덤불 (그림자는 오른쪽 아래로)
     def round_tree(tx, ty, r, seed):
@@ -1219,35 +755,34 @@ def build_map():
         cv.blit(s, int(bx - ox), int(by - oy - r))
 
     items = []
-    for x in range(-8, 636, 13):
+    for x in range(-8, W + 8, 13):
         items.append(('tree', x + rnd.uniform(-4, 4), rnd.uniform(30, 58), rnd.uniform(9, 13)))
         items.append(('tree' if rnd.random() < 0.7 else 'pine', x + rnd.uniform(-4, 4), rnd.uniform(14, 34), rnd.uniform(9, 12)))
         items.append(('tree', x + rnd.uniform(-4, 4), rnd.uniform(432, 458), rnd.uniform(10, 13)))
         if rnd.random() < 0.5:
             items.append(('pine', x + rnd.uniform(-4, 4), rnd.uniform(446, 462), rnd.uniform(20, 26)))
     for y in range(50, 440, 15):
-        if not (150 < y < 310):
-            items.append(('tree' if rnd.random() < 0.6 else 'pine', rnd.uniform(-4, 14), y + rnd.uniform(-5, 5), rnd.uniform(9, 12)))
-    # 안쪽 몇 그루 (길 사이 빈터)
-    for (x, y) in ((300, 150), (470, 168), (360, 300), (540, 300), (215, 330), (190, 128)):
-        items.append(('tree', x + rnd.uniform(-6, 6), y + rnd.uniform(-6, 6), rnd.uniform(8, 10)))
+        items.append(('tree' if rnd.random() < 0.6 else 'pine', rnd.uniform(-4, 14), y + rnd.uniform(-5, 5), rnd.uniform(9, 12)))
+        items.append(('tree' if rnd.random() < 0.6 else 'pine', rnd.uniform(706, 724), y + rnd.uniform(-5, 5), rnd.uniform(9, 12)))
+    for (x, y) in ((150, 120), (250, 95), (500, 105), (590, 140), (140, 345), (235, 370), (480, 360), (600, 330), (300, 160), (430, 300)):
+        items.append(('tree', x + rnd.uniform(-6, 6), y + rnd.uniform(-6, 6), rnd.uniform(8, 11)))
     for _ in range(26):
         x, y = rnd.randint(60, 620), rnd.randint(70, 390)
         items.append(('bush', x, y, rnd.uniform(3, 5)))
     # 바위·쓰러진 통나무·그루터기·버섯·나무 상자(고블린 짐)
     for _ in range(30):
         items.append(('rock', rnd.randint(60, 625), rnd.randint(66, 392), rnd.uniform(2.2, 4.5)))
-    for (x, y) in ((250, 100), (520, 380), (150, 370)):
+    for (x, y) in ((205, 150), (520, 320), (170, 300)):
         items.append(('log', x, y, 0))
-    for (x, y) in ((330, 95), (585, 120), (600, 330), (120, 110)):
+    for (x, y) in ((280, 120), (455, 130), (560, 360), (110, 160)):
         items.append(('stump', x, y, 0))
-    for (x, y) in ((610, 175), (618, 300), (604, 390)):
+    for (x, y) in ((395, 96), (618, 260), (318, 352), (100, 210)):
         items.append(('crate', x, y, 0))
 
     for (kind, x, y, r) in sorted(items, key=lambda it: it[2]):
         xi, yi = int(min(W - 1, max(0, x))), int(min(H - 1, max(0, y)))
         if kind in ('tree', 'pine'):
-            if cv.keep[yi, xi] and 60 < y < 420:
+            if cv.keep[yi, xi]:
                 continue
             if kind == 'tree':
                 round_tree(x, y, r, int(x * 7 + y))
@@ -1327,19 +862,14 @@ def build_map():
 
 
 def main():
-    os.makedirs(os.path.dirname(OUT_TOWERS), exist_ok=True)
-    towers = build_towers()
-    towers.save(OUT_TOWERS, optimize=True)
+    os.makedirs(os.path.dirname(OUT_CRYSTAL), exist_ok=True)
     cry = build_crystal()
     cry.save(OUT_CRYSTAL, optimize=True)
     m = build_map()
     m.save(OUT_MAP, 'WEBP', lossless=True, quality=100, method=6)
-    print('towers', towers.size, os.path.getsize(OUT_TOWERS), 'crystal', cry.size, os.path.getsize(OUT_CRYSTAL), 'map', m.size, os.path.getsize(OUT_MAP))
+    print('crystal', cry.size, os.path.getsize(OUT_CRYSTAL), 'map', m.size, os.path.getsize(OUT_MAP))
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        bg = Image.new('RGBA', (towers.width * 4, towers.height * 4), (52, 78, 56, 255))
-        bg.alpha_composite(towers.resize((towers.width * 4, towers.height * 4), Image.NEAREST))
-        bg.save(os.path.join(PREVIEW, '_preview_defense_towers.png'))
         bg = Image.new('RGBA', (cry.width * 4, cry.height * 4), (52, 78, 56, 255))
         bg.alpha_composite(cry.resize((cry.width * 4, cry.height * 4), Image.NEAREST))
         bg.save(os.path.join(PREVIEW, '_preview_defense_crystal.png'))
