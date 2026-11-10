@@ -426,6 +426,18 @@
     trio[0].tick = (t, dt) => { const on = trio.some(q => actors.some(a => a.sit === q)); spd += ((on ? 2 : 0.25) - spd) * Math.min(1, dt * 1.5); disc.rotation.y += spd * dt; };
     trio.forEach(q => { q.place = a => { const ang = disc.rotation.y + q.phi; a.g.position.set(cx + Math.sin(ang) * 0.85, 0.42, cz + Math.cos(ang) * 0.85); a.g.rotation.x = 0; a.face = ang; a.g.rotation.y = ang; }; rides.push(q); });
   }
+  { // 트램펄린: 두 자리, 서로 엇박자로 통통 뜀. 내려앉을 때 그물이 쑥 들어감
+    const g = new THREE.Group(), cx = -11.6, cz = -12.6, H = 0.55, mat = new THREE.Group();
+    for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; g.add(at(mesh(new THREE.CylinderGeometry(0.05, 0.05, H, 6), '#56606c'), Math.sin(a) * 1.15, H / 2, Math.cos(a) * 1.15)); }
+    const rim = at(mesh(new THREE.TorusGeometry(1.2, 0.13, 8, 36), '#4fae6a'), 0, H, 0); rim.rotation.x = Math.PI / 2; g.add(rim);
+    for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2, pad = at(mesh(new THREE.BoxGeometry(0.3, 0.05, 0.22), k % 2 ? '#f2c53a' : '#e0685a'), Math.sin(a) * 1.2, H + 0.13, Math.cos(a) * 1.2); pad.rotation.y = a; g.add(pad); }
+    mat.add(at(mesh(new THREE.CylinderGeometry(1.08, 1.08, 0.04, 32), '#3a4a7a'), 0, 0, 0));
+    g.add(at(mat, 0, H - 0.02, 0)); movers.push(mat); scene.add(at(g, cx, 0, cz)); solid(cx, cz, 1.3);
+    const BOUNCE = 2.6, duo = [-1, 1].map(s => ({ x: cx, z: cz, face: 0, ox: 0, oz: 2, ride: '🤸 트램펄린 타기', reach: 2.1, stand: true, dx: s * 0.42, ph: s > 0 ? 0.5 : 0 }));
+    const hop = (q, t) => { const u = (t * BOUNCE / Math.PI + q.ph) % 1; return Math.sin(u * Math.PI); }; // 0(바닥)~1(꼭대기)
+    duo[0].tick = t => { let dip = 0; duo.forEach(q => { if (actors.some(a => a.sit === q)) dip = Math.max(dip, Math.max(0, 0.25 - hop(q, t)) * 0.6); }); mat.position.y = H - 0.02 - dip; };
+    duo.forEach(q => { q.place = (a, t) => { const k = hop(q, t); a.g.position.set(cx + q.dx, H + k * 1.5 - Math.max(0, 0.25 - k) * 0.6, cz); a.g.rotation.x = 0; a.face = 0; }; rides.push(q); });
+  }
 
   // ── 나무: 꽃·잎 뭉치는 한 번에 그리는 묶음(InstancedMesh)으로, 줄기와 열매만 따로
   const BLOB_MAX = 900;
@@ -891,6 +903,7 @@
     rect(0, -23, 6.4, 3.6, '#7a4a2e'); rect(0, -23, 1.2, 1.2, '#a8744f'); rect(SHOP.x, SHOP.z, 7, 3.8, '#3f9a5a'); rect(7.05, -19.9, 11.9, 1.6, '#ead2a0'); rect(6.45, -22.7, 1.8, 5.4, '#ead2a0'); rect(PLAY.x, PLAY.z, 17, 8.4, '#e9d9a8');
     [[-23, -17.6, 4.2, 0.5, '#e0685a'], [-17.2, -16.8, 1, 3.4, '#e0685a'], [-11.6, -17.4, 3.4, 0.5, '#e8a13a']].forEach(b => rect(...b));
     g.fillStyle = '#5b8fd8'; g.beginPath(); g.arc(mx(-17), mz(-12.4), 1.3 * S, 0, 6.29); g.fill();
+    g.fillStyle = '#4fae6a'; g.beginPath(); g.arc(mx(-11.6), mz(-12.6), 1.3 * S, 0, 6.29); g.fill();
     trees.forEach(t => { g.fillStyle = t.kind === 'blossom' ? '#ffc8d6' : '#3f9e4b'; g.beginPath(); g.arc(mx(t.x), mz(t.z), 1.2 * t.sc * S, 0, 6.29); g.fill(); });
   }
   const mapBox = $('mapBox'), mapBtn = $('mapBtn');
@@ -1045,7 +1058,7 @@
       if (a.sayT > 0) a.sayT -= dt;
       const label = a.sayT > 0 ? a.say : a.name + (a.wave > 0 ? ' 👋' : '');
       if (label !== a.label) { a.label = label; a.tag.textContent = label; a.tag.classList.toggle('say', a.sayT > 0); }
-      a.pet.update(t, { moving: a.moving, wave: a.wave > 0.02, sit: Boolean(a.sit) });
+      a.pet.update(t, { moving: a.moving, wave: a.wave > 0.02, sit: Boolean(a.sit) && !a.sit.stand });
       const dz = a.z - me.z;
       v.set(a.g.position.x, a.g.position.y + (a.sit ? 1.1 : 1.24) * (a.pet.height || 1) - curve.uCurve.value * dz * dz, a.g.position.z).project(camera);
       const on = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;
