@@ -46,7 +46,7 @@
     <button data-v="fullBtn">⛶ 크게</button>
     <span class="pill"><b data-v="fpsN">–</b> fps · <span data-v="qN">화질 높음</span></span>
   </div>
-  <div class="vlg-hint">이동: WASD·방향키 또는 땅 누르기 · 달리기: Shift · 인사: Space · 하기: E · 감정: 1·2 · 확대: 마우스 휠</div>
+  <div class="vlg-hint">이동: WASD·방향키 또는 땅 누르기 · 시점: 화면 끌기(두 번 누르면 처음대로) · 달리기: Shift · 인사: Space · 하기: E · 감정: 1·2 · 확대: 마우스 휠</div>
   <div class="vlg-mapbox" data-v="mapBox"><canvas class="vlg-map" data-v="map"></canvas><button data-v="mapBtn">▾ 내리기</button></div>
   <div class="vlg-acts"><button data-v="joyBtn" title="기쁨 (1)">😄</button><button data-v="heartBtn" title="하트 (2)">❤️</button><button data-v="waveBtn">👋 인사</button><button data-v="shakeBtn">🌳 흔들기</button></div>`;
 
@@ -157,12 +157,12 @@
     for (let i = 0; i < 16; i++) { const x = rnd() * s, y = rnd() * s, l = 14 + rnd() * 26, c = rnd() < 0.6 ? 'rgba(200,240,255,.75)' : 'rgba(60,160,225,.6)', w = 2 + rnd() * 2; tile(() => { g.strokeStyle = c; g.lineWidth = w; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + l / 2, y - 4, x + l, y); g.stroke(); }); }
   }, 0);
 
-  // ── 둥글게 말리는 땅: 내 캐릭터에서 앞뒤(z)로 멀어질수록 아래로 내려감. 그림자는 휘기 전 위치로 계산되므로 그대로 맞음
-  const curve = { uCurve: { value: 0.0075 }, uFocusZ: { value: 0 }, uTime: { value: 0 } };
+  // ── 둥글게 말리는 땅: 내 캐릭터에서 보는 방향 앞뒤로 멀어질수록 아래로 내려감. 그림자는 휘기 전 위치로 계산되므로 그대로 맞음
+  const curve = { uCurve: { value: 0.0075 }, uFocus: { value: new THREE.Vector2() }, uDir: { value: new THREE.Vector2(0, -1) }, uTime: { value: 0 } }; // uDir: 카메라가 보는 쪽(땅에 눕힌 방향)
   function bend(m, sway, outline) {
     m.onBeforeCompile = sh => {
-      sh.uniforms.uCurve = curve.uCurve; sh.uniforms.uFocusZ = curve.uFocusZ; sh.uniforms.uTime = curve.uTime;
-      sh.vertexShader = (sway ? '#define SWAY ' + sway.toFixed(4) + '\n' : '') + (outline ? '#define OUTLINE ' + outline.toFixed(4) + '\n' : '') + 'uniform float uCurve;\nuniform float uFocusZ;\nuniform float uTime;\n' + sh.vertexShader.replace('#include <project_vertex>', `
+      sh.uniforms.uCurve = curve.uCurve; sh.uniforms.uFocus = curve.uFocus; sh.uniforms.uDir = curve.uDir; sh.uniforms.uTime = curve.uTime;
+      sh.vertexShader = (sway ? '#define SWAY ' + sway.toFixed(4) + '\n' : '') + (outline ? '#define OUTLINE ' + outline.toFixed(4) + '\n' : '') + 'uniform float uCurve;\nuniform vec2 uFocus;\nuniform vec2 uDir;\nuniform float uTime;\n' + sh.vertexShader.replace('#include <project_vertex>', `
         vec4 wpB = vec4( transformed, 1.0 );
         #ifdef USE_INSTANCING
           wpB = instanceMatrix * wpB;
@@ -179,7 +179,7 @@
           wpB.x += sin( uTime * 1.8 + wpB.x * 1.3 + wpB.z * 1.7 ) * SWAY * wpB.y;
           wpB.z += cos( uTime * 1.3 + wpB.x * 0.9 ) * SWAY * 0.5 * wpB.y;
         #endif
-        float dzB = wpB.z - uFocusZ;
+        float dzB = dot( wpB.xz - uFocus, uDir );
         wpB.y -= uCurve * dzB * dzB;
         vec4 mvPosition = viewMatrix * wpB;
         gl_Position = projectionMatrix * mvPosition;`);
@@ -223,7 +223,7 @@
 
   // ── 부딪히는 것(원) 목록
   const solids = [];
-  const solid = (x, z, r) => solids.push({ x, z, r });
+  const solid = (x, z, r, h) => solids.push({ x, z, r, h: h || 0 }); // h: 건물 높이 — 카메라가 그 안으로 들어가지 않게 (작은 소품은 0)
 
   // ── 분수·게시판
   const fountain = new THREE.Group();
@@ -272,7 +272,7 @@
     g.add(at(mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8, 8), '#8a5a34'), 2.1, 0.4, 1.5)); // 우체통
     g.add(at(mesh(new THREE.BoxGeometry(0.34, 0.3, 0.5), roof), 2.1, 0.92, 1.5));
     houses.push({ x, z, g, show: 1 });
-    scene.add(at(g, x, 0, z)); solid(x - 0.75, z, 1.55); solid(x + 0.75, z, 1.55); solid(x + 2.1, z + 1.5, 0.3);
+    scene.add(at(g, x, 0, z)); solid(x - 0.75, z, 1.55, 4.2); solid(x + 0.75, z, 1.55, 4.2); solid(x + 2.1, z + 1.5, 0.3);
   });
 
   // ── 마을사무소: 큰길 북쪽 끝, 광장을 바라봄. 갈색 목조 + 크림 회벽
@@ -306,7 +306,7 @@
       box(0.2, 0.26, 0.2, DARK, x, 1.9, 2.5); g.add(at(noShadow(mesh(new THREE.BoxGeometry(0.14, 0.18, 0.22), winMat)), x, 1.9, 2.5)); });
     const porch = at(mesh(new THREE.BoxGeometry(3, 0.14, 1.1), texMat(roofTex, ROOF)), 0, 2.6, 2.25); porch.rotation.x = 0.18; g.add(porch);
     box(2.8, 0.12, 1.1, '#bfae92', 0, 0.3, 2.65); box(2.4, 0.12, 0.6, '#cdbfa3', 0, 0.18, 3.2); // 계단
-    scene.add(at(g, 0, 0, OZ)); [-2.2, 0, 2.2].forEach(x => solid(x, OZ, 1.9));
+    scene.add(at(g, 0, 0, OZ)); [-2.2, 0, 2.2].forEach(x => solid(x, OZ, 1.9, 5));
   }
   // ── 슈퍼마켓: 마을사무소 오른쪽 1층 가게. 안은 마을 남쪽 바깥(SHOP.iz)에 따로 지어 두고, 문으로 오가면 그리로 옮겨 감
   const SHOP = { x: 13, z: -23, ix: 0, iz: 60, x0: -5.6, x1: 5.6, z0: 56.9, z1: 62.8 }; // x0~z1: 안에서 걸을 수 있는 범위
@@ -323,7 +323,7 @@
     box(1.4, 2.1, 0.06, '#2f7a45', 0, 1.35, 1.91); [-0.33, 0.33].forEach(x => g.add(at(noShadow(mesh(new THREE.BoxGeometry(0.6, 1.9, 0.08), flat(0xcfeefc))), x, 1.3, 1.93))); // 유리문
     box(1.6, 0.06, 0.9, '#8a5a34', 0, 0.33, 2.5);
     [-3.1, 3.1].forEach(x => { box(0.5, 0.45, 0.5, '#b9824e', x, 0.53, 2.4); [-0.1, 0.1].forEach(dz => g.add(at(mesh(new THREE.SphereGeometry(0.11, 10, 8), x < 0 ? '#e8483f' : '#f2c53a'), x + dz, 0.82, 2.4 + dz))); }); // 문 앞 과일 상자
-    scene.add(at(g, SHOP.x, 0, SHOP.z)); [-2.4, 0, 2.4].forEach(x => solid(SHOP.x + x, SHOP.z, 1.9));
+    scene.add(at(g, SHOP.x, 0, SHOP.z)); [-2.4, 0, 2.4].forEach(x => solid(SHOP.x + x, SHOP.z, 1.9, 3.6));
     strip(7.05, -19.9, 11.9, 1.6, sandMat(5, 1), 0.029); // 큰길에서 가게 앞까지 작은 길
     strip(6.45, -22.7, 1.8, 5.4, sandMat(1, 3), 0.028); // 사무소와 가게 사이로 뒤쪽 숲까지 가는 길
   }
@@ -478,7 +478,7 @@
     [-1, 1].forEach(sd => { box(4.2, 0.55, 0.6, '#5cbd50', sd * 4, 0.3, F + 0.95); for (let k = 0; k < 7; k++) g.add(at(mesh(new THREE.SphereGeometry(0.12, 8, 6), ['#ff7fa6', '#ffcf3a', '#fff6e8', '#ff8a3a'][k % 4]), sd * 4 - 1.8 + k * 0.6, 0.62, F + 1.05)); });
     g.add(at(mesh(new THREE.CylinderGeometry(0.05, 0.06, 5, 8), '#cbd5e1'), -7.4, 2.5, F + 1.4)); g.add(at(mesh(new THREE.SphereGeometry(0.1, 8, 6), '#d9a441'), -7.4, 5.05, F + 1.4));
     box(1.2, 0.75, 0.03, '#f2c53a', -6.78, 4.5, F + 1.4); box(0.36, 0.36, 0.04, '#e0685a', -6.78, 4.5, F + 1.41);
-    scene.add(at(g, SCH.x, 0, SCH.z)); solid(SCH.x - 7.4, SCH.z + F + 1.4, 0.2);
+    scene.add(at(g, SCH.x, 0, SCH.z)); solid(SCH.x - 7.4, SCH.z + F + 1.4, 0.2); [-4.6, -2.3, 0, 2.3, 4.6].forEach(x => solid(SCH.x + x, SCH.z, 2.2, 7));
     strip(SCH.x, (SCH.z + TF + 1.45 + PLAY.z - 4.2) / 2, 2.2, PLAY.z - 4.2 - (SCH.z + TF + 1.45), sandMat(1, 2), 0.031); // 현관에서 놀이터까지 돌길
     strip(-34, 1.8, 2.8, 5.8, sandMat(1, 3), 0.0315); strip(-39.2, 3.9, 9.8, 1.6, sandMat(4, 1), 0.0312); // 분수 앞 골목 끝 → 학교 현관 앞
   }
@@ -750,13 +750,31 @@
   const onKeyUp = e => { keys[e.code] = false; };
   window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp);
   const ray = new THREE.Raycaster(), plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
-  canvas.addEventListener('pointerdown', e => {
+  // 시점: 화면을 끌면 좌우로 360도 돌고 위아래로 기울어짐 (위로 끌면 하늘 쪽을 봄). 끌지 않고 누르기만 하면 그 자리로 걸어감. 두 번 누르면 원래 시점
+  const view = { yaw: 0, pitch: 0.567, drag: null }; // pitch: 내려다보는 각, 0.1보다 작아지면 고개를 들어 위를 봄
+  const PITCH_MIN = -0.45, PITCH_MAX = 1.2;
+  const bendDist = (x, z) => (x - me.x) * curve.uDir.value.x + (z - me.z) * curve.uDir.value.y;
+  canvas.addEventListener('pointerdown', e => { view.drag = { x: e.clientX, y: e.clientY, moved: false, id: e.pointerId }; });
+  canvas.addEventListener('pointermove', e => {
+    const d = view.drag; if (!d || d.id !== e.pointerId) return;
+    const dx = e.clientX - d.x, dy = e.clientY - d.y;
+    if (!d.moved && Math.hypot(dx, dy) < 6) return;
+    if (!d.moved) { d.moved = true; try { canvas.setPointerCapture(e.pointerId); } catch (err) {} }
+    d.x = e.clientX; d.y = e.clientY;
+    if (me.z > 40) return; // 가게 안은 앞이 트인 방이라 돌리지 않음
+    view.yaw -= dx * 0.006; view.pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, view.pitch + dy * 0.005));
+  });
+  const endDrag = e => {
+    const d = view.drag; if (!d || d.id !== e.pointerId) return; view.drag = null;
+    if (d.moved || e.type === 'pointercancel') return;
     const rc = canvas.getBoundingClientRect();
     ray.setFromCamera({ x: (e.clientX - rc.left) / rc.width * 2 - 1, y: -((e.clientY - rc.top) / rc.height) * 2 + 1 }, camera);
     if (!ray.ray.intersectPlane(plane, hit)) return;
     const [tx, tz] = clampZone(hit.x, hit.z, me.z > 40); me.target = { x: tx, z: tz, stuck: 0 };
     marker.position.set(me.target.x, 0.09, me.target.z); marker.visible = true;
-  });
+  };
+  canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('dblclick', () => { view.yaw = 0; view.pitch = 0.567; });
   // 소리: 파일 없이 그 자리에서 만드는 짧은 효과음 (기본은 끔)
   let audio = null, soundOn = false;
   function tone(f, d, type, when, vol, f2) {
@@ -830,10 +848,10 @@
   }
   function goTo(x, z, face) { // 가게 안팎으로 옮겨 감: 카메라도 바로 따라감
     me.x = x; me.z = z; me.face = face; me.target = null; marker.visible = false; sfx.knock();
-    camera.position.set(x, 5.6 * zoom, z + 8.8 * zoom); net.want = true;
+    view.yaw = 0; view.pitch = 0.567; camera.position.set(x, 5.6 * zoom, z + 8.8 * zoom); net.want = true;
   }
   function popText(text, x, y, z) { // 그 자리 위로 떠오르다 사라지는 글자
-    const dz = z - me.z; v.set(x, y - curve.uCurve.value * dz * dz, z).project(camera);
+    const dz = bendDist(x, z); v.set(x, y - curve.uCurve.value * dz * dz, z).project(camera);
     const d = document.createElement('div'); d.className = 'pop'; d.textContent = text;
     d.style.transform = `translate(-50%, -100%) translate(${((v.x + 1) / 2 * canvas.clientWidth).toFixed(1)}px, ${((1 - v.y) / 2 * canvas.clientHeight).toFixed(1)}px)`;
     labels.appendChild(d); setTimeout(() => d.remove(), 1000);
@@ -991,7 +1009,9 @@
 
     // 나
     me.moving = false; me.run = keys.ShiftLeft || keys.ShiftRight ? RUN : 1;
-    const kx = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0), kz = (keys.KeyS || keys.ArrowDown ? 1 : 0) - (keys.KeyW || keys.ArrowUp ? 1 : 0);
+    const ix = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0), iz = (keys.KeyS || keys.ArrowDown ? 1 : 0) - (keys.KeyW || keys.ArrowUp ? 1 : 0);
+    const cy = Math.cos(view.yaw), sy = Math.sin(view.yaw); // 화면 기준 방향키 → 땅 위 방향
+    const kx = Math.round((ix * cy + iz * sy) * 100) / 100, kz = Math.round((iz * cy - ix * sy) * 100) / 100;
     if (me.sit && (kx || kz || me.target)) standUp(); // 움직이려 하면 일어남
     if (kx || kz) {
       const l = Math.hypot(kx, kz); step(me, kx / l * SPEED * me.run * dt, kz / l * SPEED * me.run * dt);
@@ -1069,7 +1089,7 @@
     rides.forEach(q => { if (q.tick) q.tick(t, dt, actors.some(a => a.sit === q)); });
     waterTex.offset.x = -t * 0.12;
     marker.rotation.z = t * 2;
-    clouds.position.set(me.x * 0.6 + Math.sin(t * 0.02) * 10, 0, me.z - 44);
+    clouds.position.set(me.x - Math.sin(view.yaw) * 44 + Math.sin(t * 0.02) * 10, 0, me.z - Math.cos(view.yaw) * 44); clouds.rotation.y = view.yaw;
 
     // 해·카메라: 비스듬히 내려다보며 따라감
     if (!demo) { const d = new Date(), hr = d.getHours() + d.getMinutes() / 60; env.key = hr < 5.5 || hr >= 19.5 ? 'night' : hr < 7 || hr >= 17.5 ? 'sunset' : 'day'; }
@@ -1087,11 +1107,18 @@
     fireflies.forEach(f => { f.m.visible = env.night > 0.22; if (f.m.visible) { f.m.position.set(f.x + Math.sin(t * 0.5 + f.ph) * 1.4, 0.55 + Math.sin(t * 1.3 + f.ph * 2) * 0.35, f.z + Math.cos(t * 0.4 + f.ph) * 1.4); f.m.scale.setScalar(0.7 + Math.abs(Math.sin(t * 2.4 + f.ph)) * 0.9); } });
     fishes.forEach(f => { f.x += f.v * dt; if (f.x > 35) f.x = -35; else if (f.x < -35) f.x = 35; f.g.position.set(f.x, 0.062, f.z + Math.sin(t * 0.9 + f.ph) * 0.25); f.g.scale.set(f.s * Math.sign(f.v), f.s, 1); f.tail.rotation.z = Math.PI + Math.sin(t * 9 + f.ph) * 0.5; });
     stars.position.set(me.x, 0, me.z);
-    sun.target.position.set(me.x, 0, me.z - 3); sun.position.set(me.x + env.sunPos.x, env.sunPos.y, me.z + env.sunPos.z);
+    { const fx = me.x - Math.sin(view.yaw) * 3, fz = me.z - Math.cos(view.yaw) * 3; sun.target.position.set(fx, 0, fz); sun.position.set(fx + env.sunPos.x, env.sunPos.y, fz + 3 + env.sunPos.z); } // 그림자 범위는 보는 쪽 앞을 중심으로
     curve.uCurve.value += ((curveOn ? 0.0075 : 0) - curve.uCurve.value) * Math.min(1, dt * 5);
-    curve.uFocusZ.value = me.z;
-    camPos.set(me.x, 5.6 * zoom, me.z + 8.8 * zoom); camera.position.lerp(camPos, camera.position.lengthSq() < 1 ? 1 : Math.min(1, dt * 6));
-    camera.lookAt(camera.position.x, 0.95, camera.position.z - 8.8 * zoom);
+    if (me.z > 40) { view.yaw = 0; view.pitch = Math.max(0.35, view.pitch); }
+    { const sy = Math.sin(view.yaw), cy = Math.cos(view.yaw), el = Math.max(0.1, view.pitch), D = 10.43 * zoom;
+      curve.uFocus.value.set(me.x, me.z); curve.uDir.value.set(-sy, -cy);
+      camPos.set(me.x + sy * D * Math.cos(el), Math.max(0.7, D * Math.sin(el)), me.z + cy * D * Math.cos(el));
+      let k = 1; // 나와 카메라 사이에 건물이 있으면 그 앞으로 당겨 옴
+      for (let f = 0.1; f <= 1.001 && k === 1; f += 0.05) { const x = me.x + (camPos.x - me.x) * f, z = me.z + (camPos.z - me.z) * f, y = 0.95 + (camPos.y - 0.95) * f;
+        if (solids.some(o => o.h > y && Math.hypot(x - o.x, z - o.z) < o.r + 0.5)) k = Math.max(0.12, f - 0.05); }
+      if (k < 1) camPos.set(me.x + (camPos.x - me.x) * k, 0.95 + (camPos.y - 0.95) * k, me.z + (camPos.z - me.z) * k);
+      camera.position.lerp(camPos, camera.position.lengthSq() < 1 ? 1 : Math.min(1, dt * 8));
+      camera.lookAt(me.x, 0.95 + Math.max(0, 0.1 - view.pitch) * 5 * zoom, me.z); } // 0.1보다 더 올리면 바라보는 점이 하늘로 올라감
 
     // 캐릭터 모습·이름표
     actors.forEach(a => {
@@ -1109,7 +1136,7 @@
       const label = a.sayT > 0 ? a.say : a.name + (a.wave > 0 ? ' 👋' : '');
       if (label !== a.label) { a.label = label; a.tag.textContent = label; a.tag.classList.toggle('say', a.sayT > 0); }
       a.pet.update(t, { moving: a.moving, wave: a.wave > 0.02, sit: Boolean(a.sit) && !a.sit.stand });
-      const dz = a.z - me.z;
+      const dz = bendDist(a.x, a.z);
       v.set(a.g.position.x, a.g.position.y + (a.sit ? 1.1 : 1.24) * (a.pet.height || 1) - curve.uCurve.value * dz * dz, a.g.position.z).project(camera);
       const on = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;
       a.tag.style.display = on ? '' : 'none';
