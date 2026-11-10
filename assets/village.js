@@ -232,23 +232,36 @@
     const m = floor(new THREE.Mesh(geo, typeof mat === 'string' ? M(mat) : mat)); scene.add(m); return m; };
   ribbon(0, RIVER.w + 1.1, '#ead9a0', 0.035);
   waterTex.repeat.set(41, 1); ribbon(0, RIVER.w, flat(0xffffff, { map: waterTex }), 0.05);
-  [[-1, -75, 75], [1, -75, 34.2], [1, 39.1, 75]].forEach(([s, x0, x1]) => { noShadow(ribbon(s * (RIVER.w / 2 - 0.07), 0.14, flat(0xe9f8ff), 0.055, 1, x0, x1)).userData.floor = false; }); // 물가 흰 띠 (동쪽 강이 갈라지는 곳은 비움)
-  // ── 동쪽 강: 큰 강에서 갈라져 마을 오른쪽 바깥을 구불구불 내려가 바다로 흘러듦. 바다 가까이서 점점 넓어져 강어귀가 됨
-  const EAST = { z0: riverZ(37.5) - 0.5, z1: 51.3, shore: 50.4, mouth: 44 }; // z1: 물이 바다에 닿는 끝, shore: 모래 물가
+  // ── 동쪽 강: 큰 강에서 물살 방향 그대로 비스듬히 갈라져 나와, 마을 오른쪽 바깥을 구불구불 내려가 바다로 흘러듦. 바다 가까이서 넓어져 강어귀가 됨
+  const EAST = { shore: 50.4, end: 51.3, mouth: 44 }; // end: 물이 바다 물거품 밑으로 들어가는 끝, shore: 모래 물가
   const eastX = z => 37.5 + 1.3 * Math.sin(z * 0.13 + 0.6) + 0.5 * Math.sin(z * 0.31);
-  const eastW = z => 4 + Math.pow(Math.max(0, z - EAST.mouth), 1.4) * 0.55 + 3.2 * Math.pow(Math.max(0, 1 - (z - EAST.z0) / 5), 2); // 큰 강에서 갈라지는 곳과 강어귀에서 나팔처럼 벌어짐
-  const eastDist = (x, z) => z < EAST.z0 || z > EAST.z1 ? 99 : Math.abs(x - eastX(z)) - eastW(z) / 2;
-  const eastTex = waterTex.clone(); eastTex.needsUpdate = true;
-  const ribbonZ = (side, extra, mat, y, z0, z1, rows) => { // 동쪽 강을 따라 남북으로 휘는 띠. side: -1/1이면 그쪽 물가에 붙은 가는 띠
-    const N = Math.round((z1 - z0) * 2), R = rows || 4, pos = [], uv = [], idx = [];
-    for (let i = 0; i <= N; i++) { const z = z0 + (z1 - z0) * i / N, w = eastW(z) + extra; for (let j = 0; j <= R; j++) {
-      const off = side ? side * (eastW(z) / 2 - 0.07) + (j / R - 0.5) * extra : (j / R - 0.5) * w; pos.push(eastX(z) + off, y, z); uv.push(i / N, j / R); } }
-    for (let i = 0; i < N; i++) for (let j = 0; j < R; j++) { const a = i * (R + 1) + j, b = a + R + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
+  const eastPts = []; // 강 가운데 선: { x, z, w(폭), u(시작부터 길이) }
+  { const P = [[27, riverZ(27)], [33.5, riverZ(33.5) + 0.3], [eastX(-1), -3.2], [eastX(1), 1]]; // 큰 강을 따라 가다 남쪽으로 꺾이는 곡선
+    for (let k = 0; k < 40; k++) { const t = k / 40, a = (1 - t) ** 3, b = 3 * (1 - t) ** 2 * t, c = 3 * (1 - t) * t * t, d = t ** 3;
+      eastPts.push({ x: a * P[0][0] + b * P[1][0] + c * P[2][0] + d * P[3][0], z: a * P[0][1] + b * P[1][1] + c * P[2][1] + d * P[3][1], w: RIVER.w + (4 - RIVER.w) * t }); }
+    for (let z = 1; z <= EAST.end + 0.01; z += 0.5) eastPts.push({ x: eastX(z), z, w: 4 + Math.pow(Math.max(0, z - EAST.mouth), 1.4) * 0.55 });
+    let u = 0; eastPts.forEach((q, i) => { if (i) u += Math.hypot(q.x - eastPts[i - 1].x, q.z - eastPts[i - 1].z); q.u = u;
+      const a = eastPts[Math.max(0, i - 1)], b = eastPts[Math.min(eastPts.length - 1, i + 1)], l = Math.hypot(b.x - a.x, b.z - a.z); q.nx = -(b.z - a.z) / l; q.nz = (b.x - a.x) / l; }); }
+  const eastNear = (x, z) => { let best = null, bd = 1e9; for (const q of eastPts) { const d = (x - q.x) ** 2 + (z - q.z) ** 2; if (d < bd) { bd = d; best = q; } } return [best, Math.sqrt(bd)]; };
+  const eastDist = (x, z) => { if (x < 24 || z < -14) return 99; const [q, d] = eastNear(x, z); return d - q.w / 2; }; // 0보다 작으면 동쪽 강 물속
+  const eastTex = waterTex.clone(); eastTex.needsUpdate = true; eastTex.repeat.set(Math.round(eastPts[eastPts.length - 1].u / 3.7), 1);
+  const ribbonP = (pts, offOf, wOf, mat, y, rows) => { // 곡선을 따라 휘는 띠 (점마다 옆 방향으로 벌림)
+    const R = rows || 4, pos = [], uv = [], idx = [], U = pts[pts.length - 1].u - pts[0].u || 1;
+    pts.forEach((q, i) => { for (let j = 0; j <= R; j++) { const o = offOf(q) + (j / R - 0.5) * wOf(q); pos.push(q.x + q.nx * o, y, q.z + q.nz * o); uv.push((q.u - pts[0].u) / U, j / R); } });
+    for (let i = 0; i < pts.length - 1; i++) for (let j = 0; j < R; j++) { const a = i * (R + 1) + j, b = a + R + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx); geo.computeVertexNormals();
+    if (geo.attributes.normal.getY(0) < 0) { for (let k = 0; k < idx.length; k += 3) { const t = idx[k]; idx[k] = idx[k + 1]; idx[k + 1] = t; } geo.setIndex(idx); geo.computeVertexNormals(); } // 위를 보게
     const m = floor(new THREE.Mesh(geo, typeof mat === 'string' ? M(mat) : mat)); scene.add(m); return m; };
-  eastTex.repeat.set(Math.round((EAST.z1 - EAST.z0) / 3.7), 1);
-  ribbonZ(0, 1.1, '#ead9a0', 0.03, EAST.z0, EAST.shore); ribbonZ(0, 0, flat(0xffffff, { map: eastTex }), 0.038, EAST.z0, EAST.z1); // 물은 바다 물거품 밑으로 들어가 이어짐
-  [-1, 1].forEach(sd => { noShadow(ribbonZ(sd, 0.14, flat(0xe9f8ff), 0.041, riverZ(eastX(0)) + RIVER.w / 2 + 0.3, EAST.shore, 1)).userData.floor = false; }); // 물가 흰 띠 (큰 강과 만나는 곳부터)
+  const onShore = eastPts.filter(q => q.z <= EAST.shore);
+  ribbonP(onShore, () => 0, q => q.w + 1.1, '#ead9a0', 0.03); ribbonP(eastPts, () => 0, q => q.w, flat(0xffffff, { map: eastTex }), 0.038); // 물은 큰 강 밑에서 나와 바다 물거품 밑으로 이어짐
+  [-1, 1].forEach(sd => { const out = onShore.filter(q => riverDist(q.x + q.nx * sd * q.w / 2, q.z + q.nz * sd * q.w / 2) > 0.1); // 큰 강 밖으로 나온 곳부터 물가 흰 띠
+    if (out.length > 1) noShadow(ribbonP(out, q => sd * (q.w / 2 - 0.07), () => 0.14, flat(0xe9f8ff), 0.041, 1)).userData.floor = false; });
+  { // 큰 강 물가 흰 띠: 동쪽 강이 갈라져 나가는 자리만 비움
+    const runs = []; let cur = null;
+    [-1, 1].forEach(s0 => { for (let x = -75; x <= 75.01; x += 0.5) { const z = riverZ(x) + s0 * (RIVER.w / 2 - 0.07), gap = s0 > 0 && eastDist(x, z) < 0.1;
+      if (!gap && !cur) cur = [s0, x]; if ((gap || x > 75) && cur) { runs.push([cur[0], cur[1], x]); cur = null; } } if (cur) { runs.push([cur[0], cur[1], 75]); cur = null; } });
+    runs.forEach(([s0, x0, x1]) => { if (x1 - x0 > 0.4) noShadow(ribbon(s0 * (RIVER.w / 2 - 0.07), 0.14, flat(0xe9f8ff), 0.055, 1, x0, x1)).userData.floor = false; });
+  }
   // ── 다리: 돌 아치 다리. 난간 끝 기둥마다 등불, 옆면에 아치 무늬. 걸으면 아치를 따라 오르내림
   const BR = { z: riverZ(0), half: 1.45, L: RIVER.w + 2.4, peak: 0.62 };
   const deckY = lz => 0.12 + BR.peak * Math.sin(Math.PI * Math.min(1, Math.max(0, (lz + BR.L / 2) / BR.L))); // 다리 위 높이 (lz: 다리 가운데 기준)
@@ -605,7 +618,7 @@
   const addBlob = (im, colors) => { const i = im.count++; im.setColorAt(i, col.set(pick(colors))); return i; };
   const PINK = ['#ffffff', '#fff2f5', '#ffe6ec', '#fff8fa'], LEAF = ['#ffffff', '#eaffe6', '#dff5d6', '#f4fff0'];
   const trees = [];
-  const freeSpot = (x, z, pad) => z < BEACH.z0 - 1.5 && !onPath(x, z, 1.9 + pad) && Math.hypot(x, z) > 6.2 + pad && !(z > -26 && z < -17.8 && x > -0.5 && x < 17) && !(x < -31.5 && z > -2 && z < 5.5) 
+  const freeSpot = (x, z, pad) => z < BEACH.z0 - 1.5 && eastDist(x, z) > 1.6 + pad && !onPath(x, z, 1.9 + pad) && Math.hypot(x, z) > 6.2 + pad && !(z > -26 && z < -17.8 && x > -0.5 && x < 17) && !(x < -31.5 && z > -2 && z < 5.5) 
     && riverDist(x, z) > 1.5 && HOUSES.every(h => Math.hypot(x - h[0], z - h[1]) > 4.2 + pad && !(Math.abs(x - h[0]) < 3.6 + pad && z > h[1] - 2 && z < h[1] + 4.4 + pad))
     && solids.every(s => Math.hypot(x - s.x, z - s.z) > s.r + 1.6 + pad) && trees.every(t => Math.hypot(x - t.x, z - t.z) > 2.6);
   function placeTree(tr) { // 줄기 묶음의 지금 위치·기울기대로 뭉치들을 옮김
@@ -833,6 +846,7 @@
   function step(a, dx, dz) {
     const pz = a.z; let x = a.x + dx, z = a.z + dz;
     solids.forEach(c => { const d = Math.hypot(x - c.x, z - c.z), min = c.r + R; if (d < min && d > 1e-4) { x = c.x + (x - c.x) / d * min; z = c.z + (z - c.z) / d * min; } });
+    if (pz < SHOP.far && eastDist(x, z) < 0) { const [q, d] = eastNear(x, z), k = (q.w / 2 + 0.01) / (d || 1); x = q.x + (x - q.x) * k; z = q.z + (z - q.z) * k; } // 동쪽 강: 물가로 밀어냄
     if (pz < SHOP.far && riverDist(x, z) < 0) { // 강: 다리 위에서만 건넘
       if (Math.abs(a.x) <= RIVER.bridge && riverDist(a.x, pz) < 0.05) x = Math.max(-RIVER.bridge + 0.25, Math.min(RIVER.bridge - 0.25, x));
       else if (Math.abs(x) > RIVER.bridge - 0.25) z = riverZ(x) + (pz >= riverZ(a.x) ? 1 : -1) * RIVER.w / 2;
@@ -848,7 +862,7 @@
     }
     [a.x, a.z] = clampZone(x, z, pz > SHOP.far);
   }
-  const clampZone = (x, z, inShop) => inShop ? [Math.max(SHOP.ix + SHOP.x0, Math.min(SHOP.ix + SHOP.x1, x)), Math.max(SHOP.z0, Math.min(SHOP.z1, z))] : [Math.max(PLAY.x - 8.2, Math.min(LX, x)), Math.max(LZ0, Math.min(LZ1, z))];
+  const clampZone = (x, z, inShop) => inShop ? [Math.max(SHOP.ix + SHOP.x0, Math.min(SHOP.ix + SHOP.x1, x)), Math.max(SHOP.z0, Math.min(SHOP.z1, z))] : [Math.max(PLAY.x - 8.2, Math.min(z > riverZ(LX) ? 44 : LX, x)), Math.max(LZ0, Math.min(LZ1, z))]; // 큰 강 남쪽은 동쪽 강가까지
   const keys = {};
   const onKeyDown = e => {
     if (!running || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
@@ -1078,9 +1092,7 @@
     g.fillStyle = '#8fd07a'; g.fillRect(0, 0, mapBg.width, mapBg.height);
     rect(-10, (BEACH.z0 + BEACH.z1) / 2, 100, BEACH.z1 - BEACH.z0, '#f6e6b4'); rect(-10, (BEACH.z1 + MAP.z1) / 2 + 0.5, 100, MAP.z1 - BEACH.z1 + 1, '#4fb3e8'); rect(-10, BEACH.z1 + 0.4, 100, 0.6, '#ffffff');
     [[-30, 45.5], [-23, 47.6], [-17.5, 44.6], [-9, 46.8], [-4.2, 44.2], [5.5, 47.2], [11, 44.8], [17.5, 47.8], [24, 45], [30.5, 47.2]].forEach(([x, z]) => { g.fillStyle = '#3f9a4a'; g.beginPath(); g.arc(mx(x), mz(z), 1.1 * S, 0, 6.29); g.fill(); });
-    [[1.1, '#ead9a0'], [0, '#56bdee']].forEach(([ex, c]) => { g.fillStyle = c; g.beginPath(); // 동쪽 강 (넓어지는 강어귀까지)
-      for (let z = EAST.z0; z <= EAST.shore; z += 0.5) g.lineTo(mx(eastX(z) - (eastW(z) + ex) / 2), mz(z));
-      for (let z = EAST.shore; z >= EAST.z0; z -= 0.5) g.lineTo(mx(eastX(z) + (eastW(z) + ex) / 2), mz(z)); g.fill(); });
+    [[1.1, '#ead9a0'], [0, '#56bdee']].forEach(([ex, c]) => { g.fillStyle = c; onShore.forEach(q => { g.beginPath(); g.arc(mx(q.x), mz(q.z), (q.w + ex) / 2 * S, 0, 6.29); g.fill(); }); }); // 동쪽 강
     [[RIVER.w + 1.1, '#ead9a0'], [RIVER.w, '#56bdee']].forEach(([w, c]) => { g.strokeStyle = c; g.lineWidth = w * S; g.beginPath(); for (let x = MAP.x0; x <= MAP.x1; x += 0.5) g.lineTo(mx(x), mz(riverZ(x))); g.stroke(); });
     rect(0, 11, 2.2, 62, '#ead2a0'); STREETS.forEach(st => rect(0, st.z, st.len, 2.2, '#ead2a0'));
     rect(0, BR.z, BR.half * 2, BR.L, '#cfc7b6');
