@@ -7,13 +7,13 @@ import { fit, clamp, rng, Rng, cycle, TAU, WHITE } from "../../core/index.js";
 import { zigzag, crackle } from "../lightning/_lib.js";
 import { PLASMA_V, SPARK_V } from "./_volt.js";
 
-const R0 = 360, SQ = 0.3;
+const R0 = 360, RMAX = 480, SQ = 0.3;   // 캔버스는 강화 4칸(480)까지 담게 (묶을 때 빈 곳은 잘림)
 export const meta = {
   name: "Volt field",
   desc: "An electric net on the floor: a jittered lattice of jagged current, pulses rolling out from the middle, strands flaring, short arcs jumping up off the knots, motes drifting up. No rim: the net's edge marks the area.",
   tags: ["lightning", "electric", "plasma", "zone", "ground", "loop"],
-  size: [R0 * 2 + 24, Math.round(R0 * SQ * 2 + 70)],
-  origin: [R0 + 12, Math.round(R0 * SQ + 52)],
+  size: [RMAX * 2 + 24, Math.round(RMAX * SQ * 2 + 70)],
+  origin: [RMAX + 12, Math.round(RMAX * SQ + 52)],
   duration: 1.5,
   loop: true,
   fps: 20,

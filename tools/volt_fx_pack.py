@@ -9,13 +9,13 @@ import numpy as np
 from PIL import Image
 
 OUT = 'assets/sprites/fx/volt'
-VARIANTS = ['rail-body-wide', 'rail-muzzle-wide', 'rail-tip-wide']
 
 
 def load(pfx, name):
-    if name in VARIANTS:
-        base = name[:-5]
-        d = os.path.join(pfx, 'records', '_variants', name, 'volt', base)
+    vd = os.path.join(pfx, 'records', '_variants', name, 'volt')
+    if os.path.isdir(vd):   # 옵션만 바꿔 구운 것: 안에 원래 효과 이름 폴더 하나
+        base = os.listdir(vd)[0]
+        d = os.path.join(vd, base)
         return Image.open(os.path.join(d, base + '.png')), json.load(open(os.path.join(d, base + '.json'), encoding='utf-8'))
     d = os.path.join(pfx, 'records', 'volt', name)
     return Image.open(os.path.join(d, name + '.png')), json.load(open(os.path.join(d, name + '.json'), encoding='utf-8'))
@@ -23,7 +23,9 @@ def load(pfx, name):
 
 def main():
     pfx = sys.argv[1]
-    names = sorted(n for n in os.listdir(os.path.join(pfx, 'records', 'volt')) if os.path.isdir(os.path.join(pfx, 'records', 'volt', n))) + VARIANTS
+    names = sorted(n for n in os.listdir(os.path.join(pfx, 'records', 'volt')) if os.path.isdir(os.path.join(pfx, 'records', 'volt', n)))
+    vroot = os.path.join(pfx, 'records', '_variants')
+    names += sorted(os.listdir(vroot)) if os.path.isdir(vroot) else []
     os.makedirs(OUT, exist_ok=True)
     table = {}
     for name in names:

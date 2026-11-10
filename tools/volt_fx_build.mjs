@@ -7,6 +7,7 @@ import { readdirSync, mkdirSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { GOLD_V, GOLD_SPARK_V } from "./volt_fx/_volt.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const [pfx, ...names] = process.argv.slice(2);
@@ -15,10 +16,20 @@ const src = join(here, "volt_fx"), dst = join(pfx, "src", "fx", "volt");
 mkdirSync(dst, { recursive: true });
 for (const f of readdirSync(src)) if (f.endsWith(".js")) copyFileSync(join(src, f), join(dst, f));
 // 같은 효과를 옵션만 바꿔 따로 굽는 것 (강화판 등): [이름, 원래 효과, 옵션]
+//   *-gold = 강화 스킬 (축전 5 · 오버로드 중): 금빛 플라즈마 램프, 장판·방전은 반지름 4칸, 전자포는 폭 2칸, 썬더볼트는 두 번째 낙뢰
+const GOLD = { palette: GOLD_V, sparks: GOLD_SPARK_V };
 const VARIANTS = [
   ["rail-body-wide", "rail-body", { thick: 2 }],
   ["rail-muzzle-wide", "rail-muzzle", { thick: 2 }],
   ["rail-tip-wide", "rail-tip", { thick: 2 }],
+  ["rail-body-wide-gold", "rail-body", { thick: 2, ...GOLD }],
+  ["rail-muzzle-wide-gold", "rail-muzzle", { thick: 2, ...GOLD }],
+  ["rail-tip-wide-gold", "rail-tip", { thick: 2, ...GOLD }],
+  ["thunderbolt-gold", "thunderbolt", { echo: 1, width: 1.25, ...GOLD }],
+  ["field-gold", "field", { R: 480, ...GOLD }],
+  ["discharge-gold", "discharge", { R: 480, ...GOLD }],
+  ["hit-gold", "hit", GOLD],
+  ["hand-spark-gold", "hand-spark", GOLD],
 ];
 const ids = readdirSync(src).filter((f) => f.endsWith(".js") && !f.startsWith("_")).map((f) => f.slice(0, -3));
 const want = (n) => !names.length || names.includes(n);

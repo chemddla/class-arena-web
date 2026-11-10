@@ -9,3 +9,8 @@ export const SPARK_V = ["#ffffff", "#d8fcff", "#7ff3ff", "#1ab8e6"];
 
 /** 몸 둘레 타원 위의 점 (각도 a, 가운데 cx, cy, 반지름 rx, ry). */
 export const onBody = (a, cx, cy, rx, ry) => [cx + Math.cos(a) * rx, cy + Math.sin(a) * ry];
+
+/** 강화 스킬 (축전 5 · 오버로드) 금빛 플라즈마 램프: 그을린 갈색 테두리 → 주황 → 노랑 → 흰 심. */
+export const GOLD_V = ["#2a1206", "#6a2c08", "#b8600c", "#f0a01a", "#ffd040", "#fff080", "#fffcd8", "#ffffff"];
+/** 강화 불티 (머리 → 꼬리). */
+export const GOLD_SPARK_V = ["#ffffff", "#fff6c0", "#ffe060", "#f0a020"];
