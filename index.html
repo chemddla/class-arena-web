@@ -28183,17 +28183,18 @@
       else if ((u.voltCharge || 0) >= VOLT_CHARGE_MAX) drawVoltFx(ctx, 'charged', f, 0, 12, sc);
     }
     // ----- 그림 (pixelfx 작법: 칸 단위 도트 · 남보라 램프 · 깜빡이며 꺼짐) -----
-    // 축전: 체력바 아래 작은 칸 3개 (가득 차면 노랑) · 오버로드 중엔 몸 둘레에 노란 잔전류가 튐 · 과부하 중엔 회색
+    // 축전: 체력바 바로 아래, 체력바 너비를 3칸으로 나눈 막대 (가득 차면 노랑) · 오버로드 중엔 몸 둘레에 노란 잔전류가 튐 · 과부하 중엔 회색
     function drawVoltCharge(ctx, u, bx, by, barW, tick) {
       const n = Math.max(0, Math.min(VOLT_CHARGE_MAX, u.voltCharge || 0));
       const over = voltOverloadOn(u), burn = voltBurnout(u);
-      const y = by + 7;
+      // 칸 3개가 체력바 틀(bx - 1 ~ bx + barW + 1)과 같은 너비를 나눠 가짐 (사이 1px) · 대시 막대(by + 7) 아래 줄
+      const W = barW + 2, x0 = bx - 1, y = by + 10, gap = 1, cw = (W - gap * (VOLT_CHARGE_MAX - 1)) / VOLT_CHARGE_MAX;
       for (let k = 0; k < VOLT_CHARGE_MAX; k++) {
-        const x = bx + k * 6;
-        ctx.fillStyle = '#1e1b4b'; ctx.fillRect(x - 1, y - 1, 6, 5);
+        const x = Math.round(x0 + k * (cw + gap)), w = Math.round(x0 + k * (cw + gap) + cw) - x;
+        ctx.fillStyle = '#1e1b4b'; ctx.fillRect(x, y - 1, w, 5);
         const on = over || k < n;
         ctx.fillStyle = burn ? '#475569' : (!on ? '#312e81' : (over || n >= VOLT_CHARGE_MAX ? ((tick >> 2) % 2 ? '#fde047' : '#facc15') : '#818cf8'));
-        ctx.fillRect(x, y, 4, 3);
+        ctx.fillRect(x + 1, y, w - 2, 3);
       }
       if (!over || voltFxImg('overload')) return; // 오버로드 잔전류: 시트(overload)가 있으면 drawVoltBodyFx가 그림
       const rnd = pfxRng(((tick >> 2) * 7919 + (u.id ? String(u.id).length * 131 : 7)) >>> 0), c = 2;
