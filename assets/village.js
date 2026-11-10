@@ -220,14 +220,35 @@
   const disc = (r0, r1, c, y) => { const m = floor(mesh(new THREE.RingGeometry(r0, r1, 64, 5), c)); m.rotation.x = -Math.PI / 2; scene.add(at(m, 0, y, 0)); return m; };
   disc(0, 4.6, '#8f8b84', 0.038); const plaza = disc(0, 4.4, toonMat({ map: stoneTex }), 0.045);
   disc(3.05, 3.25, '#aaa69e', 0.05); disc(2.05, 2.3, '#8f8b84', 0.05);
-  const RIVER = { z0: -9.3, z1: -6.3, bridge: 1.15 };
-  strip(0, -7.8, 150, 3.8, '#ead9a0', 0.035);
-  waterTex.repeat.set(41, 1); strip(0, -7.8, 150, 3, flat(0xffffff, { map: waterTex }), 0.05);
-  [-1, 1].forEach(s => { noShadow(strip(0, -7.8 + s * 1.45, 150, 0.14, flat(0xe9f8ff), 0.055)).userData.floor = false; }); // 물가 흰 띠
+  // ── 강: 동서로 구불구불 흐르는 넓은 강. riverZ(x) = 그 자리의 강 한가운데 z
+  const RIVER = { w: 4.6, bridge: 1.4 };
+  const riverZ = x => -8.6 + 0.9 * Math.sin(x * 0.11 + 0.4) + 0.4 * Math.sin(x * 0.27);
+  const riverDist = (x, z) => Math.abs(z - riverZ(x)) - RIVER.w / 2; // 0보다 작으면 물속
+  const ribbon = (off, w, mat, y, rows) => { // 강을 따라 휘는 띠 (둥근 땅에 맞게 잘게 나눔)
+    const N = 300, R = rows || 4, pos = [], uv = [], idx = [];
+    for (let i = 0; i <= N; i++) { const x = -75 + i * 0.5; for (let j = 0; j <= R; j++) { pos.push(x, y, riverZ(x) + off + (j / R - 0.5) * w); uv.push(i / N, j / R); } }
+    for (let i = 0; i < N; i++) for (let j = 0; j < R; j++) { const a = i * (R + 1) + j, b = a + R + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx); geo.computeVertexNormals();
+    const m = floor(new THREE.Mesh(geo, typeof mat === 'string' ? M(mat) : mat)); scene.add(m); return m; };
+  ribbon(0, RIVER.w + 1.1, '#ead9a0', 0.035);
+  waterTex.repeat.set(41, 1); ribbon(0, RIVER.w, flat(0xffffff, { map: waterTex }), 0.05);
+  [-1, 1].forEach(s => { noShadow(ribbon(s * (RIVER.w / 2 - 0.07), 0.14, flat(0xe9f8ff), 0.055, 1)).userData.floor = false; }); // 물가 흰 띠
+  // ── 다리: 돌 아치 다리. 난간 끝 기둥마다 등불, 옆면에 아치 무늬. 걸으면 아치를 따라 오르내림
+  const BR = { z: riverZ(0), half: 1.45, L: RIVER.w + 2.4, peak: 0.62 };
+  const deckY = lz => 0.12 + BR.peak * Math.sin(Math.PI * Math.min(1, Math.max(0, (lz + BR.L / 2) / BR.L))); // 다리 위 높이 (lz: 다리 가운데 기준)
+  const groundY = (x, z) => Math.abs(x) < BR.half && Math.abs(z - BR.z) < BR.L / 2 ? deckY(z - BR.z) + 0.08 : 0;
   const bridge = new THREE.Group();
-  for (let i = 0; i < 8; i++) bridge.add(at(mesh(new THREE.BoxGeometry(2.4, 0.12, 0.44), i % 2 ? '#c58f5c' : '#b47d4c'), 0, 0.16 + Math.sin(i / 7 * Math.PI) * 0.22, -1.75 + i * 0.5));
-  [-1, 1].forEach(s => { [-1.7, 0, 1.7].forEach(z => bridge.add(at(mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.75, 8), '#8a5a34'), s * 1.15, 0.55, z))); bridge.add(at(mesh(new THREE.BoxGeometry(0.09, 0.09, 3.6), '#8a5a34'), s * 1.15, 0.86, 0)); });
-  scene.add(at(bridge, 0, 0, -7.8));
+  { const n = 14, seg = BR.L / n, b = (w, h, d, c, x, y, z, rx) => { const m = at(mesh(new THREE.BoxGeometry(w, h, d), c), x, y, z); m.rotation.x = rx || 0; bridge.add(m); return m; };
+    for (let i = 0; i < n; i++) { const lz = -BR.L / 2 + (i + 0.5) * seg, y = deckY(lz), sl = -Math.atan2(deckY(lz + 0.01) - deckY(lz - 0.01), 0.02);
+      b(BR.half * 2, 0.16, seg + 0.03, i % 2 ? '#e9e3d6' : '#ddd6c6', 0, y, lz, sl);
+      [-1, 1].forEach(sd => { b(0.22, 0.5, seg + 0.03, '#d9d2c4', sd * BR.half, y + 0.33, lz, sl); b(0.32, 0.08, seg + 0.05, '#f4efe5', sd * BR.half, y + 0.62, lz, sl); }); }
+    [-1, 1].forEach(sd => [-1, 1].forEach(ez => { const z = ez * (BR.L / 2 - 0.15), y = deckY(z); // 끝 기둥과 등불
+      b(0.46, 1.05, 0.46, '#d9d2c4', sd * BR.half, y + 0.5, z); b(0.56, 0.1, 0.56, '#f4efe5', sd * BR.half, y + 1.05, z);
+      b(0.28, 0.36, 0.28, '#3a3a44', sd * BR.half, y + 1.3, z); bridge.add(at(noShadow(mesh(new THREE.BoxGeometry(0.2, 0.28, 0.29), winMat)), sd * BR.half, y + 1.3, z));
+      const cap = at(mesh(new THREE.ConeGeometry(0.24, 0.22, 4), '#3a3a44'), sd * BR.half, y + 1.59, z); cap.rotation.y = Math.PI / 4; bridge.add(cap); }));
+    [-1, 1].forEach(sd => { const arc = at(mesh(new THREE.RingGeometry(BR.L / 2 - 0.85, BR.L / 2 - 0.25, 32, 1, 0, Math.PI), '#cfc7b6'), sd * (BR.half + 0.02), 0, 0); arc.rotation.y = Math.PI / 2; arc.scale.y = 0.2; bridge.add(arc); });
+  }
+  scene.add(at(bridge, 0, 0, BR.z));
 
   // ── 부딪히는 것(원) 목록
   const solids = [];
@@ -513,7 +534,7 @@
   const PINK = ['#ffffff', '#fff2f5', '#ffe6ec', '#fff8fa'], LEAF = ['#ffffff', '#eaffe6', '#dff5d6', '#f4fff0'];
   const trees = [];
   const freeSpot = (x, z, pad) => !onPath(x, z, 1.9 + pad) && Math.hypot(x, z) > 6.2 + pad && !(z > -26 && z < -17.8 && x > -0.5 && x < 17) && !(x < -31.5 && z > -2 && z < 5.5) 
-    && !(z > RIVER.z0 - 1.5 && z < RIVER.z1 + 1.5) && HOUSES.every(h => Math.hypot(x - h[0], z - h[1]) > 4.2 + pad)
+    && riverDist(x, z) > 1.5 && HOUSES.every(h => Math.hypot(x - h[0], z - h[1]) > 4.2 + pad)
     && solids.every(s => Math.hypot(x - s.x, z - s.z) > s.r + 1.6 + pad) && trees.every(t => Math.hypot(x - t.x, z - t.z) > 2.6);
   function placeTree(tr) { // 줄기 묶음의 지금 위치·기울기대로 뭉치들을 옮김
     tr.g.updateMatrixWorld(true);
@@ -542,7 +563,7 @@
   { const bg = [];
     for (let i = 0, tries = 0; i < 60 && tries < 4000; tries++) {
       const x = (rnd() - 0.5) * 112, z = -44 + rnd() * 66;
-      if (!(Math.abs(x) > 36.5 || z < -25.5) || (z > RIVER.z0 - 1.6 && z < RIVER.z1 + 1.6) || bg.some(b => Math.hypot(x - b[0], z - b[1]) < 3.4) || (x < -31 && x > PLAY.x - 12 && z > SCH.z - 4.5 && z < PLAY.z + 7.5)) continue;
+      if (!(Math.abs(x) > 36.5 || z < -25.5) || riverDist(x, z) < 1.6 || bg.some(b => Math.hypot(x - b[0], z - b[1]) < 3.4) || (x < -31 && x > PLAY.x - 12 && z > SCH.z - 4.5 && z < PLAY.z + 7.5)) continue;
       bg.push([x, z]); i++;
       const sc = 1 + rnd() * 0.5, pinkTree = rnd() < 0.55, im = pinkTree ? blobsPinkFar : blobsLeafFar;
       scene.add(at(mesh(new THREE.CylinderGeometry(0.26 * sc, 0.4 * sc, 1.6 * sc, 12), barkMat), x, 0.8 * sc, z));
@@ -550,7 +571,7 @@
         dummy.position.set(x + b[0] * sc, b[1] * sc, z + b[2] * sc); dummy.scale.setScalar(b[3] * sc); dummy.rotation.set(rnd() * 6, rnd() * 6, rnd() * 6); dummy.updateMatrix(); im.setMatrixAt(addBlob(im, pinkTree ? PINK : LEAF), dummy.matrix); });
     } }
   // 덤불 (같은 뭉치 묶음에 얹음)
-  [[-2.6, -5.6], [2.6, -5.6], [-12.8, -3.8], [12.8, -3.8], [-10.4, 6.4], [10.4, 6.4], [-3.2, -10.6], [3.2, -10.6]].forEach(([x, z]) => {
+  [[-12.8, -3.8], [12.8, -3.8], [-10.4, 6.4], [10.4, 6.4]].forEach(([x, z]) => {
     [[0, 0.38, 0, 0.55], [0.45, 0.3, 0.1, 0.4], [-0.42, 0.3, -0.08, 0.42]].forEach(b => { dummy.position.set(x + b[0], b[1], z + b[2]); dummy.scale.setScalar(b[3]); dummy.rotation.set(rnd() * 6, rnd() * 6, rnd() * 6); dummy.updateMatrix(); blobsLeaf.setMatrixAt(addBlob(blobsLeaf, LEAF), dummy.matrix); });
     solid(x, z, 0.55);
   });
@@ -590,7 +611,7 @@
   let outlineOn = true, halosOn = false;
   // 풀 포기
   { const n = 420, im = new THREE.InstancedMesh(new THREE.ConeGeometry(0.05, 0.17, 4), toonMat({ color: 0xffffff }, 0.16), n);
-    for (let i = 0; i < n; i++) { const x = (rnd() - 0.5) * 70, z = 6 + (rnd() - 0.5) * 60, s = 0.7 + rnd() * 0.9; const off = onPath(x, z, 1.4) || Math.hypot(x, z) < 4.7 || (z > RIVER.z0 - 0.4 && z < RIVER.z1 + 0.4);
+    for (let i = 0; i < n; i++) { const x = (rnd() - 0.5) * 70, z = 6 + (rnd() - 0.5) * 60, s = 0.7 + rnd() * 0.9; const off = onPath(x, z, 1.4) || Math.hypot(x, z) < 4.7 || riverDist(x, z) < 0.4;
       dummy.position.set(x, off ? -5 : 0.08 * s, z); dummy.rotation.set(0, rnd() * 6, (rnd() - 0.5) * 0.4); dummy.scale.setScalar(s); dummy.updateMatrix(); im.setMatrixAt(i, dummy.matrix); im.setColorAt(i, col.set(pick(['#58b84f', '#66c458', '#4aa848']))); }
     im.userData.noShadow = true; scene.add(im); }
   for (let i = 0; i < 9; i++) { const x = (rnd() - 0.5) * 40, z = (rnd() - 0.5) * 40; if (!freeSpot(x, z, -0.6) || (z < -12 && x > 2 && x < 20)) continue; const r = 0.35 + rnd() * 0.3; const m = mesh(new THREE.DodecahedronGeometry(r, 0), '#c3c6ca'); m.scale.y = 0.7; scene.add(at(m, x, r * 0.4, z)); solid(x, z, r); }
@@ -603,7 +624,7 @@
 
   // 가로등: 밤이 되면 등불과 바닥 불빛이 켜짐
   const lampMat = flat(0xfff6d8, { glow: true }), glowMat = flat(0xffd76a, { glow: true, map: softTex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
-  [[-2.7, 5.4], [2.7, 5.4], [-1.9, -4.6], [1.9, -4.6], [-6.4, 1.7], [6.4, -1.7], [-13, 1.6], [13, 1.6], [-24, 1.6], [24, 1.6], [-10, 13.1], [10, 13.1], [-21, 13.1], [21, 13.1], [-9, 22.1], [9, 22.1], [-20, 22.1], [20, 22.1]].forEach(([x, z]) => {
+  [[-2.7, 5.4], [2.7, 5.4], [-6.4, 1.7], [6.4, -1.7], [-13, 1.6], [13, 1.6], [-24, 1.6], [24, 1.6], [-10, 13.1], [10, 13.1], [-21, 13.1], [21, 13.1], [-9, 22.1], [9, 22.1], [-20, 22.1], [20, 22.1]].forEach(([x, z]) => {
     const g = new THREE.Group();
     g.add(at(mesh(new THREE.CylinderGeometry(0.05, 0.07, 1.9, 8), '#56606c'), 0, 0.95, 0));
     g.add(at(mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.06, 8), '#56606c'), 0, 0.03, 0));
@@ -618,7 +639,7 @@
   const fishMat = flat(0x1f5f9a, { transparent: true, opacity: 0.38, depthWrite: false });
   const fishes = Array.from({ length: 6 }, () => { const g = new THREE.Group(), body = noShadow(new THREE.Mesh(new THREE.CircleGeometry(0.2, 10), fishMat)), tail = noShadow(new THREE.Mesh(new THREE.CircleGeometry(0.11, 3), fishMat));
     body.scale.set(1.7, 0.75, 1); tail.position.x = -0.36; tail.rotation.z = Math.PI; g.add(body); g.add(tail); g.rotation.x = -Math.PI / 2; scene.add(g);
-    return { g, tail, x: (rnd() - 0.5) * 66, z: -7.8 + (rnd() - 0.5) * 1.8, v: (0.5 + rnd() * 0.7) * (rnd() < 0.5 ? -1 : 1), ph: rnd() * 6, s: 0.7 + rnd() * 0.6 }; });
+    return { g, tail, x: (rnd() - 0.5) * 66, off: (rnd() - 0.5) * 2.8, v: (0.5 + rnd() * 0.7) * (rnd() < 0.5 ? -1 : 1), ph: rnd() * 6, s: 0.7 + rnd() * 0.6 }; });
   // 별 (밤에만 지평선 위에 보임)·반딧불
   const starMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, fog: false, depthWrite: false });
   const stars = noShadow(new THREE.InstancedMesh(new THREE.CircleGeometry(0.16, 5), starMat, 110));
@@ -639,7 +660,7 @@
 
   // ── 들꽃: 잔디에 흩어진 작은 흰 꽃 (그림자를 받는 납작한 꽃)
   { const n = 520, petal = floor(new THREE.InstancedMesh(new THREE.CircleGeometry(0.062, 7), toonMat({ color: 0xffffff }), n)), heart = floor(new THREE.InstancedMesh(new THREE.CircleGeometry(0.024, 6), toonMat({ color: 0xffd23a }), n));
-    for (let i = 0; i < n; i++) { const x = (rnd() - 0.5) * 70, z = 6 + (rnd() - 0.5) * 60, off = onPath(x, z, 1.5) || Math.hypot(x, z) < 4.8 || (z > RIVER.z0 - 0.4 && z < RIVER.z1 + 0.4), k = 0.7 + rnd() * 0.7;
+    for (let i = 0; i < n; i++) { const x = (rnd() - 0.5) * 70, z = 6 + (rnd() - 0.5) * 60, off = onPath(x, z, 1.5) || Math.hypot(x, z) < 4.8 || riverDist(x, z) < 0.4, k = 0.7 + rnd() * 0.7;
       dummy.rotation.set(-Math.PI / 2, 0, rnd() * 6); dummy.scale.setScalar(k); dummy.position.set(x, off ? -5 : 0.052, z); dummy.updateMatrix(); petal.setMatrixAt(i, dummy.matrix); petal.setColorAt(i, col.set(pick(['#ffffff', '#ffffff', '#fff3c4', '#ffe1ea'])));
       dummy.position.y = off ? -5 : 0.058; dummy.updateMatrix(); heart.setMatrixAt(i, dummy.matrix); }
     scene.add(petal); scene.add(heart); }
@@ -648,11 +669,11 @@
     const g = new THREE.Group(), pad = floor(mesh(new THREE.CircleGeometry(0.34, 16, 0.35, 5.6), i % 2 ? '#4fb85a' : '#63c466')); pad.rotation.x = -Math.PI / 2; g.add(pad);
     if (i % 3 === 0) { g.add(at(mesh(new THREE.SphereGeometry(0.1, 10, 8), '#ff9db8'), 0.05, 0.07, 0)); for (let k = 0; k < 5; k++) { const a = k / 5 * 6.283, pt = mesh(new THREE.SphereGeometry(0.075, 8, 6), '#ffc4d4'); pt.scale.set(1, 0.5, 0.6); pt.rotation.y = -a; g.add(at(pt, 0.05 + Math.cos(a) * 0.1, 0.045, Math.sin(a) * 0.1)); } g.add(at(mesh(new THREE.SphereGeometry(0.04, 8, 6), '#ffd23a'), 0.05, 0.14, 0)); }
     let x = (rnd() - 0.5) * 64; if (Math.abs(x) < 2.2) x += x < 0 ? -3 : 3; // 다리 밑은 비움
-    const q = { g, x, z: -7.8 + (rnd() - 0.5) * 2.0, ph: rnd() * 6, s: 0.8 + rnd() * 0.6 }; g.scale.setScalar(q.s); g.rotation.y = rnd() * 6; scene.add(at(g, q.x, 0.064, q.z)); return q;
+    const q = { g, x, z: riverZ(x) + (rnd() - 0.5) * 3.2, ph: rnd() * 6, s: 0.8 + rnd() * 0.6 }; g.scale.setScalar(q.s); g.rotation.y = rnd() * 6; scene.add(at(g, q.x, 0.064, q.z)); return q;
   });
   // ── 물 반짝임
   const SPARK = 40, sparkIM = noShadow(new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3, 0.3), flat(0xffffff, { map: softTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), SPARK)); scene.add(sparkIM);
-  const sparks = Array.from({ length: SPARK }, () => ({ x: (rnd() - 0.5) * 68, z: -7.8 + (rnd() - 0.5) * 2.5, ph: rnd() * 6, sp: 1.2 + rnd() * 1.6 }));
+  const sparks = Array.from({ length: SPARK }, () => { const x = (rnd() - 0.5) * 68; return { x, z: riverZ(x) + (rnd() - 0.5) * 3.6, ph: rnd() * 6, sp: 1.2 + rnd() * 1.6 }; });
   // ── 굴뚝 연기 (집마다 세 덩이가 차례로 피어오름)
   const SMOKE = houses.length * 3, smokeIM = noShadow(new THREE.InstancedMesh(new THREE.SphereGeometry(0.17, 10, 8), flat(0xf6f3ee), SMOKE)); scene.add(smokeIM);
   // ── 분수 물방울
@@ -740,9 +761,9 @@
   function step(a, dx, dz) {
     const pz = a.z; let x = a.x + dx, z = a.z + dz;
     solids.forEach(c => { const d = Math.hypot(x - c.x, z - c.z), min = c.r + R; if (d < min && d > 1e-4) { x = c.x + (x - c.x) / d * min; z = c.z + (z - c.z) / d * min; } });
-    if (z > RIVER.z0 && z < RIVER.z1) { // 강: 다리 위에서만 건넘
-      if (Math.abs(a.x) <= RIVER.bridge && pz > RIVER.z0 - 0.05 && pz < RIVER.z1 + 0.05) x = Math.max(-RIVER.bridge + 0.25, Math.min(RIVER.bridge - 0.25, x));
-      else if (Math.abs(x) > RIVER.bridge - 0.25) z = pz >= RIVER.z1 ? RIVER.z1 : pz <= RIVER.z0 ? RIVER.z0 : z;
+    if (pz < 40 && riverDist(x, z) < 0) { // 강: 다리 위에서만 건넘
+      if (Math.abs(a.x) <= RIVER.bridge && riverDist(a.x, pz) < 0.05) x = Math.max(-RIVER.bridge + 0.25, Math.min(RIVER.bridge - 0.25, x));
+      else if (Math.abs(x) > RIVER.bridge - 0.25) z = riverZ(x) + (pz >= riverZ(a.x) ? 1 : -1) * RIVER.w / 2;
     }
     if (x < -LX && pz < 40) { // 집들 왼쪽 바깥은 학교 앞마당·놀이터 안으로만 감
       const zMin = x > -35.4 ? -1.1 : SCH.z + 3.9; // 골목에서 꺾어 올라가는 길목은 학교 옆이라 더 아래까지 걸음
@@ -978,10 +999,10 @@
   const mx = x => (x - MAP.x0) * MAP.s, mz = z => (z - MAP.z0) * MAP.s;
   { const g = mapBg.getContext('2d'), S = MAP.s, rect = (x, z, w, d, c) => { g.fillStyle = c; g.fillRect(mx(x - w / 2), mz(z - d / 2), w * S, d * S); };
     g.fillStyle = '#8fd07a'; g.fillRect(0, 0, mapBg.width, mapBg.height);
-    rect(0, -7.8, 150, 3.8, '#ead9a0'); rect(0, -7.8, 150, 3, '#56bdee');
+    [[RIVER.w + 1.1, '#ead9a0'], [RIVER.w, '#56bdee']].forEach(([w, c]) => { g.strokeStyle = c; g.lineWidth = w * S; g.beginPath(); for (let x = MAP.x0; x <= MAP.x1; x += 0.5) g.lineTo(mx(x), mz(riverZ(x))); g.stroke(); });
     rect(0, 6, 2.2, 52, '#ead2a0'); STREETS.forEach(st => rect(0, st.z, st.len, 2.2, '#ead2a0'));
-    rect(0, -7.8, 2.4, 3.8, '#b47d4c');
-    g.fillStyle = '#f5e7bd'; g.beginPath(); g.arc(mx(0), mz(0), 4.4 * S, 0, 6.29); g.fill();
+    rect(0, BR.z, BR.half * 2, BR.L, '#cfc7b6');
+    g.fillStyle = '#cfccc5'; g.beginPath(); g.arc(mx(0), mz(0), 4.4 * S, 0, 6.29); g.fill();
     g.fillStyle = '#7fd0f0'; g.beginPath(); g.arc(mx(0), mz(0), 1.3 * S, 0, 6.29); g.fill();
     HOUSES.forEach(h => { rect(h[0], h[1], 3.2, 2.6, h[3]); });
     rect(0, -23, 6.4, 3.6, '#7a4a2e'); rect(0, -23, 1.2, 1.2, '#a8744f'); rect(SHOP.x, SHOP.z, 7, 3.8, '#3f9a5a'); rect(7.05, -19.9, 11.9, 1.6, '#ead2a0'); rect(6.45, -22.7, 1.8, 5.4, '#ead2a0'); rect(PLAY.x, PLAY.z, 17, 8.4, '#e9d9a8');
@@ -1120,7 +1141,7 @@
       butterflies.forEach(b => { b.g.visible = n < 0.6; });
     }
     fireflies.forEach(f => { f.m.visible = env.night > 0.22; if (f.m.visible) { f.m.position.set(f.x + Math.sin(t * 0.5 + f.ph) * 1.4, 0.55 + Math.sin(t * 1.3 + f.ph * 2) * 0.35, f.z + Math.cos(t * 0.4 + f.ph) * 1.4); f.m.scale.setScalar(0.7 + Math.abs(Math.sin(t * 2.4 + f.ph)) * 0.9); } });
-    fishes.forEach(f => { f.x += f.v * dt; if (f.x > 35) f.x = -35; else if (f.x < -35) f.x = 35; f.g.position.set(f.x, 0.062, f.z + Math.sin(t * 0.9 + f.ph) * 0.25); f.g.scale.set(f.s * Math.sign(f.v), f.s, 1); f.tail.rotation.z = Math.PI + Math.sin(t * 9 + f.ph) * 0.5; });
+    fishes.forEach(f => { f.x += f.v * dt; if (f.x > 35) f.x = -35; else if (f.x < -35) f.x = 35; f.g.position.set(f.x, 0.062, riverZ(f.x) + f.off + Math.sin(t * 0.9 + f.ph) * 0.25); f.g.scale.set(f.s * Math.sign(f.v), f.s, 1); f.tail.rotation.z = Math.PI + Math.sin(t * 9 + f.ph) * 0.5; });
     stars.position.set(me.x, 0, me.z);
     { const fx = me.x - Math.sin(view.yaw) * 3, fz = me.z - Math.cos(view.yaw) * 3; sun.target.position.set(fx, 0, fz); sun.position.set(fx + env.sunPos.x, env.sunPos.y, fz + 3 + env.sunPos.z); } // 그림자 범위는 보는 쪽 앞을 중심으로
     curve.uCurve.value += ((curveOn ? 0.0075 : 0) - curve.uCurve.value) * Math.min(1, dt * 5);
@@ -1144,7 +1165,7 @@
       if (a.sit && a.sit.place) a.sit.place(a, t); // 놀이터 기구
       else if (a.sit) { // 앉은 자리에 붙음
         const q = a.sit; a.g.position.set(q.x, q.y, q.z); a.g.rotation.x = 0; a.face = q.face;
-      } else { a.g.rotation.x = 0; a.g.position.set(a.x, a.hop > 0 ? Math.sin(Math.PI * (1 - a.hop / 0.4)) * 0.38 : 0, a.z); }
+      } else { a.g.rotation.x = 0; a.g.position.set(a.x, (a.hop > 0 ? Math.sin(Math.PI * (1 - a.hop / 0.4)) * 0.38 : 0) + groundY(a.x, a.z), a.z); }
       let d = a.face - a.g.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); a.g.rotation.y += d * Math.min(1, dt * 12);
       if (a.wave > 0) a.wave -= dt;
       if (a.sayT > 0) a.sayT -= dt;
