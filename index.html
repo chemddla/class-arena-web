@@ -7350,14 +7350,15 @@
     // 전격술사 외형 0 (2026-11-10 새 샘플: 검은 후드 로브·금빛 번개 테두리·금빛 띠·검은 단발·노란 눈, tools/volt_build.py) · 칸 100×93, 8칸
     //   0 대기 (몸 양옆 금빛 정전기) · 1~4 걷기 · 5 기본 공격 (두 손을 앞으로, 손 둘레 금빛 전기) · 6 피격 · 7 누움 — 쓰러짐 = 피격 → 누움
     //   · 8 방전 모음 (두 주먹을 가슴 앞에, 시전 막대 동안) · 9 방전 터뜨림 (두 팔을 활짝 펴고 떠오름, 발동)
+    //   · 10 전자포 모음 (옆구리에 금빛 구체, 시전 막대 동안) · 11 전자포 발사 (손바닥을 앞으로, 포를 쏘는 동안 내내)
     //   나머지 스킬은 샘플이 오기 전까지: 시전 막대 동안 대기 칸(정전기가 이는 자세), 발동하면 기본 공격 칸
     MERC_SPRITE_DEFS.volt_0 = {
       src: 'assets/sprites/merc/volt_0.webp',
-      cellW: 100, cellH: 101, anchorX: 50, anchorY: 99, standH: 88, topH: 90, portraitCX: 50, count: 10,
-      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5], skill: [5], hurt: [6], death: [6, 7], tb: [5], fist: [5], rail: [5], dis: [9], ovl: [5] },
+      cellW: 100, cellH: 101, anchorX: 50, anchorY: 99, standH: 88, topH: 90, portraitCX: 50, count: 12,
+      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5], skill: [5], hurt: [6], death: [6, 7], tb: [5], fist: [5], rail: [11], dis: [9], ovl: [5] },
       skillAnims: VOLT_SR1_SHEET.skillAnims,
-      castFrames: { volt_thunderbolt: 0, chain_lightning: 0, electric_field: 0, rail_cannon: 0, discharge: 8, overload: 0 },
-      beamHand: [37, -45]
+      castFrames: { volt_thunderbolt: 0, chain_lightning: 0, electric_field: 0, rail_cannon: 10, discharge: 8, overload: 0 },
+      beamHand: [37, -45], railHand: [34, -64] // railHand = 전자포 발사 칸(11)의 내민 손바닥
     };
     // 격투가 외형 0 (갈색 머리·흰 도복·검은 띠, tools/brawler_build.py): 칸 = 0 대기 · 1~4 걷기 · 5 피격 · 6~7 쓰러짐 (뒤로 넘어감 → 누움)
     //   · 8~23 연격 샘플 16장 · 24 금강 (이를 악물고 버팀) · 25 결투 (기합) · 26 웅크림 · 27 날아 차기 (섬각·반격 타격·연격 10타)
@@ -27735,9 +27736,9 @@
       if ((st.superarmor || 0) > 0 || (st.flurry || 0) > 0 || (st.rebirth || 0) > 0 || statusBlockedFor(owner, e, 'shock')) return;
       inflictStatus(owner, e, 'shock', dur);
     }
-    // 손 자리 (그림의 beamHand · 캐릭터 그림 배율 그대로). 그림이 없으면 몸 앞
-    function voltHand(u) {
-      const sp = getUnitSprite(u), hand = sp && sp.beamHand, dir = u.facingDir === -1 ? -1 : 1;
+    // 손 자리 (그림의 beamHand · 캐릭터 그림 배율 그대로). 그림이 없으면 몸 앞. key = 그 자세 전용 손 자리 (railHand = 전자포 발사 칸), 없으면 beamHand
+    function voltHand(u, key) {
+      const sp = getUnitSprite(u), hand = sp && ((key && sp[key]) || sp.beamHand), dir = u.facingDir === -1 ? -1 : 1;
       if (!hand) return { x: u.x + dir * 16, y: u.y - 26, k: 1 };
       const jk = spriteDrawH(u, sp) / sp.standH;
       return { x: u.x + dir * hand[0] * jk, y: u.y + 12 + hand[1] * jk, k: jk };
@@ -28045,7 +28046,7 @@
                 voltShock(u, e, VOLT_RAIL_SHOCK);
               }
             }));
-            const h = voltHand(u);
+            const h = voltHand(u, 'railHand');
             sim.effects.push({ type: 'volt_rail', x: h.x, y: h.y, ang: b.ang, len: b.len, w: b.hw, life: VOLT_RAIL_EVERY + 12, maxLife: VOLT_RAIL_EVERY + 12, emp: b.emp ? 1 : 0 }); // 다음 이펙트와 넉넉히 겹침 (그리기는 새 것만)
           }
         }
