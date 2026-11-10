@@ -3647,7 +3647,17 @@
                   <span class="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-extrabold">2~4인 팀전</span>
                 </div>
                 <div class="font-title text-base text-white mt-1">실시간 윷놀이</div>
-                <p class="text-[11px] text-slate-400">진짜 윷판에서 말 4개를 업고 잡으며 먼저 모두 들어오기</p>
+                <p class="text-[11px] text-slate-400">초능력 없는 기본 윷놀이! 진짜 윷판에서 말 4개를 업고 잡으며 먼저 모두 들어오기</p>
+              </button>
+
+              <button type="button" onclick="selectLobbyMinigameType('yutsuper')" id="mgCreateTypeBtn-yutsuper"
+                class="p-3.5 rounded-2xl border-2 text-left transition flex flex-col gap-1 bg-slate-950 border-slate-800 hover:border-slate-700">
+                <div class="flex items-center justify-between">
+                  <span class="text-2xl">🔮</span>
+                  <span class="px-2 py-0.5 rounded bg-violet-700 text-white text-[10px] font-extrabold">2~4인 팀전</span>
+                </div>
+                <div class="font-title text-base text-white mt-1">초능력 윷놀이</div>
+                <p class="text-[11px] text-slate-400">저마다 윷 힘·말 힘 1개씩! 던지기 전에 초능력을 써서 판을 뒤집기</p>
               </button>
 
               <button type="button" onclick="selectLobbyMinigameType('omok')" id="mgCreateTypeBtn-omok"
@@ -36677,6 +36687,12 @@
       if (st.initialized && !st.gameOver && (st.throwSeq || 0) > 0 && !confirm('지금 판을 끝내고 새 모드로 새 판을 시작할까요?')) return;
       yutModePref = mode;
       resetYutnoriGame();
+      // 방에서 바꿨으면 방 목록·대기실에 보이는 이름(🥢 실시간 윷놀이 / 🔮 초능력 윷놀이)도 바꿈
+      const room = typeof currentJoinedMinigameRoomId !== 'undefined' && currentJoinedMinigameRoomId && liveMinigameRoomsCache[currentJoinedMinigameRoomId];
+      if (room && room.gameType === 'yutnori' && (room.yutMode || 'basic') !== mode) {
+        const label = yutRoomLabel(mode);
+        saveMinigameRoomData(room.roomId, { ...room, yutMode: mode, gameName: label.name, gameIcon: label.icon });
+      }
     };
 
     // 고른 수 두기
@@ -51402,11 +51418,21 @@
     // ==================== [C. 미니게임 대기 로비실 → 방 개설 → 친구 입장 → 준비완료 → 실시간 미니게임 시작] ====================
     // 공정한 결투는 미니게임 방이 아니라 결투장(pvp_rooms)에 방이 생겨서 메타 표에는 없고, 여기서만 이름표를 따로 씀
     const FAIR_DUEL_MG_META = { id: 'fairduel', name: '공정한 결투', icon: '⚖️' };
+    // 초능력 윷놀이는 게임 종류는 윷놀이(yutnori) 그대로, 방에 yutMode: 'super'와 따로 이름·아이콘을 붙여 구분
+    function yutRoomLabel(mode) {
+      return mode === 'super' ? { name: '초능력 윷놀이', icon: '🔮' } : { name: MINIGAME_TYPE_META.yutnori.name, icon: MINIGAME_TYPE_META.yutnori.icon };
+    }
+    function lobbyMinigameMeta(typeKey) {
+      if (typeKey === 'fairduel') return FAIR_DUEL_MG_META;
+      if (typeKey === 'yutsuper') return { ...MINIGAME_TYPE_META.yutnori, ...yutRoomLabel('super'), yutMode: 'super' };
+      if (typeKey === 'yutnori') return { ...MINIGAME_TYPE_META.yutnori, yutMode: 'basic' };
+      return MINIGAME_TYPE_META[typeKey];
+    }
     window.selectLobbyMinigameType = function (typeKey) {
-      const meta = typeKey === 'fairduel' ? FAIR_DUEL_MG_META : MINIGAME_TYPE_META[typeKey];
+      const meta = lobbyMinigameMeta(typeKey);
       if (!meta) return;
       selectedLobbyMinigameType = typeKey;
-      ['yutnori', 'omok', 'cardflip', 'wordchain', 'chosung', 'mathduel', 'baduk', 'chess', 'petvolley', 'petruncoop', 'fairduel'].forEach(k => {
+      ['yutnori', 'yutsuper', 'omok', 'cardflip', 'wordchain', 'chosung', 'mathduel', 'baduk', 'chess', 'petvolley', 'petruncoop', 'fairduel'].forEach(k => {
         const btn = document.getElementById(`mgCreateTypeBtn-${k}`);
         if (btn) {
           btn.className = (k === typeKey)
@@ -51461,7 +51487,7 @@
         goToFairDuel();
         return;
       }
-      const meta = MINIGAME_TYPE_META[selectedLobbyMinigameType] || MINIGAME_TYPE_META.yutnori;
+      const meta = lobbyMinigameMeta(selectedLobbyMinigameType) || MINIGAME_TYPE_META.yutnori;
       const inp = document.getElementById('mgNewRoomTitleInput');
       const customTitle = cleanUserText(inp?.value, 24) || `${myStu.name}의 ${meta.name} 방`;
       if (inp) inp.value = '';
@@ -51478,6 +51504,7 @@
         gameName: meta.name,
         gameIcon: meta.icon,
         maxPlayers: meta.maxPlayers,
+        ...(meta.id === 'yutnori' ? { yutMode: meta.yutMode === 'super' ? 'super' : 'basic' } : {}),
         title: customTitle,
         hostId: myStu.id,
         hostNum: myStu.num,
@@ -51587,7 +51614,7 @@
 
       // 선택된 미니게임 초기 보드 상태를 리셋하여 방 참가자 전원에게 동기화
       switchMinigameSubTab(room.gameType);
-      if (room.gameType === 'yutnori') resetYutnoriGame();
+      if (room.gameType === 'yutnori') { yutModePref = room.yutMode === 'super' ? 'super' : 'basic'; resetYutnoriGame(); }
       else if (room.gameType === 'omok') resetOmokGame();
       else if (room.gameType === 'cardflip') resetCardFlipGame();
       else if (room.gameType === 'wordchain') resetWordChainGame();
@@ -51710,11 +51737,11 @@
       if (boardSec) boardSec.classList.remove('hidden');
       if (topLeaveBtn) topLeaveBtn.classList.remove('hidden');
 
-      const meta = MINIGAME_TYPE_META[selectedLobbyMinigameType] || MINIGAME_TYPE_META.yutnori;
+      const meta = lobbyMinigameMeta(selectedLobbyMinigameType) || MINIGAME_TYPE_META.yutnori;
       const statusTxt = document.getElementById('mgRealtimeRoomStatusText');
       if (statusTxt) statusTxt.textContent = `🤖 [AI 연습 모드] ${meta.icon} ${meta.name} 혼자 연습하기 진행 중`;
       switchMinigameSubTab(meta.id);
-      if (meta.id === 'yutnori') resetYutnoriGame();
+      if (meta.id === 'yutnori') { yutModePref = meta.yutMode === 'super' ? 'super' : 'basic'; resetYutnoriGame(); }
       else if (meta.id === 'omok') resetOmokGame();
       else if (meta.id === 'cardflip') resetCardFlipGame();
       else if (meta.id === 'wordchain') resetWordChainGame();
