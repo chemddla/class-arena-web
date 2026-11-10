@@ -18,7 +18,7 @@ from scipy import ndimage as ndi
 
 sys.path.insert(0, os.path.dirname(__file__))
 from berserker_build import shrink
-from pyro_build import prep, defringe
+from pyro_build import defringe, ENCLOSED_MIN
 
 S = 'assets/sprites/fx/samples/'
 OUT = 'assets/sprites/merc/volt_sr1.webp'
@@ -53,6 +53,28 @@ GROUP = {'volt_walk_src.webp': 'walk', 'volt_atk_hurt_src.png': 'mid', 'volt_dow
 #   키 배율 = 묶음에서 똑바로 선 그림(BODY_REF)의 키를 TARGET_H로
 BODY_REF = {'walk': ('walk0', 'walk1', 'walk2', 'walk3'), 'mid': ('bolt',), 'small': ('field',), 'volt_fist_src.png': ('fist',), 'volt_idle_src.png': ('idle',), 'finale': ('fin2',)}
 MIN_FIG = 1500   # 이보다 작은 덩어리 = 한글 이름표·티끌
+
+
+GAP_MIN_H = 12   # 갇힌 흰 덩어리 중 이 높이 이상(팔다리 사이로 비친 세로 틈)만 배경. 낮은 덩어리(가슴 흰 셔츠·신발 밑창·안경 반사)는 그림으로 남김
+
+
+def prep(path):
+    # pyro_build.prep와 같되, 가장자리와 이어지지 않은 흰 덩어리는 세로로 긴 것만 배경
+    #   (예전엔 15px 이상이면 다 지워서 대기 칸 가슴 흰 셔츠에 구멍이 뚫렸음, 2026-11-10)
+    im = np.array(Image.open(path).convert('RGB')).astype(float)
+    white = (im.min(axis=2) > 222) & (im.max(axis=2) - im.min(axis=2) < 26)
+    lab, n = ndi.label(white)
+    edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
+    bg = np.isin(lab, edge[edge > 0])
+    sz = ndi.sum(white, lab, range(1, n + 1))
+    for i, sl in enumerate(ndi.find_objects(lab)):
+        if sl is not None and sz[i] >= ENCLOSED_MIN and sl[0].stop - sl[0].start >= GAP_MIN_H: bg |= lab == i + 1
+    rim = ~bg & ndi.binary_dilation(bg, iterations=2)
+    a = np.where(bg, 0.0, 1.0)
+    a = np.where(rim, np.clip((255 - im.min(axis=2)) / 225, 0, 1), a)
+    al = np.maximum(a, 1e-3)[..., None]
+    im = np.where(rim[..., None], (im - 255 * (1 - al)) / al, im).clip(0, 255)
+    return im, a
 
 
 def figures(path):
