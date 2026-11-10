@@ -7226,15 +7226,18 @@
     // 회전·난무는 스킬이 이어지는 동안(skillAnim) 같은 난무 동작을 반복, 투창·창돌격은 시전 막대가 차는 동안 castFrames 자세
     MERC_SPRITE_DEFS.lancer_0 = {
       src: 'assets/sprites/merc/lancer_0.webp',
-      cellW: 193, cellH: 129, anchorX: 82, anchorY: 125, standH: 96, topH: 97, portraitCX: 80, count: 26,
+      cellW: 206, cellH: 133, anchorX: 82, anchorY: 125, standH: 96, topH: 97, portraitCX: 80, count: 26,
       anims: {
         idle: [0, 1], walk: [2, 3, 4, 5], attack: [6, 7, 8], thrust: [9, 10, 11], skill: [12, 13, 14], hurt: [23], death: [23, 24, 25],
         pierce: [12, 13, 14], javelin: [15, 16, 16], rampage: [17, 18, 19], charge: [20, 21, 22]
       },
+      // 2026-11-10 사용자 요청: 공격·스킬 뒤 자세가 풀릴 때까지 시간 절반 (기본 공격 최대 42 → 21틱, 피어싱 26 → 13, 투창 28 → 14)
+      //   칸은 모두 보이게 피어싱만 칸 넘김을 6 → 4틱으로. 회전·난무·창돌격은 스킬이 실제로 이어지는 시간이라 그대로
+      attackDur: 21,
       skillAnims: {
-        piercing:      { anim: 'pierce', tpf: 6, dur: 26 },
+        piercing:      { anim: 'pierce', tpf: 4, dur: 13 },
         spear_spin:    { anim: 'rampage', tpf: 5, loop: true }, // 회전도 난무 동작
-        javelin:       { anim: 'javelin', tpf: 7, dur: 28 },
+        javelin:       { anim: 'javelin', tpf: 7, dur: 14 },
         spear_rampage: { anim: 'rampage', tpf: 6, loop: true },
         spear_charge:  { anim: 'charge', tpf: 6, loop: true, dur: 48 }
       },
@@ -10860,11 +10863,13 @@
     // 창병 히든 스킬 [무쌍난무] 그림 (fx/samples/README.md)
     // - cast: 기본 외형(lancer_0) 자세 10칸 0 서 있음 · 1 창 치켜듦 · 2 회전 고리 · 3 찌르기+잔상 · 4 휘두르기 · 5 다중 찌르기 · 6 창 당김 · 7 돌진 · 8·9 돌진+초승달
     //   (시전: 0·6 번갈아 → 1 → 2 / 난무 중: 돌진 7·8, 공격 4·5·3·9)
+    //   2026-11-10: 7·8 돌진은 새 돌진 그림, 10 낮게 휩쓸기(고리 이펙트) 추가 — 난무 중 공격 자세 돌림에 들어감 (attackPoses, 기본 외형만)
     //   2026-11-09 기본 외형 교체로 새 그림 (tools/lancer0_build.py): 0~5는 무쌍난무 전용 샘플 (0 겨눔 · 1 창을 치켜들며 큰 초승달 · 2 회전 고리
     //   · 3 잔상 남기며 다중 찌르기(금빛 불꽃) · 4 휘두르기 초승달 · 5 사선 찌르기), 6 창 당김 · 7·8 돌진 · 9 양쪽 초승달 회전. 칸 배율은 lancer_0과 같음 (standH 96)
     // - fx: 엑스 베기 둘 · 초승달 바람 둘 · 금빛 고리 · 회오리 · 바닥 소용돌이 · 바람 줄기 둘 · 흙바람 둘 · 폭발 (기준점 = 한가운데)
     const LANCER_MUSOU_FX = {
-      cellW: 254, cellH: 157, anchorX: 82, anchorY: 147, standH: 96,
+      cellW: 280, cellH: 157, anchorX: 108, anchorY: 147, standH: 96,
+      attackPoses: [4, 5, 3, 9, 10], // 난무 중 공격 자세 돌림 (다른 외형의 자세 그림은 10칸이라 [4, 5, 3, 9])
       frames: { // [x, y, w, h, 기준점x, 기준점y]
         xBig: [0, 0, 113, 92, 56, 46], xSmall: [115, 0, 100, 91, 50, 45], swooshA: [217, 0, 188, 91, 94, 45], swooshB: [407, 0, 161, 85, 80, 42],
         ring: [570, 0, 164, 142, 82, 71], tornado: [736, 0, 164, 144, 82, 72], vortex: [902, 0, 184, 116, 92, 58],
@@ -30708,7 +30713,7 @@
       const musouArt = u.alive && u.job === 'lancer' && !u.monsterType
         ? ((u.skinVariant || 0) === 0 ? mfx : LANCER_MUSOU_SKINS[u.skinVariant]) : null; // 자세 그림이 없는 외형은 평소 자세
       const musouPose = musouOn && musouArt && musouArt.cast.ready
-        ? (u.attackAnim > 0 ? [4, 5, 3, 9][Math.floor(tick / 3) % 4] : [7, 8][Math.floor(tick / 4) % 2]) : -1;
+        ? (u.attackAnim > 0 ? (ap => ap[Math.floor(tick / 3) % ap.length])(musouArt.attackPoses || [4, 5, 3, 9]) : [7, 8][Math.floor(tick / 4) % 2]) : -1;
       if (musouOn) {
         // 잔상 색: 시크릿 레어(붉은 용인)는 붉은 계열, 그 밖은 금빛
         const ghostFilter = (u.skinVariant || 0) === SECRET_SKIN_BASE + 1

@@ -20,7 +20,15 @@ from lancer_fx_grey import grey
 
 D = 'assets/sprites/merc/samples/lancer_edit_'
 SRC = {1: '1_idle_src.png', 2: '2_walk_src.webp', 3: '3_sweep_src.png', 4: '4_thrust_hurt_fall_src.png',
-       5: '5_skill_a_src.webp', 6: '6_skill_b_src.png', 7: '7_musou_src.webp'}
+       5: '5_skill_a_src.webp', 6: '6_skill_b_src.png', 7: '7_musou_src.webp', 8: '8_charge_swing_white_src.webp'}
+# 8 = 2026-11-10 새 샘플 4자세 (흰 배경 + 같은 그림의 회색 배경 PAIR): 왼쪽 위 창돌격 겨눔 · 오른쪽 위 창돌격 돌진(뒤 속도선)
+#   · 왼쪽 아래 휘두르기 베기(몸 뒤 속도선은 지움, STRIP_LINES) · 오른쪽 아래 낮게 휩쓸기(고리 이펙트) → 무쌍난무 10번 자세
+#   배경이 다른 두 장을 비교해서(matte) 배경을 걷어냄: 이펙트의 반투명·흰 부분이 그대로 살아서 구멍·흰 찌꺼기가 생기지 않음
+PAIR = {8: '8_charge_swing_grey_src.webp'}
+# 스킬 샘플 5·6의 검은 배경 짝 (같은 그림을 검은 배경으로, 2026-11-10 사용자 제공) → black_pair
+BLACK = {5: '5_skill_a_black_src.webp', 6: '6_skill_b_black_src.webp'}
+# 머리 맞추기가 약하게 맞은 장(8: 일치 0.66)의 배율 보정 — 다른 칸과 얼굴 넓이(살색 픽셀 수 ≈ 130)가 같아지게
+SCALE_FIX = {8: 0.9}
 # 7 = 무쌍난무 자세 6칸 (회색 배경 198, 윗줄: 겨눔 · 창을 치켜들며 큰 초승달 · 회전 고리 / 아랫줄: 잔상 남기며 다중 찌르기(금빛 불꽃) · 휘두르기 초승달 · 사선 찌르기)
 #   오른쪽 아래 ✦ 워터마크는 ERASE 상자를 배경색으로 칠해 지움
 OUT = 'assets/sprites/merc/lancer_0.webp'
@@ -30,7 +38,8 @@ IDLE_BODY = 165          # 대기 샘플의 몸 키 (투구 꼭대기 y 42 ~ 발
 IDLE_HEAD = (182, 40, 252, 112)   # 대기 샘플 머리 (투구+얼굴)
 # 장마다 머리 크기를 잴 곧게 선 칸 (샘플 상자)
 HEAD_REF = {1: (150, 0, 316, 214), 2: (30, 160, 275, 625), 3: (15, 8, 237, 174), 4: (195, 0, 395, 175),
-            5: (727, 39, 1018, 265), 6: (401, 241, 586, 431), 7: (95, 100, 265, 240)}
+            5: (727, 39, 1018, 265), 6: (401, 241, 586, 431), 7: (95, 100, 265, 240),
+            8: (60, 80, 440, 305)}
 ERASE = {7: [(920, 458, 952, 494)]}
 B = {  # (샘플 장, 상자, 이펙트 포함 여부: True면 큰 덩어리를 모두 남김)
     'idle': (1, (150, 0, 316, 214), False),
@@ -46,15 +55,21 @@ B = {  # (샘플 장, 상자, 이펙트 포함 여부: True면 큰 덩어리를 
     'swing': (3, (239, 8, 458, 174), True),
     'mu0': (7, (95, 100, 265, 240), True), 'mu1': (7, (430, 25, 640, 240), True), 'mu2': (7, (745, 85, 985, 240), True),
     'mu3': (7, (10, 385, 355, 532), True), 'mu4': (7, (435, 385, 640, 540), True), 'mu5': (7, (755, 375, 968, 540), True),
+    'chReady8': (8, (60, 80, 440, 305), False), 'chDash8': (8, (620, 75, 1010, 300), True),
+    'swing8': (8, (50, 470, 410, 740), True), 'sweep8': (8, (515, 520, 1000, 735), True),
 }
+# 몸 뒤 속도선 지우기 (사용자 요청: 휘두르기 베기는 피사체 뒤 움직임 이펙트 없이): 샘플 x가 이보다 왼쪽인 가로로 긴 가는 줄기 + 따로 지울 상자
+STRIP_LINES = {'swing8': (260, [(150, 525, 178, 545)])}
 FOOT_X = {'mu3': 112}   # 잔상이 겹친 칸: 앞 사람(왼쪽) 발 가운데 (샘플 x)
-SHEET = ['idle', 'idle', 'walk0', 'walk1', 'walk2', 'walk3', 'swReady', 'swUp', 'swLow', 'thReady', 'thStab', 'thEnd',
-         'pcReady', 'pcCres', 'pcWind', 'jvBack', 'jvThrow', 'spinRing', 'spinUp', 'spinCres', 'chReady', 'chDash', 'chDash',
+# 2026-11-10: 7 휘두르기 베기 = swing8, 20 창돌격 겨눔 = chReady8, 21·22 창돌격 돌진 = chDash8 (새 샘플 8번 장)
+SHEET = ['idle', 'idle', 'walk0', 'walk1', 'walk2', 'walk3', 'swReady', 'swing8', 'swLow', 'thReady', 'thStab', 'thEnd',
+         'pcReady', 'pcCres', 'pcWind', 'jvBack', 'jvThrow', 'spinRing', 'spinUp', 'spinCres', 'chReady8', 'chDash8', 'chDash8',
          'hurt', 'down0', 'down1']
 # 무쌍난무 자세 (예전 cast와 같은 뜻의 10칸): 0 서 있음 · 1 창 치켜듦(올려 베기) · 2 회전 고리 · 3 찌르기+바람 · 4 휘두르기
 #   · 5 다중 찌르기(초승달) · 6 창 당김 · 7·8 돌진 · 9 양쪽 초승달 회전
-#   0~5는 무쌍난무 전용 샘플(7번 장), 6~9는 스킬 샘플을 같이 씀
-MUSOU = ['mu0', 'mu1', 'mu2', 'mu3', 'mu4', 'mu5', 'jvBack', 'chDash', 'chDash', 'spinCres']
+#   · 10 낮게 휩쓸기(고리 이펙트, 2026-11-10 추가)
+#   0~5는 무쌍난무 전용 샘플(7번 장), 6~10은 스킬 샘플을 같이 씀 (7·8 돌진·10 휩쓸기는 새 샘플 8번 장)
+MUSOU = ['mu0', 'mu1', 'mu2', 'mu3', 'mu4', 'mu5', 'jvBack', 'chDash8', 'chDash8', 'spinCres', 'sweep8']
 
 
 def rgb_of(n):
@@ -86,7 +101,48 @@ def head_scale(n):
 GAP_ITERS = {'swUp': 10, 'pcCres': 10, 'spinRing': 3, 'spinUp': 3, 'spinCres': 3}
 
 
+_GREY_BG = {}
+
+
+def matte(n, box, name):
+    # 흰 배경(W=255)과 회색 배경(G) 두 장: W - C_g = (1 - a)(255 - G) → a, 색 = (C_g - (1 - a)G) / a
+    w = rgb_of(n).astype(float)
+    g = np.array(Image.open(D + PAIR[n]).convert('RGB')).astype(float)
+    if n not in _GREY_BG:   # 회색 배경 밝기: 흰 장에서 순수 배경인 자리의 회색 장 값을 둘레로 번지게
+        bgm = w.min(-1) > 250
+        _, (iy, ix) = ndi.distance_transform_edt(~bgm, return_indices=True)
+        _GREY_BG[n] = ndi.uniform_filter(g.mean(-1)[iy, ix], 15)
+    x0, y0, x1, y1 = box
+    w, g, G = w[y0:y1, x0:x1], g[y0:y1, x0:x1], _GREY_BG[n][y0:y1, x0:x1]
+    a = np.clip(1 - (w - g).mean(-1) / np.maximum(255 - G, 1), 0, 1)
+    a[a < 0.06] = 0
+    im = np.clip((g - (1 - a)[..., None] * G[..., None]) / np.maximum(a, 1e-3)[..., None], 0, 255)
+    if name in STRIP_LINES:
+        xmax, boxes = STRIP_LINES[name]
+        xs = np.arange(im.shape[1])[None, :] + x0
+        ys = np.arange(im.shape[0])[:, None] + y0
+        thick = ndi.binary_opening(a > 0.78, structure=np.ones((7, 1)))      # 몸·창: 세로로 7px 넘게 두꺼운 곳 (속도선은 4~5px)
+        thick = ndi.binary_opening(thick, structure=np.ones((1, 3)))
+        brown = im[..., 0] - im[..., 2] > 8                                   # 창대
+        cand = (a > 0) & ~ndi.binary_dilation(thick) & ~brown & (xs < xmax) & (im.mean(-1) < 150)   # 밝은 초승달은 남김
+        lab, _ = ndi.label(cand)
+        kill = np.zeros_like(cand)
+        for i, sl in enumerate(ndi.find_objects(lab), 1):
+            h, wd = sl[0].stop - sl[0].start, sl[1].stop - sl[1].start
+            if wd >= 3 and wd >= h * 1.2: kill |= lab == i                    # 가로로 긴 조각만
+        for bx0, by0, bx1, by1 in boxes:
+            kill |= cand & (xs >= bx0) & (xs < bx1) & (ys >= by0) & (ys < by1)
+        a = np.where(kill | ((a <= 0.16) & (xs < xmax)), 0, a)
+    im = np.pad(im, ((2, 2), (2, 2), (0, 0)), mode='edge')
+    a = np.pad(a, 2)
+    return im, a
+
+
 def load(n, box, fx, name=''):
+    if n in PAIR:
+        im, a = matte(n, box, name)
+        x0 = box[0]
+        return finish(im, a, fx, x0, paired=True)
     im = rgb_of(n).astype(float)
     full = im
     x0, y0, x1, y1 = box; im = im[y0:y1, x0:x1]
@@ -139,13 +195,51 @@ def load(n, box, fx, name=''):
     a = np.where(rim, rim_a(), a)
     al = np.maximum(a, 1e-3)[..., None]
     im = np.where(rim[..., None], (im - bgc * (1 - al)) / al, im).clip(0, 255)
+    if n in BLACK: im, a = black_pair(n, box, im, a)
+    return finish(im, a, fx, box[0])
+
+
+def black_pair(n, box, im, a):
+    # 검은 배경 짝 (2026-11-10): 흰 장에서 흰색(배경과 구별 안 되는) 자리만 검은 장으로 다시 판단
+    #   흰 장 W=255 · 검은 장 K → a = K/255 (흰 바탕이면 1 - (W - K)/255), 색 = K / a
+    #   → 이펙트 속 흰 부분은 불투명하게 살아나고(구멍 메움), 줄기 사이 흰 배경은 투명(흰 찌꺼기 지움)
+    #   몸·창(흰색이 아닌 곳)은 흰 장 결과 그대로 — 6번 검은 장은 몸 색이 조금 어둡게 다시 그려져서 몸에는 안 씀
+    #   6번 장은 자세마다 1~4px 어긋나 있어서 조각마다 몸(어두운 곳)이 가장 잘 겹치는 이동을 찾아 맞춤
+    w = rgb_of(n)
+    k = np.array(Image.open(D + BLACK[n]).convert('RGB')).astype(float)
+    x0, y0, x1, y1 = box
+    W = w[y0:y1, x0:x1]
+    dark = W.max(-1) < 100
+    best = (1e9, 0, 0)
+    for dy in range(-5, 6):
+        for dx in range(-5, 6):
+            ys, xs = slice(max(0, y0 + dy), y1 + dy), slice(max(0, x0 + dx), x1 + dx)
+            K = k[ys, xs]
+            if K.shape != W.shape: continue
+            e = np.abs(K - W).mean(-1)[dark].mean()
+            if e < best[0]: best = (e, dx, dy)
+    _, dx, dy = best
+    K = np.pad(k[y0 + dy:y1 + dy, x0 + dx:x1 + dx], ((2, 2), (2, 2), (0, 0)))
+    Wp = np.pad(W, ((2, 2), (2, 2), (0, 0)), constant_values=255)
+    white = (Wp.min(-1) > 215) & (Wp.max(-1) - Wp.min(-1) < 20)
+    ap = np.clip(1 - (Wp - K).mean(-1) / 255, 0, 1)
+    ap[ap < 0.08] = 0
+    col = np.clip(K / np.maximum(ap, 1e-3)[..., None], 0, 255)
+    a = np.where(white, ap, a)
+    im = np.where(white[..., None], col, im)
+    print(f'  검은 짝 {n}번 장 {box}: 이동 ({dx}, {dy}) 몸 차이 {best[0]:.1f}')
+    return im, a
+
+
+def finish(im, a, fx, x0, paired=False):
+    # paired: 두 장 비교 샘플 — 상자 안에 다른 칸 조각·글씨가 없어서 30px 넘는 조각(돌진 뒤 속도선)은 모두 남김
     m = a > 0.3
     lab, k = ndi.label(ndi.binary_dilation(m, iterations=3))
     sz = ndi.sum(m, lab, range(1, k + 1))
-    keep = np.isin(lab, 1 + np.where(sz >= 250)[0]) if fx else lab == int(np.argmax(sz)) + 1
+    keep = np.isin(lab, 1 + np.where(sz >= (30 if paired else 250))[0]) if fx else lab == int(np.argmax(sz)) + 1
     if fx:   # 이펙트 칸도 몸 덩어리에서 먼 글씨·이웃 칸 조각은 지움: 몸 덩어리 + 몸에서 가로 세로 70% 안
         body = lab == int(np.argmax(sz)) + 1
-        keep &= ~((lab > 0) & ~body & np.isin(lab, 1 + np.where(sz < 900)[0]))
+        if not paired: keep &= ~((lab > 0) & ~body & np.isin(lab, 1 + np.where(sz < 900)[0]))
     a = np.where(keep, a, 0)
     ys, xs = np.where(a > 0)
     rgba = np.dstack([im, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
@@ -194,13 +288,15 @@ def main():
     for name, (n, box, fx) in B.items():
         rgba, fxx, fyy, ox = load(n, box, fx, name)
         if name in FOOT_X: fxx = FOOT_X[name] - ox
-        kk = k1 * hs[1] / hs[n]
+        kk = k1 * hs[1] / hs[n] * SCALE_FIX.get(n, 1)
         if name == 'down1': fxx = rgba.shape[1] * 0.42   # 누운 칸: 몸 가운데쯤
         p = grey(soften_edge(shrink(rgba, kk)))   # 청록 이펙트(초승달·바람·회전 고리)는 회색으로 (tools/lancer_fx_grey.py)
         built[name] = (name, p, fxx * kk, fyy * kk)
         print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} ×{kk:.3f} → {p.shape[1]}x{p.shape[0]}, 발 ({fxx * kk:.1f}, {fyy * kk:.1f})')
-    pack([built[n] for n in SHEET], OUT, 'lancer_0')
-    pack([built[n] for n in MUSOU], MUSOU_OUT, 'lancer_musou_cast')
+    _, _, L0, U0 = pack([built[n] for n in SHEET], OUT, 'lancer_0')
+    _, _, Lm, Um = pack([built[n] for n in MUSOU], MUSOU_OUT, 'lancer_musou_cast')
+    from lancer0_fx_holes import main as fill_holes
+    fill_holes(anchors={'lancer_0': (L0, U0), 'musou': (Lm, Um)})   # 사용자가 표시한 자리: 이펙트 속 빈 곳은 채우고 흰 배경 찌꺼기는 지움 (tools/lancer0_fx_marks.json, 2026-11-10)
 
 
 if __name__ == '__main__':
