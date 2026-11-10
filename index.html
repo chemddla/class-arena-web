@@ -23063,6 +23063,7 @@
       unit.voltCh = null; // 전격술사: 시전을 시작하면 채널 끊김
       unit.casting = { key, left: total, total, icon: sk.icon, aimX: aim?.x ?? null, aimY: aim?.y ?? null, aimTarget: aim?.target || null };
       if (key === 'last_shot') hiddenLastShotLock(unit);
+      if (key === 'overload' && unit.job === 'volt') voltFx('overload-cast', unit.x, unit.y + 12); // 전격술사 히든: 시전 0.5초 동안 하늘 낙뢰로 축전 → 발동 순간 금빛 기둥 (발동은 시전이 끝나는 0.5초)
       if (key === 'spirit_king') pushSpiritKingCircle(unit, total + 120, total); // 3초 동안 정령왕이 나올 자리에 무지개 소환진 (느린 기기 대비 2초 여유, 나오면 줄어듦)
       unit.isMoving = false;
       // (스킬 시전 때 발밑 보라 원은 없앰 · 스킬마다 자기 시전 그림이 있음)
@@ -27865,7 +27866,7 @@
         unit.voltOvOn = true;
         unit.dashCooldown = 0;
         if (unit.skillCooldowns) Object.keys(unit.skillCooldowns).forEach(k => { if (k !== 'overload') unit.skillCooldowns[k] = Math.round(unit.skillCooldowns[k] / 2); });
-        voltFx('overload-burst', unit.x, unit.y + 12); // 땅에서 몸으로 빨려 든 전류가 하늘로 기둥처럼 터짐
+        // 발동 그림은 시전 시작 때 튼 overload-cast가 이 순간(0.5초)에 금빛 기둥으로 터뜨림 (beginSkillCast)
         playCombatSfx('magic');
         addBattleLog(`🔋 [전격술사] ${unit.name}의 오버로드! 20초간 모든 스킬이 강화돼요`);
         return true;
@@ -28126,6 +28127,7 @@
       'hit': [56, 48, 4, 16, 20, 1, 32, 24],
       'hit-gold': [56, 48, 4, 16, 20, 1, 32, 24],
       'overload': [118, 137, 5, 20, 20, 1, 59, 124],
+      'overload-cast': [516, 558, 6, 31, 20, 0, 258, 498],
       'overload-burst': [259, 259, 6, 29, 20, 0, 129, 210],
       'rail-arc': [137, 198, 5, 12, 20, 1, 15, 114],
       'rail-arc-wide': [229, 392, 5, 12, 20, 1, 29, 227],
@@ -28192,6 +28194,17 @@
       const sc = Math.min(2, u.sizeScale || 1), f = sim.tickCount / 3 + (String(u.id).length * 7 + (u.x | 0)) % 12;
       if ((u.statuses?.shock || 0) > 0 && voltInBattle()) drawVoltFx(ctx, 'shock', f, 0, 12, sc);
       if (u.job !== 'volt' || u.monsterType) return;
+      if (!u.voltFxPre) { // 처음 그릴 때 이 전격술사가 쓸 스킬 그림을 미리 받아 둠 (첫 시전부터 그림이 나오게)
+        u.voltFxPre = true;
+        const has = k => (u.unlockedSkills || u.skillSlots || []).includes(k);
+        ['hit', 'hand-spark', 'shock', 'charged', 'empower'].forEach(voltFxImg);
+        if (has('volt_thunderbolt')) ['thunderbolt', 'thunderbolt-gold'].forEach(voltFxImg);
+        if (has('electric_field')) ['field', 'field-gold'].forEach(voltFxImg);
+        if (has('discharge')) ['discharge', 'discharge-gold'].forEach(voltFxImg);
+        if (has('chain_lightning')) voltFxImg('hit-gold');
+        if (has('rail_cannon')) ['', '-wide-gold'].forEach(sf => ['rail-body', 'rail-arc', 'rail-tip', 'rail-muzzle'].forEach(n => voltFxImg(n + sf)));
+        if (has('overload')) ['overload-cast', 'overload', 'burnout'].forEach(voltFxImg);
+      }
       if (voltOverloadOn(u)) drawVoltFx(ctx, 'overload', f, 0, 12, sc);
       else if (voltBurnout(u)) drawVoltFx(ctx, 'burnout', f, 0, 12, sc);
       else if ((u.voltCharge || 0) >= VOLT_CHARGE_MAX) drawVoltFx(ctx, 'charged', f, 0, 12, sc);
