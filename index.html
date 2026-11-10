@@ -20238,12 +20238,12 @@
       sim.floatTexts = [];
       sim.tickCount = 0;
       sim.victoryAt = null;
+      sim.fairDuel = mode === 'pvp_realtime' && liveKind === 'fair'; // ⚖️ 공정한 결투: 3분 제한 · 체력 많은 쪽 승리 (관전은 따로 켬)
+      sim.fairSuddenDeath = false;
       sim.mode = mode;
       sim.title = title;
       sim.meta = { blueStudent, redStudent, towerFloorObj, eliteBossId: eliteBossId || null, eliteHard: Boolean(eliteHard), rewardMc: rewardMc || 250, lossRewardMc, liveKind };
       sim.running = true;
-      sim.fairDuel = mode === 'pvp_realtime' && liveKind === 'fair'; // ⚖️ 공정한 결투: 3분 제한 · 체력 많은 쪽 승리 (관전은 따로 켬)
-      sim.fairSuddenDeath = false;
       sim.netRole = netRole;
       sim.myTeam = myTeam;
       // 모든 전투를 같은 빠르기로: 가장 느린 1배속에 맞춤 (예전 2배속 설정이 다음 전투에 남지 않게)
@@ -21808,6 +21808,7 @@
 
       // 시간 제한: 끝나지 않는 전투(서로 회복만 하거나, 체력이 아주 많은 허수아비)가 계속되지 않도록
       const timeLimit = sim.mode === 'practice' ? BATTLE_TIME_LIMIT.practiceTicks
+        : sim.fairDuel ? FAIR_DUEL_TIME_LIMIT_SEC * BATTLE_TICKS_PER_SEC
         : (isEliteBossMode(sim.mode) ? eliteRaidTimeLimitTicks() : BATTLE_TIME_LIMIT.battleTicks);
       if (!sim.sandbox && sim.mode !== 'monster_rush' && sim.mode !== 'dungeon' && sim.mode !== 'world_boss' && sim.tickCount >= timeLimit) {
         if (sim.fairDuel && fairDuelHpTie(blueAlive, redAlive)) {
@@ -21817,7 +21818,6 @@
           finishBattleByTimeLimit(blueAlive, redAlive);
           return;
         }
-        : sim.fairDuel ? FAIR_DUEL_TIME_LIMIT_SEC * BATTLE_TICKS_PER_SEC
       }
 
       stepSpirits(); // 소환사 정령: 시간·주인 쓰러짐·쓰러진 불 정령 폭발
@@ -32946,16 +32946,16 @@
     const VICTORY_SHOW_SEC = 3; // 적이 모두 쓰러진 뒤 결과 창까지 (모든 전투 · 쓰러지는 연출 보기)
     // (등장 연출 시간은 빼고 셈)
     function eliteRaidTimeLimitTicks() { return ELITE_RAID_TIME_LIMIT_SEC * BATTLE_TICKS_PER_SEC + (sim.introTicks || 0); }
-
-    // 시간이 다 되면: 연습 전투는 완료 처리, 다른 전투는 남은 체력 비율이 높은 팀이 승리
-    function finishBattleByTimeLimit(blueAlive, redAlive) {
-      if (sim.mode === 'practice') {
-        addBattleLog('⏰ 연습 시간이 끝났어요! 연습 완료!');
     // ⚖️ 공정한 결투: 실제 시간 3분 안에 못 끝나면 남은 체력이 더 많은 쪽이 승리
     const FAIR_DUEL_TIME_LIMIT_SEC = 180;
     const fairDuelHp = alive => Math.round(alive.filter(u => !u.isClone).reduce((s, u) => s + Math.max(0, u.hp || 0), 0));
     function fairDuelHpTie(blueAlive, redAlive) { return fairDuelHp(blueAlive) === fairDuelHp(redAlive); }
     function fairDuelLeftSec() { return Math.max(0, Math.ceil(FAIR_DUEL_TIME_LIMIT_SEC - (sim.tickCount || 0) / BATTLE_TICKS_PER_SEC)); }
+
+    // 시간이 다 되면: 연습 전투는 완료 처리, 다른 전투는 남은 체력 비율이 높은 팀이 승리
+    function finishBattleByTimeLimit(blueAlive, redAlive) {
+      if (sim.mode === 'practice') {
+        addBattleLog('⏰ 연습 시간이 끝났어요! 연습 완료!');
         finishSimulation(true);
         return;
       }
@@ -32969,17 +32969,17 @@
         finishSimulation(false);
         return;
       }
-      const hpRatio = (alive, team) => {
-        const all = sim.units.filter(u => u.team === team);
-        const max = all.reduce((s, u) => s + (u.maxHp || 0), 0) || 1;
-        return alive.reduce((s, u) => s + Math.max(0, u.hp), 0) / max;
-      };
       if (sim.fairDuel) {
         const b = fairDuelHp(blueAlive), r = fairDuelHp(redAlive);
         addBattleLog(`⏰ 제한 시간 3분 끝! 남은 체력 ${b.toLocaleString()} : ${r.toLocaleString()} — 체력이 더 많은 ${b > r ? '블루' : '레드'}팀 승리!`);
         finishSimulation(b > r);
         return;
       }
+      const hpRatio = (alive, team) => {
+        const all = sim.units.filter(u => u.team === team);
+        const max = all.reduce((s, u) => s + (u.maxHp || 0), 0) || 1;
+        return alive.reduce((s, u) => s + Math.max(0, u.hp), 0) / max;
+      };
       const blueRatio = hpRatio(blueAlive, 'blue');
       const redRatio = hpRatio(redAlive, 'red');
       addBattleLog(`⏰ 시간 종료! 남은 체력 ${Math.round(blueRatio * 100)}% : ${Math.round(redRatio * 100)}% 로 판정해요.`);
@@ -44613,12 +44613,12 @@
       });
       if (!sim.running) return;
       sim.spectator = true;
+      sim.fairDuel = isFairDuelRoom(r); // 남은 시간 표시용 (오늘의 미션은 안 셈)
       sim.spectateFrom = Date.now();
       sim.spectateRoomId = r.roomId;
       // 고를 것 없이 보기만: 전투 방식 고르기 창을 닫고 자동(화면 이동만)으로 고정
       battleControl.locked = true;
       battleControl.mode = 'auto';
-      sim.fairDuel = isFairDuelRoom(r); // 남은 시간 표시용 (오늘의 미션은 안 셈)
       battleControl.unitId = null;
       sim.awaitingControlChoice = false;
       document.getElementById('battleControlChooser')?.classList.add('hidden');
@@ -51141,11 +51141,6 @@
     function updateRushHud(arenaVisible) {
       const el = document.getElementById('rushHud');
       if (!el) return;
-      const rs = arenaVisible && sim.mode === 'monster_rush' ? sim.rush : null;
-      el.classList.toggle('hidden', !rs);
-      if (!rs) return;
-      const tps = BATTLE_TICKS_PER_SEC;
-      let text;
       if (arenaVisible && sim.fairDuel && sim.mode === 'pvp_realtime') { // ⚖️ 공정한 결투: 남은 시간
         el.classList.remove('hidden');
         const sec = fairDuelLeftSec();
@@ -51153,6 +51148,11 @@
           : `⚖️ 공정한 결투 · ⏰ ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}${sec <= 30 ? ' · 시간이 다 되면 체력 많은 쪽 승리!' : ''}`;
         return;
       }
+      const rs = arenaVisible && sim.mode === 'monster_rush' ? sim.rush : null;
+      el.classList.toggle('hidden', !rs);
+      if (!rs) return;
+      const tps = BATTLE_TICKS_PER_SEC;
+      let text;
       if (rs.phase === 'move') {
         text = `🕳️ ${rs.cleared}라운드 보스 돌파! 굴 속으로 들어가는 중... ${rs.round + 1}라운드부터 새로운 전장`;
       } else if (rs.phase === 'break') {
@@ -55858,14 +55858,14 @@
       myId: null, idxRef: null, frameRef: null, watchers: 0, acc: 0, lastIdxAt: 0, lastSentAt: 0, endTimer: null, lidSeq: 0, lastObjSig: null, lastFullAt: 0,
       // 보는 쪽
       watchId: null, watchInfo: null, watchRef: null, watchEntryRef: null, raf: 0, last: 0, lastFrameAt: 0, overAt: 0, goneAt: 0, hiddenAt: 0,
+      // pending: 제 시각을 기다리는 화면들 · leadAvg: 관전 시계가 받은 화면보다 평균 몇 초 앞서 있나 · hold: 남은 멈춤 시간 · yFix: 그릴 때만 더하는 펫 높이 차이
+      // newestT: 마지막으로 받은 화면의 게임 시각
+      pending: [], leadAvg: 0, hold: 0, yFix: 0, newestT: 0,
 
       idx(stuId) { const r = liveRoomRef(PETRUN_LIVE.index); return r && stuId ? r.child(stuId) : null; },
       frameRefOf(stuId) { return stuId ? liveRoomRef('petrun_' + stuId) : null; },
       esc(v) { return typeof PetSystem !== 'undefined' ? PetSystem.esc(v) : String(v == null ? '' : v); },
 
-      // pending: 제 시각을 기다리는 화면들 · leadAvg: 관전 시계가 받은 화면보다 평균 몇 초 앞서 있나 · hold: 남은 멈춤 시간 · yFix: 그릴 때만 더하는 펫 높이 차이
-      // newestT: 마지막으로 받은 화면의 게임 시각
-      pending: [], leadAvg: 0, hold: 0, yFix: 0, newestT: 0,
       // ───── 달리는 쪽 ─────
       onStart(stu, s) {
         if (this.watchId) this.stopWatch(true);
@@ -56048,16 +56048,11 @@
         }
         if (on && cv && PetRunWatchView.cv !== cv) { PetRunWatchView.cv = cv; PetRunWatchView.ctx = cv.getContext('2d'); cv.width = PETRUN.W; cv.height = PETRUN.H; }
       },
+      // 화면 한 장이 도착함: 관전 시계(지금 그리고 있는 게임 시각)와 견줘서 바로 쓸지, 기다릴지, 덮어쓸지 정함
       applyFrame(str) {
         let a;
         try { a = JSON.parse(str); } catch (e) { return; }
         if (!Array.isArray(a) || a[0] !== 1 || !this.watchInfo) return;
-        const prev = PetRunWatchView.st, N = v => Number(v) || 0, flags = N(a[6]);
-      // 화면 한 장이 도착함: 관전 시계(지금 그리고 있는 게임 시각)와 견줘서 바로 쓸지, 기다릴지, 덮어쓸지 정함
-        // 물체·글자 칸이 null이면 바뀐 게 없다는 뜻: 앞 화면 목록을 그대로 이어 씀 (advance가 흘려 보냄) · 앞 화면이 없으면 다음 전체 목록까지 비움
-        const keepObjs = a[22] === null && Boolean(prev), keepTexts = a[23] === null && Boolean(prev);
-        const objs = [];
-        (keepObjs || !Array.isArray(a[22]) ? [] : a[22]).forEach(o => {
         this.lastFrameAt = Date.now();
         const prev = PetRunWatchView.st, ft = Number(a[1]) || 0, flags = Number(a[6]) || 0;
         this.newestT = ft;
@@ -56075,6 +56070,11 @@
       },
       // 받은 화면을 관전 상태로 바꿔 씀 · lead초만큼 늦게 온 화면이면 그만큼 미리 움직여서 지금 그리던 시각에 맞춤
       applyNow(a, lead) {
+        const prev = PetRunWatchView.st, N = v => Number(v) || 0, flags = N(a[6]);
+        // 물체·글자 칸이 null이면 바뀐 게 없다는 뜻: 앞 화면 목록을 그대로 이어 씀 (advance가 흘려 보냄) · 앞 화면이 없으면 다음 전체 목록까지 비움
+        const keepObjs = a[22] === null && Boolean(prev), keepTexts = a[23] === null && Boolean(prev);
+        const objs = [];
+        (keepObjs || !Array.isArray(a[22]) ? [] : a[22]).forEach(o => {
           if (!Array.isArray(o)) return;
           if (o[0] === 0) {
             const sub = o[3] === 'h' ? 'heart' : o[3] === 'b' ? 'big' : undefined;
@@ -56098,11 +56098,6 @@
           slides: N(a[24]), items: N(a[25]), perk: {},
           parts: [], bg: [],
         };
-        if (st.over && !(prev && prev.over)) {
-          this.overAt = Date.now();
-          // 오늘의 미션: 끝날 때까지 본 관전만 (끝나기 직전에 잠깐 들어온 건 빼려고 30초 이상)
-          if (prev && this.watchFrom && Date.now() - this.watchFrom >= SPECTATE_MISSION_MIN_MS) DailyMission.progress('watchPetRun');
-        }
         // 늦게 온 만큼 미리 움직임: 새로 받은 것(펫·새 목록)만. 이어 쓰는 목록·먼지·구름은 이미 지금 시각이라 그 뒤에 붙임
         if (lead > 0 && !st.over && !st.paused) {
           for (let left = Math.min(lead, PETRUN_LIVE.snapSec); left > 1e-4; left -= 1 / 30) this.advance(st, Math.min(left, 1 / 30));
@@ -56114,6 +56109,11 @@
         // 펫 높이: 점프·착지는 미리 알 수 없어 차이가 남 → 그리던 높이에서 시작해 yEaseSec 동안 풀어 줌
         const yGap = prev ? Math.min(0, prev.y + this.yFix) - st.y : 0;
         this.yFix = Math.abs(yGap) < 170 ? yGap : 0;
+        if (st.over && !(prev && prev.over)) {
+          this.overAt = Date.now();
+          // 오늘의 미션: 끝날 때까지 본 관전만 (끝나기 직전에 잠깐 들어온 건 빼려고 30초 이상)
+          if (prev && this.watchFrom && Date.now() - this.watchFrom >= SPECTATE_MISSION_MIN_MS) DailyMission.progress('watchPetRun');
+        }
         PetRunWatchView.st = st;
       },
       // 다음 화면이 올 때까지 받은 속도대로 미리 움직임 (젤리는 펫에 닿으면 먹은 것으로 보고 숨김)
