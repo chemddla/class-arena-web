@@ -27,11 +27,11 @@
   .vlg .vlg-acts button { font-size: 15px; padding: 12px 16px; }
   .vlg .vlg-hint { position: absolute; left: 12px; bottom: 14px; font-size: 12px; font-weight: 700; background: rgba(255, 255, 255, .8); padding: 6px 10px; border-radius: 10px; max-width: 55%; }
   .vlg .vlg-mapbox { position: absolute; right: 12px; bottom: 74px; }
-  .vlg .vlg-map { display: block; width: 240px; height: 160px; border-radius: 14px; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); background: #8fd07a; pointer-events: none; }
+  .vlg .vlg-map { display: block; width: 240px; height: 187px; border-radius: 14px; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); background: #8fd07a; pointer-events: none; }
   .vlg .vlg-mapbox button { position: absolute; top: 7px; right: 7px; font-size: 12px; padding: 3px 9px; }
   .vlg .vlg-mapbox.off .vlg-map { display: none; }
   .vlg .vlg-mapbox.off button { position: static; font-size: 13px; padding: 6px 12px; }
-  @media (max-width: 640px) { .vlg .vlg-hint { display: none; } .vlg .vlg-map { width: 160px; height: 107px; } }`;
+  @media (max-width: 640px) { .vlg .vlg-hint { display: none; } .vlg .vlg-map { width: 160px; height: 125px; } }`;
   const HTML = `
   <canvas class="vlg-gl" data-v="gl"></canvas>
   <div class="vlg-labels" data-v="labels"><div class="vlg-prompt" data-v="prompt"></div></div>
@@ -206,12 +206,12 @@
   { const pos = ground.geometry.attributes.position, cols = new Float32Array(pos.count * 3); // 꼭짓점마다 밝기를 살짝 다르게
     for (let i = 0; i < pos.count; i++) { const x = pos.getX(i), z = -pos.getY(i), n = Math.sin(x * 0.21 + 1.3) * Math.sin(z * 0.17 + 0.5) + 0.5 * Math.sin(x * 0.53 + z * 0.41), c = 1 + n * 0.065; cols[i * 3] = c * 0.97; cols[i * 3 + 1] = c; cols[i * 3 + 2] = c * 0.93; }
     ground.geometry.setAttribute('color', new THREE.BufferAttribute(cols, 3)); }
-  const STREETS = [{ z: 0, len: 66 }, { z: 11.6, len: 66 }, { z: 20.6, len: 64 }, { z: 29.6, len: 32 }]; // 동서로 난 골목
+  const STREETS = [0, 10, 20, 30, 40].map(z => ({ z, len: 66 })); // 동서로 난 골목 (집은 골목 북쪽에 마당을 두고 섬)
   const onPath = (x, z, m) => Math.abs(x) < m || STREETS.some(st => Math.abs(z - st.z) < m && Math.abs(x) < st.len / 2 + m);
   const strip = (x, z, w, d, c, y) => { const m = floor(mesh(new THREE.PlaneGeometry(w, d, Math.max(1, Math.round(w)), Math.max(1, Math.round(d))), c)); m.rotation.x = -Math.PI / 2; scene.add(at(m, x, y, z)); return m; };
   const sandMat = (rx, ry) => { const t = sandTex.clone(); t.needsUpdate = true; t.repeat.set(rx, ry); return toonMat({ map: t }); };
-  strip(0, 6, 2.46, 52.26, '#d6bd7e', 0.022); STREETS.forEach((st, i) => strip(0, st.z, st.len + 0.26, 2.46, '#d6bd7e', 0.023 + i * 0.0005)); // 길 테두리
-  strip(0, 6, 2.2, 52, sandMat(1, 24), 0.03); STREETS.forEach((st, i) => strip(0, st.z, st.len, 2.2, sandMat(Math.round(st.len / 2.2), 1), 0.031 + i * 0.0005));
+  strip(0, 11, 2.46, 62.26, '#d6bd7e', 0.022); STREETS.forEach((st, i) => strip(0, st.z, st.len + 0.26, 2.46, '#d6bd7e', 0.023 + i * 0.0005)); // 길 테두리
+  strip(0, 11, 2.2, 62, sandMat(1, 28), 0.03); STREETS.forEach((st, i) => strip(0, st.z, st.len, 2.2, sandMat(Math.round(st.len / 2.2), 1), 0.031 + i * 0.0005));
   // 광장: 회색 돌을 엇갈려 깐 바닥, 가장자리와 분수 둘레에 짙은 돌 띠
   const stoneTex = paint(256, (g, s) => { g.fillStyle = '#9d9a94'; g.fillRect(0, 0, s, s); const n = 4, w = s / n;
     for (let row = 0; row < n; row++) for (let i = -1; i < n; i++) { const x = i * w + (row % 2 ? w / 2 : 0), y = row * w;
@@ -295,38 +295,55 @@
   scene.add(at(board, 3.1, 0, -3.1)); board.rotation.y = -0.5; solid(3.1, -3.1, 1);
 
   // ── 집
-  // 집터 32곳: 광장에서 가까운 순서. 학생 명단 순서대로 한 채씩 (남는 집은 빈 집)
+  // 집터 32곳: 광장에서 가까운 순서. 학생 명단 순서대로 한 채씩 (남는 집은 빈 집). 집 앞(남쪽)에 울타리 마당, 그 앞이 골목
   const ROOFS = ['#e0685a', '#5b8fd8', '#e8a13a', '#4fae6a', '#b06fc8', '#3fb0a8', '#e07a9a', '#7a8fd8'], WALLS = ['#fff1dc', '#f4f0ff', '#fff6cf', '#eaf7e4', '#ffe9ee'];
   const HOUSES = [], lot = (x, z) => HOUSES.push([x, z, WALLS[HOUSES.length % 5], ROOFS[HOUSES.length % 8]]);
-  [10, 15.5, 21, 26.5].forEach(x => { lot(-x, -2.5); lot(x, -2.5); });
-  [7.5, 13, 18.5, 24, 29.5].forEach(x => { lot(-x, 8); lot(x, 8); });
-  [6, 11.5, 17, 22.5, 28].forEach(x => { lot(-x, 17); lot(x, 17); });
-  [6, 11.5].forEach(x => { lot(-x, 26); lot(x, 26); });
+  [5, 15, 25, 35].forEach(z => [6.5, 13.5, 20.5, 27.5].forEach(x => { lot(-x, z); lot(x, z); })); // 골목(z+5)에서 마당만큼 물러남
   const texMat = (tex, hex) => toonMat({ map: tex, color: new THREE.Color(hex) });
   const barkMat = texMat(barkTex, '#a8744f');
   const haloMat = bend(new THREE.MeshBasicMaterial({ color: 0xffcf70, map: softTex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
   const halos = [];
   const halo = (size, x, y, z) => { const m = noShadow(new THREE.Mesh(new THREE.PlaneGeometry(size, size), haloMat)); m.rotation.x = -0.5; m.visible = false; halos.push(m); return at(m, x, y, z); };
   const houses = [];
-  HOUSES.forEach(([x, z, wall, roof]) => {
-    const g = new THREE.Group();
-    g.add(at(mesh(new THREE.BoxGeometry(3.2, 2, 2.6), texMat(wallTex, wall)), 0, 1, 0));
-    const rf = at(mesh(new THREE.ConeGeometry(2.75, 1.6, 4), texMat(roofTex, roof)), 0, 2.78, 0); rf.rotation.y = Math.PI / 4; rf.scale.z = 0.86; g.add(rf);
-    g.add(at(mesh(new THREE.BoxGeometry(3.4, 0.14, 2.8), roof), 0, 2.02, 0));
-    g.add(at(mesh(new THREE.BoxGeometry(0.4, 0.9, 0.4), '#d3c9ba'), 0.9, 2.9, -0.3));
-    g.add(at(mesh(new THREE.BoxGeometry(0.78, 1.25, 0.1), '#a06a3c'), 0, 0.63, 1.31));
-    g.add(at(mesh(new THREE.SphereGeometry(0.06, 8, 6), '#f2c53a'), 0.24, 0.62, 1.38));
-    [-1, 1].forEach(s => { g.add(at(mesh(new THREE.BoxGeometry(0.74, 0.74, 0.06), '#ffffff'), s * 1.05, 1.2, 1.3)); g.add(at(noShadow(mesh(new THREE.BoxGeometry(0.58, 0.58, 0.08), winMat)), s * 1.05, 1.2, 1.31)); g.add(at(mesh(new THREE.BoxGeometry(0.06, 0.6, 0.1), '#ffffff'), s * 1.05, 1.2, 1.32)); });
-    g.add(at(mesh(new THREE.BoxGeometry(1.1, 0.1, 0.6), '#d3c9ba'), 0, 0.05, 1.6));
-    [-1, 1].forEach(s => g.add(halo(1.7, s * 1.05, 1.2, 1.5)));
-    const arch = at(mesh(new THREE.CylinderGeometry(0.39, 0.39, 0.1, 16), '#a06a3c'), 0, 1.25, 1.31); arch.rotation.x = Math.PI / 2; g.add(arch);
-    const port = at(noShadow(mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.12, 12), winMat)), 0, 1.22, 1.33); port.rotation.x = Math.PI / 2; g.add(port);
-    [-1, 1].forEach(s => { g.add(at(mesh(new THREE.BoxGeometry(0.8, 0.16, 0.2), '#b9824e'), s * 1.05, 0.76, 1.4)); [-0.25, 0, 0.25].forEach((dx, k) => g.add(at(mesh(new THREE.SphereGeometry(0.09, 7, 6), ['#ff7fa6', '#ffcf3a', '#fff6e8'][(k + (s > 0 ? 1 : 0)) % 3]), s * 1.05 + dx, 0.89, 1.42))); });
-    scene.add(at(mesh(new THREE.BoxGeometry(3.3, 0.24, 2.7), '#d9cfbf'), x, 0.12, z)); // 바닥 띠는 집이 숨어도 남아 자리를 알려 줌
-    g.add(at(mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8, 8), '#8a5a34'), 2.1, 0.4, 1.5)); // 우체통
-    g.add(at(mesh(new THREE.BoxGeometry(0.34, 0.3, 0.5), roof), 2.1, 0.92, 1.5));
+  const prism = (g, w, d, h, y, mat) => { const o = new THREE.Group(), mid = new THREE.Group(), r0 = d / 1.732; // 세모 기둥을 눕힌 박공지붕
+    const pr = mesh(new THREE.CylinderGeometry(r0, r0, w, 3), mat); pr.rotation.z = Math.PI / 2; mid.add(pr); mid.rotation.x = -Math.PI / 2;
+    o.add(mid); o.scale.y = h / (1.5 * r0); g.add(at(o, 0, y + 0.5 * r0 * o.scale.y, 0)); };
+  HOUSES.forEach(([x, z, wall, roof], k) => {
+    const g = new THREE.Group(), b = (w, h, d, c, px, py, pz) => { const m = at(mesh(new THREE.BoxGeometry(w, h, d), c), px, py, pz); g.add(m); return m; };
+    const B = 0.3, H = 2, TOP = B + H, F = 1.3; // F: 앞벽 z
+    b(3.5, B, 2.9, '#cfc6b6', 0, B / 2, 0); // 돌 기단
+    g.add(at(mesh(new THREE.BoxGeometry(3.2, H, 2.6), texMat(wallTex, wall)), 0, B + H / 2, 0));
+    [-1, 1].forEach(sx => [-1, 1].forEach(sz => b(0.14, H, 0.14, '#ffffff', sx * 1.57, B + H / 2, sz * 1.27))); b(3.34, 0.12, 2.74, '#ffffff', 0, TOP - 0.04, 0); // 흰 모서리 기둥·띠
+    if (k % 2) prism(g, 3.8, 3.2, 1.35, TOP + 0.08, texMat(roofTex, roof)); // 지붕: 박공·모임지붕 번갈아
+    else { const rf = at(mesh(new THREE.ConeGeometry(2.75, 1.6, 4), texMat(roofTex, roof)), 0, TOP + 0.88, 0); rf.rotation.y = Math.PI / 4; rf.scale.z = 0.86; g.add(rf); }
+    b(3.5, 0.14, 2.9, roof, 0, TOP + 0.08, 0);
+    b(0.42, 1.0, 0.42, '#b5654a', 0.9, TOP + 1.0, -0.3); b(0.54, 0.1, 0.54, '#8f4a36', 0.9, TOP + 1.52, -0.3); // 굴뚝
+    b(0.84, 1.32, 0.1, '#a06a3c', 0, B + 0.66, F + 0.01); [-0.2, 0.2].forEach(dx => b(0.28, 0.5, 0.04, '#b9824e', dx, B + 0.5, F + 0.07)); // 문
+    g.add(at(mesh(new THREE.SphereGeometry(0.06, 8, 6), '#f2c53a'), 0.27, B + 0.64, F + 0.09));
+    const port = at(noShadow(mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.12, 14), winMat)), 0, B + 1.62, F + 0.02); port.rotation.x = Math.PI / 2; g.add(port);
+    const ring = at(mesh(new THREE.TorusGeometry(0.18, 0.04, 6, 16), '#ffffff'), 0, B + 1.62, F + 0.05); g.add(ring);
+    b(1.3, 0.08, 0.62, roof, 0, B + 1.42, F + 0.3).rotation.x = 0.32; [-0.55, 0.55].forEach(dx => b(0.06, 0.06, 0.4, '#ffffff', dx, B + 1.3, F + 0.2)); // 현관 지붕
+    b(0.16, 0.22, 0.16, '#3a3a44', 0.62, B + 1.05, F + 0.1); g.add(at(noShadow(mesh(new THREE.BoxGeometry(0.11, 0.15, 0.17), winMat)), 0.62, B + 1.05, F + 0.1)); // 문 옆 등
+    [-1, 1].forEach(sd => { const wx = sd * 1.05; // 창문: 흰 틀, 십자 창살, 지붕색 덧문, 꽃 상자
+      b(0.74, 0.74, 0.06, '#ffffff', wx, B + 1.15, F); g.add(at(noShadow(mesh(new THREE.BoxGeometry(0.58, 0.58, 0.08), winMat)), wx, B + 1.15, F + 0.01));
+      b(0.05, 0.58, 0.1, '#ffffff', wx, B + 1.15, F + 0.02); b(0.58, 0.05, 0.1, '#ffffff', wx, B + 1.15, F + 0.02);
+      [-1, 1].forEach(s2 => b(0.16, 0.74, 0.05, roof, wx + s2 * 0.47, B + 1.15, F + 0.03));
+      b(0.8, 0.16, 0.2, '#b9824e', wx, B + 0.72, F + 0.1); [-0.25, 0, 0.25].forEach((dx, j) => g.add(at(mesh(new THREE.SphereGeometry(0.09, 7, 6), ['#ff7fa6', '#ffcf3a', '#fff6e8'][(j + (sd > 0 ? 1 : 0)) % 3]), wx + dx, B + 0.85, F + 0.12)));
+      g.add(halo(1.7, wx, B + 1.15, F + 0.2)); });
+    b(1.2, 0.15, 0.5, '#d3c9ba', 0, 0.075, F + 0.42); // 계단
+    // 마당: 잔디, 디딤돌, 흰 울타리(가운데 대문 자리는 비움), 우체통
+    const yd = floor(mesh(new THREE.PlaneGeometry(5.6, 2.3, 6, 3), '#a5dc86')); yd.rotation.x = -Math.PI / 2; g.add(at(yd, 0, 0.02, F + 1.15));
+    [F + 0.85, F + 1.5, F + 2.15].forEach(sz => { const st = at(mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.05, 12), '#e6e0d3'), 0, 0.035, sz); g.add(st); });
+    const fence = (x0, z0, x1, z1) => { const L = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.round(L / 0.3)), alongX = Math.abs(x1 - x0) > 0.01;
+      for (let i = 0; i <= n; i++) { const px = x0 + (x1 - x0) * i / n, pz = z0 + (z1 - z0) * i / n; b(alongX ? 0.09 : 0.06, 0.55, alongX ? 0.06 : 0.09, '#ffffff', px, 0.29, pz); }
+      [0.2, 0.42].forEach(y => b(alongX ? L : 0.04, 0.05, alongX ? 0.04 : L, '#ffffff', (x0 + x1) / 2, y, (z0 + z1) / 2)); };
+    const YB = F + 2.3; // 마당 앞 울타리 z
+    fence(-2.8, F + 0.05, -2.8, YB); fence(2.8, F + 0.05, 2.8, YB); fence(-2.8, YB, -0.7, YB); fence(0.7, YB, 2.8, YB);
+    [-0.7, 0.7].forEach(dx => { b(0.14, 0.75, 0.14, '#ffffff', dx, 0.38, YB); g.add(at(mesh(new THREE.SphereGeometry(0.08, 8, 6), '#ffffff'), dx, 0.8, YB)); }); // 대문 기둥
+    b(0.06, 0.75, 0.06, '#8a5a34', 1.25, 0.38, YB - 0.3); b(0.36, 0.3, 0.46, roof, 1.25, 0.86, YB - 0.3); // 우체통
     houses.push({ x, z, g, show: 1 });
-    scene.add(at(g, x, 0, z)); solid(x - 0.75, z, 1.55, 4.2); solid(x + 0.75, z, 1.55, 4.2); solid(x + 2.1, z + 1.5, 0.3);
+    scene.add(at(g, x, 0, z)); solid(x - 0.75, z, 1.55, 4.2); solid(x + 0.75, z, 1.55, 4.2); solid(x + 1.25, z + YB - 0.3, 0.2);
+    [F + 0.3, F + 1, F + 1.7, YB].forEach(fz => [-2.8, 2.8].forEach(fx => solid(x + fx, z + fz, 0.16))); [1.0, 1.6, 2.2].forEach(fx => [-1, 1].forEach(sd => solid(x + sd * fx, z + YB, 0.16)));
   });
 
   // ── 마을사무소: 큰길 북쪽 끝, 광장을 바라봄. 갈색 목조 + 크림 회벽
@@ -409,7 +426,7 @@
   // ── 놀이터: 강 아래 집들 맨 왼쪽 바깥. 그네 두 자리·미끄럼틀·시소·뺑뺑이·트램펄린, E로 탐 (탈 자리는 아래 seats 끝에 붙음)
   const PLAY = { x: -44, z: 12 }, movers = [], rides = [];
   strip(PLAY.x, PLAY.z, 17.6, 9, '#d9b878', 0.025); strip(PLAY.x, PLAY.z, 17, 8.4, sandMat(8, 4), 0.033);
-  strip(-34.3, 11.6, 2.8, 2.2, sandMat(1, 1), 0.031); // 골목 끝에서 놀이터로
+  strip(-34.3, 10, 2.8, 2.2, sandMat(1, 1), 0.031); // 골목 끝에서 놀이터로
   { // 그네 두 자리
     const g = new THREE.Group(), gx = PLAY.x - 6, gz = PLAY.z - 2.2;
     [-1, 1].forEach(s => { g.add(at(mesh(new THREE.CylinderGeometry(0.09, 0.1, 2.7, 8), '#5b8fd8'), s * 2, 1.35, 0)); solid(gx + s * 2, gz, 0.3); });
@@ -534,7 +551,7 @@
   const PINK = ['#ffffff', '#fff2f5', '#ffe6ec', '#fff8fa'], LEAF = ['#ffffff', '#eaffe6', '#dff5d6', '#f4fff0'];
   const trees = [];
   const freeSpot = (x, z, pad) => !onPath(x, z, 1.9 + pad) && Math.hypot(x, z) > 6.2 + pad && !(z > -26 && z < -17.8 && x > -0.5 && x < 17) && !(x < -31.5 && z > -2 && z < 5.5) 
-    && riverDist(x, z) > 1.5 && HOUSES.every(h => Math.hypot(x - h[0], z - h[1]) > 4.2 + pad)
+    && riverDist(x, z) > 1.5 && HOUSES.every(h => Math.hypot(x - h[0], z - h[1]) > 4.2 + pad && !(Math.abs(x - h[0]) < 3.6 + pad && z > h[1] - 2 && z < h[1] + 4.4 + pad))
     && solids.every(s => Math.hypot(x - s.x, z - s.z) > s.r + 1.6 + pad) && trees.every(t => Math.hypot(x - t.x, z - t.z) > 2.6);
   function placeTree(tr) { // 줄기 묶음의 지금 위치·기울기대로 뭉치들을 옮김
     tr.g.updateMatrixWorld(true);
@@ -542,7 +559,7 @@
     tr.im.instanceMatrix.needsUpdate = true;
   }
   for (let i = 0, tries = 0; i < 36 && tries < 6000; tries++) {
-    const x = (rnd() - 0.5) * 68, z = -22 + rnd() * 56;
+    const x = (rnd() - 0.5) * 68, z = -22 + rnd() * 66;
     if (!freeSpot(x, z, 0)) continue;
     const kind = i % 5 < 3 ? 'blossom' : 'fruit', sc = 0.9 + rnd() * 0.35, cols = kind === 'blossom' ? PINK : LEAF;
     const g = new THREE.Group(), top = new THREE.Group(); top.position.y = 1.05; g.add(top);
@@ -561,9 +578,9 @@
     placeTree(tr); trees.push(tr); solid(x, z, 0.52 * sc); i++;
   }
   { const bg = [];
-    for (let i = 0, tries = 0; i < 60 && tries < 4000; tries++) {
-      const x = (rnd() - 0.5) * 112, z = -44 + rnd() * 66;
-      if (!(Math.abs(x) > 36.5 || z < -25.5) || riverDist(x, z) < 1.6 || bg.some(b => Math.hypot(x - b[0], z - b[1]) < 3.4) || (x < -31 && x > PLAY.x - 12 && z > SCH.z - 4.5 && z < PLAY.z + 7.5)) continue;
+    for (let i = 0, tries = 0; i < 80 && tries < 5000; tries++) {
+      const x = (rnd() - 0.5) * 112, z = -44 + rnd() * 100;
+      if (!(Math.abs(x) > 36.5 || z < -25.5 || z > 45) || riverDist(x, z) < 1.6 || bg.some(b => Math.hypot(x - b[0], z - b[1]) < 3.4) || (x < -31 && x > PLAY.x - 12 && z > SCH.z - 4.5 && z < PLAY.z + 7.5)) continue;
       bg.push([x, z]); i++;
       const sc = 1 + rnd() * 0.5, pinkTree = rnd() < 0.55, im = pinkTree ? blobsPinkFar : blobsLeafFar;
       scene.add(at(mesh(new THREE.CylinderGeometry(0.26 * sc, 0.4 * sc, 1.6 * sc, 12), barkMat), x, 0.8 * sc, z));
@@ -571,7 +588,7 @@
         dummy.position.set(x + b[0] * sc, b[1] * sc, z + b[2] * sc); dummy.scale.setScalar(b[3] * sc); dummy.rotation.set(rnd() * 6, rnd() * 6, rnd() * 6); dummy.updateMatrix(); im.setMatrixAt(addBlob(im, pinkTree ? PINK : LEAF), dummy.matrix); });
     } }
   // 덤불 (같은 뭉치 묶음에 얹음)
-  [[-12.8, -3.8], [12.8, -3.8], [-10.4, 6.4], [10.4, 6.4]].forEach(([x, z]) => {
+  [[-12.8, -3.8], [12.8, -3.8]].forEach(([x, z]) => {
     [[0, 0.38, 0, 0.55], [0.45, 0.3, 0.1, 0.4], [-0.42, 0.3, -0.08, 0.42]].forEach(b => { dummy.position.set(x + b[0], b[1], z + b[2]); dummy.scale.setScalar(b[3]); dummy.rotation.set(rnd() * 6, rnd() * 6, rnd() * 6); dummy.updateMatrix(); blobsLeaf.setMatrixAt(addBlob(blobsLeaf, LEAF), dummy.matrix); });
     solid(x, z, 0.55);
   });
@@ -587,7 +604,7 @@
   const bed = (cx, cz, nx, nz, gap, colorOf) => { for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) tulips.push({ x: cx + (i - (nx - 1) / 2) * gap + (rnd() - 0.5) * 0.08, z: cz + (j - (nz - 1) / 2) * gap + (rnd() - 0.5) * 0.08, c: colorOf(i, j) }); };
   [-1, 1].forEach(s => bed(s * 1.75, 7.6, 1, 5, 0.62, (i, j) => TULIP[(j + (s > 0 ? 2 : 0)) % 5]));             // 남쪽 길가
   bed(-4.3, -1.9, 5, 2, 0.6, i => TULIP[i % 3]); bed(4.6, 1.9, 5, 2, 0.6, i => TULIP[(i + 2) % 5]);                 // 광장 옆
-  HOUSES.forEach((h, k) => bed(h[0] - 1.05, h[1] + 1.75, 3, 1, 0.5, i => TULIP[(i + k) % 5]));                      // 집 창문 아래
+  HOUSES.forEach((h, k) => [-1, 1].forEach(sd => bed(h[0] + sd * 2.35, h[1] + 2.75, 1, 3, 0.55, (i, j) => TULIP[(j + k + (sd > 0 ? 2 : 0)) % 5]))); // 마당 울타리 안 꽃밭
   trees.filter((t, i) => i % 3 === 0).forEach((t, k) => { for (let a = 0; a < 7; a++) { const ang = a / 7 * 6.283, r = 1.25 * t.sc + 0.3; tulips.push({ x: t.x + Math.cos(ang) * r, z: t.z + Math.sin(ang) * r, c: TULIP[(a + k) % 5] }); } });
   { const n = tulips.length, white = () => toonMat({ color: 0xffffff }, 0.075);
     const stems = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.022, 0.03, 0.44, 5), toonMat({ color: 0x4fae4a }, 0.075), n);
@@ -624,7 +641,7 @@
 
   // 가로등: 밤이 되면 등불과 바닥 불빛이 켜짐
   const lampMat = flat(0xfff6d8, { glow: true }), glowMat = flat(0xffd76a, { glow: true, map: softTex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
-  [[-2.7, 5.4], [2.7, 5.4], [-6.4, 1.7], [6.4, -1.7], [-13, 1.6], [13, 1.6], [-24, 1.6], [24, 1.6], [-10, 13.1], [10, 13.1], [-21, 13.1], [21, 13.1], [-9, 22.1], [9, 22.1], [-20, 22.1], [20, 22.1]].forEach(([x, z]) => {
+  [[-2.7, 5.4], [2.7, 5.4], [-6.4, 1.7], [6.4, -1.7]].concat(...[0, 10, 20, 30].map(sz => [-24, -10, 10, 24].map(x => [x, sz + 1.6]))).forEach(([x, z]) => {
     const g = new THREE.Group();
     g.add(at(mesh(new THREE.CylinderGeometry(0.05, 0.07, 1.9, 8), '#56606c'), 0, 0.95, 0));
     g.add(at(mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.06, 8), '#56606c'), 0, 0.03, 0));
@@ -757,7 +774,7 @@
   const ownerOf = i => demo ? actors.filter(a => !a.npc)[i + 1] : host.students[i]; // i번째 집 주인
 
   // ── 움직임·부딪힘
-  const LX = 33, LZ0 = -25, LZ1 = 32, SPEED = 3.3, RUN = 1.8, R = 0.32; // RUN: Shift 누르고 뛸 때 배수
+  const LX = 33, LZ0 = -25, LZ1 = 42, SPEED = 3.3, RUN = 1.8, R = 0.32; // RUN: Shift 누르고 뛸 때 배수
   function step(a, dx, dz) {
     const pz = a.z; let x = a.x + dx, z = a.z + dz;
     solids.forEach(c => { const d = Math.hypot(x - c.x, z - c.z), min = c.r + R; if (d < min && d > 1e-4) { x = c.x + (x - c.x) / d * min; z = c.z + (z - c.z) / d * min; } });
@@ -993,20 +1010,20 @@
   }
 
   // ── 미니맵: 땅·길·강·집·나무는 한 번 그려 두고, 매 프레임 친구와 나만 점으로 올림
-  const MAP = { x0: -54, x1: 34, z0: -25.5, z1: 33, s: 6 }, mapC = $('map');
+  const MAP = { x0: -54, x1: 34, z0: -25.5, z1: 43, s: 6 }, mapC = $('map');
   mapC.width = (MAP.x1 - MAP.x0) * MAP.s; mapC.height = (MAP.z1 - MAP.z0) * MAP.s;
   const mapG = mapC.getContext('2d'), mapBg = document.createElement('canvas'); mapBg.width = mapC.width; mapBg.height = mapC.height;
   const mx = x => (x - MAP.x0) * MAP.s, mz = z => (z - MAP.z0) * MAP.s;
   { const g = mapBg.getContext('2d'), S = MAP.s, rect = (x, z, w, d, c) => { g.fillStyle = c; g.fillRect(mx(x - w / 2), mz(z - d / 2), w * S, d * S); };
     g.fillStyle = '#8fd07a'; g.fillRect(0, 0, mapBg.width, mapBg.height);
     [[RIVER.w + 1.1, '#ead9a0'], [RIVER.w, '#56bdee']].forEach(([w, c]) => { g.strokeStyle = c; g.lineWidth = w * S; g.beginPath(); for (let x = MAP.x0; x <= MAP.x1; x += 0.5) g.lineTo(mx(x), mz(riverZ(x))); g.stroke(); });
-    rect(0, 6, 2.2, 52, '#ead2a0'); STREETS.forEach(st => rect(0, st.z, st.len, 2.2, '#ead2a0'));
+    rect(0, 11, 2.2, 62, '#ead2a0'); STREETS.forEach(st => rect(0, st.z, st.len, 2.2, '#ead2a0'));
     rect(0, BR.z, BR.half * 2, BR.L, '#cfc7b6');
     g.fillStyle = '#cfccc5'; g.beginPath(); g.arc(mx(0), mz(0), 4.4 * S, 0, 6.29); g.fill();
     g.fillStyle = '#7fd0f0'; g.beginPath(); g.arc(mx(0), mz(0), 1.3 * S, 0, 6.29); g.fill();
-    HOUSES.forEach(h => { rect(h[0], h[1], 3.2, 2.6, h[3]); });
+    HOUSES.forEach(h => { rect(h[0], h[1] + 2.45, 5.6, 2.3, '#a5dc86'); rect(h[0], h[1], 3.2, 2.6, h[3]); });
     rect(0, -23, 6.4, 3.6, '#7a4a2e'); rect(0, -23, 1.2, 1.2, '#a8744f'); rect(SHOP.x, SHOP.z, 7, 3.8, '#3f9a5a'); rect(7.05, -19.9, 11.9, 1.6, '#ead2a0'); rect(6.45, -22.7, 1.8, 5.4, '#ead2a0'); rect(PLAY.x, PLAY.z, 17, 8.4, '#e9d9a8');
-    rect(-34.3, 11.6, 2.8, 2.2, '#ead2a0'); rect(-34, 1.8, 2.8, 5.8, '#ead2a0'); rect(-39.2, 3.9, 9.8, 1.6, '#ead2a0'); rect(SCH.x, SCH.z, 12.4, 4.4, '#d9604f'); rect(SCH.x, SCH.z + 0.3, 3.2, 5, '#c24f40'); rect(SCH.x, (SCH.z + 3.95 + PLAY.z - 4.2) / 2, 2.2, PLAY.z - 4.2 - (SCH.z + 3.95), '#ead2a0');
+    rect(-34.3, 10, 2.8, 2.2, '#ead2a0'); rect(-34, 1.8, 2.8, 5.8, '#ead2a0'); rect(-39.2, 3.9, 9.8, 1.6, '#ead2a0'); rect(SCH.x, SCH.z, 12.4, 4.4, '#d9604f'); rect(SCH.x, SCH.z + 0.3, 3.2, 5, '#c24f40'); rect(SCH.x, (SCH.z + 3.95 + PLAY.z - 4.2) / 2, 2.2, PLAY.z - 4.2 - (SCH.z + 3.95), '#ead2a0');
     [[-6, -2.2, 4.2, 0.5, '#e0685a'], [-0.2, -1.4, 1, 3.4, '#e0685a'], [5.4, -2, 3.4, 0.5, '#e8a13a']].forEach(b => rect(PLAY.x + b[0], PLAY.z + b[1], b[2], b[3], b[4]));
     [[0, 3, '#5b8fd8'], [5.4, 2.8, '#4fae6a']].forEach(b => { g.fillStyle = b[2]; g.beginPath(); g.arc(mx(PLAY.x + b[0]), mz(PLAY.z + b[1]), 1.3 * S, 0, 6.29); g.fill(); });
     trees.forEach(t => { g.fillStyle = t.kind === 'blossom' ? '#ffc8d6' : '#3f9e4b'; g.beginPath(); g.arc(mx(t.x), mz(t.z), 1.2 * t.sc * S, 0, 6.29); g.fill(); });
@@ -1113,7 +1130,7 @@
     sparks.forEach((q, i) => { const k = Math.pow(Math.max(0, Math.sin(t * q.sp + q.ph)), 6); dummy.position.set(q.x, 0.075, q.z); dummy.rotation.set(-Math.PI / 2, 0, 0); dummy.scale.setScalar(k * 1.3 + 0.0001); dummy.updateMatrix(); sparkIM.setMatrixAt(i, dummy.matrix); });
     sparkIM.instanceMatrix.needsUpdate = true;
     for (let i = 0; i < SMOKE; i++) { const hs = houses[Math.floor(i / 3)], u = (t * 0.28 + (i % 3) / 3 + hs.x * 0.13) % 1, k = hs.show > 0.5 ? Math.sin(u * Math.PI) * (0.6 + u * 0.9) : 0;
-      dummy.position.set(hs.x + 0.9 + u * 0.7 + Math.sin(u * 6 + i) * 0.08, 3.4 + u * 1.9, hs.z - 0.3); dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(k + 0.0001); dummy.updateMatrix(); smokeIM.setMatrixAt(i, dummy.matrix); }
+      dummy.position.set(hs.x + 0.9 + u * 0.7 + Math.sin(u * 6 + i) * 0.08, 3.9 + u * 1.9, hs.z - 0.3); dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(k + 0.0001); dummy.updateMatrix(); smokeIM.setMatrixAt(i, dummy.matrix); }
     smokeIM.instanceMatrix.needsUpdate = true;
     for (let i = 0; i < DROPS; i++) { const a = i / DROPS * 6.283 + 0.3, u = (t * 0.85 + i * 0.37) % 1, r = 0.15 + u * 0.75;
       dummy.position.set(Math.cos(a) * r, 1.62 + u * 0.75 - u * u * 1.85, Math.sin(a) * r); dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(1 - u * 0.4); dummy.updateMatrix(); dropIM.setMatrixAt(i, dummy.matrix); }
