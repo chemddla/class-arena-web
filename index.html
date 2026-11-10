@@ -6057,7 +6057,7 @@
     function brawlerRecruitOpen() { return BRAWLER_RECRUIT_SINCE !== null && Date.now() >= BRAWLER_RECRUIT_SINCE; }
     const PYRO_RECRUIT_SINCE = Date.parse('2026-11-08T00:00:00+09:00'); // 화염술사: 2026-11-08부터 모집에 나옴
     function pyroRecruitOpen() { return PYRO_RECRUIT_SINCE !== null && Date.now() >= PYRO_RECRUIT_SINCE; }
-    const VOLT_RECRUIT_SINCE = null; // 전격술사: 코드 먼저 배포, 날짜를 정해 엶 (관리자 '용병 추가'로는 바로 넣을 수 있음)
+    const VOLT_RECRUIT_SINCE = Date.parse('2026-11-10T00:00:00+09:00'); // 전격술사: 2026-11-10부터 모집에 나옴 (사용자 요청)
     function voltRecruitOpen() { return VOLT_RECRUIT_SINCE !== null && Date.now() >= VOLT_RECRUIT_SINCE; }
     function summonerRecruitOpen() { return SUMMONER_RECRUIT_SINCE !== null && Date.now() >= SUMMONER_RECRUIT_SINCE; }
     function jobPassiveOf(u) {
@@ -11484,6 +11484,7 @@
     // headOnly: 작은 아이콘용. 머리~상체만 잘라 크게 보여 줌
     const PORTRAIT_HEAD_VIEW_H = 60;
     function getPortraitCrop(sprite, headOnly) {
+      if (!headOnly && sprite.portraitFit) return sprite.portraitFit; // 그림을 받은 뒤 대기 자세가 다 들어가게 맞춘 창 (fitPortraitCrop)
       const viewH = (headOnly ? PORTRAIT_HEAD_VIEW_H : PORTRAIT_VIEW_H) * (sprite.portraitZoomOut || 1);
       const cropX = sprite.portraitCX - viewH / 2;
       const cropY = headOnly
@@ -11494,7 +11495,29 @@
     // 시트를 다 받으면 초상화 칸만 작은 그림으로 잘라 둠 (전신·머리 두 가지).
     // 초상화가 큰 시트를 그대로 쓰면 디코딩 크기 1MB가 넘는 시트(도적 3300×99 등)는 브라우저가 화면을 먼저 그린 뒤
     // 따로 디코딩해서, 모집 명단을 갱신할 때마다 그림이 늦게 나타남
+    // 전신 초상화 창을 대기 자세 그림이 잘리지 않게 맞춤 (2026-11-10 사용자: 마법사 모자·창병 창끝이 잘려 보임)
+    //   대기 칸에서 불투명 픽셀 범위를 재서, 창(PORTRAIT_VIEW_H)보다 크면 그만큼 창을 넓힘(= 그림이 조금 작아짐), 좌우는 그림이 다 들어가게 옮김
+    //   발 아래 여백(3px)은 그대로라 모든 직업의 발 높이가 같음. 그림을 읽을 수 없으면(file://) 원래 창
+    function fitPortraitCrop(sprite) {
+      sprite.portraitFit = null;
+      const base = getPortraitCrop(sprite, false);
+      try {
+        const f = (sprite.anims && sprite.anims.idle ? sprite.anims.idle[0] : 0) || 0, W = sprite.cellW, H = sprite.cellH;
+        const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+        const c = cv.getContext('2d'); c.drawImage(sprite.img, f * W, 0, W, H, 0, 0, W, H);
+        const px = c.getImageData(0, 0, W, H).data;
+        let x0 = W, x1 = -1, y0 = H;
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (px[(y * W + x) * 4 + 3] > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; }
+        if (x1 < 0) return;
+        const bottom = base.cropY + base.viewH, pad = 2;
+        const viewH = Math.max(base.viewH, x1 + 1 - x0 + pad * 2, bottom - (y0 - pad));
+        if (viewH === base.viewH && base.cropX <= x0 - pad && base.cropX + viewH >= x1 + 1 + pad) return; // 이미 다 들어감
+        const cropX = Math.min(Math.max(sprite.portraitCX - viewH / 2, x1 + 1 + pad - viewH), x0 - pad);
+        sprite.portraitFit = { viewH, cropX, cropY: bottom - viewH };
+      } catch (e) {}
+    }
     function buildSpritePortraits(sprite) {
+      fitPortraitCrop(sprite);
       sprite.portraits = {};
       [false, true].forEach(headOnly => {
         const { viewH, cropX, cropY } = getPortraitCrop(sprite, headOnly);
@@ -17522,6 +17545,7 @@
       const stu = getActiveStudent();
       document.getElementById('myTowerProgressText').textContent = `${stu.towerFloor}층 도전 가능 (상위 층 비공개) · 오늘 남은 클리어 ${getTowerClearsLeft(stu)}/${TOWER_DAILY_CLEARS}회 (도전은 계속 가능)`;
       renderTowerLiveList();
+      renderBattleBanner('tower');
 
       let filteredFloors = TOWER_FLOORS;
       if (currentTowerFloorFilter !== 'all') {
@@ -17545,7 +17569,6 @@
                 <div class="flex items-center gap-2">
                   <span class="px-2 py-0.5 rounded-lg text-xs font-extrabold bg-slate-800 text-slate-400">
                     🔒 ${f.floor}F 비공개
-      renderBattleBanner('tower');
                   </span>
                   <h4 class="font-title text-lg text-slate-400">??? · 미개방 비공개 층</h4>
                 </div>
@@ -18024,6 +18047,7 @@
       RealtimePvpService.init();
       renderSideRankPanel();
       renderTowerLiveList(); // 랭킹 매칭 중인 친구 목록(rankedLiveList)도 같이 그림
+      renderBattleBanner('pvp');
       const myStu = getActiveStudent();
       const sorted = [...studentsFor('rank')].sort((a, b) => b.pvpScore - a.pvpScore || calcStudentCombatPower(b) - calcStudentCombatPower(a));
 
@@ -18047,7 +18071,6 @@
             </div>
           </div>
           <button type="button" onclick="openDefenseEditor()" class="mt-3 w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs">✏️ 방어 진형 편집 (용병 넣기·빼기·자리 바꾸기)</button>
-      renderBattleBanner('pvp');
         `;
       }
 
@@ -36854,6 +36877,7 @@
         const box = document.getElementById('worldBossPanel');
         if (!box) return;
         if (document.getElementById('studentTab-worldraid')?.classList.contains('hidden')) return; // 안 보이는 탭은 열 때 그림 (renderWorldRaidTab)
+        renderBattleBanner('worldraid');
         const stu = getActiveStudent();
         const cur = this.current();
         if (!stu || !this.ref) { box.classList.add('hidden'); return; }
@@ -36877,7 +36901,6 @@
             <span class="w-6 text-center font-extrabold ${i === 0 ? 'text-amber-300' : i === 1 ? 'text-slate-200' : i === 2 ? 'text-orange-300' : 'text-slate-500'}">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span>
             <span class="flex-1 truncate font-bold text-white">${this.esc(c.name)}</span>
             <span class="text-rose-300 font-extrabold">${Math.round(c.dmg).toLocaleString()}</span>
-        renderBattleBanner('worldraid');
             <span class="text-slate-500 text-[10px]">${c.tries || 0}회</span>
           </div>`).join('') || '<div class="text-slate-500 text-center py-3">아직 아무도 도전하지 않았어요. 첫 번째 용사가 되어 보세요!</div>';
         const logHTML = this.logs(cur.key).slice(0, 8).map(l => `
@@ -36992,6 +37015,7 @@
       if (!stu) return;
       const picked = WorldBoss.pickedMerc(stu);
       WorldBoss.render();
+      renderBattleBanner('worldraid');
       const badge = document.getElementById('worldRaidMercCountBadge');
       if (badge) badge.textContent = picked ? `🗡️ ${picked.name}` : '용병을 골라 주세요';
       const grid = document.getElementById('worldRaidMercGrid');
@@ -37015,7 +37039,6 @@
     // 하드모드 레이드가 출발하면 내 화면에서 내 도전비용만 냄 (연습 친구 자리는 내지 않음)
     function chargeEliteHardCost(stu, hard) {
       if (!hard || !stu) return;
-      renderBattleBanner('worldraid');
       stu.mc = Math.max(0, (stu.mc || 0) - ELITE_HARD.cost);
       addBattleLog(`🔥 [하드모드] 도전비용 ${ELITE_HARD.cost.toLocaleString()} CA를 냈어요. (남은 CA: ${stu.mc.toLocaleString()})`);
       if (typeof saveState === 'function') saveState();
@@ -37139,6 +37162,7 @@
       ensureSelectedRaidMercs(myStu);
       ensureSelectedEliteBossUnlocked(myStu);
       ensureSelectedEliteHardUnlocked(myStu);
+      renderBattleBanner('raid');
 
       const badgeEl = document.getElementById('raidMySelectedCountBadge');
       if (badgeEl) badgeEl.textContent = `내 용병 ${selectedRaidMercIds.length} / ${RAID_PICK}명 배치됨`;
@@ -37162,7 +37186,6 @@
                   <div class="text-xs font-extrabold text-white truncate">${m.name} <span class="text-indigo-300">Lv.${m.level}</span></div>
                   <div class="text-[10px] text-rose-400 font-bold">⚔️ ${pwr.toLocaleString()}</div>
                 </div>
-      renderBattleBanner('raid');
               </div>
               <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${isPicked ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-400'}">
                 ${isPicked ? '✅ 배치' : '선택'}
@@ -51539,6 +51562,7 @@
       const stu = getActiveStudent();
       const box = document.getElementById('dungeonCardGrid');
       if (!stu || !box) return;
+      renderBattleBanner('dungeon');
       const power = calcStudentCombatPower(stu);
       const info = document.getElementById('dungeonMyInfo');
       const openIds = todayDungeonIds();
@@ -51562,7 +51586,6 @@
                 <div class="text-[11px] text-slate-400">[${def.race}] ${race.zone || ''}</div>
               </div>
             </div>
-      renderBattleBanner('dungeon');
             <div class="p-4 flex flex-col gap-2">
               <p class="text-xs text-slate-400 leading-relaxed">${def.desc}</p>
               <div class="py-2.5 rounded-xl bg-slate-800 text-slate-400 font-extrabold text-xs text-center border border-slate-700">🔒 닫힘 · ${closedIn === 1 ? '내일' : `${closedIn}일 뒤`} 열려요</div>
@@ -52973,29 +52996,6 @@
         </div>`;
     }
 
-    // 🏰 던전은 5인 입장(sim.dungeon.party)만 레이드방 실시간 장치를 씀
-    function isRaidNetMode(mode) { return mode === 'elite_raid' || mode === 'monster_rush' || (mode === 'dungeon' && Boolean(sim.dungeon && sim.dungeon.party)); }
-    function newRushState(startFloor) {
-      return { round: 1, phase: 'fight', roundStartTick: sim.tickCount || 0, nextAt: 0, cleared: 0, bosses: 0, startFloor: Math.max(1, startFloor || 1), pending: 0, left: 0,
-        mapStage: 0, fade: 0, moveAt: 0, fadeAt: 0, swapAt: 0 };
-    }
-    // 100라운드 난이도 구간: 구간 안에서 라운드마다 고르게(선형) 오름
-    //   floor: 시작 층에 더하는 층 수 · stat: 일반 몬스터 능력치 배율 (같은 층 탑 몬스터 대비) · count: 몬스터 수 · boss: 보스 능력치 배율
-    // 시뮬(장비 없는 같은 레벨 AI 5인)로 맞춤: 예전 값은 모든 파티가 10라운드 대보스 전에 쓰러져서 크게 낮춤 → 지금은 대개 20~38라운드
-    const RUSH_TIERS = [
-      { to: 10,  name: '입문', floor: [0, 2],   stat: [0.2, 0.3],   count: [6, 10],  boss: [0.5, 0.6] },
-      { to: 30,  name: '초급', floor: [3, 9],   stat: [0.3, 0.38],  count: [10, 15], boss: [0.6, 0.75] },
-      { to: 50,  name: '중급', floor: [10, 18], stat: [0.38, 0.45], count: [15, 20], boss: [0.75, 0.9] },
-      { to: 70,  name: '상급', floor: [19, 28], stat: [0.45, 0.55], count: [20, 26], boss: [0.9, 1.05] },
-      { to: 90,  name: '영웅', floor: [29, 40], stat: [0.55, 0.7],  count: [26, 34], boss: [1.05, 1.2] },
-      { to: 100, name: '전설', floor: [41, 50], stat: [0.7, 0.85],  count: [34, 42], boss: [1.2, 1.4] }
-    ];
-    const RUSH_BIG_BOSS_MULT = 1.3;   // 10라운드마다 대보스 (보스 능력치 ×1.3)
-    const RUSH_FINAL_BOSS_MULT = 1.5; // 100라운드 최종 보스 (대보스에서 ×1.5 더)
-    function rushTierOf(round) {
-      const r = Math.max(1, Math.min(RUSH.maxRound, round));
-      return RUSH_TIERS.find(t => r <= t.to) || RUSH_TIERS[RUSH_TIERS.length - 1];
-    }
     // ----- ⚔️ 전투 탭 공통 배너: 방어전 배너(.dft-hero)와 같은 틀 · 맵 배경 + 왼쪽 글 + 오른쪽에 그 컨텐츠의 적 -----
     // 적 그림 = 전장 시트의 대기 첫 칸을 잘라 왼쪽(내 쪽)을 보게 뒤집어 세움. h = 머리 꼭대기~발 높이(px)
     function bannerSpriteHTML(def, h, opt = {}) {
@@ -53108,6 +53108,29 @@
       box.innerHTML = html;
     }
 
+    // 🏰 던전은 5인 입장(sim.dungeon.party)만 레이드방 실시간 장치를 씀
+    function isRaidNetMode(mode) { return mode === 'elite_raid' || mode === 'monster_rush' || (mode === 'dungeon' && Boolean(sim.dungeon && sim.dungeon.party)); }
+    function newRushState(startFloor) {
+      return { round: 1, phase: 'fight', roundStartTick: sim.tickCount || 0, nextAt: 0, cleared: 0, bosses: 0, startFloor: Math.max(1, startFloor || 1), pending: 0, left: 0,
+        mapStage: 0, fade: 0, moveAt: 0, fadeAt: 0, swapAt: 0 };
+    }
+    // 100라운드 난이도 구간: 구간 안에서 라운드마다 고르게(선형) 오름
+    //   floor: 시작 층에 더하는 층 수 · stat: 일반 몬스터 능력치 배율 (같은 층 탑 몬스터 대비) · count: 몬스터 수 · boss: 보스 능력치 배율
+    // 시뮬(장비 없는 같은 레벨 AI 5인)로 맞춤: 예전 값은 모든 파티가 10라운드 대보스 전에 쓰러져서 크게 낮춤 → 지금은 대개 20~38라운드
+    const RUSH_TIERS = [
+      { to: 10,  name: '입문', floor: [0, 2],   stat: [0.2, 0.3],   count: [6, 10],  boss: [0.5, 0.6] },
+      { to: 30,  name: '초급', floor: [3, 9],   stat: [0.3, 0.38],  count: [10, 15], boss: [0.6, 0.75] },
+      { to: 50,  name: '중급', floor: [10, 18], stat: [0.38, 0.45], count: [15, 20], boss: [0.75, 0.9] },
+      { to: 70,  name: '상급', floor: [19, 28], stat: [0.45, 0.55], count: [20, 26], boss: [0.9, 1.05] },
+      { to: 90,  name: '영웅', floor: [29, 40], stat: [0.55, 0.7],  count: [26, 34], boss: [1.05, 1.2] },
+      { to: 100, name: '전설', floor: [41, 50], stat: [0.7, 0.85],  count: [34, 42], boss: [1.2, 1.4] }
+    ];
+    const RUSH_BIG_BOSS_MULT = 1.3;   // 10라운드마다 대보스 (보스 능력치 ×1.3)
+    const RUSH_FINAL_BOSS_MULT = 1.5; // 100라운드 최종 보스 (대보스에서 ×1.5 더)
+    function rushTierOf(round) {
+      const r = Math.max(1, Math.min(RUSH.maxRound, round));
+      return RUSH_TIERS.find(t => r <= t.to) || RUSH_TIERS[RUSH_TIERS.length - 1];
+    }
     function rushRoundSpec(round) {
       const r = Math.max(1, Math.min(RUSH.maxRound, round));
       const i = RUSH_TIERS.indexOf(rushTierOf(r));
@@ -53865,6 +53888,7 @@
     function renderRushTab() {
       const me = getActiveStudent();
       if (!me || !document.getElementById('studentTab-rush')) return;
+      renderBattleBanner('rush');
       const picked = rushMyMerc(me);
       const paid = rushPaidRoundOf(me);
       const info = document.getElementById('rushMyInfo');
@@ -53888,7 +53912,6 @@
             </div>`;
         }).join('') || '<div class="col-span-full text-xs text-slate-400 py-4 text-center">용병이 없어요. 먼저 용병을 모집해 주세요!</div>';
       }
-      renderBattleBanner('rush');
       renderRushLobby();
     }
 
