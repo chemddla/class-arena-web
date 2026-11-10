@@ -235,12 +235,26 @@
   fountain.add(at(mesh(new THREE.CylinderGeometry(0.5, 0.2, 0.16, 18), '#e3ddd0'), 0, 1.4, 0));
   const spout = at(noShadow(mesh(new THREE.SphereGeometry(0.2, 12, 10), flat(0xd4f2ff))), 0, 1.62, 0); fountain.add(spout);
   scene.add(fountain); solid(0, 0, 1.5);
-  const board = new THREE.Group();
-  [-0.7, 0.7].forEach(x => board.add(at(mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.5, 8), '#8a5a34'), x, 0.75, 0)));
-  board.add(at(mesh(new THREE.BoxGeometry(1.7, 1, 0.1), '#d19c62'), 0, 1.1, 0));
-  [['#fff7d6', -0.45, 1.2], ['#ffd6de', 0.1, 1.05], ['#d6f0ff', 0.5, 1.25]].forEach(p => board.add(at(mesh(new THREE.BoxGeometry(0.4, 0.45, 0.02), p[0]), p[1], p[2], 0.06)));
-  const boardRoof = at(mesh(new THREE.ConeGeometry(1.15, 0.35, 4), '#e0685a'), 0, 1.78, 0); boardRoof.scale.z = 0.28; boardRoof.rotation.y = Math.PI / 4; board.add(boardRoof);
-  scene.add(at(board, 3.1, 0, -3.1)); board.rotation.y = -0.5; solid(3.1, -3.1, 0.8);
+  const board = new THREE.Group(); // 마을 게시판: 지붕 달린 나무 틀, 코르크판에 압정 꽂은 쪽지들, 이름판, 등불, 꽃 상자
+  { const b = (w, h, d, c, x, y, z) => { const m = at(mesh(new THREE.BoxGeometry(w, h, d), c), x, y, z); board.add(m); return m; };
+    const WOOD = '#7a4a2e', LIGHT = '#b9824e';
+    [-1.1, 1.1].forEach(x => { b(0.4, 0.22, 0.4, '#c9c3b8', x, 0.11, 0); b(0.16, 2.5, 0.16, WOOD, x, 1.35, 0); });
+    b(2.2, 1.35, 0.08, '#d9a86a', 0, 1.45, 0); // 코르크판
+    [[2.4, 0.12, 0, 2.17], [2.4, 0.12, 0, 0.73], [0.12, 1.56, -1.14, 1.45], [0.12, 1.56, 1.14, 1.45]].forEach(f => b(f[0], f[1], 0.14, WOOD, f[2], f[3], 0.02)); // 틀
+    const nc = document.createElement('canvas'); nc.width = 256; nc.height = 56; const ng = nc.getContext('2d');
+    ng.fillStyle = '#fbf3e2'; ng.fillRect(0, 0, 256, 56); ng.fillStyle = '#5a3520'; ng.font = "800 30px 'Malgun Gothic', sans-serif"; ng.textAlign = 'center'; ng.textBaseline = 'middle'; ng.fillText('📌 마을 게시판', 128, 30);
+    b(1.5, 0.36, 0.08, WOOD, 0, 2.5, 0.02); board.add(at(noShadow(mesh(new THREE.PlaneGeometry(1.38, 0.28), flat(0xffffff, { map: new THREE.CanvasTexture(nc) }))), 0, 2.5, 0.07));
+    [['#fff7d6', -0.62, 1.68, 0.08, 0.5, 0.56], ['#ffd6de', 0.05, 1.55, -0.06, 0.56, 0.48], ['#d6f0ff', 0.68, 1.72, 0.1, 0.48, 0.5], ['#e2f5d6', -0.35, 1.07, -0.05, 0.62, 0.36], ['#fff1c9', 0.55, 1.08, 0.07, 0.5, 0.38]].forEach(([c, x, y, rz, w, h], i) => {
+      b(w, h, 0.02, c, x, y, 0.06).rotation.z = rz;
+      for (let k = 0; k < 3; k++) b(w * (0.7 - k * 0.15), 0.03, 0.01, '#c7b7a0', x - w * 0.06 * k, y + h * 0.18 - k * 0.11, 0.075).rotation.z = rz; // 글씨 줄
+      board.add(at(mesh(new THREE.SphereGeometry(0.045, 8, 6), ['#e0685a', '#5b8fd8', '#f2c53a', '#4fae6a', '#b06fc8'][i]), x - Math.sin(rz) * h * 0.42, y + h * 0.42, 0.1)); });
+    [-1, 1].forEach(sd => { const rf = b(1.45, 0.08, 0.95, '#c2573f', sd * 0.62, 3.0, 0.02); rf.rotation.z = -sd * 0.42; }); // 박공지붕
+    b(0.12, 0.12, 1, '#8a3f2e', 0, 3.26, 0.02);
+    b(0.05, 0.3, 0.05, '#3a3a44', 1.42, 2.15, 0.12); b(0.22, 0.04, 0.05, '#3a3a44', 1.33, 2.3, 0.12); // 옆에 매단 등불
+    b(0.2, 0.26, 0.2, '#3a3a44', 1.42, 1.88, 0.12); board.add(at(noShadow(mesh(new THREE.BoxGeometry(0.14, 0.18, 0.21), winMat)), 1.42, 1.88, 0.12));
+    b(2.3, 0.3, 0.38, LIGHT, 0, 0.36, 0.3); for (let k = 0; k < 8; k++) board.add(at(mesh(new THREE.SphereGeometry(0.11, 8, 6), ['#ff7fa6', '#ffcf3a', '#fff6e8', '#ff8a3a'][k % 4]), -0.95 + k * 0.27, 0.58, 0.3)); // 꽃 상자
+  }
+  scene.add(at(board, 3.1, 0, -3.1)); board.rotation.y = -0.5; solid(3.1, -3.1, 1);
 
   // ── 집
   // 집터 32곳: 광장에서 가까운 순서. 학생 명단 순서대로 한 채씩 (남는 집은 빈 집)
@@ -353,23 +367,14 @@
     scene.add(at(g, SHOP.ix, 0, SHOP.iz));
     [[-2.6, -1.2, 0.75], [-3.8, -1.2, 0.75], [-1.4, -1.2, 0.75], [2.8, 0.3, 0.6], [4.4, 0.3, 0.6], [-3.85, 1.4, 0.75]].forEach(([x, z, r]) => solid(SHOP.ix + x, SHOP.iz + z, r));
   }
-  // ── 소품: 통나무 탁자, 줄무늬 의자, 그네
-  const stump = (x, z, r, h) => { const g = new THREE.Group(); g.add(at(mesh(new THREE.CylinderGeometry(r, r * 1.08, h, 40), '#b9824e'), 0, h / 2, 0)); g.add(at(mesh(new THREE.CylinderGeometry(r * 0.93, r * 0.93, 0.03, 40), '#ecc28c'), 0, h + 0.012, 0)); g.add(at(mesh(new THREE.TorusGeometry(r * 0.5, 0.018, 4, 18), '#d7a66c'), 0, h + 0.03, 0)); g.children[2].rotation.x = Math.PI / 2; scene.add(at(g, x, 0, z)); solid(x, z, r); };
-  stump(6.2, 3.6, 0.95, 0.55); stump(7.7, 3.2, 0.36, 0.34); stump(5.2, 4.7, 0.36, 0.34);
+  // ── 소품: 줄무늬 의자
   { const g = new THREE.Group(), cols = ['#ff8f8f', '#ffd27a', '#fff3a8', '#9fe0a0', '#8fc8ff', '#c9a8f0'];
     cols.forEach((c, i) => { const p = at(mesh(new THREE.BoxGeometry(0.95, 0.03, 0.21), c), 0, 0.22 + i * 0.105, 0.55 - i * 0.2); p.rotation.x = 0.48; g.add(p); });
     [-1, 1].forEach(s => { const a = at(mesh(new THREE.BoxGeometry(0.06, 0.06, 1.6), '#b9824e'), s * 0.5, 0.48, 0.05); a.rotation.x = 0.48; g.add(a); const b = at(mesh(new THREE.BoxGeometry(0.06, 0.06, 1.1), '#b9824e'), s * 0.5, 0.3, -0.1); b.rotation.x = -0.55; g.add(b); });
     g.rotation.y = 0.5; scene.add(at(g, -5.4, 0, 3.4)); solid(-5.4, 3.4, 0.6); }
-  const swingSeat = new THREE.Group();
-  { const g = new THREE.Group();
-    [-1, 1].forEach(s => g.add(at(mesh(new THREE.CylinderGeometry(0.08, 0.09, 2.6, 8), '#c58f5c'), s * 1.1, 1.3, 0)));
-    g.add(at(mesh(new THREE.BoxGeometry(2.5, 0.14, 0.14), '#c58f5c'), 0, 2.6, 0));
-    [-1, 1].forEach(s => swingSeat.add(at(mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.8, 4), '#e9dcc0'), s * 0.38, -0.9, 0)));
-    swingSeat.add(at(mesh(new THREE.BoxGeometry(0.95, 0.07, 0.32), '#e0685a'), 0, -1.8, 0));
-    g.add(at(swingSeat, 0, 2.55, 0)); scene.add(at(g, -4.6, 0, -4.2)); solid(-5.7, -4.2, 0.3); solid(-3.5, -4.2, 0.3); }
 
   // ── 놀이터: 강 아래 집들 맨 왼쪽 바깥. 그네 두 자리·미끄럼틀·시소·뺑뺑이·트램펄린, E로 탐 (탈 자리는 아래 seats 끝에 붙음)
-  const PLAY = { x: -44, z: 12 }, movers = [swingSeat], rides = [];
+  const PLAY = { x: -44, z: 12 }, movers = [], rides = [];
   strip(PLAY.x, PLAY.z, 17.6, 9, '#d9b878', 0.025); strip(PLAY.x, PLAY.z, 17, 8.4, sandMat(8, 4), 0.033);
   strip(-34.3, 11.6, 2.8, 2.2, sandMat(1, 1), 0.031); // 골목 끝에서 놀이터로
   { // 그네 두 자리
@@ -801,14 +806,10 @@
   const soundBtn = $('soundBtn');
   soundBtn.onclick = () => { soundOn = !soundOn; if (soundOn && !audio) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) audio = new AC(); } soundBtn.textContent = '소리: ' + (soundOn ? '켬' : '끔'); if (soundOn) sfx.note(); };
   function say(a, text, sec) { a.say = text; a.sayT = sec || 1.8; }
-  // 앉을 자리: y = 앉는 높이, face = 앉아서 보는 쪽, (ox, oz) = 일어날 때 내려서는 곳, swing = 그네
+  // 앉을 자리: y = 앉는 높이, face = 앉아서 보는 쪽, (ox, oz) = 일어날 때 내려서는 곳
   const seats = [
-    { x: 7.7, z: 3.2, y: 0.36, face: Math.atan2(6.2 - 7.7, 3.6 - 3.2), ox: 0.2, oz: 0.8 },
-    { x: 5.2, z: 4.7, y: 0.36, face: Math.atan2(6.2 - 5.2, 3.6 - 4.7), ox: -0.3, oz: 0.8 },
     { x: -5.4, z: 3.4, y: 0.42, face: 0.5, ox: 0.5, oz: 1.1 },
-    { x: -4.6, z: -4.2, y: 0.78, face: 0, ox: 0, oz: 1.0, swing: true },
   ].concat(rides); // 순서는 친구 화면과 맞춰야 하므로 놀이터 자리는 늘 뒤에 붙임
-  let swingAmp = 0.12;
   function emote(kind) { // 1 기쁨 · 2 하트: 가까운 친구들이 따라 함
     const text = kind === 'joy' ? '😄 야호!' : '❤️';
     const act = a => { say(a, text, 1.4); if (kind === 'joy') a.hop = 0.4; else popText('❤️', a.x, 1.9, a.z); };
@@ -822,7 +823,7 @@
   function nearby() {
     if (me.sit) return { kind: 'stand', label: me.sit.ride ? '내리기' : '일어나기' };
     const seat = seats.find(q => Math.hypot(me.x - q.x, me.z - q.z) < (q.reach || 1.3) && !actors.some(a => a !== me && a.sit === q)); // 빈 자리만
-    if (seat) return { kind: 'seat', seat, label: seat.ride || (seat.swing ? '🎠 그네 타기' : '🪑 앉기') };
+    if (seat) return { kind: 'seat', seat, label: seat.ride || '🪑 앉기' };
     for (let i = 0; i < houses.length; i++) { const h = houses[i]; if (Math.hypot(me.x - h.x, me.z - (h.z + 1.9)) < 1.2) return { kind: 'door', house: h, owner: ownerOf(i), label: !ownerOf(i) ? '🚪 빈 집' : demo ? '🚪 ' + ownerOf(i).name + '네 집 · 똑똑' : ownerOf(i).id === host.me.id ? '🚪 내 방 들어가기' : '🚪 ' + ownerOf(i).name + '네 집 놀러 가기' }; }
     if (Math.hypot(me.x - 3.1, me.z + 3.1) < 2) return { kind: 'board', label: '📋 게시판 보기' };
     if (Math.hypot(me.x - SHOP.x, me.z - (SHOP.z + 2.7)) < 1.4) return { kind: 'shopIn', label: '🛒 슈퍼마켓 들어가기' };
@@ -1089,8 +1090,6 @@
     shades.forEach((q, i) => { q.x += q.v * dt; if (q.x > 46) q.x = -46; dummy.position.set(q.x, 0.07, q.z); dummy.rotation.set(-Math.PI / 2, 0, 0); dummy.scale.set(q.r * 1.5, q.r, 1); dummy.updateMatrix(); shadeIM.setMatrixAt(i, dummy.matrix); });
     shadeIM.instanceMatrix.needsUpdate = true; cloudShadeMat.opacity = 0.14 * (1 - env.night);
     spout.scale.setScalar(1 + Math.sin(t * 6) * 0.12);
-    swingAmp += ((me.sit && me.sit.swing ? 0.55 : 0.12) - swingAmp) * Math.min(1, dt * 2);
-    swingSeat.rotation.x = Math.sin(t * 1.9) * swingAmp;
     rides.forEach(q => { if (q.tick) q.tick(t, dt, actors.some(a => a.sit === q)); });
     waterTex.offset.x = -t * 0.12;
     marker.rotation.z = t * 2;
@@ -1131,10 +1130,8 @@
       if (a.hop > 0) a.hop -= dt;
       if (a.sit !== a.sitWas) { a.sitWas = a.sit; a.sitAt = t; } // 미끄럼틀처럼 탄 뒤 지난 시간으로 움직이는 것용
       if (a.sit && a.sit.place) a.sit.place(a, t); // 놀이터 기구
-      else if (a.sit) { // 앉은 자리에 붙음 (그네는 줄을 따라 같이 흔들림)
-        const q = a.sit, th = q.swing ? swingSeat.rotation.x : 0;
-        a.g.position.set(q.x, q.swing ? 2.55 - 1.8 * Math.cos(th) + 0.04 : q.y, q.swing ? q.z - 1.8 * Math.sin(th) : q.z);
-        a.g.rotation.x = th; a.face = q.face;
+      else if (a.sit) { // 앉은 자리에 붙음
+        const q = a.sit; a.g.position.set(q.x, q.y, q.z); a.g.rotation.x = 0; a.face = q.face;
       } else { a.g.rotation.x = 0; a.g.position.set(a.x, a.hop > 0 ? Math.sin(Math.PI * (1 - a.hop / 0.4)) * 0.38 : 0, a.z); }
       let d = a.face - a.g.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); a.g.rotation.y += d * Math.min(1, dt * 12);
       if (a.wave > 0) a.wave -= dt;
