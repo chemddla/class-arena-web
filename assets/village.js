@@ -480,6 +480,7 @@
     box(1.2, 0.75, 0.03, '#f2c53a', -6.78, 4.5, F + 1.4); box(0.36, 0.36, 0.04, '#e0685a', -6.78, 4.5, F + 1.41);
     scene.add(at(g, SCH.x, 0, SCH.z)); solid(SCH.x - 7.4, SCH.z + F + 1.4, 0.2);
     strip(SCH.x, (SCH.z + TF + 1.45 + PLAY.z - 4.2) / 2, 2.2, PLAY.z - 4.2 - (SCH.z + TF + 1.45), sandMat(1, 2), 0.031); // 현관에서 놀이터까지 돌길
+    strip(-34, 1.8, 2.8, 5.8, sandMat(1, 3), 0.0315); strip(-39.2, 3.9, 9.8, 1.6, sandMat(4, 1), 0.0312); // 분수 앞 골목 끝 → 학교 현관 앞
   }
 
   // ── 나무: 꽃·잎 뭉치는 한 번에 그리는 묶음(InstancedMesh)으로, 줄기와 열매만 따로
@@ -492,7 +493,7 @@
   const addBlob = (im, colors) => { const i = im.count++; im.setColorAt(i, col.set(pick(colors))); return i; };
   const PINK = ['#ffffff', '#fff2f5', '#ffe6ec', '#fff8fa'], LEAF = ['#ffffff', '#eaffe6', '#dff5d6', '#f4fff0'];
   const trees = [];
-  const freeSpot = (x, z, pad) => !onPath(x, z, 1.9 + pad) && Math.hypot(x, z) > 6.2 + pad && !(z > -26 && z < -17.8 && x > -0.5 && x < 17) 
+  const freeSpot = (x, z, pad) => !onPath(x, z, 1.9 + pad) && Math.hypot(x, z) > 6.2 + pad && !(z > -26 && z < -17.8 && x > -0.5 && x < 17) && !(x < -31.5 && z > -2 && z < 5.5) 
     && !(z > RIVER.z0 - 1.5 && z < RIVER.z1 + 1.5) && HOUSES.every(h => Math.hypot(x - h[0], z - h[1]) > 4.2 + pad)
     && solids.every(s => Math.hypot(x - s.x, z - s.z) > s.r + 1.6 + pad) && trees.every(t => Math.hypot(x - t.x, z - t.z) > 2.6);
   function placeTree(tr) { // 줄기 묶음의 지금 위치·기울기대로 뭉치들을 옮김
@@ -725,7 +726,10 @@
       else if (Math.abs(x) > RIVER.bridge - 0.25) z = pz >= RIVER.z1 ? RIVER.z1 : pz <= RIVER.z0 ? RIVER.z0 : z;
     }
     if (x < -LX && pz < 40) { // 집들 왼쪽 바깥은 학교 앞마당·놀이터 안으로만 감
-      if (a.x >= -LX && (z < SCH.z + 3.9 || z > PLAY.z + 4)) x = -LX; else z = Math.max(SCH.z + 3.9, Math.min(PLAY.z + 4, z));
+      const zMin = x > -35.4 ? -1.1 : SCH.z + 3.9; // 골목에서 꺾어 올라가는 길목은 학교 옆이라 더 아래까지 걸음
+      if (a.x >= -LX && (z < -1.1 || z > PLAY.z + 4)) x = -LX;
+      else if (x < -35.4 && a.x >= -35.4 && z < zMin) x = -35.4; // 학교 옆벽
+      else z = Math.max(zMin, Math.min(PLAY.z + 4, z));
     }
     if (z < -21 && pz < 40) { // 사무소·가게 뒤로는 그 사이 길로만 들어감
       if (pz >= -21 && Math.abs(x - 6.45) > 0.9) z = -21; else x = Math.max(5.55, Math.min(7.35, x));
@@ -947,7 +951,7 @@
     g.fillStyle = '#7fd0f0'; g.beginPath(); g.arc(mx(0), mz(0), 1.3 * S, 0, 6.29); g.fill();
     HOUSES.forEach(h => { rect(h[0], h[1], 3.2, 2.6, h[3]); });
     rect(0, -23, 6.4, 3.6, '#7a4a2e'); rect(0, -23, 1.2, 1.2, '#a8744f'); rect(SHOP.x, SHOP.z, 7, 3.8, '#3f9a5a'); rect(7.05, -19.9, 11.9, 1.6, '#ead2a0'); rect(6.45, -22.7, 1.8, 5.4, '#ead2a0'); rect(PLAY.x, PLAY.z, 17, 8.4, '#e9d9a8');
-    rect(-34.3, 11.6, 2.8, 2.2, '#ead2a0'); rect(SCH.x, SCH.z, 12.4, 4.4, '#d9604f'); rect(SCH.x, SCH.z + 0.3, 3.2, 5, '#c24f40'); rect(SCH.x, (SCH.z + 3.95 + PLAY.z - 4.2) / 2, 2.2, PLAY.z - 4.2 - (SCH.z + 3.95), '#ead2a0');
+    rect(-34.3, 11.6, 2.8, 2.2, '#ead2a0'); rect(-34, 1.8, 2.8, 5.8, '#ead2a0'); rect(-39.2, 3.9, 9.8, 1.6, '#ead2a0'); rect(SCH.x, SCH.z, 12.4, 4.4, '#d9604f'); rect(SCH.x, SCH.z + 0.3, 3.2, 5, '#c24f40'); rect(SCH.x, (SCH.z + 3.95 + PLAY.z - 4.2) / 2, 2.2, PLAY.z - 4.2 - (SCH.z + 3.95), '#ead2a0');
     [[-6, -2.2, 4.2, 0.5, '#e0685a'], [-0.2, -1.4, 1, 3.4, '#e0685a'], [5.4, -2, 3.4, 0.5, '#e8a13a']].forEach(b => rect(PLAY.x + b[0], PLAY.z + b[1], b[2], b[3], b[4]));
     [[0, 3, '#5b8fd8'], [5.4, 2.8, '#4fae6a']].forEach(b => { g.fillStyle = b[2]; g.beginPath(); g.arc(mx(PLAY.x + b[0]), mz(PLAY.z + b[1]), 1.3 * S, 0, 6.29); g.fill(); });
     trees.forEach(t => { g.fillStyle = t.kind === 'blossom' ? '#ffc8d6' : '#3f9e4b'; g.beginPath(); g.arc(mx(t.x), mz(t.z), 1.2 * t.sc * S, 0, 6.29); g.fill(); });
