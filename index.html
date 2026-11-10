@@ -10202,6 +10202,8 @@
       g.drawImage(img, 0, 0);
       return c;
     }
+    // 시크릿 레어 창병(붉은 용인 외형)은 회색 대신 붉은 사본 (bloodTintCopy = 피의 오크 회전베기와 같은 핏빛 물들이기) — 외형 기준, 등급 아님
+    const lancerRedFx = img => { img.red = bloodTintCopy(img); };
     // 창병 난무 이펙트: 0·1 = 작은 활 모양 베기, 2·3 = 범위 전체를 감싸는 큰 소용돌이 ([x, y, w, h])
     const LANCER_RAMPAGE_FX = { img: new Image(), frames: [[0, 0, 153, 155], [155, 0, 162, 126], [319, 0, 311, 182], [632, 0, 302, 190]] };
     LANCER_RAMPAGE_FX.img.onload = () => {
@@ -10217,20 +10219,21 @@
       g.drawImage(img, 0, 0);
       LANCER_RAMPAGE_FX.gold = c;
       LANCER_RAMPAGE_FX.grey = greyFxCopy(img); // 창병 회전·난무용 회색 사본 (전사 회전베기는 원래 하늘색)
+      LANCER_RAMPAGE_FX.red = bloodTintCopy(img); // 시크릿 레어 창병용 붉은 사본
       LANCER_RAMPAGE_FX.ready = true;
     };
     LANCER_RAMPAGE_FX.img.src = 'assets/sprites/fx/lancer_rampage.webp';
     // 창병 피어싱 이펙트: 오른쪽을 향한 창 바람 (268×90, 촉 끝 = (267, 39))
     const LANCER_PIERCE_IMG = new Image();
-    LANCER_PIERCE_IMG.onload = () => { LANCER_PIERCE_IMG.ready = true; };
+    LANCER_PIERCE_IMG.onload = () => { lancerRedFx(LANCER_PIERCE_IMG); LANCER_PIERCE_IMG.ready = true; };
     LANCER_PIERCE_IMG.src = 'assets/sprites/fx/lancer_pierce.webp';
     // 창병 기본 공격 이펙트: 휘두르기 = 오른쪽으로 볼록한 초승달 (223×263, 바깥 원 중심 (93.8, 131.6)·반지름 129.5)
     //                       찌르기 = 오른쪽을 향한 화살 모양 창 바람 (208×43, 촉 끝 = (207, 21))
     const LANCER_SWEEP_IMG = new Image();
-    LANCER_SWEEP_IMG.onload = () => { LANCER_SWEEP_IMG.grey = greyFxCopy(LANCER_SWEEP_IMG); LANCER_SWEEP_IMG.ready = true; }; // 창병은 회색 사본 (성기사 휘두르기는 원래 그림)
+    LANCER_SWEEP_IMG.onload = () => { LANCER_SWEEP_IMG.grey = greyFxCopy(LANCER_SWEEP_IMG); lancerRedFx(LANCER_SWEEP_IMG); LANCER_SWEEP_IMG.ready = true; }; // 창병은 회색 사본 (성기사 휘두르기는 원래 그림)
     LANCER_SWEEP_IMG.src = 'assets/sprites/fx/lancer_sweep.webp';
     const LANCER_THRUST_IMG = new Image();
-    LANCER_THRUST_IMG.onload = () => { LANCER_THRUST_IMG.ready = true; };
+    LANCER_THRUST_IMG.onload = () => { lancerRedFx(LANCER_THRUST_IMG); LANCER_THRUST_IMG.ready = true; };
     LANCER_THRUST_IMG.src = 'assets/sprites/fx/lancer_thrust.webp';
     // 저격수 이펙트 (sniper_fx.webp 한 줄 아틀라스, [x, y, w, h]): 0~2 = 붉은 저격선(굵은 섬광 → 가는 선 → 흩어짐),
     // 3~5 = 산탄(총구 연기 → 탄 부채꼴 → 흩어짐), 6~8 = 총알 3종(쓰지 않음). 저격선·산탄 기준점 = 왼쪽 가운데
@@ -10574,7 +10577,7 @@
     FREEZE_ICE_IMG.src = 'assets/sprites/fx/freeze_ice.webp';
     // 창병 투창 이펙트: 날아가는 창 밑에 깔리는 바람 줄기 + 촉 앞 충격파 고리 (327×112, 촉 끝 = (326, 55))
     const LANCER_JAVELIN_FX = new Image();
-    LANCER_JAVELIN_FX.onload = () => { LANCER_JAVELIN_FX.ready = true; };
+    LANCER_JAVELIN_FX.onload = () => { lancerRedFx(LANCER_JAVELIN_FX); LANCER_JAVELIN_FX.ready = true; }; // 창 자루는 그대로, 바람 줄기만 붉은 사본
     LANCER_JAVELIN_FX.src = 'assets/sprites/fx/lancer_javelin_fx.webp';
     // 궁수 히든 스킬 [폭풍] 그림 (fx/samples/README.md)
     // - wind: 시전 3칸에서 바람·잎만 (시전 그림이 없는 외형 위에 겹침). 예전 기본 외형용 cast 그림(archer_storm_cast.webp)은 2026-11-09 외형 교체로 안 받음
@@ -17552,16 +17555,16 @@
      * 8. 단계별 AI 모험의 탑 & 학생 간 5:5 PvP 결투장
      ********************************************************************/
     let currentTowerFloorFilter = 'all';
-
-    function setTowerFloorFilter(rangeKey) {
-      currentTowerFloorFilter = rangeKey;
     // 배너마다 고른 층·모드 (종족 번호 → { hard, n/h: 노말/하드에서 고른 층, nAt/hAt: 고를 때의 기록 })
     const towerBannerSel = {};
     let towerBannerScrollPending = true;
+
+    function setTowerFloorFilter(rangeKey) {
+      currentTowerFloorFilter = rangeKey;
+      towerBannerScrollPending = true;
       ['all', '1-40', '41-80', '81-120', '121-160', '161-200'].forEach(k => {
         const btn = document.getElementById(`tfilter-${k}`);
         if (btn) {
-      towerBannerScrollPending = true;
           btn.className = (k === rangeKey)
             ? 'px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold shadow'
             : 'px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold';
@@ -23851,7 +23854,7 @@
         // AI는 직선에 가장 많은 적이 꿰이는 쪽으로
         const angle = aimPt ? lancerAimAngle(unit, target, aimPt)
           : lancerBestLine(unit, enemies.filter(e => !hiddenFrom(unit, e)), LANCER_PIERCE_LENGTH, LANCER_PIERCE_HALF_W, target && target.alive ? target : null).angle;
-        sim.effects.push({ type: 'pierce_fx', x: unit.x, y: unit.y - 6, angle, r: LANCER_PIERCE_LENGTH, life: 26, maxLife: 26 });
+        sim.effects.push({ type: 'pierce_fx', x: unit.x, y: unit.y - 6, angle, r: LANCER_PIERCE_LENGTH, sr: isSrLancer(unit), life: 26, maxLife: 26 });
         playCombatSfx('slash');
         lancerLineHits(unit, angle, LANCER_PIERCE_LENGTH, LANCER_PIERCE_HALF_W).forEach(e => {
           applyDamage(unit, e, unit.atk * 2.0);
@@ -25800,8 +25803,8 @@
         : lancerArcHits(u, angle, LANCER_SWEEP_RANGE + 10, LANCER_SWEEP_HALF_ANGLE);
       playCombatSfx('slash');
       sim.effects.push(thrust
-        ? { type: 'lance_thrust', x: u.x, y: u.y - 6, angle, r: LANCER_THRUST_RANGE, w: 4, color: '#b45309', life: 20, maxLife: 20 }
-        : { type: 'lance_sweep', x: u.x, y: u.y - 6, angle, r: LANCER_SWEEP_RANGE, color: '#b45309', life: 24, maxLife: 24 });
+        ? { type: 'lance_thrust', x: u.x, y: u.y - 6, angle, r: LANCER_THRUST_RANGE, w: 4, color: '#b45309', sr: isSrLancer(u), life: 20, maxLife: 20 }
+        : { type: 'lance_sweep', x: u.x, y: u.y - 6, angle, r: LANCER_SWEEP_RANGE, color: '#b45309', sr: isSrLancer(u), life: 24, maxLife: 24 });
       hits.forEach(e => withHitKind('melee', () => applyDamage(u, e, u.atk * (thrust ? LANCER_THRUST_DMG : LANCER_SWEEP_DMG))));
       return hits.length;
     }
@@ -25919,10 +25922,10 @@
       sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: LANCER_RAMPAGE_RADIUS, color: '#c2410c', life: 18, maxLife: 18 });
       // 범위 전체를 감싸는 큰 소용돌이(타마다 번갈아) + 범위 안 여기저기 작은 베기 2개
       const hitNo = Math.round((LANCER_RAMPAGE_TICKS - (u.statuses.rampage || 0)) / LANCER_HIT_INTERVAL);
-      sim.effects.push({ type: 'rampage_fx', f: 2 + (hitNo % 2), x: u.x, y: u.y - 14, w: LANCER_RAMPAGE_RADIUS * 2, flip: hitNo % 4 >= 2, tint: 'grey', life: 22, maxLife: 22 });
+      sim.effects.push({ type: 'rampage_fx', f: 2 + (hitNo % 2), x: u.x, y: u.y - 14, w: LANCER_RAMPAGE_RADIUS * 2, flip: hitNo % 4 >= 2, tint: isSrLancer(u) ? 'red' : 'grey', life: 22, maxLife: 22 });
       for (let k = 0; k < 2; k++) {
         const a = Math.random() * Math.PI * 2, d = 40 + Math.random() * (LANCER_RAMPAGE_RADIUS - 90);
-        sim.effects.push({ type: 'rampage_fx', f: k, x: u.x + Math.cos(a) * d, y: u.y - 14 + Math.sin(a) * d * 0.6, w: 120, flip: Math.random() < 0.5, tint: 'grey', life: 16, maxLife: 16 });
+        sim.effects.push({ type: 'rampage_fx', f: k, x: u.x + Math.cos(a) * d, y: u.y - 14 + Math.sin(a) * d * 0.6, w: 120, flip: Math.random() < 0.5, tint: isSrLancer(u) ? 'red' : 'grey', life: 16, maxLife: 16 });
       }
       playCombatSfx('slash');
       withSkillHit(() => sim.units.forEach(e => {
@@ -31994,14 +31997,14 @@
         const a = tick * 0.035 + i * Math.PI / 2;
         const x = Math.cos(a) * 24, y = midY + Math.sin(a) * 9 - 4;
         const tw = 0.5 + 0.5 * Math.sin(tick * 0.18 + i * 1.7);
-        drawRareSparkle(ctx, x, y, 2.5 + tw * 3.5, 0.35 + tw * 0.65, pal);
+        drawRareSparkle(ctx, x, y, 1.5 + tw * 2.1, 0.35 + tw * 0.65, pal);
       }
       if (lowFxMode()) return; // 느린 기기: 고리 별 4개만
       for (let i = 0; i < 5; i++) {
         const t = ((tick * 0.7 + i * 23) % 60) / 60;
         const x = Math.sin(i * 2.3 + tick * 0.02) * 16;
         const y = 10 - t * (20 - topY);
-        drawRareSparkle(ctx, x, y, 1.6, Math.sin(t * Math.PI) * 0.9, pal);
+        drawRareSparkle(ctx, x, y, 1.1, Math.sin(t * Math.PI) * 0.9, pal);
       }
     }
 
@@ -33621,7 +33624,7 @@
             if (ef.flip) ctx.scale(-1, 1);
             ctx.globalAlpha = Math.min(1, (ef.life / ef.maxLife) * 1.6) * 0.95;
             ctx.imageSmoothingEnabled = true;
-            const src = (ef.tint === 'gold' && LANCER_RAMPAGE_FX.gold) || (ef.tint === 'grey' && LANCER_RAMPAGE_FX.grey) || LANCER_RAMPAGE_FX.img;
+            const src = (ef.tint === 'gold' && LANCER_RAMPAGE_FX.gold) || (ef.tint === 'grey' && LANCER_RAMPAGE_FX.grey) || (ef.tint === 'red' && LANCER_RAMPAGE_FX.red) || LANCER_RAMPAGE_FX.img;
             ctx.drawImage(src, fr[0], fr[1], fr[2], fr[3], -fr[2] * k / 2, -fr[3] * k / 2, fr[2] * k, fr[3] * k);
           }
 
@@ -33635,7 +33638,7 @@
           const h = ef.r * (90 / 268) * 0.6;
           ctx.globalAlpha = Math.min(1, (ef.life / ef.maxLife) * 1.8);
           ctx.imageSmoothingEnabled = true;
-          ctx.drawImage(LANCER_PIERCE_IMG, 10, -h * (39 / 90), len, h);
+          ctx.drawImage((ef.sr && LANCER_PIERCE_IMG.red) || LANCER_PIERCE_IMG, 10, -h * (39 / 90), len, h);
 
         } else if (ef.type === 'pierce_fx') {
           // 그림을 불러오기 전: 붉은 창 궤적
@@ -33657,7 +33660,7 @@
           ctx.rotate(ef.angle + (Math.cos(ef.angle) < 0 ? 1 : -1) * (0.35 - progress * 0.5));
           ctx.globalAlpha = Math.min(1, (ef.life / ef.maxLife) * 1.6) * 0.32; // 자주 나오는 큰 그림이라 흐리게
           ctx.imageSmoothingEnabled = true;
-          ctx.drawImage(LANCER_SWEEP_IMG.grey || LANCER_SWEEP_IMG, -93.8 * k, -131.6 * k, 223 * k, 263 * k);
+          ctx.drawImage((ef.sr && LANCER_SWEEP_IMG.red) || LANCER_SWEEP_IMG.grey || LANCER_SWEEP_IMG, -93.8 * k, -131.6 * k, 223 * k, 263 * k);
 
         } else if (ef.type === 'lance_thrust' && LANCER_THRUST_IMG.ready) {
           // 창병 찌르기 그림: 창 바람이 사거리 끝까지 뻗어 나감
@@ -33668,7 +33671,7 @@
           const h = 40;
           ctx.globalAlpha = Math.min(1, (ef.life / ef.maxLife) * 1.6) * 0.4;
           ctx.imageSmoothingEnabled = true;
-          ctx.drawImage(LANCER_THRUST_IMG, 10 + ef.r - len, -h * (21 / 43), len, h);
+          ctx.drawImage((ef.sr && LANCER_THRUST_IMG.red) || LANCER_THRUST_IMG, 10 + ef.r - len, -h * (21 / 43), len, h);
 
         } else if (ef.type === 'lance_sweep') {
           // 창병 휘두르기 (그림을 불러오기 전): 넓은 부채꼴로 쓸고 지나가는 창 자국
@@ -34131,7 +34134,7 @@
             const f = 0.65, tipX = 46;
             ctx.save();
             ctx.globalAlpha *= 0.9;
-            ctx.drawImage(LANCER_JAVELIN_FX, tipX - 326 * f, -55 * f, 327 * f, 112 * f);
+            ctx.drawImage((isSrLancer(p.owner) && LANCER_JAVELIN_FX.red) || LANCER_JAVELIN_FX, tipX - 326 * f, -55 * f, 327 * f, 112 * f);
             ctx.restore();
           }
           ctx.drawImage(LANCER_JAVELIN_IMG, 14 - 140 * k, -10 * k, 141 * k, 24 * k);

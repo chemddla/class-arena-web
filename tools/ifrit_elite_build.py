@@ -61,6 +61,30 @@ ORDER = ['idle', 'walk_a', 'walk_b', 'atk_a', 'atk_b', 'hurt', 'death_a', 'death
 OUT = 'assets/sprites/monster/ifrit_elite.webp'
 
 
+def load_clean(path):
+    """몸 샘플용 배경 지우기. 샘플이 흐릿해서 불길 사이에 갇힌 흰 틈이 순백(245)이 아니라 kraken load로는 남음 →
+    채도 낮은 밝은 색(최솟값 ≥ 200, 채도 ≤ 26)은 크기·위치 상관없이 모두 배경 (불길 밝은 곳은 노랑이라 채도가 높아 안 걸림).
+    가장자리 반투명 띠를 3px로 넓혀 흰 테도 같이 걷어 냄. 결과는 kraken_build 캐시에 넣어 cut이 그대로 씀"""
+    import kraken_build
+    im = np.array(Image.open(path).convert('RGB')).astype(float)
+    mn, mx = im.min(2), im.max(2)
+    bg = (mn >= 200) & (mx - mn <= 26)
+    # 배경에 붙은 연한 회백색(흰 바탕과 섞인 압축 번짐)도 배경으로 넓힘
+    soft = (mn >= 175) & (mx - mn <= 30)
+    lab, n = ndi.label(soft | bg)
+    touch = np.unique(lab[bg]); bg |= np.isin(lab, touch[touch > 0]) & soft
+    fg = ~bg
+    core = ndi.binary_erosion(fg, iterations=3)
+    if not core.any(): core = fg
+    _, (iy, ix) = ndi.distance_transform_edt(~core, return_indices=True)
+    t = im[iy, ix]
+    a_edge = np.clip(((255 - im) / np.maximum(255 - t, 1)).max(2), 0, 1)
+    band = fg & ~core
+    a = np.where(core, 1.0, np.where(band, a_edge, 0.0))
+    rgb = np.where(band[..., None], t, im)
+    kraken_build._SRC[path] = (rgb, a)
+
+
 def keep_main(spec):
     """가장 큰 조각 + 칸 바닥에 닿은 조각만 남긴 사본 spec (나머지 조각은 load 캐시의 알파를 잠깐 0으로)"""
     path, x0, x1, y0, y1, opt = spec
@@ -125,6 +149,7 @@ def placed(name):
 
 
 def build():
+    for p in (S, K, K2): load_clean(p)
     cells = {n: placed(n) for n in ORDER}
     L = max(ax for _, ax, _ in cells.values()); R = max(im.width - ax for im, ax, _ in cells.values())
     U = max(ay for _, _, ay in cells.values()); D = max(im.height - ay for im, _, ay in cells.values())
@@ -135,6 +160,8 @@ def build():
         im, x, y = cells[n]
         sheet.alpha_composite(im, (i * cw + round(ax - x), round(ay - y)))
     sheet.save(OUT, 'WEBP', lossless=True, quality=100, method=6)
+    import kraken_build
+    for p in (S, K, K2): kraken_build._SRC.pop(p, None)  # 이펙트(불덩이 하얀 속)는 원래 배경 지우기로
     print(f'{OUT}: cellW {cw}, cellH {ch}, anchor ({ax}, {ay}), count {len(ORDER)}, 대기 키 {cells["idle"][2]:.0f}, 걷기 키 {cells["walk_a"][2]:.0f}')
 
 
