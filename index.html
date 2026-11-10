@@ -32477,10 +32477,19 @@
           ctx.translate(own.x, own.y + 6);
           ctx.scale(1, 0.72);
           ctx.rotate(ang);
+          // 몬스터의 회전베기: 빛 더하기(lighter)로 그리면 여러 마리가 한꺼번에 돌 때 고리가 겹쳐 화면이 통째로 하얗게 덮였음 (야수족 방의 사냥 늑대·거대 독거미 무리, 2026-11-10 녹화)
+          // → 몬스터 것은 보통 방식으로 반투명하게, 함께 도는 수가 많을수록 더 옅게 (용병의 회전베기는 그대로 밝게)
+          const byMonster = Boolean(ef.seq && ef.owner && ef.owner.monsterType);
+          if (byMonster) {
+            let crowd = 0;
+            for (const o of sim.effects) if (o.type === 'whirlwind_slash' && o.seq && o.owner && o.owner.monsterType) crowd++;
+            alpha *= 0.5 / Math.sqrt(Math.max(1, crowd));
+          }
           ctx.globalAlpha = alpha;
-          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalCompositeOperation = byMonster ? 'source-over' : 'lighter';
           ctx.imageSmoothingEnabled = true;
-          const spinImg = ef.seq && ef.owner && ef.owner.job === 'warrior' && !ef.owner.monsterType && ef.owner.skinVariant === SECRET_SKIN_BASE + 1 && SPIN_FX.gold ? SPIN_FX.gold : SPIN_FX.img; // 전사 시크릿 레어 외형 = 노란 빛 (등급이 아니라 외형 기준)
+          const spinImg = ef.seq && ef.owner && ef.owner.job === 'warrior' && !ef.owner.monsterType && ef.owner.skinVariant === SECRET_SKIN_BASE + 1 && SPIN_FX.gold ? SPIN_FX.gold
+            : (ef.f != null && isSrLancer(ef.owner) && SPIN_FX.blood) || SPIN_FX.img; // 창병 시크릿 레어 외형 회전 타격 = 핏빛 사본 // 전사 시크릿 레어 외형 = 노란 빛 (등급이 아니라 외형 기준)
           ctx.drawImage(spinImg, fr[0], fr[1], fr[2], fr[3], -fr[2] * k / 2, -fr[3] * k / 2, fr[2] * k, fr[3] * k);
 
         } else if (ef.type === 'whirlwind_slash') {
