@@ -6005,7 +6005,7 @@
         icon: '🌩️',
         color: '#6366f1',
         roleDesc: '채널링 전류·감전·강화 스킬',
-        passiveName: '축전', passiveDesc: '스킬을 쓸 때마다 [축전] +1 (최대 3) · 축전 3에서 쓰는 스킬은 강화판으로 나가고 축전 0 · 기본 공격은 멈춰 서서 한 명을 0.25초마다 지지는 전류 줄기 (보통 기본 공격 피해의 100% → 이어질수록 최대 160%, 1초 넘게 이어지면 [감전], 감전된 대상이면 둘레 1.5칸 적 2명에게 전깃줄이 튀어 50%) · 움직이거나 스킬에 맞으면 끊기고, 기본 공격에 맞으면 쌓인 피해가 처음부터 · [감전]된 적에게 주는 피해 +20% · 몬스터에게 주는 피해 +15%',
+        passiveName: '축전', passiveDesc: '스킬을 쓸 때마다 [축전] +1 (최대 3) · 축전 3에서 쓰는 스킬은 강화판으로 나가고 축전 0 · 기본 공격은 멈춰 서서 한 명을 0.25초마다 지지는 전류 줄기 (보통 기본 공격 피해의 100% → 이어질수록 최대 160%, 1초 넘게 이어지면 [감전], 감전된 대상이면 둘레 1.5칸 적 2명에게 전깃줄이 튀어 40% + [감전], 이미 감전된 적에게서는 또 번짐 · 한 번에 최대 6명) · 움직이거나 스킬에 맞으면 끊기고, 기본 공격에 맞으면 쌓인 피해가 처음부터 · [감전]된 적에게 주는 피해 +20% · 몬스터에게 주는 피해 +15%',
         baseHp: 1400, baseAtk: 56, baseDef: 22, baseSpd: 100, range: 285, maxMana: 100
       }
     };
@@ -27689,9 +27689,10 @@
     const VOLT_CH_MAX = 1.6;
     const VOLT_CH_SHOCK_AFTER = 60;   //   1초 넘게 이어지면 대상 [감전] 1초 (이어지는 동안 계속 갱신)
     const VOLT_CH_SHOCK = 60;
-    const VOLT_CH_ARC_CELLS = 1.5;    //   대상이 [감전]·[대전]이면 대상 둘레 1.5칸 안 다른 적 최대 2명에게 전깃줄이 튀어 그 틱 피해의 50%
+    const VOLT_CH_ARC_CELLS = 1.5;    //   대상이 [감전]·[대전]이면 대상 둘레 1.5칸 안 다른 적 최대 2명에게 전깃줄이 튀어 그 틱 피해의 40%
     const VOLT_CH_ARC_N = 2;
-    const VOLT_CH_ARC_DMG = 0.5;
+    const VOLT_CH_ARC_DMG = 0.4;      //   2026-11-10 연쇄 번짐을 넣으며 50% → 40%
+    const VOLT_CH_ARC_MAX = 6;        //   번진 적도 [감전] (1초) → 이미 감전된 적이면 같은 틱에 거기서 또 번짐. 한 틱에 번지는 적은 모두 합쳐 최대 6명
     const VOLT_CH_RESUME = 24;        //   직접 맞아 끊기면 0.4초 뒤에 다시 (쌓인 피해는 처음부터)
     const VOLT_TB_DMG = 1.6, VOLT_TB_EMP_DMG = 2.0, VOLT_TB_BACK = 0.8, VOLT_TB_SHOCK = 240, VOLT_TB_N = 3; // 썬더볼트 (강화: 되돌아오는 줄기 80%)
     const VOLT_FIELD_CELLS = 3, VOLT_FIELD_EMP_CELLS = 4, VOLT_FIELD_TICKS = 300, VOLT_FIELD_EVERY = 30;  // 일렉트릭 필드: 5초, 0.5초마다
@@ -27767,15 +27768,28 @@
       if (sim.tickCount - u.voltCh.since >= VOLT_CH_SHOCK_AFTER) voltShock(u, target, VOLT_CH_SHOCK);
       if (shocked) voltChannelArc(u, target, dmg * VOLT_CH_ARC_DMG, period);
     }
-    // 감전된 대상에서 둘레 적에게 전깃줄이 이어지며 추가 피해 (가까운 적부터 최대 VOLT_CH_ARC_N명)
-    function voltChannelArc(u, from, dmg, period) {
+    // 감전된 대상에서 둘레 적에게 전깃줄이 이어지며 추가 피해 (가까운 적부터 한 곳당 최대 VOLT_CH_ARC_N명)
+    //   번진 적은 [감전] 1초 · 맞기 전에 이미 감전돼 있던 적은 같은 틱에 거기서 또 번짐 (처음 감전된 적은 다음 틱부터 번짐)
+    //   한 틱에 같은 적은 한 번만 · 번진 적은 모두 합쳐 최대 VOLT_CH_ARC_MAX명
+    function voltChannelArc(u, first, dmg, period) {
       const R = GRID_CELL_SIZE * VOLT_CH_ARC_CELLS * unitAreaScale(u);
-      const near = sim.units.filter(e => e !== from && e.alive && e.team !== u.team && e.team !== 'none' && !e.rushPending && !((e.statuses?.rebirth || 0) > 0)
-        && !hiddenFrom(u, e) && unitDist(e, from) <= R).sort((a, b) => unitDist(a, from) - unitDist(b, from)).slice(0, VOLT_CH_ARC_N);
-      near.forEach(e => {
-        sim.effects.push({ type: 'volt_beam', sx: from.x, sy: from.y - 14, tx: e.x, ty: e.y - 14, k: 0.7, life: period + 4, maxLife: period + 4 });
-        withHitKind('ranged', () => applyDamage(u, e, dmg, '', '#818cf8'));
-      });
+      const foes = sim.units.filter(e => e.alive && e.team !== u.team && e.team !== 'none' && !e.rushPending && !((e.statuses?.rebirth || 0) > 0) && !hiddenFrom(u, e));
+      const hit = new Set([first]);
+      const queue = [first];
+      let total = 0;
+      while (queue.length && total < VOLT_CH_ARC_MAX) {
+        const from = queue.shift();
+        const near = foes.filter(e => !hit.has(e) && e.alive && unitDist(e, from) <= R)
+          .sort((a, b) => unitDist(a, from) - unitDist(b, from)).slice(0, Math.min(VOLT_CH_ARC_N, VOLT_CH_ARC_MAX - total));
+        near.forEach(e => {
+          hit.add(e); total++;
+          const wasShocked = voltShocked(e);
+          sim.effects.push({ type: 'volt_beam', sx: from.x, sy: from.y - 14, tx: e.x, ty: e.y - 14, k: 0.7, life: period + 4, maxLife: period + 4 });
+          withHitKind('ranged', () => applyDamage(u, e, dmg, '', '#818cf8'));
+          voltShock(u, e, VOLT_CH_SHOCK);
+          if (wasShocked && e.alive) queue.push(e);
+        });
+      }
     }
     // 직접 조종: 누르는 순간 겨눈 적 → 계속 누르고 있으면 그 적을 놓지 않음 (사거리 + 0.5칸 밖으로 나가면 끊김)
     function voltManualChannel(u, enemies, aimX, aimY, interval) {
