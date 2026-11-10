@@ -2590,6 +2590,7 @@
         <button onclick="switchStudentTab('worldraid')" id="bsub-worldraid" class="battle-sub-btn">보스 레이드</button>
         <button onclick="switchStudentTab('rush')" id="bsub-rush" class="battle-sub-btn">몬스터 러쉬</button>
         <button onclick="switchStudentTab('dungeon')" id="bsub-dungeon" class="battle-sub-btn">던전 탐험</button>
+        <button onclick="switchStudentTab('defense')" id="bsub-defense" class="battle-sub-btn">수정 방어전</button>
         <button onclick="switchStudentTab('pvp')" id="bsub-pvp" class="battle-sub-btn">결투장</button>
       </nav>
 
@@ -2648,6 +2649,8 @@
         </div>
         <!-- 🏰 던전 1인 입장: 파티 용병을 눌러(또는 Tab 키) 조종할 용병·시점 바꾸기 -->
         <div id="dungeonPartyBar" class="hidden flex flex-wrap items-center gap-1.5 text-[11px]"></div>
+        <!-- 💎 수정 방어전: 마력석·충격파·용병 배치·시설 짓기 -->
+        <div id="defensePanel" class="hidden flex flex-col gap-2 text-[11px] text-white bg-slate-950/90 border-2 border-cyan-500/40 px-3 py-2 rounded-xl"></div>
 
         <!-- 광활하게 확장된 전장 월드(2880x1800)를 마우스 드래그로 자유롭게 관찰하는 뷰포트 (1440x960) -->
         <div class="relative rounded-2xl overflow-hidden border-2 border-amber-700/40 bg-amber-50 shadow-2xl">
@@ -2722,6 +2725,10 @@
           <!-- 🏰 던전 탐험: 지금 방의 특수 효과 -->
           <div id="dungeonFxHud" class="hidden absolute top-[7.6rem] left-1/2 -translate-x-1/2 z-10 px-4 py-1 rounded-2xl font-extrabold text-xs sm:text-sm shadow-xl pointer-events-none select-none whitespace-nowrap max-w-[95%] overflow-hidden text-ellipsis"
             style="background:rgba(46,16,101,0.88);color:#e9d5ff;border:2px solid #a855f7"></div>
+
+          <!-- 💎 수정 방어전: 웨이브·수정 체력·마력석·안내 -->
+          <div id="defenseHud" class="hidden absolute top-[5.25rem] left-1/2 -translate-x-1/2 z-10 px-4 py-1.5 rounded-2xl font-extrabold text-xs sm:text-sm shadow-xl pointer-events-none select-none whitespace-nowrap max-w-[95%] overflow-hidden text-ellipsis"
+            style="background:rgba(15,23,42,0.85);color:#a5f3fc;border:2px solid #0ea5e9"></div>
 
           <!-- 실시간 결투: 두 친구가 전투 방식을 고를 때까지 기다리는 안내 -->
           <div id="liveChoiceWaitBanner" class="hidden absolute top-4 left-1/2 -translate-x-1/2 z-10 px-5 py-2.5 rounded-2xl font-extrabold text-sm shadow-xl pointer-events-none"
@@ -3640,6 +3647,32 @@
             <div>⏰ 한 라운드 제한 시간 3분 · 모두 쓰러지거나 시간이 지나면 끝나요.</div>
             <div class="mt-1 p-2.5 rounded-xl bg-slate-950 border border-slate-800">💰 보상: 깬 라운드 × <strong class="text-amber-300">100 CA</strong> + 깬 보스 라운드 × <strong class="text-amber-300">400 CA</strong> (중간에 그만둬도 깬 라운드 보상은 받아요)<br>🔁 다시 도전하면 <strong>오늘 보상받은 최고 라운드를 넘어선 라운드만</strong> 보상을 받아요. 예) 3라운드까지 받았다면 다음엔 4라운드부터 보상 · 매일 초기화</div>
           </div>
+        </div>
+      </section>
+
+      <!-- 💎 수정 방어전: 세 갈래 길로 몰려오는 몬스터로부터 수정을 15웨이브 동안 지킴 (docs/crystal-defense-design.md) -->
+      <section id="studentTab-defense" class="student-tab-panel hidden flex flex-col gap-4">
+        <div class="bg-slate-900 border-2 border-cyan-500/40 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-2xl">💎</div>
+            <div>
+              <h3 class="font-title text-2xl text-white">수정 방어전 (15웨이브)</h3>
+              <p class="text-xs text-slate-400 mt-0.5">
+                세 갈래 길로 몰려오는 몬스터로부터 <strong>수정</strong>을 지켜요. 웨이브 사이 준비 시간에 <strong>마력석 💠</strong>으로 탑·방벽·덫을 짓고, 용병을 길마다 배치하세요.
+                용병은 쓰러져도 10초 뒤 부활하지만, <strong>수정이 깨지면 끝</strong>이에요. 남은 수정 체력으로 ★을 받아요.
+              </p>
+              <div id="defenseMyInfo" class="text-xs text-slate-300 mt-1"></div>
+            </div>
+          </div>
+        </div>
+        <div id="defenseCardGrid" class="grid grid-cols-1 gap-4"></div>
+        <div class="bg-slate-900 border-2 border-cyan-500/30 rounded-2xl p-4 flex flex-col gap-2 text-xs text-slate-300 leading-relaxed">
+          <h4 class="font-title text-lg text-white">📜 방어전 규칙</h4>
+          <div>🛣️ 몬스터는 <strong>위·가운데·아래 길</strong>을 따라 수정으로 걸어가요. 준비 시간에 길 입구에 다음 웨이브 마릿수가 떠요.</div>
+          <div>🏹 화살탑(빠른 한 발) · 🔮 마법탑(범위) · ❄️ 서리탑(느려짐) · 🧱 방벽(길 막기, 맨 앞 칸만) · 🪤 덫(기절) · 💚 치유 토템(1개) — 각각 3단계까지 올릴 수 있어요.</div>
+          <div>💠 마력석은 몬스터를 잡거나 웨이브를 막으면 생겨요. 수정이 한 대도 안 맞으면 <strong>완벽 방어</strong> 보너스! 남은 마력석은 끝날 때 CA로 바뀌어요 (최대 300).</div>
+          <div>⚡ <strong>수정 충격파</strong>: 수정 둘레 몬스터를 밀쳐내고 기절시켜요. 한 판에 3번 (수정이 30% 아래로 떨어지면 1번 더).</div>
+          <div>👑 5·10·15웨이브는 보스 웨이브 · 3웨이브부터 🪓 공성병(방벽 2배 피해) · 8웨이브부터 💣 자폭병이 나와요.</div>
         </div>
       </section>
 
@@ -11171,6 +11204,11 @@
         if (dm && dm.ready) return dm;
         if (BATTLE_MAPS.tower.ready) return BATTLE_MAPS.tower;
       }
+      if (mode === 'defense' && sim.defense) { // 💎 방어전: 공격 종족의 탑 맵
+        const dm = BATTLE_MAPS[TOWER_RACE_MAPS[sim.defense.race]];
+        if (dm && dm.ready) return dm;
+        if (BATTLE_MAPS.tower.ready) return BATTLE_MAPS.tower;
+      }
       if (mode === 'monster_rush') { // 러쉬 전용 맵: 20라운드마다 바뀜 (못 불러오면 첫 맵 → 탑 맵)
         const rm = BATTLE_MAPS[rushMapNow().key];
         if (rm && rm.ready) return rm;
@@ -11451,8 +11489,8 @@
       if (stu && merc.levelOwner === stu.id) return legacyLevelCostTo(merc.levelBase || 1) + (merc.levelSpent || 0);
       return legacyLevelCostTo(merc.level || 1);
     }
-    const DAILY_REWARD_LIMITS = { quiz: 20, practice: 3, tower: 3, pvp: 5, raid: 5, minigame: 5, petrun: 3, dungeon: 6 };
-    const DAILY_REWARD_LABELS = { quiz: '퀴즈', practice: '허수아비 모의전', tower: '모험의 탑', pvp: '랭킹 매칭', raid: '엘리트 보스', minigame: '미니게임', rush: '몬스터 러쉬', petrun: '펫 러닝', dungeon: '던전 탐험' };
+    const DAILY_REWARD_LIMITS = { quiz: 20, practice: 3, tower: 3, pvp: 5, raid: 5, minigame: 5, petrun: 3, dungeon: 6, defense: 3 };
+    const DAILY_REWARD_LABELS = { quiz: '퀴즈', practice: '허수아비 모의전', tower: '모험의 탑', pvp: '랭킹 매칭', raid: '엘리트 보스', minigame: '미니게임', rush: '몬스터 러쉬', petrun: '펫 러닝', dungeon: '던전 탐험', defense: '수정 방어전' };
 
     // 모험의 탑 하루 클리어 횟수 (처음 깨는 층을 이길 때마다 1회 · 실패나 이미 깬 층 재도전은 세지 않음)
     const TOWER_DAILY_CLEARS = 10;
@@ -18741,6 +18779,7 @@
       if (entryCharge) entryCharge();
       if (typeof onLocalControlChanged === 'function') onLocalControlChanged();
       if (sim.mode === 'dungeon' && sim.dungeon) dungeonOnControlChosen();
+      if (sim.mode === 'defense' && sim.defense) defenseOnControlChosen();
       renderBattleControlHud(true);
       const u = getControlledUnit();
       addBattleLog(u
@@ -18787,6 +18826,7 @@
     }
     function toggleRushAutoBattle() {
       if (sim.mode === 'dungeon') { toggleDungeonAutoBattle(); return; }
+      if (sim.mode === 'defense') { toggleDefenseAutoBattle(); return; }
       if (sim.mode !== 'monster_rush' || !sim.running || sim.spectator) return;
       const mine = myRushUnit();
       if (battleControl.mode === 'manual') setBattleControlMode('auto', null, true);
@@ -18796,7 +18836,7 @@
       if (force || sim.tickCount % 10 === 0) refreshTouchControls();
       const rushBtn = document.getElementById('rushAutoBtn');
       if (rushBtn && (force || sim.tickCount % 10 === 0)) {
-        const mine = sim.mode === 'monster_rush' && sim.running && !sim.spectator ? myRushUnit() : (sim.mode === 'dungeon' && sim.running ? (sim.dungeon && sim.dungeon.party ? dungeonMyUnit() : dungeonLeader()) : null);
+        const mine = sim.mode === 'defense' && sim.running ? defenseMainUnit() : sim.mode === 'monster_rush' && sim.running && !sim.spectator ? myRushUnit() : (sim.mode === 'dungeon' && sim.running ? (sim.dungeon && sim.dungeon.party ? dungeonMyUnit() : dungeonLeader()) : null);
         rushBtn.classList.toggle('hidden', !(mine && mine.alive));
         rushBtn.textContent = battleControl.mode === 'manual' ? '🤖 자동 전투로' : '🎮 직접 조종으로';
       }
@@ -20169,7 +20209,7 @@
       const arenaSec = document.getElementById('arenaSection');
       if (arenaSec) arenaSec.classList.remove('hidden');
       document.getElementById('battleResultOverlay').classList.add('hidden');
-      document.getElementById('arenaModeBadge').textContent = mode === 'dungeon'
+      document.getElementById('arenaModeBadge').textContent = mode === 'defense' ? '💎 수정 방어전' : mode === 'dungeon'
         ? '🏰 던전 탐험'
         : mode === 'monster_rush'
         ? '🌊 몬스터 러쉬'
@@ -20275,6 +20315,7 @@
       sim.raidLive = null;
       sim.rush = null;
       sim.dungeon = null;
+      sim.defense = null;
       sim.entryCharge = null;
       battleControl.mode = 'auto';
       battleControl.unitId = null;
@@ -21791,11 +21832,13 @@
       if (sim.mode === 'monster_rush' && !sim.sandbox && stepMonsterRush(blueAlive, redAlive)) return;
       // 🏰 던전 탐험: 방마다 적을 치우고 다음 방으로 (전멸·시간 초과·보스 처치일 때만 끝남)
       if (sim.mode === 'dungeon' && !sim.sandbox && stepDungeon(blueAlive, redAlive)) return;
+      // 💎 수정 방어전: 수정이 깨지거나 15웨이브를 막을 때만 끝남
+      if (sim.mode === 'defense' && !sim.sandbox && stepDefense(blueAlive, redAlive)) return;
       // 🌍 보스 레이드: 친구마다 따로 끝남 (쓰러짐·시간·나가기) · 보스가 쓰러지면 모두 승리 · 전투 전체의 전멸·시간 제한은 없음
       if (sim.mode === 'world_boss' && !sim.sandbox && WorldBoss.step()) return;
       // 분신만 남은 팀은 진 것으로 (분신은 머릿수에 넣지 않음)
       const blueReal = blueAlive.some(u => !u.isClone);
-      if (!sim.sandbox && sim.mode !== 'monster_rush' && sim.mode !== 'dungeon' && sim.mode !== 'world_boss' && (!blueReal || !redAlive.some(u => !u.isClone))) {
+      if (!sim.sandbox && sim.mode !== 'monster_rush' && sim.mode !== 'dungeon' && sim.mode !== 'defense' && sim.mode !== 'world_boss' && (!blueReal || !redAlive.some(u => !u.isClone))) {
         // 적이 모두 쓰러지면 바로 끝내지 않고 쓰러지는 모습을 VICTORY_SHOW_SEC초 보여 준 뒤 결과 (그동안 모두 멈춰 서서 지켜봄)
         // PvP는 어느 쪽이 이겨도 똑같이 (방장이 진 실시간 결투도 쓰러지는 모습을 보고 끝남)
         if (blueReal || String(sim.mode || '').startsWith('pvp')) {
@@ -21822,7 +21865,7 @@
       const timeLimit = sim.mode === 'practice' ? BATTLE_TIME_LIMIT.practiceTicks
         : sim.fairDuel ? FAIR_DUEL_TIME_LIMIT_SEC * BATTLE_TICKS_PER_SEC
         : (isEliteBossMode(sim.mode) ? eliteRaidTimeLimitTicks() : BATTLE_TIME_LIMIT.battleTicks);
-      if (!sim.sandbox && sim.mode !== 'monster_rush' && sim.mode !== 'dungeon' && sim.mode !== 'world_boss' && sim.tickCount >= timeLimit) {
+      if (!sim.sandbox && sim.mode !== 'monster_rush' && sim.mode !== 'dungeon' && sim.mode !== 'defense' && sim.mode !== 'world_boss' && sim.tickCount >= timeLimit) {
         if (sim.fairDuel && fairDuelHpTie(blueAlive, redAlive)) {
           // 체력이 똑같으면 먼저 한 대 맞는 쪽이 지는 연장전 (방장 쪽이 저절로 이기지 않게)
           if (!sim.fairSuddenDeath) { sim.fairSuddenDeath = true; addBattleLog('⏰ 시간 종료! 남은 체력이 똑같아서 연장전! 먼저 체력이 줄어드는 쪽이 져요.'); }
@@ -21999,6 +22042,9 @@
         }
         // 🏰 던전: 대표가 아닌 용병은 대표를 따라다님 (적이 가까우면 평소 AI로 싸움)
         if (sim.mode === 'dungeon' && u.team === 'blue' && dungeonFollowStep(u, allies, enemies)) return;
+        // 💎 수정 방어전: 몬스터는 길 따라 수정으로, 용병은 맡은 길을 지킴 (배열이면 그 적들만 보고 평소 AI)
+        let defFoes = enemies;
+        if (sim.mode === 'defense' && sim.defense) { const r = defenseAiStep(u, allies, enemies); if (r === true) return; if (Array.isArray(r)) defFoes = r; }
         // 기사 방어 태세: 제자리에서 버팀 (이동·공격·스킬 없음). 가까운 적이 모두 사라지면 AI는 스스로 풂
         if (st.guard > 0) {
           u.isMoving = false;
@@ -22007,7 +22053,7 @@
           return;
         }
         // AI가 알아챌 수 있는 적 (은신한 적·암흑 시야 밖의 적은 빼고 판단. 범위 피해는 아래에서 enemies 전체에 들어감)
-        const seenEnemies = enemies.filter(e => !hiddenFrom(u, e) && !hiddenByDarkness(u, e));
+        const seenEnemies = defFoes.filter(e => !hiddenFrom(u, e) && !hiddenByDarkness(u, e));
         const target = pickTarget(u, allies, seenEnemies);
         u.aiTargetId = target ? target.id : null; // 기사 몸막이가 '누가 누구를 노리는지' 봄
         if (!target) {
@@ -22295,6 +22341,7 @@
         }
       });
       if (sim.mode === 'monster_rush') resolveRushWalls(); // 🌊 러쉬 맵 성벽: 유닛이 뚫고 지나갈 수 없음
+      if (sim.mode === 'defense') resolveDefenseWalls(); // 💎 방어전 방벽: 몬스터가 지나갈 수 없음
 
       processZones();
       stepHiddenSkills();
@@ -28681,7 +28728,7 @@
     // MVP 후보: 분신·몬스터(탑 몬스터·엘리트 보스·허수아비)는 빼고 용병만.
     // 모험의 탑·엘리트 보스 토벌은 상대가 모두 적(어둠의 용병 포함)이라 우리 원정대(블루팀)만
     function mvpCandidates() {
-      const pveOnly = sim.mode === 'tower' || isEliteBossMode(sim.mode) || sim.mode === 'monster_rush' || sim.mode === 'dungeon';
+      const pveOnly = sim.mode === 'tower' || isEliteBossMode(sim.mode) || sim.mode === 'monster_rush' || sim.mode === 'dungeon' || sim.mode === 'defense';
       return sim.units.filter(x => !x.isClone && !x.monsterType && !x.isEliteBoss && (!pveOnly || x.team === 'blue'));
     }
 
@@ -28735,6 +28782,7 @@
       recordCodexKills(stu);
       if (sim.mode === 'monster_rush') { finishMonsterRush(stu); return; }
       if (sim.mode === 'dungeon') { finishDungeon(stu, blueWon); return; }
+      if (sim.mode === 'defense') { finishDefense(stu, blueWon); return; }
       if (sim.mode === 'world_boss') { WorldBoss.finish(stu, blueWon); return; }
 
       let baseReward = blueWon ? (meta.rewardMc || 250) : (meta.lossRewardMc != null ? meta.lossRewardMc : ECONOMY.lossReward);
@@ -32707,6 +32755,7 @@
         .filter(u => u.alive || (!u.rushPending && !u.spiritElem && (isRevivableCorpse(u) || (getUnitSprite(u) && sim.tickCount - u._deadSince < SPRITE_DEATH_TICKS))))
         .sort((a, b) => (a.alive - b.alive) || (a.y - b.y));
       if (sim.mode === 'dungeon') drawDungeonRoom(ctx); // 🏰 문·상자·모닥불·함정·경고 원 (유닛 아래)
+      if (sim.mode === 'defense') drawDefenseField(ctx); // 💎 길·시설·수정 (유닛 아래)
       drawSpiritKingCircles(ctx); // 정령왕 소환진 (바닥)
       drawSpiritKingBursts(ctx); // 정령왕 강림 원소 고리 (바닥, 유닛 아래)
       drawDuelTethers(ctx); // 격투가 결투: 둘 사이 붉은 빛줄기 (유닛 몸 뒤)
@@ -32718,6 +32767,7 @@
         drawUnitToken(ctx, u, sim.tickCount);
       });
       if (sim.mode === 'monster_rush' || sim.mode === 'world_boss' || sim.mode === 'dungeon') drawRushDrops(ctx);
+      if (sim.mode === 'defense') drawDefenseTop(ctx); // 💎 탑 공격 줄기
       drawDarknessAuras(ctx);
       drawSupportEffects(ctx);
       drawHitEffectsOnTop(ctx, drawEffectsPass);
@@ -33120,7 +33170,7 @@
       // 탑 도전 중 전투 방식을 고르느라 멈춰 있어도, 보는 친구 화면이 끊기지 않게 가끔 화면을 보냄
       if (sim.running && liveNet.towerCast && liveNet.towerWatchers && Date.now() - (liveNet.lastFramePublishedAt || 0) > 3000) publishLiveBattleFrame(true);
       updateBattleControlFrame();
-      if (animationFrameNo % 3 === 0) { updateEliteBossHpBar(arenaVisible); updateRushHud(arenaVisible); updateDungeonHud(arenaVisible); }
+      if (animationFrameNo % 3 === 0) { updateEliteBossHpBar(arenaVisible); updateRushHud(arenaVisible); updateDungeonHud(arenaVisible); updateDefenseHud(arenaVisible); }
       updateReturnButtons();
       if (arenaVisible) drawArenaCanvasSmooth();
       else if (sim.running) decayHiddenBattleVisuals();
@@ -40204,7 +40254,7 @@
     /********************************************************************
      * 13. 탭 전환 및 초기 실행
      ********************************************************************/
-    const BATTLE_SUB_TABS = ['tower', 'raid', 'worldraid', 'rush', 'dungeon', 'pvp'];
+    const BATTLE_SUB_TABS = ['tower', 'raid', 'worldraid', 'rush', 'dungeon', 'defense', 'pvp'];
     // [⚔️ 전투] 탭을 누르면 마지막으로 보던 하위 탭으로
     function lastBattleTab() {
       let k = null;
@@ -40319,6 +40369,7 @@
       if (tabKey === 'worldraid') renderWorldRaidTab();
       if (tabKey === 'rush') renderRushTab();
       if (tabKey === 'dungeon') renderDungeonTab();
+      if (tabKey === 'defense') renderDefenseTab();
       if (tabKey === 'pvp') renderPvpTab();
       if (tabKey === 'minigame') renderMinigameTab();
       if (tabKey === 'shop') renderShopTab();
@@ -50777,6 +50828,974 @@
             </div>
           </div>`;
       }).join('');
+    }
+
+    /********************************************************************
+     * 💎 수정 방어전 (docs/crystal-defense-design.md) — 1단계: 1인 입장 · 고블린족 · 도형 시설
+     * - 맵 왼쪽 수정을 오른쪽 동굴 세 곳(위·가운데·아래 길)에서 몰려오는 몬스터로부터 15웨이브 동안 지킴
+     * - 몬스터는 길을 따라 수정으로 걸어감 (가까운 용병만 상대) · 수정 둘레에 닿으면 죽을 때까지 수정을 때림
+     * - 용병은 쓰러져도 10초 뒤 수정 옆에서 부활 · 수정 체력이 0이 되면 끝
+     * - 웨이브 사이 준비 시간에 마력석으로 시설을 짓고(아래 패널) 용병을 길마다 배치
+     ********************************************************************/
+    const DEFENSE_TUNE = {
+      // stat: 일반 몬스터 능력치 배율 [1웨이브, 15웨이브] (같은 층 탑 몬스터 대비) · count: 한 웨이브 몬스터 수 · boss: 5·10·15웨이브 보스 배율
+      normal: { stat: [0.32, 0.5], count: [12, 30], eliteFrom: 4, elites: [1, 1], boss: [0.7, 0.85, 1.0], crystalHp: 1000, floorAdd: 0 },
+      hard:   { stat: [0.33, 0.49], count: [13, 32], eliteFrom: 3, elites: [1, 2], boss: [0.8, 0.95, 1.1], crystalHp: 800, floorAdd: 0 },
+      waves: 15, floorPerWave: 0.6, prepSec: 12, firstPrepSec: 20, respawnSec: 10, bossRespawnSec: 15,
+      mana: { start: 150, mob: 3, elite: 15, boss: 80, wave: 40, perfect: 20 },
+      crystalHit: { mob: 10, elite: 30, boss: 100, bomb: 60 }, crystalHitEvery: 1.5, crystalR: 200,
+      shock: { charges: 3, cdSec: 45, r: 500, dmg: 0.55 }, // dmg: 이번 웨이브 기준 몬스터 체력 대비
+      spawnGapSec: 0.9
+    };
+    const DEFENSE_DIFFS = ['normal', 'hard'];
+    const DEFENSE_DIFF_LABEL = { normal: '보통', hard: '🔥 어려움' };
+    // 시설: cost[단계] · dmg는 이번 웨이브 기준 몬스터 체력 대비 (몬스터가 세지면 시설도 같이 셈)
+    const DEFENSE_TOWERS = {
+      arrow: { name: '화살탑', icon: '🏹', color: '#f59e0b', cost: [60, 80, 120], range: 330, cd: [32, 23, 23], dmg: 0.1, shots: [1, 1, 2],
+        lv: ['한 마리씩 빠르게 쏴요', '공격 속도 +40%', '화살 2발'] },
+      magic: { name: '마법탑', icon: '🔮', color: '#a855f7', cost: [90, 110, 150], range: 290, cd: [84, 84, 84], dmg: 0.16, aoe: [95, 130, 130],
+        lv: ['느리지만 범위 공격', '범위 +40%', '맞은 적 화상'] },
+      frost: { name: '서리탑', icon: '❄️', color: '#38bdf8', cost: [80, 100, 140], range: 270, cd: [48, 48, 48], dmg: 0.045, slowSec: [2, 3, 3],
+        lv: ['맞은 적 느려짐', '더 오래 느려짐', '3번째마다 1초 빙결'] },
+      wall:  { name: '방벽', icon: '🧱', color: '#a8a29e', cost: [50, 60, 90], hp: [32, 64, 64], frontOnly: true, onPath: true,
+        lv: ['길을 막아요 (부숴야 지나감)', '체력 ×2', '때린 몬스터에게 가시 반사'] },
+      trap:  { name: '덫', icon: '🪤', color: '#ef4444', cost: [40, 60, 90], dmg: 0.6, charges: [1, 2, 2], onPath: true,
+        lv: ['밟은 적 큰 피해 + 1초 기절', '웨이브마다 2번 터짐', '터질 때 주변도 피해'] },
+      totem: { name: '치유 토템', icon: '💚', color: '#34d399', cost: [100, 120, 160], max: 1, r: 280, heal: [0.015, 0.025, 0.025], crystal: [0.03, 0.03, 0.05],
+        lv: ['주변 용병 회복 · 웨이브 끝 수정 +3%', '용병 회복 ↑', '웨이브 끝 수정 +5%'] }
+    };
+    const DEFENSE_TOWER_KEYS = ['arrow', 'magic', 'frost', 'wall', 'trap', 'totem'];
+    const DEFENSE_CRYSTAL = { x: 560, y: 920 };
+    // 길: 오른쪽 동굴 → 수정 (월드 좌표 경로점)
+    const DEFENSE_LANES = [
+      { key: 'top', name: '위쪽 길', icon: '⬆️', pts: [[2620, 430], [1950, 430], [1350, 500], [920, 690], [660, 850]] },
+      { key: 'mid', name: '가운데 길', icon: '➡️', pts: [[2620, 920], [1850, 970], [1250, 900], [780, 920]] },
+      { key: 'bot', name: '아래쪽 길', icon: '⬇️', pts: [[2620, 1420], [1950, 1410], [1350, 1340], [920, 1150], [660, 990]] }
+    ];
+    // 길 따라 frac(0~1) 위치의 점과 길에 수직인 방향
+    function defenseLanePoint(lane, frac) {
+      const pts = lane.pts;
+      if (!lane._len) {
+        lane._seg = [];
+        let total = 0;
+        for (let i = 0; i < pts.length - 1; i++) { const l = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]); lane._seg.push(l); total += l; }
+        lane._len = total;
+      }
+      let d = Math.max(0, Math.min(1, frac)) * lane._len;
+      for (let i = 0; i < lane._seg.length; i++) {
+        if (d <= lane._seg[i] || i === lane._seg.length - 1) {
+          const t = lane._seg[i] ? Math.min(1, d / lane._seg[i]) : 0;
+          const [ax, ay] = pts[i], [bx, by] = pts[i + 1];
+          const len = Math.hypot(bx - ax, by - ay) || 1;
+          return { x: ax + (bx - ax) * t, y: ay + (by - ay) * t, nx: -(by - ay) / len, ny: (bx - ax) / len };
+        }
+        d -= lane._seg[i];
+      }
+      return { x: pts[0][0], y: pts[0][1], nx: 0, ny: 1 };
+    }
+    // 시설 자리: 길마다 4칸 (동굴 쪽부터 0~3, 0번만 방벽 가능) + 수정 둘레 2칸
+    function defenseMakeSlots() {
+      const slots = [];
+      DEFENSE_LANES.forEach((lane, li) => {
+        [0.2, 0.38, 0.56, 0.74].forEach((f, k) => {
+          const p = defenseLanePoint(lane, f), side = k % 2 ? 1 : -1;
+          slots.push({ id: slots.length, lane: li, k, x: Math.round(p.x + p.nx * 105 * side), y: Math.round(p.y + p.ny * 105 * side),
+            px: Math.round(p.x), py: Math.round(p.y), front: k === 0, tower: null });
+        });
+      });
+      [[-30, -200], [-30, 200]].forEach(([dx, dy], k) => {
+        slots.push({ id: slots.length, lane: 'core', k, x: DEFENSE_CRYSTAL.x + dx, y: DEFENSE_CRYSTAL.y + dy, px: DEFENSE_CRYSTAL.x + 170, py: DEFENSE_CRYSTAL.y + dy * 0.6, front: false, tower: null });
+      });
+      return slots;
+    }
+    // 오늘의 공격 종족 (1단계는 고블린족만)
+    const DEFENSE_RACES = ['고블린족'];
+    function todayDefenseRace() { return DEFENSE_RACES[0]; }
+    function defenseBookOf(stu, race) {
+      stu.defenseBook = stu.defenseBook || {};
+      return (stu.defenseBook[race] = stu.defenseBook[race] || {});
+    }
+    const defenseHardLocked = (stu, race) => (defenseBookOf(stu, race).normalStars || 0) < 3;
+
+    // ----- 입장 -----
+    function startSoloDefense(diff = 'normal') {
+      const stu = getActiveStudent();
+      if (!stu) return;
+      diff = DEFENSE_DIFFS.includes(diff) ? diff : 'normal';
+      const race = todayDefenseRace();
+      if (diff === 'hard' && defenseHardLocked(stu, race)) { showNotice('🔒 어려움은 보통을 ★★★로 막아야 열려요.'); return; }
+      const deployed = (stu.roster || []).filter(m => m.deployed);
+      if (!deployed.length) { showNotice('⚠️ 출전 중인 용병이 없어요. 용병 관리에서 출전시켜 주세요!'); return; }
+      launchSimulation({ mode: 'defense', title: `💎 수정 방어전 [${DEFENSE_DIFF_LABEL[diff]}] · ${race}의 습격을 막아라!`, blueStudent: stu, customRedUnits: [], rewardMc: 0 });
+      if (!sim.running || sim.mode !== 'defense') return;
+      const T = DEFENSE_TUNE[diff];
+      sim.defense = {
+        race, diff, wave: 1, phase: 'prep', phaseAt: 0, prepTicks: DEFENSE_TUNE.firstPrepSec * BATTLE_TICKS_PER_SEC, started: false, everManual: false, autoBuild: false,
+        crystal: { x: DEFENSE_CRYSTAL.x, y: DEFENSE_CRYSTAL.y, hp: T.crystalHp, maxHp: T.crystalHp, shock: DEFENSE_TUNE.shock.charges, shockReadyAt: 0, freeShock: false, hitFlash: 0 },
+        mana: DEFENSE_TUNE.mana.start, slots: defenseMakeSlots(), sel: null, guard: {}, queue: [], plan: null, lastSplit: -1,
+        cleared: 0, bossesKilled: 0, waveHurt: 0, perfect: 0, log: [], fx: [], ref: { hp: 1000, atk: 100 },
+        baseFloor: dungeonFloorOfMercs(deployed, diff), powerRatio: dungeonPowerRatio(stu), power: dungeonPowerOf(stu), doneAt: 0, won: false
+      };
+      // 처음 배치: 가운데 2 · 위 1 · 아래 1 · 수정 1 (탱커가 앞 길로)
+      const blue = sim.units.filter(u => u.team === 'blue' && !u.isClone);
+      const order = [1, 0, 2, 1, 'core'];
+      [...blue].sort((a, b) => defenseFrontScore(b) - defenseFrontScore(a)).forEach((u, i) => { sim.defense.guard[u.id] = order[i % order.length]; });
+      blue.forEach((u, i) => { const p = defenseGuardSpot(u, i); u.x = p.x; u.y = p.y; u._ix = u.prevX = u.x; u._iy = u.prevY = u.y; u.facingDir = 1; });
+      defensePlanWave();
+      addBattleLog(`💎 수정 방어전 시작! ${race}이(가) 세 갈래 길로 쳐들어와요. ${DEFENSE_TUNE.waves}웨이브 동안 수정을 지키세요!`);
+      addBattleLog('🧱 아래 패널에서 빈 시설 자리를 눌러 마력석 💠으로 탑·방벽·덫을 짓고, 용병을 길마다 배치하세요. 용병은 쓰러져도 10초 뒤 수정 옆에서 부활해요.');
+    }
+    const DEFENSE_FRONT_JOBS = ['warrior', 'knight', 'paladin', 'berserker', 'lancer', 'brawler', 'rogue'];
+    const defenseFrontScore = u => (DEFENSE_FRONT_JOBS.includes(u.job) ? 1e9 : 0) + (u.maxHp || 0);
+    function defenseOnControlChosen() {
+      const dm = sim.defense;
+      if (!dm) return;
+      if (battleControl.mode === 'manual') { dm.everManual = true; dm.mainId = battleControl.unitId; }
+      if (!dm.started) { dm.started = true; dm.phaseAt = sim.tickCount; }
+      renderDefensePanel(true);
+    }
+    function defenseMainUnit() {
+      const dm = sim.defense;
+      if (!dm) return null;
+      const blue = sim.units.filter(u => u.team === 'blue' && !u.isClone);
+      return blue.find(u => u.id === (battleControl.mode === 'manual' ? battleControl.unitId : dm.mainId)) || blue.find(u => u.alive) || null;
+    }
+    function toggleDefenseAutoBattle() {
+      if (sim.mode !== 'defense' || !sim.running || !sim.defense) return;
+      const u = defenseMainUnit();
+      if (battleControl.mode === 'manual') setBattleControlMode('auto', null, true);
+      else if (u && u.alive) setBattleControlMode('manual', u.id, true);
+    }
+
+    // ----- 웨이브 -----
+    const defLerp = ([a, b], k) => a + (b - a) * k;
+    function defenseWaveK(wave) { return (Math.max(1, wave) - 1) / Math.max(1, DEFENSE_TUNE.waves - 1); }
+    const defenseIsBossWave = w => w % 5 === 0;
+    // 다음 웨이브의 길 나눔과 마릿수 (준비 시간 동안 길 입구에 예고)
+    const DEFENSE_SPLITS = [
+      { name: '고르게', w: [1, 1, 1] }, { name: '가운데 몰기', w: [1, 3, 1] }, { name: '위로 몰기', w: [3, 1, 0] }, { name: '아래로 몰기', w: [0, 1, 3] },
+      { name: '위·아래 협공', w: [2, 0.5, 2] }
+    ];
+    function defensePlanWave() {
+      const dm = sim.defense, T = DEFENSE_TUNE[dm.diff], k = defenseWaveK(dm.wave);
+      let si;
+      do { si = dm.wave === 1 ? 0 : Math.floor(Math.random() * DEFENSE_SPLITS.length); } while (si === dm.lastSplit && dm.wave > 1);
+      dm.lastSplit = si;
+      const split = DEFENSE_SPLITS[si];
+      const boss = defenseIsBossWave(dm.wave);
+      let n = Math.round(defLerp(T.count, k));
+      if (boss) n = Math.ceil(n * 0.6);
+      const sum = split.w.reduce((a, b) => a + b, 0);
+      const lanes = split.w.map(w => Math.floor(n * w / sum));
+      for (let i = 0, left = n - lanes.reduce((a, b) => a + b, 0); left > 0; i = (i + 1) % 3) if (split.w[i] > 0) { lanes[i]++; left--; }
+      const elites = dm.wave >= T.eliteFrom ? (dm.wave >= 10 ? T.elites[1] : T.elites[0]) : 0;
+      const bossLane = boss ? [0, 1, 2].filter(i => split.w[i] > 0)[Math.floor(Math.random() * split.w.filter(w => w > 0).length)] : null;
+      dm.plan = { split: split.name, lanes, elites, boss, bossLane };
+      // 이번 웨이브 기준 몬스터 (시설 피해·방벽 체력의 기준)
+      const probe = buildDefenseMonster('warrior', 0);
+      dm.ref = { hp: probe.maxHp, atk: probe.atk };
+    }
+    // 이번 웨이브 몬스터 한 마리 (종족 편성표 · 층 배율 · 전투력 비율)
+    function buildDefenseMonster(job, candIdx, opts = {}) {
+      const dm = sim.defense, T = DEFENSE_TUNE[dm.diff], k = defenseWaveK(dm.wave);
+      const squad = TOWER_RACE_SQUADS[dm.race];
+      const race = TOWER_RACES.find(r => r.name === dm.race) || {};
+      const floor = Math.max(1, Math.min(TOWER_MAX_FLOOR, dm.baseFloor + T.floorAdd + Math.round(dm.wave * DEFENSE_TUNE.floorPerWave)));
+      let monster, name, skills;
+      if (opts.boss) { monster = DUNGEONS_BOSS_OF_RACE[dm.race] || 'goblin_king'; name = (MONSTER_DEFS[monster] || {}).name || '보스'; skills = squad.boss.slice(0, dm.wave >= 15 ? 5 : 4); }
+      else {
+        const cands = squad[job] || squad.warrior;
+        [monster, name, skills] = cands[Math.min(candIdx, cands.length - 1)];
+        skills = skills.slice(0, opts.elite ? 3 : 2);
+      }
+      const floorObj = { floor, comp: [job], skills: [skills[0]], unitSkills: [skills], monsters: [monster], unitNames: [name] };
+      const raceFix = (race.floorScale || 1) / (towerRaceFloorScale(floor) || 1);
+      const bossIdx = Math.max(0, Math.min(2, dm.wave / 5 - 1));
+      const statMul = (opts.boss ? T.boss[bossIdx] : defLerp(T.stat, k)) * raceFix * (dm.powerRatio || 1);
+      const u = buildRushMonster(floorObj, 0, statMul, Boolean(opts.boss));
+      u.defRole = opts.role || (opts.boss ? 'boss' : opts.elite ? 'elite' : 'mob');
+      if (opts.elite) {
+        u.maxHp = u.hp = Math.round(u.maxHp * 2.5);
+        u.atk = Math.round(u.atk * 1.2);
+        u.name = `💎 ${u.name}`;
+        setUnitBodySize(u, (u.sizeScale || 1) * ELITE_SIZE_MULT);
+      }
+      if (opts.role === 'siege') u.name = `🪓 ${u.name}`;
+      if (opts.role === 'bomb') { u.name = `💣 자폭 ${u.name}`; u.maxHp = u.hp = Math.max(1, Math.round(u.maxHp * 0.5)); u.baseMoveSpeed *= 1.45; }
+      if (opts.boss) {
+        u.name = `${dm.wave >= DEFENSE_TUNE.waves ? '🔥' : '👑'} ${u.name}`;
+        u.rushBoss = true; // 화면 위 보스 체력 막대 재사용
+        if (dm.wave >= 10) setUnitBodySize(u, (u.sizeScale || 1) * 1.15);
+      }
+      return u;
+    }
+    const DUNGEONS_BOSS_OF_RACE = { '고블린족': 'goblin_king' };
+    function defensePickJob() {
+      const r = Math.random();
+      return r < 0.45 ? ['warrior', Math.random() < 0.7 ? 0 : 1] : r < 0.75 ? ['archer', Math.random() < 0.7 ? 0 : 1] : r < 0.9 ? ['mage', 0] : ['healer', 0];
+    }
+    function defenseBeginFight() {
+      const dm = sim.defense, tps = BATTLE_TICKS_PER_SEC, plan = dm.plan;
+      dm.phase = 'fight';
+      dm.phaseAt = sim.tickCount;
+      dm.waveHurt = 0;
+      dm.sel = null;
+      // 지난 웨이브 시체·분신은 치움 · 덫 다시 장전
+      sim.units = sim.units.filter(u => u.team === 'blue' ? (u.alive || !u.isClone) : u.alive);
+      dm.slots.forEach(s => { if (s.tower && s.tower.kind === 'trap') s.tower.charges = DEFENSE_TOWERS.trap.charges[s.tower.lv - 1]; });
+      const q = [];
+      const gap = Math.round(DEFENSE_TUNE.spawnGapSec * tps);
+      plan.lanes.forEach((n, li) => {
+        for (let i = 0; i < n; i++) {
+          let [job, cand] = defensePickJob();
+          let role = null;
+          if (dm.wave >= 3 && job === 'warrior' && Math.random() < 0.25) role = 'siege';
+          q.push({ lane: li, job, cand, role, at: sim.tickCount + i * gap + li * 7 });
+        }
+      });
+      // 자폭병 (8웨이브부터 2~3마리) · 정예 · 보스는 웨이브 중간쯤
+      if (dm.wave >= 8) for (let i = 0; i < 2 + (dm.wave >= 12 ? 1 : 0); i++) { const li = [0, 1, 2].filter(l => plan.lanes[l] > 0)[i % 3] ?? 1; q.push({ lane: li, job: 'warrior', cand: 0, role: 'bomb', at: sim.tickCount + (4 + i * 3) * tps }); }
+      for (let i = 0; i < plan.elites; i++) { const li = [0, 1, 2].sort((a, b) => plan.lanes[b] - plan.lanes[a])[i % 3]; q.push({ lane: li, job: Math.random() < 0.5 ? 'warrior' : 'archer', cand: 0, elite: true, at: sim.tickCount + (6 + i * 5) * tps }); }
+      if (plan.boss) q.push({ lane: plan.bossLane, job: 'warrior', cand: 0, boss: true, at: sim.tickCount + 8 * tps });
+      dm.queue = q.sort((a, b) => a.at - b.at);
+      dm.total = q.length;
+      addBattleLog(plan.boss
+        ? `👑 ${dm.wave}웨이브: 보스 웨이브! ${DEFENSE_LANES[plan.bossLane].name}로 보스가 와요! (몬스터 ${q.length}마리)`
+        : `⚔️ ${dm.wave}웨이브 시작! [${plan.split}] 위 ${plan.lanes[0]} · 가운데 ${plan.lanes[1]} · 아래 ${plan.lanes[2]}${plan.elites ? ` · 💎 정예 ${plan.elites}` : ''}`);
+      renderDefensePanel(true);
+    }
+    function defenseSpawn(entry) {
+      const dm = sim.defense;
+      const u = buildDefenseMonster(entry.job, entry.cand, { elite: entry.elite, boss: entry.boss, role: entry.role });
+      const lane = DEFENSE_LANES[entry.lane];
+      u.id = `def${dm.wave}_${Math.random().toString(36).slice(2, 8)}_red`;
+      u.defLane = entry.lane;
+      u.defWp = 1;
+      u.x = lane.pts[0][0] + 30 + Math.random() * 30;
+      u.y = lane.pts[0][1] + (Math.random() - 0.5) * 70;
+      u._ix = u.prevX = u.x; u._iy = u.prevY = u.y;
+      u.facingDir = -1; u.facingAngle = Math.PI;
+      sim.units.push(u);
+      sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 50, color: entry.boss ? '#ef4444' : '#64748b', life: 20, maxLife: 20 });
+      if (entry.boss) { sim.shake = { power: 12, life: 26, maxLife: 26 }; addBattleLog(`👑 ${u.name} 등장! ${lane.name}로 와요!`); }
+    }
+
+    // ----- 매 틱 -----
+    function stepDefense(blueAlive, redAlive) {
+      const dm = sim.defense;
+      if (!dm) return false;
+      if (!dm.started) return true; // 전투 방식을 고르기 전
+      const tps = BATTLE_TICKS_PER_SEC, cr = dm.crystal;
+      if (cr.hitFlash > 0) cr.hitFlash--;
+      dm.fx = dm.fx.filter(f => --f.life > 0);
+      if (dm.phase === 'done') {
+        sim.units.forEach(u => { if (u.alive) u.isMoving = false; });
+        if (sim.tickCount - dm.doneAt >= 2.5 * tps) finishSimulation(dm.won);
+        return true;
+      }
+      if (cr.hp <= 0) {
+        cr.hp = 0;
+        dm.phase = 'done'; dm.won = false; dm.doneAt = sim.tickCount;
+        sim.shake = { power: 18, life: 40, maxLife: 40 };
+        sim.effects.push({ type: 'aoe_ring', x: cr.x, y: cr.y, r: 260, color: '#38bdf8', life: 50, maxLife: 50 });
+        addBattleLog(`💔 수정이 깨졌어요... ${dm.wave}웨이브에서 방어 실패.`);
+        return true;
+      }
+      // 쓰러진 용병: 잠시 뒤 수정 옆에서 부활
+      const respawnTicks = (dm.plan && dm.plan.boss && dm.phase === 'fight' ? DEFENSE_TUNE.bossRespawnSec : DEFENSE_TUNE.respawnSec) * tps;
+      sim.units.forEach(u => {
+        if (u.team !== 'blue' || u.isClone || u.alive) { if (u.team === 'blue') u._defDeadAt = null; return; }
+        if (u._defDeadAt == null) u._defDeadAt = sim.tickCount;
+        if (sim.tickCount - u._defDeadAt >= respawnTicks) defenseRevive(u, 0.5);
+      });
+      // 몬스터 처치 → 마력석
+      sim.units.forEach(u => {
+        if (u.team !== 'red' || u.alive || u._defPaid || u.isClone || !u.defRole) return;
+        u._defPaid = true;
+        const M = DEFENSE_TUNE.mana, gain = u.defRole === 'boss' ? M.boss : u.defRole === 'elite' ? M.elite : M.mob;
+        dm.mana += gain;
+        if (u.defRole === 'boss') dm.bossesKilled++;
+        sim.floatTexts.push({ x: u.x, y: u.y - 50, text: `💠+${gain}`, color: '#67e8f9', life: 40 });
+      });
+      stepDefenseTowers();
+      // 수정 충격파: 수정이 30% 아래로 떨어지면 한 번 무료로 채워짐
+      if (!cr.freeShock && cr.hp < cr.maxHp * 0.3) { cr.freeShock = true; cr.shock++; addBattleLog('⚡ 수정이 위험해요! 수정 충격파가 1번 더 채워졌어요.'); }
+      if (dm.phase === 'prep') {
+        if (dm.autoBuild) defenseAutoBuild();
+        if (sim.tickCount - dm.phaseAt >= dm.prepTicks) defenseBeginFight();
+        return false;
+      }
+      // fight
+      while (dm.queue.length && dm.queue[0].at <= sim.tickCount) defenseSpawn(dm.queue.shift());
+      if (!dm.queue.length && !redAlive.some(u => !u.isClone)) defenseClearWave();
+      return false;
+    }
+    function defenseRevive(u, hpPct) {
+      const dm = sim.defense, cr = dm.crystal;
+      u.alive = true;
+      u.hp = Math.max(1, Math.round(u.maxHp * hpPct));
+      u.shield = 0;
+      u.mana = Math.round((u.maxMana || 0) * 0.5);
+      Object.keys(u.statuses).forEach(k => { u.statuses[k] = 0; });
+      u.statuses.immune = 120;
+      u.kbVx = 0; u.kbVy = 0; u.rush = null;
+      u._deadSince = null; u._defDeadAt = null;
+      u.x = cr.x + 90 + Math.random() * 60; u.y = cr.y + (Math.random() - 0.5) * 160;
+      u._ix = u.prevX = u.x; u._iy = u.prevY = u.y;
+      sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 70, color: '#34d399', life: 40, maxLife: 40 });
+      sim.floatTexts.push({ x: u.x, y: u.y - 50, text: '✨부활!', color: '#34d399', life: 50 });
+    }
+    function defenseClearWave() {
+      const dm = sim.defense, M = DEFENSE_TUNE.mana, cr = dm.crystal;
+      const perfect = dm.waveHurt <= 0;
+      dm.cleared = dm.wave;
+      dm.mana += M.wave + (perfect ? M.perfect : 0);
+      if (perfect) dm.perfect++;
+      dm.log.push({ wave: dm.wave, hurt: Math.round(dm.waveHurt) });
+      // 치유 토템: 웨이브가 끝나면 수정 회복
+      dm.slots.forEach(s => {
+        if (!s.tower || s.tower.kind !== 'totem') return;
+        const add = Math.round(cr.maxHp * DEFENSE_TOWERS.totem.crystal[s.tower.lv - 1]);
+        cr.hp = Math.min(cr.maxHp, cr.hp + add);
+        sim.floatTexts.push({ x: cr.x, y: cr.y - 120, text: `💚 수정 +${add}`, color: '#34d399', life: 60 });
+      });
+      // 쓰러진 용병은 바로 부활, 살아 있으면 30% 회복
+      sim.units.forEach(u => {
+        if (u.team !== 'blue' || u.isClone) return;
+        if (!u.alive) defenseRevive(u, 0.5);
+        else u.hp = Math.min(u.maxHp, u.hp + Math.round(u.maxHp * 0.3));
+      });
+      addBattleLog(`✅ ${dm.wave}웨이브 막음! 💠 +${M.wave}${perfect ? ` (+${M.perfect} 완벽 방어!)` : ''} · 수정 ${Math.ceil(cr.hp)}/${cr.maxHp}`);
+      if (dm.wave >= DEFENSE_TUNE.waves) {
+        dm.phase = 'done'; dm.won = true; dm.doneAt = sim.tickCount;
+        sim.projectiles = [];
+        addBattleLog(`🏆 ${DEFENSE_TUNE.waves}웨이브를 모두 막았어요! 수정을 지켜냈어요! ${'★'.repeat(defenseStars(dm))}`);
+        playCombatSfx('heal');
+        return;
+      }
+      dm.wave++;
+      dm.phase = 'prep';
+      dm.phaseAt = sim.tickCount;
+      dm.prepTicks = DEFENSE_TUNE.prepSec * BATTLE_TICKS_PER_SEC;
+      defensePlanWave();
+      addBattleLog(`🛠️ 준비 시간 ${DEFENSE_TUNE.prepSec}초! 다음 ${dm.wave}웨이브: [${dm.plan.split}] 위 ${dm.plan.lanes[0]} · 가운데 ${dm.plan.lanes[1]} · 아래 ${dm.plan.lanes[2]}${dm.plan.boss ? ` · 👑 보스는 ${DEFENSE_LANES[dm.plan.bossLane].name}` : ''}`);
+      renderDefensePanel(true);
+    }
+    const defenseStars = dm => (dm.crystal.hp >= dm.crystal.maxHp * 0.7 ? 3 : dm.crystal.hp >= dm.crystal.maxHp * 0.3 ? 2 : 1);
+
+    // 시설: 탑 공격 · 덫 · 토템 회복
+    function stepDefenseTowers() {
+      const dm = sim.defense, ref = dm.ref;
+      const foes = sim.units.filter(u => u.team === 'red' && u.alive && !u.isClone);
+      const cr = dm.crystal;
+      const hit = (target, dmg, tag, color) => {
+        fixedDamageHit = true;
+        try { applyDamage(null, target, dmg, tag, color); } finally { fixedDamageHit = false; }
+      };
+      dm.slots.forEach(s => {
+        const t = s.tower;
+        if (!t) return;
+        const D = DEFENSE_TOWERS[t.kind], lv = t.lv - 1;
+        if (t.kind === 'totem') {
+          if (sim.tickCount % 40 === 0) sim.units.forEach(u => {
+            if (u.team !== 'blue' || !u.alive || u.hp >= u.maxHp || Math.hypot(u.x - s.x, u.y - s.y) > D.r) return;
+            u.hp = Math.min(u.maxHp, u.hp + Math.round(u.maxHp * D.heal[lv]));
+          });
+          return;
+        }
+        if (t.kind === 'trap') {
+          if (!(t.charges > 0)) return;
+          const v = foes.find(u => u.alive && u.defRole !== 'boss' && Math.hypot(u.x - s.px, u.y - s.py) < 48);
+          if (!v) return;
+          t.charges--;
+          const area = lv >= 2 ? foes.filter(u => u.alive && Math.hypot(u.x - s.px, u.y - s.py) < 115) : [v];
+          area.forEach(u => { hit(u, ref.hp * D.dmg * (u === v ? 1 : 0.5), '🪤', '#ef4444'); if (u === v && u.alive) u.statuses.stun = Math.max(u.statuses.stun || 0, BATTLE_TICKS_PER_SEC); });
+          t.kills = (t.kills || 0) + area.filter(u => !u.alive).length;
+          sim.effects.push({ type: 'aoe_ring', x: s.px, y: s.py, r: lv >= 2 ? 115 : 60, color: '#ef4444', life: 22, maxLife: 22 });
+          playCombatSfx('slash');
+          return;
+        }
+        if (t.kind === 'wall') return;
+        if ((t.cd = (t.cd || 0) - 1) > 0) return;
+        // 수정에 가장 가까운 적부터 (사거리 안)
+        let target = null, best = Infinity;
+        foes.forEach(u => {
+          if (!u.alive || Math.hypot(u.x - s.x, u.y - s.y) > D.range) return;
+          const d = Math.hypot(u.x - cr.x, u.y - cr.y);
+          if (d < best) { best = d; target = u; }
+        });
+        if (!target) { t.cd = 4; return; }
+        t.cd = D.cd[lv];
+        if (t.kind === 'arrow') {
+          const targets = [target];
+          if (D.shots[lv] > 1) { const second = foes.filter(u => u.alive && u !== target && Math.hypot(u.x - s.x, u.y - s.y) <= D.range)[0]; if (second) targets.push(second); }
+          targets.forEach(u => { hit(u, ref.hp * D.dmg, '', '#f59e0b'); dm.fx.push({ k: 'shot', x1: s.x, y1: s.y - 40, x2: u.x, y2: u.y - 20, c: D.color, life: 8, max: 8 }); if (!u.alive) t.kills = (t.kills || 0) + 1; });
+        } else if (t.kind === 'magic') {
+          const r = D.aoe[lv];
+          dm.fx.push({ k: 'shot', x1: s.x, y1: s.y - 40, x2: target.x, y2: target.y - 20, c: D.color, life: 10, max: 10 });
+          dm.fx.push({ k: 'boom', x: target.x, y: target.y, r, c: D.color, life: 16, max: 16 });
+          foes.filter(u => u.alive && Math.hypot(u.x - target.x, u.y - target.y) <= r).forEach(u => {
+            hit(u, ref.hp * D.dmg, '', '#a855f7');
+            if (lv >= 2 && u.alive) u.statuses.burn = Math.max(u.statuses.burn || 0, 3 * BATTLE_TICKS_PER_SEC);
+            if (!u.alive) t.kills = (t.kills || 0) + 1;
+          });
+        } else if (t.kind === 'frost') {
+          dm.fx.push({ k: 'shot', x1: s.x, y1: s.y - 40, x2: target.x, y2: target.y - 20, c: D.color, life: 9, max: 9 });
+          hit(target, ref.hp * D.dmg, '', '#38bdf8');
+          if (target.alive) {
+            target.statuses.slow = Math.max(target.statuses.slow || 0, D.slowSec[lv] * BATTLE_TICKS_PER_SEC);
+            target._frostHits = (target._frostHits || 0) + 1;
+            if (lv >= 2 && target._frostHits % 3 === 0 && target.defRole !== 'boss') target.statuses.freeze = Math.max(target.statuses.freeze || 0, BATTLE_TICKS_PER_SEC);
+          } else t.kills = (t.kills || 0) + 1;
+        }
+      });
+    }
+
+    // ----- 유닛 AI: 몬스터는 길 따라 수정으로, 용병은 맡은 길 지키기 -----
+    // 반환: true = 이번 틱 행동 끝 · 배열 = 이 적들만 보고 평소 AI · null = 평소 AI 그대로
+    function defenseAiStep(u, allies, enemies) {
+      const dm = sim.defense;
+      if (!dm) return null;
+      if (dm.phase === 'done') { u.isMoving = false; return true; }
+      return u.team === 'red' ? defenseMonsterStep(u, enemies) : defenseGuardStep(u, allies, enemies);
+    }
+    function defenseMonsterStep(u, enemies) {
+      const dm = sim.defense, cr = dm.crystal, tps = BATTLE_TICKS_PER_SEC;
+      if (u.defLane == null) return null; // 소환된 몬스터 등은 평소대로
+      const dCr = Math.hypot(u.x - cr.x, u.y - cr.y);
+      // 수정에 닿으면 죽을 때까지 수정을 때림 (자폭병은 터짐)
+      if (dCr <= DEFENSE_TUNE.crystalR) {
+        if (u.defRole === 'bomb') { defenseBomb(u, null); return true; }
+        u.isMoving = false;
+        u.facingDir = cr.x >= u.x ? 1 : -1;
+        if (sim.tickCount >= (u._defHitAt || 0)) {
+          u._defHitAt = sim.tickCount + Math.round(DEFENSE_TUNE.crystalHitEvery * tps);
+          const H = DEFENSE_TUNE.crystalHit, dmg = H[u.defRole] || H.mob;
+          cr.hp -= dmg; dm.waveHurt += dmg; cr.hitFlash = 8;
+          u.attackAnim = 14;
+          sim.floatTexts.push({ x: cr.x + (Math.random() - 0.5) * 60, y: cr.y - 90, text: `💎-${dmg}`, color: '#f43f5e', life: 34 });
+        }
+        return true;
+      }
+      // 앞을 막은 방벽: 부숨 (공성병은 2배)
+      const wall = dm.slots.find(s => s.tower && s.tower.kind === 'wall' && s.tower.hp > 0 && s.lane === u.defLane && Math.hypot(u.x - s.px, u.y - s.py) < 85
+        && Math.hypot(s.px - cr.x, s.py - cr.y) < dCr + 20);
+      if (wall) {
+        if (u.defRole === 'bomb') { defenseBomb(u, wall); return true; }
+        const near = enemies.filter(e => e.alive && Math.hypot(e.x - u.x, e.y - u.y) < 130);
+        if (near.length && u.defRole !== 'siege') return near;
+        u.isMoving = false;
+        u.facingDir = wall.px >= u.x ? 1 : -1;
+        if (sim.tickCount >= (u._defHitAt || 0)) {
+          u._defHitAt = sim.tickCount + Math.max(24, u.baseAtkInterval || 40);
+          const dmg = u.atk * (u.defRole === 'siege' ? 2 : 1) * (u.defRole === 'boss' ? 3 : 1);
+          wall.tower.hp -= dmg;
+          u.attackAnim = 14;
+          if (wall.tower.lv >= 3) { fixedDamageHit = true; try { applyDamage(null, u, dm.ref.hp * 0.03, '🌵', '#a8a29e'); } finally { fixedDamageHit = false; } }
+          if (wall.tower.hp <= 0) { wall.tower.hp = 0; addBattleLog(`🧱 ${DEFENSE_LANES[wall.lane].name}의 방벽이 부서졌어요! 준비 시간에 고칠 수 있어요.`); sim.effects.push({ type: 'aoe_ring', x: wall.px, y: wall.py, r: 80, color: '#a8a29e', life: 26, maxLife: 26 }); }
+        }
+        return true;
+      }
+      // 가까운 용병만 상대 (원거리는 사거리만큼) · 공성병·자폭병은 거의 무시하고 감
+      // 8초 넘게 싸우는데 서로 피해가 없으면(원거리끼리 사거리 밖에서 맴돎 등) 3초 동안 무시하고 다시 길로
+      const aggro = u.defRole === 'siege' || u.defRole === 'bomb' ? 70 : 230;
+      const near = sim.tickCount < (u._defIgnoreUntil || 0) ? [] : enemies.filter(e => e.alive && Math.hypot(e.x - u.x, e.y - u.y) < aggro);
+      if (near.length) {
+        const mark = Math.round((u.damageDealt || 0) + (u.maxHp - u.hp));
+        if (u._defFightMark !== mark) { u._defFightMark = mark; u._defFightAt = sim.tickCount; }
+        else if (sim.tickCount - (u._defFightAt || 0) > 8 * tps) { u._defIgnoreUntil = sim.tickCount + 3 * tps; u._defFightAt = sim.tickCount; }
+        return near;
+      }
+      // 길 따라 걷기
+      const pts = DEFENSE_LANES[u.defLane].pts;
+      let wp = Math.max(1, u.defWp || 1);
+      while (wp < pts.length && Math.hypot(pts[wp][0] - u.x, pts[wp][1] - u.y) < 40) wp++;
+      u.defWp = wp;
+      const tx = wp < pts.length ? pts[wp][0] : cr.x, ty = wp < pts.length ? pts[wp][1] : cr.y;
+      dungeonWalkTo(u, tx, ty);
+      return true;
+    }
+    function defenseBomb(u, wall) {
+      const dm = sim.defense, cr = dm.crystal;
+      if (wall) { wall.tower.hp -= dm.ref.atk * 12; if (wall.tower.hp <= 0) { wall.tower.hp = 0; addBattleLog(`💣 자폭병이 ${DEFENSE_LANES[wall.lane].name} 방벽을 터뜨렸어요!`); } }
+      else { const d = DEFENSE_TUNE.crystalHit.bomb; cr.hp -= d; dm.waveHurt += d; cr.hitFlash = 12; sim.floatTexts.push({ x: cr.x, y: cr.y - 100, text: `💣💎-${d}`, color: '#f43f5e', life: 40 }); }
+      sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 110, color: '#f97316', life: 24, maxLife: 24 });
+      sim.shake = { power: 8, life: 16, maxLife: 16 };
+      u.hp = 0; u.alive = false; u._defPaid = true; // 터진 자폭병은 마력석 없음
+    }
+    // 용병의 지킬 자리: 길의 55% 지점 (원거리는 조금 뒤) · 같은 길에 여럿이면 옆으로 벌려 섬
+    function defenseGuardSpot(u, idx = 0) {
+      const dm = sim.defense, g = dm.guard[u.id] ?? 1;
+      const ranged = (u.range || 0) >= 180;
+      const same = sim.units.filter(x => x.team === 'blue' && !x.isClone && (dm.guard[x.id] ?? 1) === g);
+      const k = Math.max(0, same.indexOf(u));
+      const side = (k - (same.length - 1) / 2) * 75;
+      if (g === 'core') return { x: DEFENSE_CRYSTAL.x + 150 + (ranged ? -40 : 0), y: DEFENSE_CRYSTAL.y + side };
+      const p = defenseLanePoint(DEFENSE_LANES[g], ranged ? 0.64 : 0.55);
+      return { x: Math.round(p.x + p.nx * side), y: Math.round(p.y + p.ny * side) };
+    }
+    function defenseGuardStep(u, allies, enemies) {
+      const dm = sim.defense, cr = dm.crystal;
+      if (u.isClone || u.spiritElem) return null;
+      const g = dm.guard[u.id] ?? 1;
+      const post = defenseGuardSpot(u);
+      const zone = g === 'core' ? 380 : 430;
+      const local = enemies.filter(e => e.alive && Math.hypot(e.x - post.x, e.y - post.y) < zone);
+      const nearCrystal = enemies.filter(e => e.alive && Math.hypot(e.x - cr.x, e.y - cr.y) < 460);
+      const fromPost = Math.hypot(u.x - post.x, u.y - post.y);
+      if (local.length) {
+        if (fromPost > zone + 160) { dungeonWalkTo(u, post.x, post.y); return true; } // 쫓아가다 너무 멀어지면 자리로
+        return local;
+      }
+      // 내 구역이 비었고 수정이 위험하면 지원
+      if (nearCrystal.length) return nearCrystal;
+      // 힐러: 다친 아군이 있으면 평소 AI (회복)
+      if (u.job === 'healer' && allies.some(a => a.alive && a.hp < a.maxHp * 0.7 && Math.hypot(a.x - u.x, a.y - u.y) < 500)) return enemies.length ? enemies : null;
+      if (fromPost > 30) dungeonWalkTo(u, post.x, post.y);
+      else { u.isMoving = false; u.facingDir = 1; }
+      return true;
+    }
+    // 방벽은 지나갈 수 없음 (몬스터만 막음)
+    function resolveDefenseWalls() {
+      const dm = sim.defense;
+      if (!dm) return;
+      dm.slots.forEach(s => {
+        if (!s.tower || s.tower.kind !== 'wall' || !(s.tower.hp > 0)) return;
+        sim.units.forEach(u => {
+          if (!u.alive || u.team !== 'red') return;
+          const dx = u.x - s.px, dy = u.y - s.py, d = Math.hypot(dx, dy), R = 58;
+          if (d >= R) return;
+          // 동굴 쪽으로 밀어냄
+          const lane = DEFENSE_LANES[s.lane], back = defenseLanePoint(lane, 0.05);
+          const a = d > 1 ? Math.atan2(dy, dx) : Math.atan2(back.y - s.py, back.x - s.px);
+          const toBack = Math.atan2(back.y - s.py, back.x - s.px);
+          const ang = Math.cos(a - toBack) > -0.2 ? a : toBack;
+          u.x = s.px + Math.cos(ang) * R; u.y = s.py + Math.sin(ang) * R;
+          u.kbVx = 0; u.kbVy = 0;
+        });
+      });
+    }
+
+    // ----- 짓기·배치·충격파 (패널에서) -----
+    function defenseSlotCanBuild(s, kind) {
+      const D = DEFENSE_TOWERS[kind];
+      if (!D || s.tower) return false;
+      if (D.frontOnly && !s.front) return false;
+      if (kind === 'wall' && s.lane === 'core') return false;
+      if (D.max && sim.defense.slots.filter(x => x.tower && x.tower.kind === kind).length >= D.max) return false;
+      return true;
+    }
+    function defenseBuild(slotId, kind) {
+      const dm = sim.defense;
+      if (!dm || dm.phase === 'done') return;
+      const s = dm.slots[slotId], D = DEFENSE_TOWERS[kind];
+      if (!s || !D || !defenseSlotCanBuild(s, kind)) return;
+      if (dm.mana < D.cost[0]) { showNotice(`💠 마력석이 모자라요 (${D.cost[0]} 필요)`); return; }
+      dm.mana -= D.cost[0];
+      s.tower = { kind, lv: 1, spent: D.cost[0], kills: 0, cd: 0 };
+      if (kind === 'wall') s.tower.hp = s.tower.maxHp = Math.round(dm.ref.atk * D.hp[0]);
+      if (kind === 'trap') s.tower.charges = D.charges[0];
+      sim.effects.push({ type: 'aoe_ring', x: D.onPath ? s.px : s.x, y: D.onPath ? s.py : s.y, r: 60, color: D.color, life: 22, maxLife: 22 });
+      renderDefensePanel(true);
+    }
+    function defenseUpgrade(slotId) {
+      const dm = sim.defense, s = dm && dm.slots[slotId];
+      if (!s || !s.tower || s.tower.lv >= 3 || dm.phase === 'done') return;
+      const D = DEFENSE_TOWERS[s.tower.kind], cost = D.cost[s.tower.lv];
+      if (dm.mana < cost) { showNotice(`💠 마력석이 모자라요 (${cost} 필요)`); return; }
+      dm.mana -= cost;
+      s.tower.spent += cost;
+      s.tower.lv++;
+      if (s.tower.kind === 'wall') { const mx = Math.round(dm.ref.atk * D.hp[s.tower.lv - 1]); s.tower.hp += mx - s.tower.maxHp; s.tower.maxHp = mx; }
+      if (s.tower.kind === 'trap' && dm.phase === 'prep') s.tower.charges = D.charges[s.tower.lv - 1];
+      renderDefensePanel(true);
+    }
+    function defenseRepair(slotId) {
+      const dm = sim.defense, s = dm && dm.slots[slotId];
+      if (!s || !s.tower || s.tower.kind !== 'wall' || dm.phase !== 'prep') return;
+      const cost = Math.round(DEFENSE_TOWERS.wall.cost[0] * 0.3 * s.tower.lv);
+      if (s.tower.hp >= s.tower.maxHp) return;
+      if (dm.mana < cost) { showNotice(`💠 마력석이 모자라요 (${cost} 필요)`); return; }
+      dm.mana -= cost;
+      s.tower.maxHp = Math.round(dm.ref.atk * DEFENSE_TOWERS.wall.hp[s.tower.lv - 1]);
+      s.tower.hp = s.tower.maxHp;
+      renderDefensePanel(true);
+    }
+    function defenseSell(slotId) {
+      const dm = sim.defense, s = dm && dm.slots[slotId];
+      if (!s || !s.tower || dm.phase !== 'prep') return;
+      dm.mana += Math.floor(s.tower.spent * 0.5);
+      s.tower = null;
+      renderDefensePanel(true);
+    }
+    function defenseSelectSlot(slotId) {
+      const dm = sim.defense;
+      if (!dm) return;
+      dm.sel = dm.sel === slotId ? null : slotId;
+      renderDefensePanel(true);
+    }
+    function defenseSetGuard(unitId, lane) {
+      const dm = sim.defense;
+      if (!dm) return;
+      dm.guard[unitId] = lane === 'core' ? 'core' : Number(lane);
+      renderDefensePanel(true);
+    }
+    function defenseSkipPrep() {
+      const dm = sim.defense;
+      if (dm && dm.phase === 'prep' && dm.started) defenseBeginFight();
+    }
+    function defenseShock() {
+      const dm = sim.defense;
+      if (!dm || dm.phase === 'done' || !dm.started) return;
+      const cr = dm.crystal, S = DEFENSE_TUNE.shock;
+      if (cr.shock <= 0 || sim.tickCount < cr.shockReadyAt) return;
+      cr.shock--;
+      cr.shockReadyAt = sim.tickCount + S.cdSec * BATTLE_TICKS_PER_SEC;
+      sim.units.forEach(u => {
+        if (u.team !== 'red' || !u.alive) return;
+        const d = Math.hypot(u.x - cr.x, u.y - cr.y);
+        if (d > S.r) return;
+        fixedDamageHit = true;
+        try { applyDamage(null, u, dm.ref.hp * S.dmg * (u.defRole === 'boss' ? 0.4 : 1), '⚡', '#38bdf8'); } finally { fixedDamageHit = false; }
+        const a = Math.atan2(u.y - cr.y, u.x - cr.x);
+        u.kbVx = Math.cos(a) * 14; u.kbVy = Math.sin(a) * 14;
+        if (u.alive && u.defRole !== 'boss') u.statuses.stun = Math.max(u.statuses.stun || 0, 2 * BATTLE_TICKS_PER_SEC);
+      });
+      sim.effects.push({ type: 'aoe_ring', x: cr.x, y: cr.y, r: S.r, color: '#38bdf8', life: 30, maxLife: 30 });
+      sim.shake = { power: 10, life: 20, maxLife: 20 };
+      addBattleLog(`⚡ 수정 충격파! (남은 ${cr.shock}번)`);
+      renderDefensePanel(true);
+    }
+    // 🤖 자동 짓기 (패널 버튼 · 밸런스 시뮬): 정해 둔 순서대로 살 수 있는 만큼
+    const DEFENSE_AUTO_PLAN = [
+      ['b', 5, 'arrow'], ['b', 1, 'arrow'], ['b', 9, 'arrow'], ['b', 6, 'magic'], ['b', 4, 'wall'], ['b', 2, 'magic'], ['b', 10, 'magic'],
+      ['b', 12, 'frost'], ['u', 5], ['b', 7, 'trap'], ['b', 13, 'totem'], ['u', 6], ['u', 1], ['u', 9], ['b', 0, 'wall'], ['b', 8, 'wall'],
+      ['u', 2], ['u', 10], ['b', 3, 'arrow'], ['b', 11, 'arrow'], ['u', 4], ['u', 12], ['u', 5], ['u', 6], ['u', 1], ['u', 9], ['u', 2], ['u', 10],
+      ['u', 13], ['u', 7], ['u', 3], ['u', 11], ['u', 12], ['u', 4], ['u', 3], ['u', 11]
+    ];
+    function defenseAutoBuild() {
+      const dm = sim.defense;
+      for (const [op, id, kind] of DEFENSE_AUTO_PLAN) {
+        const s = dm.slots[id];
+        if (!s) continue;
+        if (op === 'b') {
+          if (s.tower) continue;
+          if (dm.mana < DEFENSE_TOWERS[kind].cost[0]) return;
+          defenseBuild(id, kind);
+        } else {
+          if (!s.tower) continue;
+          if (s.tower.kind === 'wall' && s.tower.hp < s.tower.maxHp) defenseRepair(id);
+          if (s.tower.lv >= 3) continue;
+          const cost = DEFENSE_TOWERS[s.tower.kind].cost[s.tower.lv];
+          if (dm.mana < cost) return;
+          defenseUpgrade(id);
+        }
+      }
+    }
+    function defenseToggleAutoBuild() {
+      const dm = sim.defense;
+      if (!dm) return;
+      dm.autoBuild = !dm.autoBuild;
+      if (dm.autoBuild) defenseAutoBuild();
+      renderDefensePanel(true);
+    }
+
+    // ----- 그리기 (월드 좌표) -----
+    function drawDefenseField(ctx) {
+      const dm = sim.defense;
+      if (!dm) return;
+      const t = sim.tickCount, cr = dm.crystal;
+      ctx.save();
+      // 길
+      DEFENSE_LANES.forEach((lane, li) => {
+        ctx.beginPath();
+        lane.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+        ctx.lineTo(cr.x, cr.y);
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.strokeStyle = 'rgba(41, 28, 14, 0.45)'; ctx.lineWidth = 132; ctx.stroke();
+        ctx.strokeStyle = 'rgba(180, 140, 90, 0.35)'; ctx.lineWidth = 104; ctx.stroke();
+        // 길 방향 화살표 (흐르는 점선)
+        ctx.setLineDash([18, 34]); ctx.lineDashOffset = t * 1.2;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)'; ctx.lineWidth = 6; ctx.stroke();
+        ctx.setLineDash([]);
+        // 동굴 입구 + 다음 웨이브 예고
+        const [mx, my] = lane.pts[0];
+        ctx.fillStyle = 'rgba(10, 10, 14, 0.85)';
+        ctx.beginPath(); ctx.ellipse(mx + 30, my, 70, 90, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#57534e'; ctx.lineWidth = 6; ctx.stroke();
+        if (dm.phase === 'prep' && dm.plan) {
+          const n = dm.plan.lanes[li], boss = dm.plan.boss && dm.plan.bossLane === li;
+          const pulse = 0.6 + 0.4 * Math.sin(t * 0.12);
+          ctx.fillStyle = n === 0 && !boss ? 'rgba(30, 41, 59, 0.85)' : `rgba(127, 29, 29, ${0.75 + pulse * 0.2})`;
+          ctx.beginPath(); ctx.roundRect(mx - 160, my - 34, 130, 68, 16); ctx.fill();
+          ctx.fillStyle = '#fff'; ctx.font = '900 34px Pretendard, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(`${boss ? '👑' : ''}${n}`, mx - 95, my + 2);
+        }
+      });
+      // 시설 자리
+      dm.slots.forEach(s => {
+        const T = s.tower, D = T && DEFENSE_TOWERS[T.kind];
+        const sel = dm.sel === s.id;
+        if (!T) {
+          ctx.globalAlpha = dm.phase === 'prep' ? 0.85 : 0.4;
+          ctx.strokeStyle = sel ? '#fde047' : 'rgba(165, 243, 252, 0.8)'; ctx.lineWidth = sel ? 6 : 3; ctx.setLineDash([10, 8]);
+          ctx.beginPath(); ctx.arc(s.x, s.y, 38, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+          ctx.fillStyle = 'rgba(165, 243, 252, 0.9)'; ctx.font = '800 22px Pretendard, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(defenseSlotLabel(s), s.x, s.y);
+          ctx.globalAlpha = 1;
+          return;
+        }
+        if (D.onPath) {
+          // 방벽·덫은 길 위
+          if (T.kind === 'wall') {
+            const alive = T.hp > 0;
+            ctx.globalAlpha = alive ? 1 : 0.35;
+            ctx.fillStyle = '#78716c'; ctx.strokeStyle = sel ? '#fde047' : '#292524'; ctx.lineWidth = sel ? 6 : 4;
+            ctx.beginPath(); ctx.roundRect(s.px - 30, s.py - 62, 60, 124, 10); ctx.fill(); ctx.stroke();
+            ctx.strokeStyle = '#57534e'; ctx.lineWidth = 3;
+            for (let k = -40; k <= 40; k += 26) { ctx.beginPath(); ctx.moveTo(s.px - 28, s.py + k); ctx.lineTo(s.px + 28, s.py + k); ctx.stroke(); }
+            if (T.lv >= 3 && alive) { ctx.fillStyle = '#d6d3d1'; for (let k = -50; k <= 50; k += 20) { ctx.beginPath(); ctx.moveTo(s.px + 30, s.py + k - 6); ctx.lineTo(s.px + 44, s.py + k); ctx.lineTo(s.px + 30, s.py + k + 6); ctx.fill(); } }
+            ctx.globalAlpha = 1;
+            if (alive) defenseBar(ctx, s.px, s.py - 78, 70, T.hp / T.maxHp, '#a8a29e');
+            else { ctx.font = '800 20px Pretendard, sans-serif'; ctx.fillStyle = '#fca5a5'; ctx.textAlign = 'center'; ctx.fillText('부서짐', s.px, s.py - 74); }
+          } else {
+            ctx.globalAlpha = T.charges > 0 ? 1 : 0.35;
+            ctx.fillStyle = '#7f1d1d'; ctx.strokeStyle = sel ? '#fde047' : '#fca5a5'; ctx.lineWidth = sel ? 5 : 3;
+            ctx.beginPath(); ctx.arc(s.px, s.py, 30, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.strokeStyle = '#fecaca'; ctx.lineWidth = 3;
+            for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4; ctx.beginPath(); ctx.moveTo(s.px + Math.cos(a) * 12, s.py + Math.sin(a) * 12); ctx.lineTo(s.px + Math.cos(a) * 26, s.py + Math.sin(a) * 26); ctx.stroke(); }
+            ctx.globalAlpha = 1;
+          }
+          // 자리 표시와 이어진 선
+          ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+          ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.px, s.py); ctx.stroke(); ctx.setLineDash([]);
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.8)'; ctx.beginPath(); ctx.arc(s.x, s.y, 22, 0, Math.PI * 2); ctx.fill();
+          ctx.font = '800 22px Pretendard, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
+          ctx.fillText(D.icon, s.x, s.y + 1);
+          defenseLvPips(ctx, s.x, s.y + 32, T.lv);
+          return;
+        }
+        // 탑·토템
+        if (sel && D.range) { ctx.strokeStyle = 'rgba(253, 224, 71, 0.5)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(s.x, s.y, D.range, 0, Math.PI * 2); ctx.stroke(); }
+        if (T.kind === 'totem') { ctx.fillStyle = 'rgba(52, 211, 153, 0.08)'; ctx.beginPath(); ctx.arc(s.x, s.y, D.r, 0, Math.PI * 2); ctx.fill(); }
+        ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(s.x, s.y + 22, 40, 14, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#334155'; ctx.strokeStyle = sel ? '#fde047' : D.color; ctx.lineWidth = sel ? 6 : 4;
+        ctx.beginPath(); ctx.moveTo(s.x - 30, s.y + 20); ctx.lineTo(s.x - 22, s.y - 46); ctx.lineTo(s.x + 22, s.y - 46); ctx.lineTo(s.x + 30, s.y + 20); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = D.color; ctx.beginPath(); ctx.arc(s.x, s.y - 50, 18 + (T.cd > D.cd?.[T.lv - 1] - 6 ? 4 : 0), 0, Math.PI * 2); ctx.fill();
+        ctx.font = '800 22px Pretendard, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
+        ctx.fillText(D.icon, s.x, s.y - 12);
+        defenseLvPips(ctx, s.x, s.y + 36, T.lv);
+      });
+      // 수정
+      const bob = Math.sin(t * 0.06) * 8, flash = cr.hitFlash > 0;
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.12)'; ctx.beginPath(); ctx.arc(cr.x, cr.y, DEFENSE_TUNE.crystalR, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(125, 211, 252, 0.35)'; ctx.lineWidth = 3; ctx.setLineDash([12, 10]); ctx.beginPath(); ctx.arc(cr.x, cr.y, DEFENSE_TUNE.crystalR, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = '#475569'; ctx.beginPath(); ctx.ellipse(cr.x, cr.y + 60, 90, 30, 0, 0, Math.PI * 2); ctx.fill();
+      const g = ctx.createRadialGradient(cr.x, cr.y - 40 + bob, 10, cr.x, cr.y - 40 + bob, 150);
+      g.addColorStop(0, flash ? 'rgba(254, 202, 202, 0.7)' : 'rgba(186, 230, 253, 0.55)'); g.addColorStop(1, 'rgba(56, 189, 248, 0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cr.x, cr.y - 40 + bob, 150, 0, Math.PI * 2); ctx.fill();
+      const hpK = Math.max(0, cr.hp / cr.maxHp);
+      ctx.fillStyle = flash ? '#fecaca' : hpK > 0.3 ? '#38bdf8' : '#f472b6'; ctx.strokeStyle = '#e0f2fe'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(cr.x, cr.y - 140 + bob); ctx.lineTo(cr.x + 48, cr.y - 40 + bob); ctx.lineTo(cr.x, cr.y + 40 + bob); ctx.lineTo(cr.x - 48, cr.y - 40 + bob); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.moveTo(cr.x, cr.y - 130 + bob); ctx.lineTo(cr.x + 18, cr.y - 46 + bob); ctx.lineTo(cr.x, cr.y + 20 + bob); ctx.closePath(); ctx.fill();
+      defenseBar(ctx, cr.x, cr.y - 170, 180, hpK, hpK > 0.7 ? '#38bdf8' : hpK > 0.3 ? '#fbbf24' : '#f43f5e', `💎 ${Math.ceil(cr.hp)}/${cr.maxHp}`);
+      ctx.restore();
+    }
+    function defenseSlotLabel(s) { return s.lane === 'core' ? `💎${s.k + 1}` : `${DEFENSE_LANES[s.lane].icon}${s.k + 1}`; }
+    function defenseBar(ctx, x, y, w, k, color, label) {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)'; ctx.fillRect(x - w / 2 - 3, y - 3, w + 6, 16);
+      ctx.fillStyle = color; ctx.fillRect(x - w / 2, y, w * Math.max(0, Math.min(1, k)), 10);
+      if (label) { ctx.font = '900 20px Pretendard, sans-serif'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(label, x, y - 6); }
+    }
+    function defenseLvPips(ctx, x, y, lv) {
+      for (let i = 0; i < 3; i++) { ctx.fillStyle = i < lv ? '#fde047' : 'rgba(148, 163, 184, 0.5)'; ctx.beginPath(); ctx.arc(x + (i - 1) * 14, y, 5, 0, Math.PI * 2); ctx.fill(); }
+    }
+    // 유닛 위: 탑 공격 줄기 · 폭발
+    function drawDefenseTop(ctx) {
+      const dm = sim.defense;
+      if (!dm) return;
+      ctx.save();
+      dm.fx.forEach(f => {
+        const a = f.life / f.max;
+        ctx.globalAlpha = a;
+        if (f.k === 'shot') { ctx.strokeStyle = f.c; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(f.x1, f.y1); ctx.lineTo(f.x2, f.y2); ctx.stroke(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(f.x2, f.y2, 6, 0, Math.PI * 2); ctx.fill(); }
+        else if (f.k === 'boom') { ctx.fillStyle = f.c; ctx.globalAlpha = a * 0.35; ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (1.2 - a * 0.2), 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = a; ctx.strokeStyle = f.c; ctx.lineWidth = 4; ctx.stroke(); }
+      });
+      ctx.restore();
+    }
+
+    // ----- HUD · 패널 -----
+    function updateDefenseHud(arenaVisible) {
+      const el = document.getElementById('defenseHud');
+      if (!el) return;
+      const dm = arenaVisible && sim.mode === 'defense' ? sim.defense : null;
+      el.classList.toggle('hidden', !dm);
+      const panel = document.getElementById('defensePanel');
+      if (panel && !dm) panel.classList.add('hidden');
+      if (!dm) return;
+      const tps = BATTLE_TICKS_PER_SEC, cr = dm.crystal;
+      let text;
+      if (dm.phase === 'prep') { const left = Math.max(0, Math.ceil((dm.prepTicks - (sim.tickCount - dm.phaseAt)) / tps)); text = `🛠️ 준비 ${left}초 · 다음 [${dm.plan.split}]${dm.plan.boss ? ' 👑보스' : ''}`; }
+      else if (dm.phase === 'fight') { const left = dm.queue.length + sim.units.filter(u => u.team === 'red' && u.alive && !u.isClone).length; text = `⚔️ 남은 몬스터 ${left}/${dm.total}`; }
+      else text = dm.won ? '🏆 수정을 지켜냈어요!' : '💔 수정이 깨졌어요';
+      el.textContent = `💎 수정 방어전 · 웨이브 ${dm.wave}/${DEFENSE_TUNE.waves} · 💎 ${Math.ceil(cr.hp)}/${cr.maxHp} · 💠 ${dm.mana} · ${text}`;
+      if (sim.tickCount % 10 === 0) renderDefensePanel();
+    }
+    let defensePanelSig = '';
+    function renderDefensePanel(force = false) {
+      const box = document.getElementById('defensePanel');
+      if (!box) return;
+      const dm = sim.mode === 'defense' && sim.running ? sim.defense : null;
+      box.classList.toggle('hidden', !dm || !dm.started);
+      if (!dm || !dm.started) { defensePanelSig = ''; return; }
+      const tps = BATTLE_TICKS_PER_SEC, cr = dm.crystal;
+      const blue = sim.units.filter(u => u.team === 'blue' && !u.isClone);
+      const shockLeft = Math.max(0, Math.ceil((cr.shockReadyAt - sim.tickCount) / tps));
+      const sig = [dm.phase, dm.wave, dm.mana, dm.sel, cr.shock, shockLeft > 0, dm.autoBuild, JSON.stringify(dm.guard),
+        dm.slots.map(s => (s.tower ? `${s.tower.kind}${s.tower.lv}${s.tower.kind === 'wall' ? Math.round(s.tower.hp / Math.max(1, s.tower.maxHp) * 10) : ''}` : '-')).join(','),
+        blue.map(u => (u.alive ? 1 : 0)).join('')].join('|');
+      if (!force && sig === defensePanelSig) return;
+      defensePanelSig = sig;
+      const prep = dm.phase === 'prep';
+      const laneBtns = u => [0, 1, 2, 'core'].map(l => {
+        const on = (dm.guard[u.id] ?? 1) === l;
+        const label = l === 'core' ? '💎' : DEFENSE_LANES[l].icon;
+        return `<button type="button" onclick="defenseSetGuard('${u.id}', '${l}')" class="w-7 h-7 rounded-lg text-sm ${on ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 hover:bg-slate-700'}" title="${l === 'core' ? '수정 지키기' : DEFENSE_LANES[l].name}">${label}</button>`;
+      }).join('');
+      const guards = blue.map(u => `<div class="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-xl px-1.5 py-1 ${u.alive ? '' : 'opacity-50'}">
+          ${getMercIconHTML(u.job, u.skinVariant, 22)}<span class="font-extrabold max-w-[5.5rem] truncate">${u.alive ? '' : '💀'}${u.name}</span>${laneBtns(u)}</div>`).join('');
+      const slotChip = s => {
+        const T = s.tower, D = T && DEFENSE_TOWERS[T.kind], on = dm.sel === s.id;
+        const broken = T && T.kind === 'wall' && T.hp <= 0;
+        return `<button type="button" onclick="defenseSelectSlot(${s.id})" class="px-2 py-1 rounded-lg border-2 font-extrabold ${on ? 'border-amber-300 bg-amber-500/25' : T ? 'border-slate-600 bg-slate-800' : 'border-dashed border-cyan-500/50 bg-slate-900 text-cyan-200'}">
+          ${T ? `${D.icon}${'★'.repeat(T.lv)}${broken ? '💥' : ''}` : `${s.front ? '🧱' : ''}빈칸`}</button>`;
+      };
+      const rows = [0, 1, 2, 'core'].map(l => `<div class="flex items-center gap-1 flex-wrap"><span class="w-16 shrink-0 text-slate-400 font-bold">${l === 'core' ? '💎 수정' : `${DEFENSE_LANES[l].icon} ${DEFENSE_LANES[l].name.replace(' 길', '')}`}</span>
+          ${dm.slots.filter(s => s.lane === l).map(slotChip).join('')}</div>`).join('');
+      let action = '<div class="text-slate-400">위 칸을 누르면 시설을 짓거나 올릴 수 있어요. (칸 번호는 전장 바닥에도 보여요 · 🧱 표시 칸만 방벽 가능)</div>';
+      const s = dm.sel != null ? dm.slots[dm.sel] : null;
+      if (s && !s.tower) {
+        action = `<div class="flex flex-wrap gap-1.5">${DEFENSE_TOWER_KEYS.map(k => {
+          const D = DEFENSE_TOWERS[k], ok = defenseSlotCanBuild(s, k), afford = dm.mana >= D.cost[0];
+          return `<button type="button" onclick="defenseBuild(${s.id}, '${k}')" ${ok && afford ? '' : 'disabled'} class="px-2 py-1.5 rounded-xl text-left ${ok && afford ? 'bg-slate-800 hover:bg-slate-700 border border-slate-600' : 'bg-slate-900 border border-slate-800 opacity-45 cursor-not-allowed'}">
+            <div class="font-extrabold">${D.icon} ${D.name} <span class="text-cyan-300">💠${D.cost[0]}</span></div><div class="text-[10px] text-slate-400">${ok ? D.lv[0] : k === 'wall' ? '🧱 칸에만' : '1개만'}</div></button>`;
+        }).join('')}</div>`;
+      } else if (s && s.tower) {
+        const T = s.tower, D = DEFENSE_TOWERS[T.kind];
+        const up = T.lv < 3 ? D.cost[T.lv] : 0, rep = T.kind === 'wall' && T.hp < T.maxHp ? Math.round(DEFENSE_TOWERS.wall.cost[0] * 0.3 * T.lv) : 0;
+        action = `<div class="flex flex-wrap items-center gap-1.5">
+          <span class="font-extrabold">${D.icon} ${D.name} ${'★'.repeat(T.lv)} <span class="text-slate-400 font-bold">· ${D.lv[T.lv - 1]}${T.kills ? ` · 처치 ${T.kills}` : ''}${T.kind === 'wall' ? ` · 체력 ${Math.ceil(T.hp)}/${T.maxHp}` : ''}${T.kind === 'trap' ? ` · 남은 횟수 ${T.charges}` : ''}</span></span>
+          ${T.lv < 3 ? `<button type="button" onclick="defenseUpgrade(${s.id})" ${dm.mana >= up ? '' : 'disabled'} class="px-2.5 py-1.5 rounded-xl font-extrabold ${dm.mana >= up ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-slate-800 opacity-50'}">⬆️ ${T.lv + 1}단계 (${D.lv[T.lv]}) 💠${up}</button>` : '<span class="text-amber-300 font-extrabold">최고 단계</span>'}
+          ${rep ? `<button type="button" onclick="defenseRepair(${s.id})" ${prep && dm.mana >= rep ? '' : 'disabled'} class="px-2.5 py-1.5 rounded-xl font-extrabold ${prep && dm.mana >= rep ? 'bg-sky-700 hover:bg-sky-600' : 'bg-slate-800 opacity-50'}">🔧 고치기 💠${rep}${prep ? '' : ' (준비 시간에)'}</button>` : ''}
+          <button type="button" onclick="defenseSell(${s.id})" ${prep ? '' : 'disabled'} class="px-2.5 py-1.5 rounded-xl font-extrabold ${prep ? 'bg-rose-800 hover:bg-rose-700' : 'bg-slate-800 opacity-50'}">💰 팔기 +💠${Math.floor(T.spent * 0.5)}${prep ? '' : ' (준비 시간에)'}</button>
+        </div>`;
+      }
+      const shockOk = cr.shock > 0 && shockLeft <= 0 && dm.phase !== 'done';
+      box.innerHTML = `
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="font-extrabold text-cyan-200 text-sm">💠 ${dm.mana}</span>
+          ${prep ? `<button type="button" onclick="defenseSkipPrep()" class="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 font-extrabold">⏩ ${dm.wave}웨이브 바로 시작</button>` : ''}
+          <button type="button" onclick="defenseShock()" ${shockOk ? '' : 'disabled'} class="px-3 py-1.5 rounded-xl font-extrabold ${shockOk ? 'bg-sky-600 hover:bg-sky-500' : 'bg-slate-800 opacity-50'}">⚡ 수정 충격파 (${cr.shock})${shockLeft > 0 && cr.shock > 0 ? ` ${shockLeft}초` : ''}</button>
+          <button type="button" onclick="defenseToggleAutoBuild()" class="px-3 py-1.5 rounded-xl font-extrabold border ${dm.autoBuild ? 'bg-emerald-700 border-emerald-400' : 'bg-slate-800 border-slate-600 hover:bg-slate-700'}">🤖 자동 짓기 ${dm.autoBuild ? '켜짐' : '꺼짐'}</button>
+        </div>
+        <div class="flex flex-wrap gap-1.5"><span class="font-extrabold text-amber-300 self-center">🛡️ 용병 배치</span>${guards}</div>
+        <div class="flex flex-col gap-1"><span class="font-extrabold text-amber-300">🧱 시설 자리</span>${rows}</div>
+        <div class="bg-slate-950/70 border border-slate-700 rounded-xl p-2">${action}</div>`;
+    }
+
+    // ----- 결과·보상 -----
+    const DEFENSE_REWARD = {
+      normal: { wave: 60, bossWave: 300, clear: [800, 1200, 1600], first3: 1500 },
+      hard:   { wave: 100, bossWave: 500, clear: [1600, 2400, 3200], first3: 3000 }
+    };
+    function finishDefense(stu, won) {
+      const dm = sim.defense, R = DEFENSE_REWARD[dm.diff];
+      const book = defenseBookOf(stu, dm.race);
+      const stars = won ? defenseStars(dm) : 0;
+      const starKey = `${dm.diff}Stars`;
+      // 첫 ★★★ 보너스는 실제로 받았을 때만 받은 것으로 적음 (오늘 보상을 다 쓴 날 깨도 다음에 받을 수 있게)
+      const first3 = won && stars === 3 && !book[`${dm.diff}First3Paid`];
+      const parts = [];
+      let amount = 0;
+      if (dm.cleared) { amount += dm.cleared * R.wave; parts.push(`웨이브 ${dm.cleared} × ${R.wave}`); }
+      const bossWaves = Math.floor(dm.cleared / 5);
+      if (bossWaves) { amount += bossWaves * R.bossWave; parts.push(`보스 웨이브 ${bossWaves} × ${R.bossWave}`); }
+      if (won) { amount += R.clear[stars - 1]; parts.push(`클리어 ${'★'.repeat(stars)} ${R.clear[stars - 1]}`); }
+      if (first3) { amount += R.first3; parts.push(`첫 ★★★ ${R.first3}`); }
+      const leftover = Math.min(300, dm.mana);
+      if (leftover > 0 && dm.cleared) { amount += leftover; parts.push(`남은 마력석 ${leftover}`); }
+      if (!dm.everManual && amount > 0) { amount = Math.round(amount * 0.8); parts.push('자동 전투 ×0.8'); }
+      const reward = amount > 0 ? grantDailyReward(stu, 'defense', amount) : 0;
+      if (reward > 0) state.guardianPts += won ? 20 : 8;
+      if (reward > 0 && first3) book[`${dm.diff}First3Paid`] = true;
+      if (won) {
+        book[starKey] = Math.max(book[starKey] || 0, stars);
+        book.clears = (book.clears || 0) + 1;
+      }
+      book.bestWave = Math.max(book.bestWave || 0, dm.cleared);
+      const atkKing = mvpCandidates().sort((a, b) => b.damageDealt - a.damageDealt)[0];
+      const tankKing = mvpCandidates().sort((a, b) => b.damageTaken - a.damageTaken)[0];
+      const healKing = mvpCandidates().sort((a, b) => b.healDone - a.healDone)[0];
+      const towers = dm.slots.filter(s => s.tower).sort((a, b) => (b.tower.kills || 0) - (a.tower.kills || 0));
+      const worst = [...dm.log].sort((a, b) => b.hurt - a.hurt)[0];
+      document.getElementById('battleResultEmoji').textContent = won ? '💎' : '💔';
+      document.getElementById('battleResultTitle').textContent = won
+        ? `수정을 지켜냈어요! ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}${first3 ? ' (첫 ★★★!)' : ''}`
+        : `수정 방어 실패 · ${dm.cleared}웨이브까지 막음`;
+      document.getElementById('battleResultDesc').textContent = reward > 0
+        ? `보상으로 💰 ${reward.toLocaleString()} CA를 받았어요! (${parts.join(' + ')}) · 오늘 남은 방어전 보상 ${getDailyRewardLeft(stu, 'defense')}회`
+        : amount > 0 ? dailyRewardDoneText('defense') : '막은 웨이브가 없어서 보상은 없어요. 시설을 먼저 지어 보세요!';
+      document.getElementById('battleMvpBox').innerHTML = `
+        <div class="font-bold text-amber-300 mb-1">🌟 이번 방어전 MVP</div>
+        <div>⚔️ 최고 공격왕: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
+        <div>🛡️ 든든 수호왕: <strong>${tankKing?.name || '-'}</strong> (${tankKing?.damageTaken || 0} 방어)</div>
+        <div>💚 다정 치유왕: <strong>${healKing?.name || '-'}</strong> (${healKing?.healDone || 0} 회복·보호)</div>
+        <div class="mt-1 text-slate-400">🏰 최고 시설: ${towers[0] ? `${DEFENSE_TOWERS[towers[0].tower.kind].icon} ${DEFENSE_TOWERS[towers[0].tower.kind].name} ${defenseSlotLabel(towers[0])} (처치 ${towers[0].tower.kills || 0})` : '없음'} · 지은 시설 ${towers.length}개
+          · 💎 남은 수정 ${Math.ceil(dm.crystal.hp)}/${dm.crystal.maxHp}${worst && worst.hurt > 0 ? ` · 가장 크게 뚫린 웨이브 ${worst.wave} (-${worst.hurt})` : ''} · 완벽 방어 ${dm.perfect}번</div>`;
+      document.getElementById('battleResultOverlay').classList.remove('hidden');
+      if (document.getElementById('arenaSection')?.classList.contains('hidden')) showRewardBanner(`💎 수정 방어전이 끝났어요! ${document.getElementById('battleResultDesc').textContent}`);
+      renderDefensePanel(true);
+      sim.netRole = null;
+      saveState();
+      renderAllStudentViews();
+    }
+
+    // ----- 방어전 탭 -----
+    function renderDefenseTab() {
+      const stu = getActiveStudent();
+      const box = document.getElementById('defenseCardGrid');
+      if (!stu || !box) return;
+      const race = todayDefenseRace();
+      const raceInfo = TOWER_RACES.find(r => r.name === race) || {};
+      const book = defenseBookOf(stu, race);
+      const info = document.getElementById('defenseMyInfo');
+      const left = getDailyRewardLeft(stu, 'defense');
+      if (info) info.innerHTML = `🗓️ 오늘의 공격 종족 <strong class="text-amber-300">${race}</strong> · ⚔️ 출전 용병 전투력 <strong class="text-rose-300">${dungeonPowerOf(stu).toLocaleString()}</strong> · 💰 오늘 남은 보상 <strong class="${left > 0 ? 'text-emerald-300' : 'text-slate-500'}">${left}/${DAILY_REWARD_LIMITS.defense}</strong>회`;
+      const mapSrc = (BATTLE_MAPS[TOWER_RACE_MAPS[race]] || BATTLE_MAPS.tower || {}).src || '';
+      const starTxt = n => '★'.repeat(n || 0) + '☆'.repeat(3 - (n || 0));
+      box.innerHTML = `
+        <div class="rounded-2xl border-2 border-cyan-500/40 bg-slate-900 overflow-hidden flex flex-col shadow">
+          <div class="relative h-36 bg-slate-950">
+            ${mapSrc ? `<img src="${mapSrc}" alt="${race}" class="w-full h-full object-cover opacity-70" loading="lazy">` : ''}
+            <div class="absolute inset-0 flex items-center justify-center text-6xl drop-shadow-[0_4px_8px_rgba(56,189,248,0.7)]">💎</div>
+            <div class="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-slate-950 to-transparent">
+              <div class="font-title text-2xl text-white">${race}의 습격 <span class="ml-1 px-2 py-0.5 rounded-lg bg-amber-400 text-slate-950 text-xs align-middle">🗓️ 오늘</span></div>
+              <div class="text-[11px] text-slate-300">${raceInfo.zone || ''} · 최고 기록 ${book.bestWave || 0}/${DEFENSE_TUNE.waves}웨이브</div>
+            </div>
+          </div>
+          <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+            ${DEFENSE_DIFFS.map(d => {
+              const locked = d === 'hard' && defenseHardLocked(stu, race);
+              const R = DEFENSE_REWARD[d];
+              return `<div class="rounded-xl bg-slate-950 border ${d === 'hard' ? 'border-orange-500/40' : 'border-slate-800'} p-3 flex flex-col gap-1 ${locked ? 'opacity-60' : ''}">
+                <div class="font-extrabold ${d === 'hard' ? 'text-orange-300' : 'text-white'}">${DEFENSE_DIFF_LABEL[d]} <span class="text-amber-300">${starTxt(book[d + 'Stars'])}</span></div>
+                <div class="text-slate-400">수정 체력 ${DEFENSE_TUNE[d].crystalHp} · 클리어 ${R.clear[0].toLocaleString()}~${R.clear[2].toLocaleString()} CA · 첫 ★★★ +${R.first3.toLocaleString()}</div>
+                <div class="text-slate-400">${locked ? '🔒 보통을 ★★★로 막으면 열려요' : '몬스터가 내 출전 용병 전투력에 맞춰져요'}</div>
+                <button onclick="startSoloDefense('${d}')" ${locked ? 'disabled' : ''} class="mt-1 py-2 rounded-lg ${locked ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : d === 'hard' ? 'bg-orange-600 hover:bg-orange-500 text-white' : 'bg-cyan-600 hover:bg-cyan-500 text-white'} font-extrabold shadow">🧍 혼자 지키기</button>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
     }
 
     // 🏰 던전은 5인 입장(sim.dungeon.party)만 레이드방 실시간 장치를 씀
