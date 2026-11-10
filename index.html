@@ -27724,7 +27724,8 @@
       const jk = spriteDrawH(u, sp) / sp.standH;
       return { x: u.x + dir * hand[0] * jk, y: u.y + 12 + hand[1] * jk, k: jk };
     }
-    function voltBolt(sx, sy, tx, ty, life, gold) { sim.effects.push({ type: 'lightning_bolt', ramp: gold ? 'volt_gold' : 'volt', sx, sy, tx, ty, life, maxLife: life }); } // gold = 강화 (금빛)
+    const VOLT_CHAIN_W = 1.8; // 체인 라이트닝 줄 굵기 (기본 공격 줄기 = 1)
+    function voltBolt(sx, sy, tx, ty, life, gold, w) { sim.effects.push({ type: 'lightning_bolt', ramp: gold ? 'volt_gold' : 'volt', sx, sy, tx, ty, life, maxLife: life, ...(w ? { w } : {}) }); } // gold = 강화 (금빛), w = 굵은 전격 줄기(drawVoltArc) 굵기
     function voltFace(u, x, y) {
       const a = Math.atan2(y - u.y, x - u.x);
       u.facingAngle = a;
@@ -27894,7 +27895,7 @@
         }
         unit.voltChain = { ids: order.map(e => e.id), until: sim.tickCount + VOLT_CHAIN_TICKS, next: sim.tickCount, emp };
         const h = voltHand(unit);
-        voltBolt(h.x, h.y, first.x, first.y - 14, 30);
+        voltBolt(h.x, h.y, first.x, first.y - 14, 30, emp, VOLT_CHAIN_W);
         playCombatSfx('magic');
         addBattleLog(`🔗 [전격술사] ${unit.name}의 ${tag}체인 라이트닝! ${order.length}명 연결${emp ? ' · 한곳으로 끌어옴' : ''}`);
         return true;
@@ -27972,8 +27973,8 @@
             else {
               const mult = 1 + VOLT_CHAIN_LINK * (Math.min(VOLT_CHAIN_LINK_MAX, linked.length) - 1);
               withSkillHit(() => linked.forEach(e => applyDamage(u, e, u.atk * (ch.emp ? VOLT_CHAIN_EMP_DMG : VOLT_CHAIN_DMG) * mult, '', '#818cf8')));
-              if (linked.length === 1) voltBolt(u.x, u.y - 20, linked[0].x, linked[0].y - 14, VOLT_CHAIN_EVERY + 2, ch.emp);
-              for (let i = 1; i < linked.length; i++) voltBolt(linked[i - 1].x, linked[i - 1].y - 14, linked[i].x, linked[i].y - 14, VOLT_CHAIN_EVERY + 2, ch.emp);
+              if (linked.length === 1) voltBolt(u.x, u.y - 20, linked[0].x, linked[0].y - 14, VOLT_CHAIN_EVERY + 2, ch.emp, VOLT_CHAIN_W);
+              for (let i = 1; i < linked.length; i++) voltBolt(linked[i - 1].x, linked[i - 1].y - 14, linked[i].x, linked[i].y - 14, VOLT_CHAIN_EVERY + 2, ch.emp, VOLT_CHAIN_W);
               linked.forEach(e => voltFx(ch.emp ? 'hit-gold' : 'hit', e.x, e.y - 14, 1, 0, VOLT_CHAIN_EVERY + 2)); // 줄 끝 매듭
             }
           }
@@ -28001,7 +28002,7 @@
               }
             }));
             const h = voltHand(u);
-            sim.effects.push({ type: 'volt_rail', x: h.x, y: h.y, ang: b.ang, len: b.len, w: b.hw, life: VOLT_RAIL_EVERY + 3, maxLife: VOLT_RAIL_EVERY + 3, emp: b.emp ? 1 : 0 });
+            sim.effects.push({ type: 'volt_rail', x: h.x, y: h.y, ang: b.ang, len: b.len, w: b.hw, life: VOLT_RAIL_EVERY + 12, maxLife: VOLT_RAIL_EVERY + 12, emp: b.emp ? 1 : 0 }); // 다음 이펙트와 넉넉히 겹침 (그리기는 새 것만)
           }
         }
       });
@@ -28231,30 +28232,16 @@
       });
       ctx.restore();
     }
-    // 기본 공격 줄기: 사용자 샘플에서 뽑은 줄기 조각 (assets/sprites/fx/volt_fx.webp, 22×31, 기준점 = 왼쪽 끝 가운데)을 손에서 대상까지 이어 붙임
-    //   4틱마다 위아래를 뒤집어 지지직거림 (pixelfx 2프레임 깜빡임) · 끝에 작은 도트 튀김 · 그림을 못 받았으면 도트 번개
+    // 기본 공격 줄기: 손 → 대상 전격 줄기(drawVoltArc) + 끝 피격 매듭(hit) + 손끝 스파크(hand-spark). 아래 VOLT_FX(샘플 줄기 조각)는 더 이상 그리지 않음
     const VOLT_FX = new Image();
     VOLT_FX.onload = () => { VOLT_FX.ready = true; };
     VOLT_FX.src = 'assets/sprites/fx/volt_fx.webp';
     const VOLT_BEAM_PIECE = [0, 0, 22, 31, 0, 18.5]; // 시트 x, y, 너비, 높이, 기준점 x, y
     function drawVoltBeam(ctx, ef, progress) {
-      const p = Math.min(1, Math.max(0, progress));
-      if (!VOLT_FX.ready) { drawPixelBolt(ctx, ef, p, PFX_RAMPS.volt); return; }
-      const [px, py, pw, ph, , ay] = VOLT_BEAM_PIECE;
-      const dx = ef.tx - ef.sx, dy = ef.ty - ef.sy, L = Math.hypot(dx, dy);
-      if (L < 2) return;
-      const k = ef.k || 1, segW = pw * k;
-      ctx.save();
-      ctx.translate(ef.sx, ef.sy);
-      ctx.rotate(Math.atan2(dy, dx));
-      if ((sim.tickCount >> 2) % 2) ctx.scale(1, -1);
-      ctx.imageSmoothingEnabled = false;
-      ctx.globalAlpha = p > 0.8 ? (1 - p) / 0.2 : 1;
-      for (let x = 0; x < L; x += segW) {
-        const w = Math.min(segW, L - x);
-        ctx.drawImage(VOLT_FX, px, py, pw * (w / segW), ph, x, -ay * k, w, ph * k);
-      }
-      ctx.restore();
+      // 기본 공격: 손 → 대상 전격 줄기 (drawVoltArc, 굵기 1). 2026-11-10 사용자 요청으로 샘플 줄기 조각 이어 붙이기 대신
+      const p = Math.min(1, Math.max(0, progress)), k = ef.k || 1;
+      if (ef.maxLife > 6 && p > (ef.maxLife - 4.5) / ef.maxLife) return; // 다음 틱 줄기와 겹치는 4틱은 새 줄기만
+      drawVoltArc(ctx, ef.sx, ef.sy, ef.tx, ef.ty, p * 0.5, PFX_RAMPS.volt, Math.max(0.8, k), pfxSeedOf(ef)); // 다음 틱 줄기가 바로 이어서 깜빡임 없이
       const fr = sim.tickCount / 3;
       if (!drawVoltFx(ctx, 'hit', fr, ef.tx, ef.ty, Math.max(0.8, k))) drawPixelBurst(ctx, ef.tx, ef.ty, 14, Math.min(0.95, p * 1.5), PFX_RAMPS.volt, pfxSeedOf(ef), { sparks: 5, coreK: 0.4 });
       drawVoltFx(ctx, 'hand-spark', fr + 5, ef.sx, ef.sy, k); // 손끝 스파크
@@ -28262,9 +28249,10 @@
     // 전자포: 손에서 뻗는 굵은 전격 포 (바깥 남보라 → 안 연보라 → 흰 심), 가장자리를 따라 짧은 튀김, 끝에서 도트가 흩어짐
     // 시트 전자포: 몸통 120px 토막을 포 길이만큼 이어 붙이고(포 끝에서 자름), 고리 번개를 170px마다 시작 프레임을 달리해 덧그림, 손바닥 총구 · 포 끝 머리
     //   일반 그림은 판정 반폭 60, 강화(-wide-gold)는 120 기준 → ef.w로 배율. 왼쪽을 볼 때는 위아래를 뒤집어 고리 번개가 늘 위로 솟게
-    //   0.25초마다 새 이펙트가 생기고 앞 것과 3틱 겹침 → 새 것만 그림 (겹치면 두 겹)
+    //   0.25초마다 새 이펙트가 생기고 앞 것과 넉넉히 겹침 → 같은 자리에서 가장 새 것만 그림 (끊김·두 겹 없이 계속 보임)
     function drawVoltRailFx(ctx, ef, progress) {
-      if (progress > (VOLT_RAIL_EVERY - 0.5) / (VOLT_RAIL_EVERY + 3)) return true;
+      // 같은 자리에 더 새 포 이펙트가 있으면 그것만 그림 (시간으로 자르면 화면 갱신과 어긋날 때 빈 틈이 생겨 깜빡임)
+      if (sim.effects.some(o => o !== ef && o.type === 'volt_rail' && o.life > ef.life && Math.abs(o.x - ef.x) < 60 && Math.abs(o.y - ef.y) < 60)) return true;
       const suf = ef.emp ? '-wide-gold' : '', s = ef.w / (ef.emp ? 120 : 60), L = ef.len, f = sim.tickCount / 3;
       if (!voltFxImg('rail-body' + suf) || !voltFxImg('rail-tip' + suf) || !voltFxImg('rail-muzzle' + suf) || !voltFxImg('rail-arc' + suf)) return false;
       const ang = ef.ang || 0, flipY = Math.cos(ang) < 0;
@@ -30128,6 +30116,60 @@
       ctx.restore();
     }
     // 번개: 씨앗으로 정한 꺾인 줄기(3틱마다 모양이 바뀌어 깜빡임) · 넓은 빛 + 밝은 심 + 칸 단위 줄기 · 떨어진 자리에 흰 섬광 터짐
+    // 전격 줄기 (pixelfx 작법, 전격술사 기본 공격·체인 라이트닝): 손/적 → 적으로 잇는 굵은 번개.
+    //   중간점을 흔든 꺾인 줄 + 갈래 1~2개, 3틱마다 새로 그음(지지직). 바깥 빛(더하기) → 남보라 테두리 → 하늘 몸 → 흰 심 (칸 단위 도트)
+    //   w = 굵기 배율 (기본 공격 1, 체인 1.8), 처음 15%는 흰 심이 굵게 번쩍, 뒤 40%는 깜빡이며 꺼짐
+    function drawVoltArc(ctx, sx, sy, tx, ty, p, ramp, w, seed) {
+      const dx = tx - sx, dy = ty - sy, L = Math.hypot(dx, dy);
+      if (L < 4) return;
+      const age = Math.floor(sim.tickCount / 3);
+      if (p > 0.6 && age % 2) return; // 끝무렵 깜빡임
+      const rnd = pfxRng((seed + age * 7919) >>> 0);
+      const nx = -dy / L, ny = dx / L;
+      const path = (x0, y0, x1, y1, amp) => { // 중간점 흔들기
+        let pts = [[x0, y0], [x1, y1]], off = amp;
+        while (pts.length < 2 + Math.hypot(x1 - x0, y1 - y0) / 10) {
+          const nxt = [pts[0]];
+          for (let i = 0; i < pts.length - 1; i++) {
+            const [ax, ay] = pts[i], [bx, by] = pts[i + 1], o = (rnd() * 2 - 1) * off;
+            nxt.push([(ax + bx) / 2 + nx * o, (ay + by) / 2 + ny * o], [bx, by]);
+          }
+          pts = nxt; off *= 0.55;
+        }
+        return pts;
+      };
+      const trunk = path(sx, sy, tx, ty, Math.min(26, L * 0.14) * Math.sqrt(w));
+      const forks = [];
+      for (let f = 0; f < (L > 140 ? 2 : 1); f++) {
+        const i = 2 + Math.floor(rnd() * Math.max(1, trunk.length - 5)), [ax, ay] = trunk[i];
+        const a = Math.atan2(dy, dx) + (rnd() < 0.5 ? -1 : 1) * (0.4 + rnd() * 0.6), l = L * (0.12 + rnd() * 0.18);
+        forks.push(path(ax, ay, ax + Math.cos(a) * l, ay + Math.sin(a) * l, l * 0.25));
+      }
+      const k = p > 0.6 ? 0.7 : 1, hot = p < 0.15;
+      const stroke = (pts, lw, col, a) => { ctx.strokeStyle = col; ctx.globalAlpha = a; ctx.lineWidth = lw; ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); };
+      ctx.save();
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.globalCompositeOperation = 'lighter'; // 바깥 빛
+      stroke(trunk, 22 * w, ramp[1], 0.22 * k);
+      stroke(trunk, 11 * w, ramp[2], 0.3 * k);
+      ctx.globalCompositeOperation = 'source-over';
+      const dots = (pts, c, col) => {
+        ctx.fillStyle = col;
+        for (let i = 1; i < pts.length; i++) {
+          const [ax, ay] = pts[i - 1], [bx, by] = pts[i], n = Math.max(1, Math.round(Math.hypot(bx - ax, by - ay) / 2));
+          for (let j = 0; j <= n; j++) pfxDot(ctx, ax + (bx - ax) * j / n, ay + (by - ay) * j / n, c);
+        }
+      };
+      ctx.globalAlpha = k;
+      const cOut = Math.max(3, Math.round(6 * w)), cIn = Math.max(3, Math.round(3.5 * w)), cCore = Math.max(2, Math.round((hot ? 2.5 : 1.6) * w));
+      forks.forEach(f => dots(f, Math.max(2, Math.round(cIn * 0.7)), ramp[1]));
+      forks.forEach(f => dots(f, Math.max(2, Math.round(cCore * 0.8)), ramp[3]));
+      dots(trunk, cOut, ramp[0]);
+      dots(trunk, cIn, ramp[2]);
+      dots(trunk, cCore, hot ? '#ffffff' : ramp[3]);
+      if (!hot) { ctx.fillStyle = '#ffffff'; trunk.forEach(([x, y], i) => { if (i % 3 === 0) pfxDot(ctx, x, y, Math.max(2, cCore - 1)); }); } // 심의 흰 알갱이
+      ctx.restore();
+    }
     function drawPixelBolt(ctx, ef, progress, ramp) {
       const p = Math.min(1, Math.max(0, progress));
       const age = (ef.maxLife || 30) * p;
@@ -33578,6 +33620,8 @@
           const ramp = ef.color ? pfxRampOf(ef.color) : PFX_RAMPS[ef.type];
           drawPixelBurst(ctx, ef.x, ef.y, ef.r || 40, progress, ramp, pfxSeedOf(ef), (ef.r || 40) > 220 ? { sparks: 24, coreK: 0.1, glow: 0.45 } : undefined);
 
+        } else if (ef.type === 'lightning_bolt' && ef.w && (ef.ramp === 'volt' || ef.ramp === 'volt_gold')) {
+          drawVoltArc(ctx, ef.sx, ef.sy, ef.tx, ef.ty, progress, PFX_RAMPS[ef.ramp], ef.w, pfxSeedOf(ef)); // 전격술사 체인 라이트닝: 굵은 전격 줄기
         } else if (ef.type === 'lightning_bolt') {
           drawPixelBolt(ctx, ef, progress, PFX_RAMPS[ef.ramp] || PFX_RAMPS.bolt); // 그림(spr) 없는 번개: 도트 번개 (pixelfx 작법) · 전격술사 = 남보라
         } else if (ef.type === 'volt_rail') {
