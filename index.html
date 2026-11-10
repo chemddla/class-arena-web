@@ -27767,17 +27767,42 @@
         applyDamage(u, e2, u.atk * VOLT_FIN_DMG, '', '#e0f2fe');
         voltShock(u, e2, VOLT_FIN_SHOCK);
       }));
-      // 공중의 몸에서 맞은 적마다 굵은 백열 줄기 + 끝 매듭, 앞의 6명에게는 하늘 낙뢰도
-      hits.forEach((e2, i) => {
-        voltBolt(ax, ay, e2.x, e2.y - 14, 42, true, 1.7, u);
-        voltFx('hit-gold', e2.x, e2.y - 14, 1.4, 0, 42);
-        if (i < 6) voltFx('thunderbolt-gold', e2.x, e2.y + 12, Math.min(1.6, e2.sizeScale || 1), 2 + i * 3);
-      });
-      // 10칸 범위가 보이게: 바닥 먼 자리 14곳으로 꽂히는 줄기 (원 테두리 없이)
+      // 터짐 그림(finale 시트)의 바닥 번개 끝(발에서 반지름 약 140~300)에서 이어서 바깥으로 자라며 뻗어 나감 (공중에서 곧게 뻗는 긴 줄기는 없음, 2026-11-10)
+      //   줄기 하나 = 3마디: 마디마다 방향이 조금씩 틀어지며, 앞 마디가 다 뻗으면 다음 마디가 이어서 뻗음 (마디당 6틱)
+      const fy = u.y + 12, SQ = 0.62, seed = sim.tickCount * 131;
+      const rnd = i => (((seed + i * 2654435761) >>> 0) % 1000) / 1000;
+      const legs = (x0, y0, a, d0, d1, w, start, n = 3) => { // (x0,y0)에서 각도 a로 d0 → d1까지 n마디
+        let px = x0, py = y0, ang = a, d = d0;
+        for (let k = 0; k < n; k++) {
+          ang += (rnd(k * 7 + Math.round(a * 100)) - 0.5) * 0.5;
+          const nd = d0 + (d1 - d0) * (k + 1) / n, step = nd - d;
+          const nx = px + Math.cos(ang) * step, ny = py + Math.sin(ang) * step * SQ;
+          voltBolt(px, py, nx, ny, 34 - k * 4, true, w * (1 - k * 0.15), u, 6, start + k * 6);
+          px = nx; py = ny; d = nd;
+        }
+      };
+      const starts = [];
       for (let i = 0; i < 14; i++) {
-        const a = (i / 14) * Math.PI * 2 + ((sim.tickCount + i * 37) % 10) * 0.04, d = R * (0.5 + ((i * 53) % 10) / 20);
-        voltBolt(ax, ay, u.x + Math.cos(a) * d, u.y + 12 + Math.sin(a) * d * 0.62, 36, true, 1.15, u);
+        const a = (i / 14) * Math.PI * 2 + (rnd(i) - 0.5) * 0.3, d0 = 180 + rnd(i + 50) * 90;
+        starts.push({ a, x: u.x + Math.cos(a) * d0, y: fy + Math.sin(a) * d0 * SQ });
+        legs(u.x + Math.cos(a) * d0, fy + Math.sin(a) * d0 * SQ, a, d0, R * (0.7 + rnd(i + 90) * 0.3), 1.25, 2);
       }
+      // 맞은 적: 터짐 안(약 2칸)은 바로, 먼 적은 가장 가까운 번개 끝에서 가지가 뻗어 나가 닿음
+      hits.forEach((e2, i) => {
+        const dist = Math.hypot(e2.x - u.x, (e2.y - fy) / SQ);
+        if (dist < 260) voltBolt(ax, ay, e2.x, e2.y - 14, 36, true, 1.4, u);
+        else {
+          const ea = Math.atan2((e2.y - fy) / SQ, e2.x - u.x);
+          const st = starts.reduce((b, s2) => (Math.abs(Math.atan2(Math.sin(s2.a - ea), Math.cos(s2.a - ea))) < Math.abs(Math.atan2(Math.sin(b.a - ea), Math.cos(b.a - ea))) ? s2 : b));
+          const mx = (st.x + e2.x) / 2 + (rnd(i + 200) - 0.5) * 80, my = (st.y + e2.y - 14) / 2 + (rnd(i + 300) - 0.5) * 50;
+          const t1 = Math.max(4, Math.round(Math.hypot(mx - st.x, my - st.y) / 70));
+          voltBolt(st.x, st.y, mx, my, 34, true, 1.4, u, t1, 2);
+          voltBolt(mx, my, e2.x, e2.y - 14, 32, true, 1.3, u, Math.max(4, Math.round(Math.hypot(e2.x - mx, e2.y - 14 - my) / 70)), 2 + t1);
+        }
+        const reach = dist < 260 ? 0 : 2 + Math.round(dist / 70);
+        voltFx('hit-gold', e2.x, e2.y - 14, 1.4, reach, 40);
+        if (i < 6) voltFx('thunderbolt-gold', e2.x, e2.y + 12, Math.min(1.6, e2.sizeScale || 1), reach + i * 3);
+      });
       sim.shake = { power: 16, life: 30, maxLife: 30 };
       playCombatSfx('heavy');
       addBattleLog(`💥 [전격술사] ${u.name}의 뇌신 강림! ${hits.length}명 감전`);
@@ -27803,7 +27828,7 @@
       return { x: u.x + dir * hand[0] * jk, y: u.y + 12 + hand[1] * jk, k: jk };
     }
     const VOLT_CHAIN_W = 1.8; // 체인 라이트닝 줄 굵기 (기본 공격 줄기 = 1)
-    function voltBolt(sx, sy, tx, ty, life, gold, w, by) { sim.effects.push({ type: 'lightning_bolt', ramp: (gold ? 'volt_gold' : 'volt') + (voltIsBase(by) ? '_b' : ''), sx, sy, tx, ty, life, maxLife: life, ...(w ? { w } : {}) }); } // gold = 강화 (금빛), w = 굵은 전격 줄기(drawVoltArc) 굵기
+    function voltBolt(sx, sy, tx, ty, life, gold, w, by, grow = 0, wait = 0) { sim.effects.push({ type: 'lightning_bolt', ramp: (gold ? 'volt_gold' : 'volt') + (voltIsBase(by) ? '_b' : ''), sx, sy, tx, ty, life: life + wait, maxLife: life + wait, ...(w ? { w } : {}), ...(grow ? { grow } : {}), ...(wait ? { wait } : {}) }); } // gold = 강화 (금빛), w = 굵은 전격 줄기(drawVoltArc) 굵기
     function voltFace(u, x, y) {
       const a = Math.atan2(y - u.y, x - u.x);
       u.facingAngle = a;
@@ -30260,10 +30285,11 @@
     // 전격 줄기 (pixelfx 작법, 전격술사 기본 공격·체인 라이트닝): 손/적 → 적으로 잇는 굵은 번개.
     //   중간점을 흔든 꺾인 줄 + 갈래 1~2개, 3틱마다 새로 그음(지지직). 바깥 빛(더하기) → 남보라 테두리 → 하늘 몸 → 흰 심 (칸 단위 도트)
     //   w = 굵기 배율 (기본 공격 1, 체인 1.8), 처음 15%는 흰 심이 굵게 번쩍, 뒤 40%는 깜빡이며 꺼짐
-    function drawVoltArc(ctx, sx, sy, tx, ty, p, ramp, w, seed) {
+    //   upto (0~1) = 시작점에서 끝까지 얼마나 뻗었는지 (자라는 동안은 모양을 고정하고 끝에 흰 불꽃)
+    function drawVoltArc(ctx, sx, sy, tx, ty, p, ramp, w, seed, upto = 1) {
       const dx = tx - sx, dy = ty - sy, L = Math.hypot(dx, dy);
       if (L < 4) return;
-      const age = Math.floor(sim.tickCount / 3);
+      const age = upto < 1 ? 0 : Math.floor(sim.tickCount / 3); // 자라는 동안은 같은 모양
       if (p > 0.6 && age % 2) return; // 끝무렵 깜빡임
       const rnd = pfxRng((seed + age * 7919) >>> 0);
       const nx = -dy / L, ny = dx / L;
@@ -30279,12 +30305,18 @@
         }
         return pts;
       };
-      const trunk = path(sx, sy, tx, ty, Math.min(26, L * 0.14) * Math.sqrt(w));
-      const forks = [];
+      let trunk = path(sx, sy, tx, ty, Math.min(26, L * 0.14) * Math.sqrt(w));
+      const forks = [], full = trunk.length;
       for (let f = 0; f < (L > 140 ? 2 : 1); f++) {
         const i = 2 + Math.floor(rnd() * Math.max(1, trunk.length - 5)), [ax, ay] = trunk[i];
         const a = Math.atan2(dy, dx) + (rnd() < 0.5 ? -1 : 1) * (0.4 + rnd() * 0.6), l = L * (0.12 + rnd() * 0.18);
-        forks.push(path(ax, ay, ax + Math.cos(a) * l, ay + Math.sin(a) * l, l * 0.25));
+        const fp = path(ax, ay, ax + Math.cos(a) * l, ay + Math.sin(a) * l, l * 0.25);
+        fp.at = i;
+        forks.push(fp);
+      }
+      if (upto < 1) { // 뻗는 중: 줄기 앞부분만, 이미 지나온 곳의 갈래만
+        trunk = trunk.slice(0, Math.max(2, Math.ceil(full * upto)));
+        for (let f = forks.length - 1; f >= 0; f--) if (forks[f].at >= trunk.length - 2) forks.splice(f, 1);
       }
       const k = p > 0.6 ? 0.7 : 1, hot = p < 0.15;
       const stroke = (pts, lw, col, a) => { ctx.strokeStyle = col; ctx.globalAlpha = a; ctx.lineWidth = lw; ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); };
@@ -30309,6 +30341,13 @@
       dots(trunk, cIn, ramp[2]);
       dots(trunk, cCore, hot ? '#ffffff' : ramp[3]);
       if (!hot) { ctx.fillStyle = '#ffffff'; trunk.forEach(([x, y], i) => { if (i % 3 === 0) pfxDot(ctx, x, y, Math.max(2, cCore - 1)); }); } // 심의 흰 알갱이
+      if (upto < 1) { // 뻗어 나가는 끝: 흰 불꽃
+        const [hx, hy] = trunk[trunk.length - 1];
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = ramp[3]; ctx.globalAlpha = 0.45; ctx.beginPath(); ctx.arc(hx, hy, 9 * w, 0, Math.PI * 2); ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1; ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(hx) - 3, Math.round(hy) - 3, 6, 6);
+      }
       ctx.restore();
     }
     function drawPixelBolt(ctx, ef, progress, ramp) {
@@ -33792,7 +33831,8 @@
           drawPixelBurst(ctx, ef.x, ef.y, ef.r || 40, progress, ramp, pfxSeedOf(ef), (ef.r || 40) > 220 ? { sparks: 24, coreK: 0.1, glow: 0.45 } : undefined);
 
         } else if (ef.type === 'lightning_bolt' && ef.w && /^volt(_gold)?(_b)?$/.test(ef.ramp || '')) {
-          drawVoltArc(ctx, ef.sx, ef.sy, ef.tx, ef.ty, progress, PFX_RAMPS[ef.ramp], ef.w, pfxSeedOf(ef)); // 전격술사 체인 라이트닝: 굵은 전격 줄기
+          const gAge = (ef.maxLife - ef.life) - (ef.wait || 0); // grow = 끝까지 뻗는 틱, wait = 시작까지 기다리는 틱 (전격술사 피날레)
+          if (gAge >= 0) drawVoltArc(ctx, ef.sx, ef.sy, ef.tx, ef.ty, ef.wait ? gAge / Math.max(1, ef.maxLife - ef.wait) : progress, PFX_RAMPS[ef.ramp], ef.w, pfxSeedOf(ef), ef.grow ? Math.min(1, (gAge + 1) / ef.grow) : 1); // 전격술사 체인 라이트닝·피날레: 굵은 전격 줄기
         } else if (ef.type === 'lightning_bolt') {
           drawPixelBolt(ctx, ef, progress, PFX_RAMPS[ef.ramp] || PFX_RAMPS.bolt); // 그림(spr) 없는 번개: 도트 번개 (pixelfx 작법) · 전격술사 = 남보라
         } else if (ef.type === 'volt_rail') {
