@@ -566,8 +566,9 @@
         [[0, 0.75, 0.32, 1.3, 0], [-0.12, 1.75, 0.22, 0.9, 0.5]].forEach(([y, z, w, len, rx]) => { const c = mesh(new THREE.ConeGeometry(w, len, 4), mat); c.rotation.x = Math.PI / 2 + rx; c.scale.set(1.6, 1, 0.18); c.position.set(0, y, z); leaf.add(c); });
         leaf.rotation.set(0.35 + (k % 2) * 0.15, k / 8 * Math.PI * 2, 0, 'YXZ'); top.add(leaf); }
       const nutG = new THREE.Group(); top.add(nutG); // 코코넛은 하나씩 떨어져야 해서 합치지 않음
-      [[0.15, -0.13, 0.07], [-0.11, -0.15, 0.11], [0.03, -0.13, -0.15], [-0.08, -0.2, -0.05]].forEach(c => { const n = at(mesh(new THREE.SphereGeometry(0.13, 12, 10), '#7a4a2e'), c[0], c[1], c[2]); n.userData = { home: c.slice(), vy: 0, state: 'on' }; nutG.add(n); });
-      palms.push({ x, z, top, nutG, floorY: -h * segs + 0.13, shake: 0, regrow: 0 });
+      [[0.24, 0.06, 0.12], [-0.22, 0.04, 0.16], [0.04, 0.06, -0.26], [-0.2, 0.1, -0.14], [0.04, 0.2, 0.02]].forEach(c => { // 위에서 내려다봐도 보이게 잎 한가운데에 송이로
+        const n = at(mesh(new THREE.SphereGeometry(0.2, 14, 12), '#6b4428'), c[0], c[1], c[2]); n.scale.y = 1.12; n.userData = { home: c.slice(), vy: 0, state: 'on' }; nutG.add(n); });
+      palms.push({ x, z, top, nutG, floorY: -h * segs + 0.2, shake: 0, regrow: 0 });
       g.rotation.y = rot; scene.add(at(g, x, 0, z)); solid(x, z, 0.3); };
     [[-30, 45.5, 1, 0.3], [-23, 47.6, -1, 2.2], [-17.5, 44.6, 1, 4.1], [-9, 46.8, -1, 1.1], [-4.2, 44.2, 1, 5.2], [5.5, 47.2, -1, 0.6], [11, 44.8, 1, 3.3], [17.5, 47.8, -1, 2.7], [24, 45, 1, 5.9], [30.5, 47.2, -1, 1.7]].forEach(q => palm(...q));
     const umbrella = (x, z, c) => { const g = new THREE.Group(); g.add(at(mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.1, 8), '#ffffff'), 0, 1.05, 0));
