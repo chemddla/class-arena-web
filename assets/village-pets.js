@@ -47,6 +47,9 @@
       spines: '#7a5a3c', spineTip: '#c9a27a', tail: 'none', acc: 'backpack', accColor: LEATHER, size: 0.9, chubby: 1.1 },
     piglet: { name: '아기 돼지', body: '#f7a8b8', belly: '#fbc4cf', ears: 'pig', earIn: '#f08aa0', nose: '#f08aa0', pigSnout: true, blush: true,
       tail: 'pig', acc: 'bowtie', accColor: RED, chubby: 1.15 },
+    raccoon: { name: '너구리', body: '#9a928a', belly: '#ece6dc', ears: 'round', earScale: 0.8, earColor: '#6a625c', earIn: '#e3d6cc', muzzle: '#f6f2ea', nose: '#2d2b3a', eye2: '#f4f4f4',
+      head: [['#3a3432', [-0.4, 0.05, 1], 0.3], ['#3a3432', [0.4, 0.05, 1], 0.3], ['#f6f2ea', [0, 0.55, 0.85], 0.22]],
+      tail: 'bushy', tailColor: '#9a928a', tailTip: '#3a3432', acc: 'cap', accColor: '#3f9a5a', whiskers: true, chubby: 1.1 },
     // 펫이 아직 없는 학생이 마을에서 쓰는 모습
     guest: { name: '새싹 (펫 없음)', body: '#fff3d8', belly: '#ffffff', ears: 'round', earScale: 0.7, earIn: '#f6c9b8', muzzle: '#ffffff', nose: '#c98a6a', blush: true,
       tail: 'puff', tailSize: 0.06, acc: 'none', chubby: 1.1, size: 0.95 },

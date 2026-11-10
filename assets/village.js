@@ -308,6 +308,48 @@
     box(2.8, 0.12, 1.1, '#bfae92', 0, 0.3, 2.65); box(2.4, 0.12, 0.6, '#cdbfa3', 0, 0.18, 3.2); // 계단
     scene.add(at(g, 0, 0, OZ)); [-2.2, 0, 2.2].forEach(x => solid(x, OZ, 1.9));
   }
+  // ── 슈퍼마켓: 마을사무소 오른쪽 1층 가게. 안은 마을 남쪽 바깥(SHOP.iz)에 따로 지어 두고, 문으로 오가면 그리로 옮겨 감
+  const SHOP = { x: 10, z: -23, ix: 0, iz: 60, x0: -5.6, x1: 5.6, z0: 56.9, z1: 62.8 }; // x0~z1: 안에서 걸을 수 있는 범위
+  { const g = new THREE.Group(), box = (w, h, d, c, x, y, z) => g.add(at(mesh(new THREE.BoxGeometry(w, h, d), c), x, y, z));
+    box(7.4, 0.3, 4.4, '#cdbfa3', 0, 0.15, 0);
+    g.add(at(mesh(new THREE.BoxGeometry(7, 2.6, 3.8), texMat(wallTex, '#fbf4e6')), 0, 1.6, 0));
+    box(7.3, 0.5, 4.1, '#3f9a5a', 0, 3.05, 0); box(7.4, 0.12, 4.2, '#2f7a45', 0, 3.36, 0); // 평지붕과 난간
+    const sc = document.createElement('canvas'); sc.width = 320; sc.height = 64; const sg = sc.getContext('2d');
+    sg.fillStyle = '#2f7a45'; sg.fillRect(0, 0, 320, 64); sg.fillStyle = '#fff'; sg.font = "800 36px 'Malgun Gothic', sans-serif"; sg.textAlign = 'center'; sg.textBaseline = 'middle'; sg.fillText('🛒 슈퍼마켓', 160, 34);
+    g.add(at(noShadow(mesh(new THREE.PlaneGeometry(3.4, 0.68), flat(0xffffff, { map: new THREE.CanvasTexture(sc) }))), 0, 3.06, 2.07));
+    for (let i = 0; i < 10; i++) { const st = at(mesh(new THREE.BoxGeometry(0.7, 0.08, 1), i % 2 ? '#ffffff' : '#3f9a5a'), -3.15 + i * 0.7, 2.62, 2.3); st.rotation.x = 0.35; g.add(st); } // 줄무늬 차양
+    [-2.2, 2.2].forEach(x => { box(2.3, 1.5, 0.06, '#2f7a45', x, 1.3, 1.91); g.add(at(noShadow(mesh(new THREE.BoxGeometry(2.1, 1.3, 0.08), winMat)), x, 1.3, 1.92)); box(0.05, 1.3, 0.1, '#2f7a45', x, 1.3, 1.95);
+      [-0.6, 0, 0.6].forEach((dx, k) => box(0.36, 0.3, 0.1, ['#e0685a', '#e8a13a', '#5b8fd8'][k], x + dx, 0.8, 1.98)); g.add(halo(2.4, x, 1.3, 2.1)); });
+    box(1.4, 2.1, 0.06, '#2f7a45', 0, 1.35, 1.91); [-0.33, 0.33].forEach(x => g.add(at(noShadow(mesh(new THREE.BoxGeometry(0.6, 1.9, 0.08), flat(0xcfeefc))), x, 1.3, 1.93))); // 유리문
+    box(1.6, 0.06, 0.9, '#8a5a34', 0, 0.33, 2.5);
+    [-3.1, 3.1].forEach(x => { box(0.5, 0.45, 0.5, '#b9824e', x, 0.53, 2.4); [-0.1, 0.1].forEach(dz => g.add(at(mesh(new THREE.SphereGeometry(0.11, 10, 8), x < 0 ? '#e8483f' : '#f2c53a'), x + dz, 0.82, 2.4 + dz))); }); // 문 앞 과일 상자
+    scene.add(at(g, SHOP.x, 0, SHOP.z)); [-2.4, 0, 2.4].forEach(x => solid(SHOP.x + x, SHOP.z, 1.9));
+    strip(5.55, -19.9, 9.1, 1.6, sandMat(4, 1), 0.029); // 큰길에서 가게 앞까지 작은 길
+  }
+  { // 가게 안: 앞쪽(남쪽)은 트여 있어 카메라가 들여다봄
+    const g = new THREE.Group(), box = (w, h, d, c, x, y, z) => { const m = at(mesh(new THREE.BoxGeometry(w, h, d), c), x, y, z); g.add(m); return m; };
+    const fl = paint(128, (c, s) => { c.fillStyle = '#f4ecdc'; c.fillRect(0, 0, s, s); c.fillStyle = '#dccbae'; c.fillRect(0, 0, s / 2, s / 2); c.fillRect(s / 2, s / 2, s / 2, s / 2); }, 6);
+    const dark = floor(mesh(new THREE.PlaneGeometry(70, 40, 70, 40), flat(0x3a2a20))); dark.rotation.x = -Math.PI / 2; scene.add(at(dark, SHOP.ix, 0.02, SHOP.iz)); // 방 바깥은 어둡게
+    const fm = floor(mesh(new THREE.PlaneGeometry(12, 8.4, 12, 9), toonMat({ map: fl }))); fm.rotation.x = -Math.PI / 2; g.add(at(fm, 0, 0.04, 0.05));
+    noShadow(box(12.4, 5.5, 0.3, texMat(wallTex, '#e8f3e4'), 0, 2.75, -4.3)); [-1, 1].forEach(s => noShadow(box(0.3, 3.2, 8.6, texMat(wallTex, '#e8f3e4'), s * 6.2, 1.6, 0)));
+    box(12.4, 0.5, 0.32, '#3f9a5a', 0, 3.4, -4.12);
+    [-1, 1].forEach(s => box(4.6, 0.5, 0.25, '#3f9a5a', s * 3.85, 0.25, 4.2)); // 앞쪽 낮은 담 (가운데가 문)
+    const goods = ['#e0685a', '#e8a13a', '#f2c53a', '#5b8fd8', '#4fae6a', '#b06fc8', '#ff8fb0', '#fff6e8'];
+    const shelf = (x, z, w, h, rows, ry) => { const s = new THREE.Group(); s.add(at(mesh(new THREE.BoxGeometry(w, h, 0.6), '#c9905c'), 0, h / 2, 0));
+      for (let r0 = 0; r0 < rows; r0++) { const y = 0.35 + r0 * (h - 0.3) / rows; s.add(at(mesh(new THREE.BoxGeometry(w + 0.04, 0.05, 0.66), '#8a5a34'), 0, y, 0));
+        for (let k = 0; k < Math.floor(w / 0.32); k++) s.add(at(mesh(new THREE.BoxGeometry(0.22, 0.26, 0.22), goods[(k * 3 + r0 * 5 + Math.round(x)) % goods.length]), -w / 2 + 0.2 + k * 0.32, y + 0.16, 0.24)); }
+      s.rotation.y = ry || 0; g.add(at(s, x, 0, z)); };
+    shelf(-4.2, -3.75, 2.6, 2.2, 4); shelf(-1.2, -3.75, 2.6, 2.2, 4);
+    box(3.2, 2.3, 0.7, '#dfe8ee', 3.6, 1.15, -3.75); g.add(at(noShadow(mesh(new THREE.BoxGeometry(2.9, 1.8, 0.06), flat(0xcfeefc))), 3.6, 1.2, -3.38)); // 음료 냉장고
+    [0.6, 1.2, 1.8].forEach((y, r0) => { for (let k = 0; k < 7; k++) box(0.2, 0.36, 0.2, goods[(k + r0 * 2) % goods.length], 2.3 + k * 0.43, y, -3.3); });
+    shelf(-2.6, -1.2, 3, 1.3, 2); shelf(-2.6, -1.2, 3, 1.3, 2, Math.PI); // 가운데 진열대(앞뒤 양면)
+    box(2.8, 0.62, 0.9, '#b9824e', 3.6, 0.31, 0.3); box(3, 0.08, 1.05, '#8a5a34', 3.6, 0.66, 0.3); // 계산대
+    box(0.55, 0.3, 0.45, '#56606c', 2.6, 0.85, 0.3); box(0.5, 0.22, 0.04, '#9fe0a0', 2.6, 0.95, 0.53);
+    [-4.4, -3.3].forEach((x, i) => { box(0.9, 0.5, 0.7, '#c58f5c', x, 0.25, 1.4); for (let k = 0; k < 6; k++) g.add(at(mesh(new THREE.SphereGeometry(0.13, 10, 8), ['#e8483f', '#f2c53a'][i]), x - 0.28 + (k % 3) * 0.28, 0.6, 1.25 + Math.floor(k / 3) * 0.3)); }); // 과일 상자
+    box(1.6, 0.04, 0.9, '#c94f4f', 0, 0.06, 3.6); // 나가는 문 깔개
+    scene.add(at(g, SHOP.ix, 0, SHOP.iz));
+    [[-2.6, -1.2, 0.75], [-3.8, -1.2, 0.75], [-1.4, -1.2, 0.75], [2.8, 0.3, 0.6], [4.4, 0.3, 0.6], [-3.85, 1.4, 0.75]].forEach(([x, z, r]) => solid(SHOP.ix + x, SHOP.iz + z, r));
+  }
   // ── 소품: 통나무 탁자, 줄무늬 의자, 그네
   const stump = (x, z, r, h) => { const g = new THREE.Group(); g.add(at(mesh(new THREE.CylinderGeometry(r, r * 1.08, h, 40), '#b9824e'), 0, h / 2, 0)); g.add(at(mesh(new THREE.CylinderGeometry(r * 0.93, r * 0.93, 0.03, 40), '#ecc28c'), 0, h + 0.012, 0)); g.add(at(mesh(new THREE.TorusGeometry(r * 0.5, 0.018, 4, 18), '#d7a66c'), 0, h + 0.03, 0)); g.children[2].rotation.x = Math.PI / 2; scene.add(at(g, x, 0, z)); solid(x, z, r); };
   stump(6.2, 3.6, 0.95, 0.55); stump(7.7, 3.2, 0.36, 0.34); stump(5.2, 4.7, 0.36, 0.34);
@@ -333,7 +375,7 @@
   const addBlob = (im, colors) => { const i = im.count++; im.setColorAt(i, col.set(pick(colors))); return i; };
   const PINK = ['#ffffff', '#fff2f5', '#ffe6ec', '#fff8fa'], LEAF = ['#ffffff', '#eaffe6', '#dff5d6', '#f4fff0'];
   const trees = [];
-  const freeSpot = (x, z, pad) => !onPath(x, z, 1.9 + pad) && Math.hypot(x, z) > 6.2 + pad
+  const freeSpot = (x, z, pad) => !onPath(x, z, 1.9 + pad) && Math.hypot(x, z) > 6.2 + pad && !(z > -22 && z < -17.8 && x > -0.5 && x < 11.5)
     && !(z > RIVER.z0 - 1.5 && z < RIVER.z1 + 1.5) && HOUSES.every(h => Math.hypot(x - h[0], z - h[1]) > 4.2 + pad)
     && solids.every(s => Math.hypot(x - s.x, z - s.z) > s.r + 1.6 + pad) && trees.every(t => Math.hypot(x - t.x, z - t.z) > 2.6);
   function placeTree(tr) { // 줄기 묶음의 지금 위치·기울기대로 뭉치들을 옮김
@@ -552,7 +594,9 @@
     Object.keys(VillagePets.SPECS).forEach(id => { const o = document.createElement('option'); o.value = id; o.textContent = VillagePets.SPECS[id].name; sel.appendChild(o); });
     sel.value = 'shiba'; sel.onchange = () => { setPet(me, sel.value); sel.blur(); };
   }
-  const ownerOf = i => demo ? actors[i + 1] : host.students[i]; // i번째 집 주인
+  // 슈퍼마켓 너구리 점원 둘 (나중에 물건 파는 역할)
+  const clerks = [['🦝 도토리', 3.6, -0.6], ['🦝 솔방울', -2.1, 1.7]].map(([n, x, z]) => { const a = makeActor('raccoon', n, SHOP.ix + x, SHOP.iz + z, false); a.npc = true; a.wait = 1e9; a.face = 0; solid(a.x, a.z, 0.35); return a; });
+  const ownerOf = i => demo ? actors.filter(a => !a.npc)[i + 1] : host.students[i]; // i번째 집 주인
 
   // ── 움직임·부딪힘
   const LX = 33, LZ0 = -21, LZ1 = 32, SPEED = 3.3, RUN = 1.8, R = 0.32; // RUN: Shift 누르고 뛸 때 배수
@@ -563,8 +607,9 @@
       if (Math.abs(a.x) <= RIVER.bridge && pz > RIVER.z0 - 0.05 && pz < RIVER.z1 + 0.05) x = Math.max(-RIVER.bridge + 0.25, Math.min(RIVER.bridge - 0.25, x));
       else if (Math.abs(x) > RIVER.bridge - 0.25) z = pz >= RIVER.z1 ? RIVER.z1 : pz <= RIVER.z0 ? RIVER.z0 : z;
     }
-    a.x = Math.max(-LX, Math.min(LX, x)); a.z = Math.max(LZ0, Math.min(LZ1, z));
+    [a.x, a.z] = clampZone(x, z, pz > 40);
   }
+  const clampZone = (x, z, inShop) => inShop ? [Math.max(SHOP.ix + SHOP.x0, Math.min(SHOP.ix + SHOP.x1, x)), Math.max(SHOP.z0, Math.min(SHOP.z1, z))] : [Math.max(-LX, Math.min(LX, x)), Math.max(LZ0, Math.min(LZ1, z))];
   const keys = {};
   const onKeyDown = e => {
     if (!running || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
@@ -582,7 +627,7 @@
     const rc = canvas.getBoundingClientRect();
     ray.setFromCamera({ x: (e.clientX - rc.left) / rc.width * 2 - 1, y: -((e.clientY - rc.top) / rc.height) * 2 + 1 }, camera);
     if (!ray.ray.intersectPlane(plane, hit)) return;
-    me.target = { x: Math.max(-LX, Math.min(LX, hit.x)), z: Math.max(LZ0, Math.min(LZ1, hit.z)), stuck: 0 };
+    const [tx, tz] = clampZone(hit.x, hit.z, me.z > 40); me.target = { x: tx, z: tz, stuck: 0 };
     marker.position.set(me.target.x, 0.09, me.target.z); marker.visible = true;
   });
   // 소리: 파일 없이 그 자리에서 만드는 짧은 효과음 (기본은 끔)
@@ -630,6 +675,10 @@
     if (seat) return { kind: 'seat', seat, label: seat.swing ? '🎠 그네 타기' : '🪑 앉기' };
     for (let i = 0; i < houses.length; i++) { const h = houses[i]; if (Math.hypot(me.x - h.x, me.z - (h.z + 1.9)) < 1.2) return { kind: 'door', house: h, owner: ownerOf(i), label: !ownerOf(i) ? '🚪 빈 집' : demo ? '🚪 ' + ownerOf(i).name + '네 집 · 똑똑' : ownerOf(i).id === host.me.id ? '🚪 내 방 들어가기' : '🚪 ' + ownerOf(i).name + '네 집 놀러 가기' }; }
     if (Math.hypot(me.x - 3.1, me.z + 3.1) < 2) return { kind: 'board', label: '📋 게시판 보기' };
+    if (Math.hypot(me.x - SHOP.x, me.z - (SHOP.z + 2.7)) < 1.4) return { kind: 'shopIn', label: '🛒 슈퍼마켓 들어가기' };
+    if (Math.hypot(me.x - SHOP.ix, me.z - (SHOP.iz + 3)) < 1.1) return { kind: 'shopOut', label: '🚪 밖으로 나가기' };
+    const clerk = clerks.find(a => Math.hypot(a.x - me.x, a.z - me.z) < 1.9);
+    if (clerk) return { kind: 'clerk', clerk, label: '💬 ' + clerk.name.slice(3) + ' 점원과 이야기' };
     let best = null, bd = 2.4;
     trees.forEach(t => { const d = Math.hypot(t.x - me.x, t.z - me.z); if (d < bd) { bd = d; best = t; } });
     if (best) return { kind: 'tree', tree: best, label: best.fruits.some(f => f.userData.state === 'on') ? '🍎 열매 따기' : best.kind === 'blossom' ? '🌸 꽃잎 흔들기' : '🌳 나무 흔들기' };
@@ -647,7 +696,14 @@
       me.hop = 0.3; say(me, '똑똑!', 0.8); const id = c.owner.id; setTimeout(() => { if (running) host.visitHome(id); }, 450); return;
     }
     if (c.kind === 'door') { me.face = Math.PI; me.hop = 0.3; say(me, '똑똑!', 1.2); sfx.knock(); const o = c.owner; if (o && Math.hypot(o.x - me.x, o.z - me.z) < 9) { say(o, '어서 와!', 2); o.wave = 1.8; o.target = null; o.wait = 2.2; o.lookAt = me; } return; }
+    if (c.kind === 'shopIn') return goTo(SHOP.ix, SHOP.iz + 2.4, Math.PI);
+    if (c.kind === 'shopOut') return goTo(SHOP.x, SHOP.z + 2.9, 0);
+    if (c.kind === 'clerk') { const k = c.clerk; me.face = Math.atan2(k.x - me.x, k.z - me.z); k.face = Math.atan2(me.x - k.x, me.z - k.z); k.wave = 1.6; say(k, pick(['어서 오세요! 🛒', '곧 물건을 팔 거예요!', '천천히 둘러보세요 😊']), 2.2); sfx.note(); return; }
     if (c.kind === 'board') { me.face = Math.atan2(3.1 - me.x, -3.1 - me.z); say(me, '오늘의 공지: 사이좋게 놀기 😊', 2.6); sfx.note(); }
+  }
+  function goTo(x, z, face) { // 가게 안팎으로 옮겨 감: 카메라도 바로 따라감
+    me.x = x; me.z = z; me.face = face; me.target = null; marker.visible = false; sfx.knock();
+    camera.position.set(x, 5.6 * zoom, z + 8.8 * zoom); net.want = true;
   }
   function popText(text, x, y, z) { // 그 자리 위로 떠오르다 사라지는 글자
     const dz = z - me.z; v.set(x, y - curve.uCurve.value * dz * dz, z).project(camera);
@@ -767,7 +823,7 @@
     g.fillStyle = '#f5e7bd'; g.beginPath(); g.arc(mx(0), mz(0), 4.4 * S, 0, 6.29); g.fill();
     g.fillStyle = '#7fd0f0'; g.beginPath(); g.arc(mx(0), mz(0), 1.3 * S, 0, 6.29); g.fill();
     HOUSES.forEach(h => { rect(h[0], h[1], 3.2, 2.6, h[3]); });
-    rect(0, -23, 6.4, 3.6, '#7a4a2e'); rect(0, -23, 1.2, 1.2, '#a8744f');
+    rect(0, -23, 6.4, 3.6, '#7a4a2e'); rect(0, -23, 1.2, 1.2, '#a8744f'); rect(SHOP.x, SHOP.z, 7, 3.8, '#3f9a5a'); rect(5.55, -19.9, 9.1, 1.6, '#ead2a0');
     trees.forEach(t => { g.fillStyle = t.kind === 'blossom' ? '#ffc8d6' : '#3f9e4b'; g.beginPath(); g.arc(mx(t.x), mz(t.z), 1.2 * t.sc * S, 0, 6.29); g.fill(); });
   }
   const mapBox = $('mapBox'), mapBtn = $('mapBtn');
@@ -778,8 +834,9 @@
     if (mapBox.classList.contains('off')) return;
     mapG.drawImage(mapBg, 0, 0);
     const dot = (x, z, r, fill) => { mapG.fillStyle = fill; mapG.strokeStyle = '#fff'; mapG.lineWidth = 3; mapG.beginPath(); mapG.arc(mx(x), mz(z), r, 0, 6.29); mapG.fill(); mapG.stroke(); };
-    actors.forEach(a => { if (!a.me) dot(a.x, a.z, 7, a.remote ? '#f0a83a' : '#8a94a6'); });
-    const f = me.face, x = mx(me.x), z = mz(me.z); // 나: 바라보는 쪽을 가리키는 화살촉
+    const out = a => a.z > 40 ? [SHOP.x, SHOP.z + 2.4] : [a.x, a.z]; // 가게 안에 있으면 가게 문 앞에 표시
+    actors.forEach(a => { if (!a.me && !a.npc) dot(...out(a), 7, a.remote ? '#f0a83a' : '#8a94a6'); });
+    const f = me.face, x = mx(out(me)[0]), z = mz(out(me)[1]); // 나: 바라보는 쪽을 가리키는 화살촉
     mapG.fillStyle = '#e8483f'; mapG.strokeStyle = '#fff'; mapG.lineWidth = 3; mapG.beginPath();
     mapG.moveTo(x + Math.sin(f) * 16, z + Math.cos(f) * 16); mapG.lineTo(x + Math.sin(f + 2.5) * 11, z + Math.cos(f + 2.5) * 11); mapG.lineTo(x + Math.sin(f - 2.5) * 11, z + Math.cos(f - 2.5) * 11); mapG.closePath(); mapG.fill(); mapG.stroke();
   }
@@ -820,12 +877,13 @@
     actors.forEach(a => {
       if (a.me) return;
       a.moving = false;
+      if (a.npc) { if (a.wave <= 0 && Math.hypot(me.x - a.x, me.z - a.z) < 3.5) a.face = Math.atan2(me.x - a.x, me.z - a.z); return; } // 점원: 제자리, 다가오면 바라봄
       if (a.remote) { // 접속한 친구: 받은 목적지까지 같은 속도로 걸어감
         if (!a.sit && a.target) { const r = moveToward(a, a.target.x, a.target.z, dt); if (r === 'stuck') a.target.stuck += dt; if (r === true || a.target.stuck > 0.6) a.target = null; }
         return;
       }
       if (a.wait <= 0 && a.wave <= 0 && !(a.greetCd > t)) { // 친구끼리 마주치면 서로 인사
-        const b = actors.find(o => !o.me && !o.remote && o !== a && o.wave <= 0 && !(o.greetCd > t) && Math.hypot(o.x - a.x, o.z - a.z) < 1.5);
+        const b = actors.find(o => !o.me && !o.remote && !o.npc && o !== a && o.wave <= 0 && !(o.greetCd > t) && Math.hypot(o.x - a.x, o.z - a.z) < 1.5);
         if (b) [[a, b], [b, a]].forEach(([p1, p2]) => { p1.wave = 1.4; p1.wait = 1.7; p1.target = null; p1.lookAt = p2; p1.greetCd = t + 14; });
       }
       if (a.wait > 0) { a.wait -= dt; if (a.lookAt && a.wave > 0) a.face = Math.atan2(a.lookAt.x - a.x, a.lookAt.z - a.z); return; }
