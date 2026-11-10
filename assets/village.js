@@ -41,7 +41,7 @@
     <button data-v="fullBtn">⛶ 크게</button>
     <span class="pill"><b data-v="fpsN">–</b> fps · <span data-v="qN">화질 높음</span></span>
   </div>
-  <div class="vlg-hint">이동: WASD·방향키 또는 땅 누르기 · 인사: Space · 하기: E · 감정: 1·2 · 확대: 마우스 휠</div>
+  <div class="vlg-hint">이동: WASD·방향키 또는 땅 누르기 · 달리기: Shift · 인사: Space · 하기: E · 감정: 1·2 · 확대: 마우스 휠</div>
   <div class="vlg-acts"><button data-v="joyBtn" title="기쁨 (1)">😄</button><button data-v="heartBtn" title="하트 (2)">❤️</button><button data-v="waveBtn">👋 인사</button><button data-v="shakeBtn">🌳 흔들기</button></div>`;
 
   function start(root, host) {
@@ -549,7 +549,7 @@
   const ownerOf = i => demo ? actors[i + 1] : host.students[i]; // i번째 집 주인
 
   // ── 움직임·부딪힘
-  const LX = 33, LZ0 = -21, LZ1 = 32, SPEED = 3.3, R = 0.32;
+  const LX = 33, LZ0 = -21, LZ1 = 32, SPEED = 3.3, RUN = 1.8, R = 0.32; // RUN: Shift 누르고 뛸 때 배수
   function step(a, dx, dz) {
     const pz = a.z; let x = a.x + dx, z = a.z + dz;
     solids.forEach(c => { const d = Math.hypot(x - c.x, z - c.z), min = c.r + R; if (d < min && d > 1e-4) { x = c.x + (x - c.x) / d * min; z = c.z + (z - c.z) / d * min; } });
@@ -683,7 +683,7 @@
   function moveToward(a, tx, tz, dt) {
     const dx = tx - a.x, dz = tz - a.z, d = Math.hypot(dx, dz);
     if (d < 0.12) return true;
-    const px = a.x, pz = a.z, s = Math.min(d, SPEED * (a.me ? 1 : a.remote ? (d > 4.5 ? 1.35 : 1) : 0.55) * dt);
+    const px = a.x, pz = a.z, s = Math.min(d, SPEED * (a.me ? me.run : a.remote ? (d > 4.5 ? RUN : 1) : 0.55) * dt);
     step(a, dx / d * s, dz / d * s);
     a.face = Math.atan2(dx, dz); a.moving = true;
     return Math.hypot(a.x - px, a.z - pz) < s * 0.25 ? 'stuck' : false;
@@ -703,7 +703,7 @@
     if (!net.want || now - net.lastAt < 250) return;
     net.want = false; net.lastAt = now;
     let tx = me.x, tz = me.z;
-    if (kx || kz) { const l = Math.hypot(kx, kz); tx = me.x + kx / l * SPEED * 1.1; tz = me.z + kz / l * SPEED * 1.1; } else if (me.target) { tx = me.target.x; tz = me.target.z; }
+    if (kx || kz) { const l = Math.hypot(kx, kz); tx = me.x + kx / l * SPEED * me.run * 1.1; tz = me.z + kz / l * SPEED * me.run * 1.1; } else if (me.target) { tx = me.target.x; tz = me.target.z; }
     net.ref.set([f1(me.x), f1(me.z), f1(tx), f1(tz), sit, net.emo, net.n, me.type].join(',')).catch(() => {});
   }
   function netApply(id, raw) {
@@ -767,11 +767,11 @@
     if (canvas.width !== Math.floor(w * pr) || canvas.height !== Math.floor(h * pr)) { renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 
     // 나
-    me.moving = false;
+    me.moving = false; me.run = keys.ShiftLeft || keys.ShiftRight ? RUN : 1;
     const kx = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0), kz = (keys.KeyS || keys.ArrowDown ? 1 : 0) - (keys.KeyW || keys.ArrowUp ? 1 : 0);
     if (me.sit && (kx || kz || me.target)) standUp(); // 움직이려 하면 일어남
     if (kx || kz) {
-      const l = Math.hypot(kx, kz); step(me, kx / l * SPEED * dt, kz / l * SPEED * dt);
+      const l = Math.hypot(kx, kz); step(me, kx / l * SPEED * me.run * dt, kz / l * SPEED * me.run * dt);
       me.face = Math.atan2(kx, kz); me.moving = true; me.target = null; marker.visible = false;
     } else if (me.target) {
       const r = moveToward(me, me.target.x, me.target.z, dt);
@@ -836,7 +836,7 @@
       b.g.rotation.y = -a; const flap = 0.25 + Math.abs(Math.sin(t * 16 + b.ph)) * 1.05;
       b.wings[0].rotation.z = flap; b.wings[1].rotation.z = -flap;
     });
-    if (me.moving && t - puffAt > 0.2) { puffAt = t; const pf = puffs[puffI++ % puffs.length]; pf.life = 0.5; pf.m.visible = true; pf.m.position.set(me.x - Math.sin(me.face) * 0.15, 0.1, me.z - Math.cos(me.face) * 0.15); }
+    if (me.moving && t - puffAt > 0.2 / me.run) { puffAt = t; const pf = puffs[puffI++ % puffs.length]; pf.life = 0.5; pf.m.visible = true; pf.m.position.set(me.x - Math.sin(me.face) * 0.15, 0.1, me.z - Math.cos(me.face) * 0.15); }
     puffs.forEach(pf => { if (pf.life <= 0) return; pf.life -= dt; const k = Math.max(0, pf.life / 0.5); pf.m.material.opacity = k * 0.7; pf.m.scale.setScalar(0.6 + (1 - k) * 1.2); pf.m.position.y += dt * 0.25; if (pf.life <= 0) pf.m.visible = false; });
     lilies.forEach(q => { q.g.position.y = 0.064 + Math.sin(t * 1.4 + q.ph) * 0.006; q.g.rotation.y += Math.sin(t * 0.6 + q.ph) * 0.002; });
     sparks.forEach((q, i) => { const k = Math.pow(Math.max(0, Math.sin(t * q.sp + q.ph)), 6); dummy.position.set(q.x, 0.075, q.z); dummy.rotation.set(-Math.PI / 2, 0, 0); dummy.scale.setScalar(k * 1.3 + 0.0001); dummy.updateMatrix(); sparkIM.setMatrixAt(i, dummy.matrix); });
