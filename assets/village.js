@@ -557,6 +557,7 @@
   const seaTex = waterTex.clone(); seaTex.needsUpdate = true; seaTex.repeat.set(30, 6);
   { const sea = floor(mesh(new THREE.PlaneGeometry(150, 34, 150, 34), flat(0xffffff, { map: seaTex }))); sea.rotation.x = -Math.PI / 2; scene.add(at(sea, 0, 0.028, BEACH.z1 + 17.8)); }
   const foam = noShadow(strip(0, BEACH.z1 + 0.75, 150, 0.35, flat(0xffffff, { transparent: true, opacity: 0.85 }), 0.04)); foam.userData.floor = false; // 밀려왔다 빠지는 물거품
+  const palms = []; // 야자나무마다 { x, z, top, nutG, shake, regrow } — 흔들면 코코넛이 떨어지고 20초 뒤 다시 열림
   { // 야자나무: 휘어 올라간 줄기 마디, 늘어진 잎, 코코넛
     const palm = (x, z, lean, rot) => { const g = new THREE.Group(), segs = 7, h = 0.48;
       for (let i = 0; i < segs; i++) { const m = mesh(new THREE.CylinderGeometry(0.15 - i * 0.008, 0.19 - i * 0.008, h, 10), i % 2 ? '#b98a5a' : '#a87b4e'); m.rotation.z = -lean * i * 0.05; g.add(at(m, Math.sin(lean * i * 0.05) * 0 + lean * i * i * 0.012, h * (i + 0.5), 0)); }
@@ -564,7 +565,9 @@
       for (let k = 0; k < 8; k++) { const leaf = new THREE.Group(), mat = toonMat({ color: k % 2 ? 0x4fae5a : 0x3f9a4a }, 0.02); // 잎: 끝으로 갈수록 가늘고 아래로 휨
         [[0, 0.75, 0.32, 1.3, 0], [-0.12, 1.75, 0.22, 0.9, 0.5]].forEach(([y, z, w, len, rx]) => { const c = mesh(new THREE.ConeGeometry(w, len, 4), mat); c.rotation.x = Math.PI / 2 + rx; c.scale.set(1.6, 1, 0.18); c.position.set(0, y, z); leaf.add(c); });
         leaf.rotation.set(0.35 + (k % 2) * 0.15, k / 8 * Math.PI * 2, 0, 'YXZ'); top.add(leaf); }
-      [[0.14, -0.12, 0.06], [-0.1, -0.14, 0.1], [0.02, -0.12, -0.14]].forEach(c => top.add(at(mesh(new THREE.SphereGeometry(0.12, 10, 8), '#7a4a2e'), c[0], c[1], c[2])));
+      const nutG = new THREE.Group(); top.add(nutG); // 코코넛은 하나씩 떨어져야 해서 합치지 않음
+      [[0.15, -0.13, 0.07], [-0.11, -0.15, 0.11], [0.03, -0.13, -0.15], [-0.08, -0.2, -0.05]].forEach(c => { const n = at(mesh(new THREE.SphereGeometry(0.13, 12, 10), '#7a4a2e'), c[0], c[1], c[2]); n.userData = { home: c.slice(), vy: 0, state: 'on' }; nutG.add(n); });
+      palms.push({ x, z, top, nutG, floorY: -h * segs + 0.13, shake: 0, regrow: 0 });
       g.rotation.y = rot; scene.add(at(g, x, 0, z)); solid(x, z, 0.3); };
     [[-30, 45.5, 1, 0.3], [-23, 47.6, -1, 2.2], [-17.5, 44.6, 1, 4.1], [-9, 46.8, -1, 1.1], [-4.2, 44.2, 1, 5.2], [5.5, 47.2, -1, 0.6], [11, 44.8, 1, 3.3], [17.5, 47.8, -1, 2.7], [24, 45, 1, 5.9], [30.5, 47.2, -1, 1.7]].forEach(q => palm(...q));
     const umbrella = (x, z, c) => { const g = new THREE.Group(); g.add(at(mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.1, 8), '#ffffff'), 0, 1.05, 0));
@@ -747,7 +750,7 @@
   // ── 환경 테두리선: 물건마다 제 색을 어둡게 한 선을 두름
   const envOutlines = [];
   { // 집·소품·줄기를 묶음마다 한 덩어리로 합침 (따로 움직이는 그네 자리와 나무 윗부분은 건너뜀)
-    const stop = new Set(movers.concat(trees.map(t => t.top)));
+    const stop = new Set(movers.concat(trees.map(t => t.top), palms.map(q => q.nutG)));
     const opt = () => ({ stop, vertexMaterial: vcMat, outlineMaterial: vcLine, thickness: 0.022, minSize: 0.15, minSecond: 0.06, accept: m => m.material === winMat || (m.material.isMeshToonMaterial && !m.userData.noShadow && !m.userData.floor) });
     const loose = new THREE.Group(); // 묶음 없이 놓인 것(배경 줄기·바위·집 기단)
     scene.children.slice().forEach(o => { if (o.isMesh && !o.isInstancedMesh && o.material.isMeshToonMaterial && !o.userData.floor && !o.userData.noShadow) loose.add(o); });
@@ -913,6 +916,8 @@
     if (Math.hypot(me.x - SHOP.ix, me.z - (SHOP.iz + 3)) < 1.1) return { kind: 'shopOut', label: '🚪 밖으로 나가기' };
     const clerk = clerks.find(a => Math.hypot(a.x - me.x, a.z - me.z) < 1.9);
     if (clerk) return { kind: 'clerk', clerk, label: '💬 ' + clerk.name.slice(3) + ' 점원과 이야기' };
+    const palm = palms.find(q => Math.hypot(q.x - me.x, q.z - me.z) < 2.2);
+    if (palm) return { kind: 'palm', palm, label: palm.nutG.children.some(n => n.userData.state === 'on') ? '🥥 코코넛 따기' : '🌴 야자나무 흔들기' };
     let best = null, bd = 2.4;
     trees.forEach(t => { const d = Math.hypot(t.x - me.x, t.z - me.z); if (d < bd) { bd = d; best = t; } });
     if (best) return { kind: 'tree', tree: best, label: best.fruits.some(f => f.userData.state === 'on') ? '🍎 열매 따기' : best.kind === 'blossom' ? '🌸 꽃잎 흔들기' : '🌳 나무 흔들기' };
@@ -922,6 +927,9 @@
   function interact() {
     const c = nearby(); if (!c) return;
     if (c.kind === 'tree') return shake();
+    if (c.kind === 'palm') { const q = c.palm; q.shake = 0.7; me.face = Math.atan2(q.x - me.x, q.z - me.z); sfx.shake();
+      if (q.nutG.children.some(n => n.userData.state === 'on')) { q.nutG.children.forEach(n => { if (n.userData.state === 'on') { n.userData.state = 'fall'; n.userData.vy = 0; } }); q.regrow = 20; }
+      return; }
     if (c.kind === 'stand') return standUp();
     if (c.kind === 'seat') { me.sit = c.seat; me.x = c.seat.x; me.z = c.seat.z; me.target = null; marker.visible = false; sfx.note(); return; }
     if (c.kind === 'door' && !demo) { // 실제 마을: 그 친구의 방(방 꾸미기)으로 들어감
@@ -1145,6 +1153,13 @@
         else if (u.state === 'ground') { u.timer -= dt; if (u.timer <= 0) { u.state = 'gone'; f.visible = false; fruitN++; $('fruitN').textContent = fruitN; popText('+1 🍎', tr.x, 1.3, tr.z); me.hop = 0.4; sfx.pick(); } }
       });
       if (tr.regrow > 0) { tr.regrow -= dt; if (tr.regrow <= 0) tr.fruits.forEach(f => { f.userData.state = 'on'; f.visible = true; f.position.set(...f.userData.home); }); }
+    });
+    palms.forEach(q => { // 야자나무: 흔들림, 코코넛 떨어지기·줍기·다시 열리기
+      if (q.shake > 0) { q.shake = Math.max(0, q.shake - dt); q.top.rotation.z = Math.sin(t * 30) * 0.09 * q.shake / 0.7; } else if (q.top.rotation.z) q.top.rotation.z = 0;
+      q.nutG.children.forEach((n, i) => { const u = n.userData;
+        if (u.state === 'fall') { u.vy -= 14 * dt; n.position.y += u.vy * dt; if (n.position.y < q.floorY) { n.position.y = q.floorY; u.state = 'ground'; u.timer = 0.9 + i * 0.15; } }
+        else if (u.state === 'ground') { u.timer -= dt; if (u.timer <= 0) { u.state = 'gone'; n.visible = false; fruitN++; $('fruitN').textContent = fruitN; popText('+1 🥥', q.x, 1.3, q.z); me.hop = 0.4; sfx.pick(); } } });
+      if (q.regrow > 0) { q.regrow -= dt; if (q.regrow <= 0) q.nutG.children.forEach(n => { n.userData.state = 'on'; n.visible = true; n.position.set(...n.userData.home); }); }
     });
     // 꽃잎: 내 둘레에서 계속 흩날림
     petals.forEach((p, i) => {
