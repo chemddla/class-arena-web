@@ -5055,8 +5055,8 @@
         },
         javelin: {
           id: 'javelin', name: '투창', icon: '🎯', ccTag: '💫기절',
-          manaCost: 27, cooldownTicks: 480, cooldownSec: 8.0, castSec: 1,
-          desc: '1초 동안 겨눈 뒤 바라보는 쪽으로 창을 던져, 처음 맞은 적에게 300% 피해. 창에 꽂힌 적은 2.5초간 [기절]해요.'
+          manaCost: 27, cooldownTicks: 300, cooldownSec: 5.0, castSec: 0.5, // 2026-11-10 사용자: 시전 1 → 0.5초, 쿨 8 → 5초
+          desc: '0.5초 동안 겨눈 뒤 바라보는 쪽으로 창을 던져, 처음 맞은 적에게 300% 피해. 창에 꽂힌 적은 2.5초간 [기절]해요.'
         },
         spear_rampage: {
           id: 'spear_rampage', name: '난무', icon: '💥', ccTag: '💥다단히트',
@@ -7226,10 +7226,10 @@
     // 회전·난무는 스킬이 이어지는 동안(skillAnim) 같은 난무 동작을 반복, 투창·창돌격은 시전 막대가 차는 동안 castFrames 자세
     MERC_SPRITE_DEFS.lancer_0 = {
       src: 'assets/sprites/merc/lancer_0.webp',
-      cellW: 206, cellH: 133, anchorX: 82, anchorY: 125, standH: 96, topH: 97, portraitCX: 80, count: 26,
+      cellW: 206, cellH: 131, anchorX: 82, anchorY: 125, standH: 96, topH: 97, portraitCX: 80, count: 26,
       anims: {
-        idle: [0, 1], walk: [2, 3, 4, 5], attack: [6, 7, 8], thrust: [9, 10, 11], skill: [12, 13, 14], hurt: [23], death: [23, 24, 25],
-        pierce: [12, 13, 14], javelin: [15, 16, 16], rampage: [17, 18, 19], charge: [20, 21, 22]
+        idle: [0, 1], walk: [2, 3, 4, 5], attack: [7], thrust: [9, 10, 11], skill: [12, 13, 14], hurt: [23], death: [23, 24, 25], // 휘두르기는 7칸(무쌍난무 휘두르기 자세) 하나만 (2026-11-10 사용자)
+        pierce: [12, 13, 14], javelin: [15, 16, 16], rampage: [17, 18, 19], charge: [21] // 창돌격: 시전 0.5초는 겨눔(20, castFrames), 돌격 중엔 돌진 자세만 (번갈아 쓰지 않음, 2026-11-10)
       },
       // 2026-11-10 사용자 요청: 공격·스킬 뒤 자세가 풀릴 때까지 시간 절반 (기본 공격 최대 42 → 21틱, 피어싱 26 → 13, 투창 28 → 14)
       //   칸은 모두 보이게 피어싱만 칸 넘김을 6 → 4틱으로. 회전·난무·창돌격은 스킬이 실제로 이어지는 시간이라 그대로
@@ -23240,13 +23240,26 @@
         const ux = unit.x, uy = unit.y - 8;
         const ang = aimPt ? Math.atan2(aimPt.y - 12 - uy, aimPt.x - ux)
           : (target ? Math.atan2((target.y - 12) - uy, target.x - ux) : (unit.facingAngle || 0));
-        const JAVELIN_MUZZLE = 40; // 몸에서 이만큼 앞에서 창이 나감
+        // 몸에서 이만큼 앞에서 창이 나감 (2026-11-10 사용자: 몸통에서 나가 보이지 않게 40 → 72, 그리는 쪽에서 몸 앞 28px 뒤는 잘라 냄 clipBack)
+        const JAVELIN_MUZZLE = 72;
         const fx = ux + Math.cos(ang) * JAVELIN_MUZZLE, fy = uy + Math.sin(ang) * JAVELIN_MUZZLE;
-        sim.projectiles.push({
+        // 몸과 나가는 자리 사이에 있는 적은 바로 맞음 (예전엔 40px 앞에서 나가서 이 사이 적도 맞았음)
+        let nearHit = null, nearT = Infinity;
+        for (const e of sim.units) {
+          if (!e.alive || e.team === unit.team) continue;
+          const ex = e.x - ux, ey = (e.y - 12) - uy;
+          const t = ex * Math.cos(ang) + ey * Math.sin(ang);
+          if (t < 0 || t > JAVELIN_MUZZLE) continue;
+          const r = e.isEliteBoss ? eliteHitRadius(e) : PROJECTILE_HIT_RADIUS + unitBodyGap(e);
+          if (Math.abs(-ex * Math.sin(ang) + ey * Math.cos(ang)) < r && t < nearT) { nearT = t; nearHit = e; }
+        }
+        const jav = {
           projType: 'javelin', x: fx, y: fy, owner: unit, dmg: unit.atk * 3.0,
           statusOnHit: 'stun', statusDur: 150, isSkill: true, isDirectional: true, angle: ang,
-          speed: 5.2, trail: [], maxTravel: LANCER_JAVELIN_RANGE, color: '#92400e'
-        });
+          speed: 5.2, trail: [], maxTravel: LANCER_JAVELIN_RANGE, color: '#92400e', clipBack: JAVELIN_MUZZLE - 28
+        };
+        if (nearHit) resolveProjectileImpact(jav, nearHit, nearHit.x, nearHit.y);
+        else sim.projectiles.push(jav);
         playCombatSfx('arrow');
         addBattleLog(`🎯 [창병] ${unit.name}의 투창! [💫기절]`);
         return true;
@@ -32575,6 +32588,10 @@
           // 창병 투창 그림: 촉 끝이 날아가는 자리 조금 앞 (0.65배 → 길이 약 92)
           const k = 0.65;
           ctx.imageSmoothingEnabled = true;
+          if (p.clipBack != null) { // 던진 창병 몸 앞 28px보다 뒤(몸통 쪽)는 그리지 않음 — 창·바람 줄기가 몸에서 나오는 것처럼 보이지 않게
+            const back = (p.travel || 0) + p.clipBack;
+            if (back < 360) { ctx.beginPath(); ctx.rect(-back, -60, back + 200, 120); ctx.clip(); }
+          }
           if (LANCER_JAVELIN_FX.ready) {
             // 바람 줄기·충격파 고리 (0.65배 → 길이 약 213), 촉 끝을 창 촉보다 앞에
             const f = 0.65, tipX = 46;

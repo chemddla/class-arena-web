@@ -61,8 +61,8 @@ B = {  # (샘플 장, 상자, 이펙트 포함 여부: True면 큰 덩어리를 
 # 몸 뒤 속도선 지우기 (사용자 요청: 휘두르기 베기는 피사체 뒤 움직임 이펙트 없이): 샘플 x가 이보다 왼쪽인 가로로 긴 가는 줄기 + 따로 지울 상자
 STRIP_LINES = {'swing8': (260, [(150, 525, 178, 545)])}
 FOOT_X = {'mu3': 112}   # 잔상이 겹친 칸: 앞 사람(왼쪽) 발 가운데 (샘플 x)
-# 2026-11-10: 7 휘두르기 베기 = swing8, 20 창돌격 겨눔 = chReady8, 21·22 창돌격 돌진 = chDash8 (새 샘플 8번 장)
-SHEET = ['idle', 'idle', 'walk0', 'walk1', 'walk2', 'walk3', 'swReady', 'swing8', 'swLow', 'thReady', 'thStab', 'thEnd',
+# 2026-11-10: 7 휘두르기 = mu4 (무쌍난무 휘두르기 자세, 사용자: 기본 공격 휘두르기는 이 자세 하나만 · 6·8칸은 안 씀), 20 창돌격 겨눔 = chReady8, 21·22 창돌격 돌진 = chDash8 (새 샘플 8번 장)
+SHEET = ['idle', 'idle', 'walk0', 'walk1', 'walk2', 'walk3', 'swReady', 'mu4', 'swLow', 'thReady', 'thStab', 'thEnd',
          'pcReady', 'pcCres', 'pcWind', 'jvBack', 'jvThrow', 'spinRing', 'spinUp', 'spinCres', 'chReady8', 'chDash8', 'chDash8',
          'hurt', 'down0', 'down1']
 # 무쌍난무 자세 (예전 cast와 같은 뜻의 10칸): 0 서 있음 · 1 창 치켜듦(올려 베기) · 2 회전 고리 · 3 찌르기+바람 · 4 휘두르기
