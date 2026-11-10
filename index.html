@@ -14769,7 +14769,7 @@
         return;
       }
       if (!Array.isArray(state.outbox)) state.outbox = [];
-      state.outbox.push({
+      state.outbox.push(...splitTransferForRules({
         id: makeTransferId(),
         classCode: String(state.classCode || '').toUpperCase(),
         to: toId,
@@ -14779,14 +14779,92 @@
         merc,
         kind: cleanUserText(gift.kind || '', 30),
         note: cleanUserText(gift.note || '', 120)
-      });
+      }));
+    }
+
+    // 서버 규칙은 선물 한 건의 CA를 TRANSFER_MC_MAX까지만 받음 (database.rules.json transfers/mc) → 넘으면 여러 건으로 나눠 담음
+    // (한 건이라도 거부되면 내 기록 저장까지 통째로 거부되어, 큰 입찰 환불·거래 제안 환불 뒤로 저장이 계속 실패했음)
+    // 용병·종류(kind)·안내 글은 첫 건에만: 받는 쪽이 kind로 판매 수를 세고 안내 글을 이어 보여 주므로 겹치지 않게
+    const TRANSFER_MC_MAX = 100000;
+    function splitTransferForRules(tr) {
+      const total = Math.max(0, Math.round(Number(tr.mc) || 0));
+      if (total <= TRANSFER_MC_MAX) return [tr];
+      const out = [{ ...tr, mc: TRANSFER_MC_MAX }];
+      for (let left = total - TRANSFER_MC_MAX; left > 0; left -= TRANSFER_MC_MAX) {
+        out.push({ id: makeTransferId(), classCode: tr.classCode, to: tr.to, from: tr.from, fromName: tr.fromName, mc: Math.min(TRANSFER_MC_MAX, left), merc: null, kind: 'split', note: '' });
+      }
+      return out;
     }
 
     // 경매 입찰 / 기간 만료 정산 / 낙찰확정 / 회수 함수
-    function placeBidOnAuction(auctionId) {
+    // ----- 경매·거래 제안 한 건을 '서버에서 확인하며' 고치거나 빼냄 -----
+    // 예전엔 이 기기가 아는 목록을 고친 뒤 목록 전체를 올렸음 → 두 학생이 거의 동시에 입찰·취소·수락하면 나중 저장이 앞의 것을 덮어써서
+    // 낸 CA나 맡긴 용병이 사라지거나, 같은 친구에게 환불이 두 번 가거나, 취소한 제안이 수락까지 되어 CA가 불어날 수 있었음
+    // 지금: 그 한 건만 서버 transaction으로 바꿈(겹치면 한쪽만 성공) → 성공했을 때만, 서버에 있던 값(before) 기준으로 CA·용병을 옮김
+    // mutate(지금 서버 값 사본) → 새 값 · null(지움) · undefined(그만둠)   결과: { ok, before, after }
+    // 서버에 연결되지 않은 학급(이 기기에서만 쓰는 학급)은 이 기기 목록에서 바로
+    let marketTxBusy = false;
+    function marketCleanItem(it) {
+      if (!it || typeof it !== 'object') return null;
+      const c = deepCleanStrings(JSON.parse(JSON.stringify(it)));
+      if (c.merc) normalizeMercForSync(c.merc);
+      if (c.mercSnapshot) normalizeMercForSync(c.mercSnapshot);
+      return c;
+    }
+    async function marketItemTx(kind, id, mutate) {
+      if (!Array.isArray(state[kind])) state[kind] = [];
+      const find = () => state[kind].findIndex(x => x && x.id === id);
+      const applyLocal = after => {
+        const i = find();
+        if (after === null) { if (i >= 0) state[kind].splice(i, 1); }
+        else if (i >= 0) state[kind][i] = after;
+        else state[kind].unshift(after);
+      };
+      if (!StudentPw.ready()) {
+        const i = find();
+        if (i < 0) return { ok: false, before: null };
+        const before = state[kind][i];
+        const after = mutate(JSON.parse(JSON.stringify(before)));
+        if (after === undefined) return { ok: false, before };
+        applyLocal(after);
+        return { ok: true, before, after };
+      }
+      const cache = syncCache[kind] && typeof syncCache[kind] === 'object' ? syncCache[kind] : (syncCache[kind] = { sigs: {}, keys: {} });
+      const key = cache.keys[id] || id;
+      let before = null, after;
+      try {
+        const res = await StudentPw.db().ref(`classes/${StudentPw.code()}/${kind}/${key}`).transaction(cur => {
+          before = cur; after = undefined;
+          if (cur === null) return null; // 이 기기가 아직 못 받은 값일 수 있음 → 서버가 확인하게 함 (정말 없으면 아무 일도 없음)
+          if (!cur || typeof cur !== 'object' || cur.id !== id) return undefined; // 그 자리에 다른 항목 (예전 버전 탭이 목록을 다시 쓴 직후)
+          const next = mutate(JSON.parse(JSON.stringify(cur)));
+          if (next === undefined) return undefined;
+          after = next;
+          return next === null ? null : toFirebaseValue(next);
+        }, undefined, false);
+        if (!res || !res.committed || after === undefined) {
+          // 서버에 그 항목이 없음이 확인됨 → 이 기기 목록에 남은 것도 치움 (친구가 방금 취소·수락한 것)
+          if (res && res.committed && before === null) { applyLocal(null); delete cache.sigs[id]; delete cache.keys[id]; }
+          return { ok: false, before: marketCleanItem(before) };
+        }
+      } catch (e) {
+        console.warn('[거래소 서버 확인 실패]:', e);
+        return { ok: false, before: null, error: true };
+      }
+      before = marketCleanItem(before);
+      after = after === null ? null : marketCleanItem(after);
+      applyLocal(after);
+      if (after === null) { delete cache.sigs[id]; delete cache.keys[id]; }
+      else { cache.sigs[id] = syncSig(after); cache.keys[id] = key; }
+      return { ok: true, before, after };
+    }
+    const MARKET_BUSY_TEXT = '⏳ 앞의 거래를 서버에서 확인하는 중이에요. 잠깐 뒤에 다시 눌러 주세요.';
+
+    // 경매 입찰 / 기간 만료 정산 / 낙찰확정 / 회수 함수
+    async function placeBidOnAuction(auctionId) {
       const stu = getActiveStudent();
       const auc = (state.auctions || []).find(a => a.id === auctionId);
-      if (!auc) return;
+      if (!auc || !stu) return;
       if (auc.sellerId === stu.id) {
         showNotice('⚠️ 내가 출품한 용병에는 직접 입찰할 수 없습니다!');
         return;
@@ -14815,19 +14893,31 @@
         showNotice(`⚠️ 입찰할 보유 코인(CA)이 부족합니다! (필요: ${bidAmount.toLocaleString()} CA / 보유: ${stu.mc.toLocaleString()} CA)`);
         return;
       }
-
-      // 이전 입찰자가 있었다면 환불 처리
-      if (auc.highestBidderId) {
-        sendToStudent(auc.highestBidderId, { mc: auc.currentBid, kind: 'auction_refund', note: `[${auc.merc.name}] 경매에서 더 높은 입찰이 나와 입찰금을 돌려받았어요.` });
-      }
-      stu.mc -= bidAmount;
-      auc.currentBid = bidAmount;
-      auc.highestBidderId = stu.id;
-      auc.highestBidderName = `${stu.name}`;
-      saveState();
-      renderMarketTab();
-      showRewardBanner(`🙋 [${auc.merc.name}] 경매에 ${bidAmount.toLocaleString()} CA로 최고가 입찰 완료! (마감 때까지 최고가면 내 용병이 돼요)`);
-      DailyMission.progress('auctionBid');
+      if (marketTxBusy) { showNotice(MARKET_BUSY_TEXT); return; }
+      marketTxBusy = true;
+      try {
+        // 서버의 지금 값 기준으로 다시 확인: 그 사이 다른 친구가 더 높게 입찰했거나 경매가 끝났으면 내 입찰은 들어가지 않음 (CA도 안 빠짐)
+        const r = await marketItemTx('auctions', auctionId, cur => {
+          const min = cur.highestBidderId ? (Number(cur.currentBid) || 0) + 50 : (Number(cur.startBid) || 0);
+          if (cur.sellerId === stu.id || bidAmount < min || (auctionEndsAt(cur) && auctionEndsAt(cur) <= Date.now())) return undefined;
+          return { ...cur, currentBid: bidAmount, highestBidderId: stu.id, highestBidderName: `${stu.name}` };
+        });
+        if (!r.ok) {
+          showNotice(r.error ? '⚠️ 서버와 연결이 원활하지 않아 입찰하지 못했어요. 잠시 뒤 다시 해 주세요.' : '⚠️ 그 사이 다른 친구가 먼저 입찰했거나 경매가 끝났어요. 금액을 확인하고 다시 입찰해 주세요.');
+          renderMarketTab();
+          return;
+        }
+        // 이전 입찰자가 있었다면 환불 처리 (서버에 있던 입찰 기준)
+        const prev = r.before;
+        if (prev.highestBidderId) {
+          sendToStudent(prev.highestBidderId, { mc: prev.currentBid, kind: 'auction_refund', note: `[${prev.merc.name}] 경매에서 더 높은 입찰이 나와 입찰금을 돌려받았어요.` });
+        }
+        stu.mc -= bidAmount;
+        saveState();
+        renderMarketTab();
+        showRewardBanner(`🙋 [${prev.merc.name}] 경매에 ${bidAmount.toLocaleString()} CA로 최고가 입찰 완료! (마감 때까지 최고가면 내 용병이 돼요)`);
+        DailyMission.progress('auctionBid');
+      } finally { marketTxBusy = false; }
     }
 
     // 경매 입찰 기간: 출품 후 3일. 마감 때 최고 입찰자에게 낙찰, 입찰이 없으면 유찰되어 판매자에게 돌아감
@@ -14843,8 +14933,10 @@
     }
 
     // 마감된 경매 정산: 같은 경매를 두 번 정산하지 않게 판매자 기기에서만 함 (서버 없는 학급은 이 기기에서 바로)
-    function settleExpiredAuctions() {
-      if (!state || !Array.isArray(state.auctions) || !state.auctions.length) return;
+    // 경매를 서버에서 빼낸 것이 확인된 뒤에만, 그때 서버에 있던 입찰 기준으로 용병·대금을 보냄 (마감 직전에 들어온 입찰을 놓치지 않게)
+    let auctionSettleBusy = false;
+    async function settleExpiredAuctions() {
+      if (auctionSettleBusy || !state || !Array.isArray(state.auctions) || !state.auctions.length) return;
       const me = getActiveStudent();
       if (!me) return;
       const online = StudentPw.online();
@@ -14852,41 +14944,49 @@
       const now = Date.now();
       const results = [];
       let changed = false;
-      state.auctions = state.auctions.filter(auc => {
-        if (!auc || !auc.merc) return true;
-        if (online && auc.sellerId !== me.id) return true;
+      const due = [];
+      state.auctions.forEach(auc => {
+        if (!auc || !auc.merc) return;
+        if (online && auc.sellerId !== me.id) return;
         if (!auctionEndsAt(auc)) {
           // 입찰 기간이 생기기 전에 올린 경매는 지금부터 3일
           auc.endsAt = now + AUCTION_DURATION_MS;
           changed = true;
-          return true;
+          return;
         }
-        if (auctionEndsAt(auc) > now) return true;
-        const merc = { ...auc.merc, deployed: false };
-        if (auc.highestBidderId && state.students.some(st => st.id === auc.highestBidderId)) {
-          sendToStudent(auc.highestBidderId, { merc, kind: 'auction_win', note: `경매에서 [${merc.name}] 용병을 ${auc.currentBid.toLocaleString()} CA에 낙찰받았어요.` });
-          sendToStudent(auc.sellerId, { mc: auc.currentBid, kind: 'auction_sale', note: `[${merc.name}] 용병이 경매에서 ${auc.highestBidderName}에게 팔렸어요.` });
-          if (auc.sellerId === me.id) results.push(`🔨 [${merc.name}] 경매 마감! ${auc.highestBidderName}에게 ${auc.currentBid.toLocaleString()} CA에 낙찰됐어요.`);
-        } else {
-          sendToStudent(auc.sellerId, { merc, kind: 'auction_unsold', note: `[${merc.name}] 용병이 유찰되어 돌아왔어요.` });
-          if (auc.sellerId === me.id) results.push(`↩️ [${merc.name}] 경매가 유찰되어 용병이 내 용병단으로 돌아왔어요.`);
-        }
-        changed = true;
-        return false;
+        if (auctionEndsAt(auc) <= now) due.push(auc.id);
       });
+      auctionSettleBusy = true;
+      try {
+        for (const id of due) {
+          const r = await marketItemTx('auctions', id, cur => (auctionEndsAt(cur) && auctionEndsAt(cur) <= Date.now() ? null : undefined));
+          if (!r.ok) continue;
+          const auc = r.before;
+          const merc = { ...auc.merc, deployed: false };
+          if (auc.highestBidderId && state.students.some(st => st.id === auc.highestBidderId)) {
+            sendToStudent(auc.highestBidderId, { merc, kind: 'auction_win', note: `경매에서 [${merc.name}] 용병을 ${auc.currentBid.toLocaleString()} CA에 낙찰받았어요.` });
+            sendToStudent(auc.sellerId, { mc: auc.currentBid, kind: 'auction_sale', note: `[${merc.name}] 용병이 경매에서 ${auc.highestBidderName}에게 팔렸어요.` });
+            if (auc.sellerId === me.id) results.push(`🔨 [${merc.name}] 경매 마감! ${auc.highestBidderName}에게 ${auc.currentBid.toLocaleString()} CA에 낙찰됐어요.`);
+          } else {
+            sendToStudent(auc.sellerId, { merc, kind: 'auction_unsold', note: `[${merc.name}] 용병이 유찰되어 돌아왔어요.` });
+            if (auc.sellerId === me.id) results.push(`↩️ [${merc.name}] 경매가 유찰되어 용병이 내 용병단으로 돌아왔어요.`);
+          }
+          changed = true;
+        }
+      } finally { auctionSettleBusy = false; }
       if (!changed) return;
       saveState();
       if (typeof renderAllStudentViews === 'function') renderAllStudentViews();
       if (results.length) showRewardBanner(results.join(' '));
     }
-    setInterval(() => { try { settleExpiredAuctions(); } catch (e) { console.warn('[경매 정산 예외]:', e); } }, 60 * 1000);
-    setTimeout(() => { try { settleExpiredAuctions(); } catch (e) {} }, 5000);
+    setInterval(() => { settleExpiredAuctions().catch(e => console.warn('[경매 정산 예외]:', e)); }, 60 * 1000);
+    setTimeout(() => { settleExpiredAuctions().catch(() => {}); }, 5000);
 
-    function finalizeAuctionAward(auctionId) {
-      const idx = (state.auctions || []).findIndex(a => a.id === auctionId);
-      if (idx === -1) return;
-      const auc = state.auctions[idx];
-      if (getActiveStudent()?.id !== auc.sellerId) {
+    async function finalizeAuctionAward(auctionId) {
+      const auc = (state.auctions || []).find(a => a.id === auctionId);
+      if (!auc) return;
+      const me = getActiveStudent();
+      if (!me || me.id !== auc.sellerId) {
         showNotice('⚠️ 낙찰 확정은 판매자만 할 수 있어요. 마감 때 최고가로 입찰한 친구에게 팔려요.');
         return;
       }
@@ -14894,41 +14994,54 @@
         showNotice('⚠️ 아직 입찰한 친구가 없어요. 입찰을 기다려 주세요.');
         return;
       }
-      const winner = state.students.find(s => s.id === auc.highestBidderId);
-      const seller = state.students.find(s => s.id === auc.sellerId);
-      if (!winner) return;
-      if (winner.roster.length >= MAX_ROSTER) {
-        showNotice(`⚠️ 낙찰자(${winner.name})의 용병 정원이 가득 차 있습니다.`);
+      const shownWinner = state.students.find(s => s.id === auc.highestBidderId);
+      if (!shownWinner) return;
+      if (shownWinner.roster.length >= MAX_ROSTER) {
+        showNotice(`⚠️ 낙찰자(${shownWinner.name})의 용병 정원이 가득 차 있습니다.`);
         return;
       }
-      if (seller) seller.mc += auc.currentBid;
-      const acquiredMerc = { ...auc.merc, deployed: false };
-      sendToStudent(winner.id, { merc: acquiredMerc, kind: 'auction_win', note: `경매에서 [${acquiredMerc.name}] 용병을 낙찰받았어요.` });
-      state.auctions.splice(idx, 1);
-      saveState();
-      renderAllStudentViews();
-      showRewardBanner(`🔨 경매 낙찰 완료! 판매대금 ${auc.currentBid.toLocaleString()} CA를 받았어요. [${acquiredMerc.name}] 용병은 ${winner.name} 친구가 접속하면 자동으로 전달돼요!`);
+      if (marketTxBusy) { showNotice(MARKET_BUSY_TEXT); return; }
+      marketTxBusy = true;
+      try {
+        // 서버에서 경매를 빼낸 뒤, 그때의 최고 입찰자에게 넘김 (확정을 누르는 사이 더 높은 입찰이 들어왔으면 그 친구에게)
+        const r = await marketItemTx('auctions', auctionId, cur => (cur.sellerId === me.id && cur.highestBidderId ? null : undefined));
+        if (!r.ok) { showNotice('⚠️ 낙찰을 확정하지 못했어요. 경매 목록을 확인하고 다시 해 주세요.'); renderMarketTab(); return; }
+        const done = r.before;
+        const winner = state.students.find(s => s.id === done.highestBidderId);
+        me.mc += done.currentBid;
+        const acquiredMerc = { ...done.merc, deployed: false };
+        sendToStudent(done.highestBidderId, { merc: acquiredMerc, kind: 'auction_win', note: `경매에서 [${acquiredMerc.name}] 용병을 낙찰받았어요.` });
+        saveState();
+        renderAllStudentViews();
+        showRewardBanner(`🔨 경매 낙찰 완료! 판매대금 ${done.currentBid.toLocaleString()} CA를 받았어요. [${acquiredMerc.name}] 용병은 ${winner ? winner.name : done.highestBidderName} 친구가 접속하면 자동으로 전달돼요!`);
+      } finally { marketTxBusy = false; }
     }
 
-    function cancelMyAuction(auctionId) {
+    async function cancelMyAuction(auctionId) {
       const stu = getActiveStudent();
-      const idx = (state.auctions || []).findIndex(a => a.id === auctionId);
-      if (idx === -1) return;
-      const auc = state.auctions[idx];
+      const auc = (state.auctions || []).find(a => a.id === auctionId);
+      if (!auc || !stu) return;
       if (auc.sellerId !== stu.id) return;
       if (stu.roster.length >= MAX_ROSTER) {
         showNotice(`⚠️ 보유 용병 정원(${MAX_ROSTER}명)이 가득 차 있어 회수할 수 없습니다!`);
         return;
       }
-      if (auc.highestBidderId) {
-        sendToStudent(auc.highestBidderId, { mc: auc.currentBid, kind: 'auction_refund', note: `[${auc.merc.name}] 경매가 취소되어 입찰금을 돌려받았어요.` });
-      }
-      const returnedMerc = { ...auc.merc, deployed: stu.roster.filter(m => m.deployed).length < MAX_DEPLOY };
-      stu.roster.push(returnedMerc);
-      state.auctions.splice(idx, 1);
-      saveState();
-      renderAllStudentViews();
-      showNotice(`↩️ [${returnedMerc.name}] 경매 출품을 취소하고 용병단으로 회수했습니다.`);
+      if (marketTxBusy) { showNotice(MARKET_BUSY_TEXT); return; }
+      marketTxBusy = true;
+      try {
+        // 서버에서 경매를 빼낸 뒤, 그때 걸려 있던 입찰금을 돌려줌 (취소하는 사이 들어온 입찰도 빠짐없이)
+        const r = await marketItemTx('auctions', auctionId, cur => (cur.sellerId === stu.id ? null : undefined));
+        if (!r.ok) { showNotice('⚠️ 경매를 취소하지 못했어요. 이미 끝났거나 서버 연결이 원활하지 않아요.'); renderMarketTab(); return; }
+        const done = r.before;
+        if (done.highestBidderId) {
+          sendToStudent(done.highestBidderId, { mc: done.currentBid, kind: 'auction_refund', note: `[${done.merc.name}] 경매가 취소되어 입찰금을 돌려받았어요.` });
+        }
+        const returnedMerc = { ...done.merc, deployed: stu.roster.filter(m => m.deployed).length < MAX_DEPLOY };
+        stu.roster.push(returnedMerc);
+        saveState();
+        renderAllStudentViews();
+        showNotice(`↩️ [${returnedMerc.name}] 경매 출품을 취소하고 용병단으로 회수했습니다.`);
+      } finally { marketTxBusy = false; }
     }
 
     // 친구끼리 용병 구매 금액 제안 & 수락/거절 시스템 (Requirement 3)
@@ -15096,10 +15209,9 @@
       renderMarketTab();
     }
 
-    function acceptTradeOffer(offerId) {
-      const idx = (state.tradeOffers || []).findIndex(o => o.id === offerId);
-      if (idx === -1) return;
-      const offer = state.tradeOffers[idx];
+    async function acceptTradeOffer(offerId) {
+      const offer = (state.tradeOffers || []).find(o => o.id === offerId);
+      if (!offer) return;
       const buyer = state.students.find(s => s.id === offer.buyerId);
       const seller = state.students.find(s => s.id === offer.sellerId);
       if (!buyer || !seller) return;
@@ -15107,48 +15219,65 @@
         showNotice('⚠️ 구매 제안은 용병 주인만 수락할 수 있어요.');
         return;
       }
-      if (!offer.escrow) {
-        // 금액을 미리 맡기지 않은 예전 제안은 수락할 수 없음 (구매자 CA를 이 기기에서 뺄 수 없음)
-        showNotice('⚠️ 예전 방식의 제안이라 수락할 수 없어서 정리했어요. 친구에게 다시 제안해 달라고 해 주세요.');
-        state.tradeOffers.splice(idx, 1);
+      if (marketTxBusy) { showNotice(MARKET_BUSY_TEXT); return; }
+      const take = id => marketItemTx('tradeOffers', id, cur => (cur.sellerId === seller.id ? null : undefined));
+      marketTxBusy = true;
+      try {
+        if (!offer.escrow) {
+          // 금액을 미리 맡기지 않은 예전 제안은 수락할 수 없음 (구매자 CA를 이 기기에서 뺄 수 없음)
+          showNotice('⚠️ 예전 방식의 제안이라 수락할 수 없어서 정리했어요. 친구에게 다시 제안해 달라고 해 주세요.');
+          await take(offerId);
+          saveState();
+          renderMarketTab();
+          return;
+        }
+        if ((seller.roster || []).findIndex(m => m.id === offer.mercId) === -1) {
+          showNotice('⚠️ 이미 판매되었거나 존재하지 않는 용병입니다.');
+          const gone = await take(offerId);
+          if (gone.ok) refundTradeOffer(gone.before, '용병이 이미 팔려서');
+          saveState();
+          renderMarketTab();
+          return;
+        }
+        if (seller.roster.length <= 1) {
+          showNotice('⚠️ 판매자의 최소 1명 용병 유지를 위해 거래할 수 없습니다.');
+          return;
+        }
+        if (!offer.offeredMerc && buyer.roster.length >= MAX_ROSTER) {
+          showNotice(`⚠️ 구매자(${buyer.name})의 용병단 정원(${MAX_ROSTER}명)이 가득 찼습니다!`);
+          return;
+        }
+        // 서버에서 제안을 빼낸 것이 확인된 뒤에만 용병·CA를 옮김 (그 사이 친구가 제안을 취소했으면 거래하지 않음: 취소 환불과 수락이 함께 일어나지 않게)
+        const r = await take(offerId);
+        if (!r.ok) { showNotice('⚠️ 그 사이 친구가 제안을 취소했거나 서버 연결이 원활하지 않아 거래하지 못했어요.'); renderMarketTab(); return; }
+        const done = r.before;
+        const mercIdx = (seller.roster || []).findIndex(m => m.id === done.mercId);
+        if (mercIdx === -1 || seller.roster.length <= 1) { // 확인하는 사이 용병이 빠짐 → 맡긴 것을 돌려줌
+          refundTradeOffer(done, '용병이 이미 팔려서');
+          saveState();
+          renderMarketTab();
+          return;
+        }
+        const [transferredMerc] = seller.roster.splice(mercIdx, 1);
+        if (!seller.roster.some(m => m.deployed) && seller.roster.length > 0) {
+          seller.roster[0].deployed = true;
+        }
+        transferredMerc.deployed = false;
+        seller.mc += done.offerPrice; // 구매자가 제안할 때 맡긴 금액
+        if (done.offeredMerc) applyGiftToStudent(seller, { merc: done.offeredMerc }); // 교환으로 맡겨 둔 용병
+        sendToStudent(done.buyerId, { merc: transferredMerc, kind: 'trade_buy', note: `[${seller.name}] 친구가 거래 제안을 수락해 [${transferredMerc.name}] 용병이 왔어요.` });
+        saveState(); // 여기까지를 먼저 저장 (아래 다른 제안 정리가 서버 확인을 기다리는 동안 탭이 닫혀도 거래는 남게)
+
+        // 동일 용병에 대한 다른 대기 제안 정리 (맡긴 금액은 돌려줌 · 서버에서 빼낸 것만)
+        const others = state.tradeOffers.filter(o => o.id !== offerId && o.mercId === transferredMerc.id).map(o => o.id);
+        for (const id of others) {
+          const x = await take(id);
+          if (x.ok) refundTradeOffer(x.before, '용병이 다른 친구에게 팔려서');
+        }
         saveState();
-        renderMarketTab();
-        return;
-      }
-
-      const mercIdx = (seller.roster || []).findIndex(m => m.id === offer.mercId);
-      if (mercIdx === -1) {
-        showNotice('⚠️ 이미 판매되었거나 존재하지 않는 용병입니다.');
-        refundTradeOffer(offer, '용병이 이미 팔려서');
-        state.tradeOffers.splice(idx, 1);
-        saveState();
-        renderMarketTab();
-        return;
-      }
-      if (seller.roster.length <= 1) {
-        showNotice('⚠️ 판매자의 최소 1명 용병 유지를 위해 거래할 수 없습니다.');
-        return;
-      }
-      if (!offer.offeredMerc && buyer.roster.length >= MAX_ROSTER) {
-        showNotice(`⚠️ 구매자(${buyer.name})의 용병단 정원(${MAX_ROSTER}명)이 가득 찼습니다!`);
-        return;
-      }
-
-      const [transferredMerc] = seller.roster.splice(mercIdx, 1);
-      if (!seller.roster.some(m => m.deployed) && seller.roster.length > 0) {
-        seller.roster[0].deployed = true;
-      }
-      transferredMerc.deployed = false;
-      seller.mc += offer.offerPrice; // 구매자가 제안할 때 맡긴 금액
-      if (offer.offeredMerc) applyGiftToStudent(seller, { merc: offer.offeredMerc }); // 교환으로 맡겨 둔 용병
-      sendToStudent(buyer.id, { merc: transferredMerc, kind: 'trade_buy', note: `[${seller.name}] 친구가 거래 제안을 수락해 [${transferredMerc.name}] 용병이 왔어요.` });
-
-      // 동일 용병에 대한 다른 대기 제안 정리 (맡긴 금액은 돌려줌)
-      state.tradeOffers.filter(o => o.id !== offerId && o.mercId === transferredMerc.id).forEach(o => refundTradeOffer(o, '용병이 다른 친구에게 팔려서'));
-      state.tradeOffers = state.tradeOffers.filter(o => o.id !== offerId && o.mercId !== transferredMerc.id);
-      saveState();
-      renderAllStudentViews();
-      showRewardBanner(`🤝 용병 거래 성사! [${transferredMerc.name}] 용병을 ${describeTradeOfferGive(offer)}에 넘겼어요. 용병은 [${buyer.name}] 친구가 접속하면 자동으로 전달돼요!`);
+        renderAllStudentViews();
+        showRewardBanner(`🤝 용병 거래 성사! [${transferredMerc.name}] 용병을 ${describeTradeOfferGive(done)}에 넘겼어요. 용병은 [${buyer.name}] 친구가 접속하면 자동으로 전달돼요!`);
+      } finally { marketTxBusy = false; }
     }
 
     // 제안에 건 것 (용병·CA) 을 글로 — "[용병] 용병 + 500 CA"
@@ -15184,20 +15313,24 @@
       });
     }
 
-    function rejectOrCancelTradeOffer(offerId) {
-      const idx = (state.tradeOffers || []).findIndex(o => o.id === offerId);
-      if (idx === -1) return;
-      const offer = state.tradeOffers[idx];
+    async function rejectOrCancelTradeOffer(offerId) {
+      const offer = (state.tradeOffers || []).find(o => o.id === offerId);
+      if (!offer) return;
       const me = getActiveStudent();
       if (!me || (me.id !== offer.buyerId && me.id !== offer.sellerId)) {
         showNotice('⚠️ 거래 제안은 보낸 친구나 받은 친구만 취소·거절할 수 있어요.');
         return;
       }
-      refundTradeOffer(offer, me.id === offer.buyerId ? '제안을 취소해서' : '친구가 제안을 거절해서');
-      state.tradeOffers.splice(idx, 1);
-      saveState();
-      renderMarketTab();
-      showNotice(`✖️ [${offer.mercSnapshot?.name || '용병'}] 거래 제안(${describeTradeOfferGive(offer)})이 취소/거절되었습니다.`);
+      if (marketTxBusy) { showNotice(MARKET_BUSY_TEXT); return; }
+      marketTxBusy = true;
+      try {
+        // 서버에서 제안을 빼낸 쪽만 환불함 (취소와 수락·거절이 겹쳐도 맡긴 것은 한 번만 움직임)
+        const r = await marketItemTx('tradeOffers', offerId, cur => (cur.buyerId === me.id || cur.sellerId === me.id ? null : undefined));
+        if (!r.ok) { showNotice('⚠️ 이미 처리된 제안이거나 서버 연결이 원활하지 않아요.'); renderMarketTab(); return; }
+        refundTradeOffer(r.before, me.id === r.before.buyerId ? '제안을 취소해서' : '친구가 제안을 거절해서');
+        saveState();
+        renderMarketTab();
+      } finally { marketTxBusy = false; }
     }
 
     function renderMarketTab() {
@@ -30495,7 +30628,12 @@
       return hit;
     }
     // 느린 기기(화면 한 장에 평균 24ms 넘게 걸림 = 60fps를 못 냄)면 꾸밈 효과를 줄임: 레어 후광 생략 · 반짝임 절반 (전투 내용은 그대로)
-    function lowFxMode() { return deviceFrameEma > 24; }
+    // 켜는 기준(24ms)과 끄는 기준(19ms)을 따로 둠: 꾸밈을 줄이면 빨라져서 바로 다시 켜지고, 켜면 다시 느려져 후광이 몇 초마다 깜빡였음
+    let lowFxOn = false;
+    function lowFxMode() {
+      if (lowFxOn ? deviceFrameEma < 19 : deviceFrameEma > 24) lowFxOn = !lowFxOn;
+      return lowFxOn;
+    }
     // drawImage(그림, 9개 인자)와 같지만, 지금 ctx에 필터가 걸려 있으면 위의 빠른 방법으로 그림 · 그림자(레어 후광)가 걸려 있으면 만들어 둔 둘레 빛을 깔고 그림자는 끔
     function drawSpriteFx(ctx, img, sx, sy, sw, sh, dx, dy, dw, dh) {
       if (ctx.shadowBlur > 0 && (img.naturalWidth || img.width)) {
@@ -38967,7 +39105,7 @@
      * - 내 활성 펫 vs 친구(또는 AI) 펫. 가운데 그물, 공을 상대 땅에 떨어뜨리면 1점, 11점 먼저 (3분이 지나면 앞선 쪽 승리, 같으면 다음 득점)
      * - 조작: ←→ 이동, ↑/스페이스 점프, Z(또는 💥 버튼) 강타. 강타는 공이 몸에 닿는 순간 방향키 쪽으로 세게 날림 (↓와 함께면 내리꽂기)
      * - 실시간: 판(자리·점수·서브)은 미니게임 공통 저장(mgPush)으로 낮은 빈도로 맞추고,
-     *   펫 위치는 초당 20번 minigames/{방}_vl/{자리}에 (판 저장과 다른 노드라 판 구독이 그때마다 깨어나지 않음)
+     *   펫 위치는 초당 약 15번(직접 연결이 열리면 그쪽으로 30번 · 서버로는 4번) minigames/{방}_vl/{자리}에 (판 저장과 다른 노드라 판 구독이 그때마다 깨어나지 않음)
      * - 공은 "키프레임"(서브·타격 순간의 시각·위치·속도) 목록으로만 정해짐. 키프레임에서 1/120초 고정 간격으로 굴리므로
      *   같은 키프레임이면 어느 화면에서나 같은 궤적. 타격하면 그 키프레임 하나만 {방}_vl/ball에 올림
      * - 공이 있는 코트의 주인 화면이 그 공을 치고, 그 코트에 떨어졌는지(실점)도 판정함 → 내 화면에서 받았으면 받은 것
@@ -38983,7 +39121,8 @@
       goal: 11, timeLimitSec: 180, serveDelayMs: 1500, hitCooldown: 0.3, powerWindow: 0.25,
       physStepMs: 1000 / 120, ballLagUp: 0.3, ballLagDown: 0.45, // 공 궤적 고정 간격 · 표시 지연(lag)을 늘리는/줄이는 빠르기 (초당 0.3초·0.45초 → 공이 잠깐 30% 느리거나 45% 빠르게 보임)
       linkFbMs: 250, interpDelayLinkMs: 60, // 직접 연결(VolleyLink) 중: 서버로는 0.25초마다만(관전자·끊겼을 때 이어 붙이기용) · 직접 연결 샘플은 보간 지연 최소 60ms
-      liveHz: 20, interpDelayMs: 120, interpDelayMaxMs: 420, extrapMaxMs: 400, ballSyncMs: 200, homeX: [230, 670], // 친구 펫은 받은 시각보다 interpDelay(네트워크가 흔들리면 그만큼 더, 최대 interpDelayMax)만큼 늦게 샘플 사이를 보간해 그림 · 공은 친 사람이 ballSyncMs마다 다시 맞춤
+      fbHzMs: 60, // 직접 연결이 안 될 때 서버로 보내는 펫 위치 간격: 초당 20번 → 약 15번 (타격·점프·착지는 바로 · 받는 쪽은 interpDelay 120ms로 샘플 사이를 이어 그려 그대로 매끈)
+      liveHz: 30, interpDelayMs: 120, interpDelayMaxMs: 420, extrapMaxMs: 400, ballSyncMs: 200, homeX: [230, 670], // 친구 펫은 받은 시각보다 interpDelay(네트워크가 흔들리면 그만큼 더, 최대 interpDelayMax)만큼 늦게 샘플 사이를 보간해 그림 · 공은 친 사람이 ballSyncMs마다 다시 맞춤
     };
     // 펫별 배구 특성 (작게: 손맛은 비슷하게, 개성만 조금)
     const VOLLEY_PERKS = {
@@ -39601,8 +39740,11 @@
           if (VolleyLink.healthy()) {
             VolleyLink.send({ k: 'c', key: String(i), v: pack }); // 직접 연결: 매번 바로
             if (!force && now - (p.lastFbAt || 0) < VOLLEY.linkFbMs) return; // 서버로는 0.25초마다만 (관전자·끊겼을 때 이어 붙이기)
-          } else if (!force && p.lastSentKey === key && now - (p.lastSentAt || 0) < 500) return; // 가만히 있어도 0.5초마다 한 번은 보냄 (버퍼가 비지 않게)
-          p.lastSentKey = key; p.lastSentAt = now; p.lastFbAt = now;
+          } else if (!force) {
+            if (p.lastSentKey === key && now - (p.lastSentAt || 0) < 500) return; // 가만히 있어도 0.5초마다 한 번은 보냄 (버퍼가 비지 않게)
+            if (pack.h === p.lastSentH && pack.g === p.lastSentG && now - (p.lastSentAt || 0) < VOLLEY.fbHzMs) return; // 서버로만 보낼 때는 조금 덜 촘촘히
+          }
+          p.lastSentKey = key; p.lastSentAt = now; p.lastFbAt = now; p.lastSentH = pack.h; p.lastSentG = pack.g;
           ref.set(pack).catch(() => {});
         });
       },
@@ -40266,6 +40408,28 @@
       };
     }
 
+    // ----- 경매·거래 제안 목록: 서버에는 항목마다 한 칸 (새 항목은 칸 이름 = id · 예전에 배열로 올라간 항목은 0, 1, 2… 칸 그대로) -----
+    // syncCache.auctions / tradeOffers = { sigs: { id: 서버 값 서명 }, keys: { id: 서버 칸 이름 } } (서버 목록을 받기 전에는 undefined)
+    function marketItemOk(it) {
+      return Boolean(it && typeof it === 'object' && typeof it.id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(it.id));
+    }
+    function marketItemTime(it) {
+      const n = Number(String(it && it.id || '').split('_').pop());
+      return isFinite(n) ? n : 0;
+    }
+    function marketRemoteItems(raw) {
+      const out = { items: {}, sigs: {}, keys: {} };
+      if (!raw || typeof raw !== 'object') return out;
+      Object.keys(raw).forEach(key => { // 배열이면 칸 번호가 그대로 칸 이름
+        const it = marketCleanItem(raw[key]);
+        if (!marketItemOk(it) || out.items[it.id]) return;
+        out.items[it.id] = it;
+        out.sigs[it.id] = syncSig(it);
+        out.keys[it.id] = String(key);
+      });
+      return out;
+    }
+
     // 서버와 같아진 학생 기록을 기억 (sig는 syncSig(s)와 같은 값)
     function markStudentSynced(s, sig) {
       syncCache.students[s.id] = sig === undefined ? syncSig(s) : sig;
@@ -40732,10 +40896,8 @@
     // ----- 올릴 때 빼는 용병 칸 (받는 쪽 normalizeMercForSync가 똑같이 되살림 · 서버 규칙은 id·job·level만 요구) -----
     // ARENA3 학생 기록 150KB 중 용병 목록이 90KB(163명)였고, 그중 traitName(특성 이름, traitId로 정해짐) 5KB · 0뿐인 statPoints 6KB는 받는 쪽이 만들 수 있는 칸
     // → 접속 때 통째로 내려받는 양과 용병 한 명이 바뀔 때마다 올라가는 양(약 550B → 490B)이 줄어듦
-    // MERC_SLIM_FROM(2026-11-09 00:00 KST) 전에는 그대로: 그 전에 연 탭은 특성 이름을 기록에서만 읽음
-    const MERC_SLIM_FROM = Date.UTC(2026, 10, 8, 15);
     function slimMercForUpload(m) {
-      if (Date.now() < MERC_SLIM_FROM || !m || typeof m !== 'object' || Array.isArray(m) || !m.job || !m.id) return m;
+      if (!m || typeof m !== 'object' || Array.isArray(m) || !m.job || !m.id) return m;
       const out = { ...m };
       if (out.traitId && TRAIT_POOL.some(t => t.id === out.traitId && t.name === out.traitName)) delete out.traitName;
       const sp = out.statPoints;
@@ -41409,18 +41571,33 @@
         });
 
         // (c) 경매장 / 거래 제안
+        // 항목(id)마다 따로 올림: 예전엔 목록 전체를 다시 써서, 다른 친구가 방금 올린 경매·입찰·제안을 내 저장이 덮어써 지웠음
+        // 서버 목록을 아직 못 받았으면(캐시 없음) 올리지 않음 · 새 학급을 만들 때만 가진 것을 모두 올림
         ['auctions', 'tradeOffers'].forEach(k => {
-          const sg = syncSig(state[k] || []);
-          if (sg !== syncCache[k]) {
-            updates[`${base}/${k}`] = toFirebaseValue(state[k] || []);
-            pending.lists[k] = sg;
-          }
+          const cache = syncCache[k] && typeof syncCache[k] === 'object' ? syncCache[k] : (creating ? { sigs: {}, keys: {} } : null);
+          if (!cache) return;
+          const sent = {}, seen = new Set();
+          (state[k] || []).forEach(it => {
+            if (!marketItemOk(it) || seen.has(it.id)) return;
+            seen.add(it.id);
+            const sg = syncSig(it);
+            if (sg === cache.sigs[it.id]) return;
+            updates[`${base}/${k}/${cache.keys[it.id] || it.id}`] = toFirebaseValue(it);
+            sent[it.id] = sg;
+          });
+          Object.keys(cache.sigs).forEach(id => {
+            if (seen.has(id)) return;
+            updates[`${base}/${k}/${cache.keys[id] || id}`] = null;
+            sent[id] = null;
+          });
+          if (Object.keys(sent).length) pending.lists[k] = sent;
         });
 
         // (c-2) 친구에게 보내는 CA·용병 (내 기록 변경과 한 번에 올라가야 함)
         const sentTransfers = [];
         if (Array.isArray(state.outbox)) {
-          state.outbox = state.outbox.filter(tr => tr && (tr.classCode !== classCode || localIds.has(tr.to))); // 삭제된 친구에게 보낼 것은 버림
+          state.outbox = state.outbox.filter(tr => tr && (tr.classCode !== classCode || localIds.has(tr.to))) // 삭제된 친구에게 보낼 것은 버림
+            .flatMap(splitTransferForRules); // 예전에 담겨 막혀 있던 큰 금액도 나눠서 올림
           state.outbox.forEach(tr => {
             if (tr.classCode !== classCode) return;
             if (!manager && tr.from !== state.activeStudentId) return; // 다른 학생으로 로그인했을 때 보낸 것은 그 학생이 다시 로그인하면 올림
@@ -41484,7 +41661,14 @@
             if (studentPrivKnown(id)) delete studentPriv.legacy[id];
           });
           pending.removed.forEach(forgetStudentSynced);
-          Object.keys(pending.lists).forEach(k => { syncCache[k] = pending.lists[k]; });
+          Object.keys(pending.lists).forEach(k => {
+            const c = syncCache[k] && typeof syncCache[k] === 'object' ? syncCache[k] : (syncCache[k] = { sigs: {}, keys: {} });
+            Object.keys(pending.lists[k]).forEach(id => {
+              const sg = pending.lists[k][id];
+              if (sg === null) { delete c.sigs[id]; delete c.keys[id]; }
+              else { c.sigs[id] = sg; if (!c.keys[id]) c.keys[id] = id; }
+            });
+          });
           syncCache.metaExists = true;
           const syncBadge = document.getElementById('adminFirebaseSyncBadge');
           if (syncBadge) {
@@ -41586,7 +41770,7 @@
           // 서버 용병 목록에 남은 되살릴 수 있는 칸 (예전에 통째로 올라간 용병): 한 번 지우면 반 전체가 접속 때마다 받는 양이 줄어듦
           const roster = r && typeof r === 'object' && r.roster && typeof r.roster === 'object' ? r.roster : null;
           const paths = [];
-          if (roster && Date.now() >= MERC_SLIM_FROM) Object.keys(roster).forEach(i => mercLegacySlimKeys(roster[i]).forEach(k => paths.push(`roster/${i}/${k}`)));
+          if (roster) Object.keys(roster).forEach(i => mercLegacySlimKeys(roster[i]).forEach(k => paths.push(`roster/${i}/${k}`)));
           if (paths.length) mercSlimLegacy.set(id, paths); else mercSlimLegacy.delete(id);
           if (derived || paths.length) derivedLegacyIds.add(id); else derivedLegacyIds.delete(id);
         });
@@ -41647,22 +41831,26 @@
         result.sort((a, b) => (Number(a.num) || 0) - (Number(b.num) || 0));
         if (result.length > 0) state.students = result;
 
-        // 3) 경매장 / 거래 제안
+        // 3) 경매장 / 거래 제안: 항목(id)별로 맞춤 — 내가 아직 올리지 않은 변경(지금 값 ≠ 마지막으로 본 서버 값)만 지키고 나머지는 서버 값으로
+        // (예전엔 내 목록에 안 올린 변경이 하나라도 있으면 서버 목록 전체를 무시했다가 내 목록으로 덮어썼음)
         ['auctions', 'tradeOffers'].forEach(k => {
-          let remoteArr = data[k];
-          if (remoteArr && !Array.isArray(remoteArr) && typeof remoteArr === 'object') remoteArr = Object.values(remoteArr);
-          if (!Array.isArray(remoteArr)) remoteArr = [];
-          remoteArr = deepCleanStrings(remoteArr.filter(Boolean));
-          remoteArr.forEach(item => {
-            if (item.merc) normalizeMercForSync(item.merc);
-            if (item.mercSnapshot) normalizeMercForSync(item.mercSnapshot);
-          });
-          const rSig = syncSig(remoteArr);
-          const lSig = syncSig(state[k] || []);
-          if (force || lSig === rSig || lSig === syncCache[k]) {
-            state[k] = remoteArr;
-            syncCache[k] = rSig;
+          const remote = marketRemoteItems(data[k]);
+          const cache = syncCache[k] && typeof syncCache[k] === 'object' ? syncCache[k] : null;
+          let next;
+          if (force || !cache) next = Object.values(remote.items);
+          else {
+            const local = {};
+            (state[k] || []).forEach(it => { if (marketItemOk(it) && !local[it.id]) local[it.id] = it; });
+            next = [];
+            new Set([...Object.keys(local), ...Object.keys(remote.items)]).forEach(id => {
+              const lSig = local[id] ? syncSig(local[id]) : undefined;
+              if (lSig !== cache.sigs[id]) { if (local[id]) next.push(local[id]); } // 내가 고치거나 새로 올릴 것 (내가 지운 것은 빠진 채로)
+              else if (remote.items[id]) next.push(remote.items[id]);
+            });
           }
+          next.sort((x, y) => marketItemTime(y) - marketItemTime(x)); // 새 것이 앞에 (예전 배열 순서와 같게)
+          if (syncSig(next) !== syncSig(state[k] || [])) state[k] = next;
+          syncCache[k] = { sigs: remote.sigs, keys: remote.keys };
         });
 
         if (keepActiveStudent && state.students.some(s => s.id === prevActiveId)) {
@@ -44353,7 +44541,8 @@
         guestChose: false, started: false, lastStatusAt: 0, hostStatus: null,
         lastFramePublishedAt: 0, spectator, timeoutExtended: false, pvpWatchers: 0,
         team: Boolean(team), teamExpect: teamExpect || [], teamChosen: {}, remoteCtrls: {}, myId: getActiveStudent()?.id || null,
-        dgUnitSig: null, dgRoomSeq: null, dgSentJ: null, dgChangedAt: 0, rsSent: null, rsSentT: 0
+        dgUnitSig: null, dgRoomSeq: null, dgSentJ: null, dgChangedAt: 0, rsSent: null, rsSentT: 0, znSig: null,
+        rtcPaused: false, rtcFeedSince: 0, kfWanted: false, kfReqAt: 0, kfSig: null
       });
       resetLiveFrameBuffer();
       if (role === 'host') {
@@ -44364,7 +44553,19 @@
         if (!takeover) {
           ref.child('input').remove().catch(() => {});
           ref.child('inputs').remove().catch(() => {});
+          ref.child('kf').remove().catch(() => {});
         }
+        // 직접 연결이 멈춰 서버 화면으로 돌아온 친구가 '전체 화면 한 장'을 청함 (liveRequestKeyframe) → 다음 화면을 바로 전체로 · 잠깐은 0.15초 간격으로
+        ref.child('kf').on('value', snap => {
+          const v = snap && snap.val();
+          if (!v || liveNet.ref !== ref || liveNet.role !== 'host') return;
+          const sig = JSON.stringify(v);
+          if (sig === liveNet.kfSig) return;
+          liveNet.kfSig = sig;
+          liveNet.kfReqAt = Date.now();
+          liveNet.sentU = null;
+          liveNet.lastFramePublishedAt = 0;
+        });
         sim.effects.forEach(x => liveNet.sent.add(x));
         sim.floatTexts.forEach(x => liveNet.sent.add(x));
         const units = sim.units.map(u => liveUnitCopy(u, LIVE_INIT_DROP));
@@ -44450,7 +44651,7 @@
       liveNet.rtcDecision = mode;
       const R = LiveRtc;
       if (mode === 'rtc') {
-        liveRtcSend({ k: 'mode', v: 'rtc' });
+        liveRtcSend({ k: 'mode', v: 'rtc', kf: 1 }); // kf: 이 방장은 '전체 화면 한 장' 청을 들음 → 도전자는 직접 연결 중 서버 화면을 안 받아도 됨 (liveRtcServerPauseTick)
         addBattleLog(`⚡ 친구 기기와 직접 연결이 원활해요${note ? ` (${note})` : ''}! 직접 연결로 진행해요.`);
       } else {
         if (R.open) liveRtcSend({ k: 'mode', v: 'server' });
@@ -44496,13 +44697,48 @@
     function liveRtcFeeding() {
       return LiveRtc.open && LiveRtc.role === 'guest' && Date.now() - LiveRtc.lastFrameAt < LIVE_RTC_STALE_MS;
     }
+    // ----- 직접 연결로 잘 받는 동안은 서버 화면을 아예 받지 않음 (도전자·팀원·파티원) -----
+    // 예전: 직접 연결 화면을 보는 동안에도 서버 화면을 계속 내려받아 이어 붙여만 두었음 (보는 친구가 한 명이라도 있으면 0.15초마다 전부)
+    // 지금: 직접 연결 화면이 LIVE_RTC_PAUSE_AFTER_MS 동안 끊김 없이 오면 서버 화면 구독을 끊고, 0.6초 넘게 멈추면 다시 구독하면서 방장에게 전체 화면 한 장을 청함(kf/내id)
+    //   · 방장이 그 청을 듣는 버전일 때만 (직접 연결 알림의 kf 표시 · 예전 방장이면 전체 화면을 최대 4초 기다려야 하므로 예전처럼 계속 받음)
+    //   · 전투 정보·결과·넘기기는 그대로 서버로 받음
+    const LIVE_RTC_PAUSE_AFTER_MS = 2000, LIVE_KF_REQ_GAP_MS = 4000, LIVE_KF_REQ_HOLD_MS = 5000;
+    function liveRequestKeyframe(now) {
+      liveNet.kfWanted = true;
+      liveNet.kfReqAt = now;
+      try { liveNet.ref.child('kf').child(liveNet.myId || 'g').set(now).catch(() => {}); } catch (e) {}
+    }
+    function liveRtcServerPauseTick(now) {
+      if (liveNet.role !== 'guest' || liveNet.spectator || !liveNet.ref || liveNet.finished) return;
+      const feeding = liveRtcFeeding();
+      if (liveNet.rtcPaused) {
+        if (feeding) return;
+        // 직접 연결이 멈춤 → 서버 화면으로: 이어 붙일 앞 화면이 없으니 전체 화면부터
+        liveNet.rtcPaused = false;
+        liveNet.rtcFeedSince = 0;
+        liveNet.recvU = null; liveNet.recvT = null; liveNet.recvZn = null;
+        attachLiveFrameListener(liveNet.ref);
+        liveRequestKeyframe(now);
+        return;
+      }
+      if (!feeding) {
+        liveNet.rtcFeedSince = 0;
+        // 통로는 열려 있는데 화면이 안 옴: 방장이 서버 화면을 촘촘히 보내도록 가끔 다시 청함
+        if (liveNet.kfWanted && LiveRtc.open && now - liveNet.kfReqAt >= LIVE_KF_REQ_GAP_MS) liveRequestKeyframe(now);
+        return;
+      }
+      liveNet.kfWanted = false;
+      if (!LiveRtc.hostKf) return;
+      if (!liveNet.rtcFeedSince) { liveNet.rtcFeedSince = now; return; }
+      if (now - liveNet.rtcFeedSince < LIVE_RTC_PAUSE_AFTER_MS) return;
+      try { liveNet.ref.child('frame').off(); } catch (e) {}
+      liveNet.rtcPaused = true;
+    }
     // 방장이 서버(Firebase)로 화면을 보내는 간격
     // 직접 연결로 도전자에게 잘 보내는 중(0.3초 안에 보냈고 밀린 양이 작음)이고 보는 친구(pvp_rooms/<방>/spectators, 방장이 pvp_rooms 구독으로 받음)가 없으면: 서버 화면은 도전자가 안 보고(직접 연결 화면을 봄) 끊겼을 때 이어 볼 바탕일 뿐이라
     // LIVE_RTC_SERVER_FRAME_MS마다만 보냄 → 도전자 기기가 내려받는 서버 화면이 약 1/3로 줌. 링크가 막히면(밀린 양이 늘면) 바로 0.15초 간격으로 돌아옴 (도전자는 0.6초 뒤 서버 화면으로 넘어옴)
     // 바뀐 칸만 담는 화면(d)의 이어 붙이기는 간격과 상관없음 (도전자는 직접 연결 중에도 서버 화면을 이어 붙여 둠)
-    // LIVE_RTC_SERVER_THROTTLE_FROM 전에는 예전 간격 그대로 (직접 연결 자체가 그날 들어간 기능이라 같은 기준 시각으로 맞춤)
     const LIVE_RTC_SERVER_FRAME_MS = 500, LIVE_RTC_HEALTHY_MS = 300, LIVE_RTC_HEALTHY_BUF = 4096;
-    const LIVE_RTC_SERVER_THROTTLE_FROM = Date.UTC(2026, 10, 8, 15);
     function livePvpSpectatorCount() {
       const r = liveNet.roomId && livePvpRoomsCache ? livePvpRoomsCache[liveNet.roomId] : null;
       return r && r.spectators && typeof r.spectators === 'object' ? Object.keys(r.spectators).length : 0;
@@ -44512,7 +44748,7 @@
       return Boolean(open && dc && dc.readyState === 'open') && nowMs - lastSentAt <= LIVE_RTC_HEALTHY_MS && dc.bufferedAmount <= LIVE_RTC_HEALTHY_BUF;
     }
     function liveServerFrameInterval(nowMs) {
-      if (nowMs < LIVE_RTC_SERVER_THROTTLE_FROM) return LIVE_FRAME_INTERVAL_MS;
+      if (nowMs - (liveNet.kfReqAt || 0) < LIVE_KF_REQ_HOLD_MS) return LIVE_FRAME_INTERVAL_MS; // 방금 서버 화면으로 돌아온 친구가 있음
       // 보는 친구가 있으면 서버 화면이 그 친구의 화면 → 늘 0.15초. 보는 친구 수를 아는 전투만 줄임:
       //   결투·팀전방은 pvp_rooms의 spectators · 협동 레이드·던전은 중계 자리의 watchers(raidWatchOn, connectRaidLiveNet) · 탑·엘리트 토벌 중계는 그대로
       if (liveNet.raidCast) { if (!liveNet.raidWatchOn || liveNet.towerWatchers > 0) return LIVE_FRAME_INTERVAL_MS; }
@@ -44532,7 +44768,7 @@
       if (R.ref) { const base = R.base || 'rtc'; try { R.ref.child(`${base}/offer`).off(); R.ref.child(`${base}/answer`).off(); } catch (e) {} }
       try { if (R.dc) R.dc.close(); } catch (e) {}
       try { if (R.pc) R.pc.close(); } catch (e) {}
-      Object.assign(R, { gen: R.gen + 1, pc: null, dc: null, open: false, failed: false, ref: null, role: null, bid: null, offerSdp: null, lastFrameAt: 0, lastSentAt: 0, sent: new WeakSet(), logs: [], startedAt: 0, pings: {}, pingN: 0, lastPingAt: 0, rtts: [] });
+      Object.assign(R, { gen: R.gen + 1, pc: null, dc: null, open: false, failed: false, hostKf: false, ref: null, role: null, bid: null, offerSdp: null, lastFrameAt: 0, lastSentAt: 0, sent: new WeakSet(), logs: [], startedAt: 0, pings: {}, pingN: 0, lastPingAt: 0, rtts: [] });
     }
     // ICE 후보를 다 모을 때까지(최대 ms) 기다림 → 연결 정보를 한 번에 주고받음
     function liveRtcIceDone(pc, ms) {
@@ -44575,7 +44811,10 @@
           if (m.v === 'server') {
             addBattleLog('📡 직접 연결이 원활하지 않아 서버로 진행해요.');
             liveRtcStop();
-          } else addBattleLog('⚡ 친구 기기와 직접 연결로 진행해요!');
+          } else {
+            if (m.kf) R.hostKf = true;
+            addBattleLog('⚡ 친구 기기와 직접 연결로 진행해요!');
+          }
         }
       };
     }
@@ -44796,7 +45035,7 @@
         const med = rtts.length ? rtts[Math.floor(rtts.length / 2)] : Infinity;
         const p90 = rtts.length ? rtts[Math.min(rtts.length - 1, Math.floor(rtts.length * 0.9))] : Infinity;
         P.mode = rtts.length >= LIVE_RTC_GOOD_MIN_PONGS && med <= LIVE_RTC_GOOD_MEDIAN_MS && p90 <= LIVE_RTC_GOOD_P90_MS ? 'rtc' : 'server';
-        liveRtcHubSend(P, { k: 'mode', v: P.mode });
+        liveRtcHubSend(P, { k: 'mode', v: P.mode, kf: 1 });
         if (P.mode === 'server') {
           const gen = H.gen;
           setTimeout(() => {
@@ -44935,9 +45174,10 @@
       clearTimeout(liveNet.hiddenTimer);
       liveNet.hiddenTimer = null;
       liveNet.framePaused = false;
+      liveNet.rtcPaused = false;
       stopTowerLiveNet();
       if (liveNet.ref) {
-        ['init', 'frame', 'result', 'input', 'inputs', 'status', 'handoff'].forEach(k => { try { liveNet.ref.child(k).off(); } catch (e) {} });
+        ['init', 'frame', 'result', 'input', 'inputs', 'status', 'handoff', 'kf'].forEach(k => { try { liveNet.ref.child(k).off(); } catch (e) {} });
       }
       clearTimeout(liveNet.inputTimer);
       Object.values(liveNet.remoteCtrls || {}).forEach(c => {
@@ -45034,10 +45274,9 @@
       if (v && typeof v === 'object') { const o = {}; for (const k in v) o[k] = roundLiveNum(v[k]); return o; }
       return v;
     }
-    // ----- 화면 형식 v2 (LIVE_FRAME_V2_FROM = 2026-11-09 00:00 KST부터 방장이 보냄 · 받는 쪽은 두 형식 다 읽음) -----
+    // ----- 화면 형식 v2 (2026-11-09부터 방장이 보냄 · 받는 쪽은 두 형식 다 읽음) -----
     // 이펙트 종류 이름(평균 15자, 이펙트 바이트의 1/5)은 표 번호로 · 투사체의 안 바뀌는 칸(종류·색·반지름·그림)은 처음 한 번만 (매 화면 다시 보내던 투사체 바이트의 절반)
     // ⚠ LIVE_FX_TYPES 순서를 바꾸거나 중간에 끼우면 먼저 연 탭이 다른 이펙트를 그림 → 새 종류는 끝에만 더할 것 (표에 없는 종류는 이름 그대로 감)
-    const LIVE_FRAME_V2_FROM = Date.UTC(2026, 10, 8, 15);
     const LIVE_FX_TYPES = ['aoe_ring', 'arrow_hit', 'bard_encore', 'bard_lute', 'bard_song_buff', 'bard_sr_encore', 'bard_wave', 'bard_wave_hit', 'berserker_slam', 'berserker_split', 'blessing_aura', 'blood_fx', 'brawl_hit', 'brawl_ring', 'cast_circle', 'charge_dash', 'curse_bolt', 'curse_ruin_blast', 'curse_ruin_bolt', 'curse_ruin_circle', 'curse_shatter', 'curse_siphon', 'curse_siphon_heal', 'curse_weaken', 'fire_explosion', 'frost_blizzard', 'frost_glaze', 'frost_nova', 'frost_skate', 'heal_beam', 'heal_cross', 'heal_pillar', 'hidden_assassin', 'hidden_assassin_smoke', 'hidden_beam', 'hidden_excal_impact', 'hidden_fusion', 'hidden_giant_aura', 'hidden_giant_burst', 'hidden_miracle', 'hidden_miracle_buff', 'hidden_miracle_pillar', 'hidden_musou_boom', 'hidden_musou_dash', 'hidden_musou_slash', 'hidden_musou_x', 'hidden_slash', 'hidden_snipe_bullet', 'hidden_snipe_hit', 'hidden_storm', 'ice_shatter', 'lightning_bolt', 'magic_burst', 'paladin_aegis_burst', 'paladin_aegis_dome', 'paladin_charge_dust', 'paladin_charge_hit', 'paladin_consec_burst', 'paladin_hs_dome', 'paladin_judgment', 'paladin_swing', 'pierce_fx', 'pyro_burst', 'pyro_fring', 'pyro_hit', 'pyro_meteor_impact', 'pyro_sr_meteor', 'pyro_xpl', 'rampage_fx', 'shield_dome', 'sniper_line', 'sniper_spread', 'spirit_dodge', 'spirit_king_burst', 'spirit_pop', 'stun_shockwave', 'whirlwind_slash'];
     const LIVE_FX_TYPE_IDX = Object.fromEntries(LIVE_FX_TYPES.map((t, i) => [t, i]));
     let liveFrameV2 = false; // publishLiveBattleFrame이 화면마다 정함
@@ -45105,6 +45344,7 @@
       return out;
     }
 
+    const LIVE_ZN_DELTA_FROM = Date.UTC(2026, 10, 10, 15); // 2026-11-11 00:00 KST (지나면 이 상수와 비교를 지워도 됨)
     function publishLiveBattleFrame(force = false) {
       if (liveNet.role !== 'host' || !liveNet.ref) return;
       const nowMs = Date.now();
@@ -45112,7 +45352,7 @@
       // 탑 도전: 보는 친구가 없으면 화면을 보내지 않음 (결과를 보낼 때만 마지막 화면 한 장)
       if (liveNet.towerCast && !liveNet.towerWatchers && !force) return;
       liveNet.lastFramePublishedAt = nowMs;
-      liveFrameV2 = nowMs >= LIVE_FRAME_V2_FROM;
+      liveFrameV2 = true;
       const fresh = list => {
         const out = [];
         // 한 번에 40개까지만 · 넘친 것은 버리지 않고 다음 화면에 실어 보냄 (큰 범위 기술 때 효과가 통째로 빠지지 않게)
@@ -45136,9 +45376,19 @@
         p: packLiveProjectiles(sim.projectiles.slice(0, 80), keyframe),
         e: fresh(sim.effects).map(packLiveEffect),
         f: fresh(sim.floatTexts).map(ft => [liveR1(ft.x), liveR1(ft.y), String(ft.text || ''), String(ft.color || ''), liveNum(ft.life)]), // 받는 쪽은 이 5칸만 씀
-        l: liveNet.pendingLogs.splice(0, 10),
-        zn: (sim.zones || []).map(z => [liveR1(z.x), liveR1(z.y), z.r, z.life, z.kind])
+        l: liveNet.pendingLogs.splice(0, 10)
       };
+      // 장판: 남은 시간(life)이 매 화면 줄어 장판마다 약 25B가 화면마다 다시 갔음 → 자리·크기·종류가 바뀌었을 때와 전체 화면에만 실음
+      // (받는 쪽 applyLiveFrame이 앞 목록에서 흐른 틱만큼 남은 시간을 줄여 이어 씀 · 바뀐 칸만 담긴 화면에서 장판이 모두 사라지면 0을 실음: 빈 목록은 서버가 지워서 '그대로'와 구분이 안 됨)
+      // LIVE_ZN_DELTA_FROM 전에는 예전처럼 매 화면: 그 전에 연 탭은 장판 칸이 없으면 장판이 없는 것으로 그림
+      const zones = sim.zones || [];
+      const znSig = zones.map(z => `${liveR1(z.x)},${liveR1(z.y)},${z.r},${z.kind}`).join('|');
+      const znDelta = frame.at >= LIVE_ZN_DELTA_FROM;
+      if (!znDelta || keyframe || znSig !== liveNet.znSig) {
+        const zn = zones.map(z => [liveR1(z.x), liveR1(z.y), z.r, z.life, z.kind]);
+        frame.zn = zn.length || keyframe || !znDelta ? zn : 0;
+      }
+      liveNet.znSig = znSig;
       // 엘리트 보스 등장 연출(하늘에서 떨어지는 중인 시점)·화면 흔들림·섬광도 같이 보냄 (흔들림·섬광은 새로 생긴 것만 한 번)
       if (sim.eliteIntro) frame.it = sim.eliteIntro.t;
       if (sim.rush) { const rs = rushStateForFrame(keyframe); if (rs) frame.rs = rs; }
@@ -45603,7 +45853,7 @@
     // - 와이파이가 잠깐 멈췄다 몰아서 주면(학교 와이파이에서 흔함): 기다리는 시간은 빨리 늘리고 천천히 줄이며,
     //   재생 시점(playBase)은 순간 이동하지 않고 조금 느리게/빠르게 흘러서 따라감 → 멈칫·순간이동 대신 살짝 느려졌다 돌아옴
     function resetLiveFrameBuffer() {
-      Object.assign(liveNet, { rtcFeeding: false, ownPred: null, ownAct: null, viewT: null, viewTAt: 0, vtSent: null, vtSig: null, frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, playBase: null, lastPlayAt: 0, lastAimCheckAt: 0, hostPause: null, recvU: null, recvT: null });
+      Object.assign(liveNet, { rtcFeeding: false, ownPred: null, ownAct: null, viewT: null, viewTAt: 0, vtSent: null, vtSig: null, frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, playBase: null, lastPlayAt: 0, lastAimCheckAt: 0, hostPause: null, recvU: null, recvT: null, recvZn: null, recvZnT: 0 });
     }
 
     function applyLiveFrame(val, fromRtc = false) {
@@ -45613,13 +45863,23 @@
         // 서버 → 직접 연결로 바뀜: 도착 시간 기준을 새로 잡음 (서버 화면이 더 늦게 오던 기록이 남아 기다리는 시간이 길어지지 않게)
         if (!liveNet.rtcFeeding) { liveNet.rtcFeeding = true; liveNet.clockOffs = []; }
       } else {
-        if (!Array.isArray(val.u)) {
+        const delta = !Array.isArray(val.u);
+        if (delta) {
           // 바뀐 칸만 담긴 화면: 바로 앞 화면을 바탕으로 전체를 되살림 · 앞 화면이 없으면(방금 들어옴·놓침) 다음 전체 화면까지 기다림
           if (!liveNet.recvU || liveNum(val.bt) !== liveNet.recvT) return;
           val.u = unpackLiveUnitDelta(liveNet.recvU, val.d, liveNum(val.t) - liveNet.recvT);
         }
         liveNet.recvU = val.u;
         liveNet.recvT = liveNum(val.t);
+        // 장판: 새 방장(LIVE_ZN_DELTA_FROM 뒤)은 바뀐 칸만 담긴 화면에 장판 칸을 안 실으면 '그대로'라는 뜻 → 앞 목록에서 흐른 틱만큼 남은 시간을 줄여 채움 (0 = 모두 사라짐)
+        if (val.zn === 0) val.zn = [];
+        if (delta && val.zn === undefined && liveNum(val.at) >= LIVE_ZN_DELTA_FROM && Array.isArray(liveNet.recvZn)) {
+          const dt = Math.max(0, liveNet.recvT - liveNet.recvZnT);
+          val.zn = liveNet.recvZn.filter(Array.isArray).map(z => [z[0], z[1], z[2], Math.max(1, liveNum(z[3]) - dt), z[4]]);
+        } else {
+          liveNet.recvZn = Array.isArray(val.zn) ? val.zn : [];
+          liveNet.recvZnT = liveNet.recvT;
+        }
         // 직접 연결로 잘 받는 중이면 서버 화면은 이어 붙이기(바뀐 칸 되살리기)만 해 두고 쓰지 않음 · 직접 연결이 멈추면 바로 서버 화면으로
         if (liveRtcFeeding()) { liveNet.lastFrameAt = Date.now(); return; }
         if (liveNet.rtcFeeding) { liveNet.rtcFeeding = false; liveNet.clockOffs = []; }
@@ -46200,6 +46460,7 @@
         if (!a || Math.hypot(a.x - localBattleInput.aimX, a.y - localBattleInput.aimY) > 12) onLocalControlChanged();
       }
 
+      liveRtcServerPauseTick(now);
       if (liveNet.framePaused) liveNet.lastFrameAt = now; // 일부러 멈춘 동안의 조용함은 끊김이 아님
       const silentFor = now - (liveNet.initReceived ? liveNet.lastFrameAt : liveNet.startedAt);
       if (liveNet.role === 'guest' && silentFor > LIVE_GUEST_TIMEOUT_MS) {
@@ -48362,7 +48623,7 @@
         const me = getActiveStudent();
         dg.quiz.ans[dg.quiz.need.includes(me && me.id) ? me.id : dg.quiz.need[0]] = ok ? 1 : 0;
       }
-      if (typeof playSfx === 'function') { try { playSfx(ok ? 'coin' : 'hit'); } catch (e) {} }
+      try { playCombatSfx(ok ? 'heal' : 'heavy'); } catch (e) {} // 정답·오답 소리 (예전엔 없는 함수 playSfx를 불러 소리가 안 났음)
       renderDungeonQuizBox(true);
     }
     window.answerDungeonQuizMcq = function (i) {
@@ -55280,8 +55541,8 @@
      * - 관전엔 조작·보상이 없음. 친구가 끝나면 결과를 잠깐 보여 주고 관전을 마침
      ********************************************************************/
     const PETRUN_LIVE = { index: 'petrun_index', hz: 8, maxAgeMs: 60000, refreshMs: 15000, endKeepMs: 3500, watchEndMs: 4500, goneMs: 5000,
-      // objsFullMs: 물체·글자 목록을 통째로 다시 보내는 간격 · deltaFrom(2026-11-09 00:00 KST)부터 그 사이 화면은 목록 칸을 비움 (그 전에 연 옛 탭은 매 화면 전체를 기대함)
-      objsFullMs: 500, deltaFrom: Date.UTC(2026, 10, 8, 15) };
+      // objsFullMs: 물체·글자 목록을 통째로 다시 보내는 간격 · 그 사이 화면은 목록 칸을 비움 (2026-11-09부터)
+      objsFullMs: 500 };
     var petRunLiveCache = {};
 
     const PetRunWatchView = Object.assign(Object.create(PetRun), {
@@ -55372,7 +55633,7 @@
         }
         const flags = (s.onGround ? 1 : 0) | (s.sliding ? 2 : 0) | (s.over ? 4 : 0) | (s.paused ? 8 : 0) | (s.isBest ? 16 : 0);
         sig += '|' + s.texts.map(t => t._lid || (t._lid = ++this.lidSeq)).join(',');
-        const skipLists = now >= PETRUN_LIVE.deltaFrom && sig === this.lastObjSig && now - this.lastFullAt < PETRUN_LIVE.objsFullMs;
+        const skipLists = sig === this.lastObjSig && now - this.lastFullAt < PETRUN_LIVE.objsFullMs;
         if (!skipLists) { this.lastObjSig = sig; this.lastFullAt = now; }
         const texts = skipLists ? null : s.texts.map(t => [r(t.x), r(t.y), String(t.text).slice(0, 40), t.color, r2(t.life)]);
         return JSON.stringify([1, r2(s.t), r(s.dist), r(s.speed), r(s.y), r(s.vy), flags, r2(s.airT), r2(s.animT), r2(s.inv), r2(s.hitFlash),
