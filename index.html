@@ -7355,13 +7355,13 @@
     const VOLT_SR1_SHEET = {
       src: 'assets/sprites/merc/volt_sr1.webp',
       cellW: 103, cellH: 94, anchorX: 51, anchorY: 92, standH: 88, topH: 92, portraitCX: 51, count: 21,
-      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5], skill: [9], hurt: [6], death: [7, 8], tb: [9], fist: [17], rail: [12], dis: [14], ovl: [16], fin: [18, 18, 19, 20, 20, 20] },
+      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5], skill: [9], hurt: [6], death: [7, 8], tb: [9], fist: [17], rail: [12], dis: [14], ovl: [16], fin: [18, 18, 19, 20] },
       skillAnims: {
         volt_thunderbolt: { anim: 'tb', tpf: 30, dur: 30 }, chain_lightning: { anim: 'tb', tpf: 30, dur: 30 },
         electric_field: { anim: 'fist', tpf: 30, dur: 30 }, discharge: { anim: 'dis', tpf: 30, dur: 30 },
         rail_cannon: { anim: 'rail', tpf: 60 }, // 포를 쏘는 동안 내내 (castVoltSkill이 skillAnim을 포 길이로 늘림)
         overload: { anim: 'ovl', tpf: 30, dur: 40 },
-        volt_finale: { anim: 'fin', tpf: 18, dur: 108 } // 히든 피날레: 웅크림 0.6초 → 도약 0.3초 → 두 팔 활짝 (공중 높이는 drawUnitToken의 jumpY · voltFinLift)
+        volt_finale: { anim: 'fin', tpf: 18, dur: 150 } // 히든 피날레: 웅크림 0.6초 → 도약 0.3초 → 두 팔 활짝 (체공·내려오는 동안 유지) (공중 높이는 drawUnitToken의 jumpY · voltFinLift)
       },
       castFrames: { volt_thunderbolt: 9, chain_lightning: 9, electric_field: 10, rail_cannon: 11, discharge: 13, overload: [15, 17, 16] },
       beamHand: [30.3, -46.2]
@@ -27789,8 +27789,8 @@
     const VOLT_VS_SHOCKED = 1.2;      // 패시브: 감전(대전 포함)된 적에게 주는 피해 +20%
     const VOLT_OVERLOAD_TICKS = 900, VOLT_BURNOUT_TICKS = 600, VOLT_OVERLOAD_SPEED = 0.5;                 // 오버로드 15초 (2026-11-10 10초 → 20초 → 15초, 사용자 요청) → 과부하 10초 · 속도 +50%
     // 시크릿 레어 히든 피날레 (2026-11-10 사용자 요청): 오버로드가 끝나는 순간 사방의 전기를 모아 공중으로 도약 → 주변 10칸 적 모두에게 큰 전격 피해 + 감전 5초
-    //   0~0.6초 웅크려 모음 · 0.6~0.9초 도약 · 0.9초 최고점에서 터짐(피해) · 1.2~1.5초 내려옴 · 1.8초 동안 그 자리에 고정 (이펙트 시트 finale과 같은 시간)
-    const VOLT_FIN_GATHER = 36, VOLT_FIN_BANG = 54, VOLT_FIN_DUR = 108, VOLT_FIN_JUMP = 70;
+    //   0~0.6초 웅크려 모음 · 0.6~0.9초 도약 · 0.9초 최고점에서 터짐(피해) · 0.9~1.9초 공중에 떠 있음 · 1.9~2.2초 내려옴 · 2.5초 동안 그 자리에 고정 (이펙트 시트 finale과 같은 시간)
+    const VOLT_FIN_GATHER = 36, VOLT_FIN_BANG = 54, VOLT_FIN_HOVER = 114, VOLT_FIN_DUR = 150, VOLT_FIN_JUMP = 70; // 터뜨린 뒤 1초 체공(54~114) → 0.3초 내려옴
     const VOLT_FIN_CELLS = 10, VOLT_FIN_DMG = 3.0, VOLT_FIN_SHOCK = 300;
 
     function voltOverloadOn(u) { return Boolean(u && u.statuses && (u.statuses.overload || 0) > 0); }
@@ -27800,8 +27800,8 @@
     function voltFinLift(e) {
       if (e < VOLT_FIN_GATHER) return 0;
       if (e < VOLT_FIN_BANG) return Math.sin((e - VOLT_FIN_GATHER) / (VOLT_FIN_BANG - VOLT_FIN_GATHER) * Math.PI / 2);
-      if (e < 72) return 1;
-      if (e < 90) { const q = (e - 72) / 18; return 1 - q * q; }
+      if (e < VOLT_FIN_HOVER) return 1 + 0.04 * Math.sin((e - VOLT_FIN_BANG) / 60 * 7); // 체공: 살짝 오르내림
+      if (e < VOLT_FIN_HOVER + 18) { const q = (e - VOLT_FIN_HOVER) / 18; return 1 - q * q; }
       return 0;
     }
     function voltFinaleStart(u) {
@@ -27820,49 +27820,21 @@
       u.cooldown = Math.max(u.cooldown || 0, 2); u.dashCooldown = Math.max(u.dashCooldown || 0, 2);
       if (F.done || e < VOLT_FIN_BANG) return;
       F.done = true;
-      const sp = getUnitSprite(u), k = sp && sp.standH ? spriteDrawH(u, sp) / sp.standH : 1;
-      const ax = u.x, ay = u.y + 12 - (VOLT_FIN_JUMP + 46) * k; // 공중의 몸 가운데
       const R = GRID_CELL_SIZE * VOLT_FIN_CELLS * unitAreaScale(u);
       const hits = voltFoes(u).filter(e2 => Math.hypot(e2.x - u.x, e2.y - u.y) - unitBodyGap(e2) <= R);
       withSkillHit(() => hits.forEach(e2 => {
         applyDamage(u, e2, u.atk * VOLT_FIN_DMG, '', '#e0f2fe');
         voltShock(u, e2, VOLT_FIN_SHOCK);
       }));
-      // 터짐 그림(finale 시트)의 바닥 번개 끝(발에서 반지름 약 140~300)에서 이어서 바깥으로 자라며 뻗어 나감 (공중에서 곧게 뻗는 긴 줄기는 없음, 2026-11-10)
-      //   줄기 하나 = 3마디: 마디마다 방향이 조금씩 틀어지며, 앞 마디가 다 뻗으면 다음 마디가 이어서 뻗음 (마디당 6틱)
-      const fy = u.y + 12, SQ = 0.62, seed = sim.tickCount * 131;
+      // 10칸까지 퍼지는 그림: 피날레와 같은 매끈한 줄기의 방전 그림(discharge-gold, 백열 은빛)을 세 겹으로 무작위로 섞어 차례로 터뜨림
+      //   안쪽(약 3칸) 4개 → 중간(약 6칸) 6개 → 바깥(약 9칸) 8개, 겹마다 0.1초씩 늦게 · 자리·크기·시작 프레임을 무작위로 (코드로 그리는 줄기·낙뢰는 쓰지 않음, 사용자 요청 2026-11-10)
+      const fy = u.y + 12, seed = sim.tickCount * 131;
       const rnd = i => (((seed + i * 2654435761) >>> 0) % 1000) / 1000;
-      const legs = (x0, y0, a, d0, d1, w, start, n = 3) => { // (x0,y0)에서 각도 a로 d0 → d1까지 n마디
-        let px = x0, py = y0, ang = a, d = d0;
-        for (let k = 0; k < n; k++) {
-          ang += (rnd(k * 7 + Math.round(a * 100)) - 0.5) * 0.5;
-          const nd = d0 + (d1 - d0) * (k + 1) / n, step = nd - d;
-          const nx = px + Math.cos(ang) * step, ny = py + Math.sin(ang) * step * SQ;
-          voltBolt(px, py, nx, ny, 34 - k * 4, true, w * (1 - k * 0.15), u, 6, start + k * 6);
-          px = nx; py = ny; d = nd;
+      [[0.3, 4, 3], [0.6, 6, 9], [0.88, 8, 15]].forEach(([rk, n, wait], ring) => {
+        for (let i = 0; i < n; i++) {
+          const id = ring * 20 + i, a2 = ((i + rnd(id) * 0.8) / n) * Math.PI * 2, d = R * rk * (0.85 + rnd(id + 7) * 0.3);
+          voltFx('discharge-gold', u.x + Math.cos(a2) * d, fy + Math.sin(a2) * d * 0.62, 0.45 + rnd(id + 13) * 0.35, wait + Math.round(rnd(id + 21) * 5));
         }
-      };
-      const starts = [];
-      for (let i = 0; i < 14; i++) {
-        const a = (i / 14) * Math.PI * 2 + (rnd(i) - 0.5) * 0.3, d0 = 180 + rnd(i + 50) * 90;
-        starts.push({ a, x: u.x + Math.cos(a) * d0, y: fy + Math.sin(a) * d0 * SQ });
-        legs(u.x + Math.cos(a) * d0, fy + Math.sin(a) * d0 * SQ, a, d0, R * (0.7 + rnd(i + 90) * 0.3), 1.25, 2);
-      }
-      // 맞은 적: 터짐 안(약 2칸)은 바로, 먼 적은 가장 가까운 번개 끝에서 가지가 뻗어 나가 닿음
-      hits.forEach((e2, i) => {
-        const dist = Math.hypot(e2.x - u.x, (e2.y - fy) / SQ);
-        if (dist < 260) voltBolt(ax, ay, e2.x, e2.y - 14, 36, true, 1.4, u);
-        else {
-          const ea = Math.atan2((e2.y - fy) / SQ, e2.x - u.x);
-          const st = starts.reduce((b, s2) => (Math.abs(Math.atan2(Math.sin(s2.a - ea), Math.cos(s2.a - ea))) < Math.abs(Math.atan2(Math.sin(b.a - ea), Math.cos(b.a - ea))) ? s2 : b));
-          const mx = (st.x + e2.x) / 2 + (rnd(i + 200) - 0.5) * 80, my = (st.y + e2.y - 14) / 2 + (rnd(i + 300) - 0.5) * 50;
-          const t1 = Math.max(4, Math.round(Math.hypot(mx - st.x, my - st.y) / 70));
-          voltBolt(st.x, st.y, mx, my, 34, true, 1.4, u, t1, 2);
-          voltBolt(mx, my, e2.x, e2.y - 14, 32, true, 1.3, u, Math.max(4, Math.round(Math.hypot(e2.x - mx, e2.y - 14 - my) / 70)), 2 + t1);
-        }
-        const reach = dist < 260 ? 0 : 2 + Math.round(dist / 70);
-        voltFx('hit-gold', e2.x, e2.y - 14, 1.4, reach, 40);
-        if (i < 6) voltFx('thunderbolt-gold', e2.x, e2.y + 12, Math.min(1.6, e2.sizeScale || 1), reach + i * 3);
       });
       sim.shake = { power: 16, life: 30, maxLife: 30 };
       playCombatSfx('heavy');
@@ -28290,7 +28262,7 @@
       'hit-gold': [56, 48, 4, 16, 20, 1, 32, 24],
       'overload': [118, 137, 5, 20, 20, 1, 59, 124],
       'overload-cast': [516, 558, 6, 31, 20, 0, 258, 498],
-      'finale': [679, 635, 7, 41, 20, 0, 319, 435],
+      'finale': [679, 635, 8, 53, 20, 0, 319, 435],
       'overload-burst': [259, 259, 6, 29, 20, 0, 129, 210],
       'rail-arc': [137, 198, 5, 12, 20, 1, 15, 114],
       'rail-arc-wide': [229, 392, 5, 12, 20, 1, 29, 227],
@@ -28382,7 +28354,7 @@
         if (has('chain_lightning')) pre('hit-gold');
         if (has('rail_cannon')) ['', '-wide-gold'].forEach(sf => ['rail-body', 'rail-arc', 'rail-tip', 'rail-muzzle'].forEach(n => pre(n + sf)));
         if (has('overload')) ['overload-cast', 'overload'].forEach(pre), voltFxImg('burnout');
-        if (has('overload') && voltIsSr(u)) voltFxImg('finale'); // 시크릿 레어 피날레
+        if (has('overload') && voltIsSr(u)) ['finale', 'discharge-gold'].forEach(n => voltFxImg(n)); // 시크릿 레어 피날레 (10칸까지 퍼지는 방전 그림도)
       }
       if (voltOverloadOn(u)) drawVoltFx(ctx, voltFxName(u, 'overload'), f, 0, 12, sc);
       else if (voltBurnout(u)) drawVoltFx(ctx, 'burnout', f, 0, 12, sc);

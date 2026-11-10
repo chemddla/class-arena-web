@@ -1,5 +1,5 @@
 // 시크릿 레어 히든 피날레 (한 번): 오버로드가 끝날 때 — 사방에 퍼진 전기를 모아 공중으로 도약해 터뜨림. 기준점 = 발 (땅). 백열 은빛(GOLD_V) + 흰빛. 2초
-//   게임 시간과 맞춤 (index.html VOLT_FIN_*): 0~0.6초 모음(웅크림) · 0.6~0.9초 도약(공중으로 JUMP px) · 0.9초 터짐(최고점) · 1.2~1.5초 내려옴
+//   게임 시간과 맞춤 (index.html VOLT_FIN_*): 0~0.6초 모음(웅크림) · 0.6~0.9초 도약(공중으로 JUMP px) · 0.9초 터짐(최고점) · 0.9~1.9초 공중에 떠 있음(체공) · 1.9~2.2초 내려옴
 //   0.00~0.60 모음: 바닥 사방 멀리서 전류가 땅을 기어 발밑으로 몰려 듦(점점 많이·밝게), 빛 알갱이가 빨려 듦, 몸이 점점 하얗게 달아오름, 발밑 빛 웅덩이가 커짐
 //   0.60~0.90 도약: 땅에서 몸까지 흰 빛기둥이 따라 올라감, 발밑에서 위로 튀는 전류, 몸 둘레 고리 빛
 //   0.90      터짐 (최고점 = 몸 가운데): 하얀 섬광 원이 확 커졌다 사라짐, 사방 긴 빛살(플레어), 굵은 번개 14줄이 최고점에서 바닥 타원 위 사방으로 내리꽂힘(여러 번 다시 그음),
@@ -17,7 +17,7 @@ export const meta = {
   tags: ["lightning", "electric", "plasma", "hidden", "ultimate", "one-shot"],
   size: [780, 640],
   origin: [390, 440],
-  duration: 2,
+  duration: 2.6,
   loop: false,
   fps: 20,
   bg: "dark",
@@ -40,8 +40,8 @@ function pool(p, cx, cy, rx, ry, cols, k) {
 function lift(t) {
   if (t < GATHER) return 0;
   if (t < BANG) return JUMP * Math.sin(((t - GATHER) / (BANG - GATHER)) * Math.PI / 2);
-  if (t < 1.2) return JUMP;
-  if (t < 1.5) return JUMP * (1 - ease.inQuad((t - 1.2) / 0.3));
+  if (t < 1.9) return JUMP * (1 + 0.04 * Math.sin((t - BANG) * 7));   // 체공: 터뜨린 뒤 1초 동안 떠서 살짝 오르내림
+  if (t < 2.2) return JUMP * (1 - ease.inQuad((t - 1.9) / 0.3));
   return 0;
 }
 
@@ -88,7 +88,7 @@ export function create(o) {
             ps.spawn(P.SPARK, b.x1, b.y1 - 1, Math.cos(a) * sp, Math.sin(a) * sp, R.range(0.25, 0.6));
           }
         }
-      if (t > BANG + 0.15 && t < 1.8 && R.chance(90 * dt)) ps.spawn(P.SPARK, R.range(-320, 320), -R.range(200, 380), R.range(-20, 20), R.range(60, 170), R.range(0.5, 1));
+      if (t > BANG + 0.15 && t < 2.2 && R.chance(70 * dt)) ps.spawn(P.SPARK, R.range(-320, 320), -R.range(200, 380), R.range(-20, 20), R.range(60, 170), R.range(0.5, 1));
       ps.update(dt);
       lights.update(dt);
     },
@@ -151,8 +151,9 @@ export function create(o) {
         for (const s of sky) stroke(p, zigzag(r, 0, apex, Math.cos(s.a) * s.l * 1.3, apex + Math.sin(s.a) * s.l, 0.25, 0.6), BK[sa] * 0.85, C, 0.85, { light: 0.35 });
       }
       // 잔광: 최고점의 플라즈마 구체가 줄어들며 사라짐
-      if (a > 0.1 && a < 0.9) {
-        const k = 1 - (a - 0.1) / 0.8, rr = 34 * k + 4, r = rng(o.seed, 8, f);
+      if (a > 0.1 && t < 2.15) {
+        // 체공 동안 몸에 남은 전기 구체: 터진 뒤 0.3초 동안 줄어들고, 떠 있는 동안 작게 지지직, 내려오며 사라짐
+        const k = a < 0.4 ? 1 - (a - 0.1) / 0.3 * 0.6 : t < 1.9 ? 0.4 + 0.08 * Math.sin(t * 30) : 0.4 * (1 - (t - 1.9) / 0.25), rr = 34 * k + 4, r = rng(o.seed, 8, f);
         p.glow(0, apex, rr * 3, C[5], 0.5 * k);
         p.circle(0, apex, rr, C[4]);
         p.circle(0, apex, rr * 0.75, C[6]);
