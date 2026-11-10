@@ -1,5 +1,6 @@
 # 전격술사 기본 외형(검은 후드 로브·금빛 테두리) 전용 이펙트 색: 시크릿 레어(예전 기본) 이펙트 시트를 색만 바꿔 <이름>.b.webp로 저장
 # 사용: python tools/volt_fx_base_recolor.py   (원본 assets/sprites/fx/volt/<이름>.webp → assets/sprites/fx/volt/<이름>.b.webp)
+#       python tools/volt_fx_base_recolor.py [--gold-src 폴더] 이름...   (그 이름만. --gold-src = 강화판을 금빛으로 따로 구운 <이름>.webp가 있는 폴더)
 # 사용자 요청 (2026-11-10): 강화 전 = 푸른색 → 노란색 계열 · 강화 = 검정과 노란색을 조화롭게 섞음
 #   픽셀마다 색으로 나눔: 푸른 픽셀(파랑 > 빨강) → 노란 램프 YEL · 금빛 픽셀(빨강 > 파랑) → 검정·노랑 램프 BLK
 #   원래 램프(PLASMA_V = index.html PFX_RAMPS.volt, GOLD_V = volt_gold)의 몇 번째 단계 밝기인지 찾아 새 램프의 같은 단계로 옮김 (pixelfx 램프 치환)
@@ -17,7 +18,12 @@ GOLD_SRC_REV = 'a3ebd87'
 GOLD_SRC = lambda name: name.endswith('-gold') or name in ('charged', 'empower', 'overload-cast')
 
 
+GOLD_DIR = None   # --gold-src: 새 강화 이펙트의 금빛 원본 폴더 (git 기록보다 먼저 봄)
+
+
 def load_src(f, name):
+    if GOLD_SRC(name) and GOLD_DIR and os.path.exists(os.path.join(GOLD_DIR, name + '.webp')):
+        return Image.open(os.path.join(GOLD_DIR, name + '.webp')).convert('RGBA')
     if GOLD_SRC(name):
         try:
             data = subprocess.run(['git', 'show', f'{GOLD_SRC_REV}:{f}'], capture_output=True, check=True).stdout
@@ -49,10 +55,13 @@ def remap(c, src, dst):
     return out
 
 
-def main():
+def main(argv):
+    global GOLD_DIR
+    if argv[:1] == ['--gold-src']: GOLD_DIR, argv = argv[1], argv[2:]
     for f in sorted(glob.glob(D + '*.webp')):
         if f.endswith('.b.webp'): continue
         name = os.path.basename(f)[:-5]
+        if argv and name not in argv: continue
         im = load_src(f.replace(os.sep, '/'), name)
         a = np.array(im).astype(float)
         c = a[..., :3]
@@ -74,4 +83,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    import sys
+    main(sys.argv[1:])

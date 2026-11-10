@@ -33,6 +33,11 @@ const VARIANTS = [
   ["discharge-gold", "discharge", { R: 480, ...GOLD }],
   ["hit-gold", "hit", GOLD],
   ["hand-spark-gold", "hand-spark", GOLD],
+  // 전격 줄기 (arc = 기본 공격 240px · 굵기 0.85): 체인은 1.8배 굵기로 300px·600px 두 길이 (게임이 가까운 길이를 골라 가로만 늘림)
+  ["arc-chain", "arc", { len: 300, s: 1.53 }],
+  ["arc-chain-long", "arc", { len: 600, s: 1.53 }],
+  ["arc-chain-gold", "arc", { len: 300, s: 1.53, ...GOLD }],
+  ["arc-chain-long-gold", "arc", { len: 600, s: 1.53, ...GOLD }],
 ];
 const ids = readdirSync(src).filter((f) => f.endsWith(".js") && !f.startsWith("_")).map((f) => f.slice(0, -3));
 const want = (n) => !names.length || names.includes(n);

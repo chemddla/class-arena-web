@@ -28266,6 +28266,11 @@
     //   [칸 너비, 높이, 열 수, 프레임 수, fps, 반복, 기준점 x, y] — assets/sprites/fx/volt/volt_fx.json과 같음 (다시 구우면 이 표도 바꿀 것)
     //   그림은 처음 쓸 때 불러옴 (장판·방전은 1~2MB). 아직 못 받았으면 drawVoltFx가 false → 예전 코드 그림으로 그림
     const VOLT_FXS = {
+      'arc': [260, 72, 3, 16, 20, 1, 12, 40],
+      'arc-chain': [335, 98, 3, 16, 20, 1, 19, 56],
+      'arc-chain-gold': [335, 98, 3, 16, 20, 1, 19, 56],
+      'arc-chain-long': [638, 170, 3, 16, 20, 1, 19, 128],
+      'arc-chain-long-gold': [638, 170, 3, 16, 20, 1, 19, 128],
       'burnout': [96, 132, 7, 32, 20, 1, 48, 119],
       'charged': [98, 137, 6, 24, 20, 1, 49, 124],
       'discharge': [758, 403, 4, 23, 20, 0, 420, 200],
@@ -28364,11 +28369,11 @@
         u.voltFxPre = true;
         const has = k => (u.unlockedSkills || u.skillSlots || []).includes(k);
         const pre = n => voltFxImg(voltFxName(u, n));
-        ['hit', 'hand-spark', 'shock', 'charged', 'empower'].forEach(pre);
+        ['hit', 'hand-spark', 'shock', 'charged', 'empower', 'arc'].forEach(pre);
         if (has('volt_thunderbolt')) ['thunderbolt', 'thunderbolt-gold'].forEach(pre);
         if (has('electric_field')) ['field', 'field-gold'].forEach(pre);
         if (has('discharge')) ['discharge', 'discharge-gold'].forEach(pre);
-        if (has('chain_lightning')) pre('hit-gold');
+        if (has('chain_lightning')) ['hit-gold', 'arc-chain', 'arc-chain-long', 'arc-chain-gold', 'arc-chain-long-gold'].forEach(pre);
         if (has('rail_cannon')) ['', '-wide-gold'].forEach(sf => ['rail-body', 'rail-arc', 'rail-tip', 'rail-muzzle'].forEach(n => pre(n + sf)));
         if (has('overload')) ['overload-cast', 'overload'].forEach(pre), voltFxImg('burnout');
         if (has('overload') && voltIsSr(u)) ['finale', 'discharge-gold'].forEach(n => voltFxImg(n)); // 시크릿 레어 피날레 (10칸까지 퍼지는 방전 그림도)
@@ -28449,13 +28454,31 @@
     VOLT_FX.onload = () => { VOLT_FX.ready = true; };
     VOLT_FX.src = 'assets/sprites/fx/volt_fx.webp';
     const VOLT_BEAM_PIECE = [0, 0, 22, 31, 0, 18.5]; // 시트 x, y, 너비, 높이, 기준점 x, y
+    // 전격 줄기 시트 (tools/volt_fx/arc.js, 2026-11-11 "활 줄기"): 시작점에서 줄 방향으로 돌리고 가로만 실제 길이에 맞게 늘림 (굵기 ky는 따로)
+    //   왼쪽으로 가면 위아래를 뒤집어 활이 늘 위로 휨. base = 'arc'(기본 공격, 240px) · 'arc-chain'(300px)/'arc-chain-long'(600px) 중 가까운 길이
+    const VOLT_ARC_LEN = { 'arc': 240, 'arc-chain': 300, 'arc-chain-long': 600 };
+    function drawVoltArcFx(ctx, base, suf, sx, sy, tx, ty, ky, frame, alpha = 1) {
+      const dx = tx - sx, dy = ty - sy, L = Math.hypot(dx, dy);
+      if (L < 4) return true;
+      const name = base + suf;
+      if (!voltFxImg(name)) return false;
+      const ang = Math.atan2(dy, dx);
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(ang);
+      ctx.scale(L / VOLT_ARC_LEN[base], Math.cos(ang) < 0 ? -ky : ky);
+      drawVoltFx(ctx, name, frame, 0, 0, 1, 0, alpha);
+      ctx.restore();
+      return true;
+    }
     function drawVoltBeam(ctx, ef, progress) {
       // 기본 공격: 손 → 대상 전격 줄기 (drawVoltArc, 굵기 1). 2026-11-10 사용자 요청으로 샘플 줄기 조각 이어 붙이기 대신
       const p = Math.min(1, Math.max(0, progress)), k = ef.k || 1;
       if (ef.maxLife > 6 && p > (ef.maxLife - 4.5) / ef.maxLife) return; // 다음 틱 줄기와 겹치는 4틱은 새 줄기만
       const B = ef.vb ? '.b' : '', R = voltRamp(ef.vb, false);
-      drawVoltArc(ctx, ef.sx, ef.sy, ef.tx, ef.ty, p * 0.5, R, Math.max(0.8, k), pfxSeedOf(ef)); // 다음 틱 줄기가 바로 이어서 깜빡임 없이
-      const fr = sim.tickCount / 3;
+      const fr = sim.tickCount / 3; // 줄기 그림은 0.25초마다 새 이펙트로 바뀌어도 틱으로 프레임을 정해 끊김 없이 이어짐
+      if (!drawVoltArcFx(ctx, 'arc', B, ef.sx, ef.sy, ef.tx, ef.ty, Math.max(0.7, k), fr + (k < 0.8 ? 5 : 0)))
+        drawVoltArc(ctx, ef.sx, ef.sy, ef.tx, ef.ty, p * 0.5, R, Math.max(0.8, k), pfxSeedOf(ef)); // 시트를 아직 못 받았으면 코드 줄기
       if (!drawVoltFx(ctx, 'hit' + B, fr, ef.tx, ef.ty, Math.max(0.8, k))) drawPixelBurst(ctx, ef.tx, ef.ty, 14, Math.min(0.95, p * 1.5), R, pfxSeedOf(ef), { sparks: 5, coreK: 0.4 });
       drawVoltFx(ctx, 'hand-spark' + B, fr + 5, ef.sx, ef.sy, k); // 손끝 스파크
     }
@@ -33882,7 +33905,9 @@
 
         } else if (ef.type === 'lightning_bolt' && ef.w && /^volt(_gold)?(_b)?$/.test(ef.ramp || '')) {
           const gAge = (ef.maxLife - ef.life) - (ef.wait || 0); // grow = 끝까지 뻗는 틱, wait = 시작까지 기다리는 틱 (전격술사 피날레)
-          if (gAge >= 0) drawVoltArc(ctx, ef.sx, ef.sy, ef.tx, ef.ty, ef.wait ? gAge / Math.max(1, ef.maxLife - ef.wait) : progress, PFX_RAMPS[ef.ramp], ef.w, pfxSeedOf(ef), ef.grow ? Math.min(1, (gAge + 1) / ef.grow) : 1); // 전격술사 체인 라이트닝·피날레: 굵은 전격 줄기
+          const vL = Math.hypot(ef.tx - ef.sx, ef.ty - ef.sy), vSuf = (/gold/.test(ef.ramp) ? '-gold' : '') + (/_b$/.test(ef.ramp) ? '.b' : '');
+          if (!ef.grow && !ef.wait && drawVoltArcFx(ctx, vL < 420 ? 'arc-chain' : 'arc-chain-long', vSuf, ef.sx, ef.sy, ef.tx, ef.ty, ef.w / VOLT_CHAIN_W, sim.tickCount / 3 + ((((ef.sx + ef.sy) >> 6) & 7) * 2), ef.life < 4 ? ef.life / 4 : 1)) { /* 체인 라이트닝 줄: 시트 (활 줄기) */ }
+          else if (gAge >= 0) drawVoltArc(ctx, ef.sx, ef.sy, ef.tx, ef.ty, ef.wait ? gAge / Math.max(1, ef.maxLife - ef.wait) : progress, PFX_RAMPS[ef.ramp], ef.w, pfxSeedOf(ef), ef.grow ? Math.min(1, (gAge + 1) / ef.grow) : 1); // 전격술사 체인 라이트닝·피날레: 굵은 전격 줄기
         } else if (ef.type === 'lightning_bolt') {
           drawPixelBolt(ctx, ef, progress, PFX_RAMPS[ef.ramp] || PFX_RAMPS.bolt); // 그림(spr) 없는 번개: 도트 번개 (pixelfx 작법) · 전격술사 = 남보라
         } else if (ef.type === 'volt_rail') {
