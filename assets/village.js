@@ -825,11 +825,6 @@
     });
     petalIM.instanceMatrix.needsUpdate = true;
     curve.uTime.value = t;
-    houses.forEach(hs => {
-      const front = hs.z - me.z, hide = front > 0.6 && front < 12 && Math.abs(hs.x - me.x) < 3.6 + front * 0.3;
-      hs.show += ((hide ? 0 : 1) - hs.show) * Math.min(1, dt * 9);
-      hs.g.visible = hs.show > 0.04; hs.g.scale.y = Math.max(0.001, hs.show);
-    });
     butterflies.forEach(b => {
       const a = t * b.sp + b.ph;
       b.g.position.set(b.hx + Math.cos(a) * b.r, 0.75 + Math.sin(t * 2.3 + b.ph) * 0.22, b.hz + Math.sin(a * 1.3) * b.r);
