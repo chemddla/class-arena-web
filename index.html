@@ -7059,6 +7059,15 @@
     function towerHardFloorObj(f) {
       return { ...f, hard: true, name: `🔥하드 ${f.name}`, rewardMc: f.rewardMc * TOWER_HARD.reward };
     }
+    // 🌱 이지모드: 노말과 같은 층 기록을 씀 (이지로 깨도 다음 층이 열림) · 몬스터 능력치(체력·공격력·방어력) stat배 · 처음 깨면 원래 보상의 reward배
+    //   → 막힌 층을 보상을 덜 받고 넘어가는 길. 이지로 깬 층은 이미 깬 층이라 노말로 다시 깨도 보상 없음
+    //   난이도 3단계: 이지(능력치 0.7배 · 보상 0.5배) / 노말(1배 · 1배) / 하드(2배 · 2배 · 도전비용)
+    const TOWER_EASY = { stat: 0.7, reward: 0.5 };
+    function towerEasyFloorObj(f) {
+      return { ...f, easy: true, name: `🌱이지 ${f.name}`, rewardMc: Math.round(f.rewardMc * TOWER_EASY.reward) };
+    }
+    // 난이도 값 정리: true·'hard' → 'hard', 'easy' → 'easy', 나머지 → 'normal'
+    function towerDiffOf(v) { return v === true || v === 'hard' ? 'hard' : v === 'easy' ? 'easy' : 'normal'; }
 
     // 탑 적의 레벨·등급·능력치 배율 (시뮬레이션으로 맞춤)
     // 층 f 는 대략 같은 레벨대의 균형 잡힌 용병단이면 깰 수 있고, 각 종족의 마지막 층(10층마다)은 조금 더 강함
@@ -17598,22 +17607,23 @@
       const clamp = f => Math.max(start, Math.min(end, f));
       const sel = towerBannerSel[ri] || (towerBannerSel[ri] = {});
       const hardOpen = isTowerHardUnlocked(stu, start);
-      const hard = Boolean(sel.hard && hardOpen);
+      const hard = Boolean(sel.mode === 'hard' && hardOpen);
+      const easy = sel.mode === 'easy';
       // 고른 층은 기록이 바뀌기 전까지만 기억 (층을 깨면 다시 다음 도전 층으로)
       const nAt = stu.towerFloor, hAt = towerHardNextFloor(stu);
       const n = sel.n && sel.nAt === nAt ? sel.n : clamp(nAt);
       const h = sel.h && sel.hAt === hAt ? sel.h : clamp(hAt);
-      return { start, end, hard, hardOpen, floor: hard ? h : n };
+      return { start, end, hard, easy, hardOpen, floor: hard ? h : n };
     }
     window.selectTowerBannerFloor = function (ri, floor) {
       const sel = towerBannerSel[ri] || (towerBannerSel[ri] = {});
       const stu = getActiveStudent();
       if (!stu) return;
-      if (sel.hard) { sel.h = floor; sel.hAt = towerHardNextFloor(stu); } else { sel.n = floor; sel.nAt = stu.towerFloor; }
+      if (sel.mode === 'hard') { sel.h = floor; sel.hAt = towerHardNextFloor(stu); } else { sel.n = floor; sel.nAt = stu.towerFloor; }
       refreshTowerBanner(ri);
     };
-    window.setTowerBannerHard = function (ri, hard) {
-      (towerBannerSel[ri] || (towerBannerSel[ri] = {})).hard = Boolean(hard);
+    window.setTowerBannerMode = function (ri, mode) {
+      (towerBannerSel[ri] || (towerBannerSel[ri] = {})).mode = towerDiffOf(mode);
       refreshTowerBanner(ri);
     };
     function refreshTowerBanner(ri) {
@@ -17637,7 +17647,7 @@
 
     function towerBannerHTML(stu, ri) {
       const race = TOWER_RACES[ri];
-      const { start, end, hard, hardOpen, floor } = towerBannerState(stu, ri);
+      const { start, end, hard, easy, hardOpen, floor } = towerBannerState(stu, ri);
       const hardClears = towerHardClearsOf(stu);
       const normalDone = Math.max(0, Math.min(TOWER_RACE_FLOORS, stu.towerFloor - start + (stu.towerTopCleared && end === TOWER_MAX_FLOOR ? 1 : 0)));
       const hardDone = Array.from({ length: TOWER_RACE_FLOORS }, (_, i) => hardClears[start + i]).filter(Boolean).length;
@@ -17646,15 +17656,15 @@
       const mapSrc = (BATTLE_MAPS[mapKey] || BATTLE_MAPS.tower).src;
       const bossFloor = TOWER_FLOORS[end - 1];
 
-      // 층 고르는 버튼 (노말: 깬 층 ✅ · 도전 중 ⚔️ · 잠김 🔒 / 하드: 하드로 깬 층 ✅ · 다음 하드 층 🔥 · 잠김 🔒)
+      // 층 고르는 버튼 (노말·이지: 깬 층 ✅ · 도전 중 ⚔️ · 잠김 🔒 / 하드: 하드로 깬 층 ✅ · 다음 하드 층 🔥 · 잠김 🔒)
       const floorBtns = Array.from({ length: TOWER_RACE_FLOORS }, (_, i) => {
         const fl = start + i;
         const done = hard ? Boolean(hardClears[fl]) : (stu.towerFloor > fl || (fl === TOWER_MAX_FLOOR && stu.towerTopCleared));
         const ok = hard ? !towerHardLockReason(stu, fl) : stu.towerFloor >= fl;
-        const mark = done ? '✅' : (ok ? (hard ? '🔥' : '⚔️') : '🔒');
+        const mark = done ? '✅' : (ok ? (hard ? '🔥' : easy ? '🌱' : '⚔️') : '🔒');
         const on = fl === floor;
         const cls = on
-          ? (hard ? 'bg-red-600 border-red-300 text-white shadow shadow-red-900/60' : 'bg-indigo-600 border-indigo-300 text-white shadow')
+          ? (hard ? 'bg-red-600 border-red-300 text-white shadow shadow-red-900/60' : easy ? 'bg-emerald-600 border-emerald-300 text-white shadow' : 'bg-indigo-600 border-indigo-300 text-white shadow')
           : done ? 'bg-emerald-900/50 border-emerald-600/50 text-emerald-200 hover:bg-emerald-800/60'
           : ok ? (hard ? 'bg-red-950/70 border-red-500/60 text-red-200 hover:bg-red-900/70' : 'bg-indigo-950/70 border-indigo-400/60 text-indigo-100 hover:bg-indigo-900/70')
           : 'bg-slate-900/80 border-slate-700 text-slate-500 hover:bg-slate-800/80';
@@ -17679,14 +17689,20 @@
       } else {
         const hardLock = hard ? towerHardLockReason(stu, floor) : '';
         const done = hard ? Boolean(hardClears[floor]) : (stu.towerFloor > floor || (floor === TOWER_MAX_FLOOR && stu.towerTopCleared));
-        const reward = hard ? f.rewardMc * TOWER_HARD.reward : f.rewardMc;
+        const reward = hard ? f.rewardMc * TOWER_HARD.reward : easy ? Math.round(f.rewardMc * TOWER_EASY.reward) : f.rewardMc;
+        const easyCut = Math.round((1 - TOWER_EASY.stat) * 100);
         const btn = hardLock
           ? `<button disabled title="${hardLock}하면 열려요" class="px-4 py-2.5 rounded-xl font-extrabold text-[11px] shrink-0 bg-slate-800 text-slate-500 cursor-not-allowed">🔒 ${hardLock}하면 열려요</button>`
           : hard
-            ? `<button onclick="openTowerFormation(${floor}, true)" title="도전비용 ${TOWER_HARD.cost.toLocaleString()} CA · 몬스터 능력치 ${TOWER_HARD.stat}배 · 크기 ${TOWER_HARD.size}배 · 보스는 상태이상 면역"
+            ? `<button onclick="openTowerFormation(${floor}, 'hard')" title="도전비용 ${TOWER_HARD.cost.toLocaleString()} CA · 몬스터 능력치 ${TOWER_HARD.stat}배 · 크기 ${TOWER_HARD.size}배 · 보스는 상태이상 면역"
                 class="px-4 py-2 rounded-xl font-extrabold text-xs shrink-0 bg-red-700 hover:bg-red-600 text-white shadow shadow-red-900/60">
                 ${done ? '🔥 하드 재도전 (보상 없음)' : '🔥 하드 도전하기'}
                 <span class="block text-[10px] font-bold text-red-200">도전비용 ${TOWER_HARD.cost.toLocaleString()} CA</span>
+              </button>`
+            : easy
+            ? `<button onclick="openTowerFormation(${floor}, 'easy')" title="몬스터 능력치 ${easyCut}% 감소 · 보상 절반 · 깨면 다음 층이 열려요"
+                class="px-4 py-2.5 rounded-xl font-extrabold text-xs shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white shadow">
+                ${done ? '🌱 이지 재도전 (보상 없음)' : '🌱 이지 도전하기'}
               </button>`
             : `<button onclick="openTowerFormation(${floor})" class="px-4 py-2.5 rounded-xl font-extrabold text-xs shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white shadow">
                 ${done ? '재도전 (보상 없음)' : '⚔️ 도전하기'}
@@ -17694,22 +17710,24 @@
         detail = `
           ${towerFloorThumbHTML(f, 56)}
           <div class="flex-1 min-w-[11rem]">
-            <h4 class="font-title text-base text-white">${hard ? '<span class="text-red-400">🔥하드</span> ' : ''}${f.name}</h4>
+            <h4 class="font-title text-base text-white">${hard ? '<span class="text-red-400">🔥하드</span> ' : easy ? '<span class="text-emerald-400">🌱이지</span> ' : ''}${f.name}</h4>
             <p class="text-xs text-slate-400 mt-0.5">${f.desc}</p>
-            <div class="text-[11px] text-amber-300 mt-1">보상: <strong>💰 ${reward.toLocaleString()} CA</strong>${done ? ' <span class="text-emerald-300">(이미 받음)</span>' : ''}${hard ? ` · <span class="text-red-300">능력치 ${TOWER_HARD.stat}배 · 크기 ${TOWER_HARD.size}배</span>` : ''}</div>
+            <div class="text-[11px] text-amber-300 mt-1">보상: <strong>💰 ${reward.toLocaleString()} CA</strong>${done ? ' <span class="text-emerald-300">(이미 받음)</span>' : ''}${hard ? ` · <span class="text-red-300">능력치 ${TOWER_HARD.stat}배 · 크기 ${TOWER_HARD.size}배</span>` : easy ? ` · <span class="text-emerald-300">능력치 ${easyCut}% 감소 · 보상 절반${done ? '' : ' · 깨면 다음 층이 열려요'}</span>` : ''}</div>
           </div>
           ${btn}`;
       }
 
-      const modeBtn = (isHard, label) => {
-        const on = hard === isHard;
+      const curMode = hard ? 'hard' : easy ? 'easy' : 'normal';
+      const modeBtn = (mode, label) => {
+        const isHard = mode === 'hard';
+        const on = curMode === mode;
         if (isHard && !hardOpen) return `<button disabled title="${end}층 종족 보스를 깨면 열려요" class="px-3 py-1.5 rounded-lg text-xs font-extrabold text-slate-500 cursor-not-allowed">🔒 하드</button>`;
-        return `<button type="button" onclick="setTowerBannerHard(${ri}, ${isHard})" class="px-3 py-1.5 rounded-lg text-xs font-extrabold transition ${
-          on ? (isHard ? 'bg-red-600 text-white shadow' : 'bg-indigo-600 text-white shadow') : 'text-slate-300 hover:bg-slate-800'}">${label}</button>`;
+        return `<button type="button" onclick="setTowerBannerMode(${ri}, '${mode}')" class="px-3 py-1.5 rounded-lg text-xs font-extrabold transition ${
+          on ? (isHard ? 'bg-red-600 text-white shadow' : mode === 'easy' ? 'bg-emerald-600 text-white shadow' : 'bg-indigo-600 text-white shadow') : 'text-slate-300 hover:bg-slate-800'}">${label}</button>`;
       };
 
       return `
-        <div id="towerBanner-${ri}" class="tb-banner relative rounded-2xl border-2 overflow-hidden ${hard ? 'border-red-500/70 shadow-lg shadow-red-950/60' : isCurrent ? 'border-indigo-400/80 shadow-lg' : 'border-slate-700'}">
+        <div id="towerBanner-${ri}" class="tb-banner relative rounded-2xl border-2 overflow-hidden ${hard ? 'border-red-500/70 shadow-lg shadow-red-950/60' : easy ? 'border-emerald-500/70 shadow-lg' : isCurrent ? 'border-indigo-400/80 shadow-lg' : 'border-slate-700'}">
           <img src="${mapSrc}" alt="" loading="lazy" decoding="async" class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none" style="image-rendering:pixelated">
           <div class="absolute inset-0 pointer-events-none" style="background:linear-gradient(100deg, rgba(20,12,4,.9) 0%, rgba(20,12,4,.7) 50%, rgba(20,12,4,.35) 100%)${hard ? ', linear-gradient(0deg, rgba(127,29,29,.35), rgba(127,29,29,.35))' : ''}"></div>
           <div class="relative p-4 flex flex-col gap-3">
@@ -17725,11 +17743,11 @@
                 <div class="text-[11px] tb-sub mt-0.5">노말 ${normalDone}/${TOWER_RACE_FLOORS}층${hardOpen ? ` · <span class="text-red-300">🔥하드 ${hardDone}/${TOWER_RACE_FLOORS}층</span>` : ''} · 👑 ${MONSTER_DEFS[race.boss].name}</div>
               </div>
               <div class="flex gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-700 shrink-0">
-                ${modeBtn(false, '노말')}${modeBtn(true, '🔥 하드')}
+                ${modeBtn('easy', '🌱 이지')}${modeBtn('normal', '노말')}${modeBtn('hard', '🔥 하드')}
               </div>
             </div>
             <div class="grid grid-cols-5 sm:grid-cols-10 gap-1.5">${floorBtns}</div>
-            <div class="flex flex-wrap sm:flex-nowrap items-center gap-3 rounded-xl bg-slate-950/70 border ${hard ? 'border-red-800/60' : 'border-slate-800'} p-3">
+            <div class="flex flex-wrap sm:flex-nowrap items-center gap-3 rounded-xl bg-slate-950/70 border ${hard ? 'border-red-800/60' : easy ? 'border-emerald-800/60' : 'border-slate-800'} p-3">
               ${detail}
             </div>
           </div>
@@ -20668,6 +20686,10 @@
             unit.def = Math.round(unit.def * TOWER_HARD.stat);
             setUnitBodySize(unit, (unit.sizeScale || 1) * TOWER_HARD.size);
             if (unit.isRaceBoss) unit.hardBossImmune = true;
+          } else if (towerFloorObj.easy) {
+            unit.maxHp = unit.hp = Math.max(1, Math.round(unit.maxHp * TOWER_EASY.stat));
+            unit.atk = Math.max(1, Math.round(unit.atk * TOWER_EASY.stat));
+            unit.def = Math.round(unit.def * TOWER_EASY.stat);
           }
           return unit;
         });
@@ -20764,7 +20786,8 @@
     }
 
     // 탑에 들어갈 수 없는 이유 (들어갈 수 있으면 '')
-    function towerEntryBlockReason(stu, floorNum, hard) {
+    function towerEntryBlockReason(stu, floorNum, diff) {
+      const hard = towerDiffOf(diff) === 'hard';
       if (hard && !isTowerHardUnlocked(stu, floorNum)) return `🔒 하드모드는 ${Math.ceil(floorNum / TOWER_RACE_FLOORS) * TOWER_RACE_FLOORS}층 종족 보스를 깨야 열려요.`;
       if (hard && !isTowerHardPrevCleared(stu, floorNum)) return `🔒 ${floorNum}층 하드모드는 ${floorNum - 1}층 하드모드를 먼저 깨야 열려요.`;
       // 하루 클리어 횟수를 다 쓰면 새 층(처음 깨는 층)만 막음 · 이미 깬 층 재도전은 계속 가능
@@ -20776,12 +20799,14 @@
 
     // ===== 🏰 모험의 탑 입장 전 용병 배치 =====
     // 홈 출전 진형을 불러와서 넣고 빼거나 자리를 바꾼 뒤 출전 (바꾼 배치는 홈 출전 진형에도 저장)
-    let towerFormationDraft = null; // { floor, hard, layout: { 용병id: { row, col } }, pickedId }
+    let towerFormationDraft = null; // { floor, hard, easy, layout: { 용병id: { row, col } }, pickedId }
 
-    window.openTowerFormation = function (floorNum, hard = false) {
+    window.openTowerFormation = function (floorNum, diff = 'normal') {
       const stu = getActiveStudent();
       if (!stu || !TOWER_FLOORS.some(f => f.floor === floorNum)) return;
-      const blocked = towerEntryBlockReason(stu, floorNum, hard);
+      diff = towerDiffOf(diff);
+      const hard = diff === 'hard', easy = diff === 'easy';
+      const blocked = towerEntryBlockReason(stu, floorNum, diff);
       if (blocked) {
         showNotice(blocked);
         return;
@@ -20795,7 +20820,7 @@
         p.row = Math.min(FORMATION_ROWS - 1, Math.max(0, p.row));
         p.col = Math.min(FORMATION_COLS - 1, Math.max(0, p.col));
       });
-      towerFormationDraft = { floor: floorNum, hard, layout, pickedId: null };
+      towerFormationDraft = { floor: floorNum, hard, easy, layout, pickedId: null };
       renderTowerFormationModal();
       document.getElementById('towerFormationModal').classList.remove('hidden');
     };
@@ -20841,7 +20866,7 @@
       });
       closeTowerFormation();
       saveState();
-      startTowerBattle(d.floor, d.hard);
+      startTowerBattle(d.floor, d.hard ? 'hard' : d.easy ? 'easy' : 'normal');
     };
 
     function renderTowerFormationModal() {
@@ -20855,7 +20880,7 @@
       box.innerHTML = `
         <div class="flex items-start justify-between gap-2">
           <div>
-            <h3 class="font-title text-xl text-white">🏰 ${floor ? floor.name : `${d.floor}층`}${d.hard ? ' <span class="text-red-400">🔥 하드</span>' : ''}</h3>
+            <h3 class="font-title text-xl text-white">🏰 ${floor ? floor.name : `${d.floor}층`}${d.hard ? ' <span class="text-red-400">🔥 하드</span>' : d.easy ? ' <span class="text-emerald-400">🌱 이지</span>' : ''}</h3>
             <div class="text-[11px] text-slate-400 mt-0.5">출전할 용병과 자리를 정하세요 · 바꾼 배치는 홈 출전 진형에도 저장돼요</div>
           </div>
           <button type="button" onclick="closeTowerFormation()" class="text-slate-400 hover:text-white font-bold">✕</button>
@@ -20865,20 +20890,22 @@
         <div class="flex gap-2">
           <button type="button" onclick="resetTowerFormation()" class="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300">↺ 홈 진형</button>
           <button type="button" onclick="closeTowerFormation()" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300">취소</button>
-          <button type="button" onclick="confirmTowerFormation()" class="flex-1 py-2.5 rounded-xl ${d.hard ? 'bg-red-700 hover:bg-red-600' : 'bg-indigo-600 hover:bg-indigo-500'} text-xs font-extrabold text-white shadow">⚔️ 출전</button>
+          <button type="button" onclick="confirmTowerFormation()" class="flex-1 py-2.5 rounded-xl ${d.hard ? 'bg-red-700 hover:bg-red-600' : d.easy ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-indigo-600 hover:bg-indigo-500'} text-xs font-extrabold text-white shadow">⚔️ 출전</button>
         </div>`;
     }
 
-    function startTowerBattle(floorNum, hard = false) {
+    function startTowerBattle(floorNum, diff = 'normal') {
       const stu = getActiveStudent();
       const baseFloor = TOWER_FLOORS.find(f => f.floor === floorNum);
       if (!baseFloor) return;
-      const blocked = towerEntryBlockReason(stu, floorNum, hard);
+      diff = towerDiffOf(diff);
+      const hard = diff === 'hard';
+      const blocked = towerEntryBlockReason(stu, floorNum, diff);
       if (blocked) {
         showNotice(blocked);
         return;
       }
-      const floorObj = hard ? towerHardFloorObj(baseFloor) : baseFloor;
+      const floorObj = hard ? towerHardFloorObj(baseFloor) : diff === 'easy' ? towerEasyFloorObj(baseFloor) : baseFloor;
       launchSimulation({
         mode: 'tower',
         title: `${floorObj.name}`,
