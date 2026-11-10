@@ -23271,7 +23271,7 @@
         ctx.font = '14px sans-serif';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
-        ctx.fillText(c.icon || '✨', x - 3, y + h / 2);
+        if (c.key !== 'overload') ctx.fillText(c.icon || '✨', x - 3, y + h / 2); // 전격술사 오버로드는 배터리 아이콘 없이 막대만 (사용자 요청)
         ctx.restore();
       });
     }
@@ -32749,13 +32749,18 @@
 
       // 활성 CC 아이콘
       // 슈퍼아머는 빨강·파랑 윤곽선으로 보여서 방패 아이콘은 뺌 · 결투는 ⚔️ 대신 붓글씨 '결투!' (drawDuelLabel) · 전격술사 과부하는 몸의 붉은 전기 점멸(burnout 시트)로 보여서 🪫 아이콘은 뺌
-      const activeCcList = Object.keys(st).filter(k => st[k] > 0 && k !== 'superarmor' && k !== 'duel' && k !== 'overload_burnout').map(k => STATUS_DEFS[k].icon);
+      //   전격술사 오버로드·과부하는 🔋 대신 남은 시간이 줄어드는 보라 원 아이콘 (drawVoltTimerIcon)
+      const activeCcList = Object.keys(st).filter(k => st[k] > 0 && k !== 'superarmor' && k !== 'duel' && k !== 'overload_burnout' && k !== 'overload').map(k => STATUS_DEFS[k].icon);
       const ccY = by - ((spiritLifeMax && u.spiritOn) || brawlSpirit > 0 ? 7 : 3);
+      const voltTimer = (st.overload || 0) > 0 ? 'overload' : ((st.overload_burnout || 0) > 0 ? 'overload_burnout' : null);
+      ctx.font = 'bold 13px Pretendard, sans-serif';
+      const ccText = activeCcList.join(''), ccW = ccText ? ctx.measureText(ccText).width : 0;
+      const ccX = voltTimer ? (ccW ? 8 : 0) : 0; // 보라 아이콘(지름 14)과 다른 상태 아이콘을 한 줄 가운데에 나란히
+      if (voltTimer) drawVoltTimerIcon(ctx, voltTimer, st[voltTimer], ccW ? -(ccW + 16) / 2 + 7 : 0, ccY - 8);
       if (activeCcList.length > 0) {
-        ctx.font = 'bold 13px Pretendard, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        ctx.fillText(activeCcList.join(''), 0, ccY);
+        ctx.fillText(ccText, ccX, ccY);
       }
       if ((st.duel || 0) > 0) drawDuelLabel(ctx, tick, activeCcList.length > 0 ? ccY - 15 : ccY);
 
@@ -32782,6 +32787,26 @@
       ctx.fillStyle = '#ffffff';
       ctx.fillText(shortName, 0, pillY + 9);
 
+      ctx.restore();
+    }
+
+    // 전격술사 오버로드·과부하 남은 시간: 머리 위 보라 원 (남은 만큼 부채꼴로 차 있고 가운데 남은 초). 오버로드 = 밝은 보라, 과부하 = 어두운 보라
+    function drawVoltTimerIcon(ctx, kind, left, x, y) {
+      const total = kind === 'overload' ? VOLT_OVERLOAD_TICKS : VOLT_BURNOUT_TICKS;
+      const frac = Math.max(0, Math.min(1, left / total)), r = 7;
+      ctx.save();
+      ctx.fillStyle = '#1e1033';
+      ctx.beginPath(); ctx.arc(x, y, r + 1, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = kind === 'overload' ? '#a855f7' : '#6b21a8';
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = kind === 'overload' ? '#e9d5ff' : '#a78bfa';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(x, y, r + 0.5, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 9px Pretendard, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(Math.ceil(left / 60)), x, y + 0.5); // 스킬 설명과 같은 초 (60틱 = 1초)
       ctx.restore();
     }
 
