@@ -1,6 +1,6 @@
 // 전자포 끝 (반복): 포가 끝나는 자리. 기준점 = 포 끝 (포는 왼쪽에서 들어옴). 게임은 몸통을 포 끝까지 그린 뒤 이 그림을 위에 덮음.
 // - 몸통과 같은 색·결 무늬의 포가 끝에서 둥글게 닫힘 (흰 테두리 띠가 머리를 감싸며 돎)
-// - 끝에 큰 흰 섬광 + 세로·가로 빛살 (이음매를 덮음), 매 프레임 크기가 떨림
+// - 끝에 세로·가로 빛살 (흰 동그라미 섬광은 없음), 매 프레임 길이가 떨림
 // - 앞으로 갈라지는 굵은 번개 3줄
 import { fit, rng, clamp, TAU, WHITE } from "../../core/index.js";
 import { zigzag, stroke } from "../lightning/_lib.js";
@@ -9,7 +9,7 @@ import { edge, beamColor } from "./_wave.js";
 
 export const meta = {
   name: "Volt rail tip",
-  desc: "The end of a heavy energy cannon: the beam closes in a rounded head ringed by its white rim, a big white flare with cross rays, heavy forks thrown forward.",
+  desc: "The end of a heavy energy cannon: the beam closes in a rounded head ringed by its white rim, cross rays, heavy forks thrown forward.",
   tags: ["lightning", "electric", "plasma", "beam", "impact", "loop"],
   size: [240, 480],
   origin: [80, 240],
@@ -33,11 +33,9 @@ export function draw(p, t, o) {
     const c = beamColor(((x % 120) + 120) % 120, y, edge(Math.max(0, x), ph, k) * s, ph, C, WHITE);
     if (c) out.c = c;
   });
-  // 섬광 + 빛살
+  // 빛살 (흰 동그라미 섬광은 뺌 · 사용자 요청 2026-11-10)
   const fx = cap * 0.35, b = r0 * 0.55 * jit;
-  p.glow(fx, 0, b * 2, C[6], 0.6);
-  p.ellipse(fx, 0, b * 0.9, b, C[6]);
-  p.ellipse(fx, 0, b * 0.6, b * 0.65, WHITE);
+  p.glow(fx, 0, b * 1.4, C[5], 0.35);
   p.line(fx - r0, 0, fx + r0 * 1.8 * jit, 0, WHITE);
   for (let y = -r0 * 1.9 * jit; y <= r0 * 1.9 * jit; y++) p.px(fx, y, Math.abs(y) < r0 ? WHITE : C[5]);
   // 앞으로 갈라지는 굵은 번개
