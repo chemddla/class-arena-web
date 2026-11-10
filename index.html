@@ -52011,12 +52011,16 @@
       renderMinigameLobbyAndRoomUI();
     };
 
+    const MG_LOG_SYNC_MAX = 8; // 화면에 보이는 줄 수 (renderYutnoriBoard의 st.log.slice(0, 8))
     async function pushMinigameStateToFirebase(gameKey, statePayload) {
       if (!mgRealtimeSyncEnabled || suppressMinigameRemotePush || !currentJoinedMinigameRoomId) return;
       const db = RealtimePvpService.initFirebaseClientSafe();
       const classCode = String(state.classCode || '').trim().toUpperCase();
       const myStu = getActiveStudent();
       if (!db || !classCode) return;
+      // 판은 수를 둘 때마다 통째로 올라가 방 안 모두에게 내려감 → 화면에 안 쓰는 부분은 빼고 올림
+      // 윷놀이 기록(log): 화면은 최근 8줄만 보여 주는데 30줄까지 실려 판 크기의 36%였음 (2026-11-10 실측: 한 번에 평균 2.4KB 중 876B)
+      if (statePayload && Array.isArray(statePayload.log) && statePayload.log.length > MG_LOG_SYNC_MAX) statePayload = { ...statePayload, log: statePayload.log.slice(0, MG_LOG_SYNC_MAX) };
       try {
         await db.ref(`classes/${classCode}/minigames/${currentJoinedMinigameRoomId}/${gameKey}`).set({
           ...statePayload,
