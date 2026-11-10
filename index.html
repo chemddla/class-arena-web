@@ -19643,6 +19643,7 @@
       if (whirlwindBusy(u)) { say('🌪️ 회전베기 중에는 못 써요'); return; }
       if (brawlerHolding(u)) { say('🥋 반격 자세 중에는 못 써요'); return; }
       if (voltBurnout(u)) { say('🪫 과부하라 스킬을 못 써요'); return; }
+      if (u.voltFin) { say('⚡ 뇌신 강림 중이에요'); return; }
       if (u.voltBeam) { say('🔫 전자포를 쏘는 중이에요'); return; }
       if ((u.skillCooldowns?.[key] || 0) > 0) { say('⏳ 아직 준비 중'); return; }
       if (u.mana < (sk.manaCost || 0) * voltOverloadHalf(u)) { say('💧 마나 부족', '#0284c7'); return; }
@@ -27798,7 +27799,7 @@
     const VOLT_VS_SHOCKED = 1.2;      // 패시브: 감전(대전 포함)된 적에게 주는 피해 +20%
     const VOLT_OVERLOAD_TICKS = 900, VOLT_BURNOUT_TICKS = 600, VOLT_OVERLOAD_SPEED = 0.5;                 // 오버로드 15초 (2026-11-10 10초 → 20초 → 15초, 사용자 요청) → 과부하 10초 · 속도 +50%
     // 시크릿 레어 히든 피날레 (2026-11-10 사용자 요청): 오버로드가 끝나는 순간 사방의 전기를 모아 공중으로 도약 → 주변 10칸 적 모두에게 큰 전격 피해 + 감전 5초
-    //   0~1.2초 웅크려 모음 · 1.2~1.8초 도약(130px) · 1.8초 최고점에서 터짐(피해) · 1.8~2.8초 방출 자세로 공중에 떠 있음 · 2.8~3.7초 체공 자세로 천천히 내려옴 · 3.7~4.2초 착지 · 4.2초 동안 그 자리에 고정 (이펙트 시트 finale과 같은 시간)
+    //   0~1.2초 웅크려 모음 · 1.2~1.8초 도약(130px) · 1.8초 최고점에서 터짐(피해) · 1.8~2.8초 방출 자세로 공중에 떠 있음 · 2.8~3.7초 체공 자세로 천천히 내려옴 · 3.7~4.2초 착지 · 4.2초 동안 그 자리에 고정 (이펙트 시트 finale과 같은 시간) · 과부하 10초는 3.7초 땅에 닿을 때 시작, 그 전엔 스킬만 막힘
     const VOLT_FIN_GATHER = 72, VOLT_FIN_BANG = 108, VOLT_FIN_HOVER = 168, VOLT_FIN_FALL = 54, VOLT_FIN_DUR = 252, VOLT_FIN_JUMP = 130; // 1.2초 모음 → 0.6초 도약(130px) → 터뜨린 뒤 방출 자세로 1초 체공(108~168) → 체공 자세로 0.9초 내려옴(222에 땅) → 0.5초 착지 자세
     const VOLT_FIN_CELLS = 10, VOLT_FIN_DMG = 3.0, VOLT_FIN_SHOCK = 300;
 
@@ -27813,6 +27814,10 @@
       if (e < VOLT_FIN_HOVER + VOLT_FIN_FALL) return (1 + Math.cos((e - VOLT_FIN_HOVER) / VOLT_FIN_FALL * Math.PI)) / 2; // 천천히 떠내려옴 (시작·끝이 느림)
       return 0;
     }
+    function voltBurnoutStart(u) {
+      u.statuses.overload_burnout = VOLT_BURNOUT_TICKS;
+      sim.floatTexts.push({ x: u.x, y: u.y - 60, text: '🪫 과부하', color: '#64748b', life: 60 });
+    }
     function voltFinaleStart(u) {
       u.voltFin = { at: sim.tickCount, x: u.x, y: u.y, done: false };
       u.voltCh = null; u.voltBeam = null; u.voltChain = null; u.casting = null; u.attackAnim = 0;
@@ -27824,6 +27829,8 @@
     // 피날레 매 틱: 자리 고정 · 공격·대시 막음 · 최고점에서 터짐
     function voltFinaleStep(u) {
       const F = u.voltFin, e = sim.tickCount - F.at;
+      // 마지막 방출 뒤 땅에 닿는 순간(체공 자세로 내려온 끝) 과부하 10초 시작 · 그 전에 피날레가 끊겨도 살아 있으면 과부하
+      if (!F.burnt && u.alive && e >= Math.min(VOLT_FIN_DUR, VOLT_FIN_HOVER + VOLT_FIN_FALL)) { F.burnt = true; voltBurnoutStart(u); }
       if (!u.alive || e >= VOLT_FIN_DUR) { u.voltFin = null; return; }
       u.x = F.x; u.y = F.y; u.isMoving = false; u.kbVx = 0; u.kbVy = 0;
       u.cooldown = Math.max(u.cooldown || 0, 2); u.dashCooldown = Math.max(u.dashCooldown || 0, 2);
@@ -27852,7 +27859,7 @@
       addBattleLog(`💥 [전격술사] ${u.name}의 뇌신 강림! ${hits.length}명 감전`);
     }
     function voltOverloadHalf(u) { return u && u.job === 'volt' && voltOverloadOn(u) ? 0.5 : 1; }
-    function voltSkillBlocked(u) { return Boolean(u && u.job === 'volt' && (voltBurnout(u) || u.voltBeam)); }
+    function voltSkillBlocked(u) { return Boolean(u && u.job === 'volt' && (voltBurnout(u) || u.voltBeam || u.voltFin)); } // 피날레 중(과부하 전)에도 스킬 막음
     function voltFoes(u) { return sim.units.filter(e => e.alive && e.team !== u.team && e.team !== 'none' && !e.rushPending && !((e.statuses?.rebirth || 0) > 0)); }
     function voltShocked(e) { return (e.statuses.shock || 0) > 0 || (e.voltMarkUntil || 0) > sim.tickCount; }
     // 감전 걸기: [대전] 표시는 늘 남기고, 걸리지 않는 적(면역·저항·엘리트 보스·슈퍼아머)에게는 '면역' 글자를 매번 띄우지 않게 조용히 넘어감
@@ -28130,10 +28137,9 @@
         if (u.voltOvOn && !voltOverloadOn(u)) {
           u.voltOvOn = false;
           if (u.alive) {
-            u.statuses.overload_burnout = VOLT_BURNOUT_TICKS;
             u.voltCharge = 0;
-            sim.floatTexts.push({ x: u.x, y: u.y - 60, text: '🪫 과부하', color: '#64748b', life: 60 });
-            if (voltIsSr(u)) voltFinaleStart(u); // 시크릿 레어: 오버로드가 끝나는 순간 피날레 (과부하는 그대로 시작)
+            if (voltIsSr(u)) voltFinaleStart(u); // 시크릿 레어: 오버로드가 끝나는 순간 피날레 → 과부하는 땅에 내려온 뒤 시작 (voltFinaleStep, 2026-11-11 사용자 요청)
+            else voltBurnoutStart(u);
           }
         }
         if (u.voltFin) voltFinaleStep(u);
