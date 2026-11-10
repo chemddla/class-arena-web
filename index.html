@@ -1439,6 +1439,11 @@
     #studentViewContainer > .student-tab-panel:not(.gl-home):not(.hidden), #studentViewContainer > #arenaSection:not(.hidden) {
       padding: 18px; background-color: var(--gl-paper-l) !important; clip-path: var(--gl-step); box-shadow: inset 0 -6px 0 var(--gl-paper-dd), inset 0 0 0 4px var(--gl-paper-d); border: 0 !important; }
 
+    /* 모험의 탑 종족 입장 배너: 맵 그림 위 제목은 스킨과 상관없이 밝은 글자 */
+    .tb-title { color: #fff4d6 !important; text-shadow: 2px 2px 0 rgba(0, 0, 0, .7); }
+    .tb-sub { color: #f0dcae !important; text-shadow: 1px 1px 0 rgba(0, 0, 0, .7); }
+    .gl-skin .tb-banner { border-radius: 4px !important; }
+
     @media (max-width: 1100px) { .gl-war { grid-template-columns: minmax(0, 1fr); } }
     @media (max-width: 640px) {
       .gl-head { position: static !important; }
@@ -3372,7 +3377,7 @@
           <div id="towerLiveList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div>
         </div>
 
-        <div id="towerFloorGrid" class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[680px] overflow-y-auto pr-1"></div>
+        <div id="towerFloorGrid" class="relative grid grid-cols-1 xl:grid-cols-2 gap-3 max-h-[720px] overflow-y-auto pr-1"></div>
       </section>
 
       <!-- [탭 4] 우리 반 PvP 결투장 : 비실시간 전투(자동저장 방어 진형 도전) & 실시간 전투(대기 로비방 → 입장 → 준비완료 → 시작) -->
@@ -17539,9 +17544,13 @@
 
     function setTowerFloorFilter(rangeKey) {
       currentTowerFloorFilter = rangeKey;
+    // 배너마다 고른 층·모드 (종족 번호 → { hard, n/h: 노말/하드에서 고른 층, nAt/hAt: 고를 때의 기록 })
+    const towerBannerSel = {};
+    let towerBannerScrollPending = true;
       ['all', '1-40', '41-80', '81-120', '121-160', '161-200'].forEach(k => {
         const btn = document.getElementById(`tfilter-${k}`);
         if (btn) {
+      towerBannerScrollPending = true;
           btn.className = (k === rangeKey)
             ? 'px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold shadow'
             : 'px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold';
@@ -17556,94 +17565,173 @@
       renderTowerLiveList();
       renderBattleBanner('tower');
 
-      let filteredFloors = TOWER_FLOORS;
+      // 🚪 종족마다(10층씩) 입장 배너 하나: 배너 안에서 층과 노말/하드를 고르고 도전
+      //   도전 가능한 층(1 ~ stu.towerFloor)이 없는 종족은 비공개 배너 하나로 묶어 보여 줌
+      let ris = TOWER_RACES.map((_, ri) => ri);
       if (currentTowerFloorFilter !== 'all') {
         const [minF, maxF] = currentTowerFloorFilter.split('-').map(Number);
-        filteredFloors = TOWER_FLOORS.filter(f => f.floor >= minF && f.floor <= maxF);
+        ris = ris.filter(ri => ri * TOWER_RACE_FLOORS + TOWER_RACE_FLOORS >= minF && ri * TOWER_RACE_FLOORS + 1 <= maxF);
+      }
+      const open = ris.filter(ri => ri * TOWER_RACE_FLOORS + 1 <= stu.towerFloor);
+      const closed = ris.filter(ri => ri * TOWER_RACE_FLOORS + 1 > stu.towerFloor);
+      const grid = document.getElementById('towerFloorGrid');
+      grid.innerHTML = open.map(ri => towerBannerHTML(stu, ri)).join('') + (closed.length ? `
+        <div class="rounded-2xl border-2 border-dashed border-slate-800 bg-slate-950/60 p-5 flex items-center gap-3 select-none opacity-70">
+          <div class="w-14 h-14 shrink-0 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-2xl">🔒</div>
+          <div>
+            <h4 class="font-title text-lg text-slate-400">??? · ${closed[0] * TOWER_RACE_FLOORS + 1}~${closed[closed.length - 1] * TOWER_RACE_FLOORS + TOWER_RACE_FLOORS}층 비공개</h4>
+            <p class="text-xs text-slate-500 mt-1">아직 열리지 않은 종족 ${closed.length}곳이에요. 지금 도전 가능한 층(${stu.towerFloor}층)을 돌파해 나가면 하나씩 공개돼요.</p>
+          </div>
+        </div>` : '');
+      // 탭을 처음 열거나 구간을 바꾸면 지금 도전 중인 종족 배너가 보이게
+      if (towerBannerScrollPending && grid.offsetParent) {
+        towerBannerScrollPending = false;
+        const cur = document.getElementById(`towerBanner-${Math.floor((Math.min(stu.towerFloor, TOWER_MAX_FLOOR) - 1) / TOWER_RACE_FLOORS)}`);
+        grid.scrollTop = cur ? cur.offsetTop - 4 : 0;
+      }
+    }
+
+    function towerBannerState(stu, ri) {
+      const start = ri * TOWER_RACE_FLOORS + 1, end = start + TOWER_RACE_FLOORS - 1;
+      const clamp = f => Math.max(start, Math.min(end, f));
+      const sel = towerBannerSel[ri] || (towerBannerSel[ri] = {});
+      const hardOpen = isTowerHardUnlocked(stu, start);
+      const hard = Boolean(sel.hard && hardOpen);
+      // 고른 층은 기록이 바뀌기 전까지만 기억 (층을 깨면 다시 다음 도전 층으로)
+      const nAt = stu.towerFloor, hAt = towerHardNextFloor(stu);
+      const n = sel.n && sel.nAt === nAt ? sel.n : clamp(nAt);
+      const h = sel.h && sel.hAt === hAt ? sel.h : clamp(hAt);
+      return { start, end, hard, hardOpen, floor: hard ? h : n };
+    }
+    window.selectTowerBannerFloor = function (ri, floor) {
+      const sel = towerBannerSel[ri] || (towerBannerSel[ri] = {});
+      const stu = getActiveStudent();
+      if (!stu) return;
+      if (sel.hard) { sel.h = floor; sel.hAt = towerHardNextFloor(stu); } else { sel.n = floor; sel.nAt = stu.towerFloor; }
+      refreshTowerBanner(ri);
+    };
+    window.setTowerBannerHard = function (ri, hard) {
+      (towerBannerSel[ri] || (towerBannerSel[ri] = {})).hard = Boolean(hard);
+      refreshTowerBanner(ri);
+    };
+    function refreshTowerBanner(ri) {
+      const el = document.getElementById(`towerBanner-${ri}`);
+      const stu = getActiveStudent();
+      if (el && stu) el.outerHTML = towerBannerHTML(stu, ri);
+    }
+
+    // 층 대표 몬스터 그림: 보스층은 종족 보스, 나머지 층은 본대에서 층마다 돌아가며 (그림이 다른 유닛끼리, 그림 있는 유닛 먼저)
+    //   → 고블린 숲도 전사·궁수·주술사·사제·멧돼지 기수가 번갈아 나옴 (그림 있는 유닛이 1개뿐이면 이모지 유닛도 섞음)
+    function towerFloorThumbHTML(f, size) {
+      const core = (f.monsters || []).slice(0, f.extraFrom ?? f.monsters.length)
+        .map((k, i) => ({ k, job: f.comp[i], sk: f.skills?.[i] })).filter(u => MONSTER_DEFS[u.k]);
+      const looks = [...new Map(core.map(u => [monsterJobSprite(u.k, u.job, u.sk) || u.k, u])).entries()];
+      const drawn = looks.filter(([look]) => typeof look !== 'string').map(([, u]) => u);
+      const pool = f.isRaceBoss ? core.slice(0, 1) : (drawn.length >= 2 ? drawn : looks.map(([, u]) => u));
+      const rep = pool.length ? pool[(f.floor - 1) % pool.length] : null;
+      return rep
+        ? `<div class="gl-race-bd shrink-0 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center overflow-hidden" style="width:${size}px;height:${size}px" data-race="${f.race || ''}">${getMonsterCodexArtHTML(rep.k, size, rep.job, rep.sk)}</div>` : '';
+    }
+
+    function towerBannerHTML(stu, ri) {
+      const race = TOWER_RACES[ri];
+      const { start, end, hard, hardOpen, floor } = towerBannerState(stu, ri);
+      const hardClears = towerHardClearsOf(stu);
+      const normalDone = Math.max(0, Math.min(TOWER_RACE_FLOORS, stu.towerFloor - start + (stu.towerTopCleared && end === TOWER_MAX_FLOOR ? 1 : 0)));
+      const hardDone = Array.from({ length: TOWER_RACE_FLOORS }, (_, i) => hardClears[start + i]).filter(Boolean).length;
+      const isCurrent = stu.towerFloor >= start && stu.towerFloor <= end && !(end === TOWER_MAX_FLOOR && stu.towerTopCleared);
+      const mapKey = TOWER_RACE_MAPS[race.name];
+      const mapSrc = (BATTLE_MAPS[mapKey] || BATTLE_MAPS.tower).src;
+      const bossFloor = TOWER_FLOORS[end - 1];
+
+      // 층 고르는 버튼 (노말: 깬 층 ✅ · 도전 중 ⚔️ · 잠김 🔒 / 하드: 하드로 깬 층 ✅ · 다음 하드 층 🔥 · 잠김 🔒)
+      const floorBtns = Array.from({ length: TOWER_RACE_FLOORS }, (_, i) => {
+        const fl = start + i;
+        const done = hard ? Boolean(hardClears[fl]) : (stu.towerFloor > fl || (fl === TOWER_MAX_FLOOR && stu.towerTopCleared));
+        const ok = hard ? !towerHardLockReason(stu, fl) : stu.towerFloor >= fl;
+        const mark = done ? '✅' : (ok ? (hard ? '🔥' : '⚔️') : '🔒');
+        const on = fl === floor;
+        const cls = on
+          ? (hard ? 'bg-red-600 border-red-300 text-white shadow shadow-red-900/60' : 'bg-indigo-600 border-indigo-300 text-white shadow')
+          : done ? 'bg-emerald-900/50 border-emerald-600/50 text-emerald-200 hover:bg-emerald-800/60'
+          : ok ? (hard ? 'bg-red-950/70 border-red-500/60 text-red-200 hover:bg-red-900/70' : 'bg-indigo-950/70 border-indigo-400/60 text-indigo-100 hover:bg-indigo-900/70')
+          : 'bg-slate-900/80 border-slate-700 text-slate-500 hover:bg-slate-800/80';
+        return `<button type="button" onclick="selectTowerBannerFloor(${ri}, ${fl})" title="${fl}층${isTowerRaceBossFloor(fl) ? ' · 종족 보스' : ''}"
+          class="rounded-lg border py-1.5 flex flex-col items-center leading-tight transition ${cls}">
+          <span class="text-[10px]">${isTowerRaceBossFloor(fl) ? '👑' : mark}</span>
+          <span class="text-xs font-extrabold">${fl}층</span>
+        </button>`;
+      }).join('');
+
+      // 고른 층 정보와 도전 버튼
+      const f = TOWER_FLOORS[floor - 1];
+      let detail;
+      if (!hard && stu.towerFloor < floor) {
+        detail = `
+          <div class="w-14 h-14 shrink-0 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-2xl">🔒</div>
+          <div class="flex-1 min-w-[11rem]">
+            <h4 class="font-title text-base text-slate-400">${floor}층 · ??? 비공개</h4>
+            <p class="text-xs text-slate-500 mt-0.5">${stu.towerFloor}층부터 차례로 돌파하면 이 층의 적 군단이 공개돼요.</p>
+          </div>
+          <button disabled class="px-4 py-2.5 rounded-xl font-extrabold text-xs shrink-0 bg-slate-800 text-slate-500 cursor-not-allowed">🔒 잠김</button>`;
+      } else {
+        const hardLock = hard ? towerHardLockReason(stu, floor) : '';
+        const done = hard ? Boolean(hardClears[floor]) : (stu.towerFloor > floor || (floor === TOWER_MAX_FLOOR && stu.towerTopCleared));
+        const reward = hard ? f.rewardMc * TOWER_HARD.reward : f.rewardMc;
+        const btn = hardLock
+          ? `<button disabled title="${hardLock}하면 열려요" class="px-4 py-2.5 rounded-xl font-extrabold text-[11px] shrink-0 bg-slate-800 text-slate-500 cursor-not-allowed">🔒 ${hardLock}하면 열려요</button>`
+          : hard
+            ? `<button onclick="openTowerFormation(${floor}, true)" title="도전비용 ${TOWER_HARD.cost.toLocaleString()} CA · 몬스터 능력치 ${TOWER_HARD.stat}배 · 크기 ${TOWER_HARD.size}배 · 보스는 상태이상 면역"
+                class="px-4 py-2 rounded-xl font-extrabold text-xs shrink-0 bg-red-700 hover:bg-red-600 text-white shadow shadow-red-900/60">
+                ${done ? '🔥 하드 재도전 (보상 없음)' : '🔥 하드 도전하기'}
+                <span class="block text-[10px] font-bold text-red-200">도전비용 ${TOWER_HARD.cost.toLocaleString()} CA</span>
+              </button>`
+            : `<button onclick="openTowerFormation(${floor})" class="px-4 py-2.5 rounded-xl font-extrabold text-xs shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white shadow">
+                ${done ? '재도전 (보상 없음)' : '⚔️ 도전하기'}
+              </button>`;
+        detail = `
+          ${towerFloorThumbHTML(f, 56)}
+          <div class="flex-1 min-w-[11rem]">
+            <h4 class="font-title text-base text-white">${hard ? '<span class="text-red-400">🔥하드</span> ' : ''}${f.name}</h4>
+            <p class="text-xs text-slate-400 mt-0.5">${f.desc}</p>
+            <div class="text-[11px] text-amber-300 mt-1">보상: <strong>💰 ${reward.toLocaleString()} CA</strong>${done ? ' <span class="text-emerald-300">(이미 받음)</span>' : ''}${hard ? ` · <span class="text-red-300">능력치 ${TOWER_HARD.stat}배 · 크기 ${TOWER_HARD.size}배</span>` : ''}</div>
+          </div>
+          ${btn}`;
       }
 
-      // [Requirement 1]: 도전 가능한 층(1 ~ stu.towerFloor) 외에는 모두 비공개 처리!
-      const grid = document.getElementById('towerFloorGrid');
-      grid.innerHTML = filteredFloors.map(f => {
-        const cleared = stu.towerFloor > f.floor;
-        const unlocked = stu.towerFloor >= f.floor;
-        const hardLock = towerHardLockReason(stu, f.floor);
-        const hardOpen = !hardLock;
-        const hardCleared = Boolean(towerHardClearsOf(stu)[f.floor]);
+      const modeBtn = (isHard, label) => {
+        const on = hard === isHard;
+        if (isHard && !hardOpen) return `<button disabled title="${end}층 종족 보스를 깨면 열려요" class="px-3 py-1.5 rounded-lg text-xs font-extrabold text-slate-500 cursor-not-allowed">🔒 하드</button>`;
+        return `<button type="button" onclick="setTowerBannerHard(${ri}, ${isHard})" class="px-3 py-1.5 rounded-lg text-xs font-extrabold transition ${
+          on ? (isHard ? 'bg-red-600 text-white shadow' : 'bg-indigo-600 text-white shadow') : 'text-slate-300 hover:bg-slate-800'}">${label}</button>`;
+      };
 
-        if (!unlocked) {
-          return `
-            <div class="rounded-2xl border p-4 flex items-center justify-between gap-3 bg-slate-950/60 border-slate-800 opacity-60 select-none">
-              <div>
-                <div class="flex items-center gap-2">
-                  <span class="px-2 py-0.5 rounded-lg text-xs font-extrabold bg-slate-800 text-slate-400">
-                    🔒 ${f.floor}F 비공개
-                  </span>
-                  <h4 class="font-title text-lg text-slate-400">??? · 미개방 비공개 층</h4>
+      return `
+        <div id="towerBanner-${ri}" class="tb-banner relative rounded-2xl border-2 overflow-hidden ${hard ? 'border-red-500/70 shadow-lg shadow-red-950/60' : isCurrent ? 'border-indigo-400/80 shadow-lg' : 'border-slate-700'}">
+          <img src="${mapSrc}" alt="" loading="lazy" decoding="async" class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none" style="image-rendering:pixelated">
+          <div class="absolute inset-0 pointer-events-none" style="background:linear-gradient(100deg, rgba(20,12,4,.9) 0%, rgba(20,12,4,.7) 50%, rgba(20,12,4,.35) 100%)${hard ? ', linear-gradient(0deg, rgba(127,29,29,.35), rgba(127,29,29,.35))' : ''}"></div>
+          <div class="relative p-4 flex flex-col gap-3">
+            <div class="flex flex-wrap items-center gap-3">
+              ${towerFloorThumbHTML(bossFloor, 56)}
+              <div class="flex-1 min-w-[10rem]">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="px-2 py-0.5 rounded-lg text-xs font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/40">${start}~${end}층</span>
+                  ${isCurrent ? '<span class="px-2 py-0.5 rounded-lg text-xs font-extrabold" style="background:rgba(255,210,63,.25);color:#ffe58a">⚔️ 도전 중</span>' : ''}
+                  ${normalDone >= TOWER_RACE_FLOORS ? '<span class="px-2 py-0.5 rounded-lg text-xs font-extrabold bg-emerald-500/20 text-emerald-300">✅ 정복</span>' : ''}
                 </div>
-                <p class="text-xs text-slate-500 mt-1">현재 도전 가능한 층(${stu.towerFloor}층)을 먼저 돌파하면 층 정보와 적 군단이 공개됩니다.</p>
-                <div class="text-[11px] text-slate-500 mt-1.5">
-                  보상: 🔒 비공개
-                </div>
+                <h3 class="font-title text-xl tb-title mt-1">🧬 ${race.name} <span class="text-sm tb-sub">· ${race.zone}</span></h3>
+                <div class="text-[11px] tb-sub mt-0.5">노말 ${normalDone}/${TOWER_RACE_FLOORS}층${hardOpen ? ` · <span class="text-red-300">🔥하드 ${hardDone}/${TOWER_RACE_FLOORS}층</span>` : ''} · 👑 ${MONSTER_DEFS[race.boss].name}</div>
               </div>
-              <button disabled class="px-4 py-2.5 rounded-xl font-extrabold text-xs shrink-0 bg-slate-800 text-slate-500 cursor-not-allowed">
-                🔒 비공개
-              </button>
-            </div>
-          `;
-        }
-
-        // 대표 몬스터: 보스층은 종족 보스, 나머지 층은 본대에서 층마다 돌아가며 (그림이 다른 유닛끼리, 그림 있는 유닛 먼저)
-        //   → 고블린 숲도 전사·궁수·주술사·사제·멧돼지 기수가 번갈아 나옴 (그림 있는 유닛이 1개뿐이면 이모지 유닛도 섞음)
-        const core = (f.monsters || []).slice(0, f.extraFrom ?? f.monsters.length)
-          .map((k, i) => ({ k, job: f.comp[i], sk: f.skills?.[i] })).filter(u => MONSTER_DEFS[u.k]);
-        const looks = [...new Map(core.map(u => [monsterJobSprite(u.k, u.job, u.sk) || u.k, u])).entries()];
-        const drawn = looks.filter(([look]) => typeof look !== 'string').map(([, u]) => u);
-        const pool = f.isRaceBoss ? core.slice(0, 1) : (drawn.length >= 2 ? drawn : looks.map(([, u]) => u));
-        const rep = pool.length ? pool[(f.floor - 1) % pool.length] : null;
-        const thumb = rep
-          ? `<div class="gl-race-bd w-16 h-16 shrink-0 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center overflow-hidden" data-race="${f.race || ''}">${getMonsterCodexArtHTML(rep.k, 64, rep.job, rep.sk)}</div>` : '';
-
-        return `
-          <div class="rounded-2xl border p-4 flex items-center justify-between gap-3 ${
-            cleared
-              ? 'bg-emerald-950/20 border-emerald-500/40'
-              : 'bg-slate-900 border-indigo-500/60 shadow-lg'
-          }">
-            ${thumb}
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2">
-                <span class="px-2 py-0.5 rounded-lg text-xs font-extrabold ${
-                  cleared ? 'bg-emerald-500/20 text-emerald-300' : 'bg-indigo-500/20 text-indigo-300'
-                }">
-                  ${cleared ? '✅ 클리어' : `${f.floor}F 도전 가능`}
-                </span>
-                <h4 class="font-title text-lg text-white">${f.name}</h4>
-              </div>
-              <p class="text-xs text-slate-400 mt-1">${f.desc}</p>
-              <div class="text-[11px] text-amber-300 mt-1.5">
-                ${f.race ? `<span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 font-extrabold mr-1">🧬 ${f.race}</span>` : ''}보상: <strong>💰 ${f.rewardMc} CA</strong>
+              <div class="flex gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-700 shrink-0">
+                ${modeBtn(false, '노말')}${modeBtn(true, '🔥 하드')}
               </div>
             </div>
-            <div class="flex flex-col gap-1.5 shrink-0">
-              <button onclick="openTowerFormation(${f.floor})"
-                class="px-4 py-2.5 rounded-xl font-extrabold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow">
-                ${cleared ? '재도전 (보상 없음)' : '⚔️ 도전하기'}
-              </button>
-              ${hardOpen
-                ? `<button onclick="openTowerFormation(${f.floor}, true)" title="도전비용 ${TOWER_HARD.cost.toLocaleString()} CA · 몬스터 능력치 2배 · 크기 1.5배 · 보스는 상태이상 면역"
-                    class="px-4 py-2 rounded-xl font-extrabold text-xs bg-red-700 hover:bg-red-600 text-white shadow shadow-red-900/60">
-                    ${hardCleared ? '🔥 하드 재도전 (보상 없음)' : `🔥 하드모드 (💰 ${(f.rewardMc * TOWER_HARD.reward).toLocaleString()})`}
-                    <span class="block text-[10px] font-bold text-red-200">도전비용 ${TOWER_HARD.cost.toLocaleString()} CA</span>
-                  </button>`
-                : `<button disabled title="${hardLock}하면 열려요"
-                    class="px-4 py-2 rounded-xl font-extrabold text-[11px] bg-slate-800 text-slate-500 cursor-not-allowed">
-                    🔒 하드모드 (${hardLock})
-                  </button>`}
+            <div class="grid grid-cols-5 sm:grid-cols-10 gap-1.5">${floorBtns}</div>
+            <div class="flex flex-wrap sm:flex-nowrap items-center gap-3 rounded-xl bg-slate-950/70 border ${hard ? 'border-red-800/60' : 'border-slate-800'} p-3">
+              ${detail}
             </div>
           </div>
-        `;
-      }).join('');
+        </div>`;
     }
 
     /********************************************************************
@@ -41597,7 +41685,7 @@
       if (tabKey === 'home') window.HomeRoom?.render();
       else window.HomeRoom?.cancel();
       if (tabKey === 'village') VillageTab.open(); else VillageTab.close();
-      if (tabKey === 'tower') renderTowerTab();
+      if (tabKey === 'tower') { towerBannerScrollPending = true; renderTowerTab(); }
       if (tabKey === 'raid') renderCoopRaidTab();
       if (tabKey === 'worldraid') renderWorldRaidTab();
       if (tabKey === 'rush') renderRushTab();
