@@ -1,5 +1,5 @@
 // 시크릿 레어 히든 피날레 (한 번): 오버로드가 끝날 때 — 사방에 퍼진 전기를 모아 공중으로 도약해 터뜨림. 기준점 = 발 (땅). 백열 은빛(GOLD_V) + 흰빛. 2초
-//   게임 시간과 맞춤 (index.html VOLT_FIN_*): 0~1.2초 모음(웅크림) · 1.2~1.8초 도약(공중으로 JUMP px) · 1.8초 터짐(최고점) · 1.8~2.8초 공중에 떠 있음(체공) · 2.8~3.1초 내려옴 (2026-11-10: 모음·도약 시간과 높이를 늘림)
+//   게임 시간과 맞춤 (index.html VOLT_FIN_*): 0~1.2초 모음(웅크림) · 1.2~1.8초 도약(공중으로 JUMP px) · 1.8초 터짐(최고점) · 1.8~2.8초 방출 자세로 공중에 떠 있음 · 2.8~3.7초 체공 자세로 천천히 내려옴 (2026-11-10) (2026-11-10: 모음·도약 시간과 높이를 늘림)
 //   0.00~0.60 모음: 바닥 사방 멀리서 전류가 땅을 기어 발밑으로 몰려 듦(점점 많이·밝게), 빛 알갱이가 빨려 듦, 몸이 점점 하얗게 달아오름, 발밑 빛 웅덩이가 커짐
 //   0.60~0.90 도약: 땅에서 몸까지 흰 빛기둥이 따라 올라감, 발밑에서 위로 튀는 전류, 몸 둘레 고리 빛
 //   0.90      터짐 (최고점 = 몸 가운데): 하얀 섬광 원이 확 커졌다 사라짐, 사방 긴 빛살(플레어), 굵은 번개 14줄이 최고점에서 바닥 타원 위 사방으로 내리꽂힘(여러 번 다시 그음),
@@ -10,14 +10,14 @@ import { Particles, Lights, P, Rng, fit, flare, clamp, rng, mix, ease, TAU, WHIT
 import { zigzag, stroke, crackle } from "../lightning/_lib.js";
 import { GOLD_V, GOLD_SPARK_V, PLASMA_V } from "./_volt.js";
 
-const GATHER = 1.2, BANG = 1.8, JUMP = 130, HOVER = BANG + 1, FALL = HOVER + 0.3, CY = -46, SQ = 0.62, RG = 300;
+const GATHER = 1.2, BANG = 1.8, JUMP = 130, HOVER = BANG + 1, FALL = HOVER + 0.9, CY = -46, SQ = 0.62, RG = 300;
 export const meta = {
   name: "Volt finale",
   desc: "Secret Rare finale: current crawls in from all over the floor, the caster leaps and bursts like a white sun, heavy bolts slam the ground all round, sparks rain.",
   tags: ["lightning", "electric", "plasma", "hidden", "ultimate", "one-shot"],
   size: [780, 720],
   origin: [390, 520],
-  duration: 3.5,
+  duration: 4.2,
   loop: false,
   fps: 20,
   bg: "dark",
@@ -41,7 +41,7 @@ function lift(t) {
   if (t < GATHER) return 0;
   if (t < BANG) return JUMP * Math.sin(((t - GATHER) / (BANG - GATHER)) * Math.PI / 2);
   if (t < HOVER) return JUMP * (1 + 0.04 * Math.sin((t - BANG) * 7));   // 체공: 터뜨린 뒤 1초 동안 떠서 살짝 오르내림
-  if (t < FALL) return JUMP * (1 - ease.inQuad((t - HOVER) / 0.3));
+  if (t < FALL) return JUMP * (1 + Math.cos(((t - HOVER) / (FALL - HOVER)) * Math.PI)) / 2;   // 체공 자세로 0.9초에 걸쳐 천천히 내려옴 (게임 voltFinLift와 같음)
   return 0;
 }
 
