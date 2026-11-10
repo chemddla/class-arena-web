@@ -36195,6 +36195,8 @@
       if (!mgSeenFromStart.has(st.gameId)) return;
       const my = mgMySeat(st);
       if (my < 0) return;
+      // 게임 도중 나가서 기권한 자리(AI가 이어 둠)는 이겨도 승리가 아님
+      winnerSeats = winnerSeats.filter(i => !(st.seats[i] && st.seats[i].forfeit));
       // 새로고침해도 같은 게임 보상을 또 받지 않게 학생 기록에도 남김 (최근 30판)
       const stuMg = getActiveStudent();
       if (!stuMg) return;
@@ -36277,6 +36279,59 @@
       if (!keepPlaying) return;
       hook.render();
       hook.ai();
+    }
+
+    // 게임 도중 [방 나가기] = 기권(패배): 나간 자리는 이 판 보상·미션 없음. 남은 편이 하나뿐이면 그 편이 바로 이기고,
+    // 여럿이면(3명 이상 끝말잇기 등) 나간 자리는 AI가 이어서 두되 이겨도 승리로 치지 않음 (mgFinish에서 forfeit 자리는 뺌)
+    // 협동 게임(펫 협동 달리기)은 이기고 질 상대가 없어 예전처럼 AI가 이어받기만 함
+    // 이 게임에서 내가 아직 끝나지 않은 판에 앉아 있는지 (나가기 전 확인 창용)
+    function mgGameInProgressFor(gameType, stuId) {
+      if (gameType === 'petruncoop') return false;
+      const hook = MG_GAME_HOOKS[gameType];
+      const st = hook && hook.state();
+      return Boolean(st && st.initialized && !st.gameOver && Array.isArray(st.seats) && st.seats.some(s => s && s.id === stuId && !s.ai));
+    }
+    function mgForfeitOnLeave(gameType, stuId) {
+      const hook = MG_GAME_HOOKS[gameType];
+      const st = hook && hook.state();
+      if (!st || !st.initialized || st.gameOver || !Array.isArray(st.seats)) return;
+      if (gameType === 'petruncoop') { mgSeatsToAi(gameType, [stuId], false); return; }
+      const mine = st.seats.map((s, i) => (s && s.id === stuId && !s.ai ? i : -1)).filter(i => i >= 0);
+      if (!mine.length) return;
+      const myName = cleanUserText(st.seats[mine[0]].name, 10) || '친구';
+      mine.forEach(i => {
+        const s = st.seats[i];
+        s.ai = true;
+        s.forfeit = true;
+        s.name = `🤖${cleanUserText(s.name, 10) || '친구'}`;
+      });
+      // 내 화면에서는 이 판을 패배로 끝냄 (나중에 다시 들어와 판이 끝나도 보상을 받지 않게 학생 기록에도 남김)
+      mgRewardedGames.add(st.gameId);
+      const stu = getActiveStudent();
+      if (stu && stu.id === stuId) {
+        const doneIds = Array.isArray(stu.mgRewardedIds) ? stu.mgRewardedIds : [];
+        if (!doneIds.includes(st.gameId)) stu.mgRewardedIds = [...doneIds, st.gameId].slice(-30);
+        if (gameType === 'petvolley' && !petVolleyRecorded.has(st.gameId)) {
+          petVolleyRecorded.add(st.gameId);
+          const r = stu.petVolley && typeof stu.petVolley === 'object' ? stu.petVolley : (stu.petVolley = { wins: 0, losses: 0, streak: 0, bestStreak: 0 });
+          r.losses = (r.losses || 0) + 1;
+          r.streak = 0;
+        }
+        saveState();
+      }
+      const sideOf = i => (gameType === 'yutnori' ? yutTeamOfSeat(i) : i);
+      const liveSides = [...new Set(st.seats.map((s, i) => (s && !s.forfeit ? sideOf(i) : null)).filter(v => v !== null))];
+      const msg = `🏳️ ${myName} 친구가 게임 도중 나가서 패배로 처리됐어요.`;
+      if (liveSides.length === 1) {
+        st.gameOver = true;
+        if (gameType === 'yutnori') st.winnerTeam = liveSides[0];
+        else st.winnerSeat = liveSides[0];
+        if (gameType === 'baduk') st.score = null;
+        if (gameType === 'chess') st.check = false;
+      }
+      if (Array.isArray(st.log)) st.log.unshift(msg);
+      else st.note = msg;
+      mgPush(gameType, st);
     }
 
     function mgSeatChip(st, seat, extraClass = '', color = null, suffix = '') {
@@ -37631,8 +37686,9 @@
         }).join('');
       }
       if (st.gameOver) {
-        const best = Math.max(...st.scores);
-        mgFinish(st, st.scores.map((s, i) => (s === best ? i : -1)).filter(i => i >= 0), ECONOMY.minigameReward, `🃏 카드 뒤집기 승리! (${best}쌍)`);
+        const inPlay = i => !(st.seats[i] && st.seats[i].forfeit); // 도중에 나가 기권한 자리는 1등 계산에서 뺌
+        const best = Math.max(...st.scores.filter((_, i) => inPlay(i)));
+        mgFinish(st, st.scores.map((s, i) => (s === best && inPlay(i) ? i : -1)).filter(i => i >= 0), ECONOMY.minigameReward, `🃏 카드 뒤집기 승리! (${best}쌍)`);
       }
     }
 
@@ -51761,7 +51817,7 @@
       // 방 전체를 대기실로 돌리는 건 방장만 (참가자가 누르면 진행 중인 판이 모두에게서 끝나 버림)
       const myStu = getActiveStudent();
       if (room.status === 'playing' && (!myStu || room.hostId !== myStu.id)) {
-        showNotice('⚠️ 방 전체를 대기실로 돌리는 건 방장만 할 수 있어요. 그만하려면 [🚪 방 나가기]를 눌러 주세요. (내 자리는 AI가 이어서 둬요)');
+        showNotice('⚠️ 방 전체를 대기실로 돌리는 건 방장만 할 수 있어요. 그만하려면 [🚪 방 나가기]를 눌러 주세요. (게임 도중 나가면 패배로 처리돼요)');
         return;
       }
       room.status = 'waiting';
@@ -51772,15 +51828,17 @@
       showNotice('🔙 방 대기실로 돌아왔습니다. 다시 준비완료를 누르면 재시작할 수 있습니다.');
     };
 
-    // 미니게임방 나가기: 방장이 나가도 방과 게임은 그대로, 남은 친구가 새 방장 · 게임 중이면 내 자리는 AI가 이어서 둠
+    // 미니게임방 나가기: 방장이 나가도 방과 게임은 그대로, 남은 친구가 새 방장 · 게임 중이면 나는 기권(패배) 처리 (mgForfeitOnLeave)
     window.leaveMinigameRoom = async function (quiet = false, roomIdArg = null) {
       if (!roomIdArg && !currentJoinedMinigameRoomId && mgWatchRoomId) { stopWatchingMinigameRoom(quiet); return; }
-      mgSoloPracticeActive = false;
       const myStu = getActiveStudent();
       const roomId = roomIdArg || currentJoinedMinigameRoomId;
       const room = roomId ? liveMinigameRoomsCache[roomId] : null;
+      const midGame = Boolean(room && myStu && room.status === 'playing' && roomId === currentJoinedMinigameRoomId && mgGameInProgressFor(room.gameType, myStu.id));
+      if (midGame && !quiet && !confirm('게임이 아직 끝나지 않았어요. 지금 나가면 패배로 처리돼요. 정말 나갈까요?')) return;
+      mgSoloPracticeActive = false;
       if (room && myStu && room.status === 'playing' && roomId === currentJoinedMinigameRoomId) {
-        mgSeatsToAi(room.gameType, [myStu.id], false);
+        mgForfeitOnLeave(room.gameType, myStu.id);
       }
       if (roomId === currentJoinedMinigameRoomId) currentJoinedMinigameRoomId = null;
 
@@ -51793,7 +51851,7 @@
           if (!quiet) showNotice('🚪 미니게임 방을 닫고 로비로 나왔어요.');
         } else {
           await saveMinigameRoomData(roomId, next);
-          if (!quiet) showNotice(wasHost ? `🚪 미니게임 방에서 나왔어요. 👑 방장은 ${next.hostName} 친구에게 넘겼어요.` : '🚪 미니게임 방에서 나와 대기 로비로 이동했어요.');
+          if (!quiet) showNotice((midGame ? '🏳️ 게임 도중 나가서 패배로 처리됐어요. ' : '') + (wasHost ? `🚪 미니게임 방에서 나왔어요. 👑 방장은 ${next.hostName} 친구에게 넘겼어요.` : '🚪 미니게임 방에서 나와 대기 로비로 이동했어요.'));
         }
       }
       renderMinigameLobbyAndRoomUI();
