@@ -26,6 +26,7 @@ def main():
     names = sorted(n for n in os.listdir(os.path.join(pfx, 'records', 'volt')) if os.path.isdir(os.path.join(pfx, 'records', 'volt', n)))
     vroot = os.path.join(pfx, 'records', '_variants')
     names += sorted(os.listdir(vroot)) if os.path.isdir(vroot) else []
+    names = list(dict.fromkeys(names))   # 같은 이름이면 옵션을 바꿔 구운 쪽 (load가 _variants를 먼저 봄)
     os.makedirs(OUT, exist_ok=True)
     table = {}
     for name in names:

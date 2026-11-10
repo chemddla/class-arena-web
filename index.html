@@ -27710,7 +27710,7 @@
       const jk = spriteDrawH(u, sp) / sp.standH;
       return { x: u.x + dir * hand[0] * jk, y: u.y + 12 + hand[1] * jk, k: jk };
     }
-    function voltBolt(sx, sy, tx, ty, life) { sim.effects.push({ type: 'lightning_bolt', ramp: 'volt', sx, sy, tx, ty, life, maxLife: life }); }
+    function voltBolt(sx, sy, tx, ty, life, gold) { sim.effects.push({ type: 'lightning_bolt', ramp: gold ? 'volt_gold' : 'volt', sx, sy, tx, ty, life, maxLife: life }); } // gold = 강화 (금빛)
     function voltFace(u, x, y) {
       const a = Math.atan2(y - u.y, x - u.x);
       u.facingAngle = a;
@@ -27820,10 +27820,7 @@
         unit.voltOvOn = true;
         unit.dashCooldown = 0;
         if (unit.skillCooldowns) Object.keys(unit.skillCooldowns).forEach(k => { if (k !== 'overload') unit.skillCooldowns[k] = Math.round(unit.skillCooldowns[k] / 2); });
-        for (let i = 0; i < 6; i++) { // 몸에서 위로 튀는 전류
-          const a = -Math.PI / 2 + (i - 2.5) * 0.45;
-          voltBolt(unit.x, unit.y - 20, unit.x + Math.cos(a) * 70, unit.y - 20 + Math.sin(a) * 70, 30);
-        }
+        voltFx('overload-burst', unit.x, unit.y + 12); // 땅에서 몸으로 빨려 든 전류가 하늘로 기둥처럼 터짐
         playCombatSfx('magic');
         addBattleLog(`🔋 [전격술사] ${unit.name}의 오버로드! 10초간 모든 스킬이 강화돼요`);
         return true;
@@ -27835,18 +27832,18 @@
         if (unit.voltCharge === VOLT_CHARGE_MAX) sim.floatTexts.push({ x: unit.x, y: unit.y - 66, text: '🔋 축전 완료', color: '#facc15', life: 50 });
       }
       if (emp) sim.floatTexts.push({ x: unit.x, y: unit.y - 80, text: '⚡ 강화!', color: '#eab308', life: 50 });
+      if (emp) voltFx('empower', unit.x, unit.y + 12); // 강화 발동: 시전자 둘레 금빛 터짐
       const tag = emp ? '강화 ' : '';
 
       if (sk === 'volt_thunderbolt') {
         const first = tgt || live.filter(e => !hiddenFrom(unit, e)).sort((a, b) => unitDist(a, unit) - unitDist(b, unit))[0];
         if (!first) return true;
         const chain = [...live].sort((a, b) => unitDist(a, first) - unitDist(b, first)).slice(0, VOLT_TB_N);
-        let px = unit.x, py = unit.y - 16;
-        chain.forEach(ct => {
-          voltBolt(px, py, ct.x, ct.y, 50);
+        chain.forEach((ct, j) => {
+          // 마법사·체인처럼 줄로 잇지 않고, 대상마다 하늘에서 낙뢰가 0.1초 간격으로 차례로 떨어짐 (강화 = 금빛 + 두 번째 낙뢰)
+          voltFx(emp ? 'thunderbolt-gold' : 'thunderbolt', ct.x, ct.y + 12, Math.min(1.6, ct.sizeScale || 1), j * 6);
           applyDamage(unit, ct, unit.atk * (emp ? VOLT_TB_EMP_DMG : VOLT_TB_DMG), '', '#4f46e5');
           voltShock(unit, ct, VOLT_TB_SHOCK);
-          px = ct.x; py = ct.y;
         });
         if (emp) { // 마지막 적에서 거꾸로 되돌아오며 한 번 더
           const back = chain.slice().reverse();
@@ -27895,12 +27892,8 @@
           applyDamage(unit, e, unit.atk * (emp ? VOLT_DIS_EMP_DMG : VOLT_DIS_DMG), '', '#4f46e5');
           voltShock(unit, e, emp ? VOLT_DIS_EMP_SHOCK : VOLT_DIS_SHOCK);
         });
-        const n = emp ? 12 : 9, seed = sim.tickCount * 31; // 몸에서 사방으로 튀는 전류 (원 테두리 없이 줄기로만 범위를 보임)
-        for (let i = 0; i < n; i++) {
-          const a = (i / n) * Math.PI * 2 + ((seed + i * 17) % 10) * 0.03;
-          voltBolt(unit.x, unit.y - 14, unit.x + Math.cos(a) * R * 0.92, unit.y - 14 + Math.sin(a) * R * 0.92 * 0.8, 26);
-        }
-        hits.slice(0, 6).forEach(e => voltBolt(unit.x, unit.y - 14, e.x, e.y - 14, 26));
+        // 몸에서 사방 바닥으로 꽂히는 벼락 (원 테두리 없음). 시트 반지름 360 · 강화 480 → 실제 반지름에 맞춤
+        voltFx(emp ? 'discharge-gold' : 'discharge', unit.x, unit.y + 12, R / (emp ? 480 : 360));
         playCombatSfx('heavy');
         addBattleLog(`💥 [전격술사] ${unit.name}의 ${tag}방전! ${hits.length}명 피격`);
         return true;
@@ -27937,8 +27930,10 @@
           u.voltLater = u.voltLater.filter(l => l.at > sim.tickCount);
           if (u.alive) withSkillHit(() => due.forEach(l => {
             if (!l.e.alive) return;
-            const fx = l.from && l.from.alive ? l.from : { x: u.x, y: u.y - 16 };
-            voltBolt(fx.x, fx.y, l.e.x, l.e.y, 30);
+            if (!voltFxImg('thunderbolt-gold')) { // 시트가 있으면 금빛 낙뢰의 두 번째 낙뢰가 이 타격을 보여 줌
+              const fx = l.from && l.from.alive ? l.from : { x: u.x, y: u.y - 16 };
+              voltBolt(fx.x, fx.y, l.e.x, l.e.y, 30, true);
+            }
             applyDamage(u, l.e, u.atk * VOLT_TB_BACK, '', '#4f46e5');
           }));
         }
@@ -27963,8 +27958,9 @@
             else {
               const mult = 1 + VOLT_CHAIN_LINK * (Math.min(VOLT_CHAIN_LINK_MAX, linked.length) - 1);
               withSkillHit(() => linked.forEach(e => applyDamage(u, e, u.atk * (ch.emp ? VOLT_CHAIN_EMP_DMG : VOLT_CHAIN_DMG) * mult, '', '#818cf8')));
-              if (linked.length === 1) voltBolt(u.x, u.y - 20, linked[0].x, linked[0].y - 14, VOLT_CHAIN_EVERY + 2);
-              for (let i = 1; i < linked.length; i++) voltBolt(linked[i - 1].x, linked[i - 1].y - 14, linked[i].x, linked[i].y - 14, VOLT_CHAIN_EVERY + 2);
+              if (linked.length === 1) voltBolt(u.x, u.y - 20, linked[0].x, linked[0].y - 14, VOLT_CHAIN_EVERY + 2, ch.emp);
+              for (let i = 1; i < linked.length; i++) voltBolt(linked[i - 1].x, linked[i - 1].y - 14, linked[i].x, linked[i].y - 14, VOLT_CHAIN_EVERY + 2, ch.emp);
+              linked.forEach(e => voltFx(ch.emp ? 'hit-gold' : 'hit', e.x, e.y - 14, 1, 0, VOLT_CHAIN_EVERY + 2)); // 줄 끝 매듭
             }
           }
         }
@@ -28069,6 +28065,92 @@
       return -1;
     }
 
+    // ----- 전격술사 이펙트 시트 (pixelfx로 구움: tools/volt_fx/*.js → tools/volt_fx_build.mjs → tools/volt_fx_pack.py, docs/electromancer-design.md 8-5-1) -----
+    //   [칸 너비, 높이, 열 수, 프레임 수, fps, 반복, 기준점 x, y] — assets/sprites/fx/volt/volt_fx.json과 같음 (다시 구우면 이 표도 바꿀 것)
+    //   그림은 처음 쓸 때 불러옴 (장판·방전은 1~2MB). 아직 못 받았으면 drawVoltFx가 false → 예전 코드 그림으로 그림
+    const VOLT_FXS = {
+      'burnout': [48, 95, 9, 40, 20, 1, 22, 127],
+      'charged': [98, 137, 6, 24, 20, 1, 49, 124],
+      'discharge': [758, 403, 4, 23, 20, 0, 420, 200],
+      'discharge-gold': [931, 451, 4, 23, 20, 0, 500, 200],
+      'empower': [158, 158, 4, 15, 20, 0, 79, 125],
+      'field': [343, 248, 5, 30, 20, 1, 168, 132],
+      'field-gold': [459, 322, 5, 30, 20, 1, 227, 162],
+      'hand-spark': [58, 58, 5, 20, 20, 1, 29, 29],
+      'hand-spark-gold': [58, 58, 5, 20, 20, 1, 29, 29],
+      'hit': [56, 48, 4, 16, 20, 1, 32, 24],
+      'hit-gold': [56, 48, 4, 16, 20, 1, 32, 24],
+      'overload': [118, 137, 5, 20, 20, 1, 59, 124],
+      'overload-burst': [259, 259, 6, 29, 20, 0, 129, 210],
+      'rail-arc': [137, 198, 5, 12, 20, 1, 15, 114],
+      'rail-arc-wide': [229, 392, 5, 12, 20, 1, 29, 227],
+      'rail-arc-wide-gold': [229, 392, 5, 12, 20, 1, 29, 227],
+      'rail-body': [120, 135, 4, 12, 20, 1, 0, 63],
+      'rail-body-wide': [120, 268, 6, 12, 20, 1, 0, 126],
+      'rail-body-wide-gold': [120, 268, 6, 12, 20, 1, 0, 126],
+      'rail-muzzle': [140, 198, 5, 12, 20, 1, 64, 99],
+      'rail-muzzle-wide': [200, 396, 5, 12, 20, 1, 72, 198],
+      'rail-muzzle-wide-gold': [200, 396, 5, 12, 20, 1, 72, 198],
+      'rail-tip': [182, 169, 4, 12, 20, 1, 62, 85],
+      'rail-tip-wide': [240, 336, 5, 12, 20, 1, 80, 168],
+      'rail-tip-wide-gold': [240, 336, 5, 12, 20, 1, 80, 168],
+      'shock': [88, 111, 6, 24, 20, 1, 46, 101],
+      'thunderbolt': [196, 359, 6, 19, 20, 0, 98, 329],
+      'thunderbolt-gold': [208, 360, 6, 19, 20, 0, 98, 330]
+    };
+    const VOLT_FX_DEFS = {};
+    function voltFxImg(name) {
+      let d = VOLT_FX_DEFS[name];
+      if (!d) { d = VOLT_FX_DEFS[name] = { src: `assets/sprites/fx/volt/${name}.webp` }; makeLazyImageDef(d); }
+      return d.ready ? d.img : null;
+    }
+    // 한 프레임 그리기: (x, y) = 기준점 자리, s = 배율, rot = 회전, flipY = 위아래 뒤집기. 그림이 없으면 false
+    function drawVoltFx(ctx, name, frame, x, y, s = 1, rot = 0, alpha = 1, flipY = false) {
+      const m = VOLT_FXS[name];
+      if (!m) return false;
+      const img = voltFxImg(name);
+      if (!img) return false;
+      const [w, h, cols, n, , loop, ax, ay] = m;
+      let f = Math.floor(frame);
+      if (f < 0) return true;
+      if (f >= n) { if (!loop) return true; f %= n; }
+      ctx.save();
+      ctx.translate(x, y);
+      if (rot) ctx.rotate(rot);
+      if (flipY) ctx.scale(1, -1);
+      ctx.globalAlpha *= alpha;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, (f % cols) * w, Math.floor(f / cols) * h, w, h, -ax * s, -ay * s, w * s, h * s);
+      ctx.restore();
+      return true;
+    }
+    const voltFxFrames = name => (VOLT_FXS[name] ? VOLT_FXS[name][3] * 60 / VOLT_FXS[name][4] : 30); // 한 번 다 도는 틱 수
+    // 한 번 트는 이펙트 (volt_fx): wait = 시작까지 기다리는 틱, life = 보이는 틱 (기본: 그림 한 바퀴)
+    function voltFx(name, x, y, s = 1, wait = 0, life = 0) {
+      const L = wait + (life || Math.ceil(voltFxFrames(name)));
+      sim.effects.push({ type: 'volt_fx', fx: name, x: Math.round(x), y: Math.round(y), s: Math.round(s * 100) / 100, wait, life: L, maxLife: L });
+    }
+    function drawVoltFxEffect(ctx, ef) {
+      const age = (ef.maxLife - ef.life) - (ef.wait || 0);
+      if (age < 0) return;
+      const m = VOLT_FXS[ef.fx];
+      drawVoltFx(ctx, ef.fx, age * (m ? m[4] : 20) / 60, ef.x, ef.y, ef.s || 1, 0, ef.life < 4 ? ef.life / 4 : 1);
+    }
+    // 감전 표시는 전격술사가 있는 전투에서만 (다른 직업·몬스터의 감전 그림은 그대로)
+    let voltInBattleAt = -1, voltInBattleV = false;
+    function voltInBattle() {
+      if (voltInBattleAt !== sim.tickCount) { voltInBattleAt = sim.tickCount; voltInBattleV = sim.units.some(v => v.job === 'volt' && !v.monsterType); }
+      return voltInBattleV;
+    }
+    // 몸에 붙는 반복 이펙트: 감전(적) · 축전 5 · 오버로드 · 과부하. 체력바를 그리는 자리에서 불림 (몸 그림 위, 캔버스는 이미 유닛 발 자리로 옮겨져 있음)
+    function drawVoltBodyFx(ctx, u) {
+      const sc = Math.min(2, u.sizeScale || 1), f = sim.tickCount / 3 + (String(u.id).length * 7 + (u.x | 0)) % 12;
+      if ((u.statuses?.shock || 0) > 0 && voltInBattle()) drawVoltFx(ctx, 'shock', f, 0, 12, sc);
+      if (u.job !== 'volt' || u.monsterType) return;
+      if (voltOverloadOn(u)) drawVoltFx(ctx, 'overload', f, 0, 12, sc);
+      else if (voltBurnout(u)) drawVoltFx(ctx, 'burnout', f, 0, 12, sc);
+      else if ((u.voltCharge || 0) >= VOLT_CHARGE_MAX) drawVoltFx(ctx, 'charged', f, 0, 12, sc);
+    }
     // ----- 그림 (pixelfx 작법: 칸 단위 도트 · 남보라 램프 · 깜빡이며 꺼짐) -----
     // 축전: 체력바 아래 작은 칸 5개 (가득 차면 노랑) · 오버로드 중엔 몸 둘레에 노란 잔전류가 튐 · 과부하 중엔 회색
     function drawVoltCharge(ctx, u, bx, by, barW, tick) {
@@ -28082,7 +28164,7 @@
         ctx.fillStyle = burn ? '#475569' : (!on ? '#312e81' : (over || n >= VOLT_CHARGE_MAX ? ((tick >> 2) % 2 ? '#fde047' : '#facc15') : '#818cf8'));
         ctx.fillRect(x, y, 4, 3);
       }
-      if (!over) return;
+      if (!over || voltFxImg('overload')) return; // 오버로드 잔전류: 시트(overload)가 있으면 drawVoltBodyFx가 그림
       const rnd = pfxRng(((tick >> 2) * 7919 + (u.id ? String(u.id).length * 131 : 7)) >>> 0), c = 2;
       ctx.save();
       for (let i = 0; i < 3; i++) { // 2프레임마다 바뀌는 짧은 지지직 3줄기
@@ -28098,6 +28180,11 @@
     }
     // 일렉트릭 필드: 바닥에 깔린 전류 그물 (원 테두리 없이 그물 마디·줄로 범위를 보임). 줄은 4틱마다 일부만 켜져 지지직거림
     function drawVoltField(ctx, z, fade) {
+      { // 시트: 절반 크기로 구운 그물(반지름 180 · 강화 240)을 판정 반지름에 맞춰 늘림, 처음 0.2초 동안 펼쳐짐
+        const age = (z.maxLife || z.life) - z.life, grow = Math.min(1, age / 12), nm = z.emp ? 'field-gold' : 'field';
+        ctx.globalAlpha = 1; // drawZones가 범위 표시용 투명도(전격술사 필드 = 0)를 걸어 둔 채로 부름
+        if (drawVoltFx(ctx, nm, sim.tickCount / 3, z.x, z.y, (z.r / (z.emp ? 240 : 180)) * (0.6 + 0.4 * grow), 0, fade)) return;
+      }
       const R = PFX_RAMPS.volt, s = z.emp ? 44 : 40, r = z.r, t = (sim.tickCount >> 2);
       const age = (z.maxLife || z.life) - z.life, grow = Math.min(1, age / 12);
       const inside = (x, y) => Math.hypot(x - z.x, (y - z.y) / 0.62) <= r * grow;
@@ -28154,10 +28241,35 @@
         ctx.drawImage(VOLT_FX, px, py, pw * (w / segW), ph, x, -ay * k, w, ph * k);
       }
       ctx.restore();
-      drawPixelBurst(ctx, ef.tx, ef.ty, 14, Math.min(0.95, p * 1.5), PFX_RAMPS.volt, pfxSeedOf(ef), { sparks: 5, coreK: 0.4 });
+      const fr = sim.tickCount / 3;
+      if (!drawVoltFx(ctx, 'hit', fr, ef.tx, ef.ty, Math.max(0.8, k))) drawPixelBurst(ctx, ef.tx, ef.ty, 14, Math.min(0.95, p * 1.5), PFX_RAMPS.volt, pfxSeedOf(ef), { sparks: 5, coreK: 0.4 });
+      drawVoltFx(ctx, 'hand-spark', fr + 5, ef.sx, ef.sy, k); // 손끝 스파크
     }
     // 전자포: 손에서 뻗는 굵은 전격 포 (바깥 남보라 → 안 연보라 → 흰 심), 가장자리를 따라 짧은 튀김, 끝에서 도트가 흩어짐
+    // 시트 전자포: 몸통 120px 토막을 포 길이만큼 이어 붙이고(포 끝에서 자름), 고리 번개를 170px마다 시작 프레임을 달리해 덧그림, 손바닥 총구 · 포 끝 머리
+    //   일반 그림은 판정 반폭 60, 강화(-wide-gold)는 120 기준 → ef.w로 배율. 왼쪽을 볼 때는 위아래를 뒤집어 고리 번개가 늘 위로 솟게
+    //   0.25초마다 새 이펙트가 생기고 앞 것과 3틱 겹침 → 새 것만 그림 (겹치면 두 겹)
+    function drawVoltRailFx(ctx, ef, progress) {
+      if (progress > (VOLT_RAIL_EVERY - 0.5) / (VOLT_RAIL_EVERY + 3)) return true;
+      const suf = ef.emp ? '-wide-gold' : '', s = ef.w / (ef.emp ? 120 : 60), L = ef.len, f = sim.tickCount / 3;
+      if (!voltFxImg('rail-body' + suf) || !voltFxImg('rail-tip' + suf) || !voltFxImg('rail-muzzle' + suf) || !voltFxImg('rail-arc' + suf)) return false;
+      const ang = ef.ang || 0, flipY = Math.cos(ang) < 0;
+      ctx.save();
+      ctx.translate(ef.x, ef.y);
+      ctx.rotate(ang);
+      if (flipY) ctx.scale(1, -1);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, -400 * s, L, 800 * s); ctx.clip();
+      for (let x = 0; x < L; x += 120 * s) drawVoltFx(ctx, 'rail-body' + suf, f, x, 0, s);
+      ctx.restore();
+      for (let i = 0, x = 40 * s; x < L - 90 * s; i++, x += 170 * s) drawVoltFx(ctx, 'rail-arc' + suf, f + i * 5, x, 0, s);
+      drawVoltFx(ctx, 'rail-tip' + suf, f, L, 0, s);
+      drawVoltFx(ctx, 'rail-muzzle' + suf, f, 0, 0, s);
+      ctx.restore();
+      return true;
+    }
     function drawVoltRail(ctx, ef, progress) {
+      if (drawVoltRailFx(ctx, ef, progress)) return;
       const R = PFX_RAMPS.volt, p = Math.min(1, Math.max(0, progress));
       const w = ef.w * (0.85 + 0.15 * Math.sin(sim.tickCount * 0.9)), L = ef.len;
       const fade = p < 0.7 ? 1 : 1 - (p - 0.7) / 0.3;
@@ -29848,7 +29960,8 @@
       magic_burst: ['#3b1a6e', '#6d3fc0', '#a875f0', '#dcc4ff', '#ffffff'],
       arrow_hit: ['#6a3a10', '#b8701c', '#f0a92a', '#ffd84a', '#fff8d0'],
       bolt: ['#1e2a6e', '#2563eb', '#60a5fa', '#c7e2ff', '#ffffff'],
-      volt: ['#1e1b4b', '#4f46e5', '#818cf8', '#e0e7ff', '#ffffff'] // 전격술사 (남보라)
+      volt: ['#2c2390', '#2457c8', '#1fa0e6', '#a4f6ff', '#ffffff'], // 전격술사 (하늘색 플라즈마 · 이펙트 시트 PLASMA_V와 같은 색)
+      volt_gold: ['#6a2c08', '#b8600c', '#f0a01a', '#fff080', '#ffffff'] // 전격술사 강화 (금빛 · GOLD_V)
     };
     // 시크릿 레어 성녀 (천사) 일반공격 치유: 하프에서 민트빛 치유 거품이 물결치며 날아가 아군에게 닿으면 초록 도트로 터짐 (pixelfx 작법)
     //   그림의 초록 거품·금빛 장식 색. heal_beam 이펙트에 sr: 1 (healBeamSkin)
@@ -32528,6 +32641,7 @@
         }
       }
 
+      if (u.alive) drawVoltBodyFx(ctx, u); // 전격술사 시트: 감전(적) · 축전 5 · 오버로드 · 과부하
       if (u.alive && u.job === 'volt' && !u.monsterType) drawVoltCharge(ctx, u, bx, by, barW, tick); // 전격술사 축전 칸 5개 · 오버로드 잔전류
       const brawlSpirit = u.alive && u.job === 'brawler' && !u.monsterType ? brawlerSpiritLeft(u, tick) : 0;
       if (brawlSpirit > 0) drawBrawlerSpiritBar(ctx, brawlSpirit, bx, by, barW); // 격투가 투혼 남은 시간 (보라)
@@ -33456,6 +33570,8 @@
           drawVoltRail(ctx, ef, progress); // 전격술사 전자포
         } else if (ef.type === 'volt_beam') {
           drawVoltBeam(ctx, ef, progress); // 전격술사 기본 공격 줄기 (줄기 조각 그림을 이어 붙임)
+        } else if (ef.type === 'volt_fx') {
+          drawVoltFxEffect(ctx, ef); // 전격술사 한 번 트는 시트 이펙트 (썬더볼트 낙뢰·방전·강화 발동·오버로드 발동·체인 끝)
 
         } else if (ef.type === 'cast_circle' || ef.type === 'shield_dome' || ef.type === 'blessing_aura') {
           ctx.globalAlpha = ef.life / ef.maxLife;
@@ -46439,7 +46555,7 @@
     // ----- 화면 형식 v2 (2026-11-09부터 방장이 보냄 · 받는 쪽은 두 형식 다 읽음) -----
     // 이펙트 종류 이름(평균 15자, 이펙트 바이트의 1/5)은 표 번호로 · 투사체의 안 바뀌는 칸(종류·색·반지름·그림)은 처음 한 번만 (매 화면 다시 보내던 투사체 바이트의 절반)
     // ⚠ LIVE_FX_TYPES 순서를 바꾸거나 중간에 끼우면 먼저 연 탭이 다른 이펙트를 그림 → 새 종류는 끝에만 더할 것 (표에 없는 종류는 이름 그대로 감)
-    const LIVE_FX_TYPES = ['aoe_ring', 'arrow_hit', 'bard_encore', 'bard_lute', 'bard_song_buff', 'bard_sr_encore', 'bard_wave', 'bard_wave_hit', 'berserker_slam', 'berserker_split', 'blessing_aura', 'blood_fx', 'brawl_hit', 'brawl_ring', 'cast_circle', 'charge_dash', 'curse_bolt', 'curse_ruin_blast', 'curse_ruin_bolt', 'curse_ruin_circle', 'curse_shatter', 'curse_siphon', 'curse_siphon_heal', 'curse_weaken', 'fire_explosion', 'frost_blizzard', 'frost_glaze', 'frost_nova', 'frost_skate', 'heal_beam', 'heal_cross', 'heal_pillar', 'hidden_assassin', 'hidden_assassin_smoke', 'hidden_beam', 'hidden_excal_impact', 'hidden_fusion', 'hidden_giant_aura', 'hidden_giant_burst', 'hidden_miracle', 'hidden_miracle_buff', 'hidden_miracle_pillar', 'hidden_musou_boom', 'hidden_musou_dash', 'hidden_musou_slash', 'hidden_musou_x', 'hidden_slash', 'hidden_snipe_bullet', 'hidden_snipe_hit', 'hidden_storm', 'ice_shatter', 'lightning_bolt', 'magic_burst', 'paladin_aegis_burst', 'paladin_aegis_dome', 'paladin_charge_dust', 'paladin_charge_hit', 'paladin_consec_burst', 'paladin_hs_dome', 'paladin_judgment', 'paladin_swing', 'pierce_fx', 'pyro_burst', 'pyro_fring', 'pyro_hit', 'pyro_meteor_impact', 'pyro_sr_meteor', 'pyro_xpl', 'rampage_fx', 'shield_dome', 'sniper_line', 'sniper_spread', 'spirit_dodge', 'spirit_king_burst', 'spirit_pop', 'stun_shockwave', 'whirlwind_slash', 'volt_rail', 'volt_beam'];
+    const LIVE_FX_TYPES = ['aoe_ring', 'arrow_hit', 'bard_encore', 'bard_lute', 'bard_song_buff', 'bard_sr_encore', 'bard_wave', 'bard_wave_hit', 'berserker_slam', 'berserker_split', 'blessing_aura', 'blood_fx', 'brawl_hit', 'brawl_ring', 'cast_circle', 'charge_dash', 'curse_bolt', 'curse_ruin_blast', 'curse_ruin_bolt', 'curse_ruin_circle', 'curse_shatter', 'curse_siphon', 'curse_siphon_heal', 'curse_weaken', 'fire_explosion', 'frost_blizzard', 'frost_glaze', 'frost_nova', 'frost_skate', 'heal_beam', 'heal_cross', 'heal_pillar', 'hidden_assassin', 'hidden_assassin_smoke', 'hidden_beam', 'hidden_excal_impact', 'hidden_fusion', 'hidden_giant_aura', 'hidden_giant_burst', 'hidden_miracle', 'hidden_miracle_buff', 'hidden_miracle_pillar', 'hidden_musou_boom', 'hidden_musou_dash', 'hidden_musou_slash', 'hidden_musou_x', 'hidden_slash', 'hidden_snipe_bullet', 'hidden_snipe_hit', 'hidden_storm', 'ice_shatter', 'lightning_bolt', 'magic_burst', 'paladin_aegis_burst', 'paladin_aegis_dome', 'paladin_charge_dust', 'paladin_charge_hit', 'paladin_consec_burst', 'paladin_hs_dome', 'paladin_judgment', 'paladin_swing', 'pierce_fx', 'pyro_burst', 'pyro_fring', 'pyro_hit', 'pyro_meteor_impact', 'pyro_sr_meteor', 'pyro_xpl', 'rampage_fx', 'shield_dome', 'sniper_line', 'sniper_spread', 'spirit_dodge', 'spirit_king_burst', 'spirit_pop', 'stun_shockwave', 'whirlwind_slash', 'volt_rail', 'volt_beam', 'volt_fx'];
     const LIVE_FX_TYPE_IDX = Object.fromEntries(LIVE_FX_TYPES.map((t, i) => [t, i]));
     let liveFrameV2 = false; // publishLiveBattleFrame이 화면마다 정함
     function packLiveEffect(ef) {

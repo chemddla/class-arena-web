@@ -7,7 +7,7 @@ import { fit, clamp, rng, Rng, cycle, TAU, WHITE } from "../../core/index.js";
 import { zigzag, crackle } from "../lightning/_lib.js";
 import { PLASMA_V, SPARK_V } from "./_volt.js";
 
-const R0 = 360, RMAX = 480, SQ = 0.3;   // 캔버스는 강화 4칸(480)까지 담게 (묶을 때 빈 곳은 잘림)
+const R0 = 360, RMAX = 480, SQ = 0.62;   // SQ = 게임 바닥 원의 세로 비율 (판정 원과 맞춤). 캔버스는 강화 4칸(480)까지 담게 (묶을 때 빈 곳은 잘림)
 export const meta = {
   name: "Volt field",
   desc: "An electric net on the floor: a jittered lattice of jagged current, pulses rolling out from the middle, strands flaring, short arcs jumping up off the knots, motes drifting up. No rim: the net's edge marks the area.",

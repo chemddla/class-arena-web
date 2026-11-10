@@ -19,6 +19,7 @@ for (const f of readdirSync(src)) if (f.endsWith(".js")) copyFileSync(join(src, 
 //   *-gold = 강화 스킬 (축전 5 · 오버로드 중): 금빛 플라즈마 램프, 장판·방전은 반지름 4칸, 전자포는 폭 2칸, 썬더볼트는 두 번째 낙뢰
 const GOLD = { palette: GOLD_V, sparks: GOLD_SPARK_V };
 const VARIANTS = [
+  ["field", "field", { R: 180, gap: 37 }],   // 일반 장판도 절반 크기 (기본 굽기를 덮어씀)
   ["rail-body-wide", "rail-body", { thick: 2 }],
   ["rail-muzzle-wide", "rail-muzzle", { thick: 2 }],
   ["rail-tip-wide", "rail-tip", { thick: 2 }],
@@ -28,7 +29,7 @@ const VARIANTS = [
   ["rail-arc-wide", "rail-arc", { thick: 2 }],
   ["rail-arc-wide-gold", "rail-arc", { thick: 2, ...GOLD }],
   ["thunderbolt-gold", "thunderbolt", { echo: 1, width: 1.25, ...GOLD }],
-  ["field-gold", "field", { R: 480, ...GOLD }],
+  ["field-gold", "field", { R: 240, gap: 37, ...GOLD }],   // 장판은 절반 크기로 굽고 게임이 2배로 그림 (파일 크기)
   ["discharge-gold", "discharge", { R: 480, ...GOLD }],
   ["hit-gold", "hit", GOLD],
   ["hand-spark-gold", "hand-spark", GOLD],

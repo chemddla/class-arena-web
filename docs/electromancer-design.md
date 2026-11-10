@@ -231,7 +231,13 @@
 | 전자포 | **구현**: 코드로 그린 굵은 포 (남보라 → 연보라 → 흰 심) + 가장자리 튀김 + 끝 도트 터짐 (`volt_rail`). 샘플 `volt_rail_src.png`는 다음 단계 |
 | 오버로드 | **구현**: 몸 둘레 노란 잔전류 3줄기 · 축전 칸이 노랗게 깜빡임, 과부하 동안은 축전 칸이 회색 (연기는 아직) |
 
-#### 8-5-1. 플라즈마 이펙트 시트 (pixelfx로 구움, 2026-11-10 — 아직 게임에 연결 전)
+#### 8-5-1. 플라즈마 이펙트 시트 (pixelfx로 구움, 2026-11-10 게임에 연결)
+- **연결 (index.html `VOLT_FXS`·`drawVoltFx`·`voltFx`)**: 시트는 처음 쓸 때 불러오고, 못 받았으면 예전 코드 그림으로 그림. 한 번 트는 것은 새 이펙트 종류 `volt_fx` (`LIVE_FX_TYPES` 끝에 추가)
+  - 썬더볼트: 대상마다 `thunderbolt`(강화 `-gold`)을 0.1초 간격 · 강화 되돌아오는 타격은 금빛 시트의 두 번째 낙뢰가 보여 줌
+  - 필드: 장판 그림 `field`(강화 `-gold`, 절반 크기로 구워 판정 반지름에 맞춰 늘림, 바닥 원 세로 비율 0.62) · 방전: `discharge`(강화 `-gold`, 반지름에 맞춰 배율)
+  - 체인: 적-적 줄은 코드 번개(강화 = 금빛 램프 `volt_gold`) + 줄 끝 `hit`(강화 `-gold`) · 기본 공격: 줄기 조각 + 끝 `hit` + 손 `hand-spark`
+  - 전자포: `drawVoltRailFx` — 몸통 이어 붙이기 + `rail-arc` 170px마다(시작 프레임 다르게) + 총구·끝, 강화는 `-wide-gold`, 왼쪽을 볼 땐 위아래 뒤집어 번개가 늘 위로
+  - 강화 스킬이 나갈 때 `empower` · 오버로드 발동 `overload-burst` · 몸: 오버로드 `overload` / 과부하 `burnout` / 축전 5 `charged` / 전격술사가 있는 전투의 감전 `shock` (`drawVoltBodyFx`)
 위 표의 코드 그림을 바꿀 시트. 샘플에 붙어 있던 하늘색 전기(손 불꽃·구체·줄기)를 기준으로, 흰 심 → 하늘 몸 → 파랑 → **남보라 테두리** 램프로 플라즈마 느낌을 키움.
 - 원본: `tools/volt_fx/<이름>.js` (pixelfx 효과 파일, 우리 캐릭터 키 88px·1칸 120px 기준으로 직접 그림)
 - 굽기: `node tools/volt_fx_build.mjs <pixelfx 폴더>` → `python tools/volt_fx_pack.py <pixelfx 폴더>` (pixelfx = https://github.com/patch-gg/pixelfx 받아 둔 폴더, 설치 없음)

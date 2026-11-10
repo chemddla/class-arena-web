@@ -6,7 +6,7 @@ import { Particles, Lights, P, Rng, fit, flare, clamp, ease, rng, TAU, WHITE, mi
 import { zigzag, stroke, crackle } from "../lightning/_lib.js";
 import { PLASMA_V, SPARK_V } from "./_volt.js";
 
-const R0 = 360, RMAX = 480, SQ = 0.3, CY = -48;   // 캔버스는 강화 4칸(480)까지 담게 (묶을 때 빈 곳은 잘림)
+const R0 = 360, RMAX = 480, SQ = 0.62, CY = -48;   // SQ = 게임 바닥 원의 세로 비율 (판정 원과 맞춤). 캔버스는 강화 4칸(480)까지 담게 (묶을 때 빈 곳은 잘림)
 export const meta = {
   name: "Volt discharge",
   desc: "Plasma bursting out of a body: sparks rush in, a white flash at the chest, a dozen heavy forked bolts stab the floor all round and tear into the air, sparks fountain where they land, arcs crawl along the floor, the charge bleeds away.",
