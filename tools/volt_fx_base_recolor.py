@@ -5,11 +5,26 @@
 #   원래 램프(PLASMA_V = index.html PFX_RAMPS.volt, GOLD_V = volt_gold)의 몇 번째 단계 밝기인지 찾아 새 램프의 같은 단계로 옮김 (pixelfx 램프 치환)
 #   흰 심·회색 픽셀은 그대로. 과부하(burnout, 붉은 연기)는 바꿀 것이 없어서 그대로 복사
 #   새 램프는 index.html PFX_RAMPS.volt_b · volt_gold_b와 같음 (코드로 그리는 줄기·터짐도 같은 색)
-import glob, os
+import glob, io, os, subprocess
 import numpy as np
 from PIL import Image
 
 D = 'assets/sprites/fx/volt/'
+# 2026-11-10: 시크릿 레어의 강화 색이 금빛 → 백열 은빛으로 바뀜 (GOLD_V). 이 스크립트는 금빛 픽셀을 찾아 검정·노랑으로 바꾸므로,
+#   강화판(금빛이 들어 있던 시트)은 지금 파일 대신 금빛이던 때의 원본을 git 기록에서 꺼내 씀 → 기본 외형 색은 그대로 유지
+#   (새 강화 이펙트를 추가하면 금빛 원본이 기록에 없으니, 그때는 GOLD_V를 잠깐 금빛으로 되돌려 구운 파일을 따로 두고 쓸 것)
+GOLD_SRC_REV = 'a3ebd87'
+GOLD_SRC = lambda name: name.endswith('-gold') or name in ('charged', 'empower', 'overload-cast')
+
+
+def load_src(f, name):
+    if GOLD_SRC(name):
+        try:
+            data = subprocess.run(['git', 'show', f'{GOLD_SRC_REV}:{f}'], capture_output=True, check=True).stdout
+            return Image.open(io.BytesIO(data)).convert('RGBA')
+        except (subprocess.CalledProcessError, OSError):
+            print(f'{name}: 금빛 원본이 {GOLD_SRC_REV}에 없음 — 지금 파일(은빛)을 그대로 씀, 강화 색이 검정·노랑이 아니게 됨')
+    return Image.open(f).convert('RGBA')
 hexrgb = lambda h: np.array([int(h[i:i + 2], 16) for i in (1, 3, 5)], float)
 PLASMA = [hexrgb(h) for h in ['#2c2390', '#2457c8', '#1fa0e6', '#a4f6ff', '#ffffff']]
 GOLD = [hexrgb(h) for h in ['#6a2c08', '#b8600c', '#f0a01a', '#fff080', '#ffffff']]
@@ -38,7 +53,7 @@ def main():
     for f in sorted(glob.glob(D + '*.webp')):
         if f.endswith('.b.webp'): continue
         name = os.path.basename(f)[:-5]
-        im = Image.open(f).convert('RGBA')
+        im = load_src(f.replace(os.sep, '/'), name)
         a = np.array(im).astype(float)
         c = a[..., :3]
         vis = a[..., 3] > 0

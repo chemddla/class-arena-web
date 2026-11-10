@@ -10,7 +10,8 @@ export const SPARK_V = ["#ffffff", "#d8fcff", "#7ff3ff", "#1ab8e6"];
 /** 몸 둘레 타원 위의 점 (각도 a, 가운데 cx, cy, 반지름 rx, ry). */
 export const onBody = (a, cx, cy, rx, ry) => [cx + Math.cos(a) * rx, cy + Math.sin(a) * ry];
 
-/** 강화 스킬 (축전 5 · 오버로드) 금빛 플라즈마 램프: 그을린 갈색 테두리 → 주황 → 노랑 → 흰 심. */
-export const GOLD_V = ["#2a1206", "#6a2c08", "#b8600c", "#f0a01a", "#ffd040", "#fff080", "#fffcd8", "#ffffff"];
-/** 강화 불티 (머리 → 꼬리). */
-export const GOLD_SPARK_V = ["#ffffff", "#fff6c0", "#ffe060", "#f0a020"];
+/** 강화 스킬 (축전 5 · 오버로드) 램프: 백열 은빛 — 짙은 남색 테두리 → 푸른 은색 → 흰 심 (2026-11-10 금빛에서 바꿈: 시크릿 레어 외형의 금장식과 겹쳐서).
+ *  이름(GOLD_V)과 시트 이름(*-gold)은 "강화판"이라는 뜻으로 그대로 둠 */
+export const GOLD_V = ["#10203a", "#2a4a7a", "#5a8ac0", "#a0c8f0", "#d8ecff", "#f4faff", "#ffffff", "#ffffff"];
+/** 강화 불티 (머리 → 꼬리): 백열 은빛 */
+export const GOLD_SPARK_V = ["#ffffff", "#f4faff", "#a0c8f0", "#5a8ac0"];
