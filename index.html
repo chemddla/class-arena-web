@@ -5030,6 +5030,17 @@
           </div>
           <div id="adminEditTriesBox" class="flex flex-wrap gap-1.5"></div>
         </div>
+        <!-- 시크릿 레어 막기 -->
+        <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex items-center justify-between gap-3">
+          <div>
+            <h4 class="font-title text-lg text-white">🚫 시크릿 레어 막기</h4>
+            <p class="text-[11px] text-slate-400">켜면 이 학생의 용병 모집 명단에 시크릿 레어가 나오지 않아요. 지금 명단에 있는 시크릿 레어도 고용할 수 없어요. (바로 적용)</p>
+          </div>
+          <label class="flex items-center gap-2 shrink-0 cursor-pointer">
+            <input type="checkbox" id="adminEditNoSecret" onchange="adminToggleNoSecretRare(this.checked)" class="w-5 h-5 accent-rose-500">
+            <span class="text-xs font-bold text-slate-200">막기</span>
+          </label>
+        </div>
 
         <!-- 보유 용병단 편집 섹션 -->
         <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
@@ -16360,9 +16371,11 @@
         [jobKeys[i], jobKeys[j]] = [jobKeys[j], jobKeys[i]];
       }
       const newPool = [];
+      const noSecret = secretRareBlocked(getActiveStudent());
       for (let i = 0; i < 6; i++) {
         const jobKey = i < jobKeys.length ? jobKeys[i] : jobKeys[Math.floor(Math.random() * jobKeys.length)];
-        const roll = Math.random() * 100;
+        // 시크릿 레어가 막힌 학생은 그 몫(0.1%)이 일반으로 나옴 (레어 확률은 그대로)
+        const roll = noSecret ? SECRET_RARE_CHANCE + Math.random() * (100 - SECRET_RARE_CHANCE) : Math.random() * 100;
         // 0.1% 확률로 시크릿 레어(SR), 1% 확률로 레어(R) 용병 출현!
         let rarity = 'N';
         if (highTierGuarantee && i === 0) {
@@ -16384,6 +16397,11 @@
         stu.recruitPool = newPool;
         stu.recruitPoolDate = getTodayDateString();
       }
+    }
+
+    // 선생님이 시크릿 레어를 막은 학생인지 (관리자 › 학생 수정 › 시크릿 레어 막기)
+    function secretRareBlocked(stu) {
+      return Boolean(stu && state.noSecretRare && state.noSecretRare[stu.id] === true);
     }
 
     function isRecruitPoolStale(stu) {
@@ -16467,6 +16485,10 @@
       }
       const cand = syncRecruitPoolFromStudent()[index];
       if (!cand || cand.hired) return;
+      if (cand.rarity === 'SCR' && secretRareBlocked(stu)) {
+        showNotice('⚠️ 선생님이 시크릿 레어 고용을 막아 두었어요.');
+        return;
+      }
 
       if (stu.roster.length >= MAX_ROSTER) {
         showNotice(`⚠️ 용병단 최대 정원은 ${MAX_ROSTER}명입니다! 사용하지 않는 용병을 📦 보관함에 넣거나 판매해주세요.`);
@@ -35229,7 +35251,20 @@
 
       renderAdminEditMercList();
       renderAdminEditTriesBox();
+      const noSecretBox = document.getElementById('adminEditNoSecret');
+      if (noSecretBox) noSecretBox.checked = secretRareBlocked(stu);
       document.getElementById('adminStudentEditModal').classList.remove('hidden');
+    }
+
+    // 선생님: 특정 학생의 모집 명단에 시크릿 레어가 안 나오게 (meta/noSecretRare/{학생id} · 학생 기기는 meta를 못 써서 학생이 풀 수 없음)
+    function adminToggleNoSecretRare(on) {
+      const stu = state.students.find(s => s.id === adminEditingStudentId);
+      if (!stu) return;
+      const map = { ...(state.noSecretRare || {}) };
+      if (on) map[stu.id] = true; else delete map[stu.id];
+      state.noSecretRare = map;
+      saveState();
+      showRewardBanner(on ? `🚫 [${stu.name}] 학생의 모집 명단에 이제 시크릿 레어가 나오지 않아요.` : `✅ [${stu.name}] 학생의 시크릿 레어 막기를 풀었어요.`);
     }
 
     // 선생님이 학생의 오늘 도전 기회를 콘텐츠별로 되돌림 (category: 'tower' | 'raid' | 'pvp' | 'quiz' | 'practice' | 'minigame' | 'all')
@@ -41801,7 +41836,7 @@
     }
 
     const CLASS_SYNC_KEYS = ['meta', 'students', 'profiles', 'auctions', 'tradeOffers'];
-    const META_SYNC_FIELDS = ['className', 'classLocked', 'notice', 'guardianPts', 'teacherAcct'];
+    const META_SYNC_FIELDS = ['className', 'classLocked', 'notice', 'guardianPts', 'teacherAcct', 'noSecretRare'];
     // studentVals: 서버와 맞춰 둔 학생 기록 (칸별로 비교해서 바뀐 칸만 올리기 위함)
     let syncCache = { classCode: null, loaded: false, metaExists: false, meta: {}, students: {}, studentVals: {}, auctions: undefined, tradeOffers: undefined };
     let classSyncRefs = [];
@@ -42495,8 +42530,15 @@
         classLocked: Boolean(state.classLocked),
         notice: state.notice || '',
         guardianPts: Number(state.guardianPts) || 0,
-        teacherAcct: normalizeTeacherAcct(state.teacherAcct)
+        teacherAcct: normalizeTeacherAcct(state.teacherAcct),
+        noSecretRare: normalizeNoSecretRare(state.noSecretRare)
       };
+    }
+    // 시크릿 레어 막은 학생 목록 { 학생id: true } (빈 목록은 서버에 칸이 없는 것과 같음)
+    function normalizeNoSecretRare(v) {
+      const out = {};
+      if (v && typeof v === 'object') Object.keys(v).sort().forEach(id => { if (v[id] === true) out[id] = true; });
+      return out;
     }
 
     function buildClassCloudPayload() {
@@ -43317,11 +43359,12 @@
           classLocked: Boolean(rm.classLocked),
           notice: rm.notice || state.notice || '',
           guardianPts: typeof rm.guardianPts === 'number' ? rm.guardianPts : (Number(state.guardianPts) || 0),
-          teacherAcct: normalizeTeacherAcct(rm.teacherAcct)
+          teacherAcct: normalizeTeacherAcct(rm.teacherAcct),
+          noSecretRare: normalizeNoSecretRare(rm.noSecretRare)
         };
         const localMeta = buildMetaFields();
         META_SYNC_FIELDS.forEach(k => {
-          const remoteSig = syncSig(k === 'teacherAcct' ? remoteValues.teacherAcct : data.meta[k]); // 선생님 계정 칸은 없는 학급도 기본값으로 맞춰 비교
+          const remoteSig = syncSig(k === 'teacherAcct' || k === 'noSecretRare' ? remoteValues[k] : data.meta[k]); // 선생님 계정 칸은 없는 학급도 기본값으로 맞춰 비교
           const localSig = syncSig(localMeta[k]);
           const isClean = force || localSig === syncCache.meta[k] || localSig === remoteSig;
           if (isClean) {
