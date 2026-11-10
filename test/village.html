@@ -7,18 +7,26 @@
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #a8dcf7; }
   #root { position: fixed; inset: 0; }
+  .vlg .vlg-hud { top: 44px !important; } /* 위쪽 바로가기 줄 자리 */
 </style>
 </head>
 <body>
 <!-- 마을 본체(assets/village.js)를 로그인 없이 돌려 보는 화면.
+     배포 사이트의 /test/village.html 에서도 열림 (서버와 연결하지 않으므로 DB 할당량을 쓰지 않음).
      그냥 열면 시험판(흉내 친구·펫 고르기·시간 버튼).
      ?sync=이름&pet=shiba 로 열면 실제 마을 방식으로 돌되, 서버 대신 이 브라우저 안의 가짜 저장소로 위치를 주고받음
      → 같은 브라우저에서 창 두 개(또는 preview/village-sync-test.html)로 친구 보이기를 점검 -->
 <div id="root"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="../assets/village-pets.js"></script>
-<script src="../assets/village.js"></script>
+<div id="nav" style="position:fixed;right:10px;top:8px;z-index:6;display:flex;gap:6px;font:800 12px 'Malgun Gothic',system-ui,sans-serif">
+  <a href="village.html" style="padding:5px 12px;border-radius:999px;border:2px solid #b7d6b0;background:#fff;color:#2f4a35;text-decoration:none">🏡 마을 테스트</a>
+  <a href="room.html" style="padding:5px 12px;border-radius:999px;border:2px solid #d9c9a8;background:#fff;color:#4a3a22;text-decoration:none">🏠 방 테스트</a>
+  <a href="./" style="padding:5px 12px;border-radius:999px;border:2px solid #cbd5e1;background:#fff;color:#334155;text-decoration:none">🧪 테스트 전장</a>
+</div>
 <script>
+  // 배포 사이트는 assets/를 오래 캐시하므로, 테스트 화면은 주소에 시각을 붙여 늘 최신 파일을 받음
+  const load = src => new Promise((ok, fail) => { const el = document.createElement('script'); el.src = src; el.onload = ok; el.onerror = () => fail(new Error(src)); document.head.appendChild(el); });
+  ['https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js', '../assets/village-pets.js?t=' + Date.now(), '../assets/village.js?t=' + Date.now()].reduce((p, src) => p.then(() => load(src)), Promise.resolve()).then(main).catch(e => { document.body.insertAdjacentHTML('beforeend', '<p style="position:fixed;left:12px;bottom:12px;font:14px system-ui">불러오지 못했어요: ' + e.message + '</p>'); });
+  function main() {
   // 가짜 저장소: Firebase의 ref().set/remove/on/onDisconnect 흉내. 창끼리는 BroadcastChannel로 알림
   function mockDb() {
     const KEY = 'vmock:', ch = new BroadcastChannel('vmock'), subs = [], mine = new Set();
@@ -50,6 +58,7 @@
   window.__api = api; window.__village = api.debug; window.frame = api.frame;
   // 점검용: 화면이 가려져 느리게 돌 때도 n 프레임을 바로 진행
   window.__step = n => { const raf = window.requestAnimationFrame; window.requestAnimationFrame = () => 0; let T = performance.now(); for (let i = 0; i < n; i++) { T += 33; api.frame(T); } window.requestAnimationFrame = raf; raf(api.frame); };
+  }
 </script>
 </body>
 </html>

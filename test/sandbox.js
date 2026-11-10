@@ -294,6 +294,7 @@
       ${SB.sel === sp.id ? editor(sp) : ''}</div>`;
     el.innerHTML = `
       <div class="text-sm font-extrabold text-white mb-2">🧪 테스트 전장 <span class="text-[10px] text-slate-500 font-normal">/test</span></div>
+      <div class="flex gap-1.5 mb-2"><a href="test/village.html" target="_top" class="${cls.btn} bg-emerald-700 hover:bg-emerald-600 flex-1 text-center">🏡 마을 테스트 맵</a><a href="test/room.html" target="_top" class="${cls.btn} bg-amber-700 hover:bg-amber-600 flex-1 text-center">🏠 방 꾸미기 테스트</a></div>
       <div class="${cls.box}"><div class="${cls.h}">⚙️ 전투</div>
         <div class="flex items-center gap-2 flex-wrap">
           <label class="flex items-center gap-1 text-xs text-slate-200"><input type="checkbox" ${SB.cd ? 'checked' : ''} onchange="SBUI.cdToggle(this.checked)">⏳ 쿨타임 적용</label>

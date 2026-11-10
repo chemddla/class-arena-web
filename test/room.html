@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>3D 방 시험판</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #cfe9f7; }
+  #root { position: fixed; inset: 0; }
+  .vroom .vr-hud { top: 44px !important; max-width: calc(100% - 230px) !important; } /* 위쪽 바로가기 줄 자리 */
+  #dev { position: fixed; right: 10px; top: 44px; z-index: 5; display: flex; gap: 6px; font: 800 12px 'Malgun Gothic', system-ui, sans-serif; }
+  #dev button { font: inherit; padding: 5px 10px; border-radius: 999px; border: 2px solid #d9c9a8; background: #fff; cursor: pointer; }
+</style>
+</head>
+<body>
+<!-- 3D 방 꾸미기(assets/village-room.js)를 로그인 없이 돌려 보는 화면. 배포 사이트의 /test/room.html 에서도 열림. 방 내용과 CA는 이 브라우저에만 저장됨.
+     ?visit=1 친구 방 구경(고치기 불가) · ?pet=rabbit 내 펫 · ?empty=1 빈 방으로 시작 · ?alone=1 같이 사는 펫 없이 -->
+<div id="root"></div>
+<div id="nav" style="position:fixed;right:10px;top:8px;z-index:6;display:flex;gap:6px;font:800 12px 'Malgun Gothic',system-ui,sans-serif">
+  <a href="village.html" style="padding:5px 12px;border-radius:999px;border:2px solid #b7d6b0;background:#fff;color:#2f4a35;text-decoration:none">🏡 마을 테스트</a>
+  <a href="room.html" style="padding:5px 12px;border-radius:999px;border:2px solid #d9c9a8;background:#fff;color:#4a3a22;text-decoration:none">🏠 방 테스트</a>
+  <a href="./" style="padding:5px 12px;border-radius:999px;border:2px solid #cbd5e1;background:#fff;color:#334155;text-decoration:none">🧪 테스트 전장</a>
+</div>
+<div id="dev"><button id="timeBtn">시간: 지금</button><button id="resetBtn">처음 상태로</button></div>
+<script>
+  // 배포 사이트는 assets/를 오래 캐시하므로, 테스트 화면은 주소에 시각을 붙여 늘 최신 파일을 받음
+  const load = src => new Promise((ok, fail) => { const el = document.createElement('script'); el.src = src; el.onload = ok; el.onerror = () => fail(new Error(src)); document.head.appendChild(el); });
+  ['https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js', '../assets/village-pets.js?t=' + Date.now(), '../assets/village-room.js?t=' + Date.now()].reduce((p, src) => p.then(() => load(src)), Promise.resolve()).then(main).catch(e => { document.body.insertAdjacentHTML('beforeend', '<p style="position:fixed;left:12px;bottom:12px;font:14px system-ui">불러오지 못했어요: ' + e.message + '</p>'); });
+  function main() {
+  const q = new URLSearchParams(location.search), KEY = 'vroom-test';
+  const sample = () => ({ lv: 2, wall: 'cream', floor: 'wood', skins: [], items: [
+    { u: 1, id: 'bed', x: 0, z: 0, r: 0, c: 0, p: 1 }, { u: 2, id: 'sidetable', x: 2, z: 0, r: 0, c: 0, p: 1 }, { u: 3, id: 'lamp', x: 2, z: 0, r: 0, c: 0, p: 1 },
+    { u: 4, id: 'desk', x: 4, z: 0, r: 0, c: 0, p: 1 }, { u: 5, id: 'chair', x: 4, z: 1, r: 2, c: 0, p: 1 }, { u: 6, id: 'rug_round', x: 2, z: 2, r: 0, c: 0, p: 1 },
+    { u: 7, id: 'sofa', x: 0, z: 3, r: 1, c: 0, p: 1 }, { u: 8, id: 'plant', x: 6, z: 0, r: 0, c: 0, p: 1 }, { u: 9, id: 'window', x: 3, z: -1, r: 0, c: 0, p: 1 },
+    { u: 10, id: 'frame', x: 1, z: -1, r: 0, c: 0, p: 1 }, { u: 11, id: 'teddy', x: 5, z: 0, r: 0, c: 0, p: 1 }, { u: 12, id: 'bookshelf', x: 0, z: 0, r: 0, c: 0, p: 0 },
+  ] });
+  let store; try { store = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+  if (!store || q.get('empty')) store = { ca: 20000, data: q.get('empty') ? { lv: 1, items: [], skins: [] } : sample() };
+  const persist = () => localStorage.setItem(KEY, JSON.stringify(store));
+  const host = {
+    me: { id: 'me', name: '나', pet: q.get('pet') || 'shiba' }, roommates: q.get('alone') ? [] : ['rabbit', 'ginger'], owner: { id: q.get('visit') ? 'friend' : 'me', name: '서연' }, canEdit: !q.get('visit'),
+    data: store.data, hour: null,
+    ca: () => store.ca,
+    pay(price, why) { if (store.ca < price) return false; store.ca -= price; persist(); console.log('[지출]', why, price); return true; },
+    save(d) { store.data = d; persist(); window.__saves = (window.__saves || 0) + 1; },
+    exit() { window.__exited = true; alert('방에서 나갑니다 (실제로는 마을로 돌아감)'); },
+  };
+  const api = VillageRoom.start(document.getElementById('root'), host);
+  window.__api = api; window.__room = api.debug; window.__store = store;
+  window.__step = n => { const raf = window.requestAnimationFrame; window.requestAnimationFrame = () => 0; let T = performance.now(); for (let i = 0; i < n; i++) { T += 33; api.frame(T); } window.requestAnimationFrame = raf; raf(api.frame); };
+  const hours = [null, 12, 18.5, 22], names = ['지금', '낮', '노을', '밤']; let hi = 0;
+  document.getElementById('timeBtn').onclick = e => { hi = (hi + 1) % 4; host.hour = hours[hi]; e.target.textContent = '시간: ' + names[hi]; };
+  document.getElementById('resetBtn').onclick = () => { localStorage.removeItem(KEY); location.reload(); };
+  }
+</script>
+</body>
+</html>
