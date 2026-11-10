@@ -45689,6 +45689,21 @@
       liveNet.sentP = next;
       return out;
     }
+    // 받는 쪽: 짧은 꼴([x, y, 각도, 번호, vx, vy])을 앞서 받은 고정 칸(종류·색·반지름·그림)으로 통째 꼴로 되살림 · table = 번호 → [종류, 색, 반지름, 그림]
+    // 받는 순서대로(applyLiveFrame) 매 화면 불러야 함: 예전엔 재생할 때(applyLiveFrameState) 표를 찾았는데, 그때는 바뀐 칸 화면도 유닛 칸(u)이 이미 채워져 있어
+    // '전체 화면이면 표를 비움' 검사가 매 화면 참이 되어 표가 늘 비었음 → 서버 화면으로 보는 친구는 투사체가 처음 한 장만 보이고 사라졌음 (2026-11-10 러쉬에서 발견)
+    function expandLiveProjectiles(list, table) {
+      if (!Array.isArray(list)) return list;
+      return list.map(q => {
+        if (!Array.isArray(q)) return null;
+        if (typeof q[3] === 'number') {
+          const st = table.get(q[3]);
+          return st ? [q[0], q[1], q[2], st[0], st[1], st[2], q[4], q[5], st[3]] : null; // 모르는 번호는 다음 전체 화면까지 건너뜀
+        }
+        if (typeof q[9] === 'number') table.set(q[9], [q[3], q[4], q[5], q[8]]);
+        return q;
+      }).filter(Boolean);
+    }
 
     const LIVE_ZN_DELTA_FROM = Date.UTC(2026, 10, 10, 15); // 2026-11-11 00:00 KST (지나면 이 상수와 비교를 지워도 됨)
     function publishLiveBattleFrame(force = false) {
@@ -46203,7 +46218,7 @@
     // - 와이파이가 잠깐 멈췄다 몰아서 주면(학교 와이파이에서 흔함): 기다리는 시간은 빨리 늘리고 천천히 줄이며,
     //   재생 시점(playBase)은 순간 이동하지 않고 조금 느리게/빠르게 흘러서 따라감 → 멈칫·순간이동 대신 살짝 느려졌다 돌아옴
     function resetLiveFrameBuffer() {
-      Object.assign(liveNet, { rtcFeeding: false, ownPred: null, ownAct: null, viewT: null, viewTAt: 0, vtSent: null, vtSig: null, frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, playBase: null, lastPlayAt: 0, lastAimCheckAt: 0, hostPause: null, recvU: null, recvT: null, recvZn: null, recvZnT: 0 });
+      Object.assign(liveNet, { rtcFeeding: false, ownPred: null, ownAct: null, viewT: null, viewTAt: 0, vtSent: null, vtSig: null, frameBuf: [], curFrame: null, prevFrame: null, clockOffs: [], clockOff: null, jitter: 0, playDelay: 160, playBase: null, lastPlayAt: 0, lastAimCheckAt: 0, hostPause: null, recvU: null, recvT: null, recvZn: null, recvZnT: 0, recvP: null });
     }
 
     function applyLiveFrame(val, fromRtc = false) {
@@ -46221,6 +46236,9 @@
         }
         liveNet.recvU = val.u;
         liveNet.recvT = liveNum(val.t);
+        // 투사체: 전체 화면마다 고정 칸 표를 새로 받고, 짧은 꼴은 여기서 통째 꼴로 되살려 둠 (재생 쪽은 통째 꼴만 봄)
+        if (!delta || !liveNet.recvP) liveNet.recvP = new Map();
+        val.p = expandLiveProjectiles(val.p, liveNet.recvP);
         // 장판: 새 방장(LIVE_ZN_DELTA_FROM 뒤)은 바뀐 칸만 담긴 화면에 장판 칸을 안 실으면 '그대로'라는 뜻 → 앞 목록에서 흐른 틱만큼 남은 시간을 줄여 채움 (0 = 모두 사라짐)
         if (val.zn === 0) val.zn = [];
         if (delta && val.zn === undefined && liveNum(val.at) >= LIVE_ZN_DELTA_FROM && Array.isArray(liveNet.recvZn)) {
