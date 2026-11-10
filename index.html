@@ -2650,7 +2650,129 @@
         <!-- 🏰 던전 1인 입장: 파티 용병을 눌러(또는 Tab 키) 조종할 용병·시점 바꾸기 -->
         <div id="dungeonPartyBar" class="hidden flex flex-wrap items-center gap-1.5 text-[11px]"></div>
         <!-- 💎 수정 방어전: 마력석·충격파·용병 배치·시설 짓기 -->
-        <div id="defensePanel" class="hidden flex flex-col gap-2 text-[11px] text-white bg-slate-950/90 border-2 border-cyan-500/40 px-3 py-2 rounded-xl"></div>
+        <style>
+    /* 💎 수정 방어전 작전 테이블 (전장 위 패널 · 방어전 탭) — 길드 스킨(나무·양피지·갈무리·계단 모서리)과 같은 말투 */
+    .dfp.hidden { display: none !important; }
+    .dfp { --lc: var(--gl-wood); display: flex; flex-direction: column; gap: 8px; padding: 8px; color: var(--gl-ink); font-family: Galmuri9, sans-serif;
+      background: var(--gl-wood-d); clip-path: var(--gl-step); box-shadow: inset 0 -5px 0 var(--gl-wood-dd), inset 0 3px 0 var(--gl-wood-l); }
+    .dfp button { font-family: inherit; }
+    .dfp-bar { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; }
+    .dfp-mana { display: flex; align-items: center; gap: 8px; padding: 4px 14px 4px 8px; background: var(--gl-wood-ddd); clip-path: var(--gl-step); color: #a5f3fc; }
+    .dfp-mana b { font-family: Galmuri11, sans-serif; font-size: 22px; line-height: 1; text-shadow: 2px 2px 0 #062a3a; }
+    .dfp-mana small { display: block; font-size: 10px; color: #67b7c9; }
+    .dfp-gem { width: 22px; height: 26px; image-rendering: pixelated; flex-shrink: 0;
+      background: conic-gradient(from 225deg at 50% 45%, #e2f8ff 0 25%, #38bdf8 0 50%, #0e5f8a 0 75%, #7dd3fc 0); clip-path: polygon(50% 0, 100% 42%, 50% 100%, 0 42%); }
+    .dfp-wave { flex: 1 1 240px; min-width: 0; padding: 6px 10px 7px; background: var(--gl-paper); clip-path: var(--gl-step); box-shadow: inset 0 -4px 0 var(--gl-paper-dd); }
+    .dfp-wave-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .dfp-wave-top b { font-family: Galmuri11, sans-serif; font-size: 15px; }
+    .dfp-wave-top span { font-size: 11px; color: var(--gl-ink2); }
+    .dfp-bars { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 3px 6px; margin-top: 4px; font-size: 10px; color: var(--gl-ink2); }
+    .dfp-prog { position: relative; height: 9px; background: var(--gl-paper-dd); box-shadow: inset 0 2px 0 rgba(0, 0, 0, .12); overflow: hidden; }
+    .dfp-prog i { position: absolute; inset: 0 auto 0 0; background: var(--c, var(--gl-gold)); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .18), inset 0 2px 0 rgba(255, 255, 255, .35); transition: width .25s steps(4); }
+    .dfp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 46px; padding: 0 14px; clip-path: var(--gl-step); cursor: pointer;
+      font-family: Galmuri11, sans-serif !important; font-weight: 700; font-size: 14px; color: var(--gl-ink); background: var(--gl-gold); box-shadow: inset 0 -4px 0 var(--gl-gold-d), inset 0 3px 0 #ffe58a; white-space: nowrap; }
+    .dfp-btn:hover { filter: brightness(1.08); } .dfp-btn:active { transform: translateY(2px); }
+    .dfp-btn small { display: block; font-family: Galmuri9, sans-serif; font-size: 10px; font-weight: 400; opacity: .85; }
+    .dfp-btn.sky { color: #fff; background: #3a9ad9; box-shadow: inset 0 -4px 0 #1f5f8f, inset 0 3px 0 #8fd0ff; }
+    .dfp-btn.green { color: #fff; background: var(--gl-green); box-shadow: inset 0 -4px 0 #2a6a24, inset 0 3px 0 #7fcf6a; }
+    .dfp-btn.red { color: #fff; background: var(--gl-red); box-shadow: inset 0 -4px 0 #8f1f24, inset 0 3px 0 #ef7a7f; }
+    .dfp-btn.wood { color: var(--gl-paper); background: var(--gl-wood); box-shadow: inset 0 -4px 0 var(--gl-wood-dd), inset 0 3px 0 var(--gl-wood-l); }
+    .dfp-btn.sm { min-height: 34px; font-size: 12px; padding: 0 10px; }
+    .dfp-btn[disabled] { filter: grayscale(.8) brightness(.9); opacity: .6; cursor: not-allowed; transform: none; }
+    .dfp-pips { display: inline-flex; gap: 2px; } .dfp-pips i { width: 7px; height: 7px; background: rgba(0, 0, 0, .3); } .dfp-pips i.on { background: #e2f8ff; box-shadow: 0 0 0 1px #1f5f8f; }
+    .dfp-main { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 8px; }
+    @media (max-width: 960px) { .dfp-main { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 560px) {
+      .dfp-bar > .dfp-btn { flex: 1 1 calc(50% - 8px); min-height: 40px; font-size: 13px; padding: 0 8px; }
+      .dfp-mana { flex: 0 0 auto; } .dfp-wave { flex-basis: 100%; order: -1; }
+      .dfp-lane { grid-template-columns: minmax(0, 1fr) auto; }
+      .dfp-lane-name { grid-column: 1; } .dfp-guards { grid-column: 2; grid-row: 1; }
+      .dfp-slots { grid-column: 1 / -1; }
+      .dfp-slot { width: calc(25% - 3px); max-width: 56px; }
+      .dfp-h small { display: none; }
+    }
+    .dfp-paper { padding: 8px; background: var(--gl-paper); clip-path: var(--gl-step); box-shadow: inset 0 -5px 0 var(--gl-paper-dd), inset 0 0 0 4px var(--gl-paper-d);
+      background-image: repeating-linear-gradient(transparent 0 23px, rgba(160, 112, 60, .08) 23px 24px); }
+    .dfp-h { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-family: Galmuri11, sans-serif; font-size: 14px; font-weight: 700; color: var(--gl-ink); }
+    .dfp-h small { font-family: Galmuri9, sans-serif; font-size: 11px; font-weight: 400; color: var(--gl-ink2); }
+    .dfp-lanes { display: flex; flex-direction: column; gap: 5px; }
+    .dfp-lane { display: grid; grid-template-columns: 82px minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 4px 6px 4px 8px; background: rgba(122, 75, 38, .08); box-shadow: inset 4px 0 0 var(--lc); }
+    .dfp-lane-name { font-family: Galmuri11, sans-serif; font-size: 13px; font-weight: 700; color: var(--lc); line-height: 1.15; }
+    .dfp-lane-name small { display: block; font-family: Galmuri9, sans-serif; font-size: 10px; font-weight: 400; color: var(--gl-ink2); }
+    .dfp-inc { display: inline-block; margin-top: 2px; padding: 0 5px; font-size: 10px; color: #fff; background: var(--gl-red); }
+    .dfp-inc.zero { background: var(--gl-paper-dd); color: var(--gl-ink2); }
+    .dfp-inc.boss { background: #6b1526; animation: gl-blink 1s steps(1) infinite; }
+    .dfp-slots { display: flex; gap: 4px; flex-wrap: wrap; }
+    .dfp-slot { position: relative; width: 48px; height: 62px; display: flex; align-items: flex-end; justify-content: center; overflow: hidden; cursor: pointer; padding: 0;
+      background: linear-gradient(transparent 70%, rgba(122, 75, 38, .18) 70%), rgba(122, 75, 38, .1); box-shadow: inset 0 0 0 2px rgba(122, 75, 38, .25); transition: background-color .1s steps(2); }
+    .dfp-slot:hover { background-color: rgba(255, 210, 63, .25); }
+    .dfp-slot.sel { background-color: rgba(255, 210, 63, .3); box-shadow: inset 0 0 0 3px var(--gl-gold), inset 0 0 0 5px var(--gl-wood-dd); }
+    .dfp-slot.empty { box-shadow: inset 0 0 0 2px rgba(122, 75, 38, .2); background-image: repeating-linear-gradient(45deg, transparent 0 5px, rgba(122, 75, 38, .07) 5px 7px); }
+    .dfp-slot.empty.sel { box-shadow: inset 0 0 0 3px var(--gl-gold), inset 0 0 0 5px var(--gl-wood-dd); }
+    .dfp-plus { margin: auto; font-family: Galmuri11, sans-serif; font-size: 20px; color: rgba(122, 75, 38, .45); }
+    .dfp-slot .no { position: absolute; top: 1px; left: 3px; font-size: 9px; color: var(--gl-ink2); }
+    .dfp-slot .wall-ok { position: absolute; top: 1px; right: 2px; width: 9px; height: 6px; background: repeating-linear-gradient(90deg, #8a8f9c 0 4px, #4a4f5c 4px 5px); box-shadow: 0 0 0 1px #2b2f42; }
+    .dfp-slot .lv { position: absolute; top: 1px; right: 2px; font-size: 9px; letter-spacing: -1px; color: var(--gl-gold-d); text-shadow: 1px 1px 0 var(--gl-wood-ddd); }
+    .dfp-slot .hp { position: absolute; left: 4px; right: 4px; bottom: 2px; height: 4px; background: var(--gl-wood-dd); } .dfp-slot .hp i { display: block; height: 100%; background: #a8a29e; }
+    .dfp-slot .broken { position: absolute; inset: auto 0 14px; font-size: 9px; text-align: center; color: #fff; background: rgba(200, 50, 58, .85); }
+    .dfp-guards { display: flex; gap: 2px; justify-content: flex-end; min-width: 56px; }
+    .dfp-face { position: relative; width: 28px; height: 28px; display: grid; place-items: center; overflow: hidden; background: var(--gl-paper-l); box-shadow: inset 0 0 0 2px var(--lc); }
+    .dfp-face.dead { filter: grayscale(1); opacity: .5; }
+    .dfp-thumb { display: inline-block; flex-shrink: 0; image-rendering: pixelated; background-repeat: no-repeat; }
+    .dfp-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+    .dfp-builds { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+    .dfp-build { display: flex; align-items: center; gap: 6px; padding: 3px 6px 3px 2px; text-align: left; cursor: pointer; background: var(--gl-paper-l); box-shadow: inset 0 0 0 2px var(--gl-paper-dd), 0 3px 0 var(--gl-paper-dd); }
+    .dfp-build:hover { background: #fff1bd; } .dfp-build:active { transform: translateY(2px); box-shadow: inset 0 0 0 2px var(--gl-paper-dd); }
+    .dfp-build[disabled] { opacity: .45; cursor: not-allowed; transform: none; filter: grayscale(.6); }
+    .dfp-build b { display: block; font-family: Galmuri11, sans-serif; font-size: 12px; }
+    .dfp-build small { display: block; font-size: 10px; line-height: 1.25; color: var(--gl-ink2); }
+    .dfp-cost { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; color: #0e6a86; font-weight: 700; }
+    .dfp-cost::before { content: ''; width: 7px; height: 9px; background: #38bdf8; clip-path: polygon(50% 0, 100% 42%, 50% 100%, 0 42%); }
+    .dfp-info { display: flex; gap: 10px; align-items: flex-start; }
+    .dfp-info-stage { flex-shrink: 0; width: 84px; height: 112px; display: flex; align-items: flex-end; justify-content: center; background: radial-gradient(ellipse at 50% 92%, rgba(122, 75, 38, .25) 0 30%, transparent 31%), rgba(122, 75, 38, .08); box-shadow: inset 0 0 0 2px var(--gl-paper-dd); }
+    .dfp-stars { color: var(--gl-gold-d); letter-spacing: 1px; text-shadow: 1px 1px 0 var(--gl-wood-dd); }
+    .dfp-lvrow { display: flex; gap: 3px; margin: 4px 0; }
+    .dfp-lvrow span { flex: 1; padding: 2px 4px; font-size: 10px; line-height: 1.25; background: var(--gl-paper-d); color: var(--gl-ink2); }
+    .dfp-lvrow span.on { background: #ffe58a; color: var(--gl-ink); box-shadow: inset 0 -2px 0 var(--gl-gold-d); }
+    .dfp-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .dfp-roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px; }
+    .dfp-merc { display: flex; align-items: center; gap: 5px; min-width: 0; padding: 2px 4px 2px 2px; background: var(--gl-paper-l); box-shadow: inset 0 0 0 2px var(--gl-paper-d); }
+    .dfp-merc.dead { opacity: .6; }
+    .dfp-merc-name { min-width: 0; flex: 1; font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dfp-merc-name i { display: block; height: 3px; margin-top: 2px; background: var(--gl-paper-dd); } .dfp-merc-name i b { display: block; height: 100%; background: var(--gl-green); }
+    .dfp-seg { display: flex; flex-shrink: 0; }
+    .dfp-seg button { width: 26px; height: 26px; display: grid; place-items: center; cursor: pointer; padding: 0; background: var(--gl-paper-d); box-shadow: inset 0 -2px 0 var(--gl-paper-dd); }
+    .dfp-seg button:hover { background: #ffe58a; }
+    .dfp-seg button.on { background: var(--lc); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .3); }
+    .dfp-ar { width: 12px; height: 12px; background: var(--lc); }
+    .dfp-seg button.on .dfp-ar { background: #fff; }
+    .dfp-ar.up { clip-path: polygon(50% 0, 100% 60%, 70% 60%, 70% 100%, 30% 100%, 30% 60%, 0 60%); }
+    .dfp-ar.right { clip-path: polygon(100% 50%, 40% 0, 40% 30%, 0 30%, 0 70%, 40% 70%, 40% 100%); }
+    .dfp-ar.down { clip-path: polygon(50% 100%, 100% 40%, 70% 40%, 70% 0, 30% 0, 30% 40%, 0 40%); }
+    .dfp-ar.core { clip-path: polygon(50% 0, 100% 45%, 50% 100%, 0 45%); }
+    .dfp-tip { font-size: 11px; color: var(--gl-ink2); line-height: 1.5; }
+    .dfp-legend { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-top: 6px; }
+    .dfp-legend div { display: flex; align-items: center; gap: 4px; font-size: 10px; line-height: 1.2; color: var(--gl-ink2); }
+    .dfp-legend b { display: block; font-size: 11px; color: var(--gl-ink); }
+    /* 방어전 탭 카드 */
+    .dft-hero { position: relative; height: 210px; overflow: hidden; background: #1b3a2a; clip-path: var(--gl-step); box-shadow: inset 0 -5px 0 rgba(0, 0, 0, .3); }
+    .dft-hero > .dft-map { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+    .dft-hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(20, 12, 4, .85) 0 30%, rgba(20, 12, 4, .2) 65%, transparent); }
+    .dft-hero-text { position: absolute; left: 18px; bottom: 16px; z-index: 1; color: var(--gl-paper); }
+    .dft-hero-text b { display: block; font-family: Galmuri11, sans-serif; font-size: 26px; text-shadow: 3px 3px 0 var(--gl-wood-ddd); }
+    .dft-hero-text span { font-size: 12px; color: var(--gl-gold); }
+    .dft-hero-text .dft-tag { display: inline-block; color: var(--gl-ink); margin-bottom: 6px; padding: 2px 8px; font-size: 11px; color: var(--gl-ink); background: var(--gl-gold); }
+    .dft-crystal { position: absolute; right: 14%; top: 18px; z-index: 1; animation: dft-bob 2.4s steps(6) infinite alternate; filter: drop-shadow(0 0 14px rgba(125, 211, 252, .8)); }
+    @keyframes dft-bob { from { transform: translateY(0); } to { transform: translateY(-10px); } }
+    .dft-diffs { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; }
+    .dft-diff { display: flex; flex-direction: column; gap: 4px; padding: 12px; background: var(--gl-paper); clip-path: var(--gl-step); box-shadow: inset 0 -5px 0 var(--gl-paper-dd), inset 0 0 0 4px var(--gl-paper-d); font-size: 11px; color: var(--gl-ink2); }
+    .dft-diff.hard { box-shadow: inset 0 -5px 0 #c96a2a, inset 0 0 0 4px #f2b27a; }
+    .dft-diff.locked { filter: grayscale(.7); opacity: .75; }
+    .dft-diff h5 { margin: 0; display: flex; align-items: center; justify-content: space-between; font-family: Galmuri11, sans-serif; font-size: 16px; color: var(--gl-ink); }
+    .dft-towers { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px; padding: 8px 10px; background: rgba(122, 75, 38, .1); }
+    .dft-towers div { display: flex; flex-direction: column; align-items: center; font-size: 10px; color: var(--gl-ink2); }
+    </style>
+        <div id="defensePanel" class="hidden dfp"></div>
 
         <!-- 광활하게 확장된 전장 월드(2880x1800)를 마우스 드래그로 자유롭게 관찰하는 뷰포트 (1440x960) -->
         <div class="relative rounded-2xl overflow-hidden border-2 border-amber-700/40 bg-amber-50 shadow-2xl">
@@ -3665,7 +3787,7 @@
             </div>
           </div>
         </div>
-        <div id="defenseCardGrid" class="grid grid-cols-1 gap-4"></div>
+        <div id="defenseCardGrid" class="flex flex-col gap-3"></div>
         <div class="bg-slate-900 border-2 border-cyan-500/30 rounded-2xl p-4 flex flex-col gap-2 text-xs text-slate-300 leading-relaxed">
           <h4 class="font-title text-lg text-white">📜 방어전 규칙</h4>
           <div>🛣️ 몬스터는 <strong>위·가운데·아래 길</strong>을 따라 수정으로 걸어가요. 준비 시간에 길 입구에 다음 웨이브 마릿수가 떠요.</div>
@@ -52381,6 +52503,48 @@
       if (sim.tickCount % 10 === 0) renderDefensePanel();
     }
     let defensePanelSig = '';
+    const DEFENSE_LANE_COLOR = ['#3e8f35', '#3d7fe0', '#c8323a'];
+    const DEFENSE_CORE_COLOR = '#0e94c9';
+    const DEFENSE_LANE_AR = ['up', 'right', 'down'];
+    // 시설 도트 그림 조각 (시트에서 잘라 CSS 배경으로) · 덫은 아래 납작한 부분만
+    function defenseThumbHTML(kind, lv = 1, s = 1, frame = 0) {
+      const crop = kind === 'trap' ? 32 : kind === 'wall' ? 2 : 0, row = DEFENSE_ART_ROW[kind], col = (lv - 1) * 4 + frame;
+      return `<span class="dfp-thumb" style="width:${36 * s}px;height:${(52 - crop) * s}px;background-image:url('${DEFENSE_ART.towers.src}');background-size:${432 * s}px ${312 * s}px;background-position:${-col * 36 * s}px ${-(row * 52 + crop) * s}px"></span>`;
+    }
+    function defenseCrystalThumbHTML(row = 0, s = 1, frame = 0) {
+      return `<span class="dfp-thumb" style="width:${32 * s}px;height:${60 * s}px;background-image:url('${DEFENSE_ART.crystal.src}');background-size:${192 * s}px ${180 * s}px;background-position:${-frame * 32 * s}px ${-row * 60 * s}px"></span>`;
+    }
+    const defenseLaneColor = l => (l === 'core' ? DEFENSE_CORE_COLOR : DEFENSE_LANE_COLOR[l]);
+    const defenseArrowHTML = l => `<span class="dfp-ar ${l === 'core' ? 'core' : DEFENSE_LANE_AR[l]}"></span>`;
+    // 시간에 따라 바뀌는 칸은 다시 그리지 않고 값만 바꿈 (누르는 중에 버튼이 바뀌지 않게)
+    function defensePanelTick() {
+      const dm = sim.defense;
+      if (!dm) return;
+      const tps = BATTLE_TICKS_PER_SEC, cr = dm.crystal;
+      const set = (id, fn) => { const el = document.getElementById(id); if (el) fn(el); };
+      if (dm.phase === 'prep') {
+        const left = Math.max(0, (dm.prepTicks - (sim.tickCount - dm.phaseAt)) / tps);
+        set('dfpTime', el => { el.textContent = `${Math.ceil(left)}초`; });
+        set('dfpProg', el => { el.style.width = `${Math.round(left / (dm.prepTicks / tps) * 100)}%`; });
+      } else if (dm.phase === 'fight') {
+        const alive = sim.units.filter(u => u.team === 'red' && u.alive && !u.isClone).length, left = dm.queue.length + alive;
+        set('dfpTime', el => { el.textContent = `남은 ${left}/${dm.total}`; });
+        set('dfpProg', el => { el.style.width = `${Math.round((1 - left / Math.max(1, dm.total)) * 100)}%`; });
+      }
+      const hpK = Math.max(0, cr.hp / cr.maxHp);
+      set('dfpCr', el => { el.style.width = `${Math.round(hpK * 100)}%`; el.style.setProperty('--c', hpK > 0.7 ? '#38bdf8' : hpK > 0.3 ? '#fbbf24' : '#f43f5e'); });
+      set('dfpCrText', el => { el.textContent = `${Math.ceil(cr.hp)}/${cr.maxHp}`; });
+      const cd = Math.max(0, Math.ceil((cr.shockReadyAt - sim.tickCount) / tps));
+      set('dfpShockCd', el => { el.textContent = cr.shock <= 0 ? '다 씀' : cd > 0 ? `${cd}초 뒤` : '준비됨'; });
+    }
+    // 작전판 접기 (지도·안내·배치를 숨기고 위 막대만) · 이 브라우저에만 기억
+    let defensePanelMin = false;
+    try { defensePanelMin = localStorage.getItem('ca_defense_panel_min') === '1'; } catch (e) {}
+    function defenseTogglePanel() {
+      defensePanelMin = !defensePanelMin;
+      try { localStorage.setItem('ca_defense_panel_min', defensePanelMin ? '1' : '0'); } catch (e) {}
+      renderDefensePanel(true);
+    }
     function renderDefensePanel(force = false) {
       const box = document.getElementById('defensePanel');
       if (!box) return;
@@ -52389,57 +52553,112 @@
       if (!dm || !dm.started) { defensePanelSig = ''; return; }
       const tps = BATTLE_TICKS_PER_SEC, cr = dm.crystal;
       const blue = sim.units.filter(u => u.team === 'blue' && !u.isClone);
-      const shockLeft = Math.max(0, Math.ceil((cr.shockReadyAt - sim.tickCount) / tps));
-      const sig = [dm.phase, dm.wave, dm.mana, dm.sel, cr.shock, shockLeft > 0, dm.autoBuild, JSON.stringify(dm.guard),
-        dm.slots.map(s => (s.tower ? `${s.tower.kind}${s.tower.lv}${s.tower.kind === 'wall' ? Math.round(s.tower.hp / Math.max(1, s.tower.maxHp) * 10) : ''}` : '-')).join(','),
-        blue.map(u => (u.alive ? 1 : 0)).join('')].join('|');
-      if (!force && sig === defensePanelSig) return;
+      const shockReady = cr.shock > 0 && sim.tickCount >= cr.shockReadyAt && dm.phase !== 'done';
+      const sig = [defensePanelMin, dm.phase, dm.wave, dm.mana, dm.sel, cr.shock, shockReady, dm.autoBuild, JSON.stringify(dm.guard), Math.round(cr.hp / cr.maxHp * 10),
+        dm.slots.map(s => (s.tower ? `${s.tower.kind}${s.tower.lv}${s.tower.kind === 'wall' ? Math.round(s.tower.hp / Math.max(1, s.tower.maxHp) * 10) : ''}${s.tower.kind === 'trap' ? s.tower.charges : ''}` : '-')).join(','),
+        blue.map(u => `${u.alive ? 1 : 0}${Math.round(u.hp / Math.max(1, u.maxHp) * 5)}`).join('')].join('|');
+      if (!force && sig === defensePanelSig) { defensePanelTick(); return; }
       defensePanelSig = sig;
-      const prep = dm.phase === 'prep';
-      const laneBtns = u => [0, 1, 2, 'core'].map(l => {
-        const on = (dm.guard[u.id] ?? 1) === l;
-        const label = l === 'core' ? '💎' : DEFENSE_LANES[l].icon;
-        return `<button type="button" onclick="defenseSetGuard('${u.id}', '${l}')" class="w-7 h-7 rounded-lg text-sm ${on ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 hover:bg-slate-700'}" title="${l === 'core' ? '수정 지키기' : DEFENSE_LANES[l].name}">${label}</button>`;
-      }).join('');
-      const guards = blue.map(u => `<div class="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-xl px-1.5 py-1 ${u.alive ? '' : 'opacity-50'}">
-          ${getMercIconHTML(u.job, u.skinVariant, 22)}<span class="font-extrabold max-w-[5.5rem] truncate">${u.alive ? '' : '💀'}${u.name}</span>${laneBtns(u)}</div>`).join('');
-      const slotChip = s => {
-        const T = s.tower, D = T && DEFENSE_TOWERS[T.kind], on = dm.sel === s.id;
-        const broken = T && T.kind === 'wall' && T.hp <= 0;
-        return `<button type="button" onclick="defenseSelectSlot(${s.id})" class="px-2 py-1 rounded-lg border-2 font-extrabold ${on ? 'border-amber-300 bg-amber-500/25' : T ? 'border-slate-600 bg-slate-800' : 'border-dashed border-cyan-500/50 bg-slate-900 text-cyan-200'}">
-          ${T ? `${D.icon}${'★'.repeat(T.lv)}${broken ? '💥' : ''}` : `${s.front ? '🧱' : ''}빈칸`}</button>`;
+      const prep = dm.phase === 'prep', plan = dm.plan || { lanes: [0, 0, 0] };
+      const hpK = Math.max(0, cr.hp / cr.maxHp);
+      // ① 위 막대: 마력석 · 웨이브 · 버튼
+      const waveTitle = dm.phase === 'done' ? (dm.won ? '수정을 지켜냈어요!' : '수정이 깨졌어요') : prep ? `${dm.wave}웨이브 준비` : `${dm.wave}웨이브 전투 중`;
+      const waveSub = prep ? `[${plan.split}]${plan.boss ? ' · 👑 보스 웨이브' : ''}` : dm.plan && dm.plan.boss ? '👑 보스 웨이브' : '';
+      const bar = `
+        <div class="dfp-bar">
+          <div class="dfp-mana"><span class="dfp-gem"></span><div><b>${dm.mana}</b><small>마력석</small></div></div>
+          <div class="dfp-wave">
+            <div class="dfp-wave-top"><b>${waveTitle}</b><span>${dm.wave}/${DEFENSE_TUNE.waves} ${waveSub}</span></div>
+            <div class="dfp-bars">
+              <span>${prep ? '⏳' : '⚔️'} <em id="dfpTime" style="font-style:normal"></em></span><div class="dfp-prog"><i id="dfpProg" style="--c:${prep ? '#38bdf8' : '#ff7a3d'};width:0"></i></div>
+              <span>💎 <em id="dfpCrText" style="font-style:normal"></em></span><div class="dfp-prog"><i id="dfpCr" style="width:${Math.round(hpK * 100)}%"></i></div>
+            </div>
+          </div>
+          ${prep ? `<button type="button" class="dfp-btn" onclick="defenseSkipPrep()">⏩ 바로 시작<small>${dm.wave}웨이브</small></button>` : ''}
+          <button type="button" class="dfp-btn sky" onclick="defenseShock()" ${shockReady ? '' : 'disabled'}>⚡ 충격파
+            <small><span class="dfp-pips">${Array.from({ length: Math.max(3, cr.shock) }, (_, i) => `<i class="${i < cr.shock ? 'on' : ''}"></i>`).join('')}</span> <span id="dfpShockCd"></span></small></button>
+          <button type="button" class="dfp-btn ${dm.autoBuild ? 'green' : 'wood'}" onclick="defenseToggleAutoBuild()">🤖 자동 짓기<small>${dm.autoBuild ? '켜짐' : '꺼짐'}</small></button>
+          <button type="button" class="dfp-btn wood" onclick="defenseTogglePanel()" title="작전 지도·용병 배치 ${defensePanelMin ? '펼치기' : '접기'}">${defensePanelMin ? '▼ 펼치기' : '▲ 접기'}<small>작전판</small></button>
+        </div>`;
+      if (defensePanelMin) { box.innerHTML = bar; defensePanelTick(); return; }
+      // ② 왼쪽: 길마다 시설 칸 + 지키는 용병
+      const slotTile = s => {
+        const T = s.tower, on = dm.sel === s.id;
+        const no = s.lane === 'core' ? `💎${s.k + 1}` : s.k + 1;
+        if (!T) return `<button type="button" class="dfp-slot empty ${on ? 'sel' : ''}" onclick="defenseSelectSlot(${s.id})" title="${s.front ? '방벽도 지을 수 있는 칸' : '빈 칸'}">
+            <span class="no">${no}</span>${s.front ? '<span class="wall-ok"></span>' : ''}<span class="dfp-plus">+</span></button>`;
+        const broken = T.kind === 'wall' && T.hp <= 0;
+        const fr = broken ? 2 : T.kind === 'trap' && !(T.charges > 0) ? 2 : 0;
+        return `<button type="button" class="dfp-slot ${on ? 'sel' : ''}" onclick="defenseSelectSlot(${s.id})" title="${DEFENSE_TOWERS[T.kind].name} ${T.lv}단계">
+            <span class="no">${no}</span><span class="lv">${'★'.repeat(T.lv)}</span>${defenseThumbHTML(T.kind, T.lv, 1, fr)}
+            ${T.kind === 'wall' && !broken ? `<span class="hp"><i style="width:${Math.round(T.hp / Math.max(1, T.maxHp) * 100)}%"></i></span>` : ''}${broken ? '<span class="broken">부서짐</span>' : ''}</button>`;
       };
-      const rows = [0, 1, 2, 'core'].map(l => `<div class="flex items-center gap-1 flex-wrap"><span class="w-16 shrink-0 text-slate-400 font-bold">${l === 'core' ? '💎 수정' : `${DEFENSE_LANES[l].icon} ${DEFENSE_LANES[l].name.replace(' 길', '')}`}</span>
-          ${dm.slots.filter(s => s.lane === l).map(slotChip).join('')}</div>`).join('');
-      let action = '<div class="text-slate-400">위 칸을 누르면 시설을 짓거나 올릴 수 있어요. (칸 번호는 전장 바닥에도 보여요 · 🧱 표시 칸만 방벽 가능)</div>';
+      const faces = l => blue.filter(u => (dm.guard[u.id] ?? 1) === l).map(u => `<span class="dfp-face ${u.alive ? '' : 'dead'}" style="--lc:${defenseLaneColor(l)}" title="${u.name}">${getMercIconHTML(u.job, u.skinVariant, 24)}</span>`).join('');
+      const laneRow = l => {
+        const isCore = l === 'core';
+        const n = isCore ? 0 : plan.lanes[l], boss = !isCore && plan.boss && plan.bossLane === l;
+        const name = isCore ? '수정' : DEFENSE_LANES[l].name.replace(' 길', '');
+        const sub = isCore ? `<small>마지막 방어선</small>` : prep ? `<span class="dfp-inc ${boss ? 'boss' : n ? '' : 'zero'}">${boss ? '👑 ' : ''}다음 ${n}마리</span>` : `<small>${sim.units.filter(u => u.team === 'red' && u.alive && u.defLane === l).length}마리 오는 중</small>`;
+        return `<div class="dfp-lane" style="--lc:${defenseLaneColor(l)}">
+            <div class="dfp-lane-name">${name}${sub}</div>
+            <div class="dfp-slots">${dm.slots.filter(s => s.lane === l).map(slotTile).join('')}${isCore ? `<span style="margin-left:6px;align-self:center">${defenseCrystalThumbHTML(hpK >= 0.7 ? 0 : hpK >= 0.3 ? 1 : 2, 1, Math.floor(sim.tickCount / 8) % 6)}</span>` : ''}</div>
+            <div class="dfp-guards">${faces(l)}</div>
+          </div>`;
+      };
+      const board = `<div class="dfp-paper">
+          <div class="dfp-h">🗺️ 작전 지도 <small>칸을 눌러 짓거나 올려요 · 회색 벽돌 표시 칸만 방벽 가능</small></div>
+          <div class="dfp-lanes">${[0, 1, 2, 'core'].map(laneRow).join('')}</div>
+        </div>`;
+      // ③ 오른쪽 위: 고른 칸 (짓기 / 시설 정보)
       const s = dm.sel != null ? dm.slots[dm.sel] : null;
+      let detail;
       if (s && !s.tower) {
-        action = `<div class="flex flex-wrap gap-1.5">${DEFENSE_TOWER_KEYS.map(k => {
-          const D = DEFENSE_TOWERS[k], ok = defenseSlotCanBuild(s, k), afford = dm.mana >= D.cost[0];
-          return `<button type="button" onclick="defenseBuild(${s.id}, '${k}')" ${ok && afford ? '' : 'disabled'} class="px-2 py-1.5 rounded-xl text-left ${ok && afford ? 'bg-slate-800 hover:bg-slate-700 border border-slate-600' : 'bg-slate-900 border border-slate-800 opacity-45 cursor-not-allowed'}">
-            <div class="font-extrabold">${D.icon} ${D.name} <span class="text-cyan-300">💠${D.cost[0]}</span></div><div class="text-[10px] text-slate-400">${ok ? D.lv[0] : k === 'wall' ? '🧱 칸에만' : '1개만'}</div></button>`;
-        }).join('')}</div>`;
+        detail = `<div class="dfp-h">🔨 ${s.lane === 'core' ? '수정 옆' : DEFENSE_LANES[s.lane].name} ${s.k + 1}번 칸에 짓기</div>
+          <div class="dfp-builds">${DEFENSE_TOWER_KEYS.map(k => {
+            const D = DEFENSE_TOWERS[k], ok = defenseSlotCanBuild(s, k), afford = dm.mana >= D.cost[0];
+            const why = !ok ? (k === 'wall' ? '맨 앞 칸에만' : '1개만 지을 수 있어요') : !afford ? `마력석 ${D.cost[0] - dm.mana} 모자라요` : D.lv[0];
+            return `<button type="button" class="dfp-build" onclick="defenseBuild(${s.id}, '${k}')" ${ok && afford ? '' : 'disabled'}>
+              ${defenseThumbHTML(k, 1, 1)}<span style="min-width:0"><b>${D.name}</b><span class="dfp-cost">${D.cost[0]}</span><small>${why}</small></span></button>`;
+          }).join('')}</div>`;
       } else if (s && s.tower) {
         const T = s.tower, D = DEFENSE_TOWERS[T.kind];
         const up = T.lv < 3 ? D.cost[T.lv] : 0, rep = T.kind === 'wall' && T.hp < T.maxHp ? Math.round(DEFENSE_TOWERS.wall.cost[0] * 0.3 * T.lv) : 0;
-        action = `<div class="flex flex-wrap items-center gap-1.5">
-          <span class="font-extrabold">${D.icon} ${D.name} ${'★'.repeat(T.lv)} <span class="text-slate-400 font-bold">· ${D.lv[T.lv - 1]}${T.kills ? ` · 처치 ${T.kills}` : ''}${T.kind === 'wall' ? ` · 체력 ${Math.ceil(T.hp)}/${T.maxHp}` : ''}${T.kind === 'trap' ? ` · 남은 횟수 ${T.charges}` : ''}</span></span>
-          ${T.lv < 3 ? `<button type="button" onclick="defenseUpgrade(${s.id})" ${dm.mana >= up ? '' : 'disabled'} class="px-2.5 py-1.5 rounded-xl font-extrabold ${dm.mana >= up ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-slate-800 opacity-50'}">⬆️ ${T.lv + 1}단계 (${D.lv[T.lv]}) 💠${up}</button>` : '<span class="text-amber-300 font-extrabold">최고 단계</span>'}
-          ${rep ? `<button type="button" onclick="defenseRepair(${s.id})" ${prep && dm.mana >= rep ? '' : 'disabled'} class="px-2.5 py-1.5 rounded-xl font-extrabold ${prep && dm.mana >= rep ? 'bg-sky-700 hover:bg-sky-600' : 'bg-slate-800 opacity-50'}">🔧 고치기 💠${rep}${prep ? '' : ' (준비 시간에)'}</button>` : ''}
-          <button type="button" onclick="defenseSell(${s.id})" ${prep ? '' : 'disabled'} class="px-2.5 py-1.5 rounded-xl font-extrabold ${prep ? 'bg-rose-800 hover:bg-rose-700' : 'bg-slate-800 opacity-50'}">💰 팔기 +💠${Math.floor(T.spent * 0.5)}${prep ? '' : ' (준비 시간에)'}</button>
-        </div>`;
+        const stat = [T.kills ? `처치 ${T.kills}` : '', T.kind === 'wall' ? `체력 ${Math.ceil(T.hp)}/${T.maxHp}` : '', T.kind === 'trap' ? `남은 횟수 ${T.charges}` : '', D.range ? `사거리 ${D.range}` : ''].filter(Boolean).join(' · ');
+        detail = `<div class="dfp-info">
+            <div class="dfp-info-stage">${defenseThumbHTML(T.kind, T.lv, 2, T.kind === 'wall' && T.hp <= 0 ? 2 : 0)}</div>
+            <div style="min-width:0;flex:1">
+              <div class="dfp-h" style="margin:0">${D.name} <span class="dfp-stars">${'★'.repeat(T.lv)}${'☆'.repeat(3 - T.lv)}</span></div>
+              <div class="dfp-tip">${s.lane === 'core' ? '수정 옆' : DEFENSE_LANES[s.lane].name} ${s.k + 1}번 칸${stat ? ` · ${stat}` : ''}</div>
+              <div class="dfp-lvrow">${D.lv.map((t, i) => `<span class="${i < T.lv ? 'on' : ''}">${i + 1}단계<br>${t}</span>`).join('')}</div>
+              <div class="dfp-acts">
+                ${T.lv < 3 ? `<button type="button" class="dfp-btn green sm" onclick="defenseUpgrade(${s.id})" ${dm.mana >= up ? '' : 'disabled'}>⬆️ ${T.lv + 1}단계 <span class="dfp-cost" style="color:#e0ffe9">${up}</span></button>` : '<span class="dfp-btn sm" style="cursor:default">최고 단계</span>'}
+                ${rep ? `<button type="button" class="dfp-btn sky sm" onclick="defenseRepair(${s.id})" ${prep && dm.mana >= rep ? '' : 'disabled'}>🔧 고치기 <span class="dfp-cost" style="color:#e2f8ff">${rep}</span></button>` : ''}
+                <button type="button" class="dfp-btn red sm" onclick="defenseSell(${s.id})" ${prep ? '' : 'disabled'}>팔기 +${Math.floor(T.spent * 0.5)}${prep ? '' : ' (준비 때)'}</button>
+              </div>
+            </div>
+          </div>`;
+      } else {
+        detail = `<div class="dfp-h">📜 시설 안내 <small>왼쪽 지도에서 칸을 고르세요</small></div>
+          <div class="dfp-legend">${DEFENSE_TOWER_KEYS.map(k => { const D = DEFENSE_TOWERS[k]; return `<div>${defenseThumbHTML(k, 1, 1)}<span><b>${D.name}</b><span class="dfp-cost">${D.cost[0]}</span><br>${D.lv[0]}</span></div>`; }).join('')}</div>`;
       }
-      const shockOk = cr.shock > 0 && shockLeft <= 0 && dm.phase !== 'done';
-      box.innerHTML = `
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="font-extrabold text-cyan-200 text-sm">💠 ${dm.mana}</span>
-          ${prep ? `<button type="button" onclick="defenseSkipPrep()" class="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 font-extrabold">⏩ ${dm.wave}웨이브 바로 시작</button>` : ''}
-          <button type="button" onclick="defenseShock()" ${shockOk ? '' : 'disabled'} class="px-3 py-1.5 rounded-xl font-extrabold ${shockOk ? 'bg-sky-600 hover:bg-sky-500' : 'bg-slate-800 opacity-50'}">⚡ 수정 충격파 (${cr.shock})${shockLeft > 0 && cr.shock > 0 ? ` ${shockLeft}초` : ''}</button>
-          <button type="button" onclick="defenseToggleAutoBuild()" class="px-3 py-1.5 rounded-xl font-extrabold border ${dm.autoBuild ? 'bg-emerald-700 border-emerald-400' : 'bg-slate-800 border-slate-600 hover:bg-slate-700'}">🤖 자동 짓기 ${dm.autoBuild ? '켜짐' : '꺼짐'}</button>
-        </div>
-        <div class="flex flex-wrap gap-1.5"><span class="font-extrabold text-amber-300 self-center">🛡️ 용병 배치</span>${guards}</div>
-        <div class="flex flex-col gap-1"><span class="font-extrabold text-amber-300">🧱 시설 자리</span>${rows}</div>
-        <div class="bg-slate-950/70 border border-slate-700 rounded-xl p-2">${action}</div>`;
+      // ④ 오른쪽 아래: 용병 배치
+      const roster = blue.map(u => {
+        const g = dm.guard[u.id] ?? 1, pct = u.alive ? Math.round(u.hp / Math.max(1, u.maxHp) * 100) : 0;
+        return `<div class="dfp-merc ${u.alive ? '' : 'dead'}">
+            <span class="dfp-face" style="--lc:${defenseLaneColor(g)}">${getMercIconHTML(u.job, u.skinVariant, 24)}</span>
+            <span class="dfp-merc-name">${u.alive ? '' : '💀 '}${u.name}<i><b style="width:${pct}%"></b></i></span>
+            <span class="dfp-seg">${[0, 1, 2, 'core'].map(l => `<button type="button" class="${g === l ? 'on' : ''}" style="--lc:${defenseLaneColor(l)}" onclick="defenseSetGuard('${u.id}', '${l}')" title="${l === 'core' ? '수정 지키기' : DEFENSE_LANES[l].name}">${defenseArrowHTML(l)}</button>`).join('')}</span>
+          </div>`;
+      }).join('');
+      box.innerHTML = `${bar}
+        <div class="dfp-main">
+          ${board}
+          <div class="dfp-side">
+            <div class="dfp-paper">${detail}</div>
+            <div class="dfp-paper"><div class="dfp-h">🛡️ 용병 배치 <small>쓰러지면 수정 옆에서 다시 일어나요</small></div><div class="dfp-roster">${roster}</div></div>
+          </div>
+        </div>`;
+      defensePanelTick();
     }
 
     // ----- 결과·보상 -----
@@ -52505,36 +52724,35 @@
       const box = document.getElementById('defenseCardGrid');
       if (!stu || !box) return;
       const race = todayDefenseRace();
-      const raceInfo = TOWER_RACES.find(r => r.name === race) || {};
       const book = defenseBookOf(stu, race);
       const info = document.getElementById('defenseMyInfo');
       const left = getDailyRewardLeft(stu, 'defense');
       if (info) info.innerHTML = `🗓️ 오늘의 공격 종족 <strong class="text-amber-300">${race}</strong> · ⚔️ 출전 용병 전투력 <strong class="text-rose-300">${dungeonPowerOf(stu).toLocaleString()}</strong> · 💰 오늘 남은 보상 <strong class="${left > 0 ? 'text-emerald-300' : 'text-slate-500'}">${left}/${DAILY_REWARD_LIMITS.defense}</strong>회`;
-      const mapSrc = (BATTLE_MAPS[TOWER_RACE_MAPS[race]] || BATTLE_MAPS.tower || {}).src || '';
       const starTxt = n => '★'.repeat(n || 0) + '☆'.repeat(3 - (n || 0));
       box.innerHTML = `
-        <div class="rounded-2xl border-2 border-cyan-500/40 bg-slate-900 overflow-hidden flex flex-col shadow">
-          <div class="relative h-36 bg-slate-950">
-            ${mapSrc ? `<img src="${mapSrc}" alt="${race}" class="w-full h-full object-cover opacity-70" loading="lazy">` : ''}
-            <div class="absolute inset-0 flex items-center justify-center text-6xl drop-shadow-[0_4px_8px_rgba(56,189,248,0.7)]">💎</div>
-            <div class="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-slate-950 to-transparent">
-              <div class="font-title text-2xl text-white">${race}의 습격 <span class="ml-1 px-2 py-0.5 rounded-lg bg-amber-400 text-slate-950 text-xs align-middle">🗓️ 오늘</span></div>
-              <div class="text-[11px] text-slate-300">${raceInfo.zone || ''} · 최고 기록 ${book.bestWave || 0}/${DEFENSE_TUNE.waves}웨이브</div>
-            </div>
+        <div class="dft-hero">
+          <img class="dft-map" src="${BATTLE_MAPS.crystal_defense.src}" alt="수정 방어전 전장" loading="lazy">
+          <span class="dft-crystal">${defenseCrystalThumbHTML(0, 2, 2)}</span>
+          <div class="dft-hero-text">
+            <span class="dft-tag">🗓️ 오늘의 습격</span>
+            <b>${race}이 몰려와요!</b>
+            <span>세 갈래 길 · ${DEFENSE_TUNE.waves}웨이브 · 최고 기록 ${book.bestWave || 0}/${DEFENSE_TUNE.waves}</span>
           </div>
-          <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-            ${DEFENSE_DIFFS.map(d => {
-              const locked = d === 'hard' && defenseHardLocked(stu, race);
-              const R = DEFENSE_REWARD[d];
-              return `<div class="rounded-xl bg-slate-950 border ${d === 'hard' ? 'border-orange-500/40' : 'border-slate-800'} p-3 flex flex-col gap-1 ${locked ? 'opacity-60' : ''}">
-                <div class="font-extrabold ${d === 'hard' ? 'text-orange-300' : 'text-white'}">${DEFENSE_DIFF_LABEL[d]} <span class="text-amber-300">${starTxt(book[d + 'Stars'])}</span></div>
-                <div class="text-slate-400">수정 체력 ${DEFENSE_TUNE[d].crystalHp} · 클리어 ${R.clear[0].toLocaleString()}~${R.clear[2].toLocaleString()} CA · 첫 ★★★ +${R.first3.toLocaleString()}</div>
-                <div class="text-slate-400">${locked ? '🔒 보통을 ★★★로 막으면 열려요' : '몬스터가 내 출전 용병 전투력에 맞춰져요'}</div>
-                <button onclick="startSoloDefense('${d}')" ${locked ? 'disabled' : ''} class="mt-1 py-2 rounded-lg ${locked ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : d === 'hard' ? 'bg-orange-600 hover:bg-orange-500 text-white' : 'bg-cyan-600 hover:bg-cyan-500 text-white'} font-extrabold shadow">🧍 혼자 지키기</button>
-              </div>`;
-            }).join('')}
-          </div>
-        </div>`;
+        </div>
+        <div class="dft-diffs">
+          ${DEFENSE_DIFFS.map(d => {
+            const locked = d === 'hard' && defenseHardLocked(stu, race);
+            const R = DEFENSE_REWARD[d];
+            return `<div class="dft-diff ${d === 'hard' ? 'hard' : ''} ${locked ? 'locked' : ''}">
+              <h5><span>${DEFENSE_DIFF_LABEL[d]}</span><span class="dfp-stars">${starTxt(book[d + 'Stars'])}</span></h5>
+              <div>💎 수정 체력 <b style="color:var(--gl-ink)">${DEFENSE_TUNE[d].crystalHp}</b> · 클리어 <b style="color:var(--gl-ink)">${R.clear[0].toLocaleString()}~${R.clear[2].toLocaleString()} CA</b></div>
+              <div>첫 ★★★ 보너스 +${R.first3.toLocaleString()} CA${book[d + 'First3Paid'] ? ' (받음)' : ''}</div>
+              <div>${locked ? '🔒 보통을 ★★★로 막으면 열려요' : '몬스터가 내 출전 용병 전투력에 맞춰져요'}</div>
+              <button type="button" class="dfp-btn ${d === 'hard' ? 'red' : 'sky'}" style="margin-top:4px" onclick="startSoloDefense('${d}')" ${locked ? 'disabled' : ''}>🧍 혼자 지키기</button>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="dft-towers">${DEFENSE_TOWER_KEYS.map(k => `<div>${defenseThumbHTML(k, 3, 1)}<span>${DEFENSE_TOWERS[k].name}</span></div>`).join('')}</div>`;
     }
 
     // 🏰 던전은 5인 입장(sim.dungeon.party)만 레이드방 실시간 장치를 씀
