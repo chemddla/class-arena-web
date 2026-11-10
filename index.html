@@ -35012,7 +35012,10 @@
           const units = sim.units.filter(u => u.team === 'blue' && u.liveOwnerId === m.id && !u.isClone);
           if (!units.length) continue;
           const landed = units.some(u => !u.rushPending);
-          const reason = m.leave ? 'leave' : (landed && !units.some(u => u.alive)) ? 'dead' : (m.t0 && now - m.t0 >= (WORLD_BOSS.dropWaitSec + WORLD_BOSS.sessionSec) * 1000) ? 'time' : null;
+          // 시간: 계산 담당이 적은 시작 시각(t0) → 없으면 들어온 시각(at) · 내 것은 내 화면이 잰 마감(myEnd)도 봄
+          const t0 = m.t0 || m.at || 0;
+          const timeUp = (t0 && now - t0 >= (WORLD_BOSS.dropWaitSec + WORLD_BOSS.sessionSec) * 1000) || (m.id === me.id && meta.myEnd && now >= meta.myEnd);
+          const reason = m.leave ? (m.leave === 'time' ? 'time' : 'leave') : (landed && !units.some(u => u.alive)) ? 'dead' : timeUp ? 'time' : null;
           if (!reason) continue;
           if (m.id === me.id) { this.leaveAsOwner(r, reason); return true; }
           this.markDone(r, m.id, reason, false);
@@ -35224,7 +35227,15 @@
         }
         const done = this.cache && this.cache.done && this.cache.done[meta.key] && this.cache.done[meta.key][me.id];
         if (done && done.j === meta.at) { this.ref.child(`done/${meta.key}/${me.id}`).remove().catch(() => {}); this.finishMine(done); return; }
-        if (meta.leaving && now - meta.leaving > 6000) { this.finishMine({ dmg: 0, win: false, reason: 'leave' }); return; }
+        if (meta.leaving && now - meta.leaving > 6000) { this.finishMine({ dmg: 0, win: false, reason: meta.leaveReason || 'leave' }); return; }
+        // 내 시간이 다 됐는데 계산 담당 화면이 아직 안 끝내 줌 (그 화면이 늦거나 멈춤): 내가 직접 나가기를 알림
+        if (!meta.leaving && meta.myEnd && now >= meta.myEnd + 3000) {
+          meta.leaving = now;
+          meta.leaveReason = 'time';
+          this.ref.child(`room/members/${me.id}/leave`).set('time').catch(() => {});
+          addBattleLog('⏰ 보스 레이드 시간이 끝났어요! 나가는 중이에요...');
+          return;
+        }
         if (!r || r.id !== meta.roomId) {
           // 방이 닫힘 (보스가 쓰러졌거나 모두 끝남) · 내 결과를 잠깐 기다림
           meta.goneAt = meta.goneAt || now;
