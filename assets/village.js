@@ -351,7 +351,7 @@
     const fruits = [];
     if (kind === 'fruit') [[0.95, 0.55, 0.95], [-0.8, 0.8, 0.9], [0.15, 1.45, 1.2], [1.25, 1.2, 0.2], [-1.2, 1.1, -0.1]].forEach(p => { const f = at(mesh(new THREE.SphereGeometry(0.19, 18, 13), '#e8483f'), p[0], p[1], p[2]); f.userData = { home: p.slice(), vy: 0, state: 'on' }; top.add(f); fruits.push(f); });
     g.scale.setScalar(sc); scene.add(at(g, x, 0, z));
-    const tr = { x, z, g, top, fruits, blobs: list, im, kind, shake: 0, regrow: 0, sc, show: 1, shown: 1 };
+    const tr = { x, z, g, top, fruits, blobs: list, im, kind, shake: 0, regrow: 0, sc };
     placeTree(tr); trees.push(tr); solid(x, z, 0.52 * sc); i++;
   }
   { const bg = [];
@@ -798,17 +798,11 @@
       if (r === true || a.target.stuck > 0.5) { a.target = null; a.wait = 1 + rnd() * 3.5; }
     });
 
-    // 나무: 앞을 가리면 숨김, 흔들림, 열매
+    // 나무: 흔들림, 열매
     trees.forEach(tr => {
-      const front = tr.z - me.z, hide = front > 1.0 && front < 12 && Math.abs(tr.x - me.x) < 3.2 + front * 0.25;
-      tr.show += ((hide ? 0 : 1) - tr.show) * Math.min(1, dt * 9);
       const rot = tr.shake > 0 ? Math.sin(t * 34) * 0.07 * tr.shake / 0.7 : 0;
       if (tr.shake > 0) tr.shake = Math.max(0, tr.shake - dt);
-      if (Math.abs(tr.show - tr.shown) > 0.004 || rot !== tr.top.rotation.z) {
-        tr.shown = tr.show; tr.top.rotation.z = rot;
-        tr.g.visible = tr.show > 0.03; tr.g.scale.setScalar(tr.sc * Math.max(0.001, tr.show));
-        placeTree(tr);
-      }
+      if (rot !== tr.top.rotation.z) { tr.top.rotation.z = rot; placeTree(tr); }
       tr.fruits.forEach(f => {
         const u = f.userData;
         if (u.state === 'fall') { u.vy -= 14 * dt; f.position.y += u.vy * dt; if (f.position.y < -1.05 + 0.19) { f.position.y = -0.86; u.state = 'ground'; u.timer = 1.1; } }
