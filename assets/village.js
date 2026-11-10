@@ -26,11 +26,11 @@
   .vlg .vlg-acts button { font-size: 15px; padding: 12px 16px; }
   .vlg .vlg-hint { position: absolute; left: 12px; bottom: 14px; font-size: 12px; font-weight: 700; background: rgba(255, 255, 255, .8); padding: 6px 10px; border-radius: 10px; max-width: 55%; }
   .vlg .vlg-mapbox { position: absolute; right: 12px; bottom: 74px; }
-  .vlg .vlg-map { display: block; width: 240px; height: 207px; border-radius: 14px; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); background: #8fd07a; pointer-events: none; }
+  .vlg .vlg-map { display: block; width: 240px; height: 160px; border-radius: 14px; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); background: #8fd07a; pointer-events: none; }
   .vlg .vlg-mapbox button { position: absolute; top: 7px; right: 7px; font-size: 12px; padding: 3px 9px; }
   .vlg .vlg-mapbox.off .vlg-map { display: none; }
   .vlg .vlg-mapbox.off button { position: static; font-size: 13px; padding: 6px 12px; }
-  @media (max-width: 640px) { .vlg .vlg-hint { display: none; } .vlg .vlg-map { width: 160px; height: 138px; } }`;
+  @media (max-width: 640px) { .vlg .vlg-hint { display: none; } .vlg .vlg-map { width: 160px; height: 107px; } }`;
   const HTML = `
   <canvas class="vlg-gl" data-v="gl"></canvas>
   <div class="vlg-labels" data-v="labels"><div class="vlg-prompt" data-v="prompt"></div></div>
@@ -366,11 +366,12 @@
     swingSeat.add(at(mesh(new THREE.BoxGeometry(0.95, 0.07, 0.32), '#e0685a'), 0, -1.8, 0));
     g.add(at(swingSeat, 0, 2.55, 0)); scene.add(at(g, -4.6, 0, -4.2)); solid(-5.7, -4.2, 0.3); solid(-3.5, -4.2, 0.3); }
 
-  // ── 놀이터: 강 건너 왼쪽(북서쪽). 그네 두 자리·미끄럼틀·시소·뺑뺑이, E로 탐 (탈 자리는 아래 seats 끝에 붙음)
-  const PLAY = { x: -17, z: -15.4 }, movers = [swingSeat], rides = [];
+  // ── 놀이터: 강 아래 집들 맨 왼쪽 바깥. 그네 두 자리·미끄럼틀·시소·뺑뺑이·트램펄린, E로 탐 (탈 자리는 아래 seats 끝에 붙음)
+  const PLAY = { x: -44, z: 12 }, movers = [swingSeat], rides = [];
   strip(PLAY.x, PLAY.z, 17.6, 9, '#d9b878', 0.025); strip(PLAY.x, PLAY.z, 17, 8.4, sandMat(8, 4), 0.033);
+  strip(-34.3, 11.6, 2.8, 2.2, sandMat(1, 1), 0.031); // 골목 끝에서 놀이터로
   { // 그네 두 자리
-    const g = new THREE.Group(), gx = -23, gz = -17.6;
+    const g = new THREE.Group(), gx = PLAY.x - 6, gz = PLAY.z - 2.2;
     [-1, 1].forEach(s => { g.add(at(mesh(new THREE.CylinderGeometry(0.09, 0.1, 2.7, 8), '#5b8fd8'), s * 2, 1.35, 0)); solid(gx + s * 2, gz, 0.3); });
     g.add(at(mesh(new THREE.BoxGeometry(4.3, 0.16, 0.16), '#e0685a'), 0, 2.65, 0));
     [-0.95, 0.95].forEach((dx, k) => { const pv = new THREE.Group();
@@ -384,7 +385,7 @@
     scene.add(at(g, gx, 0, gz));
   }
   { // 미끄럼틀: 사다리로 올라가 앞(남쪽)으로 미끄러져 내려옴
-    const g = new THREE.Group(), sx = -17.2, top = 1.6;
+    const g = new THREE.Group(), sx = PLAY.x - 0.2, top = 1.6;
     [-1, 1].forEach(s => { [-0.45, 0.25].forEach(z => g.add(at(mesh(new THREE.CylinderGeometry(0.06, 0.06, top + 0.9, 8), '#5b8fd8'), s * 0.45, (top + 0.9) / 2, z))); });
     g.add(at(mesh(new THREE.BoxGeometry(1.05, 0.12, 0.85), '#f2c53a'), 0, top, -0.1));
     for (let i = 1; i < 5; i++) g.add(at(mesh(new THREE.BoxGeometry(0.85, 0.06, 0.08), '#e9dcc0'), 0, i * top / 5, -0.62)); // 사다리 칸
@@ -405,7 +406,7 @@
     rides.push(q);
   }
   { // 시소
-    const g = new THREE.Group(), cx = -11.6, cz = -17.4, plank = new THREE.Group();
+    const g = new THREE.Group(), cx = PLAY.x + 5.4, cz = PLAY.z - 2, plank = new THREE.Group();
     g.add(at(mesh(new THREE.CylinderGeometry(0.22, 0.32, 0.55, 10), '#4fae6a'), 0, 0.27, 0));
     plank.add(at(mesh(new THREE.BoxGeometry(3.4, 0.1, 0.38), '#e8a13a'), 0, 0, 0));
     [-1, 1].forEach(s => { plank.add(at(mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4, 6), '#e0685a'), s * 1.15, 0.22, 0)); plank.add(at(mesh(new THREE.BoxGeometry(0.06, 0.06, 0.4), '#e0685a'), s * 1.15, 0.42, 0)); });
@@ -416,7 +417,7 @@
     pair.forEach(q => { q.place = a => { a.g.position.set(cx + q.s * 1.45 * Math.cos(th), 0.64 + q.s * 1.45 * Math.sin(th), cz); a.g.rotation.x = 0; a.face = q.face; }; rides.push(q); });
   }
   { // 뺑뺑이: 탄 사람이 있으면 빨리 돎
-    const g = new THREE.Group(), cx = -17, cz = -12.4, disc = new THREE.Group(); let spd = 0.25;
+    const g = new THREE.Group(), cx = PLAY.x, cz = PLAY.z + 3, disc = new THREE.Group(); let spd = 0.25;
     g.add(at(mesh(new THREE.CylinderGeometry(0.25, 0.3, 0.3, 10), '#56606c'), 0, 0.15, 0));
     ['#e0685a', '#f2c53a', '#5b8fd8', '#4fae6a', '#b06fc8', '#ff8fb0'].forEach((c, k) => { const w = at(mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.12, 6, 1, false, k * Math.PI / 3, Math.PI / 3), c), 0, 0, 0); disc.add(w); });
     disc.add(at(mesh(new THREE.CylinderGeometry(0.07, 0.07, 1, 8), '#e9dcc0'), 0, 0.5, 0));
@@ -427,7 +428,7 @@
     trio.forEach(q => { q.place = a => { const ang = disc.rotation.y + q.phi; a.g.position.set(cx + Math.sin(ang) * 0.85, 0.42, cz + Math.cos(ang) * 0.85); a.g.rotation.x = 0; a.face = ang; a.g.rotation.y = ang; }; rides.push(q); });
   }
   { // 트램펄린: 두 자리, 서로 엇박자로 통통 뜀. 내려앉을 때 그물이 쑥 들어감
-    const g = new THREE.Group(), cx = -11.6, cz = -12.6, H = 0.55, mat = new THREE.Group();
+    const g = new THREE.Group(), cx = PLAY.x + 5.4, cz = PLAY.z + 2.8, H = 0.55, mat = new THREE.Group();
     for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; g.add(at(mesh(new THREE.CylinderGeometry(0.05, 0.05, H, 6), '#56606c'), Math.sin(a) * 1.15, H / 2, Math.cos(a) * 1.15)); }
     const rim = at(mesh(new THREE.TorusGeometry(1.2, 0.13, 8, 36), '#4fae6a'), 0, H, 0); rim.rotation.x = Math.PI / 2; g.add(rim);
     for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2, pad = at(mesh(new THREE.BoxGeometry(0.3, 0.05, 0.22), k % 2 ? '#f2c53a' : '#e0685a'), Math.sin(a) * 1.2, H + 0.13, Math.cos(a) * 1.2); pad.rotation.y = a; g.add(pad); }
@@ -449,7 +450,7 @@
   const addBlob = (im, colors) => { const i = im.count++; im.setColorAt(i, col.set(pick(colors))); return i; };
   const PINK = ['#ffffff', '#fff2f5', '#ffe6ec', '#fff8fa'], LEAF = ['#ffffff', '#eaffe6', '#dff5d6', '#f4fff0'];
   const trees = [];
-  const freeSpot = (x, z, pad) => !onPath(x, z, 1.9 + pad) && Math.hypot(x, z) > 6.2 + pad && !(z > -26 && z < -17.8 && x > -0.5 && x < 17) && !(z > -21 && z < -9.8 && x > -27.5 && x < -6.5)
+  const freeSpot = (x, z, pad) => !onPath(x, z, 1.9 + pad) && Math.hypot(x, z) > 6.2 + pad && !(z > -26 && z < -17.8 && x > -0.5 && x < 17) 
     && !(z > RIVER.z0 - 1.5 && z < RIVER.z1 + 1.5) && HOUSES.every(h => Math.hypot(x - h[0], z - h[1]) > 4.2 + pad)
     && solids.every(s => Math.hypot(x - s.x, z - s.z) > s.r + 1.6 + pad) && trees.every(t => Math.hypot(x - t.x, z - t.z) > 2.6);
   function placeTree(tr) { // 줄기 묶음의 지금 위치·기울기대로 뭉치들을 옮김
@@ -479,7 +480,7 @@
   { const bg = [];
     for (let i = 0, tries = 0; i < 60 && tries < 4000; tries++) {
       const x = (rnd() - 0.5) * 112, z = -44 + rnd() * 66;
-      if (!(Math.abs(x) > 36.5 || z < -25.5) || (z > RIVER.z0 - 1.6 && z < RIVER.z1 + 1.6) || bg.some(b => Math.hypot(x - b[0], z - b[1]) < 3.4)) continue;
+      if (!(Math.abs(x) > 36.5 || z < -25.5) || (z > RIVER.z0 - 1.6 && z < RIVER.z1 + 1.6) || bg.some(b => Math.hypot(x - b[0], z - b[1]) < 3.4) || (x < -31 && x > PLAY.x - 12 && Math.abs(z - PLAY.z) < 7.5)) continue;
       bg.push([x, z]); i++;
       const sc = 1 + rnd() * 0.5, pinkTree = rnd() < 0.55, im = pinkTree ? blobsPinkFar : blobsLeafFar;
       scene.add(at(mesh(new THREE.CylinderGeometry(0.26 * sc, 0.4 * sc, 1.6 * sc, 12), barkMat), x, 0.8 * sc, z));
@@ -681,12 +682,15 @@
       if (Math.abs(a.x) <= RIVER.bridge && pz > RIVER.z0 - 0.05 && pz < RIVER.z1 + 0.05) x = Math.max(-RIVER.bridge + 0.25, Math.min(RIVER.bridge - 0.25, x));
       else if (Math.abs(x) > RIVER.bridge - 0.25) z = pz >= RIVER.z1 ? RIVER.z1 : pz <= RIVER.z0 ? RIVER.z0 : z;
     }
+    if (x < -LX && pz < 40) { // 집들 왼쪽 바깥은 놀이터 안으로만 감
+      if (a.x >= -LX && Math.abs(z - PLAY.z) > 4) x = -LX; else z = Math.max(PLAY.z - 4, Math.min(PLAY.z + 4, z));
+    }
     if (z < -21 && pz < 40) { // 사무소·가게 뒤로는 그 사이 길로만 들어감
       if (pz >= -21 && Math.abs(x - 6.45) > 0.9) z = -21; else x = Math.max(5.55, Math.min(7.35, x));
     }
     [a.x, a.z] = clampZone(x, z, pz > 40);
   }
-  const clampZone = (x, z, inShop) => inShop ? [Math.max(SHOP.ix + SHOP.x0, Math.min(SHOP.ix + SHOP.x1, x)), Math.max(SHOP.z0, Math.min(SHOP.z1, z))] : [Math.max(-LX, Math.min(LX, x)), Math.max(LZ0, Math.min(LZ1, z))];
+  const clampZone = (x, z, inShop) => inShop ? [Math.max(SHOP.ix + SHOP.x0, Math.min(SHOP.ix + SHOP.x1, x)), Math.max(SHOP.z0, Math.min(SHOP.z1, z))] : [Math.max(PLAY.x - 8.2, Math.min(LX, x)), Math.max(LZ0, Math.min(LZ1, z))];
   const keys = {};
   const onKeyDown = e => {
     if (!running || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
@@ -888,7 +892,7 @@
   }
 
   // ── 미니맵: 땅·길·강·집·나무는 한 번 그려 두고, 매 프레임 친구와 나만 점으로 올림
-  const MAP = { x0: -34, x1: 34, z0: -25.5, z1: 33, s: 6 }, mapC = $('map');
+  const MAP = { x0: -54, x1: 34, z0: -25.5, z1: 33, s: 6 }, mapC = $('map');
   mapC.width = (MAP.x1 - MAP.x0) * MAP.s; mapC.height = (MAP.z1 - MAP.z0) * MAP.s;
   const mapG = mapC.getContext('2d'), mapBg = document.createElement('canvas'); mapBg.width = mapC.width; mapBg.height = mapC.height;
   const mx = x => (x - MAP.x0) * MAP.s, mz = z => (z - MAP.z0) * MAP.s;
@@ -901,9 +905,9 @@
     g.fillStyle = '#7fd0f0'; g.beginPath(); g.arc(mx(0), mz(0), 1.3 * S, 0, 6.29); g.fill();
     HOUSES.forEach(h => { rect(h[0], h[1], 3.2, 2.6, h[3]); });
     rect(0, -23, 6.4, 3.6, '#7a4a2e'); rect(0, -23, 1.2, 1.2, '#a8744f'); rect(SHOP.x, SHOP.z, 7, 3.8, '#3f9a5a'); rect(7.05, -19.9, 11.9, 1.6, '#ead2a0'); rect(6.45, -22.7, 1.8, 5.4, '#ead2a0'); rect(PLAY.x, PLAY.z, 17, 8.4, '#e9d9a8');
-    [[-23, -17.6, 4.2, 0.5, '#e0685a'], [-17.2, -16.8, 1, 3.4, '#e0685a'], [-11.6, -17.4, 3.4, 0.5, '#e8a13a']].forEach(b => rect(...b));
-    g.fillStyle = '#5b8fd8'; g.beginPath(); g.arc(mx(-17), mz(-12.4), 1.3 * S, 0, 6.29); g.fill();
-    g.fillStyle = '#4fae6a'; g.beginPath(); g.arc(mx(-11.6), mz(-12.6), 1.3 * S, 0, 6.29); g.fill();
+    rect(-34.3, 11.6, 2.8, 2.2, '#ead2a0');
+    [[-6, -2.2, 4.2, 0.5, '#e0685a'], [-0.2, -1.4, 1, 3.4, '#e0685a'], [5.4, -2, 3.4, 0.5, '#e8a13a']].forEach(b => rect(PLAY.x + b[0], PLAY.z + b[1], b[2], b[3], b[4]));
+    [[0, 3, '#5b8fd8'], [5.4, 2.8, '#4fae6a']].forEach(b => { g.fillStyle = b[2]; g.beginPath(); g.arc(mx(PLAY.x + b[0]), mz(PLAY.z + b[1]), 1.3 * S, 0, 6.29); g.fill(); });
     trees.forEach(t => { g.fillStyle = t.kind === 'blossom' ? '#ffc8d6' : '#3f9e4b'; g.beginPath(); g.arc(mx(t.x), mz(t.z), 1.2 * t.sc * S, 0, 6.29); g.fill(); });
   }
   const mapBox = $('mapBox'), mapBtn = $('mapBtn');
