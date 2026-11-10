@@ -22,6 +22,7 @@
   .vlg .vlg-hud { position: absolute; left: 10px; top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; max-width: calc(100% - 20px); }
   .vlg .pill, .vlg select, .vlg button { font: inherit; font-size: 13px; font-weight: 800; padding: 6px 12px; border-radius: 999px; border: 2px solid #b7d6b0; background: rgba(255, 255, 255, .92); color: #2f4a35; line-height: 1.2; }
   .vlg button { cursor: pointer; }
+  .vlg .vlg-viewbtn { background: #fff8d8; border-color: #f0c24a; color: #5a4320; }
   .vlg .vlg-acts { position: absolute; right: 12px; bottom: 14px; display: flex; gap: 8px; }
   .vlg .vlg-acts button { font-size: 15px; padding: 12px 16px; }
   .vlg .vlg-hint { position: absolute; left: 12px; bottom: 14px; font-size: 12px; font-weight: 700; background: rgba(255, 255, 255, .8); padding: 6px 10px; border-radius: 10px; max-width: 55%; }
@@ -36,6 +37,7 @@
   <div class="vlg-labels" data-v="labels"><div class="vlg-prompt" data-v="prompt"></div></div>
   <div class="vlg-hud">
     <span class="pill">🏡 우리 반 마을 <span data-v="count"></span></span>
+    <button data-v="viewBtn" class="vlg-viewbtn" style="display:none">🎥 원래 시점 (R)</button>
     <select data-v="petSel" data-demo aria-label="내 펫"></select>
     <span class="pill" data-demo>🍎 열매 <b data-v="fruitN">0</b></span>
     <button data-v="curveBtn" data-demo>둥근 땅: 켬</button>
@@ -46,7 +48,7 @@
     <button data-v="fullBtn">⛶ 크게</button>
     <span class="pill"><b data-v="fpsN">–</b> fps · <span data-v="qN">화질 높음</span></span>
   </div>
-  <div class="vlg-hint">이동: WASD·방향키 또는 땅 누르기 · 시점: 화면 끌기(두 번 누르면 처음대로) · 달리기: Shift · 인사: Space · 하기: E · 감정: 1·2 · 확대: 마우스 휠</div>
+  <div class="vlg-hint">이동: WASD·방향키 또는 땅 누르기 · 시점: 화면 끌기 · 원래 시점: R · 달리기: Shift · 인사: Space · 하기: E · 감정: 1·2 · 확대: 마우스 휠</div>
   <div class="vlg-mapbox" data-v="mapBox"><canvas class="vlg-map" data-v="map"></canvas><button data-v="mapBtn">▾ 내리기</button></div>
   <div class="vlg-acts"><button data-v="joyBtn" title="기쁨 (1)">😄</button><button data-v="heartBtn" title="하트 (2)">❤️</button><button data-v="waveBtn">👋 인사</button><button data-v="shakeBtn">🌳 흔들기</button></div>`;
 
@@ -743,6 +745,7 @@
     keys[e.code] = true;
     if (e.code === 'Space') { e.preventDefault(); wave(); }
     if (e.code === 'KeyE') interact();
+    if (e.code === 'KeyR') resetView();
     if (e.code === 'Digit1') emote('joy');
     if (e.code === 'Digit2') emote('heart');
     if (e.code.startsWith('Arrow')) e.preventDefault();
@@ -774,7 +777,9 @@
     marker.position.set(me.target.x, 0.09, me.target.z); marker.visible = true;
   };
   canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
-  canvas.addEventListener('dblclick', () => { view.yaw = 0; view.pitch = 0.567; });
+  const resetView = () => { view.yaw = 0; view.pitch = 0.567; };
+  canvas.addEventListener('dblclick', resetView);
+  const viewBtn = $('viewBtn'); viewBtn.onclick = () => { resetView(); viewBtn.blur(); }; // 시점을 돌렸을 때만 보임
   // 소리: 파일 없이 그 자리에서 만드는 짧은 효과음 (기본은 끔)
   let audio = null, soundOn = false;
   function tone(f, d, type, when, vol, f2) {
@@ -1110,6 +1115,7 @@
     { const fx = me.x - Math.sin(view.yaw) * 3, fz = me.z - Math.cos(view.yaw) * 3; sun.target.position.set(fx, 0, fz); sun.position.set(fx + env.sunPos.x, env.sunPos.y, fz + 3 + env.sunPos.z); } // 그림자 범위는 보는 쪽 앞을 중심으로
     curve.uCurve.value += ((curveOn ? 0.0075 : 0) - curve.uCurve.value) * Math.min(1, dt * 5);
     if (me.z > 40) { view.yaw = 0; view.pitch = Math.max(0.35, view.pitch); }
+    { const off = Math.abs(Math.atan2(Math.sin(view.yaw), Math.cos(view.yaw))) > 0.02 || Math.abs(view.pitch - 0.567) > 0.02; if (String(off) !== viewBtn.dataset.on) { viewBtn.dataset.on = off; viewBtn.style.display = off ? '' : 'none'; } }
     { const sy = Math.sin(view.yaw), cy = Math.cos(view.yaw), el = Math.max(0.1, view.pitch), D = 10.43 * zoom;
       curve.uFocus.value.set(me.x, me.z); curve.uDir.value.set(-sy, -cy);
       camPos.set(me.x + sy * D * Math.cos(el), Math.max(0.7, D * Math.sin(el)), me.z + cy * D * Math.cos(el));
