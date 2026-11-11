@@ -43316,7 +43316,7 @@
         const el = document.getElementById('roomInviteStack');
         if (!el) return;
         const { me, box } = this.myBox();
-        const now = Date.now();
+        const now = mgServerNow(); // 초대 시각은 서버 시각이라 내 기기 시계가 틀려도 만료를 맞게 셈
         const shown = [];
         Object.keys(box).forEach(id => {
           const inv = box[id];
@@ -43359,7 +43359,7 @@
         const box = this.all[stuId];
         const me = getActiveStudent();
         if (!me || !box || typeof box !== 'object') return false;
-        return Object.values(box).some(inv => inv && inv.from === me.id && inv.roomId === roomId && Date.now() - (Number(inv.at) || 0) <= ROOM_INVITE_TTL_MS);
+        return Object.values(box).some(inv => inv && inv.from === me.id && inv.roomId === roomId && mgServerNow() - (Number(inv.at) || 0) <= ROOM_INVITE_TTL_MS);
       },
 
       // 방장이 여는 친구 초대 창
@@ -43422,13 +43422,14 @@
       if (!me || !room || !friend || room.hostId !== me.id || !db || !code) return;
       if (RoomInvites.pendingTo(toId, room.roomId)) return;
       const id = 'i_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-      const inv = { from: me.id, fromName: cleanUserText(me.name, 40), kind: m.kind, roomId: room.roomId, title: cleanUserText(room.title || '', 60), at: Date.now() };
+      // 화면에 바로 보일 내 사본은 서버 시각 추정값, 서버에는 서버가 찍는 시각 (기기 시계가 빠르면 규칙 at <= now에 거부돼 초대가 안 가던 문제)
+      const inv = { from: me.id, fromName: cleanUserText(me.name, 40), kind: m.kind, roomId: room.roomId, title: cleanUserText(room.title || '', 60), at: Math.floor(mgServerNow()) };
       if (!RoomInvites.all[toId]) RoomInvites.all[toId] = {};
       RoomInvites.all[toId][id] = inv;
-      RoomInvites.sent.set(id, { to: toId, toName: friend.name, kind: m.kind, roomId: room.roomId, at: inv.at });
+      RoomInvites.sent.set(id, { to: toId, toName: friend.name, kind: m.kind, roomId: room.roomId, at: Date.now() });
       RoomInvites.renderModal();
       try {
-        await db.ref(`classes/${code}/invites/${toId}/${id}`).set(inv);
+        await db.ref(`classes/${code}/invites/${toId}/${id}`).set({ ...inv, at: chatServerStamp() });
         showNotice(`📨 [${friend.name}] 친구에게 초대를 보냈어요!`);
       } catch (e) {
         delete RoomInvites.all[toId][id];
@@ -43573,7 +43574,11 @@
         const want = Boolean(this.code && this.db && s && shellOn);
         if (want && this.cb && this.who !== s.id) this.detach(); // 다른 학생으로 바뀜
         if (want && !this.cb) this.attach();
-        else if (!want && this.cb) this.detach();
+        else if (!want && this.cb) {
+          // 왜 숨겼는지 남김 (사라짐 문제 추적용)
+          console.warn('[전체 채팅 숨김]', { code: this.code, db: Boolean(this.db), sender: Boolean(s), shell: !document.getElementById('mainAppShell')?.classList.contains('hidden'), studentView: !document.getElementById('studentViewContainer')?.classList.contains('hidden') });
+          this.detach();
+        }
         document.getElementById('globalChatDock')?.classList.toggle('hidden', !want);
       },
 
@@ -43617,9 +43622,22 @@
       // 보내는 사람 = 이 탭에서 로그인한 학생만 (로그인 전·선생님·관리자 화면은 채팅창 자체가 안 뜸)
       // 선생님 구글 로그인이 남아 있는 브라우저에서 학생으로 로그인해도 채팅창이 유지되게, 학급 주인 여부는 보지 않음
       // (예전에는 학급 주인이면 숨겨서, 선생님 PC에서 학생 계정으로 쓰던 채팅창이 갑자기 사라졌음)
+      // 이 탭에서 로그인한 학생을 탭 로그인 기록(sessionStorage)에서 바로 읽음
+      // (예전에는 '지금 고른 학생'(getActiveStudent)으로 봐서, 학급 자료를 다시 받는 사이 명단 첫 학생으로 잠깐 바뀌면 채팅창이 사라졌음)
       sender() {
-        const me = getActiveStudent();
-        return me && isMyStudentScreen(me) ? { id: me.id, name: cleanUserText(me.name, 40) } : null;
+        let code = '', id = '';
+        try {
+          const v = sessionStorage.getItem(STUDENT_SESSION_KEY) || '';
+          const i = v.indexOf(':');
+          if (i > 0) { code = v.slice(0, i); id = v.slice(i + 1); }
+        } catch (e) {}
+        if (!id || code !== String(state.classCode || '').toUpperCase()) {
+          const me = getActiveStudent(); // ?dev=student 시험 화면
+          return me && isMyStudentScreen(me) ? { id: me.id, name: cleanUserText(me.name, 40) } : null;
+        }
+        const stu = state.students.find(x => x && x.id === id);
+        if (stu) this.lastName = { id, name: cleanUserText(stu.name, 40) };
+        return { id, name: stu ? cleanUserText(stu.name, 40) : (this.lastName && this.lastName.id === id ? this.lastName.name : '친구') };
       },
 
       // 자동 알림(시크릿 레어·히든 스킬)은 학생 본인 화면에서만 보냄 (선생님이 대신 보는 화면 제외)
