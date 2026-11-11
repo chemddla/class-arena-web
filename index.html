@@ -7491,23 +7491,24 @@
     // 검사 외형 0 (검은 머리 묶음·회색 머리띠·남색 도복·검은 하카마, tools/swordsman_build.py): 칸 순서 = 0 대기 (칼자루에 손을 얹은 발도 자세) · 1 피격
     //   · 2~3 쓰러짐 (앞으로 무너짐 → 뒤로 누움) · 4 공격 준비 (낮게 앉아 칼자루를 쥠) · 5 발도 (칼을 뒤로 뽑아 든 자세) · 6~8 걷기 1~3
     //   · 9~11 시전 1~3 (낮게 앉음 → 몸 둘레 노란 불꽃 → 칼자루 앞 섬광) · 12 심검 (칼을 머리 위로 비스듬히 들어 막음, 하늘색 잔상)
-    // 걷기는 1 → 3 → 2 → 3 (1·2는 비슷한 자세, 3은 뒷발을 차올림). 기본 공격 = 준비 → 발도, 발도·섬단·극참 = 시전 칸 → 발도, 무참 = 준비·발도를 빠르게 되풀이
+    // 걷기는 1 → 3 → 2 → 3 (1·2는 비슷한 자세, 3은 뒷발을 차올림). 기본 공격 = 칼을 넣은 채 공격 준비·낮게 앉음 중 한 칸 + 참격, 발도·섬단·극참 = 시전 칸 → 발도, 무참 = 준비·발도를 빠르게 되풀이
     // 심검(정신을 모으는 5초)과 패링 동안은 심검 자세를 유지 (pickFrame). 시전 막대 동안은 시전 칸을 차례로 (castFrames)
     MERC_SPRITE_DEFS.swordsman_0 = {
       src: 'assets/sprites/merc/swordsman_0.webp',
       cellW: 126, cellH: 91, anchorX: 68, anchorY: 89, standH: 76, topH: 86, portraitCX: 68, count: 13, // standH 76: 머리 크기를 격투가와 맞춤
       anims: {
-        idle: [0], walk: [6, 8, 7, 8], attack: [4, 5], skill: [9, 11, 5], hurt: [1], death: [2, 3],
-        draw: [5], guard: [12], dash: [4, 5, 5, 5]
+        idle: [0], walk: [6, 8, 7, 8], attack: [4], skill: [9, 11, 5], hurt: [1], death: [2, 3],
+        draw: [5], guard: [12], dash: [4, 5, 5, 5], slash: [4, 5]
       },
-      attackDur: 16, // 준비 6틱 → 발도 10틱 보이고 바로 평소 자세 (공격 속도가 빨라 길게 두면 계속 칼을 뽑은 채로 보임)
+      attackSets: [[4], [9]], // 기본 공격: 칼은 칼집에 넣은 채, 공격 준비(4) · 낮게 앉음(9) 중 한 칸을 무작위로 (참격은 swordBasicSlashFx)
+      attackDur: 14, // 한 칸을 14틱 보이고 바로 평소 자세
       castFrames: { batto: [9], seomdan: [11], geukcham: [9, 10, 11] }, // 발도 시전 = 시전 1 (낮게 앉음) 한 칸 · 섬단 시전 = 시전 3 (칼자루 앞 섬광) 한 칸 · 극참은 세 칸 차례로
       pickFrame: (u) => (u.alive && u.statuses && ((u.statuses.mindblade || 0) > 0 || (u.statuses.parry || 0) > 0) ? 12 : null),
       skillAnims: {
         batto:     { anim: 'draw', tpf: 16, dur: 16 },
         issen:     { anim: 'dash', tpf: 4, dur: 16 },
         seomdan:   { anim: 'draw', tpf: 16, dur: 16 },
-        mucham:    { anim: 'attack', tpf: 2, loop: true, dur: 34 },
+        mucham:    { anim: 'slash', tpf: 2, loop: true, dur: 34 },
         mindblade: { anim: 'guard', tpf: 20, dur: 20 },
         parry:     { anim: 'guard', tpf: 10, dur: 10 },
         geukcham:  { anim: 'draw', tpf: 30, dur: 30 }
@@ -19889,6 +19890,7 @@
           else withHitKind('melee', () => applyDamage(u, target, u.atk));
         }
         if (u.job === 'paladin' && !u.monsterType) paladinSwingFx(u); // 망치 궤적 + 땅 불꽃
+        if (u.job === 'swordsman' && !u.monsterType) swordBasicSlashFx(u, target && unitDist(target, u) <= u.range + 24 ? target : null, aimAngle);
       } else if (u.job === 'archer') {
         u.mana = Math.min(u.maxMana, u.mana + 18);
         directional('arrow', u.atk, { spr: unitProjFx(u, 'arrow') }); // 시크릿 레어 궁수 = 얼음 화살
@@ -23070,6 +23072,7 @@
             playCombatSfx('slash');
             withHitKind('melee', () => applyDamage(u, target, u.atk));
             if (u.job === 'paladin' && !u.monsterType) paladinSwingFx(u); // 망치 궤적 + 땅 불꽃
+            if (u.job === 'swordsman' && !u.monsterType) swordBasicSlashFx(u, target); // 검사: 칼집에 넣은 채 공격 범위만큼 참격이 뻗어 나감
             // 베기 선 이펙트 없음 (전사·기사·도적 공통)
 
           } else if (u.job === 'brawler') {
@@ -26999,6 +27002,21 @@
       if (Math.abs(Math.cos(ang)) > 0.1) u.facingDir = Math.cos(ang) >= 0 ? 1 : -1;
     }
     function swordFace(u, foe) { swordFaceAngle(u, Math.atan2(foe.y - u.y, foe.x - u.x)); }
+    // 검사 기본 공격 참격: 칼은 칼집에 넣은 채 (공격 자세 한 칸), 목표 쪽으로 공격 범위만큼 참격이 뻗음. 모양은 칠 때마다 무작위 (그림만, 피해는 기본 공격 그대로)
+    //   0 몸 앞에서 끝까지 곧게 긋기 · 1 끝자락을 비스듬히 한 줄 · 2 끝자락에 X자 · 3 끝자락을 비스듬히 두 줄 나란히
+    function swordBasicSlashFx(u, target, aimAng) { // 목표가 없으면(직접 조종으로 허공을 침) 조준 방향으로
+      const ang = target ? Math.atan2(target.y - u.y, target.x - u.x) : aimAng, c = Math.cos(ang), s = Math.sin(ang);
+      const len = u.range + (target ? unitBodyGap(target) : 0);
+      const ox = u.x, oy = u.y - 14, col = '#a5f3fc';
+      const cut = (cx, cy, a, half, w) => sim.effects.push({ type: 'sword_cut', x1: cx - Math.cos(a) * half, y1: cy - Math.sin(a) * half, x2: cx + Math.cos(a) * half, y2: cy + Math.sin(a) * half, w, color: col, life: 12, maxLife: 12 });
+      const ex = ox + c * len * 0.8, ey = oy + s * len * 0.8; // 끝자락 (목표 몸 근처)
+      const tilt = (Math.random() < 0.5 ? 1 : -1) * (0.9 + Math.random() * 0.5); // 진행 방향에서 50~80도 기울임
+      const kind = Math.floor(Math.random() * 4);
+      if (kind === 0) sim.effects.push({ type: 'sword_cut', x1: ox + c * 12, y1: oy + s * 12, x2: ox + c * len, y2: oy + s * len, w: 3, color: col, life: 12, maxLife: 12 });
+      else if (kind === 1) cut(ex, ey, ang + tilt, 26, 4);
+      else if (kind === 2) sim.effects.push({ type: 'sword_x', x: ex, y: ey, angle: ang, r: 0, size: 18, color: col, life: 12, maxLife: 12 });
+      else { const nx = -s * 7, ny = c * 7; cut(ex - nx, ey - ny, ang + tilt, 22, 3); cut(ex + nx, ey + ny, ang + tilt, 22, 3); }
+    }
     function swordAddStrikes(u, list) { u.pendingStrikes = [...(u.pendingStrikes || []), ...list]; }
 
     // 매 틱: 패링 쿨타임 · 기절·빙결되면 심검이 풀림
