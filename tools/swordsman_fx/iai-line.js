@@ -13,7 +13,7 @@ export const meta = {
   loop: false,
   fps: 40,
   bg: "dark",
-  options: { palette: MOON, sparks: MOON_SPARK, len: 144, w: 1.7, seed: 3 },
+  options: { palette: MOON, sparks: MOON_SPARK, len: 126, w: 1.7, seed: 3 },
 };
 
 export function draw(p, t, o) {

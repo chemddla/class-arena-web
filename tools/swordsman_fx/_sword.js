@@ -1,6 +1,7 @@
 // 검사 이펙트 공용: 달빛 강철 팔레트와 발도 참격 시간표.
 // pixelfx(https://github.com/patch-gg/pixelfx, MIT)의 근접 도구(../melee/_lib.js: 초승달 참격 slash·through)를 씀 — tools/swordsman_fx_build.mjs가 이 폴더를 pixelfx의 src/fx/swordsman/로 복사해서 굽는다.
-// 좌표: 기준점(0, 0) = 칼자루 (게임에서 검사 몸 앞, 발보다 14px 위), +x = 공격 방향. 1 = 게임 화면 1px. 기본 길이 L = 144 (검사 사거리)
+// 좌표: 기준점(0, 0) = 칼자루 끝 (게임 화면에서 공격 준비 자세는 발에서 앞 19 · 위 30px, 낮게 앉은 자세는 앞 16 · 위 25px), +x = 목표 쪽.
+//   1 = 게임 화면 1px. 기본 길이 L = 126 (사거리 144 - 칼자루까지 약 18): 게임은 칼자루 → 목표 가슴 거리에 맞춰 가로만 늘림
 import { clamp, smooth, ease, rng } from "../../core/index.js";
 import { smear, glowAlong, onSwing } from "../melee/_lib.js";
 

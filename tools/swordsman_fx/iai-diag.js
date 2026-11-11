@@ -14,7 +14,7 @@ export const meta = {
   loop: false,
   fps: 40,
   bg: "dark",
-  options: { palette: MOON, sparks: MOON_SPARK, len: 144, tilt: 1.05, R: 54, W: 4.5, seed: 5 },
+  options: { palette: MOON, sparks: MOON_SPARK, len: 126, tilt: 1.05, R: 54, W: 4.5, seed: 5 },
 };
 
 /** 칼바람: 빛의 속도로 칼자루에서 끝자락까지 번쩍 지나간 자리 (빛 번짐 + 속도선) */
@@ -22,8 +22,8 @@ export function wind(p, t, L, C, seed = 1) {
   lightRush(p, t, T.glint, 6, L * 0.9, 0, C, seed, 0.2);
 }
 
-/** 끝자락 x에서 기울기 th로 지나가는 초승달 (R = 반지름, W = 굵기). 칼자루보다 CUT_Y 위 = 목표 가슴 높이 */
-export const CUT_Y = -10, CUT_X = 0.97;
+/** 끝자락 x에서 기울기 th로 지나가는 초승달 (R = 반지름, W = 굵기). y = CUT_Y = 목표 가슴 높이 */
+export const CUT_Y = -2, CUT_X = 0.97; // 칼자루 높이 ≈ 목표 가슴 높이라 거의 같은 줄
 export const cutAt = (x, th, dir, R, t0, W = 7, span = 1.15) =>
   through(x, CUT_Y, th, dir, R, span, 0.55, { W, t0, sweep: FLASH * 1.4, hold: T.hold, trail: T.trail, lens: true, hot: 0.45 }); // 얇은 초승달 (양끝 뾰족), 맞는 순간까지 흰 날
 
