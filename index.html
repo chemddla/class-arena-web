@@ -7488,17 +7488,29 @@
     //   1 금발·은빛 갑옷·남색 천·파랑 망토 · 2 적발·검은 쇠·검정 천·진홍 망토 · 3 흑발·자줏빛 쇠·금빛 천·보라 망토
     //   4 녹발·청동 갑옷·고동 천·초록 망토 · 5 은발·흑철 갑옷·진홍 천·검정 망토. 칸·기준점·동작 구성은 warrior_0과 같음
     [1, 2, 3, 4, 5].forEach(v => { MERC_SPRITE_DEFS[`warrior_${v}`] = { ...MERC_SPRITE_DEFS.warrior_0, src: `assets/sprites/merc/warrior_${v}.webp` }; });
-    // 검사 임시 그림: 전사 외형 4 (녹발·청동 갑옷)를 빌려 씀 (전용 그림은 나중에). 스킬 동작은 전사 동작으로 맞춤
+    // 검사 외형 0 (검은 머리 묶음·회색 머리띠·남색 도복·검은 하카마, tools/swordsman_build.py): 칸 순서 = 0 대기 (칼자루에 손을 얹은 발도 자세) · 1 피격
+    //   · 2~3 쓰러짐 (앞으로 무너짐 → 뒤로 누움) · 4 공격 준비 (낮게 앉아 칼자루를 쥠) · 5 발도 (칼을 뒤로 뽑아 든 자세) · 6~8 걷기 1~3
+    //   · 9~11 시전 1~3 (낮게 앉음 → 몸 둘레 노란 불꽃 → 칼자루 앞 섬광) · 12 심검 (칼을 머리 위로 비스듬히 들어 막음, 하늘색 잔상)
+    // 걷기는 1 → 3 → 2 → 3 (1·2는 비슷한 자세, 3은 뒷발을 차올림). 기본 공격·발도·섬단·극참 = 준비 → 발도, 무참 = 준비·발도를 빠르게 되풀이
+    // 심검(정신을 모으는 5초)과 패링 동안은 심검 자세를 유지 (pickFrame). 시전 막대 동안은 시전 칸을 차례로 (castFrames)
     MERC_SPRITE_DEFS.swordsman_0 = {
-      ...MERC_SPRITE_DEFS.warrior_0, src: 'assets/sprites/merc/warrior_4.webp',
+      src: 'assets/sprites/merc/swordsman_0.webp',
+      cellW: 126, cellH: 91, anchorX: 68, anchorY: 89, standH: 76, topH: 86, portraitCX: 68, count: 13, // standH 76: 머리 크기를 격투가와 맞춤
+      anims: {
+        idle: [0], walk: [6, 8, 7, 8], attack: [4, 5], skill: [9, 11, 5], hurt: [1], death: [2, 3],
+        draw: [5], guard: [12], dash: [4, 5, 5, 5]
+      },
+      attackDur: 16, // 준비 6틱 → 발도 10틱 보이고 바로 평소 자세 (공격 속도가 빨라 길게 두면 계속 칼을 뽑은 채로 보임)
+      castFrames: { batto: [11], seomdan: [9, 11], geukcham: [9, 10, 11] },
+      pickFrame: (u) => (u.alive && u.statuses && ((u.statuses.mindblade || 0) > 0 || (u.statuses.parry || 0) > 0) ? 12 : null),
       skillAnims: {
-        batto:     { anim: 'whirl', tpf: 4, dur: 12 },
-        issen:     { anim: 'charge', tpf: 3, dur: 15 },
-        seomdan:   { anim: 'attack', tpf: 5, dur: 20 },
+        batto:     { anim: 'draw', tpf: 16, dur: 16 },
+        issen:     { anim: 'dash', tpf: 4, dur: 16 },
+        seomdan:   { anim: 'draw', tpf: 16, dur: 16 },
         mucham:    { anim: 'attack', tpf: 2, loop: true, dur: 34 },
-        mindblade: { anim: 'skill', tpf: 200, dur: 200 },
-        parry:     { anim: 'attack', tpf: 5, dur: 10 },
-        geukcham:  { anim: 'attack', tpf: 6, dur: 24 }
+        mindblade: { anim: 'guard', tpf: 20, dur: 20 },
+        parry:     { anim: 'guard', tpf: 10, dur: 10 },
+        geukcham:  { anim: 'draw', tpf: 30, dur: 30 }
       }
     };
     // 예전 기본 외형 시트의 칸 구성 — 2026-11-09 그림 교체 전에 승인된 학생 디자인 마법사 외형이 씀 (LEGACY_BASE_SHEETS) (13칸: 걷기 4 · 공격 3 · 스킬 2 · 피격 1 · 쓰러짐 3, 대기는 걷기 0·2칸)
