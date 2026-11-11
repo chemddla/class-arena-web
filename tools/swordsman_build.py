@@ -97,7 +97,8 @@ def dark_matte(raw, a, im, idx):
     Dw = cv2.warpAffine(D_im.astype(np.float32), A, (W.shape[1], W.shape[0]),
                         flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP, borderValue=(DARK_BG,) * 3).astype(float)
     a2 = np.clip(1 - (W - Dw).mean(axis=2) / (255 - DARK_BG), 0, 1)
-    a2 = np.where(ndi.binary_erosion(mw, iterations=2), 1.0, a2)          # 몸 안쪽은 불투명
+    core = ndi.binary_erosion(mw, iterations=2) & ~ndi.binary_dilation(W.min(axis=2) > 200, iterations=1)
+    a2 = np.where(core, 1.0, a2)   # 몸 안쪽은 불투명. 단 몸에 둘러싸인 흰 틈(손가락과 칼집 사이, 머리카락 사이)은 어두운 그림과 비교해 배경이면 투명
     a2 = np.where(ndi.binary_dilation(a[y0:y1, x0:x1] > 0, iterations=3), a2, 0.0)   # 고른 덩어리 근처만 (글자·옆 그림 제외)
     a2 = np.where(a2 > 0.85, 1.0, np.where(a2 < 0.15, 0.0, a2))
     al = np.maximum(a2, 1e-3)[..., None]
