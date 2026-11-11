@@ -1,9 +1,9 @@
 # 검사 전용 샘플(검은 머리 묶음·회색 머리띠·남색 도복·검은 하카마, 흰 배경) → 캐릭터 시트 assets/sprites/merc/swordsman_0.webp
 # 사용: python tools/swordsman_build.py   (샘플은 assets/sprites/fx/samples/swordsman_*_src.png, 동작 샘플이 오는 대로 FRAMES에 늘림)
-# 칸 순서: 0 대기 (칼집 든 칼자루를 쥐고 선 자세)
+# 칸 순서: 0 대기 (허리에 칼을 차고 두 손을 내린 채 선 자세)
 # 크기 통일: 대기 자세 몸 키(머리털 끝~발, 샘플 px)를 TARGET_H로 줄임. 다른 동작은 대기와 같은 배율('idle')로 줄여 얼굴 크기를 맞춤
 # 샘플 정리:
-#   - 대기 샘플(374×485)은 도트 그림을 흐리게 키운 것, 테두리 없음
+#   - 대기 샘플(768×1024)은 도트 그림을 흐리게 키운 것, 테두리 없음
 #   - 흰 배경은 가장자리에서 이어진 흰 픽셀만 지움 (짚신·옷깃의 밝은 회색은 검은 외곽선 안쪽이라 남음)
 import os, sys
 import numpy as np
