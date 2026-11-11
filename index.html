@@ -47142,8 +47142,26 @@
       'damageDealt', 'healDone', 'damageTaken', 'manualSkillMode', 'lastSkillTick', 'knightAuraTick', 'ensembleTick', 'bsKey', 'bsLastSkill',
       // 매 화면(frame)에 실려 오는 값·AI 움직임 내부 값 (받는 쪽 normalizeLiveUnit이 0으로 채움)
       'vx', 'vy', 'strafeTimer', 'strafeDir', 'cooldown', 'skillCooldown', 'activeSkillType', 'itemCd', 'atkSpdStacks', 'hasteTicks', 'frenzyTicks', 'reloadLeft', 'overheat', 'powerStacks']);
-    function liveUnitCopy(u, drop) {
-      const c = JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) || (k && isLiveUnitRef(v)) ? undefined : (typeof v === 'number' ? roundLiveNum(v) : v))));
+    // 몬스터·보스의 스킬 묶음(skillBook)은 스킬 키 목록(skillSlots)으로 받는 쪽이 똑같이 다시 만들 수 있음 (buildSkillBook) → 유닛 목록에서는 빼고 표시(sb)만 실음
+    //   (2026-11-11 서버에 남은 러쉬 유닛 목록 실측: 한 번에 23.7KB 중 44%가 skillBook · 몬스터 한 마리 1.7KB 중 약 750B · 러쉬는 라운드마다, 탑·던전은 방·증원마다 목록 전체가 다시 감)
+    //   sb = 1, 또는 이름·아이콘을 바꿔 붙인 스킬이 있으면 { 키: [이름, 아이콘] } · 다시 만든 것이 원본과 다르면(직접 고친 값 등) 빼지 않음
+    //   LIVE_INIT_SB_FROM 전에는 그대로: 그 전에 연 탭은 skillBook이 없으면 몬스터 스킬을 직업 기본 스킬로 봄
+    const LIVE_INIT_SB_FROM = Date.UTC(2026, 10, 11, 15); // 2026-11-12 00:00 KST (지나면 이 상수와 비교를 지워도 됨)
+    function liveSkillBookMark(u) {
+      const book = u && u.skillBook;
+      if (!book || typeof book !== 'object' || !Array.isArray(u.skillSlots)) return null;
+      const keys = Object.keys(book);
+      if (keys.length !== u.skillSlots.length || keys.some((k, i) => u.skillSlots[i] !== k)) return null;
+      const ov = {};
+      keys.forEach(k => { const base = (SKILL_DEFS[skillJobOf(k)] || {})[k]; if (base && (book[k].name !== base.name || book[k].icon !== base.icon)) ov[k] = [book[k].name, book[k].icon]; });
+      const again = buildSkillBook(keys.map(k => (ov[k] ? [k, ov[k][0], ov[k][1]] : k)));
+      if (JSON.stringify(again) !== JSON.stringify(book)) return null;
+      return Object.keys(ov).length ? ov : 1;
+    }
+    function liveUnitCopy(u, drop, slimBook = drop === LIVE_INIT_DROP) { // slimBook: 화면용 유닛 목록(넘겨받아 이어 계산하는 handoff가 아님)
+      const sbMark = slimBook && u.skillBook && Date.now() >= LIVE_INIT_SB_FROM ? liveSkillBookMark(u) : null;
+      const c = JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) || (k === 'skillBook' && sbMark) || (k && isLiveUnitRef(v)) ? undefined : (typeof v === 'number' ? roundLiveNum(v) : v))));
+      if (sbMark) c.sb = sbMark;
       // 0인 상태·스킬 쿨타임은 빼고 보냄 (유닛 한 명당 약 450B · 받는 쪽 normalizeLiveUnit이 0으로 채움)
       ['statuses', 'skillCooldowns'].forEach(k => { const o = c[k]; if (o && typeof o === 'object') Object.keys(o).forEach(x => { if (!o[x]) delete o[x]; }); });
       return c;
@@ -47632,6 +47650,12 @@
     function normalizeLiveUnit(u) {
       u.statuses = Object.assign(Object.fromEntries(LIVE_UNIT_ST_KEYS.map(k => [k, 0])), u.statuses || {});
       u.skillSlots = Array.isArray(u.skillSlots) ? u.skillSlots : [];
+      // 방장이 빼고 보낸 스킬 묶음을 스킬 키 목록으로 다시 만듦 (liveSkillBookMark)
+      if (u.sb && !u.skillBook) {
+        const ov = u.sb && typeof u.sb === 'object' ? u.sb : {};
+        try { u.skillBook = buildSkillBook(u.skillSlots.map(k => (Array.isArray(ov[k]) ? [k, cleanUserText(ov[k][0], 30), cleanUserText(ov[k][1], 8)] : k))); } catch (e) {}
+      }
+      delete u.sb;
       u.unlockedSkills = Array.isArray(u.unlockedSkills) ? u.unlockedSkills : [];
       u.skillCooldowns = u.skillCooldowns && typeof u.skillCooldowns === 'object' ? u.skillCooldowns : {};
       [...u.skillSlots, ...u.unlockedSkills].forEach(k => { if (typeof k === 'string' && !(k in u.skillCooldowns)) u.skillCooldowns[k] = 0; }); // 보낼 때 뺀 0
@@ -53761,7 +53785,7 @@
     function sendRushUnitList(rr) {
       if (liveNet.role !== 'host' || !liveNet.ref) return;
       const drop = new Set([...LIVE_INIT_DROP, '_deadSince', 'rushPath']);
-      const units = sim.units.map(u => liveUnitCopy(u, drop));
+      const units = sim.units.map(u => liveUnitCopy(u, drop, true));
       liveNet.ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, rr, units }).catch(() => {});
     }
 
