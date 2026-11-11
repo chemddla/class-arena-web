@@ -11,9 +11,9 @@ export const meta = {
   origin: [14, 24],
   duration: 0.38,
   loop: false,
-  fps: 30,
+  fps: 40,
   bg: "dark",
-  options: { palette: MOON, sparks: MOON_SPARK, len: 144, w: 2.6, seed: 3 },
+  options: { palette: MOON, sparks: MOON_SPARK, len: 144, w: 1.7, seed: 3 },
 };
 
 export function draw(p, t, o) {
@@ -29,19 +29,19 @@ export function draw(p, t, o) {
     p.shade(tail - 1, -W - 2, head + 1, W + 2, (x, y, out) => {
       const v = (x - tail) / (head - tail);
       if (v < 0 || v > 1) return;
-      const w = W * Math.pow(Math.sin(Math.PI * Math.pow(v, 0.55)), 0.8) + 0.35; // 앞쪽이 굵고 끝은 뾰족
+      const w = W * Math.pow(Math.sin(Math.PI * Math.pow(v, 0.5)), 1.2) + 0.2; // 앞쪽이 굵고 양끝은 바늘처럼 뾰족
       const q = Math.abs(y) / w;
       if (q > 1) return;
-      const ci = hot && q < 0.5 ? 0 : Math.round(q * (n - 1) * 0.7 + age * 2.6 + (1 - v) * 0.8);
-      out.c = C[n - 1 - clamp(ci, 0, n - 2)];
-      out.a = Math.min(1, v / 0.15) * (q > 0.75 ? 0.7 : 1);
+      const ci = hot && q < 0.6 ? 0 : Math.round(q * (n - 1) * 0.55 + age * 2.2 + (1 - v) * 0.6);
+      out.c = C[n - 1 - clamp(ci, 0, n - 3)];
+      out.a = 1; // 점 무늬(디더) 없이 꽉 찬 픽셀로 (뾰족한 끝이 모양으로 가늘어짐)
     });
-    p.glowLine(tail, 0, head, 0, 6, C[4], 0.28 * (1 - age));
+    p.glowLine(tail, 0, head, 0, 4, C[5], 0.22 * (1 - age));
   }
   // 멈춤: 끝에서 반짝 + 앞으로 튀는 불티
   const g = u - T.sweep;
-  if (g > -0.02 && g < 0.16) sparkle(p, L, 0, 7 * Math.sin(Math.PI * clamp((g + 0.02) / 0.18)), C[6], C[4], 0.6);
+  if (g > -0.02 && g < 0.14) sparkle(p, L, 0, 6 * Math.sin(Math.PI * clamp((g + 0.02) / 0.18)), C[6], C[4], 0.6);
   burst(p, t, HIT, L, 0, 0, 0.75, 8, o.seed, fit(o.sparks, 4));
   // 지나간 자리 점선
-  dotted(p, 4, tail, 0, C[3], 0.6 * (1 - smooth(T.sweep + T.hold + 0.05, end + 0.06, u)) * (tl > 0.02 ? 1 : 0));
+  dotted(p, 4, tail, 0, C[4], 0.45 * (1 - smooth(T.sweep + T.hold + 0.05, end + 0.06, u)) * (tl > 0.02 ? 1 : 0));
 }
