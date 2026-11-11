@@ -1,11 +1,13 @@
 # 검사 전용 샘플(검은 머리 묶음·회색 머리띠·남색 도복·검은 하카마, 흰 배경) → 캐릭터 시트 assets/sprites/merc/swordsman_0.webp
 # 사용: python tools/swordsman_build.py   (샘플은 assets/sprites/fx/samples/swordsman_*_src.png, 동작 샘플이 오는 대로 FRAMES에 늘림)
 # 칸 순서: 0 대기 (오른손을 칼자루에 얹고 왼손으로 칼집을 잡은 발도 자세, 맨발에 조리) · 1 피격 (몸을 젖히며 소리침) · 2~3 쓰러짐 (앞으로 고꾸라짐 → 엎어져 기절, 머리가 앞쪽)
+#   · 4 일반공격 1 (낮게 앉아 칼자루를 쥐고 뽑기 직전)
 # 크기 통일: 대기 자세 몸 키(머리털 끝~발, 샘플 px)를 TARGET_H로 줄임. 다른 동작은 대기와 같은 배율('idle')로 줄여 얼굴 크기를 맞춤
 # 샘플 정리:
 #   - 대기 샘플(768×1024)은 도트 그림을 흐리게 키운 것, 테두리 없음
 #   - 피격·쓰러짐 샘플(766×250)은 세 칸을 한 장에 그린 것 + 위 잘린 글자 줄·칸 이름('[피격]' 등). 왼쪽부터 0·1·2번째 덩어리로 고름
-#     '[쓰러짐 1]' 글자는 쓰러짐 1 머리 묶음과 붙어 있어 상자로 지움 (CUT). 해상도가 대기 샘플과 달라 키를 따로 맞춤 (HURT_H)
+#     '[쓰러짐 1]' 글자는 쓰러짐 1 머리 묶음과 붙어 있어 상자로 지움 (CUT). 해상도가 대기 샘플과 달라 키를 따로 맞춤 (FIT_H)
+#   - 일반공격 샘플(209×271)은 오른쪽 끝에 옆 칸 조각 점 → 가장 큰 덩어리만
 #   - 피부가 어두운 샘플은 살색만 밝힘 (SKIN)
 #   - 흰 배경은 가장자리에서 이어진 흰 픽셀만 지움 (짚신·옷깃의 밝은 회색은 검은 외곽선 안쪽이라 남음)
 import os, sys
@@ -23,7 +25,7 @@ TARGET_H = 86   # 대기 자세 머리 묶음 끝~발 → 게임 칸 키 (격투
 CARD = {}   # (x0, x1, y0, y1): 샘플 테두리 잘라 냄
 WHITE_MIN = {'hurtdown': 200}   # 피격·쓰러짐 샘플은 흐린 밝은 테두리가 넓어 더 어두운 흰색까지 배경으로 봄
 CUT = {'hurtdown': [(0, 766, 0, 8), (284, 384, 12, 45), (384, 390, 12, 36)]}   # 지울 상자 (x0, x1, y0, y1): 위 잘린 글자 줄 · '[쓰러짐 1' · ']' (머리 묶음에 붙은 세로줄)
-HURT_H = 78   # 피격 칸 몸 키 (뒤로 젖혀 대기보다 조금 낮음). 쓰러짐 두 칸은 피격과 같은 배율
+FIT_H = {'HURT': 78, 'ATK': 84}   # 샘플마다 해상도가 달라 몸 키를 직접 정해 머리 크기를 대기와 맞춤: 피격(뒤로 젖힘) · 일반공격(낮게 앉음). 쓰러짐 두 칸은 피격과 같은 배율
 SKIN = set()   # 피부가 어두운 샘플만 넣어 첫 샘플(밝은 살색)만큼 밝힘. 지금 대기 샘플은 처음부터 밝아서 비워 둠
 
 
@@ -78,6 +80,7 @@ FRAMES = [
     ('hurtdown', 'hurt', 'HURT', 0),
     ('hurtdown', 'down1', 'hurt', 1),
     ('hurtdown', 'down2', 'hurt', 2),
+    ('atk0', 'atk0', 'ATK', 'big'),
 ]
 FOOTX = {}   # 칸 이름 → 발 가운데 (자른 그림 기준 px)
 
@@ -88,7 +91,7 @@ def main():
         rgba, foot, bh = load(src, pick)
         if src in SKIN: rgba = lighten_skin(rgba)
         if name in FOOTX: foot = FOOTX[name]
-        sc = TARGET_H / bh if k == 'H' else HURT_H / bh if k == 'HURT' else scale[k]
+        sc = TARGET_H / bh if k == 'H' else FIT_H[k] / bh if k in FIT_H else scale[k]
         scale[name] = sc
         p = shrink(rgba, sc)
         pieces.append((name, p, foot * sc))
