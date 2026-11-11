@@ -757,19 +757,34 @@
   const pickFish = water => { const pool = FISH.filter(f => f.hab === 'both' || f.hab === (water === 'sea' ? 'sea' : 'river')), sum = pool.reduce((a, f) => a + RAR_W[f.rar], 0);
     let k = Math.random() * sum; for (const f of pool) { k -= RAR_W[f.rar]; if (k <= 0) return f; } return pool[0]; };
   const eastSwim = eastPts.filter(q => q.z < EAST.shore - 0.5 && riverDist(q.x, q.z) > 0.8);
-  const swimSpot = w => { // 그 물에서 헤엄칠 만한 아무 자리
-    if (w === 'main') { const x = -50 + Math.random() * 84; return [x, riverZ(x) + (Math.random() - 0.5) * (RIVER.w - 1.4)]; }
-    if (w === 'east') { const q = eastSwim[Math.floor(Math.random() * eastSwim.length)], o = (Math.random() - 0.5) * (q.w - 1.4); return [q.x + q.nx * o, q.z + q.nz * o]; }
-    return [-45 + Math.random() * 90, SEA_Z + 1 + Math.random() * 7]; };
+  // 물속인지: m = 그림자 반 길이만큼 물가에서 떨어져 있어야 함 (큰 물고기는 강 가운데로만)
+  const inWater = (x, z, m) => riverDist(x, z) < -m || eastDist(x, z) < -m || z > SEA_Z + m;
+  const swimSpot = (w, m) => { // 그 물에서 헤엄칠 만한 아무 자리 (물가에서 m 이상 안쪽)
+    for (let k = 0; k < 20; k++) { let x, z;
+      if (w === 'main') { x = -50 + Math.random() * 84; z = riverZ(x) + (Math.random() - 0.5) * Math.max(0, RIVER.w - 2 * m); }
+      else if (w === 'east') { const q = eastSwim[Math.floor(Math.random() * eastSwim.length)], o = (Math.random() - 0.5) * Math.max(0, q.w - 2 * m); x = q.x + q.nx * o; z = q.z + q.nz * o; }
+      else { x = -45 + Math.random() * 90; z = SEA_Z + 1 + m + Math.random() * 7; }
+      if (inWater(x, z, m)) return [x, z]; }
+    return w === 'sea' ? [0, SEA_Z + 5] : w === 'east' ? [eastSwim[0].x, eastSwim[0].z] : [20, riverZ(20)]; };
+  const swimNear = sh => { // 다음 목적지: 지금 자리에서 강을 따라 조금 떨어진 곳 (굽은 강을 가로질러 땅으로 나가지 않게)
+    for (let k = 0; k < 12; k++) { let x, z; const m = sh.m;
+      if (sh.w === 'main') { x = Math.max(-50, Math.min(34, sh.x + (Math.random() < 0.5 ? -1 : 1) * (2 + Math.random() * 5))); z = riverZ(x) + (Math.random() - 0.5) * Math.max(0, RIVER.w - 2 * m); }
+      else if (sh.w === 'east') { let i = 0, bd = 1e9; eastSwim.forEach((q, j) => { const d = (q.x - sh.x) ** 2 + (q.z - sh.z) ** 2; if (d < bd) { bd = d; i = j; } });
+        const q = eastSwim[Math.max(0, Math.min(eastSwim.length - 1, i + (Math.random() < 0.5 ? -1 : 1) * (3 + Math.floor(Math.random() * 8))))], o = (Math.random() - 0.5) * Math.max(0, q.w - 2 * m); x = q.x + q.nx * o; z = q.z + q.nz * o; }
+      else { x = sh.x + (Math.random() - 0.5) * 12; z = Math.max(SEA_Z + 1 + m, Math.min(SEA_Z + 9, sh.z + (Math.random() - 0.5) * 5)); }
+      if (inWater(x, z, m)) return [x, z]; }
+    return [sh.x, sh.z]; };
   const shadows = [];
   [['main', 10], ['east', 6], ['sea', 12]].forEach(([w, n]) => { for (let i = 0; i < n; i++) {
     const g = new THREE.Group(), inner = new THREE.Group(), body = noShadow(new THREE.Mesh(new THREE.CircleGeometry(0.2, 10), fishMat)), tail = noShadow(new THREE.Mesh(new THREE.CircleGeometry(0.11, 3), fishMat));
     body.scale.set(1.7, 0.75, 1); tail.position.x = -0.36; tail.rotation.z = Math.PI; inner.add(body); inner.add(tail); inner.rotation.x = -Math.PI / 2; g.add(inner); g.visible = false; scene.add(g);
     const sh = { w, g, inner, tail, ph: Math.random() * 6, state: 'gone', wait: Math.random() * 2 }; shadows.push(sh); } });
   function spawnShadow(sh) { // 새 물고기를 정해 그 크기대로 그림자를 키움
-    const f = pickFish(sh.w), [x, z] = swimSpot(sh.w), [t0, t1] = swimSpot(sh.w);
-    Object.assign(sh, { f, cm: Math.round((f.cm[0] + (f.cm[1] - f.cm[0]) * Math.pow(Math.random(), 1.6)) * 10) / 10, x, z, tx: t0, tz: t1, v: 0.35 + Math.random() * 0.45, state: 'swim' });
-    sh.inner.scale.setScalar(Math.min(3.4, 0.25 + Math.sqrt(sh.cm) * 0.12)); sh.g.visible = true; }
+    const f = pickFish(sh.w), cm = Math.round((f.cm[0] + (f.cm[1] - f.cm[0]) * Math.pow(Math.random(), 1.6)) * 10) / 10, sc = Math.min(3.4, 0.25 + Math.sqrt(cm) * 0.12);
+    sh.m = 0.25 + 0.36 * sc; // 그림자 반 길이 + 여유
+    const [x, z] = swimSpot(sh.w, sh.m);
+    Object.assign(sh, { f, cm, x, z, tx: x, tz: z, v: 0.35 + Math.random() * 0.45, state: 'swim' });
+    sh.inner.scale.setScalar(sc); sh.g.position.set(x, 0.062, z); sh.g.visible = true; }
   // 별 (밤에만 지평선 위에 보임)·반딧불
   const starMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, fog: false, depthWrite: false });
   const stars = noShadow(new THREE.InstancedMesh(new THREE.CircleGeometry(0.16, 5), starMat, 110));
@@ -1227,11 +1242,14 @@
     if (me.z > SHOP.far || !nearWater(me.x, me.z)) return null;
     let best = null, bd = 6.5; shadows.forEach(sh => { if (sh.state !== 'swim') return; const d = Math.hypot(sh.x - me.x, sh.z - me.z); if (d < bd) { bd = d; best = sh; } }); return best; }
   function startFishing(sh) {
-    const d = Math.hypot(sh.x - me.x, sh.z - me.z) || 1, bx = sh.x + (me.x - sh.x) / d * 0.6, bz = sh.z + (me.z - sh.z) / d * 0.6; // 그림자 코앞에 떨어뜨림
+    const d = Math.hypot(sh.x - me.x, sh.z - me.z) || 1; let bx = sh.x + (me.x - sh.x) / d * 0.6, bz = sh.z + (me.z - sh.z) / d * 0.6; // 그림자 코앞에 떨어뜨림 (물가 쪽이 땅이면 그림자 자리에)
+    if (!inWater(bx, bz, 0.15)) { bx = sh.x; bz = sh.z; }
     me.target = null; marker.visible = false; me.face = Math.atan2(bx - me.x, bz - me.z); if (bag.held !== 'rod') { setRod(true); say(me, '낚싯대를 꺼냈어요', 1.2); } rod.visible = true; me.g.updateMatrixWorld(true); rod.localToWorld(tip.set(0, 1.5, 0));
     Object.assign(fishing, { st: 'cast', sh, t: 0, bx, bz, fx: tip.x, fy: tip.y, fz: tip.z }); sh.state = 'lure'; sfx.note(); }
   function endFishing(msg) { if (!fishing.st) return; const sh = fishing.sh; if (sh && sh.state === 'lure') sh.state = 'swim'; fishing.st = null; bobber.visible = line.visible = false; rod.visible = bag.held === 'rod'; if (msg) say(me, msg, 1.6); }
-  function flee(sh) { sh.state = 'flee'; const a = Math.atan2(sh.z - me.z, sh.x - me.x); sh.tx = sh.x + Math.cos(a) * 6; sh.tz = sh.z + Math.sin(a) * 6; sh.v = 3; sh.wait = 1.2; }
+  function flee(sh) { sh.state = 'flee'; let best = null, bd = -1; // 물속 자리 중 나에게서 가장 먼 곳으로 달아남
+    for (let k = 0; k < 8; k++) { const q = swimSpot(sh.w, sh.m), d = Math.hypot(q[0] - me.x, q[1] - me.z) - Math.hypot(q[0] - sh.x, q[1] - sh.z) * 0.3; if (d > bd) { bd = d; best = q; } }
+    [sh.tx, sh.tz] = best; sh.v = 3; sh.wait = 1.2; }
   function reel() {
     const st = fishing.st, sh = fishing.sh; if (!st || st === 'cast') return;
     if (st === 'bite') { // 잡음
@@ -1249,8 +1267,10 @@
       let tx = sh.tx, tz = sh.tz, v = sh.v;
       if (sh.state === 'lure') { tx = fishing.bx; tz = fishing.bz; v = fishing.st === 'cast' || (fishing.st === 'wait' && fishing.t < fishing.delay) ? 0 : 0.55; } // 찌가 떨어진 뒤 잠깐 눈치 보다 다가옴
       const dx = tx - sh.x, dz = tz - sh.z, d = Math.hypot(dx, dz);
-      if (sh.state === 'swim' && d < 0.3) { const [a, b] = swimSpot(sh.w); sh.tx = a; sh.tz = b; }
-      else if (d > 0.02 && v) { const k = Math.min(d, v * dt) / d; sh.x += dx * k; sh.z += dz * k; sh.g.rotation.y = Math.atan2(-dz, dx); }
+      if (sh.state === 'swim' && d < 0.3) { const [a, b] = swimNear(sh); sh.tx = a; sh.tz = b; }
+      else if (d > 0.02 && v) { const k = Math.min(d, v * dt) / d, nx = sh.x + dx * k, nz = sh.z + dz * k;
+        if (inWater(nx, nz, sh.state === 'lure' ? 0.1 : sh.m)) { sh.x = nx; sh.z = nz; sh.g.rotation.y = Math.atan2(-dz, dx); } // 물가에 막히면 방향을 바꿈
+        else if (sh.state !== 'lure') { const [a, b] = swimNear(sh); sh.tx = a; sh.tz = b; } }
       sh.g.position.set(sh.x, 0.062, sh.z); sh.tail.rotation.z = Math.PI + Math.sin(t * (sh.state === 'flee' ? 24 : 9) + sh.ph) * 0.5;
     });
     rod.rotation.x = fishing.st ? 0.85 : -0.5; rod.position.z = fishing.st ? 0.12 : -0.05; // 낚시 중엔 앞으로 내밀고, 아니면 어깨에 멤
