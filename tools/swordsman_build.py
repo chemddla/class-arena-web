@@ -4,7 +4,7 @@
 #   · 4 일반공격 1 (낮게 앉아 칼자루를 쥐고 뽑기 직전) · 5 발도 (칼을 뒤로 뽑아 든 채 낮게 벌려 선 자세)
 #   · 6~8 걷기 1~3 (칼자루를 쥔 채 걸음: 받은 순서대로 walk_a 왼쪽·오른쪽, walk_b). 1·2는 비슷한 자세, 3은 뒷발을 차올린 자세라
 #     재생은 1 → 3 → 2 → 3 반복 (WALK_ANIM, 게임 anims.walk에 그대로 씀)
-#   · 9 스킬 시전 (다리를 넓게 벌리고 낮게 앉아 칼자루를 쥔 자세)
+#   · 9 스킬 시전 1 (다리를 넓게 벌리고 낮게 앉아 칼자루를 쥔 자세) · 10 시전 2 (몸 둘레 노란 불꽃) · 11 시전 3 (칼자루 앞 노란 섬광)
 # 크기 통일: 대기 자세 몸 키(머리털 끝~발, 샘플 px)를 TARGET_H로 줄임. 다른 동작은 대기와 같은 배율('idle')로 줄여 얼굴 크기를 맞춤
 # 샘플 정리:
 #   - 대기 샘플(768×1024)은 도트 그림을 흐리게 키운 것, 테두리 없음
@@ -13,6 +13,8 @@
 #   - 걷기 샘플: walk_a(508×453)는 두 칸 + 왼쪽 끝 옆 칸 칼집 조각, walk_b(294×447)는 한 칸 + 양 옆 칸 조각 → 큰 덩어리만 (화면 캡처라 흰 배경 한 장씩)
 #   - 머리띠 끈 사이로 비친 흰 배경은 가장자리와 안 이어져 남으므로 한 점씩 짚어 지움 (HOLES)
 #   - 스킬 시전 샘플(197×259)은 흰 배경 한 장 + 오른쪽 끝 옆 칸 조각 → 큰 덩어리만
+#   - 시전 2·3 샘플(207×229·205×218)은 투명 배경 체크무늬(흰 242·회색 191, 약 17px 칸)가 그대로 찍힘 → 가장자리와 이어진 무채색 밝은 픽셀을 배경으로 (CHECKER)
+#     몸과 떨어진 노란 불꽃도 남김 ('all'). 발 옆 회색 흙먼지는 체크무늬 회색과 구별이 안 돼 함께 빠짐
 #   - 쓰러짐 2 샘플(346×158)은 흰 배경 한 장, 머리카락이 왼쪽 끝에 닿음. 누운 그림이라 몸 길이로 크기를 맞춤 (FIT_W)
 #     '[쓰러짐 1]' 글자는 쓰러짐 1 머리 묶음과 붙어 있어 상자로 지움 (CUT). 해상도가 대기 샘플과 달라 키를 따로 맞춤 (FIT_H)
 #   - 일반공격 샘플(209×271)은 오른쪽 끝에 옆 칸 조각 점 → 가장 큰 덩어리만
@@ -37,7 +39,7 @@ TARGET_H = 86   # 대기 자세 머리 묶음 끝~발 → 게임 칸 키 (격투
 CARD = {}   # (x0, x1, y0, y1): 샘플 테두리 잘라 냄
 WHITE_MIN = {'hurtdown': 200}   # 피격·쓰러짐 샘플은 흐린 밝은 테두리가 넓어 더 어두운 흰색까지 배경으로 봄
 CUT = {'hurtdown': [(0, 766, 0, 8), (284, 384, 12, 45), (384, 390, 12, 36)]}   # 지울 상자 (x0, x1, y0, y1): 위 잘린 글자 줄 · '[쓰러짐 1' · ']' (머리 묶음에 붙은 세로줄)
-FIT_H = {'HURT': 78, 'ATK': 84, 'DRAW': 84, 'WALK': 86, 'CAST': 84}   # 샘플마다 해상도가 달라 몸 키를 직접 정해 머리 크기를 대기와 맞춤: 피격(뒤로 젖힘) · 일반공격(낮게 앉음). 쓰러짐 1은 피격과 같은 배율
+FIT_H = {'HURT': 78, 'ATK': 84, 'DRAW': 84, 'WALK': 86, 'CAST': 84, 'CAST2': 84}   # 샘플마다 해상도가 달라 몸 키를 직접 정해 머리 크기를 대기와 맞춤: 피격(뒤로 젖힘) · 일반공격(낮게 앉음). 쓰러짐 1은 피격과 같은 배율
 FIT_W = {'DOWN2': 108}   # 누운 그림은 머리~발 가로 길이로 맞춤
 # 같은 동작을 어두운 배경에 그린 샘플 (배경색은 테두리 중앙값으로 잼):
 #   swordsman_dark_src = 피격 · 쓰러짐 1 · 예전 쓰러짐 2 · 일반공격 1 (왼쪽부터, 배경 (25,25,25), 발밑 그림자·오른쪽 아래 반짝이 표시 있음)
@@ -47,7 +49,8 @@ DARK = {('hurtdown', 0): ('dark', 0), ('hurtdown', 1): ('dark', 1), ('atk0', 'bi
 SCRUB = {}   # 샘플 이름 → 지울 워터마크 다각형 꼭짓점 (샘플 px): 몸에 겹친 회색 네 갈래 별 → 안의 회색만 머리카락 남색으로 칠함 (원래 밝기 차이는 조금 남김)
 # 예전 쓰러짐 2(hurtdown 2번째 그림)는 [(671, 144), (686, 158), (704, 164), (698, 176), (686, 178), (677, 192), (667, 176), (662, 168), (667, 157)]
 SCRUB_HAIR = np.array([23, 25, 36])   # 둘레 머리카락 색
-HOLES = {'idle': [(276, 269)], 'walk_a': [(72, 125), (298, 125)], 'walk_b': [(91, 108)], 'cast': [(117, 80), (105, 68)]}
+CHECKER = {'cast2', 'cast3'}   # 투명 배경을 체크무늬로 그린 채 캡처한 샘플
+HOLES = {'idle': [(276, 269)], 'walk_a': [(72, 125), (298, 125)], 'walk_b': [(91, 108)], 'cast': [(117, 80), (105, 68)], 'cast2': [(97, 73), (107, 83)], 'cast3': [(105, 70)]}
 # 몸에 둘러싸여 가장자리와 안 이어진 흰 틈 (샘플 px 한 점): 모두 머리띠 끈·머리카락 가닥 사이로 비친 배경. 눈 흰자는 넣지 않음
 DEFRINGE = {'down2', 'walk_a', 'walk_b', 'cast'}   # 어두운 배경 판이 없는 샘플: 외곽 2px의 색을 바로 안쪽 불투명 색으로 바꾸고 거의 흰 픽셀은 투명하게 → 어두운 바탕에서 보이던 회백색 테두리 제거
 SKIN = set()   # 피부가 어두운 샘플만 넣어 첫 샘플(밝은 살색)만큼 밝힘. 지금 대기 샘플은 처음부터 밝아서 비워 둠
@@ -131,13 +134,16 @@ def scrub(im, poly):
     return im
 
 
-def defringe(raw, a, im):
+def defringe(raw, a, im, checker=False):
     clear = a < 0.12
     edge = ~clear & ndi.binary_dilation(clear, iterations=2)
     inner = (a > 0.99) & ~edge
     _, (iy, ix) = ndi.distance_transform_edt(~inner, return_indices=True)
-    im = im.copy(); im[edge] = im[iy, ix][edge]   # 테두리 색 = 가장 가까운 안쪽 색 (대개 검은 외곽선)
+    sat = raw.max(axis=2) - raw.min(axis=2)
+    fix = edge & (sat < 40) if checker else edge   # 체크무늬 칸은 노란 불꽃(채도 높음)을 몸 색으로 덮지 않음
+    im = im.copy(); im[fix] = im[iy, ix][fix]   # 테두리 색 = 가장 가까운 안쪽 색 (대개 검은 외곽선)
     a = np.where(edge & (raw.min(axis=2) > 200), 0.0, a)   # 흰 배경과 거의 같은 테두리 픽셀은 버림
+    if checker: a = np.where(edge & (sat < 20) & (raw.mean(axis=2) > 140), 0.0, a)   # 회색 칸과 섞인 테두리도 버림
     return a, im
 
 
@@ -149,6 +155,8 @@ def load(name, pick=0):
     raw = im.copy()
     wm = WHITE_MIN.get(name, 222)
     white = (im.min(axis=2) > wm) & (im.max(axis=2) - im.min(axis=2) < 20)
+    if name in CHECKER:   # 흰·회색(191) 체크무늬: 가장자리와 이어진 무채색 밝은 픽셀(회색 칸·흰 칸·칸 경계의 흐린 회색)이 배경
+        white = (im.max(axis=2) - im.min(axis=2) < 16) & (im.mean(axis=2) >= 165)
     lab, n = ndi.label(white)
     edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
     bg = np.isin(lab, edge[edge > 0])
@@ -156,6 +164,7 @@ def load(name, pick=0):
     for hx, hy in HOLES.get(name, ()):   # 몸에 둘러싸인 흰 틈: 그 점과 이어진 흰 픽셀을 배경으로
         bg |= lab == lab[hy, hx] if white[hy, hx] else False
     rim = ~bg & ndi.binary_dilation(bg, iterations=2)
+    if name in CHECKER: rim[:] = False   # 배경이 회색이라 흰 배경 기준 반투명 계산은 안 맞음 → 테두리는 defringe가 정리
     a = np.where(bg, 0.0, 1.0)
     a = np.where(rim, np.clip((255 - im.min(axis=2)) / 200, 0, 1), a)   # 흐린 외곽: 흰 배경과 섞인 만큼 반투명
     al = np.maximum(a, 1e-3)[..., None]
@@ -165,12 +174,14 @@ def load(name, pick=0):
     sz = ndi.sum(m, lab, range(1, n + 1))
     if pick == 'big':
         a = np.where(lab == 1 + int(np.argmax(sz)), a, 0)
+    elif pick == 'all':   # 몸 + 따로 떨어진 불꽃 조각까지 (아주 작은 점은 버림)
+        a = np.where(np.isin(lab, [i + 1 for i in range(n) if sz[i] >= 5]), a, 0)
     else:
         bigs = [i + 1 for i in range(n) if sz[i] >= sz.max() * 0.3]
         bigs.sort(key=lambda i: np.where(lab == i)[1].mean())
         a = np.where(lab == bigs[pick], a, 0)
     if (name, pick) in DARK: a, im = dark_matte(raw, a, im, DARK[(name, pick)])
-    if name in DEFRINGE: a, im = defringe(raw, a, im)
+    if name in DEFRINGE or name in CHECKER: a, im = defringe(raw, a, im, name in CHECKER)
     a = np.where(a < 0.12, 0, a)
     ys, xs = np.where(a > 0)
     rgba = np.dstack([im, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
@@ -192,6 +203,8 @@ FRAMES = [
     ('walk_a', 'walk2', 'WALK', 1),
     ('walk_b', 'walk3', 'WALK', 'big'),
     ('cast', 'cast', 'CAST', 'big'),
+    ('cast2', 'cast2', 'CAST2', 'all'),
+    ('cast3', 'cast3', 'CAST2', 'all'),
 ]
 WALK_ANIM = [6, 8, 7, 8]   # 걷기 재생 칸 순서: 걷기 1 → 3 → 2 → 3 (되풀이하면 1 3 2 3 1 3 2 …)
 FOOTX = {}   # 칸 이름 → 발 가운데 (자른 그림 기준 px)
