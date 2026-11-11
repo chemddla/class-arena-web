@@ -45348,13 +45348,25 @@
       if (!me) return null;
       return Object.values(livePvpRoomsCache || {}).find(r => r && r.roomId && r.status === 'waiting' && !r.practiceFriend && isPvpRoomPlayer(r, me.id)) || null;
     }
+    // 올려 둔 내 측정값은 대기실을 떠나면(방이 닫힘·나감·전투 시작) 지우고, 접속이 끊겨도 서버가 지우게 걸어 둠
+    // (예전엔 전투 없이 닫힌 방마다 pvp_live/<방>/perf가 남았음 · 2026-11-11 서버에 26개)
+    let livePerfRoomId = null, livePerfRoomMe = null;
     function maybePublishLivePerf() {
       const now = Date.now();
-      if (livePerfBusy || now - livePerfLastAt < LIVE_PERF_EVERY_MS || document.hidden) return;
       const room = myWaitingLiveRoom(), me = getActiveStudent();
+      if (livePerfRoomId && (!room || room.roomId !== livePerfRoomId || !me || me.id !== livePerfRoomMe)) {
+        const old = liveRoomRef(livePerfRoomId), oldMe = livePerfRoomMe;
+        livePerfRoomId = null; livePerfRoomMe = null;
+        if (old && oldMe) { try { old.child('perf').child(oldMe).onDisconnect().cancel(); old.child('perf').child(oldMe).remove().catch(() => {}); } catch (e) {} }
+      }
+      if (livePerfBusy || now - livePerfLastAt < LIVE_PERF_EVERY_MS || document.hidden) return;
       if (!room || !me) return;
       const ref = liveRoomRef(room.roomId);
       if (!ref) return;
+      if (livePerfRoomId !== room.roomId) {
+        livePerfRoomId = room.roomId; livePerfRoomMe = me.id;
+        try { ref.child('perf').child(me.id).onDisconnect().remove(); } catch (e) {}
+      }
       livePerfLastAt = now;
       livePerfBusy = true;
       const t0 = performance.now();
@@ -46381,7 +46393,7 @@
         lastFramePublishedAt: 0, spectator, timeoutExtended: false, pvpWatchers: 0,
         team: Boolean(team), teamExpect: teamExpect || [], teamChosen: {}, remoteCtrls: {}, myId: getActiveStudent()?.id || null,
         dgUnitSig: null, dgRoomSeq: null, dgSentJ: null, dgChangedAt: 0, rsSent: null, rsSentT: 0, znSig: null,
-        rtcPaused: false, rtcFeedSince: 0, kfWanted: false, kfReqAt: 0, kfSig: null
+        rtcPaused: false, rtcFeedSince: 0, kfWanted: false, kfReqAt: 0, kfSig: null, kfInitSig: null, kfRef: null, unitListSigs: null, unitListRr: null, unitListReqAt: 0
       });
       resetLiveFrameBuffer();
       if (role === 'host') {
@@ -46395,10 +46407,18 @@
           ref.child('kf').remove().catch(() => {});
         }
         // 직접 연결이 멈춰 서버 화면으로 돌아온 친구가 '전체 화면 한 장'을 청함 (liveRequestKeyframe) → 다음 화면을 바로 전체로 · 잠깐은 0.15초 간격으로
+        liveNet.kfRef = ref; // 이 전투는 kf 청을 들음 (유닛 목록 자리 표시를 써도 됨)
         ref.child('kf').on('value', snap => {
           const v = snap && snap.val();
           if (!v || liveNet.ref !== ref || liveNet.role !== 'host') return;
-          const sig = JSON.stringify(v);
+          // 유닛 목록 전체를 청하는 칸(<id>_i): 자리 표시만 받은 친구가 그 유닛을 갖고 있지 않을 때 (sendRushUnitList)
+          const iSig = JSON.stringify(Object.keys(v).filter(k => k.endsWith('_i')).sort().map(k => [k, v[k]]));
+          if (iSig !== liveNet.kfInitSig) {
+            const had = liveNet.kfInitSig != null || iSig !== '[]';
+            liveNet.kfInitSig = iSig;
+            if (had && iSig !== '[]' && liveNet.unitListRr != null && sim.running) sendRushUnitList(liveNet.unitListRr, true);
+          }
+          const sig = JSON.stringify(Object.keys(v).filter(k => !k.endsWith('_i')).sort().map(k => [k, v[k]]));
           if (sig === liveNet.kfSig) return;
           liveNet.kfSig = sig;
           liveNet.kfReqAt = Date.now();
@@ -47679,7 +47699,21 @@
 
     function applyLiveInit(val) {
       if (liveNet.role !== 'guest' || !val || !Array.isArray(val.units) || !liveAcceptPayload(val)) return;
-      const units = deepCleanStrings(val.units).filter(u => u && typeof u === 'object' && u.id).map(normalizeLiveUnit);
+      // 자리 표시({ id, k: 1 })는 내가 가진 그 유닛을 그대로 씀 · 하나라도 없으면 전체 목록을 청하고 이번 목록은 넘김 (지금 화면은 그대로 둠)
+      const rawUnits = deepCleanStrings(val.units).filter(u => u && typeof u === 'object' && u.id);
+      if (rawUnits.some(u => u.k === 1)) {
+        const have = new Map((liveNet.initReceived ? sim.units : []).map(u => [u.id, u]));
+        if (rawUnits.some(u => u.k === 1 && !have.has(u.id))) {
+          const nowReq = Date.now();
+          if (nowReq - (liveNet.unitListReqAt || 0) > 2000) {
+            liveNet.unitListReqAt = nowReq;
+            try { liveNet.ref.child('kf').child((liveNet.myId || 'g') + '_i').set(nowReq).catch(() => {}); } catch (e) {}
+          }
+          return;
+        }
+        rawUnits.forEach((u, i) => { if (u.k === 1) rawUnits[i] = have.get(u.id); });
+      }
+      const units = rawUnits.map(u => (liveNet.initReceived && sim.units.includes(u) ? u : normalizeLiveUnit(u)));
       if (!units.length) return;
       const prevId = battleControl.mode === 'manual' ? battleControl.unitId : null;
       // 같은 방장이 전투 도중 유닛 목록만 다시 보낸 것(분신 등장 등)이면 받아 둔 화면·시계를 그대로 이어 씀
@@ -53782,10 +53816,26 @@
     }
 
     // 실시간 화면은 유닛 순서로 맞추므로 유닛 목록이 바뀌면 새로 보냄 (rr: 받은 화면이 받아 둔 이전 화면을 버리게)
-    function sendRushUnitList(rr) {
+    // 라운드·방이 바뀔 때마다 목록 전체가 다시 가는데, 용병들과 살아남은 몬스터는 앞 목록과 똑같음 → 그런 유닛은 자리 표시({ id, k: 1 })만 보내고 받는 쪽이 가진 유닛을 그대로 씀
+    //   · 같은지는 그 유닛이 누구인지를 정하는 칸(LIVE_UNIT_STUB_KEYS: 이름·팀·직업·레벨·외형·스킬 목록 등)으로 가림 — 체력·자리·버프 같은 전투 중 값은 화면(frame)으로 따로 가고,
+    //     목록에 실린 그 밖의 임시 값(넉백·자세 표시 등 50여 칸)은 매 순간 달라서 통째로 비교하면 같은 유닛이 하나도 없었음 · 받는 쪽에 그 유닛이 없으면(도중에 들어옴·놓침) kf/<id>_i 로 청해 전체 목록을 다시 받음
+    //   · 그 청을 듣는 전투(startLiveBattleNet 방장: liveNet.kfRef)에서만, LIVE_UNIT_STUB_FROM 뒤에만 (그 전에 연 탭은 자리 표시를 모름)
+    const LIVE_UNIT_STUB_FROM = Date.UTC(2026, 10, 11, 15); // 2026-11-12 00:00 KST (지나면 이 상수와 비교를 지워도 됨)
+    const LIVE_UNIT_STUB_KEYS = ['id', 'name', 'team', 'job', 'level', 'rarity', 'skinVariant', 'monsterType', 'isEliteBoss', 'isRaceBoss', 'isDarkMerc', 'isClone', 'ownerId', 'liveOwnerId', 'spiritElem', 'rushAi',
+      'skillSlots', 'unlockedSkills', 'sb', 'eliteHardSize', 'equippedItem', 'pet', 'traitId', 'maxMana'];
+    function sendRushUnitList(rr, full = false) {
       if (liveNet.role !== 'host' || !liveNet.ref) return;
       const drop = new Set([...LIVE_INIT_DROP, '_deadSince', 'rushPath']);
-      const units = sim.units.map(u => liveUnitCopy(u, drop, true));
+      const stubOn = !full && Date.now() >= LIVE_UNIT_STUB_FROM && liveNet.kfRef === liveNet.ref;
+      const prev = liveNet.unitListSigs || {}, next = {};
+      const units = sim.units.map(u => {
+        const c = liveUnitCopy(u, drop, true);
+        const sig = JSON.stringify(LIVE_UNIT_STUB_KEYS.map(k => c[k]));
+        next[c.id] = sig;
+        return stubOn && c.id && prev[c.id] === sig ? { id: c.id, k: 1 } : c;
+      });
+      liveNet.unitListSigs = next;
+      liveNet.unitListRr = rr;
       liveNet.ref.child('init').set({ at: Date.now(), by: liveNet.myId || null, rr, units }).catch(() => {});
     }
 
