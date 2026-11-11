@@ -335,25 +335,43 @@ test('접속 표시: 로그인한 학생은 자기 칸에만 켜고 끌 수 있�
   await assertSucceeds(db('admin', { superAdmin: true }).ref('presence/OWN1').remove());
 });
 
-test('실시간 결투 화면 전달(pvp_live): 학급이 있으면 쓰고 지울 수 있고, 없는 학급에는 못 씀', async () => {
-  await assertSucceeds(db(null).ref('classes/OWN1/pvp_live/pvp_s1/frame').set({ t: 1, u: [[1, 2, 3]] }));
-  await assertSucceeds(db(null).ref('classes/OWN1/pvp_live/pvp_s1/input').set({ k: 'w', ax: 1, ay: 2 }));
-  await assertSucceeds(db(null).ref('classes/OWN1/pvp_live/pvp_s1').remove());
-  await assertFails(db(null).ref('classes/NOPE/pvp_live/pvp_s1/frame').set({ t: 1 }));
-  await assertFails(db(null).ref('classes/OWN1/pvp_livex/pvp_s1').set({ t: 1 }));
+test('실시간 결투 화면 전달(pvp_live): 로그인한 학생·교사만 쓰고 지울 수 있고, 없는 학급에는 못 씀', async () => {
+  await assertSucceeds(db('u1').ref('classes/OWN1/pvp_live/pvp_s1/frame').set({ t: 1, u: [[1, 2, 3]] }));
+  await assertSucceeds(db('u1').ref('classes/OWN1/pvp_live/pvp_s1/input').set({ k: 'w', ax: 1, ay: 2 }));
+  await assertSucceeds(db('teacher').ref('classes/OWN1/pvp_live/pvp_s1').remove());
+  await assertFails(db(null).ref('classes/OWN1/pvp_live/pvp_s1/frame').set({ t: 1 }));
+  await assertFails(db('u1').ref('classes/NOPE/pvp_live/pvp_s1/frame').set({ t: 1 }));
+  await assertFails(db('u1').ref('classes/OWN1/pvp_livex/pvp_s1').set({ t: 1 }));
 });
 
-test('반 보스(world_boss): 학급이 있으면 보스 체력·기여도를 쓰고 지울 수 있고, 없는 학급에는 못 씀', async () => {
-  await assertSucceeds(db(null).ref('classes/OWN1/world_boss/current').set({ key: '2026-11-02_1', hp: 100, maxHp: 100 }));
-  await assertSucceeds(db(null).ref('classes/OWN1/world_boss/contrib/2026-11-02_1/s1').set({ name: 'a', dmg: 10, tries: 1 }));
-  await assertSucceeds(db(null).ref('classes/OWN1/world_boss/current').remove());
-  await assertFails(db(null).ref('classes/NOPE/world_boss/current').set({ hp: 1 }));
+test('반 보스(world_boss): 로그인한 학생·교사만 보스 체력·기여도를 쓰고 지울 수 있고, 없는 학급에는 못 씀', async () => {
+  await assertSucceeds(db('u1').ref('classes/OWN1/world_boss/current').set({ key: '2026-11-02_1', hp: 100, maxHp: 100 }));
+  await assertSucceeds(db('u1').ref('classes/OWN1/world_boss/contrib/2026-11-02_1/s1').set({ name: 'a', dmg: 10, tries: 1 }));
+  await assertSucceeds(db('teacher').ref('classes/OWN1/world_boss/current').remove());
+  await assertFails(db(null).ref('classes/OWN1/world_boss/current').set({ hp: 1 }));
+  await assertFails(db('u1').ref('classes/NOPE/world_boss/current').set({ hp: 1 }));
 });
 
-test('레이드에서 싸우는 학생 위치(world_boss_live): 학급이 있으면 쓰고 지울 수 있고, 없는 학급에는 못 씀', async () => {
-  await assertSucceeds(db(null).ref('classes/OWN1/world_boss_live/s1').set({ n: 'a', s: [1, 2], at: 1 }));
-  await assertSucceeds(db(null).ref('classes/OWN1/world_boss_live/s1').remove());
-  await assertFails(db(null).ref('classes/NOPE/world_boss_live/s1').set({ n: 'a' }));
+test('레이드에서 싸우는 학생 위치(world_boss_live): 로그인한 학생만 쓰고 지울 수 있고, 없는 학급에는 못 씀', async () => {
+  await assertSucceeds(db('u1').ref('classes/OWN1/world_boss_live/s1').set({ n: 'a', s: [1, 2], at: 1 }));
+  await assertSucceeds(db('u1').ref('classes/OWN1/world_boss_live/s1').remove());
+  await assertFails(db(null).ref('classes/OWN1/world_boss_live/s1').set({ n: 'a' }));
+  await assertFails(db('u1').ref('classes/NOPE/world_boss_live/s1').set({ n: 'a' }));
+});
+
+test('반 공용 칸(경매·거래·방): 로그인 안 한 사람·우리 반이 아닌 사람은 못 쓰고 못 지움, 소유자 없는 예전 학급은 그대로 열림', async () => {
+  await env.withSecurityRulesDisabled(ctx => ctx.database().ref('classes/OWN1/auctions').set([{ id: 'auc_1', sellerId: 's2' }]));
+  const shared = ['auctions', 'tradeOffers', 'pvp_squads/s1', 'pvp_rooms/r1', 'raid_rooms/r1', 'minigame_rooms/r1', 'minigames/r1', 'live_battle_events/e1'];
+  for (const k of shared) {
+    await assertFails(db(null).ref(`classes/OWN1/${k}`).remove());
+    await assertFails(db(null).ref(`classes/OWN1/${k}`).set({ x: 1 }));
+    await assertFails(db('u2').ref(`classes/OWN1/${k}`).set({ x: 1 })); // 로그인했지만 우리 반 학생으로 연결 안 됨
+    await assertSucceeds(db('u1').ref(`classes/OWN1/${k}`).set({ x: 1 }));
+    await assertSucceeds(db('teacher').ref(`classes/OWN1/${k}`).remove());
+    await assertSucceeds(db(null).ref(`classes/OLD1/${k}`).set({ x: 1 }));
+  }
+  // 학생의 한 번 저장(내 기록 + 경매 목록)도 그대로 됨
+  await assertSucceeds(db('u1').ref().update({ 'classes/OWN1/students/s1/mc': 50, 'classes/OWN1/auctions': [{ id: 'auc_2', sellerId: 's1' }] }));
 });
 
 // ----- 학생 외형 디자인 (classes/{학급}/skinDesigns/{학생}/{id}) -----
