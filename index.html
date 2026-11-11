@@ -48236,6 +48236,16 @@
     }
 
     const LIVE_INPUT_SERVER_GAP_RTC_MS = 500;
+    const LIVE_INPUT_MOVE_HOLD_MS = 400, LIVE_INPUT_MOVE_DEG = 12, LIVE_INPUT_MOVE_MAG = 0.15;
+    // 두 조작의 이동 방향이 '조금만' 다른지: 둘 다 움직이는 중이고 · 각도 차 LIVE_INPUT_MOVE_DEG 안 · 세기 차 LIVE_INPUT_MOVE_MAG 안
+    function liveInputSmallMove(a, b) {
+      const ax = liveNum(a.mvx), ay = liveNum(a.mvy), bx = liveNum(b.mvx), by = liveNum(b.mvy);
+      const am = Math.hypot(ax, ay), bm = Math.hypot(bx, by);
+      if (am < 0.2 || bm < 0.2 || Math.abs(am - bm) > LIVE_INPUT_MOVE_MAG) return false;
+      let d = Math.abs(Math.atan2(by, bx) - Math.atan2(ay, ax));
+      if (d > Math.PI) d = 2 * Math.PI - d;
+      return d <= LIVE_INPUT_MOVE_DEG * Math.PI / 180;
+    }
     function onLocalControlChanged(full = false) {
       if (full) liveNet.inputFull = true;
       if (sim.netRole !== 'guest' || liveNet.role !== 'guest' || !liveNet.ref || liveNet.spectator) return;
@@ -48270,7 +48280,19 @@
       const prev = liveNet.lastInput, patch = {};
       Object.keys(clean).forEach(k => { if (k !== 'at' && JSON.stringify(prev[k]) !== JSON.stringify(clean[k])) patch[k] = clean[k]; });
       Object.keys(prev).forEach(k => { if (!(k in clean)) patch[k] = null; });
-      if (!Object.keys(patch).length) return; // 바뀐 게 없음
+      const changed = Object.keys(patch);
+      if (!changed.length) return; // 바뀐 게 없음
+      // 조이스틱을 누른 채 방향이 조금씩만 흔들릴 때: 마지막으로 보낸 방향에서 LIVE_INPUT_MOVE_DEG 안쪽이면 서버로는 LIVE_INPUT_MOVE_HOLD_MS에 한 번만
+      // (2026-11-11 월드 보스 실측: 조작 쓰기의 48%가 방향만 12도 안쪽으로 바뀐 것 · 초당 15번씩 방장이 내려받았음)
+      // 멈춤·출발·크게 꺾기·공격·스킬은 예전처럼 바로 · 견주는 기준이 '마지막으로 보낸 값'이라 어긋남은 늘 그 각도 안쪽 · 직접 연결로는 위에서 이미 정확한 값이 감
+      if (changed.every(k => k === 'mvx' || k === 'mvy') && liveInputSmallMove(prev, clean)) {
+        const rest = LIVE_INPUT_MOVE_HOLD_MS - (Date.now() - (liveNet.lastInputWriteAt || 0));
+        if (rest > 0) {
+          if (!liveNet.inputTimer) liveNet.inputTimer = setTimeout(() => { liveNet.inputTimer = null; onLocalControlChanged(); }, rest);
+          return;
+        }
+      }
+      liveNet.lastInputWriteAt = Date.now();
       patch.at = clean.at;
       liveNet.lastInput = clean;
       ref.update(patch).catch(() => {});
