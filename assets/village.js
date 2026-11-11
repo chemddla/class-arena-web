@@ -32,6 +32,9 @@
   .vlg .vlg-fish .ic { font-size: 28px; line-height: 1.2; } .vlg .vlg-fish .nm { font-size: 14px; font-weight: 900; color: #2f3a2f; } .vlg .vlg-fish .st { color: #e8a13a; letter-spacing: 1px; }
   .vlg .vlg-slot { min-height: 104px; } .vlg .vlg-slot.empty { background: #f6f7f2; border-style: dashed; } .vlg .vlg-slot.held { border-color: #3f9a5a; background: #eef8ec; }
   .vlg .vlg-slot .cnt { font-size: 13px; font-weight: 900; color: #2f4a35; } .vlg .vlg-slot button { margin-top: 4px; font-size: 12px; padding: 3px 10px; }
+  .vlg .vlg-sell { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 2px solid #e3ead9; border-radius: 12px; background: #fff; margin-bottom: 6px; font-weight: 800; color: #3a4a3a; }
+  .vlg .vlg-sell .ic { font-size: 26px; } .vlg .vlg-sell .nm { flex: 1; } .vlg .vlg-sell .pr { color: #b8860b; } .vlg .vlg-sell button { font-size: 12px; padding: 4px 10px; }
+  .vlg .vlg-sell-all { display: block; width: 100%; margin-top: 8px; padding: 10px; font-size: 15px; background: #fff3c4; border-color: #f0c24a; color: #5a4320; }
   .vlg .vlg-fish.no { background: #f1f3ee; color: #9aa59a; } .vlg .vlg-fish.no .ic { filter: grayscale(1) brightness(.2); opacity: .35; } .vlg .vlg-fish.r4 { border-color: #f0c24a; } .vlg .vlg-fish.r3 { border-color: #b8d0f0; }
   .vlg .vlg-hud { position: absolute; left: 10px; top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; max-width: calc(100% - 20px); }
   .vlg .pill, .vlg select, .vlg button { font: inherit; font-size: 13px; font-weight: 800; padding: 6px 12px; border-radius: 999px; border: 2px solid #b7d6b0; background: rgba(255, 255, 255, .92); color: #2f4a35; line-height: 1.2; }
@@ -59,6 +62,7 @@
     <button data-v="timeBtn" data-demo>시간: 낮</button>
     <button data-v="outlineBtn">테두리: 켬</button>
     <button data-v="soundBtn">소리: 끔</button>
+    <span class="pill">🪙 <b data-v="coinN">0</b>동</span>
     <button data-v="bagBtn">🎒 가방 <span data-v="heldIc"></span></button>
     <button data-v="dexBtn">📖 도감 <b data-v="dexN">0</b></button>
     <button data-v="fullBtn">⛶ 크게</button>
@@ -66,6 +70,7 @@
   </div>
   <div class="vlg-hint">이동: WASD·방향키 또는 땅 누르기 · 시점: 화면 끌기 · 원래 시점: R · 낚시: 물고기 그림자 근처 물가에서 E · 가방: B · 낚싯대 들기/넣기: Q · 달리기: Shift · 인사: Space · 하기: E · 감정: 1·2 · 확대: 마우스 휠</div>
   <div class="vlg-catch" data-v="catch"></div>
+  <div class="vlg-dex" data-v="shop" style="display:none"><div class="vlg-dex-in"><div class="vlg-dex-h"><b data-v="shopTitle">🦝 물고기 사요</b><span data-v="shopSum"></span><button data-v="shopClose">✕ 닫기</button></div><div data-v="shopBody"></div></div></div>
   <div class="vlg-dex" data-v="bag" style="display:none"><div class="vlg-dex-in"><div class="vlg-dex-h"><b>🎒 가방</b><span data-v="bagSum"></span><button data-v="bagClose">✕ 닫기</button></div><div data-v="bagBody"></div></div></div>
   <div class="vlg-dex" data-v="dex" style="display:none"><div class="vlg-dex-in"><div class="vlg-dex-h"><b>📖 물고기 도감</b><span data-v="dexSum"></span><button data-v="dexClose">✕ 닫기</button></div><div data-v="dexBody"></div></div></div>
   <div class="vlg-mapbox" data-v="mapBox"><canvas class="vlg-map" data-v="map"></canvas><button data-v="mapBtn">▾ 내리기</button></div>
@@ -930,7 +935,7 @@
     if (e.code === 'Space') { e.preventDefault(); wave(); }
     if (e.code === 'KeyE') interact();
     if (e.code === 'KeyR') resetView();
-    if (e.code === 'Escape') { openDex(false); openBag(false); }
+    if (e.code === 'Escape') { openDex(false); openBag(false); openShop(null); }
     if (e.code === 'KeyB') openBag(bagEl.style.display === 'none');
     if (e.code === 'KeyQ') setRod(bag.held !== 'rod');
     if (e.code === 'Digit1') emote('joy');
@@ -1038,7 +1043,7 @@
     if (c.kind === 'door') { me.face = Math.PI; me.hop = 0.3; say(me, '똑똑!', 1.2); sfx.knock(); const o = c.owner; if (o && Math.hypot(o.x - me.x, o.z - me.z) < 9) { say(o, '어서 와!', 2); o.wave = 1.8; o.target = null; o.wait = 2.2; o.lookAt = me; } return; }
     if (c.kind === 'shopIn') return goTo(SHOP.ix, SHOP.iz + 2.4, Math.PI);
     if (c.kind === 'shopOut') return goTo(SHOP.x, SHOP.z + 2.9, 0);
-    if (c.kind === 'clerk') { const k = c.clerk; me.face = Math.atan2(k.x - me.x, k.z - me.z); k.face = Math.atan2(me.x - k.x, me.z - k.z); k.wave = 1.6; say(k, pick(['어서 오세요! 🛒', '곧 물건을 팔 거예요!', '천천히 둘러보세요 😊']), 2.2); sfx.note(); return; }
+    if (c.kind === 'clerk') { const k = c.clerk; me.face = Math.atan2(k.x - me.x, k.z - me.z); k.face = Math.atan2(me.x - k.x, me.z - k.z); k.wave = 1.6; say(k, pick(['어서 오세요! 물고기 사요 🐟', '잡은 물고기 있으면 동으로 바꿔 드려요!', '싱싱한 물고기 환영해요!']), 2.2); sfx.note(); openShop(k); return; }
     if (c.kind === 'board') { me.face = Math.atan2(3.1 - me.x, -3.1 - me.z); say(me, '오늘의 공지: 사이좋게 놀기 😊', 2.6); sfx.note(); }
   }
   function goTo(x, z, face) { // 가게 안팎으로 옮겨 감: 카메라도 바로 따라감
@@ -1211,10 +1216,12 @@
   const dexN = $('dexN'), dexEl = $('dex'), catchEl = $('catch');
   const updDexN = () => { dexN.textContent = Object.keys(dex).length + '/' + FISH.length; }; updDexN();
   // 가방: 낚싯대(손에 들기·넣기), 잡은 물고기, 딴 열매. 이 브라우저에 저장 (나중에 슈퍼마켓 점원에게 팔 거리)
-  const BAG_KEY = 'vlgBag:' + (demo ? 'demo' : host.me.id); let bag = { held: null, fish: {}, apple: 0, coconut: 0 };
+  const BAG_KEY = 'vlgBag:' + (demo ? 'demo' : host.me.id); let bag = { held: null, fish: {}, apple: 0, coconut: 0, coins: 0 };
   try { bag = Object.assign(bag, JSON.parse(localStorage.getItem(BAG_KEY) || '{}')); } catch (e) {}
   const bagEl = $('bag'), heldIc = $('heldIc');
-  const saveBag = () => { try { localStorage.setItem(BAG_KEY, JSON.stringify(bag)); } catch (e) {} if (bagEl.style.display !== 'none') renderBag(); };
+  const coinN = $('coinN');
+  const saveBag = () => { try { localStorage.setItem(BAG_KEY, JSON.stringify(bag)); } catch (e) {} coinN.textContent = bag.coins || 0; if (bagEl.style.display !== 'none') renderBag(); };
+  coinN.textContent = bag.coins || 0;
   const bagAdd = (k, id) => { if (k === 'fish') bag.fish[id] = (bag.fish[id] || 0) + 1; else bag[k] = (bag[k] || 0) + 1; saveBag(); };
   function setRod(on) { // 낚싯대를 손에 들기/가방에 넣기
     if (!on && fishing.st) endFishing(); bag.held = on ? 'rod' : null; rod.visible = on; heldIc.textContent = on ? '· 🎣' : ''; saveBag(); }
@@ -1224,12 +1231,31 @@
     if (bag.apple) items.push(slot('🍎', '열매', '× ' + bag.apple)); if (bag.coconut) items.push(slot('🥥', '코코넛', '× ' + bag.coconut));
     FISH.forEach(f => { const n = bag.fish[f.id]; if (n) items.push(slot(f.icon, f.name, '× ' + n, `<div class="st">${'★'.repeat(f.rar)}</div>`)); });
     const fishN = Object.values(bag.fish).reduce((a, b) => a + b, 0);
-    $('bagSum').textContent = `물고기 ${fishN}마리 · 열매 ${(bag.apple || 0) + (bag.coconut || 0)}개`;
+    $('bagSum').textContent = `🪙 ${bag.coins || 0}동 · 물고기 ${fishN}마리 · 열매 ${(bag.apple || 0) + (bag.coconut || 0)}개`;
     while (items.length < 16 || items.length % 4) items.push('<div class="vlg-fish vlg-slot empty"></div>');
     $('bagBody').innerHTML = `<div class="vlg-dex-grid">${items.join('')}</div>`;
     const b = $('bagBody').querySelector('[data-rod]'); if (b) b.onclick = () => setRod(bag.held !== 'rod'); }
   if (bag.held === 'rod') { rod.visible = true; heldIc.textContent = '· 🎣'; }
-  const openBag = on => { bagEl.style.display = on ? 'flex' : 'none'; if (on) { openDex(false); renderBag(); } };
+  const openBag = on => { bagEl.style.display = on ? 'flex' : 'none'; if (on) { openDex(false); openShop(null); renderBag(); } };
+  // 슈퍼마켓 점원에게 물고기 팔기: 값 = 귀함에 따른 기본값 × 크기(평균 cm가 클수록 최대 2배)
+  const PRICE = [0, 10, 30, 80, 300], fishPrice = f => Math.round(PRICE[f.rar] * (1 + Math.min(1, (f.cm[0] + f.cm[1]) / 400)));
+  const shopEl = $('shop'); let shopClerk = null;
+  function renderShop() {
+    const rows = FISH.filter(f => bag.fish[f.id]).map(f => { const n = bag.fish[f.id], pr = fishPrice(f);
+      return `<div class="vlg-sell"><span class="ic">${f.icon}</span><span class="nm">${f.name} × ${n}<br><small>${'★'.repeat(f.rar)} 한 마리 <span class="pr">${pr}동</span></small></span>`
+        + `<button data-sell="${f.id}" data-n="1">1마리 팔기</button>${n > 1 ? `<button data-sell="${f.id}" data-n="${n}">모두 팔기 (${pr * n}동)</button>` : ''}</div>`; });
+    const total = FISH.reduce((a, f) => a + (bag.fish[f.id] || 0) * fishPrice(f), 0);
+    $('shopSum').textContent = `내 돈 🪙 ${bag.coins || 0}동`;
+    $('shopBody').innerHTML = rows.length ? rows.join('') + `<button class="vlg-sell-all" data-sell="all">🐟 물고기 전부 팔기 · ${total}동</button>` : '<p style="text-align:center;font-weight:800;color:#6a7a6a">팔 물고기가 없어요. 강이나 바다에서 낚아 오세요! 🎣</p>';
+    $('shopBody').querySelectorAll('[data-sell]').forEach(b => { b.onclick = () => sellFish(b.dataset.sell, +b.dataset.n); }); }
+  function sellFish(id, n) {
+    let got = 0, cnt = 0;
+    (id === 'all' ? FISH.filter(f => bag.fish[f.id]) : [FISH[+id]]).forEach(f => { const k = id === 'all' ? bag.fish[f.id] : Math.min(n, bag.fish[f.id] || 0);
+      got += k * fishPrice(f); cnt += k; bag.fish[f.id] -= k; if (!bag.fish[f.id]) delete bag.fish[f.id]; });
+    if (!cnt) return; bag.coins = (bag.coins || 0) + got; saveBag(); renderShop(); sfx.pick();
+    if (shopClerk) { say(shopClerk, pick(['고마워요! 싱싱하네요 🐟', '좋은 물고기네요! 값 잘 쳐 드릴게요', '또 잡아 오세요 😊']), 2); shopClerk.wave = 1.2; popText('+' + got + '동', shopClerk.x, 1.6, shopClerk.z); } }
+  const openShop = k => { shopClerk = k; shopEl.style.display = k ? 'flex' : 'none'; if (k) { bagEl.style.display = 'none'; dexEl.style.display = 'none'; renderShop(); } };
+  $('shopClose').onclick = () => openShop(null); shopEl.onclick = e => { if (e.target === shopEl) openShop(null); };
   $('bagBtn').onclick = e => { openBag(bagEl.style.display === 'none'); e.currentTarget.blur(); };
   $('bagClose').onclick = () => openBag(false); bagEl.onclick = e => { if (e.target === bagEl) openBag(false); };
   function renderDex() {
@@ -1240,7 +1266,7 @@
     $('dexSum').textContent = `${n} / ${FISH.length}종 발견` + (n === FISH.length ? ' 🎉 모두 모았어요!' : '');
     $('dexBody').innerHTML = `<h4>🏞️ 강 물고기</h4><div class="vlg-dex-grid">${FISH.filter(f => f.hab !== 'sea').map(card).join('')}</div>`
       + `<h4>🌊 바다 물고기</h4><div class="vlg-dex-grid">${FISH.filter(f => f.hab === 'sea').map(card).join('')}</div>`; }
-  const openDex = on => { dexEl.style.display = on ? 'flex' : 'none'; if (on) { if (typeof openBag === 'function') openBag(false); renderDex(); } };
+  const openDex = on => { dexEl.style.display = on ? 'flex' : 'none'; if (on) { openBag(false); openShop(null); renderDex(); } };
   $('dexBtn').onclick = e => { openDex(dexEl.style.display === 'none'); e.currentTarget.blur(); };
   $('dexClose').onclick = () => openDex(false); dexEl.onclick = e => { if (e.target === dexEl) openDex(false); };
   let catchTimer = 0;
@@ -1325,6 +1351,7 @@
     const kx = Math.round((ix * cy + iz * sy) * 100) / 100, kz = Math.round((iz * cy - ix * sy) * 100) / 100;
     if (me.sit && (kx || kz || me.target)) standUp(); // 움직이려 하면 일어남
     if (fishing.st && (kx || kz || me.target)) endFishing('줄을 감았어요');
+    if (shopClerk && Math.hypot(shopClerk.x - me.x, shopClerk.z - me.z) > 3) openShop(null); // 점원에게서 멀어지면 닫힘
     if (kx || kz) {
       const l = Math.hypot(kx, kz); step(me, kx / l * SPEED * me.run * dt, kz / l * SPEED * me.run * dt);
       me.face = Math.atan2(kx, kz); me.moving = true; me.target = null; marker.visible = false;
