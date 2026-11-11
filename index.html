@@ -5929,9 +5929,10 @@
       },
       swordsman: {
         geukcham: {
-          id: 'geukcham', name: '극참', icon: '🌌', ccTag: '✨히든 · 전장 전체 베기', hidden: true,
+          // id는 저장된 슬롯 때문에 그대로 'geukcham' (2026-11-11 사용자: 일섬 20연 난사로 바꾸고, 극참은 시크릿 레어 외형의 마지막 일격으로)
+          id: 'geukcham', name: '난섬', icon: '🌌', ccTag: '✨히든 · 일섬 20연 난사', hidden: true,
           manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 3,
-          desc: '3초간 칼끝에 정신을 모은 뒤 화면을 가르듯 전장 전체를 벱니다. 맵 위의 모든 적이 450% 피해를 받아요.'
+          desc: '3초간 칼끝에 정신을 모은 뒤 적들 사이를 일섬으로 20번 연달아 꿰뚫습니다. 한 번마다 지나온 길 위의 적에게 50% 피해, 벨수록 점점 빨라져요. 시크릿 레어 외형은 마지막에 [극참]으로 맵 위의 모든 적에게 450% 피해를 더해요.'
         }
       }
     };
@@ -26992,8 +26993,13 @@
     const SWORD_MUCHAM_REACH = 60;
     const SWORD_MIND_TICKS = 200;           // 심검: 5초 정지 · 처음 받는 공격 무효 → 공격한 적 곁으로 순간 이동해 300%
     const SWORD_MIND_DMG = 3.0;
-    const SWORD_GEUKCHAM_DMG = 4.5;         // 극참 (히든): 맵 위의 모든 적 450% (700%일 때 히든 팀 승률 90%)
+    const SWORD_GEUKCHAM_DMG = 4.5;         // 극참 (시크릿 레어 외형의 난섬 마지막 일격): 맵 위의 모든 적 450%
     const SWORD_GEUKCHAM_DELAY = 12;
+    const SWORD_RANSEOM_COUNT = 20;         // 난섬 (히든): 일섬 20번 · 한 번마다 지나온 길 위의 적 50%
+    const SWORD_RANSEOM_DMG = 0.5;
+    const SWORD_RANSEOM_TICKS0 = 12;        //   첫 돌파 12틱 → 한 번마다 ×0.88 (마지막 2틱), 모두 약 2.5초
+    const SWORD_RANSEOM_SPEEDUP = 0.88;
+    const SWORD_RANSEOM_PICK = 700;         //   다음 대상은 이 거리 안에서 (없으면 가장 가까운 적)
     const SWORD_PROJ_TRIED = new WeakSet(); // AI 패링 확률은 투사체 하나에 한 번만 굴림
 
     function swordFoeOk(u, e) { return Boolean(e && e.alive && e.team !== u.team && e.team !== 'none'); }
@@ -27144,6 +27150,54 @@
         addBattleLog(`🌌 [검사] ${u.name}의 히든 스킬 극참! 전장 전체가 갈라졌어요 (${foes.length}명)`);
       }
     }
+    // 난섬: 일섬 한 번 → 도착하면 지나온 길을 베고 곧바로 다음 적에게 (매번 빨라짐). 기절·빙결로 돌진이 끊기면 거기서 끝
+    const swordIsSr = u => Boolean(u && u.job === 'swordsman' && !u.monsterType && (u.skinVariant || 0) === SECRET_SKIN_BASE + 1);
+    function swordRanseomStep(u, n, lastId) {
+      if (!u.alive) return;
+      if (n >= SWORD_RANSEOM_COUNT) { swordRanseomEnd(u, n); return; }
+      const foes = sim.units.filter(e => swordFoeOk(u, e) && !hiddenFrom(u, e));
+      if (!foes.length) { swordRanseomEnd(u, n); return; }
+      const near = foes.filter(e => e.id !== lastId && unitDist(e, u) <= SWORD_RANSEOM_PICK);
+      const foe = near.length ? near[Math.floor(Math.random() * near.length)] : foes.sort((a, b) => unitDist(a, u) - unitDist(b, u))[0];
+      const sx = u.x, sy = u.y;
+      const ang = Math.atan2(foe.y - sy, foe.x - sx) + (Math.random() - 0.5) * 0.3;
+      swordFaceAngle(u, ang);
+      const d = Math.hypot(foe.x - sx, foe.y - sy) + 70 + unitBodyGap(foe);
+      const ticks = Math.max(2, Math.round(SWORD_RANSEOM_TICKS0 * Math.pow(SWORD_RANSEOM_SPEEDUP, n)));
+      const r = startUnitRush(u, sx + Math.cos(ang) * d, sy + Math.sin(ang) * d, ticks, () => {
+        if (!u.alive) return;
+        const dx = u.x - sx, dy = u.y - sy, len2 = dx * dx + dy * dy || 1;
+        sim.effects.push({ type: 'sword_cut', x1: sx, y1: sy - 14, x2: u.x, y2: u.y - 14, w: 8 + Math.min(6, n * 0.3), color: '#22d3ee', life: 16, maxLife: 16 });
+        withSkillHit(() => sim.units.forEach(e => {
+          if (!swordFoeOk(u, e)) return;
+          const t = Math.max(0, Math.min(1, ((e.x - sx) * dx + (e.y - sy) * dy) / len2));
+          if (Math.hypot(e.x - (sx + dx * t), e.y - (sy + dy * t)) > SWORD_ISSEN_HALF_W + unitBodyGap(e)) return;
+          applyDamage(u, e, u.atk * SWORD_RANSEOM_DMG, '⚡', '#0891b2');
+          sim.effects.push({ type: 'sword_x', x: e.x, y: e.y - 18, angle: Math.atan2(dy, dx), r: 0, size: 30, color: '#22d3ee', life: 12, maxLife: 12 });
+        }));
+        sim.floatTexts.push({ x: u.x, y: u.y - 54, text: `⚡${n + 1}`, color: '#0891b2', life: 22 });
+        playCombatSfx(n % 4 === 3 ? 'heavy' : 'slash');
+        swordRanseomStep(u, n + 1, foe.id);
+      });
+      u.skillAnim = ticks + 4; u.maxSkillAnim = ticks + 4; u.activeSkillType = 'issen';
+      sim.effects.push({ type: 'sword_cut', x1: sx, y1: sy - 14, x2: r.tx, y2: r.ty - 14, w: 3, color: '#a5f3fc', life: ticks + 6, maxLife: ticks + 6 });
+    }
+    function swordRanseomEnd(u, n) {
+      addBattleLog(`🌌 [검사] ${u.name}의 히든 스킬 난섬! 일섬 ${n}연격`);
+      if (!swordIsSr(u) || !u.alive) return;
+      swordGeukchamStart(u);
+    }
+    // 극참 (시크릿 레어 외형 전용, 난섬의 마지막 일격): 화면을 가르는 칼자국 세 줄 → 잠시 뒤 모든 적에게 피해
+    function swordGeukchamStart(unit) {
+      const W = sim.worldW, H = sim.worldH, L = Math.hypot(W, H);
+      [-0.45, 0.1, 0.6].forEach((a0, k) => {
+        const a = a0 + (Math.random() - 0.5) * 0.2, cx = W * (0.3 + 0.2 * k), cy = H / 2;
+        sim.effects.push({ type: 'sword_cut', x1: cx - Math.cos(a) * L, y1: cy - Math.sin(a) * L, x2: cx + Math.cos(a) * L, y2: cy + Math.sin(a) * L, w: 10, color: '#e0f2fe', life: 40, maxLife: 40 });
+      });
+      hiddenImpact(14, '#f0f9ff');
+      unit.skillAnim = 30; unit.maxSkillAnim = 30; unit.activeSkillType = 'geukcham';
+      swordAddStrikes(unit, [{ left: SWORD_GEUKCHAM_DELAY, sword: { kind: 'geukcham' } }]);
+    }
     function swordMissText(unit, sk) {
       sim.floatTexts.push({ x: unit.x, y: unit.y - 52, text: `${unitSkillBook(unit)[sk]?.icon || '🌙'} 빗나감 (너무 멀어요)`, color: '#64748b', life: 40 });
     }
@@ -27221,15 +27275,9 @@
         addBattleLog(`👁️ [검사] ${unit.name}이(가) 눈을 감고 심검으로 정신을 모아요`);
         return true;
       }
-      if (sk === 'geukcham') {
-        // 화면을 가르는 칼자국 세 줄 → 잠시 뒤 모든 적에게 피해
-        const W = sim.worldW, H = sim.worldH, L = Math.hypot(W, H);
-        [-0.45, 0.1, 0.6].forEach((a0, k) => {
-          const a = a0 + (Math.random() - 0.5) * 0.2, cx = W * (0.3 + 0.2 * k), cy = H / 2;
-          sim.effects.push({ type: 'sword_cut', x1: cx - Math.cos(a) * L, y1: cy - Math.sin(a) * L, x2: cx + Math.cos(a) * L, y2: cy + Math.sin(a) * L, w: 10, color: '#e0f2fe', life: 40, maxLife: 40 });
-        });
-        hiddenImpact(14, '#f0f9ff');
-        swordAddStrikes(unit, [{ left: SWORD_GEUKCHAM_DELAY, sword: { kind: 'geukcham' } }]);
+      if (sk === 'geukcham') { // 난섬 (시크릿 레어 외형은 끝에 극참)
+        hiddenImpact(10, '#ecfeff');
+        swordRanseomStep(unit, 0, null);
         return true;
       }
       return false;
@@ -27265,7 +27313,7 @@
           if ((unit.statuses.mindblade || 0) > 0 || !within(A * 3)) return -1;
           return unit.hp / unit.maxHp < 0.5 ? 88 : 78;
         case 'geukcham':
-          return live.length >= 2 || (foe && foe.hp > unit.atk * 4) ? 97 : -1;
+          return live.length >= 2 || (foe && foe.hp > unit.atk * 3) ? 97 : -1;
       }
       return -1;
     }
