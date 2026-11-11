@@ -8,13 +8,14 @@
 #   - 피격·쓰러짐 샘플(766×250)은 세 칸을 한 장에 그린 것 + 위 잘린 글자 줄·칸 이름('[피격]' 등). 왼쪽부터 0·1·2번째 덩어리로 고름
 #     '[쓰러짐 1]' 글자는 쓰러짐 1 머리 묶음과 붙어 있어 상자로 지움 (CUT). 해상도가 대기 샘플과 달라 키를 따로 맞춤 (FIT_H)
 #   - 일반공격 샘플(209×271)은 오른쪽 끝에 옆 칸 조각 점 → 가장 큰 덩어리만
+#   - 쓰러짐 2 머리 위 회색 별 모양 워터마크는 머리카락 색으로 덮음 (SCRUB)
 #   - 피격·쓰러짐·일반공격 1은 같은 그림의 어두운 배경 판(swordsman_dark_src)과 겹쳐 비교해 테두리 투명도를 다시 구함 (DARK, dark_matte)
 #   - 피부가 어두운 샘플은 살색만 밝힘 (SKIN)
 #   - 흰 배경은 가장자리에서 이어진 흰 픽셀만 지움 (짚신·옷깃의 밝은 회색은 검은 외곽선 안쪽이라 남음)
 import os, sys
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from scipy import ndimage as ndi
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -31,6 +32,9 @@ FIT_H = {'HURT': 78, 'ATK': 84}   # 샘플마다 해상도가 달라 몸 키를 
 DARK_SRC = f'{D}dark_src.png'   # 같은 동작을 어두운 배경(25,25,25)에 그린 샘플: 피격 · 쓰러짐 1 · 쓰러짐 2 · 일반공격 1 (왼쪽부터, 발밑 그림자·오른쪽 아래 반짝이 표시 있음)
 DARK = {('hurtdown', 0): 0, ('hurtdown', 1): 1, ('hurtdown', 2): 2, ('atk0', 'big'): 3}   # (샘플, 고른 덩어리) → 어두운 샘플 몇 번째 그림
 DARK_BG = 25.0
+SCRUB = {'hurtdown': [(671, 144), (686, 158), (704, 164), (698, 176), (686, 178), (677, 192), (667, 176), (662, 168), (667, 157)]}
+# 지울 워터마크 (다각형 꼭짓점, 샘플 px): 쓰러짐 2 머리 위에 겹친 회색 네 갈래 별 → 안의 회색만 머리카락 남색으로 칠함 (원래 밝기 차이는 조금 남김)
+SCRUB_HAIR = np.array([23, 25, 36])   # 둘레 머리카락 색
 SKIN = set()   # 피부가 어두운 샘플만 넣어 첫 샘플(밝은 살색)만큼 밝힘. 지금 대기 샘플은 처음부터 밝아서 비워 둠
 
 
@@ -99,8 +103,20 @@ def dark_matte(raw, a, im, idx):
     return a_new, im
 
 
+def scrub(im, poly):
+    pm = Image.new('L', (im.shape[1], im.shape[0]), 0); ImageDraw.Draw(pm).polygon(poly, fill=1)
+    pm = np.array(pm) > 0
+    sat, v = im.max(axis=2) - im.min(axis=2), im.mean(axis=2)
+    g = pm & (sat < 30) & (v > 55) & (v < 200)
+    g = ndi.binary_dilation(g) & pm & (v < 200)   # 별 가장자리의 흐린 회색까지, 흰 배경은 건드리지 않음
+    t = np.clip((v - 55) / 120, 0, 1)[..., None]
+    im = im.copy(); im[g] = (SCRUB_HAIR * (0.85 + 0.6 * t))[g]
+    return im
+
+
 def load(name, pick=0):
     im = np.array(Image.open(f'{D}{name}_src.png').convert('RGB')).astype(float)
+    if name in SCRUB: im = scrub(im, SCRUB[name])
     if name in CARD:
         x0, x1, y0, y1 = CARD[name]; im = im[y0:y1, x0:x1]
     raw = im.copy()
