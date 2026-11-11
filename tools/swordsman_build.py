@@ -8,9 +8,11 @@
 #   - 피격·쓰러짐 샘플(766×250)은 세 칸을 한 장에 그린 것 + 위 잘린 글자 줄·칸 이름('[피격]' 등). 왼쪽부터 0·1·2번째 덩어리로 고름
 #     '[쓰러짐 1]' 글자는 쓰러짐 1 머리 묶음과 붙어 있어 상자로 지움 (CUT). 해상도가 대기 샘플과 달라 키를 따로 맞춤 (FIT_H)
 #   - 일반공격 샘플(209×271)은 오른쪽 끝에 옆 칸 조각 점 → 가장 큰 덩어리만
+#   - 피격·쓰러짐·일반공격 1은 같은 그림의 어두운 배경 판(swordsman_dark_src)과 겹쳐 비교해 테두리 투명도를 다시 구함 (DARK, dark_matte)
 #   - 피부가 어두운 샘플은 살색만 밝힘 (SKIN)
 #   - 흰 배경은 가장자리에서 이어진 흰 픽셀만 지움 (짚신·옷깃의 밝은 회색은 검은 외곽선 안쪽이라 남음)
 import os, sys
+import cv2
 import numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
@@ -26,6 +28,9 @@ CARD = {}   # (x0, x1, y0, y1): 샘플 테두리 잘라 냄
 WHITE_MIN = {'hurtdown': 200}   # 피격·쓰러짐 샘플은 흐린 밝은 테두리가 넓어 더 어두운 흰색까지 배경으로 봄
 CUT = {'hurtdown': [(0, 766, 0, 8), (284, 384, 12, 45), (384, 390, 12, 36)]}   # 지울 상자 (x0, x1, y0, y1): 위 잘린 글자 줄 · '[쓰러짐 1' · ']' (머리 묶음에 붙은 세로줄)
 FIT_H = {'HURT': 78, 'ATK': 84}   # 샘플마다 해상도가 달라 몸 키를 직접 정해 머리 크기를 대기와 맞춤: 피격(뒤로 젖힘) · 일반공격(낮게 앉음). 쓰러짐 두 칸은 피격과 같은 배율
+DARK_SRC = f'{D}dark_src.png'   # 같은 동작을 어두운 배경(25,25,25)에 그린 샘플: 피격 · 쓰러짐 1 · 쓰러짐 2 · 일반공격 1 (왼쪽부터, 발밑 그림자·오른쪽 아래 반짝이 표시 있음)
+DARK = {('hurtdown', 0): 0, ('hurtdown', 1): 1, ('hurtdown', 2): 2, ('atk0', 'big'): 3}   # (샘플, 고른 덩어리) → 어두운 샘플 몇 번째 그림
+DARK_BG = 25.0
 SKIN = set()   # 피부가 어두운 샘플만 넣어 첫 샘플(밝은 살색)만큼 밝힘. 지금 대기 샘플은 처음부터 밝아서 비워 둠
 
 
@@ -41,10 +46,64 @@ def lighten_skin(rgba):   # 살색 픽셀만 밝기에 따라 더함. 기준 두
     return rgba
 
 
+_dark = {}
+
+
+def dark_figures():   # 어두운 샘플을 읽고 그림 4개의 상자(x0, x1, y0, y1)를 왼쪽부터
+    if not _dark:
+        im = np.array(Image.open(DARK_SRC).convert('RGB')).astype(float)
+        fg = np.abs(im - DARK_BG).max(axis=2) > 18
+        lab, n = ndi.label(ndi.binary_dilation(fg, iterations=2))
+        sz = ndi.sum(fg, lab, range(1, n + 1))
+        idx = np.argsort(sz)[::-1][:4] + 1
+        boxes = []
+        for i in idx:
+            ys, xs = np.where(lab == i); boxes.append((xs.min(), xs.max(), ys.min(), ys.max()))
+        _dark['im'], _dark['boxes'] = im, sorted(boxes)
+    return _dark['im'], _dark['boxes']
+
+
+def dark_matte(raw, a, im, idx):
+    """흰 배경·어두운 배경 두 장을 겹쳐 투명도를 다시 구함 (두 배경 비교).
+    흰 배경 그림만으로는 외곽선 바깥의 흐린 회백색 테두리가 몸인지 배경인지 모름 → 어두운 그림에 맞춰 놓고
+    두 장의 차이(흰 배경일수록 밝아지는 만큼)로 투명도 = 1 - (흰 - 어두운) / (255 - 25).
+    두 그림은 따로 만든 것이라 크기·위치가 조금 달라 ECC(아핀)로 맞추고, 피부 톤 등 안쪽 색도 조금 달라서
+    몸 안쪽(흰 그림 덩어리를 2px 깎은 곳)은 그대로 불투명, 색은 흰 배경 그림 것을 씀. 발밑 그림자는 배경보다 어두워 투명이 됨"""
+    D_im, boxes = dark_figures()
+    m = a > 0.5
+    ys, xs = np.where(a > 0)
+    P = 10
+    y0, y1 = max(0, ys.min() - P), min(raw.shape[0], ys.max() + P + 1)
+    x0, x1 = max(0, xs.min() - P), min(raw.shape[1], xs.max() + P + 1)
+    W = raw[y0:y1, x0:x1]
+    mw = m[y0:y1, x0:x1]
+    fill = ndi.binary_fill_holes(ndi.binary_dilation(mw, iterations=1))
+    tmpl = np.where(fill[..., None], W, DARK_BG).mean(axis=2).astype(np.float32) / 255
+    wy, wx = np.where(mw)
+    dx0, dx1, dy0, _ = boxes[idx]
+    sc = (dx1 - dx0 + 1) / (wx.max() - wx.min() + 1)   # 흰 그림 1px → 어두운 그림 sc px (가로 폭으로 처음 값, 그림자는 아래에만 있어 위·왼쪽을 맞춤)
+    A = np.array([[sc, 0, dx0 - wx.min() * sc], [0, sc, dy0 - wy.min() * sc]], np.float32)
+    img = D_im.mean(axis=2).astype(np.float32) / 255
+    _, A = cv2.findTransformECC(tmpl, img, A, cv2.MOTION_AFFINE,
+                                (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 300, 1e-6), None, 5)
+    Dw = cv2.warpAffine(D_im.astype(np.float32), A, (W.shape[1], W.shape[0]),
+                        flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP, borderValue=(DARK_BG,) * 3).astype(float)
+    a2 = np.clip(1 - (W - Dw).mean(axis=2) / (255 - DARK_BG), 0, 1)
+    a2 = np.where(ndi.binary_erosion(mw, iterations=2), 1.0, a2)          # 몸 안쪽은 불투명
+    a2 = np.where(ndi.binary_dilation(a[y0:y1, x0:x1] > 0, iterations=3), a2, 0.0)   # 고른 덩어리 근처만 (글자·옆 그림 제외)
+    a2 = np.where(a2 > 0.85, 1.0, np.where(a2 < 0.15, 0.0, a2))
+    al = np.maximum(a2, 1e-3)[..., None]
+    col = np.where((a2 < 1)[..., None], (W - 255 * (1 - al)) / al, W).clip(0, 255)   # 반투명 테두리: 흰 배경과 섞인 만큼 빼서 원래 색
+    a_new = np.zeros_like(a); a_new[y0:y1, x0:x1] = a2
+    im = im.copy(); im[y0:y1, x0:x1] = col
+    return a_new, im
+
+
 def load(name, pick=0):
     im = np.array(Image.open(f'{D}{name}_src.png').convert('RGB')).astype(float)
     if name in CARD:
         x0, x1, y0, y1 = CARD[name]; im = im[y0:y1, x0:x1]
+    raw = im.copy()
     wm = WHITE_MIN.get(name, 222)
     white = (im.min(axis=2) > wm) & (im.max(axis=2) - im.min(axis=2) < 20)
     lab, n = ndi.label(white)
@@ -65,6 +124,7 @@ def load(name, pick=0):
         bigs = [i + 1 for i in range(n) if sz[i] >= sz.max() * 0.3]
         bigs.sort(key=lambda i: np.where(lab == i)[1].mean())
         a = np.where(lab == bigs[pick], a, 0)
+    if (name, pick) in DARK: a, im = dark_matte(raw, a, im, DARK[(name, pick)])
     a = np.where(a < 0.12, 0, a)
     ys, xs = np.where(a > 0)
     rgba = np.dstack([im, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
