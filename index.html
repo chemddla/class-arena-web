@@ -6869,6 +6869,7 @@
     const TOWER_EXTRA_SKILL_LOSS = 0.2; // 스킬 1개 더 쓸 때마다 체력·공격력 -20% (tests/tower-sim.js로 예전 승률과 맞춤)
     const TOWER_RACE_FLOORS = 10; // 종족 하나가 차지하는 층 수
     const TOWER_MAX_FLOOR = TOWER_RACES.length * TOWER_RACE_FLOORS; // 200층 (종족 20개)
+    const TOWER_OPEN_FLOOR = 100; // 학생이 도전할 수 있는 마지막 층: 101층부터는 아직 미개방 (열 때 이 숫자만 올림)
 
     function towerRaceOfFloor(floor) {
       return TOWER_RACES[Math.min(TOWER_RACES.length - 1, Math.floor((Math.max(1, floor) - 1) / TOWER_RACE_FLOORS))];
@@ -13936,7 +13937,7 @@
       { id: 'auction', icon: '🔨', label: '용병 경매장에 올리기', goal: 1, go: () => goToStudentTab('market'), need: stu => (stu.roster || []).length >= 2 },
       { id: 'raid2', icon: '🐲', label: '엘리트 보스 2명이서 도전하기', goal: 1, go: () => goToStudentTab('raid') },
       { id: 'realtimePvp', icon: '⚡', label: '실시간 PvP 대결하기', goal: 1, go: () => { goToStudentTab('pvp'); switchPvpSubMode('realtime'); } },
-      { id: 'towerClear', icon: '🧗', label: '모험의 탑 새 층 돌파하기', goal: 1, go: () => goToStudentTab('tower'), need: stu => (stu.towerFloor || 1) < TOWER_MAX_FLOOR },
+      { id: 'towerClear', icon: '🧗', label: '모험의 탑 새 층 돌파하기', goal: 1, go: () => goToStudentTab('tower'), need: stu => (stu.towerFloor || 1) <= Math.min(TOWER_OPEN_FLOOR, TOWER_MAX_FLOOR - 1) },
       { id: 'raidWin', icon: '⚔️', label: '엘리트 보스 토벌 성공하기', goal: 1, go: () => goToStudentTab('raid') },
       { id: 'worldBoss', icon: '🌍', label: '보스 레이드 참가하기', goal: 1, go: () => goToStudentTab('worldraid') },
       { id: 'rankedWin', icon: '🏆', label: '랭킹 매칭 승리하기', goal: 1, go: () => goToRankedMatch() },
@@ -17623,7 +17624,7 @@
 
     function renderTowerTab() {
       const stu = getActiveStudent();
-      document.getElementById('myTowerProgressText').textContent = `${stu.towerFloor}층 도전 가능 (상위 층 비공개) · 오늘 남은 클리어 ${getTowerClearsLeft(stu)}/${TOWER_DAILY_CLEARS}회 (도전은 계속 가능)`;
+      document.getElementById('myTowerProgressText').textContent = `${stu.towerFloor > TOWER_OPEN_FLOOR ? `${TOWER_OPEN_FLOOR}층까지 모두 돌파! (${TOWER_OPEN_FLOOR + 1}층부터 미개방)` : `${stu.towerFloor}층 도전 가능 (상위 층 비공개)`} · 오늘 남은 클리어 ${getTowerClearsLeft(stu)}/${TOWER_DAILY_CLEARS}회 (도전은 계속 가능)`;
       renderTowerLiveList();
       renderBattleBanner('tower');
 
@@ -17634,9 +17635,19 @@
         const [minF, maxF] = currentTowerFloorFilter.split('-').map(Number);
         ris = ris.filter(ri => ri * TOWER_RACE_FLOORS + TOWER_RACE_FLOORS >= minF && ri * TOWER_RACE_FLOORS + 1 <= maxF);
       }
+      const unopened = ris.filter(ri => ri * TOWER_RACE_FLOORS + 1 > TOWER_OPEN_FLOOR); // 아직 미개방 구간 (101층~)
+      ris = ris.filter(ri => ri * TOWER_RACE_FLOORS + 1 <= TOWER_OPEN_FLOOR);
       const open = ris.filter(ri => ri * TOWER_RACE_FLOORS + 1 <= stu.towerFloor);
       const closed = ris.filter(ri => ri * TOWER_RACE_FLOORS + 1 > stu.towerFloor);
       const grid = document.getElementById('towerFloorGrid');
+      const unopenedHTML = unopened.length ? `
+        <div class="rounded-2xl border-2 border-dashed border-slate-800 bg-slate-950/60 p-5 flex items-center gap-3 select-none opacity-70">
+          <div class="w-14 h-14 shrink-0 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-2xl">🚧</div>
+          <div>
+            <h4 class="font-title text-lg text-slate-400">${unopened[0] * TOWER_RACE_FLOORS + 1}~${unopened[unopened.length - 1] * TOWER_RACE_FLOORS + TOWER_RACE_FLOORS}층 · 아직 미개방</h4>
+            <p class="text-xs text-slate-500 mt-1">${TOWER_OPEN_FLOOR + 1}층부터는 아직 열리지 않았어요. 곧 열릴 예정이에요!</p>
+          </div>
+        </div>` : '';
       grid.innerHTML = open.map(ri => towerBannerHTML(stu, ri)).join('') + (closed.length ? `
         <div class="rounded-2xl border-2 border-dashed border-slate-800 bg-slate-950/60 p-5 flex items-center gap-3 select-none opacity-70">
           <div class="w-14 h-14 shrink-0 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-2xl">🔒</div>
@@ -17644,7 +17655,7 @@
             <h4 class="font-title text-lg text-slate-400">??? · ${closed[0] * TOWER_RACE_FLOORS + 1}~${closed[closed.length - 1] * TOWER_RACE_FLOORS + TOWER_RACE_FLOORS}층 비공개</h4>
             <p class="text-xs text-slate-500 mt-1">아직 열리지 않은 종족 ${closed.length}곳이에요. 지금 도전 가능한 층(${stu.towerFloor}층)을 돌파해 나가면 하나씩 공개돼요.</p>
           </div>
-        </div>` : '');
+        </div>` : '') + unopenedHTML;
       // 탭을 처음 열거나 구간을 바꾸면 지금 도전 중인 종족 배너가 보이게
       if (towerBannerScrollPending && grid.offsetParent) {
         towerBannerScrollPending = false;
@@ -20856,6 +20867,7 @@
     // 탑에 들어갈 수 없는 이유 (들어갈 수 있으면 '')
     function towerEntryBlockReason(stu, floorNum, diff) {
       const hard = towerDiffOf(diff) === 'hard';
+      if (floorNum > TOWER_OPEN_FLOOR) return `🚧 ${TOWER_OPEN_FLOOR + 1}층부터는 아직 미개방이에요. 곧 열릴 예정이에요!`;
       if (hard && !isTowerHardUnlocked(stu, floorNum)) return `🔒 하드모드는 ${Math.ceil(floorNum / TOWER_RACE_FLOORS) * TOWER_RACE_FLOORS}층 종족 보스를 깨야 열려요.`;
       if (hard && !isTowerHardPrevCleared(stu, floorNum)) return `🔒 ${floorNum}층 하드모드는 ${floorNum - 1}층 하드모드를 먼저 깨야 열려요.`;
       // 하루 클리어 횟수를 다 쓰면 새 층(처음 깨는 층)만 막음 · 이미 깬 층 재도전은 계속 가능
@@ -37076,6 +37088,20 @@
         this.ref.child('current').transaction(c => this.makeCurrent(wk, (c && c.hpMult) || 1, c && c.bossId, sameBoss))
           .then(() => { this.ref.child('room').remove().catch(() => {}); showRewardBanner(sameBoss ? '🌍 같은 보스를 새 난이도·꽉 찬 체력으로 다시 내보냈어요.' : '🎲 이번 주 보스를 다른 보스로 다시 뽑았어요.'); }).catch(() => {});
       },
+      // 🎟️ 입장권 초기화: 반 학생 모두의 오늘 보스 레이드 참가 횟수를 0으로 (보스 체력·기여도는 그대로)
+      adminResetTickets() {
+        const list = studentsFor('classPower');
+        let n = 0;
+        list.forEach(s => { const book = getDailyRewardBook(s); if (book.worldBossTries) { book.worldBossTries = 0; n++; } });
+        saveState();
+        renderAllStudentViews();
+        this.adminHtml = ''; this.renderAdmin();
+        showRewardBanner(n ? `🎟️ 학생 ${n}명의 오늘 보스 레이드 입장권을 다시 채웠어요! (하루 ${WORLD_BOSS.tries}번)` : '🎟️ 오늘 입장권을 쓴 학생이 없어서 바뀐 게 없어요.');
+      },
+      ticketsUsedCount() { return studentsFor('classPower').filter(s => s.dailyRewards && s.dailyRewards.date === getTodayDateString() && s.dailyRewards.worldBossTries).length; },
+      ticketResetBtnHTML() {
+        return `<button onclick="askCustomConfirm('반 학생 모두의 오늘 보스 레이드 입장권(하루 ${WORLD_BOSS.tries}번)을 다시 채울까요? (보스 체력·기여도는 그대로예요)', () => WorldBoss.adminResetTickets())" class="px-2.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-[11px] font-extrabold text-white">🎟️ 입장권 초기화 <span class="text-emerald-200">(오늘 쓴 학생 ${this.ticketsUsedCount()}명)</span></button>`;
+      },
       // 보스 레이드 초기화: 이번 주 보스를 새로 뽑아 꽉 찬 체력으로 · 기여도 랭킹·토벌 기록·지난 보스·싸우던 방까지 모두 지움 (학생이 받은 CA는 그대로)
       adminWipe() {
         if (!this.ref) return;
@@ -37213,7 +37239,7 @@
         const box = document.getElementById('worldBossAdminBox');
         if (!box) return;
         const cur = this.current();
-        if (!this.ref || !cur) { box.innerHTML = '<h4 class="font-title text-lg text-amber-300">🌍 보스 레이드</h4><div class="text-xs text-slate-400">실시간 서버에 연결되면 조정할 수 있어요.</div>'; return; }
+        if (!this.ref || !cur) { box.innerHTML = '<h4 class="font-title text-lg text-amber-300">🌍 보스 레이드</h4><div class="text-xs text-slate-400">실시간 서버에 연결되면 조정할 수 있어요.</div><div class="flex flex-wrap gap-1.5">' + this.ticketResetBtnHTML() + '</div>'; this.adminHtml = ''; return; }
         const def = this.defOf(cur);
         const rank = this.ranking(cur.key);
         const html = `
@@ -37229,6 +37255,7 @@
             <button onclick="askCustomConfirm('이번 보스를 지금 상위 ${WORLD_BOSS.topN}명 기준 난이도·꽉 찬 체력으로 다시 내보낼까요? (기여도는 새로 셈)', () => WorldBoss.adminReset(true))" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-white">🔁 같은 보스 다시</button>
             <button onclick="askCustomConfirm('이번 주 보스를 다른 엘리트 보스로 다시 뽑을까요? (기여도는 새로 셈)', () => WorldBoss.adminReset(false))" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-white">🎲 다른 보스로</button>
             <button onclick="askCustomConfirm('보스 레이드를 처음부터 다시 시작할까요? 이번 주 보스를 새로 뽑아 꽉 찬 체력으로 나오고, 기여도 랭킹·토벌 기록·지난 보스 기록이 모두 지워져요. (학생들이 이미 받은 CA는 그대로예요)', () => WorldBoss.adminWipe())" class="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-[11px] font-extrabold text-white">🧹 보스 레이드 초기화</button>
+            ${this.ticketResetBtnHTML()}
           </div>`;
         if (html !== this.adminHtml) { this.adminHtml = html; box.innerHTML = html; } // 바뀐 게 없으면 다시 그리지 않음
       }
@@ -37270,7 +37297,10 @@
     }
 
     // 1단계는 처음부터 열림. 그 뒤 단계는 바로 앞 단계(또는 더 높은 단계)를 잡은 기록이 있으면 열림
+    const ELITE_OPEN_STAGE = 10; // 학생이 도전할 수 있는 마지막 단계: 11단계부터는 아직 미개방 (열 때 이 숫자만 올림)
+    const isEliteStageOpen = def => Boolean(def) && def.stage <= ELITE_OPEN_STAGE;
     function isEliteBossUnlocked(stu, idx) {
+      if (!isEliteStageOpen(ELITE_BOSS_DEFS[idx])) return false;
       if (idx <= 0) return true;
       const claimed = eliteClaimsOf(stu);
       return ELITE_BOSS_DEFS.slice(idx - 1).some(b => claimed[b.id]);
@@ -37355,7 +37385,9 @@
     function selectEliteBossForRaid(bossId, hard = false) {
       const stu = getActiveStudent();
       if (!isEliteBossIdUnlocked(stu, bossId)) {
-        showNotice('🔒 앞 단계 엘리트 보스를 먼저 처치해야 도전할 수 있어요!');
+        showNotice(isEliteStageOpen(ELITE_BOSS_DEFS.find(b => b.id === bossId))
+          ? '🔒 앞 단계 엘리트 보스를 먼저 처치해야 도전할 수 있어요!'
+          : `🚧 엘리트 보스 ${ELITE_OPEN_STAGE + 1}단계부터는 아직 미개방이에요. 곧 열릴 예정이에요!`);
         return;
       }
       if (hard && !isEliteHardUnlocked(stu, bossId)) {
@@ -37451,7 +37483,8 @@
       // 3) 엘리트 보스 목록
       const bossListEl = document.getElementById('raidEliteBossList');
       if (bossListEl) {
-        bossListEl.innerHTML = ELITE_BOSS_DEFS.map((b, i) => {
+        const unopenedElite = ELITE_BOSS_DEFS.filter(b => !isEliteStageOpen(b));
+        bossListEl.innerHTML = ELITE_BOSS_DEFS.filter(isEliteStageOpen).map((b, i) => {
           if (!isEliteBossUnlocked(myStu, i)) {
             return `
             <div onclick="selectEliteBossForRaid('${b.id}')"
@@ -37497,7 +37530,14 @@
               </div>
             </div>
           `;
-        }).join('');
+        }).join('') + (unopenedElite.length ? `
+            <div class="cursor-not-allowed rounded-2xl border-2 border-dashed p-3.5 bg-slate-950 border-slate-800 opacity-60 select-none">
+              <div class="flex items-center justify-between">
+                <span class="font-title text-base text-white">🚧 ${unopenedElite[0].stage}~${unopenedElite[unopenedElite.length - 1].stage}단계 · ???</span>
+                <span class="px-2 py-0.5 rounded bg-slate-700 text-slate-300 font-extrabold text-xs">미개방</span>
+              </div>
+              <p class="text-[11px] text-slate-400 mt-1">${ELITE_OPEN_STAGE + 1}단계부터는 아직 열리지 않았어요. 곧 열릴 예정이에요!</p>
+            </div>` : '');
       }
 
       // 4) 10인 연합 전투력 합산
