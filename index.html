@@ -3881,6 +3881,14 @@
           </div>
         </div>
         <div id="defenseCardGrid" class="flex flex-col gap-3"></div>
+        <!-- 📺 지금 수정 방어전 중인 친구 (renderTowerLiveList) -->
+        <div class="bg-slate-900 border border-violet-500/40 rounded-2xl p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h4 class="font-title text-lg text-violet-300">📺 지금 수정 방어전 중인 친구</h4>
+            <span class="text-[11px] text-slate-400">친구의 수정 방어전을 실시간으로 볼 수 있어요. (관전은 보상이 없어요)</span>
+          </div>
+          <div id="defenseLiveList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div>
+        </div>
         <div class="bg-slate-900 border-2 border-cyan-500/30 rounded-2xl p-4 flex flex-col gap-2 text-xs text-slate-300 leading-relaxed">
           <h4 class="font-title text-lg text-white">📜 방어전 규칙</h4>
           <div>🧭 몬스터는 <strong>동·서·남·북 네 동굴</strong>에서 길을 따라 가운데 수정으로 걸어가요. 준비 시간에 동굴 앞에 다음 웨이브 마릿수가 떠요.</div>
@@ -21245,12 +21253,13 @@
     const isRankedLiveRun = r => Boolean(r && r.kind === 'ranked');
     const isDefenseLiveRun = r => Boolean(r && r.kind === 'defense');
 
-    // 탑 화면(towerLiveList)엔 탑 도전만, 랭킹 매칭 화면(rankedLiveList)엔 랭킹 매칭만
+    // 탑 화면(towerLiveList)엔 탑 도전만, 랭킹 매칭 화면(rankedLiveList)엔 랭킹 매칭만, 수정 방어전 화면(defenseLiveList)엔 방어전만
     function renderTowerLiveList() {
-      [['towerLiveList', false, '지금 탑에 도전 중인 친구가 없어요.'], ['rankedLiveList', true, '지금 랭킹 매칭 중인 친구가 없어요.']].forEach(([boxId, ranked, emptyText]) => {
+      [['towerLiveList', 'tower', '지금 탑에 도전 중인 친구가 없어요.'], ['rankedLiveList', 'ranked', '지금 랭킹 매칭 중인 친구가 없어요.'], ['defenseLiveList', 'defense', '지금 수정 방어전 중인 친구가 없어요.']].forEach(([boxId, kind, emptyText]) => {
       const box = document.getElementById(boxId);
       if (!box) return;
-      const runs = liveTowerRuns().filter(r => isRankedLiveRun(r) === ranked && !isDefenseLiveRun(r)); // 수정 방어전은 좌측 관전하기 패널에만
+      const ranked = kind === 'ranked';
+      const runs = liveTowerRuns().filter(r => (isRankedLiveRun(r) ? 'ranked' : isDefenseLiveRun(r) ? 'defense' : 'tower') === kind);
       if (!runs.length) {
         box.innerHTML = `<div class="text-xs text-slate-400 bg-slate-950 border border-slate-800 rounded-xl p-3 sm:col-span-2 lg:col-span-3">${emptyText}</div>`;
         return;
@@ -21263,7 +21272,7 @@
           <div class="bg-slate-950 border ${watching ? 'border-violet-400' : 'border-slate-800'} rounded-xl p-3 flex items-center justify-between gap-2">
             <div class="min-w-0">
               <div class="text-sm font-extrabold text-white truncate">${r.name}</div>
-              <div class="text-[11px] text-slate-300 truncate">${ranked ? `🎯 vs ${r.vs || '친구'}` : `🏰 ${r.title || `${liveNum(r.floor)}층`}${r.replay ? ' (연습)' : ''}`}</div>
+              <div class="text-[11px] text-slate-300 truncate">${ranked ? `🎯 vs ${r.vs || '친구'}` : kind === 'defense' ? `💎 ${DEFENSE_DIFF_LABEL[r.diff] || '보통'}${r.race ? ` · ${r.race}의 습격` : ''}` : `🏰 ${r.title || `${liveNum(r.floor)}층`}${r.replay ? ' (연습)' : ''}`}</div>
               ${watchers ? `<div class="text-[10px] text-violet-300 font-bold">👀 ${watchers}명 관전 중</div>` : ''}
             </div>
             ${watching
@@ -42017,7 +42026,7 @@
       if (tabKey === 'worldraid') renderWorldRaidTab();
       if (tabKey === 'rush') renderRushTab();
       if (tabKey === 'dungeon') renderDungeonTab();
-      if (tabKey === 'defense') renderDefenseTab();
+      if (tabKey === 'defense') { renderDefenseTab(); renderTowerLiveList(); }
       if (tabKey === 'pvp') renderPvpTab();
       if (tabKey === 'minigame') renderMinigameTab();
       if (tabKey === 'shop') renderShopTab();
