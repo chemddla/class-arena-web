@@ -21581,6 +21581,9 @@
       try { return fn(); } finally { basicHitKind = prev; }
     }
 
+    // '최대 체력의 몇 %' 피해(화상·출혈·중독·저격수 마지막 한 발)의 기준 체력
+    //   보스 레이드 보스는 반 전체가 나눠 깎는 공유 체력(수백만)이라 그대로 쓰면 화상 한 번에 수만씩 들어감 → pctHpBase(한 사람 몫)로
+    function pctHpOf(u) { return (u && u.pctHpBase) || (u && u.maxHp) || 0; }
     function applyDamage(attacker, defender, rawDmg, tagText = '', customColor = null) {
       if (!defender.alive) return;
       if ((defender.statuses?.rebirth || 0) > 0) return; // 불사조의 알: 무적
@@ -22601,17 +22604,17 @@
 
         if (sim.tickCount % 160 === 0) {
           if (st.burn > 0 && u.alive) {
-            const dot = Math.max(8, Math.round(u.maxHp * 0.016));
+            const dot = Math.max(8, Math.round(pctHpOf(u) * 0.016));
             const hp0 = u.hp;
             applyDamage(null, u, dot, '🔥화상 ', '#ea580c');
             pyroCreditBurn(u, hp0 - u.hp);
           }
           if (st.bleed > 0 && u.alive) {
-            const dot = Math.max(8, Math.round(u.maxHp * 0.015));
+            const dot = Math.max(8, Math.round(pctHpOf(u) * 0.015));
             applyDamage(null, u, dot, '🩸출혈 ', '#e11d48');
           }
           if (st.poison > 0 && u.alive) {
-            const dot = Math.max(7, Math.round(u.maxHp * 0.013));
+            const dot = Math.max(7, Math.round(pctHpOf(u) * 0.013));
             applyDamage(null, u, dot, '☠️중독 ', '#7c3aed');
           }
           if (u.alive && u.hp < u.maxHp && u.monsterPassives?.includes('regen')) {
@@ -24373,7 +24376,7 @@
         sim.effects.push({ type: 'hidden_snipe_bullet', x: unit.x, y: unit.y - 10, angle, r: len, life: 16, maxLife: 16 });
         sim.effects.push({ type: 'hidden_snipe_hit', x: foe.x, y: foe.y - 20, life: 40, maxLife: 40 });
         // 최대 체력 10%는 전투 피해 배율을 빼고 들어가게
-        applyDamage(unit, foe, unit.atk * 28 + foe.maxHp * 0.15 / BATTLE_DAMAGE_MULT, '🎯', '#f43f5e'); // 예전 2000% + 10%
+        applyDamage(unit, foe, unit.atk * 28 + pctHpOf(foe) * 0.15 / BATTLE_DAMAGE_MULT, '🎯', '#f43f5e'); // 예전 2000% + 10%
         hiddenImpact(24, '#ffe4e6');
         playCombatSfx('heavy');
         addBattleLog(`🎯 [저격수] ${unit.name}의 히든 스킬 마지막 한 발! ${foe.name}을(를) 꿰뚫었어요!`);
@@ -36437,6 +36440,7 @@
       //   시뮬(2026-11-07, Lv.10~30 대표 용병, 1~10단계 보스 각각): 상위 5명 용병이 혼자 들어가면 평균 약 104초 버티고 한 번에 약 1.3만(평균 공격력 × 118) 피해
       //   → 체력은 상위 5명이 학생 1명당 2번씩 들어간 만큼 (반 평균은 더 약하니 실제로는 한 사람 3번쯤 · 친구와 같이 싸우면 보스 공격이 나뉘어 더 오래 버팀)
       tune: { atkPerHp: 0.004, defPerDef: 1, hpPerAtk: 240 },
+      pctHpPerAtk: 120,           // 최대 체력 % 피해(화상·중독·출혈 등)의 기준 체력 = 평균 공격력 × 이 값 (상위 용병 한 번 도전 피해쯤)
       // 보스별 체력 보정: 같은 용병이 주는 피해가 보스마다 달라서 (히드라는 멀리서 독을 뿌려 잘 안 맞고, 골렘은 느려서 잘 맞음)
       bossHpAdj: { elite_swamp_hydra: 0.4, elite_golem: 1.5, elite_leviathan: 1.15 },
       hpVersion: 4,               // 체력 계산식을 바꾸면 올림 → 이미 나와 있는 보스도 남은 비율 그대로 새 체력으로
@@ -36748,6 +36752,9 @@
         boss.maxHp = Math.max(1, Math.round(cur.maxHp));
         boss.hp = Math.max(1, Math.min(boss.maxHp, Math.round(cur.hp)));
         boss.isWorldBoss = true;
+        // 화상·중독·출혈처럼 최대 체력 %로 들어가는 피해는 공유 체력 대신 '한 사람 한 번 도전 몫'을 기준으로
+        //   (2026-11-11: 공유 체력 233만 골렘에 화염술사 한 명이 3분에 60만, 이름 없는 중독·출혈로 94만이 깎였음)
+        boss.pctHpBase = Math.max(1, Math.min(boss.maxHp, Math.round((cur.ma || 100) * WORLD_BOSS.pctHpPerAtk)));
         // 이번 주 보스: 상위 5명 기준으로 정해 둔 공격력·방어력 · 예전 단계식 보스: 엘리트 보스 공격력 × bossAtk
         boss.wbBaseAtk = cur.atk ? Math.max(1, Math.round(cur.atk)) : Math.max(1, Math.round(boss.atk * WORLD_BOSS.bossAtk));
         if (cur.def != null && cur.pow) boss.def = Math.max(0, Math.round(cur.def));
@@ -36774,6 +36781,8 @@
         if (!meta || !meta.host || meta.ending) return Boolean(meta && meta.ending);
         meta.lastStepAt = this.now();
         const boss = sim.units.find(u => u.isWorldBoss);
+        // 계산을 이어받은 화면에선 받은 유닛에 pctHpBase가 없을 수 있어 다시 채움
+        if (boss && !boss.pctHpBase) { const c = this.current(); boss.pctHpBase = Math.max(1, Math.min(boss.maxHp, Math.round(((c && c.ma) || 100) * WORLD_BOSS.pctHpPerAtk))); }
         if (boss && boss.alive && this.applyEnrage(boss)) addBattleLog(`🔥 레이드 보스가 광폭화했어요! 공격력이 ${WORLD_BOSS.enrageAtk}배가 돼요!`);
         // 하늘에서 내려오는 용병
         const landAt = u => (u.dropWarn || 0) + RUSH.dropFallSec * BATTLE_TICKS_PER_SEC;
