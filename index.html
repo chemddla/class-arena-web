@@ -11917,7 +11917,8 @@
       levelCostPerLevel: 180,
       levelCostSteepFrom: 30,   // 이 레벨을 넘으면 추가분 = 10 × (현재 레벨 - 30)² (Lv40 8,340 · Lv50 13,140 · Lv99 65,570 CA)
       levelCostSteepMult: 10,
-      sellRefundRatio: 0.5      // 즉시 판매: 고용비 + 들인 레벨업 비용의 절반
+      sellRefundRatio: 0.5,     // 즉시 판매: 고용비 + 들인 레벨업 비용의 절반
+      levelResetRefundRatio: 0.8 // 레벨 초기화: 레벨업에 쓴 CA의 80%만 돌려줌
     };
     function mercLevelUpCost(level) {
       const lv = level || 1;
@@ -15002,7 +15003,7 @@
             ${(() => {
               const rs = mercLevelLedger(merc, stu, false);
               return (merc.level || 1) > rs.target
-                ? `<button onclick="resetMercLevel('${merc.id}')" title="이 용병 레벨업에 쓴 CA를 돌려받고 Lv.${rs.target}(으)로 되돌려요"
+                ? `<button onclick="resetMercLevel('${merc.id}')" title="이 용병 레벨업에 쓴 CA의 80%를 돌려받고 Lv.${rs.target}(으)로 되돌려요"
                     class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-amber-600 hover:text-white text-amber-300 border border-amber-500/40 font-extrabold text-xs">
                     ↺ 레벨 초기화 (+${rs.refund.toLocaleString()} CA)
                   </button>`
@@ -15034,8 +15035,9 @@
       if (write) Object.assign(merc, { levelOwner: owner, levelBase: base, levelSpent: spent });
       const target = Math.max(1, Math.min(merc.level || 1, base || 1));
       // 선생님이 레벨을 바꿨을 수도 있으니, 실제 레벨 차이만큼의 비용을 넘지 않게
-      const refund = Math.max(0, Math.min(spent || 0, totalLevelCostTo(merc.level || 1) - totalLevelCostTo(target)));
-      return { target, refund };
+      const spentBack = Math.max(0, Math.min(spent || 0, totalLevelCostTo(merc.level || 1) - totalLevelCostTo(target)));
+      const refund = Math.floor(spentBack * ECONOMY.levelResetRefundRatio / 10) * 10; // 10 CA 단위 내림
+      return { target, refund, spent: spentBack };
     }
 
     function resetMercLevel(mercId) {
@@ -15047,7 +15049,7 @@
         showNotice('⚠️ 내가 레벨업한 기록이 없어서 되돌릴 레벨이 없어요.');
         return;
       }
-      askCustomConfirm(`[${merc.name}] Lv.${merc.level} → Lv.${preview.target}(으)로 레벨을 초기화할까요? 레벨업에 쓴 💰 ${preview.refund.toLocaleString()} CA를 돌려받아요. 스탯 포인트는 다시 나눌 수 있고, 열렸던 스킬은 다시 레벨을 올리면 그대로 돌아와요.`, () => {
+      askCustomConfirm(`[${merc.name}] Lv.${merc.level} → Lv.${preview.target}(으)로 레벨을 초기화할까요? 레벨업에 쓴 ${preview.spent.toLocaleString()} CA의 80%인 💰 ${preview.refund.toLocaleString()} CA를 돌려받아요. 스탯 포인트는 다시 나눌 수 있고, 열렸던 스킬은 다시 레벨을 올리면 그대로 돌아와요.`, () => {
         const m = (stu.roster || []).find(x => x.id === mercId);
         if (!m) return;
         const { target, refund } = mercLevelLedger(m, stu, true);
