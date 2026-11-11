@@ -1,29 +1,30 @@
-// 오버로드 시전 (한 번, 히든 스킬): 시전 0.5초 동안 하늘에서 낙뢰가 몰아치며 몸에 축전 → 발동 순간 거대한 금빛 낙뢰 기둥. 기준점 = 발. 1.5초
-//   0.00~0.50 하늘색 낙뢰 4번이 점점 굵게·빠르게 캐릭터에게 꽂힘 (0, 0.15, 0.28, 0.40초) — 꽂힐 때마다 몸이 하얗게 빛나고 바닥에 전류가 튐
+// 오버로드 시전 (한 번, 히든 스킬): 시전 1초 동안 하늘에서 낙뢰가 몰아치며 몸에 축전 → 발동 순간 거대한 금빛 낙뢰 기둥. 기준점 = 발. 2초
+//   (2026-11-11 사용자 요청: 시전 0.5 → 1초. 옵션 charge = 시전 길이, 축전 단계의 시각은 모두 이 길이에 비례)
+//   0.00~1.00 하늘색 낙뢰 4번이 점점 굵게·빠르게 캐릭터에게 꽂힘 (0, 0.3, 0.56, 0.8초) — 꽂힐 때마다 몸이 하얗게 빛나고 바닥에 전류가 튐
 //             몸 둘레로 사방에서 빛줄기가 빨려 들고(축전), 머리 위 하늘에 전기 매듭이 커짐
-//   0.50      발동: 하얀 섬광(넓은 빛) → 굵기 2.6배 금빛 낙뢰 기둥이 여러 번 다시 그어지며 꽂힘, 주변 공중으로 금빛 가지 8줄
+//   1.00      발동: 하얀 섬광(넓은 빛) → 굵기 2.6배 금빛 낙뢰 기둥이 여러 번 다시 그어지며 꽂힘, 주변 공중으로 금빛 가지 8줄
 //             바닥: 금빛 균열 전류가 좌우 멀리 달려 나감 + 바닥 빛 / 불티 분수가 크게 솟음
-//   0.50~1.50 기둥 잔광이 위로 걷히고, 금빛 불티가 비처럼 내리고, 몸 둘레 잔전류가 사그라짐
+//   1.00~2.00 기둥 잔광이 위로 걷히고, 금빛 불티가 비처럼 내리고, 몸 둘레 잔전류가 사그라짐
 // 하늘색(PLASMA_V)으로 모으고 금빛(GOLD_V)으로 터짐 — 오버로드 동안 모든 스킬이 강화(금빛)인 것과 이어짐
 import { Particles, Lights, P, Rng, fit, flare, clamp, rng, mix, TAU, WHITE } from "../../core/index.js";
 import { zigzag, stroke, crackle } from "../lightning/_lib.js";
 import { PLASMA_V, SPARK_V, GOLD_V, GOLD_SPARK_V } from "./_volt.js";
 
-const TOP = -440, CY = -46, BANG = 0.5;
+const TOP = -440, CY = -46, CHARGE = 1.0;
 export const meta = {
   name: "Volt overload cast",
   desc: "Overload cast: cyan bolts hammer the caster from the sky, then a colossal gold pillar slams down, gold cracks race across the floor, sparks rain.",
   tags: ["lightning", "electric", "plasma", "hidden", "ultimate", "one-shot"],
   size: [520, 560],
   origin: [260, 500],
-  duration: 1.5,
+  duration: CHARGE + 1,
   loop: false,
   fps: 20,
   bg: "dark",
-  options: { palette: PLASMA_V, sparks: SPARK_V, gold: GOLD_V, goldSparks: GOLD_SPARK_V, seed: 51 },
+  options: { palette: PLASMA_V, sparks: SPARK_V, gold: GOLD_V, goldSparks: GOLD_SPARK_V, charge: CHARGE, seed: 51 },
 };
 
-const STRIKES = [[0.0, 1.0], [0.15, 1.25], [0.28, 1.5], [0.4, 1.8]];   // [시각, 굵기]
+const STRIKES0 = [[0.0, 1.0], [0.3, 1.25], [0.56, 1.5], [0.8, 1.8]];   // [시전 1초 기준 시각, 굵기]
 const BK = [1, 0.75, 1, 0.6, 0.85, 0.45];
 const PK = [1, 1, 0.85, 1, 0.75, 0.9, 0.6, 0.7, 0.45, 0.3];   // 금빛 기둥: 더 오래 여러 번 다시 그음
 
@@ -45,13 +46,14 @@ function pool(p, rx, ry, cols, k) {
 export function create(o) {
   const C = fit(o.palette, 8), G = fit(o.gold, 8), R = new Rng(o.seed), floor = () => 0;
   const ps = new Particles({ rng: R, ground: floor, sparks: o.sparks }), gp = new Particles({ rng: R, ground: floor, sparks: o.goldSparks }), lights = new Lights();
+  const BANG = o.charge, STRIKES = STRIKES0.map(([t0, w]) => [t0 * BANG, w]);
   const hit = STRIKES.map(() => false);
   let t = 0, banged = false;
   return {
     update(dt) {
       t += dt;
       // 축전: 사방에서 몸으로 빨려 드는 빛줄기 (점점 많이)
-      if (t < BANG && R.chance((60 + 200 * t) * dt)) {
+      if (t < BANG && R.chance((60 + 100 * (t / BANG)) * dt)) {
         const a = R.range(0, TAU), d = R.range(50, 110), T = R.range(0.1, 0.16);
         ps.spawn(P.STREAK, Math.cos(a) * d, CY + Math.sin(a) * d * 0.8, (-Math.cos(a) * d) / T, (-Math.sin(a) * d * 0.8) / T, T, R.chance(0.5) ? C[6] : C[5]);
       }
@@ -74,7 +76,7 @@ export function create(o) {
         }
       }
       // 발동 뒤: 금빛 불티 비
-      if (t > BANG + 0.1 && t < 1.25 && R.chance(70 * dt)) gp.spawn(P.SPARK, R.range(-200, 200), TOP * R.range(0.35, 0.7), R.range(-20, 20), R.range(60, 160), R.range(0.5, 0.9));
+      if (t > BANG + 0.1 && t < BANG + 0.75 && R.chance(70 * dt)) gp.spawn(P.SPARK, R.range(-200, 200), TOP * R.range(0.35, 0.7), R.range(-20, 20), R.range(60, 160), R.range(0.5, 0.9));
       ps.update(dt);
       gp.update(dt);
       lights.update(dt);
