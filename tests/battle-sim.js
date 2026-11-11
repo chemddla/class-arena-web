@@ -48,7 +48,7 @@
 
   // ----- 유닛 만들기 -----
   const POS = [{ r: 1, c: 2 }, { r: 3, c: 2 }, { r: 2, c: 1 }, { r: 1, c: 0 }, { r: 3, c: 0 }];
-  const FRONT = ['warrior', 'knight', 'lancer', 'rogue', 'berserker', 'paladin', 'brawler'];
+  const FRONT = ['warrior', 'knight', 'lancer', 'rogue', 'berserker', 'paladin', 'brawler', 'swordsman'];
   // spec: { job, lv=40, rar='N', pos, hidden }  hidden이면 열린 스킬 한 칸을 히든 스킬로 바꿈
   BS.mk = function (spec, team, i, prefix = '') {
     const m = createMercenary(spec.job, spec.rar || 'N', spec.lv || 40, i, true, null);

@@ -29,7 +29,8 @@
     summoner: { strong: '수 싸움·몬스터 무리 (탑·러쉬)', weak: [] },
     pyro:    { strong: '몬스터 무리 다중 공격 (탑 일반층·러쉬·던전)', weak: ['duel'] },
     brawler: { strong: '1:1 대결 (개인전)', weak: ['tower'] },
-    volt:    { strong: '5:5·몬스터 무리 광역 감전 (탑 일반층·러쉬)', weak: ['duel'] }
+    volt:    { strong: '5:5·몬스터 무리 광역 감전 (탑 일반층·러쉬)', weak: ['duel'] },
+    swordsman: { strong: '1:1·근접전 (패링·심검)', weak: [] }
   };
   // [아래, 위]: 이 밖이면 조정 대상
   BS.LIMITS = { duel: [20, 80], rand5: [40, 60], tower: [40, 88] };
