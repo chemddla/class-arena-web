@@ -15088,6 +15088,8 @@
       const stu = getActiveStudent();
       const merc = stu.roster.find(m => m.id === mercId);
       if (!merc) return;
+      // 새 비용으로 올리기 전에 예전 비용으로 키운 레벨부터 맞춤 (안 그러면 다음 로그인 때 새 비용으로 올린 레벨까지 내려감)
+      if (!stu.levelCurveRescaled) { rescaleHighLevelMercsForActiveStudent(); renderSquadTab(); return; }
       const cost = mercLevelUpCost(merc.level);
       if (stu.mc < cost) {
         showNotice(`⚠️ 레벨업 비용이 부족합니다! (필요: ${cost} CA / 보유: ${stu.mc} CA)`);
@@ -56717,6 +56719,46 @@
       saveState();
     }
 
+    // 고레벨 레벨업 비용 인상(2026-11-11) 전에 Lv31 넘게 키운 용병: 예전 비용(320 + 180 × (레벨 - 1))으로 들인 CA에 맞춰
+    // 새 비용 기준 레벨로 내리고, 다음 레벨까지 못 채운 나머지 CA는 돌려줌 (로그인할 때 한 번, 자기 기록만)
+    function oldLinearLevelCostTo(level) {
+      let sum = 0;
+      for (let l = 1; l < (level || 1); l++) sum += ECONOMY.levelCostBase + (l - 1) * ECONOMY.levelCostPerLevel;
+      return sum;
+    }
+    function rescaleHighLevelMercsForActiveStudent() {
+      const stu = getActiveStudent();
+      if (!stu || stu.levelCurveRescaled) return;
+      let refund = 0;
+      const changed = [];
+      (stu.roster || []).forEach(m => {
+        if (!m || !((m.level || 1) > ECONOMY.levelCostSteepFrom)) return;
+        const invested = oldLinearLevelCostTo(m.level);
+        let lv = m.level;
+        while (lv > 1 && totalLevelCostTo(lv) > invested) lv--;
+        if (lv >= m.level) return;
+        const left = invested - totalLevelCostTo(lv);
+        ensureMercSkillSlots(m);
+        m.skillsKept = Math.max(m.skillsKept || 0, m.skillsRevealed || 0); // 닫힌 스킬은 다시 레벨을 올리면 그대로 돌아옴
+        changed.push(`${m.name} Lv.${m.level}→${lv}`);
+        m.level = lv;
+        if (m.levelOwner === stu.id) {
+          m.levelSpent = Math.max(0, (m.levelSpent || 0) - left);
+          if (Number.isFinite(m.levelBase) && m.levelBase > lv) m.levelBase = lv;
+        }
+        ensureMercSkillSlots(m);
+        if (getMercStatPointInfo(m).usedSp > getMercStatPointInfo(m).totalSp) m.statPoints = { hp: 0, atk: 0, def: 0, spd: 0 };
+        refund += left;
+      });
+      stu.levelCurveRescaled = true;
+      refund = Math.floor(refund / 10) * 10;
+      if (refund > 0) stu.mc += refund;
+      if (changed.length) {
+        showRewardBanner(`📉 고레벨 레벨업 비용이 바뀌어서 들인 CA에 맞춰 레벨을 다시 맞췄어요: ${changed.join(', ')}${refund > 0 ? ` · 남은 💰 ${refund.toLocaleString()} CA는 돌려받았어요` : ''}`);
+      }
+      saveState();
+    }
+
     // 로그인한 학생의 용병 중 이름이 겹치는 용병은 새 이름으로 바꿈
     function fixDuplicateMercNamesForActiveStudent() {
       const stu = getActiveStudent();
@@ -56735,6 +56777,7 @@
       if (modalHidden) {
         fixDuplicateMercNamesForActiveStudent();
         refundLegacyItemsForActiveStudent();
+        rescaleHighLevelMercsForActiveStudent();
         showMainAppView('student');
       }
     };
@@ -56746,6 +56789,7 @@
       if (modalHidden) {
         fixDuplicateMercNamesForActiveStudent();
         refundLegacyItemsForActiveStudent();
+        rescaleHighLevelMercsForActiveStudent();
         showMainAppView('student');
       }
     };
