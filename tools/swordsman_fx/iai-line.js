@@ -1,7 +1,7 @@
 // 검사 기본 공격 참격 A: 일직선 — 칼자루에서 공격 범위 끝까지 바늘처럼 가는 빛줄기가 2칸 만에 뻗음
 // 준비(칼자루 반짝) → 베기(앞으로 쭉, 앞쪽이 가장 굵고 끝은 뾰족) → 멈춤(흰 날 2칸 + 끝에서 불티) → 회복(뒤에서부터 가늘어지며 식고 점선만 남음)
 import { fit, clamp, smooth, ease, sparkle } from "../../core/index.js";
-import { MOON, MOON_SPARK, T, FLASH, hiltGlint, burst, dotted, lightRush, lensFlare } from "./_sword.js";
+import { MOON, MOON_SPARK, T, FLASH, hiltGlint, burst, dotted, lightRush, lensFlare, lightBeam } from "./_sword.js";
 
 export const meta = {
   name: "Iai line",
@@ -13,7 +13,7 @@ export const meta = {
   loop: false,
   fps: 40,
   bg: "dark",
-  options: { palette: MOON, sparks: MOON_SPARK, len: 126, w: 1.7, seed: 3 },
+  options: { palette: MOON, sparks: MOON_SPARK, len: 126, w: 2.2, seed: 3 },
 };
 
 export function draw(p, t, o) {
@@ -23,19 +23,8 @@ export function draw(p, t, o) {
   if (u < 0) return;
   const end = T.sweep + T.hold + T.trail;
   const head = L * ease.outExpo(clamp(u / FLASH)), tl = smooth(T.sweep + T.hold, end, u), tail = head * tl * 0.98, age = clamp(u / end);
-  const hot = u < T.sweep + T.hold; // 맞는 순간까지는 흰 날
   if (head - tail > 1) {
-    const W = o.w * (1 - tl * 0.6);
-    p.shade(tail - 1, -W - 2, head + 1, W + 2, (x, y, out) => {
-      const v = (x - tail) / (head - tail);
-      if (v < 0 || v > 1) return;
-      const w = W * Math.pow(Math.sin(Math.PI * Math.pow(v, 0.5)), 1.2) + 0.2; // 앞쪽이 굵고 양끝은 바늘처럼 뾰족
-      const q = Math.abs(y) / w;
-      if (q > 1) return;
-      const ci = hot && q < 0.6 ? 0 : Math.round(q * (n - 1) * 0.55 + age * 2.2); // 길이 방향으로는 같은 색 (덩어리 없이 매끈하게)
-      out.c = C[n - 1 - clamp(ci, 0, n - 3)];
-      out.a = 1; // 점 무늬(디더) 없이 꽉 찬 픽셀로 (뾰족한 끝이 모양으로 가늘어짐)
-    });
+    lightBeam(p, tail, 0, head, 0, o.w * (1 - tl * 0.55), C, age, 1); // 반투명 경계 + 흰 심 + 후광, 앞쪽이 굵고 양끝 뾰족
     p.glowLine(tail, 0, head, 0, 4, C[5], 0.22 * (1 - age));
   }
   lightRush(p, t, T.glint, 4, L, 0, C, o.seed);

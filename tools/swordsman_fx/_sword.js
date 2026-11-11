@@ -2,8 +2,8 @@
 // pixelfx(https://github.com/patch-gg/pixelfx, MIT)의 근접 도구(../melee/_lib.js: 초승달 참격 slash·through)를 씀 — tools/swordsman_fx_build.mjs가 이 폴더를 pixelfx의 src/fx/swordsman/로 복사해서 굽는다.
 // 좌표: 기준점(0, 0) = 칼자루 끝 (게임 화면에서 공격 준비 자세는 발에서 앞 19 · 위 30px, 낮게 앉은 자세는 앞 16 · 위 25px), +x = 목표 쪽.
 //   1 = 게임 화면 1px. 기본 길이 L = 126 (사거리 144 - 칼자루까지 약 18): 게임은 칼자루 → 목표 가슴 거리에 맞춰 가로만 늘림
-import { clamp, smooth, ease, rng } from "../../core/index.js";
-import { smear, glowAlong, onSwing } from "../melee/_lib.js";
+import { clamp, smooth, ease, rng, TAU } from "../../core/index.js";
+import { glowAlong, onSwing, plane } from "../melee/_lib.js";
 
 /** 흰 강철 램프 (어두움 → 밝음): 짙은 먹색 테두리 → 은회색 → 푸른 기가 살짝 도는 흰빛 → 흰 날 (2026-11-11 "흰색 계열"로 바꿈) */
 export const MOON = ["#1a1f2b", "#3b4354", "#6e7a90", "#aab6c9", "#dde6f2", "#f3f8fd", "#ffffff"];
@@ -78,27 +78,66 @@ export function dotted(p, x0, x1, y, c, a) {
 }
 
 /**
- * 매끄러운 초승달 참격: pixelfx melee/_lib.js의 slash와 같은 모양·시간표지만 꼬리를 점 무늬(디더)로 흐리지 않음.
- * 날은 꽉 찬 픽셀로 양끝까지 뾰족하게, 지나간 자국은 반투명 1px 선으로 부드럽게 사라짐. s = through()로 만든 칼질 + ramp
+ * 빛의 날 한 점: 날 안쪽 깊이 q (0 = 바깥 가장자리 · 1 = 안쪽 가장자리), 가장자리까지 남은 px (edge, 반투명 경계용),
+ * 날 밖으로 벗어난 px (out, 후광용)으로 색과 투명도를 정해 반투명으로 칠함. 흰 심 → 은백 → 은회로 식고, 경계는 1px에 걸쳐 부드럽게
+ */
+function bladePx(p, x, y, C, q, edge, out, age, k) {
+  const n = C.length;
+  if (out > 0) { // 후광: 날 밖 6px까지 옅은 흰빛이 지수로 사라짐
+    const h = 0.42 * k * (1 - age) * Math.exp(-out / 2.2);
+    if (h > 0.01) p.blend(x, y, C[n - 2], h);
+    return;
+  }
+  const cov = clamp(edge + 0.5);
+  const c = q < 0.55 - age * 0.4 ? C[n - 1] : q < 0.85 - age * 0.3 ? C[n - 2] : C[n - 3 - (age > 0.6 ? 1 : 0)];
+  p.blend(x, y, c, cov * k * (age > 0.55 ? 1 - (age - 0.55) / 0.45 * 0.6 : 1));
+}
+
+/**
+ * 곧은 빛의 날: (x0, y0) → (x1, y1), 굵기 W (반폭). prof(v) = 길이 방향 굵기 비율 (0..1), 기본은 앞쪽이 굵고 양끝 뾰족.
+ * 반투명 경계 + 흰 심 + 후광 (bladePx와 같은 칠). age = 식은 정도, k = 밝기
+ */
+export function lightBeam(p, x0, y0, x1, y1, W, C, age, k, prof = (v) => Math.pow(Math.sin(Math.PI * Math.pow(v, 0.55)), 1.1)) {
+  const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, M = W + 7;
+  for (let y = Math.floor(Math.min(y0, y1) - M); y <= Math.max(y0, y1) + M; y++)
+    for (let x = Math.floor(Math.min(x0, x1) - M); x <= Math.max(x0, x1) + M; x++) {
+      const px = x + 0.5 - x0, py = y + 0.5 - y0, along = px * ux + py * uy, v = along / L;
+      if (v < 0 || v > 1) continue;
+      const d = Math.abs(-px * uy + py * ux), w = W * prof(v);
+      if (w < 0.25) continue;
+      const edge = w - d;
+      if (edge >= -0.5) bladePx(p, x, y, C, d / w, edge, 0, age, k);
+      else bladePx(p, x, y, C, 0, 0, -edge, age, k * Math.min(1, prof(v) * 1.5));
+    }
+}
+
+/**
+ * 광격 (빛의 초승달): pixelfx melee/_lib.js의 slash와 같은 모양·시간표로 휘두르되, 날을 반투명 빛으로 칠함.
+ * 날 가장자리는 1px에 걸쳐 부드럽게(계단·점 무늬 없이), 가운데는 흰 심, 바깥으로 후광이 번짐. 지나간 자국은 반투명 1px 호로 사라짐.
+ * s = through()로 만든 칼질 + ramp
  */
 export function sharpSlash(p, s, t) {
   const u = t - s.t0;
   if (u < 0) return;
-  const R = s.ramp, n = R.length, life = s.sweep + s.hold + s.trail, hot = s.hot ?? 0;
+  const R = s.ramp, n = R.length, life = s.sweep + s.hold + s.trail;
   const head = ease.outExpo(clamp(u / s.sweep)), tail = smooth(s.sweep + s.hold, life, u), age = clamp(u / life);
-  const U = s.span * head, Tt = s.span * tail, W = s.W * (1 - tail * 0.6);
+  const U = s.span * head, Tt = s.span * tail, W = s.W * (1 - tail * 0.55);
   if (tail < 1 && U - Tt > 0.01) {
-    smear(p, s, Tt, U, W, (uu, r, out) => {
-      const v = (uu - Tt) / (U - Tt), w = W * Math.pow(Math.sin(Math.PI * v), 0.9);
-      if (w < 0.45) return;
-      const q = (s.R - r) / w;
-      if (q < 0 || q > 1) return;
-      const ci = q < hot * 0.8 && age < 0.45 ? 0 : Math.round(q * (n - 1) * 0.6 + age * 2.2 + (1 - v) * 0.5);
-      out.c = R[n - 1 - clamp(ci, 0, n - 3)];
-      out.a = 1;
-    });
-    glowAlong(p, s, s.R - W * 0.4, Tt, U, 3 + W, R[n - 2], (uu) => 0.35 * (1 - age) * ((uu - Tt) / (U - Tt)), 0, 0.3);
-    glowAlong(p, s, s.R - W * 0.4, Tt, U, 9 + W, R[n - 3], (uu) => 0.22 * (1 - age) * ((uu - Tt) / (U - Tt)), 0, 0.25); // 바깥 빛 번짐 (빛의 속도 느낌)
+    const B = s.R + 8;
+    for (let y = Math.floor(s.cy - B); y <= s.cy + B; y++)
+      for (let x = Math.floor(s.cx - B); x <= s.cx + B; x++) {
+        const [r, a] = plane(s, x + 0.5, y + 0.5);
+        if (r > s.R + 7 || r < s.R - W - 7) continue;
+        let uu = (s.dir * (a - s.a0)) % TAU;
+        if (uu < 0) uu += TAU;
+        if (uu < Tt || uu > U) continue;
+        const v = (uu - Tt) / (U - Tt), w = W * Math.pow(Math.sin(Math.PI * v), 0.85); // 양끝 뾰족
+        const inner = s.R - w, edge = Math.min(s.R - r, r - inner); // 가장자리까지 남은 거리 (밖이면 음수)
+        if (w < 0.3) continue;
+        if (edge >= -0.5) bladePx(p, x, y, R, (s.R - r) / w, edge, 0, age, Math.min(1, v * 6));
+        else bladePx(p, x, y, R, 0, 0, -edge, age, Math.min(1, v * 3) * Math.sin(Math.PI * v));
+      }
+    glowAlong(p, s, s.R - W * 0.4, Tt, U, 9 + W, R[R.length - 3], (uu) => 0.18 * (1 - age) * ((uu - Tt) / (U - Tt)), 0, 0.25); // 넓은 빛 번짐
   }
   const th = 0.55 * (1 - clamp((u - s.sweep - s.hold) / (s.trail + 0.15)));
   if (tail > 0.02 && th > 0.02) {
