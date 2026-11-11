@@ -43082,6 +43082,11 @@
     // 대기실 화면을 그릴 때 RoomChat.show(상자, 종류, 방id)로 그 방 하나만 구독 · 방이 지워지면 채팅도 같이 지움
     // 보낸 기기가 방마다 최근 ROOM_CHAT_MAX개만 남기고 오래된 것을 지움 (몬스터 러쉬방은 레이드방이라 raid로 감)
     const ROOM_CHAT_MAX = 30;
+    // 채팅 시각: 서버 시각 자리표 (규칙의 at <= now를 기기 시계와 상관없이 통과). SDK가 없으면 서버 시각 추정값
+    function chatServerStamp() {
+      const sv = window.firebase && window.firebase.database && window.firebase.database.ServerValue;
+      return sv && sv.TIMESTAMP ? sv.TIMESTAMP : Math.floor(mgServerNow()) - 1000;
+    }
     const ROOM_CHAT_TEXT_MAX = 100;
     const ROOM_CHAT_GAP_MS = 700; // 너무 빨리 연달아 보내지 않게
     const RoomChat = {
@@ -43185,8 +43190,8 @@
       if (Date.now() - RoomChat.lastSentAt < ROOM_CHAT_GAP_MS) return;
       RoomChat.lastSentAt = Date.now();
       const id = 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-      // 서버 시각보다 늦은 시각은 규칙에서 막히므로 서버 시각 기준으로 살짝 앞당겨 씀
-      const msg = { from: me.id, name: cleanUserText(me.name, 40), text, at: Math.floor(mgServerNow()) - 1000 };
+      // 시각은 서버가 찍음 (규칙 at <= now) · 기기 시계로 찍으면 시계가 빠른 태블릿은 첫 채팅이 거부돼 화면에서 사라졌음
+      const msg = { from: me.id, name: cleanUserText(me.name, 40), text, at: chatServerStamp() };
       input.value = '';
       try {
         await box.ref.child(id).set(msg);
@@ -43581,8 +43586,8 @@
       async post(msg) {
         if (!this.ref) return false;
         const id = 'g_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-        // 서버 시각보다 늦은 시각은 규칙에서 막히므로 서버 시각 기준으로 살짝 앞당겨 씀
-        const full = { ...msg, at: Math.floor(mgServerNow()) - 1000 };
+        // 시각은 서버가 찍음 (chatServerStamp: 시계가 빠른 기기의 채팅이 규칙에 거부돼 사라지던 문제)
+        const full = { ...msg, at: chatServerStamp() };
         await this.ref.child(id).set(full);
         this.trim();
         return true;
