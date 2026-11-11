@@ -13,6 +13,7 @@
 #   - 발도 샘플(1024×498)은 흰 배경 + 같은 그림의 검은 배경 판(draw_dark). 칼날은 옅은 하늘색이라 두 배경 비교로 땀
 #   - 걷기 샘플: walk_a(508×453)는 두 칸 + 왼쪽 끝 옆 칸 칼집 조각, walk_b(294×447)는 한 칸 + 양 옆 칸 조각 → 큰 덩어리만 (화면 캡처라 흰 배경 한 장씩)
 #   - 머리띠 끈 사이로 비친 흰 배경은 가장자리와 안 이어져 남으므로 한 점씩 짚어 지움 (HOLES)
+#   - 줄인 뒤 가장자리에 남은 밝은 회색·흰 점 한두 개는 지움 (drop_light_edge, 칼날·잔상·불꽃 칸 SHINY는 빼고)
 #   - 스킬 시전 샘플(197×259)은 흰 배경 한 장 + 오른쪽 끝 옆 칸 조각 → 큰 덩어리만
 #   - 시전 2·3 샘플(207×229·205×218)은 투명 배경 체크무늬(흰 242·회색 191, 약 17px 칸)가 그대로 찍힘 → 가장자리와 이어진 무채색 밝은 픽셀을 배경으로 (CHECKER)
 #     몸과 떨어진 노란 불꽃도 남김 ('all'). 발 옆 회색 흙먼지는 체크무늬 회색과 구별이 안 돼 함께 빠짐
@@ -53,7 +54,7 @@ SCRUB = {}   # 샘플 이름 → 지울 워터마크 다각형 꼭짓점 (샘플
 SCRUB_HAIR = np.array([23, 25, 36])   # 둘레 머리카락 색
 CHECKER = {'cast2', 'cast3'}   # 투명 배경을 체크무늬로 그린 채 캡처한 샘플
 GREY_EDGE = CHECKER | {'mind'}   # 테두리 정리 때 회색 섞인 테두리까지 버리고, 색 있는 효과(불꽃·칼 잔상)는 색을 지킴
-HOLES = {'idle': [(276, 269)], 'walk_a': [(72, 125), (298, 125)], 'walk_b': [(91, 108)], 'cast': [(117, 80), (105, 68)], 'cast2': [(97, 73), (107, 83)], 'cast3': [(105, 70)]}
+HOLES = {'idle': [(276, 269)], 'walk_a': [(72, 125), (298, 125)], 'walk_b': [(91, 108)], 'cast': [(117, 80), (105, 68)], 'cast2': [(97, 73), (107, 83)], 'cast3': [(105, 70)], 'mind': [(83, 86)]}
 # 몸에 둘러싸여 가장자리와 안 이어진 흰 틈 (샘플 px 한 점): 모두 머리띠 끈·머리카락 가닥 사이로 비친 배경. 눈 흰자는 넣지 않음
 DEFRINGE = {'down2', 'walk_a', 'walk_b', 'cast'}   # 어두운 배경 판이 없는 샘플: 외곽 2px의 색을 바로 안쪽 불투명 색으로 바꾸고 거의 흰 픽셀은 투명하게 → 어두운 바탕에서 보이던 회백색 테두리 제거
 SKIN = set()   # 피부가 어두운 샘플만 넣어 첫 샘플(밝은 살색)만큼 밝힘. 지금 대기 샘플은 처음부터 밝아서 비워 둠
@@ -150,6 +151,18 @@ def defringe(raw, a, im, checker=False):
     return a, im
 
 
+SHINY = {'draw', 'mind', 'cast2', 'cast3'}   # 칼날·잔상·불꽃처럼 밝은 무채색이 몸 가장자리에 있는 칸 (drop_light_edge 안 함)
+
+
+def drop_light_edge(p):   # 줄인 그림에서 투명 칸에 닿은 밝은 회색·흰 픽셀(흰 배경 찌꺼기 한두 점)을 지움
+    a = p[..., 3] > 0
+    rgb = p[..., :3].astype(int)
+    edge = a & ndi.binary_dilation(~a)
+    light = (rgb.max(axis=2) - rgb.min(axis=2) < 25) & (rgb.mean(axis=2) > 150)
+    p = p.copy(); p[edge & light, 3] = 0
+    return p
+
+
 def load(name, pick=0):
     im = np.array(Image.open(f'{D}{name}_src.png').convert('RGB')).astype(float)
     if name in SCRUB: im = scrub(im, SCRUB[name])
@@ -223,6 +236,7 @@ def main():
         sc = TARGET_H / bh if k == 'H' else FIT_H[k] / bh if k in FIT_H else FIT_W[k] / rgba.shape[1] if k in FIT_W else scale[k]
         scale[name] = sc
         p = shrink(rgba, sc)
+        if src not in SHINY: p = drop_light_edge(p)
         pieces.append((name, p, foot * sc))
         print(f'{name}: 샘플 {rgba.shape[1]}x{rgba.shape[0]} 키 {bh} ×{sc:.3f} → {p.shape[1]}x{p.shape[0]}  발 {foot:.0f}')
     L = max(int(np.ceil(c)) for _, _, c in pieces) + 4
