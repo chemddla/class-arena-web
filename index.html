@@ -11688,19 +11688,40 @@
         cv.getContext('2d').drawImage(sprite.img, -x0, -y0);
         try {
           cv.toBlob(blob => {
-            if (blob) sprite.portraits[headOnly ? 'head' : 'full'] = { url: URL.createObjectURL(blob), x0, y0, w: cv.width, h: cv.height };
+            if (!blob) return;
+            sprite.portraits[headOnly ? 'head' : 'full'] = { url: URL.createObjectURL(blob), x0, y0, w: cv.width, h: cv.height };
+            refreshDrawnPortraits(sprite, headOnly);
           });
         } catch (e) {} // file://로 열면 캔버스를 읽을 수 없음 → 시트를 그대로 씀
       });
     }
-    function getSpritePortraitHTML(sprite, size, tag = 'div', extraStyle = '', headOnly = false) {
+    // 그림을 받기 전에 그려 둔 초상화(모집 명단 등)는 맞추기 전 창(getPortraitCrop 기본값)이라 창끝·모자가 잘려 있음 (2026-11-11 사용자: 용병 모집의 창병)
+    //   → 초상화 그림이 준비되면 화면에 이미 있는 그 그림의 초상화도 새 창으로 다시 맞춤
+    const PORTRAIT_IDS = new WeakMap();
+    let portraitIdSeq = 0;
+    const portraitIdOf = sprite => { let id = PORTRAIT_IDS.get(sprite); if (!id) PORTRAIT_IDS.set(sprite, id = ++portraitIdSeq); return id; };
+    function portraitBgCSS(sprite, size, headOnly) {
       const { viewH, cropX, cropY } = getPortraitCrop(sprite, headOnly);
       const k = size / viewH;
       const p = sprite.portraits && sprite.portraits[headOnly ? 'head' : 'full'];
-      const bg = p
+      return p
         ? `background:url('${p.url}') no-repeat;background-size:${Math.round(p.w * k)}px ${Math.round(p.h * k)}px;background-position:${-Math.round((cropX - p.x0) * k)}px ${-Math.round((cropY - p.y0) * k)}px;`
         : `background:url('${sprite.src}') no-repeat;background-size:${Math.round(sprite.cellW * sprite.count * k)}px ${Math.round(sprite.cellH * k)}px;background-position:${-Math.round(cropX * k)}px ${-Math.round(cropY * k)}px;`;
-      return `<${tag} class="select-none${tag === 'span' ? ' inline-block align-middle shrink-0' : ''}" style="width:${size}px;height:${size}px;${bg}${sprite.filter ? `filter:${sprite.filter};` : ''}${extraStyle}"></${tag}>`;
+    }
+    function refreshDrawnPortraits(sprite, headOnly) {
+      const id = PORTRAIT_IDS.get(sprite);
+      if (!id) return;
+      document.querySelectorAll(`[data-pt="${id}"][data-pt-head="${headOnly ? 1 : 0}"]`).forEach(el => {
+        const tmp = document.createElement('div');
+        tmp.style.cssText = portraitBgCSS(sprite, Number(el.dataset.ptSize) || 48, headOnly);
+        ['backgroundImage', 'backgroundRepeat', 'backgroundSize', 'backgroundPosition'].forEach(p => { el.style[p] = tmp.style[p]; });
+      });
+    }
+    function getSpritePortraitHTML(sprite, size, tag = 'div', extraStyle = '', headOnly = false) {
+      const bg = portraitBgCSS(sprite, size, headOnly);
+      const ready = sprite.portraits && sprite.portraits[headOnly ? 'head' : 'full'];
+      const mark = ready ? '' : ` data-pt="${portraitIdOf(sprite)}" data-pt-size="${size}" data-pt-head="${headOnly ? 1 : 0}"`;
+      return `<${tag}${mark} class="select-none${tag === 'span' ? ' inline-block align-middle shrink-0' : ''}" style="width:${size}px;height:${size}px;${bg}${sprite.filter ? `filter:${sprite.filter};` : ''}${extraStyle}"></${tag}>`;
     }
 
     // 글 속·목록 칸에 들어가는 작은 용병 얼굴 (그림이 없으면 직업 이모지). 26px 이하는 머리~상체만. dark = 흑화 용병처럼 어둡게
