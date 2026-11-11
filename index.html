@@ -13797,8 +13797,8 @@
       const watchingBattle = sim.spectator && sim.running;
       const items = [];
       liveTowerRuns().forEach(r => items.push({
-        kind: 'tower', id: r.id, icon: isRankedLiveRun(r) ? '🎯' : '🏰', names: r.name,
-        detail: isRankedLiveRun(r) ? `랭킹 매칭 · vs ${r.vs || '친구'}` : `모험의 탑 · ${r.title || `${liveNum(r.floor)}층`}${r.replay ? ' (연습)' : ''}`,
+        kind: 'tower', id: r.id, icon: isRankedLiveRun(r) ? '🎯' : isDefenseLiveRun(r) ? '💎' : '🏰', names: r.name,
+        detail: isRankedLiveRun(r) ? `랭킹 매칭 · vs ${r.vs || '친구'}` : isDefenseLiveRun(r) ? `수정 방어전 · ${DEFENSE_DIFF_LABEL[r.diff] || '보통'}` : `모험의 탑 · ${r.title || `${liveNum(r.floor)}층`}${r.replay ? ' (연습)' : ''}`,
         watchers: r.watchers && typeof r.watchers === 'object' ? Object.keys(r.watchers).length : 0,
         watching: watchingBattle && sim.towerWatch && sim.towerWatch.stuId === r.id
       }));
@@ -19397,7 +19397,7 @@
       if (force || sim.tickCount % 10 === 0) refreshTouchControls();
       const rushBtn = document.getElementById('rushAutoBtn');
       if (rushBtn && (force || sim.tickCount % 10 === 0)) {
-        const mine = sim.mode === 'defense' && sim.running ? defenseMainUnit() : sim.mode === 'monster_rush' && sim.running && !sim.spectator ? myRushUnit() : (sim.mode === 'dungeon' && sim.running ? (sim.dungeon && sim.dungeon.party ? dungeonMyUnit() : dungeonLeader()) : null);
+        const mine = sim.mode === 'defense' && sim.running && !sim.spectator ? defenseMainUnit() : sim.mode === 'monster_rush' && sim.running && !sim.spectator ? myRushUnit() : (sim.mode === 'dungeon' && sim.running ? (sim.dungeon && sim.dungeon.party ? dungeonMyUnit() : dungeonLeader()) : null);
         rushBtn.classList.toggle('hidden', !(mine && mine.alive));
         rushBtn.textContent = battleControl.mode === 'manual' ? '🤖 자동 전투로' : '🎮 직접 조종으로';
       }
@@ -21125,6 +21125,20 @@
       });
     }
 
+    // 💎 수정 방어전도 같은 목록(tower_index)에 kind: 'defense'로 올림 · 웨이브·수정 체력 같은 방어전 상태는 화면(frame.df)에 실음
+    // (예전 탭은 kind를 모르므로 '모험의 탑 · 💎 수정 방어전 […]'으로 보이고, 관전하면 수정·웨이브 표시 없이 싸움만 보임)
+    function startDefenseLiveBroadcast(stu) {
+      const dm = sim.defense;
+      if (!sim.running || sim.mode !== 'defense' || !dm || !stu) return;
+      startSoloLiveBroadcast(stu, {
+        id: stu.id, name: cleanUserText(stu.name, 30) || '친구', floor: 0, kind: 'defense', race: dm.race, diff: dm.diff,
+        title: `💎 수정 방어전 [${DEFENSE_DIFF_LABEL[dm.diff] || '보통'}]`, replay: false, at: Date.now()
+      });
+      // 방금 올린 유닛 목록이 기준 · 웨이브마다 몬스터가 나오고 모집 용병이 늘면 syncDefenseLiveUnits가 다시 보냄
+      liveNet.dfUnitSig = sim.units.map(u => u.id).join(',');
+      liveNet.unitListRr = 'df0';
+    }
+
     function startSoloLiveBroadcast(stu, info) {
       const roomId = `tower_${stu.id}`;
       const ref = liveRoomRef(roomId);
@@ -21134,7 +21148,8 @@
         role: 'host', roomId, ref, startedAt: Date.now(), finished: false,
         sent: new WeakSet(), pendingLogs: [], lastFramePublishedAt: 0, spectator: false, sentU: null, sentT: 0, keyAt: 0,
         team: false, remoteCtrls: {}, myId: stu.id, towerCast: true, towerWatchers: 0,
-        watchIds: null, watchSyncAt: 0, kfSig: null, kfInitSig: null, kfReqAt: 0, kfRef: null, unitListSigs: null, unitListRr: null
+        watchIds: null, watchSyncAt: 0, kfSig: null, kfInitSig: null, kfReqAt: 0, kfRef: null, unitListSigs: null, unitListRr: null,
+        dfUnitSig: null, dfSeq: 0, dfSentJ: null, dfChangedAt: 0
       });
       sim.effects.forEach(x => liveNet.sent.add(x));
       sim.floatTexts.forEach(x => liveNet.sent.add(x));
@@ -21199,13 +21214,14 @@
     }
 
     const isRankedLiveRun = r => Boolean(r && r.kind === 'ranked');
+    const isDefenseLiveRun = r => Boolean(r && r.kind === 'defense');
 
     // 탑 화면(towerLiveList)엔 탑 도전만, 랭킹 매칭 화면(rankedLiveList)엔 랭킹 매칭만
     function renderTowerLiveList() {
       [['towerLiveList', false, '지금 탑에 도전 중인 친구가 없어요.'], ['rankedLiveList', true, '지금 랭킹 매칭 중인 친구가 없어요.']].forEach(([boxId, ranked, emptyText]) => {
       const box = document.getElementById(boxId);
       if (!box) return;
-      const runs = liveTowerRuns().filter(r => isRankedLiveRun(r) === ranked);
+      const runs = liveTowerRuns().filter(r => isRankedLiveRun(r) === ranked && !isDefenseLiveRun(r)); // 수정 방어전은 좌측 관전하기 패널에만
       if (!runs.length) {
         box.innerHTML = `<div class="text-xs text-slate-400 bg-slate-950 border border-slate-800 rounded-xl p-3 sm:col-span-2 lg:col-span-3">${emptyText}</div>`;
         return;
@@ -21247,7 +21263,7 @@
       tw.leaveTimer = setTimeout(() => {
         tw.leaveTimer = null;
         if (sim.towerWatch === tw && sim.spectator && sim.running && !liveNet.finished && !listed()) {
-          abortLiveBattle(`📺 ${tw.name} 친구가 ${tw.ranked ? '랭킹 매칭' : '탑 도전'}을 그만뒀어요.`);
+          abortLiveBattle(`📺 ${tw.name} 친구가 ${tw.ranked ? '랭킹 매칭' : tw.defense ? '수정 방어전' : '탑 도전'}을 그만뒀어요.`);
         }
       }, 4000);
     }
@@ -21263,14 +21279,15 @@
       const me = getActiveStudent();
       const info = towerLiveCache && towerLiveCache[stuId];
       const ranked = isRankedLiveRun(info);
+      const defense = isDefenseLiveRun(info);
       if (!me || !info || !info.name) { showNotice('⚠️ 관전할 전투를 찾지 못했어요. 이미 끝났을 수 있어요.'); return; }
       if (stuId === me.id) return;
       if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
       const roomId = `tower_${stuId}`;
       const ref = liveRoomRef(roomId);
       if (!ref) { showNotice('⚠️ 서버에 연결되어 있지 않아 관전할 수 없어요.'); return; }
-      const got = await waitLiveInit(ref);
-      if (!got) { showNotice(`⚠️ ${ranked ? '랭킹 매칭' : '탑'} 전투 화면을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.`); return; }
+      const got = await waitLiveInit(ref, 5000, defense); // 방어전은 준비 시간엔 몬스터가 없음
+      if (!got) { showNotice(`⚠️ ${ranked ? '랭킹 매칭' : defense ? '수정 방어전' : '탑'} 전투 화면을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.`); return; }
       const { init, blueUnits, redUnits } = got;
       if (sim.running && !sim.spectator) return; // 기다리는 사이 내 전투를 시작했으면 그만둠
       if (sim.spectator) { stopLiveBattleNet(); closeBattleResult(); }
@@ -21278,9 +21295,12 @@
       const floor = liveNum(info.floor);
       const vsName = info.vs || '친구';
       const enemy = ranked ? (state.students.find(s => s.id === info.vsId) || { id: info.vsId || 'enemy', name: vsName, roster: [] }) : null;
+      const dfDiff = DEFENSE_DIFFS.includes(info.diff) ? info.diff : 'normal';
+      const dfRace = DEFENSE_RACES.includes(info.race) ? info.race : todayDefenseRace();
+      if (defense) { void BATTLE_MAPS.crystal_defense.ready; Object.values(DEFENSE_ART).forEach(d => void d.ready); } // 맵·수정 그림 (전투 준비 화면이 기다림)
       launchSimulation({
-        mode: ranked ? 'pvp_ranked' : 'tower',
-        title: ranked ? `📺 관전 중: ${info.name}의 랭킹 매칭 (vs ${vsName})` : `📺 관전 중: ${info.name}의 ${info.title || `${floor}층`}`,
+        mode: ranked ? 'pvp_ranked' : defense ? 'defense' : 'tower',
+        title: ranked ? `📺 관전 중: ${info.name}의 랭킹 매칭 (vs ${vsName})` : defense ? `📺 관전 중: ${info.name}의 수정 방어전 [${DEFENSE_DIFF_LABEL[dfDiff]}]` : `📺 관전 중: ${info.name}의 ${info.title || `${floor}층`}`,
         blueStudent: owner,
         ...(ranked ? { redStudent: enemy } : {}),
         customBlueUnits: blueUnits,
@@ -21293,7 +21313,12 @@
       sim.spectator = true;
       sim.spectateFrom = Date.now();
       sim.spectateRoomId = null;
-      sim.towerWatch = { stuId, name: info.name, floor, ranked, vs: vsName };
+      sim.towerWatch = { stuId, name: info.name, floor, ranked, vs: vsName, defense };
+      if (defense) {
+        // 방어전 상태(웨이브·수정 체력·포인트…)는 친구 화면이 frame.df로 보내 줌 (applyDefenseState) · 그 전까지 빈 계획
+        sim.defense = newDefenseState(dfRace, dfDiff, { baseFloor: 1 });
+        sim.defense.plan = { split: '', lanes: [0, 0, 0, 0], elites: 0, boss: false, bossLane: null };
+      }
       // 고를 것 없이 보기만: 전투 방식 고르기 창을 닫고 자동(화면 이동만)으로 고정
       battleControl.locked = true;
       battleControl.mode = 'auto';
@@ -21303,6 +21328,7 @@
       renderBattleControlHud(true);
       addBattleLog(ranked
         ? `📺 [관전] ${info.name}의 랭킹 매칭(vs ${vsName} 방어 진형)을 보고 있어요. (WASD·드래그로 화면 이동)`
+        : defense ? `📺 [관전] ${info.name}의 수정 방어전(${dfRace}의 습격)을 보고 있어요. (WASD·드래그로 화면 이동)`
         : `📺 [관전] ${info.name}의 모험의 탑 ${floor}층 도전을 보고 있어요. (WASD·드래그로 화면 이동)`);
       startLiveBattleNet(roomId, 'guest', liveNum(init.at), true, false);
       liveNet.bid = typeof init.b === 'number' ? init.b : null; liveNet.ep = liveNum(init.ep); // 탑·레이드 관전은 방 시작 시각이 없어 받은 화면의 전투 표를 따라감
@@ -30138,6 +30164,8 @@
         document.getElementById('battleResultEmoji').textContent = '📺';
         document.getElementById('battleResultTitle').textContent = tw && tw.ranked
           ? `관전 종료 · ${tw.name} ${blueTeamWon ? `🏆 승리! (vs ${tw.vs})` : `🛡️ 패배 (vs ${tw.vs})`}`
+          : tw && tw.defense
+            ? `관전 종료 · ${tw.name} ${blueTeamWon ? '🏆 수정을 지켜냈어요!' : `💔 ${(sim.defense && sim.defense.wave) || 1}웨이브에서 방어 실패`}`
           : tw
           ? `관전 종료 · ${tw.name} ${blueTeamWon ? `🏆 ${tw.floor}층 돌파!` : '🛡️ 도전 실패'}`
           : rw && rw.rush
@@ -30151,7 +30179,7 @@
           ? (rw.dungeon ? '관전한 던전 탐험이 끝났어요. (관전은 보상이 없어요)' : '관전한 엘리트 보스 토벌이 끝났어요. (관전은 보상이 없어요)')
           : sim.forfeitTeam
             ? `${(sim.forfeitTeam === 'blue' ? meta.blueStudent : meta.redStudent)?.name || ''} 친구가 포기했어요.`
-            : (tw ? `관전한 ${tw.ranked ? '랭킹 매칭' : '탑 도전'}이 끝났어요. (관전은 보상이 없어요)` : '관전한 결투가 끝났어요. (관전은 보상이 없어요)');
+            : (tw ? `관전한 ${tw.ranked ? '랭킹 매칭' : tw.defense ? '수정 방어전' : '탑 도전'}이 끝났어요. (관전은 보상이 없어요)` : '관전한 결투가 끝났어요. (관전은 보상이 없어요)');
         document.getElementById('battleMvpBox').innerHTML = `
           <div class="font-bold text-amber-300 mb-1">🌟 이번 ${tw ? '도전' : rw ? '토벌' : '결투'} MVP</div>
           <div>⚔️ 최고 공격왕: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
@@ -47352,6 +47380,7 @@
       if (sim.eliteIntro) frame.it = sim.eliteIntro.t;
       if (sim.rush) frame.rs = packRushState();
       if (sim.dungeon && sim.dungeon.party) frame.dg = packDungeonState();
+      if (liveNet.towerCast && sim.mode === 'defense' && sim.defense) frame.df = packDefenseState();
       if (sim.awaitingControlChoice) frame.ps = 'choose';
       if (sim.shake && !sent.has(sim.shake)) { sent.add(sim.shake); frame.sk = [sim.shake.power, sim.shake.life, sim.shake.maxLife]; }
       if (sim.flash && !sent.has(sim.flash)) { sent.add(sim.flash); frame.fl = [String(sim.flash.color || '#ffffff'), sim.flash.life, sim.flash.maxLife]; }
@@ -47875,6 +47904,7 @@
         return out;
       };
       if (sim.dungeon && sim.dungeon.party) syncDungeonLiveUnits(); // 🏰 5인 던전: 방을 옮기거나 몬스터가 더 나오면 유닛 목록부터 다시 보냄
+      if (liveNet.towerCast && sim.mode === 'defense' && sim.defense) syncDefenseLiveUnits(); // 💎 수정 방어전: 웨이브 몬스터·모집 용병이 바뀌면 유닛 목록부터
       const packed = sim.units.map(packLiveUnit);
       const base = liveNet.sentU;
       // 전체 화면: 강제(결과·넘기기)·처음·유닛 수가 바뀜·LIVE_KEYFRAME_MS 지남 · 그 밖에는 앞 화면 대비 바뀐 칸만
@@ -47908,6 +47938,12 @@
         const dgs = packDungeonState(), j = JSON.stringify(dgs);
         if (j !== liveNet.dgSentJ) { liveNet.dgSentJ = j; liveNet.dgChangedAt = nowMs; }
         if (keyframe || nowMs - (liveNet.dgChangedAt || 0) < 1000) frame.dg = dgs;
+      }
+      // 💎 수정 방어전 중계: 웨이브·수정 체력·포인트 등은 바뀐 뒤 1초 동안과 전체 화면에만 실음 (던전과 같은 방식)
+      if (liveNet.towerCast && sim.mode === 'defense' && sim.defense) {
+        const dfs = packDefenseState(), j = JSON.stringify(dfs);
+        if (j !== liveNet.dfSentJ) { liveNet.dfSentJ = j; liveNet.dfChangedAt = nowMs; }
+        if (keyframe || nowMs - (liveNet.dfChangedAt || 0) < 1000) frame.df = dfs;
       }
       // 전투가 멈춰 있는 까닭 (관전자 화면에 안내): 전투 방식을 고르는 중
       if (sim.awaitingControlChoice) frame.ps = 'choose';
@@ -47943,6 +47979,7 @@
         forfeitTeam: sim.forfeitTeam || null,
         ...(sim.rush ? { rs: packRushState() } : {}),
         ...(sim.dungeon && sim.dungeon.party ? { dg: packDungeonState() } : {}),
+        ...(liveNet.towerCast && sim.mode === 'defense' && sim.defense ? { df: packDefenseState() } : {}),
         s: sim.units.map(u => [Math.round(liveNum(u.damageDealt)), Math.round(liveNum(u.healDone)), Math.round(liveNum(u.damageTaken))])
       }).catch(() => {});
       const roomId = liveNet.roomId;
@@ -48827,8 +48864,9 @@
     // 버퍼의 화면 한 장을 적용 (위치는 따로 이어 그림) · ageMs = 그 화면이 재생 시점보다 얼마나 앞선 것인지
     function applyLiveFrameState(val, ageMs) {
       // 토벌 도중에 들어온 관전자: 남은 시간이 방장 화면과 같게
-      if ((sim.raidWatch || sim.fairDuel || (sim.dungeon && sim.dungeon.party)) && liveNum(val.t) > 0) sim.tickCount = liveNum(val.t); // 공정한 결투: 남은 시간도 계산 담당 화면 기준 // 5인 던전: 남은 시간·기믹 시각이 방장 화면 기준
+      if ((sim.raidWatch || sim.fairDuel || (sim.dungeon && sim.dungeon.party) || (sim.spectator && sim.mode === 'defense')) && liveNum(val.t) > 0) sim.tickCount = liveNum(val.t); // 공정한 결투: 남은 시간도 계산 담당 화면 기준 // 5인 던전: 남은 시간·기믹 시각이 방장 화면 기준
       if (val.dg && typeof val.dg === 'object' && sim.dungeon) applyDungeonState(val.dg);
+      if (val.df && typeof val.df === 'object' && sim.spectator && sim.defense) applyDefenseState(val.df);
       liveNet.hostPause = val.ps === 'choose' ? val.ps : null;
       if (Array.isArray(val.rs)) applyRushState(val.rs);
       if (isEliteBossMode(sim.mode)) sim.eliteIntro = liveNum(val.it) > 0 ? { t: liveNum(val.it) } : null;
@@ -48937,6 +48975,7 @@
       });
       if (Array.isArray(val.rs)) applyRushState(val.rs);
       if (val.dg && typeof val.dg === 'object' && sim.dungeon) applyDungeonState(val.dg);
+      if (val.df && typeof val.df === 'object' && sim.spectator && sim.defense) applyDefenseState(val.df);
       stopLiveBattleNet();
       sim.forfeitTeam = val.forfeitTeam === 'red' || val.forfeitTeam === 'blue' ? val.forfeitTeam : null;
       if (sim.running) finishSimulation(val.blueWon === true);
@@ -53028,6 +53067,7 @@
       void BATTLE_MAPS.crystal_defense.ready; Object.values(DEFENSE_ART).forEach(d => void d.ready); // 맵·수정 그림을 미리 받기 시작 (전투 준비 화면이 기다림)
       launchSimulation({ mode: 'defense', title: `💎 수정 방어전 [${DEFENSE_DIFF_LABEL[diff]}] · ${race}의 습격을 막아라!`, blueStudent: stu, customRedUnits: [], rewardMc: 0 });
       if (!sim.running || sim.mode !== 'defense') return;
+      sim.entryCharge = () => startDefenseLiveBroadcast(stu); // 전투 방식을 고르면(=전투가 시작되면) 친구들이 관전할 수 있게 중계 시작 (탑 도전과 같은 방식)
       sim.defense = newDefenseState(race, diff, { baseFloor: dungeonFloorOfMercs(deployed, diff), powerRatio: dungeonPowerRatio(stu), power: dungeonPowerOf(stu), level: deployed.reduce((s, m) => s + (m.level || 1), 0) / deployed.length });
       defenseInitialPlacement();
       defensePlanWave();
@@ -53081,7 +53121,7 @@
       return blue.find(u => u.id === (battleControl.mode === 'manual' ? battleControl.unitId : dm.mainId)) || blue.find(u => u.alive) || null;
     }
     function toggleDefenseAutoBattle() {
-      if (sim.mode !== 'defense' || !sim.running || !sim.defense) return;
+      if (sim.mode !== 'defense' || !sim.running || !sim.defense || sim.spectator) return;
       const u = defenseMainUnit();
       if (battleControl.mode === 'manual') setBattleControlMode('auto', null, true);
       else if (u && u.alive) setBattleControlMode('manual', u.id, true);
@@ -53700,6 +53740,65 @@
       ctx.restore();
     }
 
+    // ----- 📺 관전 (startDefenseLiveBroadcast): 방어전 상태를 화면(frame.df)에 실어 보내고, 관전 화면은 그대로 받아 그림 -----
+    // 시각(pa·sr·lr의 at)은 방장 화면의 틱 · 관전 화면은 화면마다 틱을 방장에 맞춤 (applyLiveFrameState)
+    const DEFENSE_PHASES = ['prep', 'fight', 'done'];
+    function packDefenseState() {
+      const dm = sim.defense, cr = dm.crystal, p = dm.plan, lr = dm.lastRecruit;
+      const up = {}, g = {};
+      sim.units.forEach(u => { if (u.team === 'blue' && u.defUp > 0) up[u.id] = u.defUp; });
+      if (dm.phase === 'prep') Object.keys(dm.guard || {}).forEach(id => { const q = dm.guard[id]; if (q) g[id] = [Math.round(q.x), Math.round(q.y)]; });
+      return {
+        w: dm.wave, ph: Math.max(0, DEFENSE_PHASES.indexOf(dm.phase)), sd: dm.started ? 1 : 0, pa: dm.phaseAt, pt: dm.prepTicks,
+        hp: Math.ceil(cr.hp), mh: cr.maxHp, sh: cr.shock, sr: cr.shockReadyAt, pts: dm.pts, l: dm.left || 0, tt: dm.total || 0,
+        won: dm.won ? 1 : 0, rc: dm.recruits, ar: dm.autoRecruit ? 1 : 0, rp: dm.repairs || 0, cl: dm.cleared,
+        pl: p ? [p.split || '', p.lanes || [0, 0, 0, 0], p.boss ? 1 : 0, p.bossLane == null ? -1 : p.bossLane] : null, up, g,
+        lr: lr ? [lr.id, lr.name, lr.job, lr.rarity, lr.hidden ? 1 : 0, lr.hiddenName || '', lr.skin == null ? null : lr.skin, lr.at] : null
+      };
+    }
+    function applyDefenseState(a) {
+      const dm = sim.defense;
+      if (!dm || !a || typeof a !== 'object') return;
+      const cr = dm.crystal, num = (v, d = 0) => (typeof v === 'number' && isFinite(v) ? v : d);
+      dm.wave = Math.max(1, Math.min(DEFENSE_TUNE.waves, num(a.w, dm.wave)));
+      dm.phase = DEFENSE_PHASES[num(a.ph)] || 'prep';
+      dm.started = Boolean(a.sd);
+      dm.phaseAt = num(a.pa, dm.phaseAt);
+      dm.prepTicks = Math.max(1, num(a.pt, dm.prepTicks));
+      const hp = Math.max(0, num(a.hp, cr.hp));
+      cr.hitFlash = hp < cr.hp ? 6 : 0; // 깎인 화면에서만 반짝 (바뀐 뒤 1초 동안은 화면마다 df가 오므로 다음 화면에 꺼짐)
+      cr.hp = hp;
+      cr.maxHp = Math.max(1, num(a.mh, cr.maxHp));
+      cr.shock = num(a.sh); cr.shockReadyAt = num(a.sr);
+      dm.pts = num(a.pts); dm.left = num(a.l); dm.total = num(a.tt);
+      dm.won = Boolean(a.won); dm.recruits = num(a.rc); dm.autoRecruit = Boolean(a.ar); dm.repairs = num(a.rp); dm.cleared = num(a.cl);
+      if (Array.isArray(a.pl)) {
+        const lanes = (Array.isArray(a.pl[1]) ? a.pl[1] : []).slice(0, 4).map(v => num(v));
+        while (lanes.length < 4) lanes.push(0);
+        const bl = num(a.pl[3], -1);
+        dm.plan = { split: cleanUserText(String(a.pl[0] || ''), 20), lanes, elites: 0, boss: Boolean(a.pl[2]), bossLane: bl >= 0 && bl < 4 ? bl : null };
+      }
+      const up = a.up && typeof a.up === 'object' ? a.up : {};
+      sim.units.forEach(u => { if (u.team === 'blue') u.defUp = Math.max(0, Math.min(DEFENSE_TUNE.upgrade.max, num(up[u.id]))); });
+      dm.guard = {};
+      if (a.g && typeof a.g === 'object') Object.keys(a.g).forEach(id => { const q = a.g[id]; if (Array.isArray(q)) dm.guard[id] = { x: num(q[0]), y: num(q[1]) }; });
+      const lr = a.lr;
+      dm.lastRecruit = Array.isArray(lr) ? {
+        id: String(lr[0] || ''), name: cleanUserText(String(lr[1] || ''), 30), job: JOB_DEFS[lr[2]] ? lr[2] : 'warrior', rarity: DEFENSE_RARITY_TAG[lr[3]] ? lr[3] : 'N',
+        hidden: Boolean(lr[4]), hiddenName: cleanUserText(String(lr[5] || ''), 30), skin: lr[6] == null ? null : lr[6], at: num(lr[7])
+      } : null;
+    }
+    // 방장(중계): 유닛 목록이 바뀌면(웨이브 몬스터 등장·쓰러진 몬스터 치움·모집) 관전 화면에 목록부터 다시 보냄
+    // 보는 친구가 없을 땐 화면을 안 보내므로 여기도 안 옴 → 기준(dfUnitSig)이 그대로라, 친구가 보러 오면 첫 화면 전에 최신 목록을 보냄
+    function syncDefenseLiveUnits() {
+      const sig = sim.units.map(u => u.id).join(',');
+      if (liveNet.dfUnitSig === sig) return;
+      liveNet.dfUnitSig = sig;
+      liveNet.dfSeq = (liveNet.dfSeq || 0) + 1;
+      sendRushUnitList(`df${liveNet.dfSeq}`);
+      liveNet.sentU = null; // 다음 화면은 전체로
+    }
+
     // ----- HUD · 패널 -----
     function updateDefenseHud(arenaVisible) {
       const el = document.getElementById('defenseHud');
@@ -53711,7 +53810,7 @@
       if (!dm) return;
       const tps = BATTLE_TICKS_PER_SEC, cr = dm.crystal;
       let text;
-      if (dm.phase === 'prep') { const left = Math.max(0, Math.ceil((dm.prepTicks - (sim.tickCount - dm.phaseAt)) / tps)); text = `🛠️ 준비 ${left}초 · ✋ 용병을 끌어다 놓으세요 · 다음 [${dm.plan.split}]${dm.plan.boss ? ' 👑보스' : ''}`; }
+      if (dm.phase === 'prep') { const left = Math.max(0, Math.ceil((dm.prepTicks - (sim.tickCount - dm.phaseAt)) / tps)); text = `🛠️ 준비 ${left}초${sim.spectator ? '' : ' · ✋ 용병을 끌어다 놓으세요'} · 다음 [${dm.plan ? dm.plan.split : ''}]${dm.plan && dm.plan.boss ? ' 👑보스' : ''}`; }
       else if (dm.phase === 'fight') text = `⚔️ 남은 몬스터 ${dm.left || 0}/${dm.total || 0}`;
       else text = dm.won ? '🏆 수정을 지켜냈어요!' : '💔 수정이 깨졌어요';
       el.textContent = `💎 수정 방어전 · 웨이브 ${dm.wave}/${DEFENSE_TUNE.waves} · 💎 ${Math.ceil(cr.hp)}/${cr.maxHp} · 🔷 ${dm.pts} · ${text}`;
@@ -53805,7 +53904,7 @@
             </div>
           </div>
           ${reveal}
-          <div class="dfp-tip" style="margin-top:6px">✋ <b>준비 시간</b>에 전장의 용병을 끌어다 지킬 곳에 놓으세요. 그 자리 둘레를 지키고, 수정이 위험하면 도우러 가요.${can ? '' : ' (5인 방에서는 방장만 고를 수 있어요)'}</div>
+          <div class="dfp-tip" style="margin-top:6px">✋ <b>준비 시간</b>에 전장의 용병을 끌어다 지킬 곳에 놓으세요. 그 자리 둘레를 지키고, 수정이 위험하면 도우러 가요.${can ? '' : sim.spectator ? ' (📺 관전 중이라 보기만 해요)' : ' (5인 방에서는 방장만 고를 수 있어요)'}</div>
         </div>`;
       const roster = blue.map(u => {
         const lv = u.defUp || 0, maxed = lv >= DEFENSE_TUNE.upgrade.max, ucost = maxed ? 0 : defenseUpgradeCost(u);
