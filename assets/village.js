@@ -1190,7 +1190,16 @@
   // ── 낚시: 그림자 근처 물가에서 E → 찌를 던짐 → 그림자가 다가와 톡톡 건드리다(입질 전) 찌가 쑥 잠기면(입질) 다시 E로 걷어 올림
   const fishing = { st: null }; // st: cast(던지는 중) · wait(다가오는 중) · nibble(톡톡) · bite(지금!)
   const nearWater = (x, z) => riverDist(x, z) < 1.6 || eastDist(x, z) < 1.6 || z > SEA_Z - 2.4;
-  const rod = new THREE.Group(); { const pole = mesh(new THREE.CylinderGeometry(0.02, 0.035, 1.5, 6), '#8a5a34'); pole.position.y = 0.75; rod.add(pole); rod.add(at(mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.08, 10), '#3a3a44'), 0, 0.25, 0.05)); }
+  const rod = new THREE.Group(), ROD_TIP = 1.72; // 낚싯대: 코르크 손잡이, 금색 고리, 남색 두 마디 대, 은색 줄받이 고리, 스피닝 릴, 빨간 끝
+  { const cyl = (r0, r1, h, c, y, n) => at(mesh(new THREE.CylinderGeometry(r0, r1, h, n || 10), c), 0, y, 0), add = m => { rod.add(m); return m; };
+    add(cyl(0.046, 0.05, 0.06, '#2b2b33', 0.03)); add(cyl(0.042, 0.045, 0.34, '#d9b98a', 0.23)); add(cyl(0.031, 0.031, 0.05, '#d9a441', 0.425)); add(cyl(0.033, 0.033, 0.07, '#3a3a44', 0.485));
+    add(cyl(0.035, 0.04, 0.13, '#d9b98a', 0.585)); add(cyl(0.027, 0.03, 0.03, '#d9a441', 0.665));
+    add(cyl(0.015, 0.025, 0.6, '#24427a', 0.97, 8)); add(cyl(0.019, 0.019, 0.035, '#d9a441', 1.27, 8)); add(cyl(0.007, 0.015, 0.43, '#2f5aa0', 1.49, 6)); add(cyl(0.007, 0.007, 0.05, '#e8483f', 1.695, 6));
+    [[0.86, 0.034], [1.08, 0.028], [1.3, 0.022], [1.48, 0.018], [1.63, 0.014]].forEach(([y, rr]) => { const g = add(at(mesh(new THREE.TorusGeometry(rr, 0.005, 4, 12), '#d9dde3'), 0, y, 0.016 + rr)); g.rotation.x = Math.PI / 2;
+      add(at(mesh(new THREE.BoxGeometry(0.006, 0.02, rr + 0.01), '#d9dde3'), 0, y, 0.012 + rr / 2)); }); // 줄받이 고리
+    add(at(mesh(new THREE.BoxGeometry(0.014, 0.03, 0.08), '#3a3a44'), 0, 0.485, 0.06)); // 릴: 다리, 몸통, 은색 스풀, 손잡이
+    add(at(mesh(new THREE.CylinderGeometry(0.04, 0.034, 0.08, 14), '#2b2f3a'), 0, 0.46, 0.12)); add(at(mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.05, 14), '#c9ced6'), 0, 0.525, 0.12));
+    add(at(mesh(new THREE.BoxGeometry(0.08, 0.01, 0.012), '#c9ced6'), 0.05, 0.46, 0.12)); add(at(mesh(new THREE.SphereGeometry(0.016, 8, 6), '#f4efe5'), 0.09, 0.46, 0.12)); }
   rod.position.set(0.24, 0.5, 0.12); rod.rotation.x = 0.85; rod.visible = false; me.g.add(rod); dress(rod); // 낚시 중엔 앞으로, 들고 다닐 땐 어깨에 멤
   const bobber = new THREE.Group(); bobber.add(at(noShadow(mesh(new THREE.SphereGeometry(0.09, 12, 8, 0, 6.29, 0, Math.PI / 2), '#e8483f')), 0, 0, 0)); bobber.add(at(noShadow(mesh(new THREE.SphereGeometry(0.09, 12, 8, 0, 6.29, Math.PI / 2, Math.PI / 2), '#ffffff')), 0, 0, 0));
   bobber.visible = false; scene.add(bobber);
@@ -1244,7 +1253,7 @@
   function startFishing(sh) {
     const d = Math.hypot(sh.x - me.x, sh.z - me.z) || 1; let bx = sh.x + (me.x - sh.x) / d * 0.6, bz = sh.z + (me.z - sh.z) / d * 0.6; // 그림자 코앞에 떨어뜨림 (물가 쪽이 땅이면 그림자 자리에)
     if (!inWater(bx, bz, 0.15)) { bx = sh.x; bz = sh.z; }
-    me.target = null; marker.visible = false; me.face = Math.atan2(bx - me.x, bz - me.z); if (bag.held !== 'rod') { setRod(true); say(me, '낚싯대를 꺼냈어요', 1.2); } rod.visible = true; me.g.updateMatrixWorld(true); rod.localToWorld(tip.set(0, 1.5, 0));
+    me.target = null; marker.visible = false; me.face = Math.atan2(bx - me.x, bz - me.z); if (bag.held !== 'rod') { setRod(true); say(me, '낚싯대를 꺼냈어요', 1.2); } rod.visible = true; me.g.updateMatrixWorld(true); rod.localToWorld(tip.set(0, ROD_TIP, 0));
     Object.assign(fishing, { st: 'cast', sh, t: 0, bx, bz, fx: tip.x, fy: tip.y, fz: tip.z }); sh.state = 'lure'; sfx.note(); }
   function endFishing(msg) { if (!fishing.st) return; const sh = fishing.sh; if (sh && sh.state === 'lure') sh.state = 'swim'; fishing.st = null; bobber.visible = line.visible = false; rod.visible = bag.held === 'rod'; if (msg) say(me, msg, 1.6); }
   function flee(sh) { sh.state = 'flee'; let best = null, bd = -1; // 물속 자리 중 나에게서 가장 먼 곳으로 달아남
@@ -1285,7 +1294,7 @@
         if (fishing.left <= 0) { fishing.st = 'bite'; fishing.t = 0; popText('❗', fishing.bx, 0.7, fishing.bz); sfx.knock(); } }
       if (fishing.st === 'bite') { by -= 0.07; if (fishing.t > BITE_WIN[sh.f.rar]) { flee(sh); fishing.sh = null; endFishing('놓쳤어요… 😢'); return; } }
       bobber.position.set(fishing.bx, by + Math.sin(t * 3) * 0.012, fishing.bz); }
-    me.g.updateMatrixWorld(true); rod.localToWorld(tip.set(0, 1.5, 0)); // 낚싯줄: 대 끝에서 찌까지 살짝 늘어짐
+    me.g.updateMatrixWorld(true); rod.localToWorld(tip.set(0, ROD_TIP, 0)); // 낚싯줄: 대 끝에서 찌까지 살짝 늘어짐
     const pa = lineGeo.attributes.position, b = bobber.position, sag = fishing.st === 'bite' ? 0 : 0.35;
     for (let i = 0; i < 10; i++) { const k = i / 9; pa.setXYZ(i, tip.x + (b.x - tip.x) * k, tip.y + (b.y - tip.y) * k - Math.sin(k * Math.PI) * sag, tip.z + (b.z - tip.z) * k); }
     pa.needsUpdate = true; me.face = Math.atan2(fishing.bx - me.x, fishing.bz - me.z);
