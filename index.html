@@ -15529,6 +15529,10 @@
         showNotice('⏰ 입찰 기간이 끝난 경매예요.');
         return;
       }
+      if (auc.highestBidderId === stu.id) {
+        showNotice('🙋 이미 내가 최고가로 입찰한 경매예요. 다른 친구가 더 높게 입찰하면 다시 입찰할 수 있어요.');
+        return;
+      }
       if (stu.roster.length >= MAX_ROSTER) {
         showNotice(`⚠️ 보유 용병 정원(${MAX_ROSTER}명)이 가득 찼습니다!`);
         return;
@@ -15555,7 +15559,7 @@
         // 서버의 지금 값 기준으로 다시 확인: 그 사이 다른 친구가 더 높게 입찰했거나 경매가 끝났으면 내 입찰은 들어가지 않음 (CA도 안 빠짐)
         const r = await marketItemTx('auctions', auctionId, cur => {
           const min = cur.highestBidderId ? (Number(cur.currentBid) || 0) + 50 : (Number(cur.startBid) || 0);
-          if (cur.sellerId === stu.id || bidAmount < min || (auctionEndsAt(cur) && auctionEndsAt(cur) <= Date.now())) return undefined;
+          if (cur.sellerId === stu.id || cur.highestBidderId === stu.id || bidAmount < min || (auctionEndsAt(cur) && auctionEndsAt(cur) <= Date.now())) return undefined;
           return { ...cur, currentBid: bidAmount, highestBidderId: stu.id, highestBidderName: `${stu.name}` };
         });
         if (!r.ok) {
@@ -16138,13 +16142,14 @@
                     : `
                       <div class="flex flex-col gap-1.5">
                         <div class="flex gap-1.5">
-                          ${minNextBid > AUCTION_MAX_BID
+                          ${isMyTopBid
+                            ? `<span class="flex-1 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 font-extrabold text-xs text-center" title="마감 때까지 최고가면 내 용병이 돼요. 다른 친구가 더 높게 입찰하면 다시 입찰할 수 있어요">🙋 내가 최고가로 입찰 중</span>`
+                            : minNextBid > AUCTION_MAX_BID
                             ? `<span class="flex-1 py-1.5 rounded-xl bg-slate-800 text-slate-400 font-extrabold text-xs text-center">🔒 입찰 상한가(1억 CA) 도달</span>`
                             : `<input id="bidInput_${auc.id}" type="number" min="${minNextBid}" max="${AUCTION_MAX_BID}" step="50" value="${minNextBid}" class="w-24 rounded-xl px-2 py-1.5 text-xs font-extrabold border" />
                           <button onclick="placeBidOnAuction('${auc.id}')" class="flex-1 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow">
                             🙋 입찰하기
                           </button>`}
-                          ${isMyTopBid ? `<span class="px-2 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 font-extrabold text-[11px]" title="마감 때까지 최고가면 내 용병이 돼요">🙋 내가 최고가</span>` : ''}
                         </div>
                       </div>
                     `
