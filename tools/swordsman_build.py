@@ -4,6 +4,7 @@
 # 크기 통일: 대기 자세 몸 키(머리털 끝~발, 샘플 px)를 TARGET_H로 줄임. 다른 동작은 대기와 같은 배율('idle')로 줄여 얼굴 크기를 맞춤
 # 샘플 정리:
 #   - 대기 샘플(768×1024)은 도트 그림을 흐리게 키운 것, 테두리 없음
+#   - 피부가 첫 샘플보다 어두워서 살색만 밝힘 (SKIN)
 #   - 흰 배경은 가장자리에서 이어진 흰 픽셀만 지움 (짚신·옷깃의 밝은 회색은 검은 외곽선 안쪽이라 남음)
 import os, sys
 import numpy as np
@@ -20,6 +21,19 @@ TARGET_H = 86   # 대기 자세 머리 묶음 끝~발 → 게임 칸 키 (격투
 CARD = {}   # (x0, x1, y0, y1): 샘플 테두리 잘라 냄
 WHITE_MIN = {}
 CUT = {}   # 지울 상자 (x0, x1, y0, y1)
+SKIN = {'idle'}   # 피부를 첫 샘플(밝은 살색)만큼 밝힘: 받은 대기 샘플은 피부가 어두운 갈색
+
+
+def lighten_skin(rgba):   # 살색 픽셀만 밝기에 따라 더함. 기준 두 색: 그림자 (140,86,70)→(176,121,103) · 바탕 (213,133,94)→(243,184,150)
+    rgb = rgba[..., :3].astype(float)
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    warm = (r - b > 35) & (r > g) & (g > b)
+    t = np.clip((r - 140) / 73, 0, 1.2)[..., None]
+    add = np.array([36, 35, 33]) + t * (np.array([30, 51, 56]) - np.array([36, 35, 33]))
+    w = (np.clip((r - 90) / 40, 0, 1) * warm)[..., None]   # 외곽선 가까운 어두운 갈색은 덜 바꿈
+    rgba = rgba.copy()
+    rgba[..., :3] = np.clip(rgb + add * w, 0, 255)
+    return rgba
 
 
 def load(name, pick=0):
@@ -66,6 +80,7 @@ def main():
     pieces, scale = [], {}
     for src, name, k, pick in FRAMES:
         rgba, foot, bh = load(src, pick)
+        if src in SKIN: rgba = lighten_skin(rgba)
         if name in FOOTX: foot = FOOTX[name]
         sc = scale[k] if k != 'H' else TARGET_H / bh
         scale[name] = sc
