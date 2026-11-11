@@ -479,8 +479,16 @@
     box(0.55, 0.3, 0.45, '#56606c', 2.6, 0.85, 0.3); box(0.5, 0.22, 0.04, '#9fe0a0', 2.6, 0.95, 0.53);
     [-4.4, -3.3].forEach((x, i) => { box(0.9, 0.5, 0.7, '#c58f5c', x, 0.25, 1.4); for (let k = 0; k < 6; k++) g.add(at(mesh(new THREE.SphereGeometry(0.13, 10, 8), ['#e8483f', '#f2c53a'][i]), x - 0.28 + (k % 3) * 0.28, 0.6, 1.25 + Math.floor(k / 3) * 0.3)); }); // 과일 상자
     box(1.6, 0.04, 0.9, '#c94f4f', 0, 0.06, 3.6); // 나가는 문 깔개
+    { const rk = new THREE.Group(), rb = (w, h, d, c, x, y, z) => { const m = at(mesh(new THREE.BoxGeometry(w, h, d), c), x, y, z); rk.add(m); return m; }; // 낚싯대 진열대
+      rb(1.1, 0.14, 0.5, '#8a5a34', 0, 0.07, 0); rb(1.1, 1.7, 0.08, '#b9824e', 0, 0.85, -0.22); rb(1.16, 0.08, 0.12, '#8a5a34', 0, 1.0, -0.14);
+      [-0.36, 0, 0.36].forEach((x, i) => { const st = new THREE.Group(); st.add(at(mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.3, 8), '#d9b98a'), 0, 0.3, 0)); st.add(at(mesh(new THREE.CylinderGeometry(0.012, 0.022, 1.25, 6), ['#24427a', '#7a2f3a', '#2f6f5f'][i]), 0, 1.05, 0));
+        st.add(at(mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.05, 10), '#c9ced6'), 0, 0.5, 0.05)); st.rotation.x = -0.12; rk.add(at(st, x, 0.12, -0.05)); });
+      const tc = document.createElement('canvas'); tc.width = 256; tc.height = 72; const tg = tc.getContext('2d');
+      tg.fillStyle = '#fff8d8'; tg.fillRect(0, 0, 256, 72); tg.strokeStyle = '#e8a13a'; tg.lineWidth = 6; tg.strokeRect(3, 3, 250, 66); tg.fillStyle = '#5a3520'; tg.font = "800 32px 'Malgun Gothic', sans-serif"; tg.textAlign = 'center'; tg.textBaseline = 'middle'; tg.fillText('🎣 낚싯대 30동', 128, 38);
+      rk.add(at(noShadow(mesh(new THREE.PlaneGeometry(0.95, 0.27), flat(0xffffff, { map: new THREE.CanvasTexture(tc) }))), 0, 1.86, -0.17));
+      rk.rotation.y = -Math.PI / 2; g.add(at(rk, 5.55, 0, -1.7)); }
     scene.add(at(g, SHOP.ix, 0, SHOP.iz));
-    [[-2.6, -1.2, 0.75], [-3.8, -1.2, 0.75], [-1.4, -1.2, 0.75], [2.8, 0.3, 0.6], [4.4, 0.3, 0.6], [-3.85, 1.4, 0.75]].forEach(([x, z, r]) => solid(SHOP.ix + x, SHOP.iz + z, r));
+    [[-2.6, -1.2, 0.75], [-3.8, -1.2, 0.75], [-1.4, -1.2, 0.75], [2.8, 0.3, 0.6], [4.4, 0.3, 0.6], [-3.85, 1.4, 0.75], [5.6, -1.7, 0.55]].forEach(([x, z, r]) => solid(SHOP.ix + x, SHOP.iz + z, r));
   }
 
   // ── 놀이터: 강 아래 집들 맨 왼쪽 바깥. 그네 두 자리·미끄럼틀·시소·뺑뺑이·트램펄린, E로 탐 (탈 자리는 아래 seats 끝에 붙음)
@@ -1016,7 +1024,8 @@
     if (Math.hypot(me.x - SHOP.ix, me.z - (SHOP.iz + 3)) < 1.1) return { kind: 'shopOut', label: '🚪 밖으로 나가기' };
     const clerk = clerks.find(a => Math.hypot(a.x - me.x, a.z - me.z) < 1.9);
     if (clerk) return { kind: 'clerk', clerk, label: '💬 ' + clerk.name.slice(3) + ' 점원과 이야기' };
-    const sh = castTarget(); if (sh) return { kind: 'cast', sh, label: bag.held === 'rod' ? '🎣 낚시하기' : '🎣 낚싯대 꺼내서 낚시하기' };
+    if (Math.hypot(me.x - (SHOP.ix + 4.7), me.z - (SHOP.iz - 1.7)) < 1.3) return { kind: 'rack', label: bag.rod ? '🎣 낚싯대 진열대' : `🎣 낚싯대 사기 (${ROD_PRICE}동)` };
+    const sh = castTarget(); if (sh) return bag.rod ? { kind: 'cast', sh, label: bag.held === 'rod' ? '🎣 낚시하기' : '🎣 낚싯대 꺼내서 낚시하기' } : { kind: 'norod', label: '🎣 낚싯대가 없어요 (슈퍼마켓)' };
     const palm = palms.find(q => Math.hypot(q.x - me.x, q.z - me.z) < 2.2);
     if (palm) return { kind: 'palm', palm, label: palm.nutG.children.some(n => n.userData.state === 'on') ? '🥥 코코넛 따기' : '🌴 야자나무 흔들기' };
     let best = null, bd = 2.4;
@@ -1029,6 +1038,8 @@
     const c = nearby(); if (!c) return;
     if (c.kind === 'tree') return shake();
     if (c.kind === 'cast') return startFishing(c.sh);
+    if (c.kind === 'norod') { say(me, '낚싯대가 있어야 해요. 슈퍼마켓에서 사요!', 2.2); return; }
+    if (c.kind === 'rack') { const k = clerks[0]; k.wave = 1.4; say(k, bag.rod ? '이미 좋은 낚싯대가 있네요!' : `낚싯대는 ${ROD_PRICE}동이에요 🎣`, 2); openShop(k); return; }
     if (c.kind === 'reel') return reel();
     if (c.kind === 'palm') { const q = c.palm; q.shake = 0.7; me.face = Math.atan2(q.x - me.x, q.z - me.z); sfx.shake();
       if (q.nutG.children.some(n => n.userData.state === 'on')) { q.nutG.children.forEach(n => { if (n.userData.state === 'on') { n.userData.state = 'fall'; n.userData.vy = 0; } }); q.regrow = 20; }
@@ -1043,7 +1054,7 @@
     if (c.kind === 'door') { me.face = Math.PI; me.hop = 0.3; say(me, '똑똑!', 1.2); sfx.knock(); const o = c.owner; if (o && Math.hypot(o.x - me.x, o.z - me.z) < 9) { say(o, '어서 와!', 2); o.wave = 1.8; o.target = null; o.wait = 2.2; o.lookAt = me; } return; }
     if (c.kind === 'shopIn') return goTo(SHOP.ix, SHOP.iz + 2.4, Math.PI);
     if (c.kind === 'shopOut') return goTo(SHOP.x, SHOP.z + 2.9, 0);
-    if (c.kind === 'clerk') { const k = c.clerk; me.face = Math.atan2(k.x - me.x, k.z - me.z); k.face = Math.atan2(me.x - k.x, me.z - k.z); k.wave = 1.6; say(k, pick(['어서 오세요! 물고기 사요 🐟', '잡은 물고기 있으면 동으로 바꿔 드려요!', '싱싱한 물고기 환영해요!']), 2.2); sfx.note(); openShop(k); return; }
+    if (c.kind === 'clerk') { const k = c.clerk; me.face = Math.atan2(k.x - me.x, k.z - me.z); k.face = Math.atan2(me.x - k.x, me.z - k.z); k.wave = 1.6; say(k, pick(['어서 오세요! 🛒', '열매랑 물고기 사요!', '낚싯대도 팔아요 🎣']), 2.2); sfx.note(); openShop(k); return; }
     if (c.kind === 'board') { me.face = Math.atan2(3.1 - me.x, -3.1 - me.z); say(me, '오늘의 공지: 사이좋게 놀기 😊', 2.6); sfx.note(); }
   }
   function goTo(x, z, face) { // 가게 안팎으로 옮겨 감: 카메라도 바로 따라감
@@ -1216,19 +1227,22 @@
   const dexN = $('dexN'), dexEl = $('dex'), catchEl = $('catch');
   const updDexN = () => { dexN.textContent = Object.keys(dex).length + '/' + FISH.length; }; updDexN();
   // 가방: 낚싯대(손에 들기·넣기), 잡은 물고기, 딴 열매. 이 브라우저에 저장 (나중에 슈퍼마켓 점원에게 팔 거리)
-  const BAG_KEY = 'vlgBag:' + (demo ? 'demo' : host.me.id); let bag = { held: null, fish: {}, apple: 0, coconut: 0, coins: 0 };
+  const BAG_KEY = 'vlgBag:' + (demo ? 'demo' : host.me.id); let bag = { held: null, rod: false, fish: {}, apple: 0, coconut: 0, coins: 0 };
   try { bag = Object.assign(bag, JSON.parse(localStorage.getItem(BAG_KEY) || '{}')); } catch (e) {}
+  if (!bag.rod) bag.held = null; // 낚싯대는 슈퍼마켓에서 사야 생김
   const bagEl = $('bag'), heldIc = $('heldIc');
   const coinN = $('coinN');
   const saveBag = () => { try { localStorage.setItem(BAG_KEY, JSON.stringify(bag)); } catch (e) {} coinN.textContent = bag.coins || 0; if (bagEl.style.display !== 'none') renderBag(); };
   coinN.textContent = bag.coins || 0;
   const bagAdd = (k, id) => { if (k === 'fish') bag.fish[id] = (bag.fish[id] || 0) + 1; else bag[k] = (bag[k] || 0) + 1; saveBag(); };
   function setRod(on) { // 낚싯대를 손에 들기/가방에 넣기
+    if (on && !bag.rod) { say(me, '낚싯대가 없어요. 슈퍼마켓에서 사요!', 2); return; }
     if (!on && fishing.st) endFishing(); bag.held = on ? 'rod' : null; rod.visible = on; heldIc.textContent = on ? '· 🎣' : ''; saveBag(); }
   function renderBag() {
     const slot = (ic, nm, cnt, extra, cls) => `<div class="vlg-fish vlg-slot ${cls || ''}"><div class="ic">${ic}</div><div class="nm">${nm}</div><div class="cnt">${cnt}</div>${extra || ''}</div>`;
-    const held = bag.held === 'rod', items = [slot('🎣', '낚싯대', held ? '손에 들고 있어요' : '가방 속', `<button data-rod>${held ? '가방에 넣기' : '손에 들기'}</button>`, held ? 'held' : '')];
-    if (bag.apple) items.push(slot('🍎', '열매', '× ' + bag.apple)); if (bag.coconut) items.push(slot('🥥', '코코넛', '× ' + bag.coconut));
+    const held = bag.held === 'rod', items = [bag.rod ? slot('🎣', '낚싯대', held ? '손에 들고 있어요' : '가방 속', `<button data-rod>${held ? '가방에 넣기' : '손에 들기'}</button>`, held ? 'held' : '')
+      : slot('🎣', '낚싯대 없음', `슈퍼마켓에서 ${ROD_PRICE}동`, '', 'no')];
+    if (bag.apple) items.push(slot('🍎', '사과', '× ' + bag.apple)); if (bag.coconut) items.push(slot('🥥', '코코넛', '× ' + bag.coconut));
     FISH.forEach(f => { const n = bag.fish[f.id]; if (n) items.push(slot(f.icon, f.name, '× ' + n, `<div class="st">${'★'.repeat(f.rar)}</div>`)); });
     const fishN = Object.values(bag.fish).reduce((a, b) => a + b, 0);
     $('bagSum').textContent = `🪙 ${bag.coins || 0}동 · 물고기 ${fishN}마리 · 열매 ${(bag.apple || 0) + (bag.coconut || 0)}개`;
@@ -1237,24 +1251,37 @@
     const b = $('bagBody').querySelector('[data-rod]'); if (b) b.onclick = () => setRod(bag.held !== 'rod'); }
   if (bag.held === 'rod') { rod.visible = true; heldIc.textContent = '· 🎣'; }
   const openBag = on => { bagEl.style.display = on ? 'flex' : 'none'; if (on) { openDex(false); openShop(null); renderBag(); } };
-  // 슈퍼마켓 점원에게 물고기 팔기: 값 = 귀함에 따른 기본값 × 크기(평균 cm가 클수록 최대 2배)
+  // 슈퍼마켓: 낚싯대를 사고, 열매·물고기를 팔아 동을 모음. 물고기 값 = 귀함에 따른 기본값 × 크기(평균 cm가 클수록 최대 2배)
+  const ROD_PRICE = 30, FRUIT = [['apple', '🍎', '사과', 5], ['coconut', '🥥', '코코넛', 7]];
   const PRICE = [0, 10, 30, 80, 300], fishPrice = f => Math.round(PRICE[f.rar] * (1 + Math.min(1, (f.cm[0] + f.cm[1]) / 400)));
   const shopEl = $('shop'); let shopClerk = null;
   function renderShop() {
-    const rows = FISH.filter(f => bag.fish[f.id]).map(f => { const n = bag.fish[f.id], pr = fishPrice(f);
-      return `<div class="vlg-sell"><span class="ic">${f.icon}</span><span class="nm">${f.name} × ${n}<br><small>${'★'.repeat(f.rar)} 한 마리 <span class="pr">${pr}동</span></small></span>`
-        + `<button data-sell="${f.id}" data-n="1">1마리 팔기</button>${n > 1 ? `<button data-sell="${f.id}" data-n="${n}">모두 팔기 (${pr * n}동)</button>` : ''}</div>`; });
-    const total = FISH.reduce((a, f) => a + (bag.fish[f.id] || 0) * fishPrice(f), 0);
-    $('shopSum').textContent = `내 돈 🪙 ${bag.coins || 0}동`;
-    $('shopBody').innerHTML = rows.length ? rows.join('') + `<button class="vlg-sell-all" data-sell="all">🐟 물고기 전부 팔기 · ${total}동</button>` : '<p style="text-align:center;font-weight:800;color:#6a7a6a">팔 물고기가 없어요. 강이나 바다에서 낚아 오세요! 🎣</p>';
-    $('shopBody').querySelectorAll('[data-sell]').forEach(b => { b.onclick = () => sellFish(b.dataset.sell, +b.dataset.n); }); }
-  function sellFish(id, n) {
+    const coins = bag.coins || 0, row = (ic, nm, sub, btns) => `<div class="vlg-sell"><span class="ic">${ic}</span><span class="nm">${nm}<br><small>${sub}</small></span>${btns}</div>`;
+    const buy = row('🎣', '낚싯대', `강·바다에서 물고기를 낚아요 <span class="pr">${ROD_PRICE}동</span>`, bag.rod ? '<button disabled>가지고 있어요</button>'
+      : coins >= ROD_PRICE ? '<button data-buy="rod">사기</button>' : `<button disabled>${ROD_PRICE - coins}동 모자라요</button>`);
+    const sells = [];
+    FRUIT.forEach(([k, ic, nm, pr]) => { const n = bag[k] || 0; if (n) sells.push(row(ic, `${nm} × ${n}`, `한 개 <span class="pr">${pr}동</span>`,
+      `<button data-sell="${k}" data-n="1">1개 팔기</button>${n > 1 ? `<button data-sell="${k}" data-n="${n}">모두 팔기 (${pr * n}동)</button>` : ''}`)); });
+    FISH.filter(f => bag.fish[f.id]).forEach(f => { const n = bag.fish[f.id], pr = fishPrice(f); sells.push(row(f.icon, `${f.name} × ${n}`, `${'★'.repeat(f.rar)} 한 마리 <span class="pr">${pr}동</span>`,
+      `<button data-sell="f${f.id}" data-n="1">1마리 팔기</button>${n > 1 ? `<button data-sell="f${f.id}" data-n="${n}">모두 팔기 (${pr * n}동)</button>` : ''}`)); });
+    const total = FRUIT.reduce((a, [k, , , pr]) => a + (bag[k] || 0) * pr, 0) + FISH.reduce((a, f) => a + (bag.fish[f.id] || 0) * fishPrice(f), 0);
+    $('shopSum').textContent = `내 돈 🪙 ${coins}동`;
+    $('shopBody').innerHTML = `<h4>🛒 사기</h4>${buy}<h4>💰 팔기</h4>` + (sells.length ? sells.join('') + `<button class="vlg-sell-all" data-sell="all">🧺 전부 팔기 · ${total}동</button>`
+      : '<p style="text-align:center;font-weight:800;color:#6a7a6a">팔 물건이 없어요. 열매를 따거나 물고기를 낚아 오세요!</p>');
+    $('shopBody').querySelectorAll('[data-sell]').forEach(b => { b.onclick = () => sellItem(b.dataset.sell, +b.dataset.n); });
+    const bb = $('shopBody').querySelector('[data-buy]'); if (bb) bb.onclick = buyRod; }
+  function sellItem(id, n) { // id: 'apple'·'coconut'·'f물고기번호'·'all'
     let got = 0, cnt = 0;
-    (id === 'all' ? FISH.filter(f => bag.fish[f.id]) : [FISH[+id]]).forEach(f => { const k = id === 'all' ? bag.fish[f.id] : Math.min(n, bag.fish[f.id] || 0);
-      got += k * fishPrice(f); cnt += k; bag.fish[f.id] -= k; if (!bag.fish[f.id]) delete bag.fish[f.id]; });
+    const take = (k, pr, have, set) => { const c = id === 'all' ? have : Math.min(n, have); got += c * pr; cnt += c; set(have - c); };
+    FRUIT.forEach(([k, , , pr]) => { if (id === 'all' || id === k) take(k, pr, bag[k] || 0, v => { bag[k] = v; }); });
+    FISH.forEach(f => { if ((id === 'all' || id === 'f' + f.id) && bag.fish[f.id]) take(f.id, fishPrice(f), bag.fish[f.id], v => { if (v) bag.fish[f.id] = v; else delete bag.fish[f.id]; }); });
     if (!cnt) return; bag.coins = (bag.coins || 0) + got; saveBag(); renderShop(); sfx.pick();
-    if (shopClerk) { say(shopClerk, pick(['고마워요! 싱싱하네요 🐟', '좋은 물고기네요! 값 잘 쳐 드릴게요', '또 잡아 오세요 😊']), 2); shopClerk.wave = 1.2; popText('+' + got + '동', shopClerk.x, 1.6, shopClerk.z); } }
-  const openShop = k => { shopClerk = k; shopEl.style.display = k ? 'flex' : 'none'; if (k) { bagEl.style.display = 'none'; dexEl.style.display = 'none'; renderShop(); } };
+    if (shopClerk) { say(shopClerk, pick(['고마워요! 싱싱하네요', '좋은 물건이네요! 값 잘 쳐 드릴게요', '또 가져오세요 😊']), 2); shopClerk.wave = 1.2; popText('+' + got + '동', shopClerk.x, 1.6, shopClerk.z); } }
+  function buyRod() {
+    if (bag.rod || (bag.coins || 0) < ROD_PRICE) return;
+    bag.coins -= ROD_PRICE; bag.rod = true; saveBag(); setRod(true); renderShop(); sfx.pick(); me.hop = 0.4;
+    if (shopClerk) { say(shopClerk, '좋은 낚시 되세요! 🎣', 2.2); shopClerk.wave = 1.4; popText('-' + ROD_PRICE + '동', shopClerk.x, 1.6, shopClerk.z); } }
+  const openShop = k => { shopClerk = k; shopEl.style.display = k ? 'flex' : 'none'; if (k) { $('shopTitle').textContent = '🦝 ' + k.name.slice(3) + '네 가게'; bagEl.style.display = 'none'; dexEl.style.display = 'none'; renderShop(); } };
   $('shopClose').onclick = () => openShop(null); shopEl.onclick = e => { if (e.target === shopEl) openShop(null); };
   $('bagBtn').onclick = e => { openBag(bagEl.style.display === 'none'); e.currentTarget.blur(); };
   $('bagClose').onclick = () => openBag(false); bagEl.onclick = e => { if (e.target === bagEl) openBag(false); };
@@ -1351,7 +1378,7 @@
     const kx = Math.round((ix * cy + iz * sy) * 100) / 100, kz = Math.round((iz * cy - ix * sy) * 100) / 100;
     if (me.sit && (kx || kz || me.target)) standUp(); // 움직이려 하면 일어남
     if (fishing.st && (kx || kz || me.target)) endFishing('줄을 감았어요');
-    if (shopClerk && Math.hypot(shopClerk.x - me.x, shopClerk.z - me.z) > 3) openShop(null); // 점원에게서 멀어지면 닫힘
+    if (shopClerk && Math.hypot(shopClerk.x - me.x, shopClerk.z - me.z) > 6.5) openShop(null); // 점원에게서 멀어지면 닫힘
     if (kx || kz) {
       const l = Math.hypot(kx, kz); step(me, kx / l * SPEED * me.run * dt, kz / l * SPEED * me.run * dt);
       me.face = Math.atan2(kx, kz); me.moving = true; me.target = null; marker.visible = false;
