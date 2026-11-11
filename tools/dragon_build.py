@@ -213,12 +213,13 @@ SAMPLES['drake_sniper']['order'] = ['idle', 'drake_sniper_walk/walk_a', 'drake_s
 # 공격 2의 보라 발톱 궤적은 그림에 둠. 쓰러짐 2 뒤 검은 연기 얼룩은 그대로
 SAMPLES['wyvern_rogue'] = {
     # 흰 바탕으로 다시 받은 샘플 (처음 샘플은 회색 바탕이 몸 색과 비슷했음). 날개·꼬리 사이에 갇힌 흰 바탕도 지움
-    'common': {'pocket': 12, 'min': 150, 'tol': 40},
+    'common': {'pocket': 12, 'min': 150, 'tol': 40}, 'clean_white': True,   # 테두리 흰 테·회색 연기 찌꺼기 지우기 (2026-11-11)
     'cells': {
-        'idle': B(42, 218, 44, 202, drop=[(42, 70, 44, 125), (178, 202, 100, 152)]), 'walk_a': B(58, 322, 238, 396, erase_r=[(10, 205, 205, 250)]),
+        'idle': B(42, 218, 44, 202, drop=[(178, 202, 100, 152)], smoke=[(42, 100, 44, 82), (118, 136, 62, 84), (42, 70, 82, 170)]), 'walk_a': B(58, 322, 238, 396, erase_r=[(10, 205, 205, 250)]),
         'walk_b': B(378, 640, 225, 396),
         'atk_a': B(78, 302, 444, 602), 'atk_b': B(368, 698, 444, 610),
-        'hurt': B(82, 332, 648, 806), 'death_a': B(106, 348, 848, 1008), 'death_b': B(458, 702, 842, 1010, drop=[(505, 648, 842, 893), (458, 500, 900, 960)]),   # 위로 피어오르는 연기 얼룩은 지움
+        'hurt': B(82, 332, 648, 806, keep_pale=[(210, 265, 655, 735)]), 'death_a': B(106, 348, 848, 1008), 'death_b': B(458, 702, 842, 1010, drop=[(505, 648, 842, 893), (458, 500, 900, 960)],
+                         smoke=[(458, 708, 842, 970, 60), (458, 708, 970, 1012, 120)], smoke_keep=[(646, 664, 896, 942), (668, 686, 920, 958)]),   # 위로 피어오르는 연기 얼룩·머리 뒤 연기·바닥 그림자는 지움
     },
     'order': ['idle', 'walk_a', 'walk_b', 'atk_a', 'atk_b', 'hurt~', 'death_a~', 'death_b'],
 }
@@ -324,7 +325,9 @@ def frame_of(name, k):
     ys = np.where((r[..., 3] > 128).any(1))[0]
     ay = ys.max() + 1 + o.get('dy', 0)
     ax = cx - ox
-    if name.startswith('dark_dragon'): r = clean_white(r)   # 기준점은 지우기 전 그림으로 (칸마다 안 흔들리게)
+    if o.get('smoke'): r = drop_smoke(r, ox, oy, o['smoke'], o.get('smoke_keep', ()))
+    if name.startswith('dark_dragon') or cfg.get('clean_white'):   # 기준점은 지우기 전 그림으로 (칸마다 안 흔들리게)
+        r = clean_white(r, [(x0 - ox, x1 - ox, y0 - oy, y1 - oy) for x0, x1, y0, y1 in o.get('keep_pale', [])])
     if 'ref' in cfg:
         main, mk, nk = cfg['ref']
         hm = cells(main)[mk][0].shape[0]; hn = cells(name)[nk][0].shape[0]
@@ -336,14 +339,33 @@ def frame_of(name, k):
     return r, ax, ay
 
 
-def clean_white(rgba):
-    """심연마룡: 흰 바탕 샘플에서 남은 흰 찌꺼기 지우기 (2026-11-11)
+def drop_smoke(rgba, ox, oy, boxes, keep=()):
+    """샘플 좌표 네모 안의 회색 연기·바닥 그림자(R≈G≈B, 채도 4 이하) 지우기. 몸(남보라)·뿔(옅은 보라, 채도 7쯤)은 안 걸림.
+    keep = 그래도 남길 네모 (샘플 좌표, 뿔 등)"""
+    rgba = rgba.copy()
+    c = rgba[..., :3]
+    neutral = (c.max(2) - c.min(2) <= 4)
+    m = np.zeros(neutral.shape, bool)
+    lum = c.mean(2)
+    for x0, x1, y0, y1, *lo in boxes:   # 다섯째 값 = 이보다 밝은 것만 (바닥 그림자 옆 검은 발목 띠는 남김)
+        sl = (slice(max(0, y0 - oy), max(0, y1 - oy)), slice(max(0, x0 - ox), max(0, x1 - ox)))
+        m[sl] |= lum[sl] >= (lo[0] if lo else 0)
+    for x0, x1, y0, y1 in keep:
+        m[max(0, y0 - oy):max(0, y1 - oy), max(0, x0 - ox):max(0, x1 - ox)] = False
+    rgba[..., 3][m & neutral] = 0
+    return rgba
+
+
+def clean_white(rgba, keep=()):
+    """흰 바탕 샘플에서 남은 흰 찌꺼기 지우기 (심연마룡·급습 와이번, 2026-11-11)
     ① 거의 흰 덩어리 중 투명한 곳에 닿거나 4px 이상인 것 (지팡이·날개 사이 틈, 불꽃 혀 사이). 둘레가 밝은 빛 속(번개·불덩이 심)은 남김
     ② 외곽 회색 테: 투명한 곳에 닿은 밝고 채도 낮은 테두리 픽셀을 2겹까지 벗김. 비늘은 훨씬 어둡고 불꽃·구슬·번개는 채도가 높아 안 걸림
-    ③ 반투명 테두리에 섞인 흰빛은 빼서 어두운 원래 색으로"""
+    ③ 반투명 테두리에 섞인 흰빛은 빼서 어두운 원래 색으로
+    keep = ①② 를 건너뛸 네모 (그림 좌표; 옅은 타격 궤적 등)"""
     from scipy import ndimage as ndi
     rgba = rgba.copy()
     c, A = rgba[..., :3], rgba[..., 3]
+    A0 = A.copy()
     lum = c.mean(2)
     wh = (c.min(2) >= 200) & (c.max(2) - c.min(2) <= 30) & (A > 0)
     lab, n = ndi.label(wh, structure=np.ones((3, 3)))
@@ -361,6 +383,9 @@ def clean_white(rgba):
         edge = ndi.binary_dilation(A < 100, iterations=1) & (A > 0)
         pale = (lum >= 110) & (c.max(2) - c.min(2) <= 40)
         A[edge & pale] = 0
+    for x0, x1, y0, y1 in keep:
+        sl = (slice(max(0, y0), max(0, y1)), slice(max(0, x0), max(0, x1)))
+        A[sl] = A0[sl]
     edge = ndi.binary_dilation(A < 100, iterations=1) & (A > 0) & (A < 250)
     k = (A / 255.0)[..., None]
     dark = np.clip((c - 255 * (1 - k)) / np.maximum(k, 0.2), 0, 255)
