@@ -1,11 +1,12 @@
 # 검사 전용 샘플(검은 머리 묶음·회색 머리띠·남색 도복·검은 하카마, 흰 배경) → 캐릭터 시트 assets/sprites/merc/swordsman_0.webp
 # 사용: python tools/swordsman_build.py   (샘플은 assets/sprites/fx/samples/swordsman_*_src.png, 동작 샘플이 오는 대로 FRAMES에 늘림)
 # 칸 순서: 0 대기 (오른손을 칼자루에 얹고 왼손으로 칼집을 잡은 발도 자세, 맨발에 조리) · 1 피격 (몸을 젖히며 소리침) · 2 쓰러짐 1 (앞으로 숙이며 무너짐) · 3 쓰러짐 2 (뒤로 누워 기절, 머리가 뒤쪽·칼은 허리에서 위로 솟음)
-#   · 4 일반공격 1 (낮게 앉아 칼자루를 쥐고 뽑기 직전)
+#   · 4 일반공격 1 (낮게 앉아 칼자루를 쥐고 뽑기 직전) · 5 발도 (칼을 뒤로 뽑아 든 채 낮게 벌려 선 자세)
 # 크기 통일: 대기 자세 몸 키(머리털 끝~발, 샘플 px)를 TARGET_H로 줄임. 다른 동작은 대기와 같은 배율('idle')로 줄여 얼굴 크기를 맞춤
 # 샘플 정리:
 #   - 대기 샘플(768×1024)은 도트 그림을 흐리게 키운 것, 테두리 없음
 #   - 피격·쓰러짐 샘플(766×250)은 세 칸을 한 장에 그린 것 + 위 잘린 글자 줄·칸 이름('[피격]' 등). 왼쪽부터 0·1번째 덩어리로 고름 (2번째 = 예전 쓰러짐 2, 지금은 안 씀)
+#   - 발도 샘플(1024×498)은 흰 배경 + 같은 그림의 검은 배경 판(draw_dark). 칼날은 옅은 하늘색이라 두 배경 비교로 땀
 #   - 쓰러짐 2 샘플(346×158)은 흰 배경 한 장, 머리카락이 왼쪽 끝에 닿음. 누운 그림이라 몸 길이로 크기를 맞춤 (FIT_W)
 #     '[쓰러짐 1]' 글자는 쓰러짐 1 머리 묶음과 붙어 있어 상자로 지움 (CUT). 해상도가 대기 샘플과 달라 키를 따로 맞춤 (FIT_H)
 #   - 일반공격 샘플(209×271)은 오른쪽 끝에 옆 칸 조각 점 → 가장 큰 덩어리만
@@ -30,11 +31,13 @@ TARGET_H = 86   # 대기 자세 머리 묶음 끝~발 → 게임 칸 키 (격투
 CARD = {}   # (x0, x1, y0, y1): 샘플 테두리 잘라 냄
 WHITE_MIN = {'hurtdown': 200}   # 피격·쓰러짐 샘플은 흐린 밝은 테두리가 넓어 더 어두운 흰색까지 배경으로 봄
 CUT = {'hurtdown': [(0, 766, 0, 8), (284, 384, 12, 45), (384, 390, 12, 36)]}   # 지울 상자 (x0, x1, y0, y1): 위 잘린 글자 줄 · '[쓰러짐 1' · ']' (머리 묶음에 붙은 세로줄)
-FIT_H = {'HURT': 78, 'ATK': 84}   # 샘플마다 해상도가 달라 몸 키를 직접 정해 머리 크기를 대기와 맞춤: 피격(뒤로 젖힘) · 일반공격(낮게 앉음). 쓰러짐 1은 피격과 같은 배율
+FIT_H = {'HURT': 78, 'ATK': 84, 'DRAW': 84}   # 샘플마다 해상도가 달라 몸 키를 직접 정해 머리 크기를 대기와 맞춤: 피격(뒤로 젖힘) · 일반공격(낮게 앉음). 쓰러짐 1은 피격과 같은 배율
 FIT_W = {'DOWN2': 108}   # 누운 그림은 머리~발 가로 길이로 맞춤
-DARK_SRC = f'{D}dark_src.png'   # 같은 동작을 어두운 배경(25,25,25)에 그린 샘플: 피격 · 쓰러짐 1 · 쓰러짐 2 · 일반공격 1 (왼쪽부터, 발밑 그림자·오른쪽 아래 반짝이 표시 있음)
-DARK = {('hurtdown', 0): 0, ('hurtdown', 1): 1, ('atk0', 'big'): 3}   # (샘플, 고른 덩어리) → 어두운 샘플 몇 번째 그림
-DARK_BG = 25.0
+# 같은 동작을 어두운 배경에 그린 샘플 (배경색은 테두리 중앙값으로 잼):
+#   swordsman_dark_src = 피격 · 쓰러짐 1 · 예전 쓰러짐 2 · 일반공격 1 (왼쪽부터, 배경 (25,25,25), 발밑 그림자·오른쪽 아래 반짝이 표시 있음)
+#   swordsman_draw_dark_src = 발도 (배경 거의 검정, 오른쪽 아래 반짝이 표시)
+DARK = {('hurtdown', 0): ('dark', 0), ('hurtdown', 1): ('dark', 1), ('atk0', 'big'): ('dark', 3),
+        ('draw', 'big'): ('draw_dark', 0)}   # (샘플, 고른 덩어리) → (어두운 샘플, 왼쪽부터 몇 번째 그림)
 SCRUB = {}   # 샘플 이름 → 지울 워터마크 다각형 꼭짓점 (샘플 px): 몸에 겹친 회색 네 갈래 별 → 안의 회색만 머리카락 남색으로 칠함 (원래 밝기 차이는 조금 남김)
 # 예전 쓰러짐 2(hurtdown 2번째 그림)는 [(671, 144), (686, 158), (704, 164), (698, 176), (686, 178), (677, 192), (667, 176), (662, 168), (667, 157)]
 SCRUB_HAIR = np.array([23, 25, 36])   # 둘레 머리카락 색
@@ -57,27 +60,28 @@ def lighten_skin(rgba):   # 살색 픽셀만 밝기에 따라 더함. 기준 두
 _dark = {}
 
 
-def dark_figures():   # 어두운 샘플을 읽고 그림 4개의 상자(x0, x1, y0, y1)를 왼쪽부터
-    if not _dark:
-        im = np.array(Image.open(DARK_SRC).convert('RGB')).astype(float)
-        fg = np.abs(im - DARK_BG).max(axis=2) > 18
+def dark_figures(src):   # 어두운 샘플을 읽고 배경색, 그림 상자(x0, x1, y0, y1)를 왼쪽부터 (가장 큰 그림의 30% 이상만: 반짝이 표시 등은 빠짐)
+    if src not in _dark:
+        im = np.array(Image.open(f'{D}{src}_src.png').convert('RGB')).astype(float)
+        bg = float(np.median(np.concatenate([im[0], im[-1], im[:, 0], im[:, -1]])))
+        fg = np.abs(im - bg).max(axis=2) > 18
         lab, n = ndi.label(ndi.binary_dilation(fg, iterations=2))
         sz = ndi.sum(fg, lab, range(1, n + 1))
-        idx = np.argsort(sz)[::-1][:4] + 1
         boxes = []
-        for i in idx:
-            ys, xs = np.where(lab == i); boxes.append((xs.min(), xs.max(), ys.min(), ys.max()))
-        _dark['im'], _dark['boxes'] = im, sorted(boxes)
-    return _dark['im'], _dark['boxes']
+        for i in range(n):
+            if sz[i] < sz.max() * 0.3: continue
+            ys, xs = np.where(lab == i + 1); boxes.append((xs.min(), xs.max(), ys.min(), ys.max()))
+        _dark[src] = im, sorted(boxes), bg
+    return _dark[src]
 
 
-def dark_matte(raw, a, im, idx):
+def dark_matte(raw, a, im, dark):
     """흰 배경·어두운 배경 두 장을 겹쳐 투명도를 다시 구함 (두 배경 비교).
     흰 배경 그림만으로는 외곽선 바깥의 흐린 회백색 테두리가 몸인지 배경인지 모름 → 어두운 그림에 맞춰 놓고
-    두 장의 차이(흰 배경일수록 밝아지는 만큼)로 투명도 = 1 - (흰 - 어두운) / (255 - 25).
+    두 장의 차이(흰 배경일수록 밝아지는 만큼)로 투명도 = 1 - (흰 - 어두운) / (255 - 어두운 배경).
     두 그림은 따로 만든 것이라 크기·위치가 조금 달라 ECC(아핀)로 맞추고, 피부 톤 등 안쪽 색도 조금 달라서
     몸 안쪽(흰 그림 덩어리를 2px 깎은 곳)은 그대로 불투명, 색은 흰 배경 그림 것을 씀. 발밑 그림자는 배경보다 어두워 투명이 됨"""
-    D_im, boxes = dark_figures()
+    D_im, boxes, BG = dark_figures(dark[0])
     m = a > 0.5
     ys, xs = np.where(a > 0)
     P = 10
@@ -86,17 +90,17 @@ def dark_matte(raw, a, im, idx):
     W = raw[y0:y1, x0:x1]
     mw = m[y0:y1, x0:x1]
     fill = ndi.binary_fill_holes(ndi.binary_dilation(mw, iterations=1))
-    tmpl = np.where(fill[..., None], W, DARK_BG).mean(axis=2).astype(np.float32) / 255
+    tmpl = np.where(fill[..., None], W, BG).mean(axis=2).astype(np.float32) / 255
     wy, wx = np.where(mw)
-    dx0, dx1, dy0, _ = boxes[idx]
+    dx0, dx1, dy0, _ = boxes[dark[1]]
     sc = (dx1 - dx0 + 1) / (wx.max() - wx.min() + 1)   # 흰 그림 1px → 어두운 그림 sc px (가로 폭으로 처음 값, 그림자는 아래에만 있어 위·왼쪽을 맞춤)
     A = np.array([[sc, 0, dx0 - wx.min() * sc], [0, sc, dy0 - wy.min() * sc]], np.float32)
     img = D_im.mean(axis=2).astype(np.float32) / 255
     _, A = cv2.findTransformECC(tmpl, img, A, cv2.MOTION_AFFINE,
                                 (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 300, 1e-6), None, 5)
     Dw = cv2.warpAffine(D_im.astype(np.float32), A, (W.shape[1], W.shape[0]),
-                        flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP, borderValue=(DARK_BG,) * 3).astype(float)
-    a2 = np.clip(1 - (W - Dw).mean(axis=2) / (255 - DARK_BG), 0, 1)
+                        flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP, borderValue=(BG,) * 3).astype(float)
+    a2 = np.clip(1 - (W - Dw).mean(axis=2) / (255 - BG), 0, 1)
     core = ndi.binary_erosion(mw, iterations=2) & ~ndi.binary_dilation(W.min(axis=2) > 200, iterations=1)
     a2 = np.where(core, 1.0, a2)   # 몸 안쪽은 불투명. 단 몸에 둘러싸인 흰 틈(손가락과 칼집 사이, 머리카락 사이)은 어두운 그림과 비교해 배경이면 투명
     a2 = np.where(ndi.binary_dilation(a[y0:y1, x0:x1] > 0, iterations=3), a2, 0.0)   # 고른 덩어리 근처만 (글자·옆 그림 제외)
@@ -173,6 +177,7 @@ FRAMES = [
     ('hurtdown', 'down1', 'hurt', 1),
     ('down2', 'down2', 'DOWN2', 'big'),
     ('atk0', 'atk0', 'ATK', 'big'),
+    ('draw', 'draw', 'DRAW', 'big'),
 ]
 FOOTX = {}   # 칸 이름 → 발 가운데 (자른 그림 기준 px)
 
