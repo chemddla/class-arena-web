@@ -21585,7 +21585,14 @@
 
     // '최대 체력의 몇 %' 피해(화상·출혈·중독·저격수 마지막 한 발)의 기준 체력
     //   보스 레이드 보스는 반 전체가 나눠 깎는 공유 체력(수백만)이라 그대로 쓰면 화상 한 번에 수만씩 들어감 → pctHpBase(한 사람 몫)로
-    function pctHpOf(u) { return (u && u.pctHpBase) || (u && u.maxHp) || 0; }
+    //   엘리트 보스·종족 보스는 최대 체력의 BOSS_PCT_HP_MULT만 기준으로 (보스가 셀수록 체력 비례 피해가 커져서,
+    //   2026-11-11 시뮬: 10단계 엘리트 보스에서 중독 하나가 전체 피해의 46%)
+    const BOSS_PCT_HP_MULT = 0.25;
+    function pctHpOf(u) {
+      if (!u) return 0;
+      if (u.pctHpBase) return u.pctHpBase;
+      return (u.isEliteBoss || u.isRaceBoss) ? u.maxHp * BOSS_PCT_HP_MULT : (u.maxHp || 0);
+    }
     function applyDamage(attacker, defender, rawDmg, tagText = '', customColor = null) {
       if (!defender.alive) return;
       if ((defender.statuses?.rebirth || 0) > 0) return; // 불사조의 알: 무적
