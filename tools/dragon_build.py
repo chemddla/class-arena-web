@@ -324,6 +324,7 @@ def frame_of(name, k):
     ys = np.where((r[..., 3] > 128).any(1))[0]
     ay = ys.max() + 1 + o.get('dy', 0)
     ax = cx - ox
+    if name.startswith('dark_dragon'): r = clean_white(r)   # 기준점은 지우기 전 그림으로 (칸마다 안 흔들리게)
     if 'ref' in cfg:
         main, mk, nk = cfg['ref']
         hm = cells(main)[mk][0].shape[0]; hn = cells(name)[nk][0].shape[0]
@@ -333,6 +334,39 @@ def frame_of(name, k):
         r = np.asarray(img).astype(float); ax *= s; ay *= s
     if flip: r = r[:, ::-1].copy(); ax = r.shape[1] - ax
     return r, ax, ay
+
+
+def clean_white(rgba):
+    """심연마룡: 흰 바탕 샘플에서 남은 흰 찌꺼기 지우기 (2026-11-11)
+    ① 거의 흰 덩어리 중 투명한 곳에 닿거나 4px 이상인 것 (지팡이·날개 사이 틈, 불꽃 혀 사이). 둘레가 밝은 빛 속(번개·불덩이 심)은 남김
+    ② 외곽 회색 테: 투명한 곳에 닿은 밝고 채도 낮은 테두리 픽셀을 2겹까지 벗김. 비늘은 훨씬 어둡고 불꽃·구슬·번개는 채도가 높아 안 걸림
+    ③ 반투명 테두리에 섞인 흰빛은 빼서 어두운 원래 색으로"""
+    from scipy import ndimage as ndi
+    rgba = rgba.copy()
+    c, A = rgba[..., :3], rgba[..., 3]
+    lum = c.mean(2)
+    wh = (c.min(2) >= 200) & (c.max(2) - c.min(2) <= 30) & (A > 0)
+    lab, n = ndi.label(wh, structure=np.ones((3, 3)))
+    if n:
+        clear = ndi.binary_dilation(A < 128, iterations=1)
+        areas = ndi.sum(wh, lab, range(1, n + 1))
+        touch = ndi.maximum(clear, lab, range(1, n + 1))
+        kill = np.zeros(n + 1, bool); kill[1:] = (areas >= 4) | (touch > 0)
+        for i in np.where(kill)[0]:
+            m = lab == i
+            ring = ndi.binary_dilation(m, iterations=2) & ~m & (A > 100) & ~wh
+            if ring.any() and lum[ring].mean() > 150: kill[i] = False
+        A[kill[lab]] = 0
+    for _ in range(2):
+        edge = ndi.binary_dilation(A < 100, iterations=1) & (A > 0)
+        pale = (lum >= 110) & (c.max(2) - c.min(2) <= 40)
+        A[edge & pale] = 0
+    edge = ndi.binary_dilation(A < 100, iterations=1) & (A > 0) & (A < 250)
+    k = (A / 255.0)[..., None]
+    dark = np.clip((c - 255 * (1 - k)) / np.maximum(k, 0.2), 0, 255)
+    pale = edge & (lum >= 90)
+    c[pale] = dark[pale]
+    return rgba
 
 
 def frames_of(name):
