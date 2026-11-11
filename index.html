@@ -10279,7 +10279,18 @@
     SNIPER_BULLET_IMG.src = 'assets/sprites/fx/sniper_bullet.webp';
     // 빙결술사 이펙트 한 장 (0.5배): 배리어 구체 · 프리즈 얼음 가시 4단계 · 동결 고리·큐브 · 스케이팅 자취 · 블리자드 소환진·충격파·눈보라 판
     // 프레임 [x, y, w, h, 기준점x, 기준점y] (가시 기준점 = 아래 가운데, 나머지 = 가운데)
-    const usesFrostSr = u => Boolean(u && FROST_SR_FX.ready && getUnitSprite(u) === MERC_SPRITE_DEFS[`frost_${SECRET_SKIN_BASE + 1}`]); // 얼음 여왕 외형일 때만 전용 이펙트
+    const usesFrostSr = u => Boolean(u && getUnitSprite(u) === MERC_SPRITE_DEFS[`frost_${SECRET_SKIN_BASE + 1}`] && FROST_SR_FX.ready); // 얼음 여왕 외형일 때만 전용 이펙트 (외형부터 봄: 준비 여부를 읽으면 그림을 받기 시작하므로)
+    // 이 전투에 빙결술사 스킬을 쓰는 유닛이 있는지 (틱마다 한 번) — 빙결 이펙트 그림의 준비 여부는 이럴 때만 읽음
+    // (준비 여부를 읽는 것만으로 그림을 받기 시작해서, 빙결술사가 없는 전투에서도 매번 5장·약 1.4MB를 전투 도중에 받고 있었음)
+    let frostInBattleUnits = null, frostInBattleAt = -1, frostInBattleV = false;
+    function frostInBattle() {
+      if (frostInBattleUnits !== sim.units || frostInBattleAt !== sim.tickCount) {
+        frostInBattleUnits = sim.units; frostInBattleAt = sim.tickCount;
+        // 스킬 목록에 없더라도(보스 전용 스킬 등) 지금 빙결 이펙트가 걸려 있는 유닛이 있으면 참
+        frostInBattleV = (sim.units || []).some(u => unitSkillJobs(u).has('frost') || u.blizzBurst || u.dfFreeze || u.frostBarrierTicks > 0 || (u.casting && (u.casting.key === 'blizzard' || u.casting.key === 'deep_freeze')));
+      }
+      return frostInBattleV;
+    }
     const FROST_FX = { img: new Image(), ready: false, frames: { bubble0: [0,0,70,60,35,30], bubble1: [72,0,82,60,41,30], spike0: [156,0,74,46,37,45], spike1: [232,0,103,50,51,49], spike2: [337,0,90,62,45,61], spike3: [429,0,86,58,43,57], ring: [517,0,32,34,16,17], cube0: [551,0,80,51,40,25], cube1: [633,0,60,49,30,24], trail0: [695,0,96,44,48,22], trail1: [793,0,100,48,50,24], circle0: [895,0,74,50,37,25], circle1: [971,0,80,50,40,25], circle2: [1053,0,76,60,38,30], glaze0: [1131,0,76,38,38,19], glaze1: [1209,0,108,53,54,26], glaze2: [1319,0,104,53,52,26], snow0: [1425,0,140,104,70,52], snow1: [1567,0,143,104,71,52], snow2: [1712,0,142,104,71,52], shard: [1858,0,64,28,32,14], streak0: [1924,0,80,34,0,17], streak1: [2006,0,84,37,0,18], dspike0: [2092,0,47,30,23,29], dspike1: [2141,0,58,50,29,49], dspike2: [2201,0,60,46,30,45] } };
     FROST_FX.img.onload = () => { FROST_FX.ready = true; };
     FROST_FX.img.src = 'assets/sprites/fx/frost_fx.webp';
@@ -11370,8 +11381,16 @@
       if (dir && dir !== 'fx' && JOB_DEFS[dir]) return [dir];
       return Object.keys(JOB_DEFS).filter(j => (FX_FILE_JOB_RE[j] || new RegExp(`^${j}_`)).test(name));
     }
+    // 이 유닛이 쓰는 스킬들의 직업 (몬스터는 다른 직업 스킬을 빌려 씀: 주술·빙결·음유시인 노래 등)
+    function unitSkillJobs(u) {
+      const out = new Set();
+      if (u && u.job) out.add(u.job);
+      (u && Array.isArray(u.skillSlots) ? u.skillSlots : []).concat(u && Array.isArray(u.unlockedSkills) ? u.unlockedSkills : []).forEach(k => { const j = skillJobOf(k); if (j) out.add(j); });
+      return out;
+    }
     function preloadBattleFx(units) {
-      const jobs = new Set(units.map(u => u.job).filter(Boolean));
+      const jobs = new Set();
+      units.forEach(u => unitSkillJobs(u).forEach(j => jobs.add(j))); // 직업 + 빌려 쓰는 스킬의 직업 (예전엔 직업만 봐서 몬스터가 쓰는 주술·빙결 이펙트는 전투 중에 받았음)
       LAZY_FX_IMGS.forEach(img => {
         if (img.__lazyOn) return;
         const own = fxFileJobs(img.__lazySrc.split('/').pop());
@@ -11382,6 +11401,18 @@
       LAZY_FX_DEFS.forEach(({ def, file }) => {
         const own = fxFileJobs(file);
         if (own.length && own.some(j => jobs.has(j))) def.img; // 읽기만 해도 받기 시작
+      });
+      // 유닛 그림에 딸린 투사체 시트 (몬스터의 독침·바위·화염구 등: 그림 def의 projFx → PROJECTILE_SPRITES의 sheet) · 몬스터 이펙트 시트는 직업 이름이 아니라 위에서 안 걸림
+      units.forEach(u => {
+        try {
+          const def = getUnitSprite(u);
+          Object.values((def && def.projFx) || {}).forEach(k => { const ps = PROJECTILE_SPRITES[k]; if (ps && ps.sheet) ps.sheet.img; });
+        } catch (e) {}
+      });
+      // 전격술사: 이펙트 def를 처음 쓸 때 만드는 구조라(voltFxImg) 여기서 그 외형이 쓰는 것을 모두 만들어 받기 시작 (기본 외형은 <이름>.b · finale는 .b 없음)
+      units.forEach(u => {
+        if (!u || u.job !== 'volt' || u.monsterType) return;
+        try { Object.keys(VOLT_FXS).forEach(n => voltFxImg(voltIsBase(u) && n !== 'finale' ? n + '.b' : n)); } catch (e) {}
       });
     }
 
@@ -24529,6 +24560,7 @@
       });
     }
     function drawRuinMarks(ctx) {
+      if (!sim.effects.some(ef => ef.type === 'curse_ruin_bolt') && !(sim.hiddenFx || []).some(fx => fx.kind === 'ruin')) return; // 그릴 것이 있을 때만 (준비 여부를 읽으면 그림을 받기 시작함)
       if (!CURSE_RUIN_MARK_FX.ready) return;
       const A = CURSE_RUIN_MARK_FX.anims, img = CURSE_RUIN_MARK_FX.img, t = sim.tickCount;
       // 80% 폭발: 발밑 소용돌이에 붉은 번개가 내리꽂힘 (대상 크기에 비례, 다른 피격 이펙트보다 크고 진하게)
@@ -25125,6 +25157,7 @@
       drawFrostSrSwirl(ctx, 3, x, y, r * 0.45, rot * 1.6, A * (1.1 - 0.5 * e));
     }
     function drawFrostSrBlizzardTop(ctx) {
+      if (!sim.effects.some(ef => ef.type === 'frost_blizzard' && ef.sr)) return; // 그릴 것이 있을 때만 (준비 여부를 읽으면 그림을 받기 시작함)
       if (!FROST_SR_BLIZZ.ready) return;
       sim.effects.forEach(ef => {
         if (ef.type !== 'frost_blizzard' || !ef.sr || ef.maxLife - ef.life >= 72) return;
@@ -32111,12 +32144,15 @@
     const SPRITE_FLASH_FILTER = 'brightness(1.8)';
     const SPRITE_FX_CACHE_MAX = 300;
     const SPRITE_FX_WHOLE_MAX_PX = 4000000; // 이보다 작은 그림은 통째로 필터를 입혀 두고 같은 자리에서 잘라 씀 (그림을 바꿔 가며 그리는 비용도 없음)
+    // 시트 통째로 필터를 입히는 것은 그 용병의 모든 칸에 늘 걸리는 필터(외형 색 바꾸기 sprite.filter)와 작은 그림뿐
+    // (쓰러진 시체의 잿빛·잔상처럼 몇 칸에만 잠깐 쓰는 필터까지 시트 전체에 입혀서, 유닛이 처음 쓰러질 때마다 화면 한 장이 0.1~0.4초 걸렸음 · 정령이 자주 쓰러지는 소환사 전투에서 한 판에 15~35번 · 2026-11-11 측정)
+    const SPRITE_FX_WHOLE_FILTERS = new Set(), SPRITE_FX_SMALL_PX = 250000;
     let spriteFxCache = new WeakMap();
     let spriteFxCount = 0;
     // 필터를 입힌 그림과 그 안에서 (sx, sy)에 해당하는 자리: { src, ox, oy } → drawImage(src, sx - ox, sy - oy, ...)
     function spriteFxSource(img, sx, sy, sw, sh, filter) {
       const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
-      const whole = W * H <= SPRITE_FX_WHOLE_MAX_PX;
+      const whole = W * H <= SPRITE_FX_SMALL_PX || (W * H <= SPRITE_FX_WHOLE_MAX_PX && SPRITE_FX_WHOLE_FILTERS.has(filter));
       const key = whole ? `*|${filter}` : `${sx},${sy},${sw},${sh}|${filter}`;
       let m = spriteFxCache.get(img);
       if (!m) { m = new Map(); spriteFxCache.set(img, m); }
@@ -32222,7 +32258,7 @@
 
       ctx.save();
       ctx.translate(0, 12 + jumpY);
-      if (sprite.filter) ctx.filter = sprite.filter;
+      if (sprite.filter) { ctx.filter = sprite.filter; SPRITE_FX_WHOLE_FILTERS.add(sprite.filter); }
       if (u.alive && u.hurtAnim > 0) {
         ctx.translate((tick % 2 === 0 ? 1.5 : -1.5), 0);
         if (u.hurtAnim > 6) ctx.filter = 'brightness(1.8)';
@@ -32752,7 +32788,7 @@
         ctx.restore();
       }
       // 블리자드 시전 완료: 마법진이 가장 커졌을 때의 크기(폭 약 182)에 맞춘 얼음 파편이 터지듯 퍼졌다 사라짐 (캐릭터 아래)
-      if (BLIZZ_FX.ready && u.blizzBurst && sim.tickCount - u.blizzBurst < 50) {
+      if (frostInBattle() && BLIZZ_FX.ready && u.blizzBurst && sim.tickCount - u.blizzBurst < 50) {
         const q = (sim.tickCount - u.blizzBurst) / 50, bf = BLIZZ_FX.f.burst, bw = 182 * 1.12 * (0.9 + 0.12 * Math.min(1, q * 3)), bh = bf[3] * bw / bf[2];
         ctx.save();
         ctx.globalAlpha = q < 0.4 ? 1 : 1 - (q - 0.4) / 0.6;
@@ -32760,9 +32796,9 @@
         ctx.restore();
       }
       // 동결 캐스팅 이펙트 뒤쪽 절반: 몸보다 먼저(아래에) 그려 피사체 뒤로 감김
-      if (DFREEZE_FX.ready && u.alive) { const b = dfreezeBody(u, sprite, useSprite, tokenR, headTopY); drawDfreezeCast(ctx, u, 'back', b.foot, b.h, jumpY, tick, b.sx); }
+      if (frostInBattle() && DFREEZE_FX.ready && u.alive) { const b = dfreezeBody(u, sprite, useSprite, tokenR, headTopY); drawDfreezeCast(ctx, u, 'back', b.foot, b.h, jumpY, tick, b.sx); }
       // 빙결술사 블리자드 시전 마법진: 캐릭터 아래(몸보다 먼저)에 깔림
-      if (FROST_FX.ready && u.casting && u.casting.key === 'blizzard') {
+      if (frostInBattle() && FROST_FX.ready && u.casting && u.casting.key === 'blizzard') {
         const bp = Math.min(1, 1 - u.casting.left / u.casting.total);
         const fr = FROST_FX.frames[bp < 0.12 ? 'circle0' : 'circle1'];
         const ell = bp < 0.12 ? [36.5, 27, 73] : [39.5, 24.5, 77]; // 마법진 타원의 가운데 x·y와 폭 (그림 칸 안, 칸마다 달라서 맞춤)
@@ -32872,7 +32908,7 @@
 
       // 3) 상태이상 및 보호막 표시
       // 동결 스킬 이펙트 (몸 높이에 맞춰 크기·자리 조정): 시전 2초 동안 소용돌이(1)·바닥 가시 고리(2) → 발동 때 터지는 큐브(3) → 빙결 중 큐브(4) → 풀릴 때 금 간 큐브(5)·조각(6)
-      if (DFREEZE_FX.ready && u.alive) {
+      if (frostInBattle() && DFREEZE_FX.ready && u.alive) {
         const body = dfreezeBody(u, sprite, useSprite, tokenR, headTopY), bFoot = body.foot, bH = body.h, bMid = (bFoot + body.top) / 2; // 몸 높이 (옆으로 넓은 몬스터는 토큰 크기 기준)
         const cubeFoot = bFoot + bH * 0.06 + jumpY; // 큐브 아래 모서리: 발끝보다 살짝 아래 (발까지 가둔 느낌)
         drawDfreezeCast(ctx, u, 'front', bFoot, bH, jumpY, tick, body.sx); // 캐스팅 이펙트 앞쪽 절반은 몸 위에
@@ -32888,7 +32924,7 @@
           drawDfreezeFx(ctx, 'shard', 0, cubeFoot, bH * (1.5 + 0.2 * el / 80), el < 20 ? 1 : 1 - (el - 20) / 60, 'foot', 2, null, 0.5, body.sx);
         }
       }
-      if (st.freeze > 0 && u.dfFreeze && DFREEZE_FX.ready) {
+      if (frostInBattle() && st.freeze > 0 && u.dfFreeze && DFREEZE_FX.ready) {
         // 동결 스킬에 의한 빙결: 몸을 큐브로 가두고 둘레에 눈꽃이 일렁임. 풀리기 1.5초 전부터는 금 간 큐브로 바뀌어 떨림
         u.iceFxAge = (u.iceFxAge || 0) + 1;
         const body = dfreezeBody(u, sprite, useSprite, tokenR, headTopY), pop = Math.min(1, u.iceFxAge / 8), bFoot = body.foot, bTop = body.top;
@@ -32937,7 +32973,7 @@
         ctx.restore();
       }
       // 빙결술사 블리자드 시전: 발밑 눈꽃 소환진이 시전 내내 일정하게 커짐 (울렁이지 않게 한 장 고정, 처음 잠깐만 고리 그림) + 몸을 감싼 눈바람(1) + 머리 위 큰 눈꽃(2)
-      if (FROST_FX.ready && u.casting && u.casting.key === 'blizzard') {
+      if (frostInBattle() && FROST_FX.ready && u.casting && u.casting.key === 'blizzard') {
         const bp = Math.min(1, 1 - u.casting.left / u.casting.total);
         if (BLIZZ_FX.ready) {
           const zFoot = useSprite ? 16 : -8 + tokenR + 4, zTop = useSprite ? headTopY : -8 - tokenR, zH = zFoot - zTop, fi = Math.min(1, bp / 0.1);
@@ -32968,7 +33004,7 @@
         }
       }
       // 블리자드 시전 완료: 머리 위 눈꽃 자리에서 광륜이 퍼졌다 사라짐 (잘린 곳을 채운 그림)
-      if (BLIZZ_FX.ready && u.blizzBurst && sim.tickCount - u.blizzBurst < 46) {
+      if (frostInBattle() && BLIZZ_FX.ready && u.blizzBurst && sim.tickCount - u.blizzBurst < 46) {
         const q = (sim.tickCount - u.blizzBurst) / 46, zFoot = useSprite ? 16 : -8 + tokenR + 4, zTop = useSprite ? headTopY : -8 - tokenR, zH = zFoot - zTop;
         const f = BLIZZ_FX.f.snowB, k = zH * 0.85 / 74 * 1.05 * 74 / 68 * (0.9 + 0.7 * q), w = f[2] * k, h = f[3] * k;
         ctx.save();
@@ -32988,7 +33024,7 @@
         }
       }
       // 빙결술사 아이스 배리어: 몸을 감싼 얼음 구체 (끝나기 2초 전부터 깜빡임). 얼음 여왕은 옥좌째 덮는 얼음 돔
-      const frostBubble = FROST_FX.ready && u.frostBarrierTicks > 0 && u.shield > 0;
+      const frostBubble = frostInBattle() && FROST_FX.ready && u.frostBarrierTicks > 0 && u.shield > 0;
       if (frostBubble && frostSr) {
         const k = spriteDrawH(u, sprite) / sprite.standH, blink = u.frostBarrierTicks < 120 ? 0.55 + 0.45 * Math.sin(tick * 0.5) : 1;
         drawFxFrame(ctx, FROST_SR_FX.anims.dome[0], 0, 15 - 72 * 0.7 * k + jumpY, 0.7 * k * (1 + 0.015 * Math.sin(tick * 0.08)), 0, 0.85 * blink, FROST_SR_FX.img);
