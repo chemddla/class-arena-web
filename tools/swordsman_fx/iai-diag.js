@@ -2,7 +2,7 @@
 // 위아래 뒤집기는 게임이 무작위로 (내려 베기 / 올려 베기)
 import { fit, clamp, sparkle } from "../../core/index.js";
 import { through, slashEnd } from "../melee/_lib.js";
-import { MOON, MOON_SPARK, T, hiltGlint, burst, sharpSlash } from "./_sword.js";
+import { MOON, MOON_SPARK, T, FLASH, hiltGlint, burst, sharpSlash, lightRush, lensFlare } from "./_sword.js";
 
 export const meta = {
   name: "Iai diagonal",
@@ -17,26 +17,24 @@ export const meta = {
   options: { palette: MOON, sparks: MOON_SPARK, len: 144, tilt: 1.05, R: 54, W: 4.5, seed: 5 },
 };
 
-/** 칼바람: 1칸 만에 끝자락까지 그어지고 바로 흐려지는 1px 줄 */
-export function wind(p, t, L, C) {
-  const u = t - T.glint;
-  if (u < 0 || u > 0.16) return;
-  const head = L * 0.92 * clamp(u / 0.025), a = 0.5 * Math.pow(1 - u / 0.16, 1.5);
-  for (let x = 6; x <= head; x += 1) p.blend(x, 0, x > head - 12 ? C[6] : C[5], a * Math.pow((x - 6) / Math.max(1, head - 6), 0.6));
+/** 칼바람: 빛의 속도로 칼자루에서 끝자락까지 번쩍 지나간 자리 (빛 번짐 + 속도선) */
+export function wind(p, t, L, C, seed = 1) {
+  lightRush(p, t, T.glint, 6, L * 0.9, 0, C, seed, 0.2);
 }
 
 /** 끝자락 x에서 기울기 th로 지나가는 초승달 (R = 반지름, W = 굵기). 칼자루보다 CUT_Y 위 = 목표 가슴 높이 */
 export const CUT_Y = -10, CUT_X = 0.97;
 export const cutAt = (x, th, dir, R, t0, W = 7, span = 1.15) =>
-  through(x, CUT_Y, th, dir, R, span, 0.55, { W, t0, sweep: T.sweep * 0.8, hold: T.hold, trail: T.trail, lens: true, hot: 0.45 }); // 얇은 초승달 (양끝 뾰족), 맞는 순간까지 흰 날
+  through(x, CUT_Y, th, dir, R, span, 0.55, { W, t0, sweep: FLASH * 1.4, hold: T.hold, trail: T.trail, lens: true, hot: 0.45 }); // 얇은 초승달 (양끝 뾰족), 맞는 순간까지 흰 날
 
 export function draw(p, t, o) {
   const C = fit(o.palette, 7), L = o.len;
   hiltGlint(p, t, C, sparkle);
-  wind(p, t, L, C);
+  wind(p, t, L, C, o.seed);
   const s = { ...cutAt(L * CUT_X, o.tilt, 1, o.R, T.glint + 0.02, o.W, 1.25), ramp: C };
   sharpSlash(p, s, t);
   const e = slashEnd(s), g = t - (s.t0 + s.sweep);
+  lensFlare(p, t, s.t0 + s.sweep * 0.6, L * CUT_X, CUT_Y, C, 30); // 초승달이 목표 가슴을 지나는 순간
   if (g > -0.02 && g < 0.15) sparkle(p, e.x, e.y, 6 * Math.sin(Math.PI * clamp((g + 0.02) / 0.17)), C[6], C[4], 0.6);
   burst(p, t, s.t0 + s.sweep, e.x, e.y, Math.atan2(e.dy, e.dx), 0.6, 7, o.seed, fit(o.sparks, 4));
 }

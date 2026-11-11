@@ -13,6 +13,39 @@ export const MOON_SPARK = ["#ffffff", "#f3f8fd", "#dde6f2", "#aab6c9"];
 export const FPS = 40;
 export const T = { glint: 0.025, sweep: 0.075, hold: 0.05, trail: 0.22 };
 export const HIT = T.glint + T.sweep; // 참격이 끝까지 닿는 순간
+/** 빛의 속도: 빛줄기·초승달이 끝까지 닿는 데 걸리는 시간 (1칸). 꼬리가 흐려지는 시간표는 T 그대로 */
+export const FLASH = 0.025;
+
+/**
+ * 빛의 속도로 지나간 자리: 1칸 만에 x0 → x1 전체가 흰 실선으로 번쩍 + 둘레 빛 번짐(두 겹) + 앞으로 내달리는 가는 속도선.
+ * 처음 1칸은 가장 밝고 그 뒤 부드럽게 (반투명으로) 사라짐
+ */
+export function lightRush(p, t, t0, x0, x1, y, C, seed, life = 0.22) {
+  const u = t - t0;
+  if (u < 0 || u > life) return;
+  const k = u < FLASH ? 1 : Math.pow(1 - (u - FLASH) / (life - FLASH), 1.6), L = x1 - x0;
+  p.glowLine(x0, y, x1, y, 12, C[4], 0.3 * k); // 게임에선 투명 위 반투명 흰빛으로 들어가 회색 바닥에서 옅어지므로 넉넉히
+  p.glowLine(x0, y, x1, y, 5, C[5], 0.7 * k);
+  const core = u < FLASH * 2 ? 1 : k * 0.8;
+  for (let x = x0; x <= x1; x += 1) p.blend(x, y, C[6], core * (0.3 + 0.7 * Math.pow((x - x0) / Math.max(1, L), 0.5)));
+  const R = rng(seed, 21);
+  for (let i = 0; i < 7; i++) { // 속도선: 실선 위아래로 2~11px 떨어져 앞으로 내달림
+    const off = (R.chance(0.5) ? -1 : 1) * R.range(2, 11), len = R.range(16, 46), s0 = x0 + R.range(0, Math.max(1, L - len)), v = R.range(500, 900);
+    const a0 = s0 + v * u, a1 = Math.min(x1 + 10, a0 + len), kk = k * R.range(0.35, 0.75);
+    for (let x = a0; x <= a1; x += 1) p.blend(x, y + off, C[R.chance(0.5) ? 6 : 5], kk * Math.pow((x - a0) / Math.max(1, a1 - a0), 0.8));
+  }
+}
+
+/** 맞은 자리 빛 번쩍임: 가로로 긴 빛줄(렌즈 플레어) + 짧은 세로 줄, 1칸 만에 켜지고 부드럽게 꺼짐 */
+export function lensFlare(p, t, t0, x, y, C, len = 34, life = 0.18) {
+  const u = t - t0;
+  if (u < 0 || u > life) return;
+  const k = u < FLASH ? 1 : Math.pow(1 - (u - FLASH) / (life - FLASH), 1.4), h = len * (0.6 + 0.4 * k);
+  p.glowLine(x - h, y, x + h, y, 4, C[6], 0.9 * k);
+  for (let dx = -h; dx <= h; dx += 1) p.blend(x + dx, y, C[6], k * (1 - Math.abs(dx) / h));
+  p.glowLine(x, y - h * 0.35, x, y + h * 0.35, 2, C[6], 0.4 * k);
+  p.glow(x, y, 12, C[5], 0.75 * k);
+}
 
 /** 칼자루 반짝임 (준비): 작은 네 갈래 빛이 커졌다 줄어듦 */
 export function hiltGlint(p, t, C, sparkle) {
@@ -63,7 +96,8 @@ export function sharpSlash(p, s, t) {
       out.c = R[n - 1 - clamp(ci, 0, n - 3)];
       out.a = 1;
     });
-    glowAlong(p, s, s.R - W * 0.4, Tt, U, 3 + W, R[n - 2], (uu) => 0.16 * (1 - age) * ((uu - Tt) / (U - Tt)), 0, 0.3);
+    glowAlong(p, s, s.R - W * 0.4, Tt, U, 3 + W, R[n - 2], (uu) => 0.35 * (1 - age) * ((uu - Tt) / (U - Tt)), 0, 0.3);
+    glowAlong(p, s, s.R - W * 0.4, Tt, U, 9 + W, R[n - 3], (uu) => 0.22 * (1 - age) * ((uu - Tt) / (U - Tt)), 0, 0.25); // 바깥 빛 번짐 (빛의 속도 느낌)
   }
   const th = 0.55 * (1 - clamp((u - s.sweep - s.hold) / (s.trail + 0.15)));
   if (tail > 0.02 && th > 0.02) {
