@@ -9,6 +9,7 @@
 #   - 쓰러짐 2 샘플(346×158)은 흰 배경 한 장, 머리카락이 왼쪽 끝에 닿음. 누운 그림이라 몸 길이로 크기를 맞춤 (FIT_W)
 #     '[쓰러짐 1]' 글자는 쓰러짐 1 머리 묶음과 붙어 있어 상자로 지움 (CUT). 해상도가 대기 샘플과 달라 키를 따로 맞춤 (FIT_H)
 #   - 일반공격 샘플(209×271)은 오른쪽 끝에 옆 칸 조각 점 → 가장 큰 덩어리만
+#   - 어두운 배경 판이 없는 쓰러짐 2는 테두리 색을 안쪽 색으로 바꿔 회백색 테두리를 없앰 (DEFRINGE)
 #   - 회색 별 모양 워터마크가 몸에 겹친 샘플은 그 자리를 머리카락 색으로 덮음 (SCRUB, 지금은 해당 샘플 없음)
 #   - 피격·쓰러짐·일반공격 1은 같은 그림의 어두운 배경 판(swordsman_dark_src)과 겹쳐 비교해 테두리 투명도를 다시 구함 (DARK, dark_matte)
 #   - 피부가 어두운 샘플은 살색만 밝힘 (SKIN)
@@ -37,6 +38,7 @@ DARK_BG = 25.0
 SCRUB = {}   # 샘플 이름 → 지울 워터마크 다각형 꼭짓점 (샘플 px): 몸에 겹친 회색 네 갈래 별 → 안의 회색만 머리카락 남색으로 칠함 (원래 밝기 차이는 조금 남김)
 # 예전 쓰러짐 2(hurtdown 2번째 그림)는 [(671, 144), (686, 158), (704, 164), (698, 176), (686, 178), (677, 192), (667, 176), (662, 168), (667, 157)]
 SCRUB_HAIR = np.array([23, 25, 36])   # 둘레 머리카락 색
+DEFRINGE = {'down2'}   # 어두운 배경 판이 없는 샘플: 외곽 2px의 색을 바로 안쪽 불투명 색으로 바꾸고 거의 흰 픽셀은 투명하게 → 어두운 바탕에서 보이던 회백색 테두리 제거
 SKIN = set()   # 피부가 어두운 샘플만 넣어 첫 샘플(밝은 살색)만큼 밝힘. 지금 대기 샘플은 처음부터 밝아서 비워 둠
 
 
@@ -116,6 +118,16 @@ def scrub(im, poly):
     return im
 
 
+def defringe(raw, a, im):
+    clear = a < 0.12
+    edge = ~clear & ndi.binary_dilation(clear, iterations=2)
+    inner = (a > 0.99) & ~edge
+    _, (iy, ix) = ndi.distance_transform_edt(~inner, return_indices=True)
+    im = im.copy(); im[edge] = im[iy, ix][edge]   # 테두리 색 = 가장 가까운 안쪽 색 (대개 검은 외곽선)
+    a = np.where(edge & (raw.min(axis=2) > 200), 0.0, a)   # 흰 배경과 거의 같은 테두리 픽셀은 버림
+    return a, im
+
+
 def load(name, pick=0):
     im = np.array(Image.open(f'{D}{name}_src.png').convert('RGB')).astype(float)
     if name in SCRUB: im = scrub(im, SCRUB[name])
@@ -143,6 +155,7 @@ def load(name, pick=0):
         bigs.sort(key=lambda i: np.where(lab == i)[1].mean())
         a = np.where(lab == bigs[pick], a, 0)
     if (name, pick) in DARK: a, im = dark_matte(raw, a, im, DARK[(name, pick)])
+    if name in DEFRINGE: a, im = defringe(raw, a, im)
     a = np.where(a < 0.12, 0, a)
     ys, xs = np.where(a > 0)
     rgba = np.dstack([im, a * 255])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
