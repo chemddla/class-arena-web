@@ -5930,9 +5930,9 @@
       swordsman: {
         geukcham: {
           // id는 저장된 슬롯 때문에 그대로 'geukcham' (2026-11-11 사용자: 일섬 20연 난사로 바꾸고, 극참은 시크릿 레어 외형의 마지막 일격으로)
-          id: 'geukcham', name: '극참', icon: '🌌', ccTag: '✨히든 · 일섬 50연 난사', hidden: true,
+          id: 'geukcham', name: '극참', icon: '🌌', ccTag: '✨히든 · 일섬 50연 난사 · 무적', hidden: true,
           manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 3,
-          desc: '3초간 칼끝에 정신을 모은 뒤 적들을 향해 일섬을 50번 난사합니다. 한 번마다 일섬 최대 거리(4칸)를 끝까지 내달려 지나온 길 위의 적에게 50% 피해, 벨수록 점점 빨라져요. 시크릿 레어 외형은 마지막에 화면을 가르는 일격으로 맵 위의 모든 적에게 450% 피해를 더해요.'
+          desc: '3초간 칼끝에 정신을 모은 뒤 적들을 향해 일섬을 50번 난사합니다. 한 번마다 일섬 최대 거리(4칸)를 끝까지 내달려 지나온 길 위의 적에게 50% 피해, 벨수록 점점 빨라져요. 시크릿 레어 외형은 마지막에 화면을 가르는 일격으로 맵 위의 모든 적에게 450% 피해를 더해요. 시전부터 끝날 때까지 무적이고 나쁜 상태이상에 걸리지 않아요.'
         }
       }
     };
@@ -20115,7 +20115,7 @@
 
     // 분신 만들기: 장비 '환영' (능력치 30%, 시간 제한 없음) · 도적 스킬 '분신' (능력치 50%, 20초)
     function spawnIllusion(u, { ratio = 0.3, label = '환영', lifeTicks = 0 } = {}) {
-      const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim', 'casting', 'pendingStrikes', 'quake', 'draggedBy', 'knightShield', 'knightShieldTicks', 'frostBarrier', 'frostBarrierTicks', 'holyShield']);
+      const drop = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim', 'casting', 'pendingStrikes', 'quake', 'draggedBy', 'knightShield', 'knightShieldTicks', 'frostBarrier', 'frostBarrierTicks', 'holyShield', 'geukchamUntil']);
       const c = JSON.parse(JSON.stringify(u, (k, v) => (drop.has(k) ? undefined : v)));
       const side = u.team === 'blue' ? 1 : -1;
       const pos = clampToArena(u.x + side * 60, u.y + 50);
@@ -20682,7 +20682,7 @@
     function inflictStatus(sourceUnit, targetUnit, statusType, durationFrames) {
       if (!targetUnit || !targetUnit.alive) return;
       if ((targetUnit.statuses.rebirth || 0) > 0) return; // 불사조의 알: 무적
-      if (((targetUnit.statuses.superarmor || 0) > 0 || (targetUnit.statuses.flurry || 0) > 0) && NEGATIVE_STATUSES.includes(statusType)) { // 격투가 슈퍼아머·멸식
+      if (((targetUnit.statuses.superarmor || 0) > 0 || (targetUnit.statuses.flurry || 0) > 0 || swordGeukchamOn(targetUnit)) && NEGATIVE_STATUSES.includes(statusType)) { // 격투가 슈퍼아머·멸식 · 검사 극참
         if (sim.tickCount - (targetUnit.ccImmuneTextAt ?? -999) > 30) { targetUnit.ccImmuneTextAt = sim.tickCount; sim.floatTexts.push({ x: targetUnit.x, y: targetUnit.y - 36, text: '🛡️슈퍼아머', color: '#eab308', life: 40 }); }
         return;
       }
@@ -21718,6 +21718,7 @@
       if (!defender.alive) return;
       if ((defender.statuses?.rebirth || 0) > 0) return; // 불사조의 알: 무적
       if ((defender.statuses?.flurry || 0) > 0) return; // 격투가 멸식: 무적
+      if (swordGeukchamOn(defender)) return; // 검사 극참: 시전·난사 동안 무적
       if (duelBlocks(attacker, defender)) { // 결투: 결투 중인 둘은 서로에게만 피해
         if (sim.tickCount - (defender.duelBlockTextAt ?? -999) > 40) { defender.duelBlockTextAt = sim.tickCount; sim.floatTexts.push({ x: defender.x, y: defender.y - 36, text: '⚔️결투 중', color: '#94a3b8', life: 36 }); }
         return;
@@ -27198,6 +27199,12 @@
       }
     }
     // 극참 (히든, 예전 이름 난섬): 일섬 한 번 → 도착하면 지나온 길을 베고 곧바로 다음 일섬 (매번 빨라짐). 기절·빙결로 돌진이 끊기면 거기서 끝
+    // 극참 무적 (2026-11-11 사용자: 시전 중 무적): 3초 시전 + 일섬 난사 + (시크릿 레어) 마지막 일격까지. 피해·나쁜 상태이상·끌어오기를 모두 받지 않음
+    //   난사는 한 번 돌진할 때마다 geukchamUntil을 그 돌진 끝 조금 뒤까지 늘림 → 어떤 이유로 끊겨도 저절로 풀림
+    function swordGeukchamOn(u) {
+      if (!u || u.job !== 'swordsman' || u.monsterType) return false;
+      return (u.geukchamUntil || 0) >= sim.tickCount || Boolean(u.casting && u.casting.key === 'geukcham');
+    }
     const swordIsSr = u => Boolean(u && u.job === 'swordsman' && !u.monsterType && (u.skinVariant || 0) === SECRET_SKIN_BASE + 1);
     function swordRanseomStep(u, n, lastId) {
       if (!u.alive) return;
@@ -27216,6 +27223,7 @@
       swordFaceAngle(u, ang);
       const d = maxD;
       const ticks = Math.max(SWORD_RANSEOM_MIN_TICKS, Math.round(SWORD_RANSEOM_TICKS0 * Math.pow(SWORD_RANSEOM_SPEEDUP, n)));
+      u.geukchamUntil = sim.tickCount + ticks + 6;
       const r = startUnitRush(u, sx + Math.cos(ang) * d, sy + Math.sin(ang) * d, ticks, () => {
         if (!u.alive) return;
         const dx = u.x - sx, dy = u.y - sy, len2 = dx * dx + dy * dy || 1;
@@ -27248,6 +27256,7 @@
       });
       hiddenImpact(14, '#f0f9ff');
       unit.skillAnim = 30; unit.maxSkillAnim = 30; unit.activeSkillType = 'geukcham';
+      unit.geukchamUntil = sim.tickCount + SWORD_GEUKCHAM_DELAY + 2; // 마지막 일격이 떨어질 때까지 무적
       swordAddStrikes(unit, [{ left: SWORD_GEUKCHAM_DELAY, sword: { kind: 'geukcham' } }]);
     }
     function swordMissText(unit, sk) {
@@ -28777,7 +28786,7 @@
       e.voltMarkUntil = Math.max(e.voltMarkUntil || 0, sim.tickCount + dur);
       if ((e.statuses.shock || 0) >= dur) return;
       const st = e.statuses;
-      if ((st.superarmor || 0) > 0 || (st.flurry || 0) > 0 || (st.rebirth || 0) > 0 || statusBlockedFor(owner, e, 'shock')) return;
+      if ((st.superarmor || 0) > 0 || (st.flurry || 0) > 0 || (st.rebirth || 0) > 0 || swordGeukchamOn(e) || statusBlockedFor(owner, e, 'shock')) return;
       inflictStatus(owner, e, 'shock', dur);
     }
     // 손 자리 (그림의 beamHand · 캐릭터 그림 배율 그대로). 그림이 없으면 몸 앞. key = 그 자세 전용 손 자리 (railHand = 전자포 발사 칸 · boltHand = 체인 라이트닝 칸), 없으면 beamHand
@@ -28897,7 +28906,7 @@
     function voltPullable(e) {
       const st = e.statuses || {};
       return !(e.isEliteBoss || e.isRaceBoss || (e.sizeScale || 1) >= 1.6 || e.monsterType === 'scarecrow' || e.draggedBy || e.rush
-        || (st.superarmor || 0) > 0 || (st.guard || 0) > 0 || (st.undying || 0) > 0 || (st.flurry || 0) > 0 || (st.rebirth || 0) > 0);
+        || (st.superarmor || 0) > 0 || (st.guard || 0) > 0 || (st.undying || 0) > 0 || (st.flurry || 0) > 0 || (st.rebirth || 0) > 0 || swordGeukchamOn(e));
     }
     // 대상 쪽으로 dist만큼 끌어옴 (밀림 속도가 매 틱 40%씩 줄어드는 것을 이용 — pushUnitAway와 같은 방식, 방향만 반대)
     function voltPullTo(e, x, y, dist) {
@@ -29471,7 +29480,7 @@
     const SPIRIT_STORM_CHAIN_EVERY = 3;        // 번개 정령: 세 번째 공격마다 연쇄 번개
     const SPIRIT_LEASH_CELLS = 7;              // 7칸 안에 적이 없으면 (4칸이면 앞줄이 싸우는 동안 뒤에서 놀아 5:5 승률 33%)
     const SPIRIT_HOME_CELLS = 2;               //   소환사 옆 2칸으로 돌아옴
-    const SPIRIT_COPY_DROP = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim', 'casting', 'pendingStrikes', 'quake', 'draggedBy', 'knightShield', 'knightShieldTicks', 'frostBarrier', 'frostBarrierTicks', 'holyShield', 'spiritIds', 'tauntBy']);
+    const SPIRIT_COPY_DROP = new Set(['manualAimTarget', 'aimTarget', 'rush', 'teleportAim', 'casting', 'pendingStrikes', 'quake', 'draggedBy', 'knightShield', 'knightShieldTicks', 'frostBarrier', 'frostBarrierTicks', 'holyShield', 'spiritIds', 'tauntBy', 'geukchamUntil']);
 
     function unitByIdNow(id) { return id ? sim.units.find(x => x.id === id) || null : null; }
     // 같은 원소 정령은 팀마다 하나 (같은 팀 소환사끼리만 겹쳐 부를 수 없음 · 상대 팀에 같은 정령이 있어도 부를 수 있음 · 모든 컨텐츠 공통)
