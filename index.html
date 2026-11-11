@@ -21030,13 +21030,17 @@
       Object.assign(liveNet, {
         role: 'host', roomId, ref, startedAt: Date.now(), finished: false,
         sent: new WeakSet(), pendingLogs: [], lastFramePublishedAt: 0, spectator: false, sentU: null, sentT: 0, keyAt: 0,
-        team: false, remoteCtrls: {}, myId: stu.id, towerCast: true, towerWatchers: 0
+        team: false, remoteCtrls: {}, myId: stu.id, towerCast: true, towerWatchers: 0,
+        watchIds: null, watchSyncAt: 0, kfSig: null, kfInitSig: null, kfReqAt: 0, kfRef: null, unitListSigs: null, unitListRr: null
       });
       sim.effects.forEach(x => liveNet.sent.add(x));
       sim.floatTexts.forEach(x => liveNet.sent.add(x));
       try { ref.onDisconnect().remove(); idxRef.onDisconnect().remove(); } catch (e) {}
       ref.child('result').remove().catch(() => {});
       ref.child('frame').remove().catch(() => {});
+      ref.child('kf').remove().catch(() => {});
+      ref.child('rtc').remove().catch(() => {});
+      liveListenKf(ref); // 직접 연결로 보던 친구가 서버 화면으로 돌아올 때 전체 화면 한 장을 청함
       republishLiveUnitsNow();
       liveNet.towerIdxInfo = info;
       idxRef.set(liveNet.towerIdxInfo).catch(() => {});
@@ -21045,6 +21049,7 @@
         const n = val && typeof val === 'object' ? Object.keys(val).length : 0;
         if (n > liveNet.towerWatchers) liveNet.sentU = null; // 새로 보는 친구에게 바로 전체 화면 한 장
         liveNet.towerWatchers = n;
+        liveNet.watchIds = n ? val : null;
       });
     }
 
@@ -21148,7 +21153,7 @@
       const wRef = towerLiveIndexRef(stuId)?.child('watchers').child(me.id);
       if (!wRef) return;
       try { wRef.onDisconnect().remove(); } catch (e) {}
-      wRef.set({ id: me.id, name: cleanUserText(me.name, 30) || '친구', at: Date.now() }).catch(() => {});
+      wRef.set({ id: me.id, name: cleanUserText(me.name, 30) || '친구', at: Date.now(), ...(liveRtcSupported() ? { r: 1 } : {}) }).catch(() => {});
     }
 
     window.spectateTowerRun = async function (stuId) {
@@ -45476,7 +45481,7 @@
     }
 
     function writeSpectatorEntry(room, me) {
-      const entry = { id: me.id, name: me.name, num: me.num || null, at: Date.now() };
+      const entry = { id: me.id, name: me.name, num: me.num || null, at: Date.now(), ...(liveRtcSupported() ? { r: 1 } : {}) };
       room.spectators = { ...(room.spectators || {}), [me.id]: entry };
       try {
         const ref = classRoomRef(`pvp_rooms/${room.roomId}/spectators/${me.id}`);
@@ -46390,7 +46395,7 @@
         sent: new WeakSet(), pendingLogs: [], remoteCtrl: null, remoteUnitId: null, sentU: null, sentT: 0, keyAt: 0, remoteInputAt: 0,
         lastInputSentAt: 0, inputTimer: null, lastAimSent: null, lastInput: null, inputFull: false,
         guestChose: false, started: false, lastStatusAt: 0, hostStatus: null,
-        lastFramePublishedAt: 0, spectator, timeoutExtended: false, pvpWatchers: 0,
+        lastFramePublishedAt: 0, spectator, timeoutExtended: false, pvpWatchers: 0, watchIds: null, watchSyncAt: 0,
         team: Boolean(team), teamExpect: teamExpect || [], teamChosen: {}, remoteCtrls: {}, myId: getActiveStudent()?.id || null,
         dgUnitSig: null, dgRoomSeq: null, dgSentJ: null, dgChangedAt: 0, rsSent: null, rsSentT: 0, znSig: null,
         rtcPaused: false, rtcFeedSince: 0, kfWanted: false, kfReqAt: 0, kfSig: null, kfInitSig: null, kfRef: null, unitListSigs: null, unitListRr: null, unitListReqAt: 0
@@ -46407,24 +46412,7 @@
           ref.child('kf').remove().catch(() => {});
         }
         // 직접 연결이 멈춰 서버 화면으로 돌아온 친구가 '전체 화면 한 장'을 청함 (liveRequestKeyframe) → 다음 화면을 바로 전체로 · 잠깐은 0.15초 간격으로
-        liveNet.kfRef = ref; // 이 전투는 kf 청을 들음 (유닛 목록 자리 표시를 써도 됨)
-        ref.child('kf').on('value', snap => {
-          const v = snap && snap.val();
-          if (!v || liveNet.ref !== ref || liveNet.role !== 'host') return;
-          // 유닛 목록 전체를 청하는 칸(<id>_i): 자리 표시만 받은 친구가 그 유닛을 갖고 있지 않을 때 (sendRushUnitList)
-          const iSig = JSON.stringify(Object.keys(v).filter(k => k.endsWith('_i')).sort().map(k => [k, v[k]]));
-          if (iSig !== liveNet.kfInitSig) {
-            const had = liveNet.kfInitSig != null || iSig !== '[]';
-            liveNet.kfInitSig = iSig;
-            if (had && iSig !== '[]' && liveNet.unitListRr != null && sim.running) sendRushUnitList(liveNet.unitListRr, true);
-          }
-          const sig = JSON.stringify(Object.keys(v).filter(k => !k.endsWith('_i')).sort().map(k => [k, v[k]]));
-          if (sig === liveNet.kfSig) return;
-          liveNet.kfSig = sig;
-          liveNet.kfReqAt = Date.now();
-          liveNet.sentU = null;
-          liveNet.lastFramePublishedAt = 0;
-        });
+        liveListenKf(ref);
         sim.effects.forEach(x => liveNet.sent.add(x));
         sim.floatTexts.forEach(x => liveNet.sent.add(x));
         const units = sim.units.map(u => liveUnitCopy(u, LIVE_INIT_DROP));
@@ -46458,6 +46446,9 @@
         const myId = liveNet.myId;
         if (role === 'host') { if (!liveRtcRecentlyFailed()) liveRtcHubStart(ref, liveNet.bid, (liveNet.teamExpect || []).filter(id => id && id !== myId)); }
         else if (myId) liveRtcStartGuest(ref, liveNet.bid, `rtc/${myId}`);
+      } else if (spectator && role === 'guest' && liveNet.myId) {
+        // ⚡ 관전자: 중계하는 친구가 보는 친구에게도 직접 연결을 열어 줌 (liveRtcHubSyncWatchers · 예전 방장이면 연결 정보가 오지 않아 서버 화면 그대로)
+        liveRtcStartGuest(ref, null, `rtc/${liveNet.myId}`, true);
       }
       liveWatchConnection();
     }
@@ -46567,8 +46558,30 @@
       liveNet.kfReqAt = now;
       try { liveNet.ref.child('kf').child(liveNet.myId || 'g').set(now).catch(() => {}); } catch (e) {}
     }
+    // 방장·중계 화면: '전체 화면 한 장' 청(kf/<id>)과 '유닛 목록 전체' 청(kf/<id>_i)을 들음 (결투·팀전·레이드 + 탑·랭킹·토벌 중계)
+    function liveListenKf(ref) {
+      liveNet.kfRef = ref; // 이 전투는 kf 청을 들음 (유닛 목록 자리 표시를 써도 됨)
+      ref.child('kf').on('value', snap => {
+        const v = snap && snap.val();
+        if (!v || liveNet.ref !== ref || liveNet.role !== 'host') return;
+        // 유닛 목록 전체를 청하는 칸(<id>_i): 자리 표시만 받은 친구가 그 유닛을 갖고 있지 않을 때 (sendRushUnitList)
+        const iSig = JSON.stringify(Object.keys(v).filter(k => k.endsWith('_i')).sort().map(k => [k, v[k]]));
+        if (iSig !== liveNet.kfInitSig) {
+          const had = liveNet.kfInitSig != null || iSig !== '[]';
+          liveNet.kfInitSig = iSig;
+          if (had && iSig !== '[]' && liveNet.unitListRr != null && sim.running) sendRushUnitList(liveNet.unitListRr, true);
+        }
+        const sig = JSON.stringify(Object.keys(v).filter(k => !k.endsWith('_i')).sort().map(k => [k, v[k]]));
+        if (sig === liveNet.kfSig) return;
+        liveNet.kfSig = sig;
+        liveNet.kfReqAt = Date.now();
+        liveNet.sentU = null;
+        liveNet.lastFramePublishedAt = 0;
+      });
+    }
     function liveRtcServerPauseTick(now) {
-      if (liveNet.role !== 'guest' || liveNet.spectator || !liveNet.ref || liveNet.finished) return;
+      // 관전자도 (중계하는 친구와 직접 연결됐을 때) · 다른 탭을 보느라 화면 받기를 멈춘 동안(framePaused)은 건드리지 않음
+      if (liveNet.role !== 'guest' || !liveNet.ref || liveNet.finished || liveNet.framePaused) return;
       const feeding = liveRtcFeeding();
       if (liveNet.rtcPaused) {
         // 직접 연결 화면이 LIVE_RTC_PREWARM_MS 넘게 안 오면(평소엔 0.05초마다) 서버 화면을 미리 다시 받기 시작함: 0.6초에 서버 화면으로 넘어갈 때
@@ -46727,14 +46740,15 @@
       } catch (e) {}
     }
     // base: 연결 정보 자리 (1:1은 rtc · 팀전·레이드·던전 팀원은 rtc/내id — 방장이 팀원마다 따로 연결)
-    function liveRtcStartGuest(ref, bid, base = 'rtc') {
+    // anyBid: 관전자 — 방장이 연결마다 새로 붙인 번호(b)를 그대로 돌려줌 (탑·토벌 중계는 전투 표가 없고, 지난 층의 연결 정보와 섞이지 않게)
+    function liveRtcStartGuest(ref, bid, base = 'rtc', anyBid = false) {
       liveRtcStop();
       if (!liveRtcSupported()) return;
       const R = LiveRtc, gen = R.gen;
       Object.assign(R, { ref, role: 'guest', bid, base });
       ref.child(`${base}/offer`).on('value', async snap => {
         const v = snap && snap.val();
-        if (R.gen !== gen || !v || v.b !== bid || typeof v.sdp !== 'string' || R.offerSdp === v.sdp) return;
+        if (R.gen !== gen || !v || (anyBid ? typeof v.b !== 'number' : v.b !== bid) || typeof v.sdp !== 'string' || R.offerSdp === v.sdp) return;
         R.offerSdp = v.sdp;
         R.open = false;
         try { if (R.pc) R.pc.close(); } catch (e) {}
@@ -46747,7 +46761,7 @@
           await pc.setLocalDescription(await pc.createAnswer());
           await liveRtcIceDone(pc, 2500);
           if (R.gen !== gen || R.pc !== pc) return;
-          await ref.child(`${base}/answer`).set({ b: bid, sdp: pc.localDescription.sdp, at: Date.now() });
+          await ref.child(`${base}/answer`).set({ b: anyBid ? v.b : bid, sdp: pc.localDescription.sdp, at: Date.now() });
         } catch (e) {}
       });
     }
@@ -46763,7 +46777,7 @@
         return out;
       };
       const frame = {
-        at: now, b: liveNet.bid, ep: liveNet.ep || 0, t: sim.tickCount,
+        at: now, b: liveNet.towerCast ? undefined : liveNet.bid, ep: liveNet.ep || 0, t: sim.tickCount,
         u: shared ? shared.u : sim.units.map(packLiveUnit),
         p: shared ? shared.p : sim.projectiles.slice(0, 80).map(packLiveProjectile), // 투사체 번호 표(서버 화면용)는 건드리지 않게 늘 전체 모양으로
         e: fresh(sim.effects).map(packLiveEffect),
@@ -46819,8 +46833,44 @@
       if (!dc || dc.readyState !== 'open' || dc.bufferedAmount > maxBuf) return false;
       try { dc.send(JSON.stringify(msg)); return true; } catch (e) { return false; }
     }
-    async function liveRtcHubOpenPeer(id, retries) {
-      const H = LiveRtcHub, gen = H.gen, ref = H.ref, bid = H.bid;
+    // ----- ⚡ 보는 친구(관전자)에게도 직접 연결 -----
+    // 예전: 관전자는 늘 서버 화면(0.15초마다, 한 명당 초당 수 KB 내려받기)만 봄
+    // 지금: 중계하는 화면(결투 방장·레이드 계산 담당·탑/랭킹/토벌 중계)이 보는 친구 LIVE_RTC_WATCH_MAX명까지 직접 연결을 열어 0.1초마다 화면을 보냄
+    //   · 원활하면 그 친구는 서버 화면 받기를 끊음(liveRtcServerPauseTick) → 내려받는 양이 줄고 화면은 더 촘촘 · 안 되거나 끊기면 서버 화면 그대로
+    //   · 직접 연결을 아는 관전자만(관전 등록에 r: 1) · 그보다 많은 친구·예전 탭은 서버 화면 · 관전자 연결 실패는 '이 와이파이는 안 됨' 기억에 넣지 않음
+    const LIVE_RTC_WATCH_MAX = 3, LIVE_RTC_WATCH_FRAME_MS = 100, LIVE_RTC_WATCH_SYNC_MS = 1000;
+    function liveRtcWatcherIds() {
+      let map = null;
+      if (liveNet.towerCast || liveNet.raidCast) map = liveNet.watchIds;
+      else if (liveNet.roomId && livePvpRoomsCache && livePvpRoomsCache[liveNet.roomId]) map = livePvpRoomsCache[liveNet.roomId].spectators;
+      if (!map || typeof map !== 'object') return [];
+      const team = liveNet.teamExpect || [];
+      return Object.keys(map).filter(id => map[id] && typeof map[id] === 'object' && map[id].r === 1 && id !== liveNet.myId && !team.includes(id))
+        .sort((a, b) => liveNum(map[a].at) - liveNum(map[b].at) || (a < b ? -1 : 1)).slice(0, LIVE_RTC_WATCH_MAX);
+    }
+    function liveRtcHubSyncWatchers(now) {
+      const H = LiveRtcHub;
+      if (now - (liveNet.watchSyncAt || 0) < LIVE_RTC_WATCH_SYNC_MS) return;
+      liveNet.watchSyncAt = now;
+      if (liveNet.role !== 'host' || !liveNet.ref || !sim.running || liveNet.finished || !liveRtcSupported()) return;
+      const want = liveRtcRecentlyFailed() ? [] : liveRtcWatcherIds();
+      if (H.ref !== liveNet.ref) {
+        if (!want.length) return;
+        liveRtcHubStop();
+        Object.assign(H, { ref: liveNet.ref, bid: null, startedAt: now, anyOpen: false, failNoted: true }); // 관전자뿐인 허브: 실패를 기억하지 않음
+      }
+      Object.values(H.peers).forEach(P => {
+        if (!P.watch || want.includes(P.id)) return;
+        try { H.ref.child(`rtc/${P.id}/answer`).off(); } catch (e) {}
+        try { if (P.dc) P.dc.close(); } catch (e) {}
+        try { if (P.pc) P.pc.close(); } catch (e) {}
+        delete H.peers[P.id];
+        try { H.ref.child(`rtc/${P.id}`).remove().catch(() => {}); } catch (e) {}
+      });
+      want.forEach(id => { if (!H.peers[id]) liveRtcHubOpenPeer(id, 0, true); });
+    }
+    async function liveRtcHubOpenPeer(id, retries, watch = false) {
+      const H = LiveRtcHub, gen = H.gen, ref = H.ref, bid = watch ? Date.now() : H.bid; // 관전자: 연결마다 새 번호 (손님이 그대로 돌려줌)
       if (!ref) return;
       const old = H.peers[id];
       if (old) {
@@ -46828,7 +46878,7 @@
         try { if (old.dc) old.dc.close(); } catch (e) {}
         try { if (old.pc) old.pc.close(); } catch (e) {}
       }
-      const P = H.peers[id] = { id, pc: null, dc: null, open: false, failed: false, mode: null, retries, startedAt: Date.now(), pings: {}, pingN: 0, lastPingAt: 0, rtts: [], lastSentAt: 0, sent: new WeakSet(), logs: [] };
+      const P = H.peers[id] = { id, watch, pc: null, dc: null, open: false, failed: false, mode: null, retries, startedAt: Date.now(), pings: {}, pingN: 0, lastPingAt: 0, rtts: [], lastSentAt: 0, sent: new WeakSet(), logs: [] };
       const alive = () => H.gen === gen && H.peers[id] === P;
       const lost = () => {
         if (!alive() || (!P.open && !P.failed)) return;
@@ -46836,7 +46886,7 @@
         P.open = false;
         // 원활하던 연결이 전투 중에 끊기면 잠깐 뒤 다시 연결 (팀원마다 3번까지) · 그동안 그 팀원은 서버 화면
         setTimeout(() => {
-          if (alive() && wasGood && sim.running && liveNet.role === 'host' && !liveNet.finished && P.retries < LIVE_RTC_MAX_RETRIES) liveRtcHubOpenPeer(id, P.retries + 1);
+          if (alive() && wasGood && sim.running && liveNet.role === 'host' && !liveNet.finished && P.retries < LIVE_RTC_MAX_RETRIES) liveRtcHubOpenPeer(id, P.retries + 1, watch);
         }, LIVE_RTC_RETRY_DELAY_MS);
       };
       try {
@@ -46858,7 +46908,7 @@
           let m = null;
           try { m = JSON.parse(ev.data); } catch (e) { return; }
           if (!m || typeof m !== 'object') return;
-          if (m.k === 'i' && liveNet.role === 'host' && m.v && typeof m.v === 'object') applyTeamRemoteInputs({ [id]: m.v });
+          if (m.k === 'i' && !watch && liveNet.role === 'host' && m.v && typeof m.v === 'object') applyTeamRemoteInputs({ [id]: m.v });
           else if (m.k === 'pong' && P.pings[m.id]) { P.rtts.push(Date.now() - P.pings[m.id]); delete P.pings[m.id]; }
         };
         await ref.child(`rtc/${id}`).remove();
@@ -46877,8 +46927,9 @@
     // 방장 매 화면: 팀원마다 신호 점검 → 원활한 팀원에게만 화면을 보냄
     function publishLiveRtcHubFrames() {
       const H = LiveRtcHub;
-      if (!H.ref || liveNet.role !== 'host' || !sim.running) return;
       const now = Date.now();
+      liveRtcHubSyncWatchers(now);
+      if (!H.ref || liveNet.role !== 'host' || !sim.running) return;
       const peers = Object.values(H.peers);
       // 이 기기에서 아무와도 연결되지 않으면 기억 (다음엔 점검 없이 서버로 · 1:1과 같은 기억)
       if (!H.failNoted && now - H.startedAt > LIVE_RTC_CHECK_TIMEOUT_MS) { H.failNoted = true; liveRtcRememberFail(!H.anyOpen); }
@@ -46912,7 +46963,7 @@
       const gap = good <= 3 ? LIVE_RTC_FRAME_MS : Math.min(120, 30 * good);
       let shared = null; // 유닛·투사체·장판은 팀원 모두에게 같음 → 한 번만 만듦 (이펙트·글자·기록만 팀원마다)
       peers.forEach(P => {
-        if (!P.open || P.mode !== 'rtc' || now - P.lastSentAt < gap || !P.dc || P.dc.bufferedAmount > LIVE_RTC_FRAME_BUF_MAX) return;
+        if (!P.open || P.mode !== 'rtc' || now - P.lastSentAt < (P.watch ? Math.max(gap, LIVE_RTC_WATCH_FRAME_MS) : gap) || !P.dc || P.dc.bufferedAmount > LIVE_RTC_FRAME_BUF_MAX) return;
         P.lastSentAt = now;
         const own = buildLiveRtcFrame(now, P.sent, P.logs, shared);
         if (!shared) shared = { u: own.u, p: own.p, zn: own.zn };
@@ -46943,6 +46994,7 @@
           if (!document.hidden || !liveWatcherCanPause() || liveNet.framePaused) return;
           try { liveNet.ref.child('frame').off(); } catch (e) {}
           liveNet.framePaused = true;
+          liveNet.rtcPaused = false; liveNet.rtcFeedSince = 0; // 돌아오면 서버 화면부터 다시 받고, 직접 연결이 원활하면 2초 뒤 다시 끊음
         }, LIVE_HIDDEN_PAUSE_MS);
         return;
       }
@@ -49076,19 +49128,24 @@
         role: 'host', roomId: castId, ref, startedAt: Date.now(), finished: false,
         sent: new WeakSet(), pendingLogs: [], lastFramePublishedAt: 0, spectator: false, sentU: null, sentT: 0, keyAt: 0,
         team: false, remoteCtrls: {}, myId: me.id, towerCast: true, towerWatchers: 0, raidCast: true,
-        dgUnitSig: null, dgRoomSeq: null, dgSentJ: null, dgChangedAt: 0, rsSent: null, rsSentT: 0
+        dgUnitSig: null, dgRoomSeq: null, dgSentJ: null, dgChangedAt: 0, rsSent: null, rsSentT: 0,
+        watchIds: null, watchSyncAt: 0, kfSig: null, kfInitSig: null, kfReqAt: 0, kfRef: null, unitListSigs: null, unitListRr: null
       });
       sim.effects.forEach(x => liveNet.sent.add(x));
       sim.floatTexts.forEach(x => liveNet.sent.add(x));
       try { ref.onDisconnect().remove(); } catch (e) {}
       ref.child('result').remove().catch(() => {});
       ref.child('frame').remove().catch(() => {});
+      ref.child('kf').remove().catch(() => {});
+      ref.child('rtc').remove().catch(() => {});
+      liveListenKf(ref);
       republishLiveUnitsNow();
       ref.child('watchers').on('value', snap => {
         const val = snap && snap.val();
         const n = val && typeof val === 'object' ? Object.keys(val).length : 0;
         if (n > liveNet.towerWatchers) { liveNet.sentU = null; liveNet.lastFramePublishedAt = 0; } // 새로 보는 친구에게 바로 전체 화면 한 장
         liveNet.towerWatchers = n;
+        liveNet.watchIds = n ? val : null;
       });
     }
 
@@ -49116,6 +49173,7 @@
           const n = val && typeof val === 'object' ? Object.keys(val).length : 0;
           if (n > liveNet.towerWatchers) { liveNet.sentU = null; liveNet.lastFramePublishedAt = 0; }
           liveNet.towerWatchers = n;
+          liveNet.watchIds = n ? val : null;
         });
       }
       if (asHost && takeover) {
@@ -49329,7 +49387,7 @@
       const wRef = liveRoomRef(pick.castId).child('watchers').child(me.id);
       liveNet.raidWatchRef = wRef;
       try { wRef.onDisconnect().remove(); } catch (e) {}
-      wRef.set({ id: me.id, name: cleanUserText(me.name, 30) || '친구', at: Date.now() }).catch(() => {});
+      wRef.set({ id: me.id, name: cleanUserText(me.name, 30) || '친구', at: Date.now(), ...(liveRtcSupported() ? { r: 1 } : {}) }).catch(() => {});
       renderLiveRaidRoomsList();
       return true;
     };
@@ -58727,7 +58785,7 @@
         if (!wRef) return;
         this.watchEntryRef = wRef;
         try { wRef.onDisconnect().remove(); } catch (e) {}
-        wRef.set({ id: me.id, name: cleanUserText(me.name, 30) || '친구', at: Date.now() }).catch(() => {});
+        wRef.set({ id: me.id, name: cleanUserText(me.name, 30) || '친구', at: Date.now(), ...(liveRtcSupported() ? { r: 1 } : {}) }).catch(() => {});
       },
       spectate(stuId) {
         const me = getActiveStudent();
