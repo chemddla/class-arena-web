@@ -5783,7 +5783,7 @@
         batto: {
           id: 'batto', name: '발도', icon: '🩸', ccTag: '🩸범위·출혈',
           manaCost: 22, cooldownTicks: 480, cooldownSec: 8.0, castSec: 0.2,
-          desc: '칼을 뽑으며 주변 3칸을 둥글게 베어 200% 피해를 입히고 4초 [출혈]을 겁니다.'
+          desc: '칼을 뽑으며 주변 3칸을 둥글게 베어 200% 피해를 입히고 [출혈]을 겁니다 (출혈 피해 3번).'
         },
         issen: {
           id: 'issen', name: '일섬', icon: '⚡', ccTag: '💨돌파·경로 참격',
@@ -6180,7 +6180,7 @@
         icon: '🌙',
         color: '#0891b2',
         roleDesc: '빠른 근접 검술·패링·받아치기',
-        passiveName: '검술의 달인', passiveShort: 'E 패링: 근접 공격 막기 · 투사체 튕겨내기', passiveDesc: 'E를 누르면 0.4초간 패링 (다시 쓰기 2초, 막아 내면 바로 초기화) · 패링 중 근접 기본 공격은 막고 공격한 적을 1초 [기절], 투사체는 쏜 적에게 튕겨 냄 · 스킬 시전·공격 중엔 못 씀 · 범위 공격·장판·스킬 피해는 막지 못함 · AI 검사는 막을 수 있는 공격의 25%를 스스로 쳐냄',
+        passiveName: '검술의 달인', passiveShort: 'E 패링: 근접 공격 막기 · 투사체 튕겨내기', passiveDesc: 'E를 누르면 0.4초간 패링 (다시 쓰기 2초, 막아 내면 바로 초기화) · 패링 중 근접 기본 공격은 막고 공격한 적을 1초 [기절], 투사체는 쏜 적에게 튕겨 냄 · 스킬 시전·공격 중엔 못 씀 · 검사 스킬에 맞은 적은 [출혈] (출혈 피해 1번, 발도는 3번) · 범위 공격·장판·스킬 피해는 막지 못함 · AI 검사는 막을 수 있는 공격의 25%를 스스로 쳐냄',
         baseHp: 2100, baseAtk: 52, baseDef: 34, baseSpd: 112, range: 144, maxMana: 100 // 사거리 72 → 144 (칼집에서 뻗는 참격, 2026-11-11 사용자 요청). 근접 판정(150 미만)은 그대로
       }
     };
@@ -21759,6 +21759,7 @@
         defender._srFeatherAt = sim.tickCount; const es = defender.sizeScale || 1;
         swordFeatherBurst(defender.x, defender.y + 12 - 30 * es, 2, 1.4, es);
       }
+      if (attacker && skillHitSource && attacker.job === 'swordsman' && !attacker.monsterType && attacker.team !== defender.team && rawDmg > 0) swordBleed(attacker, defender, 1); // 검사 스킬 피해: 출혈 1틱 (발도는 3틱)
       let modDmg = rawDmg;
       if (attacker) {
         // 직업 패시브 (공격 유형별 피해 증가 · 도적 백어택)
@@ -27022,9 +27023,16 @@
     const SWORD_PARRY_STUN = 40;            //   막힌 근접 공격자 1초 기절 (2026-11-12 사용자: 0.3 → 1초) · 패링에 성공하면 다시 쓰기 시간이 바로 초기화됨
     const SWORD_PARRY_MANA = 8;
     const SWORD_AI_PARRY_CHANCE = 0.25;     // AI 검사: 패링이 준비돼 있으면 막을 수 있는 공격의 25%를 그 자리에서 쳐냄
-    const SWORD_BATTO_CELLS = 3;            // 발도: 둘레 3칸 · 200% · 출혈 4초
+    const SWORD_BATTO_CELLS = 3;            // 발도: 둘레 3칸 · 200% · 출혈 3틱 (SWORD_BATTO_BLEED_TICKS)
     const SWORD_BATTO_DMG = 2.0;
-    const SWORD_BATTO_BLEED = 160;
+    // 검사 스킬 출혈 (2026-11-12 사용자): 스킬에 맞으면 출혈 피해가 n번 들어간 직후 풀리도록 지속 시간을 맞춤 (스킬 1번, 발도 3번)
+    //   출혈 피해는 전장 전체가 SWORD_BLEED_PERIOD틱마다 한꺼번에 들어가서, 다음 피해 때까지 남은 틱 + (n-1)번 주기 + 여유 2틱
+    const SWORD_BLEED_PERIOD = 160, SWORD_BATTO_BLEED_TICKS = 3;
+    function swordBleed(u, e, n) {
+      const dur = SWORD_BLEED_PERIOD - (sim.tickCount % SWORD_BLEED_PERIOD) + SWORD_BLEED_PERIOD * (n - 1) + 2;
+      if ((e.statuses.bleed || 0) >= dur) return; // 더 긴 출혈(저격 등)은 줄이지 않음
+      inflictStatus(u, e, 'bleed', dur);
+    }
     const SWORD_ISSEN_CELLS = 4;            // 일섬: 최대 4칸 돌파 → 0.25초 뒤 지나온 길 위의 적 240%
     const SWORD_ISSEN_DMG = 2.4;
     const SWORD_ISSEN_TICKS = 8;
@@ -27652,7 +27660,7 @@
         foes.forEach(e => {
           if (unitDist(e, unit) > r) return;
           applyDamage(unit, e, unit.atk * SWORD_BATTO_DMG, '🩸', '#0891b2');
-          inflictStatus(unit, e, 'bleed', SWORD_BATTO_BLEED);
+          swordBleed(unit, e, SWORD_BATTO_BLEED_TICKS); // 발도: 출혈 3틱
           n++;
         });
         playCombatSfx('heavy');
