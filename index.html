@@ -7495,14 +7495,15 @@
     //   · 13~19 무참 1~7: 13 웅크려 칼끝을 아래로 · 14 칼을 뒤로 높이 치켜듦 · 15 낮게 벌려 서서 칼을 뒤로 · 16 앞으로 찌르기 · 17 낮게 앉아 칼을 앞 아래로
     //     · 18 아주 낮게 웅크려 칼을 뒤로 (돌진 직전) · 19 크게 내디뎌 칼을 앞으로 뻗음
     //   · 20~22 일섬 1~3 (칼을 뒤로 뻗음 · 앞으로 내지름 · 숙여 칼끝을 아래로): 일섬 때 셋 중 하나 (SWORD_ISSEN_POSES)
-    // 걷기는 1 → 3 → 2 → 3 (1·2는 비슷한 자세, 3은 뒷발을 차올림). 기본 공격 = 칼을 넣은 채 공격 준비·낮게 앉음 중 한 칸 + 참격, 발도·섬단·극참 = 시전 칸 → 발도, 무참 = 준비·발도를 빠르게 되풀이
+    // 무참 (8연속 베기, 8틱 간격): 한 번 벨 때마다 13~19 자세를 하나씩 → 치켜듦 · 찌르기 · 내려 벰 · 뒤로 휘두름 · 내디뎌 뻗음 · 앉아 벰 · 웅크림 · 마지막 내디뎌 뻗음
+    // 걷기는 1 → 3 → 2 → 3 (1·2는 비슷한 자세, 3은 뒷발을 차올림). 기본 공격 = 칼을 넣은 채 공격 준비·낮게 앉음 중 한 칸 + 참격, 발도·섬단·극참 = 시전 칸 → 발도, 무참 = 벨 때마다 13~19 베기 자세
     // 심검(정신을 모으는 5초)과 패링 동안은 심검 자세를 유지 (pickFrame). 시전 막대 동안은 시전 칸을 차례로 (castFrames)
     MERC_SPRITE_DEFS.swordsman_0 = {
       src: 'assets/sprites/merc/swordsman_0.webp',
       cellW: 167, cellH: 99, anchorX: 68, anchorY: 97, standH: 76, topH: 86, portraitCX: 68, count: 23, // standH 76: 머리 크기를 격투가와 맞춤
       anims: {
         idle: [0], walk: [6, 8, 7, 8], attack: [4], skill: [9, 11, 5], hurt: [1], death: [2, 3],
-        draw: [5], guard: [12], dash: [21], slash: [4, 5]
+        draw: [5], guard: [12], dash: [21], slash: [4, 5], mucham: [14, 16, 13, 15, 19, 17, 18, 19]
       },
       attackSets: [[4], [9]], // 기본 공격: 칼은 칼집에 넣은 채, 공격 준비(4) · 낮게 앉음(9) 중 한 칸을 무작위로 (참격은 swordBasicSlashFx)
       attackDur: 14, // 한 칸을 14틱 보이고 바로 평소 자세
@@ -7518,7 +7519,7 @@
         batto:     { anim: 'draw', tpf: 16, dur: 16 },
         issen:     { anim: 'dash', tpf: 4, dur: 16 },
         seomdan:   { anim: 'draw', tpf: 16, dur: 16 },
-        mucham:    { anim: 'slash', tpf: 2, loop: true, dur: 34 },
+        mucham:    { anim: 'mucham', tpf: 8, dur: 66 }, // 한 번 벨 때마다 자세 하나 (8타 × SWORD_MUCHAM_GAP 8틱)
         mindblade: { anim: 'guard', tpf: 20, dur: 20 },
         parry:     { anim: 'guard', tpf: 10, dur: 10 },
         geukcham:  { anim: 'draw', tpf: 30, dur: 30 }
@@ -26997,9 +26998,9 @@
     const SWORD_SEOMDAN_CELLS = 4;          // 섬단: 앞 4칸 직선 · 220%
     const SWORD_SEOMDAN_DMG = 2.2;
     const SWORD_SEOMDAN_HALF_W = 60;
-    const SWORD_MUCHAM_HITS = 8;            // 무참: 8번 × 40% (모두 320%) · 4틱 간격 · 그동안 제자리
+    const SWORD_MUCHAM_HITS = 8;            // 무참: 8번 × 40% (모두 320%) · 8틱 간격 (2026-11-12 사용자: 4틱 → 8틱, 베는 시간 2배) · 그동안 제자리
     const SWORD_MUCHAM_DMG = 0.4;
-    const SWORD_MUCHAM_GAP = 4;
+    const SWORD_MUCHAM_GAP = 8;
     const SWORD_MUCHAM_REACH = 60;
     const SWORD_MIND_TICKS = 200;           // 심검: 5초 정지 · 처음 받는 공격 무효 → 공격한 적 곁으로 순간 이동해 300%
     const SWORD_MIND_DMG = 3.0;
@@ -27110,6 +27111,33 @@
       ctx.translate(ef.x, ef.y);
       ctx.rotate(ef.ang);
       ctx.scale(ef.len / SWORD_ISSEN_LEN, (c < 0 ? -1 : 1) * SWORD_ISSEN_THICK); // 왼쪽으로 달리면 위아래가 뒤집히므로 되돌림
+      ctx.drawImage(img, (f % cols) * w, Math.floor(f / cols) * h, w, h, -ax, -ay, w, h);
+      ctx.restore();
+    }
+    // 무참 (tools/swordsman_fx/mucham-*.js): 타마다 [시트, 기울기] — 1 사선 내려 베기 · 2 찌르기 · 3 반대 사선 · 4 가로 · 5 찌르기 · 6 올려 베기 · 7 낮은 가로 · 8 큰 X
+    //   기준점 = 대상 가슴, +x = 검사 → 대상 방향 (기울기는 그 방향에서 더 돌림, 왼쪽으로 베면 위아래를 되돌림)
+    const SWORD_MUCHAM_FX = {
+      'mucham-cut': [62, 102, 6, 21, 40, 31, 52],
+      'mucham-pierce': [190, 44, 3, 19, 40, 90, 22],
+      'mucham-final': [122, 107, 5, 24, 40, 61, 55]
+    };
+    const SWORD_MUCHAM_SEQ = [['mucham-cut', -0.5], ['mucham-pierce', 0], ['mucham-cut', 0.45], ['mucham-cut', -1.45], ['mucham-pierce', -0.15], ['mucham-cut', 0.9], ['mucham-cut', 1.5], ['mucham-final', 0]];
+    function drawSwordMuchamFx(ctx, ef) {
+      const [name, off] = SWORD_MUCHAM_SEQ[ef.k] || SWORD_MUCHAM_SEQ[0], m = SWORD_MUCHAM_FX[name], img = swordFxImg(name);
+      const f = Math.floor((ef.maxLife - ef.life) * m[4] / 60), c = Math.cos(ef.ang);
+      if (f >= m[3]) return;
+      ctx.save();
+      ctx.translate(ef.x, ef.y);
+      ctx.rotate(ef.ang);
+      ctx.scale(1, c < 0 ? -1 : 1);
+      ctx.rotate(off);
+      if (!img) { // 시트를 아직 못 받았으면 곧은 칼자국
+        ctx.restore();
+        const a = ef.ang + off + Math.PI / 2, p = (ef.maxLife - ef.life) / ef.maxLife;
+        drawSwordEffect(ctx, { type: 'sword_cut', x1: ef.x - Math.cos(a) * 40, y1: ef.y - Math.sin(a) * 40, x2: ef.x + Math.cos(a) * 40, y2: ef.y + Math.sin(a) * 40, w: 3, color: '#e0f2fe', life: ef.life, maxLife: ef.maxLife }, p);
+        return;
+      }
+      const [w, h, cols, , , ax, ay] = m;
       ctx.drawImage(img, (f % cols) * w, Math.floor(f / cols) * h, w, h, -ax, -ay, w, h);
       ctx.restore();
     }
@@ -27242,10 +27270,10 @@
           try { applyDamage(u, foe, u.atk * SWORD_MUCHAM_DMG, '💢', '#0891b2'); } finally { suppressHitKnockback = false; }
         });
         foe.mana = Math.min(foe.mana, mana + (w.last ? 5 : 0)); // 연타마다 맞은 쪽 마나가 차지 않게
-        // 잔상: 대상 위에 여러 방향의 칼자국 + 검사 둘레에 휘도는 잔상
-        const a = Math.random() * Math.PI;
-        sim.effects.push({ type: 'sword_cut', x1: foe.x - Math.cos(a) * 46, y1: foe.y - 18 - Math.sin(a) * 46, x2: foe.x + Math.cos(a) * 46, y2: foe.y - 18 + Math.sin(a) * 46, w: 4, color: '#a5f3fc', life: 14, maxLife: 14 });
-        sim.effects.push({ type: 'sword_ring', x: u.x + (Math.random() * 20 - 10), y: u.y - 16, r: 34, color: '#a5f3fc', life: 10, maxLife: 10 });
+        // 대상 가슴 위에 그 타의 자세에 맞는 빛의 베기 (SWORD_MUCHAM_SEQ) · 잔상으로 오래 남아 다음 타와 겹침. 검사 자세 잔상은 drawSwordGhosts
+        const k = Math.min(SWORD_MUCHAM_SEQ.length - 1, w.i ?? 0), m = SWORD_MUCHAM_FX[SWORD_MUCHAM_SEQ[k][0]], cy = foe.y + 12 - 30 * (foe.sizeScale || 1);
+        const life = Math.ceil(m[3] * 60 / m[4]);
+        sim.effects.push({ type: 'sword_mucham', k, x: Math.round(foe.x), y: Math.round(cy), ang: Math.round(Math.atan2(cy - (u.y - 14), foe.x - u.x) * 100) / 100, life, maxLife: life });
         u.attackAnim = 8; u.maxAttackAnim = 8;
         playCombatSfx(w.last ? 'heavy' : 'slash');
         return;
@@ -27389,7 +27417,7 @@
         swordFace(unit, pick);
         unit.rootTicks = Math.max(unit.rootTicks || 0, SWORD_MUCHAM_HITS * SWORD_MUCHAM_GAP);
         const list = [];
-        for (let i = 0; i < SWORD_MUCHAM_HITS; i++) list.push({ left: 1 + i * SWORD_MUCHAM_GAP, sword: { kind: 'mucham', targetId: pick.id, last: i === SWORD_MUCHAM_HITS - 1 } });
+        for (let i = 0; i < SWORD_MUCHAM_HITS; i++) list.push({ left: 1 + i * SWORD_MUCHAM_GAP, sword: { kind: 'mucham', targetId: pick.id, last: i === SWORD_MUCHAM_HITS - 1, i } });
         swordAddStrikes(unit, list);
         addBattleLog(`💢 [검사] ${unit.name}의 무참! ${pick.name}을(를) 몰아쳐 베어요`);
         return true;
@@ -27831,6 +27859,27 @@
       ctx.restore();
     }
     // 멸식 잔상: 대상 둘레로 옮겨 다니며 칠 때마다 그 자리·자세를 남겨 서서히 지움 (마무리 날아 차기는 지나온 길에 남음)
+    // 검사 무참 자세 잔상: 벨 때마다 바뀌는 자세를 바로 앞 자세들이 옅은 청백색으로 남아 뒤로 조금씩 밀리며 사라짐 (몸 뒤에 그림)
+    const SWORD_GHOSTS = new WeakMap(), SWORD_GHOST_LIFE = 22;
+    function drawSwordGhosts(ctx, u, sprite, tick, frame, dir, k) {
+      const on = u.alive && u.skillAnim > 0 && u.activeSkillType === 'mucham';
+      let g = SWORD_GHOSTS.get(u);
+      if (!g) { if (!on) return; g = { frame: null, list: [] }; SWORD_GHOSTS.set(u, g); }
+      if (on && g.frame != null && g.frame !== frame) g.list.push({ frame: g.frame, dir, t: tick });
+      g.frame = on ? frame : null;
+      g.list = g.list.filter(q => tick - q.t < SWORD_GHOST_LIFE).slice(-3);
+      if (!on && !g.list.length) { SWORD_GHOSTS.delete(u); return; }
+      g.list.forEach(q => {
+        const age = (tick - q.t) / SWORD_GHOST_LIFE;
+        ctx.save();
+        ctx.translate(-q.dir * (4 + 10 * age), 0);
+        ctx.scale(q.dir, 1);
+        ctx.globalAlpha *= 0.45 * (1 - age);
+        ctx.filter = 'grayscale(1) brightness(2.2) sepia(0.35) hue-rotate(160deg)';
+        drawSpriteFx(ctx, sprite.img, q.frame * sprite.cellW, 0, sprite.cellW, sprite.cellH, -sprite.anchorX * k, -sprite.anchorY * k, sprite.cellW * k, sprite.cellH * k);
+        ctx.restore();
+      });
+    }
     const BRAWLER_GHOSTS = new WeakMap();
     const BRAWLER_GHOST_LIFE = 18;
     function drawBrawlerGhosts(ctx, u, sprite, tick, frame, dir, k) {
@@ -33135,6 +33184,7 @@
         mfx.hitGhosts.delete(u);
       }
       if (u.job === 'brawler' && !u.monsterType && sprite.pickFrame) drawBrawlerGhosts(ctx, u, sprite, tick, frame, dir, k);
+      if (u.job === 'swordsman' && !u.monsterType) drawSwordGhosts(ctx, u, sprite, tick, frame, dir, k);
       ctx.scale(dir, 1);
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
@@ -34929,6 +34979,8 @@
           drawSwordSeomdanFx(ctx, ef); // 검사 섬단 X자 검기 (앞 4칸으로 날아감)
         } else if (ef.type === 'sword_issen') {
           drawSwordIssenFx(ctx, ef); // 검사 일섬 (빛줄기 돌진 → 길이 갈라짐)
+        } else if (ef.type === 'sword_mucham') {
+          drawSwordMuchamFx(ctx, ef); // 검사 무참 (타마다 빛의 베기·찌르기, 마지막 X)
 
         } else if (ef.type === 'cast_circle' || ef.type === 'shield_dome' || ef.type === 'blessing_aura') {
           ctx.globalAlpha = ef.life / ef.maxLife;
@@ -48472,7 +48524,7 @@
     // ----- 화면 형식 v2 (2026-11-09부터 방장이 보냄 · 받는 쪽은 두 형식 다 읽음) -----
     // 이펙트 종류 이름(평균 15자, 이펙트 바이트의 1/5)은 표 번호로 · 투사체의 안 바뀌는 칸(종류·색·반지름·그림)은 처음 한 번만 (매 화면 다시 보내던 투사체 바이트의 절반)
     // ⚠ LIVE_FX_TYPES 순서를 바꾸거나 중간에 끼우면 먼저 연 탭이 다른 이펙트를 그림 → 새 종류는 끝에만 더할 것 (표에 없는 종류는 이름 그대로 감)
-    const LIVE_FX_TYPES = ['aoe_ring', 'arrow_hit', 'bard_encore', 'bard_lute', 'bard_song_buff', 'bard_sr_encore', 'bard_wave', 'bard_wave_hit', 'berserker_slam', 'berserker_split', 'blessing_aura', 'blood_fx', 'brawl_hit', 'brawl_ring', 'cast_circle', 'charge_dash', 'curse_bolt', 'curse_ruin_blast', 'curse_ruin_bolt', 'curse_ruin_circle', 'curse_shatter', 'curse_siphon', 'curse_siphon_heal', 'curse_weaken', 'fire_explosion', 'frost_blizzard', 'frost_glaze', 'frost_nova', 'frost_skate', 'heal_beam', 'heal_cross', 'heal_pillar', 'hidden_assassin', 'hidden_assassin_smoke', 'hidden_beam', 'hidden_excal_impact', 'hidden_fusion', 'hidden_giant_aura', 'hidden_giant_burst', 'hidden_miracle', 'hidden_miracle_buff', 'hidden_miracle_pillar', 'hidden_musou_boom', 'hidden_musou_dash', 'hidden_musou_slash', 'hidden_musou_x', 'hidden_slash', 'hidden_snipe_bullet', 'hidden_snipe_hit', 'hidden_storm', 'ice_shatter', 'lightning_bolt', 'magic_burst', 'paladin_aegis_burst', 'paladin_aegis_dome', 'paladin_charge_dust', 'paladin_charge_hit', 'paladin_consec_burst', 'paladin_hs_dome', 'paladin_judgment', 'paladin_swing', 'pierce_fx', 'pyro_burst', 'pyro_fring', 'pyro_hit', 'pyro_meteor_impact', 'pyro_sr_meteor', 'pyro_xpl', 'rampage_fx', 'shield_dome', 'sniper_line', 'sniper_spread', 'spirit_dodge', 'spirit_king_burst', 'spirit_pop', 'stun_shockwave', 'whirlwind_slash', 'volt_rail', 'volt_beam', 'volt_fx', 'sword_iai', 'sword_batto', 'sword_seomdan', 'sword_issen'];
+    const LIVE_FX_TYPES = ['aoe_ring', 'arrow_hit', 'bard_encore', 'bard_lute', 'bard_song_buff', 'bard_sr_encore', 'bard_wave', 'bard_wave_hit', 'berserker_slam', 'berserker_split', 'blessing_aura', 'blood_fx', 'brawl_hit', 'brawl_ring', 'cast_circle', 'charge_dash', 'curse_bolt', 'curse_ruin_blast', 'curse_ruin_bolt', 'curse_ruin_circle', 'curse_shatter', 'curse_siphon', 'curse_siphon_heal', 'curse_weaken', 'fire_explosion', 'frost_blizzard', 'frost_glaze', 'frost_nova', 'frost_skate', 'heal_beam', 'heal_cross', 'heal_pillar', 'hidden_assassin', 'hidden_assassin_smoke', 'hidden_beam', 'hidden_excal_impact', 'hidden_fusion', 'hidden_giant_aura', 'hidden_giant_burst', 'hidden_miracle', 'hidden_miracle_buff', 'hidden_miracle_pillar', 'hidden_musou_boom', 'hidden_musou_dash', 'hidden_musou_slash', 'hidden_musou_x', 'hidden_slash', 'hidden_snipe_bullet', 'hidden_snipe_hit', 'hidden_storm', 'ice_shatter', 'lightning_bolt', 'magic_burst', 'paladin_aegis_burst', 'paladin_aegis_dome', 'paladin_charge_dust', 'paladin_charge_hit', 'paladin_consec_burst', 'paladin_hs_dome', 'paladin_judgment', 'paladin_swing', 'pierce_fx', 'pyro_burst', 'pyro_fring', 'pyro_hit', 'pyro_meteor_impact', 'pyro_sr_meteor', 'pyro_xpl', 'rampage_fx', 'shield_dome', 'sniper_line', 'sniper_spread', 'spirit_dodge', 'spirit_king_burst', 'spirit_pop', 'stun_shockwave', 'whirlwind_slash', 'volt_rail', 'volt_beam', 'volt_fx', 'sword_iai', 'sword_batto', 'sword_seomdan', 'sword_issen', 'sword_mucham'];
     const LIVE_FX_TYPE_IDX = Object.fromEntries(LIVE_FX_TYPES.map((t, i) => [t, i]));
     let liveFrameV2 = false; // publishLiveBattleFrame이 화면마다 정함
     function packLiveEffect(ef) {

@@ -46,8 +46,8 @@ function bolt(p, x0, y0, x1, y1, seed, B, a) {
   p.glowLine(x0, y0, x1, y1, 4, B[2], 0.18 * a);
 }
 
-/** 길 위의 빛의 날: 가운데 흰 심이 위아래로 옅어지는 면으로 이어짐 (발도·섬단과 같은 칠). rv = 그어진 정도, life = 식은 정도 */
-function blade(p, C, L, W, rv, life) {
+/** 길 위의 빛의 날 (x0 → x0 + L, 무참 찌르기도 씀): 가운데 흰 심이 위아래로 옅어지는 면으로 이어짐 (발도·섬단과 같은 칠). rv = 그어진 정도, life = 식은 정도 */
+export function blade(p, C, L, W, rv, life, x0 = 0) {
   if (rv <= 0 || life >= 1) return;
   const B = Math.ceil(W * GRAD) + 2;
   for (let x = -4; x <= L * rv + 4; x++) {
@@ -56,9 +56,9 @@ function blade(p, C, L, W, rv, life) {
     for (let y = -B; y <= B; y++) {
       const d = Math.abs(y + 0.5) / 1, x1 = d / (w * GRAD);
       if (x1 >= 1) continue;
-      p.blend(x, y, C[4], 0.7 * Math.pow(1 - life, 1.2) * Math.pow(1 - x1, 1.8)); // 위아래로 옅어지는 면
+      p.blend(x0 + x, y, C[4], 0.7 * Math.pow(1 - life, 1.2) * Math.pow(1 - x1, 1.8)); // 위아래로 옅어지는 면
       const e = d / w;
-      if (e < 1) p.blend(x, y, C[6], (1 - life * 0.6) * Math.pow(1 - e, 1.2)); // 흰 심
+      if (e < 1) p.blend(x0 + x, y, C[6], (1 - life * 0.6) * Math.pow(1 - e, 1.2)); // 흰 심
     }
   }
 }

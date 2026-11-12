@@ -4,7 +4,7 @@
 # - 모든 프레임에 공통으로 빈 가장자리를 잘라 냄 (기준점 = 칼자루 끝은 잘라 낸 만큼 옮김)
 # - 칸 정보는 화면에 찍고 assets/sprites/fx/sword/sword_fx.json에도 씀: index.html의 SWORD_FXS 표를 이 값으로 바꿀 것
 #   [칸 너비, 높이, 열 수, 프레임 수, fps, 기준점 x, y]
-# - QUANT에 든 이펙트는 색·투명도를 64단계로 맞춰 파일을 줄임 (빛 면이 넓은 발도·섬단)
+# - QUANT에 든 이펙트는 색·투명도를 64단계로 맞춰 파일을 줄임 (빛 면이 넓은 발도·섬단·무참 마지막 일격)
 # - HALF에 든 이펙트는 반 해상도로 줄여 묶음 (게임이 2배로 그림): 발도처럼 큰 그림의 파일 크기를 1/4로
 # - 이름을 주면 그 이펙트만 묶고 sword_fx.json의 나머지 칸은 그대로 둠: python tools/swordsman_fx_pack.py <pixelfx 폴더> [이름...]
 import json, os, sys
@@ -13,7 +13,7 @@ from PIL import Image
 
 OUT = 'assets/sprites/fx/sword'
 HALF = {'batto-ring'}
-QUANT = {'batto-ring', 'seomdan-x'}
+QUANT = {'batto-ring', 'seomdan-x', 'mucham-final'}
 
 
 def main():

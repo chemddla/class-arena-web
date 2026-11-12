@@ -2,7 +2,7 @@
 // 시트는 제자리(기준점 = X 가운데)에서 굽고, 게임이 칼자루 앞 → 4칸 끝까지 옮기며 그림 (+x = 날아가는 쪽). 뒤로 잔상 한 겹과 속도선이 흘러 나는 느낌을 냄
 //   0.00~0.05 X가 그어짐 (첫 날 1칸, 둘째 날 한 칸 늦게) · 0.05~0.30 날아감 (게임이 옮김) · 0.30~ 끝에서 터지며 벌어지고 식음
 import { fit, clamp, smooth, rng } from "../../core/index.js";
-import { MOON, MOON_SPARK, FLASH, burst, lensFlare } from "./_sword.js";
+import { MOON, MOON_SPARK, FLASH, burst, lensFlare, lightCrescent } from "./_sword.js";
 
 export const meta = {
   name: "Seomdan X",
@@ -18,44 +18,11 @@ export const meta = {
 };
 
 export const FORM = 0.05, END = 0.3; // 그어짐 끝 · 날아감 끝 (게임이 이 사이에 X를 옮김)
-const RIM = 2, GRAD = 4.5;
-
-/**
- * 빛의 초승달 하나: X 가운데 (ox, oy)를 지나며 앞(+x)으로 볼록, rot만큼 기울임. 반지름 Rc, 펼친 각 span.
- * rv = 그어진 정도 (0..1, 위 끝부터), sc = 크기 배율, life = 식은 정도 (0..1), k = 밝기
- */
-function crescent(p, C, ox, oy, rot, Rc, span, W, rv, sc, life, k) {
-  if (rv <= 0 || k <= 0.01 || life >= 1) return;
-  const R = Rc * sc, cr = Math.cos(rot), sr = Math.sin(rot), B = R * span * 0.5 + W * GRAD + 14;
-  for (let y = Math.floor(oy - B); y <= oy + B; y++)
-    for (let x = Math.floor(ox - B); x <= ox + B; x++) {
-      const dx = x + 0.5 - ox, dy = y + 0.5 - oy, lx = dx * cr + dy * sr + R, ly = -dx * sr + dy * cr; // 원 중심 기준 (원 중심 = X 가운데 뒤 R)
-      const r = Math.hypot(lx, ly), a = Math.atan2(ly, lx), v = (a + span / 2) / span;
-      if (v < 0 || v > 1 || v > rv) continue;
-      const head = clamp((rv - v) / 0.12) ** 0.8; // 그어지는 머리도 뾰족
-      const w = W * sc * Math.pow(Math.sin(Math.PI * v), 1.3) * head * Math.pow(1 - life, 0.7);
-      if (w < 0.3) continue;
-      const d = R - r;
-      const cov = clamp(d + 0.5);
-      if (cov < 1) { // 바깥: 광선 후광 (가장자리 1px에서도 빈틈 없게 날과 나눠 칠함)
-        const out = Math.max(0, -d), b = k * clamp(w / 6) * (1 - life) * (1 - cov);
-        if (out < 14) p.blend(x, y, C[5], b * (0.8 * Math.exp(-out / 2.2) + 0.3 * Math.exp(-out / 7)));
-        if (cov <= 0) continue;
-      }
-      const x1 = d / (w * GRAD);
-      if (x1 >= 1) continue;
-      p.blend(x, y, C[4], cov * 0.75 * k * Math.pow(1 - life, 1.2) * Math.pow(1 - x1, 1.6)); // 뒤로 옅어지는 면
-      const e = d / (w * RIM);
-      if (e < 1) p.blend(x, y, C[6], cov * k * (1 - life * 0.6) * Math.pow(1 - e, 1.1)); // 흰 날
-      const cw = Math.max(1, w * 0.18), cd = Math.abs(d - Math.max(1.2, w * 0.3)) / cw;
-      if (cd < 1) p.blend(x, y, C[6], k * (1 - life * 0.8) * (1 - cd * cd)); // 광선 심
-    }
-}
 
 /** X 한 벌: 두 날을 rv0, rv1만큼 그어서 */
 function cross(p, C, o, x, rv0, rv1, sc, life, k) {
-  crescent(p, C, x, 0, o.tilt, o.Rc, o.span, o.W, rv0, sc, life, k);
-  crescent(p, C, x, 0, -o.tilt, o.Rc, o.span, o.W, rv1, sc, life, k);
+  lightCrescent(p, C, x, 0, o.tilt, o.Rc, o.span, o.W, rv0, sc, life, k);
+  lightCrescent(p, C, x, 0, -o.tilt, o.Rc, o.span, o.W, rv1, sc, life, k);
 }
 
 export function draw(p, t, o) {

@@ -148,3 +148,36 @@ export function sharpSlash(p, s, t) {
     }
   }
 }
+
+/**
+ * 빛의 초승달 하나: X 가운데 (ox, oy)를 지나며 앞(+x)으로 볼록, rot만큼 기울임. 반지름 Rc, 펼친 각 span.
+ * 발도·섬단·무참이 함께 씀. RIM = 흰 날 두께 배율, GRAD = 뒤로 옅어지는 면 길이 배율 (날 굵기의 몇 배).
+ * rv = 그어진 정도 (0..1, 위 끝부터), sc = 크기 배율, life = 식은 정도 (0..1), k = 밝기
+ */
+export function lightCrescent(p, C, ox, oy, rot, Rc, span, W, rv, sc, life, k, RIM = 2, GRAD = 4.5) {
+  if (rv <= 0 || k <= 0.01 || life >= 1) return;
+  const R = Rc * sc, cr = Math.cos(rot), sr = Math.sin(rot), B = R * span * 0.5 + W * GRAD + 14;
+  for (let y = Math.floor(oy - B); y <= oy + B; y++)
+    for (let x = Math.floor(ox - B); x <= ox + B; x++) {
+      const dx = x + 0.5 - ox, dy = y + 0.5 - oy, lx = dx * cr + dy * sr + R, ly = -dx * sr + dy * cr; // 원 중심 기준 (원 중심 = X 가운데 뒤 R)
+      const r = Math.hypot(lx, ly), a = Math.atan2(ly, lx), v = (a + span / 2) / span;
+      if (v < 0 || v > 1 || v > rv) continue;
+      const head = clamp((rv - v) / 0.12) ** 0.8; // 그어지는 머리도 뾰족
+      const w = W * sc * Math.pow(Math.sin(Math.PI * v), 1.3) * head * Math.pow(1 - life, 0.7);
+      if (w < 0.3) continue;
+      const d = R - r;
+      const cov = clamp(d + 0.5);
+      if (cov < 1) { // 바깥: 광선 후광 (가장자리 1px에서도 빈틈 없게 날과 나눠 칠함)
+        const out = Math.max(0, -d), b = k * clamp(w / 6) * (1 - life) * (1 - cov);
+        if (out < 14) p.blend(x, y, C[5], b * (0.8 * Math.exp(-out / 2.2) + 0.3 * Math.exp(-out / 7)));
+        if (cov <= 0) continue;
+      }
+      const x1 = d / (w * GRAD);
+      if (x1 >= 1) continue;
+      p.blend(x, y, C[4], cov * 0.75 * k * Math.pow(1 - life, 1.2) * Math.pow(1 - x1, 1.6)); // 뒤로 옅어지는 면
+      const e = d / (w * RIM);
+      if (e < 1) p.blend(x, y, C[6], cov * k * (1 - life * 0.6) * Math.pow(1 - e, 1.1)); // 흰 날
+      const cw = Math.max(1, w * 0.18), cd = Math.abs(d - Math.max(1.2, w * 0.3)) / cw;
+      if (cd < 1) p.blend(x, y, C[6], k * (1 - life * 0.8) * (1 - cd * cd)); // 광선 심
+    }
+}
