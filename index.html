@@ -15733,6 +15733,7 @@
     // 마감된 경매 정산: 같은 경매를 두 번 정산하지 않게 판매자 기기에서만 함 (서버 없는 학급은 이 기기에서 바로)
     // 경매를 서버에서 빼낸 것이 확인된 뒤에만, 그때 서버에 있던 입찰 기준으로 용병·대금을 보냄 (마감 직전에 들어온 입찰을 놓치지 않게)
     let auctionSettleBusy = false;
+    const auctionPayout = bid => bid - Math.floor(bid / 20); // 경매 판매 수수료 5% (내림)
     async function settleExpiredAuctions() {
       if (auctionSettleBusy || !state || !Array.isArray(state.auctions) || !state.auctions.length) return;
       const me = getActiveStudent();
@@ -15763,8 +15764,9 @@
           const merc = { ...auc.merc, deployed: false };
           if (auc.highestBidderId && state.students.some(st => st.id === auc.highestBidderId)) {
             sendToStudent(auc.highestBidderId, { merc, kind: 'auction_win', note: `경매에서 [${merc.name}] 용병을 ${auc.currentBid.toLocaleString()} CA에 낙찰받았어요.` });
-            sendToStudent(auc.sellerId, { mc: auc.currentBid, kind: 'auction_sale', note: `[${merc.name}] 용병이 경매에서 ${auc.highestBidderName}에게 팔렸어요.` });
-            if (auc.sellerId === me.id) results.push(`🔨 [${merc.name}] 경매 마감! ${auc.highestBidderName}에게 ${auc.currentBid.toLocaleString()} CA에 낙찰됐어요.`);
+            const pay = auctionPayout(auc.currentBid);
+            sendToStudent(auc.sellerId, { mc: pay, kind: 'auction_sale', note: `[${merc.name}] 용병이 경매에서 ${auc.highestBidderName}에게 팔렸어요. (수수료 5% 빼고 ${pay.toLocaleString()} CA)` });
+            if (auc.sellerId === me.id) results.push(`🔨 [${merc.name}] 경매 마감! ${auc.highestBidderName}에게 ${auc.currentBid.toLocaleString()} CA에 낙찰됐어요. (수수료 5% 빼고 ${pay.toLocaleString()} CA 받음)`);
           } else {
             sendToStudent(auc.sellerId, { merc, kind: 'auction_unsold', note: `[${merc.name}] 용병이 유찰되어 돌아왔어요.` });
             if (auc.sellerId === me.id) results.push(`↩️ [${merc.name}] 경매가 유찰되어 용병이 내 용병단으로 돌아왔어요.`);
@@ -15807,12 +15809,13 @@
         if (!r.ok) { showNotice('⚠️ 낙찰을 확정하지 못했어요. 경매 목록을 확인하고 다시 해 주세요.'); renderMarketTab(); return; }
         const done = r.before;
         const winner = state.students.find(s => s.id === done.highestBidderId);
-        me.mc += done.currentBid;
+        const pay = auctionPayout(done.currentBid);
+        me.mc += pay;
         const acquiredMerc = { ...done.merc, deployed: false };
         sendToStudent(done.highestBidderId, { merc: acquiredMerc, kind: 'auction_win', note: `경매에서 [${acquiredMerc.name}] 용병을 낙찰받았어요.` });
         saveState();
         renderAllStudentViews();
-        showRewardBanner(`🔨 경매 낙찰 완료! 판매대금 ${done.currentBid.toLocaleString()} CA를 받았어요. [${acquiredMerc.name}] 용병은 ${winner ? winner.name : done.highestBidderName} 친구가 접속하면 자동으로 전달돼요!`);
+        showRewardBanner(`🔨 경매 낙찰 완료! 판매대금 ${done.currentBid.toLocaleString()} CA에서 수수료 5%를 빼고 ${pay.toLocaleString()} CA를 받았어요. [${acquiredMerc.name}] 용병은 ${winner ? winner.name : done.highestBidderName} 친구가 접속하면 자동으로 전달돼요!`);
       } finally { marketTxBusy = false; }
     }
 
