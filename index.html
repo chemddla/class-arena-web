@@ -2877,6 +2877,8 @@
     .eb-card.hard .eb-pick { background: #ef4444; color: #fff; }
     .eb-chip.easybtn { cursor: pointer; background: #14532d; color: #bbf7d0; box-shadow: inset 0 -2px 0 #052e16; border: 0; }
     .eb-chip.easybtn.on { background: #16a34a; color: #fff; }
+    .eb-chip.normbtn { cursor: pointer; background: #1e3a8a; color: #bfdbfe; box-shadow: inset 0 -2px 0 #172554; border: 0; }
+    .eb-chip.normbtn.on { background: #2563eb; color: #fff; }
     .eb-card.easy .eb-pick { background: #16a34a; color: #fff; }
     .eb-card.locked { cursor: not-allowed; }
     .eb-card.locked > .eb-map { filter: grayscale(1) brightness(.55) blur(1.5px); }
@@ -38537,17 +38539,20 @@
       const hardSel = isSel && selectedEliteHard;
       const easySel = isSel && selectedEliteEasy && !hardSel;
       const easyClaimed = Boolean(eliteEasyClaimsOf(stu)[b.id]);
-      const easyBtn = `<button type="button" onclick="event.stopPropagation(); selectEliteBossForRaid('${b.id}', false, ${!easySel})" class="eb-chip easybtn${easySel ? ' on' : ''}"
+      const easyBtn = `<button type="button" onclick="event.stopPropagation(); selectEliteBossForRaid('${b.id}', false, true)" class="eb-chip easybtn${easySel ? ' on' : ''}"
             title="보스 능력치 ${Math.round((1 - ELITE_EASY.stat) * 100)}% 감소 · ${easyClaimed ? '보상 받음' : `보상 ${eliteRewardOf(b, false, true).toLocaleString()} CA (1회)`} · 다음 단계는 안 열려요">${easySel ? '✅ ' : ''}🌱 이지</button>`;
       const claimed = Boolean(eliteClaimsOf(stu)[b.id]);
       const hardClaimed = Boolean(eliteHardClaimsOf(stu)[b.id]);
       const skills = Object.values(eliteBossSkillBook(b.id)).map(sk => `${sk.icon} ${sk.name}`).join(' · ');
+      const normalSel = isSel && !hardSel && !easySel;
+      const normalBtn = `<button type="button" onclick="event.stopPropagation(); selectEliteBossForRaid('${b.id}')" class="eb-chip normbtn${normalSel ? ' on' : ''}"
+            title="${claimed ? '보상 받음' : `보상 ${b.rewardMc.toLocaleString()} CA (1회)`} · 잡으면 다음 단계와 하드모드가 열려요">${normalSel ? '✅ ' : ''}⚔️ 노말</button>`;
       const hardBtn = claimed
-        ? `<button type="button" onclick="event.stopPropagation(); selectEliteBossForRaid('${b.id}', ${!hardSel})" class="eb-chip hardbtn${hardSel ? ' on' : ''}"
-            title="도전비용 ${ELITE_HARD.cost.toLocaleString()} CA · ${hardClaimed ? '보상 받음' : `보상 ${eliteRewardOf(b, true).toLocaleString()} CA (1회)`}">${hardSel ? '✅ ' : ''}🔥 하드모드</button>`
-        : `<button type="button" disabled class="eb-chip hardbtn" title="일반 처치 후 열려요">🔒 하드</button>`;
+        ? `<button type="button" onclick="event.stopPropagation(); selectEliteBossForRaid('${b.id}', true)" class="eb-chip hardbtn${hardSel ? ' on' : ''}"
+            title="도전비용 ${ELITE_HARD.cost.toLocaleString()} CA · ${hardClaimed ? '보상 받음' : `보상 ${eliteRewardOf(b, true).toLocaleString()} CA (1회)`}">${hardSel ? '✅ ' : ''}🔥 하드</button>`
+        : `<button type="button" disabled class="eb-chip hardbtn" title="노말로 처치하면 열려요">🔒 하드</button>`;
       return `<div class="eb-card${isSel ? ' sel' : ''}${hardSel ? ' hard' : ''}${easySel ? ' easy' : ''}" onclick="selectEliteBossForRaid('${b.id}', ${hardSel}, ${easySel})" title="${esc(skills)}">${map}${boss}
-          ${isSel ? `<span class="eb-pick">${hardSel ? '🔥 하드 선택' : easySel ? '🌱 이지 선택' : '✅ 선택'}</span>` : ''}
+          ${isSel ? `<span class="eb-pick">${hardSel ? '🔥 하드 선택' : easySel ? '🌱 이지 선택' : '⚔️ 노말 선택'}</span>` : ''}
           <div class="eb-text">
             <span class="eb-tag">${b.stage}단계 엘리트 보스</span>
             <div class="eb-name">${esc(b.name)}</div>
@@ -38555,7 +38560,7 @@
             <div class="eb-chips">
               <span class="eb-chip">❤️ ${b.hp.toLocaleString()}</span>
               ${claimed ? '<span class="eb-chip done">✅ 처치함</span>' : `<span class="eb-chip gold">💰 ${b.rewardMc} CA</span>`}
-              ${easyBtn}${hardBtn}
+              ${easyBtn}${normalBtn}${hardBtn}
             </div>
           </div>
         </div>`;
@@ -38615,7 +38620,7 @@
       // 3) 아래 막대: 고른 보스 + 방 만들기
       const selEl = document.getElementById('raidSelectedBossText');
       const sel = ELITE_BOSS_DEFS.find(b => b.id === selectedEliteBossId) || ELITE_BOSS_DEFS[0];
-      if (selEl) selEl.innerHTML = `${selectedEliteHard ? '🔥 하드 · ' : selectedEliteEasy ? '🌱 이지 · ' : ''}${sel.stage}단계 ${sel.name}
+      if (selEl) selEl.innerHTML = `${selectedEliteHard ? '🔥 하드 · ' : selectedEliteEasy ? '🌱 이지 · ' : '⚔️ 노말 · '}${sel.stage}단계 ${sel.name}
         <small>${selectedEliteEasy && !selectedEliteHard
           ? `이지모드: 보스 능력치 ${Math.round((1 - ELITE_EASY.stat) * 100)}% 감소 · ${eliteEasyClaimsOf(myStu)[sel.id] ? '보상 받음 (재도전 보상 없음)' : `보상 💰 ${eliteRewardOf(sel, false, true).toLocaleString()} CA (1회)`} · 이지로 잡아도 다음 단계는 안 열려요`
           : selectedEliteHard
