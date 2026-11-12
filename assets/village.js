@@ -68,7 +68,7 @@
     <button data-v="fullBtn">⛶ 크게</button>
     <span class="pill"><b data-v="fpsN">–</b> fps · <span data-v="qN">화질 높음</span></span>
   </div>
-  <div class="vlg-hint">이동: WASD·방향키 또는 땅 누르기 · 시점: 화면 끌기 · 원래 시점: R · 낚시: 물고기 그림자 근처 물가에서 E · 가방: B · 낚싯대 들기/넣기: Q · 달리기: Shift · 인사: Space · 하기: E · 감정: 1·2 · 확대: 마우스 휠</div>
+  <div class="vlg-hint">이동: WASD·방향키 또는 땅 누르기 · 시점: 화면 끌기 · 원래 시점: R · 낚시: 물고기 그림자 근처 물가에서 E · 가방: B · 도구 들기/바꾸기: Q · 벌레: 잠자리채 들고 E · 달리기: Shift · 인사: Space · 하기: E · 감정: 1·2 · 확대: 마우스 휠</div>
   <div class="vlg-catch" data-v="catch"></div>
   <div class="vlg-dex" data-v="shop" style="display:none"><div class="vlg-dex-in"><div class="vlg-dex-h"><b data-v="shopTitle">🦝 물고기 사요</b><span data-v="shopSum"></span><button data-v="shopClose">✕ 닫기</button></div><div data-v="shopBody"></div></div></div>
   <div class="vlg-dex" data-v="bag" style="display:none"><div class="vlg-dex-in"><div class="vlg-dex-h"><b>🎒 가방</b><span data-v="bagSum"></span><button data-v="bagClose">✕ 닫기</button></div><div data-v="bagBody"></div></div></div>
@@ -787,6 +787,13 @@
     ['광어', '🐟', 'sea', [30, 80], 2], ['갈치', '🐟', 'sea', [60, 140], 2], ['참돔', '🐠', 'sea', [30, 90], 3], ['문어', '🐙', 'sea', [40, 120], 3],
     ['가오리', '🐟', 'sea', [50, 150], 3], ['참치', '🐟', 'sea', [100, 250], 4], ['상어', '🦈', 'sea', [150, 400], 4], ['고래상어', '🐋', 'sea', [400, 1000], 4],
   ].map(([name, icon, hab, cm, rar], id) => ({ id, name, icon, hab, cm, rar }));
+  const BUGS = [ // [이름, 그림, 모양, 귀함, 색]
+    ['배추흰나비', '🦋', 'butterfly', 1, ['#ffffff', '#efece2']], ['노랑나비', '🦋', 'butterfly', 1, ['#ffe066', '#f2c53a']], ['호랑나비', '🦋', 'butterfly', 2, ['#f2c53a', '#2b2b33']],
+    ['꿀벌', '🐝', 'bee', 1, ['#f2c53a']], ['고추잠자리', '🦟', 'dragonfly', 2, ['#e0483f']], ['꽃무지', '🪲', 'beetle', 2, ['#3fae6a']],
+    ['무당벌레', '🐞', 'ladybug', 1, ['#e8483f']], ['개미', '🐜', 'ant', 1, ['#2b2b33']], ['달팽이', '🐌', 'snail', 1, ['#c98a4a']],
+    ['메뚜기', '🦗', 'hopper', 1, ['#7fbf3a']], ['여치', '🦗', 'hopper', 2, ['#4f9a3a']], ['방아깨비', '🦗', 'hopper', 2, ['#a8d860']], ['사마귀', '🦗', 'mantis', 3, ['#5cbd50']],
+    ['사슴벌레', '🪲', 'stag', 3, ['#5a3a22']], ['반딧불이', '✨', 'firefly', 3, ['#3a3a44']], ['왕나비', '🦋', 'butterfly', 4, ['#ff8a3a', '#2b2b33']], ['장수풍뎅이', '🪲', 'rhino', 4, ['#3a2414']],
+  ].map(([name, icon, shape, rar, col], id) => ({ id, name, icon, shape, rar, col, move: ['butterfly', 'bee', 'dragonfly', 'beetle', 'firefly'].includes(shape) ? 'fly' : shape === 'hopper' ? 'hop' : 'crawl' }));
   const RAR = ['', '흔함', '조금 귀함', '귀함', '전설'], RAR_W = [0, 60, 28, 10, 2.5], BITE_WIN = [0, 1.0, 0.85, 0.7, 0.55]; // 입질 때 걷어 올릴 수 있는 시간(초)
   const SEA_Z = BEACH.z1 + 0.9; // 이보다 남쪽은 바다
   const fishMat = flat(0x1f5f9a, { transparent: true, opacity: 0.38, depthWrite: false });
@@ -963,7 +970,7 @@
     if (e.code === 'KeyR') resetView();
     if (e.code === 'Escape') { openDex(false); openBag(false); openShop(null); }
     if (e.code === 'KeyB') openBag(bagEl.style.display === 'none');
-    if (e.code === 'KeyQ') setRod(bag.held !== 'rod');
+    if (e.code === 'KeyQ') { const own = [null].concat(Object.keys(TOOLS).filter(k => bag[k])); if (own.length < 2) say(me, '도구가 없어요. 슈퍼마켓에서 사요!', 1.8); else setTool(own[(own.indexOf(bag.held || null) + 1) % own.length]); } // 도구 돌려 가며 들기
     if (e.code === 'Digit1') emote('joy');
     if (e.code === 'Digit2') emote('heart');
     if (e.code.startsWith('Arrow')) e.preventDefault();
@@ -1042,6 +1049,7 @@
     if (Math.hypot(me.x - SHOP.ix, me.z - (SHOP.iz + 3)) < 1.1) return { kind: 'shopOut', label: '🚪 밖으로 나가기' };
     const clerk = clerks.find(a => Math.hypot(a.x - me.x, a.z - me.z) < 1.9);
     if (clerk) return { kind: 'clerk', clerk, label: '💬 ' + clerk.name.slice(3) + ' 점원과 이야기' };
+    const bug = bugNear(); if (bug) return { kind: 'bug', bug, label: bag.net ? `🥅 ${bug.B.name} 잡기` : `${bug.B.icon} ${bug.B.name} (잠자리채가 필요해요)` };
     if (Math.hypot(me.x - (SHOP.ix + 4.7), me.z - (SHOP.iz - 1.7)) < 1.3) return { kind: 'rack', label: bag.rod ? '🎣 낚싯대 진열대' : `🎣 낚싯대 사기 (${ROD_PRICE}동)` };
     const sh = castTarget(); if (sh) return bag.rod ? { kind: 'cast', sh, label: bag.held === 'rod' ? '🎣 낚시하기' : '🎣 낚싯대 꺼내서 낚시하기' } : { kind: 'norod', label: '🎣 낚싯대가 없어요 (슈퍼마켓)' };
     const palm = palms.find(q => Math.hypot(q.x - me.x, q.z - me.z) < 2.2);
@@ -1056,6 +1064,7 @@
     const c = nearby(); if (!c) return;
     if (c.kind === 'tree') return shake();
     if (c.kind === 'cast') return startFishing(c.sh);
+    if (c.kind === 'bug') return swingNet(c.bug);
     if (c.kind === 'norod') { say(me, '낚싯대가 있어야 해요. 슈퍼마켓에서 사요!', 2.2); return; }
     if (c.kind === 'rack') { const k = clerks[0]; k.wave = 1.4; say(k, bag.rod ? '이미 좋은 낚싯대가 있네요!' : `낚싯대는 ${ROD_PRICE}동이에요 🎣`, 2); openShop(k); return; }
     if (c.kind === 'reel') return reel();
@@ -1235,7 +1244,14 @@
     add(at(mesh(new THREE.CylinderGeometry(0.04, 0.034, 0.08, 14), '#2b2f3a'), 0, 0.46, 0.12)); add(at(mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.05, 14), '#c9ced6'), 0, 0.525, 0.12));
     add(at(mesh(new THREE.BoxGeometry(0.08, 0.01, 0.012), '#c9ced6'), 0.05, 0.46, 0.12)); add(at(mesh(new THREE.SphereGeometry(0.016, 8, 6), '#f4efe5'), 0.09, 0.46, 0.12)); }
   const rodHold = new THREE.Group(); rodHold.add(rod); rod.position.y = -0.28; rod.visible = false; dress(rod); // 손잡이(코르크) 쪽을 손에 쥠
-  me.onPet = () => me.pet.hands[1].add(rodHold); me.onPet(); // 펫을 바꾸면 새 손에 다시 쥐여 줌
+  const bugNet = new THREE.Group(); { // 잠자리채: 나무 자루, 초록 손잡이, 주황 테, 하얀 그물 주머니
+    const cyl = (r0, r1, h, c, y) => at(mesh(new THREE.CylinderGeometry(r0, r1, h, 10), c), 0, y, 0);
+    bugNet.add(cyl(0.02, 0.026, 1.35, '#d9b98a', 0.675)); bugNet.add(cyl(0.032, 0.032, 0.3, '#3f9a5a', 0.3));
+    bugNet.add(at(mesh(new THREE.TorusGeometry(0.2, 0.018, 6, 22), '#e8a13a'), 0, 1.55, 0));
+    const bagM = noShadow(mesh(new THREE.CylinderGeometry(0.19, 0.03, 0.44, 14, 1, true), flat(0xffffff, { transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false })));
+    bagM.rotation.x = Math.PI / 2; bagM.position.set(0, 1.55, -0.22); bugNet.add(bagM); }
+  const netHold = new THREE.Group(); netHold.add(bugNet); bugNet.position.y = -0.3; bugNet.visible = false; dress(bugNet);
+  me.onPet = () => { me.pet.hands[1].add(rodHold); me.pet.hands[1].add(netHold); }; me.onPet(); // 펫을 바꾸면 새 손에 다시 쥐여 줌
   const bobber = new THREE.Group(); bobber.add(at(noShadow(mesh(new THREE.SphereGeometry(0.09, 12, 8, 0, 6.29, 0, Math.PI / 2), '#e8483f')), 0, 0, 0)); bobber.add(at(noShadow(mesh(new THREE.SphereGeometry(0.09, 12, 8, 0, 6.29, Math.PI / 2, Math.PI / 2), '#ffffff')), 0, 0, 0));
   bobber.visible = false; scene.add(bobber);
   const lineGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Array(30).fill(0), 3));
@@ -1244,62 +1260,70 @@
   const DEX_KEY = 'vlgDex:' + (demo ? 'demo' : host.me.id); let dex = {};
   try { dex = JSON.parse(localStorage.getItem(DEX_KEY) || '{}') || {}; } catch (e) { dex = {}; }
   const dexN = $('dexN'), dexEl = $('dex'), catchEl = $('catch');
-  const updDexN = () => { dexN.textContent = Object.keys(dex).length + '/' + FISH.length; }; updDexN();
+  const updDexN = () => { dexN.textContent = Object.keys(dex).length + '/' + (FISH.length + BUGS.length); }; updDexN();
   // 가방: 낚싯대(손에 들기·넣기), 잡은 물고기, 딴 열매. 이 브라우저에 저장 (나중에 슈퍼마켓 점원에게 팔 거리)
-  const BAG_KEY = 'vlgBag:' + (demo ? 'demo' : host.me.id); let bag = { held: null, rod: false, fish: {}, apple: 0, coconut: 0, coins: 0 };
+  const BAG_KEY = 'vlgBag:' + (demo ? 'demo' : host.me.id); let bag = { held: null, rod: false, net: false, fish: {}, bug: {}, apple: 0, coconut: 0, coins: 0 };
   try { bag = Object.assign(bag, JSON.parse(localStorage.getItem(BAG_KEY) || '{}')); } catch (e) {}
-  if (!bag.rod) bag.held = null; // 낚싯대는 슈퍼마켓에서 사야 생김
+  bag.bug = bag.bug || {}; if (bag.held && !bag[bag.held]) bag.held = null; // 도구는 슈퍼마켓에서 사야 생김
   const bagEl = $('bag'), heldIc = $('heldIc');
   const coinN = $('coinN');
   const saveBag = () => { try { localStorage.setItem(BAG_KEY, JSON.stringify(bag)); } catch (e) {} coinN.textContent = bag.coins || 0; if (bagEl.style.display !== 'none') renderBag(); };
   coinN.textContent = bag.coins || 0;
-  const bagAdd = (k, id) => { if (k === 'fish') bag.fish[id] = (bag.fish[id] || 0) + 1; else bag[k] = (bag[k] || 0) + 1; saveBag(); };
-  function setRod(on) { // 낚싯대를 손에 들기/가방에 넣기
-    if (on && !bag.rod) { say(me, '낚싯대가 없어요. 슈퍼마켓에서 사요!', 2); return; }
-    if (!on && fishing.st) endFishing(); bag.held = on ? 'rod' : null; rod.visible = on; heldIc.textContent = on ? '· 🎣' : ''; saveBag(); }
+  const bagAdd = (k, id) => { if (k === 'fish' || k === 'bug') bag[k][id] = (bag[k][id] || 0) + 1; else bag[k] = (bag[k] || 0) + 1; saveBag(); };
+  const TOOLS = { rod: { ic: '🎣', nm: '낚싯대', price: 30, use: '강·바다에서 물고기를 낚아요' }, net: { ic: '🥅', nm: '잠자리채', price: 40, use: '풀밭에 나타난 벌레를 잡아요' } };
+  function setTool(k) { // 도구를 손에 들기(k)·가방에 넣기(null). 한 번에 하나만 듦
+    if (k && !bag[k]) { say(me, TOOLS[k].nm + '가 없어요. 슈퍼마켓에서 사요!', 2); return; }
+    if (k !== 'rod' && fishing.st) endFishing();
+    bag.held = k || null; rod.visible = k === 'rod'; bugNet.visible = k === 'net'; heldIc.textContent = k ? '· ' + TOOLS[k].ic : ''; saveBag(); }
+  const setRod = on => setTool(on ? 'rod' : null);
   function renderBag() {
     const slot = (ic, nm, cnt, extra, cls) => `<div class="vlg-fish vlg-slot ${cls || ''}"><div class="ic">${ic}</div><div class="nm">${nm}</div><div class="cnt">${cnt}</div>${extra || ''}</div>`;
-    const held = bag.held === 'rod', items = [bag.rod ? slot('🎣', '낚싯대', held ? '손에 들고 있어요' : '가방 속', `<button data-rod>${held ? '가방에 넣기' : '손에 들기'}</button>`, held ? 'held' : '')
-      : slot('🎣', '낚싯대 없음', `슈퍼마켓에서 ${ROD_PRICE}동`, '', 'no')];
+    const items = Object.keys(TOOLS).map(k => { const T = TOOLS[k], held = bag.held === k;
+      return bag[k] ? slot(T.ic, T.nm, held ? '손에 들고 있어요' : '가방 속', `<button data-tool="${k}">${held ? '가방에 넣기' : '손에 들기'}</button>`, held ? 'held' : '')
+        : slot(T.ic, T.nm + ' 없음', `슈퍼마켓에서 ${T.price}동`, '', 'no'); });
     if (bag.apple) items.push(slot('🍎', '사과', '× ' + bag.apple)); if (bag.coconut) items.push(slot('🥥', '코코넛', '× ' + bag.coconut));
     FISH.forEach(f => { const n = bag.fish[f.id]; if (n) items.push(slot(f.icon, f.name, '× ' + n, `<div class="st">${'★'.repeat(f.rar)}</div>`)); });
-    const fishN = Object.values(bag.fish).reduce((a, b) => a + b, 0);
-    $('bagSum').textContent = `🪙 ${bag.coins || 0}동 · 물고기 ${fishN}마리 · 열매 ${(bag.apple || 0) + (bag.coconut || 0)}개`;
+    BUGS.forEach(b => { const n = bag.bug[b.id]; if (n) items.push(slot(b.icon, b.name, '× ' + n, `<div class="st">${'★'.repeat(b.rar)}</div>`)); });
+    const cnt = o => Object.values(o).reduce((a, b) => a + b, 0);
+    $('bagSum').textContent = `🪙 ${bag.coins || 0}동 · 물고기 ${cnt(bag.fish)}마리 · 벌레 ${cnt(bag.bug)}마리 · 열매 ${(bag.apple || 0) + (bag.coconut || 0)}개`;
     while (items.length < 16 || items.length % 4) items.push('<div class="vlg-fish vlg-slot empty"></div>');
     $('bagBody').innerHTML = `<div class="vlg-dex-grid">${items.join('')}</div>`;
-    const b = $('bagBody').querySelector('[data-rod]'); if (b) b.onclick = () => setRod(bag.held !== 'rod'); }
-  if (bag.held === 'rod') { rod.visible = true; heldIc.textContent = '· 🎣'; }
+    $('bagBody').querySelectorAll('[data-tool]').forEach(b => { b.onclick = () => setTool(bag.held === b.dataset.tool ? null : b.dataset.tool); }); }
+  if (bag.held) { rod.visible = bag.held === 'rod'; bugNet.visible = bag.held === 'net'; heldIc.textContent = '· ' + TOOLS[bag.held].ic; }
   const openBag = on => { bagEl.style.display = on ? 'flex' : 'none'; if (on) { openDex(false); openShop(null); renderBag(); } };
   // 슈퍼마켓: 낚싯대를 사고, 열매·물고기를 팔아 동을 모음. 물고기 값 = 귀함에 따른 기본값 × 크기(평균 cm가 클수록 최대 2배)
-  const ROD_PRICE = 30, FRUIT = [['apple', '🍎', '사과', 5], ['coconut', '🥥', '코코넛', 7]];
+  const ROD_PRICE = TOOLS.rod.price, BUG_PRICE = [0, 8, 25, 70, 250], FRUIT = [['apple', '🍎', '사과', 5], ['coconut', '🥥', '코코넛', 7]];
   const PRICE = [0, 10, 30, 80, 300], fishPrice = f => Math.round(PRICE[f.rar] * (1 + Math.min(1, (f.cm[0] + f.cm[1]) / 400)));
   const shopEl = $('shop'); let shopClerk = null;
   function renderShop() {
     const coins = bag.coins || 0, row = (ic, nm, sub, btns) => `<div class="vlg-sell"><span class="ic">${ic}</span><span class="nm">${nm}<br><small>${sub}</small></span>${btns}</div>`;
-    const buy = row('🎣', '낚싯대', `강·바다에서 물고기를 낚아요 <span class="pr">${ROD_PRICE}동</span>`, bag.rod ? '<button disabled>가지고 있어요</button>'
-      : coins >= ROD_PRICE ? '<button data-buy="rod">사기</button>' : `<button disabled>${ROD_PRICE - coins}동 모자라요</button>`);
+    const buy = Object.keys(TOOLS).map(k => { const T = TOOLS[k]; return row(T.ic, T.nm, `${T.use} <span class="pr">${T.price}동</span>`, bag[k] ? '<button disabled>가지고 있어요</button>'
+      : coins >= T.price ? `<button data-buy="${k}">사기</button>` : `<button disabled>${T.price - coins}동 모자라요</button>`); }).join('');
     const sells = [];
     FRUIT.forEach(([k, ic, nm, pr]) => { const n = bag[k] || 0; if (n) sells.push(row(ic, `${nm} × ${n}`, `한 개 <span class="pr">${pr}동</span>`,
       `<button data-sell="${k}" data-n="1">1개 팔기</button>${n > 1 ? `<button data-sell="${k}" data-n="${n}">모두 팔기 (${pr * n}동)</button>` : ''}`)); });
     FISH.filter(f => bag.fish[f.id]).forEach(f => { const n = bag.fish[f.id], pr = fishPrice(f); sells.push(row(f.icon, `${f.name} × ${n}`, `${'★'.repeat(f.rar)} 한 마리 <span class="pr">${pr}동</span>`,
       `<button data-sell="f${f.id}" data-n="1">1마리 팔기</button>${n > 1 ? `<button data-sell="f${f.id}" data-n="${n}">모두 팔기 (${pr * n}동)</button>` : ''}`)); });
-    const total = FRUIT.reduce((a, [k, , , pr]) => a + (bag[k] || 0) * pr, 0) + FISH.reduce((a, f) => a + (bag.fish[f.id] || 0) * fishPrice(f), 0);
+    BUGS.filter(b => bag.bug[b.id]).forEach(b => { const n = bag.bug[b.id], pr = BUG_PRICE[b.rar]; sells.push(row(b.icon, `${b.name} × ${n}`, `${'★'.repeat(b.rar)} 한 마리 <span class="pr">${pr}동</span>`,
+      `<button data-sell="b${b.id}" data-n="1">1마리 팔기</button>${n > 1 ? `<button data-sell="b${b.id}" data-n="${n}">모두 팔기 (${pr * n}동)</button>` : ''}`)); });
+    const total = FRUIT.reduce((a, [k, , , pr]) => a + (bag[k] || 0) * pr, 0) + FISH.reduce((a, f) => a + (bag.fish[f.id] || 0) * fishPrice(f), 0) + BUGS.reduce((a, b) => a + (bag.bug[b.id] || 0) * BUG_PRICE[b.rar], 0);
     $('shopSum').textContent = `내 돈 🪙 ${coins}동`;
     $('shopBody').innerHTML = `<h4>🛒 사기</h4>${buy}<h4>💰 팔기</h4>` + (sells.length ? sells.join('') + `<button class="vlg-sell-all" data-sell="all">🧺 전부 팔기 · ${total}동</button>`
-      : '<p style="text-align:center;font-weight:800;color:#6a7a6a">팔 물건이 없어요. 열매를 따거나 물고기를 낚아 오세요!</p>');
+      : '<p style="text-align:center;font-weight:800;color:#6a7a6a">팔 물건이 없어요. 열매를 따거나 물고기·벌레를 잡아 오세요!</p>');
     $('shopBody').querySelectorAll('[data-sell]').forEach(b => { b.onclick = () => sellItem(b.dataset.sell, +b.dataset.n); });
-    const bb = $('shopBody').querySelector('[data-buy]'); if (bb) bb.onclick = buyRod; }
+    $('shopBody').querySelectorAll('[data-buy]').forEach(bb => { bb.onclick = () => buyTool(bb.dataset.buy); }); }
   function sellItem(id, n) { // id: 'apple'·'coconut'·'f물고기번호'·'all'
     let got = 0, cnt = 0;
     const take = (k, pr, have, set) => { const c = id === 'all' ? have : Math.min(n, have); got += c * pr; cnt += c; set(have - c); };
     FRUIT.forEach(([k, , , pr]) => { if (id === 'all' || id === k) take(k, pr, bag[k] || 0, v => { bag[k] = v; }); });
     FISH.forEach(f => { if ((id === 'all' || id === 'f' + f.id) && bag.fish[f.id]) take(f.id, fishPrice(f), bag.fish[f.id], v => { if (v) bag.fish[f.id] = v; else delete bag.fish[f.id]; }); });
+    BUGS.forEach(b => { if ((id === 'all' || id === 'b' + b.id) && bag.bug[b.id]) take(b.id, BUG_PRICE[b.rar], bag.bug[b.id], v => { if (v) bag.bug[b.id] = v; else delete bag.bug[b.id]; }); });
     if (!cnt) return; bag.coins = (bag.coins || 0) + got; saveBag(); renderShop(); sfx.pick();
     if (shopClerk) { say(shopClerk, pick(['고마워요! 싱싱하네요', '좋은 물건이네요! 값 잘 쳐 드릴게요', '또 가져오세요 😊']), 2); shopClerk.wave = 1.2; popText('+' + got + '동', shopClerk.x, 1.6, shopClerk.z); } }
-  function buyRod() {
-    if (bag.rod || (bag.coins || 0) < ROD_PRICE) return;
-    bag.coins -= ROD_PRICE; bag.rod = true; saveBag(); setRod(true); renderShop(); sfx.pick(); me.hop = 0.4;
-    if (shopClerk) { say(shopClerk, '좋은 낚시 되세요! 🎣', 2.2); shopClerk.wave = 1.4; popText('-' + ROD_PRICE + '동', shopClerk.x, 1.6, shopClerk.z); } }
+  function buyTool(k) {
+    const T = TOOLS[k]; if (!T || bag[k] || (bag.coins || 0) < T.price) return;
+    bag.coins -= T.price; bag[k] = true; saveBag(); setTool(k); renderShop(); sfx.pick(); me.hop = 0.4;
+    if (shopClerk) { say(shopClerk, k === 'rod' ? '좋은 낚시 되세요! 🎣' : '벌레 많이 잡으세요! 🦋', 2.2); shopClerk.wave = 1.4; popText('-' + T.price + '동', shopClerk.x, 1.6, shopClerk.z); } }
   const openShop = k => { shopClerk = k; shopEl.style.display = k ? 'flex' : 'none'; if (k) { $('shopTitle').textContent = '🦝 ' + k.name.slice(3) + '네 가게'; bagEl.style.display = 'none'; dexEl.style.display = 'none'; renderShop(); } };
   $('shopClose').onclick = () => openShop(null); shopEl.onclick = e => { if (e.target === shopEl) openShop(null); };
   $('bagBtn').onclick = e => { openBag(bagEl.style.display === 'none'); e.currentTarget.blur(); };
@@ -1308,17 +1332,83 @@
     const card = f => { const d = dex[f.id], hab = f.hab === 'both' ? '강·바다' : f.hab === 'sea' ? '바다' : '강';
       return `<div class="vlg-fish r${f.rar}${d ? '' : ' no'}"><div class="ic">${f.icon}</div><div class="nm">${d ? f.name : '???'}</div><div class="st">${'★'.repeat(f.rar)}</div>`
         + (d ? `<div>최고 ${d.best}cm · ${d.n}마리</div>` : `<div>${hab}에 살아요</div>`) + '</div>'; };
-    const n = Object.keys(dex).length;
-    $('dexSum').textContent = `${n} / ${FISH.length}종 발견` + (n === FISH.length ? ' 🎉 모두 모았어요!' : '');
+    const bugCard = b => { const d = dex['b' + b.id];
+      return `<div class="vlg-fish r${b.rar}${d ? '' : ' no'}"><div class="ic">${b.icon}</div><div class="nm">${d ? b.name : '???'}</div><div class="st">${'★'.repeat(b.rar)}</div>`
+        + (d ? `<div>${d.n}마리 잡음</div>` : `<div>${b.shape === 'firefly' ? '밤에 날아다녀요' : b.move === 'fly' ? '꽃밭 위를 날아요' : b.move === 'hop' ? '풀밭에서 폴짝 뛰어요' : '땅 위를 기어 다녀요'}</div>`) + '</div>'; };
+    const n = Object.keys(dex).length, all = FISH.length + BUGS.length;
+    $('dexSum').textContent = `${n} / ${all}종 발견` + (n === all ? ' 🎉 모두 모았어요!' : '');
     $('dexBody').innerHTML = `<h4>🏞️ 강 물고기</h4><div class="vlg-dex-grid">${FISH.filter(f => f.hab !== 'sea').map(card).join('')}</div>`
-      + `<h4>🌊 바다 물고기</h4><div class="vlg-dex-grid">${FISH.filter(f => f.hab === 'sea').map(card).join('')}</div>`; }
+      + `<h4>🌊 바다 물고기</h4><div class="vlg-dex-grid">${FISH.filter(f => f.hab === 'sea').map(card).join('')}</div>`
+      + `<h4>🐞 곤충</h4><div class="vlg-dex-grid">${BUGS.map(bugCard).join('')}</div>`; }
   const openDex = on => { dexEl.style.display = on ? 'flex' : 'none'; if (on) { openBag(false); openShop(null); renderDex(); } };
   $('dexBtn').onclick = e => { openDex(dexEl.style.display === 'none'); e.currentTarget.blur(); };
   $('dexClose').onclick = () => openDex(false); dexEl.onclick = e => { if (e.target === dexEl) openDex(false); };
   let catchTimer = 0;
-  function showCatch(f, cm, isNew) {
-    catchEl.innerHTML = `<div class="ic">${f.icon}</div><div class="nm">${f.name} 잡았다!${isNew ? '<span class="new">NEW</span>' : ''}</div><div class="sub">${cm}cm · ${'★'.repeat(f.rar)} ${RAR[f.rar]}</div>`;
+  const showCatch = (f, cm, isNew) => showCard(f.icon, f.name, (cm ? cm + 'cm · ' : '') + '★'.repeat(f.rar) + ' ' + RAR[f.rar], isNew);
+  function showCard(ic, name, sub, isNew) {
+    catchEl.innerHTML = `<div class="ic">${ic}</div><div class="nm">${name} 잡았다!${isNew ? '<span class="new">NEW</span>' : ''}</div><div class="sub">${sub}</div>`;
     catchEl.classList.add('on'); clearTimeout(catchTimer); catchTimer = setTimeout(() => catchEl.classList.remove('on'), 2600); }
+  // ── 벌레: 가끔(12~26초마다, 동시에 셋까지) 내 둘레 풀밭에 나타나 날거나 뛰거나 기어 다니다 사라짐. 잠자리채를 들고 E로 잡음
+  const bugs = []; let bugTimer = 5;
+  const glassMat = flat(0xeaf6ff, { transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false });
+  function makeBug(B) { // 벌레 모양: 앞이 +z
+    const g = new THREE.Group(), wings = [], c = B.col, E = (r, col, sx, sy, sz, x, y, z) => { const m = at(mesh(new THREE.SphereGeometry(r, 10, 8), col), x || 0, y || 0, z || 0); m.scale.set(sx || 1, sy || 1, sz || 1); g.add(m); return m; };
+    const wing = (geoR, mat, x, y, z, s, sy) => { const w = new THREE.Group(); w.position.set(x, y, z); const m = new THREE.Mesh(new THREE.SphereGeometry(geoR, 10, 6), typeof mat === 'string' ? M(mat) : mat); m.scale.set(1, 0.06, sy || 0.8); m.position.x = s * geoR; w.add(m); g.add(w); wings.push([w, s]); return w; };
+    if (B.shape === 'butterfly') { E(0.025, '#2b2b33', 1, 1, 4); [-1, 1].forEach(s => { wing(0.12, c[0], 0, 0.01, 0.035, s); wing(0.085, c[1], 0, 0.005, -0.06, s); }); }
+    else if (B.shape === 'bee') { E(0.06, c[0], 1, 1, 1.4); E(0.061, '#2b2b33', 1, 1, 0.25, 0, 0, -0.02); E(0.061, '#2b2b33', 1, 1, 0.25, 0, 0, -0.06); E(0.04, '#2b2b33', 1, 1, 1, 0, 0.01, 0.08); [-1, 1].forEach(s => wing(0.06, glassMat, 0, 0.05, 0, s)); }
+    else if (B.shape === 'dragonfly') { E(0.022, c[0], 1, 1, 9); E(0.04, c[0], 1, 1, 1, 0, 0, 0.13); [-1, 1].forEach(s => { wing(0.13, glassMat, 0, 0.01, 0.06, s, 0.25); wing(0.12, glassMat, 0, 0.01, 0.0, s, 0.25); }); }
+    else if (B.shape === 'beetle') { E(0.07, c[0], 1, 0.7, 1.25); E(0.035, '#2b2b33', 1, 0.8, 1, 0, 0, 0.09); [-1, 1].forEach(s => wing(0.06, glassMat, 0, 0.05, -0.02, s)); }
+    else if (B.shape === 'firefly') { E(0.035, c[0], 1, 1, 1.6); const tail = at(noShadow(mesh(new THREE.SphereGeometry(0.04, 10, 8), winMat)), 0, 0, -0.07); g.add(tail); g.userData.tail = tail; [-1, 1].forEach(s => wing(0.045, glassMat, 0, 0.035, 0.0, s)); }
+    else if (B.shape === 'ladybug') { E(0.08, c[0], 1, 0.6, 1.1); E(0.04, '#2b2b33', 1, 0.8, 1, 0, 0, 0.08); [[0.035, 0.03], [-0.035, 0.03], [0.04, -0.035], [-0.04, -0.035]].forEach(([x, z]) => E(0.018, '#2b2b33', 1, 0.5, 1, x, 0.045, z)); }
+    else if (B.shape === 'ant') { [[0.03, 0.06], [0.025, 0], [0.04, -0.07]].forEach(([r, z]) => E(r, c[0], 1, 0.9, 1.2, 0, 0, z)); }
+    else if (B.shape === 'snail') { E(0.1, c[0], 0.7, 1, 1, 0, 0.09, -0.02); const sp = at(mesh(new THREE.TorusGeometry(0.05, 0.015, 6, 14), '#8a5a34'), 0.072, 0.09, -0.02); sp.rotation.y = Math.PI / 2; g.add(sp); E(0.04, '#e8d2a8', 1, 0.6, 3.2, 0, 0.02, 0.03); }
+    else if (B.shape === 'hopper') { E(0.04, c[0], 1, 1, 3.6); E(0.038, c[0], 1, 1.1, 1, 0, 0.01, 0.15); [-1, 1].forEach(s => { const lg = at(mesh(new THREE.BoxGeometry(0.015, 0.015, 0.2), c[0]), s * 0.04, 0.05, -0.05); lg.rotation.x = -0.6; g.add(lg); }); }
+    else if (B.shape === 'mantis') { const th = E(0.03, c[0], 1, 1, 4.5, 0, 0.06, 0); th.rotation.x = -0.5; E(0.035, c[0], 1.4, 1, 1, 0, 0.17, 0.11); [-1, 1].forEach(s => { const arm = at(mesh(new THREE.BoxGeometry(0.018, 0.018, 0.12), c[0]), s * 0.03, 0.14, 0.14); arm.rotation.x = 0.8; g.add(arm); }); }
+    else if (B.shape === 'stag') { E(0.09, c[0], 1, 0.6, 1.3); E(0.045, c[0], 1.2, 0.7, 1, 0, 0, 0.12); [-1, 1].forEach(s => { const md = at(mesh(new THREE.BoxGeometry(0.02, 0.02, 0.13), '#3a2414'), s * 0.035, 0.01, 0.2); md.rotation.y = -s * 0.35; g.add(md); }); }
+    else if (B.shape === 'rhino') { E(0.11, c[0], 1, 0.65, 1.3); E(0.05, c[0], 1, 0.8, 1, 0, 0.01, 0.13); const hr = at(mesh(new THREE.ConeGeometry(0.025, 0.14, 6), '#2b1a0e'), 0, 0.08, 0.17); hr.rotation.x = 0.6; g.add(hr); }
+    g.scale.setScalar(1.7); dress(g); scene.add(g); return { g, wings };
+  }
+  const landOK = (x, z) => riverDist(x, z) > 1 && eastDist(x, z) > 1 && z < BEACH.z1 - 0.8 && z > LZ0 + 1 && x > DIST.x0 + 2 && x < 32 && solids.every(o => Math.hypot(x - o.x, z - o.z) > o.r + 0.6);
+  function spawnBug() {
+    const night = env.night > 0.5, pool = BUGS.filter(b => (b.shape === 'firefly') === night), sum = pool.reduce((a, b) => a + RAR_W[b.rar], 0);
+    let k = Math.random() * sum, B = pool[0]; for (const b of pool) { k -= RAR_W[b.rar]; if (k <= 0) { B = b; break; } }
+    for (let i = 0; i < 14; i++) { const a = Math.random() * 6.283, d = 6 + Math.random() * 7, x = me.x + Math.sin(a) * d, z = me.z + Math.cos(a) * d; if (!landOK(x, z)) continue;
+      const m = makeBug(B); bugs.push(Object.assign(m, { B, x, z, hx: x, hz: z, tx: x, tz: z, y: B.move === 'fly' ? 0.9 : 0, life: 55, age: 0, ph: Math.random() * 6, state: 'idle', wait: 0, hop: 0, face: 0 })); return; } }
+  function bugNear() { let best = null, bd = 1.9; bugs.forEach(b => { if (b.state === 'flee' || b.age < 0.6) return; const d = Math.hypot(b.x - me.x, b.z - me.z); if (d < bd) { bd = d; best = b; } }); return best; }
+  function swingNet(b) {
+    if (!bag.net) { say(me, '잠자리채가 있어야 잡을 수 있어요. 슈퍼마켓에서 사요!', 2.2); return; }
+    if (bag.held !== 'net') setTool('net');
+    me.face = Math.atan2(b.x - me.x, b.z - me.z); me.swingT = 0.35; sfx.shake();
+    if (Math.random() < [0, 0.92, 0.8, 0.65, 0.5][b.B.rar] * (b.y > 1.3 ? 0.8 : 1)) { // 잡음
+      b.gone = true; const B = b.B, key = 'b' + B.id, isNew = !dex[key]; dex[key] = { n: (dex[key] ? dex[key].n : 0) + 1 };
+      try { localStorage.setItem(DEX_KEY, JSON.stringify(dex)); } catch (e) {}
+      bagAdd('bug', B.id); updDexN(); if (dexEl.style.display !== 'none') renderDex(); showCard(B.icon, B.name, '★'.repeat(B.rar) + ' ' + RAR[B.rar], isNew); popText(B.icon, b.x, 1.2, b.z); sfx.pick(); me.hop = 0.3;
+    } else { b.state = 'flee'; b.life = Math.min(b.life, 1.6); say(me, '앗, 놓쳤어요!', 1.6); } }
+  function bugTick(t, dt) {
+    if (me.z < SHOP.far) { bugTimer -= dt; if (bugTimer <= 0) { bugTimer = 12 + Math.random() * 14; if (bugs.length < 3) spawnBug(); } }
+    for (let i = bugs.length - 1; i >= 0; i--) { const b = bugs[i], B = b.B; b.life -= dt; b.age += dt;
+      if (b.gone || b.life <= 0 || Math.hypot(b.x - me.x, b.z - me.z) > 32) { scene.remove(b.g); bugs.splice(i, 1); continue; }
+      const scared = b.state !== 'flee' && B.move !== 'crawl' && me.moving && me.run > 1 && Math.hypot(b.x - me.x, b.z - me.z) < 2.4; // 뛰어오면 놀라 달아남
+      if (scared) { b.state = 'flee'; b.life = Math.min(b.life, 1.6); }
+      if (b.state === 'flee') { const a = Math.atan2(b.x - me.x, b.z - me.z); b.x += Math.sin(a) * 4 * dt; b.z += Math.cos(a) * 4 * dt; b.y += (B.move === 'crawl' ? 0 : 1.6) * dt; b.face = a; }
+      else if (B.move === 'fly') { // 집 둘레를 이리저리 날다 잠깐 머묾
+        const dx = b.tx - b.x, dz = b.tz - b.z, d = Math.hypot(dx, dz), v = B.shape === 'dragonfly' ? 2.2 : B.shape === 'bee' ? 1.4 : B.shape === 'firefly' ? 0.5 : 0.8;
+        if (d < 0.2) { b.wait -= dt; if (b.wait <= 0) { const a = Math.random() * 6.283, r = Math.random() * 3.5, x = b.hx + Math.sin(a) * r, z = b.hz + Math.cos(a) * r; if (landOK(x, z)) { b.tx = x; b.tz = z; b.wait = 0.4 + Math.random() * 1.6; } } }
+        else { const k = Math.min(d, v * dt) / d; b.x += dx * k; b.z += dz * k; b.face = Math.atan2(dx, dz); }
+        b.y = (B.shape === 'firefly' ? 0.7 : 0.95) + Math.sin(t * (B.shape === 'butterfly' ? 2.2 : 3.1) + b.ph) * 0.3; }
+      else if (B.move === 'hop') { // 잠깐 쉬다 폴짝
+        if (b.hop > 0) { b.hop -= dt; const k = 1 - b.hop / 0.45; b.x = b.hx0 + (b.tx - b.hx0) * k; b.z = b.hz0 + (b.tz - b.hz0) * k; b.y = Math.sin(k * Math.PI) * 0.45; if (b.hop <= 0) { b.y = 0; b.wait = 1 + Math.random() * 2; } }
+        else { b.wait -= dt; if (b.wait <= 0) { const a = Math.random() * 6.283, r = 0.8 + Math.random() * 0.9, x = b.x + Math.sin(a) * r, z = b.z + Math.cos(a) * r;
+          if (landOK(x, z) && Math.hypot(x - b.hx, z - b.hz) < 4) { b.hx0 = b.x; b.hz0 = b.z; b.tx = x; b.tz = z; b.hop = 0.45; b.face = a; } else b.wait = 0.3; } } }
+      else { const dx = b.tx - b.x, dz = b.tz - b.z, d = Math.hypot(dx, dz), v = B.shape === 'snail' ? 0.1 : B.shape === 'ant' ? 0.45 : 0.22; // 엉금엉금
+        if (d < 0.1) { b.wait -= dt; if (b.wait <= 0) { const a = Math.random() * 6.283, r = Math.random() * 2.2, x = b.hx + Math.sin(a) * r, z = b.hz + Math.cos(a) * r; if (landOK(x, z)) { b.tx = x; b.tz = z; b.wait = 1 + Math.random() * 3; } } }
+        else { const k = Math.min(d, v * dt) / d; b.x += dx * k; b.z += dz * k; b.face = Math.atan2(dx, dz); } }
+      const fl = B.shape === 'butterfly' ? 18 : B.shape === 'firefly' ? 20 : 40, amp = B.shape === 'butterfly' ? 0.9 : 0.5;
+      b.wings.forEach(([w, s]) => { w.rotation.z = (B.move === 'fly' || b.state === 'flee' || b.hop > 0) ? s * Math.sin(t * fl + b.ph) * amp : s * 0.15; });
+      if (b.g.userData.tail) b.g.userData.tail.scale.setScalar(0.8 + Math.max(0, Math.sin(t * 3 + b.ph)) * 0.6); // 반딧불 깜빡
+      const grow = Math.min(1, b.age / 0.5) * Math.min(1, b.life / 0.6); b.g.scale.setScalar(1.7 * grow); // 나타날 때·사라질 때 스르륵
+      b.g.position.set(b.x, b.y + 0.04, b.z); let df = b.face - b.g.rotation.y; df = Math.atan2(Math.sin(df), Math.cos(df)); b.g.rotation.y += df * Math.min(1, dt * 8);
+    } }
   function castTarget() { // 물가에 서 있을 때, 6.5칸 안에서 가장 가까운 헤엄치는 그림자
     if (me.z > SHOP.far || !nearWater(me.x, me.z)) return null;
     let best = null, bd = 6.5; shadows.forEach(sh => { if (sh.state !== 'swim') return; const d = Math.hypot(sh.x - me.x, sh.z - me.z); if (d < bd) { bd = d; best = sh; } }); return best; }
@@ -1355,6 +1445,7 @@
       sh.g.position.set(sh.x, 0.062, sh.z); sh.tail.rotation.z = Math.PI + Math.sin(t * (sh.state === 'flee' ? 24 : 9) + sh.ph) * 0.5;
     });
     rodHold.rotation.x = fishing.st ? 1.75 : -0.05; // 낚시 중엔 앞으로 내밀고, 아니면 세워 들고 다님 (팔 각도와 합쳐짐)
+    if (me.swingT > 0) me.swingT -= dt; netHold.rotation.x = me.swingT > 0 ? -0.6 + (1 - me.swingT / 0.35) * 2.6 : -0.05; // 잠자리채 휘두르기
     if (!fishing.st) return;
     const sh = fishing.sh; fishing.t += dt; let by = 0.075;
     if (fishing.st === 'cast') { const k = Math.min(1, fishing.t / 0.55); bobber.visible = line.visible = true; // 포물선으로 날아감
@@ -1497,7 +1588,7 @@
       butterflies.forEach(b => { b.g.visible = n < 0.6; });
     }
     fireflies.forEach(f => { f.m.visible = env.night > 0.22; if (f.m.visible) { f.m.position.set(f.x + Math.sin(t * 0.5 + f.ph) * 1.4, 0.55 + Math.sin(t * 1.3 + f.ph * 2) * 0.35, f.z + Math.cos(t * 0.4 + f.ph) * 1.4); f.m.scale.setScalar(0.7 + Math.abs(Math.sin(t * 2.4 + f.ph)) * 0.9); } });
-    fishingTick(t, dt);
+    fishingTick(t, dt); bugTick(t, dt);
     stars.position.set(me.x, 0, me.z);
     { const fx = me.x - Math.sin(view.yaw) * 3, fz = me.z - Math.cos(view.yaw) * 3; sun.target.position.set(fx, 0, fz); sun.position.set(fx + env.sunPos.x, env.sunPos.y, fz + 3 + env.sunPos.z); } // 그림자 범위는 보는 쪽 앞을 중심으로
     curve.uCurve.value += ((curveOn ? 0.0075 : 0) - curve.uCurve.value) * Math.min(1, dt * 5);
@@ -1527,7 +1618,7 @@
       if (a.sayT > 0) a.sayT -= dt;
       const label = a.sayT > 0 ? a.say : a.name + (a.wave > 0 ? ' 👋' : '');
       if (label !== a.label) { a.label = label; a.tag.textContent = label; a.tag.classList.toggle('say', a.sayT > 0); }
-      a.pet.update(t, { moving: a.moving, wave: a.wave > 0.02, sit: Boolean(a.sit) && !a.sit.stand, hold: a === me && rod.visible ? (fishing.st ? 'fish' : 'carry') : null });
+      a.pet.update(t, { moving: a.moving, wave: a.wave > 0.02, sit: Boolean(a.sit) && !a.sit.stand, hold: a === me && (rod.visible || bugNet.visible) ? (fishing.st ? 'fish' : me.swingT > 0 ? 'swing' : 'carry') : null });
       const dz = bendDist(a.x, a.z);
       v.set(a.g.position.x, a.g.position.y + (a.sit ? 1.1 : 1.24) * (a.pet.height || 1) - curve.uCurve.value * dz * dz, a.g.position.z).project(camera);
       const on = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;
@@ -1548,7 +1639,7 @@
     pause() { autoPaused = false; if (!running) return; running = false; Object.keys(keys).forEach(k => { keys[k] = false; }); netLeave(); },
     resume() { if (running) return; running = true; prev = performance.now(); netJoin(); requestAnimationFrame(frame); },
     dispose() { api.pause(); window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); try { renderer.dispose(); renderer.forceContextLoss(); } catch (e) {} root.innerHTML = ''; root.classList.remove('vlg', 'vlg-full'); },
-    debug: { me, actors, trees, houses, env, envOutlines, quality, nearby, interact, emote, seats, keys, wave, shake, net, renderer, camera, get fruitN() { return fruitN; } },
+    debug: { me, actors, trees, houses, bugs, env, envOutlines, quality, nearby, interact, emote, seats, keys, wave, shake, net, renderer, camera, get fruitN() { return fruitN; } },
   };
   { const fb = $('fullBtn'); if (fb) fb.onclick = () => { root.classList.toggle('vlg-full'); fb.textContent = root.classList.contains('vlg-full') ? '🗗 작게' : '⛶ 크게'; }; }
   if (!demo) root.querySelectorAll('[data-demo]').forEach(e => { e.style.display = 'none'; });
