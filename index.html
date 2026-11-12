@@ -7492,14 +7492,17 @@
     // 검사 외형 0 (검은 머리 묶음·회색 머리띠·남색 도복·검은 하카마, tools/swordsman_build.py): 칸 순서 = 0 대기 (칼자루에 손을 얹은 발도 자세) · 1 피격
     //   · 2~3 쓰러짐 (앞으로 무너짐 → 뒤로 누움) · 4 공격 준비 (낮게 앉아 칼자루를 쥠) · 5 발도 (칼을 뒤로 뽑아 든 자세) · 6~8 걷기 1~3
     //   · 9~11 시전 1~3 (낮게 앉음 → 몸 둘레 노란 불꽃 → 칼자루 앞 섬광) · 12 심검 (칼을 머리 위로 비스듬히 들어 막음, 하늘색 잔상)
+    //   · 13~19 무참 1~7: 13 웅크려 칼끝을 아래로 · 14 칼을 뒤로 높이 치켜듦 · 15 낮게 벌려 서서 칼을 뒤로 · 16 앞으로 찌르기 · 17 낮게 앉아 칼을 앞 아래로
+    //     · 18 아주 낮게 웅크려 칼을 뒤로 (돌진 직전) · 19 크게 내디뎌 칼을 앞으로 뻗음
+    //   · 20~22 일섬 1~3 (칼을 뒤로 뻗음 · 앞으로 내지름 · 숙여 칼끝을 아래로): 일섬 때 셋 중 하나 (SWORD_ISSEN_POSES)
     // 걷기는 1 → 3 → 2 → 3 (1·2는 비슷한 자세, 3은 뒷발을 차올림). 기본 공격 = 칼을 넣은 채 공격 준비·낮게 앉음 중 한 칸 + 참격, 발도·섬단·극참 = 시전 칸 → 발도, 무참 = 준비·발도를 빠르게 되풀이
     // 심검(정신을 모으는 5초)과 패링 동안은 심검 자세를 유지 (pickFrame). 시전 막대 동안은 시전 칸을 차례로 (castFrames)
     MERC_SPRITE_DEFS.swordsman_0 = {
       src: 'assets/sprites/merc/swordsman_0.webp',
-      cellW: 126, cellH: 91, anchorX: 68, anchorY: 89, standH: 76, topH: 86, portraitCX: 68, count: 13, // standH 76: 머리 크기를 격투가와 맞춤
+      cellW: 167, cellH: 99, anchorX: 68, anchorY: 97, standH: 76, topH: 86, portraitCX: 68, count: 23, // standH 76: 머리 크기를 격투가와 맞춤
       anims: {
         idle: [0], walk: [6, 8, 7, 8], attack: [4], skill: [9, 11, 5], hurt: [1], death: [2, 3],
-        draw: [5], guard: [12], dash: [4, 5, 5, 5], slash: [4, 5]
+        draw: [5], guard: [12], dash: [21], slash: [4, 5]
       },
       attackSets: [[4], [9]], // 기본 공격: 칼은 칼집에 넣은 채, 공격 준비(4) · 낮게 앉음(9) 중 한 칸을 무작위로 (참격은 swordBasicSlashFx)
       attackDur: 14, // 한 칸을 14틱 보이고 바로 평소 자세
@@ -7507,6 +7510,7 @@
       pickFrame: (u, sprite, tick) => {
         if (u.alive && u.statuses && ((u.statuses.mindblade || 0) > 0 || (u.statuses.parry || 0) > 0)) return 12;
         // 기본 공격: 참격 이펙트를 만들 때 고른 자세 (칼자루 끝 = 빛이 시작되는 자리가 맞게). 관전 화면처럼 모르면 attackSets 무작위
+        if (u.swordIssenPose != null && u.skillAnim > 0 && u.activeSkillType === 'issen') return u.swordIssenPose; // 일섬: 시전 때 고른 자세 (SWORD_ISSEN_POSES)
         if (u.swordAtkPose != null && u.attackAnim > 0 && !u._sprAtkFromSkill && !(u.skillAnim > 0) && !u.casting && tick - (u._sprAtkStart ?? tick) < sprite.attackDur) return u.swordAtkPose ? 9 : 4;
         return null;
       },
@@ -27029,9 +27033,11 @@
       'iai-pierce': [202, 46, 3, 18, 40, 10, 23],
       'iai-pillar': [173, 78, 3, 18, 40, 10, 41]
     };
-    const SWORD_IAI_KINDS = Object.keys(SWORD_FXS), SWORD_IAI_LEN = 126;
+    const SWORD_IAI_KINDS = Object.keys(SWORD_FXS), SWORD_IAI_LEN = 126, SWORD_IAI_THICK = 1.5; // 참격 두께 배율 (길이는 목표까지 거리)
     // 칼자루 끝 (발에서, 키 54px 기준): 공격 준비 자세(4) 앞 19 · 위 30 · 낮게 앉은 자세(9) 앞 16 · 위 25. 발 = u.y + 12
     const SWORD_HILT = [[19, 30], [16, 25]];
+    // 일섬 자세 칸: 20 칼을 뒤로 뻗음 · 21 앞으로 내지름 · 22 숙여 칼끝을 아래로 (시전 때 하나를 무작위로)
+    const SWORD_ISSEN_POSES = [20, 21, 22];
     const SWORD_FX_DEFS = {};
     function swordFxImg(name) {
       let d = SWORD_FX_DEFS[name];
@@ -27072,7 +27078,7 @@
       ctx.restore();
     }
     // 섬단 X자 검기 (tools/swordsman_fx/seomdan-x.js): 시트는 제자리 X (기준점 = X 가운데), 그어진 뒤(FORM) 날아감이 끝날 때(END)까지 r만큼 앞으로 옮겨 그림
-    const SWORD_SEOMDAN_FX = [288, 154, 4, 22, 40, 230, 79], SWORD_SEOMDAN_FLY = [0.05, 0.3];
+    const SWORD_SEOMDAN_FX = [288, 154, 4, 22, 40, 230, 79], SWORD_SEOMDAN_FLY = [0.05, 0.3], SWORD_SEOMDAN_SCALE = 1.4; // 그림 크기 배율 (날아가는 거리는 그대로)
     function drawSwordSeomdanFx(ctx, ef) {
       const m = SWORD_SEOMDAN_FX, img = swordFxImg('seomdan-x'), t = (ef.maxLife - ef.life) / 60, f = Math.floor(t * m[4]);
       if (f >= m[3]) return;
@@ -27085,12 +27091,12 @@
       ctx.save();
       ctx.translate(ef.x + c * ef.r * k, ef.y + Math.sin(ef.ang) * ef.r * k);
       ctx.rotate(ef.ang);
-      if (c < 0) ctx.scale(1, -1); // 왼쪽으로 날리면 위아래가 뒤집히므로 되돌림
+      ctx.scale(SWORD_SEOMDAN_SCALE, c < 0 ? -SWORD_SEOMDAN_SCALE : SWORD_SEOMDAN_SCALE); // 왼쪽으로 날리면 위아래가 뒤집히므로 되돌림
       ctx.drawImage(img, (f % cols) * w, Math.floor(f / cols) * h, w, h, -ax, -ay, w, h);
       ctx.restore();
     }
     // 일섬 (tools/swordsman_fx/issen.js): 출발점 가슴 높이 → 돌진 끝까지, 구운 길이 SWORD_ISSEN_LEN을 실제 거리에 맞춰 가로로 늘림
-    const SWORD_ISSEN_FX = [511, 68, 2, 30, 40, 10, 34], SWORD_ISSEN_LEN = 480;
+    const SWORD_ISSEN_FX = [511, 68, 2, 30, 40, 10, 34], SWORD_ISSEN_LEN = 480, SWORD_ISSEN_THICK = 1.6; // 두께 배율 (길이는 돌진 거리)
     function drawSwordIssenFx(ctx, ef) {
       const m = SWORD_ISSEN_FX, img = swordFxImg('issen'), f = Math.floor((ef.maxLife - ef.life) * m[4] / 60);
       if (f >= m[3]) return;
@@ -27103,7 +27109,7 @@
       ctx.save();
       ctx.translate(ef.x, ef.y);
       ctx.rotate(ef.ang);
-      ctx.scale(ef.len / SWORD_ISSEN_LEN, c < 0 ? -1 : 1); // 왼쪽으로 달리면 위아래가 뒤집히므로 되돌림
+      ctx.scale(ef.len / SWORD_ISSEN_LEN, (c < 0 ? -1 : 1) * SWORD_ISSEN_THICK); // 왼쪽으로 달리면 위아래가 뒤집히므로 되돌림
       ctx.drawImage(img, (f % cols) * w, Math.floor(f / cols) * h, w, h, -ax, -ay, w, h);
       ctx.restore();
     }
@@ -27116,7 +27122,7 @@
         drawSwordEffect(ctx, { type: 'sword_cut', x1: ef.x, y1: ef.y, x2: ef.x + c * ef.len, y2: ef.y + sn * ef.len, w: 3, color: '#e0f2fe' }, (ef.maxLife - ef.life) / ef.maxLife);
         return;
       }
-      const [w, h, cols, , , ax, ay] = m, s = ef.s || 1;
+      const [w, h, cols, , , ax, ay] = m, s = (ef.s || 1) * SWORD_IAI_THICK;
       ctx.save();
       ctx.translate(ef.x, ef.y);
       ctx.rotate(ef.ang);
@@ -27218,6 +27224,10 @@
           if (Math.hypot(e.x - (w.sx + dx * t), e.y - (w.sy + dy * t)) > SWORD_ISSEN_HALF_W + unitBodyGap(e)) return;
           applyDamage(u, e, u.atk * SWORD_ISSEN_DMG, '⚡', '#0891b2');
           sim.effects.push({ type: 'sword_x', x: e.x, y: e.y - 18, angle: Math.atan2(dy, dx), r: 0, size: 34, color: '#22d3ee', life: 16, maxLife: 16 });
+          // 참격: 기본 공격 빛 참격 하나를 몸을 가로질러 비스듬히 (가슴 가운데를 지나게)
+          const kind = Math.floor(Math.random() * SWORD_IAI_KINDS.length), m = SWORD_FXS[SWORD_IAI_KINDS[kind]], life = Math.ceil(m[3] * 60 / m[4]);
+          const es = e.sizeScale || 1, a = Math.atan2(dy, dx) + (Math.random() - 0.5) * 1.6, len = 70 * es, cy = e.y + 12 - 30 * es;
+          sim.effects.push({ type: 'sword_iai', k: kind, x: Math.round(e.x - Math.cos(a) * len / 2), y: Math.round(cy - Math.sin(a) * len / 2), ang: Math.round(a * 100) / 100, len: Math.round(len), fy: Math.random() < 0.5 ? 1 : -1, s: es, life, maxLife: life });
         }));
         playCombatSfx('heavy');
         return;
@@ -27346,6 +27356,7 @@
         const r = startUnitRush(unit, sx + Math.cos(ang) * d, sy + Math.sin(ang) * d, SWORD_ISSEN_TICKS, () => {
           if (unit.alive) swordAddStrikes(unit, [{ left: SWORD_ISSEN_DELAY, sword: { kind: 'issen', sx, sy, tx: unit.x, ty: unit.y } }]);
         });
+        unit.swordIssenPose = SWORD_ISSEN_POSES[Math.floor(Math.random() * SWORD_ISSEN_POSES.length)];
         const life = Math.ceil(SWORD_ISSEN_FX[3] * 60 / SWORD_ISSEN_FX[4]); // 돌진 → 고요 → 길이 갈라짐까지 시트 하나 (갈라지는 때 = 돌진 8틱 + 10틱 뒤)
         sim.effects.push({ type: 'sword_issen', x: Math.round(sx), y: Math.round(sy - 14), ang: Math.round(Math.atan2(r.ty - sy, r.tx - sx) * 100) / 100, len: Math.round(Math.max(30, Math.hypot(r.tx - sx, r.ty - sy))), life, maxLife: life });
         playCombatSfx('slash');

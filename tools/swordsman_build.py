@@ -6,6 +6,7 @@
 #     재생은 1 → 3 → 2 → 3 반복 (WALK_ANIM, 게임 anims.walk에 그대로 씀)
 #   · 9 스킬 시전 1 (다리를 넓게 벌리고 낮게 앉아 칼자루를 쥔 자세) · 10 시전 2 (몸 둘레 노란 불꽃) · 11 시전 3 (칼자루 앞 노란 섬광)
 #   · 12 심검 (칼을 머리 위로 비스듬히 들어 막는 자세. 칼자루 아래 하늘색 잔상은 지움)
+#   · 13~19 무참 1~7 (칼을 뽑아 든 베기 자세 일곱, FRAMES 주석 참고) · 20~22 일섬 1~3
 # 크기 통일: 대기 자세 몸 키(머리털 끝~발, 샘플 px)를 TARGET_H로 줄임. 다른 동작은 대기와 같은 배율('idle')로 줄여 얼굴 크기를 맞춤
 # 샘플 정리:
 #   - 대기 샘플(768×1024)은 도트 그림을 흐리게 키운 것, 테두리 없음
@@ -41,7 +42,7 @@ TARGET_H = 86   # 대기 자세 머리 묶음 끝~발 → 게임 칸 키 (격투
 
 CARD = {}   # (x0, x1, y0, y1): 샘플 테두리 잘라 냄
 WHITE_MIN = {'hurtdown': 200}   # 피격·쓰러짐 샘플은 흐린 밝은 테두리가 넓어 더 어두운 흰색까지 배경으로 봄
-CUT = {'hurtdown': [(0, 766, 0, 8), (284, 384, 12, 45), (384, 390, 12, 36)]}   # 지울 상자 (x0, x1, y0, y1): 위 잘린 글자 줄 · '[쓰러짐 1' · ']' (머리 묶음에 붙은 세로줄)
+CUT = {'hurtdown': [(0, 766, 0, 8), (284, 384, 12, 45), (384, 390, 12, 36)], 'mucham4': [(168, 334, 213, 236), (150, 168, 226, 236)]}   # 지울 상자 (x0, x1, y0, y1): 위 잘린 글자 줄 · '[쓰러짐 1' · ']' (머리 묶음에 붙은 세로줄) · 무참 4 앞발에 붙은 옆 칸 조각
 FIT_H = {'HURT': 78, 'ATK': 84, 'DRAW': 84, 'WALK': 86, 'CAST': 84, 'CAST2': 84, 'MIND': 86}   # 샘플마다 해상도가 달라 몸 키를 직접 정해 머리 크기를 대기와 맞춤: 피격(뒤로 젖힘) · 일반공격(낮게 앉음). 쓰러짐 1은 피격과 같은 배율
 FIT_W = {'DOWN2': 108}   # 누운 그림은 머리~발 가로 길이로 맞춤
 # 같은 동작을 어두운 배경에 그린 샘플 (배경색은 테두리 중앙값으로 잼):
@@ -152,7 +153,7 @@ def defringe(raw, a, im, checker=False):
 
 
 TRAIL_OFF = {'mind': ((165, 205, 50, 135),)}   # 심검: 칼자루 아래 옅은 하늘색 잔상은 지움 (2026-11-11 사용자 요청)
-SHINY = {'draw', 'mind', 'cast2', 'cast3'}   # 칼날·잔상·불꽃처럼 밝은 무채색이 몸 가장자리에 있는 칸 (drop_light_edge 안 함)
+SHINY = {'draw', 'mind', 'cast2', 'cast3', 'mucham1', 'mucham2', 'mucham3', 'mucham4', 'mucham5', 'mucham6', 'mucham7', 'issen1', 'issen2', 'issen3'}   # 칼날·잔상·불꽃처럼 밝은 무채색이 몸 가장자리에 있는 칸 (drop_light_edge 안 함)
 
 
 def drop_light_edge(p):   # 줄인 그림에서 투명 칸에 닿은 밝은 회색·흰 픽셀(흰 배경 찌꺼기 한두 점)을 지움
@@ -234,6 +235,18 @@ FRAMES = [
     ('cast2', 'cast2', 'CAST2', 'all'),
     ('cast3', 'cast3', 'CAST2', 'all'),
     ('mind', 'mind', 'MIND', 'big'),
+    # 13~19 무참 1~7 (칼을 뽑아 든 베기 자세들, 2026-11-12): 같은 해상도로 그린 샘플이라 시전 1과 같은 배율. 옆 칸 조각·발밑 검은 조각은 'big'으로 빠짐
+    ('mucham1', 'mucham1', 'cast', 'big'),   # 낮게 웅크려 칼끝을 아래로 비스듬히 (베고 난 자세)
+    ('mucham2', 'mucham2', 'cast', 'big'),   # 칼을 뒤로 높이 치켜든 자세 (내려 베기 직전)
+    ('mucham3', 'mucham3', 'cast', 'big'),   # 낮게 벌려 서서 칼을 뒤로 뻗음
+    ('mucham4', 'mucham4', 'cast', 'big'),   # 앞으로 칼을 곧게 내지른 찌르기
+    ('mucham5', 'mucham5', 'cast', 'big'),   # 무릎을 꿇듯 낮게 앉아 칼을 앞 아래로 (베어 지나간 뒤)
+    ('mucham6', 'mucham6', 'cast', 'big'),   # 아주 낮게 웅크려 칼을 뒤로 (돌진 직전)
+    ('mucham7', 'mucham7', 'cast', 'big'),   # 크게 내디뎌 칼을 앞으로 곧게 뻗음 (마지막 일격)
+    # 20~22 일섬 1~3 (2026-11-12): 무참 샘플보다 작게 그린 샘플 → 비슷한 자세(무참 3·4)와 몸 키를 비교해 시전 1 배율 × 1.135
+    ('issen1', 'issen1', ('cast', 1.135), 'big'),   # 낮게 벌려 서서 칼을 뒤로 뻗음
+    ('issen2', 'issen2', ('cast', 1.135), 'big'),   # 앞으로 칼을 곧게 내지름
+    ('issen3', 'issen3', ('cast', 1.135), 'big'),   # 몸을 숙여 칼끝을 아래로 (베고 지나간 뒤)
 ]
 WALK_ANIM = [6, 8, 7, 8]   # 걷기 재생 칸 순서: 걷기 1 → 3 → 2 → 3 (되풀이하면 1 3 2 3 1 3 2 …)
 FOOTX = {}   # 칸 이름 → 발 가운데 (자른 그림 기준 px)
@@ -245,7 +258,7 @@ def main():
         rgba, foot, bh = load(src, pick)
         if src in SKIN: rgba = lighten_skin(rgba)
         if name in FOOTX: foot = FOOTX[name]
-        sc = TARGET_H / bh if k == 'H' else FIT_H[k] / bh if k in FIT_H else FIT_W[k] / rgba.shape[1] if k in FIT_W else scale[k]
+        sc = scale[k[0]] * k[1] if isinstance(k, tuple) else TARGET_H / bh if k == 'H' else FIT_H[k] / bh if k in FIT_H else FIT_W[k] / rgba.shape[1] if k in FIT_W else scale[k]
         scale[name] = sc
         p = shrink(rgba, sc)
         if src not in SHINY: p = drop_light_edge(p)
