@@ -23665,6 +23665,10 @@
       if (key === 'overload' && unit.job === 'volt') voltFx(voltFxName(unit, 'overload-cast'), unit.x, unit.y + 12); // 전격술사 히든: 시전 1초 동안 하늘 낙뢰로 축전 → 발동 순간 금빛 기둥 (발동은 시전이 끝나는 1초)
       if (key === 'geukcham' && unit.job === 'swordsman' && !unit.monsterType) { // 검사 히든 극참: 시전 내내 기를 모으는 그림 (히든 시전은 안 끊김)
         for (const type of ['sword_gk_aura', 'sword_gk_charge']) sim.effects.push({ type, uid: unit.id, x: Math.round(unit.x), y: Math.round(unit.y + 12), fx: unit.facingDir < 0 ? -1 : 1, s: unit.sizeScale || 1, sr: swordIsSr(unit), life: total * 4 + 300, maxLife: total }); // 기운 불꽃은 몸 뒤, 나머지는 몸 위 · uid: 시전 진행·위치를 검사에 맞춤 (지우는 건 drawSwordGkChargeFx가 함)
+        if (swordIsSr(unit) && !(sim.shake && sim.shake.power > SWORD_SR_GK_CAST_SHAKE)) { // 시크릿 레어: 시전 내내 아주 약하게 시작해 점점 세지는 미세한 진동 (2026-11-12 사용자). 방출 순간 큰 진동이 이어받음
+          const shakeLife = total * 60 / BATTLE_TICKS_PER_SEC / Math.max(1, sim.speed || 1);
+          sim.shake = { power: SWORD_SR_GK_CAST_SHAKE, life: shakeLife, maxLife: shakeLife, grow: true };
+        }
       }
       if (key === 'spirit_king') pushSpiritKingCircle(unit, total + 120, total); // 3초 동안 정령왕이 나올 자리에 무지개 소환진 (느린 기기 대비 2초 여유, 나오면 줄어듦)
       unit.isMoving = false;
@@ -27041,6 +27045,8 @@
     const SWORD_MIND_DMG = 3.0;
     const SWORD_GEUKCHAM_DMG = 4.5;         // 극참 마지막 일격 (시크릿 레어 외형 전용): 맵 위의 모든 적 450%
     const SWORD_GEUKCHAM_DELAY = 12;
+    const SWORD_GEUKCHAM_SHATTER_DMG = 2.0; // 갈라진 공간이 유리처럼 깨질 때 모든 적 200% 한 번 더 (2026-11-12 사용자)
+    const SWORD_GEUKCHAM_SHATTER_AT = 48;  //   마지막 일격 뒤 1.2초 (화면 갈라짐이 잠깐 버틴 뒤 깨지는 때, drawScreenSplit은 이 타를 보고 깨짐)
     const SWORD_GEUKCHAM_CHARGE = 80;      // 마지막 일격 전 기 모으기 2초 (2026-11-12 사용자: 난사 → 칼을 머리 위로 들어 기 모으기 → 화면 절단 베기, 1초 → 2초 · 화면이 점점 세게 흔들림)
     const SWORD_RANSEOM_COUNT = 50;         // 극참 (히든) 일섬 난사: 일섬 50번 (2026-11-11 20 → 50) · 한 번마다 지나온 길 위의 적 50%
     const SWORD_RANSEOM_DMG = 0.5;
@@ -27173,6 +27179,7 @@
     //   마법진 없이 빛이 그라데이션으로 자연스럽게 모이는 모습)
     //   q = 시전 막대 0→1, b = 터짐 0→1. back = 몸 뒤 층 (오그라드는 큰 빛무리·바닥 빛·빛 기둥), 앞 층 = 칼자루로 휘감겨 드는 빛 덩이·깃털·칼자루 빛·방출
     //   칼자루 자리 = 시트 칸 좌표(발 기준): 시전 자세(24) (+7, -24) · 시전 직전 자세(25) (+9, -41), 그림 배율 SPRITE_DRAW_H / standH(76)
+    const SWORD_SR_GK_CAST_SHAKE = 3;  // 시전 중 미세한 진동이 시전 끝에 닿는 세기 (0에서 점점 커짐, 방출 진동은 9)
     const SWORD_SR_GK_RELEASE = 15 / 16; // 시전 직전 자세(25)로 바뀌는 시점 (castFrames.geukcham과 같게)
     function drawSwordSrGkCharge(ctx, ef, q, b, back) {
       const dt = frameTimeScale || 1; ef.t = (ef.t || 0) + dt;
@@ -27507,6 +27514,15 @@
         return;
       }
       if (w.kind === 'geukcham_cut') { if (u.alive) swordGeukchamCut(u); return; }
+      if (w.kind === 'geukcham_shatter') { // 갈라진 공간이 유리처럼 깨지며 모든 적에게 한 번 더 피해
+        if (sim.split) sim.split.shatter = true;
+        if (!u.alive) return;
+        const foes = sim.units.filter(e => swordFoeOk(u, e));
+        withSkillHit(() => foes.forEach(e => applyDamage(u, e, u.atk * SWORD_GEUKCHAM_SHATTER_DMG, '💠', '#e0f2fe')));
+        if (!sim.shake || sim.shake.power < 10) sim.shake = { power: 10, life: 18, maxLife: 18 };
+        addBattleLog(`💠 [검사] ${u.name}의 극참! 갈라진 공간이 깨지며 ${foes.length}명을 베었어요`);
+        return;
+      }
       if (w.kind === 'geukcham') {
         hiddenImpact(28, '#e0f2fe');
         sim.split = { ang: -0.35 + (Math.random() - 0.5) * 0.3, life: 120, maxLife: 120 }; // 화면이 대각선으로 반으로 갈라짐 (drawScreenSplit)
@@ -27584,7 +27600,7 @@
       unit.skillAnim = SWORD_GEUKCHAM_CHARGE + 30; unit.maxSkillAnim = unit.skillAnim; unit.activeSkillType = 'geukcham';
       unit.rootTicks = Math.max(unit.rootTicks || 0, SWORD_GEUKCHAM_CHARGE + SWORD_GEUKCHAM_DELAY);
       unit.geukchamUntil = sim.tickCount + SWORD_GEUKCHAM_CHARGE + SWORD_GEUKCHAM_DELAY + 2; // 마지막 일격이 떨어질 때까지 무적
-      swordAddStrikes(unit, [{ left: SWORD_GEUKCHAM_CHARGE, sword: { kind: 'geukcham_cut' } }, { left: SWORD_GEUKCHAM_CHARGE + SWORD_GEUKCHAM_DELAY, sword: { kind: 'geukcham' } }]);
+      swordAddStrikes(unit, [{ left: SWORD_GEUKCHAM_CHARGE, sword: { kind: 'geukcham_cut' } }, { left: SWORD_GEUKCHAM_CHARGE + SWORD_GEUKCHAM_DELAY, sword: { kind: 'geukcham' } }, { left: SWORD_GEUKCHAM_CHARGE + SWORD_GEUKCHAM_DELAY + SWORD_GEUKCHAM_SHATTER_AT, sword: { kind: 'geukcham_shatter' } }]);
     }
     function swordGeukchamCut(unit) { // 화면을 가르는 칼자국 세 줄 + 베기 자세
       const W = sim.worldW, H = sim.worldH, L = Math.hypot(W, H);
@@ -34506,7 +34522,7 @@
     //   끝은 다시 붙는 대신 유리창이 깨지듯 산산조각: 갈라진 화면을 그대로 굳혀 삼각 조각으로 쪼개고, 칼선 가까운 조각부터 금이 퍼지며 튕겨 나가 떨어짐 → 아래로 원래 전투 화면이 드러남
     //   깨질 때 조각 크기에 맞춘 큰 깃털이 조각과 함께 흩날림 (2026-11-12 사용자). 캔버스 픽셀 그대로 다루려고 변환을 지우고 그림 (HUD·미니맵은 이 뒤에 그려서 안 갈라짐)
     const SCREEN_SPLIT_BUF = document.createElement('canvas'), SCREEN_SPLIT_SNAP = document.createElement('canvas');
-    const SCREEN_SPLIT_SHATTER = 0.6, SCREEN_SPLIT_SHARD_LIFE = 34, SCREEN_SPLIT_END = 100; // 깨지는 때 (진행 비율) · 조각 하나가 사라지기까지 · 깨진 뒤 끝나기까지 (화면 프레임)
+    const SCREEN_SPLIT_SHATTER = 0.95, SCREEN_SPLIT_SHARD_LIFE = 34, SCREEN_SPLIT_END = 100; // 깨지는 때: 극참 깨짐 피해 타(geukcham_shatter)가 s.shatter를 켤 때, 못 받으면 진행 비율 95%에서 · 조각 하나가 사라지기까지 · 깨진 뒤 끝나기까지 (화면 프레임)
     function buildScreenShards(s, W, H, cx, cy, tx, ty, nx, ny, D) {
       const cols = 8, rows = 5, pt = [];
       for (let r = 0; r <= rows; r++) {
@@ -34621,7 +34637,7 @@
       });
       ctx.restore();
       s.life -= frameTimeScale;
-      if (p >= SCREEN_SPLIT_SHATTER) { // 갈라진 화면을 그대로 굳혀서 유리 조각으로 쪼갬 (다음 프레임부터 조각이 떨어져 나감)
+      if (s.shatter || p >= SCREEN_SPLIT_SHATTER) { // 갈라진 화면을 그대로 굳혀서 유리 조각으로 쪼갬 (다음 프레임부터 조각이 떨어져 나감)
         if (SCREEN_SPLIT_SNAP.width !== W || SCREEN_SPLIT_SNAP.height !== H) { SCREEN_SPLIT_SNAP.width = W; SCREEN_SPLIT_SNAP.height = H; }
         const sc = SCREEN_SPLIT_SNAP.getContext('2d');
         sc.clearRect(0, 0, W, H); sc.drawImage(cv, 0, 0);
