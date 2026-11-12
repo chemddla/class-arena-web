@@ -27124,7 +27124,7 @@
     };
     const SWORD_MUCHAM_SEQ = [['mucham-cut', -0.5], ['mucham-pierce', 0], ['mucham-cut', 0.45], ['mucham-cut', -1.45], ['mucham-pierce', -0.15], ['mucham-cut', 0.9], ['mucham-cut', 1.5], ['mucham-final', 0]];
     function drawSwordMuchamFx(ctx, ef) {
-      const [name, off] = SWORD_MUCHAM_SEQ[ef.k] || SWORD_MUCHAM_SEQ[0], m = SWORD_MUCHAM_FX[name], img = swordFxImg(name);
+      const [name, off0] = SWORD_MUCHAM_SEQ[ef.k] || SWORD_MUCHAM_SEQ[0], off = ef.off ?? off0, m = SWORD_MUCHAM_FX[name], img = swordFxImg(name); // ef.off·s·fy: 무작위 베기 (swordMuchamRandomFx)
       const f = Math.floor((ef.maxLife - ef.life) * m[4] / 60), c = Math.cos(ef.ang);
       if (f >= m[3]) return;
       ctx.save();
@@ -27138,9 +27138,25 @@
         drawSwordEffect(ctx, { type: 'sword_cut', x1: ef.x - Math.cos(a) * 40, y1: ef.y - Math.sin(a) * 40, x2: ef.x + Math.cos(a) * 40, y2: ef.y + Math.sin(a) * 40, w: 3, color: '#e0f2fe', life: ef.life, maxLife: ef.maxLife }, p);
         return;
       }
-      const [w, h, cols, , , ax, ay] = m;
+      const [w, h, cols, , , ax, ay] = m, sc = ef.s || 1;
+      ctx.scale(sc, sc * (ef.fy || 1));
       ctx.drawImage(img, (f % cols) * w, Math.floor(f / cols) * h, w, h, -ax, -ay, w, h);
       ctx.restore();
+    }
+    // 무참 한 타의 빛: 매번 무작위로 — 기본 공격 빛 참격 8종(45%) · 초승달 베기(35%) · 찌르기(20%)를 아무 각도로, 가슴 둘레 조금 어긋난 자리에, 크기·위아래 뒤집기도 제각각
+    //   → 60타가 겹치면 사방에서 마구 베는 느낌 (마지막 타는 큰 X 그대로)
+    function swordMuchamRandomFx(u, foe) {
+      const es = foe.sizeScale || 1, cx = foe.x + (Math.random() - 0.5) * 28 * es, cy = foe.y + 12 - 30 * es + (Math.random() - 0.5) * 30 * es;
+      const r = Math.random(), fy = Math.random() < 0.5 ? 1 : -1, R = v => Math.round(v * 100) / 100;
+      if (r < 0.45) {
+        const kind = Math.floor(Math.random() * SWORD_IAI_KINDS.length), m = SWORD_FXS[SWORD_IAI_KINDS[kind]], life = Math.ceil(m[3] * 60 / m[4]);
+        const a = Math.random() * Math.PI * 2, len = (50 + Math.random() * 45) * es;
+        sim.effects.push({ type: 'sword_iai', k: kind, x: Math.round(cx - Math.cos(a) * len / 2), y: Math.round(cy - Math.sin(a) * len / 2), ang: R(a), len: Math.round(len), fy, s: R(es * (0.7 + Math.random() * 0.4)), life, maxLife: life });
+        return;
+      }
+      const k = r < 0.8 ? 0 : 1, m = SWORD_MUCHAM_FX[SWORD_MUCHAM_SEQ[k][0]], life = Math.ceil(m[3] * 60 / m[4]);
+      const off = k === 0 ? (Math.random() - 0.5) * Math.PI * 2 : (Math.random() - 0.5) * 1.2; // 찌르기는 대상 쪽으로만 조금씩 비틂
+      sim.effects.push({ type: 'sword_mucham', k, x: Math.round(cx), y: Math.round(cy), ang: R(Math.atan2(cy - (u.y - 14), foe.x - u.x)), off: R(off), s: R(es * (0.7 + Math.random() * 0.5)), fy, life, maxLife: life });
     }
     function drawSwordIaiFx(ctx, ef) {
       const name = SWORD_IAI_KINDS[ef.k] || SWORD_IAI_KINDS[0], m = SWORD_FXS[name], img = swordFxImg(name);
@@ -27271,10 +27287,12 @@
           try { applyDamage(u, foe, u.atk * SWORD_MUCHAM_DMG, '💢', '#0891b2'); } finally { suppressHitKnockback = false; }
         });
         foe.mana = Math.min(foe.mana, mana + (w.last ? 5 : 0)); // 연타마다 맞은 쪽 마나가 차지 않게
-        // 대상 가슴 위에 그 타의 자세에 맞는 빛의 베기 (SWORD_MUCHAM_SEQ) · 잔상으로 오래 남아 다음 타와 겹침. 검사 자세 잔상은 drawSwordGhosts
-        const k = w.last ? SWORD_MUCHAM_SEQ.length - 1 : (w.i ?? 0) % (SWORD_MUCHAM_SEQ.length - 1), m = SWORD_MUCHAM_FX[SWORD_MUCHAM_SEQ[k][0]], cy = foe.y + 12 - 30 * (foe.sizeScale || 1);
-        const life = Math.ceil(m[3] * 60 / m[4]);
-        sim.effects.push({ type: 'sword_mucham', k, x: Math.round(foe.x), y: Math.round(cy), ang: Math.round(Math.atan2(cy - (u.y - 14), foe.x - u.x) * 100) / 100, life, maxLife: life });
+        // 대상 가슴 둘레에 무작위 빛의 베기 (swordMuchamRandomFx), 마지막 타는 큰 X · 잔상으로 오래 남아 다음 타와 겹침. 검사 자세 잔상은 drawSwordGhosts
+        if (!w.last) swordMuchamRandomFx(u, foe);
+        else {
+          const k = SWORD_MUCHAM_SEQ.length - 1, m = SWORD_MUCHAM_FX[SWORD_MUCHAM_SEQ[k][0]], cy = foe.y + 12 - 30 * (foe.sizeScale || 1), life = Math.ceil(m[3] * 60 / m[4]);
+          sim.effects.push({ type: 'sword_mucham', k, x: Math.round(foe.x), y: Math.round(cy), ang: Math.round(Math.atan2(cy - (u.y - 14), foe.x - u.x) * 100) / 100, s: foe.sizeScale || 1, life, maxLife: life });
+        }
         u.attackAnim = 8; u.maxAttackAnim = 8;
         playCombatSfx(w.last ? 'heavy' : 'slash');
         return;
