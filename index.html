@@ -6205,7 +6205,7 @@
         icon: '🌙',
         color: '#0891b2',
         roleDesc: '빠른 근접 검술·패링·받아치기',
-        passiveName: '검술의 달인', passiveShort: 'E 패링: 근접 공격 막기 · 투사체 튕겨내기', passiveDesc: 'E를 누르면 0.4초간 패링 (다시 쓰기 2초, 막아 내면 바로 초기화) · 패링 중 근접 기본 공격은 막고 공격한 적을 1초 [기절], 투사체는 쏜 적에게 튕겨 냄 · 스킬 시전·공격 중엔 못 씀 · 검사 스킬에 맞은 적은 [출혈] (출혈 피해 1번, 발도는 3번) · 범위 공격·장판·스킬 피해는 막지 못함 · AI 검사는 막을 수 있는 공격의 25%를 스스로 쳐냄',
+        passiveName: '검술의 달인', passiveShort: 'E 패링: 근접 공격 막기 · 투사체 튕겨내기', passiveDesc: 'E를 누르면 0.4초간 패링 (다시 쓰기 2초, 막아 내면 바로 초기화) · 패링 중 근접 기본 공격은 막고 공격한 적을 1초 [기절], 투사체는 쏜 적에게 튕겨 냄 · 스킬 시전·공격 중엔 못 씀 · 검사 스킬에 맞은 적은 [출혈] (출혈 피해 1번, 발도는 3번) · 범위 공격·장판·스킬 피해는 막지 못함 · AI 검사는 막을 수 있는 공격의 50%를 스스로 쳐냄',
         baseHp: 2100, baseAtk: 52, baseDef: 34, baseSpd: 112, range: 144, maxMana: 100 // 사거리 72 → 144 (칼집에서 뻗는 참격, 2026-11-11 사용자 요청). 근접 판정(150 미만)은 그대로
       }
     };
@@ -27077,7 +27077,7 @@
     const SWORD_PARRY_CD = 80;              //   다시 쓰기까지 2초 (u.parryCd)
     const SWORD_PARRY_STUN = 40;            //   막힌 근접 공격자 1초 기절 (2026-11-12 사용자: 0.3 → 1초) · 패링에 성공하면 다시 쓰기 시간이 바로 초기화됨
     const SWORD_PARRY_MANA = 8;
-    const SWORD_AI_PARRY_CHANCE = 0.25;     // AI 검사: 패링이 준비돼 있으면 막을 수 있는 공격의 25%를 그 자리에서 쳐냄
+    const SWORD_AI_PARRY_CHANCE = 0.5;      // AI 검사: 패링이 준비돼 있으면 막을 수 있는 공격의 50%를 (2026-11-12 25%에서 상향) 그 자리에서 쳐냄
     const SWORD_BATTO_CELLS = 3;            // 발도: 둘레 3칸 · 200% · 출혈 3틱 (SWORD_BATTO_BLEED_TICKS)
     const SWORD_BATTO_DMG = 2.0;
     // 검사 스킬 출혈 (2026-11-12 사용자): 스킬에 맞으면 출혈 피해가 n번 들어간 직후 풀리도록 지속 시간을 맞춤 (스킬 1번, 발도 3번)
@@ -58876,9 +58876,13 @@
       return Boolean(state.ownerUid && TeacherAuth.user && TeacherAuth.user.uid === state.ownerUid);
     }
 
-    // 소유자 없는 기존 학급은 누구나(예전 방식), 소유 학급은 소유자·총괄 관리자만 관리 가능
+    // 서버 학급은 소유자·총괄 관리자만 관리 가능. 소유자 없는 서버 학급은 DB 규칙이 잠그므로 관리 불가
+    // (총괄 관리자가 관리자 사이트에서 소유자를 지정해야 함). 서버에 올리지 않은 이 기기 전용 학급만 PIN으로 관리
+    function isServerClassLoaded() {
+      return Boolean(syncCache.metaExists && syncCache.classCode === String(state.classCode || '').toUpperCase());
+    }
     function canManageCurrentClass() {
-      return !state.ownerUid || isCurrentClassOwner() || TeacherAuth.isSuperAdmin;
+      return isCurrentClassOwner() || TeacherAuth.isSuperAdmin || (!state.ownerUid && !isServerClassLoaded());
     }
 
     async function teacherGoogleSignIn() {
@@ -58909,7 +58913,9 @@
           ? `<div class="text-emerald-300 font-bold">🔒 현재 학급(${teacherAuthEsc(state.classCode)})은 내 구글 계정 소유입니다. 비밀번호 없이 바로 관리할 수 있어요.</div>`
           : `<div class="text-amber-300 font-bold">🔒 현재 학급(${teacherAuthEsc(state.classCode)})은 다른 구글 계정(${teacherAuthEsc(state.ownerEmail || '소유자')})이 관리합니다.${TeacherAuth.isSuperAdmin ? ' (총괄 관리자 권한으로 관리 가능)' : ''}</div>`;
       } else if (state.classCode) {
-        ownerLine = `<div class="text-slate-400">⚠️ 현재 학급(${teacherAuthEsc(state.classCode)})은 아직 구글 계정에 연결되지 않은 기존 학급입니다. 총괄 관리자에게 소유자 지정을 요청하면 PIN·교사 키 대신 구글 계정으로 보호됩니다.</div>`;
+        ownerLine = isServerClassLoaded()
+          ? `<div class="text-rose-300 font-bold">🔒 현재 학급(${teacherAuthEsc(state.classCode)})은 소유자(구글 계정)가 없어 잠겨 있습니다. 총괄 관리자에게 관리자 사이트에서 소유자 지정을 요청하세요.</div>`
+          : `<div class="text-slate-400">⚠️ 현재 학급(${teacherAuthEsc(state.classCode)})은 이 기기에만 있는 학급입니다.</div>`;
       }
 
       if (!TeacherAuth.ready) {
@@ -58976,6 +58982,13 @@
           errEl.textContent = TeacherAuth.user
             ? `🔒 이 학급은 ${state.ownerEmail || '다른 구글 계정'} 소유입니다. 소유자 계정으로 로그인해야 관리할 수 있어요.`
             : '🔒 이 학급은 구글 계정으로 보호됩니다. 위의 [Google 계정으로 로그인]으로 소유자 계정에 로그인하세요.';
+          errEl.classList.remove('hidden');
+        }
+        return;
+      }
+      if (!canManageCurrentClass()) { // 소유자 없는 서버 학급: 잠김
+        if (errEl) {
+          errEl.textContent = '🔒 이 학급은 소유자(구글 계정)가 없어 잠겨 있습니다. 총괄 관리자에게 소유자 지정을 요청하세요.';
           errEl.classList.remove('hidden');
         }
         return;
