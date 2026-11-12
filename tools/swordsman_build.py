@@ -64,6 +64,21 @@ DEFRINGE = {'down2', 'walk_a', 'walk_b', 'cast'}   # 어두운 배경 판이 없
 SKIN = set()   # 피부가 어두운 샘플만 넣어 첫 샘플(밝은 살색)만큼 밝힘. 지금 대기 샘플은 처음부터 밝아서 비워 둠
 
 
+def face_size(rgba):   # 얼굴 크기 (샘플 px): 몸 위쪽 45% 안의 가장 큰 살색 덩어리의 가로·세로 중 큰 값 (팔이나 고개 돌림으로 한쪽이 가려져도 맞게)
+    c = rgba.astype(float); r, g, b, a = c[..., 0], c[..., 1], c[..., 2], c[..., 3]
+    mx, mn = c[..., :3].max(axis=2), c[..., :3].min(axis=2)
+    sat = (mx - mn) / np.maximum(mx, 1)
+    skin = (a > 200) & (r >= g) & (g >= b - 5) & (sat > 0.15) & (sat < 0.6) & (mx > 150) & (r - b > 30)
+    ys = np.where((a > 127).any(axis=1))[0]
+    lab, n = ndi.label(skin)
+    best = (0, 0)
+    for j in range(1, n + 1):
+        yy, xx = np.where(lab == j)
+        if len(yy) >= 20 and yy.mean() <= ys.min() + 0.45 * (ys.max() - ys.min() + 1) and len(yy) > best[0]:
+            best = (len(yy), max(yy.max() - yy.min(), xx.max() - xx.min()) + 1)
+    return best[1]
+
+
 def lighten_skin(rgba):   # 살색 픽셀만 밝기에 따라 더함. 기준 두 색: 그림자 (140,86,70)→(176,121,103) · 바탕 (213,133,94)→(243,184,150)
     rgb = rgba[..., :3].astype(float)
     r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
@@ -242,17 +257,17 @@ FRAMES = [
     ('cast3', 'cast3', 'CAST2', 'all'),
     ('mind', 'mind', 'MIND', 'big'),
     # 13~19 무참 1~7 (칼을 뽑아 든 베기 자세들, 2026-11-12): 같은 해상도로 그린 샘플이라 시전 1과 같은 배율. 옆 칸 조각·발밑 검은 조각은 'big'으로 빠짐
-    ('mucham1', 'mucham1', 'cast', 'big'),   # 낮게 웅크려 칼끝을 아래로 비스듬히 (베고 난 자세)
-    ('mucham2', 'mucham2', 'cast', 'big'),   # 칼을 뒤로 높이 치켜든 자세 (내려 베기 직전)
-    ('mucham3', 'mucham3', 'cast', 'big'),   # 낮게 벌려 서서 칼을 뒤로 뻗음
-    ('mucham4', 'mucham4', 'cast', 'big'),   # 앞으로 칼을 곧게 내지른 찌르기
-    ('mucham5', 'mucham5', 'cast', 'big'),   # 무릎을 꿇듯 낮게 앉아 칼을 앞 아래로 (베어 지나간 뒤)
-    ('mucham6', 'mucham6', 'cast', 'big'),   # 아주 낮게 웅크려 칼을 뒤로 (돌진 직전)
-    ('mucham7', 'mucham7', 'cast', 'big'),   # 크게 내디뎌 칼을 앞으로 곧게 뻗음 (마지막 일격)
+    ('mucham1', 'mucham1', 'FACE', 'big'),   # 낮게 웅크려 칼끝을 아래로 비스듬히 (베고 난 자세)
+    ('mucham2', 'mucham2', 'FACE', 'big'),   # 칼을 뒤로 높이 치켜든 자세 (내려 베기 직전)
+    ('mucham3', 'mucham3', 'FACE', 'big'),   # 낮게 벌려 서서 칼을 뒤로 뻗음
+    ('mucham4', 'mucham4', 'FACE', 'big'),   # 앞으로 칼을 곧게 내지른 찌르기
+    ('mucham5', 'mucham5', 'FACE', 'big'),   # 무릎을 꿇듯 낮게 앉아 칼을 앞 아래로 (베어 지나간 뒤)
+    ('mucham6', 'mucham6', 'FACE', 'big'),   # 아주 낮게 웅크려 칼을 뒤로 (돌진 직전)
+    ('mucham7', 'mucham7', 'FACE', 'big'),   # 크게 내디뎌 칼을 앞으로 곧게 뻗음 (마지막 일격)
     # 20~22 일섬 1~3 (2026-11-12): 무참 샘플보다 작게 그린 샘플 → 비슷한 자세(무참 3·4)와 몸 키를 비교해 시전 1 배율 × 1.135
-    ('issen1', 'issen1', ('cast', 1.135), 'big'),   # 낮게 벌려 서서 칼을 뒤로 뻗음
-    ('issen2', 'issen2', ('cast', 1.135), 'big'),   # 앞으로 칼을 곧게 내지름
-    ('issen3', 'issen3', ('cast', 1.135), 'big'),   # 몸을 숙여 칼끝을 아래로 (베고 지나간 뒤)
+    ('issen1', 'issen1', 'FACE', 'big'),   # 낮게 벌려 서서 칼을 뒤로 뻗음
+    ('issen2', 'issen2', 'FACE', 'big'),   # 앞으로 칼을 곧게 내지름
+    ('issen3', 'issen3', 'FACE', 'big'),   # 몸을 숙여 칼끝을 아래로 (베고 지나간 뒤)
 ]
 WALK_ANIM = [6, 8, 7, 8]   # 걷기 재생 칸 순서: 걷기 1 → 3 → 2 → 3 (되풀이하면 1 3 2 3 1 3 2 …)
 FOOTX = {}   # 칸 이름 → 발 가운데 (자른 그림 기준 px)
@@ -264,8 +279,10 @@ def main():
         rgba, foot, bh = load(src, pick)
         if src in SKIN: rgba = lighten_skin(rgba)
         if name in FOOTX: foot = FOOTX[name]
-        sc = scale[k[0]] * k[1] if isinstance(k, tuple) else TARGET_H / bh if k == 'H' else FIT_H[k] / bh if k in FIT_H else FIT_W[k] / rgba.shape[1] if k in FIT_W else scale[k]
+        if k == 'FACE': sc = face_ref / face_size(rgba)   # 얼굴 크기를 대기와 같게 (샘플마다 해상도가 조금씩 달라 몸 키·폭으로는 머리 크기가 들쭉날쭉)
+        else: sc = scale[k[0]] * k[1] if isinstance(k, tuple) else TARGET_H / bh if k == 'H' else FIT_H[k] / bh if k in FIT_H else FIT_W[k] / rgba.shape[1] if k in FIT_W else scale[k]
         scale[name] = sc
+        if name == 'idle': face_ref = face_size(rgba) * sc
         p = shrink(rgba, sc)
         if src not in SHINY or src.startswith(('mucham', 'issen')): p = drop_light_edge(p, src in SHINY)   # 불꽃·잔상 칸(시전 2·3, 발도, 심검)은 그대로
         pieces.append((name, p, foot * sc))
