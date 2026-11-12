@@ -6180,7 +6180,7 @@
         icon: '🌙',
         color: '#0891b2',
         roleDesc: '빠른 근접 검술·패링·받아치기',
-        passiveName: '검술의 달인', passiveShort: 'E 패링: 근접 공격 막기 · 투사체 튕겨내기', passiveDesc: 'E를 누르면 0.4초간 패링 (다시 쓰기 2초) · 패링 중 근접 기본 공격은 막고 공격한 적을 0.3초 [기절], 투사체는 쏜 적에게 튕겨 냄 · 범위 공격·장판·스킬 피해는 막지 못함 · AI 검사는 막을 수 있는 공격의 25%를 스스로 쳐냄',
+        passiveName: '검술의 달인', passiveShort: 'E 패링: 근접 공격 막기 · 투사체 튕겨내기', passiveDesc: 'E를 누르면 0.4초간 패링 (다시 쓰기 2초, 막아 내면 바로 초기화) · 패링 중 근접 기본 공격은 막고 공격한 적을 1초 [기절], 투사체는 쏜 적에게 튕겨 냄 · 범위 공격·장판·스킬 피해는 막지 못함 · AI 검사는 막을 수 있는 공격의 25%를 스스로 쳐냄',
         baseHp: 2100, baseAtk: 52, baseDef: 34, baseSpd: 112, range: 144, maxMana: 100 // 사거리 72 → 144 (칼집에서 뻗는 참격, 2026-11-11 사용자 요청). 근접 판정(150 미만)은 그대로
       }
     };
@@ -27015,7 +27015,7 @@
     // 상태 시간은 실제 틱(초당 40), 스킬 쿨타임은 다른 직업처럼 cooldownSec × 60
     const SWORD_PARRY_TICKS = 16;           // 패링 0.4초
     const SWORD_PARRY_CD = 80;              //   다시 쓰기까지 2초 (u.parryCd)
-    const SWORD_PARRY_STUN = 12;            //   막힌 근접 공격자 0.3초 기절
+    const SWORD_PARRY_STUN = 40;            //   막힌 근접 공격자 1초 기절 (2026-11-12 사용자: 0.3 → 1초) · 패링에 성공하면 다시 쓰기 시간이 바로 초기화됨
     const SWORD_PARRY_MANA = 8;
     const SWORD_AI_PARRY_CHANCE = 0.25;     // AI 검사: 패링이 준비돼 있으면 막을 수 있는 공격의 25%를 그 자리에서 쳐냄
     const SWORD_BATTO_CELLS = 3;            // 발도: 둘레 3칸 · 200% · 출혈 4초
@@ -27387,6 +27387,7 @@
       sim.floatTexts.push({ x: u.x, y: u.y - 46, text: '🤺 패링!', color: '#0891b2', life: 36 });
       u.mana = Math.min(u.maxMana, u.mana + SWORD_PARRY_MANA);
       inflictStatus(u, attacker, 'stun', SWORD_PARRY_STUN);
+      u.parryCd = 0; // 성공하면 쿨타임 초기화
       playCombatSfx('slash');
       return true;
     }
@@ -27411,6 +27412,7 @@
       swordGuardFx('sword_guard_flash', p.x, p.y, Math.cos(p.angle) >= 0 ? 1 : -1); // 쳐낸 자리에서 번쩍 (+x = 쏜 쪽)
       sim.floatTexts.push({ x: s.x, y: s.y - 46, text: '🤺 튕겨냄!', color: '#0891b2', life: 36 });
       s.mana = Math.min(s.maxMana, s.mana + SWORD_PARRY_MANA);
+      s.parryCd = 0; // 성공하면 쿨타임 초기화
       playCombatSfx('slash');
       return true;
     }
@@ -27993,7 +27995,7 @@
       if (sim.netRole !== 'guest') return u.brawlChain > 0 ? Math.max(0, Math.min(1, ((u.brawlSpiritUntil || 0) - sim.tickCount) / BRAWLER_SPIRIT_TICKS)) : 0;
       return u._brawlLastAt != null && (u._brawlHit ?? 0) + 1 < BRAWLER_CHAIN_MAX ? Math.max(0, 1 - (tick - u._brawlLastAt) / BRAWLER_SPIRIT_TICKS) : 0;
     }
-    function drawBrawlerSpiritBar(ctx, left, bx, by, barW) {
+    function drawBrawlerSpiritBar(ctx, left, bx, by, barW, label = '투혼') {
       ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
       ctx.fillRect(bx - 1, by - 5, barW + 2, 4);
       ctx.fillStyle = '#a855f7';
@@ -28002,9 +28004,9 @@
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
       ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(15, 23, 42, 0.92)';
-      ctx.strokeText('투혼', bx - 2, by - 3);
+      ctx.strokeText(label, bx - 2, by - 3);
       ctx.fillStyle = '#d8b4fe';
-      ctx.fillText('투혼', bx - 2, by - 3);
+      ctx.fillText(label, bx - 2, by - 3);
     }
     // 결투: 결투 중인 격투가와 상대의 가슴 사이를 희미한 붉은 기운이 아지랑이처럼 일렁이며 이음 (레이저처럼 밝지 않게: 보통 합성, 옅은 세 겹 물결선, 양 끝은 고정·가운데가 출렁)
     //   건 직후 12틱은 격투가에게서 상대 쪽으로 뻗어 나가고 24틱 동안 조금 더 짙음, 끝나기 30틱 전부터 옅어짐, 진하기가 느리게 아른거림
@@ -34322,6 +34324,7 @@
       if (u.alive && u.job === 'volt' && !u.monsterType) drawVoltCharge(ctx, u, bx, by, barW, tick); // 전격술사 축전 칸 3개 · 오버로드 잔전류
       const brawlSpirit = u.alive && u.job === 'brawler' && !u.monsterType ? brawlerSpiritLeft(u, tick) : 0;
       if (brawlSpirit > 0) drawBrawlerSpiritBar(ctx, brawlSpirit, bx, by, barW); // 격투가 투혼 남은 시간 (보라)
+      if (u.alive && u.job === 'swordsman' && !u.monsterType && (u.parryCd || 0) > 0) drawBrawlerSpiritBar(ctx, u.parryCd / SWORD_PARRY_CD, bx, by, barW, '패링'); // 검사 패링 쿨타임 남은 비율 (보라, 2026-11-12 사용자)
       if (u.alive && u.job === 'brawler' && !u.monsterType) drawBrawlerCombo(ctx, u, tick, bx + barW + 3, by - 2); // 격투가 연격 콤보
 
       // 활성 CC 아이콘
