@@ -290,7 +290,8 @@
   // ── 다리: 돌 아치 다리. 난간 끝 기둥마다 등불, 옆면에 아치 무늬. 걸으면 아치를 따라 오르내림
   const BR = { z: riverZ(0), half: 1.45, L: RIVER.w + 2.4, peak: 0.62 };
   const deckY = lz => 0.12 + BR.peak * Math.sin(Math.PI * Math.min(1, Math.max(0, (lz + BR.L / 2) / BR.L))); // 다리 위 높이 (lz: 다리 가운데 기준)
-  const groundY = (x, z) => Math.abs(x) < BR.half && Math.abs(z - BR.z) < BR.L / 2 ? deckY(z - BR.z) + 0.08 : 0;
+  const BRIDGES = [{ x: 0, z: BR.z, half: BR.half, L: BR.L, peak: BR.peak }]; // 강을 건너는 다리들 (걸으면 아치를 따라 오르내림)
+  const groundY = (x, z) => { for (const b of BRIDGES) if (Math.abs(x - b.x) < b.half && Math.abs(z - b.z) < b.L / 2) return 0.2 + b.peak * Math.sin(Math.PI * Math.min(1, Math.max(0, (z - b.z + b.L / 2) / b.L))); return 0; };
   const bridge = new THREE.Group();
   { const n = 14, seg = BR.L / n, b = (w, h, d, c, x, y, z, rx) => { const m = at(mesh(new THREE.BoxGeometry(w, h, d), c), x, y, z); m.rotation.x = rx || 0; bridge.add(m); return m; };
     for (let i = 0; i < n; i++) { const lz = -BR.L / 2 + (i + 0.5) * seg, y = deckY(lz), sl = -Math.atan2(deckY(lz + 0.01) - deckY(lz - 0.01), 0.02);
@@ -303,6 +304,27 @@
     [-1, 1].forEach(sd => { const arc = at(mesh(new THREE.RingGeometry(BR.L / 2 - 0.85, BR.L / 2 - 0.25, 32, 1, 0, Math.PI), '#cfc7b6'), sd * (BR.half + 0.02), 0, 0); arc.rotation.y = Math.PI / 2; arc.scale.y = 0.2; bridge.add(arc); });
   }
   scene.add(at(bridge, 0, 0, BR.z));
+
+  { // ── 주택가 다리: 민준·서연네 집 뒤 강을 건넘. 나무 판 바닥, 흰 난간동자와 둥근 손잡이, 밑으로 휜 흰 아치, 돌 받침, 둥근 등
+    const b = { x: DIST.x, z: riverZ(DIST.x), half: 1.45, L: RIVER.w + 3, peak: 0.55 }; BRIDGES.push(b);
+    const g = new THREE.Group(), n = 16, seg = b.L / n, dy = lz => groundY(b.x, b.z + lz) - 0.08, WHITE = '#f6f2ea';
+    const slope = lz => -Math.atan2(dy(lz + 0.01) - dy(lz - 0.01), 0.02);
+    for (let i = 0; i < n; i++) { const lz = -b.L / 2 + (i + 0.5) * seg, y = dy(lz), sl = slope(lz);
+      const pl = at(mesh(new THREE.BoxGeometry(b.half * 2 - 0.2, 0.1, seg - 0.03), i % 2 ? '#c9935f' : '#b98552'), 0, y, lz); pl.rotation.x = sl; g.add(pl); // 나무 판
+      [-1, 1].forEach(sd => { const e = at(mesh(new THREE.BoxGeometry(0.14, 0.2, seg + 0.02), '#6b4428'), sd * (b.half - 0.07), y - 0.03, lz); e.rotation.x = sl; g.add(e); // 옆 테
+        const hr = at(mesh(new THREE.CylinderGeometry(0.045, 0.045, seg + 0.03, 8), WHITE), sd * (b.half - 0.07), y + 0.7, lz); hr.rotation.x = Math.PI / 2 + sl; g.add(hr); // 손잡이
+        const mr = at(mesh(new THREE.CylinderGeometry(0.022, 0.022, seg + 0.03, 6), WHITE), sd * (b.half - 0.07), y + 0.36, lz); mr.rotation.x = Math.PI / 2 + sl; g.add(mr);
+        [0.25, 0.75].forEach(f => { const bz = lz - seg / 2 + f * seg; g.add(at(mesh(new THREE.CylinderGeometry(0.022, 0.026, 0.62, 6), WHITE), sd * (b.half - 0.07), dy(bz) + 0.38, bz)); }); }); } // 난간동자
+    [-1, 1].forEach(sd => { const arc = at(mesh(new THREE.TorusGeometry(b.L / 2 - 0.5, 0.07, 6, 28, Math.PI), WHITE), sd * (b.half - 0.07), -0.05, 0); arc.rotation.y = Math.PI / 2; arc.scale.y = 0.22; g.add(arc); }); // 밑 아치
+    [-1, 1].forEach(ez => { const z = ez * (b.L / 2 + 0.15); g.add(at(mesh(new THREE.BoxGeometry(b.half * 2 + 0.5, 0.3, 0.7), '#d6d0c4'), 0, 0.15, z)); // 돌 받침
+      [-1, 1].forEach(sd => { const px = sd * (b.half + 0.05), py = dy(ez * (b.L / 2 - 0.1));
+        g.add(at(mesh(new THREE.CylinderGeometry(0.09, 0.11, 1.35, 10), WHITE), px, py + 0.68, z - ez * 0.1)); g.add(at(mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.06, 12), '#d9a441'), px, py + 1.36, z - ez * 0.1));
+        g.add(at(noShadow(mesh(new THREE.SphereGeometry(0.16, 14, 10), winMat)), px, py + 1.52, z - ez * 0.1)); // 둥근 등 (밤에 켜짐)
+        [-0.18, 0, 0.18].forEach((dx, k) => g.add(at(mesh(new THREE.SphereGeometry(0.1, 8, 6), ['#ff7fa6', '#ffcf3a', '#fff6e8'][k]), px + sd * 0.32, 0.36, z + dx))); }); }); // 꽃
+    scene.add(at(g, b.x, 0, b.z));
+    strip(b.x, (b.z + b.L / 2 - 0.5 - 2) / 2, 2.2, -2 - (b.z + b.L / 2 - 0.5), sandMat(1, 2), 0.03); // 주택가 남북길을 다리까지
+    strip(b.x, b.z - b.L / 2 - 1.6, 2.2, 3.4, sandMat(1, 2), 0.03); // 건너편 작은 길
+  }
 
   // ── 부딪히는 것(원) 목록
   const solids = [];
@@ -683,7 +705,7 @@
       const x = -150 + rnd() * 206, z = -44 + rnd() * 100;
       if (!((Math.abs(x) > 36.5 && z < BEACH.z0 - 1) || z < -25.5) || (x < DIST.x1 + 2 && x > DIST.x0 - 3 && z > -7 && z < BEACH.z0) || riverDist(x, z) < 1.6 || eastDist(x, z) < 1.8 || bg.some(b => Math.hypot(x - b[0], z - b[1]) < 3.4) || (x < -31 && x > PLAY.x - 12 && z > SCH.z - 4.5 && z < PLAY.z + 7.5)) continue;
       bg.push([x, z]); i++;
-      const sc = 1 + rnd() * 0.5, pinkTree = rnd() < 0.55, im = pinkTree ? blobsPinkFar : blobsLeafFar;
+      const sc = 1 + rnd() * 0.5; solid(x, z, 0.4 * sc); const pinkTree = rnd() < 0.55, im = pinkTree ? blobsPinkFar : blobsLeafFar;
       scene.add(at(mesh(new THREE.CylinderGeometry(0.26 * sc, 0.4 * sc, 1.6 * sc, 12), barkMat), x, 0.8 * sc, z));
       [[0, 2.2, 0, 1.25], [0.9, 1.75, 0.2, 0.85], [-0.9, 1.8, -0.1, 0.85], [0.1, 1.7, 0.9, 0.8], [0, 1.75, -0.9, 0.8], [0.1, 3.0, 0, 0.8]].forEach(b => {
         dummy.position.set(x + b[0] * sc, b[1] * sc, z + b[2] * sc); dummy.scale.setScalar(b[3] * sc); dummy.rotation.set(rnd() * 6, rnd() * 6, rnd() * 6); dummy.updateMatrix(); im.setMatrixAt(addBlob(im, pinkTree ? PINK : LEAF), dummy.matrix); });
@@ -922,15 +944,16 @@
     solids.forEach(c => { const d = Math.hypot(x - c.x, z - c.z), min = c.r + R; if (d < min && d > 1e-4) { x = c.x + (x - c.x) / d * min; z = c.z + (z - c.z) / d * min; } });
     if (pz < SHOP.far && eastDist(x, z) < 0) { const [q, d] = eastNear(x, z), k = (q.w / 2 + 0.01) / (d || 1); x = q.x + (x - q.x) * k; z = q.z + (z - q.z) * k; } // 동쪽 강: 물가로 밀어냄
     if (pz < SHOP.far && riverDist(x, z) < 0) { // 강: 다리 위에서만 건넘
-      if (Math.abs(a.x) <= RIVER.bridge && riverDist(a.x, pz) < 0.05) x = Math.max(-RIVER.bridge + 0.25, Math.min(RIVER.bridge - 0.25, x));
-      else if (Math.abs(x) > RIVER.bridge - 0.25) z = riverZ(x) + (pz >= riverZ(a.x) ? 1 : -1) * RIVER.w / 2;
+      const on = BRIDGES.find(q => Math.abs(a.x - q.x) <= RIVER.bridge);
+      if (on && riverDist(a.x, pz) < 0.05) x = Math.max(on.x - RIVER.bridge + 0.25, Math.min(on.x + RIVER.bridge - 0.25, x));
+      else if (!BRIDGES.some(q => Math.abs(x - q.x) <= RIVER.bridge - 0.25)) z = riverZ(x) + (pz >= riverZ(a.x) ? 1 : -1) * RIVER.w / 2;
     }
     if (z < -21 && pz < SHOP.far) { // 사무소·가게 뒤로는 그 사이 길로만 들어감
       if (pz >= -21 && Math.abs(x - 6.45) > 0.9) z = -21; else x = Math.max(5.55, Math.min(7.35, x));
     }
     [a.x, a.z] = clampZone(x, z, pz > SHOP.far);
   }
-  const clampZone = (x, z, inShop) => inShop ? [Math.max(SHOP.ix + SHOP.x0, Math.min(SHOP.ix + SHOP.x1, x)), Math.max(SHOP.z0, Math.min(SHOP.z1, z))] : [Math.max(z > riverZ(-LX) + 2.3 ? DIST.x0 + 1 : -LX, Math.min(z > riverZ(LX) ? 44 : LX, x)), Math.max(LZ0, Math.min(LZ1, z))]; // 큰 강 남쪽은 동쪽 강가까지
+  const clampZone = (x, z, inShop) => inShop ? [Math.max(SHOP.ix + SHOP.x0, Math.min(SHOP.ix + SHOP.x1, x)), Math.max(SHOP.z0, Math.min(SHOP.z1, z))] : [Math.max(DIST.x0 + 1, Math.min(z > riverZ(LX) ? 44 : LX, x)), Math.max(LZ0, Math.min(LZ1, z))]; // 큰 강 남쪽은 동쪽 강가까지
   const keys = {};
   const onKeyDown = e => {
     if (!running || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
@@ -1173,7 +1196,7 @@
     [[1.1, '#ead9a0'], [0, '#56bdee']].forEach(([ex, c]) => { g.fillStyle = c; onShore.forEach(q => { g.beginPath(); g.arc(mx(q.x), mz(q.z), (q.w + ex) / 2 * S, 0, 6.29); g.fill(); }); }); // 동쪽 강
     [[RIVER.w + 1.1, '#ead9a0'], [RIVER.w, '#56bdee']].forEach(([w, c]) => { g.strokeStyle = c; g.lineWidth = w * S; g.beginPath(); for (let x = MAP.x0; x <= MAP.x1; x += 0.5) g.lineTo(mx(x), mz(riverZ(x))); g.stroke(); });
     rect(0, 11, 2.2, 62, '#ead2a0'); rect(DIST.x, 20.2, 2.2, 44.4, '#ead2a0'); STREETS.forEach(st => rect((st.x0 + st.x1) / 2, st.z, st.x1 - st.x0, 2.2, '#ead2a0'));
-    rect(0, BR.z, BR.half * 2, BR.L, '#cfc7b6');
+    BRIDGES.forEach(q => rect(q.x, q.z, q.half * 2, q.L, q.x ? '#c9935f' : '#cfc7b6'));
     g.fillStyle = '#cfccc5'; g.beginPath(); g.arc(mx(0), mz(0), 4.4 * S, 0, 6.29); g.fill();
     g.fillStyle = '#7fd0f0'; g.beginPath(); g.arc(mx(0), mz(0), 1.3 * S, 0, 6.29); g.fill();
     HOUSES.forEach(h => { rect(h[0], h[1] + 2.45, 5.6, 2.3, '#a5dc86'); rect(h[0], h[1], 3.2, 2.6, h[3]); });
