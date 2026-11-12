@@ -41,14 +41,15 @@ function ringCut(p, s, t, W, C) {
       if (w < 0.3) continue;
       const sc = Math.hypot(Math.cos(a), Math.sin(a) * s.sy), d = (s.R - r) * sc; // 화면 px로 잰 깊이
       const k = backK(a) * (1 - smooth(0.55, 1, life));
-      if (d < -0.5) { // 바깥: 테두리 빛 번짐 (가까이 진한 후광 + 멀리 넓은 은은한 빛, 뾰족한 끝은 작게)
-        const out = -d, b = k * Math.pow(1 - life, 1.3) * clamp(w / 10);
+      const cov = clamp(d + 0.5);
+      if (cov < 1) { // 바깥: 테두리 빛 번짐 (가까이 진한 후광 + 멀리 넓은 은은한 빛, 뾰족한 끝은 작게) · 가장자리 1px에서도 빈틈 없게 날과 나눠 칠함
+        const out = Math.max(0, -d), b = k * Math.pow(1 - life, 1.3) * clamp(w / 10) * (1 - cov);
         p.blend(x, y, C[5], b * (0.8 * Math.exp(-out / 2.5) + 0.3 * Math.exp(-out / 9)));
-        continue;
+        if (cov <= 0) continue;
       }
       // 안쪽: 바깥 가장자리(흰 날)에서 원 중심 쪽으로 끊김 없이 옅어지는 참격 면. 두 겹을 겹쳐 부드럽게:
       //   흰 날 = 굵기 w × RIM에 걸쳐 흰빛이 1.1제곱으로 사라짐 · 빛 면 = w × GRAD에 걸쳐 은백빛이 1.6제곱으로 사라짐
-      const cov = clamp(d + 0.5), x1 = d / (w * GRAD);
+      const x1 = d / (w * GRAD);
       if (x1 >= 1) continue;
       const fade = Math.pow(1 - life, 1.2) * (1 - smooth(0.3, 0.6, (s.R - r) / s.R));
       p.blend(x, y, C[4], cov * 0.75 * k * fade * Math.pow(1 - x1, 1.6));
