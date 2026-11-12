@@ -49612,6 +49612,7 @@
         // 📝 던전 퀴즈 답 (지금 문제에 한 번만)
         const dq = sim.dungeon && sim.dungeon.quiz;
         if (dq && !dq.done && dq.need && Array.isArray(v.qz) && v.qz[0] === dq.id && dq.need.includes(stuId) && !(stuId in dq.ans)) dq.ans[stuId] = v.qz[1] === 1 ? 1 : 0;
+        if (sim.defense && sim.defense.party) defenseApplyNetReqs(c, stuId, Array.isArray(v.dfq) ? v.dfq : []); // 💎 5인 방어전 친구 요청
         noteRemoteViewTime(c, v);
         const k = v.keys || {};
         c.keys = { w: Boolean(k.w), a: Boolean(k.a), s: Boolean(k.s), d: Boolean(k.d) };
@@ -49662,7 +49663,8 @@
         mvy: liveR2(c.moveY || 0),
         forfeit: c.forfeit ? 1 : 0,
         chosen: c.controlChosen ? 1 : 0,
-        qz: Array.isArray(c.quizAns) ? c.quizAns : null // 📝 던전 퀴즈 답 [문제 번호, 맞힘 1/0]
+        qz: Array.isArray(c.quizAns) ? c.quizAns : null, // 📝 던전 퀴즈 답 [문제 번호, 맞힘 1/0]
+        dfq: Array.isArray(c.dfq) && c.dfq.length ? c.dfq : null // 💎 5인 방어전: 짓기·올리기·용병 강화·다음 라운드 요청 (defenseNetReq)
       };
       // 지연 보정: 내가 보고 있던 화면 시각(방장 시계 기준) · 바뀔 때만 실려 감 (onLocalControlChanged가 정함)
       if (typeof liveNet.vtSent === 'number') payload.vt = liveNet.vtSent;
@@ -54687,6 +54689,36 @@
     const defenseIsHostSide = () => !sim.spectator && sim.netRole !== 'guest';
     // 이 화면이 방어전 상태(frame.df)를 실어 보내는지: 혼자 하며 중계 중이거나 5인 방의 계산 담당
     function defenseCastsFrames() { return sim.mode === 'defense' && Boolean(sim.defense) && (liveNet.towerCast || sim.defense.party) && defenseIsHostSide(); }
+    // 짓기·올리기·용병 강화·다음 라운드: 5인 방 친구도 함 (친구 화면은 방장에게 요청만 보냄 → defenseNetReq)
+    // 팔기·🤖 자동·용병 옮기기·빠르기는 방장만 (defenseCanChoose)
+    const defenseIsPartyGuest = () => Boolean(sim.defense && sim.defense.party && sim.running && !sim.spectator && sim.netRole === 'guest');
+    const defenseCanBuild = () => defenseCanChoose() || defenseIsPartyGuest();
+    // 5인 방 친구: 요청을 조작 신호(input.dfq)에 실어 보냄 · 최근 6개를 함께 실어 몇 개가 한꺼번에 묶여 가도 빠지지 않게 (번호 = 보낸 시각)
+    const DEFENSE_NET_OPS = { b: 1, u: 1, m: 1, n: 1 };
+    function defenseNetReq(op, a, b = null) {
+      const n = Math.max(Date.now(), (localBattleInput.dfqN || 0) + 1);
+      localBattleInput.dfqN = n;
+      localBattleInput.dfq = [...(localBattleInput.dfq || []), [n, op, a, b]].slice(-6);
+      onLocalControlChanged();
+      showNotice(op === 'n' ? '⏩ 방장 화면에 다음 라운드를 부탁했어요.' : '📨 방장 화면에 보냈어요.');
+    }
+    // 방장: 친구가 보낸 요청을 한 번씩만 처리 (처음 받은 신호에 실린 옛 요청은 건너뜀 · 계산을 넘겨받았을 때 다시 하지 않게)
+    function defenseApplyNetReqs(c, stuId, list) {
+      const dm = sim.defense;
+      if (!dm || !dm.party || !Array.isArray(list)) return;
+      const rows = list.filter(q => Array.isArray(q) && typeof q[0] === 'number' && DEFENSE_NET_OPS[q[1]]).sort((x, y) => x[0] - y[0]);
+      if (c._seenDfq == null) { c._seenDfq = rows.length ? rows[rows.length - 1][0] : 0; return; }
+      const who = (sim.units.find(u => u.liveOwnerId === stuId) || {}).name || '친구';
+      rows.forEach(([n, op, a, b]) => {
+        if (n <= c._seenDfq) return;
+        c._seenDfq = n;
+        const pad = typeof a === 'number' ? dm.pads[a] : null;
+        if (op === 'b' && pad && DEFENSE_TOWER_KEYS[b] && defenseBuild(a, DEFENSE_TOWER_KEYS[b], true)) addBattleLog(`🏗️ ${who}: ${a + 1}번 받침돌에 ${DEFENSE_TOWERS[DEFENSE_TOWER_KEYS[b]].name}`);
+        else if (op === 'u' && pad && defenseUpgradeTower(a, true)) addBattleLog(`⬆️ ${who}: ${a + 1}번 ${DEFENSE_TOWERS[pad.t.k].name} ${pad.t.lv}단계`);
+        else if (op === 'm' && typeof a === 'string' && defenseUpgradeUnit(a, true)) addBattleLog(`⬆️ ${who}: 용병 강화`);
+        else if (op === 'n') defenseCallNext(true);
+      });
+    }
 
     // ----- 라운드 -----
     const defenseIsBossRound = r => r % 10 === 0;
@@ -54818,7 +54850,10 @@
       const tps = BATTLE_TICKS_PER_SEC, now = sim.tickCount;
       dm.fx = dm.fx.filter(f => --f.life > 0);
       if (dm.leakFlash > 0) dm.leakFlash--;
-      if (!defenseIsHostSide()) { dm.shots = []; return false; } // 관전·5인 친구 화면: 방장 화면이 보내 준 대로
+      if (!defenseIsHostSide()) { // 관전·5인 친구 화면: 상태는 방장 화면이 보내 준 대로 · 포탑 화살·포탄·번개는 여기서 그림만 그림
+        if (dm.started && dm.phase !== 'done') { defenseTowersStep(true); defenseStepShots(true); }
+        return false;
+      }
       defenseStepShots();
       if (!dm.started) return true; // 전투 방식을 고르기 전
       if (dm.phase === 'done') {
@@ -54886,11 +54921,13 @@
     }
     const defenseStars = dm => (dm.lives >= dm.maxLives * 0.7 ? 3 : dm.lives >= dm.maxLives * 0.3 ? 2 : 1);
     // ⏩ 다음 라운드 바로 부르기: 남은 초 × 2 골드
-    function defenseCallNext() {
+    function defenseCallNext(fromNet = false) {
       const dm = sim.defense;
-      if (!dm || !dm.started || dm.phase === 'done' || !defenseCanChoose() || dm.round >= DEFENSE_TUNE.rounds) return;
+      if (!dm || !dm.started || dm.phase === 'done' || dm.round >= DEFENSE_TUNE.rounds) return;
+      if (!fromNet && defenseIsPartyGuest()) { defenseNetReq('n', 0); return; }
+      if (!fromNet && !defenseCanChoose()) return;
       const tps = BATTLE_TICKS_PER_SEC, now = sim.tickCount;
-      if (dm.round > 0 && now < dm.spawnEnd) { showNotice('⏳ 이번 라운드 몬스터가 다 나온 뒤에 부를 수 있어요.'); return; }
+      if (dm.round > 0 && now < dm.spawnEnd) { if (!fromNet) showNotice('⏳ 이번 라운드 몬스터가 다 나온 뒤에 부를 수 있어요.'); return; }
       const secs = Math.max(0, Math.ceil((dm.nextAt - now) / tps));
       const bonus = dm.round > 0 ? secs * DEFENSE_TUNE.gold.early : 0;
       if (bonus) { defenseGain(bonus); sim.floatTexts.push({ x: DEFENSE_PATH[0][0] + 120, y: DEFENSE_PATH[0][1] - 120, text: `⏩ 🔷+${bonus}`, color: '#67e8f9', life: 40 }); }
@@ -54960,28 +54997,34 @@
     const defenseUpCost = t => Math.round(DEFENSE_TOWERS[t.k].cost * DEFENSE_TOWER_LV.up[t.lv - 1]);
     const defenseTowerRange = t => DEFENSE_TOWERS[t.k].range * (1 + 0.06 * (t.lv - 1));
     const defenseTowerCd = t => DEFENSE_TOWERS[t.k].cd * (1 - 0.05 * (t.lv - 1));
-    function defenseBuild(padId, k) {
+    function defenseBuild(padId, k, fromNet = false) {
       const dm = sim.defense, pad = dm && dm.pads[padId], D = DEFENSE_TOWERS[k];
-      if (!pad || !D || pad.t || dm.phase === 'done' || !defenseCanChoose()) return;
-      if (dm.gold < D.cost) { showNotice(`🔷 골드가 모자라요 (${D.cost} 필요)`); return; }
+      if (!pad || !D || pad.t || dm.phase === 'done') return false;
+      if (!fromNet && defenseIsPartyGuest()) { if (dm.gold < D.cost) showNotice(`🔷 골드가 모자라요 (${D.cost} 필요)`); else { defenseNetReq('b', padId, DEFENSE_TOWER_KEYS.indexOf(k)); dm.sel = null; renderDefensePanel(true); } return false; }
+      if (!fromNet && !defenseCanChoose()) return false;
+      if (dm.gold < D.cost) { if (!fromNet) showNotice(`🔷 골드가 모자라요 (${D.cost} 필요)`); return false; }
       dm.gold -= D.cost;
       pad.t = { k, lv: 1, spent: D.cost, readyAt: sim.tickCount + 10, fireAt: -99, shots: 0 };
       dm.built++;
       dm.fx.push({ k: 'burst', x: pad.x, y: pad.y - 50, r: 80, ramp: D.ramp, life: 22, max: 22, seed: sim.tickCount + padId });
       sim.effects.push({ type: 'aoe_ring', x: pad.x, y: pad.y, r: 70, color: D.color, life: 24, maxLife: 24 });
       renderDefensePanel(true);
+      return true;
     }
-    function defenseUpgradeTower(padId) {
+    function defenseUpgradeTower(padId, fromNet = false) {
       const dm = sim.defense, pad = dm && dm.pads[padId], t = pad && pad.t;
-      if (!t || t.lv >= DEFENSE_TOWER_LV.max || dm.phase === 'done' || !defenseCanChoose()) return;
+      if (!t || t.lv >= DEFENSE_TOWER_LV.max || dm.phase === 'done') return false;
       const cost = defenseUpCost(t);
-      if (dm.gold < cost) { showNotice(`🔷 골드가 모자라요 (${cost} 필요)`); return; }
+      if (!fromNet && defenseIsPartyGuest()) { if (dm.gold < cost) showNotice(`🔷 골드가 모자라요 (${cost} 필요)`); else defenseNetReq('u', padId); return false; }
+      if (!fromNet && !defenseCanChoose()) return false;
+      if (dm.gold < cost) { if (!fromNet) showNotice(`🔷 골드가 모자라요 (${cost} 필요)`); return false; }
       dm.gold -= cost;
       t.lv++; t.spent += cost;
       dm.upgrades++;
       sim.floatTexts.push({ x: pad.x, y: pad.y - 170, text: `⬆️ ${t.lv}단계`, color: '#fde047', life: 40 });
       dm.fx.push({ k: 'burst', x: pad.x, y: pad.y - 70, r: 90, ramp: 'arrow_hit', life: 22, max: 22, seed: sim.tickCount + padId });
       renderDefensePanel(true);
+      return true;
     }
     function defenseSellTower(padId) {
       const dm = sim.defense, pad = dm && dm.pads[padId], t = pad && pad.t;
@@ -54998,7 +55041,7 @@
       dm.sel = id == null || dm.sel === id ? null : id;
       renderDefensePanel(true);
     }
-    function defenseTowersStep() {
+    function defenseTowersStep(visual = false) {
       const dm = sim.defense, tps = BATTLE_TICKS_PER_SEC, now = sim.tickCount;
       const foes = sim.units.filter(u => u.team === 'red' && u.alive && !u.rushPending && u.tdDist != null);
       if (!foes.length) return;
@@ -55034,7 +55077,7 @@
           let sx = ox, sy = top;
           hit.forEach((e, i) => {
             dm.fx.push({ k: 'bolt', sx, sy, tx: e.x, ty: e.y - 40, life: 12, max: 12, seed: now + i * 13 + pad.id });
-            defenseTowerHit(e, dmg * Math.pow(0.85, i), D.color);
+            if (!visual) defenseTowerHit(e, dmg * Math.pow(0.85, i), D.color);
             sx = e.x; sy = e.y - 40;
           });
           dm.fx.push({ k: 'burst', x: hit[0].x, y: hit[0].y - 40, r: 50, ramp: D.ramp, life: 14, max: 14, seed: now + pad.id });
@@ -55047,7 +55090,7 @@
       try { applyDamage(null, e, Math.max(1, Math.round(dmg)), '', color); } finally { fixedDamageHit = false; }
     }
     // 날아가는 화살·포탄·얼음: 닿는 순간 피해 (화살·얼음은 적을 따라감, 포탄은 쏜 자리에 떨어짐)
-    function defenseStepShots() {
+    function defenseStepShots(visual = false) {
       const dm = sim.defense, now = sim.tickCount, tps = BATTLE_TICKS_PER_SEC;
       if (!dm.shots.length) return;
       const byId = {};
@@ -55057,10 +55100,10 @@
         if (s.k !== 'cannon' && e && e.alive) { s.tx = e.x; s.ty = e.y - 40; }
         if (now < s.hit) return true;
         const D = DEFENSE_TOWERS[s.k];
-        if (s.k === 'arrow') { if (e && e.alive) defenseTowerHit(e, s.dmg, D.color); dm.fx.push({ k: 'burst', x: s.tx, y: s.ty, r: 26, ramp: D.ramp, life: 10, max: 10, seed: now + s.pad }); }
+        if (s.k === 'arrow') { if (e && e.alive && !visual) defenseTowerHit(e, s.dmg, D.color); dm.fx.push({ k: 'burst', x: s.tx, y: s.ty, r: 26, ramp: D.ramp, life: 10, max: 10, seed: now + s.pad }); }
         else {
           const r = D.aoe * (1 + 0.08 * (s.lv - 1));
-          sim.units.forEach(u => {
+          if (!visual) sim.units.forEach(u => {
             if (u.team !== 'red' || !u.alive || u.rushPending || Math.hypot(u.x - s.tx, u.y - 40 - s.ty) > r) return;
             defenseTowerHit(u, s.dmg, D.color);
             if (!u.alive) return;
@@ -55080,13 +55123,15 @@
 
     // ----- ⬆️ 용병 강화 -----
     const defenseMercUpCost = u => Math.round(DEFENSE_TUNE.merc.cost * Math.pow(DEFENSE_TUNE.merc.costMul, u.defUp || 0));
-    function defenseUpgradeUnit(id) {
+    function defenseUpgradeUnit(id, fromNet = false) {
       const dm = sim.defense;
-      if (!dm || dm.phase === 'done' || !defenseCanChoose()) return;
+      if (!dm || dm.phase === 'done') return false;
       const u = sim.units.find(x => x.id === id && x.team === 'blue' && !x.isClone);
-      if (!u || (u.defUp || 0) >= DEFENSE_TUNE.merc.max) return;
+      if (!u || (u.defUp || 0) >= DEFENSE_TUNE.merc.max) return false;
       const cost = defenseMercUpCost(u);
-      if (dm.gold < cost) { showNotice(`🔷 골드가 모자라요 (${cost} 필요)`); return; }
+      if (!fromNet && defenseIsPartyGuest()) { if (dm.gold < cost) showNotice(`🔷 골드가 모자라요 (${cost} 필요)`); else defenseNetReq('m', id); return false; }
+      if (!fromNet && !defenseCanChoose()) return false;
+      if (dm.gold < cost) { if (!fromNet) showNotice(`🔷 골드가 모자라요 (${cost} 필요)`); return false; }
       dm.gold -= cost;
       if (!u._defBase) u._defBase = { atk: u.atk };
       u.defUp = (u.defUp || 0) + 1;
@@ -55097,6 +55142,7 @@
         sim.floatTexts.push({ x: u.x, y: u.y - 60, text: `⬆️ 공격 +${Math.round(DEFENSE_TUNE.merc.atk * 100 * u.defUp)}%`, color: '#fde047', life: 46 });
       }
       renderDefensePanel(true);
+      return true;
     }
     // 🤖 자동 (패널 버튼 · 밸런스 시뮬): 라운드가 오를수록 포탑을 늘리고, 아니면 가장 싼 올리기 (포탑·용병)
     function defenseAutoSpend() {
@@ -55155,8 +55201,9 @@
       const canvas = document.getElementById('arenaCanvas');
       if (!canvas) return;
       const start = (clientX, clientY, e) => {
-        if (!defenseCanDrag()) return false;
-        const w = defenseWorldAt(canvas, clientX, clientY), u = defenseDragPick(w.x, w.y);
+        const dm0 = sim.defense;
+        if (!(sim.mode === 'defense' && dm0 && dm0.started && dm0.phase !== 'done' && defenseCanBuild())) return false;
+        const w = defenseWorldAt(canvas, clientX, clientY), u = defenseCanDrag() ? defenseDragPick(w.x, w.y) : null;
         if (!u) {
           const pad = defensePadPick(w.x, w.y);
           if (!pad) return false;
@@ -55206,7 +55253,7 @@
     function drawDefenseField(ctx) {
       const dm = sim.defense;
       if (!dm) return;
-      const t = sim.tickCount, can = defenseCanChoose();
+      const t = sim.tickCount, can = defenseCanChoose(), canBuild = defenseCanBuild();
       ctx.save();
       if (!BATTLE_MAPS.crystal_defense.ready) {
         ctx.beginPath();
@@ -55229,7 +55276,7 @@
           ctx.globalAlpha = 1;
           return;
         }
-        if (!can && !sel) return;
+        if (!canBuild && !sel) return;
         const ok = dm.gold >= cheapest;
         ctx.globalAlpha = sel ? 1 : ok ? 0.75 + 0.2 * Math.sin(t * 0.1 + p.id) : 0.45;
         ctx.strokeStyle = sel ? '#fde047' : ok ? '#a5f3fc' : '#94a3b8'; ctx.lineWidth = sel ? 8 : 6;
@@ -55361,7 +55408,7 @@
         r: dm.round, ph: Math.max(0, DEFENSE_PHASES.indexOf(dm.phase)), sd: dm.started ? 1 : 0, na: isFinite(dm.nextAt) ? dm.nextAt : -1, se: dm.spawnEnd,
         lv: dm.lives, ml: dm.maxLives, g: dm.gold, ge: dm.goldEarned, cl: dm.cleared, won: dm.won ? 1 : 0, au: dm.auto ? 1 : 0, lf: dm.leakFlash > 0 ? 1 : 0,
         bk: dm.bossesKilled, lk: dm.leaked, kc: dm.kills, sel: dm.sel == null ? -1 : dm.sel, ol: Object.keys(dm.left).map(Number), h1: dm.hp1,
-        tw: dm.pads.filter(p => p.t).map(p => [p.id, DEFENSE_TOWER_KEYS.indexOf(p.t.k), p.t.lv, p.t.fireAt]), up, gd: g
+        tw: dm.pads.filter(p => p.t).map(p => [p.id, DEFENSE_TOWER_KEYS.indexOf(p.t.k), p.t.lv, p.t.spent]), up, gd: g
       };
     }
     function applyDefenseState(a) {
@@ -55385,12 +55432,16 @@
       if (Array.isArray(a.ol)) { dm.left = {}; a.ol.forEach(r => { if (typeof r === 'number' && r > 0 && r <= DEFENSE_TUNE.rounds) dm.left[r] = 1; }); }
       if (num(a.h1) > 0) dm.hp1 = num(a.h1);
       const sel = num(a.sel, -1);
-      dm.sel = sel >= 0 && sel < dm.pads.length ? sel : null;
+      if (sim.spectator) dm.sel = sel >= 0 && sel < dm.pads.length ? sel : null;
+      const had = dm.pads.map(p => p.t);
       dm.pads.forEach(p => { p.t = null; });
       if (Array.isArray(a.tw)) a.tw.forEach(q => {
         if (!Array.isArray(q)) return;
         const pad = dm.pads[num(q[0], -1)], k = DEFENSE_TOWER_KEYS[num(q[1], -1)];
-        if (pad && k) pad.t = { k, lv: Math.max(1, Math.min(DEFENSE_TOWER_LV.max, num(q[2], 1))), spent: 0, readyAt: 0, fireAt: num(q[3], -99), shots: 0 };
+        if (!pad || !k) return;
+        const lv = Math.max(1, Math.min(DEFENSE_TOWER_LV.max, num(q[2], 1))), old = had[pad.id];
+        pad.t = old && old.k === k ? Object.assign(old, { lv }) : { k, lv, spent: 0, readyAt: 0, fireAt: -99, shots: 0 };
+        pad.t.spent = num(q[3], pad.t.spent);
       });
       const up = a.up && typeof a.up === 'object' ? a.up : {};
       sim.units.forEach(u => { if (u.team === 'blue') u.defUp = Math.max(0, Math.min(DEFENSE_TUNE.merc.max, num(up[u.id]))); });
@@ -55455,11 +55506,11 @@
       const dm = sim.mode === 'defense' && sim.running ? sim.defense : null;
       box.classList.toggle('hidden', !dm || !dm.started);
       if (!dm || !dm.started) { defensePanelSig = ''; return; }
-      const can = defenseCanChoose(), live = dm.phase !== 'done';
+      const can = defenseCanChoose(), canBuild = defenseCanBuild(), live = dm.phase !== 'done';
       const blue = defenseMercs();
       const selPad = dm.sel == null ? null : dm.pads[dm.sel];
       const callable = live && dm.round < DEFENSE_TUNE.rounds && (dm.round === 0 || sim.tickCount >= dm.spawnEnd);
-      const sig = [defensePanelMin, can, dm.phase, dm.round, dm.gold, dm.auto, dm.speed, dm.sel, callable, Math.round(dm.lives),
+      const sig = [defensePanelMin, can, canBuild, dm.phase, dm.round, dm.gold, dm.auto, dm.speed, dm.sel, callable, Math.round(dm.lives),
         dm.pads.map(p => (p.t ? `${p.t.k[0]}${p.t.lv}` : '-')).join(''),
         blue.map(u => `${u.id}${u.alive ? 1 : 0}${u.defUp || 0}`).join('')].join('|');
       if (!force && sig === defensePanelSig) { defensePanelTick(); return; }
@@ -55479,13 +55530,13 @@
               <span>💎 <em id="dfpCrText" style="font-style:normal"></em></span><div class="dfp-prog"><i id="dfpCr" style="width:${Math.round(k * 100)}%"></i></div>
             </div>
           </div>
-          <button type="button" class="dfp-btn" onclick="defenseCallNext()" ${can && callable ? '' : 'disabled'} title="다음 라운드를 바로 불러요 (남은 초 × ${DEFENSE_TUNE.gold.early} 골드)">⏩ 다음 라운드<small>${dm.round ? `+${secsLeft * DEFENSE_TUNE.gold.early} 골드` : '바로 시작'}</small></button>
+          <button type="button" class="dfp-btn" onclick="defenseCallNext()" ${canBuild && callable ? '' : 'disabled'} title="다음 라운드를 바로 불러요 (남은 초 × ${DEFENSE_TUNE.gold.early} 골드)">⏩ 다음 라운드<small>${dm.round ? `+${secsLeft * DEFENSE_TUNE.gold.early} 골드` : '바로 시작'}</small></button>
           ${dm.party ? '' : `<button type="button" class="dfp-btn sky" onclick="defenseCycleSpeed()" ${lock}>⏱️ ×${dm.speed}<small>빠르기</small></button>`}
           <button type="button" class="dfp-btn ${dm.auto ? 'green' : 'wood'}" onclick="defenseToggleAuto()" ${lock} title="골드로 포탑을 알아서 짓고 올려요">🤖 자동<small>${dm.auto ? '켜짐' : '꺼짐'}</small></button>
           <button type="button" class="dfp-btn wood" onclick="defenseTogglePanel()">${defensePanelMin ? '▼ 펼치기' : '▲ 접기'}<small>작전판</small></button>
         </div>`;
       if (defensePanelMin) { box.innerHTML = bar; defensePanelTick(); return; }
-      const ok = c => can && live && dm.gold >= c;
+      const ok = c => canBuild && live && dm.gold >= c;
       let towerCard;
       if (selPad && !selPad.t) {
         towerCard = `<div class="dfp-h">🏗️ ${selPad.id + 1}번 받침돌에 짓기 <small>사거리 안을 지나가는 몬스터를 쏴요</small><button type="button" class="dfp-x" onclick="defenseSelectPad(null)">✖</button></div>
@@ -55510,7 +55561,7 @@
       } else {
         const counts = DEFENSE_TOWER_KEYS.map(key => [key, dm.pads.filter(p => p.t && p.t.k === key).length]);
         towerCard = `<div class="dfp-h">🏗️ 포탑 <small>${dm.pads.filter(p => p.t).length}/${DEFENSE_PADS.length}곳에 지음</small></div>
-          <div class="dfp-tip">전장의 <b>받침돌(+)</b>을 눌러 포탑을 짓고, 지은 포탑을 눌러 <b>올리기·팔기</b>를 해요. 포탑은 ${DEFENSE_TOWER_LV.max}단계까지 올라가요.${can ? '' : sim.spectator ? ' (📺 관전 중이라 보기만 해요)' : ' (5인 방에서는 방장만 지을 수 있어요)'}</div>
+          <div class="dfp-tip">전장의 <b>받침돌(+)</b>을 눌러 포탑을 짓고, 지은 포탑을 눌러 <b>올리기·팔기</b>를 해요. 포탑은 ${DEFENSE_TOWER_LV.max}단계까지 올라가요.${can ? '' : sim.spectator ? ' (📺 관전 중이라 보기만 해요)' : ' (5인 방: 짓기·올리기는 모두 할 수 있고, 팔기·🤖 자동·용병 옮기기는 방장만 해요. 골드는 다 같이 써요)'}</div>
           <div class="dfp-build mini">${counts.map(([key, n]) => `<span class="dfp-tw">${defenseTowerThumbHTML(key, 1, 1)}<b>${DEFENSE_TOWERS[key].icon} ${DEFENSE_TOWERS[key].name}</b><small>${n}개 · ${DEFENSE_TOWERS[key].cost}</small></span>`).join('')}</div>`;
       }
       const roster = blue.map(u => {
