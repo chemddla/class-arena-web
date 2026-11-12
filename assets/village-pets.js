@@ -368,6 +368,7 @@
       arms[0].rotation.x = -sw * 0.9;
       arms[1].rotation.x = sw * 0.9 * (1 - waveK);
       arms[1].rotation.z = 0.35 + waveK * (2.1 + Math.sin(t * 12) * 0.35);
+      if (st.hold) { arms[1].rotation.x = st.hold === 'fish' ? -0.9 : -0.45 + sw * 0.15; arms[1].rotation.z = 0.18; } // 물건을 쥔 팔: 낚시 땐 앞으로, 들고 다닐 땐 살짝 앞으로
       rig.position.y = Math.abs(Math.sin(t * 11)) * 0.035 * walk - 0.12 * sitK; // 앉으면 엉덩이가 바닥(y=0)에 닿게 내림
       rig.rotation.z = Math.sin(t * 11) * 0.05 * walk;
       const sq = Math.sin(t * 22) * 0.035 * walk; rig.scale.set(1 - sq * 0.5, 1 + sq, 1 - sq * 0.5); // 걸을 때 통통 튀는 탄력
@@ -400,8 +401,9 @@
         const ol = new THREE.Mesh(o.geometry, opts.outline); ol.userData.noShadow = true; ol.userData.noOutline = true; o.add(ol); outlines.push(ol);
       });
     }
+    const hands = arms.map(a => at(new THREE.Group(), 0, -0.17, 0.03)); hands.forEach((h, i) => arms[i].add(h)); // 손 자리: 물건을 쥐여 줄 때 여기에 붙임
     update(0);
-    return { group: root, update, spec: S, height: 1 * (S.size || 1), outlines };
+    return { group: root, update, spec: S, height: 1 * (S.size || 1), outlines, hands };
   }
 
   window.VillagePets = { SPECS, build, toon, merge };

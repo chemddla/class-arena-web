@@ -902,7 +902,7 @@
     const a = { type, name, pet, g, tag, x, z, face: 0, moving: false, wave: 0, target: null, wait: rnd() * 3, me };
     actors.push(a); return a;
   }
-  function setPet(a, type) { a.g.remove(a.pet.group); a.type = type; a.pet = VillagePets.build(THREE, type, petOpts); a.pet.outlines.forEach(o => { o.visible = outlineOn; }); dress(a.pet.group); a.g.add(a.pet.group); }
+  function setPet(a, type) { a.g.remove(a.pet.group); a.type = type; a.pet = VillagePets.build(THREE, type, petOpts); a.pet.outlines.forEach(o => { o.visible = outlineOn; }); dress(a.pet.group); a.g.add(a.pet.group); if (a.onPet) a.onPet(); }
   const petType = t => (t && VillagePets.SPECS[t] ? t : 'guest'); // 펫이 없으면 새싹 모습
   const me = makeActor(demo ? 'shiba' : petType(host.me.pet), demo ? '나' : host.me.name, (rnd() - 0.5) * 3, 4 + rnd() * 1.5, true);
   const sel = $('petSel');
@@ -1211,7 +1211,8 @@
     add(at(mesh(new THREE.BoxGeometry(0.014, 0.03, 0.08), '#3a3a44'), 0, 0.485, 0.06)); // 릴: 다리, 몸통, 은색 스풀, 손잡이
     add(at(mesh(new THREE.CylinderGeometry(0.04, 0.034, 0.08, 14), '#2b2f3a'), 0, 0.46, 0.12)); add(at(mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.05, 14), '#c9ced6'), 0, 0.525, 0.12));
     add(at(mesh(new THREE.BoxGeometry(0.08, 0.01, 0.012), '#c9ced6'), 0.05, 0.46, 0.12)); add(at(mesh(new THREE.SphereGeometry(0.016, 8, 6), '#f4efe5'), 0.09, 0.46, 0.12)); }
-  rod.position.set(0.24, 0.5, 0.12); rod.rotation.x = 0.85; rod.visible = false; me.g.add(rod); dress(rod); // 낚시 중엔 앞으로, 들고 다닐 땐 어깨에 멤
+  const rodHold = new THREE.Group(); rodHold.add(rod); rod.position.y = -0.28; rod.visible = false; dress(rod); // 손잡이(코르크) 쪽을 손에 쥠
+  me.onPet = () => me.pet.hands[1].add(rodHold); me.onPet(); // 펫을 바꾸면 새 손에 다시 쥐여 줌
   const bobber = new THREE.Group(); bobber.add(at(noShadow(mesh(new THREE.SphereGeometry(0.09, 12, 8, 0, 6.29, 0, Math.PI / 2), '#e8483f')), 0, 0, 0)); bobber.add(at(noShadow(mesh(new THREE.SphereGeometry(0.09, 12, 8, 0, 6.29, Math.PI / 2, Math.PI / 2), '#ffffff')), 0, 0, 0));
   bobber.visible = false; scene.add(bobber);
   const lineGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Array(30).fill(0), 3));
@@ -1330,7 +1331,7 @@
         else if (sh.state !== 'lure') { const [a, b] = swimNear(sh); sh.tx = a; sh.tz = b; } }
       sh.g.position.set(sh.x, 0.062, sh.z); sh.tail.rotation.z = Math.PI + Math.sin(t * (sh.state === 'flee' ? 24 : 9) + sh.ph) * 0.5;
     });
-    rod.rotation.x = fishing.st ? 0.85 : -0.5; rod.position.z = fishing.st ? 0.12 : -0.05; // 낚시 중엔 앞으로 내밀고, 아니면 어깨에 멤
+    rodHold.rotation.x = fishing.st ? 1.75 : -0.05; // 낚시 중엔 앞으로 내밀고, 아니면 세워 들고 다님 (팔 각도와 합쳐짐)
     if (!fishing.st) return;
     const sh = fishing.sh; fishing.t += dt; let by = 0.075;
     if (fishing.st === 'cast') { const k = Math.min(1, fishing.t / 0.55); bobber.visible = line.visible = true; // 포물선으로 날아감
@@ -1503,7 +1504,7 @@
       if (a.sayT > 0) a.sayT -= dt;
       const label = a.sayT > 0 ? a.say : a.name + (a.wave > 0 ? ' 👋' : '');
       if (label !== a.label) { a.label = label; a.tag.textContent = label; a.tag.classList.toggle('say', a.sayT > 0); }
-      a.pet.update(t, { moving: a.moving, wave: a.wave > 0.02, sit: Boolean(a.sit) && !a.sit.stand });
+      a.pet.update(t, { moving: a.moving, wave: a.wave > 0.02, sit: Boolean(a.sit) && !a.sit.stand, hold: a === me && rod.visible ? (fishing.st ? 'fish' : 'carry') : null });
       const dz = bendDist(a.x, a.z);
       v.set(a.g.position.x, a.g.position.y + (a.sit ? 1.1 : 1.24) * (a.pet.height || 1) - curve.uCurve.value * dz * dz, a.g.position.z).project(camera);
       const on = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;
