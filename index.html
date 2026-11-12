@@ -7919,12 +7919,13 @@
         anims: { idle: [0], walk: [1, 2, 3, 2], attack: [4, 5], skill: [4, 5], hurt: [6], death: [7, 8], whirl: [13, 14, 15], shout: [10], charge: [11, 12, 12, 12, 12] } },
       swordsman_sr1: { cellW: 205, cellH: 119, anchorX: 87, anchorY: 117, topH: 86, portraitCX: 90, count: 24, attackSets: [[5], [6]],
         pickFrame: (u, sprite, tick) => (u.alive && u.statuses && ((u.statuses.mindblade || 0) > 0 || (u.statuses.parry || 0) > 0)) ? 19 // 심검·패링 동안 막는 자세
+          : (u.swordMcPose && u.skillAnim > 0 && u.activeSkillType === 'mucham') ? (u.swordMcPose === 'ready' ? 7 : 18) // 무참 마무리: 발도 준비(7) → 발도로 벰(18)
           : (u.swordGkPose && u.skillAnim > 0 && u.activeSkillType === 'geukcham') ? (u.swordGkPose === 'charge' ? 23 : 12) // 극참 마지막 일격: 칼을 머리 위로 가로로 들어 기를 모음(23) → 달려 나가며 화면을 벰(12, 무참 2)
           : (u.swordIssenPose != null && u.skillAnim > 0 && u.activeSkillType === 'issen') ? 8 + Math.max(0, SWORD_ISSEN_POSES.indexOf(u.swordIssenPose)) // 일섬·극참 돌진: 0번 칸 20~22 → 이 시트 8~10
           : (u.swordAtkPose != null && u.attackAnim > 0 && !u._sprAtkFromSkill && !(u.skillAnim > 0) && !u.casting && tick - (u._sprAtkStart ?? tick) < sprite.attackDur) ? sprite.attackSets[u.swordAtkPose][0] : null, // 0번처럼 참격 자세(서서 5 · 앉아 6)만
         anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5], skill: [7], hurt: [20], death: [21, 22], draw: [18], guard: [19], dash: [9], slash: [5, 18],
           mucham: Array.from({ length: 60 }, (_, i) => i === 59 ? 15 : [14, 15, 11, 12, 18, 13, 16, 17][i % 8]) }, // 0번처럼 벨 때마다 자세 하나: 치켜듦 → 앞으로 뻗음 → 칼끝 아래 → 칼을 뒤로 달림 → 발도 → 앉아 앞 아래 → 숙여 벰 → 웅크림, 마지막은 앞으로 뻗음
-        castFrames: { batto: [7], seomdan: [7], geukcham: [7] } }, // 발도·섬단·극참 시전 막대 동안 시전 칸
+        castFrames: { batto: [7], seomdan: [7], geukcham: [6, 7] } }, // 발도·섬단 시전 막대 동안 시전 칸, 극참은 앞 절반 일반공격 자세(6) → 시전 칸
       volt_sr1: VOLT_SR1_SHEET, // 2026-11-10까지 기본 외형이던 그림 (칸 구성이 새 0번과 다름)
       knight_sr1: { cellH: 114, anchorY: 111, topH: 101 }, lancer_sr1: { ...LANCER_OLD_SHEET, topH: 88 },
       // 성녀 SR 1 (2026-11-09 교체: 분홍 단발 천사 — 후광·분홍빛 날개·연두 금빛 로브·날개 달린 하프 지팡이, tools/healer_sr1_build.py): 20칸 = 0 대기 · 1~4 비행
@@ -27027,11 +27028,14 @@
     const SWORD_MUCHAM_DMG = 3.2 / SWORD_MUCHAM_HITS;
     const SWORD_MUCHAM_GAP = 128 / SWORD_MUCHAM_HITS;
     const SWORD_MUCHAM_REACH = 60;
+    const SWORD_MUCHAM_SR_READY = 24;      // 시크릿 레어 무참 마무리 (2026-11-12 사용자): 막타 뒤 발도 준비 0.6초 → 발도로 마지막 베기 100%, 발도 자세 0.5초 유지
+    const SWORD_MUCHAM_SR_HOLD = 20;
+    const SWORD_MUCHAM_SR_DMG = 1.0;
     const SWORD_MIND_TICKS = 200;           // 심검: 5초 정지 · 처음 받는 공격 무효 → 공격한 적 곁으로 순간 이동해 300%
     const SWORD_MIND_DMG = 3.0;
     const SWORD_GEUKCHAM_DMG = 4.5;         // 극참 마지막 일격 (시크릿 레어 외형 전용): 맵 위의 모든 적 450%
     const SWORD_GEUKCHAM_DELAY = 12;
-    const SWORD_GEUKCHAM_CHARGE = 40;      // 마지막 일격 전 기 모으기 1초 (2026-11-12 사용자: 난사 → 칼을 머리 위로 들어 기 모으기 → 화면 절단 베기)
+    const SWORD_GEUKCHAM_CHARGE = 80;      // 마지막 일격 전 기 모으기 2초 (2026-11-12 사용자: 난사 → 칼을 머리 위로 들어 기 모으기 → 화면 절단 베기, 1초 → 2초 · 화면이 점점 세게 흔들림)
     const SWORD_RANSEOM_COUNT = 50;         // 극참 (히든) 일섬 난사: 일섬 50번 (2026-11-11 20 → 50) · 한 번마다 지나온 길 위의 적 50%
     const SWORD_RANSEOM_DMG = 0.5;
     const SWORD_RANSEOM_TICKS0 = 16;        //   첫 돌파 16틱 (2026-11-12 사용자: 첫 일섬 50% 빠르게, 24 → 16) → 한 번마다 ×0.88, 11번째부터 4틱 (2026-11-11 사용자: 난사 시간 2배, 12틱·2틱 → 24틱·4틱)
@@ -27362,6 +27366,20 @@
         playCombatSfx('heavy');
         return;
       }
+      if (w.kind === 'mucham_ready') { if (u.alive && u.activeSkillType === 'mucham') u.swordMcPose = 'ready'; return; }
+      if (w.kind === 'mucham_draw') { // 시크릿 레어 무참 마무리: 발도 자세로 대상을 벰 + 대상 가슴을 지나는 긴 가로 칼선
+        if (!u.alive || u.activeSkillType !== 'mucham') return;
+        u.swordMcPose = 'draw';
+        const foe = sim.units.find(e => e.id === w.targetId);
+        playCombatSfx('heavy');
+        if (!swordFoeOk(u, foe) || unitDist(foe, u) > u.range + SWORD_MUCHAM_REACH + 30) return;
+        swordFace(u, foe);
+        withSkillHit(() => applyDamage(u, foe, u.atk * SWORD_MUCHAM_SR_DMG, '💢', '#0891b2'));
+        const dir = Math.sign(foe.x - u.x) || u.facingDir || 1, cy = foe.y + 12 - 30 * (foe.sizeScale || 1), tilt = (Math.random() - 0.5) * 0.12, half = 170;
+        sim.effects.push({ type: 'sword_cut', x1: foe.x - dir * half, y1: cy - dir * half * tilt, x2: foe.x + dir * half, y2: cy + dir * half * tilt, w: 9, color: '#bae6fd', life: 32, maxLife: 32 });
+        if (!sim.shake || sim.shake.power < 8) sim.shake = { power: 8, life: 14, maxLife: 14 };
+        return;
+      }
       if (w.kind === 'mucham') {
         const foe = sim.units.find(e => e.id === w.targetId);
         if (!swordFoeOk(u, foe) || unitDist(foe, u) > u.range + SWORD_MUCHAM_REACH + 30) return; // 그사이 멀어졌으면 헛침
@@ -27385,7 +27403,7 @@
       if (w.kind === 'geukcham_cut') { if (u.alive) swordGeukchamCut(u); return; }
       if (w.kind === 'geukcham') {
         hiddenImpact(28, '#e0f2fe');
-        sim.split = { ang: -0.35 + (Math.random() - 0.5) * 0.3, life: 70, maxLife: 70 }; // 화면이 대각선으로 반으로 갈라짐 (drawScreenSplit)
+        sim.split = { ang: -0.35 + (Math.random() - 0.5) * 0.3, life: 90, maxLife: 90 }; // 화면이 대각선으로 반으로 갈라짐 (drawScreenSplit)
         const foes = sim.units.filter(e => swordFoeOk(u, e));
         withSkillHit(() => foes.forEach(e => {
           applyDamage(u, e, u.atk * SWORD_GEUKCHAM_DMG, '🌌', '#e0f2fe');
@@ -27445,9 +27463,10 @@
       if (!swordIsSr(u) || !u.alive) return;
       swordGeukchamStart(u);
     }
-    // 마지막 일격 (시크릿 레어 외형 전용, 극참 50연 난사 뒤): 기 모으기 1초 → 화면을 가르는 칼자국 세 줄 → 잠시 뒤 모든 적에게 피해
+    // 마지막 일격 (시크릿 레어 외형 전용, 극참 50연 난사 뒤): 기 모으기 2초 (화면이 점점 세게 흔들림) → 화면을 가르는 칼자국 세 줄 → 잠시 뒤 모든 적에게 피해
     function swordGeukchamStart(unit) { // 기 모으기 (칼을 머리 위로) → 화면을 가르는 베기 → 피해. 두 타를 미리 걸어 둠 (pendingStrikes를 도는 중에는 새로 넣으면 사라짐)
-      hiddenImpact(6, '#e0f2fe');
+      const shakeLife = SWORD_GEUKCHAM_CHARGE * 60 / BATTLE_TICKS_PER_SEC / Math.max(1, sim.speed || 1); // 화면 프레임 단위 (60fps)
+      sim.shake = { power: 12, life: shakeLife, maxLife: shakeLife, grow: true }; // 기를 모을수록 점점 세게 흔들림
       unit.swordGkPose = 'charge';
       unit.skillAnim = SWORD_GEUKCHAM_CHARGE + 30; unit.maxSkillAnim = unit.skillAnim; unit.activeSkillType = 'geukcham';
       unit.rootTicks = Math.max(unit.rootTicks || 0, SWORD_GEUKCHAM_CHARGE + SWORD_GEUKCHAM_DELAY);
@@ -27537,6 +27556,14 @@
         unit.skillAnim = unit.maxSkillAnim = dur + 2; // 기본 72틱보다 길어 자세·잔상이 끝까지 이어지게
         const list = [];
         for (let i = 0; i < SWORD_MUCHAM_HITS; i++) list.push({ left: 1 + Math.round(i * SWORD_MUCHAM_GAP), sword: { kind: 'mucham', targetId: pick.id, last: i === SWORD_MUCHAM_HITS - 1, i } });
+        unit.swordMcPose = null;
+        if (swordIsSr(unit)) { // 시크릿 레어: 막타 뒤 발도 준비 → 발도로 마지막 베기 (pendingStrikes를 도는 중에는 새로 못 넣어서 미리 걸어 둠)
+          const end = 1 + Math.round((SWORD_MUCHAM_HITS - 1) * SWORD_MUCHAM_GAP);
+          list.push({ left: end + 1, sword: { kind: 'mucham_ready' } }, { left: end + 1 + SWORD_MUCHAM_SR_READY, sword: { kind: 'mucham_draw', targetId: pick.id } });
+          const all = end + 1 + SWORD_MUCHAM_SR_READY + SWORD_MUCHAM_SR_HOLD;
+          unit.rootTicks = Math.max(unit.rootTicks || 0, all);
+          unit.skillAnim = unit.maxSkillAnim = all;
+        }
         swordAddStrikes(unit, list);
         addBattleLog(`💢 [검사] ${unit.name}의 무참! ${pick.name}을(를) 몰아쳐 베어요`);
         return true;
@@ -34281,41 +34308,52 @@
       ctx.restore();
     }
 
-    // 화면 갈라짐 (검사 극참 마지막 일격): 다 그린 전투 화면을 sim.split.ang 방향 선으로 두 조각 내어 서로 벌어지고 어긋났다가 다시 붙음. 틈에는 빛줄기
+    // 화면 갈라짐 (검사 극참 마지막 일격): 흰 참격이 화면을 가로질러 그어진 뒤, 그 선을 따라 전투 화면이 두 조각으로 벌어지고 어긋났다가 다시 붙음. 틈은 검정이 아닌 하얀 빛 (2026-11-12 사용자)
     //   캔버스 픽셀 그대로 다루려고 변환을 지우고 그림 (HUD·미니맵은 이 뒤에 그려서 안 갈라짐)
     const SCREEN_SPLIT_BUF = document.createElement('canvas');
     function drawScreenSplit(ctx) {
       const s = sim.split;
       if (!s) return;
       const p = 1 - s.life / s.maxLife;
-      const o = p < 0.1 ? p / 0.1 : p < 0.6 ? 1 : Math.max(0, 1 - (p - 0.6) / 0.4); // 확 벌어짐 → 버팀 → 천천히 붙음
+      const A = 0.15; // 처음 15%: 흰 참격이 화면 한쪽 끝에서 반대쪽 끝까지 그어짐 → 그 참격선을 따라 공간이 갈라짐
+      const o = p < A ? 0 : p < A + 0.1 ? (p - A) / 0.1 : p < 0.65 ? 1 : Math.max(0, 1 - (p - 0.65) / 0.35); // 확 벌어짐 → 버팀 → 천천히 붙음
       const e = o * o * (3 - 2 * o);
       const cv = ctx.canvas, W = cv.width, H = cv.height, D = Math.hypot(W, H);
-      if (SCREEN_SPLIT_BUF.width !== W || SCREEN_SPLIT_BUF.height !== H) { SCREEN_SPLIT_BUF.width = W; SCREEN_SPLIT_BUF.height = H; }
-      const bc = SCREEN_SPLIT_BUF.getContext('2d');
-      bc.clearRect(0, 0, W, H); bc.drawImage(cv, 0, 0);
       const tx = Math.cos(s.ang), ty = Math.sin(s.ang), nx = -ty, ny = tx, cx = W / 2, cy = H / 2;
       const gap = D * 0.035 * e, slide = D * 0.04 * e;
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = '#020617';
-      ctx.fillRect(0, 0, W, H);
-      [1, -1].forEach(side => {
-        ctx.save();
-        ctx.translate(side * (nx * gap / 2 + tx * slide / 2), side * (ny * gap / 2 + ty * slide / 2));
-        ctx.beginPath();
-        ctx.moveTo(cx - tx * D, cy - ty * D); ctx.lineTo(cx + tx * D, cy + ty * D);
-        ctx.lineTo(cx + tx * D + side * nx * D, cy + ty * D + side * ny * D); ctx.lineTo(cx - tx * D + side * nx * D, cy - ty * D + side * ny * D);
-        ctx.closePath(); ctx.clip();
-        ctx.drawImage(SCREEN_SPLIT_BUF, 0, 0);
-        ctx.restore();
-      });
+      if (e > 0) {
+        if (SCREEN_SPLIT_BUF.width !== W || SCREEN_SPLIT_BUF.height !== H) { SCREEN_SPLIT_BUF.width = W; SCREEN_SPLIT_BUF.height = H; }
+        const bc = SCREEN_SPLIT_BUF.getContext('2d');
+        bc.clearRect(0, 0, W, H); bc.drawImage(cv, 0, 0);
+        // 틈 바탕: 검정 대신 원래 화면을 하얗게 바랜 빛으로 (갈라진 공간 사이로 새어 나오는 참격의 빛)
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.75 * e;
+        ctx.fillStyle = '#e0f2fe';
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+        [1, -1].forEach(side => {
+          ctx.save();
+          ctx.translate(side * (nx * gap / 2 + tx * slide / 2), side * (ny * gap / 2 + ty * slide / 2));
+          ctx.beginPath();
+          ctx.moveTo(cx - tx * D, cy - ty * D); ctx.lineTo(cx + tx * D, cy + ty * D);
+          ctx.lineTo(cx + tx * D + side * nx * D, cy + ty * D + side * ny * D); ctx.lineTo(cx - tx * D + side * nx * D, cy - ty * D + side * ny * D);
+          ctx.closePath(); ctx.clip();
+          ctx.drawImage(SCREEN_SPLIT_BUF, 0, 0);
+          ctx.restore();
+        });
+      }
+      // 흰 참격: 그어지는 동안은 끝이 앞으로 나아가고, 갈라진 뒤에는 틈 가운데에서 틈 폭만큼 굵어졌다가 함께 사라짐
+      const k = Math.min(1, p / A), x0 = cx - tx * D, y0 = cy - ty * D, x1 = x0 + tx * 2 * D * k, y1 = y0 + ty * 2 * D * k;
+      const fade = p < 0.65 ? 1 : Math.max(0, 1 - (p - 0.65) / 0.35), base = D * 0.004;
       ctx.globalCompositeOperation = 'lighter';
-      ctx.strokeStyle = '#7dd3fc'; ctx.shadowColor = '#38bdf8'; ctx.shadowBlur = 30 * e;
-      ctx.globalAlpha = 0.85 * e; ctx.lineWidth = Math.max(2, gap * 0.22);
-      ctx.beginPath(); ctx.moveTo(cx - tx * D, cy - ty * D); ctx.lineTo(cx + tx * D, cy + ty * D); ctx.stroke();
-      ctx.strokeStyle = '#ffffff'; ctx.shadowBlur = 0; ctx.lineWidth = Math.max(1, gap * 0.05);
-      ctx.stroke();
+      ctx.lineCap = 'round';
+      [[Math.max(base * 4, gap * 0.9), '#7dd3fc', 0.35, 28], [Math.max(base * 1.8, gap * 0.45), '#e0f2fe', 0.7, 14], [Math.max(base, gap * 0.16), '#ffffff', 1, 0]].forEach(([lw, c, a, blur]) => {
+        ctx.globalAlpha = a * fade; ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.shadowColor = c; ctx.shadowBlur = blur;
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      });
       ctx.restore();
       if ((s.life -= frameTimeScale) <= 0) sim.split = null;
     }
@@ -34422,7 +34460,7 @@
       // 화면 진동 (엘리트 보스 착지 등): 남은 시간에 따라 점점 약해짐
       let shakeX = 0, shakeY = 0;
       if (sim.shake) {
-        const k = sim.shake.power * Math.max(0, sim.shake.life / sim.shake.maxLife);
+        const r = Math.max(0, sim.shake.life / sim.shake.maxLife), k = sim.shake.power * (sim.shake.grow ? 1 - r : r); // grow = 점점 세게 (검사 극참 기 모으기)
         shakeX = (Math.random() * 2 - 1) * k;
         shakeY = (Math.random() * 2 - 1) * k * 0.7;
         if ((sim.shake.life -= frameTimeScale) <= 0) sim.shake = null;
