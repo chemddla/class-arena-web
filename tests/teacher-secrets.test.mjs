@@ -26,7 +26,7 @@ const store = {};
 const state = {};
 const syncCache = { loaded: true, classCode: null };
 const make = new Function('state', 'syncCache', 'RealtimePvpService', 'StudentPw', 'localStorage',
-  `${source}\nreturn { TeacherSecrets, teacherPinProof, teacherKeyProof, simpleHashString, hashTeacherPin };`);
+  `${source}\nreturn { TeacherSecrets, teacherPinProof, teacherKeyProof, teacherLegacyPinProof, teacherPinProblem, simpleHashString, hashTeacherPin };`);
 const lib = make(
   state, syncCache,
   { initFirebaseClientSafe: () => currentDb },
@@ -60,7 +60,7 @@ beforeEach(async () => {
         NEW1: { meta: { classCode: 'NEW1', ownerUid: 'teacher', ownerEmail: 't@x.com', createdAt: 1, className: 'N', pinV: 2, keyV: 2 }, students: {} },
         OLD1: {
           meta: {
-            classCode: 'OLD1', createdAt: 1, className: 'B',
+            classCode: 'OLD1', ownerUid: 'teacher', ownerEmail: 't@x.com', createdAt: 1, className: 'B',
             teacherPinHash: lib.hashTeacherPin('4321'), teacherKeyHash: lib.simpleHashString(OLD_KEY)
           },
           students: { s1: { id: 's1', name: 's1' } }
@@ -107,7 +107,10 @@ test('새 방식 학급: 서버에서 PIN·키 증명 목록을 읽어갈 수 �
   assert.equal(JSON.stringify(meta).includes('sh_'), false);
 });
 
+const asOwner = () => { currentDb = env.authenticatedContext('teacher', { email: 't@x.com' }).database(); };
+
 test('예전 방식 학급: 맞는 PIN으로 들어오면 새 방식으로 옮기고 서버의 약한 해시를 지움', async () => {
+  asOwner(); // 학급 정보는 소유 교사만 고칠 수 있음
   const meta0 = (await currentDb.ref('classes/OLD1/meta').once('value')).val();
   setClass('OLD1', { pin: meta0.teacherPinHash, key: meta0.teacherKeyHash });
   assert.deepEqual(await lib.TeacherSecrets.check('0000'), { pin: false, key: false });
@@ -136,6 +139,7 @@ test('예전 방식 학급: 맞는 PIN으로 들어오면 새 방식으로 옮�
 });
 
 test('예전 방식 학급이 PIN을 안 정해 뒀으면 기본값 1234로 들어와 바로 새 방식으로 옮김', async () => {
+  asOwner();
   await env.withSecurityRulesDisabled(async (ctx) => {
     await ctx.database().ref('classes/OLD1/meta/teacherPinHash').remove();
   });
@@ -153,4 +157,28 @@ test('서버에 연결할 수 없으면 이 기기에서 전에 확인한 값만
   currentDb = { ref: () => ({ once: () => Promise.reject(Object.assign(new Error('network error'), { code: 'unavailable' })) }) };
   assert.equal((await lib.TeacherSecrets.check('7777')).pin, true);
   assert.equal((await lib.TeacherSecrets.check('1234')).pin, false);
+});
+
+test('소유 교사가 숨겨 둔 예전 PIN 해시: 학급 정보엔 남지 않고, 같은 PIN으로 통과하며 소유 교사 기기에서 새 증명으로 바뀜', async () => {
+  const legacyHash = lib.hashTeacherPin('4321');
+  const lp = await lib.teacherLegacyPinProof('OLD1', legacyHash);
+  asOwner();
+  await currentDb.ref().update({ [`classSecrets/OLD1/pin/${lp}`]: true, 'classes/OLD1/meta/pinV': 2, 'classes/OLD1/meta/teacherPinHash': null });
+  assert.equal((await currentDb.ref('classes/OLD1/meta/teacherPinHash').once('value')).exists(), false);
+  // 소유자가 아닌 기기: 통과는 하지만 증명을 바꾸지는 못함
+  currentDb = env.unauthenticatedContext().database();
+  setClass('OLD1');
+  assert.equal((await lib.TeacherSecrets.check('4321')).pin, true);
+  assert.equal((await lib.TeacherSecrets.check('9999')).pin, false);
+  // 소유 교사 기기: 새 증명으로 바꿈 → 이후 새 방식으로 바로 통과
+  asOwner();
+  lib.TeacherSecrets.pinProof = {};
+  assert.equal((await lib.TeacherSecrets.check('4321')).pin, true);
+  const pp = await lib.teacherPinProof('OLD1', '4321');
+  assert.equal((await currentDb.ref(`classSecrets/OLD1/pin/${pp}`).once('value')).exists(), true);
+});
+
+test('교사 PIN 규칙: 6글자 이상, 반복·연속·흔한 값 금지', () => {
+  for (const bad of ['1234', '12345', '123456', '987654', '000000', '121212', 'password']) assert.notEqual(lib.teacherPinProblem(bad), '', bad);
+  for (const ok of ['981407', 'abc12345', 'Tiger!2']) assert.equal(lib.teacherPinProblem(ok), '', ok);
 });

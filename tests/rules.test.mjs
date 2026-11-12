@@ -107,7 +107,7 @@ test('나만 쓰는 칸(studentPrivate): 로그인한 학생은 자기 것만, �
   await assertSucceeds(db('teacher').ref('classes/OWN1/studentPrivate/s2/codex').set({ a: 1 }));
   await assertSucceeds(db('teacher').ref().update({ 'classes/OWN1/students/s2': null, 'classes/OWN1/studentPrivate/s2': null })); // 학생 삭제
   await assertSucceeds(db(null).ref('classes/OWN1/studentPrivate/s1').once('value'));
-  await assertSucceeds(db(null).ref('classes/OLD1/studentPrivate/s1/codex').set({ a: 1 })); // 소유자 없는 예전 학급
+  await assertFails(db(null).ref('classes/OLD1/studentPrivate/s1/codex').set({ a: 1 })); // 소유자 없는 학급은 잠김
 });
 
 test('용병 기록: id·job·level이 빠진 용병은 저장할 수 없음 (칸이 지워진 채 섞이는 것 방지)', async () => {
@@ -127,15 +127,17 @@ test('용병 기록: id·job·level이 빠진 용병은 저장할 수 없음 (�
   await assertFails(db('teacher').ref('classes/OWN1/students/s2').set(student('s2', { roster: [{ id: 'm8' }] })));
 });
 
-test('소유자 없는 예전 학급은 예전처럼 열려 있음', async () => {
-  await assertSucceeds(db(null).ref('classes/OLD1/students/s1/mc').set(5));
-  await assertSucceeds(db('anyone').ref().update({
+test('소유자 없는 학급은 잠김: 누구도 학생 기록·프로필을 고칠 수 없음 (총괄 관리자만)', async () => {
+  await assertFails(db(null).ref('classes/OLD1/students/s1/mc').set(5));
+  await assertFails(db('anyone').ref('classes/OLD1/students/s1/mc').set(5));
+  await assertFails(db('anyone').ref().update({
     'studentSecrets/OLD1/s1': { [PROOF_C]: true },
     'classes/OLD1/profiles/s1/claimed': true
   }));
-  // 그래도 틀린 비밀번호로는 로그인(연결) 불가
+  await assertFails(db('anyone').ref('classes/OLD1/meta/className').set('뺏음'));
+  await assertSucceeds(db('boss', { superAdmin: true }).ref('classes/OLD1/students/s1/mc').set(6));
+  // 틀린 비밀번호로는 로그인(연결) 불가
   await assertFails(db('anyone2').ref('studentClaims/OLD1/s1/anyone2').set(claim(PROOF_A)));
-  await assertSucceeds(db('anyone2').ref('studentClaims/OLD1/s1/anyone2').set(claim(PROOF_C)));
   // 교사도 다른 기기 연결을 대신 만들 수는 없음 (지우기만 가능)
   await assertFails(db('teacher').ref('studentClaims/OWN1/s1').set({ u9: claim(PROOF_A) }));
 });
@@ -302,9 +304,8 @@ test('선물함: 소유 교사·총괄 관리자·소유자 없는 학급', asyn
   await env.withSecurityRulesDisabled(async (ctx) => {
     await ctx.database().ref('classes/OLD1/students/s2').set(student('s2'));
   });
-  await assertSucceeds(db(null).ref('classes/OLD1/transfers/s2/t_old00001').set(gift('s1')));
-  await assertSucceeds(db(null).ref('classes/OLD1/transfers/s2/t_old00001').remove());
-  await assertSucceeds(db(null).ref('classes/OLD1/students/s2/mc').set(7)); // 예전 학급은 예전처럼
+  await assertFails(db(null).ref('classes/OLD1/transfers/s2/t_old00001').set(gift('s1'))); // 소유자 없는 학급은 잠김
+  await assertFails(db(null).ref('classes/OLD1/students/s2/mc').set(7));
   await assertFails(db(null).ref('classes/OLD1/transfers/s2/t_old00002').set(gift('s1', { mc: -1 })));
   // 교사가 학생을 지우면 그 학생의 선물함도 같이 지움
   await assertSucceeds(db('u1').ref('classes/OWN1/transfers/s3/t_tchr0002').set(gift('s1')));
@@ -359,7 +360,7 @@ test('레이드에서 싸우는 학생 위치(world_boss_live): 로그인한 학
   await assertFails(db('u1').ref('classes/NOPE/world_boss_live/s1').set({ n: 'a' }));
 });
 
-test('반 공용 칸(경매·거래·방): 로그인 안 한 사람·우리 반이 아닌 사람은 못 쓰고 못 지움, 소유자 없는 예전 학급은 그대로 열림', async () => {
+test('반 공용 칸(경매·거래·방): 로그인 안 한 사람·우리 반이 아닌 사람은 못 쓰고 못 지움, 소유자 없는 학급은 잠김', async () => {
   await env.withSecurityRulesDisabled(ctx => ctx.database().ref('classes/OWN1/auctions').set([{ id: 'auc_1', sellerId: 's2' }]));
   const shared = ['auctions', 'tradeOffers', 'pvp_squads/s1', 'pvp_rooms/r1', 'raid_rooms/r1', 'minigame_rooms/r1', 'minigames/r1', 'live_battle_events/e1'];
   for (const k of shared) {
@@ -368,7 +369,7 @@ test('반 공용 칸(경매·거래·방): 로그인 안 한 사람·우리 반�
     await assertFails(db('u2').ref(`classes/OWN1/${k}`).set({ x: 1 })); // 로그인했지만 우리 반 학생으로 연결 안 됨
     await assertSucceeds(db('u1').ref(`classes/OWN1/${k}`).set({ x: 1 }));
     await assertSucceeds(db('teacher').ref(`classes/OWN1/${k}`).remove());
-    await assertSucceeds(db(null).ref(`classes/OLD1/${k}`).set({ x: 1 }));
+    await assertFails(db(null).ref(`classes/OLD1/${k}`).set({ x: 1 })); // 소유자 없는 학급은 잠김
   }
   // 학생의 한 번 저장(내 기록 + 경매 목록)도 그대로 됨
   await assertSucceeds(db('u1').ref().update({ 'classes/OWN1/students/s1/mc': 50, 'classes/OWN1/auctions': [{ id: 'auc_2', sellerId: 's1' }] }));
@@ -386,7 +387,7 @@ test('학생 디자인: 로그인한 학생은 자기 칸에만 내고 지울 �
   await assertFails(db('u1').ref('classes/OWN1/skinDesigns/nobody/d_abc127').set(design())); // 없는 학생
   await assertSucceeds(db('teacher').ref('classes/OWN1/skinDesigns/s2/d_tch001').set(design()));
   await assertSucceeds(db('teacher').ref('classes/OWN1/skinDesigns/s2').remove());
-  await assertSucceeds(db(null).ref('classes/OLD1/skinDesigns/s1/d_old001').set(design())); // 소유자 없는 예전 학급
+  await assertFails(db(null).ref('classes/OLD1/skinDesigns/s1/d_old001').set(design())); // 소유자 없는 학급은 잠김
 });
 
 test('학생 디자인: 이상한 값은 낼 수 없음', async () => {
@@ -422,8 +423,8 @@ test('승인 외형: 소유 교사만 올리고, 학생·남은 못 씀', async 
   await assertFails(db(null).ref('classes/OWN1/skins/d_abc125').set(skin()));
   await assertFails(db('stranger').ref('classes/OWN1/skins/d_abc126').set(skin()));
   await assertSucceeds(db('teacher').ref('classes/OWN1/skins/d_abc123').remove());
-  await assertSucceeds(db(null).ref('classes/OLD1/skins/d_old123').set(skin())); // 소유자 없는 예전 학급
-  await assertSucceeds(db(null).ref('classes/OLD1/skinSheets/d_old123').set(SHEET));
+  await assertFails(db(null).ref('classes/OLD1/skins/d_old123').set(skin())); // 소유자 없는 학급은 잠김
+  await assertFails(db(null).ref('classes/OLD1/skinSheets/d_old123').set(SHEET));
 });
 
 test('승인 외형: 이상한 값은 못 올림', async () => {
@@ -475,15 +476,12 @@ test('교사 증명: 소유 학급은 소유 교사(와 총괄 관리자)만 쓸
   await assertFails(db('teacher').ref('classSecrets/OWN1/pin').set({ [SC]: 'yes' }));
 });
 
-test('교사 증명: 소유자 없는 학급은 처음 한 번만 만들고, 바꾸려면 이전 값을 알아야 함', async () => {
-  await assertSucceeds(db(null).ref('classSecrets/OLD1/key').set({ [SB]: true })); // 아직 없음 → 처음 설정
-  await assertFails(db(null).ref('classSecrets/OLD1/key').set({ [SC]: true })); // 이전 값 없이 덮어쓰기
-  await assertFails(db(null).ref('classSecrets/OLD1/key').set({ [SC]: true, prev: SA })); // 틀린 이전 값
-  await assertSucceeds(db(null).ref('classSecrets/OLD1/key').set({ [SC]: true, prev: SB }));
+test('교사 증명: 소유자 없는 학급은 아무도 만들거나 바꿀 수 없음 (이전 값을 알아도)', async () => {
+  await assertFails(db(null).ref('classSecrets/OLD1/key').set({ [SB]: true })); // 아직 없어도 불가
+  await assertFails(db('anyone').ref('classSecrets/OLD1/key').set({ [SB]: true }));
   await seedSecrets();
-  await assertFails(db(null).ref('classSecrets/OLD1/pin').set({ [SC]: true, prev: 'prev' }));
-  await assertSucceeds(db(null).ref('classSecrets/OLD1/pin').set({ [SC]: true, prev: SA }));
-  await assertSucceeds(db(null).ref('classSecrets/OLD1/pin').set({ [SB]: true, prev: SC })); // 한 번 바꾼 뒤에도 같은 방식
+  await assertFails(db(null).ref('classSecrets/OLD1/pin').set({ [SC]: true, prev: SA }));
+  await assertSucceeds(db('admin', { superAdmin: true }).ref('classSecrets/OLD1/pin').set({ [SC]: true }));
 });
 
 test('교사 키 목록: 강한 키 증명이 있는 학급만 올릴 수 있고, 예전 해시 목록은 해시가 지워지면 정리할 수 있음', async () => {
@@ -497,7 +495,7 @@ test('교사 키 목록: 강한 키 증명이 있는 학급만 올릴 수 있고
   // 예전 방식 목록은 meta.teacherKeyHash가 있는 동안 유지, 사라진 뒤에는 지울 수 있음
   await assertSucceeds(db(null).ref('teacherKeys/kh_2/classes/OLD1').set(item('OLD1')));
   await assertFails(db(null).ref('teacherKeys/kh_2/classes/OLD1').remove());
-  await assertSucceeds(db(null).ref().update({
+  await assertFails(db(null).ref().update({ // 소유자 없는 학급의 학급 정보는 잠김
     'classes/OLD1/meta/teacherKeyHash': null,
     'classes/OLD1/meta/teacherPinHash': null,
     'classes/OLD1/meta/pinV': 2,
@@ -508,7 +506,7 @@ test('교사 키 목록: 강한 키 증명이 있는 학급만 올릴 수 있고
 
 test('학급 정보: 예전 교사 키 해시는 지울 수만 있고 바꿀 수 없음', async () => {
   await assertFails(db(null).ref('classes/OLD1/meta/teacherKeyHash').set('kh_9'));
-  await assertSucceeds(db(null).ref('classes/OLD1/meta/teacherKeyHash').remove());
+  await assertFails(db(null).ref('classes/OLD1/meta/teacherKeyHash').remove()); // 소유자 없는 학급은 잠김
   await assertFails(db('u1').ref('classes/OWN1/meta/teacherKeyHash').remove());
   await assertSucceeds(db('teacher').ref('classes/OWN1/meta/teacherKeyHash').remove());
 });
@@ -546,7 +544,7 @@ test('방 초대: 로그인한 학생은 자기 이름으로만 보내고, 받�
   await assertSucceeds(db('u2').ref('classes/OWN1/invites/s2/i_abcdef01').remove()); // 받은 학생이 수락·거절
   await assertSucceeds(db('teacher').ref('classes/OWN1/invites/s2/i_abcdef09').set(invite('s1')));
   await env.withSecurityRulesDisabled(async (ctx) => { await ctx.database().ref('classes/OLD1/students/s2').set(student('s2')); });
-  await assertSucceeds(db(null).ref('classes/OLD1/invites/s1/i_abcdef10').set(invite('s2'))); // 소유자 없는 학급은 학생 확인 없음
+  await assertFails(db(null).ref('classes/OLD1/invites/s1/i_abcdef10').set(invite('s2'))); // 소유자 없는 학급은 잠김
 });
 
 // ----- 대기방 채팅 (classes/{학급}/room_chats/{종류}/{방id}/{id}) -----
@@ -575,7 +573,7 @@ test('대기방 채팅: 로그인한 학생은 자기 이름으로만 보내고,
   await assertSucceeds(db('u2').ref(CHAT).remove()); // 방이 없어지면 채팅도 통째로
   await assertFails(db('u3').ref('classes/OWN1/room_chats/minigame/mg_1').remove());
   await assertSucceeds(db('teacher').ref(`${CHAT}/c_abcdef09`).set(chat('s1')));
-  await assertSucceeds(db(null).ref('classes/OLD1/room_chats/pvp/r1/c_abcdef10').set(chat('s1'))); // 소유자 없는 학급은 학생 확인 없음
+  await assertFails(db(null).ref('classes/OLD1/room_chats/pvp/r1/c_abcdef10').set(chat('s1'))); // 소유자 없는 학급은 잠김
   await assertFails(db(null).ref('classes/OLD1/room_chats/pvp/r1/c_abcdef11').set(chat('nobody'))); // 없는 학생
 });
 
@@ -608,5 +606,5 @@ test('방 꾸미기 실시간: 로그인한 학생은 어느 방이든 자기 �
   await assertFails(db('u2').ref(`${LIVE}/s2/s1`).remove());                // 남의 칸은 못 지움
   await assertSucceeds(db('u1').ref(`${LIVE}/s2/s1`).remove());             // 나갈 때 내 칸 지움
   await assertSucceeds(db('teacher').ref(`${LIVE}/s2/s2`).remove());        // 소유 교사
-  await assertSucceeds(db(null).ref('classes/OLD1/home_live/s1/s1').set(spot())); // 소유자 없는 학급은 학생 확인 없음
+  await assertFails(db(null).ref('classes/OLD1/home_live/s1/s1').set(spot())); // 소유자 없는 학급은 잠김
 });
