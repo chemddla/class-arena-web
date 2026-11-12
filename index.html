@@ -6180,7 +6180,7 @@
         icon: '🌙',
         color: '#0891b2',
         roleDesc: '빠른 근접 검술·패링·받아치기',
-        passiveName: '검술의 달인', passiveShort: 'E 패링: 근접 공격 막기 · 투사체 튕겨내기', passiveDesc: 'E를 누르면 0.4초간 패링 (다시 쓰기 2초, 막아 내면 바로 초기화) · 패링 중 근접 기본 공격은 막고 공격한 적을 1초 [기절], 투사체는 쏜 적에게 튕겨 냄 · 범위 공격·장판·스킬 피해는 막지 못함 · AI 검사는 막을 수 있는 공격의 25%를 스스로 쳐냄',
+        passiveName: '검술의 달인', passiveShort: 'E 패링: 근접 공격 막기 · 투사체 튕겨내기', passiveDesc: 'E를 누르면 0.4초간 패링 (다시 쓰기 2초, 막아 내면 바로 초기화) · 패링 중 근접 기본 공격은 막고 공격한 적을 1초 [기절], 투사체는 쏜 적에게 튕겨 냄 · 스킬 시전·공격 중엔 못 씀 · 범위 공격·장판·스킬 피해는 막지 못함 · AI 검사는 막을 수 있는 공격의 25%를 스스로 쳐냄',
         baseHp: 2100, baseAtk: 52, baseDef: 34, baseSpd: 112, range: 144, maxMana: 100 // 사거리 72 → 144 (칼집에서 뻗는 참격, 2026-11-11 사용자 요청). 근접 판정(150 미만)은 그대로
       }
     };
@@ -27378,9 +27378,16 @@
         if ((st.mindblade || 0) > 0 && (st.stun > 0 || st.freeze > 0)) { st.mindblade = 0; u.rootTicks = 0; }
       });
     }
+    // 스킬 시전·사용 중이거나 기본 공격을 휘두르는 중이면 패링 불가 (2026-11-12 사용자). 기본 공격은 휘두르는 0.25초만 (attackAnim은 다음 공격까지 남아 있어서)
+    const SWORD_PARRY_ATK_BUSY = 10;
+    function swordParryBusy(u) {
+      if (u.casting || (u.pendingStrikes && u.pendingStrikes.length)) return true;
+      if (u.skillAnim > 0 && u.activeSkillType !== 'parry') return true;
+      return u.attackAnim > 0 && (u.maxAttackAnim || u.attackAnim) - u.attackAnim < SWORD_PARRY_ATK_BUSY;
+    }
     function startSwordParry(u) {
       const st = u.statuses;
-      if (!u.alive || (u.parryCd || 0) > 0 || st.stun > 0 || st.freeze > 0 || (st.mindblade || 0) > 0) return false;
+      if (!u.alive || (u.parryCd || 0) > 0 || st.stun > 0 || st.freeze > 0 || (st.mindblade || 0) > 0 || swordParryBusy(u)) return false;
       st.parry = SWORD_PARRY_TICKS;
       u.parryCd = SWORD_PARRY_CD;
       if (!u.casting && !(u.skillAnim > 0)) { u.skillAnim = 10; u.maxSkillAnim = 10; u.activeSkillType = 'parry'; }
@@ -27390,7 +27397,7 @@
     // 지금 패링으로 받을 수 있는지. AI 검사(직접 조종이 아닌)는 패링이 준비돼 있으면 확률로 그 자리에서 켬
     function swordParryReady(u) {
       const st = u.statuses;
-      if (st.stun > 0 || st.freeze > 0 || u.casting) return false;
+      if (st.stun > 0 || st.freeze > 0 || swordParryBusy(u)) return false; // 패링을 켠 뒤라도 스킬·공격을 시작하면 막지 못함
       if ((st.parry || 0) > 0) return true;
       if ((sim.controllers && sim.controllers[u.id]) || Math.random() >= SWORD_AI_PARRY_CHANCE) return false;
       return startSwordParry(u);
@@ -27417,6 +27424,7 @@
       if (!s) return false;
       const first = !SWORD_PROJ_TRIED.has(p);
       SWORD_PROJ_TRIED.add(p);
+      if (s.statuses.stun > 0 || s.statuses.freeze > 0 || swordParryBusy(s)) return false; // 스킬·공격 중엔 못 튕김
       if (!((s.statuses.parry || 0) > 0) && !(first && swordParryReady(s))) return false;
       const src = p.owner;
       const back = src && src.alive ? src : null;
