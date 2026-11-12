@@ -6443,6 +6443,7 @@
     const AUCTION_DURATION_DAYS = 3;           // 경매 입찰 기간 (일)
     const AUCTION_DURATION_MS = AUCTION_DURATION_DAYS * 24 * 60 * 60 * 1000;
     const AUCTION_MAX_BID = 100000000;         // 경매 시작가·입찰가 상한 (1억 CA)
+    const AUCTION_MIN_BID_SCR = 50000;         // 시크릿 레어 경매 시작가 하한
     function isSecretRare(rarity) { return Boolean((RARITY_DEFS[rarity] || RARITY_DEFS.N).isSecret); }
 
     const MERC_NAME_POOL = {
@@ -15439,7 +15440,7 @@
           </div>
           <div>
             <label class="text-[11px] font-bold text-slate-400 block mb-1">경매 시작가 (CA)</label>
-            <input id="auctionStartBidInput" type="number" min="100" max="${AUCTION_MAX_BID}" step="50" value="${Math.min(AUCTION_MAX_BID, valInfo.suggestedStartBid)}" class="w-full rounded-xl px-3 py-2 text-xs font-extrabold border" />
+            <input id="auctionStartBidInput" type="number" min="${merc.rarity === 'SCR' ? AUCTION_MIN_BID_SCR : 100}" max="${AUCTION_MAX_BID}" step="50" value="${Math.min(AUCTION_MAX_BID, Math.max(merc.rarity === 'SCR' ? AUCTION_MIN_BID_SCR : 0, valInfo.suggestedStartBid))}" class="w-full rounded-xl px-3 py-2 text-xs font-extrabold border" />
           </div>
           <button onclick="registerMercToAuction('${merc.id}')" class="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow">
             🔨 학급 경매장에 용병 출품하기
@@ -15494,6 +15495,10 @@
       const startBidRaw = parseInt(document.getElementById('auctionStartBidInput')?.value, 10) || 200;
       if (startBidRaw > AUCTION_MAX_BID) {
         showNotice(`⚠️ 경매 시작가는 ${AUCTION_MAX_BID.toLocaleString()} CA(1억)를 넘을 수 없어요.`);
+        return;
+      }
+      if (merc.rarity === 'SCR' && startBidRaw < AUCTION_MIN_BID_SCR) {
+        showNotice(`⚠️ 시크릿 레어 경매 시작가는 최소 ${AUCTION_MIN_BID_SCR.toLocaleString()} CA예요.`);
         return;
       }
       const startBid = Math.max(50, startBidRaw);
