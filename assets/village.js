@@ -484,7 +484,6 @@
     for (let i = 0; i < 12; i++) { const st = at(mesh(new THREE.BoxGeometry(0.62, 0.05, 1.05), i % 2 ? '#7f9cab' : '#6c8796'), -3.4 + i * 0.62, 2.48 - (i % 5 === 2 ? 0.05 : 0), 2.33); st.rotation.x = 0.32; st.rotation.z = (i % 4 === 1 ? 0.04 : 0); g.add(st); } // 녹슨 함석 차양
     [[-2.5, 0.05], [0.8, -0.04], [2.9, 0.03]].forEach(([x, rz]) => { const r0 = at(mesh(new THREE.BoxGeometry(0.4, 0.052, 0.3), '#9a5a35'), x, 2.5, 2.4); r0.rotation.x = 0.32; r0.rotation.z = rz; g.add(r0); }); // 녹
     [-2.2, 2.2].forEach((x, k) => { box(2.3, 1.45, 0.06, '#9aa3aa', x, 1.33, 1.91); g.add(at(noShadow(mesh(new THREE.BoxGeometry(2.14, 1.3, 0.08), winMat)), x, 1.33, 1.92)); box(0.04, 1.3, 0.1, '#9aa3aa', x, 1.33, 1.95); // 알루미늄 창틀
-      [[-0.55, 1.55, '#fff6c9', '특가'], [0.5, 1.25, '#ffe1e1', '라면']].forEach(([dx, y, c, t]) => g.add(at(noShadow(mesh(new THREE.PlaneGeometry(0.46, 0.34), flat(0xffffff, { map: signTex(92, 68, c, '#c0392b', t, 30) }))), x + dx + k * 0.1, y, 1.97))); // 창에 붙인 종이
       g.add(halo(2.4, x, 1.3, 2.1)); });
     box(1.4, 2.1, 0.06, '#9aa3aa', 0, 1.35, 1.91); [-0.33, 0.33].forEach(x => g.add(at(noShadow(mesh(new THREE.BoxGeometry(0.6, 1.9, 0.08), flat(0xcfe6ee))), x, 1.3, 1.93))); box(0.6, 0.06, 0.02, '#e8d27a', -0.33, 1.6, 1.98); // 미닫이 유리문, 붙인 테이프
     g.add(at(noShadow(mesh(new THREE.SphereGeometry(0.1, 10, 8), winMat)), 0, 2.32, 2.1)); box(0.01, 0.15, 0.01, '#333333', 0, 2.45, 2.1); // 처마 밑 알전구
