@@ -2897,6 +2897,20 @@
     .dft-diff h5 { margin: 0; display: flex; align-items: center; justify-content: space-between; font-family: Galmuri11, sans-serif; font-size: 16px; color: var(--gl-ink); }
     .dft-towers { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px; padding: 8px 10px; background: rgba(122, 75, 38, .1); }
     .dft-towers div { display: flex; flex-direction: column; align-items: center; font-size: 10px; color: var(--gl-ink2); }
+    /* 💎 3판 타워 디펜스: 포탑 짓기 카드 · 고른 포탑 정보 */
+    .dfp-h .dfp-x { margin-left: auto; min-width: 26px; height: 24px; padding: 0 6px; background: var(--gl-wood); color: var(--gl-paper); clip-path: var(--gl-step); font-size: 12px; cursor: pointer; }
+    .dfp-build { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+    .dfp-build.mini { margin-top: 6px; }
+    .dfp-tw { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 4px 6px; background: var(--gl-paper-d); clip-path: var(--gl-step); box-shadow: inset 0 -3px 0 var(--gl-paper-dd); color: var(--gl-ink); text-align: center; }
+    button.dfp-tw { cursor: pointer; } button.dfp-tw:hover { filter: brightness(1.06); } button.dfp-tw:active { transform: translateY(2px); }
+    button.dfp-tw[disabled] { filter: grayscale(.8); opacity: .55; cursor: not-allowed; transform: none; }
+    .dfp-tw b { font-family: Galmuri11, sans-serif; font-size: 12px; white-space: nowrap; }
+    .dfp-tw small { font-size: 10px; color: var(--gl-ink2); line-height: 1.2; }
+    .dfp-tw .dfp-cost { font-size: 13px; }
+    .dfp-towerinfo { display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--gl-ink2); }
+    .dfp-towerinfo b { color: var(--gl-ink); }
+    .dfp-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    @media (max-width: 560px) { .dfp-build { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dfp-tw small { display: none; } }
     </style>
         <div id="defensePanel" class="hidden dfp"></div>
 
@@ -3867,22 +3881,31 @@
         </div>
       </section>
 
-      <!-- 💎 수정 방어전: 세 갈래 길로 몰려오는 몬스터로부터 수정을 20웨이브 동안 지킴 (docs/crystal-defense-design.md) -->
+      <!-- 💎 수정 방어전: 타워 디펜스 · 지그재그 길로 오는 몬스터를 포탑·용병으로 막아 100라운드 버티기 (docs/crystal-defense-design.md) -->
       <section id="studentTab-defense" class="student-tab-panel hidden flex flex-col gap-4">
         <div class="bg-slate-900 border-2 border-cyan-500/40 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow">
           <div class="flex items-center gap-3">
             <div class="w-12 h-12 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-2xl">💎</div>
             <div>
-              <h3 class="font-title text-2xl text-white">수정 방어전 (20웨이브)</h3>
+              <h3 class="font-title text-2xl text-white">수정 방어전 (타워 디펜스 · 100라운드)</h3>
               <p class="text-xs text-slate-400 mt-0.5">
-                전장 한가운데 <strong>수정</strong>을 동서남북 네 동굴에서 몰려오는 몬스터로부터 지켜요. 몬스터를 잡고 웨이브를 막으면 쌓이는 <strong>🔷 포인트</strong>로
-                <strong>AI 용병을 모집</strong>하고 강화하세요. 용병은 쓰러져도 10초 뒤 부활하지만, <strong>수정이 깨지면 끝</strong>이에요.
+                몬스터가 <strong>지그재그 길</strong>을 따라 <strong>성문</strong>으로 걸어가요. 몬스터는 공격하지 않지만, 성문을 빠져나가면 <strong>💎 방어 게이지</strong>가 깎여요.
+                <strong>🔷 골드</strong>로 받침돌에 <strong>포탑</strong>을 짓고 올리고, <strong>용병 능력치를 강화</strong>해서 100라운드를 버티세요!
               </p>
               <div id="defenseMyInfo" class="text-xs text-slate-300 mt-1"></div>
             </div>
           </div>
         </div>
+        <div id="defenseWaitingRoomPanel" class="hidden bg-slate-900 border-2 border-cyan-500/60 rounded-2xl p-5 flex flex-col gap-4 shadow-xl"></div>
+        <div id="defenseRoomChat" class="hidden"></div>
         <div id="defenseCardGrid" class="flex flex-col gap-3"></div>
+        <div id="defenseRoomsBox" class="bg-slate-900 border-2 border-cyan-500/30 rounded-2xl p-4 flex flex-col gap-3 shadow">
+          <h4 class="font-title text-xl text-white flex items-center gap-2 border-b border-slate-800 pb-2.5">
+            <span>👥</span> 친구와 지키는 방어전 방 (최대 5명 · 한 사람에 용병 1명)
+            <span id="defenseRoomCountBadge" class="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-extrabold">방 0개</span>
+          </h4>
+          <div id="defenseRoomsList" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+        </div>
         <!-- 📺 지금 수정 방어전 중인 친구 (renderTowerLiveList) -->
         <div class="bg-slate-900 border border-violet-500/40 rounded-2xl p-4 flex flex-col gap-2">
           <div class="flex items-center justify-between flex-wrap gap-2">
@@ -3893,12 +3916,13 @@
         </div>
         <div class="bg-slate-900 border-2 border-cyan-500/30 rounded-2xl p-4 flex flex-col gap-2 text-xs text-slate-300 leading-relaxed">
           <h4 class="font-title text-lg text-white">📜 방어전 규칙</h4>
-          <div>🧭 몬스터는 <strong>동·서·남·북 네 동굴</strong>에서 길을 따라 가운데 수정으로 걸어가요. 준비 시간에 동굴 앞에 다음 웨이브 마릿수가 떠요.</div>
-          <div>🔷 <strong>포인트</strong>는 몬스터를 잡거나 웨이브를 막으면 생겨요 (이번 판에서만 써요). 수정이 한 대도 안 맞으면 <strong>완벽 방어</strong> 보너스! 남은 포인트는 끝날 때 CA로 바뀌어요 (최대 300).</div>
-          <div>🎲 <strong>용병 모집</strong>: 포인트로 자동 전투 용병을 무작위로 불러요. 낮은 확률로 🔥 <strong>시크릿 레어</strong>, ✨ <strong>히든 스킬</strong>을 가진 용병이 나와요. ⬆️ <strong>강화</strong>로 내 용병·모집 용병의 체력·공격·방어를 올려요 (10단계까지). 💎 <strong>수정 고치기</strong>로 깎인 수정을 10%씩 메울 수도 있어요.</div>
-          <div>✋ <strong>준비 시간</strong>마다 전장의 용병을 끌어다 지킬 곳에 놓아요. 그 자리 둘레를 지키고, 수정이 위험하면 도우러 가요.</div>
-          <div>⚡ <strong>수정 충격파</strong>: 수정 둘레 몬스터를 밀쳐내고 기절시켜요. 한 판에 3번 (수정이 30% 아래로 떨어지면 1번 더).</div>
-          <div>👑 5웨이브마다 보스 웨이브 (20웨이브는 🔥 최종 보스) · 8웨이브부터 💣 자폭병, 15웨이브부터 정예가 더 나와요. 웨이브가 길어진 만큼 포인트로 용병을 더 모으고 더 높이 강화하세요!</div>
+          <div>🧭 몬스터는 <strong>왼쪽 위 동굴</strong>에서 나와 지그재그 길을 따라 <strong>오른쪽 아래 성문</strong>으로 걸어가요. 몬스터는 공격하지 않고 길만 따라 걸어요.</div>
+          <div>💎 성문을 빠져나간 몬스터만큼 <strong>방어 게이지</strong>가 깎여요 (졸개 1 · 💎 정예 5 · 👑 보스 20). 게이지가 0이 되면 끝! 남은 게이지가 70% 넘으면 ★★★.</div>
+          <div>🗺️ <strong>100라운드</strong>까지 있어요. <strong>10라운드마다</strong> 모험의 탑 종족이 바뀌고(고블린족 → 언데드 → … → 용족), <strong>10·20…100라운드</strong>에는 그 종족의 👑 보스가 와요.</div>
+          <div>🏗️ <strong>포탑</strong>: 받침돌(+)을 눌러 🏹 화살탑 · 💣 대포탑 · ❄️ 서리탑 · 🔮 마법탑을 지어요. 지은 포탑을 누르면 <strong>5단계</strong>까지 올리거나 팔 수 있어요 (판 값의 70%).</div>
+          <div>🛡️ <strong>용병</strong>: 혼자 입장하면 출전 용병 <strong>5명</strong>, 5인 방은 한 사람에 1명이에요 (용병 고용은 없어요). 용병을 끌어다 놓은 자리 둘레를 지키고, 🔷 골드로 <strong>공격력을 강화</strong>할 수 있어요.</div>
+          <div>🔷 <strong>골드</strong>는 몬스터를 잡거나 라운드를 막으면 생겨요 (이번 판에서만 써요). 라운드는 겹쳐서 와요. <strong>⏩ 다음 라운드</strong>로 일찍 부르면 남은 초만큼 골드를 더 받아요. 혼자 할 때는 ⏱️ <strong>빠르기 ×1·×2·×3</strong>.</div>
+          <div>👥 5인 방에서는 <strong>방장</strong>이 포탑 짓기·올리기와 다음 라운드를 맡고, 모두 자기 용병을 직접 조종해요. 보상은 각자 받아요.</div>
         </div>
       </section>
 
@@ -13990,9 +14014,9 @@
         const waiting = r.status === 'waiting';
         const dgDef = isDungeonRoom(r) ? DUNGEONS[r.dungeonId] : null;
         items.push({
-          kind: isRushRoom(r) ? 'rush' : isDungeonRoom(r) ? 'dungeon' : 'raid', id: r.roomId, icon: isRushRoom(r) ? '🌊' : dgDef ? dgDef.icon : '🐉', waiting,
+          kind: isRushRoom(r) ? 'rush' : isDungeonRoom(r) ? 'dungeon' : isDefenseRoom(r) ? 'defense' : 'raid', id: r.roomId, icon: isRushRoom(r) ? '🌊' : dgDef ? dgDef.icon : isDefenseRoom(r) ? '💎' : '🐉', waiting,
           names: raidSlotsOf(r).filter(s => r[s + 'Id'] && !raidIsPractice(r, s)).map(s => r[s + 'Name'] || '친구').join(', '),
-          detail: isRushRoom(r) ? `몬스터 러쉬${waiting ? waitTag : ''}` : isDungeonRoom(r) ? `던전 5인 · ${dgDef ? dgDef.name : '던전'}${waiting ? waitTag : ''}` : `엘리트 토벌 · ${r.bossName || '보스'}${waiting ? waitTag : ''}`, watchers: 0,
+          detail: isRushRoom(r) ? `몬스터 러쉬${waiting ? waitTag : ''}` : isDefenseRoom(r) ? `수정 방어전 5인${waiting ? waitTag : ''}` : isDungeonRoom(r) ? `던전 5인 · ${dgDef ? dgDef.name : '던전'}${waiting ? waitTag : ''}` : `엘리트 토벌 · ${r.bossName || '보스'}${waiting ? waitTag : ''}`, watchers: 0,
           watching: currentSpectatingRaidRoomId === r.roomId || (watchingBattle && sim.raidWatch && sim.raidWatch.roomId === r.roomId)
         });
       });
@@ -14045,7 +14069,7 @@
       const showWaitingRoom = () => {
         goToStudentTab(kind);
         if (kind === 'pvp') switchPvpSubMode('realtime');
-        setTimeout(() => document.getElementById(kind === 'pvp' ? 'pvpWaitingRoomPanel' : (kind === 'rush' ? 'rushWaitingRoomPanel' : kind === 'dungeon' ? 'dungeonWaitingRoomPanel' : 'raidWaitingRoomPanel'))?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+        setTimeout(() => document.getElementById(kind === 'pvp' ? 'pvpWaitingRoomPanel' : (kind === 'rush' ? 'rushWaitingRoomPanel' : kind === 'dungeon' ? 'dungeonWaitingRoomPanel' : kind === 'defense' ? 'defenseWaitingRoomPanel' : 'raidWaitingRoomPanel'))?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
       };
       if (kind === 'petrun') { PetRunLive.spectate(id); return; }
       if (window.PetRunLive && PetRunLive.watchId) PetRunLive.stopWatch(true); // 다른 걸 보러 가면 펫 러닝 관전은 그만
@@ -31254,7 +31278,7 @@
         document.getElementById('battleResultTitle').textContent = tw && tw.ranked
           ? `관전 종료 · ${tw.name} ${blueTeamWon ? `🏆 승리! (vs ${tw.vs})` : `🛡️ 패배 (vs ${tw.vs})`}`
           : tw && tw.defense
-            ? `관전 종료 · ${tw.name} ${blueTeamWon ? '🏆 수정을 지켜냈어요!' : `💔 ${(sim.defense && sim.defense.wave) || 1}웨이브에서 방어 실패`}`
+            ? `관전 종료 · ${tw.name} ${blueTeamWon ? '🏆 100라운드를 막았어요!' : `💔 ${(sim.defense && sim.defense.round) || 1}라운드에서 방어 실패`}`
           : tw
           ? `관전 종료 · ${tw.name} ${blueTeamWon ? `🏆 ${tw.floor}층 돌파!` : '🛡️ 도전 실패'}`
           : rw && rw.rush
@@ -44619,6 +44643,7 @@
         const raid = Object.values(liveRaidRoomsCache || {}).find(r => r && raidSlotOf(r, stuId));
         if (raid && isRushRoom(raid)) return raid.status === 'waiting' ? '🚪 러쉬방 대기' : '🌊 몬스터 러쉬 중';
         if (raid && isDungeonRoom(raid)) return raid.status === 'waiting' ? '🚪 던전방 대기' : '🏰 던전 탐험 중';
+        if (raid && isDefenseRoom(raid)) return raid.status === 'waiting' ? '🚪 방어전 방 대기' : '💎 수정 방어전 중';
         if (raid) return raid.status === 'waiting' ? '🚪 레이드방 대기' : '🐉 레이드 중';
         const mg = Object.values(liveMinigameRoomsCache || {}).find(r => r && this.inRoom('minigame', r, stuId));
         if (mg) return mg.status === 'playing' ? '🎲 미니게임 중' : '🚪 미니게임방 대기';
@@ -44790,19 +44815,21 @@
       closeFriendProfile();
       const rush = kind === 'raid' && isRushRoom(room); // 몬스터 러쉬방도 레이드방(kind: raid)으로 옴
       const dg = kind === 'raid' && isDungeonRoom(room); // 던전 5인 방도 마찬가지
-      goToStudentTab(kind === 'pvp' ? 'pvp' : rush ? 'rush' : dg ? 'dungeon' : kind === 'raid' ? 'raid' : 'minigame');
+      const df = kind === 'raid' && isDefenseRoom(room); // 수정 방어전 5인 방도
+      goToStudentTab(kind === 'pvp' ? 'pvp' : rush ? 'rush' : dg ? 'dungeon' : df ? 'defense' : kind === 'raid' ? 'raid' : 'minigame');
       if (kind === 'pvp') switchPvpSubMode('realtime');
       try {
         if (alreadyIn) {}
         else if (kind === 'pvp') await joinFirebasePvpRoom(roomId);
         else if (rush) await joinRushRoom(roomId);
         else if (dg) await joinDungeonRoom(roomId);
+        else if (df) await joinDefenseRoom(roomId);
         else if (kind === 'raid') await joinFirebaseCoopRaidRoom(roomId);
         else await joinMinigameRoom(roomId);
       } finally {
         if (after) after();
       }
-      const panelId = kind === 'pvp' ? 'pvpWaitingRoomPanel' : rush ? 'rushWaitingRoomPanel' : dg ? 'dungeonWaitingRoomPanel' : kind === 'raid' ? 'raidWaitingRoomPanel' : 'minigameWaitingRoomSection';
+      const panelId = kind === 'pvp' ? 'pvpWaitingRoomPanel' : rush ? 'rushWaitingRoomPanel' : dg ? 'dungeonWaitingRoomPanel' : df ? 'defenseWaitingRoomPanel' : kind === 'raid' ? 'raidWaitingRoomPanel' : 'minigameWaitingRoomSection';
       setTimeout(() => {
         const panel = document.getElementById(panelId);
         if (panel && !panel.classList.contains('hidden')) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -45002,6 +45029,7 @@
       roomLabel(kind, room) {
         if (kind === 'raid' && room && isRushRoom(room)) return '🌊 몬스터 러쉬방';
         if (kind === 'raid' && room && isDungeonRoom(room)) return '🏰 던전방';
+        if (kind === 'raid' && room && isDefenseRoom(room)) return '💎 방어전 방';
         if (kind === 'minigame' && room && room.gameName) return `${room.gameIcon || '🎲'} ${room.gameName}방`;
         return GLOBAL_CHAT_KIND_LABEL[kind] || '🚪 방';
       },
@@ -46398,7 +46426,9 @@
     const isRushRoom = r => Boolean(r) && r.kind === 'rush';
     // 🏰 던전 5인 입장 방도 레이드방에 kind: 'dungeon'으로 들어감 (러쉬방과 같은 5칸)
     const isDungeonRoom = r => Boolean(r) && r.kind === 'dungeon';
-    const isPartyRoom = r => isRushRoom(r) || isDungeonRoom(r);
+    // 💎 수정 방어전 5인 방도 레이드방에 kind: 'defense'로 (같은 5칸)
+    const isDefenseRoom = r => Boolean(r) && r.kind === 'defense';
+    const isPartyRoom = r => isRushRoom(r) || isDungeonRoom(r) || isDefenseRoom(r);
     const raidSlotsOf = r => (isPartyRoom(r) ? RUSH_SLOTS : RAID_SLOTS);
     const raidGuestSlotsOf = r => (isPartyRoom(r) ? RUSH_GUEST_SLOTS : RAID_GUEST_SLOTS);
     const RAID_SLOT_FIELDS = ['Id', 'Num', 'Name', 'Power', 'Mercs', 'StudentSnapshot'];
@@ -48746,7 +48776,7 @@
       if (sim.eliteIntro) frame.it = sim.eliteIntro.t;
       if (sim.rush) frame.rs = packRushState();
       if (sim.dungeon && sim.dungeon.party) frame.dg = packDungeonState();
-      if (liveNet.towerCast && sim.mode === 'defense' && sim.defense) frame.df = packDefenseState();
+      if (defenseCastsFrames()) frame.df = packDefenseState();
       if (sim.awaitingControlChoice) frame.ps = 'choose';
       if (sim.shake && !sent.has(sim.shake)) { sent.add(sim.shake); frame.sk = [sim.shake.power, sim.shake.life, sim.shake.maxLife]; }
       if (sim.flash && !sent.has(sim.flash)) { sent.add(sim.flash); frame.fl = [String(sim.flash.color || '#ffffff'), sim.flash.life, sim.flash.maxLife]; }
@@ -49270,7 +49300,7 @@
         return out;
       };
       if (sim.dungeon && sim.dungeon.party) syncDungeonLiveUnits(); // 🏰 5인 던전: 방을 옮기거나 몬스터가 더 나오면 유닛 목록부터 다시 보냄
-      if (liveNet.towerCast && sim.mode === 'defense' && sim.defense) syncDefenseLiveUnits(); // 💎 수정 방어전: 웨이브 몬스터·모집 용병이 바뀌면 유닛 목록부터
+      if (defenseCastsFrames()) syncDefenseLiveUnits(); // 💎 수정 방어전: 웨이브 몬스터·모집 용병이 바뀌면 유닛 목록부터
       const packed = sim.units.map(packLiveUnit);
       const base = liveNet.sentU;
       // 전체 화면: 강제(결과·넘기기)·처음·유닛 수가 바뀜·LIVE_KEYFRAME_MS 지남 · 그 밖에는 앞 화면 대비 바뀐 칸만
@@ -49306,7 +49336,7 @@
         if (keyframe || nowMs - (liveNet.dgChangedAt || 0) < 1000) frame.dg = dgs;
       }
       // 💎 수정 방어전 중계: 웨이브·수정 체력·포인트 등은 바뀐 뒤 1초 동안과 전체 화면에만 실음 (던전과 같은 방식)
-      if (liveNet.towerCast && sim.mode === 'defense' && sim.defense) {
+      if (defenseCastsFrames()) {
         const dfs = packDefenseState(), j = JSON.stringify(dfs);
         if (j !== liveNet.dfSentJ) { liveNet.dfSentJ = j; liveNet.dfChangedAt = nowMs; }
         if (keyframe || nowMs - (liveNet.dfChangedAt || 0) < 1000) frame.df = dfs;
@@ -49345,7 +49375,7 @@
         forfeitTeam: sim.forfeitTeam || null,
         ...(sim.rush ? { rs: packRushState() } : {}),
         ...(sim.dungeon && sim.dungeon.party ? { dg: packDungeonState() } : {}),
-        ...(liveNet.towerCast && sim.mode === 'defense' && sim.defense ? { df: packDefenseState() } : {}),
+        ...(defenseCastsFrames() ? { df: packDefenseState() } : {}),
         s: sim.units.map(u => [Math.round(liveNum(u.damageDealt)), Math.round(liveNum(u.healDone)), Math.round(liveNum(u.damageTaken))])
       }).catch(() => {});
       const roomId = liveNet.roomId;
@@ -50230,9 +50260,9 @@
     // 버퍼의 화면 한 장을 적용 (위치는 따로 이어 그림) · ageMs = 그 화면이 재생 시점보다 얼마나 앞선 것인지
     function applyLiveFrameState(val, ageMs) {
       // 토벌 도중에 들어온 관전자: 남은 시간이 방장 화면과 같게
-      if ((sim.raidWatch || sim.fairDuel || (sim.dungeon && sim.dungeon.party) || (sim.spectator && sim.mode === 'defense')) && liveNum(val.t) > 0) sim.tickCount = liveNum(val.t); // 공정한 결투: 남은 시간도 계산 담당 화면 기준 // 5인 던전: 남은 시간·기믹 시각이 방장 화면 기준
+      if ((sim.raidWatch || sim.fairDuel || (sim.dungeon && sim.dungeon.party) || (sim.mode === 'defense' && sim.defense && !defenseIsHostSide())) && liveNum(val.t) > 0) sim.tickCount = liveNum(val.t); // 공정한 결투: 남은 시간도 계산 담당 화면 기준 // 5인 던전: 남은 시간·기믹 시각이 방장 화면 기준
       if (val.dg && typeof val.dg === 'object' && sim.dungeon) applyDungeonState(val.dg);
-      if (val.df && typeof val.df === 'object' && sim.spectator && sim.defense) applyDefenseState(val.df);
+      if (val.df && typeof val.df === 'object' && sim.defense && !defenseIsHostSide()) applyDefenseState(val.df);
       liveNet.hostPause = val.ps === 'choose' ? val.ps : null;
       if (Array.isArray(val.rs)) applyRushState(val.rs);
       if (isEliteBossMode(sim.mode)) sim.eliteIntro = liveNum(val.it) > 0 ? { t: liveNum(val.it) } : null;
@@ -50341,7 +50371,7 @@
       });
       if (Array.isArray(val.rs)) applyRushState(val.rs);
       if (val.dg && typeof val.dg === 'object' && sim.dungeon) applyDungeonState(val.dg);
-      if (val.df && typeof val.df === 'object' && sim.spectator && sim.defense) applyDefenseState(val.df);
+      if (val.df && typeof val.df === 'object' && sim.defense && !defenseIsHostSide()) applyDefenseState(val.df);
       stopLiveBattleNet();
       sim.forfeitTeam = val.forfeitTeam === 'red' || val.forfeitTeam === 'blue' ? val.forfeitTeam : null;
       if (sim.running) finishSimulation(val.blueWon === true);
@@ -50858,6 +50888,7 @@
     function renderLiveRaidRoomsList() {
       renderRushLobby();
       renderDungeonLobby();
+      renderDefenseLobby();
       const box = document.getElementById('raidLiveRoomsList');
       const badge = document.getElementById('raidLiveRoomCountBadge');
       const waitPanel = document.getElementById('raidWaitingRoomPanel');
@@ -51064,6 +51095,7 @@
         if (launchedLiveRoomIds.has(r.roomId)) return;
         if (isRushRoom(r) && raidSlotOf(r, myStu.id)) { launchRushRoomBattle(r, myStu); return; }
         if (isDungeonRoom(r)) { if (raidSlotOf(r, myStu.id)) launchDungeonRoomBattle(r, myStu); return; }
+        if (isDefenseRoom(r)) { if (raidSlotOf(r, myStu.id)) launchDefenseRoomBattle(r, myStu); return; }
         if (raidSlotOf(r, myStu.id)) {
           launchedLiveRoomIds.add(r.roomId);
           currentActiveLiveBattleRoomId = r.roomId;
@@ -51207,7 +51239,8 @@
       const units = sim.units.map(u => liveUnitCopy(u, LIVE_HANDOFF_DROP));
       try { ref.onDisconnect().cancel(); } catch (e) {}
       const dg = sim.dungeon && sim.dungeon.party ? packDungeonState() : null; // 🏰 5인 던전: 지도·방 진행 상태도 함께 넘김
-      ref.child('handoff').set(JSON.parse(JSON.stringify({ at: Date.now(), from: me.id, to: heirId, tick: sim.tickCount, units, ...(dg ? { dg } : {}) }))).catch(() => {});
+      const df = sim.defense && sim.defense.party ? packDefenseState() : null; // 💎 5인 방어전: 라운드·포탑·게이지도
+      ref.child('handoff').set(JSON.parse(JSON.stringify({ at: Date.now(), from: me.id, to: heirId, tick: sim.tickCount, units, ...(dg ? { dg } : {}), ...(df ? { df } : {}) }))).catch(() => {});
       stopLiveBattleNet();
       setTimeout(() => { if (liveNet.ref !== ref) ref.remove().catch(() => {}); }, 20000);
       addBattleLog('👑 남은 친구에게 토벌 계산을 넘겼어요. 친구들의 토벌은 계속 이어져요.');
@@ -51220,6 +51253,7 @@
       if (!rl || !val.to) return;
       if (val.from && !rl.tried.includes(val.from)) rl.tried.push(val.from);
       if (val.to === liveNet.myId && val.dg && typeof val.dg === 'object' && sim.dungeon) applyDungeonState(val.dg);
+      if (val.to === liveNet.myId && val.df && typeof val.df === 'object' && sim.defense) applyDefenseState(val.df);
       const oldRef = liveNet.ref;
       if (val.to === liveNet.myId) {
         takeOverRaidBattle(Array.isArray(val.units) ? val.units : null, val.tick);
@@ -51333,7 +51367,7 @@
       let got = null, pick = null;
       for (const t of tries) {
         // 첫 후보는 조금 더 기다림 (방금 출발해서 아직 화면을 올리는 중일 수 있음)
-        got = await waitLiveInit(liveRoomRef(t.castId), t === tries[0] ? 4000 : 1500, isDungeonRoom(r));
+        got = await waitLiveInit(liveRoomRef(t.castId), t === tries[0] ? 4000 : 1500, isDungeonRoom(r) || isDefenseRoom(r));
         if (got) { pick = t; break; }
       }
       if (!got) { if (!quiet) showNotice('⚠️ 토벌 화면을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.'); return false; }
@@ -51350,9 +51384,11 @@
       const dgDiff = dgNormDiff(room.diff);
       const dgMap = dgDef ? generateDungeonMap(dgDef, dgDiff, Number(room.dgSeed) >>> 0) : null;
       if (isDungeonRoom(room) && !dgMap) { if (!quiet) showNotice('⚠️ 던전 화면을 불러오지 못했어요.'); return false; }
+      const dfRoom = isDefenseRoom(room); // 💎 5인 방어전 방: 라운드·포탑은 받은 화면(df)을 따라감
+      if (dfRoom) defensePreloadArt();
       launchSimulation({
-        mode: rush ? 'monster_rush' : dgMap ? 'dungeon' : 'elite_raid',
-        title: rush ? `📺 관전 중: 🌊 몬스터 러쉬 · ${names} (${pick.name} 화면)` : dgMap ? `📺 관전 중: ${dgDef.icon} ${dgDef.name} [${dungeonDiffLabel(dgDiff)}] · ${names} (${pick.name} 화면)` : `📺 관전 중: ${names} vs ${room.hard ? '🔥하드 ' : room.easy ? '🌱이지 ' : ''}${bossDef.name} (${pick.name} 화면)`,
+        mode: rush ? 'monster_rush' : dgMap ? 'dungeon' : dfRoom ? 'defense' : 'elite_raid',
+        title: rush ? `📺 관전 중: 🌊 몬스터 러쉬 · ${names} (${pick.name} 화면)` : dfRoom ? `📺 관전 중: 💎 수정 방어전 · ${names} (${pick.name} 화면)` : dgMap ? `📺 관전 중: ${dgDef.icon} ${dgDef.name} [${dungeonDiffLabel(dgDiff)}] · ${names} (${pick.name} 화면)` : `📺 관전 중: ${names} vs ${room.hard ? '🔥하드 ' : room.easy ? '🌱이지 ' : ''}${bossDef.name} (${pick.name} 화면)`,
         blueStudent: owner,
         redStudent: null,
         eliteBossId: bossDef.id,
@@ -51366,7 +51402,8 @@
       sim.spectator = true;
       sim.spectateFrom = Date.now();
       sim.spectateRoomId = null;
-      sim.raidWatch = { roomId, castId: pick.castId, stuId: pick.id, hostName: pick.name, bossName: rush ? '🌊 몬스터 러쉬' : dgMap ? `${dgDef.icon} ${dgDef.name}` : bossDef.name, rush, dungeon: Boolean(dgMap) };
+      sim.raidWatch = { roomId, castId: pick.castId, stuId: pick.id, hostName: pick.name, bossName: rush ? '🌊 몬스터 러쉬' : dfRoom ? '💎 수정 방어전' : dgMap ? `${dgDef.icon} ${dgDef.name}` : bossDef.name, rush, dungeon: Boolean(dgMap) };
+      if (dfRoom) { sim.defense = newDefenseState(defenseRaceOf(1), DEFENSE_DIFFS.includes(room.diff) ? room.diff : 'normal'); sim.defense.party = true; sim.defense.started = true; }
       if (rush) sim.rush = newRushState(Number(room.rushStartFloor) || 1);
       if (dgMap) {
         sim.dungeon = newDungeonState(dgDef.id, dgDiff, Number(room.dgSeed) >>> 0, dgMap, { floor: Number(room.dgFloor) || 1, powerRatio: Number(room.dgRatio) || 1, power: Number(room.dgPower) || 0 });
@@ -54478,100 +54515,148 @@
     }
 
     /********************************************************************
-     * 💎 수정 방어전 (docs/crystal-defense-design.md) — 2판: 가운데 수정 · 동서남북 네 길 · 포탑 없음
-     * - 맵 한가운데 수정을 동서남북 네 동굴에서 몰려오는 몬스터로부터 20웨이브 동안 지킴
-     * - 몬스터는 길을 따라 수정으로 걸어감 (가까운 용병만 상대) · 수정 둘레에 닿으면 죽을 때까지 수정을 때림
-     * - 몬스터 처치·웨이브 클리어마다 이번 판 전용 🔷 포인트 → 🎲 AI 용병 무작위 모집 (낮은 확률로 시크릿 레어·히든 스킬) · 용병 능력치 강화
-     * - 준비 시간마다 전장의 용병을 끌어다 지킬 곳에 놓음 (그 자리를 지키는 AI)
-     * - 용병은 쓰러져도 10초 뒤 수정 옆에서 부활 · 수정 체력이 0이 되면 끝
+     * 💎 수정 방어전 3판 (docs/crystal-defense-design.md) — 타워 디펜스
+     * - 왼쪽 위 동굴에서 나온 몬스터가 지그재그 길 한 줄을 따라 오른쪽 아래 성문(차원문)으로 걸어감 · 몬스터는 공격하지 않음
+     * - 성문을 빠져나간 몬스터만큼 💎 방어 게이지가 깎이고, 0이 되면 끝 · 100라운드를 버티면 클리어
+     * - 라운드 r의 몬스터 = 모험의 탑 r층 편성 (10라운드마다 종족이 바뀌고, 10·20…100라운드는 그 종족의 보스)
+     * - 🔷 골드(이번 판 전용)로 받침돌 22곳에 포탑 4종을 짓고 5단계까지 올림 · 용병 능력치 강화 · 용병 고용은 없음
+     * - 용병: 혼자면 출전 용병 5명, 5인 방이면 한 사람에 1명 (최대 5명) · 끌어다 놓은 자리 둘레를 지킴
+     * - 라운드는 겹쳐서 옴: 이번 라운드가 다 나오면 14초 뒤 다음 라운드 (전장이 비면 4초 뒤 · ⏩ 바로 부르면 남은 초만큼 골드)
      ********************************************************************/
     const DEFENSE_TUNE = {
-      // stat: 일반 몬스터 능력치 배율 [1웨이브, 마지막 웨이브] (같은 층 탑 몬스터 대비) · count: 한 웨이브 몬스터 수 · boss: 보스 배율 [첫 보스, 가운데, 마지막 보스] 사이를 웨이브에 따라 고르게
-      // 20웨이브 콘솔 시뮬(기본 용병단 Lv.30, 자동 전투 + 자동 모집): 보통 5/5(★★★ 2판) · 어려움 3/4 클리어, 한 판에 모집 12명·강화 10~17번 · 한 판 약 15분
-      // (Lv.55는 던전 규칙대로 층을 낮춰 받아 더 쉬움 · 기준은 Lv.30)
-      normal: { stat: [0.33, 0.82], count: [15, 38], eliteFrom: 4, elites: [1, 1], boss: [0.75, 0.95, 1.3], crystalHp: 1000 },
-      hard:   { stat: [0.37, 0.92], count: [16, 40], eliteFrom: 3, elites: [1, 2], boss: [0.8, 1.0, 1.35], crystalHp: 800 },
-      waves: 20, floorPerWave: 0.3, prepSec: 12, firstPrepSec: 25, respawnSec: 10, bossRespawnSec: 15,
-      pts: { start: 120, mob: 4, elite: 20, boss: 100, wave: 50, perfect: 25 },
-      crystalHit: { mob: 10, elite: 30, boss: 100, bomb: 60 }, crystalHitEvery: 1.5, crystalR: 210,
-      shock: { charges: 3, cdSec: 45, r: 520, dmg: 0.55 }, // dmg: 이번 웨이브 기준 몬스터 체력 대비
-      spawnGapSec: 0.9,
-      // 🎲 모집: 값은 모집할 때마다 오름 · 확률은 한 명마다 (시크릿 레어 → 레어 → 일반 순으로 뽑고, 히든 스킬은 따로)
-      recruit: { cost: 120, costStep: 30, costMax: 400, max: 12, secret: 0.03, rare: 0.15, hidden: 0.05 },
-      // ⬆️ 강화: 한 번에 체력·공격·방어 +12% (기본 능력치 기준), 10단계까지 (값은 단계마다 오름)
-      upgrade: { max: 10, cost: [60, 90, 130, 180, 240, 310, 390, 480, 580, 700], gain: 0.12 },
-      // 💎 수정 고치기: 한 번에 최대 체력의 10% · 값은 고칠 때마다 오름 (30웨이브 동안 조금씩 깎이는 것을 포인트로 메움)
-      repair: { cost: 80, costStep: 20, costMax: 300, heal: 0.1 }
+      // 1라운드 졸개 체력 = 출전 용병 기준 탑 몬스터 체력(hp1) × hp0, 라운드마다 ×(1 + grow)
+      // count: 한 라운드 졸개 수 [1라운드, 100라운드] · eliteHp·bossHp: 졸개 대비 체력 배율 (보스는 [10라운드, 100라운드])
+      // ramp: 포탑 피해는 그 라운드 졸개 체력 기준인데, 몬스터 체력이 라운드마다 ramp만큼 더 앞서 감 (포탑을 늘리고 올려야 함 · 난이도의 핵심 값)
+      normal: { lives: 100, hp0: 1, grow: 0.034, count: [8, 30], eliteHp: 7, bossHp: [28, 60], ramp: 0.1 },
+      // 콘솔 시뮬(기본 용병단 출전 5명, 🤖 자동): 보통 Lv.30 3/3 클리어(★★) · Lv.55 ★★★ · 어려움 Lv.30 2/3 클리어(★) · Lv.55 클리어 · 한 판 약 47~54분(×1)
+      hard:   { lives: 70, hp0: 1.2, grow: 0.036, count: [9, 34], eliteHp: 7.5, bossHp: [30, 66], ramp: 0.115 },
+      rounds: 100, firstPrepSec: 25, clearGapSec: 4, nextGapSec: 14, spawnGapSec: 0.8, walkMul: 1.4, laneJitter: 26,
+      gold: { start: 350, mob: 3, elite: 15, boss: 120, round: 20, roundStep: 0.6, early: 2 },
+      leak: { mob: 1, elite: 5, boss: 20 },
+      respawnSec: 8,
+      merc: { max: 30, cost: 80, costMul: 1.22, atk: 0.15 }, // 용병 강화: 한 번에 공격력 +15% (처음 능력치 기준)
+      sellBack: 0.7, soloMercs: 5, partyMax: 5
     };
     const DEFENSE_DIFFS = ['normal', 'hard'];
     const DEFENSE_DIFF_LABEL = { normal: '보통', hard: '🔥 어려움' };
-    const DEFENSE_CRYSTAL = { x: 1440, y: 920 };
-    // 길: 가장자리 동굴 → 수정 (월드 좌표 경로점) · 그림(tools/defense_art_build.py)과 같은 좌표
-    // 바람개비 모양: 동굴마다 맵 가장자리를 따라 시계 방향으로 한참 돌다가 수정으로 감아 들어옴 (길이 약 1900~2500px, 예전의 2~3배)
-    const DEFENSE_LANES = [
-      { key: 'n', name: '북쪽', icon: '⬆️', color: '#3e8f35', pts: [[700, 310], [1200, 320], [1750, 350], [2150, 520], [1960, 700], [1640, 760]] },
-      { key: 'e', name: '동쪽', icon: '➡️', color: '#3d7fe0', pts: [[2590, 420], [2600, 900], [2450, 1250], [2100, 1250], [1880, 1110], [1630, 1040]] },
-      { key: 's', name: '남쪽', icon: '⬇️', color: '#c8323a', pts: [[2350, 1540], [1700, 1540], [1100, 1520], [730, 1380], [930, 1170], [1260, 1060]] },
-      { key: 'w', name: '서쪽', icon: '⬅️', color: '#d9a514', pts: [[300, 1300], [290, 880], [430, 540], [820, 560], [1020, 760], [1260, 800]] }
-    ];
-    // 오늘의 공격 종족 (지금은 고블린족만)
-    const DEFENSE_RACES = ['고블린족'];
-    function todayDefenseRace() { return DEFENSE_RACES[0]; }
-    function defenseBookOf(stu, race) {
-      stu.defenseBook = stu.defenseBook || {};
-      return (stu.defenseBook[race] = stu.defenseBook[race] || {});
+    // 포탑: dmg는 그 라운드 졸개 체력 대비 한 방 피해 (단계마다 × DEFENSE_TOWER_LV.mul) · cd 초 · range 월드 px
+    const DEFENSE_TOWERS = {
+      arrow:  { name: '화살탑', icon: '🏹', color: '#f59e0b', cost: 100, range: 400, cd: 0.6, dmg: 0.2, ramp: 'arrow_hit', desc: '한 마리씩 빠르게 쏴요', lv5: '5단계: 화살 2발' },
+      cannon: { name: '대포탑', icon: '💣', color: '#ef4444', cost: 160, range: 360, cd: 1.7, dmg: 0.32, aoe: 120, ramp: 'fire_explosion', desc: '뭉친 적을 한꺼번에 터뜨려요', lv5: '5단계: 맞은 적 기절' },
+      frost:  { name: '서리탑', icon: '❄️', color: '#38bdf8', cost: 120, range: 340, cd: 1.0, dmg: 0.07, aoe: 110, slowSec: 2, ramp: 'ice_shatter', desc: '맞은 둘레 적을 느리게 해요', lv5: '5단계: 3번째마다 얼림' },
+      magic:  { name: '마법탑', icon: '🔮', color: '#a855f7', cost: 180, range: 390, cd: 1.3, dmg: 0.3, chain: 3, ramp: 'magic_burst', desc: '번개가 3마리에게 튀어요', lv5: '5단계: 5마리까지 튀어요' }
+    };
+    const DEFENSE_TOWER_KEYS = ['arrow', 'cannon', 'frost', 'magic']; // 포탑 시트 세로 순서와 같음
+    // 단계: 피해 배율 · 올리기 값(지을 값 × up[지금 단계-1]) · 그림 단계(시트 1~3)
+    const DEFENSE_TOWER_LV = { max: 5, mul: [1, 1.7, 2.6, 3.8, 5.4], up: [0.8, 1.2, 1.8, 2.6], art: [1, 2, 2, 3, 3] };
+    // 길 (월드 좌표, tools/defense_art_build.py의 PATH와 같음): 왼쪽 위 동굴 → 세 줄을 지그재그로 → 오른쪽 아래 성문
+    const DEFENSE_PATH = [[230, 560], [2250, 560], [2250, 920], [640, 920], [640, 1280], [2640, 1280]];
+    const DEFENSE_PATH_SEG = DEFENSE_PATH.slice(1).map(([x, y], i) => Math.hypot(x - DEFENSE_PATH[i][0], y - DEFENSE_PATH[i][1]));
+    const DEFENSE_PATH_LEN = DEFENSE_PATH_SEG.reduce((a, b) => a + b, 0);
+    function defensePathAt(d) {
+      let s = Math.max(0, d);
+      for (let i = 0; i < DEFENSE_PATH_SEG.length; i++) {
+        const L = DEFENSE_PATH_SEG[i];
+        if (s <= L || i === DEFENSE_PATH_SEG.length - 1) {
+          const [ax, ay] = DEFENSE_PATH[i], [bx, by] = DEFENSE_PATH[i + 1], t = L ? Math.min(1, s / L) : 0;
+          const dx = (bx - ax) / (L || 1), dy = (by - ay) / (L || 1);
+          return { x: ax + (bx - ax) * t, y: ay + (by - ay) * t, dx, dy, nx: -dy, ny: dx };
+        }
+        s -= L;
+      }
+      const [x, y] = DEFENSE_PATH[DEFENSE_PATH.length - 1];
+      return { x, y, dx: 1, dy: 0, nx: 0, ny: 1 };
     }
-    const defenseHardLocked = (stu, race) => (defenseBookOf(stu, race).normalStars || 0) < 3;
+    // 길 위 가장 가까운 자리까지의 거리 (길 밖에서 생긴 몬스터를 길에 올림)
+    function defensePathProject(x, y) {
+      let best = 0, bd = Infinity, acc = 0;
+      for (let i = 0; i < DEFENSE_PATH_SEG.length; i++) {
+        const [ax, ay] = DEFENSE_PATH[i], [bx, by] = DEFENSE_PATH[i + 1], L = DEFENSE_PATH_SEG[i] || 1;
+        const t = Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / (L * L)));
+        const d = Math.hypot(ax + (bx - ax) * t - x, ay + (by - ay) * t - y);
+        if (d < bd) { bd = d; best = acc + t * L; }
+        acc += L;
+      }
+      return best;
+    }
+    // 포탑 받침돌 22곳 (발 위치) · 그림과 같은 좌표
+    const DEFENSE_PADS = [[700, 400], [1150, 400], [1600, 400], [2050, 400],
+      [440, 740], [760, 740], [1060, 740], [1360, 740], [1660, 740], [1960, 740], [2440, 740],
+      [440, 1100], [900, 1100], [1200, 1100], [1500, 1100], [1800, 1100], [2100, 1100], [2440, 1100],
+      [1000, 1440], [1450, 1440], [1900, 1440], [2350, 1440]];
+    // 받침돌마다 길이 사거리(380) 안에 얼마나 지나가는지 (🤖 자동 짓기가 좋은 자리부터 고름)
+    const DEFENSE_PAD_SCORE = DEFENSE_PADS.map(([x, y]) => { let n = 0; for (let d = 0; d < DEFENSE_PATH_LEN; d += 40) { const p = defensePathAt(d); if (Math.hypot(p.x - x, p.y - y) < 380) n++; } return n; });
+    // 용병 처음 자리 (길 사이, 받침돌 사이)
+    const DEFENSE_MERC_SPOTS = [[1210, 740], [1510, 740], [1350, 1100], [910, 740], [1650, 1100]];
+    const DEFENSE_GATE = { x: 2610, y: 1240 };
+    // 라운드 종족: 10라운드마다 모험의 탑 종족 순서대로 (1~10 고블린족 … 91~100 용족)
+    const DEFENSE_RACES = TOWER_RACES.slice(0, 10).map(r => r.name);
+    const defenseRaceOf = r => DEFENSE_RACES[Math.min(DEFENSE_RACES.length - 1, Math.floor((Math.max(1, r) - 1) / 10))];
+    function todayDefenseRace() { return DEFENSE_RACES[0]; }
+    // 기록: stu.defenseBook.td = { normalBest, hardBest, normalStars, hardStars, normalFirst3Paid, hardFirst3Paid, clears }
+    function defenseBookOf(stu) {
+      stu.defenseBook = stu.defenseBook || {};
+      return (stu.defenseBook.td = stu.defenseBook.td || {});
+    }
+    const DEFENSE_HARD_UNLOCK = 50;
+    const defenseHardLocked = stu => (defenseBookOf(stu).normalBest || 0) < DEFENSE_HARD_UNLOCK;
+    const defenseMercs = () => sim.units.filter(u => u.team === 'blue' && !u.isClone && !u.spiritElem);
 
     // ----- 입장 -----
     function startSoloDefense(diff = 'normal') {
       const stu = getActiveStudent();
       if (!stu) return;
       diff = DEFENSE_DIFFS.includes(diff) ? diff : 'normal';
-      const race = todayDefenseRace();
-      if (diff === 'hard' && defenseHardLocked(stu, race)) { showNotice('🔒 어려움은 보통을 ★★★로 막아야 열려요.'); return; }
+      if (diff === 'hard' && defenseHardLocked(stu)) { showNotice(`🔒 어려움은 보통에서 ${DEFENSE_HARD_UNLOCK}라운드까지 막으면 열려요.`); return; }
       const deployed = (stu.roster || []).filter(m => m.deployed);
       if (!deployed.length) { showNotice('⚠️ 출전 중인 용병이 없어요. 용병 관리에서 출전시켜 주세요!'); return; }
-      void BATTLE_MAPS.crystal_defense.ready; Object.values(DEFENSE_ART).forEach(d => void d.ready); // 맵·수정 그림을 미리 받기 시작 (전투 준비 화면이 기다림)
-      launchSimulation({ mode: 'defense', title: `💎 수정 방어전 [${DEFENSE_DIFF_LABEL[diff]}] · ${race}의 습격을 막아라!`, blueStudent: stu, customRedUnits: [], rewardMc: 0 });
+      defensePreloadArt();
+      launchSimulation({ mode: 'defense', title: `💎 수정 방어전 [${DEFENSE_DIFF_LABEL[diff]}] · 100라운드를 막아라!`, blueStudent: stu, customRedUnits: [], rewardMc: 0 });
       if (!sim.running || sim.mode !== 'defense') return;
-      sim.entryCharge = () => startDefenseLiveBroadcast(stu); // 전투 방식을 고르면(=전투가 시작되면) 친구들이 관전할 수 있게 중계 시작 (탑 도전과 같은 방식)
-      sim.defense = newDefenseState(race, diff, { baseFloor: dungeonFloorOfMercs(deployed, diff), powerRatio: dungeonPowerRatio(stu), power: dungeonPowerOf(stu), level: deployed.reduce((s, m) => s + (m.level || 1), 0) / deployed.length });
+      defenseTrimMercs(DEFENSE_TUNE.soloMercs);
+      sim.entryCharge = () => startDefenseLiveBroadcast(stu); // 전투 방식을 고르면(=전투가 시작되면) 친구들이 관전할 수 있게 중계 시작
+      const ratio = dungeonPowerRatio(stu);
+      sim.defense = newDefenseState(defenseRaceOf(1), diff, { hp1: defenseHp1Of(dungeonFloorOfMercs(deployed, 'normal'), ratio), power: dungeonPowerOf(stu) });
       defenseInitialPlacement();
-      defensePlanWave();
-      addBattleLog(`💎 수정 방어전 시작! ${race}이(가) 동서남북 네 동굴에서 쳐들어와요. ${DEFENSE_TUNE.waves}웨이브 동안 가운데 수정을 지키세요!`);
-      addBattleLog('🎲 몬스터를 잡고 웨이브를 막으면 🔷 포인트가 쌓여요. 포인트로 AI 용병을 모집하거나 강화하고, 준비 시간에 전장의 용병을 끌어다 지킬 곳에 놓으세요.');
+      defenseIntroLog();
     }
-    function newDefenseState(race, diff, { baseFloor, powerRatio, power, level }) {
-      const T = DEFENSE_TUNE[diff];
+    function defensePreloadArt() { void BATTLE_MAPS.crystal_defense.ready; Object.values(DEFENSE_ART).forEach(d => void d.ready); }
+    function defenseIntroLog() {
+      addBattleLog(`💎 수정 방어전 시작! 몬스터가 왼쪽 위 동굴에서 나와 길을 따라 오른쪽 아래 성문으로 가요. 성문을 빠져나가면 💎 방어 게이지가 깎여요. ${DEFENSE_TUNE.rounds}라운드를 버티세요!`);
+      addBattleLog('🏗️ 받침돌을 눌러 🔷 골드로 포탑을 짓고 올리세요. ✋ 용병은 끌어다 놓은 자리 둘레를 지켜요. 10라운드마다 새 종족과 👑 종족 보스가 와요!');
+    }
+    // 출전 용병이 많으면 센 순서로 n명만 남김
+    function defenseTrimMercs(n) {
+      const blue = defenseMercs();
+      if (blue.length <= n) return;
+      const keep = new Set([...blue].sort((a, b) => (b.maxHp + b.atk * 12) - (a.maxHp + a.atk * 12)).slice(0, n).map(u => u.id));
+      sim.units = sim.units.filter(u => u.team !== 'blue' || u.isClone || u.spiritElem || keep.has(u.id));
+    }
+    // 1라운드 졸개 체력의 기준: 출전 용병 레벨에 맞춘 탑 층(던전과 같은 규칙)의 졸개 체력 × 전투력 비율
+    function defenseHp1Of(floor, ratio) {
+      const fo = TOWER_FLOORS[Math.max(1, Math.min(TOWER_MAX_FLOOR, floor || 1)) - 1];
+      const idx = Math.max(0, fo.comp.findIndex((j, i) => !(fo.isRaceBoss && i === 0)));
+      const probe = buildRushMonster(fo, idx, 1, false);
+      return Math.max(50, Math.round(probe.maxHp * (ratio || 1)));
+    }
+    function newDefenseState(race, diff, { hp1 = 1000, power = 0 } = {}) {
+      const T = DEFENSE_TUNE[diff] || DEFENSE_TUNE.normal;
       return {
-        race, diff, wave: 1, phase: 'prep', phaseAt: 0, prepTicks: DEFENSE_TUNE.firstPrepSec * BATTLE_TICKS_PER_SEC, started: false, everManual: false, autoRecruit: false,
-        crystal: { x: DEFENSE_CRYSTAL.x, y: DEFENSE_CRYSTAL.y, hp: T.crystalHp, maxHp: T.crystalHp, shock: DEFENSE_TUNE.shock.charges, shockReadyAt: 0, freeShock: false, hitFlash: 0 },
-        pts: DEFENSE_TUNE.pts.start, ptsEarned: 0, recruits: 0, lastRecruit: null, guard: {}, queue: [], plan: null, lastSplit: -1,
-        cleared: 0, bossesKilled: 0, waveHurt: 0, perfect: 0, log: [], fx: [], ref: { hp: 1000, atk: 100 }, drag: null,
-        baseFloor, powerRatio: powerRatio || 1, power: power || 0, level: Math.max(1, Math.round(level || 1)), doneAt: 0, won: false, party: false
+        race, diff, round: 0, phase: 'prep', nextAt: 0, spawnEnd: 0, started: false, everManual: false, auto: false, speed: 1,
+        lives: T.lives, maxLives: T.lives, gold: DEFENSE_TUNE.gold.start, goldEarned: 0,
+        pads: DEFENSE_PADS.map(([x, y], id) => ({ id, x, y, t: null })), sel: null,
+        guard: {}, left: {}, cleared: 0, bossesKilled: 0, leaked: 0, kills: 0, log: [], fx: [], shots: [], leakFlash: 0,
+        hp1, power, doneAt: 0, won: false, party: false, built: 0, upgrades: 0, mercUps: 0, drag: null
       };
     }
-    // 처음 자리: 내 용병을 네 길 입구 쪽 수정 둘레에 고르게 (탱커는 앞에)
-    const DEFENSE_FRONT_JOBS = ['warrior', 'knight', 'paladin', 'berserker', 'lancer', 'brawler', 'swordsman', 'rogue'];
-    const defenseFrontScore = u => (DEFENSE_FRONT_JOBS.includes(u.job) ? 1e9 : 0) + (u.maxHp || 0);
     function defenseInitialPlacement() {
-      const dm = sim.defense, cr = DEFENSE_CRYSTAL;
-      const blue = sim.units.filter(u => u.team === 'blue' && !u.isClone);
-      const dirs = DEFENSE_LANES.map(l => Math.atan2(l.pts[l.pts.length - 1][1] - cr.y, l.pts[l.pts.length - 1][0] - cr.x));
-      [...blue].sort((a, b) => defenseFrontScore(b) - defenseFrontScore(a)).forEach((u, i) => {
-        const a = dirs[i % 4] + (i >= 4 ? 0.35 : 0);
-        const r = (u.range || 0) >= 180 ? 240 : 330;
-        defensePlaceUnit(u, cr.x + Math.cos(a) * r, cr.y + Math.sin(a) * r * 0.8);
-      });
+      defenseMercs().forEach((u, i) => { const [x, y] = DEFENSE_MERC_SPOTS[i % DEFENSE_MERC_SPOTS.length]; defensePlaceUnit(u, x + (i >= 5 ? 70 : 0), y + (i >= 5 ? 40 : 0)); });
     }
-    // 용병을 그 자리로 옮기고 지킬 곳으로 정함 (전장 밖·수정 위는 피함)
+    // 용병을 그 자리로 옮기고 지킬 곳으로 정함
     function defensePlaceUnit(u, x, y) {
-      const dm = sim.defense, cr = DEFENSE_CRYSTAL;
+      const dm = sim.defense;
       x = Math.max(ARENA_BOUNDS.left + 30, Math.min(ARENA_BOUNDS.right - 30, x));
       y = Math.max(ARENA_BOUNDS.top + 30, Math.min(ARENA_BOUNDS.bottom - 30, y));
-      const d = Math.hypot(x - cr.x, y - cr.y);
-      if (d < 90) { const a = d > 1 ? Math.atan2(y - cr.y, x - cr.x) : Math.PI / 2; x = cr.x + Math.cos(a) * 90; y = cr.y + Math.sin(a) * 90; }
       dm.guard[u.id] = { x: Math.round(x), y: Math.round(y) };
       if (u.alive) { u.x = x; u.y = y; u._ix = u.prevX = x; u._iy = u.prevY = y; u.kbVx = 0; u.kbVy = 0; u.rush = null; u.isMoving = false; }
     }
@@ -54579,13 +54664,13 @@
       const dm = sim.defense;
       if (!dm) return;
       if (battleControl.mode === 'manual') { dm.everManual = true; dm.mainId = battleControl.unitId; }
-      if (!dm.started) { dm.started = true; dm.phaseAt = sim.tickCount; }
+      if (!dm.started) { dm.started = true; dm.nextAt = sim.tickCount + DEFENSE_TUNE.firstPrepSec * BATTLE_TICKS_PER_SEC; }
       renderDefensePanel(true);
     }
     function defenseMainUnit() {
       const dm = sim.defense;
       if (!dm) return null;
-      const blue = sim.units.filter(u => u.team === 'blue' && !u.isClone && !u.defRecruit);
+      const blue = defenseMercs();
       return blue.find(u => u.id === (battleControl.mode === 'manual' ? battleControl.unitId : dm.mainId)) || blue.find(u => u.alive) || null;
     }
     function toggleDefenseAutoBattle() {
@@ -54594,454 +54679,458 @@
       if (battleControl.mode === 'manual') setBattleControlMode('auto', null, true);
       else if (u && u.alive) setBattleControlMode('manual', u.id, true);
     }
-    // 고르기(모집·강화·배치·바로 시작·충격파)는 혼자면 나, 5인이면 방장 화면만
+    // 고르기(짓기·올리기·팔기·용병 강화·배치·다음 라운드·빠르기)는 혼자면 나, 5인이면 방장 화면만
     function defenseCanChoose() {
       const dm = sim.defense;
-      return Boolean(dm && sim.running && !sim.spectator && (!dm.party || liveNet.role === 'host' || !liveNet.ref));
+      return Boolean(dm && sim.running && !sim.spectator && (!dm.party || sim.netRole === 'host' || !sim.netRole));
     }
+    const defenseIsHostSide = () => !sim.spectator && sim.netRole !== 'guest';
+    // 이 화면이 방어전 상태(frame.df)를 실어 보내는지: 혼자 하며 중계 중이거나 5인 방의 계산 담당
+    function defenseCastsFrames() { return sim.mode === 'defense' && Boolean(sim.defense) && (liveNet.towerCast || sim.defense.party) && defenseIsHostSide(); }
 
-    // ----- 웨이브 -----
-    const defLerp = ([a, b], k) => a + (b - a) * k;
-    function defenseWaveK(wave) { return (Math.max(1, wave) - 1) / Math.max(1, DEFENSE_TUNE.waves - 1); }
-    const defenseIsBossWave = w => w % 5 === 0;
-    // 다음 웨이브를 네 길에 나누는 꼴 (북·동·남·서)
-    const DEFENSE_SPLITS = [
-      { name: '사방에서', w: [1, 1, 1, 1] }, { name: '북쪽 몰기', w: [3, 1, 0, 1] }, { name: '동쪽 몰기', w: [1, 3, 1, 0] },
-      { name: '남쪽 몰기', w: [0, 1, 3, 1] }, { name: '서쪽 몰기', w: [1, 0, 1, 3] }, { name: '동서 협공', w: [0.3, 2, 0.3, 2] }, { name: '남북 협공', w: [2, 0.3, 2, 0.3] }
-    ];
-    function defensePlanWave() {
-      const dm = sim.defense, T = DEFENSE_TUNE[dm.diff], k = defenseWaveK(dm.wave);
-      let si;
-      do { si = dm.wave === 1 ? 0 : Math.floor(Math.random() * DEFENSE_SPLITS.length); } while (si === dm.lastSplit && dm.wave > 1);
-      dm.lastSplit = si;
-      const split = DEFENSE_SPLITS[si];
-      const boss = defenseIsBossWave(dm.wave);
-      let n = Math.round(defLerp(T.count, k));
-      if (boss) n = Math.ceil(n * 0.6);
-      const sum = split.w.reduce((a, b) => a + b, 0);
-      const lanes = split.w.map(w => Math.floor(n * w / sum));
-      for (let i = 0, left = n - lanes.reduce((a, b) => a + b, 0); left > 0; i = (i + 1) % 4) if (split.w[i] > 0) { lanes[i]++; left--; }
-      const elites = dm.wave >= T.eliteFrom ? (dm.wave >= 10 ? T.elites[1] : T.elites[0]) + (dm.wave >= 15 ? 1 : 0) : 0;
-      const open = [0, 1, 2, 3].filter(i => split.w[i] > 0);
-      const bossLane = boss ? open[Math.floor(Math.random() * open.length)] : null;
-      dm.plan = { split: split.name, lanes, elites, boss, bossLane };
-      const probe = buildDefenseMonster('warrior', 0); // 이번 웨이브 기준 몬스터 (충격파 피해의 기준)
-      dm.ref = { hp: probe.maxHp, atk: probe.atk };
+    // ----- 라운드 -----
+    const defenseIsBossRound = r => r % 10 === 0;
+    function defenseMobHp(r) {
+      const dm = sim.defense, T = DEFENSE_TUNE[dm.diff];
+      return dm.hp1 * T.hp0 * Math.pow(1 + T.grow, Math.max(0, r - 1));
     }
-    // 이번 웨이브 몬스터 한 마리 (종족 편성표 · 층 배율 · 전투력 비율)
-    const DEFENSE_BOSS_OF_RACE = { '고블린족': 'goblin_king' };
-    function buildDefenseMonster(job, candIdx, opts = {}) {
-      const dm = sim.defense, T = DEFENSE_TUNE[dm.diff], k = defenseWaveK(dm.wave);
-      const squad = TOWER_RACE_SQUADS[dm.race];
-      const race = TOWER_RACES.find(r => r.name === dm.race) || {};
-      const floor = Math.max(1, Math.min(TOWER_MAX_FLOOR, dm.baseFloor + Math.round(dm.wave * DEFENSE_TUNE.floorPerWave)));
-      let monster, name, skills;
-      if (opts.boss) { monster = DEFENSE_BOSS_OF_RACE[dm.race] || 'goblin_king'; name = (MONSTER_DEFS[monster] || {}).name || '보스'; skills = squad.boss.slice(0, dm.wave >= 15 ? 5 : 4); }
+    // 포탑 한 방의 기준 체력 (그 라운드 졸개 체력보다 조금씩 뒤처짐)
+    const defenseTowerRef = r => defenseMobHp(r) / (1 + DEFENSE_TUNE[sim.defense.diff].ramp * Math.max(0, r - 1));
+    function defenseRoundPlan(r) {
+      const dm = sim.defense, T = DEFENSE_TUNE[dm.diff], k = (r - 1) / Math.max(1, DEFENSE_TUNE.rounds - 1);
+      const boss = defenseIsBossRound(r);
+      let n = Math.round(T.count[0] + (T.count[1] - T.count[0]) * k);
+      if (boss) n = Math.ceil(n * 0.6);
+      const elites = r >= 6 && !boss ? 1 + Math.floor(r / 30) + (dm.diff === 'hard' && r >= 15 ? 1 : 0) : 0;
+      return { n, elites, boss, swarm: !boss && r >= 4 && r % 5 === 4 }; // 5라운드마다 한 번(4·9·14…) 빠르게 몰려오는 떼
+    }
+    function buildDefenseMonster(r, role) {
+      const dm = sim.defense, T = DEFENSE_TUNE[dm.diff];
+      const fo = TOWER_FLOORS[Math.min(TOWER_MAX_FLOOR, Math.max(1, r)) - 1];
+      let u;
+      if (role === 'boss') u = buildRushMonster(fo, 0, 1, true);
       else {
-        const cands = squad[job] || squad.warrior;
-        [monster, name, skills] = cands[Math.min(candIdx, cands.length - 1)];
-        skills = skills.slice(0, opts.elite ? 3 : 2);
+        const picks = fo.comp.map((_, i) => i).filter(i => !(fo.isRaceBoss && i === 0));
+        u = buildRushMonster(fo, picks[Math.floor(Math.random() * picks.length)] || 0, 1, false);
       }
-      const floorObj = { floor, comp: [job], skills: [skills[0]], unitSkills: [skills], monsters: [monster], unitNames: [name] };
-      const raceFix = (race.floorScale || 1) / (towerRaceFloorScale(floor) || 1);
-      // 보스: [첫 보스, 가운데, 마지막 보스] 배율을 웨이브에 따라 이어 붙임
-      const bossK = Math.max(0, Math.min(1, (dm.wave - 5) / Math.max(1, DEFENSE_TUNE.waves - 5)));
-      const bossMul = bossK < 0.5 ? defLerp([T.boss[0], T.boss[1]], bossK * 2) : defLerp([T.boss[1], T.boss[2]], (bossK - 0.5) * 2);
-      const statMul = (opts.boss ? bossMul : defLerp(T.stat, k)) * raceFix * (dm.powerRatio || 1);
-      const u = buildRushMonster(floorObj, 0, statMul, Boolean(opts.boss));
-      u.defRole = opts.role || (opts.boss ? 'boss' : opts.elite ? 'elite' : 'mob');
-      if (opts.elite) {
-        u.maxHp = u.hp = Math.round(u.maxHp * 2.5);
-        u.atk = Math.round(u.atk * 1.2);
-        u.name = `💎 ${u.name}`;
-        setUnitBodySize(u, (u.sizeScale || 1) * ELITE_SIZE_MULT);
-      }
-      if (opts.role === 'bomb') { u.name = `💣 자폭 ${u.name}`; u.maxHp = u.hp = Math.max(1, Math.round(u.maxHp * 0.5)); u.baseMoveSpeed *= 1.45; }
-      if (opts.boss) {
-        u.name = `${dm.wave >= DEFENSE_TUNE.waves ? '🔥' : '👑'} ${u.name}`;
+      const bossK = Math.max(0, Math.min(1, (r - 10) / 90));
+      const mul = role === 'boss' ? (T.bossHp[0] + (T.bossHp[1] - T.bossHp[0]) * bossK) * (r >= DEFENSE_TUNE.rounds ? 1.3 : 1) : role === 'elite' ? T.eliteHp : 1;
+      u.maxHp = u.hp = Math.max(1, Math.round(defenseMobHp(r) * mul));
+      u.def = 0; u.shield = 0;
+      u.defRole = role;
+      u.defRound = r;
+      const base = Math.max(1.7, Math.min(2.8, u.baseMoveSpeed || 2));
+      u.tdSpeed = base * 1.15 * DEFENSE_TUNE.walkMul * (role === 'boss' ? 0.75 : role === 'elite' ? 0.85 : 1);
+      u.tdOff = role === 'boss' ? 0 : (Math.random() * 2 - 1) * DEFENSE_TUNE.laneJitter;
+      u.tdDist = 0;
+      if (role === 'elite') { u.name = `💎 ${u.name}`; setUnitBodySize(u, (u.sizeScale || 1) * ELITE_SIZE_MULT); }
+      if (role === 'boss') {
+        u.name = `${r >= DEFENSE_TUNE.rounds ? '🔥' : '👑'} ${u.name}`;
         u.rushBoss = true; // 화면 위 보스 체력 막대 재사용
-        if (dm.wave >= 10) setUnitBodySize(u, (u.sizeScale || 1) * 1.15);
+        setUnitBodySize(u, (u.sizeScale || 1) * 1.15);
       }
       return u;
     }
-    function defensePickJob() {
-      const r = Math.random();
-      return r < 0.45 ? ['warrior', Math.random() < 0.7 ? 0 : 1] : r < 0.75 ? ['archer', Math.random() < 0.7 ? 0 : 1] : r < 0.9 ? ['mage', 0] : ['healer', 0];
-    }
-    // 웨이브 시작: 이번 웨이브 몬스터를 모두 미리 만들어 동굴 안에 숨겨 둠(rushPending) → 정해진 시각에 하나씩 나옴
-    // (5인 방에서 유닛 목록을 웨이브마다 한 번만 보내게)
-    function defenseBeginFight() {
-      const dm = sim.defense, tps = BATTLE_TICKS_PER_SEC, plan = dm.plan;
-      dm.phase = 'fight';
-      dm.phaseAt = sim.tickCount;
-      dm.waveHurt = 0;
-      dm.drag = null;
-      sim.units = sim.units.filter(u => u.team === 'blue' ? (u.alive || !u.isClone) : u.alive);
+    // 라운드 시작: 이번 라운드 몬스터를 모두 미리 만들어 동굴 안에 숨겨 둠(rushPending) → 정해진 시각에 하나씩 나옴
+    // (5인 방·관전 화면에 유닛 목록을 라운드마다 한 번만 보내게)
+    function defenseStartRound() {
+      const dm = sim.defense, tps = BATTLE_TICKS_PER_SEC, now = sim.tickCount;
+      const r = ++dm.round;
+      dm.phase = 'run';
+      const prevRace = dm.race;
+      dm.race = defenseRaceOf(r);
+      // 쓰러지거나 빠져나간 몬스터는 치움
+      sim.units = sim.units.filter(u => u.team !== 'red' || u.alive || (u.rushPending && !u._tdGone));
+      const plan = defenseRoundPlan(r);
+      const gap = Math.round(DEFENSE_TUNE.spawnGapSec * tps * (plan.swarm ? 0.4 : 1));
       const q = [];
-      const gap = Math.round(DEFENSE_TUNE.spawnGapSec * tps);
-      plan.lanes.forEach((n, li) => {
-        for (let i = 0; i < n; i++) { const [job, cand] = defensePickJob(); q.push({ lane: li, job, cand, at: sim.tickCount + i * gap + li * 7 }); }
-      });
-      const open = [0, 1, 2, 3].filter(l => plan.lanes[l] > 0);
-      if (dm.wave >= 8) for (let i = 0; i < 2 + (dm.wave >= 12 ? 1 : 0); i++) q.push({ lane: open[i % open.length], job: 'warrior', cand: 0, role: 'bomb', at: sim.tickCount + (4 + i * 3) * tps });
-      for (let i = 0; i < plan.elites; i++) { const li = [...open].sort((a, b) => plan.lanes[b] - plan.lanes[a])[i % open.length]; q.push({ lane: li, job: Math.random() < 0.5 ? 'warrior' : 'archer', cand: 0, elite: true, at: sim.tickCount + (6 + i * 5) * tps }); }
-      if (plan.boss) q.push({ lane: plan.bossLane, job: 'warrior', cand: 0, boss: true, at: sim.tickCount + 8 * tps });
+      for (let i = 0; i < plan.n; i++) q.push({ role: 'mob', at: now + i * gap });
+      for (let i = 0; i < plan.elites; i++) q.push({ role: 'elite', at: now + Math.round(plan.n * (0.35 + 0.3 * i)) * gap + tps });
+      if (plan.boss) q.push({ role: 'boss', at: now + (plan.n + 2) * gap });
       q.sort((a, b) => a.at - b.at);
       q.forEach((e, i) => {
-        const u = buildDefenseMonster(e.job, e.cand, { elite: e.elite, boss: e.boss, role: e.role });
-        const lane = DEFENSE_LANES[e.lane];
-        u.id = `def${dm.wave}_${i}_red`;
-        u.defLane = e.lane;
-        u.defWp = 1;
+        const u = buildDefenseMonster(r, e.role);
+        u.id = `def${r}_${i}_red`;
         u.defAt = e.at;
-        const [sx, sy] = lane.pts[0], [nx, ny] = lane.pts[1];
-        const back = Math.atan2(sy - ny, sx - nx);
-        u.x = sx + Math.cos(back) * 30 + (Math.random() - 0.5) * 50 * Math.abs(Math.sin(back));
-        u.y = sy + Math.sin(back) * 30 + (Math.random() - 0.5) * 50 * Math.abs(Math.cos(back));
+        const p = defensePathAt(0);
+        u.x = p.x - 20; u.y = p.y + u.tdOff;
         u._ix = u.prevX = u.x; u._iy = u.prevY = u.y;
-        u.facingDir = nx < sx ? -1 : 1; u.facingAngle = Math.atan2(ny - sy, nx - sx);
+        u.facingDir = 1; u.facingAngle = 0;
         u.alive = false;
         u.rushPending = true;
         sim.units.push(u);
       });
-      dm.total = q.length;
-      dm.left = q.length;
+      dm.left[r] = q.length;
+      dm.spawnEnd = q.length ? q[q.length - 1].at : now;
+      dm.nextAt = r < DEFENSE_TUNE.rounds ? dm.spawnEnd + DEFENSE_TUNE.nextGapSec * tps : Infinity;
+      if (dm.race !== prevRace || r === 1) addBattleLog(`🗺️ ${r}라운드부터 [${dm.race}]이(가) 몰려와요! ${(TOWER_RACES.find(x => x.name === dm.race) || {}).desc || ''}`);
       addBattleLog(plan.boss
-        ? `👑 ${dm.wave}웨이브: 보스 웨이브! ${DEFENSE_LANES[plan.bossLane].name}에서 보스가 와요! (몬스터 ${q.length}마리)`
-        : `⚔️ ${dm.wave}웨이브 시작! [${plan.split}] ${DEFENSE_LANES.map((l, i) => `${l.name} ${plan.lanes[i]}`).join(' · ')}${plan.elites ? ` · 💎 정예 ${plan.elites}` : ''}`);
+        ? `👑 ${r}라운드: ${dm.race} 보스 라운드! 보스가 성문을 지나가면 게이지가 ${DEFENSE_TUNE.leak.boss} 깎여요!`
+        : `⚔️ ${r}라운드 시작! 몬스터 ${q.length}마리${plan.elites ? ` (💎 정예 ${plan.elites})` : ''}${plan.swarm ? ' · 🐾 떼로 몰려와요!' : ''}`);
       renderDefensePanel(true);
     }
     function defenseRelease(u) {
       u.alive = true;
       u.rushPending = false;
       sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 50, color: u.defRole === 'boss' ? '#ef4444' : '#64748b', life: 20, maxLife: 20 });
-      if (u.defRole === 'boss') { sim.shake = { power: 12, life: 26, maxLife: 26 }; addBattleLog(`👑 ${u.name} 등장! ${DEFENSE_LANES[u.defLane].name}에서 와요!`); }
+      if (u.defRole === 'boss') { sim.shake = { power: 12, life: 26, maxLife: 26 }; addBattleLog(`👑 ${u.name} 등장!`); }
     }
+    // 라운드 클리어: 그 라운드 몬스터가 모두 끝났는지(쓰러짐·성문 통과) 직접 셈
+    // (저주 등으로 잠시 편이 바뀐 채 쓰러지거나 다른 효과로 치워진 몬스터가 있어도 라운드가 멈추지 않게)
+    function defenseCheckRounds() {
+      const dm = sim.defense, open = Object.keys(dm.left);
+      if (!open.length) return;
+      const busy = {};
+      sim.units.forEach(u => { if (u.defRound != null && !u._tdExtra && (u.alive || (u.rushPending && !u._tdGone))) busy[u.defRound] = (busy[u.defRound] || 0) + 1; });
+      open.forEach(k => { dm.left[k] = busy[k] || 0; if (!dm.left[k]) defenseRoundCleared(Number(k)); });
+    }
+    function defenseRoundCleared(r) {
+      const dm = sim.defense;
+      delete dm.left[r];
+      dm.cleared++;
+      const G = DEFENSE_TUNE.gold, bonus = G.round + Math.floor(r * G.roundStep);
+      defenseGain(bonus);
+      dm.log.push({ r, lives: dm.lives });
+      addBattleLog(`✅ ${r}라운드 막음! 🔷 +${bonus} · 💎 게이지 ${Math.max(0, dm.lives)}/${dm.maxLives}`);
+      renderDefensePanel(true);
+    }
+    function defenseGain(n) {
+      const dm = sim.defense;
+      dm.gold += n;
+      dm.goldEarned += n;
+    }
+    function defenseLeak(u) {
+      const dm = sim.defense, L = DEFENSE_TUNE.leak, cost = u._tdExtra ? 1 : (L[u.defRole] || L.mob);
+      dm.lives -= cost;
+      dm.leaked++;
+      dm.leakFlash = 24;
+      u.hp = 0; u.alive = false; u.rushPending = true; u._tdGone = true; u._defPaid = true;
+      sim.floatTexts.push({ x: DEFENSE_GATE.x, y: DEFENSE_GATE.y - 150, text: `💎-${cost}`, color: '#f43f5e', life: 40 });
+      if (cost >= 5) sim.shake = { power: 6 + Math.min(10, cost / 3), life: 16, maxLife: 16 };
+    }
+    // 이번 라운드 몬스터가 다 나왔고 전장(살아 있거나 나올 몬스터)이 비었는지
+    const defenseFieldEmpty = () => !sim.units.some(u => u.team === 'red' && (u.alive || (u.rushPending && !u._tdGone)) && !u.isClone);
 
     // ----- 매 틱 -----
     function stepDefense(blueAlive, redAlive) {
       const dm = sim.defense;
       if (!dm) return false;
+      const tps = BATTLE_TICKS_PER_SEC, now = sim.tickCount;
+      dm.fx = dm.fx.filter(f => --f.life > 0);
+      if (dm.leakFlash > 0) dm.leakFlash--;
+      if (!defenseIsHostSide()) { dm.shots = []; return false; } // 관전·5인 친구 화면: 방장 화면이 보내 준 대로
+      defenseStepShots();
       if (!dm.started) return true; // 전투 방식을 고르기 전
-      const tps = BATTLE_TICKS_PER_SEC, cr = dm.crystal;
-      if (cr.hitFlash > 0) cr.hitFlash--;
-      dm.fx = dm.fx.filter(f => (f.delay > 0 ? (f.delay--, true) : --f.life > 0));
       if (dm.phase === 'done') {
         sim.units.forEach(u => { if (u.alive) u.isMoving = false; });
-        if (sim.tickCount - dm.doneAt >= 2.5 * tps) finishSimulation(dm.won);
+        if (now - dm.doneAt >= 2.5 * tps) finishSimulation(dm.won);
         return true;
       }
-      if (cr.hp <= 0) {
-        cr.hp = 0;
-        dm.phase = 'done'; dm.won = false; dm.doneAt = sim.tickCount;
+      if (dm.lives <= 0) {
+        dm.lives = 0;
+        dm.phase = 'done'; dm.won = false; dm.doneAt = now;
         sim.shake = { power: 18, life: 40, maxLife: 40 };
-        sim.effects.push({ type: 'aoe_ring', x: cr.x, y: cr.y, r: 260, color: '#38bdf8', life: 50, maxLife: 50 });
-        addBattleLog(`💔 수정이 깨졌어요... ${dm.wave}웨이브에서 방어 실패.`);
+        dm.fx.push({ k: 'burst', x: DEFENSE_GATE.x, y: DEFENSE_GATE.y - 80, r: 260, ramp: 'magic_burst', life: 40, max: 40, seed: now });
+        addBattleLog(`💔 방어 게이지가 바닥났어요... ${dm.round}라운드에서 방어 실패. (막은 라운드 ${dm.cleared})`);
+        renderDefensePanel(true);
         return true;
       }
-      // 쓰러진 용병: 잠시 뒤 수정 옆에서 부활
-      const respawnTicks = (dm.plan && dm.plan.boss && dm.phase === 'fight' ? DEFENSE_TUNE.bossRespawnSec : DEFENSE_TUNE.respawnSec) * tps;
+      // 쓰러진 용병: 잠시 뒤 지킬 자리에서 부활
       sim.units.forEach(u => {
         if (u.team !== 'blue' || u.isClone || u.spiritElem || u.alive) { if (u.team === 'blue') u._defDeadAt = null; return; }
-        if (u._defDeadAt == null) u._defDeadAt = sim.tickCount;
-        if (sim.tickCount - u._defDeadAt >= respawnTicks) defenseRevive(u, 0.5);
+        if (u._defDeadAt == null) u._defDeadAt = now;
+        if (now - u._defDeadAt >= DEFENSE_TUNE.respawnSec * tps) defenseRevive(u);
       });
-      // 몬스터 처치 → 포인트
+      // 몬스터 등장
+      sim.units.forEach(u => { if (u.rushPending && !u._tdGone && u.team === 'red' && u.defAt != null && now >= u.defAt) defenseRelease(u); });
+      // 처치 → 골드
       sim.units.forEach(u => {
-        if (u.team !== 'red' || u.alive || u.rushPending || u._defPaid || u.isClone || !u.defRole) return;
+        if (u.team !== 'red' || u.alive || u.rushPending || u._defPaid || u.isClone) return;
         u._defPaid = true;
-        const P = DEFENSE_TUNE.pts, gain = u.defRole === 'boss' ? P.boss : u.defRole === 'elite' ? P.elite : P.mob;
+        if (!u.defRole) return;
+        const G = DEFENSE_TUNE.gold, r = u.defRound || dm.round;
+        const gain = u._tdExtra ? 1 : u.defRole === 'boss' ? G.boss + r * 3 : u.defRole === 'elite' ? G.elite + Math.floor(r / 5) : G.mob + Math.floor(r / 25);
         defenseGain(gain);
-        if (u.defRole === 'boss') dm.bossesKilled++;
-        sim.floatTexts.push({ x: u.x, y: u.y - 50, text: `🔷+${gain}`, color: '#67e8f9', life: 40 });
+        dm.kills++;
+        if (u.defRole === 'boss' && !u._tdExtra) { dm.bossesKilled++; addBattleLog(`🏆 ${u.name} 처치! 🔷 +${gain}`); }
+        sim.floatTexts.push({ x: u.x, y: u.y - 50, text: `🔷+${gain}`, color: '#67e8f9', life: 34 });
       });
-      if (!cr.freeShock && cr.hp < cr.maxHp * 0.3) { cr.freeShock = true; cr.shock++; addBattleLog('⚡ 수정이 위험해요! 수정 충격파가 1번 더 채워졌어요.'); }
-      if (dm.phase === 'prep') {
-        if (dm.autoRecruit) defenseAutoSpend();
-        if (sim.tickCount - dm.phaseAt >= dm.prepTicks) defenseBeginFight();
-        return false;
+      defenseCheckRounds();
+      defenseTowersStep();
+      if (dm.auto && now % 20 === 0) defenseAutoSpend();
+      // 다음 라운드: 이번 라운드가 다 나오고 전장이 비면 곧바로(4초), 아니면 14초 뒤
+      if (dm.round > 0 && dm.round < DEFENSE_TUNE.rounds && now >= dm.spawnEnd && defenseFieldEmpty()) dm.nextAt = Math.min(dm.nextAt, now + DEFENSE_TUNE.clearGapSec * tps);
+      if (dm.round < DEFENSE_TUNE.rounds && now >= dm.nextAt) defenseStartRound();
+      if (dm.round >= DEFENSE_TUNE.rounds && !Object.keys(dm.left).length && defenseFieldEmpty()) {
+        dm.phase = 'done'; dm.won = true; dm.doneAt = now;
+        sim.projectiles = [];
+        addBattleLog(`🏆 ${DEFENSE_TUNE.rounds}라운드를 모두 막았어요! ${'★'.repeat(defenseStars(dm))}`);
+        playCombatSfx('heal');
+        renderDefensePanel(true);
       }
-      sim.units.forEach(u => { if (u.rushPending && u.team === 'red' && sim.tickCount >= u.defAt) defenseRelease(u); });
-      dm.left = sim.units.filter(u => u.team === 'red' && (u.alive || u.rushPending) && !u.isClone && u.defRole).length;
-      if (!dm.left && !redAlive.some(u => !u.isClone)) defenseClearWave();
       return false;
     }
-    function defenseGain(n) {
-      const dm = sim.defense;
-      dm.pts += n;
-      dm.ptsEarned += n;
-    }
-    function defenseRevive(u, hpPct) {
-      const dm = sim.defense, cr = dm.crystal;
+    function defenseRevive(u) {
+      const dm = sim.defense, g = dm.guard[u.id] || { x: DEFENSE_MERC_SPOTS[0][0], y: DEFENSE_MERC_SPOTS[0][1] };
       u.alive = true;
-      u.hp = Math.max(1, Math.round(u.maxHp * hpPct));
+      u.hp = u.maxHp;
       u.shield = 0;
       u.mana = Math.round((u.maxMana || 0) * 0.5);
       Object.keys(u.statuses).forEach(k => { u.statuses[k] = 0; });
-      u.statuses.immune = 120;
+      u.statuses.immune = 80;
       u.kbVx = 0; u.kbVy = 0; u.rush = null;
       u._deadSince = null; u._defDeadAt = null;
-      const a = Math.random() * Math.PI * 2;
-      u.x = cr.x + Math.cos(a) * 120; u.y = cr.y + Math.sin(a) * 90;
-      u._ix = u.prevX = u.x; u._iy = u.prevY = u.y;
+      u.x = g.x; u.y = g.y; u._ix = u.prevX = u.x; u._iy = u.prevY = u.y;
       sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 70, color: '#34d399', life: 40, maxLife: 40 });
       sim.floatTexts.push({ x: u.x, y: u.y - 50, text: '✨부활!', color: '#34d399', life: 50 });
     }
-    function defenseClearWave() {
-      const dm = sim.defense, P = DEFENSE_TUNE.pts, cr = dm.crystal;
-      const perfect = dm.waveHurt <= 0;
-      dm.cleared = dm.wave;
-      defenseGain(P.wave + (perfect ? P.perfect : 0));
-      if (perfect) dm.perfect++;
-      dm.log.push({ wave: dm.wave, hurt: Math.round(dm.waveHurt) });
-      sim.units = sim.units.filter(u => u.team === 'blue' || u.alive); // 쓰러진 몬스터 치움
-      // 쓰러진 용병은 바로 부활, 살아 있으면 30% 회복 · 모두 지킬 곳으로
-      sim.units.forEach(u => {
-        if (u.team !== 'blue' || u.isClone) return;
-        if (!u.alive) defenseRevive(u, 0.5);
-        else u.hp = Math.min(u.maxHp, u.hp + Math.round(u.maxHp * 0.3));
-      });
-      addBattleLog(`✅ ${dm.wave}웨이브 막음! 🔷 +${P.wave}${perfect ? ` (+${P.perfect} 완벽 방어!)` : ''} · 수정 ${Math.ceil(cr.hp)}/${cr.maxHp}`);
-      if (dm.wave >= DEFENSE_TUNE.waves) {
-        dm.phase = 'done'; dm.won = true; dm.doneAt = sim.tickCount;
-        sim.projectiles = [];
-        addBattleLog(`🏆 ${DEFENSE_TUNE.waves}웨이브를 모두 막았어요! 수정을 지켜냈어요! ${'★'.repeat(defenseStars(dm))}`);
-        playCombatSfx('heal');
-        return;
-      }
-      dm.wave++;
-      dm.phase = 'prep';
-      dm.phaseAt = sim.tickCount;
-      dm.prepTicks = DEFENSE_TUNE.prepSec * BATTLE_TICKS_PER_SEC;
-      defensePlanWave();
-      addBattleLog(`🛠️ 준비 시간 ${DEFENSE_TUNE.prepSec}초! 🎲 용병을 모집·강화하고, 전장의 용병을 끌어다 지킬 곳에 놓으세요. 다음 ${dm.wave}웨이브: [${dm.plan.split}]${dm.plan.boss ? ` · 👑 보스는 ${DEFENSE_LANES[dm.plan.bossLane].name}` : ''}`);
+    const defenseStars = dm => (dm.lives >= dm.maxLives * 0.7 ? 3 : dm.lives >= dm.maxLives * 0.3 ? 2 : 1);
+    // ⏩ 다음 라운드 바로 부르기: 남은 초 × 2 골드
+    function defenseCallNext() {
+      const dm = sim.defense;
+      if (!dm || !dm.started || dm.phase === 'done' || !defenseCanChoose() || dm.round >= DEFENSE_TUNE.rounds) return;
+      const tps = BATTLE_TICKS_PER_SEC, now = sim.tickCount;
+      if (dm.round > 0 && now < dm.spawnEnd) { showNotice('⏳ 이번 라운드 몬스터가 다 나온 뒤에 부를 수 있어요.'); return; }
+      const secs = Math.max(0, Math.ceil((dm.nextAt - now) / tps));
+      const bonus = dm.round > 0 ? secs * DEFENSE_TUNE.gold.early : 0;
+      if (bonus) { defenseGain(bonus); sim.floatTexts.push({ x: DEFENSE_PATH[0][0] + 120, y: DEFENSE_PATH[0][1] - 120, text: `⏩ 🔷+${bonus}`, color: '#67e8f9', life: 40 }); }
+      dm.nextAt = now;
+    }
+    function defenseCycleSpeed() {
+      const dm = sim.defense;
+      if (!dm || !defenseCanChoose() || dm.party) return;
+      dm.speed = dm.speed >= 3 ? 1 : dm.speed + 1;
+      sim.speed = dm.speed;
       renderDefensePanel(true);
     }
-    const defenseStars = dm => (dm.crystal.hp >= dm.crystal.maxHp * 0.7 ? 3 : dm.crystal.hp >= dm.crystal.maxHp * 0.3 ? 2 : 1);
 
-    // ----- 유닛 AI: 몬스터는 길 따라 수정으로, 용병은 정해 준 자리 지키기 -----
+    // ----- 유닛 AI: 몬스터는 길만 따라 걸음(공격 안 함) · 용병은 정해 준 자리 둘레를 지킴 -----
     // 반환: true = 이번 틱 행동 끝 · 배열 = 이 적들만 보고 평소 AI · null = 평소 AI 그대로
     function defenseAiStep(u, allies, enemies) {
       const dm = sim.defense;
       if (!dm) return null;
-      if (dm.phase === 'done') { u.isMoving = false; return true; }
-      return u.team === 'red' ? defenseMonsterStep(u, enemies) : defenseGuardStep(u, allies, enemies);
+      if (dm.phase === 'done' || !dm.started) { u.isMoving = false; return true; }
+      return u.team === 'red' ? defenseMonsterStep(u) : defenseGuardStep(u, allies, enemies);
     }
-    function defenseMonsterStep(u, enemies) {
-      const dm = sim.defense, cr = dm.crystal, tps = BATTLE_TICKS_PER_SEC;
-      if (u.defLane == null) return null; // 소환된 몬스터 등은 평소대로
-      const dCr = Math.hypot(u.x - cr.x, u.y - cr.y);
-      // 수정에 닿으면 죽을 때까지 수정을 때림 (자폭병은 터짐)
-      if (dCr <= DEFENSE_TUNE.crystalR) {
-        if (u.defRole === 'bomb') { defenseBomb(u); return true; }
-        u.isMoving = false;
-        u.facingDir = cr.x >= u.x ? 1 : -1;
-        if (sim.tickCount >= (u._defHitAt || 0)) {
-          u._defHitAt = sim.tickCount + Math.round(DEFENSE_TUNE.crystalHitEvery * tps);
-          const H = DEFENSE_TUNE.crystalHit, dmg = H[u.defRole] || H.mob;
-          cr.hp -= dmg; dm.waveHurt += dmg; cr.hitFlash = 8;
-          u.attackAnim = 14;
-          sim.floatTexts.push({ x: cr.x + (Math.random() - 0.5) * 60, y: cr.y - 150, text: `💎-${dmg}`, color: '#f43f5e', life: 34 });
-        }
-        return true;
+    function defenseMonsterStep(u) {
+      if (u.tdDist == null) { // 소환·분열 등으로 길 밖에서 생긴 몬스터: 가까운 길 자리에서 걷기 시작 (보상·라운드 셈 없음)
+        u.tdDist = defensePathProject(u.x, u.y); u.tdOff = 0; u._tdExtra = true; u.defRole = u.defRole || 'mob';
+        u.tdSpeed = Math.max(1.7, Math.min(2.8, u.baseMoveSpeed || 2)) * 1.15 * DEFENSE_TUNE.walkMul;
       }
-      // 가까운 용병만 상대 · 8초 넘게 서로 피해가 없으면(원거리끼리 사거리 밖에서 맴돎) 3초 동안 무시하고 길로
-      const aggro = u.defRole === 'bomb' ? 70 : 230;
-      const near = sim.tickCount < (u._defIgnoreUntil || 0) ? [] : enemies.filter(e => e.alive && Math.hypot(e.x - u.x, e.y - u.y) < aggro);
-      if (near.length) {
-        const mark = Math.round((u.damageDealt || 0) + (u.maxHp - u.hp));
-        if (u._defFightMark !== mark) { u._defFightMark = mark; u._defFightAt = sim.tickCount; }
-        else if (sim.tickCount - (u._defFightAt || 0) > 8 * tps) { u._defIgnoreUntil = sim.tickCount + 3 * tps; u._defFightAt = sim.tickCount; }
-        return near;
-      }
-      const pts = DEFENSE_LANES[u.defLane].pts;
-      let wp = Math.max(1, u.defWp || 1);
-      while (wp < pts.length && Math.hypot(pts[wp][0] - u.x, pts[wp][1] - u.y) < 40) wp++;
-      u.defWp = wp;
-      const tx = wp < pts.length ? pts[wp][0] : cr.x, ty = wp < pts.length ? pts[wp][1] : cr.y;
-      dungeonWalkTo(u, tx, ty);
+      const st = u.statuses;
+      // 밀쳐내기는 길을 거꾸로 밀려난 만큼으로 바꿈
+      const kb = Math.hypot(u.kbVx || 0, u.kbVy || 0);
+      if (kb > 0.5) { u.tdDist = Math.max(0, u.tdDist - kb * 0.6); u.kbVx = 0; u.kbVy = 0; }
+      let k = 1;
+      if (st.slow > 0) k -= 0.45;
+      if (st.shock > 0) k -= 0.25;
+      if (st.poison > 0) k -= 0.1;
+      if (st.blessed > 0) k += 0.1;
+      u.tdDist += u.tdSpeed * Math.max(0.3, k) * (st.swift > 0 ? 1.4 : 1);
+      if (u.tdDist >= DEFENSE_PATH_LEN) { defenseLeak(u); return true; }
+      const p = defensePathAt(u.tdDist);
+      u.x = p.x + p.nx * u.tdOff; u.y = p.y + p.ny * u.tdOff;
+      u.isMoving = true;
+      u.walkPhase = (u.walkPhase || 0) + 0.065 * Math.max(0.3, k);
+      u.facingAngle = Math.atan2(p.dy, p.dx);
+      if (Math.abs(p.dx) > 0.3) u.facingDir = p.dx > 0 ? 1 : -1;
       return true;
     }
-    function defenseBomb(u) {
-      const dm = sim.defense, cr = dm.crystal, d = DEFENSE_TUNE.crystalHit.bomb;
-      cr.hp -= d; dm.waveHurt += d; cr.hitFlash = 12;
-      sim.floatTexts.push({ x: cr.x, y: cr.y - 160, text: `💣💎-${d}`, color: '#f43f5e', life: 40 });
-      dm.fx.push({ k: 'burst', x: u.x, y: u.y - 20, r: 110, ramp: 'fire_explosion', life: 22, max: 22, seed: sim.tickCount });
-      sim.shake = { power: 8, life: 16, maxLife: 16 };
-      u.hp = 0; u.alive = false; u._defPaid = true; // 터진 자폭병은 포인트 없음
-    }
-    // 용병: 정해 준 자리 둘레 400px를 지킴 · 비었고 수정이 위험하면 지원 · 아니면 자리로 돌아감
+    // 용병: 지킬 자리에서 (사거리 + 120) 안의 적만 상대 · 너무 멀어지면 자리로 돌아감
     function defenseGuardStep(u, allies, enemies) {
-      const dm = sim.defense, cr = dm.crystal;
+      const dm = sim.defense;
       if (u.isClone || u.spiritElem) return null;
-      if (dm.drag && dm.drag.id === u.id) { u.isMoving = false; return true; } // 끌고 있는 용병은 가만히
-      const post = dm.guard[u.id] || { x: cr.x + 150, y: cr.y };
-      const zone = 400;
-      const local = enemies.filter(e => e.alive && Math.hypot(e.x - post.x, e.y - post.y) < zone);
+      if (dm.drag && dm.drag.id === u.id) { u.isMoving = false; return true; }
+      const post = dm.guard[u.id];
+      if (!post) return null;
+      const reach = Math.max(80, u.range || 80) + 120;
+      const foes = enemies.filter(e => e.alive && !e.rushPending && Math.hypot(e.x - post.x, e.y - post.y) < reach);
       const fromPost = Math.hypot(u.x - post.x, u.y - post.y);
-      if (local.length) {
-        if (fromPost > zone + 160) { dungeonWalkTo(u, post.x, post.y); return true; }
-        return local;
+      if (foes.length) {
+        if (fromPost > reach + 40) { dungeonWalkTo(u, post.x, post.y); return true; }
+        return foes;
       }
-      const nearCrystal = enemies.filter(e => e.alive && Math.hypot(e.x - cr.x, e.y - cr.y) < 480);
-      if (nearCrystal.length) return nearCrystal;
-      if (u.job === 'healer' && allies.some(a => a.alive && a.hp < a.maxHp * 0.7 && Math.hypot(a.x - u.x, a.y - u.y) < 500)) return enemies.length ? enemies : null;
-      if (fromPost > 30) dungeonWalkTo(u, post.x, post.y);
-      else { u.isMoving = false; u.facingDir = post.x >= cr.x ? 1 : -1; }
+      if (fromPost > 24) dungeonWalkTo(u, post.x, post.y);
+      else u.isMoving = false;
       return true;
     }
 
-    // ----- 🎲 용병 모집 · ⬆️ 강화 -----
-    const defenseRecruitCost = dm => Math.min(DEFENSE_TUNE.recruit.costMax, DEFENSE_TUNE.recruit.cost + dm.recruits * DEFENSE_TUNE.recruit.costStep);
-    function defenseRecruitJobs() {
-      const jobs = ['warrior', 'mage', 'healer', 'archer', 'rogue', 'knight', 'lancer', 'sniper', 'frost', 'curse', 'bard', 'berserker', 'paladin'];
-      if (brawlerRecruitOpen()) jobs.push('brawler');
-      if (pyroRecruitOpen()) jobs.push('pyro');
-      if (voltRecruitOpen()) jobs.push('volt');
-      if (swordsmanRecruitOpen()) jobs.push('swordsman');
-      if (summonerRecruitOpen()) jobs.push('summoner');
-      return jobs;
-    }
-    function defenseRecruit() {
-      const dm = sim.defense;
-      if (!dm || dm.phase === 'done' || !defenseCanChoose()) return;
-      const R = DEFENSE_TUNE.recruit, cost = defenseRecruitCost(dm);
-      if (dm.recruits >= R.max) { showNotice(`🎲 모집 용병은 ${R.max}명까지예요.`); return; }
-      if (dm.pts < cost) { showNotice(`🔷 포인트가 모자라요 (${cost} 필요)`); return; }
-      dm.pts -= cost;
-      dm.recruits++;
-      const jobs = defenseRecruitJobs();
-      const job = jobs[Math.floor(Math.random() * jobs.length)];
-      const roll = Math.random();
-      const rarity = roll < R.secret ? 'SCR' : roll < R.secret + R.rare ? 'R' : 'N';
-      const m = createMercenary(job, rarity, dm.level, dm.recruits, true);
-      // ✨ 히든 스킬: 낮은 확률로 첫 칸에 (레벨 제한 없이)
-      const hid = hiddenSkillOf(job);
-      const hidden = Boolean(hid && getUnlockedSkillCount(m.level || 1) > 0 && Math.random() < R.hidden);
-      if (hidden) { m.hiddenSkillKey = hid.id; m.hiddenSkillSlot = 0; }
-      const u = createSimUnit(m, null, 'blue', 1.0);
-      u.id = `defr${dm.recruits}_${Math.random().toString(36).slice(2, 6)}_blue`;
-      u.defRecruit = true;
-      u.defRarity = rarity;
-      u.defHidden = hidden;
-      u.name = `${rarity === 'SCR' ? '🔥' : rarity === 'R' ? '🌟' : ''}${hidden ? '✨' : ''}${u.name}`;
-      sim.units.push(u);
-      const cr = DEFENSE_CRYSTAL, a = Math.random() * Math.PI * 2;
-      defensePlaceUnit(u, cr.x + Math.cos(a) * 200, cr.y + Math.sin(a) * 160);
-      dm.lastRecruit = { id: u.id, name: u.name, job, rarity, hidden, hiddenName: hidden ? hid.name : '', skin: u.skinVariant, at: sim.tickCount };
-      const color = rarity === 'SCR' ? '#ef4444' : rarity === 'R' ? '#f59e0b' : '#38bdf8';
-      sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 90, color, life: 36, maxLife: 36 });
-      dm.fx.push({ k: 'burst', x: u.x, y: u.y - 40, r: rarity === 'N' ? 60 : 110, ramp: rarity === 'SCR' ? 'fire_explosion' : rarity === 'R' ? 'arrow_hit' : 'ice_shatter', life: 24, max: 24, seed: sim.tickCount });
-      const job0 = JOB_DEFS[job] || {};
-      addBattleLog(`🎲 [${rarity === 'SCR' ? '🔥 시크릿 레어' : rarity === 'R' ? '🌟 레어' : '일반'}] ${job0.name || job} ${u.name} 합류!${hidden ? ` ✨ 히든 스킬 [${hid.name}]까지!` : ''}`);
-      if (rarity === 'SCR' || hidden) sim.shake = { power: 8, life: 18, maxLife: 18 };
+    // ----- 🏗️ 포탑 -----
+    const defenseTowerCost = k => DEFENSE_TOWERS[k].cost;
+    const defenseUpCost = t => Math.round(DEFENSE_TOWERS[t.k].cost * DEFENSE_TOWER_LV.up[t.lv - 1]);
+    const defenseTowerRange = t => DEFENSE_TOWERS[t.k].range * (1 + 0.06 * (t.lv - 1));
+    const defenseTowerCd = t => DEFENSE_TOWERS[t.k].cd * (1 - 0.05 * (t.lv - 1));
+    function defenseBuild(padId, k) {
+      const dm = sim.defense, pad = dm && dm.pads[padId], D = DEFENSE_TOWERS[k];
+      if (!pad || !D || pad.t || dm.phase === 'done' || !defenseCanChoose()) return;
+      if (dm.gold < D.cost) { showNotice(`🔷 골드가 모자라요 (${D.cost} 필요)`); return; }
+      dm.gold -= D.cost;
+      pad.t = { k, lv: 1, spent: D.cost, readyAt: sim.tickCount + 10, fireAt: -99, shots: 0 };
+      dm.built++;
+      dm.fx.push({ k: 'burst', x: pad.x, y: pad.y - 50, r: 80, ramp: D.ramp, life: 22, max: 22, seed: sim.tickCount + padId });
+      sim.effects.push({ type: 'aoe_ring', x: pad.x, y: pad.y, r: 70, color: D.color, life: 24, maxLife: 24 });
       renderDefensePanel(true);
     }
-    const defenseUpgradeCost = u => DEFENSE_TUNE.upgrade.cost[u.defUp || 0];
-    const defenseRepairCost = dm => Math.min(DEFENSE_TUNE.repair.costMax, DEFENSE_TUNE.repair.cost + (dm.repairs || 0) * DEFENSE_TUNE.repair.costStep);
-    function defenseRepairCrystal() {
-      const dm = sim.defense;
-      if (!dm || dm.phase === 'done' || !defenseCanChoose()) return;
-      const cr = dm.crystal, cost = defenseRepairCost(dm);
-      if (cr.hp >= cr.maxHp) { showNotice('💎 수정이 멀쩡해요.'); return; }
-      if (dm.pts < cost) { showNotice(`🔷 포인트가 모자라요 (${cost} 필요)`); return; }
-      dm.pts -= cost;
-      dm.repairs = (dm.repairs || 0) + 1;
-      const add = Math.min(cr.maxHp - cr.hp, Math.round(cr.maxHp * DEFENSE_TUNE.repair.heal));
-      cr.hp += add;
-      sim.floatTexts.push({ x: cr.x, y: cr.y - 170, text: `💎+${add}`, color: '#7dd3fc', life: 50 });
-      sim.effects.push({ type: 'aoe_ring', x: cr.x, y: cr.y - 40, r: 140, color: '#7dd3fc', life: 30, maxLife: 30 });
+    function defenseUpgradeTower(padId) {
+      const dm = sim.defense, pad = dm && dm.pads[padId], t = pad && pad.t;
+      if (!t || t.lv >= DEFENSE_TOWER_LV.max || dm.phase === 'done' || !defenseCanChoose()) return;
+      const cost = defenseUpCost(t);
+      if (dm.gold < cost) { showNotice(`🔷 골드가 모자라요 (${cost} 필요)`); return; }
+      dm.gold -= cost;
+      t.lv++; t.spent += cost;
+      dm.upgrades++;
+      sim.floatTexts.push({ x: pad.x, y: pad.y - 170, text: `⬆️ ${t.lv}단계`, color: '#fde047', life: 40 });
+      dm.fx.push({ k: 'burst', x: pad.x, y: pad.y - 70, r: 90, ramp: 'arrow_hit', life: 22, max: 22, seed: sim.tickCount + padId });
       renderDefensePanel(true);
     }
+    function defenseSellTower(padId) {
+      const dm = sim.defense, pad = dm && dm.pads[padId], t = pad && pad.t;
+      if (!t || dm.phase === 'done' || !defenseCanChoose()) return;
+      const back = Math.floor(t.spent * DEFENSE_TUNE.sellBack);
+      dm.gold += back;
+      pad.t = null;
+      sim.floatTexts.push({ x: pad.x, y: pad.y - 100, text: `💰 +${back}`, color: '#fde047', life: 40 });
+      renderDefensePanel(true);
+    }
+    function defenseSelectPad(id) {
+      const dm = sim.defense;
+      if (!dm) return;
+      dm.sel = id == null || dm.sel === id ? null : id;
+      renderDefensePanel(true);
+    }
+    function defenseTowersStep() {
+      const dm = sim.defense, tps = BATTLE_TICKS_PER_SEC, now = sim.tickCount;
+      const foes = sim.units.filter(u => u.team === 'red' && u.alive && !u.rushPending && u.tdDist != null);
+      if (!foes.length) return;
+      const ref = defenseTowerRef(Math.max(1, dm.round));
+      dm.pads.forEach(pad => {
+        const t = pad.t;
+        if (!t || now < t.readyAt) return;
+        const D = DEFENSE_TOWERS[t.k], R = defenseTowerRange(t), ox = pad.x, oy = pad.y - 20;
+        const inR = foes.filter(e => e.alive && Math.hypot(e.x - ox, e.y - oy) < R);
+        if (!inR.length) return;
+        inR.sort((a, b) => b.tdDist - a.tdDist); // 성문에 가장 가까운 적부터
+        const dmg = ref * D.dmg * DEFENSE_TOWER_LV.mul[t.lv - 1];
+        t.readyAt = now + Math.max(4, Math.round(defenseTowerCd(t) * tps));
+        t.fireAt = now;
+        t.shots++;
+        const top = pad.y - (t.lv >= 4 ? 150 : 128); // 쏘는 자리 (탑 꼭대기)
+        const shoot = (e, k, extra = {}) => {
+          const flight = Math.max(4, Math.round(Math.hypot(e.x - ox, e.y - 40 - top) / (k === 'cannon' ? 26 : 40)));
+          dm.shots.push({ k, pad: pad.id, sx: ox, sy: top, tx: e.x, ty: e.y - 40, tid: e.id, at: now, hit: now + flight, dmg, lv: t.lv, ...extra });
+        };
+        if (t.k === 'arrow') inR.slice(0, t.lv >= 5 ? 2 : 1).forEach(e => shoot(e, 'arrow'));
+        else if (t.k === 'cannon') shoot(inR[0], 'cannon');
+        else if (t.k === 'frost') shoot(inR[0], 'frost', { freeze: t.lv >= 5 && t.shots % 3 === 0 });
+        else if (t.k === 'magic') {
+          // 번개: 바로 맞고 가까운 적에게 튐 (튈 때마다 15%씩 약해짐)
+          const n = t.lv >= 5 ? 5 : D.chain, hit = [inR[0]];
+          while (hit.length < n) {
+            const last = hit[hit.length - 1];
+            const next = foes.filter(e => e.alive && !hit.includes(e) && Math.hypot(e.x - last.x, e.y - last.y) < 220).sort((a, b) => Math.hypot(a.x - last.x, a.y - last.y) - Math.hypot(b.x - last.x, b.y - last.y))[0];
+            if (!next) break;
+            hit.push(next);
+          }
+          let sx = ox, sy = top;
+          hit.forEach((e, i) => {
+            dm.fx.push({ k: 'bolt', sx, sy, tx: e.x, ty: e.y - 40, life: 12, max: 12, seed: now + i * 13 + pad.id });
+            defenseTowerHit(e, dmg * Math.pow(0.85, i), D.color);
+            sx = e.x; sy = e.y - 40;
+          });
+          dm.fx.push({ k: 'burst', x: hit[0].x, y: hit[0].y - 40, r: 50, ramp: D.ramp, life: 14, max: 14, seed: now + pad.id });
+        }
+      });
+    }
+    function defenseTowerHit(e, dmg, color) {
+      if (!e || !e.alive) return;
+      fixedDamageHit = true;
+      try { applyDamage(null, e, Math.max(1, Math.round(dmg)), '', color); } finally { fixedDamageHit = false; }
+    }
+    // 날아가는 화살·포탄·얼음: 닿는 순간 피해 (화살·얼음은 적을 따라감, 포탄은 쏜 자리에 떨어짐)
+    function defenseStepShots() {
+      const dm = sim.defense, now = sim.tickCount, tps = BATTLE_TICKS_PER_SEC;
+      if (!dm.shots.length) return;
+      const byId = {};
+      sim.units.forEach(u => { if (u.team === 'red') byId[u.id] = u; });
+      dm.shots = dm.shots.filter(s => {
+        const e = byId[s.tid];
+        if (s.k !== 'cannon' && e && e.alive) { s.tx = e.x; s.ty = e.y - 40; }
+        if (now < s.hit) return true;
+        const D = DEFENSE_TOWERS[s.k];
+        if (s.k === 'arrow') { if (e && e.alive) defenseTowerHit(e, s.dmg, D.color); dm.fx.push({ k: 'burst', x: s.tx, y: s.ty, r: 26, ramp: D.ramp, life: 10, max: 10, seed: now + s.pad }); }
+        else {
+          const r = D.aoe * (1 + 0.08 * (s.lv - 1));
+          sim.units.forEach(u => {
+            if (u.team !== 'red' || !u.alive || u.rushPending || Math.hypot(u.x - s.tx, u.y - 40 - s.ty) > r) return;
+            defenseTowerHit(u, s.dmg, D.color);
+            if (!u.alive) return;
+            const boss = u.defRole === 'boss';
+            if (s.k === 'frost') {
+              u.statuses.slow = Math.max(u.statuses.slow || 0, Math.round(D.slowSec * (1 + 0.15 * (s.lv - 1)) * tps * (boss ? 0.5 : 1)));
+              if (s.freeze && !boss) u.statuses.freeze = Math.max(u.statuses.freeze || 0, tps);
+            }
+            if (s.k === 'cannon' && s.lv >= 5 && !boss) u.statuses.stun = Math.max(u.statuses.stun || 0, Math.round(0.6 * tps));
+          });
+          dm.fx.push({ k: 'burst', x: s.tx, y: s.ty, r: r * 0.8, ramp: D.ramp, life: 18, max: 18, seed: now + s.pad });
+          if (s.k === 'cannon') sim.shake = sim.shake && sim.shake.life > 0 ? sim.shake : { power: 2, life: 6, maxLife: 6 };
+        }
+        return false;
+      });
+    }
+
+    // ----- ⬆️ 용병 강화 -----
+    const defenseMercUpCost = u => Math.round(DEFENSE_TUNE.merc.cost * Math.pow(DEFENSE_TUNE.merc.costMul, u.defUp || 0));
     function defenseUpgradeUnit(id) {
       const dm = sim.defense;
       if (!dm || dm.phase === 'done' || !defenseCanChoose()) return;
       const u = sim.units.find(x => x.id === id && x.team === 'blue' && !x.isClone);
-      if (!u || (u.defUp || 0) >= DEFENSE_TUNE.upgrade.max) return;
-      const cost = defenseUpgradeCost(u);
-      if (dm.pts < cost) { showNotice(`🔷 포인트가 모자라요 (${cost} 필요)`); return; }
-      dm.pts -= cost;
-      if (!u._defBase) u._defBase = { hp: u.maxHp, atk: u.atk, def: u.def };
+      if (!u || (u.defUp || 0) >= DEFENSE_TUNE.merc.max) return;
+      const cost = defenseMercUpCost(u);
+      if (dm.gold < cost) { showNotice(`🔷 골드가 모자라요 (${cost} 필요)`); return; }
+      dm.gold -= cost;
+      if (!u._defBase) u._defBase = { atk: u.atk };
       u.defUp = (u.defUp || 0) + 1;
-      dm.upgrades = (dm.upgrades || 0) + 1;
-      const k = 1 + DEFENSE_TUNE.upgrade.gain * u.defUp, ratio = u.maxHp > 0 ? u.hp / u.maxHp : 1;
-      u.maxHp = Math.round(u._defBase.hp * k);
-      u.hp = u.alive ? Math.max(1, Math.round(u.maxHp * ratio)) : u.hp;
-      u.atk = Math.round(u._defBase.atk * k);
-      u.def = Math.round(u._defBase.def * k);
+      dm.mercUps++;
+      u.atk = Math.round(u._defBase.atk * (1 + DEFENSE_TUNE.merc.atk * u.defUp));
       if (u.alive) {
         sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 60, color: '#fde047', life: 26, maxLife: 26 });
-        sim.floatTexts.push({ x: u.x, y: u.y - 60, text: `⬆️ 강화 ${u.defUp}`, color: '#fde047', life: 46 });
+        sim.floatTexts.push({ x: u.x, y: u.y - 60, text: `⬆️ 공격 +${Math.round(DEFENSE_TUNE.merc.atk * 100 * u.defUp)}%`, color: '#fde047', life: 46 });
       }
       renderDefensePanel(true);
     }
-    // 🤖 자동 (패널 버튼 · 밸런스 시뮬): 모집할 수 있으면 모집, 아니면 가장 싼 강화 · 모집 용병은 가장 비어 있는 길 앞에 놓음
+    // 🤖 자동 (패널 버튼 · 밸런스 시뮬): 라운드가 오를수록 포탑을 늘리고, 아니면 가장 싼 올리기 (포탑·용병)
     function defenseAutoSpend() {
       const dm = sim.defense;
-      for (let guard = 0; guard < 20; guard++) {
-        if (dm.crystal.hp < dm.crystal.maxHp * 0.45 && dm.pts >= defenseRepairCost(dm)) { defenseRepairCrystal(); continue; }
-        const blue = sim.units.filter(u => u.team === 'blue' && !u.isClone && !u.spiritElem);
-        const cost = defenseRecruitCost(dm);
-        if (dm.recruits < DEFENSE_TUNE.recruit.max && dm.pts >= cost) {
-          defenseRecruit();
-          const u = blue.length ? sim.units[sim.units.length - 1] : null;
-          if (u && u.defRecruit) {
-            const counts = DEFENSE_LANES.map((l, i) => blue.filter(b => { const g = dm.guard[b.id]; return g && defenseNearestLane(g.x, g.y) === i; }).length);
-            const li = counts.indexOf(Math.min(...counts)), lane = DEFENSE_LANES[li];
-            const p = lane.pts[lane.pts.length - 1];
-            defensePlaceUnit(u, p[0] + (Math.random() - 0.5) * 120, p[1] + (Math.random() - 0.5) * 120);
-          }
-          continue;
+      const order = ['arrow', 'cannon', 'arrow', 'frost', 'magic', 'cannon', 'arrow', 'magic', 'frost', 'cannon'];
+      for (let guard = 0; guard < 8; guard++) {
+        const built = dm.pads.filter(p => p.t);
+        const want = Math.min(DEFENSE_PADS.length, 3 + Math.floor(dm.round / 5));
+        if (built.length < want) {
+          const k = order[built.length % order.length];
+          const pad = dm.pads.filter(p => !p.t).sort((a, b) => DEFENSE_PAD_SCORE[b.id] - DEFENSE_PAD_SCORE[a.id])[0];
+          if (pad && dm.gold >= defenseTowerCost(k)) { defenseBuild(pad.id, k); continue; }
+          if (built.length < 3) break; // 처음엔 짓기부터
         }
-        const cand = blue.filter(u => (u.defUp || 0) < DEFENSE_TUNE.upgrade.max).sort((a, b) => defenseUpgradeCost(a) - defenseUpgradeCost(b))[0];
-        if (cand && dm.pts >= defenseUpgradeCost(cand) && dm.recruits >= DEFENSE_TUNE.recruit.max) { defenseUpgradeUnit(cand.id); continue; }
+        const opts = [];
+        built.forEach(p => { if (p.t.lv < DEFENSE_TOWER_LV.max) opts.push({ cost: defenseUpCost(p.t), w: defenseUpCost(p.t), go: () => defenseUpgradeTower(p.id) }); });
+        defenseMercs().forEach(u => { if ((u.defUp || 0) < DEFENSE_TUNE.merc.max) opts.push({ cost: defenseMercUpCost(u), w: defenseMercUpCost(u) * 1.6, go: () => defenseUpgradeUnit(u.id) }); });
+        const pick = opts.sort((a, b) => a.w - b.w)[0];
+        if (pick && dm.gold >= pick.cost) { pick.go(); continue; }
         break;
       }
     }
-    function defenseNearestLane(x, y) {
-      let best = 0, bd = Infinity;
-      DEFENSE_LANES.forEach((l, i) => l.pts.forEach(([px, py]) => { const d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = i; } }));
-      return best;
-    }
-    function defenseToggleAutoRecruit() {
+    function defenseToggleAuto() {
       const dm = sim.defense;
       if (!dm || !defenseCanChoose()) return;
-      dm.autoRecruit = !dm.autoRecruit;
-      if (dm.autoRecruit && dm.phase === 'prep') defenseAutoSpend();
-      renderDefensePanel(true);
-    }
-    function defenseSkipPrep() {
-      const dm = sim.defense;
-      if (dm && dm.phase === 'prep' && dm.started && defenseCanChoose()) defenseBeginFight();
-    }
-    function defenseShock() {
-      const dm = sim.defense;
-      if (!dm || dm.phase === 'done' || !dm.started || !defenseCanChoose()) return;
-      const cr = dm.crystal, S = DEFENSE_TUNE.shock;
-      if (cr.shock <= 0 || sim.tickCount < cr.shockReadyAt) return;
-      cr.shock--;
-      cr.shockReadyAt = sim.tickCount + S.cdSec * BATTLE_TICKS_PER_SEC;
-      sim.units.forEach(u => {
-        if (u.team !== 'red' || !u.alive) return;
-        const d = Math.hypot(u.x - cr.x, u.y - cr.y);
-        if (d > S.r) return;
-        fixedDamageHit = true;
-        try { applyDamage(null, u, dm.ref.hp * S.dmg * (u.defRole === 'boss' ? 0.4 : 1), '⚡', '#38bdf8'); } finally { fixedDamageHit = false; }
-        const a = Math.atan2(u.y - cr.y, u.x - cr.x);
-        u.kbVx = Math.cos(a) * 14; u.kbVy = Math.sin(a) * 14;
-        if (u.alive && u.defRole !== 'boss') u.statuses.stun = Math.max(u.statuses.stun || 0, 2 * BATTLE_TICKS_PER_SEC);
-      });
-      sim.effects.push({ type: 'aoe_ring', x: cr.x, y: cr.y, r: S.r, color: '#38bdf8', life: 30, maxLife: 30 });
-      dm.fx.push({ k: 'burst', x: cr.x, y: cr.y - 60, r: 260, ramp: 'bolt', life: 30, max: 30, seed: sim.tickCount });
-      sim.shake = { power: 10, life: 20, maxLife: 20 };
-      addBattleLog(`⚡ 수정 충격파! (남은 ${cr.shock}번)`);
+      dm.auto = !dm.auto;
+      if (dm.auto) defenseAutoSpend();
       renderDefensePanel(true);
     }
 
-    // ----- ✋ 끌어다 놓기 (준비 시간 · 고르기 권한이 있는 화면) -----
+    // ----- ✋ 끌어다 놓기 · 받침돌 누르기 (고르기 권한이 있는 화면) -----
     function defenseCanDrag() {
       const dm = sim.defense;
-      return Boolean(sim.mode === 'defense' && dm && dm.started && dm.phase === 'prep' && defenseCanChoose());
+      return Boolean(sim.mode === 'defense' && dm && dm.started && dm.phase !== 'done' && defenseCanChoose());
     }
     function defenseWorldAt(canvas, clientX, clientY) {
       const rect = canvas.getBoundingClientRect();
@@ -55058,13 +55147,24 @@
       });
       return best;
     }
+    function defensePadPick(wx, wy) {
+      const dm = sim.defense;
+      return dm.pads.find(p => Math.abs(wx - p.x) < 62 && wy > p.y - (p.t ? 150 : 40) && wy < p.y + 34) || null;
+    }
     (function setupDefenseDrag() {
       const canvas = document.getElementById('arenaCanvas');
       if (!canvas) return;
       const start = (clientX, clientY, e) => {
         if (!defenseCanDrag()) return false;
         const w = defenseWorldAt(canvas, clientX, clientY), u = defenseDragPick(w.x, w.y);
-        if (!u) return false;
+        if (!u) {
+          const pad = defensePadPick(w.x, w.y);
+          if (!pad) return false;
+          defenseSelectPad(pad.id);
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          return true;
+        }
         sim.defense.drag = { id: u.id, x: w.x, y: w.y };
         e.stopImmediatePropagation();
         e.preventDefault();
@@ -55096,169 +55196,208 @@
     })();
 
     // ----- 그림 -----
-    //   수정 시트 칸 32×60 · 가로 빛 흐름 6프레임 · 세로 성함/금 감/크게 금 감 · 3배 (tools/defense_art_build.py)
+    //   포탑 시트 칸 36×52 · 가로 = 그림 단계(1~3)마다 [평소 A, 평소 B, 공격 A, 공격 B] · 세로 = DEFENSE_TOWER_KEYS · 발 (18, 49) · 3배 (tools/defense_art_build.py)
     const DEFENSE_ART = {
-      crystal: { src: 'assets/sprites/fx/defense_crystal.png' }
+      towers: { src: 'assets/sprites/fx/defense_towers.png' }
     };
     Object.values(DEFENSE_ART).forEach(def => makeLazyImageDef(def));
     const DEFENSE_ART_SCALE = 3;
-    // 바닥 (유닛 아래): 예고 팻말 · 지킬 곳 표시 · 끌고 있는 용병 · 수정 빛
+    // 바닥 (유닛 아래): 받침돌 표시 · 고른 포탑 사거리 · 지킬 곳 · 동굴 앞 다음 라운드 · 성문 빛
     function drawDefenseField(ctx) {
       const dm = sim.defense;
       if (!dm) return;
-      const t = sim.tickCount, cr = dm.crystal;
+      const t = sim.tickCount, can = defenseCanChoose();
       ctx.save();
-      if (!BATTLE_MAPS.crystal_defense.ready) DEFENSE_LANES.forEach(lane => {
+      if (!BATTLE_MAPS.crystal_defense.ready) {
         ctx.beginPath();
-        lane.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-        ctx.lineTo(cr.x, cr.y);
+        DEFENSE_PATH.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
         ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        ctx.strokeStyle = 'rgba(120, 90, 50, 0.5)'; ctx.lineWidth = 104; ctx.stroke();
+        ctx.strokeStyle = 'rgba(120, 90, 50, 0.6)'; ctx.lineWidth = 100; ctx.stroke();
+        dm.pads.forEach(p => { ctx.fillStyle = 'rgba(100, 110, 130, 0.8)'; ctx.beginPath(); ctx.ellipse(p.x, p.y + 16, 54, 25, 0, 0, Math.PI * 2); ctx.fill(); });
+      }
+      // 빈 받침돌: 지을 수 있으면 + 표시 (골드가 되면 밝게)
+      const cheapest = Math.min(...DEFENSE_TOWER_KEYS.map(defenseTowerCost));
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      dm.pads.forEach(p => {
+        const sel = dm.sel === p.id;
+        if (p.t) {
+          if (sel) {
+            const R = defenseTowerRange(p.t);
+            ctx.globalAlpha = 0.16; ctx.fillStyle = DEFENSE_TOWERS[p.t.k].color; ctx.beginPath(); ctx.arc(p.x, p.y - 20, R, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = 0.85; ctx.strokeStyle = DEFENSE_TOWERS[p.t.k].color; ctx.lineWidth = 4; ctx.setLineDash([16, 10]); ctx.stroke(); ctx.setLineDash([]);
+          }
+          ctx.globalAlpha = 1;
+          return;
+        }
+        if (!can && !sel) return;
+        const ok = dm.gold >= cheapest;
+        ctx.globalAlpha = sel ? 1 : ok ? 0.75 + 0.2 * Math.sin(t * 0.1 + p.id) : 0.45;
+        ctx.strokeStyle = sel ? '#fde047' : ok ? '#a5f3fc' : '#94a3b8'; ctx.lineWidth = sel ? 8 : 6;
+        ctx.setLineDash(sel ? [] : [16, 10]);
+        ctx.beginPath(); ctx.ellipse(p.x, p.y + 16, 64, 31, 0, 0, Math.PI * 2);
+        ctx.fillStyle = sel ? 'rgba(253, 224, 71, 0.25)' : 'rgba(165, 243, 252, 0.14)'; ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
+        ctx.font = '900 46px Pretendard, sans-serif'; ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(15, 23, 42, 0.8)'; ctx.strokeText('+', p.x, p.y + 12);
+        ctx.fillStyle = sel ? '#fde047' : ok ? '#e0f7ff' : '#cbd5e1'; ctx.fillText('+', p.x, p.y + 12);
+        if (sel) { ctx.globalAlpha = 0.12; ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(p.x, p.y - 20, 380, 0, Math.PI * 2); ctx.fill(); }
+        ctx.globalAlpha = 1;
       });
-      // 다음 웨이브 예고 (동굴 앞, 수정 쪽으로 조금 들어온 자리)
-      if (dm.phase === 'prep' && dm.plan) DEFENSE_LANES.forEach((lane, li) => {
-        const [sx, sy] = lane.pts[0], [nx, ny] = lane.pts[1], a = Math.atan2(ny - sy, nx - sx);
-        const px = sx + Math.cos(a) * 170, py = sy + Math.sin(a) * 170;
-        const n = dm.plan.lanes[li], boss = dm.plan.boss && dm.plan.bossLane === li;
-        const pulse = 0.6 + 0.4 * Math.sin(t * 0.12);
-        ctx.fillStyle = n === 0 && !boss ? 'rgba(30, 41, 59, 0.85)' : `rgba(127, 29, 29, ${0.75 + pulse * 0.2})`;
-        ctx.strokeStyle = n === 0 && !boss ? '#475569' : '#fca5a5'; ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.roundRect(px - 65, py - 34, 130, 68, 12); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#fff'; ctx.font = '900 34px Pretendard, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(`${boss ? '👑' : ''}${n}`, px, py + 2);
-      });
-      // 준비 시간: 용병마다 지킬 곳 (발밑 고리) · 끌 수 있으면 손 표시
-      if (dm.phase === 'prep') {
-        const canDrag = defenseCanDrag();
+      // 용병 지킬 곳 (끌 수 있으면 손 표시)
+      if (can) {
         sim.units.forEach(u => {
           if (u.team !== 'blue' || u.isClone || u.spiritElem || !u.alive) return;
           const g = dm.guard[u.id];
           if (!g) return;
           const dragging = dm.drag && dm.drag.id === u.id;
-          ctx.globalAlpha = dragging ? 1 : 0.55 + 0.25 * Math.sin(t * 0.1 + u.x);
-          ctx.strokeStyle = dragging ? '#fde047' : u.defRecruit ? '#c4b5fd' : '#7dd3fc'; ctx.lineWidth = dragging ? 6 : 3;
-          ctx.setLineDash(dragging ? [] : [10, 8]);
-          ctx.beginPath(); ctx.ellipse(g.x, g.y + 6, 46, 18, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
-          if (dragging) { ctx.globalAlpha = 0.18; ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(g.x, g.y, 400, 0, Math.PI * 2); ctx.fill(); }
-          if (canDrag && !dragging) { ctx.globalAlpha = 0.9; ctx.font = '800 20px Pretendard, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('✋', u.x + 34, u.y - 70); }
+          ctx.globalAlpha = dragging ? 1 : 0.45;
+          ctx.strokeStyle = dragging ? '#fde047' : '#7dd3fc'; ctx.lineWidth = dragging ? 5 : 2;
+          ctx.setLineDash(dragging ? [] : [8, 8]);
+          ctx.beginPath(); ctx.ellipse(g.x, g.y + 6, 44, 17, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+          if (dragging) { ctx.globalAlpha = 0.14; ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(g.x, g.y, Math.max(80, u.range || 80) + 120, 0, Math.PI * 2); ctx.fill(); }
+          else if (dm.round < 1) { ctx.globalAlpha = 0.85; ctx.font = '800 20px Pretendard, sans-serif'; ctx.fillText('✋', u.x + 34, u.y - 70); }
         });
         ctx.globalAlpha = 1;
       }
-      // 수정 아래 빛·그림자
-      const hpK = Math.max(0, cr.hp / cr.maxHp), bob = Math.sin(t * 0.06) * 6, flash = cr.hitFlash > 0;
-      const glowY = cr.y - 80 + bob;
-      const g = ctx.createRadialGradient(cr.x, glowY, 10, cr.x, glowY, 180);
-      g.addColorStop(0, flash ? 'rgba(254, 202, 202, 0.5)' : hpK > 0.3 ? 'rgba(125, 211, 252, 0.35)' : 'rgba(244, 114, 182, 0.35)'); g.addColorStop(1, 'rgba(56, 189, 248, 0)');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cr.x, glowY, 180, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'rgba(8, 20, 40, 0.35)'; ctx.beginPath(); ctx.ellipse(cr.x, cr.y + 4, 44 - bob, 13, 0, 0, Math.PI * 2); ctx.fill();
+      // 동굴 앞: 다음 라운드 팻말
+      if (dm.phase !== 'done' && dm.round < DEFENSE_TUNE.rounds) {
+        const nr = dm.round + 1, left = Math.max(0, Math.ceil((dm.nextAt - t) / BATTLE_TICKS_PER_SEC));
+        if (isFinite(dm.nextAt) && left <= 30) {
+          const [sx, sy] = DEFENSE_PATH[0], px = sx + 170, py = sy - 120, boss = defenseIsBossRound(nr);
+          const pulse = 0.6 + 0.4 * Math.sin(t * 0.12);
+          ctx.fillStyle = boss ? `rgba(127, 29, 29, ${0.75 + pulse * 0.2})` : 'rgba(15, 23, 42, 0.85)';
+          ctx.strokeStyle = boss ? '#fca5a5' : '#7dd3fc'; ctx.lineWidth = 4;
+          ctx.beginPath(); ctx.roundRect(px - 120, py - 34, 240, 68, 12); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = '#fff'; ctx.font = '900 26px Pretendard, sans-serif';
+          ctx.fillText(`${boss ? '👑 ' : ''}${nr}라운드 · ${left}초`, px, py + 1);
+        }
+      }
+      // 성문: 빠져나가면 붉게 번쩍
+      const gl = dm.leakFlash > 0 ? dm.leakFlash / 24 : 0;
+      const gx = DEFENSE_GATE.x - 20, gy = DEFENSE_GATE.y - 40;
+      const grad = ctx.createRadialGradient(gx, gy, 10, gx, gy, 200);
+      grad.addColorStop(0, gl ? `rgba(244, 63, 94, ${0.35 + gl * 0.4})` : `rgba(167, 123, 242, ${0.22 + 0.08 * Math.sin(t * 0.08)})`);
+      grad.addColorStop(1, 'rgba(167, 123, 242, 0)');
+      ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(gx, gy, 200, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     }
-    // 서 있는 것 (수정): 유닛과 발 높이 순서로 섞어 그림
+    // 서 있는 것 (포탑): 유닛과 발 높이 순서로 섞어 그림
     function defenseDepthObjects() {
       const dm = sim.defense;
       if (!dm) return [];
-      const t = sim.tickCount, cr = dm.crystal;
-      return [{ y: cr.y + 2, draw: ctx => {
-        const hpK = Math.max(0, cr.hp / cr.maxHp), bob = Math.sin(t * 0.06) * 6, flash = cr.hitFlash > 0;
-        const cart = DEFENSE_ART.crystal;
-        if (cart.ready) {
-          const k = DEFENSE_ART_SCALE, frame = Math.floor(t / 8) % 6, row = hpK >= 0.7 ? 0 : hpK >= 0.3 ? 1 : 2;
-          const sx = flash ? (Math.random() - 0.5) * 6 : 0;
-          const dx = Math.round(cr.x - 16 * k + sx), dy = Math.round(cr.y - 30 - 60 * k + bob);
+      const t = sim.tickCount, art = DEFENSE_ART.towers, k = DEFENSE_ART_SCALE;
+      return dm.pads.filter(p => p.t).map(p => ({ y: p.y + 14, draw: ctx => {
+        const tw = p.t, row = DEFENSE_TOWER_KEYS.indexOf(tw.k), lvArt = DEFENSE_TOWER_LV.art[tw.lv - 1];
+        const since = t - (tw.fireAt == null ? -99 : tw.fireAt);
+        const f = since >= 0 && since < 6 ? 2 : since >= 6 && since < 12 ? 3 : Math.floor((t + p.id * 7) / 24) % 2;
+        const fx = p.x, fy = p.y + 18;
+        if (art.ready) {
           ctx.save();
           ctx.imageSmoothingEnabled = false;
-          ctx.drawImage(cart.img, frame * 32, row * 60, 32, 60, dx, dy, 32 * k, 60 * k);
-          if (flash) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.45; ctx.drawImage(cart.img, frame * 32, row * 60, 32, 60, dx, dy, 32 * k, 60 * k); }
-          ctx.restore();
-          ctx.save();
-          ctx.fillStyle = hpK > 0.3 ? '#bae6fd' : '#fbcfe8';
-          for (let i = 0; i < 5; i++) {
-            const a = t * 0.035 + i * Math.PI * 0.4;
-            const px = cr.x + Math.cos(a) * 62, py = cr.y - 100 + bob + Math.sin(a) * 18 + Math.sin(t * 0.07 + i) * 10;
-            ctx.globalAlpha = Math.sin(a) > 0 ? 0.95 : 0.4;
-            ctx.fillRect(Math.round(px / 3) * 3, Math.round(py / 3) * 3, 6, 6);
-          }
+          ctx.drawImage(art.img, ((lvArt - 1) * 4 + f) * 36, row * 52, 36, 52, Math.round(fx - 18 * k), Math.round(fy - 49 * k), 36 * k, 52 * k);
           ctx.restore();
         } else {
-          ctx.fillStyle = hpK > 0.3 ? '#38bdf8' : '#f472b6';
-          ctx.beginPath(); ctx.moveTo(cr.x, cr.y - 190 + bob); ctx.lineTo(cr.x + 40, cr.y - 110 + bob); ctx.lineTo(cr.x, cr.y - 30 + bob); ctx.lineTo(cr.x - 40, cr.y - 110 + bob); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = DEFENSE_TOWERS[tw.k].color;
+          ctx.fillRect(fx - 30, fy - 120, 60, 110);
         }
-        defenseBar(ctx, cr.x, cr.y - 236, 180, hpK, hpK > 0.7 ? '#38bdf8' : hpK > 0.3 ? '#fbbf24' : '#f43f5e', `💎 ${Math.ceil(cr.hp)}/${cr.maxHp}`);
-      } }];
+        // 단계 별
+        ctx.save();
+        ctx.font = '900 18px Pretendard, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.78)'; ctx.fillRect(fx - 7 * tw.lv - 5, fy + 6, 14 * tw.lv + 10, 20);
+        ctx.fillStyle = tw.lv >= DEFENSE_TOWER_LV.max ? '#fb923c' : '#fde047'; ctx.fillText('★'.repeat(tw.lv), fx, fy + 17);
+        ctx.restore();
+      } }));
     }
-    function defenseBar(ctx, x, y, w, k, color, label) {
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)'; ctx.fillRect(x - w / 2 - 3, y - 3, w + 6, 16);
-      ctx.fillStyle = color; ctx.fillRect(x - w / 2, y, w * Math.max(0, Math.min(1, k)), 10);
-      if (label) { ctx.font = '900 20px Pretendard, sans-serif'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(label, x, y - 6); }
-    }
-    // 유닛 위: 픽셀 폭발 (pixelfx: drawPixelBurst · PFX_RAMPS) · 강화 단계 별
+    // 유닛 위: 화살·포탄·얼음 · 번개 · 픽셀 폭발 (pixelfx: drawPixelBurst · drawPixelBolt · PFX_RAMPS) · 용병 강화 단계
     function drawDefenseTop(ctx) {
       const dm = sim.defense;
       if (!dm) return;
+      const now = sim.tickCount;
       ctx.save();
+      dm.shots.forEach(s => {
+        const p = Math.max(0, Math.min(1, (now - s.at) / Math.max(1, s.hit - s.at)));
+        let x = s.sx + (s.tx - s.sx) * p, y = s.sy + (s.ty - s.sy) * p;
+        if (s.k === 'cannon') y -= Math.sin(p * Math.PI) * 120;
+        const ang = Math.atan2(s.ty - s.sy - (s.k === 'cannon' ? Math.cos(p * Math.PI) * 120 * Math.PI : 0), s.tx - s.sx);
+        ctx.save();
+        ctx.translate(Math.round(x), Math.round(y));
+        if (s.k === 'arrow') {
+          ctx.rotate(ang);
+          ctx.fillStyle = '#5b3a1e'; ctx.fillRect(-18, -2, 26, 4);
+          ctx.fillStyle = '#d5dae0'; ctx.fillRect(8, -4, 8, 8);
+          ctx.fillStyle = '#f2f2f2'; ctx.fillRect(-22, -6, 6, 4); ctx.fillRect(-22, 2, 6, 4);
+        } else if (s.k === 'cannon') {
+          ctx.fillStyle = '#22242d'; ctx.fillRect(-10, -10, 20, 20);
+          ctx.fillStyle = '#77808e'; ctx.fillRect(-7, -7, 7, 7);
+          ctx.fillStyle = '#f8b93c'; ctx.fillRect(4, -14, 4, 4);
+        } else {
+          ctx.rotate(ang);
+          ctx.fillStyle = '#a8e4ff'; ctx.fillRect(-12, -5, 22, 10);
+          ctx.fillStyle = '#ffffff'; ctx.fillRect(2, -3, 10, 6);
+          ctx.fillStyle = '#3592d8'; ctx.fillRect(-16, -2, 6, 4);
+        }
+        ctx.restore();
+      });
       dm.fx.forEach(f => {
-        if (f.delay > 0 || f.k !== 'burst') return;
-        drawPixelBurst(ctx, f.x, f.y, f.r, 1 - f.life / f.max, PFX_RAMPS[f.ramp] || PFX_RAMPS.magic_burst, f.seed || 1);
+        if (f.k === 'burst') drawPixelBurst(ctx, f.x, f.y, f.r, 1 - f.life / f.max, PFX_RAMPS[f.ramp] || PFX_RAMPS.magic_burst, f.seed || 1);
+        else if (f.k === 'bolt') drawPixelBolt(ctx, { sx: f.sx, sy: f.sy, tx: f.tx, ty: f.ty, maxLife: f.max, seed: f.seed }, 1 - f.life / f.max, PFX_RAMPS.magic_burst);
       });
       ctx.font = '900 16px Pretendard, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       sim.units.forEach(u => {
         if (u.team !== 'blue' || !u.alive || !(u.defUp > 0)) return;
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.75)'; ctx.fillRect(u.x - 6 * u.defUp - 4, u.y + 20, 12 * u.defUp + 8, 16);
-        ctx.fillStyle = '#fde047'; ctx.fillText('★'.repeat(u.defUp), u.x, u.y + 29);
+        const label = `⬆${u.defUp}`;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.75)'; ctx.fillRect(u.x - 22, u.y + 20, 44, 18);
+        ctx.fillStyle = '#fde047'; ctx.fillText(label, u.x, u.y + 30);
       });
       ctx.restore();
     }
 
-    // ----- 📺 관전 (startDefenseLiveBroadcast): 방어전 상태를 화면(frame.df)에 실어 보내고, 관전 화면은 그대로 받아 그림 -----
-    // 시각(pa·sr·lr의 at)은 방장 화면의 틱 · 관전 화면은 화면마다 틱을 방장에 맞춤 (applyLiveFrameState)
-    const DEFENSE_PHASES = ['prep', 'fight', 'done'];
+    // ----- 📺 관전·5인 방 (packDefenseState → frame.df): 방장 화면의 방어전 상태를 실어 보내고, 받는 화면은 그대로 그림 -----
+    // 시각(na·se)은 방장 화면의 틱 · 받는 화면은 화면마다 틱을 방장에 맞춤 (applyLiveFrameState)
+    const DEFENSE_PHASES = ['prep', 'run', 'done'];
     function packDefenseState() {
-      const dm = sim.defense, cr = dm.crystal, p = dm.plan, lr = dm.lastRecruit;
-      const up = {}, g = {};
+      const dm = sim.defense, up = {}, g = {};
       sim.units.forEach(u => { if (u.team === 'blue' && u.defUp > 0) up[u.id] = u.defUp; });
-      if (dm.phase === 'prep') Object.keys(dm.guard || {}).forEach(id => { const q = dm.guard[id]; if (q) g[id] = [Math.round(q.x), Math.round(q.y)]; });
+      Object.keys(dm.guard || {}).forEach(id => { const q = dm.guard[id]; if (q) g[id] = [Math.round(q.x), Math.round(q.y)]; });
       return {
-        w: dm.wave, ph: Math.max(0, DEFENSE_PHASES.indexOf(dm.phase)), sd: dm.started ? 1 : 0, pa: dm.phaseAt, pt: dm.prepTicks,
-        hp: Math.ceil(cr.hp), mh: cr.maxHp, sh: cr.shock, sr: cr.shockReadyAt, pts: dm.pts, l: dm.left || 0, tt: dm.total || 0,
-        won: dm.won ? 1 : 0, rc: dm.recruits, ar: dm.autoRecruit ? 1 : 0, rp: dm.repairs || 0, cl: dm.cleared,
-        pl: p ? [p.split || '', p.lanes || [0, 0, 0, 0], p.boss ? 1 : 0, p.bossLane == null ? -1 : p.bossLane] : null, up, g,
-        lr: lr ? [lr.id, lr.name, lr.job, lr.rarity, lr.hidden ? 1 : 0, lr.hiddenName || '', lr.skin == null ? null : lr.skin, lr.at] : null
+        r: dm.round, ph: Math.max(0, DEFENSE_PHASES.indexOf(dm.phase)), sd: dm.started ? 1 : 0, na: isFinite(dm.nextAt) ? dm.nextAt : -1, se: dm.spawnEnd,
+        lv: dm.lives, ml: dm.maxLives, g: dm.gold, ge: dm.goldEarned, cl: dm.cleared, won: dm.won ? 1 : 0, au: dm.auto ? 1 : 0, lf: dm.leakFlash > 0 ? 1 : 0,
+        bk: dm.bossesKilled, lk: dm.leaked, kc: dm.kills, sel: dm.sel == null ? -1 : dm.sel, ol: Object.keys(dm.left).map(Number), h1: dm.hp1,
+        tw: dm.pads.filter(p => p.t).map(p => [p.id, DEFENSE_TOWER_KEYS.indexOf(p.t.k), p.t.lv, p.t.fireAt]), up, gd: g
       };
     }
     function applyDefenseState(a) {
       const dm = sim.defense;
       if (!dm || !a || typeof a !== 'object') return;
-      const cr = dm.crystal, num = (v, d = 0) => (typeof v === 'number' && isFinite(v) ? v : d);
-      dm.wave = Math.max(1, Math.min(DEFENSE_TUNE.waves, num(a.w, dm.wave)));
+      const num = (v, d = 0) => (typeof v === 'number' && isFinite(v) ? v : d);
+      dm.round = Math.max(0, Math.min(DEFENSE_TUNE.rounds, num(a.r, dm.round)));
+      dm.race = defenseRaceOf(Math.max(1, dm.round));
       dm.phase = DEFENSE_PHASES[num(a.ph)] || 'prep';
       dm.started = Boolean(a.sd);
-      dm.phaseAt = num(a.pa, dm.phaseAt);
-      dm.prepTicks = Math.max(1, num(a.pt, dm.prepTicks));
-      const hp = Math.max(0, num(a.hp, cr.hp));
-      cr.hitFlash = hp < cr.hp ? 6 : 0; // 깎인 화면에서만 반짝 (바뀐 뒤 1초 동안은 화면마다 df가 오므로 다음 화면에 꺼짐)
-      cr.hp = hp;
-      cr.maxHp = Math.max(1, num(a.mh, cr.maxHp));
-      cr.shock = num(a.sh); cr.shockReadyAt = num(a.sr);
-      dm.pts = num(a.pts); dm.left = num(a.l); dm.total = num(a.tt);
-      dm.won = Boolean(a.won); dm.recruits = num(a.rc); dm.autoRecruit = Boolean(a.ar); dm.repairs = num(a.rp); dm.cleared = num(a.cl);
-      if (Array.isArray(a.pl)) {
-        const lanes = (Array.isArray(a.pl[1]) ? a.pl[1] : []).slice(0, 4).map(v => num(v));
-        while (lanes.length < 4) lanes.push(0);
-        const bl = num(a.pl[3], -1);
-        dm.plan = { split: cleanUserText(String(a.pl[0] || ''), 20), lanes, elites: 0, boss: Boolean(a.pl[2]), bossLane: bl >= 0 && bl < 4 ? bl : null };
-      }
+      const na = num(a.na, -1);
+      dm.nextAt = na < 0 ? Infinity : na;
+      dm.spawnEnd = num(a.se, dm.spawnEnd);
+      const lv = num(a.lv, dm.lives);
+      if (lv < dm.lives) dm.leakFlash = 24;
+      dm.lives = lv;
+      dm.maxLives = Math.max(1, num(a.ml, dm.maxLives));
+      dm.gold = num(a.g); dm.goldEarned = num(a.ge); dm.cleared = num(a.cl);
+      dm.won = Boolean(a.won); dm.auto = Boolean(a.au);
+      dm.bossesKilled = num(a.bk); dm.leaked = num(a.lk); dm.kills = num(a.kc);
+      if (Array.isArray(a.ol)) { dm.left = {}; a.ol.forEach(r => { if (typeof r === 'number' && r > 0 && r <= DEFENSE_TUNE.rounds) dm.left[r] = 1; }); }
+      if (num(a.h1) > 0) dm.hp1 = num(a.h1);
+      const sel = num(a.sel, -1);
+      dm.sel = sel >= 0 && sel < dm.pads.length ? sel : null;
+      dm.pads.forEach(p => { p.t = null; });
+      if (Array.isArray(a.tw)) a.tw.forEach(q => {
+        if (!Array.isArray(q)) return;
+        const pad = dm.pads[num(q[0], -1)], k = DEFENSE_TOWER_KEYS[num(q[1], -1)];
+        if (pad && k) pad.t = { k, lv: Math.max(1, Math.min(DEFENSE_TOWER_LV.max, num(q[2], 1))), spent: 0, readyAt: 0, fireAt: num(q[3], -99), shots: 0 };
+      });
       const up = a.up && typeof a.up === 'object' ? a.up : {};
-      sim.units.forEach(u => { if (u.team === 'blue') u.defUp = Math.max(0, Math.min(DEFENSE_TUNE.upgrade.max, num(up[u.id]))); });
+      sim.units.forEach(u => { if (u.team === 'blue') u.defUp = Math.max(0, Math.min(DEFENSE_TUNE.merc.max, num(up[u.id]))); });
       dm.guard = {};
-      if (a.g && typeof a.g === 'object') Object.keys(a.g).forEach(id => { const q = a.g[id]; if (Array.isArray(q)) dm.guard[id] = { x: num(q[0]), y: num(q[1]) }; });
-      const lr = a.lr;
-      dm.lastRecruit = Array.isArray(lr) ? {
-        id: String(lr[0] || ''), name: cleanUserText(String(lr[1] || ''), 30), job: JOB_DEFS[lr[2]] ? lr[2] : 'warrior', rarity: DEFENSE_RARITY_TAG[lr[3]] ? lr[3] : 'N',
-        hidden: Boolean(lr[4]), hiddenName: cleanUserText(String(lr[5] || ''), 30), skin: lr[6] == null ? null : lr[6], at: num(lr[7])
-      } : null;
+      if (a.gd && typeof a.gd === 'object') Object.keys(a.gd).forEach(id => { const q = a.gd[id]; if (Array.isArray(q)) dm.guard[id] = { x: num(q[0]), y: num(q[1]) }; });
     }
-    // 방장(중계): 유닛 목록이 바뀌면(웨이브 몬스터 등장·쓰러진 몬스터 치움·모집) 관전 화면에 목록부터 다시 보냄
-    // 보는 친구가 없을 땐 화면을 안 보내므로 여기도 안 옴 → 기준(dfUnitSig)이 그대로라, 친구가 보러 오면 첫 화면 전에 최신 목록을 보냄
+    // 방장(중계): 유닛 목록이 바뀌면(라운드 몬스터 등장·쓰러진 몬스터 치움) 받는 화면에 목록부터 다시 보냄
     function syncDefenseLiveUnits() {
       const sig = sim.units.map(u => u.id).join(',');
       if (liveNet.dfUnitSig === sig) return;
@@ -55277,37 +55416,31 @@
       const panel = document.getElementById('defensePanel');
       if (panel && !dm) panel.classList.add('hidden');
       if (!dm) return;
-      const tps = BATTLE_TICKS_PER_SEC, cr = dm.crystal;
+      const tps = BATTLE_TICKS_PER_SEC;
       let text;
-      if (dm.phase === 'prep') { const left = Math.max(0, Math.ceil((dm.prepTicks - (sim.tickCount - dm.phaseAt)) / tps)); text = `🛠️ 준비 ${left}초${sim.spectator ? '' : ' · ✋ 용병을 끌어다 놓으세요'} · 다음 [${dm.plan ? dm.plan.split : ''}]${dm.plan && dm.plan.boss ? ' 👑보스' : ''}`; }
-      else if (dm.phase === 'fight') text = `⚔️ 남은 몬스터 ${dm.left || 0}/${dm.total || 0}`;
-      else text = dm.won ? '🏆 수정을 지켜냈어요!' : '💔 수정이 깨졌어요';
-      el.textContent = `💎 수정 방어전 · 웨이브 ${dm.wave}/${DEFENSE_TUNE.waves} · 💎 ${Math.ceil(cr.hp)}/${cr.maxHp} · 🔷 ${dm.pts} · ${text}`;
+      if (dm.phase === 'done') text = dm.won ? '🏆 100라운드를 막았어요!' : '💔 방어 게이지가 바닥났어요';
+      else if (!dm.round) text = `🛠️ 준비 ${Math.max(0, Math.ceil((dm.nextAt - sim.tickCount) / tps))}초 · 받침돌을 눌러 포탑을 지으세요`;
+      else text = `[${dm.race}] 남은 몬스터 ${sim.units.filter(u => u.team === 'red' && (u.alive || (u.rushPending && !u._tdGone)) && !u.isClone).length}`;
+      el.textContent = `💎 수정 방어전 · 라운드 ${dm.round}/${DEFENSE_TUNE.rounds} · 💎 ${Math.max(0, dm.lives)}/${dm.maxLives} · 🔷 ${dm.gold} · ${text}`;
       if (sim.tickCount % 10 === 0) renderDefensePanel();
     }
     let defensePanelSig = '';
-    function defenseCrystalThumbHTML(row = 0, s = 1, frame = 0) {
-      return `<span class="dfp-thumb" style="width:${32 * s}px;height:${60 * s}px;background-image:url('${DEFENSE_ART.crystal.src}');background-size:${192 * s}px ${180 * s}px;background-position:${-frame * 32 * s}px ${-row * 60 * s}px"></span>`;
+    // 포탑 그림 한 칸 (시트에서 잘라 보여 줌)
+    function defenseTowerThumbHTML(k, lvArt = 1, s = 1, frame = 0) {
+      const row = DEFENSE_TOWER_KEYS.indexOf(k);
+      return `<span class="dfp-thumb" style="width:${36 * s}px;height:${52 * s}px;background-image:url('${DEFENSE_ART.towers.src}');background-size:${432 * s}px ${208 * s}px;background-position:${-((lvArt - 1) * 4 + frame) * 36 * s}px ${-row * 52 * s}px"></span>`;
     }
-    const DEFENSE_RARITY_TAG = { SCR: ['🔥 시크릿 레어', '#c8323a'], R: ['🌟 레어', '#d9a514'], N: ['일반', '#7a4a22'] };
     function defensePanelTick() {
       const dm = sim.defense;
       if (!dm) return;
-      const tps = BATTLE_TICKS_PER_SEC, cr = dm.crystal;
+      const tps = BATTLE_TICKS_PER_SEC;
       const set = (id, fn) => { const el = document.getElementById(id); if (el) fn(el); };
-      if (dm.phase === 'prep') {
-        const left = Math.max(0, (dm.prepTicks - (sim.tickCount - dm.phaseAt)) / tps);
-        set('dfpTime', el => { el.textContent = `${Math.ceil(left)}초`; });
-        set('dfpProg', el => { el.style.width = `${Math.round(left / (dm.prepTicks / tps) * 100)}%`; });
-      } else if (dm.phase === 'fight') {
-        set('dfpTime', el => { el.textContent = `남은 ${dm.left || 0}/${dm.total || 0}`; });
-        set('dfpProg', el => { el.style.width = `${Math.round((1 - (dm.left || 0) / Math.max(1, dm.total || 1)) * 100)}%`; });
-      }
-      const hpK = Math.max(0, cr.hp / cr.maxHp);
-      set('dfpCr', el => { el.style.width = `${Math.round(hpK * 100)}%`; el.style.setProperty('--c', hpK > 0.7 ? '#38bdf8' : hpK > 0.3 ? '#fbbf24' : '#f43f5e'); });
-      set('dfpCrText', el => { el.textContent = `${Math.ceil(cr.hp)}/${cr.maxHp}`; });
-      const cd = Math.max(0, Math.ceil((cr.shockReadyAt - sim.tickCount) / tps));
-      set('dfpShockCd', el => { el.textContent = cr.shock <= 0 ? '다 씀' : cd > 0 ? `${cd}초 뒤` : '준비됨'; });
+      const left = isFinite(dm.nextAt) ? Math.max(0, (dm.nextAt - sim.tickCount) / tps) : 0;
+      set('dfpTime', el => { el.textContent = dm.phase === 'done' ? '끝' : dm.round >= DEFENSE_TUNE.rounds ? '마지막 라운드' : `${Math.ceil(left)}초`; });
+      set('dfpProg', el => { el.style.width = `${Math.round(Math.min(1, left / DEFENSE_TUNE.nextGapSec) * 100)}%`; });
+      const k = Math.max(0, dm.lives / dm.maxLives);
+      set('dfpCr', el => { el.style.width = `${Math.round(k * 100)}%`; el.style.setProperty('--c', k > 0.7 ? '#38bdf8' : k > 0.3 ? '#fbbf24' : '#f43f5e'); });
+      set('dfpCrText', el => { el.textContent = `${Math.max(0, dm.lives)}/${dm.maxLives}`; });
     }
     let defensePanelMin = false;
     try { defensePanelMin = localStorage.getItem('ca_defense_panel_min') === '1'; } catch (e) {}
@@ -55322,128 +55455,122 @@
       const dm = sim.mode === 'defense' && sim.running ? sim.defense : null;
       box.classList.toggle('hidden', !dm || !dm.started);
       if (!dm || !dm.started) { defensePanelSig = ''; return; }
-      const cr = dm.crystal, can = defenseCanChoose();
-      const blue = sim.units.filter(u => u.team === 'blue' && !u.isClone && !u.spiritElem);
-      const shockReady = cr.shock > 0 && sim.tickCount >= cr.shockReadyAt && dm.phase !== 'done';
-      const sig = [defensePanelMin, can, dm.phase, dm.wave, dm.pts, dm.repairs || 0, cr.shock, shockReady, dm.autoRecruit, dm.recruits, dm.lastRecruit && dm.lastRecruit.id, Math.round(cr.hp / cr.maxHp * 10),
-        blue.map(u => `${u.id}${u.alive ? 1 : 0}${u.defUp || 0}${Math.round(u.hp / Math.max(1, u.maxHp) * 5)}`).join('')].join('|');
+      const can = defenseCanChoose(), live = dm.phase !== 'done';
+      const blue = defenseMercs();
+      const selPad = dm.sel == null ? null : dm.pads[dm.sel];
+      const callable = live && dm.round < DEFENSE_TUNE.rounds && (dm.round === 0 || sim.tickCount >= dm.spawnEnd);
+      const sig = [defensePanelMin, can, dm.phase, dm.round, dm.gold, dm.auto, dm.speed, dm.sel, callable, Math.round(dm.lives),
+        dm.pads.map(p => (p.t ? `${p.t.k[0]}${p.t.lv}` : '-')).join(''),
+        blue.map(u => `${u.id}${u.alive ? 1 : 0}${u.defUp || 0}`).join('')].join('|');
       if (!force && sig === defensePanelSig) { defensePanelTick(); return; }
       defensePanelSig = sig;
-      const prep = dm.phase === 'prep', plan = dm.plan || { lanes: [0, 0, 0, 0] };
-      const hpK = Math.max(0, cr.hp / cr.maxHp);
       const lock = can ? '' : 'disabled';
-      const waveTitle = dm.phase === 'done' ? (dm.won ? '수정을 지켜냈어요!' : '수정이 깨졌어요') : prep ? `${dm.wave}웨이브 준비` : `${dm.wave}웨이브 전투 중`;
-      const waveSub = prep ? `[${plan.split}] ${DEFENSE_LANES.map((l, i) => `${l.name[0]}${plan.lanes[i]}`).join(' ')}${plan.boss ? ` · 👑 ${DEFENSE_LANES[plan.bossLane].name}` : ''}` : dm.plan && dm.plan.boss ? '👑 보스 웨이브' : '';
+      const k = Math.max(0, dm.lives / dm.maxLives);
+      const nr = Math.min(DEFENSE_TUNE.rounds, dm.round + 1);
+      const title = dm.phase === 'done' ? (dm.won ? '100라운드를 막았어요!' : '방어 실패') : dm.round ? `${dm.round}라운드 · ${dm.race}${defenseIsBossRound(dm.round) ? ' 👑' : ''}` : '첫 라운드 준비';
+      const secsLeft = isFinite(dm.nextAt) ? Math.max(0, Math.ceil((dm.nextAt - sim.tickCount) / BATTLE_TICKS_PER_SEC)) : 0;
       const bar = `
         <div class="dfp-bar">
-          <div class="dfp-mana"><span class="dfp-gem"></span><div><b>${dm.pts}</b><small>포인트</small></div></div>
+          <div class="dfp-mana"><span class="dfp-gem"></span><div><b>${dm.gold}</b><small>골드</small></div></div>
           <div class="dfp-wave">
-            <div class="dfp-wave-top"><b>${waveTitle}</b><span>${dm.wave}/${DEFENSE_TUNE.waves} ${waveSub}</span></div>
+            <div class="dfp-wave-top"><b>${title}</b><span>${dm.round}/${DEFENSE_TUNE.rounds} · 막음 ${dm.cleared}${dm.round < DEFENSE_TUNE.rounds && live ? ` · 다음 ${nr}라운드 [${defenseRaceOf(nr)}]${defenseIsBossRound(nr) ? ' 👑보스' : ''}` : ''}</span></div>
             <div class="dfp-bars">
-              <span>${prep ? '⏳' : '⚔️'} <em id="dfpTime" style="font-style:normal"></em></span><div class="dfp-prog"><i id="dfpProg" style="--c:${prep ? '#38bdf8' : '#ff7a3d'};width:0"></i></div>
-              <span>💎 <em id="dfpCrText" style="font-style:normal"></em></span><div class="dfp-prog"><i id="dfpCr" style="width:${Math.round(hpK * 100)}%"></i></div>
+              <span>⏳ <em id="dfpTime" style="font-style:normal"></em></span><div class="dfp-prog"><i id="dfpProg" style="--c:#ff7a3d;width:0"></i></div>
+              <span>💎 <em id="dfpCrText" style="font-style:normal"></em></span><div class="dfp-prog"><i id="dfpCr" style="width:${Math.round(k * 100)}%"></i></div>
             </div>
           </div>
-          ${prep ? `<button type="button" class="dfp-btn" onclick="defenseSkipPrep()" ${lock}>⏩ 바로 시작<small>${dm.wave}웨이브</small></button>` : ''}
-          <button type="button" class="dfp-btn sky" onclick="defenseShock()" ${shockReady && can ? '' : 'disabled'}>⚡ 충격파
-            <small><span class="dfp-pips">${Array.from({ length: Math.max(3, cr.shock) }, (_, i) => `<i class="${i < cr.shock ? 'on' : ''}"></i>`).join('')}</span> <span id="dfpShockCd"></span></small></button>
-          <button type="button" class="dfp-btn sky" onclick="defenseRepairCrystal()" ${can && dm.phase !== 'done' && cr.hp < cr.maxHp && dm.pts >= defenseRepairCost(dm) ? '' : 'disabled'} title="수정 최대 체력의 ${Math.round(DEFENSE_TUNE.repair.heal * 100)}%를 고쳐요">💎 수정 고치기<small>+${Math.round(DEFENSE_TUNE.repair.heal * 100)}% · <span class="dfp-cost" style="color:#e2f8ff">${defenseRepairCost(dm)}</span></small></button>
-          <button type="button" class="dfp-btn ${dm.autoRecruit ? 'green' : 'wood'}" onclick="defenseToggleAutoRecruit()" ${lock}>🤖 자동 모집<small>${dm.autoRecruit ? '켜짐' : '꺼짐'}</small></button>
+          <button type="button" class="dfp-btn" onclick="defenseCallNext()" ${can && callable ? '' : 'disabled'} title="다음 라운드를 바로 불러요 (남은 초 × ${DEFENSE_TUNE.gold.early} 골드)">⏩ 다음 라운드<small>${dm.round ? `+${secsLeft * DEFENSE_TUNE.gold.early} 골드` : '바로 시작'}</small></button>
+          ${dm.party ? '' : `<button type="button" class="dfp-btn sky" onclick="defenseCycleSpeed()" ${lock}>⏱️ ×${dm.speed}<small>빠르기</small></button>`}
+          <button type="button" class="dfp-btn ${dm.auto ? 'green' : 'wood'}" onclick="defenseToggleAuto()" ${lock} title="골드로 포탑을 알아서 짓고 올려요">🤖 자동<small>${dm.auto ? '켜짐' : '꺼짐'}</small></button>
           <button type="button" class="dfp-btn wood" onclick="defenseTogglePanel()">${defensePanelMin ? '▼ 펼치기' : '▲ 접기'}<small>작전판</small></button>
         </div>`;
       if (defensePanelMin) { box.innerHTML = bar; defensePanelTick(); return; }
-      const R = DEFENSE_TUNE.recruit, cost = defenseRecruitCost(dm), full = dm.recruits >= R.max;
-      const lr = dm.lastRecruit;
-      const reveal = lr ? (() => {
-        const tag = DEFENSE_RARITY_TAG[lr.rarity] || DEFENSE_RARITY_TAG.N, fresh = sim.tickCount - lr.at < 120;
-        return `<div class="dfp-reveal ${lr.rarity === 'SCR' ? 'scr' : lr.rarity === 'R' ? 'rare' : ''} ${fresh ? 'fresh' : ''}">
-            <span class="dfp-face" style="--lc:${tag[1]};width:40px;height:40px">${getMercIconHTML(lr.job, lr.skin, 36)}</span>
-            <span style="min-width:0"><span class="dfp-rtag" style="background:${tag[1]}">${tag[0]}</span>${lr.hidden ? `<span class="dfp-rtag hid">✨ 히든 · ${lr.hiddenName}</span>` : ''}
-              <b>${lr.name}</b><small>${(JOB_DEFS[lr.job] || {}).name || lr.job} · Lv.${dm.level}</small></span>
+      const ok = c => can && live && dm.gold >= c;
+      let towerCard;
+      if (selPad && !selPad.t) {
+        towerCard = `<div class="dfp-h">🏗️ ${selPad.id + 1}번 받침돌에 짓기 <small>사거리 안을 지나가는 몬스터를 쏴요</small><button type="button" class="dfp-x" onclick="defenseSelectPad(null)">✖</button></div>
+          <div class="dfp-build">${DEFENSE_TOWER_KEYS.map(key => {
+            const D = DEFENSE_TOWERS[key];
+            return `<button type="button" class="dfp-tw" onclick="defenseBuild(${selPad.id}, '${key}')" ${ok(D.cost) ? '' : 'disabled'}>
+                ${defenseTowerThumbHTML(key, 1, 1)}<b>${D.icon} ${D.name}</b><small>${D.desc}</small><span class="dfp-cost">${D.cost}</span></button>`;
+          }).join('')}</div>`;
+      } else if (selPad && selPad.t) {
+        const t = selPad.t, D = DEFENSE_TOWERS[t.k], maxed = t.lv >= DEFENSE_TOWER_LV.max, up = maxed ? 0 : defenseUpCost(t);
+        const mul = DEFENSE_TOWER_LV.mul[t.lv - 1], next = maxed ? null : DEFENSE_TOWER_LV.mul[t.lv];
+        towerCard = `<div class="dfp-h">${D.icon} ${D.name} <span class="dfp-stars">${'★'.repeat(t.lv)}${'☆'.repeat(DEFENSE_TOWER_LV.max - t.lv)}</span><small>${selPad.id + 1}번 받침돌</small><button type="button" class="dfp-x" onclick="defenseSelectPad(null)">✖</button></div>
+          <div class="dfp-towerinfo">
+            ${defenseTowerThumbHTML(t.k, DEFENSE_TOWER_LV.art[t.lv - 1], 1)}
+            <div><div>💥 피해 ×${mul.toFixed(1)}${next ? ` → <b>×${next.toFixed(1)}</b>` : ''} · 🎯 사거리 ${Math.round(defenseTowerRange(t))}</div>
+              <div>${D.desc} · <span style="color:${t.lv >= 5 ? '#c2410c' : 'var(--gl-ink2)'}">${D.lv5}</span></div>
+              <div class="dfp-row">
+                <button type="button" class="dfp-btn green sm" onclick="defenseUpgradeTower(${selPad.id})" ${!maxed && ok(up) ? '' : 'disabled'}>${maxed ? '최고 단계' : `⬆️ 올리기 <span class="dfp-cost" style="color:#e0ffe9">${up}</span>`}</button>
+                <button type="button" class="dfp-btn red sm" onclick="defenseSellTower(${selPad.id})" ${can && live ? '' : 'disabled'}>💰 팔기 +${Math.floor(t.spent * DEFENSE_TUNE.sellBack)}</button>
+              </div></div>
           </div>`;
-      })() : '<div class="dfp-tip">아직 모집한 용병이 없어요. 포인트로 첫 용병을 불러 보세요!</div>';
-      const recruitCard = `<div class="dfp-paper">
-          <div class="dfp-h">🎲 용병 모집 <small>${dm.recruits}/${R.max}명 · 모집할수록 값이 올라요</small></div>
-          <div class="dfp-recruit">
-            <button type="button" class="dfp-btn" style="min-height:58px;font-size:16px" onclick="defenseRecruit()" ${can && !full && dm.pts >= cost && dm.phase !== 'done' ? '' : 'disabled'}>🎲 모집하기<small>${full ? '가득 찼어요' : `<span class="dfp-cost">${cost}</span>`}</small></button>
-            <div class="dfp-odds">
-              <span style="--c:#c8323a">🔥 시크릿 레어 ${Math.round(R.secret * 100)}%</span>
-              <span style="--c:#d9a514">🌟 레어 ${Math.round(R.rare * 100)}%</span>
-              <span style="--c:#7c3aed">✨ 히든 스킬 ${Math.round(R.hidden * 100)}%</span>
-            </div>
-          </div>
-          ${reveal}
-          <div class="dfp-tip" style="margin-top:6px">✋ <b>준비 시간</b>에 전장의 용병을 끌어다 지킬 곳에 놓으세요. 그 자리 둘레를 지키고, 수정이 위험하면 도우러 가요.${can ? '' : sim.spectator ? ' (📺 관전 중이라 보기만 해요)' : ' (5인 방에서는 방장만 고를 수 있어요)'}</div>
-        </div>`;
+      } else {
+        const counts = DEFENSE_TOWER_KEYS.map(key => [key, dm.pads.filter(p => p.t && p.t.k === key).length]);
+        towerCard = `<div class="dfp-h">🏗️ 포탑 <small>${dm.pads.filter(p => p.t).length}/${DEFENSE_PADS.length}곳에 지음</small></div>
+          <div class="dfp-tip">전장의 <b>받침돌(+)</b>을 눌러 포탑을 짓고, 지은 포탑을 눌러 <b>올리기·팔기</b>를 해요. 포탑은 ${DEFENSE_TOWER_LV.max}단계까지 올라가요.${can ? '' : sim.spectator ? ' (📺 관전 중이라 보기만 해요)' : ' (5인 방에서는 방장만 지을 수 있어요)'}</div>
+          <div class="dfp-build mini">${counts.map(([key, n]) => `<span class="dfp-tw">${defenseTowerThumbHTML(key, 1, 1)}<b>${DEFENSE_TOWERS[key].icon} ${DEFENSE_TOWERS[key].name}</b><small>${n}개 · ${DEFENSE_TOWERS[key].cost}</small></span>`).join('')}</div>`;
+      }
       const roster = blue.map(u => {
-        const lv = u.defUp || 0, maxed = lv >= DEFENSE_TUNE.upgrade.max, ucost = maxed ? 0 : defenseUpgradeCost(u);
-        const tag = u.defRecruit ? (DEFENSE_RARITY_TAG[u.defRarity] || DEFENSE_RARITY_TAG.N) : ['내 용병', '#3e8f35'];
-        const pct = u.alive ? Math.round(u.hp / Math.max(1, u.maxHp) * 100) : 0;
+        const lv = u.defUp || 0, maxed = lv >= DEFENSE_TUNE.merc.max, cost = maxed ? 0 : defenseMercUpCost(u);
         return `<div class="dfp-merc ${u.alive ? '' : 'dead'}">
-            <span class="dfp-face" style="--lc:${tag[1]}">${getMercIconHTML(u.job, u.skinVariant, 24)}</span>
-            <span class="dfp-merc-name">${u.alive ? '' : '💀 '}${u.name}<span class="dfp-stars" style="margin-left:3px">${'★'.repeat(lv)}</span><i><b style="width:${pct}%"></b></i></span>
-            <button type="button" class="dfp-btn green sm" style="min-height:28px;padding:0 6px" onclick="defenseUpgradeUnit('${u.id}')" ${can && !maxed && dm.pts >= ucost && dm.phase !== 'done' ? '' : 'disabled'} title="체력·공격·방어 +${Math.round(DEFENSE_TUNE.upgrade.gain * 100)}%">${maxed ? '최고' : `⬆️ <span class="dfp-cost" style="color:#e0ffe9">${ucost}</span>`}</button>
+            <span class="dfp-face" style="--lc:#3e8f35">${getMercIconHTML(u.job, u.skinVariant, 24)}</span>
+            <span class="dfp-merc-name">${u.alive ? '' : '💀 '}${u.name}<small style="margin-left:4px;color:#b45309">${lv ? `공격 +${Math.round(DEFENSE_TUNE.merc.atk * 100 * lv)}%` : ''}</small></span>
+            <button type="button" class="dfp-btn green sm" style="min-height:28px;padding:0 6px" onclick="defenseUpgradeUnit('${u.id}')" ${!maxed && ok(cost) ? '' : 'disabled'} title="공격력 +${Math.round(DEFENSE_TUNE.merc.atk * 100)}%">${maxed ? '최고' : `⬆️ <span class="dfp-cost" style="color:#e0ffe9">${cost}</span>`}</button>
           </div>`;
       }).join('');
       box.innerHTML = `${bar}
         <div class="dfp-main">
-          ${recruitCard}
-          <div class="dfp-paper"><div class="dfp-h">🛡️ 우리 용병 <small>⬆️ 강화마다 체력·공격·방어 +${Math.round(DEFENSE_TUNE.upgrade.gain * 100)}% · 쓰러지면 수정 옆에서 다시 일어나요</small></div><div class="dfp-roster">${roster}</div></div>
+          <div class="dfp-paper">${towerCard}</div>
+          <div class="dfp-paper"><div class="dfp-h">🛡️ 용병 강화 <small>⬆️ 한 번에 공격력 +${Math.round(DEFENSE_TUNE.merc.atk * 100)}% · ✋ 끌어다 놓은 자리 둘레를 지켜요</small></div><div class="dfp-roster">${roster}</div></div>
         </div>`;
       defensePanelTick();
     }
 
     // ----- 결과·보상 -----
     const DEFENSE_REWARD = {
-      // 20웨이브: 웨이브·보스 웨이브 보상은 15웨이브 때의 3/4 (한 판 총액은 비슷하게)
-      normal: { wave: 45, bossWave: 225, clear: [800, 1200, 1600], first3: 1500 },
-      hard:   { wave: 75, bossWave: 375, clear: [1600, 2400, 3200], first3: 3000 }
+      // 막은 라운드마다 + 막은 보스 라운드마다 + 100라운드 클리어(별) + 첫 ★★★
+      normal: { round: 12, bossRound: 120, clear: [800, 1200, 1600], first3: 1500 },
+      hard:   { round: 20, bossRound: 200, clear: [1600, 2400, 3200], first3: 3000 }
     };
     function finishDefense(stu, won) {
       const dm = sim.defense, R = DEFENSE_REWARD[dm.diff];
-      const book = defenseBookOf(stu, dm.race);
+      const book = defenseBookOf(stu);
       const stars = won ? defenseStars(dm) : 0;
-      const starKey = `${dm.diff}Stars`;
-      // 첫 ★★★ 보너스는 실제로 받았을 때만 받은 것으로 적음 (오늘 보상을 다 쓴 날 깨도 다음에 받을 수 있게)
       const first3 = won && stars === 3 && !book[`${dm.diff}First3Paid`];
       const parts = [];
       let amount = 0;
-      if (dm.cleared) { amount += dm.cleared * R.wave; parts.push(`웨이브 ${dm.cleared} × ${R.wave}`); }
-      const bossWaves = Math.floor(dm.cleared / 5);
-      if (bossWaves) { amount += bossWaves * R.bossWave; parts.push(`보스 웨이브 ${bossWaves} × ${R.bossWave}`); }
+      if (dm.cleared) { amount += dm.cleared * R.round; parts.push(`라운드 ${dm.cleared} × ${R.round}`); }
+      const bossRounds = Math.min(dm.bossesKilled, Math.floor(dm.cleared / 10));
+      if (bossRounds) { amount += bossRounds * R.bossRound; parts.push(`보스 ${bossRounds} × ${R.bossRound}`); }
       if (won) { amount += R.clear[stars - 1]; parts.push(`클리어 ${'★'.repeat(stars)} ${R.clear[stars - 1]}`); }
       if (first3) { amount += R.first3; parts.push(`첫 ★★★ ${R.first3}`); }
-      const leftover = Math.min(300, dm.pts);
-      if (leftover > 0 && dm.cleared) { amount += leftover; parts.push(`남은 포인트 ${leftover}`); }
-      if (!dm.everManual && amount > 0) { amount = Math.round(amount * 0.8); parts.push('자동 전투 ×0.8'); }
+      const leftover = Math.min(300, Math.floor(dm.gold / 10));
+      if (leftover > 0 && dm.cleared) { amount += leftover; parts.push(`남은 골드 ${leftover}`); }
       const reward = amount > 0 ? grantDailyReward(stu, 'defense', amount) : 0;
       if (reward > 0) state.guardianPts += won ? 20 : 8;
       if (reward > 0 && first3) book[`${dm.diff}First3Paid`] = true;
       if (won) {
-        book[starKey] = Math.max(book[starKey] || 0, stars);
+        book[`${dm.diff}Stars`] = Math.max(book[`${dm.diff}Stars`] || 0, stars);
         book.clears = (book.clears || 0) + 1;
       }
-      book.bestWave = Math.max(book.bestWave || 0, dm.cleared);
+      book[`${dm.diff}Best`] = Math.max(book[`${dm.diff}Best`] || 0, dm.cleared);
       const atkKing = mvpCandidates().sort((a, b) => b.damageDealt - a.damageDealt)[0];
-      const tankKing = mvpCandidates().sort((a, b) => b.damageTaken - a.damageTaken)[0];
-      const healKing = mvpCandidates().sort((a, b) => b.healDone - a.healDone)[0];
-      const recruits = sim.units.filter(u => u.team === 'blue' && u.defRecruit);
-      const best = [...recruits].sort((a, b) => (b.damageDealt || 0) - (a.damageDealt || 0))[0];
-      const worst = [...dm.log].sort((a, b) => b.hurt - a.hurt)[0];
+      const towers = dm.pads.filter(p => p.t);
       document.getElementById('battleResultEmoji').textContent = won ? '💎' : '💔';
       document.getElementById('battleResultTitle').textContent = won
-        ? `수정을 지켜냈어요! ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}${first3 ? ' (첫 ★★★!)' : ''}`
-        : `수정 방어 실패 · ${dm.cleared}웨이브까지 막음`;
+        ? `100라운드를 막았어요! ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}${first3 ? ' (첫 ★★★!)' : ''}`
+        : `방어 실패 · ${dm.cleared}라운드까지 막음`;
       document.getElementById('battleResultDesc').textContent = reward > 0
         ? `보상으로 💰 ${reward.toLocaleString()} CA를 받았어요! (${parts.join(' + ')}) · 오늘 남은 방어전 보상 ${getDailyRewardLeft(stu, 'defense')}회`
-        : amount > 0 ? dailyRewardDoneText('defense') : '막은 웨이브가 없어서 보상은 없어요. 포인트로 용병을 모집해 보세요!';
+        : amount > 0 ? dailyRewardDoneText('defense') : '막은 라운드가 없어서 보상은 없어요. 받침돌에 포탑을 지어 보세요!';
       document.getElementById('battleMvpBox').innerHTML = `
-        <div class="font-bold text-amber-300 mb-1">🌟 이번 방어전 MVP</div>
-        <div>⚔️ 최고 공격왕: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
-        <div>🛡️ 든든 수호왕: <strong>${tankKing?.name || '-'}</strong> (${tankKing?.damageTaken || 0} 방어)</div>
-        <div>💚 다정 치유왕: <strong>${healKing?.name || '-'}</strong> (${healKing?.healDone || 0} 회복·보호)</div>
-        <div class="mt-1 text-slate-400">🎲 모집한 용병 ${recruits.length}명 · ⬆️ 강화 ${dm.upgrades || 0}번 · 💎 수정 고치기 ${dm.repairs || 0}번${best ? ` · 최고 모집 용병 ${best.name} (${best.damageDealt || 0} 피해)` : ''} · 🔷 번 포인트 ${dm.ptsEarned}
-          · 💎 남은 수정 ${Math.ceil(dm.crystal.hp)}/${dm.crystal.maxHp}${worst && worst.hurt > 0 ? ` · 가장 크게 뚫린 웨이브 ${worst.wave} (-${worst.hurt})` : ''} · 완벽 방어 ${dm.perfect}번</div>`;
+        <div class="font-bold text-amber-300 mb-1">🌟 이번 방어전 기록</div>
+        <div>⚔️ 최고 공격 용병: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
+        <div>🏗️ 지은 포탑 ${towers.length}개 (${DEFENSE_TOWER_KEYS.map(k => `${DEFENSE_TOWERS[k].icon}${towers.filter(p => p.t.k === k).length}`).join(' ')}) · ⬆️ 포탑 올리기 ${dm.upgrades}번 · 용병 강화 ${dm.mercUps}번</div>
+        <div class="mt-1 text-slate-400">💀 처치 ${dm.kills} · 👑 보스 ${dm.bossesKilled} · 🚪 빠져나간 몬스터 ${dm.leaked} · 💎 남은 게이지 ${Math.max(0, dm.lives)}/${dm.maxLives} · 🔷 번 골드 ${dm.goldEarned}${book[`${dm.diff}Best`] ? ` · 🏅 최고 ${book[`${dm.diff}Best`]}라운드` : ''}</div>`;
       document.getElementById('battleResultOverlay').classList.remove('hidden');
       if (document.getElementById('arenaSection')?.classList.contains('hidden')) showRewardBanner(`💎 수정 방어전이 끝났어요! ${document.getElementById('battleResultDesc').textContent}`);
       renderDefensePanel(true);
@@ -55457,43 +55584,324 @@
       const stu = getActiveStudent();
       const box = document.getElementById('defenseCardGrid');
       if (!stu || !box) return;
-      const race = todayDefenseRace();
-      const book = defenseBookOf(stu, race);
+      const book = defenseBookOf(stu);
       const info = document.getElementById('defenseMyInfo');
       const left = getDailyRewardLeft(stu, 'defense');
-      if (info) info.innerHTML = `🗓️ 오늘의 공격 종족 <strong class="text-amber-300">${race}</strong> · ⚔️ 출전 용병 전투력 <strong class="text-rose-300">${dungeonPowerOf(stu).toLocaleString()}</strong> · 💰 오늘 남은 보상 <strong class="${left > 0 ? 'text-emerald-300' : 'text-slate-500'}">${left}/${DAILY_REWARD_LIMITS.defense}</strong>회`;
+      if (info) info.innerHTML = `⚔️ 출전 용병 전투력 <strong class="text-rose-300">${dungeonPowerOf(stu).toLocaleString()}</strong> · 🏅 최고 기록 보통 <strong class="text-amber-300">${book.normalBest || 0}</strong> · 어려움 <strong class="text-amber-300">${book.hardBest || 0}</strong>라운드 · 💰 오늘 남은 보상 <strong class="${left > 0 ? 'text-emerald-300' : 'text-slate-500'}">${left}/${DAILY_REWARD_LIMITS.defense}</strong>회`;
       const starTxt = n => '★'.repeat(n || 0) + '☆'.repeat(3 - (n || 0));
-      const R = DEFENSE_TUNE.recruit;
       box.innerHTML = `
         <div class="dft-hero">
           <img class="dft-map" src="${BATTLE_MAPS.crystal_defense.src}" alt="수정 방어전 전장" loading="lazy">
-          <span class="dft-crystal">${defenseCrystalThumbHTML(0, 2, 2)}</span>
+          <span class="dft-crystal" style="display:flex;gap:2px;align-items:flex-end">${DEFENSE_TOWER_KEYS.map((k, i) => defenseTowerThumbHTML(k, Math.min(3, i + 1), 1.4)).join('')}</span>
           <div class="dft-hero-text">
-            <span class="dft-tag">🗓️ 오늘의 습격</span>
-            <b>${race}이 사방에서 몰려와요!</b>
-            <span>동서남북 네 동굴 · ${DEFENSE_TUNE.waves}웨이브 · 최고 기록 ${book.bestWave || 0}/${DEFENSE_TUNE.waves}</span>
+            <span class="dft-tag">🏗️ 타워 디펜스</span>
+            <b>몬스터가 성문을 빠져나가지 못하게!</b>
+            <span>지그재그 길 · ${DEFENSE_TUNE.rounds}라운드 · 10라운드마다 새 종족과 👑 종족 보스</span>
           </div>
         </div>
         <div class="dft-diffs">
           ${DEFENSE_DIFFS.map(d => {
-            const locked = d === 'hard' && defenseHardLocked(stu, race);
+            const locked = d === 'hard' && defenseHardLocked(stu);
             const Rw = DEFENSE_REWARD[d];
             return `<div class="dft-diff ${d === 'hard' ? 'hard' : ''} ${locked ? 'locked' : ''}">
               <h5><span>${DEFENSE_DIFF_LABEL[d]}</span><span class="dfp-stars">${starTxt(book[d + 'Stars'])}</span></h5>
-              <div>💎 수정 체력 <b style="color:var(--gl-ink)">${DEFENSE_TUNE[d].crystalHp}</b> · 클리어 <b style="color:var(--gl-ink)">${Rw.clear[0].toLocaleString()}~${Rw.clear[2].toLocaleString()} CA</b></div>
-              <div>첫 ★★★ 보너스 +${Rw.first3.toLocaleString()} CA${book[d + 'First3Paid'] ? ' (받음)' : ''}</div>
-              <div>${locked ? '🔒 보통을 ★★★로 막으면 열려요' : '몬스터가 내 출전 용병 전투력에 맞춰져요'}</div>
-              <button type="button" class="dfp-btn ${d === 'hard' ? 'red' : 'sky'}" style="margin-top:4px" onclick="startSoloDefense('${d}')" ${locked ? 'disabled' : ''}>🧍 혼자 지키기</button>
+              <div>💎 방어 게이지 <b style="color:var(--gl-ink)">${DEFENSE_TUNE[d].lives}</b> · 라운드마다 <b style="color:var(--gl-ink)">${Rw.round} CA</b> · 클리어 <b style="color:var(--gl-ink)">${Rw.clear[0].toLocaleString()}~${Rw.clear[2].toLocaleString()} CA</b></div>
+              <div>첫 ★★★ 보너스 +${Rw.first3.toLocaleString()} CA${book[d + 'First3Paid'] ? ' (받음)' : ''} · 🏅 최고 ${book[d + 'Best'] || 0}라운드</div>
+              <div>${locked ? `🔒 보통에서 ${DEFENSE_HARD_UNLOCK}라운드까지 막으면 열려요` : '몬스터 체력이 내 출전 용병 전투력에 맞춰져요'}</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+                <button type="button" class="dfp-btn ${d === 'hard' ? 'red' : 'sky'}" onclick="startSoloDefense('${d}')" ${locked ? 'disabled' : ''}>🧍 혼자 지키기<small>용병 ${DEFENSE_TUNE.soloMercs}명</small></button>
+                <button type="button" class="dfp-btn wood" onclick="createDefenseRoom('${d}')" ${locked ? 'disabled' : ''}>👥 5인 방 만들기<small>한 사람에 용병 1명</small></button>
+              </div>
             </div>`;
           }).join('')}
         </div>
-        <div class="dft-towers" style="gap:14px;font-size:11px;color:var(--gl-ink2)">
-          <div>🎲 이번 판 포인트로 AI 용병 모집 (최대 ${R.max}명)</div>
-          <div style="color:#c8323a">🔥 시크릿 레어 ${Math.round(R.secret * 100)}%</div>
-          <div style="color:#b7860b">🌟 레어 ${Math.round(R.rare * 100)}%</div>
-          <div style="color:#7c3aed">✨ 히든 스킬 ${Math.round(R.hidden * 100)}%</div>
-          <div>⬆️ 강화 최대 ${DEFENSE_TUNE.upgrade.max}단계</div>
+        <div class="dft-towers" style="gap:14px">
+          ${DEFENSE_TOWER_KEYS.map(k => { const D = DEFENSE_TOWERS[k]; return `<div>${defenseTowerThumbHTML(k, 3, 1)}<b style="color:var(--gl-ink)">${D.icon} ${D.name} · ${D.cost}</b><span>${D.desc}</span></div>`; }).join('')}
         </div>`;
+      renderDefenseLobby();
+    }
+
+    /********************************************************************
+     * 👥 수정 방어전 5인 방 (던전 5인 방과 같은 장치: 레이드방 raid_rooms에 kind: 'defense')
+     * - 한 사람이 출전 용병 1명을 들고 들어감 (혼자 입장은 5명) · 빈 자리는 방장이 [🤖 AI 넣기]로 반 친구 용병을 채움
+     * - 출발하면 방장 화면 하나가 방어전을 계산 (포탑 짓기·올리기·팔기·용병 강화·다음 라운드는 방장만)
+     *   친구 화면은 그 화면을 받아 보며 자기 용병 조작만 보냄 · 라운드·게이지·포탑은 화면에 df로 실려 옴 (packDefenseState)
+     * - 보상은 각자 화면에서 (혼자 입장과 같은 계산 · 하루 보상 횟수도 각자)
+     ********************************************************************/
+    const defenseRoomsOpen = () => Object.values(liveRaidRoomsCache || {})
+      .filter(r => isDefenseRoom(r) && (r.status === 'waiting' || r.status === 'in_battle') && Date.now() - (r.createdAt || 0) < 3 * 3600000);
+    window.selectDefenseMerc = function (mercId) {
+      const stu = getActiveStudent();
+      if (!stu || !(stu.roster || []).some(m => m.id === mercId && m.deployed)) return;
+      selectedDungeonMercId = mercId; // 데려갈 용병 고르기는 던전 5인 방과 같이 씀
+      const room = defenseRoomsOpen().find(r => raidSlotOf(r, stu.id));
+      if (room && room.status === 'waiting') {
+        const slot = raidSlotOf(room, stu.id);
+        rushSeatInto(room, slot, rushSeatFields(stu, dungeonMyMerc(stu)));
+        if (slot !== 'host') room[slot + 'Ready'] = false;
+        saveRaidRoomData(room.roomId, room);
+      }
+      renderDefenseLobby();
+    };
+    window.createDefenseRoom = async function (diff = 'normal') {
+      const me = getActiveStudent();
+      if (!me) return;
+      diff = DEFENSE_DIFFS.includes(diff) ? diff : 'normal';
+      if (diff === 'hard' && defenseHardLocked(me)) { showNotice(`🔒 어려움은 보통에서 ${DEFENSE_HARD_UNLOCK}라운드까지 막으면 열려요.`); return; }
+      const merc = dungeonMyMerc(me);
+      if (!merc) { showNotice('⚠️ 출전 중인 용병이 없어요. 용병 관리에서 출전시켜 주세요!'); return; }
+      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      const roomId = 'dfn_' + me.id + '_' + Date.now().toString(36).slice(-5);
+      leaveRoomsExcept('raid', roomId);
+      launchedLiveRoomIds.delete(roomId);
+      const title = `💎 ${me.name}의 수정 방어전 [${DEFENSE_DIFF_LABEL[diff]}]`;
+      const room = { roomId, kind: 'defense', diff, title, status: 'waiting', createdAt: Date.now() };
+      rushSeatInto(room, 'host', rushSeatFields(me, merc));
+      RUSH_GUEST_SLOTS.forEach(s => raidClearSlot(room, s));
+      await saveRaidRoomData(roomId, room);
+      armRoomPresence(`raid_rooms/${roomId}`, me.id);
+      showRewardBanner(`👥 [${title}] 방어전 방을 만들었어요! 친구를 기다리거나 빈 자리에 [🤖 AI 넣기]로 친구 용병을 넣고 [출발]을 누르세요.`);
+      renderDefenseLobby();
+      setTimeout(() => document.getElementById('defenseWaitingRoomPanel')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+    };
+    window.joinDefenseRoom = async function (roomId) {
+      const me = getActiveStudent();
+      if (!me) return;
+      const merc = dungeonMyMerc(me);
+      if (!merc) { showNotice('⚠️ 출전 중인 용병이 없어요. 용병 관리에서 출전시켜 주세요!'); return; }
+      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const room = liveRaidRoomsCache[roomId];
+        if (!isDefenseRoom(room)) { showNotice('⚠️ 사라진 방어전 방이에요.'); renderDefenseLobby(); return; }
+        if (raidSlotOf(room, me.id)) { renderDefenseLobby(); return; }
+        const free = RUSH_GUEST_SLOTS.find(s => !room[s + 'Id']);
+        if (room.status !== 'waiting' || !free || rushSeatsLeft(room) <= 0) { showNotice('⚠️ 이미 출발했거나 자리가 찬 방어전 방이에요.'); return; }
+        if (attempt === 0) leaveRoomsExcept('raid', roomId);
+        rushSeatInto(room, free, rushSeatFields(me, merc));
+        room.rushFill = rushFillKeep(room, f => f.id !== me.id);
+        room[free + 'Ready'] = false;
+        room[raidPracticeKey(free)] = false;
+        if (room.gone) delete room.gone[me.id];
+        if ((await saveRaidRoomData(roomId, room)) === false) continue;
+        armRoomPresence(`raid_rooms/${roomId}`, me.id);
+        if (currentSpectatingRaidRoomId === roomId) currentSpectatingRaidRoomId = null;
+        showRewardBanner(`🚪 [${room.title}] 방어전 방에 들어왔어요! 데려갈 용병을 고르고 [✋ 준비완료]를 눌러 주세요.`);
+        renderDefenseLobby();
+        return;
+      }
+      renderDefenseLobby();
+      showNotice('⚠️ 그 사이 자리가 찼거나 방이 사라졌어요. 다른 방을 골라 주세요.');
+    };
+    window.startDefenseRoom = async function (roomId) {
+      const me = getActiveStudent();
+      const room = liveRaidRoomsCache[roomId];
+      if (!me || !isDefenseRoom(room) || room.status !== 'waiting') return;
+      if (room.hostId !== me.id) { showNotice('⚠️ 방장만 출발할 수 있어요!'); return; }
+      if (!raidRealGuestSlots(room).every(s => room[s + 'Ready'])) { showNotice('⚠️ 아직 [✋ 준비완료]를 누르지 않은 친구가 있어요!'); return; }
+      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      const humans = new Set(raidFilledSlots(room).map(s => room[s + 'Id']));
+      room.rushFill = rushFillKeep(room, f => !humans.has(f.id), Math.max(0, RUSH_MAX_PLAYERS - humans.size));
+      const seats = [
+        ...raidFilledSlots(room).map(s => ({ merc: (room[s + 'Mercs'] || [])[0], power: Number(room[s + 'Power']) || 0 })),
+        ...rushFillOf(room).map(f => ({ merc: f.merc, power: Number(f.power) || 0 }))
+      ].filter(x => x.merc);
+      if (!seats.length) { showNotice('⚠️ 데려갈 용병이 없어요.'); return; }
+      // 몬스터 세기: 파티 용병들의 평균 레벨로 정한 층 × 파티 전투력 비율 (모두의 화면이 같은 값을 쓰게 방에 적어 둠)
+      const base = seats.reduce((sum, x) => sum + dungeonBaseMercPower(x.merc.job, x.merc.level || 1), 0);
+      const power = seats.reduce((sum, x) => sum + x.power, 0);
+      room.dfFloor = dungeonFloorOfMercs(seats.map(x => x.merc), 'normal');
+      room.dfPower = power;
+      room.dfRatio = base ? dungeonClampRatio(power / base) : 1;
+      room.status = 'in_battle';
+      room.startedAt = Date.now();
+      room.fighting = { [room.hostId]: true };
+      raidRealGuestSlots(room).forEach(s => { room.fighting[room[s + 'Id']] = true; });
+      await saveRaidRoomData(roomId, room);
+    };
+    window.leaveDefenseRoom = function (roomId) {
+      cancelFirebaseCoopRaidRoom(roomId, true);
+      showNotice('🚪 방어전 방에서 나왔어요.');
+      renderDefenseLobby();
+    };
+    // 방이 출발 상태가 되면 파티원 모두의 화면에서: 방장 화면이 계산하고 파티원은 자기 용병 조작만 보냄
+    function launchDefenseRoomBattle(r, myStu) {
+      launchedLiveRoomIds.add(r.roomId);
+      const diff = DEFENSE_DIFFS.includes(r.diff) ? r.diff : 'normal';
+      currentActiveLiveBattleRoomId = r.roomId;
+      if (currentSpectatingRaidRoomId === r.roomId) currentSpectatingRaidRoomId = null;
+      if (sim.spectator && sim.running) { stopLiveBattleNet(); closeBattleResult(); }
+      const humans = [r.hostId, ...raidRealGuestSlots(r).map(s => r[s + 'Id'])];
+      const isHost = r.hostId === myStu.id;
+      const netRole = humans.length > 1 ? (isHost ? 'host' : 'guest') : null;
+      const names = raidFilledSlots(r).map(s => r[s + 'Name']).join(' & ');
+      const aiN = rushFillOf(r).length;
+      defensePreloadArt();
+      showRewardBanner(`💎 [방어전 5인 출발!] ${names}${aiN ? ` + 친구 용병 AI ${aiN}명` : ''} 파티가 ${DEFENSE_TUNE.rounds}라운드 방어를 시작해요!`);
+      launchSimulation({
+        mode: 'defense',
+        title: `💎 수정 방어전 [${DEFENSE_DIFF_LABEL[diff]}] 👥 ${names}${aiN ? ` + AI ${aiN}명` : ''}`,
+        blueStudent: myStu,
+        redStudent: null,
+        rewardMc: 0,
+        customBlueUnits: buildRushBlueUnits(r),
+        customRedUnits: [],
+        netRole,
+        roomBattle: true
+      });
+      if (!sim.running || sim.mode !== 'defense') return;
+      const dm = sim.defense = newDefenseState(defenseRaceOf(1), diff, { hp1: defenseHp1Of(Number(r.dfFloor) || 1, Number(r.dfRatio) || 1), power: Number(r.dfPower) || 0 });
+      dm.party = true;
+      dm.started = true;
+      dm.nextAt = sim.tickCount + DEFENSE_TUNE.firstPrepSec * BATTLE_TICKS_PER_SEC;
+      sim.raidLive = { roomId: r.roomId, hostId: r.hostId, humans, tried: [] };
+      defenseInitialPlacement();
+      defenseIntroLog();
+      addBattleLog(`👥 포탑 짓기·올리기와 다음 라운드 부르기는 방장 ${r.hostName || ''} 친구가 해요. 나는 내 용병을 직접 조종해요!`);
+      const mine = sim.units.find(u => u.team === 'blue' && u.liveOwnerId === myStu.id && !u.rushAi);
+      setBattleControlMode(mine ? 'manual' : 'auto', mine ? mine.id : null, true);
+      if (netRole) connectRaidLiveNet(r.hostId, r.startedAt, isHost ? humans.filter(id => id !== myStu.id) : []);
+      else startRaidLiveBroadcast(r);
+      renderDefensePanel(true);
+    }
+    function renderDefenseLobby() {
+      const panel = document.getElementById('defenseWaitingRoomPanel');
+      const box = document.getElementById('defenseRoomsList');
+      if (!panel && !box) return;
+      const me = getActiveStudent();
+      const rooms = defenseRoomsOpen();
+      const badge = document.getElementById('defenseRoomCountBadge');
+      if (badge) badge.textContent = `방 ${rooms.length}개`;
+      const playerRoom = me ? rooms.find(r => raidSlotOf(r, me.id)) : null;
+      const watchRoom = !playerRoom && currentSpectatingRaidRoomId ? rooms.find(r => r.roomId === currentSpectatingRaidRoomId) : null;
+      const room = playerRoom || watchRoom;
+      const playing = sim.running && sim.mode === 'defense' && sim.defense && sim.defense.party && !sim.spectator;
+      if (panel) {
+        if (!room) {
+          panel.classList.add('hidden');
+          panel.innerHTML = '';
+        } else {
+          const watching = !playerRoom;
+          const isHost = !watching && room.hostId === me.id;
+          const mySlot = watching ? null : raidSlotOf(room, me.id);
+          const filled = raidFilledSlots(room);
+          const guests = raidRealGuestSlots(room);
+          const allReady = guests.every(s => room[s + 'Ready']);
+          const cap = rushPartyCap(room);
+          const waiting = room.status === 'waiting';
+          const fill = rushFillOf(room);
+          const seatsLeft = rushSeatsLeft(room);
+          const seatCard = (slot, i) => {
+            if (room[slot + 'Id']) {
+              const m = (room[slot + 'Mercs'] || [])[0] || {};
+              const ready = slot === 'host' || room[slot + 'Ready'];
+              return `
+                <div class="bg-slate-950 border-2 ${slot === 'host' ? 'border-cyan-500/70' : (ready ? 'border-emerald-500' : 'border-cyan-500/40')} rounded-2xl p-3 flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between gap-1">
+                    <span class="text-[11px] font-bold ${slot === 'host' ? 'text-cyan-300' : 'text-emerald-300'}">${slot === 'host' ? '👑 방장 · 🏗️ 포탑 담당' : `🤝 파티원 ${i}`}</span>
+                    ${waiting ? `<span class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold ${ready ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}">${ready ? '✅ 준비' : '⏳ 대기'}</span>` : ''}
+                  </div>
+                  <div class="font-title text-base text-white truncate">${room[slot + 'Num'] ? room[slot + 'Num'] + '번 ' : ''}${room[slot + 'Name']}</div>
+                  <div class="flex items-center gap-1.5 text-[11px] text-slate-300 truncate">${m.job ? getMercIconHTML(m.job, m.skinVariant, 22) : ''}${m.name || '-'} <span class="text-cyan-300">Lv.${m.level || 1}</span></div>
+                  <div class="text-[11px] font-extrabold text-rose-400">⚔️ ${Number(room[slot + 'Power'] || 0).toLocaleString()} · 🎮 직접 조종</div>
+                </div>`;
+            }
+            const fi = i - filled.length, f = fill[fi];
+            if (f) {
+              return `
+                <div class="bg-slate-950 border-2 border-dashed border-violet-500/50 rounded-2xl p-3 flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between gap-1">
+                    <span class="text-[11px] font-bold text-violet-300">🤖 친구 용병 (AI)</span>
+                    ${waiting && isHost ? `<button onclick="removeRushAiSeat('${room.roomId}', ${fi})" class="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-rose-900/70 text-[10px] font-extrabold text-rose-300">✖ 빼기</button>` : ''}
+                  </div>
+                  <div class="font-title text-base text-white truncate">${f.name}</div>
+                  <div class="flex items-center gap-1.5 text-[11px] text-slate-300 truncate">${f.merc && f.merc.job ? getMercIconHTML(f.merc.job, f.merc.skinVariant, 22) : ''}${(f.merc && f.merc.name) || '-'} <span class="text-cyan-300">Lv.${(f.merc && f.merc.level) || 1}</span></div>
+                  <div class="text-[11px] font-extrabold text-rose-400">⚔️ ${Number(f.power || 0).toLocaleString()} · 🤖 자리를 지킴</div>
+                </div>`;
+            }
+            return `
+              <div class="bg-slate-950 border-2 border-dashed border-slate-700 rounded-2xl p-3 flex flex-col justify-center gap-1 text-[11px] text-slate-400">
+                <div class="font-bold text-slate-300">👋 빈 자리</div>
+                ${waiting && isHost
+                  ? `<button onclick="addRushAiSeat('${room.roomId}')" class="mt-1 px-2 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-[11px]">🤖 AI 넣기</button>
+                     <div>반 친구 용병(⚔️ ${cap.toLocaleString()} 이하)이 무작위로 들어와요.</div>`
+                  : `<div>${waiting ? '친구가 들어오거나 방장이 AI를 넣을 수 있어요.' : '이번 방어전에서는 비어 있어요.'}</div>`}
+              </div>`;
+          };
+          const myDeployed = mySlot && waiting ? (me.roster || []).filter(m => m.deployed) : [];
+          const myMercId = mySlot ? ((room[mySlot + 'Mercs'] || [])[0] || {}).id : null;
+          const mercPicker = myDeployed.length > 1 ? `
+            <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span class="font-extrabold text-cyan-300 mr-1">🎮 데려갈 용병</span>
+              ${myDeployed.map(m => `<button onclick="selectDefenseMerc('${m.id}')" class="flex items-center gap-1 pl-1 pr-2 py-1 rounded-xl border-2 font-extrabold ${m.id === myMercId ? 'bg-cyan-500/25 border-cyan-400 text-white' : 'bg-slate-950 border-slate-700 text-slate-300 hover:border-cyan-300'}">${getMercIconHTML(m.job, m.skinVariant, 20)}${m.name} <span class="text-cyan-300">Lv.${m.level}</span></button>`).join('')}
+            </div>` : '';
+          const humanN = filled.length, aiN = fill.length;
+          panel.classList.remove('hidden');
+          panel.innerHTML = `
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="px-2.5 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 font-extrabold text-xs">${waiting ? '👥 방어전 방 대기실' : '🔥 방어 중'}</span>
+                ${watching ? '<span class="px-2.5 py-1 rounded-lg bg-violet-500/20 text-violet-300 font-extrabold text-xs">📺 관전 중</span>' : ''}
+                <h4 class="font-title text-xl text-white">${room.title || `${room.hostName}의 수정 방어전`}</h4>
+                <span class="px-2.5 py-0.5 rounded bg-slate-800 text-slate-300 font-bold text-xs">💎 ${DEFENSE_DIFF_LABEL[room.diff] || '보통'} · ${DEFENSE_TUNE.rounds}라운드</span>
+              </div>
+              ${watching
+                ? `<button onclick="stopSpectatingRaidRoom()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-violet-900/60 text-xs font-bold text-slate-300">📺 관전 그만하기</button>`
+                : (waiting ? `<button onclick="leaveDefenseRoom('${room.roomId}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300">🚪 ${isHost ? (guests.length ? '방 나가기 (방장 넘기기)' : '방 닫기') : '방 나가기'}</button>` : '')}
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-2">${RUSH_SLOTS.map((s, i) => seatCard(s, i)).join('')}</div>
+            ${mercPicker}
+            <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
+              <div class="text-xs font-bold text-slate-300">
+                ${waiting
+                  ? `👥 친구 ${humanN}명${aiN ? ` + 🤖 AI ${aiN}명` : ''}${seatsLeft ? ` · 빈 자리 ${seatsLeft}` : ''} · ${guests.length && !allReady ? '파티원이 [✋ 준비완료]를 누르기를 기다리는 중이에요...' : '방장이 [출발]을 누르면 시작해요!'}`
+                  : (playing ? '💎 방어 중이에요!' : (watching ? '📺 방어전을 관전하고 있어요.' : '💎 친구들이 방어 중이에요. 끝나면 이 방에서 다시 출발할 수 있어요.'))}
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                ${waiting && isHost && seatsLeft > 0 ? roomInviteBtnHTML('raid', room.roomId) : ''}
+                ${waiting && watching && seatsLeft > 0 ? `<button onclick="joinDefenseRoom('${room.roomId}')" class="px-5 py-3 rounded-2xl bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-sm shadow-lg">🚪 참가하기</button>` : ''}
+                ${waiting && mySlot && mySlot !== 'host'
+                  ? `<button onclick="toggleRushReady('${room.roomId}')" class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg ${room[mySlot + 'Ready'] ? 'bg-amber-500 hover:bg-amber-400 text-slate-950' : 'bg-emerald-600 hover:bg-emerald-500 text-white animate-pulse'}">${room[mySlot + 'Ready'] ? '↺ 준비완료 취소' : '✋ 준비완료 누르기!'}</button>`
+                  : ''}
+                ${waiting && isHost
+                  ? `<button onclick="startDefenseRoom('${room.roomId}')" ${allReady ? '' : 'disabled'} class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg ${allReady ? 'bg-gradient-to-r from-cyan-600 to-sky-600 hover:opacity-95 text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}">⚔️ 출발! (${humanN + aiN}명)</button>`
+                  : ''}
+                ${!waiting && (playing || (sim.spectator && sim.running && sim.raidWatch && sim.raidWatch.roomId === room.roomId)) ? `<button onclick="returnToBattle()" class="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-xs shadow">⚔️ 전투 화면 보기</button>` : ''}
+                ${!waiting && watching && !(sim.spectator && sim.running) ? `<button onclick="spectateRaidRoom('${room.roomId}')" class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 방어전 화면 보기</button>` : ''}
+              </div>
+            </div>`;
+        }
+      }
+      RoomChat.show('defenseRoomChat', 'raid', panel && room && room.status === 'waiting' ? room.roomId : null);
+      if (!box) return;
+      if (!rooms.length) {
+        box.innerHTML = `<div class="col-span-full text-slate-400 py-6 text-center bg-slate-950 rounded-2xl border border-dashed border-slate-800 text-xs">열려 있는 방어전 방이 없어요. 위 난이도 카드에서 <strong>[👥 5인 방 만들기]</strong>를 눌러 방을 만들어 보세요! (혼자서도 AI 친구 용병을 넣어 출발할 수 있어요)</div>`;
+        return;
+      }
+      box.innerHTML = rooms.map(r => {
+        const mine = me && raidSlotOf(r, me.id);
+        const filled = raidFilledSlots(r);
+        const full = rushSeatsLeft(r) <= 0;
+        const waiting = r.status === 'waiting';
+        const watchingThis = currentSpectatingRaidRoomId === r.roomId || (sim.spectator && sim.running && sim.raidWatch && sim.raidWatch.roomId === r.roomId);
+        return `
+          <div class="bg-slate-950 border-2 ${mine ? 'border-cyan-500/60' : 'border-cyan-500/20'} rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${waiting ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}">${waiting ? `🟢 대기 중 (${RUSH_MAX_PLAYERS - rushSeatsLeft(r)}/${RUSH_MAX_PLAYERS}명${rushFillOf(r).length ? ` · AI ${rushFillOf(r).length}` : ''})` : '🔥 방어 중'}</span>
+                <span class="font-bold text-sm text-white truncate">${r.title || `${r.hostName}의 수정 방어전`}</span>
+              </div>
+              <div class="text-xs text-slate-400 mt-1 truncate">💎 ${DEFENSE_DIFF_LABEL[r.diff] || '보통'} · 👥 ${filled.map(s => r[s + 'Name']).join(', ')}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              ${mine
+                ? `<span class="px-3 py-1.5 rounded-xl bg-cyan-500/20 text-cyan-300 font-extrabold text-xs">참여 중인 방</span>`
+                : `${watchingThis
+                    ? `<span class="px-3 py-1.5 rounded-xl bg-violet-500/20 text-violet-300 font-extrabold text-xs">📺 관전 중</span>`
+                    : `<button onclick="spectateRaidRoom('${r.roomId}')" class="px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs shadow">📺 관전</button>`}
+                  ${waiting && !full ? `<button onclick="joinDefenseRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-xs shadow">🚪 입장</button>` : ''}`}
+            </div>
+          </div>`;
+      }).join('');
     }
 
     // ----- ⚔️ 전투 탭 공통 배너: 방어전 배너(.dft-hero)와 같은 틀 · 맵 배경 + 왼쪽 글 + 오른쪽에 그 컨텐츠의 적 -----
@@ -55605,7 +56013,7 @@
     }
 
     // 🏰 던전은 5인 입장(sim.dungeon.party)만 레이드방 실시간 장치를 씀
-    function isRaidNetMode(mode) { return mode === 'elite_raid' || mode === 'monster_rush' || (mode === 'dungeon' && Boolean(sim.dungeon && sim.dungeon.party)); }
+    function isRaidNetMode(mode) { return mode === 'elite_raid' || mode === 'monster_rush' || (mode === 'dungeon' && Boolean(sim.dungeon && sim.dungeon.party)) || (mode === 'defense' && Boolean(sim.defense && sim.defense.party)); }
     function newRushState(startFloor) {
       return { round: 1, phase: 'fight', roundStartTick: sim.tickCount || 0, nextAt: 0, cleared: 0, bosses: 0, startFloor: Math.max(1, startFloor || 1), pending: 0, left: 0,
         mapStage: 0, fade: 0, moveAt: 0, fadeAt: 0, swapAt: 0 };
