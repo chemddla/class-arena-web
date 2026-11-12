@@ -355,21 +355,23 @@
 
     // ── 움직임: update(초, { moving: 걷는 중, wave: 인사 중, sit: 앉은 중 })
     const blinkAt = Math.random() * 3;
-    let walk = 0, waveK = 0, sitK = 0, bowK = 0, angK = 0, last = null;
+    let walk = 0, waveK = 0, sitK = 0, bowK = 0, angK = 0, airK = 0, last = null;
     function update(t, st) {
       st = st || {};
       const dt = last == null ? 0 : Math.min(0.1, t - last); last = t;
       walk += ((st.moving ? 1 : 0) - walk) * Math.min(1, dt * 10);
       waveK += ((st.wave ? 1 : 0) - waveK) * Math.min(1, dt * 8);
       sitK += ((st.sit ? 1 : 0) - sitK) * Math.min(1, dt * 9);
-      bowK += ((st.bow ? 1 : 0) - bowK) * Math.min(1, dt * 10); angK += ((st.angry ? 1 : 0) - angK) * Math.min(1, dt * 10); // 꾸벅 사과 · 씩씩 화내기
+      bowK += ((st.bow ? 1 : 0) - bowK) * Math.min(1, dt * 10); angK += ((st.angry ? 1 : 0) - angK) * Math.min(1, dt * 10); airK += ((st.air ? 1 : 0) - airK) * Math.min(1, dt * 14); // 꾸벅 사과 · 씩씩 화내기
       const sw = Math.sin(t * 11) * walk;
       legs[0].rotation.x = sw * 0.8 - 1.45 * sitK; legs[1].rotation.x = -sw * 0.8 - 1.45 * sitK; // 앉으면 다리를 앞으로 뻗음
       legs[0].rotation.z = -0.12 * sitK; legs[1].rotation.z = 0.12 * sitK;
+      legs[0].rotation.x -= 0.8 * airK; legs[1].rotation.x -= 0.5 * airK; // 점프하면 다리를 접음
       arms[0].rotation.x = -sw * 0.9;
       arms[1].rotation.x = sw * 0.9 * (1 - waveK);
       arms[1].rotation.z = 0.35 + waveK * (2.1 + Math.sin(t * 12) * 0.35);
       arms[0].rotation.z = -0.35 - angK * (1.5 + Math.sin(t * 22) * 0.25); if (angK > 0.01) arms[1].rotation.z = 0.35 + angK * (1.5 + Math.sin(t * 22 + 1) * 0.25); // 화나면 두 팔을 번쩍
+      if (airK > 0.01) { arms[0].rotation.z -= 0.9 * airK; arms[1].rotation.z += 0.9 * airK; } // 공중에선 두 팔을 벌림
       if (bowK > 0.01) { arms[0].rotation.x += -0.5 * bowK; arms[1].rotation.x += -0.5 * bowK; } // 꾸벅할 땐 두 손을 앞으로 모음
       if (st.hold) { arms[1].rotation.x = st.hold === 'fish' ? -0.9 : st.hold === 'swing' ? -1.5 : -0.45 + sw * 0.15; arms[1].rotation.z = 0.18; } // 물건을 쥔 팔: 낚시 땐 앞으로, 들고 다닐 땐 살짝 앞으로
       rig.position.y = Math.abs(Math.sin(t * 11)) * 0.035 * walk - 0.12 * sitK + Math.abs(Math.sin(t * 16)) * 0.06 * angK; // 앉으면 엉덩이가 바닥(y=0)에 닿게 내림, 화나면 발을 동동

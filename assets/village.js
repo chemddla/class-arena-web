@@ -68,13 +68,13 @@
     <button data-v="fullBtn">⛶ 크게</button>
     <span class="pill"><b data-v="fpsN">–</b> fps · <span data-v="qN">화질 높음</span></span>
   </div>
-  <div class="vlg-hint">이동: WASD·방향키 또는 땅 누르기 · 시점: 화면 끌기 · 원래 시점: R · 낚시: 물고기 그림자 근처 물가에서 E · 가방: B · 도구 들기/바꾸기: Q · 벌레: 잠자리채 들고 E · 달리기: Shift · 인사: Space · 하기: E · 감정: 1·2 · 확대: 마우스 휠</div>
+  <div class="vlg-hint">이동: WASD·방향키 또는 땅 누르기 · 시점: 화면 끌기 · 원래 시점: R · 낚시: 물고기 그림자 근처 물가에서 E · 가방: B · 도구 들기/바꾸기: Q · 벌레: 잠자리채 들고 E · 달리기: Shift · 점프: Space · 인사: F · 하기: E · 감정: 1·2 · 확대: 마우스 휠</div>
   <div class="vlg-catch" data-v="catch"></div>
   <div class="vlg-dex" data-v="shop" style="display:none"><div class="vlg-dex-in"><div class="vlg-dex-h"><b data-v="shopTitle">🦝 물고기 사요</b><span data-v="shopSum"></span><button data-v="shopClose">✕ 닫기</button></div><div data-v="shopBody"></div></div></div>
   <div class="vlg-dex" data-v="bag" style="display:none"><div class="vlg-dex-in"><div class="vlg-dex-h"><b>🎒 가방</b><span data-v="bagSum"></span><button data-v="bagClose">✕ 닫기</button></div><div data-v="bagBody"></div></div></div>
   <div class="vlg-dex" data-v="dex" style="display:none"><div class="vlg-dex-in"><div class="vlg-dex-h"><b>📖 물고기 도감</b><span data-v="dexSum"></span><button data-v="dexClose">✕ 닫기</button></div><div data-v="dexBody"></div></div></div>
   <div class="vlg-mapbox" data-v="mapBox"><canvas class="vlg-map" data-v="map"></canvas><button data-v="mapBtn">▾ 내리기</button></div>
-  <div class="vlg-acts"><button data-v="joyBtn" title="기쁨 (1)">😄</button><button data-v="heartBtn" title="하트 (2)">❤️</button><button data-v="waveBtn">👋 인사</button><button data-v="shakeBtn">🌳 흔들기</button></div>`;
+  <div class="vlg-acts"><button data-v="joyBtn" title="기쁨 (1)">😄</button><button data-v="heartBtn" title="하트 (2)">❤️</button><button data-v="jumpBtn" title="점프 (Space)">⤴️ 점프</button><button data-v="waveBtn" title="인사 (F)">👋 인사</button><button data-v="shakeBtn">🌳 흔들기</button></div>`;
 
   function start(root, host) {
   host = host || null; const demo = !host;
@@ -1012,7 +1012,8 @@
   const onKeyDown = e => {
     if (!running || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
     keys[e.code] = true;
-    if (e.code === 'Space') { e.preventDefault(); wave(); }
+    if (e.code === 'Space') { e.preventDefault(); jump(); }
+    if (e.code === 'KeyF') wave();
     if (e.code === 'KeyE') interact();
     if (e.code === 'KeyR') resetView();
     if (e.code === 'Escape') { openDex(false); openBag(false); openShop(null); }
@@ -1187,6 +1188,10 @@
   // 좌표를 계속 보내지 않고 "어디서 어디로 간다"만 방향이 바뀔 때 보냄 (키보드로 걸을 땐 0.8초마다 앞을 내다본 목적지를 갱신)
   const net = { ref: null, list: null, conn: null, key: '', lastAt: 0, want: false, n: 0, emo: '', remotes: {} };
   const f1 = v => (Math.round(v * 10) / 10).toString();
+  function jump() { // 스페이스: 폴짝 뛰어오름 (앉아 있거나 낚시 중이거나 이미 공중이면 안 됨)
+    if (me.sit || fishing.st || me.jumpY > 0.01) return;
+    me.jumpVy = 5.6; netEmote('u'); tone(440, 0.12, 'triangle', 0, 0.08, 760); }
+  $('jumpBtn').onclick = e => { jump(); e.currentTarget.blur(); };
   function netEmote(k) { net.n = (net.n + 1) % 1000; net.emo = k; net.want = true; }
   function netTick(kx, kz, now) {
     if (!net.ref) return;
@@ -1217,6 +1222,7 @@
     if (p[6] !== a.emoN) { a.emoN = p[6]; // 새 감정 표현
       if (p[5] === 'w') a.wave = 1.6;
       else if (p[5] === 'j') { say(a, '😄 야호!', 1.4); a.hop = 0.4; }
+      else if (p[5] === 'u') a.jumpVy = 5.6; // 친구가 점프
       else if (p[5] === 'h') { say(a, '❤️', 1.4); popText('❤️', a.x, 1.9, a.z); }
     }
   }
@@ -1660,14 +1666,16 @@
       if (a.sit && a.sit.place) a.sit.place(a, t); // 놀이터 기구
       else if (a.sit) { // 앉은 자리에 붙음
         const q = a.sit; a.g.position.set(q.x, q.y, q.z); a.g.rotation.x = 0; a.face = q.face;
-      } else { a.g.rotation.x = 0; a.g.position.set(a.x, (a.hop > 0 ? Math.sin(Math.PI * (1 - a.hop / 0.4)) * 0.38 : 0) + groundY(a.x, a.z), a.z); }
+      } else {
+        if (a.jumpVy || a.jumpY > 0) { a.jumpVy -= 16 * dt; a.jumpY = Math.max(0, (a.jumpY || 0) + a.jumpVy * dt); if (!a.jumpY && a.jumpVy < 0) a.jumpVy = 0; } // 점프: 올라갔다 떨어짐
+        a.g.rotation.x = 0; a.g.position.set(a.x, (a.hop > 0 ? Math.sin(Math.PI * (1 - a.hop / 0.4)) * 0.38 : 0) + (a.jumpY || 0) + groundY(a.x, a.z), a.z); }
       let d = a.face - a.g.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); a.g.rotation.y += d * Math.min(1, dt * 12);
       if (a.wave > 0) a.wave -= dt;
       if (a.bowT > 0) a.bowT -= dt; if (a.angryT > 0) a.angryT -= dt;
       if (a.sayT > 0) a.sayT -= dt;
       const label = a.sayT > 0 ? a.say : a.name + (a.wave > 0 ? ' 👋' : '');
       if (label !== a.label) { a.label = label; a.tag.textContent = label; a.tag.classList.toggle('say', a.sayT > 0); }
-      a.pet.update(t, { moving: a.moving && !(a.bowT > 0), wave: a.wave > 0.02, bow: a.bowT > 0, angry: a.angryT > 0, sit: Boolean(a.sit) && !a.sit.stand, hold: a === me && (rod.visible || bugNet.visible) ? (fishing.st ? 'fish' : me.swingT > 0 ? 'swing' : 'carry') : null });
+      a.pet.update(t, { moving: a.moving && !(a.bowT > 0), wave: a.wave > 0.02, bow: a.bowT > 0, angry: a.angryT > 0, air: a.jumpY > 0.05, sit: Boolean(a.sit) && !a.sit.stand, hold: a === me && (rod.visible || bugNet.visible) ? (fishing.st ? 'fish' : me.swingT > 0 ? 'swing' : 'carry') : null });
       const dz = bendDist(a.x, a.z);
       v.set(a.g.position.x, a.g.position.y + (a.sit ? 1.1 : 1.24) * (a.pet.height || 1) - curve.uCurve.value * dz * dz, a.g.position.z).project(camera);
       const on = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;
