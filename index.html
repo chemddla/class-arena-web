@@ -2875,6 +2875,9 @@
     .eb-chip.hardbtn:disabled { cursor: not-allowed; background: #3f3f46; color: #a1a1aa; box-shadow: none; }
     .eb-pick { position: absolute; right: 8px; top: 8px; z-index: 4; padding: 2px 8px; font-size: 11px; font-weight: 800; color: var(--gl-ink); background: var(--gl-gold); }
     .eb-card.hard .eb-pick { background: #ef4444; color: #fff; }
+    .eb-chip.easybtn { cursor: pointer; background: #14532d; color: #bbf7d0; box-shadow: inset 0 -2px 0 #052e16; border: 0; }
+    .eb-chip.easybtn.on { background: #16a34a; color: #fff; }
+    .eb-card.easy .eb-pick { background: #16a34a; color: #fff; }
     .eb-card.locked { cursor: not-allowed; }
     .eb-card.locked > .eb-map { filter: grayscale(1) brightness(.55) blur(1.5px); }
     .eb-card.locked .bb-mob { filter: drop-shadow(0 0 1px rgba(255, 255, 255, .55)) drop-shadow(0 0 8px rgba(190, 170, 255, .35)); animation: none; }
@@ -20944,7 +20947,7 @@
       tick();
     }
 
-    function launchSimulation({ mode, title, blueStudent, redStudent, towerFloorObj, eliteBossId, eliteHard = false, rewardMc, lossRewardMc, customBlueUnits, customRedUnits, netRole = null, myTeam = 'blue', roomBattle = false, liveKind = null }) {
+    function launchSimulation({ mode, title, blueStudent, redStudent, towerFloorObj, eliteBossId, eliteHard = false, eliteEasy = false, rewardMc, lossRewardMc, customBlueUnits, customRedUnits, netRole = null, myTeam = 'blue', roomBattle = false, liveKind = null }) {
       const blueDeployed = (blueStudent?.roster || []).filter(m => m.deployed);
       if (!customBlueUnits && blueDeployed.length === 0) {
         showNotice('⚠️ 출전 가능한 용병이 없습니다! 먼저 용병 모집에서 용병을 고용하고 출전시켜주세요.');
@@ -21051,7 +21054,7 @@
       sim.fairSuddenDeath = false;
       sim.mode = mode;
       sim.title = title;
-      sim.meta = { blueStudent, redStudent, towerFloorObj, eliteBossId: eliteBossId || null, eliteHard: Boolean(eliteHard), rewardMc: rewardMc || 250, lossRewardMc, liveKind };
+      sim.meta = { blueStudent, redStudent, towerFloorObj, eliteBossId: eliteBossId || null, eliteHard: Boolean(eliteHard), eliteEasy: Boolean(eliteEasy) && !eliteHard, rewardMc: rewardMc || 250, lossRewardMc, liveKind };
       sim.running = true;
       sim.netRole = netRole;
       sim.myTeam = myTeam;
@@ -31049,8 +31052,10 @@
       if (isTowerReplay) baseReward = 0;
       // 엘리트 보스는 보스마다 처음 잡았을 때 한 번만 보상 (잡은 뒤 재도전은 이기든 지든 보상 없음)
       // 🔥 하드모드도 보스마다 처음 잡았을 때 한 번만 (원래 보상의 2배는 rewardMc에 이미 들어 있음)
+      // 🌱 이지모드도 따로 기록 (이지로 잡아도 일반 처치·다음 단계·하드 열림과는 상관없음)
       const eliteHard = Boolean(sim.mode === 'elite_raid' && meta.eliteHard);
-      const isEliteReplay = Boolean(sim.mode === 'elite_raid' && meta.eliteBossId && (eliteHard ? eliteHardClaimsOf(stu) : eliteClaimsOf(stu))[meta.eliteBossId]);
+      const eliteEasy = Boolean(sim.mode === 'elite_raid' && meta.eliteEasy && !eliteHard);
+      const isEliteReplay = Boolean(sim.mode === 'elite_raid' && meta.eliteBossId && (eliteHard ? eliteHardClaimsOf(stu) : eliteEasy ? eliteEasyClaimsOf(stu) : eliteClaimsOf(stu))[meta.eliteBossId]);
       if (isEliteReplay) baseReward = 0;
       const isFirstEliteClear = Boolean(blueWon && sim.mode === 'elite_raid' && meta.eliteBossId && !isEliteReplay);
       const eliteClearsFull = isFirstEliteClear && getEliteClearsLeft(stu) <= 0;
@@ -31063,14 +31068,11 @@
       if (isFirstEliteClear && reward > 0) getDailyRewardBook(stu).raidClears = (getDailyRewardBook(stu).raidClears || 0) + 1;
       if (reward > 0) state.guardianPts += blueWon ? 20 : 8;
       if (blueWon && reward > 0 && sim.mode === 'elite_raid' && meta.eliteBossId) {
-        // 시즌을 새로 적기 전에 두 기록을 함께 읽어 둠 (지난 시즌 기록이 따라오지 않게)
-        const normalClaims = eliteClaimsOf(stu), hardClaims = eliteHardClaimsOf(stu);
-        if (eliteHard) stu.eliteHardClaimed = { ...hardClaims, [meta.eliteBossId]: true };
-        else stu.eliteRewardClaimed = { ...normalClaims, [meta.eliteBossId]: true };
-        if (stu.eliteSeason !== ELITE_SEASON) {
-          if (eliteHard) stu.eliteRewardClaimed = normalClaims;
-          else stu.eliteHardClaimed = hardClaims;
-        }
+        // 시즌을 새로 적기 전에 세 기록을 함께 읽어 둠 (지난 시즌 기록이 따라오지 않게)
+        const claims = { eliteRewardClaimed: eliteClaimsOf(stu), eliteHardClaimed: eliteHardClaimsOf(stu), eliteEasyClaimed: eliteEasyClaimsOf(stu) };
+        const key = eliteHard ? 'eliteHardClaimed' : eliteEasy ? 'eliteEasyClaimed' : 'eliteRewardClaimed';
+        claims[key] = { ...claims[key], [meta.eliteBossId]: true };
+        Object.assign(stu, claims);
         stu.eliteSeason = ELITE_SEASON;
       }
 
@@ -31128,7 +31130,7 @@
         : eliteClearsFull
         ? `오늘 엘리트 보스 클리어 횟수(${ELITE_DAILY_CLEARS}회)를 모두 채워서 보상은 없어요. 이 보스는 내일 다시 잡으면 보상을 받아요!`
         : isEliteReplay
-        ? (eliteHard ? '이미 보상을 받은 하드모드 엘리트 보스라 보상은 없어요. 다른 보스의 하드모드에 도전해 보세요!' : '이미 보상을 받은 엘리트 보스라 보상은 없어요. 다른 엘리트 보스에 도전해 보세요!')
+        ? (eliteHard ? '이미 보상을 받은 하드모드 엘리트 보스라 보상은 없어요. 다른 보스의 하드모드에 도전해 보세요!' : eliteEasy ? '이미 보상을 받은 이지모드 엘리트 보스라 보상은 없어요. 일반 모드에 도전해 보세요!' : '이미 보상을 받은 엘리트 보스라 보상은 없어요. 다른 엘리트 보스에 도전해 보세요!')
         : (reward > 0
           ? `전투 보상으로 💰 ${reward} CA를 받았어요!${isFirstTowerClear ? ` (오늘 남은 탑 클리어: ${getTowerClearsLeft(stu)}회)` : isFirstEliteClear ? ` (오늘 남은 엘리트 보스 클리어: ${getEliteClearsLeft(stu)}회)` : rewardCategory ? ` (오늘 남은 ${DAILY_REWARD_LABELS[rewardCategory]} 보상: ${getDailyRewardLeft(stu, rewardCategory)}회)` : ''}`
           : dailyRewardDoneText(rewardCategory));
@@ -37253,7 +37255,14 @@
       if ((stu.mc || 0) < ELITE_HARD.cost) return `⚠️ 하드모드 도전비용(${ELITE_HARD.cost.toLocaleString()} CA)이 부족해요. (보유: ${(stu.mc || 0).toLocaleString()} CA)`;
       return '';
     }
-    const eliteRewardOf = (def, hard) => (hard ? def.rewardMc * ELITE_HARD.reward : def.rewardMc);
+    // 🌱 엘리트 보스 이지모드: 열린 보스면 언제나 · 체력·공격·방어 stat배 · 첫 처치 보상 reward배 (탑 이지와 같은 배율)
+    //   기록은 eliteEasyClaimed에 따로 (이지로 잡아도 다음 단계·하드모드는 안 열림)
+    const ELITE_EASY = { stat: 0.7, reward: 0.5 };
+    let selectedEliteEasy = false;
+    function eliteEasyClaimsOf(stu) {
+      return (stu && stu.eliteSeason === ELITE_SEASON && stu.eliteEasyClaimed) || {};
+    }
+    const eliteRewardOf = (def, hard, easy) => (hard ? def.rewardMc * ELITE_HARD.reward : easy ? Math.round(def.rewardMc * ELITE_EASY.reward) : def.rewardMc);
 
     // ===== 🌍 레이드 (반 협동 레이드) =====
     // 반 전체가 한 주 동안(월요일 00:00 ~ 다음 월요일) 보스 한 마리의 체력을 같이 깎음. 용병 1명으로 3분 싸우고
@@ -38305,6 +38314,7 @@
     }
     function ensureSelectedEliteHardUnlocked(stu) {
       if (selectedEliteHard && !isEliteHardUnlocked(stu, selectedEliteBossId)) selectedEliteHard = false;
+      if (selectedEliteHard) selectedEliteEasy = false;
     }
 
     // 추후 서버(Supabase / Firebase) 연결 시 즉시 작동하는 실시간 협동 레이드 서비스 어댑터
@@ -38370,7 +38380,7 @@
       saveRaidRoomData(room.roomId, room);
     }
 
-    function selectEliteBossForRaid(bossId, hard = false) {
+    function selectEliteBossForRaid(bossId, hard = false, easy = false) {
       const stu = getActiveStudent();
       if (!isEliteBossIdUnlocked(stu, bossId)) {
         showNotice(isEliteStageOpen(ELITE_BOSS_DEFS.find(b => b.id === bossId))
@@ -38384,6 +38394,7 @@
       }
       selectedEliteBossId = bossId;
       selectedEliteHard = hard;
+      selectedEliteEasy = easy && !hard;
       renderCoopRaidTab();
     }
 
@@ -38424,6 +38435,10 @@
       }
       const isSel = b.id === selectedEliteBossId;
       const hardSel = isSel && selectedEliteHard;
+      const easySel = isSel && selectedEliteEasy && !hardSel;
+      const easyClaimed = Boolean(eliteEasyClaimsOf(stu)[b.id]);
+      const easyBtn = `<button type="button" onclick="event.stopPropagation(); selectEliteBossForRaid('${b.id}', false, ${!easySel})" class="eb-chip easybtn${easySel ? ' on' : ''}"
+            title="보스 능력치 ${Math.round((1 - ELITE_EASY.stat) * 100)}% 감소 · ${easyClaimed ? '보상 받음' : `보상 ${eliteRewardOf(b, false, true).toLocaleString()} CA (1회)`} · 다음 단계는 안 열려요">${easySel ? '✅ ' : ''}🌱 이지</button>`;
       const claimed = Boolean(eliteClaimsOf(stu)[b.id]);
       const hardClaimed = Boolean(eliteHardClaimsOf(stu)[b.id]);
       const skills = Object.values(eliteBossSkillBook(b.id)).map(sk => `${sk.icon} ${sk.name}`).join(' · ');
@@ -38431,8 +38446,8 @@
         ? `<button type="button" onclick="event.stopPropagation(); selectEliteBossForRaid('${b.id}', ${!hardSel})" class="eb-chip hardbtn${hardSel ? ' on' : ''}"
             title="도전비용 ${ELITE_HARD.cost.toLocaleString()} CA · ${hardClaimed ? '보상 받음' : `보상 ${eliteRewardOf(b, true).toLocaleString()} CA (1회)`}">${hardSel ? '✅ ' : ''}🔥 하드모드</button>`
         : `<button type="button" disabled class="eb-chip hardbtn" title="일반 처치 후 열려요">🔒 하드</button>`;
-      return `<div class="eb-card${isSel ? ' sel' : ''}${hardSel ? ' hard' : ''}" onclick="selectEliteBossForRaid('${b.id}', ${hardSel})" title="${esc(skills)}">${map}${boss}
-          ${isSel ? `<span class="eb-pick">${hardSel ? '🔥 하드 선택' : '✅ 선택'}</span>` : ''}
+      return `<div class="eb-card${isSel ? ' sel' : ''}${hardSel ? ' hard' : ''}${easySel ? ' easy' : ''}" onclick="selectEliteBossForRaid('${b.id}', ${hardSel}, ${easySel})" title="${esc(skills)}">${map}${boss}
+          ${isSel ? `<span class="eb-pick">${hardSel ? '🔥 하드 선택' : easySel ? '🌱 이지 선택' : '✅ 선택'}</span>` : ''}
           <div class="eb-text">
             <span class="eb-tag">${b.stage}단계 엘리트 보스</span>
             <div class="eb-name">${esc(b.name)}</div>
@@ -38440,7 +38455,7 @@
             <div class="eb-chips">
               <span class="eb-chip">❤️ ${b.hp.toLocaleString()}</span>
               ${claimed ? '<span class="eb-chip done">✅ 처치함</span>' : `<span class="eb-chip gold">💰 ${b.rewardMc} CA</span>`}
-              ${hardBtn}
+              ${easyBtn}${hardBtn}
             </div>
           </div>
         </div>`;
@@ -38500,8 +38515,10 @@
       // 3) 아래 막대: 고른 보스 + 방 만들기
       const selEl = document.getElementById('raidSelectedBossText');
       const sel = ELITE_BOSS_DEFS.find(b => b.id === selectedEliteBossId) || ELITE_BOSS_DEFS[0];
-      if (selEl) selEl.innerHTML = `${selectedEliteHard ? '🔥 하드 · ' : ''}${sel.stage}단계 ${sel.name}
-        <small>${selectedEliteHard
+      if (selEl) selEl.innerHTML = `${selectedEliteHard ? '🔥 하드 · ' : selectedEliteEasy ? '🌱 이지 · ' : ''}${sel.stage}단계 ${sel.name}
+        <small>${selectedEliteEasy && !selectedEliteHard
+          ? `이지모드: 보스 능력치 ${Math.round((1 - ELITE_EASY.stat) * 100)}% 감소 · ${eliteEasyClaimsOf(myStu)[sel.id] ? '보상 받음 (재도전 보상 없음)' : `보상 💰 ${eliteRewardOf(sel, false, true).toLocaleString()} CA (1회)`} · 이지로 잡아도 다음 단계는 안 열려요`
+          : selectedEliteHard
           ? `하드모드: 보스가 더 강하고 커져요 (×${ELITE_HARD.size}) · 출발할 때 도전비용 ${ELITE_HARD.cost.toLocaleString()} CA · ${eliteHardClaimsOf(myStu)[sel.id] ? '보상 받음 (재도전 보상 없음)' : `보상 💰 ${eliteRewardOf(sel, true).toLocaleString()} CA (1회)`}`
           : (eliteClaimsOf(myStu)[sel.id] ? '보상 받음 (재도전 보상 없음)' : `처음 잡으면 💰 ${sel.rewardMc} CA`)} · 데려갈 용병은 방을 만든 뒤에 골라요</small>`;
     }
@@ -38539,15 +38556,16 @@
     }
     // 3인이 들어가면 2인 기준 체력의 (인원/2)배 (3인 = 1.5배)
     const raidHpMult = playerCount => (playerCount >= 3 ? playerCount / 2 : 1);
-    function buildCenterEliteBoss(bossDef, playerCount = 2, hard = false) {
+    function buildCenterEliteBoss(bossDef, playerCount = 2, hard = false, easy = false) {
       const bossTemplate = createMercenary(bossDef.job, 'R', 30, 0, true, 'whirlwind');
-      bossTemplate.name = hard ? `🔥${bossDef.name}` : bossDef.name;
+      const k = hard ? ELITE_HARD.stat : easy ? ELITE_EASY.stat : 1;
+      bossTemplate.name = hard ? `🔥${bossDef.name}` : easy ? `🌱${bossDef.name}` : bossDef.name;
       bossTemplate.monsterType = bossDef.monsterType;
       bossTemplate.row = 2;
       bossTemplate.col = 2;
-      bossTemplate.overrideMaxHp = Math.round(bossDef.hp * raidHpMult(playerCount) * (hard ? ELITE_HARD.hp : 1));
-      bossTemplate.overrideAtk = Math.round(bossDef.atk * (hard ? ELITE_HARD.stat : 1));
-      bossTemplate.overrideDef = Math.round(bossDef.def * (hard ? ELITE_HARD.stat : 1));
+      bossTemplate.overrideMaxHp = Math.round(bossDef.hp * raidHpMult(playerCount) * (hard ? ELITE_HARD.hp : k));
+      bossTemplate.overrideAtk = Math.round(bossDef.atk * k);
+      bossTemplate.overrideDef = Math.round(bossDef.def * k);
       const boss = createSimUnit(bossTemplate, null, 'red', 1.0);
       boss.isEliteBoss = true;
       if (hard) {
@@ -38571,6 +38589,7 @@
       ensureSelectedEliteHardUnlocked(myStu);
       const bossDef = ELITE_BOSS_DEFS.find(b => b.id === selectedEliteBossId) || ELITE_BOSS_DEFS[0];
       const hard = selectedEliteHard;
+      const easy = selectedEliteEasy && !hard;
       if (hard && eliteHardBlockReason(myStu, bossDef.id)) { showNotice(eliteHardBlockReason(myStu, bossDef.id)); return; }
 
       const myMercs = (myStu.roster || []).filter(m => selectedRaidMercIds.includes(m.id)).slice(0, RAID_PICK);
@@ -38583,16 +38602,17 @@
         { stu: myStu, mercs: myMercs, label: myStu.name },
         { stu: partnerStu, mercs: partnerMercs, label: partnerStu.name }
       ]);
-      const singleEliteBoss = buildCenterEliteBoss(bossDef, 2, hard);
+      const singleEliteBoss = buildCenterEliteBoss(bossDef, 2, hard, easy);
 
       launchSimulation({
         mode: 'elite_raid',
-        title: `🐉 실시간 2인 협동 레이드: ${myStu.name}(${myMercs.length}명) & ${partnerStu.name}(${partnerMercs.length}명) vs ${hard ? '🔥하드 ' : ''}${bossDef.name}`,
+        title: `🐉 실시간 2인 협동 레이드: ${myStu.name}(${myMercs.length}명) & ${partnerStu.name}(${partnerMercs.length}명) vs ${hard ? '🔥하드 ' : easy ? '🌱이지 ' : ''}${bossDef.name}`,
         blueStudent: myStu,
         redStudent: null,
         eliteBossId: bossDef.id,
         eliteHard: hard,
-        rewardMc: eliteRewardOf(bossDef, hard),
+        eliteEasy: easy,
+        rewardMc: eliteRewardOf(bossDef, hard, easy),
         customBlueUnits: blueUnits,
         customRedUnits: [singleEliteBoss]
       });
@@ -50126,10 +50146,11 @@
       ensureSelectedEliteHardUnlocked(myStu);
       const boss = ELITE_BOSS_DEFS.find(b => b.id === selectedEliteBossId) || ELITE_BOSS_DEFS[0];
       const hard = selectedEliteHard;
+      const easy = selectedEliteEasy && !hard;
       if (hard && eliteHardBlockReason(myStu, boss.id)) { showNotice(eliteHardBlockReason(myStu, boss.id)); return; }
       const myPower = myMercs.reduce((s, m) => s + calcMercCombatPower(m, myStu), 0);
       const titleInp = document.getElementById('raidNewRoomTitleInput');
-      const customTitle = cleanUserText(titleInp?.value, 24) || `[${hard ? '🔥하드 ' : ''}${boss.name}] ${myStu.name}의 협동 파티`;
+      const customTitle = cleanUserText(titleInp?.value, 24) || `[${hard ? '🔥하드 ' : easy ? '🌱이지 ' : ''}${boss.name}] ${myStu.name}의 협동 파티`;
       if (titleInp) titleInp.value = '';
 
       const roomId = 'raid_' + myStu.id + '_' + Date.now().toString(36).slice(-5);
@@ -50141,8 +50162,9 @@
         roomId,
         title: customTitle,
         bossId: boss.id,
-        bossName: hard ? `🔥하드 ${boss.name}` : boss.name,
+        bossName: hard ? `🔥하드 ${boss.name}` : easy ? `🌱이지 ${boss.name}` : boss.name,
         hard,
+        easy,
         hostId: myStu.id,
         hostNum: myStu.num,
         hostName: myStu.name,
@@ -50459,7 +50481,7 @@
                   !hasGuest
                     ? '파트너 친구가 방에 입장하기를 기다리는 중입니다.'
                     : (canStart ? '모두 준비완료! 방장이 [협동 레이드 시작]을 누르면 출발합니다.' : '파티원이 [✋ 준비완료]를 누르기를 기다리고 있습니다...')
-                }${hpMult > 1 ? ` · <span class="text-rose-300">3인 입장: 보스 체력 ×${hpMult}</span>` : ''}${myRoom.hard ? ` · <span class="text-red-400">🔥 하드모드: 출발할 때 한 명당 ${ELITE_HARD.cost.toLocaleString()} CA</span>` : ''}
+                }${hpMult > 1 ? ` · <span class="text-rose-300">3인 입장: 보스 체력 ×${hpMult}</span>` : ''}${myRoom.hard ? ` · <span class="text-red-400">🔥 하드모드: 출발할 때 한 명당 ${ELITE_HARD.cost.toLocaleString()} CA</span>` : myRoom.easy ? ` · <span class="text-emerald-400">🌱 이지모드: 보스가 약하고 보상은 절반</span>` : ''}
               </div>
               <div class="flex items-center gap-2">
                 ${
@@ -50569,8 +50591,9 @@
           });
           const blueUnits = buildCoopRaidBlueUnits(sides);
           const hard = Boolean(r.hard);
-          const singleEliteBoss = buildCenterEliteBoss(bossDef, sides.length, hard);
-          const bossLabel = `${hard ? '🔥하드 ' : ''}${bossDef.name}`;
+          const easy = Boolean(r.easy) && !hard;
+          const singleEliteBoss = buildCenterEliteBoss(bossDef, sides.length, hard, easy);
+          const bossLabel = `${hard ? '🔥하드 ' : easy ? '🌱이지 ' : ''}${bossDef.name}`;
           const names = sides.map(s => `${s.label}`).join(' & ');
 
           // 방장 화면 하나만 전투를 계산하고, 파티원 화면은 그 화면을 받아 보며 자기 용병 조작만 보냄
@@ -50587,7 +50610,8 @@
             redStudent: null,
             eliteBossId: bossDef.id,
             eliteHard: hard,
-            rewardMc: eliteRewardOf(bossDef, hard),
+            eliteEasy: easy,
+            rewardMc: eliteRewardOf(bossDef, hard, easy),
             customBlueUnits: blueUnits,
             customRedUnits: [singleEliteBoss],
             netRole,
@@ -50844,7 +50868,7 @@
       if (isDungeonRoom(room) && !dgMap) { if (!quiet) showNotice('⚠️ 던전 화면을 불러오지 못했어요.'); return false; }
       launchSimulation({
         mode: rush ? 'monster_rush' : dgMap ? 'dungeon' : 'elite_raid',
-        title: rush ? `📺 관전 중: 🌊 몬스터 러쉬 · ${names} (${pick.name} 화면)` : dgMap ? `📺 관전 중: ${dgDef.icon} ${dgDef.name} [${dungeonDiffLabel(dgDiff)}] · ${names} (${pick.name} 화면)` : `📺 관전 중: ${names} vs ${room.hard ? '🔥하드 ' : ''}${bossDef.name} (${pick.name} 화면)`,
+        title: rush ? `📺 관전 중: 🌊 몬스터 러쉬 · ${names} (${pick.name} 화면)` : dgMap ? `📺 관전 중: ${dgDef.icon} ${dgDef.name} [${dungeonDiffLabel(dgDiff)}] · ${names} (${pick.name} 화면)` : `📺 관전 중: ${names} vs ${room.hard ? '🔥하드 ' : room.easy ? '🌱이지 ' : ''}${bossDef.name} (${pick.name} 화면)`,
         blueStudent: owner,
         redStudent: null,
         eliteBossId: bossDef.id,
