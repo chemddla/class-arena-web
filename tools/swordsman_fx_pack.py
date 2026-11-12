@@ -13,7 +13,7 @@ from PIL import Image
 
 OUT = 'assets/sprites/fx/sword'
 HALF = {'batto-ring'}
-QUANT = {'batto-ring', 'seomdan-x', 'mucham-final'}
+QUANT = {'batto-ring', 'seomdan-x', 'mucham-final', 'geukcham-charge', 'geukcham-aura'}
 
 
 def main():
