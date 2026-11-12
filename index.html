@@ -27270,9 +27270,10 @@
     }
     const swordGuardFx = (type, x, y, fx, s = 1) => { const m = SWORD_GUARD_FXS[type][1], life = Math.ceil(m[3] * 60 / m[4]); sim.effects.push({ type, x: Math.round(x), y: Math.round(y), fx, s, life, maxLife: life }); };
     // 일섬 (tools/swordsman_fx/issen.js): 출발점 가슴 높이 → 돌진 끝까지, 구운 길이 SWORD_ISSEN_LEN을 실제 거리에 맞춰 가로로 늘림
+    const SWORD_ISSEN_CUT_F = 18; // 일섬 시트에서 길이 갈라지는 칸 (tools/swordsman_fx/issen.js CUT 0.45초 × 40fps)
     const SWORD_ISSEN_FX = [511, 68, 2, 30, 40, 10, 34], SWORD_ISSEN_LEN = 480, SWORD_ISSEN_THICK = 1.6; // 두께 배율 (길이는 돌진 거리)
     function drawSwordIssenFx(ctx, ef) {
-      const m = SWORD_ISSEN_FX, img = swordFxImg(ef.sr ? 'issen-sr' : 'issen'), f = Math.floor((ef.maxLife - ef.life) * m[4] / 60 * (ef.sp || 1)); // sp: 재생 빠르기 (극참 난사) · 시크릿 레어: 전격만 뺀 시트 (tools/swordsman_issen_sr.py)
+      const m = SWORD_ISSEN_FX, img = swordFxImg(ef.sr ? 'issen-sr' : 'issen'), f = (ef.f0 || 0) + Math.floor((ef.maxLife - ef.life) * m[4] / 60 * (ef.sp || 1)); // sp: 재생 빠르기 (극참 난사) · f0: 시작 칸 (공간 베기 칼자국) · 시크릿 레어: 전격만 뺀 시트 (tools/swordsman_issen_sr.py)
       if (f >= m[3]) return;
       const c = Math.cos(ef.ang);
       if (!img) { // 시트를 아직 못 받았으면 곧은 빛줄 한 번
@@ -27426,7 +27427,7 @@
       { // 적 곁으로 옮겨 가는 길: 일섬의 빛줄기를 빠르게 (4배)
         const sp = 4, life = Math.ceil(SWORD_ISSEN_FX[3] * 60 / SWORD_ISSEN_FX[4] / sp);
         sim.effects.push({ type: 'sword_issen', x: Math.round(u.x), y: Math.round(u.y - 14), ang: Math.round(Math.atan2(p.y - u.y, p.x - u.x) * 100) / 100, len: Math.round(Math.max(30, Math.hypot(p.x - u.x, p.y - u.y))), sp, sr: swordIsSr(u), life, maxLife: life });
-        if (swordIsSr(u) && Math.random() < 0.5) swordFeatherTrail(u.x, u.y - 14, p.x, p.y - 14, 1, 0, life * 0.27);
+        if (swordIsSr(u) && Math.random() < 0.25) swordFeatherTrail(u.x, u.y - 14, p.x, p.y - 14, 1, 0, life * 0.27);
       }
       u.x = p.x; u.y = p.y; u.rush = null;
       swordFace(u, attacker);
@@ -27498,7 +27499,8 @@
         const foes = sim.units.filter(e => swordFoeOk(u, e));
         withSkillHit(() => foes.forEach(e => {
           applyDamage(u, e, u.atk * SWORD_GEUKCHAM_DMG, '🌌', '#e0f2fe');
-          sim.effects.push({ type: 'sword_x', x: e.x, y: e.y - 18, angle: Math.random() * Math.PI, r: 0, size: 54, color: '#bae6fd', life: 22, maxLife: 22 });
+          const k = SWORD_MUCHAM_SEQ.length - 1, m = SWORD_MUCHAM_FX[SWORD_MUCHAM_SEQ[k][0]], es = e.sizeScale || 1, cy = e.y + 12 - 30 * es, life = Math.ceil(m[3] * 60 / m[4]); // 기존 참격 시트(무참 마지막 큰 X)로
+          sim.effects.push({ type: 'sword_mucham', k, x: Math.round(e.x), y: Math.round(cy), ang: Math.round(Math.atan2(cy - (u.y - 14), e.x - u.x) * 100) / 100, s: es, life, maxLife: life });
         }));
         playCombatSfx('heavy');
         addBattleLog(`🌌 [검사] ${u.name}의 극참 마지막 일격! 전장 전체가 갈라졌어요 (${foes.length}명)`);
@@ -27548,7 +27550,7 @@
       // 일섬의 전격 빛줄기 시트만 씀 (돌진 부분이 이번 돌진 틱에 맞게 sp배 빠르기로 재생)
       const sp = Math.round(SWORD_ISSEN_TICKS / ticks * 100) / 100, life = Math.ceil(SWORD_ISSEN_FX[3] * 60 / SWORD_ISSEN_FX[4] / sp);
       sim.effects.push({ type: 'sword_issen', x: Math.round(sx), y: Math.round(sy - 14), ang: Math.round(Math.atan2(r.ty - sy, r.tx - sx) * 100) / 100, len: Math.round(Math.max(30, Math.hypot(r.tx - sx, r.ty - sy))), sp, sr: swordIsSr(u), life, maxLife: life });
-      if (swordIsSr(u) && Math.random() < 0.3) swordFeatherTrail(sx, sy - 14, r.tx, r.ty - 14, 1, 0, life * 0.27); // 난사는 50번이라 세 번에 한 장꼴
+      if (swordIsSr(u) && Math.random() < 0.12) swordFeatherTrail(sx, sy - 14, r.tx, r.ty - 14, 1, 0, life * 0.27); // 난사는 50번이라 여덟 번에 한 장꼴
     }
     function swordRanseomEnd(u, n) {
       addBattleLog(`🌌 [검사] ${u.name}의 히든 스킬 극참! 일섬 ${n}연 난사`);
@@ -27569,7 +27571,9 @@
       const W = sim.worldW, H = sim.worldH, L = Math.hypot(W, H);
       [-0.45, 0.1, 0.6].forEach((a0, k) => {
         const a = a0 + (Math.random() - 0.5) * 0.2, cx = W * (0.3 + 0.2 * k), cy = H / 2;
-        sim.effects.push({ type: 'sword_cut', x1: cx - Math.cos(a) * L, y1: cy - Math.sin(a) * L, x2: cx + Math.cos(a) * L, y2: cy + Math.sin(a) * L, w: 9, sharp: true, color: '#bae6fd', life: 40, maxLife: 40 }); // 날카롭고 매끄러운 참격 (2026-11-12 사용자)
+        // 기존 참격처럼 날카롭고 매끈하게 (2026-11-12 사용자): 일섬 시트에서 길이 갈라지는 빛의 날 부분(SWORD_ISSEN_CUT_F칸부터)만 화면 끝까지 늘려 틀고 (전격 뺀 시트), 조금 천천히
+        const sp = 0.6, life = Math.ceil((SWORD_ISSEN_FX[3] - SWORD_ISSEN_CUT_F) * 60 / SWORD_ISSEN_FX[4] / sp);
+        sim.effects.push({ type: 'sword_issen', x: Math.round(cx - Math.cos(a) * L), y: Math.round(cy - Math.sin(a) * L), ang: Math.round(a * 100) / 100, len: Math.round(2 * L), f0: SWORD_ISSEN_CUT_F, sp, sr: true, life, maxLife: life });
       });
       if (swordIsSr(unit)) [-0.45, 0.1, 0.6].forEach((a0, k) => { // 화면을 가른 칼자국을 따라 깃털이 흩날림
         const a = a0, cx = W * (0.3 + 0.2 * k), cy = H / 2, hl = Math.min(W, H) * 0.6;
@@ -27619,7 +27623,7 @@
         unit.swordIssenPose = SWORD_ISSEN_POSES[Math.floor(Math.random() * SWORD_ISSEN_POSES.length)];
         const life = Math.ceil(SWORD_ISSEN_FX[3] * 60 / SWORD_ISSEN_FX[4]); // 돌진 → 고요 → 길이 갈라짐까지 시트 하나 (갈라지는 때 = 돌진 8틱 + 10틱 뒤)
         sim.effects.push({ type: 'sword_issen', x: Math.round(sx), y: Math.round(sy - 14), ang: Math.round(Math.atan2(r.ty - sy, r.tx - sx) * 100) / 100, len: Math.round(Math.max(30, Math.hypot(r.tx - sx, r.ty - sy))), sr: swordIsSr(unit), life, maxLife: life });
-        if (swordIsSr(unit)) swordFeatherTrail(sx, sy - 14, r.tx, r.ty - 14, Math.round(Math.hypot(r.tx - sx, r.ty - sy) / 70) + 2, 0, life * 0.27); // 지나간 자리에 드문드문 깃털 잔상
+        if (swordIsSr(unit)) swordFeatherTrail(sx, sy - 14, r.tx, r.ty - 14, Math.round(Math.hypot(r.tx - sx, r.ty - sy) / 200) + 1, 0, life * 0.27); // 지나간 자리에 드문드문 깃털 잔상 (200px마다 한 장)
         playCombatSfx('slash');
         addBattleLog(`⚡ [검사] ${unit.name}의 일섬!`);
         return true;
@@ -27638,7 +27642,7 @@
         });
         const life = Math.ceil(SWORD_SEOMDAN_FX[3] * 60 / SWORD_SEOMDAN_FX[4]);
         sim.effects.push({ type: 'sword_seomdan', x: Math.round(unit.x + c * 30), y: Math.round(unit.y - 14 + s * 30), ang: Math.round(ang * 100) / 100, r: Math.round(reach - 30), life, maxLife: life });
-        if (swordIsSr(unit)) swordFeatherTrail(unit.x + c * 30, unit.y - 14 + s * 30, unit.x + c * reach, unit.y - 14 + s * reach, Math.round((reach - 30) / 70) + 2, SWORD_SEOMDAN_FLY[0] * 60, (SWORD_SEOMDAN_FLY[1] - SWORD_SEOMDAN_FLY[0]) * 60); // X가 지나가는 대로 깃털 잔상
+        if (swordIsSr(unit)) swordFeatherTrail(unit.x + c * 30, unit.y - 14 + s * 30, unit.x + c * reach, unit.y - 14 + s * reach, Math.round((reach - 30) / 200) + 1, SWORD_SEOMDAN_FLY[0] * 60, (SWORD_SEOMDAN_FLY[1] - SWORD_SEOMDAN_FLY[0]) * 60); // X가 지나가는 대로 깃털 잔상
         playCombatSfx('heavy');
         addBattleLog(`❌ [검사] ${unit.name}의 섬단! 검기가 ${n}명을 갈랐어요`);
         return true;
