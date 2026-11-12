@@ -13,7 +13,7 @@ F = 'assets/sprites/fx/samples/'
 #       wm = ✦ 워터마크 네모 (회색 픽셀: 몸에 갇힌 건 둘레 몸 색으로 메우고 나머지는 지움),
 #       drop = 지울 네모 [(x0, x1, y0, y1)] (샘플 좌표), min = 남길 조각의 최소 넓이(px, 기본 6)
 CELLS = {
-    'idle_big': (S + 'kraken_idle_src.webp', 90, 924, 0, 572, {}),
+    'idle_big': (S + 'kraken_idle_src.webp', 90, 924, 0, 572, {'flip': True}),  # 대기 샘플은 왼쪽을 봄
     'walk_a':   (S + 'kraken_walk_src.webp', 0, 512, 40, 470, {'flip': True}),
     'walk_b':   (S + 'kraken_walk_src.webp', 512, 1024, 40, 470, {'flip': True}),
     'idle':     (S + 'kraken_walk2_src.png', 0, 244, 0, 120, {}),

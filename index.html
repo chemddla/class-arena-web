@@ -2847,7 +2847,7 @@
     .bb-mobs { position: absolute; right: 3%; bottom: 6px; z-index: 1; display: flex; align-items: flex-end; pointer-events: none; }
     .bb-mob { position: relative; display: block; animation: bb-breathe 1.6s steps(2) infinite alternate; filter: drop-shadow(0 3px 0 rgba(0, 0, 0, .45)); }
     .bb-mob::after { content: ''; position: absolute; left: 22%; right: 22%; bottom: var(--bb-foot, 0px); height: 8px; border-radius: 50%; background: rgba(0, 0, 0, .35); z-index: -1; }
-    .bb-mob.boss { filter: drop-shadow(0 0 10px rgba(255, 80, 60, .55)) drop-shadow(0 3px 0 rgba(0, 0, 0, .45)); }
+    .bb-mob.boss { filter: drop-shadow(0 0 10px var(--bb-glow, rgba(255, 80, 60, .55))) drop-shadow(0 3px 0 rgba(0, 0, 0, .45)); }
     .bb-mob > span { display: block; background-repeat: no-repeat; transform: scaleX(-1); }
     .bb-mob.face-r > span { transform: none; }
     @keyframes bb-breathe { from { transform: translateY(0); } to { transform: translateY(-3px); } }
@@ -38500,11 +38500,17 @@
       elite_lich: 'assets/banners/elite_lich.webp', elite_ifrit: 'assets/banners/elite_ifrit.webp',
       elite_kraken: 'assets/banners/elite_kraken.webp', elite_chaos_dragon: 'assets/banners/elite_chaos_dragon.webp'
     };
-    const eliteBannerSrc = b => ELITE_BANNER_SRC[b.id] || (BATTLE_MAPS[ELITE_BOSS_MAPS[b.id]] || BATTLE_MAPS.elite).src;
+    // 배너 보스 둘레 빛: 보스 그림 색에 맞춤 (없으면 .bb-mob.boss 기본 붉은 빛)
+    const ELITE_BANNER_GLOW = {
+      elite_goblin_king: 'rgba(251, 191, 36, .6)', elite_dire_wolf: 'rgba(129, 140, 248, .6)', elite_golem: 'rgba(132, 204, 22, .55)',
+      elite_swamp_hydra: 'rgba(74, 222, 128, .55)', elite_leviathan: 'rgba(125, 211, 252, .6)', elite_orc_warlord: 'rgba(239, 68, 68, .55)',
+      elite_lich: 'rgba(168, 85, 247, .6)', elite_ifrit: 'rgba(249, 115, 22, .6)', elite_kraken: 'rgba(34, 211, 238, .55)', elite_chaos_dragon: 'rgba(217, 70, 239, .6)'
+    };
+    const eliteBannerSrc = b =>ELITE_BANNER_SRC[b.id] || (BATTLE_MAPS[ELITE_BOSS_MAPS[b.id]] || BATTLE_MAPS.elite).src;
     function eliteBossBannerHTML(b, stu) {
       const esc = escHtml;
       const idx = ELITE_BOSS_DEFS.indexOf(b);
-      const boss = bannerMobsHTML([], eliteBannerDef(b), 0, 150);
+      const boss = bannerMobsHTML([], eliteBannerDef(b), 0, 150, ELITE_BANNER_GLOW[b.id]);
       const map = `<img class="eb-map" src="${eliteBannerSrc(b)}" alt="" loading="lazy" decoding="async">`;
       if (!isEliteBossUnlocked(stu, idx)) {
         // 잠긴 보스: 전장은 어둡게, 보스는 검은 그림자로만
@@ -55008,7 +55014,9 @@
       const foot = Math.round((def.cellH - def.anchorY) * k);
       // 칸 양옆 빈자리만큼 서로 겹치게 (그림이 칸 가운데쯤에 서 있음)
       const ml = -Math.round(Math.max(0, w - h * 0.9) * 0.5);
-      return `<span class="bb-mob${opt.boss ? ' boss' : ''}" style="--bb-foot:${foot - 3}px;margin:0 ${ml}px ${-foot}px ${ml}px;animation-delay:${opt.delay || 0}s"><span style="width:${w}px;height:${H}px;background-image:url('${def.src}');background-size:${Math.round(def.cellW * def.count * k)}px ${H}px;background-position:${-Math.round(fr * def.cellW * k)}px 0${def.filter ? `;filter:${def.filter}` : ''}"></span></span>`;
+      // 뒤집어 그리므로 발(anchorX)이 칸 가운데 오게 옮김 (리치처럼 칸이 넓고 몸이 한쪽에 있는 시트가 치우치지 않게)
+      const dx = Math.round(def.anchorX * k - w / 2);
+      return `<span class="bb-mob${opt.boss ? ' boss' : ''}" style="--bb-foot:${foot - 3}px;margin:0 ${ml}px ${-foot}px ${ml}px;animation-delay:${opt.delay || 0}s${opt.glow ? `;--bb-glow:${opt.glow}` : ''}"><span style="${dx ? `position:relative;left:${dx}px;` : ''}width:${w}px;height:${H}px;background-image:url('${def.src}');background-size:${Math.round(def.cellW * def.count * k)}px ${H}px;background-position:${-Math.round(fr * def.cellW * k)}px 0${def.filter ? `;filter:${def.filter}` : ''}"></span></span>`;
     }
     // 종족의 졸개 그림 (탑 편성표에 그림이 있는 몬스터만, 겹치는 그림은 한 번)
     function raceBannerMobDefs(raceName) {
@@ -55025,8 +55033,8 @@
     }
     const eliteBannerDef = b => b && (MONSTER_SPRITE_DEFS[`elite_${b.monsterType}`] || MONSTER_SPRITE_DEFS[b.monsterType]) || null;
     // 줄 세우기: 졸개는 앞(왼쪽)에, 보스는 맨 오른쪽 뒤에 크게
-    function bannerMobsHTML(mobs, boss, mobH = 78, bossH = 142) {
-      return `<div class="bb-mobs">${mobs.filter(Boolean).map((d, i) => bannerSpriteHTML(d, mobH - (i % 2) * 6, { delay: (i * 0.37) % 1.6 })).join('')}${boss ? bannerSpriteHTML(boss, bossH, { boss: true, delay: 0.5 }) : ''}</div>`;
+    function bannerMobsHTML(mobs, boss, mobH = 78, bossH = 142, glow = '') {
+      return `<div class="bb-mobs">${mobs.filter(Boolean).map((d, i) => bannerSpriteHTML(d, mobH - (i % 2) * 6, { delay: (i * 0.37) % 1.6 })).join('')}${boss ? bannerSpriteHTML(boss, bossH, { boss: true, delay: 0.5, glow }) : ''}</div>`;
     }
     function battleBannerHTML({ map, alt, tag, title, sub, mobsHTML = '', corner = '' }) {
       const esc = escHtml;
