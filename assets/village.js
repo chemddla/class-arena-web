@@ -68,7 +68,7 @@
     <button data-v="fullBtn">⛶ 크게</button>
     <span class="pill"><b data-v="fpsN">–</b> fps · <span data-v="qN">화질 높음</span></span>
   </div>
-  <div class="vlg-hint">이동: WASD·방향키 또는 땅 누르기 · 시점: 화면 끌기 · 원래 시점: R · 낚시: 물고기 그림자 근처 물가에서 E · 가방: B · 도구 들기/바꾸기: Q · 벌레: 잠자리채 들고 E · 달리기: Shift · 점프: Space · 인사: F · 하기: E · 감정: 1·2 · 확대: 마우스 휠</div>
+  <div class="vlg-hint">이동: WASD·방향키 또는 땅 누르기 · 시점: 화면 끌기 · 원래 시점: R · 낚시: 물고기 그림자 근처 물가에서 E · 가방: B · 도구 들기/바꾸기: Q · 벌레: 잠자리채 들고 E · 달리기: Shift · 점프: Space (공중에서 한 번 더: 한 바퀴) · 인사: F · 하기: E · 감정: 1·2 · 확대: 마우스 휠</div>
   <div class="vlg-catch" data-v="catch"></div>
   <div class="vlg-dex" data-v="shop" style="display:none"><div class="vlg-dex-in"><div class="vlg-dex-h"><b data-v="shopTitle">🦝 물고기 사요</b><span data-v="shopSum"></span><button data-v="shopClose">✕ 닫기</button></div><div data-v="shopBody"></div></div></div>
   <div class="vlg-dex" data-v="bag" style="display:none"><div class="vlg-dex-in"><div class="vlg-dex-h"><b>🎒 가방</b><span data-v="bagSum"></span><button data-v="bagClose">✕ 닫기</button></div><div data-v="bagBody"></div></div></div>
@@ -1188,8 +1188,9 @@
   // 좌표를 계속 보내지 않고 "어디서 어디로 간다"만 방향이 바뀔 때 보냄 (키보드로 걸을 땐 0.8초마다 앞을 내다본 목적지를 갱신)
   const net = { ref: null, list: null, conn: null, key: '', lastAt: 0, want: false, n: 0, emo: '', remotes: {} };
   const f1 = v => (Math.round(v * 10) / 10).toString();
-  function jump() { // 스페이스: 폴짝 뛰어오름 (앉아 있거나 낚시 중이거나 이미 공중이면 안 됨)
-    if (me.sit || fishing.st || me.jumpY > 0.01) return;
+  function jump() { // 스페이스: 폴짝 뛰어오름. 공중에서 한 번 더 누르면 앞으로 한 바퀴 (점프 한 번에 한 바퀴만)
+    if (me.sit || fishing.st) return;
+    if (me.jumpY > 0.01) { if (!me.flipped && me.jumpY > 0.12) { me.flipped = true; me.flipT = 0; me.jumpVy = Math.max(me.jumpVy, 4.2); netEmote('v'); tone(520, 0.2, 'triangle', 0, 0.08, 1040); } return; }
     me.jumpVy = 5.6; netEmote('u'); tone(440, 0.12, 'triangle', 0, 0.08, 760); }
   $('jumpBtn').onclick = e => { jump(); e.currentTarget.blur(); };
   function netEmote(k) { net.n = (net.n + 1) % 1000; net.emo = k; net.want = true; }
@@ -1223,6 +1224,7 @@
       if (p[5] === 'w') a.wave = 1.6;
       else if (p[5] === 'j') { say(a, '😄 야호!', 1.4); a.hop = 0.4; }
       else if (p[5] === 'u') a.jumpVy = 5.6; // 친구가 점프
+      else if (p[5] === 'v') { a.flipT = 0; a.jumpVy = Math.max(a.jumpVy || 0, 4.2); } // 친구가 공중제비
       else if (p[5] === 'h') { say(a, '❤️', 1.4); popText('❤️', a.x, 1.9, a.z); }
     }
   }
@@ -1667,7 +1669,9 @@
       else if (a.sit) { // 앉은 자리에 붙음
         const q = a.sit; a.g.position.set(q.x, q.y, q.z); a.g.rotation.x = 0; a.face = q.face;
       } else {
-        if (a.jumpVy || a.jumpY > 0) { a.jumpVy -= 16 * dt; a.jumpY = Math.max(0, (a.jumpY || 0) + a.jumpVy * dt); if (!a.jumpY && a.jumpVy < 0) a.jumpVy = 0; } // 점프: 올라갔다 떨어짐
+        if (a.jumpVy || a.jumpY > 0) { a.jumpVy -= 16 * dt; a.jumpY = Math.max(0, (a.jumpY || 0) + a.jumpVy * dt); if (!a.jumpY && a.jumpVy < 0) { a.jumpVy = 0; a.flipped = false; } } // 점프: 올라갔다 떨어짐
+        if (a.flipT !== undefined) { a.flipT += dt; const k = Math.min(1, a.flipT / 0.5), ang = k * Math.PI * 2, h = 0.45 * (a.pet.height || 1); // 공중제비: 몸 가운데를 축으로 앞으로 한 바퀴
+          a.pet.group.rotation.x = ang; a.pet.group.position.set(0, h - h * Math.cos(ang), -h * Math.sin(ang)); if (k >= 1) { a.flipT = undefined; a.pet.group.rotation.x = 0; a.pet.group.position.set(0, 0, 0); } }
         a.g.rotation.x = 0; a.g.position.set(a.x, (a.hop > 0 ? Math.sin(Math.PI * (1 - a.hop / 0.4)) * 0.38 : 0) + (a.jumpY || 0) + groundY(a.x, a.z), a.z); }
       let d = a.face - a.g.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); a.g.rotation.y += d * Math.min(1, dt * 12);
       if (a.wave > 0) a.wave -= dt;
