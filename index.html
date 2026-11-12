@@ -27234,10 +27234,21 @@
       }
       // 칼자루에 모인 빛: 모일수록 커짐 · 방출 순간 잠깐 부풀었다 빛이 빠져나가며 작아짐
       const core = (1.5 + 3 * e) * s * (1 + 0.15 * Math.sin(t * 0.7)) * (1 + 0.4 * Math.max(0, 1 - Math.abs(rel - 0.15) / 0.3)) * (1 - 0.5 * Math.max(rel, b));
-      const cg = ctx.createRadialGradient(hx, hy, 0, hx, hy, core * 3.2);
-      cg.addColorStop(0, 'rgba(255,255,255,.9)'); cg.addColorStop(0.25, 'rgba(240,249,255,.45)'); cg.addColorStop(1, 'rgba(186,230,253,0)');
-      ctx.globalAlpha = (0.35 + 0.65 * e) * fade; ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(hx, hy, core * 3.2, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(hx, hy, core, 0, Math.PI * 2); ctx.fill();
+      // 테두리 있는 흰 원 대신 가운데만 하얗게 타고 바깥으로 갈수록 하늘빛으로 옅어지는 여러 단 그라데이션 (2026-11-12 사용자: 그냥 원이라 어색함)
+      const coreA = (0.35 + 0.65 * e) * fade, CR = core * 5;
+      const cg = ctx.createRadialGradient(hx, hy, 0, hx, hy, CR);
+      cg.addColorStop(0, 'rgba(255,255,255,1)'); cg.addColorStop(0.07, 'rgba(255,255,255,.92)'); cg.addColorStop(0.18, 'rgba(240,249,255,.55)');
+      cg.addColorStop(0.4, 'rgba(224,242,254,.2)'); cg.addColorStop(0.7, 'rgba(186,230,253,.06)'); cg.addColorStop(1, 'rgba(186,230,253,0)');
+      ctx.globalAlpha = coreA; ctx.fillStyle = cg; ctx.fillRect(hx - CR, hy - CR, CR * 2, CR * 2);
+      // 반짝이는 빛살: 가로로 긴 빛줄기 + 세로로 짧은 빛줄기 (둘 다 가운데가 밝고 끝으로 사라짐), 천천히 숨 쉬듯 반짝임
+      const tw = 0.75 + 0.25 * Math.sin(t * 0.21);
+      [[core * 11 * (0.5 + 0.5 * e) * tw, 0.1], [core * 6 * (0.5 + 0.5 * e) * (1.6 - tw), 0.12]].forEach(([L, th], j) => {
+        ctx.save(); ctx.translate(hx, hy); if (j) ctx.rotate(Math.PI / 2); ctx.scale(1, th);
+        const sg = ctx.createRadialGradient(0, 0, 0, 0, 0, L);
+        sg.addColorStop(0, 'rgba(255,255,255,.95)'); sg.addColorStop(0.25, 'rgba(240,249,255,.4)'); sg.addColorStop(1, 'rgba(224,242,254,0)');
+        ctx.globalAlpha = coreA * 0.8; ctx.fillStyle = sg; ctx.fillRect(-L, -L, L * 2, L * 2);
+        ctx.restore();
+      });
       // 방출: 모인 빛이 칼자루에서 사방으로 뻗는 빛살 + 퍼지는 흰 고리
       const out = Math.max(rel, b);
       if (out > 0) {
@@ -34491,21 +34502,92 @@
       ctx.restore();
     }
 
-    // 화면 갈라짐 (검사 극참 마지막 일격): 흰 참격이 화면을 가로질러 그어진 뒤, 그 선을 따라 전투 화면이 두 조각으로 벌어지고 어긋났다가 다시 붙음. 틈은 검정이 아닌 하얀 빛 (2026-11-12 사용자)
-    //   캔버스 픽셀 그대로 다루려고 변환을 지우고 그림 (HUD·미니맵은 이 뒤에 그려서 안 갈라짐)
-    const SCREEN_SPLIT_BUF = document.createElement('canvas');
+    // 화면 갈라짐 (검사 극참 마지막 일격): 흰 참격이 화면을 가로질러 그어진 뒤, 그 선을 따라 전투 화면이 두 조각으로 벌어지고 어긋남. 틈은 검정이 아닌 하얀 빛 (2026-11-12 사용자)
+    //   끝은 다시 붙는 대신 유리창이 깨지듯 산산조각: 갈라진 화면을 그대로 굳혀 삼각 조각으로 쪼개고, 칼선 가까운 조각부터 금이 퍼지며 튕겨 나가 떨어짐 → 아래로 원래 전투 화면이 드러남
+    //   깨질 때 조각 크기에 맞춘 큰 깃털이 조각과 함께 흩날림 (2026-11-12 사용자). 캔버스 픽셀 그대로 다루려고 변환을 지우고 그림 (HUD·미니맵은 이 뒤에 그려서 안 갈라짐)
+    const SCREEN_SPLIT_BUF = document.createElement('canvas'), SCREEN_SPLIT_SNAP = document.createElement('canvas');
+    const SCREEN_SPLIT_SHATTER = 0.6, SCREEN_SPLIT_SHARD_LIFE = 34, SCREEN_SPLIT_END = 100; // 깨지는 때 (진행 비율) · 조각 하나가 사라지기까지 · 깨진 뒤 끝나기까지 (화면 프레임)
+    function buildScreenShards(s, W, H, cx, cy, tx, ty, nx, ny, D) {
+      const cols = 8, rows = 5, pt = [];
+      for (let r = 0; r <= rows; r++) {
+        pt.push([]);
+        for (let c = 0; c <= cols; c++) {
+          const jx = c > 0 && c < cols ? (Math.random() - 0.5) * 0.7 : 0, jy = r > 0 && r < rows ? (Math.random() - 0.5) * 0.7 : 0;
+          pt[r].push([(c + jx) / cols * W, (r + jy) / rows * H]);
+        }
+      }
+      const k = D / 1650, shards = [];
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        const a = pt[r][c], b = pt[r][c + 1], d = pt[r + 1][c], e = pt[r + 1][c + 1];
+        const tris = Math.random() < 0.5 ? [[a, b, e], [a, e, d]] : [[a, b, d], [b, e, d]];
+        tris.forEach(poly => {
+          const mx = (poly[0][0] + poly[1][0] + poly[2][0]) / 3, my = (poly[0][1] + poly[1][1] + poly[2][1]) / 3;
+          const dn = (mx - cx) * nx + (my - cy) * ny, side = dn >= 0 ? 1 : -1;
+          const area = Math.abs((poly[1][0] - poly[0][0]) * (poly[2][1] - poly[0][1]) - (poly[2][0] - poly[0][0]) * (poly[1][1] - poly[0][1])) / 2;
+          const sp = (2.5 + Math.random() * 3.5) * k, sl = (Math.random() - 0.5) * 3 * k;
+          const xs = poly.map(q => q[0]), ys = poly.map(q => q[1]);
+          shards.push({ poly, mx, my, size: Math.sqrt(area),
+            vx: nx * side * sp + tx * sl, vy: ny * side * sp + ty * sl - 2 * k, w: (Math.random() - 0.5) * 0.09,
+            delay: Math.abs(dn) / D * 26 + Math.random() * 3, // 칼선 가까운 조각부터 금이 퍼지며 차례로 떨어져 나감
+            bx: Math.floor(Math.min(...xs)), by: Math.floor(Math.min(...ys)), bw: Math.ceil(Math.max(...xs) - Math.min(...xs)) + 1, bh: Math.ceil(Math.max(...ys) - Math.min(...ys)) + 1 });
+        });
+      }
+      s.shards = shards;
+      s.feathers = shards.filter(() => Math.random() < 0.25).map(h => ({ // 조각 크기에 맞춘 깃털 (조각 지름의 60~90% 길이), 조각 넷에 하나꼴
+        x: h.mx, y: h.my, vx: h.vx * 0.55, vy: h.vy * 0.55, rot: Math.random() * Math.PI * 2, w: (Math.random() - 0.5) * 0.06,
+        sz: Math.max(2, h.size * (0.06 + Math.random() * 0.03)), delay: h.delay + 2, life: 55 + Math.random() * 25 }));
+      s.k = k;
+    }
+    function drawScreenShatter(ctx, s, W, H) {
+      const t = s.shT, k = s.k, g = 0.32 * k;
+      if (t < 8) { // 깨지는 순간 번쩍
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.45 * (1 - t / 8); ctx.fillStyle = '#e0f2fe'; ctx.fillRect(0, 0, W, H);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      for (const h of s.shards) {
+        const tt = Math.max(0, t - h.delay);
+        if (tt > SCREEN_SPLIT_SHARD_LIFE) continue;
+        const a = 1 - Math.max(0, (tt - SCREEN_SPLIT_SHARD_LIFE * 0.35) / (SCREEN_SPLIT_SHARD_LIFE * 0.65));
+        const ox = h.vx * tt, oy = h.vy * tt + g * tt * tt / 2, sc = 1 - tt / SCREEN_SPLIT_SHARD_LIFE * 0.25;
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.translate(h.mx + ox, h.my + oy); ctx.rotate(h.w * tt); ctx.scale(sc, sc); ctx.translate(-h.mx, -h.my);
+        ctx.beginPath(); ctx.moveTo(h.poly[0][0], h.poly[0][1]); ctx.lineTo(h.poly[1][0], h.poly[1][1]); ctx.lineTo(h.poly[2][0], h.poly[2][1]); ctx.closePath();
+        ctx.save(); ctx.clip();
+        ctx.drawImage(SCREEN_SPLIT_SNAP, h.bx, h.by, h.bw, h.bh, h.bx, h.by, h.bw, h.bh);
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a * (tt > 0 ? 0.16 : 0.06); ctx.fillStyle = '#e0f2fe'; ctx.fillRect(h.bx, h.by, h.bw, h.bh); // 유리 반사광
+        ctx.restore();
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a * (tt > 0 ? 0.9 : 0.55); ctx.strokeStyle = '#f0f9ff'; ctx.lineWidth = 1.6 * k; ctx.lineJoin = 'round'; ctx.stroke(); // 깨진 모서리 (붙어 있을 땐 금 간 선)
+        ctx.restore();
+      }
+      ctx.globalCompositeOperation = 'lighter';
+      for (const f of s.feathers) {
+        const tt = t - f.delay;
+        if (tt < 0 || tt > f.life) continue;
+        const go = 26 * (1 - Math.exp(-tt / 26)); // 처음엔 조각과 함께 튀어 나가다 느려지며 하늘하늘 떨어짐
+        const x = f.x + f.vx * go + Math.sin(tt * 0.06 + f.rot) * f.sz * 4, y = f.y + f.vy * go + tt * 0.5 * k;
+        const a = Math.min(1, tt / 4, (f.life - tt) / (f.life * 0.4));
+        drawSwordFeather(ctx, x, y, f.rot + f.w * tt + Math.sin(tt * 0.06 + f.rot) * 0.5, f.sz, a);
+      }
+    }
     function drawScreenSplit(ctx) {
       const s = sim.split;
       if (!s) return;
-      const p = 1 - s.life / s.maxLife;
-      const A = 0.1, B = 0.3; // 처음 10%: 흰 참격이 화면 한쪽 끝에서 반대쪽 끝까지 그어짐 → B까지 잘린 채로 잠깐 멈춤 (2026-11-12 사용자: 자른 뒤 지연) → 그 참격선을 따라 공간이 갈라짐
-      const o = p < B ? 0 : p < B + 0.08 ? (p - B) / 0.08 : p < 0.7 ? 1 : Math.max(0, 1 - (p - 0.7) / 0.3); // 확 벌어짐 → 버팀 → 천천히 붙음
-      const e = o * o * (3 - 2 * o);
       const cv = ctx.canvas, W = cv.width, H = cv.height, D = Math.hypot(W, H);
       const tx = Math.cos(s.ang), ty = Math.sin(s.ang), nx = -ty, ny = tx, cx = W / 2, cy = H / 2;
-      const gap = D * 0.035 * e, slide = D * 0.04 * e;
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (s.shards) { // 유리처럼 깨지는 중
+        drawScreenShatter(ctx, s, W, H);
+        ctx.restore();
+        if ((s.shT += frameTimeScale) > SCREEN_SPLIT_END) sim.split = null;
+        return;
+      }
+      const p = 1 - s.life / s.maxLife;
+      const A = 0.1, B = 0.3; // 처음 10%: 흰 참격이 화면 한쪽 끝에서 반대쪽 끝까지 그어짐 → B까지 잘린 채로 잠깐 멈춤 (2026-11-12 사용자: 자른 뒤 지연) → 그 참격선을 따라 공간이 갈라짐
+      const o = p < B ? 0 : p < B + 0.08 ? (p - B) / 0.08 : 1; // 확 벌어짐 → 버팀 → 유리처럼 깨짐
+      const e = o * o * (3 - 2 * o);
+      const gap = D * 0.035 * e, slide = D * 0.04 * e;
       if (e > 0) {
         if (SCREEN_SPLIT_BUF.width !== W || SCREEN_SPLIT_BUF.height !== H) { SCREEN_SPLIT_BUF.width = W; SCREEN_SPLIT_BUF.height = H; }
         const bc = SCREEN_SPLIT_BUF.getContext('2d');
@@ -34528,17 +34610,25 @@
           ctx.restore();
         });
       }
-      // 흰 참격: 그어지는 동안은 끝이 앞으로 나아가고, 갈라진 뒤에는 틈 가운데에서 틈 폭만큼 굵어졌다가 함께 사라짐
+      // 흰 참격: 그어지는 동안은 끝이 앞으로 나아가고, 갈라진 뒤에는 틈 가운데에서 틈 폭만큼 굵어짐
       const k = Math.min(1, p / A), x0 = cx - tx * D, y0 = cy - ty * D, x1 = x0 + tx * 2 * D * k, y1 = y0 + ty * 2 * D * k;
-      const fade = p < 0.7 ? 1 : Math.max(0, 1 - (p - 0.7) / 0.3), base = D * 0.004;
+      const base = D * 0.004;
       ctx.globalCompositeOperation = 'lighter';
       ctx.lineCap = 'round';
       [[Math.max(base * 4, gap * 0.9), '#7dd3fc', 0.35, 28], [Math.max(base * 1.8, gap * 0.45), '#e0f2fe', 0.7, 14], [Math.max(base, gap * 0.16), '#ffffff', 1, 0]].forEach(([lw, c, a, blur]) => {
-        ctx.globalAlpha = a * fade; ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.shadowColor = c; ctx.shadowBlur = blur;
+        ctx.globalAlpha = a; ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.shadowColor = c; ctx.shadowBlur = blur;
         ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
       });
       ctx.restore();
-      if ((s.life -= frameTimeScale) <= 0) sim.split = null;
+      s.life -= frameTimeScale;
+      if (p >= SCREEN_SPLIT_SHATTER) { // 갈라진 화면을 그대로 굳혀서 유리 조각으로 쪼갬 (다음 프레임부터 조각이 떨어져 나감)
+        if (SCREEN_SPLIT_SNAP.width !== W || SCREEN_SPLIT_SNAP.height !== H) { SCREEN_SPLIT_SNAP.width = W; SCREEN_SPLIT_SNAP.height = H; }
+        const sc = SCREEN_SPLIT_SNAP.getContext('2d');
+        sc.clearRect(0, 0, W, H); sc.drawImage(cv, 0, 0);
+        buildScreenShards(s, W, H, cx, cy, tx, ty, nx, ny, D);
+        s.shT = 0;
+        playCombatSfx('heavy');
+      }
     }
 
     // 착지 섬광 + 등장 카운트다운(3·2·1) + 착지 뒤 충격 이름
