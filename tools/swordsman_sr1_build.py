@@ -8,6 +8,7 @@
 #     2026-11-12 같은 자세의 깨끗한 새 샘플(1450×1085, 워터마크 없음)로 교체
 #   · 19 심검·패링 (칼을 얼굴 앞에 비스듬히 들어 막는 자세). 대기와 같은 배율, 배경의 흐린 ✦ 워터마크는 몸과 떨어져 있어 큰 덩어리만 고르면 빠짐
 #   · 20 피격 (고개를 젖히고 두 팔을 듦) · 21~22 쓰러짐 (무릎 꿇음 → 엎드려 누움): 한 장(번호·이름 글자 포함)에서 상자로 잘라 냄 (CARD), 셋 다 쓰러짐 1 배율
+#   · 23 극참 마지막 일격 준비 (칼을 머리 위로 가로로 들어 기를 모음, 2026-11-12)
 #   · 8~10 일섬 1~3 (0번 20~22와 같은 순서: 칼을 뒤로 뻗음 · 앞으로 내지름 · 숙여 칼끝을 아래로). 칼날 칸은 외톨이 점만 지움
 #   일반공격 샘플은 양 옆 칸 조각이 붙어 있어 가장 큰 덩어리만. 동작 샘플이 오는 대로 FRAMES에 늘리고 index.html swordsman_sr1 anims를 고침
 # 크기: 대기 키(머리 꼭대기~발)를 기본 외형 대기와 같은 TARGET_H로. 이 그림은 머리가 커서 얼굴을 맞추면 키가 64px로 너무 작아짐
@@ -57,6 +58,7 @@ def scrub_stars():   # 별(과 흐린 둘레 1px)을 하카마 색으로, 외곽
 
 
 # 배율을 얼굴로 재지 않고 다른 칸을 따라가는 샘플: 심검은 칼이 얼굴을 가림 (대기와 같은 해상도) · 피격은 고개를 젖힘 · 누운 쓰러짐은 얼굴이 안 보임 (셋 다 쓰러짐 1과 한 장)
+FIXED_SC = {'sr1_gkcharge': 0.50}   # 얼굴 재기가 안 맞는 샘플: 극참 준비는 머리 옆 두 손을 얼굴로 잡아 1.5배로 커짐 → 몸 키를 대기와 눈으로 맞춤
 SAME_SC = {'sr1_mind': 'sr1_idle', 'sr1_hurt': 'sr1_down1', 'sr1_down2': 'sr1_down1'}
 
 
@@ -78,7 +80,7 @@ def face_scale(rgba, ref):   # 얼굴 넓이가 대기 칸(ref)과 같아지는 
     return (ref[0] / face(rgba)[0]) ** 0.5
 # 테두리 정리(sb.DEFRINGE)는 쓰지 않음: 흰 머리 가장자리까지 깎아서 피격 머리에 구멍이 남. 흰 점은 fill_specks가 정리
 sb.CARD.update({'sr1_hurt': (44, 178, 28, 207), 'sr1_down1': (50, 200, 238, 388), 'sr1_down2': (212, 414, 300, 388)})   # 글자 줄 · 옆 그림 빼고
-FRAMES = [('sr1_idle', 'big')] + [('sr1_walk', i) for i in range(4)] + [('sr1_atk0', 'big'), ('sr1_atk1', 'big'), ('sr1_cast', 'big')] + [(f'sr1_issen{i}', 'big') for i in (1, 2, 3)] + [(f'sr1_mucham{i}', 'big') for i in range(1, 8)] + [('sr1_draw', 'big'), ('sr1_mind', 'big'), ('sr1_hurt', 'big'), ('sr1_down1', 'big'), ('sr1_down2', 'big')]
+FRAMES = [('sr1_idle', 'big')] + [('sr1_walk', i) for i in range(4)] + [('sr1_atk0', 'big'), ('sr1_atk1', 'big'), ('sr1_cast', 'big')] + [(f'sr1_issen{i}', 'big') for i in (1, 2, 3)] + [(f'sr1_mucham{i}', 'big') for i in range(1, 8)] + [('sr1_draw', 'big'), ('sr1_mind', 'big'), ('sr1_hurt', 'big'), ('sr1_down1', 'big'), ('sr1_down2', 'big'), ('sr1_gkcharge', 'big')]
 
 
 def fill_specks(p):   # 어두운 옷 위에 박힌 흰 점 (흰 배경이 비친 것): 밝은 이웃이 1개 이하인 밝은 점을 이웃 불투명 색의 중앙값으로 (칼날·머리카락은 이웃도 밝아서 그대로)
@@ -105,7 +107,8 @@ def main():
     for src, pick in FRAMES:
         rgba, foot, h = sb.load(src, pick)
         sc = scales[SAME_SC.get(src, src)]
-        p = fill_specks(sb.drop_light_edge(shrink(rgba, sc), src.startswith(('sr1_issen', 'sr1_mucham', 'sr1_draw', 'sr1_mind'))))   # 칼날의 밝은 회색을 지우지 않게
+        if src in FIXED_SC: sc = FIXED_SC[src]
+        p = fill_specks(sb.drop_light_edge(shrink(rgba, sc), src.startswith(('sr1_issen', 'sr1_mucham', 'sr1_draw', 'sr1_mind', 'sr1_gkcharge'))))   # 칼날의 밝은 회색을 지우지 않게
         pieces.append((p, foot * sc))
         print(f'{src}: 샘플 키 {h} ×{sc:.3f} → {p.shape[1]}x{p.shape[0]}')
     L = max(int(np.ceil(c)) for _, c in pieces) + 4

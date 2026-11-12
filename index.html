@@ -7912,14 +7912,14 @@
     //   · 8~10 일섬 1~3 (0번 20~22와 같은 순서: 칼을 뒤로 뻗음 · 앞으로 내지름 · 숙여 칼끝을 아래로, 극참 난사도 같은 자세)
     //   · 11~17 무참 1~7 (서서 숙여 칼끝을 아래로 · 달리며 칼을 뒤로 · 낮게 앉아 칼을 앞 아래로 · 칼을 머리 위로 치켜듦 · 넓게 벌려 칼을 앞 위로 · 숙여 칼을 앞 아래로 · 아주 낮게 웅크림)
     //   · 18 발도 (낮게 벌려 앉아 칼을 뒤로 뽑아 든 자세): 발도·섬단·극참 발동 자세 (draw) + 무참 여덟째 자세
-    //   · 19 심검·패링 (칼을 얼굴 앞에 비스듬히 들어 막음) · 20 피격 (고개를 젖히고 두 팔을 듦) · 21~22 쓰러짐 (무릎 꿇음 → 엎드려 누움). slash는 0번처럼 공격 준비 → 발도 (5 → 18).
+    //   · 19 심검·패링 (칼을 얼굴 앞에 비스듬히 들어 막음) · 20 피격 (고개를 젖히고 두 팔을 듦) · 21~22 쓰러짐 (무릎 꿇음 → 엎드려 누움) · 23 극참 마지막 일격 준비 (칼을 머리 위로 가로로 듦). slash는 0번처럼 공격 준비 → 발도 (5 → 18).
     //   0번의 칸 고르기(pickFrame)는 칸 번호가 달라 심검·패링·기본 공격·일섬 자세만 따로
     const SECRET_SKIN_SHEETS = { archer_sr1: { cellW: 114, cellH: 121, anchorX: 48, anchorY: 119, topH: 98, portraitCX: 51, muzzle: [50, 45],
         projFx: { arrow: 'archer_sr_arrow', golden_arrow: 'archer_sr_arrow', poison_arrow: 'archer_sr_poison' } }, warrior_sr1: { cellW: 246, cellH: 99, anchorX: 92, anchorY: 97, topH: 81, portraitCX: 85, count: 16,
         anims: { idle: [0], walk: [1, 2, 3, 2], attack: [4, 5], skill: [4, 5], hurt: [6], death: [7, 8], whirl: [13, 14, 15], shout: [10], charge: [11, 12, 12, 12, 12] } },
-      swordsman_sr1: { cellW: 205, cellH: 119, anchorX: 87, anchorY: 117, topH: 86, portraitCX: 90, count: 23, attackSets: [[5], [6]],
+      swordsman_sr1: { cellW: 205, cellH: 119, anchorX: 87, anchorY: 117, topH: 86, portraitCX: 90, count: 24, attackSets: [[5], [6]],
         pickFrame: (u, sprite, tick) => (u.alive && u.statuses && ((u.statuses.mindblade || 0) > 0 || (u.statuses.parry || 0) > 0)) ? 19 // 심검·패링 동안 막는 자세
-          : (u.swordGkPose && u.skillAnim > 0 && u.activeSkillType === 'geukcham') ? (u.swordGkPose === 'charge' ? 14 : 12) // 극참 마지막 일격: 칼을 머리 위로 들어 기를 모음(14, 무참 4) → 달려 나가며 화면을 벰(12, 무참 2)
+          : (u.swordGkPose && u.skillAnim > 0 && u.activeSkillType === 'geukcham') ? (u.swordGkPose === 'charge' ? 23 : 12) // 극참 마지막 일격: 칼을 머리 위로 가로로 들어 기를 모음(23) → 달려 나가며 화면을 벰(12, 무참 2)
           : (u.swordIssenPose != null && u.skillAnim > 0 && u.activeSkillType === 'issen') ? 8 + Math.max(0, SWORD_ISSEN_POSES.indexOf(u.swordIssenPose)) // 일섬·극참 돌진: 0번 칸 20~22 → 이 시트 8~10
           : (u.swordAtkPose != null && u.attackAnim > 0 && !u._sprAtkFromSkill && !(u.skillAnim > 0) && !u.casting && tick - (u._sprAtkStart ?? tick) < sprite.attackDur) ? sprite.attackSets[u.swordAtkPose][0] : null, // 0번처럼 참격 자세(서서 5 · 앉아 6)만
         anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5], skill: [7], hurt: [20], death: [21, 22], draw: [18], guard: [19], dash: [9], slash: [5, 18],
@@ -27385,6 +27385,7 @@
       if (w.kind === 'geukcham_cut') { if (u.alive) swordGeukchamCut(u); return; }
       if (w.kind === 'geukcham') {
         hiddenImpact(28, '#e0f2fe');
+        sim.split = { ang: -0.35 + (Math.random() - 0.5) * 0.3, life: 70, maxLife: 70 }; // 화면이 대각선으로 반으로 갈라짐 (drawScreenSplit)
         const foes = sim.units.filter(e => swordFoeOk(u, e));
         withSkillHit(() => foes.forEach(e => {
           applyDamage(u, e, u.atk * SWORD_GEUKCHAM_DMG, '🌌', '#e0f2fe');
@@ -34280,6 +34281,45 @@
       ctx.restore();
     }
 
+    // 화면 갈라짐 (검사 극참 마지막 일격): 다 그린 전투 화면을 sim.split.ang 방향 선으로 두 조각 내어 서로 벌어지고 어긋났다가 다시 붙음. 틈에는 빛줄기
+    //   캔버스 픽셀 그대로 다루려고 변환을 지우고 그림 (HUD·미니맵은 이 뒤에 그려서 안 갈라짐)
+    const SCREEN_SPLIT_BUF = document.createElement('canvas');
+    function drawScreenSplit(ctx) {
+      const s = sim.split;
+      if (!s) return;
+      const p = 1 - s.life / s.maxLife;
+      const o = p < 0.1 ? p / 0.1 : p < 0.6 ? 1 : Math.max(0, 1 - (p - 0.6) / 0.4); // 확 벌어짐 → 버팀 → 천천히 붙음
+      const e = o * o * (3 - 2 * o);
+      const cv = ctx.canvas, W = cv.width, H = cv.height, D = Math.hypot(W, H);
+      if (SCREEN_SPLIT_BUF.width !== W || SCREEN_SPLIT_BUF.height !== H) { SCREEN_SPLIT_BUF.width = W; SCREEN_SPLIT_BUF.height = H; }
+      const bc = SCREEN_SPLIT_BUF.getContext('2d');
+      bc.clearRect(0, 0, W, H); bc.drawImage(cv, 0, 0);
+      const tx = Math.cos(s.ang), ty = Math.sin(s.ang), nx = -ty, ny = tx, cx = W / 2, cy = H / 2;
+      const gap = D * 0.035 * e, slide = D * 0.04 * e;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(0, 0, W, H);
+      [1, -1].forEach(side => {
+        ctx.save();
+        ctx.translate(side * (nx * gap / 2 + tx * slide / 2), side * (ny * gap / 2 + ty * slide / 2));
+        ctx.beginPath();
+        ctx.moveTo(cx - tx * D, cy - ty * D); ctx.lineTo(cx + tx * D, cy + ty * D);
+        ctx.lineTo(cx + tx * D + side * nx * D, cy + ty * D + side * ny * D); ctx.lineTo(cx - tx * D + side * nx * D, cy - ty * D + side * ny * D);
+        ctx.closePath(); ctx.clip();
+        ctx.drawImage(SCREEN_SPLIT_BUF, 0, 0);
+        ctx.restore();
+      });
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = '#7dd3fc'; ctx.shadowColor = '#38bdf8'; ctx.shadowBlur = 30 * e;
+      ctx.globalAlpha = 0.85 * e; ctx.lineWidth = Math.max(2, gap * 0.22);
+      ctx.beginPath(); ctx.moveTo(cx - tx * D, cy - ty * D); ctx.lineTo(cx + tx * D, cy + ty * D); ctx.stroke();
+      ctx.strokeStyle = '#ffffff'; ctx.shadowBlur = 0; ctx.lineWidth = Math.max(1, gap * 0.05);
+      ctx.stroke();
+      ctx.restore();
+      if ((s.life -= frameTimeScale) <= 0) sim.split = null;
+    }
+
     // 착지 섬광 + 등장 카운트다운(3·2·1) + 착지 뒤 충격 이름
     function drawEliteIntroScreen(ctx, viewW, viewH) {
       if (sim.flash) {
@@ -35320,6 +35360,7 @@
       ctx.restore();
 
       // 5-2) 암흑(직접 전투로 조종하는 용병) · 착지 섬광 · 등장 카운트다운
+      drawScreenSplit(ctx);
       drawDarknessScreen(ctx, viewW, viewH, z);
       drawEliteIntroScreen(ctx, viewW, viewH);
 
