@@ -21755,6 +21755,10 @@
       if (attacker && defender.job === 'swordsman' && !defender.monsterType && attacker.team !== defender.team && !fixedDamageHit && swordGuard(defender, attacker)) return; // 검사 패링·심검
       if (attacker && (defender.statuses?.counter || 0) > 0 && attacker.team !== defender.team && !fixedDamageHit) { brawlerCounter(defender, attacker); return; } // 격투가 반격
       if (defender.voltCh && attacker && attacker.team !== defender.team && !suppressHitKnockback && !fixedDamageHit && rawDmg > 0) voltChannelHit(defender, skillHitSource); // 전격술사: 스킬에 맞으면 채널 끊김, 기본 공격에 맞으면 쌓인 피해만 처음부터
+      if (attacker && attacker.team !== defender.team && rawDmg > 0 && swordIsSr(attacker) && sim.tickCount - (defender._srFeatherAt ?? -99) >= 4) { // 시크릿 레어 검사 피격 깃털
+        defender._srFeatherAt = sim.tickCount; const es = defender.sizeScale || 1;
+        swordFeatherBurst(defender.x, defender.y + 12 - 30 * es, 5, 1.6, es);
+      }
       let modDmg = rawDmg;
       if (attacker) {
         // 직업 패시브 (공격 유형별 피해 증가 · 도적 백어택)
@@ -27116,6 +27120,15 @@
       const m = SWORD_SEOMDAN_FX, img = swordFxImg('seomdan-x'), t = (ef.maxLife - ef.life) / 60, f = Math.floor(t * m[4]);
       if (f >= m[3]) return;
       const k = Math.max(0, Math.min(1, (t - SWORD_SEOMDAN_FLY[0]) / (SWORD_SEOMDAN_FLY[1] - SWORD_SEOMDAN_FLY[0])));
+      if (ef.sr) { // 시크릿 레어: 시트보다 큰 바늘 끝 칼날 두 개가 X로 엇갈려 날아감 + 지나온 길에 가는 빛 꼬리
+        const cx = ef.x + Math.cos(ef.ang) * ef.r * k, cy = ef.y + Math.sin(ef.ang) * ef.r * k, H = SWORD_SEOMDAN_HALF_W * 1.9;
+        const end = m[3] / m[4], form = Math.min(1, t / SWORD_SEOMDAN_FLY[0]), th = t < SWORD_SEOMDAN_FLY[1] ? 1 : Math.max(0, 1 - (t - SWORD_SEOMDAN_FLY[1]) / (end - SWORD_SEOMDAN_FLY[1]));
+        ctx.save();
+        if (k > 0 && k < 1) swordSharpBlade(ctx, ef.x, ef.y, cx, cy, 4, '#bae6fd', 1, 0.6 * (1 - k * 0.5), false);
+        [Math.PI / 4, -Math.PI / 4].forEach(d => { const a = ef.ang + d; swordSharpBlade(ctx, cx - Math.cos(a) * H, cy - Math.sin(a) * H, cx + Math.cos(a) * H, cy + Math.sin(a) * H, 8, '#bae6fd', form, th, false); });
+        ctx.restore();
+        return;
+      }
       if (!img) { // 시트를 아직 못 받았으면 예전 X자 검기
         drawSwordEffect(ctx, { type: 'sword_x', x: ef.x, y: ef.y, angle: ef.ang, r: ef.r, size: SWORD_SEOMDAN_HALF_W, color: '#e0f2fe', life: ef.life, maxLife: ef.maxLife }, (ef.maxLife - ef.life) / ef.maxLife);
         return;
@@ -27165,8 +27178,9 @@
       ctx.drawImage(img, (f % cols) * w, Math.floor(f / cols) * h, w, h, -ax, -ay, w, h);
       ctx.restore();
     }
-    // 시크릿 레어 극참 시전 (2026-11-12 사용자: 전격 대신 작은 깃털이 흩날리고 백색 빛이 모여 전율이 느껴지게 웅장하게 · 빛은 칼자루로 · 시전 직전 모인 빛이 방출되며 진동 · 발밑 마법진은 그라데이션으로 빛이 모이는 느낌)
-    //   q = 시전 막대 0→1, b = 터짐 0→1. back = 몸 뒤 층 (발밑 마법진·빛 기둥), 앞 층 = 마법진·둘레에서 칼자루로 빨려 드는 빛·깃털·칼자루 별빛·방출
+    // 시크릿 레어 극참 시전 (2026-11-12 사용자: 전격 대신 작은 깃털이 흩날리고 백색 빛이 모여 전율이 느껴지게 웅장하게 · 빛은 칼자루로 · 시전 직전 모인 빛이 방출되며 진동 ·
+    //   마법진 없이 빛이 그라데이션으로 자연스럽게 모이는 모습)
+    //   q = 시전 막대 0→1, b = 터짐 0→1. back = 몸 뒤 층 (오그라드는 큰 빛무리·바닥 빛·빛 기둥), 앞 층 = 칼자루로 휘감겨 드는 빛 덩이·깃털·칼자루 빛·방출
     //   칼자루 자리 = 시트 칸 좌표(발 기준): 시전 자세(24) (+7, -24) · 시전 직전 자세(25) (+9, -41), 그림 배율 SPRITE_DRAW_H / standH(76)
     const SWORD_SR_GK_RELEASE = 15 / 16; // 시전 직전 자세(25)로 바뀌는 시점 (castFrames.geukcham과 같게)
     function drawSwordSrGkCharge(ctx, ef, q, b, back) {
@@ -27179,52 +27193,44 @@
       const jx = (Math.random() - 0.5) * amp, jy = (Math.random() - 0.5) * amp;
       const pose25 = q >= SWORD_SR_GK_RELEASE;
       const hx = ef.x + dir * (pose25 ? 9 : 7) * k + jx, hy = ef.y + (pose25 ? -41 : -24) * k + jy; // 칼자루
-      const R = 50 * s, SQ = 0.34; // 발밑 마법진 반지름 · 납작한 정도
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       if (back) {
-        ctx.save(); ctx.translate(ef.x, ef.y); ctx.scale(1, SQ);
-        const grow = (0.55 + 0.45 * e) * (1 + b * 0.8), a0 = (0.25 + 0.75 * e) * fade;
-        // 바닥 빛: 가운데가 가장 밝은 그라데이션 원판 (모일수록 진해짐)
-        const fg = ctx.createRadialGradient(0, 0, 0, 0, 0, R * grow);
-        fg.addColorStop(0, `rgba(255,255,255,${0.55 * a0})`); fg.addColorStop(0.45, `rgba(224,242,254,${0.25 * a0})`); fg.addColorStop(1, 'rgba(186,230,253,0)');
-        ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(0, 0, R * grow, 0, Math.PI * 2); ctx.fill();
-        // 바깥에서 가운데로 좁혀 드는 빛 고리 3개 (작아질수록 밝아짐 = 빛이 모임)
+        // 큰 빛무리: 처음엔 넓고 옅게 퍼져 있다가 모일수록 칼자루 쪽으로 오그라들며 진해짐
+        const hr = (120 - 70 * e) * s * (1 + b * 1.5), ha = (0.08 + 0.45 * e) * fade;
+        const hg = ctx.createRadialGradient(hx, hy, 0, hx, hy, hr);
+        hg.addColorStop(0, `rgba(255,255,255,${ha})`); hg.addColorStop(0.35, `rgba(240,249,255,${ha * 0.55})`); hg.addColorStop(0.7, `rgba(224,242,254,${ha * 0.18})`); hg.addColorStop(1, 'rgba(186,230,253,0)');
+        ctx.fillStyle = hg; ctx.fillRect(hx - hr, hy - hr, hr * 2, hr * 2);
+        // 숨 쉬듯 바깥에서 안으로 밀려드는 빛의 물결 (선 없이 그라데이션 띠)
         for (let i = 0; i < 3; i++) {
-          const ph = ((t / (70 - 30 * e)) + i / 3) % 1, r = R * 1.5 * (1 - ph) * grow;
-          ctx.globalAlpha = Math.min(1, ph * 1.6) * (1 - ph * 0.3) * a0; ctx.strokeStyle = '#e0f2fe'; ctx.lineWidth = (1 + 2.5 * ph) * s; ctx.shadowColor = '#bae6fd'; ctx.shadowBlur = 10;
-          ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+          const ph = ((t / (80 - 30 * e)) + i / 3) % 1, r = (110 * (1 - ph) + 8) * s, a = Math.sin(ph * Math.PI) * 0.1 * (0.3 + 0.7 * e) * fade;
+          const wg = ctx.createRadialGradient(hx, hy, r * 0.25, hx, hy, r);
+          wg.addColorStop(0, 'rgba(255,255,255,0)'); wg.addColorStop(0.6, `rgba(240,249,255,${a})`); wg.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = wg; ctx.beginPath(); ctx.arc(hx, hy, r, 0, Math.PI * 2); ctx.fill();
         }
-        // 마법진: 바깥 두 겹 원 · 그 사이 룬 눈금(반대로 돎) · 육망성(천천히 돎) · 가운데 작은 원
-        ctx.shadowColor = '#e0f2fe'; ctx.shadowBlur = 12; ctx.strokeStyle = '#ffffff';
-        ctx.globalAlpha = a0; ctx.lineWidth = 1.6 * s;
-        [1, 0.84, 0.3].forEach(f => { ctx.beginPath(); ctx.arc(0, 0, R * f * grow, 0, Math.PI * 2); ctx.stroke(); });
-        ctx.save(); ctx.rotate(-t * 0.012); ctx.lineWidth = 1.2 * s; ctx.globalAlpha = 0.8 * a0;
-        for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2, r1 = R * 0.86 * grow, r2 = R * (i % 3 ? 0.94 : 0.98) * grow; ctx.beginPath(); ctx.moveTo(Math.cos(a) * r1, Math.sin(a) * r1); ctx.lineTo(Math.cos(a) * r2, Math.sin(a) * r2); ctx.stroke(); }
-        ctx.restore();
-        ctx.save(); ctx.rotate(t * 0.008); ctx.lineWidth = 1.3 * s; ctx.globalAlpha = 0.85 * a0;
-        for (let tri = 0; tri < 2; tri++) { ctx.beginPath(); for (let j = 0; j <= 3; j++) { const a = (j / 3 + tri / 6) * Math.PI * 2 - Math.PI / 2, r = R * 0.82 * grow; ctx[j ? 'lineTo' : 'moveTo'](Math.cos(a) * r, Math.sin(a) * r); } ctx.stroke(); }
-        ctx.restore();
+        // 바닥 빛: 발밑이 은은하게 밝아짐 (납작한 그라데이션)
+        ctx.save(); ctx.translate(ef.x, ef.y); ctx.scale(1, 0.32);
+        const fr = (40 + 25 * e) * s * (1 + b), fa = (0.15 + 0.45 * e) * fade, fg = ctx.createRadialGradient(0, 0, 0, 0, 0, fr);
+        fg.addColorStop(0, `rgba(255,255,255,${fa})`); fg.addColorStop(0.5, `rgba(224,242,254,${fa * 0.4})`); fg.addColorStop(1, 'rgba(186,230,253,0)');
+        ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(0, 0, fr, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
         // 은은한 빛 기둥 (몸 뒤)
         const pw = (8 + 14 * e) * s * (1 + rel + b * 2), ph = 240 * s;
         const pg = ctx.createLinearGradient(0, ef.y - ph, 0, ef.y);
-        pg.addColorStop(0, 'rgba(255,255,255,0)'); pg.addColorStop(0.7, 'rgba(224,242,254,.25)'); pg.addColorStop(1, 'rgba(255,255,255,.45)');
-        ctx.globalAlpha = (0.2 + 0.5 * e) * fade; ctx.fillStyle = pg; ctx.fillRect(ef.x - pw / 2, ef.y - ph, pw, ph);
+        pg.addColorStop(0, 'rgba(255,255,255,0)'); pg.addColorStop(0.7, 'rgba(224,242,254,.22)'); pg.addColorStop(1, 'rgba(255,255,255,.4)');
+        ctx.globalAlpha = (0.15 + 0.45 * e) * fade; ctx.fillStyle = pg; ctx.fillRect(ef.x - pw / 2, ef.y - ph, pw, ph);
         ctx.restore(); return;
       }
-      // 칼자루로 빨려 드는 빛: 반은 발밑 마법진 테두리에서 솟아오르고, 반은 둘레 허공에서 모임. 머리는 밝고 꼬리는 그라데이션으로 사라짐
-      const nMote = rel > 0 || b > 0 ? 0 : Math.round(12 + 30 * e);
-      for (let i = 0; i < nMote; i++) {
-        const per = 46 - 20 * e, cyc = t / per + i * 0.618, ph = cyc % 1, seed = Math.floor(cyc) * 7.31 + i * 2.39996;
-        let sx, sy;
-        if (i % 2) { sx = ef.x + Math.cos(seed) * R; sy = ef.y + Math.sin(seed) * R * SQ; } // 마법진 테두리
-        else { const r = (70 + (i * 13) % 30) * s; sx = hx + Math.cos(seed) * r; sy = hy + Math.sin(seed) * r * 0.8; }
-        const pp = ph * ph, mx = sx + (hx - sx) * pp, my = sy + (hy - sy) * pp; // 처음엔 느리게 → 칼자루 가까이서 빨라짐
-        const tl = Math.max(0, pp - 0.18), tx = sx + (hx - sx) * tl, ty = sy + (hy - sy) * tl;
-        const lg = ctx.createLinearGradient(tx, ty, mx, my); lg.addColorStop(0, 'rgba(224,242,254,0)'); lg.addColorStop(1, 'rgba(255,255,255,1)');
-        ctx.globalAlpha = Math.min(1, ph * 4) * (0.45 + 0.55 * e); ctx.strokeStyle = lg; ctx.lineWidth = 1.5 * s; ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(mx, my); ctx.stroke();
+      // 칼자루로 휘감겨 드는 빛 덩이: 둘레에서 소용돌이치며 다가오고, 가까워질수록 작고 밝아짐 (부드러운 그라데이션 덩이)
+      const nOrb = rel > 0 || b > 0 ? 0 : Math.round(8 + 18 * e);
+      for (let i = 0; i < nOrb; i++) {
+        const per = 60 - 25 * e, cyc = t / per + i * 0.618, ph = cyc % 1, seed = Math.floor(cyc) * 7.31 + i * 2.39996;
+        const pp = ph * ph, R0 = (80 + (i * 17) % 40) * s, r = R0 * (1 - pp), a = seed + pp * 1.6 * (i % 2 ? 1 : -1); // 다가오며 반 바퀴쯤 휘감김
+        const ox = hx + Math.cos(a) * r, oy = hy + Math.sin(a) * r * 0.8, rad = (9 - 5 * pp) * s;
+        const og = ctx.createRadialGradient(ox, oy, 0, ox, oy, rad);
+        const al = Math.min(1, ph * 3) * (0.35 + 0.65 * pp) * (0.5 + 0.5 * e);
+        og.addColorStop(0, `rgba(255,255,255,${al})`); og.addColorStop(0.4, `rgba(240,249,255,${al * 0.45})`); og.addColorStop(1, 'rgba(224,242,254,0)');
+        ctx.fillStyle = og; ctx.fillRect(ox - rad, oy - rad, rad * 2, rad * 2);
       }
       // 작은 흰 깃털: 하늘하늘 흩날려 내려옴 (방출·터짐 때 바깥으로 흩어짐)
       const burst = Math.max(rel * 0.6, b);
@@ -27233,15 +27239,10 @@
         let fx = ef.x + (((i * 53) % 140) - 70) * s + sway * 14 * s, fy = ef.y - (150 - ph * 160) * s;
         if (burst > 0) { const a = i * 2.39996; fx += Math.cos(a) * burst * 110 * s; fy += Math.sin(a) * burst * 70 * s - burst * 30 * s; }
         const a0 = Math.min(1, ph * 4, (1 - ph) * 4) * (0.35 + 0.65 * e) * fade;
-        if (a0 <= 0.01) continue;
-        ctx.save(); ctx.translate(fx, fy); ctx.rotate(sway * 0.9 + i); ctx.scale(s, s);
-        ctx.globalAlpha = a0; ctx.shadowColor = '#e0f2fe'; ctx.shadowBlur = 5; ctx.fillStyle = '#ffffff';
-        ctx.beginPath(); ctx.moveTo(0, -5); ctx.quadraticCurveTo(2.6, -1, 0, 5); ctx.quadraticCurveTo(-2.6, -1, 0, -5); ctx.fill(); // 깃털 몸
-        ctx.globalAlpha = a0 * 0.6; ctx.strokeStyle = '#bae6fd'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(0, 6.5); ctx.stroke(); // 깃대
-        ctx.restore();
+        if (a0 > 0.01) drawSwordFeather(ctx, fx, fy, sway * 0.9 + i, s, a0);
       }
-      // 칼자루에 모인 빛: 모일수록 커짐
-      const core = (1.5 + 3 * e) * s * (1 + 0.15 * Math.sin(t * 0.7)) * (1 + 0.4 * Math.max(0, 1 - Math.abs(rel - 0.15) / 0.3)) * (1 - 0.5 * Math.max(rel, b)); // 방출 순간 잠깐 부풀었다 빛이 빠져나가며 작아짐
+      // 칼자루에 모인 빛: 모일수록 커짐 · 방출 순간 잠깐 부풀었다 빛이 빠져나가며 작아짐
+      const core = (1.5 + 3 * e) * s * (1 + 0.15 * Math.sin(t * 0.7)) * (1 + 0.4 * Math.max(0, 1 - Math.abs(rel - 0.15) / 0.3)) * (1 - 0.5 * Math.max(rel, b));
       const cg = ctx.createRadialGradient(hx, hy, 0, hx, hy, core * 3.2);
       cg.addColorStop(0, 'rgba(255,255,255,.9)'); cg.addColorStop(0.25, 'rgba(240,249,255,.45)'); cg.addColorStop(1, 'rgba(186,230,253,0)');
       ctx.globalAlpha = (0.35 + 0.65 * e) * fade; ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(hx, hy, core * 3.2, 0, Math.PI * 2); ctx.fill();
@@ -27282,6 +27283,7 @@
     function drawSwordIssenFx(ctx, ef) {
       const m = SWORD_ISSEN_FX, img = swordFxImg('issen'), f = Math.floor((ef.maxLife - ef.life) * m[4] / 60 * (ef.sp || 1)); // sp: 재생 빠르기 (극참 난사)
       if (f >= m[3]) return;
+      if (ef.sr) { drawSwordSrIssen(ctx, ef); return; } // 시크릿 레어: 전격 시트 대신 날카로운 칼날 빛
       const c = Math.cos(ef.ang);
       if (!img) { // 시트를 아직 못 받았으면 곧은 빛줄 한 번
         drawSwordEffect(ctx, { type: 'sword_cut', x1: ef.x, y1: ef.y, x2: ef.x + c * ef.len, y2: ef.y + Math.sin(ef.ang) * ef.len, w: 4, color: '#e0f2fe' }, (ef.maxLife - ef.life) / ef.maxLife);
@@ -27307,6 +27309,16 @@
       const [name, off0] = SWORD_MUCHAM_SEQ[ef.k] || SWORD_MUCHAM_SEQ[0], off = ef.off ?? off0, m = SWORD_MUCHAM_FX[name], img = swordFxImg(name); // ef.off·s·fy: 무작위 베기 (swordMuchamRandomFx)
       const f = Math.floor((ef.maxLife - ef.life) * m[4] / 60), c = Math.cos(ef.ang);
       if (f >= m[3]) return;
+      if (ef.sharp) { // 시크릿 레어: 시트 대신 바늘 끝 칼날 (베기 = 가로지르는 칼날 · 찌르기 = 대상 쪽으로 뻗는 칼날 · 마지막 = 큰 X)
+        const pr = (ef.maxLife - ef.life) / ef.maxLife, s = ef.s || 1, kk = Math.min(1, pr / 0.15), th = Math.max(0, 1 - Math.max(0, pr - 0.25) / 0.75);
+        const line = (a, back, fwd, w) => swordSharpBlade(ctx, ef.x - Math.cos(a) * back * s, ef.y - Math.sin(a) * back * s, ef.x + Math.cos(a) * fwd * s, ef.y + Math.sin(a) * fwd * s, w * s, '#bae6fd', kk, th, false);
+        ctx.save();
+        if (name === 'mucham-final') { line(ef.ang + Math.PI / 4, 75, 75, 7); line(ef.ang - Math.PI / 4, 75, 75, 7); }
+        else if (name === 'mucham-pierce') line(ef.ang + off, 60, 35, 5);
+        else line(ef.ang + off + Math.PI / 2, 50, 50, 5);
+        ctx.restore();
+        return;
+      }
       ctx.save();
       ctx.translate(ef.x, ef.y);
       ctx.rotate(ef.ang);
@@ -27331,18 +27343,19 @@
       if (r < 0.45) {
         const kind = Math.floor(Math.random() * SWORD_IAI_KINDS.length), m = SWORD_FXS[SWORD_IAI_KINDS[kind]], life = Math.ceil(m[3] * 60 / m[4]);
         const a = Math.random() * Math.PI * 2, len = (50 + Math.random() * 45) * es;
-        sim.effects.push({ type: 'sword_iai', k: kind, x: Math.round(cx - Math.cos(a) * len / 2), y: Math.round(cy - Math.sin(a) * len / 2), ang: R(a), len: Math.round(len), fy, s: R(es * (0.7 + Math.random() * 0.4)), life, maxLife: life });
+        sim.effects.push({ type: 'sword_iai', k: kind, x: Math.round(cx - Math.cos(a) * len / 2), y: Math.round(cy - Math.sin(a) * len / 2), ang: R(a), len: Math.round(len), fy, s: R(es * (0.7 + Math.random() * 0.4)), sharp: swordIsSr(u), life, maxLife: life });
         return;
       }
       const k = r < 0.8 ? 0 : 1, m = SWORD_MUCHAM_FX[SWORD_MUCHAM_SEQ[k][0]], life = Math.ceil(m[3] * 60 / m[4]);
       const off = k === 0 ? (Math.random() - 0.5) * Math.PI * 2 : (Math.random() - 0.5) * 1.2; // 찌르기는 대상 쪽으로만 조금씩 비틂
-      sim.effects.push({ type: 'sword_mucham', k, x: Math.round(cx), y: Math.round(cy), ang: R(Math.atan2(cy - (u.y - 14), foe.x - u.x)), off: R(off), s: R(es * (0.7 + Math.random() * 0.5)), fy, life, maxLife: life });
+      sim.effects.push({ type: 'sword_mucham', k, x: Math.round(cx), y: Math.round(cy), ang: R(Math.atan2(cy - (u.y - 14), foe.x - u.x)), off: R(off), s: R(es * (0.7 + Math.random() * 0.5)), fy, sharp: swordIsSr(u), life, maxLife: life });
     }
     function drawSwordIaiFx(ctx, ef) {
       const name = SWORD_IAI_KINDS[ef.k] || SWORD_IAI_KINDS[0], m = SWORD_FXS[name], img = swordFxImg(name);
       const f = Math.floor((ef.maxLife - ef.life) * m[4] / 60);
       if (f >= m[3]) return;
       const c = Math.cos(ef.ang), sn = Math.sin(ef.ang);
+      if (ef.sharp) { const pr = (ef.maxLife - ef.life) / ef.maxLife; ctx.save(); swordSharpBlade(ctx, ef.x, ef.y, ef.x + c * ef.len, ef.y + sn * ef.len, 5 * (ef.s || 1), '#bae6fd', Math.min(1, pr / 0.15), Math.max(0, 1 - Math.max(0, pr - 0.25) / 0.75), false); ctx.restore(); return; }
       if (!img) { // 시트를 아직 못 받았으면 곧은 빛줄 한 번
         drawSwordEffect(ctx, { type: 'sword_cut', x1: ef.x, y1: ef.y, x2: ef.x + c * ef.len, y2: ef.y + sn * ef.len, w: 3, color: '#e0f2fe' }, (ef.maxLife - ef.life) / ef.maxLife);
         return;
@@ -27433,7 +27446,8 @@
       swordGuardFx('sword_guard_flash', u.x + Math.cos(ang) * 16, u.y - 18, Math.cos(ang) >= 0 ? 1 : -1); // 받아 낸 자리에서 번쩍
       { // 적 곁으로 옮겨 가는 길: 일섬의 빛줄기를 빠르게 (4배)
         const sp = 4, life = Math.ceil(SWORD_ISSEN_FX[3] * 60 / SWORD_ISSEN_FX[4] / sp);
-        sim.effects.push({ type: 'sword_issen', x: Math.round(u.x), y: Math.round(u.y - 14), ang: Math.round(Math.atan2(p.y - u.y, p.x - u.x) * 100) / 100, len: Math.round(Math.max(30, Math.hypot(p.x - u.x, p.y - u.y))), sp, life, maxLife: life });
+        sim.effects.push({ type: 'sword_issen', x: Math.round(u.x), y: Math.round(u.y - 14), ang: Math.round(Math.atan2(p.y - u.y, p.x - u.x) * 100) / 100, len: Math.round(Math.max(30, Math.hypot(p.x - u.x, p.y - u.y))), sp, sr: swordIsSr(u), life, maxLife: life });
+        if (swordIsSr(u)) swordFeatherTrail(u.x, u.y - 14, p.x, p.y - 14, 4, 0, life * 0.27);
       }
       u.x = p.x; u.y = p.y; u.rush = null;
       swordFace(u, attacker);
@@ -27459,7 +27473,7 @@
           // 참격: 기본 공격 빛 참격 하나를 몸을 가로질러 비스듬히 (가슴 가운데를 지나게)
           const kind = Math.floor(Math.random() * SWORD_IAI_KINDS.length), m = SWORD_FXS[SWORD_IAI_KINDS[kind]], life = Math.ceil(m[3] * 60 / m[4]);
           const es = e.sizeScale || 1, a = Math.atan2(dy, dx) + (Math.random() - 0.5) * 1.6, len = 70 * es, cy = e.y + 12 - 30 * es;
-          sim.effects.push({ type: 'sword_iai', k: kind, x: Math.round(e.x - Math.cos(a) * len / 2), y: Math.round(cy - Math.sin(a) * len / 2), ang: Math.round(a * 100) / 100, len: Math.round(len), fy: Math.random() < 0.5 ? 1 : -1, s: es, life, maxLife: life });
+          sim.effects.push({ type: 'sword_iai', k: kind, x: Math.round(e.x - Math.cos(a) * len / 2), y: Math.round(cy - Math.sin(a) * len / 2), ang: Math.round(a * 100) / 100, len: Math.round(len), fy: Math.random() < 0.5 ? 1 : -1, s: es, sharp: swordIsSr(u), life, maxLife: life });
         }));
         playCombatSfx('heavy');
         return;
@@ -27492,7 +27506,7 @@
         if (!w.last) swordMuchamRandomFx(u, foe);
         else {
           const k = SWORD_MUCHAM_SEQ.length - 1, m = SWORD_MUCHAM_FX[SWORD_MUCHAM_SEQ[k][0]], cy = foe.y + 12 - 30 * (foe.sizeScale || 1), life = Math.ceil(m[3] * 60 / m[4]);
-          sim.effects.push({ type: 'sword_mucham', k, x: Math.round(foe.x), y: Math.round(cy), ang: Math.round(Math.atan2(cy - (u.y - 14), foe.x - u.x) * 100) / 100, s: foe.sizeScale || 1, life, maxLife: life });
+          sim.effects.push({ type: 'sword_mucham', k, x: Math.round(foe.x), y: Math.round(cy), ang: Math.round(Math.atan2(cy - (u.y - 14), foe.x - u.x) * 100) / 100, s: foe.sizeScale || 1, sharp: swordIsSr(u), life, maxLife: life });
         }
         u.attackAnim = 8; u.maxAttackAnim = 8;
         playCombatSfx(w.last ? 'heavy' : 'slash');
@@ -27505,7 +27519,7 @@
         const foes = sim.units.filter(e => swordFoeOk(u, e));
         withSkillHit(() => foes.forEach(e => {
           applyDamage(u, e, u.atk * SWORD_GEUKCHAM_DMG, '🌌', '#e0f2fe');
-          sim.effects.push({ type: 'sword_x', x: e.x, y: e.y - 18, angle: Math.random() * Math.PI, r: 0, size: 54, color: '#bae6fd', life: 22, maxLife: 22 });
+          sim.effects.push({ type: 'sword_x', x: e.x, y: e.y - 18, angle: Math.random() * Math.PI, r: 0, size: swordIsSr(u) ? 70 : 54, sharp: swordIsSr(u), color: '#bae6fd', life: 22, maxLife: 22 });
         }));
         playCombatSfx('heavy');
         addBattleLog(`🌌 [검사] ${u.name}의 극참 마지막 일격! 전장 전체가 갈라졌어요 (${foes.length}명)`);
@@ -27554,7 +27568,8 @@
       u.swordIssenPose = SWORD_ISSEN_POSES[Math.floor(Math.random() * SWORD_ISSEN_POSES.length)]; // 돌진마다 일섬 베기 자세 셋 중 하나
       // 일섬의 전격 빛줄기 시트만 씀 (돌진 부분이 이번 돌진 틱에 맞게 sp배 빠르기로 재생)
       const sp = Math.round(SWORD_ISSEN_TICKS / ticks * 100) / 100, life = Math.ceil(SWORD_ISSEN_FX[3] * 60 / SWORD_ISSEN_FX[4] / sp);
-      sim.effects.push({ type: 'sword_issen', x: Math.round(sx), y: Math.round(sy - 14), ang: Math.round(Math.atan2(r.ty - sy, r.tx - sx) * 100) / 100, len: Math.round(Math.max(30, Math.hypot(r.tx - sx, r.ty - sy))), sp, life, maxLife: life });
+      sim.effects.push({ type: 'sword_issen', x: Math.round(sx), y: Math.round(sy - 14), ang: Math.round(Math.atan2(r.ty - sy, r.tx - sx) * 100) / 100, len: Math.round(Math.max(30, Math.hypot(r.tx - sx, r.ty - sy))), sp, sr: swordIsSr(u), life, maxLife: life });
+      if (swordIsSr(u)) swordFeatherTrail(sx, sy - 14, r.tx, r.ty - 14, 4, 0, life * 0.27); // 난사는 50번이라 깃털을 적게
     }
     function swordRanseomEnd(u, n) {
       addBattleLog(`🌌 [검사] ${u.name}의 히든 스킬 극참! 일섬 ${n}연 난사`);
@@ -27576,6 +27591,10 @@
       [-0.45, 0.1, 0.6].forEach((a0, k) => {
         const a = a0 + (Math.random() - 0.5) * 0.2, cx = W * (0.3 + 0.2 * k), cy = H / 2;
         sim.effects.push({ type: 'sword_cut', x1: cx - Math.cos(a) * L, y1: cy - Math.sin(a) * L, x2: cx + Math.cos(a) * L, y2: cy + Math.sin(a) * L, w: 9, sharp: true, color: '#bae6fd', life: 40, maxLife: 40 }); // 날카롭고 매끄러운 참격 (2026-11-12 사용자)
+      });
+      if (swordIsSr(unit)) [-0.45, 0.1, 0.6].forEach((a0, k) => { // 화면을 가른 칼자국을 따라 깃털이 흩날림
+        const a = a0, cx = W * (0.3 + 0.2 * k), cy = H / 2, hl = Math.min(W, H) * 0.6;
+        swordFeatherTrail(cx - Math.cos(a) * hl, cy - Math.sin(a) * hl, cx + Math.cos(a) * hl, cy + Math.sin(a) * hl, 22, 0, 4, 1.3);
       });
       hiddenImpact(14, '#f0f9ff');
       unit.swordGkPose = 'cut';
@@ -27620,7 +27639,8 @@
         });
         unit.swordIssenPose = SWORD_ISSEN_POSES[Math.floor(Math.random() * SWORD_ISSEN_POSES.length)];
         const life = Math.ceil(SWORD_ISSEN_FX[3] * 60 / SWORD_ISSEN_FX[4]); // 돌진 → 고요 → 길이 갈라짐까지 시트 하나 (갈라지는 때 = 돌진 8틱 + 10틱 뒤)
-        sim.effects.push({ type: 'sword_issen', x: Math.round(sx), y: Math.round(sy - 14), ang: Math.round(Math.atan2(r.ty - sy, r.tx - sx) * 100) / 100, len: Math.round(Math.max(30, Math.hypot(r.tx - sx, r.ty - sy))), life, maxLife: life });
+        sim.effects.push({ type: 'sword_issen', x: Math.round(sx), y: Math.round(sy - 14), ang: Math.round(Math.atan2(r.ty - sy, r.tx - sx) * 100) / 100, len: Math.round(Math.max(30, Math.hypot(r.tx - sx, r.ty - sy))), sr: swordIsSr(unit), life, maxLife: life });
+        if (swordIsSr(unit)) swordFeatherTrail(sx, sy - 14, r.tx, r.ty - 14, Math.round(Math.hypot(r.tx - sx, r.ty - sy) / 18) + 4, 0, life * 0.27); // 지나간 자리에 깃털 잔상
         playCombatSfx('slash');
         addBattleLog(`⚡ [검사] ${unit.name}의 일섬!`);
         return true;
@@ -27638,7 +27658,8 @@
           n++;
         });
         const life = Math.ceil(SWORD_SEOMDAN_FX[3] * 60 / SWORD_SEOMDAN_FX[4]);
-        sim.effects.push({ type: 'sword_seomdan', x: Math.round(unit.x + c * 30), y: Math.round(unit.y - 14 + s * 30), ang: Math.round(ang * 100) / 100, r: Math.round(reach - 30), life, maxLife: life });
+        sim.effects.push({ type: 'sword_seomdan', x: Math.round(unit.x + c * 30), y: Math.round(unit.y - 14 + s * 30), ang: Math.round(ang * 100) / 100, r: Math.round(reach - 30), sr: swordIsSr(unit), life, maxLife: life });
+        if (swordIsSr(unit)) swordFeatherTrail(unit.x + c * 30, unit.y - 14 + s * 30, unit.x + c * reach, unit.y - 14 + s * reach, Math.round((reach - 30) / 14) + 4, SWORD_SEOMDAN_FLY[0] * 60, (SWORD_SEOMDAN_FLY[1] - SWORD_SEOMDAN_FLY[0]) * 60); // X가 지나가는 대로 깃털 잔상
         playCombatSfx('heavy');
         addBattleLog(`❌ [검사] ${unit.name}의 섬단! 검기가 ${n}명을 갈랐어요`);
         return true;
@@ -27718,6 +27739,74 @@
       return -1;
     }
 
+    // 시크릿 레어 검사 깃털 (2026-11-12 사용자: 일섬·섬단 지나간 자리 깃털 잔상, 참격·피격·공간 베기에 깃털)
+    //   sword_feather 이펙트 하나에 깃털 여러 장 ps = [x, y, vx, vy, 회전, 회전 속도, 크기, 늦게 나옴(화면 프레임), 수명]. 퍼져 나가다 느려지며 하늘하늘 떨어짐
+    function swordFeatherFx(ps) {
+      if (!ps.length) return;
+      const life = Math.max(...ps.map(p => p[7] + p[8]));
+      sim.effects.push({ type: 'sword_feather', ps, life, maxLife: life });
+    }
+    const swordFeather = (x, y, vx, vy, sz = 1, delay = 0, life = 80) => [x, y, vx, vy, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 0.12, sz * (0.8 + Math.random() * 0.5), delay, life * (0.8 + Math.random() * 0.4)];
+    function swordFeatherBurst(x, y, n, spd = 1.6, s = 1) { // 맞은 자리에서 사방으로 흩어짐
+      const ps = [];
+      for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = spd * (0.4 + Math.random() * 0.8); ps.push(swordFeather(x, y, Math.cos(a) * v, Math.sin(a) * v * 0.7 - 0.4, s, 0, 60)); }
+      swordFeatherFx(ps);
+    }
+    function swordFeatherTrail(x1, y1, x2, y2, n, d0 = 0, dSpan = 0, s = 1) { // 지나간 길을 따라 남는 깃털 잔상 (지나가는 순서대로 d0 → d0 + dSpan 프레임 늦게 나옴)
+      const ps = [], dx = x2 - x1, dy = y2 - y1;
+      for (let i = 0; i < n; i++) {
+        const f = (i + Math.random()) / n, a = Math.random() * Math.PI * 2, v = 0.3 + Math.random() * 0.5;
+        ps.push(swordFeather(x1 + dx * f + (Math.random() - 0.5) * 14, y1 + dy * f + (Math.random() - 0.5) * 10, Math.cos(a) * v, Math.sin(a) * v * 0.6 - 0.2, s, d0 + dSpan * f, 100));
+      }
+      swordFeatherFx(ps);
+    }
+    function drawSwordFeather(ctx, x, y, rot, sz, a) { // 작은 흰 깃털 한 장 (깃 몸 + 깃대), 크기 1 = 길이 10px
+      ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(sz, sz);
+      ctx.globalAlpha = a; ctx.shadowColor = '#e0f2fe'; ctx.shadowBlur = 5; ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.moveTo(0, -5); ctx.quadraticCurveTo(2.6, -1, 0, 5); ctx.quadraticCurveTo(-2.6, -1, 0, -5); ctx.fill();
+      ctx.globalAlpha = a * 0.6; ctx.shadowBlur = 0; ctx.strokeStyle = '#bae6fd'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(0, 6.5); ctx.stroke();
+      ctx.restore();
+    }
+    function drawSwordFeathers(ctx, ef) {
+      const age = ef.maxLife - ef.life;
+      ctx.globalCompositeOperation = 'lighter';
+      for (const p of ef.ps) {
+        const t = age - p[7];
+        if (t < 0 || t > p[8]) continue;
+        const go = 22 * (1 - Math.exp(-t / 22)); // 처음엔 빠르게 퍼지다 멈춤
+        const x = p[0] + p[2] * go + Math.sin(t * 0.07 + p[4]) * 5 * p[6], y = p[1] + p[3] * go + t * 0.12; // 좌우로 하늘거리며 천천히 떨어짐
+        const a = Math.min(1, t / 4, (p[8] - t) / (p[8] * 0.4));
+        drawSwordFeather(ctx, x, y, p[4] + p[5] * t + Math.sin(t * 0.07 + p[4]) * 0.6, p[6], a);
+      }
+    }
+    // 날카롭고 매끄러운 칼날 모양 빛 (x1,y1 → x2,y2): k = 그어진 정도 0→1, thin = 굵기 배율 (사라질 때 가늘어짐). 양끝은 바늘처럼, 가장 굵은 곳은 60% 언저리
+    function swordSharpBlade(ctx, x1, y1, x2, y2, w, col, k = 1, thin = 1, hair = true) {
+      const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
+      const blade = (hw, c, a, blur) => {
+        const px = -uy * hw * thin * 1.33, py = ux * hw * thin * 1.33, tx = x1 + dx * k, ty = y1 + dy * k;
+        const a1x = x1 + dx * k * 0.3, a1y = y1 + dy * k * 0.3, a2x = x1 + dx * k * 0.85, a2y = y1 + dy * k * 0.85;
+        ctx.globalAlpha = a; ctx.fillStyle = c; ctx.shadowColor = c; ctx.shadowBlur = blur;
+        ctx.beginPath(); ctx.moveTo(x1, y1);
+        ctx.bezierCurveTo(a1x + px, a1y + py, a2x + px, a2y + py, tx, ty);
+        ctx.bezierCurveTo(a2x - px, a2y - py, a1x - px, a1y - py, x1, y1); ctx.fill();
+      };
+      ctx.globalCompositeOperation = 'lighter';
+      blade(w * 1.6, col, 0.4, 18); blade(w * 0.6, '#f0f9ff', 0.9, 8); blade(w * 0.22, '#ffffff', 1, 0);
+      if (hair) { // 칼날 앞뒤로 길게 뻗는 머리카락 같은 선
+        ctx.shadowBlur = 0; ctx.globalAlpha = 0.9 * thin; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x1 - ux * L * 0.15, y1 - uy * L * 0.15); ctx.lineTo(x1 + dx * k + ux * L * 0.15 * k, y1 + dy * k + uy * L * 0.15 * k); ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+    }
+    // 시크릿 레어 일섬 (전격 시트 대신): 돌진하는 동안 칼날 빛이 그어짐 → 고요히 가는 선으로 남음 → 길이 갈라지는 순간 확 굵어졌다 가늘어지며 사라짐 (시트와 같은 때: 돌진 27% · 갈라짐 60%)
+    function drawSwordSrIssen(ctx, ef) {
+      const p = (ef.maxLife - ef.life) / ef.maxLife, c = Math.cos(ef.ang), sn = Math.sin(ef.ang);
+      const k = Math.min(1, p / 0.27), cut = p < 0.6 ? 0 : (p - 0.6) / 0.4;
+      const w = p < 0.27 ? 6 : p < 0.6 ? 2.5 : 9 * Math.sin(Math.min(1, cut * 2.5) * Math.PI / 2) * (1 - cut) + 1;
+      ctx.save();
+      swordSharpBlade(ctx, ef.x, ef.y, ef.x + c * ef.len, ef.y + sn * ef.len, w, '#bae6fd', k, 1, p >= 0.6);
+      ctx.restore();
+    }
     // 검사 이펙트: sword_cut = 곧은 칼자국 (x1,y1 → x2,y2) · sword_ring = 둘레를 휘도는 칼바람 (r) · sword_x = 앞으로 날아가는 X자 검기 (r = 날아가는 거리, size = 반폭)
     function drawSwordEffect(ctx, ef, progress) {
       const fade = Math.max(0, Math.min(1, ef.life / (ef.maxLife || 1)));
@@ -27730,20 +27819,17 @@
           ctx.beginPath(); draw(); ctx.stroke();
         });
       };
-      if (ef.type === 'sword_cut' && ef.sharp) { // 날카로운 참격 (무참 마무리): 순식간에 그어지는 양끝이 바늘처럼 뾰족한 칼날 모양, 사라질 땐 가늘어지며 꺼짐
-        const k = Math.min(1, progress / 0.08), thin = Math.max(0, 1 - Math.max(0, progress - 0.15) / 0.85);
-        const dx = ef.x2 - ef.x1, dy = ef.y2 - ef.y1, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
-        const blade = (hw, c, a, blur) => { // 매끄러운 초승달 모양: 양끝은 바늘처럼 뾰족, 가장 굵은 곳은 60% 언저리 (곡선이라 꺾임 없음)
-          const e = k, px = -uy * hw * thin * 1.33, py = ux * hw * thin * 1.33, tx = ef.x1 + dx * e, ty = ef.y1 + dy * e;
-          const a1x = ef.x1 + dx * e * 0.3, a1y = ef.y1 + dy * e * 0.3, a2x = ef.x1 + dx * e * 0.85, a2y = ef.y1 + dy * e * 0.85;
-          ctx.globalAlpha = a; ctx.fillStyle = c; ctx.shadowColor = c; ctx.shadowBlur = blur;
-          ctx.beginPath(); ctx.moveTo(ef.x1, ef.y1);
-          ctx.bezierCurveTo(a1x + px, a1y + py, a2x + px, a2y + py, tx, ty);
-          ctx.bezierCurveTo(a2x - px, a2y - py, a1x - px, a1y - py, ef.x1, ef.y1); ctx.fill();
-        };
-        blade(ef.w * 1.6, col, 0.4, 18); blade(ef.w * 0.6, '#f0f9ff', 0.9, 8); blade(ef.w * 0.22, '#ffffff', 1, 0);
-        ctx.shadowBlur = 0; ctx.globalAlpha = 0.9 * thin; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; // 칼날 앞뒤로 길게 뻗는 머리카락 같은 선
-        ctx.beginPath(); ctx.moveTo(ef.x1 - ux * L * 0.15, ef.y1 - uy * L * 0.15); ctx.lineTo(ef.x1 + dx * k + ux * L * 0.15 * k, ef.y1 + dy * k + uy * L * 0.15 * k); ctx.stroke();
+      if (ef.type === 'sword_feather') { drawSwordFeathers(ctx, ef); return; }
+      if (ef.type === 'sword_cut' && ef.sharp) { // 날카로운 참격 (무참 마무리·공간 베기 칼자국): 순식간에 그어지는 바늘 끝 칼날, 사라질 땐 가늘어지며 꺼짐
+        swordSharpBlade(ctx, ef.x1, ef.y1, ef.x2, ef.y2, ef.w, col, Math.min(1, progress / 0.08), Math.max(0, 1 - Math.max(0, progress - 0.15) / 0.85));
+        return;
+      }
+      if (ef.type === 'sword_x' && ef.sharp) { // 날카로운 X (시크릿 레어 극참 마지막 일격 피격): 두 칼날이 엇갈려 그어짐
+        const kk = Math.min(1, progress / 0.12), th = Math.max(0, 1 - Math.max(0, progress - 0.2) / 0.8), h = ef.size;
+        [Math.PI / 4, -Math.PI / 4].forEach((d, i) => {
+          const a = ef.angle + d, kx = i ? Math.max(0, Math.min(1, (progress - 0.06) / 0.12)) : kk; // 두 번째 칼날은 조금 늦게
+          if (kx > 0) swordSharpBlade(ctx, ef.x - Math.cos(a) * h, ef.y - Math.sin(a) * h, ef.x + Math.cos(a) * h, ef.y + Math.sin(a) * h, 6, col, kx, th, false);
+        });
         return;
       }
       if (ef.type === 'sword_cut') {
@@ -34683,7 +34769,7 @@
           continue;
         }
 
-        if (ef.type === 'sword_cut' || ef.type === 'sword_x' || ef.type === 'sword_ring') { // 검사 검기
+        if (ef.type === 'sword_cut' || ef.type === 'sword_x' || ef.type === 'sword_ring' || ef.type === 'sword_feather') { // 검사 검기 · 시크릿 레어 깃털
           drawSwordEffect(ctx, ef, progress);
           ctx.restore();
           if (!top) { ef.life -= frameTimeScale; if (ef.life <= 0) sim.effects.splice(i, 1); }
