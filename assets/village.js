@@ -986,6 +986,11 @@
   function step(a, dx, dz) {
     const pz = a.z; let x = a.x + dx, z = a.z + dz;
     solids.forEach(c => { const d = Math.hypot(x - c.x, z - c.z), min = c.r + R; if (d < min && d > 1e-4) { x = c.x + (x - c.x) / d * min; z = c.z + (z - c.z) / d * min; } });
+    if (!a.sit) actors.forEach(o => { // 캐릭터끼리 겹치지 않음
+      if (o === a || o.sit || (o.z > SHOP.far) !== (pz > SHOP.far)) return;
+      const d = Math.hypot(x - o.x, z - o.z), min = R * 2; if (d >= min || d < 1e-4) return;
+      x = o.x + (x - o.x) / d * min; z = o.z + (z - o.z) / d * min;
+      if (a === me && me.run > 1) bump(o); });
     if (pz < SHOP.far && eastDist(x, z) < 0) { const [q, d] = eastNear(x, z), k = (q.w / 2 + 0.01) / (d || 1); x = q.x + (x - q.x) * k; z = q.z + (z - q.z) * k; } // 동쪽 강: 물가로 밀어냄
     if (pz < SHOP.far && riverDist(x, z) < 0) { // 강: 다리 위에서만 건넘
       const on = BRIDGES.find(q => Math.abs(a.x - q.x) <= RIVER.bridge);
@@ -998,6 +1003,11 @@
     [a.x, a.z] = clampZone(x, z, pz > SHOP.far);
   }
   const clampZone = (x, z, inShop) => inShop ? [Math.max(SHOP.ix + SHOP.x0, Math.min(SHOP.ix + SHOP.x1, x)), Math.max(SHOP.z0, Math.min(SHOP.z1, z))] : [Math.max(DIST.x0 + 1, Math.min(z > riverZ(LX) ? 44 : LX, x)), Math.max(LZ0, Math.min(LZ1, z))]; // 큰 강 남쪽은 동쪽 강가까지
+  function bump(o) { // 뛰다 부딪힘: 나는 꾸벅 사과, 상대는 씩씩 화냄 (같은 상대는 3초에 한 번)
+    const now = performance.now() / 1000; if (o.bumpCd > now) return; o.bumpCd = now + 3;
+    me.face = Math.atan2(o.x - me.x, o.z - me.z); me.bowT = 1.3; say(me, pick(['앗, 미안해요! 🙇', '죄송해요! 🙇', '미안미안! 🙏']), 1.8);
+    o.face = Math.atan2(me.x - o.x, me.z - o.z); o.angryT = 1.6; o.wave = 0; say(o, pick(['앗! 조심해요 😠', '아야! 💢', '흥! 뛰지 마요 😤']), 1.9);
+    if (!o.remote && !o.npc) { o.target = null; o.wait = 2; } popText('💢', o.x, 1.75, o.z); sfx.knock(); }
   const keys = {};
   const onKeyDown = e => {
     if (!running || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
@@ -1653,10 +1663,11 @@
       } else { a.g.rotation.x = 0; a.g.position.set(a.x, (a.hop > 0 ? Math.sin(Math.PI * (1 - a.hop / 0.4)) * 0.38 : 0) + groundY(a.x, a.z), a.z); }
       let d = a.face - a.g.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); a.g.rotation.y += d * Math.min(1, dt * 12);
       if (a.wave > 0) a.wave -= dt;
+      if (a.bowT > 0) a.bowT -= dt; if (a.angryT > 0) a.angryT -= dt;
       if (a.sayT > 0) a.sayT -= dt;
       const label = a.sayT > 0 ? a.say : a.name + (a.wave > 0 ? ' 👋' : '');
       if (label !== a.label) { a.label = label; a.tag.textContent = label; a.tag.classList.toggle('say', a.sayT > 0); }
-      a.pet.update(t, { moving: a.moving, wave: a.wave > 0.02, sit: Boolean(a.sit) && !a.sit.stand, hold: a === me && (rod.visible || bugNet.visible) ? (fishing.st ? 'fish' : me.swingT > 0 ? 'swing' : 'carry') : null });
+      a.pet.update(t, { moving: a.moving && !(a.bowT > 0), wave: a.wave > 0.02, bow: a.bowT > 0, angry: a.angryT > 0, sit: Boolean(a.sit) && !a.sit.stand, hold: a === me && (rod.visible || bugNet.visible) ? (fishing.st ? 'fish' : me.swingT > 0 ? 'swing' : 'carry') : null });
       const dz = bendDist(a.x, a.z);
       v.set(a.g.position.x, a.g.position.y + (a.sit ? 1.1 : 1.24) * (a.pet.height || 1) - curve.uCurve.value * dz * dz, a.g.position.z).project(camera);
       const on = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;

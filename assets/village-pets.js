@@ -355,28 +355,32 @@
 
     // ── 움직임: update(초, { moving: 걷는 중, wave: 인사 중, sit: 앉은 중 })
     const blinkAt = Math.random() * 3;
-    let walk = 0, waveK = 0, sitK = 0, last = null;
+    let walk = 0, waveK = 0, sitK = 0, bowK = 0, angK = 0, last = null;
     function update(t, st) {
       st = st || {};
       const dt = last == null ? 0 : Math.min(0.1, t - last); last = t;
       walk += ((st.moving ? 1 : 0) - walk) * Math.min(1, dt * 10);
       waveK += ((st.wave ? 1 : 0) - waveK) * Math.min(1, dt * 8);
       sitK += ((st.sit ? 1 : 0) - sitK) * Math.min(1, dt * 9);
+      bowK += ((st.bow ? 1 : 0) - bowK) * Math.min(1, dt * 10); angK += ((st.angry ? 1 : 0) - angK) * Math.min(1, dt * 10); // 꾸벅 사과 · 씩씩 화내기
       const sw = Math.sin(t * 11) * walk;
       legs[0].rotation.x = sw * 0.8 - 1.45 * sitK; legs[1].rotation.x = -sw * 0.8 - 1.45 * sitK; // 앉으면 다리를 앞으로 뻗음
       legs[0].rotation.z = -0.12 * sitK; legs[1].rotation.z = 0.12 * sitK;
       arms[0].rotation.x = -sw * 0.9;
       arms[1].rotation.x = sw * 0.9 * (1 - waveK);
       arms[1].rotation.z = 0.35 + waveK * (2.1 + Math.sin(t * 12) * 0.35);
+      arms[0].rotation.z = -0.35 - angK * (1.5 + Math.sin(t * 22) * 0.25); if (angK > 0.01) arms[1].rotation.z = 0.35 + angK * (1.5 + Math.sin(t * 22 + 1) * 0.25); // 화나면 두 팔을 번쩍
+      if (bowK > 0.01) { arms[0].rotation.x += -0.5 * bowK; arms[1].rotation.x += -0.5 * bowK; } // 꾸벅할 땐 두 손을 앞으로 모음
       if (st.hold) { arms[1].rotation.x = st.hold === 'fish' ? -0.9 : st.hold === 'swing' ? -1.5 : -0.45 + sw * 0.15; arms[1].rotation.z = 0.18; } // 물건을 쥔 팔: 낚시 땐 앞으로, 들고 다닐 땐 살짝 앞으로
-      rig.position.y = Math.abs(Math.sin(t * 11)) * 0.035 * walk - 0.12 * sitK; // 앉으면 엉덩이가 바닥(y=0)에 닿게 내림
-      rig.rotation.z = Math.sin(t * 11) * 0.05 * walk;
+      rig.position.y = Math.abs(Math.sin(t * 11)) * 0.035 * walk - 0.12 * sitK + Math.abs(Math.sin(t * 16)) * 0.06 * angK; // 앉으면 엉덩이가 바닥(y=0)에 닿게 내림, 화나면 발을 동동
+      rig.rotation.z = Math.sin(t * 11) * 0.05 * walk + Math.sin(t * 30) * 0.07 * angK;
+      rig.rotation.x = 0.5 * bowK; // 꾸벅
       const sq = Math.sin(t * 22) * 0.035 * walk; rig.scale.set(1 - sq * 0.5, 1 + sq, 1 - sq * 0.5); // 걸을 때 통통 튀는 탄력
       const br = 1 + Math.sin(t * 2.2) * 0.018 * (1 - walk);
       body.scale.set(1, br, 1);
       head.position.y = 0.68 + (br - 1) * 0.3;
       head.rotation.z = Math.sin(t * 1.3) * 0.045 + waveK * 0.12;
-      head.rotation.x = Math.sin(t * 0.9) * 0.03;
+      head.rotation.x = Math.sin(t * 0.9) * 0.03 + 0.3 * bowK - 0.15 * angK;
       tail.rotation.y = Math.sin(t * (5 + walk * 4 + waveK * 6)) * (0.22 + waveK * 0.25);
       const tw = Math.max(0, Math.sin(t * 0.7 + blinkAt * 5) - 0.96) * 25; // 가끔 귀 쫑긋
       ears[0].rotation.x = (S.ears === 'pig' ? 0.75 : 0) - tw * 0.25; ears[1].rotation.x = (S.ears === 'pig' ? 0.75 : 0) - tw * 0.25;
