@@ -27089,6 +27089,24 @@
       ctx.drawImage(img, (f % cols) * w, Math.floor(f / cols) * h, w, h, -ax, -ay, w, h);
       ctx.restore();
     }
+    // 일섬 (tools/swordsman_fx/issen.js): 출발점 가슴 높이 → 돌진 끝까지, 구운 길이 SWORD_ISSEN_LEN을 실제 거리에 맞춰 가로로 늘림
+    const SWORD_ISSEN_FX = [511, 68, 2, 30, 40, 10, 34], SWORD_ISSEN_LEN = 480;
+    function drawSwordIssenFx(ctx, ef) {
+      const m = SWORD_ISSEN_FX, img = swordFxImg('issen'), f = Math.floor((ef.maxLife - ef.life) * m[4] / 60);
+      if (f >= m[3]) return;
+      const c = Math.cos(ef.ang);
+      if (!img) { // 시트를 아직 못 받았으면 곧은 빛줄 한 번
+        drawSwordEffect(ctx, { type: 'sword_cut', x1: ef.x, y1: ef.y, x2: ef.x + c * ef.len, y2: ef.y + Math.sin(ef.ang) * ef.len, w: 4, color: '#e0f2fe' }, (ef.maxLife - ef.life) / ef.maxLife);
+        return;
+      }
+      const [w, h, cols, , , ax, ay] = m;
+      ctx.save();
+      ctx.translate(ef.x, ef.y);
+      ctx.rotate(ef.ang);
+      ctx.scale(ef.len / SWORD_ISSEN_LEN, c < 0 ? -1 : 1); // 왼쪽으로 달리면 위아래가 뒤집히므로 되돌림
+      ctx.drawImage(img, (f % cols) * w, Math.floor(f / cols) * h, w, h, -ax, -ay, w, h);
+      ctx.restore();
+    }
     function drawSwordIaiFx(ctx, ef) {
       const name = SWORD_IAI_KINDS[ef.k] || SWORD_IAI_KINDS[0], m = SWORD_FXS[name], img = swordFxImg(name);
       const f = Math.floor((ef.maxLife - ef.life) * m[4] / 60);
@@ -27194,7 +27212,6 @@
     function swordDelayed(u, w) {
       if (w.kind === 'issen') {
         const dx = w.tx - w.sx, dy = w.ty - w.sy, len2 = dx * dx + dy * dy || 1;
-        sim.effects.push({ type: 'sword_cut', x1: w.sx, y1: w.sy - 14, x2: w.tx, y2: w.ty - 14, w: 12, color: '#22d3ee', life: 18, maxLife: 18 });
         withSkillHit(() => sim.units.forEach(e => {
           if (!swordFoeOk(u, e)) return;
           const t = Math.max(0, Math.min(1, ((e.x - w.sx) * dx + (e.y - w.sy) * dy) / len2));
@@ -27329,7 +27346,8 @@
         const r = startUnitRush(unit, sx + Math.cos(ang) * d, sy + Math.sin(ang) * d, SWORD_ISSEN_TICKS, () => {
           if (unit.alive) swordAddStrikes(unit, [{ left: SWORD_ISSEN_DELAY, sword: { kind: 'issen', sx, sy, tx: unit.x, ty: unit.y } }]);
         });
-        sim.effects.push({ type: 'sword_cut', x1: sx, y1: sy - 14, x2: r.tx, y2: r.ty - 14, w: 4, color: '#a5f3fc', life: SWORD_ISSEN_TICKS + 8, maxLife: SWORD_ISSEN_TICKS + 8 });
+        const life = Math.ceil(SWORD_ISSEN_FX[3] * 60 / SWORD_ISSEN_FX[4]); // 돌진 → 고요 → 길이 갈라짐까지 시트 하나 (갈라지는 때 = 돌진 8틱 + 10틱 뒤)
+        sim.effects.push({ type: 'sword_issen', x: Math.round(sx), y: Math.round(sy - 14), ang: Math.round(Math.atan2(r.ty - sy, r.tx - sx) * 100) / 100, len: Math.round(Math.max(30, Math.hypot(r.tx - sx, r.ty - sy))), life, maxLife: life });
         playCombatSfx('slash');
         addBattleLog(`⚡ [검사] ${unit.name}의 일섬!`);
         return true;
@@ -34898,6 +34916,8 @@
           drawSwordBattoFx(ctx, ef); // 검사 발도 섬륜 (둘레 3칸 빛의 고리)
         } else if (ef.type === 'sword_seomdan') {
           drawSwordSeomdanFx(ctx, ef); // 검사 섬단 X자 검기 (앞 4칸으로 날아감)
+        } else if (ef.type === 'sword_issen') {
+          drawSwordIssenFx(ctx, ef); // 검사 일섬 (빛줄기 돌진 → 길이 갈라짐)
 
         } else if (ef.type === 'cast_circle' || ef.type === 'shield_dome' || ef.type === 'blessing_aura') {
           ctx.globalAlpha = ef.life / ef.maxLife;
@@ -48441,7 +48461,7 @@
     // ----- 화면 형식 v2 (2026-11-09부터 방장이 보냄 · 받는 쪽은 두 형식 다 읽음) -----
     // 이펙트 종류 이름(평균 15자, 이펙트 바이트의 1/5)은 표 번호로 · 투사체의 안 바뀌는 칸(종류·색·반지름·그림)은 처음 한 번만 (매 화면 다시 보내던 투사체 바이트의 절반)
     // ⚠ LIVE_FX_TYPES 순서를 바꾸거나 중간에 끼우면 먼저 연 탭이 다른 이펙트를 그림 → 새 종류는 끝에만 더할 것 (표에 없는 종류는 이름 그대로 감)
-    const LIVE_FX_TYPES = ['aoe_ring', 'arrow_hit', 'bard_encore', 'bard_lute', 'bard_song_buff', 'bard_sr_encore', 'bard_wave', 'bard_wave_hit', 'berserker_slam', 'berserker_split', 'blessing_aura', 'blood_fx', 'brawl_hit', 'brawl_ring', 'cast_circle', 'charge_dash', 'curse_bolt', 'curse_ruin_blast', 'curse_ruin_bolt', 'curse_ruin_circle', 'curse_shatter', 'curse_siphon', 'curse_siphon_heal', 'curse_weaken', 'fire_explosion', 'frost_blizzard', 'frost_glaze', 'frost_nova', 'frost_skate', 'heal_beam', 'heal_cross', 'heal_pillar', 'hidden_assassin', 'hidden_assassin_smoke', 'hidden_beam', 'hidden_excal_impact', 'hidden_fusion', 'hidden_giant_aura', 'hidden_giant_burst', 'hidden_miracle', 'hidden_miracle_buff', 'hidden_miracle_pillar', 'hidden_musou_boom', 'hidden_musou_dash', 'hidden_musou_slash', 'hidden_musou_x', 'hidden_slash', 'hidden_snipe_bullet', 'hidden_snipe_hit', 'hidden_storm', 'ice_shatter', 'lightning_bolt', 'magic_burst', 'paladin_aegis_burst', 'paladin_aegis_dome', 'paladin_charge_dust', 'paladin_charge_hit', 'paladin_consec_burst', 'paladin_hs_dome', 'paladin_judgment', 'paladin_swing', 'pierce_fx', 'pyro_burst', 'pyro_fring', 'pyro_hit', 'pyro_meteor_impact', 'pyro_sr_meteor', 'pyro_xpl', 'rampage_fx', 'shield_dome', 'sniper_line', 'sniper_spread', 'spirit_dodge', 'spirit_king_burst', 'spirit_pop', 'stun_shockwave', 'whirlwind_slash', 'volt_rail', 'volt_beam', 'volt_fx', 'sword_iai', 'sword_batto', 'sword_seomdan'];
+    const LIVE_FX_TYPES = ['aoe_ring', 'arrow_hit', 'bard_encore', 'bard_lute', 'bard_song_buff', 'bard_sr_encore', 'bard_wave', 'bard_wave_hit', 'berserker_slam', 'berserker_split', 'blessing_aura', 'blood_fx', 'brawl_hit', 'brawl_ring', 'cast_circle', 'charge_dash', 'curse_bolt', 'curse_ruin_blast', 'curse_ruin_bolt', 'curse_ruin_circle', 'curse_shatter', 'curse_siphon', 'curse_siphon_heal', 'curse_weaken', 'fire_explosion', 'frost_blizzard', 'frost_glaze', 'frost_nova', 'frost_skate', 'heal_beam', 'heal_cross', 'heal_pillar', 'hidden_assassin', 'hidden_assassin_smoke', 'hidden_beam', 'hidden_excal_impact', 'hidden_fusion', 'hidden_giant_aura', 'hidden_giant_burst', 'hidden_miracle', 'hidden_miracle_buff', 'hidden_miracle_pillar', 'hidden_musou_boom', 'hidden_musou_dash', 'hidden_musou_slash', 'hidden_musou_x', 'hidden_slash', 'hidden_snipe_bullet', 'hidden_snipe_hit', 'hidden_storm', 'ice_shatter', 'lightning_bolt', 'magic_burst', 'paladin_aegis_burst', 'paladin_aegis_dome', 'paladin_charge_dust', 'paladin_charge_hit', 'paladin_consec_burst', 'paladin_hs_dome', 'paladin_judgment', 'paladin_swing', 'pierce_fx', 'pyro_burst', 'pyro_fring', 'pyro_hit', 'pyro_meteor_impact', 'pyro_sr_meteor', 'pyro_xpl', 'rampage_fx', 'shield_dome', 'sniper_line', 'sniper_spread', 'spirit_dodge', 'spirit_king_burst', 'spirit_pop', 'stun_shockwave', 'whirlwind_slash', 'volt_rail', 'volt_beam', 'volt_fx', 'sword_iai', 'sword_batto', 'sword_seomdan', 'sword_issen'];
     const LIVE_FX_TYPE_IDX = Object.fromEntries(LIVE_FX_TYPES.map((t, i) => [t, i]));
     let liveFrameV2 = false; // publishLiveBattleFrame이 화면마다 정함
     function packLiveEffect(ef) {
