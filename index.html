@@ -6214,6 +6214,7 @@
     const VOLT_RECRUIT_SINCE = Date.parse('2026-11-10T00:00:00+09:00'); // 전격술사: 2026-11-10부터 모집에 나옴 (사용자 요청)
     function voltRecruitOpen() { return VOLT_RECRUIT_SINCE !== null && Date.now() >= VOLT_RECRUIT_SINCE; }
     const SWORDSMAN_RECRUIT_SINCE = null; // 검사: 아직 모집에 안 나옴 (관리자 '용병 추가'로만)
+    const FAIR_DUEL_OPEN = false; // ⚖️ 공정한 결투: 잠시 막음 (2026-11-12 사용자) · true면 다시 열림
     function swordsmanRecruitOpen() { return SWORDSMAN_RECRUIT_SINCE !== null && Date.now() >= SWORDSMAN_RECRUIT_SINCE; }
     function summonerRecruitOpen() { return SUMMONER_RECRUIT_SINCE !== null && Date.now() >= SUMMONER_RECRUIT_SINCE; }
     function jobPassiveOf(u) {
@@ -14191,7 +14192,7 @@
       { id: 'dungeonVeryHard', icon: '☠️', label: '던전 매우 어려움 클리어하기', goal: 1, go: () => goToStudentTab('dungeon'), need: stu => Object.values(stu.dungeonBook || {}).some(b => b && b.hardClear) },
       { id: 'dungeonQuiz', icon: '📝', label: '던전 퀴즈 방에서 퀴즈 맞히기', goal: 1, go: () => goToStudentTab('dungeon') },
       // ── 결투장: 공정한 결투 (같은 직업 Lv.50 1:1) ──
-      { id: 'fairDuel', icon: '⚖️', label: '공정한 결투 하기', goal: 1, go: () => { goToStudentTab('pvp'); switchPvpSubMode('realtime'); } },
+      { id: 'fairDuel', icon: '⚖️', label: '공정한 결투 하기', goal: 1, go: () => { goToStudentTab('pvp'); switchPvpSubMode('realtime'); }, need: () => FAIR_DUEL_OPEN },
       // ── 새 직업: 격투가·화염술사·정령사 (가진 학생만) ──
       { id: 'newJobBattle', icon: '🆕', label: '격투가·화염술사·정령사 용병으로 전투하기', goal: 1, go: () => goToStudentTab('squad'), need: stu => [...(stu.roster || []), ...(stu.mercStorage || [])].some(m => m && DAILY_MISSION_NEW_JOBS.includes(m.job)) },
       // ── 관전: 친구의 펫 러닝 · 미니게임 ──
@@ -14220,9 +14221,10 @@
         if (!b.prog) b.prog = {};
         if (!b.done) b.done = {};
         // 없어진 미션(지금 할 수 없는 컨텐츠라 목록에서 뺀 것)이 오늘 뽑혀 있으면 할 수 있는 다른 미션으로 바꿈
-        if (b.ids.some(id => !this.def(id))) {
+        const gone = id => !this.def(id) || (id === 'fairDuel' && !FAIR_DUEL_OPEN && !b.done[id]); // 막아 둔 공정한 결투도 바꿈
+        if (b.ids.some(gone)) {
           const spare = DAILY_MISSION_DEFS.filter(d => !b.ids.includes(d.id) && (!d.need || d.need(stu))).map(d => d.id);
-          b.ids = b.ids.map(id => this.def(id) ? id : (spare.splice(Math.floor(Math.random() * spare.length), 1)[0] || null)).filter(Boolean);
+          b.ids = b.ids.map(id => !gone(id) ? id : (spare.splice(Math.floor(Math.random() * spare.length), 1)[0] || null)).filter(Boolean);
           if (b.ids.length && !this.doneCount(b)) b.bonus = false;
           saveState();
         }
@@ -46624,6 +46626,7 @@
       const duel = roomMode === 'duel1v1' || fair;
       const total = roomMode === 'total8';
       if (fair && !myStu) return;
+      if (fair && !FAIR_DUEL_OPEN) { showNotice('⚖️ 공정한 결투는 지금 잠시 쉬고 있어요.'); return; }
       if (!fair && (duel || total) && (!myStu || !(myStu.roster || []).length)) {
         showNotice(`⚠️ ${duel ? '1:1 대결방' : '8:8 총력전방'}을 만들려면 먼저 용병을 1명 이상 고용해 주세요!`);
         return;
@@ -46688,6 +46691,7 @@
         return;
       }
       if (room.status !== 'waiting' || (room.guestId && room.guestId !== myStu.id)) { showNotice('⚠️ 이미 자리가 찬 결투방이에요.'); return; }
+      if (isFairDuelRoom(room) && !FAIR_DUEL_OPEN) { showNotice('⚖️ 공정한 결투는 지금 잠시 쉬고 있어요.'); return; }
       leaveRoomsExcept('pvp', roomId);
       if (currentSpectatingPvpRoomId === roomId) stopSpectatingPvpRoom(true);
       currentJoinedPvpRoomId = roomId;
