@@ -6133,7 +6133,7 @@
         icon: '🕯️',
         color: '#7e22ce',
         roleDesc: '저주·쇠약·보호막 파괴·치유 감소',
-        passiveName: '원한', passiveShort: '상태이상 걸린 적에게 피해 +30%', passiveDesc: '나쁜 상태이상에 걸린 적에게 주는 피해 +30%',
+        passiveName: '원한', passiveShort: '상태이상 걸린 적에게 아군 피해 +10%', passiveDesc: '나쁜 상태이상에 걸린 적에게 아군(자신 포함)이 주는 피해 +10% (주술사가 여럿이어도 겹치지 않음)',
         baseHp: 1350, baseAtk: 67, baseDef: 24, baseSpd: 104, range: 300, maxMana: 100
       },
       // 음유시인: 버프 서포터. 사거리는 성녀보다 조금 짧고 체력·공격은 낮음, 속도는 높음. 기본 공격은 한 명만 맞는 음표 구슬
@@ -6220,7 +6220,7 @@
       rogue:   { backstab: 1.5, evade: 0.2 }, // 회피 20%: rogueEvades (피해·상태이상 모두 막음) · 몬스터 +30%·보스전 받는 피해 감소는 삭제
       knight:  { taken: 0.8, basicStaggerImmune: true, guardAura: true }, // 수호: 2칸 안 아군 받는 피해 -10% (knightGuardOn)
       frost:   { statusDouble: true }, // 빙결술사 혹한: inflictStatus에서 처리
-      curse:   { vsDebuffed: 1.3 },    // 주술사 원한: 나쁜 상태이상에 걸린 적에게 주는 피해 +30%
+      curse:   { teamVsDebuffed: 1.1 }, // 주술사 원한: 살아 있는 주술사가 있는 팀은 나쁜 상태이상에 걸린 적에게 주는 피해 +10% (curseGrudgeMult)
       bard:    { ensemble: true },
       berserker: { bloodlust: true },
       summoner: { harmony: true },
@@ -21785,6 +21785,18 @@
       if (u.pctHpBase) return u.pctHpBase;
       return (u.isEliteBoss || u.isRaceBoss) ? u.maxHp * BOSS_PCT_HP_MULT : (u.maxHp || 0);
     }
+    // 주술사 원한: 그 팀에 살아 있는 주술사가 있으면 배율 (여럿이어도 한 번만) · 틱마다 한 번 계산
+    function curseGrudgeMult(team) {
+      if (sim._grudgeT !== sim.tickCount) {
+        sim._grudgeT = sim.tickCount; sim._grudge = {};
+        for (const u of sim.units) {
+          if (!u.alive) continue;
+          const m = jobPassiveOf(u).teamVsDebuffed;
+          if (m) sim._grudge[u.team] = Math.max(sim._grudge[u.team] || 1, m);
+        }
+      }
+      return sim._grudge[team] || 1;
+    }
     function applyDamage(attacker, defender, rawDmg, tagText = '', customColor = null) {
       if (!defender.alive) return;
       if ((defender.statuses?.rebirth || 0) > 0) return; // 불사조의 알: 무적
@@ -21819,7 +21831,7 @@
           customColor = customColor || '#7c3aed';
         }
         // 주술사 원한: 나쁜 상태이상에 걸린 적에게 주는 피해 증가
-        if (passive.vsDebuffed && attacker.team !== defender.team && hasNegativeStatus(defender)) modDmg *= passive.vsDebuffed;
+        if (attacker.team !== defender.team && hasNegativeStatus(defender)) modDmg *= curseGrudgeMult(attacker.team);
         // 광전사 불굴의 투지: 잃은 체력 1%마다 주는 피해 +0.5%
         if (passive.bloodlust && attacker.maxHp > 0) modDmg *= 1 + BERSERKER_BLOODLUST_MAX * Math.max(0, 1 - attacker.hp / attacker.maxHp);
         // 저격수 대형 표적: 보스에게 주는 피해 증가
@@ -26584,7 +26596,7 @@
 
     // ===== 주술사 공통 =====
     // 저주(hex): 받는 피해 +20%·받는 회복 -50% · 쇠약(weaken): 공격력 -20%·방어력 -40% (applyDamage·healTakenMult)
-    // 패시브 원한(나쁜 상태이상에 걸린 적에게 주는 피해 +25%)은 JOB_PASSIVE.curse.vsDebuffed로 applyDamage에서
+    // 패시브 원한(상태이상 걸린 적에게 아군이 주는 피해 +10%)은 curseGrudgeMult로 applyDamage에서
     const CURSE_HEX_TAKEN_UP = 0.2;
     const CURSE_HEX_HEAL_DOWN = 0.5;
     const CURSE_WEAKEN_ATK_DOWN = 0.2;
