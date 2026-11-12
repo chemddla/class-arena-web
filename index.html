@@ -5792,7 +5792,7 @@
         },
         mucham: {
           id: 'mucham', name: '무참', icon: '💢', ccTag: '💢연속 베기·잔상',
-          manaCost: 24, cooldownTicks: 480, cooldownSec: 8.0, castSec: 1, // 2026-11-12 사용자: 시전 2초 → 절반
+          manaCost: 24, cooldownTicks: 480, cooldownSec: 8.0, castSec: 0.5, // 2026-11-12 사용자: 시전 2초 → 1초 → 0.5초
           desc: '눈앞의 적 한 명을 엄청난 속도로 60번 베어 각 약 5.3% (모두 320%) 피해를 입힙니다. 베는 동안 제자리에 서고, 벨 때마다 잔상이 남아요.'
         },
         mindblade: {
@@ -23636,7 +23636,7 @@
       if (key === 'last_shot') hiddenLastShotLock(unit);
       if (key === 'overload' && unit.job === 'volt') voltFx(voltFxName(unit, 'overload-cast'), unit.x, unit.y + 12); // 전격술사 히든: 시전 1초 동안 하늘 낙뢰로 축전 → 발동 순간 금빛 기둥 (발동은 시전이 끝나는 1초)
       if (key === 'geukcham' && unit.job === 'swordsman' && !unit.monsterType) { // 검사 히든 극참: 시전 내내 기를 모으는 그림 (히든 시전은 안 끊김)
-        for (const type of ['sword_gk_aura', 'sword_gk_charge']) sim.effects.push({ type, uid: unit.id, x: Math.round(unit.x), y: Math.round(unit.y + 12), fx: unit.facingDir < 0 ? -1 : 1, s: unit.sizeScale || 1, life: total + 60, maxLife: total }); // 기운 불꽃은 몸 뒤, 나머지는 몸 위 · uid: 시전 진행·위치를 검사에 맞춤
+        for (const type of ['sword_gk_aura', 'sword_gk_charge']) sim.effects.push({ type, uid: unit.id, x: Math.round(unit.x), y: Math.round(unit.y + 12), fx: unit.facingDir < 0 ? -1 : 1, s: unit.sizeScale || 1, life: total * 4 + 300, maxLife: total }); // 기운 불꽃은 몸 뒤, 나머지는 몸 위 · uid: 시전 진행·위치를 검사에 맞춤 (지우는 건 drawSwordGkChargeFx가 함)
       }
       if (key === 'spirit_king') pushSpiritKingCircle(unit, total + 120, total); // 3초 동안 정령왕이 나올 자리에 무지개 소환진 (느린 기기 대비 2초 여유, 나오면 줄어듦)
       unit.isMoving = false;
@@ -27107,12 +27107,29 @@
     function drawSwordGkChargeFx(ctx, ef) {
       const back = ef.type === 'sword_gk_aura', m = back ? SWORD_GK_AURA_FX : SWORD_GK_CHARGE_FX, img = swordFxImg(back ? 'geukcham-aura' : 'geukcham-charge');
       // 진행·위치는 검사의 시전 막대에서 바로 읽음: 수명(화면 프레임 기준)으로 세면 배속·끊기는 화면에서 시전(틱 기준)과 어긋나 중간에 끊기거나 자리가 틀어짐
+      // 시전 중엔 터지기 전 칸(0~56)까지 · 시전이 끝나면 다 모인 칸(50~56)을 되풀이하며 그 자리에 머묾 → 다음 자세(극참 돌진 등)로 넘어가는 순간 터지는 칸(57~60)을 틀고 지움
       const u = ef.uid != null ? sim.units.find(v => v.id === ef.uid) : null, c = u && u.alive && u.casting && u.casting.key === 'geukcham' ? u.casting : null;
-      let prog = 1 - ef.life / ef.maxLife, x = ef.x, y = ef.y, dir = ef.fx || 1;
-      if (c) { ef.sawCast = true; prog = 1 - c.left / (c.total || 1); x = u.x; y = u.y + 12; dir = u.facingDir < 0 ? -1 : 1; }
-      else if (ef.sawCast || prog >= 1) { ef.life = 0; return; } // 시전이 끝났거나 끊김 → 지움 (관전 화면처럼 시전 막대를 모르면 수명으로)
+      const PRE = 57, dt = frameTimeScale || 1;
+      let f;
+      if (c) {
+        ef.sawCast = true; ef.x = u.x; ef.y = u.y + 12; ef.fx = u.facingDir < 0 ? -1 : 1;
+        f = Math.min(PRE - 1, Math.floor((1 - c.left / (c.total || 1)) * PRE));
+      } else if (ef.sawCast) {
+        if (ef.burst == null) {
+          ef.hold = (ef.hold || 0) + dt;
+          const moved = !u || !u.alive || u.skillAnim > 0 || u.casting || Math.abs(u.x - ef.x) + Math.abs(u.y + 12 - ef.y) > 2;
+          if (moved || ef.hold > 240) ef.burst = 0; // 다음 자세로 넘어감 (못 넘어가도 4초면 끝냄)
+          else f = 50 + Math.floor(ef.hold / 3) % 7;
+        }
+        if (ef.burst != null) { f = PRE + Math.floor(ef.burst / 3); ef.burst += dt; } // 20fps 시트 = 3틱에 한 칸
+      } else { // 관전 화면처럼 시전 막대를 모르면 그린 시간으로
+        ef.age = (ef.age || 0) + dt;
+        f = Math.floor(ef.age / ef.maxLife * PRE);
+      }
+      if (f >= m[3]) { ef.life = 0; return; }
+      const x = ef.x, y = ef.y, dir = ef.fx || 1;
       if (!img) return; // 시트를 아직 못 받았으면 안 그림 (시전 3초 안에 보통 받음)
-      const f = Math.min(m[3] - 1, Math.max(0, Math.floor(prog * m[3]))), [w, h, cols, , , ax, ay] = m, s = ef.s || 1;
+      const [w, h, cols, , , ax, ay] = m, s = ef.s || 1;
       ctx.save();
       ctx.translate(x, y);
       ctx.scale(s * dir, s);
