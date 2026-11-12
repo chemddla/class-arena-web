@@ -79,8 +79,8 @@ def face(rgba):   # 얼굴 (넓이, 키) 샘플 px: 몸 위쪽 절반 안의 가
 def face_scale(rgba, ref):   # 얼굴 넓이가 대기 칸(ref)과 같아지는 배율 (얼굴 키는 손·목이 붙으면 커져서 안 씀: 무참 4는 10% 크게 나옴)
     return (ref[0] / face(rgba)[0]) ** 0.5
 # 테두리 정리(sb.DEFRINGE)는 쓰지 않음: 흰 머리 가장자리까지 깎아서 피격 머리에 구멍이 남. 흰 점은 fill_specks가 정리
-sb.CARD.update({'sr1_hurt': (44, 178, 28, 207), 'sr1_down1': (50, 200, 238, 388), 'sr1_down2': (212, 414, 300, 388)})   # 글자 줄 · 옆 그림 빼고
-FRAMES = [('sr1_idle', 'big')] + [('sr1_walk', i) for i in range(4)] + [('sr1_atk0', 'big'), ('sr1_atk1', 'big'), ('sr1_cast', 'big')] + [(f'sr1_issen{i}', 'big') for i in (1, 2, 3)] + [(f'sr1_mucham{i}', 'big') for i in range(1, 8)] + [('sr1_draw', 'big'), ('sr1_mind', 'big'), ('sr1_hurt', 'big'), ('sr1_down1', 'big'), ('sr1_down2', 'big'), ('sr1_gkcharge', 'big')]
+sb.CARD.update({'sr1_hurt': (44, 178, 28, 207), 'sr1_down1': (50, 200, 238, 388), 'sr1_down2': (212, 414, 300, 388), 'sr1_gkcast': (0, 219, 0, 218)})   # 극참 시전: 아래 회색 줄   # 글자 줄 · 옆 그림 빼고
+FRAMES = [('sr1_idle', 'big')] + [('sr1_walk', i) for i in range(4)] + [('sr1_atk0', 'big'), ('sr1_atk1', 'big'), ('sr1_cast', 'big')] + [(f'sr1_issen{i}', 'big') for i in (1, 2, 3)] + [(f'sr1_mucham{i}', 'big') for i in range(1, 8)] + [('sr1_draw', 'big'), ('sr1_mind', 'big'), ('sr1_hurt', 'big'), ('sr1_down1', 'big'), ('sr1_down2', 'big'), ('sr1_gkcharge', 'big'), ('sr1_gkcast', 'big')]
 
 
 def fill_specks(p):   # 어두운 옷 위에 박힌 흰 점 (흰 배경이 비친 것): 밝은 이웃이 1개 이하인 밝은 점을 이웃 불투명 색의 중앙값으로 (칼날·머리카락은 이웃도 밝아서 그대로)
