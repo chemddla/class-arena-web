@@ -81,7 +81,7 @@ export function dotted(p, x0, x1, y, c, a) {
  * 빛의 날 한 점: 날 안쪽 깊이 q (0 = 바깥 가장자리 · 1 = 안쪽 가장자리), 가장자리까지 남은 px (edge, 반투명 경계용),
  * 날 밖으로 벗어난 px (out, 후광용)으로 색과 투명도를 정해 반투명으로 칠함. 흰 심 → 은백 → 은회로 식고, 경계는 1px에 걸쳐 부드럽게
  */
-function bladePx(p, x, y, C, q, edge, out, age, k) {
+export function bladePx(p, x, y, C, q, edge, out, age, k) {
   const n = C.length;
   if (out > 0) { // 후광: 날 밖 6px까지 옅은 흰빛이 지수로 사라짐
     const h = 0.42 * k * (1 - age) * Math.exp(-out / 2.2);
