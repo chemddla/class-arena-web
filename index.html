@@ -6129,7 +6129,7 @@
         icon: '🔱',
         color: '#b45309',
         roleDesc: '장창 근접·휘두르기/찌르기·돌격',
-        passiveName: '창술', passiveShort: 'E키로 휘두르기 / 찌르기 전환', passiveDesc: 'E키로 기본 공격 전환 · 휘두르기(넓은 부채꼴 90%) / 찌르기(길고 좁게 꿰뚫기 110%). 쿨타임·시전 없음',
+        passiveName: '창술', passiveShort: 'E키로 휘두르기(흡혈) / 찌르기(강타) 전환', passiveDesc: 'E키로 기본 공격 전환 · 휘두르기(넓은 부채꼴 90%, 준 피해의 50% 회복) / 찌르기(길고 좁게 꿰뚫기 110%, 피해 +50% → 165%). 쿨타임·시전 없음',
         baseHp: 2100, baseAtk: 47, baseDef: 45, baseSpd: 94, range: 260, maxMana: 100 // 체력 2250→2100: Lv100 1:1 승률 81~85% (1:1 강점은 남기고 80% 아래로)
       },
       // 저격수: 매우 긴 사거리·느린 공격 속도 (JOB_ATTACK_SPEED_MULT), 체력·방어는 낮고 공격력은 매우 높음
@@ -26610,6 +26610,8 @@
     const LANCER_THRUST_HALF_W = 24;      // 찌르기 폭의 절반
     const LANCER_SWEEP_DMG = 0.9;         // 휘두르기 1타 피해 (여럿을 맞히므로 조금 약하게)
     const LANCER_THRUST_DMG = 1.1;        // 찌르기 1타 피해
+    const LANCER_THRUST_BONUS = 1.5;      // 패시브 창술: 찌르기 피해 +50% (1.1 → 1.65)
+    const LANCER_SWEEP_HEAL = 0.5;        // 패시브 창술: 휘두르기로 준 피해의 50% 회복
     const LANCER_PIERCE_LENGTH = GRID_CELL_SIZE * 3; // 피어싱 3칸
     const LANCER_PIERCE_HALF_W = 30;
     const LANCER_HIT_INTERVAL = 18;       // 회전·난무 다단히트 0.3초마다
@@ -26680,7 +26682,12 @@
       sim.effects.push(thrust
         ? { type: 'lance_thrust', x: u.x, y: u.y - 6, angle, r: LANCER_THRUST_RANGE, w: 4, color: '#b45309', sr: isSrLancer(u), life: 20, maxLife: 20 }
         : { type: 'lance_sweep', x: u.x, y: u.y - 6, angle, r: LANCER_SWEEP_RANGE, color: '#b45309', sr: isSrLancer(u), life: 24, maxLife: 24 });
-      hits.forEach(e => withHitKind('melee', () => applyDamage(u, e, u.atk * (thrust ? LANCER_THRUST_DMG : LANCER_SWEEP_DMG))));
+      const dealtBefore = u.damageDealt || 0;
+      hits.forEach(e => withHitKind('melee', () => applyDamage(u, e, u.atk * (thrust ? LANCER_THRUST_DMG * LANCER_THRUST_BONUS : LANCER_SWEEP_DMG))));
+      if (!thrust && u.alive && u.hp < u.maxHp) { // 휘두르기 흡혈: 이번 휘두르기로 준 피해의 50%
+        const heal = Math.round(((u.damageDealt || 0) - dealtBefore) * LANCER_SWEEP_HEAL * healTakenMult(u));
+        if (heal > 0) { u.hp = Math.min(u.maxHp, u.hp + heal); u.healDone = (u.healDone || 0) + heal; }
+      }
       return hits.length;
     }
 
