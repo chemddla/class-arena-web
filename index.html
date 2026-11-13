@@ -22166,6 +22166,15 @@
       }
       return sim._grudge[team] || 1;
     }
+    // 치명타: 때린 유닛이 있는 모든 공격(기본 공격·스킬)이 기본 10% 확률로 150% 피해
+    //   상태이상(화상·출혈·중독)·가시·폭발처럼 때린 유닛이 없는 피해와 고정 피해는 제외
+    //   유닛에 critChance·critDamage가 있으면 그 값을 씀 (나중에 장비·패시브로 올릴 수 있게)
+    const CRIT_CHANCE_BASE = 0.10;
+    const CRIT_DAMAGE_BASE = 1.5;
+    function rollCrit(attacker, defender) {
+      if (!attacker || fixedDamageHit || attacker.team === defender.team) return false;
+      return Math.random() < (attacker.critChance ?? CRIT_CHANCE_BASE);
+    }
     function applyDamage(attacker, defender, rawDmg, tagText = '', customColor = null) {
       if (!defender.alive) return;
       if ((defender.statuses?.rebirth || 0) > 0) return; // 불사조의 알: 무적
@@ -22246,6 +22255,12 @@
         // 회피 그림이 있으면 잠깐 그 칸으로 (이펙트라 실시간 전투에도 owner id로 같이 감)
         if (getUnitSprite(defender)?.anims?.evade) sim.effects.push({ type: 'spirit_dodge', owner: defender, life: 18, maxLife: 18 });
         return;
+      }
+      const isCrit = rollCrit(attacker, defender);
+      if (isCrit) {
+        modDmg *= attacker.critDamage ?? CRIT_DAMAGE_BASE;
+        tagText = '치명타 ' + tagText;
+        customColor = '#f97316';
       }
       const effDef = (defender.statuses.shock > 0 ? defender.def * 0.65 : defender.def) * (defender.statuses.miracle > 0 ? 1.2 : 1)
         * (defender.statuses.weaken > 0 ? 1 - CURSE_WEAKEN_DEF_DOWN : 1); // 쇠약: 방어력 -40%
@@ -36101,7 +36116,8 @@
       for (let i = sim.floatTexts.length - 1; i >= 0; i--) {
         const ft = sim.floatTexts[i];
         ctx.save();
-        ctx.font = 'bold 14px Galmuri11, sans-serif';
+        const ftCrit = typeof ft.text === 'string' && ft.text.startsWith('치명타'); // 치명타 숫자는 크게 (실시간 화면도 글자로 알아봄)
+        ctx.font = ftCrit ? 'bold 20px Galmuri11, sans-serif' : 'bold 14px Galmuri11, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.lineJoin = 'round';
