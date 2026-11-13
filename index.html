@@ -6052,6 +6052,18 @@
     const PX_JOB_ICONS = new Set(['warrior', 'mage', 'healer', 'archer', 'rogue', 'knight', 'lancer', 'sniper', 'frost', 'curse', 'bard', 'berserker', 'paladin', 'summoner', 'pyro', 'brawler', 'volt']);
     // 스킬 이모지는 아이콘 숨김 스위치(pixel-icons HIDE_ALL)에서 빼고 그대로 보여 줌 (2026-11-13 사용자 요청: 스킬 옆 이모티콘)
     function skIco(icon) { return icon ? `<span class="no-pxi">${icon}</span>` : ''; }
+    // 캐릭터 위에 떠오르는 글자: 버프·상태이상(STATUS_DEFS의 '아이콘+이름')만 이모지를 남기고 나머지는 이모지를 뺌
+    //   (2026-11-13 사용자: 캐릭터 위에 버프나 상태이상 제외하고는 이모티콘 다 제거) · 친구 화면도 같은 그리기를 써서 함께 적용
+    const FT_VS = String.fromCharCode(0xFE0F), FT_ZWJ = String.fromCharCode(0x200D), FT_KEYCAP = String.fromCharCode(0x20E3); // 이모지 꾸밈 글자 (보이지 않는 글자라 번호로 만듦)
+    const FT_EMOJI_RE = new RegExp('(?:\\p{Extended_Pictographic}' + FT_VS + '?(?:' + FT_ZWJ + '\\p{Extended_Pictographic}' + FT_VS + '?)*|[\\u{1F3FB}-\\u{1F3FF}]|' + FT_VS + '|' + FT_KEYCAP + ')', 'gu');
+    let FT_STATUS_TAGS = null;
+    function floatTextNoEmoji(text) {
+      if (typeof text !== 'string') return text == null ? '' : String(text);
+      if (!FT_STATUS_TAGS) FT_STATUS_TAGS = Object.values(STATUS_DEFS).map(d => (d.icon || '').split(FT_VS).join('') + d.name);
+      const plain = text.split(FT_VS).join('');
+      if (FT_STATUS_TAGS.some(tag => plain.includes(tag))) return text; // 버프·상태이상 글자는 그대로
+      return text.replace(FT_EMOJI_RE, '').replace(/\s{2,}/g, ' ').trim();
+    }
     function getJobWeaponIconHTML(jobKey, size = 16) {
       // 직업마다 정해 둔 이모지 그대로 (2026-11-13 사용자 요청: 직업 아이콘은 이모지로). no-pxi라 아이콘 숨김 스위치에도 안 가려짐
       //   예전 픽셀 그림(.px-job-*)과 PX_JOB_ICONS는 지우지 않고 남겨 둠
@@ -36115,6 +36127,8 @@
       // 5) 플로팅 데미지/상태이상 텍스트
       for (let i = sim.floatTexts.length - 1; i >= 0; i--) {
         const ft = sim.floatTexts[i];
+        if (ft._txt == null) ft._txt = floatTextNoEmoji(ft.text); // 버프·상태이상이 아니면 이모지 빼기 (한 번만 계산)
+        if (!ft._txt) { ft.life -= frameTimeScale; if (ft.life <= 0) sim.floatTexts.splice(i, 1); continue; }
         ctx.save();
         ctx.font = 'bold 12px Galmuri11, sans-serif'; // 떠오르는 글씨는 크기 하나로 (치명타도 같은 크기, 색으로만 구분)
         ctx.textAlign = 'center';
@@ -36133,8 +36147,8 @@
         ctx.translate(fx, fy);
         if (pop !== 1) ctx.scale(pop, pop);
         // 테두리 없이 한 겹으로: 밝은 바닥에서도 읽히게 오른쪽 아래로 1칸 어두운 그림자만
-        const ftHeal = typeof ft.text === 'string' && /^(💚|🌿|💛|💜)?\+\d/.test(ft.text); // 회복 숫자는 초록
-        const ftStr = ftHeal ? ft.text.replace(/^(💚|🌿|💛|💜)?\+/u, '') : ft.text; // 회복 숫자 옆 이모티콘과 '+'는 빼고 숫자만
+        const ftHeal = /^\+\d/.test(ft._txt); // 회복 숫자는 초록 (이모지는 이미 빠짐)
+        const ftStr = ftHeal ? ft._txt.slice(1) : ft._txt; // 회복 숫자 앞 '+'는 빼고 숫자만
         ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
         ctx.fillText(ftStr, 1, 1);
         ctx.fillStyle = ftHeal ? '#4ade80' : ft.color;
