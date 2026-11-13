@@ -740,6 +740,929 @@
     ]
   };
 
+  // ── 두 번째 묶음 ──
+  Object.assign(ICONS, {
+    hand: [
+      '.......kk.kk....',
+      '....kkkTTkTTk...',
+      '...kTTkTTkTTkkk.',
+      '...kTTkTTkTTkTTk',
+      '...kTTkTTkTTkTTk',
+      'kk.kTTkTTkTTkTTk',
+      'kTkkTTkTTkTTkTTk',
+      'kTTkTTTTTTTTTTTk',
+      '.kTTTTTTTTTTTTtk',
+      '.kTTTTTTTTTTTtk.',
+      '..kTTTTTTTTTttk.',
+      '...kTTTTTTTttk..',
+      '....kttttttttk..',
+      '....kkkkkkkkkk..'
+    ],
+    wave: [
+      '.....kkkkk......',
+      '...kkiiIIik.....',
+      '..kiiBkkkIik....',
+      '.kiBk...kWik....',
+      '.kiBk....kk.....',
+      'kiBBk...........',
+      'kiBBBk.....kk...',
+      'kiBBBBkkkkkiik..',
+      'kBBiiBBBBiiIIik.',
+      'kBBBBiiiiIIWWIik',
+      'kbBBBBBBBBBBBBBk',
+      'kbbBBBBBBBBBBBbk',
+      'kkkkkkkkkkkkkkkk'
+    ],
+    dash: [
+      '.......kkkk.....',
+      '......kWWWWk....',
+      '....kkWWWWWLkk..',
+      'kkkkWWWWWWWWWLk.',
+      'kLLkWWWWWWWWWLLk',
+      'kkkkLWWWWWWWLLLk',
+      '....kLLLLLLLLLk.',
+      'kkk..kkkkkkkkk..',
+      'kLLkkkk.........',
+      'kkkLLLLk........',
+      '...kkkkk........'
+    ],
+    globe: [
+      '.....kkkkkk.....',
+      '...kkBBnnBBkk...',
+      '..kBBnnnnBBBBk..',
+      '.kBnnnnnBBBnnBk.',
+      '.kBnnnnBBBnnnBk.',
+      'kBBBnnBBBBBnnBBk',
+      'kBBBBnBBBBBBnBBk',
+      'kBBBBBBnnBBBBBBk',
+      'kBBBBBnnnnnBBBBk',
+      'kBnBBBnnnnnBBBBk',
+      '.kBnBBBnnnBBBBk.',
+      '.kBBBBBBnBBBBBk.',
+      '..kBBBBBBBBBBk..',
+      '...kkBBBBBBkk...',
+      '.....kkkkkk.....'
+    ],
+    scale: [
+      '.......kk.......',
+      '......kYYk......',
+      '.kkkkkkYYkkkkkk.',
+      '.kYYYYYYYYYYYYk.',
+      '.kkk..kYYk..kkk.',
+      '..k...kYYk...k..',
+      '.k.k..kYYk..k.k.',
+      'k...k.kYYk.k...k',
+      'kkkkk.kYYk.kkkkk',
+      'kYhYk.kYYk.kYhYk',
+      '.kkk..kYYk..kkk.',
+      '.....kYYYYk.....',
+      '....kYhhhhYk....',
+      '...kkkkkkkkkk...'
+    ],
+    swirl: [
+      '....kkkkkkk.....',
+      '..kkiiiiiiikk...',
+      '.kiikkkkkkkiik..',
+      'kiik.......kiik.',
+      'kik..kkkkk..kik.',
+      'kik.kiiiiik.kik.',
+      'kik.kik.kik.kik.',
+      'kik.kik..kk.kik.',
+      'kik.kiik....kik.',
+      'kik..kiikkkkiik.',
+      'kiik..kkiiiiik..',
+      '.kiik..kkkkkk...',
+      '..kiikk.........',
+      '...kkiikkkk.....',
+      '.....kkiiiik....',
+      '.......kkkkk....'
+    ],
+    palette: [
+      '...kkkkkkkk.....',
+      '..kTTTTTTTTkk...',
+      '.kTMMTTTnnTTTk..',
+      'kTTMMTTTnnTTTTk.',
+      'kTTTTTTTTTTiiTk.',
+      'kThhTTTTTTTiiTk.',
+      'kThhTTkkTTTTTTk.',
+      'kTTTTk..kTTvvTk.',
+      '.kTTTk..kTTvvTk.',
+      '..kTTTkkTTTTTk..',
+      '...kkTTTTTTkk...',
+      '.....kkkkkk.....'
+    ],
+    sprout: [
+      '..kkk.....kkk...',
+      '.knnnk...knnnk..',
+      'kNnnnEk.kEnnnNk.',
+      '.kEnnnEkEnnnEk..',
+      '..kkEEnEnEEkk...',
+      '....kkkEkkk.....',
+      '......kEk.......',
+      '......kEk.......',
+      '..kkkkkkkkkkk...',
+      '.kDtDDtDDDtDDk..',
+      '.kdDDDDDtDDDdk..',
+      '..kkkkkkkkkkk...'
+    ],
+    house: [
+      '.......kk.......',
+      '......kMMk......',
+      '.....kMMMMk.....',
+      '....kMMMMMMk....',
+      '...kMMMMMMMMk...',
+      '..kMMMMMMMMMMk..',
+      '.kmmmmmmmmmmmmk.',
+      'kkkTTTTTTTTTTkkk',
+      '..kTTTTTTTTTTk..',
+      '..kTkkkTkkkkTk..',
+      '..kTkikTkDDkTk..',
+      '..kTkkkTkDDkTk..',
+      '..kTTTTTkDhkTk..',
+      '..ktttttkDDktk..',
+      '..kkkkkkkkkkkk..'
+    ],
+    rock: [
+      '.....kkkkk......',
+      '...kkLLLGGkk....',
+      '..kLLLLGGGGGk...',
+      '.kLLWLGGGGGGKk..',
+      '.kLLLGGGGGGKKk..',
+      'kGLLGGGGGGKKKKk.',
+      'kGGGGGGGKKKKKKk.',
+      'kKGGGGKKKKKKKKk.',
+      '.kkkkkkkkkkkkk..'
+    ],
+    up: [
+      '.......kk.......',
+      '......knnk......',
+      '.....knNnnk.....',
+      '....knNnnnnk....',
+      '...knNnnnnnnk...',
+      '..knnnnnnnnnnk..',
+      '.kkkkknnnnkkkkk.',
+      '.....knnnEk.....',
+      '.....knnnEk.....',
+      '.....knnnEk.....',
+      '.....knnnEk.....',
+      '.....knnnEk.....',
+      '.....kkkkkk.....'
+    ],
+    diamond: [
+      '.......kk.......',
+      '......kIik......',
+      '.....kIiiik.....',
+      '....kIiiiiBk....',
+      '...kIiiiiiBBk...',
+      '..kIiiiiiiiBBk..',
+      '.kIiiiiiiiiiBBk.',
+      '..kBiiiiiiiBbk..',
+      '...kBiiiiiBbk...',
+      '....kBiiiBbk....',
+      '.....kBiBbk.....',
+      '......kBbk......',
+      '.......kk.......'
+    ],
+    anger: [
+      '....kk....kk....',
+      '...kMk....kMk...',
+      '...kMk....kMk...',
+      '.kkkMk....kMkkk.',
+      '.kMMMk....kMMMk.',
+      '.kkkk......kkkk.',
+      '................',
+      '.kkkk......kkkk.',
+      '.kMMMk....kMMMk.',
+      '.kkkMk....kMkkk.',
+      '...kMk....kMk...',
+      '...kMk....kMk...',
+      '....kk....kk....'
+    ],
+    sleep: [
+      '........kkkkkkkk',
+      '........kVVVVVVk',
+      '........kkkkkVVk',
+      '...........kVVk.',
+      '..........kVVk..',
+      '.........kVVk...',
+      '........kVVkkkkk',
+      'kkkkkk..kVVVVVVk',
+      'kVVVVk..kkkkkkkk',
+      'kkkVkk..........',
+      '..kVk...........',
+      '.kVk............',
+      'kkVkkk..........',
+      'kVVVVk..........',
+      'kkkkkk..........'
+    ],
+    paw: [
+      '....kk....kk....',
+      '...kDDk..kDDk...',
+      '...kDDk..kDDk...',
+      '.kk.kk....kk.kk.',
+      'kDDk........kDDk',
+      'kDDk..kkkk..kDDk',
+      '.kk..kDDDDk..kk.',
+      '....kDDDDDDk....',
+      '...kDDDDDDDDk...',
+      '...kDDDDDDDDk...',
+      '...kdDDDDDDdk...',
+      '....kkddddkk....',
+      '......kkkk......'
+    ],
+    clipboard: [
+      '.....kkkkkk.....',
+      '...kkkLGGLkkk...',
+      '..kDDkkkkkkDDk..',
+      '..kDWWWWWWWWDk..',
+      '..kDWkkkkkkWDk..',
+      '..kDWWWWWWWWDk..',
+      '..kDWkkkkkWWDk..',
+      '..kDWWWWWWWWDk..',
+      '..kDWkkkkkkWDk..',
+      '..kDWWWWWWWWDk..',
+      '..kDWkkkWWWWDk..',
+      '..kDWWWWWWWWDk..',
+      '..kDDDDDDDDDDk..',
+      '..kkkkkkkkkkkk..'
+    ],
+    flagCheck: [
+      'kk..............',
+      'kLkkkkkkkkkkkkk.',
+      'kLkWWKKWWKKWWKk.',
+      'kLkWWKKWWKKWWKk.',
+      'kLkKKWWKKWWKKWk.',
+      'kLkKKWWKKWWKKWk.',
+      'kLkWWKKWWKKWWKk.',
+      'kLkWWKKWWKKWWKk.',
+      'kLkkkkkkkkkkkkk.',
+      'kLk.............',
+      'kLk.............',
+      'kLk.............',
+      'kLk.............',
+      'kLk.............',
+      'kGk.............',
+      'kkk.............'
+    ],
+    flag: [
+      'kk..............',
+      'kLkkkkkkkkkkkkk.',
+      'kLkWWWWWWWWWWWk.',
+      'kLkWWWWWWWWWWWk.',
+      'kLkWWWWWWWWWWLk.',
+      'kLkWWWWWWWWWWLk.',
+      'kLkWWWWWWWWWLLk.',
+      'kLkLLLLLLLLLLLk.',
+      'kLkkkkkkkkkkkkk.',
+      'kLk.............',
+      'kLk.............',
+      'kLk.............',
+      'kLk.............',
+      'kLk.............',
+      'kGk.............',
+      'kkk.............'
+    ],
+    books: [
+      '..kkkkkkkkkkkk..',
+      '..kMMMMMMMMMMWk.',
+      '..kmmmmmmmmmmWk.',
+      '.kkkkkkkkkkkkkk.',
+      '.kBBBBBBBBBBBWk.',
+      '.kbbbbbbbbbbbWk.',
+      'kkkkkkkkkkkkkkk.',
+      'knnnnnnnnnnnnWk.',
+      'kEEEEEEEEEEEEWk.',
+      'kkkkkkkkkkkkkkk.'
+    ],
+    rocket: [
+      '...........kkkk.',
+      '.........kkWWWk.',
+      '........kWWWLLk.',
+      '.......kWWLiiLk.',
+      '......kWWLiBiLk.',
+      '..kk.kWWLLiiLk..',
+      '.kMkkWWLLLLLk...',
+      '.kMMkWLLLLLk....',
+      '..kkWLLLLLk.....',
+      '...kkLLLLkMk....',
+      '..kRokLLkMMk....',
+      '.kRoookkkMk.....',
+      '.kRcok...kk.....',
+      'kRcok...........',
+      'kkkk............'
+    ],
+    gear: [
+      '.......kk.......',
+      '..kk..kLLk..kk..',
+      '.kLLkkLLLLkkLLk.',
+      '.kLLLLLLLLLLLLk.',
+      '..kLLLGGGGLLLk..',
+      '..kLLGkkkkGLLk..',
+      'kkLLGk....kGLLkk',
+      'kLLLGk....kGLLLk',
+      'kLLLGk....kGLLLk',
+      'kkLLGk....kGLLkk',
+      '..kLLGkkkkGLLk..',
+      '..kLLLGGGGLLLk..',
+      '.kGLLLLLLLLLLGk.',
+      '.kGGkkGLLGkkGGk.',
+      '..kk..kGGk..kk..',
+      '.......kk.......'
+    ],
+    search: [
+      '...kkkkkk.......',
+      '..kLLLLLLk......',
+      '.kLIWIIIILk.....',
+      'kLIWIIIIIILk....',
+      'kLIIIIIIIILk....',
+      'kLIIIIIIIILk....',
+      'kLIIIIIIIILk....',
+      'kLiIIIIIIiLk....',
+      '.kLiIIIIiLk.....',
+      '..kLLLLLLkkk....',
+      '...kkkkkkDDk....',
+      '.........kDDk...',
+      '..........kDDk..',
+      '...........kDDk.',
+      '............kkk.'
+    ],
+    magnet: [
+      '..kkkkk..kkkkk..',
+      '..kWWLk..kWWLk..',
+      '..kLLGk..kLLGk..',
+      '..kkkkk..kkkkk..',
+      '..kMMmk..kMMmk..',
+      '..kMMmk..kMMmk..',
+      '..kMMmkkkkMMmk..',
+      '..kMMMMMMMMMmk..',
+      '...kMMMMMMMmk...',
+      '....kmmmmmmk....',
+      '.....kkkkkk.....'
+    ],
+    mic: [
+      '.....kkkkkk.....',
+      '....kGLLLLGk....',
+      '....kLkLkLLk....',
+      '....kGLLLLGk....',
+      '....kLkLkLLk....',
+      '....kGGGGGGk....',
+      '.....kkkkkk.....',
+      '.......kk.......',
+      '......kDDk......',
+      '......kDDk......',
+      '......kDDk......',
+      '.....kDDDDk.....',
+      '.....kkkkkk.....'
+    ],
+    candle: [
+      '.......k........',
+      '......kok.......',
+      '......kRok......',
+      '......kRck......',
+      '.......kk.......',
+      '.....kkkkkk.....',
+      '.....kWWWLk.....',
+      '.....kWWWLk.....',
+      '.....kWWWLk.....',
+      '.....kWWWLk.....',
+      '.....kWWWLk.....',
+      '...kkkkkkkkkk...',
+      '...kYhhhhhhYk...',
+      '...kkkkkkkkkk...'
+    ],
+    bulb: [
+      '.....kkkkkk.....',
+      '....khhHHhhk....',
+      '...khhHWWHhhk...',
+      '...khHWHhhhhk...',
+      '...khhHhhhhhk...',
+      '...khhhhhhhYk...',
+      '....khhhhhYk....',
+      '.....khhhYk.....',
+      '.....kLLLLk.....',
+      '.....kGGGGk.....',
+      '.....kLLLLk.....',
+      '......kkkk......'
+    ],
+    bomb: [
+      '..........k..o..',
+      '.........k.kRk..',
+      '........k...o...',
+      '.......kk.......',
+      '......kGGk......',
+      '....kkKKKKkk....',
+      '...kKGGKKKKKk...',
+      '..kKGWKKKKKKKk..',
+      '..kKGKKKKKKKKk..',
+      '..kKKKKKKKKKKk..',
+      '..kKKKKKKKKKKk..',
+      '...kKKKKKKKKk...',
+      '....kkKKKKkk....',
+      '......kkkk......'
+    ],
+    moon: [
+      '......kkkk......',
+      '....kkhhhk......',
+      '...khhhkk.......',
+      '..khhhk.........',
+      '..khhk..........',
+      '.khhhk..........',
+      '.khhhk..........',
+      '.khhhk..........',
+      '.khhhhk.........',
+      '..khhhhk......k.',
+      '..khhhhhkk..kkk.',
+      '...khhhhhhkkhk..',
+      '....kkhhhhhhk...',
+      '......kkkkkk....'
+    ],
+    music: [
+      '.....kkkkkkkkk..',
+      '.....kvvvvvvvk..',
+      '.....kvkkkkkvk..',
+      '.....kvk...kvk..',
+      '.....kvk...kvk..',
+      '.....kvk...kvk..',
+      '..kkkkvk.kkkvk..',
+      '.kvvvvvkkvvvvk..',
+      '.kvvvvvkvvvvvk..',
+      '.kPvvvPkvPvvPk..',
+      '..kkkkk.kkkkk...'
+    ],
+    egg: [
+      '......kkkk......',
+      '.....kWWWLk.....',
+      '....kWWWWWLk....',
+      '...kWWWWWWWLk...',
+      '...kWWWWWWWLk...',
+      '..kWWWWWWWWWLk..',
+      '..kWWWWWWWWWLk..',
+      '..kWWWWWWWWWLk..',
+      '..kLWWWWWWWLLk..',
+      '...kLWWWWWLLk...',
+      '....kkLLLLkk....',
+      '......kkkk......'
+    ],
+    plus: [
+      '.....kkkkkk.....',
+      '.....knNnnk.....',
+      '.....knnnnk.....',
+      '.....knnnnk.....',
+      'kkkkkknnnnkkkkkk',
+      'knNnnnnnnnnnnnnk',
+      'knnnnnnnnnnnnnnk',
+      'kEEEEEnnnnEEEEEk',
+      'kkkkkknnnnkkkkkk',
+      '.....knnnnk.....',
+      '.....knnnnk.....',
+      '.....kEEEEk.....',
+      '.....kkkkkk.....'
+    ]
+  });
+  // 위 절반만 그리고 180도 돌려 붙임 (돌아가는 두 화살표)
+  const rot180 = rows => rows.slice().reverse().map(r => r.padEnd(16, '.').split('').reverse().join(''));
+  const refreshTop = [
+    '.....kkkkkk.....',
+    '...kkBBBBBBkk.k.',
+    '..kBBkkkkkkBBkBk',
+    '.kBk......kBBBBk',
+    '.kBk.....kBBBBBk',
+    'kBk......kkkkkk.',
+    'kBk.............',
+    'kBk.............'
+  ];
+  ICONS.refresh = refreshTop.concat(rot180(refreshTop));
+  // 같은 그림 색만 바꾸기
+  const recolor = (rows, m) => rows.map(r => r.replace(/./g, c => m[c] || c));
+  ICONS.heartGreen = recolor(ICONS.heart, { M: 'n', m: 'E', Q: 'N', W: 'W' });
+  ICONS.heartBlue = recolor(ICONS.heart, { M: 'B', m: 'b', Q: 'I' });
+  ICONS.heartPurple = recolor(ICONS.heart, { M: 'v', m: 'P', Q: 'V' });
+  ICONS.medalSilver = recolor(ICONS.medal, { Y: 'G', h: 'L', H: 'W' });
+  ICONS.medalBronze = recolor(ICONS.medal, { Y: 'd', h: 't', H: 'T' });
+  ICONS.flagRed = recolor(ICONS.flag, { W: 'M', L: 'm' });
+  ICONS.moonDark = recolor(ICONS.moon, { h: 'P' });
+  // 색 동그라미 (🔴🟢 …): 원을 계산으로 그림
+  const dot = (f, s, hi) => {
+    const out = [];
+    for (let y = 0; y < 12; y++) {
+      let r = '..';
+      for (let x = 0; x < 12; x++) {
+        const dx = x - 5.5, dy = y - 5.5, d = Math.hypot(dx, dy);
+        if (d >= 6) r += '.';
+        else if (d >= 4.8) r += 'k';
+        else if (dx < -1 && dy < -1 && d > 1.8 && d < 3.6) r += hi;
+        else r += (dx + dy > 3.5 ? s : f);
+      }
+      out.push(r + '..');
+    }
+    return out;
+  };
+  Object.assign(ICONS, {
+    dotRed: dot('M', 'm', 'Q'), dotGreen: dot('n', 'E', 'N'), dotBlue: dot('B', 'b', 'I'),
+    dotYellow: dot('h', 'Y', 'H'), dotPurple: dot('v', 'P', 'V'), dotOrange: dot('R', 'r', 'o'),
+    dotWhite: dot('W', 'L', 'W'), dotBlack: dot('K', 'k', 'G')
+  });
+
+  // ── 세 번째 묶음: 웹앱 화면에 실제로 많이 보이는 것 (2026-11-13 탭별 집계) ──
+  const put = (rows, pts, ch) => rows.map((r, y) => r.padEnd(16, '.').split('').map((c, x) => pts.some(p => p[0] === x && p[1] === y) ? ch : c).join(''));
+  const vflip = rows => rows.slice().reverse();
+  const hflip = rows => rows.map(r => r.padEnd(16, '.').split('').reverse().join(''));
+  const FACE = [
+    '....kkkkkkkk....',
+    '..kkhhhhhhhhkk..',
+    '.khhHHhhhhhhhhk.',
+    '.khHhhhhhhhhhhk.',
+    'khhhhhhhhhhhhhhk',
+    'khhhhhhhhhhhhhhk',
+    'khhhhhhhhhhhhhhk',
+    'khhhhhhhhhhhhhhk',
+    'khhhhhhhhhhhhhhk',
+    'khhhhhhhhhhhhhhk',
+    'khhhhhhhhhhhhhYk',
+    '.khhhhhhhhhhhYk.',
+    '.kYhhhhhhhhhYYk.',
+    '..kkYYYYYYYYkk..',
+    '....kkkkkkkk....'
+  ];
+  // 3×5 글자 타일 (🔢 1234 · 🔤 ABCD)
+  const GLYPH = {
+    1: ['.W.', 'WW.', '.W.', '.W.', 'WWW'], 2: ['WW.', '..W', '.W.', 'W..', 'WWW'],
+    3: ['WW.', '..W', '.W.', '..W', 'WW.'], 4: ['W.W', 'W.W', 'WWW', '..W', '..W'],
+    A: ['.W.', 'W.W', 'WWW', 'W.W', 'W.W'], B: ['WW.', 'W.W', 'WW.', 'W.W', 'WW.'],
+    C: ['.WW', 'W..', 'W..', 'W..', '.WW'], D: ['WW.', 'W.W', 'W.W', 'W.W', 'WW.']
+  };
+  const tile = (bg, a, b, c, d) => {
+    const line = (g1, g2, i) => '.k' + bg + bg + GLYPH[g1][i].replace(/\./g, bg) + bg + bg + GLYPH[g2][i].replace(/\./g, bg) + bg + bg + 'k.';
+    const blank = '.k' + bg.repeat(12) + 'k.';
+    const out = ['.kkkkkkkkkkkkkk.', blank];
+    for (let i = 0; i < 5; i++) out.push(line(a, b, i));
+    out.push(blank);
+    for (let i = 0; i < 5; i++) out.push(line(c, d, i));
+    out.push(blank, '.kkkkkkkkkkkkkk.');
+    return out;
+  };
+  // 비스듬한 막대 두 개 (🥢), 이중 나선 (🧬)
+  const chopsticks = Array.from({ length: 14 }, (_, y) => {
+    const r = Array(16).fill('.');
+    for (const off of [0, 4]) {
+      const x = 13 - y + off - 3;
+      [[x - 1, 'k'], [x, 'T'], [x + 1, 't'], [x + 2, 'k']].forEach(([px, c]) => { if (px >= 0 && px < 16 && r[px] === '.') r[px] = c; });
+    }
+    return r.join('');
+  });
+  const dna = Array.from({ length: 16 }, (_, y) => {
+    const r = Array(16).fill('.');
+    const s = Math.sin(y * 0.62), a = Math.round(7.5 + 5 * s), b = Math.round(7.5 - 5 * s);
+    if (y % 2 === 0 && Math.abs(a - b) > 2) for (let x = Math.min(a, b) + 1; x < Math.max(a, b); x++) r[x] = 'L';
+    const dot = (x, c) => { r[x - 1] = r[x - 1] === '.' ? 'k' : r[x - 1]; r[x] = c; r[x + 1] = r[x + 1] === '.' ? 'k' : r[x + 1]; };
+    if (s >= 0) { dot(b, 'M'); dot(a, 'B'); } else { dot(a, 'B'); dot(b, 'M'); }
+    return r.join('');
+  });
+  const mail = [
+    'kkkkkkkkkkkkkkkk',
+    'kkLLLLLLLLLLLLkk',
+    'kWkLLLLLLLLLLkWk',
+    'kWWkLLLLLLLLkWWk',
+    'kWWWkLLLLLLkWWWk',
+    'kWWWWkLLLLkWWWWk',
+    'kWWWWWkkkkWWWWWk',
+    'kWWWWWWWWWWWWWWk',
+    'kWWWWWWWWWWWWWWk',
+    'kLWWWWWWWWWWWWLk',
+    'kLLLLLLLLLLLLLLk',
+    'kkkkkkkkkkkkkkkk'
+  ];
+  const playTop = [
+    '..kk............',
+    '..knkk..........',
+    '..knnnkk........',
+    '..knnnnnkk......',
+    '..knNnnnnnkk....',
+    '..knnnnnnnnnkk..',
+    '..knnnnnnnnnnnk.'
+  ];
+  const play = playTop.concat(vflip(playTop.slice(0, 6)).map(r => r.replace(/n/g, 'E').replace('knE', 'knn')));
+  Object.assign(ICONS, {
+    mail,
+    mailHeart: mail.map((r, y) => ({
+      3: 'kWWkLkkLLkkLkWWk', 4: 'kWWWkMQkkMMkWWWk', 5: 'kWWWkMMMMMMkWWWk',
+      6: 'kWWWWkMMMMkWWWWk', 7: 'kWWWWWkMMkWWWWWk', 8: 'kWWWWWWkkWWWWWWk'
+    })[y] || r),
+    tent: [
+      '.......kk.......',
+      '......kRRk......',
+      '.....kRRoRk.....',
+      '.....kRRoRk.....',
+      '....kRRRooRk....',
+      '....kRRRooRk....',
+      '...kRRRkkoRRk...',
+      '...kRRkddkoRk...',
+      '..kRRRkddkoRRk..',
+      '..kRRkdddDkoRk..',
+      '.kRRRkddDDkoRRk.',
+      '.kRRkdddDDDkoRk.',
+      'kkkkkkkkkkkkkkkk'
+    ],
+    bow: [
+      '.....kkk........',
+      '....kDDLk.......',
+      '...kDk.Lk.......',
+      '..kDk..Lk.......',
+      '..kDk..Lk.......',
+      '.kDk...Lk.......',
+      '.kDk...Lk....kk.',
+      'kMDTTTTTTTTTTTWk',
+      '.kDk...Lk....kk.',
+      '.kDk...Lk.......',
+      '..kDk..Lk.......',
+      '..kDk..Lk.......',
+      '...kDk.Lk.......',
+      '....kDDLk.......',
+      '.....kkk........'
+    ],
+    handshake: [
+      'kkkk........kkkk',
+      'kBBk........kMMk',
+      'kBBkkkkkkkkkkMMk',
+      'kBBkTTTTTTTTkMMk',
+      'kBBkTkTkTkTTkMMk',
+      'kBBkTTTTTTTTkMMk',
+      'kBBkkTkTkTktkMMk',
+      'kBBk.kkkkkkkkMMk',
+      'kbbk........kmmk',
+      'kkkk........kkkk'
+    ],
+    faceSmile: put(put(FACE, [[4, 5], [4, 6], [11, 5], [11, 6], [3, 8], [12, 8], [4, 9], [11, 9], [5, 10], [6, 10], [7, 10], [8, 10], [9, 10], [10, 10]], 'k'), [[5, 9], [6, 9], [7, 9], [8, 9], [9, 9], [10, 9]], 'M'),
+    faceAngry: put(put(FACE, [[3, 4], [4, 5], [12, 4], [11, 5], [5, 6], [5, 7], [10, 6], [10, 7], [5, 10], [6, 10], [7, 10], [8, 10], [9, 10], [10, 10]], 'k'), [[2, 8], [3, 8], [12, 8], [13, 8]], 'R'),
+    shoe: [
+      '.....kkkk.......',
+      '....kMMMMk......',
+      '....kMWWMk......',
+      '....kMMMMkkk....',
+      '...kMMWMMMMMkk..',
+      '..kMMMMWMMMMMMk.',
+      '.kMMMMMMWMMMMMMk',
+      'kMMMMMMMMMMMMMMk',
+      'kWWWWWWWWWWWWWWk',
+      'kLLLLLLLLLLLLLLk',
+      '.kkkkkkkkkkkkkk.'
+    ],
+    chopsticks,
+    dna,
+    cone: [
+      '.......kk.......',
+      '......kRRk......',
+      '......kRRk......',
+      '.....kWWWWk.....',
+      '.....kWWWWk.....',
+      '....kRRRRRRk....',
+      '....kRRRRRRk....',
+      '...kWWWWWWWWk...',
+      '...kWWWWWWWWk...',
+      '..kRRRRRRRRRRk..',
+      '..kRRRRRRRRRRk..',
+      '.kkkkkkkkkkkkkk.',
+      '.kGGGGGGGGGGGGk.',
+      '.kkkkkkkkkkkkkk.'
+    ],
+    wizard: [
+      '.........kk.....',
+      '........kPPk....',
+      '.......kPPk.....',
+      '......kPPPk.....',
+      '......kPhPk.....',
+      '.....kPPPPPk....',
+      '.....kPPPhPk....',
+      '....kPPhPPPPk...',
+      '....kPPPPPPPk...',
+      '...kPPPPPPPPPk..',
+      '.kkkhhhhhhhhhkk.',
+      'kPPPPPPPPPPPPPPk',
+      '.kkkkkkkkkkkkkk.'
+    ],
+    invader: [
+      '....k.....k.....',
+      '...kvk...kvk....',
+      '....kvkkkvk.....',
+      '...kvvvvvvvk....',
+      '..kvvkvvvkvvk...',
+      '.kvvvvvvvvvvvk..',
+      '.kvkvvvvvvvkvk..',
+      '.kvkvkkkkkvkvk..',
+      '..k.kvvkvvk.k...',
+      '.....kk.kk......'
+    ],
+    tag: [
+      '...kkkkkkkkkkkk.',
+      '..khhhhhhhhhhhk.',
+      '.khhkkhhhhhhhhk.',
+      'khhhkkhhhhhhhhk.',
+      '.khhhhhhhhhhhYk.',
+      '..kYYYYYYYYYYYk.',
+      '...kkkkkkkkkkkk.'
+    ],
+    brain: [
+      '....kkkkkkk.....',
+      '..kkqqqqqqqkk...',
+      '.kqqQqqkqqQqqk..',
+      'kqqkqqqkqqqkqqk.',
+      'kqQqqkqqkqqqqqk.',
+      'kqqqqkqqkqQqkqk.',
+      'kqkqqqqkqqqkqqk.',
+      '.kqqkqqkqqkqqk..',
+      '..kkqqqkqqqkk...',
+      '....kkkkkkk.....'
+    ],
+    party: [
+      '..h.....M...i...',
+      '.....i.....h....',
+      '...M.....k......',
+      '........kk..i...',
+      '.h....kkhhk.....',
+      '.....khhYk..M...',
+      '....khhYMk......',
+      '...khYMhk...h...',
+      '..khYMhk........',
+      '..kYMhYk..i.....',
+      '.kYhhYk.........',
+      '.kMYYk..........',
+      'kYYkk...........',
+      'kkk.............'
+    ],
+    calendar: [
+      '...kk......kk...',
+      '.kkLLkkkkkkLLkk.',
+      '.kMMMMMMMMMMMMk.',
+      '.kMMMMMMMMMMMMk.',
+      '.kkkkkkkkkkkkkk.',
+      '.kWWWWWWWWWWWWk.',
+      '.kWkWkWkWkWkWWk.',
+      '.kWWWWWWWWWWWWk.',
+      '.kWkWkWkWkWkWWk.',
+      '.kWWWWWWWWWWWWk.',
+      '.kWkWkWkWMMWWWk.',
+      '.kWWWWWWWWWWWWk.',
+      '.kLLLLLLLLLLLLk.',
+      '.kkkkkkkkkkkkkk.'
+    ],
+    numbers: tile('B', 1, 2, 3, 4),
+    letters: tile('P', 'A', 'B', 'C', 'D'),
+    play,
+    playBack: hflip(play),
+    card: [
+      '..kkkkkkkkkkkk..',
+      '..kWWWWWWWWWWk..',
+      '..kWMWWWWWWWWk..',
+      '..kWWWWWWWWWWk..',
+      '..kWWWWMMWWWWk..',
+      '..kWWWMMMMWWWk..',
+      '..kWWMMMMMMWWk..',
+      '..kWWWMMMMWWWk..',
+      '..kWWWWMMWWWWk..',
+      '..kWWWWWWWWWWk..',
+      '..kWWWWWWWWMWk..',
+      '..kLLLLLLLLLLk..',
+      '..kkkkkkkkkkkk..'
+    ],
+    divide: [
+      '......kkkk......',
+      '......kiik......',
+      '......kiik......',
+      '......kkkk......',
+      '.kkkkkkkkkkkkkk.',
+      '.kIiiiiiiiiiiik.',
+      '.kiiiiiiiiiiiBk.',
+      '.kkkkkkkkkkkkkk.',
+      '......kkkk......',
+      '......kiik......',
+      '......kiBk......',
+      '......kkkk......'
+    ],
+    pawn: [
+      '......kkkk......',
+      '.....kGGGGk.....',
+      '.....kGLGGk.....',
+      '.....kGGGGk.....',
+      '......kkkk......',
+      '.....kGGGGk.....',
+      '......kGGk......',
+      '......kGGk......',
+      '.....kGGGGk.....',
+      '....kGGGGGGk....',
+      '...kkkkkkkkkk...',
+      '...kGGGGGGGGk...',
+      '...kkkkkkkkkk...'
+    ],
+    ball: [
+      '.....kkkkkk.....',
+      '...kkWWWWLLkk...',
+      '..kWWWkkWWWLLk..',
+      '.kWWWkWWkWWWLLk.',
+      '.kWWkWWWWkWWWLk.',
+      'kWWkWWWWWWkkkkLk',
+      'kWkWWWWWWkWWWWLk',
+      'kWkWWWWWkWWWWWLk',
+      'kkkkWWWWkWWWWWLk',
+      'kWWWkkWWkWWWWLLk',
+      '.kWWWWkkWkWWWLk.',
+      '.kWWWWWWkkkLLLk.',
+      '..kLWWWWWWLLLk..',
+      '...kkLLLLLLkk...',
+      '.....kkkkkk.....'
+    ],
+    tree: [
+      '.....kkkkkk.....',
+      '...kknnnnnnkk...',
+      '..knnNnnnnnnEk..',
+      '.knnNnnnnnnnnEk.',
+      '.knnnnnnnnnnEEk.',
+      'kEnnnnnnnnnnnEEk',
+      'kEnnnnnnnnnnEEEk',
+      '.kEEnnnnnnEEEEk.',
+      '..kkEEEEEEEEkk..',
+      '....kkkDDkkk....',
+      '......kDdk......',
+      '......kDdk......',
+      '.....kDDddk.....',
+      '....kkkkkkkk....'
+    ],
+    save: [
+      'kkkkkkkkkkkkkk..',
+      'kBBkWWWWWWkBBBk.',
+      'kBBkWWWWkWkBBBBk',
+      'kBBkWWWWkWkBBBBk',
+      'kBBkWWWWWWkBBBBk',
+      'kBBBkkkkkkBBBBBk',
+      'kBBBBBBBBBBBBBBk',
+      'kBBkkkkkkkkkkBBk',
+      'kBkLLLLLLLLLLkBk',
+      'kBkLkkkkkkkkLkBk',
+      'kBkLLLLLLLLLLkBk',
+      'kBkLkkkkkLLLLkBk',
+      'kBkLLLLLLLLLLkBk',
+      'kkkkkkkkkkkkkkkk'
+    ],
+    trash: [
+      '......kkkk......',
+      '.kkkkkkLLkkkkkk.',
+      '.kLLLLLLLLLLLLk.',
+      '.kkkkkkkkkkkkkk.',
+      '..kGLGLGLGLGLk..',
+      '..kGLGLGLGLGLk..',
+      '..kGLGLGLGLGLk..',
+      '..kGLGLGLGLGLk..',
+      '..kGLGLGLGLGLk..',
+      '..kGLGLGLGLGLk..',
+      '...kGGGGGGGGk...',
+      '...kkkkkkkkkk...'
+    ],
+    person: [
+      '.....kkkkkk.....',
+      '....kTTTTTTk....',
+      '....kTTTTTTk....',
+      '....kTTTTTTk....',
+      '....ktTTTTtk....',
+      '.....kkkkkk.....',
+      '...kkBBBBBBkk...',
+      '..kBBBBBBBBBBk..',
+      '.kBiBBBBBBBBBBk.',
+      '.kBiBBBBBBBBBbk.',
+      '.kBBBBBBBBBBBbk.',
+      '.kkkkkkkkkkkkkk.'
+    ],
+    cart: [
+      'kk..............',
+      'kLk.............',
+      '.kLkkkkkkkkkkkk.',
+      '..kLWWWWWWWWWWk.',
+      '..kLWkWkWkWkWLk.',
+      '...kLWWWWWWWWk..',
+      '...kLWkWkWkWLk..',
+      '....kLLLLLLLLk..',
+      '....kkkkkkkkkk..',
+      '.....kLLLLLLLk..',
+      '.....kkkkkkkkk..',
+      '.....kGk...kGk..',
+      '.....kkk...kkk..'
+    ],
+    chart: [
+      'kk..............',
+      'kLk.........kkk.',
+      'kLk........knnk.',
+      'kLk.......knnnk.',
+      'kLk......knnkk..',
+      'kLk.k...knnk....',
+      'kLkkNk.knnk.....',
+      'kLknnNkknk......',
+      'kLkknnnnk.......',
+      'kLk.kknk........',
+      'kLk...k.........',
+      'kLkkkkkkkkkkkkkk',
+      'kLLLLLLLLLLLLLLk',
+      'kkkkkkkkkkkkkkkk'
+    ]
+  });
+
   // 이모지 → 아이콘 이름 (변형 선택자 FE0F는 떼고 적음)
   const MAP = {
     '⚠': 'warn', '🔥': 'fire', '📺': 'live', '⚔': 'swords', '🛡': 'shield', '👑': 'crown',
@@ -752,7 +1675,31 @@
     '⏰': 'clock', '⏱': 'clock', '🕐': 'clock', '🎲': 'dice', '🎮': 'gamepad',
     '🪙': 'coin', '💰': 'coin', '🔮': 'orb', '🎁': 'gift', '💬': 'chat', '🔨': 'hammer',
     '🏅': 'medal', '🥇': 'medal', '📢': 'megaphone', '📣': 'megaphone', '✏': 'pencil', '📝': 'pencil',
-    '🪓': 'axe', '🎒': 'bag', '🗡': 'dagger', '📜': 'scroll'
+    '🪓': 'axe', '🎒': 'bag', '🗡': 'dagger', '📜': 'scroll',
+    // 두 번째 묶음
+    '✋': 'hand', '👋': 'hand', '🖐': 'hand', '🔄': 'refresh', '🔁': 'refresh', '🔃': 'refresh',
+    '🌊': 'wave', '💨': 'dash', '🌍': 'globe', '🌎': 'globe', '🌏': 'globe', '🗺': 'globe',
+    '⚖': 'scale', '🌀': 'swirl', '🎨': 'palette', '🌱': 'sprout', '🌿': 'sprout',
+    '🏠': 'house', '🏡': 'house', '🏫': 'house', '🪨': 'rock', '⬆': 'up', '🔼': 'up',
+    '🔷': 'diamond', '🔹': 'diamond', '💢': 'anger', '💤': 'sleep', '🐾': 'paw',
+    '📋': 'clipboard', '🏁': 'flagCheck', '🏳': 'flag', '🚩': 'flagRed', '📚': 'books', '📖': 'books',
+    '🚀': 'rocket', '🥈': 'medalSilver', '🥉': 'medalBronze', '⚙': 'gear', '🔍': 'search', '🔎': 'search',
+    '🧲': 'magnet', '🎤': 'mic', '🕯': 'candle', '💡': 'bulb', '💣': 'bomb', '🌙': 'moon', '🌑': 'moonDark',
+    '🎶': 'music', '🎵': 'music', '🥚': 'egg', '➕': 'plus',
+    '💚': 'heartGreen', '💙': 'heartBlue', '💜': 'heartPurple',
+    '🔴': 'dotRed', '🟢': 'dotGreen', '🔵': 'dotBlue', '🟡': 'dotYellow', '🟣': 'dotPurple',
+    '🟠': 'dotOrange', '⚪': 'dotWhite', '⚫': 'dotBlack',
+    // 세 번째 묶음 (화면에 자주 보이는 것)
+    '💌': 'mailHeart', '📬': 'mail', '📤': 'mail', '📥': 'mail', '📨': 'mail', '📮': 'mail', '✉': 'mail', '📧': 'mail',
+    '⛺': 'tent', '🙋': 'hand', '🏹': 'bow', '🤝': 'handshake', '😤': 'faceAngry', '😠': 'faceAngry',
+    '😄': 'faceSmile', '😀': 'faceSmile', '😁': 'faceSmile', '🙂': 'faceSmile', '😊': 'faceSmile', '😆': 'faceSmile',
+    '🏃': 'shoe', '👟': 'shoe', '🥢': 'chopsticks', '📑': 'clipboard', '🧬': 'dna', '🚧': 'cone', '💫': 'sparkle',
+    '🧙': 'wizard', '👾': 'invader', '🖌': 'pencil', '🏷': 'tag', '🧠': 'brain', '🎉': 'party', '🎊': 'party',
+    '📅': 'calendar', '🗓': 'calendar', '📆': 'calendar', '🔢': 'numbers', '🔤': 'letters', '🔠': 'letters',
+    '▶': 'play', '⏩': 'play', '⏭': 'play', '◀': 'playBack', '⏪': 'playBack', '⏮': 'playBack',
+    '🃏': 'card', '➗': 'divide', '♟': 'pawn', '🏐': 'ball', '⤴': 'up', '🌳': 'tree', '🌲': 'tree',
+    '💾': 'save', '🗑': 'trash', '👤': 'person', '🧍': 'person', '👨': 'person', '👦': 'person', '👧': 'person', '🧑': 'person',
+    '🛒': 'cart', '📈': 'chart'
   };
 
   function svgOf(rows) {
