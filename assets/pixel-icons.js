@@ -1702,6 +1702,212 @@
     '🛒': 'cart', '📈': 'chart'
   };
 
+  // ── 꼭 남는 버튼 아이콘 (2026-11-13 v1 샘플 그대로) ──
+  //   이모지만 있는 버튼(닫기·터치 조작·펫/아바타 동작·아이템)에 쓰는 아이콘. HIDE_ALL이 켜져 있어도 이것만은 보임
+  Object.assign(ICONS, {
+    essClose: [
+      '................',
+      '.kkk........kkk.',
+      'kWLLk......kLLGk',
+      'kLLLLk....kLLLGk',
+      '.kLLLLk..kLLLGk.',
+      '..kLLLLkkLLLGk..',
+      '...kLLLLLLLGk...',
+      '....kLLLLLGk....',
+      '....kLLLLLGk....',
+      '...kLLLLLLLGk...',
+      '..kLLLGkkLLLGk..',
+      '.kLLLGk..kLLLGk.',
+      'kLLLGk....kLLGGk',
+      'kLLGk......kGGGk',
+      '.kkk........kkk.'
+    ],
+    essHand: [
+      '...kk.kk.kk.....',
+      '..kTTkTTkTTk....',
+      '..kTTkTTkTTkk...',
+      '..kTTkTTkTTkTk..',
+      'kkkTTkTTkTTkTk..',
+      'kTkTTkTTkTTkTk..',
+      'kTTTTTTTTTTTTk..',
+      'kTTTTTTTTTTTTk..',
+      '.kTTTTTTTTTTtk..',
+      '.kTTTTTTTTTttk..',
+      '..kTTTTTTTttk...',
+      '...kttttttttk...',
+      '...kkkkkkkkkk...'
+    ],
+    essWave: [
+      '.i...kk.kk.kk.i.',
+      'i...kTTkTTkTTi..',
+      '....kTTkTTkTikk.',
+      '.i..kTTkTTkTTkTk',
+      'i.kkkTTkTTkTTkTk',
+      '..kTkTTkTTkTTkTk',
+      '..kTTTTTTTTTTTTk',
+      '..kTTTTTTTTTTTTk',
+      '...kTTTTTTTTTTtk',
+      '...kTTTTTTTTTttk',
+      '....kTTTTTTTttk.',
+      '.....kttttttttk.',
+      '.....kkkkkkkkkk.'
+    ],
+    essLaugh: [
+      '.....kkkkkk.....',
+      '...kkhhhhhhkk...',
+      '..khHhhhhhhhYk..',
+      '.khHhhhhhhhhhYk.',
+      '.khhhhhhhhhhhYk.',
+      'khhhhkhhhhkhhhYk',
+      'khhhkhkhhkhkhhYk',
+      'khhhhhhhhhhhhhYk',
+      'khhhkkkkkkkkhhYk',
+      'khhhkmmmmmmkhhYk',
+      'khhhhkqqqqkhhYYk',
+      '.khhhhkkkkhhYYk.',
+      '.kYhhhhhhhhYYyk.',
+      '..kYYhhhhYYyyk..',
+      '...kkYYYYYykk...',
+      '.....kkkkkk.....'
+    ],
+    essGasp: [
+      '.....kkkkkk.....',
+      '...kkhhhhhhkk...',
+      '..khHhhhhhhhYk..',
+      '.khHhyhhhhyhhYk.',
+      '.khhyhhhhhhyhYk.',
+      'khhhhkhhhhkhhhYk',
+      'khhhhkhhhhkhhhYk',
+      'khhhhhhhhhhhhhYk',
+      'khhhhhhkkhhhhhYk',
+      'khhhhhkmmkhhhhYk',
+      'khhhhhkmmkhhhYYk',
+      '.khhhhhkkhhhYYk.',
+      '.kYhhhhhhhhYYyk.',
+      '..kYYhhhhYYyyk..',
+      '...kkYYYYYykk...',
+      '.....kkkkkk.....'
+    ],
+    essHome: [
+      '.......kk.......',
+      '......kMMk..kk..',
+      '.....kMqMMk.kDk.',
+      '....kMqMMMMkkDk.',
+      '...kMqMMMMMMkDk.',
+      '..kMqMMMMMMMMkk.',
+      '.kMMMMMMMMMMMmk.',
+      'kkkkkkkkkkkkkkkk',
+      '.kTTTTTTTTTTTTk.',
+      '.kTTTkkkkTkkkTk.',
+      '.kTTTkDDkTkikTk.',
+      '.kTTTkDDkTkkkTk.',
+      '.kTTTkDhkTTTTTk.',
+      '.ktttkDDkttttTk.',
+      '.kkkkkkkkkkkkkk.'
+    ],
+    essTag: [
+      '................',
+      '................',
+      '....kkkkkkkkkkk.',
+      '...kYhhhhhhhhhYk',
+      '..kYhhhhhhhhhhYk',
+      '.kYhhkkhhhhhhhYk',
+      'kYhhkKKkhhhhhhYk',
+      'kYhhkKKkhhhhhhYk',
+      '.kYhhkkhhhhhhhYk',
+      '..kYhhhhhhhhhhYk',
+      '...kYyyyyyyyyyyk',
+      '....kkkkkkkkkkk.'
+    ],
+    essTrash: [
+      '......kkkk......',
+      '.....kLLLLk.....',
+      '.kkkkkkkkkkkkkk.',
+      'kWLLLLLLLLLLLLGk',
+      'kkkkkkkkkkkkkkkk',
+      '.kLLLLLLLLLLLGk.',
+      '.kLGLLGLLGLLGGk.',
+      '.kLGLLGLLGLLGGk.',
+      '.kLGLLGLLGLLGGk.',
+      '.kLGLLGLLGLLGGk.',
+      '.kLGLLGLLGLLGGk.',
+      '.kLGLLGLLGLLGGk.',
+      '.kLLLLLLLLLLLGk.',
+      '.kGGGGGGGGGGGGk.',
+      '..kkkkkkkkkkkk..'
+    ],
+    essEye: [
+      '................',
+      '................',
+      '.....kkkkkk.....',
+      '...kkWWWWWWkk...',
+      '..kWWWkkkkWWWk..',
+      '.kWWWkBBIBkWWWk.',
+      'kWWWkBBkkBBkWWWk',
+      'kWWWkBBkkBBkWWLk',
+      '.kWWWkBBBBkWWLk.',
+      '..kLWWkkkkWWLk..',
+      '...kkLLLLLLkk...',
+      '.....kkkkkk.....'
+    ],
+    essDown: [
+      '................',
+      '................',
+      '.kkk........kkk.',
+      'khhYk......kYYyk',
+      'kYhhYk....kYhYyk',
+      '.kYhhYk..kYhYyk.',
+      '..kYhhYkkYhYyk..',
+      '...kYhhYYhYyk...',
+      '....kYhhhYyk....',
+      '.....kYhYyk.....',
+      '......kYyk......',
+      '.......kk.......'
+    ],
+    essSwirl: [
+      '....kkkkkkk.....',
+      '..kkVVVVVVVkk...',
+      '.kVVkkkkkkkVVk..',
+      'kVVk.......kVk..',
+      'kVk..kkkkk..kVk.',
+      'kVk.kvvvvvk.kVk.',
+      'kVk.kvkkkvvk.kVk',
+      'kVk.kvk.kkvk.kVk',
+      'kVk..kk.kvvk.kVk',
+      'kVVk...kvvk.kVVk',
+      '.kVVkkkvvk..kVk.',
+      '..kVVvvvk..kVVk.',
+      '...kkkkk..kVVk..',
+      '.........kVk....',
+      '..........k.....'
+    ],
+    essDash: [
+      '................',
+      '.........kkkk...',
+      '....kkkk.kWWWk..',
+      '...kWWWWkWWWWLk.',
+      '..kWWWWWWWWWWWLk',
+      'kkkWWWWWWWWWWWLk',
+      'kLLkWWWWWWWWWLLk',
+      'kkkkLWWWWWWLLLk.',
+      '....kLLLLLLLLk..',
+      '.....kkkkkkkk...',
+      '................',
+      'kkkkk.kkk.......',
+      'kLLLLkkLLk......',
+      'kkkkk.kkk.......'
+    ]
+  });
+  const ESSENTIAL = {
+    '✕': 'essClose', '✖': 'essClose', '⚔': 'swords', '🎒': 'bag', '💨': 'essDash', '🌀': 'essSwirl',
+    '🔽': 'essDown', '💥': 'boom', '✋': 'essHand', '👋': 'essWave', '😄': 'essLaugh', '😮': 'essGasp',
+    '❤': 'heart', '🏠': 'essHome', '👑': 'crown', '🏷': 'essTag', '🗑': 'essTrash', '👀': 'essEye',
+    '✏': 'pencil', '🎲': 'dice'
+  };
+  Object.assign(MAP, ESSENTIAL);
+  // 이모지가 아닌 글자 기호: 글자 옆에 있으면 건드리지 않음 (곱하기 표시 등)
+  const TEXT_SYMBOLS = new Set(['✕', '✖']);
+
   function svgOf(rows) {
     // 색마다 path 하나 (가로로 이어진 칸은 한 번에) → 아이콘 하나에 1~2KB
     const paths = {};
@@ -1720,7 +1926,7 @@
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 ${-top} 16 16" shape-rendering="crispEdges">${body}</svg>`;
   }
 
-  const api = { PAL, ICONS, MAP, svgOf };
+  const api = { PAL, ICONS, MAP, ESSENTIAL, svgOf };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof document === 'undefined') return;
   window.PixelIcons = api;
@@ -1736,7 +1942,7 @@
     + 'background:no-repeat center/contain;image-rendering:pixelated;color:transparent!important;-webkit-text-fill-color:transparent!important;'
     + 'text-shadow:none!important;overflow:hidden;white-space:nowrap;text-indent:-99em;font-style:normal}'
     + '.pxe-x{display:none!important}'
-    + (HIDE_ALL ? '.pxi,.px-ico{display:none!important}' : '');
+    + (HIDE_ALL ? '.pxi:not(.pxi-ess),.px-ico{display:none!important}' : '');
   for (const name in ICONS) css += `.pxi-${name}{background-image:url("data:image/svg+xml,${encodeURIComponent(svgOf(ICONS[name]))}")}`;
   const style = document.createElement('style');
   style.id = 'pixel-icons-css';
@@ -1755,7 +1961,7 @@
   const EMO = String.raw`(?:\p{Emoji_Presentation}|\p{Extended_Pictographic}\uFE0F)(?:\u200D\p{Extended_Pictographic}\uFE0F?)*[\u{1F3FB}-\u{1F3FF}]?`;
   const ALL = new RegExp('(?:' + keys.map(esc).join('|') + ')' + String.raw`\uFE0F?|` + EMO, 'gu');
   const ANY = new RegExp(EMO + '|(?:' + keys.map(esc).join('|') + ')', 'u');
-  const STRIP = new RegExp(EMO + String.raw`|[\uFE0F\u200D\s]`, 'gu');
+  const STRIP = new RegExp(EMO + '|' + keys.map(esc).join('|') + String.raw`|[\uFE0F\u200D\s]`, 'gu');
   const hasWords = el => !!el && (el.textContent || '').replace(STRIP, '').length > 0;
   function nextToText(node) {
     if (node.nodeValue.replace(STRIP, '').length) return true;
@@ -1773,18 +1979,21 @@
     if (!s || !ANY.test(s)) return;
     const parent = node.parentElement;
     if (!parent || parent.closest(SKIP)) return;
-    const hideRaw = HIDE_ALL || nextToText(node);
+    const beside = nextToText(node);
     const frag = document.createDocumentFragment();
     let last = 0, changed = false;
     ALL.lastIndex = 0;
     for (let m; (m = ALL.exec(s));) {
       const base = m[0].replace('️', '');
       const icon = MAP[base];
+      if (beside && TEXT_SYMBOLS.has(base)) continue;
+      const keep = !beside && !!ESSENTIAL[base];
+      const hideRaw = beside || (HIDE_ALL && !keep);
       if (!icon && !hideRaw) continue;
       if (m.index > last) frag.appendChild(document.createTextNode(s.slice(last, m.index)));
       const span = document.createElement('span');
       if (icon && !hideRaw) {
-        span.className = 'pxi pxi-' + icon;
+        span.className = 'pxi pxi-' + icon + (keep ? ' pxi-ess' : '');
         span.setAttribute('role', 'img');
         span.setAttribute('aria-label', base);
       } else {
