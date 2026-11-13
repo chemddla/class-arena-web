@@ -3586,7 +3586,7 @@
                     <strong>🗡️ 1:1 대결방</strong>은 용병 1명씩 골라 <strong>직접 조종</strong>해서 겨뤄요.
                     <strong>👥 팀전방</strong>은 친구들이 블루·레드팀으로 나뉘어 각자 용병 1명을 조종해요. (최대 5:5)
                     <strong>🔥 8:8 총력전방</strong>은 홈 출전 용병에 전투력 높은 용병을 더해 8명씩 맞붙어요.
-                    <strong>⚖️ 공정한 결투방</strong>은 방장이 정한 같은 직업·같은 스킬·Lv.50으로 직접 조종해서 겨뤄요. (히든 스킬 없음 · 3분 안에 못 끝나면 체력이 더 많은 쪽이 승리)
+                    <strong>⚖️ 공정한 결투방</strong>은 방장이 정한 같은 직업·같은 스킬·Lv.50으로 직접 조종해서 겨뤄요. 1:1부터 2:2~5:5 팀 결투까지 (빈 자리는 같은 조건 AI · 히든 스킬 없음 · 3분 안에 못 끝나면 체력이 더 많은 쪽이 승리)
                   </p>
                 </div>
               </div>
@@ -3599,9 +3599,15 @@
                 <button onclick="createPvpLobbyRoom('total8')" class="px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-400 text-slate-950 font-extrabold text-xs shadow flex items-center gap-1.5 shrink-0">
                   🔥 8:8 총력전방
                 </button>
-                <button onclick="createPvpLobbyRoom('fairDuel')" class="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs shadow flex items-center gap-1.5 shrink-0">
-                  ⚖️ 공정한 결투방
-                </button>
+                <span class="inline-flex items-stretch rounded-xl overflow-hidden shadow shrink-0">
+                  <button onclick="createPvpLobbyRoom('fairDuel')" class="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs flex items-center gap-1.5" title="공정한 결투 1:1">
+                    ⚖️ 공정한 결투방
+                  </button>
+                  <button onclick="createPvpLobbyRoom('fairTeam2')" class="px-2 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-extrabold text-xs border-l border-emerald-700" title="공정한 결투 2:2">2:2</button>
+                  <button onclick="createPvpLobbyRoom('fairTeam3')" class="px-2 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-extrabold text-xs border-l border-emerald-700" title="공정한 결투 3:3">3:3</button>
+                  <button onclick="createPvpLobbyRoom('fairTeam4')" class="px-2 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-extrabold text-xs border-l border-emerald-700" title="공정한 결투 4:4">4:4</button>
+                  <button onclick="createPvpLobbyRoom('fairTeam5')" class="px-2 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-extrabold text-xs border-l border-emerald-700" title="공정한 결투 5:5">5:5</button>
+                </span>
                 <button onclick="createPvpLobbyRoom('duel1v1')" class="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow flex items-center gap-1.5 shrink-0">
                   🗡️ 1:1 대결방
                 </button>
@@ -14026,8 +14032,8 @@
         const waiting = r.status === 'waiting';
         items.push({
           kind: 'pvp', id: r.roomId, icon: '⚔️', waiting,
-          names: team ? `${r.hostName}의 팀전` : `${r.hostName} vs ${r.guestName || '?'}`,
-          detail: (team ? '실시간 팀전' : (isFairDuelRoom(r) ? '공정한 결투' : isDuelRoom(r) ? '1:1 용병 대결' : isTotalRoom(r) ? '8:8 총력전' : '5:5 실시간 결투')) + (waiting ? waitTag : ''),
+          names: team ? `${r.hostName}의 ${isFairTeamRoom(r) ? '공정한 결투' : '팀전'}` : `${r.hostName} vs ${r.guestName || '?'}`,
+          detail: (team ? (isFairTeamRoom(r) ? `공정한 결투 ${fairTeamSizeOf(r)}:${fairTeamSizeOf(r)}` : '실시간 팀전') : (isFairDuelRoom(r) ? '공정한 결투' : isDuelRoom(r) ? '1:1 용병 대결' : isTotalRoom(r) ? '8:8 총력전' : '5:5 실시간 결투')) + (waiting ? waitTag : ''),
           watchers: pvpSpectatorList(r).length,
           watching: currentSpectatingPvpRoomId === r.roomId || (watchingBattle && sim.spectateRoomId === r.roomId),
           locked: !waiting && (r.practiceFriend || (team && !teamMembersOf(r).some(m => !m.ai && m.id !== r.hostId))) ? '연습 경기' : ''
@@ -21134,7 +21140,7 @@
       sim.floatTexts = [];
       sim.tickCount = 0;
       sim.victoryAt = null;
-      sim.fairDuel = mode === 'pvp_realtime' && liveKind === 'fair'; // ⚖️ 공정한 결투: 3분 제한 · 체력 많은 쪽 승리 (관전은 따로 켬)
+      sim.fairDuel = mode === 'pvp_realtime' && (liveKind === 'fair' || liveKind === 'fairTeam'); // ⚖️ 공정한 결투: 3분 제한 · 체력 많은 쪽 승리 (관전은 따로 켬)
       sim.fairSuddenDeath = false;
       sim.mode = mode;
       sim.title = title;
@@ -31799,7 +31805,7 @@
         if (sim.mode === 'elite_raid' && sim.raidLive && sim.raidLive.humans.length >= 2) DailyMission.progress('raid2', 1, stu);
         if (sim.mode === 'pvp_realtime') DailyMission.progress('realtimePvp', 1, stu);
         if (sim.mode === 'pvp_realtime' && (meta.liveKind === 'duel' || meta.liveKind === 'fair')) DailyMission.progress('duel1v1', 1, stu);
-        if (sim.mode === 'pvp_realtime' && meta.liveKind === 'fair') DailyMission.progress('fairDuel', 1, stu);
+        if (sim.mode === 'pvp_realtime' && (meta.liveKind === 'fair' || meta.liveKind === 'fairTeam')) DailyMission.progress('fairDuel', 1, stu);
         if (sim.mode === 'pvp_realtime' && meta.liveKind === 'total') DailyMission.progress('totalWar', 1, stu);
         if (sim.mode === 'pvp_async') DailyMission.progress('asyncPvp', 1, stu);
         if (sim.mode === 'practice') DailyMission.progress('practice', 1, stu);
@@ -47251,6 +47257,7 @@
     }
     function renderFairDuelPickerHTML(room, isHost) {
       const cur = fairDuelJobOf(room);
+      const who = isFairTeamRoom(room) ? '모두' : '둘 다';
       const cards = Object.keys(JOB_DEFS).map(k => {
         const job = JOB_DEFS[k];
         const picked = k === cur;
@@ -47263,10 +47270,10 @@
       return `
         <div class="bg-slate-950 border border-emerald-500/40 rounded-2xl p-4 flex flex-col gap-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="text-sm font-extrabold text-white">⚖️ 공정한 결투 직업 ${isHost ? '고르기' : ''} <span class="text-[11px] text-slate-400 font-bold">· ${isHost ? '방장이 고른 직업으로 둘 다 싸워요' : '방장이 직업을 정해요'}</span></div>
+            <div class="text-sm font-extrabold text-white">⚖️ 공정한 결투 직업 ${isHost ? '고르기' : ''} <span class="text-[11px] text-slate-400 font-bold">· ${isHost ? `방장이 고른 직업으로 ${who} 싸워요` : '방장이 직업을 정해요'}</span></div>
             <div class="text-[11px] font-bold text-emerald-300">${JOB_DEFS[cur].icon} ${JOB_DEFS[cur].name} · Lv.${FAIR_DUEL_LEVEL} · 히든 스킬 없음</div>
           </div>
-          <div class="flex flex-wrap items-center gap-1.5"><span class="text-[11px] font-extrabold text-slate-400">둘 다 같은 스킬:</span>${fairDuelSkillChipsHTML(room)}${isHost ? '<span class="text-[10px] font-bold text-slate-500">· 직업을 누를 때마다 스킬을 새로 뽑아요 (같은 직업을 다시 눌러도 돼요)</span>' : ''}</div>
+          <div class="flex flex-wrap items-center gap-1.5"><span class="text-[11px] font-extrabold text-slate-400">${who} 같은 스킬:</span>${fairDuelSkillChipsHTML(room)}${isHost ? '<span class="text-[10px] font-bold text-slate-500">· 직업을 누를 때마다 스킬을 새로 뽑아요 (같은 직업을 다시 눌러도 돼요)</span>' : ''}</div>
           <div class="text-[11px] text-slate-500 font-bold">내 용병 대신 똑같은 능력치의 용병으로 싸워요 (장비·펫 효과·초기 스탯 차이 없음). 직접 조종(수동 전투)만 돼요.</div>
           <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 2xl:grid-cols-8 gap-2">${cards}</div>
         </div>`;
@@ -47274,7 +47281,16 @@
     window.pickFairDuelJob = async function (roomId, job) {
       const me = getActiveStudent();
       const room = livePvpRoomsCache[roomId];
-      if (!room || !me || !isFairDuelRoom(room) || room.status !== 'waiting' || room.hostId !== me.id || !JOB_DEFS[job]) return;
+      if (!room || !me || !(isFairDuelRoom(room) || isFairTeamRoom(room)) || room.status !== 'waiting' || room.hostId !== me.id || !JOB_DEFS[job]) return;
+      if (isFairTeamRoom(room)) {
+        // 직업·스킬이 바뀌면 사람 팀원들이 다시 확인하고 준비완료를 누르게 (방장·AI는 그대로)
+        const patch = { fairJob: job, fairSkills: fairDuelRollSkills(job) };
+        const unready = teamMembersOf(room).filter(m => m.id !== room.hostId && !m.ai && m.ready);
+        unready.forEach(m => { patch[`members/${m.id}/ready`] = false; });
+        if (unready.length) showNotice('⚖️ 직업·스킬을 바꿔서 팀원들의 준비완료가 풀렸어요.');
+        await saveTeamRoomPatch(roomId, patch);
+        return;
+      }
       room.fairJob = job;
       room.fairSkills = fairDuelRollSkills(job);
       // 직업·스킬이 바뀌면 도전자가 다시 확인하고 준비완료를 누르게 (연습 친구는 그대로)
@@ -47387,6 +47403,12 @@
     // 방 정보: members/{학생id} = { team, pickId, ready, ai, snap(고른 용병만 담은 작은 기록) } — 각자 자기 칸만 고쳐서 동시에 바꿔도 안 겹침
     const TEAM_LIVE_MAX_PER_SIDE = 5;
     const isTeamLiveRoom = room => Boolean(room && room.mode === 'teamLive');
+    // ⚖️ 공정한 결투 2:2~5:5 (teamLive + fairJob + fairSize): 팀전처럼 각자 1명씩 조종하지만, 모두 방장이 정한 같은 직업·같은 스킬·Lv.50
+    // 빈 자리는 같은 조건의 AI 용병이 채워서 언제나 fairSize:fairSize로 싸움 · 3분 제한(체력 많은 팀 승리)도 1:1과 같음
+    const FAIR_TEAM_SIZES = [2, 3, 4, 5];
+    const isFairTeamRoom = room => Boolean(isTeamLiveRoom(room) && room.fairJob);
+    const fairTeamSizeOf = room => (FAIR_TEAM_SIZES.includes(Number(room && room.fairSize)) ? Number(room.fairSize) : 2);
+    const teamMaxPerSide = room => (isFairTeamRoom(room) ? fairTeamSizeOf(room) : TEAM_LIVE_MAX_PER_SIDE);
     function teamMembersOf(room) {
       return Object.values((room && room.members) || {}).filter(m => m && m.id).sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
     }
@@ -47405,7 +47427,7 @@
     }
     function pvpRoomHasSeat(room) {
       if (isTeamLiveRoom(room)) {
-        return teamSideMembers(room, 'blue').length < TEAM_LIVE_MAX_PER_SIDE || teamSideMembers(room, 'red').length < TEAM_LIVE_MAX_PER_SIDE;
+        return teamSideMembers(room, 'blue').length < teamMaxPerSide(room) || teamSideMembers(room, 'red').length < teamMaxPerSide(room);
       }
       return !room.guestId;
     }
@@ -47454,19 +47476,23 @@
       const me = getActiveStudent();
       const room = livePvpRoomsCache[roomId];
       if (!room || !me || room.status !== 'waiting') return;
-      if (!(me.roster || []).length) { showNotice('⚠️ 팀전에 들어가려면 먼저 용병을 1명 이상 고용해 주세요!'); return; }
+      const fairTeam = isFairTeamRoom(room);
       if (isPvpRoomPlayer(room, me.id)) { currentJoinedPvpRoomId = roomId; renderLivePvpRoomsList(); return; }
+      if (fairTeam && !FAIR_DUEL_OPEN) { showNotice('⚖️ 공정한 결투는 지금 잠시 쉬고 있어요.'); return; }
+      if (!fairTeam && !(me.roster || []).length) { showNotice('⚠️ 팀전에 들어가려면 먼저 용병을 1명 이상 고용해 주세요!'); return; }
       const nb = teamSideMembers(room, 'blue').length;
       const nr = teamSideMembers(room, 'red').length;
-      if (nb >= TEAM_LIVE_MAX_PER_SIDE && nr >= TEAM_LIVE_MAX_PER_SIDE) { showNotice('⚠️ 팀전 방이 꽉 찼어요! (5:5)'); return; }
+      if (nb >= teamMaxPerSide(room) && nr >= teamMaxPerSide(room)) { showNotice(`⚠️ 팀전 방이 꽉 찼어요! (${teamMaxPerSide(room)}:${teamMaxPerSide(room)})`); return; }
       leaveRoomsExcept('pvp', roomId);
       if (currentSpectatingPvpRoomId === roomId) stopSpectatingPvpRoom(true);
       currentJoinedPvpRoomId = roomId;
       const side = nr < nb ? 'red' : (nb < nr ? 'blue' : 'red');
-      await saveTeamRoomPatch(roomId, { [`members/${me.id}`]: makeTeamMember(me, nr >= TEAM_LIVE_MAX_PER_SIDE ? 'blue' : (nb >= TEAM_LIVE_MAX_PER_SIDE ? 'red' : side)) });
+      await saveTeamRoomPatch(roomId, { [`members/${me.id}`]: makeTeamMember(me, nr >= teamMaxPerSide(room) ? 'blue' : (nb >= teamMaxPerSide(room) ? 'red' : side), fairTeam ? { pickId: 'fair' } : {}) });
       // 브라우저를 닫거나 끊기면 내 자리를 자동으로 비움
       try { teamMemberRef(roomId, me.id)?.onDisconnect().remove(); } catch (e) {}
-      showRewardBanner(`🚪 [${room.title}] 팀전에 들어왔어요! 조종할 용병을 고르고 [✋ 준비완료]를 눌러 주세요.`);
+      showRewardBanner(fairTeam
+        ? `🚪 [${room.title}] 공정한 결투 ${fairTeamSizeOf(room)}:${fairTeamSizeOf(room)}에 들어왔어요! 팀을 고르고 [✋ 준비완료]를 눌러 주세요.`
+        : `🚪 [${room.title}] 팀전에 들어왔어요! 조종할 용병을 고르고 [✋ 준비완료]를 눌러 주세요.`);
     };
 
     window.switchTeamLiveSide = async function (roomId) {
@@ -47475,7 +47501,7 @@
       const mem = room && me && room.members && room.members[me.id];
       if (!mem || room.status !== 'waiting') return;
       const other = mem.team === 'blue' ? 'red' : 'blue';
-      if (teamSideMembers(room, other).length >= TEAM_LIVE_MAX_PER_SIDE) { showNotice('⚠️ 그 팀은 이미 5명이에요.'); return; }
+      if (teamSideMembers(room, other).length >= teamMaxPerSide(room)) { showNotice(`⚠️ 그 팀은 이미 ${teamMaxPerSide(room)}명이에요.`); return; }
       await saveTeamRoomPatch(roomId, { [`members/${me.id}/team`]: other, [`members/${me.id}/ready`]: room.hostId === me.id });
     };
 
@@ -47484,6 +47510,7 @@
       const room = livePvpRoomsCache[roomId];
       const mem = room && me && room.members && room.members[me.id];
       if (!mem || room.status !== 'waiting') return;
+      if (isFairTeamRoom(room)) return; // 공정한 결투는 고를 용병 없음 (모두 같은 용병)
       if (mem.ready && room.hostId !== me.id) { showNotice('⚠️ 준비완료를 취소해야 용병을 바꿀 수 있어요.'); return; }
       const merc = (me.roster || []).find(m => m.id === mercId);
       if (!merc) return;
@@ -47511,10 +47538,15 @@
       const nb = teamSideMembers(room, 'blue').length;
       const nr = teamSideMembers(room, 'red').length;
       const side = nr < nb ? 'red' : 'blue';
-      if (teamSideMembers(room, side).length >= TEAM_LIVE_MAX_PER_SIDE) { showNotice('⚠️ 두 팀 모두 꽉 찼어요!'); return; }
-      const others = studentsFor('aiFriend').filter(st => st.id !== me.id && !isPvpRoomMember(room, st.id) && (st.roster || []).length);
+      if (teamSideMembers(room, side).length >= teamMaxPerSide(room)) { showNotice('⚠️ 두 팀 모두 꽉 찼어요!'); return; }
+      const fairTeam = isFairTeamRoom(room);
+      const others = studentsFor('aiFriend').filter(st => st.id !== me.id && !isPvpRoomMember(room, st.id) && (fairTeam || (st.roster || []).length));
       const friend = others[Math.floor(Math.random() * others.length)];
       if (!friend) { showNotice('⚠️ 넣을 수 있는 친구가 없어요.'); return; }
+      if (fairTeam) { // 공정한 결투: 이름만 빌리고 같은 조건 용병으로 (AI 조종)
+        await saveTeamRoomPatch(roomId, { [`members/${friend.id}`]: makeTeamMember(friend, side, { ai: true, ready: true, pickId: 'fair' }) });
+        return;
+      }
       const best = repMercOf(friend);
       await saveTeamRoomPatch(roomId, {
         [`members/${friend.id}`]: makeTeamMember(friend, side, { ai: true, ready: true, pickId: best.id, power: calcMercCombatPower(best, friend), snap: teamMemberSnap(friend, best) })
@@ -47538,7 +47570,7 @@
       if (!st.bothSides) { showNotice('⚠️ 블루팀과 레드팀에 1명 이상씩 있어야 해요!'); return; }
       if (!st.allPicked) { showNotice('⚠️ 아직 용병을 고르지 않은 친구가 있어요!'); return; }
       if (!st.allReady) { showNotice('⚠️ 아직 [✋ 준비완료]를 누르지 않은 친구가 있어요!'); return; }
-      if (!st.equal && !fill) { showNotice('⚠️ 두 팀 인원이 달라요. [부족한 자리 채우고 시작]을 눌러 주세요.'); return; }
+      if (!st.equal && !fill && !isFairTeamRoom(room)) { showNotice('⚠️ 두 팀 인원이 달라요. [부족한 자리 채우고 시작]을 눌러 주세요.'); return; }
       // 사람 친구들 중 가장 빠른 기기가 이번 전투를 계산 (방장은 그대로)
       const simHost = await pickLiveSimHost(room, teamMembersOf(room).filter(m => !m.ai).map(m => m.id));
       const fresh = livePvpRoomsCache[roomId] || room;
@@ -47551,6 +47583,7 @@
       const mem = me && room.members ? room.members[me.id] : null;
       const st = teamLiveStartState(room);
       const pickLabel = m => {
+        if (isFairTeamRoom(room)) { const job = JOB_DEFS[fairDuelJobOf(room)]; return `<span class="text-emerald-300">${job.icon} ${job.name} Lv.${FAIR_DUEL_LEVEL}</span> · ⚖️ 같은 조건`; }
         const merc = (m.snap && m.snap.roster || []).find(x => x && x.id === m.pickId);
         if (!merc) return '<span class="text-slate-400">용병 고르는 중...</span>';
         const job = JOB_DEFS[merc.job] || JOB_DEFS.warrior;
@@ -47570,20 +47603,22 @@
               ${isHost && m.ai ? `<button onclick="removeTeamLiveAiFriend('${room.roomId}', '${m.id}')" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px] font-bold">빼기</button>` : ''}
             </div>
           </div>`).join('');
-        const empty = Array.from({ length: Math.max(0, TEAM_LIVE_MAX_PER_SIDE - list.length) }).map(() =>
-          '<div class="rounded-xl border-2 border-dashed border-slate-800 px-3 py-2 text-[11px] text-slate-600 font-bold">빈 자리</div>').join('');
+        const empty = Array.from({ length: Math.max(0, teamMaxPerSide(room) - list.length) }).map(() =>
+          `<div class="rounded-xl border-2 border-dashed border-slate-800 px-3 py-2 text-[11px] text-slate-600 font-bold">${isFairTeamRoom(room) ? '빈 자리 · 🤖 AI가 채워요' : '빈 자리'}</div>`).join('');
         return `
           <div class="bg-slate-950 border-2 ${blue ? 'border-sky-500/50' : 'border-rose-500/50'} rounded-2xl p-3 flex flex-col gap-2">
             <div class="flex items-center justify-between">
               <span class="font-title text-lg ${blue ? 'text-sky-300' : 'text-rose-300'}">${blue ? '🔵 블루팀' : '🔴 레드팀'}</span>
-              <span class="text-xs font-extrabold text-slate-400">${list.length} / ${TEAM_LIVE_MAX_PER_SIDE}명</span>
+              <span class="text-xs font-extrabold text-slate-400">${list.length} / ${teamMaxPerSide(room)}명</span>
             </div>
             ${rows}${empty}
           </div>`;
       };
       const locked = mem && mem.ready && !isHost;
-      const roster = me ? [...(me.roster || [])].sort((a, b) => calcMercCombatPower(b, me) - calcMercCombatPower(a, me)) : [];
-      const picker = mem && !mem.ai ? `
+      const fairTeam = isFairTeamRoom(room);
+      const fairN = fairTeamSizeOf(room);
+      const roster = me && !fairTeam ? [...(me.roster || [])].sort((a, b) => calcMercCombatPower(b, me) - calcMercCombatPower(a, me)) : [];
+      const picker = fairTeam ? renderFairDuelPickerHTML(room, isHost) : mem && !mem.ai ? `
         <div class="bg-slate-950 border border-amber-500/40 rounded-2xl p-4 flex flex-col gap-3">
           <div class="text-sm font-extrabold text-white">🎮 내가 조종할 용병 1명 고르기 <span class="text-[11px] text-slate-400 font-bold">· 팀전은 직접 조종(수동 전투)으로 해요</span></div>
           ${locked ? '<div class="text-[11px] text-slate-500 font-bold">준비완료를 취소하면 용병을 바꿀 수 있어요</div>' : ''}
@@ -47602,7 +47637,11 @@
             }).join('') || '<div class="text-xs text-slate-400">고용한 용병이 없어요.</div>'}
           </div>
         </div>` : '';
-      const statusText = !st.bothSides
+      const statusText = fairTeam
+        ? (!st.bothSides ? `📢 블루팀과 레드팀에 1명 이상씩 있어야 시작할 수 있어요. (빈 자리는 같은 조건 AI가 채워서 ${fairN}:${fairN})`
+          : !st.allReady ? '⏳ 모두 [✋ 준비완료]를 누르기를 기다리는 중이에요.'
+          : `🎉 모두 준비됐어요! ⚖️ 공정한 결투 ${fairN}:${fairN}을 시작할 수 있어요.${st.members.length < fairN * 2 ? ' (빈 자리는 🤖 AI)' : ''} · 3분 안에 못 끝나면 체력 많은 팀 승리`)
+        : !st.bothSides
         ? '📢 블루팀과 레드팀에 1명 이상씩 있어야 시작할 수 있어요.'
         : !st.allPicked ? '⏳ 아직 용병을 고르지 않은 친구가 있어요.'
         : !st.allReady ? '⏳ 모두 [✋ 준비완료]를 누르기를 기다리는 중이에요.'
@@ -47614,13 +47653,15 @@
       const hostBtns = isHost ? `
         ${room.status === 'waiting' ? roomInviteBtnHTML('pvp', room.roomId) : ''}
         <button onclick="addTeamLiveAiFriend('${room.roomId}')" class="px-4 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-extrabold text-xs border border-slate-700">🤖 AI 친구 넣기</button>
-        ${st.canStart && !st.equal
+        ${fairTeam
+          ? `<button onclick="startTeamLiveBattle('${room.roomId}', true)" ${st.canStart ? '' : 'disabled'} class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg transition ${st.canStart ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 animate-bounce' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}">⚖️ 공정한 결투 ${fairN}:${fairN} 시작!</button>`
+          : st.canStart && !st.equal
           ? `<button onclick="startTeamLiveBattle('${room.roomId}', true)" class="px-6 py-3 rounded-2xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-sm shadow-lg animate-bounce">⚖️ 부족한 자리 채우고 시작!</button>`
           : `<button onclick="startTeamLiveBattle('${room.roomId}')" ${st.canStart ? '' : 'disabled'} class="px-6 py-3 rounded-2xl font-extrabold text-sm shadow-lg transition ${st.canStart ? 'bg-rose-600 hover:bg-rose-500 text-white animate-bounce' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}">👥 팀전 시작!</button>`}` : '';
       return `
         <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
           <div class="flex items-center gap-2">
-            <span class="px-2.5 py-1 rounded-lg bg-sky-500/20 text-sky-300 font-extrabold text-xs">👥 실시간 팀전 대기실</span>
+            <span class="px-2.5 py-1 rounded-lg ${fairTeam ? 'bg-emerald-500/20 text-emerald-300' : 'bg-sky-500/20 text-sky-300'} font-extrabold text-xs">${fairTeam ? `⚖️ 공정한 결투 ${fairN}:${fairN} 대기실` : '👥 실시간 팀전 대기실'}</span>
             <h4 class="font-title text-xl text-white">${room.title || `${room.hostName}의 팀전방`}</h4>
             ${!mem ? '<span class="px-2 py-0.5 rounded-lg bg-violet-500/20 text-violet-300 font-extrabold text-[11px]">📺 관전 중</span>' : ''}
           </div>
@@ -47638,7 +47679,7 @@
     function renderTeamLiveRoomCard(r, myStu) {
       const isMine = myStu && isPvpRoomPlayer(r, myStu.id);
       const st = teamLiveStartState(r);
-      const full = st.nb >= TEAM_LIVE_MAX_PER_SIDE && st.nr >= TEAM_LIVE_MAX_PER_SIDE;
+      const full = st.nb >= teamMaxPerSide(r) && st.nr >= teamMaxPerSide(r);
       const humans = st.members.filter(m => !m.ai && m.id !== r.hostId).length;
       const watchingThis = !isMine && currentSpectatingPvpRoomId === r.roomId;
       const nSpec = pvpSpectatorList(r).length;
@@ -47647,8 +47688,10 @@
         <div class="bg-slate-950 border-2 ${isMine ? 'border-amber-500/60' : 'border-slate-800'} rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div class="flex items-center gap-2">
-              <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${r.status === 'waiting' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">${r.status === 'waiting' ? `🟢 모집 중 (${st.members.length}/10명)` : '🔥 팀전 진행중'}</span>
-              <span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-sky-500/20 text-sky-300">👥 팀전 ${st.nb}:${st.nr}</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${r.status === 'waiting' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">${r.status === 'waiting' ? `🟢 모집 중 (${st.members.length}/${teamMaxPerSide(r) * 2}명)` : (isFairTeamRoom(r) ? '🔥 결투 진행중' : '🔥 팀전 진행중')}</span>
+              ${isFairTeamRoom(r)
+                ? `<span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300">⚖️ 공정한 결투 ${fairTeamSizeOf(r)}:${fairTeamSizeOf(r)} · ${JOB_DEFS[fairDuelJobOf(r)].icon} ${JOB_DEFS[fairDuelJobOf(r)].name}</span>`
+                : `<span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-sky-500/20 text-sky-300">👥 팀전 ${st.nb}:${st.nr}</span>`}
               ${nSpec ? `<span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-violet-500/20 text-violet-300">📺 ${nSpec}명 관전</span>` : ''}
               <span class="font-bold text-sm text-white">${r.title || `${r.hostName}의 팀전방`}</span>
             </div>
@@ -47661,8 +47704,8 @@
               ? (isMine
                   ? '<span class="px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 font-extrabold text-xs">참여 중인 방</span>'
                   : `${watchBtn}${full
-                      ? '<span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-500 font-bold text-xs">정원 초과 (5:5)</span>'
-                      : `<button onclick="joinTeamLiveRoom('${r.roomId}')" class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs shadow">🚪 팀전 들어가기</button>`}`)
+                      ? `<span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-500 font-bold text-xs">정원 초과 (${teamMaxPerSide(r)}:${teamMaxPerSide(r)})</span>`
+                      : `<button onclick="joinTeamLiveRoom('${r.roomId}')" class="px-4 py-2 rounded-xl ${isFairTeamRoom(r) ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-sky-600 hover:bg-sky-500'} text-white font-extrabold text-xs shadow">🚪 ${isFairTeamRoom(r) ? '결투 들어가기' : '팀전 들어가기'}</button>`}`)
               : (isMine
                   ? '<span class="px-3 py-1.5 rounded-xl bg-rose-500/20 text-rose-300 font-bold text-xs">경기 진행중</span>'
                   : (humans
@@ -47673,11 +47716,38 @@
     }
 
     // 팀전 유닛 만들기: 각자 고른 용병 1명씩 (팀원 순서대로 위에서부터), 인원이 다르면 적은 팀에 팀원 용병을 무작위로 채움(AI)
+    // ⚖️ 공정한 결투 N:N 용병: 1:1과 똑같은 조건 (id는 모든 화면에서 같게 · 사람은 학생id, 빈 자리는 팀+순번)
+    function fairTeamMerc(room, uid, name, row) {
+      const m = fairDuelMerc(room, 'host');
+      return Object.assign(m, { id: uid, name, row, col: raidMercCol(m) });
+    }
+    function buildFairTeamUnits(r) {
+      const n = fairTeamSizeOf(r);
+      const out = {};
+      ['blue', 'red'].forEach(side => {
+        const list = teamSideMembers(r, side).slice(0, n);
+        const units = list.map((m, idx) => {
+          const u = createSimUnit(fairTeamMerc(r, 'fair_' + m.id, m.name, idx), null, side, 1.0);
+          u.name = `[${m.ai ? '🤖' : ''}${m.name}]${JOB_DEFS[fairDuelJobOf(r)].name}`;
+          if (!m.ai) u.liveOwnerId = m.id;
+          return u;
+        });
+        for (let idx = units.length; idx < n; idx++) {
+          const u = createSimUnit(fairTeamMerc(r, `fair_${side}_ai${idx}`, '🤖AI', idx), null, side, 1.0);
+          u.name = `[🤖AI]${JOB_DEFS[fairDuelJobOf(r)].name}`;
+          units.push(u);
+        }
+        out[side] = units;
+      });
+      return { blueUnits: out.blue, redUnits: out.red };
+    }
+
     function buildTeamLiveUnits(r) {
+      if (isFairTeamRoom(r)) return buildFairTeamUnits(r);
       const sides = { blue: [], red: [] };
       const usedIds = new Set();
       ['blue', 'red'].forEach(side => {
-        teamSideMembers(r, side).slice(0, TEAM_LIVE_MAX_PER_SIDE).forEach(m => {
+        teamSideMembers(r, side).slice(0, teamMaxPerSide(r)).forEach(m => {
           const stu = state.students.find(x => x.id === m.id) || m.snap;
           const merc = duelPickedMerc(stu, m.snap, m.pickId);
           if (!merc) return;
@@ -47688,7 +47758,7 @@
       if (!sides.blue.length || !sides.red.length) return null;
       if (r.fill && sides.blue.length !== sides.red.length) {
         const small = sides.blue.length < sides.red.length ? 'blue' : 'red';
-        const want = Math.min(TEAM_LIVE_MAX_PER_SIDE, Math.max(sides.blue.length, sides.red.length));
+        const want = Math.min(teamMaxPerSide(r), Math.max(sides.blue.length, sides.red.length));
         const pool = [];
         teamSideMembers(r, small).forEach(m => {
           const stu = state.students.find(x => x.id === m.id) || m.snap;
@@ -47714,17 +47784,20 @@
 
     window.createPvpLobbyRoom = async function (roomMode = 'team') {
       const myStu = getActiveStudent();
-      if (roomMode === 'teamLive') {
-        if (!myStu || !(myStu.roster || []).length) { showNotice('⚠️ 팀전방을 만들려면 먼저 용병을 1명 이상 고용해 주세요!'); return; }
+      const fairTeamSize = /^fairTeam[2-5]$/.test(roomMode) ? Number(roomMode.slice(-1)) : 0; // ⚖️ 공정한 결투 2:2~5:5
+      if (roomMode === 'teamLive' || fairTeamSize) {
+        if (fairTeamSize && !myStu) return;
+        if (fairTeamSize && !FAIR_DUEL_OPEN) { showNotice('⚖️ 공정한 결투는 지금 잠시 쉬고 있어요.'); return; }
+        if (!fairTeamSize && (!myStu || !(myStu.roster || []).length)) { showNotice('⚠️ 팀전방을 만들려면 먼저 용병을 1명 이상 고용해 주세요!'); return; }
         const titleInp = document.getElementById('pvpNewRoomTitleInput');
-        const customTitle = cleanUserText(titleInp?.value, 24) || `${myStu.name}의 실시간 팀전방`;
+        const customTitle = cleanUserText(titleInp?.value, 24) || (fairTeamSize ? `${myStu.name}의 공정한 결투 ${fairTeamSize}:${fairTeamSize}방` : `${myStu.name}의 실시간 팀전방`);
         if (titleInp) titleInp.value = '';
         // 방장이 바뀌어도 방 이름표(roomId)는 그대로라, 새로 만들 때마다 다른 이름표를 씀 (넘겨준 방과 안 겹치게)
         const roomId = 'pvp_' + myStu.id + '_' + Date.now().toString(36).slice(-5);
         leaveRoomsExcept('pvp', roomId);
         launchedLiveRoomIds.delete(roomId);
         currentJoinedPvpRoomId = roomId;
-        await savePvpRoomData(roomId, {
+        const teamRoom = {
           roomId,
           title: customTitle,
           hostId: myStu.id,
@@ -47734,12 +47807,16 @@
           guestId: null,
           guestReady: false,
           mode: 'teamLive',
-          members: { [myStu.id]: makeTeamMember(myStu, 'blue', { ready: true }) },
+          members: { [myStu.id]: makeTeamMember(myStu, 'blue', fairTeamSize ? { ready: true, pickId: 'fair' } : { ready: true }) },
           status: 'waiting',
           createdAt: Date.now()
-        });
+        };
+        if (fairTeamSize) Object.assign(teamRoom, { fairJob: 'warrior', fairSkills: fairDuelRollSkills('warrior'), fairSize: fairTeamSize });
+        await savePvpRoomData(roomId, teamRoom);
         try { teamMemberRef(roomId, myStu.id)?.onDisconnect().remove(); } catch (e) {}
-        showRewardBanner(`👥 [${customTitle}] 팀전방을 만들었어요! 친구들이 들어와 팀을 고르고 준비완료를 누르면 시작할 수 있어요.`);
+        showRewardBanner(fairTeamSize
+          ? `⚖️ [${customTitle}] 공정한 결투 ${fairTeamSize}:${fairTeamSize}방을 만들었어요! 싸울 직업을 고르고 친구들을 기다려요. (빈 자리는 AI가 채워요)`
+          : `👥 [${customTitle}] 팀전방을 만들었어요! 친구들이 들어와 팀을 고르고 준비완료를 누르면 시작할 수 있어요.`);
         return;
       }
       const fair = roomMode === 'fairDuel';
@@ -48735,7 +48812,7 @@
       launchSimulation({
         mode: 'pvp_realtime',
         title: isTeamLiveRoom(r)
-          ? `📺 관전 중: ${r.hostName}의 팀전 (${built.blueUnits.length}:${built.redUnits.length})`
+          ? `📺 관전 중: ${r.hostName}의 ${isFairTeamRoom(r) ? '⚖️ 공정한 결투' : '팀전'} (${built.blueUnits.length}:${built.redUnits.length})`
           : `📺 관전 중: ${r.hostName} vs ${r.guestName}${isFairDuelRoom(r) ? ' (⚖️ 공정한 결투)' : isDuelRoom(r) ? ' (1:1 용병 대결)' : isTotalRoom(r) ? ' (8:8 총력전)' : ' (5:5 결투)'}`,
         blueStudent: blueStu,
         redStudent: redStu,
@@ -48747,7 +48824,7 @@
       });
       if (!sim.running) return;
       sim.spectator = true;
-      sim.fairDuel = isFairDuelRoom(r); // 남은 시간 표시용 (오늘의 미션은 안 셈)
+      sim.fairDuel = isFairDuelRoom(r) || isFairTeamRoom(r); // 남은 시간 표시용 (오늘의 미션은 안 셈)
       sim.spectateFrom = Date.now();
       sim.spectateRoomId = r.roomId;
       // 고를 것 없이 보기만: 전투 방식 고르기 창을 닫고 자동(화면 이동만)으로 고정
@@ -48855,10 +48932,15 @@
         showNotice('⚠️ 팀전 용병 정보를 찾지 못했어요. 다시 시도해 주세요.');
         return;
       }
-      showRewardBanner(`👥 [실시간 팀전 시작!] 블루팀 ${built.blueUnits.length} vs 레드팀 ${built.redUnits.length} — 내 용병을 직접 조종하세요!`);
+      const fairTeam = isFairTeamRoom(r);
+      const fairJobName = JOB_DEFS[fairDuelJobOf(r)].name;
+      showRewardBanner(fairTeam
+        ? `⚖️ [공정한 결투 ${built.blueUnits.length}:${built.redUnits.length} 시작!] 모두 같은 ${fairJobName} Lv.${FAIR_DUEL_LEVEL} — 팀워크와 실력으로 승부!`
+        : `👥 [실시간 팀전 시작!] 블루팀 ${built.blueUnits.length} vs 레드팀 ${built.redUnits.length} — 내 용병을 직접 조종하세요!`);
       launchSimulation({
         mode: 'pvp_realtime',
-        title: `👥 실시간 팀전: 🔵 ${teamSideMembers(r, 'blue').map(m => m.name).join('·')} vs 🔴 ${teamSideMembers(r, 'red').map(m => m.name).join('·')}`,
+        title: `${fairTeam ? `⚖️ 공정한 결투 ${built.blueUnits.length}:${built.redUnits.length} (${fairJobName} Lv.${FAIR_DUEL_LEVEL})` : '👥 실시간 팀전'}: 🔵 ${teamSideMembers(r, 'blue').map(m => m.name).join('·')} vs 🔴 ${teamSideMembers(r, 'red').map(m => m.name).join('·')}`,
+        liveKind: fairTeam ? 'fairTeam' : undefined,
         blueStudent: myStu,
         redStudent: null,
         customBlueUnits: built.blueUnits,
@@ -48871,9 +48953,12 @@
       // 팀전은 직접 전투만: 내가 고른 용병을 바로 조종
       sim.duel1v1 = true;
       sim.teamLive = true;
+      if (fairTeam) sim.fairDuel = true; // 3분 제한 · 체력 많은 팀 승리
       const mine = sim.units.find(u => u.liveOwnerId === myStu.id);
       if (mine) setBattleControlMode('manual', mine.id, true);
-      addBattleLog('👥 [실시간 팀전] 내 용병을 직접 조종해서 팀과 함께 싸워요! 상대 팀을 모두 쓰러뜨리면 승리!');
+      addBattleLog(fairTeam
+        ? '⚖️ [공정한 결투] 모두 같은 용병이에요! 내 용병을 직접 조종해서 팀과 함께 싸워요. 3분 안에 못 끝나면 체력이 더 많은 팀이 승리!'
+        : '👥 [실시간 팀전] 내 용병을 직접 조종해서 팀과 함께 싸워요! 상대 팀을 모두 쓰러뜨리면 승리!');
       if (netRole && simHostId !== r.hostId) addBattleLog(isHost ? '⚙️ 내 기기가 가장 빨라서 이번 팀전 계산을 맡아요. (끝나면 방장은 그대로예요)' : `⚙️ ${(r.members[simHostId] && r.members[simHostId].name) || '친구'} 기기가 가장 빨라서 이번 팀전 계산을 맡아요.`);
       if (netRole) startLiveBattleNet(r.roomId, netRole, r.startedAt, false, true, humanGuests);
     }
