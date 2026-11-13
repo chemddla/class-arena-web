@@ -19576,7 +19576,7 @@
       // 협동 레이드: 다른 친구가 조종할 수 있는 그 친구 용병은 고를 수 없음 (연습 친구 용병은 고를 수 있음)
       const meId = getActiveStudent()?.id;
       const othersOwn = u => Boolean(u.liveOwnerId && u.liveOwnerId !== meId && ((sim.raidLive && sim.raidLive.humans.includes(u.liveOwnerId)) || sim.mode === 'world_boss'));
-      const mine = sim.units.filter(u => u.team === myTeam && (u.alive || (sim.mode === 'world_boss' && u.rushPending)) && u.monsterType !== 'scarecrow' && !othersOwn(u));
+      const mine = sim.units.filter(u => u.team === myTeam && (u.alive || (sim.mode === 'world_boss' && u.rushPending)) && u.monsterType !== 'scarecrow' && !othersOwn(u) && !u.towerHelperId); // 🤝 탑 도움 용병은 항상 AI
       list.innerHTML = mine.map(u => {
         const job = JOB_DEFS[u.job] || JOB_DEFS.warrior;
         return `<button type="button" data-unit-id="${u.id}" onclick="setBattleControlMode('manual', this.dataset.unitId)"
@@ -21302,6 +21302,7 @@
         </div>
         <div class="text-xs font-extrabold text-amber-300">⚔️ 출전 전투력 ${power.toLocaleString()}</div>
         ${formationEditorBodyHTML(d, roster, { cellFn: 'clickTowerFormationCell', toggleFn: 'toggleTowerFormationMerc' })}
+        ${TowerHelp.formationHTML(stu, d)}
         <div class="flex gap-2">
           <button type="button" onclick="resetTowerFormation()" class="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300">↺ 홈 진형</button>
           <button type="button" onclick="closeTowerFormation()" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300">취소</button>
@@ -21321,19 +21322,29 @@
         return;
       }
       const floorObj = hard ? towerHardFloorObj(baseFloor) : diff === 'easy' ? towerEasyFloorObj(baseFloor) : baseFloor;
+      // 🤝 이 층·난이도로 받은 도움 용병이 있으면 내 용병 뒤에 6번째로 넣음 (AI 자동 전투)
+      const help = TowerHelp.helperFor(stu, floorNum, diff);
+      const helpUnit = help ? TowerHelp.buildUnit(stu, help) : null;
       launchSimulation({
         mode: 'tower',
         title: `${floorObj.name}`,
         blueStudent: stu,
         towerFloorObj: floorObj,
-        rewardMc: floorObj.rewardMc
+        rewardMc: floorObj.rewardMc,
+        ...(helpUnit ? { customBlueUnits: [...(stu.roster || []).filter(m => m.deployed).map(m => createSimUnit(m, stu, 'blue', 1.0)), helpUnit] } : {})
       });
       if (!sim.running || sim.mode !== 'tower') return;
+      if (helpUnit) {
+        sim.meta.towerHelp = { helperId: help.helper.id, helperName: help.helper.name, rid: help.rid };
+        addBattleLog(`🤝 ${help.helper.name} 친구의 ${helpUnit.name}이(가) 도우러 왔어요! (AI 자동 전투)`);
+        renderLiveUnitStatus();
+      }
       // 자동/직접 전투를 고르기 전에 나가면 패배도 아니고 도전비용도 안 냄
       sim.entryCharge = () => {
         if (hard) stu.mc = (stu.mc || 0) - TOWER_HARD.cost;
         if (typeof saveState === 'function') saveState();
         startTowerLiveBroadcast(stu, floorObj);
+        if (sim.meta && sim.meta.towerHelp) TowerHelp.touch(stu.id);
       };
     }
 
@@ -21354,7 +21365,8 @@
       startSoloLiveBroadcast(stu, {
         id: stu.id, name: cleanUserText(stu.name, 30) || '친구', floor: floorObj.floor,
         title: cleanUserText(floorObj.name, 60) || `${floorObj.floor}층`,
-        replay: floorObj.hard ? Boolean(towerHardClearsOf(stu)[floorObj.floor]) : floorObj.floor < (stu.towerFloor || 1), at: Date.now()
+        replay: floorObj.hard ? Boolean(towerHardClearsOf(stu)[floorObj.floor]) : floorObj.floor < (stu.towerFloor || 1), at: Date.now(),
+        ...(sim.meta && sim.meta.towerHelp ? { helpId: sim.meta.towerHelp.helperId } : {}) // 도움 용병을 보낸 친구가 이 목록을 보고 자동으로 관전하러 옴
       });
     }
 
@@ -21493,6 +21505,7 @@
     // 탑 도전 목록이 바뀔 때: 보던 친구가 목록에서 사라졌는데 결과가 안 오면 잠시 뒤 관전을 끝냄
     function onTowerLiveIndexChanged() {
       renderTowerLiveList();
+      TowerHelp.checkAutoWatch();
       const tw = sim.towerWatch;
       const listed = () => Boolean(towerLiveCache && towerLiveCache[tw.stuId] && towerLiveCache[tw.stuId].name);
       if (!tw || !sim.spectator || !sim.running) return;
@@ -21581,6 +21594,323 @@
       setTowerWatchEntry(stuId, me);
       renderTowerLiveList();
     };
+
+    // ===== 🤝 모험의 탑 도움 요청 =====
+    // 층·난이도를 고른 입장 창(용병 배치)에서 도움을 요청하면 pvp_live/tower_help/{요청한 학생id}에 요청을 적고 전체 채팅에 알림(t: 'help')을 올림
+    // 채팅에서 [도와주기]를 누른 친구가 용병 1명을 보냄(transaction으로 먼저 보낸 1명만) → 요청한 친구는 내 용병 5명 + 도움 용병 1명(AI 자동 전투)으로 출전
+    // 용병을 보낸 친구는 직접 싸울 수 없고, 친구가 출전하면(tower_index에 helpId) 자동으로 관전하러 감
+    // 처음 깨는 층(보상 받는 층)을 클리어하면 요청한 친구 기기가 도와준 친구 선물함으로 2,000 CA를 보냄 · 전투가 끝나면(이기든 지든) 요청을 지움
+    // 요청은 한 사람당 한 번에 하나 · 다른 친구를 돕는 중(그 요청이 남아 있는 동안)에는 또 다른 친구를 도울 수 없음
+    const TOWER_HELP_INDEX = 'tower_help';
+    const TOWER_HELP_REWARD = 2000;
+    const TOWER_HELP_MAX_AGE_MS = 30 * 60 * 1000; // 이보다 오래된 요청은 끊긴 것으로 봄
+    const TOWER_HELP_ASK_GAP_MS = 30 * 1000;      // 요청을 취소하고 다시 올릴 때 채팅 도배 방지
+    let towerHelpCache = {};
+    let activeTowerHelpRef = null;
+    const TowerHelp = {
+      lastAskAt: 0,
+      watchFor: null,   // 내가 용병을 보낸 친구 id (그 친구가 출전하면 자동 관전)
+      watchRid: null,
+      autoAt: 0,
+      ref(stuId) { const r = liveRoomRef(TOWER_HELP_INDEX); return r && stuId ? r.child(stuId) : null; },
+      fresh(r) { return Boolean(r && typeof r === 'object' && r.id && r.rid && liveNum(r.at) > Date.now() - TOWER_HELP_MAX_AGE_MS); },
+      diffLabel(diff) { return diff === 'hard' ? ' 🔥하드' : diff === 'easy' ? ' 🌱이지' : ''; },
+      requestOf(stuId) { const r = stuId && towerHelpCache[stuId]; return this.fresh(r) ? r : null; },
+      // 내가 지금 돕고 있는 친구의 요청 (없으면 null)
+      helpingOf(meId) {
+        return Object.values(towerHelpCache || {}).find(r => this.fresh(r) && r.id !== meId && r.helper && r.helper.id === meId) || null;
+      },
+      // 이 층·난이도로 받은 도움 (용병까지 왔을 때만)
+      helperFor(stu, floor, diff) {
+        const r = stu && this.requestOf(stu.id);
+        return r && r.helper && liveNum(r.floor) === floor && towerDiffOf(r.diff) === towerDiffOf(diff) ? r : null;
+      },
+      helperMerc(r) {
+        const owner = r && r.helper && state.students.find(s => s.id === r.helper.id);
+        const merc = owner && (owner.roster || []).find(m => m.id === r.helper.mercId);
+        return merc ? { owner, merc } : null;
+      },
+      // 도움 용병을 내 진형의 빈 칸에 넣은 전투 유닛
+      buildUnit(stu, r) {
+        const got = this.helperMerc(r);
+        if (!got) return null;
+        const used = new Set((stu.roster || []).filter(m => m.deployed).map(m => `${m.row ?? 2},${m.col ?? 1}`));
+        const own = `${got.merc.row ?? 2},${got.merc.col ?? 1}`;
+        let cell = used.has(own) ? null : own;
+        for (const c of [1, 0, 2]) for (const rr of [2, 1, 3, 0, 4]) { if (!cell && rr < FORMATION_ROWS && c < FORMATION_COLS && !used.has(`${rr},${c}`)) cell = `${rr},${c}`; }
+        const [row, col] = (cell || own).split(',').map(Number);
+        const unit = createSimUnit({ ...JSON.parse(JSON.stringify(got.merc)), row, col, deployed: true }, got.owner, 'blue', 1.0);
+        unit.towerHelperId = got.owner.id; // 직접 전투로 고를 수 없음 (항상 AI)
+        return unit;
+      },
+
+      subscribe(cleanCode, db) {
+        if (activeTowerHelpRef && typeof activeTowerHelpRef.off === 'function') activeTowerHelpRef.off();
+        activeTowerHelpRef = db.ref(`classes/${cleanCode}/pvp_live/${TOWER_HELP_INDEX}`);
+        activeTowerHelpRef.on('value', snap => {
+          towerHelpCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
+          this.onChanged();
+        });
+      },
+
+      onChanged() {
+        const me = getActiveStudent();
+        // 내가 용병을 보낸 요청이 사라짐(친구 전투가 끝났거나 취소) → 도움 끝
+        if (this.watchFor) {
+          const r = towerHelpCache[this.watchFor];
+          if (!(this.fresh(r) && r.rid === this.watchRid && r.helper && me && r.helper.id === me.id)) {
+            const watching = sim.running && sim.spectator && sim.towerWatch && sim.towerWatch.stuId === this.watchFor;
+            if (!watching && !r) showNotice('🤝 도움 요청이 끝났어요. 이제 다른 친구도 도울 수 있어요.');
+            this.watchFor = this.watchRid = null;
+          }
+        }
+        // 내 요청에 친구가 용병을 보냈으면 알려 줌
+        const mine = me && this.requestOf(me.id);
+        if (mine && mine.helper && this.notifiedRid !== mine.rid) {
+          this.notifiedRid = mine.rid;
+          const got = this.helperMerc(mine);
+          showRewardBanner(`🤝 ${mine.helper.name} 친구가 용병 [${got ? got.merc.name : mine.helper.mercName || '용병'}]을(를) 보내 줬어요! ${liveNum(mine.floor)}층에 6명으로 출전할 수 있어요.`);
+        }
+        if (towerFormationDraft) renderTowerFormationModal();
+        if (typeof GlobalChat !== 'undefined') { GlobalChat.renderList(); GlobalChat.refreshPeek(); }
+        this.checkAutoWatch();
+      },
+
+      // 용병을 보낸 친구가 출전하면(관전 목록에 helpId = 나) 바로 관전하러 감
+      checkAutoWatch() {
+        const id = this.watchFor;
+        const me = getActiveStudent();
+        if (!id || !me) return;
+        const run = towerLiveCache && towerLiveCache[id];
+        if (!run || run.helpId !== me.id || isRankedLiveRun(run) || isDefenseLiveRun(run)) return;
+        if (sim.running && sim.spectator && sim.towerWatch && sim.towerWatch.stuId === id) return; // 이미 보는 중
+        if (sim.running && !sim.spectator) return; // 내 전투 중이면 억지로 옮기지 않음 (목록에서 직접 관전 가능)
+        if (Date.now() - this.autoAt < 5000) return;
+        this.autoAt = Date.now();
+        if (document.getElementById('studentTab-tower')?.classList.contains('hidden')) switchStudentTab('tower');
+        showRewardBanner(`📺 ${run.name} 친구가 출전했어요! 내 용병이 싸우는 모습을 관전해요.`);
+        spectateTowerRun(id);
+      },
+
+      // 탑 입장 창 아래 도움 요청 칸
+      formationHTML(stu, d) {
+        if (!stu || !d) return '';
+        const diff = d.hard ? 'hard' : d.easy ? 'easy' : 'normal';
+        const r = this.requestOf(stu.id);
+        const box = inner => `<div class="rounded-2xl border-2 border-sky-500/50 bg-sky-500/10 p-3 flex flex-col gap-2">${inner}</div>`;
+        if (!r) {
+          const replay = d.hard ? Boolean(towerHardClearsOf(stu)[d.floor]) : d.floor < (stu.towerFloor || 1);
+          return box(`
+            <div class="flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <div class="text-xs font-extrabold text-sky-200">🆘 친구에게 도움 요청</div>
+                <div class="text-[10px] text-slate-300 leading-relaxed">전체 채팅에 알림이 떠요. 친구가 용병 1명을 보내 주면 <b>6명</b>으로 출전해요 (친구 용병은 AI가 싸워요).
+                ${replay ? '<br><span class="text-amber-300">이미 깬 층이라 도와준 친구 보상은 없어요.</span>' : `<br>클리어하면 도와준 친구가 <b class="text-amber-300">${TOWER_HELP_REWARD.toLocaleString()} CA</b>를 받아요.`}</div>
+              </div>
+              <button type="button" onclick="askTowerHelp()" class="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-xs font-extrabold text-white shadow shrink-0">🆘 도움 요청</button>
+            </div>`);
+        }
+        const cancelBtn = `<button type="button" onclick="cancelTowerHelp()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-300 shrink-0">요청 취소</button>`;
+        if (liveNum(r.floor) !== d.floor || towerDiffOf(r.diff) !== diff) {
+          return box(`<div class="flex items-center justify-between gap-2"><div class="text-[11px] font-bold text-slate-300">🆘 ${liveNum(r.floor)}층${this.diffLabel(r.diff)} 도움 요청 중이에요. 도움은 그 층에서만 함께해요.</div>${cancelBtn}</div>`);
+        }
+        if (!r.helper) {
+          return box(`<div class="flex items-center justify-between gap-2"><div class="text-[11px] font-bold text-sky-200">⏳ 도움 요청 중… 친구가 채팅에서 용병을 보내 주길 기다려요. <span class="text-slate-400">(바로 출전하면 5명으로 싸워요)</span></div>${cancelBtn}</div>`);
+        }
+        const got = this.helperMerc(r);
+        const m = got && got.merc;
+        return box(`
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+              ${m ? getMercIconHTML(m.job, m.skinVariant || 0, 34) : '🤝'}
+              <div class="min-w-0">
+                <div class="text-xs font-extrabold text-emerald-300 truncate">🤝 ${r.helper.name} 친구의 ${m ? m.name : '용병'} 합류!</div>
+                <div class="text-[10px] text-slate-300">${m ? `${(JOB_DEFS[m.job] || {}).name || ''} · Lv.${m.level || 1} · 전투력 ${calcMercCombatPower(m, got.owner).toLocaleString()} · ` : '용병 정보를 찾지 못해 5명으로 싸워요 · '}빈 칸에 자동 배치 · AI 자동 전투</div>
+              </div>
+            </div>
+            ${cancelBtn}
+          </div>`);
+      },
+
+      async ask() {
+        const d = towerFormationDraft;
+        const stu = getActiveStudent();
+        const s = typeof GlobalChat !== 'undefined' ? GlobalChat.studentSender() : null;
+        if (!d || !stu) return;
+        const diff = d.hard ? 'hard' : d.easy ? 'easy' : 'normal';
+        const ref = this.ref(stu.id);
+        if (!s || !ref || !GlobalChat.ref) { showNotice('⚠️ 서버에 연결된 학급에서 로그인해야 도움을 요청할 수 있어요.'); return; }
+        if (this.requestOf(stu.id)) { showNotice('⚠️ 도움 요청은 한 번에 하나만 할 수 있어요. 먼저 지금 요청을 취소해 주세요.'); return; }
+        const blocked = towerEntryBlockReason(stu, d.floor, diff);
+        if (blocked) { showNotice(blocked); return; }
+        const wait = TOWER_HELP_ASK_GAP_MS - (Date.now() - this.lastAskAt);
+        if (wait > 0) { showNotice(`⏳ ${Math.ceil(wait / 1000)}초 뒤에 다시 도움을 요청할 수 있어요.`); return; }
+        const floorObj = TOWER_FLOORS.find(f => f.floor === d.floor);
+        const title = cleanUserText(`${floorObj ? floorObj.name : `${d.floor}층`}${this.diffLabel(diff)}`, 60);
+        const rid = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        const info = { id: stu.id, name: cleanUserText(stu.name, 30) || '친구', floor: d.floor, diff, title, rid, at: Date.now() };
+        this.lastAskAt = Date.now();
+        try {
+          try { ref.onDisconnect().remove(); } catch (e) {}
+          await ref.set(info);
+          towerHelpCache[stu.id] = info;
+          await GlobalChat.post({ from: s.id, name: s.name, t: 'help', text: cleanUserText(`🆘 모험의 탑 ${title} 도와줄 친구 구해요! 용병 1명을 보내 주세요 👉`, GLOBAL_CHAT_TEXT_MAX), roomId: `${stu.id}~${rid}`, title });
+          showRewardBanner('🆘 전체 채팅에 도움을 요청했어요! 친구가 용병을 보내 주면 알려 줄게요.');
+        } catch (e) {
+          console.warn('[탑 도움 요청 실패]:', e);
+          this.lastAskAt = 0;
+          ref.remove().catch(() => {});
+          showNotice('⚠️ 도움 요청을 보내지 못했어요. 로그인 상태를 확인해 주세요.');
+        }
+        if (towerFormationDraft) renderTowerFormationModal();
+      },
+
+      // 내 요청을 지움 (취소 · 전투가 끝남)
+      close(stuId) {
+        const ref = this.ref(stuId);
+        if (!ref || !towerHelpCache[stuId]) return;
+        delete towerHelpCache[stuId];
+        try { ref.onDisconnect().cancel(); } catch (e) {}
+        ref.remove().catch(() => {});
+      },
+
+      // 출전할 때 요청 시각을 새로 적음 (오래된 요청으로 보고 지우지 않게)
+      touch(stuId) {
+        const ref = this.ref(stuId);
+        if (ref && this.requestOf(stuId)) ref.child('at').set(Date.now()).catch(() => {});
+      },
+
+      // 채팅 알림 상태: open(도울 수 있음) · taken(이미 도움 받음) · mine(내 요청) · closed(끝남)
+      chatState(m) {
+        const [reqId, rid] = String(m.roomId || '').split('~');
+        const r = this.requestOf(reqId);
+        const s = GlobalChat.sender();
+        if (!r || r.rid !== rid) return { state: 'closed', reqId, rid };
+        if (s && s.id === reqId) return { state: 'mine', r, reqId, rid };
+        if (r.helper) return { state: s && r.helper.id === s.id ? 'sent' : 'taken', r, reqId, rid };
+        return { state: 'open', r, reqId, rid };
+      },
+
+      chatHTML(m, name, text) {
+        const cs = this.chatState(m);
+        const btn = cs.state === 'open'
+          ? `<button type="button" onclick="event.stopPropagation(); openTowerHelpPicker('${cs.reqId}', '${cs.rid}')" class="gch-join">🤝 도와주기</button>`
+          : cs.state === 'sent' ? '<span class="gch-join gch-join-in">보냄</span>'
+          : cs.state === 'mine' ? `<span class="gch-join gch-join-in">${cs.r.helper ? '도움 받음' : '내 요청'}</span>`
+          : `<span class="gch-join gch-join-off">${cs.state === 'taken' ? '도움 받음' : '마감'}</span>`;
+        const clickable = cs.state === 'open';
+        return `
+          <div ${clickable ? `role="button" tabindex="0" onclick="openTowerHelpPicker('${cs.reqId}', '${cs.rid}')" onkeydown="if(event.key==='Enter')openTowerHelpPicker('${cs.reqId}', '${cs.rid}')"` : ''} class="gch-promo${clickable ? '' : ' gch-promo-off'}">
+            <div class="gch-promo-body">
+              <div class="gch-promo-who">🆘 ${name}</div>
+              <div class="gch-promo-text">${text}</div>
+            </div>
+            ${btn}
+          </div>`;
+      },
+
+      // 도울 수 없는 이유 (도울 수 있으면 '')
+      helpBlockReason(me, reqId, rid) {
+        const r = this.requestOf(reqId);
+        if (!me) return 'ℹ️ 학생으로 로그인해야 도울 수 있어요.';
+        if (reqId === me.id) return 'ℹ️ 내 도움 요청이에요.';
+        if (!r || r.rid !== rid) return '⚠️ 이미 끝난 도움 요청이에요.';
+        if (r.helper) return '⚠️ 다른 친구가 먼저 용병을 보냈어요.';
+        const busy = this.helpingOf(me.id);
+        if (busy) return `⚠️ 지금 ${busy.name} 친구를 돕고 있어요. ${busy.name} 친구 전투가 끝나야 다른 친구를 도울 수 있어요.`;
+        if (sim.running && !sim.spectator) return '⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.';
+        if (!(me.roster || []).length) return '⚠️ 보낼 용병이 없어요. 먼저 용병을 영입해 주세요.';
+        return '';
+      },
+
+      openPicker(reqId, rid) {
+        const s = GlobalChat.studentSender();
+        const me = s && state.students.find(x => x.id === s.id);
+        const why = this.helpBlockReason(me, reqId, rid);
+        if (why) { showNotice(why); GlobalChat.renderList(); return; }
+        const r = this.requestOf(reqId);
+        document.getElementById('towerHelpPickerModal')?.remove();
+        const mercs = (me.roster || []).slice().sort((a, b) => calcMercCombatPower(b, me) - calcMercCombatPower(a, me));
+        const el = document.createElement('div');
+        el.id = 'towerHelpPickerModal';
+        el.className = 'gl-skin fixed inset-0 z-[75] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4';
+        el.onclick = e => { if (e.target === el) el.remove(); };
+        el.innerHTML = `
+          <div class="bg-slate-900 border-2 border-sky-500/60 rounded-3xl max-w-md w-full max-h-[88vh] overflow-y-auto p-5 shadow-2xl flex flex-col gap-3">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <h3 class="font-title text-xl text-white">🤝 ${cleanUserText(r.name, 30)} 친구 돕기</h3>
+                <div class="text-[11px] text-slate-400 mt-0.5">🏰 ${cleanUserText(r.title || `${liveNum(r.floor)}층`, 60)} · 보낼 용병 1명을 골라요</div>
+              </div>
+              <button type="button" data-close class="text-slate-400 hover:text-white font-bold">✕</button>
+            </div>
+            <div class="text-[11px] text-slate-300 leading-relaxed bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+              보낸 용병은 친구 팀에서 <b>AI가 자동으로</b> 싸우고, 나는 <b>관전</b>만 해요 (용병은 그대로 내 것이에요).<br>
+              친구가 처음 깨는 층을 클리어하면 <b class="text-amber-300">${TOWER_HELP_REWARD.toLocaleString()} CA</b>를 받아요. 친구 전투가 끝날 때까지 다른 친구는 도울 수 없어요.
+            </div>
+            <div class="flex flex-col gap-1.5">
+              ${mercs.map(m => `<button type="button" data-merc="${m.id}" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-sky-700 border border-slate-700 text-left flex items-center gap-2">
+                ${getMercIconHTML(m.job, m.skinVariant || 0, 34)}
+                <span class="min-w-0 flex-1"><span class="block text-xs font-extrabold text-white truncate">${m.name}</span><span class="block text-[10px] text-slate-400">${(JOB_DEFS[m.job] || {}).name || ''} · Lv.${m.level || 1}</span></span>
+                <span class="text-[11px] font-extrabold text-amber-300 shrink-0">⚔️ ${calcMercCombatPower(m, me).toLocaleString()}</span>
+              </button>`).join('')}
+            </div>
+          </div>`;
+        el.querySelector('[data-close]').onclick = () => el.remove();
+        el.querySelectorAll('[data-merc]').forEach(b => { b.onclick = () => this.send(reqId, rid, b.dataset.merc); });
+        document.body.appendChild(el);
+      },
+
+      async send(reqId, rid, mercId) {
+        const s = GlobalChat.studentSender();
+        const me = s && state.students.find(x => x.id === s.id);
+        const merc = me && (me.roster || []).find(m => m.id === mercId);
+        const why = this.helpBlockReason(me, reqId, rid);
+        if (why || !merc) { showNotice(why || '⚠️ 용병을 찾지 못했어요.'); return; }
+        const ref = this.ref(reqId);
+        if (!ref) { showNotice('⚠️ 서버에 연결되어 있지 않아 도울 수 없어요.'); return; }
+        document.getElementById('towerHelpPickerModal')?.remove();
+        const helper = { id: me.id, name: cleanUserText(me.name, 30) || '친구', mercId: merc.id, mercName: cleanUserText(merc.name, 30), at: Date.now() };
+        let res = null;
+        try {
+          // 먼저 보낸 1명만 (요청이 그대로이고 아직 아무도 안 보냈을 때만 씀)
+          res = await ref.transaction(cur => {
+            if (!cur || cur.rid !== rid || cur.helper) return; // 그만둠
+            return { ...cur, helper };
+          });
+        } catch (e) { console.warn('[탑 도움 보내기 실패]:', e); }
+        if (!res || !res.committed) { showNotice('⚠️ 다른 친구가 먼저 보냈거나 요청이 끝났어요.'); GlobalChat.renderList(); return; }
+        this.watchFor = reqId;
+        this.watchRid = rid;
+        this.autoAt = 0;
+        const r = this.requestOf(reqId) || {};
+        GlobalChat.renderList();
+        switchStudentTab('tower');
+        showRewardBanner(`🤝 ${cleanUserText(r.name || '친구', 30)} 친구에게 [${merc.name}]을(를) 보냈어요! 친구가 출전하면 자동으로 관전해요.`);
+        this.checkAutoWatch();
+      },
+
+      // 탑 전투가 끝남 (요청한 친구 기기): 보상 보내고 요청 지움 · 결과 문구를 돌려줌
+      finish(stu, meta, blueWon, firstClear, forfeited) {
+        const h = meta && meta.towerHelp;
+        if (!h || !stu) return '';
+        this.close(stu.id);
+        if (!blueWon || forfeited) return '';
+        if (!firstClear) return ` 🤝 이미 깬 층이라 ${h.helperName} 친구 도움 보상은 없어요.`;
+        sendToStudent(h.helperId, { mc: TOWER_HELP_REWARD, kind: 'tower_help', note: `🏰 ${cleanUserText(stu.name, 20)} 친구 모험의 탑 ${meta.towerFloorObj ? meta.towerFloorObj.floor : ''}층 도움 보상` });
+        return ` 🤝 도와준 ${h.helperName} 친구에게 ${TOWER_HELP_REWARD.toLocaleString()} CA가 갔어요!`;
+      }
+    };
+    window.askTowerHelp = () => TowerHelp.ask();
+    window.cancelTowerHelp = function () {
+      const stu = getActiveStudent();
+      if (!stu || !TowerHelp.requestOf(stu.id)) return;
+      TowerHelp.close(stu.id);
+      showNotice('🆘 도움 요청을 취소했어요.');
+      if (towerFormationDraft) renderTowerFormationModal();
+      GlobalChat.renderList();
+    };
+    window.openTowerHelpPicker = (reqId, rid) => TowerHelp.openPicker(reqId, rid);
 
     function startStudentPvpBattle(enemyStuId, pvpMode = 'pvp_async') {
       const myStu = getActiveStudent();
@@ -31374,7 +31704,7 @@
       const meta = sim.meta || {};
       stu.matchCount = (stu.matchCount || 0) + 1;
       // 오늘의 미션: 내가 데려간 격투가·화염술사·정령사 용병이 있었던 전투 (모든 모드, 중간 포기 제외)
-      if (!(sim.forfeitTeam && sim.forfeitTeam === sim.myTeam) && sim.units.some(u => u.team === (sim.myTeam || 'blue') && !u.isClone && !u.monsterType && DAILY_MISSION_NEW_JOBS.includes(u.job) && !(u.liveOwnerId && u.liveOwnerId !== stu.id))) DailyMission.progress('newJobBattle', 1, stu);
+      if (!(sim.forfeitTeam && sim.forfeitTeam === sim.myTeam) && sim.units.some(u => u.team === (sim.myTeam || 'blue') && !u.isClone && !u.monsterType && DAILY_MISSION_NEW_JOBS.includes(u.job) && !(u.liveOwnerId && u.liveOwnerId !== stu.id) && !u.towerHelperId)) DailyMission.progress('newJobBattle', 1, stu);
       recordCodexKills(stu);
       if (sim.mode === 'monster_rush') { finishMonsterRush(stu); return; }
       if (sim.mode === 'dungeon') { finishDungeon(stu, blueWon); return; }
@@ -31420,6 +31750,7 @@
         stu.eliteSeason = ELITE_SEASON;
       }
 
+      const towerHelpNote = sim.mode === 'tower' ? TowerHelp.finish(stu, meta, blueWon, isFirstTowerClear, iForfeited) : ''; // 🤝 도와준 친구 보상 · 요청 지움
       if (isFirstTowerClear) getDailyRewardBook(stu).towerClears = (getDailyRewardBook(stu).towerClears || 0) + 1;
       if (isFirstTowerClear && towerHard) {
         stu.towerHardCleared = { ...towerHardClearsOf(stu), [meta.towerFloorObj.floor]: true };
@@ -31479,6 +31810,7 @@
         : (reward > 0
           ? `전투 보상으로 💰 ${reward} CA를 받았어요!${isFirstTowerClear ? ` (오늘 남은 탑 클리어: ${getTowerClearsLeft(stu)}회)` : isFirstEliteClear ? ` (오늘 남은 엘리트 보스 클리어: ${getEliteClearsLeft(stu)}회)` : rewardCategory ? ` (오늘 남은 ${DAILY_REWARD_LABELS[rewardCategory]} 보상: ${getDailyRewardLeft(stu, rewardCategory)}회)` : ''}`
           : dailyRewardDoneText(rewardCategory));
+      if (towerHelpNote) document.getElementById('battleResultDesc').textContent += towerHelpNote;
       if (pvpScoreDelta) {
         document.getElementById('battleResultDesc').textContent += ` 🏆 랭킹 점수 ${pvpScoreDelta > 0 ? '+' : ''}${pvpScoreDelta}점 (현재 ${stu.pvpScore}점)`;
       }
@@ -44517,7 +44849,8 @@
           if (mercNames.length) parts.push(`용병 [${mercNames.join(', ')}]`);
           if (mcSum > 0) parts.push(`${mcSum.toLocaleString()} CA`);
           const notes = gifts.map(g => cleanUserText(g.note || '', 120)).filter(Boolean).slice(0, 2).join(' / ');
-          showRewardBanner(`🎁 친구와의 거래로 ${parts.join(' + ')}을(를) 받았어요!${notes ? ` (${notes})` : ''}`);
+          if (gifts.every(g => g.kind === 'tower_help')) showRewardBanner(`🤝 모험의 탑 도움 보상으로 ${mcSum.toLocaleString()} CA를 받았어요!${notes ? ` (${notes})` : ''}`);
+          else showRewardBanner(`🎁 친구와의 거래로 ${parts.join(' + ')}을(를) 받았어요!${notes ? ` (${notes})` : ''}`);
         } catch (e) {
           // 다른 탭이 먼저 받았거나 로그인이 풀림 → 더한 것을 되돌림
           me.mc = (Number(me.mc) || 0) - added.reduce((s, a) => s + a.mc, 0);
@@ -45321,6 +45654,7 @@
         const name = m.from === 'teacher' ? '👩‍🏫 선생님' : cleanUserText((stu && stu.name) || m.name || '친구', 40);
         const text = cleanUserText(m.text, GLOBAL_CHAT_TEXT_MAX);
         if (m.t === 'sr' || m.t === 'hidden') return `<div class="gch-note gch-note-${m.t}">${text}</div>`;
+        if (m.t === 'help' && m.roomId) return TowerHelp.chatHTML(m, name, text); // 🤝 모험의 탑 도움 요청
         if (m.t === 'promo' && m.kind && m.roomId) {
           const ps = this.promoState(m);
           const btn = ps.state === 'open'
@@ -45358,13 +45692,21 @@
       peek(m) {
         const el = document.getElementById('globalChatPeek');
         if (!el) return;
+        this.peekMsg = m;
         el.innerHTML = this.lineHTML(m);
         el.classList.remove('hidden');
         clearTimeout(this.peekTimer);
         this.peekTimer = setTimeout(() => this.hidePeek(), GLOBAL_CHAT_PEEK_MS);
       },
 
+      // 떠 있는 알림의 상태(도와주기 → 마감 등)만 다시 그림
+      refreshPeek() {
+        const el = document.getElementById('globalChatPeek');
+        if (el && this.peekMsg && !el.classList.contains('hidden')) el.innerHTML = this.lineHTML(this.peekMsg);
+      },
+
       hidePeek() {
+        this.peekMsg = null;
         clearTimeout(this.peekTimer);
         document.getElementById('globalChatPeek')?.classList.add('hidden');
       }
@@ -46358,6 +46700,8 @@
         onTowerLiveIndexChanged();
         renderSideWatchPanel();
       });
+      // 0-0) 모험의 탑 도움 요청 (/classes/{code}/pvp_live/tower_help)
+      TowerHelp.subscribe(cleanCode, db);
       // 0-1) 펫 러닝을 달리는 친구 목록 (관전용, /classes/{code}/pvp_live/petrun_index)
       activePetRunLiveRef = db.ref(`classes/${cleanCode}/pvp_live/petrun_index`);
       activePetRunLiveRef.on('value', (snap) => {
