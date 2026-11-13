@@ -782,7 +782,8 @@
   // ── 스타일: 아이콘마다 class 하나 ──
   let css = '.pxi{display:inline-block;width:1.15em;height:1.15em;vertical-align:-0.2em;line-height:1.15em;'
     + 'background:no-repeat center/contain;image-rendering:pixelated;color:transparent!important;-webkit-text-fill-color:transparent!important;'
-    + 'text-shadow:none!important;overflow:hidden;white-space:nowrap;text-indent:-99em;font-style:normal}';
+    + 'text-shadow:none!important;overflow:hidden;white-space:nowrap;text-indent:-99em;font-style:normal}'
+    + '.pxe-x{display:none!important}';
   for (const name in ICONS) css += `.pxi-${name}{background-image:url("data:image/svg+xml,${encodeURIComponent(svgOf(ICONS[name]))}")}`;
   const style = document.createElement('style');
   style.id = 'pixel-icons-css';
@@ -794,27 +795,55 @@
   const keys = Object.keys(MAP).sort((a, b) => b.length - a.length);
   const RE = new RegExp('(?:' + keys.map(esc).join('|') + ')\\uFE0F?', 'gu');
   const TEST = new RegExp(RE.source, 'u');
-  const SKIP = 'script,style,textarea,input,select,option,svg,canvas,title,noscript,[contenteditable],.pxi,.no-pxi';
+  const SKIP = 'script,style,textarea,input,select,option,svg,canvas,title,noscript,[contenteditable],.pxi,.pxe-x,.no-pxi';
+
+  // 도트 아이콘이 없는 기본 이모지: 문구 옆에 붙은 것은 숨김 (글자는 span 안에 남겨 textContent 검사는 그대로)
+  //   이모지만 있는 버튼·링크 같은 곳은 그대로 둠
+  const EMO = String.raw`(?:\p{Emoji_Presentation}|\p{Extended_Pictographic}\uFE0F)(?:\u200D\p{Extended_Pictographic}\uFE0F?)*[\u{1F3FB}-\u{1F3FF}]?`;
+  const ALL = new RegExp('(?:' + keys.map(esc).join('|') + ')' + String.raw`\uFE0F?|` + EMO, 'gu');
+  const ANY = new RegExp(EMO + '|(?:' + keys.map(esc).join('|') + ')', 'u');
+  const STRIP = new RegExp(EMO + String.raw`|[\uFE0F\u200D\s]`, 'gu');
+  const hasWords = el => !!el && (el.textContent || '').replace(STRIP, '').length > 0;
+  function nextToText(node) {
+    if (node.nodeValue.replace(STRIP, '').length) return true;
+    let el = node.parentElement;
+    for (let i = 0; i < 2 && el; i++) {
+      if (el.matches('button,a,[role=button],label,option')) return hasWords(el);
+      if (hasWords(el)) return true;
+      el = el.parentElement;
+    }
+    return false;
+  }
 
   function convertText(node) {
     const s = node.nodeValue;
-    if (!s || !TEST.test(s)) return;
+    if (!s || !ANY.test(s)) return;
     const parent = node.parentElement;
     if (!parent || parent.closest(SKIP)) return;
+    const hideRaw = nextToText(node);
     const frag = document.createDocumentFragment();
-    let last = 0;
-    RE.lastIndex = 0;
-    for (let m; (m = RE.exec(s));) {
-      if (m.index > last) frag.appendChild(document.createTextNode(s.slice(last, m.index)));
+    let last = 0, changed = false;
+    ALL.lastIndex = 0;
+    for (let m; (m = ALL.exec(s));) {
       const base = m[0].replace('️', '');
+      const icon = MAP[base];
+      if (!icon && !hideRaw) continue;
+      if (m.index > last) frag.appendChild(document.createTextNode(s.slice(last, m.index)));
       const span = document.createElement('span');
-      span.className = 'pxi pxi-' + MAP[base];
-      span.setAttribute('role', 'img');
-      span.setAttribute('aria-label', base);
+      if (icon) {
+        span.className = 'pxi pxi-' + icon;
+        span.setAttribute('role', 'img');
+        span.setAttribute('aria-label', base);
+      } else {
+        span.className = 'pxe-x';
+        span.setAttribute('aria-hidden', 'true');
+      }
       span.textContent = m[0];
       frag.appendChild(span);
       last = m.index + m[0].length;
+      changed = true;
     }
+    if (!changed) return;
     if (last < s.length) frag.appendChild(document.createTextNode(s.slice(last)));
     node.parentNode.replaceChild(frag, node);
   }
@@ -826,7 +855,7 @@
     if (root.nodeType === 1 && root.closest(SKIP)) return;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const list = [];
-    for (let n; (n = walker.nextNode());) if (TEST.test(n.nodeValue)) list.push(n);
+    for (let n; (n = walker.nextNode());) if (ANY.test(n.nodeValue)) list.push(n);
     list.forEach(convertText);
   }
 
