@@ -1988,6 +1988,8 @@
       const icon = MAP[base];
       if (beside && TEXT_SYMBOLS.has(base)) continue;
       const keep = !beside && !!ESSENTIAL[base];
+      // 꼭 남는 버튼은 도트 아이콘 대신 원래 이모지 그대로 (2026-11-13 사용자 요청)
+      if (keep) continue;
       const hideRaw = beside || (HIDE_ALL && !keep);
       if (!icon && !hideRaw) continue;
       if (m.index > last) frag.appendChild(document.createTextNode(s.slice(last, m.index)));
