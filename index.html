@@ -15734,7 +15734,7 @@
     function auctionTimeLeftText(auc) {
       if (!auctionEndsAt(auc)) return `${AUCTION_DURATION_DAYS}일`;
       const left = auctionEndsAt(auc) - Date.now();
-      if (left <= 0) return '마감됨 (정산 대기)';
+      if (left <= 0) return '마감됨';
       const h = Math.floor(left / 3600000), m = Math.floor((left % 3600000) / 60000);
       return h >= 24 ? `${Math.floor(h / 24)}일 ${h % 24}시간` : (h > 0 ? `${h}시간 ${m}분` : `${Math.max(1, m)}분`);
     }
@@ -15755,8 +15755,10 @@
       const due = [];
       state.auctions.forEach(auc => {
         if (!auc || !auc.merc) return;
-        if (online && auc.sellerId !== me.id) return;
+        // 마감된 경매는 접속한 학생 누구의 기기에서든 바로 정산 (예전엔 판매자만 → 판매자가 접속할 때까지 '정산 대기'로 남고 낙찰 용병도 안 들어왔음)
+        // 서버 transaction으로 경매를 빼낸 한 기기만 정산하므로 두 번 정산되지 않음 · 용병·대금은 선물함으로 가서 받는 학생이 접속하면 바로 들어옴
         if (!auctionEndsAt(auc)) {
+          if (online && auc.sellerId !== me.id) return;
           // 입찰 기간이 생기기 전에 올린 경매는 지금부터 3일
           auc.endsAt = now + AUCTION_DURATION_MS;
           changed = true;
@@ -15776,6 +15778,7 @@
             const pay = auctionPayout(auc.currentBid);
             sendToStudent(auc.sellerId, { mc: pay, kind: 'auction_sale', note: `[${merc.name}] 용병이 경매에서 ${auc.highestBidderName}에게 팔렸어요. (수수료 5% 빼고 ${pay.toLocaleString()} CA)` });
             if (auc.sellerId === me.id) results.push(`🔨 [${merc.name}] 경매 마감! ${auc.highestBidderName}에게 ${auc.currentBid.toLocaleString()} CA에 낙찰됐어요. (수수료 5% 빼고 ${pay.toLocaleString()} CA 받음)`);
+            else if (auc.highestBidderId === me.id) results.push(`🔨 [${merc.name}] 경매 마감! ${auc.currentBid.toLocaleString()} CA에 낙찰받아 내 용병단에 들어왔어요.`);
           } else {
             sendToStudent(auc.sellerId, { merc, kind: 'auction_unsold', note: `[${merc.name}] 용병이 유찰되어 돌아왔어요.` });
             if (auc.sellerId === me.id) results.push(`↩️ [${merc.name}] 경매가 유찰되어 용병이 내 용병단으로 돌아왔어요.`);
@@ -15789,7 +15792,7 @@
       if (typeof renderAllStudentViews === 'function') renderAllStudentViews();
       if (results.length) showRewardBanner(results.join(' '));
     }
-    setInterval(() => { settleExpiredAuctions().catch(e => console.warn('[경매 정산 예외]:', e)); }, 60 * 1000);
+    setInterval(() => { settleExpiredAuctions().catch(e => console.warn('[경매 정산 예외]:', e)); }, 15 * 1000);
     setTimeout(() => { settleExpiredAuctions().catch(() => {}); }, 5000);
 
     async function finalizeAuctionAward(auctionId) {
@@ -16149,6 +16152,10 @@
       if (!Array.isArray(state.auctions)) state.auctions = [];
       if (!Array.isArray(state.tradeOffers)) state.tradeOffers = [];
       state.auctions.forEach(a => a && ensureMercSkin(a.merc));
+      // 마감된 매물이 보이면 주기를 기다리지 않고 바로 정산 (정산이 끝나면 다시 그림)
+      if (!auctionSettleBusy && state.auctions.some(a => a && auctionEndsAt(a) && auctionEndsAt(a) <= Date.now())) {
+        setTimeout(() => { settleExpiredAuctions().catch(() => {}); }, 0);
+      }
       renderProfileMarket();
 
       // 상단 탭 배지 업데이트
