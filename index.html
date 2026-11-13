@@ -36129,8 +36129,14 @@
         const ft = sim.floatTexts[i];
         if (ft._txt == null) ft._txt = floatTextNoEmoji(ft.text); // 버프·상태이상이 아니면 이모지 빼기 (한 번만 계산)
         if (!ft._txt) { ft.life -= frameTimeScale; if (ft.life <= 0) sim.floatTexts.splice(i, 1); continue; }
+        // 피해 숫자인지: 친구 화면엔 글자·색만 넘어가서 모양으로 알아봄 (회복 '+'가 아니고 '+' 없이 숫자로 끝나는 글자)
+        const ftHeal = /^\+\d/.test(ft._txt); // 회복 숫자는 초록 (이모지는 이미 빠짐)
+        const ftStr = ftHeal ? ft._txt.slice(1) : ft._txt; // 회복 숫자 앞 '+'는 빼고 숫자만
+        const ftDmg = !ftHeal && !ftStr.includes('+') && /(^|\s)\d[\d,]*$/.test(ftStr);
         ctx.save();
-        ctx.font = 'bold 12px Galmuri11, sans-serif'; // 떠오르는 글씨는 크기 하나로 (치명타도 같은 크기, 색으로만 구분)
+        // 피해 숫자는 12px 굵게 (치명타도 같은 크기, 색으로만 구분) · 나머지(스킬 이름·상태이상·회복 등)는 작은 픽셀 글꼴 10px
+        //   (2026-11-13 사용자: 데미지 폰트 외의 나머지 폰트 크기 줄이기)
+        ctx.font = ftDmg ? 'bold 12px Galmuri11, sans-serif' : '10px Galmuri9, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.lineJoin = 'round';
@@ -36147,10 +36153,7 @@
         ctx.translate(fx, fy);
         if (pop !== 1) ctx.scale(pop, pop);
         // 그림자는 피해 숫자에만 (2026-11-13 사용자: 폰트 그림자 빼기 → 데미지 폰트만 그림자 넣기)
-        //   친구 화면엔 글자·색만 넘어가서 모양으로 알아봄: 회복(+)이 아니고 '+' 없이 숫자로 끝나는 글자
-        const ftHeal = /^\+\d/.test(ft._txt); // 회복 숫자는 초록 (이모지는 이미 빠짐)
-        const ftStr = ftHeal ? ft._txt.slice(1) : ft._txt; // 회복 숫자 앞 '+'는 빼고 숫자만
-        if (!ftHeal && !ftStr.includes('+') && /(^|\s)\d[\d,]*$/.test(ftStr)) {
+        if (ftDmg) {
           ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
           ctx.fillText(ftStr, 1, 1);
         }
