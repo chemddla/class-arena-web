@@ -12039,9 +12039,25 @@
     }
     function ensurePvpWeek(s, wk = pvpWeekKey()) {
       if (!s || s.pvpWeek === wk) return false;
-      if ((s.pvpWeek || PVP_WEEK_FIRST) !== wk) { s.pvpScore = 1000; s.wins = 0; }
+      const oldWk = s.pvpWeek || PVP_WEEK_FIRST;
+      if (oldWk !== wk) {
+        // 지난 주 성적을 남겨 둠 (주간 순위 보상 RankWeekReward가 씀) · 참여한 주만, 최근 4주까지
+        const st = pvpWeekLive(s);
+        if (st) s.pvpHist = trimWeekHist({ ...(s.pvpHist || {}), [oldWk]: st });
+        s.pvpScore = 1000; s.wins = 0; s.pvpWeekPlays = 0;
+      }
       s.pvpWeek = wk;
       return true;
+    }
+    // 아직 초기화 전인 이번 기록의 성적 (참여 안 했으면 null) · s 점수 · w 승수 · p 랭킹 매칭 판 수
+    function pvpWeekLive(s) {
+      const sc = s.pvpScore == null ? 1000 : Number(s.pvpScore) || 0, w = Number(s.wins) || 0, p = Number(s.pvpWeekPlays) || 0;
+      return (p > 0 || sc !== 1000 || w > 0) ? { s: sc, w, p } : null;
+    }
+    function trimWeekHist(h, keep = 4) {
+      const out = {};
+      Object.keys(h || {}).sort().slice(-keep).forEach(k => { out[k] = h[k]; });
+      return out;
     }
     function ensurePvpWeekAll() {
       const wk = pvpWeekKey();
@@ -31424,6 +31440,7 @@
         pvpScoreDelta = -Math.min(vsHigherOrEqual ? 5 : 10, stu.pvpScore || 0); // 0점 아래로는 안 내려감
       }
       if (pvpScoreDelta) stu.pvpScore = (stu.pvpScore || 0) + pvpScoreDelta;
+      if (sim.mode === 'pvp_ranked') stu.pvpWeekPlays = (Number(stu.pvpWeekPlays) || 0) + 1; // 이번 주 참여 기록 (주간 참여 보상)
       if (!iForfeited) {
         if (sim.mode === 'tower') { DailyMission.progress('tower', 1, stu); DailyMission.progress('tower3', 1, stu); }
         if (sim.mode === 'pvp_ranked') { DailyMission.progress('ranked', 1, stu); DailyMission.progress('ranked3', 1, stu); }
@@ -44515,6 +44532,136 @@
       }
     };
 
+    // 🏆 주간 순위 보상 (펫 러닝 · 랭킹 매칭): 매주 월요일 초기화 뒤 처음 접속하면 팝업으로 지난 주 보상을 받음
+    // 1등 3만 · 2등 2만 · 3등 1만 CA · 그 밖에 참여한 친구 5천 CA. 같은 점수는 같은 등수 (둘 다 높은 쪽 보상)
+    // 학생은 자기 기록만 쓸 수 있어서, 지난 주 성적은 각자 기록(pvpHist · petRun.hist)에 남기고 받는 사람 기기에서 순위를 계산함
+    // 받은 표시는 rankRewardGot = { 'pvp_주': CA, 'petrun_주': CA }
+    const RANK_WEEK_REWARD = { firstWeek: '2026-11-09', prizes: [30000, 20000, 10000], join: 5000 };
+    const RankWeekReward = {
+      kinds: {
+        pvp: { icon: '⚔️', name: '랭킹 매칭', scope: 'rank' },
+        petrun: { icon: '🏃', name: '펫 러닝', scope: 'petRank' }
+      },
+      // 그 주 성적 (참여 안 했으면 null): pvp → [점수, 승수] · petrun → [최고 점수]
+      stat(kind, s, wk) {
+        if (!s) return null;
+        if (kind === 'pvp') {
+          const live = (s.pvpWeek || PVP_WEEK_FIRST) === wk ? pvpWeekLive(s) : null;
+          const h = live || (s.pvpHist && s.pvpHist[wk]);
+          return h ? [Number(h.s) || 0, Number(h.w) || 0] : null;
+        }
+        const r = s.petRun;
+        if (!r) return null;
+        let b = 0;
+        if (r.week === wk) b = r.weekBest || 0;
+        else if (r.hist && r.hist[wk]) b = r.hist[wk].b || 0;
+        else if (!r.week && r.bestAt && pvpWeekKey(new Date(r.bestAt)) === wk) b = r.best || 0;
+        return b > 0 ? [b] : null;
+      },
+      weeksOf(kind, s) {
+        const set = new Set();
+        if (kind === 'pvp') { if (s.pvpWeek) set.add(s.pvpWeek); Object.keys(s.pvpHist || {}).forEach(k => set.add(k)); }
+        else if (s.petRun) { if (s.petRun.week) set.add(s.petRun.week); Object.keys(s.petRun.hist || {}).forEach(k => set.add(k)); }
+        return [...set];
+      },
+      // 등수 = 나보다 성적이 확실히 높은 참여자 수 + 1
+      rankOf(kind, me, wk) {
+        const mine = this.stat(kind, me, wk);
+        if (!mine) return 0;
+        const better = (a, b) => { for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) return a[i] > b[i]; } return false; };
+        let n = 1;
+        studentsFor(this.kinds[kind].scope).forEach(s => {
+          if (s.id === me.id) return;
+          const st = this.stat(kind, s, wk);
+          if (st && better(st, mine)) n++;
+        });
+        return n;
+      },
+      pending(me) {
+        if (!me) return [];
+        const cur = pvpWeekKey(), got = me.rankRewardGot || {}, out = [];
+        Object.keys(this.kinds).forEach(kind => {
+          if (!studentsFor(this.kinds[kind].scope).some(s => s.id === me.id)) return; // 순위에서 빠진 계정
+          this.weeksOf(kind, me).forEach(wk => {
+            if (wk < RANK_WEEK_REWARD.firstWeek || wk >= cur || got[`${kind}_${wk}`] != null) return;
+            const rank = this.rankOf(kind, me, wk);
+            if (!rank) return;
+            out.push({ kind, wk, rank, ca: RANK_WEEK_REWARD.prizes[rank - 1] || RANK_WEEK_REWARD.join });
+          });
+        });
+        return out.sort((a, b) => a.wk.localeCompare(b.wk) || a.kind.localeCompare(b.kind));
+      },
+      canShow(me) {
+        if (!me || !isMyStudentScreen(me)) return false;
+        if (isCurrentClassOwner() || (window.TeacherAuth && TeacherAuth.isSuperAdmin)) return false;
+        if (!isStudentSession(me)) return true; // 미리보기(?dev=student)
+        return syncCache.loaded && syncCache.classCode === String(state.classCode || '').toUpperCase();
+      },
+      check() {
+        clearTimeout(this.timer);
+        this.timer = setTimeout(() => this.show(), 1200); // 반 친구 기록이 다 내려온 뒤에 계산
+      },
+      show() {
+        const me = getActiveStudent();
+        if (!this.canShow(me)) return;
+        const items = this.pending(me);
+        const old = document.getElementById('rankWeekRewardModal');
+        if (!items.length) { if (old) old.remove(); return; }
+        if (old && old.dataset.sig === items.map(i => `${i.kind}_${i.wk}_${i.ca}`).join(',')) return;
+        if (old) old.remove();
+        const total = items.reduce((s, i) => s + i.ca, 0);
+        const wkLabel = wk => { const [y, m, d] = wk.split('-').map(Number); return `${m}월 ${d}일 주`; };
+        const medal = r => ['🥇', '🥈', '🥉'][r - 1] || '🎖️';
+        const el = document.createElement('div');
+        el.id = 'rankWeekRewardModal';
+        el.dataset.sig = items.map(i => `${i.kind}_${i.wk}_${i.ca}`).join(',');
+        el.className = 'fixed inset-0 z-[75] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4';
+        el.innerHTML = `
+          <div class="bg-slate-900 border-2 border-amber-400/70 rounded-3xl max-w-sm w-full p-6 shadow-2xl flex flex-col gap-4 text-center">
+            <div class="text-4xl">🏆</div>
+            <div>
+              <div class="font-title text-xl text-amber-300">지난 주 순위 보상</div>
+              <p class="text-xs text-slate-400 font-bold mt-1">랭킹이 초기화됐어요! 지난 주 기록으로 보상을 받아요.</p>
+            </div>
+            <div class="flex flex-col gap-1.5 text-left">
+              ${items.map(i => `<div class="flex items-center gap-2 px-3 py-2 rounded-xl ${i.rank <= 3 ? 'bg-amber-500/15 border border-amber-400/50' : 'bg-slate-800 border border-slate-700'}">
+                <span class="text-xl">${medal(i.rank)}</span>
+                <div class="min-w-0">
+                  <div class="text-xs font-extrabold text-white">${this.kinds[i.kind].icon} ${this.kinds[i.kind].name} · ${i.rank <= 3 ? `${i.rank}등` : '참여 보상'}</div>
+                  <div class="text-[10px] text-slate-400 font-bold">${wkLabel(i.wk)}${i.rank > 3 ? ` · ${i.rank}등` : ''}</div>
+                </div>
+                <span class="ml-auto text-sm font-extrabold text-amber-300 shrink-0">+${i.ca.toLocaleString()} CA</span>
+              </div>`).join('')}
+            </div>
+            <button type="button" data-claim class="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-sm font-extrabold text-slate-950 shadow">🎁 보상 받기 (+${total.toLocaleString()} CA)</button>
+            <button type="button" data-later class="text-[11px] font-bold text-slate-500 hover:text-slate-300">나중에 받기</button>
+          </div>`;
+        el.querySelector('[data-claim]').onclick = () => this.claim();
+        el.querySelector('[data-later]').onclick = () => el.remove();
+        document.body.appendChild(el);
+        if (window.PixelFX) setTimeout(() => { try { PixelFX.popAt(el.querySelector('.text-4xl'), 'coins', { n: 10 }, { fx: 0.5, fy: 0.5 }); } catch (_) {} }, 200);
+      },
+      claim() {
+        const me = getActiveStudent();
+        const el = document.getElementById('rankWeekRewardModal');
+        if (el) el.remove();
+        if (!this.canShow(me)) return;
+        const items = this.pending(me);
+        if (!items.length) return;
+        const got = { ...(me.rankRewardGot || {}) };
+        items.forEach(i => { got[`${i.kind}_${i.wk}`] = i.ca; });
+        // 받은 표시는 최근 16개만 (보상은 최근 4주 기록으로만 계산하니 충분)
+        const keys = Object.keys(got).sort((a, b) => a.split('_')[1].localeCompare(b.split('_')[1]));
+        keys.slice(0, Math.max(0, keys.length - 16)).forEach(k => delete got[k]);
+        me.rankRewardGot = got;
+        const total = items.reduce((s, i) => s + i.ca, 0);
+        me.mc = (Number(me.mc) || 0) + total;
+        saveState();
+        if (typeof renderAllStudentViews === 'function') renderAllStudentViews();
+        showRewardBanner(`🏆 지난 주 순위 보상 +${total.toLocaleString()} CA를 받았어요!`);
+      }
+    };
+
     // 대기방 채팅 (classes/{학급}/room_chats/{pvp|raid|minigame}/{방id}/{id}): 같은 대기방에 들어온 친구·관전자끼리만 보임
     // 대기실 화면을 그릴 때 RoomChat.show(상자, 종류, 방id)로 그 방 하나만 구독 · 방이 지워지면 채팅도 같이 지움
     // 보낸 기기가 방마다 최근 ROOM_CHAT_MAX개만 남기고 오래된 것을 지움 (몬스터 러쉬방은 레이드방이라 raid로 감)
@@ -45754,6 +45901,7 @@
       ensureStudentPrivSub(); // 로그인한 학생·선생님이 바뀌었으면 나만 쓰는 칸 구독도 바꿈
       setTimeout(() => cleanDerivedLegacy(cleanCode), 0); // 서버에 남은 예전 진형 사본 지우기
       if (ensurePvpWeekAll()) saveState(); // 새 주가 됐으면 랭킹 매칭 점수 초기화
+      RankWeekReward.check(); // 초기화 뒤 첫 접속이면 지난 주 순위 보상 팝업
       if (force) StudentInbox.settle();
       PetSystem.migrateLegacy();
 
@@ -58393,6 +58541,7 @@
 
     function showMainAppView(mode = 'student') {
       setTimeout(() => { if (typeof GlobalChat !== 'undefined') GlobalChat.sync(); }, 0);
+      if (mode !== 'teacher') RankWeekReward.check(); // 지난 주 순위 보상 팝업 (받을 게 있을 때만)
       document.getElementById('landingPageView')?.classList.add('hidden');
       document.getElementById('classLobbyPageView')?.classList.add('hidden');
       document.getElementById('mainAppShell')?.classList.remove('hidden');
@@ -60933,7 +61082,11 @@
           rec.last = score; rec.lastAt = Date.now();
           if (score > (rec.best || 0)) { rec.best = score; rec.bestAt = Date.now(); rec.bestType = s.type; s.isBest = true; }
           const wk = pvpWeekKey();
-          if (rec.week !== wk) { const keep = this.weekBest(stu); rec.weekBestType = keep ? rec.bestType : null; rec.week = wk; rec.weekBest = keep; }
+          if (rec.week !== wk) {
+            // 지난 주 최고 기록을 남겨 둠 (주간 순위 보상 RankWeekReward가 씀) · 최근 4주까지
+            if (rec.week && (rec.weekBest || 0) > 0) rec.hist = trimWeekHist({ ...(rec.hist || {}), [rec.week]: { b: rec.weekBest } });
+            const keep = this.weekBest(stu); rec.weekBestType = keep ? rec.bestType : null; rec.week = wk; rec.weekBest = keep;
+          }
           if (score > (rec.weekBest || 0)) { rec.weekBest = score; rec.weekBestType = s.type; s.isWeekBest = true; }
           const ca = this.rewardFor(score);
           s.rewardCa = ca;
