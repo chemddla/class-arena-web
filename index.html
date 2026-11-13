@@ -6175,7 +6175,7 @@
         icon: '🪓',
         color: '#b91c1c',
         roleDesc: '도끼 근접·흡혈·잃은 체력만큼 강해짐',
-        passiveName: '불굴의 투지', passiveShort: '체력이 낮을수록 강해짐 · 흡혈', passiveDesc: '잃은 체력 1%마다 주는 피해 +0.5% (최대 +50%) · 준 피해의 15%만큼 흡혈 (체력 35% 이하면 30%)',
+        passiveName: '불굴의 투지', passiveShort: '체력이 낮을수록 강해짐 · 치명타 증가 · 흡혈', passiveDesc: '잃은 체력 1%마다 주는 피해 +0.5% (최대 +50%) · 잃은 체력 1%마다 치명타 확률 +0.5% (최대 +50%) · 준 피해의 15%만큼 흡혈 (체력 35% 이하면 30%)',
         baseHp: 2200, baseAtk: 66, baseDef: 40, baseSpd: 104, range: 78, maxMana: 100
       },
       // 성기사: 근접 서포트 탱커. 체력·방어는 기사보다 조금 낮고 공격은 비슷. 기본 공격은 기사처럼 한 명을 치는 철퇴질
@@ -22214,7 +22214,10 @@
       const grudge = hasNegativeStatus(defender) && curseGrudgeMult(attacker.team) > 1 ? CURSE_GRUDGE_CRIT_BONUS : 0;
       const ensemble = bardEnsembleOn(attacker) ? BARD_ENSEMBLE_CRIT_BONUS : 0;
       const resist = (defender.monsterType ? 0 : (JOB_CRIT_RESIST[defender.job] || 0)) + (paladinCritGuardOn(defender) ? PALADIN_CRIT_RESIST : 0);
-      return Math.random() < (attacker.critChance ?? CRIT_CHANCE_BASE) + (JOB_CRIT_BONUS[attacker.job] || 0) + grudge + ensemble - resist;
+      // 광전사 불굴의 투지: 잃은 체력 1%마다 치명타 확률 +0.5% (최대 +50%)
+      const fury = attacker.job === 'berserker' && !attacker.monsterType && attacker.maxHp > 0
+        ? Math.min(0.5, Math.max(0, 1 - attacker.hp / attacker.maxHp) * 0.5) : 0;
+      return Math.random() < (attacker.critChance ?? CRIT_CHANCE_BASE) + (JOB_CRIT_BONUS[attacker.job] || 0) + grudge + ensemble + fury - resist;
     }
     function applyDamage(attacker, defender, rawDmg, tagText = '', customColor = null) {
       if (!defender.alive) return;
