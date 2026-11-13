@@ -12,12 +12,11 @@
 # - 포탑 시트: 칸 36×52, 가로 12칸 = 그림 단계(1~3)마다 [평소 A, 평소 B, 공격 A, 공격 B],
 #   세로 4줄 = 화살탑 · 대포탑 · 서리탑 · 마법탑 (index.html DEFENSE_TOWER_KEYS 순서). 발 위치 = 칸 (18, 49). 게임에서 3배.
 #   포탑 강화 1~5단계 → 그림 단계 1·2·2·3·3.
-import math, os, random, sys
+import json, math, os, random, sys
 import numpy as np
 from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT_MAP = os.path.join(ROOT, 'assets/maps/crystal_defense.webp')
 OUT_TOWERS = os.path.join(ROOT, 'assets/sprites/fx/defense_towers.png')
 PREVIEW = sys.argv[1] if len(sys.argv) > 1 else None
 BAYER = np.array([[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]) / 16.0
@@ -482,12 +481,118 @@ def build_towers():
 
 # ---------------------------------------------------------------- 맵
 W, H = 720, 450
-# 월드 좌표 (index.html DEFENSE_PATH · DEFENSE_PADS와 같음)
+# 월드 좌표 (index.html DEFENSE_MAPS와 같음) · 맵마다 동굴은 길 첫 점(오른쪽을 봄), 성문은 끝 점
 PATH = [[230, 560], [2250, 560], [2250, 920], [640, 920], [640, 1280], [2640, 1280]]
 PADS = [(700, 400), (1150, 400), (1600, 400), (2050, 400),
         (440, 740), (760, 740), (1060, 740), (1360, 740), (1660, 740), (1960, 740), (2440, 740),
         (440, 1100), (900, 1100), (1200, 1100), (1500, 1100), (1800, 1100), (2100, 1100), (2440, 1100),
         (1000, 1440), (1450, 1440), (1900, 1440), (2350, 1440)]
+
+
+def fx_blocked(fx, x, y):
+    # 받침돌을 못 놓는 곳: 강(과 둑) · 큰 바위 둘레 · 고지대 절벽 가장자리 (고지대 윗면 안쪽은 됨)
+    fx = fx or {}
+    for rv in fx.get('river', ()):
+        q = rv['pts']
+        for i in range(len(q) - 1):
+            (ax, ay), (bx, by) = q[i], q[i + 1]
+            L = math.hypot(bx - ax, by - ay) or 1
+            t = max(0, min(1, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / (L * L)))
+            if math.hypot(ax + (bx - ax) * t - x, ay + (by - ay) * t - y) < rv['w'] / 2 + 80:
+                return True
+    if any(math.hypot(x - bx, y - by) < br + 90 for bx, by, br in fx.get('boulders', ())):
+        return True
+    for (x0, y0, x1, y1) in fx.get('plateau', ()):
+        v = ((x - (x0 + x1) / 2) / ((x1 - x0) / 2)) ** 6 + ((y - (y0 + y1) / 2) / ((y1 - y0) / 2)) ** 6
+        if 0.55 < v < 2.0:
+            return True
+    return False
+
+
+def auto_pads(path, n=22, near=(120, 300), sep=(270, 230), avoid=(), fx=None):
+    # 길에서 near만큼 떨어진 칸 중 사거리(380) 안에 길이 많이 지나는 곳부터, 서로(sep 타원)·avoid와 겹치지 않게 n곳
+    paths = path if isinstance(path[0][0], (list, tuple)) else [path]
+    pts = []
+    for q in paths:
+        for i in range(len(q) - 1):
+            (ax, ay), (bx, by) = q[i], q[i + 1]
+            L = math.hypot(bx - ax, by - ay)
+            pts += [(ax + (bx - ax) * k / L, ay + (by - ay) * k / L) for k in range(0, int(L), 40)]
+    pts = np.array(pts)
+    ends = [q[0] for q in paths] + [q[-1] for q in paths]
+    cand = []
+    for y in range(380, 1460, 20):
+        for x in range(380, 2520, 20):
+            d = np.hypot(pts[:, 0] - x, pts[:, 1] - y)
+            if near[0] <= d.min() <= near[1] and all(math.hypot(x - ex, y - ey) > 300 for ex, ey in ends) and not fx_blocked(fx, x, y):
+                cand.append(((d < 380).sum(), x, y))
+    cand.sort(key=lambda c: (-c[0], c[2], c[1]))
+    out = []
+    for _, x, y in cand:
+        if all(((x - px) / sep[0]) ** 2 + ((y - py) / sep[1]) ** 2 >= 1 for px, py in out) and all(((x - px) / 150) ** 2 + ((y - py) / 110) ** 2 >= 1 for px, py in avoid):
+            out.append((x, y))
+        if len(out) >= n:
+            break
+    return sorted(out, key=lambda q: (q[1], q[0]))
+
+
+# 맵 샘플 (판마다 하나를 고름, index.html DEFENSE_MAPS) · 받침돌은 auto_pads로 고르게 22곳 — 자리의 값어치는 길 모양이 정함
+# (길이 겹쳐 지나가는 교차로·나선 한가운데·처음과 끝 길이 나란한 곳은 포탑 하나가 여러 번 쏘고, 외길 둘레는 한 번뿐)
+LAYOUTS = [
+    ('crystal_defense', 20261112, PATH, PADS),  # (예전 맵) 지그재그 · 지금은 판에 안 나옴
+    # 8자 교차로: 가운데 줄을 지나간 길이 두 번 세로로 가로지름 → 교차로 두 곳이 핵심
+    ('crystal_defense_cross', 20261118, [[230, 900], [2300, 900], [2300, 1360], [1450, 1360], [1450, 440], [600, 440], [600, 1360], [1050, 1360]], None),
+    # 나선 탈출: 두 바퀴 감아 들어간 뒤 바깥 바퀴를 가로질러 왼쪽 성문으로 빠져나감 → 나선 한가운데와 가로지르는 곳이 핵심
+    ('crystal_defense_vortex', 20261121, [[230, 1360], [2300, 1360], [2300, 440], [600, 440], [600, 1040], [1900, 1040], [1900, 740],
+                                         [330, 740]], None),
+    # 귀환: 맵을 한 바퀴 돌아 동굴 바로 옆 성문으로 돌아옴 → 동굴과 성문 사이는 처음과 끝을 함께 침
+    ('crystal_defense_return', 20261123, [[230, 1360], [2450, 1360], [2450, 440], [1900, 440], [1900, 1040], [1300, 1040], [1300, 440],
+                                         [700, 440], [700, 1040]], None),
+    # 강과 다리 (블룬스 물 지형 · 식물 vs 좀비 수영장): 세로 강을 길이 다리로 세 번 건넘 → 강 위엔 못 지어 다리 목이 비고, 양쪽 둑에서 나눠 쏴야 함
+    ('crystal_defense_river', 20261130, [[230, 500], [2400, 500], [2400, 900], [500, 900], [500, 1300], [2640, 1300]], None,
+     {'river': [{'pts': [[1500, 100], [1380, 700], [1530, 1150], [1420, 1800]], 'w': 220}]}),
+]
+
+# 판에 안 나오는 후보 (그림 비교용 · ONLY=키 로만 그림): 길 모양 · 여러 길(게임에 여러 길 지원 필요) · 바위 시야·고지대(게임 규칙 필요)
+CANDIDATES = [
+    # 맞물림: 첫 길(위)과 마지막 길(성문 앞)이 나란히 붙어 달림 → 그 사이는 같은 몬스터를 두 번 침 · 오른쪽 기둥을 끝 길이 가로지름
+    ('crystal_defense_interlock', 20261119, [[230, 440], [2300, 440], [2300, 1360], [500, 1360], [500, 700], [2640, 700]], None),
+    # 외길과 미로: 아래 긴 외길(포탑 하나가 한 번만 닿음) 다음 성문 앞 촘촘한 굽이 → 앞에서 줄일지 성문 앞에서 막을지
+    ('crystal_defense_gauntlet', 20261120, [[230, 1360], [2450, 1360], [2450, 440], [1700, 440], [1700, 1000], [1400, 1000], [1400, 440],
+                                           [1100, 440], [1100, 1000], [800, 1000], [800, 440]], None),
+    # 빗살 교차: 가운데 가로길을 세로 빗살 셋이 가로지름 → 교차로 세 곳
+    ('crystal_defense_comb', 20261122, [[230, 900], [2400, 900], [2400, 440], [1900, 440], [1900, 1360], [1400, 1360], [1400, 440],
+                                       [900, 440], [900, 1360], [500, 1360]], None),
+    # X자 교차: 두 대각선이 한가운데서 엇갈림 → 가운데 한 곳이 최고 자리, 대각선 끝 쪽은 듬성듬성
+    ('crystal_defense_cross_x', 20261124, [[230, 440], [2300, 1300], [2300, 440], [600, 1300], [1450, 1300]], None),
+    # 격자: 가로 두 줄을 세로 길이 다섯 번 가로지름 → 교차로가 많아 어디를 먼저 잡을지 고름
+    ('crystal_defense_grid', 20261125, [[230, 600], [2400, 600], [2400, 1200], [700, 1200], [700, 440], [1200, 440], [1200, 1400],
+                                       [1700, 1400], [1700, 440], [2100, 440]], None),
+    # ---- 여러 길 (킹덤 러시 식: 동굴 여럿·갈림길·성문 여럿) · 몬스터는 길을 번갈아 씀
+    # 두 동굴 합류: 위·아래 동굴 길이 왼쪽에서 만나 한 길로 → 만나는 곳이 길목, 그 전엔 두 갈래를 따로 막아야 함
+    ('crystal_defense_merge', 20261126, [[[230, 440], [900, 440], [900, 900], [1400, 900], [1400, 440], [1900, 440], [1900, 1360], [2400, 1360], [2400, 700], [2640, 700]],
+                                         [[230, 1360], [900, 1360], [900, 900], [1400, 900], [1400, 440], [1900, 440], [1900, 1360], [2400, 1360], [2400, 700], [2640, 700]]], None),
+    # 갈림길: 한 동굴에서 위·아래 두 길로 갈라졌다가 성문 앞에서 다시 만남 → 갈라지기 전·다시 만난 뒤가 길목, 가운데 들판은 둘 다 멂
+    ('crystal_defense_fork', 20261127, [[[230, 900], [700, 900], [700, 440], [1300, 440], [1300, 700], [1900, 700], [1900, 440], [2250, 440], [2250, 900], [2640, 900]],
+                                        [[230, 900], [700, 900], [700, 1360], [1300, 1360], [1300, 1100], [1900, 1100], [1900, 1360], [2250, 1360], [2250, 900], [2640, 900]]], None),
+    # 두 성문: 굽이진 한 길이 가운데서 위·아래 성문으로 갈라짐 → 갈라지기 전에 끝낼지, 두 성문을 나눠 지킬지
+    ('crystal_defense_twogate', 20261128, [[[230, 900], [600, 900], [600, 440], [1000, 440], [1000, 1360], [1400, 1360], [1400, 900], [1800, 900], [1800, 440], [2640, 440]],
+                                           [[230, 900], [600, 900], [600, 440], [1000, 440], [1000, 1360], [1400, 1360], [1400, 900], [1800, 900], [1800, 1360], [2640, 1360]]], None),
+    # 세 동굴: 왼쪽 위·가운데·아래 동굴 길이 한가운데 광장에서 모임 → 광장 둘레가 최고 자리, 대신 세 갈래 초반은 비어 있음
+    ('crystal_defense_hub', 20261129, [[[230, 440], [1200, 440], [1200, 900], [1800, 900], [1800, 440], [2300, 440], [2300, 1360], [2640, 1360]],
+                                       [[230, 900], [1200, 900], [1800, 900], [1800, 440], [2300, 440], [2300, 1360], [2640, 1360]],
+                                       [[230, 1360], [1200, 1360], [1200, 900], [1800, 900], [1800, 440], [2300, 440], [2300, 1360], [2640, 1360]]], None),
+    # 바위 시야 (블룬스 시야 가림): 길 사이 큰 바위가 건너편 길을 가림 → 같은 줄이라도 바위 뒤 자리는 반쪽짜리
+    ('crystal_defense_boulder', 20261131, [[230, 560], [2250, 560], [2250, 920], [640, 920], [640, 1280], [2640, 1280]], None,
+     {'boulders': [[1050, 740, 95], [1800, 740, 95], [1350, 1100, 95], [2050, 1100, 95], [600, 740, 80]]}),
+    # 고지대 (명일방주 고지대 칸): 가운데 언덕을 길이 세 면으로 감쌈 → 언덕 위 몇 자리가 세 면을 다 봄, 대신 자리가 적음
+    ('crystal_defense_plateau', 20261201, [[230, 440], [800, 440], [800, 1360], [2200, 1360], [2200, 440], [2640, 440]], None,
+     {'plateau': [[1050, 640, 1950, 1160]], 'high_pads': [[1300, 820], [1700, 820], [1500, 1020]]}),
+    # 세 줄 레인 (식물 vs 좀비): 동굴 셋·성문 셋, 가운데서 세 줄이 좁게 모였다가 다시 벌어짐 → 모인 곳은 한 번에 세 줄, 벌어진 곳은 줄마다 따로
+    ('crystal_defense_lanes', 20261202, [[[230, 440], [900, 440], [900, 660], [1800, 660], [1800, 440], [2640, 440]],
+                                         [[230, 900], [2640, 900]],
+                                         [[230, 1360], [900, 1360], [900, 1140], [1800, 1140], [1800, 1360], [2640, 1360]]], None),
+]
 
 GRASS = R('#15302d', '#1c3d32', '#254b34', '#305b37', '#3e6b3a', '#527d3f', '#6a9045', '#88a652', '#acbf68')
 DIRT = R('#2e211f', '#43302a', '#5a3f2f', '#735235', '#8c663d', '#a57d4b', '#bf975e', '#d8b679')
@@ -592,12 +697,17 @@ class Canvas:
                     self.put(x + xx, y + yy, a[yy, xx])
 
 
-def build_map():
-    rnd = random.Random(20261112)
+def build_map(PATH, PADS, seed, fx=None):
+    # PATH: 길 하나 [[x, y], ...] 또는 여러 길 [[[x, y], ...], ...] (갈림길·여러 동굴·여러 성문)
+    rnd = random.Random(seed)
     ys, xs = np.mgrid[0:H, 0:W]
     cv = Canvas()
     img = cv.img
-    p = [(x / 4, y / 4) for x, y in PATH]
+    paths = PATH if isinstance(PATH[0][0], (list, tuple)) else [PATH]
+    ps = [[(x / 4, y / 4) for x, y in q] for q in paths]
+    p = ps[0]
+    starts = list(dict.fromkeys(q[0] for q in ps))
+    ends = list(dict.fromkeys(q[-1] for q in ps))
 
     # ---- 1) 풀밭: 큰 무늬(밝은 빈터·어두운 수풀) + 높이 요철 + 왼쪽 위가 조금 밝음
     big = fbm(W, H, [90, 45], rnd)
@@ -612,15 +722,17 @@ def build_map():
     # ---- 2) 지그재그 흙길 한 줄 (가운데 밝고 가장자리 어두움) · 바퀴 자국 · 자갈 · 성문 앞은 돌길
     dist = np.full((H, W), 999.0)
     along = np.zeros((H, W))
-    seg_len = [math.hypot(p[i + 1][0] - p[i][0], p[i + 1][1] - p[i][1]) for i in range(len(p) - 1)]
-    total = sum(seg_len)
-    acc = 0
-    for i in range(len(p) - 1):
-        d, t = seg_dist(xs, ys, *p[i], *p[i + 1])
-        better = d < dist
-        dist = np.where(better, d, dist)
-        along = np.where(better, (acc + t * seg_len[i]) / total, along)
-        acc += seg_len[i]
+    for p in ps:
+        seg_len = [math.hypot(p[i + 1][0] - p[i][0], p[i + 1][1] - p[i][1]) for i in range(len(p) - 1)]
+        total = sum(seg_len)
+        acc = 0
+        for i in range(len(p) - 1):
+            d, t = seg_dist(xs, ys, *p[i], *p[i + 1])
+            better = d < dist
+            dist = np.where(better, d, dist)
+            along = np.where(better, (acc + t * seg_len[i]) / total, along)
+            acc += seg_len[i]
+    p = ps[0]
     edge_n = fbm(W, H, [7, 3], rnd)
     rw = 12.5 + (edge_n - 0.5) * 3.5
     road = dist < rw
@@ -634,8 +746,7 @@ def build_map():
     img[rim] = np.array(DIRT[1][:3], np.float32)
     lane_cells = road
     cv.keep |= dist < 18
-    for i in range(len(p) - 1):
-        (ax, ay), (bx, by) = p[i], p[i + 1]
+    for (ax, ay), (bx, by) in [(q[i], q[i + 1]) for q in ps for i in range(len(q) - 1)]:
         ln = math.hypot(bx - ax, by - ay)
         nx, ny = -(by - ay) / ln, (bx - ax) / ln
         for s_ in range(int(ln * 1.5)):
@@ -693,6 +804,77 @@ def build_map():
         elif road[y, x] and not road[y + 2, x] and dist[y, x] > rw[y, x] - 2:
             img[y, x] = GRASS[3][:3]; img[y + 1, x] = GRASS[2][:3]
 
+    # ---- 2b) 지형 (fx, 다른 타워 디펜스 참고): 고지대(명일방주 고지대 칸) · 강과 다리(블룬스·식물 vs 좀비 물 지형) ·
+    #          큰 바위(블룬스 시야 가림). fx가 없는 맵은 그림이 그대로 (난수를 따로 씀)
+    fx = fx or {}
+    frnd = random.Random(seed + 1)
+    for (x0, y0, x1, y1) in fx.get('plateau', ()):
+        cx_, cy_, rx_, ry_ = (x0 + x1) / 8, (y0 + y1) / 8, (x1 - x0) / 8, (y1 - y0) / 8
+        sup = lambda dy=0: ((xs - cx_) / rx_) ** 6 + ((ys - dy - cy_) / ry_) ** 6
+        top = sup() < 1
+        face = ~top & np.any([sup(d) < 1 for d in range(1, 8)], axis=0)
+        ph = fbm(W, H, [8, 4, 2], frnd)
+        img[top] = np.array(GRASS, np.float32)[np.clip(gk + 1, 0, 8)][top][:, :3]
+        edge_ = top & ~((sup(-1) < 1) & (sup(1) < 1) & (((xs - 1 - cx_) / rx_) ** 6 + ((ys - cy_) / ry_) ** 6 < 1) & (((xs + 1 - cx_) / rx_) ** 6 + ((ys - cy_) / ry_) ** 6 < 1))
+        img[edge_] = GRASS[8][:3]  # 윗면 가장자리 밝은 테
+        img[~top & ~face & np.any([sup(d) < 1 for d in (-1, 0)], axis=0)] = CLIFF[2][:3]
+        fk = np.clip((2 + ph * 4 + (bump_light(ph) - 0.5) * 3).astype(int), 1, 7)
+        img[face] = np.array(CLIFF, np.float32)[fk][face][:, :3]
+        img[face & ~np.any([sup(d) < 1 for d in range(1, 7)], axis=0)] = CLIFF[1][:3]  # 절벽 밑동
+        for yy, xx in zip(*np.where(face)):
+            if frnd.random() < 0.06:
+                img[yy, xx] = C('#4c7a35')[:3]
+        for yy, xx in zip(*np.where(~top & ~face & np.any([sup(d) < 1 for d in range(8, 13)], axis=0))):
+            cv.shade(xx, yy, 0.45)
+        cv.keep |= top | face
+    for river in fx.get('river', ()):
+        pts_, wd = river['pts'], river['w'] / 8
+        rd = np.full((H, W), 999.0)
+        for i in range(len(pts_) - 1):
+            d, _ = seg_dist(xs, ys, pts_[i][0] / 4, pts_[i][1] / 4, pts_[i + 1][0] / 4, pts_[i + 1][1] / 4)
+            rd = np.minimum(rd, d)
+        wn = fbm(W, H, [6, 3], frnd)
+        ww = wd + (wn - 0.5) * 3
+        water = rd < ww
+        bank = (rd < ww + 2.2) & ~water
+        img[bank & ~road] = DIRT[2][:3]
+        depth = np.clip(rd / ww, 0, 1)
+        wk = np.clip((1 + depth * 2.4 + (wn - 0.5) * 1.2).astype(int), 0, 5)
+        img[water] = np.array(WATER, np.float32)[wk][water][:, :3]
+        for _ in range(900):
+            x, y = frnd.randint(0, W - 4), frnd.randint(0, H - 1)
+            if water[y, x] and water[y, x + 3] and depth[y, x] < 0.75:
+                img[y, x:x + 3] = WATER[4 if frnd.random() < 0.7 else 5][:3]  # 물결
+        bridge = water & (dist < rw + 1.5)
+        for yy, xx in zip(*np.where(bridge)):
+            edge = dist[yy, xx] > rw[yy, xx] - 1
+            img[yy, xx] = WOOD[1 if edge else 2 if xx % 3 == 0 else 4 if (yy + xx // 3) % 5 else 3][:3]
+        for yy, xx in zip(*np.where(bridge & (dist > rw - 1))):
+            if yy + 1 < H and water[yy + 1, xx] and not bridge[yy + 1, xx]:
+                cv.shade(xx, yy + 1, 0.5); cv.shade(xx, yy + 2, 0.3)
+        cv.keep |= water | bank
+        lane_cells = lane_cells | water
+    for (bx_, by_, br_) in fx.get('boulders', ()):
+        x, y, r = bx_ / 4, by_ / 4, br_ / 4
+        cv.ellipse_shadow(x + r * 0.4, y + r * 0.55, r * 1.15, r * 0.45, 0.55)
+        bh = fbm(W, H, [5, 2], frnd)
+        for yy in range(int(y - r * 1.25), int(y + r * 0.6) + 1):
+            for xx in range(int(x - r - 1), int(x + r + 2)):
+                dx, dy = (xx - x) / r, (yy - y + r * 0.3) / (r * 0.95)
+                dd = dx * dx + dy * dy
+                if dd > 1 or not (0 <= xx < W and 0 <= yy < H):
+                    continue
+                lum = (-dx * 0.6 - dy * 0.8) * 0.4 + math.sqrt(1 - dd) * 0.4 + (bh[yy, xx] - 0.5) * 0.5 + 0.15
+                k = int(np.clip(lum * 8, 1, 8))
+                if dd > 0.86 and (dy > 0 or dx > 0.2):
+                    k = 1
+                elif abs((dx * 3 + dy * 2 + bh[yy, xx] * 2) % 1.6 - 0.8) < 0.05:
+                    k = max(1, k - 3)  # 금
+                img[yy, xx] = CLIFF[k][:3]
+                if dy < -0.45 and dx < 0.2 and frnd.random() < 0.35:
+                    img[yy, xx] = C('#4c7a35' if frnd.random() < 0.6 else '#5d8f3e')[:3]  # 이끼
+        cv.keep[max(0, int(y - r * 1.4)):int(y + r + 2), max(0, int(x - r - 4)):int(x + r + 4)] = True
+
     # ---- 3) 포탑 받침돌: 둥근 판석 (위 면 밝게 · 앞 면 두께 · 오른쪽 아래 그림자) + 네 귀퉁이 작은 룬 돌
     for (wx, wy) in PADS:
         cx, cy = wx / 4, wy / 4 + 4
@@ -728,122 +910,123 @@ def build_map():
     # ---- 4) 들어오는 동굴 (왼쪽 위): 요철 바위 언덕 + 오른쪽을 보는 입 + 쐐기 돌 아치 + 횃불 두 개 + 해골 깃발
     rock_h = fbm(W, H, [16, 8, 4, 2], rnd)
     rl = bump_light(rock_h * 1.6)
-    mx, my = p[0]
-    fx_, fy_ = 1.0, 0.0
-    hx, hy = mx - 18, my
-    hrx, hry = 40, 46
-    edge = value_noise(64, 1, 6, rnd)[0]
-    for y in range(int(hy - hry - 6), int(hy + hry + 6)):
-        for x in range(int(hx - hrx - 6), int(hx + hrx + 6)):
-            if not (0 <= x < W and 0 <= y < H):
-                continue
-            a = math.atan2(y - hy, x - hx)
-            rr = 1 + (edge[int((a + math.pi) / (2 * math.pi) * 63)] - 0.5) * 0.35
-            e = ((x - hx) / (hrx * rr)) ** 2 + ((y - hy) / (hry * rr)) ** 2
-            if e > 1:
-                if e < 1.25:
-                    cv.shade(x + 2, y + 2, 0.4)
-                continue
-            dome = math.sqrt(max(0, 1 - e))
-            lum = rl[y, x] * 0.55 + (-(x - hx) / hrx * 0.25 - (y - hy) / hry * 0.35) + dome * 0.35
-            k = int(np.clip(1 + lum * 6, 1, 8))
-            if e > 0.86:
-                k = min(k, 2)
-            img[y, x] = CLIFF[k][:3]
-            if dome > 0.6 and rnd.random() < 0.05:
-                img[y, x] = C('#4b6e36')[:3]
-    ox, oy = mx - 4, my
-    rx, ry = 15, 20
-    for y in range(int(oy - ry - 7), int(oy + ry + 8)):
-        for x in range(int(ox - rx - 7), int(ox + rx + 8)):
-            if not (0 <= x < W and 0 <= y < H):
-                continue
-            e = ((x - ox) / rx) ** 2 + ((y - oy) / ry) ** 2
-            toward = ((x - ox) * fx_ + (y - oy) * fy_) / max(1, math.hypot(x - ox, y - oy))
-            if e <= 1:
-                k = 0 if e < 0.5 else 1 if e < 0.78 else 2
-                if 0.45 < e < 0.56 and BAYER[y & 3, x & 3] < 0.5:
-                    k = 1
-                img[y, x] = R('#040306', '#0b080c', '#171116')[k][:3]
-            elif e <= 1.6 and toward < 0.55:
-                an = math.atan2(y - oy, x - ox)
-                block = int((an + math.pi) / (math.pi / 8))
-                lum = (-(x - ox) * 0.5 - (y - oy) * 0.9) / (rx + ry) + 0.5
-                k = int(np.clip(3 + lum * 4 + (block % 2) * 0.8, 2, 8))
-                if abs(((an + math.pi) % (math.pi / 8)) - 0.01) < 0.07 or abs(e - 1.0) < 0.09:
-                    k = 1
+    for (mx, my) in starts:  # 동굴은 길마다 첫 점 (같은 자리는 한 번)
+        fx_, fy_ = 1.0, 0.0
+        hx, hy = mx - 18, my
+        hrx, hry = 40, 46
+        edge = value_noise(64, 1, 6, rnd)[0]
+        for y in range(int(hy - hry - 6), int(hy + hry + 6)):
+            for x in range(int(hx - hrx - 6), int(hx + hrx + 6)):
+                if not (0 <= x < W and 0 <= y < H):
+                    continue
+                a = math.atan2(y - hy, x - hx)
+                rr = 1 + (edge[int((a + math.pi) / (2 * math.pi) * 63)] - 0.5) * 0.35
+                e = ((x - hx) / (hrx * rr)) ** 2 + ((y - hy) / (hry * rr)) ** 2
+                if e > 1:
+                    if e < 1.25:
+                        cv.shade(x + 2, y + 2, 0.4)
+                    continue
+                dome = math.sqrt(max(0, 1 - e))
+                lum = rl[y, x] * 0.55 + (-(x - hx) / hrx * 0.25 - (y - hy) / hry * 0.35) + dome * 0.35
+                k = int(np.clip(1 + lum * 6, 1, 8))
+                if e > 0.86:
+                    k = min(k, 2)
                 img[y, x] = CLIFF[k][:3]
-    for i_, c in enumerate(('#ff5a3d', '#c23a2a', '#8a2a22')):
-        ex, ey = ox - (3 + i_ * 4), oy + (i_ - 1) * 5
-        img[int(ey), int(ex)] = C(c)[:3]
-        img[int(ey), int(ex + 3)] = C(c)[:3]
-    for side in (-1, 1):
-        tx, ty = int(ox + 6), int(oy + side * (ry + 7))
-        for y in range(ty, ty + 9):
-            img[y, tx] = WOOD[3][:3]; img[y, tx + 1] = WOOD[1][:3]
-        for (dx, dy, c) in ((0, -1, RED[3]), (1, -1, RED[2]), (0, -2, AMBER[3]), (1, -2, RED[3]), (0, -3, AMBER[4]), (0, -4, AMBER[5]), (1, -3, AMBER[3])):
-            img[ty + dy, tx + dx] = c[:3]
-        cv.light.append((tx, ty - 3, 24, (255, 150, 60), 0.5))
-    fxp, fyp = int(hx - 6), int(hy - hry + 2)
-    for y in range(fyp, fyp + 16):
-        img[y, fxp] = WOOD[2][:3]
-    for y in range(fyp + 1, fyp + 8):
-        for x in range(fxp + 1, fxp + 7 - (y - fyp) // 3):
-            img[y, x] = CLOTH_R[2 if x < fxp + 4 else 1][:3]
-    img[fyp + 3, fxp + 2] = C('#e8e2d0')[:3]; img[fyp + 3, fxp + 3] = C('#e8e2d0')[:3]; img[fyp + 4, fxp + 2] = C('#e8e2d0')[:3]
-    for _ in range(6):
-        t_ = rnd.uniform(8, 34)
-        bx_, by_ = int(ox + t_), int(oy + rnd.uniform(-8, 8))
-        if 0 <= bx_ < W - 1 and 0 <= by_ < H and road[by_, bx_]:
-            img[by_, bx_] = C('#e2dccb')[:3]; img[by_, bx_ + 1] = C('#b9b19c')[:3]
-    cv.keep[max(0, int(hy - hry - 12)):int(hy + hry + 12), max(0, int(hx - hrx - 12)):int(hx + hrx + 12)] = True
+                if dome > 0.6 and rnd.random() < 0.05:
+                    img[y, x] = C('#4b6e36')[:3]
+        ox, oy = mx - 4, my
+        rx, ry = 15, 20
+        for y in range(int(oy - ry - 7), int(oy + ry + 8)):
+            for x in range(int(ox - rx - 7), int(ox + rx + 8)):
+                if not (0 <= x < W and 0 <= y < H):
+                    continue
+                e = ((x - ox) / rx) ** 2 + ((y - oy) / ry) ** 2
+                toward = ((x - ox) * fx_ + (y - oy) * fy_) / max(1, math.hypot(x - ox, y - oy))
+                if e <= 1:
+                    k = 0 if e < 0.5 else 1 if e < 0.78 else 2
+                    if 0.45 < e < 0.56 and BAYER[y & 3, x & 3] < 0.5:
+                        k = 1
+                    img[y, x] = R('#040306', '#0b080c', '#171116')[k][:3]
+                elif e <= 1.6 and toward < 0.55:
+                    an = math.atan2(y - oy, x - ox)
+                    block = int((an + math.pi) / (math.pi / 8))
+                    lum = (-(x - ox) * 0.5 - (y - oy) * 0.9) / (rx + ry) + 0.5
+                    k = int(np.clip(3 + lum * 4 + (block % 2) * 0.8, 2, 8))
+                    if abs(((an + math.pi) % (math.pi / 8)) - 0.01) < 0.07 or abs(e - 1.0) < 0.09:
+                        k = 1
+                    img[y, x] = CLIFF[k][:3]
+        for i_, c in enumerate(('#ff5a3d', '#c23a2a', '#8a2a22')):
+            ex, ey = ox - (3 + i_ * 4), oy + (i_ - 1) * 5
+            img[int(ey), int(ex)] = C(c)[:3]
+            img[int(ey), int(ex + 3)] = C(c)[:3]
+        for side in (-1, 1):
+            tx, ty = int(ox + 6), int(oy + side * (ry + 7))
+            for y in range(ty, ty + 9):
+                img[y, tx] = WOOD[3][:3]; img[y, tx + 1] = WOOD[1][:3]
+            for (dx, dy, c) in ((0, -1, RED[3]), (1, -1, RED[2]), (0, -2, AMBER[3]), (1, -2, RED[3]), (0, -3, AMBER[4]), (0, -4, AMBER[5]), (1, -3, AMBER[3])):
+                img[ty + dy, tx + dx] = c[:3]
+            cv.light.append((tx, ty - 3, 24, (255, 150, 60), 0.5))
+        fxp, fyp = int(hx - 6), int(hy - hry + 2)
+        for y in range(fyp, fyp + 16):
+            img[y, fxp] = WOOD[2][:3]
+        for y in range(fyp + 1, fyp + 8):
+            for x in range(fxp + 1, fxp + 7 - (y - fyp) // 3):
+                img[y, x] = CLOTH_R[2 if x < fxp + 4 else 1][:3]
+        img[fyp + 3, fxp + 2] = C('#e8e2d0')[:3]; img[fyp + 3, fxp + 3] = C('#e8e2d0')[:3]; img[fyp + 4, fxp + 2] = C('#e8e2d0')[:3]
+        for _ in range(6):
+            t_ = rnd.uniform(8, 34)
+            bx_, by_ = int(ox + t_), int(oy + rnd.uniform(-8, 8))
+            if 0 <= bx_ < W - 1 and 0 <= by_ < H and road[by_, bx_]:
+                img[by_, bx_] = C('#e2dccb')[:3]; img[by_, bx_ + 1] = C('#b9b19c')[:3]
+        cv.keep[max(0, int(hy - hry - 12)):int(hy + hry + 12), max(0, int(hx - hrx - 12)):int(hx + hrx + 12)] = True
 
     # ---- 5) 나가는 성문 (오른쪽 아래): 돌 아치 + 보랏빛 차원문 소용돌이 + 양옆 화로 · 몬스터가 여기로 빠져나가면 게이지가 깎임
-    gx, gy = p[-1]
-    gx -= 6
-    # 문 기둥 둘 (벽돌) + 위 아치
-    for side in (-1, 1):
-        x0 = int(gx - 4 + side * 16) - 3
-        cv.ellipse_shadow(x0 + 6, gy + 18, 7, 3, 0.5)
-        s = Spr(9, 44)
-        s.cyl(1, 7, 4, 43, STONE[1:7])
-        bricks(s, 1, 7, 6, 42, STONE, bh=3, bw=4, seed=side + 5, mossy=True)
-        s.rect(0, 0, 8, 3, STONE[5]); s.rect(0, 0, 8, 0, STONE[7])
-        s.outline()
-        cv.blit(s, x0, int(gy - 26))
-    for a in range(0, 181, 3):
-        ang = math.radians(180 + a)
-        for rr_ in range(13, 19):
-            x = gx - 4 + math.cos(ang) * rr_ * 1.05
-            y = gy - 24 + math.sin(ang) * rr_ * 0.9
-            k = 6 if rr_ > 16 and a < 90 else 5 if rr_ > 15 else 4 if a < 90 else 3
-            if (a // 15) % 2 == 0 and rr_ in (13, 18):
-                k = 2
-            cv.put(x, y, STONE[k])
-    # 차원문 (문 안쪽 타원 소용돌이)
-    for y in range(int(gy - 38), int(gy + 18)):
-        for x in range(int(gx - 17), int(gx + 10)):
-            dx, dy = (x + 0.5 - (gx - 4)) / 12.5, (y + 0.5 - (gy - 10)) / 27
-            dd = dx * dx + dy * dy
-            if dd > 1:
-                continue
-            an = math.atan2(dy, dx)
-            swirl = (an * 3 + math.sqrt(dd) * 9) % (2 * math.pi)
-            k = int(np.clip((1 - dd) * 3 + (1.5 if swirl < 1.2 else 0) + BAYER[y & 3, x & 3] * 0.8, 0, 6))
-            cv.put(x, y, VOID[k])
-    cv.light.append((gx - 4, gy - 10, 60, (170, 120, 255), 0.55))
-    for side in (-1, 1):
-        bx, by = int(gx - 4 + side * 27), int(gy + 12)
-        cv.ellipse_shadow(bx + 2, by + 8, 6, 2, 0.5)
-        s = Spr(11, 16)
-        s.rect(1, 4, 9, 6, IRON[4]); s.rect(1, 4, 9, 4, IRON[6]); s.rect(2, 7, 8, 7, IRON[2])
-        s.rect(4, 8, 6, 13, IRON[3]); s.rect(4, 8, 4, 13, IRON[5]); s.rect(2, 14, 8, 14, IRON[2])
-        for (x, y, c) in ((5, 3, RED[3]), (4, 3, RED[2]), (6, 3, RED[2]), (5, 2, AMBER[4]), (4, 2, RED[4]), (6, 1, AMBER[4]), (5, 1, AMBER[5]), (5, 0, AMBER[3])):
-            s.px(x, y, c)
-        s.outline()
-        cv.blit(s, bx - 5, by - 6)
-        cv.light.append((bx, by - 4, 30, (255, 150, 60), 0.55))
-    cv.keep[int(gy - 48):int(gy + 30), int(gx - 40):W] = True
+    for (gx, gy) in ends:  # 성문은 길마다 끝 점
+        gx -= 6
+        # 문 기둥 둘 (벽돌) + 위 아치
+        for side in (-1, 1):
+            x0 = int(gx - 4 + side * 16) - 3
+            cv.ellipse_shadow(x0 + 6, gy + 18, 7, 3, 0.5)
+            s = Spr(9, 44)
+            s.cyl(1, 7, 4, 43, STONE[1:7])
+            bricks(s, 1, 7, 6, 42, STONE, bh=3, bw=4, seed=side + 5, mossy=True)
+            s.rect(0, 0, 8, 3, STONE[5]); s.rect(0, 0, 8, 0, STONE[7])
+            s.outline()
+            cv.blit(s, x0, int(gy - 26))
+        for a in range(0, 181, 3):
+            ang = math.radians(180 + a)
+            for rr_ in range(13, 19):
+                x = gx - 4 + math.cos(ang) * rr_ * 1.05
+                y = gy - 24 + math.sin(ang) * rr_ * 0.9
+                k = 6 if rr_ > 16 and a < 90 else 5 if rr_ > 15 else 4 if a < 90 else 3
+                if (a // 15) % 2 == 0 and rr_ in (13, 18):
+                    k = 2
+                cv.put(x, y, STONE[k])
+        # 차원문 (문 안쪽 타원 소용돌이)
+        for y in range(int(gy - 38), int(gy + 18)):
+            for x in range(int(gx - 17), int(gx + 10)):
+                dx, dy = (x + 0.5 - (gx - 4)) / 12.5, (y + 0.5 - (gy - 10)) / 27
+                dd = dx * dx + dy * dy
+                if dd > 1:
+                    continue
+                an = math.atan2(dy, dx)
+                swirl = (an * 3 + math.sqrt(dd) * 9) % (2 * math.pi)
+                k = int(np.clip((1 - dd) * 3 + (1.5 if swirl < 1.2 else 0) + BAYER[y & 3, x & 3] * 0.8, 0, 6))
+                cv.put(x, y, VOID[k])
+        cv.light.append((gx - 4, gy - 10, 60, (170, 120, 255), 0.55))
+        for side in (-1, 1):
+            bx, by = int(gx - 4 + side * 27), int(gy + 12)
+            cv.ellipse_shadow(bx + 2, by + 8, 6, 2, 0.5)
+            s = Spr(11, 16)
+            s.rect(1, 4, 9, 6, IRON[4]); s.rect(1, 4, 9, 4, IRON[6]); s.rect(2, 7, 8, 7, IRON[2])
+            s.rect(4, 8, 6, 13, IRON[3]); s.rect(4, 8, 4, 13, IRON[5]); s.rect(2, 14, 8, 14, IRON[2])
+            for (x, y, c) in ((5, 3, RED[3]), (4, 3, RED[2]), (6, 3, RED[2]), (5, 2, AMBER[4]), (4, 2, RED[4]), (6, 1, AMBER[4]), (5, 1, AMBER[5]), (5, 0, AMBER[3])):
+                s.px(x, y, c)
+            s.outline()
+            cv.blit(s, bx - 5, by - 6)
+            cv.light.append((bx, by - 4, 30, (255, 150, 60), 0.55))
+        cv.keep[int(gy - 48):int(gy + 30), int(gx - 40):W] = True
+
 
     def round_tree(tx, ty, r, seed):
         rr = random.Random(seed)
@@ -1022,15 +1205,33 @@ def main():
     os.makedirs(os.path.dirname(OUT_TOWERS), exist_ok=True)
     tw = build_towers()
     tw.save(OUT_TOWERS, optimize=True)
-    m = build_map()
-    m.save(OUT_MAP, 'WEBP', lossless=True, quality=100, method=6)
-    print('towers', tw.size, os.path.getsize(OUT_TOWERS), 'map', m.size, os.path.getsize(OUT_MAP))
+    only = os.environ.get('ONLY')
+    for key, seed, path, pads, *fx in LAYOUTS + (CANDIDATES if only else []):
+        if only and key not in only.split(','):
+            continue
+        fx = fx[0] if fx else None
+        if not pads:
+            high = (fx or {}).get('high_pads', [])  # 고지대 위 자리 (길에서 멀어 사거리가 늘어야 쓸모 있음 → 게임에서 고지대 사거리 보너스)
+            n = 22 - len(high)
+            pads = auto_pads(path, n, avoid=high, fx=fx)
+            if len(pads) < n:  # 자리가 모자라면 조금 촘촘히
+                pads = auto_pads(path, n, sep=(240, 200), near=(115, 340), avoid=high, fx=fx)
+            pads = sorted([list(q) for q in high] + [list(q) for q in pads], key=lambda q: (q[1], q[0]))
+        # 용병 처음 자리 5곳: 받침돌 사이 길가
+        spots = auto_pads(path, 5, near=(90, 220), sep=(320, 260), avoid=[(q[0], q[1]) for q in pads], fx=fx) if key != 'crystal_defense' else [[1210, 740], [1510, 740], [1350, 1100], [910, 740], [1650, 1100]]
+        m = build_map(path, pads, seed, fx)
+        out = os.path.join(ROOT, f'assets/maps/{key}.webp')
+        m.save(out, 'WEBP', lossless=True, quality=100, method=6)
+        print(key, m.size, os.path.getsize(out))
+        print(f"  {{ key: '{key}', path: {json.dumps(path)}, pads: {json.dumps([list(q) for q in pads])}, mercs: {json.dumps([list(q) for q in spots])}{', fx: ' + json.dumps(fx) if fx else ''} }},  # {len(pads)}곳")
+        if PREVIEW:
+            m.resize((W * 2, H * 2), Image.NEAREST).save(os.path.join(PREVIEW, f'_preview_{key}.png'))
+    print('towers', tw.size, os.path.getsize(OUT_TOWERS))
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
         bg = Image.new('RGBA', (tw.width * 3, tw.height * 3), (52, 78, 56, 255))
         bg.alpha_composite(tw.resize((tw.width * 3, tw.height * 3), Image.NEAREST))
         bg.save(os.path.join(PREVIEW, '_preview_defense_towers.png'))
-        m.resize((W * 2, H * 2), Image.NEAREST).save(os.path.join(PREVIEW, '_preview_defense_map.png'))
 
 
 if __name__ == '__main__':
