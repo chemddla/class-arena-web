@@ -797,8 +797,8 @@
   const TEST = new RegExp(RE.source, 'u');
   const SKIP = 'script,style,textarea,input,select,option,svg,canvas,title,noscript,[contenteditable],.pxi,.pxe-x,.no-pxi';
 
-  // 도트 아이콘이 없는 기본 이모지: 문구 옆에 붙은 것은 숨김 (글자는 span 안에 남겨 textContent 검사는 그대로)
-  //   이모지만 있는 버튼·링크 같은 곳은 그대로 둠
+  // 문구 옆에 붙은 이모지는 도트 아이콘이 있든 없든 숨김 (글자는 span 안에 남겨 textContent 검사는 그대로)
+  //   이모지만 있는 버튼·링크 같은 곳(꼭 필요한 것)만 남기고, 그건 도트 아이콘으로 보여 줌
   const EMO = String.raw`(?:\p{Emoji_Presentation}|\p{Extended_Pictographic}\uFE0F)(?:\u200D\p{Extended_Pictographic}\uFE0F?)*[\u{1F3FB}-\u{1F3FF}]?`;
   const ALL = new RegExp('(?:' + keys.map(esc).join('|') + ')' + String.raw`\uFE0F?|` + EMO, 'gu');
   const ANY = new RegExp(EMO + '|(?:' + keys.map(esc).join('|') + ')', 'u');
@@ -830,7 +830,7 @@
       if (!icon && !hideRaw) continue;
       if (m.index > last) frag.appendChild(document.createTextNode(s.slice(last, m.index)));
       const span = document.createElement('span');
-      if (icon) {
+      if (icon && !hideRaw) {
         span.className = 'pxi pxi-' + icon;
         span.setAttribute('role', 'img');
         span.setAttribute('aria-label', base);
