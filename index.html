@@ -6119,7 +6119,7 @@
         icon: '🛡️',
         color: '#0369a1',
         roleDesc: '방패 근접·도발/돌격·피해 감소',
-        passiveName: '철갑', passiveShort: '받는 피해 -20% · 주변 아군 보호', passiveDesc: '받는 피해 -20% · 기본 공격에 경직 면역 · 2칸 안 아군이 받는 피해 -10%',
+        passiveName: '철갑', passiveShort: '받는 피해 -20% · 치명타 저항 20% · 주변 아군 보호', passiveDesc: '받는 피해 -20% · 치명타 저항 20% (적의 치명타 확률 -20%) · 기본 공격에 경직 면역 · 2칸 안 아군이 받는 피해 -10%',
         baseHp: 2450, baseAtk: 44, baseDef: 52, baseSpd: 88, range: 66, maxMana: 100
       },
       // 창병: 길고 넓은 근접 공격 + 보통 공격 속도, 체력·방어는 높고 공격력은 보통
@@ -6184,7 +6184,7 @@
         icon: '⚜️',
         color: '#ca8a04',
         roleDesc: '철퇴 근접·주변 보호막·상태이상 해제·대신 맞기',
-        passiveName: '헌신', passiveShort: '아군 피해를 대신 받는 수호자', passiveDesc: '받는 피해 -20% · 2칸 안 아군이 받는 피해의 30%를 대신 받음 (자기 체력이 30% 아래면 멈춤)',
+        passiveName: '헌신', passiveShort: '아군 피해를 대신 받는 수호자 · 주변 치명타 저항', passiveDesc: '받는 피해 -20% · 2칸 안 아군이 받는 피해의 30%를 대신 받음 (자기 체력이 30% 아래면 멈춤) · 2칸 안 아군(자신 포함) 치명타 저항 10% (성기사가 여럿이어도 한 번만)',
         baseHp: 2200, baseAtk: 46, baseDef: 48, baseSpd: 92, range: 72, maxMana: 100 // 체력 2300→2200·헌신 20→15%·신성 보호 12→10%: 무작위 5:5 승률 60~62% → 기준 60% 아래로
       },
       // 소환사: 본체는 약한 후열, 불·물·대지·바람·번개 정령을 불러 싸움 (docs/summoner-design.md). 기본 공격은 한 명만 맞는 원소 구슬
@@ -22199,11 +22199,22 @@
     const CURSE_GRUDGE_CRIT_BONUS = 0.10;
     // 음유시인 합주: 음유시인 주변 2.5칸 안 아군(자신 포함) 치명타 확률 +10% (여럿이어도 한 번만, bardEnsembleOn)
     const BARD_ENSEMBLE_CRIT_BONUS = 0.10;
+    // 치명타 저항: 맞는 쪽이 가진 만큼 때린 쪽 치명타 확률이 줄어듦 (기사 철갑 20%)
+    const JOB_CRIT_RESIST = { knight: 0.20 };
+    // 성기사 헌신: 성기사 2칸 안 아군(자신 포함) 치명타 저항 +10% (성기사가 여럿이어도 한 번만)
+    const PALADIN_CRIT_RESIST_CELLS = 2;
+    const PALADIN_CRIT_RESIST = 0.10;
+    function paladinCritGuardOn(u) {
+      if (!u || u.monsterType || u.isEliteBoss) return false;
+      const r = GRID_CELL_SIZE * PALADIN_CRIT_RESIST_CELLS;
+      return sim.units.some(p => p.alive && p.team === u.team && p.job === 'paladin' && !p.monsterType && unitDist(p, u) <= r);
+    }
     function rollCrit(attacker, defender) {
       if (!attacker || fixedDamageHit || attacker.team === defender.team) return false;
       const grudge = hasNegativeStatus(defender) && curseGrudgeMult(attacker.team) > 1 ? CURSE_GRUDGE_CRIT_BONUS : 0;
       const ensemble = bardEnsembleOn(attacker) ? BARD_ENSEMBLE_CRIT_BONUS : 0;
-      return Math.random() < (attacker.critChance ?? CRIT_CHANCE_BASE) + (JOB_CRIT_BONUS[attacker.job] || 0) + grudge + ensemble;
+      const resist = (defender.monsterType ? 0 : (JOB_CRIT_RESIST[defender.job] || 0)) + (paladinCritGuardOn(defender) ? PALADIN_CRIT_RESIST : 0);
+      return Math.random() < (attacker.critChance ?? CRIT_CHANCE_BASE) + (JOB_CRIT_BONUS[attacker.job] || 0) + grudge + ensemble - resist;
     }
     function applyDamage(attacker, defender, rawDmg, tagText = '', customColor = null) {
       if (!defender.alive) return;
