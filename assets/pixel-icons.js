@@ -1725,12 +1725,18 @@
   if (typeof document === 'undefined') return;
   window.PixelIcons = api;
   try { if (/[?&]noicons=1/.test(location.search)) return; } catch (e) { }
+  // 아이콘 전부 숨기기 스위치 (2026-11-13 사용자 요청: "아이콘 다 빼봐, 삭제하지는 말고")
+  //   true면 이모지·도트 아이콘(.pxi)·index.html의 픽셀 아이콘(.px-ico: 직업·자물쇠 등)을 화면에서만 감춤. 그림·연결표·코드는 그대로
+  //   다시 보이게 하려면 false로 바꾸면 됨. 주소에 ?icons=1을 붙이면 이 스위치를 무시하고 예전처럼 보여 줌
+  let HIDE_ALL = true;
+  try { if (/[?&]icons=1/.test(location.search)) HIDE_ALL = false; } catch (e) { }
 
   // ── 스타일: 아이콘마다 class 하나 ──
   let css = '.pxi{display:inline-block;width:1.15em;height:1.15em;vertical-align:-0.2em;line-height:1.15em;'
     + 'background:no-repeat center/contain;image-rendering:pixelated;color:transparent!important;-webkit-text-fill-color:transparent!important;'
     + 'text-shadow:none!important;overflow:hidden;white-space:nowrap;text-indent:-99em;font-style:normal}'
-    + '.pxe-x{display:none!important}';
+    + '.pxe-x{display:none!important}'
+    + (HIDE_ALL ? '.pxi,.px-ico{display:none!important}' : '');
   for (const name in ICONS) css += `.pxi-${name}{background-image:url("data:image/svg+xml,${encodeURIComponent(svgOf(ICONS[name]))}")}`;
   const style = document.createElement('style');
   style.id = 'pixel-icons-css';
@@ -1767,7 +1773,7 @@
     if (!s || !ANY.test(s)) return;
     const parent = node.parentElement;
     if (!parent || parent.closest(SKIP)) return;
-    const hideRaw = nextToText(node);
+    const hideRaw = HIDE_ALL || nextToText(node);
     const frag = document.createDocumentFragment();
     let last = 0, changed = false;
     ALL.lastIndex = 0;
