@@ -14800,7 +14800,8 @@
         const eq = equipDefOf(merc.equippedItem);
         return `
           <div draggable="true" ondragstart="handleStorageDragStart(event, '${merc.id}')" ondragend="draggingStorageMercId = null"
-            class="cursor-grab rounded-xl border-2 p-1.5 flex flex-col items-center gap-1 text-center rarity-${merc.rarity}">
+            onclick="openMercDetailModal('${merc.id}')" title="눌러서 세부정보 보기 · 끌어서 용병단으로 꺼내기"
+            class="cursor-pointer hover:brightness-110 rounded-xl border-2 p-1.5 flex flex-col items-center gap-1 text-center rarity-${merc.rarity}">
             <div class="w-full h-11 rounded-lg bg-slate-950/85 flex items-center justify-center overflow-hidden">
               ${getUnitPortraitHTML(merc.job, merc.rarity, merc.skinVariant || 0, 44)}
             </div>
@@ -14812,7 +14813,7 @@
               <div class="text-[11px] font-bold text-white truncate">${merc.name}</div>
               <div class="text-[10px] font-bold truncate" style="color:${job.color}">${job.name}${eq ? ` · ${eq.icon}` : ''}</div>
             </div>
-            <button onclick="retrieveMercFromStorage('${merc.id}')" ${rosterFull ? `title="보유 정원(${MAX_ROSTER}명)이 가득 찼어요"` : ''}
+            <button onclick="event.stopPropagation(); retrieveMercFromStorage('${merc.id}')" ${rosterFull ? `title="보유 정원(${MAX_ROSTER}명)이 가득 찼어요"` : ''}
               class="w-full py-1 rounded-lg text-[10px] font-extrabold transition ${rosterFull ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white'}">
               📤 꺼내기
             </button>
@@ -14972,7 +14973,9 @@
     let activeDetailMercId = null;
 
     function openMercDetailModal(mercId) {
-      selectedMercId = mercId;
+      // 보관함 용병도 열 수 있음 (보관 중에는 보기만 하고, 고치려면 꺼내야 함)
+      const inRoster = (getActiveStudent()?.roster || []).some(m => m.id === mercId);
+      if (inRoster) selectedMercId = mercId;
       activeDetailMercId = mercId;
       formationMovingMercId = null;
       renderSquadTab();
@@ -14991,7 +14994,10 @@
       const body = document.getElementById('mercDetailModalBody');
       if (!body || !activeDetailMercId) return;
       const stu = getActiveStudent();
-      const merc = stu.roster.find(m => m.id === activeDetailMercId);
+      let merc = stu.roster.find(m => m.id === activeDetailMercId);
+      // 보관함 용병: 보기 전용 (이름·장비·외형·전술·레벨업·판매는 꺼낸 뒤에)
+      const stored = !merc;
+      if (!merc) merc = (stu.mercStorage || []).find(m => m && m.id === activeDetailMercId);
       if (!merc) {
         closeMercDetailModal();
         return;
@@ -15017,9 +15023,9 @@
               <div class="flex items-center gap-1.5 flex-wrap">
                 <span ${infoTipAttrs('rarity', rar.code)} class="cursor-help px-2 py-0.5 rounded-lg text-xs font-extrabold ${rar.badgeClass}">${rar.name}</span>
                 <span class="font-title text-2xl text-white">${merc.name}</span>
-                <button onclick="openRenameMercModal('${merc.id}')" class="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 border border-slate-700">
+                ${stored ? '<span class="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-300 text-xs font-extrabold border border-amber-500/40">📦 보관 중</span>' : `<button onclick="openRenameMercModal('${merc.id}')" class="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 border border-slate-700">
                   ✏️ 이름변경
-                </button>
+                </button>`}
               </div>
               <div class="flex items-center gap-2 text-xs text-slate-300 mt-1 flex-wrap">
                 <span ${infoTipAttrs('job', job.id)} style="color:${job.color}" class="cursor-help font-extrabold">${job.icon} ${job.name} (${job.roleDesc})</span>
@@ -15032,7 +15038,7 @@
             </div>
           </div>
           <div class="flex items-center gap-2 shrink-0">
-            <button onclick="toggleRepMerc('${merc.id}')" title="명예의 전당·윷놀이 말·몬스터 러쉬 등 용병 1명이 나오는 곳에 이 용병이 나와요"
+            ${stored ? '' : `<button onclick="toggleRepMerc('${merc.id}')" title="명예의 전당·윷놀이 말·몬스터 러쉬 등 용병 1명이 나오는 곳에 이 용병이 나와요"
               class="px-3 py-1.5 rounded-xl text-xs font-extrabold transition ${
                 stu.repMercId === merc.id ? 'bg-amber-400 text-slate-950 shadow' : 'bg-slate-800 text-amber-300 border border-amber-500/40 hover:bg-slate-700'
               }">
@@ -15043,7 +15049,7 @@
                 merc.deployed ? 'bg-emerald-500 text-slate-950 shadow' : 'bg-slate-800 text-slate-400 border border-slate-700'
               }">
               ${merc.deployed ? '✅ 출전중' : '대기중'}
-            </button>
+            </button>`}
             <button onclick="closeMercDetailModal()" class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-sm">✕</button>
           </div>
         </div>
@@ -15080,7 +15086,7 @@
               <span class="text-xs font-extrabold text-indigo-300">⚡ 스킬 (보유 스킬)</span>
               <p class="text-[11px] text-slate-400">Lv.1 · 10 · 20에 아직 없는 직업 스킬 중 하나가 무작위로 열려요. 전투에서는 AI가 알맞게 사용해요.</p>
             </div>
-            ${(merc.skillsRevealed || 0) > 0 && (merc.skillsRevealed || 0) < ensureMercSkillSlots(merc).length ? `<button onclick="rerollMercSkill('${merc.id}')"
+            ${!stored && (merc.skillsRevealed || 0) > 0 && (merc.skillsRevealed || 0) < ensureMercSkillSlots(merc).length ? `<button onclick="rerollMercSkill('${merc.id}')"
               class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-[11px] shadow">
               🎲 스킬 전체 다시 뽑기 (${SKILL_REROLL_COST} CA)
             </button>` : ''}
@@ -15096,7 +15102,7 @@
                   <div>
                     <div class="flex items-center justify-between mb-1">
                       <span class="text-[10px] font-extrabold text-slate-400">${skIdx + 1}번 스킬</span>
-                      <span class="flex gap-1">${skIdx > 0 ? moveBtn(-1, '◀') : ''}${skIdx < displaySkillKeys.length - 1 ? moveBtn(1, '▶') : ''}</span>
+                      <span class="flex gap-1">${!stored && skIdx > 0 ? moveBtn(-1, '◀') : ''}${!stored && skIdx < displaySkillKeys.length - 1 ? moveBtn(1, '▶') : ''}</span>
                     </div>
                     <div class="text-sm font-extrabold text-white flex items-center gap-1 flex-wrap">
                       <span>${skObj.icon}</span>
@@ -15121,7 +15127,7 @@
         <div class="bg-slate-950 border-2 border-emerald-500/40 rounded-2xl p-3.5 flex flex-col gap-2.5">
           <div class="flex items-center justify-between flex-wrap gap-2">
             <span class="text-xs font-extrabold text-emerald-300">🎒 장비 (용병당 1개)</span>
-            <button onclick="closeMercDetailModal(); switchStudentTab('shop');" class="${EQUIP_SHOP_LOCKED ? 'hidden ' : ''}px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-amber-300 border border-slate-700">🛒 오늘의 장비 보기</button>
+            <button onclick="closeMercDetailModal(); switchStudentTab('shop');" class="${EQUIP_SHOP_LOCKED || stored ? 'hidden ' : ''}px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-amber-300 border border-slate-700">🛒 오늘의 장비 보기</button>
           </div>
           ${EQUIP_SHOP_LOCKED ? '<div class="text-xs text-slate-400 bg-slate-900 border border-slate-800 rounded-xl p-2.5">🔒 장비 기능은 준비 중이에요. 곧 열릴 예정이에요!</div>' : (() => {
             const eq = equipDefOf(merc.equippedItem);
@@ -15131,9 +15137,10 @@
                   <div class="flex items-center gap-2.5 min-w-0"><span class="text-2xl">${eq.icon}</span>
                     <div class="min-w-0"><div class="text-xs font-extrabold text-white flex items-center gap-1 flex-wrap">${eq.name} ${equipKindBadge(eq)}</div>
                     <div class="text-[11px] text-amber-300 font-bold leading-snug">${eq.desc}</div></div></div>
-                  <button onclick="unequipMercItem('${merc.id}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300 shrink-0">빼기</button>
+                  ${stored ? '' : `<button onclick="unequipMercItem('${merc.id}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300 shrink-0">빼기</button>`}
                 </div>`
-              : '<div class="text-xs text-slate-400 bg-slate-900 border border-slate-800 rounded-xl p-2.5">끼운 장비가 없어요. 아래 보관함에서 골라 끼워 주세요.</div>';
+              : `<div class="text-xs text-slate-400 bg-slate-900 border border-slate-800 rounded-xl p-2.5">${stored ? '끼운 장비가 없어요.' : '끼운 장비가 없어요. 아래 보관함에서 골라 끼워 주세요.'}</div>`;
+            if (stored) return cur;
             const list = inv.length
               ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-36 overflow-y-auto pr-1">${inv.map(it => {
                   const d = equipDefOf(it);
@@ -15146,7 +15153,7 @@
         </div>
 
         <!-- 2-C. 외형 변경 (기본 외형 + 보유한 학급 디자인 외형 + 시크릿 레어는 전용 외형) -->
-        <div class="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex flex-col gap-2.5">
+        <div class="${stored ? 'hidden ' : ''}bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex flex-col gap-2.5">
           <div class="flex items-center justify-between flex-wrap gap-2">
             <span class="text-xs font-extrabold text-fuchsia-300">🎨 외형 변경</span>
             <span class="text-[11px] font-bold text-amber-300">한 번 바꿀 때마다 ${MERC_SKIN_CHANGE_COST.toLocaleString()} CA</span>
@@ -15168,7 +15175,7 @@
         </div>
 
         <!-- 3. 전술 AI & 대시 운용 설정 -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-slate-950 border border-slate-800 rounded-2xl p-3">
+        <div class="${stored ? 'hidden ' : ''}grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-slate-950 border border-slate-800 rounded-2xl p-3">
           <div>
             <label class="text-[11px] font-bold text-slate-300 block mb-1">🎯 우선 공격/지원 대상</label>
             <select onchange="updateMercTactic('${merc.id}', 'targetRule', this.value); renderMercDetailModal();"
@@ -15190,8 +15197,21 @@
           </div>
         </div>
 
+        ${stored ? (() => {
+          const rosterFull = (stu.roster || []).length >= MAX_ROSTER;
+          return `<div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800">
+            <span class="text-[11px] text-slate-400">📦 보관 중인 용병은 전투에 나가지 않아요. 레벨업·장비·외형을 바꾸려면 꺼내 주세요.</span>
+            <div class="flex items-center gap-1.5">
+              <button ${rosterFull ? `disabled title="보유 정원(${MAX_ROSTER}명)이 가득 찼어요"` : `onclick="const mid='${merc.id}'; closeMercDetailModal(); retrieveMercFromStorage(mid);"`}
+                class="px-4 py-2 rounded-xl text-xs font-extrabold ${rosterFull ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow'}">
+                📤 꺼내기
+              </button>
+              <button onclick="closeMercDetailModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold">닫기</button>
+            </div>
+          </div>`;
+        })() : ''}
         <!-- 4. 하단 레벨업 & 판매 버튼 바 (연속 훈련 및 레벨 즉시 설정 삭제 완료 - Requirement 1 & 2) -->
-        <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800">
+        <div class="${stored ? 'hidden ' : ''}flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800">
           <div class="flex items-center gap-1.5 flex-wrap">
             <button onclick="trainMercenary('${merc.id}'); renderMercDetailModal();"
               class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow">
