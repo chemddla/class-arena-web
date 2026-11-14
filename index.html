@@ -30960,6 +30960,7 @@
     const ENG_TITAN_GUN = [24, 0.28];          // 최종병기 기관포: 24틱마다 공격 28% (처음 18틱·55%는 히든 보유 팀 승률 98%)
     const ENG_TITAN_MORTAR = [110, 0.9, 1.2];  //   박격포: 110틱마다 90%, 반지름 1.2칸
     const ENG_TITAN_LASER = [180, 1.8, 40, 20]; //   레이저: 180틱마다 180% (조준 40틱, 폭 절반 20)
+    const ENG_TITAN_BLAST_VIS = 2;       //   자폭 때 겹쳐 그리는 수류탄 폭발 그림 반경 (칸, 피해 반경 3.5칸보다 작게: 그림을 너무 키우면 도트가 뭉개짐)
     const ENG_TITAN_WRECK_TICKS = 150;   //   터진 뒤 자폭 폭발 칸 → 잔해가 2.5초 남았다가 흐려짐
     const ENG_TITAN_BOOM_WARN = 45;      //   시간이 다 되면 0.75초 깜박인 뒤
     const ENG_TITAN_BOOM = 4.0;          //   주변 3.5칸에 400% 자폭
@@ -31104,7 +31105,8 @@
     function engFireBullet(t, target, dmg, color = '#fde047') {
       const a = Math.atan2(target.y - t.y, target.x - t.x), o = engMuzzle(t, a);
       t.engShotT = t.engGunT = sim.tickCount; // 그림: 쏜 뒤 지난 틱으로 발사 동작 칸을 고름 (engTurretFrame · engTitanFrame)
-      if (t.turretKind === 'gatling') { // 기관포탑 총탄: 얇은 금빛 예광선 (연사라 높이를 1px씩 흔듦) · 맞으면 작은 불티 (eng_gat_hit)
+      if (t.turretKind === 'gatling' || t.turretKind === 'titan') { // 기관포탑·최종병기 기관총 총탄: 얇은 금빛 예광선 (연사라 높이를 1px씩 흔듦) · 맞으면 작은 불티 (eng_gat_hit)
+        if (t.turretKind === 'titan') t.gatShot = (t.gatShot || 0) + 1;
         const jy = [-1, 1, 0, -1, 1][(t.gatShot || 0) % 5];
         sim.projectiles.push({ projType: 'eng_gat', x: o.x, y: o.y + jy, sx: o.x, sy: o.y + jy, target, owner: t, dmg, isHeal: false, speed: 9, trail: [], color, radius: 2 });
       } else if (t.turretKind === 'drone') { // 드론 총탄: 짧은 금빛 예광선 (꼬리 12px) · 맞으면 기관포탑과 같은 작은 불티
@@ -31230,6 +31232,7 @@
     function engTitanBoom(t) {
       engBlastAt(t, t.team, t.x, t.y, GRID_CELL_SIZE * ENG_TITAN_BOOM_R, (t.ownerAtk || t.atk) * ENG_TITAN_BOOM, true, '🤖');
       sim.effects.push({ type: 'eng_blast', x: t.x, y: t.y - 20, r: GRID_CELL_SIZE * 2.2, life: 34, maxLife: 34 });
+      sim.effects.push({ type: 'eng_mortar_blast', x: Math.round(t.x), y: Math.round(t.y + 10), r: GRID_CELL_SIZE * ENG_TITAN_BLAST_VIS, life: ENG_MORTAR_BLAST_TICKS, maxLife: ENG_MORTAR_BLAST_TICKS }); // 박격포와 같은 수류탄 폭발을 크게
       engTitanWreck(t);
       if (!sim.shake || sim.shake.power < 10) sim.shake = { power: 10, life: 20, maxLife: 20 };
       addBattleLog(`🤖 [기계공] 최종병기 자폭!`);
@@ -31261,7 +31264,13 @@
         const t = sim.units[i];
         if (!t.turretKind) continue;
         if (!t.alive) {
-          if (t.turretOn) { t.turretOn = false; sim.effects.push({ type: 'eng_blast', x: t.x, y: t.y - 8, r: 40 * (t.sizeScale || 1), small: true, life: 24, maxLife: 24 }); if (t.turretKind === 'titan') engTitanWreck(t); }
+          if (t.turretOn) {
+            t.turretOn = false;
+            if (t.turretKind === 'titan') { // 최종병기가 부서짐: 수류탄 폭발 + 잔해
+              sim.effects.push({ type: 'eng_mortar_blast', x: Math.round(t.x), y: Math.round(t.y + 10), r: GRID_CELL_SIZE * ENG_TITAN_BLAST_VIS * 0.75, life: ENG_MORTAR_BLAST_TICKS, maxLife: ENG_MORTAR_BLAST_TICKS });
+              engTitanWreck(t);
+            } else sim.effects.push({ type: 'eng_blast', x: t.x, y: t.y - 8, r: 40 * (t.sizeScale || 1), small: true, life: 24, maxLife: 24 });
+          }
           continue;
         }
         const owner = unitByIdNow(t.ownerId);
