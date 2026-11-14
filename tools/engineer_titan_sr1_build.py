@@ -10,7 +10,7 @@
 #   · 9~14 등장 착지 (assets/sprites/fx/samples/engineer_titan_sr1_land_src.png, 3×2): 파란 분사로 내려옴 → 주황 분사·먼지 닿음 → 먼지 터짐
 #     → 땅이 갈라지며 웅크림 → 일어섬 → 연기 속에 섬 (다음은 평소 칸). 무기 없는 그림이라 착지 동안은 쏘지 않음 (index.html engTitanLanding)
 #     크기는 로봇(어두운 강철) 키를 자폭 첫 칸 로봇 키와 같게, 가로는 로봇 가운데, 세로는 칸의 땅 줄
-#   · 15~16 기관총 진동 (GUN_BOX를 GUN_SHAKE만큼 옮긴 평소 칸)
+#   · 15~18 기관총 진동 (GUN_BOX 안을 총구 쪽일수록 크게 흔든 평소 칸)
 #   자폭 칸은 칸마다 연기·파편 조각도 남김. 크기는 다리 끝 폭을 평소 그림과 같게 (샘플마다 로봇 크기가 달라서), 기준점 = 그 칸의 다리 끝 바닥 가운데
 # 크기: 몸 키(포신 위~발끝)를 기본 최종병기와 같은 H(px)로. 그림은 RES배 크게 만들고 게임이 줄여 그림
 # 기준점: 발끝 바닥 가운데. 그림은 무기가 오른쪽 = 오른쪽을 봄 (기본 최종병기와 반대 → index.html에서 faceR)
@@ -34,9 +34,12 @@ PANELS = [(0, 310, 0, 281), (310, 652, 0, 281), (652, 1024, 0, 281), (0, 362, 28
 LAND = 'assets/sprites/fx/samples/engineer_titan_sr1_land_src.png'
 LAND_PANELS = [(0, 285, 0, 300), (285, 630, 0, 300), (630, 1024, 0, 300), (0, 356, 300, 572), (356, 683, 300, 572), (683, 1024, 300, 572)]
 LAND_GROUND = [None, 276, 276, 272, 260, 261]   # 칸 안 땅 줄 (첫 칸은 공중이라 로봇 발끝을 땅으로: 게임이 높이를 따로 올림)
-# 15·16 기관총 진동: 평소 칸에서 개틀링 총열(칸 안 상자 x0, x1, y0, y1)만 뒤로 밀고 위아래로 흔든 두 칸 — 쏘는 동안 번갈아 (2026-11-14 사용자 요청)
-GUN_BOX = (410, 535, 196, 252)
-GUN_SHAKE = [(-6, 0), (-3, 3)]   # (가로, 세로) 그림 px (res배)
+# 15~18 기관총 진동: 평소 칸에서 개틀링 팔 부분(칸 안 상자 x0, x1, y0, y1)을 흔든 네 칸 — 쏘는 동안 차례로 (2026-11-14 사용자 요청)
+#   총구 끝이 가장 크게 흔들리고 팔(상자 왼쪽 GUN_ROOT) 쪽으로 갈수록 점점 약해짐 (세로줄마다 무게 w = ((x - 뿌리) / 길이)^1.6)
+#   네 칸은 뒤로 밀림 → 위로 튐 → 덜 밀림·아래 → 거의 제자리 순서라 반동이 이어지는 흐름. 레이저 팔(위)이 안 섞이게 세로는 총 높이만
+GUN_BOX = (290, 535, 186, 286)   # 아래는 탄창 드럼 밑까지
+GUN_ROOT = 330
+GUN_SHAKE = [(-7, 1), (-4, -3), (-5, 2), (-2, -1)]   # 총구 끝의 (가로, 세로) 그림 px (res배)
 MUZZLE = {'gun': (778, 316), 'mortar': (745, 46), 'laser': (668, 202)}
 
 
@@ -91,12 +94,19 @@ def main():
     gx0, gx1, gy0, gy1 = GUN_BOX
     for j, (dx, dy) in enumerate(GUN_SHAKE):
         c0 = (len(placed) + j) * cw
-        cell = strip[:, :cw].copy()
-        barrel = cell[gy0:gy1, gx0:gx1].copy()
-        cell[gy0:gy1, gx0:gx1] = 0
-        y0, x0 = gy0 + dy, gx0 + dx
-        reg = cell[y0:y0 + barrel.shape[0], x0:x0 + barrel.shape[1]]
-        cell[y0:y0 + barrel.shape[0], x0:x0 + barrel.shape[1]] = np.where(barrel[..., 3:] > 0, barrel, reg)
+        src = strip[:, :cw]
+        cell = src.copy()
+        for x in range(gx0, gx1):   # 뒤에서 앞으로 되짚어 가져옴 (세로줄마다 그 자리 무게만큼 옮긴 자리의 픽셀)
+            w = max(0.0, (x - GUN_ROOT) / (gx1 - GUN_ROOT)) ** 1.6
+            sx = int(round(x - dx * w))
+            for y in range(gy0, gy1):
+                sy = int(round(y - dy * w))
+                if sx >= gx1:   # 총구 앞 빈 공간
+                    cell[y, x] = 0
+                elif gy0 <= sy < gy1 and sx >= gx0:
+                    cell[y, x] = src[sy, sx]
+                else:           # 위아래로 상자 밖을 가리키면 제자리 픽셀 (잘린 줄이 안 생기게)
+                    cell[y, x] = src[y, x]
         strip[:, c0:c0 + cw] = cell
     Image.fromarray(strip, 'RGBA').save(OUT, 'WEBP', lossless=True)
     mz = {k: [round((x - cx) * sc / RES, 1), round((y - by) * sc / RES, 1)] for k, (x, y) in MUZZLE.items()}
