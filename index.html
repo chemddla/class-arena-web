@@ -31112,7 +31112,7 @@
     }
     function engMuzzle(t, a) {
       const sz = t.sizeScale || 1, fly = t.turretKind === 'drone' ? 30 : 0;
-      if (t.turretKind === 'titan' && ENG_TITAN_SHEET.ready) return engTitanMuzzle(t, 'gun');
+      if (t.turretKind === 'titan' && engTitanSheet(t).ready) return engTitanMuzzle(t, 'gun');
       if (engSheetReady(t.turretKind)) return engImgMuzzle(t, Math.cos(a) >= 0 ? 1 : -1); // 포탑·드론 그림의 총구
       return { x: t.x + Math.cos(a) * 20 * sz, y: t.y - 14 * sz - fly + Math.sin(a) * 6 * sz };
     }
@@ -31123,7 +31123,7 @@
       return { x: t.x + dir * mx * sz, y: t.y + ENG_TURRET_FOOT + my * sz };
     }
     function engTurretOrigin(t, a, dy, weapon) { // 포탄·레이저 시작점: 그림이 있으면 총구, 없으면 예전처럼 머리 위 dy
-      if (t.turretKind === 'titan' && ENG_TITAN_SHEET.ready) return engTitanMuzzle(t, weapon);
+      if (t.turretKind === 'titan' && engTitanSheet(t).ready) return engTitanMuzzle(t, weapon);
       if (engSheetReady(t.turretKind)) return engImgMuzzle(t, Math.cos(a) >= 0 ? 1 : -1);
       return { x: t.x, y: t.y - dy * (t.sizeScale || 1) };
     }
@@ -31258,7 +31258,7 @@
     }
     // 최종병기가 터지거나 부서진 자리: 자폭 폭발 칸 → 잔해 칸이 남았다가 흐려짐 (drawEngineerEffect eng_wreck)
     function engTitanWreck(t) {
-      sim.effects.push({ type: 'eng_wreck', x: Math.round(t.x), y: Math.round(t.y), f: engTitanFace(t), k: +(t.sizeScale || 1).toFixed(2), life: ENG_TITAN_WRECK_TICKS, maxLife: ENG_TITAN_WRECK_TICKS });
+      sim.effects.push({ type: 'eng_wreck', x: Math.round(t.x), y: Math.round(t.y), f: engTitanFace(t), sr: engTitanIsSr(t) ? 1 : 0, k: +(t.sizeScale || 1).toFixed(2), life: ENG_TITAN_WRECK_TICKS, maxLife: ENG_TITAN_WRECK_TICKS });
     }
     function engTitanBoom(t) {
       engBlastAt(t, t.team, t.x, t.y, GRID_CELL_SIZE * ENG_TITAN_BOOM_R, (t.ownerAtk || t.atk) * ENG_TITAN_BOOM, true, '🤖', 'titan'); // 그림은 아래 핵폭발만
@@ -31798,12 +31798,29 @@
       im.src = 'assets/sprites/fx/engineer_titan.webp';
       ENG_TITAN_SHEET.img = im;
     })();
+    // 시크릿 레어 기계공 전용 최종병기 (검은 강철 거대 로봇: 어깨 장포신 = 박격포 · 가슴 레이저 · 오른팔 개틀링 = 기관총, tools/engineer_titan_sr1_build.py)
+    //   칸 순서는 위와 같음 (0~2 평소·사격은 같은 그림, 3 과열 붉게 · 4 내부 폭발 주황 · 5 자폭 하얗게 · 6 그을린 잔해). 그림이 오른쪽을 봄 (faceR)
+    const ENG_TITAN_SR_SHEET = { cw: 447, ch: 350, res: 3, ax: 55.72, ay: 116.49, n: 7, h: 116, ref: 2.2 / ENG_TITAN_DRAW_K, faceR: true, gun: [91.7, -54.1], mortar: [84.5, -112.5], laser: [67.8, -78.8] };
+    (() => {
+      const im = new Image();
+      im.onload = () => { ENG_TITAN_SR_SHEET.ready = true; };
+      im.src = 'assets/sprites/fx/engineer_titan_sr1.webp';
+      ENG_TITAN_SR_SHEET.img = im;
+    })();
+    // 이 최종병기가 쓸 그림: 부른 기계공이 시크릿 레어 외형이면 전용 로봇 (주인 외형은 바뀌지 않으니 처음 한 번만 찾아 둠)
+    function engTitanIsSr(u) {
+      if (!u) return false;
+      if (u._engSr === undefined) { const o = unitByIdNow(u.ownerId); if (!o) return false; u._engSr = isSecretSkinVariant(o.skinVariant); }
+      return u._engSr;
+    }
+    function engTitanSheet(u) { return engTitanIsSr(u) && ENG_TITAN_SR_SHEET.ready ? ENG_TITAN_SR_SHEET : ENG_TITAN_SHEET; }
     // 그림 좌우 (1 = 그림 그대로 기관총이 왼쪽): 기관총(앞)이 적 쪽. 레이저도 앞쪽으로 쏨
     function engTitanFace(u) {
-      return Math.cos(engAimAngleFor(u)) >= 0 ? -1 : 1;
+      const right = Math.cos(engAimAngleFor(u)) >= 0;
+      return engTitanSheet(u).faceR ? (right ? 1 : -1) : (right ? -1 : 1);
     }
     function engTitanMuzzle(t, weapon) {
-      const T = ENG_TITAN_SHEET, k = (t.sizeScale || 1) / T.ref, [mx, my] = T[weapon] || T.gun, f = engTitanFace(t);
+      const T = engTitanSheet(t), k = (t.sizeScale || 1) / T.ref, [mx, my] = T[weapon] || T.gun, f = engTitanFace(t);
       return { x: t.x + f * mx * k, y: t.y + ENG_TITAN_FOOT * (t.sizeScale || 1) + my * k };
     }
     // 지금 보일 칸: 자폭 준비(앞 절반 과열 → 뒤 절반 내부 폭발) > 박격포 발사 직후 > 기관총 사격 직후 > 평소
@@ -31816,7 +31833,7 @@
     }
     // 레이저: 충전 중엔 렌즈가 흰색·청록으로 깜박이고, 쏜 직후엔 렌즈 둘레에 청록 빛 고리 (레이저 조사 그림의 고리)
     function drawEngTitanLens(ctx, u, tick) {
-      const [lx, ly] = ENG_TITAN_SHEET.laser;
+      const [lx, ly] = engTitanSheet(u).laser;
       const e = u.engLaserT != null ? sim.tickCount - u.engLaserT : 999;
       if ((u.laserAim || 0) > 0) {
         ctx.save();
@@ -31836,7 +31853,7 @@
     }
     // 최종병기: 그림이 있으면 그림, 없으면 아래 캔버스 도트
     function drawEngTitan(ctx, u, tick, teamColor) {
-      const T = ENG_TITAN_SHEET;
+      const T = engTitanSheet(u);
       if (T.ready) {
         const sz = u.sizeScale || 1, born = sim.tickCount - (u.turretBorn || -999);
         const grow = born >= 0 && born < 20 ? 0.5 + 0.5 * (born / 20) : 1;
@@ -31999,8 +32016,8 @@
         ctx.restore();
         return;
       }
-      if (ef.type === 'eng_wreck') { // 최종병기 자폭 폭발(앞 12%) → 잔해 (마지막 30%에 흐려짐)
-        const T = ENG_TITAN_SHEET;
+      if (ef.type === 'eng_wreck') { // 최종병기 자폭 폭발(앞 12%) → 잔해 (마지막 30%에 흐려짐) · sr = 시크릿 레어 전용 로봇
+        const T = ef.sr && ENG_TITAN_SR_SHEET.ready ? ENG_TITAN_SR_SHEET : ENG_TITAN_SHEET;
         if (!T.ready) return;
         const k = (ef.k || T.ref) / T.ref, fr = p < 0.12 ? 5 : 6;
         ctx.save();
