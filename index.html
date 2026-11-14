@@ -6157,7 +6157,7 @@
         icon: '🕯️',
         color: '#7e22ce',
         roleDesc: '저주·쇠약·보호막 파괴·치유 감소',
-        passiveName: '원한', passiveShort: '상태이상 걸린 적에게 아군 피해 +10% · 치명타 +10% · 면역 뚫기', passiveDesc: '나쁜 상태이상에 걸린 적에게 아군(자신 포함)이 주는 피해 +10% · 치명타 확률 +10% (주술사가 여럿이어도 겹치지 않음) · 거는 상태이상이 상태이상 면역인 적에게도 걸림 (면역을 뚫으면 지속 시간 절반)',
+        passiveName: '원한', passiveShort: '상태이상 걸린 적에게 아군 피해 +10% · 치명타 +10% · 면역 뚫기 · 기본 공격 방어력 -20%', passiveDesc: '나쁜 상태이상에 걸린 적에게 아군(자신 포함)이 주는 피해 +10% · 치명타 확률 +10% (주술사가 여럿이어도 겹치지 않음) · 거는 상태이상이 상태이상 면역인 적에게도 걸림 (면역을 뚫으면 지속 시간 절반) · 기본 공격에 맞은 적은 5초간 방어력 -20% (중첩 없음)',
         baseHp: 1350, baseAtk: 67, baseDef: 24, baseSpd: 104, range: 300, maxMana: 100
       },
       // 음유시인: 버프 서포터. 사거리는 성녀보다 조금 짧고 체력·공격은 낮음, 속도는 높음. 기본 공격은 한 명만 맞는 음표 구슬
@@ -22329,7 +22329,8 @@
         customColor = '#f97316'; // 치명타는 글자 없이 노란 숫자로만 표시 (색은 아래 피해 숫자에서 정함)
       }
       const effDef = (defender.statuses.shock > 0 ? defender.def * 0.65 : defender.def) * (defender.statuses.miracle > 0 ? 1.2 : 1)
-        * (defender.statuses.weaken > 0 ? 1 - CURSE_WEAKEN_DEF_DOWN : 1); // 쇠약: 방어력 -40%
+        * (defender.statuses.weaken > 0 ? 1 - CURSE_WEAKEN_DEF_DOWN : 1) // 쇠약: 방어력 -40%
+        * ((defender.curseArmorUntil || 0) > sim.tickCount ? 1 - CURSE_BASIC_DEF_DOWN : 1); // 주술사 기본 공격: 방어력 -20% (중첩 없음)
       // 방어력은 빼는 값이 아니라 감소 비율: 방어력이 높을수록 받는 피해가 더 많이 줄어듦 (100%는 안 됨)
       // 기사: 패시브 철갑(받는 피해 -20%) · 방어 태세(받는 피해 -70%)
       const defPassive = jobPassiveOf(defender);
@@ -22388,6 +22389,11 @@
       applyMonsterHitPassives(attacker, defender, dmg);
       applyItemHitPassives(attacker, defender, dmg);
       if (attacker && attacker.spiritElem && basicHitKind && !skillHitSource && attacker.team !== defender.team) spiritBasicHit(attacker, defender);
+      // 주술사 기본 공격: 맞은 적 방어력 -20% 5초 (중첩 없이 시간만 다시 채움)
+      if (attacker && attacker.job === 'curse' && !attacker.monsterType && basicHitKind && !skillHitSource && attacker.team !== defender.team && defender.alive) {
+        if (!((defender.curseArmorUntil || 0) > sim.tickCount)) sim.floatTexts.push({ x: defender.x, y: defender.y - 50, text: '🛡️방어력↓', color: '#a855f7', life: 36 });
+        defender.curseArmorUntil = sim.tickCount + CURSE_BASIC_DEF_TICKS;
+      }
       berserkerLifesteal(attacker, defender, dmg);
       brawlerLifesteal(attacker, defender, dmg); // 격투가 투혼: 준 피해의 10% 회복
       // 피격 시 마나 충전량 적정 수준(+5)으로 상향
@@ -27050,6 +27056,8 @@
     const CURSE_HEX_HEAL_DOWN = 0.5;
     const CURSE_WEAKEN_ATK_DOWN = 0.2;
     const CURSE_WEAKEN_DEF_DOWN = 0.4;
+    const CURSE_BASIC_DEF_DOWN = 0.2;       // 패시브 원한: 기본 공격에 맞은 적 방어력 -20%
+    const CURSE_BASIC_DEF_TICKS = 300;      //   5초 (중첩 없음, 다시 맞으면 시간만 갱신)
     const CURSE_BOLT_DMG = 1.8;             // 저주: 180%
     const CURSE_BOLT_HEX_TICKS = 600;       //   저주 10초 (2026-11-14 8초에서)
     const CURSE_BOLT_RANGE = GRID_CELL_SIZE * 5; //   사거리 5칸 (멀리 있는 후열에도)
