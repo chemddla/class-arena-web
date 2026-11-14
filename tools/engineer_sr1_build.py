@@ -5,6 +5,8 @@
 #   일반공격 샘플(두 칸: 총구 불꽃과 함께 쏨 → 반동으로 총을 치켜듦) → 6 겨눔(불꽃 지움) · 7 쏨(반동). 6 → 7로 바뀔 때 총알이 나가게 연결할 것
 #   스킬 시전·수리 샘플(네 칸: 홀로그램 판을 손가락으로 두드림 → 반짝임 → 밀어 넘김 → 다시 두드림) → 8~11.
 #     기본 외형의 렌치질(7~8)·설치(9) 대신 쓸 것: 수리 = 8~11 반복, 설치·시전 = 10 (밀어 넘김). 판 옆 작은 반짝임 점은 떨어진 조각이라 빠짐
+#   히든스킬(최종병기) 샘플(네 칸: 커다란 홀로그램 화면을 가리킴 → 위를 누름 → 앞으로 나서며 아래를 누름 → 두 손으로 조작) → 12~15.
+#     화면은 인물과 붙은 한 덩어리라 같이 남음
 #   걷기는 샘플 한 장에 다섯 칸(왼쪽부터, 오른쪽 끝 잘린 여섯째 조각은 버림) → 0번(네 칸)과 달리 1~5 걷기라 연결할 때 anims를 따로 적을 것
 #   동작 샘플이 오는 대로 FRAMES에 늘리고, 13칸이 다 차면 index.html SECRET_MERC_SKINS에 engineer: [1]을 넣음
 # 크기: 대기 키(머리털 끝~발)를 기본 외형 대기와 같은 98px로. 걷기·공격·시전은 묶음마다 머리 너비(head_w)를 대기 칸과 같게 (보폭 때문에 키는 조금 작아짐)
@@ -18,16 +20,18 @@ from berserker_build import shrink
 
 eb.D = 'assets/sprites/fx/samples/engineer_sr1_'
 OUT = 'assets/sprites/merc/engineer_sr1.webp'
-FRAMES = ['idle', 'walk1', 'walk2', 'walk3', 'walk4', 'walk5', 'attack1', 'attack2', 'cast1', 'cast2', 'cast3', 'cast4']
+FRAMES = ['idle', 'walk1', 'walk2', 'walk3', 'walk4', 'walk5', 'attack1', 'attack2', 'cast1', 'cast2', 'cast3', 'cast4', 'hidden1', 'hidden2', 'hidden3', 'hidden4']
 # 한 장에 여러 칸인 샘플: 칸 이름 → (샘플 이름, 가로 x0, x1) — 인물 사이 빈 세로줄에서 자름
 #   (두 인물이 가로로 겹치면 상자에 옆 사람 조각이 들어오지만 가장 큰 덩어리만 남겨 빠짐)
 CROP = {f'walk{i + 1}': ('walk', x0, x1) for i, (x0, x1) in enumerate([(0, 209), (209, 390), (390, 570), (570, 742), (742, 920)])}
 CROP.update({'attack1': ('attack', 0, 196), 'attack2': ('attack', 196, 386)})
+CROP.update({f'hidden{i + 1}': ('hidden', x0, x1) for i, (x0, x1) in enumerate([(0, 209), (209, 394), (394, 593), (593, 778)])})
 CROP.update({f'cast{i + 1}': ('cast', x0, x1) for i, (x0, x1) in enumerate([(30, 284), (284, 533), (533, 780), (780, 1024)])})
 # 샘플에 그려진 총구 불꽃: 게임이 리벳탄 총구 섬광을 따로 그리니까 흰색으로 덮어 지움 (샘플 좌표 x0, y0, x1, y1). 탄피는 떨어진 덩어리라 저절로 빠짐
 ERASE = {'attack1': [(183, 70, 196, 130)]}
 STAND = {'cast1'}   # 이 칸이 첫 칸인 묶음은 키를 대기 칸과 같게
-GROUPS = {'walk': [f'walk{i}' for i in range(1, 6)], 'attack': ['attack1', 'attack2'], 'cast': [f'cast{i}' for i in range(1, 5)]}   # 같은 배율을 쓰는 묶음
+GROUPS = {'walk': [f'walk{i}' for i in range(1, 6)], 'attack': ['attack1', 'attack2'], 'cast': [f'cast{i}' for i in range(1, 5)], 'hidden': [f'hidden{i}' for i in range(1, 5)]}
+SCREEN = {'hidden1'}   # 이 칸이 첫 칸인 묶음은 머리 위로 화면이 솟아 있어서, 머리털(어두운 무채색) 꼭대기~발 길이를 대기 키에 맞추고 가로는 머리털 가운데로   # 같은 배율을 쓰는 묶음
 CELL_W, CELL_H, ANCHOR_X, ANCHOR_Y = eb.CELL_W, eb.CELL_H, eb.ANCHOR_X, eb.ANCHOR_Y
 TARGET_H = eb.TARGET_H
 
@@ -61,13 +65,31 @@ def head_cx(rgba):   # 머리 가로 가운데 (몸 키의 2~10% 줄)
     return (xs.min() + xs.max()) / 2
 
 
+def hair(rgba):   # 머리털 픽셀: 어둡고 푸른 기가 없음 (홀로그램 화면 외곽선은 청록이라 빠짐)
+    c = rgba[..., :3].astype(int)
+    return (rgba[..., 3] > 0) & (c.max(axis=2) < 110) & (c[..., 0] >= c[..., 2] - 5)
+
+
+def hair_top(rgba):
+    return int(np.where(hair(rgba).any(axis=1))[0].min())
+
+
+def hair_cx(rgba):   # 머리털 꼭대기에서 아래로 몸 키 6%까지의 가로 가운데
+    m = hair(rgba)
+    t = hair_top(rgba)
+    xs = np.where(m[t:t + max(2, int((rgba.shape[0] - t) * 0.06))].any(axis=0))[0]
+    return (xs.min() + xs.max()) / 2
+
+
 def main():
     srcs = {f: load(f) for f in FRAMES}
     sc_idle = TARGET_H / srcs['idle'].shape[0]
     head_t = head_w(srcs['idle']) * sc_idle
     scs = {'idle': sc_idle}
     for names in GROUPS.values():   # 묶음마다 머리 너비 평균을 대기 칸 머리 너비에 맞춤
-        if names[0] in STAND:   # 대기처럼 곧게 선 묶음은 키로 (머리 너비로 재면 2% 크게 나옴)
+        if names[0] in SCREEN:
+            sc = TARGET_H / np.mean([srcs[f].shape[0] - hair_top(srcs[f]) for f in names])
+        elif names[0] in STAND:   # 대기처럼 곧게 선 묶음은 키로 (머리 너비로 재면 2% 크게 나옴)
             sc = TARGET_H / np.mean([srcs[f].shape[0] for f in names])
         else:
             sc = head_t / np.mean([head_w(srcs[f]) for f in names])
@@ -86,7 +108,7 @@ def main():
             x0 = ANCHOR_X - w // 2
             head_x = x0 + head_cx(s)   # 대기 칸 머리 가운데 (칸 안 x)
         else:
-            x0 = int(round(head_x - head_cx(s)))   # 머리가 제자리에 있게 (걸어도 머리가 좌우로 튀지 않음)
+            x0 = int(round(head_x - (hair_cx(s) if f.startswith('hidden') else head_cx(s))))   # 머리가 제자리에 있게 (걸어도 머리가 좌우로 튀지 않음)
         x0 = min(max(x0, 0), CELL_W - w) + i * CELL_W
         sheet[ANCHOR_Y - h:ANCHOR_Y, x0:x0 + w] = s
     Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
