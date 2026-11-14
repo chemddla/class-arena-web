@@ -23,6 +23,7 @@ from scipy import ndimage as ndi
 sys.path.insert(0, os.path.dirname(__file__))
 from berserker_build import shrink
 from engineer_turret_build import cut, bbox
+from engineer_build import defringe   # 테두리 흰 찌꺼기 정리 (포탑 외곽선은 짙은 갈색이라 outline=110, 흰 연기를 살리려고 외곽선 4px 안의 밝은 테두리만: near=4)
 
 S = 'assets/sprites/fx/samples/engineer_'
 OUT = 'assets/sprites/fx/engineer_titan.webp'
@@ -80,7 +81,7 @@ def main():
                 cx, by = lx - lens_rel[0] / sc, ly - lens_rel[1] / sc
             group[grp] = (sc, cx, by)
         sc, cx, by = group[grp]
-        s = shrink(im, sc)
+        s = defringe(shrink(im, sc), passes=4, light=200, outline=110, near=4)
         placed.append((s, cx * sc, by * sc))
         if grp == 'idle':
             idle_im, idle_a = im, a

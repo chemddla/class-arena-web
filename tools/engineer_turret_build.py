@@ -26,6 +26,7 @@ from scipy import ndimage as ndi
 
 sys.path.insert(0, os.path.dirname(__file__))
 from berserker_build import shrink
+from engineer_build import defringe   # 테두리 흰 찌꺼기 정리 (포탑 외곽선은 짙은 갈색이라 outline=110, 흰 연기를 살리려고 외곽선 4px 안의 밝은 테두리만: near=4)
 
 S = 'assets/sprites/fx/samples/engineer_'
 OUT = 'assets/sprites/fx/engineer_turret_{}.webp'
@@ -143,7 +144,7 @@ def main():
         for src, im, body, box in cuts:
             sc = sc0 if (src == s0 or kind in SAME_SCALE) else bw0 / base_w(kind, body)
             ax, ay = anc(src, body, box)
-            s = shrink(im, sc)
+            s = defringe(shrink(im, sc), passes=4, light=200, outline=110, near=4)
             placed.append((s, ax * sc, ay * sc))
         L = max(ax for s, ax, ay in placed); R = max(s.shape[1] - ax for s, ax, ay in placed)
         T = max(ay for s, ax, ay in placed); B = max(s.shape[0] - ay for s, ax, ay in placed)
