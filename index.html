@@ -7988,8 +7988,27 @@
     // 저격수 외형 1 (SWAT 남색), 2 (도시 회색), 3 (사막), 4 (보라): 샘플 시트에서 잘라 다듬은 것. 칸·동작 구성은 sniper_0과 같음
     // 다듬은 점: 잘려 있던 발끝·칸 테두리 잔상 제거, 강화 사격 칸(15)은 외형 색과 상관없던 그림 대신 각 외형의 조준 자세를 금빛으로 새로 만듦
     [1, 2, 3, 4].forEach(v => { MERC_SPRITE_DEFS[`sniper_${v}`] = { ...MERC_SPRITE_DEFS.sniper_0, src: `assets/sprites/merc/sniper_${v}.webp` }; });
-    // 기계공 (1단계 임시 그림): 저격수 외형 2(도시 회색)를 빌림 · 저격수 스킬 자세(은신·구르기 등)는 빼고 공격·스킬은 쏘는 자세
-    MERC_SPRITE_DEFS.engineer_0 = { ...MERC_SPRITE_DEFS.sniper_0, src: 'assets/sprites/merc/sniper_2.webp', skillAnims: {}, castFrames: {} };
+    // 기계공 (원본 샘플: assets/sprites/fx/samples/engineer_*_src.png, tools/engineer_build.py)
+    //   칸: 0 대기 · 1~4 걷기 · 5 리벳총 겨눔 · 6 리벳총 쏨 · 7~8 쪼그려 앉아 렌치질(수리) · 9 포탑 설치 (앉아서 렌치)
+    //       · 10 피격 (눈을 질끈 감고 몸을 젖힘) · 11~12 쓰러짐 (무릎 꿇음 → 엎드려 누움)
+    //   몸 키 98px: 격투가(86px·standH 78)와 같은 비율로 standH 89
+    MERC_SPRITE_DEFS.engineer_0 = {
+      src: 'assets/sprites/merc/engineer_0.webp',
+      cellW: 119, cellH: 106, anchorX: 63, anchorY: 104, standH: 89, topH: 98, portraitCX: 62, portraitZoomOut: 0.96, count: 13,
+      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5, 6, 6, 5], skill: [9], hurt: [10], death: [11, 12], build: [9], repair: [7, 8] },
+      // E 수리 모드로 포탑을 고치는 동안(engFix가 attackAnim을 채움)은 리벳총 대신 렌치질 두 칸을 번갈아
+      pickFrame: (u, sprite, tick) => (u.engRepair && u.attackAnim > 0 && !u.turretKind && !u.casting && !(u.skillAnim > 0) ? sprite.anims.repair[Math.floor(tick / 8) % 2] : null), // 시전·스킬 자세가 먼저
+      skillAnims: {
+        build_turret:  { anim: 'build', tpf: 30, dur: 30 },
+        mortar_turret: { anim: 'build', tpf: 30, dur: 30 },
+        laser_tower:   { anim: 'build', tpf: 30, dur: 30 },
+        deploy_drone:  { anim: 'build', tpf: 24, dur: 24 },
+        repair_drone:  { anim: 'repair', tpf: 8, dur: 40, loop: true }, // 긴급 수리: 렌치질
+        final_weapon:  { anim: 'build', tpf: 30, dur: 30 }
+      },
+      // 시전 바가 차는 동안: 설치 스킬은 설치 자세, 최종병기 3초 조립은 렌치질을 번갈아 하다 설치 자세로 마무리
+      castFrames: { build_turret: 9, mortar_turret: 9, laser_tower: 9, deploy_drone: 9, final_weapon: [9, 7, 8, 7, 8, 7, 8, 9] }
+    };
     // 시크릿 레어 전용 외형: 파일 assets/sprites/merc/<직업>_sr<번호>.webp, 칸 순서·동작 구성은 그 직업의 0번 외형과 같음
     // skinVariant = SECRET_SKIN_BASE + 번호라 일반 외형 무작위 뽑기(0번부터 이어진 번호만 셈)에는 나오지 않음
     const SECRET_SKIN_BASE = 100;

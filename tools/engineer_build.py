@@ -1,7 +1,8 @@
 # 기계공 전용 샘플(갈색 머리·고글·갈색 배낭·국방색 멜빵바지, 흰 배경) → 캐릭터 시트 assets/sprites/merc/engineer_0.webp
 # 사용: python tools/engineer_build.py   (샘플은 assets/sprites/fx/samples/engineer_*_src.png, 동작 샘플이 오는 대로 FRAMES에 늘림)
 # 칸 순서: 0 대기 · 1~4 걷기 (받은 순서 그대로) · 5~6 리벳총 기본 공격 (5 겨눔 → 6 쏨) · 7~8 수리 (쪼그려 앉아 렌치질, 두 칸 번갈아)
-#   · 9 포탑 설치 (앉아서 두 손에 렌치를 듦)
+#   · 9 포탑 설치 (앉아서 두 손에 렌치를 듦) · 10 피격 (눈을 질끈 감고 몸을 젖힘) · 11~12 쓰러짐 (무릎 꿇음 → 엎드려 누움)
+#   쓰러짐 샘플은 한 장에 두 칸 → 가운데 빈 세로줄(345)에서 나눠 engineer_down1/2_src.png로 저장함
 #   쓰임: 수리 칸(7~8)은 E 수리 모드 고치기와 스킬 '긴급 수리' 시전에 같이 씀 · 설치 칸(9)은 기관포탑·박격포탑·레이저탑 등 설치 스킬 시전
 #   수리 샘플은 한 장에 두 칸 → 가운데 빈 세로줄(141)에서 나눠 engineer_repair1/2_src.png로 저장함
 # 칸 크기·기준점은 격투가 시트와 같음 (cellW 119 · cellH 106 · anchorX 63 · anchorY 104)
@@ -20,11 +21,13 @@ from berserker_build import shrink
 
 D = 'assets/sprites/fx/samples/engineer_'
 OUT = 'assets/sprites/merc/engineer_0.webp'
-FRAMES = ['idle', 'walk1', 'walk2', 'walk3', 'walk4', 'attack1', 'attack2', 'repair1', 'repair2', 'build1']
-GROUP = {'walk1': 'walk', 'walk2': 'walk', 'walk3': 'walk', 'walk4': 'walk', 'attack1': 'attack1', 'attack2': 'attack2', 'repair1': 'repair', 'repair2': 'repair', 'build1': 'build'}   # 같은 배율을 쓰는 묶음
-GOGGLE_REF = {'attack1', 'attack2', 'repair', 'build'}   # 몸 키 대신 고글 폭을 걷기와 같게 맞추는 묶음 (총을 겨누거나 쪼그려 앉아 키로는 못 맞춤, 걷기처럼 옆으로 돈 자세라 고글 폭으로 맞춰도 됨)
+FRAMES = ['idle', 'walk1', 'walk2', 'walk3', 'walk4', 'attack1', 'attack2', 'repair1', 'repair2', 'build1', 'hurt1', 'down1', 'down2']
+GROUP = {'walk1': 'walk', 'walk2': 'walk', 'walk3': 'walk', 'walk4': 'walk', 'attack1': 'attack1', 'attack2': 'attack2', 'repair1': 'repair', 'repair2': 'repair', 'build1': 'build', 'hurt1': 'hurt', 'down1': 'down', 'down2': 'down'}   # 같은 배율을 쓰는 묶음
+GOGGLE_REF = {'attack1', 'attack2', 'repair', 'build', 'hurt', 'down'}   # 몸 키 대신 고글 폭을 걷기와 같게 맞추는 묶음 (총을 겨누거나 쪼그려 앉아 키로는 못 맞춤, 걷기처럼 옆으로 돈 자세라 고글 폭으로 맞춰도 됨)
+GOGGLE_FIRST = {'down'}   # 고글 폭을 묶음 첫 칸에서만 잼 (누운 칸은 고글이 세로로 돌아가 폭이 좁음)
+GROUP_K = {'hurt': 1.08, 'down': 0.82}   # 고글 폭으로 맞춘 뒤 얼굴 크기를 눈으로 보고 보정 (피격은 고개를 젖혀 고글이 넓어 보임 → 작아짐, 쓰러짐은 그 반대)
 GROUP_H = {'walk': 0.97}   # 묶음 몸 키 / 대기 몸 키 (걸을 때는 다리를 벌려 조금 낮아짐)
-HEAD_X = {'walk': 66, 'attack1': 50, 'attack2': 50, 'repair': 60, 'build': 62}   # 묶음의 고글 가운데 x (칸 안, 기준점 63보다 조금 앞: 앞을 보고 걸어 머리가 앞으로)
+HEAD_X = {'walk': 66, 'attack1': 50, 'attack2': 50, 'repair': 60, 'build': 62, 'hurt': 64}   # 쓰러짐은 몸 가운데를 기준점에   # 묶음의 고글 가운데 x (칸 안, 기준점 63보다 조금 앞: 앞을 보고 걸어 머리가 앞으로)
 CELL_W, CELL_H, ANCHOR_X, ANCHOR_Y = 119, 106, 63, 104
 TARGET_H = 98   # 샘플이 가늘고 머리가 작아 86이면 얼굴이 격투가보다 훨씬 작아 보여 키움 (칸 높이 106 안)
 
@@ -71,12 +74,17 @@ def main():
     gw_walk = np.mean([goggle_w(srcs[f]) * scs['walk'] for f in FRAMES if GROUP.get(f) == 'walk'])
     for grp in GOGGLE_REF:
         names = [f for f in FRAMES if GROUP.get(f) == grp]
-        scs[grp] = gw_walk / np.mean([goggle_w(srcs[f]) for f in names])
+        if grp in GOGGLE_FIRST:
+            names = names[:1]
+        scs[grp] = gw_walk / np.mean([goggle_w(srcs[f]) for f in names]) * GROUP_K.get(grp, 1)
     sheet = np.zeros((CELL_H, CELL_W * len(FRAMES), 4), np.uint8)
     for i, f in enumerate(FRAMES):
         sc = scs[GROUP.get(f, 'idle')]
         s = shrink(srcs[f], sc)
         h, w = s.shape[:2]
+        if w > CELL_W:   # 칸보다 넓으면 (누운 칸) 칸에 맞게 조금 더 줄임
+            s = shrink(srcs[f], sc * (CELL_W - 2) / w); h, w = s.shape[:2]
+            print(f, '칸보다 넓어 줄임', round((CELL_W - 2) / w, 3))
         grp = GROUP.get(f)
         x0 = i * CELL_W + (round(HEAD_X[grp] - goggle_cx(s)) if grp in HEAD_X else ANCHOR_X - w // 2)
         x0 = min(max(x0, i * CELL_W), (i + 1) * CELL_W - w)
