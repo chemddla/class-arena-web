@@ -5818,7 +5818,7 @@
         build_turret: {
           id: 'build_turret', name: '기관포탑', icon: '🔫', ccTag: '🔫설치·연사',
           manaCost: 22, cooldownTicks: 480, cooldownSec: 8.0, castSec: 0.5,
-          desc: '겨눈 자리(최대 3칸)에 기관포탑을 25초간 세웁니다 (기계공 체력 80%·공격 70%). 포탑은 움직이지 않고 3.3칸 안의 가장 가까운 적에게 0.5초마다 총알을 쏴요. 포탑 개수 제한은 없어요.'
+          desc: '겨눈 자리(최대 3칸)에 기관포탑을 25초간 세웁니다 (기계공 체력 80%·공격 70%). 포탑은 움직이지 않고 3.3칸 안의 가장 가까운 적에게 0.1초 간격으로 5발을 몰아 쏜 뒤(한 발 = 포탑 공격력 60%), 반동·재장전에 1초를 쉬고 다시 쏴요. 포탑 개수 제한은 없어요.'
         },
         mortar_turret: {
           id: 'mortar_turret', name: '박격포탑', icon: '💥', ccTag: '💥설치·범위 포격',
@@ -31046,6 +31046,7 @@
         rush: null, casting: null, castLock: 0, cooldown: 24, dashCooldown: 0, rootTicks: 0, tauntBy: null,
         turretLife: def.life, turretOn: true, turretBorn: sim.tickCount, turretGone: 0, engOcUntil: 0, _deadSince: null,
         engDive: null, engBoomT: 0, laserAim: 0, laserAng: 0, cdGun: 0, cdMortar: 30, cdLaser: 60, droneAng: Math.random() * Math.PI * 2,
+        gatLeft: ENG_GAT_BURST, gatPause: 0, gatPauseMax: 0, gatRecoil: 0, gatShot: 0, engShotT: null, // 기관포 연사 상태 (engGatlingStep)
         hurtAnim: 0, attackAnim: 0, skillAnim: 0, facingDir: side, facingAngle: side > 0 ? 0 : Math.PI,
         liveOwnerId: owner.liveOwnerId, rushAi: owner.rushAi
       });
@@ -31158,6 +31159,7 @@
         if (t.cdLaser <= 0 && !(t.laserAim > 0)) { t.cdLaser = Math.max(40, Math.round(ENG_TITAN_LASER[0] / spd)); engLaserStart(t, foes, near, ENG_TITAN_LASER[2], ENG_TITAN_LASER[3]); }
         return;
       }
+      if (kind === 'gatling') { engGatlingStep(t, foes, spd); return; }
       if (t.cooldown > 0) { t.cooldown--; return; }
       if (!foes.length) return;
       const target = foes.reduce((a, b) => (unitDist(a, t) <= unitDist(b, t) ? a : b));
@@ -31168,6 +31170,30 @@
       t.attackAnim = Math.min(14, t.cooldown); t.maxAttackAnim = t.attackAnim;
       if (def.shell) { engFireShell(t, foes, t.atk, C * def.shell); return; }
       engFireBullet(t, target, t.atk, kind === 'drone' ? '#7dd3fc' : '#fde047');
+    }
+    // 기관포탑: 0.1초 간격 5발 연사 → 반동·복귀(0.4초) → 재장전(0.6초) → 다시 연사. 한 발 = 포탑 공격력 60%
+    //   한 바퀴 1.5초에 5발 × 60% = 예전(0.5초마다 1발 100%)과 초당 피해가 같음. 공격 속도(회로·과부하)는 간격·반동·재장전을 줄임
+    //   적이 연사 도중 사라지면 연사를 끝내고 반동·재장전으로
+    const ENG_GAT_BURST = 5, ENG_GAT_GAP = 6, ENG_GAT_RECOIL = 24, ENG_GAT_RELOAD = 36, ENG_GAT_SHOT = 0.6;
+    function engGatlingEnd(t, spd) {
+      t.gatLeft = ENG_GAT_BURST;
+      t.gatRecoil = Math.max(6, Math.round(ENG_GAT_RECOIL / spd));
+      t.gatPause = t.gatRecoil + Math.max(6, Math.round(ENG_GAT_RELOAD / spd));
+      t.gatPauseMax = t.gatPause;
+    }
+    function engGatlingStep(t, foes, spd) {
+      if (t.gatLeft == null) t.gatLeft = ENG_GAT_BURST;
+      if ((t.gatPause || 0) > 0) { t.gatPause--; return; }   // 반동·복귀 → 재장전
+      if (t.cooldown > 0) { t.cooldown--; return; }          // 연사 간격
+      if (!foes.length) { if (t.gatLeft < ENG_GAT_BURST) engGatlingEnd(t, spd); return; }
+      const target = foes.reduce((a, b) => (unitDist(a, t) <= unitDist(b, t) ? a : b));
+      t.facingAngle = Math.atan2(target.y - t.y, target.x - t.x);
+      if (Math.abs(target.x - t.x) > 4) t.facingDir = target.x >= t.x ? 1 : -1;
+      t.attackAnim = 8; t.maxAttackAnim = 8;
+      engFireBullet(t, target, t.atk * ENG_GAT_SHOT, '#fde047');
+      t.gatShot = (t.gatShot || 0) + 1;
+      if (--t.gatLeft <= 0) engGatlingEnd(t, spd);
+      else t.cooldown = Math.max(2, Math.round(ENG_GAT_GAP / spd));
     }
     // 드론: 시간이 다 되거나 새 드론을 띄우면 가까운 적에게 날아가 자폭
     function engDroneDive(d) {
@@ -31489,8 +31515,15 @@
         if (e < 36) return 4;
         return foe && (u.cooldown || 0) <= 14 ? 1 : 0; // 쏘기 직전 장전
       }
-      // 기관포: 적이 있으면 쏘고(2·3), 쏘는 사이엔 회전(1). 적이 없어지면 연기를 내며 멈춤(4) → 준비(0)
-      if (foe) return e < 4 ? 2 : e < 9 ? 3 : 1;
+      // 기관포 (engGatlingStep): 연사 중엔 사격(2)·지속 사격(3)을 한 발마다 번갈아 → 반동·복귀(4) → 재장전 중 준비(0) → 끝나기 직전 회전 시동(1)
+      //   실시간 화면엔 gatPause가 없어 쏜 뒤 지난 틱으로만 고름
+      if ((u.gatPause || 0) > 0) {
+        if (e < 5) return (u.gatShot || 0) % 2 ? 3 : 2;   // 마지막 발도 사격 칸을 잠깐 보인 뒤
+        if (u.gatPauseMax - u.gatPause < (u.gatRecoil || ENG_GAT_RECOIL) + 5) return 4;
+        return u.gatPause <= 10 && foe ? 1 : 0;
+      }
+      if (e < ENG_GAT_GAP + 2) return (u.gatShot || 0) % 2 ? 3 : 2;
+      if (foe) return 1;
       return e < 40 ? 4 : 0;
     }
     function drawEngTurretImg(ctx, u, tick, teamColor) {
