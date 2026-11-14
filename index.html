@@ -31039,7 +31039,19 @@
     }
     function engMuzzle(t, a) {
       const sz = t.sizeScale || 1, fly = t.turretKind === 'drone' ? 30 : 0;
+      const img = ENG_TURRET_IMG[t.turretKind];
+      if (img && img.ready) return engImgMuzzle(t, img, Math.cos(a) >= 0 ? 1 : -1); // 포탑 그림의 총구
       return { x: t.x + Math.cos(a) * 20 * sz, y: t.y - 14 * sz - fly + Math.sin(a) * 6 * sz };
+    }
+    // 포탑 그림의 총구 자리 (drawEngTurretImg와 같은 계산, 세울 때 커지는 것·반동은 뺌)
+    function engImgMuzzle(t, img, dir) {
+      const sz = t.sizeScale || 1, H = ENG_TURRET_IMG_H[t.turretKind] * sz, W = img.width * H / img.height, [mx, my] = ENG_TURRET_MUZZLE[t.turretKind];
+      return { x: t.x + dir * W * mx, y: t.y + 12 - H + H * my };
+    }
+    function engTurretOrigin(t, a, dy) { // 포탄·레이저 시작점: 그림이 있으면 총구, 없으면 예전처럼 머리 위 dy
+      const img = ENG_TURRET_IMG[t.turretKind];
+      if (img && img.ready) return engImgMuzzle(t, img, Math.cos(a) >= 0 ? 1 : -1);
+      return { x: t.x, y: t.y - dy * (t.sizeScale || 1) };
     }
     function engFireBullet(t, target, dmg, color = '#fde047') {
       const a = Math.atan2(target.y - t.y, target.x - t.x), o = engMuzzle(t, a);
@@ -31050,7 +31062,8 @@
       const b = engBestCluster(t, foes, t.range + 14, r);
       if (!b) return;
       const sz = t.sizeScale || 1;
-      engQueueStrike({ owner: t, team: t.team, x: b.target.x, y: b.target.y, sx: t.x, sy: t.y - 26 * sz, delay: ENG_SHELL_FLIGHT, dmg, r, kind: 'shell', skill: false });
+      const o = engTurretOrigin(t, Math.atan2(b.target.y - t.y, b.target.x - t.x), 26);
+      engQueueStrike({ owner: t, team: t.team, x: b.target.x, y: b.target.y, sx: o.x, sy: o.y, delay: ENG_SHELL_FLIGHT, dmg, r, kind: 'shell', skill: false });
       playCombatSfx('arrow');
     }
     // 레이저: 저격처럼 빨간 조준선을 aim틱 동안 보인 뒤 그 선을 따라 레이저 (선 위의 적 모두). 조준하는 동안 방향은 고정 → 비켜설 수 있음
@@ -31058,13 +31071,15 @@
       t.laserAng = lancerBestLine(t, foes, t.range + 14, halfW, target).angle;
       t.laserAim = aim; t.laserHalfW = halfW;
       const sz = t.sizeScale || 1;
-      sim.effects.push({ type: 'eng_laser', aim: true, x: Math.round(t.x), y: Math.round(t.y - 22 * sz), angle: +t.laserAng.toFixed(3), r: t.range + 14, w: halfW, life: aim, maxLife: aim });
+      const o = engTurretOrigin(t, t.laserAng, 22);
+      sim.effects.push({ type: 'eng_laser', aim: true, x: Math.round(o.x), y: Math.round(o.y), angle: +t.laserAng.toFixed(3), r: t.range + 14, w: halfW, life: aim, maxLife: aim });
     }
     function engLaserFire(t, dmg) {
       const sz = t.sizeScale || 1, len = t.range + 14;
       const hits = lancerLineHits(t, t.laserAng, len, t.laserHalfW || 14);
       withHitKind('ranged', () => hits.forEach(e => applyDamage(t, e, dmg, '', '#ef4444')));
-      sim.effects.push({ type: 'eng_laser', aim: false, x: Math.round(t.x), y: Math.round(t.y - 22 * sz), angle: +t.laserAng.toFixed(3), r: len, w: t.laserHalfW || 14, life: 20, maxLife: 20 });
+      const o = engTurretOrigin(t, t.laserAng, 22);
+      sim.effects.push({ type: 'eng_laser', aim: false, x: Math.round(o.x), y: Math.round(o.y), angle: +t.laserAng.toFixed(3), r: len, w: t.laserHalfW || 14, life: 20, maxLife: 20 });
       t.attackAnim = 14; t.maxAttackAnim = 14;
       playCombatSfx('heavy');
     }
@@ -31319,10 +31334,57 @@
       return ang;
     }
     // 포탑 몸: 발(0, 0) 기준 · 포신은 가장 가까운 적 쪽 (실시간 화면에서도 보는 쪽에서 직접 찾음)
+    // 포탑 그림 (원본 샘플: assets/sprites/fx/samples/engineer_turrets_src.png, tools/engineer_turret_build.py) · 모두 오른쪽을 봄 → 겨눈 쪽으로 좌우를 뒤집어 그림
+    const ENG_TURRET_IMG = {};
+    ['gatling', 'mortar', 'laser'].forEach(k => {
+      const im = new Image();
+      im.onload = () => { im.ready = true; };
+      im.src = `assets/sprites/fx/engineer_turret_${k}.webp`;
+      ENG_TURRET_IMG[k] = im;
+    });
+    const ENG_TURRET_IMG_H = { gatling: 46, mortar: 50, laser: 54 }; // 게임에서 그림 키 (px, 크기 배율 1일 때)
+    // 그림 안 총구 자리: 가로는 그림 가운데에서 폭의 몇 배 앞, 세로는 그림 위에서 키의 몇 배 아래
+    const ENG_TURRET_MUZZLE = { gatling: [0.5, 0.36], mortar: [0.3, 0.12], laser: [0.37, 0.27] };
+    function drawEngTurretImg(ctx, u, tick, teamColor, img) {
+      const kind = u.turretKind, sz = u.sizeScale || 1;
+      const born = sim.tickCount - (u.turretBorn || -999);
+      const grow = born >= 0 && born < 14 ? 0.55 + 0.45 * (born / 14) : 1;
+      const dir = Math.cos(engAimAngleFor(u)) >= 0 ? 1 : -1; // 겨눈 쪽 (오른쪽 = 그림 그대로)
+      const H = ENG_TURRET_IMG_H[kind] * sz * grow, W = img.width * H / img.height;
+      const recoil = u.attackAnim > 0 ? Math.min(3, u.attackAnim * 0.4) : 0;
+      const top = 12 - H, [mx, my] = ENG_TURRET_MUZZLE[kind];
+      const px = W * mx - recoil, py = top + H * my; // 총구 (뒤집기 전 좌표)
+      ctx.save();
+      if (u.hurtAnim > 0) ctx.translate(tick % 2 === 0 ? 1 : -1, 0);
+      // 받침 둘레 팀 색 고리 (누구 포탑인지)
+      ctx.save();
+      ctx.globalAlpha *= 0.85; ctx.strokeStyle = teamColor; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(0, 9, W * 0.42, 5 * sz, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+      ctx.scale(dir, 1);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(img, -W / 2 - recoil, top, W, H);
+      if (kind === 'laser') { // 조준 중엔 렌즈가 흰색·빨강으로 깜박임
+        if ((u.laserAim || 0) > 0) {
+          ctx.fillStyle = (tick >> 1) % 2 ? '#ffffff' : '#ef4444';
+          ctx.globalAlpha *= 0.8;
+          ctx.beginPath(); ctx.arc(px, py, 3.5 * sz, 0, Math.PI * 2); ctx.fill();
+          ctx.globalAlpha /= 0.8;
+        }
+      } else if (u.attackAnim > 8) { // 총구 불꽃
+        engPx(ctx, px, py - 4 * sz, 6 * sz, 8 * sz, '#fde68a'); engPx(ctx, px + 2 * sz, py - 2 * sz, 5 * sz, 4 * sz, '#ffffff');
+      }
+      if (engOverclocked(u) && (tick >> 2) % 2) { // 과부하: 빨간 불이 깜박임
+        engPx(ctx, -2 * sz, top + H * 0.45, 4 * sz, 3 * sz, '#ef4444');
+      }
+      ctx.restore();
+    }
     function drawEngTurret(ctx, u, tick, teamColor) {
       const kind = u.turretKind;
       if (kind === 'drone') { drawEngDrone(ctx, u, tick, teamColor); return; }
       if (kind === 'titan') { drawEngTitan(ctx, u, tick, teamColor); return; }
+      const img = ENG_TURRET_IMG[kind];
+      if (img && img.ready) { drawEngTurretImg(ctx, u, tick, teamColor, img); return; } // 그림을 아직 못 불러왔으면 아래 캔버스 도트
       const k = (u.sizeScale || 1) * ENG_TURRET_DRAW_K;
       const born = sim.tickCount - (u.turretBorn || -999);
       const grow = born >= 0 && born < 14 ? 0.55 + 0.45 * (born / 14) : 1;
@@ -35267,7 +35329,7 @@
           ctx.restore();
         }
       } else if (u.turretKind) {
-        drawEngTurret(ctx, u, tick, teamPrimary); // 기계공 포탑 (임시 도트)
+        drawEngTurret(ctx, u, tick, teamPrimary); // 기계공 포탑 (기관포·박격포·레이저탑은 그림, 드론·최종병기는 캔버스 도트)
       } else {
         ctx.save();
         ctx.translate(u.facingDir * lungeX, jumpY);
