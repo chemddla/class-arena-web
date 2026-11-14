@@ -6157,7 +6157,7 @@
         icon: '🕯️',
         color: '#7e22ce',
         roleDesc: '저주·쇠약·보호막 파괴·치유 감소',
-        passiveName: '원한', passiveShort: '상태이상 걸린 적에게 아군 피해 +10% · 치명타 +10%', passiveDesc: '나쁜 상태이상에 걸린 적에게 아군(자신 포함)이 주는 피해 +10% · 치명타 확률 +10% (주술사가 여럿이어도 겹치지 않음)',
+        passiveName: '원한', passiveShort: '상태이상 걸린 적에게 아군 피해 +10% · 치명타 +10% · 면역 뚫기', passiveDesc: '나쁜 상태이상에 걸린 적에게 아군(자신 포함)이 주는 피해 +10% · 치명타 확률 +10% (주술사가 여럿이어도 겹치지 않음) · 거는 상태이상이 상태이상 면역인 적에게도 걸림 (면역을 뚫으면 지속 시간 절반)',
         baseHp: 1350, baseAtk: 67, baseDef: 24, baseSpd: 104, range: 300, maxMana: 100
       },
       // 음유시인: 버프 서포터. 사거리는 성녀보다 조금 짧고 체력·공격은 낮음, 속도는 높음. 기본 공격은 한 명만 맞는 음표 구슬
@@ -6244,7 +6244,7 @@
       rogue:   { backstab: 1.5, evade: 0.2 }, // 회피 20%: rogueEvades (피해·상태이상 모두 막음) · 몬스터 +30%·보스전 받는 피해 감소는 삭제
       knight:  { taken: 0.8, basicStaggerImmune: true, guardAura: true }, // 수호: 2칸 안 아군 받는 피해 -10% (knightGuardOn)
       frost:   { statusDouble: true, taken: 0.8 }, // 빙결술사 혹한: inflictStatus에서 처리 · 받는 피해 -20%
-      curse:   { teamVsDebuffed: 1.1 }, // 주술사 원한: 살아 있는 주술사가 있는 팀은 나쁜 상태이상에 걸린 적에게 주는 피해 +10% (curseGrudgeMult)
+      curse:   { teamVsDebuffed: 1.1, statusPierce: 0.5 }, // 면역 뚫기: 상태이상 면역인 적에게도 지속 시간 절반으로 걸림 (inflictStatus) · 주술사 원한: 살아 있는 주술사가 있는 팀은 나쁜 상태이상에 걸린 적에게 주는 피해 +10% (curseGrudgeMult)
       bard:    { ensemble: true, healAura: true }, // 치유 오라 (2026-11-12 성녀에서 옮김): 3칸 안 아군을 1초마다 공격력 10%씩 회복 (stepHealerAura)
       berserker: { bloodlust: true },
       summoner: { harmony: true },
@@ -20846,7 +20846,9 @@
       }
       // 빙결술사 패시브 혹한: 적에게 거는 나쁜 상태이상은 지속 시간 1.5배, 면역인 적에게는 면역을 무시하고 1배로
       const frostPassive = negative && sourceUnit && sourceUnit !== targetUnit && jobPassiveOf(sourceUnit).statusDouble;
-      if (blocked && !frostPassive) {
+      // 주술사 원한: 면역인 적에게도 지속 시간 절반으로 걸림 (빙결술사 혹한과 같은 면역 뚫기)
+      const cursePierce = negative && blocked && !frostPassive && sourceUnit && sourceUnit !== targetUnit ? (jobPassiveOf(sourceUnit).statusPierce || 0) : 0;
+      if (blocked && !frostPassive && !cursePierce) {
         if (sim.tickCount - (targetUnit.ccImmuneTextAt ?? -999) > 30) {
           targetUnit.ccImmuneTextAt = sim.tickCount;
           sim.floatTexts.push({ x: targetUnit.x, y: targetUnit.y - 36, text: '🛡️면역!', color: '#e2e8f0', life: 40 });
@@ -20855,8 +20857,9 @@
       }
       // 엘리트 보스의 면역을 뚫을 때는 FROST_PIERCE_ELITE_MULT배만 (1배로는 보스를 계속 얼려 두어 엘리트 보스 레이드가 무력해졌음)
       if (frostPassive) durationFrames = blocked ? Math.round(durationFrames * (targetUnit.isEliteBoss ? FROST_PIERCE_ELITE_MULT : 1)) : Math.round(durationFrames * FROST_PASSIVE_STATUS_MULT);
+      if (cursePierce) durationFrames = Math.max(1, Math.round(durationFrames * cursePierce)); // 주술사가 면역을 뚫으면 지속 시간 절반
       // 몬스터의 면역을 뚫고 건 상태이상은 기록해 두었다가, 풀리는 즉시 5초간 저항을 줌
-      if (frostPassive && blocked && (targetUnit.monsterPassives || targetUnit.isEliteBoss)) (targetUnit.frostPierced = targetUnit.frostPierced || {})[statusType] = true;
+      if ((frostPassive || cursePierce) && blocked && (targetUnit.monsterPassives || targetUnit.isEliteBoss)) (targetUnit.frostPierced = targetUnit.frostPierced || {})[statusType] = true;
       // 엘리트 보스가 지속 피해 등에 걸리면 '하나만' 규칙에 기록 (혹한으로 면역을 뚫은 군중제어는 기록하지 않음)
       if (targetUnit.isEliteBoss && negative && sourceUnit !== targetUnit && !blocked && !CC_STATUSES.includes(statusType)) targetUnit.eliteDebuff = statusType;
       // 빙결은 몸집이 클수록 짧아짐: 몸집이 커진 만큼의 50%만 반영 (1배는 그대로, 2배 크기면 ÷1.5, 3배면 ÷2)
@@ -20874,7 +20877,7 @@
         sim.floatTexts.push({
           x: targetUnit.x,
           y: targetUnit.y - 36,
-          text: `${blocked ? '🧊' : ''}${stDef.icon}${stDef.name}!`,
+          text: `${blocked ? (cursePierce ? '🕯️' : '🧊') : ''}${stDef.icon}${stDef.name}!`,
           color: stDef.color,
           life: 52
         });
