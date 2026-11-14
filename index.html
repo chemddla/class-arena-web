@@ -31086,7 +31086,7 @@
         .forEach(e => applyDamage(owner, e, dmg, icon, '#f97316'));
       if (skill) withSkillHit(hit); else withHitKind('ranged', hit);
       if (kind === 'shell') sim.effects.push({ type: 'eng_mortar_blast', x: Math.round(x), y: Math.round(y), r: Math.round(r), life: ENG_MORTAR_BLAST_TICKS, maxLife: ENG_MORTAR_BLAST_TICKS }); // 박격포탄: 수류탄 폭발 그림
-      else sim.effects.push({ type: 'eng_blast', x, y, r, life: 26, maxLife: 26 });
+      else if (kind !== 'titan') sim.effects.push({ type: 'eng_blast', x, y, r, life: 26, maxLife: 26 }); // 최종병기 자폭은 핵폭발(eng_titan_nuke)만
       if (sim.tickCount - (sim._engBoomSfx ?? -99) > 6) { sim._engBoomSfx = sim.tickCount; playCombatSfx('heavy'); }
     }
     // 둘레 r 안에 적이 가장 많이 모인 적 (같으면 가까운 쪽) — 박격포가 노릴 자리
@@ -31250,9 +31250,8 @@
       sim.effects.push({ type: 'eng_wreck', x: Math.round(t.x), y: Math.round(t.y), f: engTitanFace(t), k: +(t.sizeScale || 1).toFixed(2), life: ENG_TITAN_WRECK_TICKS, maxLife: ENG_TITAN_WRECK_TICKS });
     }
     function engTitanBoom(t) {
-      engBlastAt(t, t.team, t.x, t.y, GRID_CELL_SIZE * ENG_TITAN_BOOM_R, (t.ownerAtk || t.atk) * ENG_TITAN_BOOM, true, '🤖');
-      sim.effects.push({ type: 'eng_blast', x: t.x, y: t.y - 20, r: GRID_CELL_SIZE * 2.2, life: 34, maxLife: 34 });
-      sim.effects.push({ type: 'eng_mortar_blast', x: Math.round(t.x), y: Math.round(t.y + 10), r: GRID_CELL_SIZE * ENG_TITAN_BLAST_VIS, life: ENG_MORTAR_BLAST_TICKS, maxLife: ENG_MORTAR_BLAST_TICKS }); // 박격포와 같은 수류탄 폭발을 크게
+      engBlastAt(t, t.team, t.x, t.y, GRID_CELL_SIZE * ENG_TITAN_BOOM_R, (t.ownerAtk || t.atk) * ENG_TITAN_BOOM, true, '🤖', 'titan'); // 그림은 아래 핵폭발만
+      sim.effects.push({ type: 'eng_titan_nuke', x: Math.round(t.x), y: Math.round(t.y + ENG_TITAN_FOOT * (t.sizeScale || 1)), k: +(t.sizeScale || 1).toFixed(2), life: ENG_TITAN_NUKE_TICKS, maxLife: ENG_TITAN_NUKE_TICKS }); // 자폭: 핵폭발 (pixelfx nuke)
       engTitanWreck(t);
       if (!sim.shake || sim.shake.power < 10) sim.shake = { power: 10, life: 20, maxLife: 20 };
       addBattleLog(`🤖 [기계공] 최종병기 자폭!`);
@@ -31531,6 +31530,17 @@
       im.onload = () => { ENG_LASER_FX.ready = true; };
       im.src = 'assets/sprites/fx/engineer_laser_fx.webp';
       ENG_LASER_FX.img = im;
+    })();
+
+    // ----- 최종병기 자폭 핵폭발 (pixelfx nuke 48칸, tools/engineer_titan_boom_build.py) · 기준점 = 폭발 바닥 가운데 -----
+    const ENG_TITAN_NUKE_FX = { w: 400, h: 320, n: 48, cols: 8, ox: 200, oy: 284 };
+    const ENG_TITAN_NUKE_TICKS = 96;    // 48칸 × 2틱 (1.6초)
+    const ENG_TITAN_NUKE_SCALE = 0.95;  // 최종병기 크기 배율 2.2일 때 그림 배율
+    (() => {
+      const im = new Image();
+      im.onload = () => { ENG_TITAN_NUKE_FX.ready = true; };
+      im.src = 'assets/sprites/fx/engineer_titan_nuke.webp';
+      ENG_TITAN_NUKE_FX.img = im;
     })();
 
     // ----- 박격포탄 폭발 (pixelfx 수류탄 폭발 40칸, tools/engineer_mortar_fx_build.py) · 기준점 = 터지는 바닥 자리, r0 = 그림의 폭발 반경 -----
@@ -31965,6 +31975,16 @@
         ctx.scale(k, k);
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(F.img, fr * F.w, 0, F.w, F.h, -F.ox, -F.oy, F.w, F.h);
+        ctx.restore();
+        return;
+      }
+      if (ef.type === 'eng_titan_nuke') { // 최종병기 자폭 핵폭발: 섬광 → 불덩이 → 버섯구름 (8칸씩 여러 줄)
+        const F = ENG_TITAN_NUKE_FX;
+        if (!F.ready) return;
+        const f = Math.min(F.n - 1, Math.floor(p * F.n)), k = ENG_TITAN_NUKE_SCALE * (ef.k || ENG_TITAN_SHEET.ref * ENG_TITAN_DRAW_K) / 2.2;
+        ctx.save();
+        ctx.translate(Math.round(ef.x), Math.round(ef.y)); ctx.scale(k, k);
+        ctx.drawImage(F.img, (f % F.cols) * F.w, Math.floor(f / F.cols) * F.h, F.w, F.h, -F.ox, -F.oy, F.w, F.h);
         ctx.restore();
         return;
       }
@@ -33603,7 +33623,7 @@
     }
 
     const HIT_FX_TYPES = new Set(['pyro_hit', 'pyro_xpl', 'magic_burst', 'arrow_hit', 'fire_explosion', 'ice_shatter', 'curse_shatter', 'hidden_snipe_hit', 'bard_lute', 'bard_wave', 'bard_wave_hit', 'bard_song_buff', 'brawl_hit', 'brawl_ring', 'sword_iai', 'sword_mucham', 'sword_gk_charge', 'sword_guard_flash', 'sword_guard_ready',
-      'eng_muzzle', 'eng_rivet_hit', 'eng_gat_hit', 'eng_mortar_blast', 'eng_blast', 'eng_laser', 'eng_wreck', 'eng_shell', 'eng_expire', 'eng_laser_hit']); // 검사 참격·무참 베기·극참 기 모으기·막기 섬광·패링 빛도 몸 위에 · 파멸의 의식 번개는 불투명하게 drawRuinMarks에서
+      'eng_muzzle', 'eng_rivet_hit', 'eng_gat_hit', 'eng_mortar_blast', 'eng_blast', 'eng_laser', 'eng_wreck', 'eng_shell', 'eng_expire', 'eng_laser_hit', 'eng_titan_nuke']); // 검사 참격·무참 베기·극참 기 모으기·막기 섬광·패링 빛도 몸 위에 · 파멸의 의식 번개는 불투명하게 drawRuinMarks에서
     // ※ 규칙 (2026-11-14 사용자): 공격·타격·폭발·투사체처럼 맞은 대상에 닿는 이펙트는 새로 만들 때 꼭 여기에 넣어 대상 그림 위에 그림
     //   기계공: 총구 섬광·리벳탄·기관포 불티·박격포 폭발·레이저·자폭 폭발·잔해·날아가는 포탄 · 바닥에 퍼지는 것(eng_build 세움 고리)만 아래
     const HIT_FX_ALPHA = 0.75;
@@ -51136,7 +51156,7 @@
     // ----- 화면 형식 v2 (2026-11-09부터 방장이 보냄 · 받는 쪽은 두 형식 다 읽음) -----
     // 이펙트 종류 이름(평균 15자, 이펙트 바이트의 1/5)은 표 번호로 · 투사체의 안 바뀌는 칸(종류·색·반지름·그림)은 처음 한 번만 (매 화면 다시 보내던 투사체 바이트의 절반)
     // ⚠ LIVE_FX_TYPES 순서를 바꾸거나 중간에 끼우면 먼저 연 탭이 다른 이펙트를 그림 → 새 종류는 끝에만 더할 것 (표에 없는 종류는 이름 그대로 감)
-    const LIVE_FX_TYPES = ['aoe_ring', 'arrow_hit', 'bard_encore', 'bard_lute', 'bard_song_buff', 'bard_sr_encore', 'bard_wave', 'bard_wave_hit', 'berserker_slam', 'berserker_split', 'blessing_aura', 'blood_fx', 'brawl_hit', 'brawl_ring', 'cast_circle', 'charge_dash', 'curse_bolt', 'curse_ruin_blast', 'curse_ruin_bolt', 'curse_ruin_circle', 'curse_shatter', 'curse_siphon', 'curse_siphon_heal', 'curse_weaken', 'fire_explosion', 'frost_blizzard', 'frost_glaze', 'frost_nova', 'frost_skate', 'heal_beam', 'heal_cross', 'heal_pillar', 'hidden_assassin', 'hidden_assassin_smoke', 'hidden_beam', 'hidden_excal_impact', 'hidden_fusion', 'hidden_giant_aura', 'hidden_giant_burst', 'hidden_miracle', 'hidden_miracle_buff', 'hidden_miracle_pillar', 'hidden_musou_boom', 'hidden_musou_dash', 'hidden_musou_slash', 'hidden_musou_x', 'hidden_slash', 'hidden_snipe_bullet', 'hidden_snipe_hit', 'hidden_storm', 'ice_shatter', 'lightning_bolt', 'magic_burst', 'paladin_aegis_burst', 'paladin_aegis_dome', 'paladin_charge_dust', 'paladin_charge_hit', 'paladin_consec_burst', 'paladin_hs_dome', 'paladin_judgment', 'paladin_swing', 'pierce_fx', 'pyro_burst', 'pyro_fring', 'pyro_hit', 'pyro_meteor_impact', 'pyro_sr_meteor', 'pyro_xpl', 'rampage_fx', 'shield_dome', 'sniper_line', 'sniper_spread', 'spirit_dodge', 'spirit_king_burst', 'spirit_pop', 'stun_shockwave', 'whirlwind_slash', 'volt_rail', 'volt_beam', 'volt_fx', 'sword_iai', 'sword_batto', 'sword_seomdan', 'sword_issen', 'sword_mucham', 'sword_gk_charge', 'sword_guard_flash', 'sword_guard_ready', 'sword_mind_start', 'sword_gk_aura', 'eng_shell', 'eng_blast', 'eng_build', 'eng_laser', 'eng_wreck', 'eng_muzzle', 'eng_rivet_hit', 'eng_gat_hit', 'eng_mortar_blast', 'eng_expire', 'eng_laser_hit'];
+    const LIVE_FX_TYPES = ['aoe_ring', 'arrow_hit', 'bard_encore', 'bard_lute', 'bard_song_buff', 'bard_sr_encore', 'bard_wave', 'bard_wave_hit', 'berserker_slam', 'berserker_split', 'blessing_aura', 'blood_fx', 'brawl_hit', 'brawl_ring', 'cast_circle', 'charge_dash', 'curse_bolt', 'curse_ruin_blast', 'curse_ruin_bolt', 'curse_ruin_circle', 'curse_shatter', 'curse_siphon', 'curse_siphon_heal', 'curse_weaken', 'fire_explosion', 'frost_blizzard', 'frost_glaze', 'frost_nova', 'frost_skate', 'heal_beam', 'heal_cross', 'heal_pillar', 'hidden_assassin', 'hidden_assassin_smoke', 'hidden_beam', 'hidden_excal_impact', 'hidden_fusion', 'hidden_giant_aura', 'hidden_giant_burst', 'hidden_miracle', 'hidden_miracle_buff', 'hidden_miracle_pillar', 'hidden_musou_boom', 'hidden_musou_dash', 'hidden_musou_slash', 'hidden_musou_x', 'hidden_slash', 'hidden_snipe_bullet', 'hidden_snipe_hit', 'hidden_storm', 'ice_shatter', 'lightning_bolt', 'magic_burst', 'paladin_aegis_burst', 'paladin_aegis_dome', 'paladin_charge_dust', 'paladin_charge_hit', 'paladin_consec_burst', 'paladin_hs_dome', 'paladin_judgment', 'paladin_swing', 'pierce_fx', 'pyro_burst', 'pyro_fring', 'pyro_hit', 'pyro_meteor_impact', 'pyro_sr_meteor', 'pyro_xpl', 'rampage_fx', 'shield_dome', 'sniper_line', 'sniper_spread', 'spirit_dodge', 'spirit_king_burst', 'spirit_pop', 'stun_shockwave', 'whirlwind_slash', 'volt_rail', 'volt_beam', 'volt_fx', 'sword_iai', 'sword_batto', 'sword_seomdan', 'sword_issen', 'sword_mucham', 'sword_gk_charge', 'sword_guard_flash', 'sword_guard_ready', 'sword_mind_start', 'sword_gk_aura', 'eng_shell', 'eng_blast', 'eng_build', 'eng_laser', 'eng_wreck', 'eng_muzzle', 'eng_rivet_hit', 'eng_gat_hit', 'eng_mortar_blast', 'eng_expire', 'eng_laser_hit', 'eng_titan_nuke'];
     const LIVE_FX_TYPE_IDX = Object.fromEntries(LIVE_FX_TYPES.map((t, i) => [t, i]));
     let liveFrameV2 = false; // publishLiveBattleFrame이 화면마다 정함
     function packLiveEffect(ef) {
