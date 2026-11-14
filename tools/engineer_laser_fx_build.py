@@ -10,7 +10,7 @@ from PIL import Image
 
 S = 'assets/sprites/fx/samples/engineer_laser_'
 OUT = 'assets/sprites/fx/engineer_laser_fx.webp'
-ROWS = [('charge', 5, 41, (133, 122)),   # (이름, 첫 칸, 칸 수, 기준점: 모이는 자리 / 폭발 가운데) · 충전 빛이 모이는 점(밝은 픽셀 가운데 139)에서 6px 왼쪽 = 게임에서 렌즈보다 2px 오른쪽 (2026-11-14 사용자 "살짝 오른쪽")
+ROWS = [('charge', 5, 41, (133, 128)),   # (이름, 첫 칸, 칸 수, 기준점: 모이는 자리 / 폭발 가운데) · 충전 빛이 모이는 점(밝은 픽셀 가운데 139)에서 6px 왼쪽 = 게임에서 렌즈보다 2px 오른쪽 · y는 6px 아래(128) = 2px 위 (2026-11-14 사용자 "살짝 오른쪽", "살짝 위로")
         ('hit', 0, 16, (112, 100))]
 
 
