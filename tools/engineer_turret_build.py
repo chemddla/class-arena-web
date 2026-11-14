@@ -13,7 +13,7 @@
 # 칸 순서
 #   기관포탑 0 준비 · 1 회전 시동 · 2 사격 · 3 지속 사격 · 4 반동·복귀(연기)
 #   박격포탑 0 준비 · 1 장전·압축 · 2 발사(불꽃) · 3 강한 반동(연기) · 4 재장전·복귀
-#   레이저탑 0 준비 · 1 충전 · 2 발사 시작 · 3 지속 발사 · 4 냉각·잔상
+#   레이저탑 0 준비 · 1 충전 · 2 발사 시작 · 3 지속 발사 · 4 냉각·잔상 (2~4는 대기 칸 몸 + 큰 샘플에서 딴 효과: LASER_FX)
 #   드론     0 평소 · 1 사격 · 2 자폭 돌진
 #
 # 크기: 0번 칸(효과 없는 몸)의 키를 BODY_H(px)로 줄이고, 같은 샘플에서 나온 칸은 같은 배율.
@@ -110,14 +110,171 @@ def cut(rgba, box, erase, own=None):
         ok &= np.array([not (body[:, :22] == i).any() for i in range(1, n + 1)])   # 왼쪽 22px 안에 걸친 조각
         bi = int(np.argmax(sizes)); ok[bi] = True
         # 옆 칸으로 더 잘라 낸 곳: 이 칸 몸(총구 끝)과 불꽃만 남기고 다음 칸 탄약통·사슬은 지움
-        a = np.where(ext & ~(body == bi + 1) & ~fire, 0, a)
+        a = np.where(ext & ~(body == bi + 1) & ~firemask(im[..., :3]), 0, a)   # (밝은 불꽃만: 붉은 손잡이는 지움)
     elif own:
         cx = ndi.center_of_mass(a > 0, body, range(1, n + 1))
         ok &= np.array([own[0] <= c[1] + x0 < own[1] for c in cx])
     big = 1 + int(np.argmax(np.where(ok, sizes, 0)))
     a = np.where(np.isin(body, 1 + np.where(ok)[0]), a, 0)
     im[..., 3] = a
+    fill_specks(im)
     return im, body == big   # 그림, 몸(가장 큰 덩어리)
+
+
+def fill_specks(im, maxpx=12):
+    """몸 안에 박힌 작은 순백 점(흐린 샘플이 남긴 구멍·잡티)을 둘레 색(중간값)으로 메움.
+    둘레에 불꽃·청록 같은 진한 색이 있으면(불꽃 속 흰 심·렌즈 반짝임) 그대로 둠."""
+    rgb, a = im[..., :3], im[..., 3] > 0
+    pw = a & (rgb.min(axis=2) > 225) & (rgb.max(axis=2) - rgb.min(axis=2) < 20)
+    colored = (rgb.max(axis=2) - rgb.min(axis=2)) > 70
+    lab, n = ndi.label(pw)
+    for sl, i in zip(ndi.find_objects(lab), range(1, n + 1)):
+        ys, xs = sl
+        sl2 = (slice(max(0, ys.start - 2), ys.stop + 2), slice(max(0, xs.start - 2), xs.stop + 2))
+        m = lab[sl2] == i
+        if m.sum() > maxpx:
+            continue
+        ring = ndi.binary_dilation(m, iterations=2) & ~m & a[sl2]
+        if not ring.any() or colored[sl2][ring].any():
+            continue
+        sub = im[sl2]
+        sub[m, :3] = np.median(sub[..., :3][ring], axis=0)
+
+
+def firemask(c):
+    R, G, B = c[..., 0].astype(int), c[..., 1].astype(int), c[..., 2].astype(int)
+    return (R > 200) & (R + G > 320) & (B < 150) & (G <= R)   # 밝은 주황·노랑 불빛 (구릿빛 몸 (170,100,60)은 안 걸림)
+
+
+def defire(s, passes=9):
+    """불꽃 둘레 테두리의 흰 배경 찌꺼기: 투명한 곳과 맞닿고 불꽃 색 옆에 붙은 밝은 무채색 픽셀을 passes번 깎음"""
+    out = s.copy()
+    cross = [[0, 1, 0], [1, 1, 1], [0, 1, 0]]
+    for _ in range(passes):
+        a = out[..., 3] > 0
+        edge = a & ndi.binary_dilation(~a, structure=cross)
+        c = out[..., :3].astype(int)
+        pale = (c.min(axis=2) > 190) & (c.max(axis=2) - c.min(axis=2) < 45)
+        junk = edge & pale & ndi.binary_dilation(a & firemask(c), iterations=2)
+        if not junk.any():
+            break
+        out[junk] = 0
+    return out
+
+
+def drop_back_fire(s, ax):
+    """기관포: 몸 가운데(기준점 x)보다 왼쪽에 있는 불꽃 색 덩어리 = 앞 칸 총구 불꽃이 잘려 들어온 것 → 지움 (이 칸 불꽃은 늘 총구 = 오른쪽)"""
+    out = s.copy()
+    a = out[..., 3] > 0
+    c = out[..., :3].astype(int)
+    R, G, B = c[..., 0], c[..., 1], c[..., 2]
+    f = a & (firemask(c) | ((R > 170) & (R - B > 80) & (G < R - 30)))   # 빨간 불꽃 줄기까지
+    lab, n = ndi.label(f, structure=np.ones((3, 3)))
+    if not n:
+        return out
+    sizes = ndi.sum(f, lab, range(1, n + 1))
+    cx = ndi.center_of_mass(f, lab, range(1, n + 1))
+    for i, (cy, x) in enumerate(cx):
+        if x < ax - 10 and sizes[i] < 600:   # 작은 덩어리만 (구릿빛 몸이 같이 걸려도 크기로 걸러짐)
+            out[lab == i + 1] = 0
+    # 몸 왼쪽의 작은 조각(불티 끝 점 등)은 색과 상관없이 지움 (탄피는 오른쪽 아래로 튐)
+    a = out[..., 3] > 0
+    lab, n = ndi.label(a, structure=np.ones((3, 3)))
+    if n > 1:
+        sizes = ndi.sum(a, lab, range(1, n + 1))
+        cx = ndi.center_of_mass(a, lab, range(1, n + 1))
+        for i, (cy, x) in enumerate(cx):
+            if x < ax - 10 and sizes[i] < 60:
+                out[lab == i + 1] = 0
+    return out
+
+
+GAT_TIP = 40   # 기관포 총구 끝 = 기준점에서 오른쪽으로 (게임 px)
+
+
+def clip_front(s, ax):
+    """기관포: 총구 끝보다 오른쪽엔 불꽃(밝은 주황·노랑·빨강 + 그 안 흰 심)만 남김 (다음 칸 손잡이가 불꽃에 붙어 들어옴),
+    몸 오른쪽(기준점 +30px 넘어)에서 떨어진 불꽃 아닌 조각(다음 칸 사슬 끝)도 지움"""
+    out = s.copy()
+    c = out[..., :3].astype(int)
+    R, G, B = c[..., 0], c[..., 1], c[..., 2]
+    flame = firemask(c) | ((R > 180) & (R - B > 100) & (G < R - 40))
+    flame |= ndi.binary_dilation(flame, iterations=3) & (c.min(axis=2) > 190)
+    tip = int(round(ax + GAT_TIP * RES))
+    cut_m = np.zeros(flame.shape, bool); cut_m[:, tip:] = True
+    out[cut_m & ~flame] = 0
+    a = out[..., 3] > 0
+    lab, n = ndi.label(a, structure=np.ones((3, 3)))
+    if n > 1:
+        sizes = ndi.sum(a, lab, range(1, n + 1))
+        big = 1 + int(np.argmax(sizes))
+        for sl, i in zip(ndi.find_objects(lab), range(1, n + 1)):
+            if i == big or sl[1].start <= ax + 30 * RES:
+                continue
+            m = lab == i
+            if not flame[m].mean() > 0.5:
+                out[m] = 0
+    return out
+
+
+def despeck(s, minpx=60, sat=50):
+    """줄인 뒤 몸에서 떨어진 작은 무채색 티끌(흰·회색 점) 지움. 불티·탄피처럼 색이 있는 조각은 남김."""
+    a = s[..., 3] > 0
+    lab, n = ndi.label(a, structure=np.ones((3, 3)))
+    if n < 2:
+        return s
+    sizes = ndi.sum(a, lab, range(1, n + 1))
+    c = s[..., :3].astype(int)
+    sat_px = c.max(axis=2) - c.min(axis=2)
+    msat = ndi.mean(sat_px, lab, range(1, n + 1))
+    drop = (sizes < minpx) & (msat < sat)
+    out = s.copy()
+    out[np.isin(lab, 1 + np.where(drop)[0])] = 0
+    return out
+
+
+def teal_center(im, a=None, cyan=False):
+    """렌즈 가운데 (가장 큰 청록 덩어리). cyan=True면 발사 고리(밝은 청록)"""
+    R, G, B = im[..., 0], im[..., 1], im[..., 2]
+    al = im[..., 3] > 0 if a is None else a
+    m = ((G > 140) & (B > 140) & (R < 170) & (G - R > 40)) if cyan else ((G > 120) & (B > 110) & (G - R > 50))
+    m &= al
+    lab, n = ndi.label(m)
+    sizes = ndi.sum(m, lab, range(1, n + 1))
+    cy, cx = ndi.center_of_mass(m, lab, 1 + int(np.argmax(sizes)))
+    return cx, cy
+
+
+# 레이저탑 2~4칸: 큰 샘플은 몸 모양·비율이 대기 칸과 달라 몸은 대기 칸을 그대로 쓰고 효과만 따서 렌즈 자리에 얹음
+#   2 발사 시작 = 대기 몸 + 청록 고리·전기 / 3 지속 발사 = 달아오른(주황) 대기 몸 + 청록 고리 + 불티 / 4 냉각 = 대기 몸 + 연기
+LASER_FX = {2: 'ring', 3: 'hot', 4: 'smoke'}
+
+
+def laser_overlay(im, body, mode):
+    R, G, B = [im[..., i] for i in range(3)]
+    al = im[..., 3] > 0
+    cyan = al & (G > 140) & (B > 140) & (R < 170) & (G - R > 40)
+    core = al & (im[..., :3].min(axis=2) > 225) & ndi.binary_dilation(cyan, iterations=3)   # 고리 안 흰 빛
+    if mode == 'smoke':
+        pale = al & ~body & (im[..., :3].min(axis=2) > 140) & (im[..., :3].max(axis=2) - im[..., :3].min(axis=2) < 35)
+        m = pale
+    else:
+        m = cyan | core
+        if mode == 'hot':
+            m |= al & ~body & (R > 190) & (B < 150) & (R - B > 70)   # 몸에서 튄 불티
+    ov = im.copy()
+    ov[..., 3] = np.where(m, 255, 0)
+    return ov
+
+
+def heat(s):   # 지속 발사: 구릿빛 몸을 주황으로 달굼
+    out = s.astype(float).copy()
+    R, G, B = out[..., 0], out[..., 1], out[..., 2]
+    warm = (out[..., 3] > 0) & (R > G + 8) & (R > B + 15)
+    out[..., 0] = np.where(warm, np.minimum(255, R * 1.2 + 35), R)
+    out[..., 1] = np.where(warm, G * 0.8, G)
+    out[..., 2] = np.where(warm, B * 0.6, B)
+    return out.clip(0, 255).astype(np.uint8)
 
 
 def bbox(m):
@@ -161,8 +318,30 @@ def main():
         for src, im, body, box in cuts:
             sc = sc0 if (src == s0 or kind in SAME_SCALE) else bw0 / base_w(kind, body)
             ax, ay = anc(src, body, box)
-            s = defringe(shrink(im, sc), passes=4 * RES, light=200, outline=110, near=4 * RES)
+            s = defire(defringe(shrink(im, sc), passes=4 * RES, light=200, outline=110, near=4 * RES), passes=3 * RES)
+            if kind == 'gatling':
+                s = drop_back_fire(s, ax * sc)
+                s = clip_front(s, ax * sc)
+            s = despeck(s)
             placed.append((s, ax * sc, ay * sc))
+        if kind == 'laser':
+            s_idle, ax0, ay0 = placed[0]
+            lx0, ly0 = teal_center(im0)
+            lx0, ly0 = lx0 * sc0, ly0 * sc0   # 대기 칸 렌즈 (줄인 그림 좌표)
+            for i, mode in LASER_FX.items():
+                src, im, body, box = cuts[i]
+                sc = bw0 / base_w(kind, body)
+                lx, ly = teal_center(im, cyan=(mode != 'smoke'))
+                ov = shrink(laser_overlay(im, body, mode), sc)
+                dx, dy = int(round(lx0 - lx * sc)), int(round(ly0 - ly * sc))
+                base = heat(s_idle) if mode == 'hot' else s_idle
+                px, py = max(0, -dx), max(0, -dy)   # 효과가 대기 그림 밖으로 나가면 바탕을 넓힘
+                W = max(px + base.shape[1], px + dx + ov.shape[1]); H = max(py + base.shape[0], py + dy + ov.shape[0])
+                cv = np.zeros((H, W, 4), np.uint8)
+                cv[py:py + base.shape[0], px:px + base.shape[1]] = base
+                reg = cv[py + dy:py + dy + ov.shape[0], px + dx:px + dx + ov.shape[1]]
+                cv[py + dy:py + dy + ov.shape[0], px + dx:px + dx + ov.shape[1]] = np.where(ov[..., 3:] > 0, ov, reg)
+                placed[i] = (cv, ax0 + px, ay0 + py)
         L = max(ax for s, ax, ay in placed); R = max(s.shape[1] - ax for s, ax, ay in placed)
         T = max(ay for s, ax, ay in placed); B = max(s.shape[0] - ay for s, ax, ay in placed)
         cw, ch, AX, AY = int(np.ceil(L + R)) + 2, int(np.ceil(T + B)) + 2, int(np.ceil(L)) + 1, int(np.ceil(T)) + 1
