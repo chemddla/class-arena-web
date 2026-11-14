@@ -7,6 +7,7 @@
 #     기본 외형의 렌치질(7~8)·설치(9) 대신 쓸 것: 수리 = 8~11 반복, 설치·시전 = 10 (밀어 넘김). 판 옆 작은 반짝임 점은 떨어진 조각이라 빠짐
 #   히든스킬(최종병기) 샘플(네 칸: 커다란 홀로그램 화면을 가리킴 → 위를 누름 → 앞으로 나서며 아래를 누름 → 두 손으로 조작) → 12~15.
 #     화면은 인물과 붙은 한 덩어리라 같이 남음
+#   피격 샘플(입을 벌리고 놀라 몸을 젖힘, 판은 든 채) → 16. 곧게 선 자세라 키를 대기 칸과 같게
 #   걷기는 샘플 한 장에 다섯 칸(왼쪽부터, 오른쪽 끝 잘린 여섯째 조각은 버림) → 0번(네 칸)과 달리 1~5 걷기라 연결할 때 anims를 따로 적을 것
 #   동작 샘플이 오는 대로 FRAMES에 늘리고, 13칸이 다 차면 index.html SECRET_MERC_SKINS에 engineer: [1]을 넣음
 # 크기: 대기 키(머리털 끝~발)를 기본 외형 대기와 같은 98px로. 걷기·공격·시전은 묶음마다 머리 너비(head_w)를 대기 칸과 같게 (보폭 때문에 키는 조금 작아짐)
@@ -20,7 +21,7 @@ from berserker_build import shrink
 
 eb.D = 'assets/sprites/fx/samples/engineer_sr1_'
 OUT = 'assets/sprites/merc/engineer_sr1.webp'
-FRAMES = ['idle', 'walk1', 'walk2', 'walk3', 'walk4', 'walk5', 'attack1', 'attack2', 'cast1', 'cast2', 'cast3', 'cast4', 'hidden1', 'hidden2', 'hidden3', 'hidden4']
+FRAMES = ['idle', 'walk1', 'walk2', 'walk3', 'walk4', 'walk5', 'attack1', 'attack2', 'cast1', 'cast2', 'cast3', 'cast4', 'hidden1', 'hidden2', 'hidden3', 'hidden4', 'hurt']
 # 한 장에 여러 칸인 샘플: 칸 이름 → (샘플 이름, 가로 x0, x1) — 인물 사이 빈 세로줄에서 자름
 #   (두 인물이 가로로 겹치면 상자에 옆 사람 조각이 들어오지만 가장 큰 덩어리만 남겨 빠짐)
 CROP = {f'walk{i + 1}': ('walk', x0, x1) for i, (x0, x1) in enumerate([(0, 209), (209, 390), (390, 570), (570, 742), (742, 920)])}
@@ -29,8 +30,8 @@ CROP.update({f'hidden{i + 1}': ('hidden', x0, x1) for i, (x0, x1) in enumerate([
 CROP.update({f'cast{i + 1}': ('cast', x0, x1) for i, (x0, x1) in enumerate([(30, 284), (284, 533), (533, 780), (780, 1024)])})
 # 샘플에 그려진 총구 불꽃: 게임이 리벳탄 총구 섬광을 따로 그리니까 흰색으로 덮어 지움 (샘플 좌표 x0, y0, x1, y1). 탄피는 떨어진 덩어리라 저절로 빠짐
 ERASE = {'attack1': [(183, 70, 196, 130)]}
-STAND = {'cast1'}   # 이 칸이 첫 칸인 묶음은 키를 대기 칸과 같게
-GROUPS = {'walk': [f'walk{i}' for i in range(1, 6)], 'attack': ['attack1', 'attack2'], 'cast': [f'cast{i}' for i in range(1, 5)], 'hidden': [f'hidden{i}' for i in range(1, 5)]}
+STAND = {'cast1', 'hurt'}   # 이 칸이 첫 칸인 묶음은 키를 대기 칸과 같게
+GROUPS = {'walk': [f'walk{i}' for i in range(1, 6)], 'attack': ['attack1', 'attack2'], 'cast': [f'cast{i}' for i in range(1, 5)], 'hidden': [f'hidden{i}' for i in range(1, 5)], 'hurt': ['hurt']}
 SCREEN = {'hidden1'}   # 이 칸이 첫 칸인 묶음은 머리 위로 화면이 솟아 있어서, 머리털(어두운 무채색) 꼭대기~발 길이를 대기 키에 맞추고 가로는 머리털 가운데로   # 같은 배율을 쓰는 묶음
 CELL_W, CELL_H, ANCHOR_X, ANCHOR_Y = eb.CELL_W, eb.CELL_H, eb.ANCHOR_X, eb.ANCHOR_Y
 TARGET_H = eb.TARGET_H
