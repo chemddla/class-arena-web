@@ -31375,10 +31375,11 @@
     //   기관포탑 0 준비 · 1 회전 시동 · 2 사격 · 3 지속 사격 · 4 반동·연기 / 박격포탑 0 준비 · 1 장전 · 2 발사 불꽃 · 3 반동 연기 · 4 복귀
     //   레이저탑 0 준비 · 1 충전 · 2 발사 시작 · 3 지속 발사 · 4 냉각 (빔은 그림에 없고 eng_laser가 각도대로 그림) / 드론 0 평소 · 1 사격 · 2 자폭 돌진
     const ENG_TURRET_SHEET = {
-      gatling: { cw: 77, ch: 79, ax: 28, ay: 70, n: 5, h: 46, muzzle: [39.2, -29.4] },
-      mortar:  { cw: 105, ch: 98, ax: 53, ay: 93, n: 5, h: 50, muzzle: [13.1, -44.0] },
-      laser:   { cw: 104, ch: 78, ax: 51, ay: 74, n: 5, h: 54, muzzle: [19.2, -39.4] },
-      drone:   { cw: 61, ch: 58, ax: 29, ay: 28, n: 3, h: 34, muzzle: [-10, 14] }
+      // 그림은 res(3)배 크게 만들어 둠: cw·ch = 그림 칸 px, 나머지(ax·ay·h·muzzle) = 게임 px → 1/res로 줄여 그려 확대해도 선명
+      gatling: { cw: 228, ch: 234, res: 3, ax: 27.33, ay: 69.33, n: 5, h: 46, muzzle: [39.2, -29.4] },
+      mortar:  { cw: 312, ch: 290, res: 3, ax: 52.33, ay: 92, n: 5, h: 50, muzzle: [13.1, -44.0] },
+      laser:   { cw: 305, ch: 230, res: 3, ax: 50.33, ay: 73, n: 5, h: 54, muzzle: [19.2, -39.4] },
+      drone:   { cw: 179, ch: 169, res: 3, ax: 28.33, ay: 26.67, n: 3, h: 34, muzzle: [-10, 14] }
     };
     const ENG_TURRET_FOOT = 12;   // 포탑 받침 바닥 = 유닛 자리에서 아래로 12px (캐릭터 발 위치와 같음)
     const ENG_DRONE_LIFT = -30;   // 드론 몸 가운데 = 유닛 자리에서 위로 30px (그림자는 발밑)
@@ -31425,7 +31426,7 @@
       ctx.translate(0, ENG_TURRET_FOOT);
       ctx.scale(dir * k, k);
       ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(sh.img, f * sh.cw, 0, sh.cw, sh.ch, -sh.ax, -sh.ay, sh.cw, sh.ch);
+      ctx.drawImage(sh.img, f * sh.cw, 0, sh.cw, sh.ch, -sh.ax, -sh.ay, sh.cw / sh.res, sh.ch / sh.res);
       if (engOverclocked(u) && (tick >> 2) % 2) { // 과부하: 빨간 불이 깜박임
         engPx(ctx, -2, -sh.h * 0.55, 4, 3, '#ef4444');
       }
@@ -31495,7 +31496,7 @@
         if (diving) ctx.rotate(0.3 * dir);
         ctx.scale(-dir * sz, sz);
         ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(sh.img, engTurretFrame(u) * sh.cw, 0, sh.cw, sh.ch, -sh.ax, -sh.ay, sh.cw, sh.ch);
+        ctx.drawImage(sh.img, engTurretFrame(u) * sh.cw, 0, sh.cw, sh.ch, -sh.ax, -sh.ay, sh.cw / sh.res, sh.ch / sh.res);
         ctx.restore();
         return;
       }
@@ -31515,7 +31516,8 @@
     //   다리 넷 달린 로봇: 왼쪽 기관총 · 위 박격포 · 오른쪽 레이저(빔은 앞쪽 = 기관총 쪽으로 몸을 가로질러 나감)
     //   칸: 0 평소 · 1 기관총 사격 · 2 박격포 발사 · 3 과열·폭주 · 4 내부 폭발 · 5 자폭 폭발 · 6 잔해 (5·6은 eng_wreck 이펙트)
     //   크기 배율 ref(2.2)일 때 그림 크기 그대로. 기준점 = 다리 끝 바닥 가운데, 총구 3곳은 기준점 기준 (그림이 왼쪽을 볼 때)
-    const ENG_TITAN_SHEET = { cw: 226, ch: 147, ax: 117, ay: 138, n: 7, h: 116, ref: 2.2, gun: [-99, -58.8], mortar: [-11, -106], laser: [27.4, -56] };
+    const ENG_TITAN_DRAW_K = 1.5;   // 최종병기 그림만 1.5배 크게 (충돌 크기·사거리 등 전투 값은 크기 배율 2.2 그대로) · 총구·잔해도 같이 커짐
+    const ENG_TITAN_SHEET = { cw: 671, ch: 438, res: 3, ax: 116.33, ay: 137.33, n: 7, h: 116, ref: 2.2 / ENG_TITAN_DRAW_K, gun: [-99, -58.8], mortar: [-11, -106], laser: [27.4, -56] }; // cw·ch = 그림 칸 px (res배), 나머지 = 게임 px
     const ENG_TITAN_FOOT = 10;   // × 크기 배율: 다리 끝 = 유닛 자리에서 아래로 (2.2배면 22px)
     (() => {
       const im = new Image();
@@ -31576,7 +31578,7 @@
         ctx.translate(0, ENG_TITAN_FOOT * sz);
         ctx.scale(f * k, k);
         ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(T.img, engTitanFrame(u) * T.cw, 0, T.cw, T.ch, -T.ax, -T.ay, T.cw, T.ch);
+        ctx.drawImage(T.img, engTitanFrame(u) * T.cw, 0, T.cw, T.ch, -T.ax, -T.ay, T.cw / T.res, T.ch / T.res);
         if (!boom) drawEngTitanLens(ctx, u, tick);
         if (engOverclocked(u) && (tick >> 2) % 2) engPx(ctx, -4, -T.h * 0.5, 6, 4, '#ef4444');
         ctx.restore();
@@ -31670,7 +31672,7 @@
         ctx.translate(Math.round(ef.x), Math.round(ef.y) + ENG_TITAN_FOOT * (ef.k || T.ref));
         ctx.scale((ef.f || 1) * k, k);
         ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(T.img, fr * T.cw, 0, T.cw, T.ch, -T.ax, -T.ay, T.cw, T.ch);
+        ctx.drawImage(T.img, fr * T.cw, 0, T.cw, T.ch, -T.ax, -T.ay, T.cw / T.res, T.ch / T.res);
         ctx.restore();
         return;
       }

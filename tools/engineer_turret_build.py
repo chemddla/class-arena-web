@@ -26,14 +26,15 @@ from scipy import ndimage as ndi
 
 sys.path.insert(0, os.path.dirname(__file__))
 from berserker_build import shrink
-from engineer_build import defringe   # 테두리 흰 찌꺼기 정리 (포탑 외곽선은 짙은 갈색이라 outline=110, 흰 연기를 살리려고 외곽선 4px 안의 밝은 테두리만: near=4)
+from engineer_build import defringe   # 테두리 흰 찌꺼기 정리 (포탑 외곽선은 짙은 갈색이라 outline=110, 흰 연기를 살리려고 외곽선 근처의 밝은 테두리만: near, 3배 그림이라 깎는 횟수·거리도 RES배)
 
 S = 'assets/sprites/fx/samples/engineer_'
 OUT = 'assets/sprites/fx/engineer_turret_{}.webp'
 COLS = [0, 162, 310, 458, 606, 765]
 ROW = {'gatling': (92, 290), 'mortar': (372, 645), 'laser': (790, 985)}
 TITLE = {'gatling': (0, 200, 92, 128), 'mortar': (0, 200, 372, 418)}   # 줄 제목 글자 (x0, x1, y0, y1)
-BODY_H = {'gatling': 46, 'mortar': 50, 'laser': 54, 'drone': 34}
+BODY_H = {'gatling': 46, 'mortar': 50, 'laser': 54, 'drone': 34}   # 게임에서 보이는 몸 키 (px)
+RES = 3   # 그림은 RES배 크게 만들고 게임이 1/RES로 줄여 그림 → 화면을 확대해도 선명 (출력: cw·ch는 그림 px, ax·ay·muzzle은 게임 px)
 # 칸: (샘플, 자를 상자 x0,x1,y0,y1, 지울 상자들)
 MARGIN = 70   # 동작표 칸은 양옆으로 넓게 잘라 낸 뒤, 덩어리 가운데가 이 칸 경계 안에 있는 것만 남김 (불꽃·연기가 경계를 넘어가도 잘리지 않게)
 BALL = (505, 552, 360, 412)   # 박격포 발사 칸 위로 날아가는 포탄 (옆 칸 자리에 있어 지움, 포탄은 게임이 따로 그림)
@@ -154,13 +155,13 @@ def main():
         s0, im0, b0, box0 = cuts[0]
         anc = lambda src, body, box: ((DRONE_ANCHOR[src][0] - box[0], DRONE_ANCHOR[src][1] - box[2]) if src in DRONE_ANCHOR else anchor(kind, body))
         bx0, bx1, by0, by1 = bbox(b0)
-        sc0 = BODY_H[kind] / (by1 - by0)
+        sc0 = BODY_H[kind] * RES / (by1 - by0)
         bw0 = base_w(kind, b0) * sc0
         placed = []
         for src, im, body, box in cuts:
             sc = sc0 if (src == s0 or kind in SAME_SCALE) else bw0 / base_w(kind, body)
             ax, ay = anc(src, body, box)
-            s = defringe(shrink(im, sc), passes=4, light=200, outline=110, near=4)
+            s = defringe(shrink(im, sc), passes=4 * RES, light=200, outline=110, near=4 * RES)
             placed.append((s, ax * sc, ay * sc))
         L = max(ax for s, ax, ay in placed); R = max(s.shape[1] - ax for s, ax, ay in placed)
         T = max(ay for s, ax, ay in placed); B = max(s.shape[0] - ay for s, ax, ay in placed)
@@ -177,8 +178,8 @@ def main():
         bl, bt = (bx0 - a0[0]) * sc0, (by0 - a0[1]) * sc0
         bwid, bhei = (bx1 - bx0) * sc0, (by1 - by0) * sc0
         mx, my = MUZZLE0[kind]
-        muzzle = [round(bl + bwid / 2 + bwid * mx, 1), round(bt + bhei * my, 1)]
-        info[kind] = {'cw': cw, 'ch': ch, 'ax': AX, 'ay': AY, 'n': len(placed), 'h': BODY_H[kind], 'muzzle': muzzle}
+        muzzle = [round((bl + bwid / 2 + bwid * mx) / RES, 1), round((bt + bhei * my) / RES, 1)]
+        info[kind] = {'cw': cw, 'ch': ch, 'res': RES, 'ax': round(AX / RES, 2), 'ay': round(AY / RES, 2), 'n': len(placed), 'h': BODY_H[kind], 'muzzle': muzzle}
     print(json.dumps(info))
 
 

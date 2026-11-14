@@ -27,7 +27,8 @@ from engineer_build import defringe   # 테두리 흰 찌꺼기 정리 (포탑 �
 
 S = 'assets/sprites/fx/samples/engineer_'
 OUT = 'assets/sprites/fx/engineer_titan.webp'
-H = 116
+H = 116   # 게임에서 보이는 몸 키 (크기 배율 2.2일 때 px)
+RES = 3   # 그림은 RES배 크게 만들고 게임이 1/RES로 줄여 그림 (출력: cw·ch는 그림 px, 나머지는 게임 px)
 MORTAR_FIX = [-11, -106]   # 박격포 입구 (기준점 기준 px, 미리보기로 잼: 맨 위 줄은 크레인 끝)
 # (샘플, 자를 상자 x0,x1,y0,y1, 지울 상자들, 묶음) — 같은 묶음은 첫 칸의 배율·기준점 위치를 같이 씀
 FRAMES = [
@@ -74,14 +75,14 @@ def main():
             if sc_idle is None:   # 평소 칸: 다리 끝 바닥 가운데가 기준점, 몸 키로 배율
                 cx, w, by = legs(body)
                 ys = np.where(a.any(axis=1))[0]
-                sc_idle = H / (by - ys.min()); sc = sc_idle
+                sc_idle = H * RES / (by - ys.min()); sc = sc_idle
                 lens_rel = ((lx - cx) * sc, (ly - by) * sc); ld_idle = ld * sc
             else:                 # 렌즈 키로 배율, 렌즈 가운데에서 기준점을 거꾸로 셈
                 sc = ld_idle / ld
                 cx, by = lx - lens_rel[0] / sc, ly - lens_rel[1] / sc
             group[grp] = (sc, cx, by)
         sc, cx, by = group[grp]
-        s = defringe(shrink(im, sc), passes=4, light=200, outline=110, near=4)
+        s = defringe(shrink(im, sc), passes=4 * RES, light=200, outline=110, near=4 * RES)
         placed.append((s, cx * sc, by * sc))
         if grp == 'idle':
             idle_im, idle_a = im, a
@@ -99,15 +100,15 @@ def main():
     sc, cx, by = group['idle']
     ys = np.where(idle_a[:, :6].any(axis=1))[0]; xs0 = np.where(idle_a.any(axis=0))[0].min()
     ys = np.where(idle_a[:, xs0:xs0 + 6].any(axis=1))[0]
-    gun = [round((xs0 - cx) * sc, 1), round((ys.mean() - by) * sc, 1)]
+    gun = [round((xs0 - cx) * sc / RES, 1), round((ys.mean() - by) * sc / RES, 1)]
     R_, G_, B_ = idle_im[..., 0], idle_im[..., 1], idle_im[..., 2]
     teal = (G_ > 120) & (B_ > 110) & (G_ - R_ > 50) & idle_a
     teal[:, :idle_a.shape[1] // 2] = False
     lab, n = ndi.label(teal)
     sizes = ndi.sum(teal, lab, range(1, n + 1))
     ly, lx = ndi.center_of_mass(teal, lab, 1 + int(np.argmax(sizes)))
-    laser = [round((lx - cx) * sc, 1), round((ly - by) * sc, 1)]
-    print(json.dumps({'cw': cw, 'ch': ch, 'ax': AX, 'ay': AY, 'n': len(placed), 'gun': gun, 'mortar': MORTAR_FIX, 'laser': laser}))
+    laser = [round((lx - cx) * sc / RES, 1), round((ly - by) * sc / RES, 1)]
+    print(json.dumps({'cw': cw, 'ch': ch, 'res': RES, 'ax': round(AX / RES, 2), 'ay': round(AY / RES, 2), 'n': len(placed), 'gun': gun, 'mortar': MORTAR_FIX, 'laser': laser}))
 
 
 if __name__ == '__main__':
