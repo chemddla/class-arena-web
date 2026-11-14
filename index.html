@@ -5838,7 +5838,7 @@
         deploy_drone: {
           id: 'deploy_drone', name: '전투 드론', icon: '🛸', ccTag: '🛸호위·자폭',
           manaCost: 22, cooldownTicks: 720, cooldownSec: 12.0, castSec: 0.3,
-          desc: '전투 드론을 20초간 띄웁니다 (기계공 체력 35%·공격 45%). 드론은 기계공 둘레를 돌며 기계공 2.5칸 안으로 다가온 적을 쏴요. 시간이 다 되면 5칸 안 가장 가까운 적에게 날아가 자폭해 1.2칸 안 적에게 240% 피해. 드론이 있을 때 다시 쓰면 지금 드론은 바로 자폭하러 가고 새 드론이 떠요.'
+          desc: '전투 드론을 20초간 띄웁니다 (기계공 체력 35%·공격 45%). 드론은 기계공 둘레를 돌며 기계공 2.5칸 안으로 다가온 적에게 0.27초마다 2연발을 쏴요. 시간이 다 되면 5칸 안 가장 가까운 적에게 날아가 자폭해 1.2칸 안 적에게 240% 피해. 드론이 있을 때 다시 쓰면 지금 드론은 바로 자폭하러 가고 새 드론이 떠요.'
         }
       },
       // 검사: 빠른 공격 속도의 근접 검객. 패시브 검술의 달인 = E 패링 (근접 기본 공격 막기 · 투사체 튕겨내기)
@@ -30932,7 +30932,7 @@
       gatling: { skill: 'build_turret',  name: '기관포탑',   icon: '🔫', hp: 0.8,  atk: 0.7,  def: 1.0, range: 400, interval: 30,  life: 1500, slots: 2, tower: true },
       mortar:  { skill: 'mortar_turret', name: '박격포탑',   icon: '💥', hp: 0.7,  atk: 1.2,  def: 0.9, range: 600, interval: 100, life: 1500, slots: 2, tower: true, shell: 1.0 },
       laser:   { skill: 'laser_tower',   name: '레이저탑',   icon: '🔴', hp: 0.6,  atk: 2.2,  def: 0.9, range: 1440, /* 2026-11-14 사거리 3배 (4칸 → 12칸, 노리는 거리·빔·관통 선 모두) */ interval: 110, life: 1500, slots: 2, tower: true, aim: 50, beamW: 14 },
-      drone:   { skill: 'deploy_drone',  name: '전투 드론',  icon: '🛸', hp: 0.35, atk: 0.45, def: 0.6, range: 220, interval: 24,  life: 1200, slots: 2 },
+      drone:   { skill: 'deploy_drone',  name: '전투 드론',  icon: '🛸', hp: 0.35, atk: 0.45, def: 0.6, range: 220, interval: 16, /* 2026-11-14 0.4초 → 0.27초, 한 번에 2연발 (ENG_DRONE_BURST) */  life: 1200, slots: 2 },
       titan:   { skill: 'final_weapon',  name: '최종병기',   icon: '🤖', hp: 2.0,  atk: 1.0,  def: 1.6, range: 720, interval: 18,  life: 1200, slots: 1, size: 2.2 }
     };
     const ENG_SKILL_KIND = {};
@@ -30954,6 +30954,7 @@
     const ENG_DRONE_GUARD_CELLS = 2.5;   //   기계공 2.5칸 안으로 다가온 적만 쏨
     const ENG_DRONE_DIVE_SPEED = 7;      //   시간이 다 되면 가까운 적에게 날아감 (px/틱)
     const ENG_DRONE_DIVE_CELLS = 5;      //   5칸 안의 적 (없으면 그 자리에서)
+    const ENG_DRONE_BURST = 2;           // 드론 한 번 공격 = 2연발
     const ENG_DRONE_BOOM = 2.4;          //   자폭 240%
     const ENG_DRONE_BOOM_R = 1.2;        //   자폭 반지름 (칸)
     const ENG_TITAN_GUN = [24, 0.28];          // 최종병기 기관포: 24틱마다 공격 28% (처음 18틱·55%는 히든 보유 팀 승률 98%)
@@ -31180,6 +31181,9 @@
       t.attackAnim = Math.min(14, t.cooldown); t.maxAttackAnim = t.attackAnim;
       if (def.shell) { engFireShell(t, foes, t.atk, C * def.shell); return; }
       engFireBullet(t, target, t.atk, kind === 'drone' ? '#7dd3fc' : '#fde047');
+      if (kind === 'drone') for (let b = 1; b < ENG_DRONE_BURST; b++) { // 드론: 한 번에 2연발 (0.05초 뒤 한 발 더, 그 사이 쓰러지거나 기절·빙결되면 안 나감)
+        (sim.engShots = sim.engShots || []).push({ u: t, t: 3 * b + 1, fire: () => { if (target.alive && !t.engDive) { t.attackAnim = Math.min(14, t.cooldown); engFireBullet(t, target, t.atk, '#7dd3fc'); } } });
+      }
     }
     // 기관포탑: 0.1초 간격 10발 연사(약 1초) → 반동·복귀(0.4초) → 재장전(0.6초) → 다시 연사. 한 발 = 포탑 공격력 60%
     //   (2026-11-14 연사 시간 2배: 5발 → 10발, 쉬는 시간 그대로 → 초당 피해 약 1.5배) · 공격 속도(회로·과부하)는 간격·반동·재장전을 줄임
@@ -31479,7 +31483,7 @@
     // ----- 레이저 충전·맞은 자리 (pixelfx charge-up 41칸 · plasma-explosion 16칸, tools/engineer_laser_fx_build.py) -----
     //   빔·조준선은 각도마다 달라 drawEngineerEffect가 직접 그림. 그림은 원본 크기라 0.35배로 줄여 그림
     const ENG_LASER_FX = {
-      charge: { y: 0, w: 130, h: 109, n: 41, ox: 66, oy: 51 }, // 기준점 = 빛이 모이는 점 → 렌즈 가운데에 놓임
+      charge: { y: 0, w: 130, h: 109, n: 41, ox: 60, oy: 51 }, // 기준점 = 빛이 모이는 점(66)에서 6px 왼쪽 → 렌즈 가운데보다 2px 오른쪽에 모임
       hit:    { y: 109, w: 208, h: 190, n: 16, ox: 110, oy: 95 }
     };
     const ENG_LASER_FX_K = 0.35;
