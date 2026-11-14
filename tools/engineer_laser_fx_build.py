@@ -10,7 +10,7 @@ from PIL import Image
 
 S = 'assets/sprites/fx/samples/engineer_laser_'
 OUT = 'assets/sprites/fx/engineer_laser_fx.webp'
-ROWS = [('charge', 5, 41, (124, 122)),   # (이름, 첫 칸, 칸 수, 기준점: 모이는 자리 / 폭발 가운데)
+ROWS = [('charge', 5, 41, (139, 122)),   # (이름, 첫 칸, 칸 수, 기준점: 모이는 자리 / 폭발 가운데) · 충전 빛이 모이는 점은 밝은 픽셀 가운데로 잼 (124는 5px 어긋났음)
         ('hit', 0, 16, (112, 100))]
 
 
