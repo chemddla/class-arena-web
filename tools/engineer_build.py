@@ -1,6 +1,7 @@
 # 기계공 전용 샘플(갈색 머리·고글·갈색 배낭·국방색 멜빵바지, 흰 배경) → 캐릭터 시트 assets/sprites/merc/engineer_0.webp
 # 사용: python tools/engineer_build.py   (샘플은 assets/sprites/fx/samples/engineer_*_src.png, 동작 샘플이 오는 대로 FRAMES에 늘림)
-# 칸 순서: 0 대기 · 1~4 걷기 (받은 순서 그대로)
+# 칸 순서: 0 대기 · 1~4 걷기 (받은 순서 그대로) · 5~6 리벳총 기본 공격 (5 겨눔 → 6 쏨) · 7~8 수리 (쪼그려 앉아 렌치질, 두 칸 번갈아)
+#   수리 샘플은 한 장에 두 칸 → 가운데 빈 세로줄(141)에서 나눠 engineer_repair1/2_src.png로 저장함
 # 칸 크기·기준점은 격투가 시트와 같음 (cellW 119 · cellH 106 · anchorX 63 · anchorY 104)
 # 크기 통일: 대기 자세 몸 키(머리털 끝~발, 샘플 px)를 TARGET_H로 줄임. 다른 동작 샘플은 해상도가 달라서
 #   묶음마다 몸 키 평균이 TARGET_H × GROUP_H 가 되도록 한 배율로 줄임 (칸끼리 키가 튀지 않게)
@@ -17,10 +18,11 @@ from berserker_build import shrink
 
 D = 'assets/sprites/fx/samples/engineer_'
 OUT = 'assets/sprites/merc/engineer_0.webp'
-FRAMES = ['idle', 'walk1', 'walk2', 'walk3', 'walk4']
-GROUP = {'walk1': 'walk', 'walk2': 'walk', 'walk3': 'walk', 'walk4': 'walk'}   # 같은 배율을 쓰는 묶음
+FRAMES = ['idle', 'walk1', 'walk2', 'walk3', 'walk4', 'attack1', 'attack2', 'repair1', 'repair2']
+GROUP = {'walk1': 'walk', 'walk2': 'walk', 'walk3': 'walk', 'walk4': 'walk', 'attack1': 'attack1', 'attack2': 'attack2', 'repair1': 'repair', 'repair2': 'repair'}   # 같은 배율을 쓰는 묶음
+GOGGLE_REF = {'attack1', 'attack2', 'repair'}   # 몸 키 대신 고글 폭을 걷기와 같게 맞추는 묶음 (총을 겨누거나 쪼그려 앉아 키로는 못 맞춤, 걷기처럼 옆으로 돈 자세라 고글 폭으로 맞춰도 됨)
 GROUP_H = {'walk': 0.97}   # 묶음 몸 키 / 대기 몸 키 (걸을 때는 다리를 벌려 조금 낮아짐)
-HEAD_X = {'walk': 66}   # 묶음의 고글 가운데 x (칸 안, 기준점 63보다 조금 앞: 앞을 보고 걸어 머리가 앞으로)
+HEAD_X = {'walk': 66, 'attack1': 50, 'attack2': 50, 'repair': 60}   # 묶음의 고글 가운데 x (칸 안, 기준점 63보다 조금 앞: 앞을 보고 걸어 머리가 앞으로)
 CELL_W, CELL_H, ANCHOR_X, ANCHOR_Y = 119, 106, 63, 104
 TARGET_H = 98   # 샘플이 가늘고 머리가 작아 86이면 얼굴이 격투가보다 훨씬 작아 보여 키움 (칸 높이 106 안)
 
@@ -42,6 +44,13 @@ def load(name):
     return im[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
 
 
+def goggle_w(rgba):   # 고글 렌즈(청록) 가로 폭
+    r, g, b, a = [rgba[..., i].astype(float) for i in range(4)]
+    m = (a > 0) & (g > 110) & (b > 100) & (g - r > 40)
+    xs = np.where(m.any(axis=0))[0]
+    return xs.max() - xs.min() + 1
+
+
 def goggle_cx(rgba):   # 고글 렌즈(청록) 가로 가운데
     r, g, b, a = [rgba[..., i].astype(float) for i in range(4)]
     m = (a > 0) & (g > 110) & (b > 100) & (g - r > 40)
@@ -55,7 +64,12 @@ def main():
     scs = {'idle': sc0}
     for grp in set(GROUP.values()):
         names = [f for f in FRAMES if GROUP.get(f) == grp]
-        scs[grp] = TARGET_H * GROUP_H[grp] / np.mean([srcs[f].shape[0] for f in names])
+        if grp not in GOGGLE_REF:
+            scs[grp] = TARGET_H * GROUP_H[grp] / np.mean([srcs[f].shape[0] for f in names])
+    gw_walk = np.mean([goggle_w(srcs[f]) * scs['walk'] for f in FRAMES if GROUP.get(f) == 'walk'])
+    for grp in GOGGLE_REF:
+        names = [f for f in FRAMES if GROUP.get(f) == grp]
+        scs[grp] = gw_walk / np.mean([goggle_w(srcs[f]) for f in names])
     sheet = np.zeros((CELL_H, CELL_W * len(FRAMES), 4), np.uint8)
     for i, f in enumerate(FRAMES):
         sc = scs[GROUP.get(f, 'idle')]
