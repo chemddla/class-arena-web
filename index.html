@@ -31039,6 +31039,7 @@
     }
     function engMuzzle(t, a) {
       const sz = t.sizeScale || 1, fly = t.turretKind === 'drone' ? 30 : 0;
+      if (t.turretKind === 'titan' && ENG_TITAN_SHEET.ready) return engTitanMuzzle(t, 'gun');
       if (engSheetReady(t.turretKind)) return engImgMuzzle(t, Math.cos(a) >= 0 ? 1 : -1); // 포탑·드론 그림의 총구
       return { x: t.x + Math.cos(a) * 20 * sz, y: t.y - 14 * sz - fly + Math.sin(a) * 6 * sz };
     }
@@ -31048,7 +31049,8 @@
       if (t.turretKind === 'drone') return { x: t.x - dir * mx * sz, y: t.y + ENG_DRONE_LIFT + my * sz }; // 드론 그림은 왼쪽을 봄
       return { x: t.x + dir * mx * sz, y: t.y + ENG_TURRET_FOOT + my * sz };
     }
-    function engTurretOrigin(t, a, dy) { // 포탄·레이저 시작점: 그림이 있으면 총구, 없으면 예전처럼 머리 위 dy
+    function engTurretOrigin(t, a, dy, weapon) { // 포탄·레이저 시작점: 그림이 있으면 총구, 없으면 예전처럼 머리 위 dy
+      if (t.turretKind === 'titan' && ENG_TITAN_SHEET.ready) return engTitanMuzzle(t, weapon);
       if (engSheetReady(t.turretKind)) return engImgMuzzle(t, Math.cos(a) >= 0 ? 1 : -1);
       return { x: t.x, y: t.y - dy * (t.sizeScale || 1) };
     }
@@ -31062,7 +31064,7 @@
       const b = engBestCluster(t, foes, t.range + 14, r);
       if (!b) return;
       const sz = t.sizeScale || 1;
-      const o = engTurretOrigin(t, Math.atan2(b.target.y - t.y, b.target.x - t.x), 26);
+      const o = engTurretOrigin(t, Math.atan2(b.target.y - t.y, b.target.x - t.x), 26, 'mortar');
       t.engShotT = sim.tickCount;
       engQueueStrike({ owner: t, team: t.team, x: b.target.x, y: b.target.y, sx: o.x, sy: o.y, delay: ENG_SHELL_FLIGHT, dmg, r, kind: 'shell', skill: false });
       playCombatSfx('arrow');
@@ -31072,15 +31074,15 @@
       t.laserAng = lancerBestLine(t, foes, t.range + 14, halfW, target).angle;
       t.laserAim = aim; t.laserHalfW = halfW;
       const sz = t.sizeScale || 1;
-      const o = engTurretOrigin(t, t.laserAng, 22);
+      const o = engTurretOrigin(t, t.laserAng, 22, 'laser');
       sim.effects.push({ type: 'eng_laser', aim: true, x: Math.round(o.x), y: Math.round(o.y), angle: +t.laserAng.toFixed(3), r: t.range + 14, w: halfW, life: aim, maxLife: aim });
     }
     function engLaserFire(t, dmg) {
       const sz = t.sizeScale || 1, len = t.range + 14;
       const hits = lancerLineHits(t, t.laserAng, len, t.laserHalfW || 14);
       withHitKind('ranged', () => hits.forEach(e => applyDamage(t, e, dmg, '', '#ef4444')));
-      const o = engTurretOrigin(t, t.laserAng, 22);
-      t.engShotT = sim.tickCount;
+      t.engShotT = sim.tickCount; t.engLaserT = sim.tickCount; // engLaserT: 최종병기가 레이저 쪽으로 돌아서 있는 시간 (engTitanFace, 시작점보다 먼저 적음)
+      const o = engTurretOrigin(t, t.laserAng, 22, 'laser');
       sim.effects.push({ type: 'eng_laser', aim: false, x: Math.round(o.x), y: Math.round(o.y), angle: +t.laserAng.toFixed(3), r: len, w: t.laserHalfW || 14, life: 20, maxLife: 20 });
       t.attackAnim = 14; t.maxAttackAnim = 14;
       playCombatSfx('heavy');
@@ -31481,8 +31483,69 @@
       if (u.attackAnim > 8) engPx(ctx, 2, 8, 3, 3, '#7dd3fc');
       ctx.restore();
     }
-    // 최종병기: 두 다리로 선 거대 로봇 포탑 (팔 = 기관포, 등 = 박격포, 눈 = 레이저). 자폭 준비 중엔 빨갛게 깜박임
+    // 최종병기 그림 (원본 샘플: assets/sprites/fx/samples/engineer_titan_src.png, tools/engineer_titan_build.py)
+    //   다리 넷 달린 로봇: 왼쪽 기관총 · 위 박격포 · 오른쪽(뒤) 레이저. 크기 배율 ref(2.2)일 때 그림 크기 그대로
+    //   기준점 = 다리 끝 바닥 가운데, 총구 3곳은 기준점 기준 (그림이 왼쪽을 볼 때)
+    const ENG_TITAN_SHEET = { w: 178, h: 116, ax: 99, ay: 116, ref: 2.2, gun: [-99, -58.8], mortar: [-11, -106], laser: [27.4, -56] };
+    const ENG_TITAN_FOOT = 10;   // × 크기 배율: 다리 끝 = 유닛 자리에서 아래로 (2.2배면 22px)
+    (() => {
+      const im = new Image();
+      im.onload = () => {
+        const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; // 자폭 준비 때 깜박일 빨간 그림
+        const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+        g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(239,68,68,0.55)'; g.fillRect(0, 0, c.width, c.height);
+        ENG_TITAN_SHEET.red = c; ENG_TITAN_SHEET.ready = true;
+      };
+      im.src = 'assets/sprites/fx/engineer_titan.webp';
+      ENG_TITAN_SHEET.img = im;
+    })();
+    // 그림 좌우 (1 = 그림 그대로 기관총이 왼쪽). 평소엔 기관총이 적 쪽, 레이저를 충전·발사하는 동안엔 레이저(뒤)가 겨눈 쪽으로 돌아섬
+    function engTitanFace(u) {
+      const lz = (u.laserAim || 0) > 0 || (u.engLaserT != null && sim.tickCount - u.engLaserT < 24);
+      if (lz && u.laserAng != null) return Math.cos(u.laserAng) >= 0 ? 1 : -1; // 레이저는 그림 오른쪽
+      return Math.cos(engAimAngleFor(u)) >= 0 ? -1 : 1;
+    }
+    function engTitanMuzzle(t, weapon) {
+      const T = ENG_TITAN_SHEET, k = (t.sizeScale || 1) / T.ref, [mx, my] = T[weapon] || T.gun, f = engTitanFace(t);
+      return { x: t.x + f * mx * k, y: t.y + ENG_TITAN_FOOT * (t.sizeScale || 1) + my * k };
+    }
+    // 최종병기: 그림이 있으면 그림, 없으면 아래 캔버스 도트 · 자폭 준비 중엔 빨갛게 깜박임
     function drawEngTitan(ctx, u, tick, teamColor) {
+      const T = ENG_TITAN_SHEET;
+      if (T.ready) {
+        const sz = u.sizeScale || 1, born = sim.tickCount - (u.turretBorn || -999);
+        const grow = born >= 0 && born < 20 ? 0.5 + 0.5 * (born / 20) : 1;
+        const k = sz / T.ref * grow, f = engTitanFace(u);
+        const boom = (u.engBoomT || 0) > 0, flash = boom && (tick >> 2) % 2 === 0;
+        const recoil = u.attackAnim > 0 ? Math.min(3, u.attackAnim * 0.4) : 0;
+        ctx.save();
+        if (u.hurtAnim > 0 || boom) ctx.translate(tick % 2 === 0 ? 1 : -1, 0);
+        ctx.save(); // 다리 둘레 팀 색 고리
+        ctx.globalAlpha *= 0.85; ctx.strokeStyle = teamColor; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.ellipse(0, ENG_TITAN_FOOT * sz - 4, T.w * 0.42 * k, 9 * k, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+        ctx.translate(0, ENG_TITAN_FOOT * sz);
+        ctx.scale(f * k, k);
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(flash ? T.red : T.img, -T.ax + recoil * 0.5, -T.ay);
+        if (u.attackAnim > 6) { // 기관총 불꽃
+          const [gx, gy] = T.gun;
+          engPx(ctx, gx - 9, gy - 6, 9, 12, '#fde68a'); engPx(ctx, gx - 7, gy - 3, 6, 6, '#ffffff');
+        }
+        if ((u.laserAim || 0) > 0) { // 레이저 충전: 렌즈가 흰색·청록으로 깜박임
+          const [lx, ly] = T.laser;
+          ctx.globalAlpha *= 0.75; ctx.fillStyle = (tick >> 1) % 2 ? '#ffffff' : '#22d3ee';
+          ctx.beginPath(); ctx.arc(lx, ly, 7, 0, Math.PI * 2); ctx.fill();
+          ctx.globalAlpha /= 0.75;
+        }
+        if (engOverclocked(u) && (tick >> 2) % 2) engPx(ctx, -4, -T.h * 0.5, 6, 4, '#ef4444');
+        ctx.restore();
+        return;
+      }
+      drawEngTitanDots(ctx, u, tick, teamColor);
+    }
+    // 최종병기 캔버스 도트 (그림을 못 불러왔을 때): 두 다리로 선 거대 로봇 포탑 (팔 = 기관포, 등 = 박격포, 눈 = 레이저)
+    function drawEngTitanDots(ctx, u, tick, teamColor) {
       const k = (u.sizeScale || 1) * ENG_TURRET_DRAW_K * 0.6;
       const born = sim.tickCount - (u.turretBorn || -999);
       const grow = born >= 0 && born < 20 ? 0.5 + 0.5 * (born / 20) : 1;
