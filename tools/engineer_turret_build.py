@@ -40,7 +40,7 @@ BALL = (505, 552, 360, 412)   # 박격포 발사 칸 위로 날아가는 포탄 
 
 
 GAT_COLS = [0, 165, 305, 460, 607, 765]
-GAT_EXT = 25   # 기관포 칸 오른쪽으로 더 잘라 넘어간 자기 총구 불꽃을 살림 (더 자른 곳에선 불꽃 색만 남김)   # 기관포 줄: 칸 경계 = 탄약통 왼쪽 끝 (불꽃이 옆 칸 탄약통과 붙어 있어 덩어리로 못 가름, 옆으로 넓게 자르지 않음)
+GAT_EXT = 25   # 기관포 칸 오른쪽으로 더 잘라 넘어간 자기 총구 끝·불꽃을 살림 (더 자른 곳에선 이 칸 몸과 불꽃 색만 남김)   # 기관포 줄: 칸 경계 = 탄약통 왼쪽 끝 (불꽃이 옆 칸 탄약통과 붙어 있어 덩어리로 못 가름, 옆으로 넓게 자르지 않음)
 
 
 def sheet(kind, i):
@@ -73,19 +73,33 @@ def cut(rgba, box, erase, own=None):
     for ex0, ex1, ey0, ey1 in erase:
         im[ey0:ey1, ex0:ex1, :3] = 255
     im = im[y0:y1, x0:x1]
+    fire = ext = None
     if own == 'gat':
         R, G, B = im[..., 0], im[..., 1], im[..., 2]
         fire = (R > 190) & (B < 150) & (R - B > 70)   # 총구 불꽃 (주황·노랑·빨강)
-        ext = np.zeros(fire.shape, bool); ext[:, -GAT_EXT:] = True if x1 < 765 else False
+        ext = np.zeros(fire.shape, bool); ext[:, -GAT_EXT:] = True if x1 < 765 else False   # 옆 칸으로 더 잘라 낸 곳
         lft = np.zeros(fire.shape, bool); lft[:, :40] = True   # 칸 왼쪽 40px의 불꽃 색 = 앞 칸 불꽃 끝
-        im[..., :3] = np.where(((ext & ~fire) | (lft & fire))[..., None], 255, im[..., :3])
+        im[..., :3] = np.where((lft & fire)[..., None], 255, im[..., :3])
     rgb = im[..., :3]
     white = (rgb.min(axis=2) > 232) & (rgb.max(axis=2) - rgb.min(axis=2) < 18)
-    lab, _ = ndi.label(white)
+    lab, nw = ndi.label(white)
     edge = set(np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))) - {0}
     bg = np.isin(lab, list(edge))
-    sizes = ndi.sum(white, lab, range(1, lab.max() + 1))
-    bg |= np.isin(lab, 1 + np.where(sizes >= 40)[0])   # 사슬 고리·전선 사이에 갇힌 흰 배경
+    sizes = ndi.sum(white, lab, range(1, nw + 1))
+    bg |= np.isin(lab, 1 + np.where(sizes >= 40)[0])   # 사슬 고리·전선 사이에 갇힌 흰 배경 (큰 것)
+    # 작게 갇힌 흰·연회색 배경 (사슬과 몸 사이 틈 등, 흐린 샘플이라 176~255 연회색이 섞임): 6px 이상이고 둘레의 절반 넘게가 검은 외곽선이면 배경
+    #   (반짝임은 6px 미만, 불꽃 속 흰 심·연기는 둘레가 밝아서 남음)
+    dark = rgb.max(axis=2) < 110
+    pale = (rgb.min(axis=2) > 165) & (rgb.max(axis=2) - rgb.min(axis=2) < 25) & ~np.isin(lab, list(edge))
+    plab, pn = ndi.label(pale)
+    psz = ndi.sum(pale, plab, range(1, pn + 1))
+    for i in np.where((psz >= 6) & (psz < 400))[0]:
+        m = plab == i + 1
+        ys, xs = np.where(m)
+        sl = (slice(max(0, ys.min() - 1), ys.max() + 2), slice(max(0, xs.min() - 1), xs.max() + 2))
+        ring = ndi.binary_dilation(m[sl]) & ~m[sl]
+        if ring.any() and dark[sl][ring].mean() >= 0.5:
+            bg |= m
     bg = ndi.binary_dilation(bg, iterations=2) & (rgb.min(axis=2) > 150)
     a = np.where(bg, 0, 255)
     body, n = ndi.label(a > 0, structure=np.ones((3, 3)))
@@ -93,7 +107,9 @@ def cut(rgba, box, erase, own=None):
     ok = sizes >= 12   # 탄피·불티·연기도 남김 (12px 미만 티끌만 지움)
     if own == 'gat':   # 자른 상자 왼쪽 끝에 닿은 조각 = 앞 칸 불꽃·탄피 → 지움 (몸 = 가장 큰 덩어리는 남김)
         ok &= np.array([not (body[:, :22] == i).any() for i in range(1, n + 1)])   # 왼쪽 22px 안에 걸친 조각
-        ok[int(np.argmax(sizes))] = True
+        bi = int(np.argmax(sizes)); ok[bi] = True
+        # 옆 칸으로 더 잘라 낸 곳: 이 칸 몸(총구 끝)과 불꽃만 남기고 다음 칸 탄약통·사슬은 지움
+        a = np.where(ext & ~(body == bi + 1) & ~fire, 0, a)
     elif own:
         cx = ndi.center_of_mass(a > 0, body, range(1, n + 1))
         ok &= np.array([own[0] <= c[1] + x0 < own[1] for c in cx])
