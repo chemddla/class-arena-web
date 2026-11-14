@@ -7989,14 +7989,14 @@
     // 다듬은 점: 잘려 있던 발끝·칸 테두리 잔상 제거, 강화 사격 칸(15)은 외형 색과 상관없던 그림 대신 각 외형의 조준 자세를 금빛으로 새로 만듦
     [1, 2, 3, 4].forEach(v => { MERC_SPRITE_DEFS[`sniper_${v}`] = { ...MERC_SPRITE_DEFS.sniper_0, src: `assets/sprites/merc/sniper_${v}.webp` }; });
     // 기계공 (원본 샘플: assets/sprites/fx/samples/engineer_*_src.png, tools/engineer_build.py)
-    //   칸: 0 대기 · 1~4 걷기 · 5 리벳총 겨눔(기본 공격) · 6 리벳총 쏨(안 씀) · 7~8 쪼그려 앉아 렌치질(수리) · 9 포탑 설치 (앉아서 렌치)
+    //   칸: 0 대기 · 1~4 걷기 · 5 리벳총 겨눔 · 6 리벳총 쏨 (5 → 6으로 바뀔 때 총알이 나감) · 7~8 쪼그려 앉아 렌치질(수리) · 9 포탑 설치 (앉아서 렌치)
     //       · 10 피격 (눈을 질끈 감고 몸을 젖힘) · 11~12 쓰러짐 (무릎 꿇음 → 엎드려 누움)
     //   몸 키 98px: 격투가(86px·standH 78)와 같은 비율로 standH 89
     MERC_SPRITE_DEFS.engineer_0 = {
       src: 'assets/sprites/merc/engineer_0.webp',
       cellW: 119, cellH: 106, anchorX: 63, anchorY: 104, standH: 89, topH: 98, portraitCX: 62, portraitZoomOut: 0.96, count: 13,
-      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5], skill: [9], hurt: [10], death: [11, 12], build: [9], repair: [7, 8] }, // 기본 공격은 겨눔 칸 하나 (6 쏨 칸은 쓰지 않음)
-      attackDur: 6, // 총알은 공격 첫 틱에 나감 → 겨눔 자세는 6틱(0.1초, 한 칸 보일 만큼)만 보이고 바로 평소 자세
+      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5, 6], skill: [9], hurt: [10], death: [11, 12], build: [9], repair: [7, 8] }, // 기본 공격: 겨눔 6틱 → 쏨 (칸당 6틱)
+      attackDur: 12, // 겨눔 6틱 → 쏘는 자세로 바뀌며 총알 발사 (ENG_SHOT_DELAY) → 쏨 6틱 → 바로 평소 자세
       // E 수리 모드로 포탑을 고치는 동안(engFix가 attackAnim을 채움)은 리벳총 대신 렌치질 두 칸을 번갈아
       pickFrame: (u, sprite, tick) => (u.engRepair && u.attackAnim > 0 && !u.turretKind && !u.casting && !(u.skillAnim > 0) ? sprite.anims.repair[Math.floor(tick / 8) % 2] : null), // 시전·스킬 자세가 먼저
       skillAnims: {
@@ -20116,7 +20116,11 @@
         directional('arrow', u.atk, { spr: unitProjFx(u, 'arrow') }); // 시크릿 레어 궁수 = 얼음 화살
       } else if (u.job === 'engineer') {
         u.mana = Math.min(u.maxMana, u.mana + 18);
-        directional('eng_round', u.atk, { color: '#fbbf24', radius: 3.5 }); // 기계공 리벳총
+        const dmg = u.atk;
+        engQueueShot(u, () => { // 기계공 리벳총 (겨눔 자세 뒤 쏘는 자세로 바뀔 때 나감 · 그 사이 움직였으면 지금 자리에서)
+          const o = aimShotOrigin(u, u.x, u.y, aimAngle);
+          directional('eng_round', dmg, { color: '#fbbf24', radius: 3.5, x: o.x, y: o.y });
+        });
       } else if (u.job === 'pyro') {
         u.mana = Math.min(u.maxMana, u.mana + 18);
         pyroManualBasic(u, Math.atan2((aimY - 12) - oy, aimX - ox), ox, oy);
@@ -23764,8 +23768,9 @@
           } else if (u.job === 'engineer' && !seenEnemies.some(e => unitDist(e, u) <= GRID_CELL_SIZE * 2) && (() => { const ft = engFixTarget(u); return ft && ft.hp / ft.maxHp < 0.6 ? engFix(u, ft, curAtkInterval) : false; })()) {
             // 기계공 AI 수리: 가까이 적이 없고 60% 아래로 다친 포탑이 곁에 있으면 쏘는 대신 고침
           } else if (u.job === 'engineer') {
-            // 기계공: 리벳총 한 발 (한 명만 맞음)
-            sim.projectiles.push({ projType: 'eng_round', ...unitShotOrigin(u, 14), target, owner: u, dmg: u.atk, isHeal: false, speed: 4.6, trail: [], color: '#fbbf24', radius: 3.5 });
+            // 기계공: 리벳총 한 발 (한 명만 맞음) · 겨눔 자세 뒤 쏘는 자세로 바뀔 때 나감 (engQueueShot)
+            const dmg = u.atk;
+            engQueueShot(u, () => { if (target.alive) sim.projectiles.push({ projType: 'eng_round', ...unitShotOrigin(u, 14), target, owner: u, dmg, isHeal: false, speed: 4.6, trail: [], color: '#fbbf24', radius: 3.5 }); });
           } else if (u.job === 'archer') {
             // 번개 정령: 세 번째 공격마다 노란 전격을 두른 강화 구슬 → 이 구슬이 맞으면 연쇄 번개 (spiritBasicHit)
             //   쏠 때 세므로 빗나가거나 날아가는 중이어도 그림과 연쇄 번개가 어긋나지 않음 · 그림 이름으로 구분해서 실시간 전투에도 그대로 감
@@ -31181,7 +31186,19 @@
       dismissTurret(t, false);
     }
     // 매 틱 (stepVolt 다음): 포탄 떨어짐 · 포탑 자리 고정 · 드론 맴돌기·돌진 · 시간 다 됨 · 기계공이 쓰러지면 멈춤
+    // 기계공 기본 공격: 겨눔 자세(그림 5칸)를 ENG_SHOT_DELAY틱 보인 뒤 쏘는 자세(6칸)로 바뀌는 순간 총알이 나감 (공격 주기·피해는 그대로)
+    //   그 사이 쓰러지거나 기절·빙결되면 안 나감
+    const ENG_SHOT_DELAY = 6;
+    function engQueueShot(u, fire) { (sim.engShots = sim.engShots || []).push({ u, t: ENG_SHOT_DELAY + 1, fire }); } // +1: 넣은 틱에 stepEngineer가 한 번 줄임
     function stepEngineer() {
+      const sq = sim.engShots;
+      if (sq && sq.length) {
+        for (let i = sq.length - 1; i >= 0; i--) {
+          if (--sq[i].t > 0) continue;
+          const { u, fire } = sq.splice(i, 1)[0];
+          if (u.alive && !((u.statuses?.stun || 0) > 0) && !((u.statuses?.freeze || 0) > 0)) fire();
+        }
+      }
       const st = sim.engStrikes;
       if (st && st.length) {
         for (let i = st.length - 1; i >= 0; i--) {
