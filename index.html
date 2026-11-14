@@ -5823,7 +5823,7 @@
         mortar_turret: {
           id: 'mortar_turret', name: '박격포탑', icon: '💥', ccTag: '💥설치·범위 포격',
           manaCost: 26, cooldownTicks: 720, cooldownSec: 12.0, castSec: 0.8,
-          desc: '겨눈 자리(최대 3칸)에 박격포탑을 25초간 세웁니다 (기계공 체력 70%·공격 120%). 5칸 안에서 적이 가장 많이 모인 곳에 1.7초마다 포탄을 쏘아 올려, 떨어진 자리 1칸 안 적 모두에게 피해를 입혀요. 포탑 개수 제한은 없어요.'
+          desc: '겨눈 자리(최대 3칸)에 박격포탑을 25초간 세웁니다 (기계공 체력 70%·공격 120%). 5칸 안에서 적이 가장 많이 모인 곳에 1.7초마다 포탄을 쏘아 올려, 떨어진 자리 1칸 안 적 모두에게 피해를 입혀요. 날아가다 적에게 닿으면 그 자리에서 바로 터져요. 포탑 개수 제한은 없어요.'
         },
         laser_tower: {
           id: 'laser_tower', name: '레이저탑', icon: '🔴', ccTag: '🔴설치·관통 레이저',
@@ -6007,7 +6007,7 @@
         final_weapon: {
           id: 'final_weapon', name: '최종병기', icon: '🤖', ccTag: '✨히든 · 거대 로봇 포탑·자폭', hidden: true,
           manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 3,
-          desc: '3초간 조립한 뒤 겨눈 자리(최대 3칸)에 거대한 로봇 포탑을 20초간 세웁니다 (기계공 체력 200%·방어 160%). 세워질 때 주변 2칸 적을 밀쳐내고, 6칸 안 적에게 기관포(28%, 0.4초마다)·박격포(90%, 1.2칸 범위, 1.8초마다)·레이저 포격(180%, 조준선 뒤 관통, 3초마다)을 한꺼번에 쏴요. 시간이 다 되면 깜박이다가 주변 3.5칸에 400% 자폭. 포탑 개수에 세지 않아요.'
+          desc: '3초간 조립한 뒤 겨눈 자리(최대 3칸)에 거대한 로봇 포탑을 20초간 세웁니다 (기계공 체력 200%·방어 160%). 세워질 때 주변 2칸 적을 밀쳐내고, 6칸 안 적에게 기관포(28% 2연발, 0.2초마다)·박격포(90%, 1.2칸 범위, 1.8초마다)·레이저 포격(180%, 18칸, 조준선 뒤 관통, 3초마다)을 한꺼번에 쏴요. 시간이 다 되면 깜박이다가 주변 3.5칸에 400% 자폭. 포탑 개수에 세지 않아요.'
         }
       }
     };
@@ -30957,7 +30957,10 @@
     const ENG_DRONE_BURST = 2;           // 드론 한 번 공격 = 2연발
     const ENG_DRONE_BOOM = 2.4;          //   자폭 240%
     const ENG_DRONE_BOOM_R = 1.2;        //   자폭 반지름 (칸)
-    const ENG_TITAN_GUN = [24, 0.28];          // 최종병기 기관포: 24틱마다 공격 28% (처음 18틱·55%는 히든 보유 팀 승률 98%)
+    const ENG_TITAN_GUN = [12, 0.28];          // 2026-11-14 공격 횟수·속도 2배: 24 → 12틱, 한 번에 2연발 (ENG_TITAN_GUN_BURST) → 초당 피해 4배
+    const ENG_TITAN_GUN_BURST = 2;
+    const ENG_TITAN_LASER_RANGE_K = 3;        // 2026-11-14 최종병기 레이저만 사거리 3배 (6칸 → 18칸, 기관총·박격포는 그대로)
+    //                                         (처음 기관포: 24틱마다 공격 28% (처음 18틱·55%는 히든 보유 팀 승률 98%)
     const ENG_TITAN_MORTAR = [110, 0.9, 1.2];  //   박격포: 110틱마다 90%, 반지름 1.2칸
     const ENG_TITAN_LASER = [180, 1.8, 40, 20]; //   레이저: 180틱마다 180% (조준 40틱, 폭 절반 20)
     const ENG_TITAN_BLAST_VIS = 2;       //   자폭 때 겹쳐 그리는 수류탄 폭발 그림 반경 (칸, 피해 반경 3.5칸보다 작게: 그림을 너무 키우면 도트가 뭉개짐)
@@ -31064,8 +31067,19 @@
     }
     // 포탄: delay틱 뒤 (x, y) 반지름 r 안 적에게 피해 (skill = 스킬 피해, 아니면 원거리 기본 공격)
     function engQueueStrike(o) {
-      (sim.engStrikes = sim.engStrikes || []).push({ ...o, t: o.delay });
-      sim.effects.push({ type: 'eng_shell', kind: o.kind, sx: Math.round(o.sx), sy: Math.round(o.sy), x: Math.round(o.x), y: Math.round(o.y), r: Math.round(o.r), life: o.delay, maxLife: o.delay });
+      const fx = { type: 'eng_shell', kind: o.kind, sx: Math.round(o.sx), sy: Math.round(o.sy), x: Math.round(o.x), y: Math.round(o.y), r: Math.round(o.r), life: o.delay, maxLife: o.delay };
+      (sim.engStrikes = sim.engStrikes || []).push({ ...o, t: o.delay, fx });
+      sim.effects.push(fx);
+    }
+    // 날아가는 포탄이 적 몸(그림 자리)에 닿았는지: 그림과 같은 포물선(drawEngineerEffect eng_shell) 위의 지금 자리로 봄
+    //   쏜 직후(10%)는 보지 않음. 닿으면 그 적의 발 자리에서 터짐
+    function engShellContact(s) {
+      const p = 1 - s.t / s.delay;
+      if (p < 0.1) return null;
+      const h = 120 + Math.hypot(s.x - s.sx, s.y - s.sy) * 0.25;
+      const x = s.sx + (s.x - s.sx) * p, y = s.sy + (s.y - s.sy) * p - Math.sin(p * Math.PI) * h;
+      const e = sim.units.find(u => u.alive && u.team !== s.team && !u.turretKind && Math.abs(u.x - x) <= 14 * (u.sizeScale || 1) + 3 && y >= u.y - 52 * (u.sizeScale || 1) && y <= u.y + 12);
+      return e ? { x: e.x, y: e.y } : null;
     }
     function engBlastAt(owner, team, x, y, r, dmg, skill, icon = '', kind = '') {
       const hit = () => sim.units.filter(e => e.alive && e.team !== team && Math.hypot(e.x - x, e.y - y) - unitBodyGap(e) <= r)
@@ -31124,15 +31138,16 @@
       playCombatSfx('arrow');
     }
     // 레이저: 저격처럼 빨간 조준선을 aim틱 동안 보인 뒤 그 선을 따라 레이저 (선 위의 적 모두). 조준하는 동안 방향은 고정 → 비켜설 수 있음
+    function engLaserRange(t) { return t.turretKind === 'titan' ? t.range * ENG_TITAN_LASER_RANGE_K : t.range; }
     function engLaserStart(t, foes, target, aim, halfW) {
-      t.laserAng = lancerBestLine(t, foes, t.range + 14, halfW, target).angle;
+      t.laserAng = lancerBestLine(t, foes, engLaserRange(t) + 14, halfW, target).angle;
       t.laserAim = aim; t.laserHalfW = halfW;
       const sz = t.sizeScale || 1;
       const o = engTurretOrigin(t, t.laserAng, 22, 'laser');
-      sim.effects.push({ type: 'eng_laser', aim: true, x: Math.round(o.x), y: Math.round(o.y), angle: +t.laserAng.toFixed(3), r: t.range + 14, w: halfW, life: aim, maxLife: aim });
+      sim.effects.push({ type: 'eng_laser', aim: true, x: Math.round(o.x), y: Math.round(o.y), angle: +t.laserAng.toFixed(3), r: engLaserRange(t) + 14, w: halfW, life: aim, maxLife: aim });
     }
     function engLaserFire(t, dmg) {
-      const sz = t.sizeScale || 1, len = t.range + 14;
+      const sz = t.sizeScale || 1, len = engLaserRange(t) + 14;
       const hits = lancerLineHits(t, t.laserAng, len, t.laserHalfW || 14);
       withHitKind('ranged', () => hits.forEach(e => applyDamage(t, e, dmg, '', '#ef4444')));
       hits.forEach(e => sim.effects.push({ type: 'eng_laser_hit', x: Math.round(e.x), y: Math.round(e.y - 14), k: +((t.laserHalfW || 14) / 14).toFixed(2), life: ENG_LASER_HIT_TICKS, maxLife: ENG_LASER_HIT_TICKS })); // 맞은 대상마다 플라스마 폭발
@@ -31162,14 +31177,19 @@
         if (t.cdGun > 0) t.cdGun--;
         if (t.cdMortar > 0) t.cdMortar--;
         if (t.cdLaser > 0) t.cdLaser--;
-        if (!foes.length) return;
-        const near = foes.reduce((a, b) => (unitDist(a, t) <= unitDist(b, t) ? a : b));
+        const lzR = engLaserRange(t);
+        const lzFoes = enemies.filter(e => e.alive && !hiddenFrom(t, e) && !hiddenByDarkness(t, e) && unitDist(e, t) <= lzR + 14); // 레이저만 사거리 3배
+        if (!lzFoes.length) return;
+        const near = (foes.length ? foes : lzFoes).reduce((a, b) => (unitDist(a, t) <= unitDist(b, t) ? a : b));
         t.facingAngle = Math.atan2(near.y - t.y, near.x - t.x);
         if (Math.abs(near.x - t.x) > 4) t.facingDir = near.x >= t.x ? 1 : -1;
         const k = t.atk / Math.max(1, def.atk); // = 기계공 공격력 × 과부하 등은 applyDamage에서
-        if (t.cdGun <= 0) { t.cdGun = Math.max(6, Math.round(ENG_TITAN_GUN[0] / spd)); t.attackAnim = 10; t.maxAttackAnim = 10; engFireBullet(t, near, k * ENG_TITAN_GUN[1]); }
-        if (t.cdMortar <= 0) { t.cdMortar = Math.max(20, Math.round(ENG_TITAN_MORTAR[0] / spd)); engFireShell(t, foes, k * ENG_TITAN_MORTAR[1], C * ENG_TITAN_MORTAR[2]); }
-        if (t.cdLaser <= 0 && !(t.laserAim > 0)) { t.cdLaser = Math.max(40, Math.round(ENG_TITAN_LASER[0] / spd)); engLaserStart(t, foes, near, ENG_TITAN_LASER[2], ENG_TITAN_LASER[3]); }
+        if (foes.length && t.cdGun <= 0) {
+          t.cdGun = Math.max(3, Math.round(ENG_TITAN_GUN[0] / spd)); t.attackAnim = 10; t.maxAttackAnim = 10; engFireBullet(t, near, k * ENG_TITAN_GUN[1]);
+          for (let b = 1; b < ENG_TITAN_GUN_BURST; b++) (sim.engShots = sim.engShots || []).push({ u: t, t: 3 * b + 1, fire: () => { if (near.alive && !(t.engBoomT > 0)) engFireBullet(t, near, k * ENG_TITAN_GUN[1]); } }); // 2연발
+        }
+        if (foes.length && t.cdMortar <= 0) { t.cdMortar = Math.max(20, Math.round(ENG_TITAN_MORTAR[0] / spd)); engFireShell(t, foes, k * ENG_TITAN_MORTAR[1], C * ENG_TITAN_MORTAR[2]); }
+        if (t.cdLaser <= 0 && !(t.laserAim > 0)) { t.cdLaser = Math.max(40, Math.round(ENG_TITAN_LASER[0] / spd)); engLaserStart(t, lzFoes, near, ENG_TITAN_LASER[2], ENG_TITAN_LASER[3]); }
         return;
       }
       if (kind === 'gatling') { engGatlingStep(t, foes, spd); return; }
@@ -31255,8 +31275,17 @@
       const st = sim.engStrikes;
       if (st && st.length) {
         for (let i = st.length - 1; i >= 0; i--) {
-          if (--st[i].t > 0) continue;
-          const s = st.splice(i, 1)[0];
+          const s = st[i];
+          if (--s.t > 0) {
+            const hit = s.kind === 'shell' ? engShellContact(s) : null; // 날아가다 적 몸에 닿으면 그 자리에서 바로 터짐
+            if (!hit) continue;
+            st.splice(i, 1);
+            const fi = s.fx ? sim.effects.indexOf(s.fx) : -1;
+            if (fi >= 0) sim.effects.splice(fi, 1); // 날아가던 포탄 그림을 지움
+            engBlastAt(s.owner, s.team, hit.x, hit.y, s.r, s.dmg, s.skill, s.icon || '', s.kind);
+            continue;
+          }
+          st.splice(i, 1);
           engBlastAt(s.owner, s.team, s.x, s.y, s.r, s.dmg, s.skill, s.icon || '', s.kind);
         }
       }
