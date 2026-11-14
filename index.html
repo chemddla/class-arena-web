@@ -30922,6 +30922,7 @@
     const ENG_TITAN_GUN = [24, 0.28];          // 최종병기 기관포: 24틱마다 공격 28% (처음 18틱·55%는 히든 보유 팀 승률 98%)
     const ENG_TITAN_MORTAR = [110, 0.9, 1.2];  //   박격포: 110틱마다 90%, 반지름 1.2칸
     const ENG_TITAN_LASER = [180, 1.8, 40, 20]; //   레이저: 180틱마다 180% (조준 40틱, 폭 절반 20)
+    const ENG_TITAN_WRECK_TICKS = 150;   //   터진 뒤 자폭 폭발 칸 → 잔해가 2.5초 남았다가 흐려짐
     const ENG_TITAN_BOOM_WARN = 45;      //   시간이 다 되면 0.75초 깜박인 뒤
     const ENG_TITAN_BOOM = 4.0;          //   주변 3.5칸에 400% 자폭
     const ENG_TITAN_BOOM_R = 3.5;
@@ -31056,7 +31057,7 @@
     }
     function engFireBullet(t, target, dmg, color = '#fde047') {
       const a = Math.atan2(target.y - t.y, target.x - t.x), o = engMuzzle(t, a);
-      t.engShotT = sim.tickCount; // 그림: 쏜 뒤 지난 틱으로 발사 동작 칸을 고름 (engTurretFrame)
+      t.engShotT = t.engGunT = sim.tickCount; // 그림: 쏜 뒤 지난 틱으로 발사 동작 칸을 고름 (engTurretFrame · engTitanFrame)
       sim.projectiles.push({ projType: 'eng_round', x: o.x, y: o.y, target, owner: t, dmg, isHeal: false, speed: 9, trail: [], color, radius: 3.5 }); // 빠른 총알 (느리면 앞줄에서 움직이는 적에게 거의 빗나감)
       playCombatSfx('arrow');
     }
@@ -31065,7 +31066,7 @@
       if (!b) return;
       const sz = t.sizeScale || 1;
       const o = engTurretOrigin(t, Math.atan2(b.target.y - t.y, b.target.x - t.x), 26, 'mortar');
-      t.engShotT = sim.tickCount;
+      t.engShotT = t.engMortarT = sim.tickCount;
       engQueueStrike({ owner: t, team: t.team, x: b.target.x, y: b.target.y, sx: o.x, sy: o.y, delay: ENG_SHELL_FLIGHT, dmg, r, kind: 'shell', skill: false });
       playCombatSfx('arrow');
     }
@@ -31081,7 +31082,7 @@
       const sz = t.sizeScale || 1, len = t.range + 14;
       const hits = lancerLineHits(t, t.laserAng, len, t.laserHalfW || 14);
       withHitKind('ranged', () => hits.forEach(e => applyDamage(t, e, dmg, '', '#ef4444')));
-      t.engShotT = sim.tickCount; t.engLaserT = sim.tickCount; // engLaserT: 최종병기가 레이저 쪽으로 돌아서 있는 시간 (engTitanFace, 시작점보다 먼저 적음)
+      t.engShotT = t.engLaserT = sim.tickCount; // engLaserT: 최종병기 렌즈 빛 고리 (drawEngTitanLens)
       const o = engTurretOrigin(t, t.laserAng, 22, 'laser');
       sim.effects.push({ type: 'eng_laser', aim: false, x: Math.round(o.x), y: Math.round(o.y), angle: +t.laserAng.toFixed(3), r: len, w: t.laserHalfW || 14, life: 20, maxLife: 20 });
       t.attackAnim = 14; t.maxAttackAnim = 14;
@@ -31142,9 +31143,14 @@
       engBlastAt(d, d.team, d.x, d.y, GRID_CELL_SIZE * ENG_DRONE_BOOM_R, (d.ownerAtk || owner.atk) * ENG_DRONE_BOOM, true, '🛸');
       dismissTurret(d, false);
     }
+    // 최종병기가 터지거나 부서진 자리: 자폭 폭발 칸 → 잔해 칸이 남았다가 흐려짐 (drawEngineerEffect eng_wreck)
+    function engTitanWreck(t) {
+      sim.effects.push({ type: 'eng_wreck', x: Math.round(t.x), y: Math.round(t.y), f: engTitanFace(t), k: +(t.sizeScale || 1).toFixed(2), life: ENG_TITAN_WRECK_TICKS, maxLife: ENG_TITAN_WRECK_TICKS });
+    }
     function engTitanBoom(t) {
       engBlastAt(t, t.team, t.x, t.y, GRID_CELL_SIZE * ENG_TITAN_BOOM_R, (t.ownerAtk || t.atk) * ENG_TITAN_BOOM, true, '🤖');
       sim.effects.push({ type: 'eng_blast', x: t.x, y: t.y - 20, r: GRID_CELL_SIZE * 2.2, life: 34, maxLife: 34 });
+      engTitanWreck(t);
       if (!sim.shake || sim.shake.power < 10) sim.shake = { power: 10, life: 20, maxLife: 20 };
       addBattleLog(`🤖 [기계공] 최종병기 자폭!`);
       dismissTurret(t, false);
@@ -31163,7 +31169,7 @@
         const t = sim.units[i];
         if (!t.turretKind) continue;
         if (!t.alive) {
-          if (t.turretOn) { t.turretOn = false; sim.effects.push({ type: 'eng_blast', x: t.x, y: t.y - 8, r: 40 * (t.sizeScale || 1), small: true, life: 24, maxLife: 24 }); }
+          if (t.turretOn) { t.turretOn = false; sim.effects.push({ type: 'eng_blast', x: t.x, y: t.y - 8, r: 40 * (t.sizeScale || 1), small: true, life: 24, maxLife: 24 }); if (t.turretKind === 'titan') engTitanWreck(t); }
           continue;
         }
         const owner = unitByIdNow(t.ownerId);
@@ -31483,61 +31489,73 @@
       if (u.attackAnim > 8) engPx(ctx, 2, 8, 3, 3, '#7dd3fc');
       ctx.restore();
     }
-    // 최종병기 그림 (원본 샘플: assets/sprites/fx/samples/engineer_titan_src.png, tools/engineer_titan_build.py)
-    //   다리 넷 달린 로봇: 왼쪽 기관총 · 위 박격포 · 오른쪽(뒤) 레이저. 크기 배율 ref(2.2)일 때 그림 크기 그대로
-    //   기준점 = 다리 끝 바닥 가운데, 총구 3곳은 기준점 기준 (그림이 왼쪽을 볼 때)
-    const ENG_TITAN_SHEET = { w: 178, h: 116, ax: 99, ay: 116, ref: 2.2, gun: [-99, -58.8], mortar: [-11, -106], laser: [27.4, -56] };
+    // 최종병기 동작 그림 (원본 샘플: assets/sprites/fx/samples/engineer_titan*_src.png, tools/engineer_titan_build.py)
+    //   다리 넷 달린 로봇: 왼쪽 기관총 · 위 박격포 · 오른쪽 레이저(빔은 앞쪽 = 기관총 쪽으로 몸을 가로질러 나감)
+    //   칸: 0 평소 · 1 기관총 사격 · 2 박격포 발사 · 3 과열·폭주 · 4 내부 폭발 · 5 자폭 폭발 · 6 잔해 (5·6은 eng_wreck 이펙트)
+    //   크기 배율 ref(2.2)일 때 그림 크기 그대로. 기준점 = 다리 끝 바닥 가운데, 총구 3곳은 기준점 기준 (그림이 왼쪽을 볼 때)
+    const ENG_TITAN_SHEET = { cw: 226, ch: 147, ax: 117, ay: 138, n: 7, h: 116, ref: 2.2, gun: [-99, -58.8], mortar: [-11, -106], laser: [27.4, -56] };
     const ENG_TITAN_FOOT = 10;   // × 크기 배율: 다리 끝 = 유닛 자리에서 아래로 (2.2배면 22px)
     (() => {
       const im = new Image();
-      im.onload = () => {
-        const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; // 자폭 준비 때 깜박일 빨간 그림
-        const g = c.getContext('2d'); g.drawImage(im, 0, 0);
-        g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(239,68,68,0.55)'; g.fillRect(0, 0, c.width, c.height);
-        ENG_TITAN_SHEET.red = c; ENG_TITAN_SHEET.ready = true;
-      };
+      im.onload = () => { ENG_TITAN_SHEET.ready = true; };
       im.src = 'assets/sprites/fx/engineer_titan.webp';
       ENG_TITAN_SHEET.img = im;
     })();
-    // 그림 좌우 (1 = 그림 그대로 기관총이 왼쪽). 평소엔 기관총이 적 쪽, 레이저를 충전·발사하는 동안엔 레이저(뒤)가 겨눈 쪽으로 돌아섬
+    // 그림 좌우 (1 = 그림 그대로 기관총이 왼쪽): 기관총(앞)이 적 쪽. 레이저도 앞쪽으로 쏨
     function engTitanFace(u) {
-      const lz = (u.laserAim || 0) > 0 || (u.engLaserT != null && sim.tickCount - u.engLaserT < 24);
-      if (lz && u.laserAng != null) return Math.cos(u.laserAng) >= 0 ? 1 : -1; // 레이저는 그림 오른쪽
       return Math.cos(engAimAngleFor(u)) >= 0 ? -1 : 1;
     }
     function engTitanMuzzle(t, weapon) {
       const T = ENG_TITAN_SHEET, k = (t.sizeScale || 1) / T.ref, [mx, my] = T[weapon] || T.gun, f = engTitanFace(t);
       return { x: t.x + f * mx * k, y: t.y + ENG_TITAN_FOOT * (t.sizeScale || 1) + my * k };
     }
-    // 최종병기: 그림이 있으면 그림, 없으면 아래 캔버스 도트 · 자폭 준비 중엔 빨갛게 깜박임
+    // 지금 보일 칸: 자폭 준비(앞 절반 과열 → 뒤 절반 내부 폭발) > 박격포 발사 직후 > 기관총 사격 직후 > 평소
+    function engTitanFrame(u) {
+      if ((u.engBoomT || 0) > 0) return u.engBoomT > ENG_TITAN_BOOM_WARN / 2 ? 3 : 4;
+      const now = sim.tickCount;
+      if (u.engMortarT != null && now - u.engMortarT < 14) return 2;
+      if (u.engGunT != null ? now - u.engGunT < 5 : u.attackAnim > 6) return 1; // 실시간 화면에선 attackAnim으로 대신 셈
+      return 0;
+    }
+    // 레이저: 충전 중엔 렌즈가 흰색·청록으로 깜박이고, 쏜 직후엔 렌즈 둘레에 청록 빛 고리 (레이저 조사 그림의 고리)
+    function drawEngTitanLens(ctx, u, tick) {
+      const [lx, ly] = ENG_TITAN_SHEET.laser;
+      const e = u.engLaserT != null ? sim.tickCount - u.engLaserT : 999;
+      if ((u.laserAim || 0) > 0) {
+        ctx.save();
+        ctx.globalAlpha *= 0.75; ctx.fillStyle = (tick >> 1) % 2 ? '#ffffff' : '#22d3ee';
+        ctx.beginPath(); ctx.arc(lx, ly, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      } else if (e < 20) {
+        const q = 1 - e / 20;
+        ctx.save();
+        ctx.globalAlpha *= q; ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.ellipse(lx, ly, 13 + (1 - q) * 6, 18 + (1 - q) * 8, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.lineWidth = 1.2; ctx.strokeStyle = '#a5f3fc';
+        ctx.beginPath(); ctx.ellipse(lx, ly, 9, 13, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#ecfeff'; ctx.beginPath(); ctx.arc(lx, ly, 5 * q + 2, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    }
+    // 최종병기: 그림이 있으면 그림, 없으면 아래 캔버스 도트
     function drawEngTitan(ctx, u, tick, teamColor) {
       const T = ENG_TITAN_SHEET;
       if (T.ready) {
         const sz = u.sizeScale || 1, born = sim.tickCount - (u.turretBorn || -999);
         const grow = born >= 0 && born < 20 ? 0.5 + 0.5 * (born / 20) : 1;
         const k = sz / T.ref * grow, f = engTitanFace(u);
-        const boom = (u.engBoomT || 0) > 0, flash = boom && (tick >> 2) % 2 === 0;
-        const recoil = u.attackAnim > 0 ? Math.min(3, u.attackAnim * 0.4) : 0;
+        const boom = (u.engBoomT || 0) > 0;
         ctx.save();
-        if (u.hurtAnim > 0 || boom) ctx.translate(tick % 2 === 0 ? 1 : -1, 0);
+        if (u.hurtAnim > 0 || boom) ctx.translate(tick % 2 === 0 ? (boom ? 2 : 1) : (boom ? -2 : -1), 0);
         ctx.save(); // 다리 둘레 팀 색 고리
         ctx.globalAlpha *= 0.85; ctx.strokeStyle = teamColor; ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.ellipse(0, ENG_TITAN_FOOT * sz - 4, T.w * 0.42 * k, 9 * k, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(0, ENG_TITAN_FOOT * sz - 4, T.h * 0.7 * k, 9 * k, 0, 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
         ctx.translate(0, ENG_TITAN_FOOT * sz);
         ctx.scale(f * k, k);
         ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(flash ? T.red : T.img, -T.ax + recoil * 0.5, -T.ay);
-        if (u.attackAnim > 6) { // 기관총 불꽃
-          const [gx, gy] = T.gun;
-          engPx(ctx, gx - 9, gy - 6, 9, 12, '#fde68a'); engPx(ctx, gx - 7, gy - 3, 6, 6, '#ffffff');
-        }
-        if ((u.laserAim || 0) > 0) { // 레이저 충전: 렌즈가 흰색·청록으로 깜박임
-          const [lx, ly] = T.laser;
-          ctx.globalAlpha *= 0.75; ctx.fillStyle = (tick >> 1) % 2 ? '#ffffff' : '#22d3ee';
-          ctx.beginPath(); ctx.arc(lx, ly, 7, 0, Math.PI * 2); ctx.fill();
-          ctx.globalAlpha /= 0.75;
-        }
+        ctx.drawImage(T.img, engTitanFrame(u) * T.cw, 0, T.cw, T.ch, -T.ax, -T.ay, T.cw, T.ch);
+        if (!boom) drawEngTitanLens(ctx, u, tick);
         if (engOverclocked(u) && (tick >> 2) % 2) engPx(ctx, -4, -T.h * 0.5, 6, 4, '#ef4444');
         ctx.restore();
         return;
@@ -31618,6 +31636,19 @@
         ctx.translate(Math.round(x), Math.round(y));
         ctx.rotate(a);
         engPx(ctx, -4, -4, 8, 8, ENG_STEEL[0]); engPx(ctx, -3, -3, 4, 3, ENG_STEEL[4]); engPx(ctx, -12, -1, 6, 2, ENG_FIRE[3]);
+        ctx.restore();
+        return;
+      }
+      if (ef.type === 'eng_wreck') { // 최종병기 자폭 폭발(앞 12%) → 잔해 (마지막 30%에 흐려짐)
+        const T = ENG_TITAN_SHEET;
+        if (!T.ready) return;
+        const k = (ef.k || T.ref) / T.ref, fr = p < 0.12 ? 5 : 6;
+        ctx.save();
+        ctx.globalAlpha = p < 0.7 ? 1 : Math.max(0, 1 - (p - 0.7) / 0.3);
+        ctx.translate(Math.round(ef.x), Math.round(ef.y) + ENG_TITAN_FOOT * (ef.k || T.ref));
+        ctx.scale((ef.f || 1) * k, k);
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(T.img, fr * T.cw, 0, T.cw, T.ch, -T.ax, -T.ay, T.cw, T.ch);
         ctx.restore();
         return;
       }
@@ -50763,7 +50794,7 @@
     // ----- 화면 형식 v2 (2026-11-09부터 방장이 보냄 · 받는 쪽은 두 형식 다 읽음) -----
     // 이펙트 종류 이름(평균 15자, 이펙트 바이트의 1/5)은 표 번호로 · 투사체의 안 바뀌는 칸(종류·색·반지름·그림)은 처음 한 번만 (매 화면 다시 보내던 투사체 바이트의 절반)
     // ⚠ LIVE_FX_TYPES 순서를 바꾸거나 중간에 끼우면 먼저 연 탭이 다른 이펙트를 그림 → 새 종류는 끝에만 더할 것 (표에 없는 종류는 이름 그대로 감)
-    const LIVE_FX_TYPES = ['aoe_ring', 'arrow_hit', 'bard_encore', 'bard_lute', 'bard_song_buff', 'bard_sr_encore', 'bard_wave', 'bard_wave_hit', 'berserker_slam', 'berserker_split', 'blessing_aura', 'blood_fx', 'brawl_hit', 'brawl_ring', 'cast_circle', 'charge_dash', 'curse_bolt', 'curse_ruin_blast', 'curse_ruin_bolt', 'curse_ruin_circle', 'curse_shatter', 'curse_siphon', 'curse_siphon_heal', 'curse_weaken', 'fire_explosion', 'frost_blizzard', 'frost_glaze', 'frost_nova', 'frost_skate', 'heal_beam', 'heal_cross', 'heal_pillar', 'hidden_assassin', 'hidden_assassin_smoke', 'hidden_beam', 'hidden_excal_impact', 'hidden_fusion', 'hidden_giant_aura', 'hidden_giant_burst', 'hidden_miracle', 'hidden_miracle_buff', 'hidden_miracle_pillar', 'hidden_musou_boom', 'hidden_musou_dash', 'hidden_musou_slash', 'hidden_musou_x', 'hidden_slash', 'hidden_snipe_bullet', 'hidden_snipe_hit', 'hidden_storm', 'ice_shatter', 'lightning_bolt', 'magic_burst', 'paladin_aegis_burst', 'paladin_aegis_dome', 'paladin_charge_dust', 'paladin_charge_hit', 'paladin_consec_burst', 'paladin_hs_dome', 'paladin_judgment', 'paladin_swing', 'pierce_fx', 'pyro_burst', 'pyro_fring', 'pyro_hit', 'pyro_meteor_impact', 'pyro_sr_meteor', 'pyro_xpl', 'rampage_fx', 'shield_dome', 'sniper_line', 'sniper_spread', 'spirit_dodge', 'spirit_king_burst', 'spirit_pop', 'stun_shockwave', 'whirlwind_slash', 'volt_rail', 'volt_beam', 'volt_fx', 'sword_iai', 'sword_batto', 'sword_seomdan', 'sword_issen', 'sword_mucham', 'sword_gk_charge', 'sword_guard_flash', 'sword_guard_ready', 'sword_mind_start', 'sword_gk_aura', 'eng_shell', 'eng_blast', 'eng_build', 'eng_laser'];
+    const LIVE_FX_TYPES = ['aoe_ring', 'arrow_hit', 'bard_encore', 'bard_lute', 'bard_song_buff', 'bard_sr_encore', 'bard_wave', 'bard_wave_hit', 'berserker_slam', 'berserker_split', 'blessing_aura', 'blood_fx', 'brawl_hit', 'brawl_ring', 'cast_circle', 'charge_dash', 'curse_bolt', 'curse_ruin_blast', 'curse_ruin_bolt', 'curse_ruin_circle', 'curse_shatter', 'curse_siphon', 'curse_siphon_heal', 'curse_weaken', 'fire_explosion', 'frost_blizzard', 'frost_glaze', 'frost_nova', 'frost_skate', 'heal_beam', 'heal_cross', 'heal_pillar', 'hidden_assassin', 'hidden_assassin_smoke', 'hidden_beam', 'hidden_excal_impact', 'hidden_fusion', 'hidden_giant_aura', 'hidden_giant_burst', 'hidden_miracle', 'hidden_miracle_buff', 'hidden_miracle_pillar', 'hidden_musou_boom', 'hidden_musou_dash', 'hidden_musou_slash', 'hidden_musou_x', 'hidden_slash', 'hidden_snipe_bullet', 'hidden_snipe_hit', 'hidden_storm', 'ice_shatter', 'lightning_bolt', 'magic_burst', 'paladin_aegis_burst', 'paladin_aegis_dome', 'paladin_charge_dust', 'paladin_charge_hit', 'paladin_consec_burst', 'paladin_hs_dome', 'paladin_judgment', 'paladin_swing', 'pierce_fx', 'pyro_burst', 'pyro_fring', 'pyro_hit', 'pyro_meteor_impact', 'pyro_sr_meteor', 'pyro_xpl', 'rampage_fx', 'shield_dome', 'sniper_line', 'sniper_spread', 'spirit_dodge', 'spirit_king_burst', 'spirit_pop', 'stun_shockwave', 'whirlwind_slash', 'volt_rail', 'volt_beam', 'volt_fx', 'sword_iai', 'sword_batto', 'sword_seomdan', 'sword_issen', 'sword_mucham', 'sword_gk_charge', 'sword_guard_flash', 'sword_guard_ready', 'sword_mind_start', 'sword_gk_aura', 'eng_shell', 'eng_blast', 'eng_build', 'eng_laser', 'eng_wreck'];
     const LIVE_FX_TYPE_IDX = Object.fromEntries(LIVE_FX_TYPES.map((t, i) => [t, i]));
     let liveFrameV2 = false; // publishLiveBattleFrame이 화면마다 정함
     function packLiveEffect(ef) {
