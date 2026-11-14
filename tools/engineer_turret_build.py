@@ -189,6 +189,7 @@ def drop_back_fire(s, ax):
     return out
 
 
+ALIGN = {'gatling', 'mortar', 'laser'}   # 동작표 칸을 대기 칸 몸통에 맞춰 옮김 (register)
 GAT_TIP = 40   # 기관포 총구 끝 = 기준점에서 오른쪽으로 (게임 px)
 
 
@@ -215,6 +216,34 @@ def clip_front(s, ax):
             if not flame[m].mean() > 0.5:
                 out[m] = 0
     return out
+
+
+def body_mask(s):
+    """위치 맞춤용 몸통: 불꽃·연기(밝은 무채색)·불티를 뺀 불투명 픽셀"""
+    c = s[..., :3].astype(int)
+    a = s[..., 3] > 0
+    pale = (c.min(axis=2) > 150) & (c.max(axis=2) - c.min(axis=2) < 40)
+    R, G, B = c[..., 0], c[..., 1], c[..., 2]
+    hot = firemask(c) | ((R > 170) & (R - B > 80) & (G < R - 30))
+    return a & ~pale & ~hot
+
+
+def register(m0, ax0, ay0, m, ax, ay, rng=15):
+    """대기 칸 몸통(m0, 기준점 ax0·ay0)과 가장 많이 겹치도록 이 칸(m, 기준점 ax·ay)을 옮길 (dx, dy) — 그림 px"""
+    H = int(max(ay0, ay) + max(m0.shape[0] - ay0, m.shape[0] - ay)) + 4 * rng + 4
+    W = int(max(ax0, ax) + max(m0.shape[1] - ax0, m.shape[1] - ax)) + 4 * rng + 4
+    def put(mm, x, y):
+        cv = np.zeros((H, W), bool); cv[y:y + mm.shape[0], x:x + mm.shape[1]] = mm; return cv
+    cx, cy = 2 * rng + int(round(max(ax0, ax))), 2 * rng + int(round(max(ay0, ay)))   # 같은 기준점 자리
+    base = put(m0, cx - int(round(ax0)), cy - int(round(ay0)))
+    best, bd = -1, (0, 0)
+    for dy in range(-rng, rng + 1):
+        for dx in range(-rng, rng + 1):
+            mv = put(m, cx - int(round(ax)) + dx, cy - int(round(ay)) + dy)
+            sc = (base & mv).sum() / max(1, (base | mv).sum())
+            if sc > best:
+                best, bd = sc, (dx, dy)
+    return bd, best
 
 
 def despeck(s, minpx=60, sat=50):
@@ -324,6 +353,16 @@ def main():
                 s = clip_front(s, ax * sc)
             s = despeck(s)
             placed.append((s, ax * sc, ay * sc))
+        if kind in ALIGN:   # 동작표에서 딴 칸을 대기 칸 몸통 위치에 맞춤 (기준점을 옮김)
+            s0_, ax0_, ay0_ = placed[0]
+            m0 = body_mask(s0_)
+            for i in range(1, len(placed)):
+                if cuts[i][0] != 'turret_motion':
+                    continue
+                s_, ax_, ay_ = placed[i]
+                (dx, dy), sc_ = register(m0, ax0_, ay0_, body_mask(s_), ax_, ay_)
+                placed[i] = (s_, ax_ - dx, ay_ - dy)
+                print(kind, i, '옮김', dx, dy, '겹침', round(float(sc_), 3))
         if kind == 'laser':
             s_idle, ax0, ay0 = placed[0]
             lx0, ly0 = teal_center(im0)
