@@ -10,7 +10,7 @@
 #   · 9~14 등장 착지 (assets/sprites/fx/samples/engineer_titan_sr1_land_src.png, 3×2): 파란 분사로 내려옴 → 주황 분사·먼지 닿음 → 먼지 터짐
 #     → 땅이 갈라지며 웅크림 → 일어섬 → 연기 속에 섬 (다음은 평소 칸). 무기 없는 그림이라 착지 동안은 쏘지 않음 (index.html engTitanLanding)
 #     크기는 로봇(어두운 강철) 키를 자폭 첫 칸 로봇 키와 같게, 가로는 로봇 가운데, 세로는 칸의 땅 줄
-#   · 15~18 기관총 진동 (GUN_BOX 안을 총구 쪽일수록 크게 흔든 평소 칸)
+#   · 15~18 기관총 진동 (GUN_BOX 안을 총구 쪽일수록 크게 흔든 평소 칸) · 19~22 레이저포 반동 (LASER_BOX를 크게 밀었다 돌아옴)
 #   자폭 칸은 칸마다 연기·파편 조각도 남김. 크기는 다리 끝 폭을 평소 그림과 같게 (샘플마다 로봇 크기가 달라서), 기준점 = 그 칸의 다리 끝 바닥 가운데
 # 크기: 몸 키(포신 위~발끝)를 기본 최종병기와 같은 H(px)로. 그림은 RES배 크게 만들고 게임이 줄여 그림
 # 기준점: 발끝 바닥 가운데. 그림은 무기가 오른쪽 = 오른쪽을 봄 (기본 최종병기와 반대 → index.html에서 faceR)
@@ -40,6 +40,11 @@ LAND_GROUND = [None, 276, 276, 272, 260, 261]   # 칸 안 땅 줄 (첫 칸은 �
 GUN_BOX = (290, 535, 186, 286)   # 아래는 탄창 드럼 밑까지
 GUN_ROOT = 330
 GUN_SHAKE = [(-7, 1), (-4, -3), (-5, 2), (-2, -1)]   # 총구 끝의 (가로, 세로) 그림 px (res배)
+# 19~22 레이저포 반동: 왼팔 레이저포(칸 안 상자)를 크게 뒤로 밀었다가 돌아오는 네 칸 (2026-11-15 사용자 요청). 어깨 뿌리 쪽은 덜, 포구 쪽은 크게 (무게^1.2)
+LASER_BOX = (330, 472, 126, 184)
+LASER_ROOT = 340
+LASER_KICK = [(-20, -3), (-13, -2), (-7, -1), (-3, 0)]
+KICKS = [(GUN_BOX, GUN_ROOT, 1.6, GUN_SHAKE), (LASER_BOX, LASER_ROOT, 1.2, LASER_KICK)]
 MUZZLE = {'gun': (778, 316), 'mortar': (745, 46), 'laser': (668, 202)}
 
 
@@ -85,19 +90,19 @@ def main():
     L = max(ax for t, ax, ay in placed); R = max(t.shape[1] - ax for t, ax, ay in placed)
     T = max(ay for t, ax, ay in placed); B = max(t.shape[0] - ay for t, ax, ay in placed)
     cw, ch, AX, AY = int(np.ceil(L + R)) + 2, int(np.ceil(T + B)) + 2, int(np.ceil(L)) + 1, int(np.ceil(T)) + 1
-    n = len(placed) + len(GUN_SHAKE)
+    n = len(placed) + sum(len(k[3]) for k in KICKS)
     strip = np.zeros((ch, cw * n, 4), np.uint8)
     for i, (t, ax, ay) in enumerate(placed):
         x = i * cw + AX - int(round(ax)); y = AY - int(round(ay))
         h, w = t.shape[:2]
         strip[y:y + h, x:x + w] = t
-    gx0, gx1, gy0, gy1 = GUN_BOX
-    for j, (dx, dy) in enumerate(GUN_SHAKE):
+    shakes = [(box, root, ex, d) for box, root, ex, ds in KICKS for d in ds]
+    for j, ((gx0, gx1, gy0, gy1), root, ex, (dx, dy)) in enumerate(shakes):
         c0 = (len(placed) + j) * cw
         src = strip[:, :cw]
         cell = src.copy()
         for x in range(gx0, gx1):   # 뒤에서 앞으로 되짚어 가져옴 (세로줄마다 그 자리 무게만큼 옮긴 자리의 픽셀)
-            w = max(0.0, (x - GUN_ROOT) / (gx1 - GUN_ROOT)) ** 1.6
+            w = max(0.0, (x - root) / (gx1 - root)) ** ex
             sx = int(round(x - dx * w))
             for y in range(gy0, gy1):
                 sy = int(round(y - dy * w))
