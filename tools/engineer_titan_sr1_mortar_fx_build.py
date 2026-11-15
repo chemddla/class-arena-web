@@ -6,6 +6,9 @@
 #              붉은 탄피 조각은 지움 (2026-11-15: 예전 rail-muzzle은 손바닥용이라 왼쪽이 일직선으로 잘려 보였음)
 #     landzap: volt/discharge (23칸 1000×528, 몸 가운데 500,200) — 몸에서 터진 굵은 번개 줄기가 사방 바닥에 꽂힘. 착지 충격용, 절반 크기로
 #              → 별도 파일 assets/sprites/fx/engineer_titan_sr1_land_fx.webp (한 줄로 넣으면 너무 넓어서)
+#     landslam: impacts/ground-slam (palette ["#04161c","#073a46","#0b6b7c","#22d3ee","#7ff0ff","#cffaff","#ffffff"], stone "#2a3340", 97칸 288×208, 발밑 144,164)
+#              — 땅이 갈라지며 충격파·돌 조각. 착지 번개 아래 깔림 (2026-11-16 사용자 고름: 강타 + 지금 번개). 빈 칸(90~) 빼고 겹친 테두리로 잘라 9열 격자
+#              → 별도 파일 assets/sprites/fx/engineer_titan_sr1_land_slam_fx.webp
 #     tip    : volt/rail-tip (sparks ["#ffffff","#cffaff","#7ff0ff","#22d3ee"], 12칸 240×480, 포구 80,240) — 둥근 빛 머리 + 앞으로 뻗는 굵은 번개 갈래.
 #              발사 순간 포구에 겹쳐 화려하게 (2026-11-15 사용자 요청). 절반 크기로
 #     blast  : explosions/plasma-explosion (accent도 청록, 앞 40칸 224×200, 가운데 112,100) — 흰 섬광 → 빛 구슬 → 충격 고리·번개. 원래 크기
@@ -40,6 +43,22 @@ def land():
     return {'w': 500, 'h': 264, 'n': len(fr), 'ox': 250, 'oy': 100}
 
 
+def slam():
+    im = Image.open(S + 'landslam_src.png').convert('RGBA')
+    js = json.load(open(S + 'landslam_src.json', encoding='utf-8'))
+    fr = [im.crop((f['frame']['x'], f['frame']['y'], f['frame']['x'] + f['frame']['w'], f['frame']['y'] + f['frame']['h'])) for f in js['frames']]
+    fr = [f for f in fr if f.getbbox()]   # 끝의 빈 칸
+    x0, y0 = min(f.getbbox()[0] for f in fr), min(f.getbbox()[1] for f in fr)
+    x1, y1 = max(f.getbbox()[2] for f in fr), max(f.getbbox()[3] for f in fr)
+    fr = [f.crop((x0, y0, x1, y1)) for f in fr]
+    w, h, cols = x1 - x0, y1 - y0, 9
+    out = Image.new('RGBA', (w * cols, h * -(-len(fr) // cols)), (0, 0, 0, 0))
+    for i, f in enumerate(fr):
+        out.paste(f, ((i % cols) * w, (i // cols) * h))
+    out.save('assets/sprites/fx/engineer_titan_sr1_land_slam_fx.webp', 'WEBP', lossless=True)
+    return {'w': w, 'h': h, 'n': len(fr), 'cols': cols, 'ox': 144 - x0, 'oy': 164 - y0}
+
+
 def main():
     rows, meta = [], {}
     y = 0
@@ -61,6 +80,7 @@ def main():
             sheet.paste(f, (i * f.width, meta[name[1:]]['y']))
     sheet.save(OUT, 'WEBP', lossless=True)
     meta['land'] = land()
+    meta['slam'] = slam()
     print(json.dumps(meta))
 
 
