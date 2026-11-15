@@ -6,6 +6,8 @@
 #              붉은 탄피 조각은 지움 (2026-11-15: 예전 rail-muzzle은 손바닥용이라 왼쪽이 일직선으로 잘려 보였음)
 #     landzap: volt/discharge (23칸 1000×528, 몸 가운데 500,200) — 몸에서 터진 굵은 번개 줄기가 사방 바닥에 꽂힘. 착지 충격용, 절반 크기로
 #              → 별도 파일 assets/sprites/fx/engineer_titan_sr1_land_fx.webp (한 줄로 넣으면 너무 넓어서)
+#     tip    : volt/rail-tip (sparks ["#ffffff","#cffaff","#7ff0ff","#22d3ee"], 12칸 240×480, 포구 80,240) — 둥근 빛 머리 + 앞으로 뻗는 굵은 번개 갈래.
+#              발사 순간 포구에 겹쳐 화려하게 (2026-11-15 사용자 요청). 절반 크기로
 #     blast  : explosions/plasma-explosion (accent도 청록, 앞 40칸 224×200, 가운데 112,100) — 흰 섬광 → 빛 구슬 → 충격 고리·번개. 원래 크기
 #   샘플 = assets/sprites/fx/samples/engineer_titan_sr1_{mcharge,mfire,mblast}_src.png + .json
 # 출력한 칸 크기·기준점은 index.html ENG_TITAN_SR_MORTAR_FX
@@ -14,7 +16,7 @@ from PIL import Image
 
 S = 'assets/sprites/fx/samples/engineer_titan_sr1_'
 OUT = 'assets/sprites/fx/engineer_titan_sr1_mortar_fx.webp'
-ROWS = [('mcharge', 48, 1, (58, 53)), ('mfire', 24, 1, (44, 56)), ('mblast', 40, 1, (112, 100))]   # (샘플, 쓸 칸 수, 줄이는 배수, 기준점)
+ROWS = [('mcharge', 48, 1, (58, 53)), ('mfire', 24, 1, (44, 56)), ('mblast', 40, 1, (112, 100)), ('mtip', 12, 2, (80, 240))]   # (샘플, 쓸 칸 수, 줄이는 배수, 기준점)
 
 
 def no_shell(f):   # 붉은·주황 탄피 조각 지움 (청록·회색 연기만 남김)

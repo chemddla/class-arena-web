@@ -31652,7 +31652,8 @@
     const ENG_TITAN_SR_MORTAR_FX = {
       charge: { y: 0, w: 120, h: 86, n: 48, ox: 58, oy: 53 },
       fire:   { y: 86, w: 160, h: 88, n: 24, ox: 44, oy: 56 }, // pixelfx muzzle-shotgun: 부채꼴 섬광 → 탄 줄기 → 연기
-      blast:  { y: 174, w: 224, h: 200, n: 40, ox: 112, oy: 100 }
+      blast:  { y: 174, w: 224, h: 200, n: 40, ox: 112, oy: 100 },
+      tip:    { y: 374, w: 120, h: 240, n: 12, ox: 40, oy: 120 } // pixelfx volt/rail-tip: 둥근 빛 머리 + 앞으로 뻗는 번개 갈래 (발사 순간 겹침)
     };
     // 착지 충격 번개 (pixelfx volt/discharge 청록 23칸, 절반 크기): 몸 가운데에서 굵은 번개 줄기가 사방 바닥으로 꽂힘
     const ENG_TITAN_SR_LAND_FX = { w: 500, h: 264, n: 23, ox: 250, oy: 100 };
@@ -31692,6 +31693,18 @@
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(F.img, fr * r.w, r.y, r.w, r.h, -r.ox, -r.oy, r.w, r.h);
       ctx.restore();
+      if (ef.type === 'eng_sr_fire' && p < 0.4) { // 발사 순간을 화려하게 (2026-11-15): 번지는 청록 빛 → 포구에서 앞으로 뻗는 번개 갈래 → 큰 가시 섬광
+        const q = 1 - p / 0.4;
+        drawSoftGlow(ctx, x + f * 10, y, 34 + 40 * (1 - q), 'rgba(255,255,255,0.95)', 'rgba(34,211,238,0.6)', q);
+        const T = F.tip, tf = Math.min(T.n - 1, Math.floor(p / 0.4 * T.n));
+        ctx.save();
+        ctx.translate(Math.round(x), Math.round(y)); ctx.scale(f * 0.5, 0.5);
+        ctx.globalAlpha *= Math.min(1, q * 1.6); ctx.globalCompositeOperation = 'lighter'; ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(F.img, tf * T.w, T.y, T.w, T.h, -T.ox, -T.oy, T.w, T.h);
+        const G = ENG_GAT_SR_FX;
+        if (G.ready && p < 0.2) { const g = G.flash, s2 = 5.2; ctx.scale(s2, s2); ctx.drawImage(G.img, Math.min(g.n - 1, Math.floor(p / 0.2 * g.n)) * g.w, g.y, g.w, g.h, -g.ox, -g.oy, g.w, g.h); }
+        ctx.restore();
+      }
     }
     // 시크릿 레어 최종병기 기관총 '청록 예광선' (pixelfx bullet-tracer 18칸 + hit-spark 16칸 청록, 절반 크기, tools/engineer_titan_sr1_gat_fx_build.py)
     const ENG_GAT_SR_FX = {
@@ -31962,6 +31975,7 @@
     const ENG_TITAN_SR_LAND = { fall: 22, drop: 260, seq: [[9, 22], [10, 6], [11, 8], [12, 12], [13, 8], [14, 12]], // [칸, 틱]
       r: 2.5, dmg: 2.0, stun: 90 }; // 착지 충격 (2026-11-15): 주변 2.5칸 적에게 기계공 공격력 200% 피해 + 1.5초 기절
     const ENG_TITAN_SR_RECOIL = { ticks: 18, back: 12, down: 3 }; // 포격 반동 (크기 배율 2.2일 때 px)
+    const ENG_TITAN_SR_LASER_RECOIL = { ticks: 14, back: 5, down: 1 }; // 레이저 반동: 살짝 (2026-11-15)
     ENG_TITAN_SR_LAND.total = ENG_TITAN_SR_LAND.seq.reduce((n, [, d]) => n + d, 0);
     function engTitanLandAge(u) { // 착지 중이면 등장 뒤 지난 틱, 아니면 -1
       if (!engTitanIsSr(u)) return -1;
@@ -32029,6 +32043,11 @@
         const boom = (u.engBoomT || 0) > 0;
         ctx.save();
         if (land >= 0 && land < ENG_TITAN_SR_LAND.fall) { const q = land / ENG_TITAN_SR_LAND.fall; ctx.translate(0, -ENG_TITAN_SR_LAND.drop * (1 - q * q)); } // 점점 빠르게 떨어짐
+        const le = T === ENG_TITAN_SR_SHEET && u.engLaserT != null ? sim.tickCount - u.engLaserT : 99;
+        if (le >= 0 && le < ENG_TITAN_SR_LASER_RECOIL.ticks) { // 시크릿 레어 레이저 반동: 몸 전체가 살짝 뒤로 (박격포보다 작게)
+          const R = ENG_TITAN_SR_LASER_RECOIL, q = le < 2 ? le / 2 : Math.pow(1 - (le - 2) / (R.ticks - 2), 2);
+          ctx.translate(-f * R.back * q * sz / 2.2, R.down * q * sz / 2.2);
+        }
         const me = T === ENG_TITAN_SR_SHEET && u.engMortarT != null ? sim.tickCount - u.engMortarT : 99;
         if (me >= 0 && me < ENG_TITAN_SR_RECOIL.ticks) { // 시크릿 레어 포격 반동: 몸 전체가 뒤로 밀리며 살짝 주저앉았다 돌아옴
           const R = ENG_TITAN_SR_RECOIL, q = me < 2 ? me / 2 : Math.pow(1 - (me - 2) / (R.ticks - 2), 2);
