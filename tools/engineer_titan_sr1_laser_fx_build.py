@@ -2,6 +2,9 @@
 # 사용: python tools/engineer_titan_sr1_laser_fx_build.py   (2026-11-15 사용자 요청: 로봇 샘플의 레이저 빔 색(남보라)에 맞춰 보라 계열로)
 #   기본 레이저 그림(assets/sprites/fx/engineer_laser_fx.webp, tools/engineer_laser_fx_build.py)을 밝기 → 보라 사다리(RAMP)로 그대로 바꿔 칠함
 #   칸 배치·기준점은 기본과 같음 (index.html ENG_LASER_FX를 그대로 씀)
+# 포구 섬광 → assets/sprites/fx/engineer_titan_sr1_lzmuzzle.webp (2026-11-15: 포구의 보라 타원 고리가 어색하다고 해서 교체)
+#   pixelfx volt/rail-muzzle --no-actor, palette = RAMP, sparks ["#ffffff","#e2dcff","#b9adff","#8f7dff"]
+#   → assets/sprites/fx/samples/engineer_titan_sr1_lzmuzzle_src.png (+ .json) 12칸 200×480, 포구 72,240 → 절반 크기 (100×240, 포구 36,120)
 import numpy as np
 from PIL import Image
 
@@ -24,6 +27,15 @@ def main():
     out[..., :3] = ramp[i0] * (1 - f) + ramp[i1] * f
     Image.fromarray(out.astype(np.uint8), 'RGBA').save(OUT, 'WEBP', lossless=True)
     print('저장', OUT, a.shape)
+    import json
+    S = 'assets/sprites/fx/samples/engineer_titan_sr1_lzmuzzle_src'
+    im = Image.open(S + '.png').convert('RGBA'); js = json.load(open(S + '.json', encoding='utf-8'))
+    fr = [im.crop((f['frame']['x'], f['frame']['y'], f['frame']['x'] + f['frame']['w'], f['frame']['y'] + f['frame']['h'])).resize((100, 240), Image.LANCZOS) for f in js['frames']]
+    sh = Image.new('RGBA', (100 * len(fr), 240), (0, 0, 0, 0))
+    for i, f in enumerate(fr):
+        sh.paste(f, (i * 100, 0))
+    sh.save('assets/sprites/fx/engineer_titan_sr1_lzmuzzle.webp', 'WEBP', lossless=True)
+    print('포구 섬광', len(fr), '칸 100×240, 포구 36,120')
 
 
 if __name__ == '__main__':

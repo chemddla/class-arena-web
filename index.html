@@ -31587,6 +31587,23 @@
       im.src = 'assets/sprites/fx/engineer_titan_sr1_laser_fx.webp';
       ENG_LASER_SR.img = im;
     })();
+    // 포구 섬광 (pixelfx volt/rail-muzzle 보라 12칸, 절반 크기): 예전 보라 타원 고리 대신 (2026-11-15)
+    const ENG_LASER_SR_MUZZLE = { w: 100, h: 240, n: 12, ox: 36, oy: 120 };
+    (() => {
+      const im = new Image();
+      im.onload = () => { ENG_LASER_SR_MUZZLE.ready = true; };
+      im.src = 'assets/sprites/fx/engineer_titan_sr1_lzmuzzle.webp';
+      ENG_LASER_SR_MUZZLE.img = im;
+    })();
+    // 부드럽게 번지는 둥근 빛 (테두리 없는 원형 그라디언트)
+    function drawSoftGlow(ctx, x, y, r, inner, outer, a) {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, inner); g.addColorStop(0.35, outer); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.save();
+      ctx.globalAlpha *= a; ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
     const ENG_LASER_HIT_TICKS = 32;   // 16칸 × 2틱
     (() => {
       const im = new Image();
@@ -31984,7 +32001,8 @@
     function drawEngTitanLens(ctx, u, tick) {
       const [lx, ly] = engTitanSheet(u).laser;
       const e = u.engLaserT != null ? sim.tickCount - u.engLaserT : 999;
-      const [c1, c2, c3] = engTitanIsSr(u) ? ENG_LASER_SR.lens : ['#22d3ee', '#a5f3fc', '#ecfeff']; // 시크릿 레어 로봇은 보라
+      if (engTitanIsSr(u)) return; // 시크릿 레어 로봇: 깜박이는 원·타원 고리 대신 충전 그림과 포구 섬광(eng_laser pu)이 맡음
+      const [c1, c2, c3] = ['#22d3ee', '#a5f3fc', '#ecfeff'];
       if ((u.laserAim || 0) > 0) {
         ctx.save();
         ctx.globalAlpha *= 0.75; ctx.fillStyle = (tick >> 1) % 2 ? '#ffffff' : c1;
@@ -32125,8 +32143,19 @@
             ctx.strokeStyle = c; ctx.lineWidth = Math.max(1, w * wk);
             ctx.beginPath(); ctx.moveTo(ef.x, ef.y); ctx.lineTo(ex, ey); ctx.stroke();
           });
-          ctx.globalAlpha = 0.8 * q; ctx.fillStyle = '#ffffff';
-          ctx.beginPath(); ctx.arc(ef.x, ef.y, 6 + 3 * q, 0, Math.PI * 2); ctx.fill();
+          if (ef.pu && ENG_LASER_SR_MUZZLE.ready) { // 시크릿 레어 로봇: 포구에서 빛이 부채꼴로 터지는 에너지포 섬광 + 부드럽게 번지는 보라 빛
+            ctx.globalAlpha = 1;
+            drawSoftGlow(ctx, ef.x, ef.y, 26 + 14 * q, 'rgba(255,255,255,0.95)', 'rgba(139,92,246,0.55)', q);
+            const M = ENG_LASER_SR_MUZZLE, mk = 0.42 * (ef.w || 14) / 14;
+            ctx.save();
+            ctx.translate(ef.x, ef.y); ctx.rotate(ef.angle); ctx.scale(mk, mk);
+            ctx.globalAlpha = Math.min(1, 0.3 + q); ctx.globalCompositeOperation = 'lighter'; ctx.imageSmoothingEnabled = true;
+            ctx.drawImage(M.img, (Math.floor(sim.tickCount / 2) % M.n) * M.w, 0, M.w, M.h, -M.ox, -M.oy, M.w, M.h);
+            ctx.restore();
+          } else {
+            ctx.globalAlpha = 0.8 * q; ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.arc(ef.x, ef.y, 6 + 3 * q, 0, Math.PI * 2); ctx.fill();
+          }
         }
         ctx.restore();
         return;
