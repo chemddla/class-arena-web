@@ -6232,7 +6232,7 @@
         genki_bomb: {
           id: 'genki_bomb', name: '기공옥', icon: '🌕', ccTag: '✨히든 · 광범위 내리꽂기', hidden: true,
           manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 8,
-          desc: '땅에서 기를 모으다 공중으로 떠올라, 8초간 머리 위로 거대한 기의 구체를 모은 뒤 겨눈 자리(최대 6칸)에 내리꽂습니다. 떨어진 자리 반지름 3칸 안의 적 모두에게 400% 피해와 1초 [기절]. 기가 많을수록 구체와 범위가 커져요 (기 1개마다 범위 8% 더).'
+          desc: '땅에서 기를 모으다 공중으로 떠올라, 8초간 머리 위로 거대한 기의 구체를 모은 뒤 겨눈 자리(최대 6칸)에 내리꽂습니다. 떨어진 자리 반지름 6칸 안의 적 모두에게 400% 피해와 1초 [기절]. 기가 많을수록 구체와 범위가 커져요 (기 1개마다 범위 8% 더).'
         }
       },
       engineer: {
@@ -32643,7 +32643,8 @@
     const QI_BARRIER_TICKS = 240, QI_BARRIER_CELLS = 0.42;                                      // 기공막: 4초 · 몸을 감싸는 반지름 0.42칸 (그림과 튕겨내기 같은 크기, qiBarrierShape)
     const QI_ROAR_CELLS = 2, QI_ROAR_DMG = 2.0, QI_ROAR_PUSH = 1.6;                             // 기공후: 2칸 · 200% · 1.6칸 밀침
     const QI_WAVE_CELLS = 8, QI_WAVE_HALF_W = 0.55, QI_WAVE_TICKS = 150, QI_WAVE_EVERY = 15, QI_WAVE_DMG = 0.45; // 기공파: 8칸 · 2.5초 · 0.25초마다 45%
-    const QI_GENKI_CELLS = 6, QI_GENKI_R = 3, QI_GENKI_DMG = 4.0, QI_GENKI_STUN = 60, QI_GENKI_FALL = 30;        // 기공옥: 6칸 안 · 반지름 3칸 · 400% · 1초 기절
+    const QI_GENKI_ORB = 92; // 기공옥 구체 기본 반지름 (모을 때·떨어질 때 같은 구체, 2026-11-16 사용자: 터지는 범위와 함께 46 → 2배)
+    const QI_GENKI_CELLS = 6, QI_GENKI_R = 6, QI_GENKI_DMG = 4.0, QI_GENKI_STUN = 60, QI_GENKI_FALL = 30;        // 기공옥: 6칸 안 · 터지는 반지름 6칸 (2026-11-16 사용자: 3칸 → 2배) · 400% · 1초 기절
     // 축기 1개마다 스킬별로 더 커지는 값 (기본 +8% 크기·범위·피해 위에 더함, 2026-11-16 사용자): 기 5개면 괄호 안 값
     //   기공포 구체 크기 +10% (×1.5) · 기공탄 +1발 (10발)·구체 크기 +8% · 기공막 크기 +8%·지속 +0.5초 (6.5초)
     //   기공후 범위 +10%·밀침 +0.25칸 (2.85칸) · 기공파 굵기 +10%·길이 +0.6칸 (11칸)·지속 +0.3초 (4초) · 기공옥 범위 +8%
@@ -32899,7 +32900,7 @@
       return 0;
     }
     function qiGenkiLiftPx(u) { return QI_GENKI_LIFT * (u.sizeScale || 1) * qiGenkiLift01(u); }
-    function qiGenkiOrbR(u) { return 46 * qiSizeK(u) * (1 + qiPer(u, 'genkiR')) * Math.sqrt(u.sizeScale || 1); }
+    function qiGenkiOrbR(u) { return QI_GENKI_ORB * qiSizeK(u) * (1 + qiPer(u, 'genkiR')) * Math.sqrt(u.sizeScale || 1); }
     // 기공파 한 틱 (제자리에서 쏘는 동안. 움직이거나 기절·빙결·침묵·공포·혼란이면 끝)
     function qiBeamStep(u) {
       const b = u.qiBeam, st = u.statuses || {};
@@ -33249,12 +33250,12 @@
         const genki = ef.type === 'qi_genki_charge', s = Math.sqrt(u.sizeScale || 1);
         const k = 1 - u.casting.left / Math.max(1, u.casting.total);
         const fd = u.facingDir || 1;
-        const cx = genki ? u.x : u.x - fd * 11 * s, cy = genki ? qiGenkiOrbY(u, ef.or || 46) : u.y - 14 * s; // 기공파 모으기 칸(16)은 두 손을 뒤 허리로 당김
-        const orbR = genki ? (ef.or || 46) * (0.15 + 0.85 * k) : (5 + 12 * k) * (ef.k || 1);
+        const cx = genki ? u.x : u.x - fd * 11 * s, cy = genki ? qiGenkiOrbY(u, ef.or || QI_GENKI_ORB) : u.y - 14 * s; // 기공파 모으기 칸(16)은 두 손을 뒤 허리로 당김
+        const orbR = genki ? (ef.or || QI_GENKI_ORB) * (0.15 + 0.85 * k) : (5 + 12 * k) * (ef.k || 1);
         const rnd = pfxRng(((t >> 1) * 2654435761) >>> 0);
         ctx.save();
         // 사방에서 빨려 드는 기 알갱이
-        const n = genki ? 26 : 12, far = genki ? 220 : 70;
+        const n = genki ? 26 : 12, far = genki ? Math.max(220, (ef.or || QI_GENKI_ORB) * 1.6) : 70; // 기공옥 알갱이는 구체 크기에 맞춰 더 멀리서 빨려 듦
         for (let i = 0; i < n; i++) {
           const a = rnd() * Math.PI * 2, ph = ((t * (genki ? 0.02 : 0.04)) + rnd()) % 1, d = orbR + (far - orbR) * (1 - ph);
           ctx.globalAlpha = 0.3 + 0.7 * ph;
@@ -33278,7 +33279,7 @@
         ctx.beginPath(); ctx.ellipse(ef.x, ef.y, ef.r, ef.r * 0.5, 0, 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
         const e = p * p, x = ef.sx + (ef.x - ef.sx) * e, y = ef.sy + ((ef.y - 30) - ef.sy) * e;
-        drawQiOrb(ctx, { x, y, radius: ef.or || 46, angle: Math.atan2(ef.y - ef.sy, ef.x - ef.sx), trail: [] });
+        drawQiOrb(ctx, { x, y, radius: ef.or || QI_GENKI_ORB, angle: Math.atan2(ef.y - ef.sy, ef.x - ef.sx), trail: [] });
         return;
       }
       if (ef.type === 'qi_genki_boom') {
@@ -33288,7 +33289,7 @@
           ctx.save();
           ctx.globalCompositeOperation = 'lighter';
           ctx.globalAlpha = 1 - p / 0.4;
-          const w = r * 0.45 * (1 - p);
+          const w = Math.min(r, 360) * 0.45 * (1 - p); // 빛기둥 굵기는 상한 (터지는 범위가 6칸으로 커져 기둥이 화면을 덮지 않게)
           const g = ctx.createLinearGradient(ef.x - w, 0, ef.x + w, 0);
           g.addColorStop(0, R[2] + '00'); g.addColorStop(0.5, R[4] + 'ee'); g.addColorStop(1, R[2] + '00');
           ctx.fillStyle = g; ctx.fillRect(ef.x - w, ef.y - 520, w * 2, 520);
