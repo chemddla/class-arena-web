@@ -21,6 +21,9 @@ from brawler_sr1_build import cut, shrink
 
 D = 'assets/sprites/fx/samples/qigong_'
 TARGET_H = 86   # 대기 자세 키 (다른 직업 칸과 같은 게임 px)
+# 몸 길이 (턱 → 발, 게임 px) 맞추기: 샘플마다 머리 대비 몸 길이가 달라 (대기 57 · 걷기 46~48 · 기 모으기 45 · 기공옥 최대 크기 68)
+#   머리 크기를 맞춘 뒤 몸만 늘이거나 줄여 대기 비율로. 무릎을 굽힌 걷기·공격 자세는 대기보다 조금 짧게, 공중에 떠서 발끝을 편 자세는 조금 길게
+BODY = {('걷기', 0): 54, ('걷기', 1): 54, ('걷기', 2): 54, ('걷기', 3): 54, ('일반 공격', 0): 53, ('기공옥', 1): 60}
 SAME = {('쓰러짐', 1): ('쓰러짐', 0)}   # 얼굴이 가려 못 재는 칸 → 같은 원본 장의 다른 칸 배율을 씀
 
 
@@ -54,13 +57,20 @@ def skin_mask(rgba):
     return (rgba[..., 3] > 0) & (r > 215) & (g > 160) & (g < 225) & (b > 125) & (b < 200) & (r - g > 28) & (r - g < 75) & (g - b > 15) & (g - b < 55)
 
 
-def face(rgba):   # 그림 위쪽 60% 안의 가장 큰 살색 덩어리 = 얼굴 → (넓이, 평균색)
+def face(rgba):   # 그림 위쪽 60% 안의 가장 큰 살색 덩어리 = 얼굴 → (넓이, 평균색, 턱 y)
     m = skin_mask(rgba); m[int(rgba.shape[0] * .6):] = False
     lab, n = ndi.label(ndi.binary_closing(m, iterations=2) & m)
     if n == 0: return None
     sz = ndi.sum(m, lab, range(1, n + 1))
     f = lab == 1 + int(np.argmax(sz))
-    return f.sum(), rgba[..., :3][f].astype(float).mean(axis=0)
+    return f.sum(), rgba[..., :3][f].astype(float).mean(axis=0), int(np.where(f)[0].max())
+
+
+def stretch_body(fig, chin, factor):   # 턱 아래 몸만 위아래로 늘이거나 줄임 (머리 크기는 그대로). 원본 해상도에서 해서 축소 때 고르게 섞임
+    top, bot = fig[:chin + 1], fig[chin + 1:]
+    h = max(1, round(bot.shape[0] * factor))
+    bot = np.array(Image.fromarray(bot.astype(np.uint8), 'RGBA').resize((bot.shape[1], h), Image.NEAREST))
+    return np.concatenate([top.astype(np.uint8), bot], axis=0)
 
 
 # (칸 이름, 원본 그림, 묶음 이름)
@@ -86,7 +96,7 @@ def frames():
 def build():
     rows = []
     idle = cut(despeck(one('idle')))
-    fa0, fc0 = face(idle)
+    fa0, fc0, _ = face(idle)
     sc0 = TARGET_H / idle.shape[0]
     done = {}
     for label, ims in frames():
@@ -102,6 +112,9 @@ def build():
                 k = np.sqrt(fa0 / f[0])
                 gain = np.clip(fc0 / f[1], 0.8, 1.25)
             done[(label, j)] = (k, gain)
+            if (label, j) in BODY:
+                body = (fig.shape[0] - 1 - f[2]) * sc0 * k
+                fig = stretch_body(fig, f[2], BODY[(label, j)] / body)
             fig = fig.astype(float)
             fig[..., :3] = (fig[..., :3] * gain).clip(0, 255)
             cells.append((shrink(fig.astype(np.uint8), sc0 * k), k, gain))
