@@ -4046,6 +4046,14 @@
           </h4>
           <div id="abyssRoomsList" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
         </div>
+        <!-- 📺 지금 혼자 지하 던전 중인 친구 (renderTowerLiveList) · 함께 가는 방은 위 방 목록에서 관전 -->
+        <div class="bg-slate-900 border border-violet-500/40 rounded-2xl p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h4 class="font-title text-lg text-violet-300">📺 지금 지하 던전 중인 친구</h4>
+            <span class="text-[11px] text-slate-400">친구의 지하 던전을 실시간으로 볼 수 있어요. (관전은 보상이 없어요)</span>
+          </div>
+          <div id="abyssLiveList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div>
+        </div>
         <div class="bg-slate-900 border-2 border-amber-500/30 rounded-2xl p-4 flex flex-col gap-2 text-xs text-slate-300 leading-relaxed">
           <h4 class="font-title text-lg text-white">📜 지하 던전 규칙</h4>
           <div>🧍 고른 용병은 전투력과 상관없이 <strong>Lv.1 일반 용병</strong>으로 시작해요 (스탯 포인트·장비·펫 없음). 원래 용병은 그대로예요.</div>
@@ -14296,8 +14304,8 @@
       const watchingBattle = sim.spectator && sim.running;
       const items = [];
       liveTowerRuns().forEach(r => items.push({
-        kind: 'tower', id: r.id, icon: isRankedLiveRun(r) ? '🎯' : isDefenseLiveRun(r) ? '💎' : '🏰', names: r.name,
-        detail: isRankedLiveRun(r) ? `랭킹 매칭 · vs ${r.vs || '친구'}` : isDefenseLiveRun(r) ? `몬스터 디펜스 · ${DEFENSE_DIFF_LABEL[r.diff] || '보통'}` : `모험의 탑 · ${r.title || `${liveNum(r.floor)}층`}${r.replay ? ' (연습)' : ''}`,
+        kind: 'tower', id: r.id, icon: isRankedLiveRun(r) ? '🎯' : isDefenseLiveRun(r) ? '💎' : isAbyssLiveRun(r) ? '🕳️' : '🏰', names: r.name,
+        detail: isRankedLiveRun(r) ? `랭킹 매칭 · vs ${r.vs || '친구'}` : isDefenseLiveRun(r) ? `몬스터 디펜스 · ${DEFENSE_DIFF_LABEL[r.diff] || '보통'}` : isAbyssLiveRun(r) ? '지하 던전 · 혼자 탐험' : `모험의 탑 · ${r.title || `${liveNum(r.floor)}층`}${r.replay ? ' (연습)' : ''}`,
         watchers: r.watchers && typeof r.watchers === 'object' ? Object.keys(r.watchers).length : 0,
         watching: watchingBattle && sim.towerWatch && sim.towerWatch.stuId === r.id
       }));
@@ -21750,6 +21758,21 @@
       liveNet.unitListRr = 'df0';
     }
 
+    // 🕳️ 혼자 하는 지하 던전도 같은 목록에 kind: 'abyss'로 올림 · 지도·층·레벨은 5인 던전처럼 화면(frame.dg)에 실음
+    // (예전 탭은 kind를 모르므로 '모험의 탑 · 🕳️ 지하 던전'으로 보이고, 관전하면 미니맵·층 표시 없이 싸움만 보임)
+    function startAbyssLiveBroadcast(stu) {
+      const dg = sim.dungeon;
+      if (!sim.running || sim.mode !== 'dungeon' || !dg || !dg.abyss || dg.party || !stu) return;
+      startSoloLiveBroadcast(stu, {
+        id: stu.id, name: cleanUserText(stu.name, 30) || '친구', floor: 0, kind: 'abyss', seed: dg.abyss.seed,
+        title: '🕳️ 지하 던전', replay: false, at: Date.now()
+      });
+      liveNet.dgUnitSig = sim.units.map(u => u.id).join(',');
+      liveNet.dgRoomSeq = dg.roomSeq;
+    }
+    // 이 화면이 던전 상태(frame.dg)를 실어 보내는지: 5인 던전 · 혼자 지하 던전 중계
+    function dungeonCastsFrames() { return Boolean(sim.dungeon && (sim.dungeon.party || (liveNet.towerCast && sim.dungeon.abyss && !sim.spectator))); }
+
     function startSoloLiveBroadcast(stu, info) {
       const roomId = `tower_${stu.id}`;
       const ref = liveRoomRef(roomId);
@@ -21826,14 +21849,16 @@
 
     const isRankedLiveRun = r => Boolean(r && r.kind === 'ranked');
     const isDefenseLiveRun = r => Boolean(r && r.kind === 'defense');
+    const isAbyssLiveRun = r => Boolean(r && r.kind === 'abyss');
+    const liveRunKind = r => (isRankedLiveRun(r) ? 'ranked' : isDefenseLiveRun(r) ? 'defense' : isAbyssLiveRun(r) ? 'abyss' : 'tower');
 
     // 탑 화면(towerLiveList)엔 탑 도전만, 랭킹 매칭 화면(rankedLiveList)엔 랭킹 매칭만, 몬스터 디펜스 화면(defenseLiveList)엔 디펜스만
     function renderTowerLiveList() {
-      [['towerLiveList', 'tower', '지금 탑에 도전 중인 친구가 없어요.'], ['rankedLiveList', 'ranked', '지금 랭킹 매칭 중인 친구가 없어요.'], ['defenseLiveList', 'defense', '지금 몬스터 디펜스 중인 친구가 없어요.']].forEach(([boxId, kind, emptyText]) => {
+      [['towerLiveList', 'tower', '지금 탑에 도전 중인 친구가 없어요.'], ['rankedLiveList', 'ranked', '지금 랭킹 매칭 중인 친구가 없어요.'], ['defenseLiveList', 'defense', '지금 몬스터 디펜스 중인 친구가 없어요.'], ['abyssLiveList', 'abyss', '지금 혼자 지하 던전 중인 친구가 없어요.']].forEach(([boxId, kind, emptyText]) => {
       const box = document.getElementById(boxId);
       if (!box) return;
       const ranked = kind === 'ranked';
-      const runs = liveTowerRuns().filter(r => (isRankedLiveRun(r) ? 'ranked' : isDefenseLiveRun(r) ? 'defense' : 'tower') === kind);
+      const runs = liveTowerRuns().filter(r => liveRunKind(r) === kind);
       if (!runs.length) {
         box.innerHTML = `<div class="text-xs text-slate-400 bg-slate-950 border border-slate-800 rounded-xl p-3 sm:col-span-2 lg:col-span-3">${emptyText}</div>`;
         return;
@@ -21846,7 +21871,7 @@
           <div class="bg-slate-950 border ${watching ? 'border-violet-400' : 'border-slate-800'} rounded-xl p-3 flex items-center justify-between gap-2">
             <div class="min-w-0">
               <div class="text-sm font-extrabold text-white truncate">${r.name}</div>
-              <div class="text-[11px] text-slate-300 truncate">${ranked ? `🎯 vs ${r.vs || '친구'}` : kind === 'defense' ? `💎 ${DEFENSE_DIFF_LABEL[r.diff] || '보통'}${r.race ? ` · ${r.race}의 습격` : ''}` : `🏰 ${r.title || `${liveNum(r.floor)}층`}${r.replay ? ' (연습)' : ''}`}</div>
+              <div class="text-[11px] text-slate-300 truncate">${ranked ? `🎯 vs ${r.vs || '친구'}` : kind === 'defense' ? `💎 ${DEFENSE_DIFF_LABEL[r.diff] || '보통'}${r.race ? ` · ${r.race}의 습격` : ''}` : kind === 'abyss' ? '🕳️ 혼자 탐험 중' : `🏰 ${r.title || `${liveNum(r.floor)}층`}${r.replay ? ' (연습)' : ''}`}</div>
               ${watchers ? `<div class="text-[10px] text-violet-300 font-bold">👀 ${watchers}명 관전 중</div>` : ''}
             </div>
             ${watching
@@ -21876,7 +21901,7 @@
       tw.leaveTimer = setTimeout(() => {
         tw.leaveTimer = null;
         if (sim.towerWatch === tw && sim.spectator && sim.running && !liveNet.finished && !listed()) {
-          abortLiveBattle(`📺 ${tw.name} 친구가 ${tw.ranked ? '랭킹 매칭' : tw.defense ? '몬스터 디펜스' : '탑 도전'}을 그만뒀어요.`);
+          abortLiveBattle(`📺 ${tw.name} 친구가 ${tw.ranked ? '랭킹 매칭' : tw.defense ? '몬스터 디펜스' : tw.abyss ? '지하 던전' : '탑 도전'}을 그만뒀어요.`);
         }
       }, 4000);
     }
@@ -21893,6 +21918,7 @@
       const info = towerLiveCache && towerLiveCache[stuId];
       const ranked = isRankedLiveRun(info);
       const defense = isDefenseLiveRun(info);
+      const abyss = isAbyssLiveRun(info);
       if (!me || !info || !info.name) { showNotice('⚠️ 관전할 전투를 찾지 못했어요. 이미 끝났을 수 있어요.'); return; }
       if (stuId === me.id) return;
       if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
@@ -21900,7 +21926,7 @@
       const ref = liveRoomRef(roomId);
       if (!ref) { showNotice('⚠️ 서버에 연결되어 있지 않아 관전할 수 없어요.'); return; }
       const got = await waitLiveInit(ref, 5000, defense); // 디펜스는 준비 시간엔 몬스터가 없음
-      if (!got) { showNotice(`⚠️ ${ranked ? '랭킹 매칭' : defense ? '몬스터 디펜스' : '탑'} 전투 화면을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.`); return; }
+      if (!got) { showNotice(`⚠️ ${ranked ? '랭킹 매칭' : defense ? '몬스터 디펜스' : abyss ? '지하 던전' : '탑'} 전투 화면을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.`); return; }
       const { init, blueUnits, redUnits } = got;
       if (sim.running && !sim.spectator) return; // 기다리는 사이 내 전투를 시작했으면 그만둠
       if (sim.spectator) { stopLiveBattleNet(); closeBattleResult(); }
@@ -21912,8 +21938,8 @@
       const dfRace = DEFENSE_RACES.includes(info.race) ? info.race : todayDefenseRace();
       if (defense) { DEFENSE_MAPS.forEach(m => void BATTLE_MAPS[m.key].ready); Object.values(DEFENSE_ART).forEach(d => void d.ready); } // 맵·수정 그림 (전투 준비 화면이 기다림)
       launchSimulation({
-        mode: ranked ? 'pvp_ranked' : defense ? 'defense' : 'tower',
-        title: ranked ? `📺 관전 중: ${info.name}의 랭킹 매칭 (vs ${vsName})` : defense ? `📺 관전 중: ${info.name}의 몬스터 디펜스 [${DEFENSE_DIFF_LABEL[dfDiff]}]` : `📺 관전 중: ${info.name}의 ${info.title || `${floor}층`}`,
+        mode: ranked ? 'pvp_ranked' : defense ? 'defense' : abyss ? 'dungeon' : 'tower',
+        title: ranked ? `📺 관전 중: ${info.name}의 랭킹 매칭 (vs ${vsName})` : abyss ? `📺 관전 중: ${info.name}의 🕳️ 지하 던전` : defense ? `📺 관전 중: ${info.name}의 몬스터 디펜스 [${DEFENSE_DIFF_LABEL[dfDiff]}]` : `📺 관전 중: ${info.name}의 ${info.title || `${floor}층`}`,
         blueStudent: owner,
         ...(ranked ? { redStudent: enemy } : {}),
         customBlueUnits: blueUnits,
@@ -21926,7 +21952,19 @@
       sim.spectator = true;
       sim.spectateFrom = Date.now();
       sim.spectateRoomId = null;
-      sim.towerWatch = { stuId, name: info.name, floor, ranked, vs: vsName, defense };
+      sim.towerWatch = { stuId, name: info.name, floor, ranked, vs: vsName, defense, abyss };
+      if (abyss) {
+        // 5인 던전 관전과 같게: 1층 지도는 같은 씨앗으로 만들고, 층·방 진행은 받은 화면(dg.ab)을 따라감
+        const seed = Number(info.seed) >>> 0, def = abyssFloorDef(1), map = abyssMakeMap(def, 1, seed);
+        if (map) {
+          sim.dungeon = newDungeonState(def.id, 'abyss', seed, map, { floor: 1, powerRatio: 1, power: 0 });
+          sim.dungeon.party = true;
+          sim.dungeon.started = true;
+          abyssAttach(sim.dungeon, seed, 1);
+          sim.dungeon.grid[sim.dungeon.start[0]][sim.dungeon.start[1]].visited = true;
+          document.getElementById('arenaModeBadge').textContent = '🕳️ 지하 던전';
+        }
+      }
       if (defense) {
         // 디펜스 상태(웨이브·수정 체력·포인트…)는 친구 화면이 frame.df로 보내 줌 (applyDefenseState) · 그 전까지 빈 계획
         sim.defense = newDefenseState(dfRace, dfDiff, { baseFloor: 1 });
@@ -21942,6 +21980,7 @@
       addBattleLog(ranked
         ? `📺 [관전] ${info.name}의 랭킹 매칭(vs ${vsName} 방어 진형)을 보고 있어요. (WASD·드래그로 화면 이동)`
         : defense ? `📺 [관전] ${info.name}의 몬스터 디펜스(${dfRace}의 습격)을 보고 있어요. (WASD·드래그로 화면 이동)`
+        : abyss ? `📺 [관전] ${info.name}의 지하 던전 탐험을 보고 있어요. (WASD·드래그로 화면 이동)`
         : `📺 [관전] ${info.name}의 모험의 탑 ${floor}층 도전을 보고 있어요. (WASD·드래그로 화면 이동)`);
       startLiveBattleNet(roomId, 'guest', liveNum(init.at), true, false);
       liveNet.bid = typeof init.b === 'number' ? init.b : null; liveNet.ep = liveNum(init.ep); // 탑·레이드 관전은 방 시작 시각이 없어 받은 화면의 전투 표를 따라감
@@ -22037,7 +22076,7 @@
         const me = getActiveStudent();
         if (!id || !me) return;
         const run = towerLiveCache && towerLiveCache[id];
-        if (!run || run.helpId !== me.id || isRankedLiveRun(run) || isDefenseLiveRun(run)) return;
+        if (!run || run.helpId !== me.id || liveRunKind(run) !== 'tower') return;
         if (sim.running && sim.spectator && sim.towerWatch && sim.towerWatch.stuId === id) return; // 이미 보는 중
         if (sim.running && !sim.spectator) return; // 내 전투 중이면 억지로 옮기지 않음 (목록에서 직접 관전 가능)
         if (Date.now() - this.autoAt < 5000) return;
@@ -33416,6 +33455,8 @@
           ? `관전 종료 · ${tw.name} ${blueTeamWon ? `🏆 승리! (vs ${tw.vs})` : `🛡️ 패배 (vs ${tw.vs})`}`
           : tw && tw.defense
             ? `관전 종료 · ${tw.name} ${blueTeamWon ? '🏆 100라운드를 막았어요!' : `💔 ${(sim.defense && sim.defense.round) || 1}라운드에서 방어 실패`}`
+          : tw && tw.abyss
+            ? `관전 종료 · ${tw.name} 🕳️ 지하 ${(sim.dungeon && sim.dungeon.abyss && sim.dungeon.abyss.depth) || 1}층까지 내려갔어요`
           : tw
           ? `관전 종료 · ${tw.name} ${blueTeamWon ? `🏆 ${tw.floor}층 돌파!` : '🛡️ 도전 실패'}`
           : rw && rw.rush
@@ -33429,7 +33470,7 @@
           ? (rw.dungeon ? '관전한 던전 탐험이 끝났어요. (관전은 보상이 없어요)' : '관전한 엘리트 보스 토벌이 끝났어요. (관전은 보상이 없어요)')
           : sim.forfeitTeam
             ? `${(sim.forfeitTeam === 'blue' ? meta.blueStudent : meta.redStudent)?.name || ''} 친구가 포기했어요.`
-            : (tw ? `관전한 ${tw.ranked ? '랭킹 매칭' : tw.defense ? '몬스터 디펜스' : '탑 도전'}이 끝났어요. (관전은 보상이 없어요)` : '관전한 결투가 끝났어요. (관전은 보상이 없어요)');
+            : (tw ? `관전한 ${tw.ranked ? '랭킹 매칭' : tw.defense ? '몬스터 디펜스' : tw.abyss ? '지하 던전' : '탑 도전'}이 끝났어요. (관전은 보상이 없어요)` : '관전한 결투가 끝났어요. (관전은 보상이 없어요)');
         document.getElementById('battleMvpBox').innerHTML = `
           <div class="font-bold text-amber-300 mb-1">🌟 이번 ${tw ? '도전' : rw ? '토벌' : '결투'} MVP</div>
           <div>⚔️ 최고 공격왕: <strong>${atkKing?.name || '-'}</strong> (${atkKing?.damageDealt || 0} 피해)</div>
@@ -51185,7 +51226,7 @@
       };
       if (sim.eliteIntro) frame.it = sim.eliteIntro.t;
       if (sim.rush) frame.rs = packRushState();
-      if (sim.dungeon && sim.dungeon.party) frame.dg = packDungeonState();
+      if (dungeonCastsFrames()) frame.dg = packDungeonState();
       if (defenseCastsFrames()) frame.df = packDefenseState();
       if (sim.awaitingControlChoice) frame.ps = 'choose';
       if (sim.shake && !sent.has(sim.shake)) { sent.add(sim.shake); frame.sk = [sim.shake.power, sim.shake.life, sim.shake.maxLife]; }
@@ -51765,7 +51806,7 @@
         });
         return out;
       };
-      if (sim.dungeon && sim.dungeon.party) syncDungeonLiveUnits(); // 🏰 5인 던전: 방을 옮기거나 몬스터가 더 나오면 유닛 목록부터 다시 보냄
+      if (dungeonCastsFrames()) syncDungeonLiveUnits(); // 🏰 5인 던전: 방을 옮기거나 몬스터가 더 나오면 유닛 목록부터 다시 보냄
       if (defenseCastsFrames()) syncDefenseLiveUnits(); // 💎 몬스터 디펜스: 웨이브 몬스터·모집 용병이 바뀌면 유닛 목록부터
       const packed = sim.units.map(packLiveUnit);
       const base = liveNet.sentU;
@@ -51794,7 +51835,7 @@
       if (sim.eliteIntro) frame.it = sim.eliteIntro.t;
       if (sim.rush) { const rs = rushStateForFrame(keyframe); if (rs) frame.rs = rs; }
       // 🏰 5인 던전: 지도·방 진행 상태는 바뀐 뒤 1초 동안과 전체 화면에만 실음 (화면 몇 장이 건너뛰어져도 받게)
-      if (sim.dungeon && sim.dungeon.party) {
+      if (dungeonCastsFrames()) {
         const dgs = packDungeonState(), j = JSON.stringify(dgs);
         if (j !== liveNet.dgSentJ) { liveNet.dgSentJ = j; liveNet.dgChangedAt = nowMs; }
         if (keyframe || nowMs - (liveNet.dgChangedAt || 0) < 1000) frame.dg = dgs;
@@ -51838,7 +51879,7 @@
         blueWon: Boolean(blueTeamWon),
         forfeitTeam: sim.forfeitTeam || null,
         ...(sim.rush ? { rs: packRushState() } : {}),
-        ...(sim.dungeon && sim.dungeon.party ? { dg: packDungeonState() } : {}),
+        ...(dungeonCastsFrames() ? { dg: packDungeonState() } : {}),
         ...(defenseCastsFrames() ? { df: packDefenseState() } : {}),
         s: sim.units.map(u => [Math.round(liveNum(u.damageDealt)), Math.round(liveNum(u.healDone)), Math.round(liveNum(u.damageTaken))])
       }).catch(() => {});
@@ -56659,6 +56700,7 @@
       const hero = sim.units.find(u => u.team === 'blue' && !u.isClone);
       setBattleControlMode(hero ? 'manual' : 'auto', hero ? hero.id : null, true); // 고르는 창 없이 바로 직접 조종
       abyssIntroLog(unit.name);
+      startAbyssLiveBroadcast(stu); // 친구들이 관전할 수 있게 중계 시작
     }
     function abyssIntroLog(who) {
       const dg = sim.dungeon;
