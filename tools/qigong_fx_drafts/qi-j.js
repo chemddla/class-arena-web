@@ -9,6 +9,7 @@ export const meta = { ...base, size: [320, 112], name: "기공사 J 실타래 �
 const LOOPS = [];
 for (let i = 0; i < 10; i++) LOOPS.push([(i * 2.39) % Math.PI, (i * 1.37) % TAU, (i % 2 ? 1 : -1) * (3 + (i % 4))]);
 const SQUASH = 0.045, IMPLODE = 0.085;
+// 고리 크기: 실 고리(반지름 약 32~38)·압력 고리(36~39)를 서로 비슷하게 (사용자: 고리마다 둘레 차이를 크게 하지 말 것)
 // 터지는 선 열여섯 줄: [방향, 길이(구슬 반지름 배), 빠르기]
 const BURST = [];
 for (let i = 0; i < 16; i++) BURST.push([(i / 16) * Math.PI * 2 + ((i * 0.37) % 1 - 0.5) * 0.25, 1.6 + ((i * 0.53) % 1) * 1.6, 0.7 + ((i * 0.71) % 1) * 0.5]);   // 맞은 뒤: 박힘 끝 · 응축 끝(= 터지는 순간)
@@ -31,7 +32,7 @@ function orb(p, C, x, y, r, t, k = 1, sx = 1, sy = 1) {
 function threads(p, C, x, y, r, t, k, sx, sy, grow) {
   LOOPS.forEach(([tilt, yaw, sp], i) => {
     const ct = Math.cos(tilt) * 0.999, st = Math.sin(tilt), cy = Math.cos(yaw + t * 1.5), sy2 = Math.sin(yaw + t * 1.5);
-    const rr = r * (0.5 + 0.45 * ((i * 0.37) % 1)) * (grow > 1 ? grow * (0.8 + 0.4 * ((i * 0.61) % 1)) : 1);
+    const rr = grow > 1 ? r * 0.9 * grow * (0.94 + 0.12 * ((i * 0.61) % 1)) : r * (0.5 + 0.45 * ((i * 0.37) % 1));   // 풀릴 때는 고리 크기가 서로 비슷하게 (±6%)
     const gap = grow > 1 ? 0.08 + 0.3 * clamp((grow - 1) / 5) : 0;   // 풀릴수록 실이 군데군데 끊김 (가루처럼 보이지 않게 조금만)
     for (let a = 0; a < TAU; a += 0.6 / rr) {
       const u = a + t * sp, px = Math.cos(u) * rr, py = Math.sin(u) * rr * ct, pz = Math.sin(u) * rr * st;
@@ -79,9 +80,9 @@ export function create(o) {
       const b = q - IMPLODE;
       if (b >= 0) {
         // 실이 큰 고리로 풀리며 퍼짐
-        if (b < 0.42) { const e = b / 0.42; threads(p, C, BX, y, RAD, t * 0.4 + 2, Math.pow(1 - e, 1.4), 1, 1, 1 + 5 * ease.outCubic(e)); }
+        if (b < 0.42) { const e = b / 0.42; threads(p, C, BX, y, RAD, t * 0.4 + 2, Math.pow(1 - e, 1.4), 1, 1, 1 + 4 * ease.outCubic(e)); }
         // 둘째 물결: 조금 늦게 다른 방향으로 한 번 더 풀림 (선이 더 많아 보이게)
-        if (b >= 0.06 && b < 0.46) { const e = (b - 0.06) / 0.4; threads(p, C, BX, y, RAD * 0.8, t * 0.4 + 5.3, Math.pow(1 - e, 1.6) * 0.8, 1, 1, 1 + 6.5 * ease.outCubic(e)); }
+        if (b >= 0.06 && b < 0.46) { const e = (b - 0.06) / 0.4; threads(p, C, BX, y, RAD, t * 0.4 + 5.3, Math.pow(1 - e, 1.6) * 0.8, 1, 1, 1 + 4.4 * ease.outCubic(e)); }
         // 터지는 선: 가운데에서 사방으로 빠르게 뻗어 나가는 기운 줄 (머리는 밝고 꼬리는 가늘게, 끝으로 갈수록 옅어짐)
         if (b < 0.3) {
           const e = b / 0.3;
@@ -95,9 +96,9 @@ export function create(o) {
           });
         }
         // 두꺼운 압력 고리 (세로로 선 것, 비스듬히 누운 것, 바닥)
-        pressureRing(p, C, BX, y, b / 0.32, 5, 26, 1, 1);
-        pressureRing(p, C, BX, y, (b - 0.04) / 0.4, 4, 36, 0.4, 0.75);
-        pressureRing(p, C, BX, y, (b - 0.09) / 0.38, 4, 30, 0.7, 0.6);   // 비스듬한 고리 하나 더
+        pressureRing(p, C, BX, y, b / 0.32, 5, 36, 1, 1);
+        pressureRing(p, C, BX, y, (b - 0.04) / 0.4, 4, 39, 0.4, 0.75);
+        pressureRing(p, C, BX, y, (b - 0.09) / 0.38, 4, 37, 0.7, 0.6);   // 비스듬한 고리 하나 더
         // 터지는 순간 가운데 기운 덩이가 확 부풀었다 사라짐 (흰빛 없이 크림색까지만)
         if (b < 0.1) { const e = b / 0.1; p.disc(BX, y, RAD * (0.6 + 1.6 * e), C[5], 0.85 * (1 - e)); p.disc(BX, y, RAD * (0.3 + 0.8 * e), C[6], 0.7 * (1 - e)); }
       }
