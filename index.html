@@ -4063,6 +4063,7 @@
           <div>⬆️ 몬스터를 잡아 레벨업하면 <strong>능력치 카드 3장 중 하나</strong>를, 10레벨마다 <strong>스킬 카드</strong>를 골라요. 아주 가끔 히든 스킬 카드가 나와요. 20초 안에 안 고르면 아무 카드나 골라져요.</div>
           <div>🕳️ 층마다 숨은 <strong>계단 방</strong>을 찾아 가운데 계단에 서면 내려가요. 5층마다 종족이 바뀌고, 그 구역 마지막 층은 <strong>보스</strong>를 잡아야 계단이 열려요.</div>
           <div>📦 상자와 신비한 방에서 체력 물약·능력치·레벨업을 얻어요.</div>
+          <div>📝 층마다 퀴즈 방이 하나 있어요. 맞히면 경험치 보너스, 틀리면 몬스터가 1.5배로 나와요.</div>
           <div>💰 쓰러지거나 포기하면 그때까지 <strong>내려간 층만큼</strong> CA를 받아요 (깊은 구역일수록 많이). 하루에는 그날 가장 깊이 간 층까지만 받아요.</div>
           <div>👥 친구와 <strong>3명</strong>까지 같이 갈 수 있어요. 레벨은 같이 오르고 카드는 각자 골라요. 인원이 늘수록 몬스터도 많아지고 세져요.</div>
         </div>
@@ -54304,6 +54305,8 @@
     const DUNGEON_QUIZ_SEC = 25;
     const DUNGEON_QUIZ_SOLO_WRONG = 2;
     const DUNGEON_QUIZ_PARTY_STEP = 0.2;
+    // 🕳️ 지하 던전 퀴즈 방: 맞히면 경험치 보너스(레벨업에 필요한 양의 xp배), 틀리면 몬스터 wrong배 (혼자 버텨야 해서 일반 던전 2배보다 낮게)
+    const ABYSS_QUIZ = { xp: 0.5, wrong: 1.5 };
     let DUNGEON_QUIZ_AUTO = null; // 콘솔 시뮬용: true면 모두 맞힘, false면 모두 틀림 (평소 null)
     let dungeonQuizPoolCache = { date: null, list: [] };
     // 하드(veryhard)는 어려운 문제만: 교과 문제(상식·넌센스 빼고) + 어려운 계산 주관식
@@ -55235,17 +55238,23 @@
       const need = dg.party && sim.raidLive && sim.raidLive.humans && sim.raidLive.humans.length ? [...sim.raidLive.humans] : [me ? me.id : 'me'];
       dg.phase = 'quiz';
       dg.quiz = { id: Math.floor(Math.random() * 1e6), at: sim.tickCount, need, ans: {}, done: false, mult: 0 };
-      addBattleLog(`📝 [${cell.def.name}] 퀴즈 방이에요! ${DUNGEON_QUIZ_SEC}초 안에 문제를 맞히면 몬스터가 원래대로, 틀리면 ${dg.party ? `틀린 친구 1명마다 ${Math.round(DUNGEON_QUIZ_PARTY_STEP * 100)}%씩` : `${DUNGEON_QUIZ_SOLO_WRONG}배로`} 늘어나요!`);
+      addBattleLog(`📝 [${cell.def.name}] 퀴즈 방이에요! ${DUNGEON_QUIZ_SEC}초 안에 문제를 맞히면 몬스터가 원래대로, 틀리면 ${dg.party ? `틀린 친구 1명마다 ${Math.round(DUNGEON_QUIZ_PARTY_STEP * 100)}%씩` : `${dg.abyss ? ABYSS_QUIZ.wrong : DUNGEON_QUIZ_SOLO_WRONG}배로`} 늘어나요!${dg.abyss ? ` 맞히면 ✨ 경험치 보너스!` : ''}`);
     }
     function resolveDungeonQuiz(cell) {
       const dg = sim.dungeon, q = dg.quiz;
       const wrong = q.need.filter(id => q.ans[id] !== 1).length;
-      const mult = dg.party ? 1 + DUNGEON_QUIZ_PARTY_STEP * wrong : (wrong ? DUNGEON_QUIZ_SOLO_WRONG : 1);
+      const mult = dg.party ? 1 + DUNGEON_QUIZ_PARTY_STEP * wrong : (wrong ? (dg.abyss ? ABYSS_QUIZ.wrong : DUNGEON_QUIZ_SOLO_WRONG) : 1);
       cell.quizMult = mult;
       q.done = true; q.mult = mult;
       dg.timeTicks += sim.tickCount - q.at; // 퀴즈 푸는 동안은 제한 시간이 흐르지 않음
       if (dg.party) addBattleLog(wrong ? `📝 ${q.need.length}명 중 ${wrong}명이 틀렸어요... 몬스터가 ${Math.round((mult - 1) * 100)}% 더 나와요!` : '📝 모두 정답! 몬스터가 원래대로 나와요.');
       else addBattleLog(wrong ? `📝 틀렸어요... 몬스터가 ${mult}배로 나와요!` : '📝 정답! 몬스터가 원래대로 나와요.');
+      if (dg.abyss && wrong < q.need.length) { // 🕳️ 지하 던전: 한 명이라도 맞히면 경험치 보너스 (맞힌 비율만큼)
+        const xp = Math.round(abyssNeedXp(dg.abyss.lv) * ABYSS_QUIZ.xp * (q.need.length - wrong) / q.need.length);
+        addBattleLog(`📝✨ 정답 보너스! 경험치 +${xp}`);
+        abyssShowBanner({ title: '📝 정답!', line: `경험치 +${xp}` });
+        abyssAddXp(xp);
+      }
       beginDungeonRoomFight(cell);
     }
     // 내 답: 방장·혼자는 바로 적고, 친구 화면은 조작과 함께 방장에게 보냄
@@ -56738,9 +56747,12 @@
       if (!map) return null;
       const rng = dungeonRng((seed ^ 0x5bd1e995) >>> 0);
       const kinds = Object.keys(ABYSS_BOONS);
+      // 📝 퀴즈 방: 층마다 일반 방 하나 (같은 씨앗이면 모든 화면에서 같은 방)
+      const normals = map.grid.flat().filter(c => c && c.kind === 'normal');
+      const quizCell = normals.length ? normals[Math.floor(rng() * normals.length)] : null;
       map.grid.flat().forEach(c => {
         if (!c) return;
-        c.quiz = false;
+        c.quiz = c === quizCell;
         if (c.kind === 'empty') { c.kind = 'shrine'; c.boon = kinds[Math.floor(rng() * kinds.length)]; c.def = { name: ABYSS_BOONS[c.boon].name, hint: `${ABYSS_BOONS[c.boon].icon} ${ABYSS_BOONS[c.boon].desc}` }; }
         if (c.kind === 'treasure' && c.chest) c.chest.items = kinds.map(k => [rng(), k]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
         if (c.kind === 'boss' && !abyssIsBossFloor(depth)) { c.kind = 'stairs'; c.cleared = true; c.def = { name: '내려가는 계단' }; }
