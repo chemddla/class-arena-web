@@ -7528,6 +7528,8 @@
     // 종족 보스 직업별 공격력 배율 (전사 = 1): 능력치는 전사 기준이라 공격이 느린 술사 보스는 쉬워져서
     //   보스 층 승률이 전사 보스였을 때와 비슷하게 (tests/battle-sim.js BS.tower로 맞춤)
     const TOWER_BOSS_JOB_ATK = { mage: 1.25, curse: 1.2, frost: 1.2 };
+    // 큰 몸 보스 범위를 줄인 만큼(bigBodyScale, 2026-11-16) 공격력으로 보충: 종족 보스 · 엘리트 보스
+    const BIG_BOSS_ATK = { race: 1.3, raceHp: 1.6, elite: 1.1 }; // 탑 보스 층 시뮬(12판): 범위 줄인 뒤 평균 96% → 보충 후 87% (줄이기 전 81%)
     const TOWER_BOSS_SIZE_MULT = 2; // 모험의 탑 종족 보스 크기 2배 (공격 사거리·스킬 범위도 크기에 비례)
     function towerBossUnitMult(floor) { return { hp: (towerRaceOfFloor(floor).bossHp || 1.4) * TOWER_BOSS_BODY_COMP, atk: 1.05 * TOWER_BOSS_BODY_COMP }; }
 
@@ -7539,8 +7541,8 @@
       const bossMult = isBoss ? towerBossUnitMult(floor) : { hp: 1, atk: 1 };
       // 종족 보스는 직업마다 다르지만(bossJob) 체력·공격력·방어력은 전사 기준으로 맞춤 (직업은 싸우는 방식만 바꿈, 보스 층 난이도는 그대로)
       const jd = isBoss && JOB_DEFS[unit.job], wd = JOB_DEFS.warrior;
-      const jobFix = jd ? { hp: wd.baseHp / jd.baseHp, atk: wd.baseAtk / jd.baseAtk * (TOWER_BOSS_JOB_ATK[unit.job] || 1), def: wd.baseDef / jd.baseDef } : { hp: 1, atk: 1, def: 1 };
-      const hpMult = (t.hp || 1) * bossMult.hp * (isBoss ? TOWER_BOSS_HP_MULT : 1) * jobFix.hp;
+      const jobFix = jd ? { hp: wd.baseHp / jd.baseHp, atk: wd.baseAtk / jd.baseAtk * (TOWER_BOSS_JOB_ATK[unit.job] || 1) * BIG_BOSS_ATK.race, def: wd.baseDef / jd.baseDef } : { hp: 1, atk: 1, def: 1 };
+      const hpMult = (t.hp || 1) * bossMult.hp * (isBoss ? TOWER_BOSS_HP_MULT * BIG_BOSS_ATK.raceHp : 1) * jobFix.hp;
       unit.maxHp = Math.round(unit.maxHp * hpMult);
       unit.hp = unit.maxHp;
       unit.atk = Math.round(unit.atk * (t.atk || 1) * bossMult.atk * jobFix.atk);
@@ -41214,7 +41216,7 @@
       bossTemplate.row = 2;
       bossTemplate.col = 2;
       bossTemplate.overrideMaxHp = Math.round(bossDef.hp * raidHpMult(playerCount) * (hard ? ELITE_HARD.hp : k));
-      bossTemplate.overrideAtk = Math.round(bossDef.atk * k);
+      bossTemplate.overrideAtk = Math.round(bossDef.atk * k * BIG_BOSS_ATK.elite);
       bossTemplate.overrideDef = Math.round(bossDef.def * k);
       const boss = createSimUnit(bossTemplate, null, 'red', 1.0);
       boss.isEliteBoss = true;
@@ -56201,7 +56203,7 @@
       dg.selectAt = sim.tickCount;
       Object.keys(DUNGEON_DIRS).forEach(d => { const n = dungeonNeighbor(dg, d, true); const nc = n && dungeonCellAt(dg, n[0], n[1]); if (nc) nc.revealed = true; });
       const dirs = dungeonOpenDirs(dg);
-      const bossNear = dirs.find(d => dgIsBossPos(dg, dungeonNeighbor(dg, d)));
+      const bossNear = !abyssStairsFloor(dg) && dirs.find(d => dgIsBossPos(dg, dungeonNeighbor(dg, d))); // 🕳️ 지하 던전 계단 층은 보스가 아니라 숨김
       const bossSealed = !bossNear && Object.keys(DUNGEON_DIRS).find(d => dgIsBossPos(dg, dungeonNeighbor(dg, d, true)));
       playCombatSfx('heal');
       addBattleLog(`✅ [${cell.def.name}] 정리 완료!${dg.abyss ? '' : ` +${cell.kind === 'elite' || cell.kind === 'guardian' ? rwRoom + rwElite : cell.kind === 'treasure' ? 0 : rwRoom} CA`}${revived ? ` · 쓰러진 용병 ${revived}명 부활` : ''} · 🚪 길이 열렸어요: ${dirs.map(d => DUNGEON_DIR_ICON[d]).join(' ')}${bossNear ? ` · ${DUNGEON_DIR_ICON[bossNear]} 문이 붉게 떨려요... ${abyssStairsFloor(dg) ? '계단이' : '보스가'} 가까워요!` : ''}${bossSealed ? ` · ${DUNGEON_DIR_ICON[bossSealed]} 🔒 보스 방 문이 봉인돼 있어요! 어딘가의 🛡️ 파수꾼을 쓰러뜨려야 열려요.` : ''}`);
@@ -56319,7 +56321,7 @@
         const w = horizontal ? 70 : 220, h = horizontal ? 220 : 70;
         ctx.save();
         if (!n) { ctx.restore(); return; } // 길 없음: 그냥 벽
-        const isBoss = n[0] === dg.bossPos[0] && n[1] === dg.bossPos[1];
+        const isBoss = n[0] === dg.bossPos[0] && n[1] === dg.bossPos[1] && !abyssStairsFloor(dg); // 지하 던전 계단 방은 붉게 흔들지 않음 (보스가 아님)
         const sealed = isBoss && dungeonBossLocked(dg); // 🔒 파수꾼을 잡기 전 보스 방 문
         const nc = dungeonCellAt(dg, n[0], n[1]);
         const pulse = 0.5 + 0.5 * Math.sin(t * 0.15);
@@ -56354,7 +56356,7 @@
         ctx.restore();
       });
       // 모닥불 (시작 방·보스 방 입구)
-      if (cell.kind === 'start' || (cell.kind === 'boss' && dg.phase === 'boss_prep')) {
+      if ((cell.kind === 'start' && !dg.abyss) || (cell.kind === 'boss' && dg.phase === 'boss_prep')) { // 🕳️ 지하 던전 층 입구엔 모닥불 없음
         const e = dg.fromDir ? dungeonDoorPoint(dg.fromDir) : { x: 560, y: 920 };
         const fx = e.x + (dg.fromDir === 'left' || !dg.fromDir ? 60 : dg.fromDir === 'right' ? -60 : 0), fy = e.y + (dg.fromDir === 'up' ? 60 : dg.fromDir === 'down' ? -60 : -120);
         ctx.save();
