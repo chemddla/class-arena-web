@@ -2721,6 +2721,121 @@
         <div id="dungeonPartyBar" class="hidden flex flex-wrap items-center gap-1.5 text-[11px]"></div>
         <!-- 💎 몬스터 디펜스: 마력석·충격파·용병 배치·시설 짓기 -->
         <style>
+    /* 🕳️ 지하 던전 UI: 심연 석판(짙은 보라 돌) + 금빛 글자 · 갈무리 도트 글꼴 · 계단 모서리 — 길드 스킨과 같은 말투, 색만 어둡게
+       (길드 스킨의 Tailwind 덮어쓰기를 안 타게 전용 클래스만 씀) */
+    .aby { --ab-stone: #241a3a; --ab-stone-l: #34275a; --ab-stone-d: #150e26; --ab-edge: #5b45a0; --ab-glow: #c4a5ff; --ab-ink: #f3ebff; --ab-ink2: #b9aadc; --ab-gold: #ffd23f; --ab-gold-d: #d9a514;
+      font-family: Galmuri9, 'Pretendard', sans-serif; color: var(--ab-ink); letter-spacing: 0; }
+    .aby b, .aby .aby-t { font-family: Galmuri11, 'Jua', sans-serif; font-weight: 700; }
+    .aby button { font-family: inherit; border: 0; }
+    .aby.hidden { display: none !important; }
+    /* 전투 화면 위 안내판: 층 팻말 + 종족·인원·보상 + 레벨·경험치 막대 + 안내 한 줄 */
+    .aby-hudwrap { display: flex; flex-direction: column; align-items: center; max-width: 94%; }
+    .aby-hud { display: flex; align-items: stretch; gap: 6px; filter: drop-shadow(3px 4px 0 rgba(0, 0, 0, .45)); }
+    .aby-floor { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 62px; padding: 4px 10px 7px; color: #3d2410; background: var(--ab-gold); clip-path: var(--gl-step);
+      box-shadow: inset 0 -4px 0 var(--ab-gold-d), inset 0 3px 0 #ffe58a; }
+    .aby-floor small { font-size: 10px; line-height: 1.1; }
+    .aby-floor b { font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums; }
+    .aby-floor.boss { color: #fff; background: #c8323a; box-shadow: inset 0 -4px 0 #8f1f24, inset 0 3px 0 #ef7a7f; }
+    .aby-hud-mid { display: flex; flex-direction: column; justify-content: center; gap: 5px; min-width: 230px; padding: 6px 12px 8px; background: var(--ab-stone); clip-path: var(--gl-step);
+      box-shadow: inset 0 -4px 0 var(--ab-stone-d), inset 0 3px 0 var(--ab-stone-l); }
+    .aby-chips { display: flex; flex-wrap: wrap; gap: 5px; font-size: 11px; }
+    .aby-chip { padding: 1px 6px; white-space: nowrap; color: var(--ab-ink2); background: var(--ab-stone-d); box-shadow: 0 0 0 1px var(--ab-edge); }
+    .aby-chip.ca { color: var(--ab-gold); }
+    .aby-chip.boss { color: #ffb4b8; box-shadow: 0 0 0 1px #c8323a; }
+    .aby-xp { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 7px; font-size: 10px; color: var(--ab-ink2); font-variant-numeric: tabular-nums; }
+    .aby-xp b { font-size: 14px; color: var(--ab-glow); text-shadow: 2px 2px 0 var(--ab-stone-d); }
+    .aby-bar { position: relative; height: 9px; overflow: hidden; background: var(--ab-stone-d); box-shadow: inset 0 2px 0 rgba(0, 0, 0, .4); }
+    .aby-bar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(#dcc8ff, #9b6cff); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .25); transition: width .25s steps(5); }
+    .aby-hint { max-width: 100%; margin-top: 5px; padding: 3px 10px; overflow: hidden; font-size: 12px; text-align: center; text-overflow: ellipsis; white-space: nowrap;
+      color: var(--ab-ink); background: rgba(21, 14, 38, .88); box-shadow: 0 0 0 2px var(--ab-edge); }
+    .aby-hint.fx { color: #f5d0fe; box-shadow: 0 0 0 2px #a855f7; }
+    .aby-hint:empty { display: none; }
+    /* 레벨업·스킬 카드 고르기 */
+    .aby-pick { width: min(680px, 94%); padding: 14px 14px 16px; background: var(--ab-stone); clip-path: var(--gl-step); box-shadow: inset 0 -6px 0 var(--ab-stone-d), inset 0 4px 0 var(--ab-stone-l); }
+    .aby-pick-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; margin-bottom: 6px; }
+    .aby-pick-head .aby-t { font-size: 22px; color: var(--ab-gold); text-shadow: 3px 3px 0 var(--ab-stone-d); }
+    .aby-pick-head span { font-size: 12px; color: var(--ab-ink2); }
+    .aby-timer { height: 6px; margin-bottom: 10px; background: var(--ab-stone-d); }
+    .aby-timer i { display: block; height: 100%; background: var(--ab-gold); transition: width 1s linear; }
+    .aby-pcards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .aby-pcard { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 10px; text-align: center; cursor: pointer; color: var(--ab-ink);
+      background: var(--ab-stone-l); clip-path: var(--gl-step); box-shadow: inset 0 -5px 0 var(--ab-stone-d), inset 0 3px 0 #4a3a7c; transition: transform .1s steps(2), filter .1s; }
+    .aby-pcard:hover, .aby-pcard:focus-visible { transform: translateY(-4px); filter: brightness(1.18); outline: 0; }
+    .aby-pcard:active { transform: translateY(1px); }
+    .aby-key { position: absolute; top: 7px; left: 9px; display: grid; place-items: center; min-width: 20px; height: 20px; font-size: 11px; color: var(--ab-ink2); background: var(--ab-stone-d); box-shadow: 0 0 0 1px var(--ab-edge); }
+    .aby-ico { display: grid; place-items: center; width: 54px; height: 54px; font-size: 30px; line-height: 1; background: var(--ab-stone-d); box-shadow: 0 0 0 2px var(--ab-edge); }
+    .aby-ico:has(> .pxe-x) { display: none; } /* 아이콘 숨기기(pixel-icons.js HIDE_ALL)로 이모지가 감춰지면 빈 칸도 같이 감춤 */
+    .aby-kind { padding: 0 6px; font-size: 10px; color: var(--ab-ink2); background: var(--ab-stone-d); }
+    .aby-pcard .aby-t { font-size: 16px; line-height: 1.25; }
+    .aby-pcard p { margin: 0; font-size: 11px; line-height: 1.5; color: var(--ab-ink2); }
+    .aby-pcard.stat .aby-t { color: var(--ab-gold); }
+    .aby-pcard.skill .aby-kind { color: #7dd3fc; }
+    .aby-pcard.hid { background: linear-gradient(160deg, #5a2f8f, #2a2160); }
+    .aby-pcard.hid .aby-ico { box-shadow: 0 0 0 2px #f0abfc, 0 0 16px #e879f9; }
+    .aby-pcard.hid .aby-kind { color: #f0abfc; }
+    .aby-pcard.hid .aby-t { color: transparent; background: linear-gradient(90deg, #f0abfc, #67e8f9, #fde68a, #f0abfc) 0 0 / 200% 100%; -webkit-background-clip: text; background-clip: text; animation: abyShine 3s linear infinite; }
+    @keyframes abyShine { to { background-position: -200% 0; } }
+    .aby-wait { padding: 18px 8px; font-size: 14px; text-align: center; color: #86efac; }
+    /* 층 이름판: 새 층에 내려올 때 잠깐 */
+    .aby-banner { position: absolute; inset: 0; z-index: 15; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; pointer-events: none; opacity: 0; }
+    .aby-banner.on { animation: abyBanner 2.6s ease-out both; }
+    @keyframes abyBanner { 0% { opacity: 0; transform: translateY(-14px); } 12% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+    .aby-banner .aby-t { font-size: clamp(34px, 7vw, 64px); line-height: 1.1; color: var(--ab-gold); text-shadow: 4px 4px 0 #150e26, 0 0 26px rgba(196, 165, 255, .65); }
+    .aby-banner span { padding: 3px 14px; font-size: 15px; background: rgba(21, 14, 38, .88); box-shadow: 0 0 0 2px var(--ab-edge); }
+    .aby-banner span.boss { color: #ffb4b8; box-shadow: 0 0 0 2px #c8323a; }
+    /* 던전 탭 카드 */
+    .aby-card { display: flex; flex-direction: column; gap: 12px; padding: 16px 14px; background: linear-gradient(180deg, #3a2c66 0, #241a3a 40%, #150e26 100%); clip-path: var(--gl-step);
+      box-shadow: inset 0 -6px 0 #0c0817, inset 0 4px 0 #4a3a7c; }
+    .aby-card-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .aby-card h3 { margin: 0; font: 700 26px/1.2 Galmuri11, 'Jua', sans-serif; color: var(--ab-gold); text-shadow: 3px 3px 0 var(--ab-stone-d); }
+    .aby-tag { margin-left: 6px; padding: 1px 7px; font: 400 11px Galmuri9, sans-serif; vertical-align: middle; color: #241a3a; background: var(--ab-glow); text-shadow: none; }
+    .aby-card p { max-width: 62ch; margin: 6px 0 0; font-size: 13px; line-height: 1.65; color: var(--ab-ink2); }
+    .aby-card p strong { font-weight: 400; color: var(--ab-ink); }
+    .aby-stats { display: flex; flex-wrap: wrap; gap: 6px; }
+    .aby-stat { min-width: 88px; padding: 6px 10px 7px; text-align: center; background: var(--ab-stone-d); box-shadow: 0 0 0 1px var(--ab-edge); }
+    .aby-stat small { display: block; font-size: 10px; color: var(--ab-ink2); }
+    .aby-stat b { font-size: 18px; line-height: 1.2; color: var(--ab-gold); }
+    .aby-cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 10px; }
+    .aby-box { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: rgba(12, 8, 23, .6); box-shadow: 0 0 0 1px var(--ab-edge); }
+    .aby-label { font: 700 13px Galmuri11, sans-serif; color: var(--ab-glow); }
+    .aby-mercs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .aby-merc { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px 3px 3px; font-size: 11px; cursor: pointer; color: var(--ab-ink2); background: var(--ab-stone); box-shadow: 0 0 0 2px var(--ab-stone-l); }
+    .aby-merc:hover { box-shadow: 0 0 0 2px var(--ab-glow); }
+    .aby-merc.on { color: #3d2410; background: var(--ab-gold); box-shadow: 0 0 0 2px var(--ab-gold-d); }
+    .aby-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; }
+    .aby-btn { min-height: 44px; padding: 0 12px; cursor: pointer; font: 700 14px Galmuri11, sans-serif !important; color: #3d2410; background: var(--ab-gold); clip-path: var(--gl-step);
+      box-shadow: inset 0 -4px 0 var(--ab-gold-d), inset 0 3px 0 #ffe58a; }
+    .aby-btn.alt { color: var(--ab-ink); background: #5b45a0; box-shadow: inset 0 -4px 0 #3a2a70, inset 0 3px 0 #8a72d6; }
+    .aby-btn:hover { filter: brightness(1.08); }
+    .aby-btn:active { transform: translateY(2px); }
+    .aby-btn[disabled] { filter: grayscale(.8) brightness(.8); opacity: .6; cursor: not-allowed; transform: none; }
+    .aby-rank { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: baseline; gap: 4px 8px; font-size: 12px; color: var(--ab-ink2); }
+    .aby-rank .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ab-ink); }
+    .aby-rank b { font-size: 13px; color: var(--ab-ink); }
+    .aby-rank small { font-size: 10px; }
+    .aby-rank .me { color: var(--ab-gold); }
+    .aby-empty { font-size: 12px; color: var(--ab-ink2); }
+    /* 결과 창 기록 칸 */
+    .aby-res { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 8px; text-align: center; background: var(--ab-stone); }
+    .aby-res > div { padding: 5px 4px 6px; background: var(--ab-stone-d); box-shadow: 0 0 0 1px var(--ab-edge); }
+    .aby-res small { display: block; font-size: 10px; color: var(--ab-ink2); }
+    .aby-res b { font-size: 16px; color: var(--ab-gold); }
+    .aby-res .who { grid-column: 1 / -1; font-size: 12px; color: var(--ab-ink); }
+    @media (max-width: 640px) {
+      .aby-pcards { grid-template-columns: minmax(0, 1fr); }
+      .aby-pcard { flex-direction: row; flex-wrap: wrap; justify-content: flex-start; padding: 8px 10px 10px 36px; text-align: left; }
+      .aby-pcard p { flex-basis: 100%; }
+      .aby-ico { width: 36px; height: 36px; font-size: 20px; }
+      .aby-cols, .aby-btns { grid-template-columns: minmax(0, 1fr); }
+      .aby-hud-mid { min-width: 0; }
+      .aby-res { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .aby-banner.on { animation: abyBannerStill 2.6s linear both; }
+      .aby-pcard.hid .aby-t { animation: none; }
+      .aby-pcard, .aby-bar i, .aby-timer i { transition: none; }
+    }
+    @keyframes abyBannerStill { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
     /* 💎 몬스터 디펜스 작전 테이블 (전장 위 패널 · 디펜스 탭) — 길드 스킨(나무·양피지·갈무리·계단 모서리)과 같은 말투 */
     .dfp.hidden { display: none !important; }
     .dfp { --lc: var(--gl-wood); display: flex; flex-direction: column; gap: 8px; padding: 8px; color: var(--gl-ink); font-family: Galmuri9, sans-serif;
@@ -2988,6 +3103,13 @@
           <div id="dungeonQuizBox" class="hidden absolute inset-0 z-20 flex items-center justify-center" style="background:rgba(2,6,23,0.55)">
             <div id="dungeonQuizCard" class="w-[min(560px,92%)] rounded-3xl border-2 border-violet-400 bg-slate-900 p-5 shadow-2xl"></div>
           </div>
+          <!-- 🕳️ 지하 던전: 레벨업 카드 고르기 -->
+          <div id="abyssPickBox" class="hidden absolute inset-0 z-20 flex items-center justify-center" style="background:rgba(12,8,23,0.62)">
+            <div id="abyssPickCard" class="aby aby-pick"></div>
+          </div>
+          <!-- 🕳️ 지하 던전: 화면 위 안내판 (층·종족·레벨·경험치) · 새 층 이름판 -->
+          <div id="abyssHud" class="aby aby-hudwrap hidden absolute top-[5.25rem] left-1/2 -translate-x-1/2 z-10 pointer-events-none select-none"></div>
+          <div id="abyssBanner" class="aby aby-banner"></div>
           <!-- 🏰 던전 탐험: 지금 방의 특수 효과 -->
           <div id="dungeonFxHud" class="hidden absolute top-[7.6rem] left-1/2 -translate-x-1/2 z-10 px-4 py-1 rounded-2xl font-extrabold text-xs sm:text-sm shadow-xl pointer-events-none select-none whitespace-nowrap max-w-[95%] overflow-hidden text-ellipsis"
             style="background:rgba(46,16,101,0.88);color:#e9d5ff;border:2px solid #a855f7"></div>
@@ -3951,6 +4073,8 @@
           </div>
         </div>
         <div id="dungeonBattleBanner"></div>
+        <!-- 🕳️ 지하 던전 (로그라이크): 용병 1명으로 한 층씩 내려감 -->
+        <div id="abyssCard"></div>
         <!-- 👥 내가 들어가 있는(또는 관전 중인) 던전 5인 방 대기실 · 열려 있는 던전방 -->
         <div id="dungeonWaitingRoomPanel" class="hidden bg-slate-900 border-2 border-amber-500/60 rounded-2xl p-5 flex flex-col gap-4 shadow-xl"></div>
         <div id="dungeonRoomChat" class="hidden"></div>
@@ -19821,6 +19945,8 @@
       const tag = (e.target && e.target.tagName) || '';
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       const k = (e.key || '').toLowerCase();
+      // 🕳️ 지하 던전: 카드를 고르는 동안 1·2·3은 카드 선택 (스킬 키로 쓰이지 않게)
+      if ((k === '1' || k === '2' || k === '3') && !e.repeat && !document.getElementById('abyssPickBox').classList.contains('hidden')) { abyssPick(Number(k) - 1); e.preventDefault(); return; }
       if (k in localBattleInput.keys) {
         localBattleInput.keys[k] = true;
         e.preventDefault();
@@ -33227,7 +33353,7 @@
           : rw && rw.rush
             ? `관전 종료 · 🌊 몬스터 러쉬 ${(sim.rush && sim.rush.cleared) || 0}라운드 클리어`
           : rw && rw.dungeon
-            ? `관전 종료 · ${rw.bossName} ${blueTeamWon ? '🏆 클리어!' : '🛡️ 탐험 실패'}`
+            ? (sim.dungeon && sim.dungeon.abyss ? `관전 종료 · 🕳️ 지하 던전 · 지하 ${sim.dungeon.abyss.depth}층까지 내려갔어요` : `관전 종료 · ${rw.bossName} ${blueTeamWon ? '🏆 클리어!' : '🛡️ 탐험 실패'}`)
           : rw
             ? `관전 종료 · ${rw.bossName} ${blueTeamWon ? '🏆 토벌 성공!' : '🛡️ 토벌 실패'}`
             : `관전 종료 · ${winner?.name || (blueTeamWon ? '블루팀' : '레드팀')} 승리!`;
@@ -51879,6 +52005,7 @@
         // 📝 던전 퀴즈 답 (지금 문제에 한 번만)
         const dq = sim.dungeon && sim.dungeon.quiz;
         if (dq && !dq.done && dq.need && Array.isArray(v.qz) && v.qz[0] === dq.id && dq.need.includes(stuId) && !(stuId in dq.ans)) dq.ans[stuId] = v.qz[1] === 1 ? 1 : 0;
+        if (sim.dungeon && sim.dungeon.abyss) abyssNetPick(stuId, v.ap); // 🕳️ 지하 던전 카드 선택
         if (sim.defense && sim.defense.party) defenseApplyNetReqs(c, stuId, Array.isArray(v.dfq) ? v.dfq : []); // 💎 5인 디펜스 친구 요청
         noteRemoteViewTime(c, v);
         const k = v.keys || {};
@@ -51931,6 +52058,7 @@
         forfeit: c.forfeit ? 1 : 0,
         chosen: c.controlChosen ? 1 : 0,
         qz: Array.isArray(c.quizAns) ? c.quizAns : null, // 📝 던전 퀴즈 답 [문제 번호, 맞힘 1/0]
+        ap: Array.isArray(c.abPick) ? c.abPick : null, // 🕳️ 지하 던전 카드 선택 [고르기 번호, 카드 번호]
         dfq: Array.isArray(c.dfq) && c.dfq.length ? c.dfq : null // 💎 5인 디펜스: 짓기·올리기·용병 강화·다음 라운드 요청 (defenseNetReq)
       };
       // 지연 보정: 내가 보고 있던 화면 시각(방장 시계 기준) · 바뀔 때만 실려 감 (onLocalControlChanged가 정함)
@@ -53658,7 +53786,7 @@
       if (dfRoom) defensePreloadArt();
       launchSimulation({
         mode: rush ? 'monster_rush' : dgMap ? 'dungeon' : dfRoom ? 'defense' : 'elite_raid',
-        title: rush ? `📺 관전 중: 🌊 몬스터 러쉬 · ${names} (${pick.name} 화면)` : dfRoom ? `📺 관전 중: 💎 몬스터 디펜스 · ${names} (${pick.name} 화면)` : dgMap ? `📺 관전 중: ${dgDef.icon} ${dgDef.name} [${dungeonDiffLabel(dgDiff)}] · ${names} (${pick.name} 화면)` : `📺 관전 중: ${names} vs ${room.hard ? '🔥하드 ' : room.easy ? '🌱이지 ' : ''}${bossDef.name} (${pick.name} 화면)`,
+        title: rush ? `📺 관전 중: 🌊 몬스터 러쉬 · ${names} (${pick.name} 화면)` : dfRoom ? `📺 관전 중: 💎 몬스터 디펜스 · ${names} (${pick.name} 화면)` : dgMap ? `📺 관전 중: ${room.abyss ? '🕳️ 지하 던전' : `${dgDef.icon} ${dgDef.name} [${dungeonDiffLabel(dgDiff)}]`} · ${names} (${pick.name} 화면)` : `📺 관전 중: ${names} vs ${room.hard ? '🔥하드 ' : room.easy ? '🌱이지 ' : ''}${bossDef.name} (${pick.name} 화면)`,
         blueStudent: owner,
         redStudent: null,
         eliteBossId: bossDef.id,
@@ -53672,14 +53800,15 @@
       sim.spectator = true;
       sim.spectateFrom = Date.now();
       sim.spectateRoomId = null;
-      sim.raidWatch = { roomId, castId: pick.castId, stuId: pick.id, hostName: pick.name, bossName: rush ? '🌊 몬스터 러쉬' : dfRoom ? '💎 몬스터 디펜스' : dgMap ? `${dgDef.icon} ${dgDef.name}` : bossDef.name, rush, dungeon: Boolean(dgMap) };
+      sim.raidWatch = { roomId, castId: pick.castId, stuId: pick.id, hostName: pick.name, bossName: rush ? '🌊 몬스터 러쉬' : dfRoom ? '💎 몬스터 디펜스' : dgMap ? (room.abyss ? '🕳️ 지하 던전' : `${dgDef.icon} ${dgDef.name}`) : bossDef.name, rush, dungeon: Boolean(dgMap) };
       if (dfRoom) { sim.defense = newDefenseState(defenseRaceOf(1), DEFENSE_DIFFS.includes(room.diff) ? room.diff : 'normal'); sim.defense.party = true; sim.defense.started = true; }
       if (rush) sim.rush = newRushState(Number(room.rushStartFloor) || 1);
       if (dgMap) {
         sim.dungeon = newDungeonState(dgDef.id, dgDiff, Number(room.dgSeed) >>> 0, dgMap, { floor: Number(room.dgFloor) || 1, powerRatio: Number(room.dgRatio) || 1, power: Number(room.dgPower) || 0 });
         sim.dungeon.party = true;
         sim.dungeon.started = true;
-        sim.dungeon.grid[dgMap.start[0]][dgMap.start[1]].visited = true;
+        if (room.abyss) abyssAttach(sim.dungeon, Number(room.dgSeed) >>> 0, raidFilledSlots(room).length); // 🕳️ 지하 던전 관전: 층·지도는 받은 화면(ab)을 따라감
+        sim.dungeon.grid[sim.dungeon.start[0]][sim.dungeon.start[1]].visited = true;
       }
       // 고를 것 없이 보기만: 전투 방식 고르기 창을 닫고 자동(화면 이동만)으로 고정
       battleControl.locked = true;
@@ -54008,7 +54137,9 @@
       normal: { stat: 0.8, eliteHp: 2.5, eliteAtk: 1.2, boss: 0.85, floorAdd: -3, levelEase: 0.05, mobSkills: 2, eliteSkills: 3, bossSkills: 4, bossAdds: 1 },
       hard:   { stat: 0.78, eliteHp: 2.0, eliteAtk: 1.1, boss: 0.9, floorAdd: -3, levelEase: 0.2, mobSkills: 2, eliteSkills: 3, bossSkills: 5, bossAdds: 2 },
       // 💀 매우 어려움: 지도·방 구성은 어려움과 같고 몬스터·정예·보스가 더 셈 (난이도 최상)
-      veryhard: { stat: 0.81, eliteHp: 2.1, eliteAtk: 1.15, boss: 0.94, floorAdd: -3, levelEase: 0.2, mobSkills: 2, eliteSkills: 4, bossSkills: 5, bossAdds: 3 }
+      veryhard: { stat: 0.81, eliteHp: 2.1, eliteAtk: 1.15, boss: 0.94, floorAdd: -3, levelEase: 0.2, mobSkills: 2, eliteSkills: 4, bossSkills: 5, bossAdds: 3 },
+      // 🕳️ 지하 던전: 용병 1명이 Lv.1부터 크는 로그라이크라 몬스터 수·세기를 크게 낮춤 (층이 깊어지는 만큼은 abyssPowerOf가 올림)
+      abyss: { stat: 0.5, atk: 0.45, eliteHp: 2.0, eliteAtk: 1.15, boss: 0.45, floorAdd: 0, levelEase: 0, mobSkills: 1, eliteSkills: 2, bossSkills: 3, bossAdds: 1 }
     };
     // 방마다 몬스터 수: 방 정의의 마릿수 × mult × (1 + depth × 시작 방에서 떨어진 칸 수) + 무리마다 -1~+1 (최소 1)
     // 깊은 방일수록 붐비고, 같은 방이라도 판마다 수가 조금씩 다름 · 수가 늘어난 만큼 일반 몬스터 한 마리는 mobStat 배율로 약하게
@@ -54017,7 +54148,8 @@
       // 시뮬(Lv.30, 8개 던전 × 10판): 방당 보통 3.6 → 약 7마리 · 어려움 4.3 → 약 8.7마리, 승률 보통 52 → 61% · 어려움 13 → 28% (Lv.55: 38 → 52% · 25 → 21%)
       normal: { mult: 1.8, depth: 0.08, cap: 14, firstWave: 7, wave: [3, 4], trigger: 3, every: 14, mobStat: 0.54 },
       hard:   { mult: 2.0, depth: 0.1,  cap: 16, firstWave: 8, wave: [3, 5], trigger: 3, every: 12, mobStat: 0.6 },
-      veryhard: { mult: 2.1, depth: 0.11, cap: 17, firstWave: 8, wave: [3, 5], trigger: 3, every: 11, mobStat: 0.6 }
+      veryhard: { mult: 2.1, depth: 0.11, cap: 17, firstWave: 8, wave: [3, 5], trigger: 3, every: 11, mobStat: 0.6 },
+      abyss: { mult: 0.6, depth: 0.05, cap: 6, firstWave: 4, wave: [1, 2], trigger: 1, every: 12, mobStat: 1 }
     };
     // 📝 퀴즈 방 (문제는 퀴즈 탭과 같은 문제 은행 + 오늘의 연산 문제)
     // 혼자: 틀리면(시간 초과 포함) 몬스터 ×2 · 5인: 사람 친구 1명이 틀릴 때마다 +20% (AI 자리는 안 풂)
@@ -54156,7 +54288,9 @@
       treasure: { icon: '📦', name: '보물 방' },
       gimmick:  { icon: '🔥', name: '기믹 방' },
       empty:    { icon: '🚶', name: '빈 방' },
-      boss:     { icon: '👑', name: '보스 방' }
+      boss:     { icon: '👑', name: '보스 방' },
+      stairs:   { icon: '🕳️', name: '계단 방' },   // 🕳️ 지하 던전: 다음 층으로 내려가는 방
+      shrine:   { icon: '⛲', name: '신비한 방' }  // 🕳️ 지하 던전: 들어가면 회복·능력치·레벨업 중 하나
     };
     // spawn: [직업, 종족 편성표(TOWER_RACE_SQUADS) 후보 번호, 마릿수] · elite: [직업, 후보 번호] (정예 1마리)
     const DUNGEONS = {
@@ -54921,6 +55055,7 @@
       }
       if (cell.cleared) {
         dg.phase = 'select';
+        if (dg.abyss && abyssEnterCleared(cell)) return;
         if (cell.kind === 'treasure' && cell.chest && cell.chest.opened < 0) addBattleLog(`📦 [${cell.def.name}] 상자 3개 중 하나를 골라 대표 용병이 다가가면 열려요. ${cell.def.hint || ''}`);
         else addBattleLog(`${info.icon} [${cell.def.name}] ${cell.kind === 'start' ? '던전 입구예요.' : cell.kind === 'empty' ? '아무도 없는 통로예요.' : '이미 정리한 방이에요.'} 열린 문: ${dungeonOpenDirs(dg).map(d => DUNGEON_DIR_ICON[d]).join(' ')}`);
         return;
@@ -55054,8 +55189,9 @@
       const raceFix = (race.floorScale || 1) / (towerRaceFloorScale(floor) || 1);
       // bossMult: 종족 보스마다 다른 세기 보정 (탑의 bossFloorScale처럼 리치·히드라는 기본 스킬이 세서 낮춤) · hardMult: 어려움에서만 곱함
       const crowd = !opts.boss && !opts.elite ? DUNGEON_CROWD[dg.diff].mobStat : 1; // 수가 많아진 만큼 일반 몬스터는 약하게
-      const statMul = (opts.boss ? tune.boss * (def.bossMult || 1) * (opts.guardian ? DUNGEON_GUARDIAN_MULT : 1) : tune.stat * crowd) * raceFix * (def.statMult || 1) * (dg.diff !== 'normal' ? def.hardMult || 1 : 1) * dungeonRoomMult();
+      const statMul = (opts.boss ? tune.boss * abyssPartyOf(dg, 'boss') * (def.bossMult || 1) * (opts.guardian ? DUNGEON_GUARDIAN_MULT : 1) : tune.stat * crowd) * raceFix * (def.statMult || 1) * (dg.diff !== 'normal' ? def.hardMult || 1 : 1) * dungeonRoomMult();
       const u = buildRushMonster(floorObj, 0, statMul, Boolean(opts.boss));
+      if (tune.atk) u.atk = Math.max(1, Math.round(u.atk * tune.atk)); // 🕳️ 지하 던전: 혼자 싸우니 몬스터 공격만 따로 낮춤
       if (opts.guardian) { // 🛡️ 파수꾼: 종족 보스 그대로 (보스 방 장치 없이), 잡으면 보스 방이 열림
         u.name = `🛡️ 파수꾼 ${u.name}`;
         u.dgGuardian = true;
@@ -55109,9 +55245,10 @@
       const dg = sim.dungeon, C = DUNGEON_CROWD[dg.diff];
       const depth = (dg.dist && dg.dist.get && dg.dist.get(dgKey(...dg.pos))) || 1;
       const qm = cell.quizMult || 1; // 📝 퀴즈를 틀리면 더 많이
-      const scale = C.mult * (1 + C.depth * Math.max(0, depth - 1)) * qm;
+      const pm = abyssPartyOf(dg, 'count'); // 🕳️ 지하 던전: 인원이 늘면 몬스터도 더 많이
+      const scale = C.mult * (1 + C.depth * Math.max(0, depth - 1)) * qm * pm;
       const groups = (cell.def.spawn || []).map(([job, cand, n]) => ({ job, cand, n: Math.max(1, Math.round(n * scale + (Math.random() * 3 | 0) - 1)) }));
-      const cap = Math.round((C.cap - (cell.def.elite ? (dg.diff !== 'normal' ? 2 : 1) * 2 : 0)) * qm); // 정예 방은 정예가 세서 졸개를 조금 덜
+      const cap = Math.round((C.cap - (cell.def.elite ? (dg.diff !== 'normal' ? 2 : 1) * 2 : 0)) * qm * pm); // 정예 방은 정예가 세서 졸개를 조금 덜
       let total = groups.reduce((t, g) => t + g.n, 0);
       while (total > cap) { const g = groups.reduce((a, b) => (b.n > a.n ? b : a)); if (g.n <= 1) break; g.n--; total--; }
       return groups;
@@ -55129,10 +55266,10 @@
         elites.push(buildDungeonMonster(race.bossJob || 'warrior', 0, { boss: true, guardian: true }));
       }
       if (cell.def.elite) {
-        const eliteN = dg.diff !== 'normal' ? 2 : 1;
+        const eliteN = dg.diff !== 'normal' && !dg.abyss ? 2 : 1;
         for (let i = 0; i < eliteN; i++) elites.push(buildDungeonMonster(cell.def.elite[0], cell.def.elite[1], { elite: true }));
       }
-      const firstN = Math.max(1, C.firstWave - elites.length);
+      const firstN = Math.max(1, Math.round(C.firstWave * abyssPartyOf(dg, 'count')) - elites.length);
       const list = [...mobs.slice(0, firstN), ...elites];
       dg.reinfQ = mobs.slice(firstN);
       dg.reinfNext = sim.tickCount + C.every * BATTLE_TICKS_PER_SEC;
@@ -55488,6 +55625,7 @@
     }
     function dungeonGiveChest(cell, item, mult) {
       const dg = sim.dungeon;
+      if (dg.abyss) { abyssBoon(item, mult); return; }
       if (item === 'gold') {
         const ca = dungeonRewardOf(dg.def, dg.diff, 'chest') * mult;
         dg.chestCa += ca;
@@ -55723,6 +55861,7 @@
       if (!dg) return false;
       const tps = BATTLE_TICKS_PER_SEC;
       if (!dg.started) return true; // 전투 방식을 고르기 전
+      if (dg.abyss && stepAbyss()) return true; // 🕳️ 지하 던전: 주인공이 쓰러짐 · 레벨업 카드를 고르는 중
       let L = dungeonLeader();
       if (!blueAlive.some(u => !u.isClone)) {
         addBattleLog('💀 용병들이 모두 쓰러졌어요... 던전 탐험 실패.');
@@ -55781,6 +55920,7 @@
         return true;
       }
       if (dg.phase === 'room') {
+        if (dg.abyss) abyssCollectXp();
         stepDungeonGimmick(blueAlive, redAlive);
         stepDungeonReinforce(blueAlive, redAlive);
         if (cell.kind === 'boss') {
@@ -55810,6 +55950,7 @@
         stepDungeonTreasure(cell, L);
       }
       if (dg.phase !== 'select') return false;
+      if (dg.abyss && abyssStairsStep(cell, L)) return true;
       if (L && L.alive) {
         const dir = dungeonOpenDirs(dg).find(d => { const p = dungeonDoorPoint(d); return Math.hypot(L.x - p.x, L.y - p.y) < DUNGEON_DOOR_R; });
         if (dir && dir !== dg.fromDir || (dir && sim.tickCount - dg.selectAt > 2 * tps)) { beginDungeonMove(dir); return true; }
@@ -55833,7 +55974,7 @@
       let revived = 0;
       sim.units.forEach(u => {
         if (u.team !== 'blue' || u.isClone) return;
-        if (u.alive || cell.kind === 'boss') return;
+        if (u.alive || (cell.kind === 'boss' && !dg.abyss)) return;
         u.alive = true;
         u.hp = Math.max(1, Math.round(u.maxHp * DUNGEON_REVIVE_HP));
         u.shield = 0;
@@ -55845,6 +55986,14 @@
         sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 70, color: '#34d399', life: 40, maxLife: 40 });
         revived++;
       });
+      if (cell.kind === 'boss' && dg.abyss) {
+        sim.projectiles = [];
+        dg.phase = 'select';
+        dg.selectAt = sim.tickCount;
+        playCombatSfx('heal');
+        addBattleLog(`🏆 ${dungeonBossNameOf(dg)} 처치! 방 가운데에 🕳️ 다음 층으로 내려가는 계단이 열렸어요.`);
+        return;
+      }
       if (cell.kind === 'boss') {
         dg.bossKilled = true;
         dg.phase = 'done';
@@ -55861,6 +56010,7 @@
         cell.chest.result = null;
       } else {
         dg.roomsCleared++;
+        if (dg.abyss) abyssRoomCleared();
         if (cell.kind === 'elite' || cell.kind === 'guardian') dg.elitesKilled++; // 파수꾼도 정예 보상
       }
       dg.phase = 'select';
@@ -55870,7 +56020,7 @@
       const bossNear = dirs.find(d => dgIsBossPos(dg, dungeonNeighbor(dg, d)));
       const bossSealed = !bossNear && Object.keys(DUNGEON_DIRS).find(d => dgIsBossPos(dg, dungeonNeighbor(dg, d, true)));
       playCombatSfx('heal');
-      addBattleLog(`✅ [${cell.def.name}] 정리 완료! +${cell.kind === 'elite' || cell.kind === 'guardian' ? rwRoom + rwElite : cell.kind === 'treasure' ? 0 : rwRoom} CA${revived ? ` · 쓰러진 용병 ${revived}명 부활` : ''} · 🚪 길이 열렸어요: ${dirs.map(d => DUNGEON_DIR_ICON[d]).join(' ')}${bossNear ? ` · ${DUNGEON_DIR_ICON[bossNear]} 문이 붉게 떨려요... 보스가 가까워요!` : ''}${bossSealed ? ` · ${DUNGEON_DIR_ICON[bossSealed]} 🔒 보스 방 문이 봉인돼 있어요! 어딘가의 🛡️ 파수꾼을 쓰러뜨려야 열려요.` : ''}`);
+      addBattleLog(`✅ [${cell.def.name}] 정리 완료!${dg.abyss ? '' : ` +${cell.kind === 'elite' || cell.kind === 'guardian' ? rwRoom + rwElite : cell.kind === 'treasure' ? 0 : rwRoom} CA`}${revived ? ` · 쓰러진 용병 ${revived}명 부활` : ''} · 🚪 길이 열렸어요: ${dirs.map(d => DUNGEON_DIR_ICON[d]).join(' ')}${bossNear ? ` · ${DUNGEON_DIR_ICON[bossNear]} 문이 붉게 떨려요... ${abyssStairsFloor(dg) ? '계단이' : '보스가'} 가까워요!` : ''}${bossSealed ? ` · ${DUNGEON_DIR_ICON[bossSealed]} 🔒 보스 방 문이 봉인돼 있어요! 어딘가의 🛡️ 파수꾼을 쓰러뜨려야 열려요.` : ''}`);
       if (cell.kind === 'guardian') addBattleLog('🔓 파수꾼을 쓰러뜨렸어요! 보스 방의 봉인이 풀렸어요. 👑 보스 방을 찾아가세요!');
     }
     function beginDungeonMove(dir) {
@@ -56005,7 +56155,7 @@
         ctx.fillText(sealed ? '🔒' : open ? DUNGEON_DIR_ICON[dir] : '🚪', 0, 0);
         if (open) {
           ctx.font = 'bold 18px Galmuri11, sans-serif';
-          const label = sealed ? '🔒 봉인된 문' : isBoss && (dg.mapRevealed) ? '👑 보스' : nc && nc.visited ? '✓ 가본 방' : '? 안 가본 방';
+          const label = sealed ? '🔒 봉인된 문' : isBoss && (dg.mapRevealed) ? (abyssStairsFloor(dg) ? '🕳️ 계단' : '👑 보스') : nc && nc.visited ? '✓ 가본 방' : '? 안 가본 방';
           const ly = horizontal ? -h / 2 - 18 : (dir === 'up' ? h / 2 + 18 : -h / 2 - 18);
           ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
           ctx.fillRect(-70, ly - 13, 140, 26);
@@ -56026,6 +56176,7 @@
         ctx.fillText('🔥', fx, fy);
         ctx.restore();
       }
+      if (dg.abyss) drawAbyssRoom(ctx, cell);
       // 보물 상자
       if (cell.kind === 'treasure' && cell.chest) {
         dungeonChestPoints().forEach((p, i) => {
@@ -56198,7 +56349,7 @@
         ctx.font = 'bold 18px Galmuri11, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillStyle = '#f8fafc';
-        ctx.fillText(known && isGuard && !cl.cleared ? '🛡️' : cl.quiz && !cl.cleared ? '📝' : known ? (isBoss ? (dungeonBossLocked(dg) ? '🔒' : '👑') : DUNGEON_KIND_INFO[cl.kind].icon) : '?', x + cell / 2, y + cell / 2 + 1);
+        ctx.fillText(known && isGuard && !cl.cleared ? '🛡️' : cl.quiz && !cl.cleared ? '📝' : known ? (isBoss && cl.kind === 'boss' ? (dungeonBossLocked(dg) ? '🔒' : '👑') : DUNGEON_KIND_INFO[cl.kind].icon) : '?', x + cell / 2, y + cell / 2 + 1);
       }
       ctx.restore();
     }
@@ -56208,6 +56359,8 @@
       if (!el) return;
       const dg = arenaVisible && sim.mode === 'dungeon' ? sim.dungeon : null;
       el.classList.toggle('hidden', !dg);
+      renderAbyssPickBox();
+      document.getElementById('abyssHud')?.classList.toggle('hidden', !(dg && dg.abyss && sim.running)); // 결과 창이 뜨면 안내판은 숨김
       if (!dg) { document.getElementById('dungeonQuizBox')?.classList.add('hidden'); document.getElementById('dungeonFxHud')?.classList.add('hidden'); return; }
       const tps = BATTLE_TICKS_PER_SEC;
       const left = dg.started ? Math.max(0, Math.ceil((dg.timeTicks - (sim.tickCount - dg.startTick)) / tps)) : DUNGEON_TIME_SEC;
@@ -56233,12 +56386,14 @@
       else if (dg.phase === 'move') text = '🚶 이동 중...';
       else if (dg.phase === 'quiz') text = `📝 [${cell.def.name}] 퀴즈를 풀어요!`;
       else text = `${DUNGEON_KIND_INFO[cell.kind].icon} [${cell.def.name}] 남은 몬스터 ${sim.units.filter(u => u.team === 'red' && (u.alive || u.rushPending) && !u.isClone).length + ((dg.gim && dg.gim.incoming) || 0)}마리${dg.gim && dg.gim.incoming ? ` (🪂 ${dg.gim.incoming}마리 더 와요)` : ''}`;
+      if (dg.abyss) { el.classList.add('hidden'); renderAbyssHud(dg, cell, text); return; }
       el.textContent = `🏰 ${dg.def.name} [${dungeonDiffLabel(dg.diff)}] · 방 ${dg.grid.flat().filter(c => c && c.visited).length}/${dg.grid.flat().filter(Boolean).length} · 📈 +${Math.round(DUNGEON_ROOM_RAMP * 100 * Math.max(0, (dg.roomNo || 1) - 1))}% · ⏰ ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} · 💰 ${rewardDone ? '오늘 보상 받음' : `${ca.toLocaleString()} CA`} · ${text}`;
     }
 
     // ----- 결과·보상 -----
     function finishDungeon(stu, won) {
       const dg = sim.dungeon;
+      if (dg.abyss) { finishAbyss(stu); return; }
       const def = dg.def, R = key => dungeonRewardOf(def, dg.diff, key);
       const secs = dg.started ? Math.round((sim.tickCount - dg.startTick) / BATTLE_TICKS_PER_SEC) : 0;
       const book = dungeonBookOf(stu, def.id);
@@ -56299,6 +56454,667 @@
       sim.netRole = null;
       saveState();
       renderAllStudentViews();
+    }
+
+    /********************************************************************
+     * 🕳️ 지하 던전 (로그라이크): 용병 1명으로 한 층씩 내려가는 끝없는 던전 (혼자 또는 친구와 최대 3명)
+     * - 지닌 전투력과 상관없이 고른 용병이 Lv.1 일반 용병으로 시작 (스탯 포인트·장비·펫·히든 스킬 없음)
+     * - 몬스터를 잡아 레벨업 → 올릴 능력치 카드 3장 중 하나 · 10레벨마다 스킬 카드 (낮은 확률로 히든 스킬)
+     * - 층마다 던전 탐험과 같은 격자 지도(작게)를 새로 만들고, 🕳️ 계단 방을 찾아 계단에 서면 다음 층
+     * - 종족마다 ABYSS_TIER_FLOORS층 (탑 종족 순서, 고블린부터) · 마지막 층은 종족 보스를 잡아야 계단이 열림
+     *   종족 특성 = 그 종족 던전(DUNGEONS)의 방·기믹·보스 패턴 그대로
+     * - 📦 상자·⛲ 신비한 방: 회복 물약 · 능력치 · 레벨업
+     * - 던전 탐험 엔진을 그대로 씀 (sim.mode 'dungeon', dg.diff 'abyss', dg.abyss에 이번 도전 기록)
+     * - 보상: 내려간 층마다 abyssCaFor (깊은 구역일수록 많이 · 하루에는 그날 가장 깊이 내려간 층까지만) · 랭킹: 가장 깊이 간 층 (stu.abyssBest)
+     * - 👥 함께 (최대 ABYSS_MAX_PLAYERS명): 던전 5인 방 장치(raid_rooms kind 'dungeon' + abyss: true)를 그대로 씀 · AI 자리 없음
+     *   레벨·경험치는 파티가 같이 쓰고 카드는 각자 자기 용병 것을 고름 · 인원이 늘면 몬스터 수·세기가 ABYSS_PARTY만큼 늘어남
+     *   방장 화면이 계산, 친구 화면은 화면에 실려 오는 dg.ab(층·씨앗·레벨·카드·용병 능력치)를 따라감 (abyssPackNet / abyssApplyNet)
+     ********************************************************************/
+    const ABYSS_TIER_FLOORS = 5;
+    const ABYSS_MAX_PLAYERS = 3;
+    // 함께 내려가기는 이 시각부터: 배포 전에 열어 둔 예전 탭은 지하 던전방을 일반 던전방으로 잘못 보므로, 모두 새로 연 다음 날 아침에 열림 (지나면 이 상수와 검사를 지워도 됨)
+    const ABYSS_PARTY_SINCE = new Date('2026-11-17T08:00:00+09:00').getTime();
+    // 인원수별 난이도 [1명, 2명, 3명]: 방마다 몬스터 수 · 몬스터 능력치 · 보스는 능력치에 한 번 더 (경험치는 늘어난 마릿수만큼 나눠 레벨 속도는 같게)
+    // 자동 전투 시뮬(2026-11-16): stat 1.3·1.6일 땐 2명 14~15층·3명 15~23층으로 혼자(약 10층)보다 쉬웠음 (쓰러져도 방을 깨면 다시 일어나서)
+    const ABYSS_PARTY = { count: [1, 1.5, 2], stat: [1, 1.6, 2.2], boss: [1, 1.5, 1.9] };
+    const ABYSS_CA = { base: 200, perTier: 100 }; // 층당 보상: 1~5층 200, 6~10층 300, 11~15층 400 … (구역마다 +100)
+    // 그 층 수만큼 내려갔을 때 받는 CA 합계
+    function abyssCaFor(floors) {
+      let sum = 0;
+      for (let f = 1; f <= floors; f++) sum += ABYSS_CA.base + ABYSS_CA.perTier * abyssTierNo(f);
+      return sum;
+    }
+    const ABYSS_HIDDEN_CHANCE = 0.08;  // 스킬 카드를 고를 때 히든 스킬 카드가 섞여 나올 확률
+    const ABYSS_PICK_SEC = 20;         // 이만큼 안 고르면 아무 카드나 고름
+    const ABYSS_POWER = { base: 0.25, perFloor: 0.09, loop: 1.6 }; // 몬스터 세기 = base × (1 + perFloor)^(층 - 1) × loop^(종족을 한 바퀴 돈 횟수)
+    const ABYSS_XP = { mob: 20, elite: 80, boss: 300 }; // 층이 깊어질수록 +15%씩 · 다음 레벨까지 abyssNeedXp
+    const ABYSS_ROOM_HEAL = 0.15;      // 싸우는 방을 깨면 체력 회복 (치유사 없이도 버티게)
+    const ABYSS_TIME_TICKS = 1e9;      // 제한 시간 없음 (서버에 실어 보낼 수 있게 무한대 대신 큰 수)
+    let ABYSS_AUTO = false;            // 콘솔 시뮬용: true면 카드를 바로 아무거나 고름
+    let abyssTiersCache = null;
+    function abyssTiers() { return abyssTiersCache || (abyssTiersCache = TOWER_RACES.map(r => Object.values(DUNGEONS).find(d => d.race === r.name)).filter(Boolean)); }
+    function abyssTierNo(depth) { return Math.floor((depth - 1) / ABYSS_TIER_FLOORS); }
+    function abyssTierOf(depth) { const t = abyssTiers(); return t[abyssTierNo(depth) % t.length]; }
+    function abyssIsBossFloor(depth) { return depth % ABYSS_TIER_FLOORS === 0; }
+    function abyssStairsFloor(dg) { return Boolean(dg && dg.abyss && !abyssIsBossFloor(dg.abyss.depth)); }
+    const abyssPartyOf = (dg, key) => (dg && dg.abyss ? ABYSS_PARTY[key][Math.max(1, Math.min(ABYSS_MAX_PLAYERS, dg.abyss.n || 1)) - 1] : 1);
+    // 능력치를 가져올 탑 층: 그 종족의 탑 구간(10층) 안에서 2층씩
+    function abyssTowerFloor(depth) {
+      const ri = Math.max(0, TOWER_RACES.findIndex(r => r.name === abyssTierOf(depth).race));
+      return Math.min(TOWER_MAX_FLOOR, ri * TOWER_RACE_FLOORS + ((depth - 1) % ABYSS_TIER_FLOORS) * 2 + 1);
+    }
+    function abyssPowerOf(depth) {
+      return ABYSS_POWER.base * Math.pow(1 + ABYSS_POWER.perFloor, depth - 1) * Math.pow(ABYSS_POWER.loop, Math.floor(abyssTierNo(depth) / abyssTiers().length));
+    }
+    // 그 층의 지도 정의: 종족 던전의 방 묶음을 작은 지도로
+    function abyssFloorDef(depth) {
+      const base = abyssTierOf(depth), boss = abyssIsBossFloor(depth);
+      const room = (k, a, b) => ({ ...base.rooms[k], count: [[a, b], [a, b]], pool: (base.rooms[k].pool || []).length ? base.rooms[k].pool : [{ name: '조용한 방' }] });
+      return { ...base, gridW: [3, 4], gridH: [2, 3], roomCount: { normal: [6, 8], hard: [6, 8] }, extraLoops: [0, 1],
+        rooms: { ...base.rooms, normal: room('normal', 2, 3), elite: room('elite', boss ? 1 : 0, 1), treasure: room('treasure', 1, 1), gimmick: room('gimmick', 0, 1), empty: room('empty', 1, 1) } };
+    }
+    const ABYSS_BOONS = {
+      heal:    { icon: '⛲', name: '회복의 샘' },
+      stat:    { icon: '🗿', name: '힘의 제단' },
+      levelup: { icon: '📖', name: '지혜의 서재' }
+    };
+    // 같은 씨앗이면 모든 화면에서 같은 지도 (신비한 방·상자 내용까지)
+    function abyssMakeMap(def, depth, seed) {
+      const map = generateDungeonMap(def, 'abyss', seed);
+      if (!map) return null;
+      const rng = dungeonRng((seed ^ 0x5bd1e995) >>> 0);
+      const kinds = Object.keys(ABYSS_BOONS);
+      map.grid.flat().forEach(c => {
+        if (!c) return;
+        c.quiz = false;
+        if (c.kind === 'empty') { c.kind = 'shrine'; c.boon = kinds[Math.floor(rng() * kinds.length)]; c.def = { name: ABYSS_BOONS[c.boon].name }; }
+        if (c.kind === 'treasure' && c.chest) c.chest.items = kinds.map(k => [rng(), k]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
+        if (c.kind === 'boss' && !abyssIsBossFloor(depth)) { c.kind = 'stairs'; c.cleared = true; c.def = { name: '내려가는 계단' }; }
+      });
+      return map;
+    }
+    // 던전 상태를 그 층으로 바꿈 (지도·종족·몬스터 세기). 지도를 못 만들면 false
+    function abyssSetFloor(dg, depth, seed) {
+      const def = abyssFloorDef(depth), map = abyssMakeMap(def, depth, seed);
+      if (!map) return false;
+      Object.assign(dg, map, { id: def.id, def, seed, pos: [...map.start], fromDir: null, roomNo: 0, mapRevealed: false, boss: null,
+        floor: abyssTowerFloor(depth), powerRatio: abyssPowerOf(depth) * abyssPartyOf(dg, 'stat') });
+      dg.abyss.depth = depth;
+      dg.abyss.seed = seed;
+      dg.abyss.armed = false;
+      return true;
+    }
+    // 던전 상태를 지하 던전 1층으로 (혼자·함께·관전 모두 여기서 시작)
+    function abyssAttach(dg, seed, n) {
+      Object.assign(dg, { diff: 'abyss', timeTicks: ABYSS_TIME_TICKS, abyss: { depth: 1, seed, lv: 1, xp: 0, kills: 0, n: Math.max(1, Math.min(ABYSS_MAX_PLAYERS, n || 1)), picks: [], pick: null, pickSeq: 0, armed: false } });
+      return abyssSetFloor(dg, 1, seed);
+    }
+    // 같은 직업·모습의 Lv.1 일반 용병 사본 (원래 용병은 건드리지 않음)
+    function abyssHeroOf(merc) {
+      return { ...merc, id: String(merc.id).startsWith('abyss_') ? merc.id : 'abyss_' + merc.id, skillSlots: [...(merc.skillSlots || [])], level: 1, rarity: 'N', statPoints: { hp: 0, atk: 0, def: 0, spd: 0 },
+        statVariance: { hp: 1, atk: 1, def: 1, spd: 1 }, equippedItem: null, hiddenSkillKey: null, hiddenSkillSlot: null, row: 2, col: 1, deployed: true };
+    }
+    // 주인공 용병들 (포탑·정령·분신 제외) · 카드·능력치를 나누는 열쇠 = 주인 학생 id (혼자는 'solo')
+    function abyssHeroes() { return sim.units.filter(u => u.team === 'blue' && !u.isClone && !u.turretKind && !u.spiritElem && !u.monsterType); }
+    const abyssKeyOf = u => (u && u.liveOwnerId) || 'solo';
+    function abyssMine() {
+      const dg = sim.dungeon;
+      if (!dg || !dg.abyss || sim.spectator) return null;
+      return dg.party ? myRushUnit() : abyssHeroes()[0] || null;
+    }
+
+    // ----- 입장 (혼자) -----
+    function startAbyss(mercId) {
+      const stu = getActiveStudent();
+      const merc = stu && (stu.roster || []).find(m => m.id === mercId);
+      if (!merc) { showNotice('⚠️ 데려갈 용병을 골라 주세요!'); return; }
+      const seed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
+      const def = abyssFloorDef(1), map = abyssMakeMap(def, 1, seed);
+      if (!map) { showNotice('던전 지도를 만들지 못했어요. 다시 시도해 주세요.'); return; }
+      const unit = createSimUnit(abyssHeroOf(merc), null, 'blue', 1.0);
+      launchSimulation({ mode: 'dungeon', title: '🕳️ 지하 던전 · 지하 1층', blueStudent: stu, customBlueUnits: [unit], customRedUnits: [], rewardMc: 0 });
+      if (!sim.running || sim.mode !== 'dungeon') return;
+      document.getElementById('arenaModeBadge').textContent = '🕳️ 지하 던전';
+      sim.dungeon = newDungeonState(def.id, 'abyss', seed, map, { floor: 1, powerRatio: 1, power: 0 });
+      abyssAttach(sim.dungeon, seed, 1);
+      enterDungeonRoom(sim.dungeon.start, null);
+      abyssIntroLog(unit.name);
+    }
+    function abyssIntroLog(who) {
+      const dg = sim.dungeon;
+      addBattleLog(`🕳️ 지하 던전에 들어왔어요! ${who}이(가) Lv.1부터 시작해요. 몬스터를 잡아 레벨을 올리고, 층마다 숨은 🕳️ 계단 방을 찾아 내려가세요. (${ABYSS_TIER_FLOORS}층마다 👑 보스)`);
+      addBattleLog(`🧬 ${dg.def.race} 구역 — ${dg.def.desc}`);
+      abyssShowBanner();
+      addBattleLog(`💰 내려간 층마다 ${ABYSS_CA.base} CA, 구역이 바뀔 때마다 +${ABYSS_CA.perTier}! 쓰러지거나 포기하면 그때까지 내려간 만큼 받아요.`);
+    }
+
+    // ----- 경험치·레벨업 (파티가 같이 씀) -----
+    function abyssNeedXp(lv) { return 30 + lv * 12; }
+    function abyssAddXp(n) {
+      const ab = sim.dungeon.abyss;
+      ab.xp += Math.max(0, Math.round(n));
+      while (ab.xp >= abyssNeedXp(ab.lv)) {
+        ab.xp -= abyssNeedXp(ab.lv);
+        ab.lv++;
+        ab.picks.push('stat');
+        if (ab.lv % 10 === 0) ab.picks.push('skill');
+        abyssHeroes().forEach(u => {
+          u.level = ab.lv;
+          if (!u.alive) return;
+          u.hp = Math.min(u.maxHp, u.hp + Math.round(u.maxHp * 0.15));
+          sim.effects.push({ type: 'aoe_ring', x: u.x, y: u.y, r: 90, color: '#e879f9', life: 30, maxLife: 30 });
+          sim.floatTexts.push({ x: u.x, y: u.y - 60, text: `⬆️ Lv.${ab.lv}`, color: '#e879f9', life: 70 });
+        });
+        addBattleLog(`⬆️ 레벨업! Lv.${ab.lv}${ab.lv % 10 === 0 ? ' — ✨ 스킬 카드도 골라요!' : ''}`);
+      }
+    }
+    // 쓰러진 몬스터마다 한 번씩 경험치 (불러낸 몬스터는 조금만 · 여럿이면 늘어난 마릿수만큼 나눔)
+    function abyssCollectXp() {
+      const dg = sim.dungeon, ab = dg.abyss;
+      sim.units.forEach(u => {
+        if (u.team !== 'red' || u.alive || u.abXp || u.isClone || u.rushPending) return;
+        u.abXp = true;
+        ab.kills++;
+        abyssAddXp((u.dgBoss ? ABYSS_XP.boss : u.dgElite ? ABYSS_XP.elite : ABYSS_XP.mob / abyssPartyOf(dg, 'count')) * (u.dgSummon ? 0.3 : 1) * (1 + 0.15 * (ab.depth - 1)));
+      });
+    }
+    const ABYSS_STATS = [
+      { id: 'atk',  icon: '⚔️', name: '공격력',    desc: '공격력 +12%', apply: u => { u.atk = Math.round(u.atk * 1.12) + 1; } },
+      { id: 'hp',   icon: '❤️', name: '최대 체력', desc: '최대 체력 +15% (늘어난 만큼 회복)', apply: u => { const a = Math.round(u.maxHp * 0.15); u.maxHp += a; u.hp = Math.min(u.maxHp, u.hp + a); } },
+      { id: 'def',  icon: '🛡️', name: '방어력',    desc: '방어력 +15%', apply: u => { u.def = Math.round(u.def * 1.15) + 1; } },
+      { id: 'aspd', icon: '⚡', name: '공격 속도', desc: '공격 속도 +8%', apply: u => { u.baseAtkInterval = Math.max(12, Math.round(u.baseAtkInterval * 0.92)); } },
+      // 이동 속도는 처음의 1.8배까지만
+      { id: 'move', icon: '👟', name: '이동 속도', desc: '이동 속도 +6%', apply: u => { u.abMove0 = u.abMove0 || u.baseMoveSpeed; u.baseMoveSpeed = +Math.min(u.baseMoveSpeed * 1.06, u.abMove0 * 1.8).toFixed(2); } },
+      { id: 'heal', icon: '🧪', name: '회복 물약', desc: '체력 40% 회복', apply: u => { u.hp = Math.min(u.maxHp, u.hp + Math.round(u.maxHp * 0.4)); } }
+    ];
+    // 쓰러져 있는 용병에게도 능력치는 오르되 체력은 0 그대로
+    function abyssApplyStat(u, s) { s.apply(u); if (!u.alive) u.hp = 0; }
+    const abyssShuffle = a => a.map(x => [Math.random(), x]).sort((p, q) => p[0] - q[0]).map(x => x[1]);
+    // 카드 한 장 (친구 화면은 종류·id만 받아 여기서 다시 만듦 → 받은 글자를 화면에 그대로 쓰지 않음). 없는 카드면 null
+    function abyssCardOf(u, t, id, big) {
+      if (t === 'stat') {
+        const s = ABYSS_STATS.find(x => x.id === id);
+        return s ? { t, id, icon: s.icon, name: s.name, desc: s.desc + (big ? ' × 2번' : ''), big: Boolean(big) } : null;
+      }
+      const sk = t === 'hidden' ? hiddenSkillOf(u.job) : (SKILL_DEFS[u.job] || {})[id];
+      if ((t !== 'skill' && t !== 'hidden') || !sk || (t === 'hidden' && sk.id !== id)) return null;
+      return { t, id, icon: sk.icon, name: sk.name, desc: sk.desc + (t === 'hidden' && u.unlockedSkills.length >= 4 ? ' (4번 스킬 자리에 들어가요)' : '') };
+    }
+    // 카드 3장: 능력치 카드 · 스킬 카드(아직 안 배운 직업 스킬, 낮은 확률로 히든 스킬). 배울 스킬이 없으면 2배짜리 능력치 카드
+    function abyssCards(type, u) {
+      if (type === 'skill') {
+        const cards = u.unlockedSkills.length < 4
+          ? abyssShuffle(Object.keys(SKILL_DEFS[u.job] || {}).filter(k => !u.unlockedSkills.includes(k))).slice(0, 3).map(k => abyssCardOf(u, 'skill', k))
+          : [];
+        const hid = hiddenSkillOf(u.job);
+        if (hid && !u.unlockedSkills.includes(hid.id) && Math.random() < ABYSS_HIDDEN_CHANCE) cards[cards.length < 3 ? cards.length : Math.floor(Math.random() * 3)] = abyssCardOf(u, 'hidden', hid.id);
+        if (cards.length) return cards;
+      }
+      return abyssShuffle(ABYSS_STATS).slice(0, 3).map(s => abyssCardOf(u, 'stat', s.id, type === 'skill'));
+    }
+    // 스킬을 다음 빈 칸에 (4칸이 다 찼으면 4번 칸을 바꿈: 히든 스킬)
+    function abyssLearnSkill(u, key) {
+      const learned = [...u.unlockedSkills.filter(k => k !== key).slice(0, 3), key];
+      u.unlockedSkills = learned;
+      u.skillSlots = [...learned, ...u.skillSlots.filter(k => !learned.includes(k))];
+      u.skillCooldowns[key] = u.skillCooldowns[key] || 0;
+    }
+    // 카드 적용 (혼자·방장 화면). 모두 골랐으면 고르기 끝
+    function abyssApplyPick(key, i) {
+      const dg = sim.mode === 'dungeon' ? sim.dungeon : null, ab = dg && dg.abyss, p = ab && ab.pick;
+      const u = abyssHeroes().find(x => abyssKeyOf(x) === key);
+      const c = p && !p.done[key] && p.cards[key] && p.cards[key][i];
+      if (!c || !u) return;
+      if (c.t === 'stat') { const s = ABYSS_STATS.find(x => x.id === c.id); abyssApplyStat(u, s); if (c.big) abyssApplyStat(u, s); }
+      else abyssLearnSkill(u, c.id);
+      p.done[key] = 1;
+      if (Object.keys(p.cards).every(k => p.done[k])) ab.pick = null;
+      sim.floatTexts.push({ x: u.x, y: u.y - 50, text: `${c.icon} ${c.name}`, color: c.t === 'hidden' ? '#f0abfc' : '#fde68a', life: 70 });
+      const who = dg.party ? `${unitShortName(u)}: ` : '';
+      addBattleLog(c.t === 'stat' ? `${who}${c.icon} ${c.desc}` : `${who}${c.t === 'hidden' ? '🌈 히든 스킬' : '✨ 새 스킬'} [${c.icon} ${c.name}]을(를) 배웠어요!`);
+      try { playCombatSfx('heal'); } catch (e) {}
+      renderBattleControlHud(true);
+      renderAbyssPickBox();
+    }
+    // 내가 카드를 누름: 혼자·방장은 바로 적용, 친구 화면은 조작과 함께 방장에게 보냄
+    function abyssPick(i) {
+      const dg = sim.mode === 'dungeon' ? sim.dungeon : null, p = dg && dg.abyss && dg.abyss.pick, u = abyssMine();
+      if (!p || !u || p.done[abyssKeyOf(u)] || p.mine != null) return;
+      if (sim.netRole === 'guest') {
+        p.mine = i;
+        localBattleInput.abPick = [p.id, i];
+        onLocalControlChanged(true);
+        renderAbyssPickBox();
+      } else abyssApplyPick(abyssKeyOf(u), i);
+    }
+    window.abyssPick = abyssPick;
+    // 방장: 친구가 보낸 카드 선택 [고르기 번호, 카드 번호]
+    function abyssNetPick(stuId, v) {
+      const ab = sim.dungeon && sim.dungeon.abyss, p = ab && ab.pick;
+      if (!p || !Array.isArray(v) || v[0] !== p.id || !Number.isInteger(v[1])) return;
+      abyssApplyPick(stuId, v[1]);
+    }
+    // 매 틱 맨 앞: 주인공이 모두 쓰러졌으면 끝 · 고를 카드가 있으면 모두 고를 때까지 멈춤 (true면 이번 틱은 여기서 끝)
+    function stepAbyss() {
+      const dg = sim.dungeon, ab = dg.abyss, heroes = abyssHeroes();
+      if (!heroes.some(u => u.alive)) {
+        addBattleLog(`💀 지하 ${ab.depth}층에서 쓰러졌어요... 여기까지!`);
+        finishSimulation(false);
+        return true;
+      }
+      if (!ab.pick && ab.picks.length && dg.phase !== 'move') {
+        const type = ab.picks.shift(), cards = {};
+        heroes.forEach(u => { cards[abyssKeyOf(u)] = abyssCards(type, u); });
+        ab.pick = { id: ++ab.pickSeq, type, at: sim.tickCount, cards, done: {} };
+        // 중간에 나간 친구의 용병은 바로 아무 카드나 (남은 친구가 매번 20초씩 기다리지 않게)
+        const here = dg.party ? raidFightingHumans([]) : [], me = getActiveStudent();
+        if (here.length) Object.keys(cards).forEach(k => { if (ab.pick && !here.includes(k) && k !== (me && me.id)) abyssApplyPick(k, Math.floor(Math.random() * cards[k].length)); });
+      }
+      const p = ab.pick;
+      if (!p) return false;
+      sim.units.forEach(x => { if (x.alive) x.isMoving = false; });
+      if (ABYSS_AUTO || sim.tickCount - p.at >= ABYSS_PICK_SEC * BATTLE_TICKS_PER_SEC) {
+        Object.keys(p.cards).forEach(k => { if (ab.pick === p && !p.done[k]) abyssApplyPick(k, Math.floor(Math.random() * p.cards[k].length)); });
+        ab.pick = null; // 용병이 사라진 자리가 있어도 멈춰 있지 않게
+      }
+      return true;
+    }
+    let abyssPickKey = '';
+    function renderAbyssPickBox() {
+      const box = document.getElementById('abyssPickBox');
+      if (!box) return;
+      const dg = sim.mode === 'dungeon' && sim.running ? sim.dungeon : null;
+      const p = dg && dg.abyss && dg.abyss.pick, u = p && abyssMine();
+      const key = abyssKeyOf(u), cards = u && p.cards[key];
+      const show = Boolean(cards && isArenaBattleVisible());
+      box.classList.toggle('hidden', !show);
+      if (!show) { abyssPickKey = ''; return; }
+      const left = Math.max(0, Math.ceil(ABYSS_PICK_SEC - (sim.tickCount - p.at) / BATTLE_TICKS_PER_SEC));
+      const timer = document.getElementById('abyssPickTimer'), bar = document.getElementById('abyssPickBar');
+      const picked = Boolean(p.done[key]) || p.mine != null;
+      const sig = `${p.id}|${picked ? 1 : 0}`;
+      if (abyssPickKey === sig) { // 바뀐 게 없으면 다시 그리지 않음 (누르는 중에 버튼이 사라지지 않게)
+        if (timer) timer.textContent = `⏰ ${left}초`;
+        if (bar) bar.style.width = `${left / ABYSS_PICK_SEC * 100}%`;
+        return;
+      }
+      abyssPickKey = sig;
+      const kind = { stat: '능력치', skill: '✨ 스킬', hidden: '🌈 히든 스킬' };
+      document.getElementById('abyssPickCard').innerHTML = `
+        <div class="aby-pick-head">
+          <div class="aby-t">${p.type === 'skill' ? '✨ 새 스킬을 골라요' : `⬆️ 레벨업! Lv.${dg.abyss.lv - dg.abyss.picks.filter(t => t === 'stat').length}`}</div>
+          <span>${picked ? '' : '카드를 누르거나 숫자 키 1 · 2 · 3 · '}<span id="abyssPickTimer">⏰ ${left}초</span></span>
+        </div>
+        <div class="aby-timer"><i id="abyssPickBar" style="width:${left / ABYSS_PICK_SEC * 100}%"></i></div>
+        ${picked ? '<div class="aby-wait">✅ 골랐어요! 다른 친구가 고를 때까지 기다려요...</div>' : `
+        <div class="aby-pcards">${cards.map((c, i) => `<button type="button" onclick="abyssPick(${i})" class="aby-pcard ${c.t === 'hidden' ? 'hid' : c.t}">
+            <span class="aby-key">${i + 1}</span>
+            <span class="aby-ico">${c.icon}</span>
+            <span class="aby-kind">${kind[c.t]}</span>
+            <span class="aby-t">${c.name}</span>
+            <p>${c.desc}</p>
+          </button>`).join('')}</div>`}`;
+    }
+
+    // ----- 📦 상자·⛲ 신비한 방에서 얻는 것 (파티 모두) -----
+    function abyssBoon(kind, mult = 1) {
+      const ab = sim.dungeon.abyss, heroes = abyssHeroes();
+      if (kind === 'heal') {
+        heroes.forEach(u => {
+          if (!u.alive) return;
+          const heal = Math.round(u.maxHp * 0.5);
+          u.hp = Math.min(u.maxHp, u.hp + heal);
+          sim.floatTexts.push({ x: u.x, y: u.y - 40, text: `💚+${heal}`, color: '#16a34a', life: 60 });
+        });
+        addBattleLog('🧪 체력 물약! 체력 50% 회복!');
+      } else if (kind === 'stat') {
+        const s = abyssShuffle(ABYSS_STATS.filter(x => x.id !== 'heal'))[0];
+        heroes.forEach(u => { abyssApplyStat(u, s); sim.floatTexts.push({ x: u.x, y: u.y - 40, text: `${s.icon} ${s.name}`, color: '#fde68a', life: 60 }); });
+        addBattleLog(`🗿 신비한 힘이 깃들어요! ${s.icon} ${s.desc}`);
+      } else if (kind === 'levelup') {
+        addBattleLog('📖 고대의 지혜를 얻었어요! 바로 레벨업!');
+        abyssAddXp(abyssNeedXp(ab.lv) - ab.xp);
+      } else { // 가짜 상자를 물리친 보너스
+        const xp = Math.round(abyssNeedXp(ab.lv) * 0.5 * mult);
+        addBattleLog(`📦✨ 상자에서 경험치 ${xp}!`);
+        abyssAddXp(xp);
+      }
+    }
+    // 이미 열린 방에 들어갔을 때 (true면 안내를 여기서 함)
+    function abyssEnterCleared(cell) {
+      const dg = sim.dungeon;
+      if (cell.kind === 'shrine' && !cell.boonTaken) {
+        cell.boonTaken = true;
+        addBattleLog(`${ABYSS_BOONS[cell.boon].icon} [${cell.def.name}]을(를) 찾았어요!`);
+        abyssBoon(cell.boon);
+        return true;
+      }
+      if (cell.kind === 'stairs') {
+        addBattleLog(`🕳️ 내려가는 계단을 찾았어요! ${dg.party ? '⭐ 대표 용병이 ' : ''}방 가운데 계단에 서면 지하 ${dg.abyss.depth + 1}층으로 내려가요. (다른 방을 더 돌고 와도 돼요)`);
+        return true;
+      }
+      return false;
+    }
+    // 싸우는 방을 깼을 때: 살아 있는 용병 회복
+    function abyssRoomCleared() {
+      abyssHeroes().forEach(u => { if (u.alive) u.hp = Math.min(u.maxHp, u.hp + Math.round(u.maxHp * ABYSS_ROOM_HEAL)); });
+    }
+
+    // ----- 계단 -----
+    function abyssStairPoint() { return { x: Math.round(WORLD_WIDTH / 2), y: Math.round((ARENA_BOUNDS.top + ARENA_BOUNDS.bottom) / 2) }; }
+    const abyssHasStairs = cell => Boolean(cell && cell.cleared && (cell.kind === 'stairs' || cell.kind === 'boss'));
+    // 길이 열린 동안: 대표가 계단에 서면 내려감 (보스를 계단 자리에서 잡았으면 한 번 벗어났다가 다시 서야 함 · 아무도 조종하지 않는 대표는 알아서 걸어감)
+    function abyssStairsStep(cell, L) {
+      const dg = sim.dungeon, ab = dg.abyss;
+      if (!abyssHasStairs(cell)) { ab.armed = false; return false; }
+      if (!L || !L.alive) return false;
+      const p = abyssStairPoint(), d = Math.hypot(L.x - p.x, L.y - p.y);
+      const auto = dg.party ? !(sim.controllers && sim.controllers[L.id]) : battleControl.mode !== 'manual';
+      if (auto) { dungeonWalkTo(L, p.x, p.y); dg.selectAt = sim.tickCount; }
+      if (d > 150 || auto) ab.armed = true;
+      if (ab.armed && d < 90) { abyssDescend(); return true; }
+      return false;
+    }
+    function abyssDescend() {
+      const dg = sim.dungeon, ab = dg.abyss;
+      const depth = ab.depth + 1;
+      if (!abyssSetFloor(dg, depth, (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0)) return; // 지도를 못 만들었으면 다음 틱에 다시
+      // 쓰러진 친구는 다음 층에서 다시 일어남
+      abyssHeroes().forEach(u => {
+        if (u.alive) { u.hp = Math.min(u.maxHp, u.hp + Math.round(u.maxHp * 0.2)); return; }
+        u.alive = true;
+        u.hp = Math.max(1, Math.round(u.maxHp * DUNGEON_REVIVE_HP));
+        u.shield = 0;
+        Object.keys(u.statuses).forEach(k => { u.statuses[k] = 0; });
+        u._deadSince = null;
+      });
+      enterDungeonRoom(dg.start, null);
+      // 방을 옮길 때처럼 어두웠다가 밝아짐
+      dg.nextPhase = dg.phase;
+      dg.phase = 'move';
+      dg.fadeDir = -1;
+      dg.fade = 1;
+      dg.moveAt = sim.tickCount;
+      abyssFloorTitle();
+      playCombatSfx('heal');
+      addBattleLog(`🕳️ 지하 ${depth}층으로 내려왔어요! (체력 20% 회복 · 💰 ${abyssCaFor(depth - 1).toLocaleString()} CA 확보)`);
+      if ((depth - 1) % ABYSS_TIER_FLOORS === 0) addBattleLog(`🧬 ${dg.def.race} 구역 — ${dg.def.desc}`);
+      if (abyssIsBossFloor(depth)) addBattleLog(`👑 이 층 어딘가에 ${dg.def.rooms.boss.bossName}이(가) 있어요. 쓰러뜨려야 계단이 열려요!`);
+    }
+    function abyssFloorTitle() {
+      const dg = sim.dungeon;
+      sim.title = `🕳️ 지하 던전 · 지하 ${dg.abyss.depth}층${dg.party ? ` 👥 ${dg.abyss.n}명` : ''}`;
+      const el = document.getElementById('arenaMatchTitle');
+      if (el && !sim.spectator) el.textContent = sim.title;
+      abyssShowBanner();
+    }
+    function drawAbyssRoom(ctx, cell) {
+      const dg = sim.dungeon, t = sim.tickCount;
+      const p = abyssStairPoint();
+      const icon = abyssHasStairs(cell) ? '🕳️' : cell.kind === 'shrine' ? ABYSS_BOONS[cell.boon].icon : '';
+      if (!icon) return;
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      if (cell.kind !== 'shrine') {
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.75)';
+        ctx.strokeStyle = `rgba(232, 121, 249, ${0.5 + 0.4 * Math.abs(Math.sin(t * 0.08))})`;
+        ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.ellipse(p.x, p.y, 90, 60, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.font = 'bold 20px Galmuri11, sans-serif';
+        ctx.fillStyle = '#f5d0fe';
+        ctx.fillText(`▼ 지하 ${dg.abyss.depth + 1}층`, p.x, p.y + 86);
+      }
+      ctx.font = 'bold 60px Galmuri11, sans-serif';
+      ctx.fillText(icon, p.x, p.y);
+      ctx.restore();
+    }
+    // 화면 위 안내판: 층 팻말 · 종족·인원·보상 · 레벨과 경험치 막대 · 안내 한 줄 (+ 방 효과 한 줄)
+    let abyssHudSig = '';
+    function renderAbyssHud(dg, cell, text) {
+      const box = document.getElementById('abyssHud');
+      if (!box) return;
+      const ab = dg.abyss, need = abyssNeedXp(ab.lv), boss = abyssIsBossFloor(ab.depth);
+      if (dg.phase === 'select' && abyssHasStairs(cell)) text = `🕳️ ${dg.party ? '⭐ 대표 용병이 ' : ''}방 가운데 계단에 서면 지하 ${ab.depth + 1}층으로 내려가요`;
+      // 방 효과 줄(dungeonFxHud)은 이 안내판 아래에 같이 보여 줌 (자리가 겹쳐서)
+      const fxEl = document.getElementById('dungeonFxHud');
+      const fx = fxEl && !fxEl.classList.contains('hidden') ? fxEl.textContent : '';
+      if (fxEl) fxEl.classList.add('hidden');
+      const sig = [ab.depth, ab.lv, ab.xp, ab.n, dg.party ? 1 : 0, text, fx].join('|');
+      if (sig === abyssHudSig) return;
+      abyssHudSig = sig;
+      box.innerHTML = `
+        <div class="aby-hud">
+          <div class="aby-floor${boss ? ' boss' : ''}"><small>지하</small><b>${ab.depth}</b><small>층</small></div>
+          <div class="aby-hud-mid">
+            <div class="aby-chips">
+              <span class="aby-chip">${escHtml(dg.def.race)}</span>
+              ${boss ? '<span class="aby-chip boss">👑 보스 층</span>' : ''}
+              ${dg.party ? `<span class="aby-chip">👥 ${ab.n}명</span>` : ''}
+              <span class="aby-chip ca">💰 ${abyssCaFor(ab.depth - 1).toLocaleString()} CA</span>
+            </div>
+            <div class="aby-xp"><b>Lv.${ab.lv}</b><div class="aby-bar"><i style="width:${Math.min(100, Math.round(ab.xp / need * 100))}%"></i></div><span>${ab.xp}/${need}</span></div>
+          </div>
+        </div>
+        <div class="aby-hint">${escHtml(text)}</div>
+        <div class="aby-hint fx">${escHtml(fx)}</div>`;
+    }
+    // 새 층 이름판: 전투 화면 가운데에 잠깐
+    function abyssShowBanner() {
+      const el = document.getElementById('abyssBanner'), dg = sim.dungeon;
+      if (!el || !dg || !dg.abyss) return;
+      const d = dg.abyss.depth;
+      el.innerHTML = `<div class="aby-t">지하 ${d}층</div><span>🧬 ${escHtml(dg.def.race)} 구역</span>${abyssIsBossFloor(d) ? `<span class="boss">👑 ${escHtml(dg.def.rooms.boss.bossName)}이(가) 계단을 지켜요</span>` : ''}`;
+      el.classList.remove('on');
+      void el.offsetWidth; // 애니메이션 다시 시작
+      el.classList.add('on');
+    }
+
+    // ----- 👥 함께: 화면에 실어 보내는 기록 (packDungeonState의 ab) -----
+    // pk = [번호, 종류, 시각, {열쇠: [[카드 종류, id, 2배]…]}, 고른 열쇠들] · h = {열쇠: [공격, 방어, 공격 간격, 이동 속도, …배운 스킬]}
+    function abyssPackNet() {
+      const ab = sim.dungeon.abyss, p = ab.pick, h = {};
+      abyssHeroes().forEach(u => { h[abyssKeyOf(u)] = [u.atk, u.def, u.baseAtkInterval, u.baseMoveSpeed, ...u.unlockedSkills]; });
+      const pc = {};
+      if (p) Object.keys(p.cards).forEach(k => { pc[k] = p.cards[k].map(c => [c.t, c.id, c.big ? 1 : 0]); });
+      return { d: ab.depth, sd: ab.seed, lv: ab.lv, xp: ab.xp, k: ab.kills, n: ab.n, pk: p ? [p.id, p.type, p.at, pc, Object.keys(p.done)] : null, h };
+    }
+    function abyssApplyNet(a) {
+      const dg = sim.dungeon, ab = dg && dg.abyss;
+      if (!ab || !a || typeof a !== 'object') return;
+      const int = (v, d, lo = 0, hi = 1e9) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, Math.floor(v))) : d);
+      ab.n = int(a.n, ab.n, 1, ABYSS_MAX_PLAYERS);
+      const depth = int(a.d, ab.depth, 1, 9999), seed = int(a.sd, ab.seed, 0, 0xffffffff);
+      if ((depth !== ab.depth || seed !== ab.seed) && abyssSetFloor(dg, depth, seed)) abyssFloorTitle(); // 다음 층: 같은 씨앗으로 같은 지도를 만듦
+      ab.lv = int(a.lv, ab.lv, 1, 9999);
+      ab.xp = int(a.xp, ab.xp);
+      ab.kills = int(a.k, ab.kills);
+      const heroes = abyssHeroes();
+      if (a.h && typeof a.h === 'object') heroes.forEach(u => {
+        const v = a.h[abyssKeyOf(u)];
+        if (!Array.isArray(v)) return;
+        u.level = ab.lv;
+        if (typeof v[0] === 'number' && isFinite(v[0])) u.atk = v[0];
+        if (typeof v[1] === 'number' && isFinite(v[1])) u.def = v[1];
+        if (typeof v[2] === 'number' && v[2] >= 12) u.baseAtkInterval = v[2];
+        if (typeof v[3] === 'number' && v[3] > 0) u.baseMoveSpeed = v[3];
+        const book = JOB_SKILL_BOOK[u.job] || {};
+        const skills = v.slice(4, 8).filter(k => typeof k === 'string' && Object.prototype.hasOwnProperty.call(book, k));
+        if (skills.length && skills.join() !== u.unlockedSkills.join()) {
+          u.unlockedSkills = skills;
+          u.skillSlots = [...skills, ...u.skillSlots.filter(k => !skills.includes(k))];
+          skills.forEach(k => { u.skillCooldowns[k] = u.skillCooldowns[k] || 0; });
+          renderBattleControlHud(true);
+        }
+      });
+      const pk = a.pk;
+      if (Array.isArray(pk) && pk[3] && typeof pk[3] === 'object') {
+        const id = int(pk[0], 0), cards = {}, done = {};
+        heroes.forEach(u => {
+          const list = pk[3][abyssKeyOf(u)];
+          if (Array.isArray(list)) cards[abyssKeyOf(u)] = list.slice(0, 3).map(c => (Array.isArray(c) ? abyssCardOf(u, c[0], c[1], c[2] === 1) : null)).filter(Boolean);
+        });
+        (Array.isArray(pk[4]) ? pk[4] : []).forEach(k => { if (typeof k === 'string' && cards[k]) done[k] = 1; });
+        ab.pick = { id, type: pk[1] === 'skill' ? 'skill' : 'stat', at: int(pk[2], sim.tickCount), cards, done, mine: ab.pick && ab.pick.id === id ? ab.pick.mine : null };
+      } else ab.pick = null;
+    }
+
+    // ----- 👥 함께: 방 (던전 5인 방 장치 + abyss: true, 최대 ABYSS_MAX_PLAYERS명, AI 자리 없음) -----
+    // 내가 데려갈 용병 (지하 던전 카드에서 고른 용병)의 Lv.1 사본
+    function abyssSeatMerc(stu) {
+      const roster = ((stu && stu.roster) || []).filter(Boolean);
+      const m = roster.find(x => x.id === abyssMercId) || repMercOf(stu) || roster[0];
+      return m ? abyssHeroOf(m) : null;
+    }
+    window.createAbyssRoom = async function () {
+      const me = getActiveStudent();
+      const merc = me && abyssSeatMerc(me);
+      if (!merc) { showNotice('⚠️ 데려갈 용병을 골라 주세요!'); return; }
+      if (Date.now() < ABYSS_PARTY_SINCE) { showNotice('👥 친구와 함께 내려가기는 내일 아침부터 열려요! 오늘은 혼자 내려가 보세요.'); return; }
+      if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      const roomId = 'dgn_' + me.id + '_' + Date.now().toString(36).slice(-5);
+      leaveRoomsExcept('raid', roomId);
+      launchedLiveRoomIds.delete(roomId);
+      const title = `🕳️ ${me.name}의 지하 던전`;
+      const room = { roomId, kind: 'dungeon', abyss: true, maxPlayers: ABYSS_MAX_PLAYERS, dungeonId: abyssTiers()[0].id, diff: 'abyss', title, status: 'waiting', createdAt: Date.now() };
+      rushSeatInto(room, 'host', rushSeatFields(me, merc));
+      RUSH_GUEST_SLOTS.forEach(s => raidClearSlot(room, s));
+      await saveRaidRoomData(roomId, room);
+      armRoomPresence(`raid_rooms/${roomId}`, me.id);
+      showRewardBanner(`👥 [${title}] 방을 만들었어요! 친구는 ${ABYSS_MAX_PLAYERS - 1}명까지 들어올 수 있어요. 모두 준비되면 [출발]을 누르세요.`);
+      renderDungeonLobby();
+      setTimeout(() => document.getElementById('dungeonWaitingRoomPanel')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+    };
+    // 방에 앉은 친구들의 용병 (받은 용병 정보는 여기서 다시 Lv.1 일반 용병으로 맞춤)
+    function abyssRoomUnits(r) {
+      const seats = raidFilledSlots(r).filter(s => (r[s + 'Mercs'] || [])[0]).slice(0, ABYSS_MAX_PLAYERS);
+      return seats.map((s, i) => {
+        const merc = r[s + 'Mercs'][0];
+        const u = createSimUnit(abyssHeroOf(merc), null, 'blue', 1.0);
+        u.name = `[${r[s + 'Name'] || '친구'}]${merc.name}`;
+        u.liveOwnerId = r[s + 'Id'];
+        u.rushAi = false;
+        u.x = 640;
+        u.y = Math.round(sim.worldH / 2 + (i - (seats.length - 1) / 2) * 200);
+        u.facingDir = 1;
+        u.facingAngle = 0;
+        return u;
+      });
+    }
+    // 방이 출발 상태가 되면 파티원 모두의 화면에서 (launchDungeonRoomBattle이 부름)
+    function launchAbyssRoomBattle(r, myStu) {
+      launchedLiveRoomIds.add(r.roomId);
+      const seed = Number(r.dgSeed) >>> 0;
+      const units = abyssRoomUnits(r);
+      const def = abyssFloorDef(1), map = abyssMakeMap(def, 1, seed);
+      if (!map || !units.length) { showNotice('⚠️ 던전 지도를 만들지 못했어요. 방장에게 다시 출발해 달라고 해 주세요.'); return; }
+      currentActiveLiveBattleRoomId = r.roomId;
+      if (currentSpectatingRaidRoomId === r.roomId) currentSpectatingRaidRoomId = null;
+      if (sim.spectator && sim.running) { stopLiveBattleNet(); closeBattleResult(); }
+      const humans = [r.hostId, ...raidRealGuestSlots(r).map(s => r[s + 'Id'])];
+      const isHost = r.hostId === myStu.id;
+      const netRole = humans.length > 1 ? (isHost ? 'host' : 'guest') : null;
+      const names = raidFilledSlots(r).map(s => r[s + 'Name']).join(' & ');
+      showRewardBanner(`🕳️ [지하 던전 출발!] ${names} 파티가 지하 1층부터 내려가요!`);
+      launchSimulation({ mode: 'dungeon', title: `🕳️ 지하 던전 · 지하 1층 👥 ${units.length}명`, blueStudent: myStu, redStudent: null, rewardMc: 0, customBlueUnits: units, customRedUnits: [], netRole, roomBattle: true });
+      if (!sim.running || sim.mode !== 'dungeon') return;
+      document.getElementById('arenaModeBadge').textContent = '🕳️ 지하 던전';
+      sim.dungeon = newDungeonState(def.id, 'abyss', seed, map, { floor: 1, powerRatio: 1, power: 0 });
+      sim.dungeon.party = true;
+      abyssAttach(sim.dungeon, seed, units.length);
+      sim.raidLive = { roomId: r.roomId, hostId: r.hostId, humans, tried: [] };
+      sim.units.forEach(u => { if (u.team === 'blue') u.followLeader = true; });
+      const L = dungeonPartyLeader();
+      enterDungeonRoom(sim.dungeon.start, null);
+      abyssIntroLog(`${units.length}명의 용병`);
+      addBattleLog(`👥 ${units.length}명이 함께라 몬스터가 ${Math.round(abyssPartyOf(sim.dungeon, 'count') * 100)}%만큼 나오고 ${Math.round(abyssPartyOf(sim.dungeon, 'stat') * 100)}%만큼 세요. 레벨은 같이 오르고 카드는 각자 골라요. ⭐ 대표 용병: ${L ? L.name : '-'}`);
+      const mine = sim.units.find(u => u.team === 'blue' && u.liveOwnerId === myStu.id);
+      setBattleControlMode(mine ? 'manual' : 'auto', mine ? mine.id : null, true);
+      if (netRole) connectRaidLiveNet(r.hostId, r.startedAt, isHost ? humans.filter(id => id !== myStu.id) : []);
+      else startRaidLiveBroadcast(r);
+    }
+
+    // ----- 결과·보상·랭킹 (각자 화면에서) -----
+    function finishAbyss(stu) {
+      const dg = sim.dungeon, ab = dg.abyss;
+      const cleared = ab.depth - 1; // 내려간 층 수
+      // 보상은 하루에 그날 가장 깊이 내려간 층까지만 (다시 도전해 더 깊이 가면 늘어난 만큼만 더)
+      const book = getDailyRewardBook(stu);
+      const paid = book.abyssFloors || 0;
+      const reward = grantDailyReward(stu, 'abyss', Math.max(0, abyssCaFor(cleared) - abyssCaFor(paid)));
+      if (reward > 0) book.abyssFloors = cleared;
+      const prev = (stu.abyssBest && stu.abyssBest.d) || 0;
+      const u = abyssMine();
+      const isBest = ab.kills > 0 && ab.depth > prev;
+      if (isBest) stu.abyssBest = { d: ab.depth, lv: ab.lv, job: u ? u.job : null, n: ab.n, at: Date.now() };
+      const secs = dg.started ? Math.round((sim.tickCount - dg.startTick) / BATTLE_TICKS_PER_SEC) : 0;
+      document.getElementById('battleResultEmoji').textContent = '🕳️';
+      document.getElementById('battleResultTitle').textContent = `지하 ${ab.depth}층까지 내려갔어요!${isBest ? ' 🏅 내 최고 기록!' : ''}`;
+      document.getElementById('battleResultDesc').textContent = reward > 0
+        ? `보상으로 💰 ${reward.toLocaleString()} CA를 받았어요! (${paid ? `오늘 기록 ${paid}층 → ${cleared}층, 늘어난 ${cleared - paid}층만큼` : `내려간 ${cleared}층만큼`} · 깊은 구역일수록 많이)`
+        : cleared > 0 ? `오늘은 이미 ${paid}층만큼 보상을 받았어요. 더 깊이 내려가면 늘어난 층만큼 더 받아요!` : '한 층도 내려가지 못해서 보상은 없어요. 다시 도전해 보세요!';
+      document.getElementById('battleMvpBox').innerHTML = `
+        <div class="aby aby-res">
+          <div class="who">${escHtml(u ? u.name : '용병')}${dg.party ? ` · 👥 ${ab.n}명이 함께` : ''} · 스킬 ${u ? u.unlockedSkills.length : 1}개 · 준 피해 ${((u && u.damageDealt) || 0).toLocaleString()}</div>
+          <div><small>도달</small><b>지하 ${ab.depth}층</b></div>
+          <div><small>레벨</small><b>Lv.${ab.lv}</b></div>
+          <div><small>처치</small><b>${ab.kills}마리</b></div>
+          <div><small>시간</small><b>${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}</b></div>
+          <div class="who">🏅 내 최고 기록 지하 ${Math.max(prev, isBest ? ab.depth : 0) || '-'}층</div>
+        </div>`;
+      document.getElementById('battleResultOverlay').classList.remove('hidden');
+      if (document.getElementById('arenaSection')?.classList.contains('hidden')) showRewardBanner(`🕳️ 지하 던전이 끝났어요! 지하 ${ab.depth}층 · ${document.getElementById('battleResultDesc').textContent}`);
+      sim.netRole = null;
+      saveState();
+      renderAllStudentViews();
+    }
+    let abyssMercId = null;
+    function selectAbyssMerc(id) { abyssMercId = id; const stu = getActiveStudent(); if (stu) renderAbyssCard(stu); }
+    function renderAbyssCard(stu) {
+      const box = document.getElementById('abyssCard');
+      if (!box) return;
+      const roster = (stu.roster || []).filter(Boolean);
+      if (!roster.some(m => m.id === abyssMercId)) abyssMercId = (repMercOf(stu) || roster[0] || {}).id || null;
+      const best = stu.abyssBest;
+      const paid = getDailyRewardBook(stu).abyssFloors || 0;
+      const rank = (state.students || []).filter(s => s.abyssBest && s.abyssBest.d > 0)
+        .sort((a, b) => b.abyssBest.d - a.abyssBest.d || (b.abyssBest.lv || 0) - (a.abyssBest.lv || 0) || (a.abyssBest.at || 0) - (b.abyssBest.at || 0));
+      const myRank = rank.findIndex(s => s.id === stu.id);
+      box.innerHTML = `
+        <div class="aby aby-card">
+          <div class="aby-card-head">
+            <div>
+              <h3>🕳️ 지하 던전<span class="aby-tag">로그라이크</span></h3>
+              <p>용병 <strong>하나</strong>만 데리고 한 층씩 내려가요. 전투력과 상관없이 누구나 <strong>Lv.1</strong>부터! 몬스터를 잡아 레벨업하면 올릴 능력치를 고르고, 10레벨마다 스킬을 골라요 (아주 가끔 🌈 히든 스킬). ${ABYSS_TIER_FLOORS}층마다 종족이 바뀌고 👑 보스가 계단을 지켜요. 👥 친구와 <strong>${ABYSS_MAX_PLAYERS}명</strong>까지 같이 갈 수 있고, 인원이 늘수록 몬스터도 많아지고 세져요.</p>
+            </div>
+            <div class="aby-stats">
+              <div class="aby-stat"><small>🏅 내 최고 기록</small><b>${best ? `지하 ${Number(best.d) || 0}층` : '-'}</b></div>
+              <div class="aby-stat"><small>🏆 우리 반</small><b>${myRank >= 0 ? `${myRank + 1}등` : '-'}</b></div>
+              <div class="aby-stat"><small>💰 층마다 (구역마다 +${ABYSS_CA.perTier})</small><b>${ABYSS_CA.base} CA</b></div>
+              <div class="aby-stat"><small>오늘 받은 층</small><b>${paid}층</b></div>
+            </div>
+          </div>
+          <div class="aby-cols">
+            <div class="aby-box">
+              <div class="aby-label">🧍 데려갈 용병 고르기</div>
+              <div class="aby-mercs">${roster.map(m => `<button type="button" data-id="${escHtml(m.id)}" onclick="selectAbyssMerc(this.dataset.id)" title="${escHtml(m.name)}" class="aby-merc${m.id === abyssMercId ? ' on' : ''}">
+                ${getMercIconHTML(m.job, m.skinVariant, 24)}<span>${(JOB_DEFS[m.job] || {}).name || ''}</span></button>`).join('') || '<span class="aby-empty">용병이 없어요. 먼저 용병을 모집해 주세요!</span>'}</div>
+              <div class="aby-btns">
+                <button type="button" onclick="startAbyss(abyssMercId)" ${roster.length ? '' : 'disabled'} class="aby-btn">🧍 혼자 내려가기</button>
+                <button type="button" onclick="createAbyssRoom()" ${roster.length ? '' : 'disabled'} class="aby-btn alt">👥 친구와 방 만들기 (${Date.now() < ABYSS_PARTY_SINCE ? '내일부터' : `${ABYSS_MAX_PLAYERS}명`})</button>
+              </div>
+            </div>
+            <div class="aby-box">
+              <div class="aby-label">🏆 우리 반 지하 던전 랭킹</div>
+              ${rank.length ? `<div class="aby-rank">${rank.slice(0, 10).map((s, i) => { const me = s.id === stu.id ? ' me' : ''; return `
+                <span class="${me}">${i + 1}.</span>
+                <span class="n${me}">${escHtml(s.name)}</span>
+                <b class="${me}">지하 ${Number(s.abyssBest.d) || 0}층</b>
+                <small>Lv.${Number(s.abyssBest.lv) || 1} ${escHtml((JOB_DEFS[s.abyssBest.job] || {}).name || '')}${Number(s.abyssBest.n) > 1 ? ` 👥${Number(s.abyssBest.n)}` : ''}</small>`; }).join('')}</div>`
+                : '<div class="aby-empty">아직 기록이 없어요. 첫 번째 도전자가 되어 보세요!</div>'}
+            </div>
+          </div>
+        </div>`;
     }
 
     // ----- 던전 탭 -----
@@ -56369,6 +57185,7 @@
             </div>
           </div>`;
       }).join('');
+      renderAbyssCard(stu);
       renderDungeonLobby();
     }
 
@@ -56393,7 +57210,8 @@
       return m;
     }
     const dungeonRoomsOpen = () => Object.values(liveRaidRoomsCache || {})
-      .filter(r => isDungeonRoom(r) && (r.status === 'waiting' || r.status === 'in_battle') && Date.now() - (r.createdAt || 0) < 1800000);
+      // 🕳️ 지하 던전방은 한 판이 30분을 넘기도 해서, 출발한 지 3시간 안이면 계속 보여 줌
+      .filter(r => isDungeonRoom(r) && (r.status === 'waiting' || r.status === 'in_battle') && (Date.now() - (r.createdAt || 0) < 1800000 || (r.abyss && Date.now() - (r.startedAt || 0) < 10800000)));
 
     window.selectDungeonMerc = function (mercId) {
       const stu = getActiveStudent();
@@ -56437,7 +57255,7 @@
     window.joinDungeonRoom = async function (roomId) {
       const me = getActiveStudent();
       if (!me) return;
-      const merc = dungeonMyMerc(me);
+      const merc = (liveRaidRoomsCache[roomId] || {}).abyss ? abyssSeatMerc(me) : dungeonMyMerc(me); // 🕳️ 지하 던전방: 고른 용병의 Lv.1 사본
       if (!merc) { showNotice('⚠️ 출전 중인 용병이 없어요. 용병 관리에서 출전시켜 주세요!'); return; }
       if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
       // 같은 순간에 다른 친구가 같은 칸에 먼저 앉으면 서버가 내 저장을 물리므로, 최신 방을 다시 보고 남은 칸에 앉아 봄 (최대 3번)
@@ -56471,6 +57289,16 @@
       if (room.hostId !== me.id) { showNotice('⚠️ 방장만 출발할 수 있어요!'); return; }
       if (!raidRealGuestSlots(room).every(s => room[s + 'Ready'])) { showNotice('⚠️ 아직 [✋ 준비완료]를 누르지 않은 친구가 있어요!'); return; }
       if (sim.running && !sim.spectator) { showNotice('⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.'); return; }
+      if (room.abyss) { // 🕳️ 지하 던전: AI 자리 없이 앉은 친구들만, 지도 씨앗만 방에 적음
+        room.rushFill = rushFillKeep(room, () => false);
+        room.dgSeed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
+        room.status = 'in_battle';
+        room.startedAt = Date.now();
+        room.fighting = { [room.hostId]: true };
+        raidRealGuestSlots(room).forEach(s => { room.fighting[room[s + 'Id']] = true; });
+        await saveRaidRoomData(roomId, room);
+        return;
+      }
       const def = DUNGEONS[room.dungeonId];
       if (!def || !isDungeonOpenToday(room.dungeonId)) { showNotice('🔒 이 던전은 오늘 닫혀 있어요. 방을 닫고 오늘 열린 던전으로 새로 만들어 주세요.'); return; }
       const diff = dgNormDiff(room.diff);
@@ -56506,6 +57334,7 @@
 
     // 방이 출발 상태가 되면 파티원 모두의 화면에서: 방장 화면이 계산하고 파티원은 자기 용병 조작만 보냄
     function launchDungeonRoomBattle(r, myStu) {
+      if (r.abyss) { localBattleInput.abPick = null; launchAbyssRoomBattle(r, myStu); return; } // 🕳️ 지하 던전 3인 방
       launchedLiveRoomIds.add(r.roomId);
       const def = DUNGEONS[r.dungeonId];
       const diff = dgNormDiff(r.diff);
@@ -56565,7 +57394,8 @@
         fa: Math.round((dg.fade || 0) * 20) / 20, fdir: dg.fadeDir || 0, ma: dg.moveAt, pa: dg.prepAt, da: dg.doneAt, sa: dg.selectAt,
         L: dg.leaderId == null ? null : dg.leaderId, rc: dg.roomsCleared, ek: dg.elitesKilled, bk: dg.bossKilled ? 1 : 0, ca: dg.chestCa,
         mr: dg.mapRevealed ? 1 : 0, sd: dg.started ? 1 : 0, c: cells, ch: chests, g: dg.gim || {}, b: dg.boss || null,
-        qz: dg.quiz ? [dg.quiz.id, dg.quiz.at, dg.quiz.done ? 1 : 0, dg.quiz.mult || 0, dg.quiz.need.filter(id => id in dg.quiz.ans).length, dg.quiz.need.length] : null
+        qz: dg.quiz ? [dg.quiz.id, dg.quiz.at, dg.quiz.done ? 1 : 0, dg.quiz.mult || 0, dg.quiz.need.filter(id => id in dg.quiz.ans).length, dg.quiz.need.length] : null,
+        ...(dg.abyss ? { ab: abyssPackNet() } : {}) // 🕳️ 지하 던전: 층·씨앗·레벨·카드·용병 능력치
       };
     }
     function applyDungeonState(a) {
@@ -56574,6 +57404,7 @@
       const num = (v, d = 0) => (typeof v === 'number' && isFinite(v) ? v : d);
       const PHASES = ['room', 'select', 'move', 'boss_prep', 'done', 'quiz'];
       const dir = d => (typeof d === 'string' && DUNGEON_DIRS[d] ? d : null);
+      if (dg.abyss && a.ab) abyssApplyNet(a.ab); // 🕳️ 층이 바뀌었으면 지도부터 새로 (아래 칸 상태가 새 지도에 들어가게)
       if (Array.isArray(a.p) && dungeonCellAt(dg, num(a.p[0], -1), num(a.p[1], -1))) dg.pos = [num(a.p[0]), num(a.p[1])];
       if (PHASES.includes(a.ph)) dg.phase = a.ph;
       dg.nextPhase = PHASES.includes(a.np) ? a.np : null;
@@ -56635,6 +57466,10 @@
     }
 
     // ----- 던전 탭의 5인 방 대기실 · 방 목록 -----
+    function dungeonRoomLabel(room) {
+      const def = DUNGEONS[room.dungeonId] || {};
+      return room.abyss ? `🕳️ 지하 던전 · 최대 ${rushMaxOf(room)}명` : `${def.icon || '🏰'} ${def.name || '던전'} · ${dungeonDiffLabel(room.diff)}`;
+    }
     function renderDungeonLobby() {
       const panel = document.getElementById('dungeonWaitingRoomPanel');
       const box = document.getElementById('dungeonRoomsList');
@@ -56664,7 +57499,7 @@
           const waiting = room.status === 'waiting';
           const fill = rushFillOf(room);
           const seatsLeft = rushSeatsLeft(room);
-          const closedToday = !isDungeonOpenToday(room.dungeonId);
+          const closedToday = !room.abyss && !isDungeonOpenToday(room.dungeonId);
           const seatCard = (slot, i) => {
             if (room[slot + 'Id']) {
               const m = (room[slot + 'Mercs'] || [])[0] || {};
@@ -56697,16 +57532,16 @@
             return `
               <div class="bg-slate-950 border-2 border-dashed border-slate-700 rounded-2xl p-3 flex flex-col justify-center gap-1 text-[11px] text-slate-400">
                 <div class="font-bold text-slate-300">👋 빈 자리</div>
-                ${waiting && isHost
+                ${waiting && isHost && !room.abyss
                   ? `<button onclick="addRushAiSeat('${room.roomId}')" class="mt-1 px-2 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-[11px]">🤖 AI 넣기</button>
                      <div>반 친구 용병(⚔️ ${cap.toLocaleString()} 이하)이 무작위로 들어와요.</div>`
-                  : `<div>${waiting ? '친구가 들어오거나 방장이 AI를 넣을 수 있어요.' : '이번 탐험에서는 비어 있어요.'}</div>`}
+                  : `<div>${room.abyss && waiting ? '친구가 들어올 수 있어요. (인원이 늘면 몬스터도 세져요)' : waiting ? '친구가 들어오거나 방장이 AI를 넣을 수 있어요.' : '이번 탐험에서는 비어 있어요.'}</div>`}
               </div>`;
           };
           // 대기 중이면 내 출전 용병 중 데려갈 용병을 바꿀 수 있음
           const myDeployed = mySlot && waiting ? (me.roster || []).filter(m => m.deployed) : [];
           const myMercId = mySlot ? ((room[mySlot + 'Mercs'] || [])[0] || {}).id : null;
-          const mercPicker = myDeployed.length > 1 ? `
+          const mercPicker = myDeployed.length > 1 && !room.abyss ? `
             <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
               <span class="font-extrabold text-amber-300 mr-1">🎮 데려갈 용병</span>
               ${myDeployed.map(m => `<button onclick="selectDungeonMerc('${m.id}')" class="flex items-center gap-1 pl-1 pr-2 py-1 rounded-xl border-2 font-extrabold ${m.id === myMercId ? 'bg-amber-500/25 border-amber-400 text-white' : 'bg-slate-950 border-slate-700 text-slate-300 hover:border-amber-300'}">${getMercIconHTML(m.job, m.skinVariant, 20)}${m.name} <span class="text-cyan-300">Lv.${m.level}</span></button>`).join('')}
@@ -56720,14 +57555,14 @@
                 <span class="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-extrabold text-xs">${waiting ? '👥 던전방 대기실' : '🔥 탐험 중'}</span>
                 ${watching ? '<span class="px-2.5 py-1 rounded-lg bg-violet-500/20 text-violet-300 font-extrabold text-xs">📺 관전 중</span>' : ''}
                 <h4 class="font-title text-xl text-white">${room.title || `${room.hostName}의 던전`}</h4>
-                <span class="px-2.5 py-0.5 rounded bg-slate-800 text-slate-300 font-bold text-xs">${def.icon || '🏰'} ${def.name || '던전'} · ${dungeonDiffLabel(room.diff)}</span>
+                <span class="px-2.5 py-0.5 rounded bg-slate-800 text-slate-300 font-bold text-xs">${dungeonRoomLabel(room)}</span>
               </div>
               ${watching
                 ? `<button onclick="stopSpectatingRaidRoom()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-violet-900/60 text-xs font-bold text-slate-300">📺 관전 그만하기</button>`
                 : (waiting ? `<button onclick="leaveDungeonRoom('${room.roomId}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-xs font-bold text-slate-300">🚪 ${isHost ? (guests.length ? '방 나가기 (방장 넘기기)' : '방 닫기') : '방 나가기'}</button>` : '')}
             </div>
             <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
-              ${RUSH_SLOTS.map((s, i) => seatCard(s, i)).join('')}
+              ${RUSH_SLOTS.slice(0, rushMaxOf(room)).map((s, i) => seatCard(s, i)).join('')}
             </div>
             ${mercPicker}
             <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
@@ -56770,10 +57605,10 @@
           <div class="bg-slate-950 border-2 ${mine ? 'border-amber-500/60' : 'border-amber-500/20'} rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-2">
             <div class="min-w-0">
               <div class="flex items-center gap-2 flex-wrap">
-                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${waiting ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}">${waiting ? `🟢 대기 중 (${RUSH_MAX_PLAYERS - rushSeatsLeft(r)}/${RUSH_MAX_PLAYERS}명${rushFillOf(r).length ? ` · AI ${rushFillOf(r).length}` : ''})` : '🔥 탐험 중'}</span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${waiting ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}">${waiting ? `🟢 대기 중 (${rushMaxOf(r) - rushSeatsLeft(r)}/${rushMaxOf(r)}명${rushFillOf(r).length ? ` · AI ${rushFillOf(r).length}` : ''})` : '🔥 탐험 중'}</span>
                 <span class="font-bold text-sm text-white truncate">${r.title || `${r.hostName}의 던전`}</span>
               </div>
-              <div class="text-xs text-slate-400 mt-1 truncate">${def.icon || '🏰'} ${def.name || '던전'} · ${dungeonDiffLabel(r.diff)} · 👥 ${filled.map(s => r[s + 'Name']).join(', ')}</div>
+              <div class="text-xs text-slate-400 mt-1 truncate">${dungeonRoomLabel(r)} · 👥 ${filled.map(s => r[s + 'Name']).join(', ')}</div>
             </div>
             <div class="flex items-center gap-2">
               ${mine
@@ -58159,10 +58994,10 @@
             return `
               <div class="bg-slate-950 border-2 border-dashed border-slate-700 rounded-2xl p-3 flex flex-col justify-center gap-1 text-[11px] text-slate-400">
                 <div class="font-bold text-slate-300">👋 빈 자리</div>
-                ${waiting && isHost
+                ${waiting && isHost && !room.abyss
                   ? `<button onclick="addRushAiSeat('${room.roomId}')" class="mt-1 px-2 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-[11px]">🤖 AI 넣기</button>
                      <div>반 친구 용병(⚔️ ${cap.toLocaleString()} 이하)이 무작위로 들어와요.</div>`
-                  : `<div>${waiting ? '친구가 들어오거나 방장이 AI를 넣을 수 있어요.' : '이번 디펜스에서는 비어 있어요.'}</div>`}
+                  : `<div>${room.abyss && waiting ? '친구가 들어올 수 있어요. (인원이 늘면 몬스터도 세져요)' : waiting ? '친구가 들어오거나 방장이 AI를 넣을 수 있어요.' : '이번 디펜스에서는 비어 있어요.'}</div>`}
               </div>`;
           };
           const myDeployed = mySlot && waiting ? (me.roster || []).filter(m => m.deployed) : [];
@@ -59010,7 +59845,8 @@
     const rushFillSnap = f => (f && f.snap ? (Array.isArray(f.snap.roster) ? f.snap : { ...f.snap, roster: [f.merc] }) : null);
     const RUSH_AI_ADD_GAP_MS = 1500; // [🤖 AI 넣기] 연타 막기 (넣기·빼기를 번갈아 눌러 친구를 고르는 동안 방 저장이 반 전체로 퍼짐)
     let rushAiAddAt = 0;
-    const rushSeatsLeft = room => RUSH_MAX_PLAYERS - raidFilledSlots(room).length - rushFillOf(room).length;
+    const rushMaxOf = room => Math.max(1, Math.min(RUSH_MAX_PLAYERS, Number(room && room.maxPlayers) || RUSH_MAX_PLAYERS)); // 방에 정원이 적혀 있으면 그만큼 (지하 던전 3명)
+    const rushSeatsLeft = room => rushMaxOf(room) - raidFilledSlots(room).length - rushFillOf(room).length;
     // 방에도 AI 자리에도 없는 반 친구를 무작위로 골라, 그 친구 용병 중 파티 최고 전투력을 넘지 않는 대표 용병(없으면 가장 센 용병) 1명
     function pickRushAiSeat(room) {
       const taken = new Set([...raidFilledSlots(room).map(s => room[s + 'Id']), ...rushFillOf(room).map(f => f.id)]);
@@ -59029,7 +59865,7 @@
     window.addRushAiSeat = async function (roomId) {
       const me = getActiveStudent();
       const room = liveRaidRoomsCache[roomId];
-      if (!me || !isPartyRoom(room) || room.status !== 'waiting' || room.hostId !== me.id) return;
+      if (!me || !isPartyRoom(room) || room.status !== 'waiting' || room.hostId !== me.id || room.abyss) return;
       if (rushSeatsLeft(room) <= 0) { showNotice('⚠️ 빈 자리가 없어요.'); return; }
       if (Date.now() - rushAiAddAt < RUSH_AI_ADD_GAP_MS) { showNotice('⏳ 잠깐만요! AI 자리는 조금 뒤에 다시 넣을 수 있어요.'); return; }
       const seat = pickRushAiSeat(room);
@@ -59231,10 +60067,10 @@
             return `
               <div class="bg-slate-950 border-2 border-dashed border-slate-700 rounded-2xl p-3 flex flex-col justify-center gap-1 text-[11px] text-slate-400">
                 <div class="font-bold text-slate-300">👋 빈 자리</div>
-                ${waiting && isHost
+                ${waiting && isHost && !room.abyss
                   ? `<button onclick="addRushAiSeat('${room.roomId}')" class="mt-1 px-2 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-[11px]">🤖 AI 넣기</button>
                      <div>반 친구 용병(⚔️ ${cap.toLocaleString()} 이하)이 무작위로 들어와요.</div>`
-                  : `<div>${waiting ? '친구가 들어오거나 방장이 AI를 넣을 수 있어요.' : '이번 러쉬에서는 비어 있어요.'}</div>`}
+                  : `<div>${room.abyss && waiting ? '친구가 들어올 수 있어요. (인원이 늘면 몬스터도 세져요)' : waiting ? '친구가 들어오거나 방장이 AI를 넣을 수 있어요.' : '이번 러쉬에서는 비어 있어요.'}</div>`}
               </div>`;
           };
           const humanN = filled.length;
