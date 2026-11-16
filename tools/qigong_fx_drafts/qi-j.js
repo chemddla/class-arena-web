@@ -1,14 +1,35 @@
 // 시안 J 실타래 기구슬 (반짝임 없음): 진한 기운 구슬 속에 기운 실이 엉켜 돌고, 둘레는 일렁이는 기운 막. 뒤로 연기 같은 기운 꼬리.
-// 맞는 순간 (2026-11-16 개선): 박힘(구슬이 납작하게 눌림) → 응축(잠깐 오그라듦) → 터짐(실이 큰 고리로 풀려 퍼지고, 두꺼운 압력 고리,
-//   기운이 상대 뒤로 뚫고 나감, 바닥 먼지·자갈) → 여운(남은 기운이 아지랑이처럼 피어오름). 별빛·번쩍·불꽃 가루 없음
-import { Particles, Lights, P, Rng, fit, TAU, clamp, ease } from "../../core/index.js";
-import { QI_GOLD, H, X1, CHARGE, FLY, HIT, base, qiGather, pressureRing } from "./_qi.js";
+// 맞는 순간: 박힘(구슬이 납작하게 눌림) → 응축(잠깐 오그라듦) → 터짐(기운 덩이가 부풀며 껍질이 밀려나 흩어지고, 안개가 사방으로,
+//   진한 기운이 상대 뒤로 뚫고 나감) → 여운(남은 기운이 아지랑이처럼 피어오름). 별빛·번쩍·불꽃 가루·선 고리·바닥 이펙트 없음
+import { Particles, Lights, P, Rng, fit, TAU, clamp, ease, noise2 } from "../../core/index.js";
+import { QI_GOLD, H, X1, CHARGE, FLY, HIT, base, qiGather } from "./_qi.js";
 
-export const meta = { ...base, size: [320, 112], name: "기공사 J 실타래 기구슬", desc: "기운 실이 엉켜 도는 구슬, 맞으면 실이 풀리며 터짐 (반짝임 없음)", tags: ["qigong"], duration: HIT + 1.4, options: { palette: QI_GOLD, seed: 4, radius: 8 } };
+export const meta = { ...base, size: [320, 124], origin: [26, 112], name: "기공사 J 실타래 기구슬", desc: "기운 실이 엉켜 도는 구슬, 맞으면 실이 풀리며 터짐 (반짝임 없음)", tags: ["qigong"], duration: HIT + 1.4, options: { palette: QI_GOLD, seed: 4, radius: 8 } };
 
 const LOOPS = [];
 for (let i = 0; i < 10; i++) LOOPS.push([(i * 2.39) % Math.PI, (i * 1.37) % TAU, (i % 2 ? 1 : -1) * (3 + (i % 4))]);
 const SQUASH = 0.045, IMPLODE = 0.085;   // 맞은 뒤: 박힘 끝 · 응축 끝(= 터지는 순간)
+
+// 기공이 터지는 모습: 가장자리가 일렁이는 기운 덩이가 확 부풀고, 가운데부터 비어 가며 두꺼운 기운 껍질이 바깥으로 밀려나 흩어짐
+//   선 고리·바닥 이펙트 없음 (2026-11-16 사용자: 피사체 밑 이펙트 제거, 4개의 선 대신 기공이 터지는 모습으로)
+function blast(p, C, x, y, e, t, R0) {
+  const Rb = R0 * (0.7 + 3.0 * ease.outCubic(e)), hole = 0.9 * Math.pow(clamp((e - 0.12) / 0.88), 0.7), fade = Math.pow(1 - e, 1.7);
+  p.glow(x, y, Rb * 1.6, C[4], 0.35 * fade);
+  // 바둑판 점 찍기 대신 칸마다 진짜 반투명(blend)으로 칠함: 껍질 안쪽은 진하고 바깥 가장자리는 옅음
+  const x0 = Math.floor(x - Rb * 1.3), x1 = Math.ceil(x + Rb * 1.3), y0 = Math.floor(y - Rb * 1.3), y1 = Math.ceil(y + Rb * 1.3);
+  for (let py = y0; py <= y1; py++) for (let px = x0; px <= x1; px++) {
+    const dx = px + 0.5 - x, dy = py + 0.5 - y, a = Math.atan2(dy, dx), d = Math.hypot(dx, dy);
+    const wob = 1 + 0.2 * noise2(Math.cos(a) * 2 + t * 6, Math.sin(a) * 2 - t * 5) + 0.08 * noise2(Math.cos(a) * 6 - t * 9, Math.sin(a) * 6);
+    const u = d / (Rb * wob);
+    if (u > 1) continue;
+    const holeW = hole * (1 + 0.15 * noise2(Math.cos(a) * 3 + t * 4, Math.sin(a) * 3));
+    if (u < holeW) continue;
+    const v = holeW < 1 ? (u - holeW) / (1 - holeW) : 1;   // 껍질 안쪽 0 → 바깥 1
+    const c = e < 0.15 && u < 0.45 ? C[6] : v > 0.8 ? C[4] : v > 0.35 ? C[5] : C[6];
+    const al = fade * (v > 0.8 ? 0.55 : 0.92) * (holeW > 0 && v < 0.12 ? 0.6 : 1);   // 안쪽 가장자리도 살짝 옅게
+    p.blend(px + 0.5, py + 0.5, c, al);
+  }
+}
 
 // 구슬 (sx·sy: 가로·세로 눌림)
 function orb(p, C, x, y, r, t, k = 1, sx = 1, sy = 1) {
@@ -58,17 +79,16 @@ export function create(o) {
         boom = true;
         const y = -H;
         lights.add(BX, y, 44, C[4], 0.6, 0.4);
-        // 기운 분출: 대부분 상대 뒤쪽(+x)으로 원뿔처럼, 일부는 옆·앞으로
+        // 터지며 사방으로 부풀어 나가는 기운 안개 (구름처럼 퍼짐)
         for (let i = 0; i < 26; i++) {
-          const back = i < 18, a = back ? R.range(-0.7, 0.7) : R.range(0, TAU), sp = back ? R.range(260, 460) : R.range(40, 90);   // 입자에 끌림(drag)이 강해서 뒤로는 빠르게 쏴야 상대 몸 뒤까지 나감
-          ps.spawn(back ? P.DUST : P.VAPOUR, BX, y + R.range(-3, 3), Math.cos(a) * sp, Math.sin(a) * sp * 0.7, R.range(0.35, 0.6), R.pick([C[4], C[5], C[6]]), back ? R.range(3, 5) : R.range(2, 3));   // 뒤로 뚫는 기운은 진한 덩이(DUST)
+          const g = (i / 26) * TAU + R.range(-0.12, 0.12), sp = R.range(140, 280);
+          ps.spawn(P.VAPOUR, BX + Math.cos(g) * 4, y + Math.sin(g) * 4, Math.cos(g) * sp, Math.sin(g) * sp * 0.8, R.range(0.35, 0.6), R.pick([C[4], C[5], C[6]]), R.range(3, 5));
         }
-        // 바닥: 먼지 띠와 튀는 자갈 (상대 발밑)
+        // 상대 뒤쪽으로 뚫고 나가는 진한 기운 (원뿔)
         for (let i = 0; i < 12; i++) {
-          const dir = i % 2 ? 1 : -1;
-          ps.spawn(P.DUST, BX + 6 + dir * R.range(0, 8), -1, dir * R.range(30, 90), -R.range(4, 16), R.range(0.4, 0.7), "#a08a6a", R.range(2.2, 4));
+          const g = R.range(-0.5, 0.5), sp = R.range(260, 460);
+          ps.spawn(P.DUST, BX, y + R.range(-3, 3), Math.cos(g) * sp, Math.sin(g) * sp * 0.7, R.range(0.35, 0.55), R.pick([C[4], C[5], C[6]]), R.range(3, 5));
         }
-        for (let i = 0; i < 7; i++) ps.spawn(P.GRIT, BX + 6 + R.range(-6, 6), -1, R.range(-50, 80), -R.range(80, 150), R.range(0.5, 0.75), R.pick(["#6e5a44", "#8a7458"]), 1);
         // 여운: 남은 기운이 천천히 피어오름
         for (let i = 0; i < 8; i++) ps.spawn(P.VAPOUR, BX + R.range(-10, 14), y + R.range(-8, 8), R.range(-6, 10), -R.range(10, 22), R.range(0.6, 0.9), R.pick([C[4], C[5]]), R.range(2, 3), R.range(0.12, 0.4));
       }
@@ -88,16 +108,7 @@ export function create(o) {
         orb(p, C, BX - 2, y, RAD * (1 - 0.45 * ease.inQuad(e)), t, 1, 0.65 + 0.35 * e, 1.3 - 0.3 * e);
       }
       const b = q - IMPLODE;
-      if (b >= 0) {
-        // 실이 큰 고리로 풀리며 퍼짐
-        if (b < 0.42) { const e = b / 0.42; threads(p, C, BX, y, RAD, t * 0.4 + 2, Math.pow(1 - e, 1.4), 1, 1, 1 + 5 * ease.outCubic(e)); }
-        // 두꺼운 압력 고리 (세로로 선 것, 비스듬히 누운 것, 바닥)
-        pressureRing(p, C, BX, y, b / 0.32, 5, 26, 1, 1);
-        pressureRing(p, C, BX, y, (b - 0.04) / 0.4, 4, 36, 0.4, 0.75);
-        pressureRing(p, C, BX + 6, 0, (b - 0.02) / 0.5, 5, 30, 0.18, 0.7);
-        // 터지는 순간 가운데 기운 덩이가 확 부풀었다 사라짐 (흰빛 없이 크림색까지만)
-        if (b < 0.1) { const e = b / 0.1; p.disc(BX, y, RAD * (0.6 + 1.6 * e), C[5], 0.85 * (1 - e)); p.disc(BX, y, RAD * (0.3 + 0.8 * e), C[6], 0.7 * (1 - e)); }
-      }
+      if (b >= 0 && b < 0.42) blast(p, C, BX, y, b / 0.42, t, RAD);   // 기운 덩이가 부풀며 터짐 (선 고리 없음)
       lights.draw(p);
     },
   };
