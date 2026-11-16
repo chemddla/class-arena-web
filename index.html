@@ -4699,7 +4699,7 @@
             <span id="sideWatchCount" class="ml-auto px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 text-[10px] font-extrabold"></span>
             <button type="button" onclick="toggleSideWatchPanel(false)" class="side-watch-close text-slate-400 hover:text-white font-bold text-sm" title="접기">✕</button>
           </div>
-          <div class="text-[10px] text-slate-400">친구들이 지금 하고 있는 컨텐츠예요. (관전은 보상이 없어요)</div>
+          <div class="text-[10px] text-slate-400">친구들이 지금 하는 컨텐츠 · 관전은 보상 없음</div>
           <div id="sideWatchList" class="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1"></div>
         </div>
       </aside>
@@ -14277,7 +14277,7 @@
         });
       }
       // 대기 중인 방도 넣음 (대기실부터 관전 · 시작하면 관전 화면이 자동으로 열림)
-      const waitTag = ' · ⏳ 대기실';
+      const waitTag = ''; // 대기실 표시는 카드의 상태 딱지로
       Object.values(livePvpRoomsCache || {}).forEach(r => {
         if (!r || !r.roomId || (r.status !== 'playing' && r.status !== 'waiting') || (myId && isPvpRoomPlayer(r, myId))) return;
         if (Date.now() - (r.createdAt || 0) >= 1800000) return;
@@ -14329,18 +14329,23 @@
       if (countEl) countEl.textContent = items.length ? [items.length - nWait ? `${items.length - nWait}개 진행 중` : '', nWait ? `${nWait}개 대기` : ''].filter(Boolean).join(' · ') : '';
       const tabCount = document.getElementById('sideWatchTabCount');
       if (tabCount) { tabCount.textContent = items.length; tabCount.classList.toggle('hidden', !items.length); }
+      // 보는 중 → 진행 중 → 대기실 → 관전 못 하는 경기 순
+      const rank = it => it.watching ? 0 : it.locked ? 3 : it.waiting ? 2 : 1;
+      items.sort((a, b) => rank(a) - rank(b));
       listEl.innerHTML = items.map(it => `
-        <div class="rounded-xl px-2 py-1.5 border ${it.watching ? 'bg-violet-950/40 border-violet-400 ring-1 ring-violet-400' : 'bg-slate-950 border-slate-800'} flex items-center gap-2">
-          <span class="w-7 shrink-0 text-center text-lg">${it.icon}</span>
+        <div class="rounded-xl px-2 py-1.5 border ${it.watching ? 'bg-violet-950/40 border-violet-400 ring-1 ring-violet-400' : 'bg-slate-950 border-slate-800'} ${it.locked ? 'opacity-60' : ''} flex items-center gap-2">
           <div class="min-w-0 flex-1">
-            <div class="text-xs font-extrabold text-white truncate" title="${it.names}">${it.names}</div>
-            <div class="text-[10px] text-slate-400 truncate">${it.detail}</div>
-            ${it.watchers ? `<div class="text-[10px] text-violet-300 font-bold">👀 ${it.watchers}명 관전 중</div>` : ''}
+            <div class="flex items-center gap-1 min-w-0">
+              <span class="shrink-0 px-1.5 rounded text-[10px] font-extrabold ${it.watching ? 'bg-violet-600 text-white' : it.waiting ? 'bg-amber-400 text-slate-950' : 'bg-emerald-600 text-white'}">${it.watching ? '보는 중' : it.waiting ? '대기실' : '진행 중'}</span>
+              <span class="text-[10px] text-slate-400 truncate">${it.detail}</span>
+            </div>
+            <div class="mt-0.5 text-xs font-extrabold text-white truncate" title="${it.names}">${it.names}</div>
+            ${it.watchers ? `<div class="text-[10px] text-violet-300 font-bold">${it.watchers}명 관전 중</div>` : ''}
           </div>
           ${it.locked
             ? `<span class="shrink-0 px-2 py-1 rounded-lg bg-slate-800 text-slate-400 font-bold text-[10px]" title="연습 친구·AI와 하는 경기는 관전할 수 없어요">${it.locked}</span>`
             : `<button type="button" onclick="sideWatchGo('${it.kind}', '${it.id}')" class="shrink-0 px-2 py-1.5 rounded-lg ${it.watching ? 'bg-violet-800 hover:bg-violet-700' : 'bg-violet-600 hover:bg-violet-500'} text-white font-extrabold text-[11px] shadow">${it.watching ? '보는 중' : '관전'}</button>`}
-        </div>`).join('') || '<div class="text-xs text-slate-400 text-center py-4">지금 진행 중인 컨텐츠가 없어요.</div>';
+        </div>`).join('') || '<div class="text-xs text-slate-400 text-center py-6 leading-relaxed">지금 진행 중인 컨텐츠가 없어요.<br>친구가 탑·결투·레이드를 시작하면<br>여기에 바로 떠요.</div>';
       placeSideWatchPanel();
     }
 
