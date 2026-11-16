@@ -2264,6 +2264,22 @@
       'kGGGGGGGGGGGGGGk',
       '.kkkkkkkkkkkkkk.'
     ],
+    // 곰덫: 위·아래 톱니가 맞물리는 쇠 턱 + 가운데 금색 발판 (손으로 그림, 던전 바닥 덫·🪤 자리)
+    dgTrap: [
+      '...kkkkkkkkkk...',
+      '.kkLLLLLLLLLLkk.',
+      'kLGkkkkkkkkkkGLk',
+      'kGWWLWWLWWLWWLGk',
+      'kGKWKKWKKWKKWKGk',
+      'kGKKKKkhhkKKKKGk',
+      'kGKKKKkYYkKKKKGk',
+      'kGKWKKWKKWKKWKGk',
+      'kGWWLWWLWWLWWLGk',
+      'kLLLLLLLLLLLLLLk',
+      'kGGGGGGGGGGGGGGk',
+      '.kkGGGGGGGGGGkk.',
+      '...kkkkkkkkkk...'
+    ],
     dgWeb: [
       '.kkkkkkkkkkkkkk.',
       'kLLLLLLLLLLLLLLk',
@@ -2336,7 +2352,7 @@
   });
   // 던전 화면의 이모지 → 던전 전용 아이콘 (다른 화면의 칼·방패·왕관은 그대로)
   const DUNGEON = { '🕯': 'dgTorch', '⚔': 'dgFight', '💎': 'dgElite', '🛡': 'dgGuard', '📦': 'dgChest', '🔥': 'dgBrazier', '🚶': 'dgSteps',
-    '👑': 'dgBoss', '🕳': 'dgStairs', '⛲': 'dgFount', '🗿': 'dgAltar', '📖': 'dgBook', '🪤': 'dgSpike', '🕸': 'dgWeb', '📭': 'dgChestOpen',
+    '👑': 'dgBoss', '🕳': 'dgStairs', '⛲': 'dgFount', '🗿': 'dgAltar', '📖': 'dgBook', '🪤': 'dgTrap', '🕸': 'dgWeb', '📭': 'dgChestOpen',
     '🔒': 'dgLocked', '🧪': 'dgPotion' };
   Object.assign(MAP, { '🕳': 'stairs', '📭': 'boxOpen', '🪤': 'trap', '🕸': 'web', '⛲': 'fountain', '🗿': 'altar', '🧪': 'potion', '⭕': 'ring' });
   const ESSENTIAL = {
