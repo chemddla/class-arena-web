@@ -33230,40 +33230,8 @@
       qiJThreads(ctx, cx, cy, RAD, ts * 0.6, 0.25 + 0.75 * ee, 1, 1, Math.max(1.02, g), QI_J_LOOPS16);
       if (e > 0.55) { const k = (e - 0.55) / 0.45, back = 1 + 2.7 * Math.pow(k - 1, 3) + 1.7 * Math.pow(k - 1, 2); qiJBall(ctx, cx, cy, RAD * Math.max(0.05, back), ts, Math.min(1, k / 0.66), 1, 1, QI_J_LOOPS16); }
     }
-    // 기공포 꼬리 (혜성 꼬리는 사용자가 별로라 함, 2026-11-16 → 고를 수 있게 세 가지)
-    //   'ghost' 잔상: 구슬 뒤로 옅어지는 잔상 셋 · 'rings' 실 고리: 지나온 길에 세로 실 고리가 남아 퍼지며 사라짐 · 'short' 짧은 기운: 구슬 뒤 짧고 부드러운 기운만
-    let QI_CANNON_TAIL = 'rings';
-    function qiCannonTail(ctx, p, r) {
-      const R = QI_J_RAMP, t = sim.tickCount || 0, a = p.angle || 0, bx = -Math.cos(a), by = -Math.sin(a), ts = t / 60;
-      if (QI_CANNON_TAIL === 'ghost') {
-        for (let i = 3; i >= 1; i--) qiJBall(ctx, p.x + bx * r * 1.15 * i, p.y + by * r * 1.15 * i, r * (1 - i * 0.1), ts - i * 0.05, 0.42 - i * 0.11, 1, 1, QI_J_LOOPS);
-        return;
-      }
-      if (QI_CANNON_TAIL === 'rings') {
-        const gap = r * 1.6, ph = (p.travel || 0) % gap;
-        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(a);
-        for (let i = 0; i < 4; i++) {
-          const d = ph + gap * i + r * 0.4, f = d / (gap * 4 + r * 0.4), rr = r * (0.85 + 0.6 * f), al = (1 - f) * 0.75;
-          if (al <= 0.02) continue;
-          ctx.globalAlpha = al * 0.55; ctx.strokeStyle = R[4]; ctx.lineWidth = 2.2;
-          ctx.beginPath(); ctx.ellipse(-d, 0, rr * 0.28, rr, 0, 0, Math.PI * 2); ctx.stroke();
-          ctx.globalAlpha = al; ctx.strokeStyle = R[6]; ctx.lineWidth = 1;
-          ctx.beginPath(); ctx.ellipse(-d, 0, rr * 0.28, rr, 0, -Math.PI / 2, Math.PI / 2); ctx.stroke(); // 앞쪽 반이 더 밝게
-        }
-        ctx.restore();
-        qiPuff(ctx, p.x + bx * r * 0.9, p.y + by * r * 0.9, r * 1.1, R[5], 0.35);
-        return;
-      }
-      // short
-      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(a);
-      const g = ctx.createLinearGradient(0, 0, -r * 2.6, 0);
-      g.addColorStop(0, R[5] + '90'); g.addColorStop(0.5, R[4] + '40'); g.addColorStop(1, R[4] + '00');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(-r * 1.1, 0, r * 1.6, r * 0.75, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    }
-    function drawQiCannonOrb(ctx, p) { // 큰 실타래 구슬 + 뒤로 가늘어지는 혜성 꼬리 (사용자: 나선 실 포 대신 A 큰 실타래 포)
+    function drawQiCannonOrb(ctx, p) { // 큰 실타래 구슬 (꼬리 없음: 사용자 2026-11-16)
       const t = sim.tickCount || 0, ts = t / 60, r = Math.max(3, (p.radius || QI_CANNON_R) * QI_CANNON_DRAW_K);
-      qiCannonTail(ctx, p, r);
       qiJBall(ctx, p.x, p.y, r, ts, 1, 1, 1, QI_J_LOOPS16);
     }
     // 꿰뚫으며 지나간 적 (life 24틱): 세로 압력 고리 + 짧은 선 열 줄 (구슬은 멈추지 않음)
@@ -33451,9 +33419,10 @@
         ctx.fillStyle = k < n ? (n >= QI_MAX && (tick >> 3) % 2 ? R[4] : R[2]) : '#134e4a';
         ctx.fillRect(x + 1, y, w - 2, 3);
       }
-      if (n > 0) { // 기가 쌓일수록 몸 둘레로 솟는 기 알갱이가 많아짐
+      if (n > 0) { // 기가 쌓일수록 몸 둘레로 솟는 기 알갱이가 많아짐 (전장 좌표로 그리므로 유닛 원점을 되돌림)
         const s = Math.sqrt(u.sizeScale || 1);
         ctx.save();
+        ctx.translate(-Math.round(u.x), -Math.round(u.y));
         for (let i = 0; i < n * 2; i++) {
           const ph = ((tick * 0.02) + i * 0.137) % 1, a = i * 2.39996;
           ctx.globalAlpha = 0.7 * (1 - ph);
@@ -33462,64 +33431,65 @@
         }
         ctx.restore();
       }
-      if (qiBarrierOn(u)) drawQiBarrier(ctx, u, tick);
+      if (qiBarrierOn(u)) { // 이 구간은 원점이 유닛 자리(ctx.translate(u.x, u.y))라 전장 좌표로 그리는 막은 원점을 되돌려서 그림 (전엔 화면 밖에 그려져 안 보였음)
+        ctx.save(); ctx.translate(-Math.round(u.x), -Math.round(u.y));
+        drawQiBarrier(ctx, u, tick);
+        ctx.restore();
+      }
     }
-    // 기공막: 몸을 감싼 반투명 기의 막 (펼쳐질 때 부풀었다 자리 잡음 · 테두리는 도트, 왼쪽 위는 밝게 · 안에서 기의 줄기가 돎 · 끝나기 0.7초 전부터 깜박임)
+    // 기공막: 고리 막 (사용자 시안 B, tools/qigong_fx_drafts/qi-barrier-a.js style b)
+    //   그라데이션 기운 막 테두리(안쪽에서 서서히 짙어져 테두리에서 가장 밝고 바깥으로 번져 사라짐, 둘레를 따라 밝은 기운이 천천히 흐름)
+    //   + 혼천의처럼 도는 굵은 기운 실 고리 셋 (앞쪽 반은 밝게, 뒤쪽 반은 옅게). 펼쳐질 때 작게 → 살짝 부풂 → 자리, 끝나기 0.7초 전부터 깜박임
+    //   예전 청록 막은 안쪽 8%로 아주 옅게 빛을 더해 그려서 밝은 돌바닥에서는 거의 안 보였음 → 금빛으로 보통 칠하기 (2026-11-16 사용자)
+    const QI_BARRIER_RINGS = [[0.15, 0, 2.2], [1.15, 1.2, -1.7], [2.05, 2.4, 1.4]];
     function drawQiBarrier(ctx, u, tick) {
-      const R = QI_RAMP, c = 3;
+      const R = QI_J_RAMP;
       const left = (u.qiBarrierUntil || 0) - sim.tickCount, age = (u.qiBarrierTicks || QI_BARRIER_TICKS) - left;
-      const pop = age < 12 ? (q => 1 + 0.18 * Math.sin(q * Math.PI) - 0.6 * (1 - q) * (1 - q))(age / 12) : 1; // 펼쳐질 때: 작게 → 살짝 부풂 → 자리
-      const b = qiBarrierShape(u), rx = b.rx * pop, ry = b.ry * pop, cx = b.cx, cy = b.cy;
+      const pop = age < 15 ? (q => 1 + 0.1 * Math.sin(q * Math.PI) - 0.85 * (1 - q) * (1 - q))(age / 15) : 1;
+      const b = qiBarrierShape(u), rx = b.rx * pop, ry = b.ry * pop, cx = b.cx, cy = b.cy, ts = tick / 60;
+      const blink = left < 42 && (tick >> 2) % 2 ? 0.4 : 1, K = blink * Math.min(1, 0.35 + age / 15);
       ctx.save();
-      ctx.globalAlpha = left < 40 && (tick >> 2) % 2 ? 0.35 : 1;
-      // 막 안쪽: 가장자리로 갈수록 진해지는 기 (밝게 더함)
-      ctx.globalCompositeOperation = 'lighter';
+      // 테두리 띠: 반지름 1.14배까지 번지는 그라데이션 (안쪽 0.5배까지는 비어 있음 → 캐릭터가 또렷)
       ctx.save();
       ctx.translate(cx, cy); ctx.scale(1, ry / rx);
-      const g = ctx.createRadialGradient(-rx * 0.25, -rx * 0.3, rx * 0.1, 0, 0, rx);
-      g.addColorStop(0, R[3] + '14'); g.addColorStop(0.6, R[2] + '14'); g.addColorStop(0.88, R[2] + '44'); g.addColorStop(1, R[3] + '88');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, rx, 0, Math.PI * 2); ctx.fill();
+      const R1 = rx * 1.14, g = ctx.createRadialGradient(0, 0, 0, 0, 0, R1);
+      g.addColorStop(0, R[4] + '00'); g.addColorStop(0.44, R[4] + '00'); g.addColorStop(0.7, R[4] + '40');
+      g.addColorStop(0.8, R[5] + 'a0'); g.addColorStop(0.84, R[6] + 'c8'); g.addColorStop(0.89, R[4] + '80'); g.addColorStop(1, R[3] + '00');
+      ctx.globalAlpha = K * (0.88 + 0.12 * Math.sin(tick * 0.06));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, R1, 0, Math.PI * 2); ctx.fill();
+      // 둘레를 따라 천천히 흐르는 밝은 기운 (짙고 옅음이 일렁이는 느낌)
+      ctx.lineCap = 'round';
+      for (let i = 0; i < 4; i++) {
+        const a0 = ts * (0.5 + 0.17 * i) * (i % 2 ? -1 : 1) + i * 1.7, len = 0.5 + 0.18 * (i % 3);
+        ctx.globalAlpha = K * 0.35; ctx.strokeStyle = R[6]; ctx.lineWidth = Math.max(2, rx * 0.07);
+        ctx.beginPath(); ctx.arc(0, 0, rx * 0.96, a0, a0 + len); ctx.stroke();
+      }
       ctx.restore();
-      // 안에서 도는 기의 줄기 세 가닥
-      for (let k = 0; k < 3; k++) {
-        const base = tick * 0.035 + k * Math.PI * 2 / 3;
-        for (let j = 0; j < 9; j++) {
-          const a = base + j * 0.11, rr = 0.78 - j * 0.015;
-          ctx.globalAlpha = (left < 40 && (tick >> 2) % 2 ? 0.35 : 1) * (0.75 - j * 0.07);
-          ctx.fillStyle = j < 2 ? R[4] : R[3];
-          pfxDot(ctx, cx + Math.cos(a) * rx * rr, cy + Math.sin(a) * ry * rr, c);
+      // 혼천의 고리 셋: 막 표면을 따라 도는 굵은 기운 실 (앞쪽 반 밝게 + 아래 그늘 줄, 뒤쪽 반 옅게)
+      QI_BARRIER_RINGS.forEach(([tilt, yaw, sp], i) => {
+        const ct = Math.cos(tilt), st = Math.sin(tilt), ya = yaw + ts * 0.6 * (i % 2 ? 1 : -1), cyw = Math.cos(ya), syw = Math.sin(ya);
+        for (let a = 0; a < Math.PI * 2; a += 1.2 / Math.max(rx, 10)) {
+          const q = a + ts * sp * 0.25, px = Math.cos(q), py = Math.sin(q) * ct, pz = Math.sin(q) * st;
+          const X = px * cyw - pz * syw, Z = px * syw + pz * cyw, x = cx + X * rx * 0.96, y = cy + py * ry * 0.96;
+          if (Z > 0) {
+            ctx.globalAlpha = K * 0.8; ctx.fillStyle = R[4]; pfxDot(ctx, x, y + 1, 1);
+            ctx.globalAlpha = K; ctx.fillStyle = R[6]; pfxDot(ctx, x, y, 1);
+          } else { ctx.globalAlpha = K * 0.3; ctx.fillStyle = R[4]; pfxDot(ctx, x, y, 1); }
         }
-      }
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = left < 40 && (tick >> 2) % 2 ? 0.35 : 1;
-      // 테두리: 도트 두 겹 (바깥 진한 본색 · 안쪽 밝은 색), 왼쪽 위 빛 받는 쪽은 흰빛
-      const nn = Math.max(24, Math.round(Math.PI * 2 * rx / (c * 1.2)));
-      for (let i = 0; i < nn; i++) {
-        const a = i / nn * Math.PI * 2, x = cx + Math.cos(a) * rx, y = cy + Math.sin(a) * ry;
-        const lit = Math.cos(a + Math.PI * 0.75); // 왼쪽 위가 1
-        ctx.fillStyle = lit > 0.6 ? R[4] : lit > -0.2 ? R[3] : R[2];
-        pfxDot(ctx, x, y, c);
-        if (i % 2 === 0) { ctx.fillStyle = lit > 0.3 ? R[3] : R[1]; pfxDot(ctx, cx + Math.cos(a) * (rx - c), cy + Math.sin(a) * (ry - c), c); }
-      }
-      // 반짝이는 빛 두 점 (왼쪽 위)
-      ctx.fillStyle = '#ffffff';
-      pfxDot(ctx, cx - rx * 0.45, cy - ry * 0.55, c); pfxDot(ctx, cx - rx * 0.55, cy - ry * 0.42, c);
+      });
       ctx.restore();
     }
-    // 막에 투사체가 맞은 자리: 막 테두리를 따라 양쪽으로 퍼지는 밝은 물결
+    // 막에 투사체가 맞은 자리: 닿은 자리가 부드럽게 밝아지며 번지고, 작은 압력 고리가 퍼짐 (반짝임 없음)
     function drawQiShieldHit(ctx, ef, p) {
       const u = qiUnitById(ef.uid);
       if (!u || !u.alive || !qiBarrierOn(u)) return;
-      const b = qiBarrierShape(u), R = QI_RAMP, c = 3, spread = 0.15 + p * 0.9;
+      const b = qiBarrierShape(u), R = QI_J_RAMP, x = b.cx + Math.cos(ef.a) * b.rx, y = b.cy + Math.sin(ef.a) * b.ry, s = Math.max(1, b.rx / 50);
       ctx.save();
-      ctx.globalAlpha = 1 - p;
-      for (let k = -6; k <= 6; k++) {
-        const a = ef.a + k / 6 * spread;
-        ctx.fillStyle = Math.abs(k) < 2 ? R[4] : R[3];
-        pfxDot(ctx, b.cx + Math.cos(a) * b.rx, b.cy + Math.sin(a) * b.ry, c);
-        pfxDot(ctx, b.cx + Math.cos(a) * (b.rx + c * (1 - p) * 2), b.cy + Math.sin(a) * (b.ry + c * (1 - p) * 2), c);
-      }
+      const g = ctx.createRadialGradient(x, y, 0, x, y, 16 * s);
+      g.addColorStop(0, R[6] + 'e0'); g.addColorStop(0.5, R[5] + '70'); g.addColorStop(1, R[4] + '00');
+      ctx.globalAlpha = Math.max(0, 1 - p * 1.3); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 16 * s, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
+      qiJRing(ctx, x, y, p / 0.8, 3 * s, 15 * s, 1, 0.9);
     }
 
     // ===== 성기사 공통 =====
