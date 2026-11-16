@@ -1,50 +1,52 @@
-# 기공사 외형 시트: 격투가 외형 0(brawler_0.webp)의 도복·띠·머리 색을 바꾸고, 기운 칸(31)의 노랑·파랑 불꽃을 청록 기운으로 칠함
-# 사용: python tools/qigong_build.py   → assets/sprites/merc/qigong_0.webp (칸 구성·크기는 brawler_0과 같음)
-#   임시 그림: 비취 도복·금빛 띠·검은 머리. 사용자가 기공사 샘플을 주면 그 그림으로 바꿈
-import sys, os
+# 기공사 외형 0 (2026-11-16 사용자 샘플: 금빛·흰 도포, 긴 검은 머리) → assets/sprites/merc/qigong_0.webp
+# 사용: python tools/qigong_build.py
+#   칸 그림은 tools/qigong_sample_build.py의 build()가 다듬은 것을 그대로 씀 (흰 배경 지움 · 얼굴 크기와 몸 길이·피부색을 대기 칸에 맞춤)
+#   여기서는 발 위치를 기준으로 한 줄 시트로 조립만 함
+# 칸 (22칸): 0 대기 · 1~4 걷기 · 5 기 모으기 (일반 공격 준비) · 6 내지르기 · 7 피격 · 8~9 쓰러짐 (무릎 → 누움)
+#   · 10 기공포 모으기 (가슴 앞 두 손) · 11 기공포 쏘기 · 12 기공탄 준비 · 13 기공탄 던지기 · 14 기공후 모으기 · 15 기공후 터뜨리기 (두 팔 펴기)
+#   · 16 기공파 모으기 · 17 기공파 쏘기 · 18 기공옥 지상 모으기 · 19 기공옥 최대 크기 (공중) · 20 기공옥 시전 · 21 기공옥 착지
+#   기공막은 10 → 15를 다시 씀 (샘플 미리보기의 '기공막' 줄은 시트에 넣지 않음)
+import os, sys
 import numpy as np
 from PIL import Image
 
 sys.path.insert(0, os.path.dirname(__file__))
-from frost_variants_build import rgb2hsv, hsv2rgb
-from brawler_variants_build import masks, paint, dark_rim, _hex
+from qigong_sample_build import build
 
-SRC = 'assets/sprites/merc/brawler_0.webp'
-CELL_W = 119
-AURA_CELL = 31  # 격투가 멸식 시전 칸 (발밑에서 솟는 기운 불꽃)
-LOOKS = [
-    (0, '비취 도복·금빛 띠', ('#2f9e8a', '#d9a441', '#2a2020')),
-]
-# 청록 기운 램프 (pixelfx 계열: 그림자 → 본색 → 거의 흰색)
-QI = ['#0b4f4a', '#14857a', '#2dd4bf', '#99f6e4', '#f0fffb']
+OUT = 'assets/sprites/merc/qigong_0.webp'
+# 미리보기 줄 이름 → 시트에 넣을 칸 (줄 안 번호)
+ORDER = [('대기', [0]), ('걷기', [0, 1, 2, 3]), ('일반 공격', [0, 1]), ('피격', [0]), ('쓰러짐', [0, 1]),
+         ('기공포', [0, 1]), ('기공탄', [0, 1]), ('기공후', [0, 1]), ('기공파', [0, 1]), ('기공옥', [0, 1, 2, 3])]
+LIFT = {19: 8}   # 칸 번호 → 바닥에서 띄울 높이 (게임 px). 기공옥 최대 크기 자세는 공중에 뜬 그림
+LYING = {9}      # 누운 칸: 발 대신 몸 가운데를 기준점에
 
 
-def recolor_aura(out, src):
-    """기운 칸의 진한 노랑·파랑 불꽃만 청록 램프로 (명도 순서 유지). 도복·살은 진한 색이 아니라 그대로"""
-    x0, x1 = AURA_CELL * CELL_W, (AURA_CELL + 1) * CELL_W
-    a = src[:, x0:x1]
-    hsv = rgb2hsv(a[..., :3] / 255.)
-    h, s, v = hsv[..., 0] * 360, hsv[..., 1], hsv[..., 2]
-    al = a[..., 3] > 0
-    flame = al & (s >= 0.45) & (v >= 0.45) & (((h >= 38) & (h <= 75)) | ((h >= 185) & (h <= 255)))
-    ramp = np.array([_hex(c) for c in QI])
-    idx = np.clip(np.round(v * 4.4 - 0.6 + (h < 80) * 0.6), 0, 4).astype(int)  # 노란 불꽃은 한 단 밝게
-    seg = out[:, x0:x1]
-    seg[flame, :3] = (ramp[idx][flame] * 255 + .5).astype(np.uint8)
-    out[:, x0:x1] = seg
-    return out
+def foot_x(p, i):
+    k = p[..., 3] > 127
+    if i in LYING:
+        cols = np.where(k.any(axis=0))[0]
+        return (cols.min() + cols.max()) / 2
+    return float(np.where(k[int(k.shape[0] * 0.92):].any(axis=0))[0].mean())
 
 
 def main():
-    im = np.array(Image.open(SRC).convert('RGBA'))
-    skin, hair, hair_edge, trim = masks(im)
-    hair_all = hair | hair_edge
-    for num, label, (dobok, belt, hair_c) in LOOKS:
-        out = paint(im, skin, hair_all, trim, dobok, belt, hair_c)
-        out = dark_rim(out, im)
-        out = recolor_aura(out, im)
-        Image.fromarray(out, 'RGBA').save(f'assets/sprites/merc/qigong_{num}.webp', 'WEBP', lossless=True)
-        print(f'qigong_{num}.webp  {label}')
+    rows = dict(build())
+    pieces = []
+    for label, idx in ORDER:
+        for j in idx:
+            p = rows[label][j][0]
+            pieces.append((p, foot_x(p, len(pieces))))
+    L = max(int(np.ceil(c)) for _, c in pieces) + 4
+    R = max(int(np.ceil(p.shape[1] - c)) for p, c in pieces) + 4
+    H = max(p.shape[0] + LIFT.get(i, 0) for i, (p, _) in enumerate(pieces)) + 5
+    AY = H - 2
+    cw = L + R
+    sheet = np.zeros((H, cw * len(pieces), 4), np.uint8)
+    for i, (p, c) in enumerate(pieces):
+        x = i * cw + L - int(round(c)); y = AY - p.shape[0] - LIFT.get(i, 0)
+        sheet[y:y + p.shape[0], x:x + p.shape[1]] = p
+    Image.fromarray(sheet, 'RGBA').save(OUT, 'WEBP', lossless=True)
+    print(f'qigong_0 cellW={cw} cellH={H} anchorX={L} anchorY={AY} count={len(pieces)} 대기 키={pieces[0][0].shape[0]}')
 
 
 if __name__ == '__main__':
