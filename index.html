@@ -54921,6 +54921,8 @@
       sim.dungeon = newDungeonState(id, diff, seed, map, { floor: dungeonFloorFor(stu, diff), powerRatio: dungeonPowerRatio(stu), power: dungeonPowerOf(stu) });
       sim.units.forEach(u => { if (u.team === 'blue') u.followLeader = true; });
       enterDungeonRoom(map.start, null);
+      const L0 = dungeonPickLeader(null); // 고르는 창 없이 가장 센 용병을 바로 직접 조종 (🤖 자동 전투로 버튼으로 바꿀 수 있음)
+      setBattleControlMode(L0 ? 'manual' : 'auto', L0 ? L0.id : null, true);
       addBattleLog(`🏰 ${def.name}에 들어왔어요! 지도 어딘가에 숨은 👑 보스 방을 찾아 보스를 물리치면 클리어! (제한 시간 ${DUNGEON_TIME_SEC / 60}분)`);
       addBattleLog('🚪 방의 몬스터를 모두 쓰러뜨리면 길이 열려요. 대표 용병이 문으로 걸어가거나 왼쪽 위 미니맵의 옆 칸을 누르면 그 방으로 이동해요.');
       addBattleLog(`📈 몬스터 세기는 출전 용병 전투력 ${sim.dungeon.power.toLocaleString()}에 맞춰졌어요 (기본 용병의 ${Math.round(sim.dungeon.powerRatio * 100)}%). 새 방에 들어갈 때마다 몬스터가 ${Math.round(DUNGEON_ROOM_RAMP * 100)}%씩 더 강해져요!`);
@@ -55007,6 +55009,10 @@
       const i = party.findIndex(u => u.id === cur);
       switchDungeonUnit(party[(i + 1) % party.length].id);
     }
+    // 아이콘 숨김(HIDE_ALL)에도 보이는 도트 아이콘 (pixel-icons.js의 pxi-ess). 아이콘 파일이 없으면 이모지 그대로 보임
+    const pxIco = (name, emo) => `<span class="pxi pxi-${name} pxi-ess" role="img" aria-label="${emo}">${emo}</span>`;
+    // 이모지 하나 → 같은 뜻의 도트 아이콘 (없으면 이모지 그대로: 숨김 스위치가 감추고 칸도 사라짐)
+    const pxIcoOf = emo => { const n = window.PixelIcons && PixelIcons.MAP[String(emo || '').replace(/️/g, '')]; return n ? pxIco(n, emo) : (emo || ''); };
     let dungeonPartyBarSig = '';
     function renderDungeonPartyBar(force = false) {
       const bar = document.getElementById('dungeonPartyBar');
@@ -55024,7 +55030,7 @@
       if (!force && sig === dungeonPartyBarSig) return; // 바뀐 게 없으면 다시 그리지 않음 (누르는 중에 버튼이 사라지지 않게)
       dungeonPartyBarSig = sig;
       bar.innerHTML = (together
-        ? `<span class="font-extrabold text-amber-300 mr-1">👥 파티 <span class="text-slate-400 font-bold">(⭐ 대표 · 🎮 나)</span></span>`
+        ? `<span class="font-extrabold text-amber-300 mr-1">👥 파티 <span class="text-slate-400 font-bold">(${pxIco('star', '⭐')} 대표 · ${pxIco('gamepad', '🎮')} 나)</span></span>`
         : `<span class="font-extrabold text-amber-300 mr-1">🔄 조종할 용병 <span class="text-slate-400 font-bold">(Tab)</span></span>`) + party.map(u => {
         const me = u.id === ctrlId, lead = u.id === leaderId, dead = !u.alive;
         const pct = hpPct(u);
@@ -55032,7 +55038,7 @@
           class="relative flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-xl border-2 font-extrabold ${me ? 'bg-amber-500/25 border-amber-400 text-white' : dead ? 'bg-slate-900 border-slate-800 text-slate-500 cursor-not-allowed opacity-60' : `bg-slate-900 border-slate-700 text-slate-200 ${together ? 'cursor-default' : 'hover:border-amber-300'}`}">
           ${getMercIconHTML(u.job, u.skinVariant, 24)}
           <span class="flex flex-col items-start leading-tight">
-            <span>${lead ? '⭐' : ''}${dead ? '💀' : ''}${u.name}${me ? ' 🎮' : ''}</span>
+            <span class="flex items-center gap-0.5">${lead ? pxIco('star', '⭐') : ''}${dead ? pxIco('skull', '💀') : ''}${u.name}${me ? ' ' + pxIco('gamepad', '🎮') : ''}</span>
             <span class="block w-14 h-1 rounded bg-slate-700 overflow-hidden"><span class="block h-full ${pct > 50 ? 'bg-emerald-400' : pct > 25 ? 'bg-amber-400' : 'bg-rose-500'}" style="width:${pct}%"></span></span>
           </span>
         </button>`;
@@ -55204,7 +55210,7 @@
       const rule = dg.party ? `틀린 친구 1명마다 몬스터 +${Math.round(DUNGEON_QUIZ_PARTY_STEP * 100)}%` : `틀리면 몬스터 ${DUNGEON_QUIZ_SOLO_WRONG}배`;
       const correctText = qObj.type === 'short' ? (qObj.answers || [])[0] || '' : `${qObj.ans + 1}번. ${qObj.opts[qObj.ans]}`;
       const body = answered
-        ? `<div class="text-center py-3"><div class="text-4xl mb-1">${dungeonQuizUi.ok ? '⭕' : '❌'}</div>
+        ? `<div class="text-center py-3"><div class="text-4xl mb-1">${dungeonQuizUi.ok ? pxIco('ring', '⭕') : pxIco('cross', '❌')}</div>
              <div class="font-extrabold ${dungeonQuizUi.ok ? 'text-emerald-300' : 'text-rose-300'}">${dungeonQuizUi.ok ? '정답! 몬스터가 원래대로 나와요.' : '아쉬워요! 몬스터가 더 나와요.'}</div>
              ${dungeonQuizUi.ok ? '' : `<div class="text-xs text-slate-300 mt-1">정답: ${correctText}</div>`}
              ${dg.party ? '<div class="text-xs text-slate-400 mt-2">다른 친구들이 답할 때까지 기다려요...</div>' : ''}</div>`
@@ -56631,6 +56637,8 @@
       sim.dungeon = newDungeonState(def.id, 'abyss', seed, map, { floor: 1, powerRatio: 1, power: 0 });
       abyssAttach(sim.dungeon, seed, 1);
       enterDungeonRoom(sim.dungeon.start, null);
+      const hero = sim.units.find(u => u.team === 'blue' && !u.isClone);
+      setBattleControlMode(hero ? 'manual' : 'auto', hero ? hero.id : null, true); // 고르는 창 없이 바로 직접 조종
       abyssIntroLog(unit.name);
     }
     function abyssIntroLog(who) {
@@ -56802,7 +56810,7 @@
         ${picked ? '<div class="aby-wait">✅ 골랐어요! 다른 친구가 고를 때까지 기다려요...</div>' : `
         <div class="aby-pcards">${cards.map((c, i) => `<button type="button" onclick="abyssPick(${i})" class="aby-pcard ${c.t === 'hidden' ? 'hid' : c.t}">
             <span class="aby-key">${i + 1}</span>
-            <span class="aby-ico">${c.icon}</span>
+            <span class="aby-ico">${pxIcoOf(c.icon)}</span>
             <span class="aby-kind">${kind[c.t]}</span>
             <span class="aby-t">${c.name}</span>
             <p>${c.desc}</p>
