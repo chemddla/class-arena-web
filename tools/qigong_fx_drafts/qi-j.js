@@ -9,6 +9,7 @@ export const meta = { ...base, size: [320, 112], name: "기공사 J 실타래 �
 const LOOPS = [];
 for (let i = 0; i < 10; i++) LOOPS.push([(i * 2.39) % Math.PI, (i * 1.37) % TAU, (i % 2 ? 1 : -1) * (3 + (i % 4))]);
 const SQUASH = 0.045, IMPLODE = 0.085;
+const HS = 0.72;   // 맞는 순간 터짐 크기 (일반 공격이라 살짝 작게, 사용자 지시)
 // 고리 크기: 실 고리(반지름 약 32~38)·압력 고리(36~39)를 서로 비슷하게 (사용자: 고리마다 둘레 차이를 크게 하지 말 것)
 // 터지는 선 열여섯 줄: [방향, 길이(구슬 반지름 배), 빠르기]
 const BURST = [];
@@ -80,14 +81,14 @@ export function create(o) {
       const b = q - IMPLODE;
       if (b >= 0) {
         // 실이 큰 고리로 풀리며 퍼짐
-        if (b < 0.42) { const e = b / 0.42; threads(p, C, BX, y, RAD, t * 0.4 + 2, Math.pow(1 - e, 1.4), 1, 1, 1 + 4 * ease.outCubic(e)); }
+        if (b < 0.42) { const e = b / 0.42; threads(p, C, BX, y, RAD, t * 0.4 + 2, Math.pow(1 - e, 1.4), 1, 1, 1 + 4 * HS * ease.outCubic(e)); }
         // 둘째 물결: 조금 늦게 다른 방향으로 한 번 더 풀림 (선이 더 많아 보이게)
-        if (b >= 0.06 && b < 0.46) { const e = (b - 0.06) / 0.4; threads(p, C, BX, y, RAD, t * 0.4 + 5.3, Math.pow(1 - e, 1.6) * 0.8, 1, 1, 1 + 4.4 * ease.outCubic(e)); }
+        if (b >= 0.06 && b < 0.46) { const e = (b - 0.06) / 0.4; threads(p, C, BX, y, RAD, t * 0.4 + 5.3, Math.pow(1 - e, 1.6) * 0.8, 1, 1, 1 + 4.4 * HS * ease.outCubic(e)); }
         // 터지는 선: 가운데에서 사방으로 빠르게 뻗어 나가는 기운 줄 (머리는 밝고 꼬리는 가늘게, 끝으로 갈수록 옅어짐)
         if (b < 0.3) {
           const e = b / 0.3;
           BURST.forEach(([a0, len, sp]) => {
-            const head = RAD * (1 + 4.2 * sp * ease.outCubic(e)), tail = Math.max(RAD * 0.8, head - RAD * len * (1 - e * 0.5)), k = Math.pow(1 - e, 1.2);
+            const head = RAD * (1 + 4.2 * HS * sp * ease.outCubic(e)), tail = Math.max(RAD * 0.8, head - RAD * len * HS * (1 - e * 0.5)), k = Math.pow(1 - e, 1.2);
             for (let d = tail; d <= head; d += 0.5) {
               const f = (d - tail) / Math.max(1, head - tail), cx = BX + Math.cos(a0) * d, cy = y + Math.sin(a0) * d * 0.9;
               p.blend(cx, cy, f > 0.7 ? C[6] : f > 0.3 ? C[5] : C[4], k * (0.35 + 0.65 * f));
@@ -96,9 +97,9 @@ export function create(o) {
           });
         }
         // 두꺼운 압력 고리 (세로로 선 것, 비스듬히 누운 것, 바닥)
-        pressureRing(p, C, BX, y, b / 0.32, 5, 36, 1, 1);
-        pressureRing(p, C, BX, y, (b - 0.04) / 0.4, 4, 39, 0.4, 0.75);
-        pressureRing(p, C, BX, y, (b - 0.09) / 0.38, 4, 37, 0.7, 0.6);   // 비스듬한 고리 하나 더
+        pressureRing(p, C, BX, y, b / 0.32, 5, 36 * HS, 1, 1);
+        pressureRing(p, C, BX, y, (b - 0.04) / 0.4, 4, 39 * HS, 0.4, 0.75);
+        pressureRing(p, C, BX, y, (b - 0.09) / 0.38, 4, 37 * HS, 0.7, 0.6);   // 비스듬한 고리 하나 더
         // 터지는 순간 가운데 기운 덩이가 확 부풀었다 사라짐 (흰빛 없이 크림색까지만)
         if (b < 0.1) { const e = b / 0.1; p.disc(BX, y, RAD * (0.6 + 1.6 * e), C[5], 0.85 * (1 - e)); p.disc(BX, y, RAD * (0.3 + 0.8 * e), C[6], 0.7 * (1 - e)); }
       }
