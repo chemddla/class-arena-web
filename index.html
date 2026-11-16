@@ -2787,6 +2787,7 @@
     @keyframes abyBanner { 0% { opacity: 0; transform: translateY(-14px); } 12% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
     .aby-banner .aby-t { font-size: clamp(34px, 7vw, 64px); line-height: 1.1; color: var(--ab-gold); text-shadow: 4px 4px 0 #150e26, 0 0 26px rgba(196, 165, 255, .65); }
     .aby-banner span { padding: 3px 14px; font-size: 15px; background: rgba(21, 14, 38, .88); box-shadow: 0 0 0 2px var(--ab-edge); }
+    .aby-banner .aby-t.room { font-size: clamp(26px, 5vw, 46px); }
     .aby-banner span.boss { color: #ffb4b8; box-shadow: 0 0 0 2px #c8323a; }
     /* 던전 탭 카드 */
     .aby-card { display: flex; flex-direction: column; gap: 12px; padding: 16px 14px; background: linear-gradient(180deg, #3a2c66 0, #241a3a 40%, #150e26 100%); clip-path: var(--gl-step);
@@ -56633,9 +56634,9 @@
         rooms: { ...base.rooms, normal: room('normal', 2, 3), elite: room('elite', boss ? 1 : 0, 1), treasure: room('treasure', 1, 1), gimmick: room('gimmick', 0, 1), empty: room('empty', 1, 1) } };
     }
     const ABYSS_BOONS = {
-      heal:    { icon: '⛲', name: '회복의 샘' },
-      stat:    { icon: '🗿', name: '힘의 제단' },
-      levelup: { icon: '📖', name: '지혜의 서재' }
+      heal:    { icon: '⛲', name: '회복의 샘', desc: '살아 있는 용병 모두 체력 50% 회복' },
+      stat:    { icon: '🗿', name: '힘의 제단', desc: '파티 모두 무작위 능력치 하나 상승' },
+      levelup: { icon: '📖', name: '지혜의 서재', desc: '경험치를 채워 바로 레벨업' }
     };
     // 같은 씨앗이면 모든 화면에서 같은 지도 (신비한 방·상자 내용까지)
     function abyssMakeMap(def, depth, seed) {
@@ -56646,7 +56647,7 @@
       map.grid.flat().forEach(c => {
         if (!c) return;
         c.quiz = false;
-        if (c.kind === 'empty') { c.kind = 'shrine'; c.boon = kinds[Math.floor(rng() * kinds.length)]; c.def = { name: ABYSS_BOONS[c.boon].name }; }
+        if (c.kind === 'empty') { c.kind = 'shrine'; c.boon = kinds[Math.floor(rng() * kinds.length)]; c.def = { name: ABYSS_BOONS[c.boon].name, hint: `${ABYSS_BOONS[c.boon].icon} ${ABYSS_BOONS[c.boon].desc}` }; }
         if (c.kind === 'treasure' && c.chest) c.chest.items = kinds.map(k => [rng(), k]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
         if (c.kind === 'boss' && !abyssIsBossFloor(depth)) { c.kind = 'stairs'; c.cleared = true; c.def = { name: '내려가는 계단' }; }
       });
@@ -56906,11 +56907,15 @@
     function abyssEnterCleared(cell) {
       const dg = sim.dungeon;
       if (cell.kind === 'shrine' && !cell.boonTaken) {
+        const b = ABYSS_BOONS[cell.boon];
         cell.boonTaken = true;
-        addBattleLog(`${ABYSS_BOONS[cell.boon].icon} [${cell.def.name}]을(를) 찾았어요!`);
+        cell.def = { ...cell.def, hint: `${b.icon} ${b.desc} (받았어요)` };
+        addBattleLog(`${b.icon} [${cell.def.name}]을(를) 찾았어요! ${b.desc}`);
+        abyssShowBanner({ title: `${b.icon} ${b.name}`, line: b.desc });
         abyssBoon(cell.boon);
         return true;
       }
+      if (cell.kind === 'shrine') { addBattleLog(`${ABYSS_BOONS[cell.boon].icon} [${cell.def.name}] 이미 효과를 받은 방이에요.`); return true; }
       if (cell.kind === 'stairs') {
         addBattleLog(`🕳️ 내려가는 계단을 찾았어요! ${dg.party ? '⭐ 대표 용병이 ' : ''}방 가운데 계단에 서면 지하 ${dg.abyss.depth + 1}층으로 내려가요. (다른 방을 더 돌고 와도 돼요)`);
         return true;
@@ -57022,11 +57027,12 @@
         <div class="aby-hint fx">${escHtml(fx)}</div>`;
     }
     // 새 층 이름판: 전투 화면 가운데에 잠깐
-    function abyssShowBanner() {
+    // room을 주면 신비한 방 이름판 (이름 + 효과 한 줄)
+    function abyssShowBanner(room) {
       const el = document.getElementById('abyssBanner'), dg = sim.dungeon;
       if (!el || !dg || !dg.abyss) return;
       const d = dg.abyss.depth;
-      el.innerHTML = `<div class="aby-t">지하 ${d}층</div><span>🧬 ${escHtml(dg.def.race)} 구역</span>${abyssIsBossFloor(d) ? `<span class="boss">👑 ${escHtml(dg.def.rooms.boss.bossName)}이(가) 계단을 지켜요</span>` : ''}`;
+      el.innerHTML = room ? `<div class="aby-t room">${escHtml(room.title)}</div><span>${escHtml(room.line)}</span>` : `<div class="aby-t">지하 ${d}층</div><span>🧬 ${escHtml(dg.def.race)} 구역</span>${abyssIsBossFloor(d) ? `<span class="boss">👑 ${escHtml(dg.def.rooms.boss.bossName)}이(가) 계단을 지켜요</span>` : ''}`;
       el.classList.remove('on');
       void el.offsetWidth; // 애니메이션 다시 시작
       el.classList.add('on');
