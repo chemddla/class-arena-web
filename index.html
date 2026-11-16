@@ -45685,6 +45685,16 @@
     function marketItemOk(it) {
       return Boolean(it && typeof it === 'object' && typeof it.id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(it.id));
     }
+    // 학생 기기가 저장(목록 맞추기)으로 서버에 올려도 되는 항목 — DB 규칙과 같은 기준 (2026-11-16부터 규칙이 항목별로 막음)
+    //   경매: 내가 올린 것만 (입찰·마감 정산·취소는 marketItemTx로 서버에서 확인하며 따로 씀) · 거래 제안: 내가 보냈거나 받은 것
+    //   규칙에 걸리는 항목이 하나라도 섞이면 그 저장 전체(내 기록 포함)가 거부되므로, 못 쓰는 항목은 아예 싣지 않음
+    function marketItemMine(kind, it, meId) {
+      if (!it || !meId) return false;
+      return kind === 'auctions' ? it.sellerId === meId : (it.buyerId === meId || it.sellerId === meId);
+    }
+    function marketItemShapeOk(kind, it) {
+      return Boolean(it && it.sellerId && (kind === 'auctions' || it.buyerId));
+    }
     function marketItemTime(it) {
       const n = Number(String(it && it.id || '').split('_').pop());
       return isFinite(n) ? n : 0;
@@ -47490,11 +47500,12 @@
             seen.add(it.id);
             const sg = syncSig(it);
             if (sg === cache.sigs[it.id]) return;
+            if (!marketItemShapeOk(k, it) || !(manager || marketItemMine(k, it, state.activeStudentId))) return; // 규칙이 막는 항목 (남의 경매의 외형 번호 보정 등)은 올리지 않음
             updates[`${base}/${k}/${cache.keys[it.id] || it.id}`] = toFirebaseValue(it);
             sent[it.id] = sg;
           });
           Object.keys(cache.sigs).forEach(id => {
-            if (seen.has(id)) return;
+            if (seen.has(id) || !manager) return; // 학생 기기의 지우기는 marketItemTx(서버 확인)로만 · 목록에서 빠졌다고 지우지 않음
             updates[`${base}/${k}/${cache.keys[id] || id}`] = null;
             sent[id] = null;
           });
@@ -47776,7 +47787,9 @@
             next = [];
             new Set([...Object.keys(local), ...Object.keys(remote.items)]).forEach(id => {
               const lSig = local[id] ? syncSig(local[id]) : undefined;
-              if (lSig !== cache.sigs[id]) { if (local[id]) next.push(local[id]); } // 내가 고치거나 새로 올릴 것 (내가 지운 것은 빠진 채로)
+              // 내가 올릴 수 없는 항목(남의 경매 등)은 내 쪽에서 달라져 있어도 서버 값을 따름: 안 그러면 올리지도 못할 변경을 붙들고 새 입찰을 못 받음
+              const mine = canManageCurrentClass() || marketItemMine(k, local[id] || remote.items[id], state.activeStudentId);
+              if (lSig !== cache.sigs[id] && mine) { if (local[id]) next.push(local[id]); } // 내가 고치거나 새로 올릴 것 (내가 지운 것은 빠진 채로)
               else if (remote.items[id]) next.push(remote.items[id]);
             });
           }

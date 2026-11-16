@@ -282,9 +282,10 @@ test('선물함: 보낸 것은 고치거나 지울 수 없고, 받는 학생 기
 });
 
 test('선물함: 거래 수락처럼 내 기록·거래 목록·친구 선물을 한 번에 저장', async () => {
+  await env.withSecurityRulesDisabled(ctx => ctx.database().ref('classes/OWN1/tradeOffers/offer_1').set({ id: 'offer_1', buyerId: 's2', sellerId: 's1', offerPrice: 300 }));
   await assertSucceeds(db('u1').ref().update({
     'classes/OWN1/students/s1/mc': 400,
-    'classes/OWN1/tradeOffers': null,
+    'classes/OWN1/tradeOffers/offer_1': null,
     'classes/OWN1/transfers/s2/t_trade001': gift('s1', { mc: 0, kind: 'trade_buy', merc: { id: 'merc_9', job: 'mage' } }),
     'classes/OWN1/transfers/s3/t_trade002': gift('s1', { mc: 250 })
   }));
@@ -360,9 +361,8 @@ test('레이드에서 싸우는 학생 위치(world_boss_live): 로그인한 학
   await assertFails(db('u1').ref('classes/NOPE/world_boss_live/s1').set({ n: 'a' }));
 });
 
-test('반 공용 칸(경매·거래·방): 로그인 안 한 사람·우리 반이 아닌 사람은 못 쓰고 못 지움, 소유자 없는 학급은 잠김', async () => {
-  await env.withSecurityRulesDisabled(ctx => ctx.database().ref('classes/OWN1/auctions').set([{ id: 'auc_1', sellerId: 's2' }]));
-  const shared = ['auctions', 'tradeOffers', 'pvp_squads/s1', 'pvp_rooms/r1', 'raid_rooms/r1', 'minigame_rooms/r1', 'minigames/r1', 'live_battle_events/e1'];
+test('반 공용 칸(방): 로그인 안 한 사람·우리 반이 아닌 사람은 못 쓰고 못 지움, 소유자 없는 학급은 잠김', async () => {
+  const shared = ['pvp_squads/s1', 'pvp_rooms/r1', 'raid_rooms/r1', 'minigame_rooms/r1', 'minigames/r1', 'live_battle_events/e1'];
   for (const k of shared) {
     await assertFails(db(null).ref(`classes/OWN1/${k}`).remove());
     await assertFails(db(null).ref(`classes/OWN1/${k}`).set({ x: 1 }));
@@ -371,8 +371,86 @@ test('반 공용 칸(경매·거래·방): 로그인 안 한 사람·우리 반�
     await assertSucceeds(db('teacher').ref(`classes/OWN1/${k}`).remove());
     await assertFails(db(null).ref(`classes/OLD1/${k}`).set({ x: 1 })); // 소유자 없는 학급은 잠김
   }
-  // 학생의 한 번 저장(내 기록 + 경매 목록)도 그대로 됨
-  await assertSucceeds(db('u1').ref().update({ 'classes/OWN1/students/s1/mc': 50, 'classes/OWN1/auctions': [{ id: 'auc_2', sellerId: 's1' }] }));
+});
+
+// ----- 경매·거래 제안: 항목마다 한 칸 (classes/{학급}/auctions/{id} · tradeOffers/{id}) -----
+// 2026-11-16: 예전엔 반 학생 누구나 목록을 통째로 쓰고 지울 수 있어, 남의 경매를 없애거나 판매자·입찰자를 바꿔치기할 수 있었음
+const auc = (id, sellerId, extra = {}) => ({ id, sellerId, sellerName: sellerId, merc: { id: 'merc_' + id, job: 'mage', level: 3 }, startBid: 100, currentBid: 100, highestBidderName: '입찰자 없음', endsAt: Date.now() + 3600000, ...extra });
+const offer = (id, buyerId, sellerId, extra = {}) => ({ id, buyerId, sellerId, mercId: 'merc_1', offerPrice: 200, status: 'pending', ...extra });
+const link = (uid, sid, proof) => env.withSecurityRulesDisabled(ctx => ctx.database().ref().update({
+  [`studentSecrets/OWN1/${sid}/${proof}`]: true, [`studentClaims/OWN1/${sid}/${uid}`]: { proof, at: 1 }, [`classMembers/OWN1/${uid}`]: sid
+}));
+
+test('경매: 목록 통째로는 소유 교사만 쓰고 지움', async () => {
+  await env.withSecurityRulesDisabled(ctx => ctx.database().ref('classes/OWN1/auctions/auc_1').set(auc('auc_1', 's2')));
+  for (const k of ['auctions', 'tradeOffers']) {
+    await assertFails(db('u1').ref(`classes/OWN1/${k}`).remove());
+    await assertFails(db('u1').ref(`classes/OWN1/${k}`).set({}));
+    await assertFails(db(null).ref(`classes/OWN1/${k}`).remove());
+    await assertFails(db(null).ref(`classes/OLD1/${k}/x1`).set({ id: 'x1', sellerId: 's1', buyerId: 's1' })); // 소유자 없는 학급은 잠김
+  }
+  await assertSucceeds(db('teacher').ref('classes/OWN1/auctions').set([auc('auc_a', 's1'), auc('auc_b', 's2')])); // 새 학급 만들기·교사 정리 (예전 배열 꼴 포함)
+  await assertSucceeds(db('teacher').ref('classes/OWN1/auctions').remove());
+  await assertFails(db('teacher').ref('classes/OWN1/auctions').set({ x: 1 })); // 모양이 틀린 값은 교사도 못 올림
+});
+
+test('경매: 내 이름으로만 올리고, 남의 경매는 지우거나 고칠 수 없음', async () => {
+  await link('u2', 's2', PROOF_B);
+  await assertSucceeds(db('u1').ref('classes/OWN1/auctions/auc_1').set(auc('auc_1', 's1')));
+  await assertFails(db('u1').ref('classes/OWN1/auctions/auc_2').set(auc('auc_2', 's2')));       // 남의 이름으로 올리기
+  await assertFails(db('u1').ref('classes/OWN1/auctions/auc_3').set(auc('auc_9', 's1')));       // 칸 이름과 id가 다름
+  await assertFails(db('u1').ref('classes/OWN1/auctions/a b').set(auc('a b', 's1')));           // 이상한 칸 이름
+  await assertFails(db('u3').ref('classes/OWN1/auctions/auc_4').set(auc('auc_4', 's1')));       // 우리 반 학생으로 연결 안 됨
+  await assertFails(db(null).ref('classes/OWN1/auctions/auc_4').set(auc('auc_4', 's1')));
+  // 남(s2)이 내 경매를 지우거나 판매자·용병을 바꿔치기
+  await assertFails(db('u2').ref('classes/OWN1/auctions/auc_1').remove());
+  await assertFails(db('u2').ref('classes/OWN1/auctions/auc_1/sellerId').set('s2'));
+  await assertFails(db('u2').ref('classes/OWN1/auctions/auc_1').set(auc('auc_1', 's1', { merc: { id: 'other', job: 'mage', level: 1 }, highestBidderId: 's2', currentBid: 150 })));
+  await assertFails(db('u2').ref('classes/OWN1/auctions/auc_1').set(auc('auc_1', 's1', { startBid: 1, highestBidderId: 's2', currentBid: 150 })));
+  await assertFails(db('u2').ref('classes/OWN1/auctions/auc_1/currentBid').set(1));
+  // 판매자는 자기 경매를 고치고(마감 시각 채우기·외형 보정) 내릴 수 있음
+  await assertSucceeds(db('u1').ref('classes/OWN1/auctions/auc_1/endsAt').set(Date.now() + 7200000));
+  await assertFails(db('u1').ref('classes/OWN1/auctions/auc_1/sellerId').set('s2'));
+  await assertSucceeds(db('u1').ref('classes/OWN1/auctions/auc_1').remove());
+});
+
+test('경매 입찰: 내 이름으로, 더 높은 값으로, 마감 전에만', async () => {
+  await link('u2', 's2', PROOF_B);
+  await link('u3', 's3', PROOF_C);
+  const ends = Date.now() + 3600000;
+  await env.withSecurityRulesDisabled(ctx => ctx.database().ref('classes/OWN1/auctions').set({
+    auc_1: auc('auc_1', 's1', { endsAt: ends }),
+    auc_old: auc('auc_old', 's1', { endsAt: Date.now() - 1000 }),
+    k0: auc('auc_legacy', 's1', { endsAt: ends })   // 칸 이름과 id가 다른 예전 칸 (배열로 올라갔던 0, 1, 2… 칸과 같은 경우)
+  }));
+  const bid = (by, amount, extra = {}) => auc('auc_1', 's1', { endsAt: ends, highestBidderId: by, highestBidderName: by, currentBid: amount, ...extra });
+  await assertFails(db('u2').ref('classes/OWN1/auctions/auc_1').set(bid('s3', 100)));           // 남의 이름으로 입찰
+  await assertFails(db('u2').ref('classes/OWN1/auctions/auc_1').set(bid('s2', 50)));            // 시작가보다 낮음
+  await assertSucceeds(db('u2').ref('classes/OWN1/auctions/auc_1').set(bid('s2', 100)));        // 첫 입찰은 시작가부터
+  await assertFails(db('u3').ref('classes/OWN1/auctions/auc_1').set(bid('s3', 100)));           // 같은 값
+  await assertFails(db('u3').ref('classes/OWN1/auctions/auc_1').set(bid('s3', 150, { endsAt: ends + 999999 }))); // 마감 시각 바꾸기
+  await assertSucceeds(db('u3').ref('classes/OWN1/auctions/auc_1').set(bid('s3', 150)));
+  await assertFails(db('u2').ref('classes/OWN1/auctions/auc_1').remove());                      // 입찰자는 못 지움 (마감 전)
+  await assertFails(db('u2').ref('classes/OWN1/auctions/auc_old').set(auc('auc_old', 's1', { endsAt: Date.now() - 1000, highestBidderId: 's2', currentBid: 500 }))); // 마감 뒤 입찰
+  await assertSucceeds(db('u2').ref('classes/OWN1/auctions/auc_old').remove());                 // 마감된 경매는 접속한 학생 누구나 정산(빼냄)
+  await assertSucceeds(db('u2').ref('classes/OWN1/auctions/k0').set(auc('auc_legacy', 's1', { endsAt: ends, highestBidderId: 's2', currentBid: 120 }))); // 예전 칸도 입찰됨
+  // 학생의 한 번 저장(내 기록 + 내가 올린 경매 한 칸)
+  await assertSucceeds(db('u2').ref().update({ 'classes/OWN1/students/s2/mc': 50, 'classes/OWN1/auctions/auc_n1': auc('auc_n1', 's2') }));
+});
+
+test('거래 제안: 사는 학생이 자기 이름으로 보내고, 두 당사자만 고치고 지움', async () => {
+  await link('u2', 's2', PROOF_B);
+  await link('u3', 's3', PROOF_C);
+  await assertFails(db('u1').ref('classes/OWN1/tradeOffers/offer_1').set(offer('offer_1', 's2', 's3'))); // 남의 이름으로 제안
+  await assertFails(db('u1').ref('classes/OWN1/tradeOffers/offer_x').set(offer('offer_1', 's1', 's2'))); // 칸 이름과 id가 다름
+  await assertSucceeds(db('u1').ref('classes/OWN1/tradeOffers/offer_1').set(offer('offer_1', 's1', 's2')));
+  await assertFails(db('u3').ref('classes/OWN1/tradeOffers/offer_1').remove());                         // 제3자
+  await assertFails(db('u3').ref('classes/OWN1/tradeOffers/offer_1/offerPrice').set(1));
+  await assertFails(db('u2').ref('classes/OWN1/tradeOffers/offer_1/buyerId').set('s3'));                // 당사자 바꿔치기
+  await assertSucceeds(db('u2').ref('classes/OWN1/tradeOffers/offer_1/status').set('seen'));            // 파는 학생
+  await assertSucceeds(db('u2').ref('classes/OWN1/tradeOffers/offer_1').remove());                      // 수락·거절
+  await assertSucceeds(db('u1').ref('classes/OWN1/tradeOffers/offer_2').set(offer('offer_2', 's1', 's2')));
+  await assertSucceeds(db('u1').ref('classes/OWN1/tradeOffers/offer_2').remove());                      // 보낸 학생이 취소
 });
 
 // ----- 학생 외형 디자인 (classes/{학급}/skinDesigns/{학생}/{id}) -----

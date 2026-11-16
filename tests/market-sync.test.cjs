@@ -37,8 +37,10 @@ function makeServer() {
   };
 }
 // ----- 기기 한 대: index.html의 코드를 그대로 넣어 만든 올리기(push)·받기(recv)·한 건 거래(tx) -----
-const makeDevice = new Function('server', 'code', `
-  let state = { auctions: [], tradeOffers: [], students: [] };
+// me: 이 기기에 로그인한 학생 id · isManager: 소유 교사 기기 (목록을 마음대로 고치고 지울 수 있음)
+const makeDevice = new Function('server', 'code', 'me', 'isManager', `
+  let state = { auctions: [], tradeOffers: [], students: [], activeStudentId: me };
+  const canManageCurrentClass = () => isManager;
   let syncCache = { auctions: undefined, tradeOffers: undefined };
   let online = true;
   const normalizeMercForSync = m => m;
@@ -49,6 +51,7 @@ const makeDevice = new Function('server', 'code', `
   ${txCode}
   function push(creating = false) {
     const updates = {}, base = 'classes/' + code, pending = { lists: {} };
+    const manager = creating || isManager;
     ${pushCode}
     if (Object.keys(updates).length) server.update(updates);
     ${ackCode}
@@ -60,7 +63,8 @@ const makeDevice = new Function('server', 'code', `
   }
   return { get state() { return state; }, get cache() { return syncCache; }, push, recv, tx: marketItemTx, setOnline(v) { online = v; }, ids: k => state[k].map(x => x.id).sort() };
 `);
-const device = (server, loaded = true) => { const d = makeDevice(server, CODE); if (loaded) d.recv(true); return d; };
+const device = (server, loaded = true, me = 's1', isManager = false) => { const d = makeDevice(server, CODE, me, isManager); if (loaded) d.recv(true); return d; };
+const teacher = server => device(server, true, null, true);
 
 let n = 0; const tests = [];
 const t = (name, fn) => tests.push([name, fn]);
@@ -70,8 +74,8 @@ const bid = (who, amount) => cur => { const min = cur.highestBidderId ? cur.curr
 const take = () => null;
 
 t('두 학생이 거의 동시에 출품해도 둘 다 남음 (예전엔 나중 저장이 앞의 것을 지움)', () => {
-  const S = makeServer(), A = device(S), B = device(S);
-  A.state.auctions.unshift(auc('auc_a_1000')); B.state.auctions.unshift(auc('auc_b_2000'));
+  const S = makeServer(), A = device(S), B = device(S, true, 's2');
+  A.state.auctions.unshift(auc('auc_a_1000')); B.state.auctions.unshift(auc('auc_b_2000', { sellerId: 's2' }));
   A.push(); B.push();
   assert.deepStrictEqual(S.ids('auctions'), ['auc_a_1000', 'auc_b_2000']);
 });
@@ -83,13 +87,15 @@ t('올릴 때 바뀐 항목 칸만 쓰고, 다시 올리면 아무것도 안 씀
   A.state.auctions.find(x => x.id === 'auc_a_1000').startBid = 300;
   assert.deepStrictEqual(Object.keys(A.push()), ['classes/T1/auctions/auc_a_1000']);
   A.state.auctions = A.state.auctions.filter(x => x.id !== 'auc_a_1100');
-  assert.deepStrictEqual(A.push(), { 'classes/T1/auctions/auc_a_1100': null });
+  assert.deepStrictEqual(A.push(), {}); // 학생 기기는 목록에서 빠졌다고 서버에서 지우지 않음 (지우기는 marketItemTx로만)
+  const T = teacher(S); T.state.auctions = T.state.auctions.filter(x => x.id !== 'auc_a_1100');
+  assert.deepStrictEqual(T.push(), { 'classes/T1/auctions/auc_a_1100': null });
   assert.deepStrictEqual(S.ids('auctions'), ['auc_a_1000']);
 });
 t('한 학생이 자기 경매를 고치는 사이 다른 학생의 다른 경매 입찰이 지워지지 않음', () => {
-  const S = makeServer(), A = device(S);
-  A.state.auctions.push(auc('auc_a_1000'), auc('auc_b_2000', { sellerId: 's2' })); A.push();
-  const B = device(S);
+  const S = makeServer(), T = teacher(S);
+  T.state.auctions.push(auc('auc_a_1000'), auc('auc_b_2000', { sellerId: 's2' })); T.push();
+  const A = device(S), B = device(S, true, 's2');
   A.state.auctions.find(x => x.id === 'auc_a_1000').endsAt = 123;       // A: 아직 안 올린 변경
   B.state.auctions.find(x => x.id === 'auc_b_2000').currentBid = 900; B.push(); // B: 그 사이 서버에 올림
   A.push();
@@ -97,22 +103,22 @@ t('한 학생이 자기 경매를 고치는 사이 다른 학생의 다른 경�
   assert.strictEqual(S.item('auctions', 'auc_a_1000').endsAt, 123);
 });
 t('받을 때: 내가 안 올린 변경은 지키고 나머지는 서버 값으로, 새 것이 앞에', () => {
-  const S = makeServer(), A = device(S);
-  A.state.auctions.push(auc('auc_a_1000'), auc('auc_b_2000')); A.push();
-  const B = device(S);
+  const S = makeServer(), T = teacher(S);
+  T.state.auctions.push(auc('auc_a_1000'), auc('auc_b_2000', { sellerId: 's2' })); T.push();
+  const A = device(S), B = device(S, true, 's2');
   A.state.auctions.find(x => x.id === 'auc_a_1000').startBid = 333;   // 고침 (미전송)
   A.state.auctions.unshift(auc('auc_c_3000'));                         // 새로 올릴 것 (미전송)
-  B.state.auctions.find(x => x.id === 'auc_b_2000').currentBid = 900; B.state.auctions.unshift(auc('auc_d_4000')); B.push();
+  B.state.auctions.find(x => x.id === 'auc_b_2000').currentBid = 900; B.state.auctions.unshift(auc('auc_d_4000', { sellerId: 's2' })); B.push();
   A.recv();
   assert.deepStrictEqual(A.state.auctions.map(x => x.id), ['auc_d_4000', 'auc_c_3000', 'auc_b_2000', 'auc_a_1000']);
   assert.strictEqual(A.state.auctions.find(x => x.id === 'auc_a_1000').startBid, 333);
   assert.strictEqual(A.state.auctions.find(x => x.id === 'auc_b_2000').currentBid, 900);
   assert.deepStrictEqual(Object.keys(A.push()).sort(), ['classes/T1/auctions/auc_a_1000', 'classes/T1/auctions/auc_c_3000']);
 });
-t('받을 때: 내가 지운 것(미전송)은 되살아나지 않고, 남이 지운 것은 사라짐', () => {
-  const S = makeServer(), A = device(S);
+t('받을 때(교사 기기): 내가 지운 것(미전송)은 되살아나지 않고, 남이 지운 것은 사라짐', () => {
+  const S = makeServer(), A = teacher(S);
   A.state.auctions.push(auc('auc_a_1000'), auc('auc_b_2000'), auc('auc_c_3000')); A.push();
-  const B = device(S);
+  const B = teacher(S);
   A.state.auctions = A.state.auctions.filter(x => x.id !== 'auc_a_1000'); // 내가 지움 (미전송)
   B.state.auctions = B.state.auctions.filter(x => x.id !== 'auc_b_2000'); B.push(); // 남이 지움
   A.recv();
@@ -205,6 +211,31 @@ t('서버 없는 학급(이 기기에서만)은 바로 처리', async () => {
   assert.strictEqual((await A.tx('auctions', 'auc_a_1000', take)).ok, true);
   assert.deepStrictEqual(A.state.auctions, []);
   assert.deepStrictEqual(S.writes, []);
+});
+t('학생 기기는 남의 경매를 저장으로 고치거나 지우지 않고, 그 항목은 서버 값을 따름 (DB 규칙이 막는 쓰기를 싣지 않음)', async () => {
+  const S = makeServer(), T = teacher(S);
+  T.state.auctions.push(auc('auc_a_1000'), auc('auc_b_2000', { sellerId: 's2' })); T.push();
+  T.state.tradeOffers.push(offer('offer_x_1000', { buyerId: 's2', sellerId: 's3' }), offer('offer_y_2000', { buyerId: 's1', sellerId: 's2' })); T.push();
+  const A = device(S), B = device(S, true, 's2');
+  // A의 화면에서 남(s2)의 경매가 달라짐 (외형 번호 보정 같은 이 기기만의 변경) · 남들끼리의 거래 제안도
+  A.state.auctions.find(x => x.id === 'auc_b_2000').merc.skinVariant = 3;
+  A.state.tradeOffers.find(x => x.id === 'offer_x_1000').offerPrice = 1;
+  A.state.tradeOffers.find(x => x.id === 'offer_y_2000').note = 'mine';   // 내가 보낸 제안은 올려도 됨
+  assert.deepStrictEqual(Object.keys(A.push()), ['classes/T1/tradeOffers/offer_y_2000']);
+  assert.strictEqual(S.item('auctions', 'auc_b_2000').merc.skinVariant, undefined);
+  assert.strictEqual(S.item('tradeOffers', 'offer_x_1000').offerPrice, 500);
+  // 그 사이 s3가 그 경매에 입찰 → A는 붙들고 있던 자기 쪽 변경 대신 서버 값(새 입찰)을 받음
+  await B.tx('auctions', 'auc_a_1000', bid('s2', 300));
+  const C = device(S, true, 's3'); await C.tx('auctions', 'auc_b_2000', bid('s3', 400));
+  A.recv();
+  assert.strictEqual(A.state.auctions.find(x => x.id === 'auc_b_2000').currentBid, 400);
+  assert.strictEqual(A.state.auctions.find(x => x.id === 'auc_a_1000').highestBidderId, 's2'); // 내 경매에 들어온 입찰도 받음
+  // A의 목록에서 남의 경매가 빠져도 서버에서는 안 지워짐
+  A.state.auctions = A.state.auctions.filter(x => x.id !== 'auc_b_2000');
+  assert.deepStrictEqual(A.push(), {});
+  assert.deepStrictEqual(S.ids('auctions'), ['auc_a_1000', 'auc_b_2000']);
+  A.recv();
+  assert.deepStrictEqual(A.ids('auctions'), ['auc_a_1000', 'auc_b_2000']); // 다음에 받을 때 되돌아옴
 });
 t('남이 보낸 글자의 < > 따옴표는 받을 때 지움', () => {
   const S = makeServer(); S.oldTabWrites('tradeOffers', [offer('offer_a_1000', { buyerName: '<img src=x onerror="a()">' })]);
