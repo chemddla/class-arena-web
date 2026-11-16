@@ -32634,6 +32634,8 @@
     const QI_LOSS_GAP = 30;             // 맞아서 기가 줄어든 뒤 0.5초 동안은 또 줄지 않음 (다단 공격 한 번에 다 날아가지 않게)
     const QI_DMG_PER = 0.08, QI_SIZE_PER = 0.08;
     const QI_COLOR = '#2dd4bf';
+    const QI_ATK_COLOR = '#e8b23e'; // 일반 공격 구슬 (금빛 실타래 기구슬): 투사체 색으로 구분해서 실시간 화면에도 그대로 감
+    const QI_J_RAMP = ['#24160a', '#4e3210', '#8a5a16', '#c48a24', '#e8b23e', '#f6d27a', '#fbe8b4']; // 반짝임 없는 금빛 기운 (흰색 없이 크림색까지)
     const QI_RAMP = ['#0b4f4a', '#14857a', '#2dd4bf', '#99f6e4', '#f0fffb'];
     const QI_ORB_R = 6;                                                                        // 기본 공격 구체 반지름
     const QI_CANNON_DMG = 2.6, QI_CANNON_R = 17, QI_CANNON_CELLS = 7, QI_CANNON_PUSH = 0.6;    // 기공포: 꿰뚫는 큰 구체 7칸 · 260% · 0.6칸 밀침
@@ -32679,19 +32681,22 @@
     function qiBasicShot(u, target, angle = null) {
       const k = qiSizeK(u), dmg = u.atk * qiDmgK(u);
       const o = angle == null ? unitShotOrigin(u, 14) : aimShotOrigin(u, u.x, u.y, angle);
-      const hold = { wait: QI_ATK_WINDUP, handDx: (o.x - u.x) * (u.facingDir || 1), handDy: o.y - u.y, qiFlash: Math.round(14 * k) };
+      const hold = { wait: QI_ATK_WINDUP, handDx: (o.x - u.x) * (u.facingDir || 1), handDy: o.y - u.y, qiFlash: Math.round(14 * k), color: QI_ATK_COLOR };
       qiOrbShot(u, o, angle == null ? { target, dmg, r: QI_ORB_R * k, extra: hold } : { angle, dmg, r: QI_ORB_R * k, extra: hold });
     }
     // 손을 떠나는 순간 (투사체 wait가 끝난 틱): 손끝 섬광·소리
     function qiOrbRelease(p) {
-      sim.effects.push({ type: 'qi_hit', x: Math.round(p.x), y: Math.round(p.y), r: p.qiFlash, small: 1, life: 12, maxLife: 12 });
+      if (p.color === QI_ATK_COLOR) sim.effects.push({ type: 'qi_hit', j: 1, small: 1, x: Math.round(p.x), y: Math.round(p.y), r: Math.round(p.radius || QI_ORB_R), life: 10, maxLife: 10 });
+      else sim.effects.push({ type: 'qi_hit', x: Math.round(p.x), y: Math.round(p.y), r: p.qiFlash, small: 1, life: 12, maxLife: 12 });
       p.qiFlash = 0;
       playCombatSfx('magic');
     }
     // 구체가 맞은 자리 (resolveProjectileImpact): 기공탄·기본 공격
     function qiProjectileHit(p, hit, x, y) {
       const r = Math.max(18, (p.radius || QI_ORB_R) * 3.2);
-      sim.effects.push({ type: 'qi_hit', x: Math.round(hit ? hit.x : x), y: Math.round(hit ? hit.y - 14 : y - 12), r: Math.round(r), life: 18, maxLife: 18 });
+      if (p.color === QI_ATK_COLOR) // 일반 공격: 실타래 기구슬이 박혀 오그라들었다가 기운 실이 풀리며 터짐 (drawQiJHit)
+        sim.effects.push({ type: 'qi_hit', j: 1, x: Math.round(hit ? hit.x : x), y: Math.round(hit ? hit.y - 14 : y - 12), r: Math.round((p.radius || QI_ORB_R) * 10) / 10, dir: (p.x <= (hit ? hit.x : x) ? 1 : -1), life: 30, maxLife: 30 });
+      else sim.effects.push({ type: 'qi_hit', x: Math.round(hit ? hit.x : x), y: Math.round(hit ? hit.y - 14 : y - 12), r: Math.round(r), life: 18, maxLife: 18 });
       if (!hit) return;
       applyDamage(p.owner, hit, p.dmg, '', QI_COLOR);
       playCombatSfx('magic');
@@ -32974,6 +32979,7 @@
     // ----- 기공사 그림 (캔버스 도트 · pixelfx 램프) -----
     // 기의 구체: 은은한 빛 → 도트 원(가장자리 어둡게, 왼쪽 위 밝게, 가운데 흰 심) → 뒤로 흩어지는 꼬리
     function drawQiOrb(ctx, p) {
+      if (p.color === QI_ATK_COLOR) { drawQiThreadOrb(ctx, p); return; }
       const R = QI_RAMP, t = sim.tickCount || 0;
       const r = Math.max(3, p.radius || QI_ORB_R) * (1 + 0.07 * Math.sin(t * 0.45 + (p.x | 0) * 0.01));
       const c = r >= 12 ? 3 : 2, a = p.angle || 0, bx = -Math.cos(a), by = -Math.sin(a);
@@ -33004,6 +33010,126 @@
       }
       ctx.restore();
     }
+    // ----- 기공사 일반 공격: 실타래 기구슬 (사용자 시안 J, tools/qigong_fx_drafts/qi-j.js를 캔버스로 옮김) -----
+    // 반짝임·흰 섬광·먼지·바닥 고리 없음 (사용자 지시). 진한 금빛 구슬 속에 기운 실 열 가닥이 엉켜 돌고, 뒤로 옅은 기운 꼬리
+    // 맞으면: 박힘(앞으로 납작하게 눌림) → 응축(잠깐 오그라듦) → 터짐(기운 실이 비슷한 크기의 고리로 두 번 풀려 퍼지고,
+    //   사방으로 뻗는 선 열여섯 줄, 압력 고리 세 겹). 터짐 크기는 일반 공격이라 시안의 0.72배
+    const QI_J_K = 0.62; // 구체 반지름 → 그림 반지름: 캐릭터 키(54) 대비 시안(키 86·구슬 8)과 같은 비율. 터짐 지름 ≈ 캐릭터 키의 60%
+    const QI_J_LOOPS = Array.from({ length: 10 }, (_, i) => [(i * 2.39) % Math.PI, (i * 1.37) % (Math.PI * 2), (i % 2 ? 1 : -1) * (3 + (i % 4))]);
+    const QI_J_BURST = Array.from({ length: 16 }, (_, i) => [(i / 16) * Math.PI * 2 + ((i * 0.37) % 1 - 0.5) * 0.25, 1.6 + ((i * 0.53) % 1) * 1.6, 0.7 + ((i * 0.71) % 1) * 0.5]);
+    // 기운 실 (grow > 1이면 풀려 커지는 고리: 고리끼리 크기 차이 ±6%, 군데군데 끊김)
+    function qiJThreads(ctx, x, y, r, ts, k, sx, sy, grow) {
+      const R = QI_J_RAMP, open = grow > 1;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, k));
+      QI_J_LOOPS.forEach(([tilt, yaw, sp], i) => {
+        const ct = Math.cos(tilt) * 0.999, st = Math.sin(tilt), cy = Math.cos(yaw + ts * 1.5), sy2 = Math.sin(yaw + ts * 1.5);
+        const rr = open ? r * 0.9 * grow * (0.94 + 0.12 * ((i * 0.61) % 1)) : r * (0.5 + 0.45 * ((i * 0.37) % 1));
+        const gap = open ? 0.08 + 0.3 * Math.min(1, (grow - 1) / 5) : 0;
+        ctx.fillStyle = open ? R[6] : (i % 3 ? R[5] : R[6]);
+        for (let a = 0; a < Math.PI * 2; a += 0.8 / Math.max(rr, 2)) {
+          const u = a + ts * sp, px = Math.cos(u) * rr, py = Math.sin(u) * rr * ct, pz = Math.sin(u) * rr * st;
+          const X = px * cy - pz * sy2, Z = px * sy2 + pz * cy;
+          if (Z <= 0 || (gap && ((a * 3.1 + i) % 1) < gap)) continue;
+          pfxDot(ctx, x + X * sx, y + py * sy, 1);
+        }
+      });
+      ctx.restore();
+    }
+    // 구슬 몸통 (sx·sy: 가로·세로 눌림, k: 투명도)
+    function qiJBall(ctx, x, y, r, ts, k = 1, sx = 1, sy = 1) {
+      const R = QI_J_RAMP, big = r * 2.4 * Math.max(sx, sy);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(x, y, 0, x, y, big);
+      g.addColorStop(0, R[4] + '55'); g.addColorStop(1, R[4] + '00');
+      ctx.globalAlpha = k; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, big, 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 0.3 * k; ctx.fillStyle = R[3]; ctx.beginPath(); ctx.ellipse(x, y, (r + 2) * sx, (r + 2) * sy, 0, 0, Math.PI * 2); ctx.fill(); // 기운 막
+      ctx.globalAlpha = k;
+      const nx = Math.ceil((r + 1) * sx), ny = Math.ceil((r + 1) * sy);
+      for (let gy = -ny; gy <= ny; gy++) for (let gx = -nx; gx <= nx; gx++) {
+        const dx = gx / sx, dy = gy / sy, d = Math.hypot(dx, dy) / r;
+        if (d > 1.02) continue;
+        const lit = Math.max(0, Math.min(1, 1 - d * 0.95 - (dx + dy) / r * 0.1));
+        ctx.fillStyle = d > 0.9 ? R[4] : lit > 0.7 ? R[4] : lit > 0.35 ? R[3] : R[2];
+        pfxDot(ctx, x + gx, y + gy, 1);
+      }
+      ctx.restore();
+      qiJThreads(ctx, x, y, r, ts, k, sx, sy, 1);
+    }
+    // 날아가는 구슬 (p.radius = 구체 크기, 기가 많을수록 큼)
+    function drawQiThreadOrb(ctx, p) {
+      const R = QI_J_RAMP, t = sim.tickCount || 0, ts = t / 60, r = Math.max(3, (p.radius || QI_ORB_R) * QI_J_K);
+      const a = p.angle || 0, bx = -Math.cos(a), by = -Math.sin(a);
+      ctx.save();
+      for (let i = 1; i <= 6; i++) { // 뒤로 흘러 옅어지는 기운 꼬리 (반투명 덩이)
+        const jx = Math.sin(t * 0.7 + i * 1.9) * 1.6, jy = Math.cos(t * 0.6 + i * 2.3) * 1.6, rr = r * (0.75 - i * 0.07);
+        ctx.globalAlpha = 0.42 - i * 0.055; ctx.fillStyle = i < 3 ? R[5] : R[4];
+        ctx.beginPath(); ctx.arc(p.x + bx * r * 0.9 * i + jx, p.y + by * r * 0.9 * i + jy, Math.max(1, rr), 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+      qiJBall(ctx, p.x, p.y, r, ts);
+    }
+    // 고리 하나 (sy로 납작하게): 두께가 얇아지며 퍼지고 옅어짐
+    function qiJRing(ctx, x, y, e, R0, R1, sy, k) {
+      if (!(e >= 0 && e < 1)) return;
+      const r = R0 + (R1 - R0) * (1 - Math.pow(1 - e, 3)), w = Math.max(1, 2.4 * (1 - e));
+      ctx.save();
+      ctx.globalAlpha = (1 - e) * 0.8 * k; ctx.strokeStyle = QI_J_RAMP[6]; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.ellipse(x, y, r, Math.max(0.5, r * sy), 0, 0, Math.PI * 2); ctx.stroke();
+      if (w > 1.2) {
+        ctx.globalAlpha *= 0.6; ctx.strokeStyle = QI_J_RAMP[4]; ctx.lineWidth = w;
+        ctx.beginPath(); ctx.ellipse(x, y, Math.max(0.5, r - w / 2), Math.max(0.5, (r - w / 2) * sy), 0, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    // qi_hit j=1: 맞는 순간 (life 30틱 = 0.5초) · small=1이면 손을 떠나는 순간 손끝에 은은한 금빛만
+    function drawQiJHit(ctx, ef, p) {
+      const R = QI_J_RAMP, RAD = Math.max(3, (ef.r || QI_ORB_R) * QI_J_K), x = ef.x, y = ef.y, ts = (sim.tickCount || 0) / 60;
+      if (ef.small) {
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        const g = ctx.createRadialGradient(x, y, 0, x, y, RAD * 2.2);
+        g.addColorStop(0, R[5] + 'aa'); g.addColorStop(1, R[4] + '00');
+        ctx.globalAlpha = Math.max(0, 1 - p); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, RAD * 2.2, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        return;
+      }
+      const q = p * 0.5, SQUASH = 0.045, IMPLODE = 0.085, HS = 0.72, dir = ef.dir || 1, BX = x - 2 * dir;
+      if (q < SQUASH) { // 박힘: 앞으로 납작하게 눌림 + 맞닿은 면에 짧은 압력선
+        const e = q / SQUASH;
+        qiJBall(ctx, BX - 1.5 * e * dir, y, RAD, ts, 1, 1 - 0.35 * e, 1 + 0.3 * e);
+        ctx.save(); ctx.fillStyle = R[6];
+        for (let s = -RAD * 1.4; s <= RAD * 1.4; s += 1) { ctx.globalAlpha = 0.7 * (1 - Math.abs(s) / (RAD * 1.4)); pfxDot(ctx, BX + RAD * 0.7 * dir, y + s, 1); }
+        ctx.restore();
+        return;
+      }
+      if (q < IMPLODE) { // 응축: 잠깐 오그라들며 진해짐
+        const e = (q - SQUASH) / (IMPLODE - SQUASH);
+        qiJBall(ctx, BX - 1.5 * dir, y, RAD * (1 - 0.45 * e * e), ts, 1, 0.65 + 0.35 * e, 1.3 - 0.3 * e);
+        return;
+      }
+      const b = q - IMPLODE, ease3 = v => 1 - Math.pow(1 - v, 3);
+      if (b < 0.42) { const e = b / 0.42; qiJThreads(ctx, BX, y, RAD, ts * 0.4 + 2, Math.pow(1 - e, 1.4), 1, 1, 1 + 4 * HS * ease3(e)); }
+      if (b >= 0.06 && b < 0.46) { const e = (b - 0.06) / 0.4; qiJThreads(ctx, BX, y, RAD, ts * 0.4 + 5.3, Math.pow(1 - e, 1.6) * 0.8, 1, 1, 1 + 4.4 * HS * ease3(e)); }
+      if (b < 0.3) { // 사방으로 뻗는 선 (머리는 밝고 꼬리는 가늘게)
+        const e = b / 0.3, k = Math.pow(1 - e, 1.2);
+        ctx.save();
+        QI_J_BURST.forEach(([a0, len, sp]) => {
+          const head = RAD * (1 + 4.2 * HS * sp * ease3(e)), tail = Math.max(RAD * 0.8, head - RAD * len * HS * (1 - e * 0.5));
+          for (let d = tail; d <= head; d += 1) {
+            const f = (d - tail) / Math.max(1, head - tail);
+            ctx.globalAlpha = k * (0.35 + 0.65 * f); ctx.fillStyle = f > 0.7 ? R[6] : f > 0.3 ? R[5] : R[4];
+            pfxDot(ctx, BX + Math.cos(a0) * d, y + Math.sin(a0) * d * 0.9, 1);
+          }
+        });
+        ctx.restore();
+      }
+      const S = RAD / 8; // 시안의 구슬 반지름 8 기준으로 고리 크기를 맞춤 (세 고리 반지름이 서로 비슷)
+      qiJRing(ctx, BX, y, b / 0.32, 5 * S, 36 * HS * S, 1, 1);
+      qiJRing(ctx, BX, y, (b - 0.04) / 0.4, 4 * S, 39 * HS * S, 0.4, 0.75);
+      qiJRing(ctx, BX, y, (b - 0.09) / 0.38, 4 * S, 37 * HS * S, 0.7, 0.6);
+    }
     // 같은 자리에 더 새 기공파 이펙트가 있으면 이건 그리지 않음 (0.25초마다 새로 넣어 겹쳐 둠)
     function qiBeamSuperseded(ef) {
       return sim.effects.some(o => o !== ef && o.type === 'qi_beam' && o.life > ef.life && Math.abs(o.x - ef.x) < 60 && Math.abs(o.y - ef.y) < 60);
@@ -33014,6 +33140,7 @@
     function drawQigongEffect(ctx, ef, p) {
       const R = QI_RAMP, t = sim.tickCount || 0;
       if (ef.type === 'qi_hit') {
+        if (ef.j) { drawQiJHit(ctx, ef, p); return; }
         drawPixelBurst(ctx, ef.x, ef.y, ef.r || 24, p, R, pfxSeedOf(ef), ef.small ? { sparks: 4, noRing: true, coreK: 0.3 } : { sparks: 8 });
         return;
       }
