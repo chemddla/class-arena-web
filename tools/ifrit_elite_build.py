@@ -85,6 +85,22 @@ def load_clean(path):
     kraken_build._SRC[path] = (rgb, a)
 
 
+def drop_white(rgba, lo=170, body=False):
+    """흰 배경 찌꺼기 지우기 (불꽃 분노 몸·이펙트): 밝은 색(최솟값 ≥ lo) 중 채도 ≤ 35이거나 분홍빛 흰색(초록 − 파랑 ≤ 20,
+    불길 노랑은 초록이 훨씬 높음) 덩어리 중
+    투명한 곳에 닿은 것만 투명으로. 불씨 조각 안쪽 반짝임처럼 둘레가 막힌 밝은 점은 남김"""
+    c = rgba[..., :3].astype(int); A = rgba[..., 3]
+    mn, mx = c.min(2), c.max(2)
+    w = (A > 0) & (mn >= lo) & ((mx - mn <= 35) | (c[..., 1] - c[..., 2] <= 20))
+    if body:  # 몸 샘플은 흰 틈이 불길 빨강과 섞여 연어색(빨강 ≥ 225, 초록 ≥ 145, 초록 − 파랑 ≤ 40)으로 남고 불길 안쪽에 갇힘 → 투명까지 3px 안이면 지움
+        w |= (A > 0) & (c[..., 0] >= 225) & (c[..., 1] >= 145) & (c[..., 1] - c[..., 2] <= 40)
+    lab, n = ndi.label(w, structure=np.ones((3, 3)))
+    edge = ndi.binary_dilation(A < 250, structure=np.ones((3, 3)), iterations=3 if body else 1)
+    hit = np.unique(lab[edge & w])
+    rgba = rgba.copy(); rgba[np.isin(lab, hit[hit > 0])] = 0
+    return rgba
+
+
 def keep_main(spec):
     """가장 큰 조각 + 칸 바닥에 닿은 조각만 남긴 사본 spec (나머지 조각은 load 캐시의 알파를 잠깐 0으로)"""
     path, x0, x1, y0, y1, opt = spec
@@ -124,6 +140,7 @@ def placed(name):
         finally: a[y0:y1, x0:x1] = saved
     else:
         rgba, info = cut(spec)
+    if name.startswith('rg_'): rgba = drop_white(rgba, 140, body=True)  # 몸 칸 연기는 진해서(≈100) 더 낮춰도 안 걸림
     A = rgba[..., 3]
     # 기준점은 원래 크기에서 재고 배율만큼 옮김
     rows = np.where((A > 128).sum(1) >= 3)[0]
@@ -214,6 +231,7 @@ def build_fx():
                 finally: a[y0:y1, x0:x1] = saved
             else:
                 rgba, _ = cut(spec)
+            if n.startswith('rage'): rgba = drop_white(rgba)
             frames[n] = (Image.fromarray(rgba.astype(np.uint8), 'RGBA'), x)
             x += rgba.shape[1] + 2
     H = max(im.height for im, _ in frames.values())
