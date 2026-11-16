@@ -73,7 +73,7 @@ def make(name, title):
 
 if __name__ == '__main__':
     TITLES = {'atk-a': 'A 금빛 기탄', 'atk-b': 'B 장풍', 'atk-c': 'C 나선 기류', 'atk-d': 'D 삼연 기탄', 'atk-e': 'E 태극 기구슬', 'atk-f': 'F 실타래 기구슬',
-              'atk-f-blue': 'F 실타래 기구슬 (하늘색)'}
+              'atk-f-blue': 'F 실타래 기구슬 (하늘색)', 'qi-g': 'G 기운 덩어리', 'qi-h': 'H 기압 장풍', 'qi-i': 'I 기류 띠', 'qi-j': 'J 실타래 기구슬'}
     for nm in NAMES:
         make(nm, TITLES.get(nm, nm))
         print(nm)
