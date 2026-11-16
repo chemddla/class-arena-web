@@ -18,19 +18,32 @@ export const TIMES = { CAST, OPEN, END, FADE, HIT_T };
 const L16 = makeLoops(16), L3 = [[0.15, 0, 2.2], [1.15, 1.2, -1.7], [2.05, 2.4, 1.4]];
 
 // 막 안쪽 바탕: 아주 옅은 금빛, 가장자리로 갈수록 진해지는 띠 (진짜 반투명)
-function shell(p, C, sc, k, t, wobK, hit) {
-  const rx = RX * sc, ry = RY * sc;
-  for (let py = Math.floor(CY - ry - 3); py <= CY + ry + 3; py++) for (let px = Math.floor(-rx - 3); px <= rx + 3; px++) {
+const sstep = (a, b, x) => { const u = clamp((x - a) / (b - a)); return u * u * (3 - 2 * u); };
+function shell(p, C, sc, k, t, wobK, hit, soft) {
+  const rx = RX * sc, ry = RY * sc, pad = soft ? 0.16 : 0.03;
+  for (let py = Math.floor(CY - ry * (1 + pad) - 2); py <= CY + ry * (1 + pad) + 2; py++) for (let px = Math.floor(-rx * (1 + pad) - 2); px <= rx * (1 + pad) + 2; px++) {
     const dx = px + 0.5, dy = py + 0.5 - CY, a = Math.atan2(dy / ry, dx / rx);
     let w = 1 + wobK * noise2(Math.cos(a) * 2.2 + t * 2.5, Math.sin(a) * 2.2 - t * 2);
     // 투사체가 닿은 자리: 안으로 눌렸다가 출렁임
     if (hit) { const da = Math.atan2(Math.sin(a - hit.a), Math.cos(a - hit.a)); w -= hit.dent * Math.exp(-(da * da) / 0.08) * Math.cos(hit.ph); }
     const v = Math.hypot(dx / rx, dy / ry) / w;
-    if (v > 1) continue;
-    if (v < 0.62 && !(hit && hit.glow > 0)) continue;   // 안쪽은 비워 둠 (금빛을 캐릭터 위에 덮으면 칙칙해짐)
-    let al = v > 0.9 ? 0.75 : v > 0.78 ? 0.3 : 0.14 * (v - 0.62) / 0.16;
-    let c = v > 0.9 ? C[5] : C[4];
-    if (hit && hit.glow > 0) { const da = Math.atan2(Math.sin(a - hit.a), Math.cos(a - hit.a)); const g = hit.glow * Math.exp(-(da * da) / 0.12) * clamp((v - 0.55) / 0.45); al = Math.min(1, al + g * 0.7); if (g > 0.4) c = C[6]; }
+    let al, c;
+    if (soft) {
+      // 그라데이션 기운 막 (사용자: 테두리가 코드 선 같음 → 자연스러운 기의 막): 안쪽(0.5)에서 서서히 진해져 0.93에서 가장 짙고,
+      //   바깥으로 1.14까지 부드럽게 번져 사라짐. 둘레를 따라 짙고 옅음이 천천히 일렁임 (딱딱한 1칸 선 없음)
+      if (v > 1.14 || (v < 0.5 && !(hit && hit.glow > 0))) continue;
+      const band = sstep(0.5, 0.93, v) * (1 - sstep(0.93, 1.14, v));
+      const breathe = 0.78 + 0.22 * noise2(Math.cos(a) * 3 + t * 1.6, Math.sin(a) * 3 - t * 1.2);
+      al = band * breathe * 0.82;
+      c = band > 0.8 ? C[6] : band > 0.45 ? C[5] : C[4];
+    } else {
+      if (v > 1) continue;
+      if (v < 0.62 && !(hit && hit.glow > 0)) continue;   // 안쪽은 비워 둠 (금빛을 캐릭터 위에 덮으면 칙칙해짐)
+      al = v > 0.9 ? 0.75 : v > 0.78 ? 0.3 : 0.14 * (v - 0.62) / 0.16;
+      c = v > 0.9 ? C[5] : C[4];
+    }
+    // 닿은 자리 빛 (그라데이션 막에서는 부드럽게 번짐)
+    if (hit && hit.glow > 0) { const da = Math.atan2(Math.sin(a - hit.a), Math.cos(a - hit.a)); const g = hit.glow * Math.exp(-(da * da) / 0.12) * (soft ? sstep(0.45, 0.92, v) * (1 - sstep(0.95, 1.14, v)) : clamp((v - 0.55) / 0.45)); al = Math.min(1, al + g * 0.7); if (g > 0.4) c = C[6]; }
     p.blend(px + 0.5, py + 0.5, c, al * k);
   }
 }
@@ -64,8 +77,8 @@ export function create(o) {
       let hit = null;
       const hb = t - HIT_T;
       if (hb >= 0 && hb < 0.6) hit = { a: Math.atan2((SHOT_Y - CY) / RY, HIT_X / RX), dent: 0.07 * Math.exp(-hb * 6), ph: hb * 26, glow: Math.max(0, 1 - hb / 0.35) };
-      shell(p, C, sc, k, t, st === "c" ? 0.06 : 0.012, hit);
-      if (st === "a") surfThreads(p, C, L16, sc, k * 0.85, t, false);
+      shell(p, C, sc, k, t, st === "c" ? 0.06 : 0.025, hit, st !== "c");   // A·B는 그라데이션 기운 막 테두리
+      if (st === "a") surfThreads(p, C, L16, sc, k * 0.6, t, false);   // 실은 조금 옅게 (막의 그라데이션이 주인공)
       if (st === "b") surfThreads(p, C, L3, sc, k, t, true);
       if (st === "c") {   // 표면을 따라 흐르는 짧은 실 줄기 (가장자리 둘레를 돎)
         for (let i = 0; i < 14; i++) {
