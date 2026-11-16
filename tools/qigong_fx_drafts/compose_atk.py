@@ -34,6 +34,11 @@ def sheet_frames(name):
     d = os.path.join(FX, 'records', 'qigong', name)
     j = json.load(open(os.path.join(d, f'{name}.json'), encoding='utf-8'))
     im = Image.open(os.path.join(d, f'{name}.png')).convert('RGBA')
+    # pixelfx 시트의 반투명 칸은 색에 투명도가 미리 곱해져 있음 (색 ≤ 투명도) → 나눠서 원래 색으로 돌려야 어둡고 탁해지지 않음
+    a = np.array(im).astype(float)
+    al = a[..., 3:4]
+    a[..., :3] = np.where(al > 0, np.clip(a[..., :3] * 255 / np.maximum(al, 1), 0, 255), 0)
+    im = Image.fromarray(a.astype(np.uint8), 'RGBA')
     fr = j['frames']; fr = list(fr.values()) if isinstance(fr, dict) else fr
     meta = j['meta']['pixelfx']
     out = [im.crop((f['frame']['x'], f['frame']['y'], f['frame']['x'] + f['frame']['w'], f['frame']['y'] + f['frame']['h'])) for f in fr]
@@ -73,7 +78,7 @@ def make(name, title):
 
 if __name__ == '__main__':
     TITLES = {'atk-a': 'A 금빛 기탄', 'atk-b': 'B 장풍', 'atk-c': 'C 나선 기류', 'atk-d': 'D 삼연 기탄', 'atk-e': 'E 태극 기구슬', 'atk-f': 'F 실타래 기구슬',
-              'atk-f-blue': 'F 실타래 기구슬 (하늘색)', 'qi-g': 'G 기운 덩어리', 'qi-h': 'H 기압 장풍', 'qi-i': 'I 기류 띠', 'qi-j': 'J 실타래 기구슬'}
+              'atk-f-blue': 'F 실타래 기구슬 (하늘색)', 'qi-g': 'G 기운 덩어리', 'qi-h': 'H 기압 장풍', 'qi-i': 'I 기류 띠', 'qi-j': 'J 기파', 'qi-j-sphere': 'J 구체 팽창'}
     for nm in NAMES:
         make(nm, TITLES.get(nm, nm))
         print(nm)
