@@ -11961,11 +11961,20 @@
       monster_rush_2: { src: 'assets/maps/monster_rush_2.webp' }, // 몬스터 러쉬 21~40라운드 (동굴 속 야영지·개울·나무다리 두 개·양쪽 위 굴)
       monster_rush_3: { src: 'assets/maps/monster_rush_3.webp' }, // 몬스터 러쉬 41~60라운드 (핏빛 동굴·가운데 구덩이·핏물 강·돌다리·나무다리)
       tower_goblin: { src: 'assets/maps/tower_goblin.webp' }, // 모험의 탑 고블린족 보스층(10층)·종족 대표 그림
-      // 🌲 고블린 숲 맵 (tools/goblin-maps/build.py): 탑 고블린족 일반층(TOWER_GOBLIN_MAPS)·고블린 숲 소굴 던전 방(roomMaps)
+      // 🌲 고블린 숲 맵 (tools/race-maps/build.py): 탑 고블린족 일반층(TOWER_FLOOR_MAPS)·고블린 숲 소굴 던전 방(roomMaps)
       goblin_camp:   { src: 'assets/maps/goblin_camp.webp' },   // 숲속 야영지
       goblin_cave:   { src: 'assets/maps/goblin_cave.webp' },   // 동굴 속 소굴·가운데 물웅덩이 (던전만)
       goblin_marsh:  { src: 'assets/maps/goblin_marsh.webp' },  // 넝쿨 늪 숲·나무 다리
       goblin_stockade: { src: 'assets/maps/goblin_stockade.webp' }, // 숲속 돌담 진지·투석기·망루
+      // 🐺 울부짖는 협곡 맵 (tools/race-maps/build.py): 탑 야수족 일반층(TOWER_FLOOR_MAPS)·울부짖는 협곡 던전 방(roomMaps)
+      beast_den:    { src: 'assets/maps/beast_den.webp' },    // 바위 굴 속 짐승 소굴·뼈 제단 (던전만)
+      beast_canyon: { src: 'assets/maps/beast_canyon.webp' }, // 숲 협곡·뿔 제단·오른쪽 굴
+      beast_dry:    { src: 'assets/maps/beast_dry.webp' },    // 메마른 누런 협곡
+      beast_red:    { src: 'assets/maps/beast_red.webp' },    // 붉은 바위 협곡
+      beast_river:  { src: 'assets/maps/beast_river.webp' },  // 개울이 도는 협곡·나무 다리
+      beast_autumn: { src: 'assets/maps/beast_autumn.webp' }, // 단풍 든 협곡 (탑만)
+      beast_glow:   { src: 'assets/maps/beast_glow.webp' },   // 빛나는 버섯 동굴 협곡 (던전만)
+      beast_lava:   { src: 'assets/maps/beast_lava.webp' },   // 용암 흐르는 협곡
       tower_undead: { src: 'assets/maps/tower_undead.webp' }, // 모험의 탑 언데드 (11~20층)
       tower_beast:  { src: 'assets/maps/tower_beast.webp' },  // 모험의 탑 야수족 (21~30층)
       tower_swamp:  { src: 'assets/maps/tower_swamp.webp' },  // 모험의 탑 늪지족 (31~40층)
@@ -11998,7 +12007,11 @@
       elite_lich: 'elite_lich', elite_chaos_dragon: 'elite_chaos_dragon'
     };
     // 모험의 탑 종족별 맵 (없으면 공통 tower 맵)
-    const TOWER_GOBLIN_MAPS = ['goblin_camp', 'goblin_marsh', 'goblin_stockade'];
+    // 모험의 탑 종족 일반층 맵: 층마다 번갈아 (보스층은 TOWER_RACE_MAPS)
+    const TOWER_FLOOR_MAPS = {
+      '고블린족': ['goblin_camp', 'goblin_marsh', 'goblin_stockade'],
+      '야수족': ['beast_canyon', 'beast_dry', 'beast_red', 'beast_river', 'beast_autumn', 'beast_lava']
+    };
     const TOWER_RACE_MAPS = { '고블린족': 'tower_goblin', '언데드': 'tower_undead', '야수족': 'tower_beast', '늪지족': 'tower_swamp', '설원족': 'tower_snow', '화염족': 'tower_fire', '거인족': 'tower_giant', '심해족': 'tower_deepsea', '용족': 'tower_dragon' };
     Object.values(BATTLE_MAPS).forEach(m => makeLazyImageDef(m)); // 맵도 그 전투에서 처음 그릴 때 받음 (makeLazyImageDef)
     function getBattleMap(mode, towerFloor, eliteBossId) {
@@ -12021,7 +12034,8 @@
       let key = mode === 'practice' ? 'practice' : (mode === 'tower' || mode === 'monster_rush') ? 'tower' : isEliteBossMode(mode) ? 'elite' : 'pvp';
       if (key === 'tower' && towerFloor) {
         const raceName = towerRaceOfFloor(towerFloor).name, raceKey = TOWER_RACE_MAPS[raceName];
-        const floorKey = raceName === '고블린족' && !isTowerRaceBossFloor(towerFloor) ? TOWER_GOBLIN_MAPS[(towerFloor - 1) % TOWER_GOBLIN_MAPS.length] : null; // 고블린 숲 일반층은 숲 맵을 번갈아
+        const fm = !isTowerRaceBossFloor(towerFloor) && TOWER_FLOOR_MAPS[raceName];
+        const floorKey = fm ? fm[(towerFloor - 1) % fm.length] : null; // 일반층은 종족 맵을 번갈아
         if (floorKey && BATTLE_MAPS[floorKey]?.ready) key = floorKey;
         else if (raceKey && BATTLE_MAPS[raceKey].ready) key = raceKey;
       }
@@ -54324,7 +54338,7 @@
       howling_canyon: {
         id: 'howling_canyon', name: '울부짖는 협곡', race: '야수족', icon: '🐺', color: 'sky',
         desc: '늑대 무리가 혼자 떨어진 용병부터 물어요. 파티를 뭉쳐서 다녀야 하는 던전!',
-        map: 'tower_beast', bossMap: 'elite_dire_wolf', boss: 'dire_wolf', stars: 2, statMult: 1.0,
+        map: 'tower_beast', roomMaps: ['beast_den', 'beast_canyon', 'beast_dry', 'beast_red', 'beast_river', 'beast_glow', 'beast_lava'], bossMap: 'elite_dire_wolf', boss: 'dire_wolf', stars: 2, statMult: 1.0,
         gridW: [4, 5], gridH: [3, 4], roomCount: { normal: [10, 12], hard: [12, 14] }, extraLoops: [1, 2],
         power: { normal: 6000, hard: 9000 },
         rooms: {
@@ -56116,7 +56130,7 @@
       if (!dg) return null;
       const cell = dungeonCellAt(dg, dg.pos[0], dg.pos[1]);
       if (cell && cell.kind === 'boss') return dg.def.bossMap;
-      const rm = dg.def.roomMaps; // 방마다 다른 맵: 칸 위치로 골라서 위아래·옆 방끼리는 늘 다름 (4장)
+      const rm = dg.def.roomMaps; // 방마다 다른 맵: 칸 위치로 골라서 위아래·옆 방끼리는 늘 다름 (4장 이상)
       if (rm) rm.forEach(k => BATTLE_MAPS[k].ready); // 다음 방 맵을 미리 받아 둠 (처음 들어갈 때 탑 맵이 잠깐 비치지 않게)
       return rm ? rm[(dg.pos[0] + dg.pos[1] * 3) % rm.length] : dg.def.map;
     }
