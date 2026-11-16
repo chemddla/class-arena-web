@@ -1942,6 +1942,8 @@
     + 'background:no-repeat center/contain;image-rendering:pixelated;color:transparent!important;-webkit-text-fill-color:transparent!important;'
     + 'text-shadow:none!important;overflow:hidden;white-space:nowrap;text-indent:-99em;font-style:normal}'
     + '.pxe-x{display:none!important}'
+    // 이모지만 들어 있던 칸(아이콘 자리 빈 네모)은 칸째로 감춤. 버튼·링크는 눌러야 하니 남김
+    + ':not(button,a,[role=button],label,option):has(> .pxe-solo){display:none!important}'
     + (HIDE_ALL ? '.pxi:not(.pxi-ess),.px-ico{display:none!important}' : '');
   for (const name in ICONS) css += `.pxi-${name}{background-image:url("data:image/svg+xml,${encodeURIComponent(svgOf(ICONS[name]))}")}`;
   const style = document.createElement('style');
@@ -1980,6 +1982,8 @@
     const parent = node.parentElement;
     if (!parent || parent.closest(SKIP)) return;
     const beside = nextToText(node);
+    // 칸 안에 이 이모지 말고 아무것도 없으면 칸째로 감출 표시
+    const solo = !s.replace(STRIP, '') && [...parent.childNodes].every(c => c === node || (c.nodeType === 3 && !c.nodeValue.trim()));
     const frag = document.createDocumentFragment();
     let last = 0, changed = false;
     ALL.lastIndex = 0;
@@ -1999,7 +2003,7 @@
         span.setAttribute('role', 'img');
         span.setAttribute('aria-label', base);
       } else {
-        span.className = 'pxe-x';
+        span.className = solo ? 'pxe-x pxe-solo' : 'pxe-x';
         span.setAttribute('aria-hidden', 'true');
       }
       span.textContent = m[0];
