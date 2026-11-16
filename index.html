@@ -45844,12 +45844,14 @@
     // ----- 입력값 정리 (다른 학생 화면에서 코드가 실행되는 것을 막기 위해 < > " ' ` 제거) -----
     function escHtml(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
+    // 서버·친구에게서 온 글자는 화면(innerHTML)과 버튼의 onclick="함수('값')" 안에 그대로 들어감 → 태그·따옴표와 함께 역슬래시도 뺌
+    // (역슬래시가 값 끝에 남으면 닫는 따옴표를 무력화해 다음 값이 코드로 실행됐음 — 2026-11-16 전체 채팅 탑 도움 요청 줄에서 확인)
     function cleanUserText(v, maxLen = 40) {
-      return String(v === undefined || v === null ? '' : v).replace(/[<>"'`]/g, '').trim().slice(0, maxLen);
+      return String(v === undefined || v === null ? '' : v).replace(/[<>"'`\\]/g, '').trim().slice(0, maxLen);
     }
 
     function deepCleanStrings(obj, skipKeys = ['password', 'teacherPinHash', 'teacherKeyHash']) {
-      if (typeof obj === 'string') return obj.replace(/[<>"'`]/g, '');
+      if (typeof obj === 'string') return obj.replace(/[<>"'`\\]/g, '');
       if (Array.isArray(obj)) return obj.map(x => deepCleanStrings(x, skipKeys));
       if (obj && typeof obj === 'object') {
         Object.keys(obj).forEach(k => {
@@ -48321,6 +48323,8 @@
       activeMinigameRoomsRef = db.ref(`classes/${cleanCode}/minigame_rooms`);
       activeMinigameRoomsRef.on('value', (snap) => {
         liveMinigameRoomsCache = deepCleanStrings((snap && typeof snap.val === 'function' ? snap.val() : null) || {});
+        // 참가자 목록은 배열로만 씀: 서버가 번호가 듬성듬성한 목록을 객체로 돌려주거나 빈 칸(null)이 끼면 방 목록 그리기가 통째로 멈췄음
+        Object.values(liveMinigameRoomsCache).forEach(r => { if (r && typeof r === 'object' && r.players != null) r.players = Object.values(r.players).filter(p => p && typeof p === 'object'); });
         roomServerBase.minigame_rooms = JSON.parse(JSON.stringify(liveMinigameRoomsCache));
         maintainMinigameRooms();
         syncMyRoomMembership();

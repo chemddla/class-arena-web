@@ -12,7 +12,7 @@ ${proj}
 ${eff}
 return { packLiveProjectile, roundLiveNum, packLiveEffect, liveNum };`)();
 // 받는 쪽 (index.html의 applyLiveFrameState와 같은 해석)
-const cleanUserText = (v, n = 40) => String(v === undefined || v === null ? '' : v).replace(/[<>"'`]/g, '').trim().slice(0, n);
+const cleanUserText = (v, n = 40) => String(v === undefined || v === null ? '' : v).replace(/[<>"'`\\]/g, '').trim().slice(0, n);
 const recv = (q, lead = 0) => ({
   x: f.liveNum(q[0]) + f.liveNum(q[6]) * lead, y: f.liveNum(q[1]) + f.liveNum(q[7]) * lead, angle: f.liveNum(q[2]),
   projType: cleanUserText(q[3], 30), color: cleanUserText(q[4], 30) || undefined, radius: f.liveNum(q[5]) || undefined,
