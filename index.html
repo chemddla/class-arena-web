@@ -24685,6 +24685,8 @@
           sim.shake = { power: SWORD_SR_GK_CAST_SHAKE, life: shakeLife, maxLife: shakeLife, grow: true };
         }
       }
+      if (key === 'qi_cannon' && unit.job === 'qigong' && !unit.monsterType) // 기공포 모으기: 큰 고리로 떠 있던 기운 실이 가슴 앞으로 감겨 들어와 구슬이 됨
+        sim.effects.push({ type: 'qi_charge', jc: 1, uid: unit.id, r: Math.round(qiCannonR(unit) * 10) / 10, life: total + 30, maxLife: total + 30 });
       if ((key === 'qi_wave' || key === 'genki_bomb') && unit.job === 'qigong' && !unit.monsterType) { // 기공사: 시전 내내 기를 모으는 구체 (시전이 끝나거나 끊기면 사라짐)
         sim.effects.push({ type: key === 'qi_wave' ? 'qi_charge' : 'qi_genki_charge', uid: unit.id, k: Math.round(qiSizeK(unit) * 100) / 100, or: Math.round(qiGenkiOrbR(unit)), life: total + 30, maxLife: total + 30 });
       }
@@ -32634,6 +32636,7 @@
     const QI_LOSS_GAP = 30;             // 맞아서 기가 줄어든 뒤 0.5초 동안은 또 줄지 않음 (다단 공격 한 번에 다 날아가지 않게)
     const QI_DMG_PER = 0.08, QI_SIZE_PER = 0.08;
     const QI_COLOR = '#2dd4bf';
+    const QI_CANNON_COLOR = '#f0b424'; // 기공포 구체 (나선 실 포): 투사체 색으로 구분
     const QI_ATK_COLOR = '#e8b23e'; // 일반 공격 구슬 (금빛 실타래 기구슬): 투사체 색으로 구분해서 실시간 화면에도 그대로 감
     const QI_J_RAMP = ['#24160a', '#4e3210', '#8a5a16', '#c48a24', '#e8b23e', '#f6d27a', '#fbe8b4']; // 반짝임 없는 금빛 기운 (흰색 없이 크림색까지)
     const QI_RAMP = ['#0b4f4a', '#14857a', '#2dd4bf', '#99f6e4', '#f0fffb'];
@@ -32724,12 +32727,15 @@
         p.hitIds.add(e.id);
         applyDamage(p.owner, e, p.dmg, '', QI_COLOR);
         if (p.push) pushUnitAway(e, p.x - Math.cos(p.angle) * 30, p.y + 14 - Math.sin(p.angle) * 30, p.push);
-        sim.effects.push({ type: 'qi_hit', x: Math.round(e.x), y: Math.round(e.y - 14), r: Math.round(hitR * 2.2), life: 20, maxLife: 20 });
+        if (p.color === QI_CANNON_COLOR) sim.effects.push({ type: 'qi_hit', j: 2, x: Math.round(e.x), y: Math.round(e.y - 14), r: Math.round((p.radius || QI_CANNON_R) * 10) / 10, life: 24, maxLife: 24 }); // 꿰뚫으며 지나간 자리: 작은 압력 고리와 짧은 선
+        else sim.effects.push({ type: 'qi_hit', x: Math.round(e.x), y: Math.round(e.y - 14), r: Math.round(hitR * 2.2), life: 20, maxLife: 20 });
         playCombatSfx('heavy');
       }));
       const out = p.x < 15 || p.x > sim.worldW - 15 || p.y < 15 || p.y > sim.worldH - 15;
       if (p.travel > p.maxTravel || out) {
-        sim.effects.push({ type: 'qi_hit', x: Math.round(p.x), y: Math.round(p.y), r: Math.round(hitR * 2.6), life: 22, maxLife: 22 });
+        if (p.color === QI_CANNON_COLOR) // 사거리 끝: 일반 공격보다 크게 터짐 (터짐 크기 1배 · 실 열여섯 가닥)
+          sim.effects.push({ type: 'qi_hit', j: 1, big: 1, x: Math.round(p.x), y: Math.round(p.y), r: Math.round((p.radius || QI_CANNON_R) * 10) / 10, dir: Math.cos(p.angle || 0) >= 0 ? 1 : -1, life: 30, maxLife: 30 });
+        else sim.effects.push({ type: 'qi_hit', x: Math.round(p.x), y: Math.round(p.y), r: Math.round(hitR * 2.6), life: 22, maxLife: 22 });
         return true;
       }
       return false;
@@ -32778,8 +32784,8 @@
         qiFace(unit, ang);
         const o = aimShotOrigin(unit, unit.x, unit.y, ang);
         qiOrbShot(unit, o, { angle: ang, dmg: unit.atk * QI_CANNON_DMG * D, r: qiCannonR(unit), speed: 4.2,
-          extra: { qiPierce: 1, isSkill: true, push: GRID_CELL_SIZE * QI_CANNON_PUSH, maxTravel: len } });
-        sim.effects.push({ type: 'qi_hit', x: Math.round(o.x), y: Math.round(o.y), r: Math.round(46 * K), life: 18, maxLife: 18 });
+          extra: { qiPierce: 1, isSkill: true, push: GRID_CELL_SIZE * QI_CANNON_PUSH, maxTravel: len, color: QI_CANNON_COLOR } });
+        sim.effects.push({ type: 'qi_hit', j: 1, small: 1, x: Math.round(o.x), y: Math.round(o.y), r: Math.round(qiCannonR(unit) * 10) / 10, life: 12, maxLife: 12 });
         playCombatSfx('heavy');
         addBattleLog(`[기공사] ${unit.name}의 기공포!`);
         return true;
@@ -32798,9 +32804,9 @@
           const pool = aimPt ? inRange.filter(e => Math.abs(((Math.atan2(e.y - unit.y, e.x - unit.x) - base + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.9) : inRange;
           const home = pool.length ? pool[i % pool.length] : null;
           qiOrbShot(unit, o, { angle: base + off, dmg: unit.atk * QI_BULLET_DMG * D, r: QI_BULLET_R * K * (1 + qiPer(unit, 'bulletR')), speed: 4.6,
-            extra: { isSkill: true, homeTarget: home, homeTurn: 0.09, maxTravel: reach + 80, wait: i * 3, handDx: (o.x - unit.x) * (unit.facingDir || 1), handDy: o.y - unit.y } });
+            extra: { isSkill: true, homeTarget: home, homeTurn: 0.09, maxTravel: reach + 80, wait: i * 3, handDx: (o.x - unit.x) * (unit.facingDir || 1), handDy: o.y - unit.y, color: QI_ATK_COLOR } }); // 기공탄 = 일반 공격 구슬(실타래 기구슬)·맞는 터짐 그대로 (사용자 지시)
         }
-        sim.effects.push({ type: 'qi_hit', x: Math.round(o.x), y: Math.round(o.y), r: Math.round(30 * K), life: 16, maxLife: 16 });
+        sim.effects.push({ type: 'qi_hit', j: 1, small: 1, x: Math.round(o.x), y: Math.round(o.y), r: Math.round(QI_BULLET_R * K * (1 + qiPer(unit, 'bulletR')) * 10) / 10, life: 12, maxLife: 12 }); // 손끝에 은은한 금빛
         playCombatSfx('magic');
         addBattleLog(`[기공사] ${unit.name}의 기공탄!`);
         return true;
@@ -32995,6 +33001,7 @@
     // 기의 구체: 은은한 빛 → 도트 원(가장자리 어둡게, 왼쪽 위 밝게, 가운데 흰 심) → 뒤로 흩어지는 꼬리
     function drawQiOrb(ctx, p) {
       if (p.color === QI_ATK_COLOR) { drawQiThreadOrb(ctx, p); return; }
+      if (p.color === QI_CANNON_COLOR) { drawQiCannonOrb(ctx, p); return; }
       const R = QI_RAMP, t = sim.tickCount || 0;
       const r = Math.max(3, p.radius || QI_ORB_R) * (1 + 0.07 * Math.sin(t * 0.45 + (p.x | 0) * 0.01));
       const c = r >= 12 ? 3 : 2, a = p.angle || 0, bx = -Math.cos(a), by = -Math.sin(a);
@@ -33033,11 +33040,11 @@
     const QI_J_LOOPS = Array.from({ length: 10 }, (_, i) => [(i * 2.39) % Math.PI, (i * 1.37) % (Math.PI * 2), (i % 2 ? 1 : -1) * (3 + (i % 4))]);
     const QI_J_BURST = Array.from({ length: 16 }, (_, i) => [(i / 16) * Math.PI * 2 + ((i * 0.37) % 1 - 0.5) * 0.25, 1.6 + ((i * 0.53) % 1) * 1.6, 0.7 + ((i * 0.71) % 1) * 0.5]);
     // 기운 실 (grow > 1이면 풀려 커지는 고리: 고리끼리 크기 차이 ±6%, 군데군데 끊김)
-    function qiJThreads(ctx, x, y, r, ts, k, sx, sy, grow) {
+    function qiJThreads(ctx, x, y, r, ts, k, sx, sy, grow, loops = QI_J_LOOPS) {
       const R = QI_J_RAMP, open = grow > 1;
       ctx.save();
       ctx.globalAlpha = Math.max(0, Math.min(1, k));
-      QI_J_LOOPS.forEach(([tilt, yaw, sp], i) => {
+      loops.forEach(([tilt, yaw, sp], i) => {
         const ct = Math.cos(tilt) * 0.999, st = Math.sin(tilt), cy = Math.cos(yaw + ts * 1.5), sy2 = Math.sin(yaw + ts * 1.5);
         const rr = open ? r * 0.9 * grow * (0.94 + 0.12 * ((i * 0.61) % 1)) : r * (0.5 + 0.45 * ((i * 0.37) % 1));
         const gap = open ? 0.08 + 0.3 * Math.min(1, (grow - 1) / 5) : 0;
@@ -33052,7 +33059,7 @@
       ctx.restore();
     }
     // 구슬 몸통 (sx·sy: 가로·세로 눌림, k: 투명도)
-    function qiJBall(ctx, x, y, r, ts, k = 1, sx = 1, sy = 1) {
+    function qiJBall(ctx, x, y, r, ts, k = 1, sx = 1, sy = 1, loops = QI_J_LOOPS) {
       const R = QI_J_RAMP, big = r * 2.4 * Math.max(sx, sy);
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
@@ -33071,7 +33078,7 @@
         pfxDot(ctx, x + gx, y + gy, 1);
       }
       ctx.restore();
-      qiJThreads(ctx, x, y, r, ts, k, sx, sy, 1);
+      qiJThreads(ctx, x, y, r, ts, k, sx, sy, 1, loops);
     }
     // 날아가는 구슬 (p.radius = 구체 크기, 기가 많을수록 큼)
     function drawQiThreadOrb(ctx, p) {
@@ -33126,10 +33133,12 @@
         ctx.restore();
         return;
       }
-      const q = p * 0.5, SQUASH = 0.045, IMPLODE = 0.085, HS = 0.72, dir = ef.dir || 1, BX = x - 2 * dir;
+      if (ef.j === 2) { drawQiCannonPass(ctx, ef, p); return; }
+      const big = !!ef.big, L = big ? QI_J_LOOPS16 : QI_J_LOOPS;
+      const q = p * 0.5, SQUASH = 0.045, IMPLODE = 0.085, HS = big ? 1 : 0.72, dir = ef.dir || 1, BX = x - 2 * dir;
       if (q < SQUASH) { // 박힘: 앞으로 납작하게 눌림 + 맞닿은 면에 짧은 압력선
         const e = q / SQUASH;
-        qiJBall(ctx, BX - 1.5 * e * dir, y, RAD, ts, 1, 1 - 0.35 * e, 1 + 0.3 * e);
+        qiJBall(ctx, BX - 1.5 * e * dir, y, RAD, ts, 1, 1 - 0.35 * e, 1 + 0.3 * e, L);
         ctx.save(); ctx.fillStyle = R[6];
         for (let s = -RAD * 1.4; s <= RAD * 1.4; s += 1) { ctx.globalAlpha = 0.7 * (1 - Math.abs(s) / (RAD * 1.4)); pfxDot(ctx, BX + RAD * 0.7 * dir, y + s, 1); }
         ctx.restore();
@@ -33137,13 +33146,13 @@
       }
       if (q < IMPLODE) { // 응축: 잠깐 오그라들며 진해짐
         const e = (q - SQUASH) / (IMPLODE - SQUASH);
-        qiJBall(ctx, BX - 1.5 * dir, y, RAD * (1 - 0.45 * e * e), ts, 1, 0.65 + 0.35 * e, 1.3 - 0.3 * e);
+        qiJBall(ctx, BX - 1.5 * dir, y, RAD * (1 - 0.45 * e * e), ts, 1, 0.65 + 0.35 * e, 1.3 - 0.3 * e, L);
         return;
       }
       const b = q - IMPLODE, ease3 = v => 1 - Math.pow(1 - v, 3);
       qiJBody(ctx, BX, y, RAD, b / 0.34);
-      if (b < 0.42) { const e = b / 0.42; qiJThreads(ctx, BX, y, RAD, ts * 0.4 + 2, Math.pow(1 - e, 1.4), 1, 1, 1 + 4 * HS * ease3(e)); }
-      if (b >= 0.06 && b < 0.46) { const e = (b - 0.06) / 0.4; qiJThreads(ctx, BX, y, RAD, ts * 0.4 + 5.3, Math.pow(1 - e, 1.6) * 0.8, 1, 1, 1 + 4.4 * HS * ease3(e)); }
+      if (b < 0.42) { const e = b / 0.42; qiJThreads(ctx, BX, y, RAD, ts * 0.4 + 2, Math.pow(1 - e, 1.4), 1, 1, 1 + 4 * HS * ease3(e), L); }
+      if (b >= 0.06 && b < 0.46) { const e = (b - 0.06) / 0.4; qiJThreads(ctx, BX, y, RAD, ts * 0.4 + 5.3, Math.pow(1 - e, 1.6) * 0.8, 1, 1, 1 + 4.4 * HS * ease3(e), L); }
       if (b < 0.3) { // 사방으로 뻗는 선 (머리는 밝고 꼬리는 가늘게)
         const e = b / 0.3, k = Math.pow(1 - e, 1.2);
         ctx.save();
@@ -33161,6 +33170,51 @@
       qiJRing(ctx, BX, y, b / 0.32, 5 * S, 36 * HS * S, 1, 1);
       qiJRing(ctx, BX, y, (b - 0.04) / 0.4, 4 * S, 39 * HS * S, 0.4, 0.75);
       qiJRing(ctx, BX, y, (b - 0.09) / 0.38, 4 * S, 37 * HS * S, 0.7, 0.6);
+    }
+    // ----- 기공사 기공포: 나선 실 포 (사용자 시안 B, tools/qigong_fx_drafts/qi-cannon-*.js를 캔버스로 옮김) -----
+    // 모으기(시전 막대 동안): 큰 고리로 떠 있던 기운 실 열여섯 가닥이 가슴 앞으로 감겨 들어와 큰 구슬이 됨
+    // 발사: 큰 실타래 구슬 뒤로 기운 실 두 가닥이 나선으로 꼬이며 따라감 · 꿰뚫은 적마다 작은 압력 고리와 짧은 선 (qi_hit j=2)
+    // 사거리 끝: 일반 공격보다 크게 터짐 (qi_hit j=1 big=1, 노란 바탕·실 고리·선·압력 고리). 반짝임·먼지·바닥 고리 없음
+    const QI_J_LOOPS16 = Array.from({ length: 16 }, (_, i) => [(i * 2.39) % Math.PI, (i * 1.37) % (Math.PI * 2), (i % 2 ? 1 : -1) * (3 + (i % 4))]);
+    function drawQiCannonCharge(ctx, ef, u) {
+      const s = Math.sqrt(u.sizeScale || 1), fd = u.facingDir || 1, ts = (sim.tickCount || 0) / 60;
+      const e = Math.max(0, Math.min(1, 1 - u.casting.left / Math.max(1, u.casting.total))), ee = 0.5 - Math.cos(Math.PI * e) / 2;
+      const RAD = Math.max(3, (ef.r || QI_CANNON_R) * QI_J_K), cx = u.x + fd * 13 * s, cy = u.y - 17 * s; // 모으기 칸(10): 두 손을 가슴 앞에 모음 → 구슬은 몸을 가리지 않게 가슴 앞으로 내어 모음
+      const g = 1 + 2.2 * Math.pow(1 - ee, 2);
+      qiJThreads(ctx, cx, cy, RAD, ts * 0.6, 0.25 + 0.75 * ee, 1, 1, Math.max(1.02, g), QI_J_LOOPS16);
+      if (e > 0.55) { const k = (e - 0.55) / 0.45, back = 1 + 2.7 * Math.pow(k - 1, 3) + 1.7 * Math.pow(k - 1, 2); qiJBall(ctx, cx, cy, RAD * Math.max(0.05, back), ts, Math.min(1, k / 0.66), 1, 1, QI_J_LOOPS16); }
+    }
+    function drawQiCannonOrb(ctx, p) {
+      const R = QI_J_RAMP, t = sim.tickCount || 0, ts = t / 60, r = Math.max(3, (p.radius || QI_CANNON_R) * QI_J_K);
+      const a = p.angle || 0, bx = -Math.cos(a), by = -Math.sin(a), nx = -by, ny = bx;
+      ctx.save();
+      for (let d = r * 0.6; d < r * 4.5; d += 1) { // 뒤로 나선으로 꼬이며 따라가는 기운 실 두 가닥 (앞으로 나온 가닥이 밝음)
+        const f = d / (r * 4.5), ph = d * 0.32 / Math.max(1, r / 8) + t * 0.33, amp = r * 0.75 * (1 - f * 0.5), front = Math.cos(ph) > 0;
+        const x0 = p.x + bx * d, y0 = p.y + by * d, o = Math.sin(ph) * amp;
+        ctx.globalAlpha = 1 - f;
+        ctx.fillStyle = front ? R[6] : R[4]; pfxDot(ctx, x0 + nx * o, y0 + ny * o, 1);
+        ctx.fillStyle = front ? R[4] : R[6]; pfxDot(ctx, x0 - nx * o, y0 - ny * o, 1);
+      }
+      ctx.restore();
+      qiJBall(ctx, p.x, p.y, r, ts, 1, 1, 1, QI_J_LOOPS16);
+    }
+    // 꿰뚫으며 지나간 적 (life 24틱): 세로 압력 고리 + 짧은 선 열 줄 (구슬은 멈추지 않음)
+    function drawQiCannonPass(ctx, ef, p) {
+      const R = QI_J_RAMP, RAD = Math.max(3, (ef.r || QI_CANNON_R) * QI_J_K), b = p * 0.4;
+      qiJRing(ctx, ef.x, ef.y, b / 0.3, RAD * 0.8, RAD * 2.1, 1, 0.9);
+      if (b < 0.2) {
+        const e = b / 0.2, k = Math.pow(1 - e, 1.2), e3 = 1 - Math.pow(1 - e, 3);
+        ctx.save();
+        QI_J_BURST.slice(0, 10).forEach(([a0, len, sp]) => {
+          const R0 = RAD * 0.7, head = R0 * (1 + 4.2 * 0.45 * sp * e3), tail = Math.max(R0 * 0.8, head - R0 * len * 0.45 * (1 - e * 0.5));
+          for (let d = tail; d <= head; d += 1) {
+            const f = (d - tail) / Math.max(1, head - tail);
+            ctx.globalAlpha = k * (0.35 + 0.65 * f); ctx.fillStyle = f > 0.7 ? R[6] : f > 0.3 ? R[5] : R[4];
+            pfxDot(ctx, ef.x + Math.cos(a0) * d, ef.y + Math.sin(a0) * d * 0.9, 1);
+          }
+        });
+        ctx.restore();
+      }
     }
     // 같은 자리에 더 새 기공파 이펙트가 있으면 이건 그리지 않음 (0.25초마다 새로 넣어 겹쳐 둠)
     function qiBeamSuperseded(ef) {
@@ -33247,6 +33301,12 @@
       if (ef.type === 'qi_charge' || ef.type === 'qi_genki_charge') {
         const u = qiUnitById(ef.uid);
         const genki = ef.type === 'qi_genki_charge';
+        if (ef.jc) { // 기공포 모으기 (drawQiCannonCharge)
+          if (!u || !u.alive || !u.casting || u.casting.key !== 'qi_cannon') { ef.life = Math.min(ef.life, 1); return; }
+          ef.life = Math.max(ef.life, 30);
+          drawQiCannonCharge(ctx, ef, u);
+          return;
+        }
         if (!u || !u.alive || !u.casting || u.casting.key !== (genki ? 'genki_bomb' : 'qi_wave')) { ef.life = Math.min(ef.life, 1); return; }
         // 수명은 화면 프레임마다 줄어서(시뮬 틱과 따로), 화면이 버벅이면 시전(최대 8초)보다 먼저 닳아 구체가 사라졌음 → 시전하는 동안은 수명을 채워 둠
         ef.life = Math.max(ef.life, 30);
