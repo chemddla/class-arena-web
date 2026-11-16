@@ -2038,6 +2038,306 @@
       '.....kkkkkk.....'
     ]
   });
+  // 던전 전용 도트 아이콘 (tools/dungeon-icons/redesign.px.js → png-to-icons.py redesign). 던전 화면에서만 DUNGEON 표로 골라 씀
+  Object.assign(ICONS, {
+    dgTorch: [
+      '.......kk.......',
+      '......kook......',
+      '.....koRRok.....',
+      '....koRooRok....',
+      '....kRoccoRk....',
+      '....kRccccRk....',
+      '.....kchhck.....',
+      '....kDDDDDDk....',
+      '....kGLLLLGk....',
+      '.....kDDDDk.....',
+      '.....kdDDdk.....',
+      '.....kdDDdk.....',
+      '.....kdDDdk.....',
+      '....kGLLLLGk....',
+      '.....kGGGGk.....',
+      '......kkkk......'
+    ],
+    dgFight: [
+      '.kk..........kk.',
+      'kWLk........kLWk',
+      'kLWLk......kLWLk',
+      '.kLWLk....kLWLk.',
+      '..kLWLk..kLWLk..',
+      '...kLWLkkLWLk...',
+      '....kLWLLWLk....',
+      '.....kLWWLk.....',
+      '....kLWLLWLk....',
+      '..kkLWLkkLWLkk..',
+      '.khYLLk..kLLYhk.',
+      '..kYhk....khYk..',
+      '.kdkYhk..khYkdk.',
+      'kdDkkk....kkkDdk',
+      'kDdk........kdDk',
+      '.kk..........kk.'
+    ],
+    dgElite: [
+      '.k............k.',
+      'kTk..........kTk',
+      'ktTk........kTtk',
+      '.ktTkkkkkkkkTtk.',
+      '.ktTLLLLLLLLTtk.',
+      '..kLWWWWWWWWLk..',
+      '.kLWLLLLLLLLWLk.',
+      '.kLLLLLLLLLLLLk.',
+      '.kLkkkLLLLkkkLk.',
+      '.kLkMkkLLkkMkLk.',
+      '.kLLkkLLLLkkLLk.',
+      '..kGLLLkkLLLGk..',
+      '...kLGLGGLGLk...',
+      '...kGkGkkGkGk...',
+      '....kkkkkkkk....'
+    ],
+    dgGuard: [
+      '.kkkkkkkkkkkkkk.',
+      'kGGGGGGGGGGGGGGk',
+      'kGLLLLLLLLLLLLGk',
+      'kGLWLLLLLLLLWLGk',
+      'kGLLGGGGGGGGLLGk',
+      'kGLGkkkkkkkkGLGk',
+      'kGLGkMqqqqMkGLGk',
+      'kGLGkkkkkkkkGLGk',
+      'kGLLGGGGGGGGLLGk',
+      'kGLLLLLLLLLLLLGk',
+      '.kGLLLLLLLLLLGk.',
+      '.kGLLLLLLLLLLGk.',
+      '..kGLLLLLLLLGk..',
+      '...kGGLLLLGGk...',
+      '....kGGGGGGk....',
+      '.....kkkkkk.....'
+    ],
+    dgChest: [
+      '...kkkkkkkkkk...',
+      '..kttttttttttk..',
+      '.ktTTTTTTTTTTtk.',
+      'ktTTTTTTTTTTTTtk',
+      'ktttttTTTTtttttk',
+      'kGLtttkkkktttLGk',
+      'kkkkkkkhhkkkkkkk',
+      'kDDGDDYhhYDDGDDk',
+      'kDtLtDYYYYDtLtDk',
+      'kDtLtDDkkDDtLtDk',
+      'kDDGDDDDDDDDGDDk',
+      'kdDGDDDDDDDDGDdk',
+      'kddGddddddddGddk',
+      '.kkkkkkkkkkkkkk.'
+    ],
+    dgBrazier: [
+      '.......kk.......',
+      '......kRRk......',
+      '.....kRooRk.....',
+      '...kkRRooRRkk...',
+      '..kRkRoccoRkRk..',
+      '..kRRoccccoRRk..',
+      '.kkRoccccccoRkk.',
+      'kGLLLLLLLLLLLLGk',
+      '.kGGGGGGGGGGGGk.',
+      '..kGLLLLLLLLGk..',
+      '...kGGLLLLGGk...',
+      '....kGLLLLGk....',
+      '...kGLLLLLLGk...',
+      '..kGGkkGGkkGGk..',
+      '...kk..kk..kk...'
+    ],
+    dgSteps: [
+      '.........kkk....',
+      '........kTTTk...',
+      '.......kTTTTTk..',
+      '.......kTTTTtk..',
+      '.......kTtTttk..',
+      '...kkk..ktttk...',
+      '..kTTTk..kkk....',
+      '.kTTTTTkkTTtk...',
+      '.kTTTTtkkTttk...',
+      '.kTTTttk.ktk....',
+      '..ktttk...k.....',
+      '...kkkk.........',
+      '...kTTtk........',
+      '...kTttk........',
+      '....ktk.........',
+      '.....k..........'
+    ],
+    dgBoss: [
+      '..k...k..k...k..',
+      '.khk.khkkhk.khk.',
+      '.kHhkhYhhYhkhHk.',
+      '.khYhYMYYMYhYhk.',
+      '.kYYYYYYYYYYYYk.',
+      '.kyyyyyyyyyyyyk.',
+      '..kLWWWWWWWWLk..',
+      '.kLWLLLLLLLLWLk.',
+      '.kLkkkLLLLkkkLk.',
+      '.kLkMkkLLkkMkLk.',
+      '.kLLkkLLLLkkLLk.',
+      '..kGLLLkkLLLGk..',
+      '...kLGLGGLGLk...',
+      '...kGkGkkGkGk...',
+      '....kkkkkkkk....'
+    ],
+    dgStairs: [
+      '.....kkkkkk.....',
+      '...kkGGGGGGkk...',
+      '..kGGLLLLLLGGk..',
+      '.kGLLKkkkkKLLGk.',
+      '.kGLKkkkkkkKLGk.',
+      'kGLKkkGGGGkkKLGk',
+      'kGLKkkKKKKkkKLGk',
+      'kGLKkGLLLLGkKLGk',
+      'kGLKkKGGGGKkKLGk',
+      'kGLKGLLLLLLGKLGk',
+      'kGLKKGGGGGGKKLGk',
+      'kGLGLLLLLLLLGLGk',
+      'kGLKGGGGGGGGKLGk',
+      'kGLLLLLLLLLLLLGk',
+      'kGGGGGGGGGGGGGGk',
+      '.kkkkkkkkkkkkkk.'
+    ],
+    dgFount: [
+      '.......kk.......',
+      '......kIIk......',
+      '....kkiIIikk....',
+      '...kikiIIikik...',
+      '..kik.kiik.kik..',
+      '.kkikkLLLLkkikk.',
+      'kGLLLLLLLLLLLLGk',
+      'kGBBBiiIIiiBBBGk',
+      '.kGBBBBBBBBBBGk.',
+      '..kGGGGGGGGGGk..',
+      '...kkLLLLLLkk...',
+      '....kGLLLLGk....',
+      '...kGLLLLLLGk...',
+      '..kGGGGGGGGGGk..',
+      '...kkkkkkkkkk...'
+    ],
+    dgAltar: [
+      '......kkkk......',
+      '.....kPPPPk.....',
+      '....kPvVVvPk....',
+      '....kPVWWVPk....',
+      '....kPvvvvPk....',
+      '...k.kPPPPk.k...',
+      '..kvkkkkkkkkvk..',
+      '.kGLLLLLLLLLLGk.',
+      '.kGGGGGGGGGGGGk.',
+      '..kkGLLLLLLGkk..',
+      '...kGLPvvPLGk...',
+      '..kkGLLLLLLGkk..',
+      '.kGGLLLLLLLLGGk.',
+      'kGGGGGGGGGGGGGGk',
+      '.kkkkkkkkkkkkkk.'
+    ],
+    dgBook: [
+      '.......k........',
+      '......khk.......',
+      '.....khHhk......',
+      '......khk.......',
+      '..kkkk.k..kkkk..',
+      '.kWWWWk..kWWWWk.',
+      'kbWLLWWkkWWLLWbk',
+      'kbWWWWWWWWWWWWbk',
+      'kbWLLLWWWWLLLWbk',
+      'kbWWWWWWWWWWWWbk',
+      'kbWLLLWWWWLLLWbk',
+      'kbWWWWWLLWWWWWbk',
+      'kbBBBBBBBBBBBBbk',
+      '.kbbbbbbBBbbbbk.',
+      '..kkkkkkkkkkkk..'
+    ],
+    dgSpike: [
+      '.......kk.......',
+      '..k...kWWk...k..',
+      '.kWk..kLLk..kWk.',
+      '.kLk.kLLLLk.kLk.',
+      '.kLk.kLGGLk.kLk.',
+      'kLLk.kLGGLk.kLLk',
+      'kLGkkLLGGLLkkGLk',
+      'kLGkkLGGGGLkkGLk',
+      'kLGkkLGGGGLkkGLk',
+      'kkkkkkkkkkkkkkkk',
+      'kKKKKKKKKKKKKKKk',
+      'kGLLGLLLLLLGLLGk',
+      'kGGGGGGGGGGGGGGk',
+      '.kkkkkkkkkkkkkk.'
+    ],
+    dgWeb: [
+      '.kkkkkkkkkkkkkk.',
+      'kLLLLLLLLLLLLLLk',
+      'kLLkkLkkkLkkkGk.',
+      'kLkLkkLkkLkkGk..',
+      'kLkkLLkLkLkGk...',
+      'kLLkkLLLLLLk....',
+      'kLkLkkLkkLk.....',
+      'kLkkLkkLkLk.....',
+      'kLLLLLLkLk......',
+      'kLkkLkkLk..k....',
+      'kLk.kLkLkkkkkk..',
+      'kLk..kLkkkkkkkk.',
+      'kLLk.kLk.kpPpk..',
+      'kLk.kLk.kkpvpkk.',
+      'kLk..k..kkkpkkk.',
+      '.k.......k.k.k..'
+    ],
+    dgChestOpen: [
+      '...kkkkkkkkkk...',
+      '..kttttttttttk..',
+      '.ktddddddddddtk.',
+      'ktddddddddddddtk',
+      'kkkkkkkkkkkkkkkk',
+      '.kkHkkhHHhkkHkk.',
+      '.khYhhYhhYhhYhk.',
+      'kYhhhYhhhhYhhhYk',
+      'kkkkkkkkkkkkkkkk',
+      'kDDGDDYhhYDDGDDk',
+      'kDtLtDYYYYDtLtDk',
+      'kDDGDDDDDDDDGDDk',
+      'kddGddddddddGddk',
+      '.kkkkkkkkkkkkkk.'
+    ],
+    dgLocked: [
+      '....kkkkkkkk....',
+      '..kkGGGGGGGGkk..',
+      '.kGGDDDDDDDDGGk.',
+      '.kGDtDDttDDtDGk.',
+      'kGDtDDtDDtDDtDGk',
+      'kGDtDDtDDtDDtDGk',
+      'kGDtDDGGGGDDtDGk',
+      'kGDtDGLLLLGDtDGk',
+      'kGDtDGLkkLGDtDGk',
+      'kGDtDLLLLLLDtDGk',
+      'kGDtDLLkkLLDtDGk',
+      'kGDtDGLkkLGDtDGk',
+      'kGDtDDGGGGDDtDGk',
+      'kGDtDDtDDtDDtDGk',
+      'kGGGGGGGGGGGGGGk',
+      '.kkkkkkkkkkkkkk.'
+    ],
+    dgPotion: [
+      '......kkkk......',
+      '.....kdTTdk.....',
+      '.....kdttdk.....',
+      '.....kLWWLk.....',
+      '.....kLLLLk.....',
+      '....kLLLLLLk....',
+      '...kLMMMMMMLk...',
+      '..kLWqMMMMqWLk..',
+      '.kLWMqMQQMqMWLk.',
+      '.kLMqQQQQQQqMLk.',
+      '.kLMMqQQQQqMMLk.',
+      '.kLmMMqMMqMMmLk.',
+      '..kLmmMMMMmmLk..',
+      '...kLLLLLLLLk...',
+      '....kkkkkkkk....'
+    ]
+  });
+  // 던전 화면의 이모지 → 던전 전용 아이콘 (다른 화면의 칼·방패·왕관은 그대로)
+  const DUNGEON = { '🕯': 'dgTorch', '⚔': 'dgFight', '💎': 'dgElite', '🛡': 'dgGuard', '📦': 'dgChest', '🔥': 'dgBrazier', '🚶': 'dgSteps',
+    '👑': 'dgBoss', '🕳': 'dgStairs', '⛲': 'dgFount', '🗿': 'dgAltar', '📖': 'dgBook', '🪤': 'dgSpike', '🕸': 'dgWeb', '📭': 'dgChestOpen',
+    '🔒': 'dgLocked', '🧪': 'dgPotion' };
   Object.assign(MAP, { '🕳': 'stairs', '📭': 'boxOpen', '🪤': 'trap', '🕸': 'web', '⛲': 'fountain', '🗿': 'altar', '🧪': 'potion', '⭕': 'ring' });
   const ESSENTIAL = {
     '✕': 'essClose', '✖': 'essClose', '⚔': 'swords', '🎒': 'bag', '💨': 'essDash', '🌀': 'essSwirl',
@@ -2067,7 +2367,25 @@
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 ${-top} 16 16" shape-rendering="crispEdges">${body}</svg>`;
   }
 
-  const api = { PAL, ICONS, MAP, ESSENTIAL, svgOf };
+  // 캔버스에 아이콘 그리기 (x, y = 가운데, size = 한 변 px). 아이콘마다 16px 그림을 한 번 만들어 둠
+  const cvs = {};
+  function draw(ctx, name, x, y, size) {
+    const rows = ICONS[name];
+    if (!rows || typeof document === 'undefined') return false;
+    let c = cvs[name];
+    if (!c) {
+      c = cvs[name] = document.createElement('canvas');
+      c.width = c.height = 16;
+      const g = c.getContext('2d'), top = Math.floor((16 - rows.length) / 2);
+      rows.forEach((row, ry) => { for (let rx = 0; rx < row.length; rx++) if (PAL[row[rx]]) { g.fillStyle = PAL[row[rx]]; g.fillRect(rx, ry + top, 1, 1); } });
+    }
+    const smooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(c, Math.round(x - size / 2), Math.round(y - size / 2), size, size);
+    ctx.imageSmoothingEnabled = smooth;
+    return true;
+  }
+  const api = { PAL, ICONS, MAP, ESSENTIAL, DUNGEON, svgOf, draw };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof document === 'undefined') return;
   window.PixelIcons = api;
