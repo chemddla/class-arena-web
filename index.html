@@ -5386,6 +5386,21 @@
   </div>
 
   <script>
+    // 조사 고르기: 앞말의 마지막 글자 받침을 보고 이/가 · 을/를 · 은/는 · 와/과 · 으로/로 (pair: '이가' '을를' '은는' '와과' '으로')
+    //   끝의 괄호·따옴표·기호·이모지는 건너뛰고 봄 · 숫자는 읽는 소리로(1 일, 3 삼 …) · 알 수 없으면 '이(가)'처럼 둘 다
+    function josa(word, pair) {
+      const s = String(word == null ? '' : word).replace(/[\s\])}」』>'"!?.,~…·‍️\p{Extended_Pictographic}]+$/u, '');
+      const ch = s.slice(-1), c = ch.charCodeAt(0);
+      let jong = null; // 받침 번호 (0 = 없음, 8 = ㄹ)
+      if (c >= 0xAC00 && c <= 0xD7A3) jong = (c - 0xAC00) % 28;
+      else if (/[0-9]/.test(ch)) jong = { 0: 21, 1: 8, 3: 16, 6: 1, 7: 8, 8: 8 }[ch] || 0;
+      else if (/[a-z]/i.test(ch)) jong = /[lr]/i.test(ch) ? 8 : /[mn]/i.test(ch) ? 4 : 0;
+      const P = { 이가: ['이', '가', '이(가)'], 을를: ['을', '를', '을(를)'], 은는: ['은', '는', '은(는)'], 와과: ['과', '와', '와(과)'], 으로: ['으로', '로', '(으)로'] }[pair];
+      if (!P) return '';
+      if (jong == null) return P[2];
+      if (pair === '으로') return jong && jong !== 8 ? P[0] : P[1];
+      return jong ? P[0] : P[1];
+    }
     /********************************************************************
      * 0. 커스텀 알림/확인 모달 헬퍼 (alert / confirm 완전 대체)
      ********************************************************************/
@@ -13298,7 +13313,7 @@
           <div class="text-[11px] text-fuchsia-700 font-bold">⏳ 시전 ${sk.castSec}초 · 쿨타임 ${sk.cooldownSec}초 · 📖 도감에 기록됐어요</div>
           <button class="mt-3 px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 font-extrabold text-sm shadow">확인</button>
         </div>`;
-      wrap.querySelector('[data-who]').textContent = `[${merc.name}]이(가) 히든 스킬을 깨우쳤어요!`;
+      wrap.querySelector('[data-who]').textContent = `[${merc.name}]${josa(merc.name, '이가')} 히든 스킬을 깨우쳤어요!`;
       wrap.addEventListener('click', () => wrap.remove());
       document.body.appendChild(wrap);
       // 카드 뒤에서 빛기둥이 오르고 색종이가 터짐
@@ -15207,7 +15222,7 @@
       renderSquadTab();
       if (activeDetailMercId) renderMercDetailModal();
       setupIdlePreviewBattle();
-      showRewardBanner(`✏️ 용병 이름이 [${oldName}] → [${merc.name}](으)로 변경되었습니다!`);
+      showRewardBanner(`✏️ 용병 이름이 [${oldName}] → [${merc.name}]${josa(merc.name, '으로')} 변경되었습니다!`);
       DailyMission.progress('rename', 1, stu);
     }
 
@@ -15524,7 +15539,7 @@
             ${(() => {
               const rs = mercLevelLedger(merc, stu, false);
               return (merc.level || 1) > rs.target
-                ? `<button onclick="resetMercLevel('${merc.id}')" title="이 용병 레벨업에 쓴 CA의 80%를 돌려받고 Lv.${rs.target}(으)로 되돌려요"
+                ? `<button onclick="resetMercLevel('${merc.id}')" title="이 용병 레벨업에 쓴 CA의 80%를 돌려받고 Lv.${rs.target}${josa(rs.target, '으로')} 되돌려요"
                     class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-amber-600 hover:text-white text-amber-300 border border-amber-500/40 font-extrabold text-xs">
                     ↺ 레벨 초기화 (+${rs.refund.toLocaleString()} CA)
                   </button>`
@@ -15570,7 +15585,7 @@
         showNotice('⚠️ 내가 레벨업한 기록이 없어서 되돌릴 레벨이 없어요.');
         return;
       }
-      askCustomConfirm(`[${merc.name}] Lv.${merc.level} → Lv.${preview.target}(으)로 레벨을 초기화할까요? 레벨업에 쓴 ${preview.spent.toLocaleString()} CA의 80%인 💰 ${preview.refund.toLocaleString()} CA를 돌려받아요. 스탯 포인트는 다시 나눌 수 있고, 열렸던 스킬은 다시 레벨을 올리면 그대로 돌아와요.`, () => {
+      askCustomConfirm(`[${merc.name}] Lv.${merc.level} → Lv.${preview.target}${josa(preview.target, '으로')} 레벨을 초기화할까요? 레벨업에 쓴 ${preview.spent.toLocaleString()} CA의 80%인 💰 ${preview.refund.toLocaleString()} CA를 돌려받아요. 스탯 포인트는 다시 나눌 수 있고, 열렸던 스킬은 다시 레벨을 올리면 그대로 돌아와요.`, () => {
         const m = (stu.roster || []).find(x => x.id === mercId);
         if (!m) return;
         const { target, refund } = mercLevelLedger(m, stu, true);
@@ -15698,9 +15713,9 @@
       setupIdlePreviewBattle();
       if (gotHidden) {
         showHiddenSkillReveal(merc, hid);
-        GlobalChat.announce('hidden', `✨ [${stu.name}] 친구의 ${(JOB_DEFS[merc.job] || {}).icon || ''} ${merc.name}이(가) 스킬 다시 뽑기로 히든 스킬 [${hid.icon || ''} ${hid.name}]을(를) 얻었어요!`);
+        GlobalChat.announce('hidden', `✨ [${stu.name}] 친구의 ${(JOB_DEFS[merc.job] || {}).icon || ''} ${merc.name}${josa(merc.name, '이가')} 스킬 다시 뽑기로 히든 스킬 [${hid.icon || ''} ${hid.name}]${josa(hid.name, '을를')} 얻었어요!`);
       }
-      else showRewardBanner(`🎲 스킬 전체 다시 뽑기! [${merc.name}]의 스킬이 [${skLabel(mercSkillSlots(merc).slice(0, curN))}] (으)로 바뀌었어요!`);
+      else showRewardBanner(`🎲 스킬 전체 다시 뽑기! [${merc.name}]의 스킬이 [${skLabel(mercSkillSlots(merc).slice(0, curN))}]${josa(skLabel(mercSkillSlots(merc).slice(0, curN)), '으로')} 바뀌었어요!`);
       DailyMission.progress('reroll', 1, stu);
     }
 
@@ -16488,7 +16503,7 @@
         mc: offer.offerPrice,
         merc: offer.offeredMerc || null,
         kind: 'trade_refund',
-        note: `${reason} [${offer.mercSnapshot?.name || '용병'}] 거래 제안에 맡긴 ${describeTradeOfferGive(offer)}을(를) 돌려받았어요.`
+        note: `${reason} [${offer.mercSnapshot?.name || '용병'}] 거래 제안에 맡긴 ${describeTradeOfferGive(offer)}${josa(describeTradeOfferGive(offer), '을를')} 돌려받았어요.`
       });
     }
 
@@ -17123,7 +17138,7 @@
       const secrets = newPool.filter(m => m.rarity === 'SCR');
       if (secrets.length && stu && typeof GlobalChat !== 'undefined') {
         const names = secrets.map(m => `${(JOB_DEFS[m.job] || {}).icon || ''} ${(JOB_DEFS[m.job] || {}).name || m.name}`).join(', ');
-        GlobalChat.announce('sr', `🔥 [${stu.name}] 친구의 용병 모집에 시크릿 레어 [${names}]이(가) 나타났어요!`);
+        GlobalChat.announce('sr', `🔥 [${stu.name}] 친구의 용병 모집에 시크릿 레어 [${names}]${josa(names, '이가')} 나타났어요!`);
       }
     }
 
@@ -17165,7 +17180,7 @@
       const left = isFree ? [] : unhiredSecretRares();
       if (left.length) {
         const names = left.map(m => `${(JOB_DEFS[m.job] || {}).icon || ''} ${m.name}`).join(', ');
-        askCustomConfirm(`🔥 아직 모집하지 않은 시크릿 레어 용병 [${names}]이(가) 있어요!
+        askCustomConfirm(`🔥 아직 모집하지 않은 시크릿 레어 용병 [${names}]${josa(names, '이가')} 있어요!
 명단을 갱신하면 사라져요. 그래도 새로 모집할까요?`, () => doRefreshRecruitPool(isFree));
         return;
       }
@@ -19084,7 +19099,7 @@
         showNotice(`⚠️ 장비를 사기에 CA가 부족해요! (필요: ${itemDef.cost.toLocaleString()} CA / 보유: ${stu.mc.toLocaleString()} CA)`);
         return;
       }
-      askCustomConfirm(`[${itemDef.icon} ${itemDef.name}]을(를) ${itemDef.cost.toLocaleString()} CA에 살까요?`, () => {
+      askCustomConfirm(`[${itemDef.icon} ${itemDef.name}]${josa(itemDef.name, '을를')} ${itemDef.cost.toLocaleString()} CA에 살까요?`, () => {
         if (slot.sold || stu.mc < itemDef.cost) return;
         stu.mc -= itemDef.cost;
         slot.sold = true;
@@ -19113,7 +19128,7 @@
       saveState();
       renderAllStudentViews();
       if (activeDetailMercId) renderMercDetailModal();
-      showRewardBanner(`⚔️ [${merc.name}]에게 [${eqDef.icon} ${eqDef.name}]을(를) 끼웠어요! (${eqDef.desc})`);
+      showRewardBanner(`⚔️ [${merc.name}]에게 [${eqDef.icon} ${eqDef.name}]${josa(eqDef.name, '을를')} 끼웠어요! (${eqDef.desc})`);
       DailyMission.progress('equip', 1, stu);
     }
 
@@ -19129,7 +19144,7 @@
       saveState();
       renderAllStudentViews();
       if (activeDetailMercId) renderMercDetailModal();
-      showNotice(`📦 [${merc.name}]의 [${eqDef ? eqDef.name : '장비'}]을(를) 빼서 보관함에 넣었어요.`);
+      showNotice(`📦 [${merc.name}]의 [${eqDef ? eqDef.name : '장비'}]${josa(eqDef ? eqDef.name : '장비', '을를')} 빼서 보관함에 넣었어요.`);
     }
 
     function equipKindBadge(eq) {
@@ -21709,7 +21724,7 @@
       if (!sim.running || sim.mode !== 'tower') return;
       if (helpUnit) {
         sim.meta.towerHelp = { helperId: help.helper.id, helperName: help.helper.name, rid: help.rid };
-        addBattleLog(`🤝 ${help.helper.name} 친구의 ${helpUnit.name}이(가) 도우러 왔어요! (AI 자동 전투)`);
+        addBattleLog(`🤝 ${help.helper.name} 친구의 ${helpUnit.name}${josa(helpUnit.name, '이가')} 도우러 왔어요! (AI 자동 전투)`);
         renderLiveUnitStatus();
       }
       // 자동/직접 전투를 고르기 전에 나가면 패배도 아니고 도전비용도 안 냄
@@ -22073,7 +22088,7 @@
         if (mine && mine.helper && this.notifiedRid !== mine.rid) {
           this.notifiedRid = mine.rid;
           const got = this.helperMerc(mine);
-          showRewardBanner(`🤝 ${mine.helper.name} 친구가 용병 [${got ? got.merc.name : mine.helper.mercName || '용병'}]을(를) 보내 줬어요! ${liveNum(mine.floor)}층에 6명으로 출전할 수 있어요.`);
+          showRewardBanner(`🤝 ${mine.helper.name} 친구가 용병 [${got ? got.merc.name : mine.helper.mercName || '용병'}]${josa(got ? got.merc.name : mine.helper.mercName || '용병', '을를')} 보내 줬어요! ${liveNum(mine.floor)}층에 6명으로 출전할 수 있어요.`);
         }
         if (towerFormationDraft) renderTowerFormationModal();
         if (typeof GlobalChat !== 'undefined') { GlobalChat.renderList(); GlobalChat.refreshPeek(); }
@@ -22290,7 +22305,7 @@
         const r = this.requestOf(reqId) || {};
         GlobalChat.renderList();
         switchStudentTab('tower');
-        showRewardBanner(`🤝 ${cleanUserText(r.name || '친구', 30)} 친구에게 [${merc.name}]을(를) 보냈어요! 친구가 출전하면 자동으로 관전해요.`);
+        showRewardBanner(`🤝 ${cleanUserText(r.name || '친구', 30)} 친구에게 [${merc.name}]${josa(merc.name, '을를')} 보냈어요! 친구가 출전하면 자동으로 관전해요.`);
         this.checkAutoWatch();
       },
 
@@ -22800,7 +22815,7 @@
           sim.effects.push({ type: 'aoe_ring', x: defender.x, y: defender.y, r, color: '#f97316', life: 36, maxLife: 36 });
           sim.units.filter(e => e.alive && e.team !== defender.team && unitDist(e, defender) <= r)
             .forEach(e => applyDamage(null, e, Math.round(defender.maxHp * 0.15), '💥폭발 ', '#f97316'));
-          addBattleLog(`💥 ${defender.name}이(가) 쓰러지며 폭발했어요!`);
+          addBattleLog(`💥 ${defender.name}${josa(defender.name, '이가')} 쓰러지며 폭발했어요!`);
         }
       }
     }
@@ -24940,7 +24955,7 @@
         unit.statuses.stealth = Math.max(unit.statuses.stealth || 0, sk === 'stealth' ? ROGUE_STEALTH_TICKS : SNIPER_STEALTH_TICKS);
         sim.effects.push({ type: 'magic_burst', spr: 'teleport', x: unit.x, y: unit.y - 12, r: 50, life: 30, maxLife: 30 }); // 분신이 나타날 때와 같은 연기
         playCombatSfx('magic');
-        addBattleLog(`🌫️ [${sk === 'stealth' ? '도적' : '저격수'}] ${unit.name}이(가) 어둠 속으로 사라졌어요! (${sk === 'stealth' ? 5 : 10}초)`);
+        addBattleLog(`🌫️ [${sk === 'stealth' ? '도적' : '저격수'}] ${unit.name}${josa(unit.name, '이가')} 어둠 속으로 사라졌어요! (${sk === 'stealth' ? 5 : 10}초)`);
         return true;
       }
       if (sk === 'back_roll') {
@@ -25447,7 +25462,7 @@
         applyDamage(unit, foe, unit.atk * 28 + pctHpOf(foe) * 0.15 / BATTLE_DAMAGE_MULT, '🎯', '#f43f5e'); // 예전 2000% + 10%
         hiddenImpact(24, '#ffe4e6');
         playCombatSfx('heavy');
-        addBattleLog(`🎯 [저격수] ${unit.name}의 히든 스킬 마지막 한 발! ${foe.name}을(를) 꿰뚫었어요!`);
+        addBattleLog(`🎯 [저격수] ${unit.name}의 히든 스킬 마지막 한 발! ${foe.name}${josa(foe.name, '을를')} 꿰뚫었어요!`);
         return true;
       }
       if (sk === 'blizzard') {
@@ -27371,7 +27386,7 @@
           foe.dfFreeze = true; foe.dfCrack = 0; } // 이 빙결은 동결 스킬 것: 얼음 큐브(4) → 풀릴 때 금 간 큐브(5)·조각(6)
         inflictStatus(unit, foe, 'slow', FROST_DEEP_FREEZE_TICKS + FROST_DEEP_SLOW_TICKS);
         playCombatSfx('magic');
-        addBattleLog(`🧊 [빙결술사] ${unit.name}의 동결! ${foe.name}이(가) 얼음에 갇혔어요`);
+        addBattleLog(`🧊 [빙결술사] ${unit.name}의 동결! ${foe.name}${josa(foe.name, '이가')} 얼음에 갇혔어요`);
         return true;
       }
       if (sk === 'skating') {
@@ -27503,7 +27518,7 @@
         if (sk === 'hex_bolt') {
           applyDamage(unit, foe, unit.atk * CURSE_BOLT_DMG, '💀', '#7e22ce');
           inflictStatus(unit, foe, 'hex', CURSE_BOLT_HEX_TICKS);
-          addBattleLog(`💀 [주술사] ${unit.name}의 저주! ${foe.name}이(가) 저주받았어요`);
+          addBattleLog(`💀 [주술사] ${unit.name}의 저주! ${foe.name}${josa(foe.name, '이가')} 저주받았어요`);
         } else {
           // 파쇄: 보호막(기사 방패·아이스 배리어 포함)과 좋은 효과를 모두 벗긴 뒤 피해
           const broken = Math.round(foe.shield || 0);
@@ -27874,7 +27889,7 @@
           berserkerTwinHit(unit, foe, unit.atk * BERSERKER_EXECUTE_DMG * (1 + lost), { kind: 'skill', tag: '💥', color: '#7f1d1d', after: 'execute', reach: manualSkillRange(unit, 'execute') });
           berserkerExecuteReward(unit, foe);
           playCombatSfx('heavy');
-          addBattleLog(`💥 [광전사] ${unit.name}의 마무리 일격! ${foe.name}${foe.alive ? '에게 큰 피해' : '을(를) 쓰러뜨렸어요'}`);
+          addBattleLog(`💥 [광전사] ${unit.name}의 마무리 일격! ${foe.name}${foe.alive ? '에게 큰 피해' : `${josa(foe.name, '을를')} 쓰러뜨렸어요`}`);
         }
         return true;
       }
@@ -28622,7 +28637,7 @@
           unit.skillAnim = unit.maxSkillAnim = all;
         }
         swordAddStrikes(unit, list);
-        addBattleLog(`💢 [검객] ${unit.name}의 무참! ${pick.name}을(를) 몰아쳐 베어요`);
+        addBattleLog(`💢 [검객] ${unit.name}의 무참! ${pick.name}${josa(pick.name, '을를')} 몰아쳐 베어요`);
         return true;
       }
       if (sk === 'mindblade') {
@@ -28630,7 +28645,7 @@
         unit.rootTicks = Math.max(unit.rootTicks || 0, SWORD_MIND_TICKS);
         unit.rush = null;
         swordGuardFx('sword_mind_start', unit.x, unit.y + 12, 1, unit.sizeScale || 1); // 발밑 물결 고리 · 몸을 스치는 빛
-        addBattleLog(`👁️ [검객] ${unit.name}이(가) 눈을 감고 심검으로 정신을 모아요`);
+        addBattleLog(`👁️ [검객] ${unit.name}${josa(unit.name, '이가')} 눈을 감고 심검으로 정신을 모아요`);
         return true;
       }
       if (sk === 'geukcham') { // 극참: 일섬 50연 난사 (시크릿 레어 외형은 끝에 전장 전체 베기)
@@ -29210,7 +29225,7 @@
       if (attacker && attacker.job === 'brawler' && duelPartnerOf(attacker) === defender) {
         if (attacker.skillCooldowns) attacker.skillCooldowns.duel_call = 0;
         sim.floatTexts.push({ x: attacker.x, y: attacker.y - 56, text: '⚔️ 결투 승리! 쿨타임 초기화', color: '#c2410c', life: 60 });
-        addBattleLog(`⚔️ [격투가] ${attacker.name}이(가) 결투에서 ${defender.name}을(를) 쓰러뜨렸어요!`);
+        addBattleLog(`⚔️ [격투가] ${attacker.name}${josa(attacker.name, '이가')} 결투에서 ${defender.name}${josa(defender.name, '을를')} 쓰러뜨렸어요!`);
       }
       if (defender.duelWith) endDuel(defender);
     }
@@ -29428,7 +29443,7 @@
         sim.effects.push({ type: 'magic_burst', x: attacker.x, y: attacker.y - 18, r: 40, color: '#f59e0b', life: 22, maxLife: 22 });
         playCombatSfx('heavy');
       });
-      addBattleLog(`🔄 [격투가] ${u.name}이(가) ${attacker.name}의 공격을 받아쳤어요!`);
+      addBattleLog(`🔄 [격투가] ${u.name}${josa(u.name, '이가')} ${attacker.name}의 공격을 받아쳤어요!`);
     }
     function brawlerMissText(unit, sk) {
       sim.floatTexts.push({ x: unit.x, y: unit.y - 52, text: `${unitSkillBook(unit)[sk]?.icon || '🥊'} 대상이 없어요 (${BRAWLER_REACH_CELLS}칸)`, color: '#64748b', life: 40 });
@@ -29485,7 +29500,7 @@
         unit.statuses.counter = Math.max(unit.statuses.counter || 0, BRAWLER_COUNTER_TICKS);
         unit.skillAnim = 0; // 자세는 반격 상태 동안 brawlerPickFrame이 유지 · 받아칠 때 날아 차기(counter_strike)가 새 동작으로 잡히게
         sim.effects.push({ type: 'aoe_ring', x: unit.x, y: unit.y, r: 50, color: '#f59e0b', life: BRAWLER_COUNTER_TICKS, maxLife: BRAWLER_COUNTER_TICKS });
-        addBattleLog(`🔄 [격투가] ${unit.name}이(가) 반격 자세를 잡았어요`);
+        addBattleLog(`🔄 [격투가] ${unit.name}${josa(unit.name, '이가')} 반격 자세를 잡았어요`);
         return true;
       }
       if (sk === 'diamond_body') {
@@ -29508,7 +29523,7 @@
         unit.rootTicks = Math.max(unit.rootTicks || 0, BRAWLER_DUEL_HOLD); unit.isMoving = false; // 걸린 뒤 0.5초 더 결투 자세로 제자리 (이동·공격 불가)
         [unit, foe].forEach(x => sim.effects.push({ type: 'aoe_ring', x: x.x, y: x.y, r: 56, color: '#dc2626', life: 40, maxLife: 40 }));
         playCombatSfx('heavy');
-        addBattleLog(`⚔️ [격투가] ${unit.name}이(가) ${foe.name}에게 결투를 걸었어요! ${iso ? '10초간 서로에게만 피해를 줄 수 있어요' : '서로 주는 피해가 늘어나요'}`);
+        addBattleLog(`⚔️ [격투가] ${unit.name}${josa(unit.name, '이가')} ${foe.name}에게 결투를 걸었어요! ${iso ? '10초간 서로에게만 피해를 줄 수 있어요' : '서로 주는 피해가 늘어나요'}`);
         return true;
       }
       if (sk === 'annihilate') {
@@ -29643,7 +29658,7 @@
       sim.effects.push({ type: 'fire_explosion', spr: 'fire_hit', x: u.x, y: u.y, r: 70, life: 34, maxLife: 34 });
       sim.floatTexts.push({ x: u.x, y: u.y - 60, text: '🥚 불사조의 알!', color: '#ea580c', life: 80 });
       playCombatSfx('magic');
-      addBattleLog(`🥚 ${u.name}이(가) 쓰러지며 불사조의 알이 되었어요! 10초 뒤 다시 태어나요.`);
+      addBattleLog(`🥚 ${u.name}${josa(u.name, '이가')} 쓰러지며 불사조의 알이 되었어요! 10초 뒤 다시 태어나요.`);
     }
     function phoenixHatch(u) {
       u.statuses.rebirth = 0;
@@ -29653,7 +29668,7 @@
       sim.effects.push({ type: 'fire_explosion', spr: 'fire_hit', x: u.x, y: u.y, r: 130, life: 40, maxLife: 40 });
       sim.floatTexts.push({ x: u.x, y: u.y - 60, text: '🔥 부활!', color: '#dc2626', life: 80 });
       playCombatSfx('heavy');
-      addBattleLog(`🔥 ${u.name}이(가) 불꽃 속에서 다시 태어났어요! (체력 100%)`);
+      addBattleLog(`🔥 ${u.name}${josa(u.name, '이가')} 불꽃 속에서 다시 태어났어요! (체력 100%)`);
     }
     const PYRO_METEOR_FALL = 80;             //   하늘에서 떨어지는 시간 (틱) — 2026-11-07 40 → 80 (2초, 떨어지는 속도 절반)
     const PYRO_SPREAD_CELLS = 1.5;           // 번짐: 화상 걸린 적이 쓰러지면 1.5칸 안 적 2명에게 화상 3초
@@ -30125,7 +30140,7 @@
       u.activeSkillType = 'volt_finale'; u.skillAnim = VOLT_FIN_DUR; u.maxSkillAnim = VOLT_FIN_DUR;
       voltFx('finale', u.x, u.y + 12);
       sim.floatTexts.push({ x: u.x, y: u.y - 96, text: '⚡ 뇌신 강림', color: '#e0f2fe', life: 80 });
-      addBattleLog(`⚡ [전격술사] ${u.name}이(가) 남은 전기를 모아 뛰어올라요!`);
+      addBattleLog(`⚡ [전격술사] ${u.name}${josa(u.name, '이가')} 남은 전기를 모아 뛰어올라요!`);
     }
     // 피날레 매 틱: 자리 고정 · 공격·대시 막음 · 최고점에서 터짐
     function voltFinaleStep(u) {
@@ -30990,7 +31005,7 @@
         sim.effects.push({ type: 'aoe_ring', x: s.x, y: s.y + 8, r: 70 * (def.size || 1), color: def.color, life: 32, maxLife: 32 });
       }
       spiritOnSummon(s);
-      addBattleLog(`${def.icon} [소환사] ${owner.name}이(가) ${def.name}을 불렀어요`);
+      addBattleLog(`${def.icon} [소환사] ${owner.name}${josa(owner.name, '이가')} ${def.name}을 불렀어요`);
       return s;
     }
     // 나올 때: 대지 정령 = 주변 1.5칸 적 도발 · 정령왕 = 주변 2.6칸 300% 피해 + 기절
@@ -31332,7 +31347,7 @@
       Object.keys(t.statuses).forEach(k => { t.statuses[k] = 0; });
       t.statuses.immune = 30;
       sim.effects.push({ type: 'eng_build', x: t.x, y: t.y, r: 40 * (t.sizeScale || 1), life: 26, maxLife: 26 });
-      addBattleLog(`${def.icon} [기계공] ${owner.name}이(가) ${def.name}을 ${kind === 'drone' ? '띄웠어요' : '세웠어요'}`);
+      addBattleLog(`${def.icon} [기계공] ${owner.name}${josa(owner.name, '이가')} ${def.name}을 ${kind === 'drone' ? '띄웠어요' : '세웠어요'}`);
       return t;
     }
     // 포탄: delay틱 뒤 (x, y) 반지름 r 안 적에게 피해 (skill = 스킬 피해, 아니면 원거리 기본 공격)
@@ -33418,7 +33433,7 @@
         applyDamage(p.owner, hit, p.dmg, '🪓', '#b91c1c');
         inflictStatus(p.owner, hit, 'slow', p.statusDur);
         playCombatSfx('slash');
-        if (p.owner) addBattleLog(`🪓 [광전사] ${p.owner.name}의 도끼 투척! ${hit.name}이(가) 느려졌어요`);
+        if (p.owner) addBattleLog(`🪓 [광전사] ${p.owner.name}의 도끼 투척! ${hit.name}${josa(hit.name, '이가')} 느려졌어요`);
         return;
       }
       if (p.spr === 'storm_orb_charged' && p.owner) p.owner._stormChargeHit = true; // 번개 정령 강화 구슬 → 맞으면 연쇄 번개
@@ -39065,7 +39080,7 @@
       if (on) ids.push(stuId);
       state.teacherAcct.ids = ids.join(',');
       const stu = (state.students || []).find(s => s.id === stuId);
-      applyTeacherAcctChange(on ? `👨‍🏫 ${stu ? stu.name : '이 계정'}을(를) 선생님 계정으로 지정했어요.` : `👦 ${stu ? stu.name : '이 계정'}을(를) 일반 학생 계정으로 되돌렸어요.`);
+      applyTeacherAcctChange(on ? `👨‍🏫 ${stu ? stu.name : '이 계정'}${josa(stu ? stu.name : '이 계정', '을를')} 선생님 계정으로 지정했어요.` : `👦 ${stu ? stu.name : '이 계정'}${josa(stu ? stu.name : '이 계정', '을를')} 일반 학생 계정으로 되돌렸어요.`);
     }
 
     function pickTeacherAcct() {
@@ -40278,7 +40293,7 @@
         const landAt = u => (u.dropWarn || 0) + RUSH.dropFallSec * BATTLE_TICKS_PER_SEC;
         sim.units.forEach(u => {
           if (!u.rushPending || u.rushFall == null) return;
-          if (++u.rushFall >= landAt(u)) { landRushDrop(u); addBattleLog(`🪂 ${u.name}이(가) 전장에 내려왔어요!`); }
+          if (++u.rushFall >= landAt(u)) { landRushDrop(u); addBattleLog(`🪂 ${u.name}${josa(u.name, '이가')} 전장에 내려왔어요!`); }
         });
         const r = this.cache && this.cache.room;
         if (!r || r.id !== meta.roomId) {
@@ -40329,7 +40344,7 @@
           sim.units.push(this.unitFor({ ...friend, id, name: friend.name || m.name }, merc, idx));
           if (!liveNet.teamExpect.includes(id)) liveNet.teamExpect.push(id);
           this.ref.child(`room/members/${id}/t0`).set(this.now()).catch(() => {});
-          addBattleLog(`⚡ ${m.name || '친구'}이(가) [${merc.name}]와 함께 보스 레이드에 들어왔어요! 곧 하늘에서 내려와요.`);
+          addBattleLog(`⚡ ${m.name || '친구'}${josa(m.name || '친구', '이가')} [${merc.name}]와 함께 보스 레이드에 들어왔어요! 곧 하늘에서 내려와요.`);
           added = true;
         });
         if (added) { republishLiveUnits(); renderLiveUnitStatus(); }
@@ -40349,7 +40364,7 @@
           sim.units = sim.units.filter(u => !(u.team === 'blue' && u.liveOwnerId === id));
           Object.keys(sim.controllers).forEach(uid => { if (!sim.units.some(u => u.id === uid)) delete sim.controllers[uid]; });
           liveNet.teamExpect = (liveNet.teamExpect || []).filter(x => x !== id);
-          addBattleLog(reason === 'time' ? `⏰ ${m.name || '친구'}의 보스 레이드 시간이 끝났어요.` : reason === 'leave' ? `🚪 ${m.name || '친구'}이(가) 보스 레이드에서 나갔어요.` : `💥 ${m.name || '친구'}의 용병이 쓰러졌어요.`);
+          addBattleLog(reason === 'time' ? `⏰ ${m.name || '친구'}의 보스 레이드 시간이 끝났어요.` : reason === 'leave' ? `🚪 ${m.name || '친구'}${josa(m.name || '친구', '이가')} 보스 레이드에서 나갔어요.` : `💥 ${m.name || '친구'}의 용병이 쓰러졌어요.`);
           republishLiveUnits();
         }
         return done;
@@ -40634,7 +40649,7 @@
         const stu = getActiveStudent();
         if (prev > 0 || n === 0 || !stu || !isStudentSession(stu) || this.triesLeft(stu) <= 0 || (sim.running && sim.mode === 'world_boss')) return;
         const f = this.fighters().find(x => x.id !== stu.id);
-        if (f) showRewardBanner(`🌍 ${f.n || '친구'}이(가) 보스 레이드에서 싸우고 있어요! [⚔️ 전투 → 보스 레이드]에서 같이 싸워요!`);
+        if (f) showRewardBanner(`🌍 ${f.n || '친구'}${josa(f.n || '친구', '이가')} 보스 레이드에서 싸우고 있어요! [⚔️ 전투 → 보스 레이드]에서 같이 싸워요!`);
       },
       // ----- 관전: 싸우는 친구 화면(방 id로 중계 중)을 받아서 보기만 함 · 방에 아무것도 쓰지 않고 보상도 없음 -----
       async spectate() {
@@ -41793,7 +41808,7 @@
       const team = yutTeamOfSeat(st.turnSeat);
       const dropped = st.results.filter(r => yutMoveOptions(team, r.steps).length === 0);
       st.results = st.results.filter(r => yutMoveOptions(team, r.steps).length > 0);
-      if (dropped.length) st.log.unshift(dropped.every(r => r.steps < 0) ? '↩️ 판 위에 말이 없어서 빽도는 쉬어요.' : `↩️ 움직일 말이 없어 [${dropped.map(r => r.name).join(', ')}]은(는) 쓰지 못했어요.`);
+      if (dropped.length) st.log.unshift(dropped.every(r => r.steps < 0) ? '↩️ 판 위에 말이 없어서 빽도는 쉬어요.' : `↩️ 움직일 말이 없어 [${dropped.map(r => r.name).join(', ')}]${josa(dropped.map(r => r.name).join(', '), '은는')} 쓰지 못했어요.`);
       if (!st.results.length) yutNextTurn(st);
     }
 
@@ -41807,7 +41822,7 @@
       if (saved) {
         st.saved = st.saved.filter(e => e !== saved);
         st.results = mgArr(saved.results).slice();
-        if (st.results.length) st.log.unshift(`🥡 ${st.seats[st.turnSeat].name}: 미뤄 둔 [${st.results.map(r => r.name).join(', ')}]을(를) 꺼냈어요!`);
+        if (st.results.length) st.log.unshift(`🥡 ${st.seats[st.turnSeat].name}: 미뤄 둔 [${st.results.map(r => r.name).join(', ')}]${josa(st.results.map(r => r.name).join(', '), '을를')} 꺼냈어요!`);
       }
       yutSelected = null;
       yutPowerPick = null;
@@ -41860,7 +41875,7 @@
       if (st.turnTakeout && st.results.length) {
         const seat = st.turnSeat;
         st.saved = (st.saved || []).filter(e => e.seat !== seat).concat([{ seat, results: st.results.slice() }]);
-        st.log.unshift(`🥡 [${st.results.map(r => r.name).join(', ')}]을(를) 포장해서 다음 차례에 써요!`);
+        st.log.unshift(`🥡 [${st.results.map(r => r.name).join(', ')}]${josa(st.results.map(r => r.name).join(', '), '을를')} 포장해서 다음 차례에 써요!`);
         st.results = [];
         yutNextTurn(st);
         return;
@@ -42004,7 +42019,7 @@
       if (!pw || (kind === 'yut' ? pw.yutUsed : pw.horseUsed)) return;
       const id = kind === 'yut' ? pw.yut : pw.horse;
       if (yutPowerPick && yutPowerPick.id === id) { yutPowerPick = null; renderYutnoriBoard(); return; } // 다시 누르면 취소
-      if (!yutPowerUsable(st, id)) { showNotice(`⚠️ 지금은 [${YUT_POWERS[id].name}]을(를) 쓸 수 있는 말이 없어요.`); return; }
+      if (!yutPowerUsable(st, id)) { showNotice(`⚠️ 지금은 [${YUT_POWERS[id].name}]${josa(YUT_POWERS[id].name, '을를')} 쓸 수 있는 말이 없어요.`); return; }
       if (yutPowerSteps(id) === 0 || YUT_POWERS[id].kind === 'yut') {
         yutApplyPower(st, id, null, null);
         renderYutnoriBoard();
@@ -43222,13 +43237,13 @@
       if (!/^[가-힣]{2,10}$/.test(word)) return '2~10글자 한글 낱말만 쓸 수 있어요.';
       const last = st.history[st.history.length - 1].word;
       const allowed = wordChainAllowedStarts(last.charAt(last.length - 1));
-      if (!allowed.includes(word.charAt(0))) return `[${allowed.join(' / ')}](으)로 시작해야 해요.`;
+      if (!allowed.includes(word.charAt(0))) return `[${allowed.join(' / ')}]${josa(allowed.join(' / '), '으로')} 시작해야 해요.`;
       if (st.history.some(h => h.word === word)) return '이미 나온 낱말이에요.';
       if (!WordChainDict.words) {
         WordChainDict.load();
         return WordChainDict.failed ? '낱말 사전을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.' : '낱말 사전을 불러오는 중이에요. 잠시 후 다시 눌러 주세요.';
       }
-      if (!WordChainDict.has(word)) return `[${word}]은(는) 표준국어대사전에 없는 낱말이거나 외래어예요.`;
+      if (!WordChainDict.has(word)) return `[${word}]${josa(word, '은는')} 표준국어대사전에 없는 낱말이거나 외래어예요.`;
       return '';
     }
 
@@ -43338,7 +43353,7 @@
           ? `<div class="font-title mgs-t-win">🏆 ${st.winnerSeat >= 0 ? `${pets[st.winnerSeat]?.name || '펫'} 우승!` : '게임 끝'}</div>${st.winnerSeat >= 0 ? `<div class="mgs-t-turn">${st.seats[st.winnerSeat].name}${st.winnerSeat === mgMySeat(st) ? ' (나)' : ''}의 펫</div>` : ''}<div class="mgs-t-note mt-1">${st.note || ''}</div>`
           : `<div class="mgs-t-note">${st.note || '앞 펫이 발표한 낱말'} · 남은 시간 <strong id="wordChainSecLeft"></strong> <span class="mgs-t-dim">(제한 ${(st.turnSec || WORD_TURN_SEC).toFixed(1)}초)</span></div>
              <div class="font-title mgs-t-word">${last}</div>
-             <div class="mgs-t-turn">👉 [${allowed.join(' / ')}](으)로 시작 · 🎤 ${st.seats[st.turnSeat].name}의 ${tp ? tp.name : '펫'} 차례${mgCanAct(st) ? ' 👈 내 차례!' : ''}</div>`;
+             <div class="mgs-t-turn">👉 [${allowed.join(' / ')}]${josa(allowed.join(' / '), '으로')} 시작 · 🎤 ${st.seats[st.turnSeat].name}의 ${tp ? tp.name : '펫'} 차례${mgCanAct(st) ? ' 👈 내 차례!' : ''}</div>`;
       }
       wordChainStageSync(st);
       const inp = document.getElementById('wordChainInput');
@@ -43459,7 +43474,7 @@
         WordChainDict.load();
         return WordChainDict.failed ? '낱말 사전을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.' : '낱말 사전을 불러오는 중이에요. 잠시 후 다시 눌러 주세요.';
       }
-      if (!WordChainDict.has(word)) return `[${word}]은(는) 표준국어대사전에 없는 낱말이거나 외래어예요.`;
+      if (!WordChainDict.has(word)) return `[${word}]${josa(word, '은는')} 표준국어대사전에 없는 낱말이거나 외래어예요.`;
       return '';
     }
 
@@ -43748,7 +43763,7 @@
       if (Number(raw) !== Number(st.q.answer)) {
         mathDuelLockUntil = Date.now() + MATH_DUEL_LOCK_MS;
         if (inp) inp.value = '';
-        if (msg) msg.textContent = `❌ ${raw}은(는) 틀렸어요! 3초 동안 답을 낼 수 없어요.`;
+        if (msg) msg.textContent = `❌ ${raw}${josa(raw, '은는')} 틀렸어요! 3초 동안 답을 낼 수 없어요.`;
         MgStage.say(document.getElementById('mathDuelStageRow'), my, `${raw}?`, { kind: 'bad' });
         mathDuelUpdateInput();
         return;
@@ -44347,7 +44362,7 @@
       } else if (legal.castle) {
         st.note = `${chessColorName(mover)}이 캐슬링했어요.`;
       } else if (np.captured !== '.') {
-        st.note = `${chessColorName(mover)}이 ${CHESS_NAME[np.captured.toLowerCase()]}을(를) 잡았어요!`;
+        st.note = `${chessColorName(mover)}이 ${CHESS_NAME[np.captured.toLowerCase()]}${josa(CHESS_NAME[np.captured.toLowerCase()], '을를')} 잡았어요!`;
       }
       renderChessBoard();
       mgPush('chess', st);
@@ -46697,7 +46712,7 @@
           if (mcSum > 0) parts.push(`${mcSum.toLocaleString()} CA`);
           const notes = gifts.map(g => cleanUserText(g.note || '', 120)).filter(Boolean).slice(0, 2).join(' / ');
           if (gifts.every(g => g.kind === 'tower_help')) showRewardBanner(`🤝 모험의 탑 도움 보상으로 ${mcSum.toLocaleString()} CA를 받았어요!${notes ? ` (${notes})` : ''}`);
-          else showRewardBanner(`🎁 친구와의 거래로 ${parts.join(' + ')}을(를) 받았어요!${notes ? ` (${notes})` : ''}`);
+          else showRewardBanner(`🎁 친구와의 거래로 ${parts.join(' + ')}${josa(parts.join(' + '), '을를')} 받았어요!${notes ? ` (${notes})` : ''}`);
         } catch (e) {
           // 다른 탭이 먼저 받았거나 로그인이 풀림 → 더한 것을 되돌림
           me.mc = (Number(me.mc) || 0) - added.reduce((s, a) => s + a.mc, 0);
@@ -48141,7 +48156,7 @@
       forgetLocalClassCopy(classCode);
       detachClassSyncRefs();
       resetStudentPrivSub();
-      showNotice(`🗑️ 학급 [${classCode}]이(가) 삭제되었습니다. 다른 학급 코드로 입장해주세요.`);
+      showNotice(`🗑️ 학급 [${classCode}]${josa(classCode, '이가')} 삭제되었습니다. 다른 학급 코드로 입장해주세요.`);
       const inp = document.getElementById('landingClassCodeInput');
       if (inp) inp.value = '';
       goToLandingPage();
@@ -54980,7 +54995,7 @@
       const def = DUNGEONS[id];
       if (!stu || !def) return;
       diff = dgNormDiff(diff);
-      if (!isDungeonOpenToday(id)) { showNotice(`🔒 오늘은 [${todayDungeonNames()}]만 열려 있어요. ${def.name}은(는) ${dungeonOpensInDays(id)}일 뒤에 열려요.`); return; }
+      if (!isDungeonOpenToday(id)) { showNotice(`🔒 오늘은 [${todayDungeonNames()}]만 열려 있어요. ${def.name}${josa(def.name, '은는')} ${dungeonOpensInDays(id)}일 뒤에 열려요.`); return; }
       if (dungeonDiffLocked(stu, id, diff)) { showNotice(dungeonLockText(diff)); return; }
       const deployed = (stu.roster || []).filter(m => m.deployed);
       if (!deployed.length) { showNotice('⚠️ 출전 중인 용병이 없어요. 용병 관리에서 출전시켜 주세요!'); return; }
@@ -55190,7 +55205,7 @@
         // 보스 방: 남은 시간이 너무 적으면 보스전 최소 시간만큼 보정
         const leftTicks = dg.timeTicks - (sim.tickCount - dg.startTick);
         if (leftTicks < DUNGEON_BOSS_MIN_SEC * BATTLE_TICKS_PER_SEC) dg.timeTicks += DUNGEON_BOSS_MIN_SEC * BATTLE_TICKS_PER_SEC - leftTicks;
-        addBattleLog(`👑 보스 방 [${cell.def.name}]을 찾았어요! 🕯️ 모닥불에서 ${DUNGEON_BOSS_PREP_SEC}초 정비 (체력 40% 회복) 뒤 ${dungeonBossNameOf(dg)}이(가) 나타나요!`);
+        addBattleLog(`👑 보스 방 [${cell.def.name}]을 찾았어요! 🕯️ 모닥불에서 ${DUNGEON_BOSS_PREP_SEC}초 정비 (체력 40% 회복) 뒤 ${dungeonBossNameOf(dg)}${josa(dungeonBossNameOf(dg), '이가')} 나타나요!`);
         return;
       }
       if (cell.cleared) {
@@ -56057,12 +56072,12 @@
       if (dg.party) {
         // 5인 입장: 남의 용병을 조종으로 빼앗지 않고 대표만 바꿈
         const nL = dungeonPartyLeader();
-        if (nL && L && nL.id !== L.id) addBattleLog(L.alive ? `⭐ ${nL.name}이(가) 다시 대표 용병이 됐어요!` : `⭐ ${L.name}이(가) 쓰러져 ${nL.name}이(가) 새 대표 용병이 됐어요!`);
+        if (nL && L && nL.id !== L.id) addBattleLog(L.alive ? `⭐ ${nL.name}${josa(nL.name, '이가')} 다시 대표 용병이 됐어요!` : `⭐ ${L.name}${josa(L.name, '이가')} 쓰러져 ${nL.name}${josa(nL.name, '이가')} 새 대표 용병이 됐어요!`);
         L = nL;
       } else if (L && !L.alive) {
         const nL = dungeonPickLeader(null);
         if (nL) {
-          addBattleLog(`⭐ ${L.name}이(가) 쓰러져 ${nL.name}이(가) 새 대표 용병이 됐어요!`);
+          addBattleLog(`⭐ ${L.name}${josa(L.name, '이가')} 쓰러져 ${nL.name}${josa(nL.name, '이가')} 새 대표 용병이 됐어요!`);
           if (battleControl.mode === 'manual') setBattleControlMode('manual', nL.id, true);
         }
         L = nL;
@@ -56784,7 +56799,7 @@
     }
     function abyssIntroLog(who) {
       const dg = sim.dungeon;
-      addBattleLog(`🕳️ 지하 던전에 들어왔어요! ${who}이(가) Lv.1부터 시작해요. 몬스터를 잡아 레벨을 올리고, 층마다 숨은 🕳️ 계단 방을 찾아 내려가세요. (${ABYSS_TIER_FLOORS}층마다 👑 보스)`);
+      addBattleLog(`🕳️ 지하 던전에 들어왔어요! ${who}${josa(who, '이가')} Lv.1부터 시작해요. 몬스터를 잡아 레벨을 올리고, 층마다 숨은 🕳️ 계단 방을 찾아 내려가세요. (${ABYSS_TIER_FLOORS}층마다 👑 보스)`);
       addBattleLog(`🧬 ${dg.def.race} 구역 — ${dg.def.desc}`);
       abyssShowBanner();
       addBattleLog(`💰 내려간 층마다 ${ABYSS_CA.base} CA, 구역이 바뀔 때마다 +${ABYSS_CA.perTier}! 쓰러지거나 포기하면 그때까지 내려간 만큼 받아요.`);
@@ -56887,7 +56902,7 @@
       if (Object.keys(p.cards).every(k => p.done[k])) ab.pick = null;
       sim.floatTexts.push({ x: u.x, y: u.y - 50, text: `${c.icon} ${c.name}`, color: c.t === 'hidden' ? '#f0abfc' : '#fde68a', life: 70 });
       const who = dg.party ? `${unitShortName(u)}: ` : '';
-      addBattleLog(c.t === 'stat' ? `${who}${c.icon} ${c.desc}` : c.t === 'up' ? `${who}🔺 [${c.icon} ${c.name}] ${u.abSkillUp[c.id]}단계! ${c.desc}` : `${who}${c.t === 'hidden' ? '🌈 히든 스킬' : '✨ 새 스킬'} [${c.icon} ${c.name}]을(를) 배웠어요!`);
+      addBattleLog(c.t === 'stat' ? `${who}${c.icon} ${c.desc}` : c.t === 'up' ? `${who}🔺 [${c.icon} ${c.name}] ${u.abSkillUp[c.id]}단계! ${c.desc}` : `${who}${c.t === 'hidden' ? '🌈 히든 스킬' : '✨ 새 스킬'} [${c.icon} ${c.name}]${josa(c.name, '을를')} 배웠어요!`);
       try { playCombatSfx('heal'); } catch (e) {}
       renderBattleControlHud(true);
       renderAbyssPickBox();
@@ -57004,7 +57019,7 @@
         const b = ABYSS_BOONS[cell.boon];
         cell.boonTaken = true;
         cell.def = { ...cell.def, hint: `${b.icon} ${b.desc} (받았어요)` };
-        addBattleLog(`${b.icon} [${cell.def.name}]을(를) 찾았어요! ${b.desc}`);
+        addBattleLog(`${b.icon} [${cell.def.name}]${josa(cell.def.name, '을를')} 찾았어요! ${b.desc}`);
         abyssShowBanner({ title: `${b.icon} ${b.name}`, line: b.desc });
         abyssBoon(cell.boon);
         return true;
@@ -57060,7 +57075,7 @@
       playCombatSfx('heal');
       addBattleLog(`🕳️ 지하 ${depth}층으로 내려왔어요! (체력 20% 회복 · 💰 ${abyssCaFor(depth - 1).toLocaleString()} CA 확보)`);
       if ((depth - 1) % ABYSS_TIER_FLOORS === 0) addBattleLog(`🧬 ${dg.def.race} 구역 — ${dg.def.desc}`);
-      if (abyssIsBossFloor(depth)) addBattleLog(`👑 이 층 어딘가에 ${dg.def.rooms.boss.bossName}이(가) 있어요. 쓰러뜨려야 계단이 열려요!`);
+      if (abyssIsBossFloor(depth)) addBattleLog(`👑 이 층 어딘가에 ${dg.def.rooms.boss.bossName}${josa(dg.def.rooms.boss.bossName, '이가')} 있어요. 쓰러뜨려야 계단이 열려요!`);
     }
     function abyssFloorTitle() {
       const dg = sim.dungeon;
@@ -57126,7 +57141,7 @@
       const el = document.getElementById('abyssBanner'), dg = sim.dungeon;
       if (!el || !dg || !dg.abyss) return;
       const d = dg.abyss.depth;
-      el.innerHTML = room ? `<div class="aby-t room">${escHtml(room.title)}</div><span>${escHtml(room.line)}</span>` : `<div class="aby-t">지하 ${d}층</div><span>🧬 ${escHtml(dg.def.race)} 구역</span>${abyssIsBossFloor(d) ? `<span class="boss">👑 ${escHtml(dg.def.rooms.boss.bossName)}이(가) 계단을 지켜요</span>` : ''}`;
+      el.innerHTML = room ? `<div class="aby-t room">${escHtml(room.title)}</div><span>${escHtml(room.line)}</span>` : `<div class="aby-t">지하 ${d}층</div><span>🧬 ${escHtml(dg.def.race)} 구역</span>${abyssIsBossFloor(d) ? `<span class="boss">👑 ${escHtml(dg.def.rooms.boss.bossName)}${josa(escHtml(dg.def.rooms.boss.bossName), '이가')} 계단을 지켜요</span>` : ''}`;
       el.classList.remove('on');
       void el.offsetWidth; // 애니메이션 다시 시작
       el.classList.add('on');
@@ -58149,7 +58164,7 @@
       dm.left[r] = q.length;
       dm.spawnEnd = q.length ? q[q.length - 1].at : now;
       dm.nextAt = r < DEFENSE_TUNE.rounds ? dm.spawnEnd + DEFENSE_TUNE.nextGapSec * tps : Infinity;
-      if (dm.race !== prevRace || r === 1) addBattleLog(`🗺️ ${r}라운드부터 [${dm.race}]이(가) 몰려와요! ${(TOWER_RACES.find(x => x.name === dm.race) || {}).desc || ''}`);
+      if (dm.race !== prevRace || r === 1) addBattleLog(`🗺️ ${r}라운드부터 [${dm.race}]${josa(dm.race, '이가')} 몰려와요! ${(TOWER_RACES.find(x => x.name === dm.race) || {}).desc || ''}`);
       addBattleLog(plan.boss
         ? `👑 ${r}라운드: ${dm.race} 보스 라운드! 보스가 성문을 지나가면 게이지가 ${DEFENSE_TUNE.leak.boss} 깎여요!`
         : `⚔️ ${r}라운드 시작! 몬스터 ${q.length}마리${plan.elites ? ` (💎 정예 ${plan.elites})` : ''}${plan.swarm ? ' · 🐾 떼로 몰려와요!' : ''}`);
@@ -61371,7 +61386,7 @@
         forgetLocalClassCopy(code);
         if (state.classCode && String(state.classCode).toUpperCase() !== code) subscribeToActiveClassRealtime(state.classCode); // 보고 있던 학급 구독으로 되돌림
         if (statusEl) {
-          statusEl.textContent = `❌ 학급 코드 [${code}]을(를) 찾을 수 없어요. 삭제되었거나 코드가 잘못되었어요. 선생님께 확인하세요.`;
+          statusEl.textContent = `❌ 학급 코드 [${code}]${josa(code, '을를')} 찾을 수 없어요. 삭제되었거나 코드가 잘못되었어요. 선생님께 확인하세요.`;
           statusEl.className = 'text-xs font-bold text-rose-400';
         }
         return false;
@@ -62891,7 +62906,7 @@
         this.despawn();
         this.afterPetChange();
         if (shown) this.spawn(true);
-        showRewardBanner(`🐾 ${next.name}(이)가 활성 펫이 되었어요! (${PET_DEFS[next.type].effect || ''})`);
+        showRewardBanner(`🐾 ${next.name}${josa(next.name, '이가')} 활성 펫이 되었어요! (${PET_DEFS[next.type].effect || ''})`);
       },
 
       // 펫 도감 (도감 탭 > 🐾 펫 도감): 모은 펫은 그림·이름·효과, 못 만난 펫은 실루엣
@@ -63763,7 +63778,7 @@
         if (!stu || !d) return;
         if (this.st && !this.st.over) { showNotice('⚠️ 달리는 중에는 강화할 수 없어요. 이번 판이 끝난 뒤에 해 주세요.'); return; }
         let lv = this.upLevel(stu, key);
-        if (lv >= PETRUN_UP_MAX) { showNotice(`${d.icon} ${d.name}은(는) 이미 최고 레벨이에요.`); return; }
+        if (lv >= PETRUN_UP_MAX) { showNotice(`${d.icon} ${d.name}${josa(d.name, '은는')} 이미 최고 레벨이에요.`); return; }
         if ((stu.mc || 0) < petRunUpgradeCost(lv)) { showNotice(`⚠️ CA가 부족해요. (${d.name} 강화 ${petRunUpgradeCost(lv).toLocaleString()} CA)`); return; }
         let spent = 0, n = 0;
         while (n < times && lv < PETRUN_UP_MAX && (stu.mc || 0) >= petRunUpgradeCost(lv)) { const c = petRunUpgradeCost(lv); stu.mc -= c; spent += c; lv++; n++; }
@@ -64301,7 +64316,7 @@
         ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
         ctx.font = '900 30px sans-serif'; ctx.fillText('🐾 펫 러닝', PETRUN.W / 2, 150);
         ctx.font = '800 15px sans-serif'; ctx.fillStyle = '#e2e8f0';
-        ctx.fillText(pet ? `${pet.name}와(과) 함께 달려요!  ▶ 시작 버튼을 누르세요` : '활성화한 펫이 있어야 달릴 수 있어요', PETRUN.W / 2, 190);
+        ctx.fillText(pet ? `${pet.name}${josa(pet.name, '와과')} 함께 달려요!  ▶ 시작 버튼을 누르세요` : '활성화한 펫이 있어야 달릴 수 있어요', PETRUN.W / 2, 190);
         ctx.font = '700 13px sans-serif'; ctx.fillStyle = '#cbd5e1';
         ctx.fillText('점프: ↑ · 스페이스 · 화면 위쪽 터치   |   슬라이드: ↓ (누르고 있기) · 화면 아래쪽 터치', PETRUN.W / 2, 222);
         ctx.fillText('젤리는 점수, 하트는 체력 회복, 🚀🛡️🧲⭐ 아이템은 잠깐 특별한 힘! 매달린 것은 슬라이드로. 체력이 0이 되면 끝!', PETRUN.W / 2, 246);
@@ -65453,7 +65468,7 @@
             if (s.over || s.seat < 0) return;
             if (kind === 'magnet') { s.fx.magnet = PETRUN.magnetSec; this.float(s, PETRUN.W / 2, 150, `🧲 ${name}의 자석!`, PETRUN_ITEMS.magnet.color); }
             else if (kind === 'double') { s.fx.double = PETRUN.doubleSec; this.float(s, PETRUN.W / 2, 150, `⭐ ${name}의 젤리 2배!`, PETRUN_ITEMS.double.color); }
-            else if (kind === 'revive' && to === s.seat) { if (s.down) { this.float(s, PETRUN.W / 2, 150, `💗 ${name}이(가) 살려 줬어요!`, '#f9a8d4'); this.revive(s); } }
+            else if (kind === 'revive' && to === s.seat) { if (s.down) { this.float(s, PETRUN.W / 2, 150, `💗 ${name}${josa(name, '이가')} 살려 줬어요!`, '#f9a8d4'); this.revive(s); } }
           });
           return;
         }
@@ -67319,7 +67334,7 @@
         if ((stu.mc || 0) < s.price) { showNotice(`⚠️ CA가 부족해요. (${s.name} ${s.price.toLocaleString()} CA)`); return; }
         stu.mc -= s.price;
         home.skins.push(`${part}:${id}`);
-        showNotice(`🧱 ${s.name}을(를) 샀어요! 방에 바로 깔았어요.`);
+        showNotice(`🧱 ${s.name}${josa(s.name, '을를')} 샀어요! 방에 바로 깔았어요.`);
         DailyMission.progress('homeSkin', 1, stu);
         this.useSkin(part, id);
       },
@@ -67342,7 +67357,7 @@
         const u = `h_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
         this.home(stu).items.push({ u, id, x: 0, y: 0, r: 0, p: 0 });
         saveState();
-        showNotice(`🛋️ ${def.name}을(를) 샀어요! 방에 놓아 보세요.`);
+        showNotice(`🛋️ ${def.name}${josa(def.name, '을를')} 샀어요! 방에 놓아 보세요.`);
         DailyMission.progress('furnitureBuy', 1, stu);
         this.startPlace(id, u);
       },
@@ -67376,7 +67391,7 @@
         this.ghost = null;
         this.sel = u;
         saveState();
-        showNotice(`🛋️ ${def.name}을(를) 사서 놓았어요!`);
+        showNotice(`🛋️ ${def.name}${josa(def.name, '을를')} 사서 놓았어요!`);
         DailyMission.progress('furnitureBuy', 1, stu);
         DailyMission.progress('homeDecor', 1, stu);
         this.render();
@@ -67852,7 +67867,7 @@
         if (parts.length >= CAP_PARTS_MAX) { showNotice(`⚠️ 내 작품이 가득 찼어요. (최대 ${CAP_PARTS_MAX}개) 안 쓰는 부위를 지워 주세요.`); return; }
         if ((me.mc || 0) < price) { showNotice('⚠️ CA가 부족해요.'); return; }
         const name = cleanUserText(l.name, 12) || '부위';
-        askCustomConfirm(`${cleanUserText(seller.name)}의 [${name}] (${AV_SLOT_NAME[l.slot]})을(를) ${price.toLocaleString()} CA에 살까요? 사면 바로 입어요.`, () => {
+        askCustomConfirm(`${cleanUserText(seller.name)}의 [${name}] (${AV_SLOT_NAME[l.slot]})${josa(AV_SLOT_NAME[l.slot], '을를')} ${price.toLocaleString()} CA에 살까요? 사면 바로 입어요.`, () => {
           if ((me.mc || 0) < price || this.capParts(me).some(p => p.id === id)) return;
           me.mc -= price;
           const copy = { id: l.id, slot: l.slot, name, f: l.f, bought: true, by: seller.id, byName: cleanUserText(seller.name), at: Date.now() };
@@ -67903,7 +67918,7 @@
       deletePart(id) {
         const stu = this.student(), p = stu && this.capParts(stu).find(x => x.id === id);
         if (!p) return;
-        askCustomConfirm(p.bought ? `산 부위 [${p.name}]을(를) 지울까요? 지우면 다시 사야 해요.` : `[${p.name}] 부위를 지울까요? 판매 중이면 판매도 내려가요.`, () => {
+        askCustomConfirm(p.bought ? `산 부위 [${p.name}]${josa(p.name, '을를')} 지울까요? 지우면 다시 사야 해요.` : `[${p.name}] 부위를 지울까요? 판매 중이면 판매도 내려가요.`, () => {
           stu.capParts = this.capParts(stu).filter(x => x.id !== id);
           stu.capShop = this.capShop(stu).filter(x => x.id !== id);
           const look = this.avatarOf(stu); if (look.c[p.slot] === id) delete look.c[p.slot]; this.saveLook(stu, look);
