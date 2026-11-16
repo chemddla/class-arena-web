@@ -2775,6 +2775,8 @@
     .aby-pcard p { margin: 0; font-size: 11px; line-height: 1.5; color: var(--ab-ink2); }
     .aby-pcard.stat .aby-t { color: var(--ab-gold); }
     .aby-pcard.skill .aby-kind { color: #7dd3fc; }
+    .aby-pcard.up .aby-kind { color: #fb923c; }
+    .aby-pcard.up .aby-ico { box-shadow: 0 0 0 2px #fb923c; }
     .aby-pcard.hid { background: linear-gradient(160deg, #5a2f8f, #2a2160); }
     .aby-pcard.hid .aby-ico { box-shadow: 0 0 0 2px #f0abfc, 0 0 16px #e879f9; }
     .aby-pcard.hid .aby-kind { color: #f0abfc; }
@@ -22614,6 +22616,8 @@
         const passive = jobPassiveOf(attacker);
         if (skillHitSource) {
           if (passive.skill) modDmg *= passive.skill;
+          const upLv = attacker.abSkillUp && attacker._abLastSkill && attacker.abSkillUp[attacker._abLastSkill]; // 🕳️ 지하 던전 스킬 강화 (마지막으로 쓴 스킬 기준)
+          if (upLv) modDmg *= 1 + ABYSS_SKILL_UP.dmg * upLv;
         } else if (basicHitKind === 'melee') {
           if (passive.melee) modDmg *= passive.melee;
         } else if (basicHitKind === 'ranged') {
@@ -23134,6 +23138,8 @@
       unit.lastSkillTick = sim.tickCount;
       if (!unit.skillCooldowns) unit.skillCooldowns = {};
       unit.skillCooldowns[sk] = Math.round((skObj.cooldownTicks || 360) * voltOverloadHalf(unit)); // 전격술사 오버로드: 쿨타임 절반
+      unit._abLastSkill = sk;
+      if (unit.abSkillUp && unit.abSkillUp[sk]) unit.skillCooldowns[sk] = Math.round(unit.skillCooldowns[sk] * Math.pow(1 - ABYSS_SKILL_UP.cd, unit.abSkillUp[sk])); // 🕳️ 지하 던전 스킬 강화: 쿨타임 감소
       if (sk === 'axe_throw' && unit.job === 'berserker') berserkerUseAxeCharge(unit, skObj); // 도끼 투척은 2개 충전식
       unit.castLock = unit.job === 'brawler' ? BRAWLER_CAST_LOCK : 32; // 격투가: 스킬을 섞어도 연격이 이어지게
 
@@ -36634,7 +36640,13 @@
       ctx.stroke();
 
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(shortName, 0, pillY + 9);
+      const eliteTag = /^💎\s*/.test(shortName) && window.PixelIcons; // 정예 몬스터: 💎 글자 대신 붉은 뿔 해골 도트 아이콘
+      if (eliteTag) {
+        const nm = shortName.replace(/^💎\s*/, '');
+        const nw = ctx.measureText(nm).width;
+        ctx.fillText(nm, 9, pillY + 9);
+        PixelIcons.draw(ctx, 'dgEliteMark', 9 - nw / 2 - 10, pillY + 8, 16);
+      } else ctx.fillText(shortName, 0, pillY + 9);
 
       ctx.restore();
     }
@@ -56319,7 +56331,12 @@
         ctx.font = 'bold 34px Galmuri11, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(sealed ? '🔒' : open ? DUNGEON_DIR_ICON[dir] : '🚪', 0, 0);
+        if (open && !sealed && window.PixelIcons) { // 열린 문: 도트 화살표를 문 방향으로
+          ctx.save();
+          ctx.rotate({ right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 }[dir]);
+          PixelIcons.draw(ctx, 'dgArrow', 0, 0, 56);
+          ctx.restore();
+        } else if (!dgDrawIco(ctx, sealed ? '🔒' : '🚪', 0, 0, 48)) ctx.fillText(sealed ? '🔒' : open ? DUNGEON_DIR_ICON[dir] : '🚪', 0, 0);
         if (open) {
           ctx.font = 'bold 18px Galmuri11, sans-serif';
           const label = sealed ? '🔒 봉인된 문' : isBoss && (dg.mapRevealed) ? (abyssStairsFloor(dg) ? '🕳️ 계단' : '👑 보스') : nc && nc.visited ? '✓ 가본 방' : '? 안 가본 방';
@@ -56657,6 +56674,8 @@
       for (let f = 1; f <= floors; f++) sum += ABYSS_CA.base + ABYSS_CA.perTier * abyssTierNo(f);
       return sum;
     }
+    // 스킬 강화 카드: 고른 스킬 하나의 피해 +dmg · 쿨타임 ×(1-cd) (스킬마다 max번) · 레벨업 카드 3장 중 하나가 chance 확률로 강화 카드
+    const ABYSS_SKILL_UP = { dmg: 0.2, cd: 0.1, max: 5, chance: 0.4 };
     const ABYSS_HIDDEN_CHANCE = 0.08;  // 스킬 카드를 고를 때 히든 스킬 카드가 섞여 나올 확률
     const ABYSS_PICK_SEC = 20;         // 이만큼 안 고르면 아무 카드나 고름
     const ABYSS_POWER = { base: 0.25, perFloor: 0.09, loop: 1.6 }; // 몬스터 세기 = base × (1 + perFloor)^(층 - 1) × loop^(종족을 한 바퀴 돈 횟수)
@@ -56812,6 +56831,10 @@
         const s = ABYSS_STATS.find(x => x.id === id);
         return s ? { t, id, icon: s.icon, name: s.name, desc: s.desc + (big ? ' × 2번' : ''), big: Boolean(big) } : null;
       }
+      if (t === 'up') {
+        const us = u.unlockedSkills.includes(id) && unitSkillBook(u)[id];
+        return us ? { t, id, icon: us.icon, name: `${us.name} 강화`, desc: `이 스킬 피해 +${Math.round(ABYSS_SKILL_UP.dmg * 100)}% · 쿨타임 -${Math.round(ABYSS_SKILL_UP.cd * 100)}%` } : null;
+      }
       const sk = t === 'hidden' ? hiddenSkillOf(u.job) : (SKILL_DEFS[u.job] || {})[id];
       if ((t !== 'skill' && t !== 'hidden') || !sk || (t === 'hidden' && sk.id !== id)) return null;
       return { t, id, icon: sk.icon, name: sk.name, desc: sk.desc + (t === 'hidden' && u.unlockedSkills.length >= 4 ? ' (4번 스킬 자리에 들어가요)' : '') };
@@ -56826,7 +56849,16 @@
         if (hid && !u.unlockedSkills.includes(hid.id) && Math.random() < ABYSS_HIDDEN_CHANCE) cards[cards.length < 3 ? cards.length : Math.floor(Math.random() * 3)] = abyssCardOf(u, 'hidden', hid.id);
         if (cards.length) return cards;
       }
-      return abyssShuffle(ABYSS_STATS).slice(0, 3).map(s => abyssCardOf(u, 'stat', s.id, type === 'skill'));
+      // 강화할 수 있는 배운 스킬 (최대 강화 전)
+      const ups = abyssShuffle(u.unlockedSkills.filter(k => (u.abSkillUp && u.abSkillUp[k] || 0) < ABYSS_SKILL_UP.max && unitSkillBook(u)[k]));
+      if (type === 'skill' && ups.length) { // 배울 스킬이 없으면 스킬 강화 카드 (모자라면 2배 능력치 카드)
+        const cards = ups.slice(0, 3).map(k => abyssCardOf(u, 'up', k));
+        abyssShuffle(ABYSS_STATS).slice(0, 3 - cards.length).forEach(s => cards.push(abyssCardOf(u, 'stat', s.id, true)));
+        return cards;
+      }
+      const cards = abyssShuffle(ABYSS_STATS).slice(0, 3).map(s => abyssCardOf(u, 'stat', s.id, type === 'skill'));
+      if (ups.length && Math.random() < ABYSS_SKILL_UP.chance) cards[Math.floor(Math.random() * 3)] = abyssCardOf(u, 'up', ups[0]);
+      return cards;
     }
     // 스킬을 다음 빈 칸에 (4칸이 다 찼으면 4번 칸을 바꿈: 히든 스킬)
     function abyssLearnSkill(u, key) {
@@ -56842,12 +56874,13 @@
       const c = p && !p.done[key] && p.cards[key] && p.cards[key][i];
       if (!c || !u) return;
       if (c.t === 'stat') { const s = ABYSS_STATS.find(x => x.id === c.id); abyssApplyStat(u, s); if (c.big) abyssApplyStat(u, s); }
+      else if (c.t === 'up') { u.abSkillUp = u.abSkillUp || {}; u.abSkillUp[c.id] = Math.min(ABYSS_SKILL_UP.max, (u.abSkillUp[c.id] || 0) + 1); }
       else abyssLearnSkill(u, c.id);
       p.done[key] = 1;
       if (Object.keys(p.cards).every(k => p.done[k])) ab.pick = null;
       sim.floatTexts.push({ x: u.x, y: u.y - 50, text: `${c.icon} ${c.name}`, color: c.t === 'hidden' ? '#f0abfc' : '#fde68a', life: 70 });
       const who = dg.party ? `${unitShortName(u)}: ` : '';
-      addBattleLog(c.t === 'stat' ? `${who}${c.icon} ${c.desc}` : `${who}${c.t === 'hidden' ? '🌈 히든 스킬' : '✨ 새 스킬'} [${c.icon} ${c.name}]을(를) 배웠어요!`);
+      addBattleLog(c.t === 'stat' ? `${who}${c.icon} ${c.desc}` : c.t === 'up' ? `${who}🔺 [${c.icon} ${c.name}] ${u.abSkillUp[c.id]}단계! ${c.desc}` : `${who}${c.t === 'hidden' ? '🌈 히든 스킬' : '✨ 새 스킬'} [${c.icon} ${c.name}]을(를) 배웠어요!`);
       try { playCombatSfx('heal'); } catch (e) {}
       renderBattleControlHud(true);
       renderAbyssPickBox();
@@ -56915,7 +56948,7 @@
         return;
       }
       abyssPickKey = sig;
-      const kind = { stat: '능력치', skill: '✨ 스킬', hidden: '🌈 히든 스킬' };
+      const kind = { stat: '능력치', skill: '✨ 스킬', hidden: '🌈 히든 스킬', up: '🔺 스킬 강화' };
       document.getElementById('abyssPickCard').innerHTML = `
         <div class="aby-pick-head">
           <div class="aby-t">${p.type === 'skill' ? '✨ 새 스킬을 골라요' : `⬆️ 레벨업! Lv.${dg.abyss.lv - dg.abyss.picks.filter(t => t === 'stat').length}`}</div>

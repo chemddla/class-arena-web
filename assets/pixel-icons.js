@@ -2332,6 +2332,40 @@
       'kGGGGGGGGGGGGGGk',
       '.kkkkkkkkkkkkkk.'
     ],
+    // 던전 정예 몬스터 표시: 붉은 뿔 해골 (이름표 왼쪽)
+    dgEliteMark: [
+      'k..............k',
+      'kRk..........kRk',
+      'kRRk.kkkkkk.kRRk',
+      '.kRRkLLLLLLkRRk.',
+      '..kkLWWWWWWLkk..',
+      '..kLWWWWWWWWLk..',
+      '.kLWkkkWWkkkWLk.',
+      '.kLWkRkWWkRkWLk.',
+      '.kLWkkkWWkkkWLk.',
+      '..kLWWWkkWWWLk..',
+      '...kLWWWWWWLk...',
+      '...kLkWkWkWLk...',
+      '....kkkkkkkk....'
+    ],
+    // 던전 문 화살표 (오른쪽 기준, 그릴 때 방향만큼 돌림)
+    dgArrow: [
+      '.......kk.......',
+      '.......kHk......',
+      '.......khHk.....',
+      '.......khhHk....',
+      'kkkkkkkkhhhHk...',
+      'kHHHHHHHhhhhHk..',
+      'kHhhhhhhhhhhhHk.',
+      'kYhhhhhhhhhhhhYk',
+      'kYhhhhhhhhhhhYk.',
+      'kYYYYYYYhhhhYk..',
+      'kkkkkkkkhhhYk...',
+      '.......khhYk....',
+      '.......khYk.....',
+      '.......kYk......',
+      '.......kk.......'
+    ],
     dgPotion: [
       '......kkkk......',
       '.....kdTTdk.....',
