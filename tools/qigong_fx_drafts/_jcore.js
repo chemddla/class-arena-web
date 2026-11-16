@@ -55,8 +55,25 @@ export function jLines(p, C, x, y, R, e, HS, n = 16) {
 }
 
 // 일반 공격과 같은 터짐 (b: 터진 뒤 초, R: 구슬 반지름, HS: 크기)
+// 터질 때 구슬의 금빛 바탕도 실과 함께 부풀며 옅어짐 (구슬 몸통과 같은 색 단계: 가장자리 밝고 속은 진함, 진짜 반투명)
+export function jBody(p, C, x, y, R, e) {
+  if (e < 0 || e >= 1) return;
+  const Rs = R * (1 + 2.6 * ease.outCubic(e)), fade = Math.pow(1 - e, 1.1);
+  const x0 = Math.floor(x - Rs - 1), x1 = Math.ceil(x + Rs + 1), y0 = Math.floor(y - Rs - 1), y1 = Math.ceil(y + Rs + 1);
+  for (let py = y0; py <= y1; py++) for (let px = x0; px <= x1; px++) {
+    const dx = px + 0.5 - x, dy = py + 0.5 - y, d = Math.hypot(dx, dy) / Rs;
+    if (d > 1) continue;
+    const lit = clamp(1 - d * 0.95 - (dx + dy) / Rs * 0.1);
+    // 처음엔 구슬 몸통 색 그대로, 부풀기 시작하면 밝은 금빛 단계로 (진한 단계가 반투명으로 남으면 탁한 갈색이 됨)
+    const c = e < 0.08 ? (d > 0.88 ? C[5] : lit > 0.7 ? C[4] : lit > 0.35 ? C[3] : C[2]) : (d > 0.88 ? C[5] : C[4]);   // 속은 진한 금빛(채도 높은 단)이라 반투명이어도 노랗게 보임
+    const a = fade * (e < 0.08 ? 1 : 0.62 + 0.3 * d * d);   // 노란 바탕이 또렷이 남다가 함께 옅어짐 (너무 옅으면 어두운 바탕에 섞여 회갈색이 됨)
+    p.blend(px + 0.5, py + 0.5, c, a);
+  }
+}
+
 export function jBurst(p, C, loops, x, y, R, t, b, HS) {
   if (b < 0) return;
+  jBody(p, C, x, y, R, b / 0.34);
   if (b < 0.42) { const e = b / 0.42; jThreads(p, C, loops, x, y, R, t * 0.4 + 2, Math.pow(1 - e, 1.4), 1, 1, 1 + 4 * HS * ease.outCubic(e)); }
   if (b >= 0.06 && b < 0.46) { const e = (b - 0.06) / 0.4; jThreads(p, C, loops, x, y, R, t * 0.4 + 5.3, Math.pow(1 - e, 1.6) * 0.8, 1, 1, 1 + 4.4 * HS * ease.outCubic(e)); }
   if (b < 0.3) jLines(p, C, x, y, R, b / 0.3, HS);
