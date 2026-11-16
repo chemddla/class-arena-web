@@ -5969,7 +5969,7 @@
         qi_barrier: {
           id: 'qi_barrier', name: '기공막', icon: '🫧', ccTag: '🫧투사체 튕겨내기 4초',
           manaCost: 22, cooldownTicks: 720, cooldownSec: 12.0, castSec: 0.4,
-          desc: '0.4초간 기를 모은 뒤 4초간 몸을 감싸는 기의 보호막을 두릅니다. 보호막(몸 둘레 1.2칸)으로 날아드는 원거리 투사체를 쏜 적에게 그대로 튕겨내요. 곁에 붙어 선 아군을 노린 투사체도 막아 줘요.'
+          desc: '0.4초간 기를 모은 뒤 4초간 몸을 감싸는 기의 보호막을 두릅니다. 보호막에 닿는 원거리 투사체를 쏜 적에게 그대로 튕겨내요. 기가 많을수록 보호막이 커져요.'
         },
         qi_roar: {
           id: 'qi_roar', name: '기공후', icon: '💨', ccTag: '💨주변 2칸·밀침',
@@ -32638,7 +32638,7 @@
     const QI_ORB_R = 6;                                                                        // 기본 공격 구체 반지름
     const QI_CANNON_DMG = 2.6, QI_CANNON_R = 17, QI_CANNON_CELLS = 7, QI_CANNON_PUSH = 0.6;    // 기공포: 꿰뚫는 큰 구체 7칸 · 260% · 0.6칸 밀침
     const QI_BULLET_N = 5, QI_BULLET_DMG = 0.7, QI_BULLET_R = 4.5, QI_BULLET_SPREAD = 0.5;     // 기공탄: 작은 구체 5발 · 70%씩
-    const QI_BARRIER_TICKS = 240, QI_BARRIER_CELLS = 1.2;                                       // 기공막: 4초 · 몸 둘레 1.2칸
+    const QI_BARRIER_TICKS = 240, QI_BARRIER_CELLS = 0.42;                                      // 기공막: 4초 · 몸을 감싸는 반지름 0.42칸 (그림과 튕겨내기 같은 크기, qiBarrierShape)
     const QI_ROAR_CELLS = 2, QI_ROAR_DMG = 2.0, QI_ROAR_PUSH = 1.6;                             // 기공후: 2칸 · 200% · 1.6칸 밀침
     const QI_WAVE_CELLS = 8, QI_WAVE_HALF_W = 0.55, QI_WAVE_TICKS = 150, QI_WAVE_EVERY = 15, QI_WAVE_DMG = 0.45; // 기공파: 8칸 · 2.5초 · 0.25초마다 45%
     const QI_GENKI_CELLS = 6, QI_GENKI_R = 3, QI_GENKI_DMG = 4.0, QI_GENKI_STUN = 60, QI_GENKI_FALL = 30;        // 기공옥: 6칸 안 · 반지름 3칸 · 400% · 1초 기절
@@ -32649,6 +32649,15 @@
     function qiSizeK(u) { return 1 + QI_SIZE_PER * qiOf(u); }
     function qiArea(u) { return GRID_CELL_SIZE * unitAreaScale(u) * qiSizeK(u); } // 스킬 범위 1칸 (몸 크기·기 반영)
     function qiBarrierOn(u) { return Boolean(u && (u.qiBarrierUntil || 0) > sim.tickCount); }
+    // 기공막 = 몸을 감싸는 기의 막 (그림과 튕겨내기가 같은 크기): 가운데는 몸통 높이, 반지름 0.42칸 (기·몸 크기 반영), 세로로 긴 타원
+    function qiBarrierShape(u) {
+      const R = qiArea(u) * QI_BARRIER_CELLS;
+      return { cx: u.x, cy: u.y - 20 * (u.sizeScale || 1), rx: R, ry: R * 1.18 };
+    }
+    function qiInBarrier(u, x, y, pad = 0) {
+      const b = qiBarrierShape(u);
+      return Math.hypot((x - b.cx) / (b.rx + pad), (y - b.cy) / (b.ry + pad)) <= 1;
+    }
     // applyDamage: 적에게 맞으면 기 -1
     function qiLoseOnHit(u) {
       if (!(u.qiStack > 0) || sim.tickCount - (u.qiLostAt ?? -999) < QI_LOSS_GAP) return;
@@ -32710,8 +32719,7 @@
     // 기공막: 몸 둘레로 들어오는 적 투사체를 쏜 적에게 되돌림 (튕긴 투사체의 주인은 기공사). 되돌렸으면 true
     function qiBarrierProjectile(p) {
       if (p.qiReflected || p.noHit || p.isHeal || p.projType === 'pyro_meteor') return false;
-      const s = sim.units.find(u => u.alive && u.team !== p.owner.team && qiBarrierOn(u)
-        && Math.hypot(u.x - p.x, (u.y - 14) - p.y) < qiArea(u) * QI_BARRIER_CELLS + unitBodyGap(u));
+      const s = sim.units.find(u => u.alive && u.team !== p.owner.team && qiBarrierOn(u) && qiInBarrier(u, p.x, p.y, 4)); // 막에 닿는 순간
       if (!s) return false;
       const src = p.owner, back = src && src.alive ? src : null;
       p.owner = s;
@@ -32725,6 +32733,7 @@
       p.maxTravel = (back ? Math.hypot(back.x - p.x, back.y - p.y) : 300) + 140;
       p.trail = [];
       sim.effects.push({ type: 'qi_reflect', x: Math.round(p.x), y: Math.round(p.y), ang: Math.round(p.angle * 100) / 100, life: 16, maxLife: 16 });
+      { const b = qiBarrierShape(s); sim.effects.push({ type: 'qi_shield_hit', uid: s.id, a: Math.round(Math.atan2((p.y - b.cy) / b.ry, (p.x - b.cx) / b.rx) * 100) / 100, life: 20, maxLife: 20 }); } // 막이 맞은 자리에서 물결
       if (sim.tickCount - (s._qiReflTextAt ?? -99) > 30) { s._qiReflTextAt = sim.tickCount; sim.floatTexts.push({ x: s.x, y: s.y - 46, text: '튕겨냄!', color: '#0d9488', life: 34 }); }
       playCombatSfx('slash');
       return true;
@@ -33004,6 +33013,7 @@
         drawPixelBurst(ctx, ef.x, ef.y, ef.r || 24, p, R, pfxSeedOf(ef), ef.small ? { sparks: 4, noRing: true, coreK: 0.3 } : { sparks: 8 });
         return;
       }
+      if (ef.type === 'qi_shield_hit') { drawQiShieldHit(ctx, ef, p); return; }
       if (ef.type === 'qi_reflect') {
         ctx.save();
         ctx.globalAlpha = 1 - p;
@@ -33158,21 +33168,62 @@
         }
         ctx.restore();
       }
-      if (!qiBarrierOn(u)) return;
-      const left = (u.qiBarrierUntil || 0) - sim.tickCount;
-      const r = qiArea(u) * QI_BARRIER_CELLS * 0.75, cx = u.x, cy = u.y - 26 * (u.sizeScale || 1), c = 3;
+      if (qiBarrierOn(u)) drawQiBarrier(ctx, u, tick);
+    }
+    // 기공막: 몸을 감싼 반투명 기의 막 (펼쳐질 때 부풀었다 자리 잡음 · 테두리는 도트, 왼쪽 위는 밝게 · 안에서 기의 줄기가 돎 · 끝나기 0.7초 전부터 깜박임)
+    function drawQiBarrier(ctx, u, tick) {
+      const R = QI_RAMP, c = 3;
+      const left = (u.qiBarrierUntil || 0) - sim.tickCount, age = QI_BARRIER_TICKS - left;
+      const pop = age < 12 ? (q => 1 + 0.18 * Math.sin(q * Math.PI) - 0.6 * (1 - q) * (1 - q))(age / 12) : 1; // 펼쳐질 때: 작게 → 살짝 부풂 → 자리
+      const b = qiBarrierShape(u), rx = b.rx * pop, ry = b.ry * pop, cx = b.cx, cy = b.cy;
       ctx.save();
-      ctx.globalAlpha = left < 40 && (tick >> 2) % 2 ? 0.3 : 0.75;
+      ctx.globalAlpha = left < 40 && (tick >> 2) % 2 ? 0.35 : 1;
+      // 막 안쪽: 가장자리로 갈수록 진해지는 기 (밝게 더함)
       ctx.globalCompositeOperation = 'lighter';
-      const g = ctx.createRadialGradient(cx, cy, r * 0.6, cx, cy, r);
-      g.addColorStop(0, R[2] + '00'); g.addColorStop(1, R[2] + '55');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(cx, cy, r, r * 1.05, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.save();
+      ctx.translate(cx, cy); ctx.scale(1, ry / rx);
+      const g = ctx.createRadialGradient(-rx * 0.25, -rx * 0.3, rx * 0.1, 0, 0, rx);
+      g.addColorStop(0, R[3] + '14'); g.addColorStop(0.6, R[2] + '14'); g.addColorStop(0.88, R[2] + '44'); g.addColorStop(1, R[3] + '88');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, rx, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      // 안에서 도는 기의 줄기 세 가닥
+      for (let k = 0; k < 3; k++) {
+        const base = tick * 0.035 + k * Math.PI * 2 / 3;
+        for (let j = 0; j < 9; j++) {
+          const a = base + j * 0.11, rr = 0.78 - j * 0.015;
+          ctx.globalAlpha = (left < 40 && (tick >> 2) % 2 ? 0.35 : 1) * (0.75 - j * 0.07);
+          ctx.fillStyle = j < 2 ? R[4] : R[3];
+          pfxDot(ctx, cx + Math.cos(a) * rx * rr, cy + Math.sin(a) * ry * rr, c);
+        }
+      }
       ctx.globalCompositeOperation = 'source-over';
-      const nn = Math.round(Math.PI * 2 * r / (c * 2));
+      ctx.globalAlpha = left < 40 && (tick >> 2) % 2 ? 0.35 : 1;
+      // 테두리: 도트 두 겹 (바깥 진한 본색 · 안쪽 밝은 색), 왼쪽 위 빛 받는 쪽은 흰빛
+      const nn = Math.max(24, Math.round(Math.PI * 2 * rx / (c * 1.2)));
       for (let i = 0; i < nn; i++) {
-        const a = i / nn * Math.PI * 2 + tick * 0.02;
-        ctx.fillStyle = (i + (tick >> 3)) % 6 === 0 ? R[4] : R[3];
-        pfxDot(ctx, cx + Math.cos(a) * r, cy + Math.sin(a) * r * 1.05, c);
+        const a = i / nn * Math.PI * 2, x = cx + Math.cos(a) * rx, y = cy + Math.sin(a) * ry;
+        const lit = Math.cos(a + Math.PI * 0.75); // 왼쪽 위가 1
+        ctx.fillStyle = lit > 0.6 ? R[4] : lit > -0.2 ? R[3] : R[2];
+        pfxDot(ctx, x, y, c);
+        if (i % 2 === 0) { ctx.fillStyle = lit > 0.3 ? R[3] : R[1]; pfxDot(ctx, cx + Math.cos(a) * (rx - c), cy + Math.sin(a) * (ry - c), c); }
+      }
+      // 반짝이는 빛 두 점 (왼쪽 위)
+      ctx.fillStyle = '#ffffff';
+      pfxDot(ctx, cx - rx * 0.45, cy - ry * 0.55, c); pfxDot(ctx, cx - rx * 0.55, cy - ry * 0.42, c);
+      ctx.restore();
+    }
+    // 막에 투사체가 맞은 자리: 막 테두리를 따라 양쪽으로 퍼지는 밝은 물결
+    function drawQiShieldHit(ctx, ef, p) {
+      const u = qiUnitById(ef.uid);
+      if (!u || !u.alive || !qiBarrierOn(u)) return;
+      const b = qiBarrierShape(u), R = QI_RAMP, c = 3, spread = 0.15 + p * 0.9;
+      ctx.save();
+      ctx.globalAlpha = 1 - p;
+      for (let k = -6; k <= 6; k++) {
+        const a = ef.a + k / 6 * spread;
+        ctx.fillStyle = Math.abs(k) < 2 ? R[4] : R[3];
+        pfxDot(ctx, b.cx + Math.cos(a) * b.rx, b.cy + Math.sin(a) * b.ry, c);
+        pfxDot(ctx, b.cx + Math.cos(a) * (b.rx + c * (1 - p) * 2), b.cy + Math.sin(a) * (b.ry + c * (1 - p) * 2), c);
       }
       ctx.restore();
     }
@@ -34774,7 +34825,7 @@
 
     const HIT_FX_TYPES = new Set(['pyro_hit', 'pyro_xpl', 'magic_burst', 'arrow_hit', 'fire_explosion', 'ice_shatter', 'curse_shatter', 'hidden_snipe_hit', 'bard_lute', 'bard_wave', 'bard_wave_hit', 'bard_song_buff', 'brawl_hit', 'brawl_ring', 'sword_iai', 'sword_mucham', 'sword_gk_charge', 'sword_guard_flash', 'sword_guard_ready',
       'eng_muzzle', 'eng_rivet_hit', 'eng_gat_hit', 'eng_mortar_blast', 'eng_blast', 'eng_laser', 'eng_wreck', 'eng_shell', 'eng_expire', 'eng_laser_hit', 'eng_titan_nuke', 'eng_gat_flash', 'eng_sr_charge', 'eng_sr_fire', 'eng_sr_blast', 'eng_sr_landzap', 'eng_sr_landslam']); // 검사 참격·무참 베기·극참 기 모으기·막기 섬광·패링 빛도 몸 위에 · 파멸의 의식 번개는 불투명하게 drawRuinMarks에서
-    ['qi_hit', 'qi_roar', 'qi_beam', 'qi_reflect', 'qi_charge', 'qi_genki_charge', 'qi_genki_fall', 'qi_genki_boom'].forEach(t => HIT_FX_TYPES.add(t)); // 기공사
+    ['qi_hit', 'qi_roar', 'qi_beam', 'qi_reflect', 'qi_charge', 'qi_genki_charge', 'qi_genki_fall', 'qi_genki_boom', 'qi_shield_hit'].forEach(t => HIT_FX_TYPES.add(t)); // 기공사
     // ※ 규칙 (2026-11-14 사용자): 공격·타격·폭발·투사체처럼 맞은 대상에 닿는 이펙트는 새로 만들 때 꼭 여기에 넣어 대상 그림 위에 그림
     //   기계공: 총구 섬광·리벳탄·기관포 불티·박격포 폭발·레이저·자폭 폭발·잔해·날아가는 포탄 · 바닥에 퍼지는 것(eng_build 세움 고리)만 아래
     const HIT_FX_ALPHA = 0.75;
@@ -52408,7 +52459,7 @@
     // ----- 화면 형식 v2 (2026-11-09부터 방장이 보냄 · 받는 쪽은 두 형식 다 읽음) -----
     // 이펙트 종류 이름(평균 15자, 이펙트 바이트의 1/5)은 표 번호로 · 투사체의 안 바뀌는 칸(종류·색·반지름·그림)은 처음 한 번만 (매 화면 다시 보내던 투사체 바이트의 절반)
     // ⚠ LIVE_FX_TYPES 순서를 바꾸거나 중간에 끼우면 먼저 연 탭이 다른 이펙트를 그림 → 새 종류는 끝에만 더할 것 (표에 없는 종류는 이름 그대로 감)
-    const LIVE_FX_TYPES = ['aoe_ring', 'arrow_hit', 'bard_encore', 'bard_lute', 'bard_song_buff', 'bard_sr_encore', 'bard_wave', 'bard_wave_hit', 'berserker_slam', 'berserker_split', 'blessing_aura', 'blood_fx', 'brawl_hit', 'brawl_ring', 'cast_circle', 'charge_dash', 'curse_bolt', 'curse_ruin_blast', 'curse_ruin_bolt', 'curse_ruin_circle', 'curse_shatter', 'curse_siphon', 'curse_siphon_heal', 'curse_weaken', 'fire_explosion', 'frost_blizzard', 'frost_glaze', 'frost_nova', 'frost_skate', 'heal_beam', 'heal_cross', 'heal_pillar', 'hidden_assassin', 'hidden_assassin_smoke', 'hidden_beam', 'hidden_excal_impact', 'hidden_fusion', 'hidden_giant_aura', 'hidden_giant_burst', 'hidden_miracle', 'hidden_miracle_buff', 'hidden_miracle_pillar', 'hidden_musou_boom', 'hidden_musou_dash', 'hidden_musou_slash', 'hidden_musou_x', 'hidden_slash', 'hidden_snipe_bullet', 'hidden_snipe_hit', 'hidden_storm', 'ice_shatter', 'lightning_bolt', 'magic_burst', 'paladin_aegis_burst', 'paladin_aegis_dome', 'paladin_charge_dust', 'paladin_charge_hit', 'paladin_consec_burst', 'paladin_hs_dome', 'paladin_judgment', 'paladin_swing', 'pierce_fx', 'pyro_burst', 'pyro_fring', 'pyro_hit', 'pyro_meteor_impact', 'pyro_sr_meteor', 'pyro_xpl', 'rampage_fx', 'shield_dome', 'sniper_line', 'sniper_spread', 'spirit_dodge', 'spirit_king_burst', 'spirit_pop', 'stun_shockwave', 'whirlwind_slash', 'volt_rail', 'volt_beam', 'volt_fx', 'sword_iai', 'sword_batto', 'sword_seomdan', 'sword_issen', 'sword_mucham', 'sword_gk_charge', 'sword_guard_flash', 'sword_guard_ready', 'sword_mind_start', 'sword_gk_aura', 'eng_shell', 'eng_blast', 'eng_build', 'eng_laser', 'eng_wreck', 'eng_muzzle', 'eng_rivet_hit', 'eng_gat_hit', 'eng_mortar_blast', 'eng_expire', 'eng_laser_hit', 'eng_titan_nuke', 'eng_gat_flash', 'eng_sr_charge', 'eng_sr_fire', 'eng_sr_blast', 'eng_sr_landzap', 'eng_sr_landslam', 'qi_hit', 'qi_roar', 'qi_beam', 'qi_reflect', 'qi_charge', 'qi_genki_charge', 'qi_genki_fall', 'qi_genki_boom'];
+    const LIVE_FX_TYPES = ['aoe_ring', 'arrow_hit', 'bard_encore', 'bard_lute', 'bard_song_buff', 'bard_sr_encore', 'bard_wave', 'bard_wave_hit', 'berserker_slam', 'berserker_split', 'blessing_aura', 'blood_fx', 'brawl_hit', 'brawl_ring', 'cast_circle', 'charge_dash', 'curse_bolt', 'curse_ruin_blast', 'curse_ruin_bolt', 'curse_ruin_circle', 'curse_shatter', 'curse_siphon', 'curse_siphon_heal', 'curse_weaken', 'fire_explosion', 'frost_blizzard', 'frost_glaze', 'frost_nova', 'frost_skate', 'heal_beam', 'heal_cross', 'heal_pillar', 'hidden_assassin', 'hidden_assassin_smoke', 'hidden_beam', 'hidden_excal_impact', 'hidden_fusion', 'hidden_giant_aura', 'hidden_giant_burst', 'hidden_miracle', 'hidden_miracle_buff', 'hidden_miracle_pillar', 'hidden_musou_boom', 'hidden_musou_dash', 'hidden_musou_slash', 'hidden_musou_x', 'hidden_slash', 'hidden_snipe_bullet', 'hidden_snipe_hit', 'hidden_storm', 'ice_shatter', 'lightning_bolt', 'magic_burst', 'paladin_aegis_burst', 'paladin_aegis_dome', 'paladin_charge_dust', 'paladin_charge_hit', 'paladin_consec_burst', 'paladin_hs_dome', 'paladin_judgment', 'paladin_swing', 'pierce_fx', 'pyro_burst', 'pyro_fring', 'pyro_hit', 'pyro_meteor_impact', 'pyro_sr_meteor', 'pyro_xpl', 'rampage_fx', 'shield_dome', 'sniper_line', 'sniper_spread', 'spirit_dodge', 'spirit_king_burst', 'spirit_pop', 'stun_shockwave', 'whirlwind_slash', 'volt_rail', 'volt_beam', 'volt_fx', 'sword_iai', 'sword_batto', 'sword_seomdan', 'sword_issen', 'sword_mucham', 'sword_gk_charge', 'sword_guard_flash', 'sword_guard_ready', 'sword_mind_start', 'sword_gk_aura', 'eng_shell', 'eng_blast', 'eng_build', 'eng_laser', 'eng_wreck', 'eng_muzzle', 'eng_rivet_hit', 'eng_gat_hit', 'eng_mortar_blast', 'eng_expire', 'eng_laser_hit', 'eng_titan_nuke', 'eng_gat_flash', 'eng_sr_charge', 'eng_sr_fire', 'eng_sr_blast', 'eng_sr_landzap', 'eng_sr_landslam', 'qi_hit', 'qi_roar', 'qi_beam', 'qi_reflect', 'qi_charge', 'qi_genki_charge', 'qi_genki_fall', 'qi_genki_boom', 'qi_shield_hit'];
     const LIVE_FX_TYPE_IDX = Object.fromEntries(LIVE_FX_TYPES.map((t, i) => [t, i]));
     let liveFrameV2 = false; // publishLiveBattleFrame이 화면마다 정함
     function packLiveEffect(ef) {
