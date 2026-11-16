@@ -5491,19 +5491,24 @@
     // 몸 크기 배율 sizeScale (용병 = 1): 탑 몬스터는 MONSTER_DEFS의 size. 엘리트 보스는 따로 (토큰이 보통 보스의 3배)
     const BODY_HALF_W = 20; // 용병 몸 반폭 (몸이 s배면 가장자리가 BODY_HALF_W × (s - 1)만큼 바깥)
     // 사거리 판정용 거리: 몸이 큰 유닛은 몸 가장자리까지의 거리로 잼 (때리는 쪽·맞는 쪽 모두)
-    function unitBodyGap(u) { return !u ? 0 : (u.isEliteBoss ? eliteTokenR(u) - 36 : BODY_HALF_W * ((u.sizeScale || 1) - 1)); }
+    // 엘리트 보스: 판정 원(eliteTokenR)이 그림 몸보다 커서 그대로 쓰면 몸 밖 먼 곳까지 닿음 → 그림 몸 반폭(원의 약 62%)만큼만
+    function unitBodyGap(u) { return !u ? 0 : (u.isEliteBoss ? Math.round(eliteTokenR(u) * 0.62) - BODY_HALF_W : BODY_HALF_W * ((u.sizeScale || 1) - 1)); }
+    // 큰 몸의 사거리·범위 배율: 1.4배 몸까지는 몸 크기 그대로, 그 위로는 늘어난 만큼의 35%만 (보스·엘리트 보스가 몸에 비해 너무 멀리 닿지 않게)
+    //   거리는 이미 몸 가장자리부터 재므로 사거리를 몸 크기만큼 다 키우면 두 번 늘어남 (2026-11-16 사용자: 큰 보스 공격 범위가 너무 넓음)
+    //   2배 → 1.61 · 2.4배(탑 종족 보스) → 1.75 · 3배(거인화) → 1.96 · 3.6배(하드 탑 보스) → 2.17
+    function bigBodyScale(s) { s = s || 1; return s <= 1.4 ? s : 1.4 + (s - 1.4) * 0.35; }
     // 시전자 크기에 따라 커지는 스킬 범위 배율 = √몸 크기 (2.5배 보스 → 1.6배). 몸 크기 그대로 키우면 보스 사자후·지진이
     //   전장을 거의 다 덮어서 근접 용병이 붙지 못함 (tests/tower-sim.js). 엘리트 보스 스킬은 원래 크기에 맞춰 짜여 있어서
     //   몸을 키운 만큼(ELITE_SIZE_MULT)만
     //   탑 종족 보스는 크기 2배에 맞춰 범위도 크기에 비례
-    function unitAreaScale(u) { return !u ? 1 : (u.isEliteBoss ? eliteSizeOf(u) : (u.isRaceBoss ? (u.sizeScale || 1) : Math.sqrt(u.sizeScale || 1))); }
+    function unitAreaScale(u) { return !u ? 1 : (u.isEliteBoss ? bigBodyScale(eliteSizeOf(u)) : (u.isRaceBoss ? bigBodyScale(u.sizeScale) : Math.sqrt(u.sizeScale || 1))); }
     // 몸 크기를 정하면서 근접 기본 공격 사거리도 같은 배율로 (원거리는 몸 가장자리만큼만 늘어남)
     const MELEE_RANGE_MAX = 150;
     function setUnitBodySize(unit, s) {
       if (unit.baseRangeForSize === undefined) unit.baseRangeForSize = unit.range;
       unit.sizeScale = s;
       // 근접 사거리만 몸 크기에 비례 (원거리 직업 종족 보스까지 키우면 화면 끝까지 닿음, 거리는 몸 가장자리부터 재므로 그대로 둠)
-      if (unit.baseRangeForSize < MELEE_RANGE_MAX) unit.range = Math.round(unit.baseRangeForSize * s);
+      if (unit.baseRangeForSize < MELEE_RANGE_MAX) unit.range = Math.round(unit.baseRangeForSize * bigBodyScale(s));
     }
     function unitDist(a, b) { return Math.max(0, Math.hypot(a.x - b.x, a.y - b.y) - unitBodyGap(a) - unitBodyGap(b)); }
     const BATTLE_DAMAGE_MULT = 2.2;      // 모든 공격 피해 배율 (회복량은 그대로)
@@ -41217,7 +41222,7 @@
         boss.isHardMode = true;           // 탑 하드모드처럼 붉은 빛
         boss.eliteHardSize = ELITE_HARD.size; // 몸·그림·스킬 범위 (eliteSizeOf)
       }
-      boss.range = Math.round(boss.range * eliteSizeOf(boss)); // 몸을 키운 만큼 기본 공격 사거리도
+      boss.range = Math.round(boss.range * bigBodyScale(eliteSizeOf(boss))); // 몸을 키운 만큼 기본 공격 사거리도 (하드 1.95배 몸 → 1.59배)
       boss.x = Math.round(sim.worldW / 2); // 맵 가운데
       boss.y = Math.round(sim.worldH / 2);
       applyUnitSkillBook(boss, eliteBossSkillBook(bossDef.id));
@@ -55338,7 +55343,7 @@
         u.maxHp = u.hp = Math.round(u.maxHp * DUNGEON_ELITE_BOSS_HP);
         u.atk = Math.round(u.atk * DUNGEON_ELITE_BOSS_ATK);
         applyUnitSkillBook(u, buildSkillBook((ELITE_BOSS_SKILLS[ed.id] || []).slice(0, Math.max(eliteBossSkillCount(ed.stage), tune.bossSkills))));
-        u.range = Math.round(u.range * eliteSizeOf(u));
+        u.range = Math.round(u.range * bigBodyScale(eliteSizeOf(u)));
         u.name = `👑 ${ed.name}`;
         u.dgBoss = true; u.rushBoss = true;
         u.dgSummon = false;
