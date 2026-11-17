@@ -8349,8 +8349,8 @@
       src: 'assets/sprites/merc/shaman_0.webp',
       cellW: 101, cellH: 95, anchorX: 50, anchorY: 93, standH: 86, topH: 87, portraitCX: 50, count: 14,
       muzzle: [41, 32], // 부적이 나가는 자리 = 던지기 칸(5)의 손끝: 기준점에서 앞 41·위 51 (그림 px) → 발이 유닛 자리보다 12 아래라 높이 51 - 19 ≈ 32 (qigong_0과 같은 환산)
-      attackDur: 22, // 부적 치켜듦(4) 12틱 (MU_ATK_WINDUP) → 던지며 부적이 손을 떠남(5) → 10틱 뒤 평소 자세
-      anims: { idle: [0], walk: [1, 2, 3, 2], attack: [4, 4, 5], skill: [10], hurt: [6], death: [7, 8], ritual: [12, 13] },
+      attackDur: 18, // 부적 치켜듦(4) 6틱 → 던지기(5) 12틱 → 평소 자세. 부적은 공격 순간 바로 날아가서(muBasicShot) 치켜듦은 짧게
+      anims: { idle: [0], walk: [1, 2, 3, 2], attack: [4, 5, 5], skill: [10], hurt: [6], death: [7, 8], ritual: [12, 13] },
       castFrames: { mu_heal: 9, mu_power: 9, mu_weak: 9, mu_speed: 9, mu_guard: 9, mu_naerim: 11 }, // 시전 막대 동안: 장판 = 한 손 들기, 내림굿 = 기도
       skillAnims: {
         mu_heal: { anim: 'skill', tpf: 20, dur: 20 }, mu_power: { anim: 'skill', tpf: 20, dur: 20 }, mu_weak: { anim: 'skill', tpf: 20, dur: 20 },
@@ -24294,7 +24294,6 @@
           if (!p.owner.alive) { sim.projectiles.splice(i, 1); continue; }
           p.x = p.owner.x + (p.handDx || 0) * (p.owner.facingDir || 1); p.y = p.owner.y + (p.handDy || 0);
           if (p.wait <= 0 && p.qiFlash) qiOrbRelease(p); // 기공사 일반 공격: 손을 떠나는 순간
-          if (p.wait <= 0 && p.muRelease) { p.muRelease = 0; playCombatSfx('magic'); } // 무녀 일반 공격: 부적이 손을 떠나는 순간
           continue;
         }
         p.trail.push({ x: p.x, y: p.y });
@@ -24313,7 +24312,7 @@
           p.travel = 0;
           // 범위 공격(마법사 기본 공격 포함)은 겨눈 자리 근처에서 터지고, 나머지는 조금 더 날아감
           p.maxTravel = Math.hypot(tx - p.x, ty - p.y) + (isAoe ? 0 : (p.splashRadius ? 10 : 140));
-          p.homeTarget = isAoe || p.noHome ? null : p.target; // noHome: 겨눈 쪽으로 곧게만 (무녀 부적)
+          p.homeTarget = isAoe ? null : p.target;
           p.target = null;
         }
 
@@ -34886,15 +34885,12 @@
     }
 
     // 기본 공격: 부적을 날림 (패시브 부적은 쓰지 않음 · 모양만 부적)
-    // 준비 동작: 부적 치켜듦 칸(4)을 12틱 보인 뒤 던지기 칸(5)으로 바뀔 때 손을 떠남 (그동안 투사체는 손에 붙어 보이지 않음 · wait, 기공사와 같은 방식)
-    //   손을 떠난 순간 적이 있는 쪽(움직임 예측)을 향해 곧게 날아감: 적을 따라 휘지 않음 (noHome, 2026-11-17 사용자)
-    const MU_ATK_WINDUP = 12;
     function muBasicShot(u, target, angle = null) {
       const o = angle == null ? unitShotOrigin(u, 14) : aimShotOrigin(u, u.x, u.y, angle);
-      const p = { projType: 'mu_charm', mu: 1, x: o.x, y: o.y, owner: u, dmg: u.atk, isHeal: false, speed: 5.2, trail: [], color: MU_COLOR, radius: 5,
-        wait: MU_ATK_WINDUP + 1, handDx: (o.x - u.x) * (u.facingDir || 1), handDy: o.y - u.y, noHome: 1, muRelease: 1 }; // wait +1: 쏜 틱에도 투사체 단계에서 한 번 줄어서, 던지기 칸이 처음 보이는 틱(12틱 뒤)에 손을 떠나게
+      const p = { projType: 'mu_charm', mu: 1, x: o.x, y: o.y, owner: u, dmg: u.atk, isHeal: false, speed: 5.2, trail: [], color: MU_COLOR, radius: 5 };
       if (target) p.target = target; else Object.assign(p, { isDirectional: true, angle, maxTravel: u.range * 1.7 + 80 });
       sim.projectiles.push(p);
+      playCombatSfx('magic');
     }
     // 부적이 맞은 자리 (resolveProjectileImpact)
     function muProjectileHit(p, hit, x, y) {
@@ -35072,17 +35068,17 @@
       if (ramp) { ctx.fillStyle = ramp[1]; ctx.fillRect(x0 + 2 * c, y0 + 1 * c, 3 * c, c); ctx.fillStyle = ramp[3]; ctx.fillRect(x0 + 3 * c, y0 + 1 * c, c, c); }
       ctx.restore();
     }
-    // 날아가는 부적 (기본 공격): 돌지 않고 날아가는 방향으로 눕혀 곧게, 뒤로 곧은 붉은 꼬리 (2026-11-17 사용자: 직선으로)
+    // 날아가는 부적 (기본 공격): 빙글 돌며 붉은 불티 꼬리
     function drawMuProjectile(ctx, p) {
-      const a = p.angle != null ? p.angle : Math.atan2((p.target ? p.target.y - 14 : p.y) - p.y, (p.target ? p.target.x : p.x + 1) - p.x);
+      const t = sim.tickCount || 0, a = p.angle != null ? p.angle : Math.atan2((p.target ? p.target.y - 14 : p.y) - p.y, (p.target ? p.target.x : p.x + 1) - p.x);
       const bx = -Math.cos(a), by = -Math.sin(a);
       ctx.save();
       for (let k = 1; k <= 5; k++) {
         ctx.globalAlpha = 0.75 * (1 - k / 6);
-        muDot(ctx, p.x + bx * (6 + k * 5), p.y + by * (6 + k * 5), 2, k < 3 ? '#fde68a' : '#ef4444');
+        muDot(ctx, p.x + bx * k * 5 + ((k * 31 + t) % 5) - 2, p.y + by * k * 5 + ((k * 17 + t * 3) % 5) - 2, 2, k < 3 ? '#fde68a' : '#ef4444');
       }
       ctx.globalAlpha = 1;
-      drawMuCharm(ctx, p.x, p.y, 1.5, a + Math.PI / 2, null, 0); // 부적 긴 쪽이 날아가는 방향
+      drawMuCharm(ctx, p.x, p.y, 1.5, t * 0.35 + (p.x | 0) * 0.01, null, 0);
       ctx.restore();
     }
     // 바닥 장판 (drawZones): 은은한 바닥 빛 + 천천히 도는 도트 고리 + 종류마다 다른 기운 알갱이
