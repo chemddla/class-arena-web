@@ -2384,6 +2384,45 @@
       '....kkkkkkkk....'
     ]
   });
+  // 펫 러닝 전용 (tools/petrun-icons/icons.px.js에서 만듦)
+  Object.assign(ICONS, {
+    prJelly: [
+      '..kkk....kkk....',
+      '.kqqqk..kqqqk...',
+      '.kqQqkkkkqqqk...',
+      '..kkqqqqqqqkk...',
+      '..kqQWqqqqqqk...',
+      '.kqWkqqqqkqqqk..',
+      '.kqqqqqkqqqqMk..',
+      'kkqqqqqqqqqqMkk.',
+      'kqkqqqqqqqqMkqk.',
+      'kqkqqqqqqqqMkMk.',
+      '.kkqqqqqqqqMkk..',
+      '..kqqqqqqqqMk...',
+      '..kqqqMMqqqMk...',
+      '.kqqqk..kqqMMk..',
+      '.kqqMk..kqMMMk..',
+      '..kkk....kkkk...'
+    ],
+    prSlide: [
+      '................',
+      '................',
+      '................',
+      'kkkkkkkkkkk.....',
+      'kGGGGGGGGGk.....',
+      'kkkkkkkkkkk.....',
+      '................',
+      '................',
+      '.........kk.....',
+      '.........kIk....',
+      'kkk..kkkkkiIk...',
+      'kIk..kIIIIiiIk..',
+      'kik..kiiiiiiiBk.',
+      'kkk..kkkkkiiBk..',
+      '.........kBBk...',
+      '.........kkk....'
+    ]
+  });
   // 던전 화면의 이모지 → 던전 전용 아이콘 (다른 화면의 칼·방패·왕관은 그대로)
   const DUNGEON = { '🕯': 'dgTorch', '⚔': 'dgFight', '💎': 'dgElite', '🛡': 'dgGuard', '📦': 'dgChest', '🔥': 'dgBrazier', '🚶': 'dgSteps',
     '👑': 'dgBoss', '🕳': 'dgStairs', '⛲': 'dgFount', '🗿': 'dgAltar', '📖': 'dgBook', '🪤': 'dgTrap', '🕸': 'dgWeb', '📭': 'dgChestOpen',
