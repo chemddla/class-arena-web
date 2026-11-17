@@ -32660,12 +32660,14 @@
     const QI_COLOR = '#2dd4bf';
     const QI_CANNON_COLOR = '#f0b424'; // 기공포 구체 (큰 실타래 포): 투사체 색으로 구분
     const QI_ATK_COLOR = '#e8b23e'; // 일반 공격 구슬 (금빛 실타래 기구슬): 투사체 색으로 구분해서 실시간 화면에도 그대로 감
-    const QI_J_RAMP = ['#24160a', '#4e3210', '#8a5a16', '#c48a24', '#e8b23e', '#f6d27a', '#fbe8b4']; // 반짝임 없는 금빛 기운 (흰색 없이 크림색까지)
+    let QI_J_RAMP = ['#24160a', '#4e3210', '#8a5a16', '#c48a24', '#e8b23e', '#f6d27a', '#fbe8b4']; // 반짝임 없는 금빛 기운 (흰색 없이 크림색까지)
     const QI_RAMP = ['#0b4f4a', '#14857a', '#2dd4bf', '#99f6e4', '#f0fffb'];
     // 시크릿 레어 외형(qigong_sr1)은 이펙트가 따로 (청기, drawQsr*): 구체는 투사체 색으로, 이펙트는 sr: 1로 구분 (실시간 화면에도 그대로 감)
     const QSR_ATK_COLOR = '#62d4f2', QSR_CANNON_COLOR = '#2ca8d8';
     function qiSR(u) { return Boolean(u && u.job === 'qigong' && !u.monsterType && u.skinVariant === SECRET_SKIN_BASE + 1); }
-    function qiFx(u, ef) { if (qiSR(u)) ef.sr = 1; sim.effects.push(ef); return ef; }
+    // 기공사 외형 1~5는 기본 외형 이펙트를 그 외형 도포 색으로 그림 (qiUsePal): 이펙트는 sv, 구체는 그림 이름(spr 'qv1'~'qv5')에 외형 번호를 실어 실시간 화면에도 감
+    function qiSkinOf(u) { const v = u && u.job === 'qigong' && !u.monsterType ? (u.skinVariant || 0) : 0; return v >= 1 && v <= 5 ? v : 0; }
+    function qiFx(u, ef) { if (qiSR(u)) ef.sr = 1; else if (qiSkinOf(u)) ef.sv = qiSkinOf(u); sim.effects.push(ef); return ef; }
     const qiIsAtkCol = c => c === QI_ATK_COLOR || c === QSR_ATK_COLOR, qiIsCannonCol = c => c === QI_CANNON_COLOR || c === QSR_CANNON_COLOR;
     const QI_ORB_R = 6;
     const QI_ATK_SPLASH = 0.45, QI_ATK_SPLASH_DMG = 0.6; // 일반 공격은 범위 공격: 맞은 자리에서 터져 반지름 0.45칸(기·몸 크기·축기 반영) 안의 다른 적에게 60%                                                                        // 기본 공격 구체 반지름
@@ -32718,6 +32720,7 @@
     // 구체 한 발 (target이 있으면 그 적을 향해, 아니면 angle 방향으로 곧게)
     function qiOrbShot(u, o, { target = null, angle = 0, dmg, r, speed = 5, extra = {} }) {
       const p = { projType: 'qi_orb', qi: 1, x: o.x, y: o.y, owner: u, dmg, isHeal: false, speed, trail: [], color: QI_COLOR, radius: Math.round(r * 10) / 10, hitPad: Math.max(0, r - QI_ORB_R), ...extra };
+      if (qiSkinOf(u)) p.spr = 'qv' + qiSkinOf(u); // 외형 색 (그림 이름 칸으로 실시간 화면에도 감 · 기공사 구체는 그림 표를 안 씀)
       if (target) p.target = target; else Object.assign(p, { isDirectional: true, angle, maxTravel: (extra.maxTravel || u.range * 1.7 + 80) });
       sim.projectiles.push(p);
       return p;
@@ -33060,9 +33063,10 @@
     // 기의 구체: 은은한 빛 → 도트 원(가장자리 어둡게, 왼쪽 위 밝게, 가운데 흰 심) → 뒤로 흩어지는 꼬리
     function drawQiOrb(ctx, p) {
       if (p.color === QSR_ATK_COLOR || p.color === QSR_CANNON_COLOR) { drawQsrOrb(ctx, p); return; } // 시크릿 레어 (청기)
+      qiUsePal(/^qv[1-5]$/.test(p.spr || '') ? +p.spr[2] : 0);
       if (p.color === QI_ATK_COLOR) { drawQiThreadOrb(ctx, p); return; }
       if (p.color === QI_CANNON_COLOR) { drawQiCannonOrb(ctx, p); return; }
-      const R = QI_RAMP, t = sim.tickCount || 0;
+      const R = qiRamp5(), t = sim.tickCount || 0;
       const r = Math.max(3, p.radius || QI_ORB_R) * (1 + 0.07 * Math.sin(t * 0.45 + (p.x | 0) * 0.01));
       const c = r >= 12 ? 3 : 2, a = p.angle || 0, bx = -Math.cos(a), by = -Math.sin(a);
       ctx.save();
@@ -33132,7 +33136,7 @@
       return (a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy) * 2 - 1;
     }
     // 구슬 몸통 명암 램프 (그늘 → 빛, 흰색 없이 크림색까지 · 반짝임 없음)
-    const QI_J_SHADE = ['#2a1806', '#4e3210', '#7a4e12', '#a66c1c', '#c98d26', '#e2ab3a', '#f2c862', '#f9df98', '#fdf0c8'];
+    let QI_J_SHADE = ['#2a1806', '#4e3210', '#7a4e12', '#a66c1c', '#c98d26', '#e2ab3a', '#f2c862', '#f9df98', '#fdf0c8'];
     // 구슬 몸통 (sx·sy: 가로·세로 눌림, k: 투명도)
     //   왼쪽 위에서 빛을 받는 공 명암(단계 사이는 바이어 디더) + 가운데 안쪽 빛 + 속에서 소용돌이치는 기운 흐름(구슬이 클수록 또렷)
     //   + 빛 받는 쪽 밝은 테·그늘 쪽 진한 외곽선 + 기운 실. 예전엔 3단 납작한 원이라 구슬이 커지면 싸 보였음 (2026-11-16 사용자)
@@ -33372,8 +33376,9 @@
     //   (px, py)에 칠하고 디더 무늬는 (gx, gy) 기준
     function qiWaveDot(ctx, px, py, gx, gy, d, m) {
       const R = QI_J_RAMP, bay = PFX_BAYER[((gy & 3) << 2) | (gx & 3)];
-      if (d < 1) { // 색 단계 경계에서만 좁게 디더(폭 0.4단계), 테두리는 0.85부터 매끈하게 반투명
-        ctx.fillStyle = R[Math.max(4, Math.min(6, 4 + Math.floor((1 - Math.pow(d, 1.5)) * 2 + 0.5 + (bay - 0.5) * 0.4)))];
+      if (d < 1) { // 기공포 구슬(qiGkBody)과 같은 명암: 짙은 금빛 단계(QI_J_SHADE)로 가운데 밝고 · 중간 짙고 · 가장자리 다시 밝아짐. 단계 경계만 좁게 디더(폭 0.5)
+        const v = 0.45 + 0.4 * Math.pow(1 - d * d, 1.5) + (d > 0.78 ? Math.pow((d - 0.78) / 0.22, 1.5) * 0.35 : 0);
+        ctx.fillStyle = QI_J_SHADE[Math.max(4, Math.min(8, Math.floor(v * 8 + (bay - 0.5) * 0.5)))];
         ctx.globalAlpha = d < 0.85 ? 1 : 1 - (d - 0.85) / 0.15 * 0.45;
       } else { // 막: 매끈하게 옅어지다 바깥 절반만 디더로 성기게 끝남
         const t = (d - 1) / m; if (t >= 1 || (t > 0.5 && bay >= (1 - t) * 2)) return;
@@ -33384,6 +33389,7 @@
     // 칸 단위 단면은 무거우므로(한 프레임 10ms 넘음) 크기마다 한 번 그려 두고 씀 (x0, y0: 그림 왼쪽 위의 포 좌표)
     const QI_WAVE_CACHE = new Map();
     function qiWaveSprite(key, x0, y0, w, h, fn) {
+      key = qiPalNow + ':' + key; // 외형 색마다 따로
       let c = QI_WAVE_CACHE.get(key);
       if (!c) {
         if (QI_WAVE_CACHE.size > 96) QI_WAVE_CACHE.clear();
@@ -33515,7 +33521,31 @@
     //   도트 칸마다 그리면 무거워서 구체 몸통은 이미지 버퍼로(1/30초마다 새로), 나머지는 그라데이션·선 경로로 그림
     const QI_GK_SY = 0.5, QI_GK_DRAFT_ORB = 74; // 바닥 납작 · 시안의 구체 반지름 (크기 비율 기준)
     const QI_GK_RINGS = [[0.35, 0, 1.6], [1.25, 1.1, -1.2], [2.2, 2.3, 0.9]];
-    const QI_GK_SHADE_RGB = QI_J_SHADE.map(h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
+    const qiHexRgb = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+    let QI_GK_SHADE_RGB = QI_J_SHADE.map(qiHexRgb);
+    // 외형별 기운 색: 금빛 램프의 색상을 도포 색상으로 바꾸고 채도는 도포 배율만큼 (밝기는 기운이라 그대로) — tools/qigong_variants_build.py VARIANTS의 도포 값
+    //   1 청람 · 2 주홍 · 3 비취 · 4 자줏빛 · 5 먹빛(채도가 거의 없어 은빛 기운)
+    const QI_SKIN_ROBE = { 1: [212, 0.85], 2: [6, 0.95], 3: [150, 0.75], 4: [282, 0.7], 5: [220, 0.15] };
+    function qiRecolorHex(hex, H, SM) {
+      const [r, g, b] = qiHexRgb(hex).map(c => c / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b), v = mx, s = mx ? (mx - mn) / mx * SM : 0;
+      const f = (n, k = (n + H / 60) % 6) => v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
+      return '#' + [f(5), f(3), f(1)].map(c => Math.round(Math.max(0, Math.min(1, c)) * 255).toString(16).padStart(2, '0')).join('');
+    }
+    const qiPalSets = { 0: { ramp: QI_J_RAMP, shade: QI_J_SHADE, rgb: QI_GK_SHADE_RGB } };
+    let qiPalNow = 0;
+    // 그리기 입구(drawQigongEffect · drawQiOrb · drawQigongUnitFx)에서 그 외형 색으로 바꿈 (다른 곳은 외형 0 그대로 두지 않아도 됨: 입구마다 늘 정함)
+    function qiUsePal(v) {
+      v = QI_SKIN_ROBE[v] ? v : 0;
+      if (v === qiPalNow) return;
+      let set = qiPalSets[v];
+      if (!set) {
+        const [H, SM] = QI_SKIN_ROBE[v], ramp = qiPalSets[0].ramp.map(h => qiRecolorHex(h, H, SM)), shade = qiPalSets[0].shade.map(h => qiRecolorHex(h, H, SM));
+        set = qiPalSets[v] = { ramp, shade, rgb: shade.map(qiHexRgb) };
+      }
+      QI_J_RAMP = set.ramp; QI_J_SHADE = set.shade; QI_GK_SHADE_RGB = set.rgb; qiPalNow = v;
+    }
+    // 예전 청록 5칸 램프(QI_RAMP)를 쓰는 작은 이펙트(기공막 펼침 고리·튕겨낸 자리·몸 둘레 기 알갱이)도 외형 1~5는 그 외형 색 (기본 외형은 그대로)
+    function qiRamp5() { const R = QI_J_RAMP; return qiPalNow ? [R[1], R[3], R[4], R[5], R[6]] : QI_RAMP; }
     const QI_GK_STREAMS = Array.from({ length: 22 }, (_, i) => [((i * 0.618) % 1) * Math.PI * 2, 325 + ((i * 0.37) % 1) * 325, (((i * 0.73) % 1) - 0.5) * 1.4, 0.8 + ((i * 0.41) % 1) * 0.6]);
     const QI_GK_BURST = Array.from({ length: 30 }, (_, i) => [(i / 30) * Math.PI * 2 + ((i * 0.37) % 1 - 0.5) * 0.2, 0.2 + ((i * 0.53) % 1) * 0.2, 0.75 + ((i * 0.71) % 1) * 0.3]);
     const QI_GK_SHARDS = Array.from({ length: 18 }, (_, i) => [(i / 18) * Math.PI * 2 + (((i * 0.37) % 1) - 0.5) * 0.3, 220 + ((i * 0.53) % 1) * 260, 160 + ((i * 0.71) % 1) * 220, 2.5 + ((i * 0.29) % 1) * 2.5]);
@@ -33527,7 +33557,7 @@
     // 구체 몸통 (이미지 버퍼, 같은 1/30초·크기면 다시 쓰지 않음)
     const qiGkBodyCache = new Map(); // 크기·모양별 { key(1/30초), cv } (기공옥 구체와 기공포 구슬이 함께 씀)
     function qiGkBody(r, ts, sx, sy) {
-      const shape = Math.round(r) + ',' + sx.toFixed(2) + ',' + sy.toFixed(2), key = Math.floor(ts * 30);
+      const shape = qiPalNow + ':' + Math.round(r) + ',' + sx.toFixed(2) + ',' + sy.toFixed(2), key = Math.floor(ts * 30); // 외형 색마다 따로
       let ent = qiGkBodyCache.get(shape);
       if (ent && ent.key === key) return ent.cv;
       if (!ent) { if (qiGkBodyCache.size > 12) qiGkBodyCache.clear(); ent = { key, cv: document.createElement('canvas') }; qiGkBodyCache.set(shape, ent); }
@@ -34509,8 +34539,10 @@
     // qi_hit (구체 터짐·손끝 섬광) · qi_roar (몸에서 퍼지는 기 파동) · qi_beam (기공파) · qi_reflect (튕겨낸 자리)
     // qi_charge (기공파 모으기) · qi_genki_charge (머리 위 기공옥) · qi_genki_fall (내리꽂음) · qi_genki_boom (터짐)
     function drawQigongEffect(ctx, ef, p) {
-      const R = QI_RAMP, t = sim.tickCount || 0;
+      let R = QI_RAMP; const t = sim.tickCount || 0;
       if (ef.sr && drawQsrEffect(ctx, ef, p)) return; // 시크릿 레어 (청기)
+      qiUsePal(ef.sv || (ef.uid ? qiSkinOf(qiUnitById(ef.uid)) : 0)); // 외형 색 (모으기는 uid로 시전자를 찾음)
+      R = qiRamp5();
       if (ef.type === 'qi_hit') {
         if (ef.j) { drawQiJHit(ctx, ef, p); return; }
         drawPixelBurst(ctx, ef.x, ef.y, ef.r || 24, p, R, pfxSeedOf(ef), ef.small ? { sparks: 4, noRing: true, coreK: 0.3 } : { sparks: 8 });
@@ -34583,29 +34615,39 @@
     }
     // 체력바 아래 기 구슬 5칸 · 기공막 (몸을 감싼 도트 막). 실시간 화면은 packLiveUnitExtra로 받은 값
     function drawQigongUnitFx(ctx, u, bx, by, barW, tick) {
-      const n = qiOf(u), R = QI_RAMP;
+      const n = qiOf(u); let R = QI_RAMP;
       const W = barW + 2, x0 = bx - 1, y = by + 10, gap = 1, cw = (W - gap * (QI_MAX - 1)) / QI_MAX;
       for (let k = 0; k < QI_MAX; k++) {
         const x = Math.round(x0 + k * (cw + gap)), w = Math.round(x0 + k * (cw + gap) + cw) - x;
         ctx.fillStyle = '#042f2e'; ctx.fillRect(x, y - 1, w, 5);
-        ctx.fillStyle = k < n ? (n >= QI_MAX && (tick >> 3) % 2 ? R[4] : R[2]) : '#134e4a';
+        ctx.fillStyle = k < n ? R[2] : '#134e4a'; // 다 차도 깜박이지 않음 (2026-11-17 사용자)
         ctx.fillRect(x + 1, y, w - 2, 3);
       }
-      if (n > 0) { // 기가 쌓일수록 몸 둘레로 솟는 기 알갱이가 많아짐 (전장 좌표로 그리므로 유닛 원점을 되돌림)
-        const s = Math.sqrt(u.sizeScale || 1);
+      if (n > 0) { // 축기 1개마다 몸 둘레를 도는 작은 기의 구체 1개 (외형 구슬 그림 그대로: 기본·1~5 qiJBall, SR qsrMass). 전장 좌표로 그리므로 유닛 원점을 되돌림
+        const s = Math.sqrt(u.sizeScale || 1), sr = qiSR(u), ts = tick / 60;
+        if (!sr) { qiUsePal(qiSkinOf(u)); R = qiRamp5(); }
+        const cx = u.x, cy = u.y - 20 * (u.sizeScale || 1), rx = 22 * s, ry = 7 * s, rr = 2.6 * s, spin = ts * 2.4;
+        const orbs = [];
+        for (let i = 0; i < n; i++) { const a = spin + i * Math.PI * 2 / n; orbs.push([a, Math.sin(a)]); }
+        orbs.sort((p, q) => p[1] - q[1]); // 뒤쪽(위) 구체부터
         ctx.save();
         ctx.translate(-Math.round(u.x), -Math.round(u.y));
-        for (let i = 0; i < n * 2; i++) {
-          const ph = ((tick * 0.02) + i * 0.137) % 1, a = i * 2.39996;
-          ctx.globalAlpha = 0.7 * (1 - ph);
-          ctx.fillStyle = ph < 0.3 ? R[4] : R[3];
-          pfxDot(ctx, u.x + Math.cos(a) * 16 * s, u.y + 8 - ph * 60 * s, 2);
-        }
+        orbs.forEach(([a, z]) => {
+          const k = 0.55 + 0.45 * (z + 1) / 2, r = rr * (0.8 + 0.2 * (z + 1) / 2); // 뒤쪽은 작고 옅게
+          for (let j = 1; j <= 3; j++) { // 도는 길을 따라 옅어지는 꼬리 알갱이
+            const b = a - j * 0.22;
+            ctx.globalAlpha = k * (0.55 - j * 0.15); ctx.fillStyle = sr ? QSR_HEX[j < 2 ? 6 : 5] : R[j < 2 ? 4 : 3];
+            pfxDot(ctx, cx + Math.cos(b) * rx, cy + Math.sin(b) * ry, j < 2 ? 2 : 1);
+          }
+          ctx.globalAlpha = 1;
+          const x = cx + Math.cos(a) * rx, y = cy + Math.sin(a) * ry;
+          if (sr) qsrMass(ctx, x, y, r, ts + a, k); else qiJBall(ctx, x, y, r, ts + a, k);
+        });
         ctx.restore();
       }
       if (qiBarrierOn(u)) { // 이 구간은 원점이 유닛 자리(ctx.translate(u.x, u.y))라 전장 좌표로 그리는 막은 원점을 되돌려서 그림 (전엔 화면 밖에 그려져 안 보였음)
         ctx.save(); ctx.translate(-Math.round(u.x), -Math.round(u.y));
-        if (qiSR(u)) drawQsrBarrier(ctx, u, tick); else drawQiBarrier(ctx, u, tick);
+        if (qiSR(u)) drawQsrBarrier(ctx, u, tick); else { qiUsePal(qiSkinOf(u)); drawQiBarrier(ctx, u, tick); }
         ctx.restore();
       }
     }
