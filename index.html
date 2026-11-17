@@ -34613,9 +34613,43 @@
       if (ef.type === 'qi_genki_fall') { drawQiGenkiFall(ctx, ef, p); return; }
       if (ef.type === 'qi_genki_boom') drawQiGenkiBoom(ctx, ef, p);
     }
+    // 축기 1개마다 몸 둘레를 도는 작은 기의 구체 1개 (외형 구슬 그림 그대로: 기본·1~5 qiJBall, SR qsrMass). 전장 좌표로 그리므로 유닛 원점을 되돌림
+    //   front=false는 캐릭터를 그리기 전(몸 뒤로 가는 구체), true는 캐릭터 뒤(몸 앞을 지나는 구체)
+    function drawQiOrbits(ctx, u, tick, front) {
+      const n = qiOf(u);
+      if (!n) return;
+      let R = QI_RAMP;
+      const s = Math.sqrt(u.sizeScale || 1), sr = qiSR(u), ts = tick / 60;
+      if (!sr) { qiUsePal(qiSkinOf(u)); R = qiRamp5(); }
+      const cx = u.x, cy = u.y - 20 * (u.sizeScale || 1), rad = 21 * s, rr = 2.6 * s;
+      // 구체마다 기운 궤도면이 달라(기울기·방향 제각각) 원자 모형처럼 여러 각도로 돌고, 궤도면도 천천히 돌아 같은 둘레를 되풀이하지 않음
+      const pos = (i, q) => {
+        const tilt = 0.35 + ((i * 0.618) % 1) * 2.4, yaw = i * 2.1 + ts * (0.35 + 0.1 * (i % 3)) * (i % 2 ? -1 : 1);
+        const px = Math.cos(q), py = Math.sin(q) * Math.cos(tilt), pz = Math.sin(q) * Math.sin(tilt), cyw = Math.cos(yaw), syw = Math.sin(yaw);
+        return [cx + (px * cyw - pz * syw) * rad, cy + py * rad * 0.85, px * syw + pz * cyw];
+      };
+      const orbs = [];
+      for (let i = 0; i < n; i++) { const q = ts * (2.2 + 0.25 * (i % 3)) + i * Math.PI * 2 / n; orbs.push([i, q, pos(i, q)]); }
+      orbs.sort((p, q) => p[2][2] - q[2][2]); // 뒤쪽 구체부터
+      const mine = orbs.filter(o => (o[2][2] >= 0) === front);
+      if (!mine.length) return;
+      ctx.save();
+      ctx.translate(-Math.round(u.x), -Math.round(u.y));
+      mine.forEach(([i, q, [x, y, z]]) => {
+        const k = 0.55 + 0.45 * (z + 1) / 2, r = rr * (0.8 + 0.2 * (z + 1) / 2); // 뒤쪽은 작고 옅게
+        for (let j = 1; j <= 3; j++) { // 도는 길을 따라 옅어지는 꼬리 알갱이
+          const [tx, ty] = pos(i, q - j * 0.22);
+          ctx.globalAlpha = k * (0.55 - j * 0.15); ctx.fillStyle = sr ? QSR_HEX[j < 2 ? 6 : 5] : R[j < 2 ? 4 : 3];
+          pfxDot(ctx, tx, ty, j < 2 ? 2 : 1);
+        }
+        ctx.globalAlpha = 1;
+        if (sr) qsrMass(ctx, x, y, r, ts + q, k); else qiJBall(ctx, x, y, r, ts + q, k);
+      });
+      ctx.restore();
+    }
     // 체력바 아래 기 구슬 5칸 · 기공막 (몸을 감싼 도트 막). 실시간 화면은 packLiveUnitExtra로 받은 값
     function drawQigongUnitFx(ctx, u, bx, by, barW, tick) {
-      const n = qiOf(u); let R = QI_RAMP;
+      const n = qiOf(u), R = QI_RAMP;
       const W = barW + 2, x0 = bx - 1, y = by + 10, gap = 1, cw = (W - gap * (QI_MAX - 1)) / QI_MAX;
       for (let k = 0; k < QI_MAX; k++) {
         const x = Math.round(x0 + k * (cw + gap)), w = Math.round(x0 + k * (cw + gap) + cw) - x;
@@ -34623,33 +34657,7 @@
         ctx.fillStyle = k < n ? R[2] : '#134e4a'; // 다 차도 깜박이지 않음 (2026-11-17 사용자)
         ctx.fillRect(x + 1, y, w - 2, 3);
       }
-      if (n > 0) { // 축기 1개마다 몸 둘레를 도는 작은 기의 구체 1개 (외형 구슬 그림 그대로: 기본·1~5 qiJBall, SR qsrMass). 전장 좌표로 그리므로 유닛 원점을 되돌림
-        const s = Math.sqrt(u.sizeScale || 1), sr = qiSR(u), ts = tick / 60;
-        if (!sr) { qiUsePal(qiSkinOf(u)); R = qiRamp5(); }
-        const cx = u.x, cy = u.y - 20 * (u.sizeScale || 1), rad = 21 * s, rr = 2.6 * s;
-        // 구체마다 기운 궤도면이 달라(기울기·방향 제각각) 원자 모형처럼 여러 각도로 돌고, 궤도면도 천천히 돌아 같은 둘레를 되풀이하지 않음
-        const pos = (i, q) => {
-          const tilt = 0.35 + ((i * 0.618) % 1) * 2.4, yaw = i * 2.1 + ts * (0.35 + 0.1 * (i % 3)) * (i % 2 ? -1 : 1);
-          const px = Math.cos(q), py = Math.sin(q) * Math.cos(tilt), pz = Math.sin(q) * Math.sin(tilt), cyw = Math.cos(yaw), syw = Math.sin(yaw);
-          return [cx + (px * cyw - pz * syw) * rad, cy + py * rad * 0.85, px * syw + pz * cyw];
-        };
-        const orbs = [];
-        for (let i = 0; i < n; i++) { const q = ts * (2.2 + 0.25 * (i % 3)) + i * Math.PI * 2 / n; orbs.push([i, q, pos(i, q)]); }
-        orbs.sort((p, q) => p[2][2] - q[2][2]); // 뒤쪽 구체부터
-        ctx.save();
-        ctx.translate(-Math.round(u.x), -Math.round(u.y));
-        orbs.forEach(([i, q, [x, y, z]]) => {
-          const k = 0.55 + 0.45 * (z + 1) / 2, r = rr * (0.8 + 0.2 * (z + 1) / 2); // 뒤쪽은 작고 옅게
-          for (let j = 1; j <= 3; j++) { // 도는 길을 따라 옅어지는 꼬리 알갱이
-            const [tx, ty] = pos(i, q - j * 0.22);
-            ctx.globalAlpha = k * (0.55 - j * 0.15); ctx.fillStyle = sr ? QSR_HEX[j < 2 ? 6 : 5] : R[j < 2 ? 4 : 3];
-            pfxDot(ctx, tx, ty, j < 2 ? 2 : 1);
-          }
-          ctx.globalAlpha = 1;
-          if (sr) qsrMass(ctx, x, y, r, ts + q, k); else qiJBall(ctx, x, y, r, ts + q, k);
-        });
-        ctx.restore();
-      }
+      drawQiOrbits(ctx, u, tick, true); // 축기 구체 앞쪽 반 (뒤쪽 반은 캐릭터보다 먼저 그림)
       if (qiBarrierOn(u)) { // 이 구간은 원점이 유닛 자리(ctx.translate(u.x, u.y))라 전장 좌표로 그리는 막은 원점을 되돌려서 그림 (전엔 화면 밖에 그려져 안 보였음)
         ctx.save(); ctx.translate(-Math.round(u.x), -Math.round(u.y));
         if (qiSR(u)) drawQsrBarrier(ctx, u, tick); else { qiUsePal(qiSkinOf(u)); drawQiBarrier(ctx, u, tick); }
@@ -38407,6 +38415,7 @@
         if (srKingFx) drawRareOrbitStars(ctx, tick, headTopY + jumpY, rarePal, front); // 별은 몸을 감싸며 돎 (뒤쪽 반 바퀴는 몸 뒤, 앞쪽은 몸 앞)
       };
       if (rareFx) drawRareAura(false);
+      if (u.alive && u.job === 'qigong' && !u.monsterType) drawQiOrbits(ctx, u, tick, false); // 축기 구체 중 몸 뒤로 가는 것
       // 성기사 신성 보호·축성 시전: 시전 막대 동안 발밑에 마법진 (신성 보호 = 푸른 마법진, 축성 = 금빛 마법진·반짝임). 막대가 찰수록 진해지고 커지며 천천히 일렁임
       const palCircle = u.alive && u.job === 'paladin' && !u.monsterType && u.casting
         && (u.casting.key === 'holy_shield' || u.casting.key === 'vow' ? { img: (u.casting.key === 'vow' ? PALADIN_VOW_FX : PALADIN_HS_FX).circle, cy: 0.5, k: PALADIN_HS_CIRCLE_K } : (u.casting.key === 'consecrate' ? { img: PALADIN_CONSEC_FX.cast, cy: PALADIN_CONSEC_FX.cast.cy, k: PALADIN_HS_CIRCLE_K } : null));
