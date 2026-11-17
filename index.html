@@ -35152,6 +35152,7 @@
     const muRgb = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
     const MU_RGB = {}; Object.keys(MU_RAMPS).forEach(k => { MU_RGB[k] = MU_RAMPS[k].map(muRgb); });
     const MU_GOLD = ['#713f12', '#ca8a04', '#facc15', '#fef08a', '#fffbeb'], MU_GOLD_RGB = MU_GOLD.map(muRgb);
+    MU_RGB.mu_naerim = MU_RGB.mu_naerim_in = MU_GOLD_RGB; // 내림굿 안개는 금빛
     const muSstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
     // 원 하나를 칸 그림으로: fn(nd) → [램프 자리 v, 불투명도 a] (nd = 가운데 0 ~ 반지름 1). fn이 셋째 값으로 램프를 주면 그 칸은 그 램프로
     function muPaintDisc(R, ramp, fn) {
@@ -35216,23 +35217,24 @@
     }
     // 장판 종류별 안개 (2026-11-18 사용자 시안): 치유 F = 작은 결이 왼쪽으로 · 강화 B = 작은 결이 위로 솟음 (exports/shaman-fog-power). [dx, dy] = 칸/틱
     //   약화 C = 'in': 안개 한 장을 가운데 쪽으로 점점 줄여 그려(두 벌을 엇갈려 섞음) 끝에서 가운데로 빨려 드는 것처럼 (exports/shaman-fog-weak)
-    const MU_FOG_FLOW = { mu_heal: [[0.142, 0], [-0.126, 0]], mu_power: [[0.142, 0], [0, -0.14]], mu_weak: 'in', mu_curse: [[0.142, 0], [0.105, 0.07]], mu_guard: 'wall' }; // 저주 A = 작은 결이 비스듬히 가라앉음 (exports/shaman-fog-curse)
+    const MU_FOG_FLOW = { mu_heal: [[0.142, 0], [-0.126, 0]], mu_power: [[0.142, 0], [0, -0.14]], mu_weak: 'in', mu_curse: [[0.142, 0], [0.105, 0.07]], mu_guard: 'wall', mu_naerim: 'out', mu_naerim_in: 'in' }; // 내림굿: 착지 인장 안개는 바깥으로 퍼지고(out), 기도 중 발밑 안개는 빨려 듦(in) · 저주 A = 작은 결이 비스듬히 가라앉음 (exports/shaman-fog-curse)
     //   보호 D = 'wall': 안쪽은 고요한 옅은 안개, 범위 끝(반지름 70~96%)에만 위로 일렁이는 안개 벽 (exports/shaman-fog-guard)
     const muFogTiles = {};
-    const muFogMaskCache = new Map(), muFogScratch = document.createElement('canvas'), muFogScratch2 = document.createElement('canvas');
+    const muFogMaskCache = new Map(), muFogScratchBy = new Map(), muFogScratch2 = document.createElement('canvas');
     function muFieldFog(ctx, z, kind, rr, alpha, two, t) {
       const flow = MU_FOG_FLOW[kind];
       const tiles = muFogTiles[kind] || (muFogTiles[kind] = flow === 'wall' ? [ // 안쪽 큰 결 (80×50 → 40×25칸) · 벽 결 (34×22 → 17×11칸)
         muFogTile(kind, 40, 25, 7, f => { const d = muSstep(0.4, 0.8, f); return [0.25 + 0.18 * d, 0.04 + 0.18 * d]; }),
         muFogTile(kind, 17, 11, 21, f => { const g = 0.4 + 0.6 * muSstep(0.3, 0.7, f); return [0.25 + 0.6 * g, 0.6 * g]; })
-      ] : flow === 'in' ? [muFogTile(kind, 27.5, 27.5, 3, f => { const d = muSstep(0.3, 0.8, f); return [0.15 + 0.4 * d, 0.08 + 0.42 * d]; })] : [ // 큰 결 (게임 px 95×55마다 노이즈 1 = 2px 칸 47.5×27.5) · 작은 결 (42×28 → 21×14)
+      ] : flow === 'in' || flow === 'out' ? [muFogTile(kind, 27.5, 27.5, 3, f => { const d = muSstep(0.3, 0.8, f); return [0.15 + 0.4 * d, 0.08 + 0.42 * d]; })] : [ // 큰 결 (게임 px 95×55마다 노이즈 1 = 2px 칸 47.5×27.5) · 작은 결 (42×28 → 21×14)
         muFogTile(kind, 47.5, 27.5, 0, f => { const d1 = muSstep(0.4, 0.8, f); return [0.2 + 0.4 * d1, 0.06 + 0.32 * d1]; }),
         muFogTile(kind, 21, 14, 40, f => { const d2 = muSstep(0.45, 0.85, f); return [kind === 'mu_curse' ? 0.35 + 0.3 * d2 : 0.5 + 0.35 * d2, 0.26 * d2]; }) // 저주는 분홍빛이 돌지 않게 한 단계 어둡게
       ]);
       const n = Math.max(4, Math.ceil(z.r * 2 / MU_CELL)), mk = Math.round(z.r);
       let mask = muFogMaskCache.get(mk); // 가장자리 마스크: 반지름 72%부터 노이즈로 들쭉날쭉 옅어져 끝에서 사라짐
       if (!mask) { mask = muPaintDisc(z.r, MU_RGB.mu_heal, nd => [0, 1 - muSstep(0.72, 1, nd + (muPFbm(nd * 9, nd * 3 + 5, 64, 64) - 0.5) * 0.25)]); if (muFogMaskCache.size > 20) muFogMaskCache.clear(); muFogMaskCache.set(mk, mask); }
-      const s = muFogScratch; if (s.width !== n) { s.width = s.height = n; }
+      let s = muFogScratchBy.get(n); // 크기마다 따로 (장판·내림굿 크기가 번갈아 와도 매번 새로 잡지 않게)
+      if (!s) { if (muFogScratchBy.size > 8) muFogScratchBy.clear(); s = document.createElement('canvas'); s.width = s.height = n; muFogScratchBy.set(n, s); }
       const c = s.getContext('2d'); c.imageSmoothingEnabled = false;
       c.globalCompositeOperation = 'source-over'; c.clearRect(0, 0, n, n);
       if (flow === 'wall') {
@@ -35245,9 +35247,9 @@
         for (let x = -ox1; x < n; x += t1.width) for (let y = -oy1; y < n; y += t1.height) c2.drawImage(t1, x, y);
         c2.globalCompositeOperation = 'destination-in'; c2.drawImage(band, 0, 0, n, n);
         c.drawImage(s2, 0, 0);
-      } else if (flow === 'in') { // 1 + ph배로 키운 노이즈를 읽음 = 그림을 1 / (1 + ph)로 줄여 가운데 기준으로 깔기
-        const tile = tiles[0], ph = (t * 0.004) % 1, w = Math.abs(ph * 2 - 1);
-        [[1 + ph, 1 - w, 0], [1 + (ph + 0.5) % 1, w, 0.5]].forEach(([a, wt, sh]) => {
+      } else if (flow === 'in' || flow === 'out') { // in: 1 + ph배로 키운 노이즈를 읽음 = 그림을 1 / (1 + ph)로 줄여 가운데 기준으로 깔기 (out은 반대로 2 - ph배 = 바깥으로 퍼짐)
+        const tile = tiles[0], ph = (t * 0.004) % 1, ph2 = (ph + 0.5) % 1, w = Math.abs(ph * 2 - 1), o = flow === 'out';
+        [[o ? 2 - ph : 1 + ph, 1 - w, 0], [o ? 2 - ph2 : 1 + ph2, w, 0.5]].forEach(([a, wt, sh]) => {
           const tw = tile.width / a, th = tile.height / a, x0 = n / 2 - (Math.ceil(n / 2 / tw) + sh) * tw, y0 = n / 2 - (Math.ceil(n / 2 / th) + sh) * th;
           c.globalAlpha = wt;
           for (let x = x0; x < n; x += tw) for (let y = y0; y < n; y += th) c.drawImage(tile, Math.round(x), Math.round(y), Math.ceil(tw), Math.ceil(th));
@@ -35343,14 +35345,17 @@
     // ===== 내림굿 그림 (2026-11-17 사용자 시안) =====
     // 시전 막대(기도) 동안: 0.5초마다 방울 소리 물결이 퍼지고 모은 손 위에 금빛이 모임 (오방색 고리는 2026-11-17 사용자 요청으로 뺌)
     // 발동(mu_naerim 이펙트): 0~18틱 두 팔 벌리고 떠오름 = 금빛 부적 열두 장이 나선으로 감아 오름 (오방색 천 띠는 뺌)
-    //   18틱 착지 = 바닥에 큰 금빛 인장(가운데에서 바깥으로 옅어지는 그라데이션 + 가는 테두리 + 팔괘) + 충격파, 감아 오르던 부적이 사방으로 터져 눈처럼 떨어짐
+    //   18틱 착지 = 바닥에 큰 금빛 인장(가운데에서 바깥으로 옅어지는 그라데이션 + 팔괘) + 충격파, 감아 오르던 부적이 사방으로 터져 눈처럼 떨어짐
+    //   2026-11-18 안개 장판과 맞춤: 기도 중 발밑에 금빛 안개가 빨려 들며 모임 · 인장은 테두리 선 없이 바깥으로 퍼지는 금빛 안개를 덮음 · 충격파는 선 대신 들쭉날쭉한 안개 고리
     const MU_NAERIM_FX_TICKS = 110, MU_NAERIM_LAND = 18, MU_SEAL_R = 150;
     const MU_TRIGRAM = ['111', '011', '101', '001', '110', '010', '100', '000'];
     let muSealTex = null;
-    function muNaerimSealTex() { // 착지 인장: 가운데가 진하고 바깥으로 옅어짐 + 끝 가는 테두리 (금빛)
-      if (!muSealTex) muSealTex = muPaintDisc(MU_SEAL_R, MU_GOLD_RGB, nd => { const g = Math.pow(nd, 1.3), h = MU_HAIR(nd); return [(0.5 - 0.22 * g) * (1 - h) + 0.5 * h, 0.42 - 0.24 * g + 0.14 * h]; });
+    function muNaerimSealTex() { // 착지 인장: 가운데가 진하고 바깥으로 옅어짐 (금빛)
+      if (!muSealTex) muSealTex = muPaintDisc(MU_SEAL_R, MU_GOLD_RGB, nd => { const g = Math.pow(nd, 1.3); return [0.5 - 0.22 * g, (0.42 - 0.24 * g) * (1 - muSstep(0.75, 1, nd))]; }); // 테두리 선 없이 끝이 옅어짐 (2026-11-18 안개 장판과 맞춤)
       return muSealTex;
     }
+    let muShockTex = null; // 충격파 안개 고리: 반지름 88% 둘레의 띠, 둘레를 따라 노이즈로 짙고 옅음
+    const muNaerimShockTex = () => muShockTex || (muShockTex = muPaintDisc(MU_SEAL_R, MU_GOLD_RGB, (nd, a) => { const f = muPFbm(Math.cos(a) * 3 + 8, Math.sin(a) * 3 + 8, 64, 64); return [0.45 + 0.4 * f, Math.exp(-Math.pow((nd - 0.88 + (f - 0.5) * 0.08) / 0.07, 2)) * (0.35 + 0.65 * muSstep(0.3, 0.7, f))]; }));
     // 바닥 (drawZones 다음 · 유닛 밑): 기도 중 방울 물결·손 위 금빛 · 착지 인장
     function drawShamanGround(ctx) {
       const t = sim.tickCount || 0;
@@ -35362,6 +35367,7 @@
           ctx.save(); ctx.globalAlpha *= (1 - p) * 0.6; ctx.strokeStyle = MU_GOLD[3]; ctx.lineWidth = 2;
           ctx.beginPath(); ctx.ellipse(u.x, u.y - 50 * k, r2, r2 * 0.6, 0, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
         }
+        muFieldFog(ctx, { x: u.x, y: u.y, r: 90 * k }, 'mu_naerim_in', 90 * k * (0.7 + 0.3 * q), (ctx.globalAlpha || 1) * (0.3 + 0.6 * q), false, t); // 발밑에 금빛 안개가 빨려 들며 모임
         muGlow(ctx, u.x + 4 * (u.facingDir || 1) * k, u.y - 108 * k, (16 + 12 * q) * k, MU_GOLD[3], 0.4 + 0.8 * q);
       });
       (sim.effects || []).forEach(ef => {
@@ -35370,16 +35376,18 @@
         const fx = u ? u.x : ef.x, fy = u ? u.y : ef.y;
         if (tk >= MU_NAERIM_LAND) { // 착지 인장
           const st = tk - MU_NAERIM_LAND, e = pfxEaseOutQuart(Math.min(1, st / 16)), R0 = MU_SEAL_R * k * (0.4 + 0.6 * e), fade = Math.min(1, ef.life / 30);
-          ctx.save(); ctx.imageSmoothingEnabled = false; ctx.globalAlpha *= fade;
-          ctx.drawImage(muNaerimSealTex(), fx - R0, fy - R0, R0 * 2, R0 * 2);
+          ctx.save(); ctx.imageSmoothingEnabled = false; const a0 = ctx.globalAlpha * fade;
+          ctx.globalAlpha = a0 * 0.6; ctx.drawImage(muNaerimSealTex(), fx - R0, fy - R0, R0 * 2, R0 * 2);
+          muFieldFog(ctx, { x: fx, y: fy, r: MU_SEAL_R * k }, 'mu_naerim', R0, a0, false, t); // 바깥으로 퍼지는 금빛 안개
+          ctx.globalAlpha = a0;
           ctx.fillStyle = MU_GOLD[3]; // 팔괘: 막대 셋 (이어진 줄 / 가운데 끊긴 줄)
           for (let i = 0; i < 8; i++) {
             const a = i / 8 * Math.PI * 2 + t * 0.004, d = R0 * 0.8, x = fx + Math.cos(a) * d, y = fy + Math.sin(a) * d;
             for (let b = 0; b < 3; b++) { const yy = Math.round(y - 4 + b * 4); if (MU_TRIGRAM[i][b] === '1') ctx.fillRect(Math.round(x - 7), yy, 14, 2); else { ctx.fillRect(Math.round(x - 7), yy, 5, 2); ctx.fillRect(Math.round(x + 2), yy, 5, 2); } }
           }
-          if (st < 16) { // 충격파: 안쪽에서 앞머리까지 옅어지는 띠
-            ctx.globalAlpha = (1 - st / 16) * 0.55; ctx.strokeStyle = MU_GOLD[3]; ctx.lineWidth = 4;
-            ctx.beginPath(); ctx.arc(fx, fy, MU_SEAL_R * k * (0.3 + 1.1 * e), 0, Math.PI * 2); ctx.stroke();
+          if (st < 22) { // 충격파: 들쭉날쭉한 안개 고리가 밀려 나가며 옅어짐
+            const e2 = pfxEaseOutQuart(Math.min(1, st / 22)), Rs = MU_SEAL_R * k * (0.35 + 1.0 * e2) / 0.88;
+            ctx.globalAlpha = a0 * (1 - st / 22) * 0.95; ctx.drawImage(muNaerimShockTex(), fx - Rs, fy - Rs, Rs * 2, Rs * 2);
           }
           ctx.restore();
         }
