@@ -35215,14 +35215,14 @@
     }
     // 장판 종류별 안개 (2026-11-18 사용자 시안): 치유 F = 작은 결이 왼쪽으로 · 강화 B = 작은 결이 위로 솟음 (exports/shaman-fog-power). [dx, dy] = 칸/틱
     //   약화 C = 'in': 안개 한 장을 가운데 쪽으로 점점 줄여 그려(두 벌을 엇갈려 섞음) 끝에서 가운데로 빨려 드는 것처럼 (exports/shaman-fog-weak)
-    const MU_FOG_FLOW = { mu_heal: [[0.142, 0], [-0.126, 0]], mu_power: [[0.142, 0], [0, -0.14]], mu_weak: 'in' };
+    const MU_FOG_FLOW = { mu_heal: [[0.142, 0], [-0.126, 0]], mu_power: [[0.142, 0], [0, -0.14]], mu_weak: 'in', mu_curse: [[0.142, 0], [0.105, 0.07]] }; // 저주 A = 작은 결이 비스듬히 가라앉음 (exports/shaman-fog-curse)
     const muFogTiles = {};
     const muFogMaskCache = new Map(), muFogScratch = document.createElement('canvas');
     function muFieldFog(ctx, z, kind, rr, alpha, two, t) {
       const flow = MU_FOG_FLOW[kind];
       const tiles = muFogTiles[kind] || (muFogTiles[kind] = flow === 'in' ? [muFogTile(kind, 27.5, 27.5, 3, f => { const d = muSstep(0.3, 0.8, f); return [0.15 + 0.4 * d, 0.08 + 0.42 * d]; })] : [ // 큰 결 (게임 px 95×55마다 노이즈 1 = 2px 칸 47.5×27.5) · 작은 결 (42×28 → 21×14)
         muFogTile(kind, 47.5, 27.5, 0, f => { const d1 = muSstep(0.4, 0.8, f); return [0.2 + 0.4 * d1, 0.06 + 0.32 * d1]; }),
-        muFogTile(kind, 21, 14, 40, f => { const d2 = muSstep(0.45, 0.85, f); return [0.5 + 0.35 * d2, 0.26 * d2]; })
+        muFogTile(kind, 21, 14, 40, f => { const d2 = muSstep(0.45, 0.85, f); return [kind === 'mu_curse' ? 0.35 + 0.3 * d2 : 0.5 + 0.35 * d2, 0.26 * d2]; }) // 저주는 분홍빛이 돌지 않게 한 단계 어둡게
       ]);
       const n = Math.max(4, Math.ceil(z.r * 2 / MU_CELL)), mk = Math.round(z.r);
       let mask = muFogMaskCache.get(mk); // 가장자리 마스크: 반지름 72%부터 노이즈로 들쭉날쭉 옅어져 끝에서 사라짐
@@ -35307,7 +35307,7 @@
       ctx.save();
       ctx.imageSmoothingEnabled = false;
       ctx.globalAlpha = base * fade;
-      if (MU_FOG_FLOW[kind]) { ctx.globalAlpha = base * fade * 0.45; ctx.drawImage(tex.base, z.x - rr, z.y - rr, rr * 2, rr * 2); muFieldFog(ctx, z, kind, rr, base * fade, two, t); ctx.globalAlpha = base * fade; } // 치유·강화·약화: 옅은 바닥 위에 안개
+      if (MU_FOG_FLOW[kind]) { ctx.globalAlpha = base * fade * 0.45; ctx.drawImage(tex.base, z.x - rr, z.y - rr, rr * 2, rr * 2); muFieldFog(ctx, z, kind, rr, base * fade, two, t); ctx.globalAlpha = base * fade; } // 치유·강화·약화·저주: 옅은 바닥 위에 안개
       else ctx.drawImage(tex.base, z.x - rr, z.y - rr, rr * 2, rr * 2);
       if (front > 0.02) { ctx.globalAlpha = base * fade * front; ctx.drawImage(tex.lead, z.x - rr, z.y - rr, rr * 2, rr * 2); }
       ctx.globalAlpha = base;

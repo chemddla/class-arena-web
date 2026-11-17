@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>무녀 저주 장판 시안</title>
+<style>
+  body { margin: 0; background: #111; color: #ddd; font: 14px/1.4 system-ui, sans-serif; }
+  h1 { font-size: 16px; margin: 12px 16px 4px; }
+  p { margin: 0 16px 10px; color: #999; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; padding: 0 16px 16px; }
+  figure { margin: 0; background: #1b1b1b; border-radius: 6px; overflow: hidden; }
+  canvas { width: 100%; display: block; image-rendering: pixelated; }
+  figcaption { padding: 6px 10px 8px; font-size: 13px; } figcaption b { color: #f87171; }
+</style></head><body>
+<h1>무녀 저주 부적 장판 · 시안</h1>
+<p>게임 크기 그대로(반지름 264 = 2.2칸, 2px 도트 칸, 램프 + 4×4 바이어 디더, 더해지는 빛). 6초마다 꽂힘 → 퍼짐 → 사라짐 반복. 회색 선 = 전투 칸(120).</p>
+<div class="grid" id="g"></div>
+<script>
+'use strict';
+const R = 264, CELL = 2, W = 640, NC = Math.ceil(R * 1.12 * 2 / CELL); // 끝 안개가 반지름 12% 밖까지 살짝 번질 수 있게
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
+const rgb = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+const HEAL = ['#14532d', '#16a34a', '#4ade80', '#bbf7d0', '#f0fdf4'];
+const MIST = ['#1d4d3a', '#3c8f68', '#7fd1a4', '#c6efd8', '#f2fdf6']; // 물안개: 치유 램프를 조금 탁하고 희게
+const PAPER = ['#8a6d1e', '#e9c96a', '#f7e7a6', '#fff8d6'], INK = '#b91c1c';
+const GLYPH = ['.......', '.......', '.xxxxx.', '...x...', '.xxxxx.', '...x...', '.x.x.x.', '.xxxxx.', '...x...', '..x.x..', '.x...x.', '.......'];
+const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
+const ss = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const eoq = t => 1 - Math.pow(1 - clamp(t), 4);
+function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+// 값 노이즈 + 3겹 fBm
+const hsh = (x, y) => { let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+function vn(x, y) { const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf); const a = hsh(xi, yi), b = hsh(xi + 1, yi), c = hsh(xi, yi + 1), d = hsh(xi + 1, yi + 1); return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; }
+const fbm = (x, y) => vn(x, y) * 0.55 + vn(x * 2.03 + 17.3, y * 2.03 + 5.1) * 0.3 + vn(x * 4.1 + 3.7, y * 4.1 + 29.9) * 0.15;
+const edgeMask = (nd, f, w = 0.25) => 1 - ss(0.72, 1.0, nd + (f - 0.5) * w); // 끝을 노이즈로 들쭉날쭉 녹임
+
+// 안개 한 장(칸 그림)을 매 프레임 새로: fn(x, y, nd, ang, t) → [램프 자리, 불투명도]
+function paintFog(cx, img, ramp, prog, fn, t) {
+  const d = img.data, n = NC, L = ramp.length - 1; d.fill(0);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const x = (i + 0.5 - n / 2) * CELL, y = (j + 0.5 - n / 2) * CELL, nd = Math.hypot(x, y) / (R * prog);
+    if (nd >= 1.12) continue;
+    const r = fn(x / prog, y / prog, nd, Math.atan2(y, x), t); if (!r || r[1] <= 0.01) continue;
+    const lv = clamp(r[0]) * L, b = Math.floor(lv), c = ramp[Math.min(L, b + (lv - b > BAYER[(i & 3) + (j & 3) * 4] ? 1 : 0))], k = (j * n + i) * 4;
+    d[k] = c[0]; d[k + 1] = c[1]; d[k + 2] = c[2]; d[k + 3] = Math.min(255, r[1] * 255);
+  }
+  cx.putImageData(img, 0, 0);
+}
+const glowCache = new Map();
+function glow(ctx, x, y, r, hex, k) {
+  if (k <= 0.01) return; const key = hex + r | 0; let cv = glowCache.get(hex + '|' + Math.round(r));
+  if (!cv) { const n = Math.max(2, Math.round(r * 2)), [a, b, c] = rgb(hex); cv = document.createElement('canvas'); cv.width = cv.height = n; const g2 = cv.getContext('2d'), g = g2.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2); g.addColorStop(0, `rgba(${a},${b},${c},.9)`); g.addColorStop(0.4, `rgba(${a},${b},${c},.35)`); g.addColorStop(1, `rgba(${a},${b},${c},0)`); g2.fillStyle = g; g2.fillRect(0, 0, n, n); glowCache.set(hex + '|' + Math.round(r), cv); }
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha *= Math.min(1, k); ctx.drawImage(cv, x - r, y - r, r * 2, r * 2); ctx.restore();
+}
+const dot = (ctx, x, y, c, col) => { if (col) ctx.fillStyle = col; ctx.fillRect(Math.round(x / c) * c - c / 2, Math.round(y / c) * c - c / 2, c, c); };
+function charm(ctx, cx, cy, c, ang) {
+  ctx.save(); ctx.translate(Math.round(cx), Math.round(cy)); if (ang) ctx.rotate(ang);
+  const w = 7, h = 12, x0 = -w * c / 2, y0 = -h * c / 2;
+  for (let gy = 0; gy < h; gy++) for (let gx = 0; gx < w; gx++) {
+    const edge = gx === 0 || gy === 0 || gx === w - 1 || gy === h - 1;
+    ctx.fillStyle = edge ? PAPER[0] : (gx + gy < 4 ? PAPER[3] : gx > 4 && gy > 8 ? PAPER[1] : PAPER[2]); ctx.fillRect(x0 + gx * c, y0 + gy * c, c, c);
+    if (!edge && GLYPH[gy][gx] === 'x') { ctx.fillStyle = INK; ctx.fillRect(x0 + gx * c, y0 + gy * c, c, c); }
+  }
+  ctx.fillStyle = CU[1]; ctx.fillRect(x0 + 2 * c, y0 + c, 3 * c, c); ctx.fillStyle = CU[3]; ctx.fillRect(x0 + 3 * c, y0 + c, c, c);
+  ctx.restore();
+}
+const CU = ['#450a0a', '#991b1b', '#dc2626', '#fca5a5', '#fef2f2'];
+const CU2 = ['#140404', '#3a0a0a', '#6b1414', '#a11d1d', '#e05252']; // 검붉은 연기: 흰 쪽을 빼고 어둡게
+// 게임의 저주 알갱이 (MU_MOTES.mu_curse 그대로: 검붉은 재가 크게 흔들리며 가라앉음)
+function motes(ctx, cx, cy, fade, t, n = 18, R2 = CU) {
+  const r = rng(6666), base = ctx.globalAlpha;
+  for (let i = 0; i < n; i++) {
+    const a0 = r() * 6.283, d0 = Math.sqrt(r()) * R * 0.82, ph = (t * 0.007 + r()) % 1, ph2 = r() * 6.283;
+    const x = cx + Math.cos(a0) * d0 + Math.sin(ph * 6 + ph2) * 5, y = cy + Math.sin(a0) * d0 - 36 + ph * 30, s = Math.sin(ph * Math.PI) * fade;
+    if (s <= 0.02) continue;
+    ctx.globalAlpha = base * s; dot(ctx, x, y, 2, R2[3]); ctx.globalAlpha = base * s * 0.8; dot(ctx, x, y - 2, 2, R2[2]); ctx.globalAlpha = base * s * 0.5; dot(ctx, x, y - 4, 2, R2[1]);
+    ctx.globalAlpha = base; glow(ctx, x, y, 8, R2[2], 0.35 * s);
+  }
+  ctx.globalAlpha = base;
+}
+const pulse = t => { const q = (t % 90) / 90; return q < 0.15 ? q / 0.15 : Math.pow(1 - (q - 0.15) / 0.85, 2); }; // 1.5초마다 저주가 걸리는 순간 확 붉어졌다 식음
+const SPOTS = (() => { const r = rng(99), o = []; for (let i = 0; i < 40; i++) { const a = r() * 6.283, d = Math.sqrt(r()) * R * 0.8; o.push([Math.cos(a) * d, Math.sin(a) * d]); } return o; })();
+
+// ===== 시안 =====
+const V = [
+  { id: 'A', name: '두 겹 핏빛 안개', note: '치유 F·강화 B와 같은 짜임: 큰 결은 오른쪽으로 느리게, 작은 결은 왼쪽 아래로 비스듬히 가라앉음. 한 벌로 맞음', ramp: CU, motes: 1,
+    fn: (x, y, nd, a, t) => { const f1 = fbm(x / 95 + t * 0.003, y / 55), f2 = fbm(x / 42 + 40 + t * 0.005, y / 28 + 11 - t * 0.005); const m = edgeMask(nd, f1); const d1 = ss(0.4, 0.8, f1), d2 = ss(0.45, 0.85, f2); return [0.12 + 0.3 * d1 + 0.3 * d2 * d1 + 0.1 * (1 - nd), (0.08 + 0.34 * d1 + 0.26 * d2) * m]; } },
+  { id: 'B', name: '촛불 연기', note: '(아이콘 🕯️) 바닥 여기저기서 가는 검붉은 연기 줄기가 꼬불꼬불 피어올라 퍼짐. 밑동은 촛불처럼 붉게 빛남', ramp: CU, motes: 0, candles: 1,
+    fn: (x, y, nd, a, t) => {
+      const f = fbm(x / 70 + t * 0.002, y / 45); const m = edgeMask(nd, f); let p = 0;
+      for (const [cx2, cy2] of CANDLES) { const h = cy2 - y; if (h < -6 || h > 150) continue; const wob = Math.sin(h / 18 - t * 0.06 + cx2) * (4 + h * 0.12), w = 4 + h * 0.16; p = Math.max(p, (1 - ss(0.4, 1, Math.abs(x - cx2 - wob) / w)) * (1 - h / 150) * (0.5 + 0.5 * ss(0.3, 0.6, fbm(x / 20, h / 14 + t * 0.03)))); }
+      const d = Math.max(ss(0.35, 0.8, f) * 0.45, p) * m; return [0.1 + 0.45 * d + 0.3 * p, (0.08 + 0.4 * d + 0.35 * p) * m];
+    } },
+  { id: 'C', name: '1.5초 저주 맥동', note: '장판이 1.5초마다(저주가 걸리는 박자) 확 붉어졌다 식고, 그때 바닥 곳곳 핏빛 점이 번쩍. 효과 박자가 눈에 보임', ramp: CU, motes: 1, flash: 1,
+    fn: (x, y, nd, a, t) => { const f = fbm(x / 80 - t * 0.002, y / 45 + t * 0.001); const m = edgeMask(nd, f); const d = ss(0.35, 0.8, f) * m, p = pulse(t); return [0.12 + 0.4 * d + 0.35 * p * d, (0.08 + 0.42 * d + 0.15 * p) * m]; } },
+  { id: 'D', name: '핏물 번짐', note: '짙은 얼룩이 바닥에 스며들 듯 천천히 번졌다 줄었다 함 (안개 덩어리 크기가 숨 쉬듯 바뀜)', ramp: CU, motes: 1,
+    fn: (x, y, nd, a, t) => { const f = fbm(x / 55, y / 40), th = 0.5 + 0.12 * Math.sin(t * 0.02 + fbm(x / 120, y / 120) * 6); const m = edgeMask(nd, f); const d = ss(th - 0.08, th + 0.12, f) * m, rim = ss(th - 0.1, th, f) * (1 - ss(th, th + 0.06, f)); return [0.1 + 0.35 * d + 0.4 * rim, (0.06 + 0.5 * d + 0.2 * rim) * m]; } },
+  { id: 'E', name: '저주 문양 고리', note: '검붉은 안개 위로 범위 끝을 따라 붉은 도트 문양 고리가 천천히 돎. 범위가 또렷하고 주술 느낌', ramp: CU, motes: 1, runes: 1,
+    fn: (x, y, nd, a, t) => { const f = fbm(x / 75 + t * 0.002, y / 45 - t * 0.002); const m = edgeMask(nd, f, 0.15); const d = ss(0.35, 0.8, f) * m; return [0.12 + 0.4 * d, (0.08 + 0.42 * d) * m]; } },
+  { id: 'F', name: '검은 소용돌이', note: '어두운 안개가 가운데로 천천히 감겨 들고, 가운데가 가장 검고 가장자리 결만 붉게 빛남. 빨려 드는 저주', ramp: CU2, motes: 1,
+    fn: (x, y, nd, a, t) => { const tw = a - t * 0.005 + (1 - Math.min(1, nd)) * 2.6, f = fbm(Math.cos(tw) * nd * 3.4 + 5, Math.sin(tw) * nd * 3.4 + 9); const m = edgeMask(nd, f, 0.2); const d = ss(0.35, 0.78, f) * m; return [0.1 + 0.55 * d * nd, (0.12 + 0.45 * d + 0.15 * (1 - nd)) * m]; } },
+];
+const CANDLES = (() => { const r = rng(5), o = []; for (let i = 0; i < 7; i++) { const a = r() * 6.283, d = Math.sqrt(r()) * R * 0.7; o.push([Math.cos(a) * d, Math.sin(a) * d + 40]); } return o; })();
+const GL = ['x.x', '.x.', 'x.x', 'xxx', 'x..', 'xxx', '.x.', 'xxx', '.x.', 'x.x', 'xxx', 'x.x']; // 3×3 도트 문양 넷
+function extras(ctx, v, cx, cy, fade, t) {
+  if (v.candles) for (const [x, y] of CANDLES) { const fl = 0.7 + 0.3 * Math.sin(t * 0.3 + x); ctx.globalAlpha = fade; dot(ctx, cx + x, cy + y, 2, CU[3]); dot(ctx, cx + x, cy + y - 2, 2, CU[4]); glow(ctx, cx + x, cy + y, 12, CU[2], 0.9 * fl * fade); }
+  if (v.flash) { const p = pulse(t); for (let i = 0; i < SPOTS.length; i++) { const [x, y] = SPOTS[i], on = hsh(i, Math.floor(t / 90)) < 0.35; if (!on || p < 0.05) continue; ctx.globalAlpha = fade * p; dot(ctx, cx + x, cy + y, 2, CU[3]); glow(ctx, cx + x, cy + y, 14, CU[2], p * fade); } }
+  if (v.runes) for (let i = 0; i < 16; i++) { const a = i / 16 * 6.283 + t * 0.003, x = cx + Math.cos(a) * R * 0.9, y = cy + Math.sin(a) * R * 0.9, g = (i % 4) * 3, s = 0.6 + 0.4 * Math.sin(t * 0.05 + i); ctx.globalAlpha = fade * s; ctx.fillStyle = CU[3]; for (let r2 = 0; r2 < 3; r2++) for (let c2 = 0; c2 < 3; c2++) if (GL[g + r2][c2] === 'x') ctx.fillRect(Math.round(x) - 6 + c2 * 4, Math.round(y) - 6 + r2 * 4, 4, 4); glow(ctx, x, y, 12, CU[2], 0.5 * s * fade); }
+  ctx.globalAlpha = 1;
+}
+
+const LOOP = 360, THROW = 16, SPREAD = 18; // 6초 (60틱/초)
+const panels = V.map(v => {
+  const fig = document.createElement('figure'), cv = document.createElement('canvas'); cv.width = cv.height = W;
+  fig.append(cv); const cap = document.createElement('figcaption'); cap.innerHTML = `<b>${v.id}. ${v.name}</b><br>${v.note}`; fig.append(cap); document.getElementById('g').append(fig);
+  const off = document.createElement('canvas'); off.width = off.height = NC; const ox = off.getContext('2d');
+  return { v, ctx: cv.getContext('2d'), off, ox, img: ox.createImageData(NC, NC) };
+});
+function floor(ctx) {
+  ctx.fillStyle = '#3a4a2e'; ctx.fillRect(0, 0, W, W);
+  for (let i = 0; i < 400; i++) { const r = hsh(i, 9), r2 = hsh(i, 31); ctx.fillStyle = i % 2 ? '#34432a' : '#41522f'; ctx.fillRect((r * W) | 0, (r2 * W) | 0, 4, 2); }
+  ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 2; for (let k = W / 2 % 120; k < W; k += 120) { ctx.beginPath(); ctx.moveTo(k, 0); ctx.lineTo(k, W); ctx.moveTo(0, k); ctx.lineTo(W, k); ctx.stroke(); }
+}
+let t0 = performance.now();
+function frame() {
+  const T = (performance.now() - t0) / 1000 * 60, tk = T % LOOP, va = tk - THROW, t = T;
+  for (const p of panels) {
+    const { v, ctx } = p, cx = W / 2, cy = W / 2; floor(ctx);
+    if (va < 0) { // 날아오는 부적
+      const q = tk / THROW; charm(ctx, cx - 200 * (1 - q), cy - 60 - 120 * Math.sin(q * Math.PI) * 0.6 - (1 - q) * 40, 1.5, (1 - q) * 3); continue;
+    }
+    const prog = Math.max(0.02, eoq(va / SPREAD)), life = LOOP - tk, fade = Math.min(1, life / 30), pr = prog * (life < 30 ? 1 - 0.12 * (1 - life / 30) : 1);
+    paintFog(p.ox, p.img, v.ramp.map(rgb), pr, v.fn, t);
+    ctx.save(); ctx.imageSmoothingEnabled = false; ctx.globalAlpha = fade; ctx.drawImage(p.off, cx - NC, cy - NC, NC * CELL, NC * CELL); ctx.restore();
+    ctx.save(); ctx.globalAlpha = fade;
+    glow(ctx, cx, cy - 6, 34, v.ramp[2], 0.35 * fade);
+    if (va < 14) glow(ctx, cx, cy - 20, 50, v.ramp[4], 1.4 * (1 - va / 14));
+    if (v.rays) for (let k = 0; k < 3; k++) { // 빛기둥: 위에서 비스듬히 내려와 바닥에 옅은 빛 자국
+      const bx = cx + (k - 1) * 120 + Math.sin(t * 0.01 + k * 2) * 24, s = (0.5 + 0.5 * Math.sin(t * 0.017 + k * 1.7)) * fade * ss(0.6, 1, prog);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.22 * s;
+      const g = ctx.createLinearGradient(0, cy - 300, 0, cy + 40); g.addColorStop(0, 'rgba(198,239,216,0)'); g.addColorStop(0.7, 'rgba(198,239,216,.8)'); g.addColorStop(1, 'rgba(198,239,216,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(bx - 10 + 40, cy - 300); ctx.lineTo(bx + 10 + 40, cy - 300); ctx.lineTo(bx + 26, cy + 30); ctx.lineTo(bx - 26, cy + 30); ctx.fill(); ctx.restore();
+      glow(ctx, bx, cy + 14, 40, v.ramp[3], 0.3 * s);
+    }
+    if (v.motes && prog > 0.6) motes(ctx, cx, cy, fade * ss(0.6, 1, prog), t, 18, v.ramp);
+    if (prog > 0.6) extras(ctx, v, cx, cy, fade * ss(0.6, 1, prog), t);
+    charm(ctx, cx, cy - 40 + Math.sin(t * 0.05) * 4, 2, Math.sin(t * 0.03) * 0.08); // 가운데 떠 있는 부적
+    ctx.restore();
+  }
+  requestAnimationFrame(frame);
+}
+frame();
+</script></body></html>
