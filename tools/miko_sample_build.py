@@ -120,6 +120,51 @@ def cut_closed(im, gap=None):   # 흰 옷용 배경 지우기: 흰 옷이 배경
 
 cut = cut_closed
 
+# 외곽선 안에 갇힌 흰 덩어리 중 배경인 것 (2026-11-17 칸마다 번호 붙여 확대 점검)
+#   자동 1) 바깥(투명)에 닿은 60픽셀 이하 흰 덩어리 = 외곽 찌꺼기·머리카락 끝 틈 (발밑 7%는 버선이라 제외)
+#   자동 2) 위쪽 20% 안에서 둘레 30% 이상이 진한 선인 흰 덩어리 = 리본 고리 안 구멍 (리본 빨강이 둘레를 채워 진한 선 비율이 낮은 칸도 있음)
+#   지정) 자동으로 못 잡는 머리카락·팔 사이 틈: 잘라낸 그림 좌표 (x, y) — 그 점이 든 흰 덩어리를 지움
+HOLE_PTS = {
+    ('걷기', 1): [(31, 146)],
+    ('일반 공격', 0): [(30, 103), (55, 117), (57, 122)],
+    ('일반 공격', 1): [(37, 129)],
+    ('피격', 0): [(105, 27), (131, 34), (137, 48), (145, 72), (20, 76), (112, 95)],
+    ('쓰러짐', 0): [(11, 88), (18, 140), (111, 103)],
+    ('쓰러짐', 1): [(187, 107), (103, 107)],
+    ('부적 소환', 0): [(21, 67), (34, 124)],
+    ('부적 소환', 1): [(36, 140), (33, 124)],
+    ('히든', 0): [(32, 137)],
+    ('히든', 2): [(30, 105), (91, 89)],
+}
+
+
+def white_blobs(fig):
+    a = fig[..., 3] > 0; c = fig[..., :3]
+    mn = c.min(axis=2); ch = c.max(axis=2) - mn
+    return ndi.label(a & (mn > 215) & (ch < 25))
+
+
+def clear_holes(fig, key):
+    fig = fig.copy()
+    a = fig[..., 3] > 0; mn = fig[..., :3].min(axis=2); H = fig.shape[0]
+    lab, n = white_blobs(fig)
+    kill = np.zeros(n + 1, bool)
+    for k in range(1, n + 1):
+        m = lab == k; s = m.sum(); ys = np.where(m)[0]
+        ring = ndi.binary_dilation(m, iterations=2) & ~m
+        if s <= 60 and (~a[ring]).any() and ys.mean() < H * .93: kill[k] = True
+        if ys.mean() < H * .2 and (mn[ring] < 110).mean() >= .3: kill[k] = True
+    for x, y in HOLE_PTS.get(key, []):
+        win = lab[max(0, y - 3):y + 4, max(0, x - 3):x + 4]
+        for k in np.unique(win[win > 0]): kill[k] = True
+    gone = kill[lab]
+    # 지운 구멍 둘레의 밝은 회색(흰 배경과 외곽선이 섞인 색)도 2겹 벗김
+    rim = (mn > 110) & ((fig[..., :3].max(axis=2) - mn) < 12) & a
+    for _ in range(2):
+        gone |= ndi.binary_dilation(gone) & rim
+    fig[..., 3] = np.where(gone, 0, fig[..., 3])
+    return fig
+
 
 def frames():
     walk = blobs('walk', 3)
@@ -138,7 +183,7 @@ def frames():
 
 def build(verbose=False):
     rows = []
-    idle = cut(despeck(one('idle')))
+    idle = clear_holes(cut(despeck(one('idle'))), ('대기', 0))
     fa0, fc0, _ = face(idle)
     red0 = idle[..., :3][red_mask(idle)].astype(float)
     sc0 = TARGET_H / idle.shape[0]
@@ -146,7 +191,7 @@ def build(verbose=False):
     for label, ims in frames():
         cells = []
         for j, im in enumerate(ims):
-            fig = cut(despeck(im))
+            fig = clear_holes(cut(despeck(im)), (label, j))
             f = face(fig)
             if (label, j) in SAME:
                 k, gain, rgain = done[SAME[(label, j)]]
