@@ -92,14 +92,24 @@ def masks(rgba):
     lone = al & ((h < 25) | (h > 330)) & (s > 0.3) & (v > 0.1) & ~skin & ~face & ~red & ~ndi.binary_dilation(skin, iterations=3)
     for _ in range(2):
         red |= lone & (ndi.convolve(red.astype(int), np.ones((3, 3), int), mode='constant') >= 4)
+    # 조리 끈·끈 끝처럼 옷 빨강에 이어진 흐린 빨강·분홍빛 윤기(채도 0.16↑, 흰 부분은 0.15↓라 안 걸림): 일부만 바뀌면 빨강·새 색이 섞임 → 둘레 2칸↑이 옷이면 따라감 (살 3px 안은 빼기)
+    faint = al & ((h < 25) | (h > 335)) & (s > 0.16) & (v > 0.08) & ~skin & ~face & ~red & ~ndi.binary_dilation(skin, iterations=3)
+    for _ in range(4):
+        red |= faint & (ndi.convolve(red.astype(int), np.ones((3, 3), int), mode='constant') >= 2)
     # 머리 속 작은 붉은 조각(가르마·볼 옆 머리결의 적갈색): 살 3px 안이고 12px 이하면 옷이 아님 → 옷 색 점이 됨
     lb, n = ndi.label(red, structure=np.ones((3, 3)))
     if n:
         idx = np.arange(n + 1)
         near_sk = ndi.maximum(ndi.binary_dilation(skin, iterations=3), lb, idx).astype(bool)
         red &= ~(((ndi.sum(red, lb, idx) <= 12) & near_sk)[lb] & (lb > 0))
+    # 옷 테두리 검붉은 선 (색상 285~15°의 보랏빛·검붉은, 채도 0.2↑, 명도 0.4↓): 검은 머리(색상 200~250°)와 색으로 갈리는데
+    #   채도·밝기가 낮아 옷으로 안 잡히고 머리로 들어가 머리색이 되면 끈·리본 둘레가 얼룩 → 옷 빨강에 이어진 것은 옷 윤곽
+    maroon = al & ~skin & ~face & ~red & ((h >= 285) | (h < 15)) & (s > 0.2) & (v < 0.4)
+    mar = np.zeros_like(al)
+    for _ in range(3):
+        mar |= maroon & ndi.binary_dilation(red | mar, structure=np.ones((3, 3)))
     # 머리: 어두운 픽셀이 빽빽한 큰 덩어리
-    dark = al & (v < 0.36) & ~skin & ~red & ~eye & ((s < 0.45) | (v < 0.1)) & ~(redish & (s > 0.3) & (v > 0.1))
+    dark = al & (v < 0.36) & ~skin & ~red & ~mar & ~eye & ((s < 0.45) | (v < 0.1)) & ~(redish & (s > 0.3) & (v > 0.1))
     core = dark & (ndi.uniform_filter(dark.astype(float), 5) > 0.75)
     cand = (ndi.binary_dilation(core, structure=np.ones((3, 3)), iterations=2)) & dark
     lb, n = ndi.label(cand, structure=np.ones((3, 3)))
@@ -155,6 +165,7 @@ def masks(rgba):
         fl &= ndi.maximum(link, lb, np.arange(n + 1)).astype(bool)[lb]
     hair = (hair | hair_edge | fl) & ~shade
     hair_edge &= ~shade; hair_ln &= ~shade; cloth_ln &= ~shade
+    hair &= ~mar; hair_ln &= ~mar; hair_edge &= ~mar; cloth_ln |= mar & ~red
     red &= ~shade & ~fl
     # 머리와 옷(흰 저고리·하카마·옷 윤곽)이 맞닿는 검은 경계선: 머리 속으로 치면 밝은 머리색(백발)이 돼 옷 윤곽이 하얗게 사라짐 → 짙은 윤곽
     cloth_near = ndi.binary_dilation(((s < 0.25) & (v > 0.55) & ~face) | red | cloth_ln, structure=np.ones((3, 3)))
