@@ -128,13 +128,22 @@ HOLE_PTS = {
     ('걷기', 1): [(31, 146)],
     ('일반 공격', 0): [(30, 103), (55, 117), (57, 122)],
     ('일반 공격', 1): [(37, 129)],
-    ('피격', 0): [(105, 27), (131, 34), (137, 48), (145, 72), (20, 76), (112, 95)],
+    # 피격: 흩날리는 머리카락 사이 + (2026-11-17 사용자 지적) 왼쪽 머리카락과 소매 사이 · 팔 아래와 하카마 사이 · 소매와 주먹 사이 · 오른쪽 머리카락 속
+    ('피격', 0): [(105, 27), (131, 34), (137, 48), (145, 72), (20, 76), (112, 95),
+                 (27, 113), (60, 139), (112, 100), (138, 70)],
     ('쓰러짐', 0): [(11, 88), (18, 140), (111, 103)],
     ('쓰러짐', 1): [(187, 107), (103, 107)],
     ('부적 소환', 0): [(21, 67), (34, 124)],
     ('부적 소환', 1): [(36, 140), (33, 124)],
     ('히든', 0): [(32, 137)],
     ('히든', 2): [(30, 105), (91, 89)],
+}
+GRAY_PTS = {
+    ('피격', 0): [(124, 38), (20, 30)],   # 흩날리는 머리카락 속 · 리본 고리 안
+}
+# 덩어리로 못 잡는 밝은 줄 (주변 머리카락 하이라이트와 이어짐): 상자 (x0, y0, x1, y1) 안의 밝은 픽셀(최소 채널 > 100)만 지움
+CLEAR_BOX = {
+    ('피격', 0): [(135, 70, 141, 71)],   # 오른쪽 머리카락 끝 사이 연회색 줄
 }
 
 
@@ -154,14 +163,24 @@ def clear_holes(fig, key):
         ring = ndi.binary_dilation(m, iterations=2) & ~m
         if s <= 60 and (~a[ring]).any() and ys.mean() < H * .93: kill[k] = True
         if ys.mean() < H * .2 and (mn[ring] < 110).mean() >= .3: kill[k] = True
-    for x, y in HOLE_PTS.get(key, []):
+    for x, y in HOLE_PTS.get(key, []):   # 점이 흰 덩어리 안이면 그 덩어리만, 아니면 둘레 3px 안의 덩어리
+        if lab[y, x]: kill[lab[y, x]] = True; continue
         win = lab[max(0, y - 3):y + 4, max(0, x - 3):x + 4]
         for k in np.unique(win[win > 0]): kill[k] = True
     gone = kill[lab]
+    # 머리카락 속 연회색 점(배경이 외곽선과 섞인 색): 지정한 점이 든 20픽셀 이하 밝은 덩어리
+    glab, _ = ndi.label(a & (mn > 120) & ((fig[..., :3].max(axis=2) - mn) < 30))
+    for x, y in GRAY_PTS.get(key, []):
+        win = glab[max(0, y - 1):y + 2, max(0, x - 1):x + 2]
+        for k in np.unique(win[win > 0]):
+            if (glab == k).sum() <= 20: gone |= glab == k
     # 지운 구멍 둘레의 밝은 회색(흰 배경과 외곽선이 섞인 색)도 2겹 벗김
     rim = (mn > 110) & ((fig[..., :3].max(axis=2) - mn) < 12) & a
     for _ in range(2):
         gone |= ndi.binary_dilation(gone) & rim
+    for x0, y0, x1, y1 in CLEAR_BOX.get(key, []):
+        box = np.zeros_like(gone); box[y0:y1 + 1, x0:x1 + 1] = True
+        gone |= box & (mn > 100)
     fig[..., 3] = np.where(gone, 0, fig[..., 3])
     return fig
 
