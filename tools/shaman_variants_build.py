@@ -173,7 +173,15 @@ def masks(rgba):
     #   (사용자: "백발 샘플은 아직도 흰색 얼룩이 윤곽선에") 저고리·피부·귀·리본 등 머리가 아닌 것에 8방향으로 닿은 짙은 머리 픽셀(명도 0.3↓)은 모두 경계 윤곽
     hair_cloth |= hair & (v < 0.3) & ndi.binary_dilation(al & ~hair, structure=np.ones((3, 3)))
     rim = (hair & out_edge) | hair_ln | hair_edge | fl | hair_cloth
-    brow = np.zeros_like(al)   # (예전 눈썹 둘째 줄 처리: 피부 그늘이라 이제 원본 그대로)
+    # 머리 속 아주 검은 선(명도 0.07↓: 머리 가닥 사이 선): 그냥 두면 가장 어두운 머리색(백발이면 밝은 회색)이라 선이 사라지고,
+    #   윤곽 색으로 하면 밝은 머리와 대비가 너무 커서 사이의 머리결이 흰 점처럼 박힘 → 머리색의 그늘(가장 어두운 머리 명도의 72%)
+    strand = hair & ~rim & (v < 0.07)
+    # 윤곽선 사이에 끼인 작은 머리 조각(15px 이하, 저고리 등·어깨·소매 곁·리본 고리 안): 밝은 머리색(백발)이면 윤곽선 옆 흰 줄·흰 점 → 윤곽 색
+    hl = hair & ~rim
+    lb, n = ndi.label(hl)
+    if n:
+        rim |= (ndi.sum(hl, lb, np.arange(n + 1)) <= 15)[lb] & hl
+    brow = strand & ~rim   # 머리 가닥 선 (이름은 예전 눈썹 칸을 그대로 씀)
     return red, eye, hair, rim, hsv, cloth_ln, brow
 
 
@@ -191,9 +199,8 @@ def recolor(rgba, cloth_c, hair_c, eye_c):
     # 검은 머리 명도(0.04~0.30)를 새 머리 색의 어두운~밝은 명도로 고르게 옮김
     t = np.clip((v0 - 0.04) / 0.26, 0, 1)
     vh = LO + (HI - LO) * t
-    vh = np.where(rim, np.minimum(v0, 0.08) + LO * 0.25, vh)
-    # 눈썹 둘째 줄: 밝은 머리색이면 눈 위에 흰 줄처럼 보임 (백발) → 윤곽선보다 조금 밝은 짙은 머리색, 원본 명암 순서는 살림
-    vh = np.where(brow, np.minimum(v0, 0.08) + LO * 0.25 + 0.35 * np.clip(v0 - 0.08, 0, 0.5), vh)   # 몸 바깥 가장자리 = 어두운 외곽선
+    vh = np.where(rim, np.minimum(v0, 0.08) + LO * 0.25, vh)   # 윤곽 (몸 바깥·옷·피부와의 경계) = 어두운 외곽선
+    vh = np.where(brow, LO * 0.72, vh)   # 머리 가닥 선: 머리색의 그늘 (masks의 strand 설명)
     hsv[..., 0] = np.where(hair, H / 360, hsv[..., 0])
     hsv[..., 1] = np.where(hair, np.clip(S * (1.15 - 0.3 * t), 0, 1), hsv[..., 1])
     hsv[..., 2] = np.where(hair, np.clip(vh, 0, 1), hsv[..., 2])
