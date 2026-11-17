@@ -33006,7 +33006,8 @@
           if (e.alive && !((e.statuses.superarmor || 0) > 0)) inflictStatus(s.owner, e, 'stun', QI_GENKI_STUN);
         }));
         qiFx(s.owner, { type: 'qi_genki_boom', x: Math.round(s.x), y: Math.round(s.y), r: Math.round(s.r), or: Math.round(s.or || QI_GENKI_ORB), ...(qiSR(s.owner) ? { life: 150, maxLife: 150 } : { life: 120, maxLife: 120 }) }); // SR(청천옥)은 2.5초 // 2초 (원기옥 터짐: 돔이 부풀었다 실로 풀림)
-        sim.shake = { power: 10, life: 22, maxLife: 22 };
+        if (qiSR(s.owner)) { sim.shake = { power: 16, life: 40, maxLife: 40 }; sim.flash = { color: '#e4fbff', life: 20, maxLife: 20 }; } // 청천옥: 온 화면이 하얗게 번쩍이며 오래 울림
+        else sim.shake = { power: 10, life: 22, maxLife: 22 };
         playCombatSfx('heavy');
         if (s.owner) addBattleLog(`[기공사] ${s.owner.name}의 기공옥이 땅에 꽂혔어요! ${hits.length}명 피격`);
       }
@@ -34309,7 +34310,10 @@
       const pos = q => { const e = q * q, y1 = gy - r * 0.7; return [ef.sx + (ef.x - ef.sx) * e, ef.sy + (y1 - ef.sy) * e]; };
       qsrGround(ctx, ef.x, gy, (ef.r || 300) * (0.25 + 0.75 * p), 0.25 + 0.35 * p, ts, 0.1, QI_GK_SY, 0, ef._qg || (ef._qg = {}));
       for (let i = 9; i >= 1; i--) { const q = p - i * 0.045; if (q <= 0) continue; const [tx, ty] = pos(q); qsrPuff(ctx, tx, ty, r * 0.45 * (1 - i / 10), r * 0.4 * (1 - i / 10), 0, 4, 0.2 * (1 - i / 10), 0.8); }
-      const [x, y] = pos(p);
+      const [x, y] = pos(p), sh = qiSstep(0.3, 1, p); // 떨어질 자리에 짙은 그림자가 좁혀 듦 (터지기 직전 숨 죽이는 순간)
+      ctx.save(); ctx.translate(ef.x, gy); ctx.scale(1, QI_GK_SY);
+      const sg = ctx.createRadialGradient(0, 0, 0, 0, 0, r * (2.6 - 1.2 * sh)); sg.addColorStop(0, `rgba(4,18,28,${0.45 * sh})`); sg.addColorStop(1, 'rgba(4,18,28,0)');
+      ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(0, 0, r * (2.6 - 1.2 * sh), 0, Math.PI * 2); ctx.fill(); ctx.restore();
       qsrMass(ctx, x, y, r, ts, 1, 1 - 0.08 * p, 1 + 0.12 * p, 0.15 * p, null, true);
     }
     // 기공옥 터짐 (2.5초): 터지는 순간 온 화면을 덮는 빛 · 먼저 내달리는 압력 반구 · 땅을 덮으며 퍼지는 빛 · 빛 기둥과 꼭대기 빛 ·
@@ -34319,6 +34323,19 @@
       const ts = (sim.tickCount || 0) / 60, age = p * (ef.maxLife || 150) / 60, XT = ef.x, gy = ef.y + 8, seed = pfxSeedOf(ef);
       const BR = ef.r || 600, OR = ef.or || QI_GENKI_ORB, G = BR / 370, GV = Math.min(G, 1.6); // 가로 퍼짐은 실제 범위(축기 5개면 반지름 1400px 안팎), 높이는 화면 안에 들게 상한
       const C = ef._qc || (ef._qc = {});
+      [[0, 1.1, 0.75, 6], [0.1, 0.85, 0.6, 5], [0.28, 0.6, 0.45, 4]].forEach(([t0, k, a, c], i) => { // 땅을 따라 잇달아 내달리는 충격파 세 겹
+        const u = (age - t0) / (0.7 + i * 0.15); if (u < 0 || u >= 1) return;
+        const R = BR * k * qsrEo(u);
+        qsrBand(ctx, XT, gy, R, QI_GK_SY, a * Math.pow(1 - u, 1.4), 16 * GV + R * 0.12, R * 0.4, c, 0.8);
+      });
+      { const u = age / 0.6; if (u < 1) qsrBand(ctx, XT, gy - 70 * GV, 60 * GV + 300 * GV * qsrEo(u), 0.55, 0.55 * Math.pow(1 - u, 1.5), 8 * GV, 40 * GV, 5, 0.8); } // 공중으로 퍼지는 압력 고리
+      const af = age - 0.95; // 여진: 가라앉던 기운이 한 번 더 크게 맥박 치며 땅이 다시 울림
+      if (af > 0 && af < 0.7) {
+        const u = af / 0.7;
+        if (!C.af) { C.af = 1; if (!sim.shake || sim.shake.power < 7) sim.shake = { power: 7, life: 18, maxLife: 18 }; }
+        qsrGlow(ctx, XT, gy - 30 * GV, (120 + 160 * qsrEo(u)) * GV, 5, 0.45 * (1 - u), 0.7);
+        qsrBand(ctx, XT, gy, BR * 0.75 * qsrEo(u), QI_GK_SY, 0.5 * Math.pow(1 - u, 1.5), 8 * GV, BR * 0.2, 5, 0.8);
+      }
       if (age < 2.2) {
         const u = age / 2.2;
         qsrGround(ctx, XT, gy, (40 + 330 * qsrEo(u * 1.3)) * G, 0.85 * (1 - qiSstep(0.35, 1, u)), ts, 0.72, QI_GK_SY, 0.55, C.g1 || (C.g1 = {}));
@@ -34349,9 +34366,25 @@
       }
       if (age < 1.8) {
         const u = age / 1.8;
+        { const f = 1 - qiSstep(0, 0.25, u); if (f > 0) { qsrGlow(ctx, XT, gy - 30 * GV, 90 * GV, 8, 0.8 * f); qsrGlow(ctx, XT, gy - 30 * GV, 200 * GV, 6, 0.5 * f, 0.8); } } // 터진 자리에 잠깐 해처럼 타오르는 빛
         if (u < 0.12) { const f = 1 - u / 0.12; qsrGlow(ctx, XT, gy - 40 * GV, 460 * G, 4, 0.55 * f, 0.6); qsrGlow(ctx, XT, gy - 20 * GV, 120 * GV * 1.5, 6, 0.7 * f); } // 터지는 순간 온 화면을 덮는 빛
         const pk = 1 - qiSstep(0.05, 0.55, u), PH = 340 * GV * 1.3 * qsrEo(u * 5);
         if (pk > 0) qsrPillar(ctx, XT, gy, Math.min(0.8 * OR, 40 * GV * 1.3) * (1 - 0.4 * u), PH, pk, ts, C.pl || (C.pl = {}), 40, 120);
+        if (pk > 0.05) { // 기둥을 휘감아 오르는 기운 두 줄기 (뒤로 돌 때는 옅게)
+          const PW = Math.min(0.8 * OR, 40 * GV * 1.3) * 1.5;
+          ctx.save(); ctx.globalCompositeOperation = 'lighter'; // 하늘까지 닿는 빛 기둥: 가운데 하얀 심 · 하늘빛으로 옅어지는 양옆 · 꼭대기는 녹아 사라짐
+          const W2 = Math.max(PW * 1.3, 55 * GV) * (1 + 0.08 * Math.sin(ts * 40)), top = gy - PH * 1.15, hg = ctx.createLinearGradient(XT - W2, 0, XT + W2, 0);
+          [[0, 0], [0.22, 0.25], [0.4, 0.55], [0.5, 0.85], [0.6, 0.55], [0.78, 0.25], [1, 0]].forEach(([o, a], i) => hg.addColorStop(o, (i === 3 ? '#ffffff' : QSR_HEX[i === 2 || i === 4 ? 6 : 4]) + qsrA(a * pk)));
+          ctx.fillStyle = hg; ctx.fillRect(XT - W2, top + PH * 0.35, W2 * 2, gy - top - PH * 0.35);
+          ctx.restore();
+          qsrGlow(ctx, XT, top + PH * 0.35, PH * 0.3, 5, 0.55 * pk, 1, W2 * 0.75 / (PH * 0.3)); // 꼭대기는 둥글게 녹아 사라짐
+          for (let j = 0; j < 2; j++) for (let i = 0; i < 12; i++) {
+            const f = qiFr(age * 1.6 + i / 12), hh = PH * f, an = f * 9 + j * Math.PI + age * 5, front = Math.sin(an);
+            qsrPuff(ctx, XT + Math.cos(an) * PW * (1 - 0.3 * f), gy - hh, PW * 0.35, PW * 0.28, 0, front > 0 ? 6 : 4, (front > 0 ? 0.55 : 0.2) * pk * Math.sin(Math.PI * f), 0.8);
+          }
+        }
+        const cr = (u - 0.08) / 0.7;
+        if (cr > 0 && cr < 1) qsrBand(ctx, XT, gy - PH + 10 * GV, (30 + 230 * qsrEo(cr)) * GV, 0.3, 0.6 * Math.pow(1 - cr, 1.3), 12 * GV, 60 * GV, 5, 0.8); // 기둥 꼭대기에서 하늘로 퍼지는 고리
         const cu = (u - 0.04) / 0.6;
         if (cu > 0 && cu < 1) { const ck = qiSstep(0, 0.15, cu) * (1 - qiSstep(0.4, 1, cu)); qsrGlow(ctx, XT, gy - PH + 30 * GV, (60 + 90 * qsrEo(cu)) * GV * 1.3, 4, 0.35 * ck); qsrGlow(ctx, XT, gy - PH + 40 * GV, 24 * GV * 1.3, 6, 0.4 * ck); } // 기둥 꼭대기에서 번지는 빛
         if (u < 0.1) { const q = u / 0.1; qsrMass(ctx, XT, gy - OR * 0.5 * (1 - q), OR * (1 + 0.5 * q), ts, 1 - q, 1 + 0.7 * q, 1 - 0.6 * q, 0.2, null, true); } // 땅에 닿는 순간 눌려 납작해짐
