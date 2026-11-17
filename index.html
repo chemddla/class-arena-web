@@ -35184,43 +35184,50 @@
       }
       ctx.globalAlpha = 1;
     }
-    // 부적 명중 (샘플 부적: 크림 종이·붉은 먹 글씨·붉은 속도선, 2026-11-17 사용자): pixelfx처럼 박힘 → 멈춤 → 터짐 3단
+    // 부적 명중 (샘플 부적: 크림 종이·붉은 먹 글씨, 2026-11-17 사용자: 먹선이 흩어지기보다 종이가 찢기는 느낌): 박힘 → 찢김 → 갈라져 떨어짐
     //   0~0.3 부적이 날아온 방향으로 기울어 몸에 탁 붙고(살짝 떨림) 글씨가 붉게 달아오름
-    //   0.3~0.45 붉은 인장 고리(점선)가 퍼지고 가운데 번쩍 · 0.45~1 종이 조각이 사방으로 튀어 떨어지고, 날아온 반대쪽으로 붉은 먹선이 뻗었다 사라짐
+    //   0.3~0.45 가운데를 가로지르는 들쭉날쭉한 금이 한쪽에서 번짐 · 0.45~1 두 조각으로 갈라져 서로 반대로 돌며 떨어지고 찢긴 자리에서 종이 보풀이 흩날림
+    // 찢긴 선 (부적 안쪽 좌표, 부적 = 가로 10.5 · 세로 18, 가운데 0): 살짝 비스듬한 톱니
+    const MU_TEAR = [[-6, -1], [-4.5, 1], [-3, -0.5], [-1.5, 1.5], [0, 0], [1.5, 2], [3, 0.5], [4.5, 2.5], [6, 1]];
     function drawMuHit(ctx, ef, p) {
       const x = ef.x, y = ef.y, a = ef.a || 0, dir = Math.cos(a) >= 0 ? 1 : -1;
-      const rnd = pfxRng(pfxSeedOf(ef) >>> 0);
+      const ang = a + Math.PI / 2 + 0.15 * dir; // 부적 기울기 (긴 쪽이 날아온 방향)
       ctx.save();
       const base = ctx.globalAlpha;
       if (p < 0.45) { // 박힌 부적
         const q = p / 0.45, shake = p < 0.3 ? ((Math.floor(p * 40) % 2) ? 1 : -1) * (1 - p / 0.3) : 0;
-        ctx.globalAlpha = base * (p < 0.3 ? 1 : 1 - (p - 0.3) / 0.15);
-        drawMuCharm(ctx, x - dir * 3 + shake, y, 1.5, a + Math.PI / 2 + 0.15 * dir, null, 0);
-        if (q > 0.35) { ctx.globalAlpha = base * Math.min(1, (q - 0.35) * 3) * 0.8; drawMuCharm(ctx, x - dir * 3 + shake, y, 1.5, a + Math.PI / 2 + 0.15 * dir, 'mu_power', 0.9); } // 글씨가 달아오름
+        ctx.globalAlpha = base;
+        drawMuCharm(ctx, x - dir * 3 + shake, y, 1.5, ang, null, 0);
+        if (q > 0.35) { ctx.globalAlpha = base * Math.min(1, (q - 0.35) * 3) * 0.8; drawMuCharm(ctx, x - dir * 3 + shake, y, 1.5, ang, 'mu_power', 0.9); } // 글씨가 달아오름
       }
-      if (p >= 0.3) { // 인장 고리 + 번쩍
-        const q = Math.min(1, (p - 0.3) / 0.5), rr = 6 + 20 * pfxEaseOutQuart(q), n = 16;
-        for (let i = 0; i < n; i++) {
-          if (i % 4 === 3) continue;
-          const t = i / n * Math.PI * 2;
-          ctx.globalAlpha = base * (1 - q) * (i % 2 ? 0.7 : 1);
-          muDot(ctx, x + Math.cos(t) * rr, y + Math.sin(t) * rr * 0.8, 2, i % 2 ? '#dc2626' : '#f87171');
-        }
-        if (p < 0.5) { const f = 1 - (p - 0.3) / 0.2; ctx.globalAlpha = base * f; muDot(ctx, x, y, 6, '#fff8d6'); muDot(ctx, x, y, 3, '#ffffff'); }
+      if (p >= 0.3 && p < 0.45) { // 찢어지기 시작: 한쪽 가장자리에서 들쭉날쭉한 밝은 금이 가로질러 번짐
+        const q = (p - 0.3) / 0.15, n = Math.ceil(MU_TEAR.length * Math.min(1, q * 1.3));
+        ctx.save(); ctx.translate(x - dir * 3, y); ctx.rotate(ang);
+        ctx.globalAlpha = base;
+        for (let i = 0; i < n; i++) muDot(ctx, MU_TEAR[i][0], MU_TEAR[i][1], 1.5, i % 2 ? '#ffffff' : MU_PAPER[3]);
+        ctx.restore();
       }
-      if (p >= 0.4) { // 종이 조각 · 붉은 먹선
-        const q = (p - 0.4) / 0.6, e = pfxEaseOutQuart(q);
-        for (let i = 0; i < 8; i++) {
-          const t = rnd() * Math.PI * 2, sp = 10 + rnd() * 16, big = rnd() < 0.4;
-          const px = x + Math.cos(t) * sp * e, py = y + Math.sin(t) * sp * e * 0.7 + 18 * q * q; // 떨어짐
-          ctx.globalAlpha = base * (1 - q);
-          muDot(ctx, px, py, big ? 3 : 2, i % 3 === 0 ? MU_INK : (big ? MU_PAPER[2] : MU_PAPER[3]));
-        }
-        for (let i = 0; i < 3; i++) { // 날아온 반대쪽(뒤)으로 뻗는 짧은 속도선
-          const t = a + (i - 1) * 0.45, L = 4 + 12 * e, s0 = 8 + 6 * e;
+      if (p >= 0.45) { // 두 조각으로 갈라져 서로 반대로 돌며 떨어짐 + 찢긴 자리에서 종이 보풀
+        const q = (p - 0.45) / 0.55, e = pfxEaseOutQuart(q), drop = 16 * q * q;
+        ctx.globalAlpha = base * (q < 0.55 ? 1 : 1 - (q - 0.55) / 0.45);
+        [-1, 1].forEach(s => {
+          ctx.save();
+          ctx.translate(x - dir * 3 + s * dir * 3 * e, y + drop * (s > 0 ? 1.15 : 0.85));
+          ctx.rotate(ang); ctx.translate(0, s * (1 + 6 * e)); ctx.rotate(s * 0.55 * e);
+          ctx.beginPath(); // 찢긴 선(MU_TEAR)을 경계로 위 조각 / 아래 조각만 남김
+          ctx.moveTo(-9, s * 14); ctx.lineTo(9, s * 14);
+          for (let i = MU_TEAR.length - 1; i >= 0; i--) ctx.lineTo(MU_TEAR[i][0], MU_TEAR[i][1]);
+          ctx.closePath(); ctx.clip();
+          drawMuCharm(ctx, 0, 0, 1.5, 0, null, 0); // 빛무리는 안 그림 (잘린 조각 모양으로 네모나게 보임)
+          ctx.restore();
+        });
+        for (let i = 0; i < 5; i++) { // 보풀: 찢긴 자리에서 천천히 흔들리며 떨어지는 작은 종이 부스러기
+          const tx = MU_TEAR[(i * 2 + 1) % MU_TEAR.length][0], sw = Math.sin(q * 6 + i * 1.7) * 3;
+          const c = Math.cos(ang), sn = Math.sin(ang);
           ctx.globalAlpha = base * (1 - q) * 0.9;
-          for (let k = 0; k < L; k += 2) muDot(ctx, x + Math.cos(t) * (s0 + k), y + Math.sin(t) * (s0 + k), 2, k < L / 2 ? '#ef4444' : '#991b1b');
+          muDot(ctx, x - dir * 3 + tx * c + sw, y + tx * sn + 4 + q * (10 + i * 3), 1.5, i % 2 ? MU_PAPER[3] : MU_PAPER[2]);
         }
+        if (q < 0.25) { ctx.globalAlpha = base * (1 - q / 0.25); muDot(ctx, x - dir * 3, y, 4, '#fff8d6'); } // 찢기는 순간 작은 번쩍
       }
       ctx.restore();
       ctx.globalAlpha = base;
