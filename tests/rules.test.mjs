@@ -337,6 +337,32 @@ test('접속 표시: 로그인한 학생은 자기 칸에만 켜고 끌 수 있�
   await assertSucceeds(db('admin', { superAdmin: true }).ref('presence/OWN1').remove());
 });
 
+// ----- 마을 친구 위치 (village/{학급}/{학생} = { c: 띠, d: 글자 }) · 마을 열림 스위치 (appFlags/village) -----
+test('마을 위치: 로그인한 학생은 자기 칸에만 {c, d}로 쓰고, 같은 반 회원만 읽음 (띠로 골라 읽기 포함)', async () => {
+  const v = { c: 0, d: '1.2,3.4,0,0,,,0,shiba,,,000000abc' };
+  await assertSucceeds(db('u1').ref('village/OWN1/s1').set(v));
+  await assertSucceeds(db('u1').ref('village/OWN1').once('value'));
+  await assertSucceeds(db('u1').ref('village/OWN1').orderByChild('c').startAt(-1).endAt(1).once('value'));
+  await assertFails(db(null).ref('village/OWN1').once('value')); // 로그인 안 함
+  await assertFails(db('u2').ref('village/OWN1').once('value')); // 이 반 회원 아님
+  await assertFails(db('u1').ref('village/OWN1/s2').set(v)); // 남의 칸
+  await assertFails(db('u1').ref('village/OWN1/s1').set('1,2,3')); // 예전 글자 형식
+  await assertFails(db('u1').ref('village/OWN1/s1').set({ c: 0, d: 'x'.repeat(121) }));
+  await assertFails(db('u1').ref('village/OWN1/s1').set({ c: 0, d: 'x', e: 1 }));
+  await assertFails(db('u1').ref('village/OWN1/s1').set({ c: 500, d: 'x' }));
+  await assertSucceeds(db('u1').ref('village/OWN1/s1').remove());
+  await assertSucceeds(db('admin', { superAdmin: true }).ref('village/OWN1').once('value'));
+});
+
+test('마을 열림 스위치: 누구나 읽고, 총괄 관리자만 참·거짓으로 바꿈', async () => {
+  await assertSucceeds(db(null).ref('appFlags/village').once('value'));
+  await assertFails(db('teacher').ref('appFlags/village').set(true));
+  await assertFails(db('u1').ref('appFlags/village').set(true));
+  await assertFails(db('admin', { superAdmin: true }).ref('appFlags/village').set('켜짐'));
+  await assertSucceeds(db('admin', { superAdmin: true }).ref('appFlags/village').set(true));
+  await assertSucceeds(db('admin', { superAdmin: true }).ref('appFlags/village').set(false));
+});
+
 test('실시간 결투 화면 전달(pvp_live): 로그인한 학생·교사만 쓰고 지울 수 있고, 없는 학급에는 못 씀', async () => {
   await assertSucceeds(db('u1').ref('classes/OWN1/pvp_live/pvp_s1/frame').set({ t: 1, u: [[1, 2, 3]] }));
   await assertSucceeds(db('u1').ref('classes/OWN1/pvp_live/pvp_s1/input').set({ k: 'w', ax: 1, ay: 2 }));

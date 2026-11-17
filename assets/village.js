@@ -983,7 +983,7 @@
     const a = { type, name, pet, g, tag, x, z, face: 0, moving: false, wave: 0, target: null, wait: rnd() * 3, me };
     actors.push(a); return a;
   }
-  function setPet(a, type) { a.g.remove(a.pet.group); a.type = type; a.pet = VillagePets.build(THREE, type, petOpts); a.pet.outlines.forEach(o => { o.visible = outlineOn; }); dress(a.pet.group); a.g.add(a.pet.group); if (a.onPet) a.onPet(); }
+  function setPet(a, type) { a.thin = undefined; a.g.remove(a.pet.group); a.type = type; a.pet = VillagePets.build(THREE, type, petOpts); a.pet.outlines.forEach(o => { o.visible = outlineOn; }); dress(a.pet.group); a.g.add(a.pet.group); if (a.onPet) a.onPet(); }
   const petType = t => (t && VillagePets.SPECS[t] ? t : 'guest'); // 펫이 없으면 새싹 모습
   const me = makeActor(demo ? 'shiba' : petType(host.me.pet), demo ? '나' : host.me.name, (rnd() - 0.5) * 3, 4 + rnd() * 1.5, true);
   const sel = $('petSel');
@@ -1085,7 +1085,7 @@
     note: () => tone(740, 0.14, 'triangle', 0, 0.1),
   };
   const outlineBtn = $('outlineBtn');
-  outlineBtn.onclick = () => { outlineOn = !outlineOn; outlineBtn.textContent = '테두리: ' + (outlineOn ? '켬' : '끔'); actors.forEach(a => a.pet.outlines.forEach(o => { o.visible = outlineOn; })); envOutlines.forEach(o => { o.visible = outlineOn; }); };
+  outlineBtn.onclick = () => { outlineOn = !outlineOn; outlineBtn.textContent = '테두리: ' + (outlineOn ? '켬' : '끔'); actors.forEach(a => { a.thin = undefined; a.pet.outlines.forEach(o => { o.visible = outlineOn; }); }); envOutlines.forEach(o => { o.visible = outlineOn; }); };
   const soundBtn = $('soundBtn');
   soundBtn.onclick = () => { soundOn = !soundOn; if (soundOn && !audio) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) audio = new AC(); } soundBtn.textContent = '소리: ' + (soundOn ? '켬' : '끔'); if (soundOn) sfx.note(); };
   function say(a, text, sec) { a.say = text; a.sayT = sec || 1.8; }
@@ -1239,9 +1239,10 @@
     if (!net.ref) return;
     if (tele || !me.moving || me.sit) vx = vz = 0;
     const sit = me.sit ? seats.indexOf(me.sit) : '', tg = me.moving && me.target ? me.target : null;
-    const key = sit + '|' + (me.moving ? 1 : 0) + '|' + (kx || kz ? Math.round(Math.atan2(kx, kz) / (Math.PI / 4)) : '') + '|' + (tg ? f1(tg.x) + ',' + f1(tg.z) : '') + '|' + net.n + '|' + me.type; // 방향키를 바꾸면 바로 보냄 (8방향으로 묶어서, 화면을 돌리는 동안 매번 보내지 않게)
+    const band = bandOf(me.x, me.z);
+    const key = band + '/' + sit + '|' + (me.moving ? 1 : 0) + '|' + (kx || kz ? Math.round(Math.atan2(kx, kz) / (Math.PI / 4)) : '') + '|' + (tg ? f1(tg.x) + ',' + f1(tg.z) : '') + '|' + net.n + '|' + me.type; // 방향키를 바꾸면 바로 보냄 (8방향으로 묶어서, 화면을 돌리는 동안 매번 보내지 않게)
     // 누른 곳에 도착해 멈춤: 받는 쪽도 이미 그 자리에서 섰으므로 보내지 않음 (앉기·감정·펫이 그대로일 때만)
-    if (!net.want && !tele && key !== net.key && !me.moving && net.s && net.s.tx !== null && net.key.endsWith('|' + net.n + '|' + me.type) && net.key.startsWith(sit + '|')
+    if (!net.want && !tele && key !== net.key && !me.moving && net.s && net.s.tx !== null && net.key.endsWith('|' + net.n + '|' + me.type) && net.key.startsWith(band + '/' + sit + '|')
       && Math.hypot(net.s.tx - me.x, net.s.tz - me.z) < NET_ERR) net.key = key;
     let want = net.want || tele || key !== net.key;
     if (!want && net.s) { const p = netPred(net.s, now); want = Math.hypot(p[0] - me.x, p[1] - me.z) > NET_ERR || (me.moving && now - net.s.at > NET_KEEP); }
@@ -1249,10 +1250,13 @@
     net.key = key; net.want = false; net.lastAt = now;
     const r1 = v => Math.round(v * 10) / 10;
     net.s = { x: r1(me.x), z: r1(me.z), vx: r1(vx), vz: r1(vz), at: now, tx: tg ? r1(tg.x) : null, tz: tg ? r1(tg.z) : null };
-    net.ref.set([net.s.x, net.s.z, net.s.vx, net.s.vz, sit, net.emo, net.n, me.type, tg ? net.s.tx : '', tg ? net.s.tz : ''].join(',')).catch(() => {});
+    net.ref.set({ c: band, d: [net.s.x, net.s.z, net.s.vx, net.s.vz, sit, net.emo, net.n, me.type, tg ? net.s.tx : '', tg ? net.s.tz : '', net.tag].join(',') }).catch(() => {});
   }
-  function netApply(id, raw) {
-    if (id === host.me.id || typeof raw !== 'string') return;
+  // 같은 학생이 두 기기로 들어오면: 나중에 들어온 기기만 위치를 올림. 접속표(net.tag, 들어온 시각)가 더 늦은 값이 내 칸에 오면
+  // 이 기기는 물러나 혼자 보기로 바뀌고 마을 기록도 서버에 저장하지 않음. 더 이른 표가 오면(물러난 기기의 마지막 값) 내 위치를 다시 올림
+  function netApply(id, raw, band) {
+    if (typeof raw !== 'string') return;
+    if (id === host.me.id) { const t = raw.split(',')[10] || ''; if (net.tag && t && t !== net.tag) { if (t > net.tag) netDup(); else net.want = true; } return; }
     const p = raw.split(','); if (p.length < 10) return;
     const x = +p[0], z = +p[1], vx = +p[2], vz = +p[3], hasT = p[8] !== '' && p[9] !== '', tx = hasT ? +p[8] : null, tz = hasT ? +p[9] : null;
     if (![x, z, vx, vz].every(isFinite) || Math.hypot(vx, vz) > SPEED * RUN * 1.5 || (hasT && !(isFinite(tx) && isFinite(tz)))) return;
@@ -1260,6 +1264,7 @@
     let a = net.remotes[id];
     if (!a) { a = net.remotes[id] = makeActor(type, host.nameOf(id), x, z, false); a.remote = true; a.id = id; a.emoN = p[6]; a.face = Math.PI * 2 * Math.random(); updateCount(); }
     else if (a.type !== type) setPet(a, type);
+    a.band = band;
     const seat = p[4] === '' ? null : seats[+p[4]] || null;
     a.target = null;
     if (seat) { a.sit = seat; a.x = seat.x; a.z = seat.z; a.nv = null; }
@@ -1279,15 +1284,13 @@
     }
   }
   function netRemove(id) { const a = net.remotes[id]; if (!a) return; delete net.remotes[id]; scene.remove(a.g); a.tag.remove(); const i = actors.indexOf(a); if (i >= 0) actors.splice(i, 1); updateCount(); }
-  function updateCount() { const el = $('count'); if (el) el.textContent = demo ? '' : !host.db ? '혼자 보기 (로그인하면 친구가 보여요)' : net.idle ? '쉬는 중 · 움직이면 친구들이 다시 보여요' : `지금 ${Object.keys(net.remotes).length + 1}명`; }
+  function updateCount() { const el = $('count'); if (el) el.textContent = demo ? '' : !host.db ? '혼자 보기 (로그인하면 친구가 보여요)' : net.dup ? '다른 기기에서 들어와서 여기서는 혼자 보기 (기록은 그 기기에 저장돼요)' : net.idle ? '쉬는 중 · 움직이면 친구들이 다시 보여요' : `근처 ${Object.keys(net.remotes).length + 1}명`; }
   function netJoin() {
     if (demo || !host.db || net.ref) return;
     const base = `village/${host.code}`;
     net.ref = host.db.ref(`${base}/${host.me.id}`); net.key = ''; net.want = true; net.lastAt = 0; net.s = null;
-    net.list = host.db.ref(base);
-    net.list.on('child_added', sn => netApply(sn.key, sn.val()));
-    net.list.on('child_changed', sn => netApply(sn.key, sn.val()));
-    net.list.on('child_removed', sn => netRemove(sn.key));
+    net.tag = Date.now().toString(36).padStart(9, '0') + Math.random().toString(36).slice(2, 5); // 접속표: 들어온 시각 (같은 학생 두 기기 구분)
+    net.band = null; netListen();
     // 끊기면 서버가 내 칸을 지움. 다시 연결되면 예약을 다시 걸고 위치를 다시 올림
     net.conn = host.db.ref('.info/connected');
     net.conn.on('value', sn => { if (sn && sn.val() === true && net.ref) { net.ref.onDisconnect().remove().catch(() => {}); net.key = ''; net.want = true; } });
@@ -1297,10 +1300,39 @@
   const IDLE_MS = 180000; let lastInput = performance.now();
   function poke() { lastInput = performance.now(); if (net.idle && running && !document.hidden) { net.idle = false; netJoin(); updateCount(); } }
   function netRest() { if (!net.ref) return; netLeave(); net.idle = true; updateCount(); }
+  function netDup() { // 다른 기기에 자리를 넘김: 내 칸은 그 기기 것이므로 지우지 않고 듣기만 멈춤
+    if (!net.ref) return;
+    try { net.list.off(); net.conn.off(); net.ref.onDisconnect().cancel(); } catch (e) {}
+    net.ref = net.list = net.conn = null; Object.keys(net.remotes).forEach(netRemove);
+    net.dup = true; vStore.off(); updateCount();
+    say(me, '다른 기기에서 마을에 들어왔어요', 3);
+  }
   const releaseKeys = () => { Object.keys(keys).forEach(k => { keys[k] = false; }); };
   const onVis = () => { releaseKeys(); if (document.hidden) netRest(); else poke(); };
   document.addEventListener('visibilitychange', onVis); window.addEventListener('blur', releaseKeys);
   root.addEventListener('pointerdown', poke, true); root.addEventListener('wheel', poke, { passive: true, capture: true });
+  // 가까운 친구만 받기: 마을을 동서로 30칸씩 띠(c)로 나누고, 내 띠와 양옆 띠(앞뒤 30칸 이상)에 있는 친구만 서버가 골라 보냄
+  // (안개 때문에 그보다 먼 친구는 거의 안 보임). 가게 안은 띠 99 하나. 띠를 넘어가면 다시 듣고, 범위를 벗어난 친구는 화면에서 뺌
+  const BAND_W = 30, SHOP_BAND = 99;
+  const bandOf = (x, z) => z > SHOP.far ? SHOP_BAND : Math.floor(x / BAND_W);
+  const bandNear = (b, c) => b === SHOP_BAND || c === SHOP_BAND ? b === c : Math.abs(b - c) <= 1;
+  function netListen() {
+    if (!net.ref) return;
+    const b = bandOf(me.x, me.z);
+    if (net.list) try { net.list.off(); } catch (e) {}
+    net.band = b;
+    net.list = host.db.ref(`village/${host.code}`).orderByChild('c').startAt(b === SHOP_BAND ? b : b - 1).endAt(b === SHOP_BAND ? b : b + 1);
+    const got = sn => { const v = sn.val(); if (v && typeof v === 'object') netApply(sn.key, v.d, +v.c); };
+    net.list.on('child_added', got); net.list.on('child_changed', got);
+    net.list.on('child_removed', sn => netRemove(sn.key));
+    Object.keys(net.remotes).forEach(id => { const a = net.remotes[id]; if (!bandNear(b, a.band)) netRemove(id); });
+    updateCount();
+  }
+  function netBandCheck() { // 띠 경계에서 왔다 갔다 할 때 자꾸 다시 듣지 않게 3칸 넘어가야 바꿈
+    if (!net.ref || net.band === null) return;
+    const b = bandOf(me.x, me.z); if (b === net.band) return;
+    if (b === SHOP_BAND || net.band === SHOP_BAND || me.x < net.band * BAND_W - 3 || me.x > (net.band + 1) * BAND_W + 3) netListen();
+  }
   function netLeave() {
     if (!net.ref) return;
     try { net.list.off(); net.conn.off(); net.ref.onDisconnect().cancel(); } catch (e) {}
@@ -1379,17 +1411,34 @@
   const lineGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Array(30).fill(0), 3));
   const line = new THREE.Line(lineGeo, bend(new THREE.LineBasicMaterial({ color: 0xffffff }))); line.frustumCulled = false; line.visible = false; scene.add(line);
   const tip = new THREE.Vector3();
+  // 마을 기록(도감·가방·텃밭) 저장소: 로그인한 학생은 학생 기록의 나만 보는 칸(village)에 같이 저장 → 어느 기기에서나 이어짐 (host.saved·host.save)
+  // 이 브라우저에도 사본을 둠. 서버에 아직 없으면 이 브라우저 기록을 올려서 옮김. 자주 바뀌므로 4초씩 모아 저장하고, 마을을 나갈 때는 바로
+  const vStore = (() => {
+    const keys = { d: 'vlgDex:', b: 'vlgBag:', g: 'vlgGarden:' }, id = demo ? 'demo' : host.me.id, val = {};
+    let srv = null; try { srv = !demo && typeof host.saved === 'string' ? JSON.parse(host.saved) : null; } catch (e) { srv = null; }
+    Object.keys(keys).forEach(k => { let v = srv && typeof srv[k] === 'string' ? srv[k] : null; if (v === null) { try { v = localStorage.getItem(keys[k] + id); } catch (e) {} } val[keys[k] + id] = v; });
+    let timer = null, off = false; // off: 다른 기기에서 마을에 들어옴 → 이 기기는 서버에 저장하지 않음 (나중 기기의 기록을 덮지 않게)
+    const flush = () => { clearTimeout(timer); timer = null; if (demo || !host.save || off) return; const out = {}; Object.keys(keys).forEach(k => { const v = val[keys[k] + id]; if (v != null) out[k] = v; }); try { host.save(JSON.stringify(out)); } catch (e) {} };
+    if (!demo && host.save && !srv && Object.values(val).some(v => v != null)) timer = setTimeout(flush, 1500); // 예전(브라우저에만 있던) 기록 옮기기
+    return {
+      get: k => (val[k] === undefined ? null : val[k]),
+      set(k, v) { val[k] = v; try { localStorage.setItem(k, v); } catch (e) {} if (!demo && host.save && !off && !timer) timer = setTimeout(flush, 4000); },
+      flush() { if (timer) flush(); },
+      off() { off = true; clearTimeout(timer); timer = null; },
+    };
+  })();
+  window.addEventListener('pagehide', vStore.flush);
   const DEX_KEY = 'vlgDex:' + (demo ? 'demo' : host.me.id); let dex = {};
-  try { dex = JSON.parse(localStorage.getItem(DEX_KEY) || '{}') || {}; } catch (e) { dex = {}; }
+  try { dex = JSON.parse(vStore.get(DEX_KEY) || '{}') || {}; } catch (e) { dex = {}; }
   const dexN = $('dexN'), dexEl = $('dex'), catchEl = $('catch');
   const updDexN = () => { dexN.textContent = Object.keys(dex).length + '/' + (FISH.length + BUGS.length); }; updDexN();
   // 가방: 낚싯대(손에 들기·넣기), 잡은 물고기, 딴 열매. 이 브라우저에 저장 (나중에 슈퍼마켓 점원에게 팔 거리)
   const BAG_KEY = 'vlgBag:' + (demo ? 'demo' : host.me.id); let bag = { held: null, rod: false, net: false, can: false, fish: {}, bug: {}, seed: {}, flower: {}, apple: 0, coconut: 0, coins: 0 };
-  try { bag = Object.assign(bag, JSON.parse(localStorage.getItem(BAG_KEY) || '{}')); } catch (e) {}
+  try { bag = Object.assign(bag, JSON.parse(vStore.get(BAG_KEY) || '{}')); } catch (e) {}
   bag.bug = bag.bug || {}; bag.seed = bag.seed || {}; bag.flower = bag.flower || {}; if (bag.held && !bag[bag.held]) bag.held = null; // 도구는 슈퍼마켓에서 사야 생김
   const bagEl = $('bag'), heldIc = $('heldIc');
   const coinN = $('coinN');
-  const saveBag = () => { try { localStorage.setItem(BAG_KEY, JSON.stringify(bag)); } catch (e) {} coinN.textContent = bag.coins || 0; if (bagEl.style.display !== 'none') renderBag(); };
+  const saveBag = () => { vStore.set(BAG_KEY, JSON.stringify(bag)); coinN.textContent = bag.coins || 0; if (bagEl.style.display !== 'none') renderBag(); };
   coinN.textContent = bag.coins || 0;
   const bagAdd = (k, id) => { if (k === 'fish' || k === 'bug' || k === 'seed' || k === 'flower') bag[k][id] = (bag[k][id] || 0) + 1; else bag[k] = (bag[k] || 0) + 1; saveBag(); };
   const TOOLS = { rod: { ic: '🎣', nm: '낚싯대', price: TOOLS_PRICE.rod, use: '강·바다에서 물고기를 낚아요' }, net: { ic: '🥅', nm: '잠자리채', price: TOOLS_PRICE.net, use: '풀밭에 나타난 벌레를 잡아요' }, can: { ic: '💧', nm: '물뿌리개', price: TOOLS_PRICE.can, use: '심은 꽃에 물을 줘요' } };
@@ -1518,7 +1567,7 @@
     me.swing = { t: 0, b, ok: b ? Math.random() < [0, 0.92, 0.8, 0.65, 0.5][b.B.rar] * (b.y > 1.3 ? 0.8 : 1) : false, hit: false }; me.swingT = SWING; }
   function catchBug(b) { // 그물 속 벌레를 가방에 넣고 기록
     b.gone = true; const B = b.B, key = 'b' + B.id, isNew = !dex[key]; dex[key] = { n: (dex[key] ? dex[key].n : 0) + 1 };
-    try { localStorage.setItem(DEX_KEY, JSON.stringify(dex)); } catch (e) {}
+    vStore.set(DEX_KEY, JSON.stringify(dex));
     bagAdd('bug', B.id); updDexN(); if (dexEl.style.display !== 'none') renderDex(); showCard(B.icon, B.name, '★'.repeat(B.rar) + ' ' + RAR[B.rar], isNew); popText(B.icon, me.x, 1.6, me.z); sfx.pick(); me.hop = 0.3; }
   function swingTick(dt) {
     const sw = me.swing; if (!sw) { netHold.rotation.x = -0.05; me.swingT = 0; return; }
@@ -1567,8 +1616,8 @@
     ['장미', '🌹', 12, 30, 'rose', ['#d9304a']], ['수국', '💠', 15, 32, 'hydrangea', ['#7fa8e8', '#b9a3f0']], ['무궁화', '🌺', 20, 35, 'hibiscus', ['#f2a0c0', '#c0304a']],
   ].map(([name, icon, price, grow, shape, col], id) => ({ id, name, icon, price, grow, shape, col }));
   const GARDEN_KEY = 'vlgGarden:' + (demo ? 'demo' : host.me.id), STAGE = ['씨앗', '새싹', '꽃봉오리', '꽃'];
-  let garden = []; try { garden = JSON.parse(localStorage.getItem(GARDEN_KEY) || '[]') || []; } catch (e) { garden = []; }
-  const saveGarden = () => { try { localStorage.setItem(GARDEN_KEY, JSON.stringify(garden.map(q => ({ f: q.f, x: q.x, z: q.z, st: q.st, wet: q.wet })))); } catch (e) {} };
+  let garden = []; try { garden = JSON.parse(vStore.get(GARDEN_KEY) || '[]') || []; } catch (e) { garden = []; }
+  const saveGarden = () => { vStore.set(GARDEN_KEY, JSON.stringify(garden.map(q => ({ f: q.f, x: q.x, z: q.z, st: q.st, wet: q.wet })))); };
   function plantMesh(q) { // 단계에 맞춰 화분 흙과 줄기·잎·꽃을 다시 만듦
     if (q.g) scene.remove(q.g); const F = FLOWERS[q.f], c = F.col, g = new THREE.Group(), add = (m, x, y, z) => { g.add(at(m, x, y, z)); return m; };
     const soil = add(mesh(new THREE.CylinderGeometry(0.32, 0.36, 0.08, 14), q.wet ? '#4a3220' : '#7a5a3a'), 0, 0.04, 0); q.soil = soil;
@@ -1630,7 +1679,7 @@
     const st = fishing.st, sh = fishing.sh; if (!st || st === 'cast') return;
     if (st === 'bite') { // 잡음
       const f = sh.f, cm = sh.cm, isNew = !dex[f.id]; dex[f.id] = { n: (dex[f.id] ? dex[f.id].n : 0) + 1, best: Math.max(cm, dex[f.id] ? dex[f.id].best : 0) };
-      try { localStorage.setItem(DEX_KEY, JSON.stringify(dex)); } catch (e) {}
+      vStore.set(DEX_KEY, JSON.stringify(dex));
       bagAdd('fish', f.id); updDexN(); if (dexEl.style.display !== 'none') renderDex(); showCatch(f, cm, isNew); popText(f.icon, fishing.bx, 0.6, fishing.bz); sfx.pick(); me.hop = 0.4;
       sh.state = 'gone'; sh.g.visible = false; sh.wait = 4 + Math.random() * 6; fishing.sh = null; endFishing(); return; }
     if (st === 'nibble') { flee(sh); fishing.sh = null; endFishing('앗, 너무 일찍 당겼어요!'); return; }
@@ -1704,7 +1753,7 @@
       if (r === true || me.target.stuck > 0.6) { me.target = null; marker.visible = false; }
     }
     if (net.ref && now - lastInput > IDLE_MS) netRest();
-    net.fnow = now; netTick(now, kx, kz);
+    net.fnow = now; netTick(now, kx, kz); netBandCheck();
     drawMap();
     // 친구들: 쉬다가 아무 데나 걸어감
     actors.forEach(a => {
@@ -1839,6 +1888,12 @@
       if (a.sayT > 0) a.sayT -= dt;
       const label = a.sayT > 0 ? a.say : a.name + (a.wave > 0 ? ' 👋' : '');
       if (label !== a.label) { a.label = label; a.tag.textContent = label; a.tag.classList.toggle('say', a.sayT > 0); }
+      if (a.remote) { // 친구가 많이 모여도 가볍게: 20칸 밖은 테두리 끄고, 45칸 밖(안개 속)은 아예 안 그림 (움직임 계산은 계속)
+        const dm = Math.hypot(a.x - me.x, a.z - me.z), hide = dm > 45, thin = dm > 20;
+        if (a.g.visible === hide) a.g.visible = !hide;
+        if (a.thin !== thin) { a.thin = thin; a.pet.outlines.forEach(o => { o.visible = outlineOn && !thin; }); }
+        if (hide) { a.tag.style.display = 'none'; return; }
+      }
       a.pet.update(t, { moving: a.moving && !(a.bowT > 0), wave: a.wave > 0.02, bow: a.bowT > 0, angry: a.angryT > 0, air: a.jumpY > 0.05, sit: Boolean(a.sit) && !a.sit.stand, hold: a === me && (rod.visible || bugNet.visible || wcan.visible) ? (fishing.st || me.pourT > 0 ? 'fish' : me.swingT > 0 ? 'swing' : 'carry') : null });
       const dz = bendDist(a.x, a.z);
       v.set(a.g.position.x, a.g.position.y + (a.sit ? 1.1 : 1.24) * (a.pet.height || 1) - curve.uCurve.value * dz * dz, a.g.position.z).project(camera);
@@ -1857,9 +1912,10 @@
   // ── 바깥에서 쓰는 손잡이: 멈춤(탭을 떠날 때)·다시 시작·치우기
   const api = {
     host, frame,
-    pause() { autoPaused = false; if (!running) return; running = false; releaseKeys(); netLeave(); net.idle = false; },
+    get dup() { return Boolean(net.dup); }, // 다른 기기에 자리를 넘김 → 다시 열 때는 새로 만들어 서버의 최신 마을 기록을 불러옴
+    pause() { autoPaused = false; vStore.flush(); if (!running) return; running = false; releaseKeys(); netLeave(); net.idle = false; },
     resume() { if (running) return; running = true; prev = lastInput = performance.now(); net.idle = false; netJoin(); updateCount(); requestAnimationFrame(frame); },
-    dispose() { api.pause(); window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('blur', releaseKeys); try { renderer.dispose(); renderer.forceContextLoss(); } catch (e) {} root.innerHTML = ''; root.classList.remove('vlg', 'vlg-full'); },
+    dispose() { api.pause(); window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('blur', releaseKeys); window.removeEventListener('pagehide', vStore.flush); try { renderer.dispose(); renderer.forceContextLoss(); } catch (e) {} root.innerHTML = ''; root.classList.remove('vlg', 'vlg-full'); },
     debug: { me, actors, trees, houses, bugs, env, envOutlines, quality, nearby, interact, emote, seats, keys, wave, shake, net, renderer, camera, get fruitN() { return fruitN; } },
   };
   { const fb = $('fullBtn'); if (fb) fb.onclick = () => { root.classList.toggle('vlg-full'); fb.textContent = root.classList.contains('vlg-full') ? '🗗 작게' : '⛶ 크게'; }; }
