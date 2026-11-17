@@ -1313,7 +1313,7 @@
     say(me, '다른 기기에서 마을에 들어왔어요', 3);
   }
   const releaseKeys = () => { Object.keys(keys).forEach(k => { keys[k] = false; }); };
-  const onVis = () => { releaseKeys(); if (document.hidden) netRest(); else poke(); };
+  const onVis = () => { releaseKeys(); if (document.hidden) { netRest(); vStore.flush(); } else poke(); };
   document.addEventListener('visibilitychange', onVis); window.addEventListener('blur', releaseKeys);
   root.addEventListener('pointerdown', poke, true); root.addEventListener('wheel', poke, { passive: true, capture: true });
   // 가까운 친구만 받기: 마을을 동서로 30칸씩 띠(c)로 나누고, 내 띠와 양옆 띠(앞뒤 30칸 이상)에 있는 친구만 서버가 골라 보냄
@@ -1424,7 +1424,7 @@
   const line = new THREE.Line(lineGeo, bend(new THREE.LineBasicMaterial({ color: 0xffffff }))); line.frustumCulled = false; line.visible = false; scene.add(line);
   const tip = new THREE.Vector3();
   // 마을 기록(도감·가방·텃밭) 저장소: 로그인한 학생은 학생 기록의 나만 보는 칸(village)에 같이 저장 → 어느 기기에서나 이어짐 (host.saved·host.save)
-  // 이 브라우저에도 사본을 둠. 서버에 아직 없으면 이 브라우저 기록을 올려서 옮김. 자주 바뀌므로 4초씩 모아 저장하고, 마을을 나갈 때는 바로
+  // 이 브라우저에도 사본을 둠. 서버에 아직 없으면 이 브라우저 기록을 올려서 옮김. 자주 바뀌므로 15초씩 모아 저장하고(저장마다 학급 기록 전체를 이 기기에 다시 적어 화면이 멈칫함), 마을을 나가거나 창을 숨길 때는 바로
   const vStore = (() => {
     const keys = { d: 'vlgDex:', b: 'vlgBag:', g: 'vlgGarden:' }, id = demo ? 'demo' : host.me.id, val = {};
     let srv = null; try { srv = !demo && typeof host.saved === 'string' ? JSON.parse(host.saved) : null; } catch (e) { srv = null; }
@@ -1434,7 +1434,7 @@
     if (!demo && host.save && !srv && Object.values(val).some(v => v != null)) timer = setTimeout(flush, 1500); // 예전(브라우저에만 있던) 기록 옮기기
     return {
       get: k => (val[k] === undefined ? null : val[k]),
-      set(k, v) { val[k] = v; try { localStorage.setItem(k, v); } catch (e) {} if (!demo && host.save && !off && !timer) timer = setTimeout(flush, 4000); },
+      set(k, v) { val[k] = v; try { localStorage.setItem(k, v); } catch (e) {} if (!demo && host.save && !off && !timer) timer = setTimeout(flush, 15000); },
       flush() { if (timer) flush(); },
       off() { off = true; clearTimeout(timer); timer = null; },
     };

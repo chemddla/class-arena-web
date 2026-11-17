@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # 마지막으로 성공한 배포 커밋 찾기 (changes 단계)
 
 concurrency:
   group: arena-game-live
@@ -51,12 +52,19 @@ jobs:
           EVENT: ${{ github.event_name }}
           TARGET: ${{ github.event.inputs.target }}
           BEFORE: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$EVENT" = "workflow_dispatch" ]; then
             for t in game admin rules; do
               if [ "$TARGET" = "all" ] || [ "$TARGET" = "$t" ]; then echo "$t=true"; else echo "$t=false"; fi
             done >> "$GITHUB_OUTPUT"
             exit 0
+          fi
+          # 여러 push가 몰리면 기다리던 실행은 더 새 실행에 밀려 취소됨 → 그 push에서 바뀐 것(DB 규칙·관리자 화면)이 배포되지 않고 빠졌음.
+          # 그래서 바로 전 push가 아니라 "마지막으로 성공한 push 배포" 커밋부터 비교함 (못 찾으면 예전처럼 바로 전 push)
+          LAST=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy.yml --branch main --event push --status success --limit 1 --json headSha -q '.[0].headSha' 2>/dev/null || true)
+          if [ -n "$LAST" ] && git cat-file -e "$LAST^{commit}" 2>/dev/null && git merge-base --is-ancestor "$LAST" "$GITHUB_SHA"; then
+            echo "마지막 성공 배포 커밋부터 비교: $LAST"; BEFORE="$LAST"
           fi
           # 처음 push(이전 커밋 없음)거나 이전 커밋을 못 찾으면 모두 배포
           if [ -z "$BEFORE" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
