@@ -32656,6 +32656,11 @@
     const QI_ATK_COLOR = '#e8b23e'; // 일반 공격 구슬 (금빛 실타래 기구슬): 투사체 색으로 구분해서 실시간 화면에도 그대로 감
     const QI_J_RAMP = ['#24160a', '#4e3210', '#8a5a16', '#c48a24', '#e8b23e', '#f6d27a', '#fbe8b4']; // 반짝임 없는 금빛 기운 (흰색 없이 크림색까지)
     const QI_RAMP = ['#0b4f4a', '#14857a', '#2dd4bf', '#99f6e4', '#f0fffb'];
+    // 시크릿 레어 외형(qigong_sr1)은 이펙트가 따로 (청기, drawQsr*): 구체는 투사체 색으로, 이펙트는 sr: 1로 구분 (실시간 화면에도 그대로 감)
+    const QSR_ATK_COLOR = '#62d4f2', QSR_CANNON_COLOR = '#2ca8d8';
+    function qiSR(u) { return Boolean(u && u.job === 'qigong' && !u.monsterType && u.skinVariant === SECRET_SKIN_BASE + 1); }
+    function qiFx(u, ef) { if (qiSR(u)) ef.sr = 1; sim.effects.push(ef); return ef; }
+    const qiIsAtkCol = c => c === QI_ATK_COLOR || c === QSR_ATK_COLOR, qiIsCannonCol = c => c === QI_CANNON_COLOR || c === QSR_CANNON_COLOR;
     const QI_ORB_R = 6;
     const QI_ATK_SPLASH = 0.45, QI_ATK_SPLASH_DMG = 0.6; // 일반 공격은 범위 공격: 맞은 자리에서 터져 반지름 0.45칸(기·몸 크기·축기 반영) 안의 다른 적에게 60%                                                                        // 기본 공격 구체 반지름
     const QI_CANNON_DMG = 2.6, QI_CANNON_R = 17, QI_CANNON_CELLS = 7, QI_CANNON_PUSH = 0.6;    // 기공포: 꿰뚫는 큰 구체 7칸 · 260% · 0.6칸 밀침
@@ -32717,23 +32722,23 @@
     function qiBasicShot(u, target, angle = null) {
       const k = qiSizeK(u) * (1 + qiPer(u, 'atkR')), dmg = u.atk * qiDmgK(u) * (1 + qiPer(u, 'atkDmg')); // 축기: 기본 +8% 위에 크기 +10%·피해 +5%
       const o = angle == null ? unitShotOrigin(u, 14) : aimShotOrigin(u, u.x, u.y, angle);
-      const hold = { wait: QI_ATK_WINDUP, handDx: (o.x - u.x) * (u.facingDir || 1), handDy: o.y - u.y, qiFlash: Math.round(14 * k), color: QI_ATK_COLOR,
+      const hold = { wait: QI_ATK_WINDUP, handDx: (o.x - u.x) * (u.facingDir || 1), handDy: o.y - u.y, qiFlash: Math.round(14 * k), color: qiSR(u) ? QSR_ATK_COLOR : QI_ATK_COLOR,
         qiSplash: Math.round(GRID_CELL_SIZE * unitAreaScale(u) * QI_ATK_SPLASH * (1 + QI_SIZE_PER * qiOf(u))) }; // 터지는 범위는 축기 1개마다 +8%만 (기 5개 1.4배, 2026-11-16 사용자: 최대 축기 범위가 너무 큼)
       qiOrbShot(u, o, angle == null ? { target, dmg, r: QI_ORB_R * k, extra: hold } : { angle, dmg, r: QI_ORB_R * k, extra: hold });
     }
     // 손을 떠나는 순간 (투사체 wait가 끝난 틱): 손끝 섬광·소리
     function qiOrbRelease(p) {
-      if (p.color === QI_ATK_COLOR) sim.effects.push({ type: 'qi_hit', j: 1, small: 1, x: Math.round(p.x), y: Math.round(p.y), r: Math.round(p.radius || QI_ORB_R), life: 10, maxLife: 10 });
-      else sim.effects.push({ type: 'qi_hit', x: Math.round(p.x), y: Math.round(p.y), r: p.qiFlash, small: 1, life: 12, maxLife: 12 });
+      if (qiIsAtkCol(p.color)) qiFx(p.owner, { type: 'qi_hit', j: 1, small: 1, x: Math.round(p.x), y: Math.round(p.y), r: Math.round(p.radius || QI_ORB_R), life: 10, maxLife: 10 });
+      else qiFx(p.owner, { type: 'qi_hit', x: Math.round(p.x), y: Math.round(p.y), r: p.qiFlash, small: 1, life: 12, maxLife: 12 });
       p.qiFlash = 0;
       playCombatSfx('magic');
     }
     // 구체가 맞은 자리 (resolveProjectileImpact): 기공탄·기본 공격
     function qiProjectileHit(p, hit, x, y) {
       const r = Math.max(18, (p.radius || QI_ORB_R) * 3.2);
-      if (p.color === QI_ATK_COLOR) { // 일반 공격: 실타래 기구슬이 박혀 오그라들었다가 기운 실이 풀리며 터짐 (drawQiJHit) · 일반 공격은 기운 실·선이 터지는 범위(qiSplash)까지 뻗음
+      if (qiIsAtkCol(p.color)) { // 일반 공격: 실타래 기구슬이 박혀 오그라들었다가 기운 실이 풀리며 터짐 (drawQiJHit) · 일반 공격은 기운 실·선이 터지는 범위(qiSplash)까지 뻗음
         const rr = p.radius || QI_ORB_R, sp = p.qiSplash ? Math.max(1, p.qiSplash / (rr * QI_J_K * 4.6 * 0.72)) : 1;
-        sim.effects.push({ type: 'qi_hit', j: 1, x: Math.round(hit ? hit.x : x), y: Math.round(hit ? hit.y - 14 : y - 12), r: Math.round(rr * 10) / 10, sp: Math.round(sp * 100) / 100, dir: (p.x <= (hit ? hit.x : x) ? 1 : -1), life: 30, maxLife: 30 });
+        qiFx(p.owner, { type: 'qi_hit', j: 1, x: Math.round(hit ? hit.x : x), y: Math.round(hit ? hit.y - 14 : y - 12), r: Math.round(rr * 10) / 10, sp: Math.round(sp * 100) / 100, dir: (p.x <= (hit ? hit.x : x) ? 1 : -1), life: 30, maxLife: 30 });
       }
       else sim.effects.push({ type: 'qi_hit', x: Math.round(hit ? hit.x : x), y: Math.round(hit ? hit.y - 14 : y - 12), r: Math.round(r), life: 18, maxLife: 18 });
       if (!hit) return;
@@ -32756,14 +32761,14 @@
         p.hitIds.add(e.id);
         applyDamage(p.owner, e, p.dmg, '', QI_COLOR);
         if (p.push) pushUnitAway(e, p.x - Math.cos(p.angle) * 30, p.y + 14 - Math.sin(p.angle) * 30, p.push);
-        if (p.color === QI_CANNON_COLOR) sim.effects.push({ type: 'qi_hit', j: 2, x: Math.round(e.x), y: Math.round(e.y - 14), r: Math.round((p.radius || QI_CANNON_R) * 10) / 10, life: 24, maxLife: 24 }); // 꿰뚫으며 지나간 자리: 작은 압력 고리와 짧은 선
+        if (qiIsCannonCol(p.color)) qiFx(p.owner, { type: 'qi_hit', j: 2, x: Math.round(e.x), y: Math.round(e.y - 14), r: Math.round((p.radius || QI_CANNON_R) * 10) / 10, life: 24, maxLife: 24 }); // 꿰뚫으며 지나간 자리: 작은 압력 고리와 짧은 선
         else sim.effects.push({ type: 'qi_hit', x: Math.round(e.x), y: Math.round(e.y - 14), r: Math.round(hitR * 2.2), life: 20, maxLife: 20 });
         playCombatSfx('heavy');
       }));
       const out = p.x < 15 || p.x > sim.worldW - 15 || p.y < 15 || p.y > sim.worldH - 15;
       if (p.travel > p.maxTravel || out) {
-        if (p.color === QI_CANNON_COLOR) // 사거리 끝: 일반 공격보다 크게 터짐 (터짐 크기 1배 · 실 열여섯 가닥)
-          sim.effects.push({ type: 'qi_hit', j: 1, big: 1, x: Math.round(p.x), y: Math.round(p.y), r: Math.round((p.radius || QI_CANNON_R) * 10) / 10, dir: Math.cos(p.angle || 0) >= 0 ? 1 : -1, life: 30, maxLife: 30 });
+        if (qiIsCannonCol(p.color)) // 사거리 끝: 일반 공격보다 크게 터짐 (터짐 크기 1배 · 실 열여섯 가닥)
+          qiFx(p.owner, { type: 'qi_hit', j: 1, big: 1, x: Math.round(p.x), y: Math.round(p.y), r: Math.round((p.radius || QI_CANNON_R) * 10) / 10, dir: Math.cos(p.angle || 0) >= 0 ? 1 : -1, life: 30, maxLife: 30 });
         else sim.effects.push({ type: 'qi_hit', x: Math.round(p.x), y: Math.round(p.y), r: Math.round(hitR * 2.6), life: 22, maxLife: 22 });
         return true;
       }
@@ -32785,8 +32790,8 @@
       p.travel = 0;
       p.maxTravel = (back ? Math.hypot(back.x - p.x, back.y - p.y) : 300) + 140;
       p.trail = [];
-      sim.effects.push({ type: 'qi_reflect', x: Math.round(p.x), y: Math.round(p.y), ang: Math.round(p.angle * 100) / 100, life: 16, maxLife: 16 });
-      { const b = qiBarrierShape(s); sim.effects.push({ type: 'qi_shield_hit', uid: s.id, a: Math.round(Math.atan2((p.y - b.cy) / b.ry, (p.x - b.cx) / b.rx) * 100) / 100, life: 20, maxLife: 20 }); } // 막이 맞은 자리에서 물결
+      qiFx(s, { type: 'qi_reflect', x: Math.round(p.x), y: Math.round(p.y), ang: Math.round(p.angle * 100) / 100, life: 16, maxLife: 16 });
+      { const b = qiBarrierShape(s); qiFx(s, { type: 'qi_shield_hit', uid: s.id, a: Math.round(Math.atan2((p.y - b.cy) / b.ry, (p.x - b.cx) / b.rx) * 100) / 100, life: 20, maxLife: 20 }); } // 막이 맞은 자리에서 물결
       if (sim.tickCount - (s._qiReflTextAt ?? -99) > 30) { s._qiReflTextAt = sim.tickCount; sim.floatTexts.push({ x: s.x, y: s.y - 46, text: '튕겨냄!', color: '#0d9488', life: 34 }); }
       playCombatSfx('slash');
       return true;
@@ -32813,8 +32818,8 @@
         qiFace(unit, ang);
         const o = aimShotOrigin(unit, unit.x, unit.y, ang);
         qiOrbShot(unit, o, { angle: ang, dmg: unit.atk * QI_CANNON_DMG * D, r: qiCannonR(unit), speed: 4.2,
-          extra: { qiPierce: 1, isSkill: true, push: GRID_CELL_SIZE * QI_CANNON_PUSH, maxTravel: len, color: QI_CANNON_COLOR } });
-        sim.effects.push({ type: 'qi_hit', j: 1, small: 1, x: Math.round(o.x), y: Math.round(o.y), r: Math.round(qiCannonR(unit) * 10) / 10, life: 12, maxLife: 12 });
+          extra: { qiPierce: 1, isSkill: true, push: GRID_CELL_SIZE * QI_CANNON_PUSH, maxTravel: len, color: qiSR(unit) ? QSR_CANNON_COLOR : QI_CANNON_COLOR } });
+        qiFx(unit, { type: 'qi_hit', j: 1, small: 1, x: Math.round(o.x), y: Math.round(o.y), r: Math.round(qiCannonR(unit) * 10) / 10, life: 12, maxLife: 12 });
         playCombatSfx('heavy');
         addBattleLog(`[기공사] ${unit.name}의 기공포!`);
         return true;
@@ -32833,9 +32838,9 @@
           const pool = aimPt ? inRange.filter(e => Math.abs(((Math.atan2(e.y - unit.y, e.x - unit.x) - base + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.9) : inRange;
           const home = pool.length ? pool[i % pool.length] : null;
           qiOrbShot(unit, o, { angle: base + off, dmg: unit.atk * QI_BULLET_DMG * D, r: QI_BULLET_R * K * (1 + qiPer(unit, 'bulletR')), speed: 4.6,
-            extra: { isSkill: true, homeTarget: home, homeTurn: 0.09, maxTravel: reach + 80, wait: i * 3, handDx: (o.x - unit.x) * (unit.facingDir || 1), handDy: o.y - unit.y, color: QI_ATK_COLOR } }); // 기공탄 = 일반 공격 구슬(실타래 기구슬)·맞는 터짐 그대로 (사용자 지시)
+            extra: { isSkill: true, homeTarget: home, homeTurn: 0.09, maxTravel: reach + 80, wait: i * 3, handDx: (o.x - unit.x) * (unit.facingDir || 1), handDy: o.y - unit.y, color: qiSR(unit) ? QSR_ATK_COLOR : QI_ATK_COLOR } }); // 기공탄 = 일반 공격 구슬(실타래 기구슬)·맞는 터짐 그대로 (사용자 지시)
         }
-        sim.effects.push({ type: 'qi_hit', j: 1, small: 1, x: Math.round(o.x), y: Math.round(o.y), r: Math.round(QI_BULLET_R * K * (1 + qiPer(unit, 'bulletR')) * 10) / 10, life: 12, maxLife: 12 }); // 손끝에 은은한 금빛
+        qiFx(unit, { type: 'qi_hit', j: 1, small: 1, x: Math.round(o.x), y: Math.round(o.y), r: Math.round(QI_BULLET_R * K * (1 + qiPer(unit, 'bulletR')) * 10) / 10, life: 12, maxLife: 12 }); // 손끝에 은은한 금빛
         playCombatSfx('magic');
         addBattleLog(`[기공사] ${unit.name}의 기공탄!`);
         return true;
@@ -32844,7 +32849,7 @@
         unit.qiBarrierTicks = QI_BARRIER_TICKS + Math.round(qiPer(unit, 'barrierTicks'));
         unit.qiBarrierUntil = sim.tickCount + unit.qiBarrierTicks;
         unit.qiBarrierQi = qiOf(unit); // 막 크기는 이때의 축기로 고정 (qiBarrierShape)
-        sim.effects.push({ type: 'qi_roar', x: Math.round(unit.x), y: Math.round(unit.y), r: Math.round(qiBarrierShape(unit).rx), soft: 1, life: 22, maxLife: 22 });
+        qiFx(unit, { type: 'qi_roar', x: Math.round(unit.x), y: Math.round(unit.y), r: Math.round(qiBarrierShape(unit).rx), soft: 1, life: 22, maxLife: 22 });
         playCombatSfx('heal');
         addBattleLog(`[기공사] ${unit.name}의 기공막! 날아오는 공격을 튕겨내요`);
         return true;
@@ -32856,7 +32861,7 @@
           applyDamage(unit, e, unit.atk * QI_ROAR_DMG * D, '', QI_COLOR);
           pushUnitAway(e, unit.x, unit.y, push);
         }));
-        sim.effects.push({ type: 'qi_roar', x: Math.round(unit.x), y: Math.round(unit.y), r: Math.round(R), life: 36, maxLife: 36 });
+        qiFx(unit, { type: 'qi_roar', x: Math.round(unit.x), y: Math.round(unit.y), r: Math.round(R), life: 36, maxLife: 36 });
         if (!sim.shake || sim.shake.power < 4) sim.shake = { power: 4, life: 10, maxLife: 10 };
         playCombatSfx('heavy');
         addBattleLog(`[기공사] ${unit.name}의 기공후! ${hits.length}명을 밀쳐냈어요`);
@@ -32887,7 +32892,7 @@
         qiFace(unit, Math.atan2(p.y - unit.y, p.x - unit.x));
         const orbR = qiGenkiOrbR(unit), sx = unit.x, sy = qiGenkiOrbY(unit, orbR);
         (sim.qiStrikes = sim.qiStrikes || []).push({ owner: unit, team: unit.team, x: p.x, y: p.y, r: R, or: orbR, dmg: unit.atk * QI_GENKI_DMG * D, t: QI_GENKI_FALL });
-        sim.effects.push({ type: 'qi_genki_fall', sx: Math.round(sx), sy: Math.round(sy), x: Math.round(p.x), y: Math.round(p.y), r: Math.round(R), or: Math.round(orbR), st: sim.tickCount || 0, life: QI_GENKI_FALL * 3, maxLife: QI_GENKI_FALL * 3 }); // st: 떨어지기 시작한 틱 (그림은 틱으로 진행해 터지는 순간과 맞춤, 수명은 넉넉히)
+        qiFx(unit, { type: 'qi_genki_fall', sx: Math.round(sx), sy: Math.round(sy), x: Math.round(p.x), y: Math.round(p.y), r: Math.round(R), or: Math.round(orbR), st: sim.tickCount || 0, life: QI_GENKI_FALL * 3, maxLife: QI_GENKI_FALL * 3 }); // st: 떨어지기 시작한 틱 (그림은 틱으로 진행해 터지는 순간과 맞춤, 수명은 넉넉히)
         unit.skillAnim = QI_GENKI_SHOW; unit.maxSkillAnim = QI_GENKI_SHOW;
         playCombatSfx('heavy');
         addBattleLog(`[기공사] ${unit.name}의 기공옥!`);
@@ -32958,7 +32963,7 @@
       const hits = lancerLineHits(u, b.ang, b.len, b.hw, qiFoes(u));
       withSkillHit(() => hits.forEach(e => applyDamage(u, e, b.dmg, '', QI_COLOR)));
       const h = aimShotOrigin(u, u.x, u.y, b.ang);
-      sim.effects.push({ type: 'qi_beam', x: Math.round(h.x), y: Math.round(h.y), ang: Math.round(b.ang * 100) / 100, len: Math.round(b.len), w: Math.round(b.hw), st: b.t0, life: QI_WAVE_EVERY + 10, maxLife: QI_WAVE_EVERY + 10 }); // st: 쏘기 시작한 틱 (머리가 내달리는 그림)
+      qiFx(u, { type: 'qi_beam', x: Math.round(h.x), y: Math.round(h.y), ang: Math.round(b.ang * 100) / 100, len: Math.round(b.len), w: Math.round(b.hw), st: b.t0, life: QI_WAVE_EVERY + 10, maxLife: QI_WAVE_EVERY + 10 }); // st: 쏘기 시작한 틱 (머리가 내달리는 그림)
     }
     // 매 틱 (stepEngineer 다음): 축기 · 기공파 · 기공옥 떨어짐
     function stepQigong() {
@@ -32982,7 +32987,7 @@
           applyDamage(s.owner, e, s.dmg, '', QI_COLOR);
           if (e.alive && !((e.statuses.superarmor || 0) > 0)) inflictStatus(s.owner, e, 'stun', QI_GENKI_STUN);
         }));
-        sim.effects.push({ type: 'qi_genki_boom', x: Math.round(s.x), y: Math.round(s.y), r: Math.round(s.r), or: Math.round(s.or || QI_GENKI_ORB), life: 120, maxLife: 120 }); // 2초 (원기옥 터짐: 돔이 부풀었다 실로 풀림)
+        qiFx(s.owner, { type: 'qi_genki_boom', x: Math.round(s.x), y: Math.round(s.y), r: Math.round(s.r), or: Math.round(s.or || QI_GENKI_ORB), ...(qiSR(s.owner) ? { life: 150, maxLife: 150 } : { life: 120, maxLife: 120 }) }); // SR(청천옥)은 2.5초 // 2초 (원기옥 터짐: 돔이 부풀었다 실로 풀림)
         sim.shake = { power: 10, life: 22, maxLife: 22 };
         playCombatSfx('heavy');
         if (s.owner) addBattleLog(`[기공사] ${s.owner.name}의 기공옥이 땅에 꽂혔어요! ${hits.length}명 피격`);
@@ -33035,6 +33040,7 @@
     // ----- 기공사 그림 (캔버스 도트 · pixelfx 램프) -----
     // 기의 구체: 은은한 빛 → 도트 원(가장자리 어둡게, 왼쪽 위 밝게, 가운데 흰 심) → 뒤로 흩어지는 꼬리
     function drawQiOrb(ctx, p) {
+      if (p.color === QSR_ATK_COLOR || p.color === QSR_CANNON_COLOR) { drawQsrOrb(ctx, p); return; } // 시크릿 레어 (청기)
       if (p.color === QI_ATK_COLOR) { drawQiThreadOrb(ctx, p); return; }
       if (p.color === QI_CANNON_COLOR) { drawQiCannonOrb(ctx, p); return; }
       const R = QI_RAMP, t = sim.tickCount || 0;
@@ -33842,6 +33848,532 @@
         ctx.restore();
       }
     }
+    // ----- 기공사 시크릿 레어 전용 이펙트 · 청기(淸氣) (2026-11-17, 시안 tools/qigong_fx_drafts/sr-*.js를 캔버스로 옮김) -----
+    //   금빛 실타래 대신 맑게 응축된 순수한 기: 선 없이 번진 결 (심이 가장 밝고 바깥으로 한 곡선으로 녹아 나감) · 하늘빛 램프 · 반짝임 없음
+    //   픽셀마다 계산하는 기운(qsrField)은 작은 버퍼(한 변 최대 maxW·maxH칸)에 그려 늘려 붙임. 큰 것은 cache로 1/30초 동안 버퍼를 다시 씀
+    //   SR 기공사의 구체는 투사체 색(QSR_*_COLOR)으로, 이펙트는 sr: 1로 구분 (실시간 화면에도 그대로 감, 예전 탭은 원래 그림/기본 구체로 그림)
+    const QSR_HEX = ['#08202c', '#0e3e56', '#16709a', '#2ca8d8', '#62d4f2', '#a8eefa', '#e4fbff', '#a4f4da', '#ffffff']; // 7 박하빛 · 8 심(흰빛)
+    const QSR_RGB = QSR_HEX.map(h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
+    const qsrA = a => Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, '0');
+    const qsrEo = u => 1 - Math.pow(1 - Math.max(0, Math.min(1, u)), 3), qsrEi = u => Math.pow(Math.max(0, Math.min(1, u)), 2.2);
+    const qsrOutBack = u => { u = Math.max(0, Math.min(1, u)); return 1 + 2.7 * Math.pow(u - 1, 3) + 1.7 * Math.pow(u - 1, 2); };
+    const qsrFbm = (x, y) => qiNoise2(x, y) * 0.55 + qiNoise2(x * 2.1 + 5.2, y * 2.1 - 1.7) * 0.3 + qiNoise2(x * 4.3 - 3.1, y * 4.3 + 8.4) * 0.15;
+    const qsrLevel = b => b > 0.86 ? 8 : b > 0.66 ? 6 : b > 0.46 ? 5 : b > 0.26 ? 4 : b > 0.1 ? 3 : 2;
+    // 반투명일 때는 짙은 하늘빛만 (옅은 흰빛을 반투명으로 얹으면 어두운 바닥에서 회색으로 탁해짐), 흰빛은 진할 때만
+    const qsrTint = (b, a) => a < 0.45 ? (b > 0.6 ? 4 : 3) : a < 0.7 ? (b > 0.75 ? 5 : b > 0.4 ? 4 : 3) : qsrLevel(b);
+    const qsrH = (s, i) => qiWaveHash(s | 0, i | 0);
+    const qsrPool = { col: null, lit: null };
+    function qsrCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+    // fn(x, y, out) → 색 번호 (out.a 덮어 칠하는 불투명도 · out.k 밝게 더하는 빛), 아무것도 안 돌려주면 빈 칸
+    function qsrField(ctx, x0, y0, x1, y1, fn, maxW = 110, maxH = maxW, cache = null) {
+      const W = x1 - x0, H = y1 - y0;
+      if (!(W > 0.5 && H > 0.5)) return;
+      const now = performance.now();
+      if (cache && cache.cv && now - cache.ms < 30) { qsrBlit(ctx, cache, x0, y0, W, H); return; } // 1/30초 안에는 지난 버퍼를 지금 크기로 늘려 다시 씀
+      const rx = Math.max(1, W / maxW), ry = Math.max(1, H / maxH), bw = Math.ceil(W / rx), bh = Math.ceil(H / ry), n = bw * bh * 4;
+      if (!qsrPool.col || qsrPool.col.length < n) { qsrPool.col = new Uint8ClampedArray(n * 2); qsrPool.lit = new Uint8ClampedArray(n * 2); }
+      const C = new Uint8ClampedArray(qsrPool.col.buffer, 0, n), L = new Uint8ClampedArray(qsrPool.lit.buffer, 0, n);
+      C.fill(0); L.fill(0);
+      const o = { a: 1, k: 0 };
+      let any = 0;
+      for (let j = 0; j < bh; j++) {
+        const y = y0 + (j + 0.5) * ry;
+        for (let i = 0; i < bw; i++) {
+          o.a = 1; o.k = 0;
+          const c = fn(x0 + (i + 0.5) * rx, y, o);
+          if (c == null) continue;
+          const q = (j * bw + i) * 4, rgb = QSR_RGB[c];
+          if (o.a > 0.004) { C[q] = rgb[0]; C[q + 1] = rgb[1]; C[q + 2] = rgb[2]; C[q + 3] = Math.min(1, o.a) * 255; any = 1; }
+          if (o.k > 0.004) { L[q] = rgb[0]; L[q + 1] = rgb[1]; L[q + 2] = rgb[2]; L[q + 3] = Math.min(1, o.k) * 255; any = 1; }
+        }
+      }
+      const b = cache || qsrPool;
+      if (!b.cv || b.cv.width < bw || b.cv.height < bh) {
+        const w2 = Math.max(bw, b.cv ? b.cv.width : 0), h2 = Math.max(bh, b.cv ? b.cv.height : 0);
+        b.cv = qsrCanvas(w2, h2); b.lc = qsrCanvas(w2, h2);
+      }
+      Object.assign(b, { bw, bh, rx, ry, ms: now, any });
+      if (any) { b.cv.getContext('2d').putImageData(new ImageData(C, bw, bh), 0, 0); b.lc.getContext('2d').putImageData(new ImageData(L, bw, bh), 0, 0); }
+      qsrBlit(ctx, b, x0, y0, bw * rx, bh * ry);
+    }
+    function qsrBlit(ctx, b, x0, y0, W, H) {
+      if (!b.any) return;
+      ctx.save();
+      ctx.imageSmoothingEnabled = b.rx > 1.6 || b.ry > 1.6; // 크게 늘린 버퍼만 부드럽게 (작은 것은 도트 그대로)
+      ctx.drawImage(b.cv, 0, 0, b.bw, b.bh, x0, y0, W, H);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.drawImage(b.lc, 0, 0, b.bw, b.bh, x0, y0, W, H);
+      ctx.restore();
+    }
+    // 밝게 더하는 둥근 빛 (sx·sy로 납작하게)
+    function qsrGlow(ctx, x, y, r, c, a, sy = 1, sx = 1) {
+      if (!(r >= 1) || a <= 0.005) return;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.translate(x, y); ctx.scale(sx, sy);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r), h = QSR_HEX[c];
+      g.addColorStop(0, h + qsrA(a)); g.addColorStop(0.35, h + qsrA(a * 0.4)); g.addColorStop(1, h + '00');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    }
+    // 부드러운 기운 덩이 (ang 방향으로 길쭉, lit만큼 빛도 더함)
+    function qsrPuff(ctx, x, y, rx, ry, ang, c, a, lit = 0.6) {
+      if (a <= 0.01 || !(rx >= 0.5) || !(ry >= 0.5)) return;
+      ctx.save(); ctx.translate(x, y); if (ang) ctx.rotate(ang); ctx.scale(1, ry / rx);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx), h = QSR_HEX[c];
+      g.addColorStop(0, h + qsrA(a)); g.addColorStop(0.5, h + qsrA(a * 0.35)); g.addColorStop(1, h + '00');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, rx, 0, Math.PI * 2); ctx.fill();
+      if (lit) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha *= lit; ctx.fill(); }
+      ctx.restore();
+    }
+    // 선 없는 압력 띠: 반지름 r(앞머리)이 가장 짙고 안쪽으로 tail만큼 길게, 바깥으로 w만큼 짧게 옅어지는 타원 띠
+    function qsrBand(ctx, x, y, r, sy, a, w, tail, c = 4, lit = 0.5) {
+      if (a <= 0.01 || !(r >= 1)) return;
+      const R1 = r + Math.max(1, w), f = r / R1, i0 = Math.max(0, r - tail) / R1, h = QSR_HEX[c];
+      ctx.save(); ctx.translate(x, y); ctx.scale(1, sy);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R1);
+      g.addColorStop(i0, h + '00'); g.addColorStop(i0 + (f - i0) * 0.6, h + qsrA(a * 0.3)); g.addColorStop(f, h + qsrA(a)); g.addColorStop(1, h + '00');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, R1, 0, Math.PI * 2); ctx.fill();
+      if (lit) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha *= lit; ctx.fill(); }
+      ctx.restore();
+    }
+    // 떠올라 흩어지는 기 알갱이 (age초): 처음 속도로 튀어 나갔다가 금방 멈추며 위로 떠오름 · 씨앗(seed)으로 매 화면 같은 자리
+    function qsrMotes(ctx, x, y, n, age, seed, o = {}) {
+      if (age < 0) return;
+      const s = o.s || 1, life = o.life || 1.2, dir = o.dir ?? -Math.PI / 2, spread = o.spread ?? 2.6, sp0 = o.sp0 ?? 60, sp1 = o.sp1 ?? 180, ex = o.ex || 1, ey = o.ey || 1;
+      const m = (1 - Math.exp(-3.2 * age)) / 3.2;
+      ctx.save();
+      for (let i = 0; i < n; i++) {
+        const h1 = qsrH(seed, i * 4 + 1), h2 = qsrH(seed, i * 4 + 2), h3 = qsrH(seed, i * 4 + 3), h4 = qsrH(seed, i * 4 + 4);
+        const u = age / (life * (0.6 + 0.4 * h3)); if (u >= 1) continue;
+        const a = dir + (h1 - 0.5) * spread, sp = sp0 + (sp1 - sp0) * h2;
+        const px = x + Math.cos(a) * sp * m * ex + Math.sin(age * 9 + h4 * 6.3) * 1.2 * s, py = y + Math.sin(a) * sp * m * ey - 18 * s * age;
+        const al = (u < 0.5 ? 1 : 1 - (u - 0.5) / 0.5) * (0.75 + 0.25 * Math.sin(age * 20 + h4 * 9));
+        const big = h4 > 0.72, z = Math.max(1, Math.round(s * (big ? 2 : 1)));
+        if (big) qsrGlow(ctx, px, py, 3 * z, 4, 0.3 * al);
+        ctx.globalAlpha = al; ctx.fillStyle = QSR_HEX[big ? 6 : 5]; ctx.fillRect(Math.round(px - z / 2), Math.round(py - z / 2), z, z);
+      }
+      ctx.restore();
+    }
+    // 기 안개: 퍼지며 커졌다 옅어지는 부드러운 덩이 (sy로 땅에 납작하게)
+    function qsrMists(ctx, x, y, n, age, seed, o = {}) {
+      if (age < 0) return;
+      const life = o.life || 0.7, sp = o.sp || 30, r0 = o.r0 || 3, r1 = o.r1 || 11, a0 = o.a || 0.2, sy = o.sy ?? 0.7, dir = o.dir ?? 0, spread = o.spread ?? Math.PI * 2;
+      const m = (1 - Math.exp(-1.4 * age)) / 1.4;
+      for (let i = 0; i < n; i++) {
+        const h1 = qsrH(seed, i * 3 + 11), h2 = qsrH(seed, i * 3 + 12), h3 = qsrH(seed, i * 3 + 13);
+        const u = age / (life * (0.7 + 0.3 * h3)); if (u >= 1) continue;
+        const a = dir + (h1 - 0.5) * spread, v = sp * (0.6 + 0.4 * h2), r = r0 + (r1 - r0) * qsrEo(u);
+        qsrPuff(ctx, x + Math.cos(a) * v * m, y + Math.sin(a) * v * m * sy - 6 * age, r, r * 0.8, 0, u < 0.3 ? 5 : 4, a0 * (u < 0.2 ? u / 0.2 : 1 - (u - 0.2) / 0.8));
+      }
+    }
+    // 둘레에서 기 알갱이가 휘어 들며 빨려 듦 (r1 → r0)
+    function qsrGather(ctx, x, y, r0, r1, n, ts, k, sy = 0.85) {
+      if (k <= 0.01) return;
+      ctx.save();
+      for (let i = 0; i < n; i++) {
+        const f = qiFr(ts * 1.3 + i * 0.618), ang = i * 2.39996 + f * 2.2, d = r0 + (r1 - r0) * Math.pow(1 - f, 1.5);
+        const px = x + Math.cos(ang) * d, py = y + Math.sin(ang) * d * sy;
+        ctx.globalAlpha = k * Math.min(1, f * 4) * 0.9; ctx.fillStyle = QSR_HEX[f > 0.7 ? 6 : 5]; ctx.fillRect(Math.round(px), Math.round(py), 1, 1);
+        const pa = ang - 0.12, pd = d + (r1 - r0) * 0.05;
+        ctx.globalAlpha *= 0.35; ctx.fillStyle = QSR_HEX[4]; ctx.fillRect(Math.round(x + Math.cos(pa) * pd), Math.round(y + Math.sin(pa) * pd * sy), 1, 1);
+      }
+      ctx.restore();
+    }
+    // 기 덩어리: 소용돌이치는 결 · 심이 가장 밝음 · 두 갈래 나선 팔 · 바깥은 위로 타오르는 기운으로 한 곡선에 녹아 나감 (테두리 선 없음)
+    function qsrMass(ctx, x, y, r, ts, k = 1, sx = 1, sy = 1, breathe = 0, cache = null, detail = r > 9) {
+      if (!(r >= 0.8) || k <= 0.01) return;
+      qsrGlow(ctx, x, y, r * 3.2, 3, 0.3 * k);
+      qsrGlow(ctx, x, y, r * 1.4, 5, 0.18 * k);
+      const R = r * 1.9, mx = Math.max(16, Math.min(120, R * 2));
+      qsrField(ctx, x - R * sx, y - R * 1.15 * sy, x + R * sx, y + R * 0.8 * sy, (px, py, out) => {
+        const dx = (px - x) / sx / r, dy = (py - y) / sy / r, d = Math.hypot(dx, dy), an = Math.atan2(dy, dx);
+        const up = Math.max(0, -dy / Math.max(d, 0.01));
+        const rise = qiNoise2(dx * 1.1, dy * 1.1 + ts * 1.3) * 0.5 + 0.5;
+        const edgeN = qiNoise2(Math.cos(an) * 1.2 + ts * 0.45, Math.sin(an) * 1.2 - ts * 0.35) * 0.5 + 0.5;
+        const E = (1.12 + 0.14 * edgeN + up * up * 0.42 * rise) * (1 + breathe);
+        if (d > E) return;
+        const fall = Math.pow(1 - qiSstep(0.74, E, d), 1.25);
+        const sw = an - ts * 1.4 - (1 - Math.min(d, 1)) * 2.6, cx = Math.cos(sw) * d * 2.4, cy = Math.sin(sw) * d * 2.4;
+        const turb = detail ? qsrFbm(cx + ts * 0.25, cy - ts * 0.2) : qiNoise2(cx + ts * 0.25, cy - ts * 0.2) * 0.8;
+        const cs = Math.cos(an * 2 - Math.log(d + 0.05) * 3.4 + ts * 2.4 + turb * 0.6), arm = cs > 0 ? cs * cs * cs : 0, lane = cs < 0 ? cs * cs * cs * cs : 0;
+        let ray = 0, knot = 0;
+        if (detail) {
+          ray = Math.pow(Math.max(0, Math.cos(an * 7 - ts * 0.7 + turb * 0.8)), 8) * Math.max(0, 1 - d * 1.4) * 0.45;
+          for (let i = 0; i < 4; i++) {
+            const ka = ts * (1.3 + i * 0.35) * (i % 2 ? -1 : 1) + i * 1.57, kr = 0.5 + 0.18 * Math.sin(ts * 0.9 + i * 2), ex = dx - Math.cos(ka) * kr, ey = dy - Math.sin(ka) * kr;
+            knot += Math.exp(-(ex * ex + ey * ey) / 0.012);
+          }
+        }
+        const rg = Math.min(1, d * 2.5);
+        const b = Math.pow(Math.max(0, 1 - d), 1.4) * 0.8 + turb * 0.22 * rg + arm * 0.34 * rg - lane * 0.26 * rg + ray + knot * 0.45 + 0.12;
+        out.a = k * (0.97 - 0.2 * Math.min(d, 1)) * fall;
+        out.k = k * 0.22 * fall * (0.4 + 0.6 * rise) * qiSstep(0.6, 1, d);
+        if (d < 0.18) out.k = 0.45 * k * (1 - d / 0.18);
+        if (knot > 0.5) out.k = 0.25 * k * Math.min(1, knot);
+        if (arm > 0.7 && d > 0.45 && d < 0.85 && b < 0.7) return 7; // 바깥 팔 끝은 박하빛
+        return d > 0.74 ? qsrTint(b + 0.15, out.a) : qsrLevel(b);
+      }, mx, mx, cache);
+    }
+    // 날아가는 기 덩어리 뒤 꼬리: 가운데가 밝고 가장자리는 너울대며 옅어짐 (선 없음)
+    function qsrTail(ctx, x, y, r, ang, len, a = 1) {
+      if (len < 2) return;
+      const ca = Math.cos(ang), sa = Math.sin(ang), L = len + r, ph = (x + y) * 0.45, ex = x - ca * L, ey = y - sa * L;
+      qsrField(ctx, Math.min(x, ex) - r - 2, Math.min(y, ey) - r - 2, Math.max(x, ex) + r + 2, Math.max(y, ey) + r + 2, (px, py, out) => {
+        const dx = px - x, dy = py - y, s = -(dx * ca + dy * sa), nn = -dx * sa + dy * ca, n = Math.abs(nn);
+        if (s < 0 || s > len) return;
+        const f = s / len, w = r * 1.05 * Math.pow(1 - f, 0.7) * (1 + 0.3 * Math.sin(s * 0.8 + ph + Math.sign(nn) * 1.7));
+        if (n > w) return;
+        const e = n / Math.max(w, 0.5);
+        out.a = a * Math.pow(1 - f, 1.2) * (0.85 - 0.6 * e) * (1 - e * e); out.k = out.a * 0.2;
+        return e < 0.3 && f < 0.4 ? 6 : e < 0.6 ? 5 : 4;
+      }, 90, 90);
+    }
+    // 바닥 빛: 납작한 타원 안을 채운 번짐 (앞머리 front 근처가 가장 밝고 안쪽으로 길게 옅어짐, 가장자리는 잡음으로 흐트러짐)
+    function qsrGround(ctx, x, gy, rx, k, ts, front = 0.6, sy = QI_GK_SY, rays = 0, cache = null) {
+      if (!(rx >= 2) || k <= 0.01) return;
+      const ry = rx * sy;
+      qsrField(ctx, x - rx * 1.15, gy - ry * 1.15, x + rx * 1.15, gy + ry * 1.15, (px, py, out) => {
+        const dx = (px - x) / rx, dy = (py - gy) / ry, d = Math.hypot(dx, dy), an = Math.atan2(dy, dx);
+        const e = d / (1 + 0.12 * qsrFbm(Math.cos(an) * 2 + ts * 0.6, Math.sin(an) * 2 - ts * 0.4)); if (e > 1) return;
+        const band = e > front ? 1 - ((e - front) / (1 - front)) ** 2 : 0.35 + 0.65 * (e / front) ** 2;
+        const ray = rays ? (1 - rays) + rays * Math.max(0, Math.cos(an * 13 + qsrFbm(Math.cos(an) * 3, Math.sin(an) * 3) * 2.5)) ** 2 * (0.4 + e) : 1; // 바깥으로 뻗는 빛 갈래
+        const v = k * band * ray * (0.75 + 0.25 * qsrFbm(dx * 4 + ts, dy * 3));
+        out.a = v * 0.1 * (1 - qiSstep(0.5, 1, e)); out.k = v * 0.55; return band > 0.8 ? 5 : 4; // 덮어 칠하는 몫은 조금만 (그 위에 선 캐릭터가 흐려 보이지 않게)
+      }, 120, 36, cache);
+    }
+    // 기운 기둥 (gy = 땅): 아래가 굵고 위로 가늘어지며 옅어짐 · 가장자리는 잡음으로 일렁임 · 속을 두 가닥 나선 결이 감아 오름
+    function qsrPillar(ctx, x, gy, w, H, k, ts, cache = null, mW = 40, mH = 120) {
+      if (!(H >= 2) || k <= 0.01 || !(w >= 0.5)) return;
+      const fq = 30 / w; // 시안(폭 30 안팎)과 같은 결 크기
+      qsrGlow(ctx, x, gy - H * 0.4, H * 0.45, 3, 0.25 * k, 1, Math.min(1, (w * 2.4) / (H * 0.45)));
+      qsrField(ctx, x - w * 1.8, gy - H, x + w * 1.8, gy, (px, py, out) => {
+        const yy = (py - gy) * fq, h = (gy - py) / H, wl = w * (1 - 0.55 * h) * (1 + 0.28 * qsrFbm(yy * 0.045 - ts * 4, x * 0.1));
+        const sx = (px - x) / wl, a = Math.abs(sx);
+        if (a > 1) return;
+        let hel = 0;
+        for (let j = 0; j < 2; j++) { const ph = yy * 0.09 + ts * 15 + j * Math.PI, q = (sx - Math.sin(ph) * 0.6) / 0.22; hel += Math.exp(-q * q) * (0.35 + 0.65 * (0.5 + 0.5 * Math.cos(ph))); }
+        const rise = Math.max(0, qiNoise2(sx * 2.5 + x * 0.1, yy * 0.05 + ts * 7)) ** 2;
+        const fade = Math.pow(1 - h, 1.3), b = ((1 - a * a) * 0.8 + hel * 0.3 + rise * 0.3) * fade + 0.1;
+        out.a = k * (1 - a * a) * fade * 0.85; out.k = k * 0.25 * (1 - a) * fade;
+        return a < 0.15 && h < 0.6 && out.a > 0.6 ? 8 : qsrTint(b, out.a);
+      }, mW, mH, cache);
+    }
+
+    // 일반 공격·기공탄·기공포 구체
+    function drawQsrOrb(ctx, p) {
+      const t = sim.tickCount || 0, ts = t / 60, cannon = p.color === QSR_CANNON_COLOR;
+      const r = cannon ? Math.max(4, (p.radius || QI_CANNON_R) * QI_CANNON_DRAW_K * 0.78) : Math.max(2.5, (p.radius || QI_ORB_R) * 0.75);
+      const a = p.angle || 0, ca = Math.cos(a), sa = Math.sin(a), n = cannon ? 7 : 3;
+      qsrTail(ctx, p.x, p.y, r, a, r * (cannon ? 3.4 : 4.6), 1);
+      ctx.save(); // 뒤로 흩어지며 떠오르는 기 알갱이
+      for (let i = 0; i < n; i++) {
+        const q = qiFr(ts * 2.2 + i / n), side = Math.sin(i * 2.4 + t * 0.05) * r * 0.9 * (1 + q);
+        ctx.globalAlpha = 0.8 * (1 - q); ctx.fillStyle = QSR_HEX[i % 3 ? 5 : 6];
+        const z = cannon && i % 3 === 0 ? 2 : 1;
+        ctx.fillRect(Math.round(p.x - ca * r * (1 + q * 4) - sa * side), Math.round(p.y - sa * r * (1 + q * 4) + ca * side - q * r), z, z);
+      }
+      ctx.restore();
+      qsrMass(ctx, p.x, p.y, r, ts + (cannon ? 0 : (p.x + p.y) * 0.003), 1, 1, 1, 0, null, cannon);
+    }
+    // 맞은 자리 (qi_hit): 손끝 섬광(small) · 꿰뚫고 지나간 자리(j 2) · 터짐 (기 막이 톡 터지며 압력 띠 · 떠오르는 기 알갱이 · 기 안개)
+    function drawQsrHit(ctx, ef, p) {
+      const x = ef.x, y = ef.y, life = (ef.maxLife || 20) / 60, age = p * life, seed = pfxSeedOf(ef);
+      const RAD = Math.max(2.5, (ef.r || QI_ORB_R) * 0.75);
+      if (ef.small) {
+        qsrGlow(ctx, x, y, RAD * 3, 4, 0.5 * (1 - p));
+        qsrBand(ctx, x, y, RAD * (1 + 1.6 * qsrEo(p)), 1, 0.6 * (1 - p), RAD * 0.5, RAD * 0.8);
+        return;
+      }
+      if (ef.j === 2) {
+        qsrBand(ctx, x, y, RAD * (0.8 + 1.4 * qsrEo(p * 1.4)), 1, 0.7 * (1 - p), RAD * 0.4, RAD * 0.9);
+        qsrMotes(ctx, x, y, 8, age, seed, { dir: (ef.dir || 1) < 0 ? Math.PI : 0, spread: 2.2, sp0: 50, sp1: 150, life: 0.4 });
+        return;
+      }
+      const s = ef.big ? 2 : Math.max(1, Math.min(2.2, ef.sp || 1)), q = Math.sqrt(s);
+      qsrGlow(ctx, x, y, RAD * 4 * q, 4, 0.55 * Math.max(0, 1 - p * 2.5));
+      if (p < 0.12) qsrMass(ctx, x, y, RAD * (1 - p * 4), age, 1 - p / 0.12, 1, 1, 0, null, false);
+      qsrBand(ctx, x, y, RAD * (1 + 2.6 * s * qsrEo(p * 1.6)), 1, 0.7 * Math.max(0, 1 - p * 1.6), RAD * 0.5, RAD * 1.4 * q);
+      qsrBand(ctx, x, y + 12, RAD * (1 + 5 * s * qsrEo(p * 1.3)), 0.35, 0.45 * Math.max(0, 1 - p * 1.3), RAD * 0.6, RAD * 2.5 * q);
+      qsrMists(ctx, x, y, Math.round(5 * s), age, seed + 7, { sp: 30 * q, r0: RAD * 0.8, r1: RAD * 2.6 * q, life: life * 0.9, a: 0.2 });
+      qsrMotes(ctx, x, y, Math.round(14 * s), age, seed, { sp0: 60 * q, sp1: 170 * q, life: life * 1.1 });
+    }
+    // 기공포 모으기: 사방의 기 알갱이가 휘어 들며 손 앞 구슬이 맑게 커짐, 둘레 기운이 조여 듦
+    function drawQsrCannonCharge(ctx, ef, u) {
+      const s = Math.sqrt(u.sizeScale || 1), fd = u.facingDir || 1, ts = (sim.tickCount || 0) / 60;
+      const e = Math.max(0, Math.min(1, 1 - u.casting.left / Math.max(1, u.casting.total))), ee = 0.5 - Math.cos(Math.PI * e) / 2;
+      const RAD = Math.max(4, (ef.r || QI_CANNON_R) * QI_CANNON_DRAW_K * 0.78), cx = u.x + fd * 13 * s, cy = u.y - 17 * s;
+      qsrPuff(ctx, cx, cy, RAD * (3.6 - 2.2 * ee), RAD * (3.6 - 2.2 * ee), 0, 4, 0.22 * Math.min(1, e * 3), 0.8);
+      qsrGather(ctx, cx, cy, RAD * 0.9, RAD * 4, 18, ts, Math.min(1, e * 3));
+      qsrMass(ctx, cx, cy, RAD * (0.12 + 0.88 * ee), ts, Math.min(1, e * 3));
+    }
+    // 기공후 모으기: 가슴에 기 알갱이가 휘몰려 들고 발밑 기 안개가 빨려 듦
+    function drawQsrRoarCharge(ctx, u) {
+      const s = Math.sqrt(u.sizeScale || 1), ts = (sim.tickCount || 0) / 60;
+      const e = Math.max(0, Math.min(1, 1 - u.casting.left / Math.max(1, u.casting.total))), ee = 0.5 - Math.cos(Math.PI * e) / 2, k = Math.min(1, e * 3);
+      const cx = u.x, cy = u.y - QI_ROAR_CHEST * s, gy = u.y + QI_ROAR_FOOT * s;
+      for (let i = 0; i < 10; i++) {
+        const f = qiFr(ts * 1.6 + i * 0.137), a = i * 2.39996, d = (60 + (i % 4) * 14) * s * (1 - f);
+        qsrPuff(ctx, cx + Math.cos(a) * d, gy + Math.sin(a) * d * QI_ROAR_SY - (gy - cy) * f * f * 0.6, (7 - 3 * f) * s, (5 - 2 * f) * s, 0, 4, 0.22 * Math.sin(Math.PI * f) * k);
+      }
+      qsrGather(ctx, cx, cy, 5 * s, 34 * s, 16, ts, k);
+      qsrMass(ctx, cx, cy, (1 + 4.5 * ee) * s, ts, k);
+    }
+    // 기공파 모으기: 둘레 기운이 조여 들며 짙어지고 두 손 사이 구슬이 커짐
+    function drawQsrWaveCharge(ctx, ef, u) {
+      const s = Math.sqrt(u.sizeScale || 1), fd = u.facingDir || 1, ts = (sim.tickCount || 0) / 60, K = (ef.k || 1) * s;
+      const e = Math.max(0, Math.min(1, 1 - u.casting.left / Math.max(1, u.casting.total))), k = Math.min(1, e * 3);
+      const shake = e > 0.8 ? Math.sin(ts * 90) * 0.6 : 0, cx = u.x - fd * 11 * s + shake, cy = u.y - 14 * s;
+      const R = (34 - 22 * qiSstep(0, 1, e)) * K;
+      qsrPuff(ctx, cx, cy, R, R, 0, 4, 0.28 * qiSstep(0, 0.3, e), 0.6);
+      qsrGather(ctx, cx, cy, 6 * K, 40 * K, 20, ts, k);
+      qsrMass(ctx, cx, cy, (1.3 + 5.5 * qsrEo(e)) * K, ts, k);
+    }
+    // 기공후 터짐: 가슴 구슬이 터지며 막이 부풀고 땅을 따라 압력 띠 세 겹 · 띠 앞머리를 따라 기 알갱이가 튀고 안개가 밀려 남
+    //   soft (기공막 펼침): 막 둘레로 부드럽게 번지는 띠
+    function drawQsrRoar(ctx, ef, p) {
+      const RX = ef.r || 240, x = ef.x, cy = ef.y - QI_ROAR_CHEST, gy = ef.y + QI_ROAR_FOOT, age = p * (ef.maxLife || 36) / 60, seed = pfxSeedOf(ef);
+      if (ef.soft) { qsrBand(ctx, x, ef.y - 20, RX * (1 + 0.3 * qsrEo(p)), 1.18, 0.7 * (1 - p), RX * 0.15, RX * 0.35); return; }
+      qsrGlow(ctx, x, gy, RX * 0.7, 3, 0.35 * (1 - p), QI_ROAR_SY);
+      [0, 0.06, 0.13].forEach((t0, i) => {
+        const u = (age - t0) / 0.45; if (u < 0 || u >= 1) return;
+        const r = RX * (1 - i * 0.12) * qsrEo(u);
+        qsrBand(ctx, x, gy, r, QI_ROAR_SY, (1 - u) * (1 - i * 0.2) * 0.75, 6 + r * 0.07, r * 0.45, i ? 4 : 5, 0.6);
+      });
+      const u0 = age / 0.25;
+      if (u0 < 1) { qsrGlow(ctx, x, cy, 30, 5, 0.6 * (1 - u0)); qsrBand(ctx, x, cy, 6 + 28 * qsrEo(u0), 1, 0.8 * (1 - u0), 4, 10, 5); }
+      qsrMists(ctx, x, gy - 4, 14, age, seed, { sp: RX * 1.1, r0: 6, r1: 18, life: 0.55, a: 0.2, sy: QI_ROAR_SY * 0.5 });
+      qsrMotes(ctx, x, gy - 3, 36, age, seed + 3, { sp0: RX * 0.6, sp1: RX * 1.25, life: 0.6, ex: 1.4, ey: 0.5, spread: Math.PI * 1.6 });
+    }
+    // 기공막: 선 없이 안에서 밖으로 짙어지는 기운 띠 · 띠를 타고 위로 흐르는 기류 · 바깥은 한 곡선으로 녹아 나가는 기운 · 떠오르는 기 알갱이
+    //   투사체가 맞으면(qi_shield_hit) 그 자리가 움푹 패였다 출렁이며 돌아옴
+    function drawQsrBarrier(ctx, u, tick) {
+      const left = (u.qiBarrierUntil || 0) - sim.tickCount, age = (u.qiBarrierTicks || QI_BARRIER_TICKS) - left, e = age / 60;
+      const pop = qsrOutBack(age / 19), jig = Math.sin(e * 26) * Math.exp(-e * 4.5) * 0.09;
+      const b = qiBarrierShape(u), rx = b.rx * pop * (1 + jig), ry = b.ry * pop * (1 - jig), x = b.cx, y = b.cy, ts = tick / 60;
+      if (!(rx > 2)) return;
+      const a = (left < 42 && (tick >> 2) % 2 ? 0.45 : 1) * Math.min(1, age / 12);
+      let dent = 0, dang = 0;
+      const hit = sim.effects.find(o => o.type === 'qi_shield_hit' && o.uid === u.id);
+      if (hit) { const d = ((hit.maxLife || 20) - hit.life) / 60; dent = 0.14 * Math.exp(-d * 6) * Math.cos(d * 22); dang = hit.a || 0; }
+      qsrGlow(ctx, x, y, rx * 1.4, 3, 0.14 * a);
+      qsrField(ctx, x - rx * 1.3, y - ry * 1.4, x + rx * 1.3, y + ry * 1.2, (px, py, out) => {
+        const dx = (px - x) / rx, dy = (py - y) / ry, an = Math.atan2(dy, dx), da = Math.atan2(Math.sin(an - dang), Math.cos(an - dang));
+        const d = Math.hypot(dx, dy) / (1 - dent * Math.exp(-((da / 0.32) ** 2)));
+        const up = Math.max(0, -dy / Math.max(d, 0.01)), edgeN = qiNoise2(Math.cos(an) * 1.4 + ts * 0.5, Math.sin(an) * 1.4 - ts * 0.4) * 0.5 + 0.5;
+        const E = 1.05 + 0.08 * edgeN + up * up * 0.16 * (qiNoise2(dx * 1.3, dy * 1.3 + ts * 1.5) * 0.5 + 0.5);
+        if (d > E) return;
+        const bell = d < 1 ? qiSstep(0.8, 1, d) : Math.pow(1 - (d - 1) / (E - 1), 2);
+        const uu = Math.abs(((an + Math.PI / 2) % (Math.PI * 2) + Math.PI * 2 + Math.PI) % (Math.PI * 2) - Math.PI);
+        const flow = Math.pow(Math.max(0, Math.sin(uu * 9 + ts * 7)), 3) * 0.35 * bell;   // 띠를 타고 위로 흐르는 기류 (밝기 너울로만)
+        out.a = a * (0.07 + 0.6 * bell + flow); out.k = a * 0.15 * bell;
+        const v = bell + flow;
+        return v > 0.85 ? 6 : v > 0.5 ? 5 : v > 0.2 ? 4 : 3;
+      }, 100, 110, u._qsrBar || (u._qsrBar = {}));
+      ctx.save();
+      for (let i = 0; i < 9; i++) { // 떠오르는 기 알갱이
+        const span = ry * 1.8, q = (ts * 22 * (ry / 56) + i * span / 9) % span;
+        ctx.globalAlpha = 0.6 * a * Math.sin(Math.PI * q / span); ctx.fillStyle = QSR_HEX[5];
+        ctx.fillRect(Math.round(x + Math.sin(i * 2.7 + ts * 1.3) * rx * 0.6), Math.round(y + ry * 0.85 - q), 1, 1);
+      }
+      ctx.restore();
+    }
+    // 기공파: 하얀 심(맥박은 심 안에서만 부풀며 앞으로 밀려감) · 몸통은 심에서 바깥으로 매끈하게 옅어짐 · 나선 두 가닥 · 기류 두 겹 · 가장자리는 잔잔한 번짐뿐
+    function drawQsrBeam(ctx, ef) {
+      const tick = sim.tickCount || 0, ts = tick / 60;
+      const HW = Math.max(6, (ef.w || 30) * QI_WAVE_BODY_K), RO0 = HW * 1.15;
+      const fe = Math.max(0, 1 - ef.life / 10), thin = 1 - fe * fe, H = HW * thin;
+      const off = RO0 * 0.75, L = Math.max(20, (ef.len || 300) - off);
+      const age = ef.st != null ? tick - ef.st : 99, rush = Math.min(1, age / QI_WAVE_RUSH), head = L * (1 - (1 - rush) * (1 - rush));
+      const xs = L * fe * fe * 0.8;
+      if (H < 0.5 || head - xs < 1) return;
+      const sc = 10 / H; // 시안(반두께 10)과 같은 결 크기
+      ctx.save();
+      ctx.translate(ef.x, ef.y); ctx.rotate(ef.ang || 0); ctx.translate(off, 0);
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createLinearGradient(0, -H * 2.6, 0, H * 2.6);
+      g.addColorStop(0, QSR_HEX[3] + '00'); g.addColorStop(0.5, QSR_HEX[3] + '50'); g.addColorStop(1, QSR_HEX[3] + '00');
+      ctx.fillStyle = g; ctx.fillRect(xs, -H * 2.6, head - xs, H * 5.2);
+      ctx.globalCompositeOperation = 'source-over';
+      qsrGlow(ctx, head, 0, H * 3.2, 4, 0.35); // 머리 빛
+      qsrField(ctx, xs, -H * 1.3, head + H * 1.3, H * 1.3, (px, py, out) => {
+        const cap = Math.max(0, Math.min(1, (head + H * 0.4 - px) / (H * 1.6))), prof = Math.sqrt(1 - (1 - cap) ** 2); // 둥근 머리
+        const X = px * sc, neck = 0.8 + 0.2 * qiSstep(0, 30, X);
+        const h = H * prof * neck * (1 + 0.06 * qiNoise2(X * 0.03 - ts * 2.5, 0.5));
+        if (h < 0.3) return;
+        const vn = py / h, av = Math.abs(vn);
+        if (av > 1) return;
+        const pp = ((X - ts * 300) % 52 + 52) % 52, pulse = Math.exp(-(((pp - 10) / 9) ** 2));
+        const coreW = (0.18 + 0.1 * pulse) * (1 + 0.35 * qiNoise2(X * 0.09 - ts * 22, 7.3));
+        let helix = 0;
+        for (let j = 0; j < 2; j++) { const ph = X * 0.075 - ts * 16 + j * Math.PI, q = (vn - Math.sin(ph) * 0.62) / 0.2; helix += Math.exp(-q * q) * (0.35 + 0.65 * (0.5 + 0.5 * Math.cos(ph))); }
+        const fast = Math.max(0, qiNoise2((X - ts * 640) * 0.045, vn * 3.2 + 11)) ** 2;
+        const slow = qiNoise2((X - ts * 170) * 0.014, vn * 1.3 + ts * 0.6);
+        const b = Math.pow(1 - av, 1.6) * 0.75 + helix * 0.32 + fast * 0.35 + slow * 0.18 * (1 - av);
+        out.a = Math.pow(1 - av, 0.45) * 0.97;
+        if (av < coreW) { out.k = 0.25 + 0.2 * pulse; return av < coreW * 0.55 ? 8 : 6; } // 하얀 심
+        if (helix > 0.75 && av > 0.3) { out.k = 0.08; return b > 0.75 ? 6 : 7; }          // 가닥이 가장 앞에 올 때는 박하빛
+        return b > 0.74 ? 6 : b > 0.5 ? 5 : b > 0.27 ? 4 : b > 0.1 ? 3 : 2;
+      }, 220, 56, ef._qc || (ef._qc = {}));
+      ctx.save();
+      for (let k = 0; k < 14; k++) { // 포 속을 내달리는 기 알갱이 (뒤로 번짐)
+        const sp = (380 + (k * 97) % 300) / sc, px = (ts * sp + k * 61 / sc) % (L + 40); if (px < xs + 4 || px > head - 2) continue;
+        const yy = Math.sin(k * 2.7 + ts * 3) * H * 0.55;
+        ctx.globalAlpha = 0.85; ctx.fillStyle = QSR_HEX[6]; ctx.fillRect(Math.round(px), Math.round(yy), 1, 1);
+        ctx.globalAlpha = 0.5; ctx.fillStyle = QSR_HEX[5]; ctx.fillRect(Math.round(px - 1 / sc - 1), Math.round(yy), 1, 1);
+      }
+      ctx.restore();
+      if (xs < H) qsrMass(ctx, 0, 0, RO0 * thin * (0.4 + 0.6 * Math.min(1, age / 7)), ts, 1, 1, 1, 0, null, true);
+      ctx.restore();
+    }
+    // 기공옥 모으기 (청천옥): 발밑 기운이 숨 쉬듯 번짐 · 사방·땅에서 기운 자락과 기 알갱이가 휘어 들며 머리 위 기 덩어리를 키움
+    function drawQsrGenkiCharge(ctx, ef, u) {
+      const ts = (sim.tickCount || 0) / 60, s = Math.sqrt(u.sizeScale || 1);
+      const k = Math.max(0, Math.min(1, 1 - u.casting.left / Math.max(1, u.casting.total))), kk = Math.min(1, k * 20);
+      const OR = ef.or || QI_GENKI_ORB, r = OR * (0.15 + 0.85 * (0.5 - Math.cos(Math.PI * k) / 2)), cx = u.x, cy = qiGenkiOrbY(u, r), gy = u.y + 8 * s;
+      const lf = qiGenkiLiftPx(u);
+      qsrGround(ctx, cx, gy, (70 + lf * 0.5 + 60 * k) * s * (1 + 0.06 * Math.sin(ts * 5)), 0.45 * kk, ts, 0.15, QI_GK_SY, 0, ef._qg || (ef._qg = {}));
+      qsrGlow(ctx, cx, cy, r * 2.6, 3, 0.15 * kk * k);
+      for (let i = 0; i < 22; i++) { // 사방·땅에서 휘어 드는 기운 자락 (속도 방향으로 길쭉한 부드러운 덩어리)
+        const f = qiFr(ts * (0.42 + 0.12 * qsrH(i, 1)) + qsrH(i, 2)), ground = i % 2 === 0, sw = i % 4 < 2 ? 1 : -1;
+        const a0 = qsrH(i, 3) * Math.PI * 2, D = r * 2.2 + 120 * s;
+        const sx = ground ? cx + (qsrH(i, 4) - 0.5) * 900 * s : cx + Math.cos(a0) * D, sy = ground ? gy : cy + Math.sin(a0) * D * 0.7;
+        const e = Math.pow(f, 1.5), bend = Math.sin(Math.PI * f) * 0.35 * sw, dx = cx - sx, dy = cy - sy;
+        const px = sx + dx * e - dy * bend, py = sy + dy * e + dx * bend;
+        const vx = dx - dy * 0.35 * sw * Math.cos(Math.PI * f) * Math.PI, vy = dy + dx * 0.35 * sw * Math.cos(Math.PI * f) * Math.PI;
+        const z = (8 + 6 * qsrH(i, 5)) * s * (0.6 + 0.4 * r / OR);
+        if (Math.hypot(px - cx, py - cy) < r * 0.85) continue;
+        qsrPuff(ctx, px, py, z * 1.7, z, Math.atan2(vy, vx), 4, 0.22 * Math.sin(Math.PI * f) * kk, 0.9);
+      }
+      qsrGather(ctx, cx, cy, r * 0.9, r * 2.4 + 60 * s, 34, ts * 0.8, kk * 0.9, 0.8);
+      for (let i = 0; i < 8; i++) { const ph = qiFr(ts * 0.8 + i * 0.137), x0 = cx + (qsrH(i, 9) - 0.5) * 120 * s; qsrPuff(ctx, x0, gy - ph * 50 * s, 4 * s, 4 * s, 0, 4, 0.2 * kk * Math.sin(ph * Math.PI)); } // 발밑에서 피어오르는 기운
+      qsrMass(ctx, cx, cy, r, ts, kk, 1, 1, 0.06 * Math.sin(ts * (4 + 6 * k)), ef._qm || (ef._qm = {}));
+    }
+    // 기공옥 떨어짐: 기운 자락을 흘리며 내리꽂힘 · 떨어질 자리 땅이 먼저 밝아짐
+    function drawQsrGenkiFall(ctx, ef, p) {
+      const ts = (sim.tickCount || 0) / 60, r = ef.or || QI_GENKI_ORB, gy = ef.y + 8;
+      const pos = q => { const e = q * q, y1 = gy - r * 0.7; return [ef.sx + (ef.x - ef.sx) * e, ef.sy + (y1 - ef.sy) * e]; };
+      qsrGround(ctx, ef.x, gy, (ef.r || 300) * (0.25 + 0.75 * p), 0.25 + 0.35 * p, ts, 0.1, QI_GK_SY, 0, ef._qg || (ef._qg = {}));
+      for (let i = 9; i >= 1; i--) { const q = p - i * 0.045; if (q <= 0) continue; const [tx, ty] = pos(q); qsrPuff(ctx, tx, ty, r * 0.45 * (1 - i / 10), r * 0.4 * (1 - i / 10), 0, 4, 0.2 * (1 - i / 10), 0.8); }
+      const [x, y] = pos(p);
+      qsrMass(ctx, x, y, r, ts, 1, 1 - 0.08 * p, 1 + 0.12 * p, 0.15 * p, null, true);
+    }
+    // 기공옥 터짐 (2.5초): 터지는 순간 온 화면을 덮는 빛 · 먼저 내달리는 압력 반구 · 땅을 덮으며 퍼지는 빛 · 빛 기둥과 꼭대기 빛 ·
+    //   소용돌이 결이 있는 반구 기운이 부풀었다 속부터 비며 가라앉음 · 둘레에서 시차를 두고 솟는 기운 줄기 · 튀었다 녹는 기 덩어리 ·
+    //   땅을 굴러 퍼지는 기운 안개 · 떠올라 흩어지는 기 알갱이 · 남아 떠오르는 기 구슬
+    function drawQsrGenkiBoom(ctx, ef, p) {
+      const ts = (sim.tickCount || 0) / 60, age = p * (ef.maxLife || 150) / 60, XT = ef.x, gy = ef.y + 8, seed = pfxSeedOf(ef);
+      const BR = ef.r || 600, OR = ef.or || QI_GENKI_ORB, G = BR / 370, GV = Math.min(G, 1.6); // 가로 퍼짐은 실제 범위(축기 5개면 반지름 1400px 안팎), 높이는 화면 안에 들게 상한
+      const C = ef._qc || (ef._qc = {});
+      if (age < 2.2) {
+        const u = age / 2.2;
+        qsrGround(ctx, XT, gy, (40 + 330 * qsrEo(u * 1.3)) * G, 0.85 * (1 - qiSstep(0.35, 1, u)), ts, 0.72, QI_GK_SY, 0.55, C.g1 || (C.g1 = {}));
+        const u2 = (age - 0.5) / 1.2;
+        if (u2 > 0 && u2 < 1) qsrGround(ctx, XT, gy, (30 + 200 * qsrEo(u2)) * G, 0.5 * (1 - u2), ts + 3, 0.8, QI_GK_SY, 0.4, C.g2 || (C.g2 = {}));
+        const u0 = age / 0.55;
+        if (u0 < 1) { // 먼저 내달리는 압력 반구 (옅게 채운 기운, 앞머리 쪽이 짙음)
+          const R = (30 + 330 * qsrEo(u0)) * G, ry = Math.min(R * 0.62, 260 * GV), ryG = R * QI_GK_SY, kq = 1 - qiSstep(0.3, 1, u0);
+          qsrField(ctx, XT - R * 1.1, gy - ry * 1.1, XT + R * 1.1, gy + ryG * 1.1, (px, py, out) => {
+            const dx = (px - XT) / R, dy = (py - gy) / (py < gy ? ry : ryG), d = Math.hypot(dx, dy), an = Math.atan2(dy, dx);
+            const e = d / (1 + 0.06 * qiNoise2(Math.cos(an) * 2 + ts, Math.sin(an) * 2)); if (e > 1) return;
+            const band = e > 0.82 ? 1 - ((e - 0.82) / 0.18) ** 2 : 0.15 + 0.85 * (e / 0.82) ** 3, v = kq * band * (py < gy ? 1 : 0.6);
+            out.a = v * 0.22; out.k = v * 0.35; return 4;
+          }, 110, 70, C.sh || (C.sh = {}));
+        }
+      }
+      for (let i = 0; i < 12; i++) { // 둘레 기운 줄기: 가운데부터 바깥으로 차례로 솟음
+        const th = (i / 12 + qsrH(seed, i + 60) * 0.06) * Math.PI * 2, dd = (45 + (i >> 1) * 40 + (qsrH(seed, i) - 0.5) * 20) * G, t0 = 0.06 + dd / (700 * G), u = (age - t0) / 0.6;
+        if (u < 0 || u >= 1) continue;
+        const Hh = (90 + 80 * qsrH(seed, i + 20)) * GV * 1.2 * (1 - dd / (340 * G)), w = (7 + 5 * qsrH(seed, i + 40)) * GV * 1.3 * (1 - dd / (500 * G));
+        qsrPillar(ctx, XT + Math.cos(th) * dd, gy + Math.sin(th) * dd * QI_GK_SY, w * (1 - 0.4 * u), Hh * qsrEo(u * 1.8), 1 - qiSstep(0.4, 1, u), ts + i, (C['gy' + i] || (C['gy' + i] = {})), 16, 48);
+      }
+      for (let i = 0; i < 28; i++) { // 땅을 굴러 퍼지는 기운 안개
+        const h1 = qsrH(seed, i * 3 + 100), h2 = qsrH(seed, i * 3 + 101), h3 = qsrH(seed, i * 3 + 102), lf = 1.2 + 0.8 * h3, u = age / lf;
+        if (u >= 1) continue;
+        const th = (i / 28) * Math.PI * 2 + h2, sp = (180 + 280 * h1) * G, m = (1 - Math.pow(0.3, age)) / 1.2, z = (12 + 10 * h2) * GV;
+        qsrPuff(ctx, XT + Math.cos(th) * sp * m, gy + Math.sin(th) * sp * m * QI_GK_SY - (2 + 18 * h3) * GV - 8 * age * GV, z * 2.2, z * 0.8, 0, 4, 0.2 * Math.sin(Math.PI * Math.min(1, u * 1.15)), 0.7);
+      }
+      if (age < 1.8) {
+        const u = age / 1.8;
+        if (u < 0.12) { const f = 1 - u / 0.12; qsrGlow(ctx, XT, gy - 40 * GV, 460 * G, 4, 0.55 * f, 0.6); qsrGlow(ctx, XT, gy - 20 * GV, 120 * GV * 1.5, 6, 0.7 * f); } // 터지는 순간 온 화면을 덮는 빛
+        const pk = 1 - qiSstep(0.05, 0.55, u), PH = 340 * GV * 1.3 * qsrEo(u * 5);
+        if (pk > 0) qsrPillar(ctx, XT, gy, Math.min(0.8 * OR, 40 * GV * 1.3) * (1 - 0.4 * u), PH, pk, ts, C.pl || (C.pl = {}), 40, 120);
+        const cu = (u - 0.04) / 0.6;
+        if (cu > 0 && cu < 1) { const ck = qiSstep(0, 0.15, cu) * (1 - qiSstep(0.4, 1, cu)); qsrGlow(ctx, XT, gy - PH + 30 * GV, (60 + 90 * qsrEo(cu)) * GV * 1.3, 4, 0.35 * ck); qsrGlow(ctx, XT, gy - PH + 40 * GV, 24 * GV * 1.3, 6, 0.4 * ck); } // 기둥 꼭대기에서 번지는 빛
+        if (u < 0.1) { const q = u / 0.1; qsrMass(ctx, XT, gy - OR * 0.5 * (1 - q), OR * (1 + 0.5 * q), ts, 1 - q, 1 + 0.7 * q, 1 - 0.6 * q, 0.2, null, true); } // 땅에 닿는 순간 눌려 납작해짐
+        const rx = 240 * G * qsrEo(u * 1.8), ry = 160 * GV * 1.3 * qsrEo(u * 2.1) * (1 - qiSstep(0.45, 1, u)), a = 1 - qiSstep(0.6, 1, u), hollow = qiSstep(0.2, 0.75, u);
+        if (ry > 1 && a > 0) { // 반구 기운: 소용돌이 결 · 부풀었다 속부터 비며 가라앉음
+          qsrGlow(ctx, XT, gy - ry * 0.4, rx, 3, 0.25 * a, ry / rx);
+          const ryG = rx * QI_GK_SY;
+          qsrField(ctx, XT - rx * 1.2, gy - ry * 1.45, XT + rx * 1.2, gy + ryG * 1.2, (px, py, out) => {
+            const below = py >= gy, dx = (px - XT) / rx, dy = (py - gy) / (below ? ryG : ry), d = Math.hypot(dx, dy), an = Math.atan2(dy, dx), up = Math.max(0, -dy / Math.max(d, 0.01));
+            const E = 1.08 + 0.1 * (qiNoise2(Math.cos(an) * 1.5 + ts * 0.5, Math.sin(an) * 1.5) * 0.5 + 0.5) + up * up * 0.18 * (qiNoise2(dx * 1.4, dy * 1.4 + ts * 1.5) * 0.5 + 0.5);
+            if (d > E) return;
+            const fall = Math.pow(1 - qiSstep(0.78, E, d), 1.25), turb = qsrFbm(dx * 3 + ts * 0.4, dy * 3 + ts * 1.4);
+            const col = Math.max(0, qiNoise2(dx * 7 + 3, dy * 1.4 + ts * 2.6)) ** 2 * 0.5;        // 돔 속에서 솟아오르는 기둥 결
+            const swirl = Math.pow(Math.max(0, Math.cos(an * 3 - Math.log(d + 0.05) * 2.5 + ts * 3)), 3) * 0.3 * Math.max(0, 1 - d);
+            const lane = Math.pow(Math.max(0, qiNoise2(dx * 4 - 5, dy * 4 + ts * 1.2)), 3) * 0.35; // 짙은 결 (명암 대비)
+            const b = (1 - Math.min(d, 1) * 0.6) * (1 - hollow * Math.pow(Math.max(0, 1 - d), 1.2)) + turb * 0.22 + 0.35 * (1 + Math.min(0, dy)) + col + swirl - lane;
+            const v = a * (1 - hollow * Math.pow(Math.max(0, 1 - d), 1.5)) * Math.min(1.2, Math.max(0.25, b)) * fall * (below ? 0.6 : 1); // 바닥 쪽(앞) 반은 옅게 (그 안의 캐릭터가 보이게)
+            out.a = v * 0.35; out.k = v * 0.4; return qsrTint(b, out.a);
+          }, 120, 70, C.dm || (C.dm = {}));
+        }
+      }
+      for (let i = 0; i < 14; i++) { // 사방으로 높이 튀었다 녹는 기 덩어리
+        const h1 = qsrH(seed, i + 300), h2 = qsrH(seed, i + 320), h3 = qsrH(seed, i + 340), lf = 0.9 + 0.4 * h3, u = age / lf;
+        if (u >= 1) continue;
+        const th = (i + h1) / 14 * Math.PI * 2, sp = (180 + 140 * h2) * G, m = (1 - Math.pow(0.5, age)) / 0.693, rr = (5 + 4 * h3) * GV * 1.3 * (1 - 0.5 * u);
+        const x = XT + Math.cos(th) * sp * m, g0 = gy + Math.sin(th) * sp * m * QI_GK_SY, hgt = (300 + 140 * h1) * GV * age - 300 * GV * age * age;
+        const y = g0 - Math.max(rr * 0.6, 18 * GV + hgt), kq = Math.pow(1 - u, 1.3) * Math.min(1, age * 10);
+        qsrGlow(ctx, x, y, rr * 3, 3, 0.3 * kq);
+        qsrPuff(ctx, x, y, rr * 1.4, rr * 1.4, 0, 5, 0.75 * kq, 0.5);
+        qsrPuff(ctx, x, y, rr * 0.6, rr * 0.6, 0, 6, 0.9 * kq, 0.4);
+      }
+      for (let i = 0; i < 16; i++) { // 남아 떠오르는 기 구슬
+        const t0 = 0.8 + i * 0.08, lf = 1.2 + 0.6 * qsrH(seed, i + 400), u = (age - t0) / lf;
+        if (u < 0 || u >= 1) continue;
+        const q = age - t0, rr = (2 + 1.4 * qsrH(seed, i + 420)) * GV * 2.4 * (1 - 0.5 * u), kq = Math.pow(1 - u, 1.3) * Math.min(1, q * 10);
+        const x = XT + (qsrH(seed, i + 440) - 0.5) * 340 * G, y = gy + (qsrH(seed, i + 490) - 0.5) * 340 * G * QI_GK_SY - (4 + 26 * qsrH(seed, i + 460)) * GV - (20 + 20 * qsrH(seed, i + 480)) * GV * q;
+        qsrGlow(ctx, x, y, rr * 3.2, 3, 0.3 * kq);
+        qsrPuff(ctx, x, y, rr * 1.3, rr * 1.3, 0, 5, 0.8 * kq, 0.5);
+      }
+      for (let i = 0; i < 30; i++) { // 남은 기가 피어오름
+        const t0 = 0.7 + i * 0.04, u = (age - t0) / 1.3; if (u < 0 || u >= 1) continue;
+        const z = (3 + 3 * qsrH(seed, i + 500)) * GV * 2.4, x = XT + (qsrH(seed, i + 520) - 0.5) * 400 * G, y = gy + (qsrH(seed, i + 560) - 0.5) * 400 * G * QI_GK_SY - 2 * GV - (20 + 25 * qsrH(seed, i + 540)) * GV * (age - t0);
+        qsrPuff(ctx, x, y, z, z * 1.6, 0, 4, 0.18 * Math.sin(Math.PI * Math.min(1, u * 1.15)), 0.8);
+      }
+      qsrMotes(ctx, XT, gy - 8 * GV, 90, age, seed + 9, { s: Math.max(1, Math.min(2, GV)), sp0: 140 * G, sp1: 520 * G, life: 2.2, ex: 1.3, ey: 0.8 * GV / G, spread: Math.PI * 0.9 });
+    }
+    // sr: 1인 이펙트 (청기) — 그렸으면 true
+    function drawQsrEffect(ctx, ef, p) {
+      switch (ef.type) {
+        case 'qi_hit': drawQsrHit(ctx, ef, p); return true;
+        case 'qi_roar': drawQsrRoar(ctx, ef, p); return true;
+        case 'qi_beam': if (!qiBeamSuperseded(ef)) drawQsrBeam(ctx, ef); return true;
+        case 'qi_genki_fall': {
+          if (ef.st != null) { // 전투 틱으로 진행: 땅에 닿으면(터짐 효과가 생기면) 그때 넘겨줌 (drawQiGenkiFall과 같음)
+            const q = ((sim.tickCount || 0) + (sim.netRole === 'guest' ? 0 : battleTickCarry) - ef.st) / QI_GENKI_FALL;
+            if (q >= 1 && sim.effects.some(o => o.type === 'qi_genki_boom' && o.x === ef.x && o.y === ef.y)) { ef.life = 0; return true; }
+            if (q < 1) ef.life = Math.max(ef.life, 2);
+            p = Math.max(0, Math.min(1, q));
+          }
+          drawQsrGenkiFall(ctx, ef, p); return true;
+        }
+        case 'qi_genki_boom': drawQsrGenkiBoom(ctx, ef, p); return true;
+        case 'qi_reflect': {
+          const age = p * (ef.maxLife || 16) / 60;
+          qsrBand(ctx, ef.x, ef.y, 4 + 14 * qsrEo(p), 1, 0.7 * (1 - p), 3, 8, 5);
+          qsrMotes(ctx, ef.x, ef.y, 7, age, pfxSeedOf(ef), { dir: ef.ang || 0, spread: 1.6, sp0: 40, sp1: 120, life: 0.3 });
+          return true;
+        }
+        case 'qi_shield_hit': { // 막에 맞은 자리 (막이 움푹 패는 것은 drawQsrBarrier)
+          const u = qiUnitById(ef.uid);
+          if (!u || !u.alive || !qiBarrierOn(u)) return true;
+          const b = qiBarrierShape(u), x = b.cx + Math.cos(ef.a) * b.rx, y = b.cy + Math.sin(ef.a) * b.ry, s = Math.max(1, b.rx / 50);
+          qsrGlow(ctx, x, y, 16 * s, 5, 0.5 * (1 - p));
+          qsrBand(ctx, x, y, (2 + 14 * qsrEo(p)) * s, 1, 0.6 * (1 - p), 3, 8 * s);
+          return true;
+        }
+      }
+      return false;
+    }
     // 같은 자리에 더 새 기공파 이펙트가 있으면 이건 그리지 않음 (0.25초마다 새로 넣어 겹쳐 둠)
     function qiBeamSuperseded(ef) {
       return sim.effects.some(o => o !== ef && o.type === 'qi_beam' && o.life > ef.life && Math.abs(o.x - ef.x) < 60 && Math.abs(o.y - ef.y) < 60);
@@ -33851,6 +34383,7 @@
     // qi_charge (기공파 모으기) · qi_genki_charge (머리 위 기공옥) · qi_genki_fall (내리꽂음) · qi_genki_boom (터짐)
     function drawQigongEffect(ctx, ef, p) {
       const R = QI_RAMP, t = sim.tickCount || 0;
+      if (ef.sr && drawQsrEffect(ctx, ef, p)) return; // 시크릿 레어 (청기)
       if (ef.type === 'qi_hit') {
         if (ef.j) { drawQiJHit(ctx, ef, p); return; }
         drawPixelBurst(ctx, ef.x, ef.y, ef.r || 24, p, R, pfxSeedOf(ef), ef.small ? { sparks: 4, noRing: true, coreK: 0.3 } : { sparks: 8 });
@@ -33905,18 +34438,18 @@
         if (ef.jr) { // 기공후 모으기 (drawQiRoarCharge)
           if (!u || !u.alive || !u.casting || u.casting.key !== 'qi_roar') { ef.life = Math.min(ef.life, 1); return; }
           ef.life = Math.max(ef.life, 30);
-          drawQiRoarCharge(ctx, u);
+          if (qiSR(u)) drawQsrRoarCharge(ctx, u); else drawQiRoarCharge(ctx, u);
           return;
         }
         if (ef.jc) { // 기공포 모으기 (drawQiCannonCharge)
           if (!u || !u.alive || !u.casting || u.casting.key !== 'qi_cannon') { ef.life = Math.min(ef.life, 1); return; }
           ef.life = Math.max(ef.life, 30);
-          drawQiCannonCharge(ctx, ef, u);
+          if (qiSR(u)) drawQsrCannonCharge(ctx, ef, u); else drawQiCannonCharge(ctx, ef, u);
           return;
         }
         if (!u || !u.alive || !u.casting || u.casting.key !== (genki ? 'genki_bomb' : 'qi_wave')) { ef.life = Math.min(ef.life, 1); return; }
-        if (!genki) { ef.life = Math.max(ef.life, 30); drawQiWaveCharge(ctx, ef, u); return; } // 기공파 모으기 (사용자 시안 A)
-        ef.life = Math.max(ef.life, 30); drawQiGenkiCharge(ctx, ef, u); return; // 기공옥 모으기 (사용자 시안 A 원기옥)
+        if (!genki) { ef.life = Math.max(ef.life, 30); if (qiSR(u)) drawQsrWaveCharge(ctx, ef, u); else drawQiWaveCharge(ctx, ef, u); return; } // 기공파 모으기 (사용자 시안 A)
+        ef.life = Math.max(ef.life, 30); if (qiSR(u)) drawQsrGenkiCharge(ctx, ef, u); else drawQiGenkiCharge(ctx, ef, u); return; // 기공옥 모으기 (사용자 시안 A 원기옥)
       }
       if (ef.type === 'qi_genki_fall') { drawQiGenkiFall(ctx, ef, p); return; }
       if (ef.type === 'qi_genki_boom') drawQiGenkiBoom(ctx, ef, p);
@@ -33945,7 +34478,7 @@
       }
       if (qiBarrierOn(u)) { // 이 구간은 원점이 유닛 자리(ctx.translate(u.x, u.y))라 전장 좌표로 그리는 막은 원점을 되돌려서 그림 (전엔 화면 밖에 그려져 안 보였음)
         ctx.save(); ctx.translate(-Math.round(u.x), -Math.round(u.y));
-        drawQiBarrier(ctx, u, tick);
+        if (qiSR(u)) drawQsrBarrier(ctx, u, tick); else drawQiBarrier(ctx, u, tick);
         ctx.restore();
       }
     }
