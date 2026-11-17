@@ -464,7 +464,7 @@
   }
   // ── 슈퍼마켓: 마을사무소 오른쪽 1층 가게. 안은 마을 남쪽 바깥(SHOP.iz)에 따로 지어 두고, 문으로 오가면 그리로 옮겨 감
   const SHOP = { x: 13, z: -23, ix: 0, iz: 160, x0: -5.6, x1: 5.6, z0: 156.9, z1: 162.8, far: 100 }; // x0~z1: 안에서 걸을 수 있는 범위, far: z가 이보다 크면 가게 안
-  const TOOLS_PRICE = { rod: 30, net: 40, can: 25 }; // 가게 가격표와 가방 도구 값이 같도록 한곳에서
+  const TOOLS_PRICE = { rod: 30, net: 40, can: 25, shovel: 35 }; // 가게 가격표와 가방 도구 값이 같도록 한곳에서
   const signTex = (w, h, bg, fg, text, size, extra) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g2 = c.getContext('2d'); // 손글씨 간판·가격표
     g2.fillStyle = bg; g2.fillRect(0, 0, w, h); if (extra) extra(g2, w, h); g2.fillStyle = fg; g2.font = `800 ${size}px 'Malgun Gothic', sans-serif`; g2.textAlign = 'center'; g2.textBaseline = 'middle'; g2.fillText(text, w / 2, h / 2 + 2); const tx = new THREE.CanvasTexture(c); tx.anisotropy = 8; return tx; }; // 비스듬히 봐도 글씨가 지글거리지 않게
   const grime = (g2, w, h) => { for (let i = 0; i < 40; i++) { g2.fillStyle = `rgba(90,60,30,${0.05 + Math.random() * 0.12})`; g2.fillRect(Math.random() * w, Math.random() * h, 4 + Math.random() * 30, 2 + Math.random() * 8); } // 녹·때
@@ -1112,10 +1112,11 @@
     if (Math.hypot(me.x - SHOP.ix, me.z - (SHOP.iz + 3)) < 1.1) return { kind: 'shopOut', label: '🚪 밖으로 나가기' };
     const clerk = clerks.find(a => Math.hypot(a.x - me.x, a.z - me.z) < 1.9);
     if (clerk) return { kind: 'clerk', clerk, label: '💬 ' + clerk.name.slice(3) + ' 점원과 이야기' };
-    const pl = plantNear(); if (pl) { const F = FLOWERS[pl.f];
-      if (pl.st === 3) return { kind: 'pick', plant: pl, label: `${F.icon} ${F.name} 따기` };
-      if (pl.wet) return { kind: 'plantInfo', plant: pl, label: `🌱 ${F.name} ${STAGE[pl.st]} · 자라는 중이에요` };
-      return { kind: 'water', plant: pl, label: bag.can ? `💧 ${F.name} ${STAGE[pl.st]}에 물 주기` : `🌱 ${F.name} ${STAGE[pl.st]} · 물이 필요해요 (물뿌리개)` }; }
+    const pl = plantNear(); if (pl) { const F = FLOWERS[pl.f], nm = pl.st === 2 ? fname(pl.f, pl.c) : F.name;
+      if (bag.held === 'shovel') return { kind: 'dig', plant: pl, label: `🪏 ${nm} ${STAGE[pl.st]} 파내기` };
+      if (pl.st === 2 && bag.held !== 'can') return { kind: 'pick', plant: pl, label: `${F.icon} ${nm} 따기` };
+      if (pl.wet) return { kind: 'plantInfo', plant: pl, label: `🌱 ${nm} ${STAGE[pl.st]} · 자라는 중이에요` };
+      return { kind: 'water', plant: pl, label: bag.can ? `💧 ${nm} ${STAGE[pl.st]}에 물 주기` : `🌱 ${nm} ${STAGE[pl.st]} · 물이 필요해요 (물뿌리개)` }; }
     const bug = bugNear(); if (bug) return { kind: 'bug', bug, label: bag.net ? `🥅 ${bug.B.name} 잡기` : `${bug.B.icon} ${bug.B.name} (잠자리채가 필요해요)` };
     if (Math.hypot(me.x - (SHOP.ix + 4.7), me.z - (SHOP.iz - 1.7)) < 1.3) return { kind: 'rack', label: bag.rod ? '🎣 낚싯대 진열대' : `🎣 낚싯대 사기 (${ROD_PRICE}동)` };
     if (Math.hypot(me.x - (SHOP.ix + 5.0), me.z - (SHOP.iz + 2.6)) < 1.3) return { kind: 'rack', label: bag.net ? '🥅 잠자리채 진열' : `🥅 잠자리채 사기 (${TOOLS.net.price}동)` };
@@ -1129,6 +1130,7 @@
     if (best) return { kind: 'tree', tree: best, label: best.fruits.some(f => f.userData.state === 'on') ? '🍎 열매 따기' : best.kind === 'blossom' ? '🌸 꽃잎 흔들기' : '🌳 나무 흔들기' };
     if (bag.held === 'net') return { kind: 'swing', label: '🥅 잠자리채 휘두르기' };
     if (bag.held === 'can') return { kind: 'pour', label: '💧 물 뿌리기' };
+    if (bag.held === 'shovel' && me.z < SHOP.far) return bag.dug.length ? { kind: 'replant', label: `🪏 ${fname(bag.dug[0].f, bag.dug[0].c)} 옮겨 심기` } : { kind: 'dig0', label: '🪏 땅 파기' };
     return null;
   }
   function standUp() { if (!me.sit) return; me.x = me.sit.x + me.sit.ox; me.z = me.sit.z + me.sit.oz; me.sit = null; }
@@ -1141,7 +1143,10 @@
     if (c.kind === 'pour') return pourCan(null);
     if (c.kind === 'water') return pourCan(c.plant);
     if (c.kind === 'pick') return pickFlower(c.plant);
-    if (c.kind === 'plantInfo') { const F = FLOWERS[c.plant.f], left = Math.max(1, Math.ceil((F.grow * 1000 - (Date.now() - c.plant.wet)) / 1000)); say(me, `${left}초 뒤면 더 자라요 🌱`, 1.8); return; }
+    if (c.kind === 'plantInfo') { const ms = GROW_MS - (Date.now() - c.plant.wet), h = Math.floor(ms / 3600e3); say(me, (h ? `${h}시간 ` : '') + `${Math.max(1, Math.ceil(ms % 3600e3 / 60e3))}분 뒤면 ` + (c.plant.st === 2 ? '씨앗이 생길지 몰라요 ✨' : '더 자라요 🌱'), 2); return; }
+    if (c.kind === 'dig') return digPlant(c.plant);
+    if (c.kind === 'replant') return replant(0);
+    if (c.kind === 'dig0') { if (!(me.digT > 0)) { me.digT = 0.7; sfx.shake(); say(me, '옮기고 싶은 꽃 앞에서 파 보세요 🪏', 1.8); } return; }
     if (c.kind === 'norod') { say(me, '낚싯대가 있어야 해요. 슈퍼마켓에서 사요!', 2.2); return; }
     if (c.kind === 'rack') { const k = clerks[0]; k.wave = 1.4; say(k, c.label.startsWith('🌱') ? pick(['꽃씨는 5동부터 있어요 🌱', '무궁화 씨앗은 귀해요! 🌺', '물 꼭 주세요 💧']) : c.label.startsWith('💧') ? (bag.can ? '물뿌리개 잘 쓰고 있죠?' : `물뿌리개는 ${TOOLS.can.price}동이에요 💧`) : c.label.startsWith('🥅') ? (bag.net ? '잠자리채 잘 쓰고 있죠?' : `잠자리채는 ${TOOLS.net.price}동이에요 🥅`) : bag.rod ? '이미 좋은 낚싯대가 있네요!' : `낚싯대는 ${ROD_PRICE}동이에요 🎣`, 2); openShop(k); return; }
     if (c.kind === 'reel') return reel();
@@ -1405,7 +1410,14 @@
     const rose = at(mesh(new THREE.CylinderGeometry(0.045, 0.02, 0.05, 10), '#d9a441'), 0, -0.02, 0.45); rose.rotation.x = 1.0; wcan.add(rose);
     wcan.userData.tip = at(new THREE.Object3D(), 0, -0.01, 0.48); wcan.add(wcan.userData.tip); }
   const canHold = new THREE.Group(); canHold.add(wcan); wcan.visible = false; dress(wcan);
-  me.onPet = () => { me.pet.hands[1].add(rodHold); me.pet.hands[1].add(netHold); me.pet.hands[1].add(canHold); }; me.onPet(); // 펫을 바꾸면 새 손에 다시 쥐여 줌
+  const shovel = new THREE.Group(); { // 삽: D자 손잡이, 나무 자루, 은색 날
+    const hg = at(mesh(new THREE.TorusGeometry(0.05, 0.014, 6, 12), '#3a3a44'), 0, 0.06, 0); shovel.add(hg);
+    shovel.add(at(mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.56, 8), '#c79a62'), 0, -0.26, 0)); shovel.add(at(mesh(new THREE.CylinderGeometry(0.026, 0.03, 0.06, 8), '#8a8f98'), 0, -0.55, 0));
+    const bl = at(mesh(new THREE.BoxGeometry(0.17, 0.2, 0.025), '#c9ced6'), 0, -0.67, 0.01); bl.rotation.x = -0.15; shovel.add(bl);
+    const tp = at(mesh(new THREE.ConeGeometry(0.085, 0.07, 4), '#c9ced6'), 0, -0.79, 0.025); tp.rotation.set(Math.PI, Math.PI / 4, 0); tp.scale.z = 0.2; shovel.add(tp); }
+  const SHOULDER = -1.45; // 어깨에 멜 때 삽 각도 (날이 등 뒤 위쪽)
+  const shovelHold = new THREE.Group(); shovelHold.add(shovel); shovel.position.y = 0.1; shovel.scale.setScalar(1.4); shovel.visible = false; dress(shovel);
+  me.onPet = () => { me.pet.hands[1].add(rodHold); me.pet.hands[1].add(netHold); me.pet.hands[1].add(canHold); me.pet.hands[1].add(shovelHold); }; me.onPet(); // 펫을 바꾸면 새 손에 다시 쥐여 줌
   const bobber = new THREE.Group(); bobber.add(at(noShadow(mesh(new THREE.SphereGeometry(0.09, 12, 8, 0, 6.29, 0, Math.PI / 2), '#e8483f')), 0, 0, 0)); bobber.add(at(noShadow(mesh(new THREE.SphereGeometry(0.09, 12, 8, 0, 6.29, Math.PI / 2, Math.PI / 2), '#ffffff')), 0, 0, 0));
   bobber.visible = false; scene.add(bobber);
   const lineGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Array(30).fill(0), 3));
@@ -1433,19 +1445,20 @@
   const dexN = $('dexN'), dexEl = $('dex'), catchEl = $('catch');
   const updDexN = () => { dexN.textContent = Object.keys(dex).length + '/' + (FISH.length + BUGS.length); }; updDexN();
   // 가방: 낚싯대(손에 들기·넣기), 잡은 물고기, 딴 열매. 이 브라우저에 저장 (나중에 슈퍼마켓 점원에게 팔 거리)
-  const BAG_KEY = 'vlgBag:' + (demo ? 'demo' : host.me.id); let bag = { held: null, rod: false, net: false, can: false, fish: {}, bug: {}, seed: {}, flower: {}, apple: 0, coconut: 0, coins: 0 };
+  const BAG_KEY = 'vlgBag:' + (demo ? 'demo' : host.me.id); let bag = { held: null, rod: false, net: false, can: false, shovel: false, fish: {}, bug: {}, seed: {}, flower: {}, dug: [], apple: 0, coconut: 0, coins: 0 };
   try { bag = Object.assign(bag, JSON.parse(vStore.get(BAG_KEY) || '{}')); } catch (e) {}
-  bag.bug = bag.bug || {}; bag.seed = bag.seed || {}; bag.flower = bag.flower || {}; if (bag.held && !bag[bag.held]) bag.held = null; // 도구는 슈퍼마켓에서 사야 생김
+  bag.bug = bag.bug || {}; bag.seed = bag.seed || {}; bag.flower = bag.flower || {}; bag.dug = bag.dug || []; if (bag.held && !bag[bag.held]) bag.held = null; // 도구는 슈퍼마켓에서 사야 생김
   const bagEl = $('bag'), heldIc = $('heldIc');
   const coinN = $('coinN');
   const saveBag = () => { vStore.set(BAG_KEY, JSON.stringify(bag)); coinN.textContent = bag.coins || 0; if (bagEl.style.display !== 'none') renderBag(); };
   coinN.textContent = bag.coins || 0;
   const bagAdd = (k, id) => { if (k === 'fish' || k === 'bug' || k === 'seed' || k === 'flower') bag[k][id] = (bag[k][id] || 0) + 1; else bag[k] = (bag[k] || 0) + 1; saveBag(); };
-  const TOOLS = { rod: { ic: '🎣', nm: '낚싯대', price: TOOLS_PRICE.rod, use: '강·바다에서 물고기를 낚아요' }, net: { ic: '🥅', nm: '잠자리채', price: TOOLS_PRICE.net, use: '풀밭에 나타난 벌레를 잡아요' }, can: { ic: '💧', nm: '물뿌리개', price: TOOLS_PRICE.can, use: '심은 꽃에 물을 줘요' } };
+  const TOOLS = { rod: { ic: '🎣', nm: '낚싯대', price: TOOLS_PRICE.rod, use: '강·바다에서 물고기를 낚아요' }, net: { ic: '🥅', nm: '잠자리채', price: TOOLS_PRICE.net, use: '풀밭에 나타난 벌레를 잡아요' }, can: { ic: '💧', nm: '물뿌리개', price: TOOLS_PRICE.can, use: '심은 꽃에 물을 줘요' }, shovel: { ic: '🪏', nm: '삽', price: TOOLS_PRICE.shovel, use: '심은 꽃을 파서 다른 곳에 옮겨 심어요' } };
+  const ga = w => (w.charCodeAt(w.length - 1) - 0xAC00) % 28 ? '이' : '가'; // 받침 있으면 '이'
   function setTool(k) { // 도구를 손에 들기(k)·가방에 넣기(null). 한 번에 하나만 듦
-    if (k && !bag[k]) { say(me, TOOLS[k].nm + '가 없어요. 슈퍼마켓에서 사요!', 2); return; }
+    if (k && !bag[k]) { say(me, TOOLS[k].nm + ga(TOOLS[k].nm) + ' 없어요. 슈퍼마켓에서 사요!', 2); return; }
     if (k !== 'rod' && fishing.st) endFishing();
-    bag.held = k || null; rod.visible = k === 'rod'; bugNet.visible = k === 'net'; wcan.visible = k === 'can'; heldIc.textContent = k ? '· ' + TOOLS[k].ic : ''; saveBag(); }
+    bag.held = k || null; rod.visible = k === 'rod'; bugNet.visible = k === 'net'; wcan.visible = k === 'can'; shovel.visible = k === 'shovel'; heldIc.textContent = k ? '· ' + TOOLS[k].ic : ''; saveBag(); }
   const setRod = on => setTool(on ? 'rod' : null);
   function renderBag() {
     const slot = (ic, nm, cnt, extra, cls) => `<div class="vlg-fish vlg-slot ${cls || ''}"><div class="ic">${ic}</div><div class="nm">${nm}</div><div class="cnt">${cnt}</div>${extra || ''}</div>`;
@@ -1456,14 +1469,18 @@
     FISH.forEach(f => { const n = bag.fish[f.id]; if (n) items.push(slot(f.icon, f.name, '× ' + n, `<div class="st">${'★'.repeat(f.rar)}</div>`)); });
     BUGS.forEach(b => { const n = bag.bug[b.id]; if (n) items.push(slot(b.icon, b.name, '× ' + n, `<div class="st">${'★'.repeat(b.rar)}</div>`)); });
     FLOWERS.forEach(f => { const n = bag.seed[f.id]; if (n) items.push(slot('🌱', f.name + ' 씨앗', '× ' + n, `<button data-plant="${f.id}">앞에 심기</button>`)); });
-    FLOWERS.forEach(f => { const n = bag.flower[f.id]; if (n) items.push(slot(f.icon, f.name, '× ' + n)); });
+    flowerList().forEach(o => items.push(slot(o.F.icon, fdot(o.c) + fname(o.F.id, o.c), '× ' + o.n, tierOf(o.c) ? `<div class="st">${'★'.repeat(tierOf(o.c))}</div>` : '')));
+    bag.dug.forEach((d, i) => items.push(slot(d.st === 2 ? FLOWERS[d.f].icon : '🌱', fdot(d.c) + (d.st === 2 ? fname(d.f, d.c) : FLOWERS[d.f].name) + ' ' + STAGE[d.st], '파낸 꽃', `<button data-replant="${i}">앞에 옮겨 심기</button>`)));
     const cnt = o => Object.values(o).reduce((a, b) => a + b, 0);
-    $('bagSum').textContent = `🪙 ${bag.coins || 0}동 · 물고기 ${cnt(bag.fish)}마리 · 벌레 ${cnt(bag.bug)}마리 · 씨앗 ${cnt(bag.seed)}개 · 꽃 ${cnt(bag.flower)}송이 · 열매 ${(bag.apple || 0) + (bag.coconut || 0)}개`;
+    $('bagSum').textContent = `🪙 ${bag.coins || 0}동 · 물고기 ${cnt(bag.fish)}마리 · 벌레 ${cnt(bag.bug)}마리 · 씨앗 ${cnt(bag.seed)}개 · 꽃 ${cnt(bag.flower)}송이${bag.dug.length ? ` · 파낸 꽃 ${bag.dug.length}` : ''} · 열매 ${(bag.apple || 0) + (bag.coconut || 0)}개`;
     while (items.length < 16 || items.length % 4) items.push('<div class="vlg-fish vlg-slot empty"></div>');
     $('bagBody').innerHTML = `<div class="vlg-dex-grid">${items.join('')}</div>`;
     $('bagBody').querySelectorAll('[data-tool]').forEach(b => { b.onclick = () => setTool(bag.held === b.dataset.tool ? null : b.dataset.tool); });
-    $('bagBody').querySelectorAll('[data-plant]').forEach(b => { b.onclick = () => plantSeed(+b.dataset.plant); }); }
-  if (bag.held) { rod.visible = bag.held === 'rod'; bugNet.visible = bag.held === 'net'; wcan.visible = bag.held === 'can'; heldIc.textContent = '· ' + TOOLS[bag.held].ic; }
+    $('bagBody').querySelectorAll('[data-plant]').forEach(b => { b.onclick = () => plantSeed(+b.dataset.plant); });
+    $('bagBody').querySelectorAll('[data-replant]').forEach(b => { b.onclick = () => replant(+b.dataset.replant); }); }
+  const flowerList = () => Object.keys(bag.flower).filter(k => bag.flower[k] > 0).map(k => { const [f, c] = k.split('c').map(Number); return { k, F: FLOWERS[f], c: c || 0, n: bag.flower[k] }; }).filter(o => o.F);
+  const fdot = c => (!VARS[c] ? '' : VARS[c].rainbow ? '🌈' : `<span style="color:${VARS[c].col};text-shadow:0 0 1px #0006">●</span>`);
+  if (bag.held) { rod.visible = bag.held === 'rod'; bugNet.visible = bag.held === 'net'; wcan.visible = bag.held === 'can'; shovel.visible = bag.held === 'shovel'; heldIc.textContent = '· ' + TOOLS[bag.held].ic; }
   const openBag = on => { bagEl.style.display = on ? 'flex' : 'none'; if (on) { openDex(false); openShop(null); renderBag(); } };
   // 슈퍼마켓: 낚싯대를 사고, 열매·물고기를 팔아 동을 모음. 물고기 값 = 귀함에 따른 기본값 × 크기(평균 cm가 클수록 최대 2배)
   const ROD_PRICE = TOOLS.rod.price, BUG_PRICE = [0, 8, 25, 70, 250], FRUIT = [['apple', '🍎', '사과', 5], ['coconut', '🥥', '코코넛', 7]];
@@ -1473,18 +1490,18 @@
     const coins = bag.coins || 0, row = (ic, nm, sub, btns) => `<div class="vlg-sell"><span class="ic">${ic}</span><span class="nm">${nm}<br><small>${sub}</small></span>${btns}</div>`;
     const buy = Object.keys(TOOLS).map(k => { const T = TOOLS[k]; return row(T.ic, T.nm, `${T.use} <span class="pr">${T.price}동</span>`, bag[k] ? '<button disabled>가지고 있어요</button>'
       : coins >= T.price ? `<button data-buy="${k}">사기</button>` : `<button disabled>${T.price - coins}동 모자라요</button>`); }).join('')
-      + '<h4>🌱 꽃씨</h4>' + FLOWERS.map(f => row(f.icon, f.name + ' 씨앗', `${f.grow * 3}초쯤 물 주며 키워요 · 한 봉지 <span class="pr">${f.price}동</span>${bag.seed[f.id] ? ` · 가진 것 ${bag.seed[f.id]}개` : ''}`,
+      + '<h4>🌱 꽃씨</h4>' + FLOWERS.map(f => row(f.icon, f.name + ' 씨앗', `물 주면 하루에 한 단계, 이틀이면 꽃 · 한 봉지 <span class="pr">${f.price}동</span>${bag.seed[f.id] ? ` · 가진 것 ${bag.seed[f.id]}개` : ''}`,
         [1, 5].map(n => `<button data-seed="${f.id}" data-n="${n}"${coins < f.price * n ? ' disabled' : ''}>${n}개 (${f.price * n}동)</button>`).join(''))).join('');
     const sells = [];
     FRUIT.forEach(([k, ic, nm, pr]) => { const n = bag[k] || 0; if (n) sells.push(row(ic, `${nm} × ${n}`, `한 개 <span class="pr">${pr}동</span>`,
       `<button data-sell="${k}" data-n="1">1개 팔기</button>${n > 1 ? `<button data-sell="${k}" data-n="${n}">모두 팔기 (${pr * n}동)</button>` : ''}`)); });
     FISH.filter(f => bag.fish[f.id]).forEach(f => { const n = bag.fish[f.id], pr = fishPrice(f); sells.push(row(f.icon, `${f.name} × ${n}`, `${'★'.repeat(f.rar)} 한 마리 <span class="pr">${pr}동</span>`,
       `<button data-sell="f${f.id}" data-n="1">1마리 팔기</button>${n > 1 ? `<button data-sell="f${f.id}" data-n="${n}">모두 팔기 (${pr * n}동)</button>` : ''}`)); });
-    FLOWERS.filter(f => bag.flower[f.id]).forEach(f => { const n = bag.flower[f.id], pr = f.price * 3; sells.push(row(f.icon, `${f.name} × ${n}`, `한 송이 <span class="pr">${pr}동</span>`,
-      `<button data-sell="w${f.id}" data-n="1">1송이 팔기</button>${n > 1 ? `<button data-sell="w${f.id}" data-n="${n}">모두 팔기 (${pr * n}동)</button>` : ''}`)); });
+    flowerList().forEach(o => { const n = o.n, pr = fprice(o.F.id, o.c); sells.push(row(o.F.icon, `${fdot(o.c)}${fname(o.F.id, o.c)} × ${n}`, `${tierOf(o.c) ? '★'.repeat(tierOf(o.c)) + ' ' : ''}한 송이 <span class="pr">${pr}동</span>`,
+      `<button data-sell="w${o.k}" data-n="1">1송이 팔기</button>${n > 1 ? `<button data-sell="w${o.k}" data-n="${n}">모두 팔기 (${pr * n}동)</button>` : ''}`)); });
     BUGS.filter(b => bag.bug[b.id]).forEach(b => { const n = bag.bug[b.id], pr = BUG_PRICE[b.rar]; sells.push(row(b.icon, `${b.name} × ${n}`, `${'★'.repeat(b.rar)} 한 마리 <span class="pr">${pr}동</span>`,
       `<button data-sell="b${b.id}" data-n="1">1마리 팔기</button>${n > 1 ? `<button data-sell="b${b.id}" data-n="${n}">모두 팔기 (${pr * n}동)</button>` : ''}`)); });
-    const total = FRUIT.reduce((a, [k, , , pr]) => a + (bag[k] || 0) * pr, 0) + FISH.reduce((a, f) => a + (bag.fish[f.id] || 0) * fishPrice(f), 0) + BUGS.reduce((a, b) => a + (bag.bug[b.id] || 0) * BUG_PRICE[b.rar], 0) + FLOWERS.reduce((a, f) => a + (bag.flower[f.id] || 0) * f.price * 3, 0);
+    const total = FRUIT.reduce((a, [k, , , pr]) => a + (bag[k] || 0) * pr, 0) + FISH.reduce((a, f) => a + (bag.fish[f.id] || 0) * fishPrice(f), 0) + BUGS.reduce((a, b) => a + (bag.bug[b.id] || 0) * BUG_PRICE[b.rar], 0) + flowerList().reduce((a, o) => a + o.n * fprice(o.F.id, o.c), 0);
     $('shopSum').textContent = `내 돈 🪙 ${coins}동`;
     $('shopBody').innerHTML = `<h4>🛒 사기</h4>${buy}<h4>💰 팔기</h4>` + (sells.length ? sells.join('') + `<button class="vlg-sell-all" data-sell="all">🧺 전부 팔기 · ${total}동</button>`
       : '<p style="text-align:center;font-weight:800;color:#6a7a6a">팔 물건이 없어요. 열매를 따거나 물고기·벌레를 잡아 오세요!</p>');
@@ -1500,7 +1517,7 @@
     const take = (k, pr, have, set) => { const c = id === 'all' ? have : Math.min(n, have); got += c * pr; cnt += c; set(have - c); };
     FRUIT.forEach(([k, , , pr]) => { if (id === 'all' || id === k) take(k, pr, bag[k] || 0, v => { bag[k] = v; }); });
     FISH.forEach(f => { if ((id === 'all' || id === 'f' + f.id) && bag.fish[f.id]) take(f.id, fishPrice(f), bag.fish[f.id], v => { if (v) bag.fish[f.id] = v; else delete bag.fish[f.id]; }); });
-    FLOWERS.forEach(f => { if ((id === 'all' || id === 'w' + f.id) && bag.flower[f.id]) take(f.id, f.price * 3, bag.flower[f.id], v => { if (v) bag.flower[f.id] = v; else delete bag.flower[f.id]; }); });
+    flowerList().forEach(o => { if (id === 'all' || id === 'w' + o.k) take(o.k, fprice(o.F.id, o.c), o.n, v => { if (v) bag.flower[o.k] = v; else delete bag.flower[o.k]; }); });
     BUGS.forEach(b => { if ((id === 'all' || id === 'b' + b.id) && bag.bug[b.id]) take(b.id, BUG_PRICE[b.rar], bag.bug[b.id], v => { if (v) bag.bug[b.id] = v; else delete bag.bug[b.id]; }); });
     if (!cnt) return; bag.coins = (bag.coins || 0) + got; saveBag(); renderShop(); sfx.pick();
     if (shopClerk) { say(shopClerk, pick(['고마워요! 싱싱하네요', '좋은 물건이네요! 값 잘 쳐 드릴게요', '또 가져오세요 😊']), 2); shopClerk.wave = 1.2; popText('+' + got + '동', shopClerk.x, 1.6, shopClerk.z); } }
@@ -1609,44 +1626,75 @@
       const grow = Math.min(1, b.age / 0.5) * Math.min(1, b.life / 0.6); b.g.scale.setScalar(1.7 * grow); // 나타날 때·사라질 때 스르륵
       b.g.position.set(b.x, b.y + 0.04, b.z); let df = b.face - b.g.rotation.y; df = Math.atan2(Math.sin(df), Math.cos(df)); b.g.rotation.y += df * Math.min(1, dt * 8);
     } }
-  // ── 꽃밭: 씨앗을 풀밭에 심고 물뿌리개로 물을 주면, 물을 먹은 뒤 grow초마다 한 단계씩 자람 (씨앗 → 새싹 → 꽃봉오리 → 꽃). 다 피면 따서 가방에. 이 브라우저에 저장
-  const FLOWERS = [ // [이름, 그림, 씨앗값, 단계마다 자라는 초, 모양, 색]
+  // ── 꽃밭: 씨앗을 풀밭에 심고 물뿌리개로 물을 주면, 물을 먹고 하루쯤(GROW_MS) 지나 한 단계씩 자람 (씨앗 → 줄기 → 꽃). 다 피면 따서 가방에. 이 브라우저에 저장
+  //    핀 꽃 옆에 같은 꽃이 피어 있을 때 물을 주면, 하루 뒤 둘 사이에 씨앗이 떨어지기도 함(교배) → 희귀한 색. 삽으로 파서 옮겨 심을 수 있음
+  const FLOWERS = [ // [이름, 그림, 씨앗값, (안 씀), 모양, 색]
     ['튤립', '🌷', 5, 20, 'tulip', ['#f2473f']], ['데이지', '🌼', 5, 20, 'daisy', ['#ffffff', '#f2c53a']], ['코스모스', '🌸', 6, 22, 'cosmos', ['#ff8fb0', '#f2c53a']],
     ['은방울꽃', '🔔', 7, 24, 'bell', ['#ffffff']], ['라벤더', '🪻', 8, 25, 'lavender', ['#9b7fd8']], ['해바라기', '🌻', 10, 28, 'sunflower', ['#f2c53a', '#6b4428']],
     ['장미', '🌹', 12, 30, 'rose', ['#d9304a']], ['수국', '💠', 15, 32, 'hydrangea', ['#7fa8e8', '#b9a3f0']], ['무궁화', '🌺', 20, 35, 'hibiscus', ['#f2a0c0', '#c0304a']],
   ].map(([name, icon, price, grow, shape, col], id) => ({ id, name, icon, price, grow, shape, col }));
-  const GARDEN_KEY = 'vlgGarden:' + (demo ? 'demo' : host.me.id), STAGE = ['씨앗', '새싹', '꽃봉오리', '꽃'];
+  const GARDEN_KEY = 'vlgGarden:' + (demo ? 'demo' : host.me.id), STAGE = ['씨앗', '줄기', '꽃'], GROW_MS = 20 * 3600 * 1000; // 하루쯤: 오늘 물 주면 내일 같은 시간엔 자라 있음
+  const RAINBOW = ['#f2473f', '#ff9a3a', '#ffd23a', '#4fbf5a', '#4f86f0', '#9a6ae0'];
+  const VARS = [null, { nm: '하얀', col: '#fbfaf2', t: 1 }, { nm: '노란', col: '#ffd23a', t: 1 }, { nm: '분홍', col: '#ff9cc2', t: 1 }, // 교배로만 나오는 색 (t: 희귀 단계)
+    { nm: '주황', col: '#ff8a3a', t: 2 }, { nm: '보라', col: '#9a6ae0', t: 2 }, { nm: '파란', col: '#4f86f0', t: 3 }, { nm: '검은', col: '#3a2d48', t: 3 }, { nm: '무지개', col: '#ffffff', t: 4, rainbow: true }];
+  const tierOf = c => (VARS[c] ? VARS[c].t : 0), fname = (f, c) => (VARS[c] ? VARS[c].nm + ' ' : '') + FLOWERS[f].name;
+  const fprice = (f, c) => FLOWERS[f].price * 3 * [1, 2, 3, 6, 12][tierOf(c)];
+  function pickVar(f, t) { const base = new THREE.Color(FLOWERS[f].col[0]), far = i => { const k = new THREE.Color(VARS[i].col); return Math.abs(k.r - base.r) + Math.abs(k.g - base.g) + Math.abs(k.b - base.b) > 0.35; };
+    let opts = VARS.map((v, i) => i).filter(i => VARS[i] && VARS[i].t === t && (VARS[i].rainbow || far(i))); if (!opts.length) opts = VARS.map((v, i) => i).filter(i => VARS[i] && VARS[i].t === t);
+    return opts[Math.floor(Math.random() * opts.length)]; }
+  function kidColor(a, b) { // 반은 엄마·아빠 색을 닮고, 반은 새 색. 희귀한 부모일수록 더 희귀한 색이 나옴 (기본끼리 → 하양·노랑·분홍, 가끔 주황·보라)
+    if (Math.random() < 0.5) return (Math.random() < 0.5 ? a : b).c || 0;
+    let t = Math.max(1, tierOf(a.c), tierOf(b.c)); if (Math.random() < 0.3) t++; return pickVar(a.f, Math.min(4, t)); }
   let garden = []; try { garden = JSON.parse(vStore.get(GARDEN_KEY) || '[]') || []; } catch (e) { garden = []; }
-  const saveGarden = () => { vStore.set(GARDEN_KEY, JSON.stringify(garden.map(q => ({ f: q.f, x: q.x, z: q.z, st: q.st, wet: q.wet })))); };
+  garden.forEach(q => { if (q.v !== 2) q.st = [0, 1, 1, 2][Math.min(3, q.st | 0)]; q.v = 2; q.c = q.c || 0; }); // 예전 4단계 저장분을 3단계로
+  const saveGarden = () => { vStore.set(GARDEN_KEY, JSON.stringify(garden.map(q => ({ f: q.f, x: q.x, z: q.z, st: q.st, wet: q.wet, c: q.c || 0, v: 2 })))); };
   function plantMesh(q) { // 단계에 맞춰 화분 흙과 줄기·잎·꽃을 다시 만듦
-    if (q.g) scene.remove(q.g); const F = FLOWERS[q.f], c = F.col, g = new THREE.Group(), add = (m, x, y, z) => { g.add(at(m, x, y, z)); return m; };
+    if (q.g) scene.remove(q.g); const F = FLOWERS[q.f], V = VARS[q.c], g = new THREE.Group(), add = (m, x, y, z) => { g.add(at(m, x, y, z)); return m; };
+    const c = V ? [V.col, F.shape === 'hydrangea' ? V.col : F.col[1]] : F.col, pc = k => (V && V.rainbow ? RAINBOW[k % RAINBOW.length] : c[0]); // 꽃잎 색 (무지개는 잎마다 다름)
     const soil = add(mesh(new THREE.CylinderGeometry(0.32, 0.36, 0.08, 14), q.wet ? '#4a3220' : '#7a5a3a'), 0, 0.04, 0); q.soil = soil;
-    const stemH = [0, 0.18, 0.42, F.shape === 'sunflower' ? 0.95 : F.shape === 'lavender' ? 0.5 : 0.55][q.st], green = '#4fae4a';
+    const stemH = [0, 0.32, F.shape === 'sunflower' ? 0.95 : F.shape === 'lavender' ? 0.5 : 0.55][q.st], green = '#4fae4a';
     if (q.st === 0) add(mesh(new THREE.SphereGeometry(0.04, 8, 6), '#c9a26a'), 0, 0.1, 0);
     else { add(mesh(new THREE.CylinderGeometry(0.018, 0.025, stemH, 6), green), 0, 0.08 + stemH / 2, 0);
       [-1, 1].forEach(sd => { const lf = add(mesh(new THREE.SphereGeometry(0.07, 8, 6), '#5cbd50'), sd * 0.07, 0.1 + stemH * 0.35, 0); lf.scale.set(1.3, 0.25, 0.6); lf.rotation.z = sd * 0.4; }); }
     const top = 0.08 + stemH;
-    if (q.st === 2) add(mesh(new THREE.SphereGeometry(0.06, 10, 8), c[0]), 0, top + 0.03, 0).scale.set(0.8, 1.3, 0.8);
-    if (q.st === 3) { const ring = (n, r, pr, col, y, sx, sy) => { for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2, pt = add(mesh(new THREE.SphereGeometry(pr, 8, 6), col), Math.sin(a) * r, y, Math.cos(a) * r); pt.scale.set(sx || 1, sy || 0.4, 1); pt.rotation.y = a; } };
-      if (F.shape === 'tulip') { for (let k = 0; k < 5; k++) { const a = k / 5 * 6.283, pt = add(mesh(new THREE.SphereGeometry(0.07, 10, 8), c[0]), Math.sin(a) * 0.045, top + 0.07, Math.cos(a) * 0.045); pt.scale.set(0.7, 1.5, 0.7); } }
+    if (q.st === 1) [-1, 1].forEach(sd => { const lf = add(mesh(new THREE.SphereGeometry(0.06, 8, 6), '#5cbd50'), sd * 0.06, top - 0.04, 0); lf.scale.set(1.2, 0.25, 0.55); lf.rotation.z = sd * 0.6; }); // 줄기 끝에 어린잎
+    if (q.st === 2) { const ring = (n, r, pr, col, y, sx, sy) => { for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2, pt = add(mesh(new THREE.SphereGeometry(pr, 8, 6), col === c[0] ? pc(k) : col), Math.sin(a) * r, y, Math.cos(a) * r); pt.scale.set(sx || 1, sy || 0.4, 1); pt.rotation.y = a; } };
+      if (F.shape === 'tulip') { for (let k = 0; k < 5; k++) { const a = k / 5 * 6.283, pt = add(mesh(new THREE.SphereGeometry(0.07, 10, 8), pc(k)), Math.sin(a) * 0.045, top + 0.07, Math.cos(a) * 0.045); pt.scale.set(0.7, 1.5, 0.7); } }
       else if (F.shape === 'daisy' || F.shape === 'cosmos') { ring(F.shape === 'daisy' ? 12 : 8, 0.1, 0.06, c[0], top + 0.03, 1.6, 0.25); add(mesh(new THREE.SphereGeometry(0.045, 10, 8), c[1]), 0, top + 0.05, 0); }
       else if (F.shape === 'sunflower') { ring(16, 0.17, 0.07, c[0], top + 0.02, 1.7, 0.25); const dk = add(mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.05, 16), c[1]), 0, top + 0.04, 0); dk.rotation.x = 0.4; }
-      else if (F.shape === 'rose') { add(mesh(new THREE.SphereGeometry(0.09, 12, 10), c[0]), 0, top + 0.07, 0); ring(5, 0.07, 0.05, c[0], top + 0.04, 1, 0.7); }
-      else if (F.shape === 'lavender') { for (let k = 0; k < 7; k++) add(mesh(new THREE.SphereGeometry(0.035, 6, 5), c[0]), Math.sin(k * 2.3) * 0.02, top - 0.1 + k * 0.045, Math.cos(k * 2.3) * 0.02); }
-      else if (F.shape === 'hydrangea') { for (let k = 0; k < 14; k++) { const a = k * 2.4, h = (k / 14) * 2 - 1, rr = Math.sqrt(1 - h * h) * 0.13; add(mesh(new THREE.SphereGeometry(0.04, 6, 5), c[k % 2]), Math.sin(a) * rr, top + 0.1 + h * 0.12, Math.cos(a) * rr); } }
-      else if (F.shape === 'bell') { [[-0.06, 0.02], [0.05, -0.01], [0, 0.08]].forEach(([dx, dy]) => { const bl = add(mesh(new THREE.ConeGeometry(0.045, 0.07, 8, 1, true), c[0]), dx, top + dy, 0.02); bl.rotation.x = Math.PI; }); }
+      else if (F.shape === 'rose') { add(mesh(new THREE.SphereGeometry(0.09, 12, 10), pc(5)), 0, top + 0.07, 0); ring(5, 0.07, 0.05, c[0], top + 0.04, 1, 0.7); }
+      else if (F.shape === 'lavender') { for (let k = 0; k < 7; k++) add(mesh(new THREE.SphereGeometry(0.035, 6, 5), pc(k)), Math.sin(k * 2.3) * 0.02, top - 0.1 + k * 0.045, Math.cos(k * 2.3) * 0.02); }
+      else if (F.shape === 'hydrangea') { for (let k = 0; k < 14; k++) { const a = k * 2.4, h = (k / 14) * 2 - 1, rr = Math.sqrt(1 - h * h) * 0.13; add(mesh(new THREE.SphereGeometry(0.04, 6, 5), V && V.rainbow ? pc(k) : c[k % 2]), Math.sin(a) * rr, top + 0.1 + h * 0.12, Math.cos(a) * rr); } }
+      else if (F.shape === 'bell') { [[-0.06, 0.02], [0.05, -0.01], [0, 0.08]].forEach(([dx, dy], k) => { const bl = add(mesh(new THREE.ConeGeometry(0.045, 0.07, 8, 1, true), pc(k * 2)), dx, top + dy, 0.02); bl.rotation.x = Math.PI; }); }
       else if (F.shape === 'hibiscus') { ring(5, 0.08, 0.075, c[0], top + 0.04, 1.4, 0.3); add(mesh(new THREE.SphereGeometry(0.035, 8, 6), c[1]), 0, top + 0.06, 0); } }
     g.scale.setScalar(1.15); dress(g); scene.add(at(g, q.x, 0, q.z)); q.g = g; }
-  garden.forEach(q => { q.st = Math.min(3, q.st | 0); plantMesh(q); });
+  garden.forEach(q => { q.st = Math.min(2, q.st | 0); plantMesh(q); });
   const plantNear = (r0) => { let best = null, bd = r0 || 1.3; garden.forEach(q => { const d = Math.hypot(q.x - me.x, q.z - me.z); if (d < bd) { bd = d; best = q; } }); return best; };
+  const canPlant = (x, z) => z < BEACH.z0 - 0.5 && riverDist(x, z) > 0.8 && eastDist(x, z) > 0.8 && !onPath(x, z, 1.3) && solids.every(o => Math.hypot(x - o.x, z - o.z) > o.r + 0.4) && garden.every(q => Math.hypot(q.x - x, q.z - z) > 0.8);
   function plantSeed(id) {
     if (!bag.seed[id]) return; const x = me.x + Math.sin(me.face) * 1.0, z = me.z + Math.cos(me.face) * 1.0;
-    const ok = me.z < SHOP.far && z < BEACH.z0 - 0.5 && riverDist(x, z) > 0.8 && eastDist(x, z) > 0.8 && !onPath(x, z, 1.3) && solids.every(o => Math.hypot(x - o.x, z - o.z) > o.r + 0.4) && garden.every(q => Math.hypot(q.x - x, q.z - z) > 0.8);
-    if (!ok) { openBag(false); say(me, '여기엔 심을 수 없어요. 잔디밭 빈 곳을 찾아요 🌱', 2.2); return; }
+    if (me.z > SHOP.far || !canPlant(x, z)) { openBag(false); say(me, '여기엔 심을 수 없어요. 잔디밭 빈 곳을 찾아요 🌱', 2.2); return; }
     if (garden.length >= 40) { openBag(false); say(me, '꽃밭이 가득 찼어요. 핀 꽃을 따 주세요', 2); return; }
     bag.seed[id]--; if (!bag.seed[id]) delete bag.seed[id]; saveBag(); openBag(false);
-    const q = { f: id, x, z, st: 0, wet: 0 }; garden.push(q); plantMesh(q); saveGarden(); me.hop = 0.3; sfx.note(); say(me, FLOWERS[id].name + ' 씨앗을 심었어요! 💧 물을 줘요', 2); }
-  function pickFlower(q) { const F = FLOWERS[q.f]; scene.remove(q.g); garden.splice(garden.indexOf(q), 1); saveGarden(); bagAdd('flower', q.f); popText(F.icon, q.x, 1.0, q.z); sfx.pick(); me.hop = 0.3; showCard(F.icon, F.name, '예쁘게 피었어요! 가게에서 ' + F.price * 3 + '동', false, '땄어요!'); }
+    const q = { f: id, x, z, st: 0, wet: 0, c: 0, v: 2 }; garden.push(q); plantMesh(q); saveGarden(); me.hop = 0.3; sfx.note(); say(me, FLOWERS[id].name + ' 씨앗을 심었어요! 💧 물을 줘요', 2); }
+  function pickFlower(q) { const F = FLOWERS[q.f], t = tierOf(q.c); scene.remove(q.g); garden.splice(garden.indexOf(q), 1); saveGarden(); bagAdd('flower', q.c ? q.f + 'c' + q.c : q.f); popText(F.icon, q.x, 1.0, q.z); sfx.pick(); me.hop = 0.3;
+    showCard(F.icon, fname(q.f, q.c), (t ? '★'.repeat(t) + ' 희귀한 색! ' : '예쁘게 피었어요! ') + '가게에서 ' + fprice(q.f, q.c) + '동', false, '땄어요!'); }
+  function digPlant(q) { // 삽으로 파서 가방에 (자란 단계·색은 그대로)
+    if (me.digT > 0) return; if (bag.held !== 'shovel') setTool('shovel');
+    me.face = Math.atan2(q.x - me.x, q.z - me.z); me.digT = 0.7; scene.remove(q.g); garden.splice(garden.indexOf(q), 1); saveGarden();
+    bag.dug.push({ f: q.f, st: q.st, c: q.c || 0 }); saveBag(); popText('🪏', q.x, 0.8, q.z); sfx.shake();
+    say(me, `${fname(q.f, q.c)} ${STAGE[q.st]}${q.st === 1 ? '를' : '을'} 팠어요. 빈 잔디에서 E로 옮겨 심어요`, 2.4); }
+  function replant(i) { // 판 꽃을 바로 앞 잔디에 다시 심음 (물은 다시 줘야 함)
+    const d = bag.dug[i]; if (!d) return; const x = me.x + Math.sin(me.face) * 1.0, z = me.z + Math.cos(me.face) * 1.0; openBag(false);
+    if (me.z > SHOP.far || !canPlant(x, z)) { say(me, '여기엔 심을 수 없어요. 잔디밭 빈 곳을 찾아요 🌱', 2.2); return; }
+    bag.dug.splice(i, 1); saveBag(); const q = { f: d.f, x, z, st: d.st, wet: 0, c: d.c, v: 2 }; garden.push(q); plantMesh(q); saveGarden();
+    me.digT = 0.7; me.hop = 0.3; sfx.note(); say(me, fname(d.f, d.c) + ' 옮겨 심었어요! 💧 물을 줘요', 2); }
+  function breed(q) { // 물 먹은 핀 꽃 옆(1.8칸)에 같은 꽃이 피어 있으면 반쯤의 확률로 둘 사이에 씨앗이 떨어짐
+    const mates = garden.filter(o => o !== q && o.f === q.f && o.st === 2 && Math.hypot(o.x - q.x, o.z - q.z) < 1.8);
+    if (!mates.length || garden.length >= 60 || Math.random() > 0.55) return; const m = mates[Math.floor(Math.random() * mates.length)];
+    for (let k = 0; k < 16; k++) { const a = Math.random() * 6.283, rr = 0.8 + Math.random() * 0.6, x = (q.x + m.x) / 2 + Math.sin(a) * rr, z = (q.z + m.z) / 2 + Math.cos(a) * rr;
+      if (!canPlant(x, z)) continue; const kid = { f: q.f, x, z, st: 0, wet: 0, c: kidColor(q, m), v: 2 }; garden.push(kid); plantMesh(kid);
+      if (Math.hypot(x - me.x, z - me.z) < 12) { popText('✨', x, 0.8, z); say(me, '꽃 사이에 새 씨앗이 떨어졌어요! 무슨 색일까? ✨', 2.4); } return; } }
   const drops = Array.from({ length: 24 }, () => { const m = noShadow(mesh(new THREE.SphereGeometry(0.03, 6, 5), flat(0x8fd4f8))); m.visible = false; scene.add(m); return { m, vx: 0, vy: 0, vz: 0, life: 0 }; });
   let dropI = 0;
   function pourCan(q) { // 물 주기: 물뿌리개를 기울여 물을 뿌림. q가 있으면 그 꽃이 물을 먹음
@@ -1659,10 +1707,14 @@
       if (u > 0.2 && u < 0.85) { me.g.updateMatrixWorld(true); const p0 = wcan.userData.tip.getWorldPosition(tip.clone()); for (let k = 0; k < 2; k++) { const d = drops[dropI++ % drops.length];
         d.m.position.copy(p0); d.vx = Math.sin(me.face) * 1.2 + (Math.random() - 0.5) * 0.5; d.vz = Math.cos(me.face) * 1.2 + (Math.random() - 0.5) * 0.5; d.vy = -0.2 + Math.random() * 0.4; d.life = 0.8; d.m.visible = true; } }
       if (me.pourT <= 0) { canHold.rotation.x = 0; const q = me.pourQ; me.pourQ = null;
-        if (q && garden.includes(q)) { if (q.st < 3) { q.wet = Date.now(); plantMesh(q); saveGarden(); say(me, '💧 시원하게 물을 줬어요', 1.4); } } } }
+        if (q && garden.includes(q) && !q.wet) { q.wet = Date.now(); plantMesh(q); saveGarden(); say(me, q.st === 2 ? '💧 옆에 같은 꽃이 있으면 내일 새 씨앗이 생길지도!' : '💧 시원하게 물을 줬어요. 내일이면 자라요', 1.8); } } }
+    if (me.digT > 0) me.digT -= dt; shovelHold.rotation.x = me.digT > 0 ? Math.sin((1 - me.digT / 0.7) * Math.PI) * 1.1 : SHOULDER; // 삽질: 앞으로 푹 찔렀다 들어 올림 · 평소엔 어깨에 멤
     drops.forEach(d => { if (d.life <= 0) return; d.life -= dt; d.vy -= 9 * dt; d.m.position.x += d.vx * dt; d.m.position.y += d.vy * dt; d.m.position.z += d.vz * dt; if (d.life <= 0 || d.m.position.y < 0.02) { d.life = 0; d.m.visible = false; } });
-    if ((t % 1) < dt) { const now = Date.now(); garden.forEach(q => { // 1초마다: 물을 먹은 지 grow초가 지나면 한 단계 자라고, 다시 물이 필요함
-      if (q.st < 3 && q.wet && now - q.wet >= FLOWERS[q.f].grow * 1000) { q.st++; q.wet = 0; plantMesh(q); saveGarden(); if (Math.hypot(q.x - me.x, q.z - me.z) < 12) popText(q.st === 3 ? FLOWERS[q.f].icon : '🌱', q.x, 0.9, q.z); } }); } }
+    if ((t % 1) < dt) { const now = Date.now(); garden.slice().forEach(q => { // 1초마다: 물을 먹은 지 하루가 지나면 한 단계 자라고(핀 꽃은 교배), 다시 물이 필요함
+      if (!q.wet || now - q.wet < GROW_MS) return; q.wet = 0;
+      if (q.st < 2) { q.st++; if (Math.hypot(q.x - me.x, q.z - me.z) < 12) { popText(q.st === 2 ? FLOWERS[q.f].icon : '🌱', q.x, 0.9, q.z); if (q.st === 2 && q.c) say(me, `와! ${fname(q.f, q.c)}${ga(fname(q.f, q.c))} 피었어요 ✨`, 2.4); } }
+      else breed(q);
+      plantMesh(q); saveGarden(); }); } }
   function castTarget() { // 물가에 서 있을 때, 6.5칸 안에서 가장 가까운 헤엄치는 그림자
     if (me.z > SHOP.far || !nearWater(me.x, me.z)) return null;
     let best = null, bd = 6.5; shadows.forEach(sh => { if (sh.state !== 'swim') return; const d = Math.hypot(sh.x - me.x, sh.z - me.z); if (d < bd) { bd = d; best = sh; } }); return best; }
@@ -1894,7 +1946,7 @@
         if (a.thin !== thin) { a.thin = thin; a.pet.outlines.forEach(o => { o.visible = outlineOn && !thin; }); }
         if (hide) { a.tag.style.display = 'none'; return; }
       }
-      a.pet.update(t, { moving: a.moving && !(a.bowT > 0), wave: a.wave > 0.02, bow: a.bowT > 0, angry: a.angryT > 0, air: a.jumpY > 0.05, sit: Boolean(a.sit) && !a.sit.stand, hold: a === me && (rod.visible || bugNet.visible || wcan.visible) ? (fishing.st || me.pourT > 0 ? 'fish' : me.swingT > 0 ? 'swing' : 'carry') : null });
+      a.pet.update(t, { moving: a.moving && !(a.bowT > 0), wave: a.wave > 0.02, bow: a.bowT > 0, angry: a.angryT > 0, air: a.jumpY > 0.05, sit: Boolean(a.sit) && !a.sit.stand, hold: a === me && (rod.visible || bugNet.visible || wcan.visible || shovel.visible) ? (shovel.visible && !(me.digT > 0) ? 'shoulder' : fishing.st || me.pourT > 0 || me.digT > 0 ? 'fish' : me.swingT > 0 ? 'swing' : 'carry') : null });
       const dz = bendDist(a.x, a.z);
       v.set(a.g.position.x, a.g.position.y + (a.sit ? 1.1 : 1.24) * (a.pet.height || 1) - curve.uCurve.value * dz * dz, a.g.position.z).project(camera);
       const on = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;

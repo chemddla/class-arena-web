@@ -373,7 +373,8 @@
       arms[0].rotation.z = -0.35 - angK * (1.5 + Math.sin(t * 22) * 0.25); if (angK > 0.01) arms[1].rotation.z = 0.35 + angK * (1.5 + Math.sin(t * 22 + 1) * 0.25); // 화나면 두 팔을 번쩍
       if (airK > 0.01) { arms[0].rotation.z -= 0.9 * airK; arms[1].rotation.z += 0.9 * airK; } // 공중에선 두 팔을 벌림
       if (bowK > 0.01) { arms[0].rotation.x += -0.5 * bowK; arms[1].rotation.x += -0.5 * bowK; } // 꾸벅할 땐 두 손을 앞으로 모음
-      if (st.hold) { arms[1].rotation.x = st.hold === 'fish' ? -0.9 : st.hold === 'swing' ? -1.5 : -0.45 + sw * 0.15; arms[1].rotation.z = 0.18; } // 물건을 쥔 팔: 낚시 땐 앞으로, 들고 다닐 땐 살짝 앞으로
+      if (st.hold === 'shoulder') { arms[1].rotation.x = -2.5 + sw * 0.06; arms[1].rotation.z = 0.05; } // 삽 메기: 팔을 어깨 위로 올려 자루를 어깨에 걸침
+      else if (st.hold) { arms[1].rotation.x = st.hold === 'fish' ? -0.9 : st.hold === 'swing' ? -1.5 : -0.45 + sw * 0.15; arms[1].rotation.z = 0.18; } // 물건을 쥔 팔: 낚시 땐 앞으로, 들고 다닐 땐 살짝 앞으로
       rig.position.y = Math.abs(Math.sin(t * 11)) * 0.035 * walk - 0.12 * sitK + Math.abs(Math.sin(t * 16)) * 0.06 * angK; // 앉으면 엉덩이가 바닥(y=0)에 닿게 내림, 화나면 발을 동동
       rig.rotation.z = Math.sin(t * 11) * 0.05 * walk + Math.sin(t * 30) * 0.07 * angK;
       rig.rotation.x = 0.5 * bowK; // 꾸벅
