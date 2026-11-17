@@ -1011,7 +1011,7 @@
   const keys = {};
   const onKeyDown = e => {
     if (!running || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
-    keys[e.code] = true;
+    keys[e.code] = true; poke();
     if (e.code === 'Space') { e.preventDefault(); jump(); }
     if (e.code === 'KeyF') wave();
     if (e.code === 'KeyE') interact();
@@ -1186,7 +1186,8 @@
 
   // ── 친구 위치 주고받기: village/{학급}/{학생} = "x,z,목표x,목표z,앉은자리,감정,감정번호,펫"
   // 좌표를 계속 보내지 않고 "어디서 어디로 간다"만 방향이 바뀔 때 보냄 (키보드로 걸을 땐 0.8초마다 앞을 내다본 목적지를 갱신)
-  const net = { ref: null, list: null, conn: null, key: '', lastAt: 0, want: false, n: 0, emo: '', remotes: {} };
+  // 아끼기: 방향을 바꿔도 0.4초에 한 번까지만, 키보드로 걸을 땐 1초마다 1.3초 앞 목적지를 보냄
+  const net = { ref: null, list: null, conn: null, key: '', lastAt: 0, want: false, n: 0, emo: '', remotes: {}, idle: false };
   const f1 = v => (Math.round(v * 10) / 10).toString();
   function jump() { // 스페이스: 폴짝 뛰어오름. 공중에서 한 번 더 누르면 앞으로 한 바퀴 (점프 한 번에 한 바퀴만)
     if (me.sit || fishing.st) return;
@@ -1198,11 +1199,11 @@
     if (!net.ref) return;
     const sit = me.sit ? seats.indexOf(me.sit) : '';
     const key = kx + ',' + kz + '|' + (me.target ? f1(me.target.x) + ',' + f1(me.target.z) : '') + '|' + sit + '|' + (me.moving ? 1 : 0) + '|' + net.n + '|' + me.type;
-    if (key !== net.key) { net.key = key; net.want = true; } else if ((kx || kz) && now - net.lastAt > 800) net.want = true;
-    if (!net.want || now - net.lastAt < 250) return;
+    if (key !== net.key) { net.key = key; net.want = true; } else if ((kx || kz) && now - net.lastAt > 1000) net.want = true;
+    if (!net.want || now - net.lastAt < 400) return;
     net.want = false; net.lastAt = now;
     let tx = me.x, tz = me.z;
-    if (kx || kz) { const l = Math.hypot(kx, kz); tx = me.x + kx / l * SPEED * me.run * 1.1; tz = me.z + kz / l * SPEED * me.run * 1.1; } else if (me.target) { tx = me.target.x; tz = me.target.z; }
+    if (kx || kz) { const l = Math.hypot(kx, kz); tx = me.x + kx / l * SPEED * me.run * 1.3; tz = me.z + kz / l * SPEED * me.run * 1.3; } else if (me.target) { tx = me.target.x; tz = me.target.z; }
     net.ref.set([f1(me.x), f1(me.z), f1(tx), f1(tz), sit, net.emo, net.n, me.type].join(',')).catch(() => {});
   }
   function netApply(id, raw) {
@@ -1229,7 +1230,7 @@
     }
   }
   function netRemove(id) { const a = net.remotes[id]; if (!a) return; delete net.remotes[id]; scene.remove(a.g); a.tag.remove(); const i = actors.indexOf(a); if (i >= 0) actors.splice(i, 1); updateCount(); }
-  function updateCount() { const el = $('count'); if (el) el.textContent = demo ? '' : (host.db ? `지금 ${Object.keys(net.remotes).length + 1}명` : '혼자 보기 (로그인하면 친구가 보여요)'); }
+  function updateCount() { const el = $('count'); if (el) el.textContent = demo ? '' : !host.db ? '혼자 보기 (로그인하면 친구가 보여요)' : net.idle ? '쉬는 중 · 움직이면 친구들이 다시 보여요' : `지금 ${Object.keys(net.remotes).length + 1}명`; }
   function netJoin() {
     if (demo || !host.db || net.ref) return;
     const base = `village/${host.code}`;
@@ -1242,6 +1243,15 @@
     net.conn = host.db.ref('.info/connected');
     net.conn.on('value', sn => { if (sn && sn.val() === true && net.ref) { net.ref.onDisconnect().remove().catch(() => {}); net.key = ''; net.want = true; } });
   }
+  // 쉬는 중: 창·브라우저 탭을 숨기거나 3분 동안 아무것도 안 누르면 친구 위치 주고받기를 잠시 끊음 (켜 두고 딴짓하는 학생이 DB 수신량을 계속 쓰지 않게)
+  // 다시 보거나 아무 키·화면을 누르면 이어서 받음. 숨길 때 눌린 키도 풀어 둠 (Alt+Tab 하면 keyup이 안 와서 계속 걸어가던 문제)
+  const IDLE_MS = 180000; let lastInput = performance.now();
+  function poke() { lastInput = performance.now(); if (net.idle && running && !document.hidden) { net.idle = false; netJoin(); updateCount(); } }
+  function netRest() { if (!net.ref) return; netLeave(); net.idle = true; updateCount(); }
+  const releaseKeys = () => { Object.keys(keys).forEach(k => { keys[k] = false; }); };
+  const onVis = () => { releaseKeys(); if (document.hidden) netRest(); else poke(); };
+  document.addEventListener('visibilitychange', onVis); window.addEventListener('blur', releaseKeys);
+  root.addEventListener('pointerdown', poke, true); root.addEventListener('wheel', poke, { passive: true, capture: true });
   function netLeave() {
     if (!net.ref) return;
     try { net.list.off(); net.conn.off(); net.ref.onDisconnect().cancel(); } catch (e) {}
@@ -1553,6 +1563,7 @@
       if (r === 'stuck') me.target.stuck += dt;
       if (r === true || me.target.stuck > 0.6) { me.target = null; marker.visible = false; }
     }
+    if (net.ref && now - lastInput > IDLE_MS) netRest();
     netTick(kx, kz, now);
     drawMap();
     // 친구들: 쉬다가 아무 데나 걸어감
@@ -1697,9 +1708,9 @@
   // ── 바깥에서 쓰는 손잡이: 멈춤(탭을 떠날 때)·다시 시작·치우기
   const api = {
     host, frame,
-    pause() { autoPaused = false; if (!running) return; running = false; Object.keys(keys).forEach(k => { keys[k] = false; }); netLeave(); },
-    resume() { if (running) return; running = true; prev = performance.now(); netJoin(); requestAnimationFrame(frame); },
-    dispose() { api.pause(); window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); try { renderer.dispose(); renderer.forceContextLoss(); } catch (e) {} root.innerHTML = ''; root.classList.remove('vlg', 'vlg-full'); },
+    pause() { autoPaused = false; if (!running) return; running = false; releaseKeys(); netLeave(); net.idle = false; },
+    resume() { if (running) return; running = true; prev = lastInput = performance.now(); net.idle = false; netJoin(); updateCount(); requestAnimationFrame(frame); },
+    dispose() { api.pause(); window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('blur', releaseKeys); try { renderer.dispose(); renderer.forceContextLoss(); } catch (e) {} root.innerHTML = ''; root.classList.remove('vlg', 'vlg-full'); },
     debug: { me, actors, trees, houses, bugs, env, envOutlines, quality, nearby, interact, emote, seats, keys, wave, shake, net, renderer, camera, get fruitN() { return fruitN; } },
   };
   { const fb = $('fullBtn'); if (fb) fb.onclick = () => { root.classList.toggle('vlg-full'); fb.textContent = root.classList.contains('vlg-full') ? '🗗 작게' : '⛶ 크게'; }; }

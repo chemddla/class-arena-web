@@ -2653,7 +2653,7 @@
           <span id="marketOfferCountBadge" class="hidden gl-badge">0</span>
         </button>
         <button onclick="switchStudentTab('pet')" id="stab-pet" class="student-tab-btn"><b>펫</b></button>
-        <button onclick="switchStudentTab('village')" id="stab-village" class="student-tab-btn"><b>🔒 마을</b></button>
+        <button onclick="switchStudentTab('village')" id="stab-village" class="student-tab-btn"><b>마을</b></button>
         <button onclick="switchStudentTab(lastBattleTab())" id="stab-battle" class="student-tab-btn"><b>전투</b></button>
         <button onclick="switchStudentTab('mission')" id="stab-mission" class="student-tab-btn"><b>퀴즈</b></button>
         <button onclick="switchStudentTab('minigame')" id="stab-minigame" class="student-tab-btn"><b>미니게임</b></button>
@@ -3532,7 +3532,10 @@
               <h4 id="homeRoomTitle" class="font-title text-xl text-white flex items-center gap-2"><span>🛋️</span> 내 방 꾸미기</h4>
               <p id="homeRoomHelp" class="text-xs text-slate-400 mt-0.5">가구를 사서 방에 놓아 보세요. 놓을 때 <strong>R</strong> 또는 <strong>↻</strong>로 돌리고, 놓인 가구는 <strong>누른 채 끌어서</strong> 옮길 수 있어요. 오른쪽 위 <strong>＋ －</strong>(또는 Ctrl+휠)로 확대·축소해요.<br>방 안의 <strong>내 아바타</strong>는 <strong>방향키·WASD</strong>(또는 왼쪽 아래 십자키)로 걷고, 빈 바닥을 누르면 그리로 가요. 의자·침대 옆에서 <strong>Space(✋)</strong>를 누르면 앉고, 펫 옆에서는 쓰다듬어요. 🛡️ 내 아바타 탭에서 모습을 꾸미고, 눈·입·투구·갑옷·무기 같은 부위를 직접 그려 입거나 친구에게 팔 수도 있어요. 가구만 보고 싶으면 왼쪽 위 <strong>🧍 아바타</strong> 버튼으로 아바타를 잠시 끌 수 있어요.</p>
             </div>
-            <span id="homeRoomCa" class="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-extrabold"></span>
+            <div class="flex items-center gap-2">
+              <span id="homeRoomCa" class="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-extrabold"></span>
+              <button type="button" onclick="HomeRoom.leaveVisit()" class="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold">마을로 돌아가기</button>
+            </div>
           </div>
           <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
             <div class="lg:col-span-9 flex flex-col gap-2">
@@ -47602,6 +47605,7 @@
     // 그동안은 테스트 맵에서 서버 연결 없이 돌림: /test/village.html (마을) · /test/room.html (방 꾸미기). 내 컴퓨터(localhost)에서는 잠금 없이 열림.
     const VILLAGE_LOCKED = true;
     const villageLocked = () => VILLAGE_LOCKED && !['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+    { const b = document.querySelector('#stab-village b'); if (b && villageLocked()) b.textContent = '🔒 마을'; } // 잠금을 풀면 자물쇠 글자도 같이 사라짐
     const VILLAGE_FILES = ['https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js', 'assets/village-pets.js?v=1', 'assets/village.js?v=1'];
     const VillageTab = {
       api: null,     // Village.start가 돌려준 손잡이 (pause·resume·dispose)
@@ -47652,8 +47656,9 @@
       close() { if (this.api) this.api.pause(); },
     };
 
-    function switchStudentTab(tabKey) {
-      if (tabKey === 'home') tabKey = 'squad'; // 방 꾸미기 탭은 없앰 (마을 3D로 옮길 예정) — 예전 주소·바로가기는 홈으로
+    function switchStudentTab(tabKey, opts) {
+      // 방 꾸미기 탭은 없앰 — 예전 주소·바로가기는 홈으로. 마을에서 집 문을 열 때(opts.room)만 방 화면을 엶
+      if (tabKey === 'home' && !(opts && opts.room)) tabKey = 'squad';
       // 장비·상점은 새 장비 업데이트 전까지 잠금 (탭을 열지 않고 안내만)
       if (tabKey === 'village' && villageLocked()) {
         showNotice('🔒 마을은 준비 중이에요. 곧 열릴 예정이에요!');
@@ -68806,9 +68811,9 @@
         return out;
       },
       shownHome() { return this.visitId ? this.viewHome(this.visitor()) : this.home(); },
-      visit(stuId) {
+      visit(stuId) { // 마을에서 집 문을 열면 불림 (내 집이면 내 방, 친구 집이면 구경)
         const me = this.student();
-        switchStudentTab('home');
+        switchStudentTab('home', { room: true });
         if (me && me.id === stuId) return;
         this.visitId = stuId;
         DailyMission.progress('roomVisit', 1, me);
@@ -68817,7 +68822,7 @@
         this.zoom = 1;
         this.render();
       },
-      leaveVisit() { this.visitId = null; this.render(); },
+      leaveVisit() { this.visitId = null; switchStudentTab('village'); }, // 방은 마을 집 문으로만 들어오므로 나가면 마을로
       esc: escHtml,
 
       // 회전 r(0~3)에 따른 바닥 크기·그림·반전. 0: 앞면이 왼쪽 아래, 1: 왼쪽 위, 2: 오른쪽 위, 3: 오른쪽 아래
@@ -69613,7 +69618,7 @@
         const guest = this.visitor();
         if (guest) {
           bar.innerHTML = `<span class="font-extrabold text-pink-300">🏠 ${this.esc(guest.name)}의 방 구경 중</span><span class="text-slate-400">방향키로 내 아바타를 움직이고, 아래 방 채팅으로 이야기해요. 빈 곳을 끌어 둘러봐요.</span>`
-            + (this.student() ? btn('🛋️ 내 방으로 돌아가기', 'leaveVisit()', 'bg-pink-500 hover:bg-pink-400 text-white') : '');
+            + (this.student() ? btn('마을로 돌아가기', 'leaveVisit()', 'bg-pink-500 hover:bg-pink-400 text-white') : '');
           this.renderColors(null);
           return;
         }
