@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>무녀 내림굿 안개 시안</title>
+<style>
+  body { margin: 0; background: #111; color: #ddd; font: 14px/1.4 system-ui, sans-serif; }
+  h1 { font-size: 16px; margin: 12px 16px 4px; }
+  p { margin: 0 16px 10px; color: #999; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; padding: 0 16px 16px; }
+  figure { margin: 0; background: #1b1b1b; border-radius: 6px; overflow: hidden; }
+  canvas { width: 100%; display: block; image-rendering: pixelated; }
+  figcaption { padding: 6px 10px 8px; font-size: 13px; } figcaption b { color: #facc15; }
+</style></head><body>
+<h1>무녀 내림굿 · 안개 시안</h1>
+<p>게임 크기 그대로 (인장 반지름 150, 2px 도트 칸, 램프 + 4×4 바이어 디더). 기도 2초 → 떠오름 0.3초 → 착지 · 인장 1.5초 → 사라짐, 5초마다 반복. 떠오를 때 감아 오르는 부적·착지 번쩍임·흩날리는 부적은 지금 게임과 같음 (바닥만 다름).</p>
+<div class="grid" id="g"></div>
+<script>
+'use strict';
+const SEAL = 150, RM = 200, CELL = 2, NC = RM * 2 / CELL, W = 720, H = 520, CX = 360, CY = 340, SK = 1.3; // SK = 용병 그림 배율
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
+const rgb = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+const GOLD = ['#713f12', '#ca8a04', '#facc15', '#fef08a', '#fffbeb'];
+const FIVE = [['#14532d', '#16a34a', '#4ade80', '#bbf7d0', '#f0fdf4'], ['#7c2d12', '#ea580c', '#fb923c', '#fed7aa', '#fff7ed'], ['#3b0764', '#7e22ce', '#a855f7', '#e9d5ff', '#faf5ff'], ['#450a0a', '#991b1b', '#dc2626', '#fca5a5', '#fef2f2'], ['#713f12', '#ca8a04', '#facc15', '#fef08a', '#fefce8']]; // 치유·강화·약화·저주·보호
+const RAMPS = [GOLD, ...FIVE].map(r => r.map(rgb));
+const PAPER = ['#8a6d1e', '#e9c96a', '#f7e7a6', '#fff8d6'], INK = '#b91c1c';
+const GLYPH = ['.......', '.......', '.xxxxx.', '...x...', '.xxxxx.', '...x...', '.x.x.x.', '.xxxxx.', '...x...', '..x.x..', '.x...x.', '.......'];
+const TRI = ['111', '011', '101', '001', '110', '010', '100', '000'];
+const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
+const ss = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const eoq = t => 1 - Math.pow(1 - clamp(t), 4);
+function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const hsh = (x, y) => { let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+function vn(x, y) { const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf); const a = hsh(xi, yi), b = hsh(xi + 1, yi), c = hsh(xi, yi + 1), d = hsh(xi + 1, yi + 1); return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; }
+const fbm = (x, y) => vn(x, y) * 0.55 + vn(x * 2.03 + 17.3, y * 2.03 + 5.1) * 0.3 + vn(x * 4.1 + 3.7, y * 4.1 + 29.9) * 0.15;
+const em = (nd, f, lo = 0.72, w = 0.25) => 1 - ss(lo, 1.0, nd + (f - 0.5) * w); // 끝이 노이즈로 녹아 사라짐
+const flowIn = (x, y, t, sp, s, out) => { const ph = (t * sp) % 1, ph2 = (ph + 0.5) % 1, w = Math.abs(ph * 2 - 1), a = out ? 2 - ph : 1 + ph, b = out ? 2 - ph2 : 1 + ph2; return fbm(x / s * a + 3, y / s * a + 7) * (1 - w) + fbm(x / s * b + 41, y / s * b + 13) * w; };
+
+// 칸마다 fn(x, y, P) → [램프 자리, 불투명도, 램프 번호(0 금빛 · 1~5 다섯 부적)]
+function paint(cx, img, fn, P) {
+  const d = img.data; d.fill(0);
+  for (let j = 0; j < NC; j++) for (let i = 0; i < NC; i++) {
+    const x = (i + 0.5 - NC / 2) * CELL, y = (j + 0.5 - NC / 2) * CELL;
+    if (x * x + y * y > RM * RM) continue;
+    const r = fn(x, y, P); if (!r || r[1] <= 0.01) continue;
+    const rp = RAMPS[r[2] || 0], L = rp.length - 1, lv = clamp(r[0]) * L, b = Math.floor(lv), c = rp[Math.min(L, b + (lv - b > BAYER[(i & 3) + (j & 3) * 4] ? 1 : 0))], k = (j * NC + i) * 4;
+    d[k] = c[0]; d[k + 1] = c[1]; d[k + 2] = c[2]; d[k + 3] = Math.min(255, r[1] * 255);
+  }
+  cx.putImageData(img, 0, 0);
+}
+const glowCache = new Map();
+function glow(ctx, x, y, r, hex, k) {
+  if (k <= 0.01) return; const key = hex + '|' + Math.round(r); let cv = glowCache.get(key);
+  if (!cv) { const n = Math.max(2, Math.round(r * 2)), [a, b, c] = rgb(hex); cv = document.createElement('canvas'); cv.width = cv.height = n; const g2 = cv.getContext('2d'), g = g2.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2); g.addColorStop(0, `rgba(${a},${b},${c},.9)`); g.addColorStop(0.4, `rgba(${a},${b},${c},.35)`); g.addColorStop(1, `rgba(${a},${b},${c},0)`); g2.fillStyle = g; g2.fillRect(0, 0, n, n); glowCache.set(key, cv); }
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha *= Math.min(1, k); ctx.drawImage(cv, x - r, y - r, r * 2, r * 2); ctx.restore();
+}
+function charm(ctx, cx, cy, c, ang, gold) {
+  ctx.save(); ctx.translate(Math.round(cx), Math.round(cy)); if (ang) ctx.rotate(ang);
+  const w = 7, h = 12, x0 = -w * c / 2, y0 = -h * c / 2;
+  for (let gy = 0; gy < h; gy++) for (let gx = 0; gx < w; gx++) {
+    const edge = gx === 0 || gy === 0 || gx === w - 1 || gy === h - 1;
+    ctx.fillStyle = edge ? PAPER[0] : (gx + gy < 4 ? PAPER[3] : gx > 4 && gy > 8 ? PAPER[1] : PAPER[2]); ctx.fillRect(x0 + gx * c, y0 + gy * c, c, c);
+    if (!edge && GLYPH[gy][gx] === 'x') { ctx.fillStyle = INK; ctx.fillRect(x0 + gx * c, y0 + gy * c, c, c); }
+  }
+  if (gold) { ctx.fillStyle = GOLD[1]; ctx.fillRect(x0 + 2 * c, y0 + c, 3 * c, c); ctx.fillStyle = GOLD[3]; ctx.fillRect(x0 + 3 * c, y0 + c, c, c); }
+  ctx.restore();
+}
+function trigrams(ctx, R0, t, alpha) {
+  ctx.fillStyle = GOLD[3]; ctx.globalAlpha = alpha;
+  for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283 + t * 0.004, x = CX + Math.cos(a) * R0 * 0.8, y = CY + Math.sin(a) * R0 * 0.8; for (let b = 0; b < 3; b++) { const yy = Math.round(y - 4 + b * 4); if (TRI[i][b] === '1') ctx.fillRect(Math.round(x - 7), yy, 14, 2); else { ctx.fillRect(Math.round(x - 7), yy, 5, 2); ctx.fillRect(Math.round(x + 2), yy, 5, 2); } } }
+  ctx.globalAlpha = 1;
+}
+// 무녀 그림 (게임 shaman_0: 11 = 기도, 12 = 떠오름, 13 = 착지, 0 = 서 있기)
+const SPR = new Image(); SPR.src = '../../assets/sprites/merc/shaman_0.webp';
+function shaman(ctx, frame, lift) { if (!SPR.complete) return; const w = 101 * SK, h = 95 * SK; ctx.drawImage(SPR, frame * 101, 0, 101, 95, Math.round(CX - 50 * SK), Math.round(CY + 12 - 93 * SK - lift), Math.round(w), Math.round(h)); }
+
+// ===== 시안: pray(x, y, P) = 기도 중 발밑 · land(x, y, P) = 착지 뒤 바닥 · P = { t, q 기도 진행, st 착지 뒤 틱, e 퍼짐, fade } =====
+// E: 팔괘 각인 마스크 (인장 반지름 기준 칸 그림)
+const SIGIL = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = NC; const c = cv.getContext('2d'); c.translate(NC / 2, NC / 2); c.strokeStyle = c.fillStyle = '#fff';
+  c.lineWidth = 5; c.beginPath(); c.arc(0, 0, SEAL * 0.95 / CELL, 0, 6.283); c.stroke(); c.lineWidth = 3; c.beginPath(); c.arc(0, 0, SEAL * 0.62 / CELL, 0, 6.283); c.stroke();
+  c.beginPath(); c.arc(0, 0, SEAL * 0.22 / CELL, 0, 6.283); c.fill();
+  for (let i = 0; i < 8; i++) { c.save(); c.rotate(i / 8 * 6.283); c.translate(SEAL * 0.79 / CELL, 0); c.rotate(Math.PI / 2); for (let b = 0; b < 3; b++) { const yy = -9 + b * 7; if (TRI[i][b] === '1') c.fillRect(-12, yy, 24, 4); else { c.fillRect(-12, yy, 9, 4); c.fillRect(3, yy, 9, 4); } } c.restore(); }
+  const d = c.getImageData(0, 0, NC, NC).data, m = new Float32Array(NC * NC); for (let i = 0; i < NC * NC; i++) m[i] = d[i * 4 + 3] / 255; return m; })();
+const sigilAt = (x, y, rot) => { const c = Math.cos(-rot), s = Math.sin(-rot), xr = x * c - y * s, yr = x * s + y * c, i = Math.floor(xr / CELL + NC / 2), j = Math.floor(yr / CELL + NC / 2); return i < 0 || j < 0 || i >= NC || j >= NC ? 0 : SIGIL[j * NC + i]; };
+const PUFF = (() => { const r = rng(17), o = []; for (let i = 0; i < 16; i++) o.push({ a: r() * 6.283, d: 0.3 + r() * 0.7, s: 0.7 + r() * 0.6, o: r() }); return o; })();
+
+const V = [
+  { id: 'A', name: '지금 게임판 (방금 반영)', note: '기도: 발밑에 금빛 안개가 빨려 듦 · 착지: 옅은 금빛 인장 위로 바깥으로 퍼지는 안개 + 안개 충격파 고리 + 팔괘',
+    pray: (x, y, P) => { const nd = Math.hypot(x, y) / (90 * (0.7 + 0.3 * P.q)); if (nd > 1.1) return; const f = flowIn(x, y, P.t, 0.004, 55); const m = em(nd, f); const d = ss(0.3, 0.8, f) * m; return [0.15 + 0.4 * d, (0.08 + 0.42 * d) * m * (0.3 + 0.6 * P.q)]; },
+    land: (x, y, P) => { const R0 = SEAL * (0.4 + 0.6 * P.e), nd = Math.hypot(x, y) / R0, f = flowIn(x, y, P.t, 0.004, 55, 1), g = Math.pow(Math.min(nd, 1), 1.3); let v = 0, a = 0;
+      if (nd < 1) { a = (0.42 - 0.24 * g) * (1 - ss(0.75, 1, nd)) * 0.6; v = 0.5 - 0.22 * g; const m = em(nd, f), d = ss(0.3, 0.8, f) * m; v = Math.max(v, 0.15 + 0.4 * d); a = a + (0.08 + 0.42 * d) * m * (1 - a); }
+      if (P.st < 22) { const e2 = eoq(P.st / 22), rs = SEAL * (0.35 + e2), an = Math.atan2(y, x), fr = fbm(Math.cos(an) * 3 + 8, Math.sin(an) * 3 + 8), sh = Math.exp(-Math.pow((Math.hypot(x, y) / rs - 1 + (fr - 0.5) * 0.08) / 0.07, 2)) * (0.35 + 0.65 * ss(0.3, 0.7, fr)) * (1 - P.st / 22) * 0.95; if (sh > a) { a = sh; v = 0.45 + 0.4 * fr; } }
+      return [v, a * P.fade]; },
+    extra: (ctx, P) => { if (P.st >= 0) trigrams(ctx, SEAL * (0.4 + 0.6 * P.e), P.t, P.fade); } },
+  { id: 'B', name: '안개 기둥', note: '기도: 발밑 안개가 소용돌이치며 몸을 감싸고 위로 감아 오름 · 착지: 기둥이 무너지며 바닥 안개 파도가 밀려 나갔다가 잔잔히 깔림',
+    pray: (x, y, P) => { const r = Math.hypot(x, y * 1.8), q = P.q, an = Math.atan2(y, x); let v = 0, a = 0;
+      if (r < 80) { const f = fbm(Math.cos(an + P.t * 0.02) * 2.5 + r / 30, Math.sin(an + P.t * 0.02) * 2.5); const d = ss(0.35, 0.75, f) * (1 - ss(0.6, 1, r / 80)); v = 0.3 + 0.5 * d; a = (0.1 + 0.5 * d) * (0.3 + 0.7 * q); }
+      if (y < 10 && y > -170 * q - 10 && Math.abs(x) < 46) { const h = -y, f = fbm(x / 14 + Math.sin(h / 25 - P.t * 0.08) * 0.8, h / 30 + P.t * 0.03), side = 1 - ss(0.5, 1, Math.abs(x) / 46), top = 1 - ss(0.6, 1, h / (170 * q + 10)), d = ss(0.4, 0.75, f) * side * top; if (d * 0.6 > a) { a = d * 0.6 * q; v = 0.45 + 0.45 * d; } }
+      return [v, a]; },
+    land: (x, y, P) => { const r = Math.hypot(x, y), nd = r / SEAL, f = fbm(x / 60 + P.t * 0.002, y / 40), m = em(nd, f, 0.78); const front = 0.2 + 1.0 * eoq(P.st / 40), wave = Math.exp(-Math.pow((nd - front + (f - 0.5) * 0.15) / 0.1, 2)) * (1 - ss(20, 60, P.st)), calm = ss(0.35, 0.8, f) * m * ss(0, 1, front - nd + 0.2) * 0.6;
+      let col = 0; if (P.st < 18 && y < 10 && Math.abs(x) < 46) { const h = -y, fall = 170 * (1 - P.st / 18); col = h < fall ? ss(0.4, 0.75, fbm(x / 14, h / 30 + P.t * 0.03)) * (1 - ss(0.5, 1, Math.abs(x) / 46)) * 0.6 : 0; }
+      const d = Math.max(wave, calm, col); return [0.25 + 0.6 * d, (0.05 + 0.6 * d) * P.fade * (nd < 1.25 ? 1 : 0)]; } },
+  { id: 'C', name: '다섯 부적 안개 합류', note: '기도: 둘레 다섯 자리(치유·강화·약화·저주·보호 색)에서 안개가 나선으로 발밑에 흘러듦 · 착지: 다섯 결이 가운데로 몰려 금빛으로 물들며 퍼짐',
+    pray: (x, y, P) => { const r = Math.hypot(x, y), an = Math.atan2(y, x); if (r > 130) return; const k = ((Math.round(((an + r / 45 - P.t * 0.01) / 6.283) * 5) % 5) + 5) % 5, ca = k / 5 * 6.283 + P.t * 0.01 - r / 45, arm = Math.cos(an - ca); const f = fbm(x / 26 + P.t * 0.01, y / 26); const d = ss(0.6, 0.95, arm) * ss(0.3, 0.7, f) * (1 - ss(0.75, 1, r / 130)) * P.q; return [0.3 + 0.5 * d, 0.6 * d, k + 1]; },
+    land: (x, y, P) => { const r = Math.hypot(x, y), nd = r / SEAL, an = Math.atan2(y, x), f = fbm(x / 50 + P.t * 0.002, y / 35); const m = em(nd, f); const mix = ss(4, 26, P.st); // 다섯 색 → 금빛
+      const k = ((Math.round(((an + nd * 1.4) / 6.283) * 5) % 5) + 5) % 5, arm = ss(0.5, 0.95, Math.cos(an + nd * 1.4 - k / 5 * 6.283)), reach = eoq(P.st / 30) * 1.1; if (nd > reach + 0.1) return;
+      const d = Math.max(arm * (1 - mix), ss(0.3, 0.8, f) * mix) * m; return [0.25 + 0.55 * d + 0.25 * (1 - nd) * mix, (0.06 + 0.5 * d) * m * P.fade, d > 0 && mix < 0.5 ? k + 1 : 0]; } },
+  { id: 'D', name: '안개 물결 연못', note: '기도: 발밑에 안개 물결이 바깥에서 안으로 잔잔히 오므라듦 · 착지: 넓은 안개 물결 셋이 차례로 퍼져 나가고 잔잔한 금빛 수면이 남음',
+    pray: (x, y, P) => { const r = Math.hypot(x, y * 1.15), nd = r / 95; if (nd > 1.05) return; const f = fbm(x / 40, y / 30 + P.t * 0.003), ph = (nd * 3 + P.t * 0.02) % 1, ring = Math.pow(Math.sin(ph * Math.PI), 6); const d = (ring * 0.7 + 0.3 * ss(0.4, 0.8, f)) * em(nd, f); return [0.25 + 0.6 * ring, d * 0.6 * (0.3 + 0.7 * P.q)]; },
+    land: (x, y, P) => { const r = Math.hypot(x, y * 1.08), nd = r / SEAL, f = fbm(x / 70 + P.t * 0.0015, y / 45), m = em(nd, f, 0.8); if (nd > 1.2) return; let ring = 0;
+      for (let w = 0; w < 3; w++) { const s2 = P.st - w * 14; if (s2 < 0) continue; const fr = eoq(s2 / 45) * 1.15; ring = Math.max(ring, Math.exp(-Math.pow((nd - fr + (f - 0.5) * 0.1) / 0.06, 2)) * (1 - ss(25, 55, s2))); }
+      const calm = (0.35 + 0.65 * Math.pow(Math.sin((nd * 5 - P.t * 0.01) * Math.PI), 8)) * ss(0.3, 0.8, f) * m * ss(10, 40, P.st) * 0.6; const d = Math.max(ring, calm); return [0.25 + 0.6 * d, (0.04 + 0.6 * d) * P.fade]; } },
+  { id: 'E', name: '팔괘 각인 안개', note: '기도: 발밑 안개가 빨려 듦 · 착지: 안개 속에서 팔괘·두 겹 원·가운데 점이 안개로 새겨지듯 짙게 드러나 천천히 돌다 흐려짐 (막대 그림 대신)',
+    pray: (x, y, P) => { const nd = Math.hypot(x, y) / 85; if (nd > 1.1) return; const f = flowIn(x, y, P.t, 0.005, 40); const d = ss(0.3, 0.8, f) * em(nd, f); return [0.2 + 0.45 * d, (0.06 + 0.45 * d) * (0.3 + 0.7 * P.q)]; },
+    land: (x, y, P) => { const R0 = SEAL * (0.5 + 0.5 * P.e), nd = Math.hypot(x, y) / R0; if (nd > 1.1) return; const f = fbm(x / 45 + P.t * 0.002, y / 32 - P.t * 0.002), m = em(nd, f, 0.85, 0.15); const sg = sigilAt(x / (R0 / SEAL), y / (R0 / SEAL), P.t * 0.004) * ss(0.25, 0.6, f + 0.15) * ss(2, 14, P.st); const base = ss(0.35, 0.8, f) * m * 0.45;
+      return [0.25 + 0.4 * base + 0.6 * sg, (0.05 + 0.45 * base + 0.6 * sg) * P.fade]; } },
+  { id: 'F', name: '뭉게 안개 폭발', note: '기도: 발밑에서 작은 안개 뭉치가 솟았다 흩어짐 · 착지: 큰 안개 뭉치 열여섯이 사방으로 터져 나가며 부풀고 천천히 가라앉아 사라짐',
+    pray: (x, y, P) => { let p = 0; for (let i = 0; i < 6; i++) { const ph = (P.t / 50 + i / 6) % 1, a = i * 2.4, px = Math.cos(a) * 45, py = Math.sin(a) * 25 - ph * 50, rr = 14 + 20 * ph, dd = Math.hypot(x - px, (y - py) * 1.2) / rr + (fbm(x / 12 + i * 9, y / 12) - 0.5) * 0.6; p = Math.max(p, (1 - ss(0.3, 1, dd)) * Math.sin(ph * Math.PI)); } return [0.35 + 0.5 * p, 0.6 * p * (0.3 + 0.7 * P.q)]; },
+    land: (x, y, P) => { let p = 0; const q = eoq(P.st / 50);
+      for (const b of PUFF) { const d0 = b.d * SEAL * (0.2 + 0.85 * q), px = Math.cos(b.a) * d0, py = Math.sin(b.a) * d0 * 0.85 + 12 * ss(30, 90, P.st), rr = (16 + 34 * q) * b.s; if (Math.abs(x - px) > rr * 1.4 || Math.abs(y - py) > rr * 1.4) continue; const dd = Math.hypot(x - px, (y - py) * 1.2) / rr + (fbm(x / 18 + b.o * 40, y / 18) - 0.5) * 0.7; p = Math.max(p, 1 - ss(0.3, 1, dd)); }
+      const nd = Math.hypot(x, y) / SEAL, under = (1 - ss(0.2, 1, nd)) * 0.35 * (1 - q * 0.6); const d = Math.max(p * (1 - ss(40, 95, P.st) * 0.6), under); return [0.3 + 0.55 * d, (0.05 + 0.55 * d) * P.fade]; } },
+];
+
+// ===== 시간 (60틱/초): 기도 120 → 떠오름 18 → 착지 · 인장 92 (게임 이펙트 110틱 중 18틱 이후) → 쉼 70 =====
+const PRAY = 120, LAND = 18, FX = 110, LOOP = PRAY + FX + 70;
+const panels = V.map(v => {
+  const fig = document.createElement('figure'), cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  fig.append(cv); const cap = document.createElement('figcaption'); cap.innerHTML = `<b>${v.id}. ${v.name}</b><br>${v.note}`; fig.append(cap); document.getElementById('g').append(fig);
+  const off = document.createElement('canvas'); off.width = off.height = NC; const ox = off.getContext('2d');
+  return { v, ctx: cv.getContext('2d'), off, ox, img: ox.createImageData(NC, NC) };
+});
+function floor(ctx) { ctx.fillStyle = '#8a8578'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#7f7a6d'; for (let i = 0; i < 300; i++) ctx.fillRect((hsh(i, 3) * W) | 0, (hsh(i, 7) * H) | 0, 6, 2); ctx.strokeStyle = 'rgba(0,0,0,.12)'; ctx.lineWidth = 2; for (let k = CX % 120; k < W; k += 120) { ctx.beginPath(); ctx.moveTo(k, 0); ctx.lineTo(k, H); ctx.stroke(); } for (let k = CY % 120; k < H; k += 120) { ctx.beginPath(); ctx.moveTo(0, k); ctx.lineTo(W, k); ctx.stroke(); } }
+// 위층 (게임 drawMuNaerimTop과 같음): 감아 오르는 부적 · 착지 번쩍 · 흩날리는 부적
+function topFx(ctx, tk, t) {
+  if (tk < LAND) { const q = tk / LAND; for (let i = 0; i < 12; i++) { const ph = (q * 1.6 + i / 12) % 1, a = ph * Math.PI * 4 + i, rr = 40 + 10 * Math.sin(i), front = Math.sin(a) > 0, x = CX + Math.cos(a) * rr, y = CY - (30 + ph * 110) + Math.sin(a) * 10; ctx.globalAlpha = (front ? 1 : 0.5) * Math.min(1, q * 4); charm(ctx, x, y, 1.3, Math.cos(a) * 0.4, 1); if (front) glow(ctx, x, y, 12, GOLD[3], 0.35 * Math.min(1, q * 4)); } }
+  else if (tk < LAND + 90) { const st = tk - LAND, q = st / 90, e = eoq(Math.min(1, q * 1.6)), r = rng(77); if (st < 10) glow(ctx, CX, CY - 40, 80, GOLD[4], 1.6 * (1 - st / 10));
+    for (let i = 0; i < 16; i++) { const a = r() * 6.283, sp = 70 + r() * 90, x = CX + Math.cos(a) * sp * e + Math.sin(q * 10 + i) * 6 * q, y = CY - 50 + Math.sin(a) * sp * e * 0.55 + 70 * q * q; ctx.globalAlpha = q < 0.7 ? 1 : (1 - q) / 0.3; charm(ctx, x, y, 1.2, a + q * 4 * (i % 2 ? 1 : -1), i % 3 === 0); } }
+  ctx.globalAlpha = 1;
+}
+const t0 = performance.now();
+function frame() {
+  const at = new URLSearchParams(location.search).get('at'); // ?at=틱 이면 그 순간에 멈춤 (확인용)
+  const T = at != null ? +at : (performance.now() - t0) / 1000 * 60, tk = T % LOOP, t = T;
+  for (const p of panels) {
+    const { v, ctx } = p; floor(ctx);
+    let P = null, fn = null, spr = 0, lift = 0;
+    if (tk < PRAY) { const q = tk / PRAY; P = { t, q }; fn = v.pray; spr = 11; }
+    else if (tk < PRAY + FX) { const ft = tk - PRAY, st = ft - LAND, life = FX - ft; P = { t, st, e: st >= 0 ? eoq(Math.min(1, st / 16)) : 0, fade: Math.min(1, life / 30) }; fn = st >= 0 ? v.land : null; spr = st < 0 ? 12 : st < 20 ? 13 : 0; lift = st < 0 ? Math.sin(ft / LAND * Math.PI / 2) * 26 : 0; }
+    if (fn) { paint(p.ox, p.img, fn, P); ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(p.off, CX - RM, CY - RM, RM * 2, RM * 2); ctx.restore(); }
+    if (v.extra && P && P.st >= 0) v.extra(ctx, P);
+    if (tk < PRAY) { for (let w = 0; w < 2; w++) { const pp = ((t + w * 15) % 30) / 30, r2 = 18 + 54 * eoq(pp); ctx.globalAlpha = (1 - pp) * 0.6; ctx.strokeStyle = GOLD[3]; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(CX, CY - 50, r2, r2 * 0.6, 0, 0, 6.283); ctx.stroke(); } ctx.globalAlpha = 1; } // 방울 소리 물결 (지금 게임과 같음)
+    shaman(ctx, spr, lift);
+    if (tk < PRAY) glow(ctx, CX + 4, CY - 108, 16 + 12 * (tk / PRAY), GOLD[3], 0.4 + 0.8 * (tk / PRAY));
+    if (tk >= PRAY && tk < PRAY + FX) topFx(ctx, tk - PRAY, t);
+  }
+  requestAnimationFrame(frame);
+}
+frame();
+</script></body></html>
