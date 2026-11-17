@@ -6613,7 +6613,7 @@
     const ENGINEER_RECRUIT_SINCE = Date.parse('2026-11-16T00:00:00+09:00'); // 기계공: 2026-11-16부터 모집에 나옴 (사용자 요청)
     const QIGONG_RECRUIT_SINCE = Date.parse('2026-11-17T00:00:00+09:00'); // 기공사: 2026-11-17부터 모집에 나옴 (사용자 요청)
     function qigongRecruitOpen() { return QIGONG_RECRUIT_SINCE !== null && Date.now() >= QIGONG_RECRUIT_SINCE; }
-    const SHAMAN_RECRUIT_SINCE = null; // 무녀: 아직 모집에 안 나옴 (임시 그림 · 사용자가 샘플을 주면 그림을 바꾸고 열기 · 관리자 '용병 추가'·테스트 전장으로만)
+    const SHAMAN_RECRUIT_SINCE = null; // 무녀: 아직 모집에 안 나옴 (그림은 사용자 샘플로 바꿈 2026-11-17 · 열 날짜를 정하면 여기에 · 관리자 '용병 추가'·테스트 전장으로만)
     function shamanRecruitOpen() { return SHAMAN_RECRUIT_SINCE !== null && Date.now() >= SHAMAN_RECRUIT_SINCE; }
     function engineerRecruitOpen() { return ENGINEER_RECRUIT_SINCE !== null && Date.now() >= ENGINEER_RECRUIT_SINCE; }
     function swordsmanRecruitOpen() { return SWORDSMAN_RECRUIT_SINCE !== null && Date.now() >= SWORDSMAN_RECRUIT_SINCE; }
@@ -8341,15 +8341,20 @@
     };
     // 기공사 외형 1~5는 도포·머리·눈동자 색을 바꾼 것 (1 청람·은청발·하늘 눈, 2 주홍·적발·금안, 3 비취·청록발·비취 눈, 4 자줏빛·은백발·보랏빛 눈, 5 먹빛·백발·붉은 눈; 피부·흰자·흰 옷은 그대로): 칸·기준점·동작은 qigong_0과 같음 (tools/qigong_variants_build.py)
     [1, 2, 3, 4, 5].forEach(v => { MERC_SPRITE_DEFS[`qigong_${v}`] = { ...MERC_SPRITE_DEFS.qigong_0, src: `assets/sprites/merc/qigong_${v}.webp` }; });
-    // 무녀 외형 0 (임시 그림, 2026-11-17): 기공사 외형 0의 금빛 천을 붉은 무복으로 칠함 (tools/shaman_build.py) · 칸·기준점은 qigong_0과 같음. 사용자가 샘플을 주면 바꿈
-    //   일반 공격 = 모으기(5) → 내지르며 부적 날림(6) · 장판 스킬 = 준비(12) → 던지기(13) · 내림굿 = 두 팔 들기(18) → 두 팔 펴기(15)
+    // 무녀 외형 0 (2026-11-17 사용자 샘플: 흰 저고리·붉은 하카마·붉은 리본, tools/shaman_build.py · 다듬기는 tools/miko_sample_build.py) · 칸 101×95, 14칸
+    //   0 대기 · 1~3 걷기 (1 → 2 → 3 → 2로 돎) · 4 부적 치켜듦 (일반 공격 준비) · 5 부적 던지기 · 6 피격 · 7~8 쓰러짐 (무릎 → 누움)
+    //   · 9 부적 소환 캐스팅 (한 손을 머리 위로) · 10 부적 소환 시전 (손을 앞으로) · 11 내림굿 캐스팅 (손 모아 기도) · 12 내림굿 시전 (두 팔 벌리고 떠오름, 10px 떠 있음) · 13 착지
+    //   날아가는 부적·머리 위 부적·바닥 부적은 그림에서 뺌 (이펙트로 그림). 모든 칸의 얼굴 크기·피부색·하카마 빨강은 대기 칸(0)에 맞춤. standH = 대기 키 86
     MERC_SPRITE_DEFS.shaman_0 = {
-      ...MERC_SPRITE_DEFS.qigong_0, src: 'assets/sprites/merc/shaman_0.webp',
-      anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5, 5, 6], skill: [13], hurt: [7], death: [8, 9], ritual: [15] },
-      castFrames: { mu_heal: 12, mu_power: 12, mu_weak: 12, mu_speed: 12, mu_guard: 12, mu_naerim: 18 },
+      src: 'assets/sprites/merc/shaman_0.webp',
+      cellW: 101, cellH: 95, anchorX: 50, anchorY: 93, standH: 86, topH: 87, portraitCX: 50, count: 14,
+      muzzle: [41, 32], // 부적이 나가는 자리 = 던지기 칸(5)의 손끝: 기준점에서 앞 41·위 51 (그림 px) → 발이 유닛 자리보다 12 아래라 높이 51 - 19 ≈ 32 (qigong_0과 같은 환산)
+      attackDur: 18, // 부적 치켜듦(4) 6틱 → 던지기(5) 12틱 → 평소 자세. 부적은 공격 순간 바로 날아가서(muBasicShot) 치켜듦은 짧게
+      anims: { idle: [0], walk: [1, 2, 3, 2], attack: [4, 5, 5], skill: [10], hurt: [6], death: [7, 8], ritual: [12, 13] },
+      castFrames: { mu_heal: 9, mu_power: 9, mu_weak: 9, mu_speed: 9, mu_guard: 9, mu_naerim: 11 }, // 시전 막대 동안: 장판 = 한 손 들기, 내림굿 = 기도
       skillAnims: {
         mu_heal: { anim: 'skill', tpf: 20, dur: 20 }, mu_power: { anim: 'skill', tpf: 20, dur: 20 }, mu_weak: { anim: 'skill', tpf: 20, dur: 20 },
-        mu_speed: { anim: 'skill', tpf: 20, dur: 20 }, mu_guard: { anim: 'skill', tpf: 20, dur: 20 }, mu_naerim: { anim: 'ritual', tpf: 30, dur: 30 }
+        mu_speed: { anim: 'skill', tpf: 20, dur: 20 }, mu_guard: { anim: 'skill', tpf: 20, dur: 20 }, mu_naerim: { anim: 'ritual', tpf: 18, dur: 36 } // 떠오름 → 착지
       }
     };
     // 시크릿 레어 전용 외형: 파일 assets/sprites/merc/<직업>_sr<번호>.webp, 칸 순서·동작 구성은 그 직업의 0번 외형과 같음
@@ -34813,7 +34818,7 @@
     //   같은 종류 장판은 무녀 한 명당 하나만 (다시 쓰면 앞 장판은 사라지고 새 자리에 깔림)
     //   장판 위 효과는 매 틱 stepShaman이 정함: u.muPw(강화)·u.muWk(약화)·u.muSp(속도) = 그 칸에 깔린 장판의 세기 (0·1·2)
     // 히든 내림굿: 부적을 5장까지 채우고 6초 동안 부적을 쓰지 않으며, 그동안 까는 장판은 효과 2배
-    // 그림은 아직 임시 (기공사 시트의 금빛 천을 붉은 무복으로, tools/shaman_build.py) · 이펙트는 캔버스 도트 (pixelfx 램프·터짐 drawPixelBurst)
+    // 그림은 사용자 샘플 (tools/shaman_build.py · 다듬기 tools/miko_sample_build.py) · 이펙트는 캔버스 도트 (pixelfx 램프·터짐 drawPixelBurst)
     const MU_MAX = 5;                      // 부적 최대
     const MU_START = 2;                    // 전투 시작 때 부적
     const MU_TIME_GAIN = 100 / 270;        // 막대: 4.5초면 저절로 가득
