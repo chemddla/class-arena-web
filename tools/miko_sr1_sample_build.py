@@ -7,6 +7,8 @@
 #   miko_sr1_hurt_src.png 피격 1칸 · miko_sr1_death_src.png 쓰러짐 2칸 (넘어짐 → 누움)
 #   miko_sr1_atk_src.png 일반 공격 3장 → 게임 일반 공격은 2칸이라 1번(부적 들기)·3번(팔 뻗기)만 씀.
 #   2번의 날아가는 부적은 떼어서 시크릿 레어 부적 투사체 그림으로 (2026-11-17 사용자: "부적 투사체는 일반공격에 있는 부적 써")
+#   miko_sr1_cast_src.png 부적 소환 캐스팅 (두 손 들기) · miko_sr1_skill_src.png 시전 (두 팔 펴기, 둘레에 부적 고리)
+#   시전 칸의 떠 있는 부적은 머리카락·손·허리에 닿아 있어 remove_charms로 떼어 냄 (부적은 이펙트로 따로 그림)
 # 자르기·줄이기는 기본 무녀(miko_sample_build)와 같은 방식
 # 크기: 얼굴 넓이로 맞추면 기본(2.5등신)과 등신이 달라 키 126이 되므로 키로 맞춤 — 어른 비율이라 기본 86보다 조금 큰 96
 import os, sys
@@ -47,6 +49,55 @@ def clear_back(fig, feet=((0, 1, .88, 1),)):   # 몸 사이에 갇힌 흰 배경
     return fig
 
 
+SKILL_CLEAR = [(0, 18, 92, 130, 0), (18, 26, 88, 100, 200), (40, 46, 112, 118, 150), (62, 82, 22, 48, 225)]   # 부적 뗀 시전 칸 (x0, x1, y0, y1, 밝기): 왼손 아래 부적 끄트머리(전부) · 땋은 머리 옆 흰 점(밝은 것만)
+
+
+def clear_boxes(fig, boxes):
+    fig = fig.copy()
+    for x0, x1, y0, y1, lo in boxes:
+        sub = fig[y0:y1, x0:x1]
+        sub[..., 3][sub[..., :3].min(axis=2) >= lo] = 0
+    m = fig[..., 3] > 0
+    lab, n = ndi.label(m)
+    fig[..., 3][lab != 1 + int(np.argmax(ndi.sum(m, lab, range(1, n + 1))))] = 0
+    ys, xs = np.where(fig[..., 3] > 0)
+    return fig[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+
+
+def remove_charms(fig, min_px=120):   # 몸에 닿거나 겹친 노란 부적 떼기
+    # 1) 노랑~주황 덩어리 중 min_px 이상 (오색 띠의 작은 노란 칸은 빠짐), 부풀려 붉은 글씨·외곽선까지 덮음
+    # 2) 떼는 픽셀마다 같은 세로줄에서 위·아래로 가장 가까운 남은 픽셀을 봄: 둘 다 몸이면 옷 위에 겹친 부적 → 가까운 쪽 색
+    #    (오색 띠·치마 주름이 세로라 이어짐), 하나라도 배경이면 허공(몸 밖으로 삐져나온 부분 포함) → 투명
+    fig = fig.astype(float).copy()
+    c = fig[..., :3]; r, g, b = c[..., 0], c[..., 1], c[..., 2]
+    a = fig[..., 3] > 0
+    y = a & (r > 150) & (g > 85) & (b < 120) & (r - b > 80) & (r - g < 120)
+    lab, n = ndi.label(y, structure=np.ones((3, 3)))
+    keep = np.zeros_like(y)
+    for i in range(1, n + 1):
+        if (lab == i).sum() >= min_px: keep |= lab == i
+    R = ndi.binary_fill_holes(ndi.binary_dilation(keep, iterations=4)) & a
+    H, W = R.shape
+    src = fig.copy()
+    for x in np.unique(np.where(R)[1]):
+        col = R[:, x]
+        for yy in np.where(col)[0]:
+            up = yy
+            while up > 0 and col[up]: up -= 1
+            dn = yy
+            while dn < H - 1 and col[dn]: dn += 1
+            if col[up] or col[dn] or src[up, x, 3] == 0 or src[dn, x, 3] == 0:
+                fig[yy, x, 3] = 0
+            else:
+                fig[yy, x] = src[up if yy - up <= dn - yy else dn, x]
+    m = fig[..., 3] > 0   # 떼고 나서 몸에서 떨어진 조각 정리: 가장 큰 덩어리만
+    lab, n = ndi.label(m)
+    fig[..., 3][lab != 1 + int(np.argmax(ndi.sum(m, lab, range(1, n + 1))))] = 0
+    ys, xs = np.where(fig[..., 3] > 0)
+    print('charms removed', int(keep.sum()), 'px')
+    return fig[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+
+
 def build():
     idle0 = base.clear_holes(base.cut(base.despeck(base.one('idle'))), ('대기', 0))
     fa0 = base.face(idle0)[0]
@@ -78,7 +129,13 @@ def build():
     hurt, _ = pose('sr1_hurt', 1)
     death, _ = pose('sr1_death', 2, same=True)   # 누운 칸은 얼굴이 옆으로 작게 잡혀 넘어지는 칸 배율을 같이 씀
     atk, ka = pose('sr1_atk', 3, pick=[0, 2], same=True, height=SR_H)   # 서 있는 자세라 키로 맞춤 (얼굴로 재면 88로 작아 보임)
-    rows += [('피격', hurt), ('쓰러짐', death), ('일반 공격', atk)]
+    casts = []
+    for nm, fix in [('sr1_cast', None), ('sr1_skill', lambda f: clear_boxes(remove_charms(f), SKILL_CLEAR))]:   # 서 있는 자세라 키 96 (두 손이 머리보다 낮음)
+        wf = clear_back(base.cut(base.despeck(base.one(nm))))
+        if fix: wf = fix(wf)
+        print(nm, 'h', wf.shape[0], 'scale', round(SR_H / wf.shape[0], 3), '폭', round(wf.shape[1] * SR_H / wf.shape[0]))
+        casts.append(shrink(wf.astype(np.uint8), SR_H / wf.shape[0]))
+    rows += [('피격', hurt), ('쓰러짐', death), ('일반 공격', atk), ('부적 소환', casts)]
     return shrink(idle0.astype(np.uint8), sc0), shrink(fig.astype(np.uint8), k), rows, charm(ka[0])
 
 
