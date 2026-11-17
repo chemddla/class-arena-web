@@ -35181,8 +35181,9 @@
       // 색 폭을 넓게(가운데 램프 밝은 단계 → 끝 어두운 단계, 흰색 단계는 안 씀): 바이어 디더로 단계가 여러 겹 이어져 단색처럼 보이지 않음
       t = {
         base: muPaintDisc(r, ramp, nd => {
-          const g = Math.pow(nd, 1.1), h = MU_HAIR(nd);
-          return weak ? [(0.5 + V - 0.44 * g) * (1 - h) + (0.4 + V) * h, (0.58 - 0.36 * g + 0.12 * h) * A] : [(0.72 + V - 0.56 * g) * (1 - h) + (0.45 + V) * h, (0.5 - 0.33 * g + 0.12 * h) * A];
+          const g = Math.pow(nd, 1.1), h = 0; // 테두리 선은 2026-11-18 사용자 요청으로 뺌 (안개가 끝에서 녹아 사라짐)
+          const e = 1 - muSstep(0.8, 1, nd); // 끝은 딱 끊기지 않고 옅어짐
+          return weak ? [(0.5 + V - 0.44 * g) * (1 - h) + (0.4 + V) * h, (0.58 - 0.36 * g + 0.12 * h) * A * e] : [(0.72 + V - 0.56 * g) * (1 - h) + (0.45 + V) * h, (0.5 - 0.33 * g + 0.12 * h) * A * e];
         }),
         lead: muPaintDisc(r, ramp, nd => [0.6, muSstep(0.6, 0.95, nd) * (1 - muSstep(0.97, 1, nd)) * 0.35])
       };
@@ -35215,12 +35216,16 @@
     }
     // 장판 종류별 안개 (2026-11-18 사용자 시안): 치유 F = 작은 결이 왼쪽으로 · 강화 B = 작은 결이 위로 솟음 (exports/shaman-fog-power). [dx, dy] = 칸/틱
     //   약화 C = 'in': 안개 한 장을 가운데 쪽으로 점점 줄여 그려(두 벌을 엇갈려 섞음) 끝에서 가운데로 빨려 드는 것처럼 (exports/shaman-fog-weak)
-    const MU_FOG_FLOW = { mu_heal: [[0.142, 0], [-0.126, 0]], mu_power: [[0.142, 0], [0, -0.14]], mu_weak: 'in', mu_curse: [[0.142, 0], [0.105, 0.07]] }; // 저주 A = 작은 결이 비스듬히 가라앉음 (exports/shaman-fog-curse)
+    const MU_FOG_FLOW = { mu_heal: [[0.142, 0], [-0.126, 0]], mu_power: [[0.142, 0], [0, -0.14]], mu_weak: 'in', mu_curse: [[0.142, 0], [0.105, 0.07]], mu_guard: 'wall' }; // 저주 A = 작은 결이 비스듬히 가라앉음 (exports/shaman-fog-curse)
+    //   보호 D = 'wall': 안쪽은 고요한 옅은 안개, 범위 끝(반지름 70~96%)에만 위로 일렁이는 안개 벽 (exports/shaman-fog-guard)
     const muFogTiles = {};
-    const muFogMaskCache = new Map(), muFogScratch = document.createElement('canvas');
+    const muFogMaskCache = new Map(), muFogScratch = document.createElement('canvas'), muFogScratch2 = document.createElement('canvas');
     function muFieldFog(ctx, z, kind, rr, alpha, two, t) {
       const flow = MU_FOG_FLOW[kind];
-      const tiles = muFogTiles[kind] || (muFogTiles[kind] = flow === 'in' ? [muFogTile(kind, 27.5, 27.5, 3, f => { const d = muSstep(0.3, 0.8, f); return [0.15 + 0.4 * d, 0.08 + 0.42 * d]; })] : [ // 큰 결 (게임 px 95×55마다 노이즈 1 = 2px 칸 47.5×27.5) · 작은 결 (42×28 → 21×14)
+      const tiles = muFogTiles[kind] || (muFogTiles[kind] = flow === 'wall' ? [ // 안쪽 큰 결 (80×50 → 40×25칸) · 벽 결 (34×22 → 17×11칸)
+        muFogTile(kind, 40, 25, 7, f => { const d = muSstep(0.4, 0.8, f); return [0.25 + 0.18 * d, 0.04 + 0.18 * d]; }),
+        muFogTile(kind, 17, 11, 21, f => { const g = 0.4 + 0.6 * muSstep(0.3, 0.7, f); return [0.25 + 0.6 * g, 0.6 * g]; })
+      ] : flow === 'in' ? [muFogTile(kind, 27.5, 27.5, 3, f => { const d = muSstep(0.3, 0.8, f); return [0.15 + 0.4 * d, 0.08 + 0.42 * d]; })] : [ // 큰 결 (게임 px 95×55마다 노이즈 1 = 2px 칸 47.5×27.5) · 작은 결 (42×28 → 21×14)
         muFogTile(kind, 47.5, 27.5, 0, f => { const d1 = muSstep(0.4, 0.8, f); return [0.2 + 0.4 * d1, 0.06 + 0.32 * d1]; }),
         muFogTile(kind, 21, 14, 40, f => { const d2 = muSstep(0.45, 0.85, f); return [kind === 'mu_curse' ? 0.35 + 0.3 * d2 : 0.5 + 0.35 * d2, 0.26 * d2]; }) // 저주는 분홍빛이 돌지 않게 한 단계 어둡게
       ]);
@@ -35230,7 +35235,17 @@
       const s = muFogScratch; if (s.width !== n) { s.width = s.height = n; }
       const c = s.getContext('2d'); c.imageSmoothingEnabled = false;
       c.globalCompositeOperation = 'source-over'; c.clearRect(0, 0, n, n);
-      if (flow === 'in') { // 1 + ph배로 키운 노이즈를 읽음 = 그림을 1 / (1 + ph)로 줄여 가운데 기준으로 깔기
+      if (flow === 'wall') {
+        const band = muFogMaskCache.get('w' + mk) || muPaintDisc(z.r, MU_RGB.mu_heal, nd => [0, muSstep(0.7, 0.96, nd)]); muFogMaskCache.set('w' + mk, band);
+        const t0 = tiles[0], ox = Math.floor(t * 0.04 + z.x * 0.37) % t0.width, oy = Math.floor(z.y * 0.29) % t0.height;
+        for (let x = -ox; x < n; x += t0.width) for (let y = -oy; y < n; y += t0.height) c.drawImage(t0, x, y);
+        const s2 = muFogScratch2; if (s2.width !== n) { s2.width = s2.height = n; }
+        const c2 = s2.getContext('2d'), t1 = tiles[1], oy1 = Math.floor(t * 0.088 + z.y * 0.29) % t1.height, ox1 = Math.floor(z.x * 0.37) % t1.width; // 벽 결은 위로 일렁임
+        c2.globalCompositeOperation = 'source-over'; c2.clearRect(0, 0, n, n);
+        for (let x = -ox1; x < n; x += t1.width) for (let y = -oy1; y < n; y += t1.height) c2.drawImage(t1, x, y);
+        c2.globalCompositeOperation = 'destination-in'; c2.drawImage(band, 0, 0, n, n);
+        c.drawImage(s2, 0, 0);
+      } else if (flow === 'in') { // 1 + ph배로 키운 노이즈를 읽음 = 그림을 1 / (1 + ph)로 줄여 가운데 기준으로 깔기
         const tile = tiles[0], ph = (t * 0.004) % 1, w = Math.abs(ph * 2 - 1);
         [[1 + ph, 1 - w, 0], [1 + (ph + 0.5) % 1, w, 0.5]].forEach(([a, wt, sh]) => {
           const tw = tile.width / a, th = tile.height / a, x0 = n / 2 - (Math.ceil(n / 2 / tw) + sh) * tw, y0 = n / 2 - (Math.ceil(n / 2 / th) + sh) * th;
