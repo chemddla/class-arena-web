@@ -58909,7 +58909,7 @@
     // 인원수별 난이도 [1명, 2명, 3명]: 방마다 몬스터 수 · 몬스터 능력치 · 보스는 능력치에 한 번 더 (경험치는 늘어난 마릿수만큼 나눠 레벨 속도는 같게)
     // 자동 전투 시뮬(2026-11-16): stat 1.3·1.6일 땐 2명 14~15층·3명 15~23층으로 혼자(약 10층)보다 쉬웠음 (쓰러져도 방을 깨면 다시 일어나서)
     const ABYSS_PARTY = { count: [1, 1.5, 2], stat: [1, 1.6, 2.2], boss: [1, 1.5, 1.9] };
-    const ABYSS_CA = { base: 200, perTier: 100 }; // 층당 보상: 1~5층 200, 6~10층 300, 11~15층 400 … (구역마다 +100)
+    const ABYSS_CA = { base: 2000, perTier: 1000 }; // 층당 보상: 1~5층 2000, 6~10층 3000, 11~15층 4000 … (구역마다 +1000, 2026-11-17 10배)
     // 그 층 수만큼 내려갔을 때 받는 CA 합계
     function abyssCaFor(floors) {
       let sum = 0;
@@ -61176,8 +61176,9 @@
     // ----- 결과·보상 -----
     const DEFENSE_REWARD = {
       // 막은 라운드마다 + 막은 보스 라운드마다 + 100라운드 클리어(별) + 첫 ★★★
-      normal: { round: 12, bossRound: 120, clear: [800, 1200, 1600], first3: 1500 },
-      hard:   { round: 20, bossRound: 200, clear: [1600, 2400, 3200], first3: 3000 }
+      // 2026-11-17 10배 (남은 골드 보너스 상한도 300 → 3000)
+      normal: { round: 120, bossRound: 1200, clear: [8000, 12000, 16000], first3: 15000 },
+      hard:   { round: 200, bossRound: 2000, clear: [16000, 24000, 32000], first3: 30000 }
     };
     function finishDefense(stu, won) {
       const dm = sim.defense, R = DEFENSE_REWARD[dm.diff];
@@ -61191,7 +61192,7 @@
       if (bossRounds) { amount += bossRounds * R.bossRound; parts.push(`보스 ${bossRounds} × ${R.bossRound}`); }
       if (won) { amount += R.clear[stars - 1]; parts.push(`클리어 ${'★'.repeat(stars)} ${R.clear[stars - 1]}`); }
       if (first3) { amount += R.first3; parts.push(`첫 ★★★ ${R.first3}`); }
-      const leftover = Math.min(300, Math.floor(dm.gold / 10));
+      const leftover = Math.min(3000, Math.floor(dm.gold));
       if (leftover > 0 && dm.cleared) { amount += leftover; parts.push(`남은 골드 ${leftover}`); }
       const reward = amount > 0 ? grantDailyReward(stu, 'defense', amount) : 0;
       if (reward > 0) state.guardianPts += won ? 20 : 8;
@@ -61233,6 +61234,10 @@
       const left = getDailyRewardLeft(stu, 'defense');
       if (info) info.innerHTML = `⚔️ 출전 용병 전투력 <strong class="text-rose-300">${dungeonPowerOf(stu).toLocaleString()}</strong> · 🏅 최고 기록 보통 <strong class="text-amber-300">${book.normalBest || 0}</strong> · 어려움 <strong class="text-amber-300">${book.hardBest || 0}</strong>라운드 · 💰 오늘 남은 보상 <strong class="${left > 0 ? 'text-emerald-300' : 'text-slate-500'}">${left}/${DAILY_REWARD_LIMITS.defense}</strong>회`;
       const starTxt = n => '★'.repeat(n || 0) + '☆'.repeat(3 - (n || 0));
+      const dfScore = s => { const b = (s.defenseBook && s.defenseBook.td) || {}; return [Number(b.hardBest) || 0, Number(b.normalBest) || 0]; };
+      const rank = studentsFor('rank').filter(s => dfScore(s).some(v => v > 0))
+        .sort((a, b) => { const x = dfScore(a), y = dfScore(b); return y[0] - x[0] || y[1] - x[1]; });
+      const myRank = rank.findIndex(s => s.id === stu.id);
       box.innerHTML = `
         <div class="dft-hero">
           <img class="dft-map" src="${BATTLE_MAPS[DEFENSE_MAPS[0].key].src}" alt="몬스터 디펜스 전장" loading="lazy">
@@ -61261,6 +61266,13 @@
         </div>
         <div class="dft-towers" style="gap:14px">
           ${DEFENSE_TOWER_KEYS.map(k => { const D = DEFENSE_TOWERS[k]; return `<div>${defenseTowerThumbHTML(k, 3, 1)}<b style="color:var(--gl-ink)">${D.icon} ${D.name} · ${D.cost}</b><span>${D.desc}</span></div>`; }).join('')}
+        </div>
+        <div class="dft-towers" style="flex-direction:column;align-items:stretch">
+          <b style="color:var(--gl-ink);font-size:13px">🏅 우리 반 디펜스 랭킹 <small style="color:var(--gl-ink2);font-weight:400">어려움 라운드 먼저, 같으면 보통 라운드</small></b>
+          ${rank.length ? `<div style="display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:2px 8px;font-size:12px;color:var(--gl-ink2)">${rank.slice(0, 10).map((s, i) => { const b = defenseBookOf(s), me = s.id === stu.id ? ';color:#b45309;font-weight:700' : ''; return `
+            <span style="${me}">${i + 1}.</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap${me}">${escHtml(s.name)}</span>
+            <span style="${me}">${b.hardBest ? `어려움 ${Number(b.hardBest)}라운드 · ` : ''}보통 ${Number(b.normalBest) || 0}라운드</span>`; }).join('')}</div>${myRank >= 10 ? `<div style="font-size:12px">내 순위 ${myRank + 1}등</div>` : ''}`
+            : '<div style="font-size:12px;color:var(--gl-ink2)">아직 기록이 없어요. 첫 번째로 라운드를 막아 보세요!</div>'}
         </div>`;
       renderDefenseLobby();
     }
