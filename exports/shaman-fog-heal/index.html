@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>무녀 치유 장판 안개 시안</title>
+<style>
+  body { margin: 0; background: #111; color: #ddd; font: 14px/1.4 system-ui, sans-serif; }
+  h1 { font-size: 16px; margin: 12px 16px 4px; }
+  p { margin: 0 16px 10px; color: #999; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; padding: 0 16px 16px; }
+  figure { margin: 0; background: #1b1b1b; border-radius: 6px; overflow: hidden; }
+  canvas { width: 100%; display: block; image-rendering: pixelated; }
+  figcaption { padding: 6px 10px 8px; font-size: 13px; } figcaption b { color: #4ade80; }
+</style></head><body>
+<h1>무녀 치유 부적 장판 · 안개 시안</h1>
+<p>게임 크기 그대로(반지름 264 = 2.2칸, 2px 도트 칸, 램프 + 4×4 바이어 디더, 더해지는 빛). 6초마다 꽂힘 → 퍼짐 → 사라짐 반복. 회색 선 = 전투 칸(120).</p>
+<div class="grid" id="g"></div>
+<script>
+'use strict';
+const R = 264, CELL = 2, W = 640, NC = Math.ceil(R * 1.12 * 2 / CELL); // 끝 안개가 반지름 12% 밖까지 살짝 번질 수 있게
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
+const rgb = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+const HEAL = ['#14532d', '#16a34a', '#4ade80', '#bbf7d0', '#f0fdf4'];
+const MIST = ['#1d4d3a', '#3c8f68', '#7fd1a4', '#c6efd8', '#f2fdf6']; // 물안개: 치유 램프를 조금 탁하고 희게
+const PAPER = ['#8a6d1e', '#e9c96a', '#f7e7a6', '#fff8d6'], INK = '#b91c1c';
+const GLYPH = ['.......', '.......', '.xxxxx.', '...x...', '.xxxxx.', '...x...', '.x.x.x.', '.xxxxx.', '...x...', '..x.x..', '.x...x.', '.......'];
+const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
+const ss = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const eoq = t => 1 - Math.pow(1 - clamp(t), 4);
+function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+// 값 노이즈 + 3겹 fBm
+const hsh = (x, y) => { let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+function vn(x, y) { const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf); const a = hsh(xi, yi), b = hsh(xi + 1, yi), c = hsh(xi, yi + 1), d = hsh(xi + 1, yi + 1); return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; }
+const fbm = (x, y) => vn(x, y) * 0.55 + vn(x * 2.03 + 17.3, y * 2.03 + 5.1) * 0.3 + vn(x * 4.1 + 3.7, y * 4.1 + 29.9) * 0.15;
+const edgeMask = (nd, f, w = 0.25) => 1 - ss(0.72, 1.0, nd + (f - 0.5) * w); // 끝을 노이즈로 들쭉날쭉 녹임
+
+// 안개 한 장(칸 그림)을 매 프레임 새로: fn(x, y, nd, ang, t) → [램프 자리, 불투명도]
+function paintFog(cx, img, ramp, prog, fn, t) {
+  const d = img.data, n = NC, L = ramp.length - 1; d.fill(0);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const x = (i + 0.5 - n / 2) * CELL, y = (j + 0.5 - n / 2) * CELL, nd = Math.hypot(x, y) / (R * prog);
+    if (nd >= 1.12) continue;
+    const r = fn(x / prog, y / prog, nd, Math.atan2(y, x), t); if (!r || r[1] <= 0.01) continue;
+    const lv = clamp(r[0]) * L, b = Math.floor(lv), c = ramp[Math.min(L, b + (lv - b > BAYER[(i & 3) + (j & 3) * 4] ? 1 : 0))], k = (j * n + i) * 4;
+    d[k] = c[0]; d[k + 1] = c[1]; d[k + 2] = c[2]; d[k + 3] = Math.min(255, r[1] * 255);
+  }
+  cx.putImageData(img, 0, 0);
+}
+const glowCache = new Map();
+function glow(ctx, x, y, r, hex, k) {
+  if (k <= 0.01) return; const key = hex + r | 0; let cv = glowCache.get(hex + '|' + Math.round(r));
+  if (!cv) { const n = Math.max(2, Math.round(r * 2)), [a, b, c] = rgb(hex); cv = document.createElement('canvas'); cv.width = cv.height = n; const g2 = cv.getContext('2d'), g = g2.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2); g.addColorStop(0, `rgba(${a},${b},${c},.9)`); g.addColorStop(0.4, `rgba(${a},${b},${c},.35)`); g.addColorStop(1, `rgba(${a},${b},${c},0)`); g2.fillStyle = g; g2.fillRect(0, 0, n, n); glowCache.set(hex + '|' + Math.round(r), cv); }
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha *= Math.min(1, k); ctx.drawImage(cv, x - r, y - r, r * 2, r * 2); ctx.restore();
+}
+const dot = (ctx, x, y, c, col) => { if (col) ctx.fillStyle = col; ctx.fillRect(Math.round(x / c) * c - c / 2, Math.round(y / c) * c - c / 2, c, c); };
+function charm(ctx, cx, cy, c, ang) {
+  ctx.save(); ctx.translate(Math.round(cx), Math.round(cy)); if (ang) ctx.rotate(ang);
+  const w = 7, h = 12, x0 = -w * c / 2, y0 = -h * c / 2;
+  for (let gy = 0; gy < h; gy++) for (let gx = 0; gx < w; gx++) {
+    const edge = gx === 0 || gy === 0 || gx === w - 1 || gy === h - 1;
+    ctx.fillStyle = edge ? PAPER[0] : (gx + gy < 4 ? PAPER[3] : gx > 4 && gy > 8 ? PAPER[1] : PAPER[2]); ctx.fillRect(x0 + gx * c, y0 + gy * c, c, c);
+    if (!edge && GLYPH[gy][gx] === 'x') { ctx.fillStyle = INK; ctx.fillRect(x0 + gx * c, y0 + gy * c, c, c); }
+  }
+  ctx.fillStyle = HEAL[1]; ctx.fillRect(x0 + 2 * c, y0 + c, 3 * c, c); ctx.fillStyle = HEAL[3]; ctx.fillRect(x0 + 3 * c, y0 + c, c, c);
+  ctx.restore();
+}
+// 게임의 치유 빛방울 (MU_MOTES.mu_heal 그대로)
+function motes(ctx, cx, cy, fade, t, n = 16, ramp = HEAL) {
+  const r = rng(12345), base = ctx.globalAlpha;
+  for (let i = 0; i < n; i++) {
+    const a0 = r() * 6.283, d0 = Math.sqrt(r()) * R * 0.82, ph = (t * 0.008 + r()) % 1, ph2 = r() * 6.283;
+    const x = cx + Math.cos(a0) * d0 + Math.sin(ph * 6 + ph2) * 4, y = cy + Math.sin(a0) * d0 - ph * 70, s = Math.sin(ph * Math.PI) * fade;
+    if (s <= 0.02) continue;
+    ctx.globalAlpha = base * s; dot(ctx, x, y, 2, ramp[4]); ctx.globalAlpha = base * s * 0.8; dot(ctx, x + 2, y, 2, ramp[3]); dot(ctx, x, y + 2, 2);
+    ctx.globalAlpha = base; glow(ctx, x, y, 9, ramp[2], 0.55 * s);
+  }
+  ctx.globalAlpha = base;
+}
+
+// ===== 시안 =====
+// 흐름 안개: 노이즈를 가운데 쪽으로 점점 확대해 가며(두 장을 엇갈려 섞음) 안개가 안으로 밀려 드는 것처럼
+function inflow(x, y, t, sp, s) { const ph = (t * sp) % 1, w = Math.abs(ph * 2 - 1); const a = 1 + ph, b = 1 + (ph + 0.5) % 1; return fbm(x / s * a + 3, y / s * a + 7) * (1 - w) + fbm(x / s * b + 41, y / s * b + 13) * w; }
+const V = [
+  { id: 'A', name: '낮게 깔린 안개', note: '옆으로 길게 늘어진 안개 결이 천천히 흘러감. 가운데가 진하고 끝은 노이즈로 녹아 사라짐 (테두리 줄 없음)', ramp: HEAL, motes: 1,
+    fn: (x, y, nd, a, t) => { const f = fbm(x / 80 + t * 0.004, y / 34 + t * 0.0012); const m = edgeMask(nd, f); const d = ss(0.3, 0.8, f) * m; return [0.2 + 0.5 * d + 0.25 * (1 - nd), (0.08 + 0.5 * d) * m * (1 - 0.35 * nd)]; } },
+  { id: 'B', name: '소용돌이 안개', note: '안개가 부적 둘레로 천천히 감기며 돎. 안쪽일수록 더 비틀림 → 가운데로 빨려 드는 느낌', ramp: HEAL, motes: 1,
+    fn: (x, y, nd, a, t) => { const tw = a + t * 0.006 + (1 - Math.min(1, nd)) * 2.4, rx = Math.cos(tw) * nd, ry = Math.sin(tw) * nd; const f = fbm(rx * 3.4 + 5, ry * 3.4 + 9); const m = edgeMask(nd, f, 0.2); const d = ss(0.35, 0.78, f) * m; return [0.25 + 0.5 * d + 0.2 * (1 - nd), (0.1 + 0.5 * d) * m]; } },
+  { id: 'C', name: '피어오르는 뭉게 안개', note: '옅은 바닥 안개 위로 안개 뭉치가 군데군데 솟아 부풀며 흩어짐 (뭉치 14개, 3초 주기)', ramp: MIST, motes: 0, puffs: 14,
+    fn: null },
+  { id: 'D', name: '가장자리 안개 둑', note: '안개가 범위 끝에 두껍게 쌓여 안쪽으로 밀려 들고, 가운데는 맑게 비어 부적 빛이 보임. 범위가 가장 잘 읽힘', ramp: HEAL, motes: 1,
+    fn: (x, y, nd, a, t) => { const f = inflow(x, y, t, 0.004, 60); const band = ss(0.25, 0.95, nd + (f - 0.5) * 0.45); const m = edgeMask(nd, f, 0.15); const d = band * ss(0.25, 0.75, f) * m; return [0.3 + 0.55 * d, (0.05 + 0.62 * d) * m]; } },
+  { id: 'E', name: '물안개 + 빛기둥', note: '희고 옅은 물안개(탁한 치유 램프) 사이로 위에서 빛기둥 세 줄이 천천히 흔들리며 비침 + 빛방울', ramp: MIST, motes: 1, rays: 1,
+    fn: (x, y, nd, a, t) => { const f = fbm(x / 60 + t * 0.003, y / 40 - t * 0.002); const m = edgeMask(nd, f, 0.3); const d = ss(0.3, 0.85, f) * m; return [0.35 + 0.45 * d + 0.15 * (1 - nd), (0.07 + 0.36 * d) * m]; } },
+  { id: 'F', name: '두 겹 안개 (시차)', note: '큰 안개 결은 오른쪽으로 느리게, 작은 결은 왼쪽으로 빠르게 → 겹치는 곳이 더 밝아져 깊이감', ramp: HEAL, motes: 1,
+    fn: (x, y, nd, a, t) => { const f1 = fbm(x / 95 + t * 0.003, y / 55), f2 = fbm(x / 42 - t * 0.006 + 40, y / 28 + 11); const m = edgeMask(nd, f1); const d1 = ss(0.4, 0.8, f1), d2 = ss(0.45, 0.85, f2); return [0.2 + 0.35 * d1 + 0.35 * d2 * d1 + 0.15 * (1 - nd), (0.06 + 0.32 * d1 + 0.26 * d2) * m]; } },
+];
+// C: 뭉게 안개 = 옅은 바닥 + 솟는 뭉치
+const PUFFS = (() => { const r = rng(777), out = []; for (let i = 0; i < 14; i++) { const a = r() * 6.283, d = Math.sqrt(r()) * R * 0.7; out.push({ x: Math.cos(a) * d, y: Math.sin(a) * d, off: r(), s: 0.8 + r() * 0.5 }); } return out; })();
+V[2].fn = (x, y, nd, a, t) => {
+  const f = fbm(x / 70 + t * 0.002, y / 40); const m = edgeMask(nd, f); let p = 0;
+  for (const q of PUFFS) { const ph = (t / 180 + q.off) % 1, rr = (26 + 46 * eoq(ph)) * q.s, px = q.x, py = q.y - ph * 30; const dx = x - px, dy = (y - py) * 1.25; if (Math.abs(dx) > rr * 1.3 || Math.abs(dy) > rr * 1.3) continue; const dd = Math.hypot(dx, dy) / rr + (fbm(x / 22 + q.off * 50, y / 22) - 0.5) * 0.7; p = Math.max(p, (1 - ss(0.3, 1, dd)) * Math.sin(ph * Math.PI)); }
+  const base = ss(0.3, 0.8, f) * 0.5; const d = Math.max(base, p) * m;
+  return [0.25 + 0.6 * d + 0.1 * (1 - nd), (0.05 + 0.55 * d) * m];
+};
+
+const LOOP = 360, THROW = 16, SPREAD = 18; // 6초 (60틱/초)
+const panels = V.map(v => {
+  const fig = document.createElement('figure'), cv = document.createElement('canvas'); cv.width = cv.height = W;
+  fig.append(cv); const cap = document.createElement('figcaption'); cap.innerHTML = `<b>${v.id}. ${v.name}</b><br>${v.note}`; fig.append(cap); document.getElementById('g').append(fig);
+  const off = document.createElement('canvas'); off.width = off.height = NC; const ox = off.getContext('2d');
+  return { v, ctx: cv.getContext('2d'), off, ox, img: ox.createImageData(NC, NC) };
+});
+function floor(ctx) {
+  ctx.fillStyle = '#3a4a2e'; ctx.fillRect(0, 0, W, W);
+  for (let i = 0; i < 400; i++) { const r = hsh(i, 9), r2 = hsh(i, 31); ctx.fillStyle = i % 2 ? '#34432a' : '#41522f'; ctx.fillRect((r * W) | 0, (r2 * W) | 0, 4, 2); }
+  ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 2; for (let k = W / 2 % 120; k < W; k += 120) { ctx.beginPath(); ctx.moveTo(k, 0); ctx.lineTo(k, W); ctx.moveTo(0, k); ctx.lineTo(W, k); ctx.stroke(); }
+}
+let t0 = performance.now();
+function frame() {
+  const T = (performance.now() - t0) / 1000 * 60, tk = T % LOOP, va = tk - THROW, t = T;
+  for (const p of panels) {
+    const { v, ctx } = p, cx = W / 2, cy = W / 2; floor(ctx);
+    if (va < 0) { // 날아오는 부적
+      const q = tk / THROW; charm(ctx, cx - 200 * (1 - q), cy - 60 - 120 * Math.sin(q * Math.PI) * 0.6 - (1 - q) * 40, 1.5, (1 - q) * 3); continue;
+    }
+    const prog = Math.max(0.02, eoq(va / SPREAD)), life = LOOP - tk, fade = Math.min(1, life / 30), pr = prog * (life < 30 ? 1 - 0.12 * (1 - life / 30) : 1);
+    paintFog(p.ox, p.img, v.ramp.map(rgb), pr, v.fn, t);
+    ctx.save(); ctx.imageSmoothingEnabled = false; ctx.globalAlpha = fade; ctx.drawImage(p.off, cx - NC, cy - NC, NC * CELL, NC * CELL); ctx.restore();
+    ctx.save(); ctx.globalAlpha = fade;
+    glow(ctx, cx, cy - 6, 34, v.ramp[2], 0.35 * fade);
+    if (va < 14) glow(ctx, cx, cy - 20, 50, v.ramp[4], 1.4 * (1 - va / 14));
+    if (v.rays) for (let k = 0; k < 3; k++) { // 빛기둥: 위에서 비스듬히 내려와 바닥에 옅은 빛 자국
+      const bx = cx + (k - 1) * 120 + Math.sin(t * 0.01 + k * 2) * 24, s = (0.5 + 0.5 * Math.sin(t * 0.017 + k * 1.7)) * fade * ss(0.6, 1, prog);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.22 * s;
+      const g = ctx.createLinearGradient(0, cy - 300, 0, cy + 40); g.addColorStop(0, 'rgba(198,239,216,0)'); g.addColorStop(0.7, 'rgba(198,239,216,.8)'); g.addColorStop(1, 'rgba(198,239,216,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(bx - 10 + 40, cy - 300); ctx.lineTo(bx + 10 + 40, cy - 300); ctx.lineTo(bx + 26, cy + 30); ctx.lineTo(bx - 26, cy + 30); ctx.fill(); ctx.restore();
+      glow(ctx, bx, cy + 14, 40, v.ramp[3], 0.3 * s);
+    }
+    if (v.motes && prog > 0.6) motes(ctx, cx, cy, fade * ss(0.6, 1, prog), t, 16, v.ramp);
+    charm(ctx, cx, cy - 40 + Math.sin(t * 0.05) * 4, 2, Math.sin(t * 0.03) * 0.08); // 가운데 떠 있는 부적
+    ctx.restore();
+  }
+  requestAnimationFrame(frame);
+}
+frame();
+</script></body></html>
