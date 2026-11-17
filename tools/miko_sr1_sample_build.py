@@ -8,7 +8,8 @@
 #   miko_sr1_atk_src.png 일반 공격 3장 → 게임 일반 공격은 2칸이라 1번(부적 들기)·3번(팔 뻗기)만 씀.
 #   2번의 날아가는 부적은 떼어서 시크릿 레어 부적 투사체 그림으로 (2026-11-17 사용자: "부적 투사체는 일반공격에 있는 부적 써")
 #   miko_sr1_cast_src.png 부적 소환 캐스팅 (두 손 들기) · miko_sr1_skill_src.png 시전 (두 팔 펴기, 둘레에 부적 고리)
-#   시전 칸의 떠 있는 부적은 머리카락·손·허리에 닿아 있어 remove_charms로 떼어 냄 (부적은 이펙트로 따로 그림)
+#   부적 소환 두 칸은 둘레에 떠 있는 부적을 샘플 그대로 남김 (2026-11-17 사용자: "떠다니는 부적 삭제하지 말고 그대로") → cut_keep.
+#   크기·기준점은 부적을 뺀 몸(가장 큰 덩어리)으로 잼 (BODY). remove_charms는 이제 안 씀
 #   miko_sr1_naerim_src.png 히든 내림굿 5칸 한 장: 1 준비 자세 · 2~4 시전 막대 동안 굿 동작 · 5 시전. 부채·방울은 손에 든 소품이라 남김
 #   3·4번 칸 부채와 소매가 가까워 칸 나누기는 1px만 부풀림
 # 자르기·줄이기는 기본 무녀(miko_sample_build)와 같은 방식
@@ -131,6 +132,40 @@ def remove_charms(fig, min_px=120):   # 몸에 닿거나 겹친 노란 부적 �
     return fig[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
 
 
+def cut_keep(im, min_px=120):   # base.cut(흰 옷용 배경 지우기)과 같되 가장 큰 덩어리만이 아니라 min_px 이상 덩어리(떠 있는 부적)를 모두 남김
+    im = im.astype(float)
+    mn, ch = im.min(axis=2), im.max(axis=2) - im.min(axis=2)
+    gap = max(1, round(max(im.shape[:2]) / 160))
+    wall = ndi.binary_dilation(mn < 200, iterations=gap)
+    lab, n = ndi.label(~wall)
+    edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
+    bg = np.isin(lab, edge[edge > 0])
+    white = (mn > 222) & (ch < 20)
+    for _ in range(gap + 1):
+        bg |= ndi.binary_dilation(bg) & white
+    rimc = (mn > 110) & (ch < 12)
+    for _ in range(2):
+        bg |= ndi.binary_dilation(bg) & rimc
+    m = ~bg
+    lab, n = ndi.label(ndi.binary_dilation(m, iterations=2))
+    sz = ndi.sum(m, lab, range(1, n + 1))
+    m &= np.isin(lab, 1 + np.where(sz >= min_px)[0])
+    ys, xs = np.where(m)
+    return np.dstack([im, m * 255.0])[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+
+
+def body_box(f):   # 몸 = 가장 큰 덩어리의 (y0, y1, x0, x1) — 떠 있는 부적은 빠짐
+    a = f[..., 3] > 0
+    lab, n = ndi.label(ndi.binary_dilation(a, iterations=2))
+    big = lab == 1 + int(np.argmax(ndi.sum(a, lab, range(1, n + 1))))
+    ys, xs = np.where(big & a)
+    return ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+
+
+BODY = {}   # (줄, 칸) → 몸 상자 (떠 있는 부적이 있는 칸만)
+META = {}   # (줄, 칸) → 줄인 칸 안의 (기준점 x, 발 y) — 떠 있는 부적이 있는 칸만 (build가 채움)
+
+
 def navy_mask(f):   # 철릭 남색
     c = f[..., :3].astype(int); r, g, b = c[..., 0], c[..., 1], c[..., 2]
     return (f[..., 3] > 0) & (b > r + 12) & (b < 150) & (r < 110)
@@ -153,8 +188,10 @@ def frames():   # (줄 이름, 칸 번호, 원본 크기 그림, 배율 묶음, 
         out.append(('쓰러짐', j, clear_back(base.cut(base.despeck(w)), FEET['sr1_death'][j:j + 1]), 'death', False))
     at = base.blobs('sr1_atk', 3)
     for j, i in enumerate([0, 2]): out.append(('일반 공격', j, clear_back(base.cut(base.despeck(at[i]))), 'atk', True))
-    out.append(('부적 소환', 0, clear_back(base.cut(base.despeck(base.one('sr1_cast')))), 'cast', True))
-    out.append(('부적 소환', 1, clear_boxes(remove_charms(clear_back(base.cut(base.despeck(base.one('sr1_skill'))))), SKILL_CLEAR), 'skill', True))
+    for j, nm in enumerate(['sr1_cast', 'sr1_skill']):   # 떠 있는 부적까지 그대로
+        f = clear_back(cut_keep(base.despeck(base.one(nm), area=60)))
+        BODY[('부적 소환', j)] = body_box(f)
+        out.append(('부적 소환', j, f, 'cast' if j == 0 else 'skill', True))
     for j, w in enumerate(split('sr1_naerim', 5)): out.append(('내림굿', j, clear_back(base.cut(base.despeck(w))), 'naerim', j in (0, 4)))
     return out
 
@@ -165,7 +202,9 @@ def scales(fr):   # 대기 칸 기준 배율 (묶음마다 하나)
     #   누운 칸(쓰러짐 2)은 얼굴이 옆으로 누워 같은 묶음 첫 칸 기준
     idle = fr[0][2]; k0 = SR_H / idle.shape[0]; h0 = np.array(head(idle)) * k0
     groups = {}
-    for lb, j, f, g, standing in fr: groups.setdefault(g, []).append((lb, j, f, standing))
+    for lb, j, f, g, standing in fr:
+        if (lb, j) in BODY: y0, y1, x0, x1 = BODY[(lb, j)]; f = f[y0:y1, x0:x1]   # 떠 있는 부적을 뺀 몸으로 잼
+        groups.setdefault(g, []).append((lb, j, f, standing))
     K = {'idle': k0}
     for g, items in groups.items():
         if g == 'idle': continue
@@ -220,10 +259,16 @@ def build():
     print(check_sheet(fr))
     ref = fr[0][2].astype(float)
     rows, ka = [], None
+    META.clear()
     for lb, j, f, g, st in fr:
         if j == 0: rows.append((lb, []))
         if g != 'idle': f = recolor(f, ref)
         cell = shrink(f.astype(np.uint8), K[g])
+        if (lb, j) in BODY:   # 몸 상자 → 칸 안 기준점 (치마 가운데 x, 발 y). 조립 도구가 씀
+            y0, y1, x0, x1 = BODY[(lb, j)]
+            bm = f[y0:y1, x0:x1, 3] > 0; h = y1 - y0
+            cx = x0 + np.where(bm[int(h * .6):int(h * .9)])[1].mean()
+            META[(lb, j)] = (cx * K[g], y1 * K[g])
         hd = head(f)
         print(f'{lb} {j + 1}: 키 {cell.shape[0]} 폭 {cell.shape[1]}' + (f' · 얼굴 {hd[0] * K[g]:.1f}×{hd[1] * K[g]:.1f}' if hd else ''))
         rows[-1][1].append(cell)

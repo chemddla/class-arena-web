@@ -34865,6 +34865,7 @@
     const MU_PAPER = ['#8a6d1e', '#e9c96a', '#f7e7a6', '#fff8d6']; // 부적 종이 (테두리 → 밝은 면)
     const MU_INK = '#b91c1c';
 
+    const muSrOf = u => (u && (u.skinVariant || 0) === SECRET_SKIN_BASE + 1) ? 1 : 0; // 시크릿 레어 외형 (부적을 샘플 그림으로)
     function muIs(u) { return Boolean(u && u.job === 'shaman' && !u.monsterType); }
     function muCharms(u) { return muIs(u) ? Math.max(0, Math.min(MU_MAX, u.muCharms || 0)) : 0; }
     function muNaerimOn(u) { return Boolean(u && (u.muNaerimUntil || 0) > sim.tickCount); }
@@ -34918,7 +34919,7 @@
     }
     // 부적이 맞은 자리 (resolveProjectileImpact)
     function muProjectileHit(p, hit, x, y) {
-      sim.effects.push({ type: 'mu_hit', x: Math.round(hit ? hit.x : x), y: Math.round(hit ? hit.y - 14 : y - 12), a: Math.round((p.angle || 0) * 100) / 100, r: 20, life: 26, maxLife: 26 }); // a = 날아온 방향 (drawMuHit)
+      sim.effects.push({ type: 'mu_hit', x: Math.round(hit ? hit.x : x), y: Math.round(hit ? hit.y - 14 : y - 12), a: Math.round((p.angle || 0) * 100) / 100, r: 20, life: 26, maxLife: 26, ...(p.spr === 'mu_sr' ? { sr: 1 } : {}) }); // a = 날아온 방향 (drawMuHit)
       if (!hit) return;
       applyDamage(p.owner, hit, p.dmg, '', MU_COLOR);
       if (p.owner && hit.team !== p.owner.team) muGain(p.owner, MU_HIT_GAIN);
@@ -34987,9 +34988,10 @@
       spawnZone(pw === 2 ? sk + '2' : sk, unit, p.x, p.y, Math.round(R), MU_FIELD_TICKS, 1, 0);
       const z = sim.zones[sim.zones.length - 1];
       z.mu = 1; z.pw = pw; z.born = sim.tickCount;
+      if (muSrOf(unit)) z.sr = 1; // 장판 위 부적도 샘플 그림 (실시간 화면에는 장판 칸 여섯째 값으로 감)
       if (sk === 'mu_guard') z.guardAt = sim.tickCount - MU_GUARD_EVERY + 20; // 깔리고 0.3초 뒤 첫 보호막
       const o = aimShotOrigin(unit, unit.x, unit.y, unit.facingAngle);
-      sim.effects.push({ type: 'mu_throw', k: sk, sx: Math.round(o.x), sy: Math.round(o.y), x: Math.round(z.x), y: Math.round(z.y), life: 16, maxLife: 16 });
+      sim.effects.push({ type: 'mu_throw', k: sk, sx: Math.round(o.x), sy: Math.round(o.y), x: Math.round(z.x), y: Math.round(z.y), life: 16, maxLife: 16, ...(muSrOf(unit) ? { sr: 1 } : {}) });
       playCombatSfx('magic');
       return true;
     }
@@ -35071,7 +35073,8 @@
     // 부적 한 장: 종이(테두리·면) + 붉은 먹 글씨 + 맨 위 종류 색 점. (cx, cy) 가운데, c = 도트 칸, ang = 기울기
     // 글씨 모양은 칸 단위 (7×12칸): 위 머리 획 · 가운데 세로 획 · 가로 획 셋 · 아래 갈래
     const MU_GLYPH = ['.......', '.......', '.xxxxx.', '...x...', '.xxxxx.', '...x...', '.x.x.x.', '.xxxxx.', '...x...', '..x.x..', '.x...x.', '.......'];
-    function drawMuCharm(ctx, cx, cy, c, ang, kind, glow) {
+    // sr = 시크릿 레어 무녀 부적: 도트 종이 대신 샘플 부적 그림(MU_SR_CHARM)을 같은 자리·크기로 (긴 쪽이 세로, 빛무리는 같음)
+    function drawMuCharm(ctx, cx, cy, c, ang, kind, glow, sr) {
       ctx.save();
       ctx.translate(Math.round(cx), Math.round(cy));
       if (ang) ctx.rotate(ang);
@@ -35082,6 +35085,13 @@
         g.addColorStop(0, ramp[3] + 'aa'); g.addColorStop(0.5, ramp[2] + '44'); g.addColorStop(1, ramp[2] + '00');
         ctx.fillStyle = g; ctx.fillRect(-H * c, -H * c, H * c * 2, H * c * 2);
         ctx.restore();
+      }
+      const srImg = sr ? muSrCharmImg() : null;
+      if (srImg) { // 그림은 오른쪽을 향한 가로 부적 → 세로로 세움. 긴 쪽 = 도트 부적 키의 1.22배 (날아가는 부적과 같은 비율)
+        const L = H * c * 1.22, w2 = L * srImg.height / srImg.width;
+        ctx.rotate(-Math.PI / 2); ctx.drawImage(srImg, -L / 2, -w2 / 2, L, w2);
+        ctx.restore();
+        return;
       }
       for (let gy = 0; gy < H; gy++) for (let gx = 0; gx < W; gx++) {
         const edge = gx === 0 || gy === 0 || gx === W - 1 || gy === H - 1;
@@ -35185,7 +35195,7 @@
         const R = MU_RAMPS[kind];
         for (let k = 0; k < 8; k++) { ctx.globalAlpha = fade * 0.35 * (1 - k / 8); muDot(ctx, z.x, y + 14 + k * 4, 2, R[2]); }
         ctx.globalAlpha = fade;
-        drawMuCharm(ctx, z.x, y, two ? 2.5 : 2, Math.sin(t * 0.04 + seed) * 0.12, kind, two ? 0.9 : 0.6);
+        drawMuCharm(ctx, z.x, y, two ? 2.5 : 2, Math.sin(t * 0.04 + seed) * 0.12, kind, two ? 0.9 : 0.6, z.sr);
         if (two) { // 내림굿 장판: 부적 둘레를 도는 금빛 알갱이
           for (let i = 0; i < 6; i++) { const a = t * 0.08 + i * Math.PI / 3; muDot(ctx, z.x + Math.cos(a) * 20, y + Math.sin(a) * 9, 2, i % 2 ? '#fde047' : '#fff7d6'); }
         }
@@ -35211,7 +35221,7 @@
       for (let i = 0; i < 4; i++) {
         const a = tick * 0.05 + i * Math.PI / 2, front = Math.sin(a) > 0;
         ctx.globalAlpha = front ? 1 : 0.55;
-        drawMuCharm(ctx, Math.cos(a) * 26 * s, -30 * s + Math.sin(a) * 8 * s, 1.5, Math.cos(a) * 0.3, 'mu_power', front ? 0.5 : 0.2);
+        drawMuCharm(ctx, Math.cos(a) * 26 * s, -30 * s + Math.sin(a) * 8 * s, 1.5, Math.cos(a) * 0.3, 'mu_power', front ? 0.5 : 0.2, muSrOf(u));
       }
       ctx.globalAlpha = 1;
     }
@@ -35228,8 +35238,8 @@
       if (p < 0.45) { // 박힌 부적
         const q = p / 0.45, shake = p < 0.3 ? ((Math.floor(p * 40) % 2) ? 1 : -1) * (1 - p / 0.3) : 0;
         ctx.globalAlpha = base;
-        drawMuCharm(ctx, x - dir * 3 + shake, y, 1.5, ang, null, 0);
-        if (q > 0.35) { ctx.globalAlpha = base * Math.min(1, (q - 0.35) * 3) * 0.8; drawMuCharm(ctx, x - dir * 3 + shake, y, 1.5, ang, 'mu_power', 0.9); } // 글씨가 달아오름
+        drawMuCharm(ctx, x - dir * 3 + shake, y, 1.5, ang, null, 0, ef.sr);
+        if (q > 0.35) { ctx.globalAlpha = base * Math.min(1, (q - 0.35) * 3) * 0.8; drawMuCharm(ctx, x - dir * 3 + shake, y, 1.5, ang, 'mu_power', 0.9, ef.sr); } // 글씨가 달아오름
       }
       if (p >= 0.3 && p < 0.45) { // 찢어지기 시작: 한쪽 가장자리에서 들쭉날쭉한 밝은 금이 가로질러 번짐
         const q = (p - 0.3) / 0.15, n = Math.ceil(MU_TEAR.length * Math.min(1, q * 1.3));
@@ -35249,7 +35259,7 @@
           ctx.moveTo(-9, s * 14); ctx.lineTo(9, s * 14);
           for (let i = MU_TEAR.length - 1; i >= 0; i--) ctx.lineTo(MU_TEAR[i][0], MU_TEAR[i][1]);
           ctx.closePath(); ctx.clip();
-          drawMuCharm(ctx, 0, 0, 1.5, 0, null, 0); // 빛무리는 안 그림 (잘린 조각 모양으로 네모나게 보임)
+          drawMuCharm(ctx, 0, 0, 1.5, 0, null, 0, ef.sr); // 빛무리는 안 그림 (잘린 조각 모양으로 네모나게 보임)
           ctx.restore();
         });
         for (let i = 0; i < 5; i++) { // 보풀: 찢긴 자리에서 천천히 흔들리며 떨어지는 작은 종이 부스러기
@@ -35268,7 +35278,7 @@
       if (ef.type === 'mu_hit') { drawMuHit(ctx, ef, p); return; }
       if (ef.type === 'mu_throw') {
         const e = pfxEaseOutQuart(p), x = ef.sx + (ef.x - ef.sx) * e, y = ef.sy + (ef.y - 46 - ef.sy) * e - Math.sin(e * Math.PI) * 40;
-        drawMuCharm(ctx, x, y, 2, p * 10, ef.k, 0.7);
+        drawMuCharm(ctx, x, y, 2, p * 10, ef.k, 0.7, ef.sr);
         if (p > 0.8) drawPixelBurst(ctx, ef.x, ef.y - 46, 26, (p - 0.8) / 0.2, MU_RAMPS[ef.k] || MU_RAMPS.mu_heal, pfxSeedOf(ef), { sparks: 6, noRing: true });
         return;
       }
@@ -39350,7 +39360,7 @@
       const barW = 36;
       const bx = -barW / 2;
       const qiTop = qiGenkiTop(u); // 기공사 기공옥: 막대 아랫줄이 구체 꼭대기(내려올 땐 떠 있는 머리)보다 위에
-      const by = (qiTop != null ? Math.min(headTopY, qiTop - 2) : headTopY) - 14;
+      const by = (qiTop != null ? Math.min(headTopY, qiTop - 2) : headTopY) - 14 - (u.job === 'shaman' && !u.monsterType ? 10 : 0); // 무녀: 체력바 밑 부적 막대·부적 5칸(22px)이 머리를 가려서 10 더 위로
       // 소환사 정령 · 기계공 포탑·드론·최종병기: 남은 시간 막대 (아래 상태 아이콘 높이에도 씀)
       const spiritLifeMax = (u.spiritElem && SPIRIT_DEFS[u.spiritElem]?.life) || (u.turretKind && ENG_TURRET_DEFS[u.turretKind]?.life);
       const lifeOn = u.spiritElem ? u.spiritOn : (u.turretKind ? u.turretOn : false), lifeNow = u.spiritElem ? u.spiritLife : u.turretLife;
@@ -54114,7 +54124,7 @@
         e: fresh(sim.effects).map(packLiveEffect),
         f: fresh(sim.floatTexts).map(ft => [liveR1(ft.x), liveR1(ft.y), String(ft.text || ''), String(ft.color || ''), liveNum(ft.life)]),
         l: logs.splice(0, 10),
-        zn: shared ? shared.zn : (sim.zones || []).map(z => [liveR1(z.x), liveR1(z.y), z.r, z.life, z.kind])
+        zn: shared ? shared.zn : (sim.zones || []).map(z => [liveR1(z.x), liveR1(z.y), z.r, z.life, z.kind, z.sr ? 1 : 0])
       };
       if (sim.eliteIntro) frame.it = sim.eliteIntro.t;
       if (sim.rush) frame.rs = packRushState();
@@ -54723,7 +54733,7 @@
       const zones = sim.zones || [];
       const znSig = zones.map(z => `${liveR1(z.x)},${liveR1(z.y)},${z.r},${z.kind}`).join('|');
       if (keyframe || znSig !== liveNet.znSig) {
-        const zn = zones.map(z => [liveR1(z.x), liveR1(z.y), z.r, z.life, z.kind]);
+        const zn = zones.map(z => [liveR1(z.x), liveR1(z.y), z.r, z.life, z.kind, z.sr ? 1 : 0]); // 여섯째 = 무녀 시크릿 레어 부적 그림
         frame.zn = zn.length || keyframe ? zn : 0;
       }
       liveNet.znSig = znSig;
@@ -55273,7 +55283,7 @@
         if (val.zn === 0) val.zn = [];
         if (delta && val.zn === undefined && Array.isArray(liveNet.recvZn)) {
           const dt = Math.max(0, liveNet.recvT - liveNet.recvZnT);
-          val.zn = liveNet.recvZn.filter(Array.isArray).map(z => [z[0], z[1], z[2], Math.max(1, liveNum(z[3]) - dt), z[4]]);
+          val.zn = liveNet.recvZn.filter(Array.isArray).map(z => [z[0], z[1], z[2], Math.max(1, liveNum(z[3]) - dt), z[4], z[5]]);
         } else {
           liveNet.recvZn = Array.isArray(val.zn) ? val.zn : [];
           liveNet.recvZnT = liveNet.recvT;
@@ -55755,7 +55765,7 @@
       (Array.isArray(val.l) ? deepCleanStrings(val.l) : []).forEach(t => addBattleLog(String(t)));
       sim.zones = (Array.isArray(val.zn) ? val.zn : []).filter(Array.isArray).map(z => ({
         x: liveNum(z[0]), y: liveNum(z[1]), r: liveNum(z[2]), life: liveNum(z[3]), maxLife: liveNum(z[3]),
-        kind: ZONE_STYLES[z[4]] ? z[4] : 'arrow_rain', team: 'none'
+        kind: ZONE_STYLES[z[4]] ? z[4] : 'arrow_rain', team: 'none', ...(z[5] === 1 ? { sr: 1 } : {})
       }));
     }
 
