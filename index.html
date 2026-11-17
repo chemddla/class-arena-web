@@ -22344,6 +22344,9 @@
         if (reqId === me.id) return 'ℹ️ 내 도움 요청이에요.';
         if (!r || r.rid !== rid) return '⚠️ 이미 끝난 도움 요청이에요.';
         if (r.helper) return '⚠️ 다른 친구가 먼저 용병을 보냈어요.';
+        // 요청한 친구가 이미 도움 없이 출전함 → 보내도 그 전투엔 못 들어감
+        const run = towerLiveCache && towerLiveCache[reqId];
+        if (run && run.name && liveRunKind(run) === 'tower' && liveNum(run.at) > Date.now() - TOWER_LIVE_MAX_AGE_MS) return `⚠️ ${cleanUserText(r.name, 30)} 친구가 벌써 전투를 시작했어요. 전투가 끝나고 다시 요청하면 도와줄 수 있어요.`;
         const busy = this.helpingOf(me.id);
         if (busy) return `⚠️ 지금 ${busy.name} 친구를 돕고 있어요. ${busy.name} 친구 전투가 끝나야 다른 친구를 도울 수 있어요.`;
         if (sim.running && !sim.spectator) return '⚠️ 지금 하고 있는 전투를 먼저 끝내 주세요.';
@@ -22421,8 +22424,11 @@
       // 탑 전투가 끝남 (요청한 친구 기기): 보상 보내고 요청 지움 · 결과 문구를 돌려줌
       finish(stu, meta, blueWon, firstClear, forfeited) {
         const h = meta && meta.towerHelp;
-        if (!h || !stu) return '';
-        this.close(stu.id);
+        if (!stu) return '';
+        // 도움 없이 싸운 판이어도 그 층 요청이거나 이미 용병이 와 있던 요청은 지움 (안 그러면 보낸 친구가 30분 동안 다른 친구를 못 도움)
+        const r = this.requestOf(stu.id), fo = meta && meta.towerFloorObj;
+        if (h || (r && (r.helper || (fo && liveNum(r.floor) === fo.floor && towerDiffOf(r.diff) === (fo.hard ? 'hard' : fo.easy ? 'easy' : 'normal'))))) this.close(stu.id);
+        if (!h) return '';
         if (!blueWon || forfeited) return '';
         if (!firstClear) return ` 🤝 이미 깬 층이라 ${h.helperName} 친구 도움 보상은 없어요.`;
         sendToStudent(h.helperId, { mc: TOWER_HELP_REWARD, kind: 'tower_help', note: `🏰 ${cleanUserText(stu.name, 20)} 친구 모험의 탑 ${meta.towerFloorObj ? meta.towerFloorObj.floor : ''}층 도움 보상` });
