@@ -1106,6 +1106,7 @@
     let best = null, bd = 2.4;
     trees.forEach(t => { const d = Math.hypot(t.x - me.x, t.z - me.z); if (d < bd) { bd = d; best = t; } });
     if (best) return { kind: 'tree', tree: best, label: best.fruits.some(f => f.userData.state === 'on') ? '🍎 열매 따기' : best.kind === 'blossom' ? '🌸 꽃잎 흔들기' : '🌳 나무 흔들기' };
+    if (bag.held === 'net') return { kind: 'swing', label: '🥅 잠자리채 휘두르기' };
     return null;
   }
   function standUp() { if (!me.sit) return; me.x = me.sit.x + me.sit.ox; me.z = me.sit.z + me.sit.oz; me.sit = null; }
@@ -1114,6 +1115,7 @@
     if (c.kind === 'tree') return shake();
     if (c.kind === 'cast') return startFishing(c.sh);
     if (c.kind === 'bug') return swingNet(c.bug);
+    if (c.kind === 'swing') return swingNet(null);
     if (c.kind === 'norod') { say(me, '낚싯대가 있어야 해요. 슈퍼마켓에서 사요!', 2.2); return; }
     if (c.kind === 'rack') { const k = clerks[0]; k.wave = 1.4; say(k, c.label.startsWith('🥅') ? (bag.net ? '잠자리채 잘 쓰고 있죠?' : `잠자리채는 ${TOOLS.net.price}동이에요 🥅`) : bag.rod ? '이미 좋은 낚싯대가 있네요!' : `낚싯대는 ${ROD_PRICE}동이에요 🎣`, 2); openShop(k); return; }
     if (c.kind === 'reel') return reel();
@@ -1315,7 +1317,7 @@
     bugNet.add(cyl(0.02, 0.026, 1.35, '#d9b98a', 0.675)); bugNet.add(cyl(0.032, 0.032, 0.3, '#3f9a5a', 0.3));
     bugNet.add(at(mesh(new THREE.TorusGeometry(0.2, 0.018, 6, 22), '#e8a13a'), 0, 1.55, 0));
     const bagM = noShadow(mesh(new THREE.CylinderGeometry(0.19, 0.03, 0.44, 14, 1, true), flat(0xffffff, { transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false })));
-    bagM.rotation.x = Math.PI / 2; bagM.position.set(0, 1.55, -0.22); bugNet.add(bagM); }
+    bagM.rotation.x = Math.PI / 2; bagM.position.set(0, 1.55, -0.22); bugNet.add(bagM); bugNet.userData.bag = bagM; }
   const netHold = new THREE.Group(); netHold.add(bugNet); bugNet.position.y = -0.3; bugNet.visible = false; dress(bugNet);
   me.onPet = () => { me.pet.hands[1].add(rodHold); me.pet.hands[1].add(netHold); }; me.onPet(); // 펫을 바꾸면 새 손에 다시 쥐여 줌
   const bobber = new THREE.Group(); bobber.add(at(noShadow(mesh(new THREE.SphereGeometry(0.09, 12, 8, 0, 6.29, 0, Math.PI / 2), '#e8483f')), 0, 0, 0)); bobber.add(at(noShadow(mesh(new THREE.SphereGeometry(0.09, 12, 8, 0, 6.29, Math.PI / 2, Math.PI / 2), '#ffffff')), 0, 0, 0));
@@ -1440,20 +1442,36 @@
     let k = Math.random() * sum, B = pool[0]; for (const b of pool) { k -= RAR_W[b.rar]; if (k <= 0) { B = b; break; } }
     for (let i = 0; i < 14; i++) { const a = Math.random() * 6.283, d = 6 + Math.random() * 7, x = me.x + Math.sin(a) * d, z = me.z + Math.cos(a) * d; if (!landOK(x, z)) continue;
       const m = makeBug(B); bugs.push(Object.assign(m, { B, x, z, hx: x, hz: z, tx: x, tz: z, y: B.move === 'fly' ? 0.9 : 0, life: 55, age: 0, ph: Math.random() * 6, state: 'idle', wait: 0, hop: 0, face: 0 })); return; } }
-  function bugNear() { let best = null, bd = 1.9; bugs.forEach(b => { if (b.state === 'flee' || b.age < 0.6) return; const d = Math.hypot(b.x - me.x, b.z - me.z); if (d < bd) { bd = d; best = b; } }); return best; }
-  function swingNet(b) {
+  function bugNear() { let best = null, bd = 1.9; bugs.forEach(b => { if (b.state === 'flee' || b.state === 'caught' || b.age < 0.6) return; const d = Math.hypot(b.x - me.x, b.z - me.z); if (d < bd) { bd = d; best = b; } }); return best; }
+  const SWING = 1.15; // 잠자리채 한 번: 뒤로 들어 올림 → 앞으로 덮침 → 그물을 들어 확인 (초)
+  function swingNet(b) { // b: 노린 벌레 (없으면 그냥 휘두름)
     if (!bag.net) { say(me, '잠자리채가 있어야 잡을 수 있어요. 슈퍼마켓에서 사요!', 2.2); return; }
-    if (bag.held !== 'net') setTool('net');
-    me.face = Math.atan2(b.x - me.x, b.z - me.z); me.swingT = 0.35; sfx.shake();
-    if (Math.random() < [0, 0.92, 0.8, 0.65, 0.5][b.B.rar] * (b.y > 1.3 ? 0.8 : 1)) { // 잡음
-      b.gone = true; const B = b.B, key = 'b' + B.id, isNew = !dex[key]; dex[key] = { n: (dex[key] ? dex[key].n : 0) + 1 };
-      try { localStorage.setItem(DEX_KEY, JSON.stringify(dex)); } catch (e) {}
-      bagAdd('bug', B.id); updDexN(); if (dexEl.style.display !== 'none') renderDex(); showCard(B.icon, B.name, '★'.repeat(B.rar) + ' ' + RAR[B.rar], isNew); popText(B.icon, b.x, 1.2, b.z); sfx.pick(); me.hop = 0.3;
-    } else { b.state = 'flee'; b.life = Math.min(b.life, 1.6); say(me, '앗, 놓쳤어요!', 1.6); } }
+    if (me.swing) return; if (bag.held !== 'net') setTool('net');
+    if (b) me.face = Math.atan2(b.x - me.x, b.z - me.z);
+    me.swing = { t: 0, b, ok: b ? Math.random() < [0, 0.92, 0.8, 0.65, 0.5][b.B.rar] * (b.y > 1.3 ? 0.8 : 1) : false, hit: false }; me.swingT = SWING; }
+  function catchBug(b) { // 그물 속 벌레를 가방에 넣고 기록
+    b.gone = true; const B = b.B, key = 'b' + B.id, isNew = !dex[key]; dex[key] = { n: (dex[key] ? dex[key].n : 0) + 1 };
+    try { localStorage.setItem(DEX_KEY, JSON.stringify(dex)); } catch (e) {}
+    bagAdd('bug', B.id); updDexN(); if (dexEl.style.display !== 'none') renderDex(); showCard(B.icon, B.name, '★'.repeat(B.rar) + ' ' + RAR[B.rar], isNew); popText(B.icon, me.x, 1.6, me.z); sfx.pick(); me.hop = 0.3; }
+  function swingTick(dt) {
+    const sw = me.swing; if (!sw) { netHold.rotation.x = -0.05; me.swingT = 0; return; }
+    sw.t += dt; const u = Math.min(1, sw.t / SWING), ease = k => k * k * (3 - 2 * k); me.swingT = SWING - sw.t;
+    // 팔은 휘두르는 동안 앞으로 들려 있음(-1.5) → 그물 각도 = 팔 + 이 값. 머리 위 살짝 뒤(-0.8) → 앞 바닥(2.0) → 앞에 세워 확인(0.2)
+    netHold.rotation.x = u < 0.3 ? 1.0 - 0.3 * ease(u / 0.3) // 머리 위로 살짝 뒤로 젖혀 듦
+      : u < 0.48 ? 0.7 + 2.78 * ease((u - 0.3) / 0.18) // 앞으로 휙 덮침
+      : u < 0.62 ? 3.48 // 바닥을 덮고 잠깐 멈춤
+      : 3.48 - 1.78 * ease((u - 0.62) / 0.38); // 그물을 세워 들어 올려 확인
+    if (!sw.hit && u >= 0.46) { sw.hit = true; tone(300, 0.12, 'triangle', 0, 0.07, 160);
+      const b = sw.b;
+      if (b && sw.ok && !b.gone && Math.hypot(b.x - me.x, b.z - me.z) < 2.4) b.state = 'caught'; // 그물 속으로
+      else if (b && !b.gone) { b.state = 'flee'; b.life = Math.min(b.life, 1.6); say(me, '앗, 놓쳤어요!', 1.6); sw.b = null; } }
+    if (u >= 1) { if (sw.b && sw.b.state === 'caught') catchBug(sw.b); me.swing = null; me.swingT = 0; } }
   function bugTick(t, dt) {
     if (me.z < SHOP.far) { bugTimer -= dt; if (bugTimer <= 0) { bugTimer = 12 + Math.random() * 14; if (bugs.length < 3) spawnBug(); } }
     for (let i = bugs.length - 1; i >= 0; i--) { const b = bugs[i], B = b.B; b.life -= dt; b.age += dt;
       if (b.gone || b.life <= 0 || Math.hypot(b.x - me.x, b.z - me.z) > 32) { scene.remove(b.g); bugs.splice(i, 1); continue; }
+      if (b.state === 'caught') { const pw = bugNet.userData.bag.getWorldPosition(tip.clone()); b.life = 99; b.x = pw.x; b.z = pw.z; b.y = pw.y; b.g.position.copy(pw); b.g.scale.setScalar(1.7 * 0.6); // 그물 주머니 속에서 파닥
+        b.wings.forEach(([w, s]) => { w.rotation.z = s * Math.sin(t * 40 + b.ph) * 0.8; }); continue; }
       const scared = b.state !== 'flee' && B.move !== 'crawl' && me.moving && me.run > 1 && Math.hypot(b.x - me.x, b.z - me.z) < 2.4; // 뛰어오면 놀라 달아남
       if (scared) { b.state = 'flee'; b.life = Math.min(b.life, 1.6); }
       if (b.state === 'flee') { const a = Math.atan2(b.x - me.x, b.z - me.z); b.x += Math.sin(a) * 4 * dt; b.z += Math.cos(a) * 4 * dt; b.y += (B.move === 'crawl' ? 0 : 1.6) * dt; b.face = a; }
@@ -1511,7 +1529,7 @@
       sh.g.position.set(sh.x, 0.062, sh.z); sh.tail.rotation.z = Math.PI + Math.sin(t * (sh.state === 'flee' ? 24 : 9) + sh.ph) * 0.5;
     });
     rodHold.rotation.x = fishing.st ? 1.75 : -0.05; // 낚시 중엔 앞으로 내밀고, 아니면 세워 들고 다님 (팔 각도와 합쳐짐)
-    if (me.swingT > 0) me.swingT -= dt; netHold.rotation.x = me.swingT > 0 ? -0.6 + (1 - me.swingT / 0.35) * 2.6 : -0.05; // 잠자리채 휘두르기
+    swingTick(dt); // 잠자리채 휘두르기
     if (!fishing.st) return;
     const sh = fishing.sh; fishing.t += dt; let by = 0.075;
     if (fishing.st === 'cast') { const k = Math.min(1, fishing.t / 0.55); bobber.visible = line.visible = true; // 포물선으로 날아감
