@@ -547,8 +547,23 @@
         n1.rotation.set(-0.12, a * 2.2, a); nk.add(at(n1, Math.sin(a) * 0.12, 0.1, Math.cos(a) * 0.05)); });
       nk.add(at(noShadow(mesh(new THREE.PlaneGeometry(0.9, 0.26), flat(0xffffff, { map: signTex(256, 72, '#fff8d8', '#5a3520', `🥅 잠자리채 ${TOOLS_PRICE.net}동`, 30, (g2, w, h) => { g2.strokeStyle = '#4fae6a'; g2.lineWidth = 6; g2.strokeRect(3, 3, w - 6, h - 6); }) }))), 0, 0.42, 0.33));
       g.add(at(nk, 5.0, 0, 2.6)); }
+    { const st = new THREE.Group(), sb = (w, h, d, c, x, y, z) => { const m = at(mesh(new THREE.BoxGeometry(w, h, d), c), x, y, z); st.add(m); return m; }; // 꽃씨 진열대: 계단식 나무 단에 씨앗 봉지 아홉
+      sb(1.3, 0.1, 0.62, '#6b4428', 0, 0.05, 0); [[0.32, 0.2], [0.58, 0], [0.84, -0.2]].forEach(([y, z]) => sb(1.3, 0.06, 0.22, '#8a5a34', 0, y, z)); [-0.62, 0.62].forEach(x => sb(0.06, 0.95, 0.62, '#6b4428', x, 0.48, 0));
+      [['🌷', '#ffd6d6'], ['🌼', '#fff6c9'], ['🌸', '#ffe0ec'], ['🔔', '#f2f2f2'], ['🪻', '#e6dcff'], ['🌻', '#fff0b3'], ['🌹', '#ffd0d8'], ['💠', '#dce8ff'], ['🌺', '#ffe0ee']].forEach(([ic, bg], i) => {
+        const row = Math.floor(i / 3), x = -0.38 + (i % 3) * 0.38, y = [0.32, 0.58, 0.84][row] + 0.16, z = [0.2, 0, -0.2][row];
+        const pk = at(noShadow(mesh(new THREE.PlaneGeometry(0.26, 0.3), flat(0xffffff, { map: signTex(52, 60, bg, '#5a3520', ic, 30, (g2, w, h) => { g2.fillStyle = '#4fae4a'; g2.fillRect(0, h - 12, w, 12); }) }))), x, y, z + 0.08); pk.rotation.x = -0.12; st.add(pk); });
+      st.add(at(noShadow(mesh(new THREE.PlaneGeometry(1.0, 0.26), flat(0xffffff, { map: signTex(256, 66, '#fff8d8', '#5a3520', '🌱 꽃씨 5~20동', 30, (g2, w, h) => { g2.strokeStyle = '#4fae4a'; g2.lineWidth = 6; g2.strokeRect(3, 3, w - 6, h - 6); }) }))), 0, 1.2, -0.2));
+      sb(0.04, 0.3, 0.04, '#6b4428', -0.4, 1.06, -0.22); sb(0.04, 0.3, 0.04, '#6b4428', 0.4, 1.06, -0.22);
+      g.add(at(st, 2.3, 0, 2.7)); }
+    { const cr = new THREE.Group(); cr.add(at(mesh(new THREE.BoxGeometry(0.75, 0.42, 0.6), '#9a6a3c'), 0, 0.21, 0)); cr.add(at(mesh(new THREE.BoxGeometry(0.77, 0.05, 0.05), '#6b4428'), 0, 0.3, 0.3)); // 물뿌리개 상자: 색이 다른 물뿌리개 둘
+      [['#3fb0a8', -0.17], ['#e8a13a', 0.17]].forEach(([c, x]) => { const w = new THREE.Group();
+        w.add(at(mesh(new THREE.CylinderGeometry(0.12, 0.135, 0.24, 14), c), 0, 0.12, 0)); const hd = at(mesh(new THREE.TorusGeometry(0.09, 0.018, 6, 14, Math.PI), c), 0, 0.24, 0); hd.rotation.y = Math.PI / 2; w.add(hd);
+        const sp = at(mesh(new THREE.CylinderGeometry(0.018, 0.028, 0.3, 8), c), 0, 0.16, 0.2); sp.rotation.x = 1.0; w.add(sp); const ro = at(mesh(new THREE.CylinderGeometry(0.045, 0.02, 0.05, 10), '#d9a441'), 0, 0.24, 0.32); ro.rotation.x = 1.0; w.add(ro);
+        w.rotation.y = x < 0 ? 0.5 : -0.4; cr.add(at(w, x, 0.42, -0.05)); });
+      cr.add(at(noShadow(mesh(new THREE.PlaneGeometry(0.72, 0.2), flat(0xffffff, { map: signTex(256, 70, '#fff8d8', '#5a3520', `💧 물뿌리개 ${TOOLS_PRICE.can}동`, 30, (g2, w, h) => { g2.strokeStyle = '#3fb0a8'; g2.lineWidth = 6; g2.strokeRect(3, 3, w - 6, h - 6); }) }))), 0, 0.22, 0.31));
+      g.add(at(cr, 3.7, 0, 2.85)); }
     scene.add(at(g, SHOP.ix, 0, SHOP.iz));
-    [[-2.6, -1.2, 0.75], [-3.8, -1.2, 0.75], [-1.4, -1.2, 0.75], [2.8, 0.3, 0.6], [4.4, 0.3, 0.6], [-3.85, 1.4, 0.75], [5.6, -1.7, 0.55], [-5.5, -0.9, 0.75], [5.0, 2.6, 0.4]].forEach(([x, z, r]) => solid(SHOP.ix + x, SHOP.iz + z, r));
+    [[-2.6, -1.2, 0.75], [-3.8, -1.2, 0.75], [-1.4, -1.2, 0.75], [2.8, 0.3, 0.6], [4.4, 0.3, 0.6], [-3.85, 1.4, 0.75], [5.6, -1.7, 0.55], [-5.5, -0.9, 0.75], [5.0, 2.6, 0.4], [2.3, 2.7, 0.6], [3.7, 2.85, 0.42]].forEach(([x, z, r]) => solid(SHOP.ix + x, SHOP.iz + z, r));
   }
 
   // ── 놀이터: 강 아래 집들 맨 왼쪽 바깥. 그네 두 자리·미끄럼틀·시소·뺑뺑이·트램펄린, E로 탐 (탈 자리는 아래 seats 끝에 붙음)
@@ -1104,6 +1119,8 @@
     const bug = bugNear(); if (bug) return { kind: 'bug', bug, label: bag.net ? `🥅 ${bug.B.name} 잡기` : `${bug.B.icon} ${bug.B.name} (잠자리채가 필요해요)` };
     if (Math.hypot(me.x - (SHOP.ix + 4.7), me.z - (SHOP.iz - 1.7)) < 1.3) return { kind: 'rack', label: bag.rod ? '🎣 낚싯대 진열대' : `🎣 낚싯대 사기 (${ROD_PRICE}동)` };
     if (Math.hypot(me.x - (SHOP.ix + 5.0), me.z - (SHOP.iz + 2.6)) < 1.3) return { kind: 'rack', label: bag.net ? '🥅 잠자리채 진열' : `🥅 잠자리채 사기 (${TOOLS.net.price}동)` };
+    if (Math.hypot(me.x - (SHOP.ix + 3.7), me.z - (SHOP.iz + 2.85)) < 1.1) return { kind: 'rack', label: bag.can ? '💧 물뿌리개 진열' : `💧 물뿌리개 사기 (${TOOLS.can.price}동)` };
+    if (Math.hypot(me.x - (SHOP.ix + 2.3), me.z - (SHOP.iz + 2.7)) < 1.3) return { kind: 'rack', label: '🌱 꽃씨 사기' };
     const sh = castTarget(); if (sh) return bag.rod ? { kind: 'cast', sh, label: bag.held === 'rod' ? '🎣 낚시하기' : '🎣 낚싯대 꺼내서 낚시하기' } : { kind: 'norod', label: '🎣 낚싯대가 없어요 (슈퍼마켓)' };
     const palm = palms.find(q => Math.hypot(q.x - me.x, q.z - me.z) < 2.2);
     if (palm) return { kind: 'palm', palm, label: palm.nutG.children.some(n => n.userData.state === 'on') ? '🥥 코코넛 따기' : '🌴 야자나무 흔들기' };
@@ -1126,7 +1143,7 @@
     if (c.kind === 'pick') return pickFlower(c.plant);
     if (c.kind === 'plantInfo') { const F = FLOWERS[c.plant.f], left = Math.max(1, Math.ceil((F.grow * 1000 - (Date.now() - c.plant.wet)) / 1000)); say(me, `${left}초 뒤면 더 자라요 🌱`, 1.8); return; }
     if (c.kind === 'norod') { say(me, '낚싯대가 있어야 해요. 슈퍼마켓에서 사요!', 2.2); return; }
-    if (c.kind === 'rack') { const k = clerks[0]; k.wave = 1.4; say(k, c.label.startsWith('🥅') ? (bag.net ? '잠자리채 잘 쓰고 있죠?' : `잠자리채는 ${TOOLS.net.price}동이에요 🥅`) : bag.rod ? '이미 좋은 낚싯대가 있네요!' : `낚싯대는 ${ROD_PRICE}동이에요 🎣`, 2); openShop(k); return; }
+    if (c.kind === 'rack') { const k = clerks[0]; k.wave = 1.4; say(k, c.label.startsWith('🌱') ? pick(['꽃씨는 5동부터 있어요 🌱', '무궁화 씨앗은 귀해요! 🌺', '물 꼭 주세요 💧']) : c.label.startsWith('💧') ? (bag.can ? '물뿌리개 잘 쓰고 있죠?' : `물뿌리개는 ${TOOLS.can.price}동이에요 💧`) : c.label.startsWith('🥅') ? (bag.net ? '잠자리채 잘 쓰고 있죠?' : `잠자리채는 ${TOOLS.net.price}동이에요 🥅`) : bag.rod ? '이미 좋은 낚싯대가 있네요!' : `낚싯대는 ${ROD_PRICE}동이에요 🎣`, 2); openShop(k); return; }
     if (c.kind === 'reel') return reel();
     if (c.kind === 'palm') { const q = c.palm; q.shake = 0.7; me.face = Math.atan2(q.x - me.x, q.z - me.z); sfx.shake();
       if (q.nutG.children.some(n => n.userData.state === 'on')) { q.nutG.children.forEach(n => { if (n.userData.state === 'on') { n.userData.state = 'fall'; n.userData.vy = 0; } }); q.regrow = 20; }
