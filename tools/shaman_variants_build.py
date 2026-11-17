@@ -145,17 +145,23 @@ def masks(rgba):
     lash = ndi.binary_dilation(eyebox, structure=np.array([[0, 1, 0], [1, 1, 1], [0, 0, 0]], bool), iterations=2) & (v < 0.12)
     facebox = ndi.binary_dilation(face, iterations=1)
     warm = ((h < 30) | (h > 330)) & (s > 0.25) & (v < 0.6)
-    fl = facebox & al & ~skin & ~whites & ~eye & ~eyebox & ~keep & ~lash & (v < 0.6) & ndi.binary_dilation(skin, structure=np.ones((3, 3)))
+    #   굵기 (사용자: "더 얇게"): 피부에 상하좌우로 바로 닿은 한 줄만 윤곽선, 그 뒤 적갈색 두 번째 줄은 머리결(머리색)로
+    fl = facebox & al & ~skin & ~whites & ~eye & ~eyebox & ~keep & ~lash & (v < 0.6) & ndi.binary_dilation(skin)
+    fl2 = fl.copy()
     for _ in range(2):   # 선에 붙은 적갈색 (두 줄 굵기 눈썹·가르마)
-        fl |= facebox & al & ~skin & ~whites & ~eye & ~eyebox & ~keep & ~lash & warm & ndi.binary_dilation(fl, structure=np.ones((3, 3)))
+        fl2 |= facebox & al & ~skin & ~whites & ~eye & ~eyebox & ~keep & ~lash & warm & ndi.binary_dilation(fl2, structure=np.ones((3, 3)))
     #   입·코·감은 눈 선처럼 얼굴 안에 따로 떨어진 선은 빼기: 머리나 몸 바깥에 이어진 덩어리만
-    lb, n = ndi.label(fl, structure=np.ones((3, 3)))
+    lb, n = ndi.label(fl2, structure=np.ones((3, 3)))
     if n:
         link = ndi.binary_dilation(hair | out_edge, structure=np.ones((3, 3)))
-        fl &= ndi.maximum(link, lb, np.arange(n + 1)).astype(bool)[lb]
-    hair |= hair_edge | fl
-    red &= ~fl
-    rim = (hair & out_edge) | hair_ln | hair_edge | fl
+        fl2 &= ndi.maximum(link, lb, np.arange(n + 1)).astype(bool)[lb]
+    fl &= fl2
+    hair |= hair_edge | fl2
+    red &= ~fl2
+    # 머리와 옷(흰 저고리·하카마·옷 윤곽)이 맞닿는 검은 경계선: 머리 속으로 치면 밝은 머리색(백발)이 돼 옷 윤곽이 하얗게 사라짐 → 짙은 윤곽
+    cloth_near = ndi.binary_dilation(((s < 0.25) & (v > 0.55) & ~face) | red | cloth_ln, structure=np.ones((3, 3)))
+    hair_cloth = hair & cloth_near & (v < 0.2)
+    rim = (hair & out_edge) | hair_ln | hair_edge | fl | hair_cloth
     return red, eye, hair, rim, hsv, cloth_ln
 
 
