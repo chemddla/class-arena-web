@@ -170,6 +170,8 @@ def masks(rgba):
     # 머리와 옷(흰 저고리·하카마·옷 윤곽)이 맞닿는 검은 경계선: 머리 속으로 치면 밝은 머리색(백발)이 돼 옷 윤곽이 하얗게 사라짐 → 짙은 윤곽
     cloth_near = ndi.binary_dilation(((s < 0.25) & (v > 0.55) & ~face) | red | cloth_ln, structure=np.ones((3, 3)))
     hair_cloth = hair & cloth_near & (v < 0.2)
+    #   (사용자: "백발 샘플은 아직도 흰색 얼룩이 윤곽선에") 저고리·피부·귀·리본 등 머리가 아닌 것에 8방향으로 닿은 짙은 머리 픽셀(명도 0.3↓)은 모두 경계 윤곽
+    hair_cloth |= hair & (v < 0.3) & ndi.binary_dilation(al & ~hair, structure=np.ones((3, 3)))
     rim = (hair & out_edge) | hair_ln | hair_edge | fl | hair_cloth
     brow = np.zeros_like(al)   # (예전 눈썹 둘째 줄 처리: 피부 그늘이라 이제 원본 그대로)
     return red, eye, hair, rim, hsv, cloth_ln, brow
