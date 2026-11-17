@@ -6264,8 +6264,8 @@
       shaman: {
         mu_naerim: {
           id: 'mu_naerim', name: '내림굿', icon: '🔔', ccTag: '✨히든 · 부적 가득·장판 2배', hidden: true,
-          manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 1,
-          desc: '1초간 굿을 올려 신을 받습니다. 부적을 5장까지 모두 채우고, 6초 동안 장판 스킬을 써도 부적이 줄지 않으며 그동안 까는 장판은 효과가 2배예요 (회복·보호막·피해·속도 수치 모두 2배, 장판이 사라질 때까지).'
+          manaCost: 30, cooldownTicks: 3600, cooldownSec: 60.0, castSec: 2,
+          desc: '2초간 굿을 올려 신을 받습니다. 부적을 5장까지 모두 채우고, 12초 동안 장판 스킬을 써도 부적이 줄지 않으며 그동안 까는 장판은 효과가 2배예요 (회복·보호막·피해·속도 수치 모두 2배, 장판이 사라질 때까지).'
         }
       },
       qigong: {
@@ -8414,7 +8414,7 @@
       //   일반 공격 부적은 샘플의 날아가는 부적 그림 (MU_SR_CHARM, 투사체 spr 'mu_sr')
       shaman_sr1: { cellW: 120, cellH: 132, anchorX: 67, anchorY: 130, standH: 96, topH: 96, portraitCX: 71, muzzle: [34, 52], count: 17,
         anims: { idle: [0], walk: [1, 2, 3, 4], attack: [5, 5, 6], skill: [11], hurt: [7], death: [8, 9], ritual: [16, 16] },
-        castFrames: { mu_heal: 10, mu_power: 10, mu_weak: 10, mu_speed: 10, mu_guard: 10, mu_naerim: [12, 13, 14, 15] } }, // 내림굿 시전 막대(1초) = 준비 → 굿 동작 3칸을 4등분
+        castFrames: { mu_heal: 10, mu_power: 10, mu_weak: 10, mu_speed: 10, mu_guard: 10, mu_naerim: [12, 13, 14, 15] } }, // 내림굿 시전 막대(2초) = 준비 → 굿 동작 3칸을 4등분
       volt_sr1: VOLT_SR1_SHEET, // 2026-11-10까지 기본 외형이던 그림 (칸 구성이 새 0번과 다름)
       knight_sr1: { cellH: 114, anchorY: 111, topH: 101 }, lancer_sr1: { ...LANCER_OLD_SHEET, topH: 88 },
       // 성녀 SR 1 (2026-11-09 교체: 분홍 단발 천사 — 후광·분홍빛 날개·연두 금빛 로브·날개 달린 하프 지팡이, tools/healer_sr1_build.py): 20칸 = 0 대기 · 1~4 비행
@@ -34837,7 +34837,7 @@
     // 장판은 sim.zones (kind 'mu_heal' 등, 내림굿 중에 깐 것은 'mu_heal2'처럼 끝에 2) → 실시간 화면에도 그대로 감
     //   같은 종류 장판은 무녀 한 명당 하나만 (다시 쓰면 앞 장판은 사라지고 새 자리에 깔림)
     //   장판 위 효과는 매 틱 stepShaman이 정함: u.muPw(강화)·u.muWk(약화)·u.muSp(속도) = 그 칸에 깔린 장판의 세기 (0·1·2)
-    // 히든 내림굿: 부적을 5장까지 채우고 6초 동안 부적을 쓰지 않으며, 그동안 까는 장판은 효과 2배
+    // 히든 내림굿: 부적을 5장까지 채우고 12초 동안 부적을 쓰지 않으며, 그동안 까는 장판은 효과 2배
     // 그림은 사용자 샘플 (tools/shaman_build.py · 다듬기 tools/miko_sample_build.py) · 이펙트는 캔버스 도트 (pixelfx 램프·터짐 drawPixelBurst)
     const MU_MAX = 5;                      // 부적 최대
     const MU_START = 2;                    // 전투 시작 때 부적
@@ -34850,7 +34850,7 @@
     const MU_WEAK_DMG = 0.15, MU_WEAK_TAKEN = 0.15, MU_WEAK_SPD = 0.15; // 약화: 주는 피해 -15% · 받는 피해 +15% · 이동·공격 속도 -15%
     const MU_SPEED_SPD = 0.2, MU_SPEED_CD = 0.4;                // 속도: 이동·공격 속도 +20% · 쿨타임 40% 빨리 돎
     const MU_GUARD_EVERY = 120, MU_GUARD_K = 1.0;               // 보호: 2초마다 공격력 100% 보호막(겹치지 않고 그만큼까지 채움) + 나쁜 상태이상 정화
-    const MU_NAERIM_TICKS = 360;                                // 내림굿: 6초
+    const MU_NAERIM_TICKS = 720;                                // 내림굿: 12초 (처음 6초 → 2026-11-17 사용자 요청 2배, 시전도 1초 → 2초)
     const MU_COLOR = '#dc2626';
     const MU_FIELD_KEYS = ['mu_heal', 'mu_power', 'mu_weak', 'mu_speed', 'mu_guard'];
     const MU_SKILL_KEYS = new Set([...MU_FIELD_KEYS, 'mu_naerim']);
@@ -34970,7 +34970,7 @@
         sim.effects.push({ type: 'mu_naerim', uid: unit.id, x: Math.round(unit.x), y: Math.round(unit.y), life: MU_NAERIM_FX_TICKS, maxLife: MU_NAERIM_FX_TICKS });
         if (!sim.shake || sim.shake.power < 3) sim.shake = { power: 3, life: 12, maxLife: 12 };
         playCombatSfx('heal');
-        addBattleLog(`[무녀] ${unit.name}의 내림굿! 6초 동안 부적이 줄지 않고 장판 효과 2배`);
+        addBattleLog(`[무녀] ${unit.name}의 내림굿! 12초 동안 부적이 줄지 않고 장판 효과 2배`);
         return true;
       }
       const R = muArea(unit) * MU_FIELD_CELLS, reach = muArea(unit) * MU_REACH_CELLS;
