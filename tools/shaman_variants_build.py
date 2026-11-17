@@ -139,8 +139,23 @@ def masks(rgba):
     #   → 피부에 상하좌우로 닿고 머리에 닿은 어두운 픽셀(명도 0.45↓)을 모두 같은 머리색 윤곽(몸 바깥 윤곽과 같은 색)으로
     skin_edge = al & ~skin & ~eyebox & ~keep & (v < 0.45) & ndi.binary_dilation(skin) & ~whites
     hair_edge = skin_edge & (hair | ndi.binary_dilation(hair, structure=np.ones((3, 3))))
-    hair |= hair_edge
-    rim = (hair & out_edge) | hair_ln | hair_edge
+    # 얼굴 윤곽선·눈썹 (2026-11-17 사용자: "얼굴 윤곽선과 눈썹 부분도 얼룩 제거"): 원본은 검정·적갈색이 섞인 선이라
+    #   일부는 머리색·일부는 적갈색으로 남으면 얼룩 → 얼굴 상자 안에서 피부에 닿은(8방향) 선, 그리고 거기 붙은 적갈색 눈썹·가르마 픽셀을
+    #   모두 머리 윤곽 색 하나로. 눈 바로 위 검은 속눈썹(명도 0.12↓)만 원본 검정 그대로 (눈매가 흐려지지 않게)
+    lash = ndi.binary_dilation(eyebox, structure=np.array([[0, 1, 0], [1, 1, 1], [0, 0, 0]], bool), iterations=2) & (v < 0.12)
+    facebox = ndi.binary_dilation(face, iterations=1)
+    warm = ((h < 30) | (h > 330)) & (s > 0.25) & (v < 0.6)
+    fl = facebox & al & ~skin & ~whites & ~eye & ~eyebox & ~keep & ~lash & (v < 0.6) & ndi.binary_dilation(skin, structure=np.ones((3, 3)))
+    for _ in range(2):   # 선에 붙은 적갈색 (두 줄 굵기 눈썹·가르마)
+        fl |= facebox & al & ~skin & ~whites & ~eye & ~eyebox & ~keep & ~lash & warm & ndi.binary_dilation(fl, structure=np.ones((3, 3)))
+    #   입·코·감은 눈 선처럼 얼굴 안에 따로 떨어진 선은 빼기: 머리나 몸 바깥에 이어진 덩어리만
+    lb, n = ndi.label(fl, structure=np.ones((3, 3)))
+    if n:
+        link = ndi.binary_dilation(hair | out_edge, structure=np.ones((3, 3)))
+        fl &= ndi.maximum(link, lb, np.arange(n + 1)).astype(bool)[lb]
+    hair |= hair_edge | fl
+    red &= ~fl
+    rim = (hair & out_edge) | hair_ln | hair_edge | fl
     return red, eye, hair, rim, hsv, cloth_ln
 
 
