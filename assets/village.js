@@ -466,7 +466,7 @@
   const SHOP = { x: 13, z: -23, ix: 0, iz: 160, x0: -5.6, x1: 5.6, z0: 156.9, z1: 162.8, far: 100 }; // x0~z1: 안에서 걸을 수 있는 범위, far: z가 이보다 크면 가게 안
   const TOOLS_PRICE = { rod: 30, net: 40, can: 25 }; // 가게 가격표와 가방 도구 값이 같도록 한곳에서
   const signTex = (w, h, bg, fg, text, size, extra) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g2 = c.getContext('2d'); // 손글씨 간판·가격표
-    g2.fillStyle = bg; g2.fillRect(0, 0, w, h); if (extra) extra(g2, w, h); g2.fillStyle = fg; g2.font = `800 ${size}px 'Malgun Gothic', sans-serif`; g2.textAlign = 'center'; g2.textBaseline = 'middle'; g2.fillText(text, w / 2, h / 2 + 2); return new THREE.CanvasTexture(c); };
+    g2.fillStyle = bg; g2.fillRect(0, 0, w, h); if (extra) extra(g2, w, h); g2.fillStyle = fg; g2.font = `800 ${size}px 'Malgun Gothic', sans-serif`; g2.textAlign = 'center'; g2.textBaseline = 'middle'; g2.fillText(text, w / 2, h / 2 + 2); const tx = new THREE.CanvasTexture(c); tx.anisotropy = 8; return tx; }; // 비스듬히 봐도 글씨가 지글거리지 않게
   const grime = (g2, w, h) => { for (let i = 0; i < 40; i++) { g2.fillStyle = `rgba(90,60,30,${0.05 + Math.random() * 0.12})`; g2.fillRect(Math.random() * w, Math.random() * h, 4 + Math.random() * 30, 2 + Math.random() * 8); } // 녹·때
     g2.strokeStyle = 'rgba(255,255,255,.55)'; g2.lineWidth = 5; g2.strokeRect(6, 6, w - 12, h - 12); };
   { // ── 슈퍼마켓 바깥: 오래된 동네 구멍가게. 바랜 회벽에 벗겨진 벽돌, 녹슨 함석 차양, 손으로 칠한 간판, 평상, 옥상 물탱크 (평지붕이라 나중에 층을 올릴 수 있음)
@@ -503,10 +503,10 @@
     const plane = (w, h, tex, x, y, z, ry) => { const m = at(noShadow(mesh(new THREE.PlaneGeometry(w, h), flat(0xffffff, { map: tex }))), x, y, z); m.rotation.y = ry || 0; g.add(m); return m; };
     const fl = paint(128, (c, s) => { ['#a87b4e', '#b98a5a', '#9c7046', '#b07f50'].forEach((col, i) => { c.fillStyle = col; c.fillRect(0, i * s / 4, s, s / 4 - 2); c.fillStyle = 'rgba(60,35,15,.5)'; c.fillRect(0, i * s / 4 + s / 4 - 2, s, 2); c.fillRect(((i * 37) % s), i * s / 4, 2, s / 4); });
       for (let i = 0; i < 30; i++) { c.fillStyle = `rgba(40,25,10,${Math.random() * 0.15})`; c.fillRect(Math.random() * s, Math.random() * s, 6 + Math.random() * 20, 2); } }, 5); // 닳은 나무 마루
-    const dark = floor(mesh(new THREE.PlaneGeometry(70, 40, 70, 40), flat(0x3a2a20))); dark.rotation.x = -Math.PI / 2; scene.add(at(dark, SHOP.ix, 0.02, SHOP.iz)); // 방 바깥은 어둡게
+    const dark = floor(mesh(new THREE.PlaneGeometry(70, 40, 70, 40), flat(0x3a2a20))); dark.rotation.x = -Math.PI / 2; scene.add(at(dark, SHOP.ix, -0.04, SHOP.iz)); // 방 바깥은 어둡게 (마루와 너무 붙으면 깜빡여서 아래로)
     const fm = floor(mesh(new THREE.PlaneGeometry(12, 8.4, 12, 9), toonMat({ map: fl }))); fm.rotation.x = -Math.PI / 2; g.add(at(fm, 0, 0.04, 0.05));
     noShadow(box(12.4, 5.5, 0.3, texMat(wallTex, '#d3e2cf'), 0, 2.75, -4.3)); [-1, 1].forEach(s => noShadow(box(0.3, 3.2, 8.6, texMat(wallTex, '#d3e2cf'), s * 6.2, 1.6, 0)));
-    box(12.4, 1.0, 0.33, '#7a4f2c', 0, 0.5, -4.12); [-1, 1].forEach(s => box(0.33, 1.0, 8.6, '#7a4f2c', s * 6.05, 0.5, 0)); // 나무 징두리
+    box(12.4, 1.0, 0.33, '#7a4f2c', 0, 0.5, -4.12); [-1, 1].forEach(s => box(0.33, 1.0, 8.5, '#7a4f2c', s * 6.05, 0.5, -0.05)); // 나무 징두리 (옆벽 앞면과 같은 면에 닿으면 깜빡여서 살짝 안쪽까지만)
     box(12.4, 0.08, 0.36, '#5a3a20', 0, 1.02, -4.1);
     [-1, 1].forEach(s => box(4.6, 0.5, 0.25, '#7a4f2c', s * 3.85, 0.25, 4.2)); // 앞쪽 낮은 담 (가운데가 문)
     plane(3.6, 1.0, signTex(360, 100, '#3a2a1a', '#f6e7c8', '과자 · 라면 · 음료 · 아이스크림', 30, (g2, w, h) => { g2.strokeStyle = '#d9a441'; g2.lineWidth = 6; g2.strokeRect(5, 5, w - 10, h - 10); }), -2.6, 3.3, -4.09); // 손글씨 품목판
@@ -552,8 +552,8 @@
       [['🌷', '#ffd6d6'], ['🌼', '#fff6c9'], ['🌸', '#ffe0ec'], ['🔔', '#f2f2f2'], ['🪻', '#e6dcff'], ['🌻', '#fff0b3'], ['🌹', '#ffd0d8'], ['💠', '#dce8ff'], ['🌺', '#ffe0ee']].forEach(([ic, bg], i) => {
         const row = Math.floor(i / 3), x = -0.38 + (i % 3) * 0.38, y = [0.32, 0.58, 0.84][row] + 0.19, z = [0.2, 0, -0.2][row];
         const pk = at(noShadow(mesh(new THREE.PlaneGeometry(0.26, 0.3), flat(0xffffff, { map: signTex(52, 60, bg, '#5a3520', ic, 30, (g2, w, h) => { g2.fillStyle = '#4fae4a'; g2.fillRect(0, h - 12, w, 12); }) }))), x, y, z + 0.15); pk.rotation.x = -0.12; st.add(pk); });
-      st.add(at(noShadow(mesh(new THREE.PlaneGeometry(1.0, 0.26), flat(0xffffff, { map: signTex(256, 66, '#fff8d8', '#5a3520', '🌱 꽃씨 5~20동', 30, (g2, w, h) => { g2.strokeStyle = '#4fae4a'; g2.lineWidth = 6; g2.strokeRect(3, 3, w - 6, h - 6); }) }))), 0, 1.2, -0.14));
-      sb(0.04, 0.3, 0.04, '#6b4428', -0.4, 1.06, -0.22); sb(0.04, 0.3, 0.04, '#6b4428', 0.4, 1.06, -0.22);
+      st.add(at(noShadow(mesh(new THREE.PlaneGeometry(1.0, 0.26), flat(0xffffff, { map: signTex(256, 66, '#fff8d8', '#5a3520', '🌱 꽃씨 5~20동', 30, (g2, w, h) => { g2.strokeStyle = '#4fae4a'; g2.lineWidth = 6; g2.strokeRect(3, 3, w - 6, h - 6); }) }))), 0, 1.45, -0.14)); // 맨 윗줄 봉지보다 높이 올려 겹치지 않게
+      sb(0.04, 0.5, 0.04, '#6b4428', -0.4, 1.12, -0.22); sb(0.04, 0.5, 0.04, '#6b4428', 0.4, 1.12, -0.22);
       g.add(at(st, 2.3, 0, 2.7)); }
     { const cr = new THREE.Group(); cr.add(at(mesh(new THREE.BoxGeometry(0.75, 0.42, 0.6), '#9a6a3c'), 0, 0.21, 0)); cr.add(at(mesh(new THREE.BoxGeometry(0.77, 0.05, 0.05), '#6b4428'), 0, 0.3, 0.3)); // 물뿌리개 상자: 색이 다른 물뿌리개 둘
       [['#3fb0a8', -0.17], ['#e8a13a', 0.17]].forEach(([c, x]) => { const w = new THREE.Group();
