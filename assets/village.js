@@ -1212,42 +1212,63 @@
   }
 
 
-  // ── 친구 위치 주고받기: village/{학급}/{학생} = "x,z,목표x,목표z,앉은자리,감정,감정번호,펫"
-  // 좌표를 계속 보내지 않고 "어디서 어디로 간다"만 방향이 바뀔 때 보냄 (키보드로 걸을 땐 0.8초마다 앞을 내다본 목적지를 갱신)
-  // 아끼기: 방향을 바꿔도 0.4초에 한 번까지만, 키보드로 걸을 땐 1초마다 1.3초 앞 목적지를 보냄
-  const net = { ref: null, list: null, conn: null, key: '', lastAt: 0, want: false, n: 0, emo: '', remotes: {}, idle: false };
+  // ── 친구 위치 주고받기: village/{학급}/{학생} = "x,z,속도x,속도z,앉은자리,감정,감정번호,펫,멈출x,멈출z"
+  // 아끼기(추측 항법): 좌표를 계속 보내지 않고 "여기서 이 속도로 간다"만 보냄. 받는 쪽은 그 속도로 계속 움직여 보여 줌.
+  // 보내는 쪽도 받는 쪽과 똑같이 계산해 두고, 실제 내 위치가 그 예측에서 0.45칸 넘게 벗어날 때(방향을 틀거나 벽에 막힘)만 다시 보냄.
+  // 곧게 걷거나 뛰는 동안·가만히 서 있는 동안에는 아무것도 안 보냄 (멈추기·앉기·감정·펫 바꾸기는 바로 보냄, 오래 걸으면 5초마다 한 번 확인)
+  const net = { ref: null, list: null, conn: null, key: '', lastAt: 0, want: false, n: 0, emo: '', remotes: {}, idle: false, s: null, px: 0, pz: 0, pt: 0, fnow: performance.now() };
   const f1 = v => (Math.round(v * 10) / 10).toString();
+  const NET_ERR = 0.45, NET_GAP = 200, NET_KEEP = 5000, NET_LAG = 100; // NET_LAG: 받는 쪽이 메시지가 오는 데 걸린 시간만큼 앞당겨 보여 줌
+  function netPred(s, now) { // 보낸 상태 s로 지금 있어야 할 곳과 지금 속도 (보내는 쪽·받는 쪽이 같은 계산)
+    const k = Math.max(0, Math.min(now - s.at, NET_KEEP + 1500)) / 1000, sp = Math.hypot(s.vx, s.vz);
+    if (k >= (NET_KEEP + 1500) / 1000) return [s.x + s.vx * k, s.z + s.vz * k, 0, 0]; // 소식이 끊긴 채 너무 오래 가면 멈춤
+    if (s.tx !== null && sp > 0) { const d0 = Math.hypot(s.tx - s.x, s.tz - s.z); if (sp * k >= d0) return [s.tx, s.tz, 0, 0]; } // 누른 곳에 닿으면 섬
+    return [s.x + s.vx * k, s.z + s.vz * k, s.vx, s.vz];
+  }
   function jump() { // 스페이스: 폴짝 뛰어오름. 공중에서 한 번 더 누르면 앞으로 한 바퀴 (점프 한 번에 한 바퀴만)
     if (me.sit || fishing.st) return;
     if (me.jumpY > 0.01) { if (!me.flipped && me.jumpY > 0.12) { me.flipped = true; me.flipT = 0; me.jumpVy = Math.max(me.jumpVy, 4.2); netEmote('v'); tone(520, 0.2, 'triangle', 0, 0.08, 1040); } return; }
     me.jumpVy = 5.6; netEmote('u'); tone(440, 0.12, 'triangle', 0, 0.08, 760); }
   $('jumpBtn').onclick = e => { jump(); e.currentTarget.blur(); };
   function netEmote(k) { net.n = (net.n + 1) % 1000; net.emo = k; net.want = true; }
-  function netTick(kx, kz, now) {
+  function netTick(now, kx, kz) {
+    const dts = net.pt ? (now - net.pt) / 1000 : 0; let vx = 0, vz = 0;
+    if (dts > 0 && dts < 0.25) { vx = (me.x - net.px) / dts; vz = (me.z - net.pz) / dts; }
+    const tele = Math.hypot(vx, vz) > SPEED * RUN * 1.6; // 가게 드나들기·앉기처럼 순간 이동
+    net.px = me.x; net.pz = me.z; net.pt = now;
     if (!net.ref) return;
-    const sit = me.sit ? seats.indexOf(me.sit) : '';
-    const key = kx + ',' + kz + '|' + (me.target ? f1(me.target.x) + ',' + f1(me.target.z) : '') + '|' + sit + '|' + (me.moving ? 1 : 0) + '|' + net.n + '|' + me.type;
-    if (key !== net.key) { net.key = key; net.want = true; } else if ((kx || kz) && now - net.lastAt > 1000) net.want = true;
-    if (!net.want || now - net.lastAt < 400) return;
-    net.want = false; net.lastAt = now;
-    let tx = me.x, tz = me.z;
-    if (kx || kz) { const l = Math.hypot(kx, kz); tx = me.x + kx / l * SPEED * me.run * 1.3; tz = me.z + kz / l * SPEED * me.run * 1.3; } else if (me.target) { tx = me.target.x; tz = me.target.z; }
-    net.ref.set([f1(me.x), f1(me.z), f1(tx), f1(tz), sit, net.emo, net.n, me.type].join(',')).catch(() => {});
+    if (tele || !me.moving || me.sit) vx = vz = 0;
+    const sit = me.sit ? seats.indexOf(me.sit) : '', tg = me.moving && me.target ? me.target : null;
+    const key = sit + '|' + (me.moving ? 1 : 0) + '|' + (kx || kz ? Math.round(Math.atan2(kx, kz) / (Math.PI / 4)) : '') + '|' + (tg ? f1(tg.x) + ',' + f1(tg.z) : '') + '|' + net.n + '|' + me.type; // 방향키를 바꾸면 바로 보냄 (8방향으로 묶어서, 화면을 돌리는 동안 매번 보내지 않게)
+    // 누른 곳에 도착해 멈춤: 받는 쪽도 이미 그 자리에서 섰으므로 보내지 않음 (앉기·감정·펫이 그대로일 때만)
+    if (!net.want && !tele && key !== net.key && !me.moving && net.s && net.s.tx !== null && net.key.endsWith('|' + net.n + '|' + me.type) && net.key.startsWith(sit + '|')
+      && Math.hypot(net.s.tx - me.x, net.s.tz - me.z) < NET_ERR) net.key = key;
+    let want = net.want || tele || key !== net.key;
+    if (!want && net.s) { const p = netPred(net.s, now); want = Math.hypot(p[0] - me.x, p[1] - me.z) > NET_ERR || (me.moving && now - net.s.at > NET_KEEP); }
+    if (!want || now - net.lastAt < NET_GAP) { if (tele) net.want = true; return; } // 너무 잦으면 다음 프레임에 다시 봄
+    net.key = key; net.want = false; net.lastAt = now;
+    const r1 = v => Math.round(v * 10) / 10;
+    net.s = { x: r1(me.x), z: r1(me.z), vx: r1(vx), vz: r1(vz), at: now, tx: tg ? r1(tg.x) : null, tz: tg ? r1(tg.z) : null };
+    net.ref.set([net.s.x, net.s.z, net.s.vx, net.s.vz, sit, net.emo, net.n, me.type, tg ? net.s.tx : '', tg ? net.s.tz : ''].join(',')).catch(() => {});
   }
   function netApply(id, raw) {
     if (id === host.me.id || typeof raw !== 'string') return;
-    const p = raw.split(','); if (p.length < 8) return;
-    const x = +p[0], z = +p[1], tx = +p[2], tz = +p[3]; if (![x, z, tx, tz].every(isFinite)) return;
+    const p = raw.split(','); if (p.length < 10) return;
+    const x = +p[0], z = +p[1], vx = +p[2], vz = +p[3], hasT = p[8] !== '' && p[9] !== '', tx = hasT ? +p[8] : null, tz = hasT ? +p[9] : null;
+    if (![x, z, vx, vz].every(isFinite) || Math.hypot(vx, vz) > SPEED * RUN * 1.5 || (hasT && !(isFinite(tx) && isFinite(tz)))) return;
     const type = petType(p[7]);
     let a = net.remotes[id];
     if (!a) { a = net.remotes[id] = makeActor(type, host.nameOf(id), x, z, false); a.remote = true; a.id = id; a.emoN = p[6]; a.face = Math.PI * 2 * Math.random(); updateCount(); }
     else if (a.type !== type) setPet(a, type);
     const seat = p[4] === '' ? null : seats[+p[4]] || null;
-    if (seat) { a.sit = seat; a.x = seat.x; a.z = seat.z; a.target = null; }
+    a.target = null;
+    if (seat) { a.sit = seat; a.x = seat.x; a.z = seat.z; a.nv = null; }
     else {
       if (a.sit) { a.sit = null; a.x = x; a.z = z; }
-      if (Math.hypot(a.x - x, a.z - z) > 3.2) { a.x = x; a.z = z; } // 너무 벌어지면 바로 옮김
-      a.target = Math.hypot(tx - a.x, tz - a.z) > 0.15 ? { x: tx, z: tz, stuck: 0 } : null;
+      const old = a.nv; a.nv = { x, z, vx, vz, at: net.fnow - NET_LAG, tx, tz };
+      const pr = netPred(a.nv, net.fnow), e = Math.hypot(a.x - pr[0], a.z - pr[1]);
+      if (e > 3.2) { a.x = pr[0]; a.z = pr[1]; } // 너무 벌어지면 바로 옮김
+      else if (!vx && !vz && !hasT && e < 0.6 && old && (x - a.x) * old.vx + (z - a.z) * old.vz < 0) a.nv = { x: a.x, z: a.z, vx: 0, vz: 0, at: net.fnow, tx: null, tz: null }; // 멈춤: 조금 지나쳤으면 뒷걸음질 대신 그 자리에 섬 (덜 왔으면 마저 걸어감)
     }
     if (p[6] !== a.emoN) { a.emoN = p[6]; // 새 감정 표현
       if (p[5] === 'w') a.wave = 1.6;
@@ -1262,7 +1283,7 @@
   function netJoin() {
     if (demo || !host.db || net.ref) return;
     const base = `village/${host.code}`;
-    net.ref = host.db.ref(`${base}/${host.me.id}`); net.key = ''; net.want = true; net.lastAt = 0;
+    net.ref = host.db.ref(`${base}/${host.me.id}`); net.key = ''; net.want = true; net.lastAt = 0; net.s = null;
     net.list = host.db.ref(base);
     net.list.on('child_added', sn => netApply(sn.key, sn.val()));
     net.list.on('child_changed', sn => netApply(sn.key, sn.val()));
@@ -1683,15 +1704,24 @@
       if (r === true || me.target.stuck > 0.6) { me.target = null; marker.visible = false; }
     }
     if (net.ref && now - lastInput > IDLE_MS) netRest();
-    netTick(kx, kz, now);
+    net.fnow = now; netTick(now, kx, kz);
     drawMap();
     // 친구들: 쉬다가 아무 데나 걸어감
     actors.forEach(a => {
       if (a.me) return;
       a.moving = false;
       if (a.npc) { if (a.wave <= 0 && Math.hypot(me.x - a.x, me.z - a.z) < 3.5) a.face = Math.atan2(me.x - a.x, me.z - a.z); return; } // 점원: 제자리, 다가오면 바라봄
-      if (a.remote) { // 접속한 친구: 받은 목적지까지 같은 속도로 걸어감
-        if (!a.sit && a.target) { const r = moveToward(a, a.target.x, a.target.z, dt); if (r === 'stuck') a.target.stuck += dt; if (r === true || a.target.stuck > 0.6) a.target = null; }
+      if (a.remote) { // 접속한 친구: 받은 속도로 계속 움직이고, 예측 자리와의 차이는 부드럽게 따라잡음
+        if (a.sit || !a.nv) return;
+        const [px, pz, vx, vz] = netPred(a.nv, now), ex = px - a.x, ez = pz - a.z, e = Math.hypot(ex, ez);
+        if (e < 0.02 && !vx && !vz) return;
+        const c = Math.min(1, dt * 4); let mx = vx * dt + ex * c, mz = vz * dt + ez * c;
+        const sp = Math.hypot(vx, vz);
+        if (sp) { const al = (mx * vx + mz * vz) / sp; if (al < 0) { mx -= al * vx / sp; mz -= al * vz / sp; } } // 앞질렀으면 뒷걸음질 대신 옆으로만 맞추며 기다림
+        const cap = Math.max(sp, SPEED) * 1.5 * dt, m = Math.hypot(mx, mz); if (m > cap) { mx *= cap / m; mz *= cap / m; }
+        step(a, mx, mz);
+        a.moving = m > dt * 0.5;
+        if (vx || vz) a.face = Math.atan2(vx, vz); else if (a.moving) a.face = Math.atan2(mx, mz);
         return;
       }
       if (a.wait <= 0 && a.wave <= 0 && !(a.greetCd > t)) { // 친구끼리 마주치면 서로 인사
