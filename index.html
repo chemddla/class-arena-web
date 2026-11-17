@@ -13422,6 +13422,14 @@
       } else {
         lockOverlay.classList.add('hidden');
       }
+      // 수업 집중 잠금: 가림막 뒤에서도 마을은 계속 돌며 키보드로 걷고 친구 위치를 주고받았음 → 잠그면 멈추고, 풀면 마을 탭이 열려 있을 때 이어서
+      try {
+        if (VillageTab.api || VillageTab.lockPaused) {
+          const lock = state.classLocked && !isTeacherView;
+          if (lock && !VillageTab.lockPaused) { VillageTab.lockPaused = true; VillageTab.close(); }
+          else if (!lock && VillageTab.lockPaused) { VillageTab.lockPaused = false; if (!document.getElementById('studentTab-village')?.classList.contains('hidden')) VillageTab.open(); }
+        }
+      } catch (e) {} // 페이지를 막 여는 중(VillageTab 정의 전)
 
       const lockBtn = document.getElementById('adminLockToggleBtn');
       if (lockBtn) {
@@ -35176,9 +35184,50 @@
       }
       ctx.globalAlpha = 1;
     }
+    // 부적 명중 (샘플 부적: 크림 종이·붉은 먹 글씨·붉은 속도선, 2026-11-17 사용자): pixelfx처럼 박힘 → 멈춤 → 터짐 3단
+    //   0~0.3 부적이 날아온 방향으로 기울어 몸에 탁 붙고(살짝 떨림) 글씨가 붉게 달아오름
+    //   0.3~0.45 붉은 인장 고리(점선)가 퍼지고 가운데 번쩍 · 0.45~1 종이 조각이 사방으로 튀어 떨어지고, 날아온 반대쪽으로 붉은 먹선이 뻗었다 사라짐
+    function drawMuHit(ctx, ef, p) {
+      const x = ef.x, y = ef.y, a = ef.a || 0, dir = Math.cos(a) >= 0 ? 1 : -1;
+      const rnd = pfxRng(pfxSeedOf(ef) >>> 0);
+      ctx.save();
+      const base = ctx.globalAlpha;
+      if (p < 0.45) { // 박힌 부적
+        const q = p / 0.45, shake = p < 0.3 ? ((Math.floor(p * 40) % 2) ? 1 : -1) * (1 - p / 0.3) : 0;
+        ctx.globalAlpha = base * (p < 0.3 ? 1 : 1 - (p - 0.3) / 0.15);
+        drawMuCharm(ctx, x - dir * 3 + shake, y, 1.5, a + Math.PI / 2 + 0.15 * dir, null, 0);
+        if (q > 0.35) { ctx.globalAlpha = base * Math.min(1, (q - 0.35) * 3) * 0.8; drawMuCharm(ctx, x - dir * 3 + shake, y, 1.5, a + Math.PI / 2 + 0.15 * dir, 'mu_power', 0.9); } // 글씨가 달아오름
+      }
+      if (p >= 0.3) { // 인장 고리 + 번쩍
+        const q = Math.min(1, (p - 0.3) / 0.5), rr = 6 + 20 * pfxEaseOutQuart(q), n = 16;
+        for (let i = 0; i < n; i++) {
+          if (i % 4 === 3) continue;
+          const t = i / n * Math.PI * 2;
+          ctx.globalAlpha = base * (1 - q) * (i % 2 ? 0.7 : 1);
+          muDot(ctx, x + Math.cos(t) * rr, y + Math.sin(t) * rr * 0.8, 2, i % 2 ? '#dc2626' : '#f87171');
+        }
+        if (p < 0.5) { const f = 1 - (p - 0.3) / 0.2; ctx.globalAlpha = base * f; muDot(ctx, x, y, 6, '#fff8d6'); muDot(ctx, x, y, 3, '#ffffff'); }
+      }
+      if (p >= 0.4) { // 종이 조각 · 붉은 먹선
+        const q = (p - 0.4) / 0.6, e = pfxEaseOutQuart(q);
+        for (let i = 0; i < 8; i++) {
+          const t = rnd() * Math.PI * 2, sp = 10 + rnd() * 16, big = rnd() < 0.4;
+          const px = x + Math.cos(t) * sp * e, py = y + Math.sin(t) * sp * e * 0.7 + 18 * q * q; // 떨어짐
+          ctx.globalAlpha = base * (1 - q);
+          muDot(ctx, px, py, big ? 3 : 2, i % 3 === 0 ? MU_INK : (big ? MU_PAPER[2] : MU_PAPER[3]));
+        }
+        for (let i = 0; i < 3; i++) { // 날아온 반대쪽(뒤)으로 뻗는 짧은 속도선
+          const t = a + (i - 1) * 0.45, L = 4 + 12 * e, s0 = 8 + 6 * e;
+          ctx.globalAlpha = base * (1 - q) * 0.9;
+          for (let k = 0; k < L; k += 2) muDot(ctx, x + Math.cos(t) * (s0 + k), y + Math.sin(t) * (s0 + k), 2, k < L / 2 ? '#ef4444' : '#991b1b');
+        }
+      }
+      ctx.restore();
+      ctx.globalAlpha = base;
+    }
     // mu_hit (부적 터짐) · mu_throw (손에서 장판 자리로 날아가는 부적) · mu_pulse (치유·보호가 닿은 아군) · mu_naerim (내림굿 터짐)
     function drawShamanEffect(ctx, ef, p) {
-      if (ef.type === 'mu_hit') { drawPixelBurst(ctx, ef.x, ef.y, ef.r || 20, p, ['#7f1d1d', '#dc2626', '#f87171', '#fde68a', '#fffbeb'], pfxSeedOf(ef), { sparks: 5, noRing: true }); return; }
+      if (ef.type === 'mu_hit') { drawMuHit(ctx, ef, p); return; }
       if (ef.type === 'mu_throw') {
         const e = pfxEaseOutQuart(p), x = ef.sx + (ef.x - ef.sx) * e, y = ef.sy + (ef.y - 46 - ef.sy) * e - Math.sin(e * Math.PI) * 40;
         drawMuCharm(ctx, x, y, 2, p * 10, ef.k, 0.7);
@@ -48176,6 +48225,7 @@
       open() {
         const me = getActiveStudent(), root = document.getElementById('villageRoot'), status = document.getElementById('villageStatus');
         if (!me || !root) return;
+        if (state.classLocked && !document.getElementById('classLockOverlay')?.classList.contains('hidden')) { this.lockPaused = true; return; } // 수업 집중 잠금 중엔 열지 않음 (풀리면 이어서)
         if (status && !status.dataset.def) status.dataset.def = status.textContent;
         // 내 마을 기록을 아직 못 받았으면 잠깐 기다렸다가 엶 (최대 8초, 그래도 없으면 이번에는 이 브라우저에만 저장)
         if (isStudentSession(me) && !isSandboxEntry() && !this.privReady(me) && (this.waitN = (this.waitN || 0) + 1) <= 27) {
