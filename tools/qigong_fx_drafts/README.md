@@ -14,3 +14,6 @@
 1. pixelfx(https://github.com/patch-gg/pixelfx)를 따로 내려받고, 이 폴더의 `.js` 파일을 그 안의 `src/fx/qigong/`에 복사
 2. pixelfx 폴더에서 `node tools/render.mjs "qigong/atk-*" --no-actor --sheet --bg none`
 3. `python compose_atk.py <pixelfx 폴더> <게임 폴더> <출력 폴더> atk-a atk-b ...` → 새 기공사 그림과 합친 `_preview_qigong_<시안>.gif`
+- 시크릿 레어 전용 시안 청기(淸氣) (`_sr.js` 공용, 2026-11-17): 실타래 대신 맑게 응축된 기. 심이 가장 밝고 바깥으로 옅어지는 기 덩어리 · 심으로 감겨 드는 나선 기류(밝기 너울) · 테두리 선 없이 위로 타오르는 기운 불꽃 · 떠올라 흩어지는 기 알갱이 · 번진 압력 파동. 사용자 지시: 물방울처럼 보이는 테두리 선·윤기·떨어지는 방울 금지, "선의 느낌을 최대한 없애". 반투명은 `soft()`(p.shade는 디더링 점무늬)
+  - `sr-atk` 청기탄 · `sr-cannon` 청기구 · `sr-bullets` 청기 다섯 알 · `sr-barrier` 청기막 · `sr-roar` 청기 파동 · `sr-wave` 청기파(쏘는 시간 절반에 SR 둘째 자세로 굵어짐) · `sr-genki` 청천옥
+  - 미리보기: `python compose_sr.py <pixelfx 폴더> <게임 폴더> docs/qi-sr` (SR 그림 qigong_sr1.webp를 대기 키 86으로 줄여 합침), 결과는 `docs/qi-sr/`
