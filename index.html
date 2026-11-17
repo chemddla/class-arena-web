@@ -34626,22 +34626,27 @@
       if (n > 0) { // 축기 1개마다 몸 둘레를 도는 작은 기의 구체 1개 (외형 구슬 그림 그대로: 기본·1~5 qiJBall, SR qsrMass). 전장 좌표로 그리므로 유닛 원점을 되돌림
         const s = Math.sqrt(u.sizeScale || 1), sr = qiSR(u), ts = tick / 60;
         if (!sr) { qiUsePal(qiSkinOf(u)); R = qiRamp5(); }
-        const cx = u.x, cy = u.y - 20 * (u.sizeScale || 1), rx = 22 * s, ry = 7 * s, rr = 2.6 * s, spin = ts * 2.4;
+        const cx = u.x, cy = u.y - 20 * (u.sizeScale || 1), rad = 21 * s, rr = 2.6 * s;
+        // 구체마다 기운 궤도면이 달라(기울기·방향 제각각) 원자 모형처럼 여러 각도로 돌고, 궤도면도 천천히 돌아 같은 둘레를 되풀이하지 않음
+        const pos = (i, q) => {
+          const tilt = 0.35 + ((i * 0.618) % 1) * 2.4, yaw = i * 2.1 + ts * (0.35 + 0.1 * (i % 3)) * (i % 2 ? -1 : 1);
+          const px = Math.cos(q), py = Math.sin(q) * Math.cos(tilt), pz = Math.sin(q) * Math.sin(tilt), cyw = Math.cos(yaw), syw = Math.sin(yaw);
+          return [cx + (px * cyw - pz * syw) * rad, cy + py * rad * 0.85, px * syw + pz * cyw];
+        };
         const orbs = [];
-        for (let i = 0; i < n; i++) { const a = spin + i * Math.PI * 2 / n; orbs.push([a, Math.sin(a)]); }
-        orbs.sort((p, q) => p[1] - q[1]); // 뒤쪽(위) 구체부터
+        for (let i = 0; i < n; i++) { const q = ts * (2.2 + 0.25 * (i % 3)) + i * Math.PI * 2 / n; orbs.push([i, q, pos(i, q)]); }
+        orbs.sort((p, q) => p[2][2] - q[2][2]); // 뒤쪽 구체부터
         ctx.save();
         ctx.translate(-Math.round(u.x), -Math.round(u.y));
-        orbs.forEach(([a, z]) => {
+        orbs.forEach(([i, q, [x, y, z]]) => {
           const k = 0.55 + 0.45 * (z + 1) / 2, r = rr * (0.8 + 0.2 * (z + 1) / 2); // 뒤쪽은 작고 옅게
           for (let j = 1; j <= 3; j++) { // 도는 길을 따라 옅어지는 꼬리 알갱이
-            const b = a - j * 0.22;
+            const [tx, ty] = pos(i, q - j * 0.22);
             ctx.globalAlpha = k * (0.55 - j * 0.15); ctx.fillStyle = sr ? QSR_HEX[j < 2 ? 6 : 5] : R[j < 2 ? 4 : 3];
-            pfxDot(ctx, cx + Math.cos(b) * rx, cy + Math.sin(b) * ry, j < 2 ? 2 : 1);
+            pfxDot(ctx, tx, ty, j < 2 ? 2 : 1);
           }
           ctx.globalAlpha = 1;
-          const x = cx + Math.cos(a) * rx, y = cy + Math.sin(a) * ry;
-          if (sr) qsrMass(ctx, x, y, r, ts + a, k); else qiJBall(ctx, x, y, r, ts + a, k);
+          if (sr) qsrMass(ctx, x, y, r, ts + q, k); else qiJBall(ctx, x, y, r, ts + q, k);
         });
         ctx.restore();
       }
