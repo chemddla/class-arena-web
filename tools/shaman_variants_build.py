@@ -25,6 +25,22 @@ VARIANTS = [
     (5, '연분홍 하카마 · 적갈발 · 금안', (338, 0.55, 1.15), (8, 0.60, 0.22, 0.60), (42, 1.2, 1.9)),
 ]
 
+# 눈 뜬 칸의 눈동자 상자 (칸 안 x0, y0, x1, y1 · 끝 포함): 왼눈, 오른눈. 감은 눈 칸(6·7·8·11·12)은 없음 → 눈 색 안 넣음
+EYE_BOXES = {
+    0: [(46, 32, 49, 35), (56, 32, 58, 35)],
+    1: [(48, 33, 51, 37), (59, 33, 61, 37)],
+    2: [(50, 33, 53, 36), (60, 33, 62, 36)],
+    3: [(49, 35, 52, 38), (59, 35, 60, 38)],
+    4: [(50, 37, 54, 40), (60, 37, 63, 40)],
+    5: [(51, 33, 55, 36), (62, 33, 65, 36)],
+    9: [(49, 30, 52, 34), (60, 30, 62, 34)],
+    10: [(49, 33, 52, 36), (59, 33, 61, 36)],
+    13: [(51, 54, 54, 57), (61, 54, 63, 57)],
+}
+
+# 감은 눈 끝이 옆머리에 닿은 자리 (칸 안 x0, y0, x1, y1): 머리로 잡히면 밝은 머리색 얼룩이 얼굴에 생김 → 원본 그대로 둠
+KEEP_BOXES = {7: [(67, 54, 70, 57)], 11: [(56, 35, 61, 37)], 12: [(60, 28, 63, 31)]}
+
 
 def masks(rgba):
     hsv = rgb2hsv(rgba[..., :3] / 255.)
@@ -45,8 +61,17 @@ def masks(rgba):
         fh = fy.max() - fy.min()
         eyezone[sl][fy.min() + fh // 5:fy.min() + 70 * fh // 100 + 1, fx.min():fx.max() + 1] = True
     redish = ((h < 15) | (h > 335))
-    # 눈동자: 얼굴 상자 안 어두운 붉은 갈색 (윤곽선은 명도 0.15↓라 빠지고, 입은 아래라 빠짐)
-    eye = al & eyezone & ~skin & ((h < 25) | (h > 335)) & (s > 0.4) & (v >= 0.15) & (v < 0.55)
+    # 눈동자: 칸마다 지정한 상자 안에서 흰자·살·아주 어두운 속눈썹(명도 0.1↓)·밝은 살빛(0.65↑)을 뺀 픽셀
+    #   (색으로만 고르면 눈썹·위 눈꺼풀 적갈색 줄·볼 윤곽까지 잡히고, 어두운 눈동자는 일부만 잡혀 얼룩이 됨)
+    eyebox = np.zeros_like(al)
+    for k, boxes in EYE_BOXES.items():
+        for x0, y0, x1, y1 in boxes:
+            eyebox[y0:y1 + 1, k * CELL_W + x0:k * CELL_W + x1 + 1] = True
+    keep = np.zeros_like(al)
+    for k, boxes in KEEP_BOXES.items():
+        for x0, y0, x1, y1 in boxes:
+            keep[y0:y1 + 1, k * CELL_W + x0:k * CELL_W + x1 + 1] = True
+    eye = eyebox & al & ~skin & ~((s < 0.25) & (v > 0.55)) & (v >= 0.1) & (v < 0.65)
     # 옷 빨강: 얼굴 상자 밖 붉은 픽셀 (어두운 그늘까지)
     red = al & redish & (s > 0.4) & (v > 0.12) & ~face & ~skin
     # 부적 위 붉은 글씨: 작은 붉은 조각인데 둘레가 대부분 밝은 종이색 → 그대로
@@ -63,6 +88,16 @@ def masks(rgba):
         red |= shade & ndi.binary_dilation(red, structure=np.ones((3, 3)))
     # 손·발 윤곽 (살 2px 안의 흐린 적갈색, 채도 0.55↓): 옷 빨강은 채도 0.7 안팎이라 빼도 옷은 그대로
     red &= ~(ndi.binary_dilation(skin, iterations=2) & (s < 0.55))
+    # 옷 안에 홀로 남은 붉은 점(둘레 8칸 중 4칸↑이 옷): 새 옷 색 사이에서 붉은 점으로 튀어 보임 → 옷으로
+    lone = al & ((h < 25) | (h > 330)) & (s > 0.3) & (v > 0.1) & ~skin & ~face & ~red & ~ndi.binary_dilation(skin, iterations=3)
+    for _ in range(2):
+        red |= lone & (ndi.convolve(red.astype(int), np.ones((3, 3), int), mode='constant') >= 4)
+    # 머리 속 작은 붉은 조각(가르마·볼 옆 머리결의 적갈색): 살 3px 안이고 12px 이하면 옷이 아님 → 옷 색 점이 됨
+    lb, n = ndi.label(red, structure=np.ones((3, 3)))
+    if n:
+        idx = np.arange(n + 1)
+        near_sk = ndi.maximum(ndi.binary_dilation(skin, iterations=3), lb, idx).astype(bool)
+        red &= ~(((ndi.sum(red, lb, idx) <= 12) & near_sk)[lb] & (lb > 0))
     # 머리: 어두운 픽셀이 빽빽한 큰 덩어리
     dark = al & (v < 0.36) & ~skin & ~red & ~eye & ((s < 0.45) | (v < 0.1)) & ~(redish & (s > 0.3) & (v > 0.1))
     core = dark & (ndi.uniform_filter(dark.astype(float), 5) > 0.75)
@@ -82,15 +117,40 @@ def masks(rgba):
     # 살·눈·흰자에 바로 붙은 선은 원본 그대로 (얼굴 윤곽)
     whites = al & (s < 0.25) & (v > 0.55) & face
     touch = ndi.binary_dilation(skin | eye | whites)
-    hair &= ~(touch & (v < 0.2))
-    rim = hair & out_edge
-    return red, eye, hair, rim, hsv
+    hair &= ~(touch & (v < 0.2)) & ~eyebox & ~keep
+    # 얼굴 안쪽에 떨어져 있는 어두운 조각(감은 눈꼬리·속눈썹 끝): 얼굴 밖 머리와 이어지지 않으면 머리가 아님 → 원본 그대로
+    #   (밝은 머리색이 되면 얼굴 위에 밝은 얼룩)
+    inner_face = ndi.binary_erosion(face, iterations=2)
+    hin = hair & inner_face
+    lb, n = ndi.label(hin, structure=np.ones((3, 3)))
+    if n:
+        outer = ndi.binary_dilation(hair & ~inner_face, structure=np.ones((3, 3)))
+        linked = ndi.maximum(outer, lb, np.arange(n + 1)).astype(bool)
+        hair &= ~((~linked)[lb] & hin)
+    # 윤곽선: 옷·머리 곁 어두운 선(명도 0.3↓) 중 바뀌지 않은 것(검붉은·아주 어두운 픽셀)이 새 색 사이에 섞이면 깨져 보임
+    #   → 둘레 8칸에 옷이 더 많으면 옷 윤곽, 머리가 더 많으면 머리 윤곽으로 함께 칠함. 살·눈·흰자에 닿은 선은 원본 그대로
+    ln = al & (v < 0.3) & ~red & ~hair & ~eye & ~eyebox & ~keep & ~skin & ~ndi.binary_dilation(skin | eye | whites, structure=np.ones((3, 3)))
+    k3 = np.ones((3, 3), int)
+    nr = ndi.convolve(red.astype(int), k3, mode='constant'); nhh = ndi.convolve(hair.astype(int), k3, mode='constant')
+    cloth_ln = ln & (nr > 0) & (nr >= nhh)
+    hair_ln = ln & (nhh > 0) & (nhh > nr)
+    hair |= hair_ln
+    # 머리 → 피부 경계 윤곽선: 원본은 검정·적갈색이 섞인 선인데, 일부만 머리색으로 바뀌면 얼룩지고 끊겨 보임
+    #   → 피부에 상하좌우로 닿고 머리에 닿은 어두운 픽셀(명도 0.45↓)을 모두 같은 머리색 윤곽(몸 바깥 윤곽과 같은 색)으로
+    skin_edge = al & ~skin & ~eyebox & ~keep & (v < 0.45) & ndi.binary_dilation(skin) & ~whites
+    hair_edge = skin_edge & (hair | ndi.binary_dilation(hair, structure=np.ones((3, 3))))
+    hair |= hair_edge
+    rim = (hair & out_edge) | hair_ln | hair_edge
+    return red, eye, hair, rim, hsv, cloth_ln
 
 
 def recolor(rgba, cloth_c, hair_c, eye_c):
-    red, eye, hair, rim, hsv = masks(rgba)
-    v0 = hsv[..., 2].copy()
+    red, eye, hair, rim, hsv, cloth_ln = masks(rgba)
+    v0 = hsv[..., 2].copy(); s0 = hsv[..., 1].copy()
     H, SM, VM = cloth_c
+    # 옷 윤곽선: 아주 어두운 픽셀은 채도 값이 들쭉날쭉해서 옷 그늘 채도(0.6)로 고르게
+    hsv[..., 1] = np.where(cloth_ln, 0.6, hsv[..., 1])
+    red = red | cloth_ln
     hsv[..., 0] = np.where(red, H / 360, hsv[..., 0])
     hsv[..., 1] = np.where(red, np.clip(hsv[..., 1] * SM, 0, 1), hsv[..., 1])
     hsv[..., 2] = np.where(red, np.clip(v0 * VM, 0, 1), hsv[..., 2])
@@ -104,7 +164,7 @@ def recolor(rgba, cloth_c, hair_c, eye_c):
     hsv[..., 2] = np.where(hair, np.clip(vh, 0, 1), hsv[..., 2])
     H, SM, VM = eye_c
     hsv[..., 0] = np.where(eye, H / 360, hsv[..., 0])
-    hsv[..., 1] = np.where(eye, np.clip(hsv[..., 1] * SM, 0, 1), hsv[..., 1])
+    hsv[..., 1] = np.where(eye, np.clip(np.maximum(hsv[..., 1], 0.45) * SM, 0, 1), hsv[..., 1])
     hsv[..., 2] = np.where(eye, np.clip(v0 * VM, 0, 1), hsv[..., 2])
     out = rgba.copy()
     m = red | eye | hair
@@ -116,8 +176,8 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument('--preview'); ap.add_argument('--all', action='store_true'); ap.add_argument('--masks'); args = ap.parse_args()
     src = np.array(Image.open(SRC).convert('RGBA'))
     if args.masks:   # 점검용: 옷=초록, 눈=노랑, 머리=파랑
-        red, eye, hair, rim, _ = masks(src)
-        o = src.copy(); o[red, :3] = (0, 220, 0); o[eye, :3] = (255, 255, 0); o[hair, :3] = (40, 90, 255); o[rim, :3] = (0, 0, 120)
+        red, eye, hair, rim, _, cl = masks(src)
+        o = src.copy(); o[red, :3] = (0, 220, 0); o[cl, :3] = (0, 110, 0); o[eye, :3] = (255, 255, 0); o[hair, :3] = (40, 90, 255); o[rim, :3] = (0, 0, 120)
         im = Image.fromarray(o).resize((src.shape[1] * 3, src.shape[0] * 3), Image.NEAREST)
         b = Image.new('RGBA', im.size, (60, 64, 74, 255)); b.alpha_composite(im); b.convert('RGB').save(args.masks); return
     sheets = [(0, '기본 (붉은 하카마)', src)] + [(n, name, recolor(src, rc, hc, ec)) for n, name, rc, hc, ec in VARIANTS]
