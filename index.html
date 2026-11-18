@@ -68536,13 +68536,17 @@
      *   친구 펫은 받은 거리·높이·상태로 내 트랙 위에 유령처럼 그려짐 (나보다 앞서면 오른쪽, 뒤지면 왼쪽)
      * - 체력 0 → 쓰러짐(판이 끝나진 않음). 살아 있는 친구가 💗 하트 젤리를 먹으면 가장 오래 쓰러져 있던 친구가 체력 40%로 일어남
      * - 🧲자석·⭐젤리 2배는 먹은 사람이 알려서 팀 전체가 받음 (🚀대시·🛡️보호막은 본인만)
+     * - 💚 하트 나눔: 쓰러진 친구가 없을 때 하트를 먹으면 체력이 가장 낮은 친구(80% 미만)도 반만큼 회복
+     * - 📣 응원: 쓰러진 사람이 점프를 누르면(2.5초마다) 살아 있는 친구들 체력 +3
+     * - 🤝 나란히 달리기: 친구 펫이 가까이(유령 거리 70 안) 달리면 한 명당 버는 점수 +15%
      * - 난이도 단계는 팀에서 가장 높은 점수를 따라감 (내 점수로 오른 단계보다 낮아지진 않음)
      * - 실시간: 판(자리·출발 시각·결과)은 mgPush('petruncoop'), 달리는 모습은 minigames/{방}_pc/{자리}에 초당 8번,
      *   알림(부활·공유 부스터)은 {방}_pc/ev{자리}에 번호를 붙여 올림 (받는 쪽은 아직 못 본 번호만 적용)
      * - 끝: 모두 쓰러졌거나(15초 넘게 소식 없는 친구는 쓰러진 것으로) 5분이 지나면 방장 화면이 결과를 적어 올림
      *   팀 점수 = 점수 합 × (1 + 끝까지 살아남은 친구 수 × 0.1) · 보상 = 팀 평균 점수를 펫 러닝 보상표에 넣음 (펫 러닝 하루 횟수 공유)
      ********************************************************************/
-    const PETCOOP = { maxSec: 300, countSec: 3, reviveHp: 0.4, aliveBonus: 0.1, liveHz: 8, staleMs: 15000, ghostK: 0.06, ghostMin: -120, ghostMax: 300 };
+    const PETCOOP = { maxSec: 300, countSec: 3, reviveHp: 0.4, aliveBonus: 0.1, liveHz: 8, staleMs: 15000, ghostK: 0.06, ghostMin: -120, ghostMax: 300,
+      shareHeal: 0.5, shareBelow: 0.8, cheerHp: 3, cheerCd: 2.5, nearPx: 70, nearBonus: 0.15 };
     let petCoopState = { initialized: false };
     const petCoopRewarded = new Set(); // 보상·기록은 한 판에 한 번만
 
@@ -68797,7 +68801,24 @@
         document.getElementById('petCoopPad')?.classList.toggle('hidden', !(my >= 0 && typeof isTouchDevice === 'function' && isTouchDevice()));
         this.syncLiveSub();
       },
-      jump() { const s = this.st; if (!s || s.down || s.seat < 0 || Date.now() < s.startAtLocal) return; PetRun.jump.call(this); },
+      jump() {
+        const s = this.st; if (!s || s.seat < 0 || Date.now() < s.startAtLocal) return;
+        if (s.down) { this.cheer(s); return; }
+        PetRun.jump.call(this);
+      },
+      cheer(s) {
+        if (s.over || Date.now() - (s.cheerAt || 0) < PETCOOP.cheerCd * 1000) return;
+        s.cheerAt = Date.now();
+        this.sendEvent('cheer');
+        this.float(s, PETRUN.petX + 40, PETRUN.groundY - 110, '📣 영차영차!', '#fde68a');
+        PetRun.tone.call(this, 'jelly');
+      },
+      // 친구 펫이 가까이 달리는 수 (나란히 달리기 보너스)
+      nearCount(s) {
+        const now = mgServerNow(); let n = 0;
+        Object.values(s.team).forEach(r => { if (r.st !== 3 && now - r.t < PETCOOP.staleMs && Math.abs(r.ox) < PETCOOP.nearPx) n++; });
+        return n;
+      },
       frame(ts) {
         const s = this.st; if (!s) return;
         let dt = Math.min(0.05, (ts - this.last) / 1000); this.last = ts;
@@ -68837,8 +68858,10 @@
       update(s, dt) {
         if (s.seat < 0) { this.followCam(s, dt); this.tickFx(s, dt); return; }
         if (s.down) { this.tickFx(s, dt); this.hostCheck(s, dt); return; }
-        const items0 = s.items, m0 = s.fx.magnet, d0 = s.fx.double;
+        const items0 = s.items, m0 = s.fx.magnet, d0 = s.fx.double, sc0 = s.score;
         PetRun.update.call(this, s, dt);
+        s.near = this.nearCount(s);
+        if (s.near && s.score > sc0) s.score += (s.score - sc0) * PETCOOP.nearBonus * s.near;
         if (s.items > items0) { // 방금 먹은 부스터가 팀 공유 종류면 친구들에게도
           if (s.fx.magnet > m0 && s.fx.magnet >= PETRUN.magnetSec - 0.01) this.sendEvent('magnet');
           if (s.fx.double > d0 && s.fx.double >= PETRUN.doubleSec - 0.01) this.sendEvent('double');
@@ -68883,11 +68906,25 @@
           const r = s.team[i];
           if (r && r.st === 3 && (r.da || 0) < oldest) { oldest = r.da || 0; pick = i; }
         });
-        if (pick < 0) return;
+        if (pick < 0) { this.shareHeal(s); return; }
         s.revives++;
         this.sendEvent('revive', pick);
         this.float(s, PETRUN.petX + 40, PETRUN.groundY - 140, `💗 ${st.seats[pick].name} 부활!`, '#f9a8d4');
         try { DailyMission.progress('petRunRevive', 1, this.student()); } catch (_) {}
+      },
+
+      // 쓰러진 친구가 없으면 체력이 가장 낮은 친구에게 하트를 나눔
+      shareHeal(s) {
+        let pick = -1, low = PETCOOP.shareBelow;
+        petCoopState.seats.forEach((sd, i) => {
+          const r = s.team[i];
+          if (i === s.seat || sd.ai || !r || r.st === 3 || mgServerNow() - r.t > PETCOOP.staleMs) return;
+          const q = r.hp / (r.hm || 100);
+          if (q < low) { low = q; pick = i; }
+        });
+        if (pick < 0) return;
+        this.sendEvent('heal', pick);
+        this.float(s, PETRUN.petX + 40, PETRUN.groundY - 140, `💚 ${petCoopState.seats[pick].name}에게 나눔`, '#86efac');
       },
 
       // ───── 실시간 ─────
@@ -68921,6 +68958,8 @@
             if (s.over || s.seat < 0) return;
             if (kind === 'magnet') { s.fx.magnet = PETRUN.magnetSec; this.float(s, PETRUN.W / 2, 150, `🧲 ${name}의 자석!`, PETRUN_ITEMS.magnet.color); }
             else if (kind === 'double') { s.fx.double = PETRUN.doubleSec; this.float(s, PETRUN.W / 2, 150, `⭐ ${name}의 젤리 2배!`, PETRUN_ITEMS.double.color); }
+            else if (kind === 'heal' && to === s.seat) { if (!s.down) { const h = Math.round((s.perk.heal || PETRUN.heartHeal) * PETCOOP.shareHeal); s.hp = Math.min(s.hpMax, s.hp + h); this.float(s, PETRUN.petX, PETRUN.groundY - 120, `💚 ${name}의 하트 나눔 +${h}`, '#86efac'); } }
+            else if (kind === 'cheer') { if (!s.down) { s.hp = Math.min(s.hpMax, s.hp + PETCOOP.cheerHp); this.float(s, PETRUN.W / 2, 170, `📣 ${name}의 응원! +${PETCOOP.cheerHp} 체력`, '#fde68a'); } }
             else if (kind === 'revive' && to === s.seat) { if (s.down) { this.float(s, PETRUN.W / 2, 150, `💗 ${name}${josa(name, '이가')} 살려 줬어요!`, '#f9a8d4'); this.revive(s); } }
           });
           return;
@@ -69045,6 +69084,11 @@
           ctx.font = '900 12px sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = left < 30 ? '#fca5a5' : '#e2e8f0'; ctx.strokeStyle = 'rgba(15,23,42,0.7)'; ctx.lineWidth = 3;
           const tt = `⏱ ${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
           ctx.strokeText(tt, W / 2, 60); ctx.fillText(tt, W / 2, 60);
+          if (s.near && !s.down) {
+            const nt = `🤝 나란히 달리기 점수 +${Math.round(s.near * PETCOOP.nearBonus * 100)}%`;
+            ctx.font = '800 11px sans-serif'; ctx.fillStyle = '#86efac';
+            ctx.strokeText(nt, W / 2, 76); ctx.fillText(nt, W / 2, 76);
+          }
         }
         ctx.restore();
         // 출발 카운트다운
@@ -69065,6 +69109,7 @@
           const aliveN = st.seats.filter((_, i) => this.seatStatus(i).alive).length;
           ctx.font = '800 15px sans-serif'; ctx.fillStyle = '#e2e8f0';
           ctx.fillText(aliveN > 0 ? `살아 있는 친구 ${aliveN}명이 💗 하트 젤리를 먹으면 다시 일어나요` : '모두 쓰러졌어요... 결과를 정리하는 중', W / 2, H / 2 + 28);
+          if (aliveN > 0) { ctx.font = '800 13px sans-serif'; ctx.fillStyle = '#fde68a'; ctx.fillText('📣 점프(↑·스페이스·터치)를 누르면 친구를 응원해 체력을 채워 줘요', W / 2, H / 2 + 52); }
           ctx.restore();
         } else if (s.seat < 0 && !s.over) {
           ctx.save(); ctx.font = '800 13px sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(15,23,42,0.7)'; ctx.lineWidth = 3;
@@ -69084,6 +69129,7 @@
         ctx.font = '700 13px sans-serif'; ctx.fillStyle = '#cbd5e1';
         ctx.fillText('점프: ↑ · 스페이스 · 화면 위쪽 터치   |   슬라이드: ↓ (누르고 있기) · 화면 아래쪽 터치', PETRUN.W / 2, 222);
         ctx.fillText('쓰러진 친구는 💗 하트 젤리를 먹어 살리고, 🧲자석·⭐젤리 2배는 팀 전체가 같이 받아요. 5분을 버티면 완주!', PETRUN.W / 2, 246);
+        ctx.fillText('💚 하트는 힘든 친구와 나누고, 📣 쓰러지면 응원하고, 🤝 친구 곁에서 달리면 점수가 더 올라요', PETRUN.W / 2, 270);
         ctx.restore();
       },
     });
