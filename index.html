@@ -69093,7 +69093,16 @@
         const key = `${pack.d},${pack.y},${pack.st},${pack.hp},${pack.sc}`;
         if (!force && s.lastSentKey === key && Date.now() - s.lastSent < 500) return;
         s.lastSentKey = key; s.lastSent = Date.now();
-        ref.set(pack).catch(() => {});
+        // 바뀐 칸만 올림 (2026-11-18 실측: 자리마다 초당 7번 × 통째 약 140B · 매번 바뀌는 건 거리·점수·시각뿐) — 받는 쪽은 합쳐진 값을 그대로 받음
+        // 통째로는: 처음·새 판·강제(force)·2초마다 (방 자리가 지워졌거나 도중에 들어온 친구가 빠진 칸 없이 받게)
+        const prev = s.lastPack;
+        if (force || !prev || prev.gid !== pack.gid || s.lastSent - (s.lastFullAt || 0) > 2000) { s.lastFullAt = s.lastSent; ref.set(pack).catch(() => {}); }
+        else {
+          const patch = {};
+          Object.keys(pack).forEach(k => { if (k === 'g' ? pack.g.join() !== prev.g.join() : pack[k] !== prev[k]) patch[k] = pack[k]; });
+          ref.update(patch).catch(() => {});
+        }
+        s.lastPack = pack;
       },
       sendEvent(kind, to = -1) {
         const s = this.st; if (!s || s.seat < 0 || !this.inRoom()) return;
