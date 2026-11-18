@@ -34969,7 +34969,7 @@
       if (sk === 'mu_naerim') {
         unit.muNaerimUntil = sim.tickCount + MU_NAERIM_TICKS;
         unit.muCharms = MU_MAX; unit.muGauge = 0;
-        sim.effects.push({ type: 'mu_naerim', uid: unit.id, x: Math.round(unit.x), y: Math.round(unit.y), life: MU_NAERIM_FX_TICKS, maxLife: MU_NAERIM_FX_TICKS });
+        sim.effects.push({ type: 'mu_naerim', uid: unit.id, x: Math.round(unit.x), y: Math.round(unit.y), life: MU_NAERIM_FX_TICKS, maxLife: MU_NAERIM_FX_TICKS, ...(muSrOf(unit) ? { sr: 1 } : {}) });
         if (!sim.shake || sim.shake.power < 3) sim.shake = { power: 3, life: 12, maxLife: 12 };
         playCombatSfx('heal');
         addBattleLog(`[무녀] ${unit.name}의 내림굿! 12초 동안 부적이 줄지 않고 장판 효과 2배`);
@@ -35220,7 +35220,7 @@
     //   보호 D = 'wall': 안쪽은 고요한 옅은 안개, 범위 끝(반지름 70~96%)에만 위로 일렁이는 안개 벽 (exports/shaman-fog-guard)
     const muFogTiles = {};
     const muFogMaskCache = new Map(), muFogScratchBy = new Map(), muFogScratch2 = document.createElement('canvas');
-    function muFieldFog(ctx, z, kind, rr, alpha, two, t) {
+    function muFieldFog(ctx, z, kind, rr, alpha, two, t, tint) { // tint = 덧입힐 색 그림 (SR 내림굿 오방 안개)
       const flow = MU_FOG_FLOW[kind];
       const tiles = muFogTiles[kind] || (muFogTiles[kind] = flow === 'wall' ? [ // 안쪽 큰 결 (80×50 → 40×25칸) · 벽 결 (34×22 → 17×11칸)
         muFogTile(kind, 40, 25, 7, f => { const d = muSstep(0.4, 0.8, f); return [0.25 + 0.18 * d, 0.04 + 0.18 * d]; }),
@@ -35259,6 +35259,7 @@
         for (let x = -ox; x < n; x += tw) for (let y = -oy; y < n; y += th) c.drawImage(tile, x, y);
       });
       c.globalCompositeOperation = 'destination-in'; c.drawImage(mask, 0, 0, n, n);
+      if (tint) { c.globalCompositeOperation = 'source-atop'; c.globalAlpha = 0.7; c.drawImage(tint, 0, 0, n, n); c.globalAlpha = 1; }
       ctx.save(); ctx.imageSmoothingEnabled = false;
       ctx.globalAlpha = alpha; ctx.drawImage(s, z.x - rr, z.y - rr, rr * 2, rr * 2);
       if (two) { ctx.globalAlpha = alpha * 0.45; ctx.drawImage(s, z.x - rr, z.y - rr, rr * 2, rr * 2); } // 내림굿 2배 장판: 안개가 더 짙음
@@ -35368,6 +35369,145 @@
       c.putImageData(img, 0, 0);
       return (muSigilTex = cv);
     }
+    // ===== 시크릿 레어 무녀 내림굿 (2026-11-18 사용자 시안 A1 오방기 대강신 + 오방 안개 + 부적 폭풍, exports/shaman-sr-naerim-3) =====
+    //   기본 내림굿 그림(금빛 안개·방울 물결·팔괘 각인·금빛 부적)은 쓰지 않음
+    //   기도: 둘레 다섯 자리에 청·적·황·백·흑 오방기가 솟아 0.5초 장단마다 밑동이 빛남 · 발밑에 깃발 색 안개(가운데로 갈수록 섞여 하얘짐) · 부적이 감아 오름
+    //   착지: 깃발마다 그 색 빛기둥 · 다섯 빛줄기가 머리 위에서 만나 터짐 · 부적이 기둥 따라 솟구치고 머리 위와 발밑에서 사방으로 터져 펄럭이며 내려앉음 · 안개 물결
+    const MU_OBANG = ['#2563eb', '#dc2626', '#facc15', '#f8fafc', '#1f2937'], MU_OBANG_LIT = ['#3b82f6', '#ef4444', '#facc15', '#e2e8f0', '#7c3aed']; // 흑은 빛·안개로는 보라
+    const MU_OB_R = 150, MU_OB_FOG_R = 185, MU_OB_FLAG_H = 120, MU_OB_TOP = 250; // 깃발 둘레 · 안개 반지름 · 깃대 키 · 빛이 만나는 높이 (게임 px × 크기 배율)
+    const muObAng = i => -Math.PI / 2 + 0.2 + i / 5 * Math.PI * 2;
+    MU_RGB.mu_obang = ['#64748b', '#94a3b8', '#cbd5e1', '#e2e8f0', '#ffffff'].map(muRgb); // 흰 안개 → muObWheel 색을 덧입힘
+    MU_FOG_FLOW.mu_obang = [[0.09, 0], [-0.06, 0.04]];
+    let muObWheelTex = null, muObWaveTex = null;
+    function muObWheel() { // 오방 색 바퀴: 깃발 쪽마다 그 색, 가운데로 갈수록 섞여 하얘짐 (한 번만)
+      if (muObWheelTex) return muObWheelTex;
+      const n = 64, cv = document.createElement('canvas'); cv.width = cv.height = n;
+      const c = cv.getContext('2d'), img = c.createImageData(n, n), d = img.data, cols = MU_OBANG_LIT.map(muRgb), wh = muRgb('#e2e8f0');
+      for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+        const dx = i + 0.5 - n / 2, dy = j + 0.5 - n / 2, nd = Math.hypot(dx, dy) / (n / 2), ang = Math.atan2(dy, dx), k = (j * n + i) * 4;
+        let r = 0, g = 0, b = 0, s = 0;
+        for (let f = 0; f < 5; f++) { const w = Math.pow(Math.max(0, Math.cos(ang - muObAng(f))), 3) + 0.001; r += cols[f][0] * w; g += cols[f][1] * w; b += cols[f][2] * w; s += w; }
+        const m = 1 - muSstep(0.15, 0.6, nd);
+        d[k] = r / s + (wh[0] - r / s) * m; d[k + 1] = g / s + (wh[1] - g / s) * m; d[k + 2] = b / s + (wh[2] - b / s) * m; d[k + 3] = 255;
+      }
+      c.putImageData(img, 0, 0);
+      return (muObWheelTex = cv);
+    }
+    const muObWave = () => muObWaveTex || (muObWaveTex = muPaintDisc(MU_OB_FOG_R, MU_RGB.mu_obang, (nd, a) => { const f = muPFbm(Math.cos(a) * 4 + 7, Math.sin(a) * 4 + 2, 64, 64); return [0.5 + 0.4 * f, Math.exp(-Math.pow((nd - 0.86) / 0.12, 2)) * (0.4 + 0.6 * f) * 0.7]; })); // 착지 안개 물결
+    const MU_OB_CH = (() => { const r = pfxRng(21), o = []; for (let i = 0; i < 220; i++) o.push({ a: r() * 6.283, v: 4 + r() * 9, up: 0.4 + r() * 0.9, ph: r() * 6.283, sp: 0.12 + r() * 0.2, s: 0.8 + r() * 0.7, fall: 0.8 + r() * 1.2, sw: 10 + r() * 22 }); return o; })();
+    const muObBeat = t => Math.pow(1 - (t % 30) / 30, 3); // 0.5초 장단
+    function muObCharm(ctx, x, y, c, rot, flip, a) { // 뒤집히며 펄럭이는 부적 (flip = 앞뒤 회전, 뒷면은 어둡게)
+      if (a <= 0.02) return;
+      const base = ctx.globalAlpha; ctx.save(); ctx.globalAlpha = base * a * (flip < 0 ? 0.7 : 1);
+      ctx.translate(Math.round(x), Math.round(y)); ctx.rotate(rot); ctx.scale(Math.max(0.18, Math.abs(flip)), 1);
+      drawMuCharm(ctx, 0, 0, c, 0, null, 0, 1); ctx.restore();
+    }
+    function muObFlag(ctx, x, y, h, i, t, k, a) { // 오방기: 긴 대 + 금 꼭지 + 펄럭이는 큰 천 + 불꽃 테두리 + 가운데 글씨 획 (2px 칸)
+      if (h < 4 || a <= 0.01) return;
+      const base = ctx.globalAlpha; ctx.globalAlpha = base * a;
+      x = Math.round(x / 2) * 2; y = Math.round(y / 2) * 2; h = Math.round(h / 2) * 2;
+      ctx.fillStyle = '#5b3a1e'; ctx.fillRect(x - 2, y - h, 4, h);
+      ctx.fillStyle = '#f59e0b'; ctx.fillRect(x - 4, y - h - 8, 8, 6); ctx.fillStyle = '#fde68a'; ctx.fillRect(x - 2, y - h - 12, 4, 4);
+      const col = MU_OBANG[i], fw = Math.round(54 * k / 2) * 2, fh = 42 * k;
+      for (let c = 0; c < fw; c += 2) {
+        const top = y - h + 2 + Math.round(Math.sin(t * 0.22 - c * 0.15 / k + i) * c * 0.12 / 2) * 2, hh = Math.round((fh - c * 0.15) / 2) * 2;
+        ctx.fillStyle = col; ctx.fillRect(x + 2 + c, top, 2, hh);
+        ctx.fillStyle = c % 8 < 4 ? '#fde68a' : (i === 3 ? '#dc2626' : '#f8fafc'); ctx.fillRect(x + 2 + c, top + hh - 4, 2, 4); // 불꽃 테두리
+        if (c > fw * 0.3 && c < fw * 0.75 && c % 6 === 0) { ctx.fillStyle = i === 2 || i === 3 ? '#7f1d1d' : '#fde68a'; ctx.fillRect(x + 2 + c, top + 8, 2, Math.round(fh * 0.35 / 2) * 2); } // 글씨 획
+      }
+      ctx.globalAlpha = base;
+    }
+    // P = { x, y, k, t, pray, q 기도 진행, st 착지 뒤 틱(떠오르는 동안 음수), fe 끝 옅어짐 }
+    function muObFlags(ctx, P, front) {
+      const h = (P.pray ? eoqMu(P.q * 1.5) : 1) * MU_OB_FLAG_H * P.k, a = P.pray ? 1 : 1 - muSstep(50, 80, P.st);
+      for (let i = 0; i < 5; i++) {
+        const an = muObAng(i), x = P.x + Math.cos(an) * MU_OB_R * P.k, y = P.y + Math.sin(an) * MU_OB_R * P.k;
+        if ((y > P.y) !== front) continue;
+        muGlow(ctx, x, y, 22 * P.k, MU_OBANG_LIT[i], (0.3 + 0.6 * muObBeat(P.t)) * a);
+        muObFlag(ctx, x, y, h, i, P.t, P.k, a);
+      }
+    }
+    const eoqMu = v => pfxEaseOutQuart(Math.max(0, Math.min(1, v)));
+    function muObCharms(ctx, P, front) {
+      const k = P.k;
+      if (P.pray) { // 무녀 둘레로 감아 오르는 부적 36장
+        for (let i = 0; i < 36; i++) {
+          const c = MU_OB_CH[i], p = (P.t * 0.005 + i / 36) % 1, an = c.ph + P.t * 0.045 + p * 5;
+          if ((Math.sin(an) > 0) !== front) continue;
+          const r = (60 + p * 70) * k;
+          muObCharm(ctx, P.x + Math.cos(an) * r, P.y - 16 * k - p * 260 * k + Math.sin(an) * r * 0.35, 1.6 * c.s, Math.sin(P.t * 0.08 + c.ph) * 0.5, Math.cos(P.t * c.sp + c.ph), muSstep(0, 0.1, p) * (1 - muSstep(0.75, 1, p)) * Math.min(1, P.q * 3));
+        }
+        return;
+      }
+      const st = P.st; if (st < 0) return;
+      for (let f = 0; f < 5; f++) { // 빛기둥 따라 솟구치는 부적: 깃발마다 8장
+        const an = muObAng(f), fx = P.x + Math.cos(an) * MU_OB_R * k, fy = P.y + Math.sin(an) * MU_OB_R * k;
+        if ((fy > P.y) !== front) continue;
+        for (let j = 0; j < 8; j++) {
+          const c = MU_OB_CH[100 + f * 8 + j], s2 = st - j * 2.5; if (s2 < 0 || s2 > 50) continue;
+          muObCharm(ctx, fx + Math.sin(s2 * 0.2 + c.ph) * c.sw * 0.5 * k, fy - MU_OB_FLAG_H * k - s2 * (7 + c.v * 0.5) * k, 1.7 * c.s, Math.sin(s2 * 0.15 + c.ph) * 0.6, Math.cos(s2 * c.sp * 2 + c.ph), (1 - muSstep(32, 50, s2)) * P.fe);
+        }
+      }
+      const burst = (ox, oy, from, i0, n, spread) => { // 사방으로 터져 펄럭이며 내려앉음
+        const s2 = st - from; if (s2 < 0) return;
+        for (let i = 0; i < n; i++) {
+          if ((i % 2 === 0) !== front) continue;
+          const c = MU_OB_CH[i0 + i], D = c.v * spread * (1 - Math.exp(-s2 / 14)) * 12 * k;
+          const x = ox + Math.cos(c.a) * D + Math.sin(s2 * 0.07 + c.ph) * c.sw * muSstep(10, 40, s2) * k;
+          const y = oy + Math.sin(c.a) * D * 0.75 - c.up * 50 * k * (1 - Math.exp(-s2 / 10)) + Math.max(0, s2 - 18) * c.fall * k;
+          if (y > P.y + 60 * k) continue;
+          muObCharm(ctx, x, y, c.s * (2.2 - 0.5 * muSstep(0, 40, s2)), Math.sin(s2 * 0.09 + c.ph) * 0.9, Math.cos(s2 * c.sp + c.ph), Math.min(1, s2 / 3) * P.fe);
+        }
+      };
+      burst(P.x, P.y - MU_OB_TOP * k, 26, 0, 90, 1.2); // 다섯 빛이 만나 터지는 머리 위
+      burst(P.x, P.y - 50 * k, 0, 150, 60, 1); // 착지한 무녀 발밑
+    }
+    // 유닛 밑: 오방 안개 · 착지 안개 물결 · 뒤쪽 깃발 · 빛기둥 · 머리 위로 모이는 빛줄기 · 뒤쪽 부적
+    function drawMuObGround(ctx, P) {
+      const k = P.k, land = !P.pray && P.st >= 0;
+      const fa = P.pray ? muSstep(0, 0.35, P.q) * 0.8 : P.fe;
+      const rr = MU_OB_FOG_R * k * (P.pray ? 0.65 + 0.35 * eoqMu(P.q) : 1 + (land ? 0.12 * eoqMu(P.st / 20) : 0));
+      if (fa > 0.01) muFieldFog(ctx, { x: P.x, y: P.y, r: MU_OB_FOG_R * k }, 'mu_obang', rr, (ctx.globalAlpha || 1) * fa, false, P.t, muObWheel());
+      if (land && P.st < 30) { // 안개 물결이 바깥으로 한 번 퍼짐
+        const w = eoqMu(P.st / 30), R = rr * (0.3 + 0.85 * w);
+        ctx.save(); ctx.imageSmoothingEnabled = false; ctx.globalAlpha *= 1 - w; ctx.drawImage(muObWave(), P.x - R, P.y - R, R * 2, R * 2); ctx.restore();
+        muGlow(ctx, P.x, P.y, 180 * k, '#fff7e0', 0.5 * (1 - P.st / 30));
+      }
+      muObFlags(ctx, P, false);
+      if (land) {
+        for (let i = 0; i < 5; i++) { // 빛기둥
+          const an = muObAng(i), x = P.x + Math.cos(an) * MU_OB_R * k, y = P.y + Math.sin(an) * MU_OB_R * k - MU_OB_FLAG_H * k, a = Math.min(1, P.st / 5) * (1 - muSstep(35, 65, P.st));
+          if (a <= 0.01) continue;
+          const hh = 420 * k * eoqMu(P.st / 10), w = 16 * k, [r, g, b] = muRgb(MU_OBANG_LIT[i]);
+          ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha *= a;
+          const gr = ctx.createLinearGradient(0, y - hh, 0, y); gr.addColorStop(0, `rgba(${r},${g},${b},0)`); gr.addColorStop(0.5, `rgba(${r},${g},${b},.55)`); gr.addColorStop(1, `rgba(${r},${g},${b},.9)`);
+          ctx.fillStyle = gr; ctx.fillRect(Math.round(x - w / 2), Math.round(y - hh), Math.round(w), Math.round(hh));
+          ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillRect(Math.round(x - 2), Math.round(y - hh * 0.8), 4, Math.round(hh * 0.8));
+          ctx.restore(); muGlow(ctx, x, y, w * 2.4, MU_OBANG_LIT[i], a);
+        }
+        const u = eoqMu((P.st - 8) / 22), sa = 1 - muSstep(45, 70, P.st);
+        if (u > 0 && sa > 0.01) { // 다섯 빛줄기가 하늘에서 휘돌며 머리 위로 모임
+          const base = ctx.globalAlpha; ctx.globalAlpha = base * sa;
+          for (let i = 0; i < 5; i++) {
+            const an = muObAng(i), x0 = P.x + Math.cos(an) * MU_OB_R * k, y0 = P.y + Math.sin(an) * MU_OB_R * k - 260 * k, ty = P.y - MU_OB_TOP * k, col = i === 4 ? '#6d28d9' : MU_OBANG_LIT[i];
+            for (let j = 0; j <= 32 * u; j++) { const v = j / 32, x = x0 + (P.x - x0) * v + Math.sin(v * 9 + P.t * 0.2 + i) * 18 * k * (1 - v), y = y0 + (ty - y0) * v * v; muDot(ctx, x, y, 6, col); muDot(ctx, x - 2, y - 2, 2, '#ffffff'); }
+          }
+          ctx.globalAlpha = base;
+        }
+      }
+      muObCharms(ctx, P, false);
+    }
+    // 유닛 위: 앞쪽 깃발 · 앞쪽 부적 · 착지 번쩍 · 빛이 만나 터지는 번쩍
+    function drawMuObTop(ctx, P) {
+      muObFlags(ctx, P, true);
+      muObCharms(ctx, P, true);
+      if (!P.pray && P.st >= 0) {
+        if (P.st < 10) muGlow(ctx, P.x, P.y - 40 * P.k, 110 * P.k, '#fffbeb', 1.6 * (1 - P.st / 10));
+        if (P.st > 28 && P.st < 70) { const g = 1 - muSstep(36, 70, P.st); muGlow(ctx, P.x, P.y - MU_OB_TOP * P.k, 100 * P.k, '#ffffff', 1.3 * g); muGlow(ctx, P.x, P.y - MU_OB_TOP * P.k, 50 * P.k, MU_GOLD[3], 1.1 * g); }
+      }
+    }
+    const muObPray = (u, t) => ({ x: u.x, y: u.y, k: Math.sqrt(u.sizeScale || 1), t, pray: true, q: 1 - u.casting.left / Math.max(1, u.casting.total), st: -1, fe: 1 });
+    const muObAct = (ef, t) => { const u = (sim.units || []).find(x => x.id === ef.uid); return { x: u ? u.x : ef.x, y: u ? u.y : ef.y, k: u ? Math.sqrt(u.sizeScale || 1) : 1, t, pray: false, q: 1, st: (ef.maxLife || MU_NAERIM_FX_TICKS) - ef.life - MU_NAERIM_LAND, fe: Math.min(1, ef.life / 20) }; };
     // 방울 소리 물결 (2026-11-18 사용자 시안 E 금빛 가루 고리, exports/shaman-bell-fog): 0.5초마다 가슴 높이에서 둘씩, 반지름 18 → 72 · 세로 0.6배
     //   선 대신 군데군데 끊긴 옅은 금빛 안개 띠 + 띠를 따라 반짝이며 흩어지는 금빛 가루. 유닛 위에 그림 (drawMuFieldCharms 다음)
     let muBellTex = null; // 안개 띠: 반지름 85% 둘레, 둘레를 따라 노이즈로 끊김 (한 번만)
@@ -35376,6 +35516,7 @@
       const t = sim.tickCount || 0, base = ctx.globalAlpha;
       (sim.units || []).forEach(u => {
         if (!u.alive || !u.casting || u.casting.key !== 'mu_naerim' || !muIs(u)) return;
+        if (muSrOf(u)) { drawMuObTop(ctx, muObPray(u, t)); return; } // 시크릿 레어: 오방기 대강신
         const q = 1 - u.casting.left / Math.max(1, u.casting.total), k = Math.sqrt(u.sizeScale || 1), cx = u.x, cy = u.y - 50 * k;
         ctx.save(); ctx.imageSmoothingEnabled = false;
         for (let w = 0; w < 2; w++) {
@@ -35397,11 +35538,13 @@
       const t = sim.tickCount || 0;
       (sim.units || []).forEach(u => {
         if (!u.alive || !u.casting || u.casting.key !== 'mu_naerim' || !muIs(u)) return;
+        if (muSrOf(u)) { drawMuObGround(ctx, muObPray(u, t)); return; }
         const q = 1 - u.casting.left / Math.max(1, u.casting.total), k = Math.sqrt(u.sizeScale || 1);
         muFieldFog(ctx, { x: u.x, y: u.y, r: 90 * k }, 'mu_naerim_in', 90 * k * (0.7 + 0.3 * q), (ctx.globalAlpha || 1) * (0.3 + 0.6 * q), false, t); // 발밑에 금빛 안개가 빨려 들며 모임
       });
       (sim.effects || []).forEach(ef => {
         if (ef.type !== 'mu_naerim') return;
+        if (ef.sr) { drawMuObGround(ctx, muObAct(ef, t)); return; }
         const tk = (ef.maxLife || MU_NAERIM_FX_TICKS) - ef.life, u = (sim.units || []).find(x => x.id === ef.uid), k = u ? Math.sqrt(u.sizeScale || 1) : 1;
         const fx = u ? u.x : ef.x, fy = u ? u.y : ef.y;
         if (tk >= MU_NAERIM_LAND) { // 착지 인장
@@ -35416,6 +35559,7 @@
     }
     // 유닛 위 (drawShamanEffect): 나선으로 감아 오르는 부적 · 착지 번쩍 · 사방으로 터져 눈처럼 떨어지는 부적
     function drawMuNaerimTop(ctx, ef) {
+      if (ef.sr) { drawMuObTop(ctx, muObAct(ef, sim.tickCount || 0)); return; } // 시크릿 레어: 오방기 대강신
       const tk = (ef.maxLife || MU_NAERIM_FX_TICKS) - ef.life, u = (sim.units || []).find(x => x.id === ef.uid), k = u ? Math.sqrt(u.sizeScale || 1) : 1;
       const fx = u ? u.x : ef.x, fy = u ? u.y : ef.y, base = ctx.globalAlpha;
       if (tk < MU_NAERIM_LAND) {

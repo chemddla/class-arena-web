@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SR 무녀 내림굿 시안</title>
+<style>
+  body { margin: 0; background: #111; color: #ddd; font: 14px/1.4 system-ui, sans-serif; }
+  h1 { font-size: 16px; margin: 12px 16px 4px; }
+  p { margin: 0 16px 10px; color: #999; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 10px; padding: 0 16px 16px; }
+  figure { margin: 0; background: #1b1b1b; border-radius: 6px; overflow: hidden; }
+  canvas { width: 100%; display: block; image-rendering: pixelated; }
+  figcaption { padding: 6px 10px 8px; font-size: 13px; } figcaption b { color: #facc15; }
+</style></head><body>
+<h1>시크릿 레어 무녀 · 히든 스킬 내림굿 전용 이펙트 시안 (무당 굿판 느낌)</h1>
+<p>SR 무녀 그림(남색 철릭·붉은 치마·오색 띠·부채) 그대로, 게임 크기 (2px 도트 칸, 램프 + 바이어 디더). 기도 2초 → 떠오름 0.3초 → 착지 1.5초 → 쉼, 5초마다 반복. 떠오를 때 감아 오르는 부적은 SR 부적 그림. 바닥·주변 연출만 시안마다 다름.</p>
+<div class="grid" id="g"></div>
+<script>
+'use strict';
+const SEAL = 150, RM = 200, CELL = 2, NC = RM * 2 / CELL, W = 460, H = 430, CX = 230, CY = 300, SK = 1.3; // SK = 용병 그림 배율
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
+const rgb = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+const GOLD = ['#713f12', '#ca8a04', '#facc15', '#fef08a', '#fffbeb'];
+const FIVE = [['#14532d', '#16a34a', '#4ade80', '#bbf7d0', '#f0fdf4'], ['#7c2d12', '#ea580c', '#fb923c', '#fed7aa', '#fff7ed'], ['#3b0764', '#7e22ce', '#a855f7', '#e9d5ff', '#faf5ff'], ['#450a0a', '#991b1b', '#dc2626', '#fca5a5', '#fef2f2'], ['#713f12', '#ca8a04', '#facc15', '#fef08a', '#fefce8']]; // 치유·강화·약화·저주·보호
+const OBANG = { blue: ['#172554', '#1d4ed8', '#3b82f6', '#bfdbfe', '#eff6ff'], red: ['#450a0a', '#b91c1c', '#ef4444', '#fecaca', '#fef2f2'], yellow: GOLD, white: ['#64748b', '#cbd5e1', '#e2e8f0', '#f8fafc', '#ffffff'], black: ['#020617', '#1e293b', '#334155', '#64748b', '#94a3b8'] }; // 오방색 (청·적·황·백·흑)
+const RAMPS = [GOLD, OBANG.blue, OBANG.red, OBANG.yellow, OBANG.white, OBANG.black].map(r => r.map(rgb)); // 0 금빛 · 1 청 · 2 적 · 3 황 · 4 백 · 5 흑
+const PAPER = ['#8a6d1e', '#e9c96a', '#f7e7a6', '#fff8d6'], INK = '#b91c1c';
+const GLYPH = ['.......', '.......', '.xxxxx.', '...x...', '.xxxxx.', '...x...', '.x.x.x.', '.xxxxx.', '...x...', '..x.x..', '.x...x.', '.......'];
+const TRI = ['111', '011', '101', '001', '110', '010', '100', '000'];
+const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
+const ss = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const eoq = t => 1 - Math.pow(1 - clamp(t), 4);
+function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const hsh = (x, y) => { let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+function vn(x, y) { const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf); const a = hsh(xi, yi), b = hsh(xi + 1, yi), c = hsh(xi, yi + 1), d = hsh(xi + 1, yi + 1); return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; }
+const fbm = (x, y) => vn(x, y) * 0.55 + vn(x * 2.03 + 17.3, y * 2.03 + 5.1) * 0.3 + vn(x * 4.1 + 3.7, y * 4.1 + 29.9) * 0.15;
+const em = (nd, f, lo = 0.72, w = 0.25) => 1 - ss(lo, 1.0, nd + (f - 0.5) * w); // 끝이 노이즈로 녹아 사라짐
+const flowIn = (x, y, t, sp, s, out) => { const ph = (t * sp) % 1, ph2 = (ph + 0.5) % 1, w = Math.abs(ph * 2 - 1), a = out ? 2 - ph : 1 + ph, b = out ? 2 - ph2 : 1 + ph2; return fbm(x / s * a + 3, y / s * a + 7) * (1 - w) + fbm(x / s * b + 41, y / s * b + 13) * w; };
+
+// 칸마다 fn(x, y, P) → [램프 자리, 불투명도, 램프 번호(0 금빛 · 1~5 다섯 부적)]
+function paint(cx, img, fn, P) {
+  const d = img.data; d.fill(0);
+  for (let j = 0; j < NC; j++) for (let i = 0; i < NC; i++) {
+    const x = (i + 0.5 - NC / 2) * CELL, y = (j + 0.5 - NC / 2) * CELL;
+    if (x * x + y * y > RM * RM) continue;
+    const r = fn(x, y, P); if (!r || r[1] <= 0.01) continue;
+    const rp = RAMPS[r[2] || 0], L = rp.length - 1, lv = clamp(r[0]) * L, b = Math.floor(lv), c = rp[Math.min(L, b + (lv - b > BAYER[(i & 3) + (j & 3) * 4] ? 1 : 0))], k = (j * NC + i) * 4;
+    d[k] = c[0]; d[k + 1] = c[1]; d[k + 2] = c[2]; d[k + 3] = Math.min(255, r[1] * 255);
+  }
+  cx.putImageData(img, 0, 0);
+}
+const glowCache = new Map();
+function glow(ctx, x, y, r, hex, k) {
+  if (k <= 0.01) return; const key = hex + '|' + Math.round(r); let cv = glowCache.get(key);
+  if (!cv) { const n = Math.max(2, Math.round(r * 2)), [a, b, c] = rgb(hex); cv = document.createElement('canvas'); cv.width = cv.height = n; const g2 = cv.getContext('2d'), g = g2.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2); g.addColorStop(0, `rgba(${a},${b},${c},.9)`); g.addColorStop(0.4, `rgba(${a},${b},${c},.35)`); g.addColorStop(1, `rgba(${a},${b},${c},0)`); g2.fillStyle = g; g2.fillRect(0, 0, n, n); glowCache.set(key, cv); }
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha *= Math.min(1, k); ctx.drawImage(cv, x - r, y - r, r * 2, r * 2); ctx.restore();
+}
+function charm(ctx, cx, cy, c, ang, gold) {
+  ctx.save(); ctx.translate(Math.round(cx), Math.round(cy)); if (ang) ctx.rotate(ang);
+  const w = 7, h = 12, x0 = -w * c / 2, y0 = -h * c / 2;
+  for (let gy = 0; gy < h; gy++) for (let gx = 0; gx < w; gx++) {
+    const edge = gx === 0 || gy === 0 || gx === w - 1 || gy === h - 1;
+    ctx.fillStyle = edge ? PAPER[0] : (gx + gy < 4 ? PAPER[3] : gx > 4 && gy > 8 ? PAPER[1] : PAPER[2]); ctx.fillRect(x0 + gx * c, y0 + gy * c, c, c);
+    if (!edge && GLYPH[gy][gx] === 'x') { ctx.fillStyle = INK; ctx.fillRect(x0 + gx * c, y0 + gy * c, c, c); }
+  }
+  if (gold) { ctx.fillStyle = GOLD[1]; ctx.fillRect(x0 + 2 * c, y0 + c, 3 * c, c); ctx.fillStyle = GOLD[3]; ctx.fillRect(x0 + 3 * c, y0 + c, c, c); }
+  ctx.restore();
+}
+function trigrams(ctx, R0, t, alpha) {
+  ctx.fillStyle = GOLD[3]; ctx.globalAlpha = alpha;
+  for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283 + t * 0.004, x = CX + Math.cos(a) * R0 * 0.8, y = CY + Math.sin(a) * R0 * 0.8; for (let b = 0; b < 3; b++) { const yy = Math.round(y - 4 + b * 4); if (TRI[i][b] === '1') ctx.fillRect(Math.round(x - 7), yy, 14, 2); else { ctx.fillRect(Math.round(x - 7), yy, 5, 2); ctx.fillRect(Math.round(x + 2), yy, 5, 2); } } }
+  ctx.globalAlpha = 1;
+}
+// 무녀 그림 (게임 shaman_0: 11 = 기도, 12 = 떠오름, 13 = 착지, 0 = 서 있기)
+const SPR = new Image(); SPR.src = '../../assets/sprites/merc/shaman_sr1.webp'; const SRK = SK * 86 / 96; // SR 그림 (칸 120×132, 기준점 67·130, 키 96 → 기본 무녀 키에 맞춤)
+const SRC = new Image(); SRC.src = '../../assets/sprites/fx/shaman_sr1_charm.webp'; // SR 부적 (오른쪽을 향한 가로 그림)
+function shaman(ctx, frame, lift) { if (!SPR.complete) return; ctx.drawImage(SPR, frame * 120, 0, 120, 132, Math.round(CX - 67 * SRK), Math.round(CY + 12 - 130 * SRK - lift), Math.round(120 * SRK), Math.round(132 * SRK)); }
+function srCharm(ctx, x, y, ang) { if (!SRC.complete) return; const L = 12 * 1.3 * 1.22, w2 = L * 24 / 52; ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.rotate((ang || 0) - Math.PI / 2); ctx.drawImage(SRC, -L / 2, -w2 / 2, L, w2); ctx.restore(); }
+
+
+// ===== 공용 =====
+const OB_HEX = [OBANG.blue[2], OBANG.red[2], OBANG.yellow[2], OBANG.white[3], OBANG.black[1]]; // 깃발 천 색
+const gatherFog = (x, y, P) => { const nd = Math.hypot(x, y) / (90 * (0.7 + 0.3 * P.q)); if (nd > 1.1) return null; const f = flowIn(x, y, P.t, 0.004, 55); const m = em(nd, f); const d = ss(0.3, 0.8, f) * m; return [0.15 + 0.4 * d, (0.08 + 0.42 * d) * m * (0.3 + 0.6 * P.q)]; }; // 발밑 금빛 안개 (지금 게임)
+const calmFog = (x, y, P, R0, k = 0.5) => { const nd = Math.hypot(x, y) / R0; if (nd > 1.1) return null; const f = fbm(x / 70 + P.t * 0.002, y / 45), m = em(nd, f); const d = ss(0.35, 0.8, f) * m; return [0.2 + 0.4 * d, (0.06 + 0.4 * d) * m * k]; };
+const pent = (i, r, rot = -Math.PI / 2) => { const a = rot + i / 5 * Math.PI * 2; return [Math.cos(a) * r, Math.sin(a) * r * 0.62]; }; // 다섯 자리 (바닥 타원)
+function flag(ctx, x, y, h, col, t, i, alpha) { // 오방기: 대 + 펄럭이는 천 (도트)
+  if (h < 2) return; ctx.globalAlpha = alpha; ctx.fillStyle = '#7c4a1d'; ctx.fillRect(Math.round(x), Math.round(y - h), 2, Math.round(h));
+  for (let c = 0; c < 9; c++) { const wy = Math.round(Math.sin(t * 0.25 - c * 0.7 + i) * (c * 0.35)); ctx.fillStyle = c === 8 ? 'rgba(0,0,0,0.2)' : col; ctx.fillRect(Math.round(x + 2 + c * 2), Math.round(y - h + 2 + wy), 2, 12); }
+  ctx.fillStyle = '#fde68a'; ctx.fillRect(Math.round(x - 1), Math.round(y - h - 2), 4, 2); ctx.globalAlpha = 1;
+}
+function blade(ctx, x, y, h, t, alpha) { // 작두날: 세로로 선 은빛 날, 날 끝을 따라 빛이 훑고 지나감
+  ctx.globalAlpha = alpha; ctx.fillStyle = '#5b3a1e'; ctx.fillRect(Math.round(x - 3), Math.round(y - 6), 6, 6);
+  for (let k = 0; k < h; k += 2) { const yy = Math.round(y - 6 - k), shine = Math.abs(((t * 3) % (h + 40)) - 20 - k) < 6; ctx.fillStyle = shine ? '#ffffff' : k % 4 ? '#cbd5e1' : '#94a3b8'; ctx.fillRect(Math.round(x - 1), yy, 2, 2); ctx.fillStyle = '#64748b'; ctx.fillRect(Math.round(x - 3), yy, 2, 2); }
+  ctx.globalAlpha = 1;
+}
+function nuk(ctx, x, y, s, ang, alpha) { // 넋전: 사람 모양으로 오린 흰 종이 (머리·팔 벌림·치마)
+  const P2 = ['..xx..', '..xx..', 'xxxxxx', '.xxxx.', '.xxxx.', 'xxxxxx', 'x.xx.x'];
+  ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.rotate(ang); ctx.globalAlpha = alpha;
+  for (let r = 0; r < 7; r++) for (let c = 0; c < 6; c++) if (P2[r][c] === 'x') { ctx.fillStyle = r === 0 || c === 0 ? '#e2e8f0' : '#ffffff'; ctx.fillRect((c - 3) * s, (r - 3.5) * s, s, s); }
+  ctx.restore(); ctx.globalAlpha = 1;
+}
+// 태극 (빨강 위 · 파랑 아래, rot만큼 돎): 1 = 빨강, 2 = 파랑, 0 = 밖
+function taeguk(x, y, rot) { const c = Math.cos(rot), s = Math.sin(rot), u = x * c + y * s, v = -x * s + y * c, r = Math.hypot(u, v); if (r > 1) return 0; if (Math.hypot(u - 0.5, v) < 0.5) return 1; if (Math.hypot(u + 0.5, v) < 0.5) return 2; return v < 0 ? 1 : 2; }
+// 신장(장군 신령) 실루엣: 투구 + 머리 + 수염 + 넓은 어깨 + 몸 (높이 200, 발 위 10부터)
+function general(x, y) { const X = Math.abs(x); if (y < -200 || y > -10) return 0;
+  if (y < -178) return X < 3 + (y + 200) * 0.2 ? 1 : 0; // 투구 술 (뾰족)
+  if (y < -150) return Math.hypot(x / 30, (y + 150) / 28) < 1 ? 1 : 0; // 투구 둥근 머리
+  if (y < -142) return X < 44 ? 1 : 0; // 투구 챙 (넓게)
+  if (y < -112) return X < 24 - (y + 142) * 0.1 ? 1 : 0; // 얼굴
+  if (y < -96) return X < 18 - (y + 112) * 0.7 || (X > 30 && X < 70 && y > -106) ? 1 : 0; // 수염 끝 + 어깨 갑옷 시작
+  if (y < -70) return X < 78 - Math.pow((y + 96) / 26, 2) * 10 ? 1 : 0; // 둥근 어깨 갑옷
+  return X < 62 - (y + 70) * 0.12 ? 1 : 0; } // 갑옷 몸
+
+// ===== 시안: prayFn / landFn = 바닥 안개 칸 함수 · prayFx / landFx = 위에 그리는 것 =====
+const PAPERS = (() => { const r = rng(3), o = []; for (let i = 0; i < 6; i++) o.push({ off: i * 20, dx: (r() - 0.5) * 30, sw: r() * 6 }); return o; })();
+const FLAKES = (() => { const r = rng(11), o = []; for (let i = 0; i < 46; i++) o.push({ x: (r() - 0.5) * 320, y0: -260 - r() * 120, sp: 2.2 + r() * 1.5, ph: r() * 6.283 }); return o; })();
+const SP = (() => { const r = rng(21), o = []; for (let i = 0; i < 14; i++) o.push({ a: r() * 6.283, d: 0.3 + r() * 0.7, s: 0.6 + r() * 0.6, o: r() }); return o; })();
+const V = [
+  { id: 'A', name: '오방기 강신', note: '기도: 둘레 다섯 자리에 청·적·황·백·흑 오방기가 땅에서 솟아 펄럭임 · 착지: 깃발이 쓰러지며 다섯 색 안개가 가운데로 몰려 금빛으로 물들고 퍼짐',
+    prayFn: gatherFog,
+    prayFx: (ctx, P) => { for (let i = 0; i < 5; i++) { const [x, y] = pent(i, 110); flag(ctx, CX + x, CY + y, 70 * eoq(P.q * 1.6), OB_HEX[i], P.t, i, 1); glow(ctx, CX + x, CY + y - 4, 14, OB_HEX[i], 0.4 * P.q); } },
+    landFn: (x, y, P) => { const r = Math.hypot(x, y), nd = r / SEAL, mix = ss(6, 30, P.st); if (nd > 1.1) return; let best = 0, k = 0;
+      for (let i = 0; i < 5; i++) { const [px, py] = pent(i, 110 * (1 - eoq(P.st / 24))), dd = Math.hypot(x - px, y - py) / (30 + 50 * eoq(P.st / 24)) + (fbm(x / 20 + i * 7, y / 20) - 0.5) * 0.6, d = 1 - ss(0.3, 1, dd); if (d > best) { best = d; k = i + 1; } }
+      const f = fbm(x / 60 + P.t * 0.002, y / 40), m = em(nd, f), g = ss(0.35, 0.8, f) * m * mix, d = Math.max(best * (1 - mix), g); return [0.3 + 0.5 * d, (0.06 + 0.55 * d) * P.fade, d === g || mix > 0.5 ? 0 : k]; },
+    landFx: (ctx, P) => { if (P.st < 20) for (let i = 0; i < 5; i++) { const [x, y] = pent(i, 110); ctx.save(); ctx.translate(CX + x, CY + y); ctx.rotate((i % 2 ? 1 : -1) * eoq(P.st / 20) * 1.4); flag(ctx, 0, 0, 70, OB_HEX[i], P.t, i, 1 - P.st / 20); ctx.restore(); } } },
+  { id: 'B', name: '작두 타기', note: '기도: 발밑에 작두날 두 개가 솟아 날 끝으로 빛이 훑고, 무녀가 날 위에 올라섬 · 착지: 날이 땅에 꽂히며 신칼 X자로 흰 안개가 갈라져 나가고 붉은 안개가 남음',
+    prayFn: (x, y, P) => { const nd = Math.hypot(x, y) / 80; if (nd > 1.1) return; const f = fbm(x / 30, y / 20 + P.t * 0.01), m = em(nd, f), d = ss(0.4, 0.8, f) * m; return [0.25 + 0.4 * d, (0.06 + 0.4 * d) * m * P.q, 2]; },
+    prayFx: (ctx, P) => { const h = 40 * eoq(P.q * 2); blade(ctx, CX - 10, CY + 4, h, P.t, 1); blade(ctx, CX + 10, CY + 8, h, P.t + 7, 1); if (h > 30) glow(ctx, CX, CY - h, 18, '#e2e8f0', 0.3 + 0.3 * Math.sin(P.t * 0.3)); },
+    lift: P => 32 * eoq(P.q * 2),
+    landFn: (x, y, P) => { const r = Math.hypot(x, y), nd = r / SEAL; if (nd > 1.15) return; const an = Math.atan2(y / 0.62, x), f = fbm(x / 40, y / 28 + P.t * 0.005), reach = eoq(P.st / 14) * 1.15;
+      let cut = 0; for (const a0 of [Math.PI / 4, 3 * Math.PI / 4]) { const da = Math.abs(Math.sin(an - a0)); cut = Math.max(cut, Math.exp(-Math.pow(da / 0.07, 2)) * (nd < reach ? 1 : 0) * (1 - ss(14, 50, P.st))); }
+      const red = ss(0.35, 0.8, f) * em(nd, f) * ss(4, 20, P.st) * 0.7; return cut > red ? [0.55 + 0.4 * cut, cut * 0.85 * P.fade, 4] : [0.2 + 0.4 * red, (0.05 + 0.5 * red) * P.fade, 2]; },
+    landFx: (ctx, P) => { if (P.st < 14) { const k = 1 - P.st / 14; blade(ctx, CX - 10, CY + 4 + P.st * 2, 40 * k, P.t, k); blade(ctx, CX + 10, CY + 8 + P.st * 2, 40 * k, P.t, k); } } },
+  { id: 'C', name: '소지 올리기', note: '기도: 손에서 흰 소지 종이가 한 장씩 떠올라 아래부터 타들어 가며 불티·재가 되어 날아오름 · 착지: 하늘에서 재가 금빛 가루로 바뀌어 눈처럼 내리고 금빛 안개가 깔림',
+    prayFn: gatherFog,
+    prayFx: (ctx, P) => { for (const p of PAPERS) { const ph = ((P.t + p.off) % 120) / 120, x = CX + 6 + p.dx * ph + Math.sin(ph * 8 + p.sw) * 5, y = CY - 112 - ph * 130; if (ph < 0.75) { const burn = ss(0.15, 0.75, ph), h = Math.round(14 * (1 - burn)); ctx.fillStyle = '#f8fafc'; ctx.fillRect(Math.round(x - 5), Math.round(y - h), 10, h); ctx.fillStyle = '#fb923c'; ctx.fillRect(Math.round(x - 5), Math.round(y), 10, 2); ctx.fillStyle = '#fde68a'; ctx.fillRect(Math.round(x - 3), Math.round(y), 6, 2); glow(ctx, x, y, 10, '#fb923c', 0.6 * (1 - burn * 0.5)); }
+      const r = rng(p.off + 1); for (let k = 0; k < 6; k++) { const q2 = ph - 0.15 - k * 0.06; if (q2 < 0) continue; const ax = x + (r() - 0.5) * 20 * q2 * 3, ay = y - q2 * 60 - k * 3; ctx.globalAlpha = Math.max(0, 1 - q2 * 1.6); ctx.fillStyle = k % 2 ? '#fb923c' : '#57534e'; ctx.fillRect(Math.round(ax / 2) * 2, Math.round(ay / 2) * 2, 2, 2); } ctx.globalAlpha = 1; } },
+    landFn: (x, y, P) => calmFog(x, y, P, SEAL * (0.5 + 0.5 * P.e), 0.85 * P.fade),
+    landFx: (ctx, P) => { for (const f of FLAKES) { const y = f.y0 + P.st * f.sp * 1.6, x = CX + f.x + Math.sin(P.t * 0.05 + f.ph) * 8; if (y > 20) continue; const s = Math.min(1, P.st / 10) * P.fade * (y > -10 ? 1 - (y + 10) / 30 : 1); ctx.globalAlpha = s; ctx.fillStyle = (f.ph * 10 | 0) % 3 ? GOLD[3] : GOLD[4]; ctx.fillRect(Math.round(x / 2) * 2, Math.round((CY + y) / 2) * 2, 2, 2); glow(ctx, x, CY + y, 5, GOLD[2], 0.3 * s); } ctx.globalAlpha = 1; } },
+  { id: 'D', name: '신장 강림', note: '기도: 발밑 금빛 안개 · 착지: 무녀 뒤로 투구 쓴 장군 신령이 커다란 금빛 안개 형상으로 솟아올랐다가 위로 흩어지며 사라짐 (몸은 반투명 안개, 테두리만 밝음)',
+    prayFn: gatherFog,
+    landFn: (x, y, P) => { let v = 0, a = 0; const c = calmFog(x, y, P, SEAL * (0.5 + 0.5 * P.e), 0.6 * P.fade); if (c) { v = c[0]; a = c[1]; }
+      const rise = eoq(P.st / 20), gy = y + 40 * (1 - rise) + 50 * ss(40, 90, P.st), g = general(x, gy); if (g) { const f = fbm(x / 16, y / 12 + P.t * 0.04), edge = general(x + 6, gy) * general(x - 6, gy) * general(x, gy - 6) * general(x, gy + 6) ? 0 : 1, k = rise * (1 - ss(35, 90, P.st)) * ss(0.25, 0.6, f + (edge ? 0.25 : 0) - ss(40, 90, P.st) * 0.5); const ga = (0.4 + 0.45 * edge) * k; if (ga > a) { a = ga; v = 0.45 + 0.4 * edge + 0.1 * f; } }
+      return [v, a]; } },
+  { id: 'E', name: '넋전 춤', note: '기도: 사람 모양으로 오린 흰 종이 넋전 여덟이 둘레를 돌며 춤추듯 오르내림 · 착지: 넋전이 사방으로 날아가 흰 안개 뭉치로 흩어지고 금빛 안개가 깔림',
+    prayFn: gatherFog,
+    prayFx: (ctx, P) => { for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283 + P.t * 0.02, x = CX + Math.cos(a) * 80, y = CY - 40 + Math.sin(a) * 30 - Math.abs(Math.sin(P.t * 0.12 + i)) * 14 * P.q; nuk(ctx, x, y, 3, Math.sin(P.t * 0.15 + i) * 0.4, (Math.sin(a) > 0 ? 1 : 0.6) * Math.min(1, P.q * 3)); } },
+    landFn: (x, y, P) => { let p = 0; const q = eoq(P.st / 40); for (const b of SP) { const d0 = b.d * SEAL * (0.3 + 0.8 * q), px = Math.cos(b.a) * d0, py = Math.sin(b.a) * d0 * 0.7 - 30 * (1 - q), rr = (10 + 24 * q) * b.s; if (Math.abs(x - px) > rr * 1.5 || Math.abs(y - py) > rr * 1.5) continue; const dd = Math.hypot(x - px, (y - py) * 1.2) / rr + (fbm(x / 14 + b.o * 30, y / 14) - 0.5) * 0.7; p = Math.max(p, (1 - ss(0.3, 1, dd)) * (1 - ss(30, 80, P.st))); }
+      const c = calmFog(x, y, P, SEAL * (0.5 + 0.5 * P.e), 0.6 * P.fade); return p > (c ? c[1] : 0) ? [0.6 + 0.35 * p, p * 0.8 * P.fade, 4] : c; },
+    landFx: (ctx, P) => { if (P.st < 16) for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283, d = 80 + P.st * 9, x = CX + Math.cos(a) * d, y = CY - 40 + Math.sin(a) * d * 0.4 - P.st * 2; nuk(ctx, x, y, 3, P.st * 0.3 * (i % 2 ? 1 : -1), 1 - P.st / 16); } } },
+  { id: 'F', name: '징·장구 장단', note: '기도: 쿵 박자(0.5초)마다 발밑에 붉고 푸른 태극 물결이 바닥으로 퍼짐 · 착지: 큰 태극 문양이 안개로 바닥에 깔려 돌다가 금빛으로 바래며 사라짐',
+    prayFn: (x, y, P) => { const g = gatherFog(x, y, P); const p = (P.t % 30) / 30, r = 20 + 90 * eoq(p), e = Math.hypot(x, y / 0.62) / r; const band = Math.exp(-Math.pow((e - 1) / 0.1, 2)) * (1 - p); if (band > 0.05) { const f = fbm(x / 12, y / 9 + P.t * 0.02), side = Math.sin(Math.atan2(y / 0.62, x) - P.t * 0.03) < 0 ? 1 : 2, d = band * ss(0.25, 0.65, f); if (!g || d > g[1]) return [0.45 + 0.4 * f, d * 0.85, side === 1 ? 2 : 1]; } return g; },
+    landFn: (x, y, P) => { const R0 = SEAL * (0.5 + 0.5 * P.e), u = x / R0, v = y / 0.62 / R0, nd = Math.hypot(u, v); if (nd > 1.1) return; const f = fbm(x / 30 + P.t * 0.003, y / 20), m = em(nd, f, 0.82, 0.2), tg = taeguk(u / 0.95, v / 0.95, P.t * 0.02), gold = ss(20, 70, P.st), d = (0.3 + 0.7 * ss(0.3, 0.7, f)) * m;
+      return [0.3 + 0.35 * d, (0.08 + 0.5 * d) * P.fade, gold > 0.6 || !tg ? 0 : tg === 1 ? 2 : 1]; } },
+];
+
+// ===== 시간 =====
+const PRAY = 120, LAND = 18, FX = 110, LOOP = PRAY + FX + 70;
+const panels = V.map(v => {
+  const fig = document.createElement('figure'), cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  fig.append(cv); const cap = document.createElement('figcaption'); cap.innerHTML = `<b>${v.id}. ${v.name}</b><br>${v.note}`; fig.append(cap); document.getElementById('g').append(fig);
+  const off = document.createElement('canvas'); off.width = off.height = NC; const ox = off.getContext('2d');
+  return { v, ctx: cv.getContext('2d'), off, ox, img: ox.createImageData(NC, NC) };
+});
+function floor(ctx) { ctx.fillStyle = '#8a8578'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#7f7a6d'; for (let i = 0; i < 300; i++) ctx.fillRect((hsh(i, 3) * W) | 0, (hsh(i, 7) * H) | 0, 6, 2); }
+function topFx(ctx, tk, t) { // 게임과 같은 흐름 (부적만 SR 그림)
+  if (tk < LAND) { const q = tk / LAND; for (let i = 0; i < 12; i++) { const ph = (q * 1.6 + i / 12) % 1, a = ph * Math.PI * 4 + i, rr = 40 + 10 * Math.sin(i), front = Math.sin(a) > 0, x = CX + Math.cos(a) * rr, y = CY - (30 + ph * 110) + Math.sin(a) * 10; ctx.globalAlpha = (front ? 1 : 0.5) * Math.min(1, q * 4); srCharm(ctx, x, y, Math.cos(a) * 0.4); if (front) glow(ctx, x, y, 12, GOLD[3], 0.35 * Math.min(1, q * 4)); } }
+  else if (tk < LAND + 90) { const st = tk - LAND, q = st / 90, e = eoq(Math.min(1, q * 1.6)), r = rng(77); if (st < 10) glow(ctx, CX, CY - 40, 80, GOLD[4], 1.6 * (1 - st / 10));
+    for (let i = 0; i < 16; i++) { const a = r() * 6.283, sp = 70 + r() * 90, x = CX + Math.cos(a) * sp * e + Math.sin(q * 10 + i) * 6 * q, y = CY - 50 + Math.sin(a) * sp * e * 0.55 + 70 * q * q; ctx.globalAlpha = q < 0.7 ? 1 : (1 - q) / 0.3; srCharm(ctx, x, y, a + q * 4 * (i % 2 ? 1 : -1)); } }
+  ctx.globalAlpha = 1;
+}
+const t0 = performance.now();
+function frame() {
+  const at = new URLSearchParams(location.search).get('at');
+  const T = at != null ? +at : (performance.now() - t0) / 1000 * 60, tk = T % LOOP, t = T;
+  for (const p of panels) {
+    const { v, ctx } = p; floor(ctx);
+    let P = { t, q: 1 }, fn = null, spr = 0, lift = 0, pray = tk < PRAY, land = false;
+    if (pray) { const q = tk / PRAY; P = { t, q }; fn = v.prayFn; spr = q < 0.2 ? 12 : 13 + (Math.floor(q * 12) % 3); lift = v.lift ? v.lift(P) : 0; }
+    else if (tk < PRAY + FX) { const ft = tk - PRAY, st = ft - LAND, life = FX - ft; P = { t, st, e: st >= 0 ? eoq(Math.min(1, st / 16)) : 0, fade: Math.min(1, life / 30), q: 1 }; land = st >= 0; fn = land ? v.landFn : null; spr = st >= 20 ? 0 : 16; lift = st < 0 ? Math.sin(ft / LAND * Math.PI / 2) * 26 + (v.lift ? 32 : 0) : 0; }
+    if (fn) { paint(p.ox, p.img, fn, P); ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(p.off, CX - RM, CY - RM, RM * 2, RM * 2); ctx.restore(); }
+    if (pray && v.prayFx) v.prayFx(ctx, P);
+    if (land && v.landFx) v.landFx(ctx, P);
+    shaman(ctx, spr, lift);
+    if (tk >= PRAY && tk < PRAY + FX) topFx(ctx, tk - PRAY, t);
+  }
+  requestAnimationFrame(frame);
+}
+frame();
+</script></body></html>
