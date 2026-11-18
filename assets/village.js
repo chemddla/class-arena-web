@@ -1805,6 +1805,7 @@
       if (r === true || me.target.stuck > 0.6) { me.target = null; marker.visible = false; }
     }
     if (net.ref && now - lastInput > IDLE_MS) netRest();
+    if (host.onIdle && now - lastInput > 300000) { host.onIdle(); return; } // 5분 동안 키·마우스 조작이 없으면 마을에서 자동으로 나감 (onIdle이 dispose하므로 바로 멈춤)
     net.fnow = now; netTick(now, kx, kz); netBandCheck();
     drawMap();
     // 친구들: 쉬다가 아무 데나 걸어감
