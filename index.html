@@ -22167,7 +22167,7 @@
       const roomId = `tower_${stuId}`;
       const ref = liveRoomRef(roomId);
       if (!ref) { showNotice('⚠️ 서버에 연결되어 있지 않아 관전할 수 없어요.'); return; }
-      const got = await waitLiveInit(ref, 5000, defense); // 디펜스는 준비 시간엔 몬스터가 없음
+      const got = await waitLiveInit(ref, 5000, defense || abyss); // 디펜스 준비 시간·지하 던전의 빈 방(시작·깬 방·계단·신비한 방)엔 몬스터가 없음
       if (!got) { showNotice(`⚠️ ${ranked ? '랭킹 매칭' : defense ? '몬스터 디펜스' : abyss ? '지하 던전' : '탑'} 전투 화면을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.`); return; }
       const { init, blueUnits, redUnits } = got;
       if (sim.running && !sim.spectator) return; // 기다리는 사이 내 전투를 시작했으면 그만둠
@@ -54593,6 +54593,7 @@
       if (dungeonCastsFrames()) frame.dg = packDungeonState();
       if (defenseCastsFrames()) frame.df = packDefenseState();
       if (sim.awaitingControlChoice) frame.ps = 'choose';
+      else if (sim.dungeon && sim.dungeon.abyss && sim.dungeon.abyss.pick) frame.ps = 'pick'; // 🕳️ 레벨업 카드를 고르는 동안 멈춤 (관전자 안내 · 예전 탭은 그냥 지나침)
       if (sim.shake && !sent.has(sim.shake)) { sent.add(sim.shake); frame.sk = [sim.shake.power, sim.shake.life, sim.shake.maxLife]; }
       if (sim.flash && !sent.has(sim.flash)) { sent.add(sim.flash); frame.fl = [String(sim.flash.color || '#ffffff'), sim.flash.life, sim.flash.maxLife]; }
       return frame;
@@ -55216,6 +55217,7 @@
       }
       // 전투가 멈춰 있는 까닭 (관전자 화면에 안내): 전투 방식을 고르는 중
       if (sim.awaitingControlChoice) frame.ps = 'choose';
+      else if (sim.dungeon && sim.dungeon.abyss && sim.dungeon.abyss.pick) frame.ps = 'pick'; // 🕳️ 레벨업 카드를 고르는 동안 멈춤 (관전자 안내 · 예전 탭은 그냥 지나침)
       if (sim.shake && !liveNet.sent.has(sim.shake)) { liveNet.sent.add(sim.shake); frame.sk = [sim.shake.power, sim.shake.life, sim.shake.maxLife]; }
       if (sim.flash && !liveNet.sent.has(sim.flash)) { liveNet.sent.add(sim.flash); frame.fl = [String(sim.flash.color || '#ffffff'), sim.flash.life, sim.flash.maxLife]; }
       if (keyframe) liveNet.keyAt = nowMs;
@@ -56140,7 +56142,7 @@
       if ((sim.raidWatch || sim.fairDuel || (sim.dungeon && sim.dungeon.party) || (sim.mode === 'defense' && sim.defense && !defenseIsHostSide())) && liveNum(val.t) > 0) sim.tickCount = liveNum(val.t); // 공정한 결투: 남은 시간도 계산 담당 화면 기준 // 5인 던전: 남은 시간·기믹 시각이 방장 화면 기준
       if (val.dg && typeof val.dg === 'object' && sim.dungeon) applyDungeonState(val.dg);
       if (val.df && typeof val.df === 'object' && sim.defense && !defenseIsHostSide()) applyDefenseState(val.df);
-      liveNet.hostPause = val.ps === 'choose' ? val.ps : null;
+      liveNet.hostPause = val.ps === 'choose' || val.ps === 'pick' ? val.ps : null;
       if (Array.isArray(val.rs)) applyRushState(val.rs);
       if (isEliteBossMode(sim.mode)) sim.eliteIntro = liveNum(val.it) > 0 ? { t: liveNum(val.it) } : null;
       if (Array.isArray(val.sk)) sim.shake = { power: Math.min(60, liveNum(val.sk[0])), life: liveNum(val.sk[1]), maxLife: Math.max(1, liveNum(val.sk[2])) };
@@ -56393,6 +56395,7 @@
       let text = null;
       if (sim.spectator && sim.running && liveNet.role === 'guest' && !liveNet.finished) {
         if (liveNet.hostPause === 'choose') text = `⏳ ${name}가 전투 방식(자동·직접)을 고르고 있어요. 고르면 바로 시작돼요!`;
+        else if (liveNet.hostPause === 'pick') text = `🃏 레벨업 카드를 고르는 중이에요. 고르면 바로 이어져요!`;
         else if (Date.now() - (liveNet.lastFrameAt || 0) > 2000) text = `📡 ${name} 화면을 기다리는 중이에요...`;
       }
       if (text) { renderLiveWaitBanner(text); liveNet.pauseBannerShown = true; }
@@ -67784,10 +67787,10 @@
         const mOff = dist * 0.08;
         ctx.fillStyle = mix('#93c5fd', '#a78bfa', '#1e293b');
         ctx.beginPath(); ctx.moveTo(0, G);
-        for (let i = -1; i < 8; i++) { const bx = i * 150 - (mOff % 150); const h = 90 + this.hash(Math.floor(mOff / 150) + i) * 70; ctx.lineTo(bx, G - 40); ctx.lineTo(bx + 75, G - 40 - h); }
+        for (let i = -1; i < W / 150 + 2; i++) { const bx = i * 150 - (mOff % 150); const h = 90 + this.hash(Math.floor(mOff / 150) + i) * 70; ctx.lineTo(bx, G - 40); ctx.lineTo(bx + 75, G - 40 - h); }
         ctx.lineTo(W + 10, G - 40); ctx.lineTo(W + 10, G); ctx.fill();
         ctx.fillStyle = `rgba(255,255,255,${0.85 - nightK * 0.4})`;
-        for (let i = -1; i < 8; i++) { const bx = i * 150 - (mOff % 150); const h = 90 + this.hash(Math.floor(mOff / 150) + i) * 70; ctx.beginPath(); ctx.moveTo(bx + 75, G - 40 - h); ctx.lineTo(bx + 75 + 16, G - 40 - h + 22); ctx.lineTo(bx + 75 + 6, G - 40 - h + 18); ctx.lineTo(bx + 75 - 4, G - 40 - h + 24); ctx.lineTo(bx + 75 - 16, G - 40 - h + 22); ctx.closePath(); ctx.fill(); }
+        for (let i = -1; i < W / 150 + 2; i++) { const bx = i * 150 - (mOff % 150); const h = 90 + this.hash(Math.floor(mOff / 150) + i) * 70; ctx.beginPath(); ctx.moveTo(bx + 75, G - 40 - h); ctx.lineTo(bx + 75 + 16, G - 40 - h + 22); ctx.lineTo(bx + 75 + 6, G - 40 - h + 18); ctx.lineTo(bx + 75 - 4, G - 40 - h + 24); ctx.lineTo(bx + 75 - 16, G - 40 - h + 22); ctx.closePath(); ctx.fill(); }
         // 구름 (뒤쪽)
         ctx.fillStyle = `rgba(255,255,255,${0.92 - nightK * 0.5})`;
         s.bg.forEach(c => { const r = 18 * c.s; ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, 7); ctx.arc(c.x + r * 1.1, c.y - r * 0.4, r * 1.2, 0, 7); ctx.arc(c.x + r * 2.3, c.y, r * 0.9, 0, 7); ctx.arc(c.x + r * 1.2, c.y + r * 0.3, r, 0, 7); ctx.fill(); });
@@ -68750,10 +68753,12 @@
     // 씨앗값 난수 (xorshift32): 같은 판·같은 층이면 어느 화면에서나 같은 순서로 나옴
     function petCoopSeed(gameId, seat, k) { let h = 2166136261; const str = `${gameId}|${seat}|${k}`; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) || 1; }
     function petCoopRng(seed) { let x = seed >>> 0; return () => { x ^= x << 13; x >>>= 0; x ^= x >>> 17; x ^= x << 5; x >>>= 0; return x / 4294967296; }; }
-    // 층 배치: 2명까지는 원래 크기로 위아래, 3~4명은 줄여서 쌓음
+    // 층 배치: 화면 폭(CW)은 넓게 쓰고, 층은 k배로 그려서 앞쪽 세상을 VW(= CW / k)만큼 보여 줌 (혼자 연습은 원래 화면)
+    // VW는 자리 수로만 정해져 같은 판의 모든 화면이 같음 → 장애물이 생기는 자리(VW 오른쪽 밖)도 같음
     function petCoopLayout(n) {
-      const k = n <= 2 ? 1 : n === 3 ? 0.72 : 0.6, lh = Math.round(PETRUN.H * k);
-      return { n, k, lh, x0: Math.round((PETRUN.W - PETRUN.W * k) / 2), H: lh * Math.max(1, n) };
+      if (n <= 1) return { n: 1, k: 1, lh: PETRUN.H, CW: PETRUN.W, VW: PETRUN.W, H: PETRUN.H };
+      const k = n === 2 ? 1 : n === 3 ? 0.8 : 0.68, lh = Math.round(PETRUN.H * k), CW = 1200;
+      return { n, k, lh, CW, VW: Math.round(CW / k), H: lh * n };
     }
 
     const PetCoop = Object.assign(Object.create(PetRun), {
@@ -68761,6 +68766,8 @@
       liveSubRef: null, liveSubRoom: null, liveAcc: 0, evSeen: {}, evN: 0, evList: [],
       lanes: [], lay: null, quiet: false, spawnLate: 0,
       render() { renderPetCoopBoard(); },
+      // 층 폭(VW)으로 PetRun을 부름: 생성 자리·구름·배경·HUD가 PETRUN.W를 보므로 잠깐 바꿔 끼움
+      wide(fn) { const W0 = PETRUN.W; PETRUN.W = this.lay ? this.lay.VW : W0; try { return fn(); } finally { PETRUN.W = W0; } },
       pause() {}, resume() {}, // 협동에선 일시정지 없음 (친구들이 기다리게 됨)
       mySeat() { return mgMySeat(petCoopState); },
       inRoom() { return Boolean(mgCurrentRoom() && currentJoinedMinigameRoomId); },
@@ -68851,9 +68858,9 @@
         this.slideHold = false;
         // 층 수만큼 화면을 늘림 (너무 길면 화면 높이에 맞춰 폭을 줄임)
         const lay = this.lay = petCoopLayout(st.seats.length);
-        this.cv.width = PETRUN.W; this.cv.height = lay.H;
-        this.cv.style.aspectRatio = `${PETRUN.W} / ${lay.H}`;
-        this.cv.style.maxWidth = `calc(75vh * ${(PETRUN.W / lay.H).toFixed(3)})`;
+        this.cv.width = lay.CW; this.cv.height = lay.H;
+        this.cv.style.aspectRatio = `${lay.CW} / ${lay.H}`;
+        this.cv.style.maxWidth = `calc(75vh * ${(lay.CW / lay.H).toFixed(3)})`;
         this.cv.style.marginInline = 'auto';
         Object.values(PETRUN_OBS).forEach(d => { if (d.sprite && typeof MONSTER_SPRITE_DEFS !== 'undefined' && MONSTER_SPRITE_DEFS[d.sprite]) this.img(MONSTER_SPRITE_DEFS[d.sprite].src); });
         st.pets.forEach(t => { const d = PET_DEFS[t]; if (d && d.sheet) this.img(d.sheet.src); });
@@ -68896,17 +68903,17 @@
           if (nd === L.nextDist) {
             const F = { objs: L.objs, stage: petCoopStageAt(nd), speed: petCoopSpeedAt(nd), jelly: 0, nextSpawn: 1 };
             const R = Math.random; Math.random = L.rng; this.spawnLate = late; // shortcut: PetRun.spawn이 Math.random을 바로 써서 잠깐 바꿔 끼움, 생성기를 따로 뺄 때 rng 인자로
-            try { PetRun.spawn.call(this, F); } finally { Math.random = R; this.spawnLate = 0; }
+            try { this.wide(() => PetRun.spawn.call(this, F)); } finally { Math.random = R; this.spawnLate = 0; }
             L.objs = F.objs; L.nextDist = nd + Math.max(60, F.nextSpawn * F.speed);
           } else if (nd === L.heartDist) {
             const r = L.rngH;
-            L.objs.push({ kind: 'jelly', sub: 'heart', x: PETRUN.W + 40, y: G - 60 - Math.round(r()) * 70, r: 15 });
+            L.objs.push({ kind: 'jelly', sub: 'heart', x: (this.lay ? this.lay.VW : PETRUN.W) + 40, y: G - 60 - Math.round(r()) * 70, r: 15 });
             L.heartDist = nd + (11 + r() * 6) * petCoopSpeedAt(nd);
           } else {
             const r = L.rngH, keys = Object.keys(PETRUN_ITEMS);
             let w = r() * keys.reduce((a, k) => a + PETRUN_ITEMS[k].weight, 0), sub = keys[0];
             for (const k of keys) { w -= PETRUN_ITEMS[k].weight; if (w <= 0) { sub = k; break; } }
-            L.objs.push({ kind: 'item', sub, x: PETRUN.W + 60, y: G - 64 - Math.round(r()) * 70, r: 17 });
+            L.objs.push({ kind: 'item', sub, x: (this.lay ? this.lay.VW : PETRUN.W) + 60, y: G - 64 - Math.round(r()) * 70, r: 17 });
             L.itemDist = nd + (13 + r() * 8) * petCoopSpeedAt(nd);
           }
           for (let i = n0; i < L.objs.length; i++) { const o = L.objs[i]; o.id = L.nid++; o.x -= late * (o.kind === 'obs' && o.vx ? 1 + o.vx : 1); }
@@ -69002,7 +69009,7 @@
             const keep = [P.speedGain, P.speedGainPerStage, P.boostMult, P.speedMax];
             P.speedGain = 0; P.speedGainPerStage = 0; P.boostMult = 1; P.speedMax = 1e9; // 속도는 팀 공통이라 이번 조각의 거리로 맞춤 (대시는 무적 돌진만)
             s.speed = want / sdt;
-            try { PetRun.update.call(this, s, sdt); } finally { [P.speedGain, P.speedGainPerStage, P.boostMult, P.speedMax] = keep; }
+            try { this.wide(() => PetRun.update.call(this, s, sdt)); } finally { [P.speedGain, P.speedGainPerStage, P.boostMult, P.speedMax] = keep; }
             for (const o of pre) { // 먹은 젤리·부순 장애물 번호 → 친구 화면에서도 지움
               if (o.rep || o.id === undefined) continue;
               if (o.kind === 'obs' ? (o.dead && o.sub !== 'bomb') : o.got) { o.rep = 1; s.gone.push(o.id); }
@@ -69190,16 +69197,16 @@
       },
       draw() {
         const s = this.st, ctx = this.ctx; if (!s || !ctx) return;
-        const W = PETRUN.W, H = PETRUN.H, st = petCoopState, lay = this.lay || petCoopLayout(1);
+        const H = PETRUN.H, st = petCoopState, lay = this.lay || petCoopLayout(1), CW = lay.CW, W = lay.VW; // W = 층 안 폭, CW = 화면 폭
         const now = Date.now(), Tr = mgServerNow() - PETCOOP.viewDelay;
-        ctx.save(); ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, W, lay.H); ctx.restore();
+        ctx.save(); ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, CW, lay.H); ctx.restore();
         st.seats.forEach((sd, i) => {
           const mine = i === s.seat, V = mine ? s : this.laneView(i, Tr), q = this.seatStatus(i);
           ctx.save();
-          ctx.translate(lay.x0, i * lay.lh); ctx.scale(lay.k, lay.k);
+          ctx.translate(0, i * lay.lh); ctx.scale(lay.k, lay.k);
           ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
           this.st = V;
-          try { PetRun.draw.call(this); } finally { this.st = s; }
+          try { this.wide(() => PetRun.draw.call(this)); } finally { this.st = s; }
           // 쓰러진 층은 어둡게
           if (V.down && !s.over) {
             ctx.fillStyle = 'rgba(15,23,42,0.45)'; ctx.fillRect(0, 0, W, H);
@@ -69217,8 +69224,8 @@
           ctx.fillStyle = mine ? 'rgba(14,165,233,0.85)' : 'rgba(15,23,42,0.7)'; ctx.beginPath(); ctx.roundRect(W / 2 - lw / 2, 10, lw, 26, 13); ctx.fill();
           ctx.fillStyle = q.gone ? '#94a3b8' : q.down ? '#fecaca' : '#fff'; ctx.fillText(label, W / 2, 28);
           ctx.restore();
-          if (mine) { ctx.save(); ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 4; ctx.strokeRect(lay.x0 + 2, i * lay.lh + 2, W * lay.k - 4, lay.lh - 4); ctx.restore(); }
-          if (i > 0) { ctx.fillStyle = '#0f172a'; ctx.fillRect(0, i * lay.lh - 2, W, 4); } // 층 사이 선
+          if (mine) { ctx.save(); ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 4; ctx.strokeRect(2, i * lay.lh + 2, CW - 4, lay.lh - 4); ctx.restore(); }
+          if (i > 0) { ctx.fillStyle = '#0f172a'; ctx.fillRect(0, i * lay.lh - 2, CW, 4); } // 층 사이 선
         });
         // 남은 시간 (맨 아래 가운데)
         const left = Math.max(0, PETCOOP.maxSec - (now - s.startAtLocal) / 1000);
@@ -69226,27 +69233,27 @@
         if (now >= s.startAtLocal && !s.over) {
           ctx.font = '900 15px sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = left < 30 ? '#fca5a5' : '#fff'; ctx.strokeStyle = 'rgba(15,23,42,0.8)'; ctx.lineWidth = 4;
           const tt = `⏱ ${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}${s.seat < 0 ? '   📺 관전 중' : ''}`;
-          ctx.strokeText(tt, W / 2, lay.H - 12); ctx.fillText(tt, W / 2, lay.H - 12);
+          ctx.strokeText(tt, CW / 2, lay.H - 12); ctx.fillText(tt, CW / 2, lay.H - 12);
         }
         // 출발 카운트다운 (화면 전체)
         const untilStart = (s.startAtLocal - now) / 1000;
         if (untilStart > 0 && !s.over) {
-          ctx.fillStyle = 'rgba(15,23,42,0.45)'; ctx.fillRect(0, 0, W, lay.H);
+          ctx.fillStyle = 'rgba(15,23,42,0.45)'; ctx.fillRect(0, 0, CW, lay.H);
           ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = '900 64px sans-serif';
-          ctx.fillText(untilStart > PETCOOP.countSec ? '준비!' : String(Math.ceil(untilStart)), W / 2, lay.H / 2 + 20);
+          ctx.fillText(untilStart > PETCOOP.countSec ? '준비!' : String(Math.ceil(untilStart)), CW / 2, lay.H / 2 + 20);
           ctx.font = '800 15px sans-serif'; ctx.fillStyle = '#e2e8f0';
-          ctx.fillText(s.seat < 0 ? '📺 친구들의 협동 달리기를 구경해요' : `${st.seats.length}명이 층마다 나란히 달려요! 파란 테두리가 내 층이에요`, W / 2, lay.H / 2 + 56);
+          ctx.fillText(s.seat < 0 ? '📺 친구들의 협동 달리기를 구경해요' : `${st.seats.length}명이 층마다 나란히 달려요! 파란 테두리가 내 층이에요`, CW / 2, lay.H / 2 + 56);
         }
         ctx.restore();
       },
       drawIdle() {
         if (!this.ctx) return;
-        const ctx = this.ctx, st = petCoopState, H = this.cv ? this.cv.height : PETRUN.H, oy = (H - PETRUN.H) / 2;
+        const ctx = this.ctx, st = petCoopState, H = this.cv ? this.cv.height : PETRUN.H, oy = (H - PETRUN.H) / 2, CW = this.cv ? this.cv.width : PETRUN.W;
         // 처음 화면(한 층 크기)엔 배경을, 판이 끝난 뒤엔 마지막 화면 위에 덮어 씀
-        if (H <= PETRUN.H) this.drawScene(ctx, { bg: PetRun.idleBg || (PetRun.idleBg = Array.from({ length: 6 }, (_, i) => ({ x: i * 170 + 30, y: 40 + (i * 37) % 70, s: 0.7 + (i % 3) * 0.3 }))), dist: 0, objs: [], parts: [], texts: [], shake: 0 });
+        if (H <= PETRUN.H && CW <= PETRUN.W) this.drawScene(ctx, { bg: PetRun.idleBg || (PetRun.idleBg = Array.from({ length: 6 }, (_, i) => ({ x: i * 170 + 30, y: 40 + (i * 37) % 70, s: 0.7 + (i % 3) * 0.3 }))), dist: 0, objs: [], parts: [], texts: [], shake: 0 });
         ctx.save();
-        ctx.fillStyle = 'rgba(15,23,42,0.55)'; ctx.fillRect(0, 0, PETRUN.W, H);
-        ctx.translate(0, oy);
+        ctx.fillStyle = 'rgba(15,23,42,0.55)'; ctx.fillRect(0, 0, CW, H);
+        ctx.translate((CW - PETRUN.W) / 2, oy);
         ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
         ctx.font = '900 30px sans-serif'; ctx.fillText('🤝 펫 러닝 협동', PETRUN.W / 2, 150);
         ctx.font = '800 15px sans-serif'; ctx.fillStyle = '#e2e8f0';
