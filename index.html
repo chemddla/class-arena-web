@@ -21581,6 +21581,7 @@
           stormBoltSheet(SPELL_HIT_FX, ['beam', 'bolt_hit']);
         }
         if (us.some(u => u.job === 'archer' && sr(u))) { ARCHER_SR_ARROW_FX.img; ARCHER_SR_POISON_FX.img; }
+        if (us.some(u => u.job === 'shaman')) muPrebuildFields(us.filter(u => u.job === 'shaman')); // 무녀 장판 안개·바닥 무늬
       } catch (e) {}
     }
     function showBattleLoadingScreen(seq) {
@@ -33234,7 +33235,8 @@
     // 기운 실 (grow > 1이면 풀려 커지는 고리: 고리끼리 크기 차이 ±6%, 군데군데 끊김)
     //   구슬 안의 실(grow = 1)은 구슬이 크면(반지름 9 이상) 두 겹으로 굵게(밝은 줄 + 아래 그늘 줄), 뒤쪽 반도 옅게 비쳐 보임
     function qiJThreads(ctx, x, y, r, ts, k, sx, sy, grow, loops = QI_J_LOOPS) {
-      const R = QI_J_RAMP, open = grow > 1, thick = !open && r >= 9, back = !open && r >= 9;
+      const lite = lowFxMode(); // 느린 기기: 그늘 점·뒤쪽 점 없이 앞쪽 실만 (찍는 점이 약 1/3)
+      const R = QI_J_RAMP, open = grow > 1, thick = !lite && !open && r >= 9, back = !lite && !open && r >= 9;
       ctx.save();
       const K = Math.max(0, Math.min(1, k));
       loops.forEach(([tilt, yaw, sp], i) => {
@@ -33242,7 +33244,7 @@
         const rr = open ? r * 0.9 * grow * (0.94 + 0.12 * ((i * 0.61) % 1)) : r * (0.5 + 0.45 * ((i * 0.37) % 1));
         const gap = open ? 0.08 + 0.3 * Math.min(1, (grow - 1) / 5) : 0;
         const main = open ? R[6] : (i % 3 ? R[5] : R[6]);
-        for (let a = 0; a < Math.PI * 2; a += 0.8 / Math.max(rr, 2)) {
+        for (let a = 0; a < Math.PI * 2; a += 1.2 / Math.max(rr, 2)) { // 점 간격 0.8 → 1.2px (2026-11-18: 실타래가 화면당 사각형 14,000개 중 11,000개 · 칸에 맞춰 찍어 실은 이어져 보임)
           const u = a + ts * sp, px = Math.cos(u) * rr, py = Math.sin(u) * rr * ct, pz = Math.sin(u) * rr * st;
           const X = px * cy - pz * sy2, Z = px * sy2 + pz * cy;
           if (gap && ((a * 3.1 + i) % 1) < gap) continue;
@@ -33558,11 +33560,11 @@
       // 손 앞 구슬 · 목 · 몸통 · 둥근 머리: 모두 같은 단면(qiWaveDot)을 칸 단위로 (크기는 0.5칸 단위로 맞춰 미리 그린 그림을 씀)
       const Hq = Math.round(H * 2) / 2, M = Math.round(Math.max(2, Hq * 0.2) * 2) / 2, m = M / Hq, kq = Hq + ',' + M;
       const RO = RO0 * (0.4 + 0.6 * Math.min(1, age / 7)) * (1 + 0.03 * Math.sin(ts * 30)) * thin;
-      if (RO > 1) {
-        const Rq = Math.round(RO * 2) / 2, E = Math.ceil(Rq * (1 + m));
+      if (RO > 1) { // 크기가 숨 쉬듯 조금씩 바뀔 때마다 새로 만들지 않게 3px 단위 크기로 만들어 두고 늘려 붙임 (2026-11-18: 화면당 점 1,700개가 이 다시 만들기였음)
+        const Rq = Math.max(3, Math.round(RO / 3) * 3), E = Math.ceil(Rq * (1 + m)), sc = RO / Rq;
         ctx.drawImage(qiWaveSprite('o' + Rq + ',' + m.toFixed(3), -E, -E, 2 * E, 2 * E, g => {
           for (let gy = -E; gy < E; gy++) for (let gx = -E; gx < E; gx++) qiWaveDot(g, gx, gy, gx, gy, Math.hypot(gx + 0.5, gy + 0.5) / Rq, m);
-        }), -E, -E);
+        }), -E * sc, -E * sc, 2 * E * sc, 2 * E * sc);
       }
       // 구슬 쪽 부푼 목(x < 2H)은 세로줄마다 그 자리 반지름으로 · 곧은 몸통은 가로 4칸(디더 주기) 단면을 무늬로 깖 · 둥근 머리는 반원
       const x0 = Math.max(0, tail), xn = Math.min(head - H, 2 * H), EN = Math.ceil(qiWaveR(0, Hq) * (1 + m)), NW = Math.ceil(2 * Hq) + 1;
@@ -33595,7 +33597,7 @@
       // 기운 실 두 가닥이 포를 감아 돌며 나아감 (2026-11-17 사용자: 감싸는 선 디테일 더)
       //   기로 된 줄이라 그늘 없이 빛나는 줄 (금빛 밧줄처럼 보이지 않게): 앞면 가운데일수록 굵고 밝은 심 + 둘레 번짐 ·
       //   뒤쪽 반은 포 속으로 비치는 옅은 빛 · 조금 뒤처진 위상의 잔상
-      const pitch = HW * 2.4, xa = Math.max(6, tail), xb2 = head - 4, STEP = 1.5;
+      const pitch = HW * 2.4, xa = Math.max(6, tail), xb2 = head - 4, STEP = lowFxMode() ? 6 : 3; // 토막 1.5px → 3px (2026-11-18: 칠하는 선 토막이 포 그리기의 큰 몫) · 느린 기기 6px
       const thr = (x, ph) => { const p = x * Math.PI * 2 / pitch + ph; return [Math.sin(p) * qiWaveR(x, H) * 0.92, Math.cos(p)]; };
       const strokeSegs = (segs, c, a, w, dy) => {
         if (!segs.length) return;
@@ -33684,7 +33686,7 @@
     // 구체 몸통 (이미지 버퍼, 같은 1/30초·크기면 다시 쓰지 않음)
     const qiGkBodyCache = new Map(); // 크기·모양별 { key(1/30초), cv } (기공옥 구체와 기공포 구슬이 함께 씀)
     function qiGkBody(r, ts, sx, sy) {
-      const shape = qiPalNow + ':' + Math.round(r) + ',' + sx.toFixed(2) + ',' + sy.toFixed(2), key = Math.floor(ts * 30); // 외형 색마다 따로
+      const shape = qiPalNow + ':' + Math.round(r) + ',' + sx.toFixed(2) + ',' + sy.toFixed(2), key = Math.floor(ts * 60 / (fxStride() * 2)); // 무늬 다시 셈: 2틱마다 → 4틱마다 (느린 기기 8틱) · 점마다 노이즈를 세는 가장 무거운 부분 // 외형 색마다 따로
       let ent = qiGkBodyCache.get(shape);
       if (ent && ent.key === key) return ent.cv;
       if (!ent) { if (qiGkBodyCache.size > 12) qiGkBodyCache.clear(); ent = { key, cv: document.createElement('canvas') }; qiGkBodyCache.set(shape, ent); }
@@ -35118,14 +35120,27 @@
         ctx.restore();
         return;
       }
+      ctx.imageSmoothingEnabled = false; // 도트 그대로 키움
+      ctx.drawImage(muCharmSprite(kind), x0, y0, W * c, H * c);
+      ctx.restore();
+    }
+    // 도트 부적 한 장 (7×12칸, 한 칸 = 1px): 2026-11-18 실측에서 무녀 2명 전투의 화면당 사각형 3,900개 중 거의 전부가 부적 칸이었음 → 종류마다 한 번만 그림
+    const muCharmSprites = new Map();
+    function muCharmSprite(kind) {
+      const key = kind || '';
+      let cv = muCharmSprites.get(key);
+      if (cv) return cv;
+      const W = 7, H = 12, ramp = MU_RAMPS[kind];
+      cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      const g = cv.getContext('2d');
       for (let gy = 0; gy < H; gy++) for (let gx = 0; gx < W; gx++) {
         const edge = gx === 0 || gy === 0 || gx === W - 1 || gy === H - 1;
-        ctx.fillStyle = edge ? MU_PAPER[0] : (gx + gy < 4 ? MU_PAPER[3] : gx > 4 && gy > 8 ? MU_PAPER[1] : MU_PAPER[2]);
-        ctx.fillRect(x0 + gx * c, y0 + gy * c, c, c);
-        if (!edge && MU_GLYPH[gy][gx] === 'x') { ctx.fillStyle = MU_INK; ctx.fillRect(x0 + gx * c, y0 + gy * c, c, c); }
+        g.fillStyle = !edge && MU_GLYPH[gy][gx] === 'x' ? MU_INK : edge ? MU_PAPER[0] : (gx + gy < 4 ? MU_PAPER[3] : gx > 4 && gy > 8 ? MU_PAPER[1] : MU_PAPER[2]);
+        g.fillRect(gx, gy, 1, 1);
       }
-      if (ramp) { ctx.fillStyle = ramp[1]; ctx.fillRect(x0 + 2 * c, y0 + 1 * c, 3 * c, c); ctx.fillStyle = ramp[3]; ctx.fillRect(x0 + 3 * c, y0 + 1 * c, c, c); }
-      ctx.restore();
+      if (ramp) { g.fillStyle = ramp[1]; g.fillRect(2, 1, 3, 1); g.fillStyle = ramp[3]; g.fillRect(3, 1, 1, 1); }
+      muCharmSprites.set(key, cv);
+      return cv;
     }
     // 날아가는 부적 (기본 공격): 돌지 않고 날아가는 방향으로 눕혀 곧게, 뒤로 곧은 붉은 꼬리 (2026-11-17 사용자: 직선으로)
     // 시크릿 레어 무녀 부적 그림 (일반 공격 샘플의 날아가는 부적, 오른쪽을 향함 · tools/shaman_sr1_build.py). 처음 그릴 때 받음
@@ -35219,11 +35234,19 @@
     }
     const muPFbm = (x, y, P, Q) => muPNoise(x, y, P, Q) * 0.55 + muPNoise(x * 2 + 17.3, y * 2 + 5.1, P * 2, Q * 2) * 0.3 + muPNoise(x * 4 + 3.7, y * 4 + 29.9, P * 4, Q * 4) * 0.15;
     // 타일 한 장: 칸 sx×sy마다 노이즈 1, 격자 8×8 → (8sx)×(8sy)칸에서 이어 붙음. fn(f) → [램프 자리, 불투명도]
+    // 노이즈 값 판: 타일 한 장 셈에 약 84ms(2026-11-18 실측)라, 색만 다른 타일(치유·강화·저주·내림굿)은 같은 판을 같이 씀
+    const muFogFieldCache = new Map();
+    function muFogField(sx, sy, seed, w, h) {
+      const key = sx + ',' + sy + ',' + seed;
+      let f = muFogFieldCache.get(key);
+      if (!f) { f = new Float32Array(w * h); for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) f[j * w + i] = muPFbm(i / sx + seed, j / sy + seed * 0.7, 8, 8); muFogFieldCache.set(key, f); }
+      return f;
+    }
     function muFogTile(kind, sx, sy, seed, fn) {
       const w = Math.round(8 * sx), h = Math.round(8 * sy), cv = document.createElement('canvas'); cv.width = w; cv.height = h;
-      const cx = cv.getContext('2d'), img = cx.createImageData(w, h), d = img.data, rp = MU_RGB[kind], L = rp.length - 1;
+      const cx = cv.getContext('2d'), img = cx.createImageData(w, h), d = img.data, rp = MU_RGB[kind], L = rp.length - 1, field = muFogField(sx, sy, seed, w, h);
       for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
-        const r = fn(muPFbm(i / sx + seed, j / sy + seed * 0.7, 8, 8)); if (r[1] <= 0.004) continue;
+        const r = fn(field[j * w + i]); if (r[1] <= 0.004) continue;
         const lv = Math.max(0, Math.min(1, r[0])) * L, b = Math.floor(lv), c = rp[Math.min(L, b + (lv - b > MU_BAYER[(i & 3) + (j & 3) * 4] ? 1 : 0))], k = (j * w + i) * 4;
         d[k] = c[0]; d[k + 1] = c[1]; d[k + 2] = c[2]; d[k + 3] = Math.min(255, r[1] * 255);
       }
@@ -35235,21 +35258,51 @@
     const MU_FOG_FLOW = { mu_heal: [[0.142, 0], [-0.126, 0]], mu_power: [[0.142, 0], [0, -0.14]], mu_weak: 'in', mu_curse: [[0.142, 0], [0.105, 0.07]], mu_guard: 'wall', mu_naerim: [[0.09, 0], [-0.06, 0.04]], mu_naerim_in: 'in' }; // 내림굿: 착지 안개는 두 겹으로 느리게 흐르고, 기도 중 발밑 안개는 빨려 듦(in) · 저주 A = 작은 결이 비스듬히 가라앉음 (exports/shaman-fog-curse)
     //   보호 D = 'wall': 안쪽은 고요한 옅은 안개, 범위 끝(반지름 70~96%)에만 위로 일렁이는 안개 벽 (exports/shaman-fog-guard)
     const muFogTiles = {};
-    const muFogMaskCache = new Map(), muFogScratchBy = new Map(), muFogScratch2 = document.createElement('canvas');
-    function muFieldFog(ctx, z, kind, rr, alpha, two, t, tint) { // tint = 덧입힐 색 그림 (SR 내림굿 오방 안개)
+    const muFogMaskCache = new Map(), muFogScratchBy = new Map(), muFogScratch2 = document.createElement('canvas'), muFogHold = new Map();
+    function muFogTilesOf(kind) {
       const flow = MU_FOG_FLOW[kind];
-      const tiles = muFogTiles[kind] || (muFogTiles[kind] = flow === 'wall' ? [ // 안쪽 큰 결 (80×50 → 40×25칸) · 벽 결 (34×22 → 17×11칸)
+      return muFogTiles[kind] || (muFogTiles[kind] = flow === 'wall' ? [ // 안쪽 큰 결 (80×50 → 40×25칸) · 벽 결 (34×22 → 17×11칸)
         muFogTile(kind, 40, 25, 7, f => { const d = muSstep(0.4, 0.8, f); return [0.25 + 0.18 * d, 0.04 + 0.18 * d]; }),
         muFogTile(kind, 17, 11, 21, f => { const g = 0.4 + 0.6 * muSstep(0.3, 0.7, f); return [0.25 + 0.6 * g, 0.6 * g]; })
       ] : flow === 'in' ? [muFogTile(kind, 27.5, 27.5, 3, f => { const d = muSstep(0.3, 0.8, f); return [0.15 + 0.4 * d, 0.08 + 0.42 * d]; })] : [ // 큰 결 (게임 px 95×55마다 노이즈 1 = 2px 칸 47.5×27.5) · 작은 결 (42×28 → 21×14)
         muFogTile(kind, 47.5, 27.5, 0, f => { const d1 = muSstep(0.4, 0.8, f); return [0.2 + 0.4 * d1, 0.06 + 0.32 * d1]; }),
         muFogTile(kind, 21, 14, 40, f => { const d2 = muSstep(0.45, 0.85, f); return [kind === 'mu_curse' ? 0.35 + 0.3 * d2 : 0.5 + 0.35 * d2, 0.26 * d2]; }) // 저주는 분홍빛이 돌지 않게 한 단계 어둡게
       ]);
-      const n = Math.max(4, Math.ceil(z.r * 2 / MU_CELL)), mk = Math.round(z.r);
-      let mask = muFogMaskCache.get(mk); // 가장자리 마스크: 반지름 72%부터 노이즈로 들쭉날쭉 옅어져 끝에서 사라짐
-      if (!mask) { mask = muPaintDisc(z.r, MU_RGB.mu_heal, nd => [0, 1 - muSstep(0.72, 1, nd + (muPFbm(nd * 9, nd * 3 + 5, 64, 64) - 0.5) * 0.25)]); if (muFogMaskCache.size > 20) muFogMaskCache.clear(); muFogMaskCache.set(mk, mask); }
-      let s = muFogScratchBy.get(n); // 크기마다 따로 (장판·내림굿 크기가 번갈아 와도 매번 새로 잡지 않게)
-      if (!s) { if (muFogScratchBy.size > 8) muFogScratchBy.clear(); s = document.createElement('canvas'); s.width = s.height = n; muFogScratchBy.set(n, s); }
+    }
+    function muFogMask(r) { // 가장자리 마스크: 반지름 72%부터 노이즈로 들쭉날쭉 옅어져 끝에서 사라짐
+      const mk = Math.round(r);
+      let mask = muFogMaskCache.get(mk);
+      if (!mask) { mask = muPaintDisc(r, MU_RGB.mu_heal, nd => [0, 1 - muSstep(0.72, 1, nd + (muPFbm(nd * 9, nd * 3 + 5, 64, 64) - 0.5) * 0.25)]); if (muFogMaskCache.size > 20) muFogMaskCache.clear(); muFogMaskCache.set(mk, mask); }
+      return mask;
+    }
+    // 전투 준비 화면에서 미리 만듦 (prebuildBattleDerivedFx): 예전엔 장판 종류마다 처음 깔리는 순간에 만들어 그때마다 화면이 멈칫했음
+    //   한 번에 다 만들면 1초 가까이 멈추므로 한 조각씩 나눠서 · 미처 못 만든 것은 예전처럼 처음 그릴 때 만듦
+    function muPrebuildFields(units) {
+      const jobs = [];
+      Object.keys(MU_FOG_FLOW).forEach(kind => jobs.push(() => muFogTilesOf(kind)));
+      [...new Set(units.map(u => Math.round(muArea(u) * MU_FIELD_CELLS)))].forEach(r => {
+        jobs.push(() => muFogMask(r));
+        ['mu_heal', 'mu_power', 'mu_weak', 'mu_curse', 'mu_guard'].forEach(kind => jobs.push(() => muFieldTex(kind, r, false)));
+      });
+      const run = () => { const j = jobs.shift(); if (!j) return; try { j(); } catch (e) {} setTimeout(run, 0); };
+      run();
+    }
+    // hold = true: 그 장판의 안개 그림을 따로 두고 fxStride()×2틱마다만 다시 겹침 (장판 하나에 약 1.4ms × 5~10개였음)
+    function muFieldFog(ctx, z, kind, rr, alpha, two, t, tint, hold) { // tint = 덧입힐 색 그림 (SR 내림굿 오방 안개)
+      const flow = MU_FOG_FLOW[kind], tiles = muFogTilesOf(kind);
+      const n = Math.max(4, Math.ceil(z.r * 2 / MU_CELL)), mk = Math.round(z.r), mask = muFogMask(z.r);
+      let s, fresh = true;
+      if (hold) {
+        // 자리·크기로 찾음: 받는 화면(관전·도전자)은 장판 객체를 화면마다 새로 만들어서 객체로는 못 찾음
+        const hk = kind + '|' + Math.round(z.x) + '|' + Math.round(z.y) + '|' + n, st = Math.floor(t / (fxStride() * 2));
+        let h = muFogHold.get(hk);
+        if (!h) { if (muFogHold.size > 40) muFogHold.clear(); h = { st: null, cv: document.createElement('canvas') }; h.cv.width = h.cv.height = n; muFogHold.set(hk, h); }
+        s = h.cv; fresh = h.st !== st; h.st = st;
+      } else {
+        s = muFogScratchBy.get(n); // 크기마다 따로 (장판·내림굿 크기가 번갈아 와도 매번 새로 잡지 않게)
+        if (!s) { if (muFogScratchBy.size > 8) muFogScratchBy.clear(); s = document.createElement('canvas'); s.width = s.height = n; muFogScratchBy.set(n, s); }
+      }
+      if (fresh) {
       const c = s.getContext('2d'); c.imageSmoothingEnabled = false;
       c.globalCompositeOperation = 'source-over'; c.clearRect(0, 0, n, n);
       if (flow === 'wall') {
@@ -35276,6 +35329,7 @@
       });
       c.globalCompositeOperation = 'destination-in'; c.drawImage(mask, 0, 0, n, n);
       if (tint) { c.globalCompositeOperation = 'source-atop'; c.globalAlpha = 0.7; c.drawImage(tint, 0, 0, n, n); c.globalAlpha = 1; }
+      }
       ctx.save(); ctx.imageSmoothingEnabled = false;
       ctx.globalAlpha = alpha; ctx.drawImage(s, z.x - rr, z.y - rr, rr * 2, rr * 2);
       if (two) { ctx.globalAlpha = alpha * 0.45; ctx.drawImage(s, z.x - rr, z.y - rr, rr * 2, rr * 2); } // 내림굿 2배 장판: 안개가 더 짙음
@@ -35340,7 +35394,7 @@
       ctx.save();
       ctx.imageSmoothingEnabled = false;
       ctx.globalAlpha = base * fade;
-      if (MU_FOG_FLOW[kind]) { ctx.globalAlpha = base * fade * 0.45; ctx.drawImage(tex.base, z.x - rr, z.y - rr, rr * 2, rr * 2); muFieldFog(ctx, z, kind, rr, base * fade, two, t); ctx.globalAlpha = base * fade; } // 치유·강화·약화·저주: 옅은 바닥 위에 안개
+      if (MU_FOG_FLOW[kind]) { ctx.globalAlpha = base * fade * 0.45; ctx.drawImage(tex.base, z.x - rr, z.y - rr, rr * 2, rr * 2); muFieldFog(ctx, z, kind, rr, base * fade, two, t, null, true); ctx.globalAlpha = base * fade; } // 치유·강화·약화·저주: 옅은 바닥 위에 안개
       else ctx.drawImage(tex.base, z.x - rr, z.y - rr, rr * 2, rr * 2);
       if (front > 0.02) { ctx.globalAlpha = base * fade * front; ctx.drawImage(tex.lead, z.x - rr, z.y - rr, rr * 2, rr * 2); }
       ctx.globalAlpha = base;
@@ -38872,6 +38926,10 @@
     // 느린 기기(화면 한 장에 평균 24ms 넘게 걸림 = 60fps를 못 냄)면 꾸밈 효과를 줄임: 레어 후광 생략 · 반짝임 절반 (전투 내용은 그대로)
     // 켜는 기준(24ms)과 끄는 기준(19ms)을 따로 둠: 꾸밈을 줄이면 빨라져서 바로 다시 켜지고, 켜면 다시 느려져 후광이 몇 초마다 깜빡였음
     let lowFxOn = false;
+    // 미리 만들어 두는 무거운 무늬(기공사 구체 소용돌이, 무녀 장판 안개)를 몇 틱마다 다시 만들지의 기준: 보통 2 · 느린 기기 4
+    //   (2026-11-18 실측: 기공사 2명이 낀 전투는 화면 한 장 평균 27~40ms. 실타래·감는 실을 그림으로 붙들어 두는 방식도 해 봤지만
+    //    실제 전투에서는 붙든 그림을 옮겨 붙이는 비용 때문에 오히려 느려져서 뺌 — 줄이려면 찍는 점·선 자체를 줄여야 함)
+    function fxStride() { return lowFxMode() ? 4 : 2; }
     function lowFxMode() {
       if (lowFxOn ? deviceFrameEma < 19 : deviceFrameEma > 24) lowFxOn = !lowFxOn;
       return lowFxOn;
