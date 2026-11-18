@@ -35342,7 +35342,7 @@
       ctx.globalAlpha = base;
     }
     // ===== 내림굿 그림 (2026-11-17 사용자 시안) =====
-    // 시전 막대(기도) 동안: 0.5초마다 방울 소리 물결이 퍼지고 모은 손 위에 금빛이 모임 (오방색 고리는 2026-11-17 사용자 요청으로 뺌)
+    // 시전 막대(기도) 동안: 0.5초마다 방울 소리 물결(금빛 가루 고리)이 퍼지고 모은 손 위에 금빛이 모임 (오방색 고리는 2026-11-17 사용자 요청으로 뺌)
     // 발동(mu_naerim 이펙트): 0~18틱 두 팔 벌리고 떠오름 = 금빛 부적 열두 장이 나선으로 감아 오름 (오방색 천 띠는 뺌)
     //   18틱 착지 = 바닥에 큰 금빛 인장(가운데에서 바깥으로 옅어지는 그라데이션 + 팔괘) + 충격파, 감아 오르던 부적이 사방으로 터져 눈처럼 떨어짐
     //   2026-11-18 안개 장판과 맞춤 (사용자 시안 E 팔괘 각인 안개, exports/shaman-naerim-fog): 기도 중 발밑에 금빛 안개가 빨려 들며 모임
@@ -35368,19 +35368,37 @@
       c.putImageData(img, 0, 0);
       return (muSigilTex = cv);
     }
-    // 바닥 (drawZones 다음 · 유닛 밑): 기도 중 방울 물결·손 위 금빛 · 착지 인장
+    // 방울 소리 물결 (2026-11-18 사용자 시안 E 금빛 가루 고리, exports/shaman-bell-fog): 0.5초마다 가슴 높이에서 둘씩, 반지름 18 → 72 · 세로 0.6배
+    //   선 대신 군데군데 끊긴 옅은 금빛 안개 띠 + 띠를 따라 반짝이며 흩어지는 금빛 가루. 유닛 위에 그림 (drawMuFieldCharms 다음)
+    let muBellTex = null; // 안개 띠: 반지름 85% 둘레, 둘레를 따라 노이즈로 끊김 (한 번만)
+    const muBellRingTex = () => muBellTex || (muBellTex = muPaintDisc(72, MU_GOLD_RGB, (nd, a) => { const f = muPFbm(Math.cos(a) * 4 + 3, Math.sin(a) * 4 + 9, 64, 64); return [0.35 + 0.3 * f, Math.exp(-Math.pow((nd - 0.85) / 0.15, 2)) * muSstep(0.3, 0.7, f) * 0.5]; }));
+    function drawShamanBellTop(ctx) {
+      const t = sim.tickCount || 0, base = ctx.globalAlpha;
+      (sim.units || []).forEach(u => {
+        if (!u.alive || !u.casting || u.casting.key !== 'mu_naerim' || !muIs(u)) return;
+        const q = 1 - u.casting.left / Math.max(1, u.casting.total), k = Math.sqrt(u.sizeScale || 1), cx = u.x, cy = u.y - 50 * k;
+        ctx.save(); ctx.imageSmoothingEnabled = false;
+        for (let w = 0; w < 2; w++) {
+          const p = ((t + w * 15) % 30) / 30, r2 = (18 + 54 * pfxEaseOutQuart(p)) * k, Rs = r2 / 0.85, rnd = pfxRng(9 + w);
+          ctx.globalAlpha = base * (1 - p) * 0.8; ctx.drawImage(muBellRingTex(), cx - Rs, cy - Rs * 0.6, Rs * 2, Rs * 1.2);
+          for (let i = 0; i < 18; i++) { // 금빛 가루: 고리를 따라 살짝 떠오르며 반짝
+            const a = rnd() * Math.PI * 2, j = (rnd() - 0.5) * 6 * k, s = (1 - p) * (0.6 + 0.4 * Math.sin(t * 0.5 + i * 3));
+            const x = cx + Math.cos(a) * (r2 + j), y = cy + Math.sin(a) * (r2 + j) * 0.6 - p * 6 * k;
+            ctx.globalAlpha = base * s; muDot(ctx, x, y, 2, i % 3 ? MU_GOLD[3] : MU_GOLD[4]); muGlow(ctx, x, y, 5, MU_GOLD[2], 0.4 * s);
+          }
+        }
+        ctx.restore();
+        muGlow(ctx, u.x + 4 * (u.facingDir || 1) * k, u.y - 108 * k, (16 + 12 * q) * k, MU_GOLD[3], 0.4 + 0.8 * q); // 모은 손 위 금빛
+      });
+      ctx.globalAlpha = base;
+    }
+    // 바닥 (drawZones 다음 · 유닛 밑): 기도 중 발밑 안개 · 착지 인장
     function drawShamanGround(ctx) {
       const t = sim.tickCount || 0;
       (sim.units || []).forEach(u => {
         if (!u.alive || !u.casting || u.casting.key !== 'mu_naerim' || !muIs(u)) return;
         const q = 1 - u.casting.left / Math.max(1, u.casting.total), k = Math.sqrt(u.sizeScale || 1);
-        for (let w = 0; w < 2; w++) { // 방울 소리 물결 (0.5초마다, 가슴 높이)
-          const p = ((t + w * 15) % 30) / 30, r2 = (18 + 54 * pfxEaseOutQuart(p)) * k;
-          ctx.save(); ctx.globalAlpha *= (1 - p) * 0.6; ctx.strokeStyle = MU_GOLD[3]; ctx.lineWidth = 2;
-          ctx.beginPath(); ctx.ellipse(u.x, u.y - 50 * k, r2, r2 * 0.6, 0, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
-        }
         muFieldFog(ctx, { x: u.x, y: u.y, r: 90 * k }, 'mu_naerim_in', 90 * k * (0.7 + 0.3 * q), (ctx.globalAlpha || 1) * (0.3 + 0.6 * q), false, t); // 발밑에 금빛 안개가 빨려 들며 모임
-        muGlow(ctx, u.x + 4 * (u.facingDir || 1) * k, u.y - 108 * k, (16 + 12 * q) * k, MU_GOLD[3], 0.4 + 0.8 * q);
       });
       (sim.effects || []).forEach(ef => {
         if (ef.type !== 'mu_naerim') return;
@@ -40868,6 +40886,7 @@
       drawDarknessAuras(ctx);
       drawSupportEffects(ctx);
       drawMuFieldCharms(ctx); // 무녀 장판 가운데 떠 있는 부적 (유닛 위)
+      drawShamanBellTop(ctx); // 무녀 내림굿 기도 중 방울 소리 물결·손 위 금빛 (유닛 위)
       drawHitEffectsOnTop(ctx, drawEffectsPass);
       drawFrostSrBlizzardTop(ctx);
       drawControlledUnitMarker(ctx);

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>무녀 방울 물결 안개 시안</title>
+<style>
+  body { margin: 0; background: #111; color: #ddd; font: 14px/1.4 system-ui, sans-serif; }
+  h1 { font-size: 16px; margin: 12px 16px 4px; }
+  p { margin: 0 16px 10px; color: #999; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; padding: 0 16px 16px; }
+  figure { margin: 0; background: #1b1b1b; border-radius: 6px; overflow: hidden; }
+  canvas { width: 100%; display: block; image-rendering: pixelated; }
+  figcaption { padding: 6px 10px 8px; font-size: 13px; } figcaption b { color: #facc15; }
+</style></head><body>
+<h1>무녀 내림굿 기도 · 방울 소리 물결 안개 시안</h1>
+<p>게임 크기 그대로 (2px 도트 칸, 램프 + 4×4 바이어 디더). 내림굿 기도(시전 막대) 동안 0.5초마다 가슴 높이에서 퍼지는 방울 소리 물결만 바꿔 봄. 발밑 금빛 안개·손 위 금빛은 지금 게임과 같음.</p>
+<div class="grid" id="g"></div>
+<script>
+'use strict';
+const SEAL = 150, RM = 110, CELL = 2, NC = RM * 2 / CELL, W = 300, H = 240, CX = 150, CY = 190, SK = 1.3; // SK = 용병 그림 배율
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
+const rgb = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+const GOLD = ['#713f12', '#ca8a04', '#facc15', '#fef08a', '#fffbeb'];
+const FIVE = [['#14532d', '#16a34a', '#4ade80', '#bbf7d0', '#f0fdf4'], ['#7c2d12', '#ea580c', '#fb923c', '#fed7aa', '#fff7ed'], ['#3b0764', '#7e22ce', '#a855f7', '#e9d5ff', '#faf5ff'], ['#450a0a', '#991b1b', '#dc2626', '#fca5a5', '#fef2f2'], ['#713f12', '#ca8a04', '#facc15', '#fef08a', '#fefce8']]; // 치유·강화·약화·저주·보호
+const RAMPS = [GOLD, ...FIVE].map(r => r.map(rgb));
+const PAPER = ['#8a6d1e', '#e9c96a', '#f7e7a6', '#fff8d6'], INK = '#b91c1c';
+const GLYPH = ['.......', '.......', '.xxxxx.', '...x...', '.xxxxx.', '...x...', '.x.x.x.', '.xxxxx.', '...x...', '..x.x..', '.x...x.', '.......'];
+const TRI = ['111', '011', '101', '001', '110', '010', '100', '000'];
+const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
+const ss = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const eoq = t => 1 - Math.pow(1 - clamp(t), 4);
+function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const hsh = (x, y) => { let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+function vn(x, y) { const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf); const a = hsh(xi, yi), b = hsh(xi + 1, yi), c = hsh(xi, yi + 1), d = hsh(xi + 1, yi + 1); return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; }
+const fbm = (x, y) => vn(x, y) * 0.55 + vn(x * 2.03 + 17.3, y * 2.03 + 5.1) * 0.3 + vn(x * 4.1 + 3.7, y * 4.1 + 29.9) * 0.15;
+const em = (nd, f, lo = 0.72, w = 0.25) => 1 - ss(lo, 1.0, nd + (f - 0.5) * w); // 끝이 노이즈로 녹아 사라짐
+const flowIn = (x, y, t, sp, s, out) => { const ph = (t * sp) % 1, ph2 = (ph + 0.5) % 1, w = Math.abs(ph * 2 - 1), a = out ? 2 - ph : 1 + ph, b = out ? 2 - ph2 : 1 + ph2; return fbm(x / s * a + 3, y / s * a + 7) * (1 - w) + fbm(x / s * b + 41, y / s * b + 13) * w; };
+
+// 칸마다 fn(x, y, P) → [램프 자리, 불투명도, 램프 번호(0 금빛 · 1~5 다섯 부적)]
+function paint(cx, img, fn, P) {
+  const d = img.data; d.fill(0);
+  for (let j = 0; j < NC; j++) for (let i = 0; i < NC; i++) {
+    const x = (i + 0.5 - NC / 2) * CELL, y = (j + 0.5 - NC / 2) * CELL;
+    if (x * x + y * y > RM * RM) continue;
+    const r = fn(x, y, P); if (!r || r[1] <= 0.01) continue;
+    const rp = RAMPS[r[2] || 0], L = rp.length - 1, lv = clamp(r[0]) * L, b = Math.floor(lv), c = rp[Math.min(L, b + (lv - b > BAYER[(i & 3) + (j & 3) * 4] ? 1 : 0))], k = (j * NC + i) * 4;
+    d[k] = c[0]; d[k + 1] = c[1]; d[k + 2] = c[2]; d[k + 3] = Math.min(255, r[1] * 255);
+  }
+  cx.putImageData(img, 0, 0);
+}
+const glowCache = new Map();
+function glow(ctx, x, y, r, hex, k) {
+  if (k <= 0.01) return; const key = hex + '|' + Math.round(r); let cv = glowCache.get(key);
+  if (!cv) { const n = Math.max(2, Math.round(r * 2)), [a, b, c] = rgb(hex); cv = document.createElement('canvas'); cv.width = cv.height = n; const g2 = cv.getContext('2d'), g = g2.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2); g.addColorStop(0, `rgba(${a},${b},${c},.9)`); g.addColorStop(0.4, `rgba(${a},${b},${c},.35)`); g.addColorStop(1, `rgba(${a},${b},${c},0)`); g2.fillStyle = g; g2.fillRect(0, 0, n, n); glowCache.set(key, cv); }
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha *= Math.min(1, k); ctx.drawImage(cv, x - r, y - r, r * 2, r * 2); ctx.restore();
+}
+function charm(ctx, cx, cy, c, ang, gold) {
+  ctx.save(); ctx.translate(Math.round(cx), Math.round(cy)); if (ang) ctx.rotate(ang);
+  const w = 7, h = 12, x0 = -w * c / 2, y0 = -h * c / 2;
+  for (let gy = 0; gy < h; gy++) for (let gx = 0; gx < w; gx++) {
+    const edge = gx === 0 || gy === 0 || gx === w - 1 || gy === h - 1;
+    ctx.fillStyle = edge ? PAPER[0] : (gx + gy < 4 ? PAPER[3] : gx > 4 && gy > 8 ? PAPER[1] : PAPER[2]); ctx.fillRect(x0 + gx * c, y0 + gy * c, c, c);
+    if (!edge && GLYPH[gy][gx] === 'x') { ctx.fillStyle = INK; ctx.fillRect(x0 + gx * c, y0 + gy * c, c, c); }
+  }
+  if (gold) { ctx.fillStyle = GOLD[1]; ctx.fillRect(x0 + 2 * c, y0 + c, 3 * c, c); ctx.fillStyle = GOLD[3]; ctx.fillRect(x0 + 3 * c, y0 + c, c, c); }
+  ctx.restore();
+}
+function trigrams(ctx, R0, t, alpha) {
+  ctx.fillStyle = GOLD[3]; ctx.globalAlpha = alpha;
+  for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283 + t * 0.004, x = CX + Math.cos(a) * R0 * 0.8, y = CY + Math.sin(a) * R0 * 0.8; for (let b = 0; b < 3; b++) { const yy = Math.round(y - 4 + b * 4); if (TRI[i][b] === '1') ctx.fillRect(Math.round(x - 7), yy, 14, 2); else { ctx.fillRect(Math.round(x - 7), yy, 5, 2); ctx.fillRect(Math.round(x + 2), yy, 5, 2); } } }
+  ctx.globalAlpha = 1;
+}
+// 무녀 그림 (게임 shaman_0: 11 = 기도, 12 = 떠오름, 13 = 착지, 0 = 서 있기)
+const SPR = new Image(); SPR.src = '../../assets/sprites/merc/shaman_0.webp';
+function shaman(ctx, frame, lift) { if (!SPR.complete) return; const w = 101 * SK, h = 95 * SK; ctx.drawImage(SPR, frame * 101, 0, 101, 95, Math.round(CX - 50 * SK), Math.round(CY + 12 - 93 * SK - lift), Math.round(w), Math.round(h)); }
+
+// ===== 방울 소리 물결 시안: ring(x, y, P) → [램프 자리, 불투명도] · 물결 둘이 0.5초(30틱)마다, 가슴 높이(발 위 50)에서 반지름 18 → 72, 세로 0.6배 (지금 게임과 같은 박자·크기) =====
+const RINGS = (t, f) => { const o = []; for (let w = 0; w < 2; w++) { const p = ((t + w * 15) % 30) / 30; o.push({ p, r: 18 + 54 * eoq(p) }); } return o; };
+const ell = (x, y, r, cy = -50) => Math.hypot(x, (y - cy) / 0.6) / r; // 1 = 물결 앞머리
+const gather = (x, y, P) => { const nd = Math.hypot(x, y) / (90 * (0.7 + 0.3 * P.q)); if (nd > 1.1) return null; const f = flowIn(x, y, P.t, 0.004, 55); const m = em(nd, f); const d = ss(0.3, 0.8, f) * m; return [0.15 + 0.4 * d, (0.08 + 0.42 * d) * m * (0.3 + 0.6 * P.q)]; }; // 발밑 금빛 안개 (지금 게임)
+const RP = (() => { const r = rng(5), o = []; for (let i = 0; i < 12; i++) o.push({ a: i / 12 * 6.283 + r() * 0.4, s: 0.7 + r() * 0.6, o: r() * 50 }); return o; })();
+const V = [
+  { id: 'A', name: '안개 고리', note: '선 대신 들쭉날쭉 끊어진 안개 띠가 퍼지며 옅어짐. 지금 선과 가장 비슷한 읽힘',
+    ring: (x, y, P) => { let v = 0, a = 0; const f = fbm(x / 12 + P.t * 0.03, y / 9); for (const R of RINGS(P.t)) { const e = ell(x, y, R.r), d = Math.exp(-Math.pow((e - 1) / 0.13, 2)) * ss(0.3, 0.65, f) * (1 - R.p); if (d > a) { a = d; v = 0.5 + 0.4 * f; } } return [v, a * 0.85]; } },
+  { id: 'B', name: '번지는 물결', note: '앞머리가 밝고 안쪽으로 안개가 꼬리처럼 번져 남음. 소리가 공기를 밀고 지나가는 느낌',
+    ring: (x, y, P) => { let v = 0, a = 0; const f = fbm(x / 16 - P.t * 0.02, y / 12); for (const R of RINGS(P.t)) { const e = ell(x, y, R.r); if (e > 1.15) continue; const front = Math.exp(-Math.pow((e - 1) / 0.08, 2)), trail = ss(0.35, 1, e) * (1 - ss(1, 1.1, e)) * 0.5, d = Math.max(front, trail) * ss(0.25, 0.65, f) * (1 - R.p); if (d > a) { a = d; v = 0.35 + 0.5 * front; } } return [v, a * 0.8]; } },
+  { id: 'C', name: '안개 방울 고리', note: '물결 둘레에 작은 안개 뭉치 열둘이 동글동글 맺혀 함께 퍼지며 부풀다 흩어짐',
+    ring: (x, y, P) => { let v = 0, a = 0; for (const R of RINGS(P.t)) for (const b of RP) { const px = Math.cos(b.a) * R.r, py = -50 + Math.sin(b.a) * R.r * 0.6, rr = (3 + 7 * R.p) * b.s; if (Math.abs(x - px) > rr * 1.5 || Math.abs(y - py) > rr * 1.5) continue; const dd = Math.hypot(x - px, y - py) / rr + (fbm(x / 6 + b.o, y / 6) - 0.5) * 0.6, d = (1 - ss(0.3, 1, dd)) * (1 - R.p); if (d > a) { a = d; v = 0.55 + 0.35 * d; } } return [v, a * 0.85]; } },
+  { id: 'D', name: '겹 음파', note: '양옆으로 얇은 안개 결 세 겹이 ))) 처럼 번져 나감 (앞뒤는 비움). 소리라는 게 가장 잘 보임',
+    ring: (x, y, P) => { let v = 0, a = 0; const an = Math.atan2((y + 50) / 0.6, x), side = ss(0.35, 0.75, Math.abs(Math.cos(an))), f = fbm(x / 10, y / 10 + P.t * 0.02); for (const R of RINGS(P.t)) { const e = ell(x, y, R.r); for (let k = 0; k < 3; k++) { const d = Math.exp(-Math.pow((e - 1 + k * 0.16) / 0.05, 2)) * side * ss(0.25, 0.6, f) * (1 - R.p) * (1 - k * 0.25); if (d > a) { a = d; v = 0.55 + 0.35 * f; } } } return [v, a * 0.85]; } },
+  { id: 'E', name: '금빛 가루 고리', note: '옅은 안개 띠 위로 금빛 가루가 고리를 따라 반짝이며 흩어짐 (내림굿 부적 금빛과 같은 색)', dust: 1,
+    ring: (x, y, P) => { let v = 0, a = 0; const f = fbm(x / 18 + P.t * 0.02, y / 12); for (const R of RINGS(P.t)) { const e = ell(x, y, R.r), d = Math.exp(-Math.pow((e - 1) / 0.18, 2)) * ss(0.3, 0.7, f) * (1 - R.p) * 0.5; if (d > a) { a = d; v = 0.35 + 0.3 * f; } } return [v, a * 0.8]; } },
+  { id: 'F', name: '떠오르는 안개 고리', note: '두툼한 안개 고리가 퍼지면서 위로 떠올라 흩어짐. 기도가 하늘로 올라가는 느낌',
+    ring: (x, y, P) => { let v = 0, a = 0; const f = fbm(x / 14, y / 10 + P.t * 0.04); for (const R of RINGS(P.t)) { const cy = -50 - 30 * R.p, e = ell(x, y, R.r * (0.85 + 0.3 * (f - 0.5)), cy), d = Math.exp(-Math.pow((e - 1) / 0.2, 2)) * ss(0.25, 0.7, f) * (1 - R.p); if (d > a) { a = d; v = 0.4 + 0.45 * f; } } return [v, a * 0.75]; } },
+];
+const LOOP = 120;
+const panels = V.map(v => {
+  const fig = document.createElement('figure'), cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  fig.append(cv); const cap = document.createElement('figcaption'); cap.innerHTML = `<b>${v.id}. ${v.name}</b><br>${v.note}`; fig.append(cap); document.getElementById('g').append(fig);
+  const mk = () => { const off = document.createElement('canvas'); off.width = off.height = NC; const ox = off.getContext('2d'); return { off, ox, img: ox.createImageData(NC, NC) }; };
+  return { v, ctx: cv.getContext('2d'), g: mk(), r: mk() };
+});
+function floor(ctx) { ctx.fillStyle = '#8a8578'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#7f7a6d'; for (let i = 0; i < 300; i++) ctx.fillRect((hsh(i, 3) * W) | 0, (hsh(i, 7) * H) | 0, 6, 2); }
+function frame() {
+  const at = new URLSearchParams(location.search).get('at');
+  const T = at != null ? +at : (performance.now() - t0) / 1000 * 60, t = T, q = (T % LOOP) / LOOP, P = { t, q: 0.4 + 0.6 * q };
+  for (const p of panels) {
+    const { v, ctx } = p; floor(ctx);
+    paint(p.g.ox, p.g.img, gather, P); ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(p.g.off, CX - RM, CY - RM, RM * 2, RM * 2); ctx.restore();
+    shaman(ctx, 11, 0);
+    paint(p.r.ox, p.r.img, v.ring, P); ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(p.r.off, CX - RM, CY - RM, RM * 2, RM * 2); ctx.restore(); // 물결은 몸 위 (지금 게임은 바닥층이라 몸 뒤로 깔림)
+    if (v.dust) { const r = rng(9); for (const R of RINGS(t)) for (let i = 0; i < 18; i++) { const a = r() * 6.283, j = (r() - 0.5) * 6, x = CX + Math.cos(a) * (R.r + j), y = CY - 50 + Math.sin(a) * (R.r + j) * 0.6 - R.p * 6, s = (1 - R.p) * (0.6 + 0.4 * Math.sin(t * 0.5 + i * 3)); ctx.globalAlpha = s; ctx.fillStyle = i % 3 ? GOLD[3] : GOLD[4]; ctx.fillRect(Math.round(x / 2) * 2, Math.round(y / 2) * 2, 2, 2); glow(ctx, x, y, 5, GOLD[2], 0.4 * s); } ctx.globalAlpha = 1; }
+    glow(ctx, CX + 4, CY - 108, 16 + 12 * P.q, GOLD[3], 0.4 + 0.8 * P.q);
+  }
+  requestAnimationFrame(frame);
+}
+const t0 = performance.now();
+frame();
+</script></body></html>
