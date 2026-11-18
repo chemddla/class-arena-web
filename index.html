@@ -3601,7 +3601,13 @@
           <!-- 마을은 [입장하기]를 눌러야 켜짐 (3D 그리기·친구 위치 주고받기를 탭만 열어서는 시작하지 않게) -->
           <div id="villageGate" class="flex flex-col items-center justify-center gap-3 rounded-2xl bg-slate-800/60" style="height: min(72vh, 760px); min-height: 420px;">
             <div class="text-5xl">🏡</div>
-            <button type="button" onclick="VillageTab.enter()" class="px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-lg font-black shadow-lg">마을 입장하기</button>
+            <button id="villageEnterBtn" type="button" onclick="VillageTab.enter()" class="px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-lg font-black shadow-lg">마을 입장하기</button>
+            <div id="villageLoad" class="hidden w-72 max-w-[80%] flex flex-col gap-2">
+              <div class="h-4 rounded-full bg-slate-700 overflow-hidden border border-slate-600" role="progressbar" aria-label="마을 불러오는 중" aria-valuemin="0" aria-valuemax="100">
+                <div id="villageLoadBar" class="h-full rounded-full bg-emerald-400" style="width: 0%; transition: width .25s;"></div>
+              </div>
+              <p class="text-xs font-bold text-slate-300 text-center"><span id="villageLoadText">마을 불러오는 중…</span> <span id="villageLoadPct">0%</span></p>
+            </div>
           </div>
           <div id="villageRoot" class="hidden" style="height: min(72vh, 760px); min-height: 420px; border-radius: 14px;"></div>
         </div>
@@ -48635,7 +48641,7 @@
     VillageFlag.label();
     setTimeout(() => VillageFlag.watch(), 0);
     // 3D 엔진(three.js r128)은 우리 사이트의 사본을 먼저 씀 (학교 인터넷이 바깥 파일 주소를 막아도 열리게), 안 되면 cdnjs
-    const VILLAGE_FILES = [['assets/vendor/three.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'], 'assets/village-pets.js?v=1', 'assets/village.js?v=2'];
+    const VILLAGE_FILES = [['assets/vendor/three.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'], 'assets/village-pets.js?v=1', 'assets/village.js?v=3'];
     const VillageTab = {
       api: null,     // Village.start가 돌려준 손잡이 (pause·resume·dispose)
       key: '',       // 지금 마을을 연 학급·학생·펫 (바뀌면 새로 만듦)
@@ -48648,7 +48654,9 @@
             s.src = src; s.onload = ok; s.onerror = () => { s.remove(); fail(new Error(src)); };
             document.head.appendChild(s);
           });
-          this.loading = VILLAGE_FILES.reduce((p, f) => p.then(() => [].concat(f).reduce((q, src) => q.catch(() => one(src)), Promise.reject())), Promise.resolve())
+          // 로딩 막대: 파일 하나를 다 받을 때마다 그 크기만큼 채움 (three.js 약 600KB · 펫 30KB · 마을 230KB → 65·4·25, 남은 6은 마을 짓기)
+          const W = [65, 4, 25]; let done = 0;
+          this.loading = VILLAGE_FILES.reduce((p, f, i) => p.then(() => { this.loadTo(done, done + W[i]); return [].concat(f).reduce((q, src) => q.catch(() => one(src)), Promise.reject()); }).then(() => { done += W[i]; this.loadTo(done); }), Promise.resolve())
             .catch(e => { this.loading = null; throw e; });
         }
         return this.loading;
@@ -48684,7 +48692,7 @@
         if (!me || !root) return;
         // [입장하기]를 누른 학생만 켬. 다른 탭·친구 집에 다녀와도 [나가기] 전까지는 바로 이어서
         const inside = this.enteredId === me.id;
-        this.gate(inside);
+        this.gate(inside && this.api ? true : inside ? 'load' : false); // 처음 들어갈 때는 다 만들 때까지 로딩 막대
         if (!inside) { if (this.api) { this.api.dispose(); this.api = null; } return; }
         if (state.classLocked && !document.getElementById('classLockOverlay')?.classList.contains('hidden')) { this.lockPaused = true; return; } // 수업 집중 잠금 중엔 열지 않음 (풀리면 이어서)
         if (status && !status.dataset.def) status.dataset.def = status.textContent;
@@ -48699,22 +48707,45 @@
         const host = this.host(me), key = `${host.code}|${me.id}|${host.me.pet}|${host.db ? 1 : 0}|${host.save ? 1 : 0}`;
         this.load().then(() => {
           if (document.getElementById('studentTab-village').classList.contains('hidden')) return; // 받는 사이 다른 탭으로 감
-          if (this.api && this.key === key && !this.api.dup) { this.api.resume(); return; }
+          if (this.enteredId !== me.id) return; // 받는 사이 나가기
+          if (this.api && this.key === key && !this.api.dup) { this.gate(true); this.api.resume(); return; }
           if (this.api) this.api.dispose();
-          this.key = key;
-          this.api = window.Village.start(root, host);
+          this.loadTo(94, 100, '마을 짓는 중…');
+          // 막대가 화면에 그려진 다음에 짓기 시작 (짓는 동안은 화면이 멈춤)
+          return new Promise(ok => setTimeout(ok, 60)).then(() => {
+            if (this.enteredId !== me.id || document.getElementById('studentTab-village').classList.contains('hidden')) return;
+            this.gate(true);
+            this.key = key;
+            this.api = window.Village.start(root, host);
+          });
         }).catch(e => {
           console.warn('[마을 불러오기 실패]:', e);
+          this.enteredId = null; this.gate(false);
           if (status) status.textContent = '마을을 불러오지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.';
         });
       },
 
       close() { if (this.api) this.api.pause(); },
       enteredId: null,
-      gate(inside) {
-        document.getElementById('villageGate')?.classList.toggle('hidden', inside);
-        document.getElementById('villageRoot')?.classList.toggle('hidden', !inside);
-        document.getElementById('villageExitBtn')?.classList.toggle('hidden', !inside);
+      // mode: true(마을 안) · 'load'(로딩 막대) · false(입장 버튼)
+      gate(mode) {
+        const $ = id => document.getElementById(id);
+        $('villageGate')?.classList.toggle('hidden', mode === true);
+        $('villageRoot')?.classList.toggle('hidden', mode !== true);
+        $('villageExitBtn')?.classList.toggle('hidden', !mode);
+        $('villageEnterBtn')?.classList.toggle('hidden', mode === 'load');
+        $('villageLoad')?.classList.toggle('hidden', mode !== 'load');
+        if (mode === 'load' && !this.loadShown) { this.loadShown = true; this.loadP = 0; this.loadTo(0, 8, '마을 불러오는 중…'); }
+        if (mode !== 'load') { this.loadShown = false; clearInterval(this.loadT); }
+      },
+      // 막대를 pct까지 채우고, 다음 단계가 끝나기 전까지는 cap 바로 앞까지 천천히 차오름 (멈춘 것처럼 보이지 않게)
+      loadTo(pct, cap, text) {
+        const bar = document.getElementById('villageLoadBar'), num = document.getElementById('villageLoadPct');
+        if (text) document.getElementById('villageLoadText').textContent = text;
+        this.loadP = Math.max(this.loadP || 0, pct);
+        const show = () => { bar.style.width = this.loadP + '%'; num.textContent = Math.floor(this.loadP) + '%'; };
+        show(); clearInterval(this.loadT);
+        if (cap) this.loadT = setInterval(() => { if (this.loadP < cap - 1) { this.loadP += (cap - 1 - this.loadP) * 0.06; show(); } }, 150);
       },
       enter() { const me = getActiveStudent(); if (!me) return; this.enteredId = me.id; this.open(); },
       // 나가기: 멈추는 데서 그치지 않고 3D 화면을 통째로 치워 메모리·그래픽도 돌려줌 (다시 들어오면 새로 만듦)

@@ -354,6 +354,17 @@ test('마을 위치: 로그인한 학생은 자기 칸에만 {c, d}로 쓰고, �
   await assertSucceeds(db('admin', { superAdmin: true }).ref('village/OWN1').once('value'));
 });
 
+test('마을 미니맵 대략 위치: 자기 칸에만 짧은 글자로 쓰고, 같은 반 회원만 읽음', async () => {
+  await assertSucceeds(db('u1').ref('villageMap/OWN1/s1').set('-12,5'));
+  await assertSucceeds(db('u1').ref('villageMap/OWN1').once('value'));
+  await assertFails(db(null).ref('villageMap/OWN1').once('value'));
+  await assertFails(db('u2').ref('villageMap/OWN1').once('value'));
+  await assertFails(db('u1').ref('villageMap/OWN1/s2').set('1,1')); // 남의 칸
+  await assertFails(db('u1').ref('villageMap/OWN1/s1').set('x'.repeat(13)));
+  await assertFails(db('u1').ref('villageMap/OWN1/s1').set(5));
+  await assertSucceeds(db('u1').ref('villageMap/OWN1/s1').remove());
+});
+
 test('마을 열림 스위치: 누구나 읽고, 총괄 관리자만 참·거짓으로 바꿈', async () => {
   await assertSucceeds(db(null).ref('appFlags/village').once('value'));
   await assertFails(db('teacher').ref('appFlags/village').set(true));

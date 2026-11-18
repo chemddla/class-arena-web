@@ -1221,7 +1221,7 @@
   // 아끼기(추측 항법): 좌표를 계속 보내지 않고 "여기서 이 속도로 간다"만 보냄. 받는 쪽은 그 속도로 계속 움직여 보여 줌.
   // 보내는 쪽도 받는 쪽과 똑같이 계산해 두고, 실제 내 위치가 그 예측에서 0.45칸 넘게 벗어날 때(방향을 틀거나 벽에 막힘)만 다시 보냄.
   // 곧게 걷거나 뛰는 동안·가만히 서 있는 동안에는 아무것도 안 보냄 (멈추기·앉기·감정·펫 바꾸기는 바로 보냄, 오래 걸으면 5초마다 한 번 확인)
-  const net = { ref: null, list: null, conn: null, key: '', lastAt: 0, want: false, n: 0, emo: '', remotes: {}, idle: false, s: null, px: 0, pz: 0, pt: 0, fnow: performance.now() };
+  const net = { ref: null, list: null, conn: null, key: '', lastAt: 0, want: false, n: 0, emo: '', remotes: {}, far: {}, mref: null, mlist: null, cell: '', idle: false, s: null, px: 0, pz: 0, pt: 0, fnow: performance.now() };
   const f1 = v => (Math.round(v * 10) / 10).toString();
   const NET_ERR = 0.45, NET_GAP = 200, NET_KEEP = 5000, NET_LAG = 100; // NET_LAG: 받는 쪽이 메시지가 오는 데 걸린 시간만큼 앞당겨 보여 줌
   function netPred(s, now) { // 보낸 상태 s로 지금 있어야 할 곳과 지금 속도 (보내는 쪽·받는 쪽이 같은 계산)
@@ -1242,6 +1242,10 @@
     const tele = Math.hypot(vx, vz) > SPEED * RUN * 1.6; // 가게 드나들기·앉기처럼 순간 이동
     net.px = me.x; net.pz = me.z; net.pt = now;
     if (!net.ref) return;
+    { // 미니맵용 대략 위치: 8칸 구역이 바뀔 때만 올림 (가게 안이면 가게 문 앞)
+      const o = me.z > SHOP.far ? [SHOP.x, SHOP.z + 2.4] : [me.x, me.z], cell = Math.round(o[0] / MAP_CELL) + ',' + Math.round(o[1] / MAP_CELL);
+      if (cell !== net.cell) { net.cell = cell; net.mref.set(cell).catch(() => {}); }
+    }
     if (tele || !me.moving || me.sit) vx = vz = 0;
     const sit = me.sit ? seats.indexOf(me.sit) : '', tg = me.moving && me.target ? me.target : null;
     const band = bandOf(me.x, me.z);
@@ -1296,9 +1300,15 @@
     net.ref = host.db.ref(`${base}/${host.me.id}`); net.key = ''; net.want = true; net.lastAt = 0; net.s = null;
     net.tag = Date.now().toString(36).padStart(9, '0') + Math.random().toString(36).slice(2, 5); // 접속표: 들어온 시각 (같은 학생 두 기기 구분)
     net.band = null; netListen();
+    // 미니맵: 반 친구 모두의 대략 위치(villageMap)는 따로 받음. 구역이 바뀔 때만 오가서 가볍고, 가까운 친구는 위의 자세한 위치로 그림
+    net.mref = host.db.ref(`villageMap/${host.code}/${host.me.id}`); net.cell = '';
+    net.mlist = host.db.ref(`villageMap/${host.code}`);
+    const gotCell = sn => { if (sn.key === host.me.id) return; const p = String(sn.val()).split(',').map(Number); if (p.length === 2 && p.every(isFinite)) net.far[sn.key] = [p[0] * MAP_CELL, p[1] * MAP_CELL]; };
+    net.mlist.on('child_added', gotCell); net.mlist.on('child_changed', gotCell);
+    net.mlist.on('child_removed', sn => { delete net.far[sn.key]; });
     // 끊기면 서버가 내 칸을 지움. 다시 연결되면 예약을 다시 걸고 위치를 다시 올림
     net.conn = host.db.ref('.info/connected');
-    net.conn.on('value', sn => { if (sn && sn.val() === true && net.ref) { net.ref.onDisconnect().remove().catch(() => {}); net.key = ''; net.want = true; } });
+    net.conn.on('value', sn => { if (sn && sn.val() === true && net.ref) { net.ref.onDisconnect().remove().catch(() => {}); net.mref.onDisconnect().remove().catch(() => {}); net.key = ''; net.cell = ''; net.want = true; } });
   }
   // 쉬는 중: 창·브라우저 탭을 숨기거나 3분 동안 아무것도 안 누르면 친구 위치 주고받기를 잠시 끊음 (켜 두고 딴짓하는 학생이 DB 수신량을 계속 쓰지 않게)
   // 다시 보거나 아무 키·화면을 누르면 이어서 받음. 숨길 때 눌린 키도 풀어 둠 (Alt+Tab 하면 keyup이 안 와서 계속 걸어가던 문제)
@@ -1307,8 +1317,8 @@
   function netRest() { if (!net.ref) return; netLeave(); net.idle = true; updateCount(); }
   function netDup() { // 다른 기기에 자리를 넘김: 내 칸은 그 기기 것이므로 지우지 않고 듣기만 멈춤
     if (!net.ref) return;
-    try { net.list.off(); net.conn.off(); net.ref.onDisconnect().cancel(); } catch (e) {}
-    net.ref = net.list = net.conn = null; Object.keys(net.remotes).forEach(netRemove);
+    try { net.list.off(); net.conn.off(); net.ref.onDisconnect().cancel(); net.mlist.off(); net.mref.onDisconnect().cancel(); } catch (e) {}
+    net.ref = net.list = net.conn = net.mref = net.mlist = null; net.far = {}; Object.keys(net.remotes).forEach(netRemove);
     net.dup = true; vStore.off(); updateCount();
     say(me, '다른 기기에서 마을에 들어왔어요', 3);
   }
@@ -1318,7 +1328,7 @@
   root.addEventListener('pointerdown', poke, true); root.addEventListener('wheel', poke, { passive: true, capture: true });
   // 가까운 친구만 받기: 마을을 동서로 30칸씩 띠(c)로 나누고, 내 띠와 양옆 띠(앞뒤 30칸 이상)에 있는 친구만 서버가 골라 보냄
   // (안개 때문에 그보다 먼 친구는 거의 안 보임). 가게 안은 띠 99 하나. 띠를 넘어가면 다시 듣고, 범위를 벗어난 친구는 화면에서 뺌
-  const BAND_W = 30, SHOP_BAND = 99;
+  const BAND_W = 30, SHOP_BAND = 99, MAP_CELL = 8;
   const bandOf = (x, z) => z > SHOP.far ? SHOP_BAND : Math.floor(x / BAND_W);
   const bandNear = (b, c) => b === SHOP_BAND || c === SHOP_BAND ? b === c : Math.abs(b - c) <= 1;
   function netListen() {
@@ -1340,8 +1350,8 @@
   }
   function netLeave() {
     if (!net.ref) return;
-    try { net.list.off(); net.conn.off(); net.ref.onDisconnect().cancel(); } catch (e) {}
-    net.ref.remove().catch(() => {}); net.ref = net.list = net.conn = null;
+    try { net.list.off(); net.conn.off(); net.ref.onDisconnect().cancel(); net.mlist.off(); net.mref.onDisconnect().cancel(); } catch (e) {}
+    net.ref.remove().catch(() => {}); net.mref.remove().catch(() => {}); net.ref = net.list = net.conn = net.mref = net.mlist = null; net.far = {};
     Object.keys(net.remotes).forEach(netRemove);
   }
 
@@ -1376,6 +1386,7 @@
     mapG.drawImage(mapBg, 0, 0);
     const dot = (x, z, r, fill) => { mapG.fillStyle = fill; mapG.strokeStyle = '#fff'; mapG.lineWidth = 3; mapG.beginPath(); mapG.arc(mx(x), mz(z), r, 0, 6.29); mapG.fill(); mapG.stroke(); };
     const out = a => a.z > SHOP.far ? [SHOP.x, SHOP.z + 2.4] : [a.x, a.z]; // 가게 안에 있으면 가게 문 앞에 표시
+    Object.keys(net.far).forEach(id => { if (!net.remotes[id]) dot(...net.far[id], 6, 'rgba(240,168,58,0.55)'); }); // 멀리 있는 친구: 대략 자리에 흐린 점
     actors.forEach(a => { if (!a.me && !a.npc) dot(...out(a), 7, a.remote ? '#f0a83a' : '#8a94a6'); });
     const f = me.face, x = mx(out(me)[0]), z = mz(out(me)[1]); // 나: 바라보는 쪽을 가리키는 화살촉
     mapG.fillStyle = '#e8483f'; mapG.strokeStyle = '#fff'; mapG.lineWidth = 3; mapG.beginPath();
