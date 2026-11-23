@@ -155,6 +155,12 @@ jobs:
       - name: Write version file
         run: printf '{"commit":"%s","deployedAt":"%s","buildAt":%s}\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BUILD_AT" > public/version.json
 
+      # 예비 주소(GitHub Pages)용으로 같은 배포본을 담아 둠: 학교 필터가 pages.dev를 막아(2026-11-23 크롬·삼성 인터넷 ERR_SSL_PROTOCOL_ERROR) github.io로 들어오게
+      - name: Pack game for GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
       # 게임 사이트는 Cloudflare Pages에 올림 (Firebase 무료 호스팅은 한 달 전송량 10GB라 2026-11 초에 다 써서 사이트가 막힘)
       # 저장소 Secrets에 CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID가 있을 때만 Cloudflare로 감. 없으면 예전처럼 Firebase에 게임을 올림
       - name: Pick game host
@@ -225,6 +231,20 @@ jobs:
       - name: Verify live Firebase site
         continue-on-error: ${{ steps.host.outputs.cf == 'true' }}
         run: bash tools/verify-deploy.sh https://class-arena-b4ee3.web.app "${{ steps.host.outputs.cf == 'true' && 'Firebase 옛 주소 (안내 페이지)' || '게임 사이트' }}"
+
+  # 예비 게임 주소: https://chemddla.github.io/class-arena-web/ (게임 주소는 모두 상대 경로라 하위 폴더에서도 동작)
+  deploy-game-backup:
+    needs: deploy-game
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - id: pages
+        uses: actions/deploy-pages@v4
 
   deploy-admin:
     needs: changes
