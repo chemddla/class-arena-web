@@ -16127,12 +16127,33 @@
       return m;
     }
 
+    // 거래 이력: 서버 tradeLog/{id}에 지우지 않고 남김 (선물함 transfers는 받으면 지워져서 '안 받았다'·'두 번 받았다'를 확인할 길이 없었음)
+    // 저장이 성공한 뒤 따로 올림 (규칙이 늦게 배포돼도 내 기록 저장은 막히지 않게) · 실패하면 다음 저장 때 다시
+    let tradeLogPrunedFor = null;
+    function logTrade(e) {
+      if (!StudentPw.online() || /tower_help/.test(`${e.kind} ${e.note}`)) return; // 탑 도움 보상은 거래가 아니고 아주 잦아서 뺌
+      const me = getActiveStudent();
+      const m = e.merc;
+      if (!Array.isArray(state.tradeLogQ)) state.tradeLogQ = [];
+      state.tradeLogQ.push({
+        id: 'l_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10),
+        classCode: String(state.classCode || '').toUpperCase(),
+        by: me ? me.id : 'teacher',
+        to: e.to || '',
+        mc: Math.round(Number(e.mc) || 0),
+        merc: m ? cleanUserText(`${m.name || ''} Lv.${m.level || 1} ${m.job || ''} ${m.id || ''}`, 120) : '',
+        kind: cleanUserText(e.kind || '', 30),
+        note: cleanUserText(e.note || '', 120)
+      });
+    }
+
     function sendToStudent(toId, gift) {
       const to = state.students.find(s => s.id === toId);
       if (!to) return;
       const mc = Math.max(0, Math.round(Number(gift.mc) || 0));
       const merc = gift.merc ? JSON.parse(JSON.stringify(gift.merc)) : null;
       if (!mc && !merc) return;
+      logTrade({ to: toId, mc, merc, kind: gift.kind, note: gift.note });
       const me = getActiveStudent();
       // 나에게 돌려주는 돈이나, 서버 없이 이 기기에서만 쓰는 학급은 바로 반영
       if ((me && me.id === toId) || !StudentPw.online()) {
@@ -16288,6 +16309,7 @@
           sendToStudent(prev.highestBidderId, { mc: prev.currentBid, kind: 'auction_refund', note: `[${prev.merc.name}] 경매에서 더 높은 입찰이 나와 입찰금을 돌려받았어요.` });
         }
         stu.mc -= bidAmount;
+        logTrade({ mc: -bidAmount, merc: prev.merc, kind: 'auction_bid', note: `${auctionId} 입찰 (이전 최고 ${prev.highestBidderId || '없음'} ${prev.currentBid || 0})` });
         saveState();
         renderMarketTab();
         showRewardBanner(`🙋 [${prev.merc.name}] 경매에 ${bidAmount.toLocaleString()} CA로 최고가 입찰 완료! (마감 때까지 최고가면 내 용병이 돼요)`);
@@ -16391,6 +16413,7 @@
         const winner = state.students.find(s => s.id === done.highestBidderId);
         const pay = auctionPayout(done.currentBid);
         me.mc += pay;
+        logTrade({ to: done.highestBidderId, mc: pay, merc: done.merc, kind: 'auction_final', note: `${auctionId} 낙찰 확정 ${done.currentBid} CA` });
         const acquiredMerc = { ...done.merc, deployed: false };
         sendToStudent(done.highestBidderId, { merc: acquiredMerc, kind: 'auction_win', note: `경매에서 [${acquiredMerc.name}] 용병을 낙찰받았어요.` });
         saveState();
@@ -16420,6 +16443,7 @@
         }
         const returnedMerc = { ...done.merc, deployed: stu.roster.filter(m => m.deployed).length < MAX_DEPLOY };
         stu.roster.push(returnedMerc);
+        logTrade({ merc: done.merc, kind: 'auction_cancel', note: `${auctionId} 출품 취소` });
         saveState();
         renderAllStudentViews();
         showNotice(`↩️ [${returnedMerc.name}] 경매 출품을 취소하고 용병단으로 회수했습니다.`);
@@ -16582,6 +16606,7 @@
         createdAt: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
       };
       buyer.mc -= offerPrice;
+      logTrade({ to: seller.id, mc: -offerPrice, merc: offeredMerc, kind: 'trade_offer', note: `${newOffer.id} [${merc.name}] 제안 (맡김)` });
       state.tradeOffers.unshift(newOffer);
       closeTradeOfferModal();
 
@@ -16646,6 +16671,7 @@
         }
         transferredMerc.deployed = false;
         seller.mc += done.offerPrice; // 구매자가 제안할 때 맡긴 금액
+        logTrade({ to: done.buyerId, mc: done.offerPrice, merc: transferredMerc, kind: 'trade_accept', note: `${offerId} 수락${done.offeredMerc ? ` · 교환 용병 ${done.offeredMerc.name} ${done.offeredMerc.id}` : ''}` });
         if (done.offeredMerc) applyGiftToStudent(seller, { merc: done.offeredMerc }); // 교환으로 맡겨 둔 용병
         sendToStudent(done.buyerId, { merc: transferredMerc, kind: 'trade_buy', note: `[${seller.name}] 친구가 거래 제안을 수락해 [${transferredMerc.name}] 용병이 왔어요.` });
         saveState(); // 여기까지를 먼저 저장 (아래 다른 제안 정리가 서버 확인을 기다리는 동안 탭이 닫혀도 거래는 남게)
@@ -50090,6 +50116,7 @@
           syncCache.students[me.id] = savedSig;
           syncCache.studentVals[me.id] = savedVal;
           ids.forEach(id => { if (this.items[me.id]) delete this.items[me.id][id]; });
+          gifts.forEach(g => logTrade({ to: g.from, mc: g.mc, merc: g.merc, kind: 'recv', note: `${g.id} ${g.kind || ''}` }));
           saveState();
           renderAllStudentViews();
           const mcSum = added.reduce((s, a) => s + a.mc, 0);
@@ -51222,7 +51249,29 @@
           };
         }
 
+        // 거래 이력은 내 기록 저장이 끝난 뒤 따로 (규칙에 없던 칸이라 거부돼도 저장은 그대로 · 남은 건 다음 저장 때 다시)
+        const flushTradeLog = () => {
+          const q = (Array.isArray(state.tradeLogQ) ? state.tradeLogQ : []).filter(l => l && l.classCode === classCode && (manager || l.by === state.activeStudentId));
+          if (!q.length) return;
+          const logUp = {};
+          q.forEach(l => { logUp[`${base}/tradeLog/${l.id}`] = { by: l.by, to: l.to, mc: l.mc, merc: l.merc, kind: l.kind, note: l.note, at: window.firebase.database.ServerValue.TIMESTAMP }; });
+          db.ref().update(logUp).then(() => {
+            const done = new Set(q.map(l => l.id));
+            state.tradeLogQ = state.tradeLogQ.filter(l => !done.has(l.id));
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+          }).catch(e => console.warn('[거래 이력 저장 실패]:', e));
+        };
+        // 한 달(30일) 지난 거래 이력은 선생님 기기가 지움 (접속한 뒤 한 번만)
+        if (manager && tradeLogPrunedFor !== classCode) {
+          tradeLogPrunedFor = classCode;
+          db.ref(`${base}/tradeLog`).orderByChild('at').endAt(Date.now() - 30 * 86400000).once('value').then(snap => {
+            const del = {};
+            snap.forEach(c => { del[`${base}/tradeLog/${c.key}`] = null; });
+            if (Object.keys(del).length) return db.ref().update(del);
+          }).catch(e => console.warn('[지난 거래 이력 정리 실패]:', e));
+        }
         if (!Object.keys(updates).length) {
+          flushTradeLog();
           setAutoSaveBadgeState('🟢 자동저장됨', false);
           return true;
         }
@@ -51232,6 +51281,7 @@
         try {
           await db.ref().update(updates);
           pushDeniedStreak = 0;
+          flushTradeLog();
           if (creating && pendingClassSecrets && pendingClassSecrets.classCode === classCode) {
             TeacherSecrets.pinProof[classCode] = pendingClassSecrets.pin;
             TeacherSecrets.keyConfirmed[classCode] = pendingClassSecrets.key;

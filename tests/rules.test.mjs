@@ -490,6 +490,25 @@ test('거래 제안: 사는 학생이 자기 이름으로 보내고, 두 당사�
   await assertSucceeds(db('u1').ref('classes/OWN1/tradeOffers/offer_2').remove());                      // 보낸 학생이 취소
 });
 
+// ----- 거래 이력: 학생은 내 이름으로 새로 쓰기만 (고치기·지우기는 교사만) -----
+test('거래 이력: 내 이름으로 추가만, 고치거나 지울 수 없음', async () => {
+  await link('u2', 's2', PROOF_B);
+  const L = 'classes/OWN1/tradeLog';
+  const log = (by, extra = {}) => ({ by, to: 's2', mc: -300, merc: '불꽃 Lv.3 mage merc_1', kind: 'trade_offer', note: 'offer_1', at: Date.now() - 1000, ...extra });
+  await assertSucceeds(db('u1').ref(`${L}/l_abc123`).set(log('s1')));
+  await assertSucceeds(db('u1').ref(`${L}/l_abc123`).set(log('s1', { at: Date.now() - 500 })));  // 같은 내용 다시 올리기 (보낸 뒤 탭이 닫혀 재전송)
+  await assertFails(db('u1').ref(`${L}/l_abc123`).set(log('s1', { mc: 999999 })));               // 내 기록 고치기
+  await assertFails(db('u1').ref(`${L}/l_abc123`).remove());                                    // 내 기록 지우기
+  await assertFails(db('u2').ref(`${L}/l_abc123`).remove());                                    // 남의 기록 지우기
+  await assertFails(db('u2').ref(`${L}/l_def456`).set(log('s1')));                              // 남의 이름으로
+  await assertFails(db('u3').ref(`${L}/l_def456`).set(log('s3')));                              // 반에 연결 안 됨
+  await assertFails(db('u1').ref(`${L}/l_def456`).set(log('s1', { hack: 1 })));                 // 모르는 칸
+  await assertFails(db('u1').ref(`${L}/x_def456`).set(log('s1')));                              // 이상한 이름
+  await assertFails(db('u1').ref(L).remove());
+  await assertSucceeds(db('teacher').ref(`${L}/l_t00001`).set(log('teacher')));
+  await assertSucceeds(db('teacher').ref(L).remove());                                          // 교사는 정리 가능
+});
+
 // ----- 학생 외형 디자인 (classes/{학급}/skinDesigns/{학생}/{id}) -----
 const design = (extra = {}) => ({ job: 'knight', title: '용암 기사', note: '빨간 갑옷', name: 's1', image: 'data:image/jpeg;base64,AAAA', at: Date.now() - 1000, ...extra });
 
