@@ -1492,6 +1492,13 @@
     .gch-toggle:hover { background: var(--c-wood-l); }
     .gch-toggle-label { flex-shrink: 0; font-family: 'Galmuri11', 'Jua', sans-serif; font-weight: 700; font-size: 14px; text-shadow: 2px 2px 0 var(--c-wood-ddd); }
     .gch-preview { min-width: 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Galmuri9', sans-serif; font-size: 11px; color: var(--c-gold); }
+    /* 채팅 가리기: 작은 💬 버튼만 남김 */
+    .gch.gch-off > :not(.gch-show) { display: none !important; }
+    .gch:not(.gch-off) > .gch-show { display: none !important; }
+    .gch-show { padding: 4px 8px 6px; font-family: 'Galmuri11', sans-serif; font-weight: 700; font-size: 11px; color: var(--c-paper); opacity: .55; background: var(--c-wood); box-shadow: 0 0 0 3px var(--c-wood-ddd), inset 0 -3px 0 var(--c-wood-d); }
+    .gch-show:hover { opacity: 1; }
+    .gch-hide { flex-shrink: 0; width: 26px; align-self: stretch; display: grid; place-items: center; font-family: 'Galmuri11', sans-serif; font-weight: 700; font-size: 13px; color: var(--c-paper); background: var(--c-wood-d); box-shadow: 0 0 0 3px var(--c-wood-ddd), inset 0 -3px 0 var(--c-wood-dd); }
+    .gch-hide:hover { background: var(--c-wood); }
     .gch-unread { position: absolute; top: -11px; right: -11px; min-width: 22px; height: 20px; padding: 0 4px; font-family: 'Galmuri9', sans-serif; font-size: 11px; line-height: 20px; text-align: center; color: #fff; background: #c8323a; box-shadow: 0 0 0 2px var(--c-wood-ddd); }
     /* 전투 화면으로 스크롤할 때 고정 헤더에 도구 줄이 가리지 않게 */
     #arenaSection { scroll-margin-top: 128px; }
@@ -4911,6 +4918,16 @@
             </div>
           </div>
 
+          <!-- 🧾 거래 이력 (loadTradeLogView · 누를 때만 서버에서 받음) -->
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-2.5">
+            <h4 class="font-title text-lg text-sky-300">🧾 거래 이력 (최근 30일)</h4>
+            <div class="flex gap-2">
+              <select id="tradeLogStuSelect" onchange="renderTradeLogView()" class="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-xl px-2 py-1.5 text-xs text-white"><option value="">전체 학생</option></select>
+              <button onclick="loadTradeLogView()" class="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-xs font-bold text-white">불러오기</button>
+            </div>
+            <div id="tradeLogList" class="text-[11px] text-slate-400 max-h-80 overflow-y-auto flex flex-col gap-1">불러오기를 누르면 학생끼리 오간 CA·용병 기록이 보여요.</div>
+          </div>
+
           <!-- 👨‍🏫 선생님 학급 계정 · 콘텐츠별 반영 여부 (renderTeacherAcctAdmin) -->
           <div id="teacherAcctAdminBox" class="bg-slate-900 border border-amber-400/40 rounded-2xl p-4 flex flex-col gap-2.5"></div>
 
@@ -4932,6 +4949,7 @@
         <span class="gch-title">💬 전체 채팅</span>
         <span class="gch-sub">우리 반 모두에게 보여요 · 홍보 글을 누르면 입장</span>
         <button type="button" onclick="toggleGlobalChat(false)" class="gch-min" title="최소화" aria-label="전체 채팅 최소화">—</button>
+        <button type="button" onclick="hideGlobalChat(true)" class="gch-min" style="margin-left:0" title="채팅 아예 가리기 (왼쪽 아래 [채팅]으로 다시 보기)" aria-label="전체 채팅 가리기">✕</button>
       </div>
       <!-- 크기 조절 손잡이 (오른쪽 위 모서리): 끌어서 넓이·높이 조절, 두 번 누르면 원래 크기 -->
       <div id="globalChatResize" class="gch-resize" onpointerdown="startGlobalChatResize(event)" ondblclick="resetGlobalChatSize()" title="끌어서 크기 조절 (두 번 누르면 원래 크기)" aria-label="전체 채팅 크기 조절">⤢</div>
@@ -4942,11 +4960,15 @@
       </form>
     </div>
     <div id="globalChatPeek" class="gch-peek hidden"></div>
-    <button type="button" id="globalChatToggle" onclick="toggleGlobalChat(true)" title="전체 채팅 열기" class="gch-toggle">
-      <span class="gch-toggle-label">💬 전체 채팅</span>
-      <span id="globalChatPreview" class="gch-preview hidden"></span>
-      <span id="globalChatUnread" class="gch-unread hidden"></span>
-    </button>
+    <div id="globalChatToggle" style="display:flex;gap:8px;max-width:100%">
+      <button type="button" onclick="toggleGlobalChat(true)" title="전체 채팅 열기" class="gch-toggle">
+        <span class="gch-toggle-label">💬 전체 채팅</span>
+        <span id="globalChatPreview" class="gch-preview hidden"></span>
+        <span id="globalChatUnread" class="gch-unread hidden"></span>
+      </button>
+      <button type="button" onclick="hideGlobalChat(true)" class="gch-hide" title="채팅 아예 가리기 (왼쪽 아래 [채팅]으로 다시 보기)" aria-label="전체 채팅 가리기">✕</button>
+    </div>
+    <button type="button" onclick="hideGlobalChat(false)" class="gch-show" title="전체 채팅 다시 보기" aria-label="전체 채팅 다시 보기">채팅</button>
   </div>
 
   <!-- 다른 메뉴를 보는 동안 진행 중인 전투·결투방으로 돌아가는 버튼 -->
@@ -16129,6 +16151,56 @@
 
     // 거래 이력: 서버 tradeLog/{id}에 지우지 않고 남김 (선물함 transfers는 받으면 지워져서 '안 받았다'·'두 번 받았다'를 확인할 길이 없었음)
     // 저장이 성공한 뒤 따로 올림 (규칙이 늦게 배포돼도 내 기록 저장은 막히지 않게) · 실패하면 다음 저장 때 다시
+    // 선생님 화면: 거래 이력 보기 (구독하지 않고 누를 때 한 번 받음)
+    let tradeLogRows = null;
+    const TRADE_LOG_KIND = {
+      trade_offer: '거래 제안(맡김)', trade_accept: '거래 수락', trade_buy: '거래 용병 전달', trade_refund: '거래 환불',
+      auction_bid: '경매 입찰', auction_refund: '입찰금 환불', auction_win: '낙찰 용병 전달', auction_sale: '경매 판매 대금',
+      auction_final: '낙찰 확정', auction_unsold: '유찰 반환', auction_cancel: '경매 취소', recv: '받음', split: '나눠 보냄'
+    };
+    async function loadTradeLogView() {
+      const box = document.getElementById('tradeLogList');
+      const db = RealtimePvpService.initFirebaseClientSafe();
+      const code = String(state.classCode || '').trim().toUpperCase();
+      if (!box) return;
+      if (!db || !code) { box.textContent = '서버에 연결된 학급에서만 볼 수 있어요.'; return; }
+      box.textContent = '불러오는 중…';
+      try {
+        const snap = await db.ref(`classes/${code}/tradeLog`).once('value');
+        const v = snap.val() || {};
+        tradeLogRows = Object.keys(v).map(id => ({ id, ...v[id] })).filter(r => r && typeof r === 'object').sort((a, b) => (Number(b.at) || 0) - (Number(a.at) || 0));
+        const sel = document.getElementById('tradeLogStuSelect');
+        if (sel) {
+          const cur = sel.value;
+          sel.innerHTML = '<option value="">전체 학생</option>' + (state.students || []).map(s => `<option value="${escHtml(s.id)}">${escHtml(s.name)}</option>`).join('');
+          sel.value = cur;
+        }
+        renderTradeLogView();
+      } catch (e) {
+        box.textContent = '거래 이력을 불러오지 못했어요. 잠시 뒤 다시 해 주세요.';
+        console.warn('[거래 이력 불러오기 실패]:', e);
+      }
+    }
+    function renderTradeLogView() {
+      const box = document.getElementById('tradeLogList');
+      if (!box || !tradeLogRows) return;
+      const pick = document.getElementById('tradeLogStuSelect')?.value || '';
+      const nameOf = id => id === 'teacher' ? '선생님' : ((state.students || []).find(s => s.id === id)?.name || id || '');
+      const rows = tradeLogRows.filter(r => !pick || r.by === pick || r.to === pick);
+      if (!rows.length) { box.textContent = '기록이 없어요.'; return; }
+      box.innerHTML = rows.slice(0, 500).map(r => {
+        const t = r.at ? new Date(Number(r.at)).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+        const mc = Number(r.mc) || 0;
+        const who = `${escHtml(nameOf(r.by))}${r.to ? ` → ${escHtml(nameOf(r.to))}` : ''}`;
+        return `<div class="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1">
+          <div><span class="text-slate-500">${escHtml(t)}</span> <strong class="text-white">${who}</strong> <span class="text-sky-300">${escHtml(TRADE_LOG_KIND[r.kind] || r.kind || '')}</span>
+          ${mc ? `<strong class="${mc < 0 ? 'text-rose-300' : 'text-amber-300'}">${mc > 0 ? '+' : ''}${mc.toLocaleString()} CA</strong>` : ''}
+          ${r.merc ? `<span class="text-emerald-300">${escHtml(r.merc)}</span>` : ''}</div>
+          ${r.note ? `<div class="text-slate-500">${escHtml(r.note)}</div>` : ''}
+        </div>`;
+      }).join('') + (rows.length > 500 ? `<div class="text-slate-500">…최근 500건만 보여요 (전체 ${rows.length}건)</div>` : '');
+    }
+
     let tradeLogPrunedFor = null;
     function logTrade(e) {
       if (!StudentPw.online() || /tower_help/.test(`${e.kind} ${e.note}`)) return; // 탑 도움 보상은 거래가 아니고 아주 잦아서 뺌
@@ -50879,6 +50951,10 @@
       },
 
       applyOpen() {
+        let off = false;
+        try { off = localStorage.getItem('ca_gchat_off') === '1'; } catch (e) {}
+        document.getElementById('globalChatDock')?.classList.toggle('gch-off', off);
+        if (off) this.hidePeek();
         this.applySize();
         this.renderMute();
         document.getElementById('globalChatPanel')?.classList.toggle('hidden', !this.open);
@@ -50968,7 +51044,7 @@
 
       peek(m) {
         const el = document.getElementById('globalChatPeek');
-        if (!el) return;
+        if (!el || document.getElementById('globalChatDock')?.classList.contains('gch-off')) return;
         this.peekMsg = m;
         el.innerHTML = this.lineHTML(m);
         el.classList.remove('hidden');
@@ -50990,6 +51066,11 @@
     };
 
     window.toggleGlobalChat = function (force) { GlobalChat.toggle(force); };
+    // 채팅 아예 가리기 (이 기기에 기억) · 다시 보면 접힌 버튼으로 돌아옴
+    window.hideGlobalChat = function (off) {
+      try { localStorage.setItem('ca_gchat_off', off ? '1' : '0'); } catch (e) {}
+      if (off && GlobalChat.open) GlobalChat.toggle(false); else GlobalChat.applyOpen();
+    };
 
     // 오른쪽 위 손잡이를 끌면: 오른쪽으로 → 넓게, 위로 → 높게 (창은 왼쪽 아래에 붙어 있음)
     window.startGlobalChatResize = function (ev) {
