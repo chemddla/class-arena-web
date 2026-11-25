@@ -60,4 +60,9 @@ t('이펙트: 시전자 참조는 id로, 값만 반올림', () => {
   const out = f.packLiveEffect({ type: 'aoe_ring', x: 100.123456, y: 50.9876, r: 262.9068276024797, life: 40, owner: unit });
   assert.deepStrictEqual(out, { type: 'aoe_ring', x: 100.1, y: 51, r: 262.9, life: 40, oid: 'u1' });
 });
+t('이펙트: _로 시작하는 객체 칸(그리기 캐시)은 빼고, 숫자 칸은 그대로', () => {
+  const loop = {}; loop.self = loop; // 캔버스처럼 끝없이 파고드는 객체 (2026-11-25 SR 기공사 _qc 캔버스로 스택 넘침)
+  const out = f.packLiveEffect({ type: 'qi_beam', x: 1, life: 9, _qc: { cv: loop }, _pfxSeed: 7 });
+  assert.deepStrictEqual(out, { type: 'qi_beam', x: 1, life: 9, _pfxSeed: 7 });
+});
 console.log('all', n);
